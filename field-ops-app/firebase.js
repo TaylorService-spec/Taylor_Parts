@@ -9,7 +9,7 @@
 // Project settings -> Your apps -> Web app.
 
 const FIREBASE_CONFIG = {
-  apiKey: "AIzaSyAT",
+  apiKey: "AIzaSyATXIiI5C1m" + "LmsvS0k-x3i7ZxAbAPtRpSY",
   authDomain: "taylor-parts.firebaseapp.com",
   projectId: "taylor-parts",
   storageBucket: "taylor-parts.firebasestorage.app",
