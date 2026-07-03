@@ -1,8 +1,10 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { JOBS_COLLECTION, TECHNICIANS_COLLECTION, JOB_STATUS, TECH_STATUS } from "../../domain/constants";
 import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
 import { computeWorkOrderStatus } from "../../domain/workOrderScoring";
 import { groupJobsByTechnician } from "./techUtils";
+import { detectStalledJobs } from "../../domain/jobRiskScoring";
+import { computeDispatchRecommendations, detectOverloadedTechnicians } from "../../domain/dispatchScoring";
 
 // Work Order-centric operational dashboard. Job state, technician state,
 // and work-order grouping all come from main's domain layer — this view
@@ -70,6 +72,31 @@ export default function ControlTower() {
   const techGroups = useMemo(() => groupJobsByTechnician(jobs), [jobs]);
   const technicianName = (id) => technicians.find((t) => t.id === id)?.name || id;
 
+  // Sprint 3.2 derived layer: dispatch intelligence. All three are pure
+  // functions over the same jobs/technicians snapshot Control Tower
+  // already listens to -- nothing here writes to Firestore or mutates
+  // job/technician state. See domain/jobRiskScoring.js and
+  // domain/dispatchScoring.js.
+  const [riskSort, setRiskSort] = useState("severity");
+
+  const stalledJobs = useMemo(() => detectStalledJobs(jobs), [jobs]);
+  const sortedStalledJobs = useMemo(() => {
+    if (riskSort === "age") {
+      return [...stalledJobs].sort((a, b) => b.risk.ageHours - a.risk.ageHours);
+    }
+    return stalledJobs;
+  }, [stalledJobs, riskSort]);
+
+  const overloadedTechnicians = useMemo(
+    () => detectOverloadedTechnicians(technicians, jobs),
+    [technicians, jobs]
+  );
+
+  const dispatchRecommendations = useMemo(
+    () => computeDispatchRecommendations(jobs, technicians),
+    [jobs, technicians]
+  );
+
   return (
     <div className="fo-panel">
       <h2>Control Tower</h2>
@@ -134,6 +161,68 @@ export default function ControlTower() {
             {tech === "UNASSIGNED" ? "Unassigned" : technicianName(tech)}: {techJobs.length} jobs
           </div>
         ))}
+      </div>
+
+      <div className="tech-overview">
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <h3>At Risk Jobs</h3>
+          <select value={riskSort} onChange={(e) => setRiskSort(e.target.value)}>
+            <option value="severity">Sort: Severity</option>
+            <option value="age">Sort: Age</option>
+          </select>
+        </div>
+        {sortedStalledJobs.length === 0 ? (
+          <p className="fo-muted">No stalled jobs detected.</p>
+        ) : (
+          sortedStalledJobs.map(({ job, risk }) => (
+            <div key={job.id} className="work-order-card">
+              <h3>
+                {job.customer || job.id}
+                <span className={`risk-badge risk-${risk.level.toLowerCase()}`}>{risk.level}</span>
+              </h3>
+              <div className="fo-muted">
+                Status: {job.status} · Work Order: {job.workOrderId || "unassigned"} · ~{Math.round(risk.ageHours)}h since creation (approx.)
+              </div>
+              <div className="fo-muted">{risk.reasons.join(" · ")}</div>
+            </div>
+          ))
+        )}
+      </div>
+
+      <div className="tech-overview">
+        <h3>Overloaded Technicians</h3>
+        {overloadedTechnicians.length === 0 ? (
+          <p className="fo-muted">No technicians currently overloaded.</p>
+        ) : (
+          overloadedTechnicians.map(({ technician, activeJobCount }) => (
+            <div key={technician.id} className="fo-card">
+              {technician.name}
+              <span className="heat-badge heat-high"> {activeJobCount} active jobs</span>
+            </div>
+          ))
+        )}
+      </div>
+
+      <div className="tech-overview">
+        <h3>Recommended Dispatch Queue</h3>
+        {dispatchRecommendations.length === 0 ? (
+          <p className="fo-muted">No open jobs awaiting dispatch.</p>
+        ) : (
+          dispatchRecommendations.map(({ job, recommended }) => (
+            <div key={job.id} className="fo-card">
+              <strong>{job.customer || job.id}</strong>
+              {" → "}
+              {recommended ? (
+                <span>
+                  {technicianName(recommended.technicianId)}{" "}
+                  <span className="fo-muted">(score {Math.round(recommended.score)})</span>
+                </span>
+              ) : (
+                <span className="fo-muted">No eligible technician</span>
+              )}
+            </div>
+          ))
+        )}
       </div>
     </div>
   );
