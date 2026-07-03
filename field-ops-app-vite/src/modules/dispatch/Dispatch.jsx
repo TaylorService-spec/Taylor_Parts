@@ -2,7 +2,7 @@ import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
 import { assignJob } from "../../domain/jobActions";
 import { JOBS_COLLECTION, TECHNICIANS_COLLECTION, TECH_STATUS } from "../../domain/constants";
 
-// Assigns open jobs to available technicians. Writes back to both the
+// Assigns pending jobs to available technicians. Writes back to both the
 // job (technicianId, status) and the technician (status) so Jobs,
 // Technicians, and Control Tower all stay in sync via their own
 // realtime listeners. The write itself goes through assignJob(), which

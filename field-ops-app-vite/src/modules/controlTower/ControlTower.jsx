@@ -1,9 +1,13 @@
 import { useMemo } from "react";
 import { JOBS_COLLECTION, TECHNICIANS_COLLECTION, JOB_STATUS, TECH_STATUS } from "../../domain/constants";
 import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
+import { computeWorkOrderStatus } from "../../domain/workOrderScoring";
+import { groupJobsByTechnician } from "./techUtils";
 
-// High-level rollup of jobs + technicians. This is the "at a glance"
-// dashboard for a dispatcher/manager.
+// Work Order-centric operational dashboard. Job state, technician state,
+// and work-order grouping all come from main's domain layer — this view
+// only aggregates and displays; it never mutates jobs, work orders, or
+// technicians.
 
 export default function ControlTower() {
   const { data: jobs } = useFirestoreCollection(JOBS_COLLECTION);
@@ -53,6 +57,19 @@ export default function ControlTower() {
     (wo) => wo.workOrderId === "unassigned"
   );
 
+  // Sprint 2 derived layer: readiness state per work order and a
+  // technician workload rollup. Neither owns or mutates state.
+  const workOrderStatusMap = useMemo(() => {
+    const map = {};
+    workOrderGroups.forEach((wo) => {
+      map[wo.workOrderId] = computeWorkOrderStatus(wo.jobs);
+    });
+    return map;
+  }, [workOrderGroups]);
+
+  const techGroups = useMemo(() => groupJobsByTechnician(jobs), [jobs]);
+  const technicianName = (id) => technicians.find((t) => t.id === id)?.name || id;
+
   return (
     <div className="fo-panel">
       <h2>Control Tower</h2>
@@ -90,19 +107,34 @@ export default function ControlTower() {
         </div>
       )}
 
-      {workOrderGroups.map((wo) => (
-        <div key={wo.workOrderId} className="work-order-card">
-          <h3>Work Order: {wo.workOrderId}</h3>
+      {workOrderGroups.map((wo) => {
+        const status = workOrderStatusMap[wo.workOrderId];
+        return (
+          <div key={wo.workOrderId} className="work-order-card">
+            <h3>
+              Work Order: {wo.workOrderId}
+              <span className={`wo-status wo-${status.toLowerCase()}`}>{status}</span>
+            </h3>
 
-          <div>Jobs: {wo.jobs.length}</div>
+            <div>Jobs: {wo.jobs.length}</div>
 
-          <div>
-            Pending: {wo.statusCounts.pending} |
-            In Progress: {wo.statusCounts.inProgress} |
-            Completed: {wo.statusCounts.completed}
+            <div>
+              Pending: {wo.statusCounts.pending} |
+              In Progress: {wo.statusCounts.inProgress} |
+              Completed: {wo.statusCounts.completed}
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
+
+      <div className="tech-overview">
+        <h3>Technician Load</h3>
+        {Object.entries(techGroups).map(([tech, techJobs]) => (
+          <div key={tech}>
+            {tech === "UNASSIGNED" ? "Unassigned" : technicianName(tech)}: {techJobs.length} jobs
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
