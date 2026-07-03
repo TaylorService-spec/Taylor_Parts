@@ -14,6 +14,10 @@ export default function ControlTower() {
   const availableTechs = technicians.filter((t) => t.status === TECH_STATUS.AVAILABLE).length;
   const onJobTechs = technicians.filter((t) => t.status === TECH_STATUS.ON_JOB).length;
 
+  const activeWorkOrders = new Set(
+    jobs.map((j) => j.workOrderId).filter(Boolean)
+  ).size;
+
   return (
     <div className="fo-panel">
       <h2>Control Tower</h2>
@@ -38,6 +42,11 @@ export default function ControlTower() {
           <div className="fo-stat-value">{onJobTechs}</div>
           <div className="fo-stat-label">Techs On Work Order</div>
         </div>
+      </div>
+
+      <div className="fo-card">
+        <h3>CRM Activity</h3>
+        <p>Active Work Orders: {activeWorkOrders}</p>
       </div>
     </div>
   );

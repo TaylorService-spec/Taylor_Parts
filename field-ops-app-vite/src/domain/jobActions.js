@@ -8,9 +8,18 @@ import { AssignmentConflictError } from "./errors";
 // The only place allowed to write job/technician data. Components must call
 // these instead of touching jobsStore/techniciansStore or Firestore directly,
 // so every transition goes through canTransitionJob().
+//
+// Jobs never own customer data directly -- they resolve upward via
+// workOrderId: job -> workOrder -> customer. See domain/workOrders.js.
 
 export function createJob(customer, description) {
-  return jobsStore.add({ customer, description, status: JOB_STATUS.OPEN, technicianId: null });
+  return jobsStore.add({
+    customer,
+    description,
+    status: JOB_STATUS.OPEN,
+    technicianId: null,
+    workOrderId: null,
+  });
 }
 
 export function createTechnician(name, phone) {
