@@ -28,3 +28,4 @@ export function makeCollectionStore(collectionName) {
 
 export const jobsStore = makeCollectionStore("fieldops_jobs");
 export const techniciansStore = makeCollectionStore("fieldops_technicians");
+export const workOrdersStore = makeCollectionStore("fieldops_workorders");

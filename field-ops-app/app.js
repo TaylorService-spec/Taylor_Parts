@@ -6,6 +6,7 @@
 
 const NAV = [
   { key: "controlTower", label: "Control Tower" },
+  { key: "workOrders", label: "Work Orders" },
   { key: "jobs", label: "Jobs" },
   { key: "technicians", label: "Technicians" },
   { key: "dispatch", label: "Dispatch" },
@@ -17,6 +18,7 @@ function FieldOpsApp() {
   const ActiveView =
     {
       controlTower: window.FieldOps.ControlTowerView,
+      workOrders: window.FieldOps.WorkOrdersView,
       jobs: window.FieldOps.JobsView,
       technicians: window.FieldOps.TechniciansView,
       dispatch: window.FieldOps.DispatchView,

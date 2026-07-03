@@ -1,30 +1,39 @@
 import { useState, useEffect } from "react";
-import { jobsStore } from "../../firebase/collectionStore";
+import { jobsStore, workOrdersStore } from "../../firebase/collectionStore";
+import { JOB_STATUS, JOB_STATUS_LABEL } from "../../domain/constants";
 
-// A job is: { id, customer, description, status, technicianId }
-// status is one of "open" | "assigned" | "in_progress" | "complete"
+// A job is: { id, workOrderId, description, status, technicianId }
+// status is one of JOB_STATUS: "pending" | "in_progress" | "completed"
+// Jobs are execution units grouped under a Work Order via workOrderId.
+// Jobs MUST NOT carry customer fields — customers are a separate domain.
 
 export default function Jobs() {
   const [jobs, setJobs] = useState([]);
+  const [workOrders, setWorkOrders] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [customer, setCustomer] = useState("");
+  const [workOrderId, setWorkOrderId] = useState("");
   const [description, setDescription] = useState("");
 
   useEffect(() => {
-    const unsubscribe = jobsStore.onChange((rows) => {
+    const unsubJobs = jobsStore.onChange((rows) => {
       setJobs(rows);
       setLoading(false);
     });
-    return unsubscribe;
+    const unsubWorkOrders = workOrdersStore.onChange(setWorkOrders);
+    return () => {
+      unsubJobs();
+      unsubWorkOrders();
+    };
   }, []);
+
+  const workOrderTitle = (id) => workOrders.find((wo) => wo.id === id)?.title || "—";
 
   function addJob(e) {
     e.preventDefault();
-    if (!customer.trim() || !description.trim()) return;
+    if (!workOrderId || !description.trim()) return;
     jobsStore
-      .add({ customer: customer.trim(), description: description.trim(), status: "open", technicianId: null })
+      .add({ workOrderId, description: description.trim(), status: JOB_STATUS.PENDING, technicianId: null })
       .then(() => {
-        setCustomer("");
         setDescription("");
       });
   }
@@ -33,7 +42,16 @@ export default function Jobs() {
     <div className="fo-panel">
       <h2>Jobs</h2>
       <form className="fo-form" onSubmit={addJob}>
-        <input placeholder="Customer" value={customer} onChange={(e) => setCustomer(e.target.value)} />
+        <select value={workOrderId} onChange={(e) => setWorkOrderId(e.target.value)}>
+          <option value="" disabled>
+            Select work order…
+          </option>
+          {workOrders.map((wo) => (
+            <option key={wo.id} value={wo.id}>
+              {wo.title}
+            </option>
+          ))}
+        </select>
         <input placeholder="Job description" value={description} onChange={(e) => setDescription(e.target.value)} />
         <button type="submit">Add Job</button>
       </form>
@@ -46,7 +64,7 @@ export default function Jobs() {
         <table className="fo-table">
           <thead>
             <tr>
-              <th>Customer</th>
+              <th>Work Order</th>
               <th>Description</th>
               <th>Status</th>
             </tr>
@@ -54,10 +72,10 @@ export default function Jobs() {
           <tbody>
             {jobs.map((job) => (
               <tr key={job.id}>
-                <td>{job.customer}</td>
+                <td>{workOrderTitle(job.workOrderId)}</td>
                 <td>{job.description}</td>
                 <td>
-                  <span className={`fo-badge fo-badge-${job.status}`}>{job.status}</span>
+                  <span className={`fo-badge fo-badge-${job.status}`}>{JOB_STATUS_LABEL[job.status] || job.status}</span>
                 </td>
               </tr>
             ))}

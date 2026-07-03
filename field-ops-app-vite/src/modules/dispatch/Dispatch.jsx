@@ -1,29 +1,41 @@
 import { useState, useEffect } from "react";
-import { jobsStore, techniciansStore } from "../../firebase/collectionStore";
+import { jobsStore, techniciansStore, workOrdersStore } from "../../firebase/collectionStore";
+import { JOB_STATUS } from "../../domain/constants";
 
-// Assigns open jobs to available technicians. Writes back to both the
+// Assigns pending jobs to available technicians. Writes back to both the
 // job (technicianId, status) and the technician (status) so Jobs,
 // Technicians, and Control Tower all stay in sync via their own
 // onSnapshot listeners.
+//
+// Light dispatch decision rule: unassigned jobs are listed oldest work
+// order first, so the longest-waiting work gets attention first.
 
 export default function Dispatch() {
   const [jobs, setJobs] = useState([]);
   const [technicians, setTechnicians] = useState([]);
+  const [workOrders, setWorkOrders] = useState([]);
 
   useEffect(() => {
     const unsubJobs = jobsStore.onChange(setJobs);
     const unsubTechs = techniciansStore.onChange(setTechnicians);
+    const unsubWorkOrders = workOrdersStore.onChange(setWorkOrders);
     return () => {
       unsubJobs();
       unsubTechs();
+      unsubWorkOrders();
     };
   }, []);
 
-  const unassignedJobs = jobs.filter((j) => !j.technicianId);
+  const workOrderTitle = (id) => workOrders.find((wo) => wo.id === id)?.title || "—";
+  const workOrderCreatedAt = (id) => workOrders.find((wo) => wo.id === id)?.createdAt || 0;
+
+  const unassignedJobs = jobs
+    .filter((j) => !j.technicianId)
+    .sort((a, b) => workOrderCreatedAt(a.workOrderId) - workOrderCreatedAt(b.workOrderId));
 
   function assign(jobId, technicianId) {
     if (!technicianId) return;
-    jobsStore.update(jobId, { technicianId, status: "assigned" });
+    jobsStore.update(jobId, { technicianId, status: JOB_STATUS.IN_PROGRESS });
     techniciansStore.update(technicianId, { status: "on_job" });
   }
 
@@ -37,7 +49,7 @@ export default function Dispatch() {
         <table className="fo-table">
           <thead>
             <tr>
-              <th>Customer</th>
+              <th>Work Order</th>
               <th>Description</th>
               <th>Assign to</th>
             </tr>
@@ -45,7 +57,7 @@ export default function Dispatch() {
           <tbody>
             {unassignedJobs.map((job) => (
               <tr key={job.id}>
-                <td>{job.customer}</td>
+                <td>{workOrderTitle(job.workOrderId)}</td>
                 <td>{job.description}</td>
                 <td>
                   <select defaultValue="" onChange={(e) => assign(job.id, e.target.value)}>

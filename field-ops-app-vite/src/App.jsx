@@ -1,11 +1,13 @@
 import { useState } from "react";
 import ControlTower from "./modules/controlTower/ControlTower";
+import WorkOrders from "./modules/workOrders/WorkOrders";
 import Jobs from "./modules/jobs/Jobs";
 import Technicians from "./modules/technicians/Technicians";
 import Dispatch from "./modules/dispatch/Dispatch";
 
 const NAV = [
   { key: "controlTower", label: "Control Tower", Component: ControlTower },
+  { key: "workOrders", label: "Work Orders", Component: WorkOrders },
   { key: "jobs", label: "Jobs", Component: Jobs },
   { key: "technicians", label: "Technicians", Component: Technicians },
   { key: "dispatch", label: "Dispatch", Component: Dispatch },
