@@ -16,10 +16,15 @@ export async function updateJobStatus(job, nextStatus) {
     throw new Error(`Invalid transition: ${job.status} → ${nextStatus}`);
   }
 
-  await jobsStore.update(job.id, { status: nextStatus });
+  try {
+    await jobsStore.update(job.id, { status: nextStatus });
 
-  if (nextStatus === JOB_STATUS.COMPLETE && job.technicianId) {
-    await techniciansStore.update(job.technicianId, { status: TECH_STATUS.AVAILABLE });
+    if (nextStatus === JOB_STATUS.COMPLETE && job.technicianId) {
+      await techniciansStore.update(job.technicianId, { status: TECH_STATUS.AVAILABLE });
+    }
+  } catch (e) {
+    console.error("Firestore write failed:", e);
+    throw e;
   }
 }
 
@@ -34,23 +39,28 @@ export async function assignJob(job, technician) {
     throw new Error(`Invalid transition: ${job.status} → assigned`);
   }
 
-  return runTransaction(db, async (tx) => {
-    const techRef = doc(db, "fieldops_technicians", technician.id);
-    const jobRef = doc(db, "fieldops_jobs", job.id);
+  try {
+    return await runTransaction(db, async (tx) => {
+      const techRef = doc(db, "fieldops_technicians", technician.id);
+      const jobRef = doc(db, "fieldops_jobs", job.id);
 
-    const techSnap = await tx.get(techRef);
+      const techSnap = await tx.get(techRef);
 
-    if (techSnap.data().status !== TECH_STATUS.AVAILABLE) {
-      throw new Error("Technician no longer available");
-    }
+      if (techSnap.data().status !== TECH_STATUS.AVAILABLE) {
+        throw new Error("Technician no longer available");
+      }
 
-    tx.update(jobRef, {
-      technicianId: technician.id,
-      status: JOB_STATUS.ASSIGNED,
+      tx.update(jobRef, {
+        technicianId: technician.id,
+        status: JOB_STATUS.ASSIGNED,
+      });
+
+      tx.update(techRef, {
+        status: TECH_STATUS.ON_JOB,
+      });
     });
-
-    tx.update(techRef, {
-      status: TECH_STATUS.ON_JOB,
-    });
-  });
+  } catch (e) {
+    console.error("Firestore write failed:", e);
+    throw e;
+  }
 }
