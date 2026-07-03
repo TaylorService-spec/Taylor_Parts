@@ -1,22 +1,14 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { jobsStore } from "../../firebase/collectionStore";
+import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
 
 // A job is: { id, customer, description, status, technicianId }
 // status is one of "open" | "assigned" | "in_progress" | "complete"
 
 export default function Jobs() {
-  const [jobs, setJobs] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const { data: jobs, loading } = useFirestoreCollection("fieldops_jobs");
   const [customer, setCustomer] = useState("");
   const [description, setDescription] = useState("");
-
-  useEffect(() => {
-    const unsubscribe = jobsStore.onChange((rows) => {
-      setJobs(rows);
-      setLoading(false);
-    });
-    return unsubscribe;
-  }, []);
 
   function addJob(e) {
     e.preventDefault();

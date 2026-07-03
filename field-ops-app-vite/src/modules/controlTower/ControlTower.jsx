@@ -1,21 +1,11 @@
-import { useState, useEffect } from "react";
-import { jobsStore, techniciansStore } from "../../firebase/collectionStore";
+import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
 
 // High-level rollup of jobs + technicians. This is the "at a glance"
 // dashboard for a dispatcher/manager.
 
 export default function ControlTower() {
-  const [jobs, setJobs] = useState([]);
-  const [technicians, setTechnicians] = useState([]);
-
-  useEffect(() => {
-    const unsubJobs = jobsStore.onChange(setJobs);
-    const unsubTechs = techniciansStore.onChange(setTechnicians);
-    return () => {
-      unsubJobs();
-      unsubTechs();
-    };
-  }, []);
+  const { data: jobs } = useFirestoreCollection("fieldops_jobs");
+  const { data: technicians } = useFirestoreCollection("fieldops_technicians");
 
   const openJobs = jobs.filter((j) => j.status === "open").length;
   const assignedJobs = jobs.filter((j) => j.status === "assigned" || j.status === "in_progress").length;

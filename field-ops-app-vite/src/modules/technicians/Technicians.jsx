@@ -1,22 +1,14 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { techniciansStore } from "../../firebase/collectionStore";
+import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
 
 // A technician is: { id, name, phone, status }
 // status is one of "available" | "on_job" | "off_shift"
 
 export default function Technicians() {
-  const [technicians, setTechnicians] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const { data: technicians, loading } = useFirestoreCollection("fieldops_technicians");
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
-
-  useEffect(() => {
-    const unsubscribe = techniciansStore.onChange((rows) => {
-      setTechnicians(rows);
-      setLoading(false);
-    });
-    return unsubscribe;
-  }, []);
 
   function addTechnician(e) {
     e.preventDefault();
