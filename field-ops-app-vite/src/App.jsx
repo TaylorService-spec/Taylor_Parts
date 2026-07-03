@@ -3,12 +3,14 @@ import ControlTower from "./modules/controlTower/ControlTower";
 import Jobs from "./modules/jobs/Jobs";
 import Technicians from "./modules/technicians/Technicians";
 import Dispatch from "./modules/dispatch/Dispatch";
+import FieldMode from "./modules/mobile/FieldMode";
 
 const NAV = [
   { key: "controlTower", label: "Control Tower", Component: ControlTower },
   { key: "jobs", label: "Jobs", Component: Jobs },
   { key: "technicians", label: "Technicians", Component: Technicians },
   { key: "dispatch", label: "Dispatch", Component: Dispatch },
+  { key: "fieldMode", label: "Field Mode", Component: FieldMode },
 ];
 
 export default function App() {

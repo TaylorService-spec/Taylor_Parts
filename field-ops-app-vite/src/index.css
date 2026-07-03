@@ -36,3 +36,9 @@ body { -webkit-font-smoothing: antialiased; font-family: -apple-system, BlinkMac
 .fo-stat { background: #F4F6F5; border-radius: 8px; padding: 16px; text-align: center; }
 .fo-stat-value { font-size: 28px; font-weight: 600; color: #1B2A2E; }
 .fo-stat-label { font-size: 13px; color: #667; margin-top: 4px; }
+
+.fo-field-card { border: 1px solid #EEF1F0; border-radius: 8px; padding: 16px; margin-bottom: 12px; }
+.fo-field-card h3 { margin: 0 0 4px; font-size: 16px; }
+.fo-field-card p { margin: 0 0 12px; color: #445; font-size: 14px; }
+.fo-field-card button { padding: 8px 16px; border: none; border-radius: 6px; background: #2E4A50; color: #fff; cursor: pointer; font-size: 14px; }
+.fo-field-card button:hover { background: #23383D; }
