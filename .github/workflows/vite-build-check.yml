@@ -1,0 +1,20 @@
+name: Vite Build Check
+on:
+  push:
+  pull_request:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm install
+        working-directory: field-ops-app-vite
+      - name: Build project
+        run: npm run build
+        working-directory: field-ops-app-vite
