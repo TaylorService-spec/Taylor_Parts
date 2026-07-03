@@ -45,7 +45,7 @@ export default function Dispatch() {
         <p className="fo-muted">No unassigned jobs.</p>
       ) : (
         unassignedJobs.map((job) => (
-          <div key={job.id} className="fo-field-card">
+          <div key={job.id} className="fo-card fo-card--dispatch">
             <h3>{job.customer}</h3>
             <p>{job.description}</p>
             <select defaultValue="" onChange={(e) => assign(job, e.target.value)}>

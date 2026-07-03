@@ -31,7 +31,7 @@ export default function FieldMode() {
         <p className="fo-muted">No assigned jobs</p>
       ) : (
         assignedJobs.map(job => (
-          <div key={job.id} className="fo-field-card">
+          <div key={job.id} className="fo-card fo-card--field">
             <h3>{job.customer}</h3>
             <p>{job.description}</p>
 
