@@ -9,7 +9,7 @@ import AppHeader from "./shared/ui/AppHeader";
 
 const NAV = [
   { key: "controlTower", label: "Control Tower", Component: ControlTower },
-  { key: "jobs", label: "Jobs", Component: Jobs },
+  { key: "jobs", label: "Work Orders", Component: Jobs },
   { key: "technicians", label: "Technicians", Component: Technicians },
   { key: "dispatch", label: "Dispatch", Component: Dispatch },
   { key: "fieldMode", label: "Field Mode", Component: FieldMode },

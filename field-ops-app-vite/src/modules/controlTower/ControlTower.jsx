@@ -20,7 +20,7 @@ export default function ControlTower() {
       <div className="fo-stat-grid">
         <div className="fo-stat">
           <div className="fo-stat-value">{openJobs}</div>
-          <div className="fo-stat-label">Open Jobs</div>
+          <div className="fo-stat-label">Open Work Orders</div>
         </div>
         <div className="fo-stat">
           <div className="fo-stat-value">{assignedJobs}</div>
@@ -36,7 +36,7 @@ export default function ControlTower() {
         </div>
         <div className="fo-stat">
           <div className="fo-stat-value">{onJobTechs}</div>
-          <div className="fo-stat-label">Techs On Job</div>
+          <div className="fo-stat-label">Techs On Work Order</div>
         </div>
       </div>
     </div>

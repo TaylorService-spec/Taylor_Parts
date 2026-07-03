@@ -23,17 +23,17 @@ export default function Jobs() {
 
   return (
     <div className="fo-panel">
-      <h2>Jobs</h2>
+      <h2>Work Orders</h2>
       <form className="fo-form" onSubmit={addJob}>
         <input placeholder="Customer" value={customer} onChange={(e) => setCustomer(e.target.value)} />
-        <input placeholder="Job description" value={description} onChange={(e) => setDescription(e.target.value)} />
-        <button type="submit">Add Job</button>
+        <input placeholder="Work order description" value={description} onChange={(e) => setDescription(e.target.value)} />
+        <button type="submit">Add Work Order</button>
       </form>
 
       {loading ? (
-        <p className="fo-muted">Loading jobs…</p>
+        <p className="fo-muted">Loading work orders…</p>
       ) : jobs.length === 0 ? (
-        <p className="fo-muted">No jobs yet.</p>
+        <p className="fo-muted">No work orders yet.</p>
       ) : (
         <table className="fo-table">
           <thead>

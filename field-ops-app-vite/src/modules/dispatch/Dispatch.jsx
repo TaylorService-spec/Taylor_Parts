@@ -32,9 +32,9 @@ export default function Dispatch() {
       <h2>Dispatch</h2>
 
       {loading ? (
-        <p className="fo-muted">Loading jobs…</p>
+        <p className="fo-muted">Loading work orders…</p>
       ) : unassignedJobs.length === 0 ? (
-        <p className="fo-muted">No unassigned jobs.</p>
+        <p className="fo-muted">No unassigned work orders.</p>
       ) : (
         unassignedJobs.map((job) => (
           <div key={job.id} className="fo-card fo-card--dispatch">

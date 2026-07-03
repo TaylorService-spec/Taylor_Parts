@@ -23,9 +23,9 @@ export default function FieldMode() {
       <h2>Field Mode</h2>
 
       {loading ? (
-        <p className="fo-muted">Loading jobs…</p>
+        <p className="fo-muted">Loading work orders…</p>
       ) : assignedJobs.length === 0 ? (
-        <p className="fo-muted">No assigned jobs</p>
+        <p className="fo-muted">No assigned work orders</p>
       ) : (
         assignedJobs.map(job => (
           <div key={job.id} className="fo-card fo-card--field">
