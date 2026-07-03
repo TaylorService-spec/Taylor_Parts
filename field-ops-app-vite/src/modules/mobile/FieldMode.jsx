@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { jobsStore } from "../../firebase/collectionStore";
+import { updateJobStatus } from "../../workflow/jobActions";
+import { JOB_STATUS } from "../../workflow/jobWorkflow";
 
 export default function FieldMode() {
   const [jobs, setJobs] = useState([]);
@@ -8,10 +10,17 @@ export default function FieldMode() {
     return jobsStore.onChange(setJobs);
   }, []);
 
-  const assignedJobs = jobs.filter(j => j.status === "assigned" || j.status === "in_progress");
+  const assignedJobs = jobs.filter(
+    (j) => j.status === JOB_STATUS.ASSIGNED || j.status === JOB_STATUS.IN_PROGRESS
+  );
 
-  function updateStatus(jobId, status) {
-    jobsStore.update(jobId, { status });
+  async function updateStatus(job, status) {
+    try {
+      await updateJobStatus(job, status);
+    } catch (err) {
+      console.error(err);
+      alert(err.message);
+    }
   }
 
   return (
@@ -27,12 +36,16 @@ export default function FieldMode() {
             <p>{job.description}</p>
 
             <div style={{ display: "flex", gap: 8 }}>
-              <button onClick={() => updateStatus(job.id, "in_progress")}>
-                Start
-              </button>
-              <button onClick={() => updateStatus(job.id, "complete")}>
-                Complete
-              </button>
+              {job.status === JOB_STATUS.ASSIGNED && (
+                <button onClick={() => updateStatus(job, JOB_STATUS.IN_PROGRESS)}>
+                  Start
+                </button>
+              )}
+              {job.status === JOB_STATUS.IN_PROGRESS && (
+                <button onClick={() => updateStatus(job, JOB_STATUS.COMPLETE)}>
+                  Complete
+                </button>
+              )}
             </div>
           </div>
         ))

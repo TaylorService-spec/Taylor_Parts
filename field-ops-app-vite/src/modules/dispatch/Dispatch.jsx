@@ -1,10 +1,14 @@
 import { useState, useEffect } from "react";
 import { jobsStore, techniciansStore } from "../../firebase/collectionStore";
+import { assignJob } from "../../workflow/jobActions";
+import { TECH_STATUS } from "../../workflow/jobWorkflow";
 
 // Assigns open jobs to available technicians. Writes back to both the
 // job (technicianId, status) and the technician (status) so Jobs,
 // Technicians, and Control Tower all stay in sync via their own
-// onSnapshot listeners.
+// onSnapshot listeners. The write itself goes through assignJob(), which
+// re-checks technician availability inside a Firestore transaction so two
+// dispatchers can't both win the same technician.
 
 export default function Dispatch() {
   const [jobs, setJobs] = useState([]);
@@ -21,10 +25,16 @@ export default function Dispatch() {
 
   const unassignedJobs = jobs.filter((j) => !j.technicianId);
 
-  function assign(jobId, technicianId) {
+  async function assign(job, technicianId) {
     if (!technicianId) return;
-    jobsStore.update(jobId, { technicianId, status: "assigned" });
-    techniciansStore.update(technicianId, { status: "on_job" });
+    const technician = technicians.find((t) => t.id === technicianId);
+    if (!technician) return;
+    try {
+      await assignJob(job, technician);
+    } catch (err) {
+      console.error(err);
+      alert(err.message);
+    }
   }
 
   return (
@@ -38,12 +48,12 @@ export default function Dispatch() {
           <div key={job.id} className="fo-field-card">
             <h3>{job.customer}</h3>
             <p>{job.description}</p>
-            <select defaultValue="" onChange={(e) => assign(job.id, e.target.value)}>
+            <select defaultValue="" onChange={(e) => assign(job, e.target.value)}>
               <option value="" disabled>
                 Select technician…
               </option>
               {technicians
-                .filter((t) => t.status === "available")
+                .filter((t) => t.status === TECH_STATUS.AVAILABLE)
                 .map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.name}
