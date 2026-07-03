@@ -1,11 +1,12 @@
+import { JOBS_COLLECTION, TECHNICIANS_COLLECTION } from "../../firebase/collectionStore";
 import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
 
 // High-level rollup of jobs + technicians. This is the "at a glance"
 // dashboard for a dispatcher/manager.
 
 export default function ControlTower() {
-  const { data: jobs } = useFirestoreCollection("fieldops_jobs");
-  const { data: technicians } = useFirestoreCollection("fieldops_technicians");
+  const { data: jobs } = useFirestoreCollection(JOBS_COLLECTION);
+  const { data: technicians } = useFirestoreCollection(TECHNICIANS_COLLECTION);
 
   const openJobs = jobs.filter((j) => j.status === "open").length;
   const assignedJobs = jobs.filter((j) => j.status === "assigned" || j.status === "in_progress").length;

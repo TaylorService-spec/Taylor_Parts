@@ -1,12 +1,12 @@
 import { useState } from "react";
-import { jobsStore } from "../../firebase/collectionStore";
+import { jobsStore, JOBS_COLLECTION } from "../../firebase/collectionStore";
 import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
 
 // A job is: { id, customer, description, status, technicianId }
 // status is one of "open" | "assigned" | "in_progress" | "complete"
 
 export default function Jobs() {
-  const { data: jobs, loading } = useFirestoreCollection("fieldops_jobs");
+  const { data: jobs, loading } = useFirestoreCollection(JOBS_COLLECTION);
   const [customer, setCustomer] = useState("");
   const [description, setDescription] = useState("");
 

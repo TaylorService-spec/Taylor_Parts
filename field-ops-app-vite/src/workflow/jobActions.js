@@ -7,6 +7,16 @@ import { canTransitionJob, JOB_STATUS, TECH_STATUS } from "./jobWorkflow";
 // Components must call these instead of jobsStore/techniciansStore.update()
 // directly, so every transition goes through canTransitionJob().
 
+// Thrown when a technician is no longer available at commit time (the normal
+// outcome of two dispatchers racing for the same tech) -- distinguished from
+// genuine Firestore failures so it isn't logged as "Firestore write failed".
+class AssignmentConflictError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "AssignmentConflictError";
+  }
+}
+
 export async function updateJobStatus(job, nextStatus) {
   if (!auth.currentUser) {
     throw new Error("Unauthenticated write attempt blocked");
@@ -46,8 +56,8 @@ export async function assignJob(job, technician) {
 
       const techSnap = await tx.get(techRef);
 
-      if (techSnap.data().status !== TECH_STATUS.AVAILABLE) {
-        throw new Error("Technician no longer available");
+      if (!techSnap.exists() || techSnap.data().status !== TECH_STATUS.AVAILABLE) {
+        throw new AssignmentConflictError("Technician no longer available");
       }
 
       tx.update(jobRef, {
@@ -60,7 +70,9 @@ export async function assignJob(job, technician) {
       });
     });
   } catch (e) {
-    console.error("Firestore write failed:", e);
+    if (!(e instanceof AssignmentConflictError)) {
+      console.error("Firestore write failed:", e);
+    }
     throw e;
   }
 }

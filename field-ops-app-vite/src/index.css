@@ -37,7 +37,7 @@ body { -webkit-font-smoothing: antialiased; font-family: -apple-system, BlinkMac
 .fo-stat-value { font-size: 28px; font-weight: 600; color: #1B2A2E; }
 .fo-stat-label { font-size: 13px; color: #667; margin-top: 4px; }
 
-.fo-card { /* base shared card */ }
+.fo-card { margin-bottom: 12px; }
 .fo-card h3 { margin: 0 0 6px 0; }
 .fo-card p { margin: 0 0 12px; color: #445; font-size: 14px; }
 
@@ -45,7 +45,6 @@ body { -webkit-font-smoothing: antialiased; font-family: -apple-system, BlinkMac
   background: #fff;
   border-radius: 10px;
   padding: 14px;
-  margin-bottom: 12px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.08);
 }
 .fo-card--field button { padding: 8px 16px; border: none; border-radius: 6px; background: #2E4A50; color: #fff; cursor: pointer; font-size: 14px; }

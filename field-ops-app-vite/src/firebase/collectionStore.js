@@ -1,5 +1,8 @@
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, onSnapshot } from "firebase/firestore";
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from "firebase/firestore";
 import { db } from "./firebase";
+
+export const JOBS_COLLECTION = "fieldops_jobs";
+export const TECHNICIANS_COLLECTION = "fieldops_technicians";
 
 // Thin wrapper so the module components don't each need to know
 // Firestore's API shape.
@@ -18,13 +21,8 @@ export function makeCollectionStore(collectionName) {
     remove(id) {
       return deleteDoc(doc(db, collectionName, id));
     },
-    onChange(callback) {
-      return onSnapshot(colRef, (snap) => {
-        callback(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-      });
-    },
   };
 }
 
-export const jobsStore = makeCollectionStore("fieldops_jobs");
-export const techniciansStore = makeCollectionStore("fieldops_technicians");
+export const jobsStore = makeCollectionStore(JOBS_COLLECTION);
+export const techniciansStore = makeCollectionStore(TECHNICIANS_COLLECTION);

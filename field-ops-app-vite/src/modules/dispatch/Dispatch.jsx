@@ -1,27 +1,18 @@
-import { useState, useEffect } from "react";
-import { jobsStore, techniciansStore } from "../../firebase/collectionStore";
+import { JOBS_COLLECTION, TECHNICIANS_COLLECTION } from "../../firebase/collectionStore";
+import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
 import { assignJob } from "../../workflow/jobActions";
 import { TECH_STATUS } from "../../workflow/jobWorkflow";
 
 // Assigns open jobs to available technicians. Writes back to both the
 // job (technicianId, status) and the technician (status) so Jobs,
 // Technicians, and Control Tower all stay in sync via their own
-// onSnapshot listeners. The write itself goes through assignJob(), which
+// realtime listeners. The write itself goes through assignJob(), which
 // re-checks technician availability inside a Firestore transaction so two
 // dispatchers can't both win the same technician.
 
 export default function Dispatch() {
-  const [jobs, setJobs] = useState([]);
-  const [technicians, setTechnicians] = useState([]);
-
-  useEffect(() => {
-    const unsubJobs = jobsStore.onChange(setJobs);
-    const unsubTechs = techniciansStore.onChange(setTechnicians);
-    return () => {
-      unsubJobs();
-      unsubTechs();
-    };
-  }, []);
+  const { data: jobs, loading } = useFirestoreCollection(JOBS_COLLECTION);
+  const { data: technicians } = useFirestoreCollection(TECHNICIANS_COLLECTION);
 
   const unassignedJobs = jobs.filter((j) => !j.technicianId);
 
@@ -41,7 +32,9 @@ export default function Dispatch() {
     <div className="fo-panel">
       <h2>Dispatch</h2>
 
-      {unassignedJobs.length === 0 ? (
+      {loading ? (
+        <p className="fo-muted">Loading jobs…</p>
+      ) : unassignedJobs.length === 0 ? (
         <p className="fo-muted">No unassigned jobs.</p>
       ) : (
         unassignedJobs.map((job) => (

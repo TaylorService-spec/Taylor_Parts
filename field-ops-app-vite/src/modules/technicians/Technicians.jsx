@@ -1,12 +1,12 @@
 import { useState } from "react";
-import { techniciansStore } from "../../firebase/collectionStore";
+import { techniciansStore, TECHNICIANS_COLLECTION } from "../../firebase/collectionStore";
 import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
 
 // A technician is: { id, name, phone, status }
 // status is one of "available" | "on_job" | "off_shift"
 
 export default function Technicians() {
-  const { data: technicians, loading } = useFirestoreCollection("fieldops_technicians");
+  const { data: technicians, loading } = useFirestoreCollection(TECHNICIANS_COLLECTION);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
 

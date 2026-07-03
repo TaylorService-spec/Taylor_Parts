@@ -1,14 +1,10 @@
-import { useEffect, useState } from "react";
-import { jobsStore } from "../../firebase/collectionStore";
+import { JOBS_COLLECTION } from "../../firebase/collectionStore";
+import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
 import { updateJobStatus } from "../../workflow/jobActions";
 import { JOB_STATUS } from "../../workflow/jobWorkflow";
 
 export default function FieldMode() {
-  const [jobs, setJobs] = useState([]);
-
-  useEffect(() => {
-    return jobsStore.onChange(setJobs);
-  }, []);
+  const { data: jobs, loading } = useFirestoreCollection(JOBS_COLLECTION);
 
   const assignedJobs = jobs.filter(
     (j) => j.status === JOB_STATUS.ASSIGNED || j.status === JOB_STATUS.IN_PROGRESS
@@ -27,7 +23,9 @@ export default function FieldMode() {
     <div className="fo-panel">
       <h2>Field Mode</h2>
 
-      {assignedJobs.length === 0 ? (
+      {loading ? (
+        <p className="fo-muted">Loading jobs…</p>
+      ) : assignedJobs.length === 0 ? (
         <p className="fo-muted">No assigned jobs</p>
       ) : (
         assignedJobs.map(job => (
