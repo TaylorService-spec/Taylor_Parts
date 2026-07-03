@@ -1,0 +1,13 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /fieldops_jobs/{jobId} {
+      allow read, write: if true; // TEMP ONLY
+    }
+
+    match /fieldops_technicians/{techId} {
+      allow read, write: if true; // TEMP ONLY
+    }
+  }
+}
