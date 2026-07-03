@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { JOBS_COLLECTION, TECHNICIANS_COLLECTION, JOB_STATUS, TECH_STATUS } from "../../domain/constants";
 import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
 
@@ -14,9 +15,43 @@ export default function ControlTower() {
   const availableTechs = technicians.filter((t) => t.status === TECH_STATUS.AVAILABLE).length;
   const onJobTechs = technicians.filter((t) => t.status === TECH_STATUS.ON_JOB).length;
 
-  const activeWorkOrders = new Set(
-    jobs.map((j) => j.workOrderId).filter(Boolean)
-  ).size;
+  // Group jobs by workOrderId. Jobs without one yet (no work-order picker
+  // exists in the UI so far) fall into the "unassigned" bucket.
+  const workOrderGroups = useMemo(() => {
+    const groups = {};
+
+    jobs.forEach((job) => {
+      const id = job.workOrderId || "unassigned";
+
+      if (!groups[id]) {
+        groups[id] = {
+          workOrderId: id,
+          jobs: [],
+          statusCounts: {
+            pending: 0,
+            inProgress: 0,
+            completed: 0,
+          },
+        };
+      }
+
+      groups[id].jobs.push(job);
+
+      if (job.status === JOB_STATUS.OPEN || job.status === JOB_STATUS.ASSIGNED) groups[id].statusCounts.pending++;
+      if (job.status === JOB_STATUS.IN_PROGRESS) groups[id].statusCounts.inProgress++;
+      if (job.status === JOB_STATUS.COMPLETE) groups[id].statusCounts.completed++;
+    });
+
+    return Object.values(groups);
+  }, [jobs]);
+
+  const activeWorkOrders = workOrderGroups.filter(
+    (wo) => wo.statusCounts.completed !== wo.jobs.length
+  );
+
+  const unassignedWorkOrders = workOrderGroups.find(
+    (wo) => wo.workOrderId === "unassigned"
+  );
 
   return (
     <div className="fo-panel">
@@ -46,8 +81,28 @@ export default function ControlTower() {
 
       <div className="fo-card">
         <h3>CRM Activity</h3>
-        <p>Active Work Orders: {activeWorkOrders}</p>
+        <p>Active Work Orders: {activeWorkOrders.length}</p>
       </div>
+
+      {unassignedWorkOrders && (
+        <div className="warning">
+          ⚠ Jobs missing Work Order assignment: {unassignedWorkOrders.jobs.length}
+        </div>
+      )}
+
+      {workOrderGroups.map((wo) => (
+        <div key={wo.workOrderId} className="work-order-card">
+          <h3>Work Order: {wo.workOrderId}</h3>
+
+          <div>Jobs: {wo.jobs.length}</div>
+
+          <div>
+            Pending: {wo.statusCounts.pending} |
+            In Progress: {wo.statusCounts.inProgress} |
+            Completed: {wo.statusCounts.completed}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
