@@ -10,3 +10,6 @@ export const TECH_STATUS = {
   ON_JOB: "on_job",
   OFF_SHIFT: "off_shift",
 };
+
+export const JOBS_COLLECTION = "fieldops_jobs";
+export const TECHNICIANS_COLLECTION = "fieldops_technicians";

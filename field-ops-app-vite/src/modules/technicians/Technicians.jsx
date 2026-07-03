@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { techniciansStore, TECHNICIANS_COLLECTION } from "../../firebase/collectionStore";
+import { createTechnician } from "../../domain/jobActions";
+import { TECHNICIANS_COLLECTION } from "../../domain/constants";
 import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
 
 // A technician is: { id, name, phone, status }
@@ -17,7 +18,7 @@ export default function Technicians() {
     const trimmedPhone = phone.trim();
     setName("");
     setPhone("");
-    techniciansStore.add({ name: trimmedName, phone: trimmedPhone, status: "available" });
+    createTechnician(trimmedName, trimmedPhone);
   }
 
   return (

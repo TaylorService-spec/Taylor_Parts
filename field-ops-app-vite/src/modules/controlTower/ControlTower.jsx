@@ -1,4 +1,4 @@
-import { JOBS_COLLECTION, TECHNICIANS_COLLECTION } from "../../firebase/collectionStore";
+import { JOBS_COLLECTION, TECHNICIANS_COLLECTION, JOB_STATUS, TECH_STATUS } from "../../domain/constants";
 import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
 
 // High-level rollup of jobs + technicians. This is the "at a glance"
@@ -8,11 +8,11 @@ export default function ControlTower() {
   const { data: jobs } = useFirestoreCollection(JOBS_COLLECTION);
   const { data: technicians } = useFirestoreCollection(TECHNICIANS_COLLECTION);
 
-  const openJobs = jobs.filter((j) => j.status === "open").length;
-  const assignedJobs = jobs.filter((j) => j.status === "assigned" || j.status === "in_progress").length;
-  const completeJobs = jobs.filter((j) => j.status === "complete").length;
-  const availableTechs = technicians.filter((t) => t.status === "available").length;
-  const onJobTechs = technicians.filter((t) => t.status === "on_job").length;
+  const openJobs = jobs.filter((j) => j.status === JOB_STATUS.OPEN).length;
+  const assignedJobs = jobs.filter((j) => j.status === JOB_STATUS.ASSIGNED || j.status === JOB_STATUS.IN_PROGRESS).length;
+  const completeJobs = jobs.filter((j) => j.status === JOB_STATUS.COMPLETE).length;
+  const availableTechs = technicians.filter((t) => t.status === TECH_STATUS.AVAILABLE).length;
+  const onJobTechs = technicians.filter((t) => t.status === TECH_STATUS.ON_JOB).length;
 
   return (
     <div className="fo-panel">

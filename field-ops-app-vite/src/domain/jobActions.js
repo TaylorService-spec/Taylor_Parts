@@ -1,13 +1,21 @@
 import { doc, runTransaction } from "firebase/firestore";
 import { db, auth } from "../firebase/firebase";
-import { jobsStore, techniciansStore, JOBS_COLLECTION, TECHNICIANS_COLLECTION } from "../firebase/collectionStore";
+import { jobsStore, techniciansStore } from "../firebase/collectionStore";
 import { canTransitionJob } from "./jobWorkflow";
-import { JOB_STATUS, TECH_STATUS } from "./constants";
+import { JOB_STATUS, TECH_STATUS, JOBS_COLLECTION, TECHNICIANS_COLLECTION } from "./constants";
 import { AssignmentConflictError } from "./errors";
 
-// The only place allowed to write job.status or technician.status.
-// Components must call these instead of jobsStore/techniciansStore.update()
-// directly, so every transition goes through canTransitionJob().
+// The only place allowed to write job/technician data. Components must call
+// these instead of touching jobsStore/techniciansStore or Firestore directly,
+// so every transition goes through canTransitionJob().
+
+export function createJob(customer, description) {
+  return jobsStore.add({ customer, description, status: JOB_STATUS.OPEN, technicianId: null });
+}
+
+export function createTechnician(name, phone) {
+  return techniciansStore.add({ name, phone, status: TECH_STATUS.AVAILABLE });
+}
 
 export async function updateJobStatus(job, nextStatus) {
   if (!auth.currentUser) {

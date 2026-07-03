@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { jobsStore, JOBS_COLLECTION } from "../../firebase/collectionStore";
+import { createJob } from "../../domain/jobActions";
+import { JOBS_COLLECTION } from "../../domain/constants";
 import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
 
 // A job is: { id, customer, description, status, technicianId }
@@ -17,7 +18,7 @@ export default function Jobs() {
     if (!trimmedCustomer || !trimmedDescription) return;
     setCustomer("");
     setDescription("");
-    jobsStore.add({ customer: trimmedCustomer, description: trimmedDescription, status: "open", technicianId: null });
+    createJob(trimmedCustomer, trimmedDescription);
   }
 
   return (

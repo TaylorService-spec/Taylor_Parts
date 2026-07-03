@@ -1,8 +1,6 @@
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from "firebase/firestore";
 import { db } from "./firebase";
-
-export const JOBS_COLLECTION = "fieldops_jobs";
-export const TECHNICIANS_COLLECTION = "fieldops_technicians";
+import { JOBS_COLLECTION, TECHNICIANS_COLLECTION } from "../domain/constants";
 
 // Thin wrapper so the module components don't each need to know
 // Firestore's API shape.
