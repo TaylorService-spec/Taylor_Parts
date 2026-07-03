@@ -1,7 +1,7 @@
 import { JOBS_COLLECTION, TECHNICIANS_COLLECTION } from "../../firebase/collectionStore";
 import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
-import { assignJob } from "../../workflow/jobActions";
-import { TECH_STATUS } from "../../workflow/jobWorkflow";
+import { assignJob } from "../../domain/jobActions";
+import { TECH_STATUS } from "../../domain/constants";
 
 // Assigns open jobs to available technicians. Writes back to both the
 // job (technicianId, status) and the technician (status) so Jobs,

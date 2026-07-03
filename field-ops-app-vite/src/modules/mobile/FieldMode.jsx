@@ -1,7 +1,7 @@
 import { JOBS_COLLECTION } from "../../firebase/collectionStore";
 import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
-import { updateJobStatus } from "../../workflow/jobActions";
-import { JOB_STATUS } from "../../workflow/jobWorkflow";
+import { updateJobStatus } from "../../domain/jobActions";
+import { JOB_STATUS } from "../../domain/constants";
 
 export default function FieldMode() {
   const { data: jobs, loading } = useFirestoreCollection(JOBS_COLLECTION);
