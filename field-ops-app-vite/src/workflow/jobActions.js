@@ -1,5 +1,5 @@
 import { doc, runTransaction } from "firebase/firestore";
-import { db } from "../firebase/firebase";
+import { db, auth } from "../firebase/firebase";
 import { jobsStore, techniciansStore } from "../firebase/collectionStore";
 import { canTransitionJob, JOB_STATUS, TECH_STATUS } from "./jobWorkflow";
 
@@ -8,6 +8,10 @@ import { canTransitionJob, JOB_STATUS, TECH_STATUS } from "./jobWorkflow";
 // directly, so every transition goes through canTransitionJob().
 
 export async function updateJobStatus(job, nextStatus) {
+  if (!auth.currentUser) {
+    throw new Error("Unauthenticated write attempt blocked");
+  }
+
   if (!canTransitionJob(job.status, nextStatus)) {
     throw new Error(`Invalid transition: ${job.status} → ${nextStatus}`);
   }
@@ -20,6 +24,10 @@ export async function updateJobStatus(job, nextStatus) {
 }
 
 export async function assignJob(job, technician) {
+  if (!auth.currentUser) {
+    throw new Error("Unauthenticated write attempt blocked");
+  }
+
   if (!job || !technician) throw new Error("Missing job or technician");
 
   if (!canTransitionJob(job.status, JOB_STATUS.ASSIGNED)) {

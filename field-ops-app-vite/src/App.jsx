@@ -4,6 +4,7 @@ import Jobs from "./modules/jobs/Jobs";
 import Technicians from "./modules/technicians/Technicians";
 import Dispatch from "./modules/dispatch/Dispatch";
 import FieldMode from "./modules/mobile/FieldMode";
+import { useAuth } from "./auth/AuthContext";
 
 const NAV = [
   { key: "controlTower", label: "Control Tower", Component: ControlTower },
@@ -15,7 +16,21 @@ const NAV = [
 
 export default function App() {
   const [activeTab, setActiveTab] = useState("controlTower");
+  const { user, login, logout, loading } = useAuth();
   const ActiveView = NAV.find((n) => n.key === activeTab)?.Component ?? ControlTower;
+
+  if (loading) return <div className="fo-panel">Loading...</div>;
+
+  if (!user) {
+    return (
+      <div className="fo-panel">
+        <h2>Field Ops Login</h2>
+        <button onClick={() => login("fieldops@test.com", "ASU!123!")}>
+          Sign In
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="fo-app">
@@ -32,6 +47,7 @@ export default function App() {
             </button>
           ))}
         </nav>
+        <button onClick={logout}>Logout</button>
       </header>
       <main className="fo-main">
         <ActiveView />
