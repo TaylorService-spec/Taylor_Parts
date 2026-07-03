@@ -20,13 +20,12 @@ export default function Jobs() {
 
   function addJob(e) {
     e.preventDefault();
-    if (!customer.trim() || !description.trim()) return;
-    jobsStore
-      .add({ customer: customer.trim(), description: description.trim(), status: "open", technicianId: null })
-      .then(() => {
-        setCustomer("");
-        setDescription("");
-      });
+    const trimmedCustomer = customer.trim();
+    const trimmedDescription = description.trim();
+    if (!trimmedCustomer || !trimmedDescription) return;
+    setCustomer("");
+    setDescription("");
+    jobsStore.add({ customer: trimmedCustomer, description: trimmedDescription, status: "open", technicianId: null });
   }
 
   return (

@@ -20,13 +20,12 @@ export default function Technicians() {
 
   function addTechnician(e) {
     e.preventDefault();
-    if (!name.trim()) return;
-    techniciansStore
-      .add({ name: name.trim(), phone: phone.trim(), status: "available" })
-      .then(() => {
-        setName("");
-        setPhone("");
-      });
+    const trimmedName = name.trim();
+    if (!trimmedName) return;
+    const trimmedPhone = phone.trim();
+    setName("");
+    setPhone("");
+    techniciansStore.add({ name: trimmedName, phone: trimmedPhone, status: "available" });
   }
 
   return (
