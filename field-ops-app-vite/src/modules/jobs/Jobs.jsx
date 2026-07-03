@@ -3,8 +3,10 @@ import { createJob } from "../../domain/jobActions";
 import { JOBS_COLLECTION } from "../../domain/constants";
 import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
 
-// A job is: { id, customer, description, status, technicianId }
-// status is one of "open" | "assigned" | "in_progress" | "complete"
+// A job is: { id, workOrderId, description, status, technicianId }
+// status is one of JOB_STATUS: "open" | "assigned" | "in_progress" | "complete"
+// Jobs are execution units grouped under a Work Order via workOrderId.
+// Jobs MUST NOT carry customer fields — customers are a separate domain.
 
 export default function Jobs() {
   const { data: jobs, loading } = useFirestoreCollection(JOBS_COLLECTION);

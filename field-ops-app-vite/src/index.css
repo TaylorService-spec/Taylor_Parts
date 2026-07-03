@@ -25,10 +25,10 @@ body { -webkit-font-smoothing: antialiased; font-family: -apple-system, BlinkMac
 .fo-muted { color: #8A9694; font-size: 14px; }
 
 .fo-badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; background: #EEF1F0; color: #445; }
-.fo-badge-open { background: #FDECEC; color: #B23B3B; }
-.fo-badge-assigned, .fo-badge-on_job { background: #FFF4DE; color: #A9740D; }
+.fo-badge-pending { background: #FDECEC; color: #B23B3B; }
+.fo-badge-on_job { background: #FFF4DE; color: #A9740D; }
 .fo-badge-in_progress { background: #FFF4DE; color: #A9740D; }
-.fo-badge-complete { background: #E6F6EC; color: #237A45; }
+.fo-badge-completed { background: #E6F6EC; color: #237A45; }
 .fo-badge-available { background: #E6F6EC; color: #237A45; }
 .fo-badge-off_shift { background: #EEF1F0; color: #667; }
 
@@ -69,6 +69,8 @@ body { -webkit-font-smoothing: antialiased; font-family: -apple-system, BlinkMac
   font-size: 14px;
   font-weight: 600;
   margin-bottom: 6px;
+  display: flex;
+  align-items: center;
 }
 
 .warning {
@@ -91,4 +93,38 @@ button {
 
 button:hover {
   background: #23383D;
+}
+
+.wo-status {
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  margin-left: 8px;
+}
+
+.wo-ready {
+  background: #e0f7e9;
+  color: #166534;
+}
+
+.wo-in_progress {
+  background: #fff7ed;
+  color: #9a3412;
+}
+
+.wo-blocked {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.wo-completed {
+  background: #e0e7ff;
+  color: #3730a3;
+}
+
+.tech-overview {
+  margin-top: 20px;
+  padding-top: 10px;
+  border-top: 1px solid #ddd;
 }

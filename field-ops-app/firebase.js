@@ -61,3 +61,4 @@ window.FieldOps = window.FieldOps || {};
 window.FieldOps.db = db;
 window.FieldOps.jobsStore = makeCollectionStore("fieldops_jobs");
 window.FieldOps.techniciansStore = makeCollectionStore("fieldops_technicians");
+window.FieldOps.workOrdersStore = makeCollectionStore("fieldops_workorders");
