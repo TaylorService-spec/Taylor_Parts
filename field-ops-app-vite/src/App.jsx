@@ -5,6 +5,7 @@ import Technicians from "./modules/technicians/Technicians";
 import Dispatch from "./modules/dispatch/Dispatch";
 import FieldMode from "./modules/mobile/FieldMode";
 import { useAuth } from "./auth/AuthContext";
+import AppHeader from "./shared/ui/AppHeader";
 
 const NAV = [
   { key: "controlTower", label: "Control Tower", Component: ControlTower },
@@ -34,6 +35,7 @@ export default function App() {
 
   return (
     <div className="fo-app">
+      <AppHeader user={user} onLogout={logout} />
       <header className="fo-header">
         <h1>Field Ops</h1>
         <nav className="fo-nav">
@@ -47,7 +49,6 @@ export default function App() {
             </button>
           ))}
         </nav>
-        <button onClick={logout}>Logout</button>
       </header>
       <main className="fo-main">
         <ActiveView />
