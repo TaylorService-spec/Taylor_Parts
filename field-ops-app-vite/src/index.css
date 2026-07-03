@@ -1,25 +1,6 @@
 html, body { margin: 0; padding: 0; }
 body { -webkit-font-smoothing: antialiased; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #F4F6F5; }
 
-.app-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 10px 16px;
-  background: #1b2a2e;
-  color: white;
-  font-size: 13px;
-}
-
-.app-header nav a {
-  margin: 0 10px;
-  color: white;
-  text-decoration: none;
-}
-
-.app-header .user { display: flex; align-items: center; gap: 10px; }
-.app-header .user button { padding: 4px 10px; font-size: 12px; }
-
 .fo-app { min-height: 100vh; }
 .fo-header { background: #1B2A2E; color: #fff; padding: 16px 24px; display: flex; align-items: center; gap: 32px; }
 .fo-header h1 { font-size: 18px; margin: 0; }

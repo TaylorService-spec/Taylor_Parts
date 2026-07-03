@@ -17,7 +17,7 @@ const NAV = [
 
 export default function App() {
   const [activeTab, setActiveTab] = useState("controlTower");
-  const { user, login, logout, loading } = useAuth();
+  const { user, login, loading } = useAuth();
   const ActiveView = NAV.find((n) => n.key === activeTab)?.Component ?? ControlTower;
 
   if (loading) return <div className="fo-panel">Loading...</div>;
@@ -35,7 +35,7 @@ export default function App() {
 
   return (
     <div className="fo-app">
-      <AppHeader user={user} onLogout={logout} />
+      <AppHeader />
       <header className="fo-header">
         <h1>Field Ops</h1>
         <nav className="fo-nav">

@@ -1,21 +1,54 @@
-// Thin platform-level bar sitting above the app's own header/nav.
-// "Home" is a plain page link back to Parts Control Center, not a
-// client-side route -- the two apps are separate deployed builds
-// (see vite.config.js base path), not one router-controlled SPA.
+import React from "react";
+import { useAuth } from "../../auth/AuthContext";
 
-export default function AppHeader({ user, onLogout }) {
+export default function AppHeader() {
+  const { user, logout } = useAuth();
+
   return (
-    <header className="app-header">
-      <div className="brand">Field Ops Platform</div>
+    <div style={styles.header}>
+      <div style={styles.left}>
+        <span style={styles.title}>Field Ops Platform</span>
 
-      <nav>
-        <a href="../">Home</a>
-      </nav>
+        <a href="/Taylor_Parts/" style={styles.link}>
+          Home
+        </a>
 
-      <div className="user">
-        {user?.email}
-        <button onClick={onLogout}>Logout</button>
+        <a href="/Taylor_Parts/field-ops/" style={styles.link}>
+          Refresh
+        </a>
       </div>
-    </header>
+
+      <div style={styles.right}>
+        <span>{user?.email}</span>
+        <button onClick={logout}>Logout</button>
+      </div>
+    </div>
   );
 }
+
+const styles = {
+  header: {
+    display: "flex",
+    justifyContent: "space-between",
+    padding: "10px 14px",
+    borderBottom: "1px solid #eee",
+    background: "#fff"
+  },
+  left: {
+    display: "flex",
+    gap: "12px",
+    alignItems: "center"
+  },
+  right: {
+    display: "flex",
+    gap: "10px",
+    alignItems: "center"
+  },
+  title: {
+    fontWeight: 600
+  },
+  link: {
+    textDecoration: "none",
+    color: "#2e4a50"
+  }
+};
