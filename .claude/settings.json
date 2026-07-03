@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls -la \"/c/Users/Rudy2/Favorites/Downloads/\" 2>&1)",
+      "Read(//c/Users/Rudy2/Favorites/Downloads//**)",
+      "Bash(git pull *)",
+      "Bash(npm --version)",
+      "Skill(run)",
+      "Skill(run:*)"
+    ]
+  }
+}
