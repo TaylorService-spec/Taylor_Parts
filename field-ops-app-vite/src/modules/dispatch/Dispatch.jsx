@@ -34,37 +34,24 @@ export default function Dispatch() {
       {unassignedJobs.length === 0 ? (
         <p className="fo-muted">No unassigned jobs.</p>
       ) : (
-        <table className="fo-table">
-          <thead>
-            <tr>
-              <th>Customer</th>
-              <th>Description</th>
-              <th>Assign to</th>
-            </tr>
-          </thead>
-          <tbody>
-            {unassignedJobs.map((job) => (
-              <tr key={job.id}>
-                <td>{job.customer}</td>
-                <td>{job.description}</td>
-                <td>
-                  <select defaultValue="" onChange={(e) => assign(job.id, e.target.value)}>
-                    <option value="" disabled>
-                      Select technician…
-                    </option>
-                    {technicians
-                      .filter((t) => t.status === "available")
-                      .map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.name}
-                        </option>
-                      ))}
-                  </select>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        unassignedJobs.map((job) => (
+          <div key={job.id} className="fo-field-card">
+            <h3>{job.customer}</h3>
+            <p>{job.description}</p>
+            <select defaultValue="" onChange={(e) => assign(job.id, e.target.value)}>
+              <option value="" disabled>
+                Select technician…
+              </option>
+              {technicians
+                .filter((t) => t.status === "available")
+                .map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+            </select>
+          </div>
+        ))
       )}
     </div>
   );
