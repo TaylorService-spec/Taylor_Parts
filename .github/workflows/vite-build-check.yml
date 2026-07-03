@@ -12,6 +12,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: field-ops-app-vite/package-lock.json
       - name: Install dependencies
         run: npm install
         working-directory: field-ops-app-vite
