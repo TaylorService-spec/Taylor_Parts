@@ -128,3 +128,42 @@ button:hover {
   padding-top: 10px;
   border-top: 1px solid #ddd;
 }
+
+.risk-badge {
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  margin-left: 8px;
+}
+
+.risk-low {
+  background: #e0f7e9;
+  color: #166534;
+}
+
+.risk-medium {
+  background: #fff7ed;
+  color: #9a3412;
+}
+
+.risk-high {
+  background: #ffe4d5;
+  color: #b23b0a;
+}
+
+.risk-critical {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.heat-badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+}
+
+.heat-high {
+  background: #fee2e2;
+  color: #991b1b;
+}
