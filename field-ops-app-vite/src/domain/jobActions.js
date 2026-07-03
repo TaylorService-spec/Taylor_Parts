@@ -31,16 +31,35 @@ export async function updateJobStatus(job, nextStatus) {
     throw new Error("Unauthenticated write attempt blocked");
   }
 
-  if (!canTransitionJob(job.status, nextStatus)) {
-    throw new Error(`Invalid transition: ${job.status} → ${nextStatus}`);
-  }
-
   try {
-    await jobsStore.update(job.id, { status: nextStatus });
+    return await runTransaction(db, async (tx) => {
+      const jobRef = doc(db, JOBS_COLLECTION, job.id);
+      const jobSnap = await tx.get(jobRef);
 
-    if (nextStatus === JOB_STATUS.COMPLETE && job.technicianId) {
-      await techniciansStore.update(job.technicianId, { status: TECH_STATUS.AVAILABLE });
-    }
+      if (!jobSnap.exists()) {
+        throw new Error("Job not found");
+      }
+
+      const currentStatus = jobSnap.data().status;
+
+      if (!canTransitionJob(currentStatus, nextStatus)) {
+        throw new Error(`Invalid transition: ${currentStatus} → ${nextStatus}`);
+      }
+
+      const technicianId = jobSnap.data().technicianId;
+      let techRef = null;
+
+      if (nextStatus === JOB_STATUS.COMPLETE && technicianId) {
+        techRef = doc(db, TECHNICIANS_COLLECTION, technicianId);
+        await tx.get(techRef);
+      }
+
+      tx.update(jobRef, { status: nextStatus });
+
+      if (techRef) {
+        tx.update(techRef, { status: TECH_STATUS.AVAILABLE });
+      }
+    });
   } catch (e) {
     console.error("Firestore write failed:", e);
     throw e;
