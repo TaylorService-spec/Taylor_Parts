@@ -1,0 +1,65 @@
+name: Deploy Field Ops (Vite) to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: field-ops-app-vite/package-lock.json
+
+      - name: Install dependencies
+        working-directory: field-ops-app-vite
+        run: npm ci
+
+      - name: Build Vite app
+        working-directory: field-ops-app-vite
+        run: npm run build
+
+      # GitHub Pages' "Source: GitHub Actions" mode replaces the legacy
+      # branch-based deploy entirely -- whatever this workflow uploads is
+      # the ENTIRE site. Stage the untouched root index.html (Parts Control
+      # Center) alongside the Vite build under /field-ops/ so both keep
+      # serving from the same domain instead of the legacy app disappearing.
+      - name: Assemble combined Pages site
+        run: |
+          mkdir -p site/field-ops
+          cp index.html site/index.html
+          cp -r field-ops-app-vite/dist/. site/field-ops/
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
