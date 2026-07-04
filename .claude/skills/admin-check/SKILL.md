@@ -18,7 +18,14 @@ npm install
 
 If you don't already have one saved: Firebase console -> Project Settings (gear icon) -> Service Accounts tab -> "Generate new private key". **Save it outside this repo** (e.g. the user's Downloads folder) -- never commit it, and avoid pasting its contents into chat (if it ever is pasted, treat it as compromised and recommend rotating it once the immediate need is done).
 
-Ask the user for the key's file path if you don't already have one from earlier in the session.
+## Remembering the key path across sessions
+
+`lib.js` can recall the key's file path (never the key contents) so you don't have to re-ask every session:
+
+- `keypath.local.txt` in this skill's directory holds the absolute path to the key file. It's gitignored -- never committed.
+- If you already know the key's path (told to you earlier in this session, or found in `keypath.local.txt`), pass nothing and `initAdmin()` will read it automatically: `require(".../lib.js")()`.
+- The first time a user gives you a key path, save it for next time: `require(".../lib.js").saveKeyPath("<path>")`.
+- If `initAdmin()` throws "no key path given and none saved," ask the user for the path, then call `saveKeyPath` before proceeding.
 
 ## Usage pattern
 
@@ -26,7 +33,7 @@ Write a small script (don't try to inline this as a one-liner -- Windows/git-bas
 
 ```js
 const initAdmin = require("<absolute-path-to>/.claude/skills/admin-check/lib.js");
-const admin = initAdmin("<path-to-service-account-key.json>");
+const admin = initAdmin(); // uses keypath.local.txt if no path passed
 
 async function main() {
   // does a doc really exist?

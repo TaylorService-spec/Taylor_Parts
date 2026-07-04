@@ -13,16 +13,41 @@
 // new private key. MUST be saved OUTSIDE this repo (e.g. Downloads), and
 // should never be committed or pasted into chat -- treat as compromised
 // and rotate if it ever is.
+//
+// If keyPath is omitted, falls back to the path stored in
+// keypath.local.txt (gitignored -- stores only the file *path*, never the
+// key itself) via readSavedKeyPath()/saveKeyPath() below.
+const fs = require("fs");
 const path = require("path");
 
-module.exports = function initAdmin(keyPath) {
+const SAVED_PATH_FILE = path.join(__dirname, "keypath.local.txt");
+
+function readSavedKeyPath() {
+  if (!fs.existsSync(SAVED_PATH_FILE)) return null;
+  const saved = fs.readFileSync(SAVED_PATH_FILE, "utf8").trim();
+  return saved || null;
+}
+
+function saveKeyPath(keyPath) {
+  fs.writeFileSync(SAVED_PATH_FILE, path.resolve(keyPath) + "\n");
+}
+
+function initAdmin(keyPath) {
   const { initializeApp, cert, getApps } = require("firebase-admin/app");
   const { getFirestore } = require("firebase-admin/firestore");
   const { getAuth } = require("firebase-admin/auth");
   const { getSecurityRules } = require("firebase-admin/security-rules");
 
+  const resolvedKeyPath = keyPath || readSavedKeyPath();
+  if (!resolvedKeyPath) {
+    throw new Error(
+      "No service account key path given and none saved in keypath.local.txt. " +
+      "Pass a path explicitly, or call saveKeyPath(path) once to remember it."
+    );
+  }
+
   if (getApps().length === 0) {
-    initializeApp({ credential: cert(require(path.resolve(keyPath))) });
+    initializeApp({ credential: cert(require(path.resolve(resolvedKeyPath))) });
   }
 
   const db = getFirestore();
@@ -65,5 +90,32 @@ module.exports = function initAdmin(keyPath) {
     async getUserByEmail(email) {
       return auth.getUserByEmail(email);
     },
+
+    // Writes bypass Firestore rules AND this repo's app-level invariant
+    // that only domain/jobActions.js writes job/technician state -- there
+    // is no emulator, so these hit the real live database. Use for
+    // seeding/asset creation the app itself has no UI path for; never as
+    // a shortcut around assignJob()/updateJobStatus() for job/technician
+    // state changes the app already knows how to make. No delete helper
+    // is provided here deliberately -- deletion against live prod data
+    // needs an explicit, per-use ask, not a standing capability.
+    async setDoc(collectionName, id, data, options) {
+      await db.collection(collectionName).doc(id).set(data, options || {});
+      return { id };
+    },
+
+    async addDoc(collectionName, data) {
+      const ref = await db.collection(collectionName).add(data);
+      return { id: ref.id };
+    },
+
+    async updateDoc(collectionName, id, data) {
+      await db.collection(collectionName).doc(id).update(data);
+      return { id };
+    },
   };
-};
+}
+
+module.exports = initAdmin;
+module.exports.saveKeyPath = saveKeyPath;
+module.exports.readSavedKeyPath = readSavedKeyPath;

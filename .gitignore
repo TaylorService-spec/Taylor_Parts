@@ -6,3 +6,4 @@ node_modules/
 .vscode/
 .firebase/
 .claude/.session-markers/
+.claude/skills/admin-check/keypath.local.txt
