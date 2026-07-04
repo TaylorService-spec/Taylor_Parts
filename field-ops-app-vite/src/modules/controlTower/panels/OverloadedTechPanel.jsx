@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { detectOverloadedTechnicians } from "../../../domain/dispatchScoring";
-import { severityFromScore } from "../../../domain/controlTower/types";
+import { severityFromScore, assertPanelProps } from "../../../domain/controlTower/types";
 import SignalBadge from "../../../shared/ui/SignalBadge";
 
 // Workload -> severity scale for display only (detectOverloadedTechnicians
@@ -13,7 +13,9 @@ const SCORE_PER_ACTIVE_JOB = 20;
 // dispatchScoring.detectOverloadedTechnicians() (Sprint 3.2's technician
 // utilization check). Takes only { jobs, technicians, workOrders } --
 // never fetches Firestore itself, never mutates technician state.
-export default function OverloadedTechPanel({ jobs, technicians }) {
+export default function OverloadedTechPanel({ jobs, technicians, workOrders }) {
+  if (import.meta.env.DEV) assertPanelProps({ jobs, technicians, workOrders });
+
   const overloaded = useMemo(
     () => detectOverloadedTechnicians(technicians, jobs),
     [technicians, jobs]

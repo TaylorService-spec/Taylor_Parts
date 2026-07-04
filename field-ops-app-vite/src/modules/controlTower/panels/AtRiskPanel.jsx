@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { detectStalledJobs } from "../../../domain/jobRiskScoring";
+import { assertPanelProps, assertValidSignal } from "../../../domain/controlTower/types";
 import SignalBadge from "../../../shared/ui/SignalBadge";
 
 // Read-only panel: renders RiskSignal objects from jobRiskScoring. Takes
@@ -7,10 +8,13 @@ import SignalBadge from "../../../shared/ui/SignalBadge";
 // itself, never calls assignJob()/updateJobStatus(). All scoring logic
 // lives in domain/jobRiskScoring.js; this component only sorts for
 // display and renders.
-export default function AtRiskPanel({ jobs, technicians }) {
+export default function AtRiskPanel({ jobs, technicians, workOrders }) {
+  if (import.meta.env.DEV) assertPanelProps({ jobs, technicians, workOrders });
+
   const [sort, setSort] = useState("severity");
 
   const stalledJobs = useMemo(() => detectStalledJobs(jobs, technicians), [jobs, technicians]);
+  if (import.meta.env.DEV) stalledJobs.forEach(assertValidSignal);
 
   const sorted = useMemo(() => {
     if (sort === "age") {

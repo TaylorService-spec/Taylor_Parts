@@ -67,6 +67,19 @@ export function assertValidSignal(signal) {
   }
 }
 
+// Sprint 3.3.6 guardrail: every Control Tower panel must receive
+// { jobs, technicians, workOrders } and nothing else it needs to fetch
+// itself. Call at the top of a panel component to fail fast in dev if
+// that contract is broken (e.g. a prop renamed/dropped during a refactor)
+// rather than silently rendering with undefined data.
+export function assertPanelProps({ jobs, technicians, workOrders }) {
+  if (!Array.isArray(jobs) || !Array.isArray(technicians) || !Array.isArray(workOrders)) {
+    throw new Error(
+      "Invalid panel props: expected { jobs: [], technicians: [], workOrders: [] }"
+    );
+  }
+}
+
 // Builds a canonical signal. severity defaults to severityFromScore(score)
 // when not explicitly provided.
 export function createSignal({ id, score, severity, label, metadata = {} }) {

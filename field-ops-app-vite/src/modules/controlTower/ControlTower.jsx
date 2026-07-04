@@ -18,6 +18,20 @@ import OverloadedTechPanel from "./panels/OverloadedTechPanel";
 // { jobs, technicians, workOrders } as props. Control Tower itself stays
 // the composition root: it owns the Firestore listeners and passes the
 // same snapshot down to every panel; no panel fetches Firestore itself.
+//
+// Sprint 3.3.6 invariants (enforced, not just documented -- see
+// domain/controlTower/types.js's assertPanelProps/assertValidSignal,
+// called at the top of each panel in dev builds):
+//   1. Every panel receives exactly { jobs, technicians, workOrders } --
+//      no panel may accept or require any other prop shape.
+//   2. No panel may call useFirestoreCollection or import firebase/*
+//      directly -- ControlTower is the only Firestore listener owner.
+//   3. No panel may inline scoring/derivation logic -- panels call into
+//      domain/*.js and render the result; they don't compute severity,
+//      risk, or rankings themselves.
+//   4. Every signal a panel renders must be a canonical Signal
+//      ({ id, score, severity, label, metadata }) per
+//      domain/controlTower/types.js -- asserted via assertValidSignal.
 
 export default function ControlTower() {
   const { data: jobs } = useFirestoreCollection(JOBS_COLLECTION);

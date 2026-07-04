@@ -1,15 +1,19 @@
 import { useMemo } from "react";
 import { computeDispatchRecommendations } from "../../../domain/dispatchScoring";
+import { assertPanelProps, assertValidSignal } from "../../../domain/controlTower/types";
 
 // Read-only panel: renders DispatchRecommendation signals from
 // dispatchScoring. Takes only { jobs, technicians, workOrders } -- never
 // fetches Firestore itself. Purely a suggestion display; assigning a job
 // still only happens through Dispatch.jsx's call to assignJob().
-export default function DispatchQueuePanel({ jobs, technicians }) {
+export default function DispatchQueuePanel({ jobs, technicians, workOrders }) {
+  if (import.meta.env.DEV) assertPanelProps({ jobs, technicians, workOrders });
+
   const recommendations = useMemo(
     () => computeDispatchRecommendations(jobs, technicians),
     [jobs, technicians]
   );
+  if (import.meta.env.DEV) recommendations.forEach(assertValidSignal);
 
   const technicianName = (id) => technicians.find((t) => t.id === id)?.name || id;
 
