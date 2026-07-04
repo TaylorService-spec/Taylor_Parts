@@ -1,11 +1,11 @@
 import { useMemo } from "react";
 import { JOBS_COLLECTION, TECHNICIANS_COLLECTION, JOB_STATUS, TECH_STATUS } from "../../domain/constants";
 import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
-import { explainWorkOrderState } from "../../domain/workOrderLifecycle";
 import { groupJobsByTechnician } from "./techUtils";
 import AtRiskPanel from "./panels/AtRiskPanel";
 import DispatchQueuePanel from "./panels/DispatchQueuePanel";
 import OverloadedTechPanel from "./panels/OverloadedTechPanel";
+import WorkOrderDetail from "./WorkOrderDetail";
 
 // Work Order-centric operational dashboard. Job state, technician state,
 // and work-order grouping all come from main's domain layer — this view
@@ -32,6 +32,24 @@ import OverloadedTechPanel from "./panels/OverloadedTechPanel";
 //   4. Every signal a panel renders must be a canonical Signal
 //      ({ id, score, severity, label, metadata }) per
 //      domain/controlTower/types.js -- asserted via assertValidSignal.
+//
+// Reconciled dependency chain (Sprint 3.3 + 3.4): Control Tower never
+// computes Work Order lifecycle itself -- it only renders.
+//
+//   Firestore
+//     -> Job Workflow (3.1: assignJob()/updateJobStatus())
+//     -> Work Order Lifecycle (3.4: workOrderLifecycle.js -- the one
+//        place that computes state/reasons/metrics from jobs)
+//     -> Validation (3.4: workOrderValidation.js)
+//     -> Signal Layer (3.3: workOrderScoring.js/dispatchScoring.js/
+//        jobRiskScoring.js -- wrap lifecycle/scoring output in the
+//        canonical Signal shape)
+//     -> Control Tower Panels (3.3: AtRiskPanel/DispatchQueuePanel/
+//        OverloadedTechPanel, and WorkOrderDetail) -- consume Signals,
+//        never recompute them.
+//
+// The lifecycle engine sits below the Signal layer; the Signal layer
+// consumes lifecycle, not the other way around.
 
 export default function ControlTower() {
   const { data: jobs } = useFirestoreCollection(JOBS_COLLECTION);
@@ -71,17 +89,6 @@ export default function ControlTower() {
     (wo) => wo.workOrderId === "unassigned"
   );
 
-  // Sprint 3.4: Work Order state + reason, one call into the single
-  // aggregation engine (domain/workOrderLifecycle.js) per work order.
-  // Neither owns or mutates state.
-  const workOrderExplanations = useMemo(() => {
-    const map = {};
-    workOrderGroups.forEach((wo) => {
-      map[wo.workOrderId] = explainWorkOrderState(wo.jobs);
-    });
-    return map;
-  }, [workOrderGroups]);
-
   const techGroups = useMemo(() => groupJobsByTechnician(jobs), [jobs]);
   const technicianName = (id) => technicians.find((t) => t.id === id)?.name || id;
 
@@ -117,28 +124,9 @@ export default function ControlTower() {
         </div>
       )}
 
-      {workOrderGroups.map((wo) => {
-        const explanation = workOrderExplanations[wo.workOrderId];
-        return (
-          <div key={wo.workOrderId} className="work-order-card">
-            <h3>
-              Work Order: {wo.workOrderId}
-              <span className={`wo-status wo-${explanation.state.toLowerCase()}`}>
-                {explanation.state}
-              </span>
-            </h3>
-
-            <div className="fo-muted">{explanation.reasons.join(" · ")}</div>
-
-            <div>
-              Open: {explanation.metrics.openJobs} |
-              Assigned: {explanation.metrics.assignedJobs} |
-              In Progress: {explanation.metrics.inProgressJobs} |
-              Completed: {explanation.metrics.completedJobs}
-            </div>
-          </div>
-        );
-      })}
+      {workOrderGroups.map((wo) => (
+        <WorkOrderDetail key={wo.workOrderId} workOrderId={wo.workOrderId} jobs={wo.jobs} />
+      ))}
 
       <div className="tech-overview">
         <h3>Technician Load</h3>
