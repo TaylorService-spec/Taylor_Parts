@@ -172,6 +172,20 @@ body { -webkit-font-smoothing: antialiased; font-family: -apple-system, BlinkMac
 .fo-chip-in-progress { background: #EAF1F2; color: #2E4A50; }
 .fo-chip-completed { background: #E6F6EC; color: #237A45; }
 .fo-chip-hero { background: #2E4A50; color: #fff; margin-left: 8px; }
+.fo-chip-priority-urgent { background: #B23B3B; color: #fff; }
+.fo-chip-priority-high { background: #FDECEC; color: #B23B3B; }
+.fo-chip-priority-medium { background: #FFF4DE; color: #A9740D; }
+.fo-chip-priority-low { background: #EEF1F0; color: #667; }
+.fo-chip-idle { background: #E6F6EC; color: #237A45; }
+.fo-chip-busy { background: #FFF4DE; color: #A9740D; }
+
+.fo-dispatch-layout { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; align-items: start; }
+.fo-dispatch-panel-title { margin: 0 0 12px; }
+.fo-card--inactive { opacity: 0.55; }
+
+@media (max-width: 640px) {
+  .fo-dispatch-layout { grid-template-columns: 1fr; }
+}
 
 .fo-card--hero {
   box-shadow: 0 0 0 2px #2E4A50, 0 2px 8px rgba(46,74,80,0.25);

@@ -41,7 +41,9 @@ const STAGNATION_THRESHOLDS_HOURS = {
   [JOB_STATUS.IN_PROGRESS]: { medium: 8, high: 24, critical: 72 },
 };
 
-function computeAgeHours(job, now) {
+// Exported for reuse by dispatchEngine.js's "unassigned > 24h" modifier,
+// so age-since-creation is computed in exactly one place.
+export function computeAgeHours(job, now) {
   return Math.max(0, (now - (job.createdAt || now)) / HOUR);
 }
 

@@ -23,7 +23,9 @@ const WEIGHTS = {
 
 const WORKLOAD_PENALTY_PER_JOB = 25;
 
-function activeJobCount(technicianId, jobs) {
+// Exported for reuse by dispatchEngine.js and Dispatch.jsx's technician
+// workload panel, so workload-counting logic exists in exactly one place.
+export function activeJobCount(technicianId, jobs) {
   return jobs.filter(
     (j) => j.technicianId === technicianId && ACTIVE_JOB_STATUSES.includes(j.status)
   ).length;

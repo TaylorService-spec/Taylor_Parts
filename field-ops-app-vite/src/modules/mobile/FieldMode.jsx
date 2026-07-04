@@ -1,8 +1,10 @@
-import { useState } from "react";
-import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
+import { useMemo, useState } from "react";
+import { where } from "firebase/firestore";
+import { useFirestoreQuery } from "../../hooks/useFirestoreQuery";
 import { updateJobStatus } from "../../domain/jobActions";
 import { JOBS_COLLECTION, JOB_STATUS } from "../../domain/constants";
 import { useInventory } from "../../demo/InventoryContext";
+import { useAuth } from "../../auth/AuthContext";
 import { isHeroActiveJob, HERO_JOB_PARTS_REQUIRED } from "../../demo/heroConfig";
 
 // Sprint 3.6.3: mobile-first visual upgrade + demo interaction layer.
@@ -21,9 +23,33 @@ const TRAVEL_STAGE = {
 };
 
 export default function FieldMode() {
-  const { data: jobs, loading } = useFirestoreCollection(JOBS_COLLECTION);
+  const { technicianId } = useAuth();
+  // Scoped to the signed-in technician's own jobs -- this is the client
+  // side of the technician-self-service Firestore rule (see
+  // firestore.rules): the rule only allows a technician to read jobs
+  // where technicianId matches theirs AND status != complete, so the
+  // query must filter on both to actually get results back rather than
+  // being rejected. This is a stricter version of the ASSIGNED/
+  // IN_PROGRESS filter below, not a replacement for it.
+  const constraints = useMemo(
+    () =>
+      technicianId
+        ? [where("technicianId", "==", technicianId), where("status", "!=", JOB_STATUS.COMPLETE)]
+        : [],
+    [technicianId]
+  );
+  const { data: jobs, loading } = useFirestoreQuery(JOBS_COLLECTION, constraints, Boolean(technicianId));
   const { parts, truckStock, usedPartsByJob, consumePart } = useInventory();
   const [travelStageByJob, setTravelStageByJob] = useState({});
+
+  if (!technicianId) {
+    return (
+      <div className="fo-panel">
+        <h2>Field Mode</h2>
+        <p className="fo-muted">Your account isn't linked to a technician profile yet. Contact an admin.</p>
+      </div>
+    );
+  }
 
   // Hero-story follow-up: the hero job (demo/heroConfig.js), if present
   // among today's assigned jobs, is sorted to the front so it's always

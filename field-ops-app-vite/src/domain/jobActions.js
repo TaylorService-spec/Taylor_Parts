@@ -26,7 +26,16 @@ import { isWriteBlocked } from "../config/env";
 // future sprint once a geocoding source is chosen. Backward compatible:
 // omitting address entirely (as every call site before this field
 // existed did) still works, jobs simply have no address recorded.
-export function createJob(customer, description, address = null) {
+// priority/scheduledFor/estimatedDuration: optional, additive fields
+// (same pattern as address above). Left null unless explicitly passed --
+// no default priority is written here; dispatchEngine.js's scoring
+// treats an absent priority as "medium" on read instead.
+export function createJob(
+  customer,
+  description,
+  address = null,
+  { priority = null, scheduledFor = null, estimatedDuration = null } = {}
+) {
   return jobsStore.add({
     customer,
     description,
@@ -34,11 +43,31 @@ export function createJob(customer, description, address = null) {
     technicianId: null,
     workOrderId: null,
     address,
+    priority,
+    scheduledFor,
+    estimatedDuration,
   });
 }
 
-export function createTechnician(name, phone) {
-  return techniciansStore.add({ name, phone, status: TECH_STATUS.AVAILABLE });
+// active/maxConcurrentJobs/region: optional, additive fields. currentJobId
+// starts explicitly null (rather than omitted) so every technician doc
+// has a consistent shape for dispatchEngine.js/Dispatch.jsx's workload
+// panel to read -- assignJob() is the only place that later sets it.
+export function createTechnician(
+  name,
+  phone,
+  { active = true, maxConcurrentJobs = 1, region = null } = {}
+) {
+  return techniciansStore.add({
+    name,
+    phone,
+    status: TECH_STATUS.AVAILABLE,
+    active,
+    currentJobId: null,
+    maxConcurrentJobs,
+    region,
+    lastActive: Date.now(),
+  });
 }
 
 export async function updateJobStatus(job, nextStatus) {
@@ -68,16 +97,27 @@ export async function updateJobStatus(job, nextStatus) {
 
       const technicianId = jobSnap.data().technicianId;
       let techRef = null;
+      // ASSIGNED -> OPEN (demotion/unassignment, allowed by jobWorkflow.js)
+      // must clear the technician exactly like completing a job does --
+      // otherwise the job goes back to unassigned while technicianId,
+      // technician.status, and technician.currentJobId all stay stale,
+      // producing a "ghost assignment" that skews workload display and
+      // dispatchEngine.js's ranking.
+      const isUnassigning = nextStatus === JOB_STATUS.OPEN;
 
-      if (nextStatus === JOB_STATUS.COMPLETE && technicianId) {
+      if ((nextStatus === JOB_STATUS.COMPLETE || isUnassigning) && technicianId) {
         techRef = doc(db, TECHNICIANS_COLLECTION, technicianId);
         await tx.get(techRef);
       }
 
-      tx.update(jobRef, { status: nextStatus });
+      tx.update(jobRef, isUnassigning ? { status: nextStatus, technicianId: null } : { status: nextStatus });
 
       if (techRef) {
-        tx.update(techRef, { status: TECH_STATUS.AVAILABLE });
+        tx.update(techRef, {
+          status: TECH_STATUS.AVAILABLE,
+          currentJobId: null,
+          lastActive: Date.now(),
+        });
       }
     });
   } catch (e) {
@@ -116,10 +156,13 @@ export async function assignJob(job, technician) {
       tx.update(jobRef, {
         technicianId: technician.id,
         status: JOB_STATUS.ASSIGNED,
+        assignedAt: Date.now(),
       });
 
       tx.update(techRef, {
         status: TECH_STATUS.ON_JOB,
+        currentJobId: job.id,
+        lastActive: Date.now(),
       });
     });
   } catch (e) {

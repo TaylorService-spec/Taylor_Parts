@@ -13,6 +13,7 @@ const AuthContext = createContext();
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [role, setRole] = useState(null);
+  const [technicianId, setTechnicianId] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -21,9 +22,12 @@ export function AuthProvider({ children }) {
 
       if (u) {
         const roleSnap = await getDoc(doc(db, USERS_COLLECTION, u.uid));
-        setRole(roleSnap.exists() ? roleSnap.data().role ?? null : null);
+        const data = roleSnap.exists() ? roleSnap.data() : null;
+        setRole(data?.role ?? null);
+        setTechnicianId(data?.technicianId ?? null);
       } else {
         setRole(null);
+        setTechnicianId(null);
       }
 
       setLoading(false);
@@ -37,7 +41,7 @@ export function AuthProvider({ children }) {
   const logout = () => signOut(auth);
 
   return (
-    <AuthContext.Provider value={{ user, role, login, logout, loading }}>
+    <AuthContext.Provider value={{ user, role, technicianId, login, logout, loading }}>
       {children}
     </AuthContext.Provider>
   );

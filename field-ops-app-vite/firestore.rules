@@ -7,14 +7,71 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    match /fieldops_jobs/{jobId} {
-      allow read: if isSignedIn();
+    // Role/technician-link lookup for the signed-in user, read off their
+    // own users/{uid} doc (already rules-restricted to self-read below).
+    function userData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
 
-      allow write: if isSignedIn();
+    function userRole() {
+      return userData().role;
+    }
+
+    // Single standardized link: a technician's identity is always
+    // resolved via users/{uid}.technicianId, never via request.auth.uid
+    // directly. One provisioning shape, no ambiguity about which one a
+    // given doc uses.
+    function isOwnTechnician(technicianId) {
+      return technicianId == userData().technicianId;
+    }
+
+    function isAdminOrDispatcher() {
+      return isSignedIn() && userRole() in ['admin', 'dispatcher'];
+    }
+
+    function isTechnician() {
+      return isSignedIn() && userRole() == 'technician';
+    }
+
+    match /fieldops_jobs/{jobId} {
+      // Admin/dispatcher: unrestricted, unchanged from before. Technician:
+      // only their own jobs, and only non-complete ones -- FieldMode.jsx's
+      // query filters on both technicianId and status to match this rule
+      // (a rule condition not mirrored by the query's own where() clauses
+      // causes the whole query to be rejected, not silently filtered).
+      allow read: if isAdminOrDispatcher()
+        || (isTechnician() && isOwnTechnician(resource.data.technicianId) && resource.data.status != 'complete');
+
+      allow create, delete: if isAdminOrDispatcher();
+
+      // A technician may update their own job's status (the only write
+      // FieldMode.jsx's updateJobStatus() ever makes) but not reassign it
+      // to someone else or rewrite its identity.
+      allow update: if isAdminOrDispatcher()
+        || (isTechnician()
+            && isOwnTechnician(resource.data.technicianId)
+            && request.resource.data.technicianId == resource.data.technicianId
+            && request.resource.data.customer == resource.data.customer);
     }
 
     match /fieldops_technicians/{techId} {
-      allow read, write: if isSignedIn();
+      // Admin/dispatcher: unrestricted, unchanged from before. Technician:
+      // may read only their own technician doc (never the full roster).
+      allow read: if isAdminOrDispatcher() || (isTechnician() && isOwnTechnician(techId));
+
+      allow create, delete: if isAdminOrDispatcher();
+
+      // updateJobStatus()'s transaction updates the assigned technician's
+      // own doc (status/currentJobId/lastActive) when a technician
+      // completes their own job -- carve out exactly those fields so that
+      // flow keeps working under a technician-role account, without
+      // opening up name/phone/maxConcurrentJobs/region/active to
+      // self-service edits.
+      allow update: if isAdminOrDispatcher()
+        || (isTechnician()
+            && isOwnTechnician(techId)
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(['status', 'currentJobId', 'lastActive']));
     }
 
     // Role docs are provisioned by an admin (console or Admin SDK), never

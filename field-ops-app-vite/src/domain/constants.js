@@ -11,6 +11,15 @@ export const TECH_STATUS = {
   OFF_SHIFT: "off_shift",
 };
 
+// Independent of JOB_STATUS -- priority only feeds dispatchEngine.js's
+// ranking, it has no transition rules and never governs canTransitionJob().
+export const JOB_PRIORITY = {
+  LOW: "low",
+  MEDIUM: "medium",
+  HIGH: "high",
+  URGENT: "urgent",
+};
+
 export const JOBS_COLLECTION = "fieldops_jobs";
 export const TECHNICIANS_COLLECTION = "fieldops_technicians";
 export const USERS_COLLECTION = "users";
