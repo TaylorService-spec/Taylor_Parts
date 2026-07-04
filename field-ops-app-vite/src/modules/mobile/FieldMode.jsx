@@ -3,6 +3,7 @@ import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
 import { updateJobStatus } from "../../domain/jobActions";
 import { JOBS_COLLECTION, JOB_STATUS } from "../../domain/constants";
 import { useInventory } from "../../demo/InventoryContext";
+import { isHeroActiveJob } from "../../demo/heroConfig";
 
 // Sprint 3.6.3: mobile-first visual upgrade + demo interaction layer.
 // The only real state transitions are still updateJobStatus(IN_PROGRESS)
@@ -24,9 +25,13 @@ export default function FieldMode() {
   const { parts, truckStock, usedPartsByJob, consumePart } = useInventory();
   const [travelStageByJob, setTravelStageByJob] = useState({});
 
-  const assignedJobs = jobs.filter(
-    (j) => j.status === JOB_STATUS.ASSIGNED || j.status === JOB_STATUS.IN_PROGRESS
-  );
+  // Hero-story follow-up: the hero job (demo/heroConfig.js), if present
+  // among today's assigned jobs, is sorted to the front so it's always
+  // the auto-opened "Active Job" -- pure display ordering, no data
+  // mutation. Falls back to whatever's first when no hero job matches.
+  const assignedJobs = jobs
+    .filter((j) => j.status === JOB_STATUS.ASSIGNED || j.status === JOB_STATUS.IN_PROGRESS)
+    .sort((a, b) => (isHeroActiveJob(b.customer) ? 1 : 0) - (isHeroActiveJob(a.customer) ? 1 : 0));
 
   const [activeJob, ...upNext] = assignedJobs;
 
@@ -59,7 +64,12 @@ export default function FieldMode() {
         <>
           <div className="fo-card fo-card--field fo-card--field-active">
             <div className="fo-muted">Active Job</div>
-            <h3>{activeJob.customer}</h3>
+            <h3>
+              {activeJob.customer}
+              {isHeroActiveJob(activeJob.customer) && (
+                <span className="fo-chip fo-chip-hero">Active Demo Job</span>
+              )}
+            </h3>
             <p>{activeJob.description}</p>
 
             <ActiveJobActions

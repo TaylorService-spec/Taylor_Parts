@@ -1,8 +1,10 @@
+import { useMemo } from "react";
 import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
 import { assignJob } from "../../domain/jobActions";
 import { JOBS_COLLECTION, TECHNICIANS_COLLECTION, JOB_STATUS, TECH_STATUS } from "../../domain/constants";
 import { computeJobRisk } from "../../domain/jobRiskScoring";
 import { SEVERITY } from "../../domain/controlTower/types";
+import { isHeroActiveJob, isHeroTechnician } from "../../demo/heroConfig";
 
 // Assigns pending jobs to available technicians. Writes back to both the
 // job (technicianId, status) and the technician (status) so Jobs,
@@ -19,6 +21,12 @@ import { SEVERITY } from "../../domain/controlTower/types";
 // label them Emergency (HIGH/CRITICAL) vs Scheduled (MEDIUM/LOW). No new
 // backend logic, no schema change -- assign() below is byte-for-byte the
 // same call into assignJob() this screen already made.
+//
+// Hero-story follow-up: pins demo/heroConfig.js's hero job to the top and
+// pre-selects the hero technician in its assign dropdown. Pure display
+// ordering/defaultValue -- no data mutation, no change to assign()'s
+// call, and any job/technician not matching the hero config renders
+// exactly as before.
 
 const STATUS_CHIP = {
   [JOB_STATUS.IN_PROGRESS]: { label: "In Progress", tone: "in-progress" },
@@ -40,6 +48,14 @@ export default function Dispatch() {
   const { data: technicians } = useFirestoreCollection(TECHNICIANS_COLLECTION);
 
   const technicianName = (id) => technicians.find((t) => t.id === id)?.name;
+  const heroTechnician = technicians.find(
+    (t) => isHeroTechnician(t.name) && t.status === TECH_STATUS.AVAILABLE
+  );
+
+  const sortedJobs = useMemo(
+    () => [...jobs].sort((a, b) => (isHeroActiveJob(b.customer) ? 1 : 0) - (isHeroActiveJob(a.customer) ? 1 : 0)),
+    [jobs]
+  );
 
   async function assign(job, technicianId) {
     if (!technicianId) return;
@@ -62,18 +78,29 @@ export default function Dispatch() {
       ) : jobs.length === 0 ? (
         <p className="fo-muted">No work orders yet.</p>
       ) : (
-        jobs.map((job) => {
+        sortedJobs.map((job) => {
           const chip = statusChipFor(job);
+          const isHero = isHeroActiveJob(job.customer);
           return (
-            <div key={job.id} className={`fo-card fo-card--dispatch fo-card--dispatch-${chip.tone}`}>
+            <div
+              key={job.id}
+              className={`fo-card fo-card--dispatch fo-card--dispatch-${chip.tone}${isHero ? " fo-card--hero" : ""}`}
+            >
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <h3>{job.customer}</h3>
+                <h3>
+                  {job.customer}
+                  {isHero && <span className="fo-chip fo-chip-hero">Active Demo Job</span>}
+                </h3>
                 <span className={`fo-chip fo-chip-${chip.tone}`}>{chip.label}</span>
               </div>
               <p>{job.description}</p>
 
               {!job.technicianId ? (
-                <select defaultValue="" onChange={(e) => assign(job, e.target.value)}>
+                <select
+                  key={heroTechnician?.id ?? "none"}
+                  defaultValue={isHero && heroTechnician ? heroTechnician.id : ""}
+                  onChange={(e) => assign(job, e.target.value)}
+                >
                   <option value="" disabled>
                     Select technician…
                   </option>

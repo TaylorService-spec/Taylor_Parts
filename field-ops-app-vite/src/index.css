@@ -162,6 +162,11 @@ body { -webkit-font-smoothing: antialiased; font-family: -apple-system, BlinkMac
 .fo-chip-scheduled { background: #FFF4DE; color: #A9740D; }
 .fo-chip-in-progress { background: #EAF1F2; color: #2E4A50; }
 .fo-chip-completed { background: #E6F6EC; color: #237A45; }
+.fo-chip-hero { background: #2E4A50; color: #fff; margin-left: 8px; }
+
+.fo-card--hero {
+  box-shadow: 0 0 0 2px #2E4A50, 0 2px 8px rgba(46,74,80,0.25);
+}
 
 .work-order-card {
   background: white;
