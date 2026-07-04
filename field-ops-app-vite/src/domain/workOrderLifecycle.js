@@ -53,3 +53,56 @@ export function isActiveWorkOrder(jobs) {
 export function isCompletedWorkOrder(jobs) {
   return computeWorkOrderState(jobs) === WORK_ORDER_STATE.COMPLETED;
 }
+
+function countByStatus(jobs, status) {
+  return jobs.filter((j) => j.status === status).length;
+}
+
+// Sprint 3.4.2: explains *why* a Work Order is in the state
+// computeWorkOrderState() says it's in, so Control Tower can show a
+// reason instead of just a badge. Same aggregation logic as
+// computeWorkOrderState() -- this doesn't recompute state independently,
+// it narrates the same decision.
+//
+// Returns:
+//   {
+//     state,             // one of WORK_ORDER_STATE
+//     reasons: string[],  // human-readable explanation(s)
+//     metrics: { totalJobs, openJobs, assignedJobs, inProgressJobs, completedJobs },
+//   }
+export function explainWorkOrderState(jobs) {
+  const metrics = {
+    totalJobs: jobs.length,
+    openJobs: countByStatus(jobs, JOB_STATUS.OPEN),
+    assignedJobs: countByStatus(jobs, JOB_STATUS.ASSIGNED),
+    inProgressJobs: countByStatus(jobs, JOB_STATUS.IN_PROGRESS),
+    completedJobs: countByStatus(jobs, JOB_STATUS.COMPLETE),
+  };
+
+  const state = computeWorkOrderState(jobs);
+  const reasons = [];
+
+  switch (state) {
+    case WORK_ORDER_STATE.COMPLETED:
+      reasons.push(`All ${metrics.totalJobs} job(s) are complete`);
+      break;
+    case WORK_ORDER_STATE.IN_PROGRESS:
+      reasons.push(`${metrics.inProgressJobs} job(s) in progress`);
+      if (metrics.openJobs > 0) reasons.push(`${metrics.openJobs} job(s) still unassigned`);
+      break;
+    case WORK_ORDER_STATE.READY:
+      reasons.push(`${metrics.assignedJobs} job(s) assigned, waiting to start`);
+      if (metrics.openJobs > 0) reasons.push(`${metrics.openJobs} job(s) still unassigned`);
+      break;
+    case WORK_ORDER_STATE.BLOCKED:
+    default:
+      reasons.push(
+        metrics.totalJobs === 0
+          ? "No jobs are attached to this work order"
+          : "No job is assigned or in progress -- waiting for technician assignment"
+      );
+      break;
+  }
+
+  return { state, reasons, metrics };
+}
