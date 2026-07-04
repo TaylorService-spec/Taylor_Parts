@@ -86,3 +86,7 @@ That said, several *other* details in that same cluster are still accurate and w
 - Live-browser verification of the Dispatch Control Tower and Field Mode (login flow stability, realtime job updates, technician assignment, status transitions, session persistence across refresh) has not been completed — it requires an actual browser session, which isn't available to a CLI-only Claude session.
 - A second test account (beyond the one admin account provisioned this session) was mentioned but never actually created.
 - `feature-dispatch-control-tower` has no PR yet.
+
+## 2026-07-04 session
+
+No code changes made this session — it was a single question/answer exchange. User asked whether the five project skills (described in "Project skills available" above) exist; confirmed **UNVERIFIED this session in the sense that no fresh `Glob`/file read of `.claude/skills/` was run** — the answer was read off the harness-provided skill list (which is generated from the actual `.claude/skills/` directory contents at session start, so it's a reliable signal, but this session did not independently re-verify via grep/read). All prior "What's still open" items above remain open and untouched — nothing in this session addressed them.
