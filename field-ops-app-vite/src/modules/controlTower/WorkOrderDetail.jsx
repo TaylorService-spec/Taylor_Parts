@@ -1,50 +1,93 @@
-import { computeWorkOrderSignal } from "../../domain/workOrderScoring";
+import { computeWorkOrderSignalFromDoc } from "../../domain/workOrderScoring";
 import { buildTimeline } from "../../domain/timelineBuilder";
 import { describeEvent } from "../../domain/eventModel";
 import { EVENT_ICON } from "../../domain/eventTypes";
 
-// Work Order lifecycle summary for one work order. Pure rendering --
-// consumes the canonical WorkOrderSignal from domain/workOrderScoring.js
-// (Sprint 3.3's Signal layer), which itself wraps
-// domain/workOrderLifecycle.js's explainWorkOrderState() (Sprint 3.4's
-// lifecycle engine -- the single source of truth for state/reasons/
-// metrics). This component never computes lifecycle itself, never
-// fetches Firestore, never mutates jobs or work orders -- it only reads
-// signal.metadata for display:
+// Work Order Engine v1.2 (Epic 1, see docs/architecture/ADR-002):
+// renders a real, persisted fieldops_wos doc -- NOT an aggregate
+// derived from jobs the way this component worked before this
+// migration. Still pure rendering: consumes
+// computeWorkOrderSignalFromDoc() (domain/workOrderScoring.js), which
+// wraps domain/workOrderLifecycle.js's explainWorkOrder() (a pure MAP
+// from workOrder.status, never inference from a jobs array -- see that
+// file's header comment for why the two paths are kept separate).
 //
-//   Lifecycle Engine (workOrderLifecycle.js)
-//         -> Signal Layer (workOrderScoring.js)
+//   fieldops_wos.status (real, persisted)
+//         -> explainWorkOrder() (workOrderLifecycle.js, map-only)
+//         -> computeWorkOrderSignalFromDoc() (workOrderScoring.js)
 //         -> WorkOrderDetail (here)
 //         -> React UI
 //
-// Sprint 3.5.4: also renders this work order's Operational History --
-// the same domain/timelineBuilder.js used by
-// modules/controlTower/panels/ActivityTimelinePanel.jsx, scoped to just
-// this work order's jobs (buildTimeline() only needs a jobs array, and
-// `jobs` here is already exactly one work order's jobs). No event
-// generation happens in this component -- timelineBuilder.js is the only
-// builder, so both this history and the Activity Timeline panel are
-// guaranteed to describe the same job/work-order the same way.
-export default function WorkOrderDetail({ workOrderId, jobs }) {
-  const signal = computeWorkOrderSignal(workOrderId, jobs);
-  const { state, reasons, metrics } = signal.metadata;
+// `jobs` is still accepted as a prop, but now purely for "Operational
+// History" display -- Jobs soft-link to this Work Order via
+// job.workOrderId === workOrder.id (unenforced, no referential
+// integrity -- see ControlTower.jsx). Jobs remain the timeline source,
+// unchanged from before this migration.
+//
+// No action buttons yet (Accept/Travel/Arrive/Complete/Dispatch/Cancel)
+// -- Phase 2, deliberately deferred. See the TODO block below for where
+// they'll go, gated by domain/workOrderWorkflow.js's getAllowedActions().
+export default function WorkOrderDetail({ workOrder, jobs }) {
+  const signal = computeWorkOrderSignalFromDoc(workOrder);
+  const { state, isCancelled, reasons } = signal.metadata;
   const history = buildTimeline(jobs);
+
+  const timestampRows = [
+    ["Scheduled", workOrder.scheduledStart],
+    ["Dispatched", workOrder.dispatchedAt],
+    ["Accepted", workOrder.acceptedAt],
+    ["En Route", workOrder.enRouteAt],
+    ["Arrived", workOrder.arrivedAt],
+    ["Work Started", workOrder.workStartedAt],
+    ["Completed", workOrder.completedAt],
+    ["Closed", workOrder.closedAt],
+  ].filter(([, value]) => value != null);
 
   return (
     <div className="work-order-card">
       <h3>
-        Work Order: {workOrderId}
-        <span className={`wo-status wo-${state.toLowerCase()}`}>{state}</span>
+        {workOrder.woNumber}
+        <span className={`wo-status wo-${state.toLowerCase()}`}>{workOrder.status}</span>
+        {isCancelled && <span className="wo-status wo-cancelled">CANCELLED</span>}
       </h3>
 
       <div className="fo-muted">{reasons.join(" · ")}</div>
 
       <div>
-        Open: {metrics.openJobs} |
-        Assigned: {metrics.assignedJobs} |
-        In Progress: {metrics.inProgressJobs} |
-        Completed: {metrics.completedJobs}
+        Priority: {workOrder.priority}
+        {workOrder.severity && <> | Severity: {workOrder.severity}</>}
+        {" "}| Type: {workOrder.type}
       </div>
+
+      <div>
+        Customer: {workOrder.customerId} | Location: {workOrder.locationId}
+      </div>
+
+      {timestampRows.length > 0 && (
+        <div>
+          {timestampRows.map(([label, value]) => (
+            <span key={label} className="fo-muted">
+              {label}: {value.toDate().toLocaleString()}{" "}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {(workOrder.complaint || workOrder.diagnosis || workOrder.resolution) && (
+        <div>
+          {workOrder.complaint && <div>Complaint: {workOrder.complaint}</div>}
+          {workOrder.diagnosis && <div>Diagnosis: {workOrder.diagnosis}</div>}
+          {workOrder.resolution && <div>Resolution: {workOrder.resolution}</div>}
+        </div>
+      )}
+
+      {/* Phase 2 TODO: Accept/Travel/Arrive/Complete (technician) and
+          Schedule/Dispatch/Close/Cancel (dispatcher) action buttons go
+          here, each gated by
+          domain/workOrderWorkflow.js's getAllowedActions(workOrder.status,
+          role, isOwnAssignment) so only currently-valid, currently-
+          permitted actions render. Not implemented this pass -- see
+          docs/architecture/ADR-002-work-order-engine.md. */}
 
       {history.length > 0 && (
         <div className="wo-history">

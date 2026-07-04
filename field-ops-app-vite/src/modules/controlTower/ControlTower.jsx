@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { JOBS_COLLECTION, TECHNICIANS_COLLECTION, JOB_STATUS, TECH_STATUS } from "../../domain/constants";
 import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
+import { useWorkOrders } from "../../hooks/useWorkOrders";
 import { groupJobsByTechnician } from "./techUtils";
 import AtRiskPanel from "./panels/AtRiskPanel";
 import DispatchQueuePanel from "./panels/DispatchQueuePanel";
@@ -34,27 +35,27 @@ import WorkOrderDetail from "./WorkOrderDetail";
 //      ({ id, score, severity, label, metadata }) per
 //      domain/controlTower/types.js -- asserted via assertValidSignal.
 //
-// Reconciled dependency chain (Sprint 3.3 + 3.4): Control Tower never
+// Reconciled dependency chain (Sprint 3.3 + 3.4, updated for Work Order
+// Engine v1.2 -- see docs/architecture/ADR-002): Control Tower never
 // computes Work Order lifecycle itself -- it only renders.
 //
 //   Firestore
-//     -> Job Workflow (3.1: assignJob()/updateJobStatus())
-//     -> Work Order Lifecycle (3.4: workOrderLifecycle.js -- the one
-//        place that computes state/reasons/metrics from jobs)
-//     -> Validation (3.4: workOrderValidation.js)
-//     -> Signal Layer (3.3: workOrderScoring.js/dispatchScoring.js/
-//        jobRiskScoring.js -- wrap lifecycle/scoring output in the
-//        canonical Signal shape)
+//     -> Job Workflow (3.1: assignJob()/updateJobStatus()) -- unchanged
+//     -> fieldops_wos (Epic 1: real, persisted Work Order docs, written
+//        only by the createWorkOrder/transitionWorkOrder Cloud
+//        Functions -- replaces the old derived-from-jobs grouping this
+//        component used before)
+//     -> Signal Layer (workOrderScoring.js's computeWorkOrderSignalFromDoc,
+//        a map from workOrder.status -- wraps
+//        domain/workOrderLifecycle.js's explainWorkOrder())
 //     -> Control Tower Panels (3.3: AtRiskPanel/DispatchQueuePanel/
-//        OverloadedTechPanel, and WorkOrderDetail) -- consume Signals,
-//        never recompute them.
-//
-// The lifecycle engine sits below the Signal layer; the Signal layer
-// consumes lifecycle, not the other way around.
+//        OverloadedTechPanel, ActivityTimelinePanel, and
+//        WorkOrderDetail) -- consume Signals, never recompute them.
 
 export default function ControlTower() {
   const { data: jobs } = useFirestoreCollection(JOBS_COLLECTION);
   const { data: technicians } = useFirestoreCollection(TECHNICIANS_COLLECTION);
+  const { data: workOrders } = useWorkOrders();
 
   const openJobs = jobs.filter((j) => j.status === JOB_STATUS.OPEN).length;
   const assignedJobs = jobs.filter((j) => j.status === JOB_STATUS.ASSIGNED || j.status === JOB_STATUS.IN_PROGRESS).length;
@@ -62,33 +63,19 @@ export default function ControlTower() {
   const availableTechs = technicians.filter((t) => t.status === TECH_STATUS.AVAILABLE).length;
   const onJobTechs = technicians.filter((t) => t.status === TECH_STATUS.ON_JOB).length;
 
-  // Group jobs by workOrderId. Jobs without one yet (no work-order picker
-  // exists in the UI so far) fall into the "unassigned" bucket. This is
-  // grouping only -- no lifecycle decision is made here; state/counts
-  // come from domain/workOrderLifecycle.js below. It's also the
-  // `workOrders` snapshot passed to every panel -- there's no populated
-  // Firestore "workOrders" collection yet (see domain/workOrders.js), so
-  // work orders are derived from jobs, same as everywhere else in
-  // Control Tower.
-  const workOrderGroups = useMemo(() => {
-    const groups = {};
+  // Jobs with no workOrderId at all -- still a legitimate operational
+  // signal now that job.workOrderId is a real (soft, unenforced) FK to
+  // fieldops_wos. Separately, a job.workOrderId that points at a WO doc
+  // that never existed or was since removed is now also *possible* --
+  // there's no referential integrity between the two collections
+  // (deliberate, see docs/architecture/ADR-002) -- but that anomaly
+  // isn't detected/surfaced this pass.
+  const unassignedJobs = useMemo(() => jobs.filter((job) => !job.workOrderId), [jobs]);
 
-    jobs.forEach((job) => {
-      const id = job.workOrderId || "unassigned";
-
-      if (!groups[id]) {
-        groups[id] = { workOrderId: id, jobs: [] };
-      }
-
-      groups[id].jobs.push(job);
-    });
-
-    return Object.values(groups);
-  }, [jobs]);
-
-  const unassignedWorkOrders = workOrderGroups.find(
-    (wo) => wo.workOrderId === "unassigned"
-  );
+  // Jobs linked to a given real Work Order doc, for that WO's
+  // "Operational History" (WorkOrderDetail.jsx) -- a soft-coupled join
+  // done at render time, no denormalization, no write-time sync.
+  const jobsForWorkOrder = (workOrderId) => jobs.filter((j) => j.workOrderId === workOrderId);
 
   const techGroups = useMemo(() => groupJobsByTechnician(jobs), [jobs]);
   const technicianName = (id) => technicians.find((t) => t.id === id)?.name || id;
@@ -119,14 +106,14 @@ export default function ControlTower() {
         </div>
       </div>
 
-      {unassignedWorkOrders && (
+      {unassignedJobs.length > 0 && (
         <div className="warning">
-          ⚠ Jobs missing Work Order assignment: {unassignedWorkOrders.jobs.length}
+          ⚠ Jobs missing Work Order assignment: {unassignedJobs.length}
         </div>
       )}
 
-      {workOrderGroups.map((wo) => (
-        <WorkOrderDetail key={wo.workOrderId} workOrderId={wo.workOrderId} jobs={wo.jobs} />
+      {workOrders.map((wo) => (
+        <WorkOrderDetail key={wo.id} workOrder={wo} jobs={jobsForWorkOrder(wo.id)} />
       ))}
 
       <div className="tech-overview">
@@ -138,10 +125,10 @@ export default function ControlTower() {
         ))}
       </div>
 
-      <AtRiskPanel jobs={jobs} technicians={technicians} workOrders={workOrderGroups} />
-      <DispatchQueuePanel jobs={jobs} technicians={technicians} workOrders={workOrderGroups} />
-      <OverloadedTechPanel jobs={jobs} technicians={technicians} workOrders={workOrderGroups} />
-      <ActivityTimelinePanel jobs={jobs} technicians={technicians} workOrders={workOrderGroups} />
+      <AtRiskPanel jobs={jobs} technicians={technicians} workOrders={workOrders} />
+      <DispatchQueuePanel jobs={jobs} technicians={technicians} workOrders={workOrders} />
+      <OverloadedTechPanel jobs={jobs} technicians={technicians} workOrders={workOrders} />
+      <ActivityTimelinePanel jobs={jobs} technicians={technicians} workOrders={workOrders} />
     </div>
   );
 }
