@@ -1,6 +1,6 @@
 import { SEVERITY, createSignal } from "./controlTower/types";
 import { WORK_ORDER_STATE } from "./constants";
-import { explainWorkOrderState } from "./workOrderLifecycle";
+import { explainWorkOrderState, explainWorkOrder } from "./workOrderLifecycle";
 
 // Sprint 3.3's Signal layer for Work Orders, sitting on top of Sprint
 // 3.4's lifecycle engine (domain/workOrderLifecycle.js). This file
@@ -43,5 +43,22 @@ export function computeWorkOrderSignal(workOrderId, jobs) {
     severity: STATE_SEVERITY[state],
     label: `Work Order ${workOrderId}: ${state}`,
     metadata: { state, reasons, metrics },
+  });
+}
+
+// Work Order Engine v1.2 sibling of computeWorkOrderSignal() above --
+// same Signal envelope, same STATE_SEVERITY/STATE_SCORE tables, but
+// derived from a real fieldops_wos doc (via workOrderLifecycle.js's
+// explainWorkOrder(), a pure map from workOrderDoc.status) instead of a
+// jobs array. computeWorkOrderSignal() and its callers are untouched.
+export function computeWorkOrderSignalFromDoc(workOrderDoc) {
+  const { state, isCancelled, reasons, metrics } = explainWorkOrder(workOrderDoc);
+
+  return createSignal({
+    id: workOrderDoc.id,
+    score: STATE_SCORE[state],
+    severity: STATE_SEVERITY[state],
+    label: `Work Order ${workOrderDoc.woNumber}: ${workOrderDoc.status}`,
+    metadata: { state, isCancelled, reasons, metrics },
   });
 }

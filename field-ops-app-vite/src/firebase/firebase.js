@@ -1,6 +1,7 @@
 import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
+import { getFunctions } from "firebase/functions";
 
 const firebaseConfig = {
   apiKey: "AIzaSyATXIiI5C1m" + "LmsvS0k-x3i7ZxAbAPtRpSY",
@@ -15,3 +16,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const auth = getAuth(app);
+// Work Order Engine v1.2 (Epic 1): region must match functions/src's
+// deploy region (see functions/src/createWorkOrder.ts/
+// transitionWorkOrder.ts's onCall({ region: "us-central1" })).
+export const functions = getFunctions(app, "us-central1");
