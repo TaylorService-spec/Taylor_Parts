@@ -16,5 +16,12 @@ service cloud.firestore {
     match /fieldops_technicians/{techId} {
       allow read, write: if isSignedIn();
     }
+
+    // Role docs are provisioned by an admin (console or Admin SDK), never
+    // by the client -- a user must not be able to grant themself a role.
+    match /users/{userId} {
+      allow read: if isSignedIn() && request.auth.uid == userId;
+      allow write: if false;
+    }
   }
 }

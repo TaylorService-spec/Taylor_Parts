@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import ControlTower from "./modules/controlTower/ControlTower";
 import Jobs from "./modules/jobs/Jobs";
 import Technicians from "./modules/technicians/Technicians";
@@ -6,9 +6,11 @@ import Dispatch from "./modules/dispatch/Dispatch";
 import FieldMode from "./modules/mobile/FieldMode";
 import Inventory from "./modules/inventory/Inventory";
 import { useAuth } from "./auth/AuthContext";
+import Login from "./auth/Login";
 import AppHeader from "./shared/ui/AppHeader";
 import { InventoryProvider } from "./demo/InventoryContext";
 import { IS_DEMO } from "./config/env";
+import { ROLE_NAV_ACCESS } from "./domain/constants";
 
 const NAV = [
   { key: "controlTower", label: "Control Tower", Component: ControlTower },
@@ -24,18 +26,29 @@ export default function App() {
   // shared demo link opens straight onto the hero job. UI default only --
   // NAV/routing itself is unchanged, and every tab remains one click away.
   const [activeTab, setActiveTab] = useState("dispatch");
-  const { user, login, loading } = useAuth();
-  const ActiveView = NAV.find((n) => n.key === activeTab)?.Component ?? Dispatch;
+  const { user, role, loading } = useAuth();
+  const allowedKeys = ROLE_NAV_ACCESS[role] ?? [];
+  const visibleNav = NAV.filter((n) => allowedKeys.includes(n.key));
+
+  useEffect(() => {
+    if (visibleNav.length && !allowedKeys.includes(activeTab)) {
+      setActiveTab(visibleNav[0].key);
+    }
+  }, [role]);
+
+  const ActiveView = visibleNav.find((n) => n.key === activeTab)?.Component ?? visibleNav[0]?.Component;
 
   if (loading) return <div className="fo-panel">Loading...</div>;
 
-  if (!user) {
+  if (!user) return <Login />;
+
+  if (!visibleNav.length) {
     return (
       <div className="fo-panel">
-        <h2>Field Ops Login</h2>
-        <button onClick={() => login("fieldops@test.com", "ASU!123!")}>
-          Sign In
-        </button>
+        <h2>No access</h2>
+        <p className="fo-muted">
+          Your account isn't assigned a role yet. Contact an admin to get access.
+        </p>
       </div>
     );
   }
@@ -48,7 +61,7 @@ export default function App() {
         <header className="fo-header">
           <h1>Field Ops</h1>
           <nav className="fo-nav">
-            {NAV.map((item) => (
+            {visibleNav.map((item) => (
               <button
                 key={item.key}
                 className={activeTab === item.key ? "fo-nav-btn fo-nav-btn-active" : "fo-nav-btn"}
