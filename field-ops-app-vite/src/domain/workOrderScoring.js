@@ -1,19 +1,15 @@
+import { SEVERITY, createSignal } from "./controlTower/types";
 import { JOB_STATUS, WORK_ORDER_STATE } from "./constants";
-import { createSignal, SEVERITY } from "./controlTower/types";
+import { computeWorkOrderState } from "./workOrderLifecycle";
 
-// Computes Work Order readiness state. Derived only -- never persisted,
-// never written back to Firestore. JOB_STATUS remains the single source
-// of truth; this just summarizes a set of jobs already grouped under one
-// work order.
-export const computeWorkOrderStatus = (jobs) => {
-  const completed = jobs.filter((j) => j.status === JOB_STATUS.COMPLETE).length;
-  const inProgress = jobs.filter((j) => j.status === JOB_STATUS.IN_PROGRESS).length;
-
-  if (completed === jobs.length) return WORK_ORDER_STATE.COMPLETED;
-  if (inProgress > 0) return WORK_ORDER_STATE.IN_PROGRESS;
-  if (jobs.some((j) => j.status === JOB_STATUS.ASSIGNED)) return WORK_ORDER_STATE.READY;
-  return WORK_ORDER_STATE.BLOCKED;
-};
+// Sprint 3.3's Signal layer for Work Orders, sitting on top of Sprint
+// 3.4's lifecycle engine (domain/workOrderLifecycle.js). This file
+// computes nothing about Work Order state itself -- computeWorkOrderState()
+// is the single source of truth. computeWorkOrderSignal() below only
+// wraps that output in the shared { id, score, severity, label, metadata }
+// envelope (see domain/controlTower/types.js) so Control Tower's panels/
+// components can render Work Orders the same way they render risk/
+// dispatch signals.
 
 // WORK_ORDER_STATE is a discrete state, not a continuous magnitude (a
 // work order isn't "60% blocked"), so its score/severity are a fixed
@@ -33,12 +29,17 @@ const STATE_SCORE = {
   [WORK_ORDER_STATE.COMPLETED]: 0,
 };
 
-// Canonical WorkOrderSignal for Control Tower's panels: wraps
-// computeWorkOrderStatus() in the shared { id, score, severity, label,
-// metadata } envelope (see domain/controlTower/types.js) so every panel
-// renders work orders the same way it renders risk/dispatch signals.
+// Transitional re-export so ControlTower.jsx's still-unmigrated import
+// keeps working for this one commit -- removed once ControlTower.jsx
+// switches to WorkOrderDetail/computeWorkOrderSignal in 451b161.
+export const computeWorkOrderStatus = computeWorkOrderState;
+
+// Canonical WorkOrderSignal for Control Tower: wraps
+// workOrderLifecycle.computeWorkOrderState() in the shared Signal
+// envelope. metadata carries raw job counts for display -- consumers
+// never recompute state themselves.
 export function computeWorkOrderSignal(workOrderId, jobs) {
-  const state = computeWorkOrderStatus(jobs);
+  const state = computeWorkOrderState(jobs);
   const completed = jobs.filter((j) => j.status === JOB_STATUS.COMPLETE).length;
   const inProgress = jobs.filter((j) => j.status === JOB_STATUS.IN_PROGRESS).length;
   const pending = jobs.length - completed - inProgress;
