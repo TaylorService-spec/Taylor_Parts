@@ -2,6 +2,7 @@
 
 build/
 dist/
+dist-firebase/
 node_modules/
 .vscode/
 .firebase/

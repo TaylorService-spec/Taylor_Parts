@@ -6,7 +6,7 @@
     "indexes": "firestore.indexes.json"
   },
   "hosting": {
-    "public": "field-ops-app-vite/dist",
+    "public": "field-ops-app-vite/dist-firebase",
     "ignore": [
       "firebase.json",
       "**/.*",

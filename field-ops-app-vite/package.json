@@ -6,8 +6,10 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:firebase": "vite build --mode firebase-preview",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "tunnel": "bash ../scripts/dev-tunnel.sh"
   },
   "dependencies": {
     "firebase": "^12.15.0",
