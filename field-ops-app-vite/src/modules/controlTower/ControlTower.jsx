@@ -63,10 +63,6 @@ export default function ControlTower() {
     return Object.values(groups);
   }, [jobs]);
 
-  const activeWorkOrders = workOrderGroups.filter(
-    (wo) => wo.statusCounts.completed !== wo.jobs.length
-  );
-
   const unassignedWorkOrders = workOrderGroups.find(
     (wo) => wo.workOrderId === "unassigned"
   );
@@ -108,11 +104,6 @@ export default function ControlTower() {
           <div className="fo-stat-value">{onJobTechs}</div>
           <div className="fo-stat-label">Techs On Work Order</div>
         </div>
-      </div>
-
-      <div className="fo-card">
-        <h3>CRM Activity</h3>
-        <p>Active Work Orders: {activeWorkOrders.length}</p>
       </div>
 
       {unassignedWorkOrders && (

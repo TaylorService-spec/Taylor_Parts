@@ -14,7 +14,7 @@ export default function DispatchQueuePanel({ jobs, technicians }) {
   const technicianName = (id) => technicians.find((t) => t.id === id)?.name || id;
 
   return (
-    <div className="tech-overview">
+    <div className="tech-overview tech-overview--compact">
       <h3>Recommended Dispatch Queue</h3>
       {recommendations.length === 0 ? (
         <p className="fo-muted">No open jobs awaiting dispatch.</p>

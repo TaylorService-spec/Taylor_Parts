@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { detectStalledJobs } from "../../../domain/jobRiskScoring";
+import SignalBadge from "../../../shared/ui/SignalBadge";
 
 // Read-only panel: renders RiskSignal objects from jobRiskScoring. Takes
 // only { jobs, technicians, workOrders } -- never fetches Firestore
@@ -19,7 +20,7 @@ export default function AtRiskPanel({ jobs, technicians }) {
   }, [stalledJobs, sort]);
 
   return (
-    <div className="tech-overview">
+    <div className="tech-overview tech-overview--compact">
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <h3>At Risk Jobs</h3>
         <select value={sort} onChange={(e) => setSort(e.target.value)}>
@@ -34,9 +35,7 @@ export default function AtRiskPanel({ jobs, technicians }) {
           <div key={signal.id} className="work-order-card">
             <h3>
               {signal.label}
-              <span className={`risk-badge risk-${signal.severity.toLowerCase()}`}>
-                {signal.severity}
-              </span>
+              <SignalBadge severity={signal.severity}>{signal.severity}</SignalBadge>
             </h3>
             <div className="fo-muted">
               Work Order: {signal.metadata.workOrderId || "unassigned"} · ~
