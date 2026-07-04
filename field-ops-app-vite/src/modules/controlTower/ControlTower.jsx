@@ -79,7 +79,7 @@ export default function ControlTower() {
   // domain/dispatchScoring.js.
   const [riskSort, setRiskSort] = useState("severity");
 
-  const stalledJobs = useMemo(() => detectStalledJobs(jobs), [jobs]);
+  const stalledJobs = useMemo(() => detectStalledJobs(jobs, technicians), [jobs, technicians]);
   const sortedStalledJobs = useMemo(() => {
     if (riskSort === "age") {
       return [...stalledJobs].sort((a, b) => b.metadata.ageHours - a.metadata.ageHours);
@@ -183,7 +183,9 @@ export default function ControlTower() {
               <div className="fo-muted">
                 Work Order: {signal.metadata.workOrderId || "unassigned"} · ~{Math.round(signal.metadata.ageHours)}h since creation (approx.)
               </div>
-              <div className="fo-muted">{signal.metadata.reasons.join(" · ")}</div>
+              <div className="fo-muted">
+                {signal.metadata.factors.map((f) => f.explanation).join(" · ")}
+              </div>
             </div>
           ))
         )}
