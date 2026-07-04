@@ -2,6 +2,10 @@
 
 Orientation notes for a Claude session picking up this repo cold. Read `PROJECT_ARCHITECTURE.md` first for the system design; this file is about *how to work in this repo*, not what it does.
 
+## Project skills available
+
+`.claude/skills/` has five project-specific skills, built after noticing the same processes getting re-derived from scratch across sessions: `admin-check` (privileged server-side Firestore checks via a reusable `firebase-admin` helper), `firestore-audit` (full rules/index/hosting/collection-drift audit), `doc-reality-check` (verify a doc's schema claims against real code + live data -- `Architecture.md`/`FirebaseIntegration.md`/`SprintRoadmap.md`/`Deployment.md` still need this run against them), `review-external-snippet` (checklist for pasted/external code before applying it), and `branch-hygiene` (splitting unrelated work across branches cleanly). Check there before re-deriving one of these processes from first principles.
+
 ## What this repo is
 
 `Taylor_Parts` — a production React + Firebase field-operations app. Two logical halves currently in the tree:

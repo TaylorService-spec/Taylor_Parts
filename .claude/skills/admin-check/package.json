@@ -1,0 +1,8 @@
+{
+  "name": "admin-check",
+  "private": true,
+  "description": "Standalone firebase-admin scratch tool for this skill -- not part of the Vite app's dependency tree, run via `npm install` in this folder once.",
+  "dependencies": {
+    "firebase-admin": "^14.1.0"
+  }
+}
