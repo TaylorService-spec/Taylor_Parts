@@ -38,6 +38,13 @@ async function fetchUserDoc(uid, maxRetries = 3) {
 }
 
 export function AuthProvider({ children }) {
+  // Temporary diagnostic: confirms AuthProvider mounts exactly once (two
+  // logs in dev is expected StrictMode double-invoke, not a bug -- watch
+  // for more than that, which would mean two real provider instances
+  // and therefore two competing onAuthStateChanged listeners). Remove
+  // once the lifecycle testing is done.
+  console.log("AUTH PROVIDER INSTANCE");
+
   const [status, setStatus] = useState(AUTH_STATUS.LOADING);
   const [user, setUser] = useState(null);
   const [role, setRole] = useState(null);

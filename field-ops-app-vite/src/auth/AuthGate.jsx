@@ -9,25 +9,18 @@ import Login from "./Login";
 // concern handled inside App.jsx -- this gate only decides "may this
 // account use the app at all," not "which parts of it."
 export function AuthGate({ children }) {
-  const { isLoading, isAuthenticated, role } = useAuth();
+  const auth = useAuth();
 
-  if (isLoading) {
+  if (auth.isLoading) {
     return <div className="fo-panel">Loading...</div>;
   }
 
-  if (!isAuthenticated) {
+  if (!auth.user) {
     return <Login />;
   }
 
-  if (role === null) {
-    return (
-      <div className="fo-panel">
-        <h2>No access</h2>
-        <p className="fo-muted">
-          Your account isn't assigned a role yet. Contact an admin to get access.
-        </p>
-      </div>
-    );
+  if (auth.role === null) {
+    return <div className="fo-panel">No role assigned yet</div>;
   }
 
   return children;
