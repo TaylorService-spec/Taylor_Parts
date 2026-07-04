@@ -117,7 +117,26 @@ body { -webkit-font-smoothing: antialiased; font-family: -apple-system, BlinkMac
   border: 1px solid #EEF1F0;
   border-radius: 8px;
   padding: 14px;
+  margin-bottom: 10px;
+  border-left-width: 4px;
 }
+
+.fo-card--dispatch-emergency { border-left-color: #B23B3B; }
+.fo-card--dispatch-scheduled { border-left-color: #A9740D; }
+.fo-card--dispatch-in-progress { border-left-color: #2E4A50; }
+.fo-card--dispatch-completed { border-left-color: #237A45; }
+
+.fo-chip {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.fo-chip-emergency { background: #FDECEC; color: #B23B3B; }
+.fo-chip-scheduled { background: #FFF4DE; color: #A9740D; }
+.fo-chip-in-progress { background: #EAF1F2; color: #2E4A50; }
+.fo-chip-completed { background: #E6F6EC; color: #237A45; }
 
 .work-order-card {
   background: white;
