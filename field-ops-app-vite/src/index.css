@@ -180,3 +180,20 @@ button:hover {
 .tech-overview--compact h3 {
   font-size: 13px;
 }
+
+.wo-history {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #eef1f0;
+}
+
+.wo-history h4 {
+  margin: 0 0 4px;
+  font-size: 12px;
+  color: #667;
+}
+
+.wo-history-row {
+  font-size: 13px;
+  padding: 2px 0;
+}
