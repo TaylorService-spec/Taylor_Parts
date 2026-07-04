@@ -8,6 +8,7 @@ import Inventory from "./modules/inventory/Inventory";
 import { useAuth } from "./auth/AuthContext";
 import AppHeader from "./shared/ui/AppHeader";
 import { InventoryProvider } from "./demo/InventoryContext";
+import { IS_DEMO } from "./config/env";
 
 const NAV = [
   { key: "controlTower", label: "Control Tower", Component: ControlTower },
@@ -42,6 +43,7 @@ export default function App() {
   return (
     <InventoryProvider>
       <div className="fo-app">
+        {IS_DEMO && <div className="fo-demo-banner">DEMO MODE ACTIVE (SAFE - NO WRITES TO PRODUCTION)</div>}
         <AppHeader />
         <header className="fo-header">
           <h1>Field Ops</h1>
