@@ -168,6 +168,14 @@ body { -webkit-font-smoothing: antialiased; font-family: -apple-system, BlinkMac
   box-shadow: 0 0 0 2px #2E4A50, 0 2px 8px rgba(46,74,80,0.25);
 }
 
+.fo-table td {
+  transition: background-color 0.6s ease-out;
+}
+
+.fo-qty-flash {
+  background-color: #FFF4DE;
+}
+
 .work-order-card {
   background: white;
   border: 1px solid #e5e7eb;
