@@ -15,6 +15,14 @@ export const HERO_IDS = {
   truck: "Truck 12",
 };
 
+// The hero job's required parts. This is demo-layer-only, NOT a
+// Firestore field -- Sprint 3.6's hard rule is no schema changes, so
+// this never gets added to the real job document. It's a local lookup
+// keyed by the hero job's customer name, matched against
+// demo/inventoryData.js's SEED_PARTS names (parts use their name as
+// their id, so these strings double as truck/warehouse stock keys too).
+export const HERO_JOB_PARTS_REQUIRED = ["Compressor", "Capacitor", "Filter Drier"];
+
 export function isHeroTechnician(name) {
   return name === HERO_IDS.technician;
 }

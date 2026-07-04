@@ -34,6 +34,12 @@ export function InventoryProvider({ children }) {
   // to that job's used-parts list (read by FieldMode's Complete Job
   // summary). Local state only -- no Firestore write, no change to the
   // job document itself.
+  //
+  // Deliberately local-only, not "optionally" backed by Firestore:
+  // Sprint 3.6's hard rule is no new Firestore collections, and this
+  // update needs to be instant and reliable for a live demo -- a network
+  // round-trip (even a fast one) risks visible lag or a dropped write
+  // mid-presentation that a purely in-memory setState can't have.
   const consumePart = useCallback((jobId, partId, quantity = 1) => {
     setTruckStock((prev) => ({
       ...prev,

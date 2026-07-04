@@ -3,7 +3,7 @@ import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
 import { updateJobStatus } from "../../domain/jobActions";
 import { JOBS_COLLECTION, JOB_STATUS } from "../../domain/constants";
 import { useInventory } from "../../demo/InventoryContext";
-import { isHeroActiveJob } from "../../demo/heroConfig";
+import { isHeroActiveJob, HERO_JOB_PARTS_REQUIRED } from "../../demo/heroConfig";
 
 // Sprint 3.6.3: mobile-first visual upgrade + demo interaction layer.
 // The only real state transitions are still updateJobStatus(IN_PROGRESS)
@@ -71,6 +71,12 @@ export default function FieldMode() {
               )}
             </h3>
             <p>{activeJob.description}</p>
+
+            {isHeroActiveJob(activeJob.customer) && (
+              <div className="fo-muted" style={{ marginBottom: 8 }}>
+                Parts required: {HERO_JOB_PARTS_REQUIRED.join(", ")}
+              </div>
+            )}
 
             <ActiveJobActions
               job={activeJob}
