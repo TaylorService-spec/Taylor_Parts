@@ -6,6 +6,7 @@ import Dispatch from "./modules/dispatch/Dispatch";
 import FieldMode from "./modules/mobile/FieldMode";
 import { useAuth } from "./auth/AuthContext";
 import AppHeader from "./shared/ui/AppHeader";
+import { InventoryProvider } from "./demo/InventoryContext";
 
 const NAV = [
   { key: "controlTower", label: "Control Tower", Component: ControlTower },
@@ -34,25 +35,27 @@ export default function App() {
   }
 
   return (
-    <div className="fo-app">
-      <AppHeader />
-      <header className="fo-header">
-        <h1>Field Ops</h1>
-        <nav className="fo-nav">
-          {NAV.map((item) => (
-            <button
-              key={item.key}
-              className={activeTab === item.key ? "fo-nav-btn fo-nav-btn-active" : "fo-nav-btn"}
-              onClick={() => setActiveTab(item.key)}
-            >
-              {item.label}
-            </button>
-          ))}
-        </nav>
-      </header>
-      <main className="fo-main">
-        <ActiveView />
-      </main>
-    </div>
+    <InventoryProvider>
+      <div className="fo-app">
+        <AppHeader />
+        <header className="fo-header">
+          <h1>Field Ops</h1>
+          <nav className="fo-nav">
+            {NAV.map((item) => (
+              <button
+                key={item.key}
+                className={activeTab === item.key ? "fo-nav-btn fo-nav-btn-active" : "fo-nav-btn"}
+                onClick={() => setActiveTab(item.key)}
+              >
+                {item.label}
+              </button>
+            ))}
+          </nav>
+        </header>
+        <main className="fo-main">
+          <ActiveView />
+        </main>
+      </div>
+    </InventoryProvider>
   );
 }
