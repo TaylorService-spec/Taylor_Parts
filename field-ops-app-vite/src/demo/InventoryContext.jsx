@@ -34,7 +34,7 @@ export function InventoryProvider({ children }) {
   // to that job's used-parts list (read by FieldMode's Complete Job
   // summary). Local state only -- no Firestore write, no change to the
   // job document itself.
-  const usePart = useCallback((jobId, partId, quantity = 1) => {
+  const consumePart = useCallback((jobId, partId, quantity = 1) => {
     setTruckStock((prev) => ({
       ...prev,
       [partId]: Math.max(0, (prev[partId] ?? 0) - quantity),
@@ -51,7 +51,7 @@ export function InventoryProvider({ children }) {
     truckStock,
     usedPartsByJob,
     transferPart,
-    usePart,
+    consumePart,
   };
 
   return <InventoryContext.Provider value={value}>{children}</InventoryContext.Provider>;
