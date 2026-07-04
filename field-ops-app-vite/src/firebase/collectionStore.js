@@ -1,9 +1,12 @@
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from "firebase/firestore";
+import { collection, getDocs, doc } from "firebase/firestore";
 import { db } from "./firebase";
 import { JOBS_COLLECTION, TECHNICIANS_COLLECTION } from "../domain/constants";
+import { safeAddDoc, safeUpdateDoc, safeDeleteDoc } from "../lib/firebaseSafe";
 
 // Thin wrapper so the module components don't each need to know
-// Firestore's API shape.
+// Firestore's API shape. Every write goes through lib/firebaseSafe.js's
+// safe* wrappers, so demo/panic mode (config/env.js) blocks writes here
+// the same way it does everywhere else.
 export function makeCollectionStore(collectionName) {
   const colRef = collection(db, collectionName);
   return {
@@ -11,13 +14,17 @@ export function makeCollectionStore(collectionName) {
       return getDocs(colRef).then((snap) => snap.docs.map((d) => ({ id: d.id, ...d.data() })));
     },
     add(data) {
-      return addDoc(colRef, { ...data, createdAt: Date.now() }).then((ref) => ({ id: ref.id, ...data }));
+      return safeAddDoc(colRef, { ...data, createdAt: Date.now() }).then((ref) =>
+        ref.blocked ? ref : { id: ref.id, ...data }
+      );
     },
     update(id, data) {
-      return updateDoc(doc(db, collectionName, id), data).then(() => ({ id, ...data }));
+      return safeUpdateDoc(doc(db, collectionName, id), data).then((result) =>
+        result?.blocked ? result : { id, ...data }
+      );
     },
     remove(id) {
-      return deleteDoc(doc(db, collectionName, id));
+      return safeDeleteDoc(doc(db, collectionName, id));
     },
   };
 }
