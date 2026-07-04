@@ -5,6 +5,7 @@ import { groupJobsByTechnician } from "./techUtils";
 import AtRiskPanel from "./panels/AtRiskPanel";
 import DispatchQueuePanel from "./panels/DispatchQueuePanel";
 import OverloadedTechPanel from "./panels/OverloadedTechPanel";
+import ActivityTimelinePanel from "./panels/ActivityTimelinePanel";
 import WorkOrderDetail from "./WorkOrderDetail";
 
 // Work Order-centric operational dashboard. Job state, technician state,
@@ -140,6 +141,7 @@ export default function ControlTower() {
       <AtRiskPanel jobs={jobs} technicians={technicians} workOrders={workOrderGroups} />
       <DispatchQueuePanel jobs={jobs} technicians={technicians} workOrders={workOrderGroups} />
       <OverloadedTechPanel jobs={jobs} technicians={technicians} workOrders={workOrderGroups} />
+      <ActivityTimelinePanel jobs={jobs} technicians={technicians} workOrders={workOrderGroups} />
     </div>
   );
 }

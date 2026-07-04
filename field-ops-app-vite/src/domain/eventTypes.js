@@ -81,3 +81,18 @@ export const EVENT_LABEL = {
   [EVENT_TYPE.WORK_ORDER_BLOCKED]: "Work order is BLOCKED",
   [EVENT_TYPE.WORK_ORDER_COMPLETED]: "Work order completed",
 };
+
+// Sprint 3.5.3: one icon glyph per event type, shared by the Activity
+// Timeline panel and Work Order Detail's Operational History so both
+// render the same icon for the same event type instead of each defining
+// its own mapping.
+export const EVENT_ICON = {
+  [EVENT_TYPE.JOB_CREATED]: "+",
+  [EVENT_TYPE.JOB_ASSIGNED]: "→",
+  [EVENT_TYPE.JOB_STARTED]: "▶",
+  [EVENT_TYPE.JOB_COMPLETED]: "✓",
+  [EVENT_TYPE.WORK_ORDER_CREATED]: "◆",
+  [EVENT_TYPE.WORK_ORDER_READY]: "●",
+  [EVENT_TYPE.WORK_ORDER_BLOCKED]: "■",
+  [EVENT_TYPE.WORK_ORDER_COMPLETED]: "✓",
+};
