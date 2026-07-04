@@ -1,19 +1,15 @@
-import { JOB_STATUS, WORK_ORDER_STATE } from "./constants";
-import { createSignal, SEVERITY } from "./controlTower/types";
+import { SEVERITY, createSignal } from "./controlTower/types";
+import { WORK_ORDER_STATE } from "./constants";
+import { explainWorkOrderState } from "./workOrderLifecycle";
 
-// Computes Work Order readiness state. Derived only -- never persisted,
-// never written back to Firestore. JOB_STATUS remains the single source
-// of truth; this just summarizes a set of jobs already grouped under one
-// work order.
-export const computeWorkOrderStatus = (jobs) => {
-  const completed = jobs.filter((j) => j.status === JOB_STATUS.COMPLETE).length;
-  const inProgress = jobs.filter((j) => j.status === JOB_STATUS.IN_PROGRESS).length;
-
-  if (completed === jobs.length) return WORK_ORDER_STATE.COMPLETED;
-  if (inProgress > 0) return WORK_ORDER_STATE.IN_PROGRESS;
-  if (jobs.some((j) => j.status === JOB_STATUS.ASSIGNED)) return WORK_ORDER_STATE.READY;
-  return WORK_ORDER_STATE.BLOCKED;
-};
+// Sprint 3.3's Signal layer for Work Orders, sitting on top of Sprint
+// 3.4's lifecycle engine (domain/workOrderLifecycle.js). This file
+// computes nothing about Work Order state itself -- explainWorkOrderState()
+// is the single source of truth for state/reasons/metrics.
+// computeWorkOrderSignal() below only wraps that output in the shared
+// { id, score, severity, label, metadata } envelope (see
+// domain/controlTower/types.js) so Control Tower's panels/components can
+// render Work Orders the same way they render risk/dispatch signals.
 
 // WORK_ORDER_STATE is a discrete state, not a continuous magnitude (a
 // work order isn't "60% blocked"), so its score/severity are a fixed
@@ -33,21 +29,19 @@ const STATE_SCORE = {
   [WORK_ORDER_STATE.COMPLETED]: 0,
 };
 
-// Canonical WorkOrderSignal for Control Tower's panels: wraps
-// computeWorkOrderStatus() in the shared { id, score, severity, label,
-// metadata } envelope (see domain/controlTower/types.js) so every panel
-// renders work orders the same way it renders risk/dispatch signals.
+// Canonical WorkOrderSignal for Control Tower: wraps
+// workOrderLifecycle.explainWorkOrderState() in the shared Signal
+// envelope. metadata carries the full { state, reasons, metrics } from
+// the lifecycle engine untouched -- consumers (e.g. WorkOrderDetail) read
+// it for display but never recompute state/reasons themselves.
 export function computeWorkOrderSignal(workOrderId, jobs) {
-  const state = computeWorkOrderStatus(jobs);
-  const completed = jobs.filter((j) => j.status === JOB_STATUS.COMPLETE).length;
-  const inProgress = jobs.filter((j) => j.status === JOB_STATUS.IN_PROGRESS).length;
-  const pending = jobs.length - completed - inProgress;
+  const { state, reasons, metrics } = explainWorkOrderState(jobs);
 
   return createSignal({
     id: workOrderId,
     score: STATE_SCORE[state],
     severity: STATE_SEVERITY[state],
     label: `Work Order ${workOrderId}: ${state}`,
-    metadata: { state, jobCount: jobs.length, pending, inProgress, completed },
+    metadata: { state, reasons, metrics },
   });
 }
