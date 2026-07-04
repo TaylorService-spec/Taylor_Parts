@@ -14,20 +14,46 @@ Live URL: `https://taylorservice-spec.github.io/Taylor_Parts/field-ops/`
 
 No manual step is required for this path — merging to `main` is the deploy trigger. `.github/workflows/vite-build-check.yml` separately build/lint-checks every push and PR (not a deploy, just a gate).
 
-## 2. Firebase Hosting — configured, not yet the active path
+## 2. Firebase Hosting — live site disabled; preview channels are the supported path
 
-`firebase.json` (repo root) configures Hosting to serve `field-ops-app-vite/dist` with a SPA catch-all rewrite. `.firebaserc` points it at the `taylor-parts` project. As of this writing these two files are new and untracked in git, and nothing indicates a Hosting deploy has been run yet.
+**Preview Deployments**
 
-To deploy the same `dist/` build there:
+- **Purpose:** PR review and stakeholder validation only.
+- **Hosting:** Firebase Hosting Preview Channels.
+- **Production:** GitHub Pages only.
+- **Rule:** Preview channels must never be treated as production URLs.
+
+Firebase Hosting was found live-but-broken in an earlier session: someone had deployed the GitHub-Pages-built `dist/` (baked with `base: "/Taylor_Parts/field-ops/"`) directly to Hosting's root, so every asset 404'd. The live site was deliberately disabled (`firebase hosting:disable`) rather than left broken, and re-enabling it requires explicit confirmation (see `docs/CLAUDE_CONTEXT.md`) since having two live frontends previously caused real drift.
+
+That base-path mismatch is now fixed at the build level: `vite.config.js` has a second build mode, `firebase-preview`, that builds with `base: "/"` and outputs to `dist-firebase/` (kept entirely separate from `dist/`, which GitHub Pages still uses unchanged):
 
 ```bash
-cd field-ops-app-vite && npm run build
-cd ..
-firebase login          # interactive, once per machine
-firebase deploy --only hosting
+cd field-ops-app-vite && npm run build:firebase   # -> dist-firebase/, base "/"
 ```
 
-This would publish to `taylor-parts.web.app` (or `taylor-parts.firebaseapp.com`) independently of the GitHub Pages URL above — the two are not automatically kept in sync with each other; each requires its own deploy step.
+`firebase.json`'s `hosting.public` points at `field-ops-app-vite/dist-firebase` — this is what both preview channels and a future `firebase deploy --only hosting` would serve.
+
+**Preview channels (the supported, day-to-day path)** — a temporary, shareable, real-production-build URL that does NOT touch the live/disabled Hosting site:
+
+```bash
+scripts/deploy-preview.sh [channel-name] [expires]   # defaults: current branch name, 7d
+```
+
+This builds `dist-firebase/` and runs `firebase hosting:channel:deploy`, printing a stable `https://taylor-parts--<channel>-<hash>.web.app` URL that survives independently of your local machine (unlike a `localhost` tunnel) until it expires.
+
+**Full Hosting deploy (`firebase deploy --only hosting`)** would re-enable the live site — do not run this without first confirming with the user, per the standing note above.
+
+## 2b. Local dev tunnel — for testing against a running dev server directly
+
+For quick external access to the *actual running dev server* (hot reload, not a built preview), rather than a deployed build:
+
+```bash
+cd field-ops-app-vite && npm run tunnel
+```
+
+Runs `scripts/dev-tunnel.sh`: starts Vite on a dedicated port (`5199` by default, freeing it first if a stale process is squatting on it — a real issue seen in practice, since this machine tends to accumulate leftover `vite` processes across sessions), then opens a `cloudflared` quick tunnel and prints the public URL. Ctrl+C stops both. Requires `cloudflared` (`$HOME/bin/cloudflared.exe` or on `PATH`) and relies on `vite.config.js`'s `server.allowedHosts` already permitting `.trycloudflare.com`/`.loca.lt`.
+
+Prefer `scripts/deploy-preview.sh` (2. above) for anything beyond your own quick local check — a preview channel is stable, doesn't depend on your machine staying on, and serves an actual production build.
 
 ## 3. Firestore rules and indexes
 
@@ -38,7 +64,7 @@ firebase login
 firebase deploy --only firestore:rules
 ```
 
-This is a real, live operational gap worth being deliberate about: as of Sprint 4, `firestore.rules` was updated in-repo to permit two new collections (`fieldops_inventory`, `fieldops_job_events`), but that change will not take effect against the real `taylor-parts` project until someone runs the command above. Any code that writes to those collections will fail with "Missing or insufficient permissions" until then.
+This is a real, live operational gap worth being deliberate about: any `firestore.rules` change committed to the repo needs the command above before it's actually enforced. (An earlier draft of this note referenced rules for `fieldops_inventory`/`fieldops_job_events` — those collections were retired per `docs/architecture/ADR-001-retired-operational-core-branch.md` and never merged, so that specific example no longer applies, but the underlying gap — manual deploy required — is still real.)
 
 ## Practical checklist before assuming a change is "live"
 
