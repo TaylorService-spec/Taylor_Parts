@@ -96,6 +96,30 @@ export async function assignJobWithPhase(job, technician) {
   return result;
 }
 
+// Advances phase only (ASSIGNED -> EN_ROUTE) -- no JOB_STATUS change,
+// mirroring how FieldMode.jsx's existing "Start Travel" is a
+// pre-work step with no real status transition of its own.
+export async function startTravelWithPhase(job) {
+  return advanceJobPhase(job, JOB_PHASE.EN_ROUTE);
+}
+
+// Wraps the existing updateJobStatus() (domain/jobActions.js, unchanged)
+// for the ASSIGNED -> IN_PROGRESS transition -- required before
+// completeJobWithPhase() below can succeed, since
+// domain/jobWorkflow.js's canTransitionJob() (untouched) only allows
+// ASSIGNED -> IN_PROGRESS -> COMPLETE, never ASSIGNED -> COMPLETE
+// directly. Advances job.phase to IN_PROGRESS alongside it.
+export async function startWorkWithPhase(job) {
+  const result = await updateJobStatusPrimitive(job, JOB_STATUS.IN_PROGRESS);
+  if (result?.blocked) return result;
+
+  const currentPhase = job.phase ?? JOB_PHASE.CREATED;
+  if (canTransitionPhase(currentPhase, JOB_PHASE.IN_PROGRESS)) {
+    await advanceJobPhase(job, JOB_PHASE.IN_PROGRESS);
+  }
+  return result;
+}
+
 // Wraps the existing updateJobStatus() (domain/jobActions.js, unchanged)
 // for the COMPLETE transition, and advances job.phase to COMPLETED
 // alongside it (same non-atomic-but-safe composition as

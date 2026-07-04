@@ -16,5 +16,17 @@ service cloud.firestore {
     match /fieldops_technicians/{techId} {
       allow read, write: if isSignedIn();
     }
+
+    // Sprint 4: real inventory state (services/inventoryService.js) and
+    // the persisted job event log (services/jobEventService.js). Same
+    // signed-in-only posture as the existing collections above -- no
+    // new security model, just extended to the two new collections.
+    match /fieldops_inventory/{inventoryId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /fieldops_job_events/{eventId} {
+      allow read, write: if isSignedIn();
+    }
   }
 }

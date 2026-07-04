@@ -5,6 +5,7 @@ import Technicians from "./modules/technicians/Technicians";
 import Dispatch from "./modules/dispatch/Dispatch";
 import FieldMode from "./modules/mobile/FieldMode";
 import Inventory from "./modules/inventory/Inventory";
+import OperationalDebugView from "./modules/opsDebug/OperationalDebugView";
 import { useAuth } from "./auth/AuthContext";
 import AppHeader from "./shared/ui/AppHeader";
 import { InventoryProvider } from "./demo/InventoryContext";
@@ -17,6 +18,7 @@ const NAV = [
   { key: "dispatch", label: "Dispatch", Component: Dispatch },
   { key: "fieldMode", label: "Field Mode", Component: FieldMode },
   { key: "inventory", label: "Inventory", Component: Inventory },
+  { key: "opsDebug", label: "Ops Debug", Component: OperationalDebugView },
 ];
 
 export default function App() {
