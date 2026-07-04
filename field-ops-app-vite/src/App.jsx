@@ -19,9 +19,12 @@ const NAV = [
 ];
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState("controlTower");
+  // Hero-story follow-up: lands on Dispatch instead of Control Tower so a
+  // shared demo link opens straight onto the hero job. UI default only --
+  // NAV/routing itself is unchanged, and every tab remains one click away.
+  const [activeTab, setActiveTab] = useState("dispatch");
   const { user, login, loading } = useAuth();
-  const ActiveView = NAV.find((n) => n.key === activeTab)?.Component ?? ControlTower;
+  const ActiveView = NAV.find((n) => n.key === activeTab)?.Component ?? Dispatch;
 
   if (loading) return <div className="fo-panel">Loading...</div>;
 
