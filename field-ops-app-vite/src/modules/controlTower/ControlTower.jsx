@@ -82,7 +82,7 @@ export default function ControlTower() {
   const stalledJobs = useMemo(() => detectStalledJobs(jobs), [jobs]);
   const sortedStalledJobs = useMemo(() => {
     if (riskSort === "age") {
-      return [...stalledJobs].sort((a, b) => b.risk.ageHours - a.risk.ageHours);
+      return [...stalledJobs].sort((a, b) => b.metadata.ageHours - a.metadata.ageHours);
     }
     return stalledJobs;
   }, [stalledJobs, riskSort]);
@@ -174,16 +174,16 @@ export default function ControlTower() {
         {sortedStalledJobs.length === 0 ? (
           <p className="fo-muted">No stalled jobs detected.</p>
         ) : (
-          sortedStalledJobs.map(({ job, risk }) => (
-            <div key={job.id} className="work-order-card">
+          sortedStalledJobs.map((signal) => (
+            <div key={signal.id} className="work-order-card">
               <h3>
-                {job.customer || job.id}
-                <span className={`risk-badge risk-${risk.level.toLowerCase()}`}>{risk.level}</span>
+                {signal.label}
+                <span className={`risk-badge risk-${signal.severity.toLowerCase()}`}>{signal.severity}</span>
               </h3>
               <div className="fo-muted">
-                Status: {job.status} · Work Order: {job.workOrderId || "unassigned"} · ~{Math.round(risk.ageHours)}h since creation (approx.)
+                Work Order: {signal.metadata.workOrderId || "unassigned"} · ~{Math.round(signal.metadata.ageHours)}h since creation (approx.)
               </div>
-              <div className="fo-muted">{risk.reasons.join(" · ")}</div>
+              <div className="fo-muted">{signal.metadata.reasons.join(" · ")}</div>
             </div>
           ))
         )}
@@ -208,14 +208,14 @@ export default function ControlTower() {
         {dispatchRecommendations.length === 0 ? (
           <p className="fo-muted">No open jobs awaiting dispatch.</p>
         ) : (
-          dispatchRecommendations.map(({ job, recommended }) => (
-            <div key={job.id} className="fo-card">
-              <strong>{job.customer || job.id}</strong>
+          dispatchRecommendations.map((signal) => (
+            <div key={signal.id} className="fo-card">
+              <strong>{signal.metadata.job.customer || signal.id}</strong>
               {" → "}
-              {recommended ? (
+              {signal.metadata.recommended ? (
                 <span>
-                  {technicianName(recommended.technicianId)}{" "}
-                  <span className="fo-muted">(score {Math.round(recommended.score)})</span>
+                  {technicianName(signal.metadata.recommended.technicianId)}{" "}
+                  <span className="fo-muted">(score {Math.round(signal.score)})</span>
                 </span>
               ) : (
                 <span className="fo-muted">No eligible technician</span>

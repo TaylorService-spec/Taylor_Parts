@@ -1,4 +1,5 @@
 import { JOB_STATUS } from "./constants";
+import { createSignal, compareBySeverity, SEVERITY } from "./controlTower/types";
 
 // Pure, derived-only risk scoring. No Firestore access, no writes -- takes
 // whatever jobs snapshot the caller already has (Control Tower's
@@ -17,15 +18,6 @@ import { JOB_STATUS } from "./constants";
 // until then, treat every risk/age figure this module produces as an
 // approximation, not precise operational timing.
 
-export const RISK_LEVEL = {
-  LOW: "LOW",
-  MEDIUM: "MEDIUM",
-  HIGH: "HIGH",
-  CRITICAL: "CRITICAL",
-};
-
-const RISK_ORDER = [RISK_LEVEL.LOW, RISK_LEVEL.MEDIUM, RISK_LEVEL.HIGH, RISK_LEVEL.CRITICAL];
-
 const HOUR = 1000 * 60 * 60;
 
 // OPEN jobs have nobody working them yet, so they're held to tighter
@@ -41,37 +33,48 @@ const THRESHOLDS_HOURS = {
 // tier when it crosses this count.
 const CONGESTION_BUMP_THRESHOLD = 4;
 
-function bumpRiskLevel(level) {
-  const idx = RISK_ORDER.indexOf(level);
-  return RISK_ORDER[Math.min(idx + 1, RISK_ORDER.length - 1)];
-}
+// Maps a status-relative age tier onto the shared 0-100 score scale (see
+// domain/controlTower/types.js) rather than a bespoke LOW/MEDIUM/HIGH/
+// CRITICAL enum of its own -- keeps severity derivation (severityFromScore)
+// identical to every other Control Tower signal.
+const TIER_SCORE = { none: 0, medium: 40, high: 65, critical: 90 };
+const CONGESTION_BUMP_SCORE = 15;
 
 // options.workOrderActiveJobCount is optional context a caller (e.g.
 // detectStalledJobs) can supply after counting active jobs per work order
 // across the full jobs list. Without it, congestion is simply not
 // factored in -- computeJobRisk(job) still works standalone.
+//
+// Returns a canonical RiskSignal ({ id, score, severity, label, metadata })
+// for non-complete jobs, or null for COMPLETE jobs (nothing to flag).
 export function computeJobRisk(job, options = {}, now = Date.now()) {
   if (job.status === JOB_STATUS.COMPLETE) {
-    return { level: null, ageHours: 0, reasons: [] };
+    return null;
   }
 
   const thresholds = THRESHOLDS_HOURS[job.status] ?? THRESHOLDS_HOURS[JOB_STATUS.ASSIGNED];
   const ageHours = Math.max(0, (now - (job.createdAt || now)) / HOUR);
 
-  let level = RISK_LEVEL.LOW;
-  if (ageHours >= thresholds.critical) level = RISK_LEVEL.CRITICAL;
-  else if (ageHours >= thresholds.high) level = RISK_LEVEL.HIGH;
-  else if (ageHours >= thresholds.medium) level = RISK_LEVEL.MEDIUM;
+  let tier = "none";
+  if (ageHours >= thresholds.critical) tier = "critical";
+  else if (ageHours >= thresholds.high) tier = "high";
+  else if (ageHours >= thresholds.medium) tier = "medium";
 
   const reasons = [`${Math.round(ageHours)}h since creation in status ${job.status}`];
 
+  let score = TIER_SCORE[tier];
   const congestionCount = options.workOrderActiveJobCount;
   if (congestionCount != null && congestionCount >= CONGESTION_BUMP_THRESHOLD) {
-    level = bumpRiskLevel(level);
+    score = Math.min(100, score + CONGESTION_BUMP_SCORE);
     reasons.push(`${congestionCount} active jobs congested on work order ${job.workOrderId}`);
   }
 
-  return { level, ageHours, reasons };
+  return createSignal({
+    id: job.id,
+    score,
+    label: `${job.customer || job.id} (${job.status})`,
+    metadata: { ageHours, status: job.status, workOrderId: job.workOrderId || null, reasons },
+  });
 }
 
 // Counts active (non-complete) jobs per workOrderId, for the congestion
@@ -85,22 +88,17 @@ function countActiveJobsByWorkOrder(jobs) {
   return counts;
 }
 
-// Full pass over a jobs snapshot: computes risk for every non-complete
-// job (with congestion context included) and returns those at HIGH or
-// CRITICAL, most severe first.
+// Full pass over a jobs snapshot: computes a RiskSignal for every
+// non-complete job (with congestion context included) and returns those
+// at HIGH or CRITICAL severity, most severe (then highest score) first.
 export function detectStalledJobs(jobs, now = Date.now()) {
   const congestionCounts = countActiveJobsByWorkOrder(jobs);
 
   return jobs
     .filter((j) => j.status !== JOB_STATUS.COMPLETE)
-    .map((job) => ({
-      job,
-      risk: computeJobRisk(
-        job,
-        { workOrderActiveJobCount: congestionCounts[job.workOrderId] },
-        now
-      ),
-    }))
-    .filter(({ risk }) => risk.level === RISK_LEVEL.HIGH || risk.level === RISK_LEVEL.CRITICAL)
-    .sort((a, b) => RISK_ORDER.indexOf(b.risk.level) - RISK_ORDER.indexOf(a.risk.level));
+    .map((job) =>
+      computeJobRisk(job, { workOrderActiveJobCount: congestionCounts[job.workOrderId] }, now)
+    )
+    .filter((signal) => signal.severity === SEVERITY.HIGH || signal.severity === SEVERITY.CRITICAL)
+    .sort((a, b) => compareBySeverity(a.severity, b.severity) || b.score - a.score);
 }

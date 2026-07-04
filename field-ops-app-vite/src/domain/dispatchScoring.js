@@ -1,4 +1,5 @@
 import { JOB_STATUS, TECH_STATUS } from "./constants";
+import { createSignal } from "./controlTower/types";
 
 // Pure, derived-only dispatch recommendation engine. Reads a Firestore
 // snapshot (jobs + technicians already fetched by the caller) and computes
@@ -121,18 +122,29 @@ export function detectOverloadedTechnicians(technicians, jobs, threshold = OVERL
 }
 
 // Top-level recommendation pass: for every unassigned (OPEN) job, ranks
-// technicians and returns the current top pick plus runners-up. Read-only
-// -- callers decide whether/how to act on this (e.g. Dispatch.jsx still
-// calls assignJob() itself; this never does).
+// technicians and returns a canonical DispatchRecommendation signal (see
+// domain/controlTower/types.js) with the current top pick plus
+// runners-up in metadata. Read-only -- callers decide whether/how to act
+// on this (e.g. Dispatch.jsx still calls assignJob() itself; this never
+// does).
 export function computeDispatchRecommendations(jobs, technicians, now = Date.now()) {
   const openJobs = jobs.filter((j) => j.status === JOB_STATUS.OPEN);
 
   return openJobs.map((job) => {
     const ranked = rankTechnicians(job, technicians, jobs, now);
-    return {
-      job,
-      recommended: ranked[0] ?? null,
-      alternates: ranked.slice(1, 4),
-    };
+    const recommended = ranked[0] ?? null;
+
+    return createSignal({
+      id: job.id,
+      score: recommended ? Math.max(0, Math.min(100, recommended.score)) : 0,
+      label: recommended
+        ? `${job.customer || job.id} → ${recommended.technicianId}`
+        : `${job.customer || job.id}: no eligible technician`,
+      metadata: {
+        job,
+        recommended,
+        alternates: ranked.slice(1, 4),
+      },
+    });
   });
 }
