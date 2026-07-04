@@ -1,1 +1,7 @@
 .claude/scheduled_tasks.lock
+
+build/
+dist/
+node_modules/
+.vscode/
+.firebase/

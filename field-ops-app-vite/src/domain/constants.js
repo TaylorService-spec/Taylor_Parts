@@ -13,6 +13,22 @@ export const TECH_STATUS = {
 
 export const JOBS_COLLECTION = "fieldops_jobs";
 export const TECHNICIANS_COLLECTION = "fieldops_technicians";
+export const USERS_COLLECTION = "users";
+
+export const ROLES = {
+  ADMIN: "admin",
+  DISPATCHER: "dispatcher",
+  TECHNICIAN: "technician",
+};
+
+// Which NAV tabs (see App.jsx's NAV keys) each role may see. Admin sees
+// everything; dispatcher runs the office side; technician is scoped to
+// the field-facing view. Update here, not in App.jsx, when access changes.
+export const ROLE_NAV_ACCESS = {
+  [ROLES.ADMIN]: ["controlTower", "jobs", "technicians", "dispatch", "fieldMode", "inventory"],
+  [ROLES.DISPATCHER]: ["controlTower", "jobs", "technicians", "dispatch", "inventory"],
+  [ROLES.TECHNICIAN]: ["fieldMode", "jobs"],
+};
 
 //
 // NOTE:

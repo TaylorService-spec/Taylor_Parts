@@ -21,13 +21,19 @@ import { isWriteBlocked } from "../config/env";
 // cover -- so each checks isWriteBlocked() itself, before ever opening a
 // transaction, returning the same { blocked: true } sentinel.
 
-export function createJob(customer, description) {
+// address: { street, city, state, zip } -- optional, additive field.
+// `geo` (lat/lng) is intentionally not implemented yet; reserved for a
+// future sprint once a geocoding source is chosen. Backward compatible:
+// omitting address entirely (as every call site before this field
+// existed did) still works, jobs simply have no address recorded.
+export function createJob(customer, description, address = null) {
   return jobsStore.add({
     customer,
     description,
     status: JOB_STATUS.OPEN,
     technicianId: null,
     workOrderId: null,
+    address,
   });
 }
 

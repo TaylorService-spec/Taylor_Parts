@@ -9,7 +9,6 @@ service cloud.firestore {
 
     match /fieldops_jobs/{jobId} {
       allow read: if isSignedIn();
-
       allow write: if isSignedIn();
     }
 
