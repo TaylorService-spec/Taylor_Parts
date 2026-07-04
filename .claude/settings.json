@@ -8,5 +8,29 @@
       "Skill(run)",
       "Skill(run:*)"
     ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/session-start-context.js",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/stop-update-context.js",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
   }
 }

@@ -66,6 +66,9 @@ export function AuthProvider({ children }) {
 
       try {
         const data = await fetchUserDoc(firebaseUser.uid);
+        // Temporary diagnostic: shows exactly which uid was queried and
+        // what Firestore returned for it -- remove once resolved.
+        console.log("USER DOC LOOKUP:", { uid: firebaseUser.uid, data });
         setRole(data?.role ?? null);
         setTechnicianId(data?.technicianId ?? null);
       } catch (err) {
