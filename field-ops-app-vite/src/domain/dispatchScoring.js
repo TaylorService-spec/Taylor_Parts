@@ -23,7 +23,7 @@ const WEIGHTS = {
 
 const WORKLOAD_PENALTY_PER_JOB = 25;
 
-function activeJobCount(technicianId, jobs) {
+export function activeJobCount(technicianId, jobs) {
   return jobs.filter(
     (j) => j.technicianId === technicianId && ACTIVE_JOB_STATUSES.includes(j.status)
   ).length;
@@ -101,6 +101,24 @@ export function rankTechnicians(job, technicians, jobs = [], now = Date.now()) {
 }
 
 const OVERLOAD_JOB_THRESHOLD = 3;
+
+// Sprint 4.6: simple 3-state availability, purely derived from active
+// job count -- "v0" on purpose, no ML/optimization (see Task 4.6/4.7's
+// explicit "rule-based only" scope). Additive export alongside the
+// existing weighted scoring above; doesn't change how
+// rankTechnicians()/computeDispatchRecommendations() already work.
+export const AVAILABILITY = {
+  AVAILABLE: "AVAILABLE",
+  BUSY: "BUSY",
+  OVERLOADED: "OVERLOADED",
+};
+
+export function getTechnicianAvailability(technician, jobs) {
+  const count = activeJobCount(technician.id, jobs);
+  if (count >= OVERLOAD_JOB_THRESHOLD) return AVAILABILITY.OVERLOADED;
+  if (count > 0) return AVAILABILITY.BUSY;
+  return AVAILABILITY.AVAILABLE;
+}
 
 // Flags technicians carrying more active (ASSIGNED/IN_PROGRESS) jobs than
 // the threshold. Read-only signal for the Control Tower panel -- doesn't
