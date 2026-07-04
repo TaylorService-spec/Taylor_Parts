@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { JOBS_COLLECTION, TECHNICIANS_COLLECTION, JOB_STATUS, TECH_STATUS } from "../../domain/constants";
 import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
-import { computeWorkOrderStatus } from "../../domain/workOrderScoring";
+import { explainWorkOrderState } from "../../domain/workOrderLifecycle";
 import { groupJobsByTechnician } from "./techUtils";
 import AtRiskPanel from "./panels/AtRiskPanel";
 import DispatchQueuePanel from "./panels/DispatchQueuePanel";
@@ -45,10 +45,12 @@ export default function ControlTower() {
 
   // Group jobs by workOrderId. Jobs without one yet (no work-order picker
   // exists in the UI so far) fall into the "unassigned" bucket. This is
-  // also the `workOrders` snapshot passed to every panel below -- there's
-  // no populated Firestore "workOrders" collection yet (see
-  // domain/workOrders.js), so work orders are derived from jobs, same as
-  // everywhere else in Control Tower.
+  // grouping only -- no lifecycle decision is made here; state/counts
+  // come from domain/workOrderLifecycle.js below. It's also the
+  // `workOrders` snapshot passed to every panel -- there's no populated
+  // Firestore "workOrders" collection yet (see domain/workOrders.js), so
+  // work orders are derived from jobs, same as everywhere else in
+  // Control Tower.
   const workOrderGroups = useMemo(() => {
     const groups = {};
 
@@ -56,22 +58,10 @@ export default function ControlTower() {
       const id = job.workOrderId || "unassigned";
 
       if (!groups[id]) {
-        groups[id] = {
-          workOrderId: id,
-          jobs: [],
-          statusCounts: {
-            pending: 0,
-            inProgress: 0,
-            completed: 0,
-          },
-        };
+        groups[id] = { workOrderId: id, jobs: [] };
       }
 
       groups[id].jobs.push(job);
-
-      if (job.status === JOB_STATUS.OPEN || job.status === JOB_STATUS.ASSIGNED) groups[id].statusCounts.pending++;
-      if (job.status === JOB_STATUS.IN_PROGRESS) groups[id].statusCounts.inProgress++;
-      if (job.status === JOB_STATUS.COMPLETE) groups[id].statusCounts.completed++;
     });
 
     return Object.values(groups);
@@ -81,12 +71,13 @@ export default function ControlTower() {
     (wo) => wo.workOrderId === "unassigned"
   );
 
-  // Sprint 2 derived layer: readiness state per work order and a
-  // technician workload rollup. Neither owns or mutates state.
-  const workOrderStatusMap = useMemo(() => {
+  // Sprint 3.4: Work Order state + reason, one call into the single
+  // aggregation engine (domain/workOrderLifecycle.js) per work order.
+  // Neither owns or mutates state.
+  const workOrderExplanations = useMemo(() => {
     const map = {};
     workOrderGroups.forEach((wo) => {
-      map[wo.workOrderId] = computeWorkOrderStatus(wo.jobs);
+      map[wo.workOrderId] = explainWorkOrderState(wo.jobs);
     });
     return map;
   }, [workOrderGroups]);
@@ -127,20 +118,23 @@ export default function ControlTower() {
       )}
 
       {workOrderGroups.map((wo) => {
-        const status = workOrderStatusMap[wo.workOrderId];
+        const explanation = workOrderExplanations[wo.workOrderId];
         return (
           <div key={wo.workOrderId} className="work-order-card">
             <h3>
               Work Order: {wo.workOrderId}
-              <span className={`wo-status wo-${status.toLowerCase()}`}>{status}</span>
+              <span className={`wo-status wo-${explanation.state.toLowerCase()}`}>
+                {explanation.state}
+              </span>
             </h3>
 
-            <div>Jobs: {wo.jobs.length}</div>
+            <div className="fo-muted">{explanation.reasons.join(" · ")}</div>
 
             <div>
-              Pending: {wo.statusCounts.pending} |
-              In Progress: {wo.statusCounts.inProgress} |
-              Completed: {wo.statusCounts.completed}
+              Open: {explanation.metrics.openJobs} |
+              Assigned: {explanation.metrics.assignedJobs} |
+              In Progress: {explanation.metrics.inProgressJobs} |
+              Completed: {explanation.metrics.completedJobs}
             </div>
           </div>
         );
