@@ -6,7 +6,6 @@ import Dispatch from "./modules/dispatch/Dispatch";
 import FieldMode from "./modules/mobile/FieldMode";
 import Inventory from "./modules/inventory/Inventory";
 import { useAuth } from "./auth/AuthContext";
-import Login from "./auth/Login";
 import AppHeader from "./shared/ui/AppHeader";
 import { InventoryProvider } from "./demo/InventoryContext";
 import { IS_DEMO } from "./config/env";
@@ -26,7 +25,11 @@ export default function App() {
   // shared demo link opens straight onto the hero job. UI default only --
   // NAV/routing itself is unchanged, and every tab remains one click away.
   const [activeTab, setActiveTab] = useState("dispatch");
-  const { user, role, loading } = useAuth();
+  // AuthGate (see main.jsx) guarantees by the time App mounts: auth is
+  // resolved, the user is signed in, and a role is assigned. This
+  // component only decides which NAV tabs that role can see -- a
+  // UI-presentation concern, not an auth-lifecycle one.
+  const { role } = useAuth();
   const allowedKeys = ROLE_NAV_ACCESS[role] ?? [];
   const visibleNav = NAV.filter((n) => allowedKeys.includes(n.key));
 
@@ -38,16 +41,14 @@ export default function App() {
 
   const ActiveView = visibleNav.find((n) => n.key === activeTab)?.Component ?? visibleNav[0]?.Component;
 
-  if (loading) return <div className="fo-panel">Loading...</div>;
-
-  if (!user) return <Login />;
-
+  // Distinct from AuthGate's "role === null" case: this is a role that
+  // exists but isn't a recognized key in ROLE_NAV_ACCESS (e.g. bad data).
   if (!visibleNav.length) {
     return (
       <div className="fo-panel">
         <h2>No access</h2>
         <p className="fo-muted">
-          Your account isn't assigned a role yet. Contact an admin to get access.
+          Your role isn't recognized. Contact an admin to get access.
         </p>
       </div>
     );
