@@ -10,6 +10,7 @@ import { canTransitionPhase } from "../domain/jobPhaseWorkflow";
 import { InvalidPhaseTransitionError } from "../domain/errors";
 import { isWriteBlocked } from "../config/env";
 import { logJobEvent } from "./jobEventService";
+import { reservePart } from "./inventoryService";
 import { safeUpdateDoc } from "../lib/firebaseSafe";
 
 // Sprint 4 Epic 2/5: composes the EXISTING, unmodified
@@ -79,21 +80,40 @@ export async function createJobWithParts(customer, description, partsRequired = 
   return { ...job, phase: JOB_PHASE.CREATED, partsRequired, partsReserved: {} };
 }
 
-// Wraps the existing assignJob() (domain/jobActions.js, unchanged) and
-// advances job.phase to ASSIGNED once the real assignment succeeds.
+// Wraps the existing assignJob() (domain/jobActions.js, unchanged),
+// advances job.phase to ASSIGNED, and -- Task 4.8's "enforce reservation
+// at assignment stage" -- reserves every part in job.partsRequired
+// against the newly-assigned technician's truck via
+// inventoryService.reservePart().
 //
-// Not a single atomic operation across both writes -- true atomicity
-// would require modifying assignJob() itself, which this sprint's hard
-// rules forbid ("do not rewrite working job lifecycle functions"). If
-// the phase-advance step fails after a successful assignment, the job is
-// still correctly ASSIGNED in JOB_STATUS (the real source of truth) --
-// only its phase tracking lags, a cosmetic gap, not a data-integrity one.
+// None of this is a single atomic operation across all three steps --
+// true atomicity would require modifying assignJob() itself, which this
+// sprint's hard rules forbid ("do not rewrite working job lifecycle
+// functions"). If a later step fails, the job is still correctly
+// ASSIGNED in JOB_STATUS (the real source of truth); a partially-failed
+// reservation is surfaced in the returned `reservations` array so a
+// caller (e.g. the debug view) can see exactly which parts didn't
+// reserve (most likely InsufficientInventoryError -- someone else's job
+// already claimed that stock) rather than the whole assignment silently
+// rolling back.
 export async function assignJobWithPhase(job, technician) {
   const result = await assignJobPrimitive(job, technician);
   if (result?.blocked) return result;
 
   await advanceJobPhase(job, JOB_PHASE.ASSIGNED);
-  return result;
+
+  const partsRequired = job.partsRequired ?? {};
+  const reservations = [];
+  for (const [partId, quantity] of Object.entries(partsRequired)) {
+    try {
+      await reservePart(job, technician.id, partId, quantity);
+      reservations.push({ partId, quantity, ok: true });
+    } catch (err) {
+      reservations.push({ partId, quantity, ok: false, error: err.message });
+    }
+  }
+
+  return { ...result, reservations };
 }
 
 // Advances phase only (ASSIGNED -> EN_ROUTE) -- no JOB_STATUS change,

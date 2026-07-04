@@ -98,7 +98,14 @@ export default function OperationalDebugView() {
     const technician = technicians.find((t) => t.id === selectedTechId);
     try {
       const result = await assignJobWithPhase(selectedJob, technician);
-      appendLog(result?.blocked ? "Assign BLOCKED (demo/panic mode)" : `Assigned ${selectedJob.id} -> ${technician.name} (phase=ASSIGNED)`);
+      if (result?.blocked) {
+        appendLog("Assign BLOCKED (demo/panic mode)");
+      } else {
+        appendLog(`Assigned ${selectedJob.id} -> ${technician.name} (phase=ASSIGNED)`);
+        (result.reservations ?? []).forEach((r) => {
+          appendLog(r.ok ? `  reserved ${r.quantity}x ${r.partId}` : `  reserve FAILED for ${r.partId}: ${r.error}`);
+        });
+      }
     } catch (err) {
       appendLog(`Assign failed: ${err.message}`);
     }
