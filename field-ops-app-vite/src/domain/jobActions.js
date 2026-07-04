@@ -4,6 +4,7 @@ import { jobsStore, techniciansStore } from "../firebase/collectionStore";
 import { canTransitionJob } from "./jobWorkflow";
 import { JOB_STATUS, TECH_STATUS, JOBS_COLLECTION, TECHNICIANS_COLLECTION } from "./constants";
 import { AssignmentConflictError } from "./errors";
+import { isWriteBlocked } from "../config/env";
 
 // The only place allowed to write job/technician data. Components must call
 // these instead of touching jobsStore/techniciansStore or Firestore directly,
@@ -11,6 +12,14 @@ import { AssignmentConflictError } from "./errors";
 //
 // Jobs never own customer data directly -- they resolve upward via
 // workOrderId: job -> workOrder -> customer. See domain/workOrders.js.
+//
+// createJob()/createTechnician() write through jobsStore/techniciansStore
+// (firebase/collectionStore.js), which already gate through
+// lib/firebaseSafe.js. assignJob()/updateJobStatus() write via
+// runTransaction()/tx.update() directly (for the atomicity guarantees
+// described below), which firebaseSafe.js's safe*Doc wrappers don't
+// cover -- so each checks isWriteBlocked() itself, before ever opening a
+// transaction, returning the same { blocked: true } sentinel.
 
 export function createJob(customer, description) {
   return jobsStore.add({
@@ -29,6 +38,11 @@ export function createTechnician(name, phone) {
 export async function updateJobStatus(job, nextStatus) {
   if (!auth.currentUser) {
     throw new Error("Unauthenticated write attempt blocked");
+  }
+
+  if (isWriteBlocked()) {
+    console.warn("WRITE BLOCKED (updateJobStatus)", job.id, nextStatus);
+    return { blocked: true };
   }
 
   try {
@@ -75,6 +89,11 @@ export async function assignJob(job, technician) {
 
   if (!canTransitionJob(job.status, JOB_STATUS.ASSIGNED)) {
     throw new Error(`Invalid transition: ${job.status} → assigned`);
+  }
+
+  if (isWriteBlocked()) {
+    console.warn("WRITE BLOCKED (assignJob)", job.id, technician.id);
+    return { blocked: true };
   }
 
   try {

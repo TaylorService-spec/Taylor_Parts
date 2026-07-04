@@ -2,6 +2,15 @@ html, body { margin: 0; padding: 0; }
 body { -webkit-font-smoothing: antialiased; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #F4F6F5; }
 
 .fo-app { min-height: 100vh; }
+
+.fo-demo-banner {
+  background: #F5A623;
+  color: #1B2A2E;
+  text-align: center;
+  padding: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
 .fo-header { background: #1B2A2E; color: #fff; padding: 16px 24px; display: flex; align-items: center; gap: 32px; }
 .fo-header h1 { font-size: 18px; margin: 0; }
 .fo-nav { display: flex; gap: 8px; }
@@ -10,8 +19,33 @@ body { -webkit-font-smoothing: antialiased; font-family: -apple-system, BlinkMac
 .fo-nav-btn-active { background: #2E4A50; color: #fff; }
 
 .fo-main { padding: 24px; max-width: 960px; margin: 0 auto; }
-.fo-panel { background: #fff; border-radius: 10px; padding: 20px 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+.fo-panel { background: #fff; border-radius: 10px; padding: 20px 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); overflow-x: auto; }
 .fo-panel h2 { margin-top: 0; }
+
+/* Sprint 3.6.5: mobile breakpoint. Visual/spacing only -- no layout
+   logic changes. The nav bar scrolls horizontally instead of wrapping
+   (six tabs no longer fit one row on a phone), and padding shrinks so
+   content isn't cramped against the screen edge. */
+@media (max-width: 640px) {
+  .fo-header { padding: 12px 16px; gap: 16px; }
+  .fo-nav {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    flex-wrap: nowrap;
+  }
+  .fo-nav-btn { flex: 0 0 auto; white-space: nowrap; }
+  .fo-main { padding: 12px; }
+  .fo-panel { padding: 16px; }
+  .fo-btn-row { flex-direction: column; }
+
+  /* AppHeader.jsx's top bar (Field Ops Platform / Home / Refresh /
+     email / Logout) uses an inline flex layout with no wrapping --
+     on a phone-width viewport it overflows horizontally. Wrapping it
+     is a pure CSS override of the inline styles, no logic change. */
+  .fo-appheader { flex-wrap: wrap; gap: 8px; }
+  .fo-appheader-right { flex-wrap: wrap; }
+  .fo-appheader-email { display: none; }
+}
 
 .fo-form { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
 .fo-form input { flex: 1; min-width: 160px; padding: 8px 10px; border: 1px solid #D8DEDD; border-radius: 6px; font-size: 14px; }
@@ -31,6 +65,7 @@ body { -webkit-font-smoothing: antialiased; font-family: -apple-system, BlinkMac
 .fo-badge-completed { background: #E6F6EC; color: #237A45; }
 .fo-badge-available { background: #E6F6EC; color: #237A45; }
 .fo-badge-off_shift { background: #EEF1F0; color: #667; }
+.fo-badge-low-stock { background: #FDECEC; color: #B23B3B; }
 
 .fo-stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 16px; }
 .fo-stat { background: #F4F6F5; border-radius: 8px; padding: 16px; text-align: center; }
@@ -50,10 +85,104 @@ body { -webkit-font-smoothing: antialiased; font-family: -apple-system, BlinkMac
 .fo-card--field button { padding: 8px 16px; border: none; border-radius: 6px; background: #2E4A50; color: #fff; cursor: pointer; font-size: 14px; }
 .fo-card--field button:hover { background: #23383D; }
 
+.fo-card--field-active {
+  border: 2px solid #2E4A50;
+}
+
+.fo-btn-large {
+  width: 100%;
+  padding: 16px;
+  font-size: 16px;
+  font-weight: 600;
+  border: none;
+  border-radius: 8px;
+  background: #2E4A50;
+  color: #fff;
+  cursor: pointer;
+  margin-top: 8px;
+}
+.fo-btn-large:hover { background: #23383D; }
+
+.fo-btn-secondary {
+  background: #EEF1F0;
+  color: #2E4A50;
+}
+.fo-btn-secondary:hover { background: #D8DEDD; }
+
+.fo-btn-row {
+  display: flex;
+  gap: 8px;
+}
+.fo-btn-row .fo-btn-large { margin-top: 8px; }
+
+.fo-part-picker {
+  margin-top: 8px;
+  border-top: 1px solid #eef1f0;
+  padding-top: 8px;
+}
+
+.fo-part-picker-row {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  margin-bottom: 6px;
+  border: 1px solid #d8dedd;
+  border-radius: 6px;
+  background: #fff;
+  color: #1B2A2E;
+  cursor: pointer;
+}
+.fo-part-picker-row:hover:not(:disabled) { background: #f4f6f5; }
+.fo-part-picker-row:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.fo-upnext-row {
+  padding: 8px 0;
+  border-bottom: 1px solid #eef1f0;
+  font-size: 14px;
+  color: #445;
+}
+.fo-upnext-row:last-child { border-bottom: none; }
+
 .fo-card--dispatch {
   border: 1px solid #EEF1F0;
   border-radius: 8px;
   padding: 14px;
+  margin-bottom: 10px;
+  border-left-width: 4px;
+}
+
+.fo-card--dispatch-emergency { border-left-color: #B23B3B; }
+.fo-card--dispatch-scheduled { border-left-color: #A9740D; }
+.fo-card--dispatch-in-progress { border-left-color: #2E4A50; }
+.fo-card--dispatch-completed { border-left-color: #237A45; }
+
+.fo-chip {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.fo-chip-emergency { background: #FDECEC; color: #B23B3B; }
+.fo-chip-scheduled { background: #FFF4DE; color: #A9740D; }
+.fo-chip-in-progress { background: #EAF1F2; color: #2E4A50; }
+.fo-chip-completed { background: #E6F6EC; color: #237A45; }
+.fo-chip-hero { background: #2E4A50; color: #fff; margin-left: 8px; }
+
+.fo-card--hero {
+  box-shadow: 0 0 0 2px #2E4A50, 0 2px 8px rgba(46,74,80,0.25);
+}
+
+.fo-table td {
+  transition: background-color 0.6s ease-out;
+}
+
+.fo-qty-flash {
+  background-color: #FFF4DE;
 }
 
 .work-order-card {

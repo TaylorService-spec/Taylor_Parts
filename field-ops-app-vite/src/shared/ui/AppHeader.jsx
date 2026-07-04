@@ -5,8 +5,8 @@ export default function AppHeader() {
   const { user, logout } = useAuth();
 
   return (
-    <div style={styles.header}>
-      <div style={styles.left}>
+    <div className="fo-appheader" style={styles.header}>
+      <div className="fo-appheader-left" style={styles.left}>
         <span style={styles.title}>Field Ops Platform</span>
 
         <a href="/Taylor_Parts/" style={styles.link}>
@@ -18,8 +18,8 @@ export default function AppHeader() {
         </a>
       </div>
 
-      <div style={styles.right}>
-        <span>{user?.email}</span>
+      <div className="fo-appheader-right" style={styles.right}>
+        <span className="fo-appheader-email">{user?.email}</span>
         <button onClick={logout}>Logout</button>
       </div>
     </div>
