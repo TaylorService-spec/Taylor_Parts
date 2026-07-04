@@ -10,8 +10,33 @@ body { -webkit-font-smoothing: antialiased; font-family: -apple-system, BlinkMac
 .fo-nav-btn-active { background: #2E4A50; color: #fff; }
 
 .fo-main { padding: 24px; max-width: 960px; margin: 0 auto; }
-.fo-panel { background: #fff; border-radius: 10px; padding: 20px 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+.fo-panel { background: #fff; border-radius: 10px; padding: 20px 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); overflow-x: auto; }
 .fo-panel h2 { margin-top: 0; }
+
+/* Sprint 3.6.5: mobile breakpoint. Visual/spacing only -- no layout
+   logic changes. The nav bar scrolls horizontally instead of wrapping
+   (six tabs no longer fit one row on a phone), and padding shrinks so
+   content isn't cramped against the screen edge. */
+@media (max-width: 640px) {
+  .fo-header { padding: 12px 16px; gap: 16px; }
+  .fo-nav {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    flex-wrap: nowrap;
+  }
+  .fo-nav-btn { flex: 0 0 auto; white-space: nowrap; }
+  .fo-main { padding: 12px; }
+  .fo-panel { padding: 16px; }
+  .fo-btn-row { flex-direction: column; }
+
+  /* AppHeader.jsx's top bar (Field Ops Platform / Home / Refresh /
+     email / Logout) uses an inline flex layout with no wrapping --
+     on a phone-width viewport it overflows horizontally. Wrapping it
+     is a pure CSS override of the inline styles, no logic change. */
+  .fo-appheader { flex-wrap: wrap; gap: 8px; }
+  .fo-appheader-right { flex-wrap: wrap; }
+  .fo-appheader-email { display: none; }
+}
 
 .fo-form { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
 .fo-form input { flex: 1; min-width: 160px; padding: 8px 10px; border: 1px solid #D8DEDD; border-radius: 6px; font-size: 14px; }
