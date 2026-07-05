@@ -1,3 +1,8 @@
+// Moved from modules/dispatch/Dispatch.jsx as part of the domain-routing
+// scaffold (structural only -- no logic changed, only the default export's
+// name, to match this file's name). App.jsx still renders this directly
+// under its existing "dispatch" tab; this file is not yet reachable via
+// the new src/app/AppRouter.jsx scaffold (not wired into main.jsx yet).
 import { useMemo } from "react";
 import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
 import { assignJob } from "../../domain/jobActions";
@@ -43,7 +48,7 @@ function statusChipFor(job) {
   return STATUS_CHIP[job.status] ?? priorityChip(job);
 }
 
-export default function Dispatch() {
+export default function ExecutionWorkspace() {
   const { data: jobs, loading } = useFirestoreCollection(JOBS_COLLECTION);
   const { data: technicians } = useFirestoreCollection(TECHNICIANS_COLLECTION);
 
