@@ -4,6 +4,15 @@
 // status -- so a client can never smuggle an arbitrary transition by
 // naming a status directly; the server alone resolves action -> status
 // via transitionEngine.ts's ACTION_TO_STATUS.
+//
+// Epic 2D (see docs/architecture/ADR-003): after the transaction below
+// commits successfully, triggerInventoryEffects() runs as a strictly
+// post-commit side effect -- it never runs inside the transaction,
+// never blocks or delays the response beyond its own execution, and a
+// failure inside it is caught and logged (inventoryService.ts's own
+// job) rather than ever surfacing as a transitionWorkOrder failure.
+// The Work Order transition itself has already succeeded by the time
+// this runs; nothing about the state machine changes here.
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { getFirestore, FieldValue, Timestamp } from "firebase-admin/firestore";
 import { getCallerContext } from "./callerContext";
@@ -14,7 +23,8 @@ import {
   ACTION_TIMESTAMP_FIELD,
 } from "./transitionEngine";
 import { WORK_ORDERS_COLLECTION } from "./constants/collections";
-import type { ActionName, WorkOrder } from "./types/workOrder";
+import { triggerInventoryEffects } from "./inventoryService";
+import type { ActionName, WorkOrder, WorkOrderStatus } from "./types/workOrder";
 
 interface TransitionWorkOrderInput {
   workOrderId: string;
@@ -69,7 +79,7 @@ export const transitionWorkOrder = onCall({ region: "us-central1" }, async (requ
   const db = getFirestore();
   const woRef = db.collection(WORK_ORDERS_COLLECTION).doc(workOrderId);
 
-  return db.runTransaction(async (tx) => {
+  const result = await db.runTransaction(async (tx) => {
     const snap = await tx.get(woRef);
     if (!snap.exists) {
       throw new HttpsError("not-found", `No Work Order with id ${workOrderId}`);
@@ -116,4 +126,11 @@ export const transitionWorkOrder = onCall({ region: "us-central1" }, async (requ
     tx.update(woRef, payload);
     return { id: workOrderId, status: nextStatus };
   });
+
+  // Post-commit only -- see header comment. Never throws: a failure
+  // here is inventoryService.ts's own concern (logged in
+  // inventory_sync_status for later retry), not this callable's.
+  await triggerInventoryEffects(result.id, result.status as WorkOrderStatus);
+
+  return result;
 });

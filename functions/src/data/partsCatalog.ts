@@ -1,22 +1,20 @@
-// Work Order Engine v1.2 -- Epic 1.1 Inventory Visual Layer.
+// Work Order Engine v1.2 -- Epic 2D Inventory Trigger System.
 //
-// METADATA ONLY -- NO STOCK AUTHORITY. Static parts reference catalog,
-// generated from a synthetic test dataset (synthetic_parts_test_data.csv,
-// 200 rows) -- NOT Firestore-backed, NOT authoritative, purely UI
-// enrichment. As of Epic 2D (docs/architecture/ADR-003), the
-// server-side mirror of this same data (functions/src/data/partsCatalog.ts)
-// is used as a static warehouseQty baseline for computing availability --
-// but the actual source of truth for stock movement is the
-// inventory_transactions ledger (Cloud Functions only), never this file.
-// See docs/architecture/ADR-002-work-order-engine.md's "Phase 2" note and
-// the Inventory Visual Layer design spec this implements.
+// METADATA ONLY -- NO STOCK AUTHORITY. This file (name/category/cost/
+// unit, plus a static warehouseQty baseline) is never written to and
+// never represents current stock. inventory_transactions
+// (inventoryService.ts's ledger) is the ONLY source of truth for stock
+// movement; warehouseQty here is just the starting baseline that
+// ledger sums are computed against (see getAvailableQuantity() in
+// inventoryService.ts).
 //
-// Deliberately named "partsCatalog", not "inventoryCatalog" --
-// demo/inventoryData.js + demo/InventoryContext.jsx already own the
-// name "Inventory" for a completely different, unrelated concept (an
-// in-memory warehouse/truck stock transfer simulation for the Sprint
-// 3.6 demo). This file is a read-only reference table for enriching
-// Work Order display (sku -> name/category/cost), nothing more.
+// Server-side mirror of field-ops-app-vite/src/data/partsCatalog.ts --
+// intentional duplication, same rationale as functions/src/types/
+// workOrder.ts vs. field-ops-app-vite/src/types/workOrder.ts (no
+// shared/monorepo tooling exists to unify them). Cloud Functions
+// cannot import from the client's src/ tree. If either file changes,
+// change the other to match. Generated from the same source
+// (synthetic_parts_test_data.csv, 200 rows).
 export interface PartCatalogItem {
   sku: string;
   name: string;

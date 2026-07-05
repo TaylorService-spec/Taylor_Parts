@@ -63,5 +63,19 @@ service cloud.firestore {
       allow read: if false;
       allow create, update, delete: if false;
     }
+
+    // Epic 2D Inventory Trigger System (docs/architecture/ADR-003).
+    // Admin-SDK-only, same posture as counters above -- no UI reads
+    // either collection this epoch (no reporting view exists yet), so
+    // there is no read exception to carve out unlike fieldops_wos.
+    match /inventory_transactions/{transactionId} {
+      allow read: if false;
+      allow create, update, delete: if false;
+    }
+
+    match /inventory_sync_status/{workOrderId} {
+      allow read: if false;
+      allow create, update, delete: if false;
+    }
   }
 }
