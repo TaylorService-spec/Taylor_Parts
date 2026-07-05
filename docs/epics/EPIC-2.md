@@ -12,6 +12,22 @@ Give dispatchers and technicians the ability to actually **drive** a Work Order 
 
 Everything here is **UI + wiring**, not new backend logic — `transitionEngine.ts`'s state machine, `firestore.rules`' deny-all-client-writes posture, and the two Cloud Functions are all already correct and already tested (17/17 in the Epic 1 emulator pass). This epic calls them; it does not change them.
 
+## Platform Glossary
+
+Canonical definitions for terms this project has, more than once, let drift into meaning two different things at once (Work Order, Inventory). Written here because Epic 2 is exactly the kind of work — new UI, new components, new contributors reading the code cold — where that drift bites hardest. If a term isn't here, don't assume; check `docs/architecture/ADR-001-*`/`ADR-002-*` before inventing a new one.
+
+| Term | Canonical meaning | Not to be confused with |
+|---|---|---|
+| **Job** | A technician execution unit, `fieldops_jobs`, `JOB_STATUS` (`open/assigned/in_progress/complete`), written only via `domain/jobActions.js`. | The nav tab currently labeled "Work Orders" (`Jobs.jsx`) — it manages Jobs, not Work Orders. This is the exact confusion Phase 4 resolves. |
+| **Work Order** | A real, persisted dispatch-level contract, `fieldops_wos`, its own 11-value `WorkOrderStatus`, written only via `createWorkOrder`/`transitionWorkOrder` Cloud Functions. Soft-linked to Jobs via `job.workOrderId` (optional, unenforced). | The pre-Epic-1 meaning of "Work Order" — a derived aggregate over a group of Jobs (`domain/workOrderLifecycle.js`'s old, now-frozen, `computeWorkOrderState(jobs)`). That meaning is retired for all new code. |
+| **Technician** | A `fieldops_technicians` doc, `TECH_STATUS` (`available/on_job/off_shift`), assigned to Jobs via `job.technicianId` and to Work Orders via `workOrder.assignedTechId` — two separate fields, two separate assignment events, not synchronized. | — |
+| **Role** (Admin / Dispatcher / Technician) | `users/{uid}.role`, read via `auth/AuthContext.jsx`'s `useAuth()`. The only three values `ROLES` (`domain/constants.js`) defines. | A job-level or WO-level field — role lives on the user doc, never on a Job or Work Order doc. |
+| **Action** (e.g. `Schedule`, `Dispatch`, `Accept`) | The vocabulary `transitionWorkOrder()` accepts (`ActionName`) — never a raw target status. Resolved server-side to a `WorkOrderStatus` via `ACTION_TO_STATUS`. | A Job status transition — Jobs transition via `updateJobStatus(job, nextStatus)`, a status directly, not an action name. The two systems use deliberately different vocabularies. |
+| **Parts Catalog** | `data/partsCatalog.ts` — a static, read-only SKU → name/category/cost/unit reference table, generated from a CSV. Not Firestore-backed, not authoritative, exists purely to enrich Work Order display. | **Inventory** (below) — the two are unrelated systems that happen to both involve "parts." |
+| **Inventory** (as in `demo/InventoryContext.jsx`, `modules/inventory/Inventory.jsx`) | An in-memory-only warehouse/truck stock transfer simulation for the Sprint 3.6 demo. No Firestore collection backs it; state resets on reload. | **Parts Catalog** (above) or any future real inventory/transaction engine (explicitly deferred, see Out of scope). |
+| **Control Tower** | `modules/controlTower/ControlTower.jsx` — the read-only operational dashboard. Owns every Firestore listener its child panels/`WorkOrderDetail.jsx` need; no panel fetches independently. | — |
+| **Signal** | The canonical `{ id, score, severity, label, metadata }` envelope (`domain/controlTower/types.js`) every Control Tower panel renders. | Raw domain output (e.g. `explainWorkOrder()`'s return shape) — Signals wrap that output, they aren't it. |
+
 ## Module map
 
 | File | Change |
@@ -21,7 +37,7 @@ Everything here is **UI + wiring**, not new backend logic — `transitionEngine.
 | `field-ops-app-vite/src/modules/workOrders/ScheduleWorkOrderModal.jsx` (new) | Captures `scheduledStart`/`scheduledEnd`/`scheduledTechId` for the `Schedule` action (`transitionWorkOrder(id, "Schedule", {...})`) — these are caller-supplied fields per `transitionWorkOrder.ts`, not something a plain button click can satisfy alone. |
 | `field-ops-app-vite/src/modules/workOrders/DispatchWorkOrderModal.jsx` (new) | Captures `assignedTechId` for the `Dispatch` action, same reason as above. |
 | `field-ops-app-vite/src/modules/mobile/FieldMode.jsx` | Add technician-facing Accept/Travel/Arrive/WorkStart/Complete actions for Work Orders assigned to the signed-in technician (`technicianId` from `useAuth()`). This file currently only handles Job execution — needs a new Work Order query (`assignedTechId == technicianId`, see Data dependencies). |
-| `field-ops-app-vite/src/App.jsx` | Resolve the naming collision — rename the `jobs` NAV entry's label away from "Work Orders" (it's Job CRUD), and/or add a distinct, real Work Order management tab. Exact resolution is a Phase 4 decision, not pre-decided here. |
+| `field-ops-app-vite/src/App.jsx` | Resolve the naming collision — rename the `jobs` NAV entry's label away from "Work Orders" (it's Job CRUD), and/or add a distinct, real Work Order management tab. Exact resolution is a Phase 4 (Domain Language Alignment & Polish) decision, not pre-decided here. |
 | `field-ops-app-vite/src/modules/jobs/Jobs.jsx` | Copy fix: `<h2>Work Orders</h2>` / `"Add Work Order"` button text is wrong given `fieldops_wos` is now a real, distinct entity — this screen creates Jobs, not Work Orders. |
 
 ## Component hierarchy
@@ -46,6 +62,20 @@ FieldMode.jsx (existing)
 ```
 
 `WorkOrderActions.jsx` is deliberately one shared component between `WorkOrderDetail.jsx` (dispatcher-facing) and `FieldMode.jsx` (technician-facing) rather than two separate implementations — both need the exact same `getAllowedActions()` gating, and this repo's established pattern (`domain/*.js` computes, components render) argues against duplicating that logic across two button trees.
+
+### Hard rule: no page component calls a Cloud Function directly
+
+Every dispatcher and technician action, with no exception, flows through:
+
+```
+Page component (WorkOrderDetail.jsx / FieldMode.jsx / CreateWorkOrderForm.jsx / a modal)
+  → WorkOrderActions.jsx (gating: getAllowedActions() decides what's even offered)
+  → services/workOrderService.ts (the ONLY file that imports httpsCallable/getFunctions
+     for Work Orders -- already true as of Epic 1, stays true here)
+  → createWorkOrder / transitionWorkOrder (Cloud Functions)
+```
+
+No page component may import `httpsCallable`/`getFunctions` or call a Work Order Cloud Function itself. This mirrors the existing, already-enforced rule for Jobs (`domain/jobActions.js` is the only write path — no component calls Firestore directly), extended to Work Orders' Cloud-Function write path. A code review finding a `httpsCallable(functions, "createWorkOrder"|"transitionWorkOrder")` call anywhere outside `services/workOrderService.ts` is a defect, not a style nit.
 
 ## Data dependencies
 
@@ -90,7 +120,7 @@ Carried forward unchanged from Epic 1.1's boundaries (`docs/epics` inherits, doe
 - `FieldMode.jsx`'s new Work Order section reuses `WorkOrderActions.jsx` rather than reimplementing the button/gating logic a second time.
 - The technician-scoped Firestore query has its required composite index deployed and confirmed (not just committed to `firestore.indexes.json` — deployed and verified, per this repo's standing "deploy state is never assumed" rule).
 
-### Phase 4 — Naming cleanup and polish
+### Phase 4 — Domain Language Alignment & Polish
 - The "Work Orders" nav label / `Jobs.jsx` copy naming collision is resolved — either renamed or genuinely repointed at Work Order management — with a clear decision recorded (not left ambiguous for a future session to rediscover, the way this epic's authoring session had to rediscover it via grep).
 - No dead/duplicate code left behind from Phases 1-3 (e.g. no orphaned modal component if a phase's UI approach changed mid-epic).
 
