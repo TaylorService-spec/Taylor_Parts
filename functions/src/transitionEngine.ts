@@ -10,10 +10,19 @@
 import type { Role } from "./callerContext";
 import type { WorkOrderStatus, ActionName } from "./types/workOrder";
 
-// The spec's linear transition table, with CANCELLED added as an
-// explicit literal entry for every non-terminal status (resolves a gap
-// in the original spec, which had no incoming edges to CANCELLED at
-// all). COMPLETED only goes to CLOSED (not cancellable). CLOSED and
+// The spec's linear transition table, with two gaps resolved (found via
+// emulator-based verification, not just review -- see the throwaway
+// verification script this was caught by):
+// 1. CANCELLED added as an explicit literal entry for every non-terminal
+//    status (the original spec had no incoming edges to CANCELLED at
+//    all).
+// 2. A "MarkReady" action added (see ACTION_TO_STATUS/ACTION_PERMISSIONS
+//    below) for the CREATED -> READY_TO_DISPATCH transition -- the
+//    original spec's permissions matrix named 9 actions (Create/
+//    Schedule/Dispatch/Accept/Travel/WorkStart/Complete/Close/Cancel)
+//    but none of them targets READY_TO_DISPATCH, making that status
+//    unreachable as originally specified. Admin/dispatcher-only, same
+//    bucket as Schedule/Dispatch. COMPLETED only goes to CLOSED (not cancellable). CLOSED and
 // CANCELLED are terminal (no outgoing transitions). This makes
 // canTransition() below a pure table lookup -- the entire state
 // machine, cancellation included, is visible in one data structure,
@@ -48,6 +57,7 @@ export function canTransition(current: WorkOrderStatus, next: WorkOrderStatus): 
 // arbitrary transition by naming a status directly -- it must name an
 // action, and the server resolves the status.
 export const ACTION_TO_STATUS: Record<ActionName, WorkOrderStatus> = {
+  MarkReady: "READY_TO_DISPATCH",
   Schedule: "SCHEDULED",
   Dispatch: "DISPATCHED",
   Accept: "ACCEPTED",
@@ -89,6 +99,7 @@ interface ActionPermission {
 }
 
 export const ACTION_PERMISSIONS: Record<ActionName, ActionPermission> = {
+  MarkReady: { roles: ["admin", "dispatcher"], requiresOwnAssignment: false },
   Schedule: { roles: ["admin", "dispatcher"], requiresOwnAssignment: false },
   Dispatch: { roles: ["admin", "dispatcher"], requiresOwnAssignment: false },
   Close: { roles: ["admin", "dispatcher"], requiresOwnAssignment: false },

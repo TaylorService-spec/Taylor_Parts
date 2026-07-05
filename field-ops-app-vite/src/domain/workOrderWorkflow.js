@@ -11,7 +11,11 @@
 
 // Same linear table as transitionEngine.ts's TRANSITIONS, with
 // CANCELLED as an explicit literal entry per non-terminal status rather
-// than a special case.
+// than a special case, and a "MarkReady" action (CREATED ->
+// READY_TO_DISPATCH) added to reach the one status the spec's original
+// 9 named actions never targeted -- see transitionEngine.ts's header
+// comment for how this was found (emulator-based verification, not just
+// review).
 const WORK_ORDER_TRANSITIONS = {
   CREATED: ["READY_TO_DISPATCH", "CANCELLED"],
   READY_TO_DISPATCH: ["SCHEDULED", "CANCELLED"],
@@ -31,6 +35,7 @@ export function canTransitionWorkOrder(currentStatus, nextStatus) {
 }
 
 const ACTION_TO_STATUS = {
+  MarkReady: "READY_TO_DISPATCH",
   Schedule: "SCHEDULED",
   Dispatch: "DISPATCHED",
   Accept: "ACCEPTED",
@@ -44,6 +49,7 @@ const ACTION_TO_STATUS = {
 
 // Mirrors transitionEngine.ts's ACTION_PERMISSIONS.
 const ACTION_PERMISSIONS = {
+  MarkReady: { roles: ["admin", "dispatcher"], requiresOwnAssignment: false },
   Schedule: { roles: ["admin", "dispatcher"], requiresOwnAssignment: false },
   Dispatch: { roles: ["admin", "dispatcher"], requiresOwnAssignment: false },
   Close: { roles: ["admin", "dispatcher"], requiresOwnAssignment: false },

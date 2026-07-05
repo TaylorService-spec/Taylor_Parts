@@ -46,6 +46,7 @@ export type WorkOrderType =
 // one lookup table (transitionEngine.ts's ACTION_TO_STATUS/ACTION_PERMISSIONS)
 // instead of a client being able to name an arbitrary status directly.
 export type ActionName =
+  | "MarkReady"
   | "Schedule"
   | "Dispatch"
   | "Accept"

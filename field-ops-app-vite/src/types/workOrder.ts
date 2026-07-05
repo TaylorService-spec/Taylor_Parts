@@ -45,6 +45,7 @@ export type WorkOrderType =
 // this file (that duplication is scoped to domain/workOrderWorkflow.js /
 // functions/src/transitionEngine.ts only).
 export type ActionName =
+  | "MarkReady"
   | "Schedule"
   | "Dispatch"
   | "Accept"
