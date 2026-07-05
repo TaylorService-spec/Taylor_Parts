@@ -262,19 +262,131 @@ button:hover {
 
 /* Epic 2 Phase 2B -- badge colors for the raw workOrder.status values
    (WorkOrderActions.jsx), distinct from the derived signal `state`
-   classes above (wo-ready/wo-blocked/wo-in_progress/wo-completed). */
+   classes above (wo-ready/wo-blocked/wo-in_progress/wo-completed).
+   Epic 2 Phase 2C's status color audit found wo-dispatched and
+   wo-work_in_progress sharing one color, and wo-accepted/wo-en_route/
+   wo-arrived sharing another -- all 11 below are now visually
+   distinct (verified: 11 unique background/color pairs). Color is
+   never the sole indicator anywhere this renders -- every chip also
+   shows the status name as text. */
 .wo-created { background: #EEF1F0; color: #445; }
 .wo-ready_to_dispatch { background: #e0f7e9; color: #166534; }
 .wo-scheduled { background: #FFF4DE; color: #A9740D; }
-.wo-dispatched { background: #fff7ed; color: #9a3412; }
-.wo-accepted { background: #EAF1F2; color: #2E4A50; }
-.wo-en_route { background: #EAF1F2; color: #2E4A50; }
-.wo-arrived { background: #EAF1F2; color: #2E4A50; }
+.wo-dispatched { background: #FDEBD3; color: #B2591F; }
+.wo-accepted { background: #E3F0FF; color: #1D5A9E; }
+.wo-en_route { background: #D6E8FF; color: #1B4B85; }
+.wo-arrived { background: #C7DCFF; color: #163E70; }
 .wo-work_in_progress { background: #fff7ed; color: #9a3412; }
-.wo-closed { background: #e0e7ff; color: #3730a3; }
+.wo-completed { background: #e0e7ff; color: #3730a3; } /* same as the pre-existing derived-state .wo-completed above -- same meaning, intentionally identical */
+.wo-closed { background: #EDE4F7; color: #5B2A86; }
 .wo-cancelled { background: #fee2e2; color: #991b1b; }
 
 .wo-actions { margin-top: 10px; }
+
+/* Epic 2 Phase 2C -- Dispatcher Operations Board (DispatcherBoard.jsx
+   and its 3 panes). Plain CSS, no framework, matching this project's
+   existing convention. */
+.disp-board-toolbar { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+.disp-board-toolbar input { flex: 1; min-width: 200px; padding: 8px 10px; border: 1px solid #D8DEDD; border-radius: 6px; font-size: 14px; }
+.disp-board-toolbar select { padding: 8px 10px; border: 1px solid #D8DEDD; border-radius: 6px; font-size: 14px; }
+
+.disp-board-layout {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 1fr;
+  gap: 16px;
+}
+@media (max-width: 900px) {
+  .disp-board-layout { grid-template-columns: 1fr; }
+}
+
+.disp-pane {
+  background: #fff;
+  border: 1px solid #EEF1F0;
+  border-radius: 8px;
+  padding: 12px;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.disp-wo-card {
+  border: 1px solid #EEF1F0;
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  cursor: grab;
+  font-size: 13px;
+}
+.disp-wo-card:active { cursor: grabbing; }
+.disp-wo-card--selected { border-color: #2E4A50; box-shadow: 0 0 0 1px #2E4A50; }
+.disp-wo-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+
+.disp-rec-row { margin-bottom: 6px; }
+.disp-rec-row--top { font-weight: 600; }
+.disp-rec-score-btn {
+  background: #EEF1F0;
+  color: #1B2A2E;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 13px;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+}
+.disp-rec-row--top .disp-rec-score-btn { background: #E6F6EC; color: #166534; }
+.disp-score-breakdown {
+  margin-top: 4px;
+  padding: 8px 10px;
+  background: #F4F6F5;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #445;
+}
+
+.disp-tech-column {
+  border: 1px solid #EEF1F0;
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  transition: background-color 0.15s ease;
+}
+.disp-tech-column--top3 { border-color: #237A45; }
+.disp-tech-column--dragover { background: #E6F6EC; }
+.disp-tech-column-header { display: flex; justify-content: space-between; align-items: center; }
+
+.disp-capacity-card { margin: 6px 0; }
+.disp-capacity-bar-track {
+  height: 6px;
+  background: #EEF1F0;
+  border-radius: 999px;
+  overflow: hidden;
+}
+.disp-capacity-bar-fill {
+  height: 100%;
+  background: #2E4A50;
+  border-radius: 999px;
+  transition: width 0.2s ease;
+}
+.disp-capacity-counts { margin-top: 4px; font-size: 12px; }
+
+/* Priority 4 accessibility -- visible focus indicators on every
+   interactive element this board introduces (draggable cards,
+   recommendation buttons, technician drop-target groups). Color is
+   never the sole indicator anywhere in this board -- status/badge
+   text always accompanies the color. */
+.disp-wo-card:focus-visible,
+.disp-rec-score-btn:focus-visible,
+.disp-tech-column:focus-visible {
+  outline: 2px solid #2E4A50;
+  outline-offset: 2px;
+}
+
+/* Priority 5 mobile/tablet audit -- panes must never overflow
+   horizontally or hide controls at narrower widths. */
+@media (max-width: 640px) {
+  .disp-board-toolbar input { min-width: 0; }
+  .disp-pane { max-height: none; }
+}
 
 .tech-overview {
   margin-top: 20px;
