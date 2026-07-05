@@ -22,6 +22,28 @@ import InventoryHealthPanel from "./panels/InventoryHealthPanel";
 import WarehousePanel from "./panels/WarehousePanel";
 import ProcurementPanel from "./panels/ProcurementPanel";
 
+// ROLE DEFINITION (load-bearing, don't blur this):
+// Operations is a READ-ONLY EXECUTIVE / MONITORING layer over Epics
+// 2D/3/4/5 (ledger, analytics, warehouse, procurement) -- it answers
+// "what does the business's inventory/warehouse/procurement picture
+// look like," nothing else. It is explicitly NOT a second dispatcher
+// tool and must never become one:
+//   - modules/dispatch/Dispatch.jsx (soon domains/execution/
+//     ExecutionWorkspace.jsx) remains the ONLY place a human assigns a
+//     job to a technician -- Operations has no job/technician
+//     assignment UI and must never grow one.
+//   - modules/controlTower/ControlTower.jsx remains the dispatcher's
+//     real-time operational intelligence view (at-risk jobs, overload,
+//     activity timeline) -- Operations does not duplicate or compete
+//     with it; Operations' scope is inventory/warehouse/procurement
+//     reporting only, never job/technician/work-order risk signals.
+// Concretely: this module has no "assign," "dispatch," or "act on
+// this job" affordance anywhere, and never will -- only tables and
+// read-only reconciliation/forecast output. See docs/CLAUDE_CONTEXT.md's
+// rule on Control Tower/Dispatcher Workspace overlap for why a third
+// competing operational view is exactly the fragmentation risk this
+// module must not repeat.
+//
 // Epics 2D/3/4/5 (ledger, analytics, warehouse, procurement) are all
 // backend-only Cloud Functions modules with no prior UI -- this is the
 // first read-only reporting surface over them. One-shot reads only (no
