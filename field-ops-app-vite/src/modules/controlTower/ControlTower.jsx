@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { JOBS_COLLECTION, TECHNICIANS_COLLECTION, JOB_STATUS, TECH_STATUS } from "../../domain/constants";
 import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
 import { useWorkOrders } from "../../hooks/useWorkOrders";
+import { useAuth } from "../../auth/AuthContext";
 import { groupJobsByTechnician } from "./techUtils";
 import AtRiskPanel from "./panels/AtRiskPanel";
 import DispatchQueuePanel from "./panels/DispatchQueuePanel";
@@ -54,6 +55,7 @@ import WorkOrderDetail from "./WorkOrderDetail";
 //        WorkOrderDetail) -- consume Signals, never recompute them.
 
 export default function ControlTower() {
+  const { role } = useAuth();
   const { data: jobs } = useFirestoreCollection(JOBS_COLLECTION);
   const { data: technicians } = useFirestoreCollection(TECHNICIANS_COLLECTION);
   const { data: workOrders } = useWorkOrders();
@@ -114,7 +116,7 @@ export default function ControlTower() {
       )}
 
       {workOrders.map((wo) => (
-        <WorkOrderDetail key={wo.id} workOrder={wo} jobs={jobsForWorkOrder(wo.id)} />
+        <WorkOrderDetail key={wo.id} workOrder={wo} jobs={jobsForWorkOrder(wo.id)} role={role} technicians={technicians} />
       ))}
 
       <div className="tech-overview">
