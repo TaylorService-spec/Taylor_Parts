@@ -105,9 +105,9 @@ Carried forward unchanged from Epic 1.1's boundaries (`docs/epics` inherits, doe
 
 The system currently does **NOT** implement an event stream.
 
-All auditability is derived from:
-- WorkOrder state timestamps (`dispatchedAt`/`acceptedAt`/`enRouteAt`/`arrivedAt`/`workStartedAt`/`completedAt`/`closedAt`, each written once, immutably, by `transitionWorkOrder.ts`).
-- Deterministic Cloud Function transitions (`transitionEngine.ts`'s literal table means "how did this WO get here" is always reconstructable from its current status plus those timestamps, without needing a separate log).
+All auditability and operational timelines are derived **exclusively** from WorkOrder state transition timestamps persisted in `fieldops_wos` (`dispatchedAt`/`acceptedAt`/`enRouteAt`/`arrivedAt`/`workStartedAt`/`completedAt`/`closedAt`, each written once, immutably, by `transitionWorkOrder.ts`), reconstructable via `transitionEngine.ts`'s deterministic transition table.
+
+**No secondary event log or UI-layer tracking is considered authoritative.**
 
 A "Work Order Creation Event Log (UI only)" was proposed during this epic (tracking WO Created / Save Draft vs. Create & Continue / timestamp / role) and explicitly deferred: a UI-only, non-persisted log cannot actually deliver audit trails, dispatcher analytics, or SLA tracking — all three need data that survives a page refresh and is visible across sessions/devices, which "UI only" cannot provide. Building it anyway would either stay decoratively useless or quietly grow into unreviewed persisted writes later.
 
