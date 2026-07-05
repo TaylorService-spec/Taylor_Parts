@@ -12,3 +12,10 @@ export const COUNTERS_COLLECTION = "counters";
 // either this epoch (see ADR-003's scope note).
 export const INVENTORY_TRANSACTIONS_COLLECTION = "inventory_transactions";
 export const INVENTORY_SYNC_STATUS_COLLECTION = "inventory_sync_status";
+
+// Epic 4 Warehouse + Fulfillment System. Admin-SDK-only, same posture
+// as the ledger collections above -- physical-reality layer, not a
+// second source of truth, so no UI writes directly.
+export const WAREHOUSES_COLLECTION = "warehouses";
+export const STOCK_LOCATIONS_COLLECTION = "stock_locations";
+export const TRANSFER_ORDERS_COLLECTION = "transfer_orders";

@@ -77,5 +77,23 @@ service cloud.firestore {
       allow read: if false;
       allow create, update, delete: if false;
     }
+
+    // Epic 4 Warehouse + Fulfillment System. Same Admin-SDK-only posture
+    // as the ledger above -- a physical-reality layer, not a second
+    // source of truth, so no direct client writes here either.
+    match /warehouses/{warehouseId} {
+      allow read: if false;
+      allow create, update, delete: if false;
+    }
+
+    match /stock_locations/{stockLocationId} {
+      allow read: if false;
+      allow create, update, delete: if false;
+    }
+
+    match /transfer_orders/{transferOrderId} {
+      allow read: if false;
+      allow create, update, delete: if false;
+    }
   }
 }
