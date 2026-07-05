@@ -42,6 +42,12 @@ export type UsageStats = {
   totalConsumed: number;
   avgDailyUsage: number;
   volatility: number;
+  // Epic 3 Fix 3.2 -- labels volatility explicitly as the naive
+  // heuristic it is (see calculateUsageRate's comment), so a consumer
+  // of this data never mistakes it for a real statistical/forecasting
+  // model. A future, more rigorous model would ship as a new literal
+  // value here, not silently change what "HEURISTIC_SIMPLE" means.
+  volatilityModel: "HEURISTIC_SIMPLE";
 };
 
 export type RiskLevel = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
@@ -60,6 +66,13 @@ export type ReplenishmentRecommendation = {
   daysRemaining: number;
   recommendedOrderQty: number;
   urgency: RiskLevel;
+  // Epic 3 Fix 3.3 -- labels the reorder logic's lineage explicitly, so
+  // it's never mistaken for a "smart"/adaptive model. A future
+  // replacement model ships as a new version string (e.g.
+  // "EPIC4_SEASONAL_V1"), and any consumer checking this field can tell
+  // exactly which deterministic formula produced a given
+  // recommendation.
+  modelVersion: "EPIC3_LINEAR_V1";
 };
 
 export type InventoryHealthEntry = {
@@ -115,6 +128,7 @@ export function calculateUsageRate(
     totalConsumed,
     avgDailyUsage,
     volatility: Math.sqrt(variance),
+    volatilityModel: "HEURISTIC_SIMPLE",
   };
 }
 
@@ -185,6 +199,7 @@ export function generateReplenishmentRecommendation(
     daysRemaining,
     recommendedOrderQty,
     urgency,
+    modelVersion: "EPIC3_LINEAR_V1",
   };
 }
 
@@ -202,4 +217,80 @@ export function generateInventoryHealthDashboard(
       recommendation: generateReplenishmentRecommendation(stock.partId, stock.availableStock, usage),
     };
   });
+}
+
+// --- Epic 3 Fix 3.4 -- provider-based wrappers, ADDITIVE only ---
+//
+// The functions above (calculateDaysOfSupply/predictStockout/
+// generateReplenishmentRecommendation/generateInventoryHealthDashboard)
+// are UNCHANGED -- still pure, synchronous, trivially testable with
+// plain numbers. They already decouple this engine from any storage
+// model: a caller integrating a future warehouse system just fetches a
+// number from wherever and passes it in, exactly as it would for
+// Firestore-sourced data today. Replacing their signatures with an
+// async provider would have made them I/O-capable for no actual gain
+// in decoupling -- a real regression against this epic's own "all
+// functions are pure and testable" goal.
+//
+// Instead, StockSnapshotProvider and the *WithProvider wrappers below
+// are added alongside the pure functions, for the specific case (Epic
+// 4 warehouse integration) where a caller genuinely wants to fetch
+// stock lazily/per-part rather than pre-assembling a StockSnapshot[].
+// Each wrapper does nothing but await the provider and delegate to the
+// existing pure function -- no duplicated logic.
+export type StockSnapshotProvider = {
+  getStock(partId: string): Promise<number> | number;
+};
+
+export async function calculateDaysOfSupplyWithProvider(
+  partId: string,
+  stockProvider: StockSnapshotProvider,
+  usage: UsageStats
+): Promise<number> {
+  const availableStock = await stockProvider.getStock(partId);
+  return calculateDaysOfSupply(partId, availableStock, usage);
+}
+
+export async function predictStockoutWithProvider(
+  partId: string,
+  stockProvider: StockSnapshotProvider,
+  usage: UsageStats
+): Promise<StockoutPrediction> {
+  const availableStock = await stockProvider.getStock(partId);
+  return predictStockout(partId, availableStock, usage);
+}
+
+export async function generateReplenishmentRecommendationWithProvider(
+  partId: string,
+  stockProvider: StockSnapshotProvider,
+  usage: UsageStats,
+  leadTimeDays: number = 7
+): Promise<ReplenishmentRecommendation> {
+  const availableStock = await stockProvider.getStock(partId);
+  return generateReplenishmentRecommendation(partId, availableStock, usage, leadTimeDays);
+}
+
+// Provider-based dashboard variant: takes a list of partIds instead of
+// a pre-fetched StockSnapshot[], fetching each part's stock lazily via
+// the provider. generateInventoryHealthDashboard() (array-based) is
+// still the right choice whenever the caller already has all snapshots
+// in hand (e.g. read once from Firestore) -- this variant exists for
+// when it doesn't.
+export async function generateInventoryHealthDashboardWithProvider(
+  transactions: LedgerTransaction[],
+  partIds: string[],
+  stockProvider: StockSnapshotProvider
+): Promise<InventoryHealthEntry[]> {
+  const entries: InventoryHealthEntry[] = [];
+  for (const partId of partIds) {
+    const usage = calculateUsageRate(partId, transactions);
+    const availableStock = await stockProvider.getStock(partId);
+    entries.push({
+      partId,
+      usage,
+      stock: { partId, availableStock },
+      recommendation: generateReplenishmentRecommendation(partId, availableStock, usage),
+    });
+  }
+  return entries;
 }
