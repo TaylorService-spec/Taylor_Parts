@@ -1,20 +1,24 @@
 import { JOB_STATUS, WORK_ORDER_STATE } from "./constants";
 
-// The single Work Order aggregation engine (Sprint 3.4). Every module
-// that needs to know "is this Work Order active / blocked / ready /
-// complete" -- Jobs, Dispatch, Control Tower, Reporting -- routes through
-// this file. There is exactly one aggregation implementation; nothing
-// else in the codebase is allowed to recompute Work Order state from raw
-// job data.
+// DEPRECATED for new consumers as of Work Order Engine v1.2 (Epic 1, see
+// docs/architecture/ADR-002). Source of truth for Work Order state is
+// now fieldops_wos.status (a real, persisted field, written only by the
+// createWorkOrder/transitionWorkOrder Cloud Functions) -- not an
+// aggregate computed from Jobs.
 //
-// A Work Order never owns its own status and never transitions
-// independently:
+// The four exports below (computeWorkOrderState/isActiveWorkOrder/
+// isCompletedWorkOrder/explainWorkOrderState) are kept byte-identical
+// and FROZEN, serving exactly one remaining consumer:
+// domain/timelineBuilder.js, whose call site only has a jobs array (no
+// WO doc) to work with and is out of scope for this migration. No new
+// code may call these four -- if timelineBuilder.js is ever migrated to
+// the real model, delete these four outright rather than extending them
+// further.
 //
-//   Jobs -> aggregate -> Work Order State -> Control Tower -> Reporting
-//
-// Jobs remain the only mutable workflow entity (OPEN -> ASSIGNED ->
-// IN_PROGRESS -> COMPLETE, via domain/jobActions.js). This module is
-// pure derivation: no Firestore access, no writes, no side effects.
+// New consumers (modules/controlTower/WorkOrderDetail.jsx,
+// ControlTower.jsx) use mapWoStatusToLifecycleState()/explainWorkOrder()
+// below instead -- both are pure MAPS from a real fieldops_wos doc's
+// `status` field, never inference from a jobs array.
 
 // Computes a Work Order's aggregate state from its child Jobs.
 //
@@ -105,4 +109,60 @@ export function explainWorkOrderState(jobs) {
   }
 
   return { state, reasons, metrics };
+}
+
+// --- New, map-only exports for Work Order Engine v1.2 consumers ---
+// (see the file header above -- these derive purely from a real
+// fieldops_wos doc's `status`, never from a jobs array.)
+
+// 11-value WorkOrderStatus (functions/src/types/workOrder.ts /
+// field-ops-app-vite/src/types/workOrder.ts) -> legacy 4-value
+// WORK_ORDER_STATE, for display compatibility with existing badge
+// styling (.wo-ready/.wo-blocked/.wo-in_progress/.wo-completed CSS
+// classes). CANCELLED maps to BLOCKED (closest existing visual
+// treatment) but is NOT silently indistinguishable from a normal
+// blocked WO -- callers must check the separate `isCancelled` flag.
+const WO_STATUS_TO_LIFECYCLE_STATE = {
+  CREATED: WORK_ORDER_STATE.BLOCKED,
+  READY_TO_DISPATCH: WORK_ORDER_STATE.BLOCKED,
+  SCHEDULED: WORK_ORDER_STATE.READY,
+  DISPATCHED: WORK_ORDER_STATE.READY,
+  ACCEPTED: WORK_ORDER_STATE.READY,
+  EN_ROUTE: WORK_ORDER_STATE.IN_PROGRESS,
+  ARRIVED: WORK_ORDER_STATE.IN_PROGRESS,
+  WORK_IN_PROGRESS: WORK_ORDER_STATE.IN_PROGRESS,
+  COMPLETED: WORK_ORDER_STATE.COMPLETED,
+  CLOSED: WORK_ORDER_STATE.COMPLETED,
+  CANCELLED: WORK_ORDER_STATE.BLOCKED,
+};
+
+export function mapWoStatusToLifecycleState(woStatus) {
+  return {
+    state: WO_STATUS_TO_LIFECYCLE_STATE[woStatus] ?? WORK_ORDER_STATE.BLOCKED,
+    isCancelled: woStatus === "CANCELLED",
+  };
+}
+
+// Real-doc analog of explainWorkOrderState(jobs) above -- same return
+// shape ({ state, reasons, metrics }), but derived purely from a
+// fieldops_wos doc's own fields, never a jobs array.
+export function explainWorkOrder(workOrderDoc) {
+  const { state, isCancelled } = mapWoStatusToLifecycleState(workOrderDoc.status);
+
+  // The doc has no history of what status preceded CANCELLED, so this
+  // deliberately doesn't guess at one.
+  const reasons = isCancelled
+    ? ["This Work Order has been cancelled."]
+    : [`Status: ${workOrderDoc.status}`];
+
+  return {
+    state,
+    isCancelled,
+    reasons,
+    metrics: {
+      woNumber: workOrderDoc.woNumber,
+      status: workOrderDoc.status,
+      priority: workOrderDoc.priority,
+    },
+  };
 }

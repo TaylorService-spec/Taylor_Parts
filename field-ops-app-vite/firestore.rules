@@ -7,9 +7,32 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // Introduced for Work Order Engine v1.2 (docs/architecture/ADR-002).
+    // Not present elsewhere on this branch yet -- the richer role-based
+    // rules on feature-dispatch-control-tower (unmerged as of this
+    // writing) define similar helpers; reconcile when that branch merges.
+    function userData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function userRole() {
+      return userData().role;
+    }
+
+    function isAdminOrDispatcher() {
+      return isSignedIn() && (userRole() == "admin" || userRole() == "dispatcher");
+    }
+
+    function isTechnician() {
+      return isSignedIn() && userRole() == "technician";
+    }
+
+    function isOwnTechnician(technicianId) {
+      return isSignedIn() && userData().technicianId == technicianId;
+    }
+
     match /fieldops_jobs/{jobId} {
       allow read: if isSignedIn();
-
       allow write: if isSignedIn();
     }
 
@@ -22,6 +45,23 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isSignedIn() && request.auth.uid == userId;
       allow write: if false;
+    }
+
+    // Work Order Engine v1.2 (docs/architecture/ADR-002). All writes go
+    // through the createWorkOrder/transitionWorkOrder Cloud Functions
+    // (Admin SDK, bypasses these rules by design) -- clients are
+    // read-only here, unconditionally, with NO admin/dispatcher
+    // exception: there is no future path for an "admin UI" to grow a
+    // direct-write shortcut around the Cloud Functions.
+    match /fieldops_wos/{woId} {
+      allow read: if isAdminOrDispatcher()
+        || (isTechnician() && isOwnTechnician(resource.data.assignedTechId));
+      allow create, update, delete: if false;
+    }
+
+    match /counters/{counterId} {
+      allow read: if false;
+      allow create, update, delete: if false;
     }
   }
 }

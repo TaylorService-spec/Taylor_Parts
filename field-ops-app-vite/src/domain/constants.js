@@ -15,6 +15,16 @@ export const JOBS_COLLECTION = "fieldops_jobs";
 export const TECHNICIANS_COLLECTION = "fieldops_technicians";
 export const USERS_COLLECTION = "users";
 
+// Work Order Engine v1.2 (Epic 1, see docs/architecture/ADR-002). Real,
+// persisted collections -- fieldops_wos is the source of truth for Work
+// Order state, written only by the createWorkOrder/transitionWorkOrder
+// Cloud Functions (functions/src/), never directly by this client. The
+// full 11-value WorkOrderStatus enum lives in types/workOrder.ts (TS)
+// and is mirrored in domain/workOrderWorkflow.js (JS) -- not duplicated
+// a third time here.
+export const WORK_ORDERS_COLLECTION = "fieldops_wos";
+export const COUNTERS_COLLECTION = "counters";
+
 export const ROLES = {
   ADMIN: "admin",
   DISPATCHER: "dispatcher",
