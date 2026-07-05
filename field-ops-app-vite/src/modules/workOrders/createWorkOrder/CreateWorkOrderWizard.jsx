@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { createWorkOrder } from "../../../services/workOrderService";
+import { useNavigateToTab } from "../../../shared/navigation/NavigationContext";
 import CustomerStep from "./CustomerStep";
 import ServiceStep from "./ServiceStep";
 import EquipmentStep from "./EquipmentStep";
@@ -17,6 +18,23 @@ import WizardNavigation from "./WizardNavigation";
 // ownership, which doesn't apply here -- there is no WO yet to gate
 // against, only a create-permission check the Cloud Function itself
 // already enforces (admin/dispatcher only).
+//
+// Save Draft / Create & Continue: both call the identical
+// createWorkOrder() -- there is no backend distinction, and can't be
+// one without a Cloud Function change (createWorkOrder.ts always sets
+// status: "CREATED" and always requires customerId/locationId/
+// priority/type/complaint; there's no partial/lower-validation code
+// path). The real difference is UX only:
+// - Save Draft: available on ANY step, the moment the minimum
+//   required fields are valid -- a dispatcher who's only gotten
+//   through Customer + Service Request (still gathering Equipment/
+//   Parts info) can save now and finish later.
+// - Create & Continue: the Review step's primary action (implies
+//   Equipment/Parts were reviewed too) -- creates the WO, then
+//   navigates to Control Tower (useNavigateToTab) where it now
+//   appears, instead of showing a local "created" confirmation.
+//   Can't deep-link to a single focused WO view -- this app has no
+//   routing (a deliberate prior decision, not an oversight).
 //
 // STEPS is the single source of truth for wizard order/labels --
 // WizardNavigation renders from this, nothing hardcodes step count
@@ -63,6 +81,7 @@ function validate(form) {
 }
 
 export default function CreateWorkOrderWizard({ onCreated }) {
+  const navigateToTab = useNavigateToTab();
   const [stepIndex, setStepIndex] = useState(0);
   const [form, setForm] = useState(INITIAL_FORM);
   const [submitting, setSubmitting] = useState(false);
@@ -84,8 +103,8 @@ export default function CreateWorkOrderWizard({ onCreated }) {
     setStepIndex((i) => Math.max(i - 1, 0));
   }
 
-  async function handleCreate() {
-    if (!isValid) return;
+  async function submit() {
+    if (!isValid) return null;
     setSubmitting(true);
     setSubmitError(null);
     try {
@@ -97,13 +116,24 @@ export default function CreateWorkOrderWizard({ onCreated }) {
         ...(form.severity ? { severity: form.severity } : {}),
         complaint: form.complaint.trim(),
       });
-      setResult(created);
       onCreated?.(created);
+      return created;
     } catch (err) {
       setSubmitError(err.message || "Failed to create Work Order.");
+      return null;
     } finally {
       setSubmitting(false);
     }
+  }
+
+  async function handleSaveDraft() {
+    const created = await submit();
+    if (created) setResult(created);
+  }
+
+  async function handleCreateAndContinue() {
+    const created = await submit();
+    if (created) navigateToTab("controlTower");
   }
 
   if (result) {
@@ -111,7 +141,8 @@ export default function CreateWorkOrderWizard({ onCreated }) {
       <div className="fo-panel">
         <h3>Work Order Created</h3>
         <p>
-          <strong>{result.woNumber}</strong> was created successfully.
+          <strong>{result.woNumber}</strong> was created successfully. You can finish scheduling and dispatch
+          from Control Tower once you're ready.
         </p>
         <button
           type="button"
@@ -144,18 +175,33 @@ export default function CreateWorkOrderWizard({ onCreated }) {
       {submitError && <p className="fo-error">{submitError}</p>}
 
       <div className="fo-wizard-actions">
-        <button type="button" onClick={goBack} disabled={stepIndex === 0 || submitting}>
-          Back
-        </button>
-        {step.key === "review" ? (
-          <button type="button" className="fo-btn-large" onClick={handleCreate} disabled={!isValid || submitting}>
-            {submitting ? "Creating…" : "Create Work Order"}
+        <div className="fo-wizard-actions-left">
+          <button type="button" onClick={goBack} disabled={stepIndex === 0 || submitting}>
+            Back
           </button>
-        ) : (
-          <button type="button" className="fo-btn-large" onClick={goNext}>
-            Next
+        </div>
+        <div className="fo-wizard-actions-right">
+          {/* Available on every step, not just Review -- a dispatcher who's
+              only filled Customer + Service Request (still gathering
+              Equipment/Parts info from the customer) can save now. */}
+          <button type="button" onClick={handleSaveDraft} disabled={!isValid || submitting}>
+            {submitting ? "Saving…" : "Save Draft"}
           </button>
-        )}
+          {step.key === "review" ? (
+            <button
+              type="button"
+              className="fo-btn-large"
+              onClick={handleCreateAndContinue}
+              disabled={!isValid || submitting}
+            >
+              {submitting ? "Creating…" : "Create & Continue"}
+            </button>
+          ) : (
+            <button type="button" className="fo-btn-large" onClick={goNext}>
+              Next
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

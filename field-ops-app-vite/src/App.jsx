@@ -10,6 +10,7 @@ import { useAuth } from "./auth/AuthContext";
 import Login from "./auth/Login";
 import AppHeader from "./shared/ui/AppHeader";
 import { InventoryProvider } from "./demo/InventoryContext";
+import { NavigationProvider } from "./shared/navigation/NavigationContext";
 import { IS_DEMO } from "./config/env";
 import { ROLE_NAV_ACCESS } from "./domain/constants";
 
@@ -59,28 +60,30 @@ export default function App() {
   }
 
   return (
-    <InventoryProvider>
-      <div className="fo-app">
-        {IS_DEMO && <div className="fo-demo-banner">DEMO MODE ACTIVE (SAFE - NO WRITES TO PRODUCTION)</div>}
-        <AppHeader />
-        <header className="fo-header">
-          <h1>Field Ops</h1>
-          <nav className="fo-nav">
-            {visibleNav.map((item) => (
-              <button
-                key={item.key}
-                className={activeTab === item.key ? "fo-nav-btn fo-nav-btn-active" : "fo-nav-btn"}
-                onClick={() => setActiveTab(item.key)}
-              >
-                {item.label}
-              </button>
-            ))}
-          </nav>
-        </header>
-        <main className="fo-main">
-          <ActiveView />
-        </main>
-      </div>
-    </InventoryProvider>
+    <NavigationProvider navigateToTab={setActiveTab}>
+      <InventoryProvider>
+        <div className="fo-app">
+          {IS_DEMO && <div className="fo-demo-banner">DEMO MODE ACTIVE (SAFE - NO WRITES TO PRODUCTION)</div>}
+          <AppHeader />
+          <header className="fo-header">
+            <h1>Field Ops</h1>
+            <nav className="fo-nav">
+              {visibleNav.map((item) => (
+                <button
+                  key={item.key}
+                  className={activeTab === item.key ? "fo-nav-btn fo-nav-btn-active" : "fo-nav-btn"}
+                  onClick={() => setActiveTab(item.key)}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </nav>
+          </header>
+          <main className="fo-main">
+            <ActiveView />
+          </main>
+        </div>
+      </InventoryProvider>
+    </NavigationProvider>
   );
 }
