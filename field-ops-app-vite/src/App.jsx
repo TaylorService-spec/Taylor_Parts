@@ -5,6 +5,7 @@ import Technicians from "./modules/technicians/Technicians";
 import Dispatch from "./modules/dispatch/Dispatch";
 import FieldMode from "./modules/mobile/FieldMode";
 import Inventory from "./modules/inventory/Inventory";
+import CreateWorkOrderPage from "./modules/workOrders/createWorkOrder/CreateWorkOrderPage";
 import { useAuth } from "./auth/AuthContext";
 import Login from "./auth/Login";
 import AppHeader from "./shared/ui/AppHeader";
@@ -19,6 +20,10 @@ const NAV = [
   { key: "dispatch", label: "Dispatch", Component: Dispatch },
   { key: "fieldMode", label: "Field Mode", Component: FieldMode },
   { key: "inventory", label: "Inventory", Component: Inventory },
+  // Epic 2 Phase 1 (docs/epics/EPIC-2.md) -- temporary/pragmatic
+  // placement; final nav placement is a Phase 4 (Domain Language
+  // Alignment & Polish) decision, not this one.
+  { key: "createWorkOrder", label: "Create Work Order", Component: CreateWorkOrderPage },
 ];
 
 export default function App() {

@@ -326,3 +326,79 @@ button:hover {
   font-size: 13px;
   padding: 2px 0;
 }
+
+/* Epic 2 Phase 1 -- Create Work Order Wizard */
+.fo-wizard-nav {
+  display: flex;
+  gap: 16px;
+  list-style: none;
+  padding: 0;
+  margin: 0 0 20px;
+  flex-wrap: wrap;
+}
+
+.fo-wizard-nav-step {
+  font-size: 13px;
+  color: #8A9694;
+}
+
+.fo-wizard-nav-step-active {
+  color: #1B2A2E;
+  font-weight: 600;
+}
+
+.fo-wizard-nav-step-done {
+  color: #237A45;
+}
+
+.fo-wizard-step {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.fo-wizard-step label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: #445;
+}
+
+.fo-wizard-step input,
+.fo-wizard-step select,
+.fo-wizard-step textarea {
+  padding: 8px 10px;
+  border: 1px solid #D8DEDD;
+  border-radius: 6px;
+  font-size: 14px;
+  font-family: inherit;
+}
+
+.fo-wizard-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.fo-review-list {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 16px;
+  margin: 0;
+}
+
+.fo-review-list dt {
+  font-weight: 600;
+  color: #667;
+}
+
+.fo-review-list dd {
+  margin: 0;
+}
+
+.fo-error {
+  color: #B23B3B;
+  font-size: 13px;
+}
