@@ -40,8 +40,8 @@ export const ROLES = {
 // technician has no reason to see ledger/warehouse/procurement
 // reporting.
 export const ROLE_NAV_ACCESS = {
-  [ROLES.ADMIN]: ["controlTower", "jobs", "technicians", "dispatch", "fieldMode", "inventory", "operations"],
-  [ROLES.DISPATCHER]: ["controlTower", "jobs", "technicians", "dispatch", "inventory", "operations"],
+  [ROLES.ADMIN]: ["controlTower", "jobs", "technicians", "dispatch", "fieldMode", "inventory", "operations", "dispatcherBoard"],
+  [ROLES.DISPATCHER]: ["controlTower", "jobs", "technicians", "dispatch", "inventory", "operations", "dispatcherBoard"],
   [ROLES.TECHNICIAN]: ["fieldMode", "jobs"],
 };
 

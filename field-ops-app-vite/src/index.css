@@ -276,6 +276,77 @@ button:hover {
 
 .wo-actions { margin-top: 10px; }
 
+/* Epic 2 Phase 2C -- Dispatcher Operations Board (DispatcherBoard.jsx
+   and its 3 panes). Plain CSS, no framework, matching this project's
+   existing convention. */
+.disp-board-toolbar { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+.disp-board-toolbar input { flex: 1; min-width: 200px; padding: 8px 10px; border: 1px solid #D8DEDD; border-radius: 6px; font-size: 14px; }
+.disp-board-toolbar select { padding: 8px 10px; border: 1px solid #D8DEDD; border-radius: 6px; font-size: 14px; }
+
+.disp-board-layout {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 1fr;
+  gap: 16px;
+}
+@media (max-width: 900px) {
+  .disp-board-layout { grid-template-columns: 1fr; }
+}
+
+.disp-pane {
+  background: #fff;
+  border: 1px solid #EEF1F0;
+  border-radius: 8px;
+  padding: 12px;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.disp-wo-card {
+  border: 1px solid #EEF1F0;
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  cursor: grab;
+  font-size: 13px;
+}
+.disp-wo-card:active { cursor: grabbing; }
+.disp-wo-card--selected { border-color: #2E4A50; box-shadow: 0 0 0 1px #2E4A50; }
+.disp-wo-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+
+.disp-rec-row { margin-bottom: 6px; }
+.disp-rec-row--top { font-weight: 600; }
+.disp-rec-score-btn {
+  background: #EEF1F0;
+  color: #1B2A2E;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 13px;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+}
+.disp-rec-row--top .disp-rec-score-btn { background: #E6F6EC; color: #166534; }
+.disp-score-breakdown {
+  margin-top: 4px;
+  padding: 8px 10px;
+  background: #F4F6F5;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #445;
+}
+
+.disp-tech-column {
+  border: 1px solid #EEF1F0;
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  transition: background-color 0.15s ease;
+}
+.disp-tech-column--top3 { border-color: #237A45; }
+.disp-tech-column--dragover { background: #E6F6EC; }
+.disp-tech-column-header { display: flex; justify-content: space-between; align-items: center; }
+
 .tech-overview {
   margin-top: 20px;
   padding-top: 10px;
