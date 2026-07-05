@@ -101,6 +101,20 @@ Carried forward unchanged from Epic 1.1's boundaries (`docs/epics` inherits, doe
 - Notifications/alerts when a Work Order is dispatched to a technician — out of scope until this epic's core loop works.
 - Bulk actions (multi-select Work Orders, bulk dispatch) — one-at-a-time only.
 
+## Audit & Analytics Strategy (Deferred)
+
+The system currently does **NOT** implement an event stream.
+
+All auditability is derived from:
+- WorkOrder state timestamps (`dispatchedAt`/`acceptedAt`/`enRouteAt`/`arrivedAt`/`workStartedAt`/`completedAt`/`closedAt`, each written once, immutably, by `transitionWorkOrder.ts`).
+- Deterministic Cloud Function transitions (`transitionEngine.ts`'s literal table means "how did this WO get here" is always reconstructable from its current status plus those timestamps, without needing a separate log).
+
+A "Work Order Creation Event Log (UI only)" was proposed during this epic (tracking WO Created / Save Draft vs. Create & Continue / timestamp / role) and explicitly deferred: a UI-only, non-persisted log cannot actually deliver audit trails, dispatcher analytics, or SLA tracking — all three need data that survives a page refresh and is visible across sessions/devices, which "UI only" cannot provide. Building it anyway would either stay decoratively useless or quietly grow into unreviewed persisted writes later.
+
+This is the same call already made in `docs/architecture/ADR-001-retired-operational-core-branch.md` for `fieldops_job_events`: *no persisted event stream until there's a broader eventing strategy this project has deliberately not committed to yet.*
+
+**A true eventing system is deferred to a future epic (Epic X)** — scoped with the same rigor as Epic 1's backend (new collection, write path, `firestore.rules`, a real design decision) if and when it's actually taken up, not folded in as a small addition to this one.
+
 ## Acceptance criteria per phase
 
 ### Phase 1 — Dispatcher creation
