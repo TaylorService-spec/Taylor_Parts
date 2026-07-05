@@ -31,7 +31,19 @@ import { TECH_STATUS } from "../../domain/constants";
 // under an in-flight technician via this screen), not a contract
 // violation -- the backend still accepts a Cancel call from those
 // states if one were ever added elsewhere.
-const READ_ONLY_STATUSES = new Set(["ACCEPTED", "EN_ROUTE", "ARRIVED", "WORK_IN_PROGRESS"]);
+//
+// This is a UI-layer decision, not sourced from
+// domain/workOrderWorkflow.js's getAllowedActions() -- see
+// docs/architecture/ADR-002-work-order-engine.md's "Work Order
+// Lifecycle Authority" section (functions/src/transitionEngine.ts is
+// the canonical lifecycle authority; anything layered on top of it
+// here, like this constant, must stay clearly named and documented as
+// exactly that -- a layer on top, never a competing interpretation)
+// and docs/architecture/SYSTEM_AUTHORITIES.md (the "who owns what"
+// map -- Work Order lifecycle's row points at transitionEngine.ts,
+// not this file). Exported so it stays a single, findable point of
+// change if this UX restriction is ever revisited.
+export const READ_ONLY_STATUSES = new Set(["ACCEPTED", "EN_ROUTE", "ARRIVED", "WORK_IN_PROGRESS"]);
 
 // Pure map from workOrder.status only -- no timestamps, no derived
 // lifecycle logic, per this epic's UI state rule.
