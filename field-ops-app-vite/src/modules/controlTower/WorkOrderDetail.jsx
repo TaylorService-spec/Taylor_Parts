@@ -3,6 +3,7 @@ import { buildTimeline } from "../../domain/timelineBuilder";
 import { describeEvent } from "../../domain/eventModel";
 import { EVENT_ICON } from "../../domain/eventTypes";
 import { getCatalogItem } from "../../data/partsCatalog";
+import WorkOrderActions from "./WorkOrderActions";
 
 // Work Order Engine v1.2 (Epic 1, see docs/architecture/ADR-002):
 // renders a real, persisted fieldops_wos doc -- NOT an aggregate
@@ -25,10 +26,13 @@ import { getCatalogItem } from "../../data/partsCatalog";
 // integrity -- see ControlTower.jsx). Jobs remain the timeline source,
 // unchanged from before this migration.
 //
-// No action buttons yet (Accept/Travel/Arrive/Complete/Dispatch/Cancel)
-// -- Phase 2, deliberately deferred. See the TODO block below for where
-// they'll go, gated by domain/workOrderWorkflow.js's getAllowedActions().
-export default function WorkOrderDetail({ workOrder, jobs }) {
+// Epic 2 Phase 2B: dispatcher-side action buttons (MarkReady/Schedule/
+// Dispatch/Close/Cancel) now render via WorkOrderActions.jsx, gated by
+// domain/workOrderWorkflow.js's getAllowedActions() -- see that file's
+// header comment. Technician actions (Accept/Travel/Arrive/WorkStart/
+// Complete) are out of scope here; FieldMode.jsx (a separate,
+// unmigrated fieldops_jobs-based screen) is untouched by this pass.
+export default function WorkOrderDetail({ workOrder, jobs, role, technicians }) {
   const signal = computeWorkOrderSignalFromDoc(workOrder);
   const { state, isCancelled, reasons } = signal.metadata;
   const history = buildTimeline(jobs);
@@ -122,13 +126,7 @@ export default function WorkOrderDetail({ workOrder, jobs }) {
         </div>
       )}
 
-      {/* Phase 2 TODO: Accept/Travel/Arrive/Complete (technician) and
-          Schedule/Dispatch/Close/Cancel (dispatcher) action buttons go
-          here, each gated by
-          domain/workOrderWorkflow.js's getAllowedActions(workOrder.status,
-          role, isOwnAssignment) so only currently-valid, currently-
-          permitted actions render. Not implemented this pass -- see
-          docs/architecture/ADR-002-work-order-engine.md. */}
+      <WorkOrderActions workOrder={workOrder} role={role} technicians={technicians} />
 
       {history.length > 0 && (
         <div className="wo-history">

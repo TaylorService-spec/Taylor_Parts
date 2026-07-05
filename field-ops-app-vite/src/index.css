@@ -260,6 +260,22 @@ button:hover {
   color: #3730a3;
 }
 
+/* Epic 2 Phase 2B -- badge colors for the raw workOrder.status values
+   (WorkOrderActions.jsx), distinct from the derived signal `state`
+   classes above (wo-ready/wo-blocked/wo-in_progress/wo-completed). */
+.wo-created { background: #EEF1F0; color: #445; }
+.wo-ready_to_dispatch { background: #e0f7e9; color: #166534; }
+.wo-scheduled { background: #FFF4DE; color: #A9740D; }
+.wo-dispatched { background: #fff7ed; color: #9a3412; }
+.wo-accepted { background: #EAF1F2; color: #2E4A50; }
+.wo-en_route { background: #EAF1F2; color: #2E4A50; }
+.wo-arrived { background: #EAF1F2; color: #2E4A50; }
+.wo-work_in_progress { background: #fff7ed; color: #9a3412; }
+.wo-closed { background: #e0e7ff; color: #3730a3; }
+.wo-cancelled { background: #fee2e2; color: #991b1b; }
+
+.wo-actions { margin-top: 10px; }
+
 .tech-overview {
   margin-top: 20px;
   padding-top: 10px;
