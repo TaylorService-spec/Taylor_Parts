@@ -2,6 +2,7 @@ import { computeWorkOrderSignalFromDoc } from "../../domain/workOrderScoring";
 import { buildTimeline } from "../../domain/timelineBuilder";
 import { describeEvent } from "../../domain/eventModel";
 import { EVENT_ICON } from "../../domain/eventTypes";
+import { getCatalogItem } from "../../data/partsCatalog";
 
 // Work Order Engine v1.2 (Epic 1, see docs/architecture/ADR-002):
 // renders a real, persisted fieldops_wos doc -- NOT an aggregate
@@ -78,6 +79,46 @@ export default function WorkOrderDetail({ workOrder, jobs }) {
           {workOrder.complaint && <div>Complaint: {workOrder.complaint}</div>}
           {workOrder.diagnosis && <div>Diagnosis: {workOrder.diagnosis}</div>}
           {workOrder.resolution && <div>Resolution: {workOrder.resolution}</div>}
+        </div>
+      )}
+
+      {workOrder.inventorySnapshot?.length > 0 && (
+        <div className="wo-inventory">
+          <h4>Inventory</h4>
+          <div className="fo-muted">Visual only -- no inventory engine connected yet.</div>
+
+          <div>
+            <strong>Planned Parts:</strong>
+            {workOrder.inventorySnapshot
+              .filter((item) => item.qtyPlanned)
+              .map((item) => {
+                const catalogEntry = getCatalogItem(item.sku);
+                const displayName = item.name || catalogEntry?.name || item.sku;
+                return (
+                  <div key={item.sku}>
+                    - {displayName} ({item.sku}
+                    {catalogEntry?.category ? `, ${catalogEntry.category}` : item.category ? `, ${item.category}` : ""}
+                    ) &rarr; {item.qtyPlanned} {catalogEntry?.unit ?? "unit(s)"}
+                    {item.notes && <span className="fo-muted"> -- {item.notes}</span>}
+                  </div>
+                );
+              })}
+          </div>
+
+          <div>
+            <strong>Used Parts:</strong>
+            {workOrder.inventorySnapshot.some((item) => item.qtyUsed) ? (
+              workOrder.inventorySnapshot
+                .filter((item) => item.qtyUsed)
+                .map((item) => (
+                  <div key={item.sku}>
+                    - {item.name || getCatalogItem(item.sku)?.name || item.sku} &rarr; {item.qtyUsed}
+                  </div>
+                ))
+            ) : (
+              <div className="fo-muted">(future: populated during execution phase)</div>
+            )}
+          </div>
         </div>
       )}
 
