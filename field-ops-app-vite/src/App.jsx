@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import ControlTower from "./modules/controlTower/ControlTower";
 import Jobs from "./modules/jobs/Jobs";
 import Technicians from "./modules/technicians/Technicians";
-import Dispatch from "./domains/execution/ExecutionWorkspace";
+import Dispatch from "./modules/dispatch/Dispatch";
 import FieldMode from "./modules/mobile/FieldMode";
 import Inventory from "./modules/inventory/Inventory";
 import Operations from "./modules/operations/Operations";
