@@ -50,7 +50,11 @@ export function subscribeToWorkOrders(onChange: (workOrders: WorkOrder[]) => voi
 // first-pass definition for Pre-Phase 2 -- the actual Dispatcher Queue
 // UI (Phase 2) may refine it further; this hook exists so that UI has
 // a query to build on rather than inventing its own Firestore access.
-const DISPATCHER_QUEUE_STATUSES: WorkOrderStatus[] = ["CREATED", "READY_TO_DISPATCH", "SCHEDULED"];
+// Exported so client-side filter configs (e.g.
+// modules/dispatcherWorkspace's "Waiting" quick filter) reuse this
+// exact definition instead of redefining "awaiting a dispatcher action"
+// a second time.
+export const DISPATCHER_QUEUE_STATUSES: WorkOrderStatus[] = ["CREATED", "READY_TO_DISPATCH", "SCHEDULED"];
 
 // Single-field `where("status", "in", [...])` -- no composite index
 // needed (Firestore only requires one for multi-field queries or a

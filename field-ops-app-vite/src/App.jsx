@@ -6,6 +6,7 @@ import Dispatch from "./modules/dispatch/Dispatch";
 import FieldMode from "./modules/mobile/FieldMode";
 import Inventory from "./modules/inventory/Inventory";
 import CreateWorkOrderPage from "./modules/workOrders/createWorkOrder/CreateWorkOrderPage";
+import DispatcherWorkspace from "./modules/dispatcherWorkspace/DispatcherWorkspace";
 import { useAuth } from "./auth/AuthContext";
 import Login from "./auth/Login";
 import AppHeader from "./shared/ui/AppHeader";
@@ -16,6 +17,12 @@ import { ROLE_NAV_ACCESS } from "./domain/constants";
 
 const NAV = [
   { key: "controlTower", label: "Control Tower", Component: ControlTower },
+  // Epic 2 Phase 2A (docs/epics/EPIC-2.md) -- read-only Work Order
+  // triage workspace. Conceptual overlap with Control Tower (both are
+  // "the dispatcher's operational view of Work Orders") is a known,
+  // flagged-not-resolved question for Phase 4 (Domain Language
+  // Alignment & Polish) -- not decided here.
+  { key: "dispatcherWorkspace", label: "Dispatcher Workspace", Component: DispatcherWorkspace },
   { key: "jobs", label: "Work Orders", Component: Jobs },
   { key: "technicians", label: "Technicians", Component: Technicians },
   { key: "dispatch", label: "Dispatch", Component: Dispatch },

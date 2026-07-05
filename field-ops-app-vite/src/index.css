@@ -410,3 +410,135 @@ button:hover {
   color: #B23B3B;
   font-size: 13px;
 }
+
+/* Epic 2 Phase 2A -- Dispatcher Operations Workspace */
+.fo-dispatcher-workspace {
+  max-width: none;
+}
+
+.fo-kpi-bar {
+  margin-bottom: 16px;
+}
+
+.fo-saved-views {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.fo-workspace-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.fo-quick-filters {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.fo-badge {
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.fo-badge-active {
+  background: #2E4A50;
+  color: #fff;
+}
+
+.fo-search-box {
+  padding: 8px 10px;
+  border: 1px solid #D8DEDD;
+  border-radius: 6px;
+  font-size: 14px;
+  min-width: 240px;
+}
+
+.fo-workspace-body {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+}
+
+.fo-workspace-queue {
+  flex: 2;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.fo-workspace-preview {
+  flex: 1;
+  min-width: 280px;
+  position: sticky;
+  top: 16px;
+}
+
+.fo-queue-row {
+  cursor: pointer;
+}
+
+.fo-queue-row:hover {
+  background: #F4F6F5;
+}
+
+.fo-queue-row-selected {
+  background: #E6F0F1;
+}
+
+.fo-priority-stripe {
+  width: 4px;
+  padding: 0 !important;
+}
+
+.fo-priority-stripe-1 { background: #B23B3B; }
+.fo-priority-stripe-2 { background: #A9740D; }
+.fo-priority-stripe-3 { background: #2E4A50; }
+.fo-priority-stripe-4 { background: #B9C7C9; }
+
+.fo-scanning-slots {
+  display: flex;
+  gap: 4px;
+  min-width: 60px;
+}
+
+.fo-scanning-slot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.fo-empty-state {
+  padding: 32px 16px;
+  text-align: center;
+}
+
+.fo-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fo-skeleton-row {
+  display: flex;
+  gap: 8px;
+}
+
+.fo-skeleton-cell {
+  height: 16px;
+  flex: 1;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #EEF1F0 25%, #E2E7E6 37%, #EEF1F0 63%);
+  background-size: 400% 100%;
+  animation: fo-skeleton-shimmer 1.4s ease infinite;
+}
+
+@keyframes fo-skeleton-shimmer {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}

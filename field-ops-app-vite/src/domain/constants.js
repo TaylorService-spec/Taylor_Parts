@@ -35,8 +35,8 @@ export const ROLES = {
 // everything; dispatcher runs the office side; technician is scoped to
 // the field-facing view. Update here, not in App.jsx, when access changes.
 export const ROLE_NAV_ACCESS = {
-  [ROLES.ADMIN]: ["controlTower", "jobs", "technicians", "dispatch", "fieldMode", "inventory", "createWorkOrder"],
-  [ROLES.DISPATCHER]: ["controlTower", "jobs", "technicians", "dispatch", "inventory", "createWorkOrder"],
+  [ROLES.ADMIN]: ["controlTower", "dispatcherWorkspace", "jobs", "technicians", "dispatch", "fieldMode", "inventory", "createWorkOrder"],
+  [ROLES.DISPATCHER]: ["controlTower", "dispatcherWorkspace", "jobs", "technicians", "dispatch", "inventory", "createWorkOrder"],
   [ROLES.TECHNICIAN]: ["fieldMode", "jobs"],
 };
 
