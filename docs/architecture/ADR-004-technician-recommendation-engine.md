@@ -1,88 +1,166 @@
-# ADR-004 — Technician Recommendation Engine (Dispatch Decision Support)
+# ADR-004 — Technician Recommendation Engine (v1 Realistic)
 
-Status: Accepted (Design Stage)
+Status: Accepted (Revised Design)
 Phase: Epic 2C (Dispatcher Operations Board)
-Date: 2026-07-05
-Supersedes: None
+Supersedes: Initial ADR-004 draft (same PR, not merged -- this revision replaces it in place rather than adding a second file)
 Depends on:
 
-- `transitionEngine.ts` (Work Order lifecycle authority)
-- `fieldops_wos` (Work Order source of truth)
+- `fieldops_wos` (Work Orders source of truth)
+- `transitionEngine.ts` (lifecycle authority)
 - `workOrderService.ts` (write path)
-
-Renumbered from a submitted "ADR-003" to ADR-004 -- `ADR-003` is already taken (`docs/architecture/ADR-003-inventory-trigger-system.md`, the Epic 2D Inventory Trigger System). `ADR-001` doesn't exist as a real file in this repo either (cited historically but never written) -- ADR-004 is the next real, unused number. See `docs/architecture/SYSTEM_AUTHORITIES.md` and `CLAUDE_CONTEXT.md`'s intro paragraph for other instances of this project's docs needing a factual check before being trusted at face value.
+- `useWorkOrders()` (read aggregation layer)
 
 **Design-stage only.** This ADR documents an accepted design; no implementation exists yet. Nothing in `functions/src/` or `field-ops-app-vite/src/` implements any part of this ADR as of this writing.
 
+Numbering note (unchanged from the initial draft): renumbered to ADR-004 because `ADR-003` is already taken (`docs/architecture/ADR-003-inventory-trigger-system.md`, Epic 2D's Inventory Trigger System). `ADR-001` doesn't exist as a real file in this repo either -- ADR-004 is the next real, unused number.
+
+Verified against the actual current schema before being saved: `createTechnician(name, phone)` (`domain/jobActions.js`) confirms technician docs really do only have `name`/`phone`/`status` -- no certifications, skills, or territory fields exist anywhere, matching this revision's "no structured technician profile system exists yet" claim exactly. `WorkOrder.type` (`SERVICE_CALL`/`PM`/`INSTALL`/`WARRANTY`/`INSPECTION`) is a job-category enum, not a dedicated "equipment type" field -- usable as a loose proxy for the Assignment History Affinity factor below, but it's an approximation, not a literal equipment match; the ADR's own "(if present)" hedging on that factor already accounts for this.
+
 ## 1. Context
 
-Dispatchers currently assign Work Orders to technicians using:
+Dispatchers currently assign technicians using:
 
-- manual inspection of Work Order details
-- informal knowledge of technician availability
-- visual heuristics (workload, familiarity, proximity)
+- visual inspection of Work Orders
+- workload intuition
+- manual experience
+- ad hoc knowledge of technician availability
 
-As the system scales, this approach becomes:
+There is no structured recommendation system.
 
-- inconsistent
-- non-auditable
-- slow under load
-- difficult for new dispatchers
-
-We need a decision-support layer that helps rank technicians without automating assignment.
+We introduce a lightweight, deterministic recommendation layer to improve dispatch speed and consistency.
 
 ## 2. Decision
 
-We will implement a Technician Recommendation Engine (TRE v1) that:
+We will implement Technician Recommendation Engine v1 (TRE-v1) as:
 
-- ranks technicians per Work Order
-- provides explainable scoring breakdowns
-- is fully UI-consumable
-- does NOT enforce assignment decisions
-- does NOT modify backend state logic
+a heuristic ranking system based only on existing operational data in Firestore
 
-## 3. Principles
+It will:
 
-### 3.1 Recommendation, not automation
+- rank technicians per Work Order
+- provide explainable scoring
+- remain fully non-blocking (recommendation only)
+- require no backend schema changes
+
+## 3. Critical Constraint (Reality-Based)
+
+🚨 TRE-v1 MUST operate only on existing data
+
+We explicitly DO NOT assume:
+
+- certification database
+- skills taxonomy
+- GPS proximity engine
+- truck inventory linkage
+- customer preference system
+- historical performance scoring model
+
+Any of these are future enhancements only.
+
+## 4. Principles
+
+### 4.1 Recommendation only
 
 The system suggests. The dispatcher decides.
 
-- No auto-dispatch
-- No forced assignment
-- No backend enforcement of ranking
+- No auto-assignment
+- No forced ranking enforcement
+- No backend validation of recommendation output
 
-### 3.2 Explainability required
+### 4.2 Deterministic & explainable
 
-Every score MUST be explainable:
-
-- No black-box scoring
-- Every point must map to a factor
-- UI must expose breakdown on demand
-
-### 3.3 Deterministic scoring (v1)
-
-Version 1 must be:
+All scores must be:
 
 - deterministic
-- testable
-- config-driven
-- non-ML
+- reproducible
+- explainable per factor
+- derived from Firestore data only
 
-### 3.4 Configuration-driven weights
+### 4.3 No new schema required
 
-Scoring weights MUST NOT be hardcoded in components.
+TRE-v1 must function without:
 
-## 4. Functional Requirements
+- Firestore schema migration
+- new collections
+- new Cloud Functions
+- new indexing requirements
 
-### 4.1 Ranking output
+## 5. Available Data (REALITY CHECK)
 
-For a given Work Order:
+### 5.1 Work Order Data (`fieldops_wos`)
 
-```ts
-recommendTechnicians(workOrder): RecommendedTechnician[]
-```
+Available fields:
 
-Returns:
+- status
+- priority
+- assigned technician (if present)
+- equipment info (partial structured usage)
+- required parts (via inventory snapshot layer)
+- timestamps (created, updated, etc.)
+- customer metadata (limited)
+
+### 5.2 Technician Data (existing system reality)
+
+Currently available only through:
+
+- user identity (UID, role)
+- assignment history inferred from Work Orders
+- current workload derived from active WOs
+
+❗ No structured technician profile system exists yet (`createTechnician(name, phone)` -- confirmed, only `name`/`phone`/`status`)
+
+### 5.3 Derived Data (computed at runtime)
+
+We can compute:
+
+- active work order count per technician
+- completed work order count per technician
+- recent assignment frequency
+- workload pressure indicator
+
+## 6. Scoring Model (v1 Realistic)
+
+### 6.1 Core Factors
+
+TRE-v1 uses ONLY these signals:
+
+**A. Workload Balance (Primary Signal)** -- fewer active WOs = higher score
+
+Derived from: count of `fieldops_wos` where `status` ∉ terminal states
+
+Weight: 40%
+
+**B. Assignment History Affinity (Soft Experience Proxy)** -- technician frequently assigned similar WOs → higher score
+
+Derived from: past Work Orders assigned to technician, similarity via `WorkOrder.type` (job-category enum, not a dedicated equipment field -- see numbering note above)
+
+Weight: 25%
+
+**C. Status Availability Signal** -- technician with fewer "active" states is more available
+
+Derived from: current non-completed WOs
+
+Weight: 20%
+
+**D. Territory / Logical Proximity (if present in WO)** -- basic region/sub-region match if available
+
+Derived from: Work Order `locationId` field (a string identifier, not lat/lng -- no `geo` field exists on Job or Work Order yet)
+
+Weight: 15%
+
+### 6.2 Explicitly NOT INCLUDED in v1
+
+These are acknowledged but excluded:
+
+- certifications (no structured data exists)
+- skills taxonomy (not modeled)
+- truck inventory / parts readiness
+- customer preference
+- GPS routing / distance calculation
+- SLA prediction
+- ML scoring
+
+## 7. Output Contract
 
 ```ts
 type RecommendedTechnician = {
@@ -91,204 +169,114 @@ type RecommendedTechnician = {
   rank: number
 
   breakdown: {
-    certification: number
-    experience: number
     workload: number
-    proximity: number
-    skills: number
-    partsReadiness: number
-    customerPreference: number
+    experienceAffinity: number
+    availability: number
+    territoryMatch: number
   }
 
   reasons: string[]
 }
 ```
 
-### 4.2 Top-K display
+## 8. System Architecture
 
-UI will show:
-
-- Top 3 recommended technicians
-- Full ranked list available in board view
-
-### 4.3 Explainability panel
-
-Each technician must expose:
-
-- score breakdown
-- factor contribution weights
-- human-readable explanation strings
-
-Example:
+### 8.1 Placement
 
 ```
-Total Score: 86%
-
-+30 Certification match
-+18 Low workload
-+15 Within territory
-+10 Required skills
-+8 Parts available
-+5 Customer preference
+UI (Dispatcher Board)
+    |
+recommendTechnicians(workOrder)
+    |
+pure scoring function (client-side)
+    |
+useWorkOrders() aggregated data
 ```
 
-### 4.4 Ranking is advisory only
+### 8.2 Stateless design
 
-Ranking must NEVER:
+TRE-v1 is:
 
-- restrict assignment
-- block drag/drop
-- prevent dispatcher override
+- stateless
+- recalculated on data refresh
+- not persisted
+- not cached in Firestore
 
-## 5. Scoring Model (v1)
+## 9. UI Behavior Requirements
 
-### 5.1 Factors
+### 9.1 Ranking display
 
-| Factor | Description |
-|---|---|
-| Certification Match | Technician certified for required equipment |
-| Experience | Historical job success with similar equipment |
-| Workload | Current active Work Orders |
-| Proximity | Geographic/territory proximity (placeholder if GPS unavailable) |
-| Skills Match | Required skill tags overlap |
-| Parts Readiness | Required parts available in truck/warehouse |
-| Customer Preference | Account-specific technician preference |
+Technicians shown as:
 
-### 5.2 Default Weights (Configurable)
+- ordered list (highest score first)
+- score badge (0-100)
+- top 3 highlighted
 
-Stored in `dispatcherScoringConfig.ts`:
+### 9.2 Explainability (required)
 
-```ts
-{
-  certification: 0.30,
-  experience: 0.20,
-  workload: 0.15,
-  proximity: 0.15,
-  skills: 0.10,
-  partsReadiness: 0.05,
-  customerPreference: 0.05
-}
-```
+Clicking a score reveals:
 
-### 5.3 Score normalization
+- workload contribution
+- assignment history contribution
+- availability contribution
+- territory match contribution
 
-- Final score must be normalized to 0-100
-- All factors scaled independently before aggregation
-- No negative scores allowed
+No hidden scoring logic.
 
-## 6. Data Inputs
+### 9.3 Recommendation is advisory only
 
-### 6.1 Work Order inputs
+- drag/drop dispatch remains primary action
+- recommendation never blocks assignment
+- dispatcher always overrides system ranking
 
-From `fieldops_wos`:
+## 10. Non-Goals (Explicit)
 
-- equipment type
-- required skills
-- priority
-- customer ID
-- location (if available)
-- status
+TRE-v1 does NOT include:
 
-### 6.2 Technician inputs (existing or derived)
-
-- certifications
-- active workload (from Firestore query)
-- completed job history (optional future enhancement)
-- territory assignment
-- availability status (future phase)
-
-## 7. System Architecture
-
-### 7.1 Placement
-
-```
-UI Layer
-  |
-recommendTechnicians()
-  |
-scoring engine (pure function)
-  |
-config (weights)
-```
-
-### 7.2 No backend dependency
-
-TRE v1:
-
-- does NOT call Cloud Functions
-- does NOT modify Firestore
-- does NOT persist scores
-
-### 7.3 Stateless computation
-
-Every call is:
-
-- idempotent
-- deterministic
-- cacheable (optional future enhancement)
-
-## 8. UI Integration Requirements
-
-### 8.1 Dispatcher Board
-
-Technician column displays:
-
-- ranked list
-- score badge
-- highlight top recommendation
-
-### 8.2 Work Order Card
-
-Displays:
-
-- Top recommended technician
-- Top 3 candidates
-
-### 8.3 Interaction model
-
-- Drag & drop remains primary action
-- recommendation only guides selection
-- hover reveals "why this tech"
-
-## 9. Non-Goals (Explicit)
-
-NOT included in v1:
-
-- auto-assignment
+- auto-dispatch
 - scheduling optimization
 - route planning
-- ML prediction models
-- SLA forecasting
-- overtime balancing
-- dynamic real-time re-ranking engine
-- backend enforcement of recommendation
+- ML or predictive scoring
+- SLA enforcement
+- real-time geolocation tracking
+- technician certification system
+- inventory-driven assignment logic
 
-## 10. Future Extensions (Post v1)
+## 11. Future Extensions (Post v1)
 
-Planned evolution path:
+- **v2**: structured technician profiles, certifications model, skills taxonomy
+- **v3**: GPS-based proximity scoring
+- **v4**: parts availability integration
+- **v5**: predictive SLA risk scoring
 
-- **v2**: real-time workload updates, technician availability signals
-- **v3**: GPS-based proximity scoring, travel time estimation
-- **v4**: predictive completion time, SLA risk scoring
-- **v5**: ML-based ranking model (optional future)
+## 12. Acceptance Criteria
 
-## 11. Acceptance Criteria
+TRE-v1 is complete when:
 
-TRE v1 is complete when:
-
-- [ ] technicians are ranked per Work Order
-- [ ] scores are explainable
-- [ ] weights are config-driven
-- [ ] dispatcher override is always possible
+- [ ] technicians are ranked per Work Order using ONLY existing data
+- [ ] scoring is deterministic and reproducible
+- [ ] no Firestore schema changes required
 - [ ] no backend changes required
-- [ ] no state machine modifications
-- [ ] UI integrates ranking cleanly
-- [ ] system remains deterministic
+- [ ] explainability panel is available
+- [ ] dispatcher override remains primary interaction
+- [ ] system degrades gracefully when data is missing
 
-## 12. Architectural Guarantee
+## 13. Architectural Guarantee
 
-The Recommendation Engine MUST NEVER become a hidden workflow engine.
+TRE-v1 is a heuristic decision-support layer, not an intelligence system.
 
-It is strictly:
+It must never:
 
-**Decision support, not decision enforcement.**
+- infer missing structured data
+- assume future schema exists
+- enforce assignment decisions
+- evolve into a hidden workflow engine
+
+## 14. Summary
+
+This version of ADR-004 aligns the recommendation engine with actual Firestore reality:
+
+- uses only existing operational signals
+- avoids phantom data dependencies
+- remains fully UI-side and non-invasive
+- sets a safe foundation for future structured technician modeling
