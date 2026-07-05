@@ -79,8 +79,9 @@ No page component may import `httpsCallable`/`getFunctions` or call a Work Order
 
 ## Data dependencies
 
-Already built in Epic 1, no changes needed, just callers:
-- `services/workOrderService.ts`: `createWorkOrder(input)`, `transitionWorkOrder(workOrderId, action, extra?)`, `getWorkOrder(id)`, `subscribeToWorkOrders(onChange)`.
+Already built in Epic 1 (writes) and Pre-Phase 2's Read Architecture pass (reads), no changes needed, just callers:
+- `services/workOrderService.ts` (writes only): `createWorkOrder(input)`, `transitionWorkOrder(workOrderId, action, extra?)` — the only file that imports `httpsCallable`/`getFunctions` for Work Orders.
+- `services/workOrderQueries.ts` (reads only, split out from `workOrderService.ts` in Pre-Phase 2): `getWorkOrder(id)`, `subscribeToWorkOrder(id, onChange)`, `subscribeToWorkOrders(onChange)`, `subscribeToDispatcherQueue(onChange)` — wrapped by the `useWorkOrder`/`useWorkOrders`/`useDispatcherQueue` hooks respectively. The only file that reads Work Orders from Firestore.
 - `domain/workOrderWorkflow.js`: `getAllowedActions(status, role, isOwnAssignment)`, `canTransitionWorkOrder(current, next)` — the client-side gating mirror of `functions/src/transitionEngine.ts`.
 - `auth/AuthContext.jsx`'s `useAuth()`: `role`, `technicianId` — needed to compute `isOwnAssignment` (`workOrder.assignedTechId === technicianId`) and to decide which action buttons a given signed-in user should even see.
 

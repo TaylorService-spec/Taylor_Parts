@@ -1,16 +1,18 @@
-// Work Order Engine v1.2 -- client service layer.
+// Work Order Engine v1.2 -- client WRITE service layer only.
 //
-// Writes go ONLY through the two Cloud Functions (createWorkOrder/
+// Writes go ONLY through the two Cloud Functions here (createWorkOrder/
 // transitionWorkOrder) -- firestore.rules denies all direct client
-// writes to fieldops_wos/counters unconditionally. Reads bypass
-// Functions entirely and go straight to Firestore (rules-enforced,
-// role-scoped), mirroring firebase/collectionStore.js's existing read
-// patterns for fieldops_jobs/fieldops_technicians.
+// writes to fieldops_wos/counters unconditionally, and this is the
+// ONLY file that imports httpsCallable/getFunctions for Work Orders.
+// No page component may call either directly (see
+// docs/architecture/UI_ACTION_PIPELINES.md).
+//
+// Reads live in services/workOrderQueries.ts, a separate file as of
+// Pre-Phase 2's Read Architecture pass -- this file has no Firestore
+// read of its own anymore (moved out, not duplicated).
 import { httpsCallable } from "firebase/functions";
-import { collection, doc, getDoc, onSnapshot, type Unsubscribe } from "firebase/firestore";
-import { db, functions } from "../firebase/firebase";
-import { WORK_ORDERS_COLLECTION } from "../domain/constants";
-import type { WorkOrder, Priority, Severity, WorkOrderType, ActionName } from "../types/workOrder";
+import { functions } from "../firebase/firebase";
+import type { Priority, Severity, WorkOrderType, ActionName } from "../types/workOrder";
 
 interface CreateWorkOrderInput {
   customerId: string;
@@ -60,21 +62,4 @@ export async function transitionWorkOrder(
 ): Promise<TransitionWorkOrderResult> {
   const result = await transitionWorkOrderCallable({ workOrderId, action, ...extra });
   return result.data;
-}
-
-export async function getWorkOrder(id: string): Promise<WorkOrder | null> {
-  const snap = await getDoc(doc(db, WORK_ORDERS_COLLECTION, id));
-  return snap.exists() ? ({ id: snap.id, ...snap.data() } as WorkOrder) : null;
-}
-
-// Unfiltered listener -- matches how fieldops_jobs/fieldops_technicians
-// are read today (useFirestoreCollection). A technician-scoped,
-// status-filtered query is a Phase 2 concern (would need a composite
-// index, see firestore.indexes.json's commit note) -- not implemented
-// here since this pass only wires the admin/dispatcher-facing Control
-// Tower view.
-export function subscribeToWorkOrders(onChange: (workOrders: WorkOrder[]) => void): Unsubscribe {
-  return onSnapshot(collection(db, WORK_ORDERS_COLLECTION), (snap) => {
-    onChange(snap.docs.map((d) => ({ id: d.id, ...d.data() } as WorkOrder)));
-  });
 }
