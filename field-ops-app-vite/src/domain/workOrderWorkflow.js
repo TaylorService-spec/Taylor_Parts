@@ -34,7 +34,11 @@ export function canTransitionWorkOrder(currentStatus, nextStatus) {
   return WORK_ORDER_TRANSITIONS[currentStatus]?.includes(nextStatus) ?? false;
 }
 
-const ACTION_TO_STATUS = {
+// Exported (was private) so services/workOrderActions.ts's
+// resolveTargetState() reuses this exact map instead of redefining it
+// a third time (server transitionEngine.ts, this file, and a
+// hypothetical third copy) -- see workOrderActions.ts's header comment.
+export const ACTION_TO_STATUS = {
   MarkReady: "READY_TO_DISPATCH",
   Schedule: "SCHEDULED",
   Dispatch: "DISPATCHED",

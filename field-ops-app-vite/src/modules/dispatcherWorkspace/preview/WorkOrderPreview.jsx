@@ -1,6 +1,10 @@
+import { useState } from "react";
 import { getCatalogItem } from "../../../data/partsCatalog";
 import { resolveTechnicianName } from "../shared/formatters";
 import EmptyState from "../../../shared/ui/EmptyState";
+import ActionConfirmModal from "../actions/ActionConfirmModal";
+import { getAvailableActions, resolveTargetState, executeWorkOrderAction } from "../../../services/workOrderActions";
+import { useAuth } from "../../../auth/AuthContext";
 
 // Outlook-style in-place preview (per this phase's UI behavior model):
 // takes the already-selected `workOrder` object as a prop -- found by
@@ -14,9 +18,51 @@ import EmptyState from "../../../shared/ui/EmptyState";
 // collection too, which would mean a second Firestore listener in this
 // workspace. This phase's spec is read-only Work Order triage, not a
 // full detail page; Operational History stays ControlTower's job.
+//
+// Epic 2 Phase 2B: action buttons are derived from
+// services/workOrderActions.ts's getAvailableActions() -- never
+// hardcoded -- and gated to the dispatcher-facing action set (this
+// workspace has no `isOwnAssignment` concept; dispatcher actions never
+// require it). A successful action needs no manual refetch: the
+// single useWorkOrders() listener in DispatcherWorkspace.jsx picks up
+// the Firestore change live, same as everywhere else in this app.
 export default function WorkOrderPreview({ workOrder, technicians }) {
+  const { role } = useAuth();
+  const [pendingAction, setPendingAction] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState(null);
+
   if (!workOrder) {
     return <EmptyState message="Select a Work Order to preview it here." />;
+  }
+
+  const availableActions = getAvailableActions(workOrder.status, role, false);
+
+  async function handleConfirm(extra) {
+    setSubmitting(true);
+    setError(null);
+    try {
+      await executeWorkOrderAction({
+        workOrderId: workOrder.id,
+        action: pendingAction,
+        currentState: workOrder.status,
+        userRole: role,
+        isOwnAssignment: false,
+        extra,
+      });
+      // No optimistic update, no manual refetch -- the Firestore
+      // listener updates workOrder in place once the write lands.
+      // Per this phase's failure UX rule: do not assume success here
+      // either -- just stop showing the modal; if the write actually
+      // failed, the catch block below (not this path) handles it.
+      setPendingAction(null);
+    } catch (err) {
+      // Per this phase's failure UX rule: show the reason, do not
+      // retry automatically, do not assume success.
+      setError(err.message || "Action failed.");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   const timestampRows = [
@@ -69,6 +115,32 @@ export default function WorkOrderPreview({ workOrder, technicians }) {
             </div>
           ))}
         </div>
+      )}
+
+      {availableActions.length > 0 && (
+        <div className="fo-wizard-actions-right" style={{ marginTop: 16 }}>
+          {availableActions.map((action) => (
+            <button key={action} type="button" className="fo-btn-large" onClick={() => setPendingAction(action)}>
+              {action}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {pendingAction && (
+        <ActionConfirmModal
+          workOrder={workOrder}
+          action={pendingAction}
+          targetState={resolveTargetState(pendingAction)}
+          technicians={technicians}
+          submitting={submitting}
+          error={error}
+          onConfirm={handleConfirm}
+          onCancel={() => {
+            setPendingAction(null);
+            setError(null);
+          }}
+        />
       )}
     </div>
   );

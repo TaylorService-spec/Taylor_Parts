@@ -38,7 +38,7 @@ export async function createWorkOrder(input: CreateWorkOrderInput): Promise<Crea
   return result.data;
 }
 
-interface TransitionWorkOrderExtra {
+export interface TransitionWorkOrderExtra {
   scheduledStart?: number;
   scheduledEnd?: number;
   scheduledTechId?: string;
