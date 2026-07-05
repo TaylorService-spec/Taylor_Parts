@@ -1,13 +1,23 @@
 // Epic 2D Inventory Trigger System (see docs/architecture/ADR-003).
 //
 // Backend-only, ledger-based inventory side effects driven by Work
-// Order state transitions. No mutable "current stock" document exists
-// anywhere -- availability is always computed by summing the
-// append-only inventory_transactions ledger against
-// data/partsCatalog.ts's static warehouseQty baseline (see
-// getAvailableQuantity() below), consistent with this project's
-// existing "derive aggregates on read, never cache a second mutable
-// total" default (see docs/architecture/ADR-001-retired-operational-core-branch.md).
+// Order state transitions -- a deterministic ledger mutation layer
+// tied to Work Orders, not a workflow/staging system. Exactly 3
+// primitives exist: reserveParts/releaseParts/consumeParts. No
+// intermediate "confirmed on site"/"prepared for consumption" stages
+// -- those aren't part of system truth (see STATE_TRIGGERS below).
+//
+// Truth boundary (load-bearing, don't blur this):
+// - data/partsCatalog.ts is METADATA ONLY -- name/category/cost/unit,
+//   plus a static warehouseQty baseline. It has NO stock authority and
+//   is never written to.
+// - inventory_transactions (this file's ledger) is the ONLY source of
+//   truth for stock movement. No mutable "current stock" document
+//   exists anywhere -- availability is always computed by summing this
+//   append-only ledger against partsCatalog.ts's warehouseQty baseline
+//   (see getAvailableQuantity() below), consistent with this project's
+//   existing "derive aggregates on read, never cache a second mutable
+//   total" default (see docs/architecture/ADR-001-retired-operational-core-branch.md).
 //
 // This file NEVER writes to fieldops_wos and NEVER touches Work Order
 // state -- it is called strictly AFTER a Work Order transition has
@@ -52,9 +62,9 @@ async function getAvailableQuantity(tx: Transaction, partId: string): Promise<nu
 
 // Outstanding (still-active) reservation for one Work Order + part --
 // grossReserved - released - consumed, scoped to this WO only. Used by
-// releaseReservedParts()/consumeParts() to know how much is left to
-// act on for this specific WO (as opposed to getAvailableQuantity(),
-// which is warehouse-wide across all Work Orders).
+// releaseParts()/consumeParts() to know how much is left to act on for
+// this specific WO (as opposed to getAvailableQuantity(), which is
+// warehouse-wide across all Work Orders).
 async function getOutstandingReservation(
   tx: Transaction,
   workOrderId: string,
@@ -131,7 +141,7 @@ export async function reserveParts(workOrderId: string): Promise<void> {
 // WO cancelled before ever reaching DISPATCHED), since
 // getOutstandingReservation() simply returns 0 in that case and no
 // ledger entry is written.
-export async function releaseReservedParts(workOrderId: string): Promise<void> {
+export async function releaseParts(workOrderId: string): Promise<void> {
   await db().runTransaction(async (tx) => {
     const items = await getWorkOrderInventorySnapshot(tx, workOrderId);
     for (const item of items) {
@@ -175,23 +185,6 @@ export async function consumeParts(workOrderId: string): Promise<void> {
   });
 }
 
-// ARRIVED / WORK_IN_PROGRESS triggers. The ledger's type enum
-// (RESERVED/RELEASED/CONSUMED only, see types/inventoryTransaction.ts)
-// has no entry for "confirmed on site" or "prepared for consumption" --
-// inventing a 4th/5th transaction type not in that schema was avoided
-// deliberately. These are placeholders: idempotency-tracked (so they
-// still show up as "processed" in inventory_sync_status) but write no
-// ledger entry, pending a future epic actually defining what, if
-// anything, they should record.
-export async function confirmPartsOnSite(_workOrderId: string): Promise<void> {
-  // Deliberately no-op -- see header comment.
-}
-
-export async function prepareConsumption(_workOrderId: string): Promise<void> {
-  // Deliberately no-op -- see header comment. Matches this epic's own
-  // spec note for WORK_IN_PROGRESS: "(no final deduction yet)".
-}
-
 // COMPLETED trigger, second step (after consumeParts). Not a ledger
 // write -- just marks this Work Order's inventory processing as fully
 // wrapped up in inventory_sync_status, for anything that might later
@@ -201,15 +194,22 @@ export async function finalizeInventoryTransaction(workOrderId: string): Promise
   await ref.set({ workOrderId, finalized: true }, { merge: true });
 }
 
+// Strict mapping, exactly 3 real operations -- no ARRIVED/
+// WORK_IN_PROGRESS entries. Those states have no ledger-writeable
+// meaning yet (the ledger's type enum is RESERVED/RELEASED/CONSUMED
+// only); rather than tracking phantom "confirmed on site"/"prepared
+// for consumption" stages with no operational effect,
+// triggerInventoryEffects() simply no-ops for any state not listed
+// here (see its `if (!trigger) return;` below) -- so ARRIVED/
+// WORK_IN_PROGRESS never appear in inventory_sync_status at all,
+// rather than appearing as a no-op "processed" entry.
 const STATE_TRIGGERS: Partial<Record<WorkOrderStatus, (workOrderId: string) => Promise<void>>> = {
   DISPATCHED: reserveParts,
-  ARRIVED: confirmPartsOnSite,
-  WORK_IN_PROGRESS: prepareConsumption,
   COMPLETED: async (workOrderId) => {
     await consumeParts(workOrderId);
     await finalizeInventoryTransaction(workOrderId);
   },
-  CANCELLED: releaseReservedParts,
+  CANCELLED: releaseParts,
 };
 
 async function isStateProcessed(workOrderId: string, state: WorkOrderStatus): Promise<boolean> {

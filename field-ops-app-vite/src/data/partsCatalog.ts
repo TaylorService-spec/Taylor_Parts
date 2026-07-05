@@ -1,9 +1,14 @@
 // Work Order Engine v1.2 -- Epic 1.1 Inventory Visual Layer.
 //
-// Static parts reference catalog, generated from a synthetic test
-// dataset (synthetic_parts_test_data.csv, 200 rows) --
-// NOT Firestore-backed, NOT authoritative, purely UI enrichment. See
-// docs/architecture/ADR-002-work-order-engine.md's "Phase 2" note and
+// METADATA ONLY -- NO STOCK AUTHORITY. Static parts reference catalog,
+// generated from a synthetic test dataset (synthetic_parts_test_data.csv,
+// 200 rows) -- NOT Firestore-backed, NOT authoritative, purely UI
+// enrichment. As of Epic 2D (docs/architecture/ADR-003), the
+// server-side mirror of this same data (functions/src/data/partsCatalog.ts)
+// is used as a static warehouseQty baseline for computing availability --
+// but the actual source of truth for stock movement is the
+// inventory_transactions ledger (Cloud Functions only), never this file.
+// See docs/architecture/ADR-002-work-order-engine.md's "Phase 2" note and
 // the Inventory Visual Layer design spec this implements.
 //
 // Deliberately named "partsCatalog", not "inventoryCatalog" --
