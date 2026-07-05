@@ -93,6 +93,21 @@ export interface WorkOrder {
   resolution?: string;
   laborHours?: number;
 
+  // Epic 1.1 Inventory Visual Layer: optional, non-authoritative,
+  // purely descriptive -- NOT read or written by createWorkOrder()/
+  // transitionWorkOrder() (neither validates or enforces it). Mirrored
+  // at field-ops-app-vite/src/types/workOrder.ts.
+  inventorySnapshot?: InventorySnapshotItem[];
+
   createdAt: Timestamp;
   updatedAt: Timestamp;
+}
+
+export interface InventorySnapshotItem {
+  sku: string;
+  name?: string;
+  qtyPlanned?: number;
+  qtyUsed?: number;
+  category?: string;
+  notes?: string;
 }

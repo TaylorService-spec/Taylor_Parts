@@ -92,6 +92,31 @@ export interface WorkOrder {
   resolution?: string;
   laborHours?: number;
 
+  // Epic 1.1 Inventory Visual Layer: optional, non-authoritative,
+  // purely descriptive. NOT validated or enforced by
+  // createWorkOrder()/transitionWorkOrder() (neither Cloud Function
+  // reads or writes this field) -- read-only UI enrichment showing
+  // what parts are planned/used for this WO, nothing more. No
+  // inventory transactions, stock deduction, or warehouse authority
+  // are implied. See data/partsCatalog.ts for the (also static,
+  // non-authoritative) SKU -> name/category/cost reference table.
+  inventorySnapshot?: InventorySnapshotItem[];
+
   createdAt: Timestamp;
   updatedAt: Timestamp;
+}
+
+export interface InventorySnapshotItem {
+  sku: string;
+  name?: string;
+
+  // Planned usage (dispatch planning).
+  qtyPlanned?: number;
+
+  // Actual usage -- future phase only, can remain empty/absent for now.
+  qtyUsed?: number;
+
+  // Optional metadata, UI only.
+  category?: string;
+  notes?: string;
 }
