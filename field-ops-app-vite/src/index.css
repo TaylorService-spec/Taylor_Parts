@@ -67,6 +67,14 @@ body { -webkit-font-smoothing: antialiased; font-family: -apple-system, BlinkMac
 .fo-badge-off_shift { background: #EEF1F0; color: #667; }
 .fo-badge-low-stock { background: #FDECEC; color: #B23B3B; }
 
+/* Operations dashboard -- severity/urgency levels shared by the
+   Inventory Health, Warehouse reconciliation, and Procurement panels
+   (Epics 3/4/5). */
+.fo-badge-critical { background: #FDECEC; color: #B23B3B; }
+.fo-badge-high { background: #FFEADB; color: #B2591F; }
+.fo-badge-medium { background: #FFF4DE; color: #A9740D; }
+.fo-badge-low { background: #E6F6EC; color: #237A45; }
+
 .fo-stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 16px; }
 .fo-stat { background: #F4F6F5; border-radius: 8px; padding: 16px; text-align: center; }
 .fo-stat-value { font-size: 28px; font-weight: 600; color: #1B2A2E; }

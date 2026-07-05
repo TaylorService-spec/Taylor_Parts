@@ -34,9 +34,14 @@ export const ROLES = {
 // Which NAV tabs (see App.jsx's NAV keys) each role may see. Admin sees
 // everything; dispatcher runs the office side; technician is scoped to
 // the field-facing view. Update here, not in App.jsx, when access changes.
+// "operations" (Epics 2D/3/4/5 read-only dashboard) is admin/dispatcher
+// only, matching firestore.rules' isAdminOrDispatcher() read gate on
+// inventory_transactions/stock_locations/warehouses/etc. -- a
+// technician has no reason to see ledger/warehouse/procurement
+// reporting.
 export const ROLE_NAV_ACCESS = {
-  [ROLES.ADMIN]: ["controlTower", "jobs", "technicians", "dispatch", "fieldMode", "inventory"],
-  [ROLES.DISPATCHER]: ["controlTower", "jobs", "technicians", "dispatch", "inventory"],
+  [ROLES.ADMIN]: ["controlTower", "jobs", "technicians", "dispatch", "fieldMode", "inventory", "operations"],
+  [ROLES.DISPATCHER]: ["controlTower", "jobs", "technicians", "dispatch", "inventory", "operations"],
   [ROLES.TECHNICIAN]: ["fieldMode", "jobs"],
 };
 

@@ -65,11 +65,14 @@ service cloud.firestore {
     }
 
     // Epic 2D Inventory Trigger System (docs/architecture/ADR-003).
-    // Admin-SDK-only, same posture as counters above -- no UI reads
-    // either collection this epoch (no reporting view exists yet), so
-    // there is no read exception to carve out unlike fieldops_wos.
+    // Admin-SDK-only writes, same posture as counters above. Read
+    // access opened to admin/dispatcher when the Operations dashboard
+    // (functions/src/inventoryAnalyticsService.ts's client mirror) was
+    // added -- ADR-003 anticipated this exact moment ("no reporting
+    // view exists yet"). inventory_sync_status stays fully closed --
+    // internal retry/idempotency bookkeeping, no reporting value.
     match /inventory_transactions/{transactionId} {
-      allow read: if false;
+      allow read: if isAdminOrDispatcher();
       allow create, update, delete: if false;
     }
 
@@ -78,39 +81,43 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
-    // Epic 4 Warehouse + Fulfillment System. Same Admin-SDK-only posture
-    // as the ledger above -- a physical-reality layer, not a second
-    // source of truth, so no direct client writes here either.
+    // Epic 4 Warehouse + Fulfillment System. Same Admin-SDK-only write
+    // posture as the ledger above -- a physical-reality layer, not a
+    // second source of truth, so no direct client writes here either.
+    // Read access opened to admin/dispatcher for the Operations
+    // dashboard, same reasoning as inventory_transactions above.
     match /warehouses/{warehouseId} {
-      allow read: if false;
+      allow read: if isAdminOrDispatcher();
       allow create, update, delete: if false;
     }
 
     match /stock_locations/{stockLocationId} {
-      allow read: if false;
+      allow read: if isAdminOrDispatcher();
       allow create, update, delete: if false;
     }
 
     match /transfer_orders/{transferOrderId} {
-      allow read: if false;
+      allow read: if isAdminOrDispatcher();
       allow create, update, delete: if false;
     }
 
     // Epic 5 Procurement + Supplier Management System. Same Admin-SDK-
-    // only posture as the ledger/warehouse collections above -- fully
-    // internal, no external vendor integration, no client writes.
+    // only write posture as the ledger/warehouse collections above --
+    // fully internal, no external vendor integration, no client writes.
+    // Read access opened to admin/dispatcher for the Operations
+    // dashboard, same reasoning as above.
     match /suppliers/{supplierId} {
-      allow read: if false;
+      allow read: if isAdminOrDispatcher();
       allow create, update, delete: if false;
     }
 
     match /supplier_catalog/{catalogItemId} {
-      allow read: if false;
+      allow read: if isAdminOrDispatcher();
       allow create, update, delete: if false;
     }
 
     match /purchase_orders/{purchaseOrderId} {
-      allow read: if false;
+      allow read: if isAdminOrDispatcher();
       allow create, update, delete: if false;
     }
   }
