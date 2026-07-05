@@ -4,6 +4,12 @@
 
 Accepted
 
+## Work Order Lifecycle Authority
+
+The canonical lifecycle is defined by the transition engine (`functions/src/transitionEngine.ts`, mirrored client-side in `field-ops-app-vite/src/domain/workOrderWorkflow.js`). All UI, documentation, tests, and future enhancements must conform to this implementation. If documentation and code differ, the transition engine is the authoritative source until an intentional versioned change is approved.
+
+Added after Epic 2 Phase 2B (PR #24) received multiple pasted specs describing a plausible-sounding but factually wrong action/transition map (e.g. `Dispatch` moving `CREATED -> READY_TO_DISPATCH`, `ON_SITE`/`WORKING` instead of the real `ARRIVED`/`WORK_IN_PROGRESS`, a nonexistent `Reassign` action) — verified wrong via a live `getAllowedActions()` smoke test against the real transition table before any code was changed. PR #24 was kept as implemented (it already matched the transition engine exactly); this section exists so the next spec claiming to be "the final source of truth" gets checked against `transitionEngine.ts` directly, not taken at face value.
+
 ## Context
 
 Before this change, "Work Order" was not a real Firestore entity. `domain/workOrderLifecycle.js`'s `computeWorkOrderState(jobs)` aggregated a 4-value `WORK_ORDER_STATE` (READY/BLOCKED/IN_PROGRESS/COMPLETED) purely by grouping `fieldops_jobs` docs by a decorative `job.workOrderId` string field — nothing was ever written to a `fieldops_wos`-style collection, and a Work Order's "state" was always just an aggregate over its child Jobs' `JOB_STATUS` values.
