@@ -95,5 +95,23 @@ service cloud.firestore {
       allow read: if false;
       allow create, update, delete: if false;
     }
+
+    // Epic 5 Procurement + Supplier Management System. Same Admin-SDK-
+    // only posture as the ledger/warehouse collections above -- fully
+    // internal, no external vendor integration, no client writes.
+    match /suppliers/{supplierId} {
+      allow read: if false;
+      allow create, update, delete: if false;
+    }
+
+    match /supplier_catalog/{catalogItemId} {
+      allow read: if false;
+      allow create, update, delete: if false;
+    }
+
+    match /purchase_orders/{purchaseOrderId} {
+      allow read: if false;
+      allow create, update, delete: if false;
+    }
   }
 }
