@@ -1,4 +1,9 @@
 .claude/scheduled_tasks.lock
+# Local-only path to a service account key, never the key itself --
+# still not something to commit (points at where a live GCP credential
+# lives on this machine).
+.claude/skills/*/keypath.local.txt
+*.local.txt
 
 build/
 dist/
