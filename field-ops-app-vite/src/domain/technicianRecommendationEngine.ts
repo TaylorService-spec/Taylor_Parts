@@ -1,9 +1,10 @@
 // Epic 2 Phase 2C -- Technician Recommendation Engine v1 (TRE-v1).
 // Implements docs/architecture/ADR-004-technician-recommendation-engine.md
 // ("v1 Realistic"). Pure, deterministic, UI-side only -- no Firestore
-// calls, no persistence, not cached. Uses ONLY data already loaded by
-// useWorkOrders()/useFirestoreCollection(TECHNICIANS_COLLECTION); never
-// fetches anything itself.
+// calls, no persistence, not cached, no hooks, no async, no
+// Math.random()/Date.now()-based logic. Uses ONLY data already loaded
+// by useWorkOrders()/useFirestoreCollection(TECHNICIANS_COLLECTION);
+// never fetches anything itself.
 //
 // This is decision SUPPORT, not decision enforcement (ADR-004 section
 // 13): nothing here ever writes fieldops_wos, calls
@@ -42,8 +43,37 @@ const WEIGHTS = {
 
 const TERMINAL_STATUSES = new Set(["COMPLETED", "CLOSED", "CANCELLED"]);
 
-function activeWorkOrderCount(techId: string, workOrders: WorkOrder[]): number {
-  return workOrders.filter((wo) => wo.assignedTechId === techId && !TERMINAL_STATUSES.has(wo.status)).length;
+// Precomputed once per (technicians, workOrders) pair -- O(technicians
+// + workOrders) -- then reused for every Work Order being scored, so
+// scoring N work orders against M technicians is O(N * M) instead of
+// O(N * M * N). Matters at the scale this epic's own test plan calls
+// for (500 work orders / 30 technicians): the naive per-call approach
+// (each call re-scanning the full workOrders array per technician) was
+// O(WOs^2 * techs) when run once per queue card, ~7.5M operations for
+// 500 WOs -- this precompute makes it ~15K + 15K, several orders of
+// magnitude less redone work, recomputed on every Firestore snapshot
+// exactly like before.
+interface TechnicianAggregates {
+  activeCount: number;
+  countByType: Map<string, number>;
+}
+
+function computeAggregates(technicians: Technician[], workOrders: WorkOrder[]): Map<string, TechnicianAggregates> {
+  const byTech = new Map<string, TechnicianAggregates>();
+  for (const tech of technicians) {
+    byTech.set(tech.id, { activeCount: 0, countByType: new Map() });
+  }
+
+  for (const wo of workOrders) {
+    if (!wo.assignedTechId) continue;
+    const agg = byTech.get(wo.assignedTechId);
+    if (!agg) continue; // assigned to a technician not in the current technicians list (e.g. deactivated)
+
+    if (!TERMINAL_STATUSES.has(wo.status)) agg.activeCount += 1;
+    agg.countByType.set(wo.type, (agg.countByType.get(wo.type) ?? 0) + 1);
+  }
+
+  return byTech;
 }
 
 // A. Workload (40%) -- fewer active WOs = higher score. Normalized
@@ -52,10 +82,10 @@ function activeWorkOrderCount(techId: string, workOrders: WorkOrder[]): number {
 // anywhere in the technician schema -- name/phone/status only, see
 // ADR-004 section 5.2). If every technician has 0 active WOs, everyone
 // scores 100 (nobody is loaded, so nobody is penalized).
-function scoreWorkload(techId: string, technicians: Technician[], workOrders: WorkOrder[]): number {
-  const counts = technicians.map((t) => activeWorkOrderCount(t.id, workOrders));
+function scoreWorkload(techId: string, aggregates: Map<string, TechnicianAggregates>): number {
+  const counts = [...aggregates.values()].map((a) => a.activeCount);
   const max = Math.max(1, ...counts);
-  const mine = activeWorkOrderCount(techId, workOrders);
+  const mine = aggregates.get(techId)?.activeCount ?? 0;
   return Math.round(100 * (1 - mine / max));
 }
 
@@ -69,10 +99,10 @@ function scoreWorkload(techId: string, technicians: Technician[], workOrders: Wo
 // Workload's job. Normalized against whichever technician has the
 // most matching-type history; if nobody has any, everyone scores 0
 // (no favoritism from an empty signal).
-function scoreExperienceAffinity(techId: string, targetType: string, technicians: Technician[], workOrders: WorkOrder[]): number {
-  const countFor = (id: string) => workOrders.filter((wo) => wo.assignedTechId === id && wo.type === targetType).length;
-  const counts = technicians.map((t) => countFor(t.id));
-  const max = Math.max(...counts);
+function scoreExperienceAffinity(techId: string, targetType: string, aggregates: Map<string, TechnicianAggregates>): number {
+  const countFor = (id: string) => aggregates.get(id)?.countByType.get(targetType) ?? 0;
+  const counts = [...aggregates.keys()].map(countFor);
+  const max = Math.max(0, ...counts);
   if (max === 0) return 0;
   return Math.round(100 * (countFor(techId) / max));
 }
@@ -133,19 +163,15 @@ function buildReasons(breakdown: RecommendationBreakdown): string[] {
   return reasons;
 }
 
-// The one exported entry point. Deterministic: same inputs always
-// produce the same output, no randomness, no Date.now()-sensitive
-// logic beyond what's already baked into workOrders'/technicians'
-// current field values.
-export function recommendTechnicians(
+function scoreAllTechnicians(
   workOrder: WorkOrder,
   technicians: Technician[],
-  workOrders: WorkOrder[]
+  aggregates: Map<string, TechnicianAggregates>
 ): RecommendedTechnician[] {
   const scored = technicians.map((tech) => {
     const breakdown: RecommendationBreakdown = {
-      workload: scoreWorkload(tech.id, technicians, workOrders),
-      experienceAffinity: scoreExperienceAffinity(tech.id, workOrder.type, technicians, workOrders),
+      workload: scoreWorkload(tech.id, aggregates),
+      experienceAffinity: scoreExperienceAffinity(tech.id, workOrder.type, aggregates),
       availability: scoreAvailability(tech.status),
       territoryMatch: scoreTerritoryMatch(),
     };
@@ -162,4 +188,37 @@ export function recommendTechnicians(
 
   scored.sort((a, b) => b.score - a.score);
   return scored.map((entry, index) => ({ ...entry, rank: index + 1 }));
+}
+
+// The original single-Work-Order entry point. Deterministic: same
+// inputs always produce the same output. Fine for one-off calls (e.g.
+// a single WorkOrderDetail-style preview); for scoring many work
+// orders against the same technician list in one pass, use
+// recommendTechniciansBatch() below instead -- it avoids recomputing
+// the same technician aggregates once per work order.
+export function recommendTechnicians(
+  workOrder: WorkOrder,
+  technicians: Technician[],
+  workOrders: WorkOrder[]
+): RecommendedTechnician[] {
+  const aggregates = computeAggregates(technicians, workOrders);
+  return scoreAllTechnicians(workOrder, technicians, aggregates);
+}
+
+// Batch variant: scores every work order in `workOrdersToScore`
+// against the same technician list, computing technician aggregates
+// exactly once. Used by DispatcherBoard.jsx, which needs a
+// recommendation set for every card in the queue, not just the
+// selected one.
+export function recommendTechniciansBatch(
+  workOrdersToScore: WorkOrder[],
+  technicians: Technician[],
+  allWorkOrders: WorkOrder[]
+): Map<string, RecommendedTechnician[]> {
+  const aggregates = computeAggregates(technicians, allWorkOrders);
+  const result = new Map<string, RecommendedTechnician[]>();
+  for (const wo of workOrdersToScore) {
+    result.set(wo.id, scoreAllTechnicians(wo, technicians, aggregates));
+  }
+  return result;
 }

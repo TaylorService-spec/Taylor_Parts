@@ -1,5 +1,7 @@
-import { useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { getAllowedActions } from "../../domain/workOrderWorkflow";
+import TechnicianCapacityCard from "./TechnicianCapacityCard";
+import { technicianStatusLabel } from "./technicianStatusLabel";
 
 // Epic 2 Phase 2C -- right pane, drop targets for drag-and-drop
 // dispatch. Ranking display only -- onDropTechnician (passed down from
@@ -10,9 +12,31 @@ import { getAllowedActions } from "../../domain/workOrderWorkflow";
 // actually allows the "Dispatch" action (i.e. SCHEDULED, per the real
 // transition table) -- dragging over a non-droppable column shows no
 // visual invitation to drop, so the UI never implies an action the
-// backend would reject.
-export default function TechnicianBoard({ technicians, selectedWorkOrder, recommendations, onDropTechnician }) {
+// backend would reject. Native HTML5 drag-and-drop does not work
+// reliably via keyboard or on touch devices -- see
+// WorkOrderPreview.jsx's "Dispatch to..." picker for the accessible/
+// mobile equivalent path, which calls the identical onDropTechnician
+// callback.
+function TechnicianBoard({ technicians, selectedWorkOrder, recommendations, allWorkOrders, onDropTechnician, isDispatching }) {
   const [dragOverTechId, setDragOverTechId] = useState(null);
+
+  // Safety net for Priority 1's "no orphan UI state" requirement: a
+  // drag that ends anywhere (a successful drop, a drop outside any
+  // recognized target, or a cancel via Escape) fires a window-level
+  // "dragend"/"drop" event even when this component's own
+  // onDrop/onDragLeave never ran -- clears any stuck highlight
+  // unconditionally.
+  useEffect(() => {
+    function clearDragOver() {
+      setDragOverTechId(null);
+    }
+    window.addEventListener("dragend", clearDragOver);
+    window.addEventListener("drop", clearDragOver);
+    return () => {
+      window.removeEventListener("dragend", clearDragOver);
+      window.removeEventListener("drop", clearDragOver);
+    };
+  }, []);
 
   const canDispatch = selectedWorkOrder
     ? getAllowedActions(selectedWorkOrder.status, "dispatcher", false).includes("Dispatch")
@@ -23,7 +47,7 @@ export default function TechnicianBoard({ technicians, selectedWorkOrder, recomm
   const topId = recommendations[0]?.techId;
 
   function handleDragOver(e, techId) {
-    if (!canDispatch) return;
+    if (!canDispatch || isDispatching) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
     setDragOverTechId(techId);
@@ -32,10 +56,19 @@ export default function TechnicianBoard({ technicians, selectedWorkOrder, recomm
   function handleDrop(e, techId) {
     e.preventDefault();
     setDragOverTechId(null);
-    if (!canDispatch || !selectedWorkOrder) return;
+    if (!canDispatch || isDispatching || !selectedWorkOrder) return;
     const draggedWorkOrderId = e.dataTransfer.getData("text/plain");
-    if (draggedWorkOrderId !== selectedWorkOrder.id) return; // only the selected/previewed WO is a valid drag source here
+    if (draggedWorkOrderId !== selectedWorkOrder.id) return; // dragstart always selects, so this only guards against stale data
     onDropTechnician(selectedWorkOrder, techId);
+  }
+
+  if (technicians.length === 0) {
+    return (
+      <div className="disp-pane disp-pane--techs">
+        <h3>Technicians</h3>
+        <p className="fo-muted">No technicians exist yet. Add one from the Technicians tab.</p>
+      </div>
+    );
   }
 
   return (
@@ -60,14 +93,17 @@ export default function TechnicianBoard({ technicians, selectedWorkOrder, recomm
             onDragOver={(e) => handleDragOver(e, tech.id)}
             onDragLeave={() => setDragOverTechId(null)}
             onDrop={(e) => handleDrop(e, tech.id)}
+            role="group"
+            aria-label={`${tech.name}, ${technicianStatusLabel(tech.status)}${rec ? `, score ${rec.score} percent` : ""}`}
           >
             <div className="disp-tech-column-header">
               <span>{tech.name}</span>
-              <span className={`fo-badge fo-badge-${tech.status}`}>{tech.status}</span>
+              <span className={`fo-badge fo-badge-${tech.status}`}>{technicianStatusLabel(tech.status)}</span>
             </div>
+            <TechnicianCapacityCard technician={tech} workOrders={allWorkOrders} />
             {rec && (
               <div className="fo-muted">
-                Score: {rec.score}%{isTop && " (Recommended)"}
+                {isTop && "⭐ "}Score: {rec.score}%{isTop && " (Recommended)"}
               </div>
             )}
           </div>
@@ -76,3 +112,6 @@ export default function TechnicianBoard({ technicians, selectedWorkOrder, recomm
     </div>
   );
 }
+
+// React.memo -- Priority 3 render audit.
+export default memo(TechnicianBoard);
