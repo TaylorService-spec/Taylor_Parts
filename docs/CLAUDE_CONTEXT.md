@@ -38,9 +38,11 @@ These rules get restated nearly verbatim at the top of every sprint/epic prompt 
 **Pushed branches with no PR opened yet:**
 - `epic-2-work-order-interactive-ui` — Epic 2 Phases 1/2A/2B: Create Work Order wizard, read-architecture query layer, Dispatcher Operations Workspace (config-driven queue/filters/search/KPIs/preview), Dispatcher Actions Layer (real backend-aligned, wired to the actual `transitionWorkOrder`). 4 commits. Only depends on Epic 1 (merged) — mergeable independently, not yet re-verified against current `main`.
 - `feature-dispatch-control-tower` — older, pre-Epic-1 work (Dispatch Control Tower v1, single-gate auth refactor, docs/tunnel/preview-deploy tooling). Still unmerged from earlier in this project's history.
-- `docs-fix-context-corrections` — this doc's own corrections (removes fabricated ADR-001/EPIC-2/UI_ACTION_PIPELINES citations, updates branch state), opened as a PR rather than pushed straight to `main`.
 
-**Current work**: `epic4-warehouse-fulfillment` — new branch off `main` (post Epic 2D + Epic 3 merge), building the Warehouse + Fulfillment system (bin-level stock locations, transfer orders, ledger reconciliation reporting, read-only analytics bridge). Depends on real `InventoryTransaction` (Epic 2D) and `inventoryAnalyticsService` (Epic 3) types, both now on `main` — no stub types needed.
+**Merged since, tagged as a stabilization point:**
+- PR #18 (docs fix) and PR #19 (Epic 4 Warehouse + Fulfillment System) both merged to `main`. The commit is tagged `fieldops-core-platform-v1` -- future epics (procurement, optimization) are meant to depend on this baseline.
+
+**Current work**: `epic5-procurement-supplier-management` — new branch off `main` (post `fieldops-core-platform-v1`), building the Procurement + Supplier Management System (`Supplier`/`SupplierCatalogItem`/`PurchaseOrder` entities, `procurementService.ts`, `supplierService.ts`, `procurementBridge.ts`). Fully internal/manual-approval-only per spec -- no external vendor HTTP calls, no webhooks, no auto-placed orders. Consumes Epic 3 recommendations read-only to generate DRAFT proposals only; a human-triggered action (not built this epic, same as Epic 4 leaving client wiring for later) turns an approved proposal into a real `createPurchaseOrder` call.
 
 ## Deployment state
 

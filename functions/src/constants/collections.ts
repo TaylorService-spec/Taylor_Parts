@@ -19,3 +19,10 @@ export const INVENTORY_SYNC_STATUS_COLLECTION = "inventory_sync_status";
 export const WAREHOUSES_COLLECTION = "warehouses";
 export const STOCK_LOCATIONS_COLLECTION = "stock_locations";
 export const TRANSFER_ORDERS_COLLECTION = "transfer_orders";
+
+// Epic 5 Procurement + Supplier Management System. Same Admin-SDK-only
+// posture as the ledger/warehouse collections above -- fully internal,
+// no external vendor integration, no client writes.
+export const SUPPLIERS_COLLECTION = "suppliers";
+export const SUPPLIER_CATALOG_COLLECTION = "supplier_catalog";
+export const PURCHASE_ORDERS_COLLECTION = "purchase_orders";
