@@ -4,6 +4,7 @@ import { useAssignedWorkOrders } from "../../hooks/useAssignedWorkOrders";
 import { technicianStatusLabel } from "../dispatcherBoard/technicianStatusLabel";
 import TechnicianWorkOrderCard from "./TechnicianWorkOrderCard";
 import TechnicianWorkOrderDetail from "./TechnicianWorkOrderDetail";
+import PerformanceSnapshot from "./PerformanceSnapshot";
 
 // Epic 6 Phase 6.1/6.2 -- Technician Dashboard, the landing page for
 // the technician role. UI + read-layer composition (6.1) plus the
@@ -131,6 +132,7 @@ export default function TechnicianDashboard() {
         <TechnicianWorkOrderDetail workOrder={selectedWorkOrder} onClose={() => setSelectedId(null)} />
       ) : (
         <>
+          <PerformanceSnapshot technicianId={technician.id} />
           <Section
             title="Ready to Start"
             workOrders={buckets.readyToStart}

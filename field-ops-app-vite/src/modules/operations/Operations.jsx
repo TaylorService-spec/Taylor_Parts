@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
+import { collection, getDocs } from "firebase/firestore";
+import { db } from "../../firebase/firebase";
 import { getCatalogItem, PARTS_CATALOG } from "../../data/partsCatalog";
+import { TECHNICIANS_COLLECTION } from "../../domain/constants";
 import {
   fetchInventoryTransactions,
   fetchStockLocations,
@@ -18,9 +21,14 @@ import {
   generateReconciliationReport,
 } from "../../domain/warehouseReconciliationEngine";
 import { generateProcurementDrafts } from "../../domain/procurementDraftEngine";
+import {
+  getInventoryConsumptionSnapshot,
+  getTechnicianVolumeBreakdown,
+} from "../../analytics/executionAnalyticsService";
 import InventoryHealthPanel from "./panels/InventoryHealthPanel";
 import WarehousePanel from "./panels/WarehousePanel";
 import ProcurementPanel from "./panels/ProcurementPanel";
+import ExecutionInsightsPanel from "./panels/ExecutionInsightsPanel";
 
 // ROLE DEFINITION (load-bearing, don't blur this):
 // Operations is a READ-ONLY EXECUTIVE / MONITORING layer over Epics
@@ -87,9 +95,26 @@ export default function Operations() {
       fetchSuppliers(),
       fetchSupplierCatalog(),
       fetchPurchaseOrders(),
+      getDocs(collection(db, TECHNICIANS_COLLECTION)),
+      getInventoryConsumptionSnapshot(),
+      getTechnicianVolumeBreakdown(),
     ])
-      .then(([rawTransactions, stockLocations, warehouses, transferOrders, suppliers, supplierCatalog, purchaseOrders]) => {
+      .then(
+        ([
+          rawTransactions,
+          stockLocations,
+          warehouses,
+          transferOrders,
+          suppliers,
+          supplierCatalog,
+          purchaseOrders,
+          techniciansSnap,
+          consumptionSnapshot,
+          technicianVolume,
+        ]) => {
         if (cancelled) return;
+
+        const technicians = techniciansSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
         const transactions = rawTransactions.map(normalizeLedgerTransaction);
         const consumedTransactions = transactions.filter((t) => t.type === "CONSUMED");
@@ -130,6 +155,9 @@ export default function Operations() {
             purchaseOrders,
             suppliers,
             procurementDrafts,
+            technicians,
+            consumptionSnapshot,
+            technicianVolume,
           },
         });
       })
@@ -160,8 +188,20 @@ export default function Operations() {
     );
   }
 
-  const { healthEntries, warehouses, stockLocations, transferOrders, reconciliationReport, purchaseOrders, suppliers, procurementDrafts } =
-    state.data;
+  const {
+    healthEntries,
+    warehouses,
+    stockLocations,
+    transferOrders,
+    reconciliationReport,
+    purchaseOrders,
+    suppliers,
+    procurementDrafts,
+    technicians,
+    consumptionSnapshot,
+    technicianVolume,
+  } = state.data;
+  const technicianName = (id) => technicians.find((t) => t.id === id)?.name ?? id;
 
   return (
     <div className="fo-panel">
@@ -179,6 +219,11 @@ export default function Operations() {
         reconciliationReport={reconciliationReport}
       />
       <ProcurementPanel purchaseOrders={purchaseOrders} suppliers={suppliers} procurementDrafts={procurementDrafts} />
+      <ExecutionInsightsPanel
+        consumptionSnapshot={consumptionSnapshot}
+        technicianVolume={technicianVolume}
+        technicianName={technicianName}
+      />
     </div>
   );
 }
