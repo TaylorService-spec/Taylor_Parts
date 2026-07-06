@@ -1,7 +1,8 @@
 // Work Order Engine v1.2 -- client service layer.
 //
-// Writes go ONLY through the two Cloud Functions (createWorkOrder/
-// transitionWorkOrder) -- firestore.rules denies all direct client
+// Writes go ONLY through the three Cloud Functions (createWorkOrder/
+// transitionWorkOrder/updateWorkOrderExecutionData, the last added in
+// Epic 6 Phase 6.3) -- firestore.rules denies all direct client
 // writes to fieldops_wos/counters unconditionally. Reads bypass
 // Functions entirely and go straight to Firestore (rules-enforced,
 // role-scoped), mirroring firebase/collectionStore.js's existing read
@@ -112,4 +113,39 @@ export function subscribeAssignedWorkOrders(
     },
     (error) => onError?.(error)
   );
+}
+
+// Epic 6 Phase 6.3 -- Field Execution Capture. The ONLY write path for
+// qtyUsed/executionLog/lastUpdated -- firestore.rules denies all
+// direct client writes to fieldops_wos unconditionally, so this is a
+// Cloud Function callable, same as createWorkOrder/transitionWorkOrder
+// above, never a client-side Firestore write.
+interface QtyUsedDelta {
+  sku: string;
+  delta: number;
+}
+
+interface UpdateWorkOrderExecutionDataInput {
+  workOrderId: string;
+  qtyUsedUpdates?: QtyUsedDelta[];
+  executionNote?: string;
+}
+
+interface UpdateWorkOrderExecutionDataResult {
+  success: true;
+  workOrderId: string;
+  updatedFields: string[];
+}
+
+const updateWorkOrderExecutionDataCallable = httpsCallable<
+  UpdateWorkOrderExecutionDataInput,
+  UpdateWorkOrderExecutionDataResult
+>(functions, "updateWorkOrderExecutionData");
+
+export async function updateWorkOrderExecutionData(
+  workOrderId: string,
+  updates: { qtyUsedUpdates?: QtyUsedDelta[]; executionNote?: string }
+): Promise<UpdateWorkOrderExecutionDataResult> {
+  const result = await updateWorkOrderExecutionDataCallable({ workOrderId, ...updates });
+  return result.data;
 }

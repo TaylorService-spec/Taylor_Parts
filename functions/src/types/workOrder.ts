@@ -99,6 +99,17 @@ export interface WorkOrder {
   // at field-ops-app-vite/src/types/workOrder.ts.
   inventorySnapshot?: InventorySnapshotItem[];
 
+  // Epic 6 Phase 6.3 Field Execution Capture: optional, additive,
+  // non-lifecycle -- written ONLY by updateWorkOrderExecutionData.ts,
+  // never by createWorkOrder()/transitionWorkOrder(). executionLog is
+  // append-only (Firestore arrayUnion -- inherently concurrency-safe,
+  // no read-modify-write race). lastUpdated is deliberately a SEPARATE
+  // field from `updatedAt` above (which transitionWorkOrder() owns) so
+  // it's always unambiguous which Cloud Function touched a document
+  // most recently.
+  executionLog?: ExecutionLogEntry[];
+  lastUpdated?: Timestamp;
+
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
@@ -110,4 +121,15 @@ export interface InventorySnapshotItem {
   qtyUsed?: number;
   category?: string;
   notes?: string;
+}
+
+// Epic 6 Phase 6.3 -- one entry in WorkOrder.executionLog. `at` is a
+// concrete Timestamp.now() value, not FieldValue.serverTimestamp() --
+// Firestore does not allow serverTimestamp() sentinels inside
+// arrayUnion() array elements. Still server-computed (this runs
+// Admin-SDK-side), not client-supplied, so it isn't spoofable.
+export interface ExecutionLogEntry {
+  note: string;
+  at: Timestamp;
+  byTechnicianId: string;
 }

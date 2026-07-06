@@ -7,3 +7,4 @@ initializeApp();
 
 export { createWorkOrder } from "./createWorkOrder";
 export { transitionWorkOrder } from "./transitionWorkOrder";
+export { updateWorkOrderExecutionData } from "./updateWorkOrderExecutionData";

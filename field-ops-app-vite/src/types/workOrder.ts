@@ -102,8 +102,22 @@ export interface WorkOrder {
   // non-authoritative) SKU -> name/category/cost reference table.
   inventorySnapshot?: InventorySnapshotItem[];
 
+  // Epic 6 Phase 6.3 Field Execution Capture: optional, additive,
+  // non-lifecycle -- written ONLY by the updateWorkOrderExecutionData
+  // Cloud Function, never by createWorkOrder()/transitionWorkOrder().
+  // Mirrored at functions/src/types/workOrder.ts.
+  executionLog?: ExecutionLogEntry[];
+  lastUpdated?: Timestamp;
+
   createdAt: Timestamp;
   updatedAt: Timestamp;
+}
+
+// Epic 6 Phase 6.3 -- one entry in WorkOrder.executionLog.
+export interface ExecutionLogEntry {
+  note: string;
+  at: Timestamp;
+  byTechnicianId: string;
 }
 
 export interface InventorySnapshotItem {
