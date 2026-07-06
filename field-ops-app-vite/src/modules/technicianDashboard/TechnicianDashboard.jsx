@@ -3,11 +3,13 @@ import { useCurrentTechnician } from "../../hooks/useCurrentTechnician";
 import { useAssignedWorkOrders } from "../../hooks/useAssignedWorkOrders";
 import { technicianStatusLabel } from "../dispatcherBoard/technicianStatusLabel";
 import TechnicianWorkOrderCard from "./TechnicianWorkOrderCard";
+import TechnicianWorkOrderDetail from "./TechnicianWorkOrderDetail";
 
-// Epic 6 Phase 6.1 -- Technician Dashboard, the landing page for the
-// technician role. UI + read-layer composition only: no lifecycle
-// actions, no navigation logic beyond selecting a card (prepares for
-// Phase 6.2, not implemented here), no writes of any kind.
+// Epic 6 Phase 6.1/6.2 -- Technician Dashboard, the landing page for
+// the technician role. UI + read-layer composition (6.1) plus the
+// lifecycle action detail view (6.2, TechnicianWorkOrderDetail.jsx) --
+// no writes happen in this file itself; selecting a card just shows
+// the detail view inline, no new route/navigation architecture.
 //
 // Data source is exactly useAssignedWorkOrders(technicianId) (PT-002)
 // -- never the dispatcher-side unfiltered useWorkOrders(). technicianId
@@ -78,6 +80,8 @@ export default function TechnicianDashboard() {
     return { readyToStart, inProgress, waiting, completedToday, activeCount };
   }, [workOrders]);
 
+  const selectedWorkOrder = workOrders.find((wo) => wo.id === selectedId) ?? null;
+
   const loading = technicianLoading || workOrdersLoading;
 
   if (loading) {
@@ -123,34 +127,40 @@ export default function TechnicianDashboard() {
         </div>
       </div>
 
-      <Section
-        title="Ready to Start"
-        workOrders={buckets.readyToStart}
-        selectedId={selectedId}
-        onSelect={setSelectedId}
-        emptyMessage="No Work Orders waiting on you to accept."
-      />
-      <Section
-        title="In Progress"
-        workOrders={buckets.inProgress}
-        selectedId={selectedId}
-        onSelect={setSelectedId}
-        emptyMessage="Nothing actively in progress right now."
-      />
-      <Section
-        title="Waiting"
-        workOrders={buckets.waiting}
-        selectedId={selectedId}
-        onSelect={setSelectedId}
-        emptyMessage="Nothing accepted/en route/arrived right now."
-      />
-      <Section
-        title="Completed Today"
-        workOrders={buckets.completedToday}
-        selectedId={selectedId}
-        onSelect={setSelectedId}
-        emptyMessage="Nothing completed yet today."
-      />
+      {selectedWorkOrder ? (
+        <TechnicianWorkOrderDetail workOrder={selectedWorkOrder} onClose={() => setSelectedId(null)} />
+      ) : (
+        <>
+          <Section
+            title="Ready to Start"
+            workOrders={buckets.readyToStart}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+            emptyMessage="No Work Orders waiting on you to accept."
+          />
+          <Section
+            title="In Progress"
+            workOrders={buckets.inProgress}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+            emptyMessage="Nothing actively in progress right now."
+          />
+          <Section
+            title="Waiting"
+            workOrders={buckets.waiting}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+            emptyMessage="Nothing accepted/en route/arrived right now."
+          />
+          <Section
+            title="Completed Today"
+            workOrders={buckets.completedToday}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+            emptyMessage="Nothing completed yet today."
+          />
+        </>
+      )}
     </div>
   );
 }
