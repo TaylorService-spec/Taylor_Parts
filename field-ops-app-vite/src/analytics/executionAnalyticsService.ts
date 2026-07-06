@@ -1,3 +1,13 @@
+// EPIC 7 -- EXECUTION INTELLIGENCE LAYER (CANONICAL, LOCKED)
+//
+// This module is the single source of truth for all execution
+// analytics. All downstream systems (Epic 8+) MUST depend on these
+// functions -- do not duplicate this logic elsewhere. Its three core
+// functions (getTechnicianExecutionStats, normalizeQtyUsed,
+// getWorkOrderExecutionSummary) are a frozen contract: behavior,
+// signatures, and read-access characteristics do not change without a
+// deliberate, explicit revision of this module itself.
+//
 // Epic 7 -- Inventory + Execution Analytics Foundation. A READ +
 // AGGREGATION LAYER only -- nothing in this file writes anywhere.
 // Every read here uses getDoc/getDocs (one-shot), never onSnapshot,
