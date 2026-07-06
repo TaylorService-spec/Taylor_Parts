@@ -42,7 +42,7 @@ export const ROLES = {
 export const ROLE_NAV_ACCESS = {
   [ROLES.ADMIN]: ["controlTower", "jobs", "technicians", "dispatch", "fieldMode", "inventory", "operations", "dispatcherBoard"],
   [ROLES.DISPATCHER]: ["controlTower", "jobs", "technicians", "dispatch", "inventory", "operations", "dispatcherBoard"],
-  [ROLES.TECHNICIAN]: ["fieldMode", "jobs"],
+  [ROLES.TECHNICIAN]: ["fieldMode", "jobs", "technicianDashboard"],
 };
 
 //

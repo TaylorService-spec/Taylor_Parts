@@ -7,6 +7,7 @@ import FieldMode from "./modules/mobile/FieldMode";
 import Inventory from "./modules/inventory/Inventory";
 import Operations from "./modules/operations/Operations";
 import DispatcherBoard from "./modules/dispatcherBoard/DispatcherBoard";
+import TechnicianDashboard from "./modules/technicianDashboard/TechnicianDashboard";
 import { useAuth } from "./auth/AuthContext";
 import Login from "./auth/Login";
 import AppHeader from "./shared/ui/AppHeader";
@@ -23,6 +24,7 @@ const NAV = [
   { key: "inventory", label: "Inventory", Component: Inventory },
   { key: "operations", label: "Operations", Component: Operations },
   { key: "dispatcherBoard", label: "Dispatcher Board", Component: DispatcherBoard },
+  { key: "technicianDashboard", label: "My Work Orders", Component: TechnicianDashboard },
 ];
 
 export default function App() {
