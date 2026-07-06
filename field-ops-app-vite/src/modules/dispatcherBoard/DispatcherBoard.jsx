@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useWorkOrders } from "../../hooks/useWorkOrders";
 import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
+import { useSessionActivityFeed } from "../../hooks/useSessionActivityFeed";
 import { useAuth } from "../../auth/AuthContext";
 import { TECHNICIANS_COLLECTION } from "../../domain/constants";
 import { getAllowedActions } from "../../domain/workOrderWorkflow";
@@ -9,6 +10,7 @@ import { recommendTechniciansBatch } from "../../domain/technicianRecommendation
 import WorkOrderQueue from "./WorkOrderQueue";
 import WorkOrderPreview from "./WorkOrderPreview";
 import TechnicianBoard from "./TechnicianBoard";
+import DispatcherActivityFeed from "./DispatcherActivityFeed";
 
 // Epic 2 Phase 2C -- Dispatcher Operations Board. A new, additional
 // screen -- does NOT replace or modify ControlTower.jsx, Dispatch.jsx,
@@ -46,6 +48,7 @@ export default function DispatcherBoard() {
   const { role } = useAuth();
   const { data: workOrders, loading: workOrdersLoading } = useWorkOrders();
   const { data: technicians, loading: techniciansLoading } = useFirestoreCollection(TECHNICIANS_COLLECTION);
+  const activityEntries = useSessionActivityFeed(workOrders, technicians);
 
   const [selectedId, setSelectedId] = useState(null);
   const [searchInput, setSearchInput] = useState("");
@@ -159,6 +162,8 @@ export default function DispatcherBoard() {
           )}
         </select>
       </div>
+
+      <DispatcherActivityFeed entries={activityEntries} />
 
       {dispatchError && (
         <div className="warning" role="alert">

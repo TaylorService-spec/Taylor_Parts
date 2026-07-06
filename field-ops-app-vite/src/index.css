@@ -290,6 +290,21 @@ button:hover {
 .disp-board-toolbar input { flex: 1; min-width: 200px; padding: 8px 10px; border: 1px solid #D8DEDD; border-radius: 6px; font-size: 14px; }
 .disp-board-toolbar select { padding: 8px 10px; border: 1px solid #D8DEDD; border-radius: 6px; font-size: 14px; }
 
+/* Dispatcher Activity Panel -- visually distinct dashed-border strip
+   (not one of the 3 core panes), so it reads as a separate,
+   secondary, session-only feature. */
+.disp-activity-feed {
+  border: 1px dashed #D8DEDD;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  background: #FAFBFB;
+}
+.disp-activity-feed-header { display: flex; justify-content: space-between; align-items: center; }
+.disp-activity-feed-header h4 { margin: 0; font-size: 13px; }
+.disp-activity-feed-list { list-style: none; margin: 6px 0 0; padding: 0; font-size: 13px; max-height: 120px; overflow-y: auto; }
+.disp-activity-feed-list li { padding: 3px 0; }
+
 .disp-board-layout {
   display: grid;
   grid-template-columns: 1.2fr 1fr 1fr;
