@@ -15,6 +15,7 @@ This table is an *architecture* ownership map — it answers "where should I cha
 | Business-domain navigation, business objects | `../ProductBlueprint.md` |
 | UX/product-level working principles | `../GuidingPrinciples.md` |
 | Multi-device/mobile strategy | `../MobileStrategy.md` |
+| Enterprise business object model (Account/Contact/Location/Work Order/etc., core-vs-future entities, Firestore collection recommendations) | `../BusinessEntityModel.md` |
 
 This section explains ownership only — see those documents themselves for their actual content, and `../CLAUDE_CONTEXT.md`'s "Product Authorities" section for when to consult them.
 

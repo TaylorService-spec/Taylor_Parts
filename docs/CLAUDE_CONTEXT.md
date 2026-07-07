@@ -13,6 +13,7 @@ Before implementing any new feature, read:
 3. [`ProductBlueprint.md`](ProductBlueprint.md)
 4. [`GuidingPrinciples.md`](GuidingPrinciples.md)
 5. [`MobileStrategy.md`](MobileStrategy.md)
+6. [`BusinessEntityModel.md`](BusinessEntityModel.md) — the enterprise business object model (Account/Contact/Location/Work Order/etc.); read this before any work touching Customers, Locations, or the other entities it defines
 
 **Product documents define WHY. Architecture documents define HOW.** `PROJECT_ARCHITECTURE.md` and the `architecture/` ADRs describe how the platform is built; the five documents above describe why it exists and how users are meant to interact with it. Both must be satisfied — see `PROJECT_ARCHITECTURE.md`'s "Relationship to Product Governance" section.
 

@@ -23,6 +23,8 @@ Today's implementation organizes navigation around Work Orders/Jobs, Technicians
 
 ## Business Objects
 
+**See [BusinessEntityModel.md](BusinessEntityModel.md) for the detailed enterprise business object model** (purpose/responsibilities/relationships per entity, core-vs-future status, Firestore collection recommendations). What follows here is the shorter product-level list this blueprint has always had; the two aren't meant to duplicate each other's detail.
+
 Core business objects the platform is organized around, spanning current and future domains:
 
 - **Customer** — an organization or individual receiving service.
