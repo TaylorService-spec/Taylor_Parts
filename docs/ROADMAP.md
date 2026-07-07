@@ -1,10 +1,17 @@
 # Roadmap
 
-Forward-looking plan. For what's already shipped, see `SPRINT_STATUS.md`. For system design, see `PROJECT_ARCHITECTURE.md`. For product direction, see `ProductVision.md`.
+Forward-looking plan. For what's already shipped, see `SPRINT_STATUS.md`. For system design, see `PROJECT_ARCHITECTURE.md`. For product direction, see `ProductVision.md`. For capability-level maturity planning, see [`PlatformCapabilityModel.md`](PlatformCapabilityModel.md).
 
 ## Product Release Roadmap
 
-This is the platform's release-level roadmap, tracked by Product version (see `ProductVision.md`/`ProductBlueprint.md`). It complements — not replaces — the sprint/epic implementation roadmap below and in `SPRINT_STATUS.md`; a Product version spans many sprints/epics.
+This is the platform's release-level roadmap, tracked by Product version (see `ProductVision.md`/`ProductBlueprint.md`). It complements — not replaces — the sprint/epic implementation roadmap below and in `SPRINT_STATUS.md`; a Product version spans many sprints/epics. Per [`PlatformCapabilityModel.md`](PlatformCapabilityModel.md)'s "Release Planning" section, future releases should also be expressible in capability-maturity terms (e.g. "Dispatch Management: Level 3 → 4"), not only as a list of unrelated shipped features.
+
+### Planned governance documents (recommended authoring order)
+
+1. **[`PlatformCapabilityModel.md`](PlatformCapabilityModel.md)** — complete.
+2. **`DeploymentModeStrategy.md`** *(planned, not yet written)* — Developer/Demo/Managed Hosted/Enterprise Integration deployment modes.
+3. **`PlatformOperatingModel.md`** *(planned, not yet written)* — how the SaaS platform operates as a business (onboarding, provisioning, billing, multi-company growth).
+4. **`IntegrationArchitecture.md`** *(planned, not yet written)* — how operational data leaves the platform (Snowflake/ETL/BI/ERP, event bus, retry strategy); deliberately last, gated on the tenant/Company boundary being addressed in #3 first.
 
 | Version | Name | Status |
 |---|---|---|

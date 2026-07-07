@@ -1,13 +1,15 @@
 # Product Vision
 
 **Status:** Version 1 — living document, expected to evolve.
-**Related:** [PlatformConstitution.md](PlatformConstitution.md) · [ProductBlueprint.md](ProductBlueprint.md) · [GuidingPrinciples.md](GuidingPrinciples.md) · [MobileStrategy.md](MobileStrategy.md)
+**Related:** [PlatformConstitution.md](PlatformConstitution.md) · [PlatformCapabilityModel.md](PlatformCapabilityModel.md) · [ProductBlueprint.md](ProductBlueprint.md) · [GuidingPrinciples.md](GuidingPrinciples.md) · [MobileStrategy.md](MobileStrategy.md)
 
 ## Mission
 
 Build a configurable **Enterprise Operations Platform** for service organizations — a single system that runs the operational core of a service business, rather than a point solution for one department.
 
 ## Long-Term Scope
+
+**See [PlatformCapabilityModel.md](PlatformCapabilityModel.md) for how these domains translate into concrete, independently-maturing business capabilities**, each with a current and target maturity level. The list below is this document's domain-level summary; the capability model is the detailed, actionable breakdown.
 
 The platform's long-term scope spans the following business domains:
 
