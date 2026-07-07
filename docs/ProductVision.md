@@ -1,7 +1,7 @@
 # Product Vision
 
 **Status:** Version 1 — living document, expected to evolve.
-**Related:** [PlatformConstitution.md](PlatformConstitution.md) · [PlatformCapabilityModel.md](PlatformCapabilityModel.md) · [DeploymentModeStrategy.md](DeploymentModeStrategy.md) · [ProductBlueprint.md](ProductBlueprint.md) · [GuidingPrinciples.md](GuidingPrinciples.md) · [MobileStrategy.md](MobileStrategy.md)
+**Related:** [PlatformConstitution.md](PlatformConstitution.md) · [PlatformCapabilityModel.md](PlatformCapabilityModel.md) · [DeploymentModeStrategy.md](DeploymentModeStrategy.md) · [PlatformOperatingModel.md](PlatformOperatingModel.md) · [ProductBlueprint.md](ProductBlueprint.md) · [GuidingPrinciples.md](GuidingPrinciples.md) · [MobileStrategy.md](MobileStrategy.md)
 
 ## Mission
 
