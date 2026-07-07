@@ -18,13 +18,37 @@ import GlobalSearch from "../../shared/search/GlobalSearch";
 // component) -- selecting a result sets wizard state instead of
 // navigating away from the wizard.
 //
-// Cloud Functions are NOT deployed live as of this sprint (verified,
+// Cloud Functions are NOT deployed live as of Sprint 2.0.3 (verified,
 // firebase functions:list --project taylor-parts -> empty, blocked on
 // the Blaze plan upgrade, issue #15). createWorkOrder() is still
-// wired up and called exactly as it will be once deployed -- the
-// catch block below is what surfaces that gap to the user as a clear
-// message, not a raw stack trace, rather than the UI silently hanging
-// or crashing.
+// wired up and called exactly as it will be once deployed.
+//
+// Sprint 2.0.4 pre-deploy fix: the catch block differentiates two
+// genuinely different failure shapes, rather than showing the same
+// "not available" message for both --
+//   (A) the callable itself doesn't exist/can't be reached (functions
+//       not deployed, or a network-level failure reaching the Cloud
+//       Functions endpoint at all) -- the ONLY case where "Work Order
+//       creation service is not currently available in this
+//       environment" is actually true.
+//   (B) the callable exists and ran, but rejected the call (bad
+//       input, permission denied, or an unexpected runtime error) --
+//       shown as "Work Order could not be created. Please check the
+//       details and try again," with the callable's own safe message
+//       appended when present (HttpsError messages are
+//       deliberately-authored, safe, user-facing strings already --
+//       e.g. "customerId is required." -- never a raw stack trace;
+//       Firebase's SDK redacts uncaught-exception details by design,
+//       so nothing unsafe can leak through this path either).
+//
+// This heuristic is based on documented Firebase callable error-code
+// behavior, not empirically verified against an actual undeployed ->
+// deployed transition (that transition hadn't happened yet when this
+// was written) -- re-check both branches actually fire correctly
+// during this sprint's emulator and production validation passes, per
+// the implementation plan.
+const CALLABLE_UNAVAILABLE_CODES = new Set(["functions/not-found", "functions/unavailable"]);
+
 const PRIORITY_OPTIONS = [
   { value: 1, label: "1 - Emergency" },
   { value: 2, label: "2 - High" },
@@ -36,6 +60,16 @@ const TYPE_OPTIONS = ["SERVICE_CALL", "PM", "INSTALL", "WARRANTY", "INSPECTION"]
 const SEVERITY_OPTIONS = ["EQUIPMENT_DOWN", "PARTIAL_OPERATION", "COSMETIC", "PREVENTIVE"];
 
 const CREATE_UNAVAILABLE_MESSAGE = "Work Order creation service is not currently available in this environment.";
+const CREATE_FAILED_MESSAGE = "Work Order could not be created. Please check the details and try again.";
+
+function getWizardCreateErrorMessage(err) {
+  const code = err?.code ?? "";
+  if (CALLABLE_UNAVAILABLE_CODES.has(code)) {
+    return CREATE_UNAVAILABLE_MESSAGE;
+  }
+  const safeDetail = typeof err?.message === "string" && err.message.trim() ? err.message.trim() : null;
+  return safeDetail ? `${CREATE_FAILED_MESSAGE} ${safeDetail}` : CREATE_FAILED_MESSAGE;
+}
 
 export default function WorkOrderWizard() {
   const navigate = useNavigate();
@@ -79,7 +113,7 @@ export default function WorkOrderWizard() {
       navigate(`/service/work-orders/${result.id}`);
     } catch (err) {
       console.error("createWorkOrder failed:", err);
-      setSubmitError(CREATE_UNAVAILABLE_MESSAGE);
+      setSubmitError(getWizardCreateErrorMessage(err));
     } finally {
       setSubmitting(false);
     }
