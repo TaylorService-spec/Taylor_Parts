@@ -109,10 +109,11 @@ Also verified this session: a chained shell command (`git add && git commit && g
 
 ## Architecture decision docs that actually exist (verify with `Glob` before citing any others)
 
+- `docs/architecture/ADR-001-retired-operational-core-branch.md` — archived record of why `sprint-4-operational-core` (PR #10)'s inventory/job-event/phase-lifecycle subsystems were rejected. Its "Decision" section's cherry-pick (a technician-availability classifier via `sprint-4-availability-classifier`, PR #12) is itself superseded by that doc's own Addendum: PR #12 was closed unmerged, the classifier is a documented concept only, not shipped code. Also documents a real filename collision that PR #12 would have caused (`domain/dispatchScoring.js` already exists on `main` as an unrelated, live Control Tower file).
 - `docs/architecture/ADR-002-work-order-engine.md` — the Work Order Engine's full design: why `fieldops_wos` is a scoped, deliberate exception to prior no-duplicate-lifecycle practice, Cloud Functions as the write path, soft-coupled Job↔WO relationship.
 - `docs/architecture/ADR-003-inventory-trigger-system.md` — the ledger-based inventory design: why a pure ledger instead of a mutable stock document, why triggers run strictly post-commit.
 
-No `ADR-001`, no `docs/epics/EPIC-2.md`, no `docs/architecture/UI_ACTION_PIPELINES.md` exist in this repo — a prior session cited all three as if they did. If a future prompt or spec references them, treat that as unverified until checked.
+No `docs/epics/EPIC-2.md`, no `docs/architecture/UI_ACTION_PIPELINES.md` exist in this repo — a prior session cited both as if they did. If a future prompt or spec references them, treat that as unverified until checked.
 
 ## Persistent auto-memory
 
