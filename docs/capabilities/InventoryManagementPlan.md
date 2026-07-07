@@ -1,9 +1,28 @@
-# Inventory Capability Expansion Plan
+# Inventory Management — Capability Implementation Plan
 ### Release 2.0 — Capability Expansion Phase
 
 **Status:** Planning only. No code, branches (beyond this documentation branch), Firestore, schema, or governance changes have been made as part of producing this document. This is the planning artifact requested before Sprint 2.1.1 implementation begins — implementation work starts only once this plan is reviewed.
 
-Not numbered as an "Epic" (`docs/epics/EPIC-6-Technician-Execution-Workspace.md`'s numbering sequence, Epic 1–8, describes already-merged work under the pre-capability-model naming convention). This document instead traces directly to [`PlatformCapabilityModel.md`](../PlatformCapabilityModel.md)'s capability-maturity framing, per that document's own Release Planning guidance.
+This document lives in `docs/capabilities/` — the documentation layer for **Capability Implementation Plans**, distinct from `docs/epics/`'s historical, pre-capability-model planning documents (e.g. `EPIC-6-Technician-Execution-Workspace.md`, under the Epic 1–8 numbering sequence). This document instead traces directly to [`PlatformCapabilityModel.md`](../PlatformCapabilityModel.md)'s capability-maturity framing, per that document's own Release Planning guidance.
+
+## Section Template for Future Capability Plans
+
+Every Capability Implementation Plan in `docs/capabilities/` is expected to follow this section shape, in this order, so a reader can navigate any two plans the same way regardless of which capability they cover:
+
+1. **Purpose** — why this capability plan exists now, and what gap it closes.
+2. **Capability Scope** — what is and is not in scope, traced to the capability's current/target maturity in `PlatformCapabilityModel.md`.
+3. **Business Entities** — which entities from `BusinessEntityModel.md` are involved, and their status (Core/Future).
+4. **Operational Workflows** — what a user can do today vs. what this plan adds.
+5. **Dependencies** — which other capabilities this plan relies on or affects.
+6. **Implementation Phases** — each phase, with its own Exit Criteria.
+7. **Success Criteria** — measurable, checkable conditions, broken out per sprint.
+8. **Exit Criteria** — the gate that must be true before the next phase begins (one per phase; may be repeated under each phase entry rather than centralized, as this document does).
+9. **Affected Personas** — which roles/users each phase or sprint actually affects.
+10. **Risks** — architectural and scope risks specific to this capability.
+11. **Traceability** — explicit mapping back to `PlatformCapabilityModel.md`, `BusinessEntityModel.md`, `ProductBlueprint.md`, and `PROJECT_ARCHITECTURE.md`.
+12. **Future Expansion** — what this plan deliberately leaves for later, and why.
+
+This document (below) follows this shape but organizes Success Criteria and Exit Criteria inline within Sections 5 and 8 rather than as separate top-level sections — later plans may follow either arrangement, as long as all twelve concerns above are addressed somewhere and clearly labeled.
 
 ---
 
