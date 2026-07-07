@@ -18,9 +18,12 @@ This is the platform's release-level roadmap, tracked by Product version (see `P
 | Sprint | Name | Status |
 |---|---|---|
 | 2.0.1 | Navigation Foundation | Complete (PR #41) |
-| 2.0.2 | Work Order Experience | Next |
+| 2.0.2 | Customer Foundation | Next (renamed from "Work Order Experience"; implementation order revised — see below) |
+| 2.0.3 | Work Order Experience (Service Workspace) | Planned, after 2.0.2 |
 
-**Sprint 2.0.2 — Work Order Experience** (scoped by product/architecture review closing out 2.0.1): real Work Order creation UI using `fieldops_wos` (via `services/workOrderService.ts`'s `createWorkOrder()`), a Work Order Detail page, clickable Work Order IDs, customer lookup/autocomplete, a customer creation flow, and a technician-assignment entry point. Not in scope: unrelated dispatch/inventory/reporting features. See `CLAUDE_CONTEXT.md`'s "Next up" section for the finding that motivated this (the current "Work Orders" screen creates legacy `fieldops_jobs` records, not real Work Orders).
+**Sprint 2.0.2 — Customer Foundation** (renamed and reordered per product review of the Service Workspace design proposal): establishes the core business-entity model (Accounts/Customers, Contacts, Locations, and the other entities in `docs/PROJECT_ARCHITECTURE.md`'s business-entity model section) and the Customer lookup/creation workflow, *before* the Work Order creation wizard is built on top of it — the wizard's first two steps (Customer, Location) were found to have no underlying entity/collection/rules to build on. See the business-entity model proposal and the Location first-class-vs-embedded recommendation for the design decisions this sprint implements.
+
+**Sprint 2.0.3 — Work Order Experience (Service Workspace)** (the sprint originally scoped as "2.0.2"): the Service Workspace layout, Work Order creation wizard, and Work Order Detail page/routing, built on top of Sprint 2.0.2's entity model. Real Work Order creation UI using `fieldops_wos` (via `services/workOrderService.ts`'s `createWorkOrder()`), a Work Order Detail page, clickable Work Order IDs, and a technician-assignment entry point. Not in scope: unrelated dispatch/inventory/reporting features. See `CLAUDE_CONTEXT.md`'s "Next up" section for the finding that motivated this (the current "Work Orders" screen creates legacy `fieldops_jobs` records, not real Work Orders).
 
 ## Near-term
 
