@@ -12,6 +12,7 @@ This table is an *architecture* ownership map — it answers "where should I cha
 |---|---|
 | Product vision, mission, long-term scope | `../ProductVision.md` |
 | Platform-wide product principles | `../PlatformConstitution.md` |
+| Business capabilities and maturity | `../PlatformCapabilityModel.md` |
 | Business-domain navigation, business objects | `../ProductBlueprint.md` |
 | UX/product-level working principles | `../GuidingPrinciples.md` |
 | Multi-device/mobile strategy | `../MobileStrategy.md` |
