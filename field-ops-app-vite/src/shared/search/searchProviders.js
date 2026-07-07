@@ -6,10 +6,10 @@
 // route }` result shape. Adding a new entity to search means adding a
 // provider here, not changing GlobalSearch.jsx itself.
 //
-// Only `accounts` is implemented this sprint, per explicit scope
-// control -- contacts/locations/equipment/workOrders/parts/employees
-// are NOT registered, not stubbed, not scaffolded. Each would follow
-// this same shape when its own sprint adds it.
+// `accounts` (Sprint 2.0.2) and `workOrders` (Sprint 2.0.3) are the
+// only providers implemented so far -- contacts/locations/equipment/
+// parts/employees remain NOT registered, not stubbed, not scaffolded.
+// Each would follow this same shape when its own sprint adds it.
 //
 // `context` carries already-loaded data a provider needs, so a search
 // never triggers its own extra Firestore read -- same client-side-
@@ -33,6 +33,32 @@ export const SEARCH_PROVIDERS = {
           primaryText: account.name,
           secondaryText: account.status ?? "",
           route: `/customers/${account.id}`,
+        }));
+    },
+  },
+
+  // Sprint 2.0.3 -- same client-side-filter-over-already-loaded-data
+  // shape as `accounts` above. `context.workOrders` is whatever
+  // WorkOrdersList.jsx already has from useWorkOrders(); this provider
+  // triggers no extra Firestore read of its own.
+  workOrders: {
+    key: "workOrders",
+    label: "Work Orders",
+    search(query, context) {
+      const q = query.trim().toLowerCase();
+      if (!q) return [];
+      const workOrders = context?.workOrders ?? [];
+      return workOrders
+        .filter((wo) => {
+          const haystack = `${wo.woNumber ?? ""} ${wo.customerId ?? ""} ${wo.type ?? ""}`.toLowerCase();
+          return haystack.includes(q);
+        })
+        .map((wo) => ({
+          id: wo.id,
+          entityType: "workOrders",
+          primaryText: wo.woNumber ?? wo.id,
+          secondaryText: `${wo.status ?? ""} -- ${wo.customerId ?? ""}`,
+          route: `/service/work-orders/${wo.id}`,
         }));
     },
   },

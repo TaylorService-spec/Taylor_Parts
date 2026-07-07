@@ -72,7 +72,21 @@ export const NAV_DOMAINS = [
     label: "Service",
     path: "service",
     subnav: [
-      { key: "workOrders", label: "Work Orders", path: "", legacyKey: "jobs" },
+      // Sprint 2.0.3 -- "Work Orders" is now the real Work Order
+      // workspace (WorkOrdersList, special-cased in App.jsx's
+      // renderSubnavItem since it has no legacyKey -- new screen, not
+      // a re-homed one). No legacyKey means this defaults to
+      // admin/dispatcher visibility (PLACEHOLDER_DEFAULT_ROLES),
+      // which is correct here -- technicians keep their own separate
+      // Work Order view (Dashboard > My Dashboard /
+      // TechnicianDashboard.jsx), untouched by this sprint.
+      { key: "workOrders", label: "Work Orders", path: "" },
+      // The legacy fieldops_jobs screen (Jobs.jsx), relocated from
+      // the "Work Orders" slot above. Same legacyKey ("jobs") as
+      // before, so existing role access (including technician) is
+      // unchanged -- only its label/position moved, per explicit
+      // instruction not to relabel this "Legacy" in user-facing UI.
+      { key: "jobAssignments", label: "Job Assignments", path: "job-assignments", legacyKey: "jobs" },
       { key: "dispatch", label: "Dispatch", path: "dispatch", legacyKey: "dispatch" },
       { key: "technicianWorkspace", label: "Technician Workspace", path: "technician-workspace", legacyKey: "fieldMode" },
       { key: "controlTower", label: "Control Tower", path: "control-tower", legacyKey: "controlTower" },

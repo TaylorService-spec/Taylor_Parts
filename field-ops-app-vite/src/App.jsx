@@ -10,6 +10,9 @@ import DispatcherBoard from "./modules/dispatcherBoard/DispatcherBoard";
 import TechnicianDashboard from "./modules/technicianDashboard/TechnicianDashboard";
 import AccountsList from "./modules/accounts/AccountsList";
 import AccountDetail from "./modules/accounts/AccountDetail";
+import WorkOrdersList from "./modules/workOrders/WorkOrdersList";
+import WorkOrderWizard from "./modules/workOrders/WorkOrderWizard";
+import WorkOrderDetailPage from "./modules/workOrders/WorkOrderDetailPage";
 import { useAuth } from "./auth/AuthContext";
 import Login from "./auth/Login";
 import AppHeader from "./shared/ui/AppHeader";
@@ -84,6 +87,13 @@ function renderSubnavItem(domain, item, role) {
   if (domain.key === "customers" && item.key === "customers") {
     return <AccountsList />;
   }
+  // Sprint 2.0.3 -- Work Order Experience. "Work Orders" now renders
+  // the real workspace; the legacy Jobs.jsx screen it used to render
+  // (via legacyKey "jobs") is relocated to the "Job Assignments" item
+  // below, which keeps its legacyKey unchanged.
+  if (domain.key === "service" && item.key === "workOrders") {
+    return <WorkOrdersList />;
+  }
   if (item.legacyKey) {
     const Component = LEGACY_COMPONENTS[item.legacyKey];
     return <Component />;
@@ -124,6 +134,26 @@ function AppRoutes({ role, allowedLegacyKeys }) {
               nav visibility, hitting permission-denied. */}
           {domain.key === "customers" && isDomainVisible(domain, role, allowedLegacyKeys) && (
             <Route path=":accountId" element={<AccountDetail />} />
+          )}
+          {/* Sprint 2.0.3 -- gated to admin/dispatcher specifically,
+              NOT isDomainVisible(service domain) -- a technician
+              already has "service" domain visibility today (via the
+              jobs/fieldMode legacyKeys on Dispatch/Job Assignments/
+              Technician Workspace), so that check alone would still
+              let a technician reach these two Work Order routes. Per
+              the implementation plan's Section 7: WorkOrderActions.jsx
+              embedded in the detail route is dispatcher-only in
+              intent (hardcodes isOwnAssignment: false), and a
+              technician's real lifecycle-action flow already lives on
+              their own separate TechnicianDashboard route -- so these
+              two routes simply don't exist for that role, same
+              "route doesn't exist, falls through to the catch-all"
+              behavior as the /customers/:accountId gate. */}
+          {domain.key === "service" && (role === "admin" || role === "dispatcher") && (
+            <>
+              <Route path="work-orders/new" element={<WorkOrderWizard />} />
+              <Route path="work-orders/:workOrderId" element={<WorkOrderDetailPage />} />
+            </>
           )}
         </Route>
       ))}

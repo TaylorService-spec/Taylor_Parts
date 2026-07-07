@@ -32,7 +32,17 @@ import WorkOrderActions from "./WorkOrderActions";
 // header comment. Technician actions (Accept/Travel/Arrive/WorkStart/
 // Complete) are out of scope here; FieldMode.jsx (a separate,
 // unmigrated fieldops_jobs-based screen) is untouched by this pass.
-export default function WorkOrderDetail({ workOrder, jobs, role, technicians }) {
+//
+// Sprint 2.0.3: optional customerName/locationLabel props, used by
+// the new WorkOrderDetailPage.jsx (Service > Work Orders detail
+// route) to show resolved Account/Location names instead of raw IDs.
+// Both fall back to the raw customerId/locationId when absent -- this
+// keeps every existing caller (ControlTower.jsx, which doesn't pass
+// these) rendering exactly as before, and preserves the fallback
+// technicians will still see (technician read access to
+// accounts/locations is deliberately not granted -- see
+// docs/BusinessEntityModel.md).
+export default function WorkOrderDetail({ workOrder, jobs, role, technicians, customerName, locationLabel }) {
   const signal = computeWorkOrderSignalFromDoc(workOrder);
   const { state, isCancelled, reasons } = signal.metadata;
   const history = buildTimeline(jobs);
@@ -65,7 +75,7 @@ export default function WorkOrderDetail({ workOrder, jobs, role, technicians }) 
       </div>
 
       <div>
-        Customer: {workOrder.customerId} | Location: {workOrder.locationId}
+        Customer: {customerName ?? workOrder.customerId} | Location: {locationLabel ?? workOrder.locationId}
       </div>
 
       {timestampRows.length > 0 && (
