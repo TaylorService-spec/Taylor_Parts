@@ -13,6 +13,15 @@ This is the platform's release-level roadmap, tracked by Product version (see `P
 | Version 3 | Enterprise Operations | Planned |
 | Version 4 | Enterprise Intelligence | Future |
 
+### Version 2 (Platform Experience) sprint breakdown
+
+| Sprint | Name | Status |
+|---|---|---|
+| 2.0.1 | Navigation Foundation | Complete (PR #41) |
+| 2.0.2 | Work Order Experience | Next |
+
+**Sprint 2.0.2 — Work Order Experience** (scoped by product/architecture review closing out 2.0.1): real Work Order creation UI using `fieldops_wos` (via `services/workOrderService.ts`'s `createWorkOrder()`), a Work Order Detail page, clickable Work Order IDs, customer lookup/autocomplete, a customer creation flow, and a technician-assignment entry point. Not in scope: unrelated dispatch/inventory/reporting features. See `CLAUDE_CONTEXT.md`'s "Next up" section for the finding that motivated this (the current "Work Orders" screen creates legacy `fieldops_jobs` records, not real Work Orders).
+
 ## Near-term
 
 - **Sprint 3.3 merge** — land PR #6 once ready; re-verify mergeability against `main` first (don't assume).
