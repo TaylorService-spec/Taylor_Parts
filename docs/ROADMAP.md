@@ -13,6 +13,8 @@ This is the platform's release-level roadmap, tracked by Product version (see `P
 3. **[`PlatformOperatingModel.md`](PlatformOperatingModel.md)** — complete. Governance responsibilities, Product/Architecture ownership, release/change/configuration management, customer onboarding lifecycle, versioning philosophy, AI-assisted development workflow.
 4. **[`IntegrationArchitecture.md`](IntegrationArchitecture.md)** — complete. System boundaries, operational-vs-analytical systems, supported integration patterns, import/export strategy, API philosophy, AI integration strategy, customer-owned integrations (Snowflake/ETL/BI/ERP/Accounting/CRM/AI). Fourth and final planned governance artifact — all four are now written.
 
+**Release 2.0 Governance Foundation: complete.** All four governance artifacts above are written, cross-referenced, and merged. A full governance audit subsequently verified terminology consistency, cross-reference resolution, and architecture/product alignment across all 15 governance/architecture documents; the two findings it raised (a stale `PROJECT_ARCHITECTURE.md` section describing pre-Epic-1 state, and an inconsistent "Product Authorities" list across three documents) were resolved in a follow-up maintenance pass. This milestone is closed — capability-driven implementation work (per `PlatformCapabilityModel.md`'s Release Planning section) resumes under the now-established governance framework.
+
 | Version | Name | Status |
 |---|---|---|
 | Version 1 | Platform Foundation | Completed |
@@ -27,7 +29,7 @@ This is the platform's release-level roadmap, tracked by Product version (see `P
 | 2.0.1 | Navigation Foundation | Complete (PR #41) |
 | 2.0.2 | Customer Foundation | **Complete and live (PR #44)** |
 | 2.0.3 | Work Order Experience (Service Workspace) | **Complete and live -- UI only (PR #46)** |
-| 2.0.4 | *(reframed twice this session — see note below; superseded by the governance documentation roadmap above)* | Paused |
+| 2.0.4 | *(reframed twice this session — see note below; superseded by the governance documentation roadmap above)* | **Closed — superseded by the now-complete Governance Foundation** |
 
 **Sprint 2.0.2 — Customer Foundation: complete.** Delivered `accounts`/`locations`/`contacts` Firestore collections (rules deployed to production), a client-direct-write domain layer, a reusable Global Search component (Accounts provider only), and Customer/Location/Contact UI wired into Release 2.0's routing (`/customers`, `/customers/:accountId`). Live-verified: admin/dispatcher can create Customers, open Customer Detail, add Locations and Contacts, and find a Customer via Global Search; technicians cannot see the Customers nav item and a direct link to `/customers/:accountId` redirects to `/dashboard` with no permission-denied errors. See [`BusinessEntityModel.md`](BusinessEntityModel.md) for the full object model, relationships, and the Location first-class-vs-embedded recommendation this sprint implemented.
 
