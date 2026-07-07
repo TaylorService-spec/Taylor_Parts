@@ -1,12 +1,21 @@
 // Module Registry -- pure metadata, no routing authority.
 //
 // Informational only: label/description/uiGroup/icon/screens per
-// module, for future UI-grouping/display purposes. NO paths, NO route
-// functions, NO navigation resolvers -- not imported by App.jsx or
-// anything else. App.jsx's `NAV` array (src/App.jsx) +
-// `ROLE_NAV_ACCESS` (domain/constants.js) remain the ONE AND ONLY
-// navigation source of truth. React Router is not used anywhere in
-// this app; this registry does not introduce it or assume it.
+// module. NO paths, NO route functions, NO navigation resolvers --
+// not imported by App.jsx or anything else, still.
+//
+// STALE AS OF SPRINT 2.0.1 (Release 2.0): the claim this comment used
+// to make -- "App.jsx's NAV array + ROLE_NAV_ACCESS remain the ONE AND
+// ONLY navigation source of truth, React Router is not used anywhere"
+// -- is no longer true. App.jsx's old flat `NAV` array is gone;
+// `navigation/navConfig.js` is now the real navigation source of
+// truth, wired into real `react-router-dom` routes. See
+// `docs/Architecture.md`'s "SPA routing" section and
+// `docs/architecture/SYSTEM_AUTHORITIES.md`'s "Navigation" row. This
+// file remains exactly what it always was -- unused, descriptive-only
+// metadata, still not imported anywhere -- just no longer describing
+// the current routing model accurately below; treat the "Accuracy
+// notes" as doubly aspirational now.
 //
 // Accuracy notes (this registry is aspirational/descriptive, not a
 // reflection of current real structure):

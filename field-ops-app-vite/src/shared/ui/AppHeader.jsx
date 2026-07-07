@@ -1,4 +1,5 @@
 import React from "react";
+import { Link } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
 
 export default function AppHeader() {
@@ -9,9 +10,13 @@ export default function AppHeader() {
       <div className="fo-appheader-left" style={styles.left}>
         <span style={styles.title}>Field Ops Platform</span>
 
-        <a href="/Taylor_Parts/" style={styles.link}>
+        {/* Sprint 2.0.1, requirement #6: Home used to hard-link to
+            "/Taylor_Parts/" -- the legacy root Parts Control Center,
+            a different app entirely. Now a client-side route to this
+            app's own dashboard, not a page navigation away from it. */}
+        <Link to="/dashboard" style={styles.link}>
           Home
-        </a>
+        </Link>
 
         <a href="/Taylor_Parts/field-ops/" style={styles.link}>
           Refresh

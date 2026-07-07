@@ -18,9 +18,13 @@ As of this writing:
 - **A `firebase.json`/`.firebaserc` now exist at the repo root** (added recently, currently untracked in git), configuring Firebase Hosting to serve `field-ops-app-vite/dist` with a catch-all SPA rewrite (`** → /index.html`). This is *prepared* configuration, not yet an active deployment — nothing indicates `firebase deploy --only hosting` has been run. If/when it is, `taylor-parts.web.app` (or the custom domain, if configured) would start serving the same build GitHub Pages already serves.
 - Firestore rules (`field-ops-app-vite/firestore.rules`) are managed separately from hosting and must be deployed with `firebase deploy --only firestore:rules` — also not automated by any CI step in this repo (confirmed: no workflow deploys rules).
 
-## "SPA routing"
+## SPA routing
 
-The app does not use a client-side router (no `react-router` or equivalent) — `App.jsx` renders one of several view components based on in-memory `useState` tab selection, not distinct URL paths. There is exactly one HTML entry point (`index.html`) and no deep-linkable routes today. The Firebase Hosting rewrite rule (`** → /index.html`) is standard SPA boilerplate from `firebase init`, but isn't functionally load-bearing yet since there's nothing route-like for it to catch.
+**As of Sprint 2.0.1 (Release 2.0, Navigation Foundation), the app uses `react-router-dom`.** This section previously said the opposite -- true through Release 1.0, no longer true. `App.jsx` now wraps the app in `BrowserRouter` (`basename="/Taylor_Parts/field-ops/"`, matching `vite.config`'s `base`) with real URL routes per business domain/sub-nav item (see `navigation/navConfig.js`), so browser back/forward and deep links work. There is still exactly one HTML entry point (`index.html`); routing is entirely client-side.
+
+This reintroduces a dependency (`react-router-dom`) that PR #22 previously added, then removed on the same PR -- that removal was a scope-convergence decision (the scaffold was "structural only, not wired in," per PR #22's own body), not a permanent architectural ban on client-side routing. See Sprint 2.0.1's PR description for the full before/after rationale.
+
+GitHub Pages has no server-side rewrite rules (unlike the Firebase Hosting config below, which does), so a deep link or refresh on a non-root path needs the standard SPA-on-static-host fallback: `field-ops-app-vite/public/404.html` re-encodes the path into a query string, and a matching restore script in `index.html` decodes it back via `history.replaceState` before React Router reads the URL. `.github/workflows/deploy-field-ops.yml` stages that `404.html` at the site root (not just nested under `field-ops/`), since GitHub Pages only honors one site-wide 404 page.
 
 ## Domain model
 

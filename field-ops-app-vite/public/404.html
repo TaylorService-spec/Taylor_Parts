@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Field Ops</title>
+    <script type="text/javascript">
+      // Single Page Apps for GitHub Pages -- https://github.com/rafgraph/spa-github-pages
+      //
+      // Sprint 2.0.1 -- GitHub Pages has no server-side rewrite rules, so a
+      // direct hit or refresh on a deep BrowserRouter path (e.g.
+      // /Taylor_Parts/field-ops/service/dispatch) 404s unless this fallback
+      // is in place: GitHub Pages serves this file for any unmatched path
+      // site-wide, and this script re-encodes the path into a query string
+      // and redirects to the real app, which restores it (see index.html's
+      // matching restore script) before React Router ever sees the URL.
+      //
+      // pathSegmentsToKeep = 2: this site serves the legacy root app at
+      // /Taylor_Parts/ AND this Vite app nested one level deeper at
+      // /Taylor_Parts/field-ops/ -- both segments must be preserved as the
+      // redirect base, or the app would think it's being served from
+      // the domain root.
+      var pathSegmentsToKeep = 2;
+
+      var l = window.location;
+      l.replace(
+        l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') +
+        l.pathname.split('/').slice(0, 1 + pathSegmentsToKeep).join('/') + '/?/' +
+        l.pathname.slice(1).split('/').slice(pathSegmentsToKeep).join('/').replace(/&/g, '~and~') +
+        (l.search ? '&' + l.search.slice(1).replace(/&/g, '~and~') : '') +
+        l.hash
+      );
+    </script>
+  </head>
+  <body></body>
+</html>
