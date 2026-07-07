@@ -217,4 +217,4 @@ Concretely: a request should be traceable to a named capability and its target m
 
 ## 8. Status
 
-This document is a **foundational governance artifact**, alongside `ProductVision.md`, `PlatformConstitution.md`, `ProductBlueprint.md`, and `BusinessEntityModel.md`. [`DeploymentModeStrategy.md`](DeploymentModeStrategy.md) is now also complete; `IntegrationArchitecture.md` and `PlatformOperatingModel.md` are planned future companions — see `ROADMAP.md` for their recommended authoring order.
+This document is a **foundational governance artifact**, alongside `ProductVision.md`, `PlatformConstitution.md`, `ProductBlueprint.md`, and `BusinessEntityModel.md`. [`DeploymentModeStrategy.md`](DeploymentModeStrategy.md) and [`PlatformOperatingModel.md`](PlatformOperatingModel.md) are now also complete; `IntegrationArchitecture.md` is the one remaining planned companion — see `ROADMAP.md` for its recommended authoring order.

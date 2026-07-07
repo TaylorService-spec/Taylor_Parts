@@ -12,6 +12,7 @@ Defines **why** the platform exists and how users are meant to interact with it.
 - [PlatformConstitution.md](PlatformConstitution.md) — the ten platform-wide product principles.
 - [PlatformCapabilityModel.md](PlatformCapabilityModel.md) — foundational governance document defining the platform by business capability (not screen or entity): capability hierarchy, maturity model (Level 1–5), and the capability-first AI development workflow.
 - [DeploymentModeStrategy.md](DeploymentModeStrategy.md) — foundational governance document defining how the platform is deployed across organizations (Development/Demo/Managed Hosted/Enterprise Integration modes) without forking code; tenant, configuration, data-ownership, and integration expectations.
+- [PlatformOperatingModel.md](PlatformOperatingModel.md) — foundational governance document defining how the platform is operated, governed, and evolved over time: governance responsibilities, Product/Architecture ownership, release/change/configuration management, customer onboarding lifecycle, versioning philosophy, AI-assisted development workflow.
 - [ProductBlueprint.md](ProductBlueprint.md) — approved business-domain navigation, business objects, role-based navigation philosophy.
 - [GuidingPrinciples.md](GuidingPrinciples.md) — concrete UX/product working principles.
 - [MobileStrategy.md](MobileStrategy.md) — multi-experience (desktop/technician mobile/warehouse mobile) and PWA strategy.
