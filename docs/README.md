@@ -25,6 +25,7 @@ Defines **how** the platform is implemented.
 - [architecture/ADR-003-inventory-trigger-system.md](architecture/ADR-003-inventory-trigger-system.md) — ledger-based inventory design decision.
 - [architecture/ADR-004-technician-recommendation-engine.md](architecture/ADR-004-technician-recommendation-engine.md) — Technician Recommendation Engine (TRE-v1) design decision.
 - [DataModel.md](DataModel.md) — the actual, currently-implemented Firestore schema.
+- [BusinessEntityModel.md](BusinessEntityModel.md) — the enterprise business object model (Account/Contact/Location/Work Order/etc.), core (Version 2) vs. future entities, and the Firestore collection recommendation that will implement it.
 - [FirebaseIntegration.md](FirebaseIntegration.md) — the real Firebase client integration layer (init, sanctioned write functions).
 - [FUTURE_ARCHITECTURE_BACKLOG.md](FUTURE_ARCHITECTURE_BACKLOG.md) — known limitations and deliberate simplifications, tracked so they aren't silently forgotten or "fixed" out of turn.
 - [design/job-status-transaction-safety.md](design/job-status-transaction-safety.md) — design doc for `updateJobStatus()` transaction safety.
