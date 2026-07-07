@@ -56,3 +56,4 @@ What's shipped, what's next, at both the release and sprint level.
 Feature-level planning documents for major work efforts.
 
 - [epics/EPIC-6-Technician-Execution-Workspace.md](epics/EPIC-6-Technician-Execution-Workspace.md) — technician execution workspace planning doc.
+- [epics/INVENTORY-CAPABILITY-EXPANSION-PLAN.md](epics/INVENTORY-CAPABILITY-EXPANSION-PLAN.md) — Release 2.0 Capability Expansion planning doc for the Inventory Management capability (Sprints 2.1.1–2.1.3), traced to `PlatformCapabilityModel.md`.
