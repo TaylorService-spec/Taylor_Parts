@@ -19,11 +19,14 @@ This is the platform's release-level roadmap, tracked by Product version (see `P
 |---|---|---|
 | 2.0.1 | Navigation Foundation | Complete (PR #41) |
 | 2.0.2 | Customer Foundation | **Complete and live (PR #44)** |
-| 2.0.3 | Work Order Experience (Service Workspace) | **Next** |
+| 2.0.3 | Work Order Experience (Service Workspace) | **Complete and live -- UI only (PR #46)** |
+| 2.0.4 | Cloud Functions Deployment Readiness / Live Work Order Enablement | **Next** |
 
 **Sprint 2.0.2 — Customer Foundation: complete.** Delivered `accounts`/`locations`/`contacts` Firestore collections (rules deployed to production), a client-direct-write domain layer, a reusable Global Search component (Accounts provider only), and Customer/Location/Contact UI wired into Release 2.0's routing (`/customers`, `/customers/:accountId`). Live-verified: admin/dispatcher can create Customers, open Customer Detail, add Locations and Contacts, and find a Customer via Global Search; technicians cannot see the Customers nav item and a direct link to `/customers/:accountId` redirects to `/dashboard` with no permission-denied errors. See [`BusinessEntityModel.md`](BusinessEntityModel.md) for the full object model, relationships, and the Location first-class-vs-embedded recommendation this sprint implemented.
 
-**Sprint 2.0.3 — Work Order Experience (Service Workspace): next.** The Service Workspace layout, Work Order creation wizard, and Work Order Detail page/routing, built on top of Sprint 2.0.2's entity model (`accounts`/`locations` now exist for the wizard's Customer/Location steps to resolve against). Real Work Order creation UI using `fieldops_wos` (via `services/workOrderService.ts`'s `createWorkOrder()`), a Work Order Detail page, clickable Work Order IDs, and a technician-assignment entry point. Not in scope: unrelated dispatch/inventory/reporting features. See `CLAUDE_CONTEXT.md`'s "Next up" section for the finding that motivated this (the current "Work Orders" screen creates legacy `fieldops_jobs` records, not real Work Orders).
+**Sprint 2.0.3 — Work Order Experience (Service Workspace): complete and live, UI only.** Delivered the real Service > Work Orders workspace (list, search, status grouping), a 4-step Work Order creation wizard, and a Work Order Detail route (`/service/work-orders/:workOrderId`), all live-verified in production. The legacy `fieldops_jobs` screen was relocated (not deleted) to Service > Job Assignments. **Real Work Order creation is not yet functional**: `createWorkOrder()`/`transitionWorkOrder()` are not deployed live (blocked on the Firebase Blaze plan upgrade, issue #15) — the wizard calls them exactly as it will once deployed, and shows a clear user-facing message ("Work Order creation service is not currently available in this environment.") rather than failing silently or with a raw error. This is a real, external blocker, not a code gap.
+
+**Sprint 2.0.4 — Cloud Functions Deployment Readiness / Live Work Order Enablement: next.** Focus: resolve the Blaze plan blocker (issue #15) and get `createWorkOrder()`/`transitionWorkOrder()`/`updateWorkOrderExecutionData()` actually deployed and live-verified end-to-end, unblocking real Work Order creation through Sprint 2.0.3's UI. Not primarily a UI sprint.
 
 ## Near-term
 
