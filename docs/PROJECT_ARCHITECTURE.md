@@ -2,6 +2,18 @@
 
 Authoritative description of Taylor Parts / Field Ops's system design. If code and this document disagree, treat the disagreement as a bug in one of them and reconcile — don't silently pick one.
 
+## Relationship to Product Governance
+
+This document, and the `architecture/` ADRs, describe **how** the platform is built. They exist to satisfy the product decisions defined in `ProductVision.md`, `PlatformConstitution.md`, and `ProductBlueprint.md` — architecture follows product, not the other way around.
+
+Concretely:
+
+- **`ProductVision.md`** sets the platform's long-term scope and multi-tenant/configurable-platform principle; architecture decisions (data model, write paths, module boundaries) are expected to remain compatible with that scope, even when only a subset of it is built today.
+- **`PlatformConstitution.md`** sets platform-wide principles (One Source of Truth, Business Domains, Role-Based Experiences, Configurable Platform, etc.); the system-of-record and single-write-path rules in this document are the architectural implementation of those principles, not a separate or competing set of rules.
+- **`ProductBlueprint.md`** sets the approved business-domain navigation and business objects; when this document's module/collection boundaries diverge from that blueprint, treat it the same as any other doc/code disagreement above — reconcile, don't silently pick one.
+
+Implementation must satisfy both sets of documents. Where they conflict, that conflict should be identified and resolved explicitly before writing code — see `CLAUDE_CONTEXT.md`'s "Product Authorities" section.
+
 ## System of record
 
 - **Main (`field-ops-app-vite`) is the system of record.** Auth-gated (Firebase Auth required). Firestore is the source of truth for all job/technician/work-order state.

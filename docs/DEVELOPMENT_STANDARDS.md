@@ -1,6 +1,28 @@
 # Development Standards
 
-Working conventions for this repo, established across Sprints 2–3.3. See `PROJECT_ARCHITECTURE.md` for the system design these standards protect.
+Working conventions for this repo, established across Sprints 2–3.3. See `PROJECT_ARCHITECTURE.md` for the system design these standards protect, and `CLAUDE_CONTEXT.md`'s "Product Authorities" section for the product documents new features are expected to satisfy.
+
+## Feature Lifecycle
+
+New features are expected to move through the following stages, front to back:
+
+```
+Business Need
+     ↓
+Product Review        (does this fit ProductVision.md / PlatformConstitution.md / ProductBlueprint.md?)
+     ↓
+Blueprint              (where does this fit in ProductBlueprint.md's domain/navigation model?)
+     ↓
+Architecture Review    (how does this fit PROJECT_ARCHITECTURE.md / SYSTEM_AUTHORITIES.md?)
+     ↓
+Implementation
+     ↓
+Testing
+     ↓
+Release
+```
+
+A feature that skips the Product Review/Blueprint stages risks conflicting with the platform's product governance after the fact (fragmented navigation, a competing business-domain model, a hardcoded assumption the Configurable Platform principle disallows) — see `PROJECT_ARCHITECTURE.md`'s "Relationship to Product Governance" section for how the Product and Architecture stages relate.
 
 ## Branching
 

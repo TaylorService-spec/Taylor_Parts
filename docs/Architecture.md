@@ -2,6 +2,8 @@
 
 Taylor Parts / Field Ops is a Firebase-backed field service application: a Vite + React single-page app (`field-ops-app-vite/`) talking directly to Firestore, with Firebase Authentication gating access.
 
+Architecture documents (this one, `PROJECT_ARCHITECTURE.md`, and the `architecture/` ADRs) describe **how** the platform is implemented. Product documents (`ProductVision.md`, `PlatformConstitution.md`, `ProductBlueprint.md`, `GuidingPrinciples.md`, `MobileStrategy.md`) describe **why** it exists and **how users interact with it**. See `PROJECT_ARCHITECTURE.md`'s "Relationship to Product Governance" section for how the two are meant to work together.
+
 ## Stack
 
 - **Frontend**: React, built with Vite (`field-ops-app-vite/`).

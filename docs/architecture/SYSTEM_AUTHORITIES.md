@@ -4,6 +4,22 @@ A quick-reference map of "who owns what" — not a replacement for the ADRs (`do
 
 **Verify before trusting.** This doc is hand-maintained and can drift, the same way any doc can (see `CLAUDE_CONTEXT.md`'s intro paragraph and rule 9 for two concrete times a doc/spec claimed something that wasn't true in code). If a row here disagrees with what you find in the actual file, the code wins — update this table to match, don't assume the table is right and the code is wrong.
 
+## Product Authority
+
+This table is an *architecture* ownership map — it answers "where should I change this code?" It does not own product decisions. For "why does this exist" or "should this feature exist at all," the authority is the Product governance set, not this file:
+
+| Concern | Authority |
+|---|---|
+| Product vision, mission, long-term scope | `../ProductVision.md` |
+| Platform-wide product principles | `../PlatformConstitution.md` |
+| Business-domain navigation, business objects | `../ProductBlueprint.md` |
+| UX/product-level working principles | `../GuidingPrinciples.md` |
+| Multi-device/mobile strategy | `../MobileStrategy.md` |
+
+This section explains ownership only — see those documents themselves for their actual content, and `../CLAUDE_CONTEXT.md`'s "Product Authorities" section for when to consult them.
+
+## Architecture Authority
+
 | Concern | Authority |
 |---|---|
 | Work Order lifecycle (state machine + permissions) | `functions/src/transitionEngine.ts` (canonical), mirrored client-side in `domain/workOrderWorkflow.js` |
