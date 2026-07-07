@@ -40,11 +40,20 @@ jobs:
       # the ENTIRE site. Stage the untouched root index.html (Parts Control
       # Center) alongside the Vite build under /field-ops/ so both keep
       # serving from the same domain instead of the legacy app disappearing.
+      #
+      # Sprint 2.0.1: also stage the Vite build's 404.html at the SITE
+      # ROOT (not just inside field-ops/, where Vite's own copy of
+      # public/404.html already lands). GitHub Pages only honors one
+      # 404.html for the whole site, at the root of what's uploaded --
+      # it has to be there for a deep-linked/refreshed
+      # /Taylor_Parts/field-ops/<route> URL to fall through to the SPA
+      # redirect script instead of a bare GitHub 404 page.
       - name: Assemble combined Pages site
         run: |
           mkdir -p site/field-ops
           cp index.html site/index.html
           cp -r field-ops-app-vite/dist/. site/field-ops/
+          cp field-ops-app-vite/dist/404.html site/404.html
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
