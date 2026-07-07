@@ -1,6 +1,17 @@
 # Roadmap
 
-Forward-looking plan. For what's already shipped, see `SPRINT_STATUS.md`. For system design, see `PROJECT_ARCHITECTURE.md`.
+Forward-looking plan. For what's already shipped, see `SPRINT_STATUS.md`. For system design, see `PROJECT_ARCHITECTURE.md`. For product direction, see `ProductVision.md`.
+
+## Product Release Roadmap
+
+This is the platform's release-level roadmap, tracked by Product version (see `ProductVision.md`/`ProductBlueprint.md`). It complements — not replaces — the sprint/epic implementation roadmap below and in `SPRINT_STATUS.md`; a Product version spans many sprints/epics.
+
+| Version | Name | Status |
+|---|---|---|
+| Version 1 | Platform Foundation | Completed |
+| Version 2 | Platform Experience | Current |
+| Version 3 | Enterprise Operations | Planned |
+| Version 4 | Enterprise Intelligence | Future |
 
 ## Near-term
 

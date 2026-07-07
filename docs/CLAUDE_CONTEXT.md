@@ -4,6 +4,20 @@ Orientation notes for a Claude session picking up this repo cold. Read `PROJECT_
 
 Every claim below is marked **VERIFIED** (checked directly this session — a command was run, a file was read, a live system was queried) or **ASSUMED/CARRIED OVER** (stated from a prior session's notes, not independently re-checked now). A prior session once documented a fully-built subsystem as fact when none of it existed live, AND separately fabricated citations to architecture docs (`ADR-001`, `EPIC-2.md`, `UI_ACTION_PIPELINES.md`) that were never actually written — don't repeat either failure. Before recommending a merge order, "what's next," or citing a doc by path, re-verify with `gh`/`git`/`Glob`, don't trust this doc's snapshot blindly (see "Standing operating rule" below).
 
+## Product Authorities
+
+Before implementing any new feature, read:
+
+1. [`ProductVision.md`](ProductVision.md)
+2. [`PlatformConstitution.md`](PlatformConstitution.md)
+3. [`ProductBlueprint.md`](ProductBlueprint.md)
+4. [`GuidingPrinciples.md`](GuidingPrinciples.md)
+5. [`MobileStrategy.md`](MobileStrategy.md)
+
+**Product documents define WHY. Architecture documents define HOW.** `PROJECT_ARCHITECTURE.md` and the `architecture/` ADRs describe how the platform is built; the five documents above describe why it exists and how users are meant to interact with it. Both must be satisfied — see `PROJECT_ARCHITECTURE.md`'s "Relationship to Product Governance" section.
+
+If a requested implementation conflicts with a Product document (e.g. a feature that fragments navigation against [`ProductBlueprint.md`](ProductBlueprint.md), or hardcodes something [`ProductVision.md`](ProductVision.md)'s multi-tenant principle says should be configurable), identify and flag that conflict before writing code — the same standing practice this file already applies to conflicts with the Architecture rules below (see "Standing operating rule" below).
+
 ## What this repo is
 
 `Taylor_Parts` — a production React + Firebase field-operations app.
