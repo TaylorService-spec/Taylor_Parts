@@ -51,9 +51,14 @@ What's shipped, what's next, at both the release and sprint level.
 - [SprintRoadmap.md](SprintRoadmap.md) — a 5-phase roadmap annotated against actual current status.
 - [SPRINT_STATUS.md](SPRINT_STATUS.md) — point-in-time snapshot of completed/merged sprint work.
 
-## Epics
+## Capability Plans
 
-Feature-level planning documents for major work efforts.
+Implementation plans for advancing a named capability's maturity, traced to [`PlatformCapabilityModel.md`](PlatformCapabilityModel.md). See `capabilities/InventoryManagementPlan.md`'s own "Section Template for Future Capability Plans" for the shape new plans in this layer are expected to follow.
+
+- [capabilities/InventoryManagementPlan.md](capabilities/InventoryManagementPlan.md) — Release 2.0 Capability Expansion planning doc for the Inventory Management capability (Sprints 2.1.1–2.1.3).
+
+## Historical Epics
+
+Pre-capability-model, feature-level planning documents for major work efforts (Epic 1–8 numbering sequence). Not part of the Capability Plans layer above — these predate `PlatformCapabilityModel.md` and describe technical migrations rather than capability-maturity advancement.
 
 - [epics/EPIC-6-Technician-Execution-Workspace.md](epics/EPIC-6-Technician-Execution-Workspace.md) — technician execution workspace planning doc.
-- [epics/INVENTORY-CAPABILITY-EXPANSION-PLAN.md](epics/INVENTORY-CAPABILITY-EXPANSION-PLAN.md) — Release 2.0 Capability Expansion planning doc for the Inventory Management capability (Sprints 2.1.1–2.1.3), traced to `PlatformCapabilityModel.md`.
