@@ -54,6 +54,12 @@ export const NAV_DOMAINS = [
     label: "Customers",
     path: "customers",
     subnav: [
+      // Sprint 2.0.2 -- Customer Foundation: real screen now
+      // (AccountsList, special-cased in App.jsx's renderSubnavItem
+      // since it has no legacyKey -- this is a new screen, not a
+      // re-homed one). Account Detail (/customers/:accountId) is a
+      // sibling parameterized route added directly in App.jsx, not
+      // representable in this static subnav list.
       { key: "customers", label: "Customers", path: "" },
       { key: "contacts", label: "Contacts", path: "contacts" },
       { key: "locations", label: "Locations", path: "locations" },

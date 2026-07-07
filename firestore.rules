@@ -120,5 +120,35 @@ service cloud.firestore {
       allow read: if isAdminOrDispatcher();
       allow create, update, delete: if false;
     }
+
+    // Sprint 2.0.2 -- Customer Foundation (docs/BusinessEntityModel.md).
+    // Unlike Work Orders, Accounts/Locations/Contacts have no state
+    // machine and no cross-document transactional invariant to
+    // protect -- client-direct-write-with-rules, same pipeline shape
+    // as fieldops_jobs/fieldops_technicians, not a Cloud Function.
+    // No deletion UX exists yet (deactivation is via the `status`
+    // field), so delete stays closed rather than added speculatively.
+    // Technician read access deliberately NOT granted yet -- see
+    // docs/BusinessEntityModel.md's Sprint 2.0.2 implementation plan
+    // for the open question this defers (technician-facing screens
+    // that display a raw customerId/locationId today keep doing so
+    // rather than erroring).
+    match /accounts/{accountId} {
+      allow read: if isAdminOrDispatcher();
+      allow create, update: if isAdminOrDispatcher();
+      allow delete: if false;
+    }
+
+    match /locations/{locationId} {
+      allow read: if isAdminOrDispatcher();
+      allow create, update: if isAdminOrDispatcher();
+      allow delete: if false;
+    }
+
+    match /contacts/{contactId} {
+      allow read: if isAdminOrDispatcher();
+      allow create, update: if isAdminOrDispatcher();
+      allow delete: if false;
+    }
   }
 }

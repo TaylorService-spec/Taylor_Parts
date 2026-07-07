@@ -75,6 +75,15 @@ body { -webkit-font-smoothing: antialiased; font-family: -apple-system, BlinkMac
 .fo-badge-medium { background: #FFF4DE; color: #A9740D; }
 .fo-badge-low { background: #E6F6EC; color: #237A45; }
 
+/* Sprint 2.0.2 -- Account status (ACCOUNT_STATUS, domain/constants.js) */
+.fo-badge-active { background: #E6F6EC; color: #237A45; }
+.fo-badge-inactive { background: #EEF1F0; color: #667; }
+.fo-badge-prospect { background: #FFF4DE; color: #A9740D; }
+.fo-badge-archived { background: #EEF1F0; color: #889; }
+
+.fo-link-btn { background: none; border: none; color: #2E4A50; text-decoration: underline; cursor: pointer; padding: 0; font-size: 13px; text-align: left; }
+.fo-checkbox-label { display: flex; align-items: center; gap: 6px; font-size: 14px; }
+
 .fo-stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 16px; }
 .fo-stat { background: #F4F6F5; border-radius: 8px; padding: 16px; text-align: center; }
 .fo-stat-value { font-size: 28px; font-weight: 600; color: #1B2A2E; }
@@ -471,6 +480,54 @@ button:hover {
   margin: 0 0 4px;
   font-size: 12px;
   color: #667;
+}
+
+/* Sprint 2.0.2 -- Global Search (shared/search/GlobalSearch.jsx) */
+.fo-global-search {
+  position: relative;
+  display: inline-block;
+}
+
+.fo-global-search input {
+  padding: 6px 10px;
+  border: 1px solid #ccd3d2;
+  border-radius: 6px;
+  font-size: 14px;
+  min-width: 220px;
+}
+
+.fo-global-search-results {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: #fff;
+  border: 1px solid #ccd3d2;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  z-index: 20;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.fo-global-search-result {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.fo-global-search-result:hover {
+  background: #f4f6f5;
+}
+
+.fo-global-search-empty {
+  padding: 8px 10px;
+  font-size: 13px;
 }
 
 .wo-history-row {
