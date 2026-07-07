@@ -11,7 +11,7 @@ This is the platform's release-level roadmap, tracked by Product version (see `P
 1. **[`PlatformCapabilityModel.md`](PlatformCapabilityModel.md)** — complete.
 2. **[`DeploymentModeStrategy.md`](DeploymentModeStrategy.md)** — complete. Development/Demo/Managed Hosted/Enterprise Integration deployment modes.
 3. **[`PlatformOperatingModel.md`](PlatformOperatingModel.md)** — complete. Governance responsibilities, Product/Architecture ownership, release/change/configuration management, customer onboarding lifecycle, versioning philosophy, AI-assisted development workflow.
-4. **`IntegrationArchitecture.md`** *(planned, not yet written)* — how operational data leaves the platform (Snowflake/ETL/BI/ERP, event bus, retry strategy); deliberately last, gated on the tenant/Company boundary being addressed in #3 first.
+4. **[`IntegrationArchitecture.md`](IntegrationArchitecture.md)** — complete. System boundaries, operational-vs-analytical systems, supported integration patterns, import/export strategy, API philosophy, AI integration strategy, customer-owned integrations (Snowflake/ETL/BI/ERP/Accounting/CRM/AI). Fourth and final planned governance artifact — all four are now written.
 
 | Version | Name | Status |
 |---|---|---|
