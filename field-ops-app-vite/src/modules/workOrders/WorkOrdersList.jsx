@@ -1,0 +1,106 @@
+import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import { useWorkOrders } from "../../hooks/useWorkOrders";
+import GlobalSearch from "../../shared/search/GlobalSearch";
+
+// Sprint 2.0.3 -- Work Order Experience. The real Service > Work
+// Orders screen, replacing the placeholder-adjacent legacy Jobs.jsx
+// that previously sat at this nav slot (Jobs.jsx is relocated to
+// Service > Job Assignments -- see navConfig.js). Column conventions
+// (woNumber/status/customer/type/age) follow WorkOrderQueue.jsx's
+// existing choices, but this is a new, simpler component -- rows are
+// real <Link> navigations to /service/work-orders/:workOrderId, not a
+// selection-driven inline-preview pane (WorkOrderQueue.jsx stays
+// exactly as it is, serving DispatcherBoard.jsx's different layout).
+const STATUS_GROUPS = [
+  { key: "ALL", label: "All", statuses: null },
+  { key: "OPEN", label: "Open", statuses: ["CREATED", "READY_TO_DISPATCH", "SCHEDULED"] },
+  { key: "ACTIVE", label: "Active", statuses: ["DISPATCHED", "ACCEPTED", "EN_ROUTE", "ARRIVED", "WORK_IN_PROGRESS"] },
+  { key: "DONE", label: "Done", statuses: ["COMPLETED", "CLOSED"] },
+  { key: "CANCELLED", label: "Cancelled", statuses: ["CANCELLED"] },
+];
+
+function formatAge(createdAt) {
+  if (!createdAt?.toMillis) return null;
+  const ms = Date.now() - createdAt.toMillis();
+  const hours = Math.floor(ms / (1000 * 60 * 60));
+  if (hours < 24) return `${hours}h`;
+  return `${Math.floor(hours / 24)}d`;
+}
+
+export default function WorkOrdersList() {
+  const { data: workOrders, loading } = useWorkOrders();
+  const [statusGroup, setStatusGroup] = useState("ALL");
+
+  const groupCounts = useMemo(() => {
+    const counts = {};
+    for (const group of STATUS_GROUPS) {
+      counts[group.key] = group.statuses ? workOrders.filter((wo) => group.statuses.includes(wo.status)).length : workOrders.length;
+    }
+    return counts;
+  }, [workOrders]);
+
+  const filteredWorkOrders = useMemo(() => {
+    const group = STATUS_GROUPS.find((g) => g.key === statusGroup);
+    if (!group?.statuses) return workOrders;
+    return workOrders.filter((wo) => group.statuses.includes(wo.status));
+  }, [workOrders, statusGroup]);
+
+  return (
+    <div className="fo-panel">
+      <div className="disp-board-toolbar" style={{ justifyContent: "space-between" }}>
+        <h2 style={{ margin: 0 }}>Work Orders</h2>
+        <GlobalSearch providerKeys={["workOrders"]} context={{ workOrders }} placeholder="Search work orders..." />
+        <Link to="/service/work-orders/new">
+          <button type="button">+ New Work Order</button>
+        </Link>
+      </div>
+
+      <div className="disp-board-toolbar">
+        {STATUS_GROUPS.map((group) => (
+          <button
+            key={group.key}
+            type="button"
+            className={statusGroup === group.key ? "fo-nav-btn fo-nav-btn-active" : "fo-nav-btn"}
+            onClick={() => setStatusGroup(group.key)}
+          >
+            {group.label} ({groupCounts[group.key] ?? 0})
+          </button>
+        ))}
+      </div>
+
+      {loading ? (
+        <p className="fo-muted">Loading work orders...</p>
+      ) : filteredWorkOrders.length === 0 ? (
+        <p className="fo-muted">No work orders in this group.</p>
+      ) : (
+        <table className="fo-table">
+          <thead>
+            <tr>
+              <th>WO #</th>
+              <th>Status</th>
+              <th>Customer</th>
+              <th>Type</th>
+              <th>Age</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredWorkOrders.map((wo) => (
+              <tr key={wo.id}>
+                <td>
+                  <Link to={`/service/work-orders/${wo.id}`}>{wo.woNumber ?? wo.id}</Link>
+                </td>
+                <td>
+                  <span className={`wo-status wo-${wo.status.toLowerCase()}`}>{wo.status}</span>
+                </td>
+                <td className="fo-muted">{wo.customerId}</td>
+                <td className="fo-muted">{wo.type}</td>
+                <td className="fo-muted">{formatAge(wo.createdAt) ?? "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}

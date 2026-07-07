@@ -9,7 +9,14 @@ import { SEARCH_PROVIDERS } from "./searchProviders";
 // search box. Same 250ms debounce timing as DispatcherBoard.jsx's
 // existing search, just relocated into a shared component instead of
 // duplicated per screen.
-export default function GlobalSearch({ providerKeys, context, placeholder = "Search..." }) {
+//
+// Sprint 2.0.3 -- optional `onResultSelect` prop, minimal extension:
+// the Work Order creation wizard's Customer step needs to select a
+// result into wizard state, not navigate away from the wizard. Default
+// behavior (navigate to the result's route) is unchanged when this
+// prop is omitted -- every existing caller (AccountsList.jsx) keeps
+// working exactly as before.
+export default function GlobalSearch({ providerKeys, context, placeholder = "Search...", onResultSelect }) {
   const navigate = useNavigate();
   const [input, setInput] = useState("");
   const [debounced, setDebounced] = useState("");
@@ -29,7 +36,11 @@ export default function GlobalSearch({ providerKeys, context, placeholder = "Sea
     setInput("");
     setDebounced("");
     setIsFocused(false);
-    navigate(result.route);
+    if (onResultSelect) {
+      onResultSelect(result);
+    } else {
+      navigate(result.route);
+    }
   }
 
   return (
