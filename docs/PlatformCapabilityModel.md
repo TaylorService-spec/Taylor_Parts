@@ -112,7 +112,7 @@ Every capability entry below follows this shape:
 - **Current Maturity**: Level 1 (nav placeholder only — "Financials" top-level future stub).
 - **Target Maturity**: Level 3 — real invoicing tied to completed Work Orders.
 - **Key Workflows**: None yet.
-- **Future Expansion**: Depends on Service Contract billing rules and ERP/accounting integration (see planned [`IntegrationArchitecture.md`](architecture/IntegrationArchitecture.md)).
+- **Future Expansion**: Depends on Service Contract billing rules and ERP/accounting integration (see [`IntegrationArchitecture.md`](IntegrationArchitecture.md)).
 
 ### Sales & CRM *(Future)*
 - **Purpose**: Manage prospective customer pipeline.
@@ -130,7 +130,7 @@ Every capability entry below follows this shape:
 - **Current Maturity**: Level 3 — Operations dashboard (inventory/warehouse/procurement reporting), execution analytics (technician stats, part usage), cross-domain composition layer (Epic 8).
 - **Target Maturity**: Level 4 — automated anomaly/bottleneck alerting.
 - **Key Workflows**: View Operations dashboard, view Performance Snapshot, view cross-domain bottleneck signals.
-- **Future Expansion**: BI/warehouse export (see planned [`IntegrationArchitecture.md`](architecture/IntegrationArchitecture.md)), customer-facing reporting.
+- **Future Expansion**: BI/warehouse export (see [`IntegrationArchitecture.md`](IntegrationArchitecture.md)), customer-facing reporting.
 
 ### Administration
 - **Purpose**: Manage platform configuration, users, and internal personnel.
@@ -146,9 +146,9 @@ Every capability entry below follows this shape:
 - **Business Objects**: Cross-cutting.
 - **Primary Users**: Admin, future integration-engineering role, external systems.
 - **Current Maturity**: Level 1 — no integration/export layer exists yet; this capability is purely conceptual today. Its governing expectations (integrations consume exported data, never become the operational system of record) are formalized in [`DeploymentModeStrategy.md`](DeploymentModeStrategy.md).
-- **Target Maturity**: Level 3 — real export jobs and/or customer-hosted integration agents (per planned [`IntegrationArchitecture.md`](architecture/IntegrationArchitecture.md)).
+- **Target Maturity**: Level 3 — real export jobs and/or customer-hosted integration agents (per [`IntegrationArchitecture.md`](IntegrationArchitecture.md)).
 - **Key Workflows**: None yet.
-- **Future Expansion**: The entire planned scope of `IntegrationArchitecture.md` — Snowflake/ETL/BI/ERP/accounting exports, event bus, webhooks, retry strategy.
+- **Future Expansion**: The concrete build-out of the architecture defined in [`IntegrationArchitecture.md`](IntegrationArchitecture.md) — Snowflake/ETL/BI/ERP/accounting exports, event bus, webhooks, retry strategy.
 
 ### AI Platform *(Future)*
 - **Purpose**: Assistive and predictive intelligence layered across other capabilities.
@@ -172,9 +172,9 @@ Every capability entry below follows this shape:
 | Procurement | Supplier, Purchase Order | `functions/src/procurementService.ts`/`supplierService.ts`, `modules/operations/panels/ProcurementPanel.jsx` | — | — |
 | Financial Operations | Invoice *(future)* | — (nav placeholder only) | — | — |
 | Sales & CRM | Opportunity/Quote *(future)* | — (nav placeholder only) | — | — |
-| Reporting & Analytics | Cross-cutting | `analytics/executionAnalyticsService.ts`/`operationsIntelligenceService.ts`, `modules/operations/` | — | `IntegrationArchitecture.md` (planned, export/BI section) |
+| Reporting & Analytics | Cross-cutting | `analytics/executionAnalyticsService.ts`/`operationsIntelligenceService.ts`, `modules/operations/` | — | [`IntegrationArchitecture.md`](IntegrationArchitecture.md) (export/BI section) |
 | Administration | Employee/User, Company *(future)* | `modules/technicians/` | — | — |
-| Integration Platform | Cross-cutting | — (none yet) | [`DeploymentModeStrategy.md`](DeploymentModeStrategy.md) | `IntegrationArchitecture.md` (planned) |
+| Integration Platform | Cross-cutting | — (none yet) | [`DeploymentModeStrategy.md`](DeploymentModeStrategy.md), [`IntegrationArchitecture.md`](IntegrationArchitecture.md) | — |
 | AI Platform | Cross-cutting | `domain/technicianRecommendationEngine.ts` | `docs/architecture/ADR-004-technician-recommendation-engine.md` | — |
 
 ## 5. Maturity Model
@@ -217,4 +217,4 @@ Concretely: a request should be traceable to a named capability and its target m
 
 ## 8. Status
 
-This document is a **foundational governance artifact**, alongside `ProductVision.md`, `PlatformConstitution.md`, `ProductBlueprint.md`, and `BusinessEntityModel.md`. [`DeploymentModeStrategy.md`](DeploymentModeStrategy.md) and [`PlatformOperatingModel.md`](PlatformOperatingModel.md) are now also complete; `IntegrationArchitecture.md` is the one remaining planned companion — see `ROADMAP.md` for its recommended authoring order.
+This document is a **foundational governance artifact**, alongside `ProductVision.md`, `PlatformConstitution.md`, `ProductBlueprint.md`, and `BusinessEntityModel.md`. [`DeploymentModeStrategy.md`](DeploymentModeStrategy.md), [`PlatformOperatingModel.md`](PlatformOperatingModel.md), and [`IntegrationArchitecture.md`](IntegrationArchitecture.md) are now also complete — all four planned governance companions named in `ROADMAP.md` are written.
