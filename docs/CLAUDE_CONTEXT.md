@@ -10,10 +10,11 @@ Before implementing any new feature, read:
 
 1. [`ProductVision.md`](ProductVision.md)
 2. [`PlatformConstitution.md`](PlatformConstitution.md)
-3. [`ProductBlueprint.md`](ProductBlueprint.md)
-4. [`GuidingPrinciples.md`](GuidingPrinciples.md)
-5. [`MobileStrategy.md`](MobileStrategy.md)
-6. [`BusinessEntityModel.md`](BusinessEntityModel.md) — the enterprise business object model (Account/Contact/Location/Work Order/etc.); read this before any work touching Customers, Locations, or the other entities it defines
+3. [`PlatformCapabilityModel.md`](PlatformCapabilityModel.md) — foundational governance document defining the platform by business capability (not screen or entity); locate any new request in its capability hierarchy and maturity model before planning implementation (see its own "AI Development Workflow" section for the intended Product Vision → Capability → Entity → Architecture → Implementation Plan sequence)
+4. [`ProductBlueprint.md`](ProductBlueprint.md)
+5. [`GuidingPrinciples.md`](GuidingPrinciples.md)
+6. [`MobileStrategy.md`](MobileStrategy.md)
+7. [`BusinessEntityModel.md`](BusinessEntityModel.md) — the enterprise business object model (Account/Contact/Location/Work Order/etc.); read this before any work touching Customers, Locations, or the other entities it defines
 
 **Product documents define WHY. Architecture documents define HOW.** `PROJECT_ARCHITECTURE.md` and the `architecture/` ADRs describe how the platform is built; the five documents above describe why it exists and how users are meant to interact with it. Both must be satisfied — see `PROJECT_ARCHITECTURE.md`'s "Relationship to Product Governance" section.
 

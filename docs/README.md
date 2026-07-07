@@ -10,6 +10,7 @@ Defines **why** the platform exists and how users are meant to interact with it.
 
 - [ProductVision.md](ProductVision.md) — mission, long-term business-domain scope, multi-tenant/configurable-platform principle.
 - [PlatformConstitution.md](PlatformConstitution.md) — the ten platform-wide product principles.
+- [PlatformCapabilityModel.md](PlatformCapabilityModel.md) — foundational governance document defining the platform by business capability (not screen or entity): capability hierarchy, maturity model (Level 1–5), and the capability-first AI development workflow.
 - [ProductBlueprint.md](ProductBlueprint.md) — approved business-domain navigation, business objects, role-based navigation philosophy.
 - [GuidingPrinciples.md](GuidingPrinciples.md) — concrete UX/product working principles.
 - [MobileStrategy.md](MobileStrategy.md) — multi-experience (desktop/technician mobile/warehouse mobile) and PWA strategy.
