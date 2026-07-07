@@ -16,16 +16,23 @@ Implementation must satisfy both sets of documents. Where they conflict, that co
 
 ## System of record
 
-- **Main (`field-ops-app-vite`) is the system of record.** Auth-gated (Firebase Auth required). Firestore is the source of truth for all job/technician/work-order state.
-- **`JOB_STATUS` is the canonical status enum**: `OPEN → ASSIGNED → IN_PROGRESS → COMPLETE`. Defined once, in `field-ops-app-vite/src/domain/constants.js`. No duplicate or parallel status enum is permitted anywhere in the repo.
-- **All job state transitions go through the domain layer** (`field-ops-app-vite/src/domain/jobActions.js`):
+- **Main (`field-ops-app-vite`) is the system of record.** Auth-gated (Firebase Auth required). Firestore is the source of truth for all operational data across every model described below.
+- **As of Release 2.0, three distinct operational data models coexist on `main`, each with its own write path** — this section names them; `docs/architecture/SYSTEM_AUTHORITIES.md` is the authoritative per-concern ownership map and is not restated here:
+  1. **Job / Technician (legacy, still real and in active use)** — `fieldops_jobs`/`fieldops_technicians`, client-direct-write via `domain/jobActions.js`, rules-enforced. Described in full below.
+  2. **Work Order Engine** — `fieldops_wos`, Cloud-Function-only writes, its own 11-status lifecycle. See "Work Order Engine" below and `docs/architecture/ADR-002-work-order-engine.md`.
+  3. **Customer model** — `accounts`/`contacts`/`locations` (Sprint 2.0.2), client-direct-write via `domain/accounts.js`/`domain/locations.js`/`domain/contacts.js`, rules-enforced, admin/dispatcher only. See "Customer model" below and `BusinessEntityModel.md`.
+
+  Inventory (`inventory_transactions`, append-only ledger), Warehouse, and Procurement follow the same Cloud-Function-write pattern as the Work Order Engine — see `docs/architecture/ADR-003-inventory-trigger-system.md` and `SYSTEM_AUTHORITIES.md` for their specific write paths; not restated here.
+- **`JOB_STATUS` is the canonical status enum for the Job/Technician model**: `OPEN → ASSIGNED → IN_PROGRESS → COMPLETE`. Defined once, in `field-ops-app-vite/src/domain/constants.js`. No duplicate or parallel status enum is permitted for this model anywhere in the repo. (The Work Order Engine has its own, separate 11-status `WorkOrderStatus` — a deliberate, scoped exception for a genuinely distinct entity, not a violation of this rule; see ADR-002's "Reasoning" section for why the two are not the same kind of duplication ADR-001 rejected.)
+- **All Job state transitions go through the domain layer** (`field-ops-app-vite/src/domain/jobActions.js`):
   - `assignJob(job, technician)` — the only place `OPEN → ASSIGNED` happens. Transactional (`runTransaction`): re-checks technician availability inside the transaction so two dispatchers can't both win the same technician.
   - `updateJobStatus(job, nextStatus)` — handles `ASSIGNED → IN_PROGRESS` and `IN_PROGRESS → COMPLETE`. Also transactional as of Sprint 3.1: re-reads the job and re-validates `canTransitionJob()` inside the transaction, and commits the job + technician writes atomically (fixes a prior partial-write bug where a job could end up `COMPLETE` while its technician stayed stuck at `ON_JOB`).
-  - No UI component writes to Firestore directly. Every write path goes through one of the two functions above.
+  - No UI component writes Job/Technician state to Firestore directly. Every write path goes through one of the two functions above.
 
 ## Control Tower: read-only intelligence layer
 
-- Control Tower (`field-ops-app-vite/src/modules/controlTower/`) aggregates Jobs by `workOrderId` and computes **derived-only** operational signals. It **never** mutates Firestore, job state, or technician state.
+- Control Tower (`field-ops-app-vite/src/modules/controlTower/`) computes **derived-only** operational signals. It **never** mutates Firestore, job state, technician state, or Work Order state.
+- Two distinct data sources feed different parts of Control Tower — don't conflate them: the Signal-scoring panels (`AtRiskPanel`/`DispatchQueuePanel`/`OverloadedTechPanel`) still derive their signals by aggregating Jobs by `workOrderId` (the legacy Job/Technician model above); `WorkOrderDetail.jsx`, separately, reads a real `fieldops_wos` document (the Work Order Engine below). Both are real and in use; neither replaces the other yet.
 - As of Sprint 3.3, every scoring module (`domain/workOrderScoring.js`, `domain/dispatchScoring.js`, `domain/jobRiskScoring.js`) returns a canonical **Signal** shape, defined in `domain/controlTower/types.js`:
   ```
   { id, score, severity, label, metadata }
@@ -37,15 +44,24 @@ Implementation must satisfy both sets of documents. Where they conflict, that co
   3. No panel inlines scoring/derivation logic — panels call `domain/*.js` and render the result.
   4. Every signal a panel renders conforms to the canonical Signal shape.
 
-## Work Order model
+## Work Order Engine
 
-- Work Orders are the parent grouping of Jobs. Jobs carry a `workOrderId` field.
-- There is a `domain/workOrders.js` with a `workOrdersStore`, but as of this writing **no UI creates or reads actual Firestore `workOrders` documents** — Control Tower derives "work orders" by grouping jobs client-side on `workOrderId`. Treat `workOrders` props passed to Control Tower panels as this derived grouping, not a raw collection read, until/unless a real work-order UI is built.
-- Work Orders are never mutated by Control Tower.
+- **`fieldops_wos` is a real, persisted Firestore collection** — the Work Order Engine (Epic 1, merged to `main`) replaced the earlier derived/aggregate model entirely for new consumers. Full design and reasoning: `docs/architecture/ADR-002-work-order-engine.md`; per-concern write/read ownership: `SYSTEM_AUTHORITIES.md` (not restated here).
+- Its own 11-value `WorkOrderStatus` lifecycle (`CREATED → READY_TO_DISPATCH → SCHEDULED → DISPATCHED → ACCEPTED → EN_ROUTE → ARRIVED → WORK_IN_PROGRESS → COMPLETED → CLOSED`, plus `CANCELLED`) is defined canonically in `functions/src/transitionEngine.ts`, mirrored client-side in `domain/workOrderWorkflow.js`.
+- **All `fieldops_wos`/`counters` writes go through exactly two Cloud Functions**: `createWorkOrder()` and `transitionWorkOrder()`. `firestore.rules` denies all direct client writes to both collections unconditionally — no admin/dispatcher exception of any kind.
+- **Job↔Work Order relationship is soft-coupled**: `job.workOrderId` is an optional, unenforced reference to a `fieldops_wos` doc ID. No referential integrity, no cascade. `domain/jobActions.js`, `JOB_STATUS`, `Dispatch.jsx`, and `FieldMode.jsx` are untouched by the Work Order Engine.
+- `domain/workOrderLifecycle.js` (the pre-Epic-1 Job-grouping aggregate described in earlier revisions of this document) is **deprecated, not deleted** — frozen, with exactly one remaining consumer (`domain/timelineBuilder.js`). No new consumer may call it; new consumers read real `fieldops_wos` docs instead.
 
-## Known schema limitation: no lifecycle timestamps
+## Customer model (Account / Contact / Location)
 
-The current schema only writes `createdAt` (once, at document creation, via `collectionStore.add()`). There is **no `assignedAt`/`startedAt`** per status transition. Every age/recency/risk signal derived in `dispatchScoring.js` and `jobRiskScoring.js` is therefore an **approximation** based on time-since-creation, not precise operational timing. This is documented inline in both files and flagged in the UI (`(approx.)` labels). Fixing this properly requires a schema change to `assignJob()`/`updateJobStatus()`, deliberately deferred — see `FUTURE_ARCHITECTURE_BACKLOG.md`.
+- **`accounts`/`contacts`/`locations` are real, persisted Firestore collections** (Sprint 2.0.2, merged to `main`) — client-direct-write via `domain/accounts.js`/`domain/locations.js`/`domain/contacts.js`, rules-enforced, admin/dispatcher only (no technician read access). Full entity model, relationships, and the internal-`accounts`/UI-"Customers" naming convention: `BusinessEntityModel.md` (not restated here).
+- `WorkOrder.customerId` (on `fieldops_wos`) may point to an `accounts` document's ID — the field is not renamed to `accountId`; this is a deliberate, permanent naming mismatch (see `BusinessEntityModel.md`'s "Naming recommendation" section).
+
+## Known schema limitation: no lifecycle timestamps (Job/Technician model only)
+
+The **legacy Job/Technician schema** only writes `createdAt` (once, at document creation, via `collectionStore.add()`). There is **no `assignedAt`/`startedAt`** per status transition. Every age/recency/risk signal derived in `dispatchScoring.js` and `jobRiskScoring.js` is therefore an **approximation** based on time-since-creation, not precise operational timing. This is documented inline in both files and flagged in the UI (`(approx.)` labels). Fixing this properly requires a schema change to `assignJob()`/`updateJobStatus()`, deliberately deferred — see `FUTURE_ARCHITECTURE_BACKLOG.md`.
+
+**This limitation does not apply to the Work Order Engine**, which persists real execution timestamps (`dispatchedAt`, `acceptedAt`, `enRouteAt`, `arrivedAt`, `workStartedAt`, `completedAt`, `closedAt`) as a deliberate design choice made specifically because Job never tracked this information — see ADR-002's "Reasoning" section.
 
 ## Legacy app (removed)
 
@@ -53,8 +69,9 @@ An earlier, non-Vite `field-ops-app/` existed in parallel with `field-ops-app-vi
 
 ## Forbidden patterns (non-negotiable)
 
-- No duplicate `JOB_STATUS` (or equivalent) enums.
-- No direct Firestore writes from UI components.
+- No duplicate `JOB_STATUS` (or equivalent) enum for the Job/Technician model.
+- No direct Firestore writes from UI components, for any of the three models above — Job/Technician writes go only through `domain/jobActions.js`; Work Order writes go only through `createWorkOrder()`/`transitionWorkOrder()`; Customer-model writes go only through `domain/accounts.js`/`domain/locations.js`/`domain/contacts.js`.
 - No dispatch/assignment logic outside `assignJob()`/`updateJobStatus()`.
+- No second Work Order lifecycle competing with `functions/src/transitionEngine.ts`, and no new consumer of the deprecated `domain/workOrderLifecycle.js`.
 - No second Control Tower implementation.
 - No inline scoring logic in Control Tower panels.
