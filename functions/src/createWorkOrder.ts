@@ -68,7 +68,7 @@ export const createWorkOrder = onCall({ region: "us-central1" }, async (request)
       status: "CREATED",
       priority,
       ...(severity ? { severity } : {}),
-      type,
+      ...(type ? { type } : {}),
       customerId,
       locationId,
       ...(complaint ? { complaint } : {}),
