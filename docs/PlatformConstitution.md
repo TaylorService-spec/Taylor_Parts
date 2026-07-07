@@ -39,7 +39,7 @@ Every workflow is evaluated for unnecessary steps, clicks, re-entry, or context-
 
 ## 9. Configurable Platform
 
-Business rules, navigation, and role structures are designed to be configured per organization, not hardcoded per customer. This is what makes the "one platform, multiple service companies" model in [ProductVision.md](ProductVision.md) possible.
+Business rules, navigation, and role structures are designed to be configured per organization, not hardcoded per customer. This is what makes the "one platform, multiple service companies" model in [ProductVision.md](ProductVision.md) possible. [DeploymentModeStrategy.md](DeploymentModeStrategy.md) extends this principle to deployment: how an instance is hosted, tenanted, and integrated.
 
 ## 10. Build for the Next Decade
 
