@@ -2,6 +2,8 @@
 
 Foundational governance document defining how the Enterprise Operations Platform can be deployed across different organizations **without changing the core product**. Where [`PlatformCapabilityModel.md`](PlatformCapabilityModel.md) answers "what can the platform do," this document answers "who runs an instance of it, and how does that instance differ from any other, without forking code."
 
+**This is a governance document, not an implementation or operations manual.** It defines *what deployment modes exist and the principles that govern them* — not *how* to provision, configure, or deploy an instance. For deployment procedures and mechanics, see [`Deployment.md`](Deployment.md) (current hosting surfaces) and [`DevelopmentSetup.md`](DevelopmentSetup.md) (local setup); for the operational "how" of standing up and running an instance across its lifecycle, see the planned `PlatformOperatingModel.md` (Section 10). No code, schema, configuration, or infrastructure change is implied or required by this document on its own.
+
 ## 1. Purpose
 
 The platform is built to run for more than one organization. This document defines the durable concept of a **deployment mode** — a named, configuration-driven way the platform can be stood up and operated — so that "which environment is this," "who owns the data," and "how does an integration attach" have a standing answer instead of being re-decided ad hoc for each new organization or each new engineering question. It exists to prevent two failure modes: (1) silently assuming a single deployment shape forever, and (2) solving a temporary constraint (see Section 9) by permanently redesigning the platform around it.
@@ -16,7 +18,7 @@ The platform is built to run for more than one organization. This document defin
 
 ## 3. Supported Deployment Modes
 
-These four modes are named as the platform's permanent deployment vocabulary. Not all are implemented today — see Section 8 for current state — but all four are in scope for the platform's design, and future engineering work should not foreclose any of them.
+These four modes are the platform's **current deployment strategy** — the governing vocabulary in effect now, not a future aspiration awaiting adoption. Every present and future deployment decision is expected to be describable in terms of one of these four modes. Not all four have a live instance today (see Section 8 for current state), but the strategy itself is active as of this document, not deferred. Naming a mode here is a decision the platform's engineering should build toward and not foreclose — it is not a permanent, unrevisable limitation: this document can be amended by a future revision if the platform's real-world deployment needs change.
 
 | Mode | Who runs it | Primary purpose |
 |---|---|---|
