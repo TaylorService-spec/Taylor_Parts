@@ -25,6 +25,21 @@ export const USERS_COLLECTION = "users";
 export const WORK_ORDERS_COLLECTION = "fieldops_wos";
 export const COUNTERS_COLLECTION = "counters";
 
+// Sprint 2.0.2 -- Customer Foundation (docs/BusinessEntityModel.md).
+// Internal naming is "Account" throughout (collection, files,
+// components) -- the UI labels this "Customers" where that's clearer
+// for users. See BusinessEntityModel.md's naming recommendation.
+export const ACCOUNTS_COLLECTION = "accounts";
+export const LOCATIONS_COLLECTION = "locations";
+export const CONTACTS_COLLECTION = "contacts";
+
+export const ACCOUNT_STATUS = {
+  ACTIVE: "Active",
+  INACTIVE: "Inactive",
+  PROSPECT: "Prospect",
+  ARCHIVED: "Archived",
+};
+
 export const ROLES = {
   ADMIN: "admin",
   DISPATCHER: "dispatcher",

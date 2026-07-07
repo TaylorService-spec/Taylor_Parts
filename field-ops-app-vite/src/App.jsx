@@ -8,6 +8,8 @@ import Inventory from "./modules/inventory/Inventory";
 import Operations from "./modules/operations/Operations";
 import DispatcherBoard from "./modules/dispatcherBoard/DispatcherBoard";
 import TechnicianDashboard from "./modules/technicianDashboard/TechnicianDashboard";
+import AccountsList from "./modules/accounts/AccountsList";
+import AccountDetail from "./modules/accounts/AccountDetail";
 import { useAuth } from "./auth/AuthContext";
 import Login from "./auth/Login";
 import AppHeader from "./shared/ui/AppHeader";
@@ -75,6 +77,13 @@ function renderSubnavItem(domain, item, role) {
   if (domain.key === "dashboard" && item.key === "my") {
     return <DashboardIndex role={role} />;
   }
+  // Sprint 2.0.2 -- Customer Foundation. Same special-case pattern as
+  // DashboardIndex above: this item has no legacyKey (it's a brand
+  // new screen, not a re-homed one), so it needs an explicit case
+  // rather than the generic legacyKey/PlaceholderPage branches below.
+  if (domain.key === "customers" && item.key === "customers") {
+    return <AccountsList />;
+  }
   if (item.legacyKey) {
     const Component = LEGACY_COMPONENTS[item.legacyKey];
     return <Component />;
@@ -99,6 +108,14 @@ function AppRoutes({ role, allowedLegacyKeys }) {
                 element={renderSubnavItem(domain, item, role)}
               />
             ))}
+          {/* Sprint 2.0.2 -- first parameterized route in this
+              generic, subnav-driven route generator. navConfig.js's
+              subnav items are all static paths; a per-record detail
+              page needs a :param segment the generic loop above
+              doesn't produce, so it's added here as one extra,
+              domain-specific route rather than reshaping the whole
+              generator for a single case. */}
+          {domain.key === "customers" && <Route path=":accountId" element={<AccountDetail />} />}
         </Route>
       ))}
 
