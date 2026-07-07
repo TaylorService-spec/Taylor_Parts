@@ -114,8 +114,17 @@ function AppRoutes({ role, allowedLegacyKeys }) {
               page needs a :param segment the generic loop above
               doesn't produce, so it's added here as one extra,
               domain-specific route rather than reshaping the whole
-              generator for a single case. */}
-          {domain.key === "customers" && <Route path=":accountId" element={<AccountDetail />} />}
+              generator for a single case.
+              Gated by isDomainVisible(), not just domain.key -- a
+              technician (no accounts/locations/contacts read access,
+              deliberately, per firestore.rules) must not have this
+              route mounted at all. Without this check, a technician
+              directly navigating to /customers/:accountId would mount
+              AccountDetail and its Firestore listeners regardless of
+              nav visibility, hitting permission-denied. */}
+          {domain.key === "customers" && isDomainVisible(domain, role, allowedLegacyKeys) && (
+            <Route path=":accountId" element={<AccountDetail />} />
+          )}
         </Route>
       ))}
 

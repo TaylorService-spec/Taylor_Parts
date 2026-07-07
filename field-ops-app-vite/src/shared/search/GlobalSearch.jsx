@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { SEARCH_PROVIDERS } from "./searchProviders";
 
@@ -15,7 +15,7 @@ export default function GlobalSearch({ providerKeys, context, placeholder = "Sea
   const [debounced, setDebounced] = useState("");
   const [isFocused, setIsFocused] = useState(false);
 
-  useMemo(() => {
+  useEffect(() => {
     const timer = setTimeout(() => setDebounced(input.trim()), 250);
     return () => clearTimeout(timer);
   }, [input]);
