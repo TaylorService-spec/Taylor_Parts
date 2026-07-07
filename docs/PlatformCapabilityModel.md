@@ -55,7 +55,7 @@ Every capability entry below follows this shape:
 - **Purpose**: Manage the lifecycle of field service work from request to completion.
 - **Business Objects**: Work Order, Account, Location.
 - **Primary Users**: Admin, Dispatcher, Technician (read-scoped).
-- **Current Maturity**: Level 2 — real Work Order lifecycle (11-status state machine), creation wizard UI, detail route; live Cloud-Function-backed creation currently blocked pending a deployment-mode decision (see [`DeploymentModeStrategy.md`](architecture/DeploymentModeStrategy.md), planned).
+- **Current Maturity**: Level 2 — real Work Order lifecycle (11-status state machine), creation wizard UI, detail route; live Cloud-Function-backed creation currently blocked on a standing Firebase Blaze-plan decision — see [`DeploymentModeStrategy.md`](DeploymentModeStrategy.md).
 - **Target Maturity**: Level 4 — automated scheduling/PM triggers once Service Contracts (future entity) exist.
 - **Key Workflows**: Create Work Order, transition through lifecycle, view Work Order Detail, technician-assignment.
 - **Future Expansion**: Service Contract → PM Schedule → Work Order chain (`BusinessEntityModel.md`'s Version 3+ future entities), Equipment-scoped service history.
@@ -145,7 +145,7 @@ Every capability entry below follows this shape:
 - **Purpose**: Move operational data to and from external systems.
 - **Business Objects**: Cross-cutting.
 - **Primary Users**: Admin, future integration-engineering role, external systems.
-- **Current Maturity**: Level 1 — no integration/export layer exists yet; this capability is purely conceptual today, named in the approved Deployment Mode Strategy discussion.
+- **Current Maturity**: Level 1 — no integration/export layer exists yet; this capability is purely conceptual today. Its governing expectations (integrations consume exported data, never become the operational system of record) are formalized in [`DeploymentModeStrategy.md`](DeploymentModeStrategy.md).
 - **Target Maturity**: Level 3 — real export jobs and/or customer-hosted integration agents (per planned [`IntegrationArchitecture.md`](architecture/IntegrationArchitecture.md)).
 - **Key Workflows**: None yet.
 - **Future Expansion**: The entire planned scope of `IntegrationArchitecture.md` — Snowflake/ETL/BI/ERP/accounting exports, event bus, webhooks, retry strategy.
@@ -164,7 +164,7 @@ Every capability entry below follows this shape:
 | Capability | Related Business Entities | Existing Repository Modules | Existing Documentation | Planned Future Documents |
 |---|---|---|---|---|
 | Customer Management | Account, Contact, Location | `modules/accounts/`, `domain/accounts.js`, `domain/locations.js`, `domain/contacts.js` | `BusinessEntityModel.md` | — |
-| Service Management | Work Order, Account, Location | `modules/workOrders/`, `modules/controlTower/WorkOrderDetail.jsx`/`WorkOrderActions.jsx`, `functions/src/createWorkOrder.ts`/`transitionWorkOrder.ts` | `docs/architecture/ADR-002-work-order-engine.md` | `DeploymentModeStrategy.md` (planned) |
+| Service Management | Work Order, Account, Location | `modules/workOrders/`, `modules/controlTower/WorkOrderDetail.jsx`/`WorkOrderActions.jsx`, `functions/src/createWorkOrder.ts`/`transitionWorkOrder.ts` | `docs/architecture/ADR-002-work-order-engine.md`, [`DeploymentModeStrategy.md`](DeploymentModeStrategy.md) | — |
 | Dispatch Management | Work Order, Technician | `modules/dispatcherBoard/`, `modules/controlTower/`, `domain/technicianRecommendationEngine.ts` | `docs/architecture/ADR-004-technician-recommendation-engine.md` | — |
 | Technician Operations | Work Order, Employee/User | `modules/technicianDashboard/` | — | — |
 | Inventory Management | Part | `functions/src/inventoryService.ts`/`inventoryAnalyticsService.ts`, `domain/inventoryAnalyticsEngine.ts` | `docs/architecture/ADR-003-inventory-trigger-system.md` | — |
@@ -174,7 +174,7 @@ Every capability entry below follows this shape:
 | Sales & CRM | Opportunity/Quote *(future)* | — (nav placeholder only) | — | — |
 | Reporting & Analytics | Cross-cutting | `analytics/executionAnalyticsService.ts`/`operationsIntelligenceService.ts`, `modules/operations/` | — | `IntegrationArchitecture.md` (planned, export/BI section) |
 | Administration | Employee/User, Company *(future)* | `modules/technicians/` | — | — |
-| Integration Platform | Cross-cutting | — (none yet) | This session's Deployment Mode Strategy / Assessment discussions | `IntegrationArchitecture.md`, `DeploymentModeStrategy.md` (both planned) |
+| Integration Platform | Cross-cutting | — (none yet) | [`DeploymentModeStrategy.md`](DeploymentModeStrategy.md) | `IntegrationArchitecture.md` (planned) |
 | AI Platform | Cross-cutting | `domain/technicianRecommendationEngine.ts` | `docs/architecture/ADR-004-technician-recommendation-engine.md` | — |
 
 ## 5. Maturity Model
@@ -217,4 +217,4 @@ Concretely: a request should be traceable to a named capability and its target m
 
 ## 8. Status
 
-This document is a **foundational governance artifact**, alongside `ProductVision.md`, `PlatformConstitution.md`, `ProductBlueprint.md`, and `BusinessEntityModel.md`. `DeploymentModeStrategy.md`, `IntegrationArchitecture.md`, and `PlatformOperatingModel.md` are planned future companions — see `ROADMAP.md` for their recommended authoring order.
+This document is a **foundational governance artifact**, alongside `ProductVision.md`, `PlatformConstitution.md`, `ProductBlueprint.md`, and `BusinessEntityModel.md`. [`DeploymentModeStrategy.md`](DeploymentModeStrategy.md) is now also complete; `IntegrationArchitecture.md` and `PlatformOperatingModel.md` are planned future companions — see `ROADMAP.md` for their recommended authoring order.

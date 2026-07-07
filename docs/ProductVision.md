@@ -1,7 +1,7 @@
 # Product Vision
 
 **Status:** Version 1 — living document, expected to evolve.
-**Related:** [PlatformConstitution.md](PlatformConstitution.md) · [PlatformCapabilityModel.md](PlatformCapabilityModel.md) · [ProductBlueprint.md](ProductBlueprint.md) · [GuidingPrinciples.md](GuidingPrinciples.md) · [MobileStrategy.md](MobileStrategy.md)
+**Related:** [PlatformConstitution.md](PlatformConstitution.md) · [PlatformCapabilityModel.md](PlatformCapabilityModel.md) · [DeploymentModeStrategy.md](DeploymentModeStrategy.md) · [ProductBlueprint.md](ProductBlueprint.md) · [GuidingPrinciples.md](GuidingPrinciples.md) · [MobileStrategy.md](MobileStrategy.md)
 
 ## Mission
 
@@ -29,7 +29,7 @@ Not every domain is built today. This document describes the platform's intended
 
 ## Multi-Tenant Principle
 
-The platform is intended to support **multiple service companies through configuration, not hardcoding**. Business rules, navigation, and role structures should be designed so a new service organization can be onboarded by configuring the platform, not by forking or modifying its code. This principle governs how new features should be designed even while the platform currently serves a single organization — see [PlatformConstitution.md](PlatformConstitution.md)'s "Configurable Platform" principle for how this is enforced architecturally.
+The platform is intended to support **multiple service companies through configuration, not hardcoding**. Business rules, navigation, and role structures should be designed so a new service organization can be onboarded by configuring the platform, not by forking or modifying its code. This principle governs how new features should be designed even while the platform currently serves a single organization — see [PlatformConstitution.md](PlatformConstitution.md)'s "Configurable Platform" principle for how this is enforced architecturally, and [DeploymentModeStrategy.md](DeploymentModeStrategy.md) for how this principle extends to deployment, tenancy, and integration.
 
 ## Why This Matters
 
