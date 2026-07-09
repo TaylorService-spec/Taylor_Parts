@@ -49,12 +49,32 @@ export const ACCOUNT_STATUS = {
 // remaining values are reserved for the future Review & Approval sprint
 // (Workflow history foundation -- named now so the schema doesn't need
 // to be reshaped later).
+//
+// Sprint 2.1.5 -- Inventory -> Parts Manager Handoff. An approval no
+// longer settles at APPROVED -- it advances to READY_FOR_PARTS_MANAGER,
+// the request's new terminal-for-this-sprint state once ownership
+// hands off. `reviewDecision` (see inventoryReorderRequests.js) still
+// permanently records APPROVED/REJECTED as the historical decision;
+// `status` is the thing that keeps moving.
 export const REORDER_REQUESTS_COLLECTION = "reorder_requests";
 
 export const REORDER_REQUEST_STATUS = {
   PENDING_REVIEW: "PENDING_REVIEW",
   APPROVED: "APPROVED",
   REJECTED: "REJECTED",
+  READY_FOR_PARTS_MANAGER: "READY_FOR_PARTS_MANAGER",
+};
+
+// Sprint 2.1.5 -- Inventory -> Parts Manager Handoff. `currentOwner` is
+// a coarse, role-level ownership marker (not a per-user assignment --
+// `currentOwnerUserId`/`workflowOwnerUserId` are deliberately not
+// introduced yet, per this sprint's approved scope). Inventory owns a
+// request from creation through review; approval hands ownership to
+// the Parts Manager. Rejection is terminal and leaves ownership with
+// Inventory.
+export const REORDER_REQUEST_OWNER = {
+  INVENTORY: "INVENTORY",
+  PARTS_MANAGER: "PARTS_MANAGER",
 };
 
 export const ROLES = {

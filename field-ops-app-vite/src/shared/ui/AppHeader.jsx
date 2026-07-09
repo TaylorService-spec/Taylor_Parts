@@ -1,7 +1,8 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
-import { useReorderRequests } from "../../hooks/useReorderRequests";
+import { useReorderRequests, useReorderRequestsByStatus } from "../../hooks/useReorderRequests";
+import { REORDER_REQUEST_STATUS } from "../../domain/constants";
 import NotificationPanel from "./NotificationPanel";
 
 // Sprint 2.1.3 -- Reorder Request & Notification Foundation. Notification
@@ -9,10 +10,20 @@ import NotificationPanel from "./NotificationPanel";
 // `enabled` skips the reorder_requests read entirely for a technician,
 // who has no firestore.rules read access to it, rather than fetching and
 // getting a permission-denied error.
+//
+// Sprint 2.1.5 -- Inventory -> Parts Manager Handoff. There's no new
+// Parts Manager auth role yet (per this sprint's approved scope --
+// `currentOwner` is a data-level marker, not a permission tier), so
+// READY_FOR_PARTS_MANAGER notifications are read under the same
+// admin/dispatcher gate as Inventory's own pending-review ones.
 export default function AppHeader() {
   const { user, role, logout } = useAuth();
   const canSeeReorderRequests = role === "admin" || role === "dispatcher";
   const { data: pendingReorderRequests } = useReorderRequests(canSeeReorderRequests);
+  const { data: partsManagerRequests } = useReorderRequestsByStatus(
+    REORDER_REQUEST_STATUS.READY_FOR_PARTS_MANAGER,
+    canSeeReorderRequests
+  );
 
   return (
     <div className="fo-appheader" style={styles.header}>
@@ -33,7 +44,9 @@ export default function AppHeader() {
       </div>
 
       <div className="fo-appheader-right" style={styles.right}>
-        {canSeeReorderRequests && <NotificationPanel requests={pendingReorderRequests} />}
+        {canSeeReorderRequests && (
+          <NotificationPanel requests={pendingReorderRequests} partsManagerRequests={partsManagerRequests} />
+        )}
         <span className="fo-appheader-email">{user?.email}</span>
         <button onClick={logout}>Logout</button>
       </div>

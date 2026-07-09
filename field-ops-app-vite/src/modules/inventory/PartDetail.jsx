@@ -22,6 +22,14 @@ import { REORDER_REQUEST_STATUS } from "../../domain/constants";
 // exclusively through domain/inventoryReorderRequests.js's
 // reviewReorderRequest() -- this component never calls Firestore
 // directly.
+//
+// Sprint 2.1.5 -- Inventory -> Parts Manager Handoff. An approved
+// request's status is now READY_FOR_PARTS_MANAGER (not APPROVED) --
+// this still falls into the "already decided" (ReorderRequestDecision)
+// branch below unchanged, since that branch keys off anything other
+// than PENDING_REVIEW. Decision badge/notes still read `reviewDecision`
+// (the permanent APPROVED/REJECTED fact), not `status`. Adds a
+// "Current owner" row so a reviewer can see the hand-off took effect.
 function formatTimestamp(ms) {
   if (!ms) return "—";
   return new Date(ms).toLocaleString();
@@ -132,6 +140,12 @@ function ReorderRequestDecision({ request }) {
             <td>Reviewed</td>
             <td>{formatTimestamp(request.reviewedAt)}</td>
           </tr>
+          {request.currentOwner && (
+            <tr>
+              <td>Current owner</td>
+              <td>{request.currentOwner}</td>
+            </tr>
+          )}
           {request.reviewNotes && (
             <tr>
               <td>Notes</td>
