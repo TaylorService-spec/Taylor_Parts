@@ -75,6 +75,18 @@ import InventoryHealthPanel from "../operations/panels/InventoryHealthPanel";
 // useReorderRequestsAssignedTo(userId, status) -- a request moves
 // itself between the two sections once "Start Purchasing" (on
 // PartDetail.jsx) is used, no extra removal logic needed here either.
+//
+// Bug fix (post-2.1.7) -- "Request Reorder" produced no visible result
+// on failure. Root cause was NOT this component: the live deployed
+// firestore.rules had never included a reorder_requests match block at
+// all (confirmed via a read-only Admin SDK check against the live
+// project -- committed rules across Sprints 2.1.3-2.1.7 were never
+// deployed), so every create silently hit permission-denied with
+// nothing surfaced. Independently of that deploy gap, handleRequestReorder()
+// itself had no error handling -- fixed here so a future failure of any
+// kind (network, rules, anything) shows a clear message instead of
+// silence, and the button now shows "Requesting..." and disables while
+// a request is in flight instead of allowing an immediate second click.
 const PAGE_SIZE = 25;
 const ACTIONABLE_URGENCIES = new Set(["CRITICAL", "HIGH"]);
 
@@ -110,6 +122,8 @@ export default function PartsList() {
   const [page, setPage] = useState(0);
   const [queueFilter, setQueueFilter] = useState("ACTIONABLE");
   const [justRequestedPartIds, setJustRequestedPartIds] = useState(() => new Set());
+  const [submittingPartId, setSubmittingPartId] = useState(null);
+  const [reorderError, setReorderError] = useState(null);
 
   const queueEntries = useMemo(() => {
     if (queueFilter === "ALL") return healthEntries;
@@ -123,12 +137,21 @@ export default function PartsList() {
   }, [pendingRequests, justRequestedPartIds]);
 
   async function handleRequestReorder(partId, recommendation) {
-    await createReorderRequest({
-      partId,
-      urgency: recommendation.urgency,
-      recommendedQty: Math.ceil(recommendation.recommendedOrderQty),
-    });
-    setJustRequestedPartIds((prev) => new Set(prev).add(partId));
+    setSubmittingPartId(partId);
+    setReorderError(null);
+    try {
+      await createReorderRequest({
+        partId,
+        urgency: recommendation.urgency,
+        recommendedQty: Math.ceil(recommendation.recommendedOrderQty),
+      });
+      setJustRequestedPartIds((prev) => new Set(prev).add(partId));
+    } catch (err) {
+      const partName = getCatalogItem(partId)?.name ?? partId;
+      setReorderError(`Could not request reorder for ${partName}: ${err.message}`);
+    } finally {
+      setSubmittingPartId(null);
+    }
   }
 
   const healthByPartId = useMemo(() => {
@@ -167,12 +190,14 @@ export default function PartsList() {
         Parts ranked by urgency, from the same analytics used by the Operations dashboard's Inventory Health panel.
       </p>
       <FilterBar options={QUEUE_FILTER_OPTIONS} activeKey={queueFilter} onChange={setQueueFilter} />
+      {reorderError && <p className="fo-muted">{reorderError}</p>}
       <LoadingEmptyState loading={loading} isEmpty={false} loadingText="Loading operational queue..." emptyText="">
         <InventoryHealthPanel
           healthEntries={queueEntries}
           title="Needs Reorder"
           onRequestReorder={handleRequestReorder}
           requestedPartIds={requestedPartIds}
+          submittingPartId={submittingPartId}
         />
       </LoadingEmptyState>
 
