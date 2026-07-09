@@ -81,6 +81,21 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
+    // Sprint 2.1.3 -- Reorder Request & Notification Foundation
+    // (docs/BusinessEntityModel.md's Reorder Request entry). Unlike the
+    // ledger above, this IS a client-direct-write collection (Inventory
+    // Management's domain/inventoryReorderRequests.js, mirroring the
+    // accounts/locations/contacts pattern) -- no Cloud Function. Create-
+    // only this sprint: a Reorder Request's PENDING_REVIEW state is
+    // never client-updated once written (Platform Events are immutable;
+    // the future Review & Approval sprint is what will introduce a
+    // status-transition write path, deliberately not built here).
+    match /reorder_requests/{requestId} {
+      allow read: if isAdminOrDispatcher();
+      allow create: if isAdminOrDispatcher();
+      allow update, delete: if false;
+    }
+
     // Epic 4 Warehouse + Fulfillment System. Same Admin-SDK-only write
     // posture as the ledger above -- a physical-reality layer, not a
     // second source of truth, so no direct client writes here either.
