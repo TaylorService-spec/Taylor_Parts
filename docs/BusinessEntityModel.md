@@ -18,6 +18,7 @@ Only these are planned for near-term implementation (Sprint 2.0.2/2.0.3 and imme
 - **Supplier**
 - **Purchase Order**
 - **Reorder Request** *(added Sprint 2.1.3)*
+- **Inventory Action** *(added Sprint 2.1.9)*
 
 ## 2. Future Entities
 
@@ -46,6 +47,7 @@ Named here for architectural coherence, not scoped into current sprints:
 | Supplier | Vendor the operating business purchases parts from | Core (V2) — already real |
 | Purchase Order | Procurement document requesting parts from a Supplier | Core (V2) — already real |
 | Reorder Request | Inventory's request to replenish a Part, pending review — the platform's first Operational Workflow Object outside Work Order (see Section 4) | Core (V2) — Sprint 2.1.3 |
+| Inventory Action | A human-initiated stock adjustment (Receive Stock/Adjust Stock/Correct Mistake) against a Part, entirely separate from the Work Order-driven `inventory_transactions` ledger (see Section 4a) | Core (V2) — Sprint 2.1.9 |
 | Company | The operating business using the platform | Future |
 | Equipment / Asset | Serviceable asset located at a Location | Future |
 | Vehicle | Mobile inventory storage location (broader than "truck") | Future |
@@ -67,6 +69,22 @@ Ownership: **Inventory Management remains the sole owner of the Reorder Request'
 Write path: client-direct-write via `domain/inventoryReorderRequests.js` (mirrors the `accounts`/`locations`/`contacts` pattern) — `createReorderRequest()` (Sprint 2.1.3), `reviewReorderRequest()` (Sprint 2.1.4, extended Sprint 2.1.5), `assignReorderRequest()` (Sprint 2.1.6), `startPurchasing()` (Sprint 2.1.7), and `updatePurchasingProgress()` (Sprint 2.1.8) are its only five exports that write. No Cloud Function. `firestore.rules`' update rule enforces four paths in sequence (`PENDING_REVIEW` → `READY_FOR_PARTS_MANAGER`/`REJECTED`; `READY_FOR_PARTS_MANAGER` → `ASSIGNED_TO_PARTS_ASSOCIATE`; `ASSIGNED_TO_PARTS_ASSOCIATE` → `PURCHASING_IN_PROGRESS`, assignee-only; `PURCHASING_IN_PROGRESS` → `PURCHASING_IN_PROGRESS`, also assignee-only and the first non-transition path), each with its own field-matching/`affectedKeys()` constraints, plus the immutability of the original request fields and of every earlier stage's fields (review, then assignment, then purchasing-start) once a later write happens.
 
 Status: Core (V2), Sprint 2.1.3-2.1.8.
+
+## 4a. Inventory Action
+
+A human-initiated stock adjustment against a Part -- Receive Stock, Adjust Stock, or Correct Mistake -- introduced by Sprint 2.1.9. Deliberately a **separate, new collection** (`inventory_actions`), not a modification of `inventory_transactions` (Epic 2D/3, ADR-003): that ledger remains Admin-SDK-only, Work-Order-driven, and untouched. This mirrors how Reorder Request (Section 4) was added as a new parallel Business Object rather than reshaping an existing one — "no second inventory system competing with the ledger" (`CLAUDE_CONTEXT.md` rule 6) means not reusing or mutating `inventory_transactions`, not that no other inventory-adjacent collection may ever exist.
+
+Fields (`inventory_actions` collection): `partId`, `transactionType`, `quantityDelta`, `reason`, `notes`, `createdBy`, `createdAt`. `transactionType` values: `RECEIVE_STOCK` (requires `quantityDelta > 0`), `ADJUST_STOCK` (any non-zero `quantityDelta`, positive or negative), `CORRECT_MISTAKE` (any non-zero `quantityDelta`, but requires both `reason` and `notes` to be non-empty). All three constraints are enforced in `domain/inventoryActions.js`'s `recordInventoryAction()` -- the sole write path -- not just in the UI.
+
+Unlike Reorder Request, this object has **no status field and no workflow** -- each action is a single, complete, append-only record (a ledger entry, not a multi-step process). There is no update or delete path: correcting a mistake means recording another action, never editing history.
+
+Ownership: same as Reorder Request -- Inventory Management owns the capability; recording an action is gated to the existing admin/dispatcher role, no new permission tier.
+
+Write path: client-direct-write via `domain/inventoryActions.js` (mirrors `domain/inventoryReorderRequests.js`'s pattern) -- `recordInventoryAction()` is its only export that writes. No Cloud Function. `firestore.rules`' `inventory_actions` rule allows `create` (admin/dispatcher only, no field-level validation -- same posture as `reorder_requests`' create rule) and denies `update`/`delete` unconditionally.
+
+Read path: `hooks/useInventoryActions.js`'s `useInventoryActionsForPart(partId)` -- realtime (`onSnapshot`, server-side `where("partId", ...)` filtered) from the start, unlike Reorder Request's hooks which needed a post-2.1.7 bug fix to become realtime. Shown on `PartDetail.jsx`'s Inventory Actions card (most recent 10, sorted client-side by `createdAt` descending).
+
+Status: Core (V2), Sprint 2.1.9.
 
 ## 5. Company
 
@@ -202,8 +220,9 @@ Supplier ── 1:many ── Purchase Order ── many:many ── Part (via l
 | `invoices` | New, **deferred** | — |
 | `opportunities` | New, **deferred** | — |
 | `reorder_requests` | New, **Sprint 2.1.3** | Client-direct-write via `domain/inventoryReorderRequests.js`, admin/dispatcher only; create-only this sprint |
+| `inventory_actions` | New, **Sprint 2.1.9** | Client-direct-write via `domain/inventoryActions.js`, admin/dispatcher only, create-only, no status/workflow -- separate from `inventory_transactions`, which remains unchanged |
 
-Only `accounts`, `contacts`, and `locations` are proposed as in-scope for Sprint 2.0.2; everything marked "deferred" is named for completeness of the model, not for near-term building. `reorder_requests` is the one collection in this table that has since moved from named-for-coherence to actually built (Sprint 2.1.3).
+Only `accounts`, `contacts`, and `locations` are proposed as in-scope for Sprint 2.0.2; everything marked "deferred" is named for completeness of the model, not for near-term building. `reorder_requests` and `inventory_actions` are collections in this table that have since moved from named-for-coherence to actually built (Sprints 2.1.3 and 2.1.9 respectively).
 
 ## 10. Naming recommendation
 
@@ -222,6 +241,7 @@ Only `accounts`, `contacts`, and `locations` are proposed as in-scope for Sprint
 - **Sprint 2.1.6 = Parts Manager → Parts Associate Assignment.** Scope: `assignedToUserId`/`assignedBy`/`assignedAt` fields and `assignReorderRequest()` (`domain/inventoryReorderRequests.js`); the `READY_FOR_PARTS_MANAGER` → `ASSIGNED_TO_PARTS_ASSOCIATE` transition (`firestore.rules`, both copies); an assignment card in `PartDetail.jsx` (manually-entered target uid, no user picker); a read-only Parts Associate Queue on the existing `/inventory` route, filtered to the signed-in user's own assignments; and a third Notification Panel section ("Assigned to You") — the platform's first per-user-filtered notification. Purchase Orders, Vendor management, Pricing, Receiving, Warehouse, AI, Email, Cloud Functions, new routes, Procurement execution, and reassignment all remain explicitly out of scope.
 - **Sprint 2.1.7 = Purchase Execution Foundation.** Scope: `purchasingStartedAt`/`purchasingStartedBy` fields and `startPurchasing()` (`domain/inventoryReorderRequests.js`); the `ASSIGNED_TO_PARTS_ASSOCIATE` → `PURCHASING_IN_PROGRESS` transition (`firestore.rules`, both copies) — the platform's first update restricted to one specific individual (`request.auth.uid == assignedToUserId`), not just a role; a "Start Purchasing" card in `PartDetail.jsx`, visible to all admin/dispatcher readers but only actionable by the assignee; the Parts Associate Queue split into "Waiting"/"In Progress" sections; and a fourth, broadcast Notification Panel section ("Purchasing Started") notifying the Parts Manager. Purchase Orders, Vendor management, Pricing, Quotes, Receiving, Warehouse, AI, Email, Cloud Functions, new routes, and ERP integration all remain explicitly out of scope.
 - **Sprint 2.1.8 = Purchasing Progress Update.** Scope: `purchasingNotes`/`vendorContacted`/`expectedAvailabilityDate`/`lastPurchasingUpdateAt`/`lastPurchasingUpdateBy` fields and `updatePurchasingProgress()` (`domain/inventoryReorderRequests.js`); a `firestore.rules` (both copies) update path allowing `PURCHASING_IN_PROGRESS` → `PURCHASING_IN_PROGRESS` (status unchanged, repeatable, assignee-only — the platform's first non-transition write path on this object); a purchasing-update card in `PartDetail.jsx`, showing the latest update to any admin/dispatcher reader but only actionable by the assignee; and a "Latest Update" column in the Parts Associate "In Progress" queue. No new Notification Panel section (status doesn't change, so nothing new to broadcast). Purchase Orders, Vendor master data, Pricing, Quotes, Receiving, Warehouse, AI, Email, Cloud Functions, new routes, and ERP integration all remain explicitly out of scope.
+- **Sprint 2.1.9 = Inventory Actions Foundation.** Scope: a new `inventory_actions` collection (Section 4a) and `domain/inventoryActions.js`'s `recordInventoryAction()` as its sole write path — deliberately separate from `inventory_transactions` (Epic 2D/3, ADR-003), which remains Admin-SDK-only/Work-Order-driven and completely untouched; `firestore.rules` gains a new, narrow `inventory_actions` match block (admin/dispatcher, create-only, no field-level validation — same posture as `reorder_requests`); an "Inventory Actions" card on `PartDetail.jsx` supporting Receive Stock (positive quantity only), Adjust Stock (positive or negative), and Correct Mistake (requires reason and notes), plus a realtime "Recent Inventory Actions" list. Warehouse Receiving, bin management, truck stock, Purchase Orders, Vendor selection, Sales, Work Order consumption changes, AI, Email, new routes, and Cloud Functions all remain explicitly out of scope.
 
 ## 12. Risks and migration notes
 
