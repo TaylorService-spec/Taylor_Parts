@@ -3,8 +3,9 @@ import { Link, useParams } from "react-router-dom";
 import { getCatalogItem } from "../../data/partsCatalog";
 import { useInventoryLedger } from "../../hooks/useInventoryLedger";
 import { useReorderRequestForPart } from "../../hooks/useReorderRequests";
-import { reviewReorderRequest, assignReorderRequest } from "../../domain/inventoryReorderRequests";
+import { reviewReorderRequest, assignReorderRequest, startPurchasing } from "../../domain/inventoryReorderRequests";
 import { REORDER_REQUEST_STATUS } from "../../domain/constants";
+import { useAuth } from "../../auth/AuthContext";
 
 // Sprint 2.1.1 -- Inventory Domain Foundation. Part detail screen,
 // reached from PartsList.jsx or Global Search. Read-only: catalog
@@ -36,6 +37,16 @@ import { REORDER_REQUEST_STATUS } from "../../domain/constants";
 // ReorderRequestDecision, extended with assignedToUserId/assignedAt
 // rows). Writes go exclusively through
 // domain/inventoryReorderRequests.js's assignReorderRequest().
+//
+// Sprint 2.1.7 -- Purchase Execution Foundation. Status branch is now
+// four-way: adds ASSIGNED_TO_PARTS_ASSOCIATE -> new
+// ReorderRequestStartPurchasing card, restricted to the assigned
+// person only (everyone else sees a passive waiting message --
+// firestore.rules is what actually enforces this isn't bypassable).
+// ReorderRequestDecision (still the catch-all for REJECTED or
+// PURCHASING_IN_PROGRESS) gains purchasingStartedBy/purchasingStartedAt
+// rows. Writes go exclusively through
+// domain/inventoryReorderRequests.js's startPurchasing().
 function formatTimestamp(ms) {
   if (!ms) return "—";
   return new Date(ms).toLocaleString();
@@ -196,6 +207,72 @@ function ReorderRequestAssignment({ request, onAssigned }) {
   );
 }
 
+// Sprint 2.1.7 -- Purchase Execution Foundation. Shown when a request
+// is ASSIGNED_TO_PARTS_ASSOCIATE -- only the assigned person can
+// actually start purchasing (firestore.rules enforces
+// request.auth.uid == assignedToUserId), so anyone else viewing this
+// screen (any admin/dispatcher can read it) sees a passive waiting
+// message instead of the button. Writes go exclusively through
+// domain/inventoryReorderRequests.js's startPurchasing().
+function ReorderRequestStartPurchasing({ request, onStarted }) {
+  const { user } = useAuth();
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState(null);
+  const isAssignee = user?.uid === request.assignedToUserId;
+
+  async function handleStart() {
+    setSubmitting(true);
+    setError(null);
+    try {
+      await startPurchasing(request.id);
+      onStarted();
+    } catch (err) {
+      setError(err.message);
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="fo-card">
+      <h3>Reorder Request -- Assigned to Parts Associate</h3>
+      <table className="fo-table">
+        <tbody>
+          <tr>
+            <td>Assigned to</td>
+            <td>{request.assignedToUserId}</td>
+          </tr>
+          <tr>
+            <td>Assigned</td>
+            <td>{formatTimestamp(request.assignedAt)}</td>
+          </tr>
+          <tr>
+            <td>Recommended qty</td>
+            <td>{request.recommendedQty}</td>
+          </tr>
+          <tr>
+            <td>Urgency</td>
+            <td>
+              <span className={`fo-badge fo-badge-${request.urgency.toLowerCase()}`}>{request.urgency}</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      {error && <p className="fo-muted">{error}</p>}
+
+      {isAssignee ? (
+        <div className="disp-board-toolbar">
+          <button type="button" onClick={handleStart} disabled={submitting}>
+            Start Purchasing
+          </button>
+        </div>
+      ) : (
+        <p className="fo-muted">Waiting for the assigned Parts Associate to start purchasing.</p>
+      )}
+    </div>
+  );
+}
+
 function ReorderRequestDecision({ request }) {
   return (
     <div className="fo-card">
@@ -230,6 +307,18 @@ function ReorderRequestDecision({ request }) {
             <tr>
               <td>Assigned</td>
               <td>{formatTimestamp(request.assignedAt)}</td>
+            </tr>
+          )}
+          {request.purchasingStartedBy && (
+            <tr>
+              <td>Purchasing started by</td>
+              <td>{request.purchasingStartedBy}</td>
+            </tr>
+          )}
+          {request.purchasingStartedAt && (
+            <tr>
+              <td>Purchasing started</td>
+              <td>{formatTimestamp(request.purchasingStartedAt)}</td>
             </tr>
           )}
           {request.reviewNotes && (
@@ -284,6 +373,8 @@ export default function PartDetail() {
           <ReorderRequestReview request={reorderRequest} onReviewed={refreshReorderRequest} />
         ) : reorderRequest.status === REORDER_REQUEST_STATUS.READY_FOR_PARTS_MANAGER ? (
           <ReorderRequestAssignment request={reorderRequest} onAssigned={refreshReorderRequest} />
+        ) : reorderRequest.status === REORDER_REQUEST_STATUS.ASSIGNED_TO_PARTS_ASSOCIATE ? (
+          <ReorderRequestStartPurchasing request={reorderRequest} onStarted={refreshReorderRequest} />
         ) : (
           <ReorderRequestDecision request={reorderRequest} />
         )

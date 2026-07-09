@@ -17,10 +17,10 @@ import { auth } from "../firebase/firebase";
 // A Reorder Request is: { id, partId, urgency, recommendedQty, status,
 // currentOwner, requestedBy, createdAt, reviewedBy, reviewedAt,
 // reviewDecision, reviewNotes, assignedToUserId, assignedBy,
-// assignedAt }. `createdAt` (stamped automatically by
-// makeCollectionStore.add()) IS this record's "Reorder Requested"
-// Platform Event timestamp -- an immutable fact of when the request
-// was made, never rewritten.
+// assignedAt, purchasingStartedAt, purchasingStartedBy }. `createdAt`
+// (stamped automatically by makeCollectionStore.add()) IS this
+// record's "Reorder Requested" Platform Event timestamp -- an
+// immutable fact of when the request was made, never rewritten.
 export const reorderRequestsStore = makeCollectionStore(REORDER_REQUESTS_COLLECTION);
 
 export function createReorderRequest({ partId, urgency, recommendedQty }) {
@@ -38,6 +38,8 @@ export function createReorderRequest({ partId, urgency, recommendedQty }) {
     assignedToUserId: null,
     assignedBy: null,
     assignedAt: null,
+    purchasingStartedAt: null,
+    purchasingStartedBy: null,
   });
 }
 
@@ -98,5 +100,22 @@ export function assignReorderRequest(requestId, { assignedToUserId }) {
     assignedToUserId: trimmedUserId,
     assignedBy: auth.currentUser?.uid ?? null,
     assignedAt: Date.now(),
+  });
+}
+
+// Sprint 2.1.7 -- Purchase Execution Foundation. The only writer of a
+// "purchasing started" event. Unlike every prior transition on this
+// object, this one is restricted to a single specific person -- the
+// assigned Parts Associate -- not just admin/dispatcher generally;
+// firestore.rules enforces request.auth.uid == the request's
+// assignedToUserId, so this write fails for anyone else even though
+// they can still read the request. currentOwner and the assignment
+// fields are untouched -- this is the same person's work moving from
+// waiting to in-progress, not a hand-off.
+export function startPurchasing(requestId) {
+  return reorderRequestsStore.update(requestId, {
+    status: REORDER_REQUEST_STATUS.PURCHASING_IN_PROGRESS,
+    purchasingStartedAt: Date.now(),
+    purchasingStartedBy: auth.currentUser?.uid ?? null,
   });
 }

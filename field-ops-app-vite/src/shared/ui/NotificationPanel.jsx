@@ -23,6 +23,12 @@ import { getCatalogItem } from "../../data/partsCatalog";
 // so this satisfies "notify only the assigned Parts Associate"
 // without a per-user notification system -- it's the same broadcast
 // read as the other two sections, filtered client-side to one user.
+//
+// Sprint 2.1.7 -- Purchase Execution Foundation. `purchasingStartedRequests`
+// is a fourth, optional list: PURCHASING_IN_PROGRESS requests, notifying
+// "the Parts Manager" -- role-level/broadcast (there's still no distinct
+// Parts Manager auth role), same as "Ready for Parts Manager" above, not
+// per-user like "Assigned to You".
 function NotificationItem({ request, onNavigate }) {
   return (
     <Link
@@ -36,9 +42,15 @@ function NotificationItem({ request, onNavigate }) {
   );
 }
 
-export default function NotificationPanel({ requests, partsManagerRequests = [], assignedToYouRequests = [] }) {
+export default function NotificationPanel({
+  requests,
+  partsManagerRequests = [],
+  assignedToYouRequests = [],
+  purchasingStartedRequests = [],
+}) {
   const [open, setOpen] = useState(false);
-  const total = requests.length + partsManagerRequests.length + assignedToYouRequests.length;
+  const total =
+    requests.length + partsManagerRequests.length + assignedToYouRequests.length + purchasingStartedRequests.length;
   const close = () => setOpen(false);
 
   return (
@@ -72,6 +84,14 @@ export default function NotificationPanel({ requests, partsManagerRequests = [],
                 <>
                   <p className="fo-notification-panel-section">Assigned to You</p>
                   {assignedToYouRequests.map((request) => (
+                    <NotificationItem key={request.id} request={request} onNavigate={close} />
+                  ))}
+                </>
+              )}
+              {purchasingStartedRequests.length > 0 && (
+                <>
+                  <p className="fo-notification-panel-section">Purchasing Started</p>
+                  {purchasingStartedRequests.map((request) => (
                     <NotificationItem key={request.id} request={request} onNavigate={close} />
                   ))}
                 </>

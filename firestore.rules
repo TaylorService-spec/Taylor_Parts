@@ -120,8 +120,22 @@ service cloud.firestore {
     // firestore.rules' users/{userId} self-only read above), and the
     // review fields (reviewDecision/reviewedBy/reviewedAt/reviewNotes)
     // are pinned unchanged so an assignment can never rewrite review
-    // history. No further transition out of ASSIGNED_TO_PARTS_ASSOCIATE
-    // is permitted this sprint -- reassignment is explicitly deferred.
+    // history.
+    //
+    // Sprint 2.1.7 -- Purchase Execution Foundation. A third update
+    // path allows ASSIGNED_TO_PARTS_ASSOCIATE -> PURCHASING_IN_PROGRESS,
+    // via domain/inventoryReorderRequests.js's startPurchasing(). This
+    // is the platform's first update restricted to one specific
+    // individual, not just admin/dispatcher generally:
+    // request.auth.uid must equal the request's OWN assignedToUserId
+    // (resource.data, not request.resource.data -- the assignee can't
+    // reassign it to themselves as part of this write, that field is
+    // pinned unchanged below) -- so only the assigned Parts Associate
+    // can start purchasing on their own request, not any other
+    // admin/dispatcher. currentOwner, all three assignment fields, and
+    // all four review fields are pinned unchanged -- this transition
+    // never rewrites prior workflow history. No further transition out
+    // of PURCHASING_IN_PROGRESS is permitted this sprint.
     match /reorder_requests/{requestId} {
       allow read: if isAdminOrDispatcher();
       allow create: if isAdminOrDispatcher();
@@ -149,7 +163,22 @@ service cloud.firestore {
               && request.resource.data.reviewedAt == resource.data.reviewedAt
               && request.resource.data.reviewNotes == resource.data.reviewNotes
               && request.resource.data.diff(resource.data).affectedKeys()
-                   .hasOnly(["status", "currentOwner", "assignedToUserId", "assignedBy", "assignedAt"])))
+                   .hasOnly(["status", "currentOwner", "assignedToUserId", "assignedBy", "assignedAt"]))
+            || (resource.data.status == "ASSIGNED_TO_PARTS_ASSOCIATE"
+              && request.resource.data.status == "PURCHASING_IN_PROGRESS"
+              && request.auth.uid == resource.data.assignedToUserId
+              && request.resource.data.purchasingStartedBy == request.auth.uid
+              && request.resource.data.purchasingStartedAt is number
+              && request.resource.data.currentOwner == resource.data.currentOwner
+              && request.resource.data.assignedToUserId == resource.data.assignedToUserId
+              && request.resource.data.assignedBy == resource.data.assignedBy
+              && request.resource.data.assignedAt == resource.data.assignedAt
+              && request.resource.data.reviewDecision == resource.data.reviewDecision
+              && request.resource.data.reviewedBy == resource.data.reviewedBy
+              && request.resource.data.reviewedAt == resource.data.reviewedAt
+              && request.resource.data.reviewNotes == resource.data.reviewNotes
+              && request.resource.data.diff(resource.data).affectedKeys()
+                   .hasOnly(["status", "purchasingStartedAt", "purchasingStartedBy"])))
         && request.resource.data.partId == resource.data.partId
         && request.resource.data.urgency == resource.data.urgency
         && request.resource.data.recommendedQty == resource.data.recommendedQty
