@@ -18,6 +18,26 @@ body { -webkit-font-smoothing: antialiased; font-family: -apple-system, BlinkMac
 .fo-nav-btn:hover { background: rgba(255,255,255,0.08); }
 .fo-nav-btn-active { background: #2E4A50; color: #fff; }
 
+/* Epic 9 follow-up -- the second-row secondary domain nav
+   (AppShell.jsx's `<nav className="fo-nav fo-subnav">`) renders
+   OUTSIDE .fo-header, directly against the light page background, but
+   was reusing .fo-nav-btn/.fo-nav-btn-active unmodified -- the exact
+   same "class tuned for the dark header, reused on a light
+   background" issue already fixed for the in-workspace filter bar
+   (fo-filter-btn below), just in a different, platform-wide location.
+   AppShell.jsx is the actual owner of this second row across every
+   domain (Dashboard, Customers, Service, Inventory, Purchasing,
+   Reporting, Administration) -- fixing it here applies everywhere at
+   once. .fo-header's own primary nav (the dark top row) is untouched;
+   this override only applies inside .fo-subnav. Same color language
+   as fo-filter-btn below, so the two secondary-navigation patterns
+   read consistently. */
+.fo-subnav .fo-nav-btn { color: #445559; }
+.fo-subnav .fo-nav-btn:hover { background: #E1E7E6; color: #1B2A2E; }
+.fo-subnav .fo-nav-btn:focus-visible { outline: 2px solid #2E4A50; outline-offset: 2px; }
+.fo-subnav .fo-nav-btn-active { background: #2E4A50; color: #fff; }
+.fo-subnav .fo-nav-btn-active:hover { background: #263D42; }
+
 .fo-main { padding: 24px; max-width: 960px; margin: 0 auto; }
 .fo-panel { background: #fff; border-radius: 10px; padding: 20px 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); overflow-x: auto; }
 .fo-panel h2 { margin-top: 0; }
@@ -44,6 +64,7 @@ body { -webkit-font-smoothing: antialiased; font-family: -apple-system, BlinkMac
 .fo-filter-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
 .fo-filter-btn { background: #EEF1F0; border: 1px solid #D8DEDD; color: #445559; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500; }
 .fo-filter-btn:hover { background: #E1E7E6; border-color: #C3CDCC; }
+.fo-filter-btn:focus-visible { outline: 2px solid #2E4A50; outline-offset: 2px; }
 .fo-filter-btn-active { background: #2E4A50; border-color: #2E4A50; color: #fff; }
 .fo-filter-btn-active:hover { background: #263D42; border-color: #263D42; }
 
