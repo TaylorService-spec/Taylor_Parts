@@ -1,7 +1,10 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { getCatalogItem } from "../../data/partsCatalog";
 import { useInventoryLedger } from "../../hooks/useInventoryLedger";
+import { useReorderRequestForPart } from "../../hooks/useReorderRequests";
+import { reviewReorderRequest } from "../../domain/inventoryReorderRequests";
+import { REORDER_REQUEST_STATUS } from "../../domain/constants";
 
 // Sprint 2.1.1 -- Inventory Domain Foundation. Part detail screen,
 // reached from PartsList.jsx or Global Search. Read-only: catalog
@@ -10,15 +13,143 @@ import { useInventoryLedger } from "../../hooks/useInventoryLedger";
 // useInventoryLedger() -- the same one-shot read + pure analytics
 // functions PartsList.jsx and Operations.jsx both use. No new
 // Firestore query, no new computed math.
+//
+// Sprint 2.1.4 -- Reorder Review & Decision. This is also where the
+// Notification Panel routes an approver to (Header -> Notification
+// Panel -> Open Notification -> Inventory Request, Sprint 2.1.3) --
+// adds a Reorder Request review card: pending requests get Approve/
+// Reject actions, already-decided ones show the outcome. Writes go
+// exclusively through domain/inventoryReorderRequests.js's
+// reviewReorderRequest() -- this component never calls Firestore
+// directly.
 function formatTimestamp(ms) {
   if (!ms) return "—";
   return new Date(ms).toLocaleString();
+}
+
+function ReorderRequestReview({ request, onReviewed }) {
+  const [showRejectForm, setShowRejectForm] = useState(false);
+  const [rejectNotes, setRejectNotes] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState(null);
+
+  async function handleApprove() {
+    setSubmitting(true);
+    setError(null);
+    try {
+      await reviewReorderRequest(request.id, { decision: REORDER_REQUEST_STATUS.APPROVED });
+      onReviewed();
+    } catch (err) {
+      setError(err.message);
+      setSubmitting(false);
+    }
+  }
+
+  async function handleReject(e) {
+    e.preventDefault();
+    setSubmitting(true);
+    setError(null);
+    try {
+      await reviewReorderRequest(request.id, { decision: REORDER_REQUEST_STATUS.REJECTED, notes: rejectNotes });
+      onReviewed();
+    } catch (err) {
+      setError(err.message);
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="fo-card">
+      <h3>Reorder Request -- Pending Review</h3>
+      <table className="fo-table">
+        <tbody>
+          <tr>
+            <td>Requested</td>
+            <td>{formatTimestamp(request.createdAt)}</td>
+          </tr>
+          <tr>
+            <td>Recommended qty</td>
+            <td>{request.recommendedQty}</td>
+          </tr>
+          <tr>
+            <td>Risk at request time</td>
+            <td>
+              <span className={`fo-badge fo-badge-${request.urgency.toLowerCase()}`}>{request.urgency}</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      {error && <p className="fo-muted">{error}</p>}
+
+      {!showRejectForm ? (
+        <div className="disp-board-toolbar">
+          <button type="button" onClick={handleApprove} disabled={submitting}>
+            Approve
+          </button>
+          <button type="button" onClick={() => setShowRejectForm(true)} disabled={submitting}>
+            Reject
+          </button>
+        </div>
+      ) : (
+        <form className="fo-form" onSubmit={handleReject}>
+          <label htmlFor="reject-notes">Review notes (required to reject)</label>
+          <textarea
+            id="reject-notes"
+            value={rejectNotes}
+            onChange={(e) => setRejectNotes(e.target.value)}
+            required
+          />
+          <div className="disp-board-toolbar">
+            <button type="submit" disabled={submitting || !rejectNotes.trim()}>
+              Confirm Rejection
+            </button>
+            <button type="button" onClick={() => setShowRejectForm(false)} disabled={submitting}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
+    </div>
+  );
+}
+
+function ReorderRequestDecision({ request }) {
+  return (
+    <div className="fo-card">
+      <h3>Reorder Request</h3>
+      <table className="fo-table">
+        <tbody>
+          <tr>
+            <td>Decision</td>
+            <td>
+              <span className={`fo-badge fo-badge-${request.reviewDecision === REORDER_REQUEST_STATUS.APPROVED ? "low" : "critical"}`}>
+                {request.reviewDecision}
+              </span>
+            </td>
+          </tr>
+          <tr>
+            <td>Reviewed</td>
+            <td>{formatTimestamp(request.reviewedAt)}</td>
+          </tr>
+          {request.reviewNotes && (
+            <tr>
+              <td>Notes</td>
+              <td>{request.reviewNotes}</td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
 export default function PartDetail() {
   const { partId } = useParams();
   const part = getCatalogItem(partId);
   const { transactions, healthEntries, loading } = useInventoryLedger();
+  const { data: reorderRequest, loading: reorderRequestLoading, refresh: refreshReorderRequest } =
+    useReorderRequestForPart(partId);
 
   const health = useMemo(() => healthEntries.find((entry) => entry.partId === partId), [healthEntries, partId]);
 
@@ -47,6 +178,14 @@ export default function PartDetail() {
       <p className="fo-muted">
         {part.sku} -- {part.category} -- {part.unit}
       </p>
+
+      {!reorderRequestLoading && reorderRequest && (
+        reorderRequest.status === REORDER_REQUEST_STATUS.PENDING_REVIEW ? (
+          <ReorderRequestReview request={reorderRequest} onReviewed={refreshReorderRequest} />
+        ) : (
+          <ReorderRequestDecision request={reorderRequest} />
+        )
+      )}
 
       <div className="fo-card">
         <h3>Catalog</h3>

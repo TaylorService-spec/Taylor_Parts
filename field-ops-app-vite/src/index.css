@@ -110,6 +110,11 @@ body { -webkit-font-smoothing: antialiased; font-family: -apple-system, BlinkMac
 .fo-form input { flex: 1; min-width: 160px; padding: 8px 10px; border: 1px solid #D8DEDD; border-radius: 6px; font-size: 14px; }
 .fo-form button { padding: 8px 16px; border: none; border-radius: 6px; background: #2E4A50; color: #fff; cursor: pointer; font-size: 14px; }
 .fo-form button:hover { background: #23383D; }
+/* Sprint 2.1.4 -- Reorder Review & Decision. Reject-notes textarea in
+   PartDetail.jsx's review form -- fo-form previously only styled
+   <input>; a rejection reason needs a multi-line field. */
+.fo-form label { flex-basis: 100%; font-size: 14px; color: #445559; }
+.fo-form textarea { flex-basis: 100%; min-height: 72px; padding: 8px 10px; border: 1px solid #D8DEDD; border-radius: 6px; font-size: 14px; font-family: inherit; }
 
 .fo-table { width: 100%; border-collapse: collapse; }
 .fo-table th, .fo-table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #EEF1F0; font-size: 14px; }
