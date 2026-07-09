@@ -91,15 +91,15 @@ Worth reading before anyone picks this back up — "Sprint 2.0.4" was reframed t
 
 **Current, accurate state**: `functions/src/*.ts` (`createWorkOrder`/`transitionWorkOrder`/`updateWorkOrderExecutionData`) are correct and bug-fixed (PR #49) but still undeployed, by deliberate choice, not blockage. Sprint 2.0.3's UI is complete and shouldn't need rebuilding. `DeploymentModeStrategy.md`, `PlatformOperatingModel.md`, and `IntegrationArchitecture.md` are all now written — the governance documentation roadmap is complete. No named integration (ERP, BI/Snowflake, accounting, CRM, AI) is implemented or scheduled; `IntegrationArchitecture.md` defines the architecture any future one would need to conform to, not a build plan.
 
-## Sprint 2.1.1 complete; Platform Workspace Framework is next, not Sprint 2.1.2
+## Sprint 2.1.1 complete; Epic 9 (Platform Workspace Framework) planning complete, ready to implement; still not Sprint 2.1.2
 
 **Sprint 2.1.1 (Inventory Domain Foundation, PR #58) is complete and live.** Real Inventory > Parts workspace (`modules/inventory/PartsList.jsx`/`PartDetail.jsx`), reading the existing ledger/analytics services exactly (`domain/inventoryAnalyticsEngine.ts`, which now also exports `computeAvailableStockByPart()`, extracted from `Operations.jsx` so both surfaces share one computation). Legacy demo `Inventory.jsx` is untouched and no longer routed to. See [`capabilities/InventoryManagementPlan.md`](capabilities/InventoryManagementPlan.md) for the full plan this implements.
 
 **PR #58's manual validation initially "failed" for an environmental reason, not a code defect** — worth recording so it isn't repeated: the local working directory had been switched to `main` (to branch off cleanly for an unrelated PR) and never switched back before the dev server was restarted, so the reviewer was looking at `main`'s code (missing PR #58's routing change entirely) via a stale server process still bound to the dev port. Fixed by re-checking-out the PR branch and restarting the dev server. Lesson: always confirm `git branch --show-current` matches the intended branch *and* that no stale dev server process survived a branch switch, before diagnosing a "missing feature" as a code bug.
 
-**Real-world usability feedback surfaced during that validation session** is deliberately not being patched into Inventory piecemeal — it's the day-one design input for a new, standalone **Platform Workspace Framework** sprint (sequenced next, before Sprint 2.1.2), per the architecture decision that shared UI duplication should be extracted only once proven across ≥2 real instances (which Sprint 2.1.1 now provides, alongside the already-merged Customers/Work Orders screens).
+**Real-world usability feedback surfaced during that validation session** is deliberately not being patched into Inventory piecemeal — it's the day-one design input for **Epic 9 (Platform Workspace Framework)**, per the architecture decision that shared UI duplication should be extracted only once proven across ≥2 real instances (which Sprint 2.1.1 now provides, alongside the already-merged Customers/Work Orders screens). **Epic 9's planning is now complete (PR #61) — see [`epics/EPIC-9-Platform-Workspace-Framework.md`](epics/EPIC-9-Platform-Workspace-Framework.md) for the full plan (Purpose, Scope, components to extract vs. leave capability-specific, phases with exit criteria, and a "Future Expansion" section naming what's deliberately deferred). Implementation has not yet begun; it is sequenced before Sprint 2.1.2.**
 
-**Formal design requirements for that sprint** (Platform Experience Requirements, user-validated):
+**Formal design requirements for that epic** (Platform Experience Requirements, user-validated):
 - Improve secondary navigation contrast.
 - Strengthen active-state visibility.
 - Improve hover states.
@@ -110,7 +110,7 @@ Worth reading before anyone picks this back up — "Sprint 2.0.4" was reframed t
 
 These map onto the three components the architectural assessment already scoped for extraction: the shared workspace header/toolbar, the shared loading/empty-state pattern, and the shared filter-bar (`fo-nav-btn` toggle group) — the contrast/active-state/hover feedback specifically targets the filter-bar and nav components, not a new component category.
 
-**Preserved backlog — future capability work, explicitly NOT part of the Platform Workspace Framework sprint or Sprint 2.1.2**, so it isn't lost between sessions:
+**Preserved backlog — future capability work, explicitly NOT part of Epic 9 or Sprint 2.1.2**, so it isn't lost between sessions:
 - Platform renaming.
 - Global search/autocomplete improvements.
 - Browser Back-button behavior.
