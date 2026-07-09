@@ -18,9 +18,55 @@ body { -webkit-font-smoothing: antialiased; font-family: -apple-system, BlinkMac
 .fo-nav-btn:hover { background: rgba(255,255,255,0.08); }
 .fo-nav-btn-active { background: #2E4A50; color: #fff; }
 
+/* Epic 9 follow-up -- the second-row secondary domain nav
+   (AppShell.jsx's `<nav className="fo-nav fo-subnav">`) renders
+   OUTSIDE .fo-header, directly against the light page background, but
+   was reusing .fo-nav-btn/.fo-nav-btn-active unmodified -- the exact
+   same "class tuned for the dark header, reused on a light
+   background" issue already fixed for the in-workspace filter bar
+   (fo-filter-btn below), just in a different, platform-wide location.
+   AppShell.jsx is the actual owner of this second row across every
+   domain (Dashboard, Customers, Service, Inventory, Purchasing,
+   Reporting, Administration) -- fixing it here applies everywhere at
+   once. .fo-header's own primary nav (the dark top row) is untouched;
+   this override only applies inside .fo-subnav. Same color language
+   as fo-filter-btn below, so the two secondary-navigation patterns
+   read consistently. */
+.fo-subnav .fo-nav-btn { color: #445559; }
+.fo-subnav .fo-nav-btn:hover { background: #E1E7E6; color: #1B2A2E; }
+.fo-subnav .fo-nav-btn:focus-visible { outline: 2px solid #2E4A50; outline-offset: 2px; }
+.fo-subnav .fo-nav-btn-active { background: #2E4A50; color: #fff; }
+.fo-subnav .fo-nav-btn-active:hover { background: #263D42; }
+
 .fo-main { padding: 24px; max-width: 960px; margin: 0 auto; }
 .fo-panel { background: #fff; border-radius: 10px; padding: 20px 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); overflow-x: auto; }
 .fo-panel h2 { margin-top: 0; }
+
+/* Epic 9 -- Platform Workspace Framework. Shared workspace header/
+   toolbar (WorkspaceHeader.jsx), replacing the identical
+   `disp-board-toolbar` + inline `style={{justifyContent:"space-between"}}`/
+   `style={{margin:0}}` pair duplicated across AccountsList.jsx/
+   WorkOrdersList.jsx/PartsList.jsx. Same layout those inline styles
+   already produced -- now a real class instead of a per-screen override. */
+.fo-workspace-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+.fo-workspace-header-title { margin: 0; }
+
+/* Epic 9 -- Platform Workspace Framework. Shared filter bar
+   (FilterBar.jsx). Deliberately NOT fo-nav-btn/fo-nav-btn-active
+   (above) -- those are tuned for the dark .fo-header nav bar
+   (light-gray text, white-tinted hover, on a dark background).
+   WorkOrdersList.jsx and PartsList.jsx had been reusing that same
+   class on a white .fo-panel background, which is exactly why nav
+   contrast, active-state, and hover visibility were flagged as weak
+   during Sprint 2.1.1's validation: light-gray-on-white and a
+   white-tinted hover overlay are both close to invisible on a light
+   background. These are separate, light-panel-appropriate colors. */
+.fo-filter-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.fo-filter-btn { background: #EEF1F0; border: 1px solid #D8DEDD; color: #445559; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500; }
+.fo-filter-btn:hover { background: #E1E7E6; border-color: #C3CDCC; }
+.fo-filter-btn:focus-visible { outline: 2px solid #2E4A50; outline-offset: 2px; }
+.fo-filter-btn-active { background: #2E4A50; border-color: #2E4A50; color: #fff; }
+.fo-filter-btn-active:hover { background: #263D42; border-color: #263D42; }
 
 /* Sprint 3.6.5: mobile breakpoint. Visual/spacing only -- no layout
    logic changes. The nav bar scrolls horizontally instead of wrapping

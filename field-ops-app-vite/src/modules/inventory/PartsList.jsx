@@ -3,6 +3,9 @@ import { Link } from "react-router-dom";
 import { PARTS_CATALOG } from "../../data/partsCatalog";
 import { useInventoryLedger } from "../../hooks/useInventoryLedger";
 import GlobalSearch from "../../shared/search/GlobalSearch";
+import WorkspaceHeader from "../../shared/ui/WorkspaceHeader";
+import FilterBar from "../../shared/ui/FilterBar";
+import LoadingEmptyState from "../../shared/ui/LoadingEmptyState";
 
 // Sprint 2.1.1 -- Inventory Domain Foundation. The real Inventory >
 // Parts workspace, replacing the legacy demo Inventory.jsx that
@@ -22,6 +25,12 @@ import GlobalSearch from "../../shared/search/GlobalSearch";
 // dedicated, filterable "needs reorder" actionable workflow is
 // Sprint 2.1.2 scope, not this screen -- the category filter here is
 // a plain browse/narrow filter, not that workflow.
+//
+// Epic 9 -- Platform Workspace Framework: header/toolbar, category
+// filter bar, and loading state now come from shared/ui/ instead of a
+// locally-hand-rolled copy. Pagination is NOT part of this epic
+// (still only one instance in the app, per EPIC-9's own "Future
+// Expansion" section) and is unchanged below.
 const PAGE_SIZE = 25;
 
 function useCategories() {
@@ -57,12 +66,16 @@ export default function PartsList() {
     setPage(0);
   }
 
+  const filterOptions = categories.map((cat) => ({
+    key: cat,
+    label: cat === "ALL" ? "All Categories" : cat,
+  }));
+
   return (
     <div className="fo-panel">
-      <div className="disp-board-toolbar" style={{ justifyContent: "space-between" }}>
-        <h2 style={{ margin: 0 }}>Parts</h2>
+      <WorkspaceHeader title="Parts">
         <GlobalSearch providerKeys={["parts"]} context={{ parts: PARTS_CATALOG }} placeholder="Search parts..." />
-      </div>
+      </WorkspaceHeader>
 
       <p className="fo-muted">
         {PARTS_CATALOG.length} parts in catalog. Stock position and reorder status are derived from the inventory
@@ -70,22 +83,9 @@ export default function PartsList() {
         baseline, not live stock, until a part has ledger activity.
       </p>
 
-      <div className="disp-board-toolbar">
-        {categories.map((cat) => (
-          <button
-            key={cat}
-            type="button"
-            className={category === cat ? "fo-nav-btn fo-nav-btn-active" : "fo-nav-btn"}
-            onClick={() => handleCategoryChange(cat)}
-          >
-            {cat === "ALL" ? "All Categories" : cat}
-          </button>
-        ))}
-      </div>
+      <FilterBar options={filterOptions} activeKey={category} onChange={handleCategoryChange} />
 
-      {loading ? (
-        <p className="fo-muted">Loading stock position...</p>
-      ) : (
+      <LoadingEmptyState loading={loading} isEmpty={false} loadingText="Loading stock position..." emptyText="">
         <>
           <table className="fo-table">
             <thead>
@@ -135,7 +135,7 @@ export default function PartsList() {
             </button>
           </div>
         </>
-      )}
+      </LoadingEmptyState>
     </div>
   );
 }

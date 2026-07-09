@@ -2,6 +2,9 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useWorkOrders } from "../../hooks/useWorkOrders";
 import GlobalSearch from "../../shared/search/GlobalSearch";
+import WorkspaceHeader from "../../shared/ui/WorkspaceHeader";
+import FilterBar from "../../shared/ui/FilterBar";
+import LoadingEmptyState from "../../shared/ui/LoadingEmptyState";
 
 // Sprint 2.0.3 -- Work Order Experience. The real Service > Work
 // Orders screen, replacing the placeholder-adjacent legacy Jobs.jsx
@@ -12,6 +15,12 @@ import GlobalSearch from "../../shared/search/GlobalSearch";
 // real <Link> navigations to /service/work-orders/:workOrderId, not a
 // selection-driven inline-preview pane (WorkOrderQueue.jsx stays
 // exactly as it is, serving DispatcherBoard.jsx's different layout).
+//
+// Epic 9 -- Platform Workspace Framework: header/toolbar, status-group
+// filter bar, and loading/empty-state now come from shared/ui/ instead
+// of a locally-hand-rolled copy. No behavior change -- the filter bar
+// previously reused fo-nav-btn (tuned for the dark header nav); it now
+// uses FilterBar's own light-panel-appropriate styling instead.
 const STATUS_GROUPS = [
   { key: "ALL", label: "All", statuses: null },
   { key: "OPEN", label: "Open", statuses: ["CREATED", "READY_TO_DISPATCH", "SCHEDULED"] },
@@ -46,34 +55,29 @@ export default function WorkOrdersList() {
     return workOrders.filter((wo) => group.statuses.includes(wo.status));
   }, [workOrders, statusGroup]);
 
+  const filterOptions = STATUS_GROUPS.map((group) => ({
+    key: group.key,
+    label: group.label,
+    count: groupCounts[group.key] ?? 0,
+  }));
+
   return (
     <div className="fo-panel">
-      <div className="disp-board-toolbar" style={{ justifyContent: "space-between" }}>
-        <h2 style={{ margin: 0 }}>Work Orders</h2>
+      <WorkspaceHeader title="Work Orders">
         <GlobalSearch providerKeys={["workOrders"]} context={{ workOrders }} placeholder="Search work orders..." />
         <Link to="/service/work-orders/new">
           <button type="button">+ New Work Order</button>
         </Link>
-      </div>
+      </WorkspaceHeader>
 
-      <div className="disp-board-toolbar">
-        {STATUS_GROUPS.map((group) => (
-          <button
-            key={group.key}
-            type="button"
-            className={statusGroup === group.key ? "fo-nav-btn fo-nav-btn-active" : "fo-nav-btn"}
-            onClick={() => setStatusGroup(group.key)}
-          >
-            {group.label} ({groupCounts[group.key] ?? 0})
-          </button>
-        ))}
-      </div>
+      <FilterBar options={filterOptions} activeKey={statusGroup} onChange={setStatusGroup} />
 
-      {loading ? (
-        <p className="fo-muted">Loading work orders...</p>
-      ) : filteredWorkOrders.length === 0 ? (
-        <p className="fo-muted">No work orders in this group.</p>
-      ) : (
+      <LoadingEmptyState
+        loading={loading}
+        isEmpty={filteredWorkOrders.length === 0}
+        loadingText="Loading work orders..."
+        emptyText="No work orders in this group."
+      >
         <table className="fo-table">
           <thead>
             <tr>
@@ -100,7 +104,7 @@ export default function WorkOrdersList() {
             ))}
           </tbody>
         </table>
-      )}
+      </LoadingEmptyState>
     </div>
   );
 }
