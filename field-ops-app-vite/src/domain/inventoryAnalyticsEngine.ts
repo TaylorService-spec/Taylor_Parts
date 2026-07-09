@@ -62,6 +62,15 @@ export type InventoryHealthEntry = {
   recommendation: ReplenishmentRecommendation;
 };
 
+// Sprint 2.1.2 -- Inventory Operational Queue. Moved here from
+// modules/operations/panels/InventoryHealthPanel.jsx so this file is
+// the canonical home for inventory-domain presentation constants and
+// derived models, not just raw analytics math -- InventoryHealthPanel
+// (Operations) and PartsList's queue section (Inventory workspace)
+// both import this one constant instead of each defining their own
+// copy. No logic change from the original.
+export const URGENCY_ORDER: Record<RiskLevel, number> = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
+
 function filterTransactionsByPart(transactions: LedgerTransaction[], partId: string): LedgerTransaction[] {
   return transactions.filter((t) => t.partId === partId);
 }
