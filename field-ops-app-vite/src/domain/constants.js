@@ -99,6 +99,24 @@ export const REORDER_REQUEST_OWNER = {
   PARTS_ASSOCIATE: "PARTS_ASSOCIATE",
 };
 
+// Sprint 2.1.9 -- Inventory Actions Foundation. `inventory_actions` is
+// a NEW, separate, append-only audit collection for human-initiated
+// stock adjustments -- deliberately NOT a modification of
+// `inventory_transactions` (Epic 2D/3, ADR-003), which remains
+// Admin-SDK-only and Work-Order-driven (RESERVED/RELEASED/CONSUMED),
+// untouched. This mirrors how `reorder_requests` was added in Sprint
+// 2.1.3 as a new parallel Business Object rather than touching the
+// ledger -- "no second inventory system competing with the ledger"
+// means not reusing or mutating inventory_transactions, not that a
+// new, distinct audit trail can't exist alongside it.
+export const INVENTORY_ACTIONS_COLLECTION = "inventory_actions";
+
+export const INVENTORY_ACTION_TYPE = {
+  RECEIVE_STOCK: "RECEIVE_STOCK",
+  ADJUST_STOCK: "ADJUST_STOCK",
+  CORRECT_MISTAKE: "CORRECT_MISTAKE",
+};
+
 export const ROLES = {
   ADMIN: "admin",
   DISPATCHER: "dispatcher",

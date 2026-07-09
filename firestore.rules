@@ -217,6 +217,25 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Sprint 2.1.9 -- Inventory Actions Foundation. A new, separate,
+    // append-only audit collection for human-initiated inventory
+    // adjustments (Receive Stock/Adjust Stock/Correct Mistake) via
+    // domain/inventoryActions.js's recordInventoryAction() -- NOT a
+    // modification of inventory_transactions (Epic 2D/3, ADR-003)
+    // below, which remains Admin-SDK-only/Work-Order-driven and
+    // completely untouched. Mirrors reorder_requests' client-direct-
+    // write pattern: no Cloud Function, admin/dispatcher only,
+    // create-only -- no update/delete, since correcting a mistake
+    // means recording ANOTHER action, never editing history. No field-
+    // level validation here (same posture as reorder_requests' create
+    // rule) -- validation lives in recordInventoryAction(), the sole
+    // write path.
+    match /inventory_actions/{actionId} {
+      allow read: if isAdminOrDispatcher();
+      allow create: if isAdminOrDispatcher();
+      allow update, delete: if false;
+    }
+
     // Epic 4 Warehouse + Fulfillment System. Same Admin-SDK-only write
     // posture as the ledger above -- a physical-reality layer, not a
     // second source of truth, so no direct client writes here either.
