@@ -16,7 +16,20 @@ import { REORDER_REQUEST_STATUS } from "../domain/constants";
 // `enabled` lets a caller skip the read entirely for a role that has no
 // firestore.rules read access (technician) -- avoids an unnecessary
 // permission-denied console error rather than fetching and discarding.
+//
+// Sprint 2.1.5 -- Inventory -> Parts Manager Handoff. Built on top of
+// useReorderRequestsByStatus() below (one list()-then-filter
+// implementation, not two) -- external signature/behavior unchanged.
 export function useReorderRequests(enabled = true) {
+  return useReorderRequestsByStatus(REORDER_REQUEST_STATUS.PENDING_REVIEW, enabled);
+}
+
+// Sprint 2.1.5 -- Inventory -> Parts Manager Handoff. Same one-shot
+// list()-then-filter pattern as useReorderRequests(), generalized to
+// any single status -- used for the new Parts Manager Queue
+// (READY_FOR_PARTS_MANAGER) and its Notification Panel section,
+// without a second read implementation.
+export function useReorderRequestsByStatus(status, enabled = true) {
   const [state, setState] = useState({ data: [], loading: enabled });
 
   useEffect(() => {
@@ -33,7 +46,7 @@ export function useReorderRequests(enabled = true) {
       .then((all) => {
         if (cancelled) return;
         setState({
-          data: all.filter((r) => r.status === REORDER_REQUEST_STATUS.PENDING_REVIEW),
+          data: all.filter((r) => r.status === status),
           loading: false,
         });
       })
@@ -44,7 +57,7 @@ export function useReorderRequests(enabled = true) {
     return () => {
       cancelled = true;
     };
-  }, [enabled]);
+  }, [status, enabled]);
 
   return state;
 }

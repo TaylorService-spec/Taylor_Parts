@@ -80,6 +80,9 @@ body { -webkit-font-smoothing: antialiased; font-family: -apple-system, BlinkMac
 .fo-notification-panel-dropdown { position: absolute; right: 0; top: calc(100% + 6px); background: #fff; border: 1px solid #D8DEDD; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.12); min-width: 240px; max-width: 320px; padding: 8px; z-index: 20; }
 .fo-notification-panel-item { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px; border-radius: 6px; text-decoration: none; color: #1B2A2E; font-size: 14px; }
 .fo-notification-panel-item:hover { background: #F4F6F5; }
+/* Sprint 2.1.5: section heading for the Notification Panel's two
+   groups (Pending Review, Ready for Parts Manager). */
+.fo-notification-panel-section { margin: 4px 8px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; color: #6B7B7E; }
 
 /* Sprint 3.6.5: mobile breakpoint. Visual/spacing only -- no layout
    logic changes. The nav bar scrolls horizontally instead of wrapping

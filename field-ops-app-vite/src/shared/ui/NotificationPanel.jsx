@@ -8,30 +8,58 @@ import { getCatalogItem } from "../../data/partsCatalog";
 // no new route -- each entry links to the existing /inventory/:partId
 // route). Purely presentational: AppHeader.jsx supplies `requests` via
 // useReorderRequests(), this component only renders them.
-export default function NotificationPanel({ requests }) {
+//
+// Sprint 2.1.5 -- Inventory -> Parts Manager Handoff. Reused, not
+// replaced, for the new READY_FOR_PARTS_MANAGER notifications --
+// `partsManagerRequests` is a second, optional list rendered under its
+// own section heading in the same dropdown, same item template. No new
+// notification component, no new route.
+function NotificationItem({ request, onNavigate }) {
+  return (
+    <Link
+      to={`/inventory/${request.partId}`}
+      className="fo-notification-panel-item"
+      onClick={onNavigate}
+    >
+      <span>{getCatalogItem(request.partId)?.name ?? request.partId}</span>
+      <span className={`fo-badge fo-badge-${request.urgency.toLowerCase()}`}>{request.urgency}</span>
+    </Link>
+  );
+}
+
+export default function NotificationPanel({ requests, partsManagerRequests = [] }) {
   const [open, setOpen] = useState(false);
+  const total = requests.length + partsManagerRequests.length;
+  const close = () => setOpen(false);
 
   return (
     <div className="fo-notification-panel">
       <button type="button" onClick={() => setOpen((v) => !v)} aria-label="Notifications">
-        Notifications{requests.length > 0 ? ` (${requests.length})` : ""}
+        Notifications{total > 0 ? ` (${total})` : ""}
       </button>
       {open && (
         <div className="fo-notification-panel-dropdown">
-          {requests.length === 0 ? (
+          {total === 0 ? (
             <p className="fo-muted">No pending reorder requests.</p>
           ) : (
-            requests.map((request) => (
-              <Link
-                key={request.id}
-                to={`/inventory/${request.partId}`}
-                className="fo-notification-panel-item"
-                onClick={() => setOpen(false)}
-              >
-                <span>{getCatalogItem(request.partId)?.name ?? request.partId}</span>
-                <span className={`fo-badge fo-badge-${request.urgency.toLowerCase()}`}>{request.urgency}</span>
-              </Link>
-            ))
+            <>
+              {requests.length > 0 && (
+                <>
+                  <p className="fo-notification-panel-section">Pending Review</p>
+                  {requests.map((request) => (
+                    <NotificationItem key={request.id} request={request} onNavigate={close} />
+                  ))}
+                </>
+              )}
+              {partsManagerRequests.length > 0 && (
+                <>
+                  <p className="fo-notification-panel-section">Ready for Parts Manager</p>
+                  {partsManagerRequests.map((request) => (
+                    <NotificationItem key={request.id} request={request} onNavigate={close} />
+                  ))}
+                </>
+              )}
+            </>
           )}
         </div>
       )}

@@ -88,31 +88,45 @@ service cloud.firestore {
     // accounts/locations/contacts pattern) -- no Cloud Function.
     //
     // Sprint 2.1.4 -- Reorder Review & Decision. Update is now allowed,
-    // but narrowly: only a PENDING_REVIEW -> APPROVED/REJECTED
-    // transition, and only via domain/inventoryReorderRequests.js's
+    // but narrowly: only via domain/inventoryReorderRequests.js's
     // reviewReorderRequest(). The original request facts (partId,
     // urgency, recommendedQty, requestedBy, createdAt) are immutable --
     // a client cannot rewrite them, and an already-decided request
     // cannot be re-reviewed (resource.data.status must still be
     // PENDING_REVIEW). affectedKeys() further pins the write to exactly
-    // the five review fields reviewReorderRequest() sets, so no other
-    // field can ride along on the same write even if it happened to
-    // match its prior value. This is the only write path for a review
-    // decision; there is no Cloud Function for this sprint either.
+    // the review/ownership fields reviewReorderRequest() sets, so no
+    // other field can ride along on the same write even if it happened
+    // to match its prior value. This is the only write path for a
+    // review decision; there is no Cloud Function for this sprint
+    // either.
+    //
+    // Sprint 2.1.5 -- Inventory -> Parts Manager Handoff. An approval
+    // now advances status to READY_FOR_PARTS_MANAGER (not APPROVED)
+    // and hands currentOwner to PARTS_MANAGER; reviewDecision still
+    // permanently records APPROVED, separately from status. A
+    // rejection is terminal (status == REJECTED, reviewDecision ==
+    // REJECTED) and leaves currentOwner unchanged (still INVENTORY --
+    // there is no further hand-off for a rejected request). No further
+    // transition out of READY_FOR_PARTS_MANAGER is permitted this
+    // sprint -- the Parts Manager Queue is read-only.
     match /reorder_requests/{requestId} {
       allow read: if isAdminOrDispatcher();
       allow create: if isAdminOrDispatcher();
       allow update: if isAdminOrDispatcher()
         && resource.data.status == "PENDING_REVIEW"
-        && (request.resource.data.status == "APPROVED" || request.resource.data.status == "REJECTED")
-        && request.resource.data.reviewDecision == request.resource.data.status
+        && ((request.resource.data.status == "READY_FOR_PARTS_MANAGER"
+              && request.resource.data.reviewDecision == "APPROVED"
+              && request.resource.data.currentOwner == "PARTS_MANAGER")
+            || (request.resource.data.status == "REJECTED"
+              && request.resource.data.reviewDecision == "REJECTED"
+              && request.resource.data.currentOwner == resource.data.currentOwner))
         && request.resource.data.partId == resource.data.partId
         && request.resource.data.urgency == resource.data.urgency
         && request.resource.data.recommendedQty == resource.data.recommendedQty
         && request.resource.data.requestedBy == resource.data.requestedBy
         && request.resource.data.createdAt == resource.data.createdAt
         && request.resource.data.diff(resource.data).affectedKeys()
-             .hasOnly(["status", "reviewDecision", "reviewedBy", "reviewedAt", "reviewNotes"])
+             .hasOnly(["status", "reviewDecision", "reviewedBy", "reviewedAt", "reviewNotes", "currentOwner"])
         && (request.resource.data.status != "REJECTED"
             || (request.resource.data.reviewNotes is string && request.resource.data.reviewNotes.size() > 0));
       allow delete: if false;

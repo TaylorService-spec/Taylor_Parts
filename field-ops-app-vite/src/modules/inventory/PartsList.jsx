@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { PARTS_CATALOG } from "../../data/partsCatalog";
+import { PARTS_CATALOG, getCatalogItem } from "../../data/partsCatalog";
 import { useInventoryLedger } from "../../hooks/useInventoryLedger";
-import { useReorderRequests } from "../../hooks/useReorderRequests";
+import { useReorderRequests, useReorderRequestsByStatus } from "../../hooks/useReorderRequests";
 import { createReorderRequest } from "../../domain/inventoryReorderRequests";
+import { REORDER_REQUEST_STATUS } from "../../domain/constants";
 import GlobalSearch from "../../shared/search/GlobalSearch";
 import WorkspaceHeader from "../../shared/ui/WorkspaceHeader";
 import FilterBar from "../../shared/ui/FilterBar";
@@ -52,6 +53,12 @@ import InventoryHealthPanel from "../operations/panels/InventoryHealthPanel";
 // directly. requestedPartIds merges already-pending requests (read via
 // useReorderRequests()) with parts requested during this session, so a
 // button doesn't stay clickable after creating a duplicate request.
+//
+// Sprint 2.1.5 -- Inventory -> Parts Manager Handoff. Adds a read-only
+// "Parts Manager Queue" section listing READY_FOR_PARTS_MANAGER
+// requests, on this same existing /inventory route -- no new route.
+// Reuses useReorderRequestsByStatus() (hooks/useReorderRequests.js),
+// the same read pattern as the Notification Panel's new section.
 const PAGE_SIZE = 25;
 const ACTIONABLE_URGENCIES = new Set(["CRITICAL", "HIGH"]);
 
@@ -70,6 +77,9 @@ function useCategories() {
 export default function PartsList() {
   const { healthEntries, loading } = useInventoryLedger();
   const { data: pendingRequests } = useReorderRequests();
+  const { data: partsManagerQueue, loading: partsManagerLoading } = useReorderRequestsByStatus(
+    REORDER_REQUEST_STATUS.READY_FOR_PARTS_MANAGER
+  );
   const categories = useCategories();
   const [category, setCategory] = useState("ALL");
   const [page, setPage] = useState(0);
@@ -139,6 +149,46 @@ export default function PartsList() {
           onRequestReorder={handleRequestReorder}
           requestedPartIds={requestedPartIds}
         />
+      </LoadingEmptyState>
+
+      <h3>Parts Manager Queue</h3>
+      <p className="fo-muted">
+        Reorder Requests approved by Inventory review, now handed off to the Parts Manager for fulfillment.
+      </p>
+      <LoadingEmptyState
+        loading={partsManagerLoading}
+        isEmpty={partsManagerQueue.length === 0}
+        loadingText="Loading Parts Manager queue..."
+        emptyText="No requests awaiting the Parts Manager."
+      >
+        <table className="fo-table">
+          <thead>
+            <tr>
+              <th>Part</th>
+              <th>Qty</th>
+              <th>Urgency</th>
+              <th>Approved</th>
+            </tr>
+          </thead>
+          <tbody>
+            {partsManagerQueue.map((request) => (
+              <tr key={request.id}>
+                <td>
+                  <Link to={`/inventory/${request.partId}`}>
+                    {getCatalogItem(request.partId)?.name ?? request.partId}
+                  </Link>
+                </td>
+                <td>{request.recommendedQty}</td>
+                <td>
+                  <span className={`fo-badge fo-badge-${request.urgency.toLowerCase()}`}>{request.urgency}</span>
+                </td>
+                <td className="fo-muted">
+                  {request.reviewedAt ? new Date(request.reviewedAt).toLocaleString() : "—"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </LoadingEmptyState>
 
       <h3>Parts Catalog</h3>
