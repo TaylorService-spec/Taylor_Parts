@@ -87,6 +87,13 @@ import InventoryHealthPanel from "../operations/panels/InventoryHealthPanel";
 // kind (network, rules, anything) shows a clear message instead of
 // silence, and the button now shows "Requesting..." and disables while
 // a request is in flight instead of allowing an immediate second click.
+//
+// Sprint 2.1.8 -- Purchasing Progress Update. The "In Progress" table
+// gains a "Latest Update" column (vendor-contacted status + timestamp
+// of the most recent update, or "No update yet") -- realtime, same as
+// every other field here, updating live once a Parts Associate posts
+// an update on PartDetail.jsx. No new query: still the same
+// useReorderRequestsAssignedTo(userId, PURCHASING_IN_PROGRESS) read.
 const PAGE_SIZE = 25;
 const ACTIONABLE_URGENCIES = new Set(["CRITICAL", "HIGH"]);
 
@@ -295,6 +302,7 @@ export default function PartsList() {
               <th>Qty</th>
               <th>Urgency</th>
               <th>Purchasing started</th>
+              <th>Latest Update</th>
             </tr>
           </thead>
           <tbody>
@@ -311,6 +319,13 @@ export default function PartsList() {
                 </td>
                 <td className="fo-muted">
                   {request.purchasingStartedAt ? new Date(request.purchasingStartedAt).toLocaleString() : "—"}
+                </td>
+                <td className="fo-muted">
+                  {request.lastPurchasingUpdateAt
+                    ? `${request.vendorContacted ? "Vendor contacted" : "No vendor contact yet"} -- ${new Date(
+                        request.lastPurchasingUpdateAt
+                      ).toLocaleString()}`
+                    : "No update yet"}
                 </td>
               </tr>
             ))}

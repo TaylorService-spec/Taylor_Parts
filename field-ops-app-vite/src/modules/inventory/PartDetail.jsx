@@ -3,7 +3,12 @@ import { Link, useParams } from "react-router-dom";
 import { getCatalogItem } from "../../data/partsCatalog";
 import { useInventoryLedger } from "../../hooks/useInventoryLedger";
 import { useReorderRequestForPart } from "../../hooks/useReorderRequests";
-import { reviewReorderRequest, assignReorderRequest, startPurchasing } from "../../domain/inventoryReorderRequests";
+import {
+  reviewReorderRequest,
+  assignReorderRequest,
+  startPurchasing,
+  updatePurchasingProgress,
+} from "../../domain/inventoryReorderRequests";
 import { REORDER_REQUEST_STATUS } from "../../domain/constants";
 import { useAuth } from "../../auth/AuthContext";
 
@@ -43,10 +48,22 @@ import { useAuth } from "../../auth/AuthContext";
 // ReorderRequestStartPurchasing card, restricted to the assigned
 // person only (everyone else sees a passive waiting message --
 // firestore.rules is what actually enforces this isn't bypassable).
-// ReorderRequestDecision (still the catch-all for REJECTED or
-// PURCHASING_IN_PROGRESS) gains purchasingStartedBy/purchasingStartedAt
-// rows. Writes go exclusively through
-// domain/inventoryReorderRequests.js's startPurchasing().
+// Writes go exclusively through domain/inventoryReorderRequests.js's
+// startPurchasing().
+//
+// Sprint 2.1.8 -- Purchasing Progress Update. Status branch is now
+// five-way: adds PURCHASING_IN_PROGRESS -> new
+// ReorderRequestPurchasingUpdate card (below), also assignee-only for
+// the actual submit action, showing the latest update to everyone.
+// ReorderRequestDecision is now only reached by REJECTED (the one
+// remaining status that isn't its own branch) -- its
+// purchasingStartedBy/purchasingStartedAt rows never actually render
+// there in practice (a rejected request never reaches
+// PURCHASING_IN_PROGRESS) but are left as harmless dead conditionals
+// rather than removed, to minimize diff. Writes go exclusively through
+// domain/inventoryReorderRequests.js's updatePurchasingProgress(),
+// which does NOT transition status -- a request can receive any
+// number of updates while PURCHASING_IN_PROGRESS.
 function formatTimestamp(ms) {
   if (!ms) return "—";
   return new Date(ms).toLocaleString();
@@ -273,6 +290,122 @@ function ReorderRequestStartPurchasing({ request, onStarted }) {
   );
 }
 
+// Sprint 2.1.8 -- Purchasing Progress Update. Shown when a request is
+// PURCHASING_IN_PROGRESS -- only the assigned person can actually post
+// an update (firestore.rules enforces request.auth.uid ==
+// assignedToUserId, same restriction as ReorderRequestStartPurchasing
+// above), so anyone else viewing this screen sees the latest update
+// (if any) with no form. Does not transition status -- a request can
+// receive any number of updates while purchasing is in progress. Form
+// fields are pre-filled from the request's current values so a second
+// update doesn't require re-entering everything. Writes go exclusively
+// through domain/inventoryReorderRequests.js's
+// updatePurchasingProgress().
+function ReorderRequestPurchasingUpdate({ request, onUpdated }) {
+  const { user } = useAuth();
+  const isAssignee = user?.uid === request.assignedToUserId;
+  const [purchasingNotes, setPurchasingNotes] = useState(request.purchasingNotes ?? "");
+  const [vendorContacted, setVendorContacted] = useState(!!request.vendorContacted);
+  const [expectedAvailabilityDate, setExpectedAvailabilityDate] = useState(request.expectedAvailabilityDate ?? "");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState(null);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setSubmitting(true);
+    setError(null);
+    try {
+      await updatePurchasingProgress(request.id, { purchasingNotes, vendorContacted, expectedAvailabilityDate });
+      onUpdated();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="fo-card">
+      <h3>Reorder Request -- Purchasing In Progress</h3>
+      <table className="fo-table">
+        <tbody>
+          <tr>
+            <td>Assigned to</td>
+            <td>{request.assignedToUserId}</td>
+          </tr>
+          <tr>
+            <td>Purchasing started</td>
+            <td>{formatTimestamp(request.purchasingStartedAt)}</td>
+          </tr>
+          {request.lastPurchasingUpdateAt && (
+            <>
+              <tr>
+                <td>Last update</td>
+                <td>{formatTimestamp(request.lastPurchasingUpdateAt)}</td>
+              </tr>
+              <tr>
+                <td>Updated by</td>
+                <td>{request.lastPurchasingUpdateBy}</td>
+              </tr>
+              <tr>
+                <td>Vendor contacted</td>
+                <td>{request.vendorContacted ? "Yes" : "No"}</td>
+              </tr>
+              {request.expectedAvailabilityDate && (
+                <tr>
+                  <td>Expected availability</td>
+                  <td>{request.expectedAvailabilityDate}</td>
+                </tr>
+              )}
+              {request.purchasingNotes && (
+                <tr>
+                  <td>Notes</td>
+                  <td>{request.purchasingNotes}</td>
+                </tr>
+              )}
+            </>
+          )}
+        </tbody>
+      </table>
+
+      {error && <p className="fo-muted">{error}</p>}
+
+      {isAssignee ? (
+        <form className="fo-form" onSubmit={handleSubmit}>
+          <label htmlFor="purchasing-notes">Notes</label>
+          <textarea
+            id="purchasing-notes"
+            value={purchasingNotes}
+            onChange={(e) => setPurchasingNotes(e.target.value)}
+          />
+          <label>
+            <input
+              type="checkbox"
+              checked={vendorContacted}
+              onChange={(e) => setVendorContacted(e.target.checked)}
+            />
+            {" "}Vendor contacted
+          </label>
+          <label htmlFor="expected-availability-date">Expected availability date</label>
+          <input
+            id="expected-availability-date"
+            type="date"
+            value={expectedAvailabilityDate}
+            onChange={(e) => setExpectedAvailabilityDate(e.target.value)}
+          />
+          <div className="disp-board-toolbar">
+            <button type="submit" disabled={submitting}>
+              Post Update
+            </button>
+          </div>
+        </form>
+      ) : (
+        <p className="fo-muted">Waiting for the assigned Parts Associate to post a purchasing update.</p>
+      )}
+    </div>
+  );
+}
+
 function ReorderRequestDecision({ request }) {
   return (
     <div className="fo-card">
@@ -375,6 +508,8 @@ export default function PartDetail() {
           <ReorderRequestAssignment request={reorderRequest} onAssigned={refreshReorderRequest} />
         ) : reorderRequest.status === REORDER_REQUEST_STATUS.ASSIGNED_TO_PARTS_ASSOCIATE ? (
           <ReorderRequestStartPurchasing request={reorderRequest} onStarted={refreshReorderRequest} />
+        ) : reorderRequest.status === REORDER_REQUEST_STATUS.PURCHASING_IN_PROGRESS ? (
+          <ReorderRequestPurchasingUpdate request={reorderRequest} onUpdated={refreshReorderRequest} />
         ) : (
           <ReorderRequestDecision request={reorderRequest} />
         )

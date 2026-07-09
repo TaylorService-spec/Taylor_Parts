@@ -134,8 +134,21 @@ service cloud.firestore {
     // can start purchasing on their own request, not any other
     // admin/dispatcher. currentOwner, all three assignment fields, and
     // all four review fields are pinned unchanged -- this transition
-    // never rewrites prior workflow history. No further transition out
-    // of PURCHASING_IN_PROGRESS is permitted this sprint.
+    // never rewrites prior workflow history.
+    //
+    // Sprint 2.1.8 -- Purchasing Progress Update. A fourth update path
+    // allows PURCHASING_IN_PROGRESS -> PURCHASING_IN_PROGRESS (status
+    // unchanged -- this is the first branch here that is NOT a
+    // transition, via domain/inventoryReorderRequests.js's
+    // updatePurchasingProgress()), so the assigned Parts Associate can
+    // post any number of progress updates while purchasing is
+    // underway. Same per-user restriction as Sprint 2.1.7's branch:
+    // request.auth.uid must equal the request's OWN assignedToUserId.
+    // currentOwner, all three assignment fields, both purchasing-start
+    // fields, and all four review fields are pinned unchanged --
+    // deliberately does not create a Purchase Order or Vendor
+    // Management record, just informal progress fields on the
+    // existing Reorder Request.
     match /reorder_requests/{requestId} {
       allow read: if isAdminOrDispatcher();
       allow create: if isAdminOrDispatcher();
@@ -178,7 +191,24 @@ service cloud.firestore {
               && request.resource.data.reviewedAt == resource.data.reviewedAt
               && request.resource.data.reviewNotes == resource.data.reviewNotes
               && request.resource.data.diff(resource.data).affectedKeys()
-                   .hasOnly(["status", "purchasingStartedAt", "purchasingStartedBy"])))
+                   .hasOnly(["status", "purchasingStartedAt", "purchasingStartedBy"]))
+            || (resource.data.status == "PURCHASING_IN_PROGRESS"
+              && request.resource.data.status == "PURCHASING_IN_PROGRESS"
+              && request.auth.uid == resource.data.assignedToUserId
+              && request.resource.data.lastPurchasingUpdateBy == request.auth.uid
+              && request.resource.data.lastPurchasingUpdateAt is number
+              && request.resource.data.currentOwner == resource.data.currentOwner
+              && request.resource.data.assignedToUserId == resource.data.assignedToUserId
+              && request.resource.data.assignedBy == resource.data.assignedBy
+              && request.resource.data.assignedAt == resource.data.assignedAt
+              && request.resource.data.purchasingStartedAt == resource.data.purchasingStartedAt
+              && request.resource.data.purchasingStartedBy == resource.data.purchasingStartedBy
+              && request.resource.data.reviewDecision == resource.data.reviewDecision
+              && request.resource.data.reviewedBy == resource.data.reviewedBy
+              && request.resource.data.reviewedAt == resource.data.reviewedAt
+              && request.resource.data.reviewNotes == resource.data.reviewNotes
+              && request.resource.data.diff(resource.data).affectedKeys()
+                   .hasOnly(["purchasingNotes", "vendorContacted", "expectedAvailabilityDate", "lastPurchasingUpdateAt", "lastPurchasingUpdateBy"])))
         && request.resource.data.partId == resource.data.partId
         && request.resource.data.urgency == resource.data.urgency
         && request.resource.data.recommendedQty == resource.data.recommendedQty
