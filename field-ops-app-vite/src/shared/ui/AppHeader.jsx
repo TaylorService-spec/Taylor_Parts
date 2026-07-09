@@ -21,6 +21,11 @@ import NotificationPanel from "./NotificationPanel";
 // third, per-user notification: ASSIGNED_TO_PARTS_ASSOCIATE requests
 // assigned to the signed-in user specifically (not everyone with
 // admin/dispatcher access), via useReorderRequestsAssignedTo(user.uid).
+//
+// Sprint 2.1.7 -- Purchase Execution Foundation. Adds a fourth,
+// broadcast notification (like "Ready for Parts Manager", not
+// per-user like "Assigned to You"): PURCHASING_IN_PROGRESS requests,
+// notifying the Parts Manager that purchasing has begun.
 export default function AppHeader() {
   const { user, role, logout } = useAuth();
   const canSeeReorderRequests = role === "admin" || role === "dispatcher";
@@ -29,7 +34,15 @@ export default function AppHeader() {
     REORDER_REQUEST_STATUS.READY_FOR_PARTS_MANAGER,
     canSeeReorderRequests
   );
-  const { data: assignedToYouRequests } = useReorderRequestsAssignedTo(user?.uid, canSeeReorderRequests);
+  const { data: assignedToYouRequests } = useReorderRequestsAssignedTo(
+    user?.uid,
+    REORDER_REQUEST_STATUS.ASSIGNED_TO_PARTS_ASSOCIATE,
+    canSeeReorderRequests
+  );
+  const { data: purchasingStartedRequests } = useReorderRequestsByStatus(
+    REORDER_REQUEST_STATUS.PURCHASING_IN_PROGRESS,
+    canSeeReorderRequests
+  );
 
   return (
     <div className="fo-appheader" style={styles.header}>
@@ -55,6 +68,7 @@ export default function AppHeader() {
             requests={pendingReorderRequests}
             partsManagerRequests={partsManagerRequests}
             assignedToYouRequests={assignedToYouRequests}
+            purchasingStartedRequests={purchasingStartedRequests}
           />
         )}
         <span className="fo-appheader-email">{user?.email}</span>

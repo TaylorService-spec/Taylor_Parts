@@ -71,7 +71,13 @@ export function useReorderRequestsByStatus(status, enabled = true) {
 // role-level (admin/dispatcher, unchanged) -- this filter is client-
 // side/UI-level, same as every other queue in this app, not an access-
 // control boundary.
-export function useReorderRequestsAssignedTo(userId, enabled = true) {
+//
+// Sprint 2.1.7 -- Purchase Execution Foundation. `status` is now an
+// explicit parameter (was hardcoded to ASSIGNED_TO_PARTS_ASSOCIATE) so
+// this same hook serves both the Parts Associate Queue's "Waiting"
+// (ASSIGNED_TO_PARTS_ASSOCIATE) and "In Progress"
+// (PURCHASING_IN_PROGRESS) sections, still filtered to one person.
+export function useReorderRequestsAssignedTo(userId, status, enabled = true) {
   const [state, setState] = useState({ data: [], loading: enabled });
 
   useEffect(() => {
@@ -88,9 +94,7 @@ export function useReorderRequestsAssignedTo(userId, enabled = true) {
       .then((all) => {
         if (cancelled) return;
         setState({
-          data: all.filter(
-            (r) => r.status === REORDER_REQUEST_STATUS.ASSIGNED_TO_PARTS_ASSOCIATE && r.assignedToUserId === userId
-          ),
+          data: all.filter((r) => r.status === status && r.assignedToUserId === userId),
           loading: false,
         });
       })
@@ -101,7 +105,7 @@ export function useReorderRequestsAssignedTo(userId, enabled = true) {
     return () => {
       cancelled = true;
     };
-  }, [userId, enabled]);
+  }, [userId, status, enabled]);
 
   return state;
 }

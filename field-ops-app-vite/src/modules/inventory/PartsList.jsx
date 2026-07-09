@@ -68,6 +68,13 @@ import InventoryHealthPanel from "../operations/panels/InventoryHealthPanel";
 // automatically leaves the Parts Manager Queue above once its status
 // moves to ASSIGNED_TO_PARTS_ASSOCIATE, no extra removal logic needed.
 // Assignment itself happens on PartDetail.jsx, not here.
+//
+// Sprint 2.1.7 -- Purchase Execution Foundation. Splits the Parts
+// Associate Queue into "Waiting" (ASSIGNED_TO_PARTS_ASSOCIATE) and "In
+// Progress" (PURCHASING_IN_PROGRESS), two calls to the now-generalized
+// useReorderRequestsAssignedTo(userId, status) -- a request moves
+// itself between the two sections once "Start Purchasing" (on
+// PartDetail.jsx) is used, no extra removal logic needed here either.
 const PAGE_SIZE = 25;
 const ACTIONABLE_URGENCIES = new Set(["CRITICAL", "HIGH"]);
 
@@ -90,7 +97,14 @@ export default function PartsList() {
   const { data: partsManagerQueue, loading: partsManagerLoading } = useReorderRequestsByStatus(
     REORDER_REQUEST_STATUS.READY_FOR_PARTS_MANAGER
   );
-  const { data: partsAssociateQueue, loading: partsAssociateLoading } = useReorderRequestsAssignedTo(user?.uid);
+  const { data: partsAssociateWaiting, loading: partsAssociateWaitingLoading } = useReorderRequestsAssignedTo(
+    user?.uid,
+    REORDER_REQUEST_STATUS.ASSIGNED_TO_PARTS_ASSOCIATE
+  );
+  const { data: partsAssociateInProgress, loading: partsAssociateInProgressLoading } = useReorderRequestsAssignedTo(
+    user?.uid,
+    REORDER_REQUEST_STATUS.PURCHASING_IN_PROGRESS
+  );
   const categories = useCategories();
   const [category, setCategory] = useState("ALL");
   const [page, setPage] = useState(0);
@@ -203,12 +217,14 @@ export default function PartsList() {
       </LoadingEmptyState>
 
       <h3>Parts Associate Queue</h3>
-      <p className="fo-muted">Reorder Requests the Parts Manager has assigned to you.</p>
+      <p className="fo-muted">Reorder Requests assigned to you, split by whether you've started purchasing.</p>
+
+      <h4>Waiting</h4>
       <LoadingEmptyState
-        loading={partsAssociateLoading}
-        isEmpty={partsAssociateQueue.length === 0}
+        loading={partsAssociateWaitingLoading}
+        isEmpty={partsAssociateWaiting.length === 0}
         loadingText="Loading Parts Associate queue..."
-        emptyText="No requests currently assigned to you."
+        emptyText="No requests currently waiting on you."
       >
         <table className="fo-table">
           <thead>
@@ -220,7 +236,7 @@ export default function PartsList() {
             </tr>
           </thead>
           <tbody>
-            {partsAssociateQueue.map((request) => (
+            {partsAssociateWaiting.map((request) => (
               <tr key={request.id}>
                 <td>
                   <Link to={`/inventory/${request.partId}`}>
@@ -233,6 +249,43 @@ export default function PartsList() {
                 </td>
                 <td className="fo-muted">
                   {request.assignedAt ? new Date(request.assignedAt).toLocaleString() : "—"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </LoadingEmptyState>
+
+      <h4>In Progress</h4>
+      <LoadingEmptyState
+        loading={partsAssociateInProgressLoading}
+        isEmpty={partsAssociateInProgress.length === 0}
+        loadingText="Loading Parts Associate queue..."
+        emptyText="No purchasing currently in progress."
+      >
+        <table className="fo-table">
+          <thead>
+            <tr>
+              <th>Part</th>
+              <th>Qty</th>
+              <th>Urgency</th>
+              <th>Purchasing started</th>
+            </tr>
+          </thead>
+          <tbody>
+            {partsAssociateInProgress.map((request) => (
+              <tr key={request.id}>
+                <td>
+                  <Link to={`/inventory/${request.partId}`}>
+                    {getCatalogItem(request.partId)?.name ?? request.partId}
+                  </Link>
+                </td>
+                <td>{request.recommendedQty}</td>
+                <td>
+                  <span className={`fo-badge fo-badge-${request.urgency.toLowerCase()}`}>{request.urgency}</span>
+                </td>
+                <td className="fo-muted">
+                  {request.purchasingStartedAt ? new Date(request.purchasingStartedAt).toLocaleString() : "—"}
                 </td>
               </tr>
             ))}

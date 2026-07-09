@@ -63,6 +63,14 @@ export const ACCOUNT_STATUS = {
 // individual (per-user) workflow ownership, via
 // `assignedToUserId`/`assignedBy`/`assignedAt` (see
 // inventoryReorderRequests.js).
+//
+// Sprint 2.1.7 -- Purchase Execution Foundation. The assigned Parts
+// Associate (and only them -- enforced in firestore.rules, not just
+// application code) can advance ASSIGNED_TO_PARTS_ASSOCIATE to
+// PURCHASING_IN_PROGRESS via `startPurchasing()`. `currentOwner` and
+// the assignment fields are unchanged by this transition -- it's the
+// same person's work moving from waiting to in-progress, not a
+// hand-off.
 export const REORDER_REQUESTS_COLLECTION = "reorder_requests";
 
 export const REORDER_REQUEST_STATUS = {
@@ -71,6 +79,7 @@ export const REORDER_REQUEST_STATUS = {
   REJECTED: "REJECTED",
   READY_FOR_PARTS_MANAGER: "READY_FOR_PARTS_MANAGER",
   ASSIGNED_TO_PARTS_ASSOCIATE: "ASSIGNED_TO_PARTS_ASSOCIATE",
+  PURCHASING_IN_PROGRESS: "PURCHASING_IN_PROGRESS",
 };
 
 // Sprint 2.1.5 -- Inventory -> Parts Manager Handoff. `currentOwner` is
