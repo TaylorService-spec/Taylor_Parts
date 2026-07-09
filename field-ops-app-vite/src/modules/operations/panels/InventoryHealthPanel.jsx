@@ -21,7 +21,18 @@ import { URGENCY_ORDER } from "../../../domain/inventoryAnalyticsEngine";
 // is a read-only executive/monitoring layer (CLAUDE_CONTEXT.md Rule 8)
 // and must never grow an "act on this" affordance. Only PartsList.jsx
 // (Inventory workspace) opts in, by passing both props.
-export default function InventoryHealthPanel({ healthEntries, title = "Inventory Health", onRequestReorder, requestedPartIds }) {
+//
+// Bug fix (post-2.1.7) -- `submittingPartId` (also optional, undefined
+// by default) disables the button and shows "Requesting..." for the
+// one row currently in flight, so a slow or failed request can't be
+// double-clicked into a duplicate create.
+export default function InventoryHealthPanel({
+  healthEntries,
+  title = "Inventory Health",
+  onRequestReorder,
+  requestedPartIds,
+  submittingPartId,
+}) {
   const sorted = [...healthEntries].sort(
     (a, b) => URGENCY_ORDER[a.recommendation.urgency] - URGENCY_ORDER[b.recommendation.urgency]
   );
@@ -62,8 +73,12 @@ export default function InventoryHealthPanel({ healthEntries, title = "Inventory
                     {requestedPartIds?.has(partId) ? (
                       <span className="fo-muted">Requested</span>
                     ) : (
-                      <button type="button" onClick={() => onRequestReorder(partId, recommendation)}>
-                        Request Reorder
+                      <button
+                        type="button"
+                        onClick={() => onRequestReorder(partId, recommendation)}
+                        disabled={submittingPartId === partId}
+                      >
+                        {submittingPartId === partId ? "Requesting..." : "Request Reorder"}
                       </button>
                     )}
                   </td>
