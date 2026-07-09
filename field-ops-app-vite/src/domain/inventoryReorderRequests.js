@@ -17,10 +17,12 @@ import { auth } from "../firebase/firebase";
 // A Reorder Request is: { id, partId, urgency, recommendedQty, status,
 // currentOwner, requestedBy, createdAt, reviewedBy, reviewedAt,
 // reviewDecision, reviewNotes, assignedToUserId, assignedBy,
-// assignedAt, purchasingStartedAt, purchasingStartedBy }. `createdAt`
-// (stamped automatically by makeCollectionStore.add()) IS this
-// record's "Reorder Requested" Platform Event timestamp -- an
-// immutable fact of when the request was made, never rewritten.
+// assignedAt, purchasingStartedAt, purchasingStartedBy, purchasingNotes,
+// vendorContacted, expectedAvailabilityDate, lastPurchasingUpdateAt,
+// lastPurchasingUpdateBy }. `createdAt` (stamped automatically by
+// makeCollectionStore.add()) IS this record's "Reorder Requested"
+// Platform Event timestamp -- an immutable fact of when the request
+// was made, never rewritten.
 export const reorderRequestsStore = makeCollectionStore(REORDER_REQUESTS_COLLECTION);
 
 export function createReorderRequest({ partId, urgency, recommendedQty }) {
@@ -40,6 +42,11 @@ export function createReorderRequest({ partId, urgency, recommendedQty }) {
     assignedAt: null,
     purchasingStartedAt: null,
     purchasingStartedBy: null,
+    purchasingNotes: null,
+    vendorContacted: null,
+    expectedAvailabilityDate: null,
+    lastPurchasingUpdateAt: null,
+    lastPurchasingUpdateBy: null,
   });
 }
 
@@ -117,5 +124,27 @@ export function startPurchasing(requestId) {
     status: REORDER_REQUEST_STATUS.PURCHASING_IN_PROGRESS,
     purchasingStartedAt: Date.now(),
     purchasingStartedBy: auth.currentUser?.uid ?? null,
+  });
+}
+
+// Sprint 2.1.8 -- Purchasing Progress Update. The only writer of a
+// purchasing progress update. Unlike startPurchasing(), this does NOT
+// transition status -- a request stays PURCHASING_IN_PROGRESS across
+// any number of updates, the same way reviewReorderRequest()/
+// assignReorderRequest() each fire once but this can repeat. Same
+// per-user restriction as startPurchasing(): only the assigned Parts
+// Associate can call this successfully, enforced in firestore.rules
+// (request.auth.uid == the request's own assignedToUserId), not just
+// application code. Deliberately does not create a Purchase Order or
+// any Vendor Management record -- purchasingNotes/vendorContacted/
+// expectedAvailabilityDate are informal progress fields on the
+// existing Reorder Request, not a new object.
+export function updatePurchasingProgress(requestId, { purchasingNotes, vendorContacted, expectedAvailabilityDate }) {
+  return reorderRequestsStore.update(requestId, {
+    purchasingNotes: purchasingNotes?.trim() || null,
+    vendorContacted: !!vendorContacted,
+    expectedAvailabilityDate: expectedAvailabilityDate || null,
+    lastPurchasingUpdateAt: Date.now(),
+    lastPurchasingUpdateBy: auth.currentUser?.uid ?? null,
   });
 }
