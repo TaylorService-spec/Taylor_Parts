@@ -6,6 +6,7 @@ import GlobalSearch from "../../shared/search/GlobalSearch";
 import WorkspaceHeader from "../../shared/ui/WorkspaceHeader";
 import FilterBar from "../../shared/ui/FilterBar";
 import LoadingEmptyState from "../../shared/ui/LoadingEmptyState";
+import InventoryHealthPanel from "../operations/panels/InventoryHealthPanel";
 
 // Sprint 2.1.1 -- Inventory Domain Foundation. The real Inventory >
 // Parts workspace, replacing the legacy demo Inventory.jsx that
@@ -17,21 +18,35 @@ import LoadingEmptyState from "../../shared/ui/LoadingEmptyState";
 // to from here -- same "deprecated, not deleted" treatment as
 // domain/workOrderLifecycle.js.
 //
-// Read-only, Phase 1 scope only: every value below comes from
-// PARTS_CATALOG (static reference data, not Firestore) or
-// useInventoryLedger() (the same one-shot inventory_transactions read
-// + pure analytics functions Operations.jsx's Inventory Health panel
-// already uses). No new Firestore query, no new computed math. The
-// dedicated, filterable "needs reorder" actionable workflow is
-// Sprint 2.1.2 scope, not this screen -- the category filter here is
-// a plain browse/narrow filter, not that workflow.
+// Read-only: every value below comes from PARTS_CATALOG (static
+// reference data, not Firestore) or useInventoryLedger() (the same
+// one-shot inventory_transactions read + pure analytics functions
+// Operations.jsx's Inventory Health panel already uses). No new
+// Firestore query, no new computed math.
 //
 // Epic 9 -- Platform Workspace Framework: header/toolbar, category
-// filter bar, and loading state now come from shared/ui/ instead of a
-// locally-hand-rolled copy. Pagination is NOT part of this epic
+// filter bar, and loading state come from shared/ui/ instead of a
+// locally-hand-rolled copy. Pagination is NOT part of that epic
 // (still only one instance in the app, per EPIC-9's own "Future
 // Expansion" section) and is unchanged below.
+//
+// Sprint 2.1.2 -- Inventory Operational Queue. Adds an "Inventory
+// Operational Queue" section, presenting healthEntries as an
+// actionable, urgency-ranked queue -- "Needs Reorder" is the first
+// queue in that framework, not the section's permanent name. Reuses
+// InventoryHealthPanel.jsx (Operations' own renderer) directly rather
+// than a second table, so the Inventory workspace and the Operations
+// dashboard are guaranteed to show identical urgency/recommendation
+// results for the same inventory state -- same component, same data
+// pipeline, not just the same formula. No independent calculation of
+// any kind is introduced here.
 const PAGE_SIZE = 25;
+const ACTIONABLE_URGENCIES = new Set(["CRITICAL", "HIGH"]);
+
+const QUEUE_FILTER_OPTIONS = [
+  { key: "ACTIONABLE", label: "Critical & High" },
+  { key: "ALL", label: "Show All" },
+];
 
 function useCategories() {
   return useMemo(() => {
@@ -45,6 +60,12 @@ export default function PartsList() {
   const categories = useCategories();
   const [category, setCategory] = useState("ALL");
   const [page, setPage] = useState(0);
+  const [queueFilter, setQueueFilter] = useState("ACTIONABLE");
+
+  const queueEntries = useMemo(() => {
+    if (queueFilter === "ALL") return healthEntries;
+    return healthEntries.filter((entry) => ACTIONABLE_URGENCIES.has(entry.recommendation.urgency));
+  }, [healthEntries, queueFilter]);
 
   const healthByPartId = useMemo(() => {
     const map = new Map();
@@ -77,6 +98,16 @@ export default function PartsList() {
         <GlobalSearch providerKeys={["parts"]} context={{ parts: PARTS_CATALOG }} placeholder="Search parts..." />
       </WorkspaceHeader>
 
+      <h3>Inventory Operational Queue</h3>
+      <p className="fo-muted">
+        Parts ranked by urgency, from the same analytics used by the Operations dashboard's Inventory Health panel.
+      </p>
+      <FilterBar options={QUEUE_FILTER_OPTIONS} activeKey={queueFilter} onChange={setQueueFilter} />
+      <LoadingEmptyState loading={loading} isEmpty={false} loadingText="Loading operational queue..." emptyText="">
+        <InventoryHealthPanel healthEntries={queueEntries} title="Needs Reorder" />
+      </LoadingEmptyState>
+
+      <h3>Parts Catalog</h3>
       <p className="fo-muted">
         {PARTS_CATALOG.length} parts in catalog. Stock position and reorder status are derived from the inventory
         ledger (same source as the Operations dashboard's Inventory Health panel) -- catalog data is a static
