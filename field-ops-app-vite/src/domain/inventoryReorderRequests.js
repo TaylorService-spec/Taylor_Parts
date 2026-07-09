@@ -16,7 +16,8 @@ import { auth } from "../firebase/firebase";
 //
 // A Reorder Request is: { id, partId, urgency, recommendedQty, status,
 // currentOwner, requestedBy, createdAt, reviewedBy, reviewedAt,
-// reviewDecision, reviewNotes }. `createdAt` (stamped automatically by
+// reviewDecision, reviewNotes, assignedToUserId, assignedBy,
+// assignedAt }. `createdAt` (stamped automatically by
 // makeCollectionStore.add()) IS this record's "Reorder Requested"
 // Platform Event timestamp -- an immutable fact of when the request
 // was made, never rewritten.
@@ -34,6 +35,9 @@ export function createReorderRequest({ partId, urgency, recommendedQty }) {
     reviewedAt: null,
     reviewDecision: null,
     reviewNotes: null,
+    assignedToUserId: null,
+    assignedBy: null,
+    assignedAt: null,
   });
 }
 
@@ -71,5 +75,28 @@ export function reviewReorderRequest(requestId, { decision, notes }) {
     reviewedAt: Date.now(),
     reviewNotes: trimmedNotes || null,
     currentOwner: isApproved ? REORDER_REQUEST_OWNER.PARTS_MANAGER : REORDER_REQUEST_OWNER.INVENTORY,
+  });
+}
+
+// Sprint 2.1.6 -- Parts Manager -> Parts Associate Assignment. The only
+// writer of an assignment. `assignedToUserId` is a manually-entered
+// Firebase Auth uid -- there is no client-side way to list users
+// (firestore.rules' users/{userId} read is self-only), so this mirrors
+// PT-001's assignTechnicianToUser.js: an admin/dispatcher-known uid,
+// not a picker. This is the platform's first per-user workflow
+// ownership field -- `currentOwner` stays role-level (PARTS_ASSOCIATE),
+// while `assignedToUserId` carries the individual identity.
+export function assignReorderRequest(requestId, { assignedToUserId }) {
+  const trimmedUserId = assignedToUserId?.trim() || "";
+  if (!trimmedUserId) {
+    throw new Error("A Parts Associate user ID is required to assign this Reorder Request.");
+  }
+
+  return reorderRequestsStore.update(requestId, {
+    status: REORDER_REQUEST_STATUS.ASSIGNED_TO_PARTS_ASSOCIATE,
+    currentOwner: REORDER_REQUEST_OWNER.PARTS_ASSOCIATE,
+    assignedToUserId: trimmedUserId,
+    assignedBy: auth.currentUser?.uid ?? null,
+    assignedAt: Date.now(),
   });
 }
