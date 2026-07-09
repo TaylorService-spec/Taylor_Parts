@@ -94,7 +94,10 @@ service cloud.firestore {
     // urgency, recommendedQty, requestedBy, createdAt) are immutable --
     // a client cannot rewrite them, and an already-decided request
     // cannot be re-reviewed (resource.data.status must still be
-    // PENDING_REVIEW). This is the only write path for a review
+    // PENDING_REVIEW). affectedKeys() further pins the write to exactly
+    // the five review fields reviewReorderRequest() sets, so no other
+    // field can ride along on the same write even if it happened to
+    // match its prior value. This is the only write path for a review
     // decision; there is no Cloud Function for this sprint either.
     match /reorder_requests/{requestId} {
       allow read: if isAdminOrDispatcher();
@@ -102,11 +105,16 @@ service cloud.firestore {
       allow update: if isAdminOrDispatcher()
         && resource.data.status == "PENDING_REVIEW"
         && (request.resource.data.status == "APPROVED" || request.resource.data.status == "REJECTED")
+        && request.resource.data.reviewDecision == request.resource.data.status
         && request.resource.data.partId == resource.data.partId
         && request.resource.data.urgency == resource.data.urgency
         && request.resource.data.recommendedQty == resource.data.recommendedQty
         && request.resource.data.requestedBy == resource.data.requestedBy
-        && request.resource.data.createdAt == resource.data.createdAt;
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(["status", "reviewDecision", "reviewedBy", "reviewedAt", "reviewNotes"])
+        && (request.resource.data.status != "REJECTED"
+            || (request.resource.data.reviewNotes is string && request.resource.data.reviewNotes.size() > 0));
       allow delete: if false;
     }
 
