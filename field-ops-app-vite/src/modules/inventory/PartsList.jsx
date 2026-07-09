@@ -2,6 +2,8 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { PARTS_CATALOG } from "../../data/partsCatalog";
 import { useInventoryLedger } from "../../hooks/useInventoryLedger";
+import { useReorderRequests } from "../../hooks/useReorderRequests";
+import { createReorderRequest } from "../../domain/inventoryReorderRequests";
 import GlobalSearch from "../../shared/search/GlobalSearch";
 import WorkspaceHeader from "../../shared/ui/WorkspaceHeader";
 import FilterBar from "../../shared/ui/FilterBar";
@@ -40,6 +42,16 @@ import InventoryHealthPanel from "../operations/panels/InventoryHealthPanel";
 // results for the same inventory state -- same component, same data
 // pipeline, not just the same formula. No independent calculation of
 // any kind is introduced here.
+//
+// Sprint 2.1.3 -- Reorder Request & Notification Foundation. The queue
+// gains a "Request Reorder" action (InventoryHealthPanel's optional
+// onRequestReorder/requestedPartIds props -- Operations.jsx's own call
+// site doesn't pass them, so it never grows this affordance). Writes
+// go exclusively through domain/inventoryReorderRequests.js's
+// createReorderRequest() -- this component never calls Firestore
+// directly. requestedPartIds merges already-pending requests (read via
+// useReorderRequests()) with parts requested during this session, so a
+// button doesn't stay clickable after creating a duplicate request.
 const PAGE_SIZE = 25;
 const ACTIONABLE_URGENCIES = new Set(["CRITICAL", "HIGH"]);
 
@@ -57,15 +69,32 @@ function useCategories() {
 
 export default function PartsList() {
   const { healthEntries, loading } = useInventoryLedger();
+  const { data: pendingRequests } = useReorderRequests();
   const categories = useCategories();
   const [category, setCategory] = useState("ALL");
   const [page, setPage] = useState(0);
   const [queueFilter, setQueueFilter] = useState("ACTIONABLE");
+  const [justRequestedPartIds, setJustRequestedPartIds] = useState(() => new Set());
 
   const queueEntries = useMemo(() => {
     if (queueFilter === "ALL") return healthEntries;
     return healthEntries.filter((entry) => ACTIONABLE_URGENCIES.has(entry.recommendation.urgency));
   }, [healthEntries, queueFilter]);
+
+  const requestedPartIds = useMemo(() => {
+    const set = new Set(justRequestedPartIds);
+    for (const request of pendingRequests) set.add(request.partId);
+    return set;
+  }, [pendingRequests, justRequestedPartIds]);
+
+  async function handleRequestReorder(partId, recommendation) {
+    await createReorderRequest({
+      partId,
+      urgency: recommendation.urgency,
+      recommendedQty: Math.ceil(recommendation.recommendedOrderQty),
+    });
+    setJustRequestedPartIds((prev) => new Set(prev).add(partId));
+  }
 
   const healthByPartId = useMemo(() => {
     const map = new Map();
@@ -104,7 +133,12 @@ export default function PartsList() {
       </p>
       <FilterBar options={QUEUE_FILTER_OPTIONS} activeKey={queueFilter} onChange={setQueueFilter} />
       <LoadingEmptyState loading={loading} isEmpty={false} loadingText="Loading operational queue..." emptyText="">
-        <InventoryHealthPanel healthEntries={queueEntries} title="Needs Reorder" />
+        <InventoryHealthPanel
+          healthEntries={queueEntries}
+          title="Needs Reorder"
+          onRequestReorder={handleRequestReorder}
+          requestedPartIds={requestedPartIds}
+        />
       </LoadingEmptyState>
 
       <h3>Parts Catalog</h3>

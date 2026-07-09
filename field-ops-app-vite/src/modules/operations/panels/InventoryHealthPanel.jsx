@@ -14,7 +14,14 @@ import { URGENCY_ORDER } from "../../../domain/inventoryAnalyticsEngine";
 // the same data shape. Single source of truth: this is now the only
 // place inventory health rows are rendered, in both Operations and the
 // Inventory workspace.
-export default function InventoryHealthPanel({ healthEntries, title = "Inventory Health" }) {
+//
+// Sprint 2.1.3 -- `onRequestReorder`/`requestedPartIds` are both
+// optional and undefined by default. Operations.jsx's call site does
+// NOT pass them, so no action column ever renders there -- Operations
+// is a read-only executive/monitoring layer (CLAUDE_CONTEXT.md Rule 8)
+// and must never grow an "act on this" affordance. Only PartsList.jsx
+// (Inventory workspace) opts in, by passing both props.
+export default function InventoryHealthPanel({ healthEntries, title = "Inventory Health", onRequestReorder, requestedPartIds }) {
   const sorted = [...healthEntries].sort(
     (a, b) => URGENCY_ORDER[a.recommendation.urgency] - URGENCY_ORDER[b.recommendation.urgency]
   );
@@ -34,6 +41,7 @@ export default function InventoryHealthPanel({ healthEntries, title = "Inventory
               <th>Days Remaining</th>
               <th>Risk</th>
               <th>Recommended Reorder Qty</th>
+              {onRequestReorder && <th>Action</th>}
             </tr>
           </thead>
           <tbody>
@@ -49,6 +57,17 @@ export default function InventoryHealthPanel({ healthEntries, title = "Inventory
                   </span>
                 </td>
                 <td>{Math.ceil(recommendation.recommendedOrderQty)}</td>
+                {onRequestReorder && (
+                  <td>
+                    {requestedPartIds?.has(partId) ? (
+                      <span className="fo-muted">Requested</span>
+                    ) : (
+                      <button type="button" onClick={() => onRequestReorder(partId, recommendation)}>
+                        Request Reorder
+                      </button>
+                    )}
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>

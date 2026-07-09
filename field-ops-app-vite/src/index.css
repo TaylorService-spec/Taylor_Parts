@@ -68,6 +68,19 @@ body { -webkit-font-smoothing: antialiased; font-family: -apple-system, BlinkMac
 .fo-filter-btn-active { background: #2E4A50; border-color: #2E4A50; color: #fff; }
 .fo-filter-btn-active:hover { background: #263D42; border-color: #263D42; }
 
+/* Sprint 2.1.3 -- Reorder Request & Notification Foundation. Minimal
+   (Version 0.1) header notification dropdown -- AppHeader.jsx's own
+   background is white (inline styles.header), so this reuses the same
+   fo-filter-btn contrast/hover language rather than fo-nav-btn (which
+   is tuned for the dark .fo-header nav bar and would have the same
+   low-contrast problem already fixed elsewhere in this file). */
+.fo-notification-panel { position: relative; }
+.fo-notification-panel > button { background: #EEF1F0; border: 1px solid #D8DEDD; color: #445559; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500; }
+.fo-notification-panel > button:hover { background: #E1E7E6; border-color: #C3CDCC; }
+.fo-notification-panel-dropdown { position: absolute; right: 0; top: calc(100% + 6px); background: #fff; border: 1px solid #D8DEDD; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.12); min-width: 240px; max-width: 320px; padding: 8px; z-index: 20; }
+.fo-notification-panel-item { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px; border-radius: 6px; text-decoration: none; color: #1B2A2E; font-size: 14px; }
+.fo-notification-panel-item:hover { background: #F4F6F5; }
+
 /* Sprint 3.6.5: mobile breakpoint. Visual/spacing only -- no layout
    logic changes. The nav bar scrolls horizontally instead of wrapping
    (six tabs no longer fit one row on a phone), and padding shrinks so

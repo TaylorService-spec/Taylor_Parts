@@ -1,9 +1,18 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
+import { useReorderRequests } from "../../hooks/useReorderRequests";
+import NotificationPanel from "./NotificationPanel";
 
+// Sprint 2.1.3 -- Reorder Request & Notification Foundation. Notification
+// Panel is admin/dispatcher only (same role scope as Inventory today) --
+// `enabled` skips the reorder_requests read entirely for a technician,
+// who has no firestore.rules read access to it, rather than fetching and
+// getting a permission-denied error.
 export default function AppHeader() {
-  const { user, logout } = useAuth();
+  const { user, role, logout } = useAuth();
+  const canSeeReorderRequests = role === "admin" || role === "dispatcher";
+  const { data: pendingReorderRequests } = useReorderRequests(canSeeReorderRequests);
 
   return (
     <div className="fo-appheader" style={styles.header}>
@@ -24,6 +33,7 @@ export default function AppHeader() {
       </div>
 
       <div className="fo-appheader-right" style={styles.right}>
+        {canSeeReorderRequests && <NotificationPanel requests={pendingReorderRequests} />}
         <span className="fo-appheader-email">{user?.email}</span>
         <button onClick={logout}>Logout</button>
       </div>

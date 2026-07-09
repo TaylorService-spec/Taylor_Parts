@@ -40,6 +40,23 @@ export const ACCOUNT_STATUS = {
   ARCHIVED: "Archived",
 };
 
+// Sprint 2.1.3 -- Reorder Request & Notification Foundation
+// (docs/BusinessEntityModel.md's Reorder Request entry). The platform's
+// first Operational Workflow Object / Business Object dual-classified
+// collection outside Work Order -- client-direct-write via
+// domain/inventoryReorderRequests.js only, never a Cloud Function.
+// PENDING_REVIEW is the only status this sprint writes or reads; the
+// remaining values are reserved for the future Review & Approval sprint
+// (Workflow history foundation -- named now so the schema doesn't need
+// to be reshaped later).
+export const REORDER_REQUESTS_COLLECTION = "reorder_requests";
+
+export const REORDER_REQUEST_STATUS = {
+  PENDING_REVIEW: "PENDING_REVIEW",
+  APPROVED: "APPROVED",
+  REJECTED: "REJECTED",
+};
+
 export const ROLES = {
   ADMIN: "admin",
   DISPATCHER: "dispatcher",
