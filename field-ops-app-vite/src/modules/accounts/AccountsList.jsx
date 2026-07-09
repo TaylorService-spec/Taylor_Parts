@@ -4,6 +4,8 @@ import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
 import { ACCOUNTS_COLLECTION } from "../../domain/constants";
 import { createAccount } from "../../domain/accounts";
 import GlobalSearch from "../../shared/search/GlobalSearch";
+import WorkspaceHeader from "../../shared/ui/WorkspaceHeader";
+import LoadingEmptyState from "../../shared/ui/LoadingEmptyState";
 import AccountForm from "./AccountForm";
 
 // Sprint 2.0.2 -- Customer Foundation. Internal name AccountsList;
@@ -13,6 +15,10 @@ import AccountForm from "./AccountForm";
 // <input> + debounce -- the whole point of building that component
 // this sprint instead of duplicating DispatcherBoard.jsx's pattern
 // locally.
+//
+// Epic 9 -- Platform Workspace Framework: header/toolbar and loading/
+// empty-state now come from shared/ui/ instead of a locally-hand-rolled
+// copy. No behavior change.
 export default function AccountsList() {
   const { data: accounts, loading } = useFirestoreCollection(ACCOUNTS_COLLECTION);
   const [showForm, setShowForm] = useState(false);
@@ -24,21 +30,21 @@ export default function AccountsList() {
 
   return (
     <div className="fo-panel">
-      <div className="disp-board-toolbar" style={{ justifyContent: "space-between" }}>
-        <h2 style={{ margin: 0 }}>Customers</h2>
+      <WorkspaceHeader title="Customers">
         <GlobalSearch providerKeys={["accounts"]} context={{ accounts }} placeholder="Search customers..." />
         <button type="button" onClick={() => setShowForm((v) => !v)}>
           {showForm ? "Cancel" : "+ New Customer"}
         </button>
-      </div>
+      </WorkspaceHeader>
 
       {showForm && <AccountForm onSubmit={handleCreate} onCancel={() => setShowForm(false)} submitLabel="Create Customer" />}
 
-      {loading ? (
-        <p className="fo-muted">Loading customers...</p>
-      ) : accounts.length === 0 ? (
-        <p className="fo-muted">No customers yet. Create one above.</p>
-      ) : (
+      <LoadingEmptyState
+        loading={loading}
+        isEmpty={accounts.length === 0}
+        loadingText="Loading customers..."
+        emptyText="No customers yet. Create one above."
+      >
         <table className="fo-table">
           <thead>
             <tr>
@@ -63,7 +69,7 @@ export default function AccountsList() {
             ))}
           </tbody>
         </table>
-      )}
+      </LoadingEmptyState>
     </div>
   );
 }
