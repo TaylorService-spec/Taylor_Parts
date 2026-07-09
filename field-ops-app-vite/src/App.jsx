@@ -13,6 +13,8 @@ import AccountDetail from "./modules/accounts/AccountDetail";
 import WorkOrdersList from "./modules/workOrders/WorkOrdersList";
 import WorkOrderWizard from "./modules/workOrders/WorkOrderWizard";
 import WorkOrderDetailPage from "./modules/workOrders/WorkOrderDetailPage";
+import PartsList from "./modules/inventory/PartsList";
+import PartDetail from "./modules/inventory/PartDetail";
 import { useAuth } from "./auth/AuthContext";
 import Login from "./auth/Login";
 import AppHeader from "./shared/ui/AppHeader";
@@ -94,6 +96,17 @@ function renderSubnavItem(domain, item, role) {
   if (domain.key === "service" && item.key === "workOrders") {
     return <WorkOrdersList />;
   }
+  // Sprint 2.1.1 -- Inventory Domain Foundation. "Parts" now renders
+  // the real Inventory workspace; the legacy demo Inventory.jsx it
+  // used to render (via legacyKey "inventory") is left in place,
+  // untouched, and simply no longer routed to from this slot -- same
+  // "deprecated, not deleted" treatment as domain/workOrderLifecycle.js.
+  // legacyKey: "inventory" stays on this nav item unchanged so
+  // existing role gating (ROLE_NAV_ACCESS, admin/dispatcher only) is
+  // untouched.
+  if (domain.key === "inventory" && item.key === "parts") {
+    return <PartsList />;
+  }
   if (item.legacyKey) {
     const Component = LEGACY_COMPONENTS[item.legacyKey];
     return <Component />;
@@ -154,6 +167,15 @@ function AppRoutes({ role, allowedLegacyKeys }) {
               <Route path="work-orders/new" element={<WorkOrderWizard />} />
               <Route path="work-orders/:workOrderId" element={<WorkOrderDetailPage />} />
             </>
+          )}
+          {/* Sprint 2.1.1 -- same pattern as /customers/:accountId above:
+              gated by isDomainVisible() so this route isn't mounted at
+              all for a role with no Inventory access (technician has no
+              legacyKey/PLACEHOLDER_DEFAULT_ROLES access to any Inventory
+              subnav item today, so isDomainVisible is already false for
+              that role -- this route simply doesn't exist for them). */}
+          {domain.key === "inventory" && isDomainVisible(domain, role, allowedLegacyKeys) && (
+            <Route path=":partId" element={<PartDetail />} />
           )}
         </Route>
       ))}

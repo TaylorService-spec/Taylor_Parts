@@ -12,6 +12,8 @@
 // this dashboard doesn't need (it already has all StockSnapshots in
 // hand from one batch Firestore read).
 
+import { getCatalogItem } from "../data/partsCatalog";
+
 export type LedgerTransaction = {
   id: string;
   workOrderId: string;
@@ -184,4 +186,29 @@ export function generateInventoryHealthDashboard(
       recommendation: generateReplenishmentRecommendation(stock.partId, stock.availableStock, usage),
     };
   });
+}
+
+// Moved here from modules/operations/Operations.jsx (Sprint 2.1.1) so
+// the new Inventory domain workspace and the Operations dashboard
+// share one computation instead of each maintaining its own copy of
+// the same formula. No logic change from the original -- same formula
+// as functions/src/inventoryService.ts's getAvailableQuantity:
+// available = warehouseQty (data/partsCatalog.ts's static baseline) -
+// (grossReserved - released). CONSUMED is deliberately not subtracted
+// again (see that file's comment).
+export function computeAvailableStockByPart(transactions: LedgerTransaction[]): Map<string, number> {
+  const byPart = new Map<string, { reserved: number; released: number }>();
+  for (const t of transactions) {
+    const entry = byPart.get(t.partId) ?? { reserved: 0, released: 0 };
+    if (t.type === "RESERVED") entry.reserved += t.quantity;
+    else if (t.type === "RELEASED") entry.released += t.quantity;
+    byPart.set(t.partId, entry);
+  }
+
+  const result = new Map<string, number>();
+  for (const [partId, { reserved, released }] of byPart) {
+    const warehouseQty = getCatalogItem(partId)?.warehouseQty ?? 0;
+    result.set(partId, warehouseQty - (reserved - released));
+  }
+  return result;
 }

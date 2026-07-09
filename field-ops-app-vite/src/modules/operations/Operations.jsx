@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "../../firebase/firebase";
-import { getCatalogItem, PARTS_CATALOG } from "../../data/partsCatalog";
+import { PARTS_CATALOG } from "../../data/partsCatalog";
 import { TECHNICIANS_COLLECTION } from "../../domain/constants";
 import {
   fetchInventoryTransactions,
@@ -15,6 +15,7 @@ import {
 import {
   normalizeLedgerTransaction,
   generateInventoryHealthDashboard,
+  computeAvailableStockByPart,
 } from "../../domain/inventoryAnalyticsEngine";
 import {
   detectStockDiscrepancies,
@@ -60,26 +61,10 @@ import ExecutionInsightsPanel from "./panels/ExecutionInsightsPanel";
 // to every collection read here, unconditionally; there is no "action"
 // button anywhere in this screen that calls a Cloud Function.
 //
-// available stock per part = warehouseQty (data/partsCatalog.ts's
-// static baseline) - (grossReserved - released), same formula as
-// functions/src/inventoryService.ts's getAvailableQuantity -- CONSUMED
-// is deliberately not subtracted again (see that file's comment).
-function computeAvailableStockByPart(transactions) {
-  const byPart = new Map();
-  for (const t of transactions) {
-    const entry = byPart.get(t.partId) ?? { reserved: 0, released: 0 };
-    if (t.type === "RESERVED") entry.reserved += t.quantity;
-    else if (t.type === "RELEASED") entry.released += t.quantity;
-    byPart.set(t.partId, entry);
-  }
-
-  const result = new Map();
-  for (const [partId, { reserved, released }] of byPart) {
-    const warehouseQty = getCatalogItem(partId)?.warehouseQty ?? 0;
-    result.set(partId, warehouseQty - (reserved - released));
-  }
-  return result;
-}
+// computeAvailableStockByPart now lives in domain/inventoryAnalyticsEngine.ts
+// (Sprint 2.1.1) so this dashboard and the Inventory domain workspace
+// (modules/inventory/PartsList.jsx/PartDetail.jsx) share one
+// computation instead of each maintaining its own copy.
 
 export default function Operations() {
   const [state, setState] = useState({ loading: true, error: null, data: null });
