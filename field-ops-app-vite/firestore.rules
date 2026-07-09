@@ -85,15 +85,37 @@ service cloud.firestore {
     // (docs/BusinessEntityModel.md's Reorder Request entry). Unlike the
     // ledger above, this IS a client-direct-write collection (Inventory
     // Management's domain/inventoryReorderRequests.js, mirroring the
-    // accounts/locations/contacts pattern) -- no Cloud Function. Create-
-    // only this sprint: a Reorder Request's PENDING_REVIEW state is
-    // never client-updated once written (Platform Events are immutable;
-    // the future Review & Approval sprint is what will introduce a
-    // status-transition write path, deliberately not built here).
+    // accounts/locations/contacts pattern) -- no Cloud Function.
+    //
+    // Sprint 2.1.4 -- Reorder Review & Decision. Update is now allowed,
+    // but narrowly: only a PENDING_REVIEW -> APPROVED/REJECTED
+    // transition, and only via domain/inventoryReorderRequests.js's
+    // reviewReorderRequest(). The original request facts (partId,
+    // urgency, recommendedQty, requestedBy, createdAt) are immutable --
+    // a client cannot rewrite them, and an already-decided request
+    // cannot be re-reviewed (resource.data.status must still be
+    // PENDING_REVIEW). affectedKeys() further pins the write to exactly
+    // the five review fields reviewReorderRequest() sets, so no other
+    // field can ride along on the same write even if it happened to
+    // match its prior value. This is the only write path for a review
+    // decision; there is no Cloud Function for this sprint either.
     match /reorder_requests/{requestId} {
       allow read: if isAdminOrDispatcher();
       allow create: if isAdminOrDispatcher();
-      allow update, delete: if false;
+      allow update: if isAdminOrDispatcher()
+        && resource.data.status == "PENDING_REVIEW"
+        && (request.resource.data.status == "APPROVED" || request.resource.data.status == "REJECTED")
+        && request.resource.data.reviewDecision == request.resource.data.status
+        && request.resource.data.partId == resource.data.partId
+        && request.resource.data.urgency == resource.data.urgency
+        && request.resource.data.recommendedQty == resource.data.recommendedQty
+        && request.resource.data.requestedBy == resource.data.requestedBy
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(["status", "reviewDecision", "reviewedBy", "reviewedAt", "reviewNotes"])
+        && (request.resource.data.status != "REJECTED"
+            || (request.resource.data.reviewNotes is string && request.resource.data.reviewNotes.size() > 0));
+      allow delete: if false;
     }
 
     // Epic 4 Warehouse + Fulfillment System. Same Admin-SDK-only write

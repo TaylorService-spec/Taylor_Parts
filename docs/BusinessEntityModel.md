@@ -58,15 +58,15 @@ Named here for architectural coherence, not scoped into current sprints:
 
 Inventory Management's request to replenish a Part, originated from the Inventory workspace's Needs Reorder queue (Sprint 2.1.2). Dual-classified in `PROJECT_ARCHITECTURE.md`'s Enterprise Platform Classification Model as both a **Business Object** (this entry) and an **Operational Workflow Object** — the same non-exclusive pairing already established for Work Order (Section 3 / Section 8's relationship diagram). Its creation is also this platform's first new named **Platform Event** ("Reorder Requested") since that classification model was adopted — the record's `createdAt` timestamp *is* that event's immutable fact, not a separate log entry.
 
-Fields (Sprint 2.1.3, `reorder_requests` collection): `partId`, `urgency`, `recommendedQty`, `status`, `requestedBy`, `createdAt`, plus `reviewedBy`/`reviewedAt`/`reviewNotes` — reserved, always `null` this sprint (Workflow history foundation, same deliberate-placeholder pattern as Work Order's execution timestamps: named now so a future sprint extends the record rather than reshaping it).
+Fields (`reorder_requests` collection): `partId`, `urgency`, `recommendedQty`, `status`, `requestedBy`, `createdAt` (Sprint 2.1.3); `reviewedBy`, `reviewedAt`, `reviewDecision`, `reviewNotes` (Sprint 2.1.4 — reserved as `null` at creation, populated once a Reorder Request is reviewed). `status` and `reviewDecision` are deliberately separate fields: `status` is this object's general lifecycle position (a future stage, e.g. a Procurement hand-off, could advance it further); `reviewDecision` is a permanent historical fact of what was decided during review, never overwritten once set — the Workflow History foundation Sprint 2.1.3 reserved these fields for.
 
-Status this sprint: **`PENDING_REVIEW` only.** No approval/rejection transition is built or written yet — that is the scope of a future "Review & Approval" sprint, named for roadmap coherence, not scheduled.
+Status values: `PENDING_REVIEW` (Sprint 2.1.3) → `APPROVED` or `REJECTED` (Sprint 2.1.4, terminal — an already-decided request cannot be re-reviewed). `reviewNotes` is required when `reviewDecision` is `REJECTED`, optional when `APPROVED`. No further stage (e.g. Procurement hand-off) is built yet.
 
-Ownership: **Inventory Management remains the sole owner of Reorder Request origination.** Procurement is a downstream, read-only recipient (via the existing Global Search / notification surfaces) — it does not co-own this record, and gains no new write path in Sprint 2.1.3.
+Ownership: **Inventory Management remains the sole owner of the Reorder Request's full lifecycle**, including its review — an "authorized Inventory approver" is the existing admin/dispatcher role, not a new permission tier. Procurement is a downstream, read-only recipient (via the existing Global Search / notification surfaces) — it does not co-own this record, and gains no new write path in Sprint 2.1.3 or 2.1.4.
 
-Write path: client-direct-write via `domain/inventoryReorderRequests.js` (mirrors the `accounts`/`locations`/`contacts` pattern) — no Cloud Function.
+Write path: client-direct-write via `domain/inventoryReorderRequests.js` (mirrors the `accounts`/`locations`/`contacts` pattern) — `createReorderRequest()` (Sprint 2.1.3) and `reviewReorderRequest()` (Sprint 2.1.4) are its only two exports that write. No Cloud Function. `firestore.rules`' update rule enforces the `PENDING_REVIEW` → `APPROVED`/`REJECTED` transition and the immutability of the original request fields (`partId`/`urgency`/`recommendedQty`/`requestedBy`/`createdAt`) directly, not just in application code.
 
-Status: Core (V2), Sprint 2.1.3.
+Status: Core (V2), Sprint 2.1.3-2.1.4.
 
 ## 5. Company
 
@@ -216,7 +216,8 @@ Only `accounts`, `contacts`, and `locations` are proposed as in-scope for Sprint
 
 - **Sprint 2.0.2 = Account & Location Foundation.** Scope: `accounts`, `contacts`, and `locations` collections, their access-control rules, and lookup/creation interfaces for Accounts (labeled "Customers") and Locations. Contact data-layer setup is recommended now; Contact-specific UI may be optional/stretch within this sprint.
 - **Sprint 2.0.3 = Work Order Experience.** The Work Order creation flow's Customer/Location steps resolve against Sprint 2.0.2's new collections. The Equipment reference stays reserved but unbuilt, giving this flow a clear future extension point without reshaping it later.
-- **Sprint 2.1.3 = Reorder Request & Notification Foundation.** Scope: `reorder_requests` collection (PENDING_REVIEW status only), `domain/inventoryReorderRequests.js` as its sole write path, and a minimal role-filtered Notification Panel. Review/approval transitions, Procurement hand-off, and any automation are explicitly deferred to future sprints named but not scoped in `docs/epics/`/`docs/capabilities/`.
+- **Sprint 2.1.3 = Reorder Request & Notification Foundation.** Scope: `reorder_requests` collection (PENDING_REVIEW status only), `domain/inventoryReorderRequests.js` as its sole write path, and a minimal role-filtered Notification Panel. Review/approval transitions, Procurement hand-off, and any automation were explicitly deferred to future sprints.
+- **Sprint 2.1.4 = Reorder Review & Decision.** Scope: `reviewReorderRequest()` (`domain/inventoryReorderRequests.js`), a `firestore.rules` update rule enforcing the `PENDING_REVIEW` → `APPROVED`/`REJECTED` transition, and a review UI in `PartDetail.jsx` (the same screen the Notification Panel already routes to). Procurement hand-off and any automation remain deferred.
 
 ## 12. Risks and migration notes
 
