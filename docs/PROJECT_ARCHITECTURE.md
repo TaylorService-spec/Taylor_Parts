@@ -14,6 +14,51 @@ Concretely:
 
 Implementation must satisfy both sets of documents. Where they conflict, that conflict should be identified and resolved explicitly before writing code — see `CLAUDE_CONTEXT.md`'s "Product Authorities" section.
 
+## Enterprise Platform Classification Model
+
+Every architectural concept in this platform — existing or proposed — falls into exactly one of the five classifications below. This section defines the vocabulary only; it does not reclassify anything already described elsewhere in this document, and it does not duplicate the detailed models owned by `PlatformCapabilityModel.md` or `BusinessEntityModel.md` — it names how those two documents, and this one, relate to each other. Nothing in this section changes those documents' content.
+
+### A. Platform Services
+
+Reusable, horizontal services usable by any capability — owned by no single business domain. Examples: Authentication, Authorization, Notification & Work Routing, Audit, Search, Reporting, AI Decision Support, Integration.
+
+**Platform Services and Business Capabilities are complementary architectural layers, not competing concepts.** Platform Services provide reusable technical functionality; Business Capabilities consume Platform Services to deliver business outcomes. The two can share a name without conflicting — e.g. Search is already both a shared technical component (`GlobalSearch.jsx`, per `GuidingPrinciples.md`'s "Search is a platform capability, not a per-domain feature") and, from the business side, a facet of several capabilities' workflows. Same relationship applies to Reporting (`PlatformCapabilityModel.md`'s Reporting & Analytics capability consumes a future shared reporting engine), AI Decision Support (that document's AI Platform capability, e.g. the Technician Recommendation Engine, consumes a future generalized AI service layer), and Integration (`IntegrationArchitecture.md`'s Integration Platform capability consumes the concrete export/import mechanism it defines). This section does not rename or modify any capability in `PlatformCapabilityModel.md` — it only names the service layer those capabilities draw on.
+
+Naming a Platform Service here does not imply it is built; today, Authentication (Firebase Auth) and Authorization (role-based, `ROLE_NAV_ACCESS` + `firestore.rules`) and Search (`GlobalSearch.jsx`) are real; Notification & Work Routing, Audit, and a generalized Reporting/AI/Integration service layer are not.
+
+### B. Business Capabilities
+
+What the business can do, independent of screen or entity. Capability hierarchy, ownership, and maturity are owned entirely by `PlatformCapabilityModel.md` — not restated here. This document's role is only to say that "Business Capability" is one of the five classifications a new concept must be checked against, and that a capability delivers business outcomes by consuming Platform Services (Section A) rather than reimplementing them.
+
+### C. Business Objects
+
+Persistent enterprise records — Account, Contact, Location, Work Order, Part, Warehouse, Supplier, Purchase Order, etc. The entity model, relationships, and core-vs-future status are owned entirely by `BusinessEntityModel.md` — not restated here. Every concrete Business Object already described elsewhere in this document (Job, Technician, the Customer model's Account/Contact/Location) is an instance of this classification.
+
+### D. Operational Workflow Objects
+
+A Business Object (above) that a single capability owns as a record is not always the same thing as the *workflow* that record participates in. An Operational Workflow Object is one whose lifecycle spans multiple capabilities' boundaries over time.
+
+> **Core Architecture Principle:** Workflow objects move through capabilities. Capability ownership does not move.
+
+The Work Order (`fieldops_wos`) is this platform's clearest existing instance: Dispatch Management assigns and dispatches it, Technician Operations executes it, Inventory Management consumes Parts against it — the object travels through all three, but `functions/src/transitionEngine.ts` remains the sole lifecycle authority throughout, and no capability acquires ownership of another's slice of that lifecycle just because the object is currently in its queue. The same principle already governs the platform's existing "single write path" rules (System of record, below) — this section names the general principle those specific rules are instances of.
+
+### E. Platform Events
+
+Immutable business events representing facts that occurred within the platform — not the current state of a Business Object, and not the object itself, but a permanent record that something happened. Once recorded, a Platform Event is never edited or deleted; correcting a mistaken event means recording a new, later event, not altering history. Representative examples: Reorder Requested, Work Order Assigned, Shipment Received, Part Consumed, Equipment Installed. (Some of these name entities or capabilities that are Future/unbuilt today — e.g. Equipment — the same "named for model coherence, not scoped yet" convention `BusinessEntityModel.md` already uses; naming the event type here doesn't imply it's implemented.)
+
+A Platform Event may trigger notifications, workflow transitions, audit records, reporting, integrations, or future AI capabilities — but it remains distinct from a Business Object. `inventory_transactions`' RESERVED/RELEASED/CONSUMED entries are this platform's clearest existing instance of Platform Events already in production: each is an immutable, append-only fact ("this quantity of this Part was consumed by this Work Order at this time"), never updated after being written, and Part's *current* stock position (a Business Object concern) is always derived by replaying them rather than stored directly — see `docs/architecture/ADR-003-inventory-trigger-system.md`. The Work Order Engine's execution timestamps (`dispatchedAt`, `acceptedAt`, etc.) are a related but distinct case: they capture the same kind of fact-in-time, but today as fields on the mutable Work Order record rather than as separate immutable event records — a future event-store design (see `IntegrationArchitecture.md`'s "Event-Driven Architecture Considerations" section) could formalize this further, but that is not proposed or required by this section.
+
+### F. Enterprise Classification Gate
+
+Before introducing any new module, service, entity, or governance concept, answer these six questions in order. This is a permanent architectural checklist, not a one-time exercise — it applies to every future addition, the same way `DEVELOPMENT_STANDARDS.md`'s Feature Lifecycle and `PlatformOperatingModel.md`'s Change Management section already gate new work through Product/Architecture Review.
+
+1. **Is this a Platform Service?** — If yes, it must be usable by more than one capability; a "shared service" built for and consumed by only one capability is not actually one yet.
+2. **Is this a Business Capability?** — If yes, it belongs in `PlatformCapabilityModel.md`'s hierarchy, with a stated maturity level — not introduced informally elsewhere.
+3. **Is this a Business Object?** — If yes, it belongs in `BusinessEntityModel.md`'s entity model before any collection or schema is created for it.
+4. **Is this an Operational Workflow Object?** — If yes, identify every capability its lifecycle will cross and confirm no single capability's write path is being asked to own another's slice of that lifecycle.
+5. **Is this a Platform Event?** — If yes, confirm it will be recorded as an immutable fact, never edited or deleted after the fact, and kept distinct from whatever Business Object's current state it may inform.
+6. **Is this extending an existing concept?** — If yes, extend the existing Platform Service, Capability, Business Object, or Event type rather than creating a parallel one; this is the same standing rule Rule 6 (`CLAUDE_CONTEXT.md`) already applies to write paths, generalized to all five classifications.
+
 ## System of record
 
 - **Main (`field-ops-app-vite`) is the system of record.** Auth-gated (Firebase Auth required). Firestore is the source of truth for all operational data across every model described below.
