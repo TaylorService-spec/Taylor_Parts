@@ -94,6 +94,19 @@ Recorded in `docs/CLAUDE_CONTEXT.md` so it isn't lost, and deliberately not addr
 3. **No other screen is touched in this epic.** `Technicians.jsx`, the Operations panels, and every placeholder screen keep their current implementation untouched — adopting the shared components elsewhere is future work, scoped and reviewed separately when that screen's own capability work happens, not retrofitted opportunistically here.
 4. **Sprint 2.1.2 becomes the first "born using the framework" screen** — the actual validation that this rollout strategy works, immediately after this epic closes.
 
+## 11. Future Expansion
+
+These are future considerations, named here so a future contributor recognizes them as deliberately deferred rather than forgotten — **none of them are part of Epic 9**, and none should be pulled into this epic's Phase 1 or Phase 2 without a new plan of their own:
+
+- **Master/detail workspace shell** — a shared generator for the list→detail routing shape (Section 5 explains why this epic doesn't build one yet: three instances exist, but each detail screen's content is entirely domain-specific).
+- **Shared pagination component** — currently one instance only (Inventory); revisit once a second screen needs it.
+- **Shared detail panels** — a common `fo-card`-based detail-page shell, distinct from the master/detail shell above.
+- **Global search integration** — deeper integration between `GlobalSearch` and the shared filter bar/workspace header, beyond what each already does independently today.
+- **Responsive/mobile workspace behavior** — beyond the ad hoc `@media` breakpoints already in `index.css`; a deliberate responsive layer is not this epic's scope (see `MobileStrategy.md` for the separate, already-planned technician/warehouse mobile experiences, which are not desktop-workspace concerns).
+- **Accessibility improvements** — beyond whatever the contrast/visual-hierarchy work in Section 8 incidentally improves; a dedicated accessibility pass is not scoped here.
+- **Theme support** — light/dark or brand-configurable theming is not addressed by this epic.
+- **Keyboard navigation** — beyond whatever native `<button>`/`<input>` semantics already provide; no dedicated keyboard-navigation work is scoped here.
+
 ---
 
 **Traceability summary:** this epic is authorized by the architectural assessment that evaluated whether Sprint 2.1.1's UI patterns should become shared platform components (concluding: yes, for exactly the three named here, after — not before — Sprint 2.1.1 proved the duplication). It does not modify `PlatformCapabilityModel.md`, `ProductBlueprint.md`, or any other governance document; it is scoped entirely within the Development/Architecture layer `PlatformOperatingModel.md`'s Governance Responsibilities table already assigns to `architecture/SYSTEM_AUTHORITIES.md` and `DEVELOPMENT_STANDARDS.md`.
