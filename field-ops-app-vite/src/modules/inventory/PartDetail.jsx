@@ -3,7 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { getCatalogItem } from "../../data/partsCatalog";
 import { useInventoryLedger } from "../../hooks/useInventoryLedger";
 import { useReorderRequestForPart } from "../../hooks/useReorderRequests";
-import { reviewReorderRequest } from "../../domain/inventoryReorderRequests";
+import { reviewReorderRequest, assignReorderRequest } from "../../domain/inventoryReorderRequests";
 import { REORDER_REQUEST_STATUS } from "../../domain/constants";
 
 // Sprint 2.1.1 -- Inventory Domain Foundation. Part detail screen,
@@ -24,12 +24,18 @@ import { REORDER_REQUEST_STATUS } from "../../domain/constants";
 // directly.
 //
 // Sprint 2.1.5 -- Inventory -> Parts Manager Handoff. An approved
-// request's status is now READY_FOR_PARTS_MANAGER (not APPROVED) --
-// this still falls into the "already decided" (ReorderRequestDecision)
-// branch below unchanged, since that branch keys off anything other
-// than PENDING_REVIEW. Decision badge/notes still read `reviewDecision`
-// (the permanent APPROVED/REJECTED fact), not `status`. Adds a
-// "Current owner" row so a reviewer can see the hand-off took effect.
+// request's status is now READY_FOR_PARTS_MANAGER (not APPROVED).
+// Decision badge/notes still read `reviewDecision` (the permanent
+// APPROVED/REJECTED fact), not `status`. Adds a "Current owner" row so
+// a reviewer can see the hand-off took effect.
+//
+// Sprint 2.1.6 -- Parts Manager -> Parts Associate Assignment. The
+// status branch below is now three-way, not binary: PENDING_REVIEW
+// (review card) -> READY_FOR_PARTS_MANAGER (new ReorderRequestAssignment
+// card, below) -> anything else (REJECTED or ASSIGNED_TO_PARTS_ASSOCIATE,
+// ReorderRequestDecision, extended with assignedToUserId/assignedAt
+// rows). Writes go exclusively through
+// domain/inventoryReorderRequests.js's assignReorderRequest().
 function formatTimestamp(ms) {
   if (!ms) return "—";
   return new Date(ms).toLocaleString();
@@ -122,6 +128,74 @@ function ReorderRequestReview({ request, onReviewed }) {
   );
 }
 
+// Sprint 2.1.6 -- Parts Manager -> Parts Associate Assignment. Shown
+// when a request is READY_FOR_PARTS_MANAGER -- the Parts Manager
+// assigns it to a specific person by uid. There is no client-side way
+// to list users (firestore.rules' users/{userId} read is self-only),
+// so this is a manually-entered uid, same as PT-001's
+// assignTechnicianToUser.js. Writes go exclusively through
+// domain/inventoryReorderRequests.js's assignReorderRequest().
+function ReorderRequestAssignment({ request, onAssigned }) {
+  const [assignedToUserId, setAssignedToUserId] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState(null);
+
+  async function handleAssign(e) {
+    e.preventDefault();
+    setSubmitting(true);
+    setError(null);
+    try {
+      await assignReorderRequest(request.id, { assignedToUserId });
+      onAssigned();
+    } catch (err) {
+      setError(err.message);
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="fo-card">
+      <h3>Reorder Request -- Ready for Parts Manager</h3>
+      <table className="fo-table">
+        <tbody>
+          <tr>
+            <td>Approved</td>
+            <td>{formatTimestamp(request.reviewedAt)}</td>
+          </tr>
+          <tr>
+            <td>Recommended qty</td>
+            <td>{request.recommendedQty}</td>
+          </tr>
+          <tr>
+            <td>Urgency</td>
+            <td>
+              <span className={`fo-badge fo-badge-${request.urgency.toLowerCase()}`}>{request.urgency}</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      {error && <p className="fo-muted">{error}</p>}
+
+      <form className="fo-form" onSubmit={handleAssign}>
+        <label htmlFor="assigned-to-user-id">Assign to Parts Associate (User ID)</label>
+        <input
+          id="assigned-to-user-id"
+          type="text"
+          value={assignedToUserId}
+          onChange={(e) => setAssignedToUserId(e.target.value)}
+          required
+        />
+        <div className="disp-board-toolbar">
+          <button type="submit" disabled={submitting || !assignedToUserId.trim()}>
+            Assign
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 function ReorderRequestDecision({ request }) {
   return (
     <div className="fo-card">
@@ -144,6 +218,18 @@ function ReorderRequestDecision({ request }) {
             <tr>
               <td>Current owner</td>
               <td>{request.currentOwner}</td>
+            </tr>
+          )}
+          {request.assignedToUserId && (
+            <tr>
+              <td>Assigned to</td>
+              <td>{request.assignedToUserId}</td>
+            </tr>
+          )}
+          {request.assignedAt && (
+            <tr>
+              <td>Assigned</td>
+              <td>{formatTimestamp(request.assignedAt)}</td>
             </tr>
           )}
           {request.reviewNotes && (
@@ -196,6 +282,8 @@ export default function PartDetail() {
       {!reorderRequestLoading && reorderRequest && (
         reorderRequest.status === REORDER_REQUEST_STATUS.PENDING_REVIEW ? (
           <ReorderRequestReview request={reorderRequest} onReviewed={refreshReorderRequest} />
+        ) : reorderRequest.status === REORDER_REQUEST_STATUS.READY_FOR_PARTS_MANAGER ? (
+          <ReorderRequestAssignment request={reorderRequest} onAssigned={refreshReorderRequest} />
         ) : (
           <ReorderRequestDecision request={reorderRequest} />
         )

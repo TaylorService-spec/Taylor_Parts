@@ -14,6 +14,15 @@ import { getCatalogItem } from "../../data/partsCatalog";
 // `partsManagerRequests` is a second, optional list rendered under its
 // own section heading in the same dropdown, same item template. No new
 // notification component, no new route.
+//
+// Sprint 2.1.6 -- Parts Manager -> Parts Associate Assignment. Reused
+// again for the platform's first per-user notification --
+// `assignedToYouRequests` is a third, optional list: only the
+// signed-in user's own ASSIGNED_TO_PARTS_ASSOCIATE requests
+// (AppHeader.jsx filters by uid via useReorderRequestsAssignedTo()),
+// so this satisfies "notify only the assigned Parts Associate"
+// without a per-user notification system -- it's the same broadcast
+// read as the other two sections, filtered client-side to one user.
 function NotificationItem({ request, onNavigate }) {
   return (
     <Link
@@ -27,9 +36,9 @@ function NotificationItem({ request, onNavigate }) {
   );
 }
 
-export default function NotificationPanel({ requests, partsManagerRequests = [] }) {
+export default function NotificationPanel({ requests, partsManagerRequests = [], assignedToYouRequests = [] }) {
   const [open, setOpen] = useState(false);
-  const total = requests.length + partsManagerRequests.length;
+  const total = requests.length + partsManagerRequests.length + assignedToYouRequests.length;
   const close = () => setOpen(false);
 
   return (
@@ -55,6 +64,14 @@ export default function NotificationPanel({ requests, partsManagerRequests = [] 
                 <>
                   <p className="fo-notification-panel-section">Ready for Parts Manager</p>
                   {partsManagerRequests.map((request) => (
+                    <NotificationItem key={request.id} request={request} onNavigate={close} />
+                  ))}
+                </>
+              )}
+              {assignedToYouRequests.length > 0 && (
+                <>
+                  <p className="fo-notification-panel-section">Assigned to You</p>
+                  {assignedToYouRequests.map((request) => (
                     <NotificationItem key={request.id} request={request} onNavigate={close} />
                   ))}
                 </>

@@ -1,7 +1,7 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
-import { useReorderRequests, useReorderRequestsByStatus } from "../../hooks/useReorderRequests";
+import { useReorderRequests, useReorderRequestsByStatus, useReorderRequestsAssignedTo } from "../../hooks/useReorderRequests";
 import { REORDER_REQUEST_STATUS } from "../../domain/constants";
 import NotificationPanel from "./NotificationPanel";
 
@@ -16,6 +16,11 @@ import NotificationPanel from "./NotificationPanel";
 // `currentOwner` is a data-level marker, not a permission tier), so
 // READY_FOR_PARTS_MANAGER notifications are read under the same
 // admin/dispatcher gate as Inventory's own pending-review ones.
+//
+// Sprint 2.1.6 -- Parts Manager -> Parts Associate Assignment. Adds a
+// third, per-user notification: ASSIGNED_TO_PARTS_ASSOCIATE requests
+// assigned to the signed-in user specifically (not everyone with
+// admin/dispatcher access), via useReorderRequestsAssignedTo(user.uid).
 export default function AppHeader() {
   const { user, role, logout } = useAuth();
   const canSeeReorderRequests = role === "admin" || role === "dispatcher";
@@ -24,6 +29,7 @@ export default function AppHeader() {
     REORDER_REQUEST_STATUS.READY_FOR_PARTS_MANAGER,
     canSeeReorderRequests
   );
+  const { data: assignedToYouRequests } = useReorderRequestsAssignedTo(user?.uid, canSeeReorderRequests);
 
   return (
     <div className="fo-appheader" style={styles.header}>
@@ -45,7 +51,11 @@ export default function AppHeader() {
 
       <div className="fo-appheader-right" style={styles.right}>
         {canSeeReorderRequests && (
-          <NotificationPanel requests={pendingReorderRequests} partsManagerRequests={partsManagerRequests} />
+          <NotificationPanel
+            requests={pendingReorderRequests}
+            partsManagerRequests={partsManagerRequests}
+            assignedToYouRequests={assignedToYouRequests}
+          />
         )}
         <span className="fo-appheader-email">{user?.email}</span>
         <button onClick={logout}>Logout</button>

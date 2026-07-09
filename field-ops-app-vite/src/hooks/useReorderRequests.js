@@ -62,6 +62,50 @@ export function useReorderRequestsByStatus(status, enabled = true) {
   return state;
 }
 
+// Sprint 2.1.6 -- Parts Manager -> Parts Associate Assignment. The
+// platform's first per-user filtered read: same one-shot
+// list()-then-filter pattern as useReorderRequestsByStatus(), but also
+// filtered to a specific assignedToUserId -- used by the Parts
+// Associate Queue (PartsList.jsx) and the Notification Panel's
+// "Assigned to You" section. firestore.rules' read access is still
+// role-level (admin/dispatcher, unchanged) -- this filter is client-
+// side/UI-level, same as every other queue in this app, not an access-
+// control boundary.
+export function useReorderRequestsAssignedTo(userId, enabled = true) {
+  const [state, setState] = useState({ data: [], loading: enabled });
+
+  useEffect(() => {
+    if (!enabled || !userId) {
+      setState({ data: [], loading: false });
+      return;
+    }
+
+    let cancelled = false;
+    setState((prev) => ({ ...prev, loading: true }));
+
+    reorderRequestsStore
+      .list()
+      .then((all) => {
+        if (cancelled) return;
+        setState({
+          data: all.filter(
+            (r) => r.status === REORDER_REQUEST_STATUS.ASSIGNED_TO_PARTS_ASSOCIATE && r.assignedToUserId === userId
+          ),
+          loading: false,
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setState({ data: [], loading: false });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, enabled]);
+
+  return state;
+}
+
 // Sprint 2.1.4 -- Reorder Review & Decision. Unlike useReorderRequests()
 // above, this returns the MOST RECENT Reorder Request for one Part
 // regardless of status -- PartDetail.jsx needs to show a pending

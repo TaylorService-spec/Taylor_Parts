@@ -106,29 +106,55 @@ service cloud.firestore {
     // permanently records APPROVED, separately from status. A
     // rejection is terminal (status == REJECTED, reviewDecision ==
     // REJECTED) and leaves currentOwner unchanged (still INVENTORY --
-    // there is no further hand-off for a rejected request). No further
-    // transition out of READY_FOR_PARTS_MANAGER is permitted this
-    // sprint -- the Parts Manager Queue is read-only.
+    // there is no further hand-off for a rejected request).
+    //
+    // Sprint 2.1.6 -- Parts Manager -> Parts Associate Assignment.
+    // READY_FOR_PARTS_MANAGER is no longer terminal: a second update
+    // path allows READY_FOR_PARTS_MANAGER -> ASSIGNED_TO_PARTS_ASSOCIATE,
+    // via domain/inventoryReorderRequests.js's assignReorderRequest().
+    // This is the platform's first per-user ownership write --
+    // assignedBy is pinned to the caller's own uid (no assigning on
+    // someone else's behalf), assignedToUserId must be a non-empty
+    // string (the manually-entered target uid; there is no
+    // client-side user list to validate against, see
+    // firestore.rules' users/{userId} self-only read above), and the
+    // review fields (reviewDecision/reviewedBy/reviewedAt/reviewNotes)
+    // are pinned unchanged so an assignment can never rewrite review
+    // history. No further transition out of ASSIGNED_TO_PARTS_ASSOCIATE
+    // is permitted this sprint -- reassignment is explicitly deferred.
     match /reorder_requests/{requestId} {
       allow read: if isAdminOrDispatcher();
       allow create: if isAdminOrDispatcher();
       allow update: if isAdminOrDispatcher()
-        && resource.data.status == "PENDING_REVIEW"
-        && ((request.resource.data.status == "READY_FOR_PARTS_MANAGER"
-              && request.resource.data.reviewDecision == "APPROVED"
-              && request.resource.data.currentOwner == "PARTS_MANAGER")
-            || (request.resource.data.status == "REJECTED"
-              && request.resource.data.reviewDecision == "REJECTED"
-              && request.resource.data.currentOwner == resource.data.currentOwner))
+        && ((resource.data.status == "PENDING_REVIEW"
+              && ((request.resource.data.status == "READY_FOR_PARTS_MANAGER"
+                    && request.resource.data.reviewDecision == "APPROVED"
+                    && request.resource.data.currentOwner == "PARTS_MANAGER")
+                  || (request.resource.data.status == "REJECTED"
+                    && request.resource.data.reviewDecision == "REJECTED"
+                    && request.resource.data.currentOwner == resource.data.currentOwner))
+              && request.resource.data.diff(resource.data).affectedKeys()
+                   .hasOnly(["status", "reviewDecision", "reviewedBy", "reviewedAt", "reviewNotes", "currentOwner"])
+              && (request.resource.data.status != "REJECTED"
+                  || (request.resource.data.reviewNotes is string && request.resource.data.reviewNotes.size() > 0)))
+            || (resource.data.status == "READY_FOR_PARTS_MANAGER"
+              && request.resource.data.status == "ASSIGNED_TO_PARTS_ASSOCIATE"
+              && request.resource.data.currentOwner == "PARTS_ASSOCIATE"
+              && request.resource.data.assignedToUserId is string
+              && request.resource.data.assignedToUserId.size() > 0
+              && request.resource.data.assignedBy == request.auth.uid
+              && request.resource.data.assignedAt is number
+              && request.resource.data.reviewDecision == resource.data.reviewDecision
+              && request.resource.data.reviewedBy == resource.data.reviewedBy
+              && request.resource.data.reviewedAt == resource.data.reviewedAt
+              && request.resource.data.reviewNotes == resource.data.reviewNotes
+              && request.resource.data.diff(resource.data).affectedKeys()
+                   .hasOnly(["status", "currentOwner", "assignedToUserId", "assignedBy", "assignedAt"])))
         && request.resource.data.partId == resource.data.partId
         && request.resource.data.urgency == resource.data.urgency
         && request.resource.data.recommendedQty == resource.data.recommendedQty
         && request.resource.data.requestedBy == resource.data.requestedBy
-        && request.resource.data.createdAt == resource.data.createdAt
-        && request.resource.data.diff(resource.data).affectedKeys()
-             .hasOnly(["status", "reviewDecision", "reviewedBy", "reviewedAt", "reviewNotes", "currentOwner"])
-        && (request.resource.data.status != "REJECTED"
-            || (request.resource.data.reviewNotes is string && request.resource.data.reviewNotes.size() > 0));
+        && request.resource.data.createdAt == resource.data.createdAt;
       allow delete: if false;
     }
 

@@ -56,6 +56,13 @@ export const ACCOUNT_STATUS = {
 // hands off. `reviewDecision` (see inventoryReorderRequests.js) still
 // permanently records APPROVED/REJECTED as the historical decision;
 // `status` is the thing that keeps moving.
+//
+// Sprint 2.1.6 -- Parts Manager -> Parts Associate Assignment.
+// READY_FOR_PARTS_MANAGER is no longer terminal -- a Parts Manager can
+// advance it to ASSIGNED_TO_PARTS_ASSOCIATE, the platform's first
+// individual (per-user) workflow ownership, via
+// `assignedToUserId`/`assignedBy`/`assignedAt` (see
+// inventoryReorderRequests.js).
 export const REORDER_REQUESTS_COLLECTION = "reorder_requests";
 
 export const REORDER_REQUEST_STATUS = {
@@ -63,18 +70,24 @@ export const REORDER_REQUEST_STATUS = {
   APPROVED: "APPROVED",
   REJECTED: "REJECTED",
   READY_FOR_PARTS_MANAGER: "READY_FOR_PARTS_MANAGER",
+  ASSIGNED_TO_PARTS_ASSOCIATE: "ASSIGNED_TO_PARTS_ASSOCIATE",
 };
 
 // Sprint 2.1.5 -- Inventory -> Parts Manager Handoff. `currentOwner` is
-// a coarse, role-level ownership marker (not a per-user assignment --
-// `currentOwnerUserId`/`workflowOwnerUserId` are deliberately not
-// introduced yet, per this sprint's approved scope). Inventory owns a
-// request from creation through review; approval hands ownership to
-// the Parts Manager. Rejection is terminal and leaves ownership with
-// Inventory.
+// a coarse, role-level ownership marker. Inventory owns a request from
+// creation through review; approval hands ownership to the Parts
+// Manager. Rejection is terminal and leaves ownership with Inventory.
+//
+// Sprint 2.1.6 -- Parts Manager -> Parts Associate Assignment. Adds
+// PARTS_ASSOCIATE -- set when a Parts Manager assigns a
+// READY_FOR_PARTS_MANAGER request to a specific person
+// (`assignedToUserId`). `currentOwner` stays role-level even though
+// assignment is now individual -- `assignedToUserId` (not a new
+// `currentOwner` value) is what carries the per-user identity.
 export const REORDER_REQUEST_OWNER = {
   INVENTORY: "INVENTORY",
   PARTS_MANAGER: "PARTS_MANAGER",
+  PARTS_ASSOCIATE: "PARTS_ASSOCIATE",
 };
 
 export const ROLES = {
