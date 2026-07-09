@@ -69,17 +69,25 @@ import LoadingEmptyState from "../../shared/ui/LoadingEmptyState";
 // number of updates while PURCHASING_IN_PROGRESS.
 //
 // Sprint 2.1.9 -- Inventory Actions Foundation. Adds an "Inventory
-// Actions" card (InventoryActionsPanel, below) -- entirely separate
+// Action Log" card (InventoryActionsPanel, below) -- entirely separate
 // from the Reorder Request cards above and unrelated to their status
-// branch. Lets an admin/dispatcher record a Receive Stock/Adjust
-// Stock/Correct Mistake action against this Part directly (no
-// approval workflow, no status machine -- a single-step create, same
-// posture as a ledger entry). Writes go exclusively through
+// branch. Lets an admin/dispatcher log a Receive Stock/Adjust
+// Stock/Correct Mistake note against this Part directly (no approval
+// workflow, no status machine -- a single-step create, same posture as
+// a ledger entry). Writes go exclusively through
 // domain/inventoryActions.js's recordInventoryAction(), into a NEW
 // collection (inventory_actions) deliberately separate from
 // inventory_transactions (Epic 2D/3, the Work Order-driven ledger,
 // untouched by this sprint). Shows recent actions for this Part,
 // realtime, via hooks/useInventoryActions.js.
+//
+// **Logged-only, not applied to stock**: per ChatGPT's PR #76 review,
+// this card and its UI copy are deliberately explicit that these are
+// audit notes, not live inventory adjustments -- applying them to the
+// real ledger needs a trusted, Cloud-Function-mediated write path,
+// blocked on enabling Firebase Blaze (a standing platform decision,
+// not something this sprint should build around). See
+// InventoryActionsPanel's own comment below for the full reasoning.
 function formatTimestamp(ms) {
   if (!ms) return "—";
   return new Date(ms).toLocaleString();
@@ -483,13 +491,34 @@ function ReorderRequestDecision({ request }) {
 }
 
 // Sprint 2.1.9 -- Inventory Actions Foundation. Lets an admin/dispatcher
-// record a Receive Stock/Adjust Stock/Correct Mistake action against
-// this Part -- a single-step create, no approval workflow, entirely
+// log a Receive Stock/Adjust Stock/Correct Mistake note against this
+// Part -- a single-step create, no approval workflow, entirely
 // separate from the Reorder Request cards above. Writes go exclusively
 // through domain/inventoryActions.js's recordInventoryAction(), which
 // enforces (server-side validation, not just this form): Receive Stock
 // requires a positive quantity, Adjust Stock allows positive or
 // negative, Correct Mistake requires both a reason and notes.
+//
+// ChatGPT review (PR #76, REQUEST CHANGES) caught a real gap: the
+// first version of this card implied these actions change stock --
+// they don't. inventory_actions is a NEW, separate, audit-only
+// collection (see docs/BusinessEntityModel.md Section 4a); applying an
+// action to the real inventory ledger (inventory_transactions, Epic
+// 2D/3/ADR-003) requires a trusted, Cloud-Function-mediated write path
+// (mirroring reserveParts/releaseParts/consumeParts), which is blocked
+// on enabling the Firebase Blaze plan -- a standing, deliberate
+// platform decision (see CLAUDE_CONTEXT.md), not something this sprint
+// can or should build around. Building that Cloud Function now would
+// only add more undeployed, unverifiable code (same limbo
+// createWorkOrder/transitionWorkOrder already sit in). So this card is
+// now honestly framed as logged-only: no wording implies a live
+// quantity change, and a persistent warning says so explicitly.
+const INVENTORY_ACTION_LABEL = {
+  [INVENTORY_ACTION_TYPE.RECEIVE_STOCK]: "Stock Received (log only)",
+  [INVENTORY_ACTION_TYPE.ADJUST_STOCK]: "Stock Adjustment (log only)",
+  [INVENTORY_ACTION_TYPE.CORRECT_MISTAKE]: "Correction Note (log only)",
+};
+
 function InventoryActionsPanel({ partId }) {
   const [actionType, setActionType] = useState(INVENTORY_ACTION_TYPE.RECEIVE_STOCK);
   const [quantityDelta, setQuantityDelta] = useState("");
@@ -519,19 +548,26 @@ function InventoryActionsPanel({ partId }) {
 
   return (
     <div className="fo-card">
-      <h3>Inventory Actions</h3>
+      <h3>Inventory Action Log</h3>
+      <p className="fo-muted">
+        This records an audit note only. It does not update stock yet.
+      </p>
 
       <form className="fo-form" onSubmit={handleSubmit}>
-        <label htmlFor="inventory-action-type">Action</label>
+        <label htmlFor="inventory-action-type">Action type</label>
         <select id="inventory-action-type" value={actionType} onChange={(e) => setActionType(e.target.value)}>
-          <option value={INVENTORY_ACTION_TYPE.RECEIVE_STOCK}>Receive Stock</option>
-          <option value={INVENTORY_ACTION_TYPE.ADJUST_STOCK}>Adjust Stock</option>
-          <option value={INVENTORY_ACTION_TYPE.CORRECT_MISTAKE}>Correct Mistake</option>
+          <option value={INVENTORY_ACTION_TYPE.RECEIVE_STOCK}>
+            {INVENTORY_ACTION_LABEL[INVENTORY_ACTION_TYPE.RECEIVE_STOCK]}
+          </option>
+          <option value={INVENTORY_ACTION_TYPE.ADJUST_STOCK}>
+            {INVENTORY_ACTION_LABEL[INVENTORY_ACTION_TYPE.ADJUST_STOCK]}
+          </option>
+          <option value={INVENTORY_ACTION_TYPE.CORRECT_MISTAKE}>
+            {INVENTORY_ACTION_LABEL[INVENTORY_ACTION_TYPE.CORRECT_MISTAKE]}
+          </option>
         </select>
 
-        <label htmlFor="inventory-action-qty">
-          {actionType === INVENTORY_ACTION_TYPE.RECEIVE_STOCK ? "Quantity received" : "Quantity change (+/-)"}
-        </label>
+        <label htmlFor="inventory-action-qty">Quantity for this note (not applied to stock)</label>
         <input
           id="inventory-action-qty"
           type="number"
@@ -561,23 +597,24 @@ function InventoryActionsPanel({ partId }) {
 
         <div className="disp-board-toolbar">
           <button type="submit" disabled={submitting}>
-            Record Action
+            Log Action
           </button>
         </div>
       </form>
 
-      <h4>Recent Inventory Actions</h4>
+      <h4>Recent Logged Actions</h4>
+      <p className="fo-muted">Audit notes only -- none of these have been applied to stock.</p>
       <LoadingEmptyState
         loading={loading}
         isEmpty={recentActions.length === 0}
-        loadingText="Loading inventory actions..."
-        emptyText="No inventory actions recorded yet."
+        loadingText="Loading inventory action log..."
+        emptyText="No inventory actions logged yet."
       >
         <table className="fo-table">
           <thead>
             <tr>
               <th>Type</th>
-              <th>Qty</th>
+              <th>Qty (logged, not applied)</th>
               <th>Reason</th>
               <th>By</th>
               <th>When</th>
@@ -586,7 +623,7 @@ function InventoryActionsPanel({ partId }) {
           <tbody>
             {recentActions.slice(0, 10).map((action) => (
               <tr key={action.id}>
-                <td>{action.transactionType}</td>
+                <td>{INVENTORY_ACTION_LABEL[action.transactionType] ?? action.transactionType}</td>
                 <td>{action.quantityDelta > 0 ? `+${action.quantityDelta}` : action.quantityDelta}</td>
                 <td className="fo-muted">{action.reason ?? "—"}</td>
                 <td className="fo-muted">{action.createdBy}</td>
