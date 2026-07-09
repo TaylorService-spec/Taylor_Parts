@@ -59,6 +59,7 @@ Implementation plans for advancing a named capability's maturity, traced to [`Pl
 
 ## Historical Epics
 
-Pre-capability-model, feature-level planning documents for major work efforts (Epic 1–8 numbering sequence). Not part of the Capability Plans layer above — these predate `PlatformCapabilityModel.md` and describe technical migrations rather than capability-maturity advancement.
+Feature-level planning documents for major work efforts that don't map to a single business capability — technical migrations (Epic 1–8, pre-capability-model) or cross-cutting platform initiatives (Epic 9+). Not part of the Capability Plans layer above, which is reserved for per-capability maturity Implementation Plans.
 
 - [epics/EPIC-6-Technician-Execution-Workspace.md](epics/EPIC-6-Technician-Execution-Workspace.md) — technician execution workspace planning doc.
+- [epics/EPIC-9-Platform-Workspace-Framework.md](epics/EPIC-9-Platform-Workspace-Framework.md) — cross-cutting platform initiative extracting shared workspace UI components (header/toolbar, loading/empty-state, filter bar) proven duplicated across Customers/Work Orders/Inventory.
