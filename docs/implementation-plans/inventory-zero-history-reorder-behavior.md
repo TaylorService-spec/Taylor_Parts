@@ -1,7 +1,7 @@
 ---
 artifact_type: implementation-plan
 gate: Implementation Plan
-status: Draft
+status: Approved
 date: 2026-07-10
 owner: Claude Code
 related_adrs: []
@@ -15,7 +15,7 @@ target_release:
 
 # Implementation Plan: Zero-history reorder behavior (recommendation status, manual quantity entry, role-gated authorization)
 
-**Sprint Specification:** `docs/specifications/inventory-zero-history-reorder-behavior.md` — status `Draft`, revised 2026-07-10 (sent back from `Approved` when this Implementation Plan's own review round found two defects in the Specification's drafted rules logic — see that document's "Approval" section for the full record).
+**Sprint Specification:** `docs/specifications/inventory-zero-history-reorder-behavior.md` — status `Approved`, commit `1cb4376bf87812a60c4ec7410390a4391d1f827c` (PR #89). (Sent back from `Approved` to `Draft` once, mid-sprint, when this Implementation Plan's own first review round found two defects in the Specification's drafted rules logic — both resolved and re-approved; see that document's "Approval" section for the full record.)
 
 Multi-PR sprint (four distinct concerns: analytics/schema, transitional authorization/Firestore Rules, UI/write-path, and a rules-tightening step) with real sequencing dependencies — PR 2 and PR 3 both require the types/fields PR 1 introduces; PR 3's writes are only meaningfully *authorized* (not merely accepted) once PR 2's rules are live; PR 4 must not land until PR 3 is confirmed live, per the Specification's "Deployment / rollout sequence." A standalone plan, per this repo's own threshold for when one is warranted.
 
@@ -103,3 +103,9 @@ Multi-PR sprint (four distinct concerns: analytics/schema, transitional authoriz
 | 4 | Not yet opened | Not started |
 
 Update this table as each PR opens/merges. Per the Owner's standing instruction, this sprint stays separate from Parts and Purchase Order Assignment Adoption and the broader governed Part and Inventory Administration initiative — do not link or merge tracking with either.
+
+## Approval
+
+**Approved by ChatGPT, 2026-07-10**, at commit `ea7204975ca127c3856dcb4b417ba1457c9cb3a3` (PR #89). The four-PR decomposition confirmed to correctly implement the approved Specification, preserve one architectural concern per PR, include adequate Rules-emulator coverage, and make deployments — not merely merges — explicit sequencing gates.
+
+**Authorized to proceed: PR 1 only.** PR 2 and PR 4 each require their own independent Rules-focused review before merge (per `docs/ai/workflow.md`'s Codex-optional criteria, already called out per-PR above). PR 3 must not deploy until PR 2's transitional rules are confirmed live in production — merge alone is not sufficient, per this plan's own Sequencing notes. PRs 2-4 are not yet authorized to begin.
