@@ -636,7 +636,8 @@ button:hover {
   font-size: 14px;
 }
 
-.fo-employee-picker-result:hover {
+.fo-employee-picker-result:hover,
+.fo-employee-picker-result-highlighted {
   background: #f4f6f5;
 }
 

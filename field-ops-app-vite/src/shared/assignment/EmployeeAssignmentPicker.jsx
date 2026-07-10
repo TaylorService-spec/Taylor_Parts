@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useAssignableEmployees } from "../../hooks/useAssignableEmployees";
 
 // Phase 3 -- Platform Assignment Foundation (docs/specifications/
@@ -51,27 +51,55 @@ export default function EmployeeAssignmentPicker({
 }) {
   const { employees, loading, error } = useAssignableEmployees({ requiredOperationalRole, requireLinkedUser });
   const [searchText, setSearchText] = useState("");
-  const [isFocused, setIsFocused] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const containerRef = useRef(null);
+
+  // Stable, instance-unique IDs -- required for correct combobox ARIA
+  // wiring (aria-controls/aria-activedescendant/label association) if
+  // more than one EmployeeAssignmentPicker is ever rendered on the
+  // same page (a real possibility once a workflow adopts this
+  // component -- e.g. an assignor picker next to an assignee picker).
+  // A single hard-coded id would collide across instances.
+  const baseId = useId();
+  const inputId = `${baseId}-input`;
+  const listboxId = `${baseId}-listbox`;
+  const optionId = (employeeId) => `${baseId}-option-${employeeId}`;
 
   const selectedEmployee = useMemo(
     () => employees.find((e) => e.employeeId === selectedEmployeeId) ?? null,
     [employees, selectedEmployeeId]
   );
 
-  // Reflects the current selection's name in the input when not
-  // actively searching -- resets to blank if the selection is cleared
+  // Reflects the current selection's name in the input when the
+  // dropdown is closed -- resets to blank if the selection is cleared
   // or resolves to nothing (e.g. still loading, or no longer eligible).
   useEffect(() => {
-    if (!isFocused) {
+    if (!isOpen) {
       setSearchText(selectedEmployee?.displayName ?? "");
     }
-  }, [selectedEmployee, isFocused]);
+  }, [selectedEmployee, isOpen]);
 
-  const results = useMemo(() => filterEmployeesBySearch(employees, isFocused ? searchText : ""), [employees, searchText, isFocused]);
+  const results = useMemo(() => filterEmployeesBySearch(employees, isOpen ? searchText : ""), [employees, searchText, isOpen]);
+
+  // Keeps the keyboard-highlighted index in bounds whenever the result
+  // set itself changes shape (typing narrows/widens it) -- without
+  // this, an index valid against the previous, longer list could point
+  // past the end of a newly-shortened one.
+  useEffect(() => {
+    setHighlightedIndex((i) => (i >= results.length ? results.length - 1 : i));
+  }, [results.length]);
+
+  function closeAndResetSearch() {
+    setIsOpen(false);
+    setHighlightedIndex(-1);
+    setSearchText(selectedEmployee?.displayName ?? "");
+  }
 
   function handleSelect(employee) {
     setSearchText(employee.displayName);
-    setIsFocused(false);
+    setIsOpen(false);
+    setHighlightedIndex(-1);
     onSelect?.({
       employeeId: employee.employeeId,
       userId: employee.userId,
@@ -80,37 +108,106 @@ export default function EmployeeAssignmentPicker({
     });
   }
 
+  function handleSearchChange(e) {
+    setSearchText(e.target.value);
+    setHighlightedIndex(-1);
+    if (!isOpen) setIsOpen(true);
+  }
+
+  // No setTimeout-based blur handling -- deterministic instead.
+  // Clicking a result never actually blurs the input in the first
+  // place: each option's onMouseDown calls preventDefault(), which
+  // stops the browser's default "move focus to the button" behavior,
+  // so the input stays focused and this handler never fires for that
+  // interaction; the option's onClick still fires normally afterward
+  // and calls handleSelect(), which closes the dropdown explicitly. A
+  // genuine blur (tabbing away, clicking something outside the
+  // picker entirely) is distinguished from a click that lands
+  // elsewhere WITHIN the picker (there is currently no such target,
+  // but the check is here for correctness/future-proofing) via
+  // relatedTarget -- if the newly-focused element is still inside
+  // this component's container, the dropdown stays open.
+  function handleBlur(e) {
+    if (containerRef.current && e.relatedTarget && containerRef.current.contains(e.relatedTarget)) {
+      return;
+    }
+    closeAndResetSearch();
+  }
+
+  function handleKeyDown(e) {
+    if (disabled) return;
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      if (!isOpen) {
+        setIsOpen(true);
+        return;
+      }
+      setHighlightedIndex((i) => Math.min(i + 1, results.length - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      if (!isOpen) return;
+      setHighlightedIndex((i) => Math.max(i - 1, 0));
+    } else if (e.key === "Enter") {
+      if (isOpen && highlightedIndex >= 0 && results[highlightedIndex]) {
+        e.preventDefault();
+        handleSelect(results[highlightedIndex]);
+      }
+    } else if (e.key === "Escape") {
+      if (isOpen) {
+        e.preventDefault();
+        closeAndResetSearch();
+      }
+    }
+  }
+
+  const activeDescendant = isOpen && highlightedIndex >= 0 && results[highlightedIndex] ? optionId(results[highlightedIndex].employeeId) : undefined;
+
   return (
-    <div className="fo-employee-picker">
-      {label && <label htmlFor="employee-assignment-picker-input">{label}</label>}
+    <div className="fo-employee-picker" ref={containerRef}>
+      {label && <label htmlFor={inputId}>{label}</label>}
       <input
-        id="employee-assignment-picker-input"
+        id={inputId}
         type="text"
+        role="combobox"
+        aria-expanded={isOpen}
+        aria-controls={listboxId}
+        aria-autocomplete="list"
+        aria-activedescendant={activeDescendant}
         placeholder={placeholder}
         value={searchText}
         disabled={disabled}
-        onChange={(e) => setSearchText(e.target.value)}
-        onFocus={() => setIsFocused(true)}
-        onBlur={() => setTimeout(() => setIsFocused(false), 150)}
+        onChange={handleSearchChange}
+        onFocus={() => setIsOpen(true)}
+        onBlur={handleBlur}
+        onKeyDown={handleKeyDown}
         aria-label={label ?? placeholder}
         autoComplete="off"
       />
-      {isFocused && (
-        <div className="fo-employee-picker-results">
+      {isOpen && (
+        <div id={listboxId} role="listbox" className="fo-employee-picker-results">
           {loading ? (
-            <div className="fo-muted fo-employee-picker-status">Loading...</div>
+            <div className="fo-muted fo-employee-picker-status" role="status">
+              Loading...
+            </div>
           ) : error ? (
-            <div className="fo-muted fo-employee-picker-status">Unable to load employees.</div>
+            <div className="fo-muted fo-employee-picker-status" role="status">
+              Unable to load employees.
+            </div>
           ) : results.length === 0 ? (
-            <div className="fo-muted fo-employee-picker-status">
+            <div className="fo-muted fo-employee-picker-status" role="status">
               {employees.length === 0 ? "No eligible employees found." : "No matches."}
             </div>
           ) : (
-            results.map((employee) => (
+            results.map((employee, index) => (
               <button
                 type="button"
                 key={employee.employeeId}
-                className="fo-employee-picker-result"
+                id={optionId(employee.employeeId)}
+                role="option"
+                aria-selected={employee.employeeId === selectedEmployeeId}
+                className={`fo-employee-picker-result${index === highlightedIndex ? " fo-employee-picker-result-highlighted" : ""}`}
+                onMouseDown={(e) => e.preventDefault()}
                 onClick={() => handleSelect(employee)}
               >
                 <span>{employee.displayName}</span>
