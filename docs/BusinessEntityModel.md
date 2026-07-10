@@ -41,8 +41,8 @@ Named here for architectural coherence, not scoped into current sprints:
 | Contact | A person associated with an Account | Core (V2) |
 | Location / Site | Physical service location tied to an Account | Core (V2) |
 | Work Order | A discrete unit of field service work — the platform's core operational transaction | Core (V2) — already real, production |
-| Employee | Internal worker/person, general personnel concept | Core (V2), as a documented concept |
-| User | Login/auth account, linked to Employee where applicable | Core (V2) — already real (`users/{uid}`) |
+| Employee | Authoritative workforce/business identity — a person the business recognizes as personnel, independent of application access (see Section 8a) | Core (V2) — **approved architecture, not yet implemented**; `employees` collection does not exist yet |
+| User | Application-access identity, linked to Employee where applicable (see Section 8a) | Core (V2) — already real (`users/{uid}`) |
 | Part | Inventory item consumed or installed during service | Core (V2) — already real |
 | Warehouse | Fixed physical inventory storage location | Core (V2) — already real |
 | Supplier | Vendor the operating business purchases parts from | Core (V2) — already real |
@@ -231,6 +231,35 @@ Part
 Supplier ── 1:many ── Purchase Order ── many:many ── Part (via line items)
 ```
 
+## 8a. Employee
+
+**Approved architecture, not yet implemented.** This section formalizes the Employee/User/Firebase-Authentication identity split governed by `PROJECT_ARCHITECTURE.md`'s "Person Assignment Platform Service Standard" (Enterprise Platform Classification Model, Section A). Nothing in this section describes deployed code, a live collection, or a built UI — see Section 9 for current build status.
+
+- **Employee** (proposed collection: `employees/{employeeId}`) is the authoritative workforce/business identity. An Employee may exist without any linked application access.
+- **User** (`users/{uid}`, existing, already real) is the application-access identity — who can sign in and what security role they hold. Linked to an Employee via `employeeId` where applicable; disabling a User's access must never delete the linked Employee or its historical assignment records.
+- **Firebase Authentication** is the credential/session authority only — it is *not* a Business Object and gets no entry in Section 3's table. The Employee record must not assume Firebase Authentication is a permanent choice; it carries only a neutral access-link reference (`userId`), never vendor-specific authentication fields, so a future identity provider change doesn't require redesigning the Employee entity itself.
+- **`fieldops_technicians` remains a separate, specialized, unchanged business object** — a field-service resource record, not the enterprise Employee model. Only some Employees are Technicians; this section does not propose renaming, merging, or migrating `fieldops_technicians` into `employees`.
+
+**Employee conceptual fields** (proposed/reserved — none of this is implemented yet):
+
+| Field | Status | Notes |
+|---|---|---|
+| `employeeId` | Proposed | Technical, non-human-readable, immutable document ID. Never a display name or employee number. |
+| `employeeNumber` | Future | Human-readable identifier (e.g. `EMP-000143`), distinct from `employeeId`. Not proposed for the initial shape. |
+| `displayName` | Proposed | Human-facing name, used by assignment pickers and display snapshots — not an identity key. |
+| `firstName` / `lastName` | Proposed | Structured name components, if/when the UI needs them separately from `displayName`. |
+| `employmentStatus` | Reserved | `ACTIVE` / `ON_LEAVE` / `INACTIVE` / `TERMINATED` / `RETIRED` / `CONTRACTOR`. The durable business-status model — more expressive than a boolean. An `active` boolean may still exist later as a convenience/query projection derived from this, but `employmentStatus` is the entity's real lifecycle state. Not implemented in code in this phase. |
+| `operationalRoles[]` | Proposed | E.g. `PARTS_MANAGER`, `PARTS_ASSOCIATE`, `TECHNICIAN`, `WAREHOUSE_MANAGER`, `WAREHOUSE_ASSOCIATE`, `SERVICE_MANAGER`, `SALES_MANAGER`, `SALES_ASSOCIATE`. Determines assignment eligibility only — never a substitute for the existing security `role` on `users/{uid}`. |
+| `companyId` | Future | Company (Section 2) is a Future entity with no implementation today; this field reserves multi-company readiness without implementing organizational structure now. |
+| `departmentId` | Future | No Department entity exists yet. Reserved for future org-structure compatibility; not proposed as implemented. |
+| `locationId` | Future | Reserved the same way as `companyId`/`departmentId` — no implementation proposed now. |
+| `userId` (or `linkedUserId`) | Proposed | Nullable link to `users/{uid}`. Null means the Employee has no application access. |
+| `createdAt` / `updatedAt` | Proposed | Standard record timestamps. |
+
+**Operational-role history (reserved, not in scope).** A future, separate business object such as `employee_role_assignments` may become necessary if operational-role *history* (not just current state) is ever required — this is named here for model coherence only, the same "documented concept, not scoped" convention this document already uses elsewhere (see Section 2). No such collection is created by this section, and the detailed schema for it is deliberately not designed here.
+
+**Legacy assignment compatibility.** Workflow records written before this Employee model exists (e.g. Reorder Request's `assignedToUserId`/`assignedBy`/`assignedAt`, Section 4) remain valid as-is and are not rewritten retroactively. See `PROJECT_ARCHITECTURE.md`'s Person Assignment Platform Service Standard for the full display-fallback and legacy-compatibility rules shared by every workflow object, not just Reorder Request.
+
 ## 9. Firestore collection recommendation
 
 | Collection | Status | Notes |
@@ -240,7 +269,7 @@ Supplier ── 1:many ── Purchase Order ── many:many ── Part (via l
 | `locations` | New, Core V2 | `accountId` reference — first-class collection, not embedded on the Account document |
 | `equipment` | New, **deferred** | `locationId` reference — not built in near-term sprints |
 | `fieldops_wos` | Existing, **unchanged** | No schema change proposed |
-| `employees` | New, **deferred** | Not scoped into near-term work |
+| `employees` | New, **deferred** | Governance-approved architecture (Section 8a) as of the Employee Identity Governance update — implementation not yet scoped into a sprint, collection does not exist yet |
 | `users` | Existing, **unchanged** | Already the login/auth identity collection |
 | `fieldops_technicians` | Existing, **unchanged** | Remains the field-technician-specific record |
 | `data/partsCatalog`, `inventory_transactions`, `warehouses`, `stock_locations`, `suppliers`, `supplier_catalog`, `purchase_orders` | Existing, **unchanged** | No changes proposed |

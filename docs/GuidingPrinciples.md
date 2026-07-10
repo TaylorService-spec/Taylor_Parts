@@ -21,6 +21,10 @@ Users should be able to find any business object by searching for it, rather tha
 
 Data entered in one part of the platform (e.g. a customer's address, a part's catalog details) should be available everywhere it's relevant, never re-entered by hand in a second place. This is the UX expression of [PlatformConstitution.md](PlatformConstitution.md)'s "One Source of Truth" principle.
 
+## People Are Selected by Recognizable Identity, Never Technical Identifiers
+
+When a workflow needs a person assigned to it, the person is chosen by recognizable identity — name, operational role, department, or other relevant business context — never by a Firebase UID or other technical identifier typed or pasted in by hand. Technical identity stays available behind the selection, where it belongs, for authorization and security enforcement; it is never the thing a user has to recognize or remember. This is the UX expression of `PROJECT_ARCHITECTURE.md`'s Person Assignment Platform Service Standard: one reusable picker pattern replaces feature-specific manual-ID entry everywhere a person assignment is needed, and every assignment preserves an immutable, human-readable display snapshot so historical records stay understandable in an audit later, even as the underlying identity resolves and changes over time.
+
 ## Information Should Be Actionable
 
 Every report, dashboard, or list should help a user decide what to do next, not just present data for its own sake. Prefer surfacing "3 work orders waiting on parts" over a raw table a user has to interpret themselves.
