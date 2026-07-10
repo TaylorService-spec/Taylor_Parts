@@ -31,6 +31,8 @@
 **Codex raises architecture concerns but does not redesign approved
 architecture.** If a review surfaces what looks like a design problem
 rather than a code-quality, security, or performance problem, Codex
-states the concern for Architecture Resolution (`workflow.md` stage 8)
-— it does not propose or implement an alternative architecture, and it
-does not reopen or re-approve the Sprint Specification itself.
+states the concern for ChatGPT's next review pass on the PR — it does
+not propose or implement an alternative architecture, and it does not
+reopen or re-approve the Sprint Specification itself. Codex review
+itself is optional, requested by Claude Code or the project owner when
+it adds value — see `workflow.md`.

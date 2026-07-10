@@ -25,8 +25,8 @@
   conformance to the approved Sprint Specification and classification
   model.
 - **Final architectural approval.** The last architecture-side gate
-  before a PR reaches Owner Merge Authorization — see
-  `workflow.md`'s stages 8-10.
+  before a PR reaches Owner Merge Authorization — see `workflow.md`'s
+  "ChatGPT Final Review" stage.
 
 ## Explicit boundary
 

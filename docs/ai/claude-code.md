@@ -29,15 +29,16 @@
 
 ## Codex finding classification
 
-After an Engineering Review, Claude Code classifies each Codex finding
-as one of:
+Codex review is optional, requested when it adds value (see
+`workflow.md`'s "Codex — optional independent engineering review").
+When Codex is used, Claude Code classifies each finding as one of:
 
 - **Accepted** — implement as-is.
 - **Accepted with modification** — implement, noting what changed and
   why.
 - **Requires ChatGPT Architecture Review** — the finding is
-  architectural, not just an engineering concern; route to Architecture
-  Resolution (`workflow.md` stage 8) rather than resolving it directly.
+  architectural, not just an engineering concern; raise it in the
+  PR for ChatGPT's next review pass rather than resolving it directly.
 - **Rejected (with repository evidence)** — state why, citing the
   specific file/line/behavior that contradicts the finding. A rejection
   without repository evidence is not a valid classification. Example:
