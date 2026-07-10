@@ -13,34 +13,36 @@ related_pr: [88, 89]
 target_release:
 ---
 
-# Sprint Specification: Zero-history reorder behavior (manager-entered quantity, Needs Planning state, governed stocking policy foundation)
+# Sprint Specification: Zero-history reorder behavior (recommendation status, manual quantity entry, role-gated authorization)
 
-**Architecture Review:** `docs/assessments/inventory-zero-history-reorder-behavior.md`'s "Architecture Decision" section — Approved 2026-07-10.
+**Architecture Review:** `docs/assessments/inventory-zero-history-reorder-behavior.md`'s "Architecture Decision" section — Approved 2026-07-10, revised 2026-07-10 per ChatGPT's REQUEST CHANGES on the first Specification round (`recommendationStatus`/`urgency` separation, manual-entry role eligibility).
 
 ## Executive summary
 
-When a part has no `CONSUMED` ledger history, `avgDailyUsage`/`reorderPoint`/`recommendedOrderQty` are all `0` and urgency collapses to `LOW` regardless of actual stock (root-caused in the linked assessment: Cloud Functions, the sole writer of `CONSUMED` entries, are not deployed to production). PR #88 already fixed the *display* of this (shows "Insufficient usage history" instead of a bare `0`) without changing any underlying value or write behavior. This sprint implements the approved permanent, three-tier model: usage analytics when reliable history exists, a governed stocking policy when configured, and a manager-entered quantity for everything else — plus a distinct `NEEDS_PLANNING` classification so zero-history parts stop being silently invisible in the "Needs Reorder" queue.
+When a part has no `CONSUMED` ledger history, `avgDailyUsage`/`reorderPoint`/`recommendedOrderQty` are all `0` and urgency collapses to `LOW` regardless of actual stock (root-caused in the linked assessment: Cloud Functions, the sole writer of `CONSUMED` entries, are not deployed to production). PR #88 already fixed the *display* of this (shows "Insufficient usage history" instead of a bare `0`) without changing any underlying value or write behavior. This sprint implements the approved permanent, three-tier model: usage analytics when reliable history exists, a governed stocking policy when configured (not built this sprint), and a manager-entered quantity for everything else — introducing a `recommendationStatus` field (orthogonal to `urgency`, not a new risk level) and a role-gated, Firestore-Rules-enforced manual-entry path.
 
 ## Sprint objective
 
 A part with no usage history:
-1. Is classified `NEEDS_PLANNING`, never `LOW`, and appears in a distinct queue/section a manager can actually see.
-2. Can still be reorder-requested, but only with a manager-entered positive whole-number quantity — never a submitted `0`.
-3. Has that manager-entered quantity stored as its own field, distinct from `recommendedQty`, which remains an immutable historical snapshot of what the analytics engine (or governed policy) actually computed at request time (`0`/`null`, honestly, when there was nothing to compute).
-4. Is validated server-side: `firestore.rules` rejects a non-positive or non-integer submitted quantity at create time, independent of whatever the client computed.
+1. Is classified `recommendationStatus: "NEEDS_PLANNING"` with `urgency: null` — never labeled a `LOW` risk it has no evidence for — and appears in a distinct queue/section a manager can actually see.
+2. Can still be reorder-requested, but only by an eligible person (Employee with `operationalRoles` containing `PARTS_MANAGER` or `WAREHOUSE_MANAGER`, or an `admin` override), entering a positive whole-number quantity — never a submitted `0`.
+3. Has that entered quantity stored in `requestedQty`, distinct from `recommendedQty` (which stays an immutable historical snapshot — `null` when nothing was computed, the existing computed number when it was).
+4. Records `quantitySource` (`ANALYTICS` | `MANUAL_ZERO_HISTORY`) as an immutable audit fact.
+5. Is validated server-side: `firestore.rules` rejects a non-positive or non-integer `requestedQty`, a disallowed `recommendationStatus`/`urgency` combination, and a `MANUAL_ZERO_HISTORY` submission from someone without an eligible role — not just UI-hidden.
 
-This sprint does **not** build a governed stocking-policy UI or storage model (minimum-stock/target-stock values) — it lays the schema/classification groundwork (tier 2 of the hybrid model is a reserved, not-yet-configurable no-op in this sprint; see "Explicitly out of scope").
+This sprint does **not** build a governed stocking-policy UI or storage model (minimum-stock/target-stock values) — it lays the schema/classification groundwork (tier 2 of the hybrid model is a reserved, not-yet-configurable no-op this sprint; see "Explicitly out of scope").
 
 ## Scope
 
-- `field-ops-app-vite/src/domain/inventoryAnalyticsEngine.ts` — add `NEEDS_PLANNING` to the risk/urgency model; `generateReplenishmentRecommendation()` returns it instead of computing `LOW`/`MEDIUM`/`HIGH`/`CRITICAL` when `!hasUsageHistory(usage)` and no governed policy is configured (policy lookup itself is out of scope — always absent this sprint, so this path is unconditional for now).
+- `field-ops-app-vite/src/domain/inventoryAnalyticsEngine.ts` — add `recommendationStatus` (new type, `"READY" | "NEEDS_PLANNING"`), make `urgency` nullable, `generateReplenishmentRecommendation()` sets `recommendationStatus: "NEEDS_PLANNING"`, `urgency: null` when `!hasUsageHistory(usage)` (no governed-policy lookup exists yet, so this path is unconditional this sprint). `RiskLevel`/`URGENCY_ORDER` are **unchanged** — no new value added to either.
 - `functions/src/inventoryAnalyticsService.ts` — mirrored change, kept in sync per the file's own "authoritative" convention.
-- `field-ops-app-vite/src/modules/inventory/PartsList.jsx` — "Needs Reorder" queue gains a `NEEDS_PLANNING` section/filter, separate from `ACTIONABLE_URGENCIES` (`CRITICAL`/`HIGH`); `handleRequestReorder()` requires a manager-entered quantity when `recommendation.urgency === "NEEDS_PLANNING"` instead of auto-submitting `Math.ceil(recommendation.recommendedOrderQty)`.
-- `field-ops-app-vite/src/modules/operations/panels/InventoryHealthPanel.jsx` — display/sort awareness of `NEEDS_PLANNING` (new `URGENCY_ORDER` entry).
-- `field-ops-app-vite/src/modules/inventory/PartDetail.jsx` — same manual-quantity entry path as `PartsList.jsx` for the per-part "Request Reorder" action.
-- `field-ops-app-vite/src/domain/inventoryReorderRequests.js` — `createReorderRequest()` gains a new required field for the actual submitted quantity, distinct from `recommendedQty`.
-- `firestore.rules` (both copies: `/firestore.rules` and `/field-ops-app-vite/firestore.rules`, kept identical per existing convention) — `reorder_requests` `create` rule gains schema/type/positivity validation.
-- `docs/BusinessEntityModel.md` — Reorder Request field list update (new field), per this repo's standing convention of keeping that doc as the schema reference.
+- `field-ops-app-vite/src/domain/constants.js` — **new** `OPERATIONAL_ROLE` constant (`PARTS_MANAGER`, `WAREHOUSE_MANAGER`) — the first canonical enum for Employee `operationalRoles[]` string values in this codebase (none exists today; PR #85's `EmployeeAssignmentPicker` has zero production consumers, so no operational-role string has ever been given a canonical home). New `QUANTITY_SOURCE` constant (`ANALYTICS`, `MANUAL_ZERO_HISTORY`).
+- `field-ops-app-vite/src/modules/inventory/PartsList.jsx` — "Needs Reorder" queue gains a `recommendationStatus === "NEEDS_PLANNING"` section, separate from the existing `ACTIONABLE_URGENCIES` (`CRITICAL`/`HIGH`) filter; `handleRequestReorder()` requires manual quantity entry (and eligibility) when `recommendationStatus === "NEEDS_PLANNING"` instead of auto-submitting.
+- `field-ops-app-vite/src/modules/operations/panels/InventoryHealthPanel.jsx` — sort/group awareness of `recommendationStatus` alongside the existing, unchanged `URGENCY_ORDER` sort.
+- `field-ops-app-vite/src/modules/inventory/PartDetail.jsx` — same manual-quantity entry path as `PartsList.jsx`; new "Requested qty" / "Recommendation status" rows on the Reorder Request review card.
+- `field-ops-app-vite/src/domain/inventoryReorderRequests.js` — `createReorderRequest()` gains `requestedQty` and `quantitySource` as new required fields.
+- `firestore.rules` (both copies: `/firestore.rules` and `/field-ops-app-vite/firestore.rules`, kept identical per existing convention) — `reorder_requests` `create` rule gains schema/type/positivity validation, plus a new operational-role check for the `MANUAL_ZERO_HISTORY` path specifically. New `hasOperationalRole(role)` rules helper.
+- `docs/BusinessEntityModel.md` — Reorder Request field list update (`recommendationStatus`, `requestedQty`, `quantitySource`; `urgency` now nullable), per this repo's standing convention of keeping that doc as the schema reference.
 
 ## Explicitly out of scope
 
@@ -48,79 +50,151 @@ This sprint does **not** build a governed stocking-policy UI or storage model (m
 - Re-evaluating or migrating `data/partsCatalog.ts`'s existing `reorderThreshold` field. Per the Architecture Decision, it is explicitly not reused as-is; any future migration is its own decision.
 - Parts and Purchase Order Assignment Adoption (separate initiative, kept apart per Owner instruction).
 - The broader governed Part and Inventory Administration initiative (per Owner instruction, kept separate).
-- Any correction/edit flow for an existing Reorder Request's quantity. Per the Architecture Decision, corrections are cancel-and-recreate — no new "edit" capability, no new mutable window on `recommendedQty` or the new manager-quantity field.
+- Any correction/edit flow for an existing Reorder Request's quantity. Per the Architecture Decision, corrections are cancel-and-recreate — no new "edit" capability, no new mutable window on `recommendedQty`, `requestedQty`, or `quantitySource`.
 - Actually deploying Cloud Functions or generating real `CONSUMED` data (blocked on the Blaze plan decision, issue #15 — unrelated to this sprint).
-- Any change to `urgency`'s meaning or thresholds for parts that DO have usage history — `LOW`/`MEDIUM`/`HIGH`/`CRITICAL` and their existing formulas are unchanged for that case.
+- Any change to `urgency`'s meaning, values, or thresholds for parts that DO have usage history — `LOW`/`MEDIUM`/`HIGH`/`CRITICAL` and their existing formulas are completely unchanged for that case; this sprint adds a sibling field, not a new member of that enum.
+- Populating `operationalRoles` for any real Employee record, or building any UI to manage it. This sprint only defines the `OPERATIONAL_ROLE` constant and the rules check that reads it — actually assigning `PARTS_MANAGER`/`WAREHOUSE_MANAGER` to specific Employees is an operational/data task, not a code change, and is not this sprint's concern (same posture as Employee Foundation's existing `provisionEmployeeAccess.js`-mediated assignment, unaffected here).
 
 ## Technical design
 
-**New risk/urgency value** (`domain/inventoryAnalyticsEngine.ts` and `functions/src/inventoryAnalyticsService.ts`):
+**`recommendationStatus`, not a new risk level** (`domain/inventoryAnalyticsEngine.ts`, `functions/src/inventoryAnalyticsService.ts`):
+```ts
+export type RecommendationStatus = "READY" | "NEEDS_PLANNING";
+// RiskLevel is UNCHANGED:
+export type RiskLevel = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+
+export type ReplenishmentRecommendation = {
+  partId: string;
+  availableStock: number;
+  reorderPoint: number;
+  daysRemaining: number;
+  recommendedOrderQty: number;      // unchanged meaning; see per-path contract below
+  recommendationStatus: RecommendationStatus; // NEW
+  urgency: RiskLevel | null;        // now nullable
+  modelVersion: "EPIC3_LINEAR_V1";
+};
 ```
-export type RiskLevel = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL" | "NEEDS_PLANNING";
-```
-`generateReplenishmentRecommendation()`: if `!hasUsageHistory(usage)` (existing PR #88 helper), set `urgency = "NEEDS_PLANNING"` and `recommendedOrderQty = 0` (unchanged value — still an honest "nothing computed," now correctly labeled rather than mislabeled `LOW`). The existing `LOW`/`MEDIUM`/`HIGH`/`CRITICAL` branch only runs when `hasUsageHistory(usage)` is true. `URGENCY_ORDER` gains `NEEDS_PLANNING` — proposed ordering `{ CRITICAL: 0, HIGH: 1, NEEDS_PLANNING: 2, MEDIUM: 3, LOW: 4 }` (ranked above `MEDIUM`/`LOW` since "we don't know" warrants attention sooner than "known low risk," but below confirmed `CRITICAL`/`HIGH`) — final ordering is an implementation-time UI call, not re-litigated here.
+`generateReplenishmentRecommendation()`: if `!hasUsageHistory(usage)` (existing PR #88 helper) → `recommendationStatus: "NEEDS_PLANNING"`, `urgency: null`, `recommendedOrderQty: 0` (unchanged internal computed value — PR #88's display fix already handles rendering this honestly; this sprint's display work is about *grouping*, not re-solving the already-solved display problem). Otherwise (existing behavior, completely unchanged) → `recommendationStatus: "READY"`, `urgency` computed exactly as today. `URGENCY_ORDER` is **not touched** — it continues to rank only `CRITICAL`/`HIGH`/`MEDIUM`/`LOW`, and is never evaluated for a `NEEDS_PLANNING` recommendation (queue grouping keys on `recommendationStatus` instead, see UI impact).
 
 **Reorder Request schema addition** (`domain/inventoryReorderRequests.js`, `docs/BusinessEntityModel.md`):
-- New field: `requestedQty: number` — the actual quantity a human is requesting, always present, always the number used for downstream purchasing. Populated from `recommendation.recommendedOrderQty` when usage history exists (today's behavior, unchanged), or from manager manual entry when `urgency === "NEEDS_PLANNING"`.
-- `recommendedQty` is **unchanged in meaning**: the analytics engine's own output at request time, `0` when nothing could be computed — kept purely as the immutable historical snapshot the Architecture Decision calls for. Downstream consumers (Parts Manager review, Purchase Order recording) should read `requestedQty`, not `recommendedQty`, for the actual actionable number — this sprint must audit and update any existing read of `recommendedQty` used for an operational (not historical/audit) purpose. (Investigation found `PartDetail.jsx`'s `ReorderRequestReview` currently displays `request.recommendedQty` as "Recommended qty" — this becomes a display of the historical snapshot; `requestedQty` needs its own row, labeled distinctly, e.g. "Requested qty.")
-- `createReorderRequest({ partId, urgency, recommendedQty, requestedQty })` — `requestedQty` becomes a new required parameter, always sent by both call sites (`PartsList.jsx`, `PartDetail.jsx`).
+- New field: `recommendationStatus: "READY" | "NEEDS_PLANNING"` — copied from `recommendation.recommendationStatus` at creation time, immutable.
+- New field: `requestedQty: number` — the actual quantity a human is requesting, always present, always a positive whole number, always the field downstream purchasing reads. Populated as `recommendedOrderQty` when `recommendationStatus === "READY"` (today's behavior, unchanged value), or from manual entry when `"NEEDS_PLANNING"`.
+- New field: `quantitySource: "ANALYTICS" | "MANUAL_ZERO_HISTORY"` — immutable audit fact, `ANALYTICS` for the `READY` path, `MANUAL_ZERO_HISTORY` for the `NEEDS_PLANNING` path. No third value this sprint (a future governed-policy tier would add one, out of scope here).
+- `recommendedQty` **contract, finalized**: `null` when `recommendationStatus === "NEEDS_PLANNING"` (nothing was computed — matches this codebase's existing convention for not-yet-applicable fields, e.g. `assignedToUserId`/`purchaseOrderId` default `null`); the existing computed number (including a legitimate `0`) when `recommendationStatus === "READY"`. Kept purely as the immutable historical snapshot — downstream consumers must read `requestedQty` for the actionable number. (Investigation found `PartDetail.jsx`'s `ReorderRequestReview` currently displays `request.recommendedQty` as "Recommended qty" — this becomes strictly the historical-snapshot display; `requestedQty` needs its own, separately labeled row.)
+- `createReorderRequest({ partId, urgency, recommendedQty, recommendationStatus, requestedQty, quantitySource })` — `recommendationStatus`, `requestedQty`, `quantitySource` become new required parameters, always sent by both call sites (`PartsList.jsx`, `PartDetail.jsx`).
+
+**Per-path contract** (from the Architecture Decision, restated for implementers):
+
+| Field | `READY` (analytics-backed) | `NEEDS_PLANNING` (zero-history) |
+|---|---|---|
+| `recommendationStatus` | `READY` | `NEEDS_PLANNING` |
+| `urgency` | `LOW`\|`MEDIUM`\|`HIGH`\|`CRITICAL` (unchanged formula) | `null` |
+| `recommendedQty` | existing computed number (`0` is valid) | `null` |
+| `requestedQty` | `= recommendedQty` at creation | manager-entered positive whole number |
+| `quantitySource` | `ANALYTICS` | `MANUAL_ZERO_HISTORY` |
 
 **Manual quantity entry UX** (`PartsList.jsx`, `PartDetail.jsx`):
-- When `recommendation.urgency === "NEEDS_PLANNING"`, "Request Reorder" opens a quantity input (positive whole number, client-side validated before submit) instead of submitting immediately. When usage history exists, today's one-click behavior is unchanged.
+- When `recommendation.recommendationStatus === "NEEDS_PLANNING"`, "Request Reorder" is only enabled/actionable for an eligible user (see Firestore Rules impact — client-side gating mirrors the rules check but is not a substitute for it) and opens a quantity input (positive whole number, client-side validated before submit) instead of submitting immediately. When `recommendationStatus === "READY"`, today's one-click behavior is completely unchanged.
 - Exact component structure (inline form vs. modal) is an implementation-time UI decision, not specified here.
+
+**Role eligibility — new concept, defined here** (`domain/constants.js`, `domain/employees.js` conventions):
+```js
+export const OPERATIONAL_ROLE = {
+  PARTS_MANAGER: "PARTS_MANAGER",
+  WAREHOUSE_MANAGER: "WAREHOUSE_MANAGER",
+};
+```
+This is the first canonical `operationalRoles[]` value enum in the codebase — `PARTS_MANAGER` already exists as a *string* (`REORDER_REQUEST_OWNER.PARTS_MANAGER`, a `currentOwner` value, role-level not per-Employee) but has never been used as an Employee `operationalRoles[]` entry; this sprint gives the same string a second, additional meaning in a different field, which implementation should comment explicitly to avoid future confusion between "who currently owns this request" (`currentOwner`) and "who is allowed to manually enter a quantity" (`operationalRoles`). `WAREHOUSE_MANAGER` is entirely new. Client-side eligibility check reads the current user's linked Employee (`AuthContext`'s existing `operationalRoles` exposure, from PR #84 — already available, no new read path needed) and checks membership in `[PARTS_MANAGER, WAREHOUSE_MANAGER]`, OR `role === "admin"` (existing `ROLES.ADMIN`, unconditional override).
 
 ## Firestore Rules impact
 
-Both copies (`/firestore.rules`, `/field-ops-app-vite/firestore.rules` — kept identical, existing convention) need the `reorder_requests` `create` rule (currently `allow create: if isAdminOrDispatcher();`, no field validation at all) extended with:
-- `request.resource.data.requestedQty is int && request.resource.data.requestedQty > 0` — the positive-whole-number requirement from the Architecture Decision, enforced server-side, not just client-side.
-- `request.resource.data.urgency in ["LOW", "MEDIUM", "HIGH", "CRITICAL", "NEEDS_PLANNING"]` — allowed-value validation (currently absent).
-- `request.resource.data.partId is string && request.resource.data.partId.size() > 0` — basic shape validation (currently absent).
-- Per the Architecture Decision, rules are **not** expected to reproduce the analytics formula — `recommendedQty` itself gets a type check (`is number`) but no relationship check against `requestedQty`, `availableStock`, or anything computed. The two numbers are allowed to differ freely (that's the entire point of `requestedQty` existing).
-- No change to any existing `update` transition rule — `recommendedQty`'s immutability (line 295 today) is preserved unchanged, and `requestedQty` joins it as equally immutable after creation (consistent with "corrections use cancel-and-recreate," not partial edits).
-- Requires the standard emulator Rules test pass before merge, per this repo's established Firestore Rules discipline (Sprint 2.1.4/2.1.10's REQUEST-CHANGES history) — implementation should add or extend a Rules test analogous to `functions/test/employeesRules.test.js`'s pattern (this repo's only existing precedent), covering: reject `requestedQty <= 0`, reject non-integer `requestedQty`, reject disallowed `urgency`, accept a valid `NEEDS_PLANNING` request.
+Both copies (`/firestore.rules`, `/field-ops-app-vite/firestore.rules` — kept identical, existing convention) need:
+
+**New helper** (alongside the existing `isSignedIn()`/`userData()`/`isAdminOrDispatcher()` block):
+```
+function hasOperationalRole(role) {
+  return isSignedIn()
+    && userData().employeeId != null
+    && get(/databases/$(database)/documents/employees/$(userData().employeeId)).data.operationalRoles.hasAny([role]);
+}
+
+function canSubmitManualZeroHistoryQuantity() {
+  return isSignedIn()
+    && (userRole() == "admin"
+        || hasOperationalRole("PARTS_MANAGER")
+        || hasOperationalRole("WAREHOUSE_MANAGER"));
+}
+```
+`hasOperationalRole()` reuses the exact `users/{uid}.employeeId` → `employees/{employeeId}` read pattern already established and already allowed by the existing `employees/{employeeId}` `read` rule's self-read clause (`userData().employeeId == employeeId`) — no new read permission is opened, this only adds a new *consumer* of an already-readable relationship.
+
+**`reorder_requests` `create` rule**, extended (currently `allow create: if isAdminOrDispatcher();`, no field validation at all):
+```
+allow create: if isAdminOrDispatcher()
+  && request.resource.data.partId is string && request.resource.data.partId.size() > 0
+  && request.resource.data.recommendationStatus in ["READY", "NEEDS_PLANNING"]
+  && request.resource.data.quantitySource in ["ANALYTICS", "MANUAL_ZERO_HISTORY"]
+  && request.resource.data.requestedQty is int && request.resource.data.requestedQty > 0
+  && (request.resource.data.recommendationStatus == "READY"
+        ? (request.resource.data.urgency in ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
+           && request.resource.data.quantitySource == "ANALYTICS"
+           && (request.resource.data.recommendedQty is number))
+        : (request.resource.data.urgency == null
+           && request.resource.data.quantitySource == "MANUAL_ZERO_HISTORY"
+           && request.resource.data.recommendedQty == null
+           && canSubmitManualZeroHistoryQuantity()));
+```
+Notes:
+- This preserves the **existing, unchanged** `isAdminOrDispatcher()` gate for the `READY` path — no regression for today's analytics-backed flow, any `admin`/`dispatcher` can still create it exactly as now.
+- The `NEEDS_PLANNING` branch adds `canSubmitManualZeroHistoryQuantity()` as an **additional**, narrower requirement — `dispatcher` alone (without an eligible `operationalRoles` entry) is denied for this path specifically, per the Architecture Decision ("dispatcher access must not automatically imply inventory-planning authority"). `admin` passes via the override.
+- Per the Architecture Decision, rules are **not** expected to reproduce the analytics formula — no relationship check between `requestedQty` and `availableStock`/`reorderPoint`/anything computed. Only structural/authorization validity is enforced.
+- No change to any existing `update` transition rule — `recommendedQty`'s immutability (line 295 today) is preserved unchanged; `recommendationStatus`, `requestedQty`, `quantitySource` join it as equally immutable after creation (none appears in any `update` branch's allowed `affectedKeys()`), consistent with "corrections use cancel-and-recreate."
+- Requires the standard emulator Rules test pass before merge, per this repo's established Firestore Rules discipline (Sprint 2.1.4/2.1.10's REQUEST-CHANGES history) — implementation should add or extend a Rules test analogous to `functions/test/employeesRules.test.js`'s pattern (this repo's only existing precedent), covering at minimum: reject `requestedQty <= 0`; reject non-integer `requestedQty`; reject a `READY` request with non-`ANALYTICS` `quantitySource` or a non-null-violating `recommendedQty` type; reject a `NEEDS_PLANNING` request from a `dispatcher` with no `operationalRoles`; accept a `NEEDS_PLANNING` request from an `admin`; accept a `NEEDS_PLANNING` request from a `dispatcher` whose linked Employee has `operationalRoles: ["WAREHOUSE_MANAGER"]`.
 
 ## UI impact
 
-- "Needs Reorder" queue (`PartsList.jsx`) gains a `NEEDS_PLANNING` section/filter, distinct from the existing `CRITICAL`/`HIGH` actionable set — exact placement (merged into one queue vs. a separate tab/section) is implementation-time, but must be visually distinguishable, not silently absent as it is today.
-- `InventoryHealthPanel.jsx`'s Avg Daily Usage / Recommended Reorder Qty columns keep PR #88's "Insufficient usage history" text for `NEEDS_PLANNING` rows (unchanged) — the fix already covers the display half; this sprint adds the classification and queue-visibility half PR #88 explicitly deferred.
-- `PartDetail.jsx`'s Reorder Request review card needs a new "Requested qty" row alongside the existing "Recommended qty" row, since the two can now legitimately differ.
-- New manual-quantity entry control on "Request Reorder," gated on `urgency === "NEEDS_PLANNING"`.
+- "Needs Reorder" queue (`PartsList.jsx`) gains a `recommendationStatus === "NEEDS_PLANNING"` section, distinct from the existing `CRITICAL`/`HIGH` `ACTIONABLE_URGENCIES` set — exact placement (merged into one queue vs. a separate tab/section) is implementation-time, but must be visually distinguishable, not silently absent as it is today. `URGENCY_ORDER`-based sorting is unaffected; `NEEDS_PLANNING` records are grouped, not urgency-ranked.
+- `InventoryHealthPanel.jsx`'s Avg Daily Usage / Recommended Reorder Qty columns keep PR #88's "Insufficient usage history" text for `NEEDS_PLANNING` rows (unchanged) — the fix already covers the display half; this sprint adds the classification/grouping and eligibility-gated manual entry PR #88 explicitly deferred.
+- `PartDetail.jsx`'s Reorder Request review card needs new "Requested qty," "Recommendation status," and "Quantity source" rows alongside the existing "Recommended qty" row, since the values can now legitimately differ or be absent (`null`).
+- New manual-quantity entry control on "Request Reorder," gated on `recommendationStatus === "NEEDS_PLANNING"` AND the current user's eligibility (client-side mirror of the rules check — the control should not even be offered to an ineligible user, consistent with "do not rely only on UI hiding" meaning rules enforcement is required, not that UI affordance-matching is prohibited).
 
 ## Testing strategy
 
-- Unit-level (this repo's established no-framework pattern, inline Node assertion scripts, same as PR #85/#88's approach): `generateReplenishmentRecommendation()` returns `NEEDS_PLANNING` + `recommendedOrderQty: 0` when `!hasUsageHistory(usage)`; unchanged `LOW`/`MEDIUM`/`HIGH`/`CRITICAL` behavior when usage history exists (regression coverage).
-- Firestore Rules emulator test (new, extending the `employeesRules.test.js` pattern) for the `create` validation described above.
+- Unit-level (this repo's established no-framework pattern, inline Node assertion scripts, same as PR #85/#88's approach): `generateReplenishmentRecommendation()` returns `recommendationStatus: "NEEDS_PLANNING"`, `urgency: null`, `recommendedOrderQty: 0` when `!hasUsageHistory(usage)`; unchanged `recommendationStatus: "READY"` + existing `urgency` formula when usage history exists (regression coverage) — `URGENCY_ORDER`/`RiskLevel` values themselves get a regression check confirming no new member was added.
+- Firestore Rules emulator test (new, extending the `employeesRules.test.js` pattern) for the `create` validation and role-eligibility scenarios described above.
 - Manual/build verification: `npm run build` + `npm run lint` in `field-ops-app-vite/`, `npx tsc --noEmit` + `npm run build` in `functions/`, matching this repo's standing validation bar for every PR in this initiative.
 - No emulator run of the full Reorder Request lifecycle is required unless the implementation PR's actual diff touches transition rules beyond `create` — scope this sprint intentionally avoids.
 
 ## Rollback strategy
 
-Additive schema change (`requestedQty` new field, `NEEDS_PLANNING` new enum value) — no existing field is removed or repurposed, no existing rule is loosened. Rollback is a straightforward revert of the implementation PR(s) plus a `firestore.rules` redeploy of the prior ruleset. Not irreversible. The one genuinely hard-to-reverse element is `firestore.rules`'s live deploy step itself (as with every rules change in this repo) — must be explicitly redeployed after merge, not assumed automatic (no CI auto-deploys, per this repo's own documented incident history).
+Additive schema change (`recommendationStatus`, `requestedQty`, `quantitySource` new fields; `urgency` becomes nullable but no existing non-null value/meaning changes) — no existing field is removed or repurposed, no existing rule is loosened (the `READY` path's `isAdminOrDispatcher()` gate is unchanged; the new role check only narrows the new `NEEDS_PLANNING` path). Rollback is a straightforward revert of the implementation PR(s) plus a `firestore.rules` redeploy of the prior ruleset. Not irreversible. The one genuinely hard-to-reverse element is `firestore.rules`'s live deploy step itself (as with every rules change in this repo) — must be explicitly redeployed after merge, not assumed automatic (no CI auto-deploys, per this repo's own documented incident history).
 
 ## Acceptance criteria
 
-- [ ] A part with zero `CONSUMED` history is classified `urgency: "NEEDS_PLANNING"`, never `LOW`.
+- [ ] A part with zero `CONSUMED` history is classified `recommendationStatus: "NEEDS_PLANNING"`, `urgency: null` — never `"LOW"`.
+- [ ] `RiskLevel`/`URGENCY_ORDER` are unchanged — no `NEEDS_PLANNING` (or any new) member added to either.
 - [ ] `NEEDS_PLANNING` parts appear in a visibly distinct queue/section, not silently absent from "Needs Reorder."
-- [ ] "Request Reorder" on a `NEEDS_PLANNING` part requires a manager-entered positive whole-number quantity before submission; it is impossible to submit `requestedQty: 0` or a non-integer through the UI.
-- [ ] `firestore.rules` (both copies, identical) rejects a `create` with `requestedQty <= 0` or non-integer, verified via an emulator Rules test.
-- [ ] `recommendedQty` is unchanged in meaning and value from today (still the raw analytics output, `0` when nothing computed) — no existing reader of `recommendedQty` is broken.
-- [ ] `requestedQty` is the field any new/updated downstream display (Parts Manager review, etc.) reads for the actionable quantity.
-- [ ] Parts with existing usage history see zero behavior change — same one-click "Request Reorder," same `LOW`/`MEDIUM`/`HIGH`/`CRITICAL` classification, same formulas.
+- [ ] "Request Reorder" on a `NEEDS_PLANNING` part is only actionable for `admin`, or a user whose linked Employee has `operationalRoles` containing `PARTS_MANAGER` or `WAREHOUSE_MANAGER` — verified both in the UI (control not offered) and in `firestore.rules` (write rejected regardless of UI state).
+- [ ] It is impossible to submit `requestedQty: 0`, a non-integer, or a negative number through the UI or directly against `firestore.rules`.
+- [ ] `firestore.rules` (both copies, identical) rejects: non-positive/non-integer `requestedQty`; a `NEEDS_PLANNING` submission from a `dispatcher` with no eligible `operationalRoles`; a `READY` submission with `quantitySource != "ANALYTICS"`. All verified via an emulator Rules test.
+- [ ] `recommendedQty` is `null` for every `NEEDS_PLANNING` request and unchanged (existing computed number) for every `READY` request — no existing reader of `recommendedQty` breaks on the `READY` path.
+- [ ] `requestedQty` is the field every downstream display (Parts Manager review, etc.) reads for the actionable quantity.
+- [ ] Parts with existing usage history see zero behavior change — same one-click "Request Reorder," same `urgency` classification, same formulas, same `isAdminOrDispatcher()` gate.
 - [ ] `npm run build`/`npm run lint` (field-ops-app-vite) and `npx tsc --noEmit`/`npm run build` (functions) all pass.
 - [ ] Not deployed as part of implementation — deploy is a separate, explicit, Owner-authorized step per this repo's standing practice.
 
 ## Risks
 
 - **Two-file rules edit risk**: both `firestore.rules` copies must be changed identically — this repo's established pattern, but a real diff-review risk if only one is edited.
-- **`requestedQty` becoming a de facto required migration for any code that currently reads `recommendedQty` operationally** — the investigation above found at least one such read (`PartDetail.jsx`'s `ReorderRequestReview`); implementation must audit for others (Parts Manager assignment card, Purchase Order recording) rather than assuming `PartDetail.jsx` is the only one.
-- **UI complexity of a blocking manual-entry step** on what is today a one-click action — needs to stay usable, not become a heavyweight form for what may often be a small, obvious quantity.
-- **`NEEDS_PLANNING`'s position in `URGENCY_ORDER`** is a genuine UX judgment call (proposed above, not locked) — could reasonably be argued either above or below `MEDIUM`; worth a quick confirm at implementation time rather than treating this spec's ordering as final.
+- **`operationalRoles` is currently unpopulated for every real Employee** (PR #85 confirmed zero production consumers) — until an admin actually assigns `PARTS_MANAGER`/`WAREHOUSE_MANAGER` to at least one Employee (an operational task, out of scope here), only `admin` accounts can use the manual-entry path in practice. Not a code defect, but worth flagging so it isn't mistaken for a bug during verification.
+- **`requestedQty`/`recommendationStatus` becoming a de facto required migration for any code that currently reads `recommendedQty`/`urgency` operationally** — the investigation above found at least one such read (`PartDetail.jsx`'s `ReorderRequestReview`); implementation must audit for others (Parts Manager assignment card, Purchase Order recording, any urgency-based sort/filter beyond `PartsList.jsx`'s `ACTIONABLE_URGENCIES`) rather than assuming that's the only one.
+- **`urgency` becoming nullable is a type-widening change** — any existing code doing `recommendation.urgency.toLowerCase()` or similar without a null check (e.g. `InventoryHealthPanel.jsx`'s badge rendering: `fo-badge-${recommendation.urgency.toLowerCase()}`) will throw on a `NEEDS_PLANNING` record unless updated. Implementation must audit every `urgency` read, not just the ones already known from this investigation.
+- **UI complexity of a blocking, role-gated manual-entry step** on what is today a one-click action for `READY` — needs to stay usable, not become a heavyweight form, while still clearly communicating *why* a given user can't submit (ineligible role) versus *how* to (needs a quantity).
 
 ## Open questions
 
-- Exact `NEEDS_PLANNING` ranking within `URGENCY_ORDER` (proposed above, not locked).
 - Exact manual-quantity-entry UI shape (inline expand vs. modal) — implementation-time UI decision, not architecturally significant.
 - Whether the Notification Panel (currently 4 sections, already flagged in `docs/CLAUDE_CONTEXT.md` as near its intended limit) needs a `NEEDS_PLANNING`-aware addition, or whether the "Needs Reorder" queue's own new section is sufficient — recommend deferring to a follow-up if it comes up, not expanding this sprint's scope.
+- Whether `PARTS_ASSOCIATE` (an existing `REORDER_REQUEST_OWNER` value, distinct from the new `OPERATIONAL_ROLE` enum this sprint introduces) should ever gain manual-entry eligibility — not requested by the Architecture Decision, not assumed here; flagged only so a future reviewer doesn't read its absence as an oversight.
 
 ## Approval
 
