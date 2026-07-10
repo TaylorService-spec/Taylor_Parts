@@ -70,7 +70,7 @@ Ownership: **Inventory Management remains the sole owner of the Reorder Request'
 
 Write path: client-direct-write via `domain/inventoryReorderRequests.js` (mirrors the `accounts`/`locations`/`contacts` pattern) — `createReorderRequest()` (Sprint 2.1.3), `reviewReorderRequest()` (Sprint 2.1.4, extended Sprint 2.1.5), `assignReorderRequest()` (Sprint 2.1.6), `startPurchasing()` (Sprint 2.1.7), and `updatePurchasingProgress()` (Sprint 2.1.8) are its writers for the first four transitions. The fifth transition (`PURCHASING_IN_PROGRESS` → `ORDERED`) is written by a different file, `domain/reorderPurchaseOrders.js`'s `recordPurchaseOrder()`, since it must atomically also create the linked Reorder Purchase Order record — see Section 4b for the full atomicity design. No Cloud Function anywhere in this chain. `firestore.rules`' update rule enforces five paths in sequence (`PENDING_REVIEW` → `READY_FOR_PARTS_MANAGER`/`REJECTED`; `READY_FOR_PARTS_MANAGER` → `ASSIGNED_TO_PARTS_ASSOCIATE`; `ASSIGNED_TO_PARTS_ASSOCIATE` → `PURCHASING_IN_PROGRESS`, assignee-only; `PURCHASING_IN_PROGRESS` → `PURCHASING_IN_PROGRESS`, also assignee-only and a non-transition path; `PURCHASING_IN_PROGRESS` → `ORDERED`, assignee-only), each with its own field-matching/`affectedKeys()` constraints, plus the immutability of the original request fields and of every earlier stage's fields once a later write happens.
 
-Status: Core (V2), Sprint 2.1.3-2.1.8.
+Status: Core (V2), Sprint 2.1.3-2.1.10.
 
 ## 4a. Inventory Action
 
