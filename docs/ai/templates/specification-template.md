@@ -1,9 +1,21 @@
+---
+artifact_type: specification
+gate: Sprint Specification
+status: Draft
+date: YYYY-MM-DD
+owner: Claude Code
+related_adrs: []
+depends_on: []
+implements: []
+supersedes: []
+superseded_by: []
+related_pr:
+target_release:
+---
+
 # Sprint Specification: <sprint name>
 
-**Date:** YYYY-MM-DD
-**Produced by:** Claude Code
 **Architecture Review:** <link> — Approved YYYY-MM-DD
-**Status:** Draft / Approved / In Implementation / Complete
 
 ## Executive summary
 What this sprint does and why, in a few sentences.

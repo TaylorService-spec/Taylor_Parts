@@ -20,8 +20,9 @@
   simulator testing where rules changed — and reports explicitly when
   something couldn't be tested rather than claiming it was.
 - **PR management.** Opens PRs scoped to one architectural concern
-  each, with a summary, changes list, and test plan; does not merge
-  without the required approvals.
+  each, with a summary, changes list, and test plan. Merge and deploy
+  are authorized by the project owner, not by Claude Code or ChatGPT
+  approval alone — see `workflow.md`'s Owner Merge Authorization stage.
 - **Applying approved corrections.** Implements exactly what a review
   requested — does not use a correction as license for unrelated
   opportunistic changes.
@@ -39,7 +40,10 @@ as one of:
   Resolution (`workflow.md` stage 8) rather than resolving it directly.
 - **Rejected (with repository evidence)** — state why, citing the
   specific file/line/behavior that contradicts the finding. A rejection
-  without repository evidence is not a valid classification.
+  without repository evidence is not a valid classification. Example:
+  "Rejected — Codex reported that the implementation uses `getDoc`, but
+  `src/example.js` lines 12-18 use `onSnapshot`. The finding does not
+  match the current PR state."
 
 ## Explicit boundary
 

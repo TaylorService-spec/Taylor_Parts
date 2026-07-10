@@ -1,9 +1,21 @@
+---
+artifact_type: assessment
+gate: Repository Assessment
+status: Draft
+date: YYYY-MM-DD
+owner: Claude Code
+related_adrs: []
+depends_on: []
+implements: []
+supersedes: []
+superseded_by: []
+related_pr:
+target_release:
+---
+
 # Assessment Report: <topic>
 
-**Date:** YYYY-MM-DD
-**Produced by:** Claude Code
 **Business Request:** <one-line description or link to source request>
-**Status:** Draft / Complete
 
 ## Scope of this assessment
 What was inspected, and what was explicitly not (time-box or boundary,

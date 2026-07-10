@@ -1,9 +1,21 @@
+---
+artifact_type: architecture-review
+gate: Architecture Review
+status: Draft
+date: YYYY-MM-DD
+owner: ChatGPT
+related_adrs: []
+depends_on: []
+implements: []
+supersedes: []
+superseded_by: []
+related_pr:
+target_release:
+---
+
 # Architecture Review: <topic>
 
-**Date:** YYYY-MM-DD
-**Produced by:** ChatGPT
 **Assessment Report reviewed:** <link>
-**Status:** Approved / Requested Changes / Rejected
 
 ## Classification
 Which of the five Enterprise Platform Classification Model categories

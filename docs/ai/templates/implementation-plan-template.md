@@ -1,9 +1,21 @@
+---
+artifact_type: implementation-plan
+gate: Implementation Plan
+status: Draft
+date: YYYY-MM-DD
+owner: Claude Code
+related_adrs: []
+depends_on: []
+implements: []
+supersedes: []
+superseded_by: []
+related_pr:
+target_release:
+---
+
 # Implementation Plan: <sprint name>
 
-**Date:** YYYY-MM-DD
-**Produced by:** Claude Code
 **Sprint Specification:** <link>
-**Status:** Draft / In Progress / Complete
 
 Use a standalone Implementation Plan for multi-PR sprints or sprints
 with sequencing dependencies on other in-flight work. For a
