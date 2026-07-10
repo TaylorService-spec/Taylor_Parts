@@ -43,23 +43,35 @@ The platform's longest continuous object lifecycle: the workflow was extended ac
 
 **Critical incident, resolved**: the live `taylor-parts` project's deployed `firestore.rules` had no `reorder_requests` match block at all for the entire span of Sprints 2.1.3–2.1.7 — every rules change in that span was merged but never actually deployed. Every reorder-request-touching feature silently failed in production the whole time. Found while investigating the PR #73 bug report, fixed via an explicit `firebase deploy --only firestore:rules` (user-authorized), verified live. Rules are deployed and current as of PR #77's merge (2026-07-10). See `docs/CLAUDE_CONTEXT.md`'s "Known operational gotchas" for the full incident and the standing lesson (merged ≠ deployed for `firestore.rules`, always confirm after merge).
 
+## Completed / merged (Governance + AI-SDLC + Employee Foundation Phase 3)
+
+| Item | PR | Status | Summary |
+|---|---|---|---|
+| Docs completion sync | #78 | Merged | Sprints 2.1.2–2.1.10 narrative, corrected across 3 ChatGPT review rounds. |
+| Employee Identity / Platform Assignment governance | #79 | Merged | `PROJECT_ARCHITECTURE.md` Person Assignment Platform Service Standard, `BusinessEntityModel.md` Section 8a, `GuidingPrinciples.md` principle, `CLAUDE_CONTEXT.md` rule 14. |
+| AI-SDLC operating manual | #80 | Merged | `docs/ai/` — the standing ChatGPT/Claude Code/Codex process this project now runs on. See `CLAUDE_CONTEXT.md`'s dedicated section. |
+| Employee Foundation PR 1 (Employee Data and Read Foundation) | #82 | Merged | `employees/{employeeId}` Rules (dual read path), `domain/employees.js`, `useAssignableEmployees()`, first Firestore Rules test in this repo. |
+| Employee Foundation PR 2 (Trusted Employee/User Provisioning) | #83 | Merged | `provisionEmployeeAccess.js` — atomic link transaction, passwordless, project-target gated. Replaced `createPartsManagerTestUsers.js`. |
+| Employee Foundation PR 3 (Current Employee Session Resolution) | #84 | Merged | `AuthContext` exposes `employeeId`/`displayName`/`operationalRoles`; one-shot read mechanism preserved, not converted to `onSnapshot()`. |
+
+**Open now** (verify with `gh pr list --state open` before trusting this):
+- **PR #81** — Employee Foundation assessment/specification/implementation-plan/review chain (docs only: `docs/assessments/`, `docs/specifications/`, `docs/implementation-plans/`, `docs/reviews/employee-foundation-architecture-review.md`). **None of these exist on `main` yet** — only on this branch.
+- **PR #85** — Employee Foundation PR 4 (EmployeeAssignmentPicker Foundation). `shared/assignment/EmployeeAssignmentPicker.jsx`, zero production consumers. Two review rounds so far (deterministic focus handling + keyboard nav + ARIA; then an ArrowDown/ArrowUp landing-behavior fix). Awaiting the next ChatGPT Architecture Approval pass on the current head commit.
+
 ## In progress / not yet started
 
-Nothing currently in progress. **The next sprint has not been scoped or started** — every sprint in the 2.1.x series has ended with an explicit "do not begin the next sprint automatically" instruction, honored each time.
+The four-PR Employee Foundation implementation plan is 3/4 merged (PR 4 in final review, see above). **Not started, and explicitly not to begin until Phase 3 fully lands**: the Parts and Purchase Order Assignment Adoption sprint (replacing Sprint 2.1.6's manual-UID Reorder Request assignment with `EmployeeAssignmentPicker`). A specification for that sprint was produced once, early in this initiative, but only as chat output — **it was never committed to the repository** and predates the `docs/specifications/` convention. Treat it as needing to be reassessed and (re-)written fresh through the standing `docs/ai/workflow.md` gates, not as an existing artifact to look up.
 
 ## Standing backlog items (none yet scoped as their own sprint)
 
-1. Replace manual-uid Reorder Request assignment (Sprint 2.1.6) with a controlled, role-filtered user picker once a safe user-directory/workforce-personnel model exists.
+1. ~~Replace manual-uid Reorder Request assignment (Sprint 2.1.6) with a controlled, role-filtered user picker~~ — **the underlying model now exists** (Employee Foundation, PRs #82–#84 merged, PR #85 in review). The actual Reorder Request adoption itself is the not-yet-started item described above, not this one.
 2. Notification Panel is at 4 sections (Pending Review / Ready for Parts Manager / Assigned to You / Purchasing Started) — evaluate a "My Work" view before adding a 5th.
 3. If full purchasing communication history is ever needed (not just latest-state), consider a child progress-log collection under Reorder Request.
 4. Apply `inventory_actions` to `inventory_transactions` via a Cloud-Function-mediated trusted write path once Firebase Blaze is enabled — genuinely blocked on that decision, not on engineering effort.
 5. When full Procurement enters active planning, explicitly assess whether `reorder_purchase_orders` should migrate into or be consolidated with the existing full `purchase_orders` model (Epic 5).
+6. Modernize `functions/tsconfig.json`'s deprecated `moduleResolution: "node"` before TypeScript 7.0 removes it — see `docs/FUTURE_ARCHITECTURE_BACKLOG.md`'s dedicated entry. Not urgent (still compiles clean today). A commit exists on the pushed-but-not-PR'd branch `docs/functions-module-resolution-backlog-note` (`aa775ec`).
 
 Don't build any of these speculatively — wait for the triggering condition to actually arise.
-
-## Unresolved side-thread (not sprint work)
-
-Mid-session, the user asked for 4 test accounts (1 Parts Manager + 3 Parts Associates, real Firebase Auth users, mapped to the existing `dispatcher` role — no new permission tier). A script exists at `functions/scripts/createPartsManagerTestUsers.js` (uncommitted). Running it requires either the user's own terminal, a durable `settings.json` permission rule, or manual Firebase Console creation — the harness's safety layer blocks running it via the `admin-check` tooling on repeated chat confirmation alone. Not yet resolved.
 
 ## Discipline notes for whoever picks this up
 
@@ -67,4 +79,7 @@ Mid-session, the user asked for 4 test accounts (1 Parts Manager + 3 Parts Assoc
 - After merging any `firestore.rules` change, confirm it's actually been deployed (`firebase deploy --only firestore:rules --project taylor-parts`) — don't assume merged means live. This is not hypothetical; see the incident above.
 - If a PR's `pull_request`-triggered CI check gets stuck `queued` with no runner assigned for several minutes, try closing and reopening the PR before assuming the code broke something.
 - A feature named after an operational verb (Receive/Adjust/Correct/etc.) implies the operation actually happened unless the UI says otherwise explicitly — check for this before a "record an action" feature reaches review (see Sprint 2.1.9).
-- When a domain function performs more than one document write for a single user action, reach for Firestore's `getAfter()`/`existsAfter()` in the rules by default, not just prior-state pinning on each write independently (see Sprint 2.1.10).
+- When a domain function performs more than one document write for a single user action, reach for Firestore's `getAfter()`/`existsAfter()` in the rules by default, not just prior-state pinning on each write independently (see Sprint 2.1.10) — the same principle reappeared in PR #83's Firestore-side `runTransaction()` for the Employee↔User link.
+- **A doc referenced by a PR is not necessarily on `main`.** `docs/assessments/`, `docs/specifications/`, `docs/implementation-plans/`, and `docs/reviews/` currently exist only on PR #81's branch — verify with `git ls-tree main --name-only` or `gh pr view` before assuming any Employee Foundation governance artifact is committed to `main`.
+- **This project now runs on `docs/ai/workflow.md`'s gate sequence** (Business Objective → ChatGPT Architecture Review → Claude Code Assessment/Specification → ChatGPT Approval → Implementation → ChatGPT Final Review → Owner Merge Authorization) — Architecture Approval and Owner Merge Authorization are two separate gates; an "APPROVED" is not itself merge permission.
+- Never generate, print, log, return, store, or commit a credential/password/reset-link — even a "one-time terminal disclosure" is not acceptable (see PR #83's second review round). `provisionEmployeeAccess.js` is the reference pattern: a newly created Firebase Auth account is created genuinely passwordless.
