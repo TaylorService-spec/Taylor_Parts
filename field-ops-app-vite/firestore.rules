@@ -31,6 +31,29 @@ service cloud.firestore {
       return isSignedIn() && userData().technicianId == technicianId;
     }
 
+    // Zero-history reorder behavior sprint (PR 2, docs/specifications/
+    // inventory-zero-history-reorder-behavior.md) -- gates who may
+    // manually enter a requestedQty for a NEEDS_PLANNING recommendation.
+    // get() here does not need its own `allow read` grant (a get()
+    // call inside a rule is not subject to the target document's read
+    // rules), but note this reads the exact same
+    // users/{uid}.employeeId -> employees/{employeeId} relationship
+    // the employees/{employeeId} rule's self-read clause already
+    // covers for actual client reads -- no new read *permission* is
+    // opened, this is just a new *consumer* of that relationship.
+    function hasOperationalRole(role) {
+      return isSignedIn()
+        && userData().employeeId != null
+        && get(/databases/$(database)/documents/employees/$(userData().employeeId)).data.operationalRoles.hasAny([role]);
+    }
+
+    function canSubmitManualZeroHistoryQuantity() {
+      return isSignedIn()
+        && (userRole() == "admin"
+            || hasOperationalRole("PARTS_MANAGER")
+            || hasOperationalRole("WAREHOUSE_MANAGER"));
+    }
+
     match /fieldops_jobs/{jobId} {
       allow read: if isSignedIn();
       allow write: if isSignedIn();
@@ -196,7 +219,51 @@ service cloud.firestore {
     // history.
     match /reorder_requests/{requestId} {
       allow read: if isAdminOrDispatcher();
-      allow create: if isAdminOrDispatcher();
+
+      // Zero-history reorder behavior sprint (PR 2) -- TRANSITIONAL,
+      // dual-shape create rule (docs/specifications/inventory-zero-
+      // history-reorder-behavior.md's "Deployment / rollout sequence").
+      // The legacy branch (no `recommendationStatus` key present) is
+      // byte-identical in effect to this rule's pre-PR-2 form --
+      // `isAdminOrDispatcher()` and nothing else -- so the currently
+      // deployed writer (createReorderRequest(), unchanged until PR 3)
+      // keeps working exactly as it does today. The new-shape branch
+      // is only exercised once PR 3's writer ships. PR 4 removes the
+      // legacy branch entirely once PR 3 is confirmed live -- do not
+      // leave this transitional form in place indefinitely (see the
+      // Specification's rollout-sequencing risk).
+      //
+      // New-shape authorization is BRANCH-SCOPED, not layered: READY
+      // requires isAdminOrDispatcher() (unchanged); NEEDS_PLANNING
+      // requires canSubmitManualZeroHistoryQuantity() ALONE (it
+      // already includes the admin override internally) -- ANDing it
+      // under isAdminOrDispatcher() would silently block every
+      // eligible Parts Manager/Warehouse Manager whose security role
+      // isn't also admin/dispatcher (ROLES and Employee
+      // operationalRoles[] are independent fields on independent
+      // documents). requestedQty's positivity is also branch-scoped:
+      // >= 0 for READY (0 is a legitimate computed value, mirrors
+      // recommendedQty), > 0 for NEEDS_PLANNING (a manual entry must
+      // be meaningful). Rules deliberately do not reproduce the
+      // analytics formula -- only structural/authorization validity is
+      // enforced.
+      allow create: if request.resource.data.keys().hasAny(["recommendationStatus"])
+        ? (request.resource.data.partId is string && request.resource.data.partId.size() > 0
+            && request.resource.data.recommendationStatus in ["READY", "NEEDS_PLANNING"]
+            && request.resource.data.quantitySource in ["ANALYTICS", "MANUAL_ZERO_HISTORY"]
+            && (request.resource.data.recommendationStatus == "READY"
+                  ? (isAdminOrDispatcher()
+                     && request.resource.data.urgency in ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
+                     && request.resource.data.quantitySource == "ANALYTICS"
+                     && request.resource.data.recommendedQty is number
+                     && request.resource.data.requestedQty is int && request.resource.data.requestedQty >= 0)
+                  : (canSubmitManualZeroHistoryQuantity()
+                     && request.resource.data.urgency == null
+                     && request.resource.data.quantitySource == "MANUAL_ZERO_HISTORY"
+                     && request.resource.data.recommendedQty == null
+                     && request.resource.data.requestedQty is int && request.resource.data.requestedQty > 0)))
+        : isAdminOrDispatcher();  // legacy shape -- byte-identical to the pre-PR-2 rule, TRANSITIONAL ONLY
+
       allow update: if isAdminOrDispatcher()
         && ((resource.data.status == "PENDING_REVIEW"
               && ((request.resource.data.status == "READY_FOR_PARTS_MANAGER"
