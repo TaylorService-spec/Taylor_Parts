@@ -20,7 +20,7 @@ Snapshot as of 2026-07-10. This file is a point-in-time record, not a live dashb
 
 ## Completed / merged (Release 2.1 — Inventory → Procurement workflow chain)
 
-The platform's longest continuous object lifecycle: one Reorder Request travels through nine status values across nine sprints. See `docs/CLAUDE_CONTEXT.md`'s "Sprints 2.1.2–2.1.10" section for the full narrative and lessons learned; `docs/BusinessEntityModel.md` Sections 4/4a/4b for the authoritative schema.
+The platform's longest continuous object lifecycle: the workflow was extended across nine implementation sprints (2.1.2–2.1.10), but one Reorder Request itself moves through six workflow `status` values (`PENDING_REVIEW` → `READY_FOR_PARTS_MANAGER` → `ASSIGNED_TO_PARTS_ASSOCIATE` → `PURCHASING_IN_PROGRESS` → `ORDERED`, or the alternate terminal branch `PENDING_REVIEW` → `REJECTED`). `APPROVED` is retained in `reviewDecision` as a historical record of the review outcome, not a continuing `status` value — after Sprint 2.1.5, approval advances `status` to `READY_FOR_PARTS_MANAGER`. Sprint 2.1.9 (Inventory Actions Foundation) is a separate audit foundation, not another Reorder Request status transition. See `docs/CLAUDE_CONTEXT.md`'s "Sprints 2.1.2–2.1.10" section for the full narrative and lessons learned; `docs/BusinessEntityModel.md` Sections 4/4a/4b for the authoritative schema.
 
 | Sprint | PR | Status | Summary |
 |---|---|---|---|
