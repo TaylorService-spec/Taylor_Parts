@@ -58,8 +58,25 @@ specification content. See those artifacts for complete detail.
   workflow adoption). No production provisioning run was performed at
   any point. Phase 3 implementation is progressing as planned; ready
   to begin PR 3.
-- PR 3 (Current Employee Session Resolution) and PR 4
-  (EmployeeAssignmentPicker Foundation) remain not started.
+- **PR 3 -- Current Employee Session Resolution: MERGED.** PR #84,
+  merge commit `ec5a7fe94144cac81ff2f51a9e4ac3f3282ff3cc`, merged
+  2026-07-10. Architecture verified against the approved specification
+  -- `AuthContext` now exposes `employeeId`/`displayName`/
+  `operationalRoles`, the existing one-shot `users/{uid}` read
+  mechanism is unchanged (no `onSnapshot()` conversion), missing
+  `employeeId` resolves as a valid migration state, a broken Employee
+  link retains `employeeId` for diagnosis while granting no display
+  name or operational roles, prior session identity is cleared
+  immediately (including `loading` returning to `true`) before a newly
+  authenticated user resolves, and resolution failures clear
+  normalized identity and end loading without ever granting a fallback
+  role -- all landed exactly as specified, after one round of requested
+  changes (session-identity clearing + explicit error handling). **No
+  architectural drift** -- nothing outside PR 3's approved scope was
+  touched (no `onSnapshot()` conversion, no emulator wiring in
+  `firebase.js`, no picker, no Rules or workflow change). Phase 3
+  implementation is progressing as planned; ready to begin PR 4.
+- PR 4 (EmployeeAssignmentPicker Foundation) remains not started.
 
 ## Classification
 
@@ -128,9 +145,9 @@ migration, Cloud Function deployment.
 **Specification approved to proceed to Implementation Plan, 2026-07-10.**
 **Implementation Plan approved to begin Implementation, 2026-07-10.**
 **PR 1 (PR #82) Architecture Approved and merged, 2026-07-10.**
-**PR 2 (PR #83) Architecture Approved and merged, 2026-07-10**, each
+**PR 2 (PR #83) Architecture Approved and merged, 2026-07-10.**
+**PR 3 (PR #84) Architecture Approved and merged, 2026-07-10**, each
 with Owner Merge Authorization recorded separately from Architecture
-Approval, per `docs/ai/workflow.md`'s two-gate merge sequence. Each
-remaining PR in the plan still requires its own Architecture Approval
-and Owner Merge Authorization at merge time -- this approval does not
-extend to PR 3 or PR 4 in advance.
+Approval, per `docs/ai/workflow.md`'s two-gate merge sequence. This
+approval does not extend to PR 4 in advance -- it requires its own
+Architecture Approval and Owner Merge Authorization at merge time.
