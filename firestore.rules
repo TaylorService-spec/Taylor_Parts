@@ -149,6 +149,24 @@ service cloud.firestore {
     // deliberately does not create a Purchase Order or Vendor
     // Management record, just informal progress fields on the
     // existing Reorder Request.
+    //
+    // Sprint 2.1.10 -- Purchase Order Foundation. A fifth update path
+    // allows PURCHASING_IN_PROGRESS -> ORDERED, via
+    // domain/reorderPurchaseOrders.js's recordPurchaseOrder() -- the
+    // ONLY function that ever writes this transition, and it does so
+    // in the SAME Firestore transaction as creating the linked
+    // reorder_purchase_orders/{requestId} document below, so the two
+    // can never drift out of sync (both writes commit together or
+    // neither does). purchaseOrderId is pinned to equal this
+    // document's own requestId (the Reorder Purchase Order's ID is
+    // always its linked Reorder Request's ID -- see that collection's
+    // rule for why this also prevents duplicates). Same per-user
+    // restriction as Sprints 2.1.7/2.1.8: request.auth.uid must equal
+    // the request's OWN assignedToUserId. currentOwner, all three
+    // assignment fields, both purchasing-start fields, all five
+    // purchasing-update fields, and all four review fields are pinned
+    // unchanged -- this transition never rewrites prior workflow
+    // history.
     match /reorder_requests/{requestId} {
       allow read: if isAdminOrDispatcher();
       allow create: if isAdminOrDispatcher();
@@ -208,13 +226,79 @@ service cloud.firestore {
               && request.resource.data.reviewedAt == resource.data.reviewedAt
               && request.resource.data.reviewNotes == resource.data.reviewNotes
               && request.resource.data.diff(resource.data).affectedKeys()
-                   .hasOnly(["purchasingNotes", "vendorContacted", "expectedAvailabilityDate", "lastPurchasingUpdateAt", "lastPurchasingUpdateBy"])))
+                   .hasOnly(["purchasingNotes", "vendorContacted", "expectedAvailabilityDate", "lastPurchasingUpdateAt", "lastPurchasingUpdateBy"]))
+            || (resource.data.status == "PURCHASING_IN_PROGRESS"
+              && request.resource.data.status == "ORDERED"
+              && request.auth.uid == resource.data.assignedToUserId
+              && request.resource.data.purchaseOrderId == requestId
+              && request.resource.data.orderedBy == request.auth.uid
+              && request.resource.data.orderedAt is number
+              && request.resource.data.currentOwner == resource.data.currentOwner
+              && request.resource.data.assignedToUserId == resource.data.assignedToUserId
+              && request.resource.data.assignedBy == resource.data.assignedBy
+              && request.resource.data.assignedAt == resource.data.assignedAt
+              && request.resource.data.purchasingStartedAt == resource.data.purchasingStartedAt
+              && request.resource.data.purchasingStartedBy == resource.data.purchasingStartedBy
+              && request.resource.data.purchasingNotes == resource.data.purchasingNotes
+              && request.resource.data.vendorContacted == resource.data.vendorContacted
+              && request.resource.data.expectedAvailabilityDate == resource.data.expectedAvailabilityDate
+              && request.resource.data.lastPurchasingUpdateAt == resource.data.lastPurchasingUpdateAt
+              && request.resource.data.lastPurchasingUpdateBy == resource.data.lastPurchasingUpdateBy
+              && request.resource.data.reviewDecision == resource.data.reviewDecision
+              && request.resource.data.reviewedBy == resource.data.reviewedBy
+              && request.resource.data.reviewedAt == resource.data.reviewedAt
+              && request.resource.data.reviewNotes == resource.data.reviewNotes
+              && request.resource.data.diff(resource.data).affectedKeys()
+                   .hasOnly(["status", "purchaseOrderId", "orderedBy", "orderedAt"])))
         && request.resource.data.partId == resource.data.partId
         && request.resource.data.urgency == resource.data.urgency
         && request.resource.data.recommendedQty == resource.data.recommendedQty
         && request.resource.data.requestedBy == resource.data.requestedBy
         && request.resource.data.createdAt == resource.data.createdAt;
       allow delete: if false;
+    }
+
+    // Sprint 2.1.10 -- Purchase Order Foundation. A NEW, separate
+    // collection -- deliberately NOT the existing purchase_orders
+    // collection below (Epic 5, Procurement + Supplier Management:
+    // Admin-SDK-only, Supplier-linked, unrelated to this minimal,
+    // Reorder-Request-linked record). Documented as "Reorder Purchase
+    // Order" specifically to avoid confusion with that entity -- see
+    // docs/BusinessEntityModel.md Section 4b.
+    //
+    // The document ID is its own linked reorderRequestId (not an
+    // auto-generated ID) -- this is what makes "no duplicate Purchase
+    // Order per Reorder Request" enforceable by Firestore itself: a
+    // second write to the same ID is evaluated as an `update` (since
+    // the document already exists), which is denied unconditionally
+    // below, not just discouraged by a client-side check.
+    //
+    // Only the assigned Parts Associate (checked via a get() against
+    // the linked reorder_requests document's CURRENT, pre-transaction
+    // state) on a request that is currently PURCHASING_IN_PROGRESS may
+    // create one -- and only via domain/reorderPurchaseOrders.js's
+    // recordPurchaseOrder(), which creates this document AND
+    // transitions the linked Reorder Request to ORDERED in the same
+    // Firestore transaction, so the two can never drift out of sync.
+    match /reorder_purchase_orders/{requestId} {
+      allow read: if isAdminOrDispatcher();
+      allow create: if isAdminOrDispatcher()
+        && request.auth.uid == get(/databases/$(database)/documents/reorder_requests/$(requestId)).data.assignedToUserId
+        && get(/databases/$(database)/documents/reorder_requests/$(requestId)).data.status == "PURCHASING_IN_PROGRESS"
+        && request.resource.data.reorderRequestId == requestId
+        && request.resource.data.partId is string
+        && request.resource.data.supplierName is string
+        && request.resource.data.supplierName.size() > 0
+        && request.resource.data.externalPoNumber is string
+        && request.resource.data.externalPoNumber.size() > 0
+        && request.resource.data.orderedQuantity is number
+        && request.resource.data.orderedQuantity > 0
+        && request.resource.data.orderedDate is string
+        && request.resource.data.orderedDate.size() > 0
+        && request.resource.data.status == "ORDERED"
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.createdAt is number;
+      allow update, delete: if false;
     }
 
     // Sprint 2.1.9 -- Inventory Actions Foundation. A new, separate,
