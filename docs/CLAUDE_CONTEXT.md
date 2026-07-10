@@ -61,9 +61,9 @@ These rules get restated nearly verbatim at the top of every sprint/epic prompt 
 
 Tags on `main`, in order: `fieldops-core-platform-v1` (post Epic 4/5) → `epic2-phase2b-dispatcher-lifecycle-actions` → `epic2d-baseline-freeze` → `epic2-complete` (Phases 2B+2C) → `v2-product-governance` (post Sprint 0).
 
-**Continued (Sprint 2.1.1 onward):** PR #58 (Sprint 2.1.1, Inventory Domain Foundation) → PR #63 (Epic 9, Platform Workspace Framework) → PR #65 (Sprint 2.1.2, Inventory Operational Queue) → PR #67 (Sprint 2.1.3, Reorder Request & Notification Foundation) → PR #69 (Sprint 2.1.4, Reorder Review & Decision) → PR #70 (Sprint 2.1.5, Inventory → Parts Manager Handoff) → PR #71 (Sprint 2.1.6, Parts Manager → Parts Associate Assignment) → PR #72 (Sprint 2.1.7, Purchase Execution Foundation) → PR #73 (bug fix, Request Reorder error handling) → PR #74 (bug fix, Reorder Request realtime queues) → PR #75 (Sprint 2.1.8, Purchasing Progress Update) → PR #76 (Sprint 2.1.9, Inventory Actions Foundation) → PR #77 (Sprint 2.1.10, Purchase Order Foundation). See "Sprints 2.1.2–2.1.10" section below for the full narrative.
+**Continued (Sprint 2.1.1 onward):** PR #58 (Sprint 2.1.1, Inventory Domain Foundation) → PR #63 (Epic 9, Platform Workspace Framework) → PR #65 (Sprint 2.1.2, Inventory Operational Queue) → PR #67 (Sprint 2.1.3, Reorder Request & Notification Foundation) → PR #69 (Sprint 2.1.4, Reorder Review & Decision) → PR #70 (Sprint 2.1.5, Inventory → Parts Manager Handoff) → PR #71 (Sprint 2.1.6, Parts Manager → Parts Associate Assignment) → PR #72 (Sprint 2.1.7, Purchase Execution Foundation) → PR #73 (bug fix, Request Reorder error handling) → PR #74 (bug fix, Reorder Request realtime queues) → PR #75 (Sprint 2.1.8, Purchasing Progress Update) → PR #76 (Sprint 2.1.9, Inventory Actions Foundation) → PR #77 (Sprint 2.1.10, Purchase Order Foundation) → PR #59 (`generatePasswordResetLink.js` developer utility) → PR #78 (docs completion sync) → PR #79 (Employee Identity/Platform Assignment governance) → PR #80 (AI-SDLC operating manual, `docs/ai/`) → PR #82 (Employee Data and Read Foundation) → PR #83 (Trusted Employee/User Provisioning) → PR #84 (Current Employee Session Resolution). See "AI-SDLC workflow and Employee Identity / Platform Assignment initiative" section below for the full current-work narrative.
 
-**Open before this completion-sync merges:** PR #59 (`Add generatePasswordResetLink.js` developer utility) and PR #78 (this documentation completion-sync PR). After PR #78 merges, PR #59 remains open unless separately resolved.
+**Open now (verified via `gh pr list --state open` this session):** PR #81 (Employee Foundation assessment/specification/implementation-plan/review chain — docs only) and PR #85 (EmployeeAssignmentPicker Foundation — commit `2030d7a` Architecture-Approved by ChatGPT, validation complete, awaiting Owner Merge Authorization). See the section below for both.
 
 **Closed, not merged:**
 - **PR #12** (`sprint-4-availability-classifier`) — closed without merging. Decision: kept as a documented concept in `ADR-001` only, not shipped code (see PR #38). Also would have collided with `domain/dispatchScoring.js`, which already exists on `main` as an unrelated, live Control Tower file at the same path.
@@ -150,6 +150,74 @@ These map onto the three components the architectural assessment already scoped 
 - Operations dashboard improvements.
 
 Each of these belongs to a specific future capability or platform initiative and should be scoped against `PlatformCapabilityModel.md`/`ProductBlueprint.md` when picked up, not bundled into whichever sprint happens to be active when someone remembers them.
+
+## AI-SDLC workflow and Employee Identity / Platform Assignment initiative (PRs #78–#85+, all VERIFIED via `gh pr list`/`gh pr view` this session)
+
+This is the most recent, most active thread in this project — read this section before picking anything back up here.
+
+**Governance chain (PRs #78–#80, all merged):**
+- **PR #78** — docs completion sync (Sprints 2.1.2–2.1.10 narrative, corrected across three ChatGPT review rounds: nine-implementation-sprints-vs-six-workflow-statuses framing, Open PR accuracy, Equipment/Parts/Inventory decision recorded as closed).
+- **PR #79** — Employee Identity and Platform Assignment governance. Added `PROJECT_ARCHITECTURE.md`'s **Person Assignment Platform Service Standard** (Enterprise Platform Classification Model, Section A): Employee/User/Firebase-Authentication as three separate, never-merged identity tiers; the six-field assignment snapshot standard (`assignedToEmployeeId`/`assignedToUserId`/`assignedToDisplayName`/`assignedByEmployeeId`/`assignedByUserId`/`assignedAt`); no Firebase UID entry in user-facing workflows. Added `BusinessEntityModel.md` Section 8a (Employee) with an ASCII identity-flow diagram. Added a `GuidingPrinciples.md` principle ("People Are Selected by Recognizable Identity, Never Technical Identifiers"). Added `CLAUDE_CONTEXT.md` **rule 14** (below) and a documentation-backlog note about a future ADR log. `PlatformCapabilityModel.md` got a cross-reference only (no Platform Services enumeration exists there to extend).
+- **PR #80** — the **AI-SDLC operating manual**, `docs/ai/` (`README.md`/`workflow.md`/`chatgpt.md`/`claude-code.md`/`codex.md`/`templates/`). Defines the standing multi-agent process this project now runs on — see next subsection.
+
+**The AI-SDLC workflow itself (`docs/ai/workflow.md`, current/simplified version — a first, more elaborate 11-stage version was scope-reset back down):**
+```
+Business Objective → ChatGPT Architecture Review → Claude Code Repository
+Assessment/Specification → ChatGPT Approval → Claude Code Implementation →
+ChatGPT Final Review → Owner Merge Authorization
+```
+- **ChatGPT**: architecture/governance/approval authority. Does not implement code.
+- **Claude Code**: repository inspection, implementation, git, PRs. Classifies every Codex finding as Accepted / Accepted with modification / Requires ChatGPT Architecture Review / Rejected (with repository evidence).
+- **Codex**: *optional* independent engineering review (Firestore Rules/security-sensitive/complex-transaction/large-refactor/performance-sensitive work especially) — not mandatory for every PR, explicitly not required for docs-only or low-risk established-pattern work. Raises architecture concerns, never redesigns.
+- **Architecture Approval and Owner Merge Authorization are two separate, sequential gates** — an explicit "APPROVED" from ChatGPT is not itself permission to merge; a separate, explicit "yes, merge" from the project owner is always required before any merge in this workflow.
+- Artifact homes (created on first real use, never as empty placeholders — Git doesn't track empty directories): `docs/assessments/` (Repository Assessments), `docs/specifications/` (Sprint Specifications), `docs/implementation-plans/` (Implementation Plans), `docs/reviews/` (Architecture Reviews). `docs/architecture/` remains the separate, pre-existing, unrenamed ADR location.
+
+**Standard ChatGPT READY handoff format** — the block Claude Code posts to hand a gate artifact to ChatGPT for review:
+
+```
+READY
+
+Gate:
+<Assessment | Specification | Implementation Plan | Implementation Review | Review>
+
+PR:
+#<number>
+
+Commit:
+<head SHA, when applicable>
+
+Review:
+<repository path, PR, or branch>
+
+Related review:
+<repository path or None>
+
+Questions:
+<None or numbered architectural questions>
+```
+
+- Do not paste full artifacts unless ChatGPT requests them — the `Review:` field points at the repository path/PR/branch instead.
+- Claude completes validation before requesting Owner Merge Authorization.
+- ChatGPT Architecture Approval does not authorize merge.
+- The project owner must explicitly authorize merge.
+- Before merge, Claude must confirm the PR head still matches the approved commit.
+
+**Employee Foundation (Phase 3 — Platform Assignment Foundation): four implementation PRs, three merged, one in final review.**
+The full governance/assessment/specification/implementation-plan/review chain for this initiative lives on **PR #81** (`docs/employee-foundation-assessment` branch) — **`docs/assessments/employee-foundation.md`, `docs/specifications/employee-foundation.md`, `docs/implementation-plans/employee-foundation.md`, and `docs/reviews/employee-foundation-architecture-review.md` do NOT exist on `main` yet, only on that still-open PR.** Do not assume they're committed without checking `gh pr view 81`.
+
+Implementation PRs (separate from PR #81, each built directly on `main`):
+- **PR #82 — MERGED** (Employee Data and Read Foundation): `employees/{employeeId}` Firestore Rules in both copies (admin/dispatcher directory read + a current-Employee self-read via the existing `userData()` rules helper — `userData().employeeId == employeeId`; no client create/update/delete under any role, including admin), `domain/employees.js`, `hooks/useAssignableEmployees.js`, `EMPLOYEES_COLLECTION`/`EMPLOYMENT_STATUS` constants, and `functions/test/employeesRules.test.js` — the **first Firestore Rules test of any kind in this repo**, built with zero new npm dependencies (`firebase-admin` + Node's built-in `fetch` against the emulator's REST APIs, no `@firebase/rules-unit-testing`).
+- **PR #83 — MERGED** (Trusted Employee/User Provisioning): `functions/scripts/provisionEmployeeAccess.js`, the only writer of the Employee↔User bidirectional link. Five explicit phases (validate → read → detect-every-conflict → build-plan → apply); the two-document link write is wrapped in a `db.runTransaction()` that re-reads and re-validates before writing; requires an explicit `--projectId` (no hard-coded default) plus a matching `--confirmProduction taylor-parts` flag to ever target the live project; **fully passwordless** — no credential of any kind is ever generated, printed, returned, stored, or committed (went through two review rounds: atomicity/validation/project-gate/role-validation, then removal of an initial temporary-password terminal-output approach that didn't satisfy "no credential disclosure, one-time or otherwise"). Replaced (deleted) `functions/scripts/createPartsManagerTestUsers.js` (was untracked, never committed, zero migration cost).
+- **PR #84 — MERGED** (Current Employee Session Resolution): `AuthContext.jsx` now exposes `employeeId`/`displayName`/`operationalRoles` alongside the existing `user`/`role`/`login`/`logout`/`loading`. The existing one-shot `users/{uid}` `getDoc()` mechanism is **deliberately preserved, not converted to `onSnapshot()`** in this phase. `resolveEmployeeSession(uid)` extracted as a standalone exported async function for direct testability (this repo has no React test renderer). A missing `employeeId` is a valid migration state; a linked `employeeId` whose Employee doc doesn't exist is a "broken link" (retains `employeeId`, grants no operational identity, logs a safe warning) — neither is an error. Prior session identity is cleared **immediately** (including `loading` returning to `true`) before a newly authenticated user resolves, not just eventually via the generation-counter race guard — a real gap the first review round caught. Resolution failures clear all identity fields and end loading, never granting a fallback role.
+- **PR #85 — OPEN. Commit `2030d7ae886339236da45ea212f41938b9c4fa18` is Architecture-Approved (ChatGPT, current project session). Validation complete. Owner Merge Authorization not yet granted — next step is to ask the project owner for explicit merge authorization.** (EmployeeAssignmentPicker Foundation): `shared/assignment/EmployeeAssignmentPicker.jsx` + `filterEmployeesBySearch()` (extracted, directly testable) + `.fo-employee-picker*` CSS mirroring the existing `.fo-global-search*` pattern. **Zero production consumers** — not wired into any workflow. Two review rounds so far: (1) removed a `setTimeout`-based blur pattern for deterministic `onMouseDown preventDefault` + `relatedTarget`-based focus handling, added ArrowDown/ArrowUp/Enter/Escape keyboard navigation, added full combobox ARIA semantics (`role="combobox"`, `aria-expanded`/`aria-controls`/`aria-autocomplete`/`aria-activedescendant`, `role="listbox"`/`role="option"`, `useId()`-based instance-unique IDs); (2) corrected ArrowDown/ArrowUp to land on the first/last result immediately when no highlight exists yet, instead of requiring an extra keypress. Current head: `2030d7ae886339236da45ea212f41938b9c4fa18`. Verification throughout used a recurring pattern worth reusing: temporarily wire the component into `App.jsx`'s real entry point, build through Vite's actual bundler to prove the import graph/JSX/hooks compile, then revert `App.jsx` before committing (confirmed via `git diff` showing zero change) — plus standalone Node scripts that inline-replicate pure logic (filtering, keyboard state transitions) for direct assertion-based testing, since this repo has no React test renderer/jsdom and none was added.
+
+**Employee schema, as actually implemented (PRs #82–#84, live on `main`):** `employees/{employeeId}` — `employeeId`/`displayName`/`firstName`/`lastName`/`employmentStatus` (`ACTIVE`/`ON_LEAVE`/`INACTIVE`/`TERMINATED`/`RETIRED`/`CONTRACTOR` — the authoritative lifecycle field, **no `active` boolean exists**)/`operationalRoles[]`/`companyId`/`departmentId`/`locationId` (all three Future/Reserved, always `null`, no filter ever accepts them as a parameter)/`userId`/`createdAt`/`updatedAt`. **No `email` field** — Firebase Authentication owns credential/account email; `provisionEmployeeAccess.js`'s `--email` is an execution input only, never persisted. Phase 3 assignment eligibility is `employmentStatus == "ACTIVE"` only.
+
+**Not yet done / explicitly deferred within this initiative:**
+- PR #85's commit `2030d7a` is Architecture-Approved and validated; it still needs explicit Owner Merge Authorization before it can be merged — Architecture Approval alone does not authorize a merge.
+- No workflow (Parts/Purchase Order or any other) consumes any of this yet — that adoption is a **separate, not-yet-(re)written** sprint. A "Parts and Purchase Order Assignment Adoption" specification was produced once, early in this initiative, **but only as chat output — it was never committed to the repository** (predates the `docs/specifications/` convention PR #80 established). **Do not assume it exists as a file** — `docs/specifications/` currently contains only `employee-foundation.md`, and only on the still-open PR #81. That adoption sprint needs to be assessed and specified fresh (or the old chat content re-derived and formally committed) before implementation, per the now-standing `docs/ai/workflow.md` gate sequence.
+- Employee Administration UI, HR integration, scheduling, skills, certifications, payroll, availability, time tracking, and multi-company hierarchy implementation are all explicitly out of scope for the whole initiative, not just individual PRs.
+- **Pushed, no PR opened, deliberately** — `docs/functions-module-resolution-backlog-note` (commit `aa775ec`): a `docs/FUTURE_ARCHITECTURE_BACKLOG.md` entry documenting that `functions/tsconfig.json`'s `moduleResolution: "node"` is deprecated (removed in TypeScript 7.0) but a real fix requires a coordinated `module`+`moduleResolution` change (confirmed via a live `TS5110` compile error that changing only `moduleResolution` isn't sufficient) deserving its own scoped assessment — deliberately not fixed via `ignoreDeprecations` (would suppress *all* deprecation notices, not just this one) and deliberately not bundled into any feature PR. Push preserves the commit in the shared repo; opening a PR for it is a deliberate future step, not automatic.
 
 ## Formerly here: uncommitted `EPIC-6` planning doc
 
