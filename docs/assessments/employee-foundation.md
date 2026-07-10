@@ -15,14 +15,43 @@ target_release: Phase 3 -- Platform Assignment Foundation
 
 # Assessment Report: Employee Foundation (Phase 3)
 
+## Executive Summary
+
+Employee Foundation is a **platform capability**, not a Parts-specific
+feature. It builds the Employee data foundation, Employee/User linking,
+a reusable Employee query service, and the EmployeeAssignmentPicker
+foundation that `docs/PROJECT_ARCHITECTURE.md`'s Person Assignment
+Platform Service Standard already defines as reusable across every
+domain that needs to put a person on a workflow record -- not just
+Inventory's Reorder Request chain. The Parts and Purchase Order
+Assignment Adoption sprint is this capability's *first* consumer, not
+its scope. Every future consumer is expected to reuse this same
+foundation rather than build its own identity/assignment logic,
+including:
+
+- **Dispatch** (Work Order technician assignment)
+- **Warehouse** (Warehouse Manager -> Warehouse Associate assignment)
+- **Service** (Service Manager -> Technician assignment)
+- **Sales** (Sales Manager -> Salesperson assignment)
+- **Procurement** (approval and purchasing-execution assignment)
+- **Receiving** (receiving-task assignment)
+- **AI-assisted assignment** (a future recommendation layer over
+  Employee attributes -- reserved, not built, per governance)
+- **Future SaaS/multi-tenant deployments**, where Employee is the
+  workforce-identity primitive every tenant's workflows resolve
+  assignment through, independent of which identity provider that
+  tenant's Firebase Authentication (or a future alternative) uses
+
+Governance for this already exists and is merged (PR #79 --
+`docs/PROJECT_ARCHITECTURE.md`'s Person Assignment Platform Service
+Standard, `docs/BusinessEntityModel.md` Section 8a). This assessment is
+about building the foundation, not deciding whether to.
+
 **Business Request:** Build the Employee data foundation, Employee/User
 linking, a reusable Employee query service, and the
 EmployeeAssignmentPicker foundation -- the five prerequisites Phase 3
 requires before the Parts and Purchase Order Assignment Adoption sprint
-(or any other domain's assignment adoption) can begin. Governance for
-this already exists and is merged (PR #79 -- `docs/PROJECT_ARCHITECTURE.md`'s
-Person Assignment Platform Service Standard, `docs/BusinessEntityModel.md`
-Section 8a). This assessment is about building it, not deciding whether to.
+(or any other domain's assignment adoption) can begin.
 
 ## Scope of this assessment
 
@@ -35,6 +64,17 @@ cover Parts/Purchase Order adoption (separate, later sprint, already
 specified in a prior Sprint Specification) or Employee Administration
 UI (explicitly out of scope per governance). No implementation plan is
 produced here -- assessment only, per instruction.
+
+## Authority Model
+
+| Concern | Owning authority |
+|---|---|
+| Employee (workforce/business identity) | `employees/{employeeId}` -- authoritative source of who counts as personnel, independent of application access |
+| User (application-access identity) | `users/{uid}` -- authoritative source of security role and application access, linked to Employee via `employeeId` |
+| Firebase Authentication | Credential/session authority only -- owns the authenticated UID and sign-in mechanism, not a business identity |
+| Firestore Rules | Security enforcement authority for all three above -- `users/{uid}` stays self-read/no-client-write; `employees/{employeeId}` gains its own rule (Section 7) |
+| AuthContext | Client-side read-through of `users/{uid}` + linked `employees/{employeeId}` -- never a write path, never authoritative itself |
+| Assignment Records | Own `assignedTo*`/`assignedBy*` snapshot fields on the workflow object they're written to (e.g. Reorder Request) -- authoritative for that one assignment event, not a second identity store |
 
 ## 1. Current user model
 
@@ -316,6 +356,81 @@ zero live consumers; the Parts and Purchase Order Assignment Adoption
 sprint (already specified separately) is the first real adopter. No
 further phase should begin until Phase 3's Architecture Review resolves
 the four open questions above.
+
+## Non-Goals
+
+Phase 3 explicitly does NOT implement:
+
+- Employee administration (any UI to create/edit Employee records --
+  Section 7's write-path question decides only whether the *rule*
+  permits it, not whether a UI is built)
+- HR integration (no external HRIS/payroll system connection of any
+  kind)
+- Scheduling
+- Skills
+- Certifications
+- Payroll
+- Availability
+- Time tracking
+- Multi-company hierarchy implementation (`companyId`/`departmentId`/
+  `locationId` remain Future/Reserved fields per governance -- named
+  for schema coherence, not implemented, not queried, not enforced)
+
+These match the exclusions already established for this initiative in
+governance and the earlier Parts/Purchase Order assessment -- restated
+here so Phase 3's own completion criteria (below) can be checked
+against an explicit list, not inferred.
+
+## Phase Completion Criteria
+
+Employee Foundation is complete when all of the following are true:
+
+- [ ] `employees/{employeeId}` collection exists with Firestore Rules
+      enforcing the decision made on Section 7's open write-path
+      question.
+- [ ] Both `firestore.rules` copies are byte-identical after the
+      change.
+- [ ] `domain/employees.js` + `useAssignableEmployees()` exist, use
+      `onSnapshot()` (not one-shot reads), and have been exercised
+      against real seeded Employee data.
+- [ ] `provisionEmployeeAccess.js` exists and has completed at least
+      one real, verified provisioning run against the live project,
+      establishing a genuine two-way `employees.userId` /
+      `users.employeeId` link.
+- [ ] `AuthContext` resolves `employeeId`/`displayName`/
+      `operationalRoles` for a signed-in user without regressing
+      `role`-based access for any existing role (admin/dispatcher/
+      technician).
+- [ ] `EmployeeAssignmentPicker` exists, renders against real Employee
+      data, and satisfies the required UX (name/role/department
+      display, searchable, loading/empty/error/selected states, no UID
+      visible, no manual UID field) -- verified in isolation, since it
+      has no live consumer yet.
+- [ ] Every Non-Goal above remains untouched -- no Employee
+      administration UI, no HR/scheduling/skills/certification/payroll/
+      availability/time-tracking code, no multi-company hierarchy logic.
+- [ ] **Workflow adoption is intentionally excluded from this phase's
+      completion criteria.** Phase 3 is complete when the foundation
+      exists and is independently verified -- not when any workflow
+      (Parts/Purchase Order or otherwise) actually uses it. That
+      adoption is the next, separately-specified sprint's success
+      criteria, not this one's.
+
+## Platform Reuse
+
+Employee Foundation exists so that no future workflow needs to invent
+its own identity or assignment system. Per `docs/CLAUDE_CONTEXT.md`
+rule 14 (already merged): any feature requiring a person assignment
+must reuse the Person Assignment Platform Service Standard this
+foundation implements -- `domain/employees.js`,
+`useAssignableEmployees()`, and `EmployeeAssignmentPicker` are the
+reusable primitives every future consumer (Dispatch, Warehouse,
+Service, Sales, Procurement, Receiving, AI-assisted assignment, and
+future multi-tenant SaaS deployments) is expected to consume directly,
+not fork or reimplement. A domain that builds its own manual-UID input,
+its own Employee-like lookup, or its own assignment-field shape after
+this foundation ships is building a competing pattern the governance
+this project already approved (PR #79) explicitly forbids.
 
 ---
 Not implemented -- assessment only, per instruction. No code, rules, or
