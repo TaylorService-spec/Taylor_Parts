@@ -139,15 +139,27 @@ export default function EmployeeAssignmentPicker({
 
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      if (!isOpen) {
-        setIsOpen(true);
+      if (!isOpen) setIsOpen(true);
+      if (results.length === 0) {
+        setHighlightedIndex(-1);
         return;
       }
-      setHighlightedIndex((i) => Math.min(i + 1, results.length - 1));
+      // No current highlight (picker was just opened, or nothing was
+      // highlighted yet) -> land on the first result. Otherwise
+      // advance by one, clamped at the last result.
+      setHighlightedIndex((i) => (i === -1 ? 0 : Math.min(i + 1, results.length - 1)));
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      if (!isOpen) return;
-      setHighlightedIndex((i) => Math.max(i - 1, 0));
+      if (!isOpen) setIsOpen(true);
+      if (results.length === 0) {
+        setHighlightedIndex(-1);
+        return;
+      }
+      // No current highlight -> land on the LAST result (standard
+      // combobox convention: ArrowUp from nothing wraps to the end of
+      // the list, symmetric with ArrowDown landing on the first).
+      // Otherwise move back by one, clamped at the first result.
+      setHighlightedIndex((i) => (i === -1 ? results.length - 1 : Math.max(i - 1, 0)));
     } else if (e.key === "Enter") {
       if (isOpen && highlightedIndex >= 0 && results[highlightedIndex]) {
         e.preventDefault();
