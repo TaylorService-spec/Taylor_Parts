@@ -1,5 +1,5 @@
 import { getCatalogItem } from "../../../data/partsCatalog";
-import { URGENCY_ORDER } from "../../../domain/inventoryAnalyticsEngine";
+import { URGENCY_ORDER, hasUsageHistory } from "../../../domain/inventoryAnalyticsEngine";
 
 // Epic 3 Analytics -- pure renderer, all computation already done by
 // Operations.jsx (domain/inventoryAnalyticsEngine.ts). Only shows parts
@@ -56,18 +56,20 @@ export default function InventoryHealthPanel({
             </tr>
           </thead>
           <tbody>
-            {sorted.map(({ partId, stock, usage, recommendation }) => (
+            {sorted.map(({ partId, stock, usage, recommendation }) => {
+              const hasHistory = hasUsageHistory(usage);
+              return (
               <tr key={partId}>
                 <td>{getCatalogItem(partId)?.name ?? partId}</td>
                 <td>{stock.availableStock}</td>
-                <td>{usage.avgDailyUsage.toFixed(2)}</td>
-                <td>{Number.isFinite(usage.avgDailyUsage) && recommendation.daysRemaining !== Infinity ? recommendation.daysRemaining.toFixed(1) : "—"}</td>
+                <td>{hasHistory ? usage.avgDailyUsage.toFixed(2) : <span className="fo-muted">Insufficient usage history</span>}</td>
+                <td>{hasHistory && recommendation.daysRemaining !== Infinity ? recommendation.daysRemaining.toFixed(1) : "—"}</td>
                 <td>
                   <span className={`fo-badge fo-badge-${recommendation.urgency.toLowerCase()}`}>
                     {recommendation.urgency}
                   </span>
                 </td>
-                <td>{Math.ceil(recommendation.recommendedOrderQty)}</td>
+                <td>{hasHistory ? Math.ceil(recommendation.recommendedOrderQty) : <span className="fo-muted">Insufficient usage history</span>}</td>
                 {onRequestReorder && (
                   <td>
                     {requestedPartIds?.has(partId) ? (
@@ -84,7 +86,8 @@ export default function InventoryHealthPanel({
                   </td>
                 )}
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       )}

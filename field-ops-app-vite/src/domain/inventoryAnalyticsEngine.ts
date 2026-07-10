@@ -79,6 +79,17 @@ function getConsumedTransactions(transactions: LedgerTransaction[]): LedgerTrans
   return transactions.filter((t) => t.type === "CONSUMED");
 }
 
+// `avgDailyUsage === 0` is ambiguous: it means either "genuinely no
+// demand" or "no CONSUMED transactions exist for this part in the
+// window" (indistinguishable from each other in the math -- see
+// calculateUsageRate below). This flag lets callers render an honest
+// "insufficient usage history" state instead of a numeric 0 that reads
+// as "no reorder needed," without changing recommendedOrderQty's
+// value or any consumer that already depends on it being a number.
+export function hasUsageHistory(usage: UsageStats): boolean {
+  return usage.totalConsumed > 0;
+}
+
 export function calculateUsageRate(
   partId: string,
   transactions: LedgerTransaction[],

@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { getCatalogItem } from "../../data/partsCatalog";
 import { useInventoryLedger } from "../../hooks/useInventoryLedger";
+import { hasUsageHistory } from "../../domain/inventoryAnalyticsEngine";
 import { useReorderRequestForPart } from "../../hooks/useReorderRequests";
 import { useInventoryActionsForPart } from "../../hooks/useInventoryActions";
 import { usePurchaseOrderForReorderRequest } from "../../hooks/useReorderPurchaseOrders";
@@ -913,12 +914,18 @@ export default function PartDetail() {
               </tr>
               <tr>
                 <td>Avg daily usage</td>
-                <td>{health.usage.avgDailyUsage.toFixed(2)}</td>
+                <td>
+                  {hasUsageHistory(health.usage) ? (
+                    health.usage.avgDailyUsage.toFixed(2)
+                  ) : (
+                    <span className="fo-muted">Insufficient usage history</span>
+                  )}
+                </td>
               </tr>
               <tr>
                 <td>Days remaining</td>
                 <td>
-                  {Number.isFinite(health.recommendation.daysRemaining)
+                  {hasUsageHistory(health.usage) && Number.isFinite(health.recommendation.daysRemaining)
                     ? health.recommendation.daysRemaining.toFixed(1)
                     : "—"}
                 </td>
@@ -929,7 +936,13 @@ export default function PartDetail() {
               </tr>
               <tr>
                 <td>Recommended reorder qty</td>
-                <td>{Math.ceil(health.recommendation.recommendedOrderQty)}</td>
+                <td>
+                  {hasUsageHistory(health.usage) ? (
+                    Math.ceil(health.recommendation.recommendedOrderQty)
+                  ) : (
+                    <span className="fo-muted">Insufficient usage history</span>
+                  )}
+                </td>
               </tr>
               <tr>
                 <td>Risk</td>
