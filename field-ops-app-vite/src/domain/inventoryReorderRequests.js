@@ -19,10 +19,17 @@ import { auth } from "../firebase/firebase";
 // reviewDecision, reviewNotes, assignedToUserId, assignedBy,
 // assignedAt, purchasingStartedAt, purchasingStartedBy, purchasingNotes,
 // vendorContacted, expectedAvailabilityDate, lastPurchasingUpdateAt,
-// lastPurchasingUpdateBy }. `createdAt` (stamped automatically by
-// makeCollectionStore.add()) IS this record's "Reorder Requested"
-// Platform Event timestamp -- an immutable fact of when the request
-// was made, never rewritten.
+// lastPurchasingUpdateBy, purchaseOrderId, orderedBy, orderedAt }.
+// `createdAt` (stamped automatically by makeCollectionStore.add()) IS
+// this record's "Reorder Requested" Platform Event timestamp -- an
+// immutable fact of when the request was made, never rewritten.
+//
+// Sprint 2.1.10 -- Purchase Order Foundation. `purchaseOrderId`/
+// `orderedBy`/`orderedAt` are reserved as `null` here, same as every
+// other future-stage field, but are NOT written by any function in
+// this file -- they're set exclusively by
+// domain/reorderPurchaseOrders.js's recordPurchaseOrder(), atomically
+// together with creating the linked Reorder Purchase Order record.
 export const reorderRequestsStore = makeCollectionStore(REORDER_REQUESTS_COLLECTION);
 
 export function createReorderRequest({ partId, urgency, recommendedQty }) {
@@ -47,6 +54,9 @@ export function createReorderRequest({ partId, urgency, recommendedQty }) {
     expectedAvailabilityDate: null,
     lastPurchasingUpdateAt: null,
     lastPurchasingUpdateBy: null,
+    purchaseOrderId: null,
+    orderedBy: null,
+    orderedAt: null,
   });
 }
 

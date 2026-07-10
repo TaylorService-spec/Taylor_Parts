@@ -71,6 +71,12 @@ export const ACCOUNT_STATUS = {
 // the assignment fields are unchanged by this transition -- it's the
 // same person's work moving from waiting to in-progress, not a
 // hand-off.
+// Sprint 2.1.10 -- Purchase Order Foundation. The assigned Parts
+// Associate can advance PURCHASING_IN_PROGRESS to ORDERED via
+// `domain/reorderPurchaseOrders.js`'s recordPurchaseOrder(), which
+// atomically creates a Reorder Purchase Order record AND transitions
+// this status in one Firestore transaction (see that file's own
+// comment for the full atomicity design).
 export const REORDER_REQUESTS_COLLECTION = "reorder_requests";
 
 export const REORDER_REQUEST_STATUS = {
@@ -80,6 +86,7 @@ export const REORDER_REQUEST_STATUS = {
   READY_FOR_PARTS_MANAGER: "READY_FOR_PARTS_MANAGER",
   ASSIGNED_TO_PARTS_ASSOCIATE: "ASSIGNED_TO_PARTS_ASSOCIATE",
   PURCHASING_IN_PROGRESS: "PURCHASING_IN_PROGRESS",
+  ORDERED: "ORDERED",
 };
 
 // Sprint 2.1.5 -- Inventory -> Parts Manager Handoff. `currentOwner` is
@@ -115,6 +122,30 @@ export const INVENTORY_ACTION_TYPE = {
   RECEIVE_STOCK: "RECEIVE_STOCK",
   ADJUST_STOCK: "ADJUST_STOCK",
   CORRECT_MISTAKE: "CORRECT_MISTAKE",
+};
+
+// Sprint 2.1.10 -- Purchase Order Foundation. `reorder_purchase_orders`
+// is a NEW, separate collection -- deliberately NOT the existing
+// `purchase_orders` collection (Epic 5, Procurement + Supplier
+// Management: Admin-SDK-only, Supplier-linked, line-item-based,
+// documented in BusinessEntityModel.md's Section 3 object model
+// table). Reusing that name/collection would either collide with it
+// (it's already `allow create, update, delete: if false` -- Admin-SDK
+// only) or misleadingly imply this minimal, Reorder-Request-linked
+// record is that full entity. This object is documented as "Reorder
+// Purchase Order" specifically to keep the two unambiguous -- see
+// docs/BusinessEntityModel.md Section 4b.
+//
+// Each document's ID is its own `reorderRequestId` (not an
+// auto-generated ID) -- this is what lets firestore.rules enforce "no
+// duplicate Purchase Order per Reorder Request" via Firestore's own
+// create-vs-update distinction (a second write to the same ID is an
+// `update`, which the rule denies unconditionally), not just an
+// application-level check.
+export const PURCHASE_ORDERS_COLLECTION = "reorder_purchase_orders";
+
+export const PURCHASE_ORDER_STATUS = {
+  ORDERED: "ORDERED",
 };
 
 export const ROLES = {

@@ -4,6 +4,7 @@ import { getCatalogItem } from "../../data/partsCatalog";
 import { useInventoryLedger } from "../../hooks/useInventoryLedger";
 import { useReorderRequestForPart } from "../../hooks/useReorderRequests";
 import { useInventoryActionsForPart } from "../../hooks/useInventoryActions";
+import { usePurchaseOrderForReorderRequest } from "../../hooks/useReorderPurchaseOrders";
 import {
   reviewReorderRequest,
   assignReorderRequest,
@@ -11,6 +12,7 @@ import {
   updatePurchasingProgress,
 } from "../../domain/inventoryReorderRequests";
 import { recordInventoryAction } from "../../domain/inventoryActions";
+import { recordPurchaseOrder } from "../../domain/reorderPurchaseOrders";
 import { REORDER_REQUEST_STATUS, INVENTORY_ACTION_TYPE } from "../../domain/constants";
 import { useAuth } from "../../auth/AuthContext";
 import LoadingEmptyState from "../../shared/ui/LoadingEmptyState";
@@ -88,6 +90,23 @@ import LoadingEmptyState from "../../shared/ui/LoadingEmptyState";
 // blocked on enabling Firebase Blaze (a standing platform decision,
 // not something this sprint should build around). See
 // InventoryActionsPanel's own comment below for the full reasoning.
+//
+// Sprint 2.1.10 -- Purchase Order Foundation. Status branch is now
+// six-way: adds PURCHASING_IN_PROGRESS -> renders BOTH
+// ReorderRequestPurchasingUpdate (unchanged) AND a new
+// ReorderRequestRecordPurchaseOrder card (assignee-only form) side by
+// side -- posting a progress update and recording the Purchase Order
+// are independent actions available at the same status, not
+// alternatives. Adds ORDERED -> new ReorderRequestOrdered card,
+// showing the linked Reorder Purchase Order's details (realtime via
+// hooks/useReorderPurchaseOrders.js). Writes go exclusively through
+// domain/reorderPurchaseOrders.js's recordPurchaseOrder(), which
+// atomically creates the Reorder Purchase Order record AND transitions
+// this Reorder Request to ORDERED in one Firestore transaction -- see
+// that file's own comment for the full atomicity design. This is
+// deliberately a NEW, separate collection (reorder_purchase_orders),
+// not the existing purchase_orders collection (Epic 5, Procurement +
+// Supplier Management) -- see domain/constants.js's comment for why.
 function formatTimestamp(ms) {
   if (!ms) return "—";
   return new Date(ms).toLocaleString();
@@ -430,6 +449,172 @@ function ReorderRequestPurchasingUpdate({ request, onUpdated }) {
   );
 }
 
+// Sprint 2.1.10 -- Purchase Order Foundation. Shown alongside
+// ReorderRequestPurchasingUpdate (above) whenever a request is
+// PURCHASING_IN_PROGRESS -- an independent action, not an alternative
+// to posting a progress update. Only the assigned person can actually
+// record a Purchase Order (firestore.rules enforces
+// request.auth.uid == assignedToUserId, same restriction as every
+// other action since Sprint 2.1.7); non-assignees see nothing extra
+// here (ReorderRequestPurchasingUpdate's own passive message already
+// covers "waiting on the assignee" for this status). Writes go
+// exclusively through domain/reorderPurchaseOrders.js's
+// recordPurchaseOrder(), which atomically creates the Reorder Purchase
+// Order record and transitions the Reorder Request to ORDERED in one
+// Firestore transaction.
+function ReorderRequestRecordPurchaseOrder({ request, onRecorded }) {
+  const { user } = useAuth();
+  const isAssignee = user?.uid === request.assignedToUserId;
+  const [supplierName, setSupplierName] = useState("");
+  const [externalPoNumber, setExternalPoNumber] = useState("");
+  const [orderedQuantity, setOrderedQuantity] = useState("");
+  const [orderedDate, setOrderedDate] = useState("");
+  const [expectedArrivalDate, setExpectedArrivalDate] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState(null);
+
+  if (!isAssignee) return null;
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setSubmitting(true);
+    setError(null);
+    try {
+      await recordPurchaseOrder(request.id, {
+        partId: request.partId,
+        supplierName,
+        externalPoNumber,
+        orderedQuantity,
+        orderedDate,
+        expectedArrivalDate,
+      });
+      onRecorded();
+    } catch (err) {
+      setError(err.message);
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="fo-card">
+      <h3>Record Purchase Order</h3>
+      <form className="fo-form" onSubmit={handleSubmit}>
+        <label htmlFor="po-supplier-name">Supplier name</label>
+        <input
+          id="po-supplier-name"
+          type="text"
+          value={supplierName}
+          onChange={(e) => setSupplierName(e.target.value)}
+          required
+        />
+
+        <label htmlFor="po-external-number">External PO/reference number</label>
+        <input
+          id="po-external-number"
+          type="text"
+          value={externalPoNumber}
+          onChange={(e) => setExternalPoNumber(e.target.value)}
+          required
+        />
+
+        <label htmlFor="po-ordered-qty">Ordered quantity</label>
+        <input
+          id="po-ordered-qty"
+          type="number"
+          value={orderedQuantity}
+          onChange={(e) => setOrderedQuantity(e.target.value)}
+          required
+        />
+
+        <label htmlFor="po-ordered-date">Ordered date</label>
+        <input
+          id="po-ordered-date"
+          type="date"
+          value={orderedDate}
+          onChange={(e) => setOrderedDate(e.target.value)}
+          required
+        />
+
+        <label htmlFor="po-expected-arrival">Expected arrival date (optional)</label>
+        <input
+          id="po-expected-arrival"
+          type="date"
+          value={expectedArrivalDate}
+          onChange={(e) => setExpectedArrivalDate(e.target.value)}
+        />
+
+        {error && <p className="fo-muted">{error}</p>}
+
+        <div className="disp-board-toolbar">
+          <button type="submit" disabled={submitting}>
+            Record Purchase Order
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+// Sprint 2.1.10 -- Purchase Order Foundation. Shown once a request is
+// ORDERED -- displays the linked Reorder Purchase Order's details,
+// realtime, via hooks/useReorderPurchaseOrders.js. Read-only: no
+// further action on the Purchase Order exists this sprint
+// (reassignment/receiving/etc. are all explicitly out of scope).
+function ReorderRequestOrdered({ request }) {
+  const { data: purchaseOrder, loading } = usePurchaseOrderForReorderRequest(request.id);
+
+  return (
+    <div className="fo-card">
+      <h3>Reorder Request -- Ordered</h3>
+      <table className="fo-table">
+        <tbody>
+          <tr>
+            <td>Ordered by</td>
+            <td>{request.orderedBy}</td>
+          </tr>
+          <tr>
+            <td>Ordered</td>
+            <td>{formatTimestamp(request.orderedAt)}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      {loading ? (
+        <p className="fo-muted">Loading Purchase Order...</p>
+      ) : purchaseOrder ? (
+        <table className="fo-table">
+          <tbody>
+            <tr>
+              <td>Supplier</td>
+              <td>{purchaseOrder.supplierName}</td>
+            </tr>
+            <tr>
+              <td>PO / reference #</td>
+              <td>{purchaseOrder.externalPoNumber}</td>
+            </tr>
+            <tr>
+              <td>Ordered quantity</td>
+              <td>{purchaseOrder.orderedQuantity}</td>
+            </tr>
+            <tr>
+              <td>Ordered date</td>
+              <td>{purchaseOrder.orderedDate}</td>
+            </tr>
+            {purchaseOrder.expectedArrivalDate && (
+              <tr>
+                <td>Expected arrival</td>
+                <td>{purchaseOrder.expectedArrivalDate}</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      ) : (
+        <p className="fo-muted">Purchase Order details unavailable.</p>
+      )}
+    </div>
+  );
+}
+
 function ReorderRequestDecision({ request }) {
   return (
     <div className="fo-card">
@@ -680,7 +865,12 @@ export default function PartDetail() {
         ) : reorderRequest.status === REORDER_REQUEST_STATUS.ASSIGNED_TO_PARTS_ASSOCIATE ? (
           <ReorderRequestStartPurchasing request={reorderRequest} onStarted={refreshReorderRequest} />
         ) : reorderRequest.status === REORDER_REQUEST_STATUS.PURCHASING_IN_PROGRESS ? (
-          <ReorderRequestPurchasingUpdate request={reorderRequest} onUpdated={refreshReorderRequest} />
+          <>
+            <ReorderRequestPurchasingUpdate request={reorderRequest} onUpdated={refreshReorderRequest} />
+            <ReorderRequestRecordPurchaseOrder request={reorderRequest} onRecorded={refreshReorderRequest} />
+          </>
+        ) : reorderRequest.status === REORDER_REQUEST_STATUS.ORDERED ? (
+          <ReorderRequestOrdered request={reorderRequest} />
         ) : (
           <ReorderRequestDecision request={reorderRequest} />
         )
