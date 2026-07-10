@@ -102,9 +102,26 @@
 // entirely, or pass both flags with the real id if testing against the
 // emulator under the real project id specifically.
 //
-// Never prints, logs, or commits a stored/committed secret. A freshly
-// generated temporary password is printed once, to the terminal only,
-// for a newly created Auth account -- never persisted anywhere.
+// PASSWORDLESS PROVISIONING -- no credential of any kind is ever
+// generated, printed, logged, returned, stored, or committed by this
+// script. A newly created Firebase Auth account is created WITHOUT a
+// password. A terminal is itself an observable log surface (shell
+// history, session recording, CI output, screen sharing, support
+// transcripts) -- "printed once, not persisted" is not sufficient, per
+// the approved specification, which permits no credential disclosure
+// at all, one-time or otherwise.
+//
+// Provisioning establishes IDENTITY and ACCESS RECORDS only:
+// employees/{employeeId}, users/{uid}, and the Auth account itself.
+// Provisioning does NOT deliver credentials. A newly created account
+// cannot sign in with a password until a separately approved password-
+// setup/activation process (outside this script -- e.g. an admin-
+// initiated password reset flow) is completed by the operator. This
+// script's console output is limited to non-secret operational
+// confirmation: email, uid, employeeId, and an explicit reminder that
+// activation is still required. No reset link is generated or printed
+// here either -- credential delivery of any form is out of scope for
+// this script.
 //
 // Run locally, per provisioning event:
 //   cd functions
@@ -123,7 +140,6 @@
 const { initializeApp } = require("firebase-admin/app");
 const { getAuth } = require("firebase-admin/auth");
 const { getFirestore } = require("firebase-admin/firestore");
-const crypto = require("crypto");
 
 const EMPLOYEES_COLLECTION = "employees";
 const USERS_COLLECTION = "users";
@@ -159,10 +175,6 @@ function parseArgs(argv) {
     }
   }
   return args;
-}
-
-function generatePassword() {
-  return crypto.randomBytes(9).toString("base64").replace(/[+/=]/g, "x") + "!1";
 }
 
 // Trims whitespace, drops empties, and de-duplicates while preserving
@@ -387,13 +399,13 @@ async function applyPlan(db, auth, plan) {
   if (plan.operation === "UPDATE_SECURITY_ROLE_ONLY") {
     await db.collection(USERS_COLLECTION).doc(plan.userId).set(plan.userUpdates, { merge: true });
     console.log(`OK: users/${plan.userId}.role = "${plan.userUpdates.role}"`);
-    return { created: false, password: null };
+    return { created: false };
   }
 
   if (plan.operation === "CREATE_EMPLOYEE_ONLY") {
     await db.collection(EMPLOYEES_COLLECTION).doc(plan.employeeId).set(plan.employeeDoc);
     console.log(`OK: created employees/${plan.employeeId}`);
-    return { created: false, password: null };
+    return { created: false };
   }
 
   if (plan.operation === "UPDATE_EMPLOYEE_ONLY") {
@@ -407,21 +419,22 @@ async function applyPlan(db, auth, plan) {
     } else {
       console.log(`OK: employees/${plan.employeeId} already up to date, no Employee-side change.`);
     }
-    return { created: false, password: null };
+    return { created: false };
   }
 
   // GRANT_ACCESS -- the only operation touching both documents.
-  let password = null;
   let created = false;
 
   // Auth creation cannot be transactional with Firestore -- performed
   // here, as the last step before the atomic Firestore write, per the
-  // documented boundary at the top of this file.
+  // documented boundary at the top of this file. No password is set --
+  // passwordless provisioning, per the approved specification. The
+  // account exists and is linked, but cannot sign in with a password
+  // until a separately approved activation/password-setup process is
+  // completed outside this script.
   if (plan.needsNewAuthUser) {
-    password = generatePassword();
     const userRecord = await auth.createUser({
       email: plan.authCreateInput.email,
-      password,
       displayName: plan.authCreateInput.displayName,
     });
     plan.userId = userRecord.uid;
@@ -474,7 +487,7 @@ async function applyPlan(db, auth, plan) {
       `linked${created ? " (Auth account created)" : " (existing Auth account reused)"}`
   );
 
-  return { created, password };
+  return { created };
 }
 
 async function provisionEmployeeAccess(db, auth, rawArgs) {
@@ -485,9 +498,13 @@ async function provisionEmployeeAccess(db, auth, rawArgs) {
   const result = await applyPlan(db, auth, plan); // Phase E
 
   if (result.created) {
-    console.log("\nTemporary password for the newly created account (save this now, it is not stored anywhere):");
-    console.log(`  ${result.password}`);
-    console.log(`  ${plan.authCreateInput.email}`);
+    console.log(
+      `\nAccount created (no password set): email=${plan.authCreateInput.email} uid=${plan.userId} ` +
+        `employeeId=${plan.employeeId}`
+    );
+    console.log(
+      "This account cannot sign in yet -- password setup/activation is a separate, approved process outside this script."
+    );
   }
 }
 
