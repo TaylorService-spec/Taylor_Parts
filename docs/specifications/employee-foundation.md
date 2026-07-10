@@ -154,10 +154,16 @@ provisioning cases the assessment identified:
 4. Update security `role` (`users/{uid}` only, no Employee-side write).
 
 **Provisioning contract.** Script inputs: `employeeId`, `displayName`,
-`email`, `securityRole`, `operationalRoles`, `companyId` (optional,
-unused this sprint but accepted for forward compatibility). `email` is
-an **execution input only** -- used to call `auth.getUserByEmail()`/
-`auth.createUser()` to locate or create the Firebase Auth account -- and
+`email`, `securityRole`, `operationalRoles`. Per ChatGPT's review, no
+`companyId` input in Phase 3 -- a tenancy/security-relevant parameter
+must either be fully implemented and enforced, or be absent, never
+accepted-and-ignored. `companyId` is added only in a future
+multi-company sprint, once Company exists as an implemented entity,
+Employee company ownership is authoritative, Firestore Rules enforce
+the boundary, queries actually apply it, and tests prove cross-company
+isolation. `email` is an **execution input only** -- used to call
+`auth.getUserByEmail()`/ `auth.createUser()` to locate or create the
+Firebase Auth account -- and
 is never written to `employees/{employeeId}` or persisted anywhere
 beyond that Auth-side lookup. This preserves the authority split:
 Firebase Authentication owns the credential/account email; Employee
@@ -182,7 +188,12 @@ callback that already runs the `users/{uid}` read -- the smallest
 change consistent with the existing code structure, not a new
 subscription model. This exposes the Employee identity fields
 (`displayName`, `operationalRoles`) future consumers need, without
-altering how `role`/`employeeId` themselves are loaded.
+altering how `role`/`employeeId` themselves are loaded. This read is
+authorized by the Firestore Rules self-read path (see "Firestore Rules
+impact" below) -- a technician's `AuthContext` can resolve their own
+linked Employee record without being granted any broader directory
+access, which the admin/dispatcher-only read alone could not have
+supported.
 
 **Missing `employeeId` is a valid, expected state, not an error.** If
 `users/{uid}.employeeId` is null (true for every existing account until
@@ -213,17 +224,39 @@ independently.
 ### Firestore Rules impact
 
 New `employees/{employeeId}` match block, both `firestore.rules`
-copies:
+copies. Per ChatGPT's review, the read rule supports **two read paths**,
+not one -- AuthContext must resolve the signed-in user's own linked
+Employee for every security role, including technician, which
+admin/dispatcher-only read cannot support.
+
+**A. Assignment-directory read** -- admin/dispatcher may read
+assignment-eligible Employee records, as already established for every
+other Reorder-Request-adjacent collection.
+
+**B. Current-Employee self-read** -- any authenticated User may read
+only the one Employee document whose `employeeId` equals
+`users/{request.auth.uid}.employeeId`. A technician must not gain
+broad directory access -- only their own linked record, if any. A
+missing `users/{uid}.employeeId` remains a valid migration state and
+must grant access to no Employee record at all (not a wildcard, not a
+default).
+
+Conceptual rule shape (exact syntax remains implementation-time work):
 
 ```
 match /employees/{employeeId} {
-  allow read: if isAdminOrDispatcher();
+  allow read: if isAdminOrDispatcher()
+    || (
+      isSignedIn()
+      && get(
+        /databases/$(database)/documents/users/$(request.auth.uid)
+      ).data.employeeId == employeeId
+    );
   allow create, update, delete: if false;
 }
 ```
 
-Exact rules syntax remains implementation-time work; the architectural
-contract below is what's approved:
+Architectural contract approved:
 
 - No authenticated client may create, update, or delete Employee
   records, in any role, including admin -- matches this project's
@@ -237,6 +270,16 @@ contract below is what's approved:
   separately-specified sprint, avoiding designing an authorization
   model for a UI that doesn't exist yet, consistent with "do not
   weaken security to make the UI easier."
+- A technician (or any role) must never be able to read another
+  Employee's record via the self-read path -- the `get()` comparison
+  binds the read strictly to the caller's own `employeeId`, not a
+  broader match.
+- Rule `get()`/cross-document read call usage must be checked against
+  Firestore's per-request rule evaluation limits during implementation
+  -- this self-read path adds one `get()` call to every Employee read
+  attempt (directory reads already pay this cost via
+  `isAdminOrDispatcher()`; self-reads pay it for the first time on this
+  collection), not assumed free.
 
 `users/{userId}` rule: **zero change** -- `allow read: if isSignedIn()
 && request.auth.uid == userId; allow write: if false` stays exactly as
@@ -260,14 +303,16 @@ not assumed.
   `inventory_transactions` is Admin-SDK-only-write with a client-side
   read-only query layer.
 
-`useAssignableEmployees({ requiredOperationalRole, companyId,
-requireLinkedUser = true, enabled = true })` -> `{ employees, loading,
-error }`:
+`useAssignableEmployees({ requiredOperationalRole, requireLinkedUser =
+true, enabled = true })` -> `{ employees, loading, error }`:
 - `onSnapshot()`-based, not one-shot -- required by this project's
   established standard.
-- `companyId` param accepted but not applied to the query this sprint
-  (Company doesn't exist as an implemented entity) -- forward-
-  compatible signature, inert filter.
+- No `companyId` parameter in Phase 3. Per ChatGPT's review, a
+  tenancy/security-relevant filter must be fully implemented and
+  enforced or entirely absent -- accepting a `companyId` param and
+  silently ignoring it would be worse than not having it. Added only
+  in a future multi-company sprint under the conditions stated in
+  "Employee/User linkage" above.
 - No composite Firestore index required for the `==`/`array-contains`
   combination used (confirmed against this project's existing
   `useReorderRequestsAssignedTo()` precedent, which already combines
@@ -280,28 +325,35 @@ error }`:
 `EmployeeAssignmentPicker.jsx` (exact directory TBD at implementation
 time -- `field-ops-app-vite/src/shared/` vs. a new `assignment/`
 subfolder is a naming call, not an architecture one). Props:
-`{ requiredOperationalRole, companyId, requireLinkedUser,
-selectedEmployeeId, onSelect, disabled, label, placeholder }`.
-Eligibility is entirely inherited from `useAssignableEmployees()` --
-the picker applies no separate filtering logic of its own, so an
-Employee only ever appears as selectable when `employmentStatus ==
-"ACTIVE"` and (when `requireLinkedUser` is set) has a non-null
-`userId`. Consumes `useAssignableEmployees()` directly -- no separate
-data-fetching logic
-in the component itself.
+`{ requiredOperationalRole, requireLinkedUser, selectedEmployeeId,
+onSelect, disabled, label, placeholder }`. No `companyId` prop in Phase
+3, for the same reason `useAssignableEmployees()` has none -- see
+"Employee query service" above. Eligibility is entirely inherited from
+`useAssignableEmployees()` -- the picker applies no separate filtering
+logic of its own, so an Employee only ever appears as selectable when
+`employmentStatus == "ACTIVE"` and (when `requireLinkedUser` is set)
+has a non-null `userId`. Consumes `useAssignableEmployees()` directly
+-- no separate data-fetching logic in the component itself.
 
-Required UX (governance-mandated, restated for implementation
-clarity): employee name, operational role, and department/job title
-(when available) displayed per option; searchable; loading, empty,
-error, and selected states; **no UID visible in the normal UX, no
-manual UID text field anywhere in this component.**
+**Required UX -- Phase 3 schema only.** Per ChatGPT's review, option
+display uses only fields that actually exist in the Phase 3 Employee
+schema: `displayName` and `operationalRoles`. No `department`/job-title
+display -- neither field exists in the Phase 3 schema, and requiring
+one would mean displaying data the platform doesn't actually have.
+Otherwise: searchable; loading, empty, error, and selected states;
+**no UID visible in the normal UX, no manual UID text field anywhere
+in this component.** Organizational context (department, location, job
+title) may be added to the picker once those fields exist as real,
+governed Employee data -- not before.
 
 `onSelect` payload: `{ employeeId, userId, displayName,
-operationalRoles, department }` -- matches
-`PROJECT_ARCHITECTURE.md`'s standard assignment value shape exactly,
-so a future consumer (the Parts and Purchase Order Assignment Adoption
-sprint) can map it directly onto assignment-write fields with no
-translation layer.
+operationalRoles }` -- no `department`, matching the Phase 3 schema
+exactly. This still matches `PROJECT_ARCHITECTURE.md`'s standard
+assignment value shape for every field that exists today, so a future
+consumer (the Parts and Purchase Order Assignment Adoption sprint) can
+map it directly onto assignment-write fields with no translation
+layer; the payload grows to include `department`/similar only once
+those fields are real.
 
 **Verification without a live consumer:** since this sprint has zero
 workflow adoption, the picker is manually verified against seeded test
@@ -330,9 +382,21 @@ no schema change, no re-pointing to Employee.
 ## Testing strategy
 
 - **Rules simulator**: exercise the new `employees/{employeeId}` rule
-  -- confirm `isAdminOrDispatcher()` read succeeds, technician read
-  fails, and every client-side create/update/delete attempt fails
-  regardless of role (including admin).
+  against both read paths, required per ChatGPT's review:
+  - Admin directory read succeeds.
+  - Dispatcher directory read succeeds.
+  - Technician self-read (own linked `employeeId`) succeeds.
+  - Technician read of another Employee's record is denied.
+  - A User with no `users/{uid}.employeeId` is denied every Employee
+    read (not granted a default/wildcard).
+  - Mismatched User/Employee linkage (a forged or stale `employeeId`
+    that doesn't match the caller's own `users/{uid}.employeeId`) is
+    denied.
+  - Every client-side create/update/delete attempt fails regardless of
+    role, including admin.
+  - Confirm the added `get()` call for the self-read path stays within
+    Firestore's per-request rule evaluation limits -- checked during
+    implementation, not assumed.
 - **Provisioning script**: exercise `provisionEmployeeAccess.js` for
   each provisioning case (new Employee without access; grant access to
   an existing Employee; operational-role update; security-role update)
@@ -369,6 +433,13 @@ no schema change, no re-pointing to Employee.
 
 ## Risks
 
+- **The Employee self-read rule is a new rule shape for this
+  collection** -- a `get()`-based cross-document comparison gating a
+  *read*, not just pinning a write, is precedented elsewhere in this
+  repo (`reorder_purchase_orders`' create rule) but is new for a
+  read-authorization decision. Budget explicit rules-simulator coverage
+  for all six required cases (Section "Testing strategy"), not just
+  the straightforward admin/dispatcher path.
 - **Admin-SDK-only `employees` write path (Section "Firestore Rules
   impact") means zero Employee records exist in any environment until
   someone manually runs `provisionEmployeeAccess.js`.** This is by
@@ -419,9 +490,16 @@ no schema change, no re-pointing to Employee.
 
 - [ ] `employees/{employeeId}` collection and Rules exist in both
       `firestore.rules` copies, confirmed byte-identical via `diff`.
-- [ ] Rules simulator confirms: admin/dispatcher read succeeds,
-      technician read fails, all client create/update/delete attempts
-      fail for every role.
+- [ ] Rules simulator confirms all six required cases: admin directory
+      read succeeds; dispatcher directory read succeeds; technician
+      self-read of their own linked Employee succeeds; technician read
+      of another Employee is denied; a User with no `employeeId` is
+      denied every Employee read; mismatched User/Employee linkage is
+      denied. All client create/update/delete attempts fail for every
+      role, including admin.
+- [ ] No `companyId` parameter exists on `useAssignableEmployees()`,
+      `EmployeeAssignmentPicker`, the query service, or
+      `provisionEmployeeAccess.js`'s inputs.
 - [ ] `provisionEmployeeAccess.js` exists and has been exercised for
       all four provisioning cases (create without access, grant access,
       operational-role update, security-role update) in an emulator or
@@ -444,8 +522,9 @@ no schema change, no re-pointing to Employee.
       admin/dispatcher/technician; the sign-out/sign-in-to-resolve-new-
       linkage behavior is verified and documented.
 - [ ] `EmployeeAssignmentPicker` exists, satisfies the required UX
-      (name/role/department, searchable, all required states, no UID
-      visible, no manual UID field), verified against seeded data, with
+      (name/operational role, searchable, all required states, no UID
+      visible, no manual UID field, no `department`/job-title display
+      or `companyId` prop), verified against seeded data, with
       eligibility correctly limited to `employmentStatus == "ACTIVE"`.
 - [ ] No `email` field exists anywhere on `employees/{employeeId}`; no
       `BusinessEntityModel.md` change is made by this sprint.
@@ -465,9 +544,12 @@ are separate architectural concerns and are not bundled into one PR.
 Revised to four PRs:
 
 1. **PR 1 -- Employee Data and Read Foundation.** `employees/{employeeId}`
-   Rules (both `firestore.rules` copies), `domain/employees.js`,
-   `useAssignableEmployees()`, the `employmentStatus` contract
-   (`ACTIVE`-only eligibility), and rules/query tests as applicable.
+   Rules (both `firestore.rules` copies) implementing both the
+   assignment-directory read and the current-Employee self-read paths,
+   `domain/employees.js`, `useAssignableEmployees()` (no `companyId`
+   param), the `employmentStatus` contract (`ACTIVE`-only eligibility),
+   and the full rules-simulator test suite specified in "Testing
+   strategy" (all six read-path cases, not just the directory path).
 2. **PR 2 -- Trusted Employee/User Provisioning.**
    `provisionEmployeeAccess.js`, establishing the Employee/User
    bidirectional link; retires
