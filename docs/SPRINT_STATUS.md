@@ -56,7 +56,7 @@ The platform's longest continuous object lifecycle: the workflow was extended ac
 
 **Open now** (verify with `gh pr list --state open` before trusting this):
 - **PR #81** — Employee Foundation assessment/specification/implementation-plan/review chain (docs only: `docs/assessments/`, `docs/specifications/`, `docs/implementation-plans/`, `docs/reviews/employee-foundation-architecture-review.md`). **None of these exist on `main` yet** — only on this branch.
-- **PR #85** — Employee Foundation PR 4 (EmployeeAssignmentPicker Foundation). `shared/assignment/EmployeeAssignmentPicker.jsx`, zero production consumers. Two review rounds so far (deterministic focus handling + keyboard nav + ARIA; then an ArrowDown/ArrowUp landing-behavior fix). Awaiting the next ChatGPT Architecture Approval pass on the current head commit.
+- **PR #85** — Employee Foundation PR 4 (EmployeeAssignmentPicker Foundation). `shared/assignment/EmployeeAssignmentPicker.jsx`, zero production consumers. Two review rounds so far (deterministic focus handling + keyboard nav + ARIA; then an ArrowDown/ArrowUp landing-behavior fix). Commit `2030d7a` is Architecture-Approved (ChatGPT, current project session) and validated. Owner Merge Authorization not yet granted.
 
 ## In progress / not yet started
 
