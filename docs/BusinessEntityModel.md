@@ -240,6 +240,22 @@ Supplier ── 1:many ── Purchase Order ── many:many ── Part (via l
 - **Firebase Authentication** is the credential/session authority only — it is *not* a Business Object and gets no entry in Section 3's table. The Employee record must not assume Firebase Authentication is a permanent choice; it carries only a neutral access-link reference (`userId`), never vendor-specific authentication fields, so a future identity provider change doesn't require redesigning the Employee entity itself.
 - **`fieldops_technicians` remains a separate, specialized, unchanged business object** — a field-service resource record, not the enterprise Employee model. Only some Employees are Technicians; this section does not propose renaming, merging, or migrating `fieldops_technicians` into `employees`.
 
+Identity authority, and how an Assignment resolves through it:
+
+```
+Employee
+  │
+  └── linkedUserId ──▶ User
+                          │
+                          └── Firebase Authentication (credential authority)
+
+Assignment
+  │
+  ├── resolves ──▶ Employee (workforce identity)
+  │
+  └── resolves ──▶ User ──▶ Authorization (`firestore.rules` enforcement)
+```
+
 **Employee conceptual fields** (proposed/reserved — none of this is implemented yet):
 
 | Field | Status | Notes |

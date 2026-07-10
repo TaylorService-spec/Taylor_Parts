@@ -186,6 +186,8 @@ Also verified this session: a chained shell command (`git add && git commit && g
 
 No `docs/epics/EPIC-2.md`, no `docs/architecture/UI_ACTION_PIPELINES.md` exist in this repo — a prior session cited both as if they did. If a future prompt or spec references them, treat that as unverified until checked.
 
+**Documentation backlog, not yet scoped**: consider a dedicated Architecture Decision Log (ADR) document to capture major platform-evolution decisions as they happen, rather than only inline in this file — candidates so far: the Application → Enterprise Operations Platform framing, the Employee/User identity separation (rule 14), Assignment as a Platform Service, Operational Workflow Objects as a classification, and the AI-native platform direction. Not part of any current PR; noted here so it isn't lost.
+
 ## Persistent auto-memory
 
 This project also has an auto-memory system (separate from these docs) at the user's `~/.claude/projects/.../memory/` directory. Check `MEMORY.md` there for anything not captured in this `docs/` folder — `docs/` is checked into the repo and versioned with the code; the memory system is local to the assistant and persists across otherwise-unrelated conversations.
