@@ -249,7 +249,20 @@ service cloud.firestore {
               && request.resource.data.reviewedAt == resource.data.reviewedAt
               && request.resource.data.reviewNotes == resource.data.reviewNotes
               && request.resource.data.diff(resource.data).affectedKeys()
-                   .hasOnly(["status", "purchaseOrderId", "orderedBy", "orderedAt"])))
+                   .hasOnly(["status", "purchaseOrderId", "orderedBy", "orderedAt"])
+              // Cross-document invariant (ChatGPT PR #77 review): a
+              // rules-independent write of THIS transition alone,
+              // without the matching reorder_purchase_orders/{requestId}
+              // create also landing in the SAME commit, is rejected --
+              // getAfter()/existsAfter() read the post-transaction state,
+              // so both writes are provably part of one atomic operation,
+              // not just independently-valid writes that happened to be
+              // sent together.
+              && existsAfter(/databases/$(database)/documents/reorder_purchase_orders/$(requestId))
+              && getAfter(/databases/$(database)/documents/reorder_purchase_orders/$(requestId)).data.reorderRequestId == requestId
+              && getAfter(/databases/$(database)/documents/reorder_purchase_orders/$(requestId)).data.createdBy == request.auth.uid
+              && getAfter(/databases/$(database)/documents/reorder_purchase_orders/$(requestId)).data.status == "ORDERED"
+              && getAfter(/databases/$(database)/documents/reorder_purchase_orders/$(requestId)).data.partId == resource.data.partId))
         && request.resource.data.partId == resource.data.partId
         && request.resource.data.urgency == resource.data.urgency
         && request.resource.data.recommendedQty == resource.data.recommendedQty
@@ -280,13 +293,40 @@ service cloud.firestore {
     // recordPurchaseOrder(), which creates this document AND
     // transitions the linked Reorder Request to ORDERED in the same
     // Firestore transaction, so the two can never drift out of sync.
+    //
+    // Cross-document invariant (ChatGPT PR #77 review): getAfter() on
+    // reorder_requests/{requestId} requires that, after this write's
+    // transaction commits, the linked Reorder Request is actually
+    // ORDERED with a matching purchaseOrderId/orderedBy/orderedAt --
+    // so this document cannot be created without the matching
+    // reorder_requests transition landing in the SAME commit. Combined
+    // with that transition's own getAfter() check (above), the two
+    // writes are provably atomic from the rules' perspective, not just
+    // independently-valid writes that happened to arrive together.
+    // orderedAt is required to equal this document's own createdAt,
+    // since domain/reorderPurchaseOrders.js's recordPurchaseOrder()
+    // intentionally stamps both fields with the same `now` value.
+    //
+    // Field validation: partId must equal the linked Reorder Request's
+    // OWN existing partId (not merely "is string") -- a Purchase Order
+    // can never claim a different part than the request it's for.
+    // keys().hasOnly() pins the write to exactly the fields
+    // recordPurchaseOrder() sets, so no extra field can ride along.
+    // expectedArrivalDate is optional -- null or a string, never
+    // omitted (recordPurchaseOrder() always writes it, as null when
+    // not provided).
     match /reorder_purchase_orders/{requestId} {
       allow read: if isAdminOrDispatcher();
       allow create: if isAdminOrDispatcher()
         && request.auth.uid == get(/databases/$(database)/documents/reorder_requests/$(requestId)).data.assignedToUserId
         && get(/databases/$(database)/documents/reorder_requests/$(requestId)).data.status == "PURCHASING_IN_PROGRESS"
+        && request.resource.data.keys().hasOnly([
+             "reorderRequestId", "partId", "supplierName", "externalPoNumber",
+             "orderedQuantity", "orderedDate", "expectedArrivalDate", "status",
+             "createdBy", "createdAt"
+           ])
         && request.resource.data.reorderRequestId == requestId
-        && request.resource.data.partId is string
+        && request.resource.data.partId == get(/databases/$(database)/documents/reorder_requests/$(requestId)).data.partId
         && request.resource.data.supplierName is string
         && request.resource.data.supplierName.size() > 0
         && request.resource.data.externalPoNumber is string
@@ -295,9 +335,15 @@ service cloud.firestore {
         && request.resource.data.orderedQuantity > 0
         && request.resource.data.orderedDate is string
         && request.resource.data.orderedDate.size() > 0
+        && (request.resource.data.expectedArrivalDate == null || request.resource.data.expectedArrivalDate is string)
         && request.resource.data.status == "ORDERED"
         && request.resource.data.createdBy == request.auth.uid
-        && request.resource.data.createdAt is number;
+        && request.resource.data.createdAt is number
+        && existsAfter(/databases/$(database)/documents/reorder_requests/$(requestId))
+        && getAfter(/databases/$(database)/documents/reorder_requests/$(requestId)).data.status == "ORDERED"
+        && getAfter(/databases/$(database)/documents/reorder_requests/$(requestId)).data.purchaseOrderId == requestId
+        && getAfter(/databases/$(database)/documents/reorder_requests/$(requestId)).data.orderedBy == request.auth.uid
+        && getAfter(/databases/$(database)/documents/reorder_requests/$(requestId)).data.orderedAt == request.resource.data.createdAt;
       allow update, delete: if false;
     }
 
