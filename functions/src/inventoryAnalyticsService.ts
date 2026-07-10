@@ -52,6 +52,16 @@ export type UsageStats = {
 
 export type RiskLevel = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 
+// "Recommendation readiness" is a different concept from "inventory
+// risk" and must not be folded into RiskLevel (ChatGPT's REQUEST
+// CHANGES on this sprint's Specification, twice) -- NEEDS_PLANNING
+// means "the analytics engine had nothing to compute," not "risk is
+// unknown/low/high." urgency is null exactly when
+// recommendationStatus is NEEDS_PLANNING; RiskLevel above is
+// deliberately unchanged by this type. Mirrors
+// field-ops-app-vite/src/domain/inventoryAnalyticsEngine.ts.
+export type RecommendationStatus = "READY" | "NEEDS_PLANNING";
+
 export type StockoutPrediction = {
   partId: string;
   daysRemaining: number;
@@ -65,7 +75,8 @@ export type ReplenishmentRecommendation = {
   reorderPoint: number;
   daysRemaining: number;
   recommendedOrderQty: number;
-  urgency: RiskLevel;
+  recommendationStatus: RecommendationStatus;
+  urgency: RiskLevel | null;
   // Epic 3 Fix 3.3 -- labels the reorder logic's lineage explicitly, so
   // it's never mistaken for a "smart"/adaptive model. A future
   // replacement model ships as a new version string (e.g.
@@ -91,6 +102,17 @@ function filterTransactionsByPart(
 
 function getConsumedTransactions(transactions: LedgerTransaction[]): LedgerTransaction[] {
   return transactions.filter((t) => t.type === "CONSUMED");
+}
+
+// `avgDailyUsage === 0` is ambiguous: it means either "genuinely no
+// demand" or "no CONSUMED transactions exist for this part in the
+// window" (indistinguishable from each other in the math -- see
+// calculateUsageRate below). Mirrors
+// field-ops-app-vite/src/domain/inventoryAnalyticsEngine.ts's
+// hasUsageHistory() (PR #88, client-only until this sprint made it a
+// classification concern here too, not just a display one).
+export function hasUsageHistory(usage: UsageStats): boolean {
+  return usage.totalConsumed > 0;
 }
 
 // Usage rate over a trailing window (default 30 days). volatility is a
@@ -187,6 +209,19 @@ export function generateReplenishmentRecommendation(
   const daysRemaining = usage.avgDailyUsage === 0 ? Infinity : availableStock / usage.avgDailyUsage;
   const recommendedOrderQty = Math.max(reorderPoint * 2 - availableStock, 0);
 
+  if (!hasUsageHistory(usage)) {
+    return {
+      partId,
+      availableStock,
+      reorderPoint,
+      daysRemaining,
+      recommendedOrderQty,
+      recommendationStatus: "NEEDS_PLANNING",
+      urgency: null,
+      modelVersion: "EPIC3_LINEAR_V1",
+    };
+  }
+
   let urgency: RiskLevel = "LOW";
   if (availableStock <= reorderPoint * 0.5) urgency = "CRITICAL";
   else if (availableStock <= reorderPoint) urgency = "HIGH";
@@ -198,6 +233,7 @@ export function generateReplenishmentRecommendation(
     reorderPoint,
     daysRemaining,
     recommendedOrderQty,
+    recommendationStatus: "READY",
     urgency,
     modelVersion: "EPIC3_LINEAR_V1",
   };

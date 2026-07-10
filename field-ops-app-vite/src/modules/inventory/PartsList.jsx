@@ -11,6 +11,7 @@ import WorkspaceHeader from "../../shared/ui/WorkspaceHeader";
 import FilterBar from "../../shared/ui/FilterBar";
 import LoadingEmptyState from "../../shared/ui/LoadingEmptyState";
 import InventoryHealthPanel from "../operations/panels/InventoryHealthPanel";
+import { hasUsageHistory } from "../../domain/inventoryAnalyticsEngine";
 
 // Sprint 2.1.1 -- Inventory Domain Foundation. The real Inventory >
 // Parts workspace, replacing the legacy demo Inventory.jsx that
@@ -366,12 +367,14 @@ export default function PartsList() {
                     <td className="fo-muted">{part.category}</td>
                     <td>{health ? health.stock.availableStock : `${part.warehouseQty} (baseline)`}</td>
                     <td>
-                      {health ? (
+                      {!health ? (
+                        <span className="fo-muted">No activity yet</span>
+                      ) : hasUsageHistory(health.usage) ? (
                         <span className={`fo-badge fo-badge-${health.recommendation.urgency.toLowerCase()}`}>
                           {health.recommendation.urgency}
                         </span>
                       ) : (
-                        <span className="fo-muted">No activity yet</span>
+                        <span className="fo-badge">Needs planning</span>
                       )}
                     </td>
                   </tr>

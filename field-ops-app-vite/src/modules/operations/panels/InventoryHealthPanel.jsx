@@ -33,8 +33,17 @@ export default function InventoryHealthPanel({
   requestedPartIds,
   submittingPartId,
 }) {
+  // recommendation.urgency is null for NEEDS_PLANNING entries (no
+  // usage history -- see domain/inventoryAnalyticsEngine.ts). Ranking
+  // them after every real risk level here is a minimal, defensive
+  // fallback so this sort never produces NaN -- proper grouping of
+  // NEEDS_PLANNING into its own visible section is PR 3's job (see
+  // docs/implementation-plans/inventory-zero-history-reorder-behavior.md),
+  // not decided here.
   const sorted = [...healthEntries].sort(
-    (a, b) => URGENCY_ORDER[a.recommendation.urgency] - URGENCY_ORDER[b.recommendation.urgency]
+    (a, b) =>
+      (a.recommendation.urgency ? URGENCY_ORDER[a.recommendation.urgency] : URGENCY_ORDER.LOW + 1) -
+      (b.recommendation.urgency ? URGENCY_ORDER[b.recommendation.urgency] : URGENCY_ORDER.LOW + 1)
   );
 
   return (
@@ -65,9 +74,13 @@ export default function InventoryHealthPanel({
                 <td>{hasHistory ? usage.avgDailyUsage.toFixed(2) : <span className="fo-muted">Insufficient usage history</span>}</td>
                 <td>{hasHistory && recommendation.daysRemaining !== Infinity ? recommendation.daysRemaining.toFixed(1) : "—"}</td>
                 <td>
-                  <span className={`fo-badge fo-badge-${recommendation.urgency.toLowerCase()}`}>
-                    {recommendation.urgency}
-                  </span>
+                  {hasHistory ? (
+                    <span className={`fo-badge fo-badge-${recommendation.urgency.toLowerCase()}`}>
+                      {recommendation.urgency}
+                    </span>
+                  ) : (
+                    <span className="fo-badge">Needs planning</span>
+                  )}
                 </td>
                 <td>{hasHistory ? Math.ceil(recommendation.recommendedOrderQty) : <span className="fo-muted">Insufficient usage history</span>}</td>
                 {onRequestReorder && (
