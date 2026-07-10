@@ -50,8 +50,10 @@ yet.
 - `domain/employees.js` -- read-only Employee query service.
 - `useAssignableEmployees()` hook.
 - `AuthContext.jsx` extension: `employeeId`, `displayName`,
-  `operationalRoles` added to session context; one-shot `getDoc()`
-  converted to `onSnapshot()`.
+  `operationalRoles` added to session context, resolved via an
+  additional one-shot read alongside the existing `users/{uid}` read --
+  the existing one-shot `getDoc()` mechanism itself is preserved
+  unchanged (see "AuthContext impact" below).
 - `EmployeeAssignmentPicker` component, verified in isolation.
 - Replacement of `functions/scripts/createPartsManagerTestUsers.js`
   with `provisionEmployeeAccess.js` (per the assessment's Section 6
@@ -92,11 +94,10 @@ Restated from the assessment's Non-Goals, binding for this sprint:
 {
   employeeId: string,       // doc ID, technical, immutable -- never a name
   displayName: string,
-  email: string | null,
   firstName: string | null,
   lastName: string | null,
-  active: boolean,          // Phase 3 implementation of governance's
-                             // employmentStatus concept -- see "Design
+  employmentStatus: string, // ACTIVE | ON_LEAVE | INACTIVE | TERMINATED
+                             // | RETIRED | CONTRACTOR -- see "Design
                              // decision" below
   operationalRoles: string[],
   companyId: string | null,   // Future -- reserved, unused this sprint
@@ -108,26 +109,27 @@ Restated from the assessment's Non-Goals, binding for this sprint:
 }
 ```
 
-**Design decision -- `active: boolean`, not the full `employmentStatus`
-enum.** `docs/BusinessEntityModel.md` Section 8a already states
-`employmentStatus` is "Reserved... Not implemented in code in this
-phase," and that "an `active` boolean may still exist later as a
-convenience/query projection derived from this." Phase 3 implements
-`active: boolean` now; the full `employmentStatus` enum
-(`ACTIVE`/`ON_LEAVE`/`INACTIVE`/`TERMINATED`/`RETIRED`/`CONTRACTOR`)
-remains reserved for a future migration, per governance's own stated
-sequencing -- this is not a new decision, it's applying what governance
-already specified.
+**Design decision -- `employmentStatus` is the authoritative business
+lifecycle state, not an `active` boolean.** Per ChatGPT's review:
+`employmentStatus` (`ACTIVE`/`ON_LEAVE`/`INACTIVE`/`TERMINATED`/
+`RETIRED`/`CONTRACTOR`) ships as the real field in Phase 3 -- `active`
+is not introduced as the authoritative field and is not part of the
+initial schema at all. For Phase 3 assignment eligibility, an Employee
+is eligible only when `employmentStatus == "ACTIVE"`. A future `active`
+query projection may be considered later, but only if a demonstrated
+query or performance requirement justifies it -- not built speculatively
+now.
 
-**Design decision -- `email` added to the schema.** Not present in
-Section 8a's field table. Required for `provisionEmployeeAccess.js` to
-resolve/verify a Firebase Auth user via `getUserByEmail()`, mirroring
-`createPartsManagerTestUsers.js`'s existing `{email, displayName}`
-shape. Recommend a small follow-up addition to
-`BusinessEntityModel.md` Section 8a's field table in the same PR that
-implements this collection, keeping governance and schema in sync --
-not a separate governance PR, since it's an additive, non-controversial
-field, not a re-litigation of the model.
+**Design decision -- no `email` field on Employee.** Employee owns
+workforce identity; Firebase Authentication owns the credential/account
+email. `email` is not part of the Employee schema in Phase 3. See
+"Provisioning contract" below for how `provisionEmployeeAccess.js`
+still accepts an email as an *execution input* (to locate/create the
+Firebase Auth account) without persisting it to the Employee record. An
+Employee *work-contact* email may be considered later, but only once a
+real business requirement establishes it as Employee data -- not
+assumed now. No `BusinessEntityModel.md` change is proposed by this
+sprint.
 
 `users/{uid}`: unchanged. Gains no new fields from this sprint at the
 schema level -- `employeeId` was already named as the link field in
@@ -151,30 +153,62 @@ provisioning cases the assessment identified:
    write, no security-role change).
 4. Update security `role` (`users/{uid}` only, no Employee-side write).
 
-Script inputs: `employeeId`, `displayName`, `email`, `securityRole`,
-`operationalRoles`, `companyId` (optional, unused this sprint but
-accepted for forward compatibility). Never prints or commits
-credentials, passwords, or reset links -- same discipline as every
-existing Admin SDK script in this repo.
+**Provisioning contract.** Script inputs: `employeeId`, `displayName`,
+`email`, `securityRole`, `operationalRoles`, `companyId` (optional,
+unused this sprint but accepted for forward compatibility). `email` is
+an **execution input only** -- used to call `auth.getUserByEmail()`/
+`auth.createUser()` to locate or create the Firebase Auth account -- and
+is never written to `employees/{employeeId}` or persisted anywhere
+beyond that Auth-side lookup. This preserves the authority split:
+Firebase Authentication owns the credential/account email; Employee
+owns workforce identity and never duplicates it. Never prints or
+commits credentials, passwords, or reset links -- same discipline as
+every existing Admin SDK script in this repo.
 
-### AuthContext impact
+### AuthContext impact (current Employee session resolution)
 
 `AuthContext.jsx` grows from `{ user, role, login, logout, loading }`
 to `{ user, role, employeeId, displayName, operationalRoles, login,
-logout, loading }`. The existing one-shot `getDoc(doc(db,
-USERS_COLLECTION, u.uid))` converts to `onSnapshot()`, and a second,
-dependent `onSnapshot()` resolves `employees/{employeeId}` once
-`employeeId` is known from the `users/{uid}` read -- consistent with
-this project's established realtime-over-one-shot standard
-(`useFirestoreCollection.js`, and the PRs #73/#74 precedent for
-converting exactly this kind of read).
+logout, loading }`. Per ChatGPT's review, this sprint **preserves the
+existing auth-state-driven one-shot `getDoc(doc(db, USERS_COLLECTION,
+u.uid))` read** -- it is not converted to `onSnapshot()` in Phase 3.
+`role` and `employeeId` continue to be read from that same one-shot
+`users/{uid}` document read, unchanged in mechanism from today.
 
-If `users/{uid}.employeeId` is null (no linked Employee -- true for
-every existing account until `provisionEmployeeAccess.js` is run
-against it), `employeeId`/`displayName`/`operationalRoles` resolve to
-`null`/`null`/`[]` respectively. This is the expected state for every
-current account immediately after this sprint ships -- no account is
-retroactively linked by this sprint (see Migration strategy).
+Resolving the linked Employee record is an *additional* one-shot
+`getDoc(doc(db, EMPLOYEES_COLLECTION, employeeId))`, performed only
+when `employeeId` is non-null, added to the same `onAuthStateChanged`
+callback that already runs the `users/{uid}` read -- the smallest
+change consistent with the existing code structure, not a new
+subscription model. This exposes the Employee identity fields
+(`displayName`, `operationalRoles`) future consumers need, without
+altering how `role`/`employeeId` themselves are loaded.
+
+**Missing `employeeId` is a valid, expected state, not an error.** If
+`users/{uid}.employeeId` is null (true for every existing account until
+`provisionEmployeeAccess.js` is run against it),
+`employeeId`/`displayName`/`operationalRoles` resolve to `null`/`null`/
+`[]` respectively, and no Employee-side read is attempted. This is the
+expected state for every current account immediately after this sprint
+ships -- no account is retroactively linked by this sprint (see
+Migration strategy).
+
+**Newly provisioned linkage requires a fresh session to resolve.**
+Because both reads are one-shot, tied to `onAuthStateChanged` firing
+(sign-in, not a live subscription), an account that gets
+`provisionEmployeeAccess.js`-linked *while already signed in* will not
+see `employeeId`/`displayName`/`operationalRoles` populate until that
+session signs out and back in. This is a deliberate, documented
+limitation of the smallest-change approach chosen here, not an
+oversight -- a realtime User/access-identity subscription (which would
+resolve this) is explicitly deferred to a separate, future sprint, per
+ChatGPT's review: that change affects every authenticated session
+platform-wide and is not required to establish the Employee Foundation
+itself. The Notification Panel's prior `onSnapshot()` conversion
+(PRs #73/#74) is not cited as sufficient justification for this
+different decision -- authentication/session-identity resolution and a
+notification read carry different risk profiles, and are evaluated
+independently.
 
 ### Firestore Rules impact
 
@@ -184,19 +218,25 @@ copies:
 ```
 match /employees/{employeeId} {
   allow read: if isAdminOrDispatcher();
-  allow create, update: if false;
-  allow delete: if false;
+  allow create, update, delete: if false;
 }
 ```
 
-**Design decision -- Admin-SDK-only, no client write path in Phase
-3.** Matches the assessment's recommended default and this project's
-existing conservative posture (`users/{uid}` has never had a client
-write path either). A client-side Employee Administration write path
-is explicitly deferred to a future, separately-specified sprint --
-choosing this now avoids designing an authorization model for a UI
-that doesn't exist yet, consistent with "do not weaken security to
-make the UI easier."
+Exact rules syntax remains implementation-time work; the architectural
+contract below is what's approved:
+
+- No authenticated client may create, update, or delete Employee
+  records, in any role, including admin -- matches this project's
+  existing conservative posture (`users/{uid}` has never had a client
+  write path either).
+- Employee/User linkage is established exclusively through trusted
+  Admin SDK tooling (`provisionEmployeeAccess.js`).
+- `users/{uid}` client `write: if false` remains unchanged.
+- Employee Administration UI remains explicitly out of scope -- a
+  client-side Employee write path is deferred to a future,
+  separately-specified sprint, avoiding designing an authorization
+  model for a UI that doesn't exist yet, consistent with "do not
+  weaken security to make the UI easier."
 
 `users/{userId}` rule: **zero change** -- `allow read: if isSignedIn()
 && request.auth.uid == userId; allow write: if false` stays exactly as
@@ -211,9 +251,10 @@ not assumed.
 
 `domain/employees.js` (read-only):
 - Exports a query-building function reading `employees`, filtered by
-  `active == true`, optionally `operationalRoles array-contains
-  <role>`, optionally `userId != null` (when `requireLinkedUser` is
-  set).
+  `employmentStatus == "ACTIVE"` (the Phase 3 assignment-eligibility
+  rule -- see "Data model" above), optionally `operationalRoles
+  array-contains <role>`, optionally `userId != null` (when
+  `requireLinkedUser` is set).
 - No write functions -- this collection's only writer is
   `provisionEmployeeAccess.js` (Admin SDK), matching how
   `inventory_transactions` is Admin-SDK-only-write with a client-side
@@ -240,8 +281,13 @@ error }`:
 time -- `field-ops-app-vite/src/shared/` vs. a new `assignment/`
 subfolder is a naming call, not an architecture one). Props:
 `{ requiredOperationalRole, companyId, requireLinkedUser,
-selectedEmployeeId, onSelect, disabled, label, placeholder }`. Consumes
-`useAssignableEmployees()` directly -- no separate data-fetching logic
+selectedEmployeeId, onSelect, disabled, label, placeholder }`.
+Eligibility is entirely inherited from `useAssignableEmployees()` --
+the picker applies no separate filtering logic of its own, so an
+Employee only ever appears as selectable when `employmentStatus ==
+"ACTIVE"` and (when `requireLinkedUser` is set) has a non-null
+`userId`. Consumes `useAssignableEmployees()` directly -- no separate
+data-fetching logic
 in the component itself.
 
 Required UX (governance-mandated, restated for implementation
@@ -287,22 +333,32 @@ no schema change, no re-pointing to Employee.
   -- confirm `isAdminOrDispatcher()` read succeeds, technician read
   fails, and every client-side create/update/delete attempt fails
   regardless of role (including admin).
-- **Provisioning script**: run `provisionEmployeeAccess.js` against the
-  live `taylor-parts` project at least once per provisioning case (new
-  Employee without access; grant access to an existing Employee;
-  operational-role update; security-role update) and verify the
-  resulting documents directly via Firestore reads, not just script
-  output.
+- **Provisioning script**: exercise `provisionEmployeeAccess.js` for
+  each provisioning case (new Employee without access; grant access to
+  an existing Employee; operational-role update; security-role update)
+  in an emulator or other approved non-production environment where
+  possible, verifying the resulting documents directly via Firestore
+  reads, not just script output. See "Acceptance criteria" below for
+  how this relates to merge and to any live-project run.
 - **Query service**: seed several Employee records with varying
-  `active`/`operationalRoles`/`userId` combinations; verify
+  `employmentStatus`/`operationalRoles`/`userId` combinations; verify
   `useAssignableEmployees()` returns exactly the expected subset for
-  each filter combination.
+  each filter combination (including that `ON_LEAVE`/`INACTIVE`/
+  `TERMINATED`/`RETIRED`/`CONTRACTOR` Employees are correctly excluded,
+  not just that `ACTIVE` ones are included).
 - **AuthContext regression**: manually verify sign-in and role-gated
   navigation/access still work correctly for all three existing
-  security roles (admin/dispatcher/technician) after the
-  one-shot-to-`onSnapshot()` conversion -- this touches code every
-  authenticated session depends on, so this is not optional or
-  assumed-safe-by-analogy.
+  security roles (admin/dispatcher/technician), confirming the
+  preserved one-shot `users/{uid}` read behavior is unchanged and the
+  additional Employee-side read doesn't introduce a regression -- this
+  touches code every authenticated session depends on, so this is not
+  optional or assumed-safe-by-analogy even though the read mechanism
+  itself isn't changing.
+- **Sign-out/sign-in linkage behavior**: manually verify that an
+  account provisioned with a new Employee link *while already signed
+  in* does not see `employeeId`/`displayName`/`operationalRoles`
+  populate until a fresh sign-in -- confirming the documented
+  limitation behaves as specified, not silently differently.
 - **EmployeeAssignmentPicker**: manual verification against seeded
   data for all required UX states (loading/empty/error/populated/
   selected/searched), confirmed no UID is visible anywhere in the
@@ -320,23 +376,31 @@ no schema change, no re-pointing to Employee.
   hard dependency on real provisioning runs having happened first, not
   just code existing -- flag this explicitly in that sprint's own
   testing plan, don't assume it's covered here.
-- **AuthContext's realtime conversion is the highest-blast-radius
-  single change in this sprint** -- it's the one piece every
-  authenticated user's session depends on, unlike the other four
-  pieces, which are net-new and additive. Budget proportionally more
-  manual regression testing here than elsewhere.
+- **AuthContext is still the one piece every authenticated user's
+  session depends on**, even with the one-shot read mechanism
+  preserved unchanged -- adding the Employee-side read still touches
+  code every session runs through. Budget proportionally more manual
+  regression testing here than elsewhere, even though this sprint
+  deliberately avoids the larger realtime-conversion risk by not
+  changing the existing read mechanism.
+- **Sign-out/sign-in-to-resolve-new-linkage is a real, user-visible
+  limitation, not just an implementation footnote.** A Parts Manager
+  provisioned mid-session won't see their own Employee identity resolve
+  until they sign out and back in -- this needs to be communicated to
+  whoever runs `provisionEmployeeAccess.js` operationally, not just
+  documented here.
 - **`EmployeeAssignmentPicker` verified only in isolation** -- there is
   a real (if small) risk its `onSelect` payload shape or eligibility
   filtering has a mismatch that only surfaces once a real consumer
   wires it up in the next sprint. Acceptable given the assessment's
   own sequencing rationale (no live consumer exists yet to test
   against), but not a zero-risk trade-off.
-- **Adding `email` to the Employee schema without a governance-doc
-  update landing first** creates a brief window where implementation
-  and `BusinessEntityModel.md` Section 8a disagree, if the doc update
-  isn't bundled into the same PR as intended. Mitigate by treating the
-  small governance addition as part of this sprint's own PR, not a
-  follow-up.
+- **A future decision to add an Employee work-contact email would need
+  its own governance update first** -- not a risk to this sprint (no
+  `email` field is introduced), but worth flagging so a later sprint
+  doesn't add the field to the schema without updating
+  `BusinessEntityModel.md` Section 8a first, the same discipline this
+  sprint follows by explicitly not adding it without that update.
 
 ## Dependencies
 
@@ -358,23 +422,33 @@ no schema change, no re-pointing to Employee.
 - [ ] Rules simulator confirms: admin/dispatcher read succeeds,
       technician read fails, all client create/update/delete attempts
       fail for every role.
-- [ ] `provisionEmployeeAccess.js` exists and has completed at least
-      one real, verified run against the live project for each of the
-      four provisioning cases (create without access, grant access,
-      operational-role update, security-role update).
+- [ ] `provisionEmployeeAccess.js` exists and has been exercised for
+      all four provisioning cases (create without access, grant access,
+      operational-role update, security-role update) in an emulator or
+      other approved non-production environment. **Merge approval does
+      not itself authorize any production data mutation.** A controlled
+      initial live-project provisioning run is a separately, explicitly
+      authorized operational step by the project owner, which may occur
+      after this PR merges -- it is not a merge blocker, and is never
+      run automatically. No secret, password, or reset link is ever
+      stored or committed at any point.
 - [ ] `functions/scripts/createPartsManagerTestUsers.js` is removed,
       replaced by `provisionEmployeeAccess.js`.
 - [ ] `domain/employees.js` + `useAssignableEmployees()` exist, use
       `onSnapshot()`, and return correct filtered results against real
-      seeded data for every documented filter combination.
+      seeded data for every documented filter combination, including
+      correct exclusion of non-`ACTIVE` `employmentStatus` values.
 - [ ] `AuthContext` exposes `employeeId`/`displayName`/
-      `operationalRoles`, resolved via `onSnapshot()`, with zero
-      regression in role-based access for admin/dispatcher/technician.
+      `operationalRoles`; the existing one-shot `users/{uid}` read
+      mechanism is unchanged; zero regression in role-based access for
+      admin/dispatcher/technician; the sign-out/sign-in-to-resolve-new-
+      linkage behavior is verified and documented.
 - [ ] `EmployeeAssignmentPicker` exists, satisfies the required UX
       (name/role/department, searchable, all required states, no UID
-      visible, no manual UID field), verified against seeded data.
-- [ ] `BusinessEntityModel.md` Section 8a's field table includes
-      `email`, landed in the same PR as the schema that adds it.
+      visible, no manual UID field), verified against seeded data, with
+      eligibility correctly limited to `employmentStatus == "ACTIVE"`.
+- [ ] No `email` field exists anywhere on `employees/{employeeId}`; no
+      `BusinessEntityModel.md` change is made by this sprint.
 - [ ] No Non-Goal item (Employee admin UI, HR/scheduling/skills/
       certification/payroll/availability/time-tracking, multi-company
       hierarchy) is present in any form.
@@ -386,22 +460,30 @@ no schema change, no re-pointing to Employee.
 
 ## Recommended implementation sequence
 
-Per the assessment's Section 11 (Migration sequencing), formalized as
-PR breakdown (one architectural concern per PR):
+Per ChatGPT's review, AuthContext resolution and EmployeeAssignmentPicker
+are separate architectural concerns and are not bundled into one PR.
+Revised to four PRs:
 
-1. **PR 1** -- `employees` collection Rules (both copies) +
-   `domain/employees.js` + `useAssignableEmployees()` +
-   `BusinessEntityModel.md` Section 8a's `email` field addition.
-2. **PR 2** -- `provisionEmployeeAccess.js`, with at least one real
-   verified provisioning run recorded in the PR description (not just
-   code review) before merge; retires
-   `createPartsManagerTestUsers.js` in the same PR.
-3. **PR 3** -- `AuthContext` changes + `EmployeeAssignmentPicker`,
-   verified in isolation.
+1. **PR 1 -- Employee Data and Read Foundation.** `employees/{employeeId}`
+   Rules (both `firestore.rules` copies), `domain/employees.js`,
+   `useAssignableEmployees()`, the `employmentStatus` contract
+   (`ACTIVE`-only eligibility), and rules/query tests as applicable.
+2. **PR 2 -- Trusted Employee/User Provisioning.**
+   `provisionEmployeeAccess.js`, establishing the Employee/User
+   bidirectional link; retires
+   `functions/scripts/createPartsManagerTestUsers.js` in the same PR
+   (untracked, no PR history, zero migration cost).
+3. **PR 3 -- Current Employee Session Resolution.** `AuthContext`'s
+   additional Employee-side read, preserving the existing one-shot
+   `users/{uid}` role-loading mechanism unchanged, with migration-safe
+   missing-link handling and authentication regression testing.
+4. **PR 4 -- EmployeeAssignmentPicker Foundation.** The reusable
+   component, verified via an isolated test/demo harness -- no
+   production workflow adoption in this PR.
 
-This is a recommended sequence, not the Implementation Plan itself --
-per instruction, no Implementation Plan is produced by this
-specification.
+One architectural concern per PR, matching `docs/ai/workflow.md`. This
+is a recommended sequence, not the Implementation Plan itself -- per
+instruction, no Implementation Plan is produced by this specification.
 
 ## Approval
 
