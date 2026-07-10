@@ -97,7 +97,7 @@ Multi-PR sprint (four distinct concerns: analytics/schema, transitional authoriz
 
 | PR # | GitHub PR | Status |
 |---|---|---|
-| 1 | Not yet opened | Not started |
+| 1 | [#90](https://github.com/TaylorService-spec/Taylor_Parts/pull/90) | Open |
 | 2 | Not yet opened | Not started |
 | 3 | Not yet opened | Not started |
 | 4 | Not yet opened | Not started |
