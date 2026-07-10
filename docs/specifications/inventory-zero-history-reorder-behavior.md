@@ -1,7 +1,7 @@
 ---
 artifact_type: specification
 gate: Sprint Specification
-status: Draft
+status: Approved
 date: 2026-07-10
 owner: Claude Code
 related_adrs: []
@@ -234,4 +234,4 @@ Additive schema change (`recommendationStatus`, `requestedQty`, `quantitySource`
 
 Both fixed in the "Firestore Rules impact" section above (branch-scoped positivity, branch-scoped authorization), and a new "Deployment / rollout sequence" subsection added to address a third finding: a naive single-step rules swap would either break the legacy writer (strict rules first) or leave a temporary authorization gap (new writer first) — resolved via a three-step expand/contract rollout (transitional rules accepting both shapes → new writer ships → tightening step removes the legacy allowance).
 
-Not yet re-approved — awaiting this round's review.
+**Re-approved by ChatGPT, 2026-07-10**, at commit `1cb4376bf87812a60c4ec7410390a4391d1f827c` (PR #89), with the aligned Implementation Plan (`docs/implementation-plans/inventory-zero-history-reorder-behavior.md`, now a 4-PR breakdown reflecting the expand/contract rollout). All three blockers confirmed resolved: branch-scoped `requestedQty` positivity, branch-scoped authorization (`READY` → `isAdminOrDispatcher()`, `NEEDS_PLANNING` → operational-role authority or the admin override, independently), and the auditable deployment transition with PR 4 established as a required rules-tightening deliverable, not optional cleanup. No further specification edit required. Proceeding to the Implementation Plan gate — implementation itself has not begun.
