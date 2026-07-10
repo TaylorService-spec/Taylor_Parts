@@ -15,6 +15,22 @@ export const JOBS_COLLECTION = "fieldops_jobs";
 export const TECHNICIANS_COLLECTION = "fieldops_technicians";
 export const USERS_COLLECTION = "users";
 
+// Phase 3 -- Platform Assignment Foundation (docs/specifications/
+// employee-foundation.md). employmentStatus is the authoritative
+// Employee lifecycle field -- no `active` boolean exists. ACTIVE is
+// the only Phase 3 assignment-eligibility value; the other five are
+// reserved states an Employee can be in without being eligible for a
+// new assignment.
+export const EMPLOYEES_COLLECTION = "employees";
+export const EMPLOYMENT_STATUS = {
+  ACTIVE: "ACTIVE",
+  ON_LEAVE: "ON_LEAVE",
+  INACTIVE: "INACTIVE",
+  TERMINATED: "TERMINATED",
+  RETIRED: "RETIRED",
+  CONTRACTOR: "CONTRACTOR",
+};
+
 // Work Order Engine v1.2 (Epic 1, see docs/architecture/ADR-002). Real,
 // persisted collections -- fieldops_wos is the source of truth for Work
 // Order state, written only by the createWorkOrder/transitionWorkOrder

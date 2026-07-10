@@ -47,6 +47,33 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Phase 3 -- Platform Assignment Foundation (docs/specifications/
+    // employee-foundation.md). Employee is the authoritative workforce
+    // identity (docs/PROJECT_ARCHITECTURE.md's Person Assignment
+    // Platform Service Standard, docs/BusinessEntityModel.md Section 8a)
+    // -- separate from users/{uid}'s application-access identity above.
+    // Two read paths, not one: (A) admin/dispatcher may read the
+    // assignment-eligible Employee directory, same gate as every other
+    // Reorder-Request-adjacent collection; (B) any authenticated user
+    // (including technician) may read ONLY their own linked Employee --
+    // AuthContext must resolve a technician's own Employee identity,
+    // which admin/dispatcher-only read could never support. The self-
+    // read path reuses userData() (already defined above) rather than a
+    // second get() -- userData().employeeId == employeeId denies access
+    // outright when users/{uid}.employeeId is null (a valid, expected
+    // migration state, not an error) and denies a technician reading
+    // any Employee record other than their own linked one. No client,
+    // in any role including admin, may create/update/delete an Employee
+    // -- linkage is established exclusively by
+    // functions/scripts/provisionEmployeeAccess.js (Admin SDK, bypasses
+    // these rules by design). Employee Administration UI is explicitly
+    // out of scope for this phase; do not loosen this to add one.
+    match /employees/{employeeId} {
+      allow read: if isAdminOrDispatcher()
+        || (isSignedIn() && userData().employeeId == employeeId);
+      allow create, update, delete: if false;
+    }
+
     // Work Order Engine v1.2 (docs/architecture/ADR-002). All writes go
     // through the createWorkOrder/transitionWorkOrder Cloud Functions
     // (Admin SDK, bypasses these rules by design) -- clients are
