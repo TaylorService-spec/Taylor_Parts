@@ -597,6 +597,54 @@ button:hover {
   font-size: 13px;
 }
 
+/* Phase 3 -- Employee Assignment Picker (shared/assignment/EmployeeAssignmentPicker.jsx) */
+.fo-employee-picker {
+  position: relative;
+  display: inline-block;
+}
+
+.fo-employee-picker input {
+  padding: 6px 10px;
+  border: 1px solid #ccd3d2;
+  border-radius: 6px;
+  font-size: 14px;
+  min-width: 220px;
+}
+
+.fo-employee-picker-results {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: #fff;
+  border: 1px solid #ccd3d2;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  z-index: 20;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.fo-employee-picker-result {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.fo-employee-picker-result:hover {
+  background: #f4f6f5;
+}
+
+.fo-employee-picker-status {
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
 .wo-history-row {
   font-size: 13px;
   padding: 2px 0;
