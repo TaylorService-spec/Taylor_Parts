@@ -1,7 +1,7 @@
 ---
 artifact_type: specification
 gate: Sprint Specification
-status: Draft
+status: Approved
 date: 2026-07-10
 owner: Claude Code
 related_adrs: []
@@ -569,5 +569,7 @@ instruction, no Implementation Plan is produced by this specification.
 
 ## Approval
 
-Pending ChatGPT review and recorded approval before Implementation
-begins.
+**Approved by ChatGPT, 2026-07-10.** See
+`docs/reviews/employee-foundation-architecture-review.md` for the
+review record. Implementation proceeds per
+`docs/implementation-plans/employee-foundation.md`.
