@@ -38,6 +38,15 @@ export type UsageStats = {
 
 export type RiskLevel = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 
+// "Recommendation readiness" is a different concept from "inventory
+// risk" and must not be folded into RiskLevel (ChatGPT's REQUEST
+// CHANGES on this sprint's Specification, twice) -- NEEDS_PLANNING
+// means "the analytics engine had nothing to compute," not "risk is
+// unknown/low/high." urgency is null exactly when
+// recommendationStatus is NEEDS_PLANNING; RiskLevel/URGENCY_ORDER
+// below are deliberately unchanged by this type.
+export type RecommendationStatus = "READY" | "NEEDS_PLANNING";
+
 export type StockoutPrediction = {
   partId: string;
   daysRemaining: number;
@@ -51,7 +60,8 @@ export type ReplenishmentRecommendation = {
   reorderPoint: number;
   daysRemaining: number;
   recommendedOrderQty: number;
-  urgency: RiskLevel;
+  recommendationStatus: RecommendationStatus;
+  urgency: RiskLevel | null;
   modelVersion: "EPIC3_LINEAR_V1";
 };
 
@@ -153,6 +163,19 @@ export function generateReplenishmentRecommendation(
   const daysRemaining = usage.avgDailyUsage === 0 ? Infinity : availableStock / usage.avgDailyUsage;
   const recommendedOrderQty = Math.max(reorderPoint * 2 - availableStock, 0);
 
+  if (!hasUsageHistory(usage)) {
+    return {
+      partId,
+      availableStock,
+      reorderPoint,
+      daysRemaining,
+      recommendedOrderQty,
+      recommendationStatus: "NEEDS_PLANNING",
+      urgency: null,
+      modelVersion: "EPIC3_LINEAR_V1",
+    };
+  }
+
   let urgency: RiskLevel = "LOW";
   if (availableStock <= reorderPoint * 0.5) urgency = "CRITICAL";
   else if (availableStock <= reorderPoint) urgency = "HIGH";
@@ -164,6 +187,7 @@ export function generateReplenishmentRecommendation(
     reorderPoint,
     daysRemaining,
     recommendedOrderQty,
+    recommendationStatus: "READY",
     urgency,
     modelVersion: "EPIC3_LINEAR_V1",
   };
