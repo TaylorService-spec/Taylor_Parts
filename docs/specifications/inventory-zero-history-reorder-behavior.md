@@ -1,7 +1,7 @@
 ---
 artifact_type: specification
 gate: Sprint Specification
-status: Draft
+status: Approved
 date: 2026-07-10
 owner: Claude Code
 related_adrs: []
@@ -198,4 +198,4 @@ Additive schema change (`recommendationStatus`, `requestedQty`, `quantitySource`
 
 ## Approval
 
-Pending ChatGPT review of this Specification (this is a Specification artifact awaiting that gate — not yet approved for implementation).
+**Approved by ChatGPT, 2026-07-10**, at commit `4bdf360ca01e657a220e8073e6e2822235218e6d` (PR #89). Two REQUEST CHANGES rounds preceded approval, both addressed: (1) `NEEDS_PLANNING` moved out of `RiskLevel`/`urgency` into a separate, orthogonal `recommendationStatus` field; (2) manual-quantity-entry eligibility concretely defined via a new `OPERATIONAL_ROLE` enum (`PARTS_MANAGER`, `WAREHOUSE_MANAGER`) enforced through `firestore.rules`, not UI-only. No further specification edit required. Proceeding to Implementation Plan (`docs/implementation-plans/inventory-zero-history-reorder-behavior.md`) — implementation itself has not begun.
