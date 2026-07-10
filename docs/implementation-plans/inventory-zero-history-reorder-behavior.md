@@ -15,22 +15,24 @@ target_release:
 
 # Implementation Plan: Zero-history reorder behavior (recommendation status, manual quantity entry, role-gated authorization)
 
-**Sprint Specification:** `docs/specifications/inventory-zero-history-reorder-behavior.md` — Approved 2026-07-10, commit `4bdf360ca01e657a220e8073e6e2822235218e6d` (PR #89).
+**Sprint Specification:** `docs/specifications/inventory-zero-history-reorder-behavior.md` — status `Draft`, revised 2026-07-10 (sent back from `Approved` when this Implementation Plan's own review round found two defects in the Specification's drafted rules logic — see that document's "Approval" section for the full record).
 
-Multi-PR sprint (three distinct architectural concerns: analytics/schema, authorization/Firestore Rules, UI/write-path) with a real sequencing dependency — PR 2 and PR 3 both require the types/fields PR 1 introduces; PR 3's writes are only meaningfully enforced once PR 2's rules are live. A standalone plan, per this repo's own threshold for when one is warranted.
+Multi-PR sprint (four distinct concerns: analytics/schema, transitional authorization/Firestore Rules, UI/write-path, and a rules-tightening step) with real sequencing dependencies — PR 2 and PR 3 both require the types/fields PR 1 introduces; PR 3's writes are only meaningfully *authorized* (not merely accepted) once PR 2's rules are live; PR 4 must not land until PR 3 is confirmed live, per the Specification's "Deployment / rollout sequence." A standalone plan, per this repo's own threshold for when one is warranted.
 
 ## PR breakdown
 
 | # | PR title | Architectural concern | Depends on | Status |
 |---|---|---|---|---|
 | 1 | `recommendationStatus`/nullable `urgency` + `OPERATIONAL_ROLE`/`QUANTITY_SOURCE` constants | Analytics engine + client/server mirror + type/schema foundation | None | Not started |
-| 2 | `firestore.rules` role-gated `create` validation + emulator Rules test | Authorization/security (Firestore Rules) | PR 1 (new field names must be final before rules reference them) | Not started |
-| 3 | `requestedQty`/`quantitySource` write path + manual-quantity UI + queue visibility | UI + domain write path | PR 1 (types/fields), PR 2 (rules must accept the new shape before this PR's writes can succeed against a deployed ruleset) | Not started |
+| 2 | `firestore.rules` transitional (dual-shape) `create` validation + emulator Rules test | Authorization/security (Firestore Rules), step 1 of the expand/contract rollout | PR 1 (new field names must be final before rules reference them) | Not started |
+| 3 | `requestedQty`/`quantitySource` write path + manual-quantity UI + queue visibility | UI + domain write path, step 2 of the rollout | PR 1 (types/fields), PR 2 deployed live (not just merged — the transitional rules must actually be serving before this PR's new-shape writes are exercised for real) | Not started |
+| 4 | `firestore.rules` tightening — remove the legacy-shape (`: isAdminOrDispatcher()`) branch | Authorization/security (Firestore Rules), step 3 of the rollout — closes the temporary gap | PR 3 deployed live and confirmed (no legacy-shape writer remains in use) | Not started |
 
 ## Sequencing notes
 
 - **PR 1 before PR 2 and PR 3**: `recommendationStatus`, nullable `urgency`, `requestedQty`, `quantitySource`, and the `OPERATIONAL_ROLE`/`QUANTITY_SOURCE` constants are referenced by both later PRs. Landing the types/constants first means PR 2's rules and PR 3's UI are written against a settled shape, not a moving target.
-- **PR 2 before PR 3**: PR 3 introduces the first real writes of `requestedQty`/`quantitySource`/`recommendationStatus` to `reorder_requests`. Per this repo's established Firestore Rules discipline (Sprint 2.1.4/2.1.10's REQUEST-CHANGES history — rules changes get their own dedicated review round), the rules must exist, pass their own emulator test, and be merged (and, before any real use, deployed — a separate Owner-authorized step, not part of this plan) before PR 3's write path is exercised for real. PR 3 can still be *built* in parallel once PR 1 lands, but should not merge ahead of PR 2, and must not be relied on for authorization on its own — client-side eligibility gating in PR 3 is a UX nicety, not the enforcement boundary (that's PR 2's job).
+- **PR 2 before PR 3, and specifically PR 2's *deploy* before PR 3's *deploy***: this is a real deploy-ordering requirement, not just a merge-ordering one — per the Specification's "Deployment / rollout sequence," the transitional rules (accepting both the current live legacy shape and the new shape) must be live in production *before* the new writer ships, so there is never a moment where the live client sends a shape the live rules reject. PR 3 can still be *built* and even merged in parallel once PR 1 lands, but its **deploy** must wait for PR 2's rules deploy to be confirmed live.
+- **PR 4 only after PR 3 is deployed and confirmed** — PR 4 removes the legacy-shape allowance the transitional rule (PR 2) intentionally left in place. Landing PR 4 before PR 3's new writer is fully live would reproduce Defect scenario 1 from the Specification (strict rules breaking the still-live legacy writer). This repo's low-traffic, no-real-production-users-yet posture for this initiative (per the Assessment's own findings) means the gap between PR 3 and PR 4 should be short and deliberate, not indefinite — see the Specification's rollout-sequencing risk.
 - **`docs/BusinessEntityModel.md` update** rides with PR 1 (schema fields are defined there) with a small addendum in PR 3 if the manual-entry UI surfaces anything not already captured (expected to be none — PR 1 should capture the full field list up front).
 - **Client/server mirror consistency** (`domain/inventoryAnalyticsEngine.ts` / `functions/src/inventoryAnalyticsService.ts`) is entirely within PR 1 — both files change together, in the same commit, so there is never a merged state where they've drifted.
 
@@ -47,18 +49,18 @@ Multi-PR sprint (three distinct architectural concerns: analytics/schema, author
 
 **Explicitly not in this PR:** no Firestore Rules change, no write-path change (`createReorderRequest()` untouched), no UI change beyond the null-safety audit above.
 
-## PR 2 — Firestore Rules validation + emulator test
+## PR 2 — Firestore Rules transitional validation + emulator test (rollout step 1)
 
 **Scope:**
-- Both `firestore.rules` copies (`/firestore.rules`, `/field-ops-app-vite/firestore.rules`, changed identically): add `hasOperationalRole(role)` and `canSubmitManualZeroHistoryQuantity()` helpers; extend `reorder_requests`'s `create` rule per the Specification's exact schema (positive-integer `requestedQty`, allowed `recommendationStatus`/`quantitySource`/`urgency` combinations, `canSubmitManualZeroHistoryQuantity()` gating the `NEEDS_PLANNING` branch only). `READY` path's existing `isAdminOrDispatcher()` gate is unchanged — this PR must not touch it.
-- New Firestore Rules emulator test, extending the `functions/test/employeesRules.test.js` pattern (this repo's only existing precedent — same zero-new-dependency posture: `firebase-admin` + Node's built-in `fetch` against the emulator's REST APIs). Minimum scenarios (from the Specification's Testing strategy): reject non-positive/non-integer `requestedQty`; reject `READY` with `quantitySource != "ANALYTICS"`; reject `NEEDS_PLANNING` from a `dispatcher` with no `operationalRoles`; accept `NEEDS_PLANNING` from `admin`; accept `NEEDS_PLANNING` from a `dispatcher` whose linked Employee has `operationalRoles: ["WAREHOUSE_MANAGER"]`.
+- Both `firestore.rules` copies (`/firestore.rules`, `/field-ops-app-vite/firestore.rules`, changed identically): add `hasOperationalRole(role)` and `canSubmitManualZeroHistoryQuantity()` helpers; extend `reorder_requests`'s `create` rule with the **transitional, dual-shape** variant from the Specification's "Deployment / rollout sequence" — `request.resource.data.keys().hasAny(["recommendationStatus"]) ? (corrected new-shape rule) : isAdminOrDispatcher()`. The legacy branch must be **byte-identical in effect** to today's live rule (verify via the emulator test asserting a legacy-shape create still succeeds under `isAdminOrDispatcher()` alone, unchanged). The new-shape branch uses the corrected rule from the Specification: `READY` requires `isAdminOrDispatcher()` and allows `requestedQty >= 0`; `NEEDS_PLANNING` requires `canSubmitManualZeroHistoryQuantity()` **alone** (not layered under `isAdminOrDispatcher()`) and requires `requestedQty > 0`.
+- New Firestore Rules emulator test, extending the `functions/test/employeesRules.test.js` pattern (this repo's only existing precedent — same zero-new-dependency posture: `firebase-admin` + Node's built-in `fetch` against the emulator's REST APIs). Minimum scenarios (from the Specification's Testing strategy, both branches): **legacy shape still succeeds under `isAdminOrDispatcher()` alone** (the transitional-safety check); accept `READY` with `requestedQty: 0`; reject `NEEDS_PLANNING` with `requestedQty <= 0`; reject non-integer `requestedQty` on either path; reject `READY` with `quantitySource != "ANALYTICS"`; reject `NEEDS_PLANNING` from a `dispatcher` with no `operationalRoles`; **accept `NEEDS_PLANNING` from a `technician` (or any non-admin/dispatcher security role) whose linked Employee has `operationalRoles: ["PARTS_MANAGER"]`** — this is the exact scenario the Specification's Defect 2 broke, must be explicitly covered, not inferred from the `admin`/`dispatcher` cases; accept `NEEDS_PLANNING` from `admin`.
 - Since this PR writes real, valid `reorder_requests` documents against the emulator to prove the rule accepts them, the test's fixtures should send the exact field shape PR 3 will send in production — coordinate field names precisely, but no dependency the other direction (PR 2 does not need PR 3's actual UI code, only the agreed shape from the Specification).
 
-**Given this is a Firestore Rules change**, per `docs/ai/workflow.md`'s Codex-optional criteria, request a Codex review on this PR specifically (independent engineering review of the rules logic) — not mandatory-blocking, but recommended given the security-sensitive nature (this is the actual enforcement boundary for who can enter a manual quantity).
+**Given this is a Firestore Rules change**, per `docs/ai/workflow.md`'s Codex-optional criteria, request a Codex review on this PR specifically (independent engineering review of the rules logic) — not mandatory-blocking, but recommended given the security-sensitive nature (this is the actual enforcement boundary for who can enter a manual quantity), and given this PR already went through two drafting defects during Specification review.
 
-**Not deployed** as part of this PR — deploy is a separate, explicit, Owner-authorized step after merge (per this repo's standing practice and its own documented incident history of assuming merged-means-deployed).
+**Deploy this PR's rules and confirm live** before PR 3 deploys (see Sequencing notes) — deploy itself is a separate, explicit, Owner-authorized step after merge (per this repo's standing practice and its own documented incident history of assuming merged-means-deployed), but for this PR specifically, "merged" is not sufficient to unblock PR 3 — "deployed and confirmed live" is the actual gate.
 
-**Explicitly not in this PR:** no analytics-engine change (PR 1's job), no UI change (PR 3's job), no `operationalRoles` data populated for any real Employee (out of scope for the whole sprint, per the Specification).
+**Explicitly not in this PR:** no analytics-engine change (PR 1's job), no UI change (PR 3's job), no `operationalRoles` data populated for any real Employee (out of scope for the whole sprint, per the Specification), no removal of the legacy-shape branch (that's PR 4's job, and only after PR 3 is live).
 
 ## PR 3 — Write path + manual-quantity UI + queue visibility
 
@@ -73,6 +75,18 @@ Multi-PR sprint (three distinct architectural concerns: analytics/schema, author
 
 **Explicitly not in this PR:** no further Firestore Rules change (PR 2's job, already merged/deployed by this point), no analytics formula change (PR 1's job, already merged), no governed stocking-policy UI (out of scope for the whole sprint, per the Specification).
 
+## PR 4 — Firestore Rules tightening (rollout step 3)
+
+**Scope:**
+- Both `firestore.rules` copies: remove the `: isAdminOrDispatcher()` legacy branch from PR 2's transitional rule, leaving only the corrected new-shape rule unconditionally. This is the smallest possible diff — deleting the ternary's legacy arm and the now-unnecessary `keys().hasAny(["recommendationStatus"])` guard, not a rewrite.
+- Update the emulator Rules test: the "legacy shape still succeeds" assertion from PR 2 is **inverted** here — a legacy-shape create (no `recommendationStatus` field) must now be **rejected**, proving the gap is actually closed, not just theoretically removed.
+
+**Precondition, verified before this PR is opened (not just before it merges):** PR 3 is deployed live, and no `reorder_requests` document has been created via the legacy shape since PR 3's deploy timestamp (spot-check via the Firestore console or an admin-script read query — read-only, no production data modified, consistent with this initiative's standing constraint). Given this initiative currently has zero real production consumers (per the Assessment's own findings), this check is expected to be trivial, but must still be performed and stated explicitly in this PR's description, not assumed.
+
+**Deploy and confirm live** — this is the step that actually closes the `MANUAL_ZERO_HISTORY` authorization gap described in the Specification's rollout risk. Do not treat PR 4 as optional cleanup; it is a required deliverable of this sprint, tracked to completion the same as PRs 1-3.
+
+**Explicitly not in this PR:** no schema, UI, or analytics-engine change of any kind — this is a rules-only tightening step.
+
 ## External dependencies
 
 - **`operationalRoles` population**: per the Specification's own flagged risk, no real Employee has `operationalRoles` set in production yet (PR #85 confirmed zero production consumers). Until an admin actually assigns `PARTS_MANAGER`/`WAREHOUSE_MANAGER` to at least one Employee — an operational/data task via `functions/scripts/provisionEmployeeAccess.js`, not a code change — only `admin` accounts can exercise the manual-entry path in practice after PR 3 merges. This is expected, not a defect to chase during implementation or verification.
@@ -86,5 +100,6 @@ Multi-PR sprint (three distinct architectural concerns: analytics/schema, author
 | 1 | Not yet opened | Not started |
 | 2 | Not yet opened | Not started |
 | 3 | Not yet opened | Not started |
+| 4 | Not yet opened | Not started |
 
 Update this table as each PR opens/merges. Per the Owner's standing instruction, this sprint stays separate from Parts and Purchase Order Assignment Adoption and the broader governed Part and Inventory Administration initiative — do not link or merge tracking with either.

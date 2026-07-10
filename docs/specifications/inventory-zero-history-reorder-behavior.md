@@ -1,7 +1,7 @@
 ---
 artifact_type: specification
 gate: Sprint Specification
-status: Approved
+status: Draft
 date: 2026-07-10
 owner: Claude Code
 related_adrs: []
@@ -90,7 +90,7 @@ export type ReplenishmentRecommendation = {
 | `recommendationStatus` | `READY` | `NEEDS_PLANNING` |
 | `urgency` | `LOW`\|`MEDIUM`\|`HIGH`\|`CRITICAL` (unchanged formula) | `null` |
 | `recommendedQty` | existing computed number (`0` is valid) | `null` |
-| `requestedQty` | `= recommendedQty` at creation | manager-entered positive whole number |
+| `requestedQty` | `= recommendedQty` at creation, `>= 0` (0 is a legitimate computed value) | manager-entered, `> 0` (must be a meaningful request) |
 | `quantitySource` | `ANALYTICS` | `MANUAL_ZERO_HISTORY` |
 
 **Manual quantity entry UX** (`PartsList.jsx`, `PartDetail.jsx`):
@@ -127,28 +127,56 @@ function canSubmitManualZeroHistoryQuantity() {
 ```
 `hasOperationalRole()` reuses the exact `users/{uid}.employeeId` → `employees/{employeeId}` read pattern already established and already allowed by the existing `employees/{employeeId}` `read` rule's self-read clause (`userData().employeeId == employeeId`) — no new read permission is opened, this only adds a new *consumer* of an already-readable relationship.
 
-**`reorder_requests` `create` rule**, extended (currently `allow create: if isAdminOrDispatcher();`, no field validation at all):
+**`reorder_requests` `create` rule**, extended (currently `allow create: if isAdminOrDispatcher();`, no field validation at all). **Revised 2026-07-10 per ChatGPT's REQUEST CHANGES** — the first drafted version (below, struck through for the record) had two real defects:
+
+~~`allow create: if isAdminOrDispatcher() && ... && request.resource.data.requestedQty is int && request.resource.data.requestedQty > 0 && (recommendationStatus == "READY" ? (...) : (... && canSubmitManualZeroHistoryQuantity()))`~~
+
+**Defect 1 — `requestedQty > 0` applied unconditionally to both paths, but `recommendedQty: 0` (and therefore `requestedQty: 0` on the `READY` path, where `requestedQty = recommendedQty`) is a legitimate, already-reachable value today**: `PartsList.jsx`'s "Needs Reorder" queue has an `ALL` filter (`queueFilter === "ALL"`, not just the default `ACTIONABLE` — `CRITICAL`/`HIGH` — filter), which renders "Request Reorder" for every urgency including `LOW`/`MEDIUM`, where `recommendedOrderQty` can genuinely be `0` (a healthy-stock part). A global `requestedQty > 0` requirement would have silently broken this already-working case. Fixed by scoping the positivity requirement to the `NEEDS_PLANNING` branch only — a *manually entered* quantity must be meaningful and positive; an *analytics-computed* `0` is an honest "no reorder needed" and must remain valid, exactly as it behaves today (no rules validation exists on it today, so this is a new constraint that must not be stricter than current real usage).
+
+**Defect 2 — the outer, unconditional `isAdminOrDispatcher()` silently blocked the entire operational-role path it was supposed to enable**: `ROLES` (`admin`/`dispatcher`/`technician`, `users/{uid}.role`) and Employee `operationalRoles[]` are two independent fields on two independent documents (see this Specification's own "Role eligibility" section above). A real Parts Manager whose `users/{uid}.role` is `technician` (or anything other than `admin`/`dispatcher`) has `hasOperationalRole("PARTS_MANAGER") == true` but `isAdminOrDispatcher() == false` — under the first draft's unconditional outer AND, that person could never pass the `create` rule at all, regardless of `canSubmitManualZeroHistoryQuantity()`. The Architecture Decision's intent ("Eligible operational roles: PARTS_MANAGER, WAREHOUSE_MANAGER" as its own, additional path — not a path gated behind also being a dispatcher) requires `canSubmitManualZeroHistoryQuantity()` to stand alone as the `NEEDS_PLANNING` branch's authorization, not be ANDed with `isAdminOrDispatcher()`.
+
+**Corrected rule:**
 ```
-allow create: if isAdminOrDispatcher()
-  && request.resource.data.partId is string && request.resource.data.partId.size() > 0
+allow create: if request.resource.data.partId is string && request.resource.data.partId.size() > 0
   && request.resource.data.recommendationStatus in ["READY", "NEEDS_PLANNING"]
   && request.resource.data.quantitySource in ["ANALYTICS", "MANUAL_ZERO_HISTORY"]
-  && request.resource.data.requestedQty is int && request.resource.data.requestedQty > 0
   && (request.resource.data.recommendationStatus == "READY"
-        ? (request.resource.data.urgency in ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
+        ? (isAdminOrDispatcher()
+           && request.resource.data.urgency in ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
            && request.resource.data.quantitySource == "ANALYTICS"
-           && (request.resource.data.recommendedQty is number))
-        : (request.resource.data.urgency == null
+           && request.resource.data.recommendedQty is number
+           && request.resource.data.requestedQty is int && request.resource.data.requestedQty >= 0)
+        : (canSubmitManualZeroHistoryQuantity()
+           && request.resource.data.urgency == null
            && request.resource.data.quantitySource == "MANUAL_ZERO_HISTORY"
            && request.resource.data.recommendedQty == null
-           && canSubmitManualZeroHistoryQuantity()));
+           && request.resource.data.requestedQty is int && request.resource.data.requestedQty > 0));
 ```
 Notes:
-- This preserves the **existing, unchanged** `isAdminOrDispatcher()` gate for the `READY` path — no regression for today's analytics-backed flow, any `admin`/`dispatcher` can still create it exactly as now.
-- The `NEEDS_PLANNING` branch adds `canSubmitManualZeroHistoryQuantity()` as an **additional**, narrower requirement — `dispatcher` alone (without an eligible `operationalRoles` entry) is denied for this path specifically, per the Architecture Decision ("dispatcher access must not automatically imply inventory-planning authority"). `admin` passes via the override.
+- Authorization is now **branch-scoped, not layered**: `READY` requires `isAdminOrDispatcher()` — identical to today's live rule, no regression, any `admin`/`dispatcher` can still create it exactly as now. `NEEDS_PLANNING` requires `canSubmitManualZeroHistoryQuantity()` **alone** (which already includes the `admin` override internally) — an eligible Parts Manager/Warehouse Manager no longer needs to *also* hold a `dispatcher`/`admin` security role, matching the Architecture Decision's actual intent. `dispatcher` alone (no eligible `operationalRoles`, not `admin`) is still correctly denied for this path — it simply fails `canSubmitManualZeroHistoryQuantity()` directly now, rather than via an outer gate that also (incorrectly) blocked legitimate operational-role holders.
+- `requestedQty`'s positivity requirement is now **branch-scoped**: `>= 0` for `READY` (matches `recommendedQty`'s own valid range, including the legitimate `0` case above), `> 0` for `NEEDS_PLANNING` (a manual entry must represent a real, meaningful request — there is no equivalent "the analytics engine legitimately computed zero" justification on the manual path).
 - Per the Architecture Decision, rules are **not** expected to reproduce the analytics formula — no relationship check between `requestedQty` and `availableStock`/`reorderPoint`/anything computed. Only structural/authorization validity is enforced.
 - No change to any existing `update` transition rule — `recommendedQty`'s immutability (line 295 today) is preserved unchanged; `recommendationStatus`, `requestedQty`, `quantitySource` join it as equally immutable after creation (none appears in any `update` branch's allowed `affectedKeys()`), consistent with "corrections use cancel-and-recreate."
-- Requires the standard emulator Rules test pass before merge, per this repo's established Firestore Rules discipline (Sprint 2.1.4/2.1.10's REQUEST-CHANGES history) — implementation should add or extend a Rules test analogous to `functions/test/employeesRules.test.js`'s pattern (this repo's only existing precedent), covering at minimum: reject `requestedQty <= 0`; reject non-integer `requestedQty`; reject a `READY` request with non-`ANALYTICS` `quantitySource` or a non-null-violating `recommendedQty` type; reject a `NEEDS_PLANNING` request from a `dispatcher` with no `operationalRoles`; accept a `NEEDS_PLANNING` request from an `admin`; accept a `NEEDS_PLANNING` request from a `dispatcher` whose linked Employee has `operationalRoles: ["WAREHOUSE_MANAGER"]`.
+- Requires the standard emulator Rules test pass before merge, per this repo's established Firestore Rules discipline (Sprint 2.1.4/2.1.10's REQUEST-CHANGES history) — implementation should add or extend a Rules test analogous to `functions/test/employeesRules.test.js`'s pattern (this repo's only existing precedent), covering at minimum: accept `READY` with `requestedQty: 0`; reject `NEEDS_PLANNING` with `requestedQty <= 0`; reject non-integer `requestedQty` on either path; reject a `READY` request with non-`ANALYTICS` `quantitySource`; reject a `NEEDS_PLANNING` request from a `dispatcher` with no `operationalRoles`; **accept a `NEEDS_PLANNING` request from a `technician` (or any non-admin/dispatcher security role) whose linked Employee has `operationalRoles: ["PARTS_MANAGER"]`** (the exact case Defect 2 broke — must be explicitly covered, not just the `admin`/`dispatcher` cases); accept a `NEEDS_PLANNING` request from `admin`.
+
+### Deployment / rollout sequence
+
+**New — added 2026-07-10 per ChatGPT's REQUEST CHANGES.** The corrected rule above is a real behavior change for the `create` path (previously: `isAdminOrDispatcher()` and nothing else; now: field-shape and branch-specific authorization required). Because `firestore.rules` deploy and the client (hosting) deploy are two separate, non-atomic steps in this repo's standing practice, naively deploying them in either order creates a real window:
+- **Strict rules deployed before the new writer (PR 3) ships**: the *current, live* client still calls `createReorderRequest({ partId, urgency, recommendedQty })` — no `recommendationStatus`/`requestedQty`/`quantitySource` fields at all. The corrected rule's `recommendationStatus in [...]` check fails on a missing field, so **every reorder request creation breaks immediately** for every user, the moment rules deploy, until the new client also deploys.
+- **New writer deployed before strict rules ship**: the live rules are still today's `allow create: if isAdminOrDispatcher();`, which has no field validation at all — it will happily accept the new-shaped documents, **but without enforcing `canSubmitManualZeroHistoryQuantity()`**. A `dispatcher` without an eligible `operationalRoles` entry could submit a `NEEDS_PLANNING` request during this window even though the UI attempts to hide the control from them (client-side gating is not the enforcement boundary, per this Specification's own "do not rely only on UI hiding" requirement) — a real, if temporary, authorization gap.
+
+**Resolution — three-step expand/contract rollout, not a single rules swap:**
+1. **Transitional rules** (ships with PR 2): accept **either** shape.
+   ```
+   allow create: if request.resource.data.keys().hasAny(["recommendationStatus"])
+     ? ( /* the full corrected rule above, unchanged */ )
+     : isAdminOrDispatcher();  // legacy shape -- byte-identical to today's live rule, TRANSITIONAL ONLY
+   ```
+   This is safe to deploy immediately: the current live client (legacy shape, no `recommendationStatus` key) continues to work exactly as it does today (falls into the `: isAdminOrDispatcher()` branch, unchanged behavior); a new client (once deployed) gets the full corrected validation.
+2. **New writer ships** (PR 3, deployed after step 1's rules are confirmed live). From this point, all new writes use the new shape and are fully validated/authorized by the transitional rule's first branch.
+3. **Tightening step** (a follow-up, rules-only change — either its own PR 4 or a documented manual rules edit, not bundled into PR 2 or PR 3): once verified no client is still sending the legacy shape (this is a single internal SPA with no long-tail mobile app-store version skew — practically, once step 2's hosting deploy is live and given this initiative has zero production consumers/real end users so far per the Assessment's own findings, the legacy path can be retired essentially immediately, but should still be an explicit, deliberate step, not assumed automatic), remove the `: isAdminOrDispatcher()` legacy branch entirely, leaving only the strict corrected rule. This closes the temporary authorization gap for good.
+
+This sequencing is reflected in the Implementation Plan's PR breakdown (a new PR 4 for the tightening step) and Sequencing notes.
 
 ## UI impact
 
@@ -174,8 +202,9 @@ Additive schema change (`recommendationStatus`, `requestedQty`, `quantitySource`
 - [ ] `RiskLevel`/`URGENCY_ORDER` are unchanged — no `NEEDS_PLANNING` (or any new) member added to either.
 - [ ] `NEEDS_PLANNING` parts appear in a visibly distinct queue/section, not silently absent from "Needs Reorder."
 - [ ] "Request Reorder" on a `NEEDS_PLANNING` part is only actionable for `admin`, or a user whose linked Employee has `operationalRoles` containing `PARTS_MANAGER` or `WAREHOUSE_MANAGER` — verified both in the UI (control not offered) and in `firestore.rules` (write rejected regardless of UI state).
-- [ ] It is impossible to submit `requestedQty: 0`, a non-integer, or a negative number through the UI or directly against `firestore.rules`.
-- [ ] `firestore.rules` (both copies, identical) rejects: non-positive/non-integer `requestedQty`; a `NEEDS_PLANNING` submission from a `dispatcher` with no eligible `operationalRoles`; a `READY` submission with `quantitySource != "ANALYTICS"`. All verified via an emulator Rules test.
+- [ ] It is impossible to submit a `NEEDS_PLANNING` request with `requestedQty: 0`, a non-integer, or a negative number, through the UI or directly against `firestore.rules`. (A `READY` request with `requestedQty: 0` remains valid — it mirrors a legitimately-computed `recommendedQty: 0`, not a manual entry.)
+- [ ] `firestore.rules` (both copies, identical) rejects: non-positive/non-integer `requestedQty` on the `NEEDS_PLANNING` path specifically; a negative or non-integer `requestedQty` on the `READY` path; a `NEEDS_PLANNING` submission from a `dispatcher` with no eligible `operationalRoles`; a `READY` submission with `quantitySource != "ANALYTICS"`. And **accepts**: a `READY` submission with `requestedQty: 0`; a `NEEDS_PLANNING` submission from a non-admin/dispatcher security role (e.g. `technician`) whose linked Employee has an eligible `operationalRoles` entry. All verified via an emulator Rules test.
+- [ ] The rollout sequence (transitional rules → new writer → tightening step) is followed in order — the strict rules variant is never deployed before the new writer, and the transitional (legacy-shape-accepting) rule is never left in place indefinitely.
 - [ ] `recommendedQty` is `null` for every `NEEDS_PLANNING` request and unchanged (existing computed number) for every `READY` request — no existing reader of `recommendedQty` breaks on the `READY` path.
 - [ ] `requestedQty` is the field every downstream display (Parts Manager review, etc.) reads for the actionable quantity.
 - [ ] Parts with existing usage history see zero behavior change — same one-click "Request Reorder," same `urgency` classification, same formulas, same `isAdminOrDispatcher()` gate.
@@ -189,6 +218,7 @@ Additive schema change (`recommendationStatus`, `requestedQty`, `quantitySource`
 - **`requestedQty`/`recommendationStatus` becoming a de facto required migration for any code that currently reads `recommendedQty`/`urgency` operationally** — the investigation above found at least one such read (`PartDetail.jsx`'s `ReorderRequestReview`); implementation must audit for others (Parts Manager assignment card, Purchase Order recording, any urgency-based sort/filter beyond `PartsList.jsx`'s `ACTIONABLE_URGENCIES`) rather than assuming that's the only one.
 - **`urgency` becoming nullable is a type-widening change** — any existing code doing `recommendation.urgency.toLowerCase()` or similar without a null check (e.g. `InventoryHealthPanel.jsx`'s badge rendering: `fo-badge-${recommendation.urgency.toLowerCase()}`) will throw on a `NEEDS_PLANNING` record unless updated. Implementation must audit every `urgency` read, not just the ones already known from this investigation.
 - **UI complexity of a blocking, role-gated manual-entry step** on what is today a one-click action for `READY` — needs to stay usable, not become a heavyweight form, while still clearly communicating *why* a given user can't submit (ineligible role) versus *how* to (needs a quantity).
+- **Rollout sequencing risk**: the transitional rules variant (accepting both legacy and new shapes) must not be deployed and then forgotten — leaving it in place indefinitely means the `MANUAL_ZERO_HISTORY` authorization gap (any `admin`/`dispatcher` bypassing `canSubmitManualZeroHistoryQuantity()` via the legacy branch) never actually closes. The Implementation Plan's tightening-step PR must be tracked as a real, required deliverable, not an optional cleanup.
 
 ## Open questions
 
@@ -198,4 +228,10 @@ Additive schema change (`recommendationStatus`, `requestedQty`, `quantitySource`
 
 ## Approval
 
-**Approved by ChatGPT, 2026-07-10**, at commit `4bdf360ca01e657a220e8073e6e2822235218e6d` (PR #89). Two REQUEST CHANGES rounds preceded approval, both addressed: (1) `NEEDS_PLANNING` moved out of `RiskLevel`/`urgency` into a separate, orthogonal `recommendationStatus` field; (2) manual-quantity-entry eligibility concretely defined via a new `OPERATIONAL_ROLE` enum (`PARTS_MANAGER`, `WAREHOUSE_MANAGER`) enforced through `firestore.rules`, not UI-only. No further specification edit required. Proceeding to Implementation Plan (`docs/implementation-plans/inventory-zero-history-reorder-behavior.md`) — implementation itself has not begun.
+**Approved by ChatGPT, 2026-07-10**, at commit `4bdf360ca01e657a220e8073e6e2822235218e6d` (PR #89), then **sent back to Draft the same day** when the Implementation Plan review (also 2026-07-10) surfaced two real defects in this Specification's own drafted rules logic that the Specification-stage review had not caught:
+1. `requestedQty > 0` applied unconditionally would have broken the already-legitimate `recommendedQty: 0` case on the `READY` path (reachable today via `PartsList.jsx`'s `ALL` queue filter).
+2. The `NEEDS_PLANNING` branch's authorization was incorrectly layered under the outer `isAdminOrDispatcher()` gate, which would have silently blocked every eligible Parts Manager/Warehouse Manager whose security role isn't also `admin`/`dispatcher` — defeating the entire operational-role path this Specification was written to enable.
+
+Both fixed in the "Firestore Rules impact" section above (branch-scoped positivity, branch-scoped authorization), and a new "Deployment / rollout sequence" subsection added to address a third finding: a naive single-step rules swap would either break the legacy writer (strict rules first) or leave a temporary authorization gap (new writer first) — resolved via a three-step expand/contract rollout (transitional rules accepting both shapes → new writer ships → tightening step removes the legacy allowance).
+
+Not yet re-approved — awaiting this round's review.
