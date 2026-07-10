@@ -12,63 +12,114 @@
 // assignTechnicianToUser.js, generalized: that script links
 // users/{uid}.technicianId one-way; this one links
 // employees/{employeeId}.userId <-> users/{uid}.employeeId two-way, and
-// also owns Employee record creation (assignTechnicianToUser.js never
-// created a technician document, only linked to an existing one).
+// also owns Employee record creation.
 //
 // Covers all four provisioning cases from the specification, via one
-// idempotent "ensure" flow, not four separate scripts:
-//   A. Create Employee without access       (no --email)
+// idempotent flow, not four separate scripts:
+//   A. Create Employee without access       (no --email, no --securityRole)
 //   B. Grant application access               (--email, links/creates Auth user)
 //   C. Update operationalRoles                (--operationalRoles, Employee-side only)
-//   D. Update security role                    (--securityRole, users/{uid}-side only)
+//   D. Update security role                    (--securityRole, no --email, users/{uid}-side only)
 //
 // --email is an EXECUTION INPUT ONLY. It is used to call
 // getUserByEmail()/createUser() to locate or create the Firebase Auth
 // account -- it is NEVER written to employees/{employeeId}. Firebase
 // Authentication owns credential/account email; Employee owns
-// workforce identity and never duplicates it (see the specification's
-// "Design decision -- no email field on Employee").
+// workforce identity and never duplicates it.
 //
-// No companyId input -- per architecture review, a tenancy/security-
-// relevant parameter must be fully implemented and enforced or
-// entirely absent, never accepted-and-ignored. Not accepted here.
+// No companyId input -- a tenancy/security-relevant parameter must be
+// fully implemented and enforced or entirely absent, never accepted-
+// and-ignored. Not accepted here.
+//
+// ARCHITECTURE (five explicit phases, per architecture review -- no
+// mutation happens until every applicable conflict across the WHOLE
+// requested operation has been checked, not just the final link
+// fields):
+//   A. Parse and validate input shape (no reads, no writes).
+//   B. Read current Employee/User/Auth state (reads only).
+//   C. Detect every applicable conflict from A+B (pure, throws on any
+//      conflict -- nothing has been written yet at this point, ever).
+//   D. Build the complete intended mutation as a plain plan object
+//      (pure, no I/O).
+//   E. Apply the plan. Firestore documents that must change together
+//      (the Employee<->User link) are written inside a single
+//      db.runTransaction() that RE-READS both documents and RE-
+//      VALIDATES the same conflict conditions against that fresh
+//      state before writing anything -- protects against a concurrent
+//      modification landing between phase B's reads and this write.
+//      Single-document operations (create/update Employee only,
+//      update security role only) are plain atomic single-doc writes
+//      -- a transaction adds no safety for a write that only ever
+//      touches one document.
+//
+// Firebase Authentication account creation CANNOT participate in a
+// Firestore transaction -- Auth and Firestore are different services
+// with no shared commit protocol. When a new Auth account must be
+// created (case B, no existing account found in phase B), it is
+// created as the LAST step before the Firestore transaction, not
+// earlier -- minimizing, but not eliminating, the window in which a
+// concurrent modification could land between Auth creation and the
+// Firestore link committing. If the transaction's re-validation then
+// fails (a genuine race, not a conflict already caught in phase C),
+// the newly created Auth account is left in place, unlinked -- the
+// same residual, documented risk this comment describes, resolved by
+// re-running the script (which will then correctly detect the account
+// via getUserByEmail() in phase B and proceed to link it), not by any
+// further code-level guard.
 //
 // Idempotent: re-running with identical inputs is a safe no-op repeat
-// (matching values are not rewritten, no error). Re-running with a
-// changed displayName/operationalRoles/securityRole updates exactly
-// that field via merge:true, same discipline as
-// assignTechnicianToUser.js.
+// (matching values are not rewritten, no error, no duplicate Auth
+// account). Re-running with a changed displayName/operationalRoles/
+// securityRole updates exactly that field.
 //
-// Conflict detection (fails loudly, writes nothing, rather than
-// silently corrupting a link):
-//   - employees/{employeeId} already linked to a DIFFERENT uid than
-//     the one --email resolves to.
-//   - The resolved uid's users/{uid}.employeeId already points to a
-//     DIFFERENT employeeId than the one being provisioned.
-//   - --securityRole given but the target employeeId has no linked
-//     userId yet and no --email was given to establish one.
+// Conflict detection (fails loudly, writes NOTHING for the whole
+// requested operation, not just the final link fields):
+//   - employees/{employeeId} does not exist and no --displayName was
+//     given to create it.
+//   - --securityRole given with no --email and no existing linked
+//     userId.
+//   - employees/{employeeId} already linked to a DIFFERENT account
+//     than --email resolves to (checked against the CURRENTLY linked
+//     account's real email, never by creating/resolving the new email
+//     first -- a conflict here creates zero Auth side effects).
+//   - The target account (resolved from --email) is already linked to
+//     a DIFFERENT employeeId.
+//   - Any --operationalRoles value outside the governance-approved
+//     set (see VALID_OPERATIONAL_ROLES).
+//
+// PROJECT TARGET: no hard-coded default. --projectId is required and
+// fails before any Firebase SDK call. Running against the production
+// project ("taylor-parts") additionally requires
+// --confirmProduction taylor-parts, matching --projectId exactly --
+// this is a deliberate, per-invocation confirmation, not a one-time
+// setting. Missing/mismatched confirmation fails before initializeApp()
+// -- before any Auth or Firestore operation of any kind. This makes
+// merge approval alone incapable of triggering a production mutation:
+// there is no default that reaches "taylor-parts" without the operator
+// explicitly typing it twice, once as the target and once as
+// confirmation. For emulator/non-production testing, use any other
+// --projectId value (e.g. a fixture id) to skip the confirmation
+// entirely, or pass both flags with the real id if testing against the
+// emulator under the real project id specifically.
 //
 // Never prints, logs, or commits a stored/committed secret. A freshly
 // generated temporary password is printed once, to the terminal only,
-// for a newly created Auth account -- same one-time-only, not-
-// persisted-anywhere pattern as the retired createPartsManagerTestUsers.js
-// (see that file's own header comment; this script replaces it).
+// for a newly created Auth account -- never persisted anywhere.
 //
-// Run locally, against the live project, per provisioning event:
+// Run locally, per provisioning event:
 //   cd functions
 //   GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json node scripts/provisionEmployeeAccess.js \
+//     --projectId taylor-parts --confirmProduction taylor-parts \
 //     --employeeId emp-001 --displayName "Jane Doe" \
 //     [--email jane@example.com] [--securityRole dispatcher] [--operationalRoles PARTS_ASSOCIATE,PARTS_MANAGER]
 // (or `gcloud auth application-default login` first, then omit the
-//  env var -- either way you need real credentials for "taylor-parts".)
+//  env var -- either way you need real credentials for the target
+//  project.)
 //
-// A live-project run is NOT authorized by this script's existence or
-// by any code review alone -- per the specification's acceptance
-// criteria, running this against production is a separately, explicitly
-// project-owner-authorized operational step. This script itself has no
-// safeguard against being pointed at "taylor-parts" (same as every
-// other Admin SDK script in this repo) -- the authorization is a
-// process discipline, not a code-level guard.
+// A live-project run is NOT authorized by this script's existence, by
+// this PR's merge, or by any code review alone -- running this against
+// production is a separately, explicitly project-owner-authorized
+// operational step, gated by --confirmProduction as described above.
 const { initializeApp } = require("firebase-admin/app");
 const { getAuth } = require("firebase-admin/auth");
 const { getFirestore } = require("firebase-admin/firestore");
@@ -78,6 +129,24 @@ const EMPLOYEES_COLLECTION = "employees";
 const USERS_COLLECTION = "users";
 const EMPLOYMENT_STATUS_ACTIVE = "ACTIVE";
 const VALID_SECURITY_ROLES = ["admin", "dispatcher", "technician"];
+
+// Governance-approved operational roles (docs/BusinessEntityModel.md
+// Section 8a / docs/PROJECT_ARCHITECTURE.md's Person Assignment
+// Platform Service Standard). These are eligibility markers for
+// assignment, never security roles -- never merged with
+// VALID_SECURITY_ROLES above.
+const VALID_OPERATIONAL_ROLES = [
+  "PARTS_MANAGER",
+  "PARTS_ASSOCIATE",
+  "TECHNICIAN",
+  "WAREHOUSE_MANAGER",
+  "WAREHOUSE_ASSOCIATE",
+  "SERVICE_MANAGER",
+  "SALES_MANAGER",
+  "SALES_ASSOCIATE",
+];
+
+const PRODUCTION_PROJECT_ID = "taylor-parts";
 
 function parseArgs(argv) {
   const args = {};
@@ -96,18 +165,33 @@ function generatePassword() {
   return crypto.randomBytes(9).toString("base64").replace(/[+/=]/g, "x") + "!1";
 }
 
-async function ensureAuthUser(auth, email, displayName, password) {
-  try {
-    const existing = await auth.getUserByEmail(email);
-    return { userRecord: existing, created: false };
-  } catch (err) {
-    if (err.code !== "auth/user-not-found") throw err;
-    const created = await auth.createUser({ email, password, displayName });
-    return { userRecord: created, created: true };
+// Trims whitespace, drops empties, and de-duplicates while preserving
+// first-occurrence order -- a stable, predictable result regardless of
+// how the caller formatted --operationalRoles.
+function normalizeOperationalRoles(raw) {
+  if (!raw) return undefined;
+  const seen = new Set();
+  const normalized = [];
+  for (const value of raw.split(",").map((r) => r.trim()).filter(Boolean)) {
+    if (!VALID_OPERATIONAL_ROLES.includes(value)) {
+      throw new Error(
+        `Invalid operational role "${value}". Must be one of: ${VALID_OPERATIONAL_ROLES.join(", ")}.`
+      );
+    }
+    if (!seen.has(value)) {
+      seen.add(value);
+      normalized.push(value);
+    }
   }
+  return normalized;
 }
 
-async function provisionEmployeeAccess({ employeeId, displayName, email, securityRole, operationalRoles }) {
+// ---------------------------------------------------------------
+// Phase A -- parse and validate input shape. No reads, no writes.
+// ---------------------------------------------------------------
+function validateInput(rawArgs) {
+  const { employeeId, displayName, email, securityRole, operationalRoles: rawOperationalRoles } = rawArgs;
+
   if (!employeeId) {
     throw new Error("--employeeId is required.");
   }
@@ -115,139 +199,343 @@ async function provisionEmployeeAccess({ employeeId, displayName, email, securit
     throw new Error(`--securityRole must be one of: ${VALID_SECURITY_ROLES.join(", ")}.`);
   }
 
-  const db = getFirestore();
-  const auth = getAuth();
+  // Throws on any invalid role -- the entire command is rejected
+  // before any read or write if operationalRoles is malformed.
+  const operationalRoles = normalizeOperationalRoles(rawOperationalRoles);
+
+  return { employeeId, displayName, email, securityRole, operationalRoles };
+}
+
+// ---------------------------------------------------------------
+// Phase B -- read current state. Reads only, no mutation.
+// ---------------------------------------------------------------
+async function readCurrentState(db, auth, { employeeId, email }) {
   const employeeRef = db.collection(EMPLOYEES_COLLECTION).doc(employeeId);
   const employeeSnap = await employeeRef.get();
-  const now = Date.now();
+  const employee = employeeSnap.exists ? employeeSnap.data() : null;
 
-  const parsedOperationalRoles = operationalRoles
-    ? operationalRoles
-        .split(",")
-        .map((r) => r.trim())
-        .filter(Boolean)
-    : undefined;
-
-  // --- A/C: Employee-side create-or-update (always runs; this is the
-  // only writer of the Employee record's own fields). ---
-  if (!employeeSnap.exists) {
-    if (!displayName) {
-      throw new Error(`employees/${employeeId} does not exist yet -- --displayName is required to create it.`);
-    }
-    await employeeRef.set({
-      employeeId,
-      displayName,
-      firstName: null,
-      lastName: null,
-      employmentStatus: EMPLOYMENT_STATUS_ACTIVE,
-      operationalRoles: parsedOperationalRoles ?? [],
-      companyId: null,
-      departmentId: null,
-      locationId: null,
-      userId: null,
-      createdAt: now,
-      updatedAt: now,
-    });
-    console.log(`OK: created employees/${employeeId}`);
-  } else {
-    const updates = { updatedAt: now };
-    if (displayName) updates.displayName = displayName;
-    if (parsedOperationalRoles) updates.operationalRoles = parsedOperationalRoles;
-    if (Object.keys(updates).length > 1) {
-      await employeeRef.set(updates, { merge: true });
-      console.log(`OK: updated employees/${employeeId} (${Object.keys(updates).filter((k) => k !== "updatedAt").join(", ")})`);
-    } else {
-      console.log(`OK: employees/${employeeId} already up to date, no Employee-side change.`);
-    }
+  // The account CURRENTLY linked to this Employee, if any -- read by
+  // uid, not by the requested email, so phase C can compare against
+  // its real email without ever touching Auth for the new address.
+  let linkedUserRecord = null;
+  if (employee && employee.userId) {
+    linkedUserRecord = await auth.getUser(employee.userId).catch(() => null);
   }
 
-  // Re-read after create/update so downstream logic sees the current
-  // userId (needed for case D, and for conflict detection below).
-  const currentEmployee = (await employeeRef.get()).data();
-
-  // --- D: security-role-only update, no --email given. Requires an
-  // existing link -- this script never invents one implicitly. ---
-  if (securityRole && !email) {
-    if (!currentEmployee.userId) {
-      throw new Error(
-        `employees/${employeeId} has no linked userId yet -- provide --email to grant access and link a user first.`
-      );
-    }
-    await db.collection(USERS_COLLECTION).doc(currentEmployee.userId).set({ role: securityRole }, { merge: true });
-    console.log(`OK: users/${currentEmployee.userId}.role = "${securityRole}"`);
-    return;
-  }
-
-  // --- B: grant access (--email given) -- locate/create the Auth
-  // user, then establish or verify the two-way link. ---
+  // The account the requested --email resolves to, if it already
+  // exists. Read-only (getUserByEmail never creates) -- creation, if
+  // needed, happens only in phase E, after every conflict check below
+  // has passed.
+  let targetAuthUser = null;
   if (email) {
-    // Conflict check BEFORE touching Auth for the new email: if this
-    // Employee is already linked to a uid, compare that uid's actual
-    // email against the requested one directly -- avoids ever calling
-    // getUserByEmail()/createUser() for a conflicting email, so a
-    // detected conflict never leaves a dangling, unlinked Auth account
-    // behind (an earlier version of this check resolved/created the
-    // new email's Auth user first, which could orphan an account on
-    // conflict -- fixed here).
-    if (currentEmployee.userId) {
-      const linkedUserRecord = await auth.getUser(currentEmployee.userId).catch(() => null);
-      if (linkedUserRecord && linkedUserRecord.email !== email) {
-        throw new Error(
-          `employees/${employeeId} is already linked to userId "${currentEmployee.userId}" ` +
-            `(${linkedUserRecord.email}), not an account for "${email}". Refusing to create or link a ` +
-            `second account -- resolve the conflict manually before re-running.`
-        );
-      }
-    }
+    targetAuthUser = await auth.getUserByEmail(email).catch((err) => {
+      if (err.code === "auth/user-not-found") return null;
+      throw err;
+    });
+  }
 
-    const password = generatePassword();
-    const { userRecord, created } = await ensureAuthUser(auth, email, currentEmployee.displayName, password);
-    const uid = userRecord.uid;
+  let targetUserDoc = null;
+  if (targetAuthUser) {
+    const snap = await db.collection(USERS_COLLECTION).doc(targetAuthUser.uid).get();
+    targetUserDoc = snap.exists ? snap.data() : null;
+  }
 
-    // Conflict: target user already linked to a DIFFERENT Employee.
-    const userSnap = await db.collection(USERS_COLLECTION).doc(uid).get();
-    const existingLinkedEmployeeId = userSnap.exists ? userSnap.data().employeeId : null;
-    if (existingLinkedEmployeeId && existingLinkedEmployeeId !== employeeId) {
+  return { employeeRef, employee, linkedUserRecord, targetAuthUser, targetUserDoc };
+}
+
+// ---------------------------------------------------------------
+// Phase C -- detect every applicable conflict. Pure (no I/O). Throws
+// on the first conflict found; every case below leaves the caller
+// having made zero Firestore or Auth writes, because phases D/E never
+// run when this phase throws.
+// ---------------------------------------------------------------
+function detectConflicts({ employeeId, displayName, email, securityRole }, state) {
+  const { employee, linkedUserRecord, targetAuthUser, targetUserDoc } = state;
+
+  if (!employee && !displayName) {
+    throw new Error(`employees/${employeeId} does not exist yet -- --displayName is required to create it.`);
+  }
+
+  if (securityRole && !email && !(employee && employee.userId)) {
+    throw new Error(
+      `employees/${employeeId} has no linked userId yet -- provide --email to grant access and link a user first.`
+    );
+  }
+
+  if (email && employee && employee.userId) {
+    if (linkedUserRecord && linkedUserRecord.email !== email) {
       throw new Error(
-        `users/${uid} is already linked to employees/${existingLinkedEmployeeId}, not "${employeeId}". ` +
-          `Refusing to overwrite an existing link -- resolve the conflict manually before re-running.`
+        `employees/${employeeId} is already linked to userId "${employee.userId}" (${linkedUserRecord.email}), ` +
+          `not an account for "${email}". Refusing to create or link a second account -- resolve the conflict ` +
+          `manually before re-running.`
       );
     }
+  }
 
-    const userUpdates = { employeeId };
-    if (securityRole) userUpdates.role = securityRole;
-    await db.collection(USERS_COLLECTION).doc(uid).set(userUpdates, { merge: true });
-
-    if (currentEmployee.userId !== uid) {
-      await employeeRef.set({ userId: uid, updatedAt: Date.now() }, { merge: true });
-      console.log(`OK: employees/${employeeId}.userId = "${uid}"`);
-    }
-    console.log(
-      `OK: ${email} -> uid ${uid}, employees/${employeeId} <-> users/${uid} linked${created ? " (Auth account created)" : " (existing Auth account reused)"}`
+  if (email && targetAuthUser && targetUserDoc && targetUserDoc.employeeId && targetUserDoc.employeeId !== employeeId) {
+    throw new Error(
+      `users/${targetAuthUser.uid} is already linked to employees/${targetUserDoc.employeeId}, not "${employeeId}". ` +
+        `Refusing to overwrite an existing link -- resolve the conflict manually before re-running.`
     );
-
-    if (created) {
-      console.log("\nTemporary password for the newly created account (save this now, it is not stored anywhere):");
-      console.log(`  ${password}`);
-      console.log(`  ${email}`);
-    }
   }
 }
 
+// ---------------------------------------------------------------
+// Phase D -- build the complete intended mutation as a plain plan
+// object. Pure (no I/O) -- classifies the operation explicitly rather
+// than re-deriving intent from ambiguous state during phase E.
+// ---------------------------------------------------------------
+function buildPlan({ employeeId, displayName, email, securityRole, operationalRoles }, state) {
+  const { employee, targetAuthUser } = state;
+  const now = Date.now();
+
+  if (email) {
+    // Case B: grant access -- always writes both documents together.
+    const employeeDoc = !employee
+      ? {
+          employeeId,
+          displayName,
+          firstName: null,
+          lastName: null,
+          employmentStatus: EMPLOYMENT_STATUS_ACTIVE,
+          operationalRoles: operationalRoles ?? [],
+          companyId: null,
+          departmentId: null,
+          locationId: null,
+          userId: null,
+          createdAt: now,
+          updatedAt: now,
+        }
+      : null;
+
+    const employeeUpdates = employee
+      ? (() => {
+          const updates = {};
+          if (displayName && displayName !== employee.displayName) updates.displayName = displayName;
+          if (operationalRoles && JSON.stringify(operationalRoles) !== JSON.stringify(employee.operationalRoles)) {
+            updates.operationalRoles = operationalRoles;
+          }
+          return updates;
+        })()
+      : null;
+
+    const userUpdates = { employeeId };
+    if (securityRole) userUpdates.role = securityRole;
+
+    return {
+      operation: "GRANT_ACCESS",
+      employeeId,
+      createEmployee: !employee,
+      employeeDoc,
+      employeeUpdates,
+      needsNewAuthUser: !targetAuthUser,
+      userId: targetAuthUser ? targetAuthUser.uid : null,
+      authCreateInput: { email, displayName: displayName ?? employee?.displayName ?? null },
+      userUpdates,
+    };
+  }
+
+  if (securityRole) {
+    // Case D: security-role-only update -- users/{uid} only, no
+    // Employee-side write, per the specification.
+    return {
+      operation: "UPDATE_SECURITY_ROLE_ONLY",
+      employeeId,
+      userId: employee.userId,
+      userUpdates: { role: securityRole },
+    };
+  }
+
+  // Cases A/C: Employee-only create or update, no Auth/User involvement.
+  if (!employee) {
+    return {
+      operation: "CREATE_EMPLOYEE_ONLY",
+      employeeId,
+      employeeDoc: {
+        employeeId,
+        displayName,
+        firstName: null,
+        lastName: null,
+        employmentStatus: EMPLOYMENT_STATUS_ACTIVE,
+        operationalRoles: operationalRoles ?? [],
+        companyId: null,
+        departmentId: null,
+        locationId: null,
+        userId: null,
+        createdAt: now,
+        updatedAt: now,
+      },
+    };
+  }
+
+  const updates = {};
+  if (displayName && displayName !== employee.displayName) updates.displayName = displayName;
+  if (operationalRoles && JSON.stringify(operationalRoles) !== JSON.stringify(employee.operationalRoles)) {
+    updates.operationalRoles = operationalRoles;
+  }
+  return {
+    operation: "UPDATE_EMPLOYEE_ONLY",
+    employeeId,
+    employeeUpdates: Object.keys(updates).length ? { ...updates, updatedAt: now } : null,
+  };
+}
+
+// ---------------------------------------------------------------
+// Phase E -- apply the plan.
+// ---------------------------------------------------------------
+async function applyPlan(db, auth, plan) {
+  if (plan.operation === "UPDATE_SECURITY_ROLE_ONLY") {
+    await db.collection(USERS_COLLECTION).doc(plan.userId).set(plan.userUpdates, { merge: true });
+    console.log(`OK: users/${plan.userId}.role = "${plan.userUpdates.role}"`);
+    return { created: false, password: null };
+  }
+
+  if (plan.operation === "CREATE_EMPLOYEE_ONLY") {
+    await db.collection(EMPLOYEES_COLLECTION).doc(plan.employeeId).set(plan.employeeDoc);
+    console.log(`OK: created employees/${plan.employeeId}`);
+    return { created: false, password: null };
+  }
+
+  if (plan.operation === "UPDATE_EMPLOYEE_ONLY") {
+    if (plan.employeeUpdates) {
+      await db.collection(EMPLOYEES_COLLECTION).doc(plan.employeeId).set(plan.employeeUpdates, { merge: true });
+      console.log(
+        `OK: updated employees/${plan.employeeId} (${Object.keys(plan.employeeUpdates)
+          .filter((k) => k !== "updatedAt")
+          .join(", ")})`
+      );
+    } else {
+      console.log(`OK: employees/${plan.employeeId} already up to date, no Employee-side change.`);
+    }
+    return { created: false, password: null };
+  }
+
+  // GRANT_ACCESS -- the only operation touching both documents.
+  let password = null;
+  let created = false;
+
+  // Auth creation cannot be transactional with Firestore -- performed
+  // here, as the last step before the atomic Firestore write, per the
+  // documented boundary at the top of this file.
+  if (plan.needsNewAuthUser) {
+    password = generatePassword();
+    const userRecord = await auth.createUser({
+      email: plan.authCreateInput.email,
+      password,
+      displayName: plan.authCreateInput.displayName,
+    });
+    plan.userId = userRecord.uid;
+    created = true;
+  }
+
+  const employeeRef = db.collection(EMPLOYEES_COLLECTION).doc(plan.employeeId);
+  const userRef = db.collection(USERS_COLLECTION).doc(plan.userId);
+
+  await db.runTransaction(async (tx) => {
+    // Re-read both documents fresh, inside the transaction, and
+    // re-validate the same conflict conditions against that fresh
+    // state -- protects against a concurrent modification landing
+    // between phase B's reads and this write.
+    const [employeeSnap, userSnap] = await Promise.all([tx.get(employeeRef), tx.get(userRef)]);
+    const freshEmployee = employeeSnap.exists ? employeeSnap.data() : null;
+    const freshUser = userSnap.exists ? userSnap.data() : null;
+
+    if (freshEmployee && freshEmployee.userId && freshEmployee.userId !== plan.userId) {
+      throw new Error(
+        `Concurrent modification detected: employees/${plan.employeeId} became linked to a different userId ` +
+          `during this operation. Aborting with no writes -- re-run to re-evaluate.`
+      );
+    }
+    if (freshUser && freshUser.employeeId && freshUser.employeeId !== plan.employeeId) {
+      throw new Error(
+        `Concurrent modification detected: users/${plan.userId} became linked to a different employeeId ` +
+          `during this operation. Aborting with no writes -- re-run to re-evaluate.`
+      );
+    }
+
+    const now = Date.now();
+    if (plan.createEmployee) {
+      tx.set(employeeRef, { ...plan.employeeDoc, userId: plan.userId, updatedAt: now });
+    } else {
+      const employeeWrite = { ...(plan.employeeUpdates ?? {}) };
+      if (!freshEmployee || freshEmployee.userId !== plan.userId) {
+        employeeWrite.userId = plan.userId;
+      }
+      if (Object.keys(employeeWrite).length) {
+        tx.set(employeeRef, { ...employeeWrite, updatedAt: now }, { merge: true });
+      }
+    }
+
+    tx.set(userRef, plan.userUpdates, { merge: true });
+  });
+
+  console.log(
+    `OK: ${plan.authCreateInput.email} -> uid ${plan.userId}, employees/${plan.employeeId} <-> users/${plan.userId} ` +
+      `linked${created ? " (Auth account created)" : " (existing Auth account reused)"}`
+  );
+
+  return { created, password };
+}
+
+async function provisionEmployeeAccess(db, auth, rawArgs) {
+  const input = validateInput(rawArgs); // Phase A
+  const state = await readCurrentState(db, auth, input); // Phase B
+  detectConflicts(input, state); // Phase C -- throws before any write
+  const plan = buildPlan(input, state); // Phase D
+  const result = await applyPlan(db, auth, plan); // Phase E
+
+  if (result.created) {
+    console.log("\nTemporary password for the newly created account (save this now, it is not stored anywhere):");
+    console.log(`  ${result.password}`);
+    console.log(`  ${plan.authCreateInput.email}`);
+  }
+}
+
+function assertProjectTarget(args) {
+  if (!args.projectId) {
+    throw new Error(
+      "--projectId is required (no default target -- e.g. --projectId taylor-parts, or a non-production id for testing)."
+    );
+  }
+  if (args.projectId === PRODUCTION_PROJECT_ID && args.confirmProduction !== PRODUCTION_PROJECT_ID) {
+    throw new Error(
+      `--projectId "${PRODUCTION_PROJECT_ID}" targets the production project -- this requires an explicit, ` +
+        `matching --confirmProduction ${PRODUCTION_PROJECT_ID} flag as a deliberate, per-run confirmation. ` +
+        `Use a different --projectId for emulator/non-production testing to skip this requirement.`
+    );
+  }
+  return args.projectId;
+}
+
 async function main() {
-  initializeApp({ projectId: "taylor-parts" });
   const args = parseArgs(process.argv.slice(2));
+
+  let projectId;
+  try {
+    projectId = assertProjectTarget(args);
+  } catch (err) {
+    console.error(err.message);
+    process.exitCode = 1;
+    return;
+  }
 
   if (!args.employeeId) {
     console.error(
-      "Usage: node scripts/provisionEmployeeAccess.js --employeeId <id> [--displayName <name>] " +
-        "[--email <email>] [--securityRole admin|dispatcher|technician] [--operationalRoles ROLE1,ROLE2]"
+      "Usage: node scripts/provisionEmployeeAccess.js --projectId <id> [--confirmProduction taylor-parts] " +
+        "--employeeId <id> [--displayName <name>] [--email <email>] " +
+        "[--securityRole admin|dispatcher|technician] [--operationalRoles ROLE1,ROLE2]"
     );
     process.exitCode = 1;
     return;
   }
 
-  await provisionEmployeeAccess({
+  // initializeApp() -- and every subsequent Auth/Firestore call -- only
+  // ever runs after assertProjectTarget() has passed.
+  initializeApp({ projectId });
+  const db = getFirestore();
+  const auth = getAuth();
+
+  await provisionEmployeeAccess(db, auth, {
     employeeId: args.employeeId,
     displayName: args.displayName,
     email: args.email,
@@ -261,4 +549,12 @@ main().catch((err) => {
   process.exitCode = 1;
 });
 
-module.exports = { provisionEmployeeAccess, parseArgs };
+module.exports = {
+  provisionEmployeeAccess,
+  parseArgs,
+  validateInput,
+  normalizeOperationalRoles,
+  assertProjectTarget,
+  VALID_OPERATIONAL_ROLES,
+  PRODUCTION_PROJECT_ID,
+};
