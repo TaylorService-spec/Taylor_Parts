@@ -26,6 +26,30 @@ Reusable, horizontal services usable by any capability — owned by no single bu
 
 Naming a Platform Service here does not imply it is built; today, Authentication (Firebase Auth) and Authorization (role-based, `ROLE_NAV_ACCESS` + `firestore.rules`) and Search (`GlobalSearch.jsx`) are real; Notification & Work Routing, Audit, and a generalized Reporting/AI/Integration service layer are not.
 
+#### Person Assignment Platform Service Standard
+
+**Approved architecture, not yet implemented.** Assignment — the act of putting a person's identity on a workflow record (a Reorder Request's Parts Associate, a Work Order's technician, a future receiving/approval/task assignee) — is a reusable Platform Service pattern, not a domain-specific concern. Every present and future workflow requiring a person assignment must consume this one standard; no domain may introduce its own assignment identity pattern or feature-specific user-directory logic.
+
+**Three-tier identity authority, kept structurally separate:**
+- **Employee** (`employees/{employeeId}`) is the authoritative workforce/business identity — a person the business recognizes as personnel, whether or not they have application access. An Employee may exist without a linked User.
+- **User** (`users/{uid}`) is the application-access identity — who can sign in and what they're authorized to do inside the app. Linked to an Employee where applicable via `employeeId`, but remains its own record; disabling a User's access must never delete the linked Employee or that Employee's historical assignment records.
+- **Firebase Authentication** is the credential authority — it owns the authenticated UID and the sign-in mechanism only. It is a credential/session concern, not a business identity, and this platform's Employee model must not assume Firebase Authentication is a permanent choice: the Employee business identity must not carry vendor-specific authentication fields beyond a neutral access-link reference, so a future identity provider (Microsoft Entra ID, Okta, Google Workspace, SAML, or another OAuth provider) can be adopted without redesigning what an Employee *is*.
+
+These three must never be merged into one entity. `firestore.rules` remains the security enforcement authority over all three — Employee/User authority separation is a data-modeling boundary, not a rules change in itself.
+
+**Required assignment fields**, persisted on any workflow record that supports a person assignment:
+`assignedToEmployeeId` (workforce identity), `assignedToUserId` (authenticated identity used by security-rule enforcement), `assignedToDisplayName` (immutable historical display snapshot, not an identity key), `assignedByEmployeeId` (workforce identity of the assigner), `assignedByUserId` (authenticated identity of the assigner), `assignedAt` (assignment timestamp).
+
+**Eligibility vs. permissions:** operational roles (e.g. `PARTS_ASSOCIATE`, `TECHNICIAN`, `WAREHOUSE_ASSOCIATE`) determine who is *eligible* to be assigned to a given workflow; security roles (`admin`/`dispatcher`/`technician`, the existing model) continue to determine application permissions — navigation, reads, writes, Firestore authorization. These two role concepts are never merged, and an Employee's operational roles must never be treated as a replacement for the existing security role.
+
+**No Firebase UID entry in user-facing workflows.** An end user must never be required to enter, remember, or paste a Firebase UID to make an assignment. Assignment interfaces select a person by recognizable identity (name, operational role, department/job title, relevant context) — the underlying `employeeId`/`userId` pair is resolved behind that selection, never typed in directly.
+
+**Historical snapshot, not identity key.** `assignedToDisplayName` exists for audit/readability only — it is captured at assignment time and never used to re-resolve or re-validate identity later; `assignedToEmployeeId`/`assignedToUserId` remain the authoritative keys.
+
+**Legacy compatibility.** Records written before this standard existed may carry only `assignedToUserId`/`assignedBy`/`assignedAt` (or an equivalent minimal shape). These remain valid and are not rewritten retroactively; display logic falls back through `assignedToDisplayName` → a resolved Employee `displayName` → the legacy `assignedToUserId` as a final technical fallback. A raw Firebase UID must never be the normal end-user assignment experience — it may surface only as that last-resort fallback for data that predates this standard.
+
+**AI-assisted assignment compatibility (reserved, not in scope now).** This standard is designed so a future AI-assisted assignment capability can evaluate Employee attributes (operational roles, skills, certifications, availability, location, department, company, workload, eligibility) to *recommend* an assignee — humans remain the ones who approve and commit an assignment. No such scoring, recommendation, or attribute beyond `operationalRoles` is implemented today; this paragraph reserves the architectural shape, it does not schedule the feature.
+
 ### B. Business Capabilities
 
 What the business can do, independent of screen or entity. Capability hierarchy, ownership, and maturity are owned entirely by `PlatformCapabilityModel.md` — not restated here. This document's role is only to say that "Business Capability" is one of the five classifications a new concept must be checked against, and that a capability delivers business outcomes by consuming Platform Services (Section A) rather than reimplementing them.

@@ -12,6 +12,8 @@ This document builds directly on:
 - [`BusinessEntityModel.md`](BusinessEntityModel.md) — each capability below is grounded in the entities that already exist or are planned there; this document doesn't introduce new entities, it organizes existing ones by business function.
 - [`ProductBlueprint.md`](ProductBlueprint.md) — the business-domain navigation this document's capabilities are named consistently with, so a capability and a nav domain are recognizably the same concept viewed from two angles (business function vs. user-facing organization), not two competing taxonomies.
 
+This document does not enumerate Platform Services (reusable, horizontal, no-single-capability-owns-them concerns — see `PROJECT_ARCHITECTURE.md`'s Enterprise Platform Classification Model, Section A) as their own hierarchy; Business Capabilities and Platform Services are complementary, not competing, and a capability below may consume a Platform Service without that service becoming a capability of its own. **Assignment** (putting a person on a workflow record) is one such Platform Service, formally governed by `PROJECT_ARCHITECTURE.md`'s "Person Assignment Platform Service Standard" — every capability that needs to assign a person (Inventory Management, Dispatch Management, Warehouse, Procurement, Sales, etc.) consumes that one standard rather than each defining its own.
+
 ## 2. Capability Hierarchy
 
 Initial top-level capabilities:
