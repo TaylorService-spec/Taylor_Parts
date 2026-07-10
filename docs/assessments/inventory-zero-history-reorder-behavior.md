@@ -1,7 +1,7 @@
 ---
 artifact_type: assessment
 gate: Repository Assessment
-status: Draft
+status: Architecture-Approved
 date: 2026-07-10
 owner: Claude Code
 related_adrs: []
@@ -9,7 +9,7 @@ depends_on: []
 implements: []
 supersedes: []
 superseded_by: []
-related_pr: [88]
+related_pr: [88, 89]
 target_release:
 ---
 
@@ -91,3 +91,20 @@ Likely 2, pending Architecture Review's decision: (1) urgency/queue-visibility f
 5. Is `recommendedQty`'s current rules-level immutability still correct once a fallback/manual-entry model exists, or does that model need a correction path?
 6. Should `firestore.rules`'s `reorder_requests` `create` rule gain server-side validation on `recommendedQty` (currently none exists), independent of which client-side model is chosen?
 7. Given Cloud Functions deployment remains blocked (issue #15), should this fallback model be treated as permanent product behavior or an explicitly temporary mitigation to be revisited once Cloud Functions deploy and real `CONSUMED` data starts flowing?
+
+## Architecture Decision (2026-07-10)
+
+Approved. Answers to the seven open questions above, in order:
+
+1. **Request Reorder remains available, but requires a manager-entered positive quantity when usage history is insufficient.** Never submit `0`.
+2. **No automatic fallback quantity is calculated yet.** The manual-entry requirement in (1) is the entire near-term behavior — no formula fills the gap.
+3. **Do not reuse `data/partsCatalog.ts`'s existing `reorderThreshold` field.** Future fallback planning will use new, governed, manager-maintained minimum-stock and target-stock values instead — `reorderThreshold`'s current values are unreviewed and not to be repurposed as-is.
+4. **Yes — urgency is fixed, decoupled from usage history.** Zero-history parts must not be labeled `LOW` merely because demand data is missing. They surface in a distinct **"Needs planning"** state/queue instead of being folded into the existing `LOW`/`MEDIUM`/`HIGH`/`CRITICAL` urgency ladder.
+5. **`recommendedQty` remains an immutable historical snapshot, unchanged.** The actual manager-entered/requested quantity is stored as a **separate, distinct field** — not by relaxing `recommendedQty`'s immutability. Corrections use **cancel-and-recreate**, not editing an existing request.
+6. **Yes — `firestore.rules`'s `reorder_requests` `create` rule must validate create-time schema, allowed values, and that the submitted quantity is a positive whole number.** Rules are explicitly **not** expected to reproduce the analytics formula — only to reject structurally invalid submissions (non-positive, non-integer, wrong type, disallowed `urgency`/status values).
+7. **Permanent hybrid product behavior, not a temporary mitigation**, structured as three tiers:
+   - Usage analytics (existing `calculateUsageRate`/`generateReplenishmentRecommendation` path) when reliable history exists.
+   - Governed stocking policy (new minimum-stock/target-stock values, per (3)) when configured.
+   - Manual manager-entered quantity for exceptions or when no policy is configured.
+
+This decision set is the input to the Specification (`docs/specifications/inventory-zero-history-reorder-behavior.md`) — implementation does not begin from this assessment alone.
