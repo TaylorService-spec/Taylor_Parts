@@ -37,3 +37,11 @@ Known limitations and deliberate simplifications, tracked so they don't get sile
 **Why:** No shift-scheduling feature has been built.
 
 **To resolve:** A future scheduling sprint would need to decide how/when this status gets set (manual toggle vs. a shift schedule) and ensure it's set through the same domain-layer discipline as job status (i.e., not a raw UI-triggered Firestore write).
+
+## Modernize Firebase Functions TypeScript module resolution
+
+**What's deferred:** `functions/tsconfig.json`'s `moduleResolution: "node"` (equivalent to `"node10"`) is deprecated as of TypeScript 5.x and will stop working in TypeScript 7.0. The build compiles and runs correctly today — this is a forward-looking deprecation, not a current failure.
+
+**Why:** The modern replacement (`moduleResolution: "node16"`/`"nodenext"`) requires `module` to also be set to `"Node16"`/`"NodeNext"` (TypeScript enforces this pairing, confirmed via a real `TS5110` compile error when only `moduleResolution` was changed) — a coordinated change to how imports/exports are type-checked and packaged, not a one-line swap. That deserves its own isolated assessment and validation, not a drive-by fix bundled into an unrelated PR.
+
+**To resolve:** A scoped pass that: assesses `module`/`moduleResolution` as `Node16` vs. `NodeNext`; verifies compatibility with `firebase-functions`, `firebase-admin`, the CommonJS `functions/scripts/*.js` tooling, deployment packaging, and the active Node runtime (`engines.node: "20"`); identifies any required import/export syntax changes; confirms compiled output behavior is unchanged; and runs TypeScript, emulator, and deployment validation before merging. Should complete before TypeScript 7.0 removes `node10` resolution support, but is not an immediate blocker.
