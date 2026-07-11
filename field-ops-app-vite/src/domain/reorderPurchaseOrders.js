@@ -4,6 +4,7 @@ import { isWriteBlocked } from "../config/env";
 import {
   PURCHASE_ORDERS_COLLECTION,
   PURCHASE_ORDER_STATUS,
+  REORDER_PURCHASE_ORDER_VOIDS_COLLECTION,
   REORDER_REQUESTS_COLLECTION,
   REORDER_REQUEST_STATUS,
 } from "./constants";
@@ -107,6 +108,95 @@ export function recordPurchaseOrder(
       purchaseOrderId: reorderRequestId,
       orderedBy: createdBy,
       orderedAt: now,
+    });
+  });
+}
+
+// Cancel/Void schema deployment sequence, PR 5 of 6 (docs/specifications/
+// reorder-request-cancellation.md). The ONLY writer of a
+// reorder_purchase_order_voids record. Atomically creates the void
+// record AND transitions the linked Reorder Request to VOIDED, in a
+// single Firestore transaction -- same atomicity pattern
+// recordPurchaseOrder() above already established for the ORDERED
+// transition. The original reorder_purchase_orders document is read
+// (to confirm it exists, confirm its status is ORDERED, and copy
+// partId) but NEVER written -- Void never modifies or deletes it.
+// Stamps Date.now() into a local `now` variable exactly once and
+// writes that same value as both reorder_requests.voidedAt and
+// reorder_purchase_order_voids.createdAt -- never two separate
+// Date.now() calls for one void event (see firestore.rules' cross-
+// document invariant requiring these two values to agree).
+//
+// Authorization: Rules enforce isAdminOrDispatcher() AND
+// request.auth.uid == the request's own assignedToUserId -- BOTH
+// conditions. This function only checks assignee identity
+// client-side (the security role isn't loaded here, same posture as
+// recordPurchaseOrder() above and cancelReorderRequest() in
+// domain/inventoryReorderRequests.js) -- Rules are the actual
+// enforcement, not this check.
+export function voidPurchaseOrder(reorderRequestId, { reason }) {
+  if (isWriteBlocked()) {
+    console.warn("WRITE BLOCKED (voidPurchaseOrder)", reorderRequestId);
+    return Promise.resolve({ blocked: true });
+  }
+
+  const trimmedReason = reason?.trim() || "";
+  if (!trimmedReason) {
+    throw new Error("A reason is required to void this Purchase Order.");
+  }
+
+  const reorderRequestRef = doc(db, REORDER_REQUESTS_COLLECTION, reorderRequestId);
+  const purchaseOrderRef = doc(db, PURCHASE_ORDERS_COLLECTION, reorderRequestId);
+  const voidRef = doc(db, REORDER_PURCHASE_ORDER_VOIDS_COLLECTION, reorderRequestId);
+
+  return runTransaction(db, async (transaction) => {
+    // Firestore transactions require all reads before any writes.
+    const [reorderRequestSnap, purchaseOrderSnap, voidSnap] = await Promise.all([
+      transaction.get(reorderRequestRef),
+      transaction.get(purchaseOrderRef),
+      transaction.get(voidRef),
+    ]);
+
+    if (!reorderRequestSnap.exists()) {
+      throw new Error("Reorder Request not found.");
+    }
+    if (!purchaseOrderSnap.exists()) {
+      throw new Error("No Purchase Order is recorded for this Reorder Request.");
+    }
+    if (voidSnap.exists()) {
+      throw new Error("This Purchase Order has already been voided.");
+    }
+
+    const reorderRequest = reorderRequestSnap.data();
+    const purchaseOrder = purchaseOrderSnap.data();
+
+    if (reorderRequest.status !== REORDER_REQUEST_STATUS.ORDERED) {
+      throw new Error("This Reorder Request is not currently ORDERED.");
+    }
+    if (purchaseOrder.status !== PURCHASE_ORDER_STATUS.ORDERED) {
+      throw new Error("This Purchase Order is not currently ORDERED.");
+    }
+    if (reorderRequest.assignedToUserId !== (auth.currentUser?.uid ?? null)) {
+      throw new Error("Only the assigned Parts Associate can void this Purchase Order.");
+    }
+
+    const now = Date.now();
+    const voidedBy = auth.currentUser?.uid ?? null;
+
+    transaction.set(voidRef, {
+      reorderPurchaseOrderId: reorderRequestId,
+      reorderRequestId,
+      partId: purchaseOrder.partId,
+      voidedBy,
+      reason: trimmedReason,
+      createdAt: now,
+    });
+
+    transaction.update(reorderRequestRef, {
+      status: REORDER_REQUEST_STATUS.VOIDED,
+      voidedBy,
+      voidedAt: now,
+      voidReason: trimmedReason,
     });
   });
 }

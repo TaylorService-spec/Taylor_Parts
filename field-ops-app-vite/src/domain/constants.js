@@ -109,6 +109,13 @@ export const REORDER_REQUEST_STATUS = {
   // READY_FOR_PARTS_MANAGER, ASSIGNED_TO_PARTS_ASSOCIATE, or
   // PURCHASING_IN_PROGRESS -- i.e. any pre-ORDERED active status.
   CANCELLED: "CANCELLED",
+  // Cancel/Void schema deployment sequence, PR 5 of 6 (docs/specifications/
+  // reorder-request-cancellation.md). Terminal. Reachable ONLY from
+  // ORDERED -- unlike CANCELLED, Void never touches the original
+  // reorder_purchase_orders document; it creates a separate, append-only
+  // reorder_purchase_order_voids record instead (see
+  // domain/reorderPurchaseOrders.js's voidPurchaseOrder()).
+  VOIDED: "VOIDED",
 };
 
 // Sprint 2.1.5 -- Inventory -> Parts Manager Handoff. `currentOwner` is
@@ -205,6 +212,17 @@ export const INVENTORY_ACTION_TYPE = {
 // `update`, which the rule denies unconditionally), not just an
 // application-level check.
 export const PURCHASE_ORDERS_COLLECTION = "reorder_purchase_orders";
+
+// Cancel/Void schema deployment sequence, PR 5 of 6 (docs/specifications/
+// reorder-request-cancellation.md). The sole record of a void event --
+// append-only, never updated or deleted (firestore.rules' `allow
+// update, delete: if false`). Document ID is its own `reorderPurchaseOrderId`
+// (== the Reorder Request/Purchase Order's shared ID), same
+// duplicate-prevention-via-create-vs-update technique as
+// reorder_purchase_orders above. The original reorder_purchase_orders
+// document this void record references is NEVER modified or deleted --
+// no rule change of any kind applies to that collection in this sprint.
+export const REORDER_PURCHASE_ORDER_VOIDS_COLLECTION = "reorder_purchase_order_voids";
 
 export const PURCHASE_ORDER_STATUS = {
   ORDERED: "ORDERED",

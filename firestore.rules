@@ -546,7 +546,83 @@ service cloud.firestore {
               && request.resource.data.reviewedAt == resource.data.reviewedAt
               && request.resource.data.reviewNotes == resource.data.reviewNotes
               && request.resource.data.diff(resource.data).affectedKeys()
-                   .hasOnly(["status", "cancelledBy", "cancelledAt", "cancellationReason"])))
+                   .hasOnly(["status", "cancelledBy", "cancelledAt", "cancellationReason"]))
+            // Cancel/Void schema deployment sequence, PR 5 of 6
+            // (docs/specifications/reorder-request-cancellation.md) --
+            // Void Purchase Order. Terminal. Reachable ONLY from
+            // ORDERED. Authorization is isAdminOrDispatcher() (the
+            // outer gate above) AND request.auth.uid ==
+            // resource.data.assignedToUserId -- BOTH conditions, not
+            // assignee identity alone, same double-gate every other
+            // per-user transition on this object already uses
+            // (startPurchasing()/updatePurchasingProgress()/
+            // recordPurchaseOrder()/receiveReorderRequest()). Three
+            // checks beyond the existing ORDERED->RECEIVED branch's
+            // shape:
+            //   (1) Purchase-Order-existence proof -- the linked
+            //       reorder_purchase_orders document must actually
+            //       exist, agree on reorderRequestId/partId, and
+            //       itself be status ORDERED. Read via a plain get()
+            //       (the document already exists before this
+            //       transaction and is never written by it).
+            //   (2) Cross-document invariant on the NEW
+            //       reorder_purchase_order_voids record -- mirrors
+            //       Sprint 2.1.10's getAfter()/existsAfter() pattern
+            //       for a document THIS transaction creates.
+            //   (3) Reason binding -- this branch's voidReason must
+            //       equal the void record's own reason (getAfter()),
+            //       not merely be independently non-blank.
+            // This branch never reads voidedBy/voidedAt/voidReason
+            // from resource.data, same legacy-document-safe posture
+            // as the Cancel branch above.
+            || (resource.data.status == "ORDERED"
+              && request.resource.data.status == "VOIDED"
+              && request.auth.uid == resource.data.assignedToUserId
+              && request.resource.data.voidedBy == request.auth.uid
+              && request.resource.data.voidedAt is number
+              && request.resource.data.voidReason is string
+              && request.resource.data.voidReason.matches('.*\\S.*')
+              && request.resource.data.currentOwner == resource.data.currentOwner
+              && request.resource.data.assignedToUserId == resource.data.assignedToUserId
+              && request.resource.data.assignedBy == resource.data.assignedBy
+              && request.resource.data.assignedAt == resource.data.assignedAt
+              && request.resource.data.purchasingStartedAt == resource.data.purchasingStartedAt
+              && request.resource.data.purchasingStartedBy == resource.data.purchasingStartedBy
+              && request.resource.data.purchasingNotes == resource.data.purchasingNotes
+              && request.resource.data.vendorContacted == resource.data.vendorContacted
+              && request.resource.data.expectedAvailabilityDate == resource.data.expectedAvailabilityDate
+              && request.resource.data.lastPurchasingUpdateAt == resource.data.lastPurchasingUpdateAt
+              && request.resource.data.lastPurchasingUpdateBy == resource.data.lastPurchasingUpdateBy
+              && request.resource.data.purchaseOrderId == resource.data.purchaseOrderId
+              && request.resource.data.orderedBy == resource.data.orderedBy
+              && request.resource.data.orderedAt == resource.data.orderedAt
+              && request.resource.data.reviewDecision == resource.data.reviewDecision
+              && request.resource.data.reviewedBy == resource.data.reviewedBy
+              && request.resource.data.reviewedAt == resource.data.reviewedAt
+              && request.resource.data.reviewNotes == resource.data.reviewNotes
+              && request.resource.data.diff(resource.data).affectedKeys()
+                   .hasOnly(["status", "voidedBy", "voidedAt", "voidReason"])
+              // (1) Purchase-Order-existence proof. resource.data.
+              // purchaseOrderId == requestId is already guaranteed by
+              // the pinned-earlier-stage-fields check above
+              // (purchaseOrderId was set, and has been pinned
+              // unchanged, since PURCHASING_IN_PROGRESS -> ORDERED) --
+              // restated here explicitly, not merely relied on
+              // implicitly.
+              && resource.data.purchaseOrderId == requestId
+              && exists(/databases/$(database)/documents/reorder_purchase_orders/$(requestId))
+              && get(/databases/$(database)/documents/reorder_purchase_orders/$(requestId)).data.reorderRequestId == requestId
+              && get(/databases/$(database)/documents/reorder_purchase_orders/$(requestId)).data.partId == resource.data.partId
+              && get(/databases/$(database)/documents/reorder_purchase_orders/$(requestId)).data.status == "ORDERED"
+              // (2) Cross-document invariant -- the void record.
+              && existsAfter(/databases/$(database)/documents/reorder_purchase_order_voids/$(requestId))
+              && getAfter(/databases/$(database)/documents/reorder_purchase_order_voids/$(requestId)).data.voidedBy == request.auth.uid
+              && getAfter(/databases/$(database)/documents/reorder_purchase_order_voids/$(requestId)).data.createdAt == request.resource.data.voidedAt
+              && getAfter(/databases/$(database)/documents/reorder_purchase_order_voids/$(requestId)).data.reorderRequestId == requestId
+              && getAfter(/databases/$(database)/documents/reorder_purchase_order_voids/$(requestId)).data.reorderPurchaseOrderId == requestId
+              && getAfter(/databases/$(database)/documents/reorder_purchase_order_voids/$(requestId)).data.partId == resource.data.partId
+              // (3) Reason binding.
+              && getAfter(/databases/$(database)/documents/reorder_purchase_order_voids/$(requestId)).data.reason == request.resource.data.voidReason))
         && request.resource.data.partId == resource.data.partId
         && request.resource.data.urgency == resource.data.urgency
         && request.resource.data.recommendedQty == resource.data.recommendedQty
@@ -628,6 +704,48 @@ service cloud.firestore {
         && getAfter(/databases/$(database)/documents/reorder_requests/$(requestId)).data.purchaseOrderId == requestId
         && getAfter(/databases/$(database)/documents/reorder_requests/$(requestId)).data.orderedBy == request.auth.uid
         && getAfter(/databases/$(database)/documents/reorder_requests/$(requestId)).data.orderedAt == request.resource.data.createdAt;
+      allow update, delete: if false;
+    }
+
+    // Cancel/Void schema deployment sequence, PR 5 of 6
+    // (docs/specifications/reorder-request-cancellation.md). The sole
+    // record of a void event -- append-only, never updated or
+    // deleted. Document ID is its own reorderPurchaseOrderId (== the
+    // Reorder Request/Purchase Order's shared ID), same duplicate-
+    // prevention-via-create-vs-update technique as
+    // reorder_purchase_orders above. Purchase-Order-existence proof,
+    // same three checks as the reorder_requests-side VOIDED branch
+    // above, defense-in-depth (this codebase's established style --
+    // e.g. reorder_purchase_orders' own create rule above already
+    // double-checks the linked Reorder Request's pre-transaction
+    // status directly rather than relying solely on the other side's
+    // invariant). This is the same two-sided cross-document invariant
+    // shape Sprint 2.1.10 established for ORDERED (each side's rule
+    // checks the other side's post-transaction state), additionally
+    // bound on reason/createdAt-voidedAt agreement.
+    match /reorder_purchase_order_voids/{reorderPurchaseOrderId} {
+      allow read: if isAdminOrDispatcher();
+      allow create: if isAdminOrDispatcher()
+        && request.auth.uid == get(/databases/$(database)/documents/reorder_requests/$(reorderPurchaseOrderId)).data.assignedToUserId
+        && get(/databases/$(database)/documents/reorder_requests/$(reorderPurchaseOrderId)).data.status == "ORDERED"
+        && exists(/databases/$(database)/documents/reorder_purchase_orders/$(reorderPurchaseOrderId))
+        && get(/databases/$(database)/documents/reorder_purchase_orders/$(reorderPurchaseOrderId)).data.reorderRequestId == reorderPurchaseOrderId
+        && get(/databases/$(database)/documents/reorder_purchase_orders/$(reorderPurchaseOrderId)).data.status == "ORDERED"
+        && request.resource.data.keys().hasOnly([
+             "reorderPurchaseOrderId", "reorderRequestId", "partId",
+             "voidedBy", "reason", "createdAt"
+           ])
+        && request.resource.data.reorderPurchaseOrderId == reorderPurchaseOrderId
+        && request.resource.data.reorderRequestId == reorderPurchaseOrderId
+        && request.resource.data.partId == get(/databases/$(database)/documents/reorder_purchase_orders/$(reorderPurchaseOrderId)).data.partId
+        && request.resource.data.voidedBy == request.auth.uid
+        && request.resource.data.reason is string && request.resource.data.reason.matches('.*\\S.*')
+        && request.resource.data.createdAt is number
+        && existsAfter(/databases/$(database)/documents/reorder_requests/$(reorderPurchaseOrderId))
+        && getAfter(/databases/$(database)/documents/reorder_requests/$(reorderPurchaseOrderId)).data.status == "VOIDED"
+        && getAfter(/databases/$(database)/documents/reorder_requests/$(reorderPurchaseOrderId)).data.voidedBy == request.auth.uid
+        && getAfter(/databases/$(database)/documents/reorder_requests/$(reorderPurchaseOrderId)).data.voidedAt == request.resource.data.createdAt
+        && getAfter(/databases/$(database)/documents/reorder_requests/$(reorderPurchaseOrderId)).data.voidReason == request.resource.data.reason;
       allow update, delete: if false;
     }
 
