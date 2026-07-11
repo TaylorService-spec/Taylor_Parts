@@ -1,7 +1,7 @@
 ---
 artifact_type: implementation-plan
 gate: Implementation Plan
-status: Draft
+status: Approved
 date: 2026-07-11
 owner: Claude Code
 related_adrs: []
@@ -16,6 +16,8 @@ target_release: Post-Release 2.1 (Inventory -> Procurement chain)
 # Implementation Plan: Notification/Queue Links Resolve by `reorderRequestId`, Not `partId`
 
 **Sprint Specification:** `docs/specifications/notification-identity.md` -- Approved, 2026-07-11.
+
+**Implementation Plan Final Review: APPROVED, 2026-07-11**, after three REQUEST CHANGES rounds. **Round 1** (reviewed head `22f2c2f`): corrected the PR 6 dependency from "independent" to an explicit sequencing prerequisite; resolved the Specification's undecided automated-verification method; applied at head `c71d608`. **Round 2** (reviewed head `c71d608`): made repeatable Playwright browser automation the primary implementation test rather than an independently-reimplemented Node script; removed the requirement to write production test data; applied at head `1f07779`. **Round 3** (reviewed head `1f07779`): corrected the PR breakdown/expected-file scope from four files to the complete seven (application + verification infrastructure, correctly classified); made the read-only production smoke check non-vacuous; applied at head `c9caf24`. **Approved at exact head `c9caf24f73e0c2e937db437aa0ed26b667b644ea`.**
 
 **One PR**, per the Specification's own "Estimated PR count" (single, cohesive navigation/identity concern; no Rules change, no schema change, no natural expand/contract boundary). Per the Implementation Plan template's own guidance, a standalone document isn't strictly required for a single-PR sprint -- created anyway at the reviewer's explicit request, for the same traceability this initiative's other artifacts already have. **This document is planning only -- no application code has been written.**
 
