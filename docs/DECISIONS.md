@@ -123,3 +123,22 @@ Root cause this sprint fixed (per the Assessment): every Reorder Request recomme
 **Known limitation carried forward, unchanged by this deployment:** the picker's `requiredOperationalRole` filter remains UX-level only — `firestore.rules`' `READY_FOR_PARTS_MANAGER` → `ASSIGNED_TO_PARTS_ASSOCIATE` transition still validates only that `assignedToUserId` is a non-empty string, not the target's `operationalRoles`. Accepted at Final Review as not merge-blocking (existing permission isn't widened; the supported UI only gets more restrictive) — see PR #111's Final Review approval for full reasoning. A Rules-level fix would need a redesigned assignment contract carrying Employee identity Rules can validate by document path; not attempted here.
 **Not yet done:** production test-persona provisioning (six planned personas) — remains gated on a separate Owner Production Data Authorization, still not requested as of this entry.
 **Alternatives rejected:** None new — same reasoning as entry #9 applies (no `--force`, no emulator-only substitute for the live-project-specific index gap).
+
+## 11. Six production test personas provisioned via `provisionEmployeeAccess.js --requireExistingAuthUser`
+
+**Date:** 2026-07-11
+**Decision:** Ran the six commands specified in the Owner's Production Data Authorization (five existing-account linkages + one Employee-only create) against `taylor-parts`, at repository state `f02f0a3804cd9eb24fe3d916c53bf5f7d7ac9dc5` (PR #114's merge commit). Executed by the Owner directly — this environment has no production Admin SDK credentials (see entries #9/#10), so I could not run these myself; I prepared and specified the authorization, the Owner ran it, and reported results back for recording here.
+**Operations (five linked, one Employee-only, per the standing plan at `docs/CLAUDE_CONTEXT.md`'s "Employee test-persona provisioning" section):**
+- `emp-rudy-owner` — linked, `securityRole: admin`, no operational roles.
+- `emp-rudy-parts-manager` — linked, `securityRole: dispatcher`, `operationalRoles: [PARTS_MANAGER]`.
+- `emp-rudy-warehouse-manager` — linked, `securityRole: dispatcher`, `operationalRoles: [WAREHOUSE_MANAGER]`.
+- `emp-rudy-parts-associate` — linked, `securityRole: dispatcher`, `operationalRoles: [PARTS_ASSOCIATE]`.
+- `emp-rudy-driver` — linked, `securityRole: technician`, no operational roles (no `DRIVER` value exists in `VALID_OPERATIONAL_ROLES`; per Issue #100 this persona has no Inventory nav access regardless of provisioning, independent of this operation).
+- `emp-rudy-sales-manager` — Employee-only create, no `--email`/`--securityRole`/`--operationalRoles`. `SALES_MANAGER` deliberately left unassigned — reserved, not yet activated on the client.
+Every linked-persona command carried `--requireExistingAuthUser` (PR #114) — none could have fallen through to passwordless account creation even if an email lookup had failed.
+**Verification, reported by the Owner (I did not independently verify — no production read access):**
+- All five linked personas: `PASS` — Employee exists and `employmentStatus == ACTIVE`; `employees/{employeeId}.userId` matches the intended existing Auth account; `users/{uid}.employeeId` points back correctly; `securityRole` and `operationalRoles` both exactly match the authorization.
+- `emp-rudy-sales-manager`: `PASS` — Employee exists and `ACTIVE`, `userId == null`, `operationalRoles` empty, no `users/` document or Auth linkage created.
+- No Firebase Auth account created, modified, deleted, or disabled. No password, credential, token, or reset link exposed at any point. No Rules/indexes/Functions/Hosting/application code deployed. No production action occurred beyond these six Employee/User operations.
+**Not recorded here:** UIDs, emails, and any other account-identifying detail beyond Employee IDs — per the Owner's explicit instruction to keep this record free of anything credential- or secret-adjacent. If a future session needs the actual email/uid mapping to debug a specific persona, ask the Owner directly rather than expecting it in this file.
+**Alternatives rejected:** None — this entry records completion of an already-fully-specified, already-approved authorization; no new choice was made here.
