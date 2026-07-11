@@ -1,7 +1,7 @@
 ---
 artifact_type: implementation-plan
 gate: Implementation Plan
-status: Draft
+status: Approved
 date: 2026-07-11
 owner: Claude Code
 related_adrs: []
@@ -16,6 +16,8 @@ target_release: Release 2.1 -- Inventory to Procurement workflow chain
 # Implementation Plan: Governed Cancel/Void for Reorder Request and Reorder Purchase Order
 
 **Sprint Specification:** `docs/specifications/reorder-request-cancellation.md` -- Approved, 2026-07-11.
+
+**Implementation Plan Final Review: APPROVED, 2026-07-11**, after one REQUEST CHANGES round. **Round 1 -- REQUEST CHANGES** (reviewed head `4851324`): five required corrections -- Rules-relevant PR count/list (was "PRs 2, 4, 5", corrected to 1, 3, 4, 5), a "Deployment and rollback boundaries" section, a five-state tracking table, a "Legacy-document test obligation" section for PRs 4/5, and a "PR 4/5 merge-before-Rules-deployment safety" section; applied at head `d3d5cef`. **Round 2 -- APPROVED at head `d3d5cef51898f08e66701cf4a9e479afcf1f9037`.** Rebased onto `main` at `cc13f10` (post PR #120) after this approval -- documentation-only scope, mergeability, and CI unaffected by the rebase.
 
 Six PRs, one architectural concern each, in dependency order. No PR in this plan is implemented, merged, or run against production by this document itself -- each requires its own Codex review (where warranted, per `docs/ai/workflow.md` -- Rules changes here qualify), its own ChatGPT Final Review, and its own Owner Merge Authorization before merge; the four Rules-relevant PRs (1, 3, 4, 5) additionally each require a **separate Owner Deployment Authorization** after merge, per this Specification's "Schema deployment sequence" and this session's own established pattern (PR #109/#111/#114's index/Rules deploys) -- **four Rules-focused Final Reviews, four separate Owner Deployment Authorizations, not one blanket authorization**. PR 2 (writer) is frontend application code that depends on PR 1's Rules but is not itself Rules-relevant; PR 2 and PR 6 are frontend-only and auto-deploy at merge. **This plan is planning only -- no application code, Firestore Rules, or provisioning has been run.**
 
