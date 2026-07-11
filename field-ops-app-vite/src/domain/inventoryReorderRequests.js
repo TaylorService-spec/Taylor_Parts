@@ -87,6 +87,16 @@ export function createReorderRequest({ partId, urgency, recommendedQty, recommen
     orderedAt: null,
     receivedBy: null,
     receivedAt: null,
+    // Cancel/Void schema deployment sequence, step B (docs/specifications/
+    // reorder-request-cancellation.md) -- transitional Rules (PR #117,
+    // step A) already accept this shape; Cancel/Void themselves aren't
+    // wired to any write path until PR 4/5.
+    cancelledBy: null,
+    cancelledAt: null,
+    cancellationReason: null,
+    voidedBy: null,
+    voidedAt: null,
+    voidReason: null,
   });
 }
 
