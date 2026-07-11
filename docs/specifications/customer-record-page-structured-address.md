@@ -134,20 +134,27 @@ function Tab({ tab }) {
 
 export function TabPanel({ tabId, children }) {
   const { instanceId, activeTabId } = useContext(TabsContext);
-  // Inactive panels are UNMOUNTED (return null), not hidden via CSS --
-  // matches this codebase's existing conditional-render convention
-  // (e.g. PartDetail.jsx's status-branching render). This is an
-  // intentional, binding behavior, not an implementation detail: any
-  // unsaved panel-local state (e.g. a half-filled "+ Add Location"
-  // draft in the Locations tab) is discarded when the user switches
-  // away from that tab and back. No cross-tab draft-preservation
-  // requirement exists for this sprint -- if one is ever needed, it is
-  // a future enhancement to this contract, not assumed here.
-  if (tabId !== activeTabId) return null;
+  // CORRECTED (Codex Final Review): every declared TabPanel stays
+  // MOUNTED at all times, active or not -- never conditionally
+  // returns null. An unmounted inactive panel would mean its tab's
+  // aria-controls points at a DOM id that doesn't exist, contradicting
+  // this contract's own "every aria-controls target exists" guarantee.
+  // Inactive panels are hidden via the native `hidden` attribute
+  // instead (removes the element from the accessibility tree and the
+  // tab order without unmounting it -- browser-native behavior, no
+  // extra aria-hidden needed on top of `hidden`).
+  //
+  // Because every panel stays mounted, any in-progress, unsaved
+  // panel-local state (e.g. a half-filled "+ Add Location" draft in
+  // the Locations tab) SURVIVES switching to another tab and back --
+  // this is now the intended, binding behavior (reversing the prior
+  // draft's "intentionally discards state" position, per Codex's
+  // review).
+  const isActive = tabId === activeTabId;
   const panelDomId = `${instanceId}-panel-${tabId}`;
   const tabDomId = `${instanceId}-tab-${tabId}`;
   return (
-    <div role="tabpanel" id={panelDomId} aria-labelledby={tabDomId}>
+    <div role="tabpanel" id={panelDomId} aria-labelledby={tabDomId} hidden={!isActive}>
       {children}
     </div>
   );
@@ -160,12 +167,15 @@ Accessibility and behavior contract (binding — this repo has zero existing tab
 - **Invalid `activeTabId`** (a value that matches no `tab.id` in the supplied `tabs` array): falls back to the first tab in the array, silently -- never throws, never renders with no tab selected.
 - **Disabled tabs are explicitly unsupported this sprint** -- `Tabs`' `tabs` prop has no `disabled` field; every tab supplied is always selectable. Adding disabled-tab support is a future enhancement to this contract if a real need arises, not assumed here since none of Details/Locations/Contacts needs to ever be disabled.
 - **Focus behavior if the active tab is removed/changed** (i.e. the `tabs` array itself changes and no longer contains the previously-active id): falls back to the first tab in the new array (same rule as the invalid-`activeTabId` case above, since it's the same underlying condition — the current `activeTabId` no longer matching any supplied tab).
-- **Inactive panels are unmounted**, not hidden via CSS, per the illustrative `TabPanel` code above — this intentionally resets any unsaved panel-local state when a user navigates away from a tab and back. Binding, not incidental.
+- **Every declared panel stays mounted; inactive panels are hidden via the native `hidden` attribute**, per the illustrative `TabPanel` code above. **Corrected in this revision** — an earlier draft unmounted inactive panels, which contradicted this same contract's "every `aria-controls` target exists" guarantee (an unmounted panel has no DOM node for its tab to point to). `hidden` removes an element from the accessibility tree and the tab order (native browser behavior — no extra `aria-hidden` needed) without unmounting it, so: every `aria-controls`/`aria-labelledby` pairing resolves to a real, mounted DOM node at all times; exactly one panel is visible at any moment; inactive panel content is not keyboard-reachable; and any in-progress, unsaved panel-local state (e.g. a half-filled "+ Add Location" draft) **survives** switching tabs and back — reversing the prior draft's "intentionally discards state" position. Binding.
 - Unique IDs generated via one `useId()` call per `Tabs` instance (not per `Tab`/`TabPanel`), same underlying primitive `EmployeeAssignmentPicker.jsx` already establishes for the identical reason (multiple instances on one page must never collide) — but owned by the `Tabs` root and shared via context here, correcting the prior draft's gap.
 
-Rendered-DOM tests required (binding, added in this revision):
-- Every rendered tab's `aria-controls` value equals some rendered panel's `id` (existence, not just string-shape, verified against the actual DOM).
-- Every rendered panel's `aria-labelledby` value equals its corresponding tab's `id`.
+Rendered-DOM tests required (binding; corrected in this revision to test the mounted-but-`hidden` design, not the earlier unmount design):
+- Every rendered tab's `aria-controls` value resolves to a **mounted** panel's `id` (all panels are always mounted now, so this holds for every tab, active or not — not just the active one).
+- Every rendered panel's `aria-labelledby` value resolves to its corresponding **mounted** tab's `id`.
+- **Exactly one panel is visible at a time** — the active panel has no `hidden` attribute; every other declared panel does.
+- **Inactive panels are hidden and not reachable via normal keyboard navigation** — `Tab`/`Shift+Tab` from within the active panel never lands focus inside a `hidden` panel's content (native `hidden`-attribute behavior, verified against the rendered DOM, not assumed from the attribute's presence alone).
+- **Form state inside a panel survives switching away and back** — type into the Locations tab's "+ Add Location" name field, switch to Contacts, switch back to Locations, confirm the typed value is still present (proves panels are genuinely still mounted, not just visually re-created).
 - Two `Tabs` instances rendered on one page (e.g. in a future second consumer, or a test harness mounting two side by side) produce zero duplicate DOM `id` values across both instances.
 - Keyboard navigation (`ArrowLeft`/`ArrowRight`) issued while focus is inside one `Tabs` instance only moves focus within that instance's own tabs, never into a second instance's tabs, confirming each instance's keydown handling is scoped to its own context value.
 
@@ -358,7 +368,7 @@ No Rules changed, so no new Rules-emulator test file — this sprint's testing i
 **Accessibility:**
 - Keyboard: `ArrowLeft`/`ArrowRight`/`Home`/`End` navigate tabs without a mouse; each `AddressFields` input has a real `<label htmlFor>`, not a placeholder-only input.
 - Screen-reader semantics: `role="tablist"`/`role="tab"`/`role="tabpanel"`, `aria-selected`, `aria-controls`, `aria-labelledby` all present and correctly paired (verified via the rendered DOM, not just visual inspection).
-- **Rendered-DOM `Tabs` tests, per the corrected component contract (Technical design, Component 1):** every tab's `aria-controls` resolves to an actual rendered panel `id`; every panel's `aria-labelledby` resolves to its tab's `id`; two `Tabs` instances on one page produce zero duplicate DOM ids; keyboard navigation started inside one instance never moves focus into a second instance's tabs.
+- **Rendered-DOM `Tabs` tests, per the corrected component contract (Technical design, Component 1 — all panels mounted, inactive ones `hidden`):** every tab's `aria-controls` resolves to a mounted panel `id`; every panel's `aria-labelledby` resolves to a mounted tab's `id`; exactly one panel is visible at a time; inactive panels are hidden and unreachable via normal keyboard navigation; form state inside a panel (e.g. an in-progress "+ Add Location" draft) survives switching away and back; two `Tabs` instances on one page produce zero duplicate DOM ids; keyboard navigation started inside one instance never moves focus into a second instance's tabs.
 
 **Negative/scope-boundary checks:**
 - No empty Work Orders/Activity/Invoices/Related tab renders anywhere.
@@ -372,8 +382,8 @@ Entirely additive/presentational — no schema, no Rules, no migration, no new c
 
 ## Acceptance criteria
 
-- [ ] `Tabs`/`TabPanel` component exists, is reusable (no `AccountDetail`-specific assumptions baked in), owns its generated instance ID via Context (not an independently-reproduced `useId()` string), and implements the ARIA tablist/tab/tabpanel contract described above with `ArrowLeft`/`ArrowRight`/`Home`/`End` keyboard support, invalid-`activeTabId` fallback, and unmounted (not CSS-hidden) inactive panels.
-- [ ] Rendered-DOM `Tabs` tests pass: every `aria-controls`/`aria-labelledby` pairing resolves correctly, two `Tabs` instances on one page produce no duplicate DOM ids, and keyboard navigation stays confined to the correct instance.
+- [ ] `Tabs`/`TabPanel` component exists, is reusable (no `AccountDetail`-specific assumptions baked in), owns its generated instance ID via Context (not an independently-reproduced `useId()` string), and implements the ARIA tablist/tab/tabpanel contract described above with `ArrowLeft`/`ArrowRight`/`Home`/`End` keyboard support, invalid-`activeTabId` fallback, and **every declared panel mounted at all times, inactive ones hidden via the native `hidden` attribute** (not unmounted).
+- [ ] Rendered-DOM `Tabs` tests pass: every `aria-controls`/`aria-labelledby` pairing resolves to a mounted node, exactly one panel is visible at a time, inactive panels are unreachable via normal keyboard navigation, in-progress form state inside a panel survives switching tabs away and back, two `Tabs` instances on one page produce no duplicate DOM ids, and keyboard navigation stays confined to the correct instance.
 - [ ] `domain/address.js`'s `formatAddress()`/`addressRows()` exist, are the sole address-formatting logic in the app (both inline call sites in `AccountDetail.jsx` removed), and return `null`/`[]` rather than an empty/malformed string for a missing address.
 - [ ] `shared/address/AddressFields.jsx` exists, is consumed by **both** `AccountForm.jsx` and the Location **add** form (`LocationForm`), and renders four real `<label htmlFor>`-paired inputs (Street address/City/State/ZIP code). No Location edit action is added.
 - [ ] `AccountDetail.jsx` renders a header (name, status, customer number if present, billing address if present, primary-Contact state, tags if present, one Edit action) and a Details/Locations/Contacts tab shell — no Work Orders/Activity/Invoices/Related tab rendered.
@@ -394,6 +404,7 @@ Entirely additive/presentational — no schema, no Rules, no migration, no new c
 - **Address-component reuse discipline.** The binding requirement that both Account and Location addresses use one shared component/utility is the main thing this Specification exists to prevent from silently drifting during implementation (e.g. building `AddressFields` for the Account form first, then a "close enough" second version for Locations under time pressure).
 - **Data-preservation regression risk during the input swap.** Replacing four raw `<input>` elements with `<AddressFields>` in two different forms (`AccountForm.jsx`'s Customer edit form, `LocationForm`'s Location add form) is exactly the kind of mechanical change where a copy-paste or prop-wiring mistake could silently start writing `null`/an empty string over a previously-populated field — the explicit "load, save without touching, confirm byte-identical" test case above exists specifically to catch this class of bug before merge, not just to pad the test count.
 - **Scope discipline on the header.** The record header is the most visually "Salesforce-reference-shaped" surface in this sprint — the concrete risk is quietly reintroducing a `phone`/`website`/`industry` placeholder row "because the reference screenshot has one," which the Architecture Decision explicitly forbids (no empty placeholders for fields that don't exist).
+- **Mount-all-panels design does not introduce new listener overhead.** (New in this revision, addressing a natural question the "keep every panel mounted" correction raises.) `useLocationsForAccount`/`useContactsForAccount` are already called unconditionally at `AccountDetail.jsx`'s top level today (per Scope: "no new queries") — every panel being mounted simultaneously does not multiply `onSnapshot()` subscriptions or trigger any new data fetch; it only changes whether each tab's already-fetched content is visually hidden (`hidden` attribute) versus not, which is a rendering concern, not a data-fetching one.
 
 ## Open questions
 
