@@ -33,7 +33,7 @@ The platform's longest continuous object lifecycle: the workflow was extended ac
 | Sprint 2.1.8 (Purchasing Progress Update) | #75 | Merged | `updatePurchasingProgress()` — first non-transition (repeatable) write. |
 | Sprint 2.1.9 (Inventory Actions Foundation) | #76 | Merged | New `inventory_actions` collection, logged-only. First REQUEST CHANGES verdict — UI initially implied stock changed when it didn't. |
 | Sprint 2.1.10 (Purchase Order Foundation) | #77 | Merged | `recordPurchaseOrder()`, `PURCHASING_IN_PROGRESS` → `ORDERED`, atomic via client transaction + `getAfter()`/`existsAfter()` rules invariant. Second REQUEST CHANGES verdict — rules initially validated each write independently. |
-| Sprint 2.1.11 (Receiving — Reorder Request closeout) | #97 (pending review) | Open | `receiveReorderRequest()`, terminal `ORDERED` → `RECEIVED`, assignee-only. Status-closeout note only — does not touch `inventory_transactions`; reconciling against real stock stays Blaze-blocked backlog (see `docs/BusinessEntityModel.md` Section 4a). Scoped and built under `docs/DelegationCharter.md` Tier 1, logged in `docs/DECISIONS.md` entry #3, tracked in issue #96. |
+| Sprint 2.1.11 (Receiving — Reorder Request closeout) | #98 | Open | `receiveReorderRequest()`, terminal `ORDERED` → `RECEIVED`, assignee-only. Status-closeout note only — does not touch `inventory_transactions`; reconciling against real stock stays Blaze-blocked backlog (see `docs/BusinessEntityModel.md` Section 4a). Scoped under `docs/DelegationCharter.md` Tier 1 (`docs/DECISIONS.md` entry #3, issue #96); the `firestore.rules` change itself was Tier 2, escalated and approved (issue #97, `docs/DECISIONS.md` entry #4). |
 
 **Two production bug-fix PRs against this chain, both merged:**
 
