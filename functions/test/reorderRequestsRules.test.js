@@ -680,6 +680,16 @@ async function main() {
     status: "ASSIGNED_TO_PARTS_ASSOCIATE",
     assignedToUserId: "user-technician-partsmanager-rr",
   });
+
+  // Legacy-document Cancel test obligation (Implementation Plan PR 4),
+  // strengthened per ChatGPT's REQUEST CHANGES: capture the COMPLETE
+  // pre-transition document (seedReorderRequest() above never sets the
+  // six Cancel/Void keys, so this is a genuine legacy-shape document --
+  // the keys are entirely absent, not null), perform the Cancel, then
+  // capture the COMPLETE post-transition document and compare the two
+  // directly instead of sampling a few fields.
+  const preCancelSnapshot = (await db.doc("reorder_requests/rr-cancel-from-assigned").get()).data();
+
   report(
     "ASSIGNED_TO_PARTS_ASSOCIATE -> CANCELLED accepted for dispatcher (not just admin, not just the assignee)",
     (await updateReorderRequest("rr-cancel-from-assigned", dispatcherToken, {
@@ -690,29 +700,42 @@ async function main() {
     })) === 200
   );
 
-  // Legacy-document Cancel test obligation (Implementation Plan PR 4):
-  // read the document back after a successful Cancel and confirm ONLY
-  // the three Cancel fields (plus status) were added -- voidedBy/
-  // voidedAt/voidReason are never backfilled, and every pre-existing
-  // lifecycle field (seeded by seedReorderRequest() above, itself
-  // already legacy-shape) remains exactly as seeded.
   {
-    const doc = await db.doc("reorder_requests/rr-cancel-from-assigned").get();
-    const data = doc.data();
-    const hasExactlyCancelFields =
-      data.status === "CANCELLED" &&
-      data.cancelledBy === "user-dispatcher-rr" &&
-      typeof data.cancelledAt === "number" &&
-      data.cancellationReason === "Part no longer needed" &&
-      !("voidedBy" in data) &&
-      !("voidedAt" in data) &&
-      !("voidReason" in data) &&
-      data.assignedToUserId === "user-technician-partsmanager-rr" &&
-      data.currentOwner === "PARTS_ASSOCIATE" &&
-      data.purchasingStartedBy === "user-technician-partsmanager-rr";
+    const postCancelSnapshot = (await db.doc("reorder_requests/rr-cancel-from-assigned").get()).data();
+    const OWNED_KEYS = ["status", "cancelledBy", "cancelledAt", "cancellationReason"];
+    const preKeys = new Set(Object.keys(preCancelSnapshot));
+    const postKeys = new Set(Object.keys(postCancelSnapshot));
+    const expectedPostKeys = new Set([...preKeys, "cancelledBy", "cancelledAt", "cancellationReason"]);
+
+    // Post-transition key set equals the original key set plus exactly
+    // the three new Cancel fields (status already existed pre-transition
+    // as a key -- only its value changes, not the key set).
+    const keySetMatches =
+      postKeys.size === expectedPostKeys.size &&
+      [...expectedPostKeys].every((key) => postKeys.has(key)) &&
+      [...postKeys].every((key) => expectedPostKeys.has(key));
+
+    // Every field NOT one of the four owned keys is byte-for-byte
+    // unchanged from the pre-transition snapshot -- not a sample of a
+    // few fields, every single one seedReorderRequest() set.
+    const everyOtherFieldPinned = [...preKeys]
+      .filter((key) => !OWNED_KEYS.includes(key))
+      .every((key) => preCancelSnapshot[key] === postCancelSnapshot[key]);
+
+    const ownedFieldsCorrect =
+      postCancelSnapshot.status === "CANCELLED" &&
+      postCancelSnapshot.cancelledBy === "user-dispatcher-rr" &&
+      typeof postCancelSnapshot.cancelledAt === "number" &&
+      postCancelSnapshot.cancellationReason === "Part no longer needed";
+
+    const voidFieldsStillAbsent =
+      !("voidedBy" in postCancelSnapshot) &&
+      !("voidedAt" in postCancelSnapshot) &&
+      !("voidReason" in postCancelSnapshot);
+
     report(
-      "Legacy document (six Cancel/Void keys entirely absent pre-transition): Cancel adds ONLY status/cancelledBy/cancelledAt/cancellationReason -- voidedBy/voidedAt/voidReason never backfilled, every pre-existing field pinned",
-      hasExactlyCancelFields
+      "Legacy document (six Cancel/Void keys entirely absent pre-transition): post-transition key set equals pre-transition key set plus exactly cancelledBy/cancelledAt/cancellationReason; every non-owned field byte-for-byte unchanged; voidedBy/voidedAt/voidReason still genuinely absent",
+      keySetMatches && everyOtherFieldPinned && ownedFieldsCorrect && voidFieldsStillAbsent
     );
   }
 
@@ -829,6 +852,57 @@ async function main() {
       cancelledAt: int(Date.now()),
       cancellationReason: str("Reassigning while cancelling"),
       assignedToUserId: str("user-admin-rr"),
+    })) === 403
+  );
+
+  await seedReorderRequest("rr-cancel-from-received", {
+    partId: "PART-CANCEL10",
+    status: "RECEIVED",
+    assignedToUserId: "user-admin-rr",
+    purchaseOrderId: "rr-cancel-from-received",
+  });
+  report(
+    "CANCELLED rejected from RECEIVED (not one of the three reachable source statuses)",
+    (await updateReorderRequest("rr-cancel-from-received", adminToken, {
+      status: str("CANCELLED"),
+      cancelledBy: str("user-admin-rr"),
+      cancelledAt: int(Date.now()),
+      cancellationReason: str("Trying to cancel after receiving"),
+    })) === 403
+  );
+
+  await seedReorderRequest("rr-cancel-terminal-check", {
+    partId: "PART-CANCEL11",
+    status: "CANCELLED",
+    assignedToUserId: null,
+  });
+  report(
+    "CANCELLED is terminal: CANCELLED -> CANCELLED (re-cancel) rejected",
+    (await updateReorderRequest("rr-cancel-terminal-check", adminToken, {
+      status: str("CANCELLED"),
+      cancelledBy: str("user-admin-rr"),
+      cancelledAt: int(Date.now()),
+      cancellationReason: str("Cancelling an already-cancelled request"),
+    })) === 403
+  );
+  report(
+    "CANCELLED is terminal: CANCELLED -> READY_FOR_PARTS_MANAGER (reactivation attempt) rejected",
+    (await updateReorderRequest("rr-cancel-terminal-check", adminToken, {
+      status: str("READY_FOR_PARTS_MANAGER"),
+    })) === 403
+  );
+
+  await seedReorderRequest("rr-cancel-reason-omitted", {
+    partId: "PART-CANCEL12",
+    status: "READY_FOR_PARTS_MANAGER",
+    assignedToUserId: null,
+  });
+  report(
+    "CANCELLED rejected when cancellationReason is omitted entirely (distinct from empty-string or whitespace-only -- the key itself is absent, not merely blank)",
+    (await updateReorderRequest("rr-cancel-reason-omitted", adminToken, {
+      status: str("CANCELLED"),
+      cancelledBy: str("user-admin-rr"),
+      cancelledAt: int(Date.now()),
     })) === 403
   );
 
