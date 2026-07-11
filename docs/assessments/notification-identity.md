@@ -1,7 +1,7 @@
 ---
 artifact_type: assessment
 gate: Repository Assessment
-status: Draft
+status: Architecture-Approved
 date: 2026-07-11
 owner: Claude Code
 related_adrs: []
@@ -16,6 +16,17 @@ target_release: Post-Release 2.1 (Inventory -> Procurement chain)
 # Assessment Report: Notification Panel links by `partId` instead of `reorderRequestId`
 
 **Business Request:** Issue #145. `NotificationPanel` links every Reorder Request notification using `partId`, while `PartDetail` selects the newest `reorder_requests` document for that part with no status filter. Because a part can have more than one Reorder Request over time, clicking an active notification can open a different request than the one that produced it, including a terminal (`REJECTED`/`CANCELLED`/`VOIDED`) one.
+
+**Architecture Review: APPROVED, 2026-07-11.** Decisions, resolving this assessment's open questions:
+- **Option A adopted**: an optional `requestId` query parameter. When present, resolve the exact `reorder_requests` document by ID (not the status-agnostic most-recent query).
+- **Validate on resolution**: the resolved request's `partId` must match the route's `:partId`; fail safely (do not silently fall back to a different document) if the id is missing, invalid, or its `partId` doesn't match the route.
+- `/inventory/:partId` and its current most-recent-by-`createdAt` fallback are **preserved unchanged** for every caller with no `requestId` (bookmarks, direct URLs).
+- **Update every notification/queue link that already has `request.id` available**: all four `NotificationPanel.jsx` sections and all three `PartsList.jsx` queue links.
+- **Do not touch** `PartsList.jsx:381`'s unrelated catalog-row link (`/inventory/${part.sku}`).
+- No Rules, schema, or production-data change, confirmed.
+- Issue #140 and the Cancel/Void UI (PR 6) remain outside this scope, confirmed.
+- Open question #2 (narrowing the no-id fallback to prefer non-terminal statuses) is **not adopted** -- the fallback is preserved exactly as it behaves today.
+- **One PR**, after Specification approval. Required coverage: exact-request navigation, refresh/bookmark persistence (the query param must survive a hard refresh, unlike Option C would have), the no-id fallback (unchanged), and invalid/mismatched request IDs (the fail-safe path).
 
 ## Scope of this assessment
 
@@ -121,9 +132,9 @@ All three preserve `useReorderRequestForPart()`'s current partId-only/most-recen
 
 **One PR**, per `docs/ai/workflow.md`'s "one architectural concern per PR" guidance -- this is a single, cohesive navigation/identity concern spanning a small, bounded set of files (`NotificationPanel.jsx`, `PartsList.jsx`'s three call sites, `useReorderRequestForPart()`, `PartDetail.jsx`'s call site, and `App.jsx` only if Option B is selected). No Rules change, no schema change, no new collection -- there is no natural expand/contract or dependency boundary that would require splitting this into more than one PR.
 
-## Open questions for Architecture Review
+## Open questions for Architecture Review -- RESOLVED, see Architecture Review decision above
 
-1. Confirm or select among Options A/B/C above (recommendation: A).
-2. Should the no-explicit-id fallback path (`useReorderRequestForPart()` called with only a `partId`, no `requestId`) also be narrowed to prefer non-terminal statuses, or left exactly as-is (status-agnostic, most-recent-by-`createdAt`)? This assessment surfaces the question but does not decide it -- it's a real behavior change beyond the reported defect's own scope if adopted.
-3. Confirm the "smallest safe correction" boundary: this assessment's recommendation is navigation-identity only (pass and prefer an explicit `reorderRequestId` when available) -- confirm that is the intended scope, and that any fallback-narrowing from question 2 above, if wanted, is either included in the same Specification explicitly or deliberately deferred as its own follow-up.
-4. Required automated/browser coverage for Specification: at minimum, (a) a unit/integration-level test seeding two `reorder_requests` documents for one `partId` (one active, one terminal, terminal with the later `createdAt`) and confirming a notification click for the active one resolves to that same document, not the terminal one; (b) a browser/manual pass confirming all four Notification Panel sections and all three `PartsList.jsx` queue sections navigate correctly under this scenario; (c) confirming the no-id fallback path (direct `/inventory/:partId` visit) is unchanged from today's behavior unless question 2 is answered otherwise.
+1. **Resolved: Option A adopted** (optional `requestId` query parameter).
+2. **Resolved: not adopted.** The no-explicit-id fallback path stays exactly as it behaves today (status-agnostic, most-recent-by-`createdAt`) -- no narrowing.
+3. **Resolved.** Scope is navigation-identity only: pass and prefer an explicit `reorderRequestId` when available, validated against the route's `partId`, failing safely on mismatch/invalid id. The no-id fallback is unchanged, per #2.
+4. **Resolved, adopted as the Specification's required coverage**: exact-request navigation, refresh/bookmark persistence, the no-id fallback (unchanged), and invalid/mismatched request IDs (the fail-safe path) -- see the Sprint Specification's own Testing strategy section.
