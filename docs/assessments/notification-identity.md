@@ -9,7 +9,7 @@ depends_on: []
 implements: []
 supersedes: []
 superseded_by: []
-related_pr: TBD
+related_pr: 146
 target_release: Post-Release 2.1 (Inventory -> Procurement chain)
 ---
 
