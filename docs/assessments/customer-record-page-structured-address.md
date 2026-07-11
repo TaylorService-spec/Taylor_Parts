@@ -1,7 +1,7 @@
 ---
 artifact_type: assessment
 gate: Repository Assessment
-status: Draft
+status: Architecture-Approved
 date: 2026-07-11
 owner: Claude Code
 related_adrs: []
@@ -9,7 +9,7 @@ depends_on: []
 implements: []
 supersedes: []
 superseded_by: []
-related_pr:
+related_pr: 120
 target_release: Post-Release 2.1 (Inventory → Procurement chain)
 ---
 
@@ -104,3 +104,43 @@ Restated from the Business Request's "Business-process questions to resolve" (Se
 8. Which roles may edit Customer details — today `isAdminOrDispatcher()` for all of `accounts`/`locations`/`contacts` writes (`firestore.rules:685-701`), with no per-field or per-role distinction. Does this initiative need a narrower authorization model, or does the existing admin/dispatcher-wide grant remain correct?
 
 This assessment recommends Option A (retain existing address shape, UI/UX evolution only) and a Details/Locations/Contacts-only tab set for the first Specification — both are the Business Request's own stated preference where evidence permits a recommendation. Questions 1-8 above require the Owner's decision before a Sprint Specification can be written for anything beyond that recommended baseline.
+
+## Architecture Decision (2026-07-11)
+
+**Approved. Option A** (retain the existing `{ street, city, state, zip }` shape, redesign the Customer UI only). Answers to the eight open questions above, in order:
+
+1. **US-only for this iteration.** No `countryCode`, no country selector, no maintained international region list.
+2. **No `addressLine2` in this iteration.** Continue storing exactly `street`/`city`/`state`/`zip`, labeled clearly as "Street address"/"City"/"State"/"ZIP code". **Binding constraint on implementation:** the shared address component's boundary must allow a future `addressLine2`/country expansion without redesigning the record page — i.e. the component's props/internal structure must not hard-code "exactly four US fields, forever" in a way a later field addition would have to work around.
+3. **No primary-Location designation yet.** Deferred until service-location selection is designed as part of the Customer-to-Work-Order business process — this would introduce new schema and uniqueness rules, out of scope for a presentation-only sprint.
+4. **Record header shows the Customer billing address**, explicitly labeled "Billing address" — never represented as, or conflated with, the primary service Location. The two business concepts (where the Customer is billed vs. where work is performed) remain distinct, per the Assessment's own "Related records" framing.
+5. **Primary Contact uses the existing `Contact.isPrimary` field.** Exactly one primary → show that person's name and available phone/email in the header. None → show "No primary contact." **More than one** (a data-quality state the schema doesn't currently prevent) → show a visible "Multiple primary contacts" warning, never silently pick one. Enforcing one-primary-contact-per-Customer (e.g. a Rules-level or write-path uniqueness guarantee) is a **separate, not-yet-scoped data-integrity follow-up** — this initiative surfaces the data-quality state, it does not fix the underlying possibility of it occurring.
+6. **No `phone`/`website`/`industry`/`accountOwner`/`contractManager` fields added.** Phone/email displayed in the header come from the primary Contact (per decision 5), not a new Account-level field. Account Owner requires a separate Person Assignment/permissions design (decision 7). Website/industry/contract manager need actual business requirements before becoming persisted fields — none exist today, per the Assessment's "Current repository state." **No empty placeholder is ever displayed for a field that does not exist** — absence is handled by omitting the row/section entirely, not by rendering a blank or "Not set" value for something never modeled.
+7. **Account Owner assignment via the Person Assignment Platform Service Standard is deferred**, not decided against — it requires its own separate Specification defining ownership, reassignment, visibility, and authorization before the Customer page becomes the first non-Inventory/Procurement consumer of that standard. Not attempted in this initiative.
+8. **Edit authorization is unchanged**: `isAdminOrDispatcher()` remains the authorization for `accounts`/`locations`/`contacts` writes, exactly as `firestore.rules:685-701` already enforces. This sprint changes presentation, not permissions — no Rules change of any kind. Operational-role-specific Customer editing remains a future access-model decision, not addressed here.
+
+**Approved first-iteration scope**, binding on the Specification:
+
+- **Record header:** Customer name, status, customer number (when present), billing address (formatted clearly, per decision 4), primary Contact summary or data-quality state (per decision 5), tags (when present), one "Edit Customer" action.
+- **Tabs:** Details, Locations, Contacts only. No empty Work Orders/Activity/Invoices/Related tabs.
+- **Details tab:** responsive two-column layout collapsing to one column; sections: Customer Information, Billing Address (separate displayed rows, not a joined line), External Identifiers, Notes and Tags.
+- **Locations tab:** existing related Locations, structured address display, existing add-Location function preserved, consuming the shared address component.
+- **Contacts tab:** existing related Contacts, primary badge, phone/email display, existing add-Contact function preserved, multiple-primary warning where applicable (per decision 5).
+
+**Implementation constraints, binding on the Specification and Implementation Plan:**
+
+- Field Ops styling only — no Salesforce branding or visual assets, per the original Business Request.
+- A new, accessible, reusable tab component: correct `tablist`/`tab`/`tabpanel` ARIA semantics, keyboard navigation (this repo has no existing tab pattern to reuse — see "Current repository state" above).
+- One shared `AddressFields` component and one address-formatting/display utility, consumed by **both** Account billing-address and Location address UI — no parallel/duplicate implementation.
+- `onSnapshot()`-based reads preserved throughout — no one-shot reads introduced.
+- All existing Customer/Location data preserved during editing — never write `null` over an existing address field merely because it wasn't rendered or changed in a given edit.
+- No schema migration, Rules change, new query, new index, new route, or production-data backfill of any kind.
+- **No standalone foundation PR with zero consumers** — the shared tab/address components must land together with their first real Customer-page consumer, not as an isolated foundation PR the way `EmployeeAssignmentPicker.jsx` (Employee Foundation PR 4) was allowed to. This reverses that specific precedent for this initiative, per explicit Owner direction — noted here so a future reader doesn't treat the zero-consumers pattern as this project's universal default.
+
+**Approved two-PR implementation sequence** (supersedes this Assessment's earlier five-PR estimate):
+
+- **PR 1:** reusable accessible tabs; shared address fields/display utility; Customer record header; Details/Locations/Contacts tabbed page; existing related-record functionality preserved.
+- **PR 2:** reorganized Customer edit form; Location form consumes the shared address component; documentation and focused browser verification; any corrections discovered during integration.
+
+The Implementation Plan may adjust this sequence only with evidence that a separate architectural boundary requires it — not merely for convenience.
+
+This decision set is the input to the Sprint Specification (to be added to `docs/specifications/`) — implementation does not begin from this assessment alone. PR #120 remains documentation-only and Draft until the Specification receives Final Review.
