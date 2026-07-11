@@ -288,3 +288,21 @@ Every linked-persona command carried `--requireExistingAuthUser` (PR #114) — n
 5. Report both results back so this session (or the next one) can record them here and determine step C's actual status per the Owner's own decision rule: if any post-deployment document lacks the fields, step C FAILS (keep transitional Rules live, investigate whether the cause is a stale browser session or another writer, do not merge/deploy PR #132); if every post-deployment document has the complete shape, step C PASSES with this audit as its evidence, and PR #132 can be rebased and re-submitted for Final Review.
 **PR #132 (Cancel/Void PR 3, tightened Rules): left open and unchanged, per the Owner's instruction** -- not merged, not deployed, no further code changes made to it this turn. PR 4 not begun.
 **Alternatives rejected:** Attempting to acquire production Firestore read credentials (a service-account key, ADC, or similar) to perform the audit myself -- rejected, consistent with this project's standing credential boundary; the correct response to a blocked read is to ask the Owner, not to work around the blocker.
+
+## 24. Production audit complete -- Step C PASSES, entries #21 and #23 preserved unchanged
+
+**Date:** 2026-07-11
+**This entry does not rewrite entry #21 or entry #23.** Both stand as originally written. This entry records the production audit entry #23 requested, and the resolution that follows from it, per this project's append-only decision-log rule.
+**Decision:** The Owner performed the production audit specified in entry #23's handoff procedure, querying `reorder_requests` for `createdAt > 1783790142000` (PR #127's exact deployment-completion cutoff). The query returned exactly three documents. **Every one of the three has all six Cancel/Void fields present and explicitly `null`.**
+**Audit evidence (document ID, `createdAt`, `partId`, six-field result only -- no user IDs, per entry #23's privacy constraint):**
+
+| Document ID | `createdAt` | `partId` | Six-field result |
+|---|---|---|---|
+| `NO5PiTirmbiey5VxrAeo` | `1783790404682` | `TST-1015` | PASS -- all present and `null` |
+| `qkB9KvDQfcK6qiY76sSg` | `1783791328232` | `TST-1015` | PASS -- all present and `null` |
+| `lYMojf5sM8oPjb5MC1h9` | `1783791637747` | `TST-1003` | PASS -- all present and `null` |
+
+`lYMojf5sM8oPjb5MC1h9` is also the newest `TST-1003` document (greatest `createdAt` among any `TST-1003` matches), directly answering entry #23's audit step 4. **The earlier `TST-1003` discrepancy the Owner originally reported referred to an older document, not this one** -- resolved, not a live defect.
+**Step C: PASSES.** Both `docs/DECISIONS.md` and `docs/implementation-plans/reorder-request-cancellation.md`'s tracking tables are updated from "disputed/blocked" back to complete, citing this entry as the evidence (not entry #21 alone -- entry #21's claim is now corroborated by this audit, not superseded by it).
+**Still true, unchanged by this entry:** transitional Rules (PR #117) remain live in production -- this entry does not deploy anything. PR #132 (tightened Rules) is unblocked to be rebased and resubmitted for a fresh Rules-focused Final Review, but **remains unmerged and undeployed** -- Owner Deployment Authorization is a separate, later gate, not granted by this entry.
+**Alternatives rejected:** Treating this audit as also superseding/replacing entry #21's original claim -- rejected; entry #21 turns out to have been correct (the conflict traced to an older `TST-1003` document, not a defect in what entry #21 reported), so this entry corroborates it rather than correcting an error in it. The record stays append-only and accurate to what was known at each point in time.
