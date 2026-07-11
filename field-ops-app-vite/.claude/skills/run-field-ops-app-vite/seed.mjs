@@ -1,9 +1,11 @@
 // Seeds the Firestore + Auth emulator with the accounts the driver
 // needs to sign in through the real Login.jsx UI: an admin, and a
-// technician (deliberately NOT admin/dispatcher by security role)
-// whose linked Employee has operationalRoles: ["PARTS_MANAGER"] --
-// the exact NEEDS_PLANNING-eligibility scenario
-// firestore.rules' canSubmitManualZeroHistoryQuantity() and
+// dispatcher (ChatGPT architecture review on PR #93: this fixture is
+// ROLES.DISPATCHER by security role, not ROLES.TECHNICIAN -- see the
+// dispatcher-vs-technician nav-access gotcha below) whose linked
+// Employee has operationalRoles: ["PARTS_MANAGER"] -- the exact
+// NEEDS_PLANNING-eligibility scenario firestore.rules'
+// canSubmitManualZeroHistoryQuantity() and
 // shared/inventory/RequestReorderControl.jsx both gate on.
 //
 // Uses firebase-admin (devDependency, added for this driver) rather

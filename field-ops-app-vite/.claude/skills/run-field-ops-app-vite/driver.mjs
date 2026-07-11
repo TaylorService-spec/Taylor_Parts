@@ -35,7 +35,7 @@
 //                                 the result.
 //
 // All screenshots are written under .claude/skills/run-field-ops-app-vite/screenshots/.
-import { chromium } from "playwright";
+import { chromium } from "@playwright/test";
 import { mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
