@@ -25,8 +25,8 @@ Six PRs, one architectural concern each, in dependency order. No PR in this plan
 
 | # | PR title | Architectural concern | Depends on | Status |
 |---|---|---|---|---|
-| 1 | Cancel/Void schema fields -- transitional Rules | Specification's deployment-sequence step A: `hasCanonicalReorderRequestKeys()`/`...CreationBaseline()` accept old shape (no new keys) OR new shape (six new keys, all `null`); reject partial presence | None | Not started |
-| 2 | Cancel/Void schema fields -- writer | `createReorderRequest()` always sends the six new fields as `null`. Frontend-only, no Rules change. Step B; step C's live confirmation happens after this merges and deploys, recorded in `docs/DECISIONS.md`, not its own PR | PR 1 (deployed and confirmed live) | Not started |
+| 1 | Cancel/Void schema fields -- transitional Rules | Specification's deployment-sequence step A: `hasCanonicalReorderRequestKeys()`/`...CreationBaseline()` accept old shape (no new keys) OR new shape (six new keys, all `null`); reject partial presence | None | **Merged and deployed, PR #117** (shipped separately, before this Implementation Plan formally existed; deployment confirmed by the Owner, `docs/DECISIONS.md` entry #17) |
+| 2 | Cancel/Void schema fields -- writer | `createReorderRequest()` always sends the six new fields as `null`. Frontend-only, no Rules change. Step B; step C's live confirmation happens after this merges and deploys, recorded in `docs/DECISIONS.md`, not its own PR | PR 1 (deployed and confirmed live) | In review |
 | 3 | Cancel/Void schema fields -- tightened Rules | Specification's step D: remove the old-shape branch, require the six new keys unconditionally. Step E's live confirmation happens after this merges and deploys, recorded in `docs/DECISIONS.md` | PR 2 (deployed and confirmed live, per step C) | Not started |
 | 4 | Cancel Reorder Request | New `CANCELLED` status/branch on `reorder_requests`, `cancelReorderRequest()` write function, Rules (`isAdminOrDispatcher()`, three reachable source statuses, non-blank-reason regex) | PR 3 (deployed and confirmed live) | Not started |
 | 5 | Void Purchase Order | New `VOIDED` status/branch, new `reorder_purchase_order_voids` collection and Rules (Purchase-Order-existence proof, cross-document invariant, reason/timestamp binding), `voidPurchaseOrder()` write function | PR 3 (deployed and confirmed live) | Not started |
@@ -70,8 +70,8 @@ Distinguishes five states per PR, not two: merged, frontend live, Rules deployed
 
 | PR | Merged | Frontend live | Rules deployed | Rules verified live | Additional verification |
 |---|---|---|---|---|---|
-| 1 -- Transitional Rules | Not started | N/A (Rules-only) | Not deployed | Not verified | -- |
-| 2 -- Writer | Not started | Not deployed | N/A (no Rules change) | N/A | **Step C**: writer confirmed live; no post-deployment old-shape `reorder_requests` creates observed; evidence recorded in `docs/DECISIONS.md` |
+| 1 -- Transitional Rules | Merged (PR #117) | N/A (Rules-only) | Deployed | Confirmed live by Owner (`docs/DECISIONS.md` entry #17) | -- |
+| 2 -- Writer | In review | Not deployed | N/A (no Rules change) | N/A | **Step C**: writer confirmed live; no post-deployment old-shape `reorder_requests` creates observed; evidence to be recorded in `docs/DECISIONS.md` after this PR merges and deploys |
 | 3 -- Tightened Rules | Not started | N/A (Rules-only) | Not deployed | Not verified | **Step E**: tightened Rules confirmed live, recorded in `docs/DECISIONS.md` |
 | 4 -- Cancel Reorder Request | Not started | Not deployed | Not deployed | Not verified | Legacy-document Cancel test obligation (see "Legacy-document test obligation" below) confirmed passing before Rules deploy |
 | 5 -- Void Purchase Order | Not started | Not deployed | Not deployed | Not verified | Legacy-document Void test obligation (see "Legacy-document test obligation" below) confirmed passing before Rules deploy |
