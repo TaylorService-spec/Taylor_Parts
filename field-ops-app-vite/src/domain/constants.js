@@ -143,6 +143,15 @@ export const REORDER_REQUEST_OWNER = {
 export const OPERATIONAL_ROLE = {
   PARTS_MANAGER: "PARTS_MANAGER",
   WAREHOUSE_MANAGER: "WAREHOUSE_MANAGER",
+  // Added for Sprint 2.1.6's EmployeeAssignmentPicker adoption (PR
+  // #105) -- functions/scripts/provisionEmployeeAccess.js's
+  // VALID_OPERATIONAL_ROLES already reserved this value; it was never
+  // activated on the client or used for any eligibility filter until
+  // now. Restricts the Reorder Request assignment picker to Employees
+  // actually meant to receive assignments -- previously any ACTIVE,
+  // linked-user Employee (an Owner, a Driver, anyone) appeared as
+  // selectable, since the picker had no requiredOperationalRole.
+  PARTS_ASSOCIATE: "PARTS_ASSOCIATE",
 };
 
 // Immutable audit fact recorded on every Reorder Request at creation --

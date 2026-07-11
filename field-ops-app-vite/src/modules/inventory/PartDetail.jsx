@@ -17,7 +17,7 @@ import {
 } from "../../domain/inventoryReorderRequests";
 import { recordInventoryAction } from "../../domain/inventoryActions";
 import { recordPurchaseOrder } from "../../domain/reorderPurchaseOrders";
-import { REORDER_REQUEST_STATUS, INVENTORY_ACTION_TYPE } from "../../domain/constants";
+import { REORDER_REQUEST_STATUS, INVENTORY_ACTION_TYPE, OPERATIONAL_ROLE } from "../../domain/constants";
 import { useAuth } from "../../auth/AuthContext";
 import LoadingEmptyState from "../../shared/ui/LoadingEmptyState";
 import RequestReorderControl from "../../shared/inventory/RequestReorderControl";
@@ -236,6 +236,23 @@ function ReorderRequestReview({ request, onReviewed }) {
 // EmployeeAssignmentPicker so managers select an active, linked
 // Employee by display name; the canonical User ID remains internal and
 // is passed to the existing assignment domain function.
+//
+// requiredOperationalRole: OPERATIONAL_ROLE.PARTS_ASSOCIATE (added
+// after PR #105 -- governance correction) restricts selectable
+// employees to those actually meant to receive assignments. Before
+// this, the picker had no eligibility filter at all: any ACTIVE
+// Employee with a linked userId appeared as selectable, including an
+// Owner, a Driver, or anyone else with no Parts Associate
+// responsibility. This is a UX-level restriction only, same "nicety,
+// not the enforcement boundary" posture as
+// shared/inventory/RequestReorderControl.jsx's client-side
+// eligibility mirror -- firestore.rules' READY_FOR_PARTS_MANAGER ->
+// ASSIGNED_TO_PARTS_ASSOCIATE transition validates only that
+// assignedToUserId is a non-empty string, not the target's
+// operationalRoles. A rules-level enforcement equivalent to
+// canSubmitManualZeroHistoryQuantity() does not exist for this
+// transition and is not added here -- flagged as a known,
+// intentional gap, not fixed in this correction.
 function ReorderRequestAssignment({ request, onAssigned }) {
   const [selectedEmployeeId, setSelectedEmployeeId] = useState("");
   const [assignedToUserId, setAssignedToUserId] = useState("");
@@ -290,6 +307,7 @@ function ReorderRequestAssignment({ request, onAssigned }) {
 
       <form className="fo-form" onSubmit={handleAssign}>
         <EmployeeAssignmentPicker
+          requiredOperationalRole={OPERATIONAL_ROLE.PARTS_ASSOCIATE}
           selectedEmployeeId={selectedEmployeeId}
           onSelect={handleEmployeeSelect}
           disabled={submitting}
