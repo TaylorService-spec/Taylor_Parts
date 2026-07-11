@@ -1,7 +1,7 @@
 # Delegation Charter
 
-**Status:** Draft — not in effect until approved by Rudy
-**Version:** 0.1
+**Status:** Active — adopted 2026-07-11, see `docs/DECISIONS.md` entry #1.
+**Version:** 0.2 — see "Amendment history" at the bottom of Section 7.
 **Location when adopted:** `docs/DelegationCharter.md` in Taylor_Parts
 **Authority:** Subordinate to `PlatformConstitution.md` and all governance documents listed in `docs/README.md`. Where this charter conflicts with them, they win.
 
@@ -25,6 +25,7 @@ The repository is the sole source of truth. No decision exists until it is writt
 - Documentation maintenance: keeping status, roadmap annotations, and architecture docs true to shipped reality.
 - Writing new ADRs for decisions at the level of ADR-002/003/004, provided they don't contradict an existing ADR.
 - Sequencing and deferring work within a release, with reasons logged.
+- **Merging a Tier 1 PR** (Amendment 1, 2026-07-11), once: its own CI/build/lint/typecheck all pass, its content has actually been verified — not assumed — accurate, and it touches **none** of the Tier 2 categories below. A PR that touches even one Tier 2 item (a `firestore.rules` change, a governance-document meaning change, etc.) still requires Rudy's explicit approval before merge, regardless of how small or how Tier-1 the rest of its content is — the presence of one Tier 2 element pulls the whole merge decision into Tier 2, it doesn't get split field-by-field.
 
 ### Tier 2 — Escalate (Claude proposes, Rudy decides)
 
@@ -86,3 +87,6 @@ Version 2 (Platform Experience) is complete when all of the following are live-v
 ## 7. Amendment and revocation
 
 Rudy may amend or revoke this charter at any time with a single message; the change is committed to this file before Claude acts on the new authority. Claude may propose amendments via `needs-decision` issues but never self-amend.
+
+**Amendment history:**
+- **Amendment 1 (2026-07-11):** Added Tier 1 merge authority for Tier-1-only PRs (see Section 2). Prompted by the environment's own permission gate correctly blocking a merge (PR #94) that hadn't been separately authorized — the original charter granted "no approval needed" for Tier 1 *decisions* but never explicitly addressed whether that included the *merge* action itself. Rudy resolved the ambiguity in a single message; this amendment records it. See `docs/DECISIONS.md` entry #5.
