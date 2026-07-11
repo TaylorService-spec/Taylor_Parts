@@ -99,8 +99,8 @@ Multi-PR sprint (four distinct concerns: analytics/schema, transitional authoriz
 |---|---|---|
 | 1 | [#90](https://github.com/TaylorService-spec/Taylor_Parts/pull/90) | Merged (`a66871883a6136de1d9e2c9cf7d4dd9dcf6dce70`, 2026-07-10) |
 | 2 | [#91](https://github.com/TaylorService-spec/Taylor_Parts/pull/91) | Merged (`41392de0e3104c9a378e2ce4e226ce6379ef4380`, 2026-07-11) — **deployed and verified live, 2026-07-11** (see below) |
-| 3 | [#92](https://github.com/TaylorService-spec/Taylor_Parts/pull/92) | Merged (`79a64c175a8dcc7cb5ae1cdbbbec8cc1e1498539`, 2026-07-11) — **not deployed**, pending owner smoke checklist + Owner Deployment Authorization |
-| 4 | Not yet opened | Not started — blocked on PR 3's writer deployed, confirmed live, and confirmed no legacy-shape writes remain |
+| 3 | [#92](https://github.com/TaylorService-spec/Taylor_Parts/pull/92) | Merged (`79a64c175a8dcc7cb5ae1cdbbbec8cc1e1498539`, 2026-07-11) — **confirmed live** (frontend-only, auto-deployed via GitHub Actions at merge; no manual step existed for this surface, confirmed via the deploy workflow's success run at the merge commit and direct live-bundle inspection) |
+| 4 | In progress | Precondition verified — see below. Implementing now. |
 
 Update this table as each PR opens/merges. Per the Owner's standing instruction, this sprint stays separate from Parts and Purchase Order Assignment Adoption and the broader governed Part and Inventory Administration initiative — do not link or merge tracking with either.
 
@@ -115,10 +115,14 @@ Update this table as each PR opens/merges. Per the Owner's standing instruction,
 
 PR 3 is now unblocked to begin, per this verification.
 
-**PR 3's writer changes are merged to `main` but NOT deployed**, per the same merge-does-not-authorize-deployment discipline. Before requesting Owner Deployment Authorization for PR 3, the owner-run smoke-test checklist (posted on [PR #92](https://github.com/TaylorService-spec/Taylor_Parts/pull/92#issuecomment-4940887222): READY one-click, eligible NEEDS_PLANNING entry, ineligible-user messaging, positive-integer validation, legacy quantity display) must be completed. After PR 3 deploys, its verification record belongs here too, and must additionally confirm the new writer is actually live and that no legacy-shape `reorder_requests` document has been created since — the explicit precondition PR 4 (the rules-tightening step) depends on.
+**PR 3 (#92) confirmed live, 2026-07-11.** Unlike PR 2, this required no manual deploy step: PR #92 is frontend-only (no `firestore.rules` change), and per `docs/Deployment.md`, merging to `main` is itself the deploy trigger for that surface via GitHub Actions (`deploy-field-ops.yml`). Verified two ways: (1) the deploy workflow's run at the exact merge commit (`79a64c175a8dcc7cb5ae1cdbbbec8cc1e1498539`) shows `conclusion: success`, timestamped seconds after the merge; (2) the live bundle at `taylorservice-spec.github.io/Taylor_Parts/field-ops/` was fetched directly and inspected — contains `"Needs Planning"` (PR #92's UI), and (at the time of that check) correctly did not yet contain PR #98's "Mark Received" strings, confirming the bundle reflected exactly the expected commit range.
+
+**PR 4 precondition verified, 2026-07-11 (Rudy, manual Firebase Console spot-check):** every existing document in production `reorder_requests` has `createdAt` below `1783731347000` (`2026-07-11T00:55:47Z`, PR #92's live cutoff) — no document was created after the new writer went live, so no legacy-shape write exists to reconcile. This was a read-only Console inspection; no production data was modified, no new tooling or credentials were provisioned to perform it (a request to recreate the removed `admin-check` tool for this check was made and explicitly declined earlier the same session — the credential-free Console path was used instead, per the initiative's own standing constraint above). **PR 4 is unblocked.**
 
 ## Approval
 
 **Approved by ChatGPT, 2026-07-10**, at commit `ea7204975ca127c3856dcb4b417ba1457c9cb3a3` (PR #89). The four-PR decomposition confirmed to correctly implement the approved Specification, preserve one architectural concern per PR, include adequate Rules-emulator coverage, and make deployments — not merely merges — explicit sequencing gates.
 
-**Authorized to proceed: PR 1 only.** PR 2 and PR 4 each require their own independent Rules-focused review before merge (per `docs/ai/workflow.md`'s Codex-optional criteria, already called out per-PR above). PR 3 must not deploy until PR 2's transitional rules are confirmed live in production — merge alone is not sufficient, per this plan's own Sequencing notes. PRs 2-4 are not yet authorized to begin.
+**PRs 1-3: complete.** Merged and confirmed live per the Deployment status section above.
+
+**PR 4: authorized to begin implementation, 2026-07-11**, per Rudy's explicit instruction after the precondition spot-check passed — "proceed with PR 4 ... within the already-approved scope." Still requires its own independent Rules-focused review before merge (per `docs/ai/workflow.md`'s Codex-optional criteria, called out in PR 4's own section above and reiterated by Rudy), emulator validation, Owner Merge Authorization, and a separate Owner Deployment Authorization — implementation authorization is not merge or deploy authorization.
