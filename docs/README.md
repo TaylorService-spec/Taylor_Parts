@@ -42,6 +42,8 @@ Working conventions for contributing to this repo (human or AI).
 - [DevelopmentSetup.md](DevelopmentSetup.md) — prerequisites and local setup steps.
 - [Deployment.md](Deployment.md) — the three independent deployment surfaces (GitHub Pages, Firebase, Cloud Functions).
 - [CLAUDE_CONTEXT.md](CLAUDE_CONTEXT.md) — AI-session orientation: Product Authorities, non-negotiable rules, verified branch/PR/deployment state, key files, gotchas.
+- [DelegationCharter.md](DelegationCharter.md) — governs AI decision authority: Tier 1 (Claude decides and logs), Tier 2 (escalate as a `needs-decision` issue), Tier 3 (never delegated). Read this before touching code in a new session.
+- [DECISIONS.md](DECISIONS.md) — append-only log of Tier 1 decisions made under the charter, per its Section 3. Read alongside `SPRINT_STATUS.md` at the start of every session.
 
 ## Roadmaps
 
