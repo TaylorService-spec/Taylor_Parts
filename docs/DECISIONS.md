@@ -336,3 +336,17 @@ Every linked-persona command carried `--requireExistingAuthUser` (PR #114) — n
 **Effect:** `REORDER_REQUEST_STATUS.CANCELLED`, `cancelReorderRequest()`, and both `firestore.rules` copies' new `CANCELLED` branch are now on `main` (confirmed byte-identical post-merge). **This is a merge only -- nothing has been deployed.** The live `taylor-parts` project's deployed Firestore Rules still reflect PR #132's tightened-but-Cancel-less state until a separate Owner Deployment Authorization is granted and a deploy is actually run.
 **Not done, per the Owner's explicit instruction:** no `firebase deploy` command run. PR 5 (Void Purchase Order) and PR 6 (UI) not begun.
 **Alternatives rejected:** None -- this entry records an already-authorized merge, not a choice among options.
+
+## 28. PR #138's Cancel Reorder Request Rules deployed to production
+
+**Date:** 2026-07-11
+**Decision:** Deployed the `CANCELLED` transition Rules (PR #138, merge commit `e617a8a`) to the live `taylor-parts` project via `firebase deploy --only firestore:rules --project taylor-parts`, under the Owner's explicit Owner Deployment Authorization scoped to exactly that command, at exactly commit `1d3f66f0b1a339d3b8299897045f974e59a8d213`. No other deployment, production-data change, or PR 5/6 work was authorized or performed.
+**Evidence:**
+- Pre-deploy: `git rev-parse HEAD` and `git rev-parse origin/main` both confirmed `1d3f66f0b1a339d3b8299897045f974e59a8d213`, exactly the authorized commit; `git status --porcelain` confirmed a clean working tree; `diff firestore.rules field-ops-app-vite/firestore.rules` confirmed byte-identical, both containing the `CANCELLED` branch, before the deploy ran.
+- First deploy call: `cloud.firestore: rules file firestore.rules compiled successfully` -> `firestore: uploading rules firestore.rules...` -> `firestore: released rules firestore.rules to cloud.firestore` -> `Deploy complete!`.
+- Second, immediate deploy call (same content-fingerprint verification method used for every prior Rules deploy this session -- entries #7, #8, #9, #10, #26): `firestore: latest version of firestore.rules already up to date, skipping upload...` -- confirms the live ruleset's content now matches `main`'s `firestore.rules` exactly, including the `CANCELLED` branch.
+- Post-deploy: `git status --porcelain` re-confirmed clean; `git rev-parse HEAD` re-confirmed unchanged at `1d3f66f...`. Nothing else was deployed alongside this -- `--only firestore:rules` scoped the command exactly as authorized.
+**Effect:** Cancel Reorder Request is now live in production -- an admin/dispatcher can cancel a Reorder Request at `READY_FOR_PARTS_MANAGER`, `ASSIGNED_TO_PARTS_ASSOCIATE`, or `PURCHASING_IN_PROGRESS`, with a required non-blank reason, enforced server-side. No application code calls this Rules branch yet (`cancelReorderRequest()` exists in `domain/inventoryReorderRequests.js` but is not wired to any UI action) -- the branch is live but dormant from an end-user perspective until PR 6 (UI) ships.
+**`docs/implementation-plans/reorder-request-cancellation.md` updated:** PR 4's row and its tracking-table cell both marked deployed, citing this entry.
+**Not done, per the Owner's explicit scope:** no other collection, index, Function, or Hosting deployment; no production-data write of any kind; PR 5 (Void Purchase Order) and PR 6 (UI) not begun.
+**Alternatives rejected:** None -- this entry records an already-authorized, narrowly-scoped deployment, not a choice among options.
