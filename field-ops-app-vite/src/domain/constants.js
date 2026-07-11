@@ -104,6 +104,11 @@ export const REORDER_REQUEST_STATUS = {
   PURCHASING_IN_PROGRESS: "PURCHASING_IN_PROGRESS",
   ORDERED: "ORDERED",
   RECEIVED: "RECEIVED", // Sprint 2.1.11 -- Receiving (Reorder Request closeout). Terminal.
+  // Cancel/Void schema deployment sequence, PR 4 of 6 (docs/specifications/
+  // reorder-request-cancellation.md). Terminal. Reachable from
+  // READY_FOR_PARTS_MANAGER, ASSIGNED_TO_PARTS_ASSOCIATE, or
+  // PURCHASING_IN_PROGRESS -- i.e. any pre-ORDERED active status.
+  CANCELLED: "CANCELLED",
 };
 
 // Sprint 2.1.5 -- Inventory -> Parts Manager Handoff. `currentOwner` is
