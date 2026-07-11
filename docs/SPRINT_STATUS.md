@@ -87,7 +87,7 @@ PR #81 (Employee Foundation governance docs) and PR #93 (`run-field-ops-app-vite
 | `onboard-employee` skill | #116 | Root-level Claude Code skill wrapping `provisionEmployeeAccess.js` for future Employee onboarding — reviewable plan, stop-on-failure execution, read-only verification. |
 | Post-assignment display-name resolution | #107 | `hooks/useEmployeeDirectory.js`'s `resolveActorDisplayName()` — fixes raw-uid displays on "Assigned to"/"Ordered by"/"Received by". Issue #118 tracked two remaining sites this PR didn't cover. |
 | Cancel/Void schema — transitional Rules (PR 1 of 6) | #117 | `hasCanonicalReorderRequestKeys()`/`...CreationBaseline()` now dual-shape (old 29-key OR new 35-key with six Cancel/Void fields, all null) — step A of PR #108's five-step expand/contract sequence. Merged and deployed. |
-| Raw-uid display follow-up (Issue #118 close-out) | #TBD | `lastPurchasingUpdateBy` and `InventoryActionsPanel`'s `createdBy` now resolve through `resolveActorDisplayName()` — no raw Firebase Auth UID renders anywhere in `field-ops-app-vite/src`. First PR to add a matching `docs/user-guide/` page (`reorder-requests.md`) under the new every-user-visible-sprint-updates-the-guide rule. |
+| Raw-uid display follow-up (Issue #118 close-out) | #122 | `lastPurchasingUpdateBy` and `InventoryActionsPanel`'s `createdBy` now resolve through `resolveActorDisplayName()` — no raw Firebase Auth UID renders anywhere in `field-ops-app-vite/src`. First PR to add a matching `docs/user-guide/` page (`reorder-requests.md`) under the new every-user-visible-sprint-updates-the-guide rule. |
 
 ## In progress / not yet started
 
