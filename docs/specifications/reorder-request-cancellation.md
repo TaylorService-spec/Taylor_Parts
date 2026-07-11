@@ -1,7 +1,7 @@
 ---
 artifact_type: specification
 gate: Sprint Specification
-status: Draft
+status: Approved
 date: 2026-07-11
 owner: Claude Code
 related_adrs: []
@@ -9,13 +9,13 @@ depends_on: [docs/assessments/reorder-request-cancellation.md]
 implements: []
 supersedes: []
 superseded_by: []
-related_pr:
+related_pr: 108
 target_release: Release 2.1 -- Inventory to Procurement workflow chain
 ---
 
 # Sprint Specification: Governed Cancel/Void for Reorder Request and Reorder Purchase Order
 
-**Architecture Review:** `docs/assessments/reorder-request-cancellation.md`'s "Architecture Decision" section -- Approved 2026-07-11 (Option 4, the append-only void-record model). **Revised following ChatGPT Specification Review (REQUEST CHANGES, this revision)** -- architectural direction unchanged; this revision corrects the authorization contract, the cross-document audit binding, Purchase-Order-existence proof, reason validation, the schema deployment sequence, legacy-document behavior, test coverage, and rollback language. No code has been written; this remains Draft.
+**Architecture Review:** `docs/assessments/reorder-request-cancellation.md`'s "Architecture Decision" section -- Approved 2026-07-11 (Option 4, the append-only void-record model). **Revised following ChatGPT Specification Review (REQUEST CHANGES) and re-reviewed -- APPROVED to advance to the Implementation Plan gate, 2026-07-11.** All nine corrections from the REQUEST CHANGES round (authorization contract, cross-document audit binding, Purchase-Order-existence proof, reason validation, schema deployment sequence, legacy-document behavior, test coverage, rollback language, rebase) confirmed addressed by ChatGPT's re-review. No code has been written; this Specification is approved, the Implementation Plan (`docs/implementation-plans/reorder-request-cancellation.md`) is authorized to begin, but Owner Merge Authorization and Owner Deployment Authorization remain separately ungranted.
 
 ## Executive summary
 
@@ -375,4 +375,4 @@ None remaining that block implementation -- the Architecture Decision resolved e
 
 ## Approval
 
-Awaiting ChatGPT re-review of this revised Specification before an Implementation Plan is drafted. **No code has been written for this sprint.**
+**APPROVED by ChatGPT Architecture Review, 2026-07-11**, to advance to the Implementation Plan gate -- all nine REQUEST CHANGES corrections confirmed addressed. See `docs/implementation-plans/reorder-request-cancellation.md` for the PR breakdown and sequencing. **Owner Merge Authorization and Owner Deployment Authorization are separate, not-yet-granted gates** -- this approval authorizes drafting the Implementation Plan and, per `docs/ai/workflow.md`, subsequent Claude Code Implementation; it does not authorize merging or deploying any PR in this sprint. **No code has been written for this sprint.**
