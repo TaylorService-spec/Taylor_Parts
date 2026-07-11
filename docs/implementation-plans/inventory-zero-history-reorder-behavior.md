@@ -99,8 +99,8 @@ Multi-PR sprint (four distinct concerns: analytics/schema, transitional authoriz
 |---|---|---|
 | 1 | [#90](https://github.com/TaylorService-spec/Taylor_Parts/pull/90) | Merged (`a66871883a6136de1d9e2c9cf7d4dd9dcf6dce70`, 2026-07-10) |
 | 2 | [#91](https://github.com/TaylorService-spec/Taylor_Parts/pull/91) | Merged (`41392de0e3104c9a378e2ce4e226ce6379ef4380`, 2026-07-11) — **deployed and verified live, 2026-07-11** (see below) |
-| 3 | [#92](https://github.com/TaylorService-spec/Taylor_Parts/pull/92) | Open — ChatGPT Final Review pending. No Codex review requested (not a Firestore Rules/security-sensitive/complex-transaction change, per `docs/ai/workflow.md`'s Codex-optional criteria) |
-| 4 | Not yet opened | Not started |
+| 3 | [#92](https://github.com/TaylorService-spec/Taylor_Parts/pull/92) | Merged (`79a64c175a8dcc7cb5ae1cdbbbec8cc1e1498539`, 2026-07-11) — **not deployed**, pending owner smoke checklist + Owner Deployment Authorization |
+| 4 | Not yet opened | Not started — blocked on PR 3's writer deployed, confirmed live, and confirmed no legacy-shape writes remain |
 
 Update this table as each PR opens/merges. Per the Owner's standing instruction, this sprint stays separate from Parts and Purchase Order Assignment Adoption and the broader governed Part and Inventory Administration initiative — do not link or merge tracking with either.
 
@@ -114,6 +114,8 @@ Update this table as each PR opens/merges. Per the Owner's standing instruction,
 - Working tree confirmed unchanged (`git status --porcelain`, clean) immediately after both deploy calls — nothing else was deployed alongside this.
 
 PR 3 is now unblocked to begin, per this verification.
+
+**PR 3's writer changes are merged to `main` but NOT deployed**, per the same merge-does-not-authorize-deployment discipline. Before requesting Owner Deployment Authorization for PR 3, the owner-run smoke-test checklist (posted on [PR #92](https://github.com/TaylorService-spec/Taylor_Parts/pull/92#issuecomment-4940887222): READY one-click, eligible NEEDS_PLANNING entry, ineligible-user messaging, positive-integer validation, legacy quantity display) must be completed. After PR 3 deploys, its verification record belongs here too, and must additionally confirm the new writer is actually live and that no legacy-shape `reorder_requests` document has been created since — the explicit precondition PR 4 (the rules-tightening step) depends on.
 
 ## Approval
 
