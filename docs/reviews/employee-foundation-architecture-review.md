@@ -27,8 +27,8 @@ specification content. See those artifacts for complete detail.
 - **Sprint Specification: Approved**, after two rounds of requested
   changes (see "Approved architectural decisions" below for what
   changed between rounds).
-- **Implementation Plan: Approved and in progress
-  (`docs/implementation-plans/employee-foundation.md`).**
+- **Implementation Plan: Approved and complete** — all four
+  implementation PRs merged (`docs/implementation-plans/employee-foundation.md`).
 - **PR 1 -- Employee Data and Read Foundation: MERGED.** PR #82,
   merge commit `c33af513d1c708a1fd95f27dd7d1ecca25f99f9f`, merged
   2026-07-10. Architecture verified against the approved specification
@@ -76,7 +76,7 @@ specification content. See those artifacts for complete detail.
   touched (no `onSnapshot()` conversion, no emulator wiring in
   `firebase.js`, no picker, no Rules or workflow change). Phase 3
   implementation is progressing as planned; ready to begin PR 4.
-- PR 4 (EmployeeAssignmentPicker Foundation) remains not started.
+- **PR 4 -- EmployeeAssignmentPicker Foundation: MERGED.** PR #85, merge commit `f4cc67e8eeb53255d209df00a6a413a523424b7b`, merged 2026-07-10 (after this review's original approval text below was written, which said "remains not started" and withheld advance approval for it — corrected here rather than silently left stale; see `docs/DECISIONS.md`). `shared/assignment/EmployeeAssignmentPicker.jsx` + `filterEmployeesBySearch()`, `.fo-employee-picker*` CSS mirroring the existing `.fo-global-search*` pattern, zero production consumers (not wired into any workflow). Two review rounds before merge (deterministic focus/keyboard/ARIA handling; an ArrowDown/ArrowUp landing-behavior fix). **No architectural drift** — nothing outside PR 4's approved scope was touched. **All four Employee Foundation implementation PRs are now merged** — the initiative's implementation is complete; only workflow adoption (Parts/Purchase Order Assignment, separately not-yet-scoped per this plan's own "Explicitly out of scope") remains.
 
 ## Classification
 
@@ -146,8 +146,18 @@ migration, Cloud Function deployment.
 **Implementation Plan approved to begin Implementation, 2026-07-10.**
 **PR 1 (PR #82) Architecture Approved and merged, 2026-07-10.**
 **PR 2 (PR #83) Architecture Approved and merged, 2026-07-10.**
-**PR 3 (PR #84) Architecture Approved and merged, 2026-07-10**, each
-with Owner Merge Authorization recorded separately from Architecture
-Approval, per `docs/ai/workflow.md`'s two-gate merge sequence. This
-approval does not extend to PR 4 in advance -- it requires its own
-Architecture Approval and Owner Merge Authorization at merge time.
+**PR 3 (PR #84) Architecture Approved and merged, 2026-07-10.**
+**PR 4 (PR #85) Architecture Approved and merged, 2026-07-10** (its
+own separate approval, obtained at its own merge time, exactly as
+this section originally required — not an advance extension of the
+approval recorded above). Each PR's Owner Merge Authorization was
+recorded separately from its Architecture Approval, per
+`docs/ai/workflow.md`'s two-gate merge sequence.
+
+**This review, and the Assessment/Specification/Implementation Plan
+it covers, were only committed to `main` after all four
+implementation PRs already merged** (this PR, #81, sat open through
+that entire span) — a documentation-lag gap worth naming plainly
+rather than leaving implicit: the governance record is accurate as of
+this correction, but was not contemporaneous with the code it
+describes.

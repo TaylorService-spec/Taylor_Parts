@@ -1,7 +1,7 @@
 ---
 artifact_type: implementation-plan
 gate: Implementation Plan
-status: Draft
+status: Approved -- complete, all 4 PRs merged (#82, #83, #84, #85)
 date: 2026-07-10
 owner: Claude Code
 related_adrs: []
@@ -9,7 +9,7 @@ depends_on: [docs/specifications/employee-foundation.md]
 implements: [docs/specifications/employee-foundation.md]
 supersedes: []
 superseded_by: []
-related_pr:
+related_pr: 81
 target_release: Phase 3 -- Platform Assignment Foundation
 ---
 

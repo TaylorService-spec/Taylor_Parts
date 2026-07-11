@@ -9,7 +9,7 @@ depends_on: [docs/assessments/employee-foundation.md]
 implements: []
 supersedes: []
 superseded_by: []
-related_pr:
+related_pr: 81
 target_release: Phase 3 -- Platform Assignment Foundation
 ---
 
