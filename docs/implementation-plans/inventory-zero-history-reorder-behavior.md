@@ -98,15 +98,22 @@ Multi-PR sprint (four distinct concerns: analytics/schema, transitional authoriz
 | PR # | GitHub PR | Status |
 |---|---|---|
 | 1 | [#90](https://github.com/TaylorService-spec/Taylor_Parts/pull/90) | Merged (`a66871883a6136de1d9e2c9cf7d4dd9dcf6dce70`, 2026-07-10) |
-| 2 | [#91](https://github.com/TaylorService-spec/Taylor_Parts/pull/91) | Merged (`41392de0e3104c9a378e2ce4e226ce6379ef4380`, 2026-07-11) — **not deployed** |
-| 3 | Not yet opened | Not started — blocked on PR 2's rules deploy + live verification |
+| 2 | [#91](https://github.com/TaylorService-spec/Taylor_Parts/pull/91) | Merged (`41392de0e3104c9a378e2ce4e226ce6379ef4380`, 2026-07-11) — **deployed and verified live, 2026-07-11** (see below) |
+| 3 | Not yet opened | Not started |
 | 4 | Not yet opened | Not started |
 
 Update this table as each PR opens/merges. Per the Owner's standing instruction, this sprint stays separate from Parts and Purchase Order Assignment Adoption and the broader governed Part and Inventory Administration initiative — do not link or merge tracking with either.
 
 ### Deployment status (separate from merge status)
 
-PR 2's transitional rules are merged to `main` but **not deployed** — merge does not authorize deployment, per the Owner's explicit instruction on PR #91's Final Review approval. Deploying requires a separate, explicit **Owner Deployment Authorization** request. Once deployed, the live ruleset must be verified (e.g. `firebase deploy --only firestore:rules --project taylor-parts` followed by a live check, same discipline as every prior rules change in this repo — see `docs/CLAUDE_CONTEXT.md`'s "Known operational gotchas" for why this repo never assumes merged-means-deployed) — **that verification record belongs here, appended below this line, once it happens.** PR 3 must not begin deployment of its own writer until this verification is recorded.
+**PR 2's transitional rules are deployed and verified live as of 2026-07-11**, under an explicit Owner Deployment Authorization scoped to PR #91's rules only.
+
+- Pre-deploy: confirmed local `main` (`git rev-parse main` / `git rev-parse origin/main`) was exactly `41392de0e3104c9a378e2ce4e226ce6379ef4380`, the authorized merge commit, with a clean working tree — no uncommitted changes could have altered what got deployed.
+- Deploy: `firebase deploy --only firestore:rules --project taylor-parts` — output confirmed `cloud.firestore: rules file firestore.rules compiled successfully` and `firestore: released rules firestore.rules to cloud.firestore`.
+- Live verification: immediately re-ran the identical deploy command. Output: `firestore: latest version of firestore.rules already up to date, skipping upload` — this is the Firebase CLI's own content-fingerprint comparison against the currently-active live ruleset, confirming the live ruleset is byte-identical to the local `firestore.rules` file, which was confirmed above to be exactly commit `41392de`'s content. (An independent Admin SDK read-back via `getSecurityRules().getFirestoreRuleset()` — the method used for PR #77's prior verification, referenced in `docs/CLAUDE_CONTEXT.md` — was attempted first but failed on missing Application Default Credentials in this session; did not pursue alternate credential sources, used the CLI's own built-in verification instead.)
+- Working tree confirmed unchanged (`git status --porcelain`, clean) immediately after both deploy calls — nothing else was deployed alongside this.
+
+PR 3 is now unblocked to begin, per this verification.
 
 ## Approval
 
