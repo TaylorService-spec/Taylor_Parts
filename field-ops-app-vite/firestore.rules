@@ -291,59 +291,54 @@ service cloud.firestore {
     match /reorder_requests/{requestId} {
       allow read: if isAdminOrDispatcher();
 
-      // Zero-history reorder behavior sprint (PR 2) -- TRANSITIONAL,
-      // dual-shape create rule (docs/specifications/inventory-zero-
-      // history-reorder-behavior.md's "Deployment / rollout sequence").
-      // The legacy branch (no `recommendationStatus` key present) is
-      // byte-identical in effect to this rule's pre-PR-2 form --
-      // `isAdminOrDispatcher()` and nothing else -- so the currently
-      // deployed writer (createReorderRequest(), unchanged until PR 3)
-      // keeps working exactly as it does today. The new-shape branch
-      // is only exercised once PR 3's writer ships. PR 4 removes the
-      // legacy branch entirely once PR 3 is confirmed live -- do not
-      // leave this transitional form in place indefinitely (see the
-      // Specification's rollout-sequencing risk).
+      // Zero-history reorder behavior sprint, PR 4 (rollout step 3,
+      // rules tightening) -- the transitional legacy branch PR 2
+      // intentionally left in place (no `recommendationStatus` key ->
+      // `isAdminOrDispatcher()` and nothing else) is now REMOVED.
+      // Precondition verified before this PR was opened: PR 3's writer
+      // is confirmed live, and a production spot-check confirmed zero
+      // `reorder_requests` documents created after that deploy lack
+      // the canonical shape -- see docs/implementation-plans/inventory-
+      // zero-history-reorder-behavior.md's Deployment status section
+      // for the full record. Every create must now satisfy the
+      // canonical schema unconditionally; a legacy-shape write that
+      // used to succeed under `isAdminOrDispatcher()` alone is
+      // rejected from this point on.
       //
-      // New-shape authorization is BRANCH-SCOPED, not layered: READY
-      // requires isAdminOrDispatcher() (unchanged); NEEDS_PLANNING
-      // requires canSubmitManualZeroHistoryQuantity() ALONE (it
-      // already includes the admin override internally) -- ANDing it
-      // under isAdminOrDispatcher() would silently block every
-      // eligible Parts Manager/Warehouse Manager whose security role
-      // isn't also admin/dispatcher (ROLES and Employee
-      // operationalRoles[] are independent fields on independent
-      // documents). requestedQty's positivity is also branch-scoped:
-      // >= 0 for READY (0 is a legitimate computed value, mirrors
+      // Authorization is BRANCH-SCOPED, not layered: READY requires
+      // isAdminOrDispatcher() (unchanged); NEEDS_PLANNING requires
+      // canSubmitManualZeroHistoryQuantity() ALONE (it already
+      // includes the admin override internally) -- ANDing it under
+      // isAdminOrDispatcher() would silently block every eligible
+      // Parts Manager/Warehouse Manager whose security role isn't
+      // also admin/dispatcher (ROLES and Employee operationalRoles[]
+      // are independent fields on independent documents).
+      // requestedQty's positivity is also branch-scoped: >= 0 for
+      // READY (0 is a legitimate computed value, mirrors
       // recommendedQty), > 0 for NEEDS_PLANNING (a manual entry must
       // be meaningful). Rules deliberately do not reproduce the
       // analytics formula -- only structural/authorization validity is
       // enforced.
       //
       // hasCanonicalReorderRequestKeys()/...CreationBaseline() (above)
-      // apply to BOTH branches identically -- the complete-schema gap
-      // Codex flagged in PR #91's review applies equally to READY,
-      // it just wasn't a NEW privilege there (admin/dispatcher already
-      // had unconstrained create trust pre-PR-2); enforcing it for
-      // both closes the gap everywhere rather than only where it was
-      // newly exploitable.
-      allow create: if request.resource.data.keys().hasAny(["recommendationStatus"])
-        ? (hasCanonicalReorderRequestKeys(request.resource.data)
-            && hasCanonicalReorderRequestCreationBaseline(request.resource.data)
-            && request.resource.data.partId is string && request.resource.data.partId.size() > 0
-            && request.resource.data.recommendationStatus in ["READY", "NEEDS_PLANNING"]
-            && request.resource.data.quantitySource in ["ANALYTICS", "MANUAL_ZERO_HISTORY"]
-            && (request.resource.data.recommendationStatus == "READY"
-                  ? (isAdminOrDispatcher()
-                     && request.resource.data.urgency in ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
-                     && request.resource.data.quantitySource == "ANALYTICS"
-                     && request.resource.data.recommendedQty is number
-                     && request.resource.data.requestedQty is int && request.resource.data.requestedQty >= 0)
-                  : (canSubmitManualZeroHistoryQuantity()
-                     && request.resource.data.urgency == null
-                     && request.resource.data.quantitySource == "MANUAL_ZERO_HISTORY"
-                     && request.resource.data.recommendedQty == null
-                     && request.resource.data.requestedQty is int && request.resource.data.requestedQty > 0)))
-        : isAdminOrDispatcher();  // legacy shape -- byte-identical to the pre-PR-2 rule, TRANSITIONAL ONLY
+      // apply to BOTH branches identically -- enforced for both since
+      // Codex's PR #91 finding.
+      allow create: if hasCanonicalReorderRequestKeys(request.resource.data)
+        && hasCanonicalReorderRequestCreationBaseline(request.resource.data)
+        && request.resource.data.partId is string && request.resource.data.partId.size() > 0
+        && request.resource.data.recommendationStatus in ["READY", "NEEDS_PLANNING"]
+        && request.resource.data.quantitySource in ["ANALYTICS", "MANUAL_ZERO_HISTORY"]
+        && (request.resource.data.recommendationStatus == "READY"
+              ? (isAdminOrDispatcher()
+                 && request.resource.data.urgency in ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
+                 && request.resource.data.quantitySource == "ANALYTICS"
+                 && request.resource.data.recommendedQty is number
+                 && request.resource.data.requestedQty is int && request.resource.data.requestedQty >= 0)
+              : (canSubmitManualZeroHistoryQuantity()
+                 && request.resource.data.urgency == null
+                 && request.resource.data.quantitySource == "MANUAL_ZERO_HISTORY"
+                 && request.resource.data.recommendedQty == null
+                 && request.resource.data.requestedQty is int && request.resource.data.requestedQty > 0));
 
       allow update: if isAdminOrDispatcher()
         && ((resource.data.status == "PENDING_REVIEW"
