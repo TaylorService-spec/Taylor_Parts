@@ -77,45 +77,20 @@ service cloud.firestore {
     // the exact list below. Applied to BOTH READY and NEEDS_PLANNING
     // (identical requirement either way, so enforced once, not
     // duplicated per branch).
-    // TRANSITIONAL (docs/specifications/reorder-request-cancellation.md,
-    // "Schema deployment sequence" step A -- Implementation Plan PR 1).
-    // Accepts EITHER the current canonical creation shape (29 keys, none
-    // of the six new Cancel/Void fields present at all) OR the new
-    // canonical creation shape (29 + 6 = 35 keys, with all six of
-    // cancelledBy/cancelledAt/cancellationReason/voidedBy/voidedAt/
-    // voidReason present and explicitly null). Partial presence (some
-    // but not all six) matches neither exact-key branch and is
-    // rejected. This lets the current live writer (createReorderRequest(),
-    // still sending the 29-key shape) keep working unmodified while this
-    // PR is live, and lets a later writer PR (step B) start sending the
-    // 35-key shape without a coordinated simultaneous deploy -- see the
-    // Specification for why a single-step change here isn't safe (this
-    // repo's own Zero-history reorder behavior sprint hit the identical
-    // hazard once already). Step D (a later PR) removes the 29-key
-    // branch once step B/C confirm every live writer sends the 35-key
-    // shape -- do not remove it here.
+    // TIGHTENED (docs/specifications/reorder-request-cancellation.md,
+    // "Schema deployment sequence" step D -- Implementation Plan PR 3).
+    // Requires the full 35-key canonical creation shape unconditionally:
+    // the original 29 fields plus all six of cancelledBy/cancelledAt/
+    // cancellationReason/voidedBy/voidedAt/voidReason. The prior
+    // transitional 29-key-only branch (Implementation Plan PR 1,
+    // hasOnly/hasAll on just the original 29 keys) is REMOVED here --
+    // step B/C confirmed the live writer (createReorderRequest()) has
+    // sent the 35-key shape unconditionally since PR #127 (see
+    // docs/DECISIONS.md entries #18/#21), so no live client still sends
+    // the old 29-key shape. A create in the old shape is now rejected
+    // for every caller, same as every other canonical field.
     function hasCanonicalReorderRequestKeys(data) {
-      return (data.keys().hasOnly([
-        "partId", "recommendationStatus", "urgency", "quantitySource", "recommendedQty", "requestedQty",
-        "status", "currentOwner", "requestedBy", "createdAt",
-        "reviewedBy", "reviewedAt", "reviewDecision", "reviewNotes",
-        "assignedToUserId", "assignedBy", "assignedAt",
-        "purchasingStartedAt", "purchasingStartedBy",
-        "purchasingNotes", "vendorContacted", "expectedAvailabilityDate",
-        "lastPurchasingUpdateAt", "lastPurchasingUpdateBy",
-        "purchaseOrderId", "orderedBy", "orderedAt", "receivedBy", "receivedAt"
-      ]) && data.keys().hasAll([
-        "partId", "recommendationStatus", "urgency", "quantitySource", "recommendedQty", "requestedQty",
-        "status", "currentOwner", "requestedBy", "createdAt",
-        "reviewedBy", "reviewedAt", "reviewDecision", "reviewNotes",
-        "assignedToUserId", "assignedBy", "assignedAt",
-        "purchasingStartedAt", "purchasingStartedBy",
-        "purchasingNotes", "vendorContacted", "expectedAvailabilityDate",
-        "lastPurchasingUpdateAt", "lastPurchasingUpdateBy",
-        "purchaseOrderId", "orderedBy", "orderedAt", "receivedBy", "receivedAt"
-      ]))
-      ||
-      (data.keys().hasOnly([
+      return data.keys().hasOnly([
         "partId", "recommendationStatus", "urgency", "quantitySource", "recommendedQty", "requestedQty",
         "status", "currentOwner", "requestedBy", "createdAt",
         "reviewedBy", "reviewedAt", "reviewDecision", "reviewNotes",
@@ -135,21 +110,16 @@ service cloud.firestore {
         "lastPurchasingUpdateAt", "lastPurchasingUpdateBy",
         "purchaseOrderId", "orderedBy", "orderedAt", "receivedBy", "receivedAt",
         "cancelledBy", "cancelledAt", "cancellationReason", "voidedBy", "voidedAt", "voidReason"
-      ]));
+      ]);
     }
 
-    // TRANSITIONAL -- see hasCanonicalReorderRequestKeys() above. The
-    // shared 29-field baseline is unchanged; the six new fields are
-    // validated as a mutually-exclusive pair of branches mirroring the
-    // key-shape check above: either genuinely absent (the "in" operator
-    // checks map-key presence, not value -- required because reading
-    // data.cancelledBy on a document that lacks the key entirely is a
-    // Rules evaluation error, not a null value) or all six present and
-    // explicitly null. hasCanonicalReorderRequestKeys() already makes
-    // "some but not all six" impossible to reach this function with,
-    // since neither of its two exact-key branches matches a partial
-    // set -- this OR is enforced again here anyway, as a direct
-    // assertion of the actual values, not just a key-shape inference.
+    // TIGHTENED -- see hasCanonicalReorderRequestKeys() above. The
+    // shared 29-field baseline is unchanged; the six new fields are now
+    // required present and explicitly null unconditionally, same as
+    // every other canonical field below. hasCanonicalReorderRequestKeys()
+    // already makes "absent" or "partial" impossible to reach this
+    // function with (its single exact-key branch requires all 35 keys),
+    // so no absent-vs-present OR remains here.
     function hasCanonicalReorderRequestCreationBaseline(data) {
       return data.status == "PENDING_REVIEW"
         && data.currentOwner == "INVENTORY"
@@ -174,13 +144,12 @@ service cloud.firestore {
         && data.orderedAt == null
         && data.receivedBy == null
         && data.receivedAt == null
-        && (
-          (!("cancelledBy" in data) && !("cancelledAt" in data) && !("cancellationReason" in data)
-            && !("voidedBy" in data) && !("voidedAt" in data) && !("voidReason" in data))
-          ||
-          (data.cancelledBy == null && data.cancelledAt == null && data.cancellationReason == null
-            && data.voidedBy == null && data.voidedAt == null && data.voidReason == null)
-        );
+        && data.cancelledBy == null
+        && data.cancelledAt == null
+        && data.cancellationReason == null
+        && data.voidedBy == null
+        && data.voidedAt == null
+        && data.voidReason == null;
     }
 
     match /fieldops_jobs/{jobId} {
