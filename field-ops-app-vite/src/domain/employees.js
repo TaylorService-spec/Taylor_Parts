@@ -34,3 +34,20 @@ export function buildAssignableEmployeesQuery({ requiredOperationalRole, require
 
   return query(employeesRef, ...clauses);
 }
+
+// PR #105 follow-up -- resolving an already-persisted actor uid
+// (Reorder Request's assignedToUserId/orderedBy/receivedBy/
+// purchasingStartedBy) back to a display name. Deliberately
+// UNFILTERED -- no employmentStatus/operationalRoles/userId clause --
+// because a historical actor may since have gone INACTIVE, lost their
+// operationalRoles, or (an admin/dispatcher acting in their security
+// role, not an operational one) never have had a linked Employee at
+// all. The read itself is safe: firestore.rules' employees/{employeeId}
+// grants admin/dispatcher an unconditional, unfiltered directory read
+// (the same permission buildAssignableEmployeesQuery's callers already
+// rely on) -- this is a narrower client-side query against the same
+// granted read, not a new permission. Consumed by
+// hooks/useEmployeeDirectory.js.
+export function buildEmployeeDirectoryQuery() {
+  return query(employeesRef);
+}

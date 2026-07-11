@@ -6,6 +6,7 @@ import { hasUsageHistory } from "../../domain/inventoryAnalyticsEngine";
 import { useReorderRequestForPart } from "../../hooks/useReorderRequests";
 import { useInventoryActionsForPart } from "../../hooks/useInventoryActions";
 import { usePurchaseOrderForReorderRequest } from "../../hooks/useReorderPurchaseOrders";
+import { useEmployeeDirectory, resolveActorDisplayName } from "../../hooks/useEmployeeDirectory";
 import {
   reviewReorderRequest,
   assignReorderRequest,
@@ -331,7 +332,7 @@ function ReorderRequestAssignment({ request, onAssigned }) {
 // screen (any admin/dispatcher can read it) sees a passive waiting
 // message instead of the button. Writes go exclusively through
 // domain/inventoryReorderRequests.js's startPurchasing().
-function ReorderRequestStartPurchasing({ request, onStarted }) {
+function ReorderRequestStartPurchasing({ request, onStarted, employeeDirectory }) {
   const { user } = useAuth();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
@@ -356,7 +357,7 @@ function ReorderRequestStartPurchasing({ request, onStarted }) {
         <tbody>
           <tr>
             <td>Assigned to</td>
-            <td>{request.assignedToUserId}</td>
+            <td>{resolveActorDisplayName(request.assignedToUserId, employeeDirectory)}</td>
           </tr>
           <tr>
             <td>Assigned</td>
@@ -405,7 +406,7 @@ function ReorderRequestStartPurchasing({ request, onStarted }) {
 // update doesn't require re-entering everything. Writes go exclusively
 // through domain/inventoryReorderRequests.js's
 // updatePurchasingProgress().
-function ReorderRequestPurchasingUpdate({ request, onUpdated }) {
+function ReorderRequestPurchasingUpdate({ request, onUpdated, employeeDirectory }) {
   const { user } = useAuth();
   const isAssignee = user?.uid === request.assignedToUserId;
   const [purchasingNotes, setPurchasingNotes] = useState(request.purchasingNotes ?? "");
@@ -435,7 +436,7 @@ function ReorderRequestPurchasingUpdate({ request, onUpdated }) {
         <tbody>
           <tr>
             <td>Assigned to</td>
-            <td>{request.assignedToUserId}</td>
+            <td>{resolveActorDisplayName(request.assignedToUserId, employeeDirectory)}</td>
           </tr>
           <tr>
             <td>Purchasing started</td>
@@ -621,7 +622,7 @@ function ReorderRequestRecordPurchaseOrder({ request, onRecorded }) {
 // realtime, via hooks/useReorderPurchaseOrders.js. Read-only: no
 // further action on the Purchase Order exists this sprint
 // (reassignment/receiving/etc. are all explicitly out of scope).
-function ReorderRequestOrdered({ request }) {
+function ReorderRequestOrdered({ request, employeeDirectory }) {
   const { data: purchaseOrder, loading } = usePurchaseOrderForReorderRequest(request.id);
 
   return (
@@ -631,7 +632,7 @@ function ReorderRequestOrdered({ request }) {
         <tbody>
           <tr>
             <td>Ordered by</td>
-            <td>{request.orderedBy}</td>
+            <td>{resolveActorDisplayName(request.orderedBy, employeeDirectory)}</td>
           </tr>
           <tr>
             <td>Ordered</td>
@@ -726,7 +727,7 @@ function ReorderRequestMarkReceived({ request, onReceived }) {
 // Sprint 2.1.11 -- Receiving (Reorder Request closeout). Terminal,
 // read-only card once RECEIVED -- no further action on this Reorder
 // Request exists.
-function ReorderRequestReceived({ request }) {
+function ReorderRequestReceived({ request, employeeDirectory }) {
   return (
     <div className="fo-card">
       <h3>Reorder Request -- Received</h3>
@@ -734,7 +735,7 @@ function ReorderRequestReceived({ request }) {
         <tbody>
           <tr>
             <td>Received by</td>
-            <td>{request.receivedBy}</td>
+            <td>{resolveActorDisplayName(request.receivedBy, employeeDirectory)}</td>
           </tr>
           <tr>
             <td>Received</td>
@@ -747,7 +748,7 @@ function ReorderRequestReceived({ request }) {
   );
 }
 
-function ReorderRequestDecision({ request }) {
+function ReorderRequestDecision({ request, employeeDirectory }) {
   return (
     <div className="fo-card">
       <h3>Reorder Request</h3>
@@ -774,7 +775,7 @@ function ReorderRequestDecision({ request }) {
           {request.assignedToUserId && (
             <tr>
               <td>Assigned to</td>
-              <td>{request.assignedToUserId}</td>
+              <td>{resolveActorDisplayName(request.assignedToUserId, employeeDirectory)}</td>
             </tr>
           )}
           {request.assignedAt && (
@@ -786,7 +787,7 @@ function ReorderRequestDecision({ request }) {
           {request.purchasingStartedBy && (
             <tr>
               <td>Purchasing started by</td>
-              <td>{request.purchasingStartedBy}</td>
+              <td>{resolveActorDisplayName(request.purchasingStartedBy, employeeDirectory)}</td>
             </tr>
           )}
           {request.purchasingStartedAt && (
@@ -960,6 +961,7 @@ export default function PartDetail() {
   const { transactions, healthEntries, loading } = useInventoryLedger();
   const { data: reorderRequest, loading: reorderRequestLoading, refresh: refreshReorderRequest } =
     useReorderRequestForPart(partId);
+  const { byUserId: employeeDirectory } = useEmployeeDirectory();
 
   const health = useMemo(() => healthEntries.find((entry) => entry.partId === partId), [healthEntries, partId]);
 
@@ -1019,21 +1021,21 @@ export default function PartDetail() {
         ) : reorderRequest.status === REORDER_REQUEST_STATUS.READY_FOR_PARTS_MANAGER ? (
           <ReorderRequestAssignment request={reorderRequest} onAssigned={refreshReorderRequest} />
         ) : reorderRequest.status === REORDER_REQUEST_STATUS.ASSIGNED_TO_PARTS_ASSOCIATE ? (
-          <ReorderRequestStartPurchasing request={reorderRequest} onStarted={refreshReorderRequest} />
+          <ReorderRequestStartPurchasing request={reorderRequest} onStarted={refreshReorderRequest} employeeDirectory={employeeDirectory} />
         ) : reorderRequest.status === REORDER_REQUEST_STATUS.PURCHASING_IN_PROGRESS ? (
           <>
-            <ReorderRequestPurchasingUpdate request={reorderRequest} onUpdated={refreshReorderRequest} />
+            <ReorderRequestPurchasingUpdate request={reorderRequest} onUpdated={refreshReorderRequest} employeeDirectory={employeeDirectory} />
             <ReorderRequestRecordPurchaseOrder request={reorderRequest} onRecorded={refreshReorderRequest} />
           </>
         ) : reorderRequest.status === REORDER_REQUEST_STATUS.ORDERED ? (
           <>
-            <ReorderRequestOrdered request={reorderRequest} />
+            <ReorderRequestOrdered request={reorderRequest} employeeDirectory={employeeDirectory} />
             <ReorderRequestMarkReceived request={reorderRequest} onReceived={refreshReorderRequest} />
           </>
         ) : reorderRequest.status === REORDER_REQUEST_STATUS.RECEIVED ? (
-          <ReorderRequestReceived request={reorderRequest} />
+          <ReorderRequestReceived request={reorderRequest} employeeDirectory={employeeDirectory} />
         ) : (
-          <ReorderRequestDecision request={reorderRequest} />
+          <ReorderRequestDecision request={reorderRequest} employeeDirectory={employeeDirectory} />
         )
       )}
 
