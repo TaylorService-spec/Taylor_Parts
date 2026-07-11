@@ -85,6 +85,65 @@ async function createReorderRequest(docId, idToken, fields) {
   return res.status;
 }
 
+// Sprint 2.1.11 -- Receiving. PATCHes an EXISTING document with an
+// explicit updateMask (only the given field paths), so this exercises
+// the `update` rule against a client-SDK-shaped partial write -- the
+// same request.resource.data == "merged existing doc + these fields"
+// semantics domain/inventoryReorderRequests.js's
+// reorderRequestsStore.update() produces, not a full-document replace.
+async function updateReorderRequest(docId, idToken, fields) {
+  const headers = { "Content-Type": "application/json" };
+  if (idToken) headers.Authorization = `Bearer ${idToken}`;
+  const mask = Object.keys(fields)
+    .map((key) => `updateMask.fieldPaths=${encodeURIComponent(key)}`)
+    .join("&");
+  const res = await fetch(`${DOC_BASE}/reorder_requests/${docId}?${mask}`, {
+    method: "PATCH",
+    headers,
+    body: JSON.stringify({ fields }),
+  });
+  return res.status;
+}
+
+// Seeds a full canonical Reorder Request document directly via the
+// Admin SDK (bypasses Rules entirely, same as seed() below) so update-
+// rule tests can start from an arbitrary, valid lifecycle state
+// without depending on the create rule or every prior transition
+// actually succeeding first.
+async function seedReorderRequest(docId, { partId, status, assignedToUserId, purchaseOrderId }) {
+  await db.doc(`reorder_requests/${docId}`).set({
+    partId,
+    recommendationStatus: "READY",
+    urgency: "HIGH",
+    quantitySource: "ANALYTICS",
+    recommendedQty: 5,
+    requestedQty: 5,
+    status,
+    currentOwner: "PARTS_ASSOCIATE",
+    requestedBy: "user-admin-rr",
+    createdAt: Date.now(),
+    reviewedBy: "user-admin-rr",
+    reviewedAt: Date.now(),
+    reviewDecision: "APPROVED",
+    reviewNotes: null,
+    assignedToUserId,
+    assignedBy: "user-admin-rr",
+    assignedAt: Date.now(),
+    purchasingStartedAt: Date.now(),
+    purchasingStartedBy: assignedToUserId,
+    purchasingNotes: null,
+    vendorContacted: true,
+    expectedAvailabilityDate: null,
+    lastPurchasingUpdateAt: Date.now(),
+    lastPurchasingUpdateBy: assignedToUserId,
+    purchaseOrderId: purchaseOrderId ?? null,
+    orderedBy: purchaseOrderId ? assignedToUserId : null,
+    orderedAt: purchaseOrderId ? Date.now() : null,
+    receivedBy: null,
+    receivedAt: null,
+  });
+}
+
 const str = (v) => ({ stringValue: v });
 const int = (v) => ({ integerValue: String(v) });
 const dbl = (v) => ({ doubleValue: v });
@@ -106,13 +165,15 @@ function legacyShapeFields(partId = "PART-LEGACY") {
   };
 }
 
-// The complete, exact 27-key shape firestore.rules'
+// The complete, exact 29-key shape firestore.rules'
 // hasCanonicalReorderRequestKeys()/...CreationBaseline() now require
 // for the new (recommendationStatus-bearing) branch -- mirrors
 // domain/inventoryReorderRequests.js's createReorderRequest() plus
-// the 3 new recommendation fields PR 3 will add. `overrides` lets
-// individual tests deviate from a valid baseline (forge a field,
-// change a type, etc.) without duplicating the whole shape each time.
+// the 3 new recommendation fields PR 3 added and Sprint 2.1.11's
+// receivedBy/receivedAt (also null at creation, same as every other
+// future-stage field). `overrides` lets individual tests deviate from
+// a valid baseline (forge a field, change a type, etc.) without
+// duplicating the whole shape each time.
 function canonicalFields({
   partId,
   recommendationStatus,
@@ -153,6 +214,8 @@ function canonicalFields({
     purchaseOrderId: nul(),
     orderedBy: nul(),
     orderedAt: nul(),
+    receivedBy: nul(),
+    receivedAt: nul(),
   };
   return { ...base, ...overrides };
 }
@@ -407,6 +470,68 @@ async function main() {
       adminToken,
       readyFields({ partId: "PART-R8", requestedByUid: "user-admin-rr", status: "ORDERED" })
     )) === 403
+  );
+
+  // --- Sprint 2.1.11 -- Receiving (Reorder Request closeout) ---
+  // Terminal ORDERED -> RECEIVED transition, assignee-only.
+
+  await seedReorderRequest("rr-received-happy-path", {
+    partId: "PART-RECV1",
+    status: "ORDERED",
+    assignedToUserId: "user-admin-rr",
+    purchaseOrderId: "rr-received-happy-path",
+  });
+  report(
+    "ORDERED -> RECEIVED accepted for the assignee",
+    (await updateReorderRequest("rr-received-happy-path", adminToken, {
+      status: str("RECEIVED"),
+      receivedBy: str("user-admin-rr"),
+      receivedAt: int(Date.now()),
+    })) === 200
+  );
+
+  await seedReorderRequest("rr-received-non-assignee", {
+    partId: "PART-RECV2",
+    status: "ORDERED",
+    assignedToUserId: "user-admin-rr",
+    purchaseOrderId: "rr-received-non-assignee",
+  });
+  report(
+    "ORDERED -> RECEIVED rejected for a non-assignee admin/dispatcher user",
+    (await updateReorderRequest("rr-received-non-assignee", dispatcherToken, {
+      status: str("RECEIVED"),
+      receivedBy: str("user-dispatcher-rr"),
+      receivedAt: int(Date.now()),
+    })) === 403
+  );
+
+  await seedReorderRequest("rr-received-wrong-source-status", {
+    partId: "PART-RECV3",
+    status: "PURCHASING_IN_PROGRESS",
+    assignedToUserId: "user-admin-rr",
+  });
+  report(
+    "PURCHASING_IN_PROGRESS -> RECEIVED rejected (must come from ORDERED, no skipping)",
+    (await updateReorderRequest("rr-received-wrong-source-status", adminToken, {
+      status: str("RECEIVED"),
+      receivedBy: str("user-admin-rr"),
+      receivedAt: int(Date.now()),
+    })) === 403
+  );
+
+  await seedReorderRequest("rr-received-forged-receivedby", {
+    partId: "PART-RECV4",
+    status: "ORDERED",
+    assignedToUserId: "user-admin-rr",
+    purchaseOrderId: "rr-received-forged-receivedby",
+  });
+  report(
+    "ORDERED -> RECEIVED rejected when receivedBy doesn't match the caller's own uid",
+    (await updateReorderRequest("rr-received-forged-receivedby", adminToken, {
+      status: str("RECEIVED"),
+      receivedBy: str("user-dispatcher-rr"),
+      receivedAt: int(Date.now()),
+    })) === 403
   );
 
   console.log(`\n${passed} passed, ${failed} failed`);
