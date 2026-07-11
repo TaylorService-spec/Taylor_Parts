@@ -1,7 +1,7 @@
 ---
 artifact_type: specification
 gate: Sprint Specification
-status: Draft
+status: Approved
 date: 2026-07-11
 owner: Claude Code
 related_adrs: []
@@ -16,6 +16,8 @@ target_release: Post-Release 2.1 (Inventory -> Procurement chain)
 # Sprint Specification: Notification/Queue Links Resolve by `reorderRequestId`, Not `partId`
 
 **Architecture Review:** `docs/assessments/notification-identity.md`'s "Architecture Review" section -- Approved 2026-07-11 (Option A: optional `requestId` query parameter, validated against the route's `partId`, fail-safe on mismatch; existing no-id fallback preserved unchanged).
+
+**Specification Final Review: APPROVED, 2026-07-11**, no questions raised.
 
 ## Executive summary
 
@@ -171,4 +173,4 @@ None remaining -- Architecture Review resolved every open question the Assessmen
 
 ## Approval
 
-Pending ChatGPT Sprint Specification review.
+**Approved, 2026-07-11.** No questions raised. Proceeding to the Implementation Plan gate (`docs/implementation-plans/notification-identity.md`).
