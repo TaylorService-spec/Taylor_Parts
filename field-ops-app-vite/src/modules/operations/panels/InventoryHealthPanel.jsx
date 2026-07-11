@@ -1,5 +1,6 @@
 import { getCatalogItem } from "../../../data/partsCatalog";
 import { URGENCY_ORDER, hasUsageHistory } from "../../../domain/inventoryAnalyticsEngine";
+import RequestReorderControl from "../../../shared/inventory/RequestReorderControl";
 
 // Epic 3 Analytics -- pure renderer, all computation already done by
 // Operations.jsx (domain/inventoryAnalyticsEngine.ts). Only shows parts
@@ -26,6 +27,14 @@ import { URGENCY_ORDER, hasUsageHistory } from "../../../domain/inventoryAnalyti
 // by default) disables the button and shows "Requesting..." for the
 // one row currently in flight, so a slow or failed request can't be
 // double-clicked into a duplicate create.
+//
+// Zero-history reorder behavior sprint, PR 3 -- the action cell now
+// renders shared/inventory/RequestReorderControl.jsx instead of a
+// plain button, so a NEEDS_PLANNING recommendation gets the
+// eligibility-gated manual-quantity entry (a READY recommendation's
+// one-click submit is unchanged). `onRequestReorder(partId,
+// recommendation, manualQty)` gains a third argument, undefined on the
+// READY path.
 export default function InventoryHealthPanel({
   healthEntries,
   title = "Inventory Health",
@@ -85,17 +94,12 @@ export default function InventoryHealthPanel({
                 <td>{hasHistory ? Math.ceil(recommendation.recommendedOrderQty) : <span className="fo-muted">Insufficient usage history</span>}</td>
                 {onRequestReorder && (
                   <td>
-                    {requestedPartIds?.has(partId) ? (
-                      <span className="fo-muted">Requested</span>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => onRequestReorder(partId, recommendation)}
-                        disabled={submittingPartId === partId}
-                      >
-                        {submittingPartId === partId ? "Requesting..." : "Request Reorder"}
-                      </button>
-                    )}
+                    <RequestReorderControl
+                      recommendation={recommendation}
+                      onSubmit={(manualQty) => onRequestReorder(partId, recommendation, manualQty)}
+                      submitting={submittingPartId === partId}
+                      alreadyRequested={requestedPartIds?.has(partId)}
+                    />
                   </td>
                 )}
               </tr>
