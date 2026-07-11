@@ -10,12 +10,18 @@
 // Extended again by the Cancel/Void schema deployment sequence's step A
 // (docs/specifications/reorder-request-cancellation.md,
 // docs/implementation-plans/reorder-request-cancellation.md PR 1):
-// hasCanonicalReorderRequestKeys()/...CreationBaseline() are TRANSITIONAL/
-// dual-shape once more, this time accepting the current 29-key shape
-// (every test above this point, unmodified) OR a new 35-key shape (the
-// same 29 plus six new Cancel/Void fields, present and explicitly
-// null). See the new section right before "Sprint 2.1.11 -- Receiving"
-// below.
+// hasCanonicalReorderRequestKeys()/...CreationBaseline() were TRANSITIONAL/
+// dual-shape, accepting the current 29-key shape OR a new 35-key shape
+// (the same 29 plus six new Cancel/Void fields, present and explicitly
+// null).
+//
+// Tightened by step D (Implementation Plan PR 3): the transitional
+// 29-key-only branch is REMOVED -- canonicalFields() (below) now
+// includes the six Cancel/Void fields (all null) as part of its
+// unconditional base shape, so every "accepted" test throughout this
+// file exercises the tightened 35-key contract by default. See the
+// section right before "Sprint 2.1.11 -- Receiving" below for the
+// dedicated old-shape-now-rejected/partial-presence/non-null coverage.
 //
 // Extended by PR 4 (rollout step 3): the rule is no longer
 // TRANSITIONAL/dual-shape -- PR 2's legacy branch (no
@@ -239,6 +245,17 @@ function canonicalFields({
     orderedAt: nul(),
     receivedBy: nul(),
     receivedAt: nul(),
+    // Cancel/Void schema deployment sequence, step D (Implementation
+    // Plan PR 3) -- these six fields are now part of the unconditional
+    // canonical shape, not an optional extra. Every test using
+    // canonicalFields()/readyFields()/planningFields() throughout this
+    // file now exercises the tightened (35-key) contract by default.
+    cancelledBy: nul(),
+    cancelledAt: nul(),
+    cancellationReason: nul(),
+    voidedBy: nul(),
+    voidedAt: nul(),
+    voidReason: nul(),
   };
   return { ...base, ...overrides };
 }
@@ -495,59 +512,81 @@ async function main() {
     )) === 403
   );
 
-  // --- Cancel/Void schema deployment sequence, step A (docs/specifications/
-  // reorder-request-cancellation.md, Implementation Plan PR 1) ---
+  // --- Cancel/Void schema deployment sequence, step D (docs/specifications/
+  // reorder-request-cancellation.md, Implementation Plan PR 3) ---
   // hasCanonicalReorderRequestKeys()/...CreationBaseline() are now
-  // TRANSITIONAL/dual-shape again, same technique as the zero-history
-  // reorder behavior sprint's own PR 2. The 29-key shape above (every
-  // test already run in this file) must keep working unmodified -- it
-  // does, per every PASS above. This section proves the NEW branch
-  // (35 keys, six Cancel/Void fields present and null) is also
-  // accepted, and that partial presence or a non-null value among the
-  // six is rejected under both branches.
-  const cancelVoidNullFields = {
-    cancelledBy: nul(), cancelledAt: nul(), cancellationReason: nul(),
-    voidedBy: nul(), voidedAt: nul(), voidReason: nul(),
-  };
+  // TIGHTENED -- the transitional 29-key-only branch (Implementation
+  // Plan PR 1) is removed. canonicalFields() (above) includes all six
+  // Cancel/Void fields (null) unconditionally, so every "accepted" test
+  // in this file already exercises the tightened 35-key contract. This
+  // section proves: (1) the new/only shape is still accepted, (2) the
+  // OLD 29-key shape (six fields entirely absent) is now rejected --
+  // the behavior this PR changes, (3) partial presence is rejected,
+  // (4) a non-null value among the six is rejected.
+  const ALL_SIX_CANCEL_VOID_KEYS = ["cancelledBy", "cancelledAt", "cancellationReason", "voidedBy", "voidedAt", "voidReason"];
 
   report(
-    "READY with all six new Cancel/Void fields present and null accepted (new transitional shape)",
+    "READY with all six Cancel/Void fields present and null accepted (tightened shape)",
     (await createReorderRequest(
       "rr-ready-cancelvoid-shape",
       adminToken,
-      readyFields({ partId: "PART-CV1", requestedByUid: "user-admin-rr", overrides: cancelVoidNullFields })
+      readyFields({ partId: "PART-CV1", requestedByUid: "user-admin-rr" })
     )) === 200
   );
   report(
-    "NEEDS_PLANNING with all six new Cancel/Void fields present and null accepted (new transitional shape)",
+    "NEEDS_PLANNING with all six Cancel/Void fields present and null accepted (tightened shape)",
     (await createReorderRequest(
       "rr-planning-cancelvoid-shape",
       technicianPartsManagerToken,
-      planningFields({ partId: "PART-CV2", requestedByUid: "user-technician-partsmanager-rr", overrides: cancelVoidNullFields })
+      planningFields({ partId: "PART-CV2", requestedByUid: "user-technician-partsmanager-rr" })
     )) === 200
   );
   report(
-    "READY with only ONE of the six new Cancel/Void fields present rejected (partial presence, matches neither exact-key branch)",
+    "READY in the OLD 29-key shape (all six Cancel/Void fields entirely absent) now rejected (PR 3 removed the transitional branch)",
+    (await createReorderRequest(
+      "rr-ready-cancelvoid-oldshape",
+      adminToken,
+      omit(readyFields({ partId: "PART-CV6", requestedByUid: "user-admin-rr" }), ...ALL_SIX_CANCEL_VOID_KEYS)
+    )) === 403
+  );
+  report(
+    "NEEDS_PLANNING in the OLD 29-key shape (all six Cancel/Void fields entirely absent) now rejected (PR 3 removed the transitional branch)",
+    (await createReorderRequest(
+      "rr-planning-cancelvoid-oldshape",
+      technicianPartsManagerToken,
+      omit(planningFields({ partId: "PART-CV7", requestedByUid: "user-technician-partsmanager-rr" }), ...ALL_SIX_CANCEL_VOID_KEYS)
+    )) === 403
+  );
+  report(
+    "READY with only ONE of the six Cancel/Void fields present rejected (partial presence, matches neither exact-key branch)",
     (await createReorderRequest(
       "rr-ready-cancelvoid-partial",
       adminToken,
-      readyFields({ partId: "PART-CV3", requestedByUid: "user-admin-rr", overrides: { cancelledBy: nul() } })
+      omit(readyFields({ partId: "PART-CV3", requestedByUid: "user-admin-rr" }), ...ALL_SIX_CANCEL_VOID_KEYS.filter((k) => k !== "cancelledBy"))
     )) === 403
   );
   report(
-    "READY with only THREE of the six new Cancel/Void fields present rejected (partial presence)",
+    "READY with only THREE of the six Cancel/Void fields present rejected (partial presence)",
     (await createReorderRequest(
       "rr-ready-cancelvoid-partial2",
       adminToken,
-      readyFields({ partId: "PART-CV4", requestedByUid: "user-admin-rr", overrides: { cancelledBy: nul(), cancelledAt: nul(), cancellationReason: nul() } })
+      omit(readyFields({ partId: "PART-CV4", requestedByUid: "user-admin-rr" }), "voidedBy", "voidedAt", "voidReason")
     )) === 403
   );
   report(
-    "READY with all six new Cancel/Void fields present but one non-null rejected (must be all-null, not merely present)",
+    "READY with all six Cancel/Void fields present but one non-null rejected (must be all-null, not merely present)",
     (await createReorderRequest(
       "rr-ready-cancelvoid-nonnull",
       adminToken,
-      readyFields({ partId: "PART-CV5", requestedByUid: "user-admin-rr", overrides: { ...cancelVoidNullFields, cancelledAt: int(Date.now()) } })
+      readyFields({ partId: "PART-CV5", requestedByUid: "user-admin-rr", overrides: { cancelledAt: int(Date.now()) } })
+    )) === 403
+  );
+  report(
+    "READY with an unknown extra key alongside the full 35-key shape rejected",
+    (await createReorderRequest(
+      "rr-ready-cancelvoid-extrakey",
+      adminToken,
+      readyFields({ partId: "PART-CV8", requestedByUid: "user-admin-rr", overrides: { unexpectedExtraField: str("x") } })
     )) === 403
   );
 
