@@ -73,7 +73,7 @@ Root cause: the sole writer of `CONSUMED` ledger transactions (`transitionWorkOr
 
 **Merged since the table above was last complete:** #89 (this sprint's governance docs chain), #98 (Sprint 2.1.11, Receiving — Reorder Request closeout; frontend live, `firestore.rules` change deployed under separate Owner Deployment Authorization, see `docs/DECISIONS.md` entry #7).
 
-**Open now** (verify with `gh pr list --state open` before trusting this): PR 4 above, once opened.
+**Open now** (verify with `gh pr list --state open` before trusting this): PR 4 above ([#103](https://github.com/TaylorService-spec/Taylor_Parts/pull/103)).
 
 PR #81 (Employee Foundation governance docs) and PR #93 (`run-field-ops-app-vite` skill) have both since merged — see `docs/DECISIONS.md` for the full history.
 

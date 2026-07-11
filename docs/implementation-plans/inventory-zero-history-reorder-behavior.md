@@ -100,7 +100,7 @@ Multi-PR sprint (four distinct concerns: analytics/schema, transitional authoriz
 | 1 | [#90](https://github.com/TaylorService-spec/Taylor_Parts/pull/90) | Merged (`a66871883a6136de1d9e2c9cf7d4dd9dcf6dce70`, 2026-07-10) |
 | 2 | [#91](https://github.com/TaylorService-spec/Taylor_Parts/pull/91) | Merged (`41392de0e3104c9a378e2ce4e226ce6379ef4380`, 2026-07-11) — **deployed and verified live, 2026-07-11** (see below) |
 | 3 | [#92](https://github.com/TaylorService-spec/Taylor_Parts/pull/92) | Merged (`79a64c175a8dcc7cb5ae1cdbbbec8cc1e1498539`, 2026-07-11) — **confirmed live** (frontend-only, auto-deployed via GitHub Actions at merge; no manual step existed for this surface, confirmed via the deploy workflow's success run at the merge commit and direct live-bundle inspection) |
-| 4 | In progress | Precondition verified — see below. Implementing now. |
+| 4 | [#103](https://github.com/TaylorService-spec/Taylor_Parts/pull/103) | Implemented, open for Rules-focused review. Precondition verified — see below. 32/32 Rules-emulator assertions passing. Not merged, not deployed. |
 
 Update this table as each PR opens/merges. Per the Owner's standing instruction, this sprint stays separate from Parts and Purchase Order Assignment Adoption and the broader governed Part and Inventory Administration initiative — do not link or merge tracking with either.
 
