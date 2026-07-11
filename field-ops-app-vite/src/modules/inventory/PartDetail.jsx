@@ -14,9 +14,11 @@ import {
 } from "../../domain/inventoryReorderRequests";
 import { recordInventoryAction } from "../../domain/inventoryActions";
 import { recordPurchaseOrder } from "../../domain/reorderPurchaseOrders";
+import { requestReorderForRecommendation } from "../../domain/inventoryReorderRequests";
 import { REORDER_REQUEST_STATUS, INVENTORY_ACTION_TYPE } from "../../domain/constants";
 import { useAuth } from "../../auth/AuthContext";
 import LoadingEmptyState from "../../shared/ui/LoadingEmptyState";
+import RequestReorderControl from "../../shared/inventory/RequestReorderControl";
 
 // Sprint 2.1.1 -- Inventory Domain Foundation. Part detail screen,
 // reached from PartsList.jsx or Global Search. Read-only: catalog
@@ -113,6 +115,11 @@ function formatTimestamp(ms) {
   return new Date(ms).toLocaleString();
 }
 
+// Zero-history reorder behavior sprint, PR 3 -- request.recommendedQty
+// is now strictly the analytics engine's historical snapshot (null for
+// a NEEDS_PLANNING request); request.requestedQty is the actual
+// actionable quantity, always present. request.urgency is null for
+// NEEDS_PLANNING -- shown as a distinct badge, not a crash.
 function ReorderRequestReview({ request, onReviewed }) {
   const [showRejectForm, setShowRejectForm] = useState(false);
   const [rejectNotes, setRejectNotes] = useState("");
@@ -154,13 +161,29 @@ function ReorderRequestReview({ request, onReviewed }) {
             <td>{formatTimestamp(request.createdAt)}</td>
           </tr>
           <tr>
-            <td>Recommended qty</td>
-            <td>{request.recommendedQty}</td>
+            <td>Requested qty</td>
+            <td>{request.requestedQty}</td>
+          </tr>
+          <tr>
+            <td>Recommendation status</td>
+            <td>{request.recommendationStatus ?? "—"}</td>
+          </tr>
+          <tr>
+            <td>Quantity source</td>
+            <td>{request.quantitySource ?? "—"}</td>
+          </tr>
+          <tr>
+            <td>Recommended qty (historical snapshot)</td>
+            <td>{request.recommendedQty ?? "—"}</td>
           </tr>
           <tr>
             <td>Risk at request time</td>
             <td>
-              <span className={`fo-badge fo-badge-${request.urgency.toLowerCase()}`}>{request.urgency}</span>
+              {request.urgency ? (
+                <span className={`fo-badge fo-badge-${request.urgency.toLowerCase()}`}>{request.urgency}</span>
+              ) : (
+                <span className="fo-badge">Needs planning</span>
+              )}
             </td>
           </tr>
         </tbody>
@@ -235,13 +258,17 @@ function ReorderRequestAssignment({ request, onAssigned }) {
             <td>{formatTimestamp(request.reviewedAt)}</td>
           </tr>
           <tr>
-            <td>Recommended qty</td>
-            <td>{request.recommendedQty}</td>
+            <td>Requested qty</td>
+            <td>{request.requestedQty}</td>
           </tr>
           <tr>
             <td>Urgency</td>
             <td>
-              <span className={`fo-badge fo-badge-${request.urgency.toLowerCase()}`}>{request.urgency}</span>
+              {request.urgency ? (
+                <span className={`fo-badge fo-badge-${request.urgency.toLowerCase()}`}>{request.urgency}</span>
+              ) : (
+                <span className="fo-badge">Needs planning</span>
+              )}
             </td>
           </tr>
         </tbody>
@@ -307,13 +334,17 @@ function ReorderRequestStartPurchasing({ request, onStarted }) {
             <td>{formatTimestamp(request.assignedAt)}</td>
           </tr>
           <tr>
-            <td>Recommended qty</td>
-            <td>{request.recommendedQty}</td>
+            <td>Requested qty</td>
+            <td>{request.requestedQty}</td>
           </tr>
           <tr>
             <td>Urgency</td>
             <td>
-              <span className={`fo-badge fo-badge-${request.urgency.toLowerCase()}`}>{request.urgency}</span>
+              {request.urgency ? (
+                <span className={`fo-badge fo-badge-${request.urgency.toLowerCase()}`}>{request.urgency}</span>
+              ) : (
+                <span className="fo-badge">Needs planning</span>
+              )}
             </td>
           </tr>
         </tbody>
@@ -841,6 +872,30 @@ export default function PartDetail() {
     [transactions, partId]
   );
 
+  // Zero-history reorder behavior sprint, PR 3 -- the per-part
+  // "Request Reorder" action on the Stock Position card, mirroring
+  // InventoryHealthPanel.jsx's queue action via the same shared
+  // RequestReorderControl/requestReorderForRecommendation. Only shown
+  // when there's no reorderRequest already in flight for this part --
+  // once one exists, the status cards above (ReorderRequestReview,
+  // etc.) already cover the active workflow. useReorderRequestForPart()
+  // is realtime, so no manual refresh is needed after a successful
+  // create -- reorderRequest updates on its own.
+  const [reorderSubmitting, setReorderSubmitting] = useState(false);
+  const [reorderError, setReorderError] = useState(null);
+
+  async function handleRequestReorder(manualQty) {
+    setReorderSubmitting(true);
+    setReorderError(null);
+    try {
+      await requestReorderForRecommendation({ partId, recommendation: health.recommendation, manualQty });
+    } catch (err) {
+      setReorderError(err.message);
+    } finally {
+      setReorderSubmitting(false);
+    }
+  }
+
   if (!part) {
     return (
       <div className="fo-panel">
@@ -947,13 +1002,29 @@ export default function PartDetail() {
               <tr>
                 <td>Risk</td>
                 <td>
-                  <span className={`fo-badge fo-badge-${health.recommendation.urgency.toLowerCase()}`}>
-                    {health.recommendation.urgency}
-                  </span>
+                  {hasUsageHistory(health.usage) ? (
+                    <span className={`fo-badge fo-badge-${health.recommendation.urgency.toLowerCase()}`}>
+                      {health.recommendation.urgency}
+                    </span>
+                  ) : (
+                    <span className="fo-badge">Needs planning</span>
+                  )}
                 </td>
               </tr>
             </tbody>
           </table>
+
+          {!reorderRequestLoading && !reorderRequest && (
+            <>
+              {reorderError && <p className="fo-muted">{reorderError}</p>}
+              <RequestReorderControl
+                recommendation={health.recommendation}
+                onSubmit={handleRequestReorder}
+                submitting={reorderSubmitting}
+                alreadyRequested={false}
+              />
+            </>
+          )}
         </div>
       ) : (
         <p className="fo-muted">No ledger activity yet for this part -- stock position not yet forecastable.</p>
