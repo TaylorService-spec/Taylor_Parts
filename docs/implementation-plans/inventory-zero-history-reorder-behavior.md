@@ -98,7 +98,7 @@ Multi-PR sprint (four distinct concerns: analytics/schema, transitional authoriz
 | PR # | GitHub PR | Status |
 |---|---|---|
 | 1 | [#90](https://github.com/TaylorService-spec/Taylor_Parts/pull/90) | Merged (`a66871883a6136de1d9e2c9cf7d4dd9dcf6dce70`, 2026-07-10) |
-| 2 | Not yet opened | Not started |
+| 2 | [#91](https://github.com/TaylorService-spec/Taylor_Parts/pull/91) | Open — Codex review requested, awaiting response |
 | 3 | Not yet opened | Not started |
 | 4 | Not yet opened | Not started |
 
