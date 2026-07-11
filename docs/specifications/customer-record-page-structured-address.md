@@ -1,7 +1,7 @@
 ---
 artifact_type: specification
 gate: Sprint Specification
-status: Draft
+status: Approved
 date: 2026-07-11
 owner: Claude Code
 related_adrs: []
@@ -15,7 +15,7 @@ target_release: Post-Release 2.1 (Inventory → Procurement chain)
 
 # Sprint Specification: Customer Record Page and Structured Address Experience
 
-**Architecture Review:** `docs/assessments/customer-record-page-structured-address.md`'s "Architecture Decision" section — Approved 2026-07-11 (Option A: retain the existing address shape, redesign the Customer UI only).
+**Architecture Review:** `docs/assessments/customer-record-page-structured-address.md`'s "Architecture Decision" section — Approved 2026-07-11 (Option A: retain the existing address shape, redesign the Customer UI only). **Specification Final Review: APPROVED, 2026-07-11**, after two correction rounds (Location add-only scope; Tabs mount/`aria-controls` contradiction) — see "Approval" below.
 
 ## Executive summary
 
@@ -412,4 +412,4 @@ None remaining that block implementation — the Architecture Decision resolved 
 
 ## Approval
 
-Awaiting ChatGPT Final Review of this Specification before an Implementation Plan is drafted. **No code has been written for this sprint.**
+**APPROVED by ChatGPT Final Review, 2026-07-11**, at reviewed head `a6c99e9033b08320b7f005bf72c8e2ed64dc97b1` -- both correction rounds (Location add-only scope; the Tabs mount/`aria-controls` contradiction, resolved via mount-all-panels-`hidden`) confirmed resolved. See `docs/implementation-plans/customer-record-page-structured-address.md` for the two-PR breakdown and sequencing. **Owner Merge Authorization remains a separate, not-yet-granted gate** -- this approval authorizes drafting the Implementation Plan and, per `docs/ai/workflow.md`, subsequent Claude Code Implementation; it does not authorize merging or deploying any PR in this sprint. **No code has been written for this sprint.**
