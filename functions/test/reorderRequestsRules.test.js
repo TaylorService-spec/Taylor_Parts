@@ -1,11 +1,18 @@
 // Zero-history reorder behavior sprint, PR 2 (docs/specifications/
 // inventory-zero-history-reorder-behavior.md, docs/implementation-plans/
 // inventory-zero-history-reorder-behavior.md). Firestore Rules emulator
-// test for reorder_requests' TRANSITIONAL, dual-shape `create` rule --
-// second Firestore Rules test in this repo, same zero-new-dependency
-// posture as functions/test/employeesRules.test.js (firebase-admin +
-// Node's built-in fetch against the emulator REST APIs, no
+// test for reorder_requests' `create` rule -- second Firestore Rules
+// test in this repo, same zero-new-dependency posture as
+// functions/test/employeesRules.test.js (firebase-admin + Node's
+// built-in fetch against the emulator REST APIs, no
 // @firebase/rules-unit-testing, no test runner).
+//
+// Extended by PR 4 (rollout step 3): the rule is no longer
+// TRANSITIONAL/dual-shape -- PR 2's legacy branch (no
+// recommendationStatus key -> isAdminOrDispatcher() only) has been
+// removed, so this file's legacy-shape assertions now expect 403,
+// inverted from PR 2's original "still accepted" expectation. See the
+// PR 4 section below.
 //
 // Revised after Codex's REQUEST CHANGES on PR #91: the new-shape
 // branch originally validated only the recommendation fields, leaving
@@ -150,13 +157,15 @@ const dbl = (v) => ({ doubleValue: v });
 const nul = () => ({ nullValue: null });
 
 function legacyShapeFields(partId = "PART-LEGACY") {
-  // Exactly the shape the currently-deployed writer
-  // (createReorderRequest() in domain/inventoryReorderRequests.js,
-  // unchanged until PR 3) sends today -- no recommendationStatus,
-  // requestedQty, or quantitySource key at all. Deliberately NOT the
-  // full canonical field set -- that's the whole point of the legacy
-  // branch: it must keep accepting exactly what the live writer sends
-  // today, unexamined beyond isAdminOrDispatcher().
+  // Zero-history reorder behavior sprint, PR 4. Exactly the shape the
+  // pre-PR-3 writer used to send -- no recommendationStatus,
+  // requestedQty, or quantitySource key at all. PR 2's transitional
+  // legacy branch used to accept this unconditionally
+  // (isAdminOrDispatcher() only); PR 4 removed that branch, so this
+  // shape must now be REJECTED for every caller, admin/dispatcher
+  // included -- the assertions below are inverted from PR 2's version
+  // of this test to prove the gap is actually closed, not just
+  // theoretically removed.
   return {
     partId: str(partId),
     urgency: str("HIGH"),
@@ -312,18 +321,18 @@ async function main() {
     idTokenFor("user-technician-plain-rr"),
   ]);
 
-  // --- Transitional legacy-shape path (rollout step 1 safety check) ---
+  // --- PR 4: legacy-shape path now rejected unconditionally (rollout step 3, gap closed) ---
 
   report(
-    "legacy shape (no recommendationStatus) accepted for admin",
-    (await createReorderRequest("rr-legacy-admin", adminToken, legacyShapeFields("PART-LEGACY-1"))) === 200
+    "legacy shape (no recommendationStatus) now rejected for admin (PR 4 removed the transitional branch)",
+    (await createReorderRequest("rr-legacy-admin", adminToken, legacyShapeFields("PART-LEGACY-1"))) === 403
   );
   report(
-    "legacy shape (no recommendationStatus) accepted for dispatcher",
-    (await createReorderRequest("rr-legacy-dispatcher", dispatcherToken, legacyShapeFields("PART-LEGACY-2"))) === 200
+    "legacy shape (no recommendationStatus) now rejected for dispatcher (PR 4 removed the transitional branch)",
+    (await createReorderRequest("rr-legacy-dispatcher", dispatcherToken, legacyShapeFields("PART-LEGACY-2"))) === 403
   );
   report(
-    "legacy shape rejected for technician (isAdminOrDispatcher() still enforced)",
+    "legacy shape still rejected for technician (isAdminOrDispatcher() was never the only gate for this shape's rejection)",
     (await createReorderRequest("rr-legacy-technician", technicianPlainToken, legacyShapeFields("PART-LEGACY-3"))) === 403
   );
 

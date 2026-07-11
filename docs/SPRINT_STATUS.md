@@ -69,11 +69,11 @@ Root cause: the sole writer of `CONSUMED` ledger transactions (`transitionWorkOr
 | #90 (PR 1 — `recommendationStatus`/nullable `urgency`) | Merged (`a668718`) | `RiskLevel`/`URGENCY_ORDER` unchanged; `recommendationStatus` is a separate field. |
 | #91 (PR 2 — transitional Firestore Rules) | Merged (`41392de`), **deployed and verified live 2026-07-11** | Dual-shape `create` rule; Codex `[P1]` fix (complete-schema validation) applied to both branches. 28/28 Rules-test assertions. |
 | #92 (PR 3 — write path + UI) | Merged (`79a64c1`), **confirmed live 2026-07-11** | `requestReorderForRecommendation()`, `getDisplayQty()` legacy fallback, `RequestReorderControl.jsx`. Frontend-only (no `firestore.rules` change) — auto-deployed via GitHub Actions at merge, per `docs/Deployment.md`; verified via the deploy workflow's success run at the merge commit and by inspecting the live bundle directly. No manual deploy step existed or was needed. |
-| PR 4 (Rules tightening) | Blocked on one remaining check | PR #92 deployed + confirmed live (both done, see above). Awaiting Rudy's manual Firestore Console spot-check for zero legacy-shape `reorder_requests` writes since the deploy timestamp — see `docs/DECISIONS.md` for the exact request. |
+| PR 4 (Rules tightening) | Implemented, in review | Precondition verified (Rudy's Console spot-check: zero legacy-shape writes since PR #92's live cutoff). Removes PR 2's transitional legacy branch — legacy-shape create now rejected unconditionally. 32/32 Rules-emulator assertions passing (3 inverted from PR 2's original expectation). Awaiting Rules-focused review + Owner Merge Authorization + separate Owner Deployment Authorization. |
 
-**Open now** (verify with `gh pr list --state open` before trusting this):
-- **PR #89** — see table above.
-- **PR #98** — Sprint 2.1.11 (Receiving — Reorder Request closeout). Implementation complete, Rules tests passing; awaiting the owner's live-production click-through per `docs/DelegationCharter.md` Section 6 before merge. Separate blocker from PR 4's legacy-write spot-check above — don't conflate the two.
+**Merged since the table above was last complete:** #89 (this sprint's governance docs chain), #98 (Sprint 2.1.11, Receiving — Reorder Request closeout; frontend live, `firestore.rules` change deployed under separate Owner Deployment Authorization, see `docs/DECISIONS.md` entry #7).
+
+**Open now** (verify with `gh pr list --state open` before trusting this): PR 4 above, once opened.
 
 PR #81 (Employee Foundation governance docs) and PR #93 (`run-field-ops-app-vite` skill) have both since merged — see `docs/DECISIONS.md` for the full history.
 
