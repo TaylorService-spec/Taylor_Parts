@@ -59,3 +59,16 @@ Do not edit or delete past entries — if a decision is superseded, log a new en
 **Alternatives rejected:**
 - Merging PR #81 as originally written, stale PR-4 status included — rejected; would commit a governance record that's wrong about its own subject on arrival, the same trap `ROADMAP.md`'s stale "Sprint 2.1.4" line was (entry #2).
 - Waiting for Rudy's spot-check result before touching anything else this session — rejected; the charter explicitly instructs continuing other Tier 1 work while something is blocked, not going idle.
+
+## 7. PR #98's `firestore.rules` change deployed to production
+
+**Date:** 2026-07-11
+**Decision:** Deployed the `ORDERED` → `RECEIVED` Reorder Request transition rule (PR #98, merge commit `a3f8e8e363611a0a9badf9623a94b9cf728c0093`) to the live `taylor-parts` project via `firebase deploy --only firestore:rules --project taylor-parts`, under Rudy's explicit Owner Deployment Authorization (separate from PR #98's earlier merge authorization, per the standing merge-authorization-is-never-deploy-authorization rule). No application code changed — Rules only, per Rudy's explicit constraint.
+**Evidence:**
+- First deploy call: `cloud.firestore: rules file firestore.rules compiled successfully` → `firestore: uploading rules firestore.rules...` → `firestore: released rules firestore.rules to cloud.firestore` → `Deploy complete!`.
+- Second, immediate deploy call (same content-fingerprint verification method used for PR #91's deploy, since Admin SDK read-back via `getSecurityRules().getFirestoreRuleset()` isn't available in this environment — no ADC): `firestore: latest version of firestore.rules already up to date, skipping upload...` — confirms the live ruleset's content now matches the local `firestore.rules` file exactly, including this change.
+- Pre-deploy sanity check: `firestore.rules` and `field-ops-app-vite/firestore.rules` confirmed byte-identical, and confirmed to contain the `ORDERED -> RECEIVED` rule block, before the deploy command ran.
+**Reason:** Explicit, separate Owner Deployment Authorization received for this specific change at this specific merge commit.
+**Not resolved by this deployment:** PR 4 (Rules tightening, removing the transitional legacy-shape branch from PR #91's create rule) still requires Rudy's own Firebase Console spot-check for post-deployment legacy-shape `reorder_requests` writes (unrelated precondition, still outstanding as of this entry) before it can be scoped.
+**Alternatives rejected:**
+- Recreating the deleted `admin-check` tool (or otherwise sourcing a production service-account credential) to perform the still-outstanding legacy-write spot-check as part of this same session — rejected repeatedly and explicitly; unrelated to this entry's deployment action, logged separately as a declined request, not a decision made.
