@@ -1,5 +1,6 @@
 import { getCatalogItem } from "../../../data/partsCatalog";
-import { URGENCY_ORDER } from "../../../domain/inventoryAnalyticsEngine";
+import { URGENCY_ORDER, hasUsageHistory } from "../../../domain/inventoryAnalyticsEngine";
+import RequestReorderControl from "../../../shared/inventory/RequestReorderControl";
 
 // Epic 3 Analytics -- pure renderer, all computation already done by
 // Operations.jsx (domain/inventoryAnalyticsEngine.ts). Only shows parts
@@ -26,6 +27,14 @@ import { URGENCY_ORDER } from "../../../domain/inventoryAnalyticsEngine";
 // by default) disables the button and shows "Requesting..." for the
 // one row currently in flight, so a slow or failed request can't be
 // double-clicked into a duplicate create.
+//
+// Zero-history reorder behavior sprint, PR 3 -- the action cell now
+// renders shared/inventory/RequestReorderControl.jsx instead of a
+// plain button, so a NEEDS_PLANNING recommendation gets the
+// eligibility-gated manual-quantity entry (a READY recommendation's
+// one-click submit is unchanged). `onRequestReorder(partId,
+// recommendation, manualQty)` gains a third argument, undefined on the
+// READY path.
 export default function InventoryHealthPanel({
   healthEntries,
   title = "Inventory Health",
@@ -33,8 +42,17 @@ export default function InventoryHealthPanel({
   requestedPartIds,
   submittingPartId,
 }) {
+  // recommendation.urgency is null for NEEDS_PLANNING entries (no
+  // usage history -- see domain/inventoryAnalyticsEngine.ts). Ranking
+  // them after every real risk level here is a minimal, defensive
+  // fallback so this sort never produces NaN -- proper grouping of
+  // NEEDS_PLANNING into its own visible section is PR 3's job (see
+  // docs/implementation-plans/inventory-zero-history-reorder-behavior.md),
+  // not decided here.
   const sorted = [...healthEntries].sort(
-    (a, b) => URGENCY_ORDER[a.recommendation.urgency] - URGENCY_ORDER[b.recommendation.urgency]
+    (a, b) =>
+      (a.recommendation.urgency ? URGENCY_ORDER[a.recommendation.urgency] : URGENCY_ORDER.LOW + 1) -
+      (b.recommendation.urgency ? URGENCY_ORDER[b.recommendation.urgency] : URGENCY_ORDER.LOW + 1)
   );
 
   return (
@@ -56,35 +74,37 @@ export default function InventoryHealthPanel({
             </tr>
           </thead>
           <tbody>
-            {sorted.map(({ partId, stock, usage, recommendation }) => (
+            {sorted.map(({ partId, stock, usage, recommendation }) => {
+              const hasHistory = hasUsageHistory(usage);
+              return (
               <tr key={partId}>
                 <td>{getCatalogItem(partId)?.name ?? partId}</td>
                 <td>{stock.availableStock}</td>
-                <td>{usage.avgDailyUsage.toFixed(2)}</td>
-                <td>{Number.isFinite(usage.avgDailyUsage) && recommendation.daysRemaining !== Infinity ? recommendation.daysRemaining.toFixed(1) : "—"}</td>
+                <td>{hasHistory ? usage.avgDailyUsage.toFixed(2) : <span className="fo-muted">Insufficient usage history</span>}</td>
+                <td>{hasHistory && recommendation.daysRemaining !== Infinity ? recommendation.daysRemaining.toFixed(1) : "—"}</td>
                 <td>
-                  <span className={`fo-badge fo-badge-${recommendation.urgency.toLowerCase()}`}>
-                    {recommendation.urgency}
-                  </span>
+                  {hasHistory ? (
+                    <span className={`fo-badge fo-badge-${recommendation.urgency.toLowerCase()}`}>
+                      {recommendation.urgency}
+                    </span>
+                  ) : (
+                    <span className="fo-badge">Needs planning</span>
+                  )}
                 </td>
-                <td>{Math.ceil(recommendation.recommendedOrderQty)}</td>
+                <td>{hasHistory ? Math.ceil(recommendation.recommendedOrderQty) : <span className="fo-muted">Insufficient usage history</span>}</td>
                 {onRequestReorder && (
                   <td>
-                    {requestedPartIds?.has(partId) ? (
-                      <span className="fo-muted">Requested</span>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => onRequestReorder(partId, recommendation)}
-                        disabled={submittingPartId === partId}
-                      >
-                        {submittingPartId === partId ? "Requesting..." : "Request Reorder"}
-                      </button>
-                    )}
+                    <RequestReorderControl
+                      recommendation={recommendation}
+                      onSubmit={(manualQty) => onRequestReorder(partId, recommendation, manualQty)}
+                      submitting={submittingPartId === partId}
+                      alreadyRequested={requestedPartIds?.has(partId)}
+                    />
                   </td>
                 )}
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       )}

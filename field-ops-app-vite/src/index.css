@@ -119,6 +119,16 @@ body { -webkit-font-smoothing: antialiased; font-family: -apple-system, BlinkMac
 .fo-form label { flex-basis: 100%; font-size: 14px; color: #445559; }
 .fo-form textarea { flex-basis: 100%; min-height: 72px; padding: 8px 10px; border: 1px solid #D8DEDD; border-radius: 6px; font-size: 14px; font-family: inherit; }
 
+/* Zero-history reorder behavior sprint, PR 3 --
+   shared/inventory/RequestReorderControl.jsx's manual-quantity entry,
+   compact enough to sit inline in a table action cell -- fo-form is
+   too wide (flex: 1 input, flex-basis: 100% label/textarea) for that. */
+.fo-inline-form { display: inline-flex; gap: 6px; align-items: center; }
+.fo-inline-form input { width: 64px; padding: 6px 8px; border: 1px solid #D8DEDD; border-radius: 6px; font-size: 14px; }
+.fo-inline-form button { padding: 6px 12px; border: none; border-radius: 6px; background: #2E4A50; color: #fff; cursor: pointer; font-size: 14px; }
+.fo-inline-form button:hover { background: #23383D; }
+.fo-inline-form button:disabled { background: #B7C2C0; cursor: not-allowed; }
+
 .fo-table { width: 100%; border-collapse: collapse; }
 .fo-table th, .fo-table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #EEF1F0; font-size: 14px; }
 .fo-table select { padding: 6px 8px; border-radius: 6px; border: 1px solid #D8DEDD; }
@@ -593,6 +603,55 @@ button:hover {
 }
 
 .fo-global-search-empty {
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+/* Phase 3 -- Employee Assignment Picker (shared/assignment/EmployeeAssignmentPicker.jsx) */
+.fo-employee-picker {
+  position: relative;
+  display: inline-block;
+}
+
+.fo-employee-picker input {
+  padding: 6px 10px;
+  border: 1px solid #ccd3d2;
+  border-radius: 6px;
+  font-size: 14px;
+  min-width: 220px;
+}
+
+.fo-employee-picker-results {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: #fff;
+  border: 1px solid #ccd3d2;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  z-index: 20;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.fo-employee-picker-result {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.fo-employee-picker-result:hover,
+.fo-employee-picker-result-highlighted {
+  background: #f4f6f5;
+}
+
+.fo-employee-picker-status {
   padding: 8px 10px;
   font-size: 13px;
 }
