@@ -59,21 +59,19 @@ The platform's longest continuous object lifecycle: the workflow was extended ac
 | `functions/tsconfig.json` modernization | #87 | Merged | `moduleResolution: "node"` (deprecated) → `NodeNext`. Resolves standing backlog item 6 below. |
 | Inventory "Insufficient usage history" display fix | #88 | Merged | Presentational-only fix for the misleading `0` reorder-quantity display — precursor to the Zero-history reorder behavior sprint below. |
 
-## Completed / merged (Zero-history reorder behavior sprint — PRs #90–#92, governance chain on PR #89)
+## Completed / merged (Zero-history reorder behavior sprint — CLOSED, all 4 PRs live)
 
-Root cause: the sole writer of `CONSUMED` ledger transactions (`transitionWorkOrder` Cloud Function) has never been deployed, so `avgDailyUsage` is `0` for every part in production, unconditionally — every reorder recommendation showed a misleading `0`/`LOW`. **Kept deliberately separate from Employee Foundation and from the broader Part and Inventory Administration initiative** (Owner instruction). Full narrative, including two real Specification-stage REQUEST CHANGES rounds and a Codex `[P1]` finding, in `docs/CLAUDE_CONTEXT.md`'s dedicated section — this table is status only.
+Root cause: the sole writer of `CONSUMED` ledger transactions (`transitionWorkOrder` Cloud Function) has never been deployed, so `avgDailyUsage` is `0` for every part in production, unconditionally — every reorder recommendation showed a misleading `0`/`LOW`. **Kept deliberately separate from Employee Foundation and from the broader Part and Inventory Administration initiative** (Owner instruction). Full narrative, including two real Specification-stage REQUEST CHANGES rounds and a Codex `[P1]` finding, in `docs/CLAUDE_CONTEXT.md`'s dedicated section — this table is status only. Closing summary: `docs/DECISIONS.md` entry #8.
 
 | PR | Status | Summary |
 |---|---|---|
-| #89 (Assessment/Specification/Implementation Plan) | **Open** | Docs-only governance chain. Has the live PR-by-PR tracking table and Deployment status section — check there first. |
+| #89 (Assessment/Specification/Implementation Plan) | Merged | Docs-only governance chain. |
 | #90 (PR 1 — `recommendationStatus`/nullable `urgency`) | Merged (`a668718`) | `RiskLevel`/`URGENCY_ORDER` unchanged; `recommendationStatus` is a separate field. |
 | #91 (PR 2 — transitional Firestore Rules) | Merged (`41392de`), **deployed and verified live 2026-07-11** | Dual-shape `create` rule; Codex `[P1]` fix (complete-schema validation) applied to both branches. 28/28 Rules-test assertions. |
-| #92 (PR 3 — write path + UI) | Merged (`79a64c1`), **confirmed live 2026-07-11** | `requestReorderForRecommendation()`, `getDisplayQty()` legacy fallback, `RequestReorderControl.jsx`. Frontend-only (no `firestore.rules` change) — auto-deployed via GitHub Actions at merge, per `docs/Deployment.md`; verified via the deploy workflow's success run at the merge commit and by inspecting the live bundle directly. No manual deploy step existed or was needed. |
-| PR 4 (Rules tightening) | Implemented, ChatGPT-approved | Precondition verified (Rudy's Console spot-check: zero legacy-shape writes since PR #92's live cutoff). Removes PR 2's transitional legacy branch — legacy-shape create now rejected unconditionally. 32/32 Rules-emulator assertions passing (2 inverted from 200 to 403; technician remained 403 as a regression baseline). Awaiting Owner Merge Authorization + separate Owner Deployment Authorization. |
+| #92 (PR 3 — write path + UI) | Merged (`79a64c1`), **confirmed live 2026-07-11** | `requestReorderForRecommendation()`, `getDisplayQty()` legacy fallback, `RequestReorderControl.jsx`. Frontend-only — auto-deployed via GitHub Actions at merge, per `docs/Deployment.md`. |
+| #103 (PR 4 — Rules tightening) | Merged (`2317695`), **deployed and verified live 2026-07-11** | Removes PR 2's transitional legacy-shape branch — legacy-shape `create` now rejected unconditionally, for every caller. ChatGPT Rules-focused review: Approved with documentation corrections, applied before merge. 32/32 Rules-emulator assertions passing. |
 
-**Merged since the table above was last complete:** #89 (this sprint's governance docs chain), #98 (Sprint 2.1.11, Receiving — Reorder Request closeout; frontend live, `firestore.rules` change deployed under separate Owner Deployment Authorization, see `docs/DECISIONS.md` entry #7).
-
-**Open now** (verify with `gh pr list --state open` before trusting this): PR 4 above ([#103](https://github.com/TaylorService-spec/Taylor_Parts/pull/103)).
+**Sprint closed.** Every Reorder Request `create` now goes through the canonical `recommendationStatus`/`requestedQty`/`quantitySource` schema unconditionally; the transitional dual-shape gap opened by PR 2 and closed by PR 4 no longer exists. Sprint 2.1.11 (Receiving, PR #98) also merged and deployed during this same session — see the Release 2.1 chain table above.
 
 PR #81 (Employee Foundation governance docs) and PR #93 (`run-field-ops-app-vite` skill) have both since merged — see `docs/DECISIONS.md` for the full history.
 

@@ -72,3 +72,26 @@ Do not edit or delete past entries — if a decision is superseded, log a new en
 **Not resolved by this deployment:** PR 4 (Rules tightening, removing the transitional legacy-shape branch from PR #91's create rule) still requires Rudy's own Firebase Console spot-check for post-deployment legacy-shape `reorder_requests` writes (unrelated precondition, still outstanding as of this entry) before it can be scoped.
 **Alternatives rejected:**
 - Recreating the deleted `admin-check` tool (or otherwise sourcing a production service-account credential) to perform the still-outstanding legacy-write spot-check as part of this same session — rejected repeatedly and explicitly; unrelated to this entry's deployment action, logged separately as a declined request, not a decision made.
+
+## 8. PR #103's `firestore.rules` change deployed to production — Zero-history reorder sprint complete
+
+**Date:** 2026-07-11
+**Decision:** Deployed PR 4's Rules tightening (PR #103, merge commit `23176950f0392019c3851b00ab35680cf87980e6`) to the live `taylor-parts` project via `firebase deploy --only firestore:rules --project taylor-parts`, under Rudy's explicit Owner Deployment Authorization (separate ask from PR #103's earlier merge authorization). No application code changed — Rules only.
+**Evidence:**
+- Pre-deploy: `git rev-parse main` and `git rev-parse origin/main` both confirmed exactly `23176950f0392019c3851b00ab35680cf87980e6`, the authorized merge commit; `git status --porcelain` confirmed a clean working tree — no uncommitted changes could have altered what got deployed.
+- First deploy call: `cloud.firestore: rules file firestore.rules compiled successfully` → `firestore: uploading rules firestore.rules...` → `firestore: released rules firestore.rules to cloud.firestore` → `Deploy complete!`.
+- Second, immediate deploy call (same content-fingerprint verification method used for PR #91's and PR #98's deploys — Admin SDK read-back via `getSecurityRules().getFirestoreRuleset()` remains unavailable, no ADC in this environment): `firestore: latest version of firestore.rules already up to date, skipping upload...` — confirms the live ruleset's content now matches `main`'s `firestore.rules` exactly, including the legacy-shape-branch removal.
+- Post-deploy: `git status --porcelain` re-confirmed clean; nothing else was deployed alongside this.
+**Reason:** Explicit, separate Owner Deployment Authorization received for this specific change at this specific merge commit.
+**Effect now live:** any `reorder_requests` create missing `recommendationStatus`/`requestedQty`/`quantitySource` is rejected for every caller, including admin/dispatcher — the transitional legacy-shape allowance PR 2 (#91) intentionally left in place is fully closed. The live writer (`createReorderRequest()`, unchanged since PR #92) already always sent the canonical shape, so no currently-live client behavior changes as a result.
+
+**Zero-history reorder behavior sprint: all four PRs complete and live.**
+| PR | Merge commit | Deployed |
+|---|---|---|
+| 1 — `recommendationStatus`/nullable `urgency` | `a66871883a6136de1d9e2c9cf7d4dd9dcf6dce70` | Frontend-only, auto-deployed at merge |
+| 2 — transitional Rules | `41392de0e3104c9a378e2ce4e226ce6379ef4380` | `firestore.rules`, deployed 2026-07-11 |
+| 3 — write path + UI | `79a64c175a8dcc7cb5ae1cdbbbec8cc1e1498539` | Frontend-only, auto-deployed at merge |
+| 4 — Rules tightening | `23176950f0392019c3851b00ab35680cf87980e6` | `firestore.rules`, deployed 2026-07-11 (this entry) |
+
+Root cause this sprint fixed (per the Assessment): every Reorder Request recommendation showed a misleading `0`/`LOW` because the sole writer of `CONSUMED` ledger transactions has never been deployed (Blaze plan blocker, issue #15). `recommendationStatus`/`NEEDS_PLANNING` now surfaces that honestly instead of silently degrading, and the manual-entry path for zero-history parts is now closed to legacy-shape bypass. The underlying Blaze/Cloud-Function gap itself is unchanged and out of this sprint's scope, per the Assessment's own framing.
+**Alternatives rejected:** None — this entry records completion, not a choice among options.
