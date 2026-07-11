@@ -619,10 +619,24 @@ async function main() {
   });
 }
 
-main().catch((err) => {
-  console.error("Failed:", err.message);
-  process.exitCode = 1;
-});
+// CommonJS "run only when executed directly" guard -- require.main ===
+// module works correctly cross-platform (unlike the ESM
+// import.meta.url comparison documented as broken on Windows in
+// field-ops-app-vite/.claude/skills/run-field-ops-app-vite/SKILL.md's
+// Gotchas -- that issue is specific to file:// URL string comparison
+// in .mjs files, not applicable here). Without this guard, any other
+// script that require()s this module to reuse a pure helper (e.g.
+// assertProjectTarget(), for the onboard-employee skill) would also
+// trigger main() against ITS OWN process.argv -- discovered exactly
+// this way while building that skill. `node scripts/
+// provisionEmployeeAccess.js ...` still runs main() exactly as before:
+// require.main === module is true for the directly-executed script.
+if (require.main === module) {
+  main().catch((err) => {
+    console.error("Failed:", err.message);
+    process.exitCode = 1;
+  });
+}
 
 module.exports = {
   provisionEmployeeAccess,
@@ -632,6 +646,7 @@ module.exports = {
   buildPlan,
   normalizeOperationalRoles,
   assertProjectTarget,
+  VALID_SECURITY_ROLES,
   VALID_OPERATIONAL_ROLES,
   PRODUCTION_PROJECT_ID,
 };
