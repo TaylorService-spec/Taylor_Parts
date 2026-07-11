@@ -267,3 +267,29 @@ export function receiveReorderRequest(requestId) {
     receivedBy: auth.currentUser?.uid ?? null,
   });
 }
+
+// Cancel/Void schema deployment sequence, PR 4 of 6 (docs/specifications/
+// reorder-request-cancellation.md). The only writer of a cancellation.
+// Reachable from READY_FOR_PARTS_MANAGER, ASSIGNED_TO_PARTS_ASSOCIATE, or
+// PURCHASING_IN_PROGRESS -- i.e. any pre-ORDERED active status. Terminal.
+// Requires a genuinely non-blank reason, trimmed here before the write
+// (firestore.rules independently rejects a whitespace-only value
+// server-side too -- see the Specification's "Reason validation"), same
+// posture as reviewReorderRequest()'s REJECTED-requires-reviewNotes
+// check above. Authorization is isAdminOrDispatcher() alone -- no
+// per-user restriction, matching every other hand-off-type action on
+// this object (review, assign) -- enforced in firestore.rules, not
+// here; this function does not itself check the caller's role.
+export function cancelReorderRequest(requestId, { reason }) {
+  const trimmedReason = reason?.trim() || "";
+  if (!trimmedReason) {
+    throw new Error("A reason is required to cancel this Reorder Request.");
+  }
+
+  return reorderRequestsStore.update(requestId, {
+    status: REORDER_REQUEST_STATUS.CANCELLED,
+    cancelledBy: auth.currentUser?.uid ?? null,
+    cancelledAt: Date.now(),
+    cancellationReason: trimmedReason,
+  });
+}

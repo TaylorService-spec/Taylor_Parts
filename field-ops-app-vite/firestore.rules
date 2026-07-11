@@ -501,7 +501,52 @@ service cloud.firestore {
               && request.resource.data.reviewedAt == resource.data.reviewedAt
               && request.resource.data.reviewNotes == resource.data.reviewNotes
               && request.resource.data.diff(resource.data).affectedKeys()
-                   .hasOnly(["status", "receivedBy", "receivedAt"])))
+                   .hasOnly(["status", "receivedBy", "receivedAt"]))
+            // Cancel/Void schema deployment sequence, PR 4 of 6
+            // (docs/specifications/reorder-request-cancellation.md) --
+            // Cancel Reorder Request. Terminal. Reachable from any of
+            // the three pre-order active statuses. Authorization is
+            // isAdminOrDispatcher() alone (the outer gate above) -- no
+            // additional per-user restriction, matching every other
+            // hand-off-type transition on this object (review, assign).
+            // This branch never reads cancelledBy/cancelledAt/
+            // cancellationReason from resource.data -- see the
+            // Specification's "Legacy document behavior" section: a
+            // document that predates this sprint's schema entirely
+            // lacks those three keys, and reading an absent map key
+            // here would be a Rules evaluation error, not a null
+            // value. Every earlier-stage field is pinned unchanged,
+            // same discipline as every prior branch; affectedKeys()
+            // restricts the actual diff to exactly the four fields
+            // this transition owns, so a legacy document (missing the
+            // six Cancel/Void keys entirely) only ever gains the three
+            // relevant to this transition -- voidedBy/voidedAt/
+            // voidReason are never backfilled by this branch.
+            || ((resource.data.status == "READY_FOR_PARTS_MANAGER"
+                  || resource.data.status == "ASSIGNED_TO_PARTS_ASSOCIATE"
+                  || resource.data.status == "PURCHASING_IN_PROGRESS")
+              && request.resource.data.status == "CANCELLED"
+              && request.resource.data.cancelledBy == request.auth.uid
+              && request.resource.data.cancelledAt is number
+              && request.resource.data.cancellationReason is string
+              && request.resource.data.cancellationReason.matches('.*\\S.*')
+              && request.resource.data.currentOwner == resource.data.currentOwner
+              && request.resource.data.assignedToUserId == resource.data.assignedToUserId
+              && request.resource.data.assignedBy == resource.data.assignedBy
+              && request.resource.data.assignedAt == resource.data.assignedAt
+              && request.resource.data.purchasingStartedAt == resource.data.purchasingStartedAt
+              && request.resource.data.purchasingStartedBy == resource.data.purchasingStartedBy
+              && request.resource.data.purchasingNotes == resource.data.purchasingNotes
+              && request.resource.data.vendorContacted == resource.data.vendorContacted
+              && request.resource.data.expectedAvailabilityDate == resource.data.expectedAvailabilityDate
+              && request.resource.data.lastPurchasingUpdateAt == resource.data.lastPurchasingUpdateAt
+              && request.resource.data.lastPurchasingUpdateBy == resource.data.lastPurchasingUpdateBy
+              && request.resource.data.reviewDecision == resource.data.reviewDecision
+              && request.resource.data.reviewedBy == resource.data.reviewedBy
+              && request.resource.data.reviewedAt == resource.data.reviewedAt
+              && request.resource.data.reviewNotes == resource.data.reviewNotes
+              && request.resource.data.diff(resource.data).affectedKeys()
+                   .hasOnly(["status", "cancelledBy", "cancelledAt", "cancellationReason"])))
         && request.resource.data.partId == resource.data.partId
         && request.resource.data.urgency == resource.data.urgency
         && request.resource.data.recommendedQty == resource.data.recommendedQty

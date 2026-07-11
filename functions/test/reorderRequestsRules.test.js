@@ -652,6 +652,186 @@ async function main() {
     })) === 403
   );
 
+  // --- Cancel/Void schema deployment sequence, PR 4 of 6 (docs/specifications/
+  // reorder-request-cancellation.md) -- Cancel Reorder Request ---
+  // seedReorderRequest() (above) never sets the six Cancel/Void fields --
+  // every document it seeds is already a genuine legacy-shape document
+  // (the fields are entirely absent, not null), so these tests exercise
+  // the Specification's "Legacy document behavior" section by
+  // construction, not as a special case.
+
+  await seedReorderRequest("rr-cancel-from-ready-for-pm", {
+    partId: "PART-CANCEL1",
+    status: "READY_FOR_PARTS_MANAGER",
+    assignedToUserId: null,
+  });
+  report(
+    "READY_FOR_PARTS_MANAGER -> CANCELLED accepted for admin, with a genuine reason",
+    (await updateReorderRequest("rr-cancel-from-ready-for-pm", adminToken, {
+      status: str("CANCELLED"),
+      cancelledBy: str("user-admin-rr"),
+      cancelledAt: int(Date.now()),
+      cancellationReason: str("Duplicate request, already ordered under PART-CANCEL9"),
+    })) === 200
+  );
+
+  await seedReorderRequest("rr-cancel-from-assigned", {
+    partId: "PART-CANCEL2",
+    status: "ASSIGNED_TO_PARTS_ASSOCIATE",
+    assignedToUserId: "user-technician-partsmanager-rr",
+  });
+  report(
+    "ASSIGNED_TO_PARTS_ASSOCIATE -> CANCELLED accepted for dispatcher (not just admin, not just the assignee)",
+    (await updateReorderRequest("rr-cancel-from-assigned", dispatcherToken, {
+      status: str("CANCELLED"),
+      cancelledBy: str("user-dispatcher-rr"),
+      cancelledAt: int(Date.now()),
+      cancellationReason: str("Part no longer needed"),
+    })) === 200
+  );
+
+  // Legacy-document Cancel test obligation (Implementation Plan PR 4):
+  // read the document back after a successful Cancel and confirm ONLY
+  // the three Cancel fields (plus status) were added -- voidedBy/
+  // voidedAt/voidReason are never backfilled, and every pre-existing
+  // lifecycle field (seeded by seedReorderRequest() above, itself
+  // already legacy-shape) remains exactly as seeded.
+  {
+    const doc = await db.doc("reorder_requests/rr-cancel-from-assigned").get();
+    const data = doc.data();
+    const hasExactlyCancelFields =
+      data.status === "CANCELLED" &&
+      data.cancelledBy === "user-dispatcher-rr" &&
+      typeof data.cancelledAt === "number" &&
+      data.cancellationReason === "Part no longer needed" &&
+      !("voidedBy" in data) &&
+      !("voidedAt" in data) &&
+      !("voidReason" in data) &&
+      data.assignedToUserId === "user-technician-partsmanager-rr" &&
+      data.currentOwner === "PARTS_ASSOCIATE" &&
+      data.purchasingStartedBy === "user-technician-partsmanager-rr";
+    report(
+      "Legacy document (six Cancel/Void keys entirely absent pre-transition): Cancel adds ONLY status/cancelledBy/cancelledAt/cancellationReason -- voidedBy/voidedAt/voidReason never backfilled, every pre-existing field pinned",
+      hasExactlyCancelFields
+    );
+  }
+
+  await seedReorderRequest("rr-cancel-from-purchasing", {
+    partId: "PART-CANCEL3",
+    status: "PURCHASING_IN_PROGRESS",
+    assignedToUserId: "user-admin-rr",
+  });
+  report(
+    "PURCHASING_IN_PROGRESS -> CANCELLED accepted for admin",
+    (await updateReorderRequest("rr-cancel-from-purchasing", adminToken, {
+      status: str("CANCELLED"),
+      cancelledBy: str("user-admin-rr"),
+      cancelledAt: int(Date.now()),
+      cancellationReason: str("Wrong part identified"),
+    })) === 200
+  );
+
+  await seedReorderRequest("rr-cancel-auth-rejected", {
+    partId: "PART-CANCEL4",
+    status: "ASSIGNED_TO_PARTS_ASSOCIATE",
+    assignedToUserId: "user-technician-plain-rr",
+  });
+  report(
+    "CANCELLED rejected for a plain technician (isAdminOrDispatcher() required, even for the assignee)",
+    (await updateReorderRequest("rr-cancel-auth-rejected", technicianPlainToken, {
+      status: str("CANCELLED"),
+      cancelledBy: str("user-technician-plain-rr"),
+      cancelledAt: int(Date.now()),
+      cancellationReason: str("Trying to self-cancel"),
+    })) === 403
+  );
+
+  await seedReorderRequest("rr-cancel-from-pending-review", {
+    partId: "PART-CANCEL5",
+    status: "PENDING_REVIEW",
+    assignedToUserId: null,
+  });
+  report(
+    "CANCELLED rejected from PENDING_REVIEW (not one of the three reachable source statuses)",
+    (await updateReorderRequest("rr-cancel-from-pending-review", adminToken, {
+      status: str("CANCELLED"),
+      cancelledBy: str("user-admin-rr"),
+      cancelledAt: int(Date.now()),
+      cancellationReason: str("Too early to cancel"),
+    })) === 403
+  );
+
+  await seedReorderRequest("rr-cancel-from-ordered", {
+    partId: "PART-CANCEL6",
+    status: "ORDERED",
+    assignedToUserId: "user-admin-rr",
+    purchaseOrderId: "rr-cancel-from-ordered",
+  });
+  report(
+    "CANCELLED rejected from ORDERED (post-order is Void's job, not Cancel's)",
+    (await updateReorderRequest("rr-cancel-from-ordered", adminToken, {
+      status: str("CANCELLED"),
+      cancelledBy: str("user-admin-rr"),
+      cancelledAt: int(Date.now()),
+      cancellationReason: str("Wrong attempt to cancel after ordering"),
+    })) === 403
+  );
+
+  await seedReorderRequest("rr-cancel-blank-reason", {
+    partId: "PART-CANCEL7",
+    status: "READY_FOR_PARTS_MANAGER",
+    assignedToUserId: null,
+  });
+  report(
+    "CANCELLED rejected with an empty-string reason",
+    (await updateReorderRequest("rr-cancel-blank-reason", adminToken, {
+      status: str("CANCELLED"),
+      cancelledBy: str("user-admin-rr"),
+      cancelledAt: int(Date.now()),
+      cancellationReason: str(""),
+    })) === 403
+  );
+  report(
+    "CANCELLED rejected with a whitespace-only reason",
+    (await updateReorderRequest("rr-cancel-blank-reason", adminToken, {
+      status: str("CANCELLED"),
+      cancelledBy: str("user-admin-rr"),
+      cancelledAt: int(Date.now()),
+      cancellationReason: str("   "),
+    })) === 403
+  );
+
+  await seedReorderRequest("rr-cancel-spoofed-cancelledby", {
+    partId: "PART-CANCEL8",
+    status: "READY_FOR_PARTS_MANAGER",
+    assignedToUserId: null,
+  });
+  report(
+    "CANCELLED rejected when cancelledBy doesn't match the caller's own uid",
+    (await updateReorderRequest("rr-cancel-spoofed-cancelledby", adminToken, {
+      status: str("CANCELLED"),
+      cancelledBy: str("user-dispatcher-rr"),
+      cancelledAt: int(Date.now()),
+      cancellationReason: str("Attempting to attribute this to someone else"),
+    })) === 403
+  );
+
+  await seedReorderRequest("rr-cancel-illegal-field-change", {
+    partId: "PART-CANCEL9",
+    status: "ASSIGNED_TO_PARTS_ASSOCIATE",
+    assignedToUserId: "user-technician-partsmanager-rr",
+  });
+  report(
+    "CANCELLED rejected when an earlier-stage field (assignedToUserId) is changed alongside the transition",
+    (await updateReorderRequest("rr-cancel-illegal-field-change", adminToken, {
+      status: str("CANCELLED"),
+      cancelledBy: str("user-admin-rr"),
+      cancelledAt: int(Date.now()),
+      cancellationReason: str("Reassigning while cancelling"),
+      assignedToUserId: str("user-admin-rr"),
+    })) === 403
+  );
+
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed > 0 ? 1 : 0);
 }
