@@ -1,6 +1,6 @@
 # Sprint Status
 
-Snapshot as of 2026-07-10. This file is a point-in-time record, not a live dashboard — re-verify against `git log`/`gh pr list` before relying on it, especially PR merge state. See `docs/CLAUDE_CONTEXT.md` for the full narrative (why decisions were made, what was learned); this file is the compact status table.
+Snapshot as of 2026-07-11. This file is a point-in-time record, not a live dashboard — re-verify against `git log`/`gh pr list` before relying on it, especially PR merge state and Firestore Rules/Cloud Functions **deploy** state (merged ≠ deployed, checked separately every time in this repo). See `docs/CLAUDE_CONTEXT.md` for the full narrative (why decisions were made, what was learned); this file is the compact status table.
 
 ## Completed / merged (Release 1.0 + early Release 2.0)
 
@@ -54,23 +54,43 @@ The platform's longest continuous object lifecycle: the workflow was extended ac
 | Employee Foundation PR 1 (Employee Data and Read Foundation) | #82 | Merged | `employees/{employeeId}` Rules (dual read path), `domain/employees.js`, `useAssignableEmployees()`, first Firestore Rules test in this repo. |
 | Employee Foundation PR 2 (Trusted Employee/User Provisioning) | #83 | Merged | `provisionEmployeeAccess.js` — atomic link transaction, passwordless, project-target gated. Replaced `createPartsManagerTestUsers.js`. |
 | Employee Foundation PR 3 (Current Employee Session Resolution) | #84 | Merged | `AuthContext` exposes `employeeId`/`displayName`/`operationalRoles`; one-shot read mechanism preserved, not converted to `onSnapshot()`. |
+| Employee Foundation PR 4 (EmployeeAssignmentPicker Foundation) | #85 | Merged | `shared/assignment/EmployeeAssignmentPicker.jsx`, zero production consumers. Two review rounds (focus/keyboard/ARIA; ArrowUp/ArrowDown landing fix). |
+| Docs session-context refresh | #86 | Merged | `CLAUDE_CONTEXT.md`/`SPRINT_STATUS.md` refresh through PR #85. |
+| `functions/tsconfig.json` modernization | #87 | Merged | `moduleResolution: "node"` (deprecated) → `NodeNext`. Resolves standing backlog item 6 below. |
+| Inventory "Insufficient usage history" display fix | #88 | Merged | Presentational-only fix for the misleading `0` reorder-quantity display — precursor to the Zero-history reorder behavior sprint below. |
+
+## Completed / merged (Zero-history reorder behavior sprint — PRs #90–#92, governance chain on PR #89)
+
+Root cause: the sole writer of `CONSUMED` ledger transactions (`transitionWorkOrder` Cloud Function) has never been deployed, so `avgDailyUsage` is `0` for every part in production, unconditionally — every reorder recommendation showed a misleading `0`/`LOW`. **Kept deliberately separate from Employee Foundation and from the broader Part and Inventory Administration initiative** (Owner instruction). Full narrative, including two real Specification-stage REQUEST CHANGES rounds and a Codex `[P1]` finding, in `docs/CLAUDE_CONTEXT.md`'s dedicated section — this table is status only.
+
+| PR | Status | Summary |
+|---|---|---|
+| #89 (Assessment/Specification/Implementation Plan) | **Open** | Docs-only governance chain. Has the live PR-by-PR tracking table and Deployment status section — check there first. |
+| #90 (PR 1 — `recommendationStatus`/nullable `urgency`) | Merged (`a668718`) | `RiskLevel`/`URGENCY_ORDER` unchanged; `recommendationStatus` is a separate field. |
+| #91 (PR 2 — transitional Firestore Rules) | Merged (`41392de`), **deployed and verified live 2026-07-11** | Dual-shape `create` rule; Codex `[P1]` fix (complete-schema validation) applied to both branches. 28/28 Rules-test assertions. |
+| #92 (PR 3 — write path + UI) | Merged (`79a64c1`), **confirmed live 2026-07-11** | `requestReorderForRecommendation()`, `getDisplayQty()` legacy fallback, `RequestReorderControl.jsx`. Frontend-only (no `firestore.rules` change) — auto-deployed via GitHub Actions at merge, per `docs/Deployment.md`; verified via the deploy workflow's success run at the merge commit and by inspecting the live bundle directly. No manual deploy step existed or was needed. |
+| PR 4 (Rules tightening) | Blocked on one remaining check | PR #92 deployed + confirmed live (both done, see above). Awaiting Rudy's manual Firestore Console spot-check for zero legacy-shape `reorder_requests` writes since the deploy timestamp — see `docs/DECISIONS.md` for the exact request. |
 
 **Open now** (verify with `gh pr list --state open` before trusting this):
-- **PR #81** — Employee Foundation assessment/specification/implementation-plan/review chain (docs only: `docs/assessments/`, `docs/specifications/`, `docs/implementation-plans/`, `docs/reviews/employee-foundation-architecture-review.md`). **None of these exist on `main` yet** — only on this branch.
-- **PR #85** — Employee Foundation PR 4 (EmployeeAssignmentPicker Foundation). `shared/assignment/EmployeeAssignmentPicker.jsx`, zero production consumers. Two review rounds so far (deterministic focus handling + keyboard nav + ARIA; then an ArrowDown/ArrowUp landing-behavior fix). Commit `2030d7a` is Architecture-Approved (ChatGPT, current project session) and validated. Owner Merge Authorization not yet granted.
+- **PR #89** — see table above.
+- **PR #98** — Sprint 2.1.11 (Receiving — Reorder Request closeout). Implementation complete, Rules tests passing; awaiting the owner's live-production click-through per `docs/DelegationCharter.md` Section 6 before merge. Separate blocker from PR 4's legacy-write spot-check above — don't conflate the two.
+
+PR #81 (Employee Foundation governance docs) and PR #93 (`run-field-ops-app-vite` skill) have both since merged — see `docs/DECISIONS.md` for the full history.
 
 ## In progress / not yet started
 
-The four-PR Employee Foundation implementation plan is 3/4 merged (PR 4 in final review, see above). **Not started, and explicitly not to begin until Phase 3 fully lands**: the Parts and Purchase Order Assignment Adoption sprint (replacing Sprint 2.1.6's manual-UID Reorder Request assignment with `EmployeeAssignmentPicker`). A specification for that sprint was produced once, early in this initiative, but only as chat output — **it was never committed to the repository** and predates the `docs/specifications/` convention. Treat it as needing to be reassessed and (re-)written fresh through the standing `docs/ai/workflow.md` gates, not as an existing artifact to look up.
+The Employee Foundation implementation plan is fully merged (4/4). **Not started, and explicitly not to begin until Phase 3 fully lands**: the Parts and Purchase Order Assignment Adoption sprint (replacing Sprint 2.1.6's manual-UID Reorder Request assignment with `EmployeeAssignmentPicker`). A specification for that sprint was produced once, early in this initiative, but only as chat output — **it was never committed to the repository** and predates the `docs/specifications/` convention. Treat it as needing to be reassessed and (re-)written fresh through the standing `docs/ai/workflow.md` gates, not as an existing artifact to look up. **Deliberately kept separate from the Zero-history reorder behavior sprint above** — do not fold the two together.
 
 ## Standing backlog items (none yet scoped as their own sprint)
 
-1. ~~Replace manual-uid Reorder Request assignment (Sprint 2.1.6) with a controlled, role-filtered user picker~~ — **the underlying model now exists** (Employee Foundation, PRs #82–#84 merged, PR #85 in review). The actual Reorder Request adoption itself is the not-yet-started item described above, not this one.
+1. ~~Replace manual-uid Reorder Request assignment (Sprint 2.1.6) with a controlled, role-filtered user picker~~ — **the underlying model now exists** (Employee Foundation, PRs #82–#85, all merged). The actual Reorder Request adoption itself is the not-yet-started item described above, not this one.
 2. Notification Panel is at 4 sections (Pending Review / Ready for Parts Manager / Assigned to You / Purchasing Started) — evaluate a "My Work" view before adding a 5th.
 3. If full purchasing communication history is ever needed (not just latest-state), consider a child progress-log collection under Reorder Request.
 4. Apply `inventory_actions` to `inventory_transactions` via a Cloud-Function-mediated trusted write path once Firebase Blaze is enabled — genuinely blocked on that decision, not on engineering effort.
 5. When full Procurement enters active planning, explicitly assess whether `reorder_purchase_orders` should migrate into or be consolidated with the existing full `purchase_orders` model (Epic 5).
-6. Modernize `functions/tsconfig.json`'s deprecated `moduleResolution: "node"` before TypeScript 7.0 removes it — see `docs/FUTURE_ARCHITECTURE_BACKLOG.md`'s dedicated entry. Not urgent (still compiles clean today). A commit exists on the pushed-but-not-PR'd branch `docs/functions-module-resolution-backlog-note` (`aa775ec`).
+6. ~~Modernize `functions/tsconfig.json`'s deprecated `moduleResolution: "node"`~~ — **RESOLVED, PR #87, merged.**
+7. Governed fallback demand model / minimum-stock policy for zero-usage-history parts (tier 2 of the Zero-history reorder behavior sprint's hybrid model) — explicitly out of scope for that sprint's PRs 1-4; not yet scoped as its own sprint.
+8. Once PR #92 deploys, evaluate whether an Employee needs `operationalRoles` containing `PARTS_MANAGER`/`WAREHOUSE_MANAGER` assigned for real (via `provisionEmployeeAccess.js`) before the manual-quantity-entry path has any real, non-`admin` user who can exercise it — currently zero real Employees have this populated.
 
 Don't build any of these speculatively — wait for the triggering condition to actually arise.
 
@@ -81,6 +101,9 @@ Don't build any of these speculatively — wait for the triggering condition to 
 - If a PR's `pull_request`-triggered CI check gets stuck `queued` with no runner assigned for several minutes, try closing and reopening the PR before assuming the code broke something.
 - A feature named after an operational verb (Receive/Adjust/Correct/etc.) implies the operation actually happened unless the UI says otherwise explicitly — check for this before a "record an action" feature reaches review (see Sprint 2.1.9).
 - When a domain function performs more than one document write for a single user action, reach for Firestore's `getAfter()`/`existsAfter()` in the rules by default, not just prior-state pinning on each write independently (see Sprint 2.1.10) — the same principle reappeared in PR #83's Firestore-side `runTransaction()` for the Employee↔User link.
-- **A doc referenced by a PR is not necessarily on `main`.** `docs/assessments/`, `docs/specifications/`, `docs/implementation-plans/`, and `docs/reviews/` currently exist only on PR #81's branch — verify with `git ls-tree main --name-only` or `gh pr view` before assuming any Employee Foundation governance artifact is committed to `main`.
+- **A doc referenced by a PR is not necessarily on `main`.** This was true of `docs/assessments/`, `docs/specifications/`, `docs/implementation-plans/`, and `docs/reviews/` for the entire span PR #81 sat open (all four merged to `main` only on 2026-07-11, well after the implementation PRs they govern) — the general lesson stands even though that specific instance is now resolved. Still verify with `git ls-tree main --name-only` or `gh pr view` before assuming any doc referenced by an open PR is actually committed.
 - **This project now runs on `docs/ai/workflow.md`'s gate sequence** (Business Objective → ChatGPT Architecture Review → Claude Code Assessment/Specification → ChatGPT Approval → Implementation → ChatGPT Final Review → Owner Merge Authorization) — Architecture Approval and Owner Merge Authorization are two separate gates; an "APPROVED" is not itself merge permission.
 - Never generate, print, log, return, store, or commit a credential/password/reset-link — even a "one-time terminal disclosure" is not acceptable (see PR #83's second review round). `provisionEmployeeAccess.js` is the reference pattern: a newly created Firebase Auth account is created genuinely passwordless.
+- **Deploy authorization is always separate from merge authorization, even within the same conversation turn.** Never run `firebase deploy` (rules or otherwise) off a merge approval alone — ask again, explicitly, even if the owner just said "yes, merge."
+- **Results, validation summaries, and any question needing an answer go inside one copy-paste code block** — not split across prose before/after it, and that includes trailing status reminders, not just the primary result. See `CLAUDE_CONTEXT.md`'s "Working format this project has standardized on."
+- **A browser-driving agent skill now exists for `field-ops-app-vite`** (`field-ops-app-vite/.claude/skills/run-field-ops-app-vite/`, pending merge on PR #93) — use it instead of a manual smoke-test checklist for any future UI-touching PR in that app. See `CLAUDE_CONTEXT.md`'s "AI-agent skills available in this repo."
