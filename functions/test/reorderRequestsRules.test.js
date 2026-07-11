@@ -7,6 +7,17 @@
 // Node's built-in fetch against the emulator REST APIs, no
 // @firebase/rules-unit-testing, no test runner).
 //
+// Revised after Codex's REQUEST CHANGES on PR #91: the new-shape
+// branch originally validated only the recommendation fields, leaving
+// status/currentOwner/requestedBy/every lifecycle field unconstrained
+// -- a real privilege-escalation gap once NEEDS_PLANNING widened who
+// may create at all beyond admin/dispatcher. firestore.rules now
+// enforces the complete, exact creation contract
+// (hasCanonicalReorderRequestKeys()/...CreationBaseline()) for both
+// READY and NEEDS_PLANNING, so every "valid" payload below must now
+// send the full canonical field set, not just the recommendation
+// fields -- see canonicalFields() below.
+//
 // Prerequisite: run against a live Firestore + Auth emulator pair,
 // e.g.:
 //   firebase emulators:start --only firestore,auth --project taylor-parts
@@ -82,8 +93,11 @@ const nul = () => ({ nullValue: null });
 function legacyShapeFields(partId = "PART-LEGACY") {
   // Exactly the shape the currently-deployed writer
   // (createReorderRequest() in domain/inventoryReorderRequests.js,
-  // unchanged until PR 3) sends -- no recommendationStatus,
-  // requestedQty, or quantitySource key at all.
+  // unchanged until PR 3) sends today -- no recommendationStatus,
+  // requestedQty, or quantitySource key at all. Deliberately NOT the
+  // full canonical field set -- that's the whole point of the legacy
+  // branch: it must keep accepting exactly what the live writer sends
+  // today, unexamined beyond isAdminOrDispatcher().
   return {
     partId: str(partId),
     urgency: str("HIGH"),
@@ -92,28 +106,91 @@ function legacyShapeFields(partId = "PART-LEGACY") {
   };
 }
 
-function readyShapeFields({ partId = "PART-READY", requestedQty = 5, urgency = "HIGH", recommendedQty = 5, quantitySource = "ANALYTICS", recommendationStatus = "READY" } = {}) {
-  return {
+// The complete, exact 27-key shape firestore.rules'
+// hasCanonicalReorderRequestKeys()/...CreationBaseline() now require
+// for the new (recommendationStatus-bearing) branch -- mirrors
+// domain/inventoryReorderRequests.js's createReorderRequest() plus
+// the 3 new recommendation fields PR 3 will add. `overrides` lets
+// individual tests deviate from a valid baseline (forge a field,
+// change a type, etc.) without duplicating the whole shape each time.
+function canonicalFields({
+  partId,
+  recommendationStatus,
+  urgency,
+  quantitySource,
+  recommendedQty,
+  requestedQty,
+  requestedByUid,
+  status = "PENDING_REVIEW",
+  currentOwner = "INVENTORY",
+  overrides = {},
+}) {
+  const base = {
     partId: str(partId),
     recommendationStatus: str(recommendationStatus),
-    urgency: str(urgency),
+    urgency,
     quantitySource: str(quantitySource),
-    recommendedQty: int(recommendedQty),
-    requestedQty: int(requestedQty),
-    status: str("PENDING_REVIEW"),
+    recommendedQty,
+    requestedQty,
+    status: str(status),
+    currentOwner: str(currentOwner),
+    requestedBy: str(requestedByUid),
+    createdAt: int(Date.now()),
+    reviewedBy: nul(),
+    reviewedAt: nul(),
+    reviewDecision: nul(),
+    reviewNotes: nul(),
+    assignedToUserId: nul(),
+    assignedBy: nul(),
+    assignedAt: nul(),
+    purchasingStartedAt: nul(),
+    purchasingStartedBy: nul(),
+    purchasingNotes: nul(),
+    vendorContacted: nul(),
+    expectedAvailabilityDate: nul(),
+    lastPurchasingUpdateAt: nul(),
+    lastPurchasingUpdateBy: nul(),
+    purchaseOrderId: nul(),
+    orderedBy: nul(),
+    orderedAt: nul(),
   };
+  return { ...base, ...overrides };
 }
 
-function needsPlanningShapeFields({ partId = "PART-PLANNING", requestedQty = 3, quantitySource = "MANUAL_ZERO_HISTORY", urgencyValue, recommendedQtyValue } = {}) {
-  return {
-    partId: str(partId),
-    recommendationStatus: str("NEEDS_PLANNING"),
-    urgency: urgencyValue !== undefined ? urgencyValue : nul(),
-    quantitySource: str(quantitySource),
-    recommendedQty: recommendedQtyValue !== undefined ? recommendedQtyValue : nul(),
+function readyFields({ partId, requestedByUid, requestedQty = 5, recommendedQty = 5, urgency = "HIGH", quantitySource = "ANALYTICS", status, currentOwner, overrides }) {
+  return canonicalFields({
+    partId,
+    recommendationStatus: "READY",
+    urgency: str(urgency),
+    quantitySource,
+    recommendedQty: int(recommendedQty),
+    requestedQty: typeof requestedQty === "object" ? requestedQty : int(requestedQty),
+    requestedByUid,
+    status,
+    currentOwner,
+    overrides,
+  });
+}
+
+function planningFields({ partId, requestedByUid, requestedQty = 3, urgency = nul(), recommendedQty = nul(), quantitySource = "MANUAL_ZERO_HISTORY", status, currentOwner, overrides }) {
+  return canonicalFields({
+    partId,
+    recommendationStatus: "NEEDS_PLANNING",
+    urgency,
+    quantitySource,
+    recommendedQty,
     requestedQty: requestedQty === null ? nul() : (typeof requestedQty === "object" ? requestedQty : int(requestedQty)),
-    status: str("PENDING_REVIEW"),
-  };
+    requestedByUid,
+    status,
+    currentOwner,
+    overrides,
+  });
+}
+
+function omit(fields, ...keys) {
+  const copy = { ...fields };
+  for (const key of keys) delete copy[key];
+  return copy;
 }
 
 async function seed() {
@@ -191,93 +268,145 @@ async function main() {
 
   report(
     "READY with requestedQty: 0 accepted (0 is a legitimate computed value)",
-    (await createReorderRequest("rr-ready-zero-qty", adminToken, readyShapeFields({ partId: "PART-R1", requestedQty: 0, recommendedQty: 0 }))) === 200
+    (await createReorderRequest("rr-ready-zero-qty", adminToken, readyFields({ partId: "PART-R1", requestedByUid: "user-admin-rr", requestedQty: 0, recommendedQty: 0 }))) === 200
   );
   report(
     "READY with a normal positive requestedQty accepted",
-    (await createReorderRequest("rr-ready-normal", dispatcherToken, readyShapeFields({ partId: "PART-R2" }))) === 200
+    (await createReorderRequest("rr-ready-normal", dispatcherToken, readyFields({ partId: "PART-R2", requestedByUid: "user-dispatcher-rr" }))) === 200
   );
   report(
     "READY rejected for technician (isAdminOrDispatcher() required, unchanged from pre-PR-2)",
-    (await createReorderRequest("rr-ready-technician", technicianPlainToken, readyShapeFields({ partId: "PART-R3" }))) === 403
+    (await createReorderRequest("rr-ready-technician", technicianPlainToken, readyFields({ partId: "PART-R3", requestedByUid: "user-technician-plain-rr" }))) === 403
   );
   report(
     "READY with negative requestedQty rejected",
-    (await createReorderRequest("rr-ready-negative-qty", adminToken, readyShapeFields({ partId: "PART-R4", requestedQty: -1 }))) === 403
+    (await createReorderRequest("rr-ready-negative-qty", adminToken, readyFields({ partId: "PART-R4", requestedByUid: "user-admin-rr", requestedQty: -1 }))) === 403
   );
   report(
     "READY with non-integer requestedQty rejected",
-    (await createReorderRequest(
-      "rr-ready-noninteger-qty",
-      adminToken,
-      { ...readyShapeFields({ partId: "PART-R5" }), requestedQty: dbl(2.5) }
-    )) === 403
+    (await createReorderRequest("rr-ready-noninteger-qty", adminToken, readyFields({ partId: "PART-R5", requestedByUid: "user-admin-rr", requestedQty: dbl(2.5) }))) === 403
   );
   report(
     "READY with quantitySource MANUAL_ZERO_HISTORY rejected (mismatched combination)",
-    (await createReorderRequest(
-      "rr-ready-wrong-source",
-      adminToken,
-      readyShapeFields({ partId: "PART-R6", quantitySource: "MANUAL_ZERO_HISTORY" })
-    )) === 403
+    (await createReorderRequest("rr-ready-wrong-source", adminToken, readyFields({ partId: "PART-R6", requestedByUid: "user-admin-rr", quantitySource: "MANUAL_ZERO_HISTORY" }))) === 403
   );
   report(
     "READY with invalid urgency value rejected",
-    (await createReorderRequest(
-      "rr-ready-bad-urgency",
-      adminToken,
-      { ...readyShapeFields({ partId: "PART-R7" }), urgency: str("SEVERE") }
-    )) === 403
+    (await createReorderRequest("rr-ready-bad-urgency", adminToken, readyFields({ partId: "PART-R7", requestedByUid: "user-admin-rr", overrides: { urgency: str("SEVERE") } }))) === 403
   );
 
   // --- New shape: NEEDS_PLANNING path ---
 
   report(
     "NEEDS_PLANNING with requestedQty: 0 rejected (manual entry must be positive)",
-    (await createReorderRequest("rr-planning-zero-qty", adminToken, needsPlanningShapeFields({ partId: "PART-P1", requestedQty: 0 }))) === 403
+    (await createReorderRequest("rr-planning-zero-qty", adminToken, planningFields({ partId: "PART-P1", requestedByUid: "user-admin-rr", requestedQty: 0 }))) === 403
   );
   report(
     "NEEDS_PLANNING with negative requestedQty rejected",
-    (await createReorderRequest("rr-planning-negative-qty", adminToken, needsPlanningShapeFields({ partId: "PART-P2", requestedQty: -3 }))) === 403
+    (await createReorderRequest("rr-planning-negative-qty", adminToken, planningFields({ partId: "PART-P2", requestedByUid: "user-admin-rr", requestedQty: -3 }))) === 403
   );
   report(
     "NEEDS_PLANNING with non-integer requestedQty rejected",
-    (await createReorderRequest("rr-planning-noninteger-qty", adminToken, needsPlanningShapeFields({ partId: "PART-P3", requestedQty: dbl(3.5) }))) === 403
+    (await createReorderRequest("rr-planning-noninteger-qty", adminToken, planningFields({ partId: "PART-P3", requestedByUid: "user-admin-rr", requestedQty: dbl(3.5) }))) === 403
   );
   report(
     "NEEDS_PLANNING with non-null urgency rejected (must be null)",
-    (await createReorderRequest("rr-planning-nonnull-urgency", adminToken, needsPlanningShapeFields({ partId: "PART-P4", urgencyValue: str("LOW") }))) === 403
+    (await createReorderRequest("rr-planning-nonnull-urgency", adminToken, planningFields({ partId: "PART-P4", requestedByUid: "user-admin-rr", urgency: str("LOW") }))) === 403
   );
   report(
     "NEEDS_PLANNING with non-null recommendedQty rejected (must be null)",
-    (await createReorderRequest("rr-planning-nonnull-recqty", adminToken, needsPlanningShapeFields({ partId: "PART-P5", recommendedQtyValue: int(0) }))) === 403
+    (await createReorderRequest("rr-planning-nonnull-recqty", adminToken, planningFields({ partId: "PART-P5", requestedByUid: "user-admin-rr", recommendedQty: int(0) }))) === 403
   );
   report(
     "NEEDS_PLANNING with quantitySource ANALYTICS rejected (mismatched combination)",
-    (await createReorderRequest("rr-planning-wrong-source", adminToken, needsPlanningShapeFields({ partId: "PART-P6", quantitySource: "ANALYTICS" }))) === 403
+    (await createReorderRequest("rr-planning-wrong-source", adminToken, planningFields({ partId: "PART-P6", requestedByUid: "user-admin-rr", quantitySource: "ANALYTICS" }))) === 403
   );
 
-  // Authorization matrix -- the exact scenarios Defect 2 (branch-scoped
-  // vs. layered authorization) must not regress on.
+  // Authorization matrix -- the exact scenarios the Specification's
+  // Defect 2 (branch-scoped vs. layered authorization) must not
+  // regress on.
   report(
     "NEEDS_PLANNING rejected for dispatcher with no eligible operationalRoles",
-    (await createReorderRequest("rr-planning-dispatcher-noeligible", dispatcherNoEligibleToken, needsPlanningShapeFields({ partId: "PART-P7" }))) === 403
+    (await createReorderRequest("rr-planning-dispatcher-noeligible", dispatcherNoEligibleToken, planningFields({ partId: "PART-P7", requestedByUid: "user-dispatcher-noeligible-rr" }))) === 403
   );
   report(
     "NEEDS_PLANNING rejected for dispatcher with no linked Employee at all",
-    (await createReorderRequest("rr-planning-dispatcher-plain", dispatcherToken, needsPlanningShapeFields({ partId: "PART-P8" }))) === 403
+    (await createReorderRequest("rr-planning-dispatcher-plain", dispatcherToken, planningFields({ partId: "PART-P8", requestedByUid: "user-dispatcher-rr" }))) === 403
   );
   report(
     "NEEDS_PLANNING accepted for technician whose linked Employee has operationalRoles: [PARTS_MANAGER] (Defect 2 regression case)",
-    (await createReorderRequest("rr-planning-technician-partsmanager", technicianPartsManagerToken, needsPlanningShapeFields({ partId: "PART-P9" }))) === 200
+    (await createReorderRequest("rr-planning-technician-partsmanager", technicianPartsManagerToken, planningFields({ partId: "PART-P9", requestedByUid: "user-technician-partsmanager-rr" }))) === 200
   );
   report(
     "NEEDS_PLANNING accepted for dispatcher whose linked Employee has operationalRoles: [WAREHOUSE_MANAGER]",
-    (await createReorderRequest("rr-planning-dispatcher-warehousemanager", dispatcherWarehouseManagerToken, needsPlanningShapeFields({ partId: "PART-P10" }))) === 200
+    (await createReorderRequest("rr-planning-dispatcher-warehousemanager", dispatcherWarehouseManagerToken, planningFields({ partId: "PART-P10", requestedByUid: "user-dispatcher-warehousemanager-rr" }))) === 200
   );
   report(
     "NEEDS_PLANNING accepted for admin (override)",
-    (await createReorderRequest("rr-planning-admin", adminToken, needsPlanningShapeFields({ partId: "PART-P11" }))) === 200
+    (await createReorderRequest("rr-planning-admin", adminToken, planningFields({ partId: "PART-P11", requestedByUid: "user-admin-rr" }))) === 200
+  );
+
+  // --- Codex REQUEST CHANGES on PR #91: complete-schema enforcement ---
+  // The exact scenarios the finding asked for -- a NEEDS_PLANNING
+  // submitter who is NOT admin/dispatcher (the newly-widened
+  // authority) attempting to forge lifecycle state that only the
+  // update rules should ever be able to set.
+
+  report(
+    "NEEDS_PLANNING with forged status (ORDERED) rejected, even from an eligible non-admin/dispatcher submitter",
+    (await createReorderRequest(
+      "rr-planning-forged-status",
+      technicianPartsManagerToken,
+      planningFields({ partId: "PART-P12", requestedByUid: "user-technician-partsmanager-rr", status: "ORDERED" })
+    )) === 403
+  );
+  report(
+    "NEEDS_PLANNING with forged currentOwner (PARTS_MANAGER) rejected",
+    (await createReorderRequest(
+      "rr-planning-forged-owner",
+      technicianPartsManagerToken,
+      planningFields({ partId: "PART-P13", requestedByUid: "user-technician-partsmanager-rr", currentOwner: "PARTS_MANAGER" })
+    )) === 403
+  );
+  report(
+    "NEEDS_PLANNING with spoofed requestedBy (a different uid than the caller) rejected",
+    (await createReorderRequest(
+      "rr-planning-spoofed-requestedby",
+      technicianPartsManagerToken,
+      planningFields({ partId: "PART-P14", requestedByUid: "user-admin-rr" })
+    )) === 403
+  );
+  report(
+    "NEEDS_PLANNING with requestedBy missing entirely rejected",
+    (await createReorderRequest(
+      "rr-planning-missing-requestedby",
+      technicianPartsManagerToken,
+      omit(planningFields({ partId: "PART-P15", requestedByUid: "user-technician-partsmanager-rr" }), "requestedBy")
+    )) === 403
+  );
+  report(
+    "NEEDS_PLANNING with a required lifecycle field missing (reviewedBy) rejected",
+    (await createReorderRequest(
+      "rr-planning-missing-lifecycle-field",
+      technicianPartsManagerToken,
+      omit(planningFields({ partId: "PART-P16", requestedByUid: "user-technician-partsmanager-rr" }), "reviewedBy")
+    )) === 403
+  );
+  report(
+    "NEEDS_PLANNING with an unexpected extra field rejected",
+    (await createReorderRequest(
+      "rr-planning-extra-field",
+      technicianPartsManagerToken,
+      { ...planningFields({ partId: "PART-P17", requestedByUid: "user-technician-partsmanager-rr" }), notes: str("this key is not part of the canonical schema") }
+    )) === 403
+  );
+  report(
+    "READY with forged status (ORDERED) rejected too (schema check applies to both branches, not just NEEDS_PLANNING)",
+    (await createReorderRequest(
+      "rr-ready-forged-status",
+      adminToken,
+      readyFields({ partId: "PART-R8", requestedByUid: "user-admin-rr", status: "ORDERED" })
+    )) === 403
   );
 
   console.log(`\n${passed} passed, ${failed} failed`);
