@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { PARTS_CATALOG, getCatalogItem } from "../../data/partsCatalog";
 import { useInventoryLedger } from "../../hooks/useInventoryLedger";
 import { useReorderRequests, useReorderRequestsByStatus, useReorderRequestsAssignedTo } from "../../hooks/useReorderRequests";
-import { createReorderRequest } from "../../domain/inventoryReorderRequests";
+import { requestReorderForRecommendation, getDisplayQty } from "../../domain/inventoryReorderRequests";
 import { REORDER_REQUEST_STATUS } from "../../domain/constants";
 import { useAuth } from "../../auth/AuthContext";
 import GlobalSearch from "../../shared/search/GlobalSearch";
@@ -11,6 +11,7 @@ import WorkspaceHeader from "../../shared/ui/WorkspaceHeader";
 import FilterBar from "../../shared/ui/FilterBar";
 import LoadingEmptyState from "../../shared/ui/LoadingEmptyState";
 import InventoryHealthPanel from "../operations/panels/InventoryHealthPanel";
+import { hasUsageHistory } from "../../domain/inventoryAnalyticsEngine";
 
 // Sprint 2.1.1 -- Inventory Domain Foundation. The real Inventory >
 // Parts workspace, replacing the legacy demo Inventory.jsx that
@@ -97,8 +98,14 @@ import InventoryHealthPanel from "../operations/panels/InventoryHealthPanel";
 const PAGE_SIZE = 25;
 const ACTIONABLE_URGENCIES = new Set(["CRITICAL", "HIGH"]);
 
+// Zero-history reorder behavior sprint, PR 3. NEEDS_PLANNING gets its
+// own filter tab, distinct from ACTIONABLE_URGENCIES -- per the
+// Specification, these parts are grouped by recommendation readiness,
+// never urgency-ranked alongside CRITICAL/HIGH/MEDIUM/LOW (see
+// domain/inventoryAnalyticsEngine.ts's RecommendationStatus type).
 const QUEUE_FILTER_OPTIONS = [
   { key: "ACTIONABLE", label: "Critical & High" },
+  { key: "NEEDS_PLANNING", label: "Needs Planning" },
   { key: "ALL", label: "Show All" },
 ];
 
@@ -134,6 +141,9 @@ export default function PartsList() {
 
   const queueEntries = useMemo(() => {
     if (queueFilter === "ALL") return healthEntries;
+    if (queueFilter === "NEEDS_PLANNING") {
+      return healthEntries.filter((entry) => entry.recommendation.recommendationStatus === "NEEDS_PLANNING");
+    }
     return healthEntries.filter((entry) => ACTIONABLE_URGENCIES.has(entry.recommendation.urgency));
   }, [healthEntries, queueFilter]);
 
@@ -143,15 +153,11 @@ export default function PartsList() {
     return set;
   }, [pendingRequests, justRequestedPartIds]);
 
-  async function handleRequestReorder(partId, recommendation) {
+  async function handleRequestReorder(partId, recommendation, manualQty) {
     setSubmittingPartId(partId);
     setReorderError(null);
     try {
-      await createReorderRequest({
-        partId,
-        urgency: recommendation.urgency,
-        recommendedQty: Math.ceil(recommendation.recommendedOrderQty),
-      });
+      await requestReorderForRecommendation({ partId, recommendation, manualQty });
       setJustRequestedPartIds((prev) => new Set(prev).add(partId));
     } catch (err) {
       const partName = getCatalogItem(partId)?.name ?? partId;
@@ -235,9 +241,13 @@ export default function PartsList() {
                     {getCatalogItem(request.partId)?.name ?? request.partId}
                   </Link>
                 </td>
-                <td>{request.recommendedQty}</td>
+                <td>{getDisplayQty(request)}</td>
                 <td>
-                  <span className={`fo-badge fo-badge-${request.urgency.toLowerCase()}`}>{request.urgency}</span>
+                  {request.urgency ? (
+                    <span className={`fo-badge fo-badge-${request.urgency.toLowerCase()}`}>{request.urgency}</span>
+                  ) : (
+                    <span className="fo-badge">Needs planning</span>
+                  )}
                 </td>
                 <td className="fo-muted">
                   {request.reviewedAt ? new Date(request.reviewedAt).toLocaleString() : "—"}
@@ -275,9 +285,13 @@ export default function PartsList() {
                     {getCatalogItem(request.partId)?.name ?? request.partId}
                   </Link>
                 </td>
-                <td>{request.recommendedQty}</td>
+                <td>{getDisplayQty(request)}</td>
                 <td>
-                  <span className={`fo-badge fo-badge-${request.urgency.toLowerCase()}`}>{request.urgency}</span>
+                  {request.urgency ? (
+                    <span className={`fo-badge fo-badge-${request.urgency.toLowerCase()}`}>{request.urgency}</span>
+                  ) : (
+                    <span className="fo-badge">Needs planning</span>
+                  )}
                 </td>
                 <td className="fo-muted">
                   {request.assignedAt ? new Date(request.assignedAt).toLocaleString() : "—"}
@@ -313,9 +327,13 @@ export default function PartsList() {
                     {getCatalogItem(request.partId)?.name ?? request.partId}
                   </Link>
                 </td>
-                <td>{request.recommendedQty}</td>
+                <td>{getDisplayQty(request)}</td>
                 <td>
-                  <span className={`fo-badge fo-badge-${request.urgency.toLowerCase()}`}>{request.urgency}</span>
+                  {request.urgency ? (
+                    <span className={`fo-badge fo-badge-${request.urgency.toLowerCase()}`}>{request.urgency}</span>
+                  ) : (
+                    <span className="fo-badge">Needs planning</span>
+                  )}
                 </td>
                 <td className="fo-muted">
                   {request.purchasingStartedAt ? new Date(request.purchasingStartedAt).toLocaleString() : "—"}
@@ -366,12 +384,14 @@ export default function PartsList() {
                     <td className="fo-muted">{part.category}</td>
                     <td>{health ? health.stock.availableStock : `${part.warehouseQty} (baseline)`}</td>
                     <td>
-                      {health ? (
+                      {!health ? (
+                        <span className="fo-muted">No activity yet</span>
+                      ) : hasUsageHistory(health.usage) ? (
                         <span className={`fo-badge fo-badge-${health.recommendation.urgency.toLowerCase()}`}>
                           {health.recommendation.urgency}
                         </span>
                       ) : (
-                        <span className="fo-muted">No activity yet</span>
+                        <span className="fo-badge">Needs planning</span>
                       )}
                     </td>
                   </tr>

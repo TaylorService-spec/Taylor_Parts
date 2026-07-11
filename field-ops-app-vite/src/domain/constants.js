@@ -103,6 +103,7 @@ export const REORDER_REQUEST_STATUS = {
   ASSIGNED_TO_PARTS_ASSOCIATE: "ASSIGNED_TO_PARTS_ASSOCIATE",
   PURCHASING_IN_PROGRESS: "PURCHASING_IN_PROGRESS",
   ORDERED: "ORDERED",
+  RECEIVED: "RECEIVED", // Sprint 2.1.11 -- Receiving (Reorder Request closeout). Terminal.
 };
 
 // Sprint 2.1.5 -- Inventory -> Parts Manager Handoff. `currentOwner` is
@@ -120,6 +121,37 @@ export const REORDER_REQUEST_OWNER = {
   INVENTORY: "INVENTORY",
   PARTS_MANAGER: "PARTS_MANAGER",
   PARTS_ASSOCIATE: "PARTS_ASSOCIATE",
+};
+
+// Zero-history reorder behavior sprint -- the first canonical enum for
+// Employee `operationalRoles[]` string values in this codebase (no
+// production consumer has ever populated or read one; PR #85's
+// EmployeeAssignmentPicker has zero production consumers). Gates who
+// may manually enter a `requestedQty` for a NEEDS_PLANNING
+// recommendation (see domain/inventoryReorderRequests.js,
+// firestore.rules' canSubmitManualZeroHistoryQuantity()).
+//
+// IMPORTANT: OPERATIONAL_ROLE.PARTS_MANAGER and
+// REORDER_REQUEST_OWNER.PARTS_MANAGER (above) are the same string but
+// mean two unrelated things on two unrelated fields -- the former is
+// an Employee's `operationalRoles[]` entry (who is allowed to act),
+// the latter is a Reorder Request's `currentOwner` (who currently owns
+// this specific request, role-level, set automatically by workflow
+// transitions). Do not conflate them; a person can hold the
+// operational role without any request currently being
+// role-owned by "PARTS_MANAGER", and vice versa.
+export const OPERATIONAL_ROLE = {
+  PARTS_MANAGER: "PARTS_MANAGER",
+  WAREHOUSE_MANAGER: "WAREHOUSE_MANAGER",
+};
+
+// Immutable audit fact recorded on every Reorder Request at creation --
+// distinguishes an analytics-computed requestedQty from a manually
+// entered one when no usage history existed. See
+// docs/specifications/inventory-zero-history-reorder-behavior.md.
+export const QUANTITY_SOURCE = {
+  ANALYTICS: "ANALYTICS",
+  MANUAL_ZERO_HISTORY: "MANUAL_ZERO_HISTORY",
 };
 
 // Sprint 2.1.9 -- Inventory Actions Foundation. `inventory_actions` is

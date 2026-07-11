@@ -1,4 +1,4 @@
-import { REORDER_REQUESTS_COLLECTION, REORDER_REQUEST_STATUS, REORDER_REQUEST_OWNER } from "./constants";
+import { REORDER_REQUESTS_COLLECTION, REORDER_REQUEST_STATUS, REORDER_REQUEST_OWNER, QUANTITY_SOURCE } from "./constants";
 import { makeCollectionStore } from "../firebase/collectionStore";
 import { auth } from "../firebase/firebase";
 
@@ -14,10 +14,11 @@ import { auth } from "../firebase/firebase";
 // required for this sprint's scope (a single, unconditional create,
 // no cross-document invariant to protect).
 //
-// A Reorder Request is: { id, partId, urgency, recommendedQty, status,
-// currentOwner, requestedBy, createdAt, reviewedBy, reviewedAt,
-// reviewDecision, reviewNotes, assignedToUserId, assignedBy,
-// assignedAt, purchasingStartedAt, purchasingStartedBy, purchasingNotes,
+// A Reorder Request is: { id, partId, recommendationStatus, urgency,
+// quantitySource, recommendedQty, requestedQty, status, currentOwner,
+// requestedBy, createdAt, reviewedBy, reviewedAt, reviewDecision,
+// reviewNotes, assignedToUserId, assignedBy, assignedAt,
+// purchasingStartedAt, purchasingStartedBy, purchasingNotes,
 // vendorContacted, expectedAvailabilityDate, lastPurchasingUpdateAt,
 // lastPurchasingUpdateBy, purchaseOrderId, orderedBy, orderedAt }.
 // `createdAt` (stamped automatically by makeCollectionStore.add()) IS
@@ -32,11 +33,38 @@ import { auth } from "../firebase/firebase";
 // together with creating the linked Reorder Purchase Order record.
 export const reorderRequestsStore = makeCollectionStore(REORDER_REQUESTS_COLLECTION);
 
-export function createReorderRequest({ partId, urgency, recommendedQty }) {
+// Zero-history reorder behavior sprint, PR 3 (docs/specifications/
+// inventory-zero-history-reorder-behavior.md). recommendationStatus/
+// requestedQty/quantitySource are now required, per the approved
+// per-path contract: READY -> requestedQty is the analytics-computed
+// recommendedOrderQty (0 is legitimate), quantitySource ANALYTICS;
+// NEEDS_PLANNING -> requestedQty is a manager-entered positive whole
+// number, recommendedQty is null, quantitySource MANUAL_ZERO_HISTORY.
+// This validation mirrors (does not replace) firestore.rules' own
+// server-side enforcement (PR 2) -- fails fast client-side, exactly
+// the same "validated here, not just in the UI, since this is the
+// sole write path" posture reviewReorderRequest() already uses below.
+export function createReorderRequest({ partId, urgency, recommendedQty, recommendationStatus, requestedQty, quantitySource }) {
+  if (recommendationStatus !== "READY" && recommendationStatus !== "NEEDS_PLANNING") {
+    throw new Error(`Invalid recommendationStatus: ${recommendationStatus}`);
+  }
+  if (!Number.isInteger(requestedQty)) {
+    throw new Error("requestedQty must be a whole number.");
+  }
+  if (recommendationStatus === "NEEDS_PLANNING" && requestedQty <= 0) {
+    throw new Error("A manually entered quantity must be greater than zero.");
+  }
+  if (recommendationStatus === "READY" && requestedQty < 0) {
+    throw new Error("requestedQty must not be negative.");
+  }
+
   return reorderRequestsStore.add({
     partId,
+    recommendationStatus,
     urgency,
+    quantitySource,
     recommendedQty,
+    requestedQty,
     status: REORDER_REQUEST_STATUS.PENDING_REVIEW,
     currentOwner: REORDER_REQUEST_OWNER.INVENTORY,
     requestedBy: auth.currentUser?.uid ?? null,
@@ -57,7 +85,55 @@ export function createReorderRequest({ partId, urgency, recommendedQty }) {
     purchaseOrderId: null,
     orderedBy: null,
     orderedAt: null,
+    receivedBy: null,
+    receivedAt: null,
   });
+}
+
+// Shared "Request Reorder" orchestrator -- builds the correct
+// per-path payload from a ReplenishmentRecommendation
+// (domain/inventoryAnalyticsEngine.ts) and calls createReorderRequest()
+// above, the sole writer. Used by both PartsList.jsx's queue action and
+// PartDetail.jsx's Stock Position card so the READY-vs-NEEDS_PLANNING
+// branching (per the Specification's per-path contract table) is
+// implemented once, not duplicated between the two call sites.
+export function requestReorderForRecommendation({ partId, recommendation, manualQty }) {
+  if (recommendation.recommendationStatus === "READY") {
+    const qty = Math.ceil(recommendation.recommendedOrderQty);
+    return createReorderRequest({
+      partId,
+      recommendationStatus: "READY",
+      urgency: recommendation.urgency,
+      quantitySource: QUANTITY_SOURCE.ANALYTICS,
+      recommendedQty: qty,
+      requestedQty: qty,
+    });
+  }
+
+  return createReorderRequest({
+    partId,
+    recommendationStatus: "NEEDS_PLANNING",
+    urgency: null,
+    quantitySource: QUANTITY_SOURCE.MANUAL_ZERO_HISTORY,
+    recommendedQty: null,
+    requestedQty: manualQty,
+  });
+}
+
+// ChatGPT REQUEST CHANGES on PR #92's Final Review: any Reorder
+// Request created before this PR's writer change -- including every
+// document the still-live transitional legacy branch (PR #91) accepts
+// -- has no requestedQty field at all (undefined, not null; the old
+// writer never set it). Reading request.requestedQty unconditionally
+// would display a blank quantity for every such legacy/transitional
+// document. This is the single, shared fallback every persisted-
+// request quantity display must use: the new field when present,
+// the historical recommendedQty for a legacy/transitional document.
+// recommendedQty stays a required field on every document shape ever
+// written (legacy, transitional-legacy-branch, and new), so it's
+// always a safe fallback -- never itself undefined.
+export function getDisplayQty(request) {
+  return request.requestedQty ?? request.recommendedQty;
 }
 
 // Sprint 2.1.4 -- Reorder Review & Decision. The only writer of a
@@ -156,5 +232,28 @@ export function updatePurchasingProgress(requestId, { purchasingNotes, vendorCon
     expectedAvailabilityDate: expectedAvailabilityDate || null,
     lastPurchasingUpdateAt: Date.now(),
     lastPurchasingUpdateBy: auth.currentUser?.uid ?? null,
+  });
+}
+
+// Sprint 2.1.11 -- Receiving (Reorder Request closeout). The only
+// writer of a receipt. Terminal ORDERED -> RECEIVED transition, same
+// per-user restriction as every write on this object since Sprint
+// 2.1.7: only the assigned Parts Associate, enforced in
+// firestore.rules (request.auth.uid == the request's own
+// assignedToUserId), not just application code.
+//
+// Deliberately a status-closeout note only -- does NOT call
+// recordInventoryAction() (domain/inventoryActions.js) or touch
+// inventory_transactions (Admin-SDK-only, Work-Order-driven ledger,
+// ADR-003) in any way. Reconciling this against real stock counts is
+// a separate, already-tracked backlog item (apply logged actions to
+// the ledger via a Cloud-Function-mediated path once Firebase Blaze
+// is enabled), genuinely blocked on Blaze (issue #15), not solved by
+// this function.
+export function receiveReorderRequest(requestId) {
+  return reorderRequestsStore.update(requestId, {
+    status: REORDER_REQUEST_STATUS.RECEIVED,
+    receivedAt: Date.now(),
+    receivedBy: auth.currentUser?.uid ?? null,
   });
 }

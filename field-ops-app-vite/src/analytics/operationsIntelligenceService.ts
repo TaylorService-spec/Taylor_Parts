@@ -178,7 +178,13 @@ export async function getCrossDomainBottlenecks(): Promise<CrossDomainBottleneck
 
   const activeWorkOrders = workOrders.filter((wo) => ACTIVE_WORK_ORDER_STATUSES.has(wo.status));
 
-  const riskOf = (partId: string): RiskLevel | undefined => healthByPart.get(partId)?.recommendation.urgency;
+  // urgency is null for a NEEDS_PLANNING recommendation (no usage
+  // history -- domain/inventoryAnalyticsEngine.ts). Normalized to
+  // undefined here so every existing `risk === undefined`/
+  // `risk !== undefined` check below keeps working unchanged: "no
+  // usage history" carries the same "no known risk signal" meaning as
+  // "no health entry at all" for this cross-domain bottleneck view.
+  const riskOf = (partId: string): RiskLevel | undefined => healthByPart.get(partId)?.recommendation.urgency ?? undefined;
 
   const workOrdersWaitingOnParts: WorkOrderPartsBlock[] = [];
   for (const wo of activeWorkOrders) {

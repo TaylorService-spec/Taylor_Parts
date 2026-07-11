@@ -29,6 +29,10 @@ import { getCatalogItem } from "../../data/partsCatalog";
 // "the Parts Manager" -- role-level/broadcast (there's still no distinct
 // Parts Manager auth role), same as "Ready for Parts Manager" above, not
 // per-user like "Assigned to You".
+//
+// Zero-history reorder behavior sprint, PR 3 -- `request.urgency` is
+// null for a NEEDS_PLANNING request; shows a "Needs planning" badge
+// instead of crashing on `.toLowerCase()`.
 function NotificationItem({ request, onNavigate }) {
   return (
     <Link
@@ -37,7 +41,11 @@ function NotificationItem({ request, onNavigate }) {
       onClick={onNavigate}
     >
       <span>{getCatalogItem(request.partId)?.name ?? request.partId}</span>
-      <span className={`fo-badge fo-badge-${request.urgency.toLowerCase()}`}>{request.urgency}</span>
+      {request.urgency ? (
+        <span className={`fo-badge fo-badge-${request.urgency.toLowerCase()}`}>{request.urgency}</span>
+      ) : (
+        <span className="fo-badge">Needs planning</span>
+      )}
     </Link>
   );
 }

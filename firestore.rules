@@ -31,6 +31,100 @@ service cloud.firestore {
       return isSignedIn() && userData().technicianId == technicianId;
     }
 
+    // Zero-history reorder behavior sprint (PR 2, docs/specifications/
+    // inventory-zero-history-reorder-behavior.md) -- gates who may
+    // manually enter a requestedQty for a NEEDS_PLANNING recommendation.
+    // get() here does not need its own `allow read` grant (a get()
+    // call inside a rule is not subject to the target document's read
+    // rules), but note this reads the exact same
+    // users/{uid}.employeeId -> employees/{employeeId} relationship
+    // the employees/{employeeId} rule's self-read clause already
+    // covers for actual client reads -- no new read *permission* is
+    // opened, this is just a new *consumer* of that relationship.
+    function hasOperationalRole(role) {
+      return isSignedIn()
+        && userData().employeeId != null
+        && get(/databases/$(database)/documents/employees/$(userData().employeeId)).data.operationalRoles.hasAny([role]);
+    }
+
+    function canSubmitManualZeroHistoryQuantity() {
+      return isSignedIn()
+        && (userRole() == "admin"
+            || hasOperationalRole("PARTS_MANAGER")
+            || hasOperationalRole("WAREHOUSE_MANAGER"));
+    }
+
+    // Codex REQUEST CHANGES on PR #91 -- the new-shape create rule
+    // originally validated only the recommendation fields
+    // (recommendationStatus/urgency/quantitySource/recommendedQty/
+    // requestedQty), leaving every other field on the document
+    // completely unconstrained. That was a latent gap for the
+    // existing admin/dispatcher-only legacy path too (today's create
+    // rule has never validated status/currentOwner/requestedBy), but
+    // it only became a real privilege-escalation risk once
+    // NEEDS_PLANNING widened who may create at all beyond admin/
+    // dispatcher: an eligible Parts Manager/Warehouse Manager who is
+    // NOT admin/dispatcher could otherwise forge status: "ORDERED",
+    // an arbitrary currentOwner, or a spoofed requestedBy, bypassing
+    // every workflow invariant the update rules below assume a
+    // creation already established. These two helpers enforce the
+    // exact, complete creation contract the real writer
+    // (domain/inventoryReorderRequests.js's createReorderRequest())
+    // has always sent -- 23 explicit fields plus createdAt
+    // (auto-stamped by firebase/collectionStore.js's add()), plus the
+    // 3 new recommendation fields (recommendationStatus/requestedQty/
+    // quantitySource) once PR 3's writer sends them -- 27 total, see
+    // the exact list below. Applied to BOTH READY and NEEDS_PLANNING
+    // (identical requirement either way, so enforced once, not
+    // duplicated per branch).
+    function hasCanonicalReorderRequestKeys(data) {
+      return data.keys().hasOnly([
+        "partId", "recommendationStatus", "urgency", "quantitySource", "recommendedQty", "requestedQty",
+        "status", "currentOwner", "requestedBy", "createdAt",
+        "reviewedBy", "reviewedAt", "reviewDecision", "reviewNotes",
+        "assignedToUserId", "assignedBy", "assignedAt",
+        "purchasingStartedAt", "purchasingStartedBy",
+        "purchasingNotes", "vendorContacted", "expectedAvailabilityDate",
+        "lastPurchasingUpdateAt", "lastPurchasingUpdateBy",
+        "purchaseOrderId", "orderedBy", "orderedAt", "receivedBy", "receivedAt"
+      ]) && data.keys().hasAll([
+        "partId", "recommendationStatus", "urgency", "quantitySource", "recommendedQty", "requestedQty",
+        "status", "currentOwner", "requestedBy", "createdAt",
+        "reviewedBy", "reviewedAt", "reviewDecision", "reviewNotes",
+        "assignedToUserId", "assignedBy", "assignedAt",
+        "purchasingStartedAt", "purchasingStartedBy",
+        "purchasingNotes", "vendorContacted", "expectedAvailabilityDate",
+        "lastPurchasingUpdateAt", "lastPurchasingUpdateBy",
+        "purchaseOrderId", "orderedBy", "orderedAt", "receivedBy", "receivedAt"
+      ]);
+    }
+
+    function hasCanonicalReorderRequestCreationBaseline(data) {
+      return data.status == "PENDING_REVIEW"
+        && data.currentOwner == "INVENTORY"
+        && data.requestedBy == request.auth.uid
+        && data.createdAt is number
+        && data.reviewedBy == null
+        && data.reviewedAt == null
+        && data.reviewDecision == null
+        && data.reviewNotes == null
+        && data.assignedToUserId == null
+        && data.assignedBy == null
+        && data.assignedAt == null
+        && data.purchasingStartedAt == null
+        && data.purchasingStartedBy == null
+        && data.purchasingNotes == null
+        && data.vendorContacted == null
+        && data.expectedAvailabilityDate == null
+        && data.lastPurchasingUpdateAt == null
+        && data.lastPurchasingUpdateBy == null
+        && data.purchaseOrderId == null
+        && data.orderedBy == null
+        && data.orderedAt == null
+        && data.receivedBy == null
+        && data.receivedAt == null;
+    }
+
     match /fieldops_jobs/{jobId} {
       allow read: if isSignedIn();
       allow write: if isSignedIn();
@@ -196,7 +290,61 @@ service cloud.firestore {
     // history.
     match /reorder_requests/{requestId} {
       allow read: if isAdminOrDispatcher();
-      allow create: if isAdminOrDispatcher();
+
+      // Zero-history reorder behavior sprint (PR 2) -- TRANSITIONAL,
+      // dual-shape create rule (docs/specifications/inventory-zero-
+      // history-reorder-behavior.md's "Deployment / rollout sequence").
+      // The legacy branch (no `recommendationStatus` key present) is
+      // byte-identical in effect to this rule's pre-PR-2 form --
+      // `isAdminOrDispatcher()` and nothing else -- so the currently
+      // deployed writer (createReorderRequest(), unchanged until PR 3)
+      // keeps working exactly as it does today. The new-shape branch
+      // is only exercised once PR 3's writer ships. PR 4 removes the
+      // legacy branch entirely once PR 3 is confirmed live -- do not
+      // leave this transitional form in place indefinitely (see the
+      // Specification's rollout-sequencing risk).
+      //
+      // New-shape authorization is BRANCH-SCOPED, not layered: READY
+      // requires isAdminOrDispatcher() (unchanged); NEEDS_PLANNING
+      // requires canSubmitManualZeroHistoryQuantity() ALONE (it
+      // already includes the admin override internally) -- ANDing it
+      // under isAdminOrDispatcher() would silently block every
+      // eligible Parts Manager/Warehouse Manager whose security role
+      // isn't also admin/dispatcher (ROLES and Employee
+      // operationalRoles[] are independent fields on independent
+      // documents). requestedQty's positivity is also branch-scoped:
+      // >= 0 for READY (0 is a legitimate computed value, mirrors
+      // recommendedQty), > 0 for NEEDS_PLANNING (a manual entry must
+      // be meaningful). Rules deliberately do not reproduce the
+      // analytics formula -- only structural/authorization validity is
+      // enforced.
+      //
+      // hasCanonicalReorderRequestKeys()/...CreationBaseline() (above)
+      // apply to BOTH branches identically -- the complete-schema gap
+      // Codex flagged in PR #91's review applies equally to READY,
+      // it just wasn't a NEW privilege there (admin/dispatcher already
+      // had unconstrained create trust pre-PR-2); enforcing it for
+      // both closes the gap everywhere rather than only where it was
+      // newly exploitable.
+      allow create: if request.resource.data.keys().hasAny(["recommendationStatus"])
+        ? (hasCanonicalReorderRequestKeys(request.resource.data)
+            && hasCanonicalReorderRequestCreationBaseline(request.resource.data)
+            && request.resource.data.partId is string && request.resource.data.partId.size() > 0
+            && request.resource.data.recommendationStatus in ["READY", "NEEDS_PLANNING"]
+            && request.resource.data.quantitySource in ["ANALYTICS", "MANUAL_ZERO_HISTORY"]
+            && (request.resource.data.recommendationStatus == "READY"
+                  ? (isAdminOrDispatcher()
+                     && request.resource.data.urgency in ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
+                     && request.resource.data.quantitySource == "ANALYTICS"
+                     && request.resource.data.recommendedQty is number
+                     && request.resource.data.requestedQty is int && request.resource.data.requestedQty >= 0)
+                  : (canSubmitManualZeroHistoryQuantity()
+                     && request.resource.data.urgency == null
+                     && request.resource.data.quantitySource == "MANUAL_ZERO_HISTORY"
+                     && request.resource.data.recommendedQty == null
+                     && request.resource.data.requestedQty is int && request.resource.data.requestedQty > 0)))
+        : isAdminOrDispatcher();  // legacy shape -- byte-identical to the pre-PR-2 rule, TRANSITIONAL ONLY
+
       allow update: if isAdminOrDispatcher()
         && ((resource.data.status == "PENDING_REVIEW"
               && ((request.resource.data.status == "READY_FOR_PARTS_MANAGER"
@@ -289,7 +437,43 @@ service cloud.firestore {
               && getAfter(/databases/$(database)/documents/reorder_purchase_orders/$(requestId)).data.reorderRequestId == requestId
               && getAfter(/databases/$(database)/documents/reorder_purchase_orders/$(requestId)).data.createdBy == request.auth.uid
               && getAfter(/databases/$(database)/documents/reorder_purchase_orders/$(requestId)).data.status == "ORDERED"
-              && getAfter(/databases/$(database)/documents/reorder_purchase_orders/$(requestId)).data.partId == resource.data.partId))
+              && getAfter(/databases/$(database)/documents/reorder_purchase_orders/$(requestId)).data.partId == resource.data.partId)
+            // Sprint 2.1.11 -- Receiving (Reorder Request closeout).
+            // Terminal ORDERED -> RECEIVED transition, assignee-only,
+            // same single-document-transition shape as Sprint 2.1.7/
+            // 2.1.8 (no getAfter()/existsAfter() cross-document
+            // invariant needed here -- unlike Sprint 2.1.10, this
+            // transition doesn't create a second linked document).
+            // This is a status-closeout note only -- does NOT write to
+            // inventory_transactions (Admin-SDK-only, Work-Order-
+            // driven ledger, ADR-003); reconciling against real stock
+            // stays on FUTURE_ARCHITECTURE_BACKLOG.md, blocked on
+            // Firebase Blaze (issue #15), not this sprint's concern.
+            || (resource.data.status == "ORDERED"
+              && request.resource.data.status == "RECEIVED"
+              && request.auth.uid == resource.data.assignedToUserId
+              && request.resource.data.receivedBy == request.auth.uid
+              && request.resource.data.receivedAt is number
+              && request.resource.data.currentOwner == resource.data.currentOwner
+              && request.resource.data.assignedToUserId == resource.data.assignedToUserId
+              && request.resource.data.assignedBy == resource.data.assignedBy
+              && request.resource.data.assignedAt == resource.data.assignedAt
+              && request.resource.data.purchasingStartedAt == resource.data.purchasingStartedAt
+              && request.resource.data.purchasingStartedBy == resource.data.purchasingStartedBy
+              && request.resource.data.purchasingNotes == resource.data.purchasingNotes
+              && request.resource.data.vendorContacted == resource.data.vendorContacted
+              && request.resource.data.expectedAvailabilityDate == resource.data.expectedAvailabilityDate
+              && request.resource.data.lastPurchasingUpdateAt == resource.data.lastPurchasingUpdateAt
+              && request.resource.data.lastPurchasingUpdateBy == resource.data.lastPurchasingUpdateBy
+              && request.resource.data.purchaseOrderId == resource.data.purchaseOrderId
+              && request.resource.data.orderedBy == resource.data.orderedBy
+              && request.resource.data.orderedAt == resource.data.orderedAt
+              && request.resource.data.reviewDecision == resource.data.reviewDecision
+              && request.resource.data.reviewedBy == resource.data.reviewedBy
+              && request.resource.data.reviewedAt == resource.data.reviewedAt
+              && request.resource.data.reviewNotes == resource.data.reviewNotes
+              && request.resource.data.diff(resource.data).affectedKeys()
+                   .hasOnly(["status", "receivedBy", "receivedAt"])))
         && request.resource.data.partId == resource.data.partId
         && request.resource.data.urgency == resource.data.urgency
         && request.resource.data.recommendedQty == resource.data.recommendedQty
