@@ -21,6 +21,7 @@ import { REORDER_REQUEST_STATUS, INVENTORY_ACTION_TYPE } from "../../domain/cons
 import { useAuth } from "../../auth/AuthContext";
 import LoadingEmptyState from "../../shared/ui/LoadingEmptyState";
 import RequestReorderControl from "../../shared/inventory/RequestReorderControl";
+import EmployeeAssignmentPicker from "../../shared/assignment/EmployeeAssignmentPicker";
 
 // Sprint 2.1.1 -- Inventory Domain Foundation. Part detail screen,
 // reached from PartsList.jsx or Global Search. Read-only: catalog
@@ -231,16 +232,20 @@ function ReorderRequestReview({ request, onReviewed }) {
 }
 
 // Sprint 2.1.6 -- Parts Manager -> Parts Associate Assignment. Shown
-// when a request is READY_FOR_PARTS_MANAGER -- the Parts Manager
-// assigns it to a specific person by uid. There is no client-side way
-// to list users (firestore.rules' users/{userId} read is self-only),
-// so this is a manually-entered uid, same as PT-001's
-// assignTechnicianToUser.js. Writes go exclusively through
-// domain/inventoryReorderRequests.js's assignReorderRequest().
+// when a request is READY_FOR_PARTS_MANAGER. Uses the shared
+// EmployeeAssignmentPicker so managers select an active, linked
+// Employee by display name; the canonical User ID remains internal and
+// is passed to the existing assignment domain function.
 function ReorderRequestAssignment({ request, onAssigned }) {
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState("");
   const [assignedToUserId, setAssignedToUserId] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
+
+  function handleEmployeeSelect(employee) {
+    setSelectedEmployeeId(employee.employeeId);
+    setAssignedToUserId(employee.userId);
+  }
 
   async function handleAssign(e) {
     e.preventDefault();
@@ -284,16 +289,15 @@ function ReorderRequestAssignment({ request, onAssigned }) {
       {error && <p className="fo-muted">{error}</p>}
 
       <form className="fo-form" onSubmit={handleAssign}>
-        <label htmlFor="assigned-to-user-id">Assign to Parts Associate (User ID)</label>
-        <input
-          id="assigned-to-user-id"
-          type="text"
-          value={assignedToUserId}
-          onChange={(e) => setAssignedToUserId(e.target.value)}
-          required
+        <EmployeeAssignmentPicker
+          selectedEmployeeId={selectedEmployeeId}
+          onSelect={handleEmployeeSelect}
+          disabled={submitting}
+          label="Assign to Parts Associate"
+          placeholder="Search employees by name..."
         />
         <div className="disp-board-toolbar">
-          <button type="submit" disabled={submitting || !assignedToUserId.trim()}>
+          <button type="submit" disabled={submitting || !assignedToUserId}>
             Assign
           </button>
         </div>
