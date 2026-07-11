@@ -23,7 +23,7 @@ Redesigns the Customer (`Account`) record page from a single flat panel into a h
 
 ## Sprint objective
 
-A user viewing a Customer sees a clear header (name, status, customer number, billing address, primary-contact summary, tags, one Edit action) and three tabs (Details, Locations, Contacts) built on a new, accessible, reusable tab component. Billing and Location addresses render as distinct labeled fields and are edited through one shared `AddressFields` component, preserving every existing field on save. Nothing about who may read or write these collections changes.
+A user viewing a Customer sees a clear header (name, status, customer number, billing address, primary-contact summary, tags, one Edit action) and three tabs (Details, Locations, Contacts) built on a new, accessible, reusable tab component. Billing and Location addresses render as distinct labeled fields through one shared address-formatting utility; the Customer's billing address is **edited** through one shared `AddressFields` component (preserving every existing field on save), and a new Location's address is **entered** through that same component (no Location edit action exists or is added this sprint). Nothing about who may read or write these collections changes.
 
 ## Scope
 
@@ -32,7 +32,7 @@ A user viewing a Customer sees a clear header (name, status, customer number, bi
 - New shared `AddressFields` form component, replacing the four duplicated raw `<input>` blocks in `AccountForm.jsx` (lines 67-70) and `AccountDetail.jsx`'s inline `LocationForm` (lines 41-44).
 - `AccountDetail.jsx` redesigned: record header + Details/Locations/Contacts tab shell, consuming already-fetched `useAccount`/`useLocationsForAccount`/`useContactsForAccount` data (no new queries).
 - `AccountForm.jsx` reorganized into sectioned two-column layout (Customer Information / Billing Address / External Identifiers / Notes and Tags), billing-address inputs replaced by `AddressFields`.
-- Location add/edit form (currently `AccountDetail.jsx`'s inline `LocationForm`) converted to consume `AddressFields`.
+- Location **add** form (currently `AccountDetail.jsx`'s inline `LocationForm`, shown when "+ Add Location" is clicked) converted to consume `AddressFields`. **Correction (this revision):** no Location edit action exists in the current repository — `AccountDetail.jsx` only provides "+ Add Location" and read-only display of existing Locations, never an edit form for an already-created Location. This sprint does not add one; see "Explicitly out of scope" below.
 - Primary-Contact header derivation: none / exactly-one / multiple-primary data-quality warning.
 - `docs/BusinessEntityModel.md` updated to reflect the Customer page's new shape (header/tabs), not a schema change.
 
@@ -48,35 +48,126 @@ A user viewing a Customer sees a clear header (name, status, customer number, bi
 - **Any new Firestore query, index, or route.** Locations/Contacts tabs render already-fetched data from already-existing hooks.
 - **A standalone foundation PR for the shared tab/address components.** They land together with their first real consumer (PR 1 below), per explicit Architecture Decision reversing the `EmployeeAssignmentPicker.jsx` zero-consumers precedent for this initiative specifically.
 - **The Parts and Purchase Order Assignment Adoption initiative, PR #107, PR #108, and Issue #118.** Unrelated collections and UI modules; no interaction.
+- **Location editing.** **Added in this revision, per Codex Final Review's correction.** No Location edit action or edit form exists in the current repository — `AccountDetail.jsx` provides only "+ Add Location" (creates a new Location document) and read-only display of already-created Locations; there is no way to modify an existing Location's name/address/access notes today. This sprint does **not** introduce one. An earlier draft of this Specification repeatedly described the existing inline `LocationForm` as an "add/edit" form and required verifying that "editing a Location preserves its address" — that would have silently introduced a new business capability (the ability to modify an existing Location) that was never approved and does not exist today. If Location editing is wanted later, it is a separate, future enhancement requiring its own Assessment/Specification, not something to add silently as part of this sprint's address-display/`AddressFields` work.
 
 ## Technical design
 
 ### Component 1: `Tabs` (new, reusable, no existing precedent)
 
+**Contract corrected in this revision, per Codex Final Review.** The prior draft rendered `Tabs` and `TabPanel` as independent siblings while saying `Tabs` generates IDs via `useId()`, with no defined mechanism for `TabPanel` to receive that same generated prefix — `aria-controls`/`aria-labelledby` could not be guaranteed to resolve. Corrected to the **React Context-owned instance ID** design (the Preferred option): a `Tabs` root generates one instance ID via `useId()` and provides it, plus the active-tab state, through context; `Tab`/`TabPanel` descendants consume that context and derive their own DOM IDs from `{instanceId}-{businessTabId}`, so every `aria-controls`/`aria-labelledby` pairing is computed from the same source, never independently reproduced by the caller.
+
 Location: `field-ops-app-vite/src/shared/tabs/Tabs.jsx` (new directory, mirrors `shared/assignment/`'s existing convention of one feature-scoped subdirectory under `shared/`).
 
 Contract:
 ```js
-// <Tabs> is a pure, stateless-from-the-outside controlled component --
-// the caller owns `activeTabId` (via useState, a URL query param, or
-// any other mechanism); Tabs renders the tablist and fires onChange,
-// it never manages selection state itself. This keeps it reusable for
-// a future record page without assuming Customer-specific state shape.
-<Tabs
-  tabs={[{ id: "details", label: "Details" }, { id: "locations", label: "Locations" }, { id: "contacts", label: "Contacts" }]}
-  activeTabId={activeTabId}
-  onChange={(id) => setActiveTabId(id)}
-/>
-<TabPanel tabId="details" activeTabId={activeTabId}>
-  {/* Details content */}
-</TabPanel>
+// Tabs owns exactly one thing: a React Context providing this
+// instance's useId()-generated ID and the current active-tab state to
+// every Tab/TabPanel descendant. The CALLER supplies only stable,
+// business-meaningful tab ids ("details"/"locations"/"contacts") --
+// never a useId()-shaped string -- and owns activeTabId itself (via
+// useState or equivalent), same controlled-component posture as the
+// prior draft. Tabs renders the tablist (the row of Tab buttons);
+// TabPanel is rendered by the caller wherever its content belongs,
+// consuming the same context to resolve its own DOM id/aria-labelledby
+// -- it does not need activeTabId passed to it explicitly (removing
+// the prior draft's redundant, error-prone activeTabId prop on
+// TabPanel).
+<Tabs tabs={[
+  { id: "details", label: "Details" },
+  { id: "locations", label: "Locations" },
+  { id: "contacts", label: "Contacts" },
+]} activeTabId={activeTabId} onChange={setActiveTabId}>
+  <TabPanel tabId="details">{/* Details content */}</TabPanel>
+  <TabPanel tabId="locations">{/* Locations content */}</TabPanel>
+  <TabPanel tabId="contacts">{/* Contacts content */}</TabPanel>
+</Tabs>
 ```
 
-Accessibility contract (binding, per Architecture Decision's implementation constraints — this repo has zero existing tab precedent to draw ARIA behavior from, so this is specified explicitly rather than "match the existing pattern"):
-- `<Tabs>` renders a `role="tablist"` container; each tab is a `role="tab"` element with `aria-selected`, a unique `id`, and `aria-controls` pointing at its corresponding `<TabPanel>`'s `id`.
-- Each `<TabPanel>` is `role="tabpanel"`, `aria-labelledby` pointing back at its tab's `id`, and only the active panel is rendered (not merely hidden via CSS — matches this codebase's existing conditional-render pattern, e.g. `PartDetail.jsx`'s status-branching render).
-- Keyboard: `ArrowLeft`/`ArrowRight` move focus between tabs and activate the newly-focused tab (standard WAI-ARIA "automatic activation" tabs pattern); `Home`/`End` jump to the first/last tab. `Tab` key moves focus out of the tablist into the active panel, not between individual tabs (standard roving-tabindex behavior — only the active tab is in the natural tab order).
-- Unique IDs generated via `useId()`, same pattern `EmployeeAssignmentPicker.jsx` already establishes for exactly this reason (multiple `Tabs` instances on one page must never collide).
+```js
+// Tabs.jsx -- illustrative shape, not final implementation code.
+const TabsContext = createContext(null);
+
+export function Tabs({ tabs, activeTabId, onChange, children }) {
+  const instanceId = useId();
+  // Invalid activeTabId (matches no tab.id) falls back to the FIRST
+  // tab, silently -- consistent with this codebase's established
+  // "never throw, always resolve to a safe default" convention (e.g.
+  // resolveActorDisplayName() falling back to the raw uid rather than
+  // erroring). Never renders with nothing selected.
+  const validIds = tabs.map((t) => t.id);
+  const effectiveActiveId = validIds.includes(activeTabId) ? activeTabId : tabs[0]?.id;
+
+  return (
+    <TabsContext.Provider value={{ instanceId, tabs, activeTabId: effectiveActiveId, onChange }}>
+      <div role="tablist" className="fo-tablist">
+        {tabs.map((tab) => <Tab key={tab.id} tab={tab} />)}
+      </div>
+      {children}
+    </TabsContext.Provider>
+  );
+}
+
+function Tab({ tab }) {
+  const { instanceId, activeTabId, onChange, tabs } = useContext(TabsContext);
+  const isActive = tab.id === activeTabId;
+  const tabDomId = `${instanceId}-tab-${tab.id}`;
+  const panelDomId = `${instanceId}-panel-${tab.id}`;
+  // ArrowLeft/ArrowRight/Home/End keyboard handling lives here, scoped
+  // to `tabs` from THIS instance's context only -- two Tabs instances
+  // on one page never share a keydown handler or a focus loop, since
+  // each Tab reads only its own Tabs.Provider's context value.
+  return (
+    <button
+      type="button"
+      role="tab"
+      id={tabDomId}
+      aria-selected={isActive}
+      aria-controls={panelDomId}
+      tabIndex={isActive ? 0 : -1}
+      onClick={() => onChange(tab.id)}
+      onKeyDown={(e) => { /* ArrowLeft/Right/Home/End -> onChange(newId) + focus that tab's button */ }}
+    >
+      {tab.label}
+    </button>
+  );
+}
+
+export function TabPanel({ tabId, children }) {
+  const { instanceId, activeTabId } = useContext(TabsContext);
+  // Inactive panels are UNMOUNTED (return null), not hidden via CSS --
+  // matches this codebase's existing conditional-render convention
+  // (e.g. PartDetail.jsx's status-branching render). This is an
+  // intentional, binding behavior, not an implementation detail: any
+  // unsaved panel-local state (e.g. a half-filled "+ Add Location"
+  // draft in the Locations tab) is discarded when the user switches
+  // away from that tab and back. No cross-tab draft-preservation
+  // requirement exists for this sprint -- if one is ever needed, it is
+  // a future enhancement to this contract, not assumed here.
+  if (tabId !== activeTabId) return null;
+  const panelDomId = `${instanceId}-panel-${tabId}`;
+  const tabDomId = `${instanceId}-tab-${tabId}`;
+  return (
+    <div role="tabpanel" id={panelDomId} aria-labelledby={tabDomId}>
+      {children}
+    </div>
+  );
+}
+```
+
+Accessibility and behavior contract (binding — this repo has zero existing tab precedent to draw from, so every point below is specified explicitly rather than "match the existing pattern"):
+- `role="tablist"` on the tab row; each tab is `role="tab"` with `aria-selected`, a context-derived unique `id`, and `aria-controls` pointing at its `TabPanel`'s context-derived `id` -- both derived from the same `{instanceId}-...-{businessTabId}` formula, so every `aria-controls` target is guaranteed to exist and every `aria-labelledby` reference is guaranteed to resolve, by construction, not by the caller manually matching strings.
+- Keyboard: `ArrowLeft`/`ArrowRight` move focus between tabs and activate the newly-focused tab (WAI-ARIA "automatic activation" tabs pattern); `Home`/`End` jump to the first/last tab; roving `tabIndex` (`0` on the active tab, `-1` on the rest) keeps a single `Tab`-key stop for the whole tablist, per the standard pattern.
+- **Invalid `activeTabId`** (a value that matches no `tab.id` in the supplied `tabs` array): falls back to the first tab in the array, silently -- never throws, never renders with no tab selected.
+- **Disabled tabs are explicitly unsupported this sprint** -- `Tabs`' `tabs` prop has no `disabled` field; every tab supplied is always selectable. Adding disabled-tab support is a future enhancement to this contract if a real need arises, not assumed here since none of Details/Locations/Contacts needs to ever be disabled.
+- **Focus behavior if the active tab is removed/changed** (i.e. the `tabs` array itself changes and no longer contains the previously-active id): falls back to the first tab in the new array (same rule as the invalid-`activeTabId` case above, since it's the same underlying condition — the current `activeTabId` no longer matching any supplied tab).
+- **Inactive panels are unmounted**, not hidden via CSS, per the illustrative `TabPanel` code above — this intentionally resets any unsaved panel-local state when a user navigates away from a tab and back. Binding, not incidental.
+- Unique IDs generated via one `useId()` call per `Tabs` instance (not per `Tab`/`TabPanel`), same underlying primitive `EmployeeAssignmentPicker.jsx` already establishes for the identical reason (multiple instances on one page must never collide) — but owned by the `Tabs` root and shared via context here, correcting the prior draft's gap.
+
+Rendered-DOM tests required (binding, added in this revision):
+- Every rendered tab's `aria-controls` value equals some rendered panel's `id` (existence, not just string-shape, verified against the actual DOM).
+- Every rendered panel's `aria-labelledby` value equals its corresponding tab's `id`.
+- Two `Tabs` instances rendered on one page (e.g. in a future second consumer, or a test harness mounting two side by side) produce zero duplicate DOM `id` values across both instances.
+- Keyboard navigation (`ArrowLeft`/`ArrowRight`) issued while focus is inside one `Tabs` instance only moves focus within that instance's own tabs, never into a second instance's tabs, confirming each instance's keydown handling is scoped to its own context value.
 
 ### Component 2: Address formatting utility (new)
 
@@ -132,7 +223,7 @@ Location: `field-ops-app-vite/src/shared/address/AddressFields.jsx`.
 // arguments) is chosen specifically so a future addressLine2/
 // countryCode addition only requires adding a key to `value` and a
 // new labeled input inside this one component, never a redesign of
-// any consumer (AccountForm.jsx, the Location form, or the record
+// any consumer (AccountForm.jsx, the Location add form, or the record
 // page itself) -- the binding "must allow future expansion without
 // redesigning the record page" constraint from the Architecture
 // Decision.
@@ -140,10 +231,14 @@ Location: `field-ops-app-vite/src/shared/address/AddressFields.jsx`.
   value={{ street, city, state, zip }}
   onChange={(field, newValue) => /* caller updates its own state */}
   disabled={submitting}
-  idPrefix="billing" // or "location-<id>" -- keeps input ids unique when
-                       // multiple AddressFields instances render on one page
-                       // (e.g. the Locations tab's add-form alongside an
-                       // existing Location's edit form)
+  idPrefix="billing" // or "location-add" -- keeps input ids unique if more
+                       // than one AddressFields instance ever renders on one
+                       // page at once (defensive; today's approved scope has
+                       // at most one mounted at a time -- the Customer edit
+                       // form's billing address, or the Locations tab's
+                       // "+ Add Location" form -- never both simultaneously,
+                       // and never a per-existing-Location edit instance,
+                       // since no Location edit action exists this sprint)
 />
 ```
 
@@ -229,7 +324,7 @@ Same four sections as the Details tab (Customer Information / Billing Address / 
 - Customer Detail page changes from a single flat panel to a header + three-tab layout. URL/route (`/customers/:accountId`, per existing `App.jsx` routing — unchanged) stays the same; tab selection is client-side state, not separate routes, per the Tabs component contract above (no new route).
 - Billing/Location addresses render as distinct labeled rows instead of one comma-joined line.
 - Customer edit form reorganizes into four labeled sections in a two-column desktop layout.
-- Location add/edit form gains real `<label>` elements (was placeholder-only) as a byproduct of using `AddressFields`.
+- Location **add** form gains real `<label>` elements (was placeholder-only) as a byproduct of using `AddressFields`. No Location edit action exists before or after this sprint.
 - Primary-contact summary or a "No primary contact"/"Multiple primary contacts" state now appears in the header — previously, `AccountDetail.jsx` did not surface this at all in the header (only inside the Contacts list further down the page).
 - No change to Global Search (Accounts), the Customers list page (`AccountsList.jsx`), or the "Back to Customers" navigation.
 
@@ -241,7 +336,12 @@ No Rules changed, so no new Rules-emulator test file — this sprint's testing i
 - Existing Customer with a complete legacy address (`street`/`city`/`state`/`zip` all populated) — Details tab and header both render all four rows/the joined header line correctly.
 - Existing Customer with a partial address (e.g. only `city`/`state` populated, `street`/`zip` empty or absent) — `addressRows()`/`formatAddress()` both omit the missing fields cleanly, no empty label, no stray comma.
 - Customer with no address at all (`billingAddress: null`) — header omits the "Billing address" line entirely; Details tab's Billing Address section shows an explicit empty state (e.g. "No billing address on file"), not a blank section with just a heading.
-- Editing an existing Customer/Location **without changing any address field** preserves the exact stored values — verified by reading the document before and after a save that only touches, e.g., `notes`, confirming `billingAddress`/`address` is byte-identical.
+- **Editing an existing Customer without changing any address field** preserves `billingAddress` byte-identically — verified by reading the document before and after a save that only touches, e.g., `notes`, confirming `billingAddress` is unchanged. **(Corrected in this revision — Location has no edit action; see the three Location-specific cases below instead of an equivalent "edit a Location" case.)**
+
+**Location address cases (new in this revision, replacing the incorrect "editing a Location" case — Location has no edit action, only creation via "+ Add Location"):**
+- A newly added Location stores the exact entered address — all four fields as typed, verified by reading the created document back and comparing to what was submitted through `AddressFields`.
+- A newly added Location with a partial address (e.g. only `city`/`state` filled in, `street`/`zip` left blank) is preserved correctly — the stored `address` object reflects exactly what was entered, no field silently populated or dropped.
+- A newly added Location with every address field left blank follows the existing supported behavior for a blank address: unlike `AccountForm.jsx`'s `hasAddress` check (which persists `null` when every field is empty), `LocationForm`'s current `handleSubmit()` (`AccountDetail.jsx:31-35`) always sends `address: { street: "", city: "", state: "", zip: "" }` — an object of empty strings, never `null`. This sprint does not change that asymmetry between Account and Location blank-address behavior; it is out of scope here (changing it would be a behavior change, not a presentation change) and is verified to remain exactly as it is today.
 
 **Primary-Contact states (all three, per Architecture Decision item 5):**
 - Zero primary Contacts → header shows "No primary contact."
@@ -258,6 +358,7 @@ No Rules changed, so no new Rules-emulator test file — this sprint's testing i
 **Accessibility:**
 - Keyboard: `ArrowLeft`/`ArrowRight`/`Home`/`End` navigate tabs without a mouse; each `AddressFields` input has a real `<label htmlFor>`, not a placeholder-only input.
 - Screen-reader semantics: `role="tablist"`/`role="tab"`/`role="tabpanel"`, `aria-selected`, `aria-controls`, `aria-labelledby` all present and correctly paired (verified via the rendered DOM, not just visual inspection).
+- **Rendered-DOM `Tabs` tests, per the corrected component contract (Technical design, Component 1):** every tab's `aria-controls` resolves to an actual rendered panel `id`; every panel's `aria-labelledby` resolves to its tab's `id`; two `Tabs` instances on one page produce zero duplicate DOM ids; keyboard navigation started inside one instance never moves focus into a second instance's tabs.
 
 **Negative/scope-boundary checks:**
 - No empty Work Orders/Activity/Invoices/Related tab renders anywhere.
@@ -271,25 +372,27 @@ Entirely additive/presentational — no schema, no Rules, no migration, no new c
 
 ## Acceptance criteria
 
-- [ ] `Tabs`/`TabPanel` component exists, is reusable (no `AccountDetail`-specific assumptions baked in), and implements the ARIA tablist/tab/tabpanel contract described above with `ArrowLeft`/`ArrowRight`/`Home`/`End` keyboard support.
+- [ ] `Tabs`/`TabPanel` component exists, is reusable (no `AccountDetail`-specific assumptions baked in), owns its generated instance ID via Context (not an independently-reproduced `useId()` string), and implements the ARIA tablist/tab/tabpanel contract described above with `ArrowLeft`/`ArrowRight`/`Home`/`End` keyboard support, invalid-`activeTabId` fallback, and unmounted (not CSS-hidden) inactive panels.
+- [ ] Rendered-DOM `Tabs` tests pass: every `aria-controls`/`aria-labelledby` pairing resolves correctly, two `Tabs` instances on one page produce no duplicate DOM ids, and keyboard navigation stays confined to the correct instance.
 - [ ] `domain/address.js`'s `formatAddress()`/`addressRows()` exist, are the sole address-formatting logic in the app (both inline call sites in `AccountDetail.jsx` removed), and return `null`/`[]` rather than an empty/malformed string for a missing address.
-- [ ] `shared/address/AddressFields.jsx` exists, is consumed by **both** `AccountForm.jsx` and the Location add/edit form, and renders four real `<label htmlFor>`-paired inputs (Street address/City/State/ZIP code).
+- [ ] `shared/address/AddressFields.jsx` exists, is consumed by **both** `AccountForm.jsx` and the Location **add** form (`LocationForm`), and renders four real `<label htmlFor>`-paired inputs (Street address/City/State/ZIP code). No Location edit action is added.
 - [ ] `AccountDetail.jsx` renders a header (name, status, customer number if present, billing address if present, primary-Contact state, tags if present, one Edit action) and a Details/Locations/Contacts tab shell — no Work Orders/Activity/Invoices/Related tab rendered.
 - [ ] Details tab shows the four sections (Customer Information/Billing Address/External Identifiers/Notes and Tags) in a two-column desktop layout collapsing to one column at the existing 900px breakpoint.
 - [ ] Locations tab shows existing Locations as cards with structured address rows and preserves the existing add-Location function via `AddressFields`.
 - [ ] Contacts tab shows existing Contacts as cards, preserves the primary badge/add-Contact function, and shows the multiple-primary warning when applicable.
 - [ ] `primaryContactState()` (or equivalent) correctly derives NONE/ONE/MULTIPLE and both header and Contacts tab render the correct corresponding UI for all three.
-- [ ] Editing a Customer or Location without touching any address field leaves `billingAddress`/`address` byte-identical to its pre-edit value (verified, not assumed).
+- [ ] Editing a Customer without touching any address field leaves `billingAddress` byte-identical to its pre-edit value (verified, not assumed).
+- [ ] A newly added Location stores exactly the entered address (complete, partial, or blank per the existing `LocationForm` behavior) — verified by reading the created document back, not assumed. No Location edit action exists.
 - [ ] No Rules change: `firestore.rules` (both copies) byte-identical to `main` before this sprint, verified via diff.
 - [ ] `npm run build && npm run lint && npm run typecheck` clean.
 - [ ] Live browser verification (fresh emulator): complete-address Customer, partial-address Customer, no-address Customer, zero/one/multiple-primary-Contact Customer, desktop and narrow viewport, keyboard tab navigation — all pass, per Testing strategy above.
-- [ ] Two-PR sequence followed (PR 1: tabs + shared components + header/tab shell + preserved related-record functionality; PR 2: reorganized edit form + Location form using the shared component + documentation/verification) unless the Implementation Plan documents evidence requiring a different split.
+- [ ] Two-PR sequence followed (PR 1: tabs + shared components + header/tab shell + preserved related-record functionality; PR 2: reorganized Customer edit form + Location add form using the shared component + documentation/verification) unless the Implementation Plan documents evidence requiring a different split.
 
 ## Risks
 
 - **First implementation of a genuinely new interaction pattern (tabs).** No existing precedent in this codebase to copy ARIA/keyboard behavior from — the contract above is specified from the WAI-ARIA Authoring Practices' standard tabs pattern, not derived from an existing component, so it carries more first-implementation risk than a typical bounded correction in this initiative.
 - **Address-component reuse discipline.** The binding requirement that both Account and Location addresses use one shared component/utility is the main thing this Specification exists to prevent from silently drifting during implementation (e.g. building `AddressFields` for the Account form first, then a "close enough" second version for Locations under time pressure).
-- **Data-preservation regression risk during the input swap.** Replacing four raw `<input>` elements with `<AddressFields>` in two different forms (`AccountForm.jsx`, the Location form) is exactly the kind of mechanical change where a copy-paste or prop-wiring mistake could silently start writing `null`/an empty string over a previously-populated field — the explicit "load, save without touching, confirm byte-identical" test case above exists specifically to catch this class of bug before merge, not just to pad the test count.
+- **Data-preservation regression risk during the input swap.** Replacing four raw `<input>` elements with `<AddressFields>` in two different forms (`AccountForm.jsx`'s Customer edit form, `LocationForm`'s Location add form) is exactly the kind of mechanical change where a copy-paste or prop-wiring mistake could silently start writing `null`/an empty string over a previously-populated field — the explicit "load, save without touching, confirm byte-identical" test case above exists specifically to catch this class of bug before merge, not just to pad the test count.
 - **Scope discipline on the header.** The record header is the most visually "Salesforce-reference-shaped" surface in this sprint — the concrete risk is quietly reintroducing a `phone`/`website`/`industry` placeholder row "because the reference screenshot has one," which the Architecture Decision explicitly forbids (no empty placeholders for fields that don't exist).
 
 ## Open questions
