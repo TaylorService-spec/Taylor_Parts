@@ -1040,16 +1040,20 @@ async function main() {
     };
   }
 
-  async function seedOrderedPair(requestId, { partId, assignedToUserId = "user-admin-rr", purchaseOrderStatus = "ORDERED", purchaseOrderReorderRequestId = requestId, purchaseOrderPartId = partId, skipPurchaseOrder = false }) {
-    await seedReorderRequest(requestId, { partId, status: "ORDERED", assignedToUserId, purchaseOrderId: requestId });
+  async function seedOrderedPair(requestId, { partId, assignedToUserId = "user-admin-rr", purchaseOrderStatus = "ORDERED", purchaseOrderReorderRequestId = requestId, purchaseOrderPartId = partId, skipPurchaseOrder = false, requestPurchaseOrderId = requestId }) {
+    await seedReorderRequest(requestId, { partId, status: "ORDERED", assignedToUserId, purchaseOrderId: requestPurchaseOrderId });
     if (!skipPurchaseOrder) {
       await seedReorderPurchaseOrder(requestId, { reorderRequestId: purchaseOrderReorderRequestId, partId: purchaseOrderPartId, status: purchaseOrderStatus });
     }
   }
 
   // POSITIVE -- both authorization conditions satisfied, full valid
-  // atomic pair.
+  // atomic pair. Captures the ORIGINAL Purchase Order's COMPLETE
+  // pre-void snapshot here (not just a few fields) for the
+  // strengthened immutability comparison near the end of this
+  // section.
   await seedOrderedPair("rr-void-happy-path", { partId: "PART-VOID1" });
+  const preVoidPurchaseOrderSnapshot = (await db.doc("reorder_purchase_orders/rr-void-happy-path").get()).data();
   {
     const { requestFields, voidFields } = validVoidWrites({ partId: "PART-VOID1" });
     voidFields.reorderPurchaseOrderId = str("rr-void-happy-path");
@@ -1144,6 +1148,27 @@ async function main() {
     );
   }
 
+  // NEGATIVE -- wrong source status: RECEIVED (a real, further-along
+  // terminal-adjacent status, distinct from PURCHASING_IN_PROGRESS
+  // above -- Void must reject every non-ORDERED source, not just the
+  // one immediately before ORDERED).
+  await seedReorderRequest("rr-void-from-received", {
+    partId: "PART-VOID19",
+    status: "RECEIVED",
+    assignedToUserId: "user-admin-rr",
+    purchaseOrderId: "rr-void-from-received",
+  });
+  await seedReorderPurchaseOrder("rr-void-from-received", { reorderRequestId: "rr-void-from-received", partId: "PART-VOID19", status: "ORDERED" });
+  {
+    const { requestFields, voidFields } = validVoidWrites({ partId: "PART-VOID19" });
+    voidFields.reorderPurchaseOrderId = str("rr-void-from-received");
+    voidFields.reorderRequestId = str("rr-void-from-received");
+    report(
+      "VOIDED rejected from RECEIVED (Void is reachable only from ORDERED, not any later status either)",
+      (await voidCommit("rr-void-from-received", adminToken, { requestFields, voidFields })) === 403
+    );
+  }
+
   // NEGATIVE -- Purchase-Order-existence proof: no matching
   // reorder_purchase_orders document exists at all.
   await seedOrderedPair("rr-void-no-po", { partId: "PART-VOID6", skipPurchaseOrder: true });
@@ -1192,6 +1217,23 @@ async function main() {
     report(
       "VOIDED rejected when the linked reorder_purchase_orders document's partId doesn't agree with the Reorder Request's own partId",
       (await voidCommit("rr-void-po-partid-mismatch", adminToken, { requestFields, voidFields })) === 403
+    );
+  }
+
+  // NEGATIVE -- Purchase-Order-existence proof, the fourth and
+  // distinct mismatch dimension the Specification requires: the
+  // Reorder Request's OWN purchaseOrderId field doesn't equal its own
+  // document/request ID -- separate from every mismatch above, which
+  // all concerned the LINKED reorder_purchase_orders document's own
+  // fields, not resource.data.purchaseOrderId itself.
+  await seedOrderedPair("rr-void-request-purchaseorderid-mismatch", { partId: "PART-VOID20", requestPurchaseOrderId: "some-other-purchase-order-id" });
+  {
+    const { requestFields, voidFields } = validVoidWrites({ partId: "PART-VOID20" });
+    voidFields.reorderPurchaseOrderId = str("rr-void-request-purchaseorderid-mismatch");
+    voidFields.reorderRequestId = str("rr-void-request-purchaseorderid-mismatch");
+    report(
+      "VOIDED rejected when the Reorder Request's own purchaseOrderId doesn't equal its own document/request ID (distinct from the linked reorder_purchase_orders document's own field mismatches above)",
+      (await voidCommit("rr-void-request-purchaseorderid-mismatch", adminToken, { requestFields, voidFields })) === 403
     );
   }
 
@@ -1324,6 +1366,18 @@ async function main() {
     );
   }
 
+  // VOIDED IS TERMINAL, proven independently of the double-void
+  // record collision above: a plain single-document reorder_requests
+  // update attempting to move an already-VOIDED request to a
+  // DIFFERENT lifecycle status entirely (no void-record write
+  // involved at all, so this isolates the source-status check on its
+  // own -- none of this object's seven `allow update` branches list
+  // VOIDED as an accepted source status).
+  report(
+    "VOIDED is terminal: VOIDED -> READY_FOR_PARTS_MANAGER (reactivation attempt, no void-record write involved) rejected",
+    (await updateReorderRequest("rr-void-happy-path", adminToken, { status: str("READY_FOR_PARTS_MANAGER") })) === 403
+  );
+
   // IMMUTABILITY -- the void record itself is append-only: direct
   // update and delete attempts against an existing record are both
   // rejected.
@@ -1348,10 +1402,20 @@ async function main() {
     (await deleteDocAt("reorder_purchase_orders", "rr-void-happy-path", adminToken)) === 403
   );
   {
-    const originalPurchaseOrder = (await db.doc("reorder_purchase_orders/rr-void-happy-path").get()).data();
+    // Strengthened per ChatGPT's REQUEST CHANGES: compare the
+    // COMPLETE post-void document against the COMPLETE pre-void
+    // snapshot captured right after seeding (before voidCommit() ran)
+    // -- full key set and every field/value, not three sampled
+    // fields.
+    const postVoidPurchaseOrderSnapshot = (await db.doc("reorder_purchase_orders/rr-void-happy-path").get()).data();
+    const preKeys = Object.keys(preVoidPurchaseOrderSnapshot);
+    const postKeys = Object.keys(postVoidPurchaseOrderSnapshot);
+    const keySetMatches =
+      preKeys.length === postKeys.length && preKeys.every((key) => key in postVoidPurchaseOrderSnapshot);
+    const everyFieldIdentical = preKeys.every((key) => preVoidPurchaseOrderSnapshot[key] === postVoidPurchaseOrderSnapshot[key]);
     report(
-      "Original reorder_purchase_orders document is byte-for-byte unchanged after its linked Reorder Request was voided",
-      originalPurchaseOrder.status === "ORDERED" && originalPurchaseOrder.reorderRequestId === "rr-void-happy-path" && originalPurchaseOrder.partId === "PART-VOID1"
+      "Original reorder_purchase_orders document is byte-for-byte unchanged after its linked Reorder Request was voided (complete key set and every field/value compared, not sampled)",
+      keySetMatches && everyFieldIdentical
     );
   }
 
