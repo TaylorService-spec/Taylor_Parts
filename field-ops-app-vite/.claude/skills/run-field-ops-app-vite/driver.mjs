@@ -84,17 +84,29 @@ function inventoryUrl(partId, requestId) {
   return url.toString();
 }
 
-async function login(page, accountKey) {
+// Fills and submits the real Login.jsx form on whatever page/URL is
+// currently loaded, and waits for the authenticated shell to render.
+// Split out from login() below so a caller can navigate to a specific
+// deep link FIRST (as an unauthenticated visitor would when opening a
+// bookmark), then authenticate on that same page -- App.jsx has no
+// post-login redirect; it just swaps <Login/> for the routed content
+// in place once AuthContext resolves `user`, so the originally
+// requested URL is what ends up rendered, with no second navigation.
+async function fillAndSubmitLogin(page, accountKey) {
   const acct = DRIVER_ACCOUNTS[accountKey];
   if (!acct) throw new Error(`Unknown account "${accountKey}". Known: ${Object.keys(DRIVER_ACCOUNTS).join(", ")}`);
 
-  await page.goto(BASE_URL, { waitUntil: "networkidle" });
   await page.locator('input[type="email"]').fill(acct.email);
   await page.locator('input[type="password"]').fill(acct.password);
   await page.locator('button[type="submit"]').click();
   // Login.jsx's own gate: the authenticated shell renders once
   // AuthContext resolves `user`, not immediately on click.
   await page.locator("nav.fo-nav, .fo-header").first().waitFor({ timeout: 15000 });
+}
+
+async function login(page, accountKey) {
+  await page.goto(BASE_URL, { waitUntil: "networkidle" });
+  await fillAndSubmitLogin(page, accountKey);
 }
 
 async function goToInventory(page) {
@@ -179,6 +191,7 @@ async function verifyNotificationIdentity(browser, page, accountKey) {
     { key: "purchasingStarted", sectionLabel: "Purchasing Started" },
   ];
 
+  let lastPanelFixture;
   for (const { key, sectionLabel } of panelCases) {
     const fixture = NOTIFICATION_IDENTITY_FIXTURE[key];
     await page.locator('button[aria-label="Notifications"]').click();
@@ -196,6 +209,7 @@ async function verifyNotificationIdentity(browser, page, accountKey) {
       fixture.activeId,
       `NotificationPanel "${sectionLabel}"`
     );
+    lastPanelFixture = fixture;
   }
 
   // --- Hard-refresh persistence, using the last resolved URL above ---
@@ -230,7 +244,30 @@ async function verifyNotificationIdentity(browser, page, accountKey) {
   // does for every other command's very first call.
   await page.close();
   page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
-  await login(page, accountKey);
+
+  // --- Refresh/bookmark persistence, completed: load the exact
+  // saved/refreshed URL directly, as an unauthenticated visitor
+  // reopening a bookmark would, THEN authenticate on that same page.
+  // App.jsx has no post-login redirect -- it renders <Login/> in
+  // place for the current URL while `user` is unresolved, then swaps
+  // in the routed content once auth resolves, so this proves the
+  // saved URL itself (not a re-navigation to it) resolves back to the
+  // same request post-authentication.
+  // client-side navigation drops ?emulator=1 (only the initial BASE_URL
+  // load carries it) -- a real saved/bookmarked URL in this dev/test
+  // harness needs it re-added to reach the emulator on a fresh full
+  // page load; production has no such param at all, so this is purely
+  // test-harness plumbing, not a behavior this fix (or the app) owns.
+  const reopenUrl = new URL(preReloadUrl);
+  reopenUrl.searchParams.set("emulator", "1");
+  await page.goto(reopenUrl.toString(), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await fillAndSubmitLogin(page, accountKey);
+  await assertHeadingAndRequestId(
+    page,
+    STATUS_HEADING[lastPanelFixture.status],
+    lastPanelFixture.activeId,
+    "Refresh/bookmark persistence (post-reauth reopen of saved URL)"
+  );
 
   // --- All three PartsList.jsx queue links ---
   const queueCases = ["readyForPartsManager", "assignedToYou", "purchasingStarted"];
@@ -251,15 +288,30 @@ async function verifyNotificationIdentity(browser, page, accountKey) {
   // terminal sibling) -- a regression check, not a new assertion. ---
   const fallbackPartId = NOTIFICATION_IDENTITY_FIXTURE.readyForPartsManager.partId;
   await page.goto(inventoryUrl(fallbackPartId));
+  // Exact accessible-name match, not hasText substring matching -- every
+  // active-status heading is "Reorder Request -- <suffix>", which a plain
+  // hasText: "Reorder Request" locator would also match, letting this
+  // assertion pass even if the fallback incorrectly resolved to the
+  // active document instead of the terminal one.
   const fallbackHeadingVisible = await page
-    .locator("h3", { hasText: TERMINAL_FALLBACK_HEADING })
+    .getByRole("heading", { name: TERMINAL_FALLBACK_HEADING, exact: true })
     .first()
     .waitFor({ timeout: 10000 })
     .then(() => true)
     .catch(() => false);
   niReport(
-    "No-requestId fallback unchanged: direct /inventory/:partId visit still resolves to the newest (terminal) document",
+    "No-requestId fallback unchanged: direct /inventory/:partId visit still resolves to the newest (terminal) document (exact heading match)",
     fallbackHeadingVisible
+  );
+  const fallbackActiveHeadingAbsent = await page
+    .locator("h3", { hasText: STATUS_HEADING[NOTIFICATION_IDENTITY_FIXTURE.readyForPartsManager.status] })
+    .first()
+    .isVisible()
+    .then((visible) => !visible)
+    .catch(() => true);
+  niReport(
+    "No-requestId fallback: active-status heading is absent (fallback did not resolve to the active document)",
+    fallbackActiveHeadingAbsent
   );
 
   // --- Fail-safe: not-found ---
