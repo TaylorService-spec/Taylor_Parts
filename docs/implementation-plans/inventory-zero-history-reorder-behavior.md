@@ -98,11 +98,15 @@ Multi-PR sprint (four distinct concerns: analytics/schema, transitional authoriz
 | PR # | GitHub PR | Status |
 |---|---|---|
 | 1 | [#90](https://github.com/TaylorService-spec/Taylor_Parts/pull/90) | Merged (`a66871883a6136de1d9e2c9cf7d4dd9dcf6dce70`, 2026-07-10) |
-| 2 | [#91](https://github.com/TaylorService-spec/Taylor_Parts/pull/91) | Open — Codex review requested, awaiting response |
-| 3 | Not yet opened | Not started |
+| 2 | [#91](https://github.com/TaylorService-spec/Taylor_Parts/pull/91) | Merged (`41392de0e3104c9a378e2ce4e226ce6379ef4380`, 2026-07-11) — **not deployed** |
+| 3 | Not yet opened | Not started — blocked on PR 2's rules deploy + live verification |
 | 4 | Not yet opened | Not started |
 
 Update this table as each PR opens/merges. Per the Owner's standing instruction, this sprint stays separate from Parts and Purchase Order Assignment Adoption and the broader governed Part and Inventory Administration initiative — do not link or merge tracking with either.
+
+### Deployment status (separate from merge status)
+
+PR 2's transitional rules are merged to `main` but **not deployed** — merge does not authorize deployment, per the Owner's explicit instruction on PR #91's Final Review approval. Deploying requires a separate, explicit **Owner Deployment Authorization** request. Once deployed, the live ruleset must be verified (e.g. `firebase deploy --only firestore:rules --project taylor-parts` followed by a live check, same discipline as every prior rules change in this repo — see `docs/CLAUDE_CONTEXT.md`'s "Known operational gotchas" for why this repo never assumes merged-means-deployed) — **that verification record belongs here, appended below this line, once it happens.** PR 3 must not begin deployment of its own writer until this verification is recorded.
 
 ## Approval
 
