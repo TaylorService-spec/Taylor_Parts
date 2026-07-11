@@ -118,6 +118,22 @@ export function requestReorderForRecommendation({ partId, recommendation, manual
   });
 }
 
+// ChatGPT REQUEST CHANGES on PR #92's Final Review: any Reorder
+// Request created before this PR's writer change -- including every
+// document the still-live transitional legacy branch (PR #91) accepts
+// -- has no requestedQty field at all (undefined, not null; the old
+// writer never set it). Reading request.requestedQty unconditionally
+// would display a blank quantity for every such legacy/transitional
+// document. This is the single, shared fallback every persisted-
+// request quantity display must use: the new field when present,
+// the historical recommendedQty for a legacy/transitional document.
+// recommendedQty stays a required field on every document shape ever
+// written (legacy, transitional-legacy-branch, and new), so it's
+// always a safe fallback -- never itself undefined.
+export function getDisplayQty(request) {
+  return request.requestedQty ?? request.recommendedQty;
+}
+
 // Sprint 2.1.4 -- Reorder Review & Decision. The only writer of a
 // Reorder Request's review outcome. `reviewDecision` is a permanent
 // historical fact of what was decided during review and is never

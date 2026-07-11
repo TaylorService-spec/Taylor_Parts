@@ -11,10 +11,11 @@ import {
   assignReorderRequest,
   startPurchasing,
   updatePurchasingProgress,
+  requestReorderForRecommendation,
+  getDisplayQty,
 } from "../../domain/inventoryReorderRequests";
 import { recordInventoryAction } from "../../domain/inventoryActions";
 import { recordPurchaseOrder } from "../../domain/reorderPurchaseOrders";
-import { requestReorderForRecommendation } from "../../domain/inventoryReorderRequests";
 import { REORDER_REQUEST_STATUS, INVENTORY_ACTION_TYPE } from "../../domain/constants";
 import { useAuth } from "../../auth/AuthContext";
 import LoadingEmptyState from "../../shared/ui/LoadingEmptyState";
@@ -117,9 +118,14 @@ function formatTimestamp(ms) {
 
 // Zero-history reorder behavior sprint, PR 3 -- request.recommendedQty
 // is now strictly the analytics engine's historical snapshot (null for
-// a NEEDS_PLANNING request); request.requestedQty is the actual
-// actionable quantity, always present. request.urgency is null for
-// NEEDS_PLANNING -- shown as a distinct badge, not a crash.
+// a NEEDS_PLANNING request). request.requestedQty is the actionable
+// quantity on every NEW document, but is undefined on any document
+// written before this PR's writer change (including the still-live
+// transitional legacy branch, PR #91) -- getDisplayQty(request)
+// (domain/inventoryReorderRequests.js) falls back to recommendedQty
+// for those, so a legacy/transitional request never displays blank.
+// request.urgency is null for NEEDS_PLANNING -- shown as a distinct
+// badge, not a crash.
 function ReorderRequestReview({ request, onReviewed }) {
   const [showRejectForm, setShowRejectForm] = useState(false);
   const [rejectNotes, setRejectNotes] = useState("");
@@ -162,7 +168,7 @@ function ReorderRequestReview({ request, onReviewed }) {
           </tr>
           <tr>
             <td>Requested qty</td>
-            <td>{request.requestedQty}</td>
+            <td>{getDisplayQty(request)}</td>
           </tr>
           <tr>
             <td>Recommendation status</td>
@@ -259,7 +265,7 @@ function ReorderRequestAssignment({ request, onAssigned }) {
           </tr>
           <tr>
             <td>Requested qty</td>
-            <td>{request.requestedQty}</td>
+            <td>{getDisplayQty(request)}</td>
           </tr>
           <tr>
             <td>Urgency</td>
@@ -335,7 +341,7 @@ function ReorderRequestStartPurchasing({ request, onStarted }) {
           </tr>
           <tr>
             <td>Requested qty</td>
-            <td>{request.requestedQty}</td>
+            <td>{getDisplayQty(request)}</td>
           </tr>
           <tr>
             <td>Urgency</td>

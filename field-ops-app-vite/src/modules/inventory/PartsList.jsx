@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { PARTS_CATALOG, getCatalogItem } from "../../data/partsCatalog";
 import { useInventoryLedger } from "../../hooks/useInventoryLedger";
 import { useReorderRequests, useReorderRequestsByStatus, useReorderRequestsAssignedTo } from "../../hooks/useReorderRequests";
-import { requestReorderForRecommendation } from "../../domain/inventoryReorderRequests";
+import { requestReorderForRecommendation, getDisplayQty } from "../../domain/inventoryReorderRequests";
 import { REORDER_REQUEST_STATUS } from "../../domain/constants";
 import { useAuth } from "../../auth/AuthContext";
 import GlobalSearch from "../../shared/search/GlobalSearch";
@@ -241,7 +241,7 @@ export default function PartsList() {
                     {getCatalogItem(request.partId)?.name ?? request.partId}
                   </Link>
                 </td>
-                <td>{request.requestedQty}</td>
+                <td>{getDisplayQty(request)}</td>
                 <td>
                   {request.urgency ? (
                     <span className={`fo-badge fo-badge-${request.urgency.toLowerCase()}`}>{request.urgency}</span>
@@ -285,7 +285,7 @@ export default function PartsList() {
                     {getCatalogItem(request.partId)?.name ?? request.partId}
                   </Link>
                 </td>
-                <td>{request.requestedQty}</td>
+                <td>{getDisplayQty(request)}</td>
                 <td>
                   {request.urgency ? (
                     <span className={`fo-badge fo-badge-${request.urgency.toLowerCase()}`}>{request.urgency}</span>
@@ -327,7 +327,7 @@ export default function PartsList() {
                     {getCatalogItem(request.partId)?.name ?? request.partId}
                   </Link>
                 </td>
-                <td>{request.requestedQty}</td>
+                <td>{getDisplayQty(request)}</td>
                 <td>
                   {request.urgency ? (
                     <span className={`fo-badge fo-badge-${request.urgency.toLowerCase()}`}>{request.urgency}</span>
