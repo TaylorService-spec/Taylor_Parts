@@ -1,0 +1,87 @@
+---
+artifact_type: implementation-plan
+gate: Implementation Plan
+status: Approved
+date: 2026-07-11
+owner: Claude Code
+related_adrs: []
+depends_on: [docs/specifications/customer-record-page-structured-address.md]
+implements: [docs/specifications/customer-record-page-structured-address.md]
+supersedes: []
+superseded_by: []
+related_pr: 120
+target_release: Post-Release 2.1 (Inventory → Procurement chain)
+---
+
+# Implementation Plan: Customer Record Page and Structured Address Experience
+
+**Sprint Specification:** `docs/specifications/customer-record-page-structured-address.md` -- Approved, 2026-07-11.
+
+**Implementation Plan Final Review: APPROVED, 2026-07-11**, after one REQUEST CHANGES round (reviewed head `b8f04c3` -- five corrections: full PR 1 verification ownership, separate bounded PR 2 verification, three-column tracking, bounded PR 2 correction scope, rebase onto main; applied at head `76ac257`). Approved at head `76ac257` (re-verified: two-PR sequence correctly bounded; PR 1 owns complete Tabs/accessibility/responsive/related-record/browser verification before merge; PR 2 owns Customer edit-form integration, address-preservation tests, and full regression verification; Location remains add-only; PR 2's correction scope is bounded; merge/deployment/live verification tracked separately; no Rules/schema/query/index/route/migration introduced; no implementation or deployment occurred). Rebased again onto `main` at `e74d143` (post PR #123) after this approval, per the review's own "Next" instructions -- documentation-only scope, mergeability, and CI unaffected by the rebase.
+
+Two PRs, per the Architecture Decision's explicit two-PR sequence (supersedes the Assessment's earlier five-PR estimate). No PR in this plan is implemented, merged, or run against production by this document itself -- each requires its own Codex review (optional; this sprint has no Rules change, so Codex review is not required per `docs/ai/workflow.md`'s "documentation-only PRs, small bug fixes, routine UI changes, or low-risk implementation using established patterns" carve-out, but may still be requested if the first-ever `Tabs` implementation warrants independent engineering review), its own ChatGPT Final Review, and its own Owner Merge Authorization before merge. **Neither PR touches `firestore.rules` -- no Owner Deployment Authorization is needed for Rules; both PRs are frontend-only and auto-deploy at merge**, same as every prior frontend-only PR in this initiative (e.g. PR #105, PR #107). **This plan is planning only -- no application code has been written.**
+
+## PR breakdown
+
+| # | PR title | Architectural concern | Depends on | Status |
+|---|---|---|---|---|
+| 1 | Customer record header + tabbed shell | New reusable `Tabs`/`TabPanel` component (Context-owned instance ID, mount-all-panels-`hidden`); `domain/address.js` (`formatAddress()`/`addressRows()`); `shared/address/AddressFields.jsx`; `AccountDetail.jsx` redesigned into header + Details/Locations/Contacts tabs, consuming already-fetched data; primary-Contact NONE/ONE/MULTIPLE derivation; existing Locations/Contacts display and "+ Add Location"/"+ Add Contact" functions preserved, Location add form converted to `AddressFields`. **Owns full verification of everything it introduces before merge** -- see "PR 1 verification obligations" below | None | Not started |
+| 2 | Customer edit form + full regression verification | `AccountForm.jsx` reorganized into sectioned two-column layout, billing-address inputs replaced by `AddressFields`; `docs/BusinessEntityModel.md` updated to reflect the new page shape. **Owns its own separate verification** -- see "PR 2 verification obligations" below. Renamed from "Customer edit form + Location add form + verification": the Location add-form conversion to `AddressFields` is delivered and verified in PR 1, not this PR -- this PR does not introduce it | PR 1 (merged) | Not started |
+
+Per the Architecture Decision: **no standalone foundation PR** for `Tabs`/`AddressFields`/the formatting utility -- they land together with PR 1, their first real consumer, reversing the `EmployeeAssignmentPicker.jsx` zero-consumers precedent for this initiative specifically.
+
+## PR 1 verification obligations
+
+PR 1 introduces the first `Tabs` implementation in this repository, its keyboard/focus/ARIA behavior, and the Customer header/tab shell -- all of it auto-deploys at merge. **None of this verification is deferred to PR 2.** Before PR 1 merges, using the repository's browser skill/Playwright path (`field-ops-app-vite/.claude/skills/run-field-ops-app-vite/`, per `docs/SPRINT_STATUS.md`'s discipline notes), confirm:
+
+- Rendered `aria-controls`/`aria-labelledby` resolve to real DOM ids (no dangling reference).
+- Exactly one tab panel is visible at a time; every inactive panel is present in the DOM but `hidden` and excluded from the tab order.
+- `ArrowLeft`/`ArrowRight`/`Home`/`End` move focus and selection correctly within the tablist.
+- Keyboard focus stays confined to the correct `Tabs` instance when more than one `Tabs` root exists on a page (this page has exactly one, but the component contract must hold generally).
+- DOM ids generated by two independent `Tabs` instances (e.g. this page today plus any future consumer) do not collide.
+- Panel-local form state (e.g. a half-filled "+ Add Location" draft) survives switching to another tab and back, per the `Tabs` contract's "stay mounted" behavior.
+- Details/Locations/Contacts tab switching itself works end-to-end.
+- Primary-Contact header derivation renders correctly for zero, exactly-one, and multiple-primary-Contact states.
+- The existing "+ Add Location" and "+ Add Contact" flows still function after the redesign (regression, not new behavior).
+- Structured Customer billing-address and Location-address display (distinct rows, not one collapsed line).
+- Desktop layout and at least one narrow/responsive breakpoint both render correctly.
+
+## PR 2 verification obligations
+
+PR 2's scope and verification are both narrower than, and separate from, PR 1's:
+
+- `AccountForm.jsx`'s new sectioned two-column layout renders correctly.
+- Billing-address editing via `AddressFields`, exercised for complete, partial, and null existing `billingAddress` values.
+- Saving the Customer form **without** changing the billing address preserves `billingAddress` byte-identically (no field silently dropped, reordered, or coerced).
+- The Location add-form (converted to `AddressFields` in PR 1) is regression-tested here against complete, partial, and blank payloads -- confirming PR 1's conversion still behaves correctly under PR 2's changes, not re-verifying PR 1's own component contract from scratch.
+- A full Customer-page regression pass after both PRs are merged (header, tabs, edit, Location add, Contact display) -- the first point at which the whole redesign can be exercised together.
+- `docs/BusinessEntityModel.md` updated to reflect the new page shape.
+
+## Sequencing notes
+
+PR 1 is the larger of the two: it introduces every new shared component (`Tabs`, `domain/address.js`, `AddressFields`) **and** wires them into `AccountDetail.jsx`'s new header/tab shell in the same PR, per the Architecture Decision's explicit "no standalone foundation PR" constraint -- these components must not exist with zero consumers even transiently across a PR boundary. This is a deliberate divergence from the smaller-PR-per-concern pattern the Cancel/Void initiative (PR #108) uses, because that initiative's constraint runs the opposite direction (Owner explicitly capped this initiative at two PRs, not five).
+
+PR 2 depends on PR 1 being merged (not merely opened) because it reuses `AddressFields` in a second consumer (`AccountForm.jsx`) and needs `Tabs`/the Details tab's Billing Address section already in place to reorganize the edit form consistently with the read-side layout PR 1 established. The Location **add** form's own component-contract verification belongs to PR 1 (see "PR 1 verification obligations" above) -- PR 2 only regression-tests it as part of confirming its own changes didn't break PR 1's already-verified behavior, per "PR 2 verification obligations" above.
+
+Neither PR carries a `firestore.rules` change, a new Firestore query, a new index, or a new route -- both are pure frontend/presentation changes over already-fetched data and already-existing collections, per the Specification's "Firestore Rules impact: None" and "Explicitly out of scope" sections. Both auto-deploy at merge; no separate deployment step or Owner Deployment Authorization applies to either.
+
+## External dependencies
+
+- **None.** All data (`useAccount`/`useLocationsForAccount`/`useContactsForAccount`) is already fetched by the existing `AccountDetail.jsx`; no other in-flight work (`PR #108`) is touched or depended on. (Issue #118 has since closed, merged via PR #122 -- unrelated collections/UI, noted here only because an earlier revision of this plan referenced it as open.)
+- No dependency on Firebase Blaze / Cloud Functions -- `accounts`/`locations`/`contacts` remain client-direct-write-with-rules, unchanged.
+- No dependency on the Person Assignment Platform Service Standard -- Account Owner assignment via that standard is explicitly deferred (Architecture Decision item 7), not part of either PR in this plan.
+
+## Tracking
+
+Distinguishes three states per PR: a successful merge is not the same as a successful deployment, and neither is the same as verified behavior in a live browser.
+
+| PR | Merge status | Frontend deployment (GitHub Actions) | Live/browser verification |
+|---|---|---|---|
+| 1 -- Record header + tabbed shell | Not started | Not deployed | Not verified -- see "PR 1 verification obligations" above |
+| 2 -- Customer edit form + full regression verification | Not started | Not deployed | Not verified -- see "PR 2 verification obligations" above |
+
+Update this table as each PR merges, deploys, and is verified -- this document is the running source of truth for "what's left in this sprint" until it completes, per the template's own guidance.
+
+## PR 2's correction scope (bounded)
+
+PR 2 may correct defects that are directly caused by integrating its own approved `AccountForm`/`AddressFields`-in-edit-form changes with PR 1's already-merged components (e.g. a layout conflict between PR 1's tab shell and PR 2's form reorganization). PR 2 may **not** silently expand to fix unrelated defects discovered in PR 1's own components during this work -- any such defect requires its own correction and its own review, filed separately (an issue or a follow-up PR), not folded into PR 2 without review.
