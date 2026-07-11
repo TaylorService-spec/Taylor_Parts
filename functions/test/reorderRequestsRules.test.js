@@ -7,6 +7,16 @@
 // built-in fetch against the emulator REST APIs, no
 // @firebase/rules-unit-testing, no test runner).
 //
+// Extended again by the Cancel/Void schema deployment sequence's step A
+// (docs/specifications/reorder-request-cancellation.md,
+// docs/implementation-plans/reorder-request-cancellation.md PR 1):
+// hasCanonicalReorderRequestKeys()/...CreationBaseline() are TRANSITIONAL/
+// dual-shape once more, this time accepting the current 29-key shape
+// (every test above this point, unmodified) OR a new 35-key shape (the
+// same 29 plus six new Cancel/Void fields, present and explicitly
+// null). See the new section right before "Sprint 2.1.11 -- Receiving"
+// below.
+//
 // Extended by PR 4 (rollout step 3): the rule is no longer
 // TRANSITIONAL/dual-shape -- PR 2's legacy branch (no
 // recommendationStatus key -> isAdminOrDispatcher() only) has been
@@ -482,6 +492,62 @@ async function main() {
       "rr-ready-forged-status",
       adminToken,
       readyFields({ partId: "PART-R8", requestedByUid: "user-admin-rr", status: "ORDERED" })
+    )) === 403
+  );
+
+  // --- Cancel/Void schema deployment sequence, step A (docs/specifications/
+  // reorder-request-cancellation.md, Implementation Plan PR 1) ---
+  // hasCanonicalReorderRequestKeys()/...CreationBaseline() are now
+  // TRANSITIONAL/dual-shape again, same technique as the zero-history
+  // reorder behavior sprint's own PR 2. The 29-key shape above (every
+  // test already run in this file) must keep working unmodified -- it
+  // does, per every PASS above. This section proves the NEW branch
+  // (35 keys, six Cancel/Void fields present and null) is also
+  // accepted, and that partial presence or a non-null value among the
+  // six is rejected under both branches.
+  const cancelVoidNullFields = {
+    cancelledBy: nul(), cancelledAt: nul(), cancellationReason: nul(),
+    voidedBy: nul(), voidedAt: nul(), voidReason: nul(),
+  };
+
+  report(
+    "READY with all six new Cancel/Void fields present and null accepted (new transitional shape)",
+    (await createReorderRequest(
+      "rr-ready-cancelvoid-shape",
+      adminToken,
+      readyFields({ partId: "PART-CV1", requestedByUid: "user-admin-rr", overrides: cancelVoidNullFields })
+    )) === 200
+  );
+  report(
+    "NEEDS_PLANNING with all six new Cancel/Void fields present and null accepted (new transitional shape)",
+    (await createReorderRequest(
+      "rr-planning-cancelvoid-shape",
+      technicianPartsManagerToken,
+      planningFields({ partId: "PART-CV2", requestedByUid: "user-technician-partsmanager-rr", overrides: cancelVoidNullFields })
+    )) === 200
+  );
+  report(
+    "READY with only ONE of the six new Cancel/Void fields present rejected (partial presence, matches neither exact-key branch)",
+    (await createReorderRequest(
+      "rr-ready-cancelvoid-partial",
+      adminToken,
+      readyFields({ partId: "PART-CV3", requestedByUid: "user-admin-rr", overrides: { cancelledBy: nul() } })
+    )) === 403
+  );
+  report(
+    "READY with only THREE of the six new Cancel/Void fields present rejected (partial presence)",
+    (await createReorderRequest(
+      "rr-ready-cancelvoid-partial2",
+      adminToken,
+      readyFields({ partId: "PART-CV4", requestedByUid: "user-admin-rr", overrides: { cancelledBy: nul(), cancelledAt: nul(), cancellationReason: nul() } })
+    )) === 403
+  );
+  report(
+    "READY with all six new Cancel/Void fields present but one non-null rejected (must be all-null, not merely present)",
+    (await createReorderRequest(
+      "rr-ready-cancelvoid-nonnull",
+      adminToken,
+      readyFields({ partId: "PART-CV5", requestedByUid: "user-admin-rr", overrides: { ...cancelVoidNullFields, cancelledAt: int(Date.now()) } })
     )) === 403
   );
 
