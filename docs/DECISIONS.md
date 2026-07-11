@@ -328,3 +328,11 @@ Every linked-persona command carried `--requireExistingAuthUser` (PR #114) — n
 **`docs/implementation-plans/reorder-request-cancellation.md` updated:** PR 3's row and the tracking table's Step E cell both marked deployed/verified, citing this entry.
 **Not done, per the Owner's explicit scope:** no other collection, index, Function, or Hosting deployment; no production-data write of any kind; PR 4 (Cancel Reorder Request) not begun.
 **Alternatives rejected:** None -- this entry records an already-authorized, narrowly-scoped deployment, not a choice among options.
+
+## 27. PR #138 (Cancel Reorder Request, PR 4 of 6) merged under Owner Merge Authorization -- not deployed
+
+**Date:** 2026-07-11
+**Decision:** ChatGPT's Rules-focused Final Review went through one REQUEST CHANGES round (reviewed head `9169165` -- required four additional test cases: `RECEIVED -> CANCELLED` rejection, two "CANCELLED is terminal" tests, `cancellationReason`-omitted-entirely rejection, and a legacy-document readback test strengthened from sampled fields to a complete pre/post document comparison; applied at head `62d41f9`), then a one-line tracking-table correction (stale "51/51" assertion count corrected to "55/55" after the test additions; applied at head `6a7ab2a`), then **APPROVED at exact head `6a7ab2a1a83c4db95914ae18126466105fc3c3e3`** -- no findings. Confirmed the PR's head had not changed since that approval before merging. The Owner granted explicit Owner Merge Authorization. Merged (squash, branch deleted) -- merge commit `e617a8a`.
+**Effect:** `REORDER_REQUEST_STATUS.CANCELLED`, `cancelReorderRequest()`, and both `firestore.rules` copies' new `CANCELLED` branch are now on `main` (confirmed byte-identical post-merge). **This is a merge only -- nothing has been deployed.** The live `taylor-parts` project's deployed Firestore Rules still reflect PR #132's tightened-but-Cancel-less state until a separate Owner Deployment Authorization is granted and a deploy is actually run.
+**Not done, per the Owner's explicit instruction:** no `firebase deploy` command run. PR 5 (Void Purchase Order) and PR 6 (UI) not begun.
+**Alternatives rejected:** None -- this entry records an already-authorized merge, not a choice among options.
