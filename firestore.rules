@@ -86,9 +86,15 @@ service cloud.firestore {
     // hasOnly/hasAll on just the original 29 keys) is REMOVED here --
     // step B/C confirmed the live writer (createReorderRequest()) has
     // sent the 35-key shape unconditionally since PR #127 (see
-    // docs/DECISIONS.md entries #18/#21), so no live client still sends
-    // the old 29-key shape. A create in the old shape is now rejected
-    // for every caller, same as every other canonical field.
+    // docs/DECISIONS.md entry #18 for the deploy confirmation and entry
+    // #24 for the authoritative resolution -- a full production audit
+    // of the three reorder_requests documents created after PR #127's
+    // deployment cutoff, every one with the complete 35-key shape;
+    // entry #21's original claim was disputed in entry #23 and
+    // resolved, not superseded, by entry #24's audit), so no live
+    // client still sends the old 29-key shape. A create in the old
+    // shape is now rejected for every caller, same as every other
+    // canonical field.
     function hasCanonicalReorderRequestKeys(data) {
       return data.keys().hasOnly([
         "partId", "recommendationStatus", "urgency", "quantitySource", "recommendedQty", "requestedQty",
