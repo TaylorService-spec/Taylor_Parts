@@ -450,7 +450,7 @@ function ReorderRequestPurchasingUpdate({ request, onUpdated, employeeDirectory 
               </tr>
               <tr>
                 <td>Updated by</td>
-                <td>{request.lastPurchasingUpdateBy}</td>
+                <td>{resolveActorDisplayName(request.lastPurchasingUpdateBy, employeeDirectory)}</td>
               </tr>
               <tr>
                 <td>Vendor contacted</td>
@@ -845,6 +845,7 @@ function InventoryActionsPanel({ partId }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
   const { data: recentActions, loading } = useInventoryActionsForPart(partId);
+  const { byUserId: employeeDirectory } = useEmployeeDirectory();
 
   const isCorrectMistake = actionType === INVENTORY_ACTION_TYPE.CORRECT_MISTAKE;
 
@@ -944,7 +945,7 @@ function InventoryActionsPanel({ partId }) {
                 <td>{INVENTORY_ACTION_LABEL[action.transactionType] ?? action.transactionType}</td>
                 <td>{action.quantityDelta > 0 ? `+${action.quantityDelta}` : action.quantityDelta}</td>
                 <td className="fo-muted">{action.reason ?? "—"}</td>
-                <td className="fo-muted">{action.createdBy}</td>
+                <td className="fo-muted">{resolveActorDisplayName(action.createdBy, employeeDirectory)}</td>
                 <td className="fo-muted">{formatTimestamp(action.createdAt)}</td>
               </tr>
             ))}
