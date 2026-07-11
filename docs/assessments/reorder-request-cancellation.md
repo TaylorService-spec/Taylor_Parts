@@ -52,7 +52,7 @@ Covers `reorder_requests` and `reorder_purchase_orders` only -- the two collecti
 
 - **Zero-history reorder behavior sprint (complete, all 4 PRs live)**: cancellation would be the object's first new status/transition since that sprint closed. No open dependency, but the Specification should explicit confirm it isn't reopening anything from that sprint's now-closed scope.
 - **Sprint 2.1.11 (Receiving, PR #98/#103, live)**: `RECEIVED` is the current terminal state. A cancellation reachable late in the lifecycle (e.g. after `ORDERED`, before `RECEIVED`) needs to be reasoned about alongside Receiving's existing terminal transition, not independently.
-- **PR #107 (post-assignment display names, open as of this writing)**: any new "who cancelled/voided" actor field should reuse `hooks/useEmployeeDirectory.js`'s `resolveActorDisplayName()` from the start, not repeat the raw-uid-display mistake PR #107 just fixed.
+- **PR #107 (post-assignment display names) -- merged**, `5911fd9`: any new "who cancelled/voided" actor field should reuse `hooks/useEmployeeDirectory.js`'s `resolveActorDisplayName()` from the start, not repeat the raw-uid-display mistake PR #107 fixed.
 - **No dependency on Firebase Blaze / Cloud Functions.** Every write path this object has ever used is client-direct-write-with-rules; nothing here requires a trusted server write, based on the pattern established by every prior sprint on this object.
 - **No dependency on the Parts and Purchase Order Assignment Adoption initiative** (still unscoped, per `docs/CLAUDE_CONTEXT.md`) -- unrelated concern (who gets assigned, not whether a request can be un-done).
 

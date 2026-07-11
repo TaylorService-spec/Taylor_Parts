@@ -28,7 +28,7 @@ Six PRs, one architectural concern each, in dependency order. No PR in this plan
 | 3 | Cancel/Void schema fields -- tightened Rules | Specification's step D: remove the old-shape branch, require the six new keys unconditionally. Step E's live confirmation happens after this merges and deploys, recorded in `docs/DECISIONS.md` | PR 2 (deployed and confirmed live, per step C) | Not started |
 | 4 | Cancel Reorder Request | New `CANCELLED` status/branch on `reorder_requests`, `cancelReorderRequest()` write function, Rules (`isAdminOrDispatcher()`, three reachable source statuses, non-blank-reason regex) | PR 3 (deployed and confirmed live) | Not started |
 | 5 | Void Purchase Order | New `VOIDED` status/branch, new `reorder_purchase_order_voids` collection and Rules (Purchase-Order-existence proof, cross-document invariant, reason/timestamp binding), `voidPurchaseOrder()` write function | PR 3 (deployed and confirmed live) | Not started |
-| 6 | Cancel/Void UI | `PartDetail.jsx` actions (reason field, confirmation copy), `ReorderRequestCancelled`/`ReorderRequestVoided` read-only cards, `useReorderPurchaseOrderVoids.js` hook, `docs/BusinessEntityModel.md` Section 4/4b update | PR 4, PR 5; **also depends on PR #107 merging** (`resolveActorDisplayName()`) for the two new cards' actor-name display -- see External dependencies | Not started |
+| 6 | Cancel/Void UI | `PartDetail.jsx` actions (reason field, confirmation copy), `ReorderRequestCancelled`/`ReorderRequestVoided` read-only cards, `useReorderPurchaseOrderVoids.js` hook, `docs/BusinessEntityModel.md` Section 4/4b update | PR 4, PR 5. (PR #107 dependency **satisfied** -- merged, `5911fd9` -- see External dependencies) | Not started |
 
 ## Sequencing notes
 
@@ -42,7 +42,7 @@ PR 6 (UI) depends on both 4 and 5 being deployed and live -- it wires up actions
 
 ## External dependencies
 
-- **PR #107** (post-assignment raw-User-ID display fix, open as of this writing) must merge before PR 6 is implemented, so `ReorderRequestCancelled`/`ReorderRequestVoided` can reuse `resolveActorDisplayName()` rather than re-introducing a raw-uid display. If PR #107 is still open when PR 6 is otherwise ready, PR 6 either waits or ships with an explicit, documented raw-uid fallback and a tracked follow-up -- not a silent regression, per the Specification's UI impact section.
+- **PR #107** (post-assignment raw-User-ID display fix) -- **merged and satisfied**, merge commit `5911fd9858e1a9121afbf31e1c669428ae6c5090`. `field-ops-app-vite/src/hooks/useEmployeeDirectory.js`'s `resolveActorDisplayName()` is available on `main`; `ReorderRequestCancelled`/`ReorderRequestVoided` (PR 6) can consume it directly, no fallback/follow-up needed.
 - No dependency on Firebase Blaze / Cloud Functions -- every write path in this plan is client-direct-write-with-rules, matching every prior sprint on this object.
 - No dependency on the Parts and Purchase Order Assignment Adoption initiative, or on the Zero-history reorder behavior sprint's own closed scope.
 
