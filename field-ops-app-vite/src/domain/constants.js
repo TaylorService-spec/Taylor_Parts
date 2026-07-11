@@ -103,6 +103,7 @@ export const REORDER_REQUEST_STATUS = {
   ASSIGNED_TO_PARTS_ASSOCIATE: "ASSIGNED_TO_PARTS_ASSOCIATE",
   PURCHASING_IN_PROGRESS: "PURCHASING_IN_PROGRESS",
   ORDERED: "ORDERED",
+  RECEIVED: "RECEIVED", // Sprint 2.1.11 -- Receiving (Reorder Request closeout). Terminal.
 };
 
 // Sprint 2.1.5 -- Inventory -> Parts Manager Handoff. `currentOwner` is

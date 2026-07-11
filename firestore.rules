@@ -86,7 +86,7 @@ service cloud.firestore {
         "purchasingStartedAt", "purchasingStartedBy",
         "purchasingNotes", "vendorContacted", "expectedAvailabilityDate",
         "lastPurchasingUpdateAt", "lastPurchasingUpdateBy",
-        "purchaseOrderId", "orderedBy", "orderedAt"
+        "purchaseOrderId", "orderedBy", "orderedAt", "receivedBy", "receivedAt"
       ]) && data.keys().hasAll([
         "partId", "recommendationStatus", "urgency", "quantitySource", "recommendedQty", "requestedQty",
         "status", "currentOwner", "requestedBy", "createdAt",
@@ -95,7 +95,7 @@ service cloud.firestore {
         "purchasingStartedAt", "purchasingStartedBy",
         "purchasingNotes", "vendorContacted", "expectedAvailabilityDate",
         "lastPurchasingUpdateAt", "lastPurchasingUpdateBy",
-        "purchaseOrderId", "orderedBy", "orderedAt"
+        "purchaseOrderId", "orderedBy", "orderedAt", "receivedBy", "receivedAt"
       ]);
     }
 
@@ -120,7 +120,9 @@ service cloud.firestore {
         && data.lastPurchasingUpdateBy == null
         && data.purchaseOrderId == null
         && data.orderedBy == null
-        && data.orderedAt == null;
+        && data.orderedAt == null
+        && data.receivedBy == null
+        && data.receivedAt == null;
     }
 
     match /fieldops_jobs/{jobId} {
@@ -435,7 +437,43 @@ service cloud.firestore {
               && getAfter(/databases/$(database)/documents/reorder_purchase_orders/$(requestId)).data.reorderRequestId == requestId
               && getAfter(/databases/$(database)/documents/reorder_purchase_orders/$(requestId)).data.createdBy == request.auth.uid
               && getAfter(/databases/$(database)/documents/reorder_purchase_orders/$(requestId)).data.status == "ORDERED"
-              && getAfter(/databases/$(database)/documents/reorder_purchase_orders/$(requestId)).data.partId == resource.data.partId))
+              && getAfter(/databases/$(database)/documents/reorder_purchase_orders/$(requestId)).data.partId == resource.data.partId)
+            // Sprint 2.1.11 -- Receiving (Reorder Request closeout).
+            // Terminal ORDERED -> RECEIVED transition, assignee-only,
+            // same single-document-transition shape as Sprint 2.1.7/
+            // 2.1.8 (no getAfter()/existsAfter() cross-document
+            // invariant needed here -- unlike Sprint 2.1.10, this
+            // transition doesn't create a second linked document).
+            // This is a status-closeout note only -- does NOT write to
+            // inventory_transactions (Admin-SDK-only, Work-Order-
+            // driven ledger, ADR-003); reconciling against real stock
+            // stays on FUTURE_ARCHITECTURE_BACKLOG.md, blocked on
+            // Firebase Blaze (issue #15), not this sprint's concern.
+            || (resource.data.status == "ORDERED"
+              && request.resource.data.status == "RECEIVED"
+              && request.auth.uid == resource.data.assignedToUserId
+              && request.resource.data.receivedBy == request.auth.uid
+              && request.resource.data.receivedAt is number
+              && request.resource.data.currentOwner == resource.data.currentOwner
+              && request.resource.data.assignedToUserId == resource.data.assignedToUserId
+              && request.resource.data.assignedBy == resource.data.assignedBy
+              && request.resource.data.assignedAt == resource.data.assignedAt
+              && request.resource.data.purchasingStartedAt == resource.data.purchasingStartedAt
+              && request.resource.data.purchasingStartedBy == resource.data.purchasingStartedBy
+              && request.resource.data.purchasingNotes == resource.data.purchasingNotes
+              && request.resource.data.vendorContacted == resource.data.vendorContacted
+              && request.resource.data.expectedAvailabilityDate == resource.data.expectedAvailabilityDate
+              && request.resource.data.lastPurchasingUpdateAt == resource.data.lastPurchasingUpdateAt
+              && request.resource.data.lastPurchasingUpdateBy == resource.data.lastPurchasingUpdateBy
+              && request.resource.data.purchaseOrderId == resource.data.purchaseOrderId
+              && request.resource.data.orderedBy == resource.data.orderedBy
+              && request.resource.data.orderedAt == resource.data.orderedAt
+              && request.resource.data.reviewDecision == resource.data.reviewDecision
+              && request.resource.data.reviewedBy == resource.data.reviewedBy
+              && request.resource.data.reviewedAt == resource.data.reviewedAt
+              && request.resource.data.reviewNotes == resource.data.reviewNotes
+              && request.resource.data.diff(resource.data).affectedKeys()
+                   .hasOnly(["status", "receivedBy", "receivedAt"])))
         && request.resource.data.partId == resource.data.partId
         && request.resource.data.urgency == resource.data.urgency
         && request.resource.data.recommendedQty == resource.data.recommendedQty

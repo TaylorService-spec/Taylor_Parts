@@ -12,6 +12,7 @@ import {
   startPurchasing,
   updatePurchasingProgress,
   requestReorderForRecommendation,
+  receiveReorderRequest,
   getDisplayQty,
 } from "../../domain/inventoryReorderRequests";
 import { recordInventoryAction } from "../../domain/inventoryActions";
@@ -653,6 +654,77 @@ function ReorderRequestOrdered({ request }) {
   );
 }
 
+// Sprint 2.1.11 -- Receiving (Reorder Request closeout). Shown
+// alongside ReorderRequestOrdered whenever a request is ORDERED --
+// same assignee-only restriction as every write on this object since
+// Sprint 2.1.7 (firestore.rules enforces request.auth.uid ==
+// assignedToUserId). This is a status-closeout note only -- it does
+// NOT change any real stock count (does not call
+// recordInventoryAction() or touch inventory_transactions), same
+// posture Sprint 2.1.9's Inventory Action Log card states explicitly
+// below. Reconciling this against real stock is a separate,
+// Blaze-blocked backlog item, not this sprint's concern.
+function ReorderRequestMarkReceived({ request, onReceived }) {
+  const { user } = useAuth();
+  const isAssignee = user?.uid === request.assignedToUserId;
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState(null);
+
+  if (!isAssignee) return null;
+
+  async function handleReceive() {
+    setSubmitting(true);
+    setError(null);
+    try {
+      await receiveReorderRequest(request.id);
+      onReceived();
+    } catch (err) {
+      setError(err.message);
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="fo-card">
+      <h3>Mark Received</h3>
+      <p className="fo-muted">
+        This records that the parts arrived and closes out this Reorder Request. It does not update stock yet --
+        stock reconciliation against this receipt is a separate, not-yet-built step.
+      </p>
+      {error && <p className="fo-muted">{error}</p>}
+      <div className="disp-board-toolbar">
+        <button type="button" onClick={handleReceive} disabled={submitting}>
+          Mark Received
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Sprint 2.1.11 -- Receiving (Reorder Request closeout). Terminal,
+// read-only card once RECEIVED -- no further action on this Reorder
+// Request exists.
+function ReorderRequestReceived({ request }) {
+  return (
+    <div className="fo-card">
+      <h3>Reorder Request -- Received</h3>
+      <table className="fo-table">
+        <tbody>
+          <tr>
+            <td>Received by</td>
+            <td>{request.receivedBy}</td>
+          </tr>
+          <tr>
+            <td>Received</td>
+            <td>{formatTimestamp(request.receivedAt)}</td>
+          </tr>
+        </tbody>
+      </table>
+      <p className="fo-muted">This records that the parts arrived. It does not update stock yet.</p>
+    </div>
+  );
+}
+
 function ReorderRequestDecision({ request }) {
   return (
     <div className="fo-card">
@@ -932,7 +1004,12 @@ export default function PartDetail() {
             <ReorderRequestRecordPurchaseOrder request={reorderRequest} onRecorded={refreshReorderRequest} />
           </>
         ) : reorderRequest.status === REORDER_REQUEST_STATUS.ORDERED ? (
-          <ReorderRequestOrdered request={reorderRequest} />
+          <>
+            <ReorderRequestOrdered request={reorderRequest} />
+            <ReorderRequestMarkReceived request={reorderRequest} onReceived={refreshReorderRequest} />
+          </>
+        ) : reorderRequest.status === REORDER_REQUEST_STATUS.RECEIVED ? (
+          <ReorderRequestReceived request={reorderRequest} />
         ) : (
           <ReorderRequestDecision request={reorderRequest} />
         )

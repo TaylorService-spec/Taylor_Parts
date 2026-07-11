@@ -85,6 +85,8 @@ export function createReorderRequest({ partId, urgency, recommendedQty, recommen
     purchaseOrderId: null,
     orderedBy: null,
     orderedAt: null,
+    receivedBy: null,
+    receivedAt: null,
   });
 }
 
@@ -230,5 +232,28 @@ export function updatePurchasingProgress(requestId, { purchasingNotes, vendorCon
     expectedAvailabilityDate: expectedAvailabilityDate || null,
     lastPurchasingUpdateAt: Date.now(),
     lastPurchasingUpdateBy: auth.currentUser?.uid ?? null,
+  });
+}
+
+// Sprint 2.1.11 -- Receiving (Reorder Request closeout). The only
+// writer of a receipt. Terminal ORDERED -> RECEIVED transition, same
+// per-user restriction as every write on this object since Sprint
+// 2.1.7: only the assigned Parts Associate, enforced in
+// firestore.rules (request.auth.uid == the request's own
+// assignedToUserId), not just application code.
+//
+// Deliberately a status-closeout note only -- does NOT call
+// recordInventoryAction() (domain/inventoryActions.js) or touch
+// inventory_transactions (Admin-SDK-only, Work-Order-driven ledger,
+// ADR-003) in any way. Reconciling this against real stock counts is
+// a separate, already-tracked backlog item (apply logged actions to
+// the ledger via a Cloud-Function-mediated path once Firebase Blaze
+// is enabled), genuinely blocked on Blaze (issue #15), not solved by
+// this function.
+export function receiveReorderRequest(requestId) {
+  return reorderRequestsStore.update(requestId, {
+    status: REORDER_REQUEST_STATUS.RECEIVED,
+    receivedAt: Date.now(),
+    receivedBy: auth.currentUser?.uid ?? null,
   });
 }
