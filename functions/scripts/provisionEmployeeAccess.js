@@ -128,10 +128,27 @@
 //   GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json node scripts/provisionEmployeeAccess.js \
 //     --projectId taylor-parts --confirmProduction taylor-parts \
 //     --employeeId emp-001 --displayName "Jane Doe" \
-//     [--email jane@example.com] [--securityRole dispatcher] [--operationalRoles PARTS_ASSOCIATE,PARTS_MANAGER]
+//     [--email jane@example.com] [--securityRole dispatcher] [--operationalRoles PARTS_ASSOCIATE,PARTS_MANAGER] \
+//     [--requireExistingAuthUser]
 // (or `gcloud auth application-default login` first, then omit the
 //  env var -- either way you need real credentials for the target
 //  project.)
+//
+// --requireExistingAuthUser -- existing-account-only linkage mode.
+// Valid only alongside --email. Case B (GRANT_ACCESS)'s default
+// behavior, below, silently creates a new passwordless Auth account
+// when --email resolves to nothing -- correct for onboarding a
+// genuinely new hire, but wrong when linking an account the operator
+// already created out-of-band (e.g. Firebase Console) and has
+// independently verified exists: a typo'd email or an account deleted
+// after that verification should fail loudly, not silently provision a
+// new one. With this flag, phase C (detectConflicts) throws if
+// getUserByEmail() found nothing -- before auth.createUser(), before
+// any Firestore transaction, before any Employee or User write. Without
+// it, behavior is byte-for-byte unchanged from before this flag
+// existed. Never bypasses --projectId/--confirmProduction, conflict
+// detection, or idempotency -- it only removes the auto-create fallback
+// for a missing target account.
 //
 // A live-project run is NOT authorized by this script's existence, by
 // this PR's merge, or by any code review alone -- running this against
@@ -203,6 +220,7 @@ function normalizeOperationalRoles(raw) {
 // ---------------------------------------------------------------
 function validateInput(rawArgs) {
   const { employeeId, displayName, email, securityRole, operationalRoles: rawOperationalRoles } = rawArgs;
+  const requireExistingAuthUser = rawArgs.requireExistingAuthUser === "true";
 
   if (!employeeId) {
     throw new Error("--employeeId is required.");
@@ -210,12 +228,21 @@ function validateInput(rawArgs) {
   if (securityRole && !VALID_SECURITY_ROLES.includes(securityRole)) {
     throw new Error(`--securityRole must be one of: ${VALID_SECURITY_ROLES.join(", ")}.`);
   }
+  // --requireExistingAuthUser only means anything alongside --email (it
+  // gates whether a *missing* target account may be created) -- reject
+  // the nonsensical combination up front rather than silently ignoring
+  // the flag. main() re-checks this same condition before
+  // initializeApp() is ever called; this copy exists so direct callers
+  // of provisionEmployeeAccess() (e.g. tests) get the same guarantee.
+  if (requireExistingAuthUser && !email) {
+    throw new Error("--requireExistingAuthUser requires --email to also be supplied.");
+  }
 
   // Throws on any invalid role -- the entire command is rejected
   // before any read or write if operationalRoles is malformed.
   const operationalRoles = normalizeOperationalRoles(rawOperationalRoles);
 
-  return { employeeId, displayName, email, securityRole, operationalRoles };
+  return { employeeId, displayName, email, securityRole, operationalRoles, requireExistingAuthUser };
 }
 
 // ---------------------------------------------------------------
@@ -261,11 +288,28 @@ async function readCurrentState(db, auth, { employeeId, email }) {
 // having made zero Firestore or Auth writes, because phases D/E never
 // run when this phase throws.
 // ---------------------------------------------------------------
-function detectConflicts({ employeeId, displayName, email, securityRole }, state) {
+function detectConflicts({ employeeId, displayName, email, securityRole, requireExistingAuthUser }, state) {
   const { employee, linkedUserRecord, targetAuthUser, targetUserDoc } = state;
 
   if (!employee && !displayName) {
     throw new Error(`employees/${employeeId} does not exist yet -- --displayName is required to create it.`);
+  }
+
+  // --requireExistingAuthUser's entire purpose: this project's default
+  // GRANT_ACCESS behavior (see buildPlan/applyPlan below) silently
+  // creates a new passwordless Auth account when --email resolves to
+  // nothing. That's the right default for genuinely new hires, but
+  // wrong for linking accounts the operator has already created
+  // out-of-band and verified exist -- a typo'd or since-deleted email
+  // should fail loudly, not quietly provision a new account. This
+  // check runs in phase C, so it throws before buildPlan (phase D) or
+  // applyPlan (phase E) ever run -- zero Auth or Firestore mutation
+  // occurs when this fires.
+  if (requireExistingAuthUser && !targetAuthUser) {
+    throw new Error(
+      `--requireExistingAuthUser was set but no existing Firebase Auth account was found for "${email}". ` +
+        "Refusing to create one -- verify the email and that the account exists, then re-run."
+    );
   }
 
   if (securityRole && !email && !(employee && employee.userId)) {
@@ -540,8 +584,21 @@ async function main() {
     console.error(
       "Usage: node scripts/provisionEmployeeAccess.js --projectId <id> [--confirmProduction taylor-parts] " +
         "--employeeId <id> [--displayName <name>] [--email <email>] " +
-        "[--securityRole admin|dispatcher|technician] [--operationalRoles ROLE1,ROLE2]"
+        "[--securityRole admin|dispatcher|technician] [--operationalRoles ROLE1,ROLE2] " +
+        "[--requireExistingAuthUser]"
     );
+    process.exitCode = 1;
+    return;
+  }
+
+  // Checked here, before initializeApp(), for the same reason
+  // assertProjectTarget() is: a malformed invocation of a flag whose
+  // entire point is refusing to create an Auth account should itself
+  // fail before any Firebase SDK call, not partway through one.
+  // validateInput() (phase A, inside provisionEmployeeAccess() below)
+  // re-checks this same condition for direct callers that skip main().
+  if (args.requireExistingAuthUser && !args.email) {
+    console.error("--requireExistingAuthUser requires --email to also be supplied.");
     process.exitCode = 1;
     return;
   }
@@ -558,6 +615,7 @@ async function main() {
     email: args.email,
     securityRole: args.securityRole,
     operationalRoles: args.operationalRoles,
+    requireExistingAuthUser: args.requireExistingAuthUser,
   });
 }
 
@@ -570,6 +628,8 @@ module.exports = {
   provisionEmployeeAccess,
   parseArgs,
   validateInput,
+  detectConflicts,
+  buildPlan,
   normalizeOperationalRoles,
   assertProjectTarget,
   VALID_OPERATIONAL_ROLES,
