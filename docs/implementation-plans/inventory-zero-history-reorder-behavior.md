@@ -99,7 +99,7 @@ Multi-PR sprint (four distinct concerns: analytics/schema, transitional authoriz
 |---|---|---|
 | 1 | [#90](https://github.com/TaylorService-spec/Taylor_Parts/pull/90) | Merged (`a66871883a6136de1d9e2c9cf7d4dd9dcf6dce70`, 2026-07-10) |
 | 2 | [#91](https://github.com/TaylorService-spec/Taylor_Parts/pull/91) | Merged (`41392de0e3104c9a378e2ce4e226ce6379ef4380`, 2026-07-11) — **deployed and verified live, 2026-07-11** (see below) |
-| 3 | Not yet opened | Not started |
+| 3 | [#92](https://github.com/TaylorService-spec/Taylor_Parts/pull/92) | Open — ChatGPT Final Review pending. No Codex review requested (not a Firestore Rules/security-sensitive/complex-transaction change, per `docs/ai/workflow.md`'s Codex-optional criteria) |
 | 4 | Not yet opened | Not started |
 
 Update this table as each PR opens/merges. Per the Owner's standing instruction, this sprint stays separate from Parts and Purchase Order Assignment Adoption and the broader governed Part and Inventory Administration initiative — do not link or merge tracking with either.
