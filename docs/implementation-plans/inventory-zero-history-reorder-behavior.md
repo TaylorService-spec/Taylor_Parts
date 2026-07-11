@@ -23,10 +23,10 @@ Multi-PR sprint (four distinct concerns: analytics/schema, transitional authoriz
 
 | # | PR title | Architectural concern | Depends on | Status |
 |---|---|---|---|---|
-| 1 | `recommendationStatus`/nullable `urgency` + `OPERATIONAL_ROLE`/`QUANTITY_SOURCE` constants | Analytics engine + client/server mirror + type/schema foundation | None | Not started |
-| 2 | `firestore.rules` transitional (dual-shape) `create` validation + emulator Rules test | Authorization/security (Firestore Rules), step 1 of the expand/contract rollout | PR 1 (new field names must be final before rules reference them) | Not started |
-| 3 | `requestedQty`/`quantitySource` write path + manual-quantity UI + queue visibility | UI + domain write path, step 2 of the rollout | PR 1 (types/fields), PR 2 deployed live (not just merged — the transitional rules must actually be serving before this PR's new-shape writes are exercised for real) | Not started |
-| 4 | `firestore.rules` tightening — remove the legacy-shape (`: isAdminOrDispatcher()`) branch | Authorization/security (Firestore Rules), step 3 of the rollout — closes the temporary gap | PR 3 deployed live and confirmed (no legacy-shape writer remains in use) | Not started |
+| 1 | `recommendationStatus`/nullable `urgency` + `OPERATIONAL_ROLE`/`QUANTITY_SOURCE` constants | Analytics engine + client/server mirror + type/schema foundation | None | **Complete and live** (PR #90) |
+| 2 | `firestore.rules` transitional (dual-shape) `create` validation + emulator Rules test | Authorization/security (Firestore Rules), step 1 of the expand/contract rollout | PR 1 (new field names must be final before rules reference them) | **Complete and live** (PR #91) |
+| 3 | `requestedQty`/`quantitySource` write path + manual-quantity UI + queue visibility | UI + domain write path, step 2 of the rollout | PR 1 (types/fields), PR 2 deployed live (not just merged — the transitional rules must actually be serving before this PR's new-shape writes are exercised for real) | **Complete and live** (PR #92) |
+| 4 | `firestore.rules` tightening — remove the legacy-shape (`: isAdminOrDispatcher()`) branch | Authorization/security (Firestore Rules), step 3 of the rollout — closes the temporary gap | PR 3 deployed live and confirmed (no legacy-shape writer remains in use) | **Complete and live** (PR #103) — sprint closed, see `docs/DECISIONS.md` entry #8 |
 
 ## Sequencing notes
 
@@ -100,9 +100,9 @@ Multi-PR sprint (four distinct concerns: analytics/schema, transitional authoriz
 | 1 | [#90](https://github.com/TaylorService-spec/Taylor_Parts/pull/90) | Merged (`a66871883a6136de1d9e2c9cf7d4dd9dcf6dce70`, 2026-07-10) |
 | 2 | [#91](https://github.com/TaylorService-spec/Taylor_Parts/pull/91) | Merged (`41392de0e3104c9a378e2ce4e226ce6379ef4380`, 2026-07-11) — **deployed and verified live, 2026-07-11** (see below) |
 | 3 | [#92](https://github.com/TaylorService-spec/Taylor_Parts/pull/92) | Merged (`79a64c175a8dcc7cb5ae1cdbbbec8cc1e1498539`, 2026-07-11) — **confirmed live** (frontend-only, auto-deployed via GitHub Actions at merge; no manual step existed for this surface, confirmed via the deploy workflow's success run at the merge commit and direct live-bundle inspection) |
-| 4 | [#103](https://github.com/TaylorService-spec/Taylor_Parts/pull/103) | Implemented, open for Rules-focused review. Precondition verified — see below. 32/32 Rules-emulator assertions passing. Not merged, not deployed. |
+| 4 | [#103](https://github.com/TaylorService-spec/Taylor_Parts/pull/103) | Merged (`23176950f0392019c3851b00ab35680cf87980e6`, 2026-07-11) — **deployed and verified live, 2026-07-11** (see below). ChatGPT Rules-focused review: Approved with documentation corrections, applied before merge. |
 
-Update this table as each PR opens/merges. Per the Owner's standing instruction, this sprint stays separate from Parts and Purchase Order Assignment Adoption and the broader governed Part and Inventory Administration initiative — do not link or merge tracking with either.
+**This sprint is now complete — all four PRs merged and confirmed live.** See `docs/DECISIONS.md` entry #8 for the closing summary. Update this table only if a future defect against this sprint's scope needs tracking here specifically; otherwise treat this plan as closed. Per the Owner's standing instruction, this sprint stayed separate from Parts and Purchase Order Assignment Adoption and the broader governed Part and Inventory Administration initiative throughout — do not retroactively link or merge tracking with either.
 
 ### Deployment status (separate from merge status)
 
@@ -118,6 +118,17 @@ PR 3 is now unblocked to begin, per this verification.
 **PR 3 (#92) confirmed live, 2026-07-11.** Unlike PR 2, this required no manual deploy step: PR #92 is frontend-only (no `firestore.rules` change), and per `docs/Deployment.md`, merging to `main` is itself the deploy trigger for that surface via GitHub Actions (`deploy-field-ops.yml`). Verified two ways: (1) the deploy workflow's run at the exact merge commit (`79a64c175a8dcc7cb5ae1cdbbbec8cc1e1498539`) shows `conclusion: success`, timestamped seconds after the merge; (2) the live bundle at `taylorservice-spec.github.io/Taylor_Parts/field-ops/` was fetched directly and inspected — contains `"Needs Planning"` (PR #92's UI), and (at the time of that check) correctly did not yet contain PR #98's "Mark Received" strings, confirming the bundle reflected exactly the expected commit range.
 
 **PR 4 precondition verified, 2026-07-11 (Rudy, manual Firebase Console spot-check):** every existing document in production `reorder_requests` has `createdAt` below `1783731347000` (`2026-07-11T00:55:47Z`, PR #92's live cutoff) — no document was created after the new writer went live, so no legacy-shape write exists to reconcile. This was a read-only Console inspection; no production data was modified, no new tooling or credentials were provisioned to perform it (a request to recreate the removed `admin-check` tool for this check was made and explicitly declined earlier the same session — the credential-free Console path was used instead, per the initiative's own standing constraint above). **PR 4 is unblocked.**
+
+**PR 4 (#103) deployed and verified live, 2026-07-11**, under an explicit Owner Deployment Authorization scoped to PR #103's rules only — same verification method as PR 2's deployment above.
+
+- Pre-deploy: confirmed local `main` and `origin/main` were both exactly `23176950f0392019c3851b00ab35680cf87980e6`, the authorized merge commit, with a clean working tree.
+- Deploy: `firebase deploy --only firestore:rules --project taylor-parts` — output confirmed `cloud.firestore: rules file firestore.rules compiled successfully` and `firestore: released rules firestore.rules to cloud.firestore`.
+- Live verification: immediately re-ran the identical deploy command. Output: `firestore: latest version of firestore.rules already up to date, skipping upload` — confirms the live ruleset is byte-identical to `main`'s `firestore.rules`, including the legacy-shape branch's removal.
+- Working tree confirmed clean immediately after both deploy calls.
+
+**Effect now live:** any `reorder_requests` create missing `recommendationStatus`/`requestedQty`/`quantitySource` is rejected for every caller. The transitional gap PR 2 intentionally opened and PR 4 closed is fully resolved. No currently-live client behavior changes, since the live writer already always sent the canonical shape.
+
+**Sprint complete.** Full closing summary: `docs/DECISIONS.md` entry #8.
 
 ## Approval
 
