@@ -52,6 +52,111 @@ async function ensureAuthUser(acct) {
   }
 }
 
+// Notification identity fix (docs/specifications/notification-identity.md,
+// Issue #145) -- one dedicated REAL catalog part (data/partsCatalog.ts
+// -- PartDetail.jsx's getCatalogItem(partId) short-circuits to an
+// "Unknown part" message for any id not in that fixed catalog list, so
+// this fixture reuses TST-1004..TST-1007 rather than inventing new
+// ids) per Notification Panel section / PartsList.jsx queue this
+// fixture needs to exercise, each seeded with TWO reorder_requests
+// documents: an ACTIVE one (the status that section/queue actually
+// surfaces) and a TERMINAL (CANCELLED) sibling for the SAME part with
+// a deliberately LATER createdAt. This is the exact defect scenario:
+// the old partId-only navigation would have resolved to the terminal
+// sibling (newest by createdAt, no status filter) instead of the
+// active document a real notification click
+// should land on. Exported so driver.mjs can assert against the exact
+// expected requestId per case, not just "some request for this part."
+export const NOTIFICATION_IDENTITY_FIXTURE = {
+  pendingReview: { partId: "TST-1004", activeId: "driver-seed-notif-pending-active", status: "PENDING_REVIEW" },
+  readyForPartsManager: { partId: "TST-1005", activeId: "driver-seed-notif-readypm-active", status: "READY_FOR_PARTS_MANAGER" },
+  assignedToYou: { partId: "TST-1006", activeId: "driver-seed-notif-assigned-active", status: "ASSIGNED_TO_PARTS_ASSOCIATE" },
+  purchasingStarted: { partId: "TST-1007", activeId: "driver-seed-notif-purchasing-active", status: "PURCHASING_IN_PROGRESS" },
+};
+
+async function seedReorderRequestFixture(docId, { partId, status, currentOwner, assignedToUserId, createdAt }) {
+  const isCancelled = status === "CANCELLED";
+  await db.doc(`reorder_requests/${docId}`).set({
+    partId,
+    recommendationStatus: "READY",
+    urgency: "HIGH",
+    quantitySource: "ANALYTICS",
+    recommendedQty: 5,
+    requestedQty: 5,
+    status,
+    currentOwner,
+    requestedBy: DRIVER_ACCOUNTS.admin.uid,
+    createdAt,
+    reviewedBy: DRIVER_ACCOUNTS.admin.uid,
+    reviewedAt: createdAt,
+    reviewDecision: "APPROVED",
+    reviewNotes: null,
+    assignedToUserId: assignedToUserId ?? null,
+    assignedBy: assignedToUserId ? DRIVER_ACCOUNTS.admin.uid : null,
+    assignedAt: assignedToUserId ? createdAt : null,
+    purchasingStartedAt: status === "PURCHASING_IN_PROGRESS" ? createdAt : null,
+    purchasingStartedBy: status === "PURCHASING_IN_PROGRESS" ? assignedToUserId : null,
+    purchasingNotes: null,
+    vendorContacted: null,
+    expectedAvailabilityDate: null,
+    lastPurchasingUpdateAt: null,
+    lastPurchasingUpdateBy: null,
+    purchaseOrderId: null,
+    orderedBy: null,
+    orderedAt: null,
+    receivedBy: null,
+    receivedAt: null,
+    cancelledBy: isCancelled ? DRIVER_ACCOUNTS.admin.uid : null,
+    cancelledAt: isCancelled ? createdAt : null,
+    cancellationReason: isCancelled ? "Test fixture -- terminal sibling for notification identity verification" : null,
+    voidedBy: null,
+    voidedAt: null,
+    voidReason: null,
+  });
+}
+
+async function seedNotificationIdentityFixture() {
+  const now = Date.now();
+  const currentOwnerByStatus = {
+    PENDING_REVIEW: "INVENTORY",
+    READY_FOR_PARTS_MANAGER: "PARTS_MANAGER",
+    ASSIGNED_TO_PARTS_ASSOCIATE: "PARTS_ASSOCIATE",
+    PURCHASING_IN_PROGRESS: "PARTS_ASSOCIATE",
+  };
+  const assignedToUserIdByStatus = {
+    PENDING_REVIEW: null,
+    READY_FOR_PARTS_MANAGER: null,
+    ASSIGNED_TO_PARTS_ASSOCIATE: DRIVER_ACCOUNTS.admin.uid,
+    PURCHASING_IN_PROGRESS: DRIVER_ACCOUNTS.admin.uid,
+  };
+
+  for (const c of Object.values(NOTIFICATION_IDENTITY_FIXTURE)) {
+    const currentOwner = currentOwnerByStatus[c.status];
+    const assignedToUserId = assignedToUserIdByStatus[c.status];
+
+    // Active document -- older createdAt. Every notification/queue
+    // link for this case must resolve here.
+    await seedReorderRequestFixture(c.activeId, {
+      partId: c.partId,
+      status: c.status,
+      currentOwner,
+      assignedToUserId,
+      createdAt: now - 60_000,
+    });
+
+    // Terminal sibling, same part, deliberately NEWER createdAt -- the
+    // document the pre-fix, partId-only navigation would have
+    // resolved to instead.
+    await seedReorderRequestFixture(`${c.activeId}-terminal`, {
+      partId: c.partId,
+      status: "CANCELLED",
+      currentOwner,
+      assignedToUserId,
+      createdAt: now,
+    });
+  }
+}
+
 async function seed() {
   for (const acct of Object.values(DRIVER_ACCOUNTS)) {
     await ensureAuthUser(acct);
@@ -145,6 +250,8 @@ async function seed() {
     reviewDecision: "APPROVED",
     reviewNotes: null,
   });
+
+  await seedNotificationIdentityFixture();
 
   console.log("Seeded driver accounts:");
   for (const [key, acct] of Object.entries(DRIVER_ACCOUNTS)) {

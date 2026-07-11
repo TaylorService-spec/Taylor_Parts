@@ -33,10 +33,18 @@ import { getCatalogItem } from "../../data/partsCatalog";
 // Zero-history reorder behavior sprint, PR 3 -- `request.urgency` is
 // null for a NEEDS_PLANNING request; shows a "Needs planning" badge
 // instead of crashing on `.toLowerCase()`.
+// Notification identity fix (docs/specifications/notification-identity.md,
+// Issue #145) -- `request.id` (the request's own Firestore document id,
+// already present on every notification object via toDocs(), already
+// used above as this list's React key) is now also passed as a
+// requestId query param, so PartDetail resolves the EXACT request that
+// produced this notification instead of "whichever request for this
+// part happens to be newest" -- which could silently be a different,
+// terminal request for the same part.
 function NotificationItem({ request, onNavigate }) {
   return (
     <Link
-      to={`/inventory/${request.partId}`}
+      to={`/inventory/${request.partId}?requestId=${request.id}`}
       className="fo-notification-panel-item"
       onClick={onNavigate}
     >

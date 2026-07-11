@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { getCatalogItem } from "../../data/partsCatalog";
 import { useInventoryLedger } from "../../hooks/useInventoryLedger";
 import { hasUsageHistory } from "../../domain/inventoryAnalyticsEngine";
@@ -958,10 +958,23 @@ function InventoryActionsPanel({ partId }) {
 
 export default function PartDetail() {
   const { partId } = useParams();
+  // Notification identity fix (docs/specifications/notification-identity.md,
+  // Issue #145) -- every Notification Panel/PartsList.jsx queue link now
+  // supplies ?requestId=, letting this page resolve the exact request
+  // that produced the click instead of "whichever request for this part
+  // happens to be newest." Absent (a bookmark, a typed URL, the
+  // unrelated catalog-row link), behavior is unchanged -- same
+  // most-recent-by-createdAt fallback as before this fix.
+  const [searchParams] = useSearchParams();
+  const requestId = searchParams.get("requestId") || undefined;
   const part = getCatalogItem(partId);
   const { transactions, healthEntries, loading } = useInventoryLedger();
-  const { data: reorderRequest, loading: reorderRequestLoading, refresh: refreshReorderRequest } =
-    useReorderRequestForPart(partId);
+  const {
+    data: reorderRequest,
+    loading: reorderRequestLoading,
+    error: reorderRequestError,
+    refresh: refreshReorderRequest,
+  } = useReorderRequestForPart(partId, requestId);
   const { byUserId: employeeDirectory } = useEmployeeDirectory();
 
   const health = useMemo(() => healthEntries.find((entry) => entry.partId === partId), [healthEntries, partId]);
@@ -1016,7 +1029,19 @@ export default function PartDetail() {
         {part.sku} -- {part.category} -- {part.unit}
       </p>
 
-      {!reorderRequestLoading && reorderRequest && (
+      {reorderRequestError && (
+        <LoadingEmptyState
+          loading={false}
+          isEmpty
+          emptyText={
+            reorderRequestError === "not_found"
+              ? "This reorder request could not be found."
+              : "This reorder request does not belong to this part."
+          }
+        />
+      )}
+
+      {!reorderRequestLoading && !reorderRequestError && reorderRequest && (
         reorderRequest.status === REORDER_REQUEST_STATUS.PENDING_REVIEW ? (
           <ReorderRequestReview request={reorderRequest} onReviewed={refreshReorderRequest} />
         ) : reorderRequest.status === REORDER_REQUEST_STATUS.READY_FOR_PARTS_MANAGER ? (

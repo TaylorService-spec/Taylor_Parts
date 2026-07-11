@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { collection, doc, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../firebase/firebase";
 import { REORDER_REQUESTS_COLLECTION, REORDER_REQUEST_STATUS } from "../domain/constants";
 
@@ -139,23 +139,67 @@ export function useReorderRequestsAssignedTo(userId, status, enabled = true) {
 // it after each write) -- it's no longer necessary now that this
 // subscribes live, but removing it would mean touching every call site
 // for no behavioral gain.
-export function useReorderRequestForPart(partId) {
-  const [state, setState] = useState({ data: null, loading: true });
+//
+// Notification identity fix (docs/specifications/notification-identity.md,
+// Issue #145) -- `requestId` is a new, optional second parameter. Every
+// Notification Panel item and PartsList.jsx queue link already carries
+// its own request's exact document id; this lets a caller resolve THAT
+// exact document instead of "whichever request for this part happens
+// to be newest," which could silently be a different, terminal request
+// for the same part. When `requestId` is falsy, behavior is BYTE-FOR-
+// BYTE UNCHANGED from before this fix -- the original partId-only,
+// most-recent-by-createdAt query, no status filter, same as every
+// direct `/inventory/:partId` visit (bookmark, typed URL) has always
+// used and must keep using.
+//
+// `error` is a new field on the returned state, always `null` on the
+// no-requestId path (existing callers that don't destructure it are
+// unaffected). Two values on the requestId path: `"not_found"` (the
+// document doesn't exist) and `"mismatch"` (it exists, but its own
+// partId disagrees with the partId this hook was called with) -- this
+// hook deliberately does NOT fall back to the most-recent query on
+// either failure; a caller with an explicit-but-wrong id should see a
+// clear failure, not a silently different document.
+export function useReorderRequestForPart(partId, requestId) {
+  const [state, setState] = useState({ data: null, loading: true, error: null });
 
   useEffect(() => {
-    setState((prev) => ({ ...prev, loading: true }));
+    setState((prev) => ({ ...prev, loading: true, error: null }));
+
+    if (requestId) {
+      const ref = doc(db, REORDER_REQUESTS_COLLECTION, requestId);
+      const unsubscribe = onSnapshot(
+        ref,
+        (snap) => {
+          if (!snap.exists()) {
+            setState({ data: null, loading: false, error: "not_found" });
+            return;
+          }
+          const data = { id: snap.id, ...snap.data() };
+          if (data.partId !== partId) {
+            setState({ data: null, loading: false, error: "mismatch" });
+            return;
+          }
+          setState({ data, loading: false, error: null });
+        },
+        () => setState({ data: null, loading: false, error: "not_found" })
+      );
+
+      return unsubscribe;
+    }
+
     const q = query(reorderRequestsRef, where("partId", "==", partId));
     const unsubscribe = onSnapshot(
       q,
       (snap) => {
         const forPart = toDocs(snap).sort((a, b) => b.createdAt - a.createdAt);
-        setState({ data: forPart[0] ?? null, loading: false });
+        setState({ data: forPart[0] ?? null, loading: false, error: null });
       },
-      () => setState({ data: null, loading: false })
+      () => setState({ data: null, loading: false, error: null })
     );
 
     return unsubscribe;
-  }, [partId]);
+  }, [partId, requestId]);
 
   const refresh = useCallback(() => {}, []);
 
