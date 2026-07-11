@@ -1,7 +1,7 @@
 ---
 artifact_type: implementation-plan
 gate: Implementation Plan
-status: Draft
+status: Approved
 date: 2026-07-11
 owner: Claude Code
 related_adrs: []
@@ -16,6 +16,8 @@ target_release: Post-Release 2.1 (Inventory → Procurement chain)
 # Implementation Plan: Customer Record Page and Structured Address Experience
 
 **Sprint Specification:** `docs/specifications/customer-record-page-structured-address.md` -- Approved, 2026-07-11.
+
+**Implementation Plan Final Review: APPROVED, 2026-07-11**, after one REQUEST CHANGES round (reviewed head `b8f04c3` -- five corrections: full PR 1 verification ownership, separate bounded PR 2 verification, three-column tracking, bounded PR 2 correction scope, rebase onto main; applied at head `76ac257`). Approved at head `76ac257` (re-verified: two-PR sequence correctly bounded; PR 1 owns complete Tabs/accessibility/responsive/related-record/browser verification before merge; PR 2 owns Customer edit-form integration, address-preservation tests, and full regression verification; Location remains add-only; PR 2's correction scope is bounded; merge/deployment/live verification tracked separately; no Rules/schema/query/index/route/migration introduced; no implementation or deployment occurred). Rebased again onto `main` at `e74d143` (post PR #123) after this approval, per the review's own "Next" instructions -- documentation-only scope, mergeability, and CI unaffected by the rebase.
 
 Two PRs, per the Architecture Decision's explicit two-PR sequence (supersedes the Assessment's earlier five-PR estimate). No PR in this plan is implemented, merged, or run against production by this document itself -- each requires its own Codex review (optional; this sprint has no Rules change, so Codex review is not required per `docs/ai/workflow.md`'s "documentation-only PRs, small bug fixes, routine UI changes, or low-risk implementation using established patterns" carve-out, but may still be requested if the first-ever `Tabs` implementation warrants independent engineering review), its own ChatGPT Final Review, and its own Owner Merge Authorization before merge. **Neither PR touches `firestore.rules` -- no Owner Deployment Authorization is needed for Rules; both PRs are frontend-only and auto-deploy at merge**, same as every prior frontend-only PR in this initiative (e.g. PR #105, PR #107). **This plan is planning only -- no application code has been written.**
 
