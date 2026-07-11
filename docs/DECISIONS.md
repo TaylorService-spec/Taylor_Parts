@@ -256,3 +256,18 @@ Every linked-persona command carried `--requireExistingAuthUser` (PR #114) — n
 **Decision:** The Owner re-tested per entry #20's proposed correction: a newly opened browser session at the correct production URL (`https://taylorservice-spec.github.io/Taylor_Parts/field-ops/`), created a new Reorder Request, and inspected that exact new document directly in the Firebase Console. Confirmed all six fields present and `null`: `cancelledBy`, `cancelledAt`, `cancellationReason`, `voidedBy`, `voidedAt`, `voidReason`. This satisfies the Specification's step C in full -- both the "deployed frontend is serving the updated writer" half (entry #18) and the "sampled live document shows the new shape" half (this entry) are now confirmed.
 **Step C: COMPLETE.** PR 3 (tightened Rules -- Specification step D, removing the transitional old-shape branch) is now unblocked.
 **Alternatives rejected:** None -- this entry records the Owner's direct production verification, not a choice among options.
+
+## 22. PR 3 (tightened Rules) opened -- READY Rules-focused Final Review handoff
+
+**Date:** 2026-07-11
+**Decision:** Implemented Cancel/Void schema deployment sequence step D (Specification/Implementation Plan PR 3), per the Owner's authorization to proceed only within PR 3's approved scope. `hasCanonicalReorderRequestKeys()`/`hasCanonicalReorderRequestCreationBaseline()` (both `firestore.rules` copies) no longer accept the transitional 29-key-only branch from PR 1 (`#117`) -- every `reorder_requests` create now requires the full 35-key canonical shape unconditionally.
+**Handoff:**
+- PR / head: **PR #132**, `feature/cancel-void-tightened-rules-pr3`, head `d4c4d01` (Draft, documentation/code -- not merged).
+- Exact changed files: `firestore.rules`, `field-ops-app-vite/firestore.rules`, `functions/test/reorderRequestsRules.test.js`, `docs/implementation-plans/reorder-request-cancellation.md`.
+- Exact test results: `functions/test/reorderRequestsRules.test.js` -- **40/40 pass** (single clean run against a fresh emulator; up from 37, 3 net new dedicated Cancel/Void assertions since `canonicalFields()`'s new unconditional six-field base absorbed the two former "accepted new shape" tests without needing separate cases). `functions/test/employeesRules.test.js` -- **10/10 pass**, unaffected. `functions` TypeScript build (`tsc`) -- clean.
+- Old/new shape coverage: new (35-key, all six null) shape accepted for both READY and NEEDS_PLANNING (regression, now the only accepted shape); **old 29-key shape (six fields entirely absent) now rejected for both READY and NEEDS_PLANNING -- the actual behavior this PR changes**, two new dedicated tests; partial presence rejected (one field present, three fields present); all-six-but-one-non-null rejected; unknown extra key rejected.
+- Both Rules copies confirmed byte-identical (`diff`, no output).
+- No writer/UI/transition/void-collection implementation: confirmed via `grep -n "CANCELLED|VOIDED|reorder_purchase_order_voids" firestore.rules` (zero matches) and an exact 4-file diff scope (2 Rules copies, 1 test file, 1 doc).
+- Nothing deployed: no `firebase deploy` command run this turn.
+**Not done, per the Owner's explicit "do not merge / do not deploy / do not begin PR 4" instruction:** no merge, no deploy, PR 4 not begun.
+**Alternatives rejected:** None -- this entry records opening a fully-scoped, fully-tested PR under an already-approved Implementation Plan, not a choice among options.
