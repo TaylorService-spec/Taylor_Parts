@@ -646,6 +646,7 @@ module.exports = {
   buildPlan,
   normalizeOperationalRoles,
   assertProjectTarget,
+  VALID_SECURITY_ROLES,
   VALID_OPERATIONAL_ROLES,
   PRODUCTION_PROJECT_ID,
 };

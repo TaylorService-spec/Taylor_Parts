@@ -42,7 +42,11 @@ const { initializeApp } = require("firebase-admin/app");
 const { getAuth } = require("firebase-admin/auth");
 const { getFirestore } = require("firebase-admin/firestore");
 
-const { assertProjectTarget } = require("./provisionEmployeeAccess.js");
+const {
+  assertProjectTarget,
+  VALID_OPERATIONAL_ROLES,
+  VALID_SECURITY_ROLES,
+} = require("./provisionEmployeeAccess.js");
 
 function parseArgs(argv) {
   const args = {};
@@ -65,6 +69,53 @@ function arraysEqualAsSets(a, b) {
   return true;
 }
 
+function validatePlan(plan) {
+  if (!Array.isArray(plan) || plan.length === 0) {
+    throw new Error("Verification plan must be a non-empty array.");
+  }
+
+  const employeeIds = new Set();
+  for (const [index, entry] of plan.entries()) {
+    const label = `Verification plan entry ${index + 1}`;
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      throw new Error(`${label} must be an object.`);
+    }
+    if (typeof entry.employeeId !== "string" || entry.employeeId.trim() === "") {
+      throw new Error(`${label}.employeeId must be a non-empty string.`);
+    }
+    if (employeeIds.has(entry.employeeId)) {
+      throw new Error(`${label}.employeeId duplicates "${entry.employeeId}".`);
+    }
+    employeeIds.add(entry.employeeId);
+
+    if (typeof entry.linked !== "boolean") {
+      throw new Error(`${label}.linked must be explicitly true or false.`);
+    }
+    if (!Array.isArray(entry.operationalRoles ?? [])) {
+      throw new Error(`${label}.operationalRoles must be an array when provided.`);
+    }
+    for (const role of entry.operationalRoles ?? []) {
+      if (!VALID_OPERATIONAL_ROLES.includes(role)) {
+        throw new Error(`${label}.operationalRoles contains invalid role "${role}".`);
+      }
+    }
+
+    if (entry.linked) {
+      if (typeof entry.email !== "string" || entry.email.trim() === "") {
+        throw new Error(`${label}.email must be a non-empty string for a linked entry.`);
+      }
+      if (!VALID_SECURITY_ROLES.includes(entry.securityRole)) {
+        throw new Error(`${label}.securityRole must be one of: ${VALID_SECURITY_ROLES.join(", ")}.`);
+      }
+    } else if (Object.prototype.hasOwnProperty.call(entry, "email") ||
+               Object.prototype.hasOwnProperty.call(entry, "securityRole")) {
+      throw new Error(`${label} is Employee-only and must not carry email or securityRole.`);
+    }
+  }
+
+  return plan;
+}
+
 async function verifyEntry(db, auth, entry) {
   const employeeSnap = await db.collection("employees").doc(entry.employeeId).get();
   if (!employeeSnap.exists) {
@@ -81,8 +132,15 @@ async function verifyEntry(db, auth, entry) {
     if (employee.userId !== null) {
       failures.push("expected userId: null for an Employee-only entry, but a userId is set.");
     }
-    if ((employee.operationalRoles ?? []).length !== 0) {
-      failures.push(`expected empty operationalRoles for an Employee-only entry, found [${(employee.operationalRoles ?? []).join(", ")}].`);
+    const expectedOperationalRoles = entry.operationalRoles ?? [];
+    if (!arraysEqualAsSets(employee.operationalRoles, expectedOperationalRoles)) {
+      failures.push(`operationalRoles [${(employee.operationalRoles ?? []).join(", ")}] does not match expected [${expectedOperationalRoles.join(", ")}].`);
+    }
+    const linkedUsersSnap = await db.collection("users")
+      .where("employeeId", "==", entry.employeeId)
+      .get();
+    if (!linkedUsersSnap.empty) {
+      failures.push("expected no users document to reference this Employee, but at least one was found.");
     }
     return failures.length ? { pass: false, reason: failures.join(" ") } : { pass: true };
   }
@@ -110,7 +168,7 @@ async function verifyEntry(db, auth, entry) {
     if (user.employeeId !== entry.employeeId) {
       failures.push(`users/{uid}.employeeId does not point back to ${entry.employeeId}.`);
     }
-    if (entry.securityRole && user.role !== entry.securityRole) {
+    if (user.role !== entry.securityRole) {
       failures.push(`users/{uid}.role is "${user.role}", expected "${entry.securityRole}".`);
     }
   }
@@ -144,8 +202,9 @@ async function main() {
   let plan;
   try {
     plan = JSON.parse(fs.readFileSync(args.plan, "utf8"));
+    validatePlan(plan);
   } catch (err) {
-    console.error(`Failed to read/parse --plan file: ${err.message}`);
+    console.error(`Failed to read/validate --plan file: ${err.message}`);
     process.exitCode = 1;
     return;
   }
@@ -175,4 +234,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { verifyEntry, arraysEqualAsSets };
+module.exports = { verifyEntry, arraysEqualAsSets, validatePlan };

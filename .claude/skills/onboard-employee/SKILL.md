@@ -103,6 +103,11 @@ similar-looking personas.
 
 ## Step 3 -- Multiple Employees in one batch
 
+This skill is the repeatable entry point for every Employee onboarding,
+so operators do not have to rediscover the procedure each time: intake
+→ classification → plan → authorization → preflight → execution →
+verification → repository record.
+
 A batch is a list of independent entries, always executed **one at a
 time, sequentially, never in parallel, never as a single multi-document
 transaction.** This is intentional, not a limitation to work around:
