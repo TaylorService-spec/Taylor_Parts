@@ -10,9 +10,12 @@
 // Extended by PR 4 (rollout step 3): the rule is no longer
 // TRANSITIONAL/dual-shape -- PR 2's legacy branch (no
 // recommendationStatus key -> isAdminOrDispatcher() only) has been
-// removed, so this file's legacy-shape assertions now expect 403,
-// inverted from PR 2's original "still accepted" expectation. See the
-// PR 4 section below.
+// removed. Of the three legacy-shape assertions below, the admin and
+// dispatcher cases are inverted (200 -> 403, PR 2's original
+// expectation was acceptance); the technician case was already 403
+// under PR 2 (isAdminOrDispatcher() rejected it regardless of shape)
+// and is only relabeled here to reflect the new reason. See the PR 4
+// section below.
 //
 // Revised after Codex's REQUEST CHANGES on PR #91: the new-shape
 // branch originally validated only the recommendation fields, leaving
@@ -162,10 +165,11 @@ function legacyShapeFields(partId = "PART-LEGACY") {
   // requestedQty, or quantitySource key at all. PR 2's transitional
   // legacy branch used to accept this unconditionally
   // (isAdminOrDispatcher() only); PR 4 removed that branch, so this
-  // shape must now be REJECTED for every caller, admin/dispatcher
-  // included -- the assertions below are inverted from PR 2's version
-  // of this test to prove the gap is actually closed, not just
-  // theoretically removed.
+  // shape must now be REJECTED for every caller. The admin and
+  // dispatcher assertions below are inverted from PR 2's version of
+  // this test (200 -> 403), proving the gap is actually closed; the
+  // technician assertion was already 403 under PR 2 and is kept here
+  // as an unchanged regression baseline, not an inversion.
   return {
     partId: str(partId),
     urgency: str("HIGH"),
