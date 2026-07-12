@@ -19,6 +19,8 @@ target_release: Post-Release 2.1 (Inventory -> Procurement chain)
 
 **Architecture Review: PENDING.** This assessment has not yet been reviewed or approved. No implementation should begin against it until Architecture Review completes.
 
+**Supersedes Issue #153 and PR #156.** A duplicate, independently-produced assessment chain (Issue #153, "manager oversight queue -- no way to locate existing assigned/ordered Reorder Requests," and PR #156, `docs/assessments/manager-oversight-queue.md`) covered overlapping ground. Both are closed as duplicates of this Issue #154 / PR #155 chain; PR #156 was not merged. Its two unique, code-supported findings not already covered here have been folded in: `FilterBar.jsx` already supports per-option counts (§4 above), and `InventoryHealthPanel.jsx`'s single hardcoded empty-state string cannot distinguish "no filter matches" from "no ledger activity" (§4 above, and the "Verification requirements" section below).
+
 ## Scope of this assessment
 
 Investigated: `field-ops-app-vite/src/modules/inventory/PartsList.jsx`, `modules/operations/panels/InventoryHealthPanel.jsx`, `domain/inventoryAnalyticsEngine.ts`, `hooks/useInventoryLedger.js`, `hooks/useReorderRequests.js`, `hooks/useAssignableEmployees.js`, `domain/employees.js`, `domain/constants.js` (`ROLES`, `OPERATIONAL_ROLE`, `REORDER_REQUEST_OWNER`), `modules/inventory/PartDetail.jsx` (assign/review/start-purchasing action sites), and the `reorder_requests` / ledger-related sections of `firestore.rules`.
@@ -75,7 +77,7 @@ Two independent, compounding causes:
 
 - **Top Operational Queue section:** `PartsList.jsx:207` passes `isEmpty={false}` to `LoadingEmptyState` **unconditionally**, regardless of `queueEntries.length`. `PartsList.jsx` itself therefore never produces a queue-specific empty-state message for any of the three tabs. What renders when a filter is empty is entirely delegated to `InventoryHealthPanel.jsx:61-62`, which shows exactly one hardcoded string for all callers and all filter states: `"No ledger activity yet -- nothing to forecast."` This message does not vary by which tab is active (`Critical & High` vs `Needs Planning` vs `Show All`) and does not distinguish "there is ledger activity but nothing matches this filter" from "there is no ledger activity at all" -- e.g. selecting `Critical & High` with real ledger data present but nothing currently urgent shows the same "no ledger activity" message as an empty ledger, which is misleading.
 - **Parts Manager Queue / Parts Associate Waiting / In Progress:** each has its own `LoadingEmptyState` with a distinct, section-specific `emptyText` (`"No requests awaiting the Parts Manager."`, `"No requests currently waiting on you."`, `"No purchasing currently in progress."`) driven by the actual query result length (`PartsList.jsx:221-226, 265-270, 306-311`). These three empty states are correctly differentiated per section already -- the gap described in item 4 is confined to the top Operational Queue section's three-tab filter.
-- **No counts (badge/number) are shown anywhere on any of the five queue sections today** -- only the presence/absence of rows and the section heading text.
+- **No counts (badge/number) are shown anywhere on any of the five queue sections today** -- only the presence/absence of rows and the section heading text. **This is not a missing capability -- it's an unused one:** `shared/ui/FilterBar.jsx` (the shared tab-renderer already used by `QUEUE_FILTER_OPTIONS` above) already supports a per-option `(N)` count suffix (`FilterBar.jsx:29` -- `{option.count !== undefined ? ` (${option.count})` : ""}`); `PartsList.jsx`'s `QUEUE_FILTER_OPTIONS` array (`:106-110`) simply never populates a `count` field on any of its three options. Wiring counts in is a call-site change only -- no new shared-component work is needed.
 
 ### 5, 6 & 7. Which queues filter by what, where assigned work disappears, and who can see/act
 
@@ -144,9 +146,61 @@ Not exercised in this assessment (no code changed, nothing to verify yet). A fut
 
 None of the above have been implemented or decided -- this section exists to give Architecture Review a concrete starting point, per this assessment's own PENDING status.
 
+## Live-page architecture finding
+
+`PartsList.jsx` currently combines **three separate business functions on one page**, each with its own data source, audience, and purpose, without a heading or structural boundary that makes that separation legible to the person using it:
+
+1. **Inventory Health analytics** (the top "Inventory Operational Queue" section, `healthEntries`-backed) -- a computed, ledger-derived risk signal (`recommendationStatus`/`urgency`), not a work item in itself.
+2. **Reorder Work** (Parts Manager Queue, Parts Associate Waiting, Parts Associate In Progress -- all `reorder_requests`-backed) -- the actual workflow objects with status, ownership, and lifecycle actions.
+3. **Parts Catalog browsing** (the lower "Parts Catalog" table, `PARTS_CATALOG`-backed) -- the complete static SKU list, independent of ledger or workflow state.
+
+These three are conflated today in a way that directly produces the "Show All" confusion documented above (§3(b)): there are two different "show everything" experiences on one page (the top section's `queueFilter === "ALL"`, and the lower table's own category filter), and only one of them is actually the complete catalog. A user who reaches for "Show All" expecting the catalog, but lands on the top section's ledger-scoped `Show All` instead, has no structural cue that a different, truly-complete view exists further down the same page.
+
+**Recorded recommended future information hierarchy** (not decided or implemented here -- an input to Architecture Review, consistent with the "Recommended smallest safe design" section above, expressed as page structure rather than individual fixes):
+
+- **a. Reorder Work** -- the actual workflow: **Review** (Pending Review), **Assigned** (Ready for Parts Manager / Assigned to Parts Associate), **Purchasing** (Purchasing In Progress / Ordered), **History** (terminal: Received / Rejected / Cancelled / Voided). Each stage groups the existing `reorder_requests`-backed queues (and, per the "Business process model" section below, the new manager-oversight and History views) under one coherent lifecycle heading, rather than presenting them as unrelated sections on a flat page.
+- **b. Inventory Health** -- **Critical & High** and **Needs Planning**, kept as the computed analytics/risk signal they actually are, each with an accurate count and a truthful, filter-specific empty state (per §4 and the "Recommended smallest safe design" §3 above) -- explicitly *not* relabeled or repurposed to imply it is a work queue or a catalog view.
+- **c. Parts Catalog** -- the complete, searchable catalog (today's lower table), unconditionally showing every SKU regardless of ledger or workflow state.
+
+**Show All's meaning is recorded as belonging to (c), not (b):** "Show All" should mean *the complete catalog*, matching Owner intent stated in Issue #154 ("Show All remains the complete catalog and must not be the only view where useful work can be found or actioned") -- not the ledger-active subset the top section's `Show All` tab currently returns. This resolves Open Question #2 above in the direction Owner intent already points, though the question remains formally open for Architecture Review to confirm rather than treated as decided by this note.
+
+## Business process model
+
+Recorded here as the target behavioral model this assessment's recommendations are meant to satisfy -- not implemented, not itself an authorization to build it:
+
+- **"My Work" remains a personal convenience view.** The existing Parts Associate Waiting/In Progress sections (and the Notification Panel's "Assigned to You") continue to scope to the signed-in user's own `assignedToUserId` exactly as they do today -- unchanged, not broadened, not replaced.
+- **"All Assigned Work" is an additional manager-oversight view, not a replacement.** A new, separate, read-only section (per "Recommended smallest safe design" §1 above) shows every request currently `ASSIGNED_TO_PARTS_ASSOCIATE` or `PURCHASING_IN_PROGRESS`, regardless of assignee -- additive to, never hiding, the personal views.
+- **Oversight rows show: request identity, part, assignee, status, urgency, and age.** At minimum, each row in the "All Assigned Work" view surfaces enough to triage without opening the request: the Reorder Request's own id (or a stable reference to it), the linked part (name/SKU), the current `assignedToUserId` resolved to a display name (`resolveActorDisplayName()`, per PR #107 -- never a raw uid), `status`, `urgency` (where applicable), and an age indicator (e.g. time since `assignedAt` or `createdAt`).
+- **Actions remain on `PartDetail` -- queue rows navigate, they don't act.** Consistent with "Recommended smallest safe design" §5 (no change recommended to today's PartDetail-only action model): oversight rows are `<Link>`s into `PartDetail.jsx`, exactly like every other queue row today, not a new surface duplicating approve/assign/start-purchasing/Cancel/Void eligibility logic.
+- **Queue-row navigation uses the exact `requestId`.** Per the already-merged notification-identity fix (PR #148), any link built from a queue row that already has `request.id` available must carry `?requestId=<id>` so `PartDetail` resolves the exact document clicked, not a status-agnostic "most recent for this part" fallback -- the oversight view's rows are no exception to that established pattern.
+- **Terminal requests remain discoverable through a History view.** `CANCELLED`/`VOIDED`/`RECEIVED`/`REJECTED` requests -- today invisible once they leave every active-status query (confirmed in §1/§5-7 above and in Issue #153's original finding) -- become findable through a dedicated History view, not by broadening any active-status queue's own filter.
+- **The Inventory Action Log redesign remains separate, under Issue #152.** Not folded into this business process model or any PR proposed below -- confirmed again here per the Owner's repeated instruction.
+
+## Proposed delivery breakdown (not implemented)
+
+Recorded as a proposed sequencing for a future Implementation Plan -- **no PR listed here has been started, authorized, or scoped beyond this outline.** Sizing, exact file lists, and dependency order remain the Implementation Plan's own job, per `docs/ai/workflow.md`.
+
+- **PR A -- All Assigned Work oversight, plus safe assignment eligibility.** The manager-oversight query/section from "Recommended smallest safe design" §1 (assignee-independent `ASSIGNED_TO_PARTS_ASSOCIATE`/`PURCHASING_IN_PROGRESS` view, additive to personal queues, no Rules change), together with closing the technician-assignee dead-end from §5-7/§4 of "Recommended smallest safe design" (constraining `useAssignableEmployees()` so a `technician`-role employee is never selectable as a Parts Associate assignee who then has no way to ever see the assignment).
+- **PR B -- complete-catalog Show All, filter counts, and differentiated empty states.** Resolves the "Live-page architecture finding" above: Show All becomes the true complete catalog (or is relabeled, per Open Question #2 -- Architecture Review's call); `QUEUE_FILTER_OPTIONS` gains populated `count` values via `FilterBar.jsx`'s existing support; `InventoryHealthPanel.jsx`'s single hardcoded empty string is replaced with a caller-supplied, filter-specific message (guarded so `Operations.jsx`'s own call site is unaffected, per the "Risks" section above).
+- **PR C -- Reorder Request History/terminal-status discovery.** The History view from the "Business process model" section above -- a new query/section surfacing `CANCELLED`/`VOIDED`/`RECEIVED`/`REJECTED` requests, closing the "terminal requests become invisible" gap confirmed in §5-7 and Issue #153's original finding.
+
+**Explicitly deferred, not part of A/B/C:** any change broadening `reorder_requests` visibility to non-admin/dispatcher sign-in roles (an actual authenticated Parts Manager/Parts Associate role, as opposed to today's advisory `operationalRoles[]`), and any accompanying `firestore.rules` change. Per "Risks" above, that is a Tier 2 decision requiring a later, separate Owner architecture decision -- not assumed or pre-scoped into any of PR A/B/C.
+
+## Verification requirements (for a future Implementation Plan)
+
+Recorded as the required coverage a future Implementation Plan's browser verification (`run-field-ops-app-vite` skill, same pattern as PR #148/#151) must satisfy -- not performed by this assessment, since no code exists yet to verify:
+
+- Manager B (a second admin/dispatcher account) can see, in the "All Assigned Work" oversight view, a Reorder Request currently assigned to user A -- without being the assignee themselves.
+- User A's own personal Waiting/In Progress views remain scoped to exactly user A's own assignments, unchanged and unbroadened by the oversight view's addition.
+- Every lifecycle section (Review, Assigned, Purchasing, History, Inventory Health's two filter tabs) displays an accurate count reflecting its actual current contents.
+- Empty messages are verified to distinguish three genuinely different states, not one undifferentiated string: **no records exist for this section at all**, **records exist but none match the active filter**, and **no ledger history exists for this part/scope**.
+- Show All is verified to contain the complete catalog, including at least one part with zero ledger activity (proving it is no longer scoped to `computeAvailableStockByPart()`'s RESERVED/RELEASED-only subset).
+- Terminal requests (at least one each of `CANCELLED`, `VOIDED`, `RECEIVED`, `REJECTED` in the verification fixture) are each findable through the History view by status, by assignee, by part, and by their exact request id.
+- No action control (Approve/Reject, Assign, Start Purchasing, Cancel, Void, or any future action) appears anywhere in the oversight or History views unless the signed-in account already passes `PartDetail.jsx`'s existing authorization for that exact action -- oversight/History rows are verified to be navigation-only, never a second place the same eligibility logic must be independently re-proven correct.
+
 ## Estimated PR count
 
-Likely **two PRs**, pending Architecture Review's actual decisions: one for the manager-oversight query/section addition (#1 above, no Rules change, small and independently shippable), and one for the Show All/empty-state semantics change (#2 and #3 above, which are coupled -- both touch `InventoryHealthPanel.jsx`'s empty-state contract and `PartsList.jsx`'s top section). The technician-assignee decision (#4) is either a one-line query change (if constrained) or folds into a larger Rules-change PR (if visibility is later broadened) -- size depends entirely on which the Owner chooses, not assumed here.
+**Superseded by the "Proposed delivery breakdown" section above (PR A/B/C)** -- retained here only as the earlier, coarser two-PR estimate for traceability. That breakdown folds the technician-assignee decision into PR A (rather than treating it as a variable-sized fourth item) and adds a third PR (PR C) for terminal-status/History discovery, which this earlier estimate did not yet account for. Final PR count remains the Implementation Plan's own call, not fixed by either estimate, pending Architecture Review's actual decisions.
 
 ## Related but separate product finding: Inventory Action Log
 
