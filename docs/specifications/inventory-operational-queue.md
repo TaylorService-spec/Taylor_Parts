@@ -9,78 +9,101 @@ depends_on: [docs/assessments/inventory-operational-queue.md]
 implements: []
 supersedes: []
 superseded_by: []
-related_pr: 154
+related_pr: 157
 target_release: Post-Release 2.1 (Inventory -> Procurement chain)
 ---
 
-# Sprint Specification: Inventory Operational Queue -- Manager Oversight, Complete-Catalog Show All, History Discovery
+# Sprint Specification: Inventory Operational Queue -- Manager Oversight, Complete-Catalog Browsing, History Discovery
 
-**Architecture Review:** `docs/assessments/inventory-operational-queue.md` -- **APPROVED, 2026-07-12** (Issue #154 / PR #155, merged). Six decisions adopted there govern this Specification directly; each is restated in the relevant section below rather than re-litigated. **No Rules change is approved by that review.** This Specification proposes none, with one exception surfaced during technical design (PR A's assignment-eligibility fix) that is a schema/data addition, not a Rules change -- see "Firestore Rules impact" and PR A's Technical design below for why, and what it actually requires.
+**Architecture Review:** `docs/assessments/inventory-operational-queue.md` -- **APPROVED, 2026-07-12** (Issue #154 / PR #155, merged). Six decisions adopted there govern this Specification; each is restated where relevant below rather than re-litigated. **No Rules change is approved by that review.** This revision corrects a Round 1 draft that re-introduced the exact page conflation Architecture Review required resolved, hid a production-data prerequisite inside an implementation PR, proposed an unbounded query for an unbounded collection, and repeated this codebase's existing error-swallowing hook pattern in new code. All four are corrected below.
 
 ## Executive summary
 
-Three related gaps in the Inventory workspace, closed as three independent PRs:
+Five pieces of work, sequenced, not three:
 
-- **PR A** gives a manager visibility into work already assigned to someone else ("All Assigned Work"), and closes a real, silent dead-end where a `technician`-security-role employee could be assigned Parts Associate work they can never see.
-- **PR B** makes "Show All" actually mean the complete parts catalog (it doesn't today), adds accurate counts to every filter tab, and replaces one undifferentiated empty-state message with filter-specific ones.
-- **PR C** adds a History view so terminal Reorder Requests (`CANCELLED`/`VOIDED`/`RECEIVED`/`REJECTED`) -- invisible today the instant they leave their last active-status query -- become findable by status, assignee, part, or exact request id.
-
-None of the three requires a `firestore.rules` change to the *visibility* model -- per Architecture Review decision #1, this phase keeps `reorder_requests` read access at `admin`/`dispatcher` exactly as it is today. PR A's assignment-eligibility fix does surface a real, previously-undocumented data gap (below) that needs a small schema addition and a one-time backfill, not a Rules change.
+- **A0 (prerequisite, no UI change) -- security-role mirror rollout.** Denormalizes `users/{uid}.role` onto the linked `employees/{employeeId}` document as `securityRole`, with a writer invariant, `BusinessEntityModel.md` documentation, and a drift-detection/repair verification script. No picker behavior changes yet.
+- **Backfill (operational step, not a PR, not authorized here).** The Owner (or someone with production Admin SDK access) backfills `securityRole` onto every pre-existing Employee document and verifies the result, under its own separate Production Data Authorization, recorded in `docs/DECISIONS.md`.
+- **PR A -- All Assigned Work oversight, plus the assignment-eligibility filter.** Sequenced strictly after the backfill is confirmed complete -- both pieces ship together once that gate clears, not before.
+- **PR B -- Inventory Health and Parts Catalog become two genuinely separate surfaces**, correcting Round 1's design, which re-merged them. Parts Catalog becomes the one true "browse/show everything" experience, enriched with health/risk data where it exists; Inventory Health keeps exactly its two real filters (Critical & High, Needs Planning) and loses its ledger-scoped "Show All" tab entirely.
+- **PR C -- Reorder Request History, bounded and ordered**, not an unbounded live query -- deterministic newest-first pagination, a required new composite index, exact-request-id lookup independent of the loaded page, and full loading/empty/error/end-of-history states. Independent of PR A -- no shared-hook dependency (see Technical design).
 
 ## Sprint objective
 
-An admin/dispatcher can see every Reorder Request currently assigned to any Parts Associate (not just their own), can browse the complete parts catalog under "Show All" with accurate counts and honest empty states everywhere, and can find any terminal (closed-out) Reorder Request without already knowing its part or id. An admin/dispatcher can no longer assign Parts Associate work to a `technician`-security-role employee who would have no way to ever see it.
+An admin/dispatcher can see every Reorder Request currently assigned to any Parts Associate (not just their own), can browse the complete parts catalog -- enriched with whatever health/risk signal exists for each part -- in one place, and can find any terminal (closed-out) Reorder Request, paginated and ordered, without already knowing its part or id. Assigning Parts Associate work to a `technician`-security-role employee who could never see it becomes structurally harder, once (and only once) the security-role mirror this depends on is verified correct in production. No query in any new view silently presents a failure as "no work."
 
 ## Scope
 
-**PR A -- All Assigned Work oversight, plus safe assignment eligibility**
+### A0 -- Security-role mirror rollout (prerequisite, no UI change)
 
-- New hook `useReorderRequestsByStatuses(statuses[])` in `hooks/useReorderRequests.js`, reusing the existing `where("status", "in", [...])` shape (single-field `in`, no composite index) -- the assignee-independent counterpart to `useReorderRequestsByStatus()`.
-- New read-only "All Assigned Work" section on `PartsList.jsx`, driven by `useReorderRequestsByStatuses([ASSIGNED_TO_PARTS_ASSOCIATE, PURCHASING_IN_PROGRESS])` -- every currently-assigned request, regardless of assignee, rendered alongside (never replacing) the existing personal Waiting/In Progress sections.
-- Each row shows: the linked part, the current assignee (`resolveActorDisplayName()`, never a raw uid), `status`, `urgency` (where applicable, `—` otherwise), and age (time since `assignedAt`). Rows are `<Link>`s into `PartDetail.jsx` carrying `?requestId=<id>`, per the established exact-id navigation contract (PR #148) -- no action control of any kind renders on this view.
-- New field `employees/{employeeId}.securityRole` (denormalized copy of `users/{uid}.role` at provision time) and a client-side filter in `useAssignableEmployees()`/`EmployeeAssignmentPicker.jsx` excluding `technician`-security-role employees from `PARTS_ASSOCIATE` assignment eligibility. See Technical design below -- this is the one part of PR A that isn't purely additive.
+- `functions/scripts/provisionEmployeeAccess.js` writes `securityRole` onto `employees/{employeeId}` at the exact point it already writes `role` onto `users/{uid}` (`userUpdates: { role: securityRole }`) -- same script, same transaction/batch, one additional field on an existing write. **Invariant, stated explicitly: every code path that is authorized to change a user's security role must update both `users/{uid}.role` and the linked Employee's `securityRole` together, in the same write operation.** `provisionEmployeeAccess.js` is, today, the *only* such path (confirmed by inspection -- no other writer of `users/{uid}.role` exists in this codebase); if a second one is ever added, it inherits this same invariant, stated here so it isn't silently missed later.
+- `docs/BusinessEntityModel.md` Section 8a's Employee field table gains a `securityRole` row: denormalized, read-only mirror of `users/{uid}.role`, populated by `provisionEmployeeAccess.js` only, **never itself a source of authorization** -- restated from Section 8a's own existing principle for `operationalRoles[]`.
+- A drift-detection/repair verification script (Admin SDK, run by the Owner -- this environment has none) that reads every `employees/{employeeId}` with a non-null `userId`, reads the linked `users/{uid}.role`, and reports any employee where `securityRole` is missing or disagrees with the linked user's actual `role`. Read-only by default; a `--repair` mode writes the correct value. **Exact document IDs and before/after `securityRole` values are the audit output -- no other user field is read, logged, or exported**, consistent with "audit exact document IDs/results without exposing unnecessary user data."
 
-**PR B -- complete-catalog Show All, filter counts, differentiated empty states**
+### Backfill (operational step -- not a PR, not authorized by this Specification)
 
-- Show All's data source changes from `healthEntries` (ledger-active parts only) to the full `PARTS_CATALOG` merged with whatever `healthEntries` exist -- every catalog part appears; a part with no ledger activity renders with an explicit "No ledger activity" state instead of being silently absent.
-- `QUEUE_FILTER_OPTIONS`'s three tabs gain populated `count` values, rendered via `FilterBar.jsx`'s already-existing `(N)` suffix support.
-- `InventoryHealthPanel.jsx` gains an optional `emptyText` prop (defaulting to today's string, so `Operations.jsx`'s own call site is byte-for-byte unaffected); `PartsList.jsx` supplies a filter-specific message per tab.
-- The lower "Parts Catalog" table's relationship to the now-complete-catalog Show All tab is resolved by this Specification (see Technical design) -- Architecture Review required consolidation or relocation, not leaving two indistinguishable complete-catalog views indefinitely.
+- The drift-detection script's `--repair` mode, run once against every pre-existing Employee document, under a separate, explicit Owner Production Data Authorization -- the same pattern already established in this project for every prior production-data-touching step (`docs/DECISIONS.md`'s entries on the `employees` composite index deploys and PR #114's authorized-command batch).
+- **Verified complete** means: a follow-up read-only pass of the same script reports zero drifted/missing documents, recorded in `docs/DECISIONS.md` before PR A proceeds.
 
-**PR C -- Reorder Request History / terminal-status discovery**
+### PR A -- All Assigned Work oversight, plus the assignment-eligibility filter (gated on the backfill above)
 
-- New "History" section on `PartsList.jsx`, driven by `useReorderRequestsByStatuses([CANCELLED, VOIDED, RECEIVED, REJECTED])` (reusing PR A's new hook).
-- Client-side text filter (part name/SKU, assignee name, or exact request id) and a status filter, since this view has no natural upper bound and only grows over time -- see Risks.
-- Each row shows: the linked part, `status`, the terminal actor (`cancelledBy`/`voidedBy`/`receivedBy`, whichever applies, resolved via `resolveActorDisplayName()`), and the terminal timestamp. Rows link into `PartDetail.jsx` with `?requestId=<id>`, same navigation contract as PR A.
+- New hook `useReorderRequestsByStatuses(statuses[])` in `hooks/useReorderRequests.js` for the assignee-independent, currently-small, unordered "All Assigned Work" set (`ASSIGNED_TO_PARTS_ASSOCIATE` + `PURCHASING_IN_PROGRESS`) -- **returns an explicit error state**, not a silent empty array, see Technical design.
+- New read-only "All Assigned Work" section on `PartsList.jsx`, with its own visible count, showing the linked part, the current assignee (`resolveActorDisplayName()`, never a raw uid), `status`, `urgency` (where applicable), and age. Rows are `<Link>`s into `PartDetail.jsx` carrying `?requestId=<id>` -- no action control renders.
+- `useAssignableEmployees()`/`EmployeeAssignmentPicker.jsx` excludes `technician`-security-role candidates from `PARTS_ASSOCIATE` eligibility using `employees.securityRole`, client-side. **This PR must not merge until the backfill above is confirmed complete and recorded** -- see Technical design for exactly what "complete" changes about how a missing/mismatched `securityRole` is treated.
+
+### PR B -- Inventory Health and Parts Catalog, separated (corrects Round 1)
+
+- `QUEUE_FILTER_OPTIONS` shrinks to exactly two tabs: **Critical & High**, **Needs Planning**. The ledger-scoped "Show All"/`ALL` tab is removed from Inventory Health entirely -- not relabeled, not merged into anything, removed.
+- The existing lower **Parts Catalog** table becomes the one true "show everything" experience: its default/"All Categories" state already shows every `PARTS_CATALOG` part; this PR enriches each row with whatever health/risk signal exists for that part (urgency badge, or an explicit "No ledger activity" note where none exists) -- **without** adding the catalog's own SKU/cost/price columns into `InventoryHealthPanel.jsx`, and without adding `InventoryHealthPanel.jsx`'s stock/usage columns into the catalog table wholesale. The catalog table's existing category filter, pagination, and `GlobalSearch` integration are preserved unchanged.
+- Both remaining Inventory Health tabs (Critical & High, Needs Planning) gain populated `count` values via `FilterBar.jsx`'s existing support. The Parts Catalog table's own filter bar (`filterOptions`, `PartsList.jsx:190-193`) gains counts too, for the same reason.
+- `InventoryHealthPanel.jsx`'s single hardcoded empty-state string is replaced with a caller-supplied, filter-specific message for its two remaining tabs (`emptyText` prop, defaulting to today's string so `Operations.jsx`'s own call site -- which has no filter tabs at all -- is byte-for-byte unaffected).
+
+### PR C -- Reorder Request History (bounded, ordered, independent of PR A)
+
+- New, purpose-built hook (not shared with PR A -- see Technical design for why) reading `CANCELLED`/`VOIDED`/`RECEIVED`/`REJECTED` requests, ordered newest-first by `createdAt`, paginated with a bounded initial page and cursor-based "Load More."
+- New composite index on `reorder_requests` (`status` + `createdAt`), required by the ordered query -- its own Firestore index deployment, same established pattern as the `employees` composite indexes already live in production (`docs/DECISIONS.md` entries on PR #109/#111).
+- A separate, exact-request-id lookup path (direct `getDoc`, not scoped to whatever page of History happens to be loaded) so a request found by status/assignee/part elsewhere, or a pasted/typed exact id, is always reachable regardless of pagination position.
+- Explicit loading, genuinely-empty, error, and end-of-history states -- no state is inferred from an empty array alone.
+- A visible count for the History section (of the currently-loaded/filtered set, with an indication that more may exist if not yet fully loaded -- exact copy is an implementation detail, the requirement is that the count is never presented as if it were the collection's total unless it actually is).
 
 ## Explicitly out of scope
 
-- **Any `firestore.rules` change to `reorder_requests` visibility.** Per Architecture Review decision #1, broader authorization (an actual signed-in Parts Manager/Parts Associate role, as opposed to today's advisory `operationalRoles[]`) is deferred to a separate Tier-2 identity/authorization design, coordinated with Issue #100. Not this Specification's problem to solve.
-- **The Inventory Action Log redesign** -- Issue #152, confirmed separate again here per the Owner's repeated instruction.
-- **The Cancel/Void initiative** -- PR #151 (merged, deployed) is not reopened, changed, or depended on by this Specification. `ReorderRequestCancelled`/`ReorderRequestVoided`'s own read paths are untouched; PR C's History view reads the same `reorder_requests` documents through a new query, not through any Cancel/Void code.
-- **The broader page-restructuring ("Reorder Work" / "Inventory Health" / "Parts Catalog" headings)** the Assessment's "Live-page architecture finding" recorded as an adopted future direction. PR A/B/C add sections to the existing page structure; regrouping the whole page under that three-part hierarchy is a larger, separate follow-up, not bundled into any of PR A/B/C here.
-- **Pagination/virtualization of any queue.** Every new view added here is expected to stay small in practice for the near term (see Risks for History's specific growth concern, addressed with a client-side filter, not pagination, at this size).
+- **Any `firestore.rules` change.** Unchanged from Round 1 -- Architecture Review decision #1 keeps `reorder_requests`/`employees` visibility exactly as-is; PR C's composite index is an index deployment, not a Rules change.
+- **The Inventory Action Log redesign** -- Issue #152, confirmed separate again.
+- **The Cancel/Void initiative** -- PR #151 (merged, deployed) not reopened or changed, not a dependency.
+- **The broader page-restructuring into "Reorder Work" / "Inventory Health" / "Parts Catalog" top-level headings** the Assessment's "Live-page architecture finding" recorded as an adopted future direction. This Specification separates Inventory Health and Parts Catalog's *semantics* (PR B) without yet regrouping the whole page under that three-part heading structure -- a larger, separate follow-up.
+- **Retrofitting error-state handling onto every pre-existing hook in this codebase.** `hooks/useReorderRequests.js`'s existing `useReorderRequestsByStatus()`/`useReorderRequestsAssignedTo()` and every other hook that currently swallows `onSnapshot` errors into an empty array are unchanged by this Specification -- only the new hooks introduced here (PR A's, PR C's) are required to surface errors. A repository-wide retrofit is a separate, larger effort not scoped here.
+- **A full accessibility audit of `PartsList.jsx` or the wider app.** This Specification requires the *new* surfaces (oversight rows, History rows, the enriched catalog rows) to carry accessible filter labels, keyboard navigation, and announced loading/error/empty transitions -- it does not audit or fix pre-existing accessibility gaps elsewhere on the page.
 
 ## Technical design
 
-### PR A: `useReorderRequestsByStatuses()`
+### A0/Backfill: the security-role mirror, precisely
+
+Unchanged from Round 1's finding, restated with the corrected sequencing: `employees/{employeeId}` has no security-role field today (confirmed against `docs/BusinessEntityModel.md` Section 8a's field table and `provisionEmployeeAccess.js`'s actual writes); `users/{uid}` is hard self-read-only (`firestore.rules:172-175`, no admin/dispatcher exception) -- an admin/dispatcher genuinely cannot read a candidate's sign-in role today, by any query shape. The fix is the denormalized `securityRole` mirror described in Scope above, **not** a Rules change.
+
+**What changes once the backfill is verified complete, precisely:**
+
+- **Before verification (during and immediately after A0 ships, before the backfill runs):** a missing `securityRole` on an Employee document fails open -- treated as not-technician, i.e., not additionally excluded. This is the only safe default before every document has been touched; the alternative would silently remove every already-provisioned employee from the picker.
+- **After verification is recorded:** a missing or mismatched `securityRole` is **an explicit configuration error, not a silently-accepted permanent state.** The picker filter (shipped in PR A, after this point) surfaces this distinctly from "eligible": an employee whose `securityRole` is absent or doesn't match a fresh read is either (a) excluded conservatively pending re-verification, or (b) surfaced with a visible "role data needs verification" indicator to the admin/dispatcher viewing the picker -- exact UX choice between (a)/(b) is an Implementation Plan-level decision, not fixed here; **what's fixed here is that it is never again silently treated as "fine, just not technician" the way it necessarily was pre-backfill.**
+- **Client-side filtering is a UI workflow narrowing, not server-side authorization**, stated explicitly and unambiguously: `firestore.rules` enforces zero of this. An admin/dispatcher with direct Firestore access (there is none in this app's client surface, but the distinction matters for anyone reading this Specification later) could still write an assignment to a technician-role employee's uid -- this filter only narrows what the *picker UI* offers, exactly the same non-guarantee `operationalRoles[]`-based eligibility already carries today for every other assignment-picker filter on this component.
+
+### PR A: `useReorderRequestsByStatuses()` -- with a real error state
 
 ```js
 // hooks/useReorderRequests.js
 export function useReorderRequestsByStatuses(statuses, enabled = true) {
-  const [state, setState] = useState({ data: [], loading: enabled });
+  const [state, setState] = useState({ data: [], loading: enabled, error: null });
 
   useEffect(() => {
     if (!enabled || !statuses?.length) {
-      setState({ data: [], loading: false });
+      setState({ data: [], loading: false, error: null });
       return;
     }
-    setState((prev) => ({ ...prev, loading: true }));
+    setState((prev) => ({ ...prev, loading: true, error: null }));
     const q = query(reorderRequestsRef, where("status", "in", statuses));
     const unsubscribe = onSnapshot(
       q,
-      (snap) => setState({ data: toDocs(snap), loading: false }),
-      () => setState({ data: [], loading: false })
+      (snap) => setState({ data: toDocs(snap), loading: false, error: null }),
+      (err) => setState({ data: [], loading: false, error: err.code ?? "unknown" })
     );
     return unsubscribe;
   }, [statuses.join(","), enabled]);
@@ -89,110 +112,150 @@ export function useReorderRequestsByStatuses(statuses, enabled = true) {
 }
 ```
 
-A single-field `in` query with up to 10 values needs no composite index (Firestore's own documented limit is comfortably above both call sites' 2 and 4 values). `firestore.rules`' existing `reorder_requests` read rule (`allow read: if isAdminOrDispatcher();`) is unconditional on query shape -- no Rules change. Both PR A's "All Assigned Work" and PR C's "History" reuse this one hook, not two separate implementations.
+`error` carries the Firestore SDK's own `err.code` (e.g. `"permission-denied"`, `"unavailable"`) -- not a boolean, so the UI can distinguish a permission failure from a network/query failure, not just "something went wrong." `PartsList.jsx`'s "All Assigned Work" section renders one of four states, never inferring one from another: **loading** (spinner/skeleton), **error** (the specific message, not a blank table), **genuinely empty** (`data.length === 0 && !error`, "No requests are currently assigned to anyone."), or **populated**. This is a single-field `in` query -- no composite index, same as Round 1's finding, unaffected by this correction.
 
-### PR A: the assignment-eligibility gap, verified precisely
+### PR C: purpose-built, not shared with PR A -- and why
 
-The Assessment recommended excluding `technician`-security-role employees from Parts Associate assignment eligibility, "prefer[ring] client-side filtering of the already-authorized Employee result if that avoids a new composite index/query contract." **Verified during this Specification: that filtering needs data that does not exist on the Employee document today, and cannot be read the way one might assume.**
-
-- `employees/{employeeId}` (`domain/employees.js`'s `buildAssignableEmployeesQuery()`) has no `role`/security-role field -- confirmed against `docs/BusinessEntityModel.md` Section 8a's own field table and `provisionEmployeeAccess.js`'s actual writes, which set `role` only on `users/{uid}` (`userUpdates: { role: securityRole }`), never on the Employee document.
-- `users/{uid}` is **hard self-read-only** (`firestore.rules:172-175`: `allow read: if isSignedIn() && request.auth.uid == userId;`, no admin/dispatcher exception). An admin/dispatcher cannot read a candidate assignee's `users/{uid}.role` at all, by any query shape -- this is not a missing index or a missing query parameter, it is a Rules-enforced boundary.
-
-**Resolution -- a denormalized, read-only mirror field, not a Rules change:**
-
-- Add `securityRole` to `employees/{employeeId}` (written by `functions/scripts/provisionEmployeeAccess.js`, at the same point it already writes `users/{uid}.role` -- one additional field on an existing write, same script, same transaction/batch, no new write path).
-- `employees` is already fully `admin`/`dispatcher`-readable (`firestore.rules:198-202`, unchanged) -- reading the new field needs no Rules edit.
-- `useAssignableEmployees()` (or `EmployeeAssignmentPicker.jsx`, whichever proves the smaller diff during implementation) filters the already-returned, already-authorized employee list client-side: `employees.filter((e) => e.securityRole !== ROLES.TECHNICIAN)`, applied only when `requiredOperationalRole === OPERATIONAL_ROLE.PARTS_ASSOCIATE`. No new `where()` clause on `buildAssignableEmployeesQuery()` -- avoids the open question of whether Firestore's inequality-filter rules would even permit a second field-level constraint alongside the existing `where("userId", "!=", null)`, which the Assessment correctly flagged as a risk to avoid.
-- **`operationalRoles[]`'s own documented principle is preserved, not violated:** `docs/BusinessEntityModel.md` Section 8a states `operationalRoles[]` "[determines] assignment eligibility only -- never a substitute for the existing security `role` on `users/{uid}`." `securityRole` on the Employee document is the same kind of thing -- a read-only, query-convenience *mirror* of the real authority (`users/{uid}.role`), not a second, competing source of truth. Nothing in `firestore.rules` reads or trusts `employees.securityRole` for authorization; every actual write/read permission remains gated exactly as it is today, solely by `users/{uid}.role` via `isAdminOrDispatcher()`.
-
-**Required prerequisite, called out explicitly -- a one-time backfill, not part of PR A's own code:**
-
-Every `employees/{employeeId}` document created before PR A's `provisionEmployeeAccess.js` change lacks `securityRole` entirely (not `null` -- genuinely absent, the same "legacy document" shape this codebase has handled repeatedly elsewhere, e.g. Cancel/Void's own legacy-`reorder_requests` handling). **A missing `securityRole` must fail open (treated as not-technician, i.e. not additionally excluded)** -- the alternative (fail-closed) would silently remove every already-provisioned, legitimately-eligible employee from the assignment picker the moment PR A ships, which is a worse regression than the gap this PR closes. This means **PR A's interim safety constraint is incomplete until a backfill runs**: any `technician`-role employee provisioned before PR A remains selectable until their Employee document is backfilled with `securityRole`. Backfilling means reading each existing Employee's linked `users/{uid}.role` and writing it onto the Employee document -- an Admin-SDK-only operation this environment cannot perform itself (no production Admin SDK credentials, this project's standing, repeatedly-established boundary). **The backfill is the Owner's own follow-up action, under its own separate Production Data Authorization, exactly the same pattern as every other production-data-touching step in this project's history** -- not something PR A's Final Review can treat as already covered by the PR's own scope.
-
-### PR B: complete-catalog Show All
+Round 1 proposed one shared hook for both "All Assigned Work" (PR A) and "History" (PR C). **Corrected: they are not the same query shape and should not share an implementation.** All Assigned Work is unordered, unbounded-but-small-in-practice (bounded by how many requests are *currently* in flight, which churns and stays small). History is exactly the opposite -- unordered-by-default would be actively wrong for it (per this correction, it must be ordered), and it only ever grows, never churns down. Forcing one hook to serve both would mean either over-engineering All Assigned Work with pagination it doesn't need, or under-engineering History with the unbounded live query this correction rejects. **PR C introduces its own hook, independent of PR A -- no cross-PR dependency, no sequencing requirement between them.**
 
 ```js
-// PartsList.jsx, illustrative -- exact placement is an implementation detail
-function mergeCatalogWithHealth(catalog, healthEntries) {
-  const byPartId = new Map(healthEntries.map((e) => [e.partId, e]));
-  return catalog.map((part) => byPartId.get(part.sku) ?? { partId: part.sku, noLedgerActivity: true });
+// hooks/useReorderRequests.js -- illustrative, exact shape is an implementation detail
+export function useReorderRequestsHistory({ statuses, pageSize = 25 }) {
+  // orderBy("createdAt", "desc") -- deterministic newest-first.
+  // Requires a new composite index: reorder_requests (status ASC, createdAt DESC).
+  // Returns { data, loading, error, hasMore, loadMore(), isEndOfHistory }.
+  // loadMore() re-queries with startAfter(lastVisibleDoc) -- a cursor,
+  // not an offset, per Firestore's own pagination guidance.
+}
+
+// A second, independent function -- NOT part of the paginated hook above,
+// so a known exact id is always reachable regardless of loaded page/filter state.
+export function useReorderRequestById(requestId) {
+  // Direct onSnapshot(doc(reorderRequestsRef, requestId)) -- same pattern
+  // useReorderRequestForPart() already uses for its requestId branch.
 }
 ```
 
-`queueFilter === "ALL"` uses `mergeCatalogWithHealth(PARTS_CATALOG, healthEntries)` instead of raw `healthEntries`. `InventoryHealthPanel.jsx`'s row renderer needs one new branch for a `noLedgerActivity` entry (no `usage`/`recommendation` to read) -- rendered the same way the existing lower Parts Catalog table already renders a part with no ledger activity (`PartsList.jsx:387-388`'s established pattern, reused, not reinvented). **Critical & High and Needs Planning are unaffected** -- both remain scoped to real `healthEntries` only, since a part with no ledger activity has no computed `urgency`/`recommendationStatus` to begin with and correctly cannot belong to either calculated subset (Architecture Review decision #2's own framing).
+**Required new index**, added to `firestore.indexes.json`:
+```json
+{
+  "collectionGroup": "reorder_requests",
+  "queryScope": "COLLECTION",
+  "fields": [
+    { "fieldPath": "status", "order": "ASCENDING" },
+    { "fieldPath": "createdAt", "order": "DESCENDING" }
+  ]
+}
+```
+Deployed via `firebase deploy --only firestore:indexes --project taylor-parts`, under its own separate Owner Deployment Authorization scoped to indexes only -- the exact same procedure and authorization boundary already used for the `employees` composite indexes live in production today. **Not a Rules change; still requires its own deployment step, recorded in `docs/DECISIONS.md`, before PR C's ordered query can work against production data** (the local emulator builds indexes implicitly and will not catch a missing production index -- the same live/emulator parity gap `docs/DECISIONS.md`'s entry on PR #109 already documents once for this exact class of mistake).
 
-**Lower "Parts Catalog" table -- resolved as consolidation, not relocation.** Once the top section's Show All is the true complete catalog, the lower table's own "browse everything" purpose is fully subsumed -- it becomes a second, redundant "every part" view differing only in column set (it shows SKU/cost/price; the top section shows stock/usage/urgency). **Consolidation:** the lower table's SKU/cost/price columns are added to the top section's Show All row rendering (conditionally, only under Show All -- Critical & High/Needs Planning stay unchanged, they don't need catalog-static columns for a risk-triage view), and the lower table itself is removed. This keeps exactly one "complete catalog" experience on the page, per Architecture Review decision #2's explicit requirement not to leave two indistinguishable ones indefinitely, without introducing a second new UI surface (a toggle, a relocated page) that the Assessment's "Live-page architecture finding" would only need to unwind again during the later, separate page-restructuring follow-up.
+**History's four states, explicitly:**
+- **Loading** -- initial page fetch in flight.
+- **Error** -- the hook's `error` field is non-null; render the specific failure, never an empty table.
+- **Genuinely empty** -- zero terminal requests exist at all (`data.length === 0`, `!loading`, `!error`, first page).
+- **End of history** -- `hasMore === false` after at least one page loaded; "Load More" is hidden or disabled, not silently absent with no explanation.
 
-### PR C: History view
+**Exact-id lookup independent of pagination:** the History UI's filter input, when it looks like a Firestore document id (or on an explicit "find by id" action), calls `useReorderRequestById()` directly rather than searching only the currently-loaded page(s) -- so a request several pages back, or not yet loaded, is still reachable without "Load More"-ing through the entire history.
 
-Reuses `useReorderRequestsByStatuses([CANCELLED, VOIDED, RECEIVED, REJECTED])` from PR A. Client-side filter state (text input matching part name/SKU/assignee display name/exact request id; a status dropdown) narrows the rendered rows -- no new Firestore query per keystroke, consistent with every other client-side filter already on this page (`queueFilter`, `category`). Terminal actor/timestamp resolution reuses the exact fields already established per status: `cancelledBy`/`cancelledAt` (`CANCELLED`), `voidedBy`/`voidedAt` (`VOIDED`), `receivedBy`/`receivedAt` (`RECEIVED`), `reviewedBy`/`reviewedAt` (`REJECTED`, since rejection is recorded on the review fields, not a dedicated terminal field) -- all already-existing fields, no schema addition.
+### PR B: Inventory Health and Parts Catalog as genuinely separate surfaces
+
+```js
+// PartsList.jsx -- Inventory Health keeps only its two real filters.
+const QUEUE_FILTER_OPTIONS = [
+  { key: "ACTIONABLE", label: "Critical & High" },
+  { key: "NEEDS_PLANNING", label: "Needs Planning" },
+];
+// No "ALL" option -- removed, not relabeled, not merged elsewhere in this component.
+```
+
+```js
+// PartsList.jsx -- Parts Catalog enriched with health/risk data where it exists.
+function enrichCatalogRow(part, healthByPartId) {
+  const health = healthByPartId.get(part.sku);
+  return { ...part, health: health ?? null }; // null -> render "No ledger activity"
+}
+```
+
+The Parts Catalog table's existing rendering (SKU, cost, price, category filter, pagination, `GlobalSearch`) is unchanged; it gains one additional column (urgency badge, or "No ledger activity") sourced from the same `healthEntries` Inventory Health already computes -- **no duplicate computation, one `healthEntries` read, two different consumers now instead of one.** `InventoryHealthPanel.jsx` itself gains no new column and no catalog-specific rendering branch -- Round 1's `mergeCatalogWithHealth()`/no-ledger-activity-row-inside-`InventoryHealthPanel` approach is withdrawn. Critical & High and Needs Planning remain scoped to real `healthEntries` only, exactly as before -- unaffected by this section.
 
 ## Authorization
 
-Unchanged from today for every existing action on this object -- PR A/B/C add zero new write paths and zero new action controls. "All Assigned Work" and "History" are both read-only, `<Link>`-only views, gated to the same `admin`/`dispatcher` audience that can already reach `PartsList.jsx` (`ROLE_NAV_ACCESS`) and already read every `reorder_requests` document that audience can see today (`isAdminOrDispatcher()`, unchanged). The one write-adjacent change -- PR A's assignment-eligibility filter -- narrows an existing selection list client-side; it does not add, remove, or alter any `firestore.rules` write permission. `voidPurchaseOrder()`/`cancelReorderRequest()`/every other existing writer is untouched.
+Unchanged from Round 1's analysis for every existing action -- PR A/B/C add zero new write paths and zero new action controls; every new view is `<Link>`-only. Restated for A0/backfill specifically: `provisionEmployeeAccess.js` is already Admin-SDK-only, already bypasses `firestore.rules` by design, already the sole writer of `employees`/`users`' identity-linkage fields -- adding one more field to its existing write is not a new authorization surface. The drift-detection/repair script is a new, Owner-run, Admin-SDK tool with the same posture -- it does not run in this environment, is not exposed to any client, and is not itself part of the deployed application.
 
 ## Firestore Rules impact
 
-**None**, for the visibility features themselves (PR A's oversight view, PR B's Show All/counts/empty-states, PR C's History) -- every new query reuses the existing, unconditional `reorder_requests` read rule (`allow read: if isAdminOrDispatcher();`), same as every query already on this page. **PR A's `employees.securityRole` field also needs no Rules change** -- `employees`' existing read rule (`allow read: if isAdminOrDispatcher() || (isSignedIn() && userData().employeeId == employeeId);`) already covers the new field once it exists; only the *writer* (`provisionEmployeeAccess.js`, Admin SDK, already bypasses Rules by design) needs updating to populate it. **Both copies of `firestore.rules` remain byte-identical to their current, deployed state** through all three PRs.
+**None.** Confirmed again after this revision's corrections: no PR in A0/A/B/C touches `firestore.rules`. PR C's composite index is a `firestore.indexes.json` change and its own deployment step -- explicitly not a Rules change, called out with its own authorization boundary in Technical design above so it isn't mistaken for one, or silently skipped as if it were covered by "no Rules change."
 
 ## UI impact
 
-- `PartsList.jsx` gains two new read-only sections ("All Assigned Work" under PR A, "History" under PR C) and one restructured section (Show All under PR B, plus the lower Parts Catalog table's removal per the consolidation above).
-- `EmployeeAssignmentPicker.jsx` (or `useAssignableEmployees()`) silently omits `technician`-role candidates from the Parts Associate picker's results -- no new error state, no visible "excluded" indicator; they simply don't appear, same posture as every other eligibility filter already on this component (`employmentStatus`, `operationalRoles`, linked-user).
-- `InventoryHealthPanel.jsx` gains an optional `emptyText` prop and one new row-rendering branch for a no-ledger-activity catalog entry (Show All only).
-- `FilterBar.jsx` itself is unchanged -- its existing `count` support is simply used for the first time by `QUEUE_FILTER_OPTIONS`.
-- No new route, no new nav entry -- all three additions live on the existing `/inventory` (Parts) page.
+- `PartsList.jsx` gains: "All Assigned Work" (PR A, own count, four explicit states), a two-tab (not three-tab) Inventory Health section (PR B), an enriched Parts Catalog table (PR B), and "History" (PR C, own count, four explicit states, pagination, exact-id lookup).
+- `EmployeeAssignmentPicker.jsx`/`useAssignableEmployees()` (PR A, post-backfill) omits `technician`-role candidates from Parts Associate eligibility; a configuration-error case (post-verification missing/mismatched `securityRole`) is surfaced per Technical design, not silently absorbed into "not eligible."
+- `InventoryHealthPanel.jsx` loses its `ALL`-tab-driven empty-state ambiguity (there are only two tabs now) and gains a caller-supplied `emptyText` for each; `Operations.jsx`'s own call site (no tabs, no `queueFilter`) is unaffected.
+- **Responsive behavior:** "All Assigned Work," "History," and the enriched Parts Catalog table all add columns to already-wide tables. Each renders inside a horizontally-scrollable container on narrow viewports (matching this project's existing wide-table pattern -- confirmed present on `fo-table`'s current usage elsewhere) rather than silently clipping or wrapping into unreadable rows -- an explicit requirement for these three specifically, not assumed for free.
+- **Accessibility, for the new/changed surfaces specifically:** every new filter control (the two remaining Inventory Health tabs, the Parts Catalog filter bar, History's status/text filter) has an accessible label (`aria-label` or an associated `<label>`, matching `FilterBar.jsx`'s existing button semantics) and is reachable/operable via keyboard alone (tab order, Enter/Space activation -- native `<button>`/`<input>` elements already provide this; the requirement is not to regress it with a custom widget). Loading, error, and empty-state transitions in "All Assigned Work" and "History" are announced to assistive technology (`aria-live="polite"` on the status region, or equivalent) rather than only being a silent visual change.
+- No new route, no new nav entry -- every addition lives on the existing `/inventory` (Parts) page.
 
 ## Testing strategy
 
-Primary test: extend the `run-field-ops-app-vite` Playwright skill's `driver.mjs`, same established pattern as `verify-notification-identity`/`verify-cancel-void` (PR #148/#151) -- one new named command per PR (or one combined command covering all three, decided at Implementation Plan time), signed in as more than one `admin`/`dispatcher` account where the test requires proving cross-user visibility.
+Primary test: extend the `run-field-ops-app-vite` Playwright skill's `driver.mjs`, same established pattern as `verify-notification-identity`/`verify-cancel-void` (PR #148/#151) -- one named command per PR (A0 has no browser-testable surface; its own verification is the drift-detection script's own read-only report, run against emulator fixtures).
 
-Required coverage, restated from the Assessment's "Verification requirements" section (unchanged, not re-litigated here):
-- Manager B sees, in "All Assigned Work," a request assigned to user A, without being the assignee.
-- User A's own personal Waiting/In Progress views remain scoped to exactly user A, unbroadened.
-- Every lifecycle section (Critical & High, Needs Planning, Show All, All Assigned Work, History) displays an accurate count.
-- Empty messages distinguish "no records at all," "records exist but none match the active filter," and "no ledger history."
-- Show All contains the complete catalog, including at least one part with zero ledger activity.
-- At least one `CANCELLED`, `VOIDED`, `RECEIVED`, and `REJECTED` fixture request is each findable in History by status, assignee, part, and exact request id.
-- No action control appears in "All Assigned Work" or "History" for any account/status combination that wouldn't already see it on `PartDetail.jsx` directly.
-- **New for this Specification (the assignment-eligibility fix):** a `technician`-security-role employee with a `securityRole`-backfilled Employee document does not appear in the Parts Associate assignment picker; an otherwise-identical `dispatcher`/`admin`-role employee does. A fixture Employee document with `securityRole` entirely absent (simulating a pre-PR-A, not-yet-backfilled document) is confirmed to still appear (fail-open, per Technical design above) -- proving the interim gap is real and observable, not just a Note in this document.
+Required coverage, corrected and expanded from Round 1:
+
+- **A0/Backfill:** drift-detection script, run against emulator fixtures, correctly reports (a) an Employee with a correct `securityRole`, (b) one with a missing `securityRole` (pre-backfill simulation), (c) one with a mismatched `securityRole` (drift simulation) -- three distinct, named cases, not inferred from one generic pass/fail.
+- **PR A:** Manager B sees, in "All Assigned Work," a request assigned to user A, without being the assignee. User A's own personal Waiting/In Progress views remain scoped to exactly user A. The section's count is accurate. A simulated `permission-denied` (or any) query failure renders the error state, not an empty table -- this is a new, required assertion Round 1 did not have. A `technician`-role employee with a correctly-backfilled `securityRole` does not appear in the Parts Associate picker; a `dispatcher`/`admin`-role employee does; a fixture with `securityRole` absent is confirmed to render the post-verification configuration-error treatment (not silent fail-open) -- **this specific assertion only becomes meaningful, and testable, once PR A actually ships after the backfill gate -- recorded here so the Implementation Plan doesn't lose it.**
+- **PR B:** Inventory Health shows exactly two tabs, no third. The Parts Catalog table shows every catalog part, each with either a real urgency badge or "No ledger activity" -- confirmed by fixture including at least one part with real ledger activity and one without. Both Inventory Health tabs and the catalog's own filter bar show accurate counts.
+- **PR C:** Deterministic newest-first ordering confirmed against a fixture with known relative `createdAt` values. Initial page is bounded to the configured page size; "Load More" fetches the next page via cursor, not by re-fetching from the start. A fixture request is found by exact id via the independent id-lookup path even when it is not on the currently-loaded page. Loading, genuinely-empty (a fixture with zero terminal requests), error (simulated failure), and end-of-history (all pages loaded, "Load More" no longer offered) are each their own named assertion.
+- **Accessibility spot-check (not a full audit):** each new/changed filter control has an accessible name, confirmed via Playwright's `getByRole(..., { name })` locators (the same mechanism already used throughout this project's driver commands) -- if a control isn't reachable that way, it isn't accessibly labeled either, so this project's existing test style already doubles as the check.
 
 ## Rollback strategy
 
-- **Before any PR in this Specification deploys:** normal revert, no live impact -- none of the three PRs has a schema-deployment sequence or an irreversible write.
-- **After PR A deploys (oversight view + eligibility filter), before the `securityRole` backfill runs:** reverting PR A's frontend removes the oversight view and the eligibility filter cleanly -- no data was migrated, `employees.securityRole` (if PR A's writer change already went live) simply stops being read; existing Employee documents are unaffected either way, since this is a purely additive field.
-- **After the backfill runs:** rolling back PR A's *eligibility filter* code (not the backfill itself) is safe and independent -- `securityRole` remains on Employee documents, simply unused again, until/unless a future PR re-adopts it. **The backfill itself is never rolled back** -- it only ever adds a read-only mirror field; no existing Employee data is altered or removed by writing it.
-- **PR B and PR C are both purely additive/restructuring UI changes with no schema or Rules component** -- reverting either at any point is a normal frontend revert, no rollback-ordering constraint of any kind.
+- **A0, before the backfill runs:** reverting the writer change is safe -- no existing data was altered, `securityRole` simply stops being written going forward; any Employee documents it already touched keep a harmless, unused field.
+- **The backfill itself is never rolled back** -- it only ever adds/corrects a read-only mirror field on existing documents; no other Employee data is touched.
+- **PR A, before merge (i.e., before the backfill gate clears):** does not exist yet by construction -- this Specification requires the gate to clear first. If a future incident requires reverting PR A after it ships, the oversight view and the picker filter both revert cleanly and independently -- `securityRole` data is unaffected either way.
+- **PR B:** reverting removes the Parts Catalog enrichment column and restores Inventory Health's third tab -- a normal frontend revert, no data/schema component.
+- **PR C:** reverting removes the History UI; the composite index, once deployed, is left in place (an unused index is inert, not a rollback hazard) unless a future, separate Owner Deployment Authorization explicitly removes it -- consistent with this project's existing index-deployment rollback posture.
 
 ## Acceptance criteria
 
-- [ ] `useReorderRequestsByStatuses(statuses[])` added to `hooks/useReorderRequests.js`, reused by both PR A and PR C -- confirmed via `git grep`, not two separate implementations.
-- [ ] "All Assigned Work" (PR A) shows every `ASSIGNED_TO_PARTS_ASSOCIATE`/`PURCHASING_IN_PROGRESS` request regardless of assignee, additive to (never replacing) the existing personal Waiting/In Progress sections; every row navigates via `?requestId=`; no action control renders.
-- [ ] `employees/{employeeId}.securityRole` written by `provisionEmployeeAccess.js` at the same point `users/{uid}.role` is written; `useAssignableEmployees()`/`EmployeeAssignmentPicker.jsx` excludes `technician`-role candidates from Parts Associate eligibility, client-side, with a missing `securityRole` failing open (confirmed by a dedicated test fixture).
-- [ ] The `securityRole` backfill for pre-existing Employee documents is **explicitly not claimed as done by PR A** -- recorded in `docs/DECISIONS.md` as a separate, Owner-authorized, Owner-executed follow-up, per this project's standing production-data-write discipline.
-- [ ] Show All (PR B) renders every `PARTS_CATALOG` part, including ones with zero ledger activity, each showing an explicit "No ledger activity" state; Critical & High and Needs Planning remain scoped to real `healthEntries` only, unaffected.
-- [ ] `QUEUE_FILTER_OPTIONS`'s three tabs display accurate `(N)` counts via `FilterBar.jsx`'s existing support.
-- [ ] `InventoryHealthPanel.jsx`'s empty-state message is filter-specific on `PartsList.jsx`'s call site; `Operations.jsx`'s own call site renders byte-identically to before (its own `emptyText` prop omitted, default preserved).
-- [ ] The lower "Parts Catalog" table is removed, its SKU/cost/price columns folded into Show All's row rendering -- confirmed exactly one "complete catalog" view remains on the page.
-- [ ] History (PR C) shows every `CANCELLED`/`VOIDED`/`RECEIVED`/`REJECTED` request, filterable by status/part/assignee/exact request id; every row navigates via `?requestId=`; no action control renders.
+- [ ] `employees/{employeeId}.securityRole` is written by `provisionEmployeeAccess.js` alongside `users/{uid}.role`, documented in `docs/BusinessEntityModel.md` Section 8a as a read-only, non-authorizing mirror field.
+- [ ] A drift-detection/repair script exists, is Admin-SDK-only, and its read-only report distinguishes correct / missing / mismatched `securityRole` per employee, by exact document id, with no other user data in its output.
+- [ ] The backfill is **not** claimed as done by any code in this Specification -- its completion is a `docs/DECISIONS.md` entry, under a separate Owner Production Data Authorization, verified by a zero-drift drift-detection re-run before PR A proceeds.
+- [ ] PR A's "All Assigned Work" shows every currently-assigned request regardless of assignee, additive to personal queues, with an accurate count, four explicit states (loading/error/empty/populated), and `?requestId=` navigation; no action control renders.
+- [ ] PR A's picker filter excludes `technician`-role candidates using `employees.securityRole`; post-backfill, a missing/mismatched value is treated as a configuration error, never silent permanent fail-open.
+- [ ] PR B: Inventory Health has exactly two tabs (Critical & High, Needs Planning), each with an accurate count and a filter-specific empty message; no ledger-scoped "Show All" tab exists anywhere in `InventoryHealthPanel.jsx`'s call sites.
+- [ ] PR B: the Parts Catalog table remains the one complete-catalog view, every existing capability (category filter, pagination, `GlobalSearch`) preserved, enriched with a per-row health/risk indicator or an explicit "No ledger activity" state.
+- [ ] PR C: History is ordered newest-first, deterministically; the initial page is bounded; "Load More" is cursor-based; the required `reorder_requests (status, createdAt)` composite index is deployed to production and confirmed `[READY]` before this feature is considered live; an exact request id is findable independent of loaded page/filter state; loading/empty/error/end-of-history are each their own rendered state.
+- [ ] No hook introduced by this Specification (`useReorderRequestsByStatuses`, the History hook, `useReorderRequestById`) silently converts a query failure into an empty-array result -- each surfaces a distinct `error` value the UI renders.
+- [ ] Every new filter control has an accessible name and is keyboard-operable; loading/error/empty transitions in the two new sections are announced to assistive technology.
+- [ ] "All Assigned Work," "History," and the enriched Parts Catalog table each render inside a horizontally-scrollable container on narrow viewports.
 - [ ] `npm run build && npm run lint` / `npx tsc --noEmit` clean for every PR.
 - [ ] Browser verification (Playwright, `run-field-ops-app-vite` skill) covers every item in "Testing strategy" above, run against a fresh emulator, for each PR before it's considered complete.
-- [ ] No `firestore.rules` diff in any of PR A/B/C -- confirmed via `git diff firestore.rules` returning empty for each PR.
+- [ ] No `firestore.rules` diff in any of A0/PR A/PR B/PR C -- confirmed via `git diff firestore.rules` returning empty for each.
+- [ ] `firestore.indexes.json`'s new entry (PR C) is the only infra-adjacent diff outside `firestore.rules`, and is deployed under its own separate Owner Deployment Authorization, not bundled into a code-merge authorization.
+
+## Expected file scope (exact, per stage)
+
+- **A0:** `functions/scripts/provisionEmployeeAccess.js` (writer change); `docs/BusinessEntityModel.md` (Section 8a documentation); a new drift-detection script under `functions/scripts/`; a new emulator-fixture test file for that script (mirroring this project's existing `functions/test/*.test.js` convention).
+- **Backfill:** no repository file change -- an operational run of A0's own script, `--repair` mode, plus a `docs/DECISIONS.md` entry recording the result. Not a PR.
+- **PR A:** `field-ops-app-vite/src/hooks/useReorderRequests.js` (new hook); `field-ops-app-vite/src/modules/inventory/PartsList.jsx` (new section); `field-ops-app-vite/src/hooks/useAssignableEmployees.js` and/or `field-ops-app-vite/src/shared/assignment/EmployeeAssignmentPicker.jsx` (eligibility filter -- exact split between the two is an implementation detail); `field-ops-app-vite/.claude/skills/run-field-ops-app-vite/seed.mjs` and `driver.mjs` (verification infrastructure, new fixture + command).
+- **PR B:** `field-ops-app-vite/src/modules/inventory/PartsList.jsx`; `field-ops-app-vite/src/modules/operations/panels/InventoryHealthPanel.jsx` (`emptyText` prop only -- no catalog-specific rendering added here); verification infrastructure (`seed.mjs`/`driver.mjs`).
+- **PR C:** `field-ops-app-vite/src/hooks/useReorderRequests.js` (new hook(s)); `field-ops-app-vite/src/modules/inventory/PartsList.jsx` (new section); `firestore.indexes.json` (new composite index); verification infrastructure (`seed.mjs`/`driver.mjs`).
 
 ## Risks
 
-- **History has no natural upper bound.** Unlike every other queue on this page (bounded by "currently in an active status," which churns), terminal requests only ever accumulate. A client-side text/status filter is sufficient at today's scale (confirmed low request volume throughout this project's history), but if volume grows substantially, an unfiltered `where("status", "in", [...])` read with no `limit()` could become a real cost/performance concern -- flagged here as a known, accepted scaling limit of this Specification's design, not solved now. A future `limit()` + cursor-based "load more," or a server-side text-search integration, would be the natural next step if this ever becomes a problem in practice.
-- **The `securityRole` backfill is a real, separate dependency this Specification cannot close on its own.** PR A's interim safety constraint is genuinely incomplete (not merely "pending deployment," but pending a specific, separately-authorized Owner action) until the backfill runs. Any Final Review of PR A must not treat the constraint as fully closed without independently confirming the backfill's own status.
-- **PR B's consolidation removes an existing table.** Any hidden consumer of the lower Parts Catalog table's specific column set (cost/price alongside SKU) that isn't satisfied by folding those columns into Show All would be a regression -- worth a final visual/functional comparison against the current lower table before removing it, not assumed safe purely from this design.
-- **`InventoryHealthPanel.jsx` is shared with `Operations.jsx`.** The `emptyText`/no-ledger-activity-row changes must be verified, not just designed, to leave `Operations.jsx`'s own rendering byte-identical -- restated from the Assessment's own Risks section, still the single most likely place an unintended regression could hide.
+- **The backfill is a real, separately-authorized dependency this Specification cannot close on its own** -- unchanged finding from Round 1, restated with the corrected consequence: PR A cannot merge, not merely "cannot be considered complete," until it clears.
+- **PR C's composite index must reach `[READY]` in production before the ordered query is relied on** -- the local emulator builds indexes implicitly and will not catch a missing production index, the same class of gap `docs/DECISIONS.md`'s PR #109 entry already documents once; a Final Review of PR C must independently confirm the index's live status, not assume the code working locally proves it.
+- **PR B's Parts Catalog enrichment reads the same `healthEntries` Inventory Health already computes** -- if a future change alters `healthEntries`' shape for Inventory Health's own needs without considering the catalog table's now-added dependency on it, both surfaces could silently drift out of sync. Worth a shared-source-of-truth comment at the read site, not solved further here.
+- **`InventoryHealthPanel.jsx` is shared with `Operations.jsx`.** Removing the `ALL` tab and adding `emptyText` must leave `Operations.jsx`'s own rendering (no tabs, no `queueFilter` concept) byte-identical -- restated a third time across this Specification's revisions because it remains the single most likely place an unintended regression could hide.
+- **History's growth is now bounded by design, not by "current volume is low."** The remaining risk is purely the composite index's own production readiness (above) and normal pagination UX polish -- not the unbounded-read risk Round 1 left unaddressed.
 
 ## Open questions
 
-None blocking Implementation Plan drafting. Two items are recorded as **Implementation Plan-level decisions**, not open architecture questions (Architecture Review's own scope is already closed per PR #155):
+None blocking Implementation Plan drafting -- Architecture Review's own scope is closed (PR #155, merged). Two items remain Implementation Plan-level decisions, not open architecture questions:
 
-1. Whether PR A/B/C ship as three separate PRs (as named throughout this Specification) or some are combined, is the Implementation Plan's own sizing call, consistent with `docs/ai/workflow.md`'s "one architectural concern per PR" guidance applied to each of the three concerns named here.
-2. The exact backfill script's shape (a new one-off script under `functions/scripts/`, or a small extension of an existing one) is an implementation detail for whoever the Owner designates to run it -- not decided here.
+1. The exact UX for a post-backfill configuration-error case in the picker (conservative exclusion vs. a visible "needs verification" indicator) -- both satisfy this Specification's requirement that it never again be silent permanent fail-open; which one ships is an implementation detail.
+2. Whether A0's drift-detection script becomes a recurring, scheduled check (vs. a one-time backfill tool run once and then dormant) is a decision for whoever owns ongoing data-quality tooling in this project -- not fixed here.
 
 ## Approval
 
-**Not yet reviewed.** This Specification requires ChatGPT Approval (per `docs/ai/workflow.md`'s stage 4) before an Implementation Plan is drafted or any PR in this Specification is opened. No code, Rules, deployment, or production-data change has been made while producing this document -- planning only.
+**Not yet reviewed.** This Specification requires ChatGPT Approval (per `docs/ai/workflow.md`'s stage 4) before an Implementation Plan is drafted or any PR named here is opened. No code, Rules, deployment, or production-data change has been made while producing this document -- planning only.
