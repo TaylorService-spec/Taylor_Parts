@@ -41,6 +41,14 @@ export default function InventoryHealthPanel({
   onRequestReorder,
   requestedPartIds,
   submittingPartId,
+  // Inventory Health / Parts Catalog separation (PR B, docs/specifications/
+  // inventory-operational-queue.md) -- optional, defaults to the original
+  // string so Operations.jsx's own call site (no filter tabs, no
+  // queueFilter concept) renders byte-identically to before. PartsList.jsx's
+  // two remaining Inventory Health tabs (Critical & High, Needs Planning)
+  // each pass their own filter-specific message, since "No ledger activity
+  // yet" was misleading when it actually meant "nothing matches this tab."
+  emptyText = "No ledger activity yet -- nothing to forecast.",
 }) {
   // recommendation.urgency is null for NEEDS_PLANNING entries (no
   // usage history -- see domain/inventoryAnalyticsEngine.ts). Ranking
@@ -59,7 +67,7 @@ export default function InventoryHealthPanel({
     <div className="fo-card">
       <h3>{title}</h3>
       {sorted.length === 0 ? (
-        <p className="fo-muted">No ledger activity yet -- nothing to forecast.</p>
+        <p className="fo-muted">{emptyText}</p>
       ) : (
         <table className="fo-table">
           <thead>
