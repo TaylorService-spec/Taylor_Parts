@@ -1,9 +1,13 @@
 # Enterprise Business Metrics Framework
 
-Status: **Proposed — Pending Architecture Review — NOT binding.** No section of this document may be cited as settled, and no Specification or Implementation Plan may proceed based on it, until it is formally Accepted.
+Status: **Accepted.** This framework is authoritative architecture for canonical business-metrics/revenue-lifecycle terminology and financial ownership across the Enterprise Operations OS.
 Scope: Platform-wide — Enterprise Operations OS, company-neutral. Taylor Parts is the first deployment, not a special case.
 Depends on: `docs/BusinessEntityModel.md` (entity definitions), `docs/architecture/SYSTEM_AUTHORITIES.md` ("who owns what" pattern this document extends into financial ownership)
 Prompted by: `docs/assessments/customer-account-business-model.md`'s finding that no authoritative sales/revenue amount exists anywhere in the current Taylor Parts implementation, and that "Sales Summary" cannot be built without first deciding what "sales" means
+
+**Architecture Review: APPROVED.** Architecture-Approved by ChatGPT on 2026-07-12, reviewed at head `a3ffb4fdee09111f9c74d1b9b8dd23d56cc16532`, after three REQUEST CHANGES rounds (terminology/composite-ownership/currency/lineage/authorization corrections; ADR-reference, partial-state, and local-ledger-authority corrections; final ADR/section-cross-reference and provider-naming corrections — see PR #163's own history for the itemized list at each round).
+
+**Acceptance makes this framework authoritative architecture. It does not, by itself, authorize any application implementation, schema, Rules, provider integration, migration, deployment, or production-data action.** Every such action still requires its own separate Specification, Implementation Plan, and (where applicable) Owner Deployment Authorization, per `docs/ai/workflow.md`'s standard gate sequence — this document establishes what those future artifacts must be consistent with, not permission to begin building them.
 
 **This document defines architecture and semantics. It does not implement any domain, collection, or field described below** — see Section 20.
 
@@ -557,7 +561,7 @@ Every future specification or implementation plan that introduces financial repo
 
 ## 22. Architectural Decisions
 
-**These are this document's own proposed decision records, indexed here for reference within this file only — they are not separately governed ADR files in the sense `docs/architecture/ADR-001` through `ADR-004` are (those are independently Accepted records; see `docs/CLAUDE_CONTEXT.md`'s "Architecture decision docs that actually exist").** Each `ADR-BMF-NNN` below restates a rule already stated in the numbered section it summarizes; nothing here should be cited from elsewhere as if it were a standalone, independently-approved record until this entire document is formally Accepted (per its own header status).
+**These are this document's own internal decision records, indexed here for reference within this file only — they are not separately governed ADR files in the sense `docs/architecture/ADR-001` through `ADR-004` are** (those are independently maintained, individually-filed records; see `docs/CLAUDE_CONTEXT.md`'s "Architecture decision docs that actually exist"). Each `ADR-BMF-NNN` below restates a rule already stated in the numbered section it summarizes. Now that this document itself is Accepted (see header), these decisions are authoritative as part of this document's own acceptance — but they remain an internal index, not a set of separately-filed ADR records, and should be cited as "this framework, Section 22" or by the section number they restate, not as if each were its own independently-numbered governance document.
 
 **ADR-BMF-001:** The platform will not define a single universal "sales" amount.
 

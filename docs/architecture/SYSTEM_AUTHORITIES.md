@@ -17,7 +17,7 @@ This table is an *architecture* ownership map — it answers "where should I cha
 | UX/product-level working principles | `../GuidingPrinciples.md` |
 | Multi-device/mobile strategy | `../MobileStrategy.md` |
 | Enterprise business object model (Account/Contact/Location/Work Order/etc., core-vs-future entities, Firestore collection recommendations) | `../BusinessEntityModel.md` |
-| Business metrics / revenue-lifecycle terminology and financial ownership rules — **PROPOSED, NON-BINDING, Pending Architecture Review; not yet enforceable, cite nothing from it as settled** (canonical "Sales"/"Pending" prohibition, Pipeline/Quoted/Booked/Backlog/Invoiced/Collected definitions, which domain owns which amount) | `enterprise-business-metrics-framework.md` |
+| Business metrics / revenue-lifecycle terminology and financial ownership rules — **Accepted** (canonical "Sales"/"Pending" prohibition, composite Fulfilled Service Value ownership, currency/FX/lineage rules, financial provider contract, which domain owns which amount). Authoritative architecture, but acceptance alone does not authorize any implementation, schema, Rules, provider integration, migration, deployment, or production-data action — see the document's own header. | `enterprise-business-metrics-framework.md` |
 
 This section explains ownership only — see those documents themselves for their actual content, and `../CLAUDE_CONTEXT.md`'s "Product Authorities" section for when to consult them.
 
