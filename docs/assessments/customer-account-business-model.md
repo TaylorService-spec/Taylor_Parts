@@ -9,7 +9,7 @@ depends_on: [docs/assessments/customer-record-page-structured-address.md, docs/s
 implements: []
 supersedes: []
 superseded_by: []
-related_pr: TBD
+related_pr: 161
 target_release: Post-Release 2.1 (Inventory -> Procurement chain)
 ---
 
