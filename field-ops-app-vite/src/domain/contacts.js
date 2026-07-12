@@ -16,3 +16,14 @@ export function createContact(accountId, data) {
 export function updateContact(id, data) {
   return contactsStore.update(id, { ...data, updatedAt: Date.now() });
 }
+
+// Customer Record Page sprint, PR 1 (docs/specifications/customer-record-page-structured-address.md,
+// Architecture Decision item 5). Three states, never silently picks
+// one Contact when multiple are marked primary -- nothing in the
+// schema enforces isPrimary uniqueness today.
+export function primaryContactState(contacts) {
+  const primaries = (contacts ?? []).filter((c) => c.isPrimary);
+  if (primaries.length === 0) return { state: "NONE" };
+  if (primaries.length === 1) return { state: "ONE", contact: primaries[0] };
+  return { state: "MULTIPLE", contacts: primaries };
+}
