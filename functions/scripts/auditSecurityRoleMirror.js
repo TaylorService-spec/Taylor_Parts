@@ -27,9 +27,12 @@
 // AUDIT OUTPUT IS DELIBERATELY MINIMAL: exact employeeId, linked userId, and
 // before/after securityRole values only ("audit exact document IDs/results
 // without exposing unnecessary user data," per the approved Specification).
-// No other field of either document (displayName, email, operationalRoles,
-// employmentStatus, etc.) is read, logged, or exported by this script -- it
-// exists to verify one specific invariant, not to dump personnel data.
+// A Firestore .get() necessarily fetches the WHOLE document, so other fields
+// (displayName, email, operationalRoles, employmentStatus, etc.) are read
+// into memory -- but this script USES, logs, and exports NONE of them: only
+// employeeId, the linked userId, the linked user's role, and securityRole are
+// ever surfaced. It exists to verify one specific invariant, not to dump
+// personnel data.
 //
 // PROJECT TARGET: same --projectId/--confirmProduction contract as
 // provisionEmployeeAccess.js (reused directly, not re-implemented) -- no
@@ -78,18 +81,40 @@ function parseArgs(argv) {
 }
 
 // ---------------------------------------------------------------
-// Pure -- given linked-userId Employee summaries and a uid->role map,
-// returns exactly the findings this script reports/repairs. No I/O, no
-// other document field read or referenced -- exactly the minimal shape
-// the approved Specification requires this script's output to be.
+// Pure -- given linked-userId Employee summaries and a
+// uid -> { exists, role } map (one entry per linked userId), returns
+// exactly the findings this script reports/repairs. No I/O, no other
+// document field read or referenced -- exactly the minimal shape the
+// approved Specification requires this script's output to be.
 // ---------------------------------------------------------------
-function findDrift(employees, roleByUserId) {
+function findDrift(employees, userByUserId) {
   const findings = [];
   for (const employee of employees) {
     if (!employee.userId) continue; // no linked user -- nothing to mirror yet, not drift
-    const actualRole = roleByUserId.has(employee.userId) ? (roleByUserId.get(employee.userId) ?? null) : null;
     const storedSecurityRole = employee.securityRole; // undefined if the field is genuinely absent (pre-A0 legacy document)
     const mirrored = storedSecurityRole ?? null;
+    const linked = userByUserId.get(employee.userId);
+
+    // BROKEN LINK -- the Employee names a userId, but users/{uid} does not
+    // exist. This is NOT the same as a linked user whose role is genuinely
+    // null: there is no authoritative role to mirror at all, so this can
+    // never be "repaired" by writing a value (writing null would silently
+    // corrupt the mirror on the basis of a broken link). Report it, fail
+    // the read-only pass, and require manual resolution (re-link or clear
+    // userId) -- the same fail-loudly-on-missing-account posture
+    // provisionEmployeeAccess.js takes for a missing target account.
+    if (!linked || !linked.exists) {
+      findings.push({
+        employeeId: employee.employeeId,
+        userId: employee.userId,
+        before: mirrored,
+        after: null,
+        status: "broken",
+      });
+      continue;
+    }
+
+    const actualRole = linked.role ?? null;
     if (mirrored === actualRole) continue;
     findings.push({
       employeeId: employee.employeeId,
@@ -108,9 +133,12 @@ function findDrift(employees, roleByUserId) {
 
 // ---------------------------------------------------------------
 // I/O: reads every employees/{employeeId} with a non-null userId, reads
-// each linked users/{uid}.role (and nothing else from either document),
-// reports findDrift()'s output, and -- only when repair is true -- writes
-// the corrected securityRole onto each drifted/missing Employee document.
+// each linked users/{uid} to learn whether it exists and its role (and
+// nothing else from either document is used/logged/exported), reports
+// findDrift()'s output, and -- only when repair is true -- writes the
+// corrected securityRole onto each drifted/missing Employee document.
+// Broken links (a linked userId with no users/{uid} document) are
+// reported but NEVER written -- there is no authoritative role to mirror.
 // ---------------------------------------------------------------
 async function run(db, { repair }) {
   const employeesSnap = await db.collection(EMPLOYEES_COLLECTION).get();
@@ -118,38 +146,63 @@ async function run(db, { repair }) {
     .map((d) => ({ employeeId: d.id, userId: d.data().userId ?? null, securityRole: d.data().securityRole }))
     .filter((e) => e.userId);
 
-  const roleByUserId = new Map();
+  // uid -> { exists, role }. `exists` distinguishes a genuinely missing
+  // users/{uid} (a broken link) from a linked user whose role is null --
+  // conflating the two is exactly the finding this map shape fixes.
+  const userByUserId = new Map();
   await Promise.all(
     employees.map(async (e) => {
       const userSnap = await db.collection(USERS_COLLECTION).doc(e.userId).get();
-      roleByUserId.set(e.userId, userSnap.exists ? (userSnap.data().role ?? null) : null);
+      userByUserId.set(e.userId, {
+        exists: userSnap.exists,
+        role: userSnap.exists ? (userSnap.data().role ?? null) : null,
+      });
     })
   );
 
-  const findings = findDrift(employees, roleByUserId);
+  const findings = findDrift(employees, userByUserId);
 
   if (findings.length === 0) {
     console.log(`OK: zero drift across ${employees.length} linked Employee document(s).`);
     return { findings, repaired: 0 };
   }
 
-  console.log(`Found ${findings.length} drifted/missing securityRole entr${findings.length === 1 ? "y" : "ies"}:`);
+  const broken = findings.filter((f) => f.status === "broken");
+  const repairable = findings.filter((f) => f.status !== "broken");
+
+  console.log(`Found ${findings.length} securityRole finding(s):`);
   for (const f of findings) {
-    console.log(
-      `  employees/${f.employeeId} (userId ${f.userId}): securityRole ${JSON.stringify(f.before)} -> expected ${JSON.stringify(f.after)} [${f.status}]`
-    );
+    if (f.status === "broken") {
+      console.log(
+        `  employees/${f.employeeId} (userId ${f.userId}): BROKEN LINK -- users/${f.userId} does not exist; ` +
+          `nothing to mirror. Stored securityRole ${JSON.stringify(f.before)}. Resolve manually (re-link or clear userId) -- not auto-repaired.`
+      );
+    } else {
+      console.log(
+        `  employees/${f.employeeId} (userId ${f.userId}): securityRole ${JSON.stringify(f.before)} -> expected ${JSON.stringify(f.after)} [${f.status}]`
+      );
+    }
   }
 
   if (!repair) {
-    console.log("\nRead-only pass -- no writes performed. Re-run with --repair (under Owner Production Data Authorization) to correct.");
+    console.log(
+      "\nRead-only pass -- no writes performed. Re-run with --repair (under Owner Production Data Authorization) " +
+        "to correct drifted/missing entries. Broken links are never auto-repaired -- resolve them manually."
+    );
     return { findings, repaired: 0 };
   }
 
-  for (const f of findings) {
+  if (broken.length) {
+    console.log(
+      `\n${broken.length} broken link(s) will NOT be repaired -- a missing users/{uid} has no role to mirror; resolve these manually.`
+    );
+  }
+
+  for (const f of repairable) {
     await db.collection(EMPLOYEES_COLLECTION).doc(f.employeeId).set({ securityRole: f.after }, { merge: true });
   }
-  console.log(`\nRepaired ${findings.length} entr${findings.length === 1 ? "y" : "ies"}.`);
-  return { findings, repaired: findings.length };
+  console.log(`\nRepaired ${repairable.length} entr${repairable.length === 1 ? "y" : "ies"}.`);
+  return { findings, repaired: repairable.length };
 }
 
 async function main() {
@@ -168,10 +221,14 @@ async function main() {
   const db = getFirestore();
   const { findings } = await run(db, { repair: args.repair === "true" });
 
-  // Non-zero exit on detected-but-unrepaired drift -- makes a read-only
-  // pass usable as a scriptable re-verification check (per the
+  const brokenCount = findings.filter((f) => f.status === "broken").length;
+
+  // Non-zero exit whenever anything remains unresolved -- makes a
+  // read-only pass usable as a scriptable re-verification check (per the
   // re-verification cadence documented above), not just a human-read log.
-  if (findings.length > 0 && args.repair !== "true") {
+  // Broken links are never auto-repaired, so they fail the run even after
+  // --repair; ordinary drift only remains after a read-only pass.
+  if (brokenCount > 0 || (findings.length > 0 && args.repair !== "true")) {
     process.exitCode = 1;
   }
 }

@@ -68,15 +68,19 @@
 //   D. Build the complete intended mutation as a plain plan object
 //      (pure, no I/O).
 //   E. Apply the plan. Firestore documents that must change together
-//      (the Employee<->User link) are written inside a single
-//      db.runTransaction() that RE-READS both documents and RE-
-//      VALIDATES the same conflict conditions against that fresh
-//      state before writing anything -- protects against a concurrent
-//      modification landing between phase B's reads and this write.
-//      Single-document operations (create/update Employee only,
-//      update security role only) are plain atomic single-doc writes
-//      -- a transaction adds no safety for a write that only ever
-//      touches one document.
+//      are written inside a single db.runTransaction() that RE-READS
+//      the affected documents and RE-VALIDATES the relevant conflict
+//      conditions against that fresh state before writing anything --
+//      protects against a concurrent modification landing between phase
+//      B's reads and this write. This applies to BOTH multi-document
+//      operations: the Employee<->User link (GRANT_ACCESS) and the
+//      security-role update (case D, which writes users/{uid}.role AND
+//      the linked Employee's securityRole mirror together and must
+//      confirm the Employee is still linked to that same user before
+//      mirroring its role). Genuinely single-document operations
+//      (create Employee only, update Employee-only fields) are plain
+//      atomic single-doc writes -- a transaction adds no safety for a
+//      write that only ever touches one document.
 //
 // Firebase Authentication account creation CANNOT participate in a
 // Firestore transaction -- Auth and Firestore are different services
@@ -484,18 +488,42 @@ function buildPlan({ employeeId, displayName, email, securityRole, operationalRo
 // ---------------------------------------------------------------
 async function applyPlan(db, auth, plan) {
   if (plan.operation === "UPDATE_SECURITY_ROLE") {
-    // A batch, not two independent writes -- both documents commit
-    // together or neither does, which is the load-bearing property
-    // the securityRole mirror invariant (top of this file) actually
-    // requires. No re-read/re-validate needed here (unlike
-    // GRANT_ACCESS's transaction below) -- phase C already confirmed
-    // employee.userId exists, and this script is a single, synchronous,
-    // single-operator invocation with no concurrent-modification
-    // conflict class to detect for a plain field update.
-    const batch = db.batch();
-    batch.set(db.collection(USERS_COLLECTION).doc(plan.userId), plan.userUpdates, { merge: true });
-    batch.set(db.collection(EMPLOYEES_COLLECTION).doc(plan.employeeId), plan.employeeUpdates, { merge: true });
-    await batch.commit();
+    // Both documents (users/{uid}.role and the linked Employee's
+    // securityRole mirror) must commit together -- but the mirror is only
+    // correct if the Employee is STILL linked to this exact user at write
+    // time. A plain batch commits both atomically yet cannot re-check that
+    // linkage: if a concurrent operation re-linked the Employee to a
+    // different user between phase B's read and now, a batch would mirror
+    // THIS user's role onto an Employee that no longer belongs to it. So,
+    // like GRANT_ACCESS below, this is a transaction that re-reads the
+    // Employee, re-validates it still exists and still points at
+    // plan.userId, and only then writes both documents -- the same
+    // concurrent-modification guard, applied to the mirror invariant.
+    const userRef = db.collection(USERS_COLLECTION).doc(plan.userId);
+    const employeeRef = db.collection(EMPLOYEES_COLLECTION).doc(plan.employeeId);
+
+    await db.runTransaction(async (tx) => {
+      const employeeSnap = await tx.get(employeeRef);
+      const freshEmployee = employeeSnap.exists ? employeeSnap.data() : null;
+
+      if (!freshEmployee) {
+        throw new Error(
+          `Concurrent modification detected: employees/${plan.employeeId} no longer exists. ` +
+            `Aborting with no writes -- re-run to re-evaluate.`
+        );
+      }
+      if (freshEmployee.userId !== plan.userId) {
+        throw new Error(
+          `Concurrent modification detected: employees/${plan.employeeId} is no longer linked to ` +
+            `userId "${plan.userId}" (now ${JSON.stringify(freshEmployee.userId ?? null)}). ` +
+            `Aborting with no writes -- re-run to re-evaluate.`
+        );
+      }
+
+      tx.set(userRef, plan.userUpdates, { merge: true });
+      tx.set(employeeRef, plan.employeeUpdates, { merge: true });
+    });
+
     console.log(
       `OK: users/${plan.userId}.role = "${plan.userUpdates.role}", ` +
         `employees/${plan.employeeId}.securityRole = "${plan.employeeUpdates.securityRole}"`

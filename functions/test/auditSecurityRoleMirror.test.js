@@ -89,6 +89,21 @@ async function seedFixtures() {
     employmentStatus: "ACTIVE",
     operationalRoles: [],
   });
+
+  // (d) Broken link: the Employee names a userId, but NO users/{uid}
+  // document exists for it. This is distinct from a linked user whose role
+  // is genuinely null -- there is no authoritative role to mirror, so it
+  // must be reported as "broken" and NEVER auto-repaired (writing null
+  // would silently corrupt the stored securityRole from a broken link).
+  // Deliberately NO users/audit-user-broken document is written.
+  await db.doc("employees/audit-emp-broken").set({
+    employeeId: "audit-emp-broken",
+    displayName: "Broken Link",
+    userId: "audit-user-broken",
+    securityRole: "dispatcher",
+    employmentStatus: "ACTIVE",
+    operationalRoles: [],
+  });
 }
 
 async function main() {
@@ -120,6 +135,13 @@ async function main() {
   const unlinkedFinding = readOnlyFindings.find((f) => f.employeeId === "audit-emp-unlinked");
   report("Unlinked entry (no userId) never appears in findings", unlinkedFinding === undefined);
 
+  const brokenFinding = readOnlyFindings.find((f) => f.employeeId === "audit-emp-broken");
+  report(
+    "Broken link (linked userId, no users/{uid} doc) is reported with status 'broken', not conflated with role=null",
+    !!brokenFinding && brokenFinding.status === "broken" && brokenFinding.before === "dispatcher" && brokenFinding.after === null,
+    JSON.stringify(brokenFinding)
+  );
+
   report("Read-only pass performs zero repairs", readOnlyRepaired === 0);
 
   const stillMissing = await db.doc("employees/audit-emp-missing").get();
@@ -133,10 +155,15 @@ async function main() {
     stillMismatched.data().securityRole === "dispatcher"
   );
 
-  // --- Repair pass: both drifted entries corrected, in place ---
+  // --- Repair pass: the two DRIFTED entries corrected in place; the
+  // broken link reported again but never written ---
   const { findings: repairFindings, repaired } = await run(db, { repair: true });
-  report("Repair pass reports the same two findings as the read-only pass", repairFindings.length === 2, `found ${repairFindings.length}`);
-  report("Repair pass repairs exactly 2 entries", repaired === 2, `repaired ${repaired}`);
+  report(
+    "Repair pass reports all three findings (missing, mismatched, broken)",
+    repairFindings.length === 3,
+    `found ${repairFindings.length}`
+  );
+  report("Repair pass repairs exactly 2 entries (broken link excluded)", repaired === 2, `repaired ${repaired}`);
 
   const repairedMissing = await db.doc("employees/audit-emp-missing").get();
   report(
@@ -148,12 +175,19 @@ async function main() {
     "After repair, audit-emp-mismatched.securityRole now matches its linked user's real role",
     repairedMismatched.data().securityRole === "technician"
   );
+  const brokenAfterRepair = await db.doc("employees/audit-emp-broken").get();
+  report(
+    "After repair, broken link's stored securityRole is left UNTOUCHED (never nulled from a broken link)",
+    brokenAfterRepair.data().securityRole === "dispatcher"
+  );
 
-  // --- Re-verification: a second read-only pass after repair reports zero drift ---
+  // --- Re-verification: a second read-only pass after repair reports only
+  // the still-unresolved broken link (the two repairable entries are now
+  // clean; the broken link persists until resolved manually) ---
   const { findings: postRepairFindings } = await run(db, { repair: false });
   report(
-    "A fresh read-only pass after repair reports zero drift (excluding the untouched, still-correct fixture)",
-    postRepairFindings.length === 0,
+    "A fresh read-only pass after repair reports only the still-unresolved broken link",
+    postRepairFindings.length === 1 && postRepairFindings[0].employeeId === "audit-emp-broken" && postRepairFindings[0].status === "broken",
     JSON.stringify(postRepairFindings)
   );
 
