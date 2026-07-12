@@ -51,7 +51,7 @@ Primary amount owned at each stage:
 | Payment | Payment amount | `paymentAmount` |
 | Credit Memo | Componentized credit — no single "credited revenue" field | per-component credit amounts (revenue portion, tax portion, shipping portion, fee portion — see Section 8) |
 
-None of these field names contain the word "revenue." **"Revenue" is reserved for an implemented accounting authority or a clearly described external accounting metric** (Section 13, ADR-BMF-010) — every field above names what it actually is (an estimate, a quote, a booking, a fulfillment fact, an invoice component, a payment, a credit component), not a premature claim about revenue recognition.
+None of these field names contain the word "revenue." **"Revenue" is reserved for an implemented accounting authority or a clearly described external accounting metric** (Section 13) — every field above names what it actually is (an estimate, a quote, a booking, a fulfillment fact, an invoice component, a payment, a credit component), not a premature claim about revenue recognition.
 
 Each stage owns its own financial truth and must not overwrite the amount owned by another stage. A later stage may *reference* an earlier stage's amount (e.g. an Invoice referencing the Sales Order it bills against) but never silently mutates it.
 
@@ -119,7 +119,7 @@ Rules:
 - Must be valued against the authoritative price source's own line prices — never a new, independently-estimated price invented at the fulfillment stage.
 - Must not exceed the active booked value without an approved amendment.
 - **Must not be computed, displayed, or stored when no authoritative price source exists.** In that case, the metric is unavailable — use `Completed Work Orders` / `Open Work Orders` instead (below), never a fabricated or estimated dollar figure, and never `$0` standing in for "unknown."
-- **"Recognized Revenue" remains prohibited** as a name for this or any other metric until an implemented accounting authority defines it (Section 13, ADR-BMF-010) — Fulfilled Service Value is a derived commercial/operational figure, not an accounting recognition event, and does not become one merely by existing.
+- **"Recognized Revenue" remains prohibited** as a name for this or any other metric until an implemented accounting authority defines it (Section 13) — Fulfilled Service Value is a derived commercial/operational figure, not an accounting recognition event, and does not become one merely by existing.
 
 ### Completed Work Orders / Open Work Orders (operational counts — not revenue, not a price authority)
 
@@ -373,7 +373,7 @@ The platform must clearly distinguish:
 - cash events,
 - accounting recognition.
 
-**Do not use the term "recognized revenue"** unless formal accounting recognition rules and an authoritative accounting source are implemented (see ADR-BMF-010). **"Revenue" as a bare word is reserved the same way** (Section 1) — every canonical metric this document defines names what it actually is (Invoiced Net Sales, Cash Collected, Fulfilled Service Value, etc.), not a generic "revenue" claim.
+**Do not use the term "recognized revenue"** unless formal accounting recognition rules and an authoritative accounting source are implemented. **"Revenue" as a bare word is reserved the same way** (Section 1) — every canonical metric this document defines names what it actually is (Invoiced Net Sales, Cash Collected, Fulfilled Service Value, etc.), not a generic "revenue" claim. (Section 22 restates this as this document's own proposed decision record, ADR-BMF-010 — an internal index entry within this still-Proposed document, not a separately governed record.)
 
 ## 14. Analytics and Dashboard Standards
 
@@ -451,17 +451,30 @@ The platform must remain portable across ERP, accounting, CRM, data-lake, and lo
 - **business dates and `asOf`** (Section 12),
 - **last successful refresh timestamp and freshness status**,
 - **state, one of:** `complete`, `partial`, `stale`, `error`, or `unconfigured` — distinct states, never collapsed into a single boolean "connected/not connected",
+- **authority mode** — see "Authority is configured, not assumed from storage location" below,
 - **idempotency/deduplication key** — so a repeated sync never double-counts,
 - **lineage back to drill-down records** — a summary figure must always be traceable to the underlying records that produced it.
 
-**A cached or imported record does not become authoritative merely because it is stored locally.** The external system remains the authority; the local copy is a snapshot, subject to the same lineage/labeling rules as any other derived value (Section 3/6).
+**Authority is configured, not assumed from storage location.** A cached or imported record does not become authoritative merely because it is stored locally, and a locally-stored record is not automatically *non*-authoritative either — the deployment's chosen **authority mode** decides:
+- **Imported/cached external data** (ERP, CRM, data lake, any external accounting system) always remains subordinate to that external source — the local copy is a snapshot, subject to the same lineage/labeling rules as any other derived value (Section 3/6), and the external system is the authority of record.
+- **A governed local ledger may itself be the authoritative source** when a deployment explicitly selects that mode — a customer who manages financial data locally instead of through an external ERP/data-lake is not required to treat their own governed ledger as a mere cache of nothing. In this mode, the local ledger's own records are the authority, subject to the same immutability/audit/lineage rules (Section 15) any other authoritative source must meet.
+- **Storage location alone never determines authority** — "local" and "external" are not synonyms for "cache" and "source of truth." Every provider integration's **authority mode** field states explicitly, per configured provider, which posture applies; nothing may assume one or the other from where the bytes happen to sit.
 
-**Three distinct states an Account (or any) page must be able to render, never conflated:**
+**Five distinct states an Account (or any) page must be able to render, never conflated:**
 - **"Sales data source not connected"** — no financial provider is configured at all (`unconfigured`).
 - **"Sales data temporarily unavailable"** — a provider is configured but the current sync/read failed or timed out (`error`).
 - **"Sales data may be stale as of [`asOf`/last-refresh time]"** — a provider is configured and has data, but it is older than the deployment's configured freshness threshold (`stale`).
+- **"Partial data for [stated metric/scope/date range]"** (`partial`) — see the dedicated treatment immediately below; not the same state as `stale` (data can be current *and* incomplete) or `error` (a partial state is not a failure, it is a known, bounded gap).
+- **Fully rendered figures** (`complete`) — meaning complete *for the stated metric, scope, and `asOf`* only, never a claim of universal data completeness across every metric/date range the platform could ever compute.
 
-None of these three may be displayed as `$0`, as a blank section with no explanation, or as each other — a user must be able to tell "nothing is connected" apart from "something is connected but broken" apart from "something is connected and working, but this number might be a few hours old."
+None of these may be displayed as `$0`, as a blank section with no explanation, or as each other — a user must be able to tell "nothing is connected" apart from "something is connected but broken" apart from "something is connected and working, but this number might be a few hours old" apart from "some of what you're looking at is real, some of it is a known gap."
+
+**The `partial` state, defined explicitly:**
+- **Completeness is evaluated per metric and per date range, not for the provider connection as a whole.** A provider can be `complete` for Cash Collected this month and `partial` for Committed Backlog over the last year, simultaneously — one blanket status per provider is not sufficient.
+- **Available values may render with a clear "partial data" warning** attached directly to the figure they qualify — the warning travels with the number, not just as a page-level banner easily missed once scrolled past.
+- **The missing portion remains unavailable, never `$0` and never silently blank** — a partial sync that's missing December's records must show December as unavailable, not as zero December activity.
+- **Drill-down/provenance must show what was included and what was excluded** — which source records/date ranges/entities contributed to the rendered figure, and which are known to be missing, not just "some data is missing" with no specifics.
+- **`complete` itself must mean complete for the stated metric, scope, and `asOf`** — never a platform-wide or provider-wide claim. A page showing several metrics side by side may correctly show some as `complete` and others as `partial` at the same moment, from the same provider.
 
 ## 18. AI and Automation Data Contract
 
@@ -516,7 +529,7 @@ Going forward, for the current system:
 - No collection should be declared the universal source of "sales."
 
 **Account-page behavior, as a concrete application of this framework (example only — not itself an authorization to build a Sales Summary; a future Specification decides that):**
-- Until an authoritative financial provider (a real Invoice/Sales Order/priced-Quote source) exists, an Account page's financial section must show one of Section 17's three explicit states — **"Sales data source not connected"** today (since no provider exists at all in the current system), reserving "temporarily unavailable"/"stale" for once a provider is actually connected.
+- Until an authoritative financial provider (a real Invoice/Sales Order/priced-Quote source) exists, an Account page's financial section must show one of Section 17's explicit states — **"Sales data source not connected"** today (since no provider exists at all in the current system), reserving "temporarily unavailable"/"stale"/"partial" for once a provider is actually connected.
 - **It must never show `$0`** — `$0` reads as a true, known zero and would misrepresent "no data source" as "we checked and there were no sales."
 - `Completed Work Orders` / `Open Work Orders` counts may appear on the same page, but only under a separately-labeled section such as **"Service Activity"** — never inside or adjacent to a "Sales"-labeled section in a way that could be read as the same kind of figure.
 - **Vendor procurement spend must never appear as customer sales.** Per `docs/assessments/customer-account-business-model.md`'s finding, the existing `purchase_orders.totalCost`/procurement cost-estimation figures are money the business pays *out* to Suppliers — structurally and semantically the opposite of customer sales revenue. If an Account is ever flagged as also a vendor (that Assessment's own open question), any procurement/spend figures shown for that relationship must be their own, separately-labeled figures, never merged into or displayed alongside that Account's sales metrics.
@@ -544,6 +557,8 @@ Every future specification or implementation plan that introduces financial repo
 
 ## 22. Architectural Decisions
 
+**These are this document's own proposed decision records, indexed here for reference within this file only — they are not separately governed ADR files in the sense `docs/architecture/ADR-001` through `ADR-004` are (those are independently Accepted records; see `docs/CLAUDE_CONTEXT.md`'s "Architecture decision docs that actually exist").** Each `ADR-BMF-NNN` below restates a rule already stated in the numbered section it summarizes; nothing here should be cited from elsewhere as if it were a standalone, independently-approved record until this entire document is formally Accepted (per its own header status).
+
 **ADR-BMF-001:** The platform will not define a single universal "sales" amount.
 
 **ADR-BMF-002:** Each lifecycle domain owns its own canonical financial amount; for a composite/derived metric (Fulfilled Service Value), ownership is explicitly split across the contributing domains and joined only at the reporting layer (Section 3).
@@ -566,7 +581,7 @@ Every future specification or implementation plan that introduces financial repo
 
 **ADR-BMF-011:** All monetary records require an ISO 4217 currency code, decimal/minor-unit representation, and an explicit scale/rounding policy; authoritative money is never represented in binary floating-point.
 
-**ADR-BMF-012:** Every external financial provider integration must expose the state contract of Section 17 (`complete`/`partial`/`stale`/`error`/`unconfigured`, source IDs/versions, freshness, lineage); a locally cached or imported figure never becomes authoritative merely by being stored locally.
+**ADR-BMF-012:** Every financial provider integration must expose the state contract of Section 17 (`complete`/`partial`/`stale`/`error`/`unconfigured`, source IDs/versions, freshness, lineage, authority mode). Imported/cached external data is never authoritative merely by being stored locally; a governed local ledger may itself be authoritative when explicitly configured as such — storage location alone never determines authority.
 
 **ADR-BMF-013:** Lifecycle stages (Section 2) are optional per customer relationship; a missing earlier stage is never fabricated to complete the canonical chain.
 
