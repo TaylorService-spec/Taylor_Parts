@@ -921,14 +921,23 @@ function ReorderRequestCancelled({ request, employeeDirectory }) {
 // Cancel/Void schema deployment sequence, PR 6 of 6 (docs/specifications/
 // reorder-request-cancellation.md). Terminal, read-only card once
 // VOIDED -- no further action on this Reorder Request exists. Reads
-// the linked reorder_purchase_order_voids record realtime via
-// hooks/useReorderPurchaseOrderVoids.js, mirroring
-// ReorderRequestOrdered's own usePurchaseOrderForReorderRequest()
-// read above -- for completeness, not because the Reorder Request's
-// own voidedBy/voidedAt/voidReason fields (shown regardless) are
-// insufficient on their own.
+// TWO separate realtime sources, neither of which this card (or
+// anything else in this sprint) ever writes to:
+//   - hooks/useReorderPurchaseOrders.js's usePurchaseOrderForReorderRequest()
+//     -- the SAME hook/read ReorderRequestOrdered used above, before
+//     the transition. The Specification requires the original,
+//     immutable Purchase Order's own details (supplier, PO number,
+//     quantity, ordered date) remain visible as read-only audit
+//     information after Void, not just a linked-record pointer --
+//     `reorder_purchase_orders` itself is never mutated by Void (see
+//     domain/reorderPurchaseOrders.js's voidPurchaseOrder() -- it
+//     reads this document to validate, never writes it), so re-using
+//     the same hook here proves the read, not a stale snapshot.
+//   - hooks/useReorderPurchaseOrderVoids.js's useReorderPurchaseOrderVoid()
+//     -- the separate, append-only void record itself.
 function ReorderRequestVoided({ request, employeeDirectory }) {
-  const { data: voidRecord, loading } = useReorderPurchaseOrderVoid(request.id);
+  const { data: purchaseOrder, loading: purchaseOrderLoading } = usePurchaseOrderForReorderRequest(request.id);
+  const { data: voidRecord, loading: voidRecordLoading } = useReorderPurchaseOrderVoid(request.id);
 
   return (
     <div className="fo-card">
@@ -950,7 +959,41 @@ function ReorderRequestVoided({ request, employeeDirectory }) {
         </tbody>
       </table>
 
-      {loading ? (
+      <h4>Original Purchase Order (unchanged, read-only)</h4>
+      {purchaseOrderLoading ? (
+        <p className="fo-muted">Loading Purchase Order...</p>
+      ) : purchaseOrder ? (
+        <table className="fo-table">
+          <tbody>
+            <tr>
+              <td>Supplier</td>
+              <td>{purchaseOrder.supplierName}</td>
+            </tr>
+            <tr>
+              <td>PO / reference #</td>
+              <td>{purchaseOrder.externalPoNumber}</td>
+            </tr>
+            <tr>
+              <td>Ordered quantity</td>
+              <td>{purchaseOrder.orderedQuantity}</td>
+            </tr>
+            <tr>
+              <td>Ordered date</td>
+              <td>{purchaseOrder.orderedDate}</td>
+            </tr>
+            {purchaseOrder.expectedArrivalDate && (
+              <tr>
+                <td>Expected arrival</td>
+                <td>{purchaseOrder.expectedArrivalDate}</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      ) : (
+        <p className="fo-muted">Purchase Order details unavailable.</p>
+      )}
+
+      {voidRecordLoading ? (
         <p className="fo-muted">Loading void record...</p>
       ) : voidRecord ? (
         <table className="fo-table">

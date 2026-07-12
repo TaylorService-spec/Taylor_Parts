@@ -392,6 +392,29 @@ async function verifyNotificationIdentity(browser, page, accountKey) {
 const CANCEL_VOID_CONFIRMATION_COPY =
   "This action does not delete history. The record will remain visible for audit purposes.";
 
+// Positively exercises ReasonConfirmAction's required-non-blank-reason
+// guard -- clicks "Continue" with {force: true} (bypassing Playwright's
+// own actionability check, which would otherwise refuse to click a
+// disabled button and never actually prove anything) with the reason
+// field holding `reasonValue`, then confirms the UI genuinely did NOT
+// advance: the Reason field is still on screen and the mandated
+// confirmation copy never appeared. This proves handleContinue()'s own
+// `if (!trimmedReason) return;` guard fired, not merely that the
+// button LOOKED disabled.
+async function assertReasonCannotAdvance(page, reasonValue, label) {
+  const reasonInput = page.getByLabel("Reason", { exact: true });
+  await reasonInput.fill(reasonValue);
+  await page.getByRole("button", { name: "Continue", exact: true }).click({ force: true });
+  await page.waitForTimeout(300);
+  const stillOnReasonStep = await reasonInput.isVisible().catch(() => false);
+  const confirmationShown = await page
+    .getByText(CANCEL_VOID_CONFIRMATION_COPY, { exact: true })
+    .first()
+    .isVisible()
+    .catch(() => false);
+  niReport(label, stillOnReasonStep && !confirmationShown, `stillOnReasonStep=${stillOnReasonStep}, confirmationShown=${confirmationShown}`);
+}
+
 async function verifyCancelVoid(browser, page, accountKey) {
   await login(page, accountKey);
 
@@ -406,6 +429,8 @@ async function verifyCancelVoid(browser, page, accountKey) {
   );
 
   await page.getByRole("button", { name: "Cancel Reorder Request", exact: true }).click();
+  await assertReasonCannotAdvance(page, "", "Cancel: empty reason cannot advance past the reason step");
+  await assertReasonCannotAdvance(page, "   ", "Cancel: whitespace-only reason cannot advance past the reason step");
   await page.getByLabel("Reason", { exact: true }).fill("Driver verification -- cancelling this test request.");
   await page.getByRole("button", { name: "Continue", exact: true }).click();
   const cancelConfirmationVisible = await page
@@ -445,8 +470,16 @@ async function verifyCancelVoid(browser, page, accountKey) {
     .then(() => true)
     .catch(() => false);
   niReport("Void: original Purchase Order details visible before voiding", originalSupplierVisible);
+  // Captured here, re-checked after voiding below -- proves the SAME
+  // values persist unchanged, not merely that something is rendered.
+  const poNumberCell = page.locator("td", { hasText: "PO / reference #" }).locator("xpath=following-sibling::td[1]");
+  const orderedDateCell = page.locator("td", { hasText: "Ordered date" }).locator("xpath=following-sibling::td[1]");
+  const originalPoNumberText = await poNumberCell.first().innerText().catch(() => null);
+  const originalOrderedDateText = await orderedDateCell.first().innerText().catch(() => null);
 
   await page.getByRole("button", { name: "Void Purchase Order", exact: true }).click();
+  await assertReasonCannotAdvance(page, "", "Void: empty reason cannot advance past the reason step");
+  await assertReasonCannotAdvance(page, "   ", "Void: whitespace-only reason cannot advance past the reason step");
   await page.getByLabel("Reason", { exact: true }).fill("Driver verification -- voiding this test Purchase Order.");
   await page.getByRole("button", { name: "Continue", exact: true }).click();
   const voidConfirmationVisible = await page
@@ -471,6 +504,26 @@ async function verifyCancelVoid(browser, page, accountKey) {
     .isVisible()
     .catch(() => false);
   niReport("Void: terminal card shows the linked Purchase Order (void record read via useReorderPurchaseOrderVoid)", voidLinkedPoVisible);
+
+  // --- Void: the original Purchase Order's own details remain visible
+  // and unchanged after voiding -- not just a linked-record pointer.
+  // Compared against the exact values captured pre-void above (not
+  // just "something renders"), on the terminal ReorderRequestVoided
+  // card's own "Original Purchase Order" table. ---
+  const supplierUnchangedAfterVoid = await page.getByText("Driver Fixture Supplier").first().isVisible().catch(() => false);
+  niReport("Void: original Purchase Order supplier remains visible and unchanged after voiding", supplierUnchangedAfterVoid);
+  const poNumberAfterVoidText = await poNumberCell.first().innerText().catch(() => null);
+  niReport(
+    "Void: original Purchase Order PO/reference number remains visible and unchanged after voiding",
+    poNumberAfterVoidText !== null && poNumberAfterVoidText === originalPoNumberText,
+    `before: "${originalPoNumberText}", after: "${poNumberAfterVoidText}"`
+  );
+  const orderedDateAfterVoidText = await orderedDateCell.first().innerText().catch(() => null);
+  niReport(
+    "Void: original Purchase Order ordered date remains visible and unchanged after voiding",
+    orderedDateAfterVoidText !== null && orderedDateAfterVoidText === originalOrderedDateText,
+    `before: "${originalOrderedDateText}", after: "${orderedDateAfterVoidText}"`
+  );
 
   console.log(`\n${niPassed} passed, ${niFailed} failed`);
   return niFailed === 0;
