@@ -1,7 +1,7 @@
 ---
 artifact_type: specification
 gate: Sprint Specification
-status: Draft
+status: Approved
 date: 2026-07-12
 owner: Claude Code
 related_adrs: []
@@ -282,4 +282,4 @@ None blocking Implementation Plan drafting -- Architecture Review's own scope is
 
 ## Approval
 
-**Not yet reviewed.** This Specification requires ChatGPT Approval (per `docs/ai/workflow.md`'s stage 4) before an Implementation Plan is drafted or any PR named here is opened. No code, Rules, deployment, or production-data change has been made while producing this document -- planning only.
+**Approved by ChatGPT on 2026-07-12**, after two REQUEST CHANGES rounds (Round 1: page-conflation, hidden production-data prerequisite, unbounded query, error-swallowing hooks; Round 2: unsplit index PR, overstated client-side drift detection, undecided picker behavior -- both corrected in Round 3, reviewed at head `8ede93086cf087f59a0e810a33df497e1521d17d`). No findings remain open. Per `docs/ai/workflow.md`'s stage 4/5, an Implementation Plan may now be drafted -- **but not yet**: this approval does not itself authorize opening A0, PR A, PR B, C0, or PR C, and does not substitute for the Owner Merge Authorization this Specification's own merge still requires, separately, per the standing "architecture approval is not merge authorization" rule. No code, Rules, deployment, or production-data change has been made while producing this document -- planning only.
