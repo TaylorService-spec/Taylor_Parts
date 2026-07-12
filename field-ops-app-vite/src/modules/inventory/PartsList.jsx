@@ -237,7 +237,7 @@ export default function PartsList() {
             {partsManagerQueue.map((request) => (
               <tr key={request.id}>
                 <td>
-                  <Link to={`/inventory/${request.partId}`}>
+                  <Link to={`/inventory/${request.partId}?requestId=${request.id}`}>
                     {getCatalogItem(request.partId)?.name ?? request.partId}
                   </Link>
                 </td>
@@ -281,7 +281,7 @@ export default function PartsList() {
             {partsAssociateWaiting.map((request) => (
               <tr key={request.id}>
                 <td>
-                  <Link to={`/inventory/${request.partId}`}>
+                  <Link to={`/inventory/${request.partId}?requestId=${request.id}`}>
                     {getCatalogItem(request.partId)?.name ?? request.partId}
                   </Link>
                 </td>
@@ -323,7 +323,7 @@ export default function PartsList() {
             {partsAssociateInProgress.map((request) => (
               <tr key={request.id}>
                 <td>
-                  <Link to={`/inventory/${request.partId}`}>
+                  <Link to={`/inventory/${request.partId}?requestId=${request.id}`}>
                     {getCatalogItem(request.partId)?.name ?? request.partId}
                   </Link>
                 </td>
