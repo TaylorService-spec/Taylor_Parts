@@ -20,7 +20,7 @@ This document establishes the canonical business terminology, financial ownershi
 
 A platform that lets any domain write an ambiguous `sales`, `revenue`, `amount`, or `pending` field accumulates competing, silently-disagreeing numbers the moment more than one domain needs to report on money. This framework exists to prevent that class of defect architecturally, before any such field is written.
 
-**General rule, applying throughout this document: when a metric's required prerequisite data is unavailable, the metric is unavailable — never rendered as zero, and never silently omitted without an explicit unavailable/unconnected/stale state (Section 18).** A missing input is not a known fact of "nothing," and must never be presented as one.
+**General rule, applying throughout this document: when a metric's required prerequisite data is unavailable, the metric is unavailable — never rendered as zero, and never silently omitted without an explicit state from the full contract in Section 17 (`complete`/`partial`/`stale`/`error`/`unconfigured`).** A missing input is not a known fact of "nothing," and must never be presented as one.
 
 ## 2. Revenue Lifecycle
 
@@ -373,7 +373,7 @@ The platform must clearly distinguish:
 - cash events,
 - accounting recognition.
 
-**Do not use the term "recognized revenue"** unless formal accounting recognition rules and an authoritative accounting source are implemented. **"Revenue" as a bare word is reserved the same way** (Section 1) — every canonical metric this document defines names what it actually is (Invoiced Net Sales, Cash Collected, Fulfilled Service Value, etc.), not a generic "revenue" claim. (Section 22 restates this as this document's own proposed decision record, ADR-BMF-010 — an internal index entry within this still-Proposed document, not a separately governed record.)
+**Do not use the term "recognized revenue"** unless formal accounting recognition rules and an authoritative accounting source are implemented. **"Revenue" as a bare word is reserved the same way** (Section 1) — every canonical metric this document defines names what it actually is (Invoiced Net Sales, Cash Collected, Fulfilled Service Value, etc.), not a generic "revenue" claim.
 
 ## 14. Analytics and Dashboard Standards
 
@@ -440,11 +440,11 @@ The platform must avoid destructive updates that erase financial history — the
 
 Tenant configuration must not change the *meaning* of a canonical metric name — a tenant may choose which metric is their headline KPI, not redefine what "Booked Value" means.
 
-## 17. External Financial Provider Contract
+## 17. Financial Provider Contract
 
-The platform must remain portable across ERP, accounting, CRM, data-lake, and local-ledger sources — no canonical metric may be hard-wired to one specific external system's shape. Every financial provider/adaptor integration must expose:
+The platform must remain portable across ERP, accounting, CRM, data-lake, and local-ledger sources alike — no canonical metric may be hard-wired to one specific provider's shape, whether that provider is an external system or a governed local ledger. Every financial provider/adaptor integration — **local or external** — must expose:
 
-- **source system and tenant** — which external system, which tenant/org within it,
+- **source system and tenant** — which configured system (an external ERP/CRM/data-lake/accounting system, or the platform's own governed local ledger), which tenant/org within it,
 - **source record ID and source version** — the exact record and revision this data came from,
 - **canonical lifecycle/metric mapping** — which of this document's canonical metrics (Section 3) the provider's fields map to, explicitly, not inferred,
 - **transaction currency and normalized currency where applicable** (Section 10),
@@ -551,7 +551,7 @@ Every future specification or implementation plan that introduces financial repo
 - How is partial fulfillment handled?
 - Is the value operational, commercial, billing, cash, or accounting?
 - Is the metric stored, snapshotted, or derived — and if derived, what is its full lineage (Section 3/6)?
-- If sourced externally, what is the provider's state contract (Section 17)?
+- What is the provider's state contract (Section 17) — required whether the authoritative source is an external system or a governed local ledger, not only when "sourced externally"?
 - Who may view this metric and its drill-down, and under what masking/export rules (Section 19)?
 - What audit evidence supports the value?
 
@@ -585,6 +585,6 @@ Every future specification or implementation plan that introduces financial repo
 
 **ADR-BMF-013:** Lifecycle stages (Section 2) are optional per customer relationship; a missing earlier stage is never fabricated to complete the canonical chain.
 
-**ADR-BMF-014:** A missing prerequisite for any metric makes that metric unavailable, never zero, and never silently omitted without an explicit unavailable/unconnected/stale state.
+**ADR-BMF-014:** A missing prerequisite for any metric makes that metric unavailable, never zero, and never silently omitted without an explicit state from Section 17's full contract (`complete`/`partial`/`stale`/`error`/`unconfigured`) — not just one or two of those states.
 
 **ADR-BMF-015:** Financial-metric visibility, masking, tenant isolation, audit logging, retention, and AI access boundaries (Section 19) must be explicitly defined by any Specification introducing financial reporting — access to a record does not imply access to its financial metrics.
