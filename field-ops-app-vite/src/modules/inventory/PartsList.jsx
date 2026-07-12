@@ -11,6 +11,7 @@ import {
 import { requestReorderForRecommendation, getDisplayQty } from "../../domain/inventoryReorderRequests";
 import { REORDER_REQUEST_STATUS } from "../../domain/constants";
 import { useAuth } from "../../auth/AuthContext";
+import { useEmployeeDirectory, resolveActorDisplayName } from "../../hooks/useEmployeeDirectory";
 import GlobalSearch from "../../shared/search/GlobalSearch";
 import WorkspaceHeader from "../../shared/ui/WorkspaceHeader";
 import FilterBar from "../../shared/ui/FilterBar";
@@ -148,6 +149,26 @@ const QUEUE_FILTER_EMPTY_TEXT = {
   NEEDS_PLANNING: "No parts currently need planning.",
 };
 
+// Inventory Operational Queue, PR A (docs/specifications/inventory-
+// operational-queue.md's "All Assigned Work" row shape: "...and age").
+// Pure -- directly testable without a rendering environment, same
+// rationale as this codebase's other extracted pure formatters
+// (filterEmployeesBySearch(), applyPartsAssociateSecurityRoleEligibility()).
+// A relative-elapsed-time summary, distinct from and in addition to a
+// raw locale timestamp -- "age" means how long a request has been
+// assigned, not merely when it happened.
+export function formatAssignmentAge(assignedAtMs, nowMs = Date.now()) {
+  if (assignedAtMs == null) return "—";
+  const diffMs = Math.max(0, nowMs - assignedAtMs);
+  const minutes = Math.floor(diffMs / 60_000);
+  if (minutes < 1) return "Just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
 function useCategories() {
   return useMemo(() => {
     const set = new Set(PARTS_CATALOG.map((part) => part.category));
@@ -157,6 +178,7 @@ function useCategories() {
 
 export default function PartsList() {
   const { user } = useAuth();
+  const { byUserId: employeeDirectory } = useEmployeeDirectory();
   const { healthEntries, loading } = useInventoryLedger();
   const { data: pendingRequests } = useReorderRequests();
   const { data: partsManagerQueue, loading: partsManagerLoading } = useReorderRequestsByStatus(
@@ -422,53 +444,70 @@ export default function PartsList() {
         Every Reorder Request currently assigned to a Parts Associate, regardless of who it's assigned to --
         oversight only, no action control here. Your own assignments above are a subset of this list.
       </p>
-      {allAssignedWorkError ? (
-        <p className="fo-muted">Unable to load All Assigned Work ({allAssignedWorkError}).</p>
-      ) : (
-        <LoadingEmptyState
-          loading={allAssignedWorkLoading}
-          isEmpty={allAssignedWork.length === 0}
-          loadingText="Loading All Assigned Work..."
-          emptyText="No requests are currently assigned to anyone."
-        >
-          <table className="fo-table">
-            <thead>
-              <tr>
-                <th>Part</th>
-                <th>Qty</th>
-                <th>Urgency</th>
-                <th>Status</th>
-                <th>Assigned</th>
-              </tr>
-            </thead>
-            <tbody>
-              {allAssignedWork.map((request) => (
-                <tr key={request.id}>
-                  <td>
-                    <Link to={`/inventory/${request.partId}?requestId=${request.id}`}>
-                      {getCatalogItem(request.partId)?.name ?? request.partId}
-                    </Link>
-                  </td>
-                  <td>{getDisplayQty(request)}</td>
-                  <td>
-                    {request.urgency ? (
-                      <span className={`fo-badge fo-badge-${request.urgency.toLowerCase()}`}>{request.urgency}</span>
-                    ) : (
-                      <span className="fo-badge">Needs planning</span>
-                    )}
-                  </td>
-                  <td className="fo-muted">
-                    {request.status === REORDER_REQUEST_STATUS.PURCHASING_IN_PROGRESS ? "In Progress" : "Waiting"}
-                  </td>
-                  <td className="fo-muted">
-                    {request.assignedAt ? new Date(request.assignedAt).toLocaleString() : "—"}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </LoadingEmptyState>
-      )}
+      {/* aria-live region wraps ALL of loading/error/empty/populated -- present in
+          the DOM unconditionally so a screen reader picks up the region before
+          the first transition, not only after; role="status" (implicit
+          aria-live="polite") matches this codebase's existing announcement
+          convention (see EmployeeAssignmentPicker.jsx's status/warning regions)
+          rather than introducing a raw aria-live attribute nowhere else uses. */}
+      <div role="status">
+        {allAssignedWorkError ? (
+          <p className="fo-muted">Unable to load All Assigned Work ({allAssignedWorkError}).</p>
+        ) : (
+          <LoadingEmptyState
+            loading={allAssignedWorkLoading}
+            isEmpty={allAssignedWork.length === 0}
+            loadingText="Loading All Assigned Work..."
+            emptyText="No requests are currently assigned to anyone."
+          >
+            {/* Responsive behavior (Specification's "Responsive behavior" section):
+                this table gains an Assignee column beyond the page's other,
+                narrower tables -- wrapped in its own horizontally-scrollable
+                container on narrow viewports, matching the shared .fo-panel
+                overflow-x:auto pattern already established for this whole page,
+                but scoped to just this table so scrolling it doesn't drag the
+                rest of the page's other tables sideways with it. */}
+            <div className="fo-table-scroll">
+              <table className="fo-table">
+                <thead>
+                  <tr>
+                    <th>Part</th>
+                    <th>Qty</th>
+                    <th>Urgency</th>
+                    <th>Status</th>
+                    <th>Assignee</th>
+                    <th>Age</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {allAssignedWork.map((request) => (
+                    <tr key={request.id}>
+                      <td>
+                        <Link to={`/inventory/${request.partId}?requestId=${request.id}`}>
+                          {getCatalogItem(request.partId)?.name ?? request.partId}
+                        </Link>
+                      </td>
+                      <td>{getDisplayQty(request)}</td>
+                      <td>
+                        {request.urgency ? (
+                          <span className={`fo-badge fo-badge-${request.urgency.toLowerCase()}`}>{request.urgency}</span>
+                        ) : (
+                          <span className="fo-badge">Needs planning</span>
+                        )}
+                      </td>
+                      <td className="fo-muted">
+                        {request.status === REORDER_REQUEST_STATUS.PURCHASING_IN_PROGRESS ? "In Progress" : "Waiting"}
+                      </td>
+                      <td className="fo-muted">{resolveActorDisplayName(request.assignedToUserId, employeeDirectory)}</td>
+                      <td className="fo-muted">{formatAssignmentAge(request.assignedAt)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </LoadingEmptyState>
+        )}
+      </div>
 
       <h3>Parts Catalog</h3>
       <p className="fo-muted">

@@ -25,8 +25,10 @@ import { OPERATIONAL_ROLE, ROLES } from "../domain/constants";
 // future consumer requesting a different requiredOperationalRole is
 // unaffected). Client-side only, post-backfill (the backfill's zero-
 // drift verification is this filter's own precondition, per that
-// Specification -- see docs/DECISIONS.md/PR #164 for the recorded
-// evidence): excludes any candidate whose employees.securityRole is
+// Specification -- durable evidence (initial read-only audit,
+// authorized repair, post-repair zero-drift verification) is currently
+// recorded as a comment on PR #164, not yet in docs/DECISIONS.md;
+// see that PR's comment thread): excludes any candidate whose employees.securityRole is
 // ROLES.TECHNICIAN, AND separately excludes -- as a distinct,
 // admin-surfaced data-quality gap, never silently folded into "not
 // eligible" -- any candidate whose securityRole is missing, null, or

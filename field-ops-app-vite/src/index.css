@@ -662,6 +662,19 @@ button:hover {
   max-width: 260px;
 }
 
+/* Inventory Operational Queue, PR A (docs/specifications/inventory-
+   operational-queue.md, "Responsive behavior") -- a per-table
+   horizontal-scroll container for wide tables that gain columns beyond
+   this page's narrower ones, so scrolling one wide table on a narrow
+   viewport doesn't drag the rest of the page's other tables sideways
+   with it (the page-level .fo-panel overflow-x:auto above still exists
+   as the outer fallback, but this scopes the scroll to just the table
+   that actually needs it). */
+.fo-table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
 .wo-history-row {
   font-size: 13px;
   padding: 2px 0;

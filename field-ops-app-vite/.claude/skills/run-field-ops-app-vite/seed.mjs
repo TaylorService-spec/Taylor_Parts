@@ -40,6 +40,29 @@ export const DRIVER_ACCOUNTS = {
   admin: { email: "driver-admin@example.test", password: "driver-pass-123", uid: null },
   eligiblePartsManager: { email: "driver-parts-manager@example.test", password: "driver-pass-123", uid: null },
   ineligibleDispatcher: { email: "driver-dispatcher@example.test", password: "driver-pass-123", uid: null },
+  // Inventory Operational Queue, PR A -- dedicated account for the
+  // "query failure renders error, not empty" assertion. Its
+  // users/{uid}.role is set to an invalid value ONCE, here, at seed
+  // time, and is NEVER mutated afterward. This is deliberate, not an
+  // oversight: the Firestore emulator was confirmed (2026-07-12,
+  // investigating a false-negative on this exact assertion) to cache a
+  // security rule's get()-based role lookup PER UID for the emulator
+  // process's lifetime -- mutating an EXISTING, previously-validated
+  // uid's role (e.g. flipping DRIVER_ACCOUNTS.admin's role mid-session)
+  // silently keeps succeeding against the STALE cached value, a real
+  // emulator/production parity gap, not an application bug (production
+  // Firestore does correctly invalidate this; only the emulator doesn't
+  // reproduce that here). A uid whose role is invalid from its very
+  // first-ever evaluation is rejected correctly and deterministically --
+  // confirmed directly against this exact query shape. See driver.mjs's
+  // verify-pr-a query-failure check for the isolated SDK-level assertion
+  // this fixture exists for (a full authenticated browser session can't
+  // reach this state at all -- App.jsx's own isDomainVisible() route
+  // gating requires a recognized admin/dispatcher/technician role before
+  // rendering Inventory in the first place, so an invalid role can never
+  // reach the "All Assigned Work" UI to click through -- this is why the
+  // check is a direct SDK-level listener assertion, not a browser one).
+  queryFailureProbe: { email: "driver-query-failure-probe@example.test", password: "driver-pass-123", uid: null },
 };
 
 async function ensureAuthUser(acct) {
@@ -101,11 +124,13 @@ export const CANCEL_VOID_FIXTURE = {
 // otherUserAssignedRequest: assigned to a uid that is NOT any
 // DRIVER_ACCOUNTS entry -- the exact "Manager B sees a request assigned
 // to user A, without being the assignee" scenario the Specification's
-// Acceptance criteria requires. No real Auth/Employee record is needed
-// for that uid; "All Assigned Work" only ever renders part/qty/urgency/
-// status/assignedAt, never the assignee's identity, so a dangling uid
-// is sufficient and deliberate here -- it proves the oversight view
-// does NOT require a resolvable assignee to render the row.
+// Acceptance criteria requires. Its assignee uid IS linked to a real
+// Employee record (otherAssigneeEmployee below) -- Final Review requires
+// "All Assigned Work" to resolve and display the current assignee via
+// resolveActorDisplayName(), never a raw uid, so this fixture's assignee
+// must itself be resolvable to prove that resolution actually happens
+// (a dangling, unresolvable uid would only prove the raw-uid FALLBACK
+// path, the opposite of what this assertion needs to demonstrate).
 //
 // securityRoleEmployees: four Employees, all ACTIVE/PARTS_ASSOCIATE-
 // eligible-by-operationalRoles/linked-user (so they'd all appear in the
@@ -119,6 +144,11 @@ export const PR_A_FIXTURE = {
     partId: "TST-1010",
     requestId: "driver-seed-all-assigned-other-user",
     assignedToUserId: "driver-seed-other-user-not-signed-in",
+  },
+  otherAssigneeEmployee: {
+    employeeId: "driver-emp-other-assignee",
+    displayName: "Other Parts Associate",
+    userId: "driver-seed-other-user-not-signed-in",
   },
   securityRoleEmployees: {
     eligible: { employeeId: "driver-emp-securityrole-eligible", displayName: "Eligible Dispatcher Assoc", securityRole: "dispatcher" },
@@ -315,6 +345,23 @@ async function seedPrAFixture() {
     createdAt: now,
   });
 
+  // Linked Employee for the cross-user assignee above -- resolvable via
+  // resolveActorDisplayName(), so "All Assigned Work"'s Assignee column
+  // renders a real display name for this fixture, not the raw-uid
+  // fallback (see PR_A_FIXTURE's own header comment for why this
+  // matters for that specific assertion).
+  const otherAssignee = PR_A_FIXTURE.otherAssigneeEmployee;
+  await db.doc(`employees/${otherAssignee.employeeId}`).set({
+    employeeId: otherAssignee.employeeId,
+    displayName: otherAssignee.displayName,
+    employmentStatus: "ACTIVE",
+    operationalRoles: ["PARTS_ASSOCIATE"],
+    userId: otherAssignee.userId,
+    securityRole: "dispatcher",
+    createdAt: now,
+    updatedAt: now,
+  });
+
   for (const emp of Object.values(PR_A_FIXTURE.securityRoleEmployees)) {
     await db.doc(`employees/${emp.employeeId}`).set({
       employeeId: emp.employeeId,
@@ -437,6 +484,11 @@ async function seed() {
   });
 
   await db.doc(`users/${DRIVER_ACCOUNTS.ineligibleDispatcher.uid}`).set({ role: "dispatcher" });
+
+  // Invalid from the moment this document is first ever created -- see
+  // DRIVER_ACCOUNTS.queryFailureProbe's own header comment for why this
+  // must never be mutated after this point.
+  await db.doc(`users/${DRIVER_ACCOUNTS.queryFailureProbe.uid}`).set({ role: "invalid_role_for_query_failure_probe" });
 
   await seedLedgerTransactions();
 
