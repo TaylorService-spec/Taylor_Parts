@@ -396,3 +396,29 @@ Every linked-persona command carried `--requireExistingAuthUser` (PR #114) — n
 **`docs/implementation-plans/notification-identity.md` updated:** the PR breakdown row and "Tracking" table both marked merged/deployed/fully verified, citing this entry.
 **Not done:** no production data write of any kind; no manual `firebase deploy` or other manual deployment trigger (both required workflows completed via the normal GitHub Actions auto-deploy path); PR 6 not begun.
 **Alternatives rejected:** None -- this entry records verification of an already-authorized, already-merged implementation, not a choice among options.
+
+## 33. Taylor Freezer project board backfilled with full issue/PR history
+
+**Date:** 2026-07-12
+**Decision:** Ran the Owner's `backfill-taylor-freezer.sh` script (Tier 1, no repository changes) to add every historical Issue and PR in `TaylorService-spec/Taylor_Parts` to the Taylor Freezer GitHub Project (project #1, owner `TaylorService-spec`), setting each item's `Status` field from its live state: open issues -> `Todo`, open PRs -> `In Progress`, closed/merged items -> `Done`. The script was run only after confirming via `gh auth status` that the Owner's own token refresh (noted as a pending prerequisite in a prior session) had completed and the `project` scope was present. The script as supplied piped through an external `jq` binary, which is not installed in this environment; it was adapted to use `gh`'s built-in `--jq` flag for identical field/status-option lookups and item add/edit calls, with no change to which items were touched or how status was assigned. `gh project item-add` is idempotent (returns the existing item if already present), so the script is safe to re-run.
+**Evidence:**
+- Pre-run scale check: 8 issues (4 open, 4 closed), 142 PRs (2 open at that moment, 140 closed/merged) -- 150 items total.
+- Script run to completion, exit code 0, 150/150 "added" lines logged, ending "Backfill complete."
+- Post-run spot-check via `gh project item-list`: 150 items on the board total; status breakdown 4 `Todo` / 146 `Done` / 0 `In Progress`. Confirmed this is correct, not a bug -- the two PRs open at scale-check time (#149, #150) were merged/closed by the time the script's PR-listing step actually ran moments later, so they were correctly read as `Done` at that point; `gh pr list --state open` confirms zero PRs are open right now. The 4 `Todo` items exactly match the 4 currently-open issues (#15, #100, #119, #140); no open PR was found with a status other than `In Progress` (vacuously true, none are open); no merged/closed PR was found with a status other than `Done`.
+**Effect:** The Taylor Freezer board now reflects the full historical backlog instead of only items added since it started being used going forward. No repository files, Rules, schema, or production data were touched -- this is GitHub Project metadata only.
+**Not done:** no jq installation (worked around via `gh --jq` instead); no change to any issue's or PR's actual GitHub state (labels, assignees, open/closed status) -- only the project board's own `Status` field was written.
+**Alternatives rejected:** None -- this entry records execution of an already-authorized, fully-specified script, not a choice among options.
+
+## 34. Inventory Operational Queue A0 -- production securityRole mirror backfill run, verified zero-drift
+
+**Date:** 2026-07-12
+**Decision:** Under separate Owner Production Data Authorization, ran `functions/scripts/auditSecurityRoleMirror.js` against the production `taylor-parts` project at merge commit `057ff37b4be9881bb85aabacd72b2466b77f9ac6` (PR #164, A0 -- security-role mirror rollout, Issue #154 / Inventory Operational Queue) -- read-only audit, then authorized `--repair`, then a post-repair read-only re-verification, all three runs against the exact reviewed/merged commit.
+**Evidence:**
+- Code under test confirmed at merge commit `057ff37b4be9881bb85aabacd72b2466b77f9ac6`.
+- Initial read-only audit: "Found 5 securityRole finding(s)" -- missing=5, mismatched=0, broken=0. `audit_exit=1` (non-zero as designed, since unresolved findings existed).
+- Authorized repair (`--repair`): "Repaired 5 entries." `repair_exit=0`.
+- Post-repair read-only verification: "OK: zero drift across 5 linked Employee document(s)." `verify_exit=0`.
+- Full evidence (Owner-operated Cloud Shell run) recorded as a comment on PR #164: https://github.com/TaylorService-spec/Taylor_Parts/pull/164#issuecomment-4952811893. No employee/user IDs or credentials are reproduced in that comment or here, per the Owner's instruction and this script's own minimal-output design (see its header comment).
+**Effect:** Every linked Employee document's `securityRole` mirror is now backfilled and confirmed to agree with its linked `users/{uid}.role`, closing the gap this initiative's Specification identified (pre-A0 Employee documents had no `securityRole` field at all). This satisfies PR A's own merge-gate precondition (`docs/specifications/inventory-operational-queue.md`'s "Verified complete" requirement -- a follow-up read-only pass reporting zero drifted/missing documents) once this entry is itself merged, per that Specification's explicit requirement that the backfill's completion be recorded in `docs/DECISIONS.md`, not only as a PR comment.
+**Not done:** no `functions/scripts/provisionEmployeeAccess.js` code change; no `firestore.rules`/index change; no deployment of any kind (A0 has no deployment step -- Admin-SDK script/docs/tests only); PR A itself not merged by this entry; the broken-link resolution process (none existed in this run, per the audit's 0-broken count) not exercised.
+**Alternatives rejected:** None -- this entry records execution of an already-authorized, fully-specified production operation, not a choice among options.
