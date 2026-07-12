@@ -317,23 +317,33 @@ async function seed() {
 
   // A second part (TST-1002) WITH real CONSUMED history -- exercises
   // the READY path (recommendationStatus: READY, urgency computed,
-  // one-click submit), the contrasting case to TST-1001 above. High
-  // quantity relative to a low available baseline pushes urgency into
-  // CRITICAL/HIGH so it lands in the default "Critical & High" queue
-  // filter, not just "Show All".
+  // one-click submit), the contrasting case to TST-1001 above.
+  //
+  // Inventory Health / Parts Catalog separation (PR B, docs/specifications/
+  // inventory-operational-queue.md) -- the "Show All" tab this driver's
+  // submit-ready command used to fall back to (per the
+  // run-field-ops-app-vite skill's own now-stale Gotcha: "TST-1002's
+  // seeded usage came out LOW urgency in practice") is REMOVED.
+  // Inventory Health now shows only Critical & High and Needs Planning
+  // -- a LOW/MEDIUM-urgency READY part is no longer reachable from
+  // either tab. Bumped total 30-day CONSUMED quantity from 10 to 30
+  // (avgDailyUsage 1.0/day, reorderPoint 8.5, availableStock 6 <=
+  // reorderPoint) to deterministically land TST-1002 in HIGH, with
+  // comfortable margin above the ~21.2-unit HIGH threshold -- resolves
+  // the old gotcha instead of working around it.
   const now = Date.now();
   await db.doc("inventory_transactions/driver-seed-tx-2").set({
     workOrderId: "driver-seed-wo-2",
     partId: "TST-1002",
     type: "CONSUMED",
-    quantity: 5,
+    quantity: 15,
     timestamp: now - 24 * 60 * 60 * 1000,
   });
   await db.doc("inventory_transactions/driver-seed-tx-3").set({
     workOrderId: "driver-seed-wo-3",
     partId: "TST-1002",
     type: "CONSUMED",
-    quantity: 5,
+    quantity: 15,
     timestamp: now - 2 * 24 * 60 * 60 * 1000,
   });
 

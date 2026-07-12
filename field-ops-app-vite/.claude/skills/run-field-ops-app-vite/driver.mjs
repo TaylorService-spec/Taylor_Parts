@@ -79,6 +79,26 @@
 //                                 PASS/FAIL report per assertion and
 //                                 exits non-zero on any failure.
 //
+//   verify-inventory-health-catalog <accountKey>
+//                                 Inventory Health / Parts Catalog
+//                                 separation (docs/specifications/
+//                                 inventory-operational-queue.md,
+//                                 PR B) -- the PRIMARY implementation
+//                                 test for that PR. Confirms Inventory
+//                                 Health shows exactly two filter tabs
+//                                 (Critical & High, Needs Planning),
+//                                 with no ledger-scoped "Show All" tab;
+//                                 both tabs display accurate counts;
+//                                 the Parts Catalog table (the one true
+//                                 complete-catalog view) shows a real
+//                                 risk badge for a part with ledger
+//                                 activity and an explicit "No ledger
+//                                 activity" state for a part with none;
+//                                 the catalog's own filter bar shows
+//                                 accurate counts. Prints a PASS/FAIL
+//                                 report per assertion and exits
+//                                 non-zero on any failure.
+//
 // All screenshots are written under .claude/skills/run-field-ops-app-vite/screenshots/.
 import { chromium } from "@playwright/test";
 import { mkdirSync } from "node:fs";
@@ -362,9 +382,16 @@ async function verifyNotificationIdentity(browser, page, accountKey) {
 
   // --- Catalog-row link unchanged (PartsList.jsx:381 as of the
   // Specification -- a plain, non-Reorder-Request catalog link) ---
+  // No click needed to reach it -- the Parts Catalog table's own
+  // category filter already defaults to "All Categories" (PartsList.jsx's
+  // `category` state initializes to "ALL"). Previously clicked Inventory
+  // Health's ledger-scoped "Show All" tab here, which the Inventory
+  // Health / Parts Catalog separation (PR B, docs/specifications/
+  // inventory-operational-queue.md) removed -- that tab never had any
+  // bearing on the Parts Catalog table below in the first place (two
+  // independent filter states on the same page), so removing the click
+  // changes nothing about what this assertion actually proves.
   await goToInventory(page);
-  await page.getByRole("button", { name: "Show All" }).click();
-  await page.waitForTimeout(300);
   // Scoped specifically to the "Parts Catalog" table -- `table.fo-table`
   // alone would also match the Parts Manager/Parts Associate Queue
   // tables above it on the same page (confirmed live: an unscoped
@@ -529,6 +556,75 @@ async function verifyCancelVoid(browser, page, accountKey) {
   return niFailed === 0;
 }
 
+// Inventory Health / Parts Catalog separation, PR B (docs/specifications/
+// inventory-operational-queue.md). Reuses the same niReport()-based
+// PASS/FAIL style and counters as the two verify-* commands above (each
+// verify-* command is its own process invocation, never combined).
+async function verifyInventoryHealthCatalog(browser, page, accountKey) {
+  await login(page, accountKey);
+  await goToInventory(page);
+
+  // --- Inventory Health: exactly two tabs, no "Show All" ---
+  const criticalHighVisible = await page.getByRole("button", { name: /^Critical & High/ }).isVisible().catch(() => false);
+  niReport("Inventory Health: Critical & High tab is visible", criticalHighVisible);
+  const needsPlanningVisible = await page.getByRole("button", { name: /^Needs Planning/ }).isVisible().catch(() => false);
+  niReport("Inventory Health: Needs Planning tab is visible", needsPlanningVisible);
+  const showAllGone = await page.getByRole("button", { name: "Show All", exact: true }).isVisible().catch(() => false);
+  niReport("Inventory Health: ledger-scoped Show All tab no longer exists", !showAllGone);
+
+  // --- Inventory Health tabs show accurate, non-blank counts ---
+  const criticalHighLabel = await page.getByRole("button", { name: /^Critical & High/ }).innerText().catch(() => "");
+  niReport(
+    "Inventory Health: Critical & High tab shows a count",
+    /Critical & High \(\d+\)/.test(criticalHighLabel),
+    `label was "${criticalHighLabel}"`
+  );
+  const needsPlanningLabel = await page.getByRole("button", { name: /^Needs Planning/ }).innerText().catch(() => "");
+  niReport(
+    "Inventory Health: Needs Planning tab shows a count",
+    /Needs Planning \(\d+\)/.test(needsPlanningLabel),
+    `label was "${needsPlanningLabel}"`
+  );
+
+  // --- Needs Planning: TST-1001 (RESERVED-only, no CONSUMED -- seed.mjs's
+  // dedicated NEEDS_PLANNING fixture) appears under this tab ---
+  await page.getByRole("button", { name: /^Needs Planning/ }).click();
+  await page.waitForTimeout(300);
+  const needsPlanningRowVisible = await page.getByRole("cell", { name: "Hex Coupler" }).first().isVisible().catch(() => false);
+  niReport("Needs Planning tab: TST-1001 (Hex Coupler) appears", needsPlanningRowVisible);
+
+  // --- Parts Catalog: the one true complete-catalog view -- shows a
+  // part with real ledger activity (TST-1001/TST-1002) and a part with
+  // none at all (e.g. TST-1004, only ever touched by the notification-
+  // identity/Cancel-Void fixtures' reorder_requests, never inventory_transactions) ---
+  const catalogPartWithActivity = await page
+    .locator("tr", { hasText: "Hex Coupler" })
+    .getByText(/CRITICAL|HIGH|MEDIUM|LOW|Needs planning/)
+    .first()
+    .isVisible()
+    .catch(() => false);
+  niReport("Parts Catalog: a part with real ledger activity shows a risk badge, not a blank cell", catalogPartWithActivity);
+  const catalogPartNoActivity = await page
+    .locator("tr", { hasText: "Hopper Agitator" })
+    .getByText("No ledger activity")
+    .first()
+    .isVisible()
+    .catch(() => false);
+  niReport("Parts Catalog: a part with zero ledger activity shows the explicit 'No ledger activity' state", catalogPartNoActivity);
+
+  // --- Parts Catalog's own filter bar shows counts, "All Categories"
+  // count equals the complete catalog size ---
+  const allCategoriesLabel = await page.getByRole("button", { name: /^All Categories/ }).innerText().catch(() => "");
+  niReport(
+    "Parts Catalog: 'All Categories' shows a count",
+    /All Categories \(\d+\)/.test(allCategoriesLabel),
+    `label was "${allCategoriesLabel}"`
+  );
+
+  console.log(`\n${niPassed} passed, ${niFailed} failed`);
+  return niFailed === 0;
+}
+
 async function main() {
   const [, , command, ...args] = process.argv;
   const browser = await chromium.launch();
@@ -573,13 +669,13 @@ async function main() {
       const [accountKey, outPng = "submit-ready.png"] = args;
       await login(page, accountKey);
       await goToInventory(page);
-      // "Show All", not the default "Critical & High" filter -- a
-      // READY part isn't guaranteed to land in CRITICAL/HIGH (confirmed
-      // live: seed.mjs's TST-1002 came out LOW, still a valid READY,
-      // analytics-backed, one-click case, just not in the default
-      // filter). No quantity input for this path.
-      await page.getByRole("button", { name: "Show All" }).click();
-      await page.waitForTimeout(300);
+      // "Critical & High" is the default tab already -- no click needed
+      // to select it. Inventory Health / Parts Catalog separation (PR B)
+      // removed the ledger-scoped "Show All" tab this command used to
+      // fall back to; seed.mjs's TST-1002 now seeds enough CONSUMED
+      // quantity to deterministically land HIGH, so the default tab
+      // always has a READY, analytics-backed, one-click row to act on.
+      // No quantity input for this path.
       await page.getByRole("button", { name: "Request Reorder" }).first().click();
       await page.waitForTimeout(500);
       await page.screenshot({ path: join(SCREENSHOT_DIR, outPng), fullPage: true });
@@ -591,6 +687,10 @@ async function main() {
     } else if (command === "verify-cancel-void") {
       const [accountKey = "admin"] = args;
       const ok = await verifyCancelVoid(browser, page, accountKey);
+      if (!ok) process.exitCode = 1;
+    } else if (command === "verify-inventory-health-catalog") {
+      const [accountKey = "admin"] = args;
+      const ok = await verifyInventoryHealthCatalog(browser, page, accountKey);
       if (!ok) process.exitCode = 1;
     } else {
       console.error(`Unknown command "${command}". See the header comment in this file for usage.`);
