@@ -712,56 +712,85 @@ async function verifyInventoryHealthCatalog(browser, page, accountKey) {
   // mount via a full navigation (useInventoryLedger() is a one-shot
   // read, per its own header comment -- a live-DOM change alone would
   // not be picked up), then restores the fixture before continuing. No
-  // production-visible test behavior is added to the app itself. ---
+  // production-visible test behavior is added to the app itself.
+  //
+  // try/finally, not a bare sequence: page.goto(), the heading
+  // waitFor(), the Needs Planning click, or any assertion added here
+  // later can throw. Without a finally block, a thrown error between
+  // the delete above and the restore below would leave THIS emulator
+  // session's ledger fixture permanently deleted -- contaminating
+  // every later command run against the same `emulators:start`
+  // session (submit-ready, verify-notification-identity's own
+  // healthEntries-independent checks would still pass, but any future
+  // command relying on TST-1001/TST-1002 having ledger activity would
+  // silently fail for a reason invisible from its own output).
+  // seedLedgerTransactions() must run on every exit path -- pass,
+  // assertion failure, or thrown error alike -- and the original
+  // failure (if any) must still propagate afterward; restoring the
+  // fixture is never allowed to turn a failed run into a passing one. ---
   await db.doc("inventory_transactions/driver-seed-tx-1").delete();
   await db.doc("inventory_transactions/driver-seed-tx-2").delete();
   await db.doc("inventory_transactions/driver-seed-tx-3").delete();
 
-  // A full page.goto() carrying ?emulator=1 preserves the Auth session
-  // here (confirmed live -- distinct from the already-documented
-  // page.reload() session-drop quirk elsewhere in this skill, and from
-  // client-side navigation silently dropping ?emulator=1 the
-  // notification-identity driver commands work around). No re-login
-  // needed -- the page loads already-authenticated.
-  const inventoryPageUrl = new URL("inventory", APP_ROOT);
-  inventoryPageUrl.searchParams.set("emulator", "1");
-  await page.goto(inventoryPageUrl.toString(), { waitUntil: "domcontentloaded", timeout: 20000 });
-  await page.getByRole("heading", { name: "Inventory Operational Queue" }).waitFor({ timeout: 10000 });
+  try {
+    // A full page.goto() carrying ?emulator=1 preserves the Auth
+    // session here (confirmed live -- distinct from the already-
+    // documented page.reload() session-drop quirk elsewhere in this
+    // skill, and from client-side navigation silently dropping
+    // ?emulator=1 the notification-identity driver commands work
+    // around). No re-login needed -- the page loads already-authenticated.
+    const inventoryPageUrl = new URL("inventory", APP_ROOT);
+    inventoryPageUrl.searchParams.set("emulator", "1");
+    await page.goto(inventoryPageUrl.toString(), { waitUntil: "domcontentloaded", timeout: 20000 });
+    await page.getByRole("heading", { name: "Inventory Operational Queue" }).waitFor({ timeout: 10000 });
 
-  const emptyCriticalHighText = await page
-    .getByText("No parts are currently Critical or High priority.")
-    .first()
-    .waitFor({ timeout: 10000 })
-    .then(() => true)
-    .catch(() => false);
-  niReport(
-    "Inventory Health: Critical & High shows the EXACT mandated empty message when genuinely empty",
-    emptyCriticalHighText
-  );
-  await page.getByRole("button", { name: /^Needs Planning/ }).click();
-  await page.waitForTimeout(300);
-  const emptyNeedsPlanningText = await page.getByText("No parts currently need planning.").first().isVisible().catch(() => false);
-  niReport(
-    "Inventory Health: Needs Planning shows the EXACT mandated empty message when genuinely empty",
-    emptyNeedsPlanningText
-  );
-  const emptyCriticalHighLabel = await page.getByRole("button", { name: /^Critical & High/ }).innerText().catch(() => "");
-  niReport(
-    "Inventory Health: Critical & High tab count is exactly (0) while genuinely empty",
-    emptyCriticalHighLabel === "Critical & High (0)",
-    `label was "${emptyCriticalHighLabel}"`
-  );
-  const emptyNeedsPlanningLabel = await page.getByRole("button", { name: /^Needs Planning/ }).innerText().catch(() => "");
-  niReport(
-    "Inventory Health: Needs Planning tab count is exactly (0) while genuinely empty",
-    emptyNeedsPlanningLabel === "Needs Planning (0)",
-    `label was "${emptyNeedsPlanningLabel}"`
-  );
-
-  // --- Restore the fixture for any later command/run against this
-  // same emulator session -- leaves the database exactly as seed.mjs
-  // would have left it. ---
-  await seedLedgerTransactions();
+    const emptyCriticalHighText = await page
+      .getByText("No parts are currently Critical or High priority.")
+      .first()
+      .waitFor({ timeout: 10000 })
+      .then(() => true)
+      .catch(() => false);
+    niReport(
+      "Inventory Health: Critical & High shows the EXACT mandated empty message when genuinely empty",
+      emptyCriticalHighText
+    );
+    await page.getByRole("button", { name: /^Needs Planning/ }).click();
+    await page.waitForTimeout(300);
+    const emptyNeedsPlanningText = await page.getByText("No parts currently need planning.").first().isVisible().catch(() => false);
+    niReport(
+      "Inventory Health: Needs Planning shows the EXACT mandated empty message when genuinely empty",
+      emptyNeedsPlanningText
+    );
+    const emptyCriticalHighLabel = await page.getByRole("button", { name: /^Critical & High/ }).innerText().catch(() => "");
+    niReport(
+      "Inventory Health: Critical & High tab count is exactly (0) while genuinely empty",
+      emptyCriticalHighLabel === "Critical & High (0)",
+      `label was "${emptyCriticalHighLabel}"`
+    );
+    const emptyNeedsPlanningLabel = await page.getByRole("button", { name: /^Needs Planning/ }).innerText().catch(() => "");
+    niReport(
+      "Inventory Health: Needs Planning tab count is exactly (0) while genuinely empty",
+      emptyNeedsPlanningLabel === "Needs Planning (0)",
+      `label was "${emptyNeedsPlanningLabel}"`
+    );
+  } finally {
+    // Restore the fixture for any later command/run against this same
+    // emulator session -- leaves the database exactly as seed.mjs
+    // would have left it, regardless of whether the try block above
+    // passed, failed an assertion, or threw. If restoration itself
+    // fails, that is reported explicitly and fails the command -- it
+    // must never be silently swallowed, since a failed restore is
+    // exactly the contamination this finally block exists to prevent.
+    try {
+      await seedLedgerTransactions();
+    } catch (restoreErr) {
+      niReport(
+        "Fixture restoration: seedLedgerTransactions() succeeded after the empty-state block",
+        false,
+        `restoration itself threw: ${restoreErr.message}`
+      );
+    }
+  }
 
   console.log(`\n${niPassed} passed, ${niFailed} failed`);
   return niFailed === 0;
