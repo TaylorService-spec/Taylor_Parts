@@ -621,6 +621,7 @@ async function verifyCustomerRecordPage(browser, page, accountKey) {
   // --- Keyboard navigation: ArrowRight moves focus+selection ---
   const detailsTabBtn = page.getByRole("tab", { name: "Details" });
   const locationsTabBtn = page.getByRole("tab", { name: "Locations" });
+  const contactsTabBtn = page.getByRole("tab", { name: "Contacts" });
   await detailsTabBtn.focus();
   await page.keyboard.press("ArrowRight");
   await page.waitForTimeout(150);
@@ -629,12 +630,34 @@ async function verifyCustomerRecordPage(browser, page, accountKey) {
   const focusedIsLocations = await page.evaluate(() => document.activeElement?.getAttribute("aria-selected") === "true");
   niReport("Keyboard: ArrowRight also moves DOM focus to the newly-selected tab", focusedIsLocations);
 
+  // --- Keyboard navigation: ArrowLeft moves focus+selection back ---
+  await page.keyboard.press("ArrowLeft");
+  await page.waitForTimeout(150);
+  const detailsSelectedAfterArrowLeft = await detailsTabBtn.getAttribute("aria-selected");
+  niReport("Keyboard: ArrowLeft moves selection to the previous tab", detailsSelectedAfterArrowLeft === "true");
+  const focusedIsDetailsAfterLeft = await page.evaluate(() => document.activeElement?.getAttribute("aria-selected") === "true");
+  niReport("Keyboard: ArrowLeft also moves DOM focus to the newly-selected tab", focusedIsDetailsAfterLeft);
+
+  // --- Keyboard navigation: wrap-around at both ends ---
+  // Currently on Details (the first tab) after the ArrowLeft above.
+  await page.keyboard.press("ArrowLeft");
+  await page.waitForTimeout(150);
+  const contactsSelectedAfterWrapLeft = await contactsTabBtn.getAttribute("aria-selected");
+  niReport("Keyboard: ArrowLeft wraps from the first tab to the last", contactsSelectedAfterWrapLeft === "true");
+  await page.keyboard.press("ArrowRight");
+  await page.waitForTimeout(150);
+  const detailsSelectedAfterWrapRight = await detailsTabBtn.getAttribute("aria-selected");
+  niReport("Keyboard: ArrowRight wraps from the last tab to the first", detailsSelectedAfterWrapRight === "true");
+  // Re-establish Locations as active for the panel-state test below, the
+  // same way the original ArrowRight (two steps up) left it.
+  await page.keyboard.press("ArrowRight");
+  await page.waitForTimeout(150);
+
   // --- Panel-local form state survives switching tabs away and back ---
   // Locations tab is now active (via the ArrowRight above).
   await page.getByRole("button", { name: "+ Add Location" }).click();
   const draftInput = page.locator('input[placeholder="Site name (e.g. Main Office)"]');
   await draftInput.fill("Draft Location Name -- should survive tab switch");
-  const contactsTabBtn = page.getByRole("tab", { name: "Contacts" });
   await contactsTabBtn.click();
   await page.waitForTimeout(150);
   await locationsTabBtn.click();
@@ -658,6 +681,36 @@ async function verifyCustomerRecordPage(browser, page, accountKey) {
   const detailsSelectedAfterHome = await detailsTabBtn.getAttribute("aria-selected");
   niReport("Keyboard: Home jumps selection to the first tab", detailsSelectedAfterHome === "true");
 
+  // --- Inactive panels are hidden and unreachable via normal keyboard
+  // navigation. Details is active (via Home above); Locations/Contacts
+  // are both `hidden`. Tabs forward from the active tab button through
+  // every remaining focusable element on the page and confirm none of
+  // them ever sits inside a hidden panel -- proves the native `hidden`
+  // attribute is actually removing those panels from the tab order,
+  // not just visually hiding them. ---
+  await detailsTabBtn.focus();
+  let landedInHiddenPanel = false;
+  let hiddenPanelDetail = "";
+  for (let i = 0; i < 15; i++) {
+    await page.keyboard.press("Tab");
+    const check = await page.evaluate(() => {
+      const el = document.activeElement;
+      if (!el) return { inHidden: false };
+      const panel = el.closest('[role="tabpanel"]');
+      return { inHidden: Boolean(panel && panel.hidden), panelId: panel?.id, tag: el.tagName };
+    });
+    if (check.inHidden) {
+      landedInHiddenPanel = true;
+      hiddenPanelDetail = `focus landed on a <${check.tag}> inside hidden panel #${check.panelId} on Tab press ${i + 1}`;
+      break;
+    }
+  }
+  niReport(
+    "Tabs: keyboard Tab traversal from the active panel never lands focus inside a hidden panel",
+    !landedInHiddenPanel,
+    hiddenPanelDetail
+  );
+
   // --- Existing "+ Add Location" flow still functions (regression) ---
   await locationsTabBtn.click();
   await page.waitForTimeout(150);
@@ -667,6 +720,41 @@ async function verifyCustomerRecordPage(browser, page, accountKey) {
   await page.getByRole("button", { name: "Add Location", exact: true }).click();
   const newLocationVisible = await page.getByRole("heading", { name: "Driver Verification Site" }).first().waitFor({ timeout: 10000 }).then(() => true).catch(() => false);
   niReport("Locations tab: '+ Add Location' flow still creates a new Location (regression)", newLocationVisible);
+
+  // --- The just-created Location (city "Peoria" only) renders its
+  // address as a distinct labeled row via addressRows(), the same
+  // utility the Details tab's Billing Address section uses -- not the
+  // old single collapsed " -- street, city, state, zip" line. ---
+  const locationCityRow = await page.getByText("City: Peoria").first().isVisible().catch(() => false);
+  niReport("Locations tab: an existing Location renders its address as distinct labeled rows via addressRows()", locationCityRow);
+
+  // --- AddressFields inputs are discoverable through their real
+  // <label>s, not only ids/placeholders (a fresh "+ Add Location" form). ---
+  await page.getByRole("button", { name: "+ Add Location" }).click();
+  const streetLabelInput = page.getByLabel("Street address", { exact: true });
+  const cityLabelInput = page.getByLabel("City", { exact: true });
+  const stateLabelInput = page.getByLabel("State", { exact: true });
+  const zipLabelInput = page.getByLabel("ZIP code", { exact: true });
+  const allLabeledVisible =
+    (await streetLabelInput.isVisible().catch(() => false)) &&
+    (await cityLabelInput.isVisible().catch(() => false)) &&
+    (await stateLabelInput.isVisible().catch(() => false)) &&
+    (await zipLabelInput.isVisible().catch(() => false));
+  niReport(
+    "AddressFields: all four inputs are discoverable through their real <label> text (Street address/City/State/ZIP code)",
+    allLabeledVisible
+  );
+  await page.getByRole("button", { name: "Cancel" }).first().click();
+
+  // --- Negative: the old single-row collapsed address display
+  // (wo-history-row, replaced by fo-card + addressRows()) no longer
+  // renders anywhere on this page. ---
+  const oldRowStyleCount = await page.locator(".wo-history-row").count();
+  niReport(
+    "Locations/Contacts: old single-row collapsed address display is gone (no .wo-history-row elements)",
+    oldRowStyleCount === 0,
+    `found ${oldRowStyleCount}`
+  );
 
   // --- Existing "+ Add Contact" flow still functions (regression) ---
   await contactsTabBtn.click();
@@ -712,6 +800,74 @@ async function verifyCustomerRecordPage(browser, page, accountKey) {
     `desktop: "${desktopColumns}", narrow: "${narrowColumns}"`
   );
   await page.setViewportSize({ width: 1280, height: 900 });
+
+  // --- Reusable multi-instance contract + invalid-activeTabId fallback.
+  // Uses the dedicated dev-only harness (tabs-harness.html/.jsx --
+  // NOT part of the production build, not linked from any route,
+  // never shipped to dist/) mounting the REAL Tabs.jsx component three
+  // times: instance-a/instance-b (two simultaneous, independent Tabs
+  // roots -- proves no duplicate DOM ids and that keyboard handling in
+  // one instance never reaches the other) and instance-c (activeTabId
+  // fixed to a value not present in `tabs` -- proves the invalid-id
+  // fallback). A no-consumer-in-production component would otherwise
+  // be untestable for this specific contract, since AccountDetail.jsx
+  // itself only ever mounts one Tabs instance with an always-valid id. ---
+  const harnessPage = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  await harnessPage.goto(
+    "http://localhost:5173/Taylor_Parts/field-ops/.claude/skills/run-field-ops-app-vite/tabs-harness.html",
+    { waitUntil: "networkidle" }
+  );
+  await harnessPage.locator('#instance-a [role="tab"]').first().waitFor({ timeout: 10000 });
+
+  const idsResult = await harnessPage.evaluate(() => {
+    const allIds = Array.from(document.querySelectorAll("[id]")).map((el) => el.id);
+    return { total: allIds.length, unique: new Set(allIds).size };
+  });
+  niReport(
+    "Multi-instance: two simultaneous Tabs roots produce zero duplicate DOM ids",
+    idsResult.total > 0 && idsResult.total === idsResult.unique,
+    `total ids: ${idsResult.total}, unique: ${idsResult.unique}`
+  );
+
+  const instanceATab2 = harnessPage.locator("#instance-a").getByRole("tab", { name: "A-Two" });
+  const instanceBTab1 = harnessPage.locator("#instance-b").getByRole("tab", { name: "B-One" });
+  await harnessPage.locator("#instance-a").getByRole("tab", { name: "A-One" }).focus();
+  await harnessPage.keyboard.press("ArrowRight");
+  await harnessPage.waitForTimeout(150);
+  const aTwoSelected = await instanceATab2.getAttribute("aria-selected");
+  const bOneStillSelected = await instanceBTab1.getAttribute("aria-selected");
+  niReport(
+    "Multi-instance: keyboard navigation in one Tabs instance never moves selection into the other",
+    aTwoSelected === "true" && bOneStillSelected === "true",
+    `instance-a A-Two selected: ${aTwoSelected}, instance-b B-One still selected: ${bOneStillSelected}`
+  );
+  const focusStayedInA = await harnessPage.evaluate(() => Boolean(document.activeElement?.closest("#instance-a")));
+  niReport("Multi-instance: DOM focus itself stays confined to the instance where keyboard input occurred", focusStayedInA);
+
+  const instanceC = harnessPage.locator("#instance-c");
+  const c1Tab = instanceC.getByRole("tab", { name: "C-One" });
+  const c1Selected = await c1Tab.getAttribute("aria-selected");
+  const c1TabIndex = await c1Tab.getAttribute("tabindex");
+  const visiblePanelsInC = await instanceC
+    .locator('[role="tabpanel"]')
+    .evaluateAll((panels) => panels.filter((p) => !p.hidden).length);
+  niReport(
+    "Invalid activeTabId: falls back to selecting the first tab",
+    c1Selected === "true",
+    `aria-selected was "${c1Selected}"`
+  );
+  niReport(
+    "Invalid activeTabId: exactly one panel is visible (the first tab's)",
+    visiblePanelsInC === 1,
+    `visible panel count: ${visiblePanelsInC}`
+  );
+  niReport(
+    "Invalid activeTabId: the fallback-selected tab has tabIndex 0",
+    c1TabIndex === "0",
+    `tabindex was "${c1TabIndex}"`
+  );
+
+  await harnessPage.close();
 
   console.log(`\n${niPassed} passed, ${niFailed} failed`);
   return niFailed === 0;

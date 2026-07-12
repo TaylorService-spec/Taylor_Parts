@@ -1,0 +1,19 @@
+<!doctype html>
+<!--
+  Dev-only Tabs multi-instance test harness. Not linked from index.html,
+  not part of build.rollupOptions.input -- `vite build` (the production
+  build) never emits this file or bundles tabs-harness.jsx. Served only
+  by `vite dev`, for verify-customer-record-page's browser-driven
+  multi-instance/invalid-activeTabId assertions. See tabs-harness.jsx
+  for the full rationale.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Tabs harness (dev-only, not built for production)</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./tabs-harness.jsx"></script>
+  </body>
+</html>
