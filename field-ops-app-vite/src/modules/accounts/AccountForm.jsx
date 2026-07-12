@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { ACCOUNT_STATUS } from "../../domain/constants";
+import { ACCOUNT_STATUS, ACCOUNT_RELATIONSHIP_TYPE } from "../../domain/constants";
+import AddressFields from "../../shared/address/AddressFields";
 
 // Sprint 2.0.2 -- Customer Foundation. Shared create/edit form,
 // internal name AccountForm per the naming convention (rendered UI
@@ -8,13 +9,22 @@ import { ACCOUNT_STATUS } from "../../domain/constants";
 // treatment the multi-step Work Order creation flow (Sprint 2.0.3)
 // gets. External-identifier fields are collapsed by default since
 // they're future-integration-only and not relevant day-to-day.
+//
+// Customer/Account Business Model -- Customer PR 2. Adds
+// relationshipTypes (CUSTOMER/VENDOR/both/unset) editing, and reuses the
+// shared AddressFields component for the billing address (the same
+// component the Location add-form uses -- one address editor, not two
+// parallel implementations). relationshipTypes is informational only.
 export default function AccountForm({ initialValues, onSubmit, onCancel, submitLabel }) {
   const [name, setName] = useState(initialValues?.name ?? "");
-  const [street, setStreet] = useState(initialValues?.billingAddress?.street ?? "");
-  const [city, setCity] = useState(initialValues?.billingAddress?.city ?? "");
-  const [state, setState] = useState(initialValues?.billingAddress?.state ?? "");
-  const [zip, setZip] = useState(initialValues?.billingAddress?.zip ?? "");
+  const [address, setAddress] = useState({
+    street: initialValues?.billingAddress?.street ?? "",
+    city: initialValues?.billingAddress?.city ?? "",
+    state: initialValues?.billingAddress?.state ?? "",
+    zip: initialValues?.billingAddress?.zip ?? "",
+  });
   const [status, setStatus] = useState(initialValues?.status ?? ACCOUNT_STATUS.PROSPECT);
+  const [relationshipTypes, setRelationshipTypes] = useState(initialValues?.relationshipTypes ?? []);
   const [notes, setNotes] = useState(initialValues?.notes ?? "");
   const [tagsInput, setTagsInput] = useState((initialValues?.tags ?? []).join(", "));
   const [showExternalIds, setShowExternalIds] = useState(false);
@@ -23,15 +33,23 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
   const [accountingId, setAccountingId] = useState(initialValues?.accountingId ?? "");
   const [legacyId, setLegacyId] = useState(initialValues?.legacyId ?? "");
 
+  function handleAddressChange(field, value) {
+    setAddress((cur) => ({ ...cur, [field]: value }));
+  }
+
+  function toggleRelationshipType(type) {
+    setRelationshipTypes((cur) => (cur.includes(type) ? cur.filter((t) => t !== type) : [...cur, type]));
+  }
+
   function handleSubmit(e) {
     e.preventDefault();
     const trimmedName = name.trim();
     if (!trimmedName) return;
 
-    const trimmedStreet = street.trim();
-    const trimmedCity = city.trim();
-    const trimmedState = state.trim();
-    const trimmedZip = zip.trim();
+    const trimmedStreet = address.street.trim();
+    const trimmedCity = address.city.trim();
+    const trimmedState = address.state.trim();
+    const trimmedZip = address.zip.trim();
     const hasAddress = trimmedStreet || trimmedCity || trimmedState || trimmedZip;
 
     const tags = tagsInput
@@ -39,10 +57,17 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
       .map((t) => t.trim())
       .filter(Boolean);
 
+    // Keep a stable, de-duplicated order (CUSTOMER before VENDOR) regardless
+    // of the order the user toggled the checkboxes.
+    const orderedRelationshipTypes = Object.values(ACCOUNT_RELATIONSHIP_TYPE).filter((t) =>
+      relationshipTypes.includes(t)
+    );
+
     onSubmit({
       name: trimmedName,
       billingAddress: hasAddress ? { street: trimmedStreet, city: trimmedCity, state: trimmedState, zip: trimmedZip } : null,
       status,
+      relationshipTypes: orderedRelationshipTypes,
       notes: notes.trim() || null,
       tags,
       customerNumber: customerNumber.trim() || null,
@@ -64,10 +89,27 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
         ))}
       </select>
 
-      <input placeholder="Billing street (optional)" value={street} onChange={(e) => setStreet(e.target.value)} />
-      <input placeholder="City (optional)" value={city} onChange={(e) => setCity(e.target.value)} />
-      <input placeholder="State (optional)" value={state} onChange={(e) => setState(e.target.value)} />
-      <input placeholder="Zip (optional)" value={zip} onChange={(e) => setZip(e.target.value)} />
+      <fieldset className="fo-fieldset">
+        <legend>Relationship</legend>
+        <label className="fo-checkbox-label">
+          <input
+            type="checkbox"
+            checked={relationshipTypes.includes(ACCOUNT_RELATIONSHIP_TYPE.CUSTOMER)}
+            onChange={() => toggleRelationshipType(ACCOUNT_RELATIONSHIP_TYPE.CUSTOMER)}
+          />
+          Customer
+        </label>
+        <label className="fo-checkbox-label">
+          <input
+            type="checkbox"
+            checked={relationshipTypes.includes(ACCOUNT_RELATIONSHIP_TYPE.VENDOR)}
+            onChange={() => toggleRelationshipType(ACCOUNT_RELATIONSHIP_TYPE.VENDOR)}
+          />
+          Vendor
+        </label>
+      </fieldset>
+
+      <AddressFields value={address} onChange={handleAddressChange} idPrefix="account-billing" />
 
       <textarea
         placeholder="Notes (alarm codes, call-ahead requirements, billing reminders, preferences...)"

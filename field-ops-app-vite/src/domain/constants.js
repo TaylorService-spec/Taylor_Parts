@@ -56,6 +56,20 @@ export const ACCOUNT_STATUS = {
   ARCHIVED: "Archived",
 };
 
+// Customer/Account Business Model -- Customer PR 2 (docs/specifications/
+// customer-account-business-model.md). An Account may represent a customer,
+// a vendor, or both -- a company-identity classification only, held on the
+// Account itself (relationshipTypes: string[]), never a duplicate company
+// record. This is INFORMATIONAL only: it does not gate authorization and
+// does not show/hide any page section (per the Specification's resolved
+// decision 2). Kept deliberately separate from ACCOUNT_STATUS above and
+// from every security/operational role concept. An Account with no value
+// renders no badge (never a silent default to "Customer").
+export const ACCOUNT_RELATIONSHIP_TYPE = {
+  CUSTOMER: "CUSTOMER",
+  VENDOR: "VENDOR",
+};
+
 // Sprint 2.1.3 -- Reorder Request & Notification Foundation
 // (docs/BusinessEntityModel.md's Reorder Request entry). The platform's
 // first Operational Workflow Object / Business Object dual-classified
