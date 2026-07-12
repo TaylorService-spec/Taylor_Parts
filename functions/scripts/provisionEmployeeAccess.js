@@ -19,7 +19,39 @@
 //   A. Create Employee without access       (no --email, no --securityRole)
 //   B. Grant application access               (--email, links/creates Auth user)
 //   C. Update operationalRoles                (--operationalRoles, Employee-side only)
-//   D. Update security role                    (--securityRole, no --email, users/{uid}-side only)
+//   D. Update security role                    (--securityRole, no --email, updates
+//                                                users/{uid}.role AND the linked
+//                                                Employee's securityRole mirror
+//                                                TOGETHER -- see the securityRole
+//                                                mirror note below)
+//
+// SECURITY-ROLE MIRROR (Inventory Operational Queue A0, docs/specifications/
+// inventory-operational-queue.md; documented in docs/BusinessEntityModel.md
+// Section 8a) -- employees/{employeeId}.securityRole is a denormalized,
+// READ-ONLY mirror of users/{uid}.role. This script is the NORMAL
+// transactional writer of both sides, at the exact same point
+// users/{uid}.role itself is written (cases B and D below). The only other
+// writer is auditSecurityRoleMirror.js's --repair path -- an EXCEPTIONAL,
+// separately governed repair writer (same --projectId/--confirmProduction
+// gate) used specifically to correct drift after the two sides have already
+// diverged; it is not part of this script's own normal provisioning flow.
+// It exists so a client that can already read the full employees collection
+// (admin/dispatcher, per firestore.rules) can filter an assignment picker by
+// security role without needing a Rules exception on the otherwise hard
+// self-read-only users/{uid} collection. It is NEVER a source of
+// authorization -- firestore.rules enforces every actual permission solely
+// via users/{uid}.role and isAdminOrDispatcher(), exactly as before this
+// field existed; the mirror is a query/display convenience only, the same
+// posture operationalRoles[] already has (BusinessEntityModel.md Section 8a:
+// "Determines assignment eligibility only -- never a substitute for the
+// existing security role on users/{uid}"). If a second normal
+// security-role-changing code path is ever added, it inherits this same
+// both-sides-together transactional invariant, not a shortcut around it. A
+// client-side reader can never independently re-verify this mirror is still
+// correct (users/{uid} stays hard self-read-only for anyone but the
+// signed-in user) -- ongoing correctness depends entirely on this invariant
+// holding (by either writer), not on anything downstream being able to
+// double-check it.
 //
 // --email is an EXECUTION INPUT ONLY. It is used to call
 // getUserByEmail()/createUser() to locate or create the Firebase Auth
@@ -42,15 +74,19 @@
 //   D. Build the complete intended mutation as a plain plan object
 //      (pure, no I/O).
 //   E. Apply the plan. Firestore documents that must change together
-//      (the Employee<->User link) are written inside a single
-//      db.runTransaction() that RE-READS both documents and RE-
-//      VALIDATES the same conflict conditions against that fresh
-//      state before writing anything -- protects against a concurrent
-//      modification landing between phase B's reads and this write.
-//      Single-document operations (create/update Employee only,
-//      update security role only) are plain atomic single-doc writes
-//      -- a transaction adds no safety for a write that only ever
-//      touches one document.
+//      are written inside a single db.runTransaction() that RE-READS
+//      the affected documents and RE-VALIDATES the relevant conflict
+//      conditions against that fresh state before writing anything --
+//      protects against a concurrent modification landing between phase
+//      B's reads and this write. This applies to BOTH multi-document
+//      operations: the Employee<->User link (GRANT_ACCESS) and the
+//      security-role update (case D, which writes users/{uid}.role AND
+//      the linked Employee's securityRole mirror together and must
+//      confirm the Employee is still linked to that same user before
+//      mirroring its role). Genuinely single-document operations
+//      (create Employee only, update Employee-only fields) are plain
+//      atomic single-doc writes -- a transaction adds no safety for a
+//      write that only ever touches one document.
 //
 // Firebase Authentication account creation CANNOT participate in a
 // Firestore transaction -- Auth and Firestore are different services
@@ -347,6 +383,9 @@ function buildPlan({ employeeId, displayName, email, securityRole, operationalRo
 
   if (email) {
     // Case B: grant access -- always writes both documents together.
+    // securityRole, when supplied, is written to BOTH employeeDoc/
+    // employeeUpdates AND userUpdates.role below -- the securityRole
+    // mirror invariant documented at the top of this file.
     const employeeDoc = !employee
       ? {
           employeeId,
@@ -355,6 +394,7 @@ function buildPlan({ employeeId, displayName, email, securityRole, operationalRo
           lastName: null,
           employmentStatus: EMPLOYMENT_STATUS_ACTIVE,
           operationalRoles: operationalRoles ?? [],
+          securityRole: securityRole ?? null,
           companyId: null,
           departmentId: null,
           locationId: null,
@@ -370,6 +410,9 @@ function buildPlan({ employeeId, displayName, email, securityRole, operationalRo
           if (displayName && displayName !== employee.displayName) updates.displayName = displayName;
           if (operationalRoles && JSON.stringify(operationalRoles) !== JSON.stringify(employee.operationalRoles)) {
             updates.operationalRoles = operationalRoles;
+          }
+          if (securityRole && securityRole !== employee.securityRole) {
+            updates.securityRole = securityRole;
           }
           return updates;
         })()
@@ -392,17 +435,26 @@ function buildPlan({ employeeId, displayName, email, securityRole, operationalRo
   }
 
   if (securityRole) {
-    // Case D: security-role-only update -- users/{uid} only, no
-    // Employee-side write, per the specification.
+    // Case D: security-role update -- writes users/{uid}.role AND the
+    // linked Employee's securityRole mirror TOGETHER (see the
+    // securityRole mirror note at the top of this file). Corrected
+    // from this operation's original users-{uid}-only shape -- an
+    // Employee-side write is now required every time this branch
+    // fires, never optional and never deferred to a later call.
     return {
-      operation: "UPDATE_SECURITY_ROLE_ONLY",
+      operation: "UPDATE_SECURITY_ROLE",
       employeeId,
       userId: employee.userId,
       userUpdates: { role: securityRole },
+      employeeUpdates: { securityRole },
     };
   }
 
   // Cases A/C: Employee-only create or update, no Auth/User involvement.
+  // Phase C already guarantees securityRole is never set here without
+  // --email and an existing linked userId (see detectConflicts above)
+  // -- securityRole is always reserved null at creation on this path,
+  // matching every other not-yet-known field's convention below.
   if (!employee) {
     return {
       operation: "CREATE_EMPLOYEE_ONLY",
@@ -414,6 +466,7 @@ function buildPlan({ employeeId, displayName, email, securityRole, operationalRo
         lastName: null,
         employmentStatus: EMPLOYMENT_STATUS_ACTIVE,
         operationalRoles: operationalRoles ?? [],
+        securityRole: null,
         companyId: null,
         departmentId: null,
         locationId: null,
@@ -440,9 +493,63 @@ function buildPlan({ employeeId, displayName, email, securityRole, operationalRo
 // Phase E -- apply the plan.
 // ---------------------------------------------------------------
 async function applyPlan(db, auth, plan) {
-  if (plan.operation === "UPDATE_SECURITY_ROLE_ONLY") {
-    await db.collection(USERS_COLLECTION).doc(plan.userId).set(plan.userUpdates, { merge: true });
-    console.log(`OK: users/${plan.userId}.role = "${plan.userUpdates.role}"`);
+  if (plan.operation === "UPDATE_SECURITY_ROLE") {
+    // Both documents (users/{uid}.role and the linked Employee's
+    // securityRole mirror) must commit together -- but the mirror is only
+    // correct if the Employee and the User STILL reciprocally link to each
+    // other at write time. A plain batch commits both atomically yet cannot
+    // re-check that linkage: if a concurrent operation re-linked either side
+    // to a different document between phase B's read and now, a batch would
+    // mirror a role across a link that no longer holds in one or both
+    // directions. So, like GRANT_ACCESS below, this is a transaction that
+    // re-reads BOTH the Employee and the User, re-validates the reciprocal
+    // link (employee.userId === plan.userId AND user.employeeId ===
+    // plan.employeeId) still holds, and only then writes both documents --
+    // the same concurrent-modification guard GRANT_ACCESS already applies,
+    // now applied here too.
+    const userRef = db.collection(USERS_COLLECTION).doc(plan.userId);
+    const employeeRef = db.collection(EMPLOYEES_COLLECTION).doc(plan.employeeId);
+
+    await db.runTransaction(async (tx) => {
+      const [employeeSnap, userSnap] = await Promise.all([tx.get(employeeRef), tx.get(userRef)]);
+      const freshEmployee = employeeSnap.exists ? employeeSnap.data() : null;
+      const freshUser = userSnap.exists ? userSnap.data() : null;
+
+      if (!freshEmployee) {
+        throw new Error(
+          `Concurrent modification detected: employees/${plan.employeeId} no longer exists. ` +
+            `Aborting with no writes -- re-run to re-evaluate.`
+        );
+      }
+      if (freshEmployee.userId !== plan.userId) {
+        throw new Error(
+          `Concurrent modification detected: employees/${plan.employeeId} is no longer linked to ` +
+            `userId "${plan.userId}" (now ${JSON.stringify(freshEmployee.userId ?? null)}). ` +
+            `Aborting with no writes -- re-run to re-evaluate.`
+        );
+      }
+      if (!freshUser) {
+        throw new Error(
+          `Concurrent modification detected: users/${plan.userId} no longer exists. ` +
+            `Aborting with no writes -- re-run to re-evaluate.`
+        );
+      }
+      if (freshUser.employeeId !== plan.employeeId) {
+        throw new Error(
+          `Concurrent modification detected: users/${plan.userId} is no longer linked to ` +
+            `employeeId "${plan.employeeId}" (now ${JSON.stringify(freshUser.employeeId ?? null)}). ` +
+            `Aborting with no writes -- re-run to re-evaluate.`
+        );
+      }
+
+      tx.set(userRef, plan.userUpdates, { merge: true });
+      tx.set(employeeRef, plan.employeeUpdates, { merge: true });
+    });
+
+    console.log(
+      `OK: users/${plan.userId}.role = "${plan.userUpdates.role}", ` +
+        `employees/${plan.employeeId}.securityRole = "${plan.employeeUpdates.securityRole}"`
+    );
     return { created: false };
   }
 
@@ -644,9 +751,12 @@ module.exports = {
   validateInput,
   detectConflicts,
   buildPlan,
+  applyPlan,
   normalizeOperationalRoles,
   assertProjectTarget,
   VALID_SECURITY_ROLES,
   VALID_OPERATIONAL_ROLES,
   PRODUCTION_PROJECT_ID,
+  EMPLOYEES_COLLECTION,
+  USERS_COLLECTION,
 };
