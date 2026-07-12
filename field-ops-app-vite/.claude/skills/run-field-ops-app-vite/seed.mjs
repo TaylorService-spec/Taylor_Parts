@@ -265,6 +265,108 @@ async function seedCancelVoidFixture() {
   });
 }
 
+// Customer Record Page sprint, PR 1 (docs/specifications/customer-record-page-structured-address.md).
+// Three Accounts, each exercising a distinct combination the
+// Specification's Testing strategy requires: complete address + one
+// primary Contact + one Location (the "everything present" case),
+// partial address + zero primary Contacts (the NONE state + missing-
+// field omission case), and no address at all + two primary Contacts
+// (the MULTIPLE-primary data-quality warning + "no billing address on
+// file" empty state, together). Fixed document ids so driver.mjs can
+// navigate straight to /customers/{id} without a lookup query.
+export const CUSTOMER_FIXTURE = {
+  complete: { accountId: "driver-seed-account-complete", locationId: "driver-seed-location-complete", contactId: "driver-seed-contact-one" },
+  partial: { accountId: "driver-seed-account-partial" },
+  multiplePrimary: { accountId: "driver-seed-account-multi", contactAId: "driver-seed-contact-multi-a", contactBId: "driver-seed-contact-multi-b" },
+};
+
+async function seedCustomerFixture() {
+  const now = Date.now();
+
+  await db.doc(`accounts/${CUSTOMER_FIXTURE.complete.accountId}`).set({
+    name: "Driver Fixture Complete Co.",
+    billingAddress: { street: "100 Main St", city: "Springfield", state: "IL", zip: "62701" },
+    status: "Active",
+    notes: "Seeded by seed.mjs for Customer Record Page verification.",
+    tags: ["VIP", "Restaurant"],
+    customerNumber: "CUST-1001",
+    erpId: null,
+    accountingId: null,
+    legacyId: null,
+    createdAt: now,
+    updatedAt: now,
+  });
+  await db.doc(`locations/${CUSTOMER_FIXTURE.complete.locationId}`).set({
+    accountId: CUSTOMER_FIXTURE.complete.accountId,
+    name: "Main Office",
+    address: { street: "100 Main St", city: "Springfield", state: "IL", zip: "62701" },
+    accessNotes: "Gate code 4321",
+    createdAt: now,
+    updatedAt: now,
+  });
+  await db.doc(`contacts/${CUSTOMER_FIXTURE.complete.contactId}`).set({
+    accountId: CUSTOMER_FIXTURE.complete.accountId,
+    name: "Pat Owner",
+    phone: "555-100-2000",
+    email: "pat@example.test",
+    isPrimary: true,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  // Partial address (only city/state) -- addressRows()/formatAddress()
+  // must both omit street/zip cleanly. Zero Contacts -- NONE state.
+  await db.doc(`accounts/${CUSTOMER_FIXTURE.partial.accountId}`).set({
+    name: "Driver Fixture Partial Co.",
+    billingAddress: { street: "", city: "Chicago", state: "IL", zip: "" },
+    status: "Prospect",
+    notes: null,
+    tags: [],
+    customerNumber: null,
+    erpId: null,
+    accountingId: null,
+    legacyId: null,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  // No address at all -- header must omit the "Billing address" line
+  // entirely; Details tab shows the explicit empty state. Two Contacts
+  // both marked isPrimary -- MULTIPLE state, nothing enforces
+  // uniqueness today.
+  await db.doc(`accounts/${CUSTOMER_FIXTURE.multiplePrimary.accountId}`).set({
+    name: "Driver Fixture Multi-Primary Co.",
+    billingAddress: null,
+    status: "Active",
+    notes: null,
+    tags: [],
+    customerNumber: null,
+    erpId: null,
+    accountingId: null,
+    legacyId: null,
+    createdAt: now,
+    updatedAt: now,
+  });
+  await db.doc(`contacts/${CUSTOMER_FIXTURE.multiplePrimary.contactAId}`).set({
+    accountId: CUSTOMER_FIXTURE.multiplePrimary.accountId,
+    name: "Alex Primary",
+    phone: null,
+    email: null,
+    isPrimary: true,
+    createdAt: now,
+    updatedAt: now,
+  });
+  await db.doc(`contacts/${CUSTOMER_FIXTURE.multiplePrimary.contactBId}`).set({
+    accountId: CUSTOMER_FIXTURE.multiplePrimary.accountId,
+    name: "Sam Primary",
+    phone: null,
+    email: null,
+    isPrimary: true,
+    createdAt: now,
+    updatedAt: now,
+  });
+}
+
 async function seed() {
   for (const acct of Object.values(DRIVER_ACCOUNTS)) {
     await ensureAuthUser(acct);
@@ -361,6 +463,7 @@ async function seed() {
 
   await seedNotificationIdentityFixture();
   await seedCancelVoidFixture();
+  await seedCustomerFixture();
 
   console.log("Seeded driver accounts:");
   for (const [key, acct] of Object.entries(DRIVER_ACCOUNTS)) {

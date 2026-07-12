@@ -78,13 +78,39 @@
 //                                 linked void record). Prints a
 //                                 PASS/FAIL report per assertion and
 //                                 exits non-zero on any failure.
+//   verify-customer-record-page <accountKey>
+//                                 Customer Record Page redesign
+//                                 (docs/specifications/
+//                                 customer-record-page-structured-address.md,
+//                                 PR 1 of 2) -- the PRIMARY
+//                                 implementation test for that PR.
+//                                 Requires seed.mjs's CUSTOMER_FIXTURE
+//                                 (three Accounts: complete address +
+//                                 one primary Contact + one Location,
+//                                 partial address + zero primary
+//                                 Contacts, no address + two primary
+//                                 Contacts) to already be seeded. Walks
+//                                 header content, the Tabs ARIA
+//                                 contract (aria-controls/aria-
+//                                 labelledby resolution, exactly one
+//                                 visible panel), ArrowRight/Home/End
+//                                 keyboard navigation, panel-local form
+//                                 state surviving a tab switch, the
+//                                 existing "+ Add Location"/"+ Add
+//                                 Contact" flows (regression), all
+//                                 three primary-Contact states, the
+//                                 explicit "no billing address" empty
+//                                 state, and the Details tab's
+//                                 responsive column collapse. Prints a
+//                                 PASS/FAIL report per assertion and
+//                                 exits non-zero on any failure.
 //
 // All screenshots are written under .claude/skills/run-field-ops-app-vite/screenshots/.
 import { chromium } from "@playwright/test";
 import { mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { DRIVER_ACCOUNTS, NOTIFICATION_IDENTITY_FIXTURE, CANCEL_VOID_FIXTURE } from "./seed.mjs";
+import { DRIVER_ACCOUNTS, NOTIFICATION_IDENTITY_FIXTURE, CANCEL_VOID_FIXTURE, CUSTOMER_FIXTURE } from "./seed.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SCREENSHOT_DIR = join(__dirname, "screenshots");
@@ -529,6 +555,168 @@ async function verifyCancelVoid(browser, page, accountKey) {
   return niFailed === 0;
 }
 
+// Customer Record Page sprint, PR 1 (docs/specifications/
+// customer-record-page-structured-address.md). Owns full verification
+// of everything PR 1 introduces before merge -- see the Implementation
+// Plan's "PR 1 verification obligations". Mirrors verifyCancelVoid()'s
+// niReport()-based PASS/FAIL style.
+function customerUrl(accountId) {
+  const url = new URL(`customers/${accountId}`, APP_ROOT);
+  url.searchParams.set("emulator", "1");
+  return url.toString();
+}
+
+async function verifyCustomerRecordPage(browser, page, accountKey) {
+  await login(page, accountKey);
+
+  // --- Navigate to the "complete" fixture: full address, one primary
+  // Contact, one Location. ---
+  await page.goto(customerUrl(CUSTOMER_FIXTURE.complete.accountId), { waitUntil: "domcontentloaded" });
+  await page.getByRole("heading", { name: "Driver Fixture Complete Co." }).waitFor({ timeout: 10000 });
+
+  // --- Header content ---
+  const headerCustomerNumber = await page.getByText("Customer #CUST-1001").isVisible().catch(() => false);
+  niReport("Header: customer number renders when present", headerCustomerNumber);
+  const headerBilling = await page.getByText("Billing address: 100 Main St, Springfield, IL, 62701").isVisible().catch(() => false);
+  niReport("Header: billing address renders as one joined line", headerBilling);
+  const headerPrimaryOne = await page.getByText("Primary contact: Pat Owner").isVisible().catch(() => false);
+  niReport("Header: ONE primary-contact state renders the contact's name", headerPrimaryOne);
+  const headerPhone = await page.getByText("555-100-2000", { exact: false }).first().isVisible().catch(() => false);
+  niReport("Header: primary contact's phone renders", headerPhone);
+  const headerTags = await page.getByText("Tags: VIP, Restaurant").first().isVisible().catch(() => false);
+  niReport("Header: tags render when present", headerTags);
+
+  // --- Tabs: rendered-DOM ARIA contract ---
+  const tablist = page.locator('[role="tablist"]').first();
+  await tablist.waitFor({ timeout: 10000 });
+  const tabs = page.locator('[role="tab"]');
+  const tabCount = await tabs.count();
+  niReport("Tabs: exactly three tabs render (Details/Locations/Contacts)", tabCount === 3, `found ${tabCount}`);
+
+  const ariaContractOk = await page.evaluate(() => {
+    const tabEls = Array.from(document.querySelectorAll('[role="tab"]'));
+    const panelEls = Array.from(document.querySelectorAll('[role="tabpanel"]'));
+    if (tabEls.length === 0 || panelEls.length === 0) return { ok: false, reason: "no tabs/panels found" };
+    for (const tab of tabEls) {
+      const controls = tab.getAttribute("aria-controls");
+      const panel = document.getElementById(controls);
+      if (!panel) return { ok: false, reason: `tab #${tab.id} aria-controls="${controls}" does not resolve` };
+    }
+    for (const panel of panelEls) {
+      const labelledby = panel.getAttribute("aria-labelledby");
+      const tab = document.getElementById(labelledby);
+      if (!tab) return { ok: false, reason: `panel #${panel.id} aria-labelledby="${labelledby}" does not resolve` };
+    }
+    const visiblePanels = panelEls.filter((p) => !p.hidden);
+    if (visiblePanels.length !== 1) return { ok: false, reason: `expected exactly 1 visible panel, found ${visiblePanels.length}` };
+    return { ok: true };
+  });
+  niReport("Tabs: every aria-controls/aria-labelledby pairing resolves to a mounted node", ariaContractOk.ok, ariaContractOk.reason);
+  niReport("Tabs: exactly one panel is visible at a time (rest hidden)", ariaContractOk.ok, ariaContractOk.reason);
+
+  // --- Details tab (default active): structured address rows ---
+  const streetRow = await page.getByText("Street address: 100 Main St").first().isVisible().catch(() => false);
+  niReport("Details tab: billing address renders as distinct labeled rows (not one joined line)", streetRow);
+
+  // --- Keyboard navigation: ArrowRight moves focus+selection ---
+  const detailsTabBtn = page.getByRole("tab", { name: "Details" });
+  const locationsTabBtn = page.getByRole("tab", { name: "Locations" });
+  await detailsTabBtn.focus();
+  await page.keyboard.press("ArrowRight");
+  await page.waitForTimeout(150);
+  const locationsSelectedAfterArrow = await locationsTabBtn.getAttribute("aria-selected");
+  niReport("Keyboard: ArrowRight moves selection to the next tab", locationsSelectedAfterArrow === "true");
+  const focusedIsLocations = await page.evaluate(() => document.activeElement?.getAttribute("aria-selected") === "true");
+  niReport("Keyboard: ArrowRight also moves DOM focus to the newly-selected tab", focusedIsLocations);
+
+  // --- Panel-local form state survives switching tabs away and back ---
+  // Locations tab is now active (via the ArrowRight above).
+  await page.getByRole("button", { name: "+ Add Location" }).click();
+  const draftInput = page.locator('input[placeholder="Site name (e.g. Main Office)"]');
+  await draftInput.fill("Draft Location Name -- should survive tab switch");
+  const contactsTabBtn = page.getByRole("tab", { name: "Contacts" });
+  await contactsTabBtn.click();
+  await page.waitForTimeout(150);
+  await locationsTabBtn.click();
+  await page.waitForTimeout(150);
+  const draftSurvived = await draftInput.inputValue().catch(() => "");
+  niReport(
+    "Tabs: panel-local form state (in-progress '+ Add Location' draft) survives switching tabs away and back",
+    draftSurvived === "Draft Location Name -- should survive tab switch",
+    `value was "${draftSurvived}"`
+  );
+  await page.getByRole("button", { name: "Cancel" }).first().click();
+
+  // --- Home/End keyboard nav ---
+  await locationsTabBtn.focus();
+  await page.keyboard.press("End");
+  await page.waitForTimeout(150);
+  const contactsSelectedAfterEnd = await contactsTabBtn.getAttribute("aria-selected");
+  niReport("Keyboard: End jumps selection to the last tab", contactsSelectedAfterEnd === "true");
+  await page.keyboard.press("Home");
+  await page.waitForTimeout(150);
+  const detailsSelectedAfterHome = await detailsTabBtn.getAttribute("aria-selected");
+  niReport("Keyboard: Home jumps selection to the first tab", detailsSelectedAfterHome === "true");
+
+  // --- Existing "+ Add Location" flow still functions (regression) ---
+  await locationsTabBtn.click();
+  await page.waitForTimeout(150);
+  await page.getByRole("button", { name: "+ Add Location" }).click();
+  await page.locator('input[placeholder="Site name (e.g. Main Office)"]').fill("Driver Verification Site");
+  await page.locator('#location-add-city').fill("Peoria");
+  await page.getByRole("button", { name: "Add Location", exact: true }).click();
+  const newLocationVisible = await page.getByRole("heading", { name: "Driver Verification Site" }).first().waitFor({ timeout: 10000 }).then(() => true).catch(() => false);
+  niReport("Locations tab: '+ Add Location' flow still creates a new Location (regression)", newLocationVisible);
+
+  // --- Existing "+ Add Contact" flow still functions (regression) ---
+  await contactsTabBtn.click();
+  await page.waitForTimeout(150);
+  await page.getByRole("button", { name: "+ Add Contact" }).click();
+  await page.locator('input[placeholder="Name"]').fill("Driver Verification Contact");
+  await page.getByRole("button", { name: "Add Contact", exact: true }).click();
+  const newContactVisible = await page.getByRole("heading", { name: "Driver Verification Contact" }).first().waitFor({ timeout: 10000 }).then(() => true).catch(() => false);
+  niReport("Contacts tab: '+ Add Contact' flow still creates a new Contact (regression)", newContactVisible);
+
+  // --- Partial-address fixture: NONE primary-contact state, omitted fields ---
+  await page.goto(customerUrl(CUSTOMER_FIXTURE.partial.accountId), { waitUntil: "domcontentloaded" });
+  await page.getByRole("heading", { name: "Driver Fixture Partial Co." }).waitFor({ timeout: 10000 });
+  const noPrimaryContact = await page.getByText("No primary contact.").isVisible().catch(() => false);
+  niReport("Header: NONE primary-contact state renders 'No primary contact.'", noPrimaryContact);
+  const partialBilling = await page.getByText("Billing address: Chicago, IL").isVisible().catch(() => false);
+  niReport("Header: partial address omits missing fields cleanly (no stray commas)", partialBilling);
+
+  // --- No-address, multiple-primary fixture ---
+  await page.goto(customerUrl(CUSTOMER_FIXTURE.multiplePrimary.accountId), { waitUntil: "domcontentloaded" });
+  await page.getByRole("heading", { name: "Driver Fixture Multi-Primary Co." }).waitFor({ timeout: 10000 });
+  const noBillingLineInHeader = await page.getByText("Billing address:", { exact: false }).isVisible().catch(() => false);
+  niReport("Header: no billing address on file -- header omits the line entirely", !noBillingLineInHeader);
+  const multiplePrimaryHeaderBadge = await page.getByText("Multiple primary contacts").first().isVisible().catch(() => false);
+  niReport("Header: MULTIPLE primary-contact state renders the warning badge", multiplePrimaryHeaderBadge);
+  const noBillingAddressDetailsState = await page.getByText("No billing address on file.").isVisible().catch(() => false);
+  niReport("Details tab: explicit 'No billing address on file' empty state (not a blank section)", noBillingAddressDetailsState);
+  await page.getByRole("tab", { name: "Contacts" }).click();
+  await page.waitForTimeout(150);
+  const multiplePrimaryContactsTabBadge = await page.getByText("Multiple primary contacts").first().isVisible().catch(() => false);
+  niReport("Contacts tab: MULTIPLE primary-contact warning also renders here (once, not per-card)", multiplePrimaryContactsTabBadge);
+
+  // --- Responsive: narrow viewport collapses the Details grid to one column ---
+  await page.getByRole("tab", { name: "Details" }).click();
+  await page.waitForTimeout(150);
+  const desktopColumns = await page.locator(".acct-detail-grid").evaluate((el) => getComputedStyle(el).gridTemplateColumns);
+  await page.setViewportSize({ width: 700, height: 900 });
+  await page.waitForTimeout(150);
+  const narrowColumns = await page.locator(".acct-detail-grid").evaluate((el) => getComputedStyle(el).gridTemplateColumns);
+  niReport(
+    "Responsive: .acct-detail-grid collapses to one column below the 900px breakpoint",
+    desktopColumns.trim().split(" ").length >= 2 && narrowColumns.trim().split(" ").length === 1,
+    `desktop: "${desktopColumns}", narrow: "${narrowColumns}"`
+  );
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  console.log(`\n${niPassed} passed, ${niFailed} failed`);
+  return niFailed === 0;
+}
+
 async function main() {
   const [, , command, ...args] = process.argv;
   const browser = await chromium.launch();
@@ -591,6 +779,10 @@ async function main() {
     } else if (command === "verify-cancel-void") {
       const [accountKey = "admin"] = args;
       const ok = await verifyCancelVoid(browser, page, accountKey);
+      if (!ok) process.exitCode = 1;
+    } else if (command === "verify-customer-record-page") {
+      const [accountKey = "admin"] = args;
+      const ok = await verifyCustomerRecordPage(browser, page, accountKey);
       if (!ok) process.exitCode = 1;
     } else {
       console.error(`Unknown command "${command}". See the header comment in this file for usage.`);

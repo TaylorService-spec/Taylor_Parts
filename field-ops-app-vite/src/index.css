@@ -119,6 +119,14 @@ body { -webkit-font-smoothing: antialiased; font-family: -apple-system, BlinkMac
 .fo-form label { flex-basis: 100%; font-size: 14px; color: #445559; }
 .fo-form textarea { flex-basis: 100%; min-height: 72px; padding: 8px 10px; border: 1px solid #D8DEDD; border-radius: 6px; font-size: 14px; font-family: inherit; }
 
+/* Customer Record Page sprint, PR 1 -- shared/address/AddressFields.jsx's
+   labeled field groups. `.fo-form label`/`.fo-form input` above still
+   apply via descendant selector; this wrapper only stacks each
+   field's label above its input instead of the default inline flow. */
+.fo-form-field { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 160px; }
+.fo-form-field label { flex-basis: auto; font-size: 13px; color: #445559; }
+.fo-form-field input { width: 100%; box-sizing: border-box; }
+
 /* Zero-history reorder behavior sprint, PR 3 --
    shared/inventory/RequestReorderControl.jsx's manual-quantity entry,
    compact enough to sit inline in a table action cell -- fo-form is
@@ -659,4 +667,43 @@ button:hover {
 .wo-history-row {
   font-size: 13px;
   padding: 2px 0;
+}
+
+/* Customer Record Page sprint, PR 1 -- shared/tabs/Tabs.jsx. First
+   tabs implementation in this codebase, no prior CSS precedent. */
+.fo-tablist {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid #D8DEDD;
+  margin-bottom: 16px;
+}
+.fo-tab {
+  padding: 10px 16px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 14px;
+  color: #667;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+.fo-tab:hover { color: #2E4A50; }
+.fo-tab-active {
+  color: #2E4A50;
+  font-weight: 600;
+  border-bottom-color: #2E4A50;
+}
+
+/* AccountDetail.jsx's Details tab -- two-column desktop layout,
+   collapsing to one column at the same 900px breakpoint
+   .disp-board-layout already establishes. A new class rather than
+   reusing .disp-board-layout directly since that one is a 3-column
+   (1.2fr 1fr 1fr) grid and this sprint needs 2 columns. */
+.acct-detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+@media (max-width: 900px) {
+  .acct-detail-grid { grid-template-columns: 1fr; }
 }
