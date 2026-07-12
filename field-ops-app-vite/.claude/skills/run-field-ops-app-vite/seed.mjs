@@ -265,6 +265,74 @@ async function seedCancelVoidFixture() {
   });
 }
 
+// Inventory Health / Parts Catalog separation (PR B, docs/specifications/
+// inventory-operational-queue.md). Extracted from seed()'s body so
+// driver.mjs's verify-inventory-health-catalog command can delete these
+// two parts' inventory_transactions (emulator-only, via the exported
+// `db` below) to deterministically render both Inventory Health tabs
+// empty for the exact-empty-state-message assertions, then call this
+// again to restore them before continuing -- rather than adding any
+// production-visible test-only UI behavior to the app itself.
+export async function seedLedgerTransactions() {
+  // One RESERVED ledger transaction against a real catalog SKU
+  // (TST-1001, data/partsCatalog.ts) -- no CONSUMED transaction at
+  // all, so this part has ledger activity (shows up in the "Needs
+  // Reorder" queue) but zero usage history, i.e. exactly the
+  // NEEDS_PLANNING state this whole sprint exists to handle. Matches
+  // this repo's own root-cause finding: this is real production
+  // state, not a contrived edge case (docs/assessments/inventory-
+  // zero-history-reorder-behavior.md).
+  await db.doc("inventory_transactions/driver-seed-tx-1").set({
+    workOrderId: "driver-seed-wo-1",
+    partId: "TST-1001",
+    type: "RESERVED",
+    quantity: 2,
+    timestamp: Date.now(),
+  });
+
+  // A second part (TST-1002) WITH real CONSUMED history -- exercises
+  // the READY path (recommendationStatus: READY, urgency computed,
+  // one-click submit), the contrasting case to TST-1001 above.
+  //
+  // Inventory Health / Parts Catalog separation (PR B) -- the "Show
+  // All" tab this driver's submit-ready command used to fall back to
+  // (per the run-field-ops-app-vite skill's own now-stale Gotcha:
+  // "TST-1002's seeded usage came out LOW urgency in practice") is
+  // REMOVED. Inventory Health now shows only Critical & High and
+  // Needs Planning -- a LOW/MEDIUM-urgency READY part is no longer
+  // reachable from either tab. Bumped total 30-day CONSUMED quantity
+  // from 10 to 30 (avgDailyUsage 1.0/day, reorderPoint 8.5,
+  // availableStock 6 <= reorderPoint) to deterministically land
+  // TST-1002 in HIGH, with comfortable margin above the ~21.2-unit
+  // HIGH threshold -- resolves the old gotcha instead of working
+  // around it. This value is never asserted directly by any test --
+  // every assertion checks the analytics engine's own computed output
+  // (the rendered urgency badge/tab count), never this input.
+  const now = Date.now();
+  await db.doc("inventory_transactions/driver-seed-tx-2").set({
+    workOrderId: "driver-seed-wo-2",
+    partId: "TST-1002",
+    type: "CONSUMED",
+    quantity: 15,
+    timestamp: now - 24 * 60 * 60 * 1000,
+  });
+  await db.doc("inventory_transactions/driver-seed-tx-3").set({
+    workOrderId: "driver-seed-wo-3",
+    partId: "TST-1002",
+    type: "CONSUMED",
+    quantity: 15,
+    timestamp: now - 2 * 24 * 60 * 60 * 1000,
+  });
+}
+
+// Inventory Health / Parts Catalog separation (PR B) -- exported so
+// driver.mjs can delete/restore inventory_transactions documents
+// directly (Admin SDK, emulator-only) for the empty-state assertions
+// above. Not used for any other purpose -- every other driver.mjs
+// interaction with the app goes through the real signed-in browser
+// session, never this direct Admin SDK handle.
+export { db };
+
 async function seed() {
   for (const acct of Object.values(DRIVER_ACCOUNTS)) {
     await ensureAuthUser(acct);
@@ -299,53 +367,7 @@ async function seed() {
 
   await db.doc(`users/${DRIVER_ACCOUNTS.ineligibleDispatcher.uid}`).set({ role: "dispatcher" });
 
-  // One RESERVED ledger transaction against a real catalog SKU
-  // (TST-1001, data/partsCatalog.ts) -- no CONSUMED transaction at
-  // all, so this part has ledger activity (shows up in the "Needs
-  // Reorder" queue) but zero usage history, i.e. exactly the
-  // NEEDS_PLANNING state this whole sprint exists to handle. Matches
-  // this repo's own root-cause finding: this is real production
-  // state, not a contrived edge case (docs/assessments/inventory-
-  // zero-history-reorder-behavior.md).
-  await db.doc("inventory_transactions/driver-seed-tx-1").set({
-    workOrderId: "driver-seed-wo-1",
-    partId: "TST-1001",
-    type: "RESERVED",
-    quantity: 2,
-    timestamp: Date.now(),
-  });
-
-  // A second part (TST-1002) WITH real CONSUMED history -- exercises
-  // the READY path (recommendationStatus: READY, urgency computed,
-  // one-click submit), the contrasting case to TST-1001 above.
-  //
-  // Inventory Health / Parts Catalog separation (PR B, docs/specifications/
-  // inventory-operational-queue.md) -- the "Show All" tab this driver's
-  // submit-ready command used to fall back to (per the
-  // run-field-ops-app-vite skill's own now-stale Gotcha: "TST-1002's
-  // seeded usage came out LOW urgency in practice") is REMOVED.
-  // Inventory Health now shows only Critical & High and Needs Planning
-  // -- a LOW/MEDIUM-urgency READY part is no longer reachable from
-  // either tab. Bumped total 30-day CONSUMED quantity from 10 to 30
-  // (avgDailyUsage 1.0/day, reorderPoint 8.5, availableStock 6 <=
-  // reorderPoint) to deterministically land TST-1002 in HIGH, with
-  // comfortable margin above the ~21.2-unit HIGH threshold -- resolves
-  // the old gotcha instead of working around it.
-  const now = Date.now();
-  await db.doc("inventory_transactions/driver-seed-tx-2").set({
-    workOrderId: "driver-seed-wo-2",
-    partId: "TST-1002",
-    type: "CONSUMED",
-    quantity: 15,
-    timestamp: now - 24 * 60 * 60 * 1000,
-  });
-  await db.doc("inventory_transactions/driver-seed-tx-3").set({
-    workOrderId: "driver-seed-wo-3",
-    partId: "TST-1002",
-    type: "CONSUMED",
-    quantity: 15,
-    timestamp: now - 2 * 24 * 60 * 60 * 1000,
-  });
+  await seedLedgerTransactions();
 
   // A legacy-shape Reorder Request -- no requestedQty/recommendationStatus/
   // quantitySource key at all (the exact shape createReorderRequest()

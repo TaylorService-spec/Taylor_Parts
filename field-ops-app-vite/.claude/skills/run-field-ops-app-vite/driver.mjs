@@ -104,7 +104,8 @@ import { chromium } from "@playwright/test";
 import { mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { DRIVER_ACCOUNTS, NOTIFICATION_IDENTITY_FIXTURE, CANCEL_VOID_FIXTURE } from "./seed.mjs";
+import { DRIVER_ACCOUNTS, NOTIFICATION_IDENTITY_FIXTURE, CANCEL_VOID_FIXTURE, seedLedgerTransactions, db } from "./seed.mjs";
+import { readFileSync } from "node:fs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SCREENSHOT_DIR = join(__dirname, "screenshots");
@@ -112,6 +113,28 @@ mkdirSync(SCREENSHOT_DIR, { recursive: true });
 
 const BASE_URL = "http://localhost:5173/Taylor_Parts/field-ops/?emulator=1";
 const APP_ROOT = "http://localhost:5173/Taylor_Parts/field-ops/";
+
+// Inventory Health / Parts Catalog separation, PR B (docs/specifications/
+// inventory-operational-queue.md). Reads src/data/partsCatalog.ts as
+// plain text and regex-extracts each catalog row's sku/category --
+// deliberately NOT a hardcoded expected count or a TS import (this is a
+// plain .mjs file with no TS loader configured), so the "exact complete
+// catalog size" and "exact per-category count" assertions below stay
+// correct even if the catalog's underlying synthetic dataset changes,
+// rather than silently drifting from a magic number written once and
+// never revisited. Every catalog row is one line, matching the file's
+// own established formatting (confirmed via direct inspection).
+function readPartsCatalogFromSource() {
+  const filePath = join(__dirname, "..", "..", "..", "src", "data", "partsCatalog.ts");
+  const text = readFileSync(filePath, "utf-8");
+  const rows = [];
+  const rowPattern = /sku:\s*"([^"]+)".*?category:\s*"([^"]+)"/g;
+  let match;
+  while ((match = rowPattern.exec(text)) !== null) {
+    rows.push({ sku: match[1], category: match[2] });
+  }
+  return rows;
+}
 
 // Notification identity fix -- builds a direct /inventory/:partId URL
 // (optionally with ?requestId=), always carrying ?emulator=1. Used by
@@ -560,7 +583,24 @@ async function verifyCancelVoid(browser, page, accountKey) {
 // inventory-operational-queue.md). Reuses the same niReport()-based
 // PASS/FAIL style and counters as the two verify-* commands above (each
 // verify-* command is its own process invocation, never combined).
+//
+// Fixture ground truth this command's exact-count assertions are
+// checked against (not asserted blindly -- derived from what seed.mjs
+// actually seeds): exactly two inventory_transactions-bearing parts
+// exist in the whole fixture, TST-1001 (RESERVED-only -> NEEDS_PLANNING)
+// and TST-1002 (CONSUMED -> the real inventoryAnalyticsEngine.ts
+// computation, expected HIGH per seedLedgerTransactions()'s own
+// documented math, never asserted here as a hardcoded UI value -- this
+// command reads the RENDERED tab/count and checks it against the known
+// fixture size, it never substitutes for or bypasses the app's own
+// calculation). No other seed.mjs fixture (NOTIFICATION_IDENTITY_FIXTURE,
+// CANCEL_VOID_FIXTURE) writes any inventory_transactions document, so
+// healthEntries.length is exactly 2, split 1 NEEDS_PLANNING / 1 actionable.
 async function verifyInventoryHealthCatalog(browser, page, accountKey) {
+  const catalogRows = readPartsCatalogFromSource();
+  const expectedTotalCatalogSize = catalogRows.length;
+  const expectedMixSystemCount = catalogRows.filter((r) => r.category === "Mix System").length;
+
   await login(page, accountKey);
   await goToInventory(page);
 
@@ -572,17 +612,19 @@ async function verifyInventoryHealthCatalog(browser, page, accountKey) {
   const showAllGone = await page.getByRole("button", { name: "Show All", exact: true }).isVisible().catch(() => false);
   niReport("Inventory Health: ledger-scoped Show All tab no longer exists", !showAllGone);
 
-  // --- Inventory Health tabs show accurate, non-blank counts ---
+  // --- Inventory Health tabs show the EXACT expected count, not just a
+  // digit -- 1 actionable (TST-1002, HIGH) and 1 Needs Planning
+  // (TST-1001), per the fixture ground truth documented above. ---
   const criticalHighLabel = await page.getByRole("button", { name: /^Critical & High/ }).innerText().catch(() => "");
   niReport(
-    "Inventory Health: Critical & High tab shows a count",
-    /Critical & High \(\d+\)/.test(criticalHighLabel),
+    "Inventory Health: Critical & High tab shows the exact expected count (1)",
+    criticalHighLabel === "Critical & High (1)",
     `label was "${criticalHighLabel}"`
   );
   const needsPlanningLabel = await page.getByRole("button", { name: /^Needs Planning/ }).innerText().catch(() => "");
   niReport(
-    "Inventory Health: Needs Planning tab shows a count",
-    /Needs Planning \(\d+\)/.test(needsPlanningLabel),
+    "Inventory Health: Needs Planning tab shows the exact expected count (1)",
+    needsPlanningLabel === "Needs Planning (1)",
     `label was "${needsPlanningLabel}"`
   );
 
@@ -596,15 +638,22 @@ async function verifyInventoryHealthCatalog(browser, page, accountKey) {
   // --- Parts Catalog: the one true complete-catalog view -- shows a
   // part with real ledger activity (TST-1001/TST-1002) and a part with
   // none at all (e.g. TST-1004, only ever touched by the notification-
-  // identity/Cancel-Void fixtures' reorder_requests, never inventory_transactions) ---
-  const catalogPartWithActivity = await page
+  // identity/Cancel-Void fixtures' reorder_requests, never
+  // inventory_transactions). Scoped specifically to the "Parts Catalog"
+  // table, same established pattern as the catalog-row-link check
+  // above -- an unscoped `tr` locator can also match a row in
+  // Inventory Health's own tables higher on the same page (confirmed
+  // live: the Needs Planning tab, still showing its own "Hex Coupler"
+  // row from the assertion above, made an unscoped locator ambiguous).
+  const catalogTable = page.locator('xpath=//h3[text()="Parts Catalog"]/following::table[1]');
+  const catalogPartWithActivity = await catalogTable
     .locator("tr", { hasText: "Hex Coupler" })
     .getByText(/CRITICAL|HIGH|MEDIUM|LOW|Needs planning/)
     .first()
     .isVisible()
     .catch(() => false);
   niReport("Parts Catalog: a part with real ledger activity shows a risk badge, not a blank cell", catalogPartWithActivity);
-  const catalogPartNoActivity = await page
+  const catalogPartNoActivity = await catalogTable
     .locator("tr", { hasText: "Hopper Agitator" })
     .getByText("No ledger activity")
     .first()
@@ -612,14 +661,107 @@ async function verifyInventoryHealthCatalog(browser, page, accountKey) {
     .catch(() => false);
   niReport("Parts Catalog: a part with zero ledger activity shows the explicit 'No ledger activity' state", catalogPartNoActivity);
 
-  // --- Parts Catalog's own filter bar shows counts, "All Categories"
-  // count equals the complete catalog size ---
+  // --- Parts Catalog's own filter bar: exact counts, not just digits.
+  // "All Categories" must equal the EXACT complete catalog size, read
+  // from the actual source file above, not a hardcoded number. ---
   const allCategoriesLabel = await page.getByRole("button", { name: /^All Categories/ }).innerText().catch(() => "");
   niReport(
-    "Parts Catalog: 'All Categories' shows a count",
-    /All Categories \(\d+\)/.test(allCategoriesLabel),
-    `label was "${allCategoriesLabel}"`
+    "Parts Catalog: 'All Categories' shows the exact complete catalog size",
+    allCategoriesLabel === `All Categories (${expectedTotalCatalogSize})`,
+    `label was "${allCategoriesLabel}", expected "All Categories (${expectedTotalCatalogSize})"`
   );
+  const mixSystemLabel = await page.getByRole("button", { name: /^Mix System/ }).innerText().catch(() => "");
+  niReport(
+    "Parts Catalog: a named category ('Mix System') shows its exact part count",
+    mixSystemLabel === `Mix System (${expectedMixSystemCount})`,
+    `label was "${mixSystemLabel}", expected "Mix System (${expectedMixSystemCount})"`
+  );
+
+  // --- Changing categories renders the matching subset, not merely a
+  // correct-looking badge -- and proves the zero-ledger part (TST-1004,
+  // Mix System) is discoverable through the catalog's own filter path,
+  // not just present somewhere on an unfiltered page. ---
+  await page.getByRole("button", { name: /^Mix System/ }).click();
+  await page.waitForTimeout(300);
+  const hopperAgitatorInMixSystemFilter = await catalogTable
+    .locator("tr", { hasText: "Hopper Agitator" })
+    .getByText("No ledger activity")
+    .first()
+    .isVisible()
+    .catch(() => false);
+  niReport(
+    "Parts Catalog: the zero-ledger part (TST-1004, Mix System) remains discoverable via the category filter path",
+    hopperAgitatorInMixSystemFilter
+  );
+  const hexCouplerHiddenByMixSystemFilter = await catalogTable
+    .locator("tr", { hasText: "Hex Coupler" })
+    .isVisible()
+    .catch(() => false);
+  niReport(
+    "Parts Catalog: filtering to Mix System actually narrows results (a Drive Components part is hidden)",
+    !hexCouplerHiddenByMixSystemFilter
+  );
+  await page.getByRole("button", { name: /^All Categories/ }).click();
+  await page.waitForTimeout(300);
+
+  // --- Both Inventory Health empty-state messages, exact text, proven
+  // by actually rendering each tab empty -- not inferred from the
+  // populated-state assertions above. Emulator-only: deletes the two
+  // seeded inventory_transactions documents via the Admin SDK (`db`,
+  // exported from seed.mjs for this purpose only), forces a fresh
+  // mount via a full navigation (useInventoryLedger() is a one-shot
+  // read, per its own header comment -- a live-DOM change alone would
+  // not be picked up), then restores the fixture before continuing. No
+  // production-visible test behavior is added to the app itself. ---
+  await db.doc("inventory_transactions/driver-seed-tx-1").delete();
+  await db.doc("inventory_transactions/driver-seed-tx-2").delete();
+  await db.doc("inventory_transactions/driver-seed-tx-3").delete();
+
+  // A full page.goto() carrying ?emulator=1 preserves the Auth session
+  // here (confirmed live -- distinct from the already-documented
+  // page.reload() session-drop quirk elsewhere in this skill, and from
+  // client-side navigation silently dropping ?emulator=1 the
+  // notification-identity driver commands work around). No re-login
+  // needed -- the page loads already-authenticated.
+  const inventoryPageUrl = new URL("inventory", APP_ROOT);
+  inventoryPageUrl.searchParams.set("emulator", "1");
+  await page.goto(inventoryPageUrl.toString(), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await page.getByRole("heading", { name: "Inventory Operational Queue" }).waitFor({ timeout: 10000 });
+
+  const emptyCriticalHighText = await page
+    .getByText("No parts are currently Critical or High priority.")
+    .first()
+    .waitFor({ timeout: 10000 })
+    .then(() => true)
+    .catch(() => false);
+  niReport(
+    "Inventory Health: Critical & High shows the EXACT mandated empty message when genuinely empty",
+    emptyCriticalHighText
+  );
+  await page.getByRole("button", { name: /^Needs Planning/ }).click();
+  await page.waitForTimeout(300);
+  const emptyNeedsPlanningText = await page.getByText("No parts currently need planning.").first().isVisible().catch(() => false);
+  niReport(
+    "Inventory Health: Needs Planning shows the EXACT mandated empty message when genuinely empty",
+    emptyNeedsPlanningText
+  );
+  const emptyCriticalHighLabel = await page.getByRole("button", { name: /^Critical & High/ }).innerText().catch(() => "");
+  niReport(
+    "Inventory Health: Critical & High tab count is exactly (0) while genuinely empty",
+    emptyCriticalHighLabel === "Critical & High (0)",
+    `label was "${emptyCriticalHighLabel}"`
+  );
+  const emptyNeedsPlanningLabel = await page.getByRole("button", { name: /^Needs Planning/ }).innerText().catch(() => "");
+  niReport(
+    "Inventory Health: Needs Planning tab count is exactly (0) while genuinely empty",
+    emptyNeedsPlanningLabel === "Needs Planning (0)",
+    `label was "${emptyNeedsPlanningLabel}"`
+  );
+
+  // --- Restore the fixture for any later command/run against this
+  // same emulator session -- leaves the database exactly as seed.mjs
+  // would have left it. ---
+  await seedLedgerTransactions();
 
   console.log(`\n${niPassed} passed, ${niFailed} failed`);
   return niFailed === 0;
