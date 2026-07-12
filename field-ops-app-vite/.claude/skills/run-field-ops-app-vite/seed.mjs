@@ -94,6 +94,41 @@ export const CANCEL_VOID_FIXTURE = {
   voidEligible: { partId: "TST-1009", requestId: "driver-seed-void-eligible", status: "ORDERED" },
 };
 
+// Customer/Account Business Model -- Customer PR 3, Service Activity
+// (docs/specifications/customer-account-business-model.md). One Account
+// with a deterministic set of fieldops_wos documents covering every
+// WorkOrderStatus bucket, seeded via the Admin SDK (bypasses the
+// client-denied fieldops_wos write rule, same as every other fixture
+// here). `statuses` is index-0 = NEWEST; driver.mjs derives the exact
+// expected counts from it (no magic numbers) and asserts:
+//   - Completed count = COMPLETED + CLOSED
+//   - Open count = the eight non-terminal, non-cancelled statuses
+//   - CANCELLED excluded from BOTH counts, but still present in the
+//     timeline (the newest row is CANCELLED on purpose)
+//   - bounded first page (pageSize), cursor Load More to the end
+// woId "sa-wo-<ii>" / woNumber "WO-SA-<iii>" by index; createdAt staggered
+// so index 0 is newest.
+export const SERVICE_ACTIVITY_FIXTURE = {
+  accountId: "acct-service-activity",
+  pageSize: 10,
+  statuses: [
+    "CANCELLED", // 0 -- newest; in the timeline, excluded from counts
+    "WORK_IN_PROGRESS",
+    "COMPLETED",
+    "CREATED",
+    "CLOSED",
+    "SCHEDULED",
+    "DISPATCHED",
+    "ACCEPTED",
+    "EN_ROUTE",
+    "ARRIVED",
+    "READY_TO_DISPATCH",
+    "COMPLETED",
+    "CREATED",
+    "CANCELLED", // 13 -- oldest; in the timeline, excluded from counts
+  ],
+};
+
 async function seedReorderRequestFixture(docId, { partId, status, currentOwner, assignedToUserId, createdAt }) {
   const isCancelled = status === "CANCELLED";
   await db.doc(`reorder_requests/${docId}`).set({
@@ -325,6 +360,36 @@ export async function seedLedgerTransactions() {
   });
 }
 
+// Customer/Account Business Model -- Customer PR 3, Service Activity.
+// Seeds the SERVICE_ACTIVITY_FIXTURE Account + its fieldops_wos documents.
+// createdAt is written as a JS Date -> Firestore Timestamp (what the client
+// reads via .toDate()), staggered so index 0 is the newest row.
+async function seedServiceActivityFixture() {
+  const base = Date.now();
+  await db.doc(`accounts/${SERVICE_ACTIVITY_FIXTURE.accountId}`).set({
+    name: "Service Activity Co",
+    status: "Active",
+    relationshipTypes: ["CUSTOMER"],
+    createdAt: base,
+    updatedAt: base,
+  });
+  await Promise.all(
+    SERVICE_ACTIVITY_FIXTURE.statuses.map((status, i) => {
+      const id = `sa-wo-${String(i).padStart(2, "0")}`;
+      return db.doc(`fieldops_wos/${id}`).set({
+        woNumber: `WO-SA-${String(i).padStart(3, "0")}`,
+        status,
+        customerId: SERVICE_ACTIVITY_FIXTURE.accountId,
+        locationId: "sa-loc-1",
+        priority: 3,
+        type: "SERVICE_CALL",
+        createdAt: new Date(base - i * 60_000),
+        updatedAt: new Date(base - i * 60_000),
+      });
+    })
+  );
+}
+
 // Inventory Health / Parts Catalog separation (PR B) -- exported so
 // driver.mjs can delete/restore inventory_transactions documents
 // directly (Admin SDK, emulator-only) for the empty-state assertions
@@ -393,6 +458,7 @@ async function seed() {
 
   await seedNotificationIdentityFixture();
   await seedCancelVoidFixture();
+  await seedServiceActivityFixture();
 
   console.log("Seeded driver accounts:");
   for (const [key, acct] of Object.entries(DRIVER_ACCOUNTS)) {
