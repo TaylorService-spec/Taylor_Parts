@@ -1,7 +1,7 @@
 ---
 artifact_type: assessment
 gate: Repository Assessment
-status: Pending Review
+status: Architecture-Approved
 date: 2026-07-12
 owner: Claude Code
 related_adrs: []
@@ -25,7 +25,7 @@ target_release: Post-Release 2.1 (Inventory -> Procurement chain)
 6. The page needs sales information: completed/recognized sales, pending sales, and links/drill-down to the records behind those totals.
 7. Locations, contacts, identifiers, notes, and activity should be organized as readable page sections, using collapsible sections only where they improve usability.
 
-**Architecture Review: PENDING.** This assessment has not yet been reviewed or approved. No implementation should begin against it -- PR #159 remains paused, PR 2 has not begun, and this assessment does not itself authorize any code, schema, Rules, index, or production-data change.
+**Architecture Review: APPROVED.** Reviewed by ChatGPT on 2026-07-12 at head `6d6c0636826aeb9af83b3573607be08ef1e399e5`, after three REQUEST CHANGES rounds. **This approval does not authorize the Specification, index work, application implementation, any schema/Rules change, deployment, or any production-data action** -- each remains its own separate gate under `docs/ai/workflow.md`, requiring its own review and Owner authorization. PR #159 remains paused (see "Resolved architecture and product decisions" below), PR 2 has not begun, and this assessment does not itself authorize any code, schema, Rules, index, or production-data change.
 
 **Updated to align with `docs/architecture/enterprise-business-metrics-framework.md`, Accepted at merge commit `db33208e321b435033199f225697c99bf9a2da00`.** That framework is now this repository's authoritative source for business-metrics/revenue-lifecycle terminology; every "sales"/"revenue" reference below has been reconciled against its canonical definitions rather than left as this assessment's own ad hoc language. Its acceptance does not itself authorize building any of the entities discussed here -- see its own header.
 
@@ -114,7 +114,7 @@ Separately, `reorder_purchase_orders.supplierName` (Section 4b) is manually-ente
     ```
     Each is a single-purpose `count()` aggregation query (Firestore's `getCountFromServer()`/`AggregateQuery`), never derived by summing or recomputing from the timeline's currently loaded pages. `CANCELLED` is excluded from both, per Section b/c above. **Count loading/error states are independent of the timeline's own loading/error/pagination state** -- a slow or failed count query must never block, hide, or misrepresent the timeline, and vice versa.
     - **Index impact**: an equality filter (`customerId`) plus an `in` filter (`status`) is a composite condition -- the exact required index shape must be confirmed (and recorded explicitly) at Specification time, not assumed by analogy to any other query in this codebase.
-    - **If separate aggregate-query/index scope proves too large for this phase, remove the summary counts from this phase's Specification rather than ship counts derived from partial/paginated data** -- a correctly paginated timeline alone is preferable to a summary count that silently undercounts.
+    - **Correction (Architecture Review): the summary counts are adopted as part of the approved Account design, not an optional element the Specification may drop.** `Completed Work Orders` and `Open Work Orders` remain required summary counts; their aggregate queries and required indexes must be specified and sequenced in the Specification, not deferred or removed for implementation convenience. If later technical evidence during Specification or implementation genuinely proves the aggregate-query/index approach unsafe or infeasible, that finding must return through Architecture Review before any change to this adopted element -- the Implementation Plan itself must never silently drop it.
   - (ii)'s timeline needs the new `customerId`-filtered, ordered, paginated Work Order query from (e) above and its prerequisite composite index (below); (ii)'s summary counts need their own separate aggregate `count()` query and index (above), never the timeline's query; (i) needs a new collection + Rules + write path, regardless of authority mode, when that separate future initiative begins.
 - **Account Activity timeline:** the new `customerId`-filtered, `createdAt`-ordered, paginated Work Order query from (e). No Rules change (existing `fieldops_wos` read rule already covers admin/dispatcher, unchanged) -- but **does require a new composite index**, `fieldops_wos(customerId ASC, createdAt DESC)`, which does not exist today. A future Implementation Plan must record and sequence, matching this repository's own established index-deployment discipline (e.g. PR #111's `PARTS_ASSOCIATE`-eligibility index):
   - A **bounded initial page** (a fixed `limit(pageSize)`, not an unbounded read of every Work Order ever created for the Account).
@@ -192,11 +192,11 @@ Financial Summary's states are the Framework's own five-state provider contract 
   Invoiced Net Sales: $0 -- complete through [asOf]
   Cash Collected: $0 -- complete through [asOf]
   Booked Value: unavailable -- this provider does not supply Sales Orders
-  Open Pipeline: unavailable -- this provider does not supply Sales Orders
+  Open Pipeline: unavailable -- this provider does not supply Opportunities
   ```
   A metric may be absent from the rendered list only when the UI has explicitly identified, in this same block, which canonical metrics are configured for that deployment -- a metric must never simply not appear with no explanation.
 - **Service Activity summary counts, loading/empty/error:** its own three-way split -- loading, `0`/`0` (a legitimate, always-computable count, not an unavailable-data case, since it reads directly from `fieldops_wos`'s dedicated aggregate `count()` queries with no external-provider dependency), and a distinct error state if either count query itself fails (network/permission). **These states are independent of the timeline's own loading/error/pagination state below** -- the two never share a loading flag, an error flag, or a data source.
-- **Account Activity timeline, loading/empty/error:** separate from the summary counts above even though both share the same underlying query -- loading, "No activity yet for this Account" (genuine zero, i.e. the query legitimately returns no Work Orders), and a distinct error state, never silently rendering an empty list indistinguishable from "no activity." Neither Service Activity element uses the Financial Summary provider-state contract -- `fieldops_wos` is always either present or erroring, never "unconfigured" in the financial-provider sense.
+- **Account Activity timeline, loading/empty/error:** **correction (Architecture Review): the timeline and the summary counts share the same authoritative collection and Account scope (`fieldops_wos` filtered by `customerId`), never the same query.** They use distinct Firestore queries -- counts via independent aggregate queries, the timeline via the bounded, ordered, cursor-paginated query -- and never share loading, error, pagination, or result state. The timeline's own states: loading, "No activity yet for this Account" (genuine zero, i.e. the query legitimately returns no Work Orders), and a distinct error state, never silently rendering an empty list indistinguishable from "no activity." Neither Service Activity element uses the Financial Summary provider-state contract -- `fieldops_wos` is always either present or erroring, never "unconfigured" in the financial-provider sense.
 - **Relationship-type badges, unset:** an Account with no relationship type recorded should render as genuinely blank/omitted (matching this codebase's established "never fabricate a value for missing data" convention, e.g. `domain/address.js`'s `null`-for-missing-address precedent), not default to "Customer" silently.
 
 ## Risks
