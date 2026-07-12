@@ -74,6 +74,26 @@ export const NOTIFICATION_IDENTITY_FIXTURE = {
   purchasingStarted: { partId: "TST-1007", activeId: "driver-seed-notif-purchasing-active", status: "PURCHASING_IN_PROGRESS" },
 };
 
+// Cancel/Void schema deployment sequence, PR 6 of 6 (docs/specifications/
+// reorder-request-cancellation.md). Two real catalog parts (data/
+// partsCatalog.ts), each seeded fresh (eligible, not-yet-terminal) for
+// driver.mjs's verify-cancel-void command to actually transition
+// through the real UI/domain functions, not pre-seeded as already
+// CANCELLED/VOIDED -- the whole point is to exercise
+// cancelReorderRequest()/voidPurchaseOrder() live. cancelEligible sits
+// at ASSIGNED_TO_PARTS_ASSOCIATE (one of the three reachable
+// pre-order statuses; any of the three would do -- this one exercises
+// ReorderRequestStartPurchasing's Cancel action specifically).
+// voidEligible sits at ORDERED with a linked reorder_purchase_orders
+// document already recorded (Void requires one to exist), assigned to
+// the admin driver account so the same account satisfies BOTH
+// Rules conditions (isAdminOrDispatcher() AND current assignee) with
+// no second account needed.
+export const CANCEL_VOID_FIXTURE = {
+  cancelEligible: { partId: "TST-1008", requestId: "driver-seed-cancel-eligible", status: "ASSIGNED_TO_PARTS_ASSOCIATE" },
+  voidEligible: { partId: "TST-1009", requestId: "driver-seed-void-eligible", status: "ORDERED" },
+};
+
 async function seedReorderRequestFixture(docId, { partId, status, currentOwner, assignedToUserId, createdAt }) {
   const isCancelled = status === "CANCELLED";
   await db.doc(`reorder_requests/${docId}`).set({
@@ -155,6 +175,94 @@ async function seedNotificationIdentityFixture() {
       createdAt: now,
     });
   }
+}
+
+async function seedCancelVoidFixture() {
+  const now = Date.now();
+
+  // A prior run of driver.mjs's verify-cancel-void command may have
+  // already voided voidEligible against this same emulator instance
+  // (the emulator holds state across repeated `node seed.mjs` calls
+  // within one `emulators:start` session -- it's only `reorder_requests`/
+  // `reorder_purchase_orders` this function unconditionally overwrites
+  // below). voidPurchaseOrder()'s own voidRef.exists() guard would
+  // then reject a second void attempt as "already been voided" even
+  // though the Reorder Request side was reset back to ORDERED --
+  // clearing any leftover void record first makes reseeding fully
+  // deterministic, the same guarantee every other fixture in this file
+  // already has by unconditionally overwriting its own documents.
+  await db.doc(`reorder_purchase_order_voids/${CANCEL_VOID_FIXTURE.voidEligible.requestId}`).delete();
+
+  // Cancel-eligible: ASSIGNED_TO_PARTS_ASSOCIATE, assigned to admin so
+  // ReorderRequestStartPurchasing's Cancel action is reachable by the
+  // same account driver.mjs signs in as (Cancel itself is
+  // unrestricted to a specific individual -- isAdminOrDispatcher()
+  // alone -- but the assignment still needs to exist for this status
+  // to be reachable).
+  await seedReorderRequestFixture(CANCEL_VOID_FIXTURE.cancelEligible.requestId, {
+    partId: CANCEL_VOID_FIXTURE.cancelEligible.partId,
+    status: CANCEL_VOID_FIXTURE.cancelEligible.status,
+    currentOwner: "PARTS_ASSOCIATE",
+    assignedToUserId: DRIVER_ACCOUNTS.admin.uid,
+    createdAt: now,
+  });
+
+  // Void-eligible: ORDERED, assigned to admin (so the same account
+  // satisfies BOTH Rules conditions -- isAdminOrDispatcher() AND
+  // current assignee), with a linked reorder_purchase_orders document
+  // already recorded -- Void's Purchase-Order-existence proof requires
+  // one to exist before the void write is even attempted.
+  const { requestId, partId } = CANCEL_VOID_FIXTURE.voidEligible;
+  await db.doc(`reorder_requests/${requestId}`).set({
+    partId,
+    recommendationStatus: "READY",
+    urgency: "HIGH",
+    quantitySource: "ANALYTICS",
+    recommendedQty: 3,
+    requestedQty: 3,
+    status: "ORDERED",
+    currentOwner: "PARTS_ASSOCIATE",
+    requestedBy: DRIVER_ACCOUNTS.admin.uid,
+    createdAt: now,
+    reviewedBy: DRIVER_ACCOUNTS.admin.uid,
+    reviewedAt: now,
+    reviewDecision: "APPROVED",
+    reviewNotes: null,
+    assignedToUserId: DRIVER_ACCOUNTS.admin.uid,
+    assignedBy: DRIVER_ACCOUNTS.admin.uid,
+    assignedAt: now,
+    purchasingStartedAt: now,
+    purchasingStartedBy: DRIVER_ACCOUNTS.admin.uid,
+    purchasingNotes: null,
+    vendorContacted: null,
+    expectedAvailabilityDate: null,
+    lastPurchasingUpdateAt: null,
+    lastPurchasingUpdateBy: null,
+    purchaseOrderId: requestId,
+    orderedBy: DRIVER_ACCOUNTS.admin.uid,
+    orderedAt: now,
+    receivedBy: null,
+    receivedAt: null,
+    cancelledBy: null,
+    cancelledAt: null,
+    cancellationReason: null,
+    voidedBy: null,
+    voidedAt: null,
+    voidReason: null,
+  });
+
+  await db.doc(`reorder_purchase_orders/${requestId}`).set({
+    reorderRequestId: requestId,
+    partId,
+    supplierName: "Driver Fixture Supplier",
+    externalPoNumber: "DRIVER-PO-1",
+    orderedQuantity: 3,
+    orderedDate: new Date(now).toISOString().slice(0, 10),
+    expectedArrivalDate: null,
+    status: "ORDERED",
+    createdBy: DRIVER_ACCOUNTS.admin.uid,
+    createdAt: now,
+  });
 }
 
 async function seed() {
@@ -252,6 +360,7 @@ async function seed() {
   });
 
   await seedNotificationIdentityFixture();
+  await seedCancelVoidFixture();
 
   console.log("Seeded driver accounts:");
   for (const [key, acct] of Object.entries(DRIVER_ACCOUNTS)) {

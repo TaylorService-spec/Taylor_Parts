@@ -6,6 +6,7 @@ import { hasUsageHistory } from "../../domain/inventoryAnalyticsEngine";
 import { useReorderRequestForPart } from "../../hooks/useReorderRequests";
 import { useInventoryActionsForPart } from "../../hooks/useInventoryActions";
 import { usePurchaseOrderForReorderRequest } from "../../hooks/useReorderPurchaseOrders";
+import { useReorderPurchaseOrderVoid } from "../../hooks/useReorderPurchaseOrderVoids";
 import { useEmployeeDirectory, resolveActorDisplayName } from "../../hooks/useEmployeeDirectory";
 import {
   reviewReorderRequest,
@@ -14,10 +15,11 @@ import {
   updatePurchasingProgress,
   requestReorderForRecommendation,
   receiveReorderRequest,
+  cancelReorderRequest,
   getDisplayQty,
 } from "../../domain/inventoryReorderRequests";
 import { recordInventoryAction } from "../../domain/inventoryActions";
-import { recordPurchaseOrder } from "../../domain/reorderPurchaseOrders";
+import { recordPurchaseOrder, voidPurchaseOrder } from "../../domain/reorderPurchaseOrders";
 import { REORDER_REQUEST_STATUS, INVENTORY_ACTION_TYPE, OPERATIONAL_ROLE } from "../../domain/constants";
 import { useAuth } from "../../auth/AuthContext";
 import LoadingEmptyState from "../../shared/ui/LoadingEmptyState";
@@ -117,6 +119,138 @@ import EmployeeAssignmentPicker from "../../shared/assignment/EmployeeAssignment
 function formatTimestamp(ms) {
   if (!ms) return "—";
   return new Date(ms).toLocaleString();
+}
+
+// Cancel/Void schema deployment sequence, PR 6 of 6 (docs/specifications/
+// reorder-request-cancellation.md). Mandated verbatim by the
+// Specification's UI impact section -- a future copy edit must change
+// this one constant, not any of the call sites below.
+const CANCEL_VOID_CONFIRMATION_COPY =
+  "This action does not delete history. The record will remain visible for audit purposes.";
+
+// Shared required-reason-then-explicit-confirmation shape for both
+// Cancel and Void -- not a new card, rendered inline at the bottom of
+// whichever active card is currently shown (per the Specification).
+// Three steps: idle (just the trigger button) -> reason entry (a
+// genuinely non-blank reason required to continue, same client-side
+// check firestore.rules independently re-enforces server-side) ->
+// confirmation (the exact mandated copy, requiring an explicit second
+// click). onSubmit receives the trimmed reason; onDone runs after a
+// successful write (the parent's existing refresh callback).
+function ReasonConfirmAction({ idPrefix, actionLabel, onSubmit, onDone }) {
+  const [step, setStep] = useState("idle"); // "idle" | "reason" | "confirm"
+  const [reason, setReason] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState(null);
+  const trimmedReason = reason.trim();
+
+  function handleContinue(e) {
+    e.preventDefault();
+    if (!trimmedReason) return;
+    setStep("confirm");
+  }
+
+  async function handleConfirm() {
+    setSubmitting(true);
+    setError(null);
+    try {
+      await onSubmit(trimmedReason);
+      onDone();
+    } catch (err) {
+      setError(err.message);
+      setSubmitting(false);
+    }
+  }
+
+  if (step === "idle") {
+    return (
+      <div className="disp-board-toolbar">
+        <button type="button" onClick={() => setStep("reason")}>
+          {actionLabel}
+        </button>
+      </div>
+    );
+  }
+
+  if (step === "confirm") {
+    return (
+      <div className="fo-form">
+        <p>{CANCEL_VOID_CONFIRMATION_COPY}</p>
+        {error && <p className="fo-muted">{error}</p>}
+        <div className="disp-board-toolbar">
+          <button type="button" onClick={handleConfirm} disabled={submitting}>
+            Confirm {actionLabel}
+          </button>
+          <button type="button" onClick={() => setStep("reason")} disabled={submitting}>
+            Back
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <form className="fo-form" onSubmit={handleContinue}>
+      <label htmlFor={`${idPrefix}-reason`}>Reason</label>
+      <textarea id={`${idPrefix}-reason`} value={reason} onChange={(e) => setReason(e.target.value)} />
+      {error && <p className="fo-muted">{error}</p>}
+      <div className="disp-board-toolbar">
+        <button type="submit" disabled={!trimmedReason}>
+          Continue
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setStep("idle");
+            setReason("");
+          }}
+        >
+          Dismiss
+        </button>
+      </div>
+    </form>
+  );
+}
+
+// Cancel is available from all three pre-order active statuses, for
+// any isAdminOrDispatcher() reader -- unrestricted to a specific
+// individual (matches every other hand-off-type action on this
+// object). No client-side role check beyond what already gates
+// reaching this screen (ROLE_NAV_ACCESS restricts Inventory nav to
+// admin/dispatcher already -- see the run-field-ops-app-vite skill's
+// Gotchas) -- firestore.rules is the actual enforcement, same posture
+// as every other write on this object.
+function CancelReorderRequestAction({ request, onCancelled }) {
+  return (
+    <ReasonConfirmAction
+      idPrefix={`cancel-${request.id}`}
+      actionLabel="Cancel Reorder Request"
+      onSubmit={(reason) => cancelReorderRequest(request.id, { reason })}
+      onDone={onCancelled}
+    />
+  );
+}
+
+// Void is available only at ORDERED, only to the current assignee
+// (isAdminOrDispatcher() AND request.auth.uid == assignedToUserId --
+// BOTH required, per the Specification's corrected Authorization
+// section). Client-side checks assignee identity only, same posture
+// as every assignee-restricted action on this object
+// (ReorderRequestStartPurchasing, ReorderRequestMarkReceived) --
+// firestore.rules enforces both conditions server-side.
+function VoidPurchaseOrderAction({ request, onVoided }) {
+  const { user } = useAuth();
+  const isAssignee = user?.uid === request.assignedToUserId;
+  if (!isAssignee) return null;
+
+  return (
+    <ReasonConfirmAction
+      idPrefix={`void-${request.id}`}
+      actionLabel="Void Purchase Order"
+      onSubmit={(reason) => voidPurchaseOrder(request.id, { reason })}
+      onDone={onVoided}
+    />
+  );
 }
 
 // Zero-history reorder behavior sprint, PR 3 -- request.recommendedQty
@@ -321,6 +455,8 @@ function ReorderRequestAssignment({ request, onAssigned }) {
           </button>
         </div>
       </form>
+
+      <CancelReorderRequestAction request={request} onCancelled={onAssigned} />
     </div>
   );
 }
@@ -391,6 +527,8 @@ function ReorderRequestStartPurchasing({ request, onStarted, employeeDirectory }
       ) : (
         <p className="fo-muted">Waiting for the assigned Parts Associate to start purchasing.</p>
       )}
+
+      <CancelReorderRequestAction request={request} onCancelled={onStarted} />
     </div>
   );
 }
@@ -507,6 +645,8 @@ function ReorderRequestPurchasingUpdate({ request, onUpdated, employeeDirectory 
       ) : (
         <p className="fo-muted">Waiting for the assigned Parts Associate to post a purchasing update.</p>
       )}
+
+      <CancelReorderRequestAction request={request} onCancelled={onUpdated} />
     </div>
   );
 }
@@ -622,7 +762,7 @@ function ReorderRequestRecordPurchaseOrder({ request, onRecorded }) {
 // realtime, via hooks/useReorderPurchaseOrders.js. Read-only: no
 // further action on the Purchase Order exists this sprint
 // (reassignment/receiving/etc. are all explicitly out of scope).
-function ReorderRequestOrdered({ request, employeeDirectory }) {
+function ReorderRequestOrdered({ request, employeeDirectory, onVoided }) {
   const { data: purchaseOrder, loading } = usePurchaseOrderForReorderRequest(request.id);
 
   return (
@@ -673,6 +813,8 @@ function ReorderRequestOrdered({ request, employeeDirectory }) {
       ) : (
         <p className="fo-muted">Purchase Order details unavailable.</p>
       )}
+
+      <VoidPurchaseOrderAction request={request} onVoided={onVoided} />
     </div>
   );
 }
@@ -744,6 +886,133 @@ function ReorderRequestReceived({ request, employeeDirectory }) {
         </tbody>
       </table>
       <p className="fo-muted">This records that the parts arrived. It does not update stock yet.</p>
+    </div>
+  );
+}
+
+// Cancel/Void schema deployment sequence, PR 6 of 6 (docs/specifications/
+// reorder-request-cancellation.md). Terminal, read-only card once
+// CANCELLED -- no further action on this Reorder Request exists.
+function ReorderRequestCancelled({ request, employeeDirectory }) {
+  return (
+    <div className="fo-card">
+      <h3>Reorder Request -- Cancelled</h3>
+      <table className="fo-table">
+        <tbody>
+          <tr>
+            <td>Cancelled by</td>
+            <td>{resolveActorDisplayName(request.cancelledBy, employeeDirectory)}</td>
+          </tr>
+          <tr>
+            <td>Cancelled</td>
+            <td>{formatTimestamp(request.cancelledAt)}</td>
+          </tr>
+          <tr>
+            <td>Reason</td>
+            <td>{request.cancellationReason}</td>
+          </tr>
+        </tbody>
+      </table>
+      <p className="fo-muted">{CANCEL_VOID_CONFIRMATION_COPY}</p>
+    </div>
+  );
+}
+
+// Cancel/Void schema deployment sequence, PR 6 of 6 (docs/specifications/
+// reorder-request-cancellation.md). Terminal, read-only card once
+// VOIDED -- no further action on this Reorder Request exists. Reads
+// TWO separate realtime sources, neither of which this card (or
+// anything else in this sprint) ever writes to:
+//   - hooks/useReorderPurchaseOrders.js's usePurchaseOrderForReorderRequest()
+//     -- the SAME hook/read ReorderRequestOrdered used above, before
+//     the transition. The Specification requires the original,
+//     immutable Purchase Order's own details (supplier, PO number,
+//     quantity, ordered date) remain visible as read-only audit
+//     information after Void, not just a linked-record pointer --
+//     `reorder_purchase_orders` itself is never mutated by Void (see
+//     domain/reorderPurchaseOrders.js's voidPurchaseOrder() -- it
+//     reads this document to validate, never writes it), so re-using
+//     the same hook here proves the read, not a stale snapshot.
+//   - hooks/useReorderPurchaseOrderVoids.js's useReorderPurchaseOrderVoid()
+//     -- the separate, append-only void record itself.
+function ReorderRequestVoided({ request, employeeDirectory }) {
+  const { data: purchaseOrder, loading: purchaseOrderLoading } = usePurchaseOrderForReorderRequest(request.id);
+  const { data: voidRecord, loading: voidRecordLoading } = useReorderPurchaseOrderVoid(request.id);
+
+  return (
+    <div className="fo-card">
+      <h3>Reorder Request -- Voided</h3>
+      <table className="fo-table">
+        <tbody>
+          <tr>
+            <td>Voided by</td>
+            <td>{resolveActorDisplayName(request.voidedBy, employeeDirectory)}</td>
+          </tr>
+          <tr>
+            <td>Voided</td>
+            <td>{formatTimestamp(request.voidedAt)}</td>
+          </tr>
+          <tr>
+            <td>Reason</td>
+            <td>{request.voidReason}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h4>Original Purchase Order (unchanged, read-only)</h4>
+      {purchaseOrderLoading ? (
+        <p className="fo-muted">Loading Purchase Order...</p>
+      ) : purchaseOrder ? (
+        <table className="fo-table">
+          <tbody>
+            <tr>
+              <td>Supplier</td>
+              <td>{purchaseOrder.supplierName}</td>
+            </tr>
+            <tr>
+              <td>PO / reference #</td>
+              <td>{purchaseOrder.externalPoNumber}</td>
+            </tr>
+            <tr>
+              <td>Ordered quantity</td>
+              <td>{purchaseOrder.orderedQuantity}</td>
+            </tr>
+            <tr>
+              <td>Ordered date</td>
+              <td>{purchaseOrder.orderedDate}</td>
+            </tr>
+            {purchaseOrder.expectedArrivalDate && (
+              <tr>
+                <td>Expected arrival</td>
+                <td>{purchaseOrder.expectedArrivalDate}</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      ) : (
+        <p className="fo-muted">Purchase Order details unavailable.</p>
+      )}
+
+      {voidRecordLoading ? (
+        <p className="fo-muted">Loading void record...</p>
+      ) : voidRecord ? (
+        <table className="fo-table">
+          <tbody>
+            <tr>
+              <td>Linked Purchase Order</td>
+              <td>{voidRecord.reorderPurchaseOrderId}</td>
+            </tr>
+            <tr>
+              <td>Void record created</td>
+              <td>{formatTimestamp(voidRecord.createdAt)}</td>
+            </tr>
+          </tbody>
+        </table>
+      ) : (
+        <p className="fo-muted">Void record unavailable.</p>
+      )}
+
+      <p className="fo-muted">{CANCEL_VOID_CONFIRMATION_COPY}</p>
     </div>
   );
 }
@@ -1055,11 +1324,15 @@ export default function PartDetail() {
           </>
         ) : reorderRequest.status === REORDER_REQUEST_STATUS.ORDERED ? (
           <>
-            <ReorderRequestOrdered request={reorderRequest} employeeDirectory={employeeDirectory} />
+            <ReorderRequestOrdered request={reorderRequest} employeeDirectory={employeeDirectory} onVoided={refreshReorderRequest} />
             <ReorderRequestMarkReceived request={reorderRequest} onReceived={refreshReorderRequest} />
           </>
         ) : reorderRequest.status === REORDER_REQUEST_STATUS.RECEIVED ? (
           <ReorderRequestReceived request={reorderRequest} employeeDirectory={employeeDirectory} />
+        ) : reorderRequest.status === REORDER_REQUEST_STATUS.CANCELLED ? (
+          <ReorderRequestCancelled request={reorderRequest} employeeDirectory={employeeDirectory} />
+        ) : reorderRequest.status === REORDER_REQUEST_STATUS.VOIDED ? (
+          <ReorderRequestVoided request={reorderRequest} employeeDirectory={employeeDirectory} />
         ) : (
           <ReorderRequestDecision request={reorderRequest} employeeDirectory={employeeDirectory} />
         )
