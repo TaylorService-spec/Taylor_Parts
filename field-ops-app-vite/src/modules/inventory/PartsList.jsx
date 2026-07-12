@@ -11,7 +11,7 @@ import {
 import { requestReorderForRecommendation, getDisplayQty } from "../../domain/inventoryReorderRequests";
 import { REORDER_REQUEST_STATUS } from "../../domain/constants";
 import { useAuth } from "../../auth/AuthContext";
-import { useEmployeeDirectory, resolveActorDisplayName } from "../../hooks/useEmployeeDirectory";
+import { useEmployeeDirectory } from "../../hooks/useEmployeeDirectory";
 import GlobalSearch from "../../shared/search/GlobalSearch";
 import WorkspaceHeader from "../../shared/ui/WorkspaceHeader";
 import FilterBar from "../../shared/ui/FilterBar";
@@ -169,6 +169,27 @@ export function formatAssignmentAge(assignedAtMs, nowMs = Date.now()) {
   return `${days}d ago`;
 }
 
+// Inventory Operational Queue, PR A, Final Review correction: this app's
+// shared resolveActorDisplayName() (hooks/useEmployeeDirectory.js) falls
+// back to the raw uid when the directory has no linked Employee for it --
+// an established, accepted convention at every OTHER call site in this
+// app (PartDetail.jsx's Assigned to/Ordered by/Received by/etc.), where
+// exposing the raw uid was reviewed and accepted. "All Assigned Work" is
+// held to a stricter bar here (cross-user oversight, shown to a manager
+// who may not recognize a raw Firebase uid at all) -- never a raw uid,
+// full stop, whether unresolved, still loading, or the directory itself
+// failed to load. Pure -- directly testable, same rationale as this
+// file's other extracted formatters. Deliberately does NOT call
+// resolveActorDisplayName() at all (rather than calling it and then
+// pattern-matching its result to detect "was this a uid"), since the raw
+// uid is opaque here -- there is no reliable way to tell a resolved name
+// from a uid-shaped display name after the fact.
+export function resolveAssigneeDisplay(userId, employeeDirectory, directoryLoading, directoryError) {
+  if (!userId) return "—";
+  if (directoryLoading || directoryError) return "Unknown assignee";
+  return employeeDirectory?.get(userId)?.displayName ?? "Unknown assignee";
+}
+
 function useCategories() {
   return useMemo(() => {
     const set = new Set(PARTS_CATALOG.map((part) => part.category));
@@ -178,7 +199,11 @@ function useCategories() {
 
 export default function PartsList() {
   const { user } = useAuth();
-  const { byUserId: employeeDirectory } = useEmployeeDirectory();
+  const {
+    byUserId: employeeDirectory,
+    loading: employeeDirectoryLoading,
+    error: employeeDirectoryError,
+  } = useEmployeeDirectory();
   const { healthEntries, loading } = useInventoryLedger();
   const { data: pendingRequests } = useReorderRequests();
   const { data: partsManagerQueue, loading: partsManagerLoading } = useReorderRequestsByStatus(
@@ -197,6 +222,17 @@ export default function PartsList() {
     loading: allAssignedWorkLoading,
     error: allAssignedWorkError,
   } = useReorderRequestsByStatuses(ALL_ASSIGNED_WORK_STATUSES);
+  // Concise, single-sentence summary for the role="status" live region
+  // below -- deliberately NOT the whole table's content. Covers all four
+  // states (loading/error/empty/populated), matching LoadingEmptyState's
+  // own visible-text states one-to-one without duplicating its logic.
+  const allAssignedWorkStatusMessage = allAssignedWorkError
+    ? `Unable to load All Assigned Work (${allAssignedWorkError}).`
+    : allAssignedWorkLoading
+      ? "Loading All Assigned Work..."
+      : allAssignedWork.length === 0
+        ? "No requests are currently assigned to anyone."
+        : `All Assigned Work: ${allAssignedWork.length} request${allAssignedWork.length === 1 ? "" : "s"} loaded.`;
   const categories = useCategories();
   const [category, setCategory] = useState("ALL");
   const [page, setPage] = useState(0);
@@ -444,30 +480,37 @@ export default function PartsList() {
         Every Reorder Request currently assigned to a Parts Associate, regardless of who it's assigned to --
         oversight only, no action control here. Your own assignments above are a subset of this list.
       </p>
-      {/* aria-live region wraps ALL of loading/error/empty/populated -- present in
-          the DOM unconditionally so a screen reader picks up the region before
-          the first transition, not only after; role="status" (implicit
-          aria-live="polite") matches this codebase's existing announcement
-          convention (see EmployeeAssignmentPicker.jsx's status/warning regions)
-          rather than introducing a raw aria-live attribute nowhere else uses. */}
-      <div role="status">
-        {allAssignedWorkError ? (
-          <p className="fo-muted">Unable to load All Assigned Work ({allAssignedWorkError}).</p>
-        ) : (
-          <LoadingEmptyState
-            loading={allAssignedWorkLoading}
-            isEmpty={allAssignedWork.length === 0}
-            loadingText="Loading All Assigned Work..."
-            emptyText="No requests are currently assigned to anyone."
-          >
-            {/* Responsive behavior (Specification's "Responsive behavior" section):
-                this table gains an Assignee column beyond the page's other,
-                narrower tables -- wrapped in its own horizontally-scrollable
-                container on narrow viewports, matching the shared .fo-panel
-                overflow-x:auto pattern already established for this whole page,
-                but scoped to just this table so scrolling it doesn't drag the
-                rest of the page's other tables sideways with it. */}
-            <div className="fo-table-scroll">
+      {/* Final Review correction: a role="status" region must announce a SHORT
+          state summary, not wrap the entire interactive table -- wrapping the
+          table would make a screen reader read out the whole populated table
+          on every re-render, not just the transition itself. This paragraph is
+          the ONLY thing inside the live region; the table below sits in normal
+          document flow, outside it, and is navigated into deliberately by a
+          screen reader user rather than announced wholesale. Present in the DOM
+          unconditionally (not conditionally rendered away) so a screen reader
+          picks up the region before the first transition, not only after.
+          role="status" (implicit aria-live="polite") matches this codebase's
+          existing announcement convention (see EmployeeAssignmentPicker.jsx's
+          status/warning regions) rather than introducing a raw aria-live
+          attribute nowhere else uses. */}
+      <p role="status" className="fo-sr-only">{allAssignedWorkStatusMessage}</p>
+      {allAssignedWorkError ? (
+        <p className="fo-muted">Unable to load All Assigned Work ({allAssignedWorkError}).</p>
+      ) : (
+        <LoadingEmptyState
+          loading={allAssignedWorkLoading}
+          isEmpty={allAssignedWork.length === 0}
+          loadingText="Loading All Assigned Work..."
+          emptyText="No requests are currently assigned to anyone."
+        >
+          {/* Responsive behavior (Specification's "Responsive behavior" section):
+              this table gains an Assignee column beyond the page's other,
+              narrower tables -- wrapped in its own horizontally-scrollable
+              container on narrow viewports, matching the shared .fo-panel
+              overflow-x:auto pattern already established for this whole page,
+              but scoped to just this table so scrolling it doesn't drag the
+              rest of the page's other tables sideways with it. */}
+          <div className="fo-table-scroll">
               <table className="fo-table">
                 <thead>
                   <tr>
@@ -498,7 +541,14 @@ export default function PartsList() {
                       <td className="fo-muted">
                         {request.status === REORDER_REQUEST_STATUS.PURCHASING_IN_PROGRESS ? "In Progress" : "Waiting"}
                       </td>
-                      <td className="fo-muted">{resolveActorDisplayName(request.assignedToUserId, employeeDirectory)}</td>
+                      <td className="fo-muted">
+                        {resolveAssigneeDisplay(
+                          request.assignedToUserId,
+                          employeeDirectory,
+                          employeeDirectoryLoading,
+                          employeeDirectoryError
+                        )}
+                      </td>
                       <td className="fo-muted">{formatAssignmentAge(request.assignedAt)}</td>
                     </tr>
                   ))}
@@ -507,7 +557,6 @@ export default function PartsList() {
             </div>
           </LoadingEmptyState>
         )}
-      </div>
 
       <h3>Parts Catalog</h3>
       <p className="fo-muted">

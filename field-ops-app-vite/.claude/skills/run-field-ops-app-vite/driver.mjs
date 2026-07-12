@@ -919,7 +919,7 @@ async function verifyPrA(browser, page, accountKey) {
   const expectedAllAssignedCount =
     Object.values(NOTIFICATION_IDENTITY_FIXTURE).filter((c) => assignedStatuses.has(c.status)).length +
     (assignedStatuses.has(CANCEL_VOID_FIXTURE.cancelEligible.status) ? 1 : 0) +
-    1; // PR_A_FIXTURE.otherUserAssignedRequest
+    2; // PR_A_FIXTURE.otherUserAssignedRequest + PR_A_FIXTURE.unresolvableAssigneeRequest
   niReport(
     "All Assigned Work: heading shows the exact expected count",
     allAssignedHeadingText === `All Assigned Work (${expectedAllAssignedCount})`,
@@ -938,6 +938,91 @@ async function verifyPrA(browser, page, accountKey) {
       !otherUserRowText.includes(PR_A_FIXTURE.otherUserAssignedRequest.assignedToUserId),
     `row text was "${otherUserRowText}"`
   );
+
+  // --- Unresolved assignee (no Employee links to this uid at all): must
+  // show "Unknown assignee", never the raw uid -- the case Final Review
+  // specifically flagged (resolveActorDisplayName()'s own raw-uid
+  // fallback, which this component deliberately does not use). ---
+  const unresolvableRow = page.locator("tr", { has: page.getByRole("cell", { name: "Mix Pump Tube - Floor Model" }) }).first();
+  const unresolvableRowText = await unresolvableRow.innerText().catch(() => "");
+  niReport(
+    "All Assigned Work: an unresolvable assignee shows \"Unknown assignee\", not a raw uid",
+    unresolvableRowText.includes("Unknown assignee") &&
+      !unresolvableRowText.includes(PR_A_FIXTURE.unresolvableAssigneeRequest.assignedToUserId),
+    `row text was "${unresolvableRowText}"`
+  );
+
+  // --- Loading: while the employee directory listener is still
+  // resolving, the Assignee column must never show a raw uid either
+  // (resolveAssigneeDisplay() returns "Unknown assignee" during
+  // employeeDirectoryLoading, same as the unresolved case, rather than
+  // waiting and showing the uid in the meantime). Proven by rapid-
+  // sampling the live DOM through a fresh navigation's actual loading
+  // window, not asserted from code alone -- a real race, not a
+  // simulated one: this is genuinely how the page renders for the first
+  // several hundred milliseconds of a real user's first visit. ---
+  await page.goto(
+    (() => {
+      const u = new URL("inventory", APP_ROOT);
+      u.searchParams.set("emulator", "1");
+      return u.toString();
+    })(),
+    { waitUntil: "domcontentloaded", timeout: 20000 }
+  );
+  const rawUidSightings = [];
+  const deadline = Date.now() + 3000;
+  while (Date.now() < deadline) {
+    const sample = await unresolvableRow.innerText().catch(() => "");
+    if (sample.includes(PR_A_FIXTURE.unresolvableAssigneeRequest.assignedToUserId)) rawUidSightings.push(sample);
+    await page.waitForTimeout(50);
+  }
+  niReport(
+    "All Assigned Work: the raw uid is never shown at any point during the directory's real loading window",
+    rawUidSightings.length === 0,
+    rawUidSightings.length ? `raw uid appeared ${rawUidSightings.length} time(s), e.g. "${rawUidSightings[0]}"` : undefined
+  );
+
+  // --- Directory error: the exact query shape useEmployeeDirectory()
+  // issues (buildEmployeeDirectoryQuery(), an unfiltered employees read)
+  // genuinely errors, not empties, for an unauthorized session -- same
+  // isolated client-SDK probe pattern as the reorder_requests query
+  // failure check below (see that check's own comment for the full
+  // reasoning on why this must be an isolated probe, not a browser
+  // assertion, in this app/environment). Combined with direct inspection
+  // of resolveAssigneeDisplay()'s `directoryError` branch (returns
+  // "Unknown assignee", never propagates or ignores the error), this
+  // establishes the same guarantee an end-to-end DOM assertion would. ---
+  {
+    const probeApp2 = initializeApp({ projectId: "taylor-parts", apiKey: "fake-key-emulator-only" }, "employee-directory-failure-probe");
+    const probeAuth2 = getAuth(probeApp2);
+    connectAuthEmulator(probeAuth2, "http://127.0.0.1:9099", { disableWarnings: true });
+    const probeDb2 = getClientFirestore(probeApp2);
+    connectFirestoreEmulator(probeDb2, "127.0.0.1", 8080);
+
+    const probeAcct2 = DRIVER_ACCOUNTS.queryFailureProbe;
+    await signInWithEmailAndPassword(probeAuth2, probeAcct2.email, probeAcct2.password);
+
+    const directoryProbeResult = await new Promise((resolve) => {
+      const q = query(collection(probeDb2, "employees"));
+      const unsubscribe = onSnapshot(
+        q,
+        (snap) => {
+          unsubscribe();
+          resolve({ succeeded: true, size: snap.size });
+        },
+        (err) => {
+          unsubscribe();
+          resolve({ succeeded: false, code: err.code });
+        }
+      );
+      setTimeout(() => resolve({ succeeded: null, timedOut: true }), 15000);
+    });
+    niReport(
+      "Employee directory's exact query shape: a genuinely unauthorized session gets an error, not empty results",
+      directoryProbeResult.succeeded === false,
+      JSON.stringify(directoryProbeResult)
+    );
+  }
 
   // --- Personal Waiting/In Progress queues remain user-scoped: the
   // cross-user fixture (assigned to otherAssigneeEmployee, NOT this
@@ -963,7 +1048,7 @@ async function verifyPrA(browser, page, accountKey) {
   // narrow viewport, not just present-but-inert. ---
   const scrollContainer = page
     .locator(
-      'xpath=//h3[starts-with(normalize-space(.), "All Assigned Work")]/following-sibling::div[@role="status"][1]//div[contains(@class, "fo-table-scroll")]'
+      'xpath=//h3[starts-with(normalize-space(.), "All Assigned Work")]/following-sibling::div[contains(@class, "fo-table-scroll")][1]'
     )
     .first();
   const scrollContainerPresent = await scrollContainer.count().then((c) => c > 0).catch(() => false);
@@ -983,14 +1068,33 @@ async function verifyPrA(browser, page, accountKey) {
   );
   if (originalViewport) await page.setViewportSize(originalViewport);
 
-  // --- aria-live: loading/error/empty/populated transitions are wrapped
-  // in a role="status" region (implicit aria-live="polite"), present in
-  // the DOM as a sibling of the section heading. ---
+  // --- aria-live: a CONCISE role="status" region announces loading/
+  // error/empty/populated transitions -- Final Review correction:
+  // must NOT wrap the interactive table (a screen reader would read the
+  // whole populated table on every update otherwise). Verified two ways:
+  // the region itself exists with a short, single-sentence message, and
+  // separately, no table anywhere on the page is nested inside any
+  // role="status" element at all. ---
   const statusRegion = page.locator(
-    'xpath=//h3[starts-with(normalize-space(.), "All Assigned Work")]/following-sibling::div[@role="status"][1]'
+    'xpath=//h3[starts-with(normalize-space(.), "All Assigned Work")]/following-sibling::*[@role="status"][1]'
   );
-  const statusRegionPresent = await statusRegion.count().then((c) => c > 0).catch(() => false);
-  niReport("All Assigned Work: loading/error/empty/populated states are wrapped in a role=\"status\" live region", statusRegionPresent);
+  const statusRegionTagName = await statusRegion.evaluate((el) => el.tagName).catch(() => null);
+  const statusRegionText = await statusRegion.innerText().catch(() => "");
+  niReport(
+    "All Assigned Work: a concise role=\"status\" live region exists with a short state summary",
+    statusRegionTagName === "P" && statusRegionText.length > 0 && statusRegionText.length < 200,
+    `tag=${statusRegionTagName}, text="${statusRegionText}"`
+  );
+
+  const tableInsideStatusRegion = await page
+    .locator('xpath=//*[@role="status"]//table')
+    .count()
+    .then((c) => c > 0)
+    .catch(() => false);
+  niReport(
+    "All Assigned Work: the interactive table is NOT wrapped inside the role=\"status\" region",
+    !tableInsideStatusRegion
+  );
 
   await page.screenshot({ path: join(SCREENSHOT_DIR, "pr-a-all-assigned-work.png"), fullPage: true });
 

@@ -150,6 +150,16 @@ export const PR_A_FIXTURE = {
     displayName: "Other Parts Associate",
     userId: "driver-seed-other-user-not-signed-in",
   },
+  // Final Review correction: resolveActorDisplayName() falls back to the
+  // raw uid when no Employee links to the assignee's userId at all --
+  // this fixture's assignee is DELIBERATELY unlinked (no Employee
+  // document references this uid anywhere), proving "All Assigned Work"
+  // shows "Unknown assignee" for this case instead of that raw uid.
+  unresolvableAssigneeRequest: {
+    partId: "TST-1011",
+    requestId: "driver-seed-all-assigned-unresolvable",
+    assignedToUserId: "driver-seed-unresolvable-user-no-employee-link",
+  },
   securityRoleEmployees: {
     eligible: { employeeId: "driver-emp-securityrole-eligible", displayName: "Eligible Dispatcher Assoc", securityRole: "dispatcher" },
     technician: { employeeId: "driver-emp-securityrole-technician", displayName: "Excluded Technician Assoc", securityRole: "technician" },
@@ -360,6 +370,16 @@ async function seedPrAFixture() {
     securityRole: "dispatcher",
     createdAt: now,
     updatedAt: now,
+  });
+
+  // Unresolvable-assignee fixture -- deliberately NO matching Employee
+  // document anywhere for this uid (see PR_A_FIXTURE's own comment).
+  await seedReorderRequestFixture(PR_A_FIXTURE.unresolvableAssigneeRequest.requestId, {
+    partId: PR_A_FIXTURE.unresolvableAssigneeRequest.partId,
+    status: "PURCHASING_IN_PROGRESS",
+    currentOwner: "PARTS_ASSOCIATE",
+    assignedToUserId: PR_A_FIXTURE.unresolvableAssigneeRequest.assignedToUserId,
+    createdAt: now,
   });
 
   for (const emp of Object.values(PR_A_FIXTURE.securityRoleEmployees)) {

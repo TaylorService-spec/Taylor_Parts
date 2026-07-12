@@ -675,6 +675,27 @@ button:hover {
   -webkit-overflow-scrolling: touch;
 }
 
+/* Inventory Operational Queue, PR A, Final Review correction -- a
+   standard visually-hidden-but-screen-reader-accessible utility, for
+   role="status" live regions that must announce a concise state summary
+   without also being visibly displayed (the equivalent visible text
+   already exists elsewhere, e.g. LoadingEmptyState's own loading/empty
+   text, or the visible error paragraph next to this). Not previously
+   needed in this codebase -- every prior role="status"/role="alert" use
+   (EmployeeAssignmentPicker.jsx) was itself the only/visible copy of its
+   own message. */
+.fo-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .wo-history-row {
   font-size: 13px;
   padding: 2px 0;
