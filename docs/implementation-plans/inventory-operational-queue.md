@@ -1,7 +1,7 @@
 ---
 artifact_type: implementation-plan
 gate: Implementation Plan
-status: Draft
+status: Approved
 date: 2026-07-12
 owner: Claude Code
 related_adrs: []
@@ -154,4 +154,4 @@ Restated from the Specification's own "Risks" section, with this Plan's own sequ
 
 ## Approval
 
-**Not yet reviewed.** This Implementation Plan requires its own review (ChatGPT Final Review confirming it matches the approved Specification) and Owner Merge Authorization for this document's own merge before **A0, PR B, or C0** -- the three items with no blocking dependency on anything else in this sequence -- may be opened. No code, Rules, deployment, or production-data change has been made while producing this document -- planning only.
+**Approved by ChatGPT on 2026-07-12**, citing reviewed head `a84746129b8b5200705e9ac7fe3314e435596c6e`, after two REQUEST CHANGES rounds (Round 1: A0 mischaracterized as a frontend change that auto-deploys, PR B's independence understated, authorization/verification language too loose, unscoped index command; Round 2: an internal contradiction between "PR A cannot start implementation-review until all gates clear" and "PR A review can proceed on durable evidence while the tracking PR catches up" -- both corrected, the latter resolved into PR A's three explicit states: blocked from opening, Draft-review allowed, merge allowed). No findings remain open. Owner Merge Authorization for this document's own merge is still separate and not yet granted -- per the standing "architecture approval is not merge authorization" rule, and this approval does not itself authorize opening A0, PR B, or C0. No code, Rules, deployment, or production-data change has been made while producing this document -- planning only.
