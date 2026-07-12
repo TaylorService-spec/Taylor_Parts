@@ -22,17 +22,26 @@ target_release: Post-Release 2.1 (Inventory → Procurement chain)
 
 ## PR breakdown
 
-Ordered by dependency. Each is a separate PR with its own review and authorization; they are **not** authorized as a batch by this plan.
+Ordered by dependency. Each is a separate PR (or, for G0, a GitHub-only governance step) with its own review and authorization; they are **not** authorized as a batch by this plan. G0 is not an implementation PR.
 
-| PR | Title | Touches | Depends on |
+| Step | Title | Touches | Depends on |
 |---|---|---|---|
+| G0 (governance, GitHub-only) | Close PR #159 unmerged + update Issue #158 | GitHub only (no repo files) | Specification + this Implementation Plan merged |
 | PR 1 | Service Activity composite indexes (index-only) | `firestore.indexes.json` | — |
-| PR 2 | Sectioned Account page + `relationshipTypes` (Summary / Contacts / Locations / Notes) | `domain/constants.js`, `domain/accounts.js`, `modules/accounts/*`, `index.css`; reuses PR #159 domain layer | — |
+| PR 2 | Sectioned Account page + `relationshipTypes` (Summary / Contacts / Locations / Notes) | `domain/constants.js`, `domain/accounts.js`, `modules/accounts/*`, `index.css`; selectively ports PR #159's reusable domain layer | — |
 | PR 3 | Service Activity (summary counts + Account Activity timeline) | `modules/accounts/*`, a new Work Order-by-Account query/hook | PR 1 indexes `[READY]`; PR 2 page shell |
 | PR 4 | Financial Summary surface (`unconfigured` state only) | `modules/accounts/*`, a provider-state surface component | PR 2 page shell |
-| PR 5 | Close PR #159 unmerged + update Issue #158 | GitHub only (no repo files) | PR 2–4 merged |
 
-**No PR in this sequence changes `firestore.rules`.** The only schema change (`relationshipTypes`, PR 2) is additive and needs no rule change (Specification "Firestore Rules impact"). If any implementation step later appears to require a Rules change, that is a Tier 2 event under `docs/DelegationCharter.md` and must return through Architecture Review before proceeding — it must never be slipped into a UI PR.
+**No step in this sequence changes `firestore.rules`.** The only schema change (`relationshipTypes`, PR 2) is additive and needs no rule change (Specification "Firestore Rules impact"). If any implementation step later appears to require a Rules change, that is a Tier 2 event under `docs/DelegationCharter.md` and must return through Architecture Review before proceeding — it must never be slipped into a UI PR.
+
+## Governance step G0 — Close PR #159 unmerged + update Issue #158 (immediate, after Spec + Plan merge)
+
+**Timing:** the moment this Implementation Plan and its Specification merge — **not** deferred until after the implementation PRs. It is a **GitHub-only governance step** (no repository files) requiring its **own separate Owner authorization**, independent of any implementation PR.
+
+- **Close PR #159 unmerged.** Branch and history are **preserved** — no branch deletion unless the Owner separately requests it. A closed PR remains readable and linkable, so its head `b1f1d1eaf001a754f441c455af040f5ea0160e63` stays citable as the source for the selective port (below) even after the PR is closed.
+- **Do not merge PR #159**, and do not merge or cherry-pick its branch — in whole or in part — as part of closing it.
+- **Update Issue #158's** title/description to reflect the now-current scope ("Implementation Tracking (PR 1 & PR 2)" no longer describes it).
+- Touches no repository files.
 
 ## PR 1 — Service Activity composite indexes (index-only)
 
@@ -50,11 +59,29 @@ Ordered by dependency. Each is a separate PR with its own review and authorizati
 
 - Adds `ACCOUNT_RELATIONSHIP_TYPE` constant (`domain/constants.js`) and the optional `relationshipTypes` field handling (`domain/accounts.js`), additive, no Rules change, no migration.
 - Replaces `AccountDetail.jsx`'s tab shell with the fixed sectioned layout: Account Summary (with inline relationship-type badges) → Financial Summary *placeholder mount point* → Contacts → Locations → Service Activity *placeholder mount point* → Notes/Identifiers (collapsed by default).
-- Reuses `domain/address.js`, `shared/address/AddressFields.jsx`, `domain/contacts.js`'s `primaryContactState()` **as-is**. Location remains **add-only**.
+- Reuses `domain/address.js`, `shared/address/AddressFields.jsx`, and `domain/contacts.js`'s `primaryContactState()` **as-is**, brought in via the selective port defined in "PR #159 reusable-piece selective port" below — never by merging or cherry-picking PR #159's branch. Location remains **add-only**.
 - The Financial Summary and Service Activity sections may render as inert placeholders in this PR (their live behavior lands in PR 3/PR 4) or be sequenced entirely into PR 3/PR 4 — either is acceptable provided no half-wired query ships. This PR introduces **no** `fieldops_wos` query and therefore has **no** index dependency.
-- Removes/《repurposes tab-only CSS (`.fo-tablist`/`.fo-tab*`) only if it is genuinely unused after the shell change; `Tabs.jsx` itself is left in place (available-but-unused), not deleted.
+- Removes/repurposes tab-only CSS (`.fo-tablist`/`.fo-tab*`) only if it is genuinely unused after the shell change; `Tabs.jsx` itself is left in place (available-but-unused), not deleted.
 
-**Verification obligations:** full interaction/accessibility/responsive/regression verification of the sectioned page and the relationship-type editing path, against the reused `CUSTOMER_FIXTURE`; confirm an unset Account shows no badge; confirm no existing Account breaks (additive field); confirm no Rules/query/index/route/migration is introduced. Owns complete verification of everything it introduces before merge.
+**Verification obligations:** full interaction/accessibility/responsive/regression verification of the sectioned page and the relationship-type editing path, against the reused `CUSTOMER_FIXTURE`; confirm an unset Account shows no badge; confirm no existing Account breaks (additive field); confirm no Rules/query/index/route/migration is introduced; and complete the selective-port verification below. Owns complete verification of everything it introduces before merge.
+
+### PR #159 reusable-piece selective port (governs PR 2)
+
+PR 2 brings forward **only** the three Architecture-approved reusable pieces from PR #159's frozen head `b1f1d1eaf001a754f441c455af040f5ea0160e63` (readable even after G0 closes the PR):
+
+- `field-ops-app-vite/src/domain/address.js` (`formatAddress()`, `addressRows()`)
+- `field-ops-app-vite/src/shared/address/AddressFields.jsx`
+- `field-ops-app-vite/src/domain/contacts.js`'s `primaryContactState()` — only this derivation, not any unrelated edit PR #159 made to that file.
+
+**Method:** on the fresh branch cut from then-current `main`, port these by file/definition-level retrieval from the frozen commit — e.g. `git checkout b1f1d1e -- <path>` for a wholly-reused file, or a reviewed copy of just the named function where the file also carries unrelated changes. **Never** obtain them by merging or cherry-picking PR #159's branch.
+
+**Explicitly prohibited:**
+- merging PR #159;
+- merging or cherry-picking its branch — wholesale or any individual commit — to obtain these pieces;
+- carrying over its tab shell (`shared/tabs/Tabs.jsx`, `tabs-harness.*`), tab-specific tests, or tab-specific CSS (`.fo-tablist`/`.fo-tab*`);
+- carrying over any other, unrelated PR #159 change not in the three-item list above.
+
+**Verification (required before PR 2 merges):** produce and review PR 2's `git diff main...HEAD` and confirm its exact file/change surface contains only (a) the three ported pieces above and (b) PR 2's own new sectioned-page / `relationshipTypes` work — and specifically that no tab shell, tab test, tab CSS, or unrelated PR #159 content appears. The selective-port surface is proven by exact diff, not asserted by description.
 
 ## PR 3 — Service Activity (summary counts + Account Activity timeline)
 
@@ -73,19 +100,13 @@ Ordered by dependency. Each is a separate PR with its own review and authorizati
 
 **Verification obligations:** drive the surface through all five states with fixture inputs — assert `unconfigured` renders the exact copy and never `$0`; assert `error`/`stale`/`partial`/`complete` render their specified copy and, for `complete`, disclose unsupported metrics explicitly rather than omitting them. Assert the surface exposes no financial value to any role in the `unconfigured` state (no new visibility grant introduced).
 
-## PR 5 — Close PR #159 unmerged + update Issue #158
-
-- After PR 2–4 merge, **close PR #159 unmerged** (branch/history preserved; no deletion unless the Owner separately requests it), per the Assessment's adopted disposition.
-- Update Issue #158's title/description to reflect the now-current scope ("Implementation Tracking (PR 1 & PR 2)" no longer describes it).
-- GitHub-only; touches no repository files.
-
 ## Sequencing notes
 
+- **G0 first** — the moment this Plan and its Specification merge, as an immediate, separately Owner-authorized GitHub-only step, independent of the implementation PRs. PR #159's reusable pieces stay citable against its preserved frozen head `b1f1d1e` after it is closed, so closing early does not block PR 2's selective port.
 - **PR 1 before PR 3**, always — PR 3 depends on both indexes being `[READY]`.
 - **PR 2 before PR 3 and PR 4** — both wire into the sectioned shell PR 2 establishes.
 - PR 3 and PR 4 are independent of each other and may proceed in either order once PR 2 is merged (PR 3 additionally gated on PR 1 `[READY]`).
-- **PR 5 last** — only after the superseding page (PR 2–4) is merged, so PR #159's reusable pieces remain citable against a real commit until then.
-- Each PR: separate begin-authorization, separate Owner Merge Authorization; PR 1 additionally: separate Owner Deployment Authorization + `[READY]` verification.
+- **Every step is separately authorized** — G0 (GitHub-only governance) needs its own Owner authorization; each implementation PR needs separate begin-authorization and separate Owner Merge Authorization; PR 1 additionally needs separate Owner Deployment Authorization + `[READY]` verification.
 
 ## External dependencies
 
@@ -94,15 +115,15 @@ Ordered by dependency. Each is a separate PR with its own review and authorizati
 
 ## Tracking
 
-| PR | Begin auth | Merge auth | Deploy auth | `[READY]` verified | Merged | Deployed |
+| Step | Begin auth | Merge auth | Deploy auth | `[READY]` verified | Merged | Deployed |
 |---|---|---|---|---|---|---|
+| G0 (close #159 + issue, GitHub-only) | — | n/a | n/a | n/a | n/a | n/a |
 | PR 1 (indexes) | — | — | — | — | — | — |
 | PR 2 (page + field) | — | — | n/a | n/a | — | — |
 | PR 3 (Service Activity) | — | — | n/a | (depends on PR 1) | — | — |
 | PR 4 (Financial Summary) | — | — | n/a | n/a | — | — |
-| PR 5 (close #159 + issue) | — | n/a | n/a | n/a | — | n/a |
 
-(All cells empty — nothing is authorized, begun, merged, or deployed by this Draft.)
+(All cells empty/n/a — nothing is authorized, begun, merged, or deployed by this Draft.)
 
 ## Approval
 
