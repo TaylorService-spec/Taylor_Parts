@@ -103,11 +103,32 @@ const ACTIONABLE_URGENCIES = new Set(["CRITICAL", "HIGH"]);
 // Specification, these parts are grouped by recommendation readiness,
 // never urgency-ranked alongside CRITICAL/HIGH/MEDIUM/LOW (see
 // domain/inventoryAnalyticsEngine.ts's RecommendationStatus type).
+//
+// Inventory Health / Parts Catalog separation (PR B, docs/specifications/
+// inventory-operational-queue.md) -- the "Show All" tab is REMOVED, not
+// relabeled. It returned healthEntries unfiltered, which is a ledger-
+// active-parts-only subset of the catalog (computeAvailableStockByPart()
+// requires at least one RESERVED/RELEASED transaction), not the complete
+// catalog Owner intent requires "Show All" to mean. Inventory Health now
+// keeps exactly the two real, calculated risk signals; the Parts Catalog
+// table below (already enriched with the same healthEntries data, per
+// its own "Risk" column) is the one true complete-catalog view.
 const QUEUE_FILTER_OPTIONS = [
   { key: "ACTIONABLE", label: "Critical & High" },
   { key: "NEEDS_PLANNING", label: "Needs Planning" },
-  { key: "ALL", label: "Show All" },
 ];
+
+// Inventory Health / Parts Catalog separation (PR B) -- filter-specific
+// empty messages, replacing InventoryHealthPanel.jsx's single
+// undifferentiated "No ledger activity yet" string, which was misleading
+// on this page: selecting Critical & High with real ledger data present
+// but nothing currently urgent showed the same message as a genuinely
+// empty ledger. Operations.jsx's own call site is unaffected -- it never
+// passes emptyText, so it keeps InventoryHealthPanel's own default.
+const QUEUE_FILTER_EMPTY_TEXT = {
+  ACTIONABLE: "No parts are currently Critical or High priority.",
+  NEEDS_PLANNING: "No parts currently need planning.",
+};
 
 function useCategories() {
   return useMemo(() => {
@@ -139,13 +160,28 @@ export default function PartsList() {
   const [submittingPartId, setSubmittingPartId] = useState(null);
   const [reorderError, setReorderError] = useState(null);
 
-  const queueEntries = useMemo(() => {
-    if (queueFilter === "ALL") return healthEntries;
-    if (queueFilter === "NEEDS_PLANNING") {
-      return healthEntries.filter((entry) => entry.recommendation.recommendationStatus === "NEEDS_PLANNING");
-    }
-    return healthEntries.filter((entry) => ACTIONABLE_URGENCIES.has(entry.recommendation.urgency));
-  }, [healthEntries, queueFilter]);
+  const needsPlanningEntries = useMemo(
+    () => healthEntries.filter((entry) => entry.recommendation.recommendationStatus === "NEEDS_PLANNING"),
+    [healthEntries]
+  );
+  const actionableEntries = useMemo(
+    () => healthEntries.filter((entry) => ACTIONABLE_URGENCIES.has(entry.recommendation.urgency)),
+    [healthEntries]
+  );
+  const queueEntries = queueFilter === "NEEDS_PLANNING" ? needsPlanningEntries : actionableEntries;
+
+  // Inventory Health / Parts Catalog separation (PR B) -- counts,
+  // computed here (not in the static QUEUE_FILTER_OPTIONS array, which
+  // has no data access) and merged in via FilterBar.jsx's existing
+  // `option.count` support, unused until now.
+  const queueFilterOptionsWithCounts = useMemo(
+    () =>
+      QUEUE_FILTER_OPTIONS.map((option) => ({
+        ...option,
+        count: option.key === "NEEDS_PLANNING" ? needsPlanningEntries.length : actionableEntries.length,
+      })),
+    [needsPlanningEntries, actionableEntries]
+  );
 
   const requestedPartIds = useMemo(() => {
     const set = new Set(justRequestedPartIds);
@@ -187,9 +223,15 @@ export default function PartsList() {
     setPage(0);
   }
 
+  // Inventory Health / Parts Catalog separation (PR B) -- counts for the
+  // catalog's own filter bar too, same FilterBar.jsx support, same
+  // reasoning as the Inventory Health tabs above. "All Categories" is
+  // this page's one true "show everything" experience post-PR-B -- its
+  // count is the complete catalog size, not a ledger-scoped subset.
   const filterOptions = categories.map((cat) => ({
     key: cat,
     label: cat === "ALL" ? "All Categories" : cat,
+    count: cat === "ALL" ? PARTS_CATALOG.length : PARTS_CATALOG.filter((part) => part.category === cat).length,
   }));
 
   return (
@@ -202,7 +244,7 @@ export default function PartsList() {
       <p className="fo-muted">
         Parts ranked by urgency, from the same analytics used by the Operations dashboard's Inventory Health panel.
       </p>
-      <FilterBar options={QUEUE_FILTER_OPTIONS} activeKey={queueFilter} onChange={setQueueFilter} />
+      <FilterBar options={queueFilterOptionsWithCounts} activeKey={queueFilter} onChange={setQueueFilter} />
       {reorderError && <p className="fo-muted">{reorderError}</p>}
       <LoadingEmptyState loading={loading} isEmpty={false} loadingText="Loading operational queue..." emptyText="">
         <InventoryHealthPanel
@@ -211,6 +253,7 @@ export default function PartsList() {
           onRequestReorder={handleRequestReorder}
           requestedPartIds={requestedPartIds}
           submittingPartId={submittingPartId}
+          emptyText={QUEUE_FILTER_EMPTY_TEXT[queueFilter]}
         />
       </LoadingEmptyState>
 
@@ -385,7 +428,7 @@ export default function PartsList() {
                     <td>{health ? health.stock.availableStock : `${part.warehouseQty} (baseline)`}</td>
                     <td>
                       {!health ? (
-                        <span className="fo-muted">No activity yet</span>
+                        <span className="fo-muted">No ledger activity</span>
                       ) : hasUsageHistory(health.usage) ? (
                         <span className={`fo-badge fo-badge-${health.recommendation.urgency.toLowerCase()}`}>
                           {health.recommendation.urgency}
