@@ -714,25 +714,29 @@ async function verifyInventoryHealthCatalog(browser, page, accountKey) {
   // not be picked up), then restores the fixture before continuing. No
   // production-visible test behavior is added to the app itself.
   //
-  // try/finally, not a bare sequence: page.goto(), the heading
-  // waitFor(), the Needs Planning click, or any assertion added here
-  // later can throw. Without a finally block, a thrown error between
-  // the delete above and the restore below would leave THIS emulator
-  // session's ledger fixture permanently deleted -- contaminating
-  // every later command run against the same `emulators:start`
-  // session (submit-ready, verify-notification-identity's own
-  // healthEntries-independent checks would still pass, but any future
-  // command relying on TST-1001/TST-1002 having ledger activity would
-  // silently fail for a reason invisible from its own output).
-  // seedLedgerTransactions() must run on every exit path -- pass,
-  // assertion failure, or thrown error alike -- and the original
-  // failure (if any) must still propagate afterward; restoring the
-  // fixture is never allowed to turn a failed run into a passing one. ---
-  await db.doc("inventory_transactions/driver-seed-tx-1").delete();
-  await db.doc("inventory_transactions/driver-seed-tx-2").delete();
-  await db.doc("inventory_transactions/driver-seed-tx-3").delete();
-
+  // try/finally, not a bare sequence: the three deletes below,
+  // page.goto(), the heading waitFor(), the Needs Planning click, or
+  // any assertion added here later can throw. All three deletes are
+  // themselves inside try -- if e.g. the second or third delete throws
+  // after an earlier one already succeeded, execution must still reach
+  // finally, or the emulator is left with a partially-deleted, neither-
+  // present-nor-absent fixture. Without this, a thrown error anywhere
+  // in this block would leave THIS emulator session's ledger fixture
+  // corrupted -- contaminating every later command run against the
+  // same `emulators:start` session (submit-ready, verify-notification-
+  // identity's own healthEntries-independent checks would still pass,
+  // but any future command relying on TST-1001/TST-1002 having ledger
+  // activity would silently fail for a reason invisible from its own
+  // output). seedLedgerTransactions() must run on every exit path --
+  // pass, assertion failure, or thrown error (including a delete
+  // itself throwing) alike -- and the original failure (if any) must
+  // still propagate afterward; restoring the fixture is never allowed
+  // to turn a failed run into a passing one. ---
   try {
+    await db.doc("inventory_transactions/driver-seed-tx-1").delete();
+    await db.doc("inventory_transactions/driver-seed-tx-2").delete();
+    await db.doc("inventory_transactions/driver-seed-tx-3").delete();
+
     // A full page.goto() carrying ?emulator=1 preserves the Auth
     // session here (confirmed live -- distinct from the already-
     // documented page.reload() session-drop quirk elsewhere in this
