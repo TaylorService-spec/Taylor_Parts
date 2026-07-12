@@ -1,10 +1,14 @@
 // Inventory Operational Queue A0 (docs/specifications/inventory-operational-
 // queue.md; docs/implementation-plans/inventory-operational-queue.md).
 // Drift-detection/repair tool for employees/{employeeId}.securityRole, the
-// denormalized mirror of users/{uid}.role written exclusively by
-// provisionEmployeeAccess.js (see that file's "SECURITY-ROLE MIRROR" comment
+// denormalized mirror of users/{uid}.role. provisionEmployeeAccess.js is the
+// NORMAL writer of this field (see that file's "SECURITY-ROLE MIRROR" comment
 // for the full invariant this script verifies -- both documents are always
-// meant to be written together, by that script alone).
+// meant to be written together, transactionally, by that script). THIS
+// script's own --repair path is the one EXCEPTIONAL, governed writer besides
+// it -- --repair writes securityRole directly when drift is found (see below),
+// under the same --projectId/--confirmProduction gate; it does not go through
+// provisionEmployeeAccess.js. Read-only mode (the default) writes nothing.
 //
 // Why this must be Admin SDK, not a client tool: comparing
 // employees/{employeeId}.securityRole against the linked users/{uid}.role

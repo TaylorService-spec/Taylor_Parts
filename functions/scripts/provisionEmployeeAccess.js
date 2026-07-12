@@ -28,8 +28,13 @@
 // SECURITY-ROLE MIRROR (Inventory Operational Queue A0, docs/specifications/
 // inventory-operational-queue.md; documented in docs/BusinessEntityModel.md
 // Section 8a) -- employees/{employeeId}.securityRole is a denormalized,
-// READ-ONLY mirror of users/{uid}.role, written ONLY by this script, at the
-// exact same point users/{uid}.role itself is written (cases B and D below).
+// READ-ONLY mirror of users/{uid}.role. This script is the NORMAL
+// transactional writer of both sides, at the exact same point
+// users/{uid}.role itself is written (cases B and D below). The only other
+// writer is auditSecurityRoleMirror.js's --repair path -- an EXCEPTIONAL,
+// separately governed repair writer (same --projectId/--confirmProduction
+// gate) used specifically to correct drift after the two sides have already
+// diverged; it is not part of this script's own normal provisioning flow.
 // It exists so a client that can already read the full employees collection
 // (admin/dispatcher, per firestore.rules) can filter an assignment picker by
 // security role without needing a Rules exception on the otherwise hard
@@ -39,13 +44,14 @@
 // field existed; the mirror is a query/display convenience only, the same
 // posture operationalRoles[] already has (BusinessEntityModel.md Section 8a:
 // "Determines assignment eligibility only -- never a substitute for the
-// existing security role on users/{uid}"). This script is the ONLY writer of
-// both sides -- if a second security-role-changing code path is ever added,
-// it inherits this same both-sides-together invariant, not a shortcut around
-// it. A client-side reader can never independently re-verify this mirror is
-// still correct (users/{uid} stays hard self-read-only for anyone but the
+// existing security role on users/{uid}"). If a second normal
+// security-role-changing code path is ever added, it inherits this same
+// both-sides-together transactional invariant, not a shortcut around it. A
+// client-side reader can never independently re-verify this mirror is still
+// correct (users/{uid} stays hard self-read-only for anyone but the
 // signed-in user) -- ongoing correctness depends entirely on this invariant
-// holding, not on anything downstream being able to double-check it.
+// holding (by either writer), not on anything downstream being able to
+// double-check it.
 //
 // --email is an EXECUTION INPUT ONLY. It is used to call
 // getUserByEmail()/createUser() to locate or create the Firebase Auth
@@ -490,21 +496,24 @@ async function applyPlan(db, auth, plan) {
   if (plan.operation === "UPDATE_SECURITY_ROLE") {
     // Both documents (users/{uid}.role and the linked Employee's
     // securityRole mirror) must commit together -- but the mirror is only
-    // correct if the Employee is STILL linked to this exact user at write
-    // time. A plain batch commits both atomically yet cannot re-check that
-    // linkage: if a concurrent operation re-linked the Employee to a
-    // different user between phase B's read and now, a batch would mirror
-    // THIS user's role onto an Employee that no longer belongs to it. So,
-    // like GRANT_ACCESS below, this is a transaction that re-reads the
-    // Employee, re-validates it still exists and still points at
-    // plan.userId, and only then writes both documents -- the same
-    // concurrent-modification guard, applied to the mirror invariant.
+    // correct if the Employee and the User STILL reciprocally link to each
+    // other at write time. A plain batch commits both atomically yet cannot
+    // re-check that linkage: if a concurrent operation re-linked either side
+    // to a different document between phase B's read and now, a batch would
+    // mirror a role across a link that no longer holds in one or both
+    // directions. So, like GRANT_ACCESS below, this is a transaction that
+    // re-reads BOTH the Employee and the User, re-validates the reciprocal
+    // link (employee.userId === plan.userId AND user.employeeId ===
+    // plan.employeeId) still holds, and only then writes both documents --
+    // the same concurrent-modification guard GRANT_ACCESS already applies,
+    // now applied here too.
     const userRef = db.collection(USERS_COLLECTION).doc(plan.userId);
     const employeeRef = db.collection(EMPLOYEES_COLLECTION).doc(plan.employeeId);
 
     await db.runTransaction(async (tx) => {
-      const employeeSnap = await tx.get(employeeRef);
+      const [employeeSnap, userSnap] = await Promise.all([tx.get(employeeRef), tx.get(userRef)]);
       const freshEmployee = employeeSnap.exists ? employeeSnap.data() : null;
+      const freshUser = userSnap.exists ? userSnap.data() : null;
 
       if (!freshEmployee) {
         throw new Error(
@@ -516,6 +525,19 @@ async function applyPlan(db, auth, plan) {
         throw new Error(
           `Concurrent modification detected: employees/${plan.employeeId} is no longer linked to ` +
             `userId "${plan.userId}" (now ${JSON.stringify(freshEmployee.userId ?? null)}). ` +
+            `Aborting with no writes -- re-run to re-evaluate.`
+        );
+      }
+      if (!freshUser) {
+        throw new Error(
+          `Concurrent modification detected: users/${plan.userId} no longer exists. ` +
+            `Aborting with no writes -- re-run to re-evaluate.`
+        );
+      }
+      if (freshUser.employeeId !== plan.employeeId) {
+        throw new Error(
+          `Concurrent modification detected: users/${plan.userId} is no longer linked to ` +
+            `employeeId "${plan.employeeId}" (now ${JSON.stringify(freshUser.employeeId ?? null)}). ` +
             `Aborting with no writes -- re-run to re-evaluate.`
         );
       }
@@ -729,9 +751,12 @@ module.exports = {
   validateInput,
   detectConflicts,
   buildPlan,
+  applyPlan,
   normalizeOperationalRoles,
   assertProjectTarget,
   VALID_SECURITY_ROLES,
   VALID_OPERATIONAL_ROLES,
   PRODUCTION_PROJECT_ID,
+  EMPLOYEES_COLLECTION,
+  USERS_COLLECTION,
 };
