@@ -58,13 +58,33 @@
 //                                 PASS/FAIL report per assertion (same
 //                                 style as functions/test/*.test.js)
 //                                 and exits non-zero on any failure.
+//   verify-cancel-void <accountKey>
+//                                 Cancel/Void UI (docs/specifications/
+//                                 reorder-request-cancellation.md,
+//                                 PR 6 of 6) -- the PRIMARY
+//                                 implementation test for that PR.
+//                                 Requires seed.mjs's
+//                                 CANCEL_VOID_FIXTURE (one
+//                                 Cancel-eligible request, one
+//                                 Void-eligible ORDERED request with a
+//                                 linked Purchase Order) to already be
+//                                 seeded. Walks Cancel end-to-end
+//                                 (reason required, exact mandated
+//                                 confirmation copy, terminal card
+//                                 renders, request disappears from its
+//                                 active queue) and Void end-to-end
+//                                 (same reason/confirmation shape,
+//                                 terminal card renders with the
+//                                 linked void record). Prints a
+//                                 PASS/FAIL report per assertion and
+//                                 exits non-zero on any failure.
 //
 // All screenshots are written under .claude/skills/run-field-ops-app-vite/screenshots/.
 import { chromium } from "@playwright/test";
 import { mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { DRIVER_ACCOUNTS, NOTIFICATION_IDENTITY_FIXTURE } from "./seed.mjs";
+import { DRIVER_ACCOUNTS, NOTIFICATION_IDENTITY_FIXTURE, CANCEL_VOID_FIXTURE } from "./seed.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SCREENSHOT_DIR = join(__dirname, "screenshots");
@@ -142,13 +162,16 @@ const STATUS_HEADING = {
   ASSIGNED_TO_PARTS_ASSOCIATE: "Reorder Request -- Assigned to Parts Associate",
   PURCHASING_IN_PROGRESS: "Reorder Request -- Purchasing In Progress",
 };
-// The terminal (CANCELLED) sibling falls through PartDetail.jsx's
-// status-branch chain to ReorderRequestDecision, the generic fallback
-// card -- a plainly different heading from every active-status card
-// above, which is what makes "did this resolve to the active document
-// or the terminal one" observable via the DOM without reading
-// component internals.
-const TERMINAL_FALLBACK_HEADING = "Reorder Request";
+// The terminal (CANCELLED) sibling renders ReorderRequestCancelled
+// (Cancel/Void schema deployment sequence, PR 6 of 6) -- a plainly
+// different heading from every active-status card above, which is
+// what makes "did this resolve to the active document or the terminal
+// one" observable via the DOM without reading component internals.
+// Before PR 6, CANCELLED fell through to the generic
+// ReorderRequestDecision fallback card (heading "Reorder Request",
+// unqualified) -- this constant tracks whichever heading CANCELLED
+// actually renders as, not that specific fallback path.
+const TERMINAL_FALLBACK_HEADING = "Reorder Request -- Cancelled";
 
 // Deliberately NOT "networkidle" -- confirmed live that this app's
 // persistent Firestore onSnapshot connections never let the network
@@ -358,6 +381,101 @@ async function verifyNotificationIdentity(browser, page, accountKey) {
   return niFailed === 0;
 }
 
+// Cancel/Void schema deployment sequence, PR 6 of 6 (docs/specifications/
+// reorder-request-cancellation.md). Mirrors verifyNotificationIdentity()
+// above -- same niReport()-based PASS/FAIL style, reusing its
+// niPassed/niFailed counters (each verify-* command is its own process
+// invocation, never both in the same run). Must match PartDetail.jsx's
+// CANCEL_VOID_CONFIRMATION_COPY constant exactly -- if a future copy
+// edit changes one without the other, this assertion is the thing that
+// catches the drift.
+const CANCEL_VOID_CONFIRMATION_COPY =
+  "This action does not delete history. The record will remain visible for audit purposes.";
+
+async function verifyCancelVoid(browser, page, accountKey) {
+  await login(page, accountKey);
+
+  // --- Cancel, from ASSIGNED_TO_PARTS_ASSOCIATE ---
+  const { partId: cancelPartId, requestId: cancelRequestId } = CANCEL_VOID_FIXTURE.cancelEligible;
+  await page.goto(inventoryUrl(cancelPartId, cancelRequestId));
+  await assertHeadingAndRequestId(
+    page,
+    "Reorder Request -- Assigned to Parts Associate",
+    cancelRequestId,
+    "Cancel fixture (pre-action)"
+  );
+
+  await page.getByRole("button", { name: "Cancel Reorder Request", exact: true }).click();
+  await page.getByLabel("Reason", { exact: true }).fill("Driver verification -- cancelling this test request.");
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  const cancelConfirmationVisible = await page
+    .getByText(CANCEL_VOID_CONFIRMATION_COPY, { exact: true })
+    .first()
+    .waitFor({ timeout: 10000 })
+    .then(() => true)
+    .catch(() => false);
+  niReport("Cancel: mandated confirmation copy renders exactly as specified", cancelConfirmationVisible);
+
+  await page.getByRole("button", { name: "Confirm Cancel Reorder Request", exact: true }).click();
+  await assertHeadingAndRequestId(page, "Reorder Request -- Cancelled", cancelRequestId, "Cancel (post-action)");
+  const cancelReasonVisible = await page
+    .getByText("Driver verification -- cancelling this test request.")
+    .first()
+    .isVisible()
+    .catch(() => false);
+  niReport("Cancel: reason renders on the terminal card", cancelReasonVisible);
+
+  // --- Cancel: the request disappears from its former active queue ---
+  await goToInventory(page);
+  const cancelledStillInQueue = await page
+    .locator(`a[href*="requestId=${cancelRequestId}"]`)
+    .first()
+    .isVisible()
+    .catch(() => false);
+  niReport("Cancel: request no longer appears in any active queue", !cancelledStillInQueue);
+
+  // --- Void, from ORDERED ---
+  const { partId: voidPartId, requestId: voidRequestId } = CANCEL_VOID_FIXTURE.voidEligible;
+  await page.goto(inventoryUrl(voidPartId, voidRequestId));
+  await assertHeadingAndRequestId(page, "Reorder Request -- Ordered", voidRequestId, "Void fixture (pre-action)");
+  const originalSupplierVisible = await page
+    .getByText("Driver Fixture Supplier")
+    .first()
+    .waitFor({ timeout: 10000 })
+    .then(() => true)
+    .catch(() => false);
+  niReport("Void: original Purchase Order details visible before voiding", originalSupplierVisible);
+
+  await page.getByRole("button", { name: "Void Purchase Order", exact: true }).click();
+  await page.getByLabel("Reason", { exact: true }).fill("Driver verification -- voiding this test Purchase Order.");
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  const voidConfirmationVisible = await page
+    .getByText(CANCEL_VOID_CONFIRMATION_COPY, { exact: true })
+    .first()
+    .waitFor({ timeout: 10000 })
+    .then(() => true)
+    .catch(() => false);
+  niReport("Void: mandated confirmation copy renders exactly as specified", voidConfirmationVisible);
+
+  await page.getByRole("button", { name: "Confirm Void Purchase Order", exact: true }).click();
+  await assertHeadingAndRequestId(page, "Reorder Request -- Voided", voidRequestId, "Void (post-action)");
+  const voidReasonVisible = await page
+    .getByText("Driver verification -- voiding this test Purchase Order.")
+    .first()
+    .isVisible()
+    .catch(() => false);
+  niReport("Void: reason renders on the terminal card", voidReasonVisible);
+  const voidLinkedPoVisible = await page
+    .getByText(voidRequestId, { exact: false })
+    .first()
+    .isVisible()
+    .catch(() => false);
+  niReport("Void: terminal card shows the linked Purchase Order (void record read via useReorderPurchaseOrderVoid)", voidLinkedPoVisible);
+
+  console.log(`\n${niPassed} passed, ${niFailed} failed`);
+  return niFailed === 0;
+}
+
 async function main() {
   const [, , command, ...args] = process.argv;
   const browser = await chromium.launch();
@@ -416,6 +534,10 @@ async function main() {
     } else if (command === "verify-notification-identity") {
       const [accountKey = "admin"] = args;
       const ok = await verifyNotificationIdentity(browser, page, accountKey);
+      if (!ok) process.exitCode = 1;
+    } else if (command === "verify-cancel-void") {
+      const [accountKey = "admin"] = args;
+      const ok = await verifyCancelVoid(browser, page, accountKey);
       if (!ok) process.exitCode = 1;
     } else {
       console.error(`Unknown command "${command}". See the header comment in this file for usage.`);
