@@ -141,7 +141,9 @@ Assessed each piece of PR #159 (head `b1f1d1eaf001a754f441c455af040f5ea0160e63`)
 
 **Net finding:** roughly half of PR #159's substance (the address/contact-derivation domain layer) survives a redesign untouched; the tab shell itself -- the single largest and highest-risk piece of PR #159 (the first-ever Tabs implementation, extensively verified) -- does not fit the new direction and would need to be replaced with a sectioned layout.
 
-## Proposed Account page hierarchy (items 1-2's shape Architecture Review-adopted; the rest recommended, not decided)
+## Adopted Account page hierarchy
+
+All six sections below are established by the Owner's request and this assessment's resolved architecture -- none remain undecided. Exact responsive layout, spacing, and component breakdown are Specification-stage details, not open product decisions.
 
 In reading order:
 
@@ -195,7 +197,7 @@ Financial Summary's states are the Framework's own five-state provider contract 
   Open Pipeline: unavailable -- this provider does not supply Opportunities
   ```
   A metric may be absent from the rendered list only when the UI has explicitly identified, in this same block, which canonical metrics are configured for that deployment -- a metric must never simply not appear with no explanation.
-- **Service Activity summary counts, loading/empty/error:** its own three-way split -- loading, `0`/`0` (a legitimate, always-computable count, not an unavailable-data case, since it reads directly from `fieldops_wos`'s dedicated aggregate `count()` queries with no external-provider dependency), and a distinct error state if either count query itself fails (network/permission). **These states are independent of the timeline's own loading/error/pagination state below** -- the two never share a loading flag, an error flag, or a data source.
+- **Service Activity summary counts, loading/empty/error:** its own three-way split -- loading, `0`/`0` (a legitimate, always-computable count, not an unavailable-data case, since it reads directly from `fieldops_wos`'s dedicated aggregate `count()` queries with no external-provider dependency), and a distinct error state if either count query itself fails (network/permission). **These states are independent of the timeline's own loading/error/pagination state below** -- the two never share a query, and never share loading/error/pagination/result state. They do share the same authoritative collection and Account scope (`fieldops_wos` filtered by `customerId`), just not the same query or state.
 - **Account Activity timeline, loading/empty/error:** **correction (Architecture Review): the timeline and the summary counts share the same authoritative collection and Account scope (`fieldops_wos` filtered by `customerId`), never the same query.** They use distinct Firestore queries -- counts via independent aggregate queries, the timeline via the bounded, ordered, cursor-paginated query -- and never share loading, error, pagination, or result state. The timeline's own states: loading, "No activity yet for this Account" (genuine zero, i.e. the query legitimately returns no Work Orders), and a distinct error state, never silently rendering an empty list indistinguishable from "no activity." Neither Service Activity element uses the Financial Summary provider-state contract -- `fieldops_wos` is always either present or erroring, never "unconfigured" in the financial-provider sense.
 - **Relationship-type badges, unset:** an Account with no relationship type recorded should render as genuinely blank/omitted (matching this codebase's established "never fabricate a value for missing data" convention, e.g. `domain/address.js`'s `null`-for-missing-address precedent), not default to "Customer" silently.
 
