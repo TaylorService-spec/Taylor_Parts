@@ -94,6 +94,40 @@ export const CANCEL_VOID_FIXTURE = {
   voidEligible: { partId: "TST-1009", requestId: "driver-seed-void-eligible", status: "ORDERED" },
 };
 
+// Inventory Operational Queue, PR A (docs/specifications/inventory-
+// operational-queue.md) -- "All Assigned Work" oversight and the
+// assignment picker's securityRole eligibility filter.
+//
+// otherUserAssignedRequest: assigned to a uid that is NOT any
+// DRIVER_ACCOUNTS entry -- the exact "Manager B sees a request assigned
+// to user A, without being the assignee" scenario the Specification's
+// Acceptance criteria requires. No real Auth/Employee record is needed
+// for that uid; "All Assigned Work" only ever renders part/qty/urgency/
+// status/assignedAt, never the assignee's identity, so a dangling uid
+// is sufficient and deliberate here -- it proves the oversight view
+// does NOT require a resolvable assignee to render the row.
+//
+// securityRoleEmployees: four Employees, all ACTIVE/PARTS_ASSOCIATE-
+// eligible-by-operationalRoles/linked-user (so they'd all appear in the
+// picker's query results absent the securityRole filter this PR adds),
+// differing only in securityRole -- proves the filter's four real
+// outcomes: technician excluded (ordinary, no warning), missing/invalid
+// excluded WITH the admin-visible warning (the data-quality case), and
+// a valid non-technician role included normally.
+export const PR_A_FIXTURE = {
+  otherUserAssignedRequest: {
+    partId: "TST-1010",
+    requestId: "driver-seed-all-assigned-other-user",
+    assignedToUserId: "driver-seed-other-user-not-signed-in",
+  },
+  securityRoleEmployees: {
+    eligible: { employeeId: "driver-emp-securityrole-eligible", displayName: "Eligible Dispatcher Assoc", securityRole: "dispatcher" },
+    technician: { employeeId: "driver-emp-securityrole-technician", displayName: "Excluded Technician Assoc", securityRole: "technician" },
+    missing: { employeeId: "driver-emp-securityrole-missing", displayName: "Missing Role Data Assoc" }, // securityRole deliberately omitted
+    invalid: { employeeId: "driver-emp-securityrole-invalid", displayName: "Invalid Role Data Assoc", securityRole: "not_a_real_role" },
+  },
+};
+
 async function seedReorderRequestFixture(docId, { partId, status, currentOwner, assignedToUserId, createdAt }) {
   const isCancelled = status === "CANCELLED";
   await db.doc(`reorder_requests/${docId}`).set({
@@ -265,6 +299,43 @@ async function seedCancelVoidFixture() {
   });
 }
 
+// Inventory Operational Queue, PR A (docs/specifications/inventory-
+// operational-queue.md). One currently-assigned Reorder Request owned
+// by a uid other than any signed-in driver account (cross-user
+// oversight fixture), plus four Employees exercising the assignment
+// picker's securityRole filter's four outcomes.
+async function seedPrAFixture() {
+  const now = Date.now();
+
+  await seedReorderRequestFixture(PR_A_FIXTURE.otherUserAssignedRequest.requestId, {
+    partId: PR_A_FIXTURE.otherUserAssignedRequest.partId,
+    status: "ASSIGNED_TO_PARTS_ASSOCIATE",
+    currentOwner: "PARTS_ASSOCIATE",
+    assignedToUserId: PR_A_FIXTURE.otherUserAssignedRequest.assignedToUserId,
+    createdAt: now,
+  });
+
+  for (const emp of Object.values(PR_A_FIXTURE.securityRoleEmployees)) {
+    await db.doc(`employees/${emp.employeeId}`).set({
+      employeeId: emp.employeeId,
+      displayName: emp.displayName,
+      employmentStatus: "ACTIVE",
+      operationalRoles: ["PARTS_ASSOCIATE"],
+      // Non-null so requireLinkedUser's `where("userId", "!=", null)`
+      // clause includes these fixtures -- doesn't need to resolve to a
+      // real users/{uid} document, since the picker never reads one
+      // (see PR_A_FIXTURE's own header comment above).
+      userId: `driver-seed-securityrole-user-${emp.employeeId}`,
+      // securityRole intentionally omitted entirely for the "missing"
+      // fixture -- `"securityRole" in emp` is false, matching the exact
+      // pre-A0 legacy-document shape this filter must also catch.
+      ...(("securityRole" in emp) ? { securityRole: emp.securityRole } : {}),
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
+}
+
 // Inventory Health / Parts Catalog separation (PR B, docs/specifications/
 // inventory-operational-queue.md). Extracted from seed()'s body so
 // driver.mjs's verify-inventory-health-catalog command can delete these
@@ -393,6 +464,7 @@ async function seed() {
 
   await seedNotificationIdentityFixture();
   await seedCancelVoidFixture();
+  await seedPrAFixture();
 
   console.log("Seeded driver accounts:");
   for (const [key, acct] of Object.entries(DRIVER_ACCOUNTS)) {

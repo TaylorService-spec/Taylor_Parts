@@ -205,3 +205,44 @@ export function useReorderRequestForPart(partId, requestId) {
 
   return { ...state, refresh };
 }
+
+// Inventory Operational Queue, PR A (docs/specifications/inventory-
+// operational-queue.md, "PR A: useReorderRequestsByStatuses() -- with a
+// real error state"). Cross-user oversight read: every Reorder Request
+// currently in one of the given `statuses`, regardless of assignee --
+// unlike useReorderRequestsAssignedTo() above, this does NOT filter by
+// uid. Purpose-built for "All Assigned Work" (PartsList.jsx), additive to
+// -- never a replacement for -- the personal Waiting/In Progress queues,
+// which stay scoped to exactly the signed-in user.
+//
+// Unlike every other hook in this file, `error` here carries the
+// Firestore SDK's own onSnapshot error code (e.g. "permission-denied",
+// "unavailable"), not silently swallowed into an empty array -- per the
+// Specification's explicit carve-out: this is a NEW hook, not a retrofit
+// of an existing one (see that document's "Non-goals" section for why
+// the other hooks above are deliberately left unchanged).
+//
+// Single-field `in` query -- no composite index required, same as every
+// other reorder_requests query in this file.
+export function useReorderRequestsByStatuses(statuses, enabled = true) {
+  const [state, setState] = useState({ data: [], loading: enabled, error: null });
+
+  useEffect(() => {
+    if (!enabled || !statuses?.length) {
+      setState({ data: [], loading: false, error: null });
+      return;
+    }
+
+    setState((prev) => ({ ...prev, loading: true, error: null }));
+    const q = query(reorderRequestsRef, where("status", "in", statuses));
+    const unsubscribe = onSnapshot(
+      q,
+      (snap) => setState({ data: toDocs(snap), loading: false, error: null }),
+      (err) => setState({ data: [], loading: false, error: err.code ?? "unknown" })
+    );
+
+    return unsubscribe;
+  }, [statuses.join(","), enabled]);
+
+  return state;
+}

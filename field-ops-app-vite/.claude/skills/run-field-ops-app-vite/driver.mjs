@@ -99,12 +99,47 @@
 //                                 report per assertion and exits
 //                                 non-zero on any failure.
 //
+//   verify-pr-a <accountKey>      Inventory Operational Queue PR A
+//                                 (docs/specifications/inventory-
+//                                 operational-queue.md, "All Assigned
+//                                 Work" oversight + assignment picker
+//                                 securityRole eligibility) -- the
+//                                 PRIMARY implementation test for that
+//                                 PR. Requires seed.mjs's PR_A_FIXTURE
+//                                 (one Reorder Request assigned to a
+//                                 uid other than any driver account,
+//                                 four Employees exercising the
+//                                 picker's four securityRole outcomes)
+//                                 to already be seeded. Confirms "All
+//                                 Assigned Work" shows the cross-user
+//                                 assignment with an accurate count
+//                                 even though the signed-in account
+//                                 isn't the assignee; opens the
+//                                 existing READY_FOR_PARTS_MANAGER
+//                                 legacy fixture's assignment picker
+//                                 and confirms a technician-role
+//                                 candidate is excluded, a valid
+//                                 non-technician candidate is
+//                                 selectable, and the admin-visible
+//                                 "unverified role data" warning
+//                                 renders for the missing/invalid-enum
+//                                 candidates. Prints a PASS/FAIL report
+//                                 per assertion and exits non-zero on
+//                                 any failure.
+//
 // All screenshots are written under .claude/skills/run-field-ops-app-vite/screenshots/.
 import { chromium } from "@playwright/test";
 import { mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { DRIVER_ACCOUNTS, NOTIFICATION_IDENTITY_FIXTURE, CANCEL_VOID_FIXTURE, seedLedgerTransactions, db } from "./seed.mjs";
+import {
+  DRIVER_ACCOUNTS,
+  NOTIFICATION_IDENTITY_FIXTURE,
+  CANCEL_VOID_FIXTURE,
+  PR_A_FIXTURE,
+  seedLedgerTransactions,
+  db,
+} from "./seed.mjs";
 import { readFileSync } from "node:fs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -800,6 +835,125 @@ async function verifyInventoryHealthCatalog(browser, page, accountKey) {
   return niFailed === 0;
 }
 
+// Inventory Operational Queue, PR A (docs/specifications/inventory-
+// operational-queue.md). Two independent halves, both against
+// PR_A_FIXTURE (seed.mjs): "All Assigned Work" cross-user oversight,
+// and the assignment picker's securityRole eligibility filter --
+// exercised together in one command since PR A ships both pieces in
+// the same commit sequence (per that Specification's own "Within PR A"
+// note), not because they share any UI state.
+async function verifyPrA(browser, page, accountKey) {
+  await login(page, accountKey);
+  await goToInventory(page);
+
+  // --- "All Assigned Work": cross-user oversight, not scoped to the
+  // signed-in account. The fixture's request is assigned to a uid that
+  // is NOT this driver account, and the signed-in account (admin) has
+  // no personal Waiting/In Progress entry for it -- this section must
+  // still show it. ---
+  //
+  // Waits on the actual PR_A_FIXTURE row rather than reading the
+  // heading immediately -- useReorderRequestsByStatuses() is an
+  // onSnapshot() read, so the section renders its initial "(0)"/loading
+  // state for a moment before the first snapshot resolves; asserting
+  // right after goToInventory() (which only waits for the page's own
+  // top heading) would race that resolution and false-FAIL, same
+  // lesson as the assignment-picker wait below.
+  const otherUserRowVisible = await page
+    .getByRole("cell", { name: "Drive Belt - Gen II" })
+    .first()
+    .waitFor({ timeout: 10000 })
+    .then(() => true)
+    .catch(() => false);
+  niReport(
+    "All Assigned Work: shows a request assigned to a DIFFERENT user than the signed-in account",
+    otherUserRowVisible
+  );
+
+  const allAssignedHeadingText = await page
+    .getByRole("heading", { name: /^All Assigned Work/ })
+    .innerText()
+    .catch(() => "");
+  niReport(
+    "All Assigned Work: heading is visible",
+    allAssignedHeadingText.startsWith("All Assigned Work"),
+    `heading was "${allAssignedHeadingText}"`
+  );
+
+  // Count must be exact, not just present -- same "no digit, exact
+  // count" discipline as every other tab/section label in this app.
+  // Every currently-assigned (ASSIGNED_TO_PARTS_ASSOCIATE or
+  // PURCHASING_IN_PROGRESS) fixture across the WHOLE seed set counts
+  // here, not just PR_A_FIXTURE's own row -- driver-seed-legacy-request
+  // is READY_FOR_PARTS_MANAGER (not yet assigned, excluded), but
+  // NOTIFICATION_IDENTITY_FIXTURE's assignedToYou/purchasingStarted
+  // entries AND CANCEL_VOID_FIXTURE's cancelEligible (also
+  // ASSIGNED_TO_PARTS_ASSOCIATE) are. Computed from the fixture sets
+  // directly rather than hardcoded, so this assertion stays correct if
+  // any of them change shape.
+  const assignedStatuses = new Set(["ASSIGNED_TO_PARTS_ASSOCIATE", "PURCHASING_IN_PROGRESS"]);
+  const expectedAllAssignedCount =
+    Object.values(NOTIFICATION_IDENTITY_FIXTURE).filter((c) => assignedStatuses.has(c.status)).length +
+    (assignedStatuses.has(CANCEL_VOID_FIXTURE.cancelEligible.status) ? 1 : 0) +
+    1; // PR_A_FIXTURE.otherUserAssignedRequest
+  niReport(
+    "All Assigned Work: heading shows the exact expected count",
+    allAssignedHeadingText === `All Assigned Work (${expectedAllAssignedCount})`,
+    `heading was "${allAssignedHeadingText}", expected "All Assigned Work (${expectedAllAssignedCount})"`
+  );
+
+  await page.screenshot({ path: join(SCREENSHOT_DIR, "pr-a-all-assigned-work.png"), fullPage: true });
+
+  // --- Assignment picker securityRole eligibility: open the existing
+  // READY_FOR_PARTS_MANAGER legacy fixture (TST-1003) to reach
+  // ReorderRequestAssignment's EmployeeAssignmentPicker. ---
+  const partDetailUrl = new URL("inventory/TST-1003", APP_ROOT);
+  partDetailUrl.searchParams.set("emulator", "1");
+  partDetailUrl.searchParams.set("requestId", "driver-seed-legacy-request");
+  await page.goto(partDetailUrl.toString(), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await page.getByRole("heading", { name: "Reorder Request -- Ready for Parts Manager" }).waitFor({ timeout: 10000 });
+
+  const pickerInput = page.getByRole("combobox", { name: "Assign to Parts Associate" });
+  await pickerInput.click();
+
+  const { eligible, technician } = PR_A_FIXTURE.securityRoleEmployees;
+  // Wait on a known-good option rather than a flat timeout -- the
+  // picker's onSnapshot listener may not have resolved the instant the
+  // dropdown opens; a fixed sleep would risk a false FAIL on a slow
+  // first load rather than a true negative.
+  const eligibleVisible = await page
+    .getByRole("option", { name: new RegExp(`^${eligible.displayName}`) })
+    .waitFor({ timeout: 10000 })
+    .then(() => true)
+    .catch(() => false);
+  niReport("Assignment picker: a valid non-technician securityRole candidate IS selectable", eligibleVisible);
+
+  const technicianVisible = await page
+    .getByRole("option", { name: new RegExp(`^${technician.displayName}`) })
+    .isVisible()
+    .catch(() => false);
+  niReport("Assignment picker: a technician-securityRole candidate is EXCLUDED from selectable results", !technicianVisible);
+
+  // The admin-visible configuration warning -- covers both the
+  // "missing" and "invalid-enum" fixtures at once (2 candidates
+  // excluded for that reason in this fixture set).
+  const warningText = await page
+    .getByText(/employees? have unverified role data/)
+    .first()
+    .innerText()
+    .catch(() => "");
+  niReport(
+    "Assignment picker: admin-visible configuration warning renders for missing/invalid-enum securityRole",
+    warningText.startsWith("2 employees have unverified role data"),
+    `warning text was "${warningText}"`
+  );
+
+  await page.screenshot({ path: join(SCREENSHOT_DIR, "pr-a-assignment-picker.png"), fullPage: true });
+
+  console.log(`\n${niPassed} passed, ${niFailed} failed`);
+  return niFailed === 0;
+}
+
 async function main() {
   const [, , command, ...args] = process.argv;
   const browser = await chromium.launch();
@@ -866,6 +1020,10 @@ async function main() {
     } else if (command === "verify-inventory-health-catalog") {
       const [accountKey = "admin"] = args;
       const ok = await verifyInventoryHealthCatalog(browser, page, accountKey);
+      if (!ok) process.exitCode = 1;
+    } else if (command === "verify-pr-a") {
+      const [accountKey = "admin"] = args;
+      const ok = await verifyPrA(browser, page, accountKey);
       if (!ok) process.exitCode = 1;
     } else {
       console.error(`Unknown command "${command}". See the header comment in this file for usage.`);

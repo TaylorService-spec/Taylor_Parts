@@ -49,7 +49,10 @@ export default function EmployeeAssignmentPicker({
   label,
   placeholder = "Search by name...",
 }) {
-  const { employees, loading, error } = useAssignableEmployees({ requiredOperationalRole, requireLinkedUser });
+  const { employees, loading, error, securityRoleWarningCount } = useAssignableEmployees({
+    requiredOperationalRole,
+    requireLinkedUser,
+  });
   const [searchText, setSearchText] = useState("");
   const [isOpen, setIsOpen] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
@@ -196,6 +199,12 @@ export default function EmployeeAssignmentPicker({
         aria-label={label ?? placeholder}
         autoComplete="off"
       />
+      {securityRoleWarningCount > 0 && (
+        <p className="warning fo-employee-picker-warning" role="status">
+          {securityRoleWarningCount} employee{securityRoleWarningCount === 1 ? "" : "s"} have unverified role data --
+          contact an admin.
+        </p>
+      )}
       {isOpen && (
         <div id={listboxId} role="listbox" className="fo-employee-picker-results">
           {loading ? (

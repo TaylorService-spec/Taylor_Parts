@@ -2,7 +2,12 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { PARTS_CATALOG, getCatalogItem } from "../../data/partsCatalog";
 import { useInventoryLedger } from "../../hooks/useInventoryLedger";
-import { useReorderRequests, useReorderRequestsByStatus, useReorderRequestsAssignedTo } from "../../hooks/useReorderRequests";
+import {
+  useReorderRequests,
+  useReorderRequestsByStatus,
+  useReorderRequestsAssignedTo,
+  useReorderRequestsByStatuses,
+} from "../../hooks/useReorderRequests";
 import { requestReorderForRecommendation, getDisplayQty } from "../../domain/inventoryReorderRequests";
 import { REORDER_REQUEST_STATUS } from "../../domain/constants";
 import { useAuth } from "../../auth/AuthContext";
@@ -95,6 +100,19 @@ import { hasUsageHistory } from "../../domain/inventoryAnalyticsEngine";
 // every other field here, updating live once a Parts Associate posts
 // an update on PartDetail.jsx. No new query: still the same
 // useReorderRequestsAssignedTo(userId, PURCHASING_IN_PROGRESS) read.
+// Inventory Operational Queue, PR A (docs/specifications/inventory-
+// operational-queue.md). "All Assigned Work" -- cross-user oversight of
+// every Reorder Request currently assigned to ANY Parts Associate,
+// additive to (never a replacement for) the personal Waiting/In Progress
+// queues below, which stay scoped to exactly the signed-in user. Same two
+// statuses those personal queues already read, just without the
+// per-user filter -- via useReorderRequestsByStatuses(), not a third read
+// implementation.
+const ALL_ASSIGNED_WORK_STATUSES = [
+  REORDER_REQUEST_STATUS.ASSIGNED_TO_PARTS_ASSOCIATE,
+  REORDER_REQUEST_STATUS.PURCHASING_IN_PROGRESS,
+];
+
 const PAGE_SIZE = 25;
 const ACTIONABLE_URGENCIES = new Set(["CRITICAL", "HIGH"]);
 
@@ -152,6 +170,11 @@ export default function PartsList() {
     user?.uid,
     REORDER_REQUEST_STATUS.PURCHASING_IN_PROGRESS
   );
+  const {
+    data: allAssignedWork,
+    loading: allAssignedWorkLoading,
+    error: allAssignedWorkError,
+  } = useReorderRequestsByStatuses(ALL_ASSIGNED_WORK_STATUSES);
   const categories = useCategories();
   const [category, setCategory] = useState("ALL");
   const [page, setPage] = useState(0);
@@ -393,6 +416,59 @@ export default function PartsList() {
           </tbody>
         </table>
       </LoadingEmptyState>
+
+      <h3>All Assigned Work ({allAssignedWork.length})</h3>
+      <p className="fo-muted">
+        Every Reorder Request currently assigned to a Parts Associate, regardless of who it's assigned to --
+        oversight only, no action control here. Your own assignments above are a subset of this list.
+      </p>
+      {allAssignedWorkError ? (
+        <p className="fo-muted">Unable to load All Assigned Work ({allAssignedWorkError}).</p>
+      ) : (
+        <LoadingEmptyState
+          loading={allAssignedWorkLoading}
+          isEmpty={allAssignedWork.length === 0}
+          loadingText="Loading All Assigned Work..."
+          emptyText="No requests are currently assigned to anyone."
+        >
+          <table className="fo-table">
+            <thead>
+              <tr>
+                <th>Part</th>
+                <th>Qty</th>
+                <th>Urgency</th>
+                <th>Status</th>
+                <th>Assigned</th>
+              </tr>
+            </thead>
+            <tbody>
+              {allAssignedWork.map((request) => (
+                <tr key={request.id}>
+                  <td>
+                    <Link to={`/inventory/${request.partId}?requestId=${request.id}`}>
+                      {getCatalogItem(request.partId)?.name ?? request.partId}
+                    </Link>
+                  </td>
+                  <td>{getDisplayQty(request)}</td>
+                  <td>
+                    {request.urgency ? (
+                      <span className={`fo-badge fo-badge-${request.urgency.toLowerCase()}`}>{request.urgency}</span>
+                    ) : (
+                      <span className="fo-badge">Needs planning</span>
+                    )}
+                  </td>
+                  <td className="fo-muted">
+                    {request.status === REORDER_REQUEST_STATUS.PURCHASING_IN_PROGRESS ? "In Progress" : "Waiting"}
+                  </td>
+                  <td className="fo-muted">
+                    {request.assignedAt ? new Date(request.assignedAt).toLocaleString() : "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </LoadingEmptyState>
+      )}
 
       <h3>Parts Catalog</h3>
       <p className="fo-muted">

@@ -656,6 +656,12 @@ button:hover {
   font-size: 13px;
 }
 
+.fo-employee-picker-warning {
+  margin: 4px 0 0;
+  font-size: 12px;
+  max-width: 260px;
+}
+
 .wo-history-row {
   font-size: 13px;
   padding: 2px 0;
