@@ -11,6 +11,7 @@ import { ACCOUNT_RELATIONSHIP_TYPE } from "../../domain/constants";
 import AddressFields from "../../shared/address/AddressFields";
 import AccountForm from "./AccountForm";
 import ServiceActivitySection from "./ServiceActivitySection";
+import FinancialSummarySection from "./FinancialSummarySection";
 
 // Sprint 2.0.2 -- Customer Foundation. Internal name AccountDetail;
 // rendered UI says "Customer Detail" throughout.
@@ -208,11 +209,8 @@ export default function AccountDetail() {
             )}
           </section>
 
-          {/* 2. Financial Summary -- inert mount point only (PR 4 adds behavior) */}
-          <section className="wo-history">
-            <h4>Financial Summary</h4>
-            <p className="fo-muted">Not yet available in this view.</p>
-          </section>
+          {/* 2. Financial Summary -- provider-neutral surface; unconfigured only (PR 4) */}
+          <FinancialSummarySection />
 
           {/* 3. Contacts */}
           <section className="wo-history">

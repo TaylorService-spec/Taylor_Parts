@@ -9,7 +9,7 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test": "node test/serviceActivityView.test.mjs"
+    "test": "node test/serviceActivityView.test.mjs && node test/financialSummaryView.test.mjs"
   },
   "dependencies": {
     "firebase": "^12.15.0",
