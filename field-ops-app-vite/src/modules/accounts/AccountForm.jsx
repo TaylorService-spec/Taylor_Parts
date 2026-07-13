@@ -190,7 +190,10 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
   }
 
   return (
-    <form className="fo-form" onSubmit={handleSubmit}>
+    // `fo-account-form` is ADDITIVE layout only (keeps `fo-form` for shared
+    // control styling/behavior; global `.fo-form` used by other forms is
+    // unchanged). See index.css's `.fo-account-form` block.
+    <form className="fo-form fo-account-form" onSubmit={handleSubmit}>
       <input placeholder="Customer name" value={name} onChange={(e) => setName(e.target.value)} />
 
       <select value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Status">
@@ -336,7 +339,7 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
           errors.billingContact && <div className="fo-warning">{errors.billingContact}</div>
         )}
 
-        <div className="fo-form-field">
+        <div className="fo-form-field fo-account-form-wide">
           {accountOwner && (
             <div className="fo-muted">
               {/* CURRENT owner, re-resolved from userId -- not the stored

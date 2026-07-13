@@ -717,3 +717,88 @@ button:hover {
   font-size: 13px;
   padding: 2px 0;
 }
+
+/* Account Commercial Profile and Financial Forecast Horizons -- PR 2.
+   Account-form-SPECIFIC layout. ADDITIVE to (never a modification of) the
+   global `.fo-form` used by LocationForm/ContactForm: the account form carries
+   BOTH classes (`fo-form fo-account-form`), and every rule below is scoped to
+   `.fo-account-form`, so global `.fo-form` behavior is unchanged. Goals:
+   consistent two-column desktop grid / single-column mobile; labels above
+   uniformly-sized controls; full-width fieldsets, notes, errors, action row;
+   aligned checkboxes / owner picker / Commercial Profile fields; and no
+   horizontal overflow at 375px. Behavior and accessibility are untouched
+   (JSX changes are class-only). */
+.fo-account-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 16px;
+  align-items: start;
+}
+/* Controls never impose a min-width that could overflow a narrow column, and
+   always include padding/border within their measured width. */
+.fo-account-form input,
+.fo-account-form select,
+.fo-account-form textarea {
+  min-width: 0;
+  box-sizing: border-box;
+}
+/* Direct-child bare controls (name, status, tags, external IDs) fill one cell. */
+.fo-account-form > input,
+.fo-account-form > select {
+  width: 100%;
+  margin: 0;
+}
+/* Full-width rows span both columns: both fieldsets, notes, the external-IDs
+   toggle, form-level warnings, and the action row. */
+.fo-account-form > fieldset,
+.fo-account-form > textarea,
+.fo-account-form > .fo-btn-row,
+.fo-account-form > .fo-warning,
+.fo-account-form > .fo-link-btn {
+  grid-column: 1 / -1;
+}
+.fo-account-form > textarea { width: 100%; }
+/* Keep the standalone external-IDs toggle at its natural size, not stretched. */
+.fo-account-form > .fo-link-btn { justify-self: start; }
+/* A labeled field group: label ABOVE a full-width, uniformly-sized control.
+   Applies to the address fields (direct grid cells) and every Commercial
+   Profile field. */
+.fo-account-form .fo-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  margin: 0;
+}
+.fo-account-form .fo-form-field > input,
+.fo-account-form .fo-form-field > select {
+  width: 100%;
+}
+/* Fieldsets lay their fields two-per-row via flex-basis (NOT grid, so <legend>
+   rendering stays intact). */
+.fo-account-form .fo-fieldset {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+  align-items: start;
+}
+.fo-account-form .fo-fieldset > legend { flex-basis: 100%; }
+.fo-account-form .fo-fieldset > .fo-form-field {
+  flex: 1 1 calc(50% - 8px);
+  min-width: 0;
+}
+/* The owner picker field reads better full-width (combobox + current-owner line
+   + error). */
+.fo-account-form .fo-fieldset > .fo-account-form-wide { flex-basis: 100%; }
+.fo-account-form .fo-employee-picker { width: 100%; }
+.fo-account-form .fo-employee-picker input { width: 100%; }
+/* Checkboxes: box and label on one left-aligned row. */
+.fo-account-form .fo-checkbox-label {
+  flex-direction: row;
+  align-items: center;
+}
+/* Single column at narrow widths -- guarantees no horizontal overflow at 375px. */
+@media (max-width: 640px) {
+  .fo-account-form { grid-template-columns: 1fr; }
+  .fo-account-form .fo-fieldset > .fo-form-field { flex-basis: 100%; }
+}

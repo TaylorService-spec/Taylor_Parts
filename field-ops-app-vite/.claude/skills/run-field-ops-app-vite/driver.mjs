@@ -220,6 +220,18 @@
 //                                 unchanged. Prints a PASS/FAIL report per
 //                                 assertion and exits non-zero on any failure.
 //
+//   verify-account-form-layout <accountKey>
+//                                 Account Commercial Profile PR 2 -- deterministic
+//                                 LAYOUT coverage for the `.fo-account-form`
+//                                 styles: two-column desktop grid + single-column
+//                                 375px, labels above uniformly-sized controls,
+//                                 full-width Commercial Profile fieldset + action
+//                                 row, and no horizontal overflow at 375px. Reads
+//                                 real getBoundingClientRect()/getComputedStyle()
+//                                 geometry (not screenshots). Prints a PASS/FAIL
+//                                 report per assertion and exits non-zero on any
+//                                 failure.
+//
 // All screenshots are written under .claude/skills/run-field-ops-app-vite/screenshots/.
 import { chromium } from "@playwright/test";
 import { mkdirSync } from "node:fs";
@@ -2053,6 +2065,125 @@ async function verifyGovernedFields(browser, page, accountKey) {
   return niFailed === 0;
 }
 
+// Account Commercial Profile -- PR 2. Deterministic Account-edit-form LAYOUT
+// coverage for the `.fo-account-form` styles (index.css): two-column desktop
+// grid + single-column 375px, labels above uniformly-sized controls, full-width
+// fieldset/action row, and NO horizontal overflow at 375px. Geometry is read
+// from real getBoundingClientRect()/getComputedStyle() -- not screenshots --
+// so the assertions are deterministic. Opens the GOVERNED_FIELDS_FIXTURE
+// account's edit form as admin (any admin/dispatcher can open it).
+async function verifyAccountFormLayout(browser, page, accountKey) {
+  const F = GOVERNED_FIELDS_FIXTURE;
+  await login(page, accountKey);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(customerUrl(F.governedAccountId), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await page
+    .locator("section.wo-history")
+    .filter({ has: page.locator("h4", { hasText: "Commercial Profile" }) })
+    .getByRole("heading", { name: "Commercial Profile", exact: true })
+    .waitFor({ timeout: 10000 });
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  await page.locator("form.fo-account-form").waitFor({ timeout: 10000 });
+  await page.locator("#cp-currency").waitFor({ timeout: 10000 });
+
+  const trackCount = (gtc) => (gtc || "").trim().split(/\s+/).filter((t) => parseFloat(t) > 0).length;
+
+  // ===== Desktop (1280) =====
+  const d = await page.evaluate(() => {
+    const form = document.querySelector("form.fo-account-form");
+    const cs = getComputedStyle(form);
+    const rect = (sel) => {
+      const el = document.querySelector(sel);
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { x: r.x, y: r.y, w: r.width, right: r.right };
+    };
+    const labelFor = (id) => {
+      const el = document.querySelector(`label[for="${id}"]`);
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { x: r.x, y: r.y };
+    };
+    const fieldset = [...document.querySelectorAll("form.fo-account-form fieldset")].find((f) =>
+      /Commercial Profile/.test(f.querySelector("legend")?.textContent || "")
+    );
+    return {
+      display: cs.display,
+      gtc: cs.gridTemplateColumns,
+      formW: form.getBoundingClientRect().width,
+      street: rect("#account-billing-street"),
+      city: rect("#account-billing-city"),
+      currency: rect("#cp-currency"),
+      invoice: rect("#cp-invoice-delivery"),
+      currencyLabel: labelFor("cp-currency"),
+      fieldsetW: fieldset ? fieldset.getBoundingClientRect().width : null,
+      btnRow: rect("form.fo-account-form .fo-btn-row"),
+      docScroll: document.documentElement.scrollWidth,
+      docClient: document.documentElement.clientWidth,
+    };
+  });
+
+  niReport("Desktop: account edit form is a CSS grid", d.display === "grid", `display=${d.display}`);
+  niReport("Desktop: grid has exactly two columns", trackCount(d.gtc) === 2, `grid-template-columns="${d.gtc}"`);
+  niReport(
+    "Desktop: two-column layout -- Street and City sit side by side on one row",
+    !!d.street && !!d.city && Math.abs(d.street.y - d.city.y) <= 4 && d.city.x > d.street.x + 10,
+    JSON.stringify({ street: d.street, city: d.city })
+  );
+  niReport(
+    "Desktop: labels sit directly above their controls (same left edge, label higher)",
+    !!d.currencyLabel && !!d.currency && d.currencyLabel.y + 2 <= d.currency.y && Math.abs(d.currencyLabel.x - d.currency.x) <= 6,
+    JSON.stringify({ label: d.currencyLabel, input: d.currency })
+  );
+  niReport(
+    "Desktop: controls in a column are uniformly sized (currency input width == invoice select width)",
+    !!d.currency && !!d.invoice && Math.abs(d.currency.w - d.invoice.w) <= 3,
+    JSON.stringify({ currencyW: d.currency?.w, invoiceW: d.invoice?.w })
+  );
+  niReport(
+    "Desktop: the Commercial Profile fieldset spans the full form width",
+    !!d.fieldsetW && d.fieldsetW >= d.formW * 0.9,
+    JSON.stringify({ fieldsetW: d.fieldsetW, formW: d.formW })
+  );
+  niReport(
+    "Desktop: the action row spans the full form width",
+    !!d.btnRow && d.btnRow.w >= d.formW * 0.9,
+    JSON.stringify({ btnRowW: d.btnRow?.w, formW: d.formW })
+  );
+  niReport("Desktop: no horizontal overflow", d.docScroll <= d.docClient + 1, `scroll=${d.docScroll} client=${d.docClient}`);
+
+  // ===== Mobile (375) =====
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.waitForTimeout(250);
+  const m = await page.evaluate(() => {
+    const form = document.querySelector("form.fo-account-form");
+    const rect = (sel) => {
+      const el = document.querySelector(sel);
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { x: r.x, y: r.y, w: r.width };
+    };
+    return {
+      gtc: getComputedStyle(form).gridTemplateColumns,
+      street: rect("#account-billing-street"),
+      city: rect("#account-billing-city"),
+      docScroll: document.documentElement.scrollWidth,
+      docClient: document.documentElement.clientWidth,
+    };
+  });
+  niReport("375px: grid collapses to a single column", trackCount(m.gtc) === 1, `grid-template-columns="${m.gtc}"`);
+  niReport(
+    "375px: Street and City stack vertically (single column, same left edge)",
+    !!m.street && !!m.city && m.city.y > m.street.y + 4 && Math.abs(m.city.x - m.street.x) <= 4,
+    JSON.stringify({ street: m.street, city: m.city })
+  );
+  niReport("375px: no horizontal overflow", m.docScroll <= m.docClient + 1, `scroll=${m.docScroll} client=${m.docClient}`);
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+  console.log(`\n${niPassed} passed, ${niFailed} failed`);
+  return niFailed === 0;
+}
+
 async function main() {
   const [, , command, ...args] = process.argv;
   const browser = await chromium.launch();
@@ -2143,6 +2274,10 @@ async function main() {
     } else if (command === "verify-governed-fields") {
       const [accountKey = "admin"] = args;
       const ok = await verifyGovernedFields(browser, page, accountKey);
+      if (!ok) process.exitCode = 1;
+    } else if (command === "verify-account-form-layout") {
+      const [accountKey = "admin"] = args;
+      const ok = await verifyAccountFormLayout(browser, page, accountKey);
       if (!ok) process.exitCode = 1;
     } else {
       console.error(`Unknown command "${command}". See the header comment in this file for usage.`);
