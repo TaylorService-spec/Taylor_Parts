@@ -63,6 +63,27 @@ export const DRIVER_ACCOUNTS = {
   // reach the "All Assigned Work" UI to click through -- this is why the
   // check is a direct SDK-level listener assertion, not a browser one).
   queryFailureProbe: { email: "driver-query-failure-probe@example.test", password: "driver-pass-123", uid: null },
+  // Issue #100 (docs/specifications/inventory-nav-access-alignment.md,
+  // docs/implementation-plans/inventory-nav-access-alignment.md, PR 0)
+  // -- five fixtures exercising role=technician + operationalRoles
+  // combinations no existing account produces (every prior fixture
+  // deliberately avoids seeding a real role=technician account for
+  // Inventory scenarios -- see eligiblePartsManager's own comment
+  // above and SKILL.md's Gotchas). PR 0 itself adds no nav/route/Rules
+  // change that consumes these -- they exist so PR 1a/1b/2a/2b/3a/3b's
+  // browser/SDK-level coverage has real accounts to sign in as.
+  technicianPartsManager: { email: "driver-technician-parts-manager@example.test", password: "driver-pass-123", uid: null },
+  technicianWarehouseManager: { email: "driver-technician-warehouse-manager@example.test", password: "driver-pass-123", uid: null },
+  technicianPartsAssociate: { email: "driver-technician-parts-associate@example.test", password: "driver-pass-123", uid: null },
+  // Ineligible: real reciprocal Employee link, ACTIVE, but zero
+  // eligible operationalRoles -- must be denied every capability the
+  // three eligible fixtures above satisfy.
+  technicianIneligible: { email: "driver-technician-ineligible@example.test", password: "driver-pass-123", uid: null },
+  // Broken linkage: users/{uid}.employeeId points at an employees
+  // document that is never created -- proves fail-closed behavior for
+  // an unresolved/broken link specifically, not merely an empty
+  // operationalRoles array.
+  technicianBrokenLink: { email: "driver-technician-broken-link@example.test", password: "driver-pass-123", uid: null },
 };
 
 async function ensureAuthUser(acct) {
@@ -730,6 +751,81 @@ async function seedCommercialProfileFixture() {
   });
 }
 
+// Issue #100 -- PR 0. Seeds the five technician-role fixtures above:
+// three eligible (one operationalRoles entry each), one ineligible
+// (real link, ACTIVE, zero eligible roles), one broken-linkage
+// (employeeId points at a document that is never created). No
+// reorder_requests/inventory_transactions/inventory_actions documents
+// are seeded here -- PR 0 adds no query/Rules change that would ever
+// read them for these accounts; later PRs' own fixtures cover that.
+async function seedIssue100RoleFixtures() {
+  const now = Date.now();
+
+  await db.doc("employees/driver-emp-technician-parts-manager").set({
+    employeeId: "driver-emp-technician-parts-manager",
+    displayName: "Driver Technician Parts Manager",
+    employmentStatus: "ACTIVE",
+    operationalRoles: ["PARTS_MANAGER"],
+    userId: DRIVER_ACCOUNTS.technicianPartsManager.uid,
+    createdAt: now,
+    updatedAt: now,
+  });
+  await db.doc(`users/${DRIVER_ACCOUNTS.technicianPartsManager.uid}`).set({
+    role: "technician",
+    employeeId: "driver-emp-technician-parts-manager",
+  });
+
+  await db.doc("employees/driver-emp-technician-warehouse-manager").set({
+    employeeId: "driver-emp-technician-warehouse-manager",
+    displayName: "Driver Technician Warehouse Manager",
+    employmentStatus: "ACTIVE",
+    operationalRoles: ["WAREHOUSE_MANAGER"],
+    userId: DRIVER_ACCOUNTS.technicianWarehouseManager.uid,
+    createdAt: now,
+    updatedAt: now,
+  });
+  await db.doc(`users/${DRIVER_ACCOUNTS.technicianWarehouseManager.uid}`).set({
+    role: "technician",
+    employeeId: "driver-emp-technician-warehouse-manager",
+  });
+
+  await db.doc("employees/driver-emp-technician-parts-associate").set({
+    employeeId: "driver-emp-technician-parts-associate",
+    displayName: "Driver Technician Parts Associate",
+    employmentStatus: "ACTIVE",
+    operationalRoles: ["PARTS_ASSOCIATE"],
+    userId: DRIVER_ACCOUNTS.technicianPartsAssociate.uid,
+    createdAt: now,
+    updatedAt: now,
+  });
+  await db.doc(`users/${DRIVER_ACCOUNTS.technicianPartsAssociate.uid}`).set({
+    role: "technician",
+    employeeId: "driver-emp-technician-parts-associate",
+  });
+
+  await db.doc("employees/driver-emp-technician-ineligible").set({
+    employeeId: "driver-emp-technician-ineligible",
+    displayName: "Driver Technician Ineligible",
+    employmentStatus: "ACTIVE",
+    operationalRoles: [],
+    userId: DRIVER_ACCOUNTS.technicianIneligible.uid,
+    createdAt: now,
+    updatedAt: now,
+  });
+  await db.doc(`users/${DRIVER_ACCOUNTS.technicianIneligible.uid}`).set({
+    role: "technician",
+    employeeId: "driver-emp-technician-ineligible",
+  });
+
+  // No employees/driver-emp-technician-broken-link-does-not-exist
+  // document is ever written -- that's the entire point of this
+  // fixture.
+  await db.doc(`users/${DRIVER_ACCOUNTS.technicianBrokenLink.uid}`).set({
+    role: "technician",
+    employeeId: "driver-emp-technician-broken-link-does-not-exist",
+  });
+}
+
 // Inventory Health / Parts Catalog separation (PR B) -- exported so
 // driver.mjs can delete/restore inventory_transactions documents
 // directly (Admin SDK, emulator-only) for the empty-state assertions
@@ -807,6 +903,7 @@ async function seed() {
   await seedServiceActivityFixture();
   await seedHistoryFixture();
   await seedCommercialProfileFixture();
+  await seedIssue100RoleFixtures();
 
   console.log("Seeded driver accounts:");
   for (const [key, acct] of Object.entries(DRIVER_ACCOUNTS)) {
