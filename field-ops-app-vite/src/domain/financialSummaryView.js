@@ -61,18 +61,31 @@ export function financialSummaryView(state) {
   }
   if (status === FINANCIAL_PROVIDER_STATE.PARTIAL || status === FINANCIAL_PROVIDER_STATE.COMPLETE) {
     const partial = status === FINANCIAL_PROVIDER_STATE.PARTIAL;
-    const rows = (state.metrics ?? []).map((m) => {
-      if (m.available === false) {
-        // Explicit disclosure -- an unsupported/missing metric is NEVER
-        // silently omitted (Framework Section 17).
-        const reason = m.unavailableReason ? ` — ${m.unavailableReason}` : "";
-        return { name: m.name, available: false, text: `${m.name}: unavailable${reason}` };
+
+    // Index provider-supplied data by CANONICAL metric name only -- any
+    // noncanonical name is ignored entirely and never rendered as a financial
+    // metric (Framework Section 4/18: an AI/provider metric that doesn't map
+    // to a canonical definition is a defect, not something to display).
+    const supplied = new Map();
+    for (const m of state.metrics ?? []) {
+      if (m && CANONICAL_FINANCIAL_METRICS.includes(m.name)) supplied.set(m.name, m);
+    }
+
+    // Build a row for EVERY canonical metric, always -- a metric absent from
+    // the provider data (or explicitly marked unavailable) is disclosed as
+    // unavailable, NEVER silently omitted (Framework Section 17).
+    const rows = CANONICAL_FINANCIAL_METRICS.map((name) => {
+      const m = supplied.get(name);
+      if (!m || m.available === false) {
+        const reason = m && m.unavailableReason ? ` — ${m.unavailableReason}` : "";
+        return { name, available: false, text: `${name}: unavailable${reason}` };
       }
-      // A legitimate value (including a genuine $0 when the provider reports
-      // completeness for that metric) is rendered as-is, with a per-figure
+      // A legitimate, provider-supplied value (including a genuine $0 the
+      // provider reports as complete) is rendered as-is, with a per-figure
       // partial warning when the overall state is partial.
-      return { name: m.name, available: true, text: `${m.name}: ${m.value}${partial ? " (partial data)" : ""}` };
+      return { name, available: true, text: `${name}: ${m.value}${partial ? " (partial data)" : ""}` };
     });
+
     return {
       kind: "metrics",
       partial,
