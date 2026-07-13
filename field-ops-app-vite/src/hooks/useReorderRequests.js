@@ -266,12 +266,36 @@ export function useReorderRequestsByStatuses(statuses, enabled = true) {
 // firestore.indexes.json change of its own, it only queries against
 // what C0 deployed.
 //
+// Final Review correction: the real Firestore call is factored out into
+// its own named, exported function (fetchReorderRequestsHistoryPage)
+// rather than inlined -- this is the hook's deterministic TEST SEAM.
+// Network-level interception cannot reliably force this hook into an
+// error/empty state (confirmed: on pages with other onSnapshot()
+// listeners already active, e.g. PartsList.jsx, this getDocs() call is
+// multiplexed through the same already-open WebChannel connection, not
+// issued as its own discrete, interceptable REST request). Injecting a
+// replacement implementation at the hook's own boundary instead --
+// `fetchPageImpl`, defaulting to the real one -- drives this EXACT hook
+// and the EXACT component tree that consumes it into a real error/empty
+// render, through the same state machine production traffic uses, with
+// no network mocking and no component-level bypass.
+export async function fetchReorderRequestsHistoryPage({ statuses, pageSize, cursor }) {
+  const constraints = [where("status", "in", statuses), orderBy("createdAt", "desc"), limit(pageSize)];
+  if (cursor) constraints.push(startAfter(cursor));
+  const snap = await getDocs(query(reorderRequestsRef, ...constraints));
+  return {
+    docs: toDocs(snap),
+    lastVisible: snap.docs.length ? snap.docs[snap.docs.length - 1] : null,
+    size: snap.docs.length,
+  };
+}
+
 // hasMore is inferred from whether the just-fetched page was full
 // (page.length === pageSize) -- the standard Firestore cursor-pagination
 // heuristic (no cheap total-count query exists); isEndOfHistory is the
 // same signal, exposed under the Specification's own name for the
 // "Load More is hidden or disabled, not silently absent" state.
-export function useReorderRequestsHistory({ statuses, pageSize = 25 }) {
+export function useReorderRequestsHistory({ statuses, pageSize = 25, fetchPageImpl = fetchReorderRequestsHistoryPage }) {
   const [state, setState] = useState({ data: [], loading: true, error: null, hasMore: false, isEndOfHistory: false });
   const lastVisibleRef = useRef(null);
   const statusesKey = statuses.join(",");
@@ -280,13 +304,13 @@ export function useReorderRequestsHistory({ statuses, pageSize = 25 }) {
     async (isLoadMore) => {
       setState((prev) => ({ ...prev, loading: true, error: null }));
       try {
-        const constraints = [where("status", "in", statuses), orderBy("createdAt", "desc"), limit(pageSize)];
-        if (isLoadMore && lastVisibleRef.current) constraints.push(startAfter(lastVisibleRef.current));
-
-        const snap = await getDocs(query(reorderRequestsRef, ...constraints));
-        const pageDocs = toDocs(snap);
-        lastVisibleRef.current = snap.docs.length ? snap.docs[snap.docs.length - 1] : lastVisibleRef.current;
-        const hasMore = snap.docs.length === pageSize;
+        const { docs: pageDocs, lastVisible, size } = await fetchPageImpl({
+          statuses,
+          pageSize,
+          cursor: isLoadMore ? lastVisibleRef.current : null,
+        });
+        lastVisibleRef.current = lastVisible ?? lastVisibleRef.current;
+        const hasMore = size === pageSize;
 
         setState((prev) => ({
           data: isLoadMore ? [...prev.data, ...pageDocs] : pageDocs,
@@ -300,14 +324,14 @@ export function useReorderRequestsHistory({ statuses, pageSize = 25 }) {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- statusesKey is the intentional, stable proxy for `statuses` (see useReorderRequestsByStatuses() above for the identical, already-accepted pattern in this file).
-    [statusesKey, pageSize]
+    [statusesKey, pageSize, fetchPageImpl]
   );
 
   useEffect(() => {
     lastVisibleRef.current = null;
     fetchPage(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusesKey, pageSize]);
+  }, [statusesKey, pageSize, fetchPageImpl]);
 
   const loadMore = useCallback(() => fetchPage(true), [fetchPage]);
 

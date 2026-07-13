@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { PARTS_CATALOG, getCatalogItem } from "../../data/partsCatalog";
 import { useInventoryLedger } from "../../hooks/useInventoryLedger";
 import {
@@ -9,6 +9,7 @@ import {
   useReorderRequestsByStatuses,
   useReorderRequestsHistory,
   useReorderRequestById,
+  fetchReorderRequestsHistoryPage,
 } from "../../hooks/useReorderRequests";
 import { requestReorderForRecommendation, getDisplayQty } from "../../domain/inventoryReorderRequests";
 import { REORDER_REQUEST_STATUS } from "../../domain/constants";
@@ -141,6 +142,64 @@ const HISTORY_STATUS_LABEL = {
   [REORDER_REQUEST_STATUS.REJECTED]: "Rejected",
 };
 
+// Inventory Operational Queue, PR C, Final Review correction. A
+// deterministic TEST SEAM for History's loading/error/genuinely-empty/
+// Load-More-failure states -- network-level interception was confirmed
+// unreliable for this hook (its getDocs() call is multiplexed through
+// this page's already-open onSnapshot WebChannel, not a discrete
+// interceptable request; see useReorderRequests.js's own header comment
+// on fetchReorderRequestsHistoryPage for the full investigation).
+// Instead, useReorderRequestsHistory()'s own `fetchPageImpl` injection
+// point is used to substitute a deterministic implementation, driving
+// the SAME hook and the SAME rendered component tree production traffic
+// uses -- no component-level bypass, no fake DOM.
+//
+// Gated on BOTH import.meta.env.DEV (completely absent from any
+// production build, dead-code-eliminated by Vite -- same safety
+// posture as firebase.js's own `?emulator=1` gate) AND an explicit,
+// unguessable-by-accident query param (?historyTest=...) that does
+// nothing unless a value from HISTORY_TEST_MODES is present. Inert by
+// default; never reachable outside a dev-mode session that opts in
+// explicitly.
+const HISTORY_TEST_MODES = new Set(["error", "empty", "loading", "error-loadmore"]);
+
+function buildHistoryTestFetchImpl(mode) {
+  if (mode === "error") {
+    return async () => {
+      const err = new Error("Simulated test failure -- initial load");
+      err.code = "test-injected-failure";
+      throw err;
+    };
+  }
+  if (mode === "empty") {
+    return async () => ({ docs: [], lastVisible: null, size: 0 });
+  }
+  if (mode === "loading") {
+    // A promise that never resolves -- the hook's `loading` state has no
+    // path to ever leave `true` for this fetch, letting a test observe
+    // the Loading state deterministically instead of racing a real,
+    // fast-resolving fetch.
+    return () => new Promise(() => {});
+  }
+  if (mode === "error-loadmore") {
+    // The FIRST fetch (no cursor -- the initial page) delegates to the
+    // real implementation, so real fixture data loads normally; only a
+    // SUBSEQUENT fetch (cursor present -- a Load More click) fails. This
+    // is what makes "existing rows survive a Load More failure"
+    // deterministically testable: the initial success is real, not
+    // faked, and only the pagination step is forced to fail.
+    return async (args) => {
+      if (args.cursor) {
+        const err = new Error("Simulated test failure -- Load More");
+        err.code = "test-injected-failure";
+        throw err;
+      }
+      return fetchReorderRequestsHistoryPage(args);
+    };
+  }
+  return undefined;
+}
+
 const PAGE_SIZE = 25;
 const ACTIONABLE_URGENCIES = new Set(["CRITICAL", "HIGH"]);
 
@@ -262,13 +321,29 @@ export default function PartsList() {
         : `All Assigned Work: ${allAssignedWork.length} request${allAssignedWork.length === 1 ? "" : "s"} loaded.`;
 
   // Inventory Operational Queue, PR C -- Reorder Request History.
+  // Test-seam wiring (see HISTORY_TEST_MODES/buildHistoryTestFetchImpl
+  // above for the full rationale) -- import.meta.env.DEV is
+  // statically known at build time, so this whole branch is
+  // dead-code-eliminated from any production bundle; searchParams'
+  // ?historyTest= value is otherwise inert (undefined -> the hook's own
+  // real default fetchPageImpl is used, unchanged).
+  const [historySearchParams] = useSearchParams();
+  const historyTestMode = import.meta.env.DEV ? historySearchParams.get("historyTest") : null;
+  const historyFetchPageImpl = useMemo(
+    () => (historyTestMode && HISTORY_TEST_MODES.has(historyTestMode) ? buildHistoryTestFetchImpl(historyTestMode) : undefined),
+    [historyTestMode]
+  );
   const {
     data: historyData,
     loading: historyLoading,
     error: historyError,
     isEndOfHistory: historyIsEndOfHistory,
     loadMore: historyLoadMore,
-  } = useReorderRequestsHistory({ statuses: HISTORY_STATUSES, pageSize: HISTORY_PAGE_SIZE });
+  } = useReorderRequestsHistory({
+    statuses: HISTORY_STATUSES,
+    pageSize: HISTORY_PAGE_SIZE,
+    fetchPageImpl: historyFetchPageImpl,
+  });
   // Distinguishes the INITIAL load failing (nothing to show at all -- the
   // whole section becomes the error state, per the Specification's "never
   // an empty table" requirement) from a later "Load More" call failing

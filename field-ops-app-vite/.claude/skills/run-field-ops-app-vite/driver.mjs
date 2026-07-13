@@ -151,30 +151,44 @@
 //                                 HISTORY_FIXTURE (14 terminal-status
 //                                 Reorder Requests, known relative
 //                                 createdAt order) to already be seeded.
-//                                 Confirms deterministic newest-first
+//                                 Against the real, unmodified fixture:
+//                                 confirms deterministic newest-first
 //                                 ordering (exact id sequence, not just
 //                                 count), the bounded first page,
 //                                 cursor-based Load More reaching every
-//                                 fixture item, the end-of-history
+//                                 fixture item as an ordered prefix (other
+//                                 fixtures' own legitimate terminal
+//                                 documents may follow, since History has
+//                                 no per-entity scope), the end-of-history
 //                                 indicator, exact-id lookup finding a
-//                                 request not on the loaded page (via
-//                                 the independent id-lookup path, before
-//                                 Load More is ever clicked), the
-//                                 genuinely-empty state (fixture
-//                                 deleted/restored via Admin SDK, same
-//                                 pattern verify-inventory-health-catalog
-//                                 established), the error state
-//                                 (simulated via Playwright request
-//                                 interception on this hook's one-shot
-//                                 getDocs call -- unlike PR A's
-//                                 onSnapshot-based hooks, this query is a
-//                                 discrete, interceptable HTTP request,
-//                                 same technique verify-service-activity
-//                                 already established), accessibility
-//                                 (labeled lookup input, real row links),
-//                                 and responsive layout. Prints a
-//                                 PASS/FAIL report per assertion and
-//                                 exits non-zero on any failure.
+//                                 request not on the loaded page (before
+//                                 Load More is ever clicked), and
+//                                 accessibility (labeled lookup input,
+//                                 real row links). Against
+//                                 PartsList.jsx's dev-only ?historyTest=
+//                                 seam (see that file's own
+//                                 HISTORY_TEST_MODES/
+//                                 buildHistoryTestFetchImpl, and
+//                                 useReorderRequests.js's
+//                                 fetchReorderRequestsHistoryPage --
+//                                 network-level interception was confirmed
+//                                 unreliable for this hook specifically,
+//                                 since its getDocs() call is multiplexed
+//                                 through this page's already-open
+//                                 onSnapshot WebChannel, not issued as its
+//                                 own discrete request): confirms the
+//                                 Loading state renders and persists
+//                                 deterministically, the Error state
+//                                 renders with no table alongside it, the
+//                                 genuinely-empty state renders the exact
+//                                 mandated copy and an (0) count, and a
+//                                 Load More failure preserves the
+//                                 already-loaded rows and offers Retry
+//                                 (with its own distinct message) rather
+//                                 than blanking the table. Finally,
+//                                 responsive layout at a narrow viewport.
+//                                 Prints a PASS/FAIL report per assertion
+//                                 and exits non-zero on any failure.
 //
 // All screenshots are written under .claude/skills/run-field-ops-app-vite/screenshots/.
 import { chromium } from "@playwright/test";
@@ -188,17 +202,7 @@ import { dirname, join } from "node:path";
 // rules-bypassing `db` handle everything else in this file uses.
 import { initializeApp } from "firebase/app";
 import { getAuth, connectAuthEmulator, signInWithEmailAndPassword } from "firebase/auth";
-import {
-  getFirestore as getClientFirestore,
-  connectFirestoreEmulator,
-  collection,
-  query,
-  where,
-  onSnapshot,
-  getDocs,
-  orderBy,
-  limit,
-} from "firebase/firestore";
+import { getFirestore as getClientFirestore, connectFirestoreEmulator, collection, query, where, onSnapshot } from "firebase/firestore";
 import {
   DRIVER_ACCOUNTS,
   NOTIFICATION_IDENTITY_FIXTURE,
@@ -1590,85 +1594,98 @@ async function verifyHistory(browser, page, accountKey) {
   const rowLinkCount = await historyTable.locator("tbody tr a").count();
   niReport("Accessibility: every History row exposes a real link", rowLinkCount === totalRowCount && totalRowCount >= HISTORY_FIXTURE.statuses.length);
 
-  // --- Error state: NOT a browser/DOM assertion, deliberately -- confirmed
-  // by direct investigation (capturing every POST this page sends to the
-  // emulator during a real History load) that useReorderRequestsHistory()'s
-  // getDocs() call does NOT appear as its own discrete documents:runQuery
-  // REST request the way verifyServiceActivity's equivalent does on
-  // AccountDetail.jsx. Root cause: PartsList.jsx already has several
-  // onSnapshot() listeners active (useReorderRequests/useReorderRequestsBy
-  // Status/useReorderRequestsAssignedTo/useReorderRequestsByStatuses), so
-  // the Firestore SDK multiplexes this one-shot getDocs() call through that
-  // SAME already-open WebChannel connection instead of opening a separate
-  // REST connection for it -- confirmed empirically: only
-  // google.firestore.v1.Firestore/Listen/channel was observed, no
-  // runQuery/runAggregationQuery endpoint at all. Intercepting the shared
-  // WebChannel would break every OTHER live section on this page too (the
-  // exact problem PR A's query-failure check hit and solved the same way --
-  // see that check's own comment). Resolved identically: an isolated
-  // client-SDK probe, signed in as the same never-mutated
-  // queryFailureProbe account, issuing the EXACT query shape
-  // (status in [...], orderBy createdAt desc, limit) this hook uses via
-  // getDocs() directly (not onSnapshot -- matching the hook's own read
-  // method), confirming the server genuinely rejects it for an
-  // unauthorized session. Combined with direct inspection of
-  // useReorderRequestsHistory()'s catch block (`catch (err) {
-  // setState(prev => ({ ...prev, loading: false, error: err.code ??
-  // "unknown" })) }`, hooks/useReorderRequests.js) and PartsList.jsx's
-  // unconditional `historyInitialLoadFailed ? <p>Unable to load...`
-  // ternary -- both plain, deterministic code -- this establishes the same
-  // guarantee an end-to-end DOM assertion would. ---
-  {
-    const probeApp3 = initializeApp({ projectId: "taylor-parts", apiKey: "fake-key-emulator-only" }, "history-failure-probe");
-    const probeAuth3 = getAuth(probeApp3);
-    connectAuthEmulator(probeAuth3, "http://127.0.0.1:9099", { disableWarnings: true });
-    const probeDb3 = getClientFirestore(probeApp3);
-    connectFirestoreEmulator(probeDb3, "127.0.0.1", 8080);
+  await page.screenshot({ path: join(SCREENSHOT_DIR, "pr-c-history.png"), fullPage: true });
 
-    const probeAcct3 = DRIVER_ACCOUNTS.queryFailureProbe;
-    await signInWithEmailAndPassword(probeAuth3, probeAcct3.email, probeAcct3.password);
-
-    let historyProbeResult;
-    try {
-      const snap = await getDocs(
-        query(
-          collection(probeDb3, "reorder_requests"),
-          where("status", "in", Object.keys(HISTORY_STATUS_LABEL_FOR_TEST)),
-          orderBy("createdAt", "desc"),
-          limit(HISTORY_FIXTURE.pageSize)
-        )
-      );
-      historyProbeResult = { succeeded: true, size: snap.size };
-    } catch (err) {
-      historyProbeResult = { succeeded: false, code: err.code };
-    }
-    niReport(
-      "History's exact query shape: a genuinely unauthorized session gets an error, not empty results",
-      historyProbeResult.succeeded === false,
-      JSON.stringify(historyProbeResult)
-    );
+  // --- Deterministic loading/error/empty/Load-More-failure states, via
+  // PartsList.jsx's dev-only ?historyTest= seam (see that file's own
+  // HISTORY_TEST_MODES/buildHistoryTestFetchImpl comment, and
+  // useReorderRequests.js's fetchReorderRequestsHistoryPage comment, for
+  // the full investigation into why network-level interception is
+  // unreliable for this hook specifically: its getDocs() call is
+  // multiplexed through this page's already-open onSnapshot WebChannel,
+  // confirmed empirically -- only google.firestore.v1.Firestore/Listen/
+  // channel was observed for this hook's traffic, no discrete
+  // documents:runQuery request to intercept the way
+  // verifyServiceActivity's equivalent has on the isolated
+  // AccountDetail.jsx page). The seam drives the SAME hook and the SAME
+  // rendered component tree real traffic uses -- through
+  // useReorderRequestsHistory()'s own `fetchPageImpl` injection point --
+  // not a network mock, not a component-level bypass. Gated behind
+  // import.meta.env.DEV (absent from any production build, confirmed via
+  // `grep` against the built bundle -- see this PR's own commit message)
+  // so it is never reachable in production regardless of URL. ---
+  function historyTestUrl(mode) {
+    const u = new URL("inventory", APP_ROOT);
+    u.searchParams.set("emulator", "1");
+    u.searchParams.set("historyTest", mode);
+    return u.toString();
   }
 
-  // --- Genuinely empty state: NOT a browser/DOM assertion, deliberately --
-  // History has no per-entity scope (unlike Service Activity's accountId
-  // filter), so making it genuinely empty by deleting documents would
-  // require deleting every OTHER fixture's terminal-status
-  // reorder_requests too (e.g. NOTIFICATION_IDENTITY_FIXTURE's own
-  // "-terminal" CANCELLED siblings, which legitimately, correctly also
-  // match History's query) -- fixtures this file doesn't own and can't
-  // safely reconstruct afterward. The same network-interception technique
-  // used for Error above is unavailable here for the identical reason
-  // (multiplexed WebChannel, not a discrete interceptable request).
-  // Verified instead by direct inspection: `isEmpty={historyData.length
-  // === 0}` / `emptyText="No terminal Reorder Requests yet."` on
-  // LoadingEmptyState (PartsList.jsx) is the exact same shared component
-  // and prop-driven contract already exercised LIVE, repeatedly, elsewhere
-  // on this exact page (verify-inventory-health-catalog's Critical & High/
-  // Needs Planning empty-state assertions) -- only the boolean feeding
-  // `isEmpty` differs (`historyData.length === 0`, a trivially correct
-  // expression by inspection), not the rendering mechanism itself. ---
+  // Loading: a fetch that never resolves -- the only reliable way to
+  // observe this state deterministically, since a real fetch against the
+  // local emulator resolves far too fast to reliably catch mid-flight.
+  await page.goto(historyTestUrl("loading"), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await page.getByRole("heading", { name: /^History/ }).waitFor({ timeout: 10000 });
+  const loadingVisible = await page
+    .getByText("Loading History...", { exact: true })
+    .first()
+    .waitFor({ timeout: 10000 })
+    .then(() => true)
+    .catch(() => false);
+  niReport("Loading: the exact loading text renders while the initial fetch is in flight", loadingVisible);
+  await page.waitForTimeout(1000);
+  const stillLoadingVisible = await page.getByText("Loading History...", { exact: true }).first().isVisible().catch(() => false);
+  niReport("Loading: state persists deterministically (the seam's fetch never resolves), not a lucky race window", stillLoadingVisible);
 
-  await page.screenshot({ path: join(SCREENSHOT_DIR, "pr-c-history.png"), fullPage: true });
+  // Error (initial load): the whole section becomes the error state, per
+  // the Specification's "never an empty table" requirement -- confirm
+  // both the message renders AND no table renders alongside it.
+  await page.goto(historyTestUrl("error"), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await page.getByRole("heading", { name: /^History/ }).waitFor({ timeout: 10000 });
+  const errorVisible = await page
+    .getByText(/^Unable to load History \(test-injected-failure\)\.$/)
+    .first()
+    .waitFor({ timeout: 10000 })
+    .then(() => true)
+    .catch(() => false);
+  niReport("Error: a query failure renders the error state, not an empty table", errorVisible);
+  const noTableDuringError = await historyTable.count().then((c) => c === 0);
+  niReport("Error: no table renders alongside the error message", noTableDuringError);
+
+  // Genuinely empty: zero terminal requests, distinct from the error
+  // state above and from a populated one.
+  await page.goto(historyTestUrl("empty"), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await page.getByRole("heading", { name: /^History/ }).waitFor({ timeout: 10000 });
+  const emptyTextVisible = await page
+    .getByText("No terminal Reorder Requests yet.", { exact: true })
+    .first()
+    .waitFor({ timeout: 10000 })
+    .then(() => true)
+    .catch(() => false);
+  niReport("Genuinely empty: the exact mandated empty message renders when History has zero terminal requests", emptyTextVisible);
+  const emptyHeadingText = await page.getByRole("heading", { name: /^History/ }).innerText().catch(() => "");
+  niReport("Genuinely empty: heading count is exactly (0)", emptyHeadingText === "History (0)", `heading was "${emptyHeadingText}"`);
+
+  // Load More failure: the initial page is REAL (the seam's error-loadmore
+  // mode delegates the first, no-cursor fetch to the real implementation)
+  // -- only the Load More click itself is forced to fail. Existing rows
+  // must survive; a Retry action must appear.
+  await page.goto(historyTestUrl("error-loadmore"), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await page.getByRole("heading", { name: /^History/ }).waitFor({ timeout: 10000 });
+  await historyRows().first().waitFor({ timeout: 10000 });
+  const rowsBeforeFailedLoadMore = await historyRows().count();
+  await page.getByRole("button", { name: "Load More", exact: true }).click();
+  await page.waitForTimeout(500);
+  const rowsAfterFailedLoadMore = await historyRows().count();
+  niReport(
+    "Load More failure preserves the already-loaded rows (does not blank the table)",
+    rowsBeforeFailedLoadMore > 0 && rowsAfterFailedLoadMore === rowsBeforeFailedLoadMore,
+    `before=${rowsBeforeFailedLoadMore} after=${rowsAfterFailedLoadMore}`
+  );
+  const retryVisible = await page.getByRole("button", { name: "Retry", exact: true }).isVisible().catch(() => false);
+  niReport("Load More failure offers a Retry action", retryVisible);
+  const loadMoreFailureText = await page.getByText(/^Unable to load more History \(test-injected-failure\)\./).first().isVisible().catch(() => false);
+  niReport("Load More failure shows its own specific message, distinct from the initial-load error", loadMoreFailureText);
 
   // --- Responsive: no horizontal overflow at mobile width (fresh, un-faulted load) ---
   await goToInventory(page);
