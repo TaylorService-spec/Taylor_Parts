@@ -243,6 +243,35 @@ export const HISTORY_FIXTURE = {
   ],
 };
 
+// Account Commercial Profile -- PR 1 (docs/specifications/
+// account-commercial-profile-and-financial-forecast-horizons.md). Three
+// Accounts exercising the informational Commercial Profile + identity
+// display, plus one Employee the owner references so the directory resolves
+// a CURRENT name (deliberately DIFFERENT from the stored snapshot, to prove
+// re-resolution isn't merely echoing the persisted snapshot):
+//   - resolved: every field set; billingContact is a real Contact ON the
+//               Account; accountOwner links to ownerEmployee (resolves to a
+//               current name). Its stored assignedToDisplayName is a stale
+//               snapshot the UI must NOT surface.
+//   - unknown:  accountOwner links to a userId with NO Employee, and
+//               billingContact references a Contact NOT on the Account -- so
+//               both resolve to "Unknown ..." after a COMPLETED lookup.
+//   - edit:     no profile yet; drives the edit round-trip (as a resolved-
+//               assignor dispatcher) and the unresolved-assignor fail-closed
+//               check (as the admin account, whose users/{uid} has no
+//               employeeId, so its assignor identity never resolves).
+export const COMMERCIAL_PROFILE_FIXTURE = {
+  resolvedAccountId: "acct-cp-resolved",
+  unknownAccountId: "acct-cp-unknown",
+  editAccountId: "acct-cp-edit",
+  ownerEmployee: { employeeId: "cp-owner-emp", userId: "cp-owner-user", displayName: "Commercial Owner" },
+  resolvedBillingContact: { id: "cp-contact-1", name: "Billing Contact Person" },
+  editBillingContact: { id: "cp-edit-contact-1", name: "Edit Billing Contact" },
+  ghostOwnerUserId: "cp-owner-ghost-user-no-employee",
+  foreignContactId: "cp-foreign-contact-not-on-this-account",
+  staleOwnerSnapshotName: "Commercial Owner (STALE snapshot)",
+};
+
 async function seedReorderRequestFixture(docId, { partId, status, currentOwner, assignedToUserId, createdAt }) {
   const isCancelled = status === "CANCELLED";
   await db.doc(`reorder_requests/${docId}`).set({
@@ -607,6 +636,100 @@ export async function seedHistoryFixture() {
   );
 }
 
+// Account Commercial Profile -- PR 1. Seeds the three Accounts + owner
+// Employee + Contacts the COMMERCIAL_PROFILE_FIXTURE describes. All via the
+// Admin SDK (bypasses the client-gated accounts/contacts/employees rules,
+// same as every other fixture here). The owner Employee is ACTIVE with a
+// linked userId so it is BOTH directory-resolvable (useEmployeeDirectory)
+// AND selectable in the edit form's picker (buildAssignableEmployeesQuery:
+// employmentStatus ACTIVE + userId != null).
+async function seedCommercialProfileFixture() {
+  const now = Date.now();
+  const F = COMMERCIAL_PROFILE_FIXTURE;
+
+  await db.doc(`employees/${F.ownerEmployee.employeeId}`).set({
+    employeeId: F.ownerEmployee.employeeId,
+    displayName: F.ownerEmployee.displayName,
+    employmentStatus: "ACTIVE",
+    operationalRoles: ["PARTS_ASSOCIATE"],
+    userId: F.ownerEmployee.userId,
+    securityRole: "dispatcher",
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  await db.doc(`contacts/${F.resolvedBillingContact.id}`).set({
+    accountId: F.resolvedAccountId,
+    name: F.resolvedBillingContact.name,
+    isPrimary: true,
+    createdAt: now,
+    updatedAt: now,
+  });
+  await db.doc(`contacts/${F.editBillingContact.id}`).set({
+    accountId: F.editAccountId,
+    name: F.editBillingContact.name,
+    isPrimary: true,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  // A COMPLETE assignor snapshot (resolved Employee), reused by the two
+  // pre-populated accounts so their accountOwner is itself a valid, complete
+  // Person Assignment -- the display/identity states under test are about the
+  // ASSIGNEE resolving or not, independent of the assignor.
+  const completeAssignor = {
+    assignedByEmployeeId: "driver-emp-parts-manager",
+    assignedByUserId: DRIVER_ACCOUNTS.eligiblePartsManager.uid,
+    assignedByDisplayName: "Driver Parts Manager",
+  };
+
+  await db.doc(`accounts/${F.resolvedAccountId}`).set({
+    name: "Resolved Profile Co",
+    status: "Active",
+    relationshipTypes: ["CUSTOMER"],
+    defaultCurrency: "USD",
+    purchaseOrderRequired: true,
+    invoiceDeliveryMethod: "EMAIL",
+    billingContact: { contactId: F.resolvedBillingContact.id },
+    accountOwner: {
+      assignedToEmployeeId: F.ownerEmployee.employeeId,
+      assignedToUserId: F.ownerEmployee.userId,
+      assignedToDisplayName: F.staleOwnerSnapshotName, // stored snapshot; UI must show the CURRENT name instead
+      ...completeAssignor,
+      assignedAt: now,
+    },
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  await db.doc(`accounts/${F.unknownAccountId}`).set({
+    name: "Unknown Profile Co",
+    status: "Active",
+    relationshipTypes: ["CUSTOMER"],
+    defaultCurrency: "GBP",
+    purchaseOrderRequired: false,
+    invoiceDeliveryMethod: "MAIL",
+    billingContact: { contactId: F.foreignContactId }, // no Contact with this id on this Account
+    accountOwner: {
+      assignedToEmployeeId: "cp-owner-ghost-emp",
+      assignedToUserId: F.ghostOwnerUserId, // no Employee links to this userId
+      assignedToDisplayName: "Ghost Owner (snapshot only)",
+      ...completeAssignor,
+      assignedAt: now,
+    },
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  await db.doc(`accounts/${F.editAccountId}`).set({
+    name: "Editable Profile Co",
+    status: "Active",
+    relationshipTypes: ["CUSTOMER"],
+    createdAt: now,
+    updatedAt: now,
+  });
+}
+
 // Inventory Health / Parts Catalog separation (PR B) -- exported so
 // driver.mjs can delete/restore inventory_transactions documents
 // directly (Admin SDK, emulator-only) for the empty-state assertions
@@ -683,6 +806,7 @@ async function seed() {
   await seedPrAFixture();
   await seedServiceActivityFixture();
   await seedHistoryFixture();
+  await seedCommercialProfileFixture();
 
   console.log("Seeded driver accounts:");
   for (const [key, acct] of Object.entries(DRIVER_ACCOUNTS)) {
