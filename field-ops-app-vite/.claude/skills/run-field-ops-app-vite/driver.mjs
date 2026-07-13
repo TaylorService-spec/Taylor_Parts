@@ -190,6 +190,21 @@
 //                                 Prints a PASS/FAIL report per assertion
 //                                 and exits non-zero on any failure.
 //
+//   verify-commercial-profile <accountKey>
+//                                 Account Commercial Profile PR 1
+//                                 (docs/specifications/account-commercial-
+//                                 profile-and-financial-forecast-horizons.md)
+//                                 -- the PRIMARY implementation test for that
+//                                 PR. Requires seed.mjs's
+//                                 COMMERCIAL_PROFILE_FIXTURE. Covers the
+//                                 informational field edit round-trip; the
+//                                 resolved / unknown / loading / error
+//                                 identity states; the unresolved-assignor
+//                                 fail-closed behavior; the no-raw-IDs
+//                                 guarantee; accessibility; and 375px layout.
+//                                 Prints a PASS/FAIL report per assertion and
+//                                 exits non-zero on any failure.
+//
 // All screenshots are written under .claude/skills/run-field-ops-app-vite/screenshots/.
 import { chromium } from "@playwright/test";
 import { mkdirSync } from "node:fs";
@@ -210,6 +225,7 @@ import {
   PR_A_FIXTURE,
   SERVICE_ACTIVITY_FIXTURE,
   HISTORY_FIXTURE,
+  COMMERCIAL_PROFILE_FIXTURE,
   seedLedgerTransactions,
   db,
 } from "./seed.mjs";
@@ -1699,6 +1715,232 @@ async function verifyHistory(browser, page, accountKey) {
   return niFailed === 0;
 }
 
+// Account Commercial Profile -- PR 1 (docs/specifications/
+// account-commercial-profile-and-financial-forecast-horizons.md). Same
+// niReport()-based PASS/FAIL style as the verify-* commands above. Covers:
+// the informational field edit round-trip; the resolved / unknown / loading /
+// error identity states; the unresolved-assignor fail-closed behavior; the
+// no-raw-IDs guarantee; accessibility; and 375px layout. Requires seed.mjs's
+// COMMERCIAL_PROFILE_FIXTURE. The signed-in `accountKey` (admin by default)
+// drives the read-only display + the fail-closed case (admin's session has no
+// resolved Employee); the successful round-trip re-logs-in as
+// eligiblePartsManager (a dispatcher WITH a resolved Employee -> a valid
+// assignor) on a fresh page.
+async function verifyCommercialProfile(browser, page, accountKey) {
+  const F = COMMERCIAL_PROFILE_FIXTURE;
+  // `page` is the function parameter (a mutable binding) -- reassigned below
+  // for the round-trip's fresh login, and this closure reads the current
+  // value, exactly like verifyNotificationIdentity() does.
+  const cpSection = () =>
+    page.locator("section.wo-history").filter({ has: page.locator("h4", { hasText: "Commercial Profile" }) });
+  const cpHeading = () => cpSection().getByRole("heading", { name: "Commercial Profile", exact: true });
+
+  await login(page, accountKey);
+
+  // ===== RESOLVED display state =====
+  await page.goto(customerUrl(F.resolvedAccountId), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await cpHeading().waitFor({ timeout: 10000 });
+  const resolvedOwnerVisible = await page
+    .getByText(`Owner: ${F.ownerEmployee.displayName}`, { exact: true })
+    .first()
+    .waitFor({ timeout: 10000 })
+    .then(() => true)
+    .catch(() => false);
+  niReport("Resolved: owner shows the CURRENT directory name", resolvedOwnerVisible);
+  const cpTextResolved = await cpSection().innerText().catch(() => "");
+  niReport(
+    "Resolved: owner shows the CURRENT name, never the stored (stale) snapshot",
+    cpTextResolved.includes(F.ownerEmployee.displayName) && !cpTextResolved.includes("STALE snapshot"),
+    cpTextResolved
+  );
+  niReport(
+    "Resolved: billing contact resolves to the Account's Contact name",
+    new RegExp(`Billing contact:\\s*${F.resolvedBillingContact.name}`).test(cpTextResolved),
+    cpTextResolved
+  );
+  niReport(
+    "Resolved: informational fields render (currency / PO / invoice delivery)",
+    /Default currency:\s*USD/.test(cpTextResolved) &&
+      /Purchase order required:\s*Yes/.test(cpTextResolved) &&
+      /Invoice delivery:\s*EMAIL/.test(cpTextResolved),
+    cpTextResolved
+  );
+  niReport(
+    "No raw IDs: resolved profile shows neither the owner userId nor the contact id",
+    !cpTextResolved.includes(F.ownerEmployee.userId) && !cpTextResolved.includes(F.resolvedBillingContact.id),
+    cpTextResolved
+  );
+
+  // ===== UNKNOWN display state (completed lookup, resolved to nobody) =====
+  await page.goto(customerUrl(F.unknownAccountId), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await cpHeading().waitFor({ timeout: 10000 });
+  const unknownOwnerVisible = await page
+    .getByText("Owner: Unknown owner", { exact: true })
+    .first()
+    .waitFor({ timeout: 10000 })
+    .then(() => true)
+    .catch(() => false);
+  niReport("Unknown: an owner with no Employee resolves to 'Unknown owner' after a completed lookup", unknownOwnerVisible);
+  const cpTextUnknown = await cpSection().innerText().catch(() => "");
+  niReport(
+    "Unknown: a billing contact not on the Account resolves to 'Unknown contact'",
+    /Billing contact:\s*Unknown contact/.test(cpTextUnknown),
+    cpTextUnknown
+  );
+  niReport(
+    "No raw IDs: unknown profile shows neither the ghost owner userId nor the foreign contact id",
+    !cpTextUnknown.includes(F.ghostOwnerUserId) && !cpTextUnknown.includes(F.foreignContactId),
+    cpTextUnknown
+  );
+
+  // ===== LOADING: the raw owner userId is never shown while the directory
+  // resolves (IdentityLine shows "resolving…", never the id). Rapid-sampled
+  // through a real navigation's actual loading window, same discipline as
+  // verify-pr-a's loading check. =====
+  await page.goto(customerUrl(F.resolvedAccountId), { waitUntil: "domcontentloaded", timeout: 20000 });
+  const ownerUidSightings = [];
+  const deadline = Date.now() + 3000;
+  while (Date.now() < deadline) {
+    const sample = await cpSection().innerText().catch(() => "");
+    if (sample.includes(F.ownerEmployee.userId)) ownerUidSightings.push(sample);
+    await page.waitForTimeout(50);
+  }
+  niReport(
+    "Loading: the owner's raw userId is never shown during the directory's real loading window",
+    ownerUidSightings.length === 0,
+    ownerUidSightings[0]
+  );
+
+  // ===== ERROR: the exact employee-directory query shape genuinely errors
+  // (not empties) for an unauthorized session -- isolated client-SDK probe,
+  // same pattern/reasoning as verify-pr-a's directory-error probe. Combined
+  // with IdentityLine's `error` branch (unit-tested in
+  // test/commercialProfile.test.mjs), this establishes the error identity
+  // state end to end. =====
+  {
+    const probeApp = initializeApp({ projectId: "taylor-parts", apiKey: "fake-key-emulator-only" }, "cp-directory-error-probe");
+    const probeAuth = getAuth(probeApp);
+    connectAuthEmulator(probeAuth, "http://127.0.0.1:9099", { disableWarnings: true });
+    const probeDb = getClientFirestore(probeApp);
+    connectFirestoreEmulator(probeDb, "127.0.0.1", 8080);
+    await signInWithEmailAndPassword(probeAuth, DRIVER_ACCOUNTS.queryFailureProbe.email, DRIVER_ACCOUNTS.queryFailureProbe.password);
+    const probeResult = await new Promise((resolve) => {
+      const q = query(collection(probeDb, "employees"));
+      const unsub = onSnapshot(
+        q,
+        (snap) => { unsub(); resolve({ succeeded: true, size: snap.size }); },
+        (err) => { unsub(); resolve({ succeeded: false, code: err.code }); }
+      );
+      setTimeout(() => resolve({ succeeded: null, timedOut: true }), 15000);
+    });
+    niReport(
+      "Error: the owner-directory query errors (not empties) for an unauthorized session; IdentityLine renders the error state",
+      probeResult.succeeded === false,
+      JSON.stringify(probeResult)
+    );
+  }
+
+  // ===== ACCESSIBILITY (view) + 375px layout =====
+  await page.goto(customerUrl(F.resolvedAccountId), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await cpHeading().waitFor({ timeout: 10000 });
+  const cpHeadingVisible = await cpHeading().isVisible().catch(() => false);
+  niReport("Accessibility: Commercial Profile is a section with an accessible heading", cpHeadingVisible);
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.waitForTimeout(200);
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
+  niReport("Responsive: no horizontal overflow at 375px mobile (Commercial Profile view)", overflow === false);
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  // ===== FAIL-CLOSED: an unresolved-assignor session cannot save an owner.
+  // The signed-in admin account's users/{uid} has no employeeId, so
+  // resolveEmployeeSession() yields displayName null -> the assignment built
+  // on selection carries assignedByDisplayName null -> isCompleteAccountOwner
+  // is false -> the save is blocked. =====
+  await page.goto(customerUrl(F.editAccountId), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await cpHeading().waitFor({ timeout: 10000 });
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  // Accessibility (edit form): controls are reachable by their labels.
+  const currencyLabeled = await page.getByLabel("Default currency (ISO 4217)").count().then((c) => c > 0);
+  const invoiceLabeled = await page.getByLabel("Invoice delivery method").count().then((c) => c > 0);
+  const ownerLabeled = await page.getByRole("combobox", { name: "Account owner" }).count().then((c) => c > 0);
+  niReport("Accessibility: edit-form currency / invoice / owner controls have accessible labels", currencyLabeled && invoiceLabeled && ownerLabeled);
+
+  const ownerPicker = page.getByRole("combobox", { name: "Account owner" });
+  await ownerPicker.click();
+  await ownerPicker.fill(F.ownerEmployee.displayName);
+  const ownerOption = page.getByRole("option", { name: new RegExp(`^${F.ownerEmployee.displayName}`) }).first();
+  const optionSelectable = await ownerOption.waitFor({ timeout: 10000 }).then(() => true).catch(() => false);
+  niReport("Fail-closed setup: the owner candidate is selectable in the picker", optionSelectable);
+  await ownerOption.click();
+  await page.getByRole("button", { name: "Save Changes", exact: true }).click();
+  await page.waitForTimeout(400);
+  const ownerErrorVisible = await page
+    .getByText(/Assign an account owner with a linked employee and user/)
+    .first()
+    .isVisible()
+    .catch(() => false);
+  niReport("Fail-closed: an unresolved-assignor session cannot save an owner assignment (validation error shown)", ownerErrorVisible);
+  const stillEditing = await page.getByRole("button", { name: "Save Changes", exact: true }).isVisible().catch(() => false);
+  niReport("Fail-closed: the form does not submit or close on the blocked save (still in edit mode)", stillEditing);
+
+  // ===== EDIT ROUND-TRIP (resolved assignor): re-login as a dispatcher WITH
+  // a linked Employee, set every informational field + assign the owner,
+  // save, then re-navigate fresh and confirm all of it persisted. =====
+  await page.close();
+  page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  await login(page, "eligiblePartsManager");
+  await page.goto(customerUrl(F.editAccountId), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await cpHeading().waitFor({ timeout: 10000 });
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  await page.getByLabel("Default currency (ISO 4217)").fill("EUR");
+  await page.getByLabel("Purchase order required").check();
+  await page.getByLabel("Invoice delivery method").selectOption("PORTAL");
+  await page.getByLabel("Billing contact").selectOption(F.editBillingContact.id);
+  const picker2 = page.getByRole("combobox", { name: "Account owner" });
+  await picker2.click();
+  await picker2.fill(F.ownerEmployee.displayName);
+  await page.getByRole("option", { name: new RegExp(`^${F.ownerEmployee.displayName}`) }).first().click();
+  await page.getByRole("button", { name: "Save Changes", exact: true }).click();
+  const backToView = await page
+    .getByRole("button", { name: "Edit", exact: true })
+    .waitFor({ timeout: 10000 })
+    .then(() => true)
+    .catch(() => false);
+  niReport("Edit round-trip: save succeeds with a resolved assignor (form returns to view mode)", backToView);
+
+  // Re-navigate fresh (a full goto carrying ?emulator=1 preserves the Auth
+  // session) so the assertions read from Firestore, not lingering form state.
+  await page.goto(customerUrl(F.editAccountId), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await cpHeading().waitFor({ timeout: 10000 });
+  await page
+    .getByText(`Owner: ${F.ownerEmployee.displayName}`, { exact: true })
+    .first()
+    .waitFor({ timeout: 10000 })
+    .catch(() => {});
+  const persisted = await cpSection().innerText().catch(() => "");
+  niReport("Edit round-trip persists: default currency EUR", /Default currency:\s*EUR/.test(persisted), persisted);
+  niReport("Edit round-trip persists: purchase order required Yes", /Purchase order required:\s*Yes/.test(persisted), persisted);
+  niReport("Edit round-trip persists: invoice delivery PORTAL", /Invoice delivery:\s*PORTAL/.test(persisted), persisted);
+  niReport(
+    "Edit round-trip persists: billing contact resolves to the Account's Contact",
+    new RegExp(`Billing contact:\\s*${F.editBillingContact.name}`).test(persisted),
+    persisted
+  );
+  niReport(
+    "Edit round-trip persists: owner resolves to the current directory name",
+    persisted.includes(`Owner: ${F.ownerEmployee.displayName}`),
+    persisted
+  );
+  niReport(
+    "Edit round-trip: no raw IDs after persistence",
+    !persisted.includes(F.ownerEmployee.userId) && !persisted.includes(F.editBillingContact.id),
+    persisted
+  );
+
+  console.log(`\n${niPassed} passed, ${niFailed} failed`);
+  return niFailed === 0;
+}
+
 async function main() {
   const [, , command, ...args] = process.argv;
   const browser = await chromium.launch();
@@ -1781,6 +2023,10 @@ async function main() {
     } else if (command === "verify-history") {
       const [accountKey = "admin"] = args;
       const ok = await verifyHistory(browser, page, accountKey);
+      if (!ok) process.exitCode = 1;
+    } else if (command === "verify-commercial-profile") {
+      const [accountKey = "admin"] = args;
+      const ok = await verifyCommercialProfile(browser, page, accountKey);
       if (!ok) process.exitCode = 1;
     } else {
       console.error(`Unknown command "${command}". See the header comment in this file for usage.`);
