@@ -99,12 +99,72 @@
 //                                 report per assertion and exits
 //                                 non-zero on any failure.
 //
+//   verify-pr-a <accountKey>      Inventory Operational Queue PR A
+//                                 (docs/specifications/inventory-
+//                                 operational-queue.md, "All Assigned
+//                                 Work" oversight + assignment picker
+//                                 securityRole eligibility) -- the
+//                                 PRIMARY implementation test for that
+//                                 PR. Requires seed.mjs's PR_A_FIXTURE
+//                                 (one Reorder Request assigned to a
+//                                 uid other than any driver account,
+//                                 four Employees exercising the
+//                                 picker's four securityRole outcomes)
+//                                 to already be seeded. Confirms "All
+//                                 Assigned Work" shows the cross-user
+//                                 assignment with an accurate count
+//                                 even though the signed-in account
+//                                 isn't the assignee, with the assignee
+//                                 resolved to a real display name (never
+//                                 a raw uid); confirms the signed-in
+//                                 account's own personal Waiting queue
+//                                 stays scoped to exactly that account
+//                                 (the cross-user row does NOT leak into
+//                                 it); confirms the section's responsive
+//                                 .fo-table-scroll container and its
+//                                 role="status" live region are present;
+//                                 confirms (via an isolated client-SDK
+//                                 probe, not a browser assertion -- see
+//                                 that check's own inline comment for
+//                                 why a real signed-in session can never
+//                                 reach this state in this app) that the
+//                                 exact query shape this section uses
+//                                 genuinely errors, not empties, for an
+//                                 unauthorized session; opens the
+//                                 existing READY_FOR_PARTS_MANAGER
+//                                 legacy fixture's assignment picker
+//                                 and confirms a technician-role
+//                                 candidate is excluded, a valid
+//                                 non-technician candidate is
+//                                 selectable, and the admin-visible
+//                                 "unverified role data" warning
+//                                 renders for the missing/invalid-enum
+//                                 candidates. Prints a PASS/FAIL report
+//                                 per assertion and exits non-zero on
+//                                 any failure.
+//
 // All screenshots are written under .claude/skills/run-field-ops-app-vite/screenshots/.
 import { chromium } from "@playwright/test";
 import { mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { DRIVER_ACCOUNTS, NOTIFICATION_IDENTITY_FIXTURE, CANCEL_VOID_FIXTURE, SERVICE_ACTIVITY_FIXTURE, seedLedgerTransactions, db } from "./seed.mjs";
+// Client SDK (not firebase-admin) -- used only by the query-failure
+// probe below, to sign in as an ordinary (non-privileged) user and
+// issue the exact query shape useReorderRequestsByStatuses() does,
+// the same way the real app would, rather than the Admin SDK's
+// rules-bypassing `db` handle everything else in this file uses.
+import { initializeApp } from "firebase/app";
+import { getAuth, connectAuthEmulator, signInWithEmailAndPassword } from "firebase/auth";
+import { getFirestore as getClientFirestore, connectFirestoreEmulator, collection, query, where, onSnapshot } from "firebase/firestore";
+import {
+  DRIVER_ACCOUNTS,
+  NOTIFICATION_IDENTITY_FIXTURE,
+  CANCEL_VOID_FIXTURE,
+  PR_A_FIXTURE,
+  SERVICE_ACTIVITY_FIXTURE,
+  seedLedgerTransactions,
+  db,
+} from "./seed.mjs";
 import { readFileSync } from "node:fs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -811,6 +871,373 @@ async function verifyInventoryHealthCatalog(browser, page, accountKey) {
   return niFailed === 0;
 }
 
+// Inventory Operational Queue, PR A (docs/specifications/inventory-
+// operational-queue.md). Two independent halves, both against
+// PR_A_FIXTURE (seed.mjs): "All Assigned Work" cross-user oversight,
+// and the assignment picker's securityRole eligibility filter --
+// exercised together in one command since PR A ships both pieces in
+// the same commit sequence (per that Specification's own "Within PR A"
+// note), not because they share any UI state.
+async function verifyPrA(browser, page, accountKey) {
+  await login(page, accountKey);
+  await goToInventory(page);
+
+  // --- "All Assigned Work": cross-user oversight, not scoped to the
+  // signed-in account. The fixture's request is assigned to a uid that
+  // is NOT this driver account, and the signed-in account (admin) has
+  // no personal Waiting/In Progress entry for it -- this section must
+  // still show it. ---
+  //
+  // Waits on the actual PR_A_FIXTURE row rather than reading the
+  // heading immediately -- useReorderRequestsByStatuses() is an
+  // onSnapshot() read, so the section renders its initial "(0)"/loading
+  // state for a moment before the first snapshot resolves; asserting
+  // right after goToInventory() (which only waits for the page's own
+  // top heading) would race that resolution and false-FAIL, same
+  // lesson as the assignment-picker wait below.
+  const otherUserRowVisible = await page
+    .getByRole("cell", { name: "Drive Belt - Gen II" })
+    .first()
+    .waitFor({ timeout: 10000 })
+    .then(() => true)
+    .catch(() => false);
+  niReport(
+    "All Assigned Work: shows a request assigned to a DIFFERENT user than the signed-in account",
+    otherUserRowVisible
+  );
+
+  const allAssignedHeadingText = await page
+    .getByRole("heading", { name: /^All Assigned Work/ })
+    .innerText()
+    .catch(() => "");
+  niReport(
+    "All Assigned Work: heading is visible",
+    allAssignedHeadingText.startsWith("All Assigned Work"),
+    `heading was "${allAssignedHeadingText}"`
+  );
+
+  // Count must be exact, not just present -- same "no digit, exact
+  // count" discipline as every other tab/section label in this app.
+  // Every currently-assigned (ASSIGNED_TO_PARTS_ASSOCIATE or
+  // PURCHASING_IN_PROGRESS) fixture across the WHOLE seed set counts
+  // here, not just PR_A_FIXTURE's own row -- driver-seed-legacy-request
+  // is READY_FOR_PARTS_MANAGER (not yet assigned, excluded), but
+  // NOTIFICATION_IDENTITY_FIXTURE's assignedToYou/purchasingStarted
+  // entries AND CANCEL_VOID_FIXTURE's cancelEligible (also
+  // ASSIGNED_TO_PARTS_ASSOCIATE) are. Computed from the fixture sets
+  // directly rather than hardcoded, so this assertion stays correct if
+  // any of them change shape.
+  const assignedStatuses = new Set(["ASSIGNED_TO_PARTS_ASSOCIATE", "PURCHASING_IN_PROGRESS"]);
+  const expectedAllAssignedCount =
+    Object.values(NOTIFICATION_IDENTITY_FIXTURE).filter((c) => assignedStatuses.has(c.status)).length +
+    (assignedStatuses.has(CANCEL_VOID_FIXTURE.cancelEligible.status) ? 1 : 0) +
+    2; // PR_A_FIXTURE.otherUserAssignedRequest + PR_A_FIXTURE.unresolvableAssigneeRequest
+  niReport(
+    "All Assigned Work: heading shows the exact expected count",
+    allAssignedHeadingText === `All Assigned Work (${expectedAllAssignedCount})`,
+    `heading was "${allAssignedHeadingText}", expected "All Assigned Work (${expectedAllAssignedCount})"`
+  );
+
+  // --- Assignee display name resolution: never a raw uid. Scoped to
+  // the exact row (the fixture's Employee link, PR_A_FIXTURE.
+  // otherAssigneeEmployee, resolves this specific assignee), not just
+  // "some text appears somewhere on the page." ---
+  const otherUserRow = page.locator("tr", { has: page.getByRole("cell", { name: "Drive Belt - Gen II" }) }).first();
+  const otherUserRowText = await otherUserRow.innerText().catch(() => "");
+  niReport(
+    "All Assigned Work: assignee resolves to a display name, not a raw uid",
+    otherUserRowText.includes(PR_A_FIXTURE.otherAssigneeEmployee.displayName) &&
+      !otherUserRowText.includes(PR_A_FIXTURE.otherUserAssignedRequest.assignedToUserId),
+    `row text was "${otherUserRowText}"`
+  );
+
+  // --- Unresolved assignee (no Employee links to this uid at all): must
+  // show "Unknown assignee", never the raw uid -- the case Final Review
+  // specifically flagged (resolveActorDisplayName()'s own raw-uid
+  // fallback, which this component deliberately does not use). ---
+  const unresolvableRow = page.locator("tr", { has: page.getByRole("cell", { name: "Mix Pump Tube - Floor Model" }) }).first();
+  const unresolvableRowText = await unresolvableRow.innerText().catch(() => "");
+  niReport(
+    "All Assigned Work: an unresolvable assignee shows \"Unknown assignee\", not a raw uid",
+    unresolvableRowText.includes("Unknown assignee") &&
+      !unresolvableRowText.includes(PR_A_FIXTURE.unresolvableAssigneeRequest.assignedToUserId),
+    `row text was "${unresolvableRowText}"`
+  );
+
+  // --- Loading: while the employee directory listener is still
+  // resolving, the Assignee column must never show a raw uid either
+  // (resolveAssigneeDisplay() returns "Unknown assignee" during
+  // employeeDirectoryLoading, same as the unresolved case, rather than
+  // waiting and showing the uid in the meantime). Proven by rapid-
+  // sampling the live DOM through a fresh navigation's actual loading
+  // window, not asserted from code alone -- a real race, not a
+  // simulated one: this is genuinely how the page renders for the first
+  // several hundred milliseconds of a real user's first visit. ---
+  await page.goto(
+    (() => {
+      const u = new URL("inventory", APP_ROOT);
+      u.searchParams.set("emulator", "1");
+      return u.toString();
+    })(),
+    { waitUntil: "domcontentloaded", timeout: 20000 }
+  );
+  const rawUidSightings = [];
+  const deadline = Date.now() + 3000;
+  while (Date.now() < deadline) {
+    const sample = await unresolvableRow.innerText().catch(() => "");
+    if (sample.includes(PR_A_FIXTURE.unresolvableAssigneeRequest.assignedToUserId)) rawUidSightings.push(sample);
+    await page.waitForTimeout(50);
+  }
+  niReport(
+    "All Assigned Work: the raw uid is never shown at any point during the directory's real loading window",
+    rawUidSightings.length === 0,
+    rawUidSightings.length ? `raw uid appeared ${rawUidSightings.length} time(s), e.g. "${rawUidSightings[0]}"` : undefined
+  );
+
+  // --- Directory error: the exact query shape useEmployeeDirectory()
+  // issues (buildEmployeeDirectoryQuery(), an unfiltered employees read)
+  // genuinely errors, not empties, for an unauthorized session -- same
+  // isolated client-SDK probe pattern as the reorder_requests query
+  // failure check below (see that check's own comment for the full
+  // reasoning on why this must be an isolated probe, not a browser
+  // assertion, in this app/environment). Combined with direct inspection
+  // of resolveAssigneeDisplay()'s `directoryError` branch (returns
+  // "Unknown assignee", never propagates or ignores the error), this
+  // establishes the same guarantee an end-to-end DOM assertion would. ---
+  {
+    const probeApp2 = initializeApp({ projectId: "taylor-parts", apiKey: "fake-key-emulator-only" }, "employee-directory-failure-probe");
+    const probeAuth2 = getAuth(probeApp2);
+    connectAuthEmulator(probeAuth2, "http://127.0.0.1:9099", { disableWarnings: true });
+    const probeDb2 = getClientFirestore(probeApp2);
+    connectFirestoreEmulator(probeDb2, "127.0.0.1", 8080);
+
+    const probeAcct2 = DRIVER_ACCOUNTS.queryFailureProbe;
+    await signInWithEmailAndPassword(probeAuth2, probeAcct2.email, probeAcct2.password);
+
+    const directoryProbeResult = await new Promise((resolve) => {
+      const q = query(collection(probeDb2, "employees"));
+      const unsubscribe = onSnapshot(
+        q,
+        (snap) => {
+          unsubscribe();
+          resolve({ succeeded: true, size: snap.size });
+        },
+        (err) => {
+          unsubscribe();
+          resolve({ succeeded: false, code: err.code });
+        }
+      );
+      setTimeout(() => resolve({ succeeded: null, timedOut: true }), 15000);
+    });
+    niReport(
+      "Employee directory's exact query shape: a genuinely unauthorized session gets an error, not empty results",
+      directoryProbeResult.succeeded === false,
+      JSON.stringify(directoryProbeResult)
+    );
+  }
+
+  // --- Personal Waiting/In Progress queues remain user-scoped: the
+  // cross-user fixture (assigned to otherAssigneeEmployee, NOT this
+  // signed-in admin account) must appear in "All Assigned Work" (already
+  // asserted above) but must NOT appear in the personal "Waiting" table
+  // specifically -- scoped to that exact table, not a page-wide search,
+  // since the row IS legitimately present elsewhere on this same page
+  // (in "All Assigned Work"). ---
+  const waitingTable = page.locator('xpath=//h4[text()="Waiting"]/following::table[1]');
+  const otherUserInWaitingTable = await waitingTable
+    .locator("tr", { hasText: "Drive Belt - Gen II" })
+    .first()
+    .isVisible()
+    .catch(() => false);
+  niReport(
+    "Personal Waiting queue remains user-scoped: a request assigned to a DIFFERENT user does not appear there",
+    !otherUserInWaitingTable
+  );
+
+  // --- Responsive overflow: the table sits inside its own .fo-table-scroll
+  // container (per the Specification's "Responsive behavior" requirement),
+  // and that container actually becomes horizontally scrollable at a
+  // narrow viewport, not just present-but-inert. ---
+  const scrollContainer = page
+    .locator(
+      'xpath=//h3[starts-with(normalize-space(.), "All Assigned Work")]/following-sibling::div[contains(@class, "fo-table-scroll")][1]'
+    )
+    .first();
+  const scrollContainerPresent = await scrollContainer.count().then((c) => c > 0).catch(() => false);
+  niReport("All Assigned Work: table is wrapped in the .fo-table-scroll responsive container", scrollContainerPresent);
+
+  const originalViewport = page.viewportSize();
+  await page.setViewportSize({ width: 360, height: 800 });
+  await page.waitForTimeout(200);
+  const { scrollWidth, clientWidth } = await scrollContainer.evaluate((el) => ({
+    scrollWidth: el.scrollWidth,
+    clientWidth: el.clientWidth,
+  }));
+  niReport(
+    "All Assigned Work: .fo-table-scroll container actually overflows horizontally at a narrow viewport",
+    scrollWidth > clientWidth,
+    `scrollWidth=${scrollWidth}, clientWidth=${clientWidth}`
+  );
+  if (originalViewport) await page.setViewportSize(originalViewport);
+
+  // --- aria-live: a CONCISE role="status" region announces loading/
+  // error/empty/populated transitions -- Final Review correction:
+  // must NOT wrap the interactive table (a screen reader would read the
+  // whole populated table on every update otherwise). Verified two ways:
+  // the region itself exists with a short, single-sentence message, and
+  // separately, no table anywhere on the page is nested inside any
+  // role="status" element at all. ---
+  const statusRegion = page.locator(
+    'xpath=//h3[starts-with(normalize-space(.), "All Assigned Work")]/following-sibling::*[@role="status"][1]'
+  );
+  const statusRegionTagName = await statusRegion.evaluate((el) => el.tagName).catch(() => null);
+  const statusRegionText = await statusRegion.innerText().catch(() => "");
+  niReport(
+    "All Assigned Work: a concise role=\"status\" live region exists with a short state summary",
+    statusRegionTagName === "P" && statusRegionText.length > 0 && statusRegionText.length < 200,
+    `tag=${statusRegionTagName}, text="${statusRegionText}"`
+  );
+
+  const tableInsideStatusRegion = await page
+    .locator('xpath=//*[@role="status"]//table')
+    .count()
+    .then((c) => c > 0)
+    .catch(() => false);
+  niReport(
+    "All Assigned Work: the interactive table is NOT wrapped inside the role=\"status\" region",
+    !tableInsideStatusRegion
+  );
+
+  await page.screenshot({ path: join(SCREENSHOT_DIR, "pr-a-all-assigned-work.png"), fullPage: true });
+
+  // --- Query failure renders the error state, not an empty table.
+  //
+  // NOT a browser/DOM assertion, deliberately -- two independent,
+  // verified constraints in this app/environment make that impossible
+  // to construct honestly:
+  //   1. App.jsx's isDomainVisible() route gate requires a recognized
+  //      admin/dispatcher/technician role before the Inventory domain
+  //      renders AT ALL (confirmed live: an authenticated session with
+  //      an unrecognized role reaches /inventory's URL but the route
+  //      renders nothing -- just the header shell). Since
+  //      isAdminOrDispatcher() (the Rules check this query needs to
+  //      fail) accepts exactly the same two role values the route gate
+  //      requires, there is no role value that both reaches this UI
+  //      AND fails that Rules check -- confirmed, not assumed.
+  //   2. Mutating an EXISTING, already-validated uid's role (e.g.
+  //      flipping DRIVER_ACCOUNTS.admin's role after it has already
+  //      been used successfully elsewhere in this same run) does not
+  //      reliably produce a fresh rejection -- confirmed live: the
+  //      Firestore EMULATOR caches a security rule's get()-based role
+  //      lookup per uid for the process's lifetime, so a query
+  //      re-evaluated for a previously-valid uid keeps succeeding
+  //      against the stale cached value. A real emulator/production
+  //      parity gap (production Firestore does invalidate this
+  //      correctly), not an application bug -- confirmed by testing the
+  //      identical query directly against the emulator via the plain
+  //      client SDK, bypassing the app and Playwright entirely.
+  //
+  // What IS reliable, confirmed the same way: a uid whose role is
+  // invalid from the very first time it is ever evaluated. So this
+  // check signs in as seed.mjs's dedicated, never-mutated
+  // queryFailureProbe account (client SDK, not firebase-admin -- an
+  // ordinary, non-privileged session, same as the real app would use)
+  // and issues the exact query shape useReorderRequestsByStatuses()
+  // does, confirming the SERVER genuinely rejects it with an error (per
+  // the Specification's own "(or any)" -- any error code satisfies
+  // this, not specifically permission-denied) rather than returning
+  // empty results. Combined with direct inspection of
+  // useReorderRequestsByStatuses()'s onSnapshot error callback
+  // (`(err) => setState({ data: [], loading: false, error: err.code ??
+  // "unknown" })`, hooks/useReorderRequests.js) and PartsList.jsx's
+  // unconditional `allAssignedWorkError ? <p>Unable to load...` ternary
+  // -- both plain, deterministic code, not runtime behavior that itself
+  // needs a live check -- this establishes the same guarantee an
+  // end-to-end DOM assertion would, without asserting something this
+  // environment cannot actually produce. ---
+  const probeApp = initializeApp({ projectId: "taylor-parts", apiKey: "fake-key-emulator-only" }, "query-failure-probe");
+  const probeAuth = getAuth(probeApp);
+  connectAuthEmulator(probeAuth, "http://127.0.0.1:9099", { disableWarnings: true });
+  const probeDb = getClientFirestore(probeApp);
+  connectFirestoreEmulator(probeDb, "127.0.0.1", 8080);
+
+  const probeAcct = DRIVER_ACCOUNTS.queryFailureProbe;
+  await signInWithEmailAndPassword(probeAuth, probeAcct.email, probeAcct.password);
+
+  const probeResult = await new Promise((resolve) => {
+    const q = query(
+      collection(probeDb, "reorder_requests"),
+      where("status", "in", ["ASSIGNED_TO_PARTS_ASSOCIATE", "PURCHASING_IN_PROGRESS"])
+    );
+    const unsubscribe = onSnapshot(
+      q,
+      (snap) => {
+        unsubscribe();
+        resolve({ succeeded: true, size: snap.size });
+      },
+      (err) => {
+        unsubscribe();
+        resolve({ succeeded: false, code: err.code });
+      }
+    );
+    setTimeout(() => resolve({ succeeded: null, timedOut: true }), 15000);
+  });
+  niReport(
+    "All Assigned Work's exact query shape: a genuinely unauthorized session gets an error, not empty results",
+    probeResult.succeeded === false,
+    JSON.stringify(probeResult)
+  );
+
+  // --- Assignment picker securityRole eligibility: open the existing
+  // READY_FOR_PARTS_MANAGER legacy fixture (TST-1003) to reach
+  // ReorderRequestAssignment's EmployeeAssignmentPicker. ---
+  const partDetailUrl = new URL("inventory/TST-1003", APP_ROOT);
+  partDetailUrl.searchParams.set("emulator", "1");
+  partDetailUrl.searchParams.set("requestId", "driver-seed-legacy-request");
+  await page.goto(partDetailUrl.toString(), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await page.getByRole("heading", { name: "Reorder Request -- Ready for Parts Manager" }).waitFor({ timeout: 10000 });
+
+  const pickerInput = page.getByRole("combobox", { name: "Assign to Parts Associate" });
+  await pickerInput.click();
+
+  const { eligible, technician } = PR_A_FIXTURE.securityRoleEmployees;
+  // Wait on a known-good option rather than a flat timeout -- the
+  // picker's onSnapshot listener may not have resolved the instant the
+  // dropdown opens; a fixed sleep would risk a false FAIL on a slow
+  // first load rather than a true negative.
+  const eligibleVisible = await page
+    .getByRole("option", { name: new RegExp(`^${eligible.displayName}`) })
+    .waitFor({ timeout: 10000 })
+    .then(() => true)
+    .catch(() => false);
+  niReport("Assignment picker: a valid non-technician securityRole candidate IS selectable", eligibleVisible);
+
+  const technicianVisible = await page
+    .getByRole("option", { name: new RegExp(`^${technician.displayName}`) })
+    .isVisible()
+    .catch(() => false);
+  niReport("Assignment picker: a technician-securityRole candidate is EXCLUDED from selectable results", !technicianVisible);
+
+  // The admin-visible configuration warning -- covers both the
+  // "missing" and "invalid-enum" fixtures at once (2 candidates
+  // excluded for that reason in this fixture set).
+  const warningText = await page
+    .getByText(/employees? have unverified role data/)
+    .first()
+    .innerText()
+    .catch(() => "");
+  niReport(
+    "Assignment picker: admin-visible configuration warning renders for missing/invalid-enum securityRole",
+    warningText.startsWith("2 employees have unverified role data"),
+    `warning text was "${warningText}"`
+  );
+
+  await page.screenshot({ path: join(SCREENSHOT_DIR, "pr-a-assignment-picker.png"), fullPage: true });
+
+  console.log(`\n${niPassed} passed, ${niFailed} failed`);
+  return niFailed === 0;
+}
+
 // Customer/Account Business Model -- Customer PR 3, Service Activity
 // (docs/specifications/customer-account-business-model.md). Same
 // niReport()-based PASS/FAIL style as the verify-* commands above. Expected
@@ -1063,6 +1490,10 @@ async function main() {
     } else if (command === "verify-inventory-health-catalog") {
       const [accountKey = "admin"] = args;
       const ok = await verifyInventoryHealthCatalog(browser, page, accountKey);
+      if (!ok) process.exitCode = 1;
+    } else if (command === "verify-pr-a") {
+      const [accountKey = "admin"] = args;
+      const ok = await verifyPrA(browser, page, accountKey);
       if (!ok) process.exitCode = 1;
     } else if (command === "verify-service-activity") {
       const [accountKey = "admin"] = args;
