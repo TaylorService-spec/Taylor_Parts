@@ -11,17 +11,19 @@
 // built-in fetch against the emulator REST APIs, no
 // @firebase/rules-unit-testing, no test runner).
 //
-// Explicitly does NOT probe (out of this PR's scope, confirmed by these
-// negative assertions below instead): the reorder_requests Assign-write
-// branch and reorder_purchase_orders/reorder_purchase_order_voids'
-// PARTS_ASSOCIATE read branch -- both land only in PR 3a, per the
-// Implementation Plan's Sequencing notes.
-//
 // UPDATED for PR 2a: inventory_actions' WAREHOUSE_MANAGER branch landed
 // in PR 2a (functions/test/issue100WarehouseManagerRules.test.js has
 // PR 2a's own dedicated coverage) -- this file's inventory_actions
 // assertion below now reflects that grant existing, rather than the
 // stale "not yet landed" expectation this file originally shipped with.
+//
+// UPDATED for PR 3a: the reorder_requests Assign-write branch and
+// reorder_purchase_orders/reorder_purchase_order_voids' self-scoped
+// PARTS_ASSOCIATE read branch both landed in PR 3a
+// (functions/test/issue100PartsAssociateRules.test.js has PR 3a's own
+// dedicated coverage) -- the two assertions below now reflect those
+// grants existing, rather than the stale "not yet landed" expectations
+// this file originally shipped with.
 //
 // Prerequisite: run against a live Firestore + Auth emulator pair, e.g.:
 //   firebase emulators:start --only firestore,auth --project taylor-parts
@@ -417,17 +419,31 @@ async function main() {
   report("PR 2a's WAREHOUSE_MANAGER inventory_actions grant does not affect this PR's own PARTS_MANAGER/PARTS_ASSOCIATE scope",
     (await getDocAt("inventory_actions", "action-1", tokens["user-wm-1"])) === 200);
 
-  report("No new grant reaches reorder_purchase_orders -- PARTS_ASSOCIATE still denied (PR 3a's own scope, not this PR's)",
-    (await getDocAt("reorder_purchase_orders", "req-purchasing-pa1", tokens["user-pa-1"])) === 403);
+  // UPDATED for PR 3a (Issue #100): reorder_purchase_orders' self-scoped
+  // PARTS_ASSOCIATE read is PR 3a's own grant, not PR 1a's -- this PR 1a
+  // test file previously asserted denial here specifically to prove PR
+  // 3a's scope hadn't landed yet. req-purchasing-pa1's linked
+  // reorder_requests document has assignedToUserId == user-pa-1 (seeded
+  // above), so this account is now the legitimate self-scoped reader.
+  report("PR 3a's self-scoped PARTS_ASSOCIATE reorder_purchase_orders read does not affect this PR's own PARTS_MANAGER scope",
+    (await getDocAt("reorder_purchase_orders", "req-purchasing-pa1", tokens["user-pa-1"])) === 200);
 
-  report("The Assign-write branch was NOT added in this PR -- PARTS_MANAGER's Assign attempt is still denied",
+  // UPDATED for PR 3a (Issue #100): the Assign-write branch is PR 3a's
+  // own grant (the merged (isAdminOrDispatcher() ||
+  // isActiveOperationalRole("PARTS_MANAGER")) branch in reorder_requests'
+  // restructured allow update, per its own dedicated
+  // functions/test/issue100PartsAssociateRules.test.js coverage) -- this
+  // PR 1a test file previously asserted denial here specifically to
+  // prove PR 3a's restructuring hadn't landed yet. That premise is now
+  // obsolete.
+  report("PR 3a's Assign-write branch does not affect this PR's own read-only scope",
     (await updateReorderRequest("req-ready-1", tokens["user-pm-1"], {
       status: { stringValue: "ASSIGNED_TO_PARTS_ASSOCIATE" },
       currentOwner: { stringValue: "PARTS_ASSOCIATE" },
       assignedToUserId: { stringValue: "user-pa-1" },
       assignedBy: { stringValue: "user-pm-1" },
       assignedAt: { integerValue: String(now) },
-    })) === 403);
+    })) === 200);
 
   // === Broken / inactive / mismatched linkage -- fail closed ===
 

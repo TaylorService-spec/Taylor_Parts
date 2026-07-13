@@ -61,10 +61,35 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/employees/$(linkedEmployeeId())).data;
     }
 
+    // PERFORMANCE (Issue #100 PR 3a) -- reciprocallyLinkedEmployee(), as
+    // originally written in PR 1a, called linkedEmployeeId()/
+    // linkedEmployeeData() multiple times, each of which independently
+    // re-executes get(users/{uid}) and/or get(employees/{employeeId}) --
+    // up to several redundant, uncached document reads per single call.
+    // That was affordable when isActiveOperationalRole() was invoked at
+    // most once per rule evaluation (every PR 1a/2a read grant is its
+    // own independent, single match-block evaluation). PR 3a's
+    // restructured reorder_requests allow update evaluates
+    // isActiveOperationalRole() as part of FIVE separate OR'd branches
+    // within ONE rule statement -- empirically, this multiplied the
+    // redundant-read cost enough to exceed Firestore's Rules evaluation
+    // budget ("Unable to evaluate the expression as the maximum of 1000
+    // expressions to evaluate has been reached"), confirmed via
+    // functions/test/issue100PartsAssociateRules.test.js's Mark Received
+    // and Record PO probes failing with exactly that error before this
+    // fix, passing cleanly after. reciprocallyLinkedEmployee() now binds
+    // the Employee document ONCE via `let` and reuses it -- one
+    // get(employees/{employeeId}) call total, not four -- with
+    // IDENTICAL semantics (still requires isSignedIn(), a non-null
+    // linked employeeId, and the reciprocal userId match). Every
+    // existing call site's observable behavior is unchanged; verified
+    // by re-running the complete PR 1a/2a/3a regression suite after
+    // this change.
     function reciprocallyLinkedEmployee() {
+      let employeeId = linkedEmployeeId();
       return isSignedIn()
-        && linkedEmployeeId() != null
-        && linkedEmployeeData().userId == request.auth.uid;
+        && employeeId != null
+        && get(/databases/$(database)/documents/employees/$(employeeId)).data.userId == request.auth.uid;
     }
 
     // An operationalRoles array containing an invalid/unrecognized
@@ -72,11 +97,27 @@ service cloud.firestore {
     // (hasAny([role]) against a specific literal) -- invalid values
     // fail closed automatically, no separate validation branch
     // required.
+    //
+    // PERFORMANCE (Issue #100 PR 3a, same rationale as
+    // reciprocallyLinkedEmployee() above): binds the linked Employee
+    // document ONCE via `let` -- one get(employees/{employeeId}) call
+    // total per isActiveOperationalRole() invocation, not up to five --
+    // rather than calling reciprocallyLinkedEmployee() (its own
+    // independent get()) plus three further linkedEmployeeData() calls.
+    // Inlines the exact same reciprocal-link/ACTIVE/role-membership
+    // checks reciprocallyLinkedEmployee() itself performs, so behavior
+    // is byte-for-byte identical to calling it -- this function no
+    // longer calls reciprocallyLinkedEmployee() directly specifically
+    // to avoid paying for its get() a second time.
     function isActiveOperationalRole(role) {
-      return reciprocallyLinkedEmployee()
-        && linkedEmployeeData().employmentStatus == "ACTIVE"
-        && linkedEmployeeData().operationalRoles is list
-        && linkedEmployeeData().operationalRoles.hasAny([role]);
+      let employeeId = linkedEmployeeId();
+      let employee = get(/databases/$(database)/documents/employees/$(employeeId)).data;
+      return isSignedIn()
+        && employeeId != null
+        && employee.userId == request.auth.uid
+        && employee.employmentStatus == "ACTIVE"
+        && employee.operationalRoles is list
+        && employee.operationalRoles.hasAny([role]);
     }
 
     // RETROFIT (Issue #100 PR 1a) -- previously used hasOperationalRole(),
@@ -443,256 +484,321 @@ service cloud.firestore {
                  && request.resource.data.recommendedQty == null
                  && request.resource.data.requestedQty is int && request.resource.data.requestedQty > 0));
 
-      allow update: if isAdminOrDispatcher()
-        && ((resource.data.status == "PENDING_REVIEW"
-              && ((request.resource.data.status == "READY_FOR_PARTS_MANAGER"
-                    && request.resource.data.reviewDecision == "APPROVED"
-                    && request.resource.data.currentOwner == "PARTS_MANAGER")
-                  || (request.resource.data.status == "REJECTED"
-                    && request.resource.data.reviewDecision == "REJECTED"
-                    && request.resource.data.currentOwner == resource.data.currentOwner))
-              && request.resource.data.diff(resource.data).affectedKeys()
-                   .hasOnly(["status", "reviewDecision", "reviewedBy", "reviewedAt", "reviewNotes", "currentOwner"])
-              && (request.resource.data.status != "REJECTED"
-                  || (request.resource.data.reviewNotes is string && request.resource.data.reviewNotes.size() > 0)))
-            || (resource.data.status == "READY_FOR_PARTS_MANAGER"
-              && request.resource.data.status == "ASSIGNED_TO_PARTS_ASSOCIATE"
-              && request.resource.data.currentOwner == "PARTS_ASSOCIATE"
-              && request.resource.data.assignedToUserId is string
-              && request.resource.data.assignedToUserId.size() > 0
-              && request.resource.data.assignedBy == request.auth.uid
-              && request.resource.data.assignedAt is number
-              && request.resource.data.reviewDecision == resource.data.reviewDecision
-              && request.resource.data.reviewedBy == resource.data.reviewedBy
-              && request.resource.data.reviewedAt == resource.data.reviewedAt
-              && request.resource.data.reviewNotes == resource.data.reviewNotes
-              && request.resource.data.diff(resource.data).affectedKeys()
-                   .hasOnly(["status", "currentOwner", "assignedToUserId", "assignedBy", "assignedAt"]))
-            || (resource.data.status == "ASSIGNED_TO_PARTS_ASSOCIATE"
-              && request.resource.data.status == "PURCHASING_IN_PROGRESS"
-              && request.auth.uid == resource.data.assignedToUserId
-              && request.resource.data.purchasingStartedBy == request.auth.uid
-              && request.resource.data.purchasingStartedAt is number
-              && request.resource.data.currentOwner == resource.data.currentOwner
-              && request.resource.data.assignedToUserId == resource.data.assignedToUserId
-              && request.resource.data.assignedBy == resource.data.assignedBy
-              && request.resource.data.assignedAt == resource.data.assignedAt
-              && request.resource.data.reviewDecision == resource.data.reviewDecision
-              && request.resource.data.reviewedBy == resource.data.reviewedBy
-              && request.resource.data.reviewedAt == resource.data.reviewedAt
-              && request.resource.data.reviewNotes == resource.data.reviewNotes
-              && request.resource.data.diff(resource.data).affectedKeys()
-                   .hasOnly(["status", "purchasingStartedAt", "purchasingStartedBy"]))
-            || (resource.data.status == "PURCHASING_IN_PROGRESS"
-              && request.resource.data.status == "PURCHASING_IN_PROGRESS"
-              && request.auth.uid == resource.data.assignedToUserId
-              && request.resource.data.lastPurchasingUpdateBy == request.auth.uid
-              && request.resource.data.lastPurchasingUpdateAt is number
-              && request.resource.data.currentOwner == resource.data.currentOwner
-              && request.resource.data.assignedToUserId == resource.data.assignedToUserId
-              && request.resource.data.assignedBy == resource.data.assignedBy
-              && request.resource.data.assignedAt == resource.data.assignedAt
-              && request.resource.data.purchasingStartedAt == resource.data.purchasingStartedAt
-              && request.resource.data.purchasingStartedBy == resource.data.purchasingStartedBy
-              && request.resource.data.reviewDecision == resource.data.reviewDecision
-              && request.resource.data.reviewedBy == resource.data.reviewedBy
-              && request.resource.data.reviewedAt == resource.data.reviewedAt
-              && request.resource.data.reviewNotes == resource.data.reviewNotes
-              && request.resource.data.diff(resource.data).affectedKeys()
-                   .hasOnly(["purchasingNotes", "vendorContacted", "expectedAvailabilityDate", "lastPurchasingUpdateAt", "lastPurchasingUpdateBy"]))
-            || (resource.data.status == "PURCHASING_IN_PROGRESS"
-              && request.resource.data.status == "ORDERED"
-              && request.auth.uid == resource.data.assignedToUserId
-              && request.resource.data.purchaseOrderId == requestId
-              && request.resource.data.orderedBy == request.auth.uid
-              && request.resource.data.orderedAt is number
-              && request.resource.data.currentOwner == resource.data.currentOwner
-              && request.resource.data.assignedToUserId == resource.data.assignedToUserId
-              && request.resource.data.assignedBy == resource.data.assignedBy
-              && request.resource.data.assignedAt == resource.data.assignedAt
-              && request.resource.data.purchasingStartedAt == resource.data.purchasingStartedAt
-              && request.resource.data.purchasingStartedBy == resource.data.purchasingStartedBy
-              && request.resource.data.purchasingNotes == resource.data.purchasingNotes
-              && request.resource.data.vendorContacted == resource.data.vendorContacted
-              && request.resource.data.expectedAvailabilityDate == resource.data.expectedAvailabilityDate
-              && request.resource.data.lastPurchasingUpdateAt == resource.data.lastPurchasingUpdateAt
-              && request.resource.data.lastPurchasingUpdateBy == resource.data.lastPurchasingUpdateBy
-              && request.resource.data.reviewDecision == resource.data.reviewDecision
-              && request.resource.data.reviewedBy == resource.data.reviewedBy
-              && request.resource.data.reviewedAt == resource.data.reviewedAt
-              && request.resource.data.reviewNotes == resource.data.reviewNotes
-              && request.resource.data.diff(resource.data).affectedKeys()
-                   .hasOnly(["status", "purchaseOrderId", "orderedBy", "orderedAt"])
-              // Cross-document invariant (ChatGPT PR #77 review): a
-              // rules-independent write of THIS transition alone,
-              // without the matching reorder_purchase_orders/{requestId}
-              // create also landing in the SAME commit, is rejected --
-              // getAfter()/existsAfter() read the post-transaction state,
-              // so both writes are provably part of one atomic operation,
-              // not just independently-valid writes that happened to be
-              // sent together.
-              && existsAfter(/databases/$(database)/documents/reorder_purchase_orders/$(requestId))
-              && getAfter(/databases/$(database)/documents/reorder_purchase_orders/$(requestId)).data.reorderRequestId == requestId
-              && getAfter(/databases/$(database)/documents/reorder_purchase_orders/$(requestId)).data.createdBy == request.auth.uid
-              && getAfter(/databases/$(database)/documents/reorder_purchase_orders/$(requestId)).data.status == "ORDERED"
-              && getAfter(/databases/$(database)/documents/reorder_purchase_orders/$(requestId)).data.partId == resource.data.partId)
-            // Sprint 2.1.11 -- Receiving (Reorder Request closeout).
-            // Terminal ORDERED -> RECEIVED transition, assignee-only,
-            // same single-document-transition shape as Sprint 2.1.7/
-            // 2.1.8 (no getAfter()/existsAfter() cross-document
-            // invariant needed here -- unlike Sprint 2.1.10, this
-            // transition doesn't create a second linked document).
-            // This is a status-closeout note only -- does NOT write to
-            // inventory_transactions (Admin-SDK-only, Work-Order-
-            // driven ledger, ADR-003); reconciling against real stock
-            // stays on FUTURE_ARCHITECTURE_BACKLOG.md, blocked on
-            // Firebase Blaze (issue #15), not this sprint's concern.
-            || (resource.data.status == "ORDERED"
-              && request.resource.data.status == "RECEIVED"
-              && request.auth.uid == resource.data.assignedToUserId
-              && request.resource.data.receivedBy == request.auth.uid
-              && request.resource.data.receivedAt is number
-              && request.resource.data.currentOwner == resource.data.currentOwner
-              && request.resource.data.assignedToUserId == resource.data.assignedToUserId
-              && request.resource.data.assignedBy == resource.data.assignedBy
-              && request.resource.data.assignedAt == resource.data.assignedAt
-              && request.resource.data.purchasingStartedAt == resource.data.purchasingStartedAt
-              && request.resource.data.purchasingStartedBy == resource.data.purchasingStartedBy
-              && request.resource.data.purchasingNotes == resource.data.purchasingNotes
-              && request.resource.data.vendorContacted == resource.data.vendorContacted
-              && request.resource.data.expectedAvailabilityDate == resource.data.expectedAvailabilityDate
-              && request.resource.data.lastPurchasingUpdateAt == resource.data.lastPurchasingUpdateAt
-              && request.resource.data.lastPurchasingUpdateBy == resource.data.lastPurchasingUpdateBy
-              && request.resource.data.purchaseOrderId == resource.data.purchaseOrderId
-              && request.resource.data.orderedBy == resource.data.orderedBy
-              && request.resource.data.orderedAt == resource.data.orderedAt
-              && request.resource.data.reviewDecision == resource.data.reviewDecision
-              && request.resource.data.reviewedBy == resource.data.reviewedBy
-              && request.resource.data.reviewedAt == resource.data.reviewedAt
-              && request.resource.data.reviewNotes == resource.data.reviewNotes
-              && request.resource.data.diff(resource.data).affectedKeys()
-                   .hasOnly(["status", "receivedBy", "receivedAt"]))
-            // Cancel/Void schema deployment sequence, PR 4 of 6
-            // (docs/specifications/reorder-request-cancellation.md) --
-            // Cancel Reorder Request. Terminal. Reachable from any of
-            // the three pre-order active statuses. Authorization is
-            // isAdminOrDispatcher() alone (the outer gate above) -- no
-            // additional per-user restriction, matching every other
-            // hand-off-type transition on this object (review, assign).
-            // This branch never reads cancelledBy/cancelledAt/
-            // cancellationReason from resource.data -- see the
-            // Specification's "Legacy document behavior" section: a
-            // document that predates this sprint's schema entirely
-            // lacks those three keys, and reading an absent map key
-            // here would be a Rules evaluation error, not a null
-            // value. Every earlier-stage field is pinned unchanged,
-            // same discipline as every prior branch; affectedKeys()
-            // restricts the actual diff to exactly the four fields
-            // this transition owns, so a legacy document (missing the
-            // six Cancel/Void keys entirely) only ever gains the three
-            // relevant to this transition -- voidedBy/voidedAt/
-            // voidReason are never backfilled by this branch.
-            || ((resource.data.status == "READY_FOR_PARTS_MANAGER"
+      // Issue #100 PR 3a -- RESTRUCTURED (docs/specifications/
+      // inventory-nav-access-alignment.md's "Restructuring
+      // reorder_requests' allow update"). The prior single shared outer
+      // isAdminOrDispatcher() gate (identical across all eight
+      // transition branches) is removed from its top-level position;
+      // each of the resulting EIGHT self-contained branches carries its
+      // own leading authorization clause instead, still combined with
+      // || into one allow update, still ANDed with the unchanged
+      // pinned-base-fields tail at the very end. Every existing
+      // field-level validation clause inside each branch is preserved
+      // EXACTLY, byte-for-byte, unchanged -- only the leading
+      // authorization clause each branch is prefixed with changes.
+      // Approve/Reject and Cancel stay isAdminOrDispatcher() alone;
+      // Void stays isAdminOrDispatcher() AND assignee -- all three
+      // unchanged in substance. Start Purchasing, Post Purchasing
+      // Update, Record PO, and Mark Received gain the new
+      // `|| isActiveOperationalRole("PARTS_ASSOCIATE")` OR. Assign
+      // gains the new `|| isActiveOperationalRole("PARTS_MANAGER")` OR.
+      //
+      // DEVIATION FROM THE SPECIFICATION'S ILLUSTRATIVE CODE, flagged
+      // explicitly for Architecture Review: the Specification's own
+      // illustrative shape shows Assign split into TWO separate
+      // branches (an unchanged admin/dispatcher-only branch, plus a
+      // new, distinct PARTS_MANAGER branch with an identical body) --
+      // nine branches total. Implementing that literally, verified
+      // empirically against a live Firestore emulator, causes the
+      // ORDERED -> VOIDED transition's two-document atomic commit
+      // (this update + the linked reorder_purchase_order_voids create,
+      // evaluated together in one request) to exceed Firestore's
+      // undocumented ~1000-subexpression Rules evaluation budget,
+      // failing with "Unable to evaluate the expression as the maximum
+      // of 1000 expressions to evaluate has been reached" -- a real
+      // platform limit, not a logic error (confirmed via
+      // functions/test/reorderRequestsRules.test.js's full VOID
+      // coverage failing 2/82 with exactly that error at this
+      // restructuring's initial nine-branch form, and passing 82/82
+      // once merged to eight). Since the admin/dispatcher Assign
+      // branch's body and the PARTS_MANAGER Assign branch's body were
+      // BYTE-FOR-BYTE IDENTICAL in the Specification's own illustrative
+      // code (both require only the leading authorization clause plus
+      // `assignedBy == request.auth.uid`, no additional distinguishing
+      // condition), merging them into ONE branch with an OR'd leading
+      // authorization -- `(isAdminOrDispatcher() ||
+      // isActiveOperationalRole("PARTS_MANAGER"))`, mirroring the exact
+      // pattern already used for Start Purchasing/Post Purchasing
+      // Update/Record PO/Mark Received -- is behaviorally IDENTICAL
+      // (same set of callers authorized, same field validation, same
+      // affectedKeys() pin) while eliminating the duplicated
+      // subexpression cost that caused the platform limit to be
+      // exceeded. This is an implementation-level fix to the
+      // Specification's illustrative code, not a scope, authorization,
+      // or security change -- restated for the Owner/ChatGPT's next
+      // Architecture Review pass per this project's standing
+      // finding-classification discipline, not decided unilaterally as
+      // final.
+      allow update: if
+        ( ( isAdminOrDispatcher() // Approve/Reject -- unchanged, admin/dispatcher only
+            && resource.data.status == "PENDING_REVIEW"
+            && ((request.resource.data.status == "READY_FOR_PARTS_MANAGER"
+                  && request.resource.data.reviewDecision == "APPROVED"
+                  && request.resource.data.currentOwner == "PARTS_MANAGER")
+                || (request.resource.data.status == "REJECTED"
+                  && request.resource.data.reviewDecision == "REJECTED"
+                  && request.resource.data.currentOwner == resource.data.currentOwner))
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(["status", "reviewDecision", "reviewedBy", "reviewedAt", "reviewNotes", "currentOwner"])
+            && (request.resource.data.status != "REJECTED"
+                || (request.resource.data.reviewNotes is string && request.resource.data.reviewNotes.size() > 0)) )
+          || ( (isAdminOrDispatcher() || isActiveOperationalRole("PARTS_MANAGER")) // Assign -- gains the new OR (Issue #100 PR 3a)
+            && resource.data.status == "READY_FOR_PARTS_MANAGER"
+            && request.resource.data.status == "ASSIGNED_TO_PARTS_ASSOCIATE"
+            && request.resource.data.currentOwner == "PARTS_ASSOCIATE"
+            && request.resource.data.assignedToUserId is string
+            && request.resource.data.assignedToUserId.size() > 0
+            && request.resource.data.assignedBy == request.auth.uid
+            && request.resource.data.assignedAt is number
+            && request.resource.data.reviewDecision == resource.data.reviewDecision
+            && request.resource.data.reviewedBy == resource.data.reviewedBy
+            && request.resource.data.reviewedAt == resource.data.reviewedAt
+            && request.resource.data.reviewNotes == resource.data.reviewNotes
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(["status", "currentOwner", "assignedToUserId", "assignedBy", "assignedAt"]) )
+          || ( (isAdminOrDispatcher() || isActiveOperationalRole("PARTS_ASSOCIATE")) // Start Purchasing -- gains the new OR (Issue #100 PR 3a)
+            && resource.data.status == "ASSIGNED_TO_PARTS_ASSOCIATE"
+            && request.resource.data.status == "PURCHASING_IN_PROGRESS"
+            && request.auth.uid == resource.data.assignedToUserId
+            && request.resource.data.purchasingStartedBy == request.auth.uid
+            && request.resource.data.purchasingStartedAt is number
+            && request.resource.data.currentOwner == resource.data.currentOwner
+            && request.resource.data.assignedToUserId == resource.data.assignedToUserId
+            && request.resource.data.assignedBy == resource.data.assignedBy
+            && request.resource.data.assignedAt == resource.data.assignedAt
+            && request.resource.data.reviewDecision == resource.data.reviewDecision
+            && request.resource.data.reviewedBy == resource.data.reviewedBy
+            && request.resource.data.reviewedAt == resource.data.reviewedAt
+            && request.resource.data.reviewNotes == resource.data.reviewNotes
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(["status", "purchasingStartedAt", "purchasingStartedBy"]) )
+          || ( (isAdminOrDispatcher() || isActiveOperationalRole("PARTS_ASSOCIATE")) // Post Purchasing Update -- gains the new OR (Issue #100 PR 3a)
+            && resource.data.status == "PURCHASING_IN_PROGRESS"
+            && request.resource.data.status == "PURCHASING_IN_PROGRESS"
+            && request.auth.uid == resource.data.assignedToUserId
+            && request.resource.data.lastPurchasingUpdateBy == request.auth.uid
+            && request.resource.data.lastPurchasingUpdateAt is number
+            && request.resource.data.currentOwner == resource.data.currentOwner
+            && request.resource.data.assignedToUserId == resource.data.assignedToUserId
+            && request.resource.data.assignedBy == resource.data.assignedBy
+            && request.resource.data.assignedAt == resource.data.assignedAt
+            && request.resource.data.purchasingStartedAt == resource.data.purchasingStartedAt
+            && request.resource.data.purchasingStartedBy == resource.data.purchasingStartedBy
+            && request.resource.data.reviewDecision == resource.data.reviewDecision
+            && request.resource.data.reviewedBy == resource.data.reviewedBy
+            && request.resource.data.reviewedAt == resource.data.reviewedAt
+            && request.resource.data.reviewNotes == resource.data.reviewNotes
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(["purchasingNotes", "vendorContacted", "expectedAvailabilityDate", "lastPurchasingUpdateAt", "lastPurchasingUpdateBy"]) )
+          || ( (isAdminOrDispatcher() || isActiveOperationalRole("PARTS_ASSOCIATE")) // Record PO (reorder_requests half) -- gains the new OR (Issue #100 PR 3a)
+            && resource.data.status == "PURCHASING_IN_PROGRESS"
+            && request.resource.data.status == "ORDERED"
+            && request.auth.uid == resource.data.assignedToUserId
+            && request.resource.data.purchaseOrderId == requestId
+            && request.resource.data.orderedBy == request.auth.uid
+            && request.resource.data.orderedAt is number
+            && request.resource.data.currentOwner == resource.data.currentOwner
+            && request.resource.data.assignedToUserId == resource.data.assignedToUserId
+            && request.resource.data.assignedBy == resource.data.assignedBy
+            && request.resource.data.assignedAt == resource.data.assignedAt
+            && request.resource.data.purchasingStartedAt == resource.data.purchasingStartedAt
+            && request.resource.data.purchasingStartedBy == resource.data.purchasingStartedBy
+            && request.resource.data.purchasingNotes == resource.data.purchasingNotes
+            && request.resource.data.vendorContacted == resource.data.vendorContacted
+            && request.resource.data.expectedAvailabilityDate == resource.data.expectedAvailabilityDate
+            && request.resource.data.lastPurchasingUpdateAt == resource.data.lastPurchasingUpdateAt
+            && request.resource.data.lastPurchasingUpdateBy == resource.data.lastPurchasingUpdateBy
+            && request.resource.data.reviewDecision == resource.data.reviewDecision
+            && request.resource.data.reviewedBy == resource.data.reviewedBy
+            && request.resource.data.reviewedAt == resource.data.reviewedAt
+            && request.resource.data.reviewNotes == resource.data.reviewNotes
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(["status", "purchaseOrderId", "orderedBy", "orderedAt"])
+            // Cross-document invariant (ChatGPT PR #77 review): a
+            // rules-independent write of THIS transition alone,
+            // without the matching reorder_purchase_orders/{requestId}
+            // create also landing in the SAME commit, is rejected --
+            // getAfter()/existsAfter() read the post-transaction state,
+            // so both writes are provably part of one atomic operation,
+            // not just independently-valid writes that happened to be
+            // sent together.
+            && existsAfter(/databases/$(database)/documents/reorder_purchase_orders/$(requestId))
+            && getAfter(/databases/$(database)/documents/reorder_purchase_orders/$(requestId)).data.reorderRequestId == requestId
+            && getAfter(/databases/$(database)/documents/reorder_purchase_orders/$(requestId)).data.createdBy == request.auth.uid
+            && getAfter(/databases/$(database)/documents/reorder_purchase_orders/$(requestId)).data.status == "ORDERED"
+            && getAfter(/databases/$(database)/documents/reorder_purchase_orders/$(requestId)).data.partId == resource.data.partId )
+          // Sprint 2.1.11 -- Receiving (Reorder Request closeout).
+          // Terminal ORDERED -> RECEIVED transition, assignee-restricted,
+          // same single-document-transition shape as Sprint 2.1.7/
+          // 2.1.8 (no getAfter()/existsAfter() cross-document
+          // invariant needed here -- unlike Sprint 2.1.10, this
+          // transition doesn't create a second linked document).
+          // This is a status-closeout note only -- does NOT write to
+          // inventory_transactions (Admin-SDK-only, Work-Order-
+          // driven ledger, ADR-003); reconciling against real stock
+          // stays on FUTURE_ARCHITECTURE_BACKLOG.md, blocked on
+          // Firebase Blaze (issue #15), not this sprint's concern.
+          || ( (isAdminOrDispatcher() || isActiveOperationalRole("PARTS_ASSOCIATE")) // Mark Received -- gains the new OR (Issue #100 PR 3a)
+            && resource.data.status == "ORDERED"
+            && request.resource.data.status == "RECEIVED"
+            && request.auth.uid == resource.data.assignedToUserId
+            && request.resource.data.receivedBy == request.auth.uid
+            && request.resource.data.receivedAt is number
+            && request.resource.data.currentOwner == resource.data.currentOwner
+            && request.resource.data.assignedToUserId == resource.data.assignedToUserId
+            && request.resource.data.assignedBy == resource.data.assignedBy
+            && request.resource.data.assignedAt == resource.data.assignedAt
+            && request.resource.data.purchasingStartedAt == resource.data.purchasingStartedAt
+            && request.resource.data.purchasingStartedBy == resource.data.purchasingStartedBy
+            && request.resource.data.purchasingNotes == resource.data.purchasingNotes
+            && request.resource.data.vendorContacted == resource.data.vendorContacted
+            && request.resource.data.expectedAvailabilityDate == resource.data.expectedAvailabilityDate
+            && request.resource.data.lastPurchasingUpdateAt == resource.data.lastPurchasingUpdateAt
+            && request.resource.data.lastPurchasingUpdateBy == resource.data.lastPurchasingUpdateBy
+            && request.resource.data.purchaseOrderId == resource.data.purchaseOrderId
+            && request.resource.data.orderedBy == resource.data.orderedBy
+            && request.resource.data.orderedAt == resource.data.orderedAt
+            && request.resource.data.reviewDecision == resource.data.reviewDecision
+            && request.resource.data.reviewedBy == resource.data.reviewedBy
+            && request.resource.data.reviewedAt == resource.data.reviewedAt
+            && request.resource.data.reviewNotes == resource.data.reviewNotes
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(["status", "receivedBy", "receivedAt"]) )
+          // Cancel/Void schema deployment sequence, PR 4 of 6
+          // (docs/specifications/reorder-request-cancellation.md) --
+          // Cancel Reorder Request. Terminal. Reachable from any of
+          // the three pre-order active statuses. Authorization is
+          // isAdminOrDispatcher() alone -- unchanged, no additional
+          // per-user restriction, matching every other hand-off-type
+          // transition on this object (review, assign). NOT extended to
+          // PARTS_ASSOCIATE -- confirmed by the Specification's
+          // Architecture Review decision 9.x, restated in PR 3a's own
+          // Scope: PARTS_ASSOCIATE never gains Cancel. This branch
+          // never reads cancelledBy/cancelledAt/cancellationReason from
+          // resource.data -- see the Specification's "Legacy document
+          // behavior" section: a document that predates this sprint's
+          // schema entirely lacks those three keys, and reading an
+          // absent map key here would be a Rules evaluation error, not
+          // a null value. Every earlier-stage field is pinned
+          // unchanged, same discipline as every prior branch;
+          // affectedKeys() restricts the actual diff to exactly the
+          // four fields this transition owns, so a legacy document
+          // (missing the six Cancel/Void keys entirely) only ever
+          // gains the three relevant to this transition -- voidedBy/
+          // voidedAt/voidReason are never backfilled by this branch.
+          || ( isAdminOrDispatcher() // Cancel -- unchanged, admin/dispatcher only, NOT assignee-restricted, NOT extended to PARTS_ASSOCIATE
+            && (resource.data.status == "READY_FOR_PARTS_MANAGER"
                   || resource.data.status == "ASSIGNED_TO_PARTS_ASSOCIATE"
                   || resource.data.status == "PURCHASING_IN_PROGRESS")
-              && request.resource.data.status == "CANCELLED"
-              && request.resource.data.cancelledBy == request.auth.uid
-              && request.resource.data.cancelledAt is number
-              && request.resource.data.cancellationReason is string
-              && request.resource.data.cancellationReason.matches('.*\\S.*')
-              && request.resource.data.currentOwner == resource.data.currentOwner
-              && request.resource.data.assignedToUserId == resource.data.assignedToUserId
-              && request.resource.data.assignedBy == resource.data.assignedBy
-              && request.resource.data.assignedAt == resource.data.assignedAt
-              && request.resource.data.purchasingStartedAt == resource.data.purchasingStartedAt
-              && request.resource.data.purchasingStartedBy == resource.data.purchasingStartedBy
-              && request.resource.data.purchasingNotes == resource.data.purchasingNotes
-              && request.resource.data.vendorContacted == resource.data.vendorContacted
-              && request.resource.data.expectedAvailabilityDate == resource.data.expectedAvailabilityDate
-              && request.resource.data.lastPurchasingUpdateAt == resource.data.lastPurchasingUpdateAt
-              && request.resource.data.lastPurchasingUpdateBy == resource.data.lastPurchasingUpdateBy
-              && request.resource.data.reviewDecision == resource.data.reviewDecision
-              && request.resource.data.reviewedBy == resource.data.reviewedBy
-              && request.resource.data.reviewedAt == resource.data.reviewedAt
-              && request.resource.data.reviewNotes == resource.data.reviewNotes
-              && request.resource.data.diff(resource.data).affectedKeys()
-                   .hasOnly(["status", "cancelledBy", "cancelledAt", "cancellationReason"]))
-            // Cancel/Void schema deployment sequence, PR 5 of 6
-            // (docs/specifications/reorder-request-cancellation.md) --
-            // Void Purchase Order. Terminal. Reachable ONLY from
-            // ORDERED. Authorization is isAdminOrDispatcher() (the
-            // outer gate above) AND request.auth.uid ==
-            // resource.data.assignedToUserId -- BOTH conditions, not
-            // assignee identity alone, same double-gate every other
-            // per-user transition on this object already uses
-            // (startPurchasing()/updatePurchasingProgress()/
-            // recordPurchaseOrder()/receiveReorderRequest()). Three
-            // checks beyond the existing ORDERED->RECEIVED branch's
-            // shape:
-            //   (1) Purchase-Order-existence proof -- the linked
-            //       reorder_purchase_orders document must actually
-            //       exist, agree on reorderRequestId/partId, and
-            //       itself be status ORDERED. Read via a plain get()
-            //       (the document already exists before this
-            //       transaction and is never written by it).
-            //   (2) Cross-document invariant on the NEW
-            //       reorder_purchase_order_voids record -- mirrors
-            //       Sprint 2.1.10's getAfter()/existsAfter() pattern
-            //       for a document THIS transaction creates.
-            //   (3) Reason binding -- this branch's voidReason must
-            //       equal the void record's own reason (getAfter()),
-            //       not merely be independently non-blank.
-            // This branch never reads voidedBy/voidedAt/voidReason
-            // from resource.data, same legacy-document-safe posture
-            // as the Cancel branch above.
-            || (resource.data.status == "ORDERED"
-              && request.resource.data.status == "VOIDED"
-              && request.auth.uid == resource.data.assignedToUserId
-              && request.resource.data.voidedBy == request.auth.uid
-              && request.resource.data.voidedAt is number
-              && request.resource.data.voidReason is string
-              && request.resource.data.voidReason.matches('.*\\S.*')
-              && request.resource.data.currentOwner == resource.data.currentOwner
-              && request.resource.data.assignedToUserId == resource.data.assignedToUserId
-              && request.resource.data.assignedBy == resource.data.assignedBy
-              && request.resource.data.assignedAt == resource.data.assignedAt
-              && request.resource.data.purchasingStartedAt == resource.data.purchasingStartedAt
-              && request.resource.data.purchasingStartedBy == resource.data.purchasingStartedBy
-              && request.resource.data.purchasingNotes == resource.data.purchasingNotes
-              && request.resource.data.vendorContacted == resource.data.vendorContacted
-              && request.resource.data.expectedAvailabilityDate == resource.data.expectedAvailabilityDate
-              && request.resource.data.lastPurchasingUpdateAt == resource.data.lastPurchasingUpdateAt
-              && request.resource.data.lastPurchasingUpdateBy == resource.data.lastPurchasingUpdateBy
-              && request.resource.data.purchaseOrderId == resource.data.purchaseOrderId
-              && request.resource.data.orderedBy == resource.data.orderedBy
-              && request.resource.data.orderedAt == resource.data.orderedAt
-              && request.resource.data.reviewDecision == resource.data.reviewDecision
-              && request.resource.data.reviewedBy == resource.data.reviewedBy
-              && request.resource.data.reviewedAt == resource.data.reviewedAt
-              && request.resource.data.reviewNotes == resource.data.reviewNotes
-              && request.resource.data.diff(resource.data).affectedKeys()
-                   .hasOnly(["status", "voidedBy", "voidedAt", "voidReason"])
-              // (1) Purchase-Order-existence proof. resource.data.
-              // purchaseOrderId == requestId is already guaranteed by
-              // the pinned-earlier-stage-fields check above
-              // (purchaseOrderId was set, and has been pinned
-              // unchanged, since PURCHASING_IN_PROGRESS -> ORDERED) --
-              // restated here explicitly, not merely relied on
-              // implicitly.
-              && resource.data.purchaseOrderId == requestId
-              && exists(/databases/$(database)/documents/reorder_purchase_orders/$(requestId))
-              && get(/databases/$(database)/documents/reorder_purchase_orders/$(requestId)).data.reorderRequestId == requestId
-              && get(/databases/$(database)/documents/reorder_purchase_orders/$(requestId)).data.partId == resource.data.partId
-              && get(/databases/$(database)/documents/reorder_purchase_orders/$(requestId)).data.status == "ORDERED"
-              // (2) Cross-document invariant -- the void record.
-              && existsAfter(/databases/$(database)/documents/reorder_purchase_order_voids/$(requestId))
-              && getAfter(/databases/$(database)/documents/reorder_purchase_order_voids/$(requestId)).data.voidedBy == request.auth.uid
-              && getAfter(/databases/$(database)/documents/reorder_purchase_order_voids/$(requestId)).data.createdAt == request.resource.data.voidedAt
-              && getAfter(/databases/$(database)/documents/reorder_purchase_order_voids/$(requestId)).data.reorderRequestId == requestId
-              && getAfter(/databases/$(database)/documents/reorder_purchase_order_voids/$(requestId)).data.reorderPurchaseOrderId == requestId
-              && getAfter(/databases/$(database)/documents/reorder_purchase_order_voids/$(requestId)).data.partId == resource.data.partId
-              // (3) Reason binding.
-              && getAfter(/databases/$(database)/documents/reorder_purchase_order_voids/$(requestId)).data.reason == request.resource.data.voidReason))
+            && request.resource.data.status == "CANCELLED"
+            && request.resource.data.cancelledBy == request.auth.uid
+            && request.resource.data.cancelledAt is number
+            && request.resource.data.cancellationReason is string
+            && request.resource.data.cancellationReason.matches('.*\\S.*')
+            && request.resource.data.currentOwner == resource.data.currentOwner
+            && request.resource.data.assignedToUserId == resource.data.assignedToUserId
+            && request.resource.data.assignedBy == resource.data.assignedBy
+            && request.resource.data.assignedAt == resource.data.assignedAt
+            && request.resource.data.purchasingStartedAt == resource.data.purchasingStartedAt
+            && request.resource.data.purchasingStartedBy == resource.data.purchasingStartedBy
+            && request.resource.data.purchasingNotes == resource.data.purchasingNotes
+            && request.resource.data.vendorContacted == resource.data.vendorContacted
+            && request.resource.data.expectedAvailabilityDate == resource.data.expectedAvailabilityDate
+            && request.resource.data.lastPurchasingUpdateAt == resource.data.lastPurchasingUpdateAt
+            && request.resource.data.lastPurchasingUpdateBy == resource.data.lastPurchasingUpdateBy
+            && request.resource.data.reviewDecision == resource.data.reviewDecision
+            && request.resource.data.reviewedBy == resource.data.reviewedBy
+            && request.resource.data.reviewedAt == resource.data.reviewedAt
+            && request.resource.data.reviewNotes == resource.data.reviewNotes
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(["status", "cancelledBy", "cancelledAt", "cancellationReason"]) )
+          // Cancel/Void schema deployment sequence, PR 5 of 6
+          // (docs/specifications/reorder-request-cancellation.md) --
+          // Void Purchase Order. Terminal. Reachable ONLY from
+          // ORDERED. Authorization is isAdminOrDispatcher() AND
+          // request.auth.uid == resource.data.assignedToUserId --
+          // BOTH conditions, unchanged, NOT extended to PARTS_ASSOCIATE
+          // -- confirmed by the Specification's Architecture Review
+          // decision, restated in PR 3a's own Scope: PARTS_ASSOCIATE
+          // never gains Void either, even though it is already the
+          // assignee on every request it could otherwise target. Three
+          // checks beyond the existing ORDERED->RECEIVED branch's
+          // shape:
+          //   (1) Purchase-Order-existence proof -- the linked
+          //       reorder_purchase_orders document must actually
+          //       exist, agree on reorderRequestId/partId, and
+          //       itself be status ORDERED. Read via a plain get()
+          //       (the document already exists before this
+          //       transaction and is never written by it).
+          //   (2) Cross-document invariant on the NEW
+          //       reorder_purchase_order_voids record -- mirrors
+          //       Sprint 2.1.10's getAfter()/existsAfter() pattern
+          //       for a document THIS transaction creates.
+          //   (3) Reason binding -- this branch's voidReason must
+          //       equal the void record's own reason (getAfter()),
+          //       not merely be independently non-blank.
+          // This branch never reads voidedBy/voidedAt/voidReason
+          // from resource.data, same legacy-document-safe posture
+          // as the Cancel branch above.
+          || ( isAdminOrDispatcher() // Void (reorder_requests half) -- unchanged, admin/dispatcher AND assignee, double-gated, NOT extended to PARTS_ASSOCIATE
+            && resource.data.status == "ORDERED"
+            && request.resource.data.status == "VOIDED"
+            && request.auth.uid == resource.data.assignedToUserId
+            && request.resource.data.voidedBy == request.auth.uid
+            && request.resource.data.voidedAt is number
+            && request.resource.data.voidReason is string
+            && request.resource.data.voidReason.matches('.*\\S.*')
+            && request.resource.data.currentOwner == resource.data.currentOwner
+            && request.resource.data.assignedToUserId == resource.data.assignedToUserId
+            && request.resource.data.assignedBy == resource.data.assignedBy
+            && request.resource.data.assignedAt == resource.data.assignedAt
+            && request.resource.data.purchasingStartedAt == resource.data.purchasingStartedAt
+            && request.resource.data.purchasingStartedBy == resource.data.purchasingStartedBy
+            && request.resource.data.purchasingNotes == resource.data.purchasingNotes
+            && request.resource.data.vendorContacted == resource.data.vendorContacted
+            && request.resource.data.expectedAvailabilityDate == resource.data.expectedAvailabilityDate
+            && request.resource.data.lastPurchasingUpdateAt == resource.data.lastPurchasingUpdateAt
+            && request.resource.data.lastPurchasingUpdateBy == resource.data.lastPurchasingUpdateBy
+            && request.resource.data.purchaseOrderId == resource.data.purchaseOrderId
+            && request.resource.data.orderedBy == resource.data.orderedBy
+            && request.resource.data.orderedAt == resource.data.orderedAt
+            && request.resource.data.reviewDecision == resource.data.reviewDecision
+            && request.resource.data.reviewedBy == resource.data.reviewedBy
+            && request.resource.data.reviewedAt == resource.data.reviewedAt
+            && request.resource.data.reviewNotes == resource.data.reviewNotes
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(["status", "voidedBy", "voidedAt", "voidReason"])
+            // (1) Purchase-Order-existence proof. resource.data.
+            // purchaseOrderId == requestId is already guaranteed by
+            // the pinned-earlier-stage-fields check above
+            // (purchaseOrderId was set, and has been pinned
+            // unchanged, since PURCHASING_IN_PROGRESS -> ORDERED) --
+            // restated here explicitly, not merely relied on
+            // implicitly.
+            && resource.data.purchaseOrderId == requestId
+            && exists(/databases/$(database)/documents/reorder_purchase_orders/$(requestId))
+            && get(/databases/$(database)/documents/reorder_purchase_orders/$(requestId)).data.reorderRequestId == requestId
+            && get(/databases/$(database)/documents/reorder_purchase_orders/$(requestId)).data.partId == resource.data.partId
+            && get(/databases/$(database)/documents/reorder_purchase_orders/$(requestId)).data.status == "ORDERED"
+            // (2) Cross-document invariant -- the void record.
+            && existsAfter(/databases/$(database)/documents/reorder_purchase_order_voids/$(requestId))
+            && getAfter(/databases/$(database)/documents/reorder_purchase_order_voids/$(requestId)).data.voidedBy == request.auth.uid
+            && getAfter(/databases/$(database)/documents/reorder_purchase_order_voids/$(requestId)).data.createdAt == request.resource.data.voidedAt
+            && getAfter(/databases/$(database)/documents/reorder_purchase_order_voids/$(requestId)).data.reorderRequestId == requestId
+            && getAfter(/databases/$(database)/documents/reorder_purchase_order_voids/$(requestId)).data.reorderPurchaseOrderId == requestId
+            && getAfter(/databases/$(database)/documents/reorder_purchase_order_voids/$(requestId)).data.partId == resource.data.partId
+            // (3) Reason binding.
+            && getAfter(/databases/$(database)/documents/reorder_purchase_order_voids/$(requestId)).data.reason == request.resource.data.voidReason ) )
         && request.resource.data.partId == resource.data.partId
         && request.resource.data.urgency == resource.data.urgency
         && request.resource.data.recommendedQty == resource.data.recommendedQty
@@ -746,8 +852,22 @@ service cloud.firestore {
     // omitted (recordPurchaseOrder() always writes it, as null when
     // not provided).
     match /reorder_purchase_orders/{requestId} {
-      allow read: if isAdminOrDispatcher();
-      allow create: if isAdminOrDispatcher()
+      // Issue #100 PR 3a -- read gains one additive, self-scoped
+      // PARTS_ASSOCIATE branch: the linked reorder_requests document's
+      // assignedToUserId must equal the caller. Reads via get(), not a
+      // per-document Rules-scoped field on this collection itself
+      // (this collection has no assignedToUserId of its own -- the
+      // ownership fact lives on the linked Reorder Request).
+      allow read: if isAdminOrDispatcher()
+        || (isActiveOperationalRole("PARTS_ASSOCIATE")
+            && get(/databases/$(database)/documents/reorder_requests/$(requestId)).data.assignedToUserId == request.auth.uid);
+      // Issue #100 PR 3a -- create gains isActiveOperationalRole("PARTS_ASSOCIATE")
+      // alongside the existing isAdminOrDispatcher(), ANDed with the
+      // unchanged assignee/status/field validation below (unchanged --
+      // this single-condition allow create is not shared with any
+      // other transition, so this is a safe additive ||, same reasoning
+      // as every read-side widening above).
+      allow create: if (isAdminOrDispatcher() || isActiveOperationalRole("PARTS_ASSOCIATE"))
         && request.auth.uid == get(/databases/$(database)/documents/reorder_requests/$(requestId)).data.assignedToUserId
         && get(/databases/$(database)/documents/reorder_requests/$(requestId)).data.status == "PURCHASING_IN_PROGRESS"
         && request.resource.data.keys().hasOnly([
@@ -794,7 +914,15 @@ service cloud.firestore {
     // checks the other side's post-transaction state), additionally
     // bound on reason/createdAt-voidedAt agreement.
     match /reorder_purchase_order_voids/{reorderPurchaseOrderId} {
-      allow read: if isAdminOrDispatcher();
+      // Issue #100 PR 3a -- read gains the same additive, self-scoped
+      // PARTS_ASSOCIATE branch as reorder_purchase_orders above.
+      allow read: if isAdminOrDispatcher()
+        || (isActiveOperationalRole("PARTS_ASSOCIATE")
+            && get(/databases/$(database)/documents/reorder_requests/$(reorderPurchaseOrderId)).data.assignedToUserId == request.auth.uid);
+      // create is UNCHANGED -- remains isAdminOrDispatcher() && assignee,
+      // confirmed by omission. PARTS_ASSOCIATE never gains Void, per
+      // the Specification's Architecture Review decision (restated in
+      // the reorder_requests VOIDED branch's own comment above).
       allow create: if isAdminOrDispatcher()
         && request.auth.uid == get(/databases/$(database)/documents/reorder_requests/$(reorderPurchaseOrderId)).data.assignedToUserId
         && get(/databases/$(database)/documents/reorder_requests/$(reorderPurchaseOrderId)).data.status == "ORDERED"
