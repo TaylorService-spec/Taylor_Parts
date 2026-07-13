@@ -10,13 +10,13 @@ implements: []
 supersedes: []
 superseded_by: []
 related_pr: null
-related_issue: 158
-target_release: Post-Release 2.1 (Inventory → Procurement chain)
+related_issue: null
+target_release: TBD
 ---
 
 # Assessment Report: Account Commercial Profile and Financial Forecast Horizons
 
-**Status: DRAFT.** Not yet reviewed. Expands the previously-scoped "Customer Financial Forecast Horizons" assessment into the broader **Account Commercial Profile and Financial Forecast Horizons**, building on the merged, live Customer/Account Business Model work (Assessment PR #161, Specification/Implementation Plan PR #166, implemented via PR #167/#169/#170/#172) and reconciled against the Accepted Enterprise Business Metrics Framework (`docs/architecture/enterprise-business-metrics-framework.md`).
+**Status: DRAFT.** Not yet reviewed. Expands the previously-scoped "Customer Financial Forecast Horizons" idea into the broader **Account Commercial Profile and Financial Forecast Horizons**. It reconciles against the Accepted Enterprise Business Metrics Framework (`docs/architecture/enterprise-business-metrics-framework.md`) and reuses patterns from the merged Customer/Account Business Model work (Specification/Implementation Plan via PR #166, implemented via PR #167/#169/#170/#172) as precedent — but **this is a new initiative, not continued Issue #158 work**. Creating a tracking issue for it is a later Owner gate and is **not** done here; this Assessment is not tracked under any existing issue.
 
 **This is a documentation-only Assessment and authorizes nothing.** It does not implement any field, edit `ROADMAP.md` or any other global document, change Firestore Rules/schema/indexes, connect or read financial data, access production data, or touch Inventory. Every such action remains its own separate gate under `docs/ai/workflow.md`. This document defines *what the profile is and what a future build must satisfy*; a Specification (if the Owner authorizes one after Architecture Review) is a separate step.
 
@@ -58,7 +58,12 @@ Each field is **additive, optional** on `accounts`. Several are **governance-bea
 
 ## Financial Forecast Horizons (Current / 30 / 60 / 90-day, cumulative)
 
-- **Definition (structure only):** four **cumulative** horizons — **Current**, **through-30**, **through-60**, **through-90** days — where each horizon includes the prior (Current ⊆ 30 ⊆ 60 ⊆ 90). An aging/forecast view over the Account's receivables and/or committed pipeline.
+- **Definition (structure only):** four **cumulative** horizons — **Current**, **through-30**, **through-60**, **through-90** days — where each horizon includes the prior (Current ⊆ 30 ⊆ 60 ⊆ 90). A time-bucketed projection **kept separate by forecast family** (below), never a single blended view over "receivables and pipeline".
+- **Two distinct forecast families — never merged into one total:**
+  - **Receivables / cash-collection forecast** — driven by **invoice due dates**. `paymentTerms` (COD / Net 30 / 60 / 90) directly shift those due dates and therefore the projected **Cash Collected** / **Outstanding Receivables** timing (Framework Section 3). This is a billing/cash question, not a sales figure.
+  - **Pipeline / order forecast** — driven by its **own authoritative dates and probability rules**: **Open Pipeline** weighted by close probability against `expectedCloseDate`, and **Booked Value** / **Committed Backlog** by `bookedAt` / expected fulfillment date. These are commercial-commitment questions.
+  - **`paymentTerms` affect the receivables / cash-collection side ONLY** — they change invoice due dates and projected cash collection; they do **not** change Open Pipeline, Booked Value, Committed Backlog, or any "sales" figure.
+  - **The two families must never be combined into one unlabeled forecast total.** Each horizon declares which family it belongs to and its exact metric / date / probability basis; a receivables projection and a pipeline projection are different questions, reported separately and clearly labeled — never a bare "forecast" number.
 - **Governed as financial (Framework Sections 1/3/14/17):** a forecast horizon is a **financial figure** and requires an **authoritative source** — the provider entities (Invoice/Payment for receivables aging; Sales Order/Opportunity for committed/pipeline forecast) that **do not exist today** (Section 20). Therefore this Assessment defines the horizons' **structure and semantics only**; **no value is computable now**, and none may be fabricated.
 - **Provider-neutral, five-state contract:** like the merged Financial Summary surface, a forecast-horizons surface renders the Framework's five-state provider contract (`complete`/`partial`/`stale`/`error`/`unconfigured`). Today it is `unconfigured` → "Sales data source not connected"; **never a fabricated `$0` or forecast number**.
 - **Canonical basis (Framework Section 21):** each horizon must declare its **metric basis** (e.g. Outstanding Receivables aging by due date; Committed Backlog by expected fulfillment date; Open Pipeline weighted by expected close), **date basis** (Section 12), **currency/scale/rounding** (Section 10), inclusion/exclusion, and lineage. Never a bare "forecast" number, never a bare "Sales"/"Pending" label.
@@ -67,15 +72,16 @@ Each field is **additive, optional** on `accounts`. Several are **governance-bea
 
 ## Identity resolution rule (cross-cutting, platform-level)
 
-Formalizes the Owner-specified rule, generalizing what the platform already does for person references (Person Assignment Platform Service Standard) and for Reorder Request assignee display (PR #105/#107/#118). **This is the standing pattern made explicit for every ID-bearing reference on the Commercial Profile** (`accountOwner`, `billingContact`, `parentAccount`, `pricingTier`), not new architecture.
+**Proposed for Owner adoption** as a platform rule for every ID-bearing reference on the Commercial Profile (`accountOwner`, `billingContact`, `parentAccount`, `pricingTier`). It is **aligned with, and generalizes, existing precedent** — the Person Assignment Platform Service Standard, and the Reorder Request assignee display-name resolution shipped in PR #105/#107/#118 — but it is **proposed architecture, not a claim that this cross-entity rule already exists platform-wide**. Adopting it is an Owner decision this Assessment surfaces, not an existing fact.
 
-1. **Backend/persistence uses stable internal IDs** for joins, referential integrity, and authorization (`accountOwner`→`userId`/`employeeId`, `billingContact`→`contactId`, `parentAccount`→`accountId`). IDs are the source of truth for machine processes.
-2. **Every human-reviewable process resolves and includes the display name** alongside (never instead of) the ID it carries internally.
-3. **UI fields, approvals, audit views, and ordinary exports show the resolved NAME, never the raw ID.**
-4. **Unresolved references display "Unknown …"** (e.g. "Unknown owner", "Unknown contact", "Unknown account") — **never the raw ID**, and never a fabricated placeholder value.
-5. **Historical/audit events retain the internal ID AND snapshot the display name used at the time** — an immutable record of the name as it read when the event occurred, even if the entity is later renamed or removed. This matches the assignment-snapshot pattern (BusinessEntityModel 8a: `assignedToDisplayName`) and the platform's permanent-record posture (no destructive rewrite of history).
+1. **Backend/persistence uses stable internal IDs** for joins, referential integrity, and authorization (`accountOwner`→`userId`/`employeeId`, `billingContact`→`contactId`, `parentAccount`→`accountId`). The ID is always the source of truth for machine processes.
+2. **Current views re-resolve the CURRENT display name from the stable internal reference** — an Account screen shows the referenced entity's name *as it is now*, resolved live from its ID, not a name copied onto the Account. A later rename of the referenced entity is reflected on the next view.
+3. **No stale cached name.** If a display name is ever cached on the Account (for performance/search), that cache must **never silently become the authority** and must **never be shown stale** — current views still re-resolve the current name, and the stable ID remains the source of truth.
+4. **UI fields, approvals, audit views, and ordinary exports show the resolved NAME, never the raw ID.**
+5. **Unresolved references display "Unknown …"** (e.g. "Unknown owner", "Unknown contact", "Unknown account") — **never the raw ID**, and never a fabricated placeholder value.
+6. **Historical/audit events snapshot the display name used at event time AND retain the internal ID** — an immutable record of the name as it read when the event occurred, even if the entity is later renamed or removed. This is the one place a name is deliberately frozen — it is the historical record, distinct from a current-view cache. Matches the assignment-snapshot pattern (BusinessEntityModel 8a: `assignedToDisplayName`) and the platform's permanent-record posture (no destructive rewrite of history).
 
-This rule binds all ID-bearing fields introduced by any future Commercial Profile specification.
+If the Owner adopts this rule, it binds all ID-bearing fields introduced by any future Commercial Profile specification.
 
 ## Schema / Rules / index / authorization impact (assessed, not implemented)
 
@@ -108,4 +114,4 @@ For every future financial figure (`creditLimit`, each forecast horizon), the ev
 
 ## Disposition
 
-**Documentation-only Assessment (Draft).** Authorizes no field implementation, Firestore Rules/schema/index change, provider integration, deployment, production-data access, or global-document edit. Next gate: ChatGPT Architecture Review; a Specification, if authorized afterward, is a separate step. Issue #158 remains the tracking issue.
+**Documentation-only Assessment (Draft).** Authorizes no field implementation, Firestore Rules/schema/index change, provider integration, deployment, production-data access, or global-document edit. Next gate: ChatGPT Architecture Review; a Specification, if authorized afterward, is a separate step. This is a **new initiative with no tracking issue yet** — creating one is a later Owner gate, not part of this Assessment.
