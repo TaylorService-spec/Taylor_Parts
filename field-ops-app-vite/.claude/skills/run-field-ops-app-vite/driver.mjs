@@ -827,10 +827,11 @@ async function verifyServiceActivity(browser, page, accountKey) {
   await page.goto(customerUrl(SERVICE_ACTIVITY_FIXTURE.accountId), { waitUntil: "domcontentloaded", timeout: 20000 });
   await page.getByRole("heading", { name: "Service Activity", exact: true }).waitFor({ timeout: 10000 });
 
-  // Counts and timeline are async one-shot reads (getCountFromServer /
-  // getDocs) -- wait for BOTH to resolve past their "Loading…" states
-  // before asserting, so these checks aren't racing the initial fetch.
-  await page.locator(".fo-service-activity-counts", { hasText: "Completed Work Orders" }).waitFor({ timeout: 10000 });
+  // Counts and timeline are async one-shot reads, and the two counts resolve
+  // INDEPENDENTLY -- wait for each count's value and the timeline's first row
+  // before asserting, so these checks never race an in-flight fetch.
+  await page.getByText(`Completed Work Orders: ${expectedCompleted}`).waitFor({ timeout: 10000 });
+  await page.getByText(`Open Work Orders: ${expectedOpen}`).waitFor({ timeout: 10000 });
   await page.locator("ul.fo-activity-list > li").first().waitFor({ timeout: 10000 });
 
   // --- Counts: exact, and CANCELLED excluded from both ---
@@ -889,7 +890,73 @@ async function verifyServiceActivity(browser, page, accountKey) {
   const anchorCount = await page.locator("ul.fo-activity-list > li a").count();
   niReport("Accessibility: every timeline row exposes a real link", anchorCount === total, `anchors=${anchorCount}`);
 
-  // --- Responsive: no horizontal overflow at mobile width ---
+  // --- Failure INDEPENDENCE. Playwright request interception against the
+  // emulator's REST transport: each count is its own
+  // documents:runAggregationQuery (distinguishable by the status values in
+  // the request body -- "CLOSED" only in Completed, "WORK_IN_PROGRESS" only
+  // in Open); the timeline is documents:runQuery. Each scenario reloads the
+  // page with ONE specific request forced to a non-retryable 400 and asserts
+  // the OTHER elements still render -- proving no shared failure state. ---
+  const AGG = "**/documents:runAggregationQuery**";
+  const RUNQ = "**/documents:runQuery**";
+  async function withFailedRequests(urlGlob, shouldFail, fn) {
+    const handler = (route) => {
+      const req = route.request();
+      if (req.method() === "OPTIONS") return route.continue(); // let CORS preflight through
+      if (shouldFail(req.postData() || "")) {
+        return route.fulfill({
+          status: 400,
+          contentType: "application/json",
+          body: '{"error":{"code":400,"status":"INVALID_ARGUMENT","message":"injected test failure"}}',
+        });
+      }
+      return route.continue();
+    };
+    await page.route(urlGlob, handler);
+    try {
+      await page.goto(customerUrl(SERVICE_ACTIVITY_FIXTURE.accountId), { waitUntil: "domcontentloaded", timeout: 20000 });
+      await page.getByRole("heading", { name: "Service Activity", exact: true }).waitFor({ timeout: 10000 });
+      await fn();
+    } finally {
+      await page.unroute(urlGlob);
+    }
+  }
+  const seen = (loc) => loc.first().waitFor({ timeout: 12000 }).then(() => true).catch(() => false);
+
+  // A: Completed count fails -> Open count still renders its value.
+  await withFailedRequests(AGG, (b) => b.includes("CLOSED"), async () => {
+    const completedErr = await seen(page.getByText("Completed Work Orders: unavailable"));
+    const openValue = await seen(page.getByText(`Open Work Orders: ${expectedOpen}`));
+    niReport("Failure independence: Completed count fails while Open count still renders", completedErr && openValue, `completedErr=${completedErr} openValue=${openValue}`);
+  });
+
+  // B: Open count fails -> Completed count still renders its value.
+  await withFailedRequests(AGG, (b) => b.includes("WORK_IN_PROGRESS"), async () => {
+    const openErr = await seen(page.getByText("Open Work Orders: unavailable"));
+    const completedValue = await seen(page.getByText(`Completed Work Orders: ${expectedCompleted}`));
+    niReport("Failure independence: Open count fails while Completed count still renders", openErr && completedValue, `openErr=${openErr} completedValue=${completedValue}`);
+  });
+
+  // (The symmetric "timeline failure does not hide the counts" scenario is
+  // covered deterministically by test/serviceActivityView.test.mjs -- the
+  // timeline getDocs runs over the shared WebChannel, which can't be failed
+  // selectively at the network level without also breaking the account load
+  // that the counts depend on being on-screen; the pure render-view unit
+  // test proves that direction without that entanglement.)
+
+  // D: Both counts fail -> timeline still renders.
+  await withFailedRequests(AGG, () => true, async () => {
+    const completedErr = await seen(page.getByText("Completed Work Orders: unavailable"));
+    const openErr = await seen(page.getByText("Open Work Orders: unavailable"));
+    const timelineRows = await page.locator("ul.fo-activity-list > li").count();
+    niReport("Failure independence: count failure does not hide the timeline", completedErr && openErr && timelineRows > 0, `completedErr=${completedErr} openErr=${openErr} rows=${timelineRows}`);
+  });
+
+  // --- Responsive: no horizontal overflow at mobile width (fresh, un-faulted load) ---
+  await page.unroute(AGG).catch(() => {});
+  await page.unroute(RUNQ).catch(() => {});
+  await page.goto(customerUrl(SERVICE_ACTIVITY_FIXTURE.accountId), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await page.getByRole("heading", { name: "Service Activity", exact: true }).waitFor({ timeout: 10000 });
   await page.setViewportSize({ width: 375, height: 812 });
   await page.waitForTimeout(200);
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);

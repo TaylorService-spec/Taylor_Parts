@@ -43,27 +43,27 @@ export const OPEN_WORK_ORDER_STATUSES = [
 
 export const SERVICE_ACTIVITY_PAGE_SIZE = 10;
 
-// Two INDEPENDENT aggregate count() queries. Never derived by summing or
-// recomputing the timeline's loaded pages -- each is its own
-// getCountFromServer over the composite index. Completed = COMPLETED/CLOSED;
-// Open = the eight non-terminal, non-cancelled statuses above.
-export async function fetchAccountWorkOrderCounts(accountId) {
-  const base = collection(db, WORK_ORDERS_COLLECTION);
-  const completedQuery = query(
-    base,
-    where("customerId", "==", accountId),
-    where("status", "in", COMPLETED_WORK_ORDER_STATUSES)
+// Two SEPARATE, INDEPENDENT aggregate count() queries -- deliberately NOT
+// combined via Promise.all, so a failure of one count never rejects (and
+// thus never hides) the other. Each is fetched and error-handled on its own
+// (see hooks/useAccountServiceActivity.js). Never derived by summing or
+// recomputing the timeline's loaded pages. Both use the composite index
+// fieldops_wos(customerId ASC, status ASC).
+async function fetchAccountWorkOrderCountForStatuses(accountId, statuses) {
+  const snap = await getCountFromServer(
+    query(collection(db, WORK_ORDERS_COLLECTION), where("customerId", "==", accountId), where("status", "in", statuses))
   );
-  const openQuery = query(
-    base,
-    where("customerId", "==", accountId),
-    where("status", "in", OPEN_WORK_ORDER_STATUSES)
-  );
-  const [completedSnap, openSnap] = await Promise.all([
-    getCountFromServer(completedQuery),
-    getCountFromServer(openQuery),
-  ]);
-  return { completed: completedSnap.data().count, open: openSnap.data().count };
+  return snap.data().count;
+}
+
+// Completed = COMPLETED/CLOSED.
+export function fetchAccountCompletedWorkOrderCount(accountId) {
+  return fetchAccountWorkOrderCountForStatuses(accountId, COMPLETED_WORK_ORDER_STATUSES);
+}
+
+// Open = the eight non-terminal, non-cancelled statuses.
+export function fetchAccountOpenWorkOrderCount(accountId) {
+  return fetchAccountWorkOrderCountForStatuses(accountId, OPEN_WORK_ORDER_STATUSES);
 }
 
 // One bounded page of the Account Activity timeline, newest-first. Cursor

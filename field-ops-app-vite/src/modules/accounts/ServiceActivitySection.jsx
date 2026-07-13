@@ -1,16 +1,26 @@
 import { Link } from "react-router-dom";
 import {
-  useAccountWorkOrderCounts,
+  fetchAccountCompletedWorkOrderCount,
+  fetchAccountOpenWorkOrderCount,
+} from "../../domain/accountWorkOrders";
+import { countView, timelineView } from "../../domain/serviceActivityView";
+import {
+  useAccountWorkOrderCount,
   useAccountWorkOrderTimeline,
 } from "../../hooks/useAccountServiceActivity";
 
 // Customer/Account Business Model -- Customer PR 3, Service Activity.
 // Two distinct presentation elements over the same Account's Work Orders,
 // each backed by its OWN query and state (never merged): operational
-// summary counts, and the chronological Account Activity timeline. These
-// are operational activity counts, NOT financial figures -- rendered under
-// "Service Activity", never inside/adjacent to Financial Summary
+// summary counts (Completed and Open, themselves two INDEPENDENT counts),
+// and the chronological Account Activity timeline. These are operational
+// activity counts, NOT financial figures -- rendered under "Service
+// Activity", never inside/adjacent to Financial Summary
 // (docs/architecture/enterprise-business-metrics-framework.md, Section 3).
+//
+// Every element renders strictly from its pure view (domain/
+// serviceActivityView.js), so one element's failure can never change what
+// another renders -- see test/serviceActivityView.test.mjs.
 
 function formatWoDate(createdAt) {
   // createdAt is a Firestore Timestamp (written server-side by
@@ -22,36 +32,46 @@ function formatWoDate(createdAt) {
   return "—"; // em dash -- date genuinely unavailable
 }
 
+// Renders one count from its OWN state via the pure countView().
+function CountCell({ label, state }) {
+  const view = countView(state);
+  if (view.kind === "loading") {
+    return <span className="fo-muted">{label}: loading&hellip;</span>;
+  }
+  if (view.kind === "error") {
+    return <span className="fo-warning">{label}: unavailable</span>;
+  }
+  return <span className="fo-badge">{label}: {view.value}</span>;
+}
+
 export default function ServiceActivitySection({ accountId }) {
-  const counts = useAccountWorkOrderCounts(accountId);
+  // Two SEPARATE count hooks -- each fetches and error-handles on its own,
+  // so Completed failing never hides Open (or vice versa), and neither
+  // touches the timeline below.
+  const completed = useAccountWorkOrderCount(accountId, fetchAccountCompletedWorkOrderCount);
+  const open = useAccountWorkOrderCount(accountId, fetchAccountOpenWorkOrderCount);
   const timeline = useAccountWorkOrderTimeline(accountId);
+  const tView = timelineView(timeline);
 
   return (
     <section className="wo-history">
       <h4>Service Activity</h4>
 
-      {/* Summary counts -- own query/state, independent of the timeline below.
-          A count is never derived from the timeline's loaded pages. */}
+      {/* Summary counts -- two independent counts, each its own query/state,
+          both independent of the timeline. A count is never derived from the
+          timeline's loaded pages. */}
       <div className="fo-service-activity-counts">
-        {counts.loading ? (
-          <span className="fo-muted">Loading counts&hellip;</span>
-        ) : counts.error ? (
-          <span className="fo-warning">Service activity counts are temporarily unavailable.</span>
-        ) : (
-          <>
-            <span className="fo-badge">Completed Work Orders: {counts.completed}</span>
-            <span className="fo-badge">Open Work Orders: {counts.open}</span>
-          </>
-        )}
+        <CountCell label="Completed Work Orders" state={completed} />
+        <CountCell label="Open Work Orders" state={open} />
       </div>
 
       {/* Account Activity timeline -- its own query/state; loading/empty/error
           are all distinct, never an empty list indistinguishable from an error. */}
-      {timeline.loading ? (
+      {tView.kind === "loading" ? (
         <p className="fo-muted">Loading activity&hellip;</p>
-      ) : timeline.error ? (
+      ) : tView.kind === "error" ? (
         <p className="fo-warning">Account activity is temporarily unavailable.</p>
-      ) : timeline.isEmpty ? (
+      ) : tView.kind === "empty" ? (
         <p className="fo-muted">No activity yet for this Account.</p>
       ) : (
         <>

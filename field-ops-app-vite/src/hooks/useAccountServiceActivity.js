@@ -1,39 +1,41 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  fetchAccountWorkOrderCounts,
-  fetchAccountWorkOrderTimelinePage,
-} from "../domain/accountWorkOrders";
+import { fetchAccountWorkOrderTimelinePage } from "../domain/accountWorkOrders";
 
 // Customer/Account Business Model -- Customer PR 3, Service Activity.
-// TWO fully independent hooks so the summary counts and the Account
-// Activity timeline never share loading/error/pagination state -- a slow
-// or failed count must never block or misrepresent the timeline, and vice
-// versa (docs/specifications/customer-account-business-model.md).
+// Independent hooks so the two summary counts and the Account Activity
+// timeline never share loading/error/pagination state -- a slow or failed
+// count must never block or misrepresent the other count OR the timeline,
+// and vice versa (docs/specifications/customer-account-business-model.md).
 //
-// Both are one-shot reads (getCountFromServer / bounded getDocs), not
-// onSnapshot subscriptions -- the approved design is aggregate counts +
-// bounded, cursor-paginated timeline, which realtime listeners don't model
-// cleanly. An activity timeline does not require realtime updates.
+// All one-shot reads (getCountFromServer / bounded getDocs), not onSnapshot
+// subscriptions -- the approved design is aggregate counts + bounded,
+// cursor-paginated timeline, which realtime listeners don't model cleanly.
+// An activity timeline does not require realtime updates.
 
-export function useAccountWorkOrderCounts(accountId) {
-  const [counts, setCounts] = useState({ completed: 0, open: 0 });
+// Generic single-count hook -- one fetch, its OWN value/loading/error. The
+// Completed and Open counts each call this with their own fetch function,
+// so neither's failure can touch the other's state (no Promise.all, no
+// shared error). `fetchFn` must be a stable reference (a module-level
+// import) so the effect key is stable.
+export function useAccountWorkOrderCount(accountId, fetchFn) {
+  const [value, setValue] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     if (!accountId) {
-      setCounts({ completed: 0, open: 0 });
+      setValue(null);
       setLoading(false);
       setError(false);
       return;
     }
     setLoading(true);
     setError(false);
-    fetchAccountWorkOrderCounts(accountId)
-      .then((c) => {
+    fetchFn(accountId)
+      .then((v) => {
         if (cancelled) return;
-        setCounts(c);
+        setValue(v);
         setLoading(false);
       })
       .catch(() => {
@@ -44,9 +46,9 @@ export function useAccountWorkOrderCounts(accountId) {
     return () => {
       cancelled = true;
     };
-  }, [accountId]);
+  }, [accountId, fetchFn]);
 
-  return { completed: counts.completed, open: counts.open, loading, error };
+  return { value, loading, error };
 }
 
 export function useAccountWorkOrderTimeline(accountId) {
