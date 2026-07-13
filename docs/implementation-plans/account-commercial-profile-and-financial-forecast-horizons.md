@@ -1,7 +1,7 @@
 ---
 artifact_type: implementation-plan
 gate: Implementation Plan
-status: Draft
+status: Implementation-Approved
 date: 2026-07-13
 owner: Claude Code
 related_adrs: []
@@ -16,7 +16,7 @@ target_release: TBD
 
 # Implementation Plan: Account Commercial Profile and Financial Forecast Horizons
 
-**Status: DRAFT.** Sequences the merged, Specification-Approved Spec `docs/specifications/account-commercial-profile-and-financial-forecast-horizons.md` (PR #176) and the merged Architecture-Approved Assessment (PR #174). Tracking issue: **#175**.
+**Status: IMPLEMENTATION-APPROVED.** Sequences the merged, Specification-Approved Spec `docs/specifications/account-commercial-profile-and-financial-forecast-horizons.md` (PR #176) and the merged Architecture-Approved Assessment (PR #174). Tracking issue: **#175**.
 
 **This plan authorizes nothing.** It defines a PR sequence and each PR's verification obligations and gates. It does not authorize application code, Firestore Rules/index changes, a financial-provider integration, deployment, migration, production-data access, `ROADMAP.md`/global-document edits, or Inventory work. **Every PR below requires its own separate Owner authorization to begin, its own Owner Merge Authorization, and — where it changes Rules or indexes — its own separate Owner Deployment Authorization with `[READY]`/live verification.** Merged is never deployed; approved is never merged (`docs/ai/workflow.md`).
 
@@ -128,4 +128,4 @@ Controls, mandatory for every PR here:
 
 ## Approval
 
-**Draft — pending ChatGPT Implementation Plan Review and Owner authorization.** No begin-authorization, merge authorization, or deployment authorization for any PR above is implied or granted by this document.
+**Implementation-Approved** (ChatGPT Implementation Plan review passed; Owner merge-authorized). No begin-authorization, merge authorization, or deployment authorization for any individual PR above is implied or granted by this document — each remains its own separate gate.
