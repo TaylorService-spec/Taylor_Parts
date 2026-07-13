@@ -81,6 +81,36 @@ export const INVOICE_DELIVERY_METHOD = {
   EDI: "EDI",
 };
 
+// Account Commercial Profile -- PR 2 (docs/specifications/
+// account-commercial-profile-and-financial-forecast-horizons.md;
+// docs/implementation-plans/...). The two GOVERNED enum fields: their
+// values are validated AND their edit is restricted to admin -- BOTH
+// enforced in firestore.rules (Tier 2), never by UI hiding. The same
+// enum literals are duplicated in the Rules files' governed-field
+// helpers; keep the two in sync (there is no shared source between JS
+// and the Rules DSL).
+//
+// paymentTerms is the fixed enum ONLY -- `CUSTOM` terms and the governed
+// payment_terms_definitions domain are a separate future initiative and
+// are never accepted here.
+export const PAYMENT_TERMS = {
+  COD: "COD",
+  NET_30: "NET_30",
+  NET_60: "NET_60",
+  NET_90: "NET_90",
+};
+
+// taxStatus safe-default invariant: an ABSENT taxStatus is treated as
+// UNKNOWN, NEVER silently as TAXABLE (see resolveTaxStatus in
+// domain/commercialProfile.js). EXEMPT/RESELLER may carry a
+// taxExemptionRef in a future initiative -- not modeled here.
+export const TAX_STATUS = {
+  UNKNOWN: "UNKNOWN",
+  TAXABLE: "TAXABLE",
+  EXEMPT: "EXEMPT",
+  RESELLER: "RESELLER",
+};
+
 // Sprint 2.1.3 -- Reorder Request & Notification Foundation
 // (docs/BusinessEntityModel.md's Reorder Request entry). The platform's
 // first Operational Workflow Object / Business Object dual-classified

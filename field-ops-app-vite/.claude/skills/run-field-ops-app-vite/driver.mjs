@@ -205,6 +205,33 @@
 //                                 Prints a PASS/FAIL report per assertion and
 //                                 exits non-zero on any failure.
 //
+//   verify-governed-fields <accountKey>
+//                                 Account Commercial Profile PR 2 (same Spec)
+//                                 -- the PRIMARY browser test for the GOVERNED
+//                                 enum fields. Requires seed.mjs's
+//                                 GOVERNED_FIELDS_FIXTURE. Covers the admin
+//                                 render of paymentTerms + taxStatus; the
+//                                 absent => UNKNOWN taxStatus safe default
+//                                 (never TAXABLE); and the Rules-layer
+//                                 admin-only-edit enforcement -- a dispatcher
+//                                 CAN see/change the field in the form (not
+//                                 hidden), but the write is REJECTED by
+//                                 Firestore Rules, so the stored value is
+//                                 unchanged. Prints a PASS/FAIL report per
+//                                 assertion and exits non-zero on any failure.
+//
+//   verify-account-form-layout <accountKey>
+//                                 Account Commercial Profile PR 2 -- deterministic
+//                                 LAYOUT coverage for the `.fo-account-form`
+//                                 styles: two-column desktop grid + single-column
+//                                 375px, labels above uniformly-sized controls,
+//                                 full-width Commercial Profile fieldset + action
+//                                 row, and no horizontal overflow at 375px. Reads
+//                                 real getBoundingClientRect()/getComputedStyle()
+//                                 geometry (not screenshots). Prints a PASS/FAIL
+//                                 report per assertion and exits non-zero on any
+//                                 failure.
+//
 //   verify-financial-forecast <accountKey>
 //                                 Account Commercial Profile & Financial
 //                                 Forecast Horizons PR 4 (docs/specifications/
@@ -249,6 +276,7 @@ import {
   SERVICE_ACTIVITY_FIXTURE,
   HISTORY_FIXTURE,
   COMMERCIAL_PROFILE_FIXTURE,
+  GOVERNED_FIELDS_FIXTURE,
   seedLedgerTransactions,
   db,
 } from "./seed.mjs";
@@ -2048,6 +2076,221 @@ async function verifyCommercialProfile(browser, page, accountKey) {
   return niFailed === 0;
 }
 
+// Account Commercial Profile -- PR 2. Governed enum fields (paymentTerms/
+// taxStatus) end-to-end browser checks against GOVERNED_FIELDS_FIXTURE: the
+// admin render of both governed fields; the absent => UNKNOWN taxStatus safe
+// default (never TAXABLE); and the Rules-layer admin-only-edit enforcement --
+// a dispatcher CAN see and change the field in the form (it is NOT hidden),
+// but the write is REJECTED by Firestore Rules, so the stored value is
+// unchanged after a fresh reload. `page` (the function parameter) is
+// reassigned for each fresh login, exactly like verifyCommercialProfile().
+async function verifyGovernedFields(browser, page, accountKey) {
+  const F = GOVERNED_FIELDS_FIXTURE;
+  const cpSection = () =>
+    page.locator("section.wo-history").filter({ has: page.locator("h4", { hasText: "Commercial Profile" }) });
+  const cpHeading = () => cpSection().getByRole("heading", { name: "Commercial Profile", exact: true });
+
+  await login(page, accountKey);
+
+  // ===== RESOLVED render (admin): both governed fields shown =====
+  await page.goto(customerUrl(F.governedAccountId), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await cpHeading().waitFor({ timeout: 10000 });
+  const govText = await cpSection().innerText().catch(() => "");
+  niReport(
+    "Render: paymentTerms shows the stored enum value",
+    new RegExp(`Payment terms:\\s*${F.paymentTerms}`).test(govText),
+    govText
+  );
+  niReport(
+    "Render: taxStatus shows the stored enum value",
+    new RegExp(`Tax status:\\s*${F.taxStatus}`).test(govText),
+    govText
+  );
+
+  // ===== SAFE DEFAULT: absent taxStatus renders UNKNOWN, never TAXABLE =====
+  await page.goto(customerUrl(F.safeDefaultAccountId), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await cpHeading().waitFor({ timeout: 10000 });
+  const safeText = await cpSection().innerText().catch(() => "");
+  niReport(
+    "Safe default: an Account with no stored taxStatus renders 'Tax status: UNKNOWN'",
+    /Tax status:\s*UNKNOWN/.test(safeText) && !/Tax status:\s*TAXABLE/.test(safeText),
+    safeText
+  );
+  niReport(
+    "Safe default: an Account with no paymentTerms shows no Payment terms line",
+    !/Payment terms:/.test(safeText),
+    safeText
+  );
+
+  // ===== RULES-LAYER admin-only edit: a DISPATCHER may open the edit form
+  // and change paymentTerms (the control is NOT hidden from them), but the
+  // write is DENIED by Firestore Rules -- so the stored value is unchanged
+  // after a fresh reload. Authorization is enforced at the Rules layer, not
+  // by UI hiding. =====
+  await page.close();
+  page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  // A denied client write rejects updateAccount's promise -> surfaces as a
+  // browser-side unhandled rejection; swallow it so it doesn't noise up the
+  // run (the authoritative check is the unchanged persisted value below).
+  page.on("pageerror", () => {});
+  await login(page, "ineligibleDispatcher");
+  await page.goto(customerUrl(F.governedAccountId), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await cpHeading().waitFor({ timeout: 10000 });
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+
+  const termsControl = page.getByLabel("Payment terms");
+  const termsVisibleToDispatcher = await termsControl.count().then((c) => c > 0);
+  niReport(
+    "Not hidden: the Payment terms control IS present in the edit form for a non-admin dispatcher (authorization is not UI hiding)",
+    termsVisibleToDispatcher
+  );
+  const taxVisibleToDispatcher = await page.getByLabel("Tax status").count().then((c) => c > 0);
+  niReport(
+    "Not hidden: the Tax status control IS present in the edit form for a non-admin dispatcher",
+    taxVisibleToDispatcher
+  );
+
+  const attemptedTerms = "NET_90"; // different from the stored F.paymentTerms
+  await termsControl.selectOption(attemptedTerms);
+  await page.getByRole("button", { name: "Save Changes", exact: true }).click();
+  await page.waitForTimeout(1200);
+
+  // Re-navigate fresh AS ADMIN to read the authoritative stored value.
+  await page.close();
+  page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  await login(page, accountKey);
+  await page.goto(customerUrl(F.governedAccountId), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await cpHeading().waitFor({ timeout: 10000 });
+  const afterText = await cpSection().innerText().catch(() => "");
+  niReport(
+    "Rules-layer denial: after a dispatcher tries to change paymentTerms, the stored value is UNCHANGED (write rejected by Rules, not persisted)",
+    new RegExp(`Payment terms:\\s*${F.paymentTerms}`).test(afterText) && !afterText.includes(attemptedTerms),
+    afterText
+  );
+
+  console.log(`\n${niPassed} passed, ${niFailed} failed`);
+  return niFailed === 0;
+}
+
+// Account Commercial Profile -- PR 2. Deterministic Account-edit-form LAYOUT
+// coverage for the `.fo-account-form` styles (index.css): two-column desktop
+// grid + single-column 375px, labels above uniformly-sized controls, full-width
+// fieldset/action row, and NO horizontal overflow at 375px. Geometry is read
+// from real getBoundingClientRect()/getComputedStyle() -- not screenshots --
+// so the assertions are deterministic. Opens the GOVERNED_FIELDS_FIXTURE
+// account's edit form as admin (any admin/dispatcher can open it).
+async function verifyAccountFormLayout(browser, page, accountKey) {
+  const F = GOVERNED_FIELDS_FIXTURE;
+  await login(page, accountKey);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(customerUrl(F.governedAccountId), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await page
+    .locator("section.wo-history")
+    .filter({ has: page.locator("h4", { hasText: "Commercial Profile" }) })
+    .getByRole("heading", { name: "Commercial Profile", exact: true })
+    .waitFor({ timeout: 10000 });
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  await page.locator("form.fo-account-form").waitFor({ timeout: 10000 });
+  await page.locator("#cp-currency").waitFor({ timeout: 10000 });
+
+  const trackCount = (gtc) => (gtc || "").trim().split(/\s+/).filter((t) => parseFloat(t) > 0).length;
+
+  // ===== Desktop (1280) =====
+  const d = await page.evaluate(() => {
+    const form = document.querySelector("form.fo-account-form");
+    const cs = getComputedStyle(form);
+    const rect = (sel) => {
+      const el = document.querySelector(sel);
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { x: r.x, y: r.y, w: r.width, right: r.right };
+    };
+    const labelFor = (id) => {
+      const el = document.querySelector(`label[for="${id}"]`);
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { x: r.x, y: r.y };
+    };
+    const fieldset = [...document.querySelectorAll("form.fo-account-form fieldset")].find((f) =>
+      /Commercial Profile/.test(f.querySelector("legend")?.textContent || "")
+    );
+    return {
+      display: cs.display,
+      gtc: cs.gridTemplateColumns,
+      formW: form.getBoundingClientRect().width,
+      street: rect("#account-billing-street"),
+      city: rect("#account-billing-city"),
+      currency: rect("#cp-currency"),
+      invoice: rect("#cp-invoice-delivery"),
+      currencyLabel: labelFor("cp-currency"),
+      fieldsetW: fieldset ? fieldset.getBoundingClientRect().width : null,
+      btnRow: rect("form.fo-account-form .fo-btn-row"),
+      docScroll: document.documentElement.scrollWidth,
+      docClient: document.documentElement.clientWidth,
+    };
+  });
+
+  niReport("Desktop: account edit form is a CSS grid", d.display === "grid", `display=${d.display}`);
+  niReport("Desktop: grid has exactly two columns", trackCount(d.gtc) === 2, `grid-template-columns="${d.gtc}"`);
+  niReport(
+    "Desktop: two-column layout -- Street and City sit side by side on one row",
+    !!d.street && !!d.city && Math.abs(d.street.y - d.city.y) <= 4 && d.city.x > d.street.x + 10,
+    JSON.stringify({ street: d.street, city: d.city })
+  );
+  niReport(
+    "Desktop: labels sit directly above their controls (same left edge, label higher)",
+    !!d.currencyLabel && !!d.currency && d.currencyLabel.y + 2 <= d.currency.y && Math.abs(d.currencyLabel.x - d.currency.x) <= 6,
+    JSON.stringify({ label: d.currencyLabel, input: d.currency })
+  );
+  niReport(
+    "Desktop: controls in a column are uniformly sized (currency input width == invoice select width)",
+    !!d.currency && !!d.invoice && Math.abs(d.currency.w - d.invoice.w) <= 3,
+    JSON.stringify({ currencyW: d.currency?.w, invoiceW: d.invoice?.w })
+  );
+  niReport(
+    "Desktop: the Commercial Profile fieldset spans the full form width",
+    !!d.fieldsetW && d.fieldsetW >= d.formW * 0.9,
+    JSON.stringify({ fieldsetW: d.fieldsetW, formW: d.formW })
+  );
+  niReport(
+    "Desktop: the action row spans the full form width",
+    !!d.btnRow && d.btnRow.w >= d.formW * 0.9,
+    JSON.stringify({ btnRowW: d.btnRow?.w, formW: d.formW })
+  );
+  niReport("Desktop: no horizontal overflow", d.docScroll <= d.docClient + 1, `scroll=${d.docScroll} client=${d.docClient}`);
+
+  // ===== Mobile (375) =====
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.waitForTimeout(250);
+  const m = await page.evaluate(() => {
+    const form = document.querySelector("form.fo-account-form");
+    const rect = (sel) => {
+      const el = document.querySelector(sel);
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { x: r.x, y: r.y, w: r.width };
+    };
+    return {
+      gtc: getComputedStyle(form).gridTemplateColumns,
+      street: rect("#account-billing-street"),
+      city: rect("#account-billing-city"),
+      docScroll: document.documentElement.scrollWidth,
+      docClient: document.documentElement.clientWidth,
+    };
+  });
+  niReport("375px: grid collapses to a single column", trackCount(m.gtc) === 1, `grid-template-columns="${m.gtc}"`);
+  niReport(
+    "375px: Street and City stack vertically (single column, same left edge)",
+    !!m.street && !!m.city && m.city.y > m.street.y + 4 && Math.abs(m.city.x - m.street.x) <= 4,
+    JSON.stringify({ street: m.street, city: m.city })
+  );
+  niReport("375px: no horizontal overflow", m.docScroll <= m.docClient + 1, `scroll=${m.docScroll} client=${m.docClient}`);
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+  console.log(`\n${niPassed} passed, ${niFailed} failed`);
+  return niFailed === 0;
+}
+
 async function main() {
   const [, , command, ...args] = process.argv;
   const browser = await chromium.launch();
@@ -2134,6 +2377,14 @@ async function main() {
     } else if (command === "verify-commercial-profile") {
       const [accountKey = "admin"] = args;
       const ok = await verifyCommercialProfile(browser, page, accountKey);
+      if (!ok) process.exitCode = 1;
+    } else if (command === "verify-governed-fields") {
+      const [accountKey = "admin"] = args;
+      const ok = await verifyGovernedFields(browser, page, accountKey);
+      if (!ok) process.exitCode = 1;
+    } else if (command === "verify-account-form-layout") {
+      const [accountKey = "admin"] = args;
+      const ok = await verifyAccountFormLayout(browser, page, accountKey);
       if (!ok) process.exitCode = 1;
     } else if (command === "verify-financial-forecast") {
       const [accountKey = "admin"] = args;

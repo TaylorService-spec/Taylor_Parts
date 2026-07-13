@@ -23,6 +23,16 @@ service cloud.firestore {
       return isSignedIn() && (userRole() == "admin" || userRole() == "dispatcher");
     }
 
+    // Account Commercial Profile -- PR 2 (docs/specifications/
+    // account-commercial-profile-and-financial-forecast-horizons.md).
+    // The GOVERNED Commercial Profile fields (paymentTerms/taxStatus) are
+    // admin-edit-only -- a strictly narrower authority than the
+    // admin/dispatcher gate the rest of the accounts document keeps. This
+    // is the first admin-only helper in this ruleset.
+    function isAdmin() {
+      return isSignedIn() && userRole() == "admin";
+    }
+
     function isTechnician() {
       return isSignedIn() && userRole() == "technician";
     }
@@ -820,9 +830,62 @@ service cloud.firestore {
     // for the open question this defers (technician-facing screens
     // that display a raw customerId/locationId today keep doing so
     // rather than erroring).
+    // Account Commercial Profile -- PR 2 governed-field helpers
+    // (docs/specifications/account-commercial-profile-and-financial-
+    // forecast-horizons.md). These validate the two GOVERNED enum fields'
+    // VALUES and gate who may EDIT them. The enum literals are duplicated
+    // from domain/constants.js's PAYMENT_TERMS/TAX_STATUS -- there is no
+    // shared source between JS and the Rules DSL; keep them in sync. Uses
+    // .get(field, null) so the optional (often-absent) fields are read
+    // safely rather than erroring on a document that never set them.
+    function accountPaymentTermsValid(data) {
+      return data.get('paymentTerms', null) == null
+        || data.get('paymentTerms', null) in ['COD', 'NET_30', 'NET_60', 'NET_90'];
+    }
+    function accountTaxStatusValid(data) {
+      return data.get('taxStatus', null) == null
+        || data.get('taxStatus', null) in ['UNKNOWN', 'TAXABLE', 'EXEMPT', 'RESELLER'];
+    }
+    function accountGovernedFieldsValid(data) {
+      return accountPaymentTermsValid(data) && accountTaxStatusValid(data);
+    }
+    // The two governed fields are byte-identical between the prior and the
+    // incoming document -- i.e. this write does NOT edit either. A non-admin
+    // may only write the accounts document when this holds (they may freely
+    // edit every OTHER field; existing admin/dispatcher permission on the
+    // rest of the document is unchanged).
+    function accountGovernedFieldsUnchanged() {
+      return request.resource.data.get('paymentTerms', null) == resource.data.get('paymentTerms', null)
+        && request.resource.data.get('taxStatus', null) == resource.data.get('taxStatus', null);
+    }
+    // The non-admin CREATE baseline: a create that leaves paymentTerms unset
+    // and taxStatus at its absent==UNKNOWN safe default is not a governed
+    // write, so a dispatcher may perform it. Setting paymentTerms to any
+    // value, or taxStatus to TAXABLE/EXEMPT/RESELLER, is admin-only.
+    function accountGovernedCreateBaseline(data) {
+      return data.get('paymentTerms', null) == null
+        && (data.get('taxStatus', null) == null || data.get('taxStatus', null) == 'UNKNOWN');
+    }
+
     match /accounts/{accountId} {
       allow read: if isAdminOrDispatcher();
-      allow create, update: if isAdminOrDispatcher();
+      // Value validity (enum) is enforced for EVERYONE, including admin
+      // (an invalid enum is denied regardless of who writes it). Editing
+      // the two governed fields to a non-default value is admin-only:
+      //   - create: a dispatcher may create only at the governed baseline;
+      //     an admin may create with any valid governed value.
+      //   - update: a dispatcher may write only if the governed fields are
+      //     unchanged (they keep full edit rights on every other field);
+      //     an admin may change them (to a valid enum).
+      // Enforced HERE, in Rules, never by UI hiding. INTERIM path: PR 3b
+      // converts this to the trusted audited server-side writer and denies
+      // direct client mutation of every Commercial Profile field.
+      allow create: if isAdminOrDispatcher()
+        && accountGovernedFieldsValid(request.resource.data)
+        && (isAdmin() || accountGovernedCreateBaseline(request.resource.data));
+      allow update: if isAdminOrDispatcher()
+        && accountGovernedFieldsValid(request.resource.data)
+        && (isAdmin() || accountGovernedFieldsUnchanged());
       allow delete: if false;
     }
 

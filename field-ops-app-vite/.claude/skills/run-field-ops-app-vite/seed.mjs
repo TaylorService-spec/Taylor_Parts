@@ -293,6 +293,25 @@ export const COMMERCIAL_PROFILE_FIXTURE = {
   staleOwnerSnapshotName: "Commercial Owner (STALE snapshot)",
 };
 
+// Account Commercial Profile -- PR 2 (docs/specifications/
+// account-commercial-profile-and-financial-forecast-horizons.md). Two
+// Accounts for the GOVERNED enum fields (paymentTerms/taxStatus). Neither
+// carries an accountOwner or billingContact, so the edit form validates with
+// only the governed fields in play -- letting driver.mjs's verify-governed-
+// fields exercise the Rules-layer admin-only-edit denial cleanly (a
+// dispatcher changing paymentTerms is rejected by Rules, not by the UI
+// hiding the field):
+//   - governed:     paymentTerms + taxStatus + a currency both set, for the
+//                   admin render check AND the dispatcher rules-denial check.
+//   - safeDefault:  a currency set but NO taxStatus stored, proving the
+//                   absent => UNKNOWN safe-default render (never TAXABLE).
+export const GOVERNED_FIELDS_FIXTURE = {
+  governedAccountId: "acct-governed-fields",
+  safeDefaultAccountId: "acct-governed-safe-default",
+  paymentTerms: "NET_30",
+  taxStatus: "EXEMPT",
+};
+
 async function seedReorderRequestFixture(docId, { partId, status, currentOwner, assignedToUserId, createdAt }) {
   const isCancelled = status === "CANCELLED";
   await db.doc(`reorder_requests/${docId}`).set({
@@ -751,6 +770,38 @@ async function seedCommercialProfileFixture() {
   });
 }
 
+// Account Commercial Profile -- PR 2. Seeds the two GOVERNED_FIELDS_FIXTURE
+// Accounts via the Admin SDK (bypasses the client-gated accounts rules, same
+// as every other fixture here). Deliberately NO accountOwner/billingContact
+// on either -- see the fixture's header comment for why (clean Rules-denial
+// exercise in the edit form).
+async function seedGovernedFieldsFixture() {
+  const now = Date.now();
+  const F = GOVERNED_FIELDS_FIXTURE;
+
+  await db.doc(`accounts/${F.governedAccountId}`).set({
+    name: "Governed Fields Co",
+    status: "Active",
+    relationshipTypes: ["CUSTOMER"],
+    defaultCurrency: "USD",
+    paymentTerms: F.paymentTerms,
+    taxStatus: F.taxStatus,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  // No taxStatus stored at all -> the Commercial Profile section must render
+  // "Tax status: UNKNOWN" (the absent => UNKNOWN safe default, never TAXABLE).
+  await db.doc(`accounts/${F.safeDefaultAccountId}`).set({
+    name: "Safe Default Co",
+    status: "Active",
+    relationshipTypes: ["CUSTOMER"],
+    defaultCurrency: "USD",
+    createdAt: now,
+    updatedAt: now,
+  });
+}
+
 // Issue #100 -- PR 0. Seeds the five technician-role fixtures above:
 // three eligible (one operationalRoles entry each), one ineligible
 // (real link, ACTIVE, zero eligible roles), one broken-linkage
@@ -903,6 +954,7 @@ async function seed() {
   await seedServiceActivityFixture();
   await seedHistoryFixture();
   await seedCommercialProfileFixture();
+  await seedGovernedFieldsFixture();
   await seedIssue100RoleFixtures();
 
   console.log("Seeded driver accounts:");

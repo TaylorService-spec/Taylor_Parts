@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
-import { ACCOUNT_STATUS, ACCOUNT_RELATIONSHIP_TYPE, INVOICE_DELIVERY_METHOD } from "../../domain/constants";
-import { commercialProfileErrors, isValidInvoiceDeliveryMethod, isContactOnAccount, resolveOwnerIdentity } from "../../domain/commercialProfile";
+import { ACCOUNT_STATUS, ACCOUNT_RELATIONSHIP_TYPE, INVOICE_DELIVERY_METHOD, PAYMENT_TERMS, TAX_STATUS } from "../../domain/constants";
+import { commercialProfileErrors, isValidInvoiceDeliveryMethod, isValidPaymentTerms, isValidTaxStatus, isContactOnAccount, resolveOwnerIdentity } from "../../domain/commercialProfile";
 import { useAuth } from "../../auth/AuthContext";
 import { useEmployeeDirectory } from "../../hooks/useEmployeeDirectory";
 import AddressFields from "../../shared/address/AddressFields";
@@ -57,6 +57,13 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
   const [defaultCurrency, setDefaultCurrency] = useState(initialValues?.defaultCurrency ?? "");
   const [purchaseOrderRequired, setPurchaseOrderRequired] = useState(initialValues?.purchaseOrderRequired);
   const [invoiceDeliveryMethod, setInvoiceDeliveryMethod] = useState(initialValues?.invoiceDeliveryMethod ?? "");
+  // Governed enum fields (PR 2). Held as their RAW stored value (blank when
+  // unset) so a malformed stored value surfaces rather than being silently
+  // normalized. These two fields are admin-edit-only ENFORCED IN RULES (not
+  // by hiding them here); a non-admin who changes them has their write
+  // rejected at the Rules layer. taxStatus blank == absent == UNKNOWN.
+  const [paymentTerms, setPaymentTerms] = useState(initialValues?.paymentTerms ?? "");
+  const [taxStatus, setTaxStatus] = useState(initialValues?.taxStatus ?? "");
   const [billingContactId, setBillingContactId] = useState(initialValues?.billingContact?.contactId ?? "");
   const [accountOwner, setAccountOwner] = useState(initialValues?.accountOwner ?? null);
   const [submitAttempted, setSubmitAttempted] = useState(false);
@@ -67,10 +74,12 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
       defaultCurrency: defaultCurrency.trim().toUpperCase() || undefined,
       invoiceDeliveryMethod: invoiceDeliveryMethod || undefined,
       purchaseOrderRequired,
+      paymentTerms: paymentTerms || undefined,
+      taxStatus: taxStatus || undefined,
       billingContactId: billingContactId || null,
       accountOwner,
     }),
-    [defaultCurrency, invoiceDeliveryMethod, purchaseOrderRequired, billingContactId, accountOwner]
+    [defaultCurrency, invoiceDeliveryMethod, purchaseOrderRequired, paymentTerms, taxStatus, billingContactId, accountOwner]
   );
   const { valid: cpValid, errors } = useMemo(
     () => commercialProfileErrors(cpDraft, contacts, { contactsResolved: !contactsLoading, contactsError: Boolean(contactsError) }),
@@ -91,6 +100,8 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
   // The foreign-contact case only applies once contacts have resolved without
   // error -- on a lookup error we can't assert membership, so we don't.
   const invoiceMethodInvalid = Boolean(invoiceDeliveryMethod) && !isValidInvoiceDeliveryMethod(invoiceDeliveryMethod);
+  const paymentTermsInvalid = Boolean(paymentTerms) && !isValidPaymentTerms(paymentTerms);
+  const taxStatusInvalid = Boolean(taxStatus) && !isValidTaxStatus(taxStatus);
   const billingContactForeign =
     Boolean(billingContactId) && !contactsLoading && !contactsError && !isContactOnAccount(billingContactId, contacts);
 
@@ -167,13 +178,22 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
       defaultCurrency: trimmedCurrency || null,
       purchaseOrderRequired: purchaseOrderRequired === true,
       invoiceDeliveryMethod: invoiceDeliveryMethod || null,
+      // Governed enum fields (PR 2). Sent as null when unset; taxStatus null
+      // is the absent==UNKNOWN safe default. Rules enforce admin-only edit of
+      // these two -- a dispatcher's write here that CHANGES either is denied
+      // at the Rules layer (this form does not hide the fields from them).
+      paymentTerms: paymentTerms || null,
+      taxStatus: taxStatus || null,
       billingContact: billingContactId ? { contactId: billingContactId } : null,
       accountOwner,
     });
   }
 
   return (
-    <form className="fo-form" onSubmit={handleSubmit}>
+    // `fo-account-form` is ADDITIVE layout only (keeps `fo-form` for shared
+    // control styling/behavior; global `.fo-form` used by other forms is
+    // unchanged). See index.css's `.fo-account-form` block.
+    <form className="fo-form fo-account-form" onSubmit={handleSubmit}>
       <input placeholder="Customer name" value={name} onChange={(e) => setName(e.target.value)} />
 
       <select value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Status">
@@ -253,6 +273,46 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
           {errors.invoiceDeliveryMethod && <div className="fo-warning">{errors.invoiceDeliveryMethod}</div>}
         </div>
 
+        {/* Governed enum fields (PR 2) -- admin-edit-only ENFORCED IN RULES,
+            not by hiding them here. Shown to any admin/dispatcher who can
+            open this form; a non-admin's write that CHANGES either is
+            rejected at the Firestore Rules layer. */}
+        <div className="fo-form-field">
+          <label htmlFor="cp-payment-terms">Payment terms</label>
+          <select
+            id="cp-payment-terms"
+            value={paymentTerms}
+            aria-invalid={errors.paymentTerms ? true : undefined}
+            onChange={(e) => setPaymentTerms(e.target.value)}
+          >
+            <option value="">—</option>
+            {Object.values(PAYMENT_TERMS).map((t) => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+            {/* Surface a malformed stored value instead of silently blanking it. */}
+            {paymentTermsInvalid && <option value={paymentTerms}>{paymentTerms} (invalid)</option>}
+          </select>
+          {errors.paymentTerms && <div className="fo-warning">{errors.paymentTerms}</div>}
+        </div>
+
+        <div className="fo-form-field">
+          <label htmlFor="cp-tax-status">Tax status</label>
+          <select
+            id="cp-tax-status"
+            value={taxStatus}
+            aria-invalid={errors.taxStatus ? true : undefined}
+            onChange={(e) => setTaxStatus(e.target.value)}
+          >
+            {/* Blank == absent == the UNKNOWN safe default (never TAXABLE). */}
+            <option value="">— (Unknown)</option>
+            {Object.values(TAX_STATUS).map((t) => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+            {taxStatusInvalid && <option value={taxStatus}>{taxStatus} (invalid)</option>}
+          </select>
+          {errors.taxStatus && <div className="fo-warning">{errors.taxStatus}</div>}
+        </div>
+
         {/* Billing contact — only a Contact belonging to THIS Account. The
             picker is shown once this Account has contacts; the error is shown
             regardless (so a foreign stored id surfaces even with no contacts). */}
@@ -279,7 +339,7 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
           errors.billingContact && <div className="fo-warning">{errors.billingContact}</div>
         )}
 
-        <div className="fo-form-field">
+        <div className="fo-form-field fo-account-form-wide">
           {accountOwner && (
             <div className="fo-muted">
               {/* CURRENT owner, re-resolved from userId -- not the stored

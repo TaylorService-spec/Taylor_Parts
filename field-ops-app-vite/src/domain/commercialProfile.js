@@ -1,11 +1,17 @@
-import { INVOICE_DELIVERY_METHOD } from "./constants.js";
+import { INVOICE_DELIVERY_METHOD, PAYMENT_TERMS, TAX_STATUS } from "./constants.js";
 
 // Account Commercial Profile -- PR 1 (docs/specifications/
 // account-commercial-profile-and-financial-forecast-horizons.md).
 // PURE validation + identity-resolution helpers -- no Firebase import, so
 // they are directly unit-testable in Node. PR 1 fields only: defaultCurrency,
 // purchaseOrderRequired, invoiceDeliveryMethod, billingContact, accountOwner.
-// No paymentTerms/taxStatus/parentAccount/credit/forecast here (later PRs).
+//
+// PR 2 extends this file with the two GOVERNED enum fields
+// (paymentTerms/taxStatus): their pure enum validators, the taxStatus
+// safe-default resolver, and the payment-term due-date semantics. The
+// Rules-level admin-edit authorization for these two fields lives in
+// firestore.rules (both mirrored files) -- NOT here and NOT by UI hiding.
+// parentAccount/credit/forecast remain out of scope (later PRs).
 
 // --- Validation --------------------------------------------------------
 
@@ -50,6 +56,127 @@ export function isValidInvoiceDeliveryMethod(value) {
 
 export function isBooleanPurchaseOrderRequired(value) {
   return typeof value === "boolean";
+}
+
+// --- Governed enum fields (PR 2) --------------------------------------
+//
+// These validators mirror the enum checks firestore.rules also enforces
+// (Rules are the authority for authorization AND value validity; these
+// client-side helpers exist so the edit form can surface a bad value
+// before a write, never to REPLACE the Rules check).
+
+export function isValidPaymentTerms(value) {
+  return Object.values(PAYMENT_TERMS).includes(value);
+}
+
+export function isValidTaxStatus(value) {
+  return Object.values(TAX_STATUS).includes(value);
+}
+
+// taxStatus SAFE DEFAULT: an absent (null/undefined/empty) taxStatus
+// resolves to UNKNOWN -- NEVER silently to TAXABLE. A stored-but-malformed
+// value is returned as-is (surfaced, not hidden, and not coerced to
+// TAXABLE), so the edit form flags it rather than this resolver masking
+// it. Only genuine absence becomes UNKNOWN.
+export function resolveTaxStatus(value) {
+  if (value == null || value === "") return TAX_STATUS.UNKNOWN;
+  return value;
+}
+
+// --- Payment-term due-date semantics (PR 2) ---------------------------
+//
+// paymentTerms on the Account is ONLY the default applied to NEW invoices
+// at issue time -- never a live driver of already-issued invoices. These
+// helpers are the pure due-date logic; no invoice document is written here
+// (no invoicing system exists yet), they exist so the semantics are
+// specified, tested, and reusable when one does.
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// Net-days for the Net-N terms; COD is NOT a net-days term (its due date
+// derives from the delivery/fulfillment event, not invoiceDate + N), so it
+// maps to null here on purpose.
+export const PAYMENT_TERM_NET_DAYS = {
+  [PAYMENT_TERMS.COD]: null,
+  [PAYMENT_TERMS.NET_30]: 30,
+  [PAYMENT_TERMS.NET_60]: 60,
+  [PAYMENT_TERMS.NET_90]: 90,
+};
+
+export function paymentTermNetDays(terms) {
+  return Object.prototype.hasOwnProperty.call(PAYMENT_TERM_NET_DAYS, terms)
+    ? PAYMENT_TERM_NET_DAYS[terms]
+    : null;
+}
+
+// The event a term's due date is measured against. NET_* measure from the
+// invoice issue date (computable AT issue); COD measures from the
+// authoritative delivery/fulfillment event (NEVER invoiceDate + 0).
+export const DUE_DATE_BASIS = {
+  INVOICE_ISSUE: "INVOICE_ISSUE",
+  DELIVERY_EVENT: "DELIVERY_EVENT",
+};
+
+export function dueDateBasis(terms) {
+  return terms === PAYMENT_TERMS.COD ? DUE_DATE_BASIS.DELIVERY_EVENT : DUE_DATE_BASIS.INVOICE_ISSUE;
+}
+
+// Produces the IMMUTABLE terms snapshot an invoice records at issue time:
+// the terms code, net-days, basis event, and the computed due date used at
+// that moment (Spec: "Invoices snapshot the terms applied at issue"). All
+// dates are epoch-ms numbers (the repo's Account timestamp convention).
+//
+//   - NET_N: dueDate = invoiceIssueDate + netDays; never pending.
+//   - COD  : if a delivery/fulfillment event already exists at issue,
+//            snapshot THAT delivery date as the due date (immutable at
+//            issue); if the invoice is issued BEFORE delivery, the due date
+//            is PENDING (null) until the authoritative delivery event
+//            occurs -- so NOT every COD invoice has a due date at issue.
+//
+// The returned object is self-contained: once created it is the invoice's
+// own record, so a later change to the Account's paymentTerms cannot alter
+// it (there is no back-reference to the Account here). See
+// resolveCodDueDateOnDelivery() for turning a pending COD snapshot immutable
+// when its delivery event later arrives.
+export function issueInvoiceTermsSnapshot({ paymentTerms, invoiceIssueDate, deliveryDate = null }) {
+  const basisEvent = dueDateBasis(paymentTerms);
+  const netDays = paymentTermNetDays(paymentTerms);
+
+  if (paymentTerms === PAYMENT_TERMS.COD) {
+    const hasDelivery = Number.isFinite(deliveryDate);
+    return {
+      termsCode: paymentTerms,
+      netDays: null,
+      basisEvent,
+      dueDate: hasDelivery ? deliveryDate : null,
+      dueDatePending: !hasDelivery,
+    };
+  }
+
+  // NET_* (and any recognized net-days term).
+  const dueDate = Number.isFinite(invoiceIssueDate) && netDays != null
+    ? invoiceIssueDate + netDays * DAY_MS
+    : null;
+  return {
+    termsCode: paymentTerms,
+    netDays,
+    basisEvent,
+    dueDate,
+    dueDatePending: false,
+  };
+}
+
+// Resolves a PENDING COD snapshot once its authoritative delivery event
+// occurs: returns a NEW snapshot (never mutates the input) whose due date is
+// the delivery date and is now immutable. A non-pending or non-COD snapshot
+// is returned unchanged -- the due date is already immutable and must not be
+// retroactively altered.
+export function resolveCodDueDateOnDelivery(snapshot, deliveryDate) {
+  if (!snapshot || snapshot.termsCode !== PAYMENT_TERMS.COD || !snapshot.dueDatePending) {
+    return snapshot;
+  }
+  if (!Number.isFinite(deliveryDate)) return snapshot;
+  return { ...snapshot, dueDate: deliveryDate, dueDatePending: false };
 }
 
 // billingContact must reference a Contact belonging to THIS Account. An unset
@@ -111,6 +238,16 @@ export function commercialProfileErrors(
   }
   if (draft.purchaseOrderRequired !== undefined && !isBooleanPurchaseOrderRequired(draft.purchaseOrderRequired)) {
     errors.purchaseOrderRequired = "Purchase-order-required must be true or false.";
+  }
+  // Governed enum fields (PR 2). A set-but-invalid value is flagged; an
+  // absent value is valid (paymentTerms is optional; taxStatus absent means
+  // the UNKNOWN safe default). Authorization (admin-only edit) is enforced
+  // by Rules, not here.
+  if (draft.paymentTerms && !isValidPaymentTerms(draft.paymentTerms)) {
+    errors.paymentTerms = "Choose a valid payment term.";
+  }
+  if (draft.taxStatus && !isValidTaxStatus(draft.taxStatus)) {
+    errors.taxStatus = "Choose a valid tax status.";
   }
   if (draft.billingContactId) {
     if (contactsError) {
