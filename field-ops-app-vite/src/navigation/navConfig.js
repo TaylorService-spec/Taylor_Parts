@@ -62,11 +62,15 @@ export const NAV_DOMAINS = [
       // re-homed one). Account Detail (/customers/:accountId) is a
       // sibling parameterized route added directly in App.jsx, not
       // representable in this static subnav list.
+      //
+      // Customer hierarchy nav cleanup: the global Contacts / Locations /
+      // Equipment / Service History subnav entries were removed -- Contacts
+      // and Locations belong to an individual Account (shown on Account
+      // Detail), and Equipment / Service History are not built. Their retired
+      // paths (customers/contacts|locations|equipment|service-history) are
+      // redirected to /customers in App.jsx so they can never be captured by
+      // the :accountId detail route.
       { key: "customers", label: "Customers", path: "" },
-      { key: "contacts", label: "Contacts", path: "contacts" },
-      { key: "locations", label: "Locations", path: "locations" },
-      { key: "equipment", label: "Equipment", path: "equipment" },
-      { key: "serviceHistory", label: "Service History", path: "service-history" },
     ],
   },
   {

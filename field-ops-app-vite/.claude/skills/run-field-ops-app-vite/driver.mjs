@@ -2309,6 +2309,66 @@ async function verifyAccountFormLayout(browser, page, accountKey) {
   return niFailed === 0;
 }
 
+// Customer hierarchy nav cleanup -- verifies the global Contacts / Locations /
+// Equipment / Service History Customer subnav entries are removed, that
+// /customers and /customers/:accountId still work, and that the four retired
+// paths redirect to /customers (never captured by the :accountId detail route).
+// Includes direct-URL navigation and 375px layout.
+async function verifyCustomerNavCleanup(browser, page, accountKey) {
+  const retired = ["contacts", "locations", "equipment", "service-history"];
+  const custUrl = (suffix = "") => {
+    const u = new URL(`customers${suffix}`, APP_ROOT);
+    u.searchParams.set("emulator", "1");
+    return u.toString();
+  };
+  await login(page, accountKey);
+
+  // ===== /customers list route + subnav cleanup =====
+  await page.goto(custUrl(""), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await page.locator("nav.fo-subnav").first().waitFor({ timeout: 10000 }).catch(() => {});
+  const subnav = page.locator("nav.fo-subnav");
+  const custPresent = await subnav.getByRole("link", { name: "Customers", exact: true }).first().isVisible().catch(() => false);
+  niReport("/customers: the Customers subnav entry is present", custPresent);
+  for (const label of ["Contacts", "Locations", "Equipment", "Service History"]) {
+    const count = await subnav.getByRole("link", { name: label, exact: true }).count().catch(() => 0);
+    niReport(`Subnav cleanup: "${label}" entry is removed`, count === 0, `count=${count}`);
+  }
+  niReport("/customers URL preserved (list route)", new URL(page.url()).pathname.endsWith("/customers"), page.url());
+
+  // ===== /customers/:accountId still works =====
+  await page.goto(customerUrl(SERVICE_ACTIVITY_FIXTURE.accountId), { waitUntil: "domcontentloaded", timeout: 20000 });
+  const detailOk = await page
+    .getByRole("heading", { name: "Commercial Profile", exact: true })
+    .first()
+    .waitFor({ timeout: 10000 })
+    .then(() => true)
+    .catch(() => false);
+  niReport("/customers/:accountId still renders Account Detail", detailOk);
+  niReport("/customers/:accountId URL preserved", /\/customers\/[^/]+$/.test(new URL(page.url()).pathname), page.url());
+
+  // ===== the four retired paths redirect to /customers (never :accountId) =====
+  for (const p of retired) {
+    await page.goto(custUrl(`/${p}`), { waitUntil: "domcontentloaded", timeout: 20000 });
+    await page.waitForFunction(() => location.pathname.endsWith("/customers"), null, { timeout: 10000 }).catch(() => {});
+    const finalPath = new URL(page.url()).pathname;
+    niReport(`Retired /customers/${p} redirects to /customers (not captured by :accountId)`, finalPath.endsWith("/customers"), `final=${finalPath}`);
+    const notFound = await page.getByText("Customer not found.").first().isVisible().catch(() => false);
+    niReport(`Retired /customers/${p} does not mount the :accountId detail (no "Customer not found")`, !notFound);
+  }
+
+  // ===== 375px: no horizontal overflow on /customers =====
+  await page.goto(custUrl(""), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await page.locator("nav.fo-subnav").first().waitFor({ timeout: 10000 }).catch(() => {});
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.waitForTimeout(200);
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
+  niReport("Responsive: no horizontal overflow at 375px on /customers", overflow === false);
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  console.log(`\n${niPassed} passed, ${niFailed} failed`);
+  return niFailed === 0;
+}
+
 async function main() {
   const [, , command, ...args] = process.argv;
   const browser = await chromium.launch();
@@ -2407,6 +2467,10 @@ async function main() {
     } else if (command === "verify-financial-forecast") {
       const [accountKey = "admin"] = args;
       const ok = await verifyFinancialForecast(browser, page, accountKey);
+      if (!ok) process.exitCode = 1;
+    } else if (command === "verify-customer-nav-cleanup") {
+      const [accountKey = "admin"] = args;
+      const ok = await verifyCustomerNavCleanup(browser, page, accountKey);
       if (!ok) process.exitCode = 1;
     } else {
       console.error(`Unknown command "${command}". See the header comment in this file for usage.`);
