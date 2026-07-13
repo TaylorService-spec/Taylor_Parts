@@ -1,80 +1,24 @@
 import { createContext, useContext, useEffect, useState } from "react";
-import { auth, db } from "../firebase/firebase";
+import { auth } from "../firebase/firebase";
 import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
   signOut
 } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
-import { USERS_COLLECTION, EMPLOYEES_COLLECTION } from "../domain/constants";
+import { resolveEmployeeSession } from "./employeeSession";
 
 const AuthContext = createContext();
 
-// Phase 3 -- Platform Assignment Foundation (docs/specifications/
-// employee-foundation.md, PR 3: Current Employee Session Resolution).
-// Adds employeeId/displayName/operationalRoles to session context,
-// resolved via an ADDITIONAL one-shot read alongside the existing
-// users/{uid} read -- the existing one-shot getDoc() mechanism for
-// role/employeeId itself is UNCHANGED, deliberately not converted to
-// onSnapshot() in this phase (a realtime User/access-identity
-// subscription affects every authenticated session platform-wide and
-// is out of scope here; see the specification's "AuthContext impact"
-// section for the full rationale, including why the Notification
-// Panel's prior onSnapshot() conversion isn't sufficient
-// justification for this different decision).
-//
-// resolveEmployeeSession() is a pure(ish) async function -- no React
-// state -- deliberately separated from the effect below so the actual
-// resolution logic this component depends on is directly testable
-// against a real Firestore (emulator) without needing a React
-// rendering environment, which this repo has no test infrastructure
-// for. Exported for exactly that purpose.
-//
-// A linked employeeId whose Employee document doesn't exist (a broken
-// link -- e.g. the Employee record was deleted out of band, which
-// firestore.rules doesn't actually allow today but this still guards
-// against data drift) is NOT an error: the read succeeds, the document
-// simply doesn't exist. employeeId is retained (so the broken link
-// itself stays visible/diagnosable) but displayName/operationalRoles
-// resolve to their empty defaults -- no operational identity is
-// granted from a link that doesn't resolve to a real record. A safe
-// warning (employeeId only, never document contents) is logged so this
-// state is discoverable, not silently swallowed.
-export async function resolveEmployeeSession(uid) {
-  const userSnap = await getDoc(doc(db, USERS_COLLECTION, uid));
-  const userData = userSnap.exists() ? userSnap.data() : null;
-  const role = userData?.role ?? null;
-  const employeeId = userData?.employeeId ?? null;
-
-  // Missing employeeId is a valid, expected migration state, not an
-  // error -- true for every account until
-  // functions/scripts/provisionEmployeeAccess.js (PR 2) has been run
-  // against it. No Employee-side read is attempted in this case.
-  if (!employeeId) {
-    return { role, employeeId: null, displayName: null, operationalRoles: [] };
-  }
-
-  // Authorized by firestore.rules' employees/{employeeId} self-read
-  // path (PR #82): any authenticated user may read only the Employee
-  // document whose employeeId matches their own
-  // users/{uid}.employeeId -- resolves correctly for every security
-  // role, including technician, without any broader directory access.
-  const employeeSnap = await getDoc(doc(db, EMPLOYEES_COLLECTION, employeeId));
-  if (!employeeSnap.exists()) {
-    console.warn(
-      `AuthContext: users/${uid}.employeeId "${employeeId}" has no matching employees/${employeeId} document -- broken link, granting no operational identity.`
-    );
-    return { role, employeeId, displayName: null, operationalRoles: [] };
-  }
-
-  const employeeData = employeeSnap.data();
-  return {
-    role,
-    employeeId,
-    displayName: employeeData.displayName ?? null,
-    operationalRoles: employeeData.operationalRoles ?? [],
-  };
-}
+// resolveEmployeeSession()/buildEmployeeSessionResult() (Phase 3 --
+// Platform Assignment Foundation; Issue #100 PR 0's employmentStatus
+// addition) now live in ./employeeSession.js, a plain .js module, and
+// are re-exported here unchanged so this file's existing public API
+// (`import { resolveEmployeeSession } from "./AuthContext"`) still
+// works. See that file's own header comment for the full rationale --
+// this file contains JSX and cannot be imported by this project's
+// plain-`node` unit test runner, which is why the actual resolution
+// logic was moved out rather than kept inline.
+export { resolveEmployeeSession, buildEmployeeSessionResult } from "./employeeSession";
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -82,6 +26,7 @@ export function AuthProvider({ children }) {
   const [employeeId, setEmployeeId] = useState(null);
   const [displayName, setDisplayName] = useState(null);
   const [operationalRoles, setOperationalRoles] = useState([]);
+  const [employmentStatus, setEmploymentStatus] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -113,6 +58,7 @@ export function AuthProvider({ children }) {
         setEmployeeId(null);
         setDisplayName(null);
         setOperationalRoles([]);
+        setEmploymentStatus(null);
         setLoading(false);
         return;
       }
@@ -131,6 +77,7 @@ export function AuthProvider({ children }) {
       setEmployeeId(null);
       setDisplayName(null);
       setOperationalRoles([]);
+      setEmploymentStatus(null);
 
       try {
         // Still fundamentally a one-shot resolution, unchanged in
@@ -144,6 +91,7 @@ export function AuthProvider({ children }) {
         setEmployeeId(session.employeeId);
         setDisplayName(session.displayName);
         setOperationalRoles(session.operationalRoles);
+        setEmploymentStatus(session.employmentStatus);
         setLoading(false);
       } catch (err) {
         if (!isMounted || thisGeneration !== generation) return;
@@ -152,15 +100,17 @@ export function AuthProvider({ children }) {
         // identity resolution, and never falls back to any default
         // role -- the authenticated Firebase user stays in `user`
         // (they really are signed in), but role/employeeId/
-        // displayName/operationalRoles all clear to their empty
-        // defaults, the same as an unauthenticated session for
-        // authorization purposes. Logged with the error code/message
-        // only -- never a token, credential, or document payload.
+        // displayName/operationalRoles/employmentStatus all clear to
+        // their empty defaults, the same as an unauthenticated session
+        // for authorization purposes. Logged with the error code/
+        // message only -- never a token, credential, or document
+        // payload.
         console.error("AuthContext: failed to resolve session identity.", err?.code ?? err?.message ?? err);
         setRole(null);
         setEmployeeId(null);
         setDisplayName(null);
         setOperationalRoles([]);
+        setEmploymentStatus(null);
         setLoading(false);
       }
     });
@@ -178,7 +128,7 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, role, employeeId, displayName, operationalRoles, login, logout, loading }}
+      value={{ user, role, employeeId, displayName, operationalRoles, employmentStatus, login, logout, loading }}
     >
       {children}
     </AuthContext.Provider>
