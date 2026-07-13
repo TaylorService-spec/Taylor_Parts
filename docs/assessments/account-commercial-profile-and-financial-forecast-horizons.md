@@ -1,7 +1,7 @@
 ---
 artifact_type: assessment
 gate: Repository Assessment
-status: Draft
+status: Architecture-Approved
 date: 2026-07-13
 owner: Claude Code
 related_adrs: []
@@ -16,7 +16,7 @@ target_release: TBD
 
 # Assessment Report: Account Commercial Profile and Financial Forecast Horizons
 
-**Status: DRAFT.** Not yet reviewed. Expands the previously-scoped "Customer Financial Forecast Horizons" idea into the broader **Account Commercial Profile and Financial Forecast Horizons**. It reconciles against the Accepted Enterprise Business Metrics Framework (`docs/architecture/enterprise-business-metrics-framework.md`) and reuses patterns from the merged Customer/Account Business Model work (Specification/Implementation Plan via PR #166, implemented via PR #167/#169/#170/#172) as precedent — but **this is a new initiative, not continued Issue #158 work**. Creating a tracking issue for it is a later Owner gate and is **not** done here; this Assessment is not tracked under any existing issue.
+**Status: ARCHITECTURE-APPROVED.** Expands the previously-scoped "Customer Financial Forecast Horizons" idea into the broader **Account Commercial Profile and Financial Forecast Horizons**. It reconciles against the Accepted Enterprise Business Metrics Framework (`docs/architecture/enterprise-business-metrics-framework.md`) and reuses patterns from the merged Customer/Account Business Model work (Specification/Implementation Plan via PR #166, implemented via PR #167/#169/#170/#172) as precedent — but **this is a new initiative, not continued Issue #158 work**. Creating a tracking issue for it is a later Owner gate and is **not** done here; this Assessment is not tracked under any existing issue.
 
 **This is a documentation-only Assessment and authorizes nothing.** It does not implement any field, edit `ROADMAP.md` or any other global document, change Firestore Rules/schema/indexes, connect or read financial data, access production data, or touch Inventory. Every such action remains its own separate gate under `docs/ai/workflow.md`. This document defines *what the profile is and what a future build must satisfy*; a Specification (if the Owner authorizes one after Architecture Review) is a separate step.
 
@@ -72,7 +72,7 @@ Each field is **additive, optional** on `accounts`. Several are **governance-bea
 
 ## Identity resolution rule (cross-cutting, platform-level)
 
-**Proposed for Owner adoption** as a platform rule for every ID-bearing reference on the Commercial Profile (`accountOwner`, `billingContact`, `parentAccount`, `pricingTier`). It is **aligned with, and generalizes, existing precedent** — the Person Assignment Platform Service Standard, and the Reorder Request assignee display-name resolution shipped in PR #105/#107/#118 — but it is **proposed architecture, not a claim that this cross-entity rule already exists platform-wide**. Adopting it is an Owner decision this Assessment surfaces, not an existing fact.
+**Owner-adopted** (as of this Architecture-Approved Assessment) as a platform rule for every ID-bearing reference on the Commercial Profile (`accountOwner`, `billingContact`, `parentAccount`, `pricingTier`). It is **aligned with, and generalizes, existing precedent** — the Person Assignment Platform Service Standard, and the Reorder Request assignee display-name resolution shipped in PR #105/#107/#118 — extending those precedents into an adopted cross-entity architecture rule (this Assessment records that adoption).
 
 1. **Backend/persistence uses stable internal IDs** for joins, referential integrity, and authorization (`accountOwner`→`userId`/`employeeId`, `billingContact`→`contactId`, `parentAccount`→`accountId`). The ID is always the source of truth for machine processes.
 2. **Current views re-resolve the CURRENT display name from the stable internal reference** — an Account screen shows the referenced entity's name *as it is now*, resolved live from its ID, not a name copied onto the Account. A later rename of the referenced entity is reflected on the next view.
@@ -81,7 +81,7 @@ Each field is **additive, optional** on `accounts`. Several are **governance-bea
 5. **Unresolved references display "Unknown …"** (e.g. "Unknown owner", "Unknown contact", "Unknown account") — **never the raw ID**, and never a fabricated placeholder value.
 6. **Historical/audit events snapshot the display name used at event time AND retain the internal ID** — an immutable record of the name as it read when the event occurred, even if the entity is later renamed or removed. This is the one place a name is deliberately frozen — it is the historical record, distinct from a current-view cache. Matches the assignment-snapshot pattern (BusinessEntityModel 8a: `assignedToDisplayName`) and the platform's permanent-record posture (no destructive rewrite of history).
 
-If the Owner adopts this rule, it binds all ID-bearing fields introduced by any future Commercial Profile specification.
+This rule binds all ID-bearing fields introduced by any future Commercial Profile specification.
 
 ## Schema / Rules / index / authorization impact (assessed, not implemented)
 
