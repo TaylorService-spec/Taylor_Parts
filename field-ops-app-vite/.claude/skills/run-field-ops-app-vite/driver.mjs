@@ -966,6 +966,37 @@ async function verifyServiceActivity(browser, page, accountKey) {
   return niFailed === 0;
 }
 
+// Customer/Account Business Model -- Customer PR 4, Financial Summary. Only
+// the `unconfigured` state is reachable in production, so this browser check
+// asserts the real surface shows the exact copy and NO financial data; the
+// other four provider-contract states are proven with fixtures in
+// test/financialSummaryView.test.mjs. Reuses the already-seeded Service
+// Activity account (any account's Financial Summary is unconfigured today).
+async function verifyFinancialSummary(browser, page, accountKey) {
+  await login(page, accountKey);
+  await page.goto(customerUrl(SERVICE_ACTIVITY_FIXTURE.accountId), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await page.getByRole("heading", { name: "Financial Summary", exact: true }).waitFor({ timeout: 10000 });
+
+  const fsSection = page
+    .locator("section.wo-history")
+    .filter({ has: page.locator("h4", { hasText: "Financial Summary" }) });
+  const fsText = await fsSection.innerText().catch(() => "");
+
+  niReport("Financial Summary shows the exact unconfigured copy ('Sales data source not connected')", /Sales data source not connected/.test(fsText), fsText);
+  niReport("Financial Summary shows NO dollar figure / $0 / financial data", !fsText.includes("$"), fsText);
+  niReport("Financial Summary shows NO Work Order count (those belong to Service Activity, not here)", !/Completed Work Orders|Open Work Orders|\bWork Orders?:/.test(fsText), fsText);
+  const headingVisible = await fsSection.getByRole("heading", { name: "Financial Summary", exact: true }).isVisible().catch(() => false);
+  niReport("Accessibility: Financial Summary is a section with an accessible heading", headingVisible);
+
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.waitForTimeout(200);
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
+  niReport("Responsive: no horizontal overflow at 375px mobile", overflow === false);
+
+  console.log(`\n${niPassed} passed, ${niFailed} failed`);
+  return niFailed === 0;
+}
+
 async function main() {
   const [, , command, ...args] = process.argv;
   const browser = await chromium.launch();
@@ -1036,6 +1067,10 @@ async function main() {
     } else if (command === "verify-service-activity") {
       const [accountKey = "admin"] = args;
       const ok = await verifyServiceActivity(browser, page, accountKey);
+      if (!ok) process.exitCode = 1;
+    } else if (command === "verify-financial-summary") {
+      const [accountKey = "admin"] = args;
+      const ok = await verifyFinancialSummary(browser, page, accountKey);
       if (!ok) process.exitCode = 1;
     } else {
       console.error(`Unknown command "${command}". See the header comment in this file for usage.`);
