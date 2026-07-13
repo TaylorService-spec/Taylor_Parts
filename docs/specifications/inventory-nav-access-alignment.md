@@ -53,7 +53,7 @@ An Employee whose security `role` is `technician` but who holds an `ACTIVE`, eli
 
 - **Personal Waiting/In Progress.** Reuses `useReorderRequestsAssignedTo(uid, status)` verbatim for both `ASSIGNED_TO_PARTS_ASSOCIATE` and `PURCHASING_IN_PROGRESS`, under the new self-scoped Rules branch (§ "Firestore Rules impact") -- this query shape already exists and is already correctly self-scoped; only the Rules read gate (currently `isAdminOrDispatcher()`-only, with no self branch at all) needs the addition.
 - **Exact assigned-request details.** A new, minimal read-only-plus-lifecycle-actions component (not `PartDetail.jsx`, which mounts the full admin/dispatcher action set and the Employee directory) -- reads the single `reorder_requests/{id}` document via `onSnapshot`, gated by the same self-scoped Rules branch, plus the linked `reorder_purchase_orders/{id}`/`reorder_purchase_order_voids/{id}` (read-only, self-scoped Rules branch, § below) for display once a PO exists.
-- **Purchasing lifecycle actions -- resolved gate, applied uniformly.** Start Purchasing, Post Purchasing Update, Record Purchase Order, and Mark Received all call the existing, unmodified domain functions (`startPurchasing()`, `updatePurchasingProgress()`, `recordPurchaseOrder()`, `receiveReorderRequest()` in `domain/inventoryReorderRequests.js`) -- **only the Rules authorization condition changes**, per the Assessment's Architecture-Approved resolution: `(isAdminOrDispatcher() || isActiveOperationalRole("PARTS_ASSOCIATE")) && auth.uid == assignedToUserId`, identically across all four writes. Exact status transitions and existing allowed-field validation are unchanged.
+- **Purchasing lifecycle actions -- resolved gate, applied uniformly, and correctly scoped this round.** Start Purchasing, Post Purchasing Update, Record Purchase Order, and Mark Received all call the existing, unmodified domain functions (`startPurchasing()`, `updatePurchasingProgress()`, `receiveReorderRequest()` in `domain/inventoryReorderRequests.js`, and `recordPurchaseOrder()` in `domain/reorderPurchaseOrders.js`) -- **only the Rules authorization condition changes**, per the Assessment's Architecture-Approved resolution: `(isAdminOrDispatcher() || isActiveOperationalRole("PARTS_ASSOCIATE")) && auth.uid == assignedToUserId`, identically across all four writes. **Corrected this round:** the prior draft of this Specification mischaracterized three of these four as already assignee-only with no outer admin/dispatcher requirement. In truth, `reorder_requests`' entire `allow update` (`firestore.rules:376-630`) is a single top-level `isAdminOrDispatcher() && (...)` gate shared identically across all eight status-transition branches (Approve/Reject, Assign, Start Purchasing, Post Purchasing Update, Record PO's `reorder_requests` half, Mark Received, Cancel, Void) -- all eight, including these four, currently require `isAdminOrDispatcher()` unconditionally today. This is therefore a real authorization change for all four writes, not three clarifications plus one real fix, and it requires restructuring the shared gate itself -- see "Restructuring `reorder_requests`' `allow update`" under Firestore Rules impact, below, for the exact design (simply adding `|| isActiveOperationalRole("PARTS_ASSOCIATE")` to the existing single shared outer condition would also incorrectly grant Approve/Reject/Assign/Cancel to `PARTS_ASSOCIATE`, which must never happen). Exact status transitions and existing allowed-field validation are unchanged throughout.
 - **Explicitly excluded -- confirmed, no Rules branch added for either:** Cancel (`isAdminOrDispatcher()` alone, untouched) and Void Purchase Order (`isAdminOrDispatcher()` **and** assignee, untouched) -- `PARTS_ASSOCIATE` does not gain either, per the Assessment's Architecture Review decision.
 - **Explicitly excluded, confirmed by this Specification's Rules design containing no branch for any of them:** the Parts Manager Queue, assigned-work oversight, and Relevant History reads; the Assign write.
 
@@ -143,24 +143,85 @@ Each nav item's `operationalRoleAccess` check is independent and additive: an Em
 
 **Retrofitted:** `canSubmitManualZeroHistoryQuantity()` now calls `isActiveOperationalRole()` instead of the looser `hasOperationalRole()` (behavior unchanged for every valid, `ACTIVE`, reciprocally-linked Employee -- tightens only the previously-unguarded edge cases, per Architecture decision 9.1).
 
-**New grants, by collection, each an additive `||` branch on the existing condition -- nothing existing is narrowed or removed:**
+**New grants on `reorder_requests` READ, `reorder_purchase_orders`/`reorder_purchase_order_voids`, `inventory_transactions`, and `inventory_actions`, each an additive `||` branch on the existing condition -- nothing existing is narrowed or removed:**
 
 - **`reorder_requests` read** (currently `isAdminOrDispatcher()` alone) gains four independent branches:
   - `isActiveOperationalRole("PARTS_MANAGER") && resource.data.status == "READY_FOR_PARTS_MANAGER"` (Parts Manager Queue)
   - `isActiveOperationalRole("PARTS_MANAGER") && resource.data.status in ["ASSIGNED_TO_PARTS_ASSOCIATE", "PURCHASING_IN_PROGRESS"]` (assigned-work oversight)
   - `isActiveOperationalRole("PARTS_MANAGER") && (resource.data.reviewedBy == request.auth.uid || resource.data.assignedBy == request.auth.uid)` (relevant history)
   - `isActiveOperationalRole("PARTS_ASSOCIATE") && resource.data.assignedToUserId == request.auth.uid` (personal Waiting/In Progress, exact assigned details)
-- **`reorder_requests` Assign write** (currently `isAdminOrDispatcher() && assignedBy==auth.uid`) gains: `|| (isActiveOperationalRole("PARTS_MANAGER") && resource.data.status == "READY_FOR_PARTS_MANAGER" && request.resource.data.status == "ASSIGNED_TO_PARTS_ASSOCIATE" && request.resource.data.assignedBy == request.auth.uid)`.
-- **`reorder_requests` Start Purchasing / Post Purchasing Update / Record Purchase Order (the `reorder_requests` half of that atomic pair) / Mark Received writes** each become, uniformly: `(isAdminOrDispatcher() || isActiveOperationalRole("PARTS_ASSOCIATE")) && auth.uid == resource.data.assignedToUserId` -- replacing Start Purchasing's stricter double-gate and making the other three's existing assignee-only condition explicit alongside the new branch, per the Assessment's resolved lifecycle gate.
-- **`reorder_requests` Cancel and the Void-write's `reorder_requests` half:** **no change** -- remain `isAdminOrDispatcher()` alone (Cancel) and `isAdminOrDispatcher() && assignee` (Void half), confirmed by omission from every list above.
+
+  This read-side widening is safe as a simple additive `||` because `allow read` is a single, undifferentiated boolean -- there is no "transition"/branch structure to accidentally cross, unlike `allow update` below.
+
 - **`reorder_purchase_orders` / `reorder_purchase_order_voids` read** (currently `isAdminOrDispatcher()` alone) gains: `|| (isActiveOperationalRole("PARTS_ASSOCIATE") && get(/databases/$(database)/documents/reorder_requests/$(requestId)).data.assignedToUserId == request.auth.uid)`.
-- **`reorder_purchase_orders` create (Record PO)** gains the same uniform lifecycle-gate branch as the other three `PARTS_ASSOCIATE` writes, applied to its existing `assignedToUserId`/`status == PURCHASING_IN_PROGRESS` condition.
-- **`reorder_purchase_order_voids` create (Void):** **no change** -- remains `isAdminOrDispatcher() && assignee`, confirmed by omission.
 - **`inventory_transactions` read** (currently `isAdminOrDispatcher()` alone) gains: `|| isActiveOperationalRole("PARTS_MANAGER") || isActiveOperationalRole("WAREHOUSE_MANAGER")`.
 - **`inventory_actions` read** (currently `isAdminOrDispatcher()` alone) gains: `|| isActiveOperationalRole("WAREHOUSE_MANAGER")`. Shape matches the existing grant exactly (collection-level, not per-document-scoped in Rules -- the client's own `where("partId","==",partId)` query, unchanged, is what bounds the result set, identical to how the existing admin/dispatcher grant is also not per-document-scoped).
 - **`employees` (full directory, `useEmployeeDirectory()`'s unscoped query):** **no change, confirmed.** No new surface in this Specification imports or relies on it.
+- **`reorder_purchase_orders` create (Record PO):** its own, single-condition `allow create` (`firestore.rules:680-706`, not shared with any other action) gains `|| isActiveOperationalRole("PARTS_ASSOCIATE")` alongside its existing `isAdminOrDispatcher()`, ANDed with its unchanged assignee/status/field validation -- this one is a safe additive `||`, same reasoning as the read-side widenings above, since this `allow create` is not shared with any other transition.
+- **`reorder_purchase_order_voids` create (Void):** **no change** -- remains `isAdminOrDispatcher() && assignee`, confirmed by omission. Void is its own, separate, single-condition `allow create` (`firestore.rules:728-748`), unaffected by the `reorder_requests` restructuring below.
 
 **No Rules change to:** `employees/{employeeId}` self-read (already correct), `users/{uid}` (unchanged), any Customer/Service-Activity/Financial collection.
+
+### Restructuring `reorder_requests`' `allow update` (corrected this round)
+
+**The prior draft of this Specification was wrong about this block's current structure**, and that error must not be repeated in implementation. `firestore.rules:376-630` today is **one single `allow update` statement**, shaped `isAdminOrDispatcher() && (branch1 || branch2 || ... || branch8) && (pinned-base-fields)` -- the outer `isAdminOrDispatcher()` gates **all eight** status-transition branches identically: Approve/Reject (377-387), Assign (388-400), Start Purchasing (401-415), Post Purchasing Update (416-432), Record PO's `reorder_requests` half (433-468), Mark Received (480-504), Cancel (525-549), and Void's `reorder_requests` half (578-625).
+
+Because that gate is **shared**, simply adding `|| isActiveOperationalRole("PARTS_ASSOCIATE")` to the single outer condition would incorrectly grant `PARTS_ASSOCIATE`-eligible technicians Approve/Reject, Assign, and Cancel too -- all of which must remain `admin`/`dispatcher`-only. **The fix is structural, not additive:** the shared outer `isAdminOrDispatcher()` is removed from its single top-level position, and each of the eight branches gains its own, fully self-contained authorization condition instead -- still combined with `||` into one `allow update`, still ANDed with the unchanged pinned-base-fields tail at the very end. Every existing field-level validation clause inside each branch (the `request.resource.data...`/`resource.data...` checks already documented per-branch in the current `firestore.rules`) is preserved **exactly, unchanged** -- only the actor-authorization clause each branch is prefixed with changes.
+
+```
+// firestore.rules -- reorder_requests, allow update, restructured
+// (illustrative shape; exact branch bodies are the EXISTING, unchanged
+// field-level validation already in firestore.rules:377-630 -- only the
+// leading authorization clause of each branch changes, as annotated)
+
+allow update: if
+  ( isAdminOrDispatcher()                                    // Approve/Reject -- unchanged, admin/dispatcher only
+    && resource.data.status == "PENDING_REVIEW"
+    && (...existing PENDING_REVIEW branch body, unchanged...) )
+  || ( isAdminOrDispatcher()                                  // Assign -- unchanged, admin/dispatcher only
+    && resource.data.status == "READY_FOR_PARTS_MANAGER"
+    && request.resource.data.status == "ASSIGNED_TO_PARTS_ASSOCIATE"
+    && (...existing Assign branch body, unchanged...) )
+  || ( isActiveOperationalRole("PARTS_MANAGER")                // Assign -- NEW, separate PARTS_MANAGER branch
+    && resource.data.status == "READY_FOR_PARTS_MANAGER"
+    && request.resource.data.status == "ASSIGNED_TO_PARTS_ASSOCIATE"
+    && request.resource.data.assignedBy == request.auth.uid
+    && (...identical remaining field checks to the branch above...) )
+  || ( (isAdminOrDispatcher() || isActiveOperationalRole("PARTS_ASSOCIATE"))   // Start Purchasing -- gains the new OR
+    && resource.data.status == "ASSIGNED_TO_PARTS_ASSOCIATE"
+    && request.resource.data.status == "PURCHASING_IN_PROGRESS"
+    && request.auth.uid == resource.data.assignedToUserId
+    && (...existing Start Purchasing branch body, unchanged...) )
+  || ( (isAdminOrDispatcher() || isActiveOperationalRole("PARTS_ASSOCIATE"))   // Post Purchasing Update -- gains the new OR
+    && resource.data.status == "PURCHASING_IN_PROGRESS"
+    && request.resource.data.status == "PURCHASING_IN_PROGRESS"
+    && request.auth.uid == resource.data.assignedToUserId
+    && (...existing Post Purchasing Update branch body, unchanged...) )
+  || ( (isAdminOrDispatcher() || isActiveOperationalRole("PARTS_ASSOCIATE"))   // Record PO (reorder_requests half) -- gains the new OR
+    && resource.data.status == "PURCHASING_IN_PROGRESS"
+    && request.resource.data.status == "ORDERED"
+    && request.auth.uid == resource.data.assignedToUserId
+    && (...existing Record PO branch body, unchanged, including the
+         existsAfter()/getAfter() cross-document invariant...) )
+  || ( (isAdminOrDispatcher() || isActiveOperationalRole("PARTS_ASSOCIATE"))   // Mark Received -- gains the new OR
+    && resource.data.status == "ORDERED"
+    && request.resource.data.status == "RECEIVED"
+    && request.auth.uid == resource.data.assignedToUserId
+    && (...existing Mark Received branch body, unchanged...) )
+  || ( isAdminOrDispatcher()                                  // Cancel -- unchanged, admin/dispatcher only, NOT assignee-restricted
+    && (...existing Cancel branch body, unchanged...) )
+  || ( isAdminOrDispatcher()                                  // Void (reorder_requests half) -- unchanged, admin/dispatcher AND assignee, double-gated
+    && request.auth.uid == resource.data.assignedToUserId
+    && (...existing Void branch body, unchanged, including its
+         exists()/existsAfter()/getAfter() cross-document invariants...) )
+  && request.resource.data.partId == resource.data.partId                     // pinned base fields -- unchanged, applies to every branch
+  && request.resource.data.urgency == resource.data.urgency
+  && request.resource.data.recommendedQty == resource.data.recommendedQty
+  && request.resource.data.requestedBy == resource.data.requestedBy
+  && request.resource.data.createdAt == resource.data.createdAt;
+```
+
+This is a real, larger Rules diff than "one retrofit plus a handful of additive branches" -- it touches the structure of every branch in this `allow update`, not merely the four `PARTS_ASSOCIATE`-relevant ones, even though five of the eight branches' authorization clauses are unchanged in substance (still `isAdminOrDispatcher()` alone, or `isAdminOrDispatcher()` plus assignee for Void). The Implementation Plan's Rules diff and its verification must treat this as a full-block rewrite requiring line-by-line confirmation that every pre-existing field-level check survives unchanged, not a small additive patch.
 
 ## Firestore indexes impact
 
@@ -201,7 +262,8 @@ Required coverage, per role, against the browser/Rules matrix in the Assessment'
 - [ ] `navConfig.js`/`App.jsx` gain the three new domains/routes, each gated by `role === "technician"` plus `isActiveOperationalRole`-equivalent client-side eligibility (`operationalRoles`/`employmentStatus` from `AuthContext`) -- the existing `/inventory` domain's own gating is unchanged, confirmed by diff.
 - [ ] Each of the three new surfaces reuses the exact existing hook/query shape named in "Scope" above wherever one exists (`useReorderRequestsByStatus`, `useReorderRequestsByStatuses`, `useReorderRequestsAssignedTo`, `useAssignableEmployees`, `useInventoryLedger`, `useInventoryActionsForPart`) -- confirmed by code review that no duplicate reimplementation of any of these exists.
 - [ ] `PARTS_MANAGER`'s assigned-work oversight resolves assignee names via the same `useAssignableEmployees()` result already loaded for its Assign picker -- confirmed `useEmployeeDirectory()` is not imported anywhere in the three new surfaces.
-- [ ] `PARTS_ASSOCIATE`'s four lifecycle writes share one uniform Rules condition; Cancel/Void render no control and are denied at the Rules layer if attempted directly.
+- [ ] `reorder_requests`' `allow update` is restructured so each of its eight status-transition branches carries its own, fully self-contained authorization condition (no shared top-level gate) -- confirmed by code review that Start Purchasing/Post Purchasing Update/Record PO/Mark Received each independently read `(isAdminOrDispatcher() || isActiveOperationalRole("PARTS_ASSOCIATE")) && assignee`, while Approve/Reject/Assign(admin branch)/Cancel remain `isAdminOrDispatcher()` alone and Void remains `isAdminOrDispatcher() && assignee`, with every pre-existing field-level validation clause byte-for-byte unchanged inside each branch.
+- [ ] `PARTS_ASSOCIATE`'s four lifecycle writes share one uniform Rules condition; Cancel/Void render no control and are denied at the Rules layer if attempted directly -- verified specifically as an SDK-level probe that a `PARTS_ASSOCIATE`-eligible technician assignee's Cancel/Void attempts are denied even though their Start Purchasing/Post Purchasing Update/Record PO/Mark Received attempts on the same request succeed, proving the restructuring did not leak authorization across branches.
 - [ ] Fail-closed behavior (loading, broken linkage, inactive employment, invalid `operationalRoles`, direct URL, and the stated concurrent-change posture) is verified per the Testing strategy's negative-case matrix, for all three roles.
 - [ ] An Employee holding multiple eligible `operationalRoles` sees the union of the corresponding nav items, verified with a dedicated multi-role fixture.
 - [ ] `admin`/`dispatcher` sessions never see the three new nav items and are redirected away from their direct URLs to the existing `/inventory` domain.
@@ -216,7 +278,7 @@ Required coverage, per role, against the browser/Rules matrix in the Assessment'
 - **PR 1b (UI -- `PARTS_MANAGER`):** new route/component tree under `field-ops-app-vite/src/modules/inventory-role/manager/` (exact internal file layout is an Implementation Plan detail); `hooks/useReorderRequests.js` (`useReviewedRequestsHistory`); `driver.mjs`/`seed.mjs` fixture and command additions for this role's browser coverage.
 - **PR 2a (Rules -- `WAREHOUSE_MANAGER`):** `firestore.rules` only (`inventory_transactions` and `inventory_actions` grants). Deployed, confirmed live, verified before PR 2b.
 - **PR 2b (UI -- `WAREHOUSE_MANAGER`):** new route/component tree under `.../inventory-role/warehouse/`; `driver.mjs`/`seed.mjs` additions.
-- **PR 3a (Rules -- `PARTS_ASSOCIATE`):** `firestore.rules` only (the four uniform lifecycle-write grants, the two self-scoped reads). Deployed, confirmed live, verified before PR 3b.
+- **PR 3a (Rules -- `PARTS_ASSOCIATE`):** `firestore.rules` only -- the `reorder_requests` `allow update` restructuring (§ "Restructuring `reorder_requests`' `allow update`", a full-block rewrite touching all eight status-transition branches' structure, though only four change in authorization outcome), the `reorder_purchase_orders` create widening, and the two self-scoped reads (`reorder_requests`, `reorder_purchase_orders`/`reorder_purchase_order_voids`). Deployed, confirmed live, verified before PR 3b -- verification must include the full existing regression suite (per Testing strategy) specifically because this PR's diff touches Approve/Reject/Assign/Cancel/Void's surrounding structure even though their own authorization outcome is unchanged.
 - **PR 3b (UI -- `PARTS_ASSOCIATE`):** new route/component tree under `.../inventory-role/mine/`; `driver.mjs`/`seed.mjs` additions.
 
 ## Sequencing
@@ -226,13 +288,14 @@ Unchanged in structure from the Assessment's own Sequencing section, now express
 ## Risks
 
 - **The `canSubmitManualZeroHistoryQuantity()` retrofit is a behavior change for a live, already-shipped Rules function**, even though this Specification asserts it's behavior-preserving for every valid Employee. PR 1a's verification must include an explicit regression assertion (an already-`ACTIVE`, reciprocally-linked `PARTS_MANAGER`/`WAREHOUSE_MANAGER` Employee's existing manual-entry capability is unaffected) alongside the new tightening's negative cases, not merely assume backward compatibility from the code's logic.
-- **Six independent new Rules branches across three collections is real, auditable surface area** -- each must be verified individually (per the Testing strategy's SDK-level negative-case matrix) rather than treated as one undifferentiated "Inventory operational-role access" change, consistent with why this Specification keeps the three tracks separately gated rather than merging all Rules work into one PR.
+- **Corrected this round -- the `reorder_requests` `allow update` restructuring is a full-block rewrite, not four small additive branches.** The prior draft understated this: it claimed Post Purchasing Update, Record Purchase Order, and Mark Received were already assignee-only with no outer admin/dispatcher requirement, when in fact all eight status-transition branches share one single `isAdminOrDispatcher()` gate today (`firestore.rules:376-630`). PR 3a's diff touches every branch's structure (moving the authorization clause from a single shared position into each of the eight branches individually), even though five of the eight branches' actual authorization outcome is unchanged (Approve/Reject/Assign-admin-branch/Cancel stay admin/dispatcher-only; Void stays admin/dispatcher-and-assignee). Verification must confirm, branch by branch, that every pre-existing field-level validation clause survived the restructuring unchanged -- a line-by-line diff review, not a spot-check of the four `PARTS_ASSOCIATE`-relevant branches alone.
+- **Six independent new Rules branches across four collections (`reorder_requests` read, `reorder_purchase_orders`/`reorder_purchase_order_voids` read and create, `inventory_transactions`, `inventory_actions`) plus the `reorder_requests` `allow update` restructuring is real, auditable surface area** -- each must be verified individually (per the Testing strategy's SDK-level negative-case matrix) rather than treated as one undifferentiated "Inventory operational-role access" change, consistent with why this Specification keeps the three tracks separately gated rather than merging all Rules work into one PR.
 - **`PARTS_MANAGER`'s Relevant History reads two collections' worth of fields (`reviewedBy`, `assignedBy`) that exist on `reorder_requests` today but have never before been queried against directly** (only read incidentally as display fields) -- the Implementation Plan must confirm both fields are reliably populated on every historical document the fixture/production data actually contains, or Relevant History could silently under-report for older records written before either field was consistently set.
 - **Redirecting `admin`/`dispatcher` away from the new routes to the existing `/inventory` domain** is a deliberate UX choice (§ "Technical design") but changes what an `admin`/`dispatcher` user experiences if they ever guess/bookmark one of the new URLs -- worth confirming this redirect, not a permission error, is what actually renders, since a permission-error page for an `admin`/`dispatcher` account would be confusing and technically wrong (they're not denied, they're just not the intended audience).
 
 ## Open questions
 
-None blocking Implementation Plan drafting. Every design question the Assessment left open is resolved above: catalog/health reuses the existing broad read under a new role-gated branch (not a narrower derived view); "relevant history" is `reviewedBy`/`assignedBy` equality, not a broader relevance heuristic; "warehouse-relevant activity" reuses the existing per-part `inventory_actions` query verbatim; `employmentStatus` is added to client-side `AuthContext` state; assignee-name resolution for `PARTS_MANAGER`'s oversight view reuses the existing scoped `useAssignableEmployees()` result rather than the Employee directory; the Start Purchasing lifecycle gate is the Assessment's own Architecture-Approved resolution, applied uniformly here; and multi-role union behavior requires no special-case logic.
+None blocking Implementation Plan drafting. Every design question the Assessment left open is resolved above: catalog/health reuses the existing broad read under a new role-gated branch (not a narrower derived view); "relevant history" is `reviewedBy`/`assignedBy` equality, not a broader relevance heuristic; "warehouse-relevant activity" reuses the existing per-part `inventory_actions` query verbatim; `employmentStatus` is added to client-side `AuthContext` state; assignee-name resolution for `PARTS_MANAGER`'s oversight view reuses the existing scoped `useAssignableEmployees()` result rather than the Employee directory; the Start Purchasing lifecycle gate is the Assessment's own Architecture-Approved resolution, applied uniformly here (correctly, this round, via a full per-branch restructuring of `reorder_requests`' `allow update` rather than an additive branch on its shared outer gate -- see "Restructuring `reorder_requests`' `allow update`" and the corrected Risks entry above); and multi-role union behavior requires no special-case logic.
 
 ## Approval
 
