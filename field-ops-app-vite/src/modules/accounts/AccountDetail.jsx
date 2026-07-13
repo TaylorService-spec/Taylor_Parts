@@ -13,7 +13,7 @@ import AccountForm from "./AccountForm";
 import ServiceActivitySection from "./ServiceActivitySection";
 import FinancialSummarySection from "./FinancialSummarySection";
 import { useEmployeeDirectory } from "../../hooks/useEmployeeDirectory";
-import { resolveOwnerDisplayName, resolveContactName } from "../../domain/commercialProfile";
+import { resolveOwnerIdentity, resolveContactIdentity } from "../../domain/commercialProfile";
 
 // Sprint 2.0.2 -- Customer Foundation. Internal name AccountDetail;
 // rendered UI says "Customer Detail" throughout.
@@ -136,27 +136,60 @@ function PrimaryContactSummary({ contacts }) {
   return null; // NONE -> omit, never fabricate a primary
 }
 
+// Renders one resolved identity line, preserving its resolution state: a
+// distinct "resolving…" while the lookup source is still loading, an explicit
+// unavailable line on a listener error, the CURRENT resolved name when found,
+// and "Unknown …" only after a completed unresolved lookup. Renders nothing
+// when the reference is unset.
+function IdentityLine({ label, identity }) {
+  if (identity.state === "unset") return null;
+  if (identity.state === "loading") {
+    return <div>{label}: <span className="fo-muted">resolving…</span></div>;
+  }
+  if (identity.state === "error") {
+    return <div>{label}: <span className="fo-warning">{identity.name}</span></div>;
+  }
+  return <div>{label}: {identity.name}</div>;
+}
+
 // Account Commercial Profile -- PR 1. Renders the informational fields. Every
-// ID-bearing field shows the CURRENT resolved name (re-resolved from the
-// stable reference), "Unknown …" when unresolved, and is omitted when unset.
-function CommercialProfileSection({ account, contacts, byUserId }) {
+// ID-bearing field shows its CURRENT resolved identity via IdentityLine (never
+// the stored snapshot), so loading/resolved/unknown/error stay distinct.
+// PO-required only renders when a real boolean is stored (a malformed stored
+// value is surfaced in the edit form, not silently shown as Yes/No here).
+function CommercialProfileSection({ account, contacts, contactsLoading, contactsError, byUserId, directoryLoading, directoryError }) {
   const currency = account.defaultCurrency || null;
   const invoiceMethod = account.invoiceDeliveryMethod || null;
-  const billingContactName = resolveContactName(account.billingContact?.contactId, contacts);
   const hasPo = account.purchaseOrderRequired === true || account.purchaseOrderRequired === false;
-  const ownerName = resolveOwnerDisplayName(account.accountOwner, byUserId);
-  const hasAny = currency || invoiceMethod || billingContactName || hasPo || ownerName;
+
+  const ownerIdentity = resolveOwnerIdentity(account.accountOwner, {
+    byUserId,
+    loading: directoryLoading,
+    error: directoryError,
+  });
+  const billingIdentity = resolveContactIdentity(account.billingContact?.contactId, {
+    contacts,
+    loading: contactsLoading,
+    error: contactsError,
+  });
+
+  const hasAny =
+    currency ||
+    invoiceMethod ||
+    hasPo ||
+    ownerIdentity.state !== "unset" ||
+    billingIdentity.state !== "unset";
 
   return (
     <section className="wo-history">
       <h4>Commercial Profile</h4>
       {hasAny ? (
         <div className="fo-muted">
-          {ownerName && <div>Owner: {ownerName}</div>}
+          <IdentityLine label="Owner" identity={ownerIdentity} />
           {currency && <div>Default currency: {currency}</div>}
           {hasPo && <div>Purchase order required: {account.purchaseOrderRequired ? "Yes" : "No"}</div>}
           {invoiceMethod && <div>Invoice delivery: {invoiceMethod}</div>}
-          {billingContactName && <div>Billing contact: {billingContactName}</div>}
+          <IdentityLine label="Billing contact" identity={billingIdentity} />
         </div>
       ) : (
         <p className="fo-muted">No commercial profile set yet.</p>
@@ -170,8 +203,8 @@ export default function AccountDetail() {
   const navigate = useNavigate();
   const { account, loading } = useAccount(accountId);
   const { data: locations } = useLocationsForAccount(accountId);
-  const { data: contacts } = useContactsForAccount(accountId);
-  const { byUserId } = useEmployeeDirectory();
+  const { data: contacts, loading: contactsLoading, error: contactsError } = useContactsForAccount(accountId);
+  const { byUserId, loading: directoryLoading, error: directoryError } = useEmployeeDirectory();
 
   const [isEditing, setIsEditing] = useState(false);
   const [showLocationForm, setShowLocationForm] = useState(false);
@@ -214,7 +247,7 @@ export default function AccountDetail() {
       </button>
 
       {isEditing ? (
-        <AccountForm initialValues={account} onSubmit={handleEditSubmit} onCancel={() => setIsEditing(false)} submitLabel="Save Changes" contacts={contacts} />
+        <AccountForm initialValues={account} onSubmit={handleEditSubmit} onCancel={() => setIsEditing(false)} submitLabel="Save Changes" contacts={contacts} contactsLoading={contactsLoading} />
       ) : (
         <>
           {/* 1. Account Summary -- always visible, never collapsed */}
@@ -242,7 +275,15 @@ export default function AccountDetail() {
           </section>
 
           {/* Commercial Profile -- informational fields + current-name identity (PR 1) */}
-          <CommercialProfileSection account={account} contacts={contacts} byUserId={byUserId} />
+          <CommercialProfileSection
+            account={account}
+            contacts={contacts}
+            contactsLoading={contactsLoading}
+            contactsError={contactsError}
+            byUserId={byUserId}
+            directoryLoading={directoryLoading}
+            directoryError={directoryError}
+          />
 
           {/* 2. Financial Summary -- provider-neutral surface; unconfigured only (PR 4) */}
           <FinancialSummarySection />

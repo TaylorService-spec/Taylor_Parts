@@ -1,8 +1,9 @@
 // Account Commercial Profile -- PR 1. Deterministic unit test for the pure
 // validation + identity-resolution helpers in src/domain/commercialProfile.js.
-// Covers the required validations (ISO 4217 currency, invoice-delivery enum,
-// boolean PO-required, Account-owned billing contact, valid Person
-// Assignment) plus the cross-account-contact and unresolved-person cases.
+// Covers the PR #179 review corrections: fail-closed ISO 4217 currency, the
+// COMPLETE Person Assignment requirement for accountOwner, the state-aware
+// identity resolvers (loading vs error vs resolved vs unknown), and per-field
+// validation including billing contact / delivery method / PO-required.
 //
 // Run: node test/commercialProfile.test.mjs   (also `npm test`)
 import assert from "node:assert/strict";
@@ -11,20 +12,21 @@ import {
   isValidInvoiceDeliveryMethod,
   isBooleanPurchaseOrderRequired,
   isContactOnAccount,
-  isValidAccountOwner,
+  isCompleteAccountOwner,
   commercialProfileErrors,
-  resolveOwnerDisplayName,
-  resolveContactName,
+  resolveOwnerIdentity,
+  resolveContactIdentity,
 } from "../src/domain/commercialProfile.js";
 
 let passed = 0;
 function ok(name, fn) { fn(); passed += 1; console.log("PASS -- " + name); }
 
-// --- ISO 4217 currency ---
+// --- ISO 4217 currency: FAIL CLOSED -----------------------------------
 ok("ISO 4217: valid codes accepted", () => {
   assert.equal(isValidIso4217("USD"), true);
   assert.equal(isValidIso4217("EUR"), true);
   assert.equal(isValidIso4217("JPY"), true);
+  assert.equal(isValidIso4217("GBP"), true);
 });
 ok("ISO 4217: rejects wrong case / length / non-string", () => {
   assert.equal(isValidIso4217("usd"), false);
@@ -34,12 +36,12 @@ ok("ISO 4217: rejects wrong case / length / non-string", () => {
   assert.equal(isValidIso4217(123), false);
   assert.equal(isValidIso4217(null), false);
 });
-ok("ISO 4217: rejects a well-formatted non-currency (ZZZ) when the list is available", () => {
-  // If Intl.supportedValuesOf is present (Node 18+/modern browsers), ZZZ is not
-  // a currency and must be rejected. If unavailable, format-only acceptance is
-  // the documented fallback -- assert accordingly so the test is portable.
-  const hasList = typeof Intl !== "undefined" && typeof Intl.supportedValuesOf === "function";
-  assert.equal(isValidIso4217("ZZZ"), hasList ? false : true);
+ok("ISO 4217: fails closed -- well-formatted non-currencies always rejected", () => {
+  // Deterministic across every runtime: never accepts an arbitrary 3-letter
+  // code, even where a runtime currency list is unavailable.
+  assert.equal(isValidIso4217("ZZZ"), false);
+  assert.equal(isValidIso4217("XXX"), false); // "no currency" placeholder
+  assert.equal(isValidIso4217("ABC"), false);
 });
 
 // --- invoice-delivery enum ---
@@ -71,48 +73,94 @@ ok("billingContact: unset is valid", () => assert.equal(isContactOnAccount(null,
 ok("billingContact: an own contact is valid", () => assert.equal(isContactOnAccount("c-1", accountContacts), true));
 ok("billingContact: a CROSS-ACCOUNT contact is rejected", () => assert.equal(isContactOnAccount("c-foreign", accountContacts), false));
 
-// --- account owner validity ---
-ok("accountOwner: unset valid; linked userId valid; empty snapshot invalid", () => {
-  assert.equal(isValidAccountOwner(null), true);
-  assert.equal(isValidAccountOwner({ assignedToUserId: "u-1", assignedToDisplayName: "Sam" }), true);
-  assert.equal(isValidAccountOwner({ assignedToEmployeeId: "emp-1" }), true);
-  assert.equal(isValidAccountOwner({ assignedToDisplayName: "Sam" }), false); // no id
+// --- account owner: COMPLETE Person Assignment required ---
+const completeOwner = {
+  assignedToEmployeeId: "emp-1",
+  assignedToUserId: "u-1",
+  assignedToDisplayName: "Sam Owner",
+  assignedByEmployeeId: "emp-9",
+  assignedByUserId: "u-9",
+  assignedAt: 1_720_000_000_000,
+};
+ok("accountOwner: unset is valid (optional field)", () => {
+  assert.equal(isCompleteAccountOwner(null), true);
+  assert.equal(isCompleteAccountOwner(undefined), true);
+});
+ok("accountOwner: a fully-populated assignment is valid", () => {
+  assert.equal(isCompleteAccountOwner(completeOwner), true);
+});
+ok("accountOwner: rejects an arbitrary/partial record (missing any required piece)", () => {
+  assert.equal(isCompleteAccountOwner({ ...completeOwner, assignedToUserId: null }), false); // no linked user
+  assert.equal(isCompleteAccountOwner({ ...completeOwner, assignedToEmployeeId: null }), false); // no linked employee
+  assert.equal(isCompleteAccountOwner({ ...completeOwner, assignedToDisplayName: null }), false); // no name snapshot
+  assert.equal(isCompleteAccountOwner({ ...completeOwner, assignedByEmployeeId: null }), false); // no assignor employee
+  assert.equal(isCompleteAccountOwner({ ...completeOwner, assignedByUserId: null }), false); // no assignor user
+  assert.equal(isCompleteAccountOwner({ ...completeOwner, assignedAt: undefined }), false); // no timestamp
+  assert.equal(isCompleteAccountOwner({ ...completeOwner, assignedAt: NaN }), false); // non-finite timestamp
+  assert.equal(isCompleteAccountOwner({ assignedToUserId: "u-1" }), false); // bare id only
 });
 
 // --- aggregate validator ---
-ok("commercialProfileErrors: valid draft -> no errors", () => {
+ok("commercialProfileErrors: valid complete draft -> no errors", () => {
   const r = commercialProfileErrors(
-    { defaultCurrency: "USD", invoiceDeliveryMethod: "EMAIL", purchaseOrderRequired: true, billingContactId: "c-1", accountOwner: { assignedToUserId: "u-1" } },
+    { defaultCurrency: "USD", invoiceDeliveryMethod: "EMAIL", purchaseOrderRequired: true, billingContactId: "c-1", accountOwner: completeOwner },
     accountContacts
   );
   assert.deepEqual(r, { valid: true, errors: {} });
 });
-ok("commercialProfileErrors: invalid currency + cross-account contact -> flagged", () => {
+ok("commercialProfileErrors: invalid currency + cross-account contact + malformed PO + partial owner -> all flagged", () => {
   const r = commercialProfileErrors(
-    { defaultCurrency: "usd", billingContactId: "c-foreign" },
+    { defaultCurrency: "usd", invoiceDeliveryMethod: "FAX", purchaseOrderRequired: "yes", billingContactId: "c-foreign", accountOwner: { assignedToUserId: "u-1" } },
     accountContacts
   );
   assert.equal(r.valid, false);
   assert.ok(r.errors.defaultCurrency);
+  assert.ok(r.errors.invoiceDeliveryMethod);
+  assert.ok(r.errors.purchaseOrderRequired);
   assert.ok(r.errors.billingContact);
+  assert.ok(r.errors.accountOwner);
+});
+ok("commercialProfileErrors: billing validation is skipped while contacts are still resolving", () => {
+  const r = commercialProfileErrors(
+    { billingContactId: "c-foreign" },
+    [],
+    { contactsResolved: false }
+  );
+  assert.equal(r.errors.billingContact, undefined); // not flagged mid-load
+  const r2 = commercialProfileErrors({ billingContactId: "c-foreign" }, [], { contactsResolved: true });
+  assert.ok(r2.errors.billingContact); // flagged once resolved
 });
 
-// --- identity resolution: current name vs "Unknown" ---
+// --- identity resolution: states preserved (loading vs error vs unknown) ---
 const byUserId = new Map([["u-1", { displayName: "Dana Prime (current)" }]]);
-ok("resolveOwnerDisplayName: resolves the CURRENT name from userId", () => {
-  assert.equal(resolveOwnerDisplayName({ assignedToUserId: "u-1", assignedToDisplayName: "Dana (stale snapshot)" }, byUserId), "Dana Prime (current)");
+ok("resolveOwnerIdentity: unset -> {unset}", () => {
+  assert.deepEqual(resolveOwnerIdentity(null, { byUserId }), { state: "unset", name: null });
+  assert.deepEqual(resolveOwnerIdentity({ assignedToDisplayName: "x" }, { byUserId }), { state: "unset", name: null });
 });
-ok("resolveOwnerDisplayName: unresolved -> 'Unknown owner' (never the raw id/stale snapshot)", () => {
-  assert.equal(resolveOwnerDisplayName({ assignedToUserId: "u-gone", assignedToDisplayName: "Old Name" }, byUserId), "Unknown owner");
+ok("resolveOwnerIdentity: loading -> {loading}, never 'Unknown' prematurely", () => {
+  const r = resolveOwnerIdentity({ assignedToUserId: "u-gone" }, { byUserId: new Map(), loading: true });
+  assert.equal(r.state, "loading");
+  assert.equal(r.name, null);
 });
-ok("resolveOwnerDisplayName: unset -> null", () => {
-  assert.equal(resolveOwnerDisplayName(null, byUserId), null);
-  assert.equal(resolveOwnerDisplayName({ assignedToDisplayName: "x" }, byUserId), null);
+ok("resolveOwnerIdentity: error -> {error}, not stuck loading", () => {
+  const r = resolveOwnerIdentity({ assignedToUserId: "u-1" }, { byUserId: new Map(), error: new Error("denied") });
+  assert.equal(r.state, "error");
 });
-ok("resolveContactName: own contact -> name; foreign -> 'Unknown contact'; unset -> null", () => {
-  assert.equal(resolveContactName("c-1", accountContacts), "Dana Prime");
-  assert.equal(resolveContactName("c-foreign", accountContacts), "Unknown contact");
-  assert.equal(resolveContactName(null, accountContacts), null);
+ok("resolveOwnerIdentity: resolved -> CURRENT name (not the stored snapshot)", () => {
+  const r = resolveOwnerIdentity({ assignedToUserId: "u-1", assignedToDisplayName: "Dana (stale snapshot)" }, { byUserId });
+  assert.deepEqual(r, { state: "resolved", name: "Dana Prime (current)" });
+});
+ok("resolveOwnerIdentity: completed unresolved -> {unknown, 'Unknown owner'}", () => {
+  const r = resolveOwnerIdentity({ assignedToUserId: "u-gone", assignedToDisplayName: "Old Name" }, { byUserId, loading: false });
+  assert.deepEqual(r, { state: "unknown", name: "Unknown owner" });
+});
+
+ok("resolveContactIdentity: unset / loading / error / resolved / unknown", () => {
+  assert.deepEqual(resolveContactIdentity(null, { contacts: accountContacts }), { state: "unset", name: null });
+  assert.equal(resolveContactIdentity("c-1", { contacts: [], loading: true }).state, "loading");
+  assert.equal(resolveContactIdentity("c-1", { contacts: [], error: new Error("x") }).state, "error");
+  assert.deepEqual(resolveContactIdentity("c-1", { contacts: accountContacts }), { state: "resolved", name: "Dana Prime" });
+  assert.deepEqual(resolveContactIdentity("c-foreign", { contacts: accountContacts }), { state: "unknown", name: "Unknown contact" });
 });
 
 console.log(`\n${passed} passed, 0 failed`);

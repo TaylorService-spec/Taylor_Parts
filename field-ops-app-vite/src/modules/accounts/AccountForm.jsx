@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ACCOUNT_STATUS, ACCOUNT_RELATIONSHIP_TYPE, INVOICE_DELIVERY_METHOD } from "../../domain/constants";
-import { commercialProfileErrors } from "../../domain/commercialProfile";
+import { commercialProfileErrors, isValidInvoiceDeliveryMethod, isContactOnAccount } from "../../domain/commercialProfile";
+import { useAuth } from "../../auth/AuthContext";
 import AddressFields from "../../shared/address/AddressFields";
 import EmployeeAssignmentPicker from "../../shared/assignment/EmployeeAssignmentPicker";
 
@@ -13,14 +14,22 @@ import EmployeeAssignmentPicker from "../../shared/assignment/EmployeeAssignment
 //
 // Account Commercial Profile -- PR 1. Adds the informational Commercial
 // Profile fields (defaultCurrency, purchaseOrderRequired,
-// invoiceDeliveryMethod, billingContact, accountOwner) with explicit
-// validation. `contacts` (this Account's own contacts) is passed in edit mode
-// so the billing-contact picker can only choose a contact belonging to this
-// Account. NOTE (interim, per the Implementation Plan's audit-integrity
-// invariant): these are client-direct edits for now; once the audit log +
-// trusted server-side writer ship, mutation moves there and direct client
-// writes are denied.
-export default function AccountForm({ initialValues, onSubmit, onCancel, submitLabel, contacts = [] }) {
+// invoiceDeliveryMethod, billingContact, accountOwner) with explicit,
+// LIVE validation -- every field's error renders beside it (surfacing a
+// malformed stored value the moment the form opens, never silently coercing
+// it). `contacts`/`contactsLoading` (this Account's own contacts) are passed
+// in edit mode so the billing-contact picker only offers a contact belonging
+// to this Account, and billing validation waits for the list to resolve.
+// accountOwner is captured as a COMPLETE Person Assignment: the reciprocally
+// linked assignee (employeeId + userId) and resolved name snapshot from the
+// picker, plus the assignor's employee/user IDs from the authenticated
+// session and a timestamp. NOTE (interim, per the Implementation Plan's
+// audit-integrity invariant): these are client-direct edits for now; once the
+// audit log + trusted server-side writer ship, mutation moves there and direct
+// client writes are denied.
+export default function AccountForm({ initialValues, onSubmit, onCancel, submitLabel, contacts = [], contactsLoading = false }) {
+  const { user, employeeId: sessionEmployeeId, loading: authLoading } = useAuth();
+
   const [name, setName] = useState(initialValues?.name ?? "");
   const [address, setAddress] = useState({
     street: initialValues?.billingAddress?.street ?? "",
@@ -38,13 +47,38 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
   const [accountingId, setAccountingId] = useState(initialValues?.accountingId ?? "");
   const [legacyId, setLegacyId] = useState(initialValues?.legacyId ?? "");
 
-  // Commercial Profile (PR 1)
+  // Commercial Profile (PR 1). purchaseOrderRequired is held as its RAW stored
+  // value (not Boolean()-coerced) so a malformed stored value is validated and
+  // surfaced rather than silently normalized; the checkbox reflects only a
+  // strict `=== true`.
   const [defaultCurrency, setDefaultCurrency] = useState(initialValues?.defaultCurrency ?? "");
-  const [purchaseOrderRequired, setPurchaseOrderRequired] = useState(Boolean(initialValues?.purchaseOrderRequired));
+  const [purchaseOrderRequired, setPurchaseOrderRequired] = useState(initialValues?.purchaseOrderRequired);
   const [invoiceDeliveryMethod, setInvoiceDeliveryMethod] = useState(initialValues?.invoiceDeliveryMethod ?? "");
   const [billingContactId, setBillingContactId] = useState(initialValues?.billingContact?.contactId ?? "");
   const [accountOwner, setAccountOwner] = useState(initialValues?.accountOwner ?? null);
-  const [errors, setErrors] = useState({});
+  const [submitAttempted, setSubmitAttempted] = useState(false);
+
+  // Live Commercial Profile validation -- errors render beside their fields.
+  const cpDraft = useMemo(
+    () => ({
+      defaultCurrency: defaultCurrency.trim().toUpperCase() || undefined,
+      invoiceDeliveryMethod: invoiceDeliveryMethod || undefined,
+      purchaseOrderRequired,
+      billingContactId: billingContactId || null,
+      accountOwner,
+    }),
+    [defaultCurrency, invoiceDeliveryMethod, purchaseOrderRequired, billingContactId, accountOwner]
+  );
+  const { valid: cpValid, errors } = useMemo(
+    () => commercialProfileErrors(cpDraft, contacts, { contactsResolved: !contactsLoading }),
+    [cpDraft, contacts, contactsLoading]
+  );
+
+  // A stored value that is set but not a member of the enum / this Account's
+  // contacts: surfaced (as a labeled option + an error) rather than dropped.
+  const invoiceMethodInvalid = Boolean(invoiceDeliveryMethod) && !isValidInvoiceDeliveryMethod(invoiceDeliveryMethod);
+  const billingContactForeign =
+    Boolean(billingContactId) && !contactsLoading && !isContactOnAccount(billingContactId, contacts);
 
   function handleAddressChange(field, value) {
     setAddress((cur) => ({ ...cur, [field]: value }));
@@ -54,10 +88,14 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
     setRelationshipTypes((cur) => (cur.includes(type) ? cur.filter((t) => t !== type) : [...cur, type]));
   }
 
+  // Builds a COMPLETE Person Assignment. The assignee (employeeId + userId +
+  // resolved display name) comes from the picker; the assignor's employee/user
+  // IDs come from the authenticated session (never a client-chosen value); the
+  // timestamp is stamped now. If any required piece is missing (e.g. the
+  // signed-in user has no provisioned employeeId), the resulting record is
+  // incomplete and validation blocks the save -- an arbitrary/partial owner is
+  // never accepted.
   function handleOwnerSelect(sel) {
-    // Person Assignment snapshot (assignedBy is added by the trusted writer in
-    // a later PR, which has server-side actor context). Display re-resolves the
-    // CURRENT name from assignedToUserId, so the snapshot name is historical.
     if (!sel) {
       setAccountOwner(null);
       return;
@@ -66,29 +104,20 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
       assignedToEmployeeId: sel.employeeId ?? null,
       assignedToUserId: sel.userId ?? null,
       assignedToDisplayName: sel.displayName ?? null,
+      assignedByEmployeeId: sessionEmployeeId ?? null,
+      assignedByUserId: user?.uid ?? null,
       assignedAt: Date.now(),
     });
   }
 
   function handleSubmit(e) {
     e.preventDefault();
+    setSubmitAttempted(true);
     const trimmedName = name.trim();
     if (!trimmedName) return;
+    if (!cpValid) return; // errors are already rendered beside each field
 
     const trimmedCurrency = defaultCurrency.trim().toUpperCase();
-    const draft = {
-      defaultCurrency: trimmedCurrency || undefined,
-      invoiceDeliveryMethod: invoiceDeliveryMethod || undefined,
-      purchaseOrderRequired,
-      billingContactId: billingContactId || null,
-      accountOwner,
-    };
-    const { valid, errors: cpErrors } = commercialProfileErrors(draft, contacts);
-    if (!valid) {
-      setErrors(cpErrors);
-      return;
-    }
-    setErrors({});
 
     const trimmedStreet = address.street.trim();
     const trimmedCity = address.city.trim();
@@ -116,9 +145,10 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
       erpId: erpId.trim() || null,
       accountingId: accountingId.trim() || null,
       legacyId: legacyId.trim() || null,
-      // Commercial Profile (PR 1)
+      // Commercial Profile (PR 1) -- validation above guarantees these are
+      // well-formed by the time we reach here.
       defaultCurrency: trimmedCurrency || null,
-      purchaseOrderRequired,
+      purchaseOrderRequired: purchaseOrderRequired === true,
       invoiceDeliveryMethod: invoiceDeliveryMethod || null,
       billingContact: billingContactId ? { contactId: billingContactId } : null,
       accountOwner,
@@ -170,38 +200,65 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
             placeholder="e.g. USD"
             value={defaultCurrency}
             maxLength={3}
+            aria-invalid={errors.defaultCurrency ? true : undefined}
             onChange={(e) => setDefaultCurrency(e.target.value.toUpperCase())}
           />
           {errors.defaultCurrency && <div className="fo-warning">{errors.defaultCurrency}</div>}
         </div>
 
-        <label className="fo-checkbox-label">
-          <input type="checkbox" checked={purchaseOrderRequired} onChange={(e) => setPurchaseOrderRequired(e.target.checked)} />
-          Purchase order required
-        </label>
+        <div className="fo-form-field">
+          <label className="fo-checkbox-label">
+            <input
+              type="checkbox"
+              checked={purchaseOrderRequired === true}
+              onChange={(e) => setPurchaseOrderRequired(e.target.checked)}
+            />
+            Purchase order required
+          </label>
+          {errors.purchaseOrderRequired && <div className="fo-warning">{errors.purchaseOrderRequired}</div>}
+        </div>
 
         <div className="fo-form-field">
           <label htmlFor="cp-invoice-delivery">Invoice delivery method</label>
-          <select id="cp-invoice-delivery" value={invoiceDeliveryMethod} onChange={(e) => setInvoiceDeliveryMethod(e.target.value)}>
+          <select
+            id="cp-invoice-delivery"
+            value={invoiceDeliveryMethod}
+            aria-invalid={errors.invoiceDeliveryMethod ? true : undefined}
+            onChange={(e) => setInvoiceDeliveryMethod(e.target.value)}
+          >
             <option value="">—</option>
             {Object.values(INVOICE_DELIVERY_METHOD).map((m) => (
               <option key={m} value={m}>{m}</option>
             ))}
+            {/* Surface a malformed stored value instead of silently blanking it. */}
+            {invoiceMethodInvalid && <option value={invoiceDeliveryMethod}>{invoiceDeliveryMethod} (invalid)</option>}
           </select>
+          {errors.invoiceDeliveryMethod && <div className="fo-warning">{errors.invoiceDeliveryMethod}</div>}
         </div>
 
-        {/* Billing contact — only a Contact belonging to THIS Account (edit mode
-            supplies `contacts`; create mode has none yet, so it is hidden). */}
-        {contacts.length > 0 && (
+        {/* Billing contact — only a Contact belonging to THIS Account. The
+            picker is shown once this Account has contacts; the error is shown
+            regardless (so a foreign stored id surfaces even with no contacts). */}
+        {contacts.length > 0 ? (
           <div className="fo-form-field">
             <label htmlFor="cp-billing-contact">Billing contact</label>
-            <select id="cp-billing-contact" value={billingContactId} onChange={(e) => setBillingContactId(e.target.value)}>
+            <select
+              id="cp-billing-contact"
+              value={billingContactId}
+              aria-invalid={errors.billingContact ? true : undefined}
+              onChange={(e) => setBillingContactId(e.target.value)}
+            >
               <option value="">—</option>
               {contacts.map((c) => (
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
+              {/* Surface a stored id that isn't one of this Account's contacts. */}
+              {billingContactForeign && <option value={billingContactId}>{billingContactId} (not on this account)</option>}
             </select>
+            {errors.billingContact && <div className="fo-warning">{errors.billingContact}</div>}
           </div>
+        ) : (
+          errors.billingContact && <div className="fo-warning">{errors.billingContact}</div>
         )}
 
         <div className="fo-form-field">
@@ -211,7 +268,12 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
               <button type="button" className="fo-link-btn" onClick={() => setAccountOwner(null)}>Clear</button>
             </div>
           )}
-          <EmployeeAssignmentPicker onSelect={handleOwnerSelect} label="Account owner" placeholder="Search owner by name..." />
+          <EmployeeAssignmentPicker
+            onSelect={handleOwnerSelect}
+            label="Account owner"
+            placeholder="Search owner by name..."
+            disabled={authLoading}
+          />
           {errors.accountOwner && <div className="fo-warning">{errors.accountOwner}</div>}
         </div>
       </fieldset>
@@ -240,6 +302,10 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
           <input placeholder="Accounting ID (optional)" value={accountingId} onChange={(e) => setAccountingId(e.target.value)} />
           <input placeholder="Legacy ID (optional)" value={legacyId} onChange={(e) => setLegacyId(e.target.value)} />
         </>
+      )}
+
+      {submitAttempted && !cpValid && (
+        <div className="fo-warning" role="alert">Fix the highlighted Commercial Profile fields before saving.</div>
       )}
 
       <div className="fo-btn-row">
