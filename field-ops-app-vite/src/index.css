@@ -158,6 +158,23 @@ body { -webkit-font-smoothing: antialiased; font-family: -apple-system, BlinkMac
 .fo-badge-prospect { background: #FFF4DE; color: #A9740D; }
 .fo-badge-archived { background: #EEF1F0; color: #889; }
 
+/* Customer/Account Business Model -- Customer PR 2. Relationship-type
+   badges, sectioned-page helpers, and the relationship fieldset. No tab
+   styles here -- the tab shell is intentionally not part of this page. */
+.fo-badge-relationship-customer { background: #E6F0FB; color: #1F5FA9; }
+.fo-badge-relationship-vendor { background: #F3EAFB; color: #6B3FA0; }
+.fo-badge-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0; }
+.fo-account-summary { margin-bottom: 8px; }
+.fo-warning { color: #B23B3B; font-size: 14px; }
+.fo-fieldset { border: 1px solid #E1E6E5; border-radius: 8px; padding: 8px 12px; display: flex; gap: 16px; flex-wrap: wrap; }
+.fo-fieldset legend { font-size: 13px; color: #667; padding: 0 4px; }
+.fo-account-collapsible { margin-top: 12px; }
+.fo-account-collapsible summary { cursor: pointer; font-weight: 600; padding: 6px 0; }
+
+/* Customer/Account Business Model -- Customer PR 3, Service Activity. */
+.fo-service-activity-counts { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.fo-activity-list { list-style: none; margin: 0; padding: 0; }
+
 .fo-link-btn { background: none; border: none; color: #2E4A50; text-decoration: underline; cursor: pointer; padding: 0; font-size: 13px; text-align: left; }
 .fo-checkbox-label { display: flex; align-items: center; gap: 6px; font-size: 14px; }
 

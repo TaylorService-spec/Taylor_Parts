@@ -5,24 +5,56 @@ import { useLocationsForAccount } from "../../hooks/useLocationsForAccount";
 import { useContactsForAccount } from "../../hooks/useContactsForAccount";
 import { updateAccount } from "../../domain/accounts";
 import { createLocation } from "../../domain/locations";
-import { createContact } from "../../domain/contacts";
+import { createContact, primaryContactState } from "../../domain/contacts";
+import { formatAddress } from "../../domain/address";
+import { ACCOUNT_RELATIONSHIP_TYPE } from "../../domain/constants";
+import AddressFields from "../../shared/address/AddressFields";
 import AccountForm from "./AccountForm";
+import ServiceActivitySection from "./ServiceActivitySection";
 
 // Sprint 2.0.2 -- Customer Foundation. Internal name AccountDetail;
-// rendered UI says "Customer Detail" throughout. Locations and
-// Contacts are shown inline here only -- no standalone top-level list
-// page for either, per this sprint's scope (no current product need to
-// browse locations/contacts independent of their Account). Future tabs
-// (Overview/Locations/Contacts/Timeline/Work Orders/Invoices) are
-// documented as a future shape, not built this sprint -- this file is
-// a single flat panel, not a tab shell.
+// rendered UI says "Customer Detail" throughout.
+//
+// Customer/Account Business Model -- Customer PR 2 (docs/specifications/
+// customer-account-business-model.md). Reworked from a flat panel into the
+// approved SIX-SECTION layout (not tabs, per the Owner's direction), in
+// reading order: Account Summary -> Financial Summary -> Contacts ->
+// Locations -> Service Activity -> Notes/Identifiers. Financial Summary and
+// Service Activity are INERT mount points only in this PR -- their live
+// behavior (provider states, Work Order counts/timeline) is deliberately
+// deferred to PR 3/PR 4. Reuses the ported address/contact domain layer
+// (formatAddress, primaryContactState, AddressFields) rather than
+// re-implementing it.
+const RELATIONSHIP_LABEL = {
+  [ACCOUNT_RELATIONSHIP_TYPE.CUSTOMER]: "Customer",
+  [ACCOUNT_RELATIONSHIP_TYPE.VENDOR]: "Vendor",
+};
+
+// Renders relationship-type badges inline. An Account with no
+// relationshipTypes renders nothing (never a silent default to "Customer").
+function RelationshipBadges({ relationshipTypes }) {
+  const types = relationshipTypes ?? [];
+  const ordered = Object.values(ACCOUNT_RELATIONSHIP_TYPE).filter((t) => types.includes(t));
+  if (ordered.length === 0) return null;
+  return (
+    <>
+      {ordered.map((t) => (
+        <span key={t} className={`fo-badge fo-badge-relationship-${t.toLowerCase()}`}>
+          {RELATIONSHIP_LABEL[t] ?? t}
+        </span>
+      ))}
+    </>
+  );
+}
+
 function LocationForm({ onSubmit, onCancel }) {
   const [name, setName] = useState("");
-  const [street, setStreet] = useState("");
-  const [city, setCity] = useState("");
-  const [state, setState] = useState("");
-  const [zip, setZip] = useState("");
+  const [address, setAddress] = useState({ street: "", city: "", state: "", zip: "" });
   const [accessNotes, setAccessNotes] = useState("");
+
+  function handleAddressChange(field, value) {
+    setAddress((cur) => ({ ...cur, [field]: value }));
+  }
 
   function handleSubmit(e) {
     e.preventDefault();
@@ -30,7 +62,12 @@ function LocationForm({ onSubmit, onCancel }) {
     if (!trimmedName) return;
     onSubmit({
       name: trimmedName,
-      address: { street: street.trim(), city: city.trim(), state: state.trim(), zip: zip.trim() },
+      address: {
+        street: address.street.trim(),
+        city: address.city.trim(),
+        state: address.state.trim(),
+        zip: address.zip.trim(),
+      },
       accessNotes: accessNotes.trim() || null,
     });
   }
@@ -38,10 +75,7 @@ function LocationForm({ onSubmit, onCancel }) {
   return (
     <form className="fo-form" onSubmit={handleSubmit}>
       <input placeholder="Site name (e.g. Main Office)" value={name} onChange={(e) => setName(e.target.value)} />
-      <input placeholder="Street" value={street} onChange={(e) => setStreet(e.target.value)} />
-      <input placeholder="City" value={city} onChange={(e) => setCity(e.target.value)} />
-      <input placeholder="State" value={state} onChange={(e) => setState(e.target.value)} />
-      <input placeholder="Zip" value={zip} onChange={(e) => setZip(e.target.value)} />
+      <AddressFields value={address} onChange={handleAddressChange} idPrefix="location-address" />
       <input placeholder="Access notes (optional)" value={accessNotes} onChange={(e) => setAccessNotes(e.target.value)} />
       <div className="fo-btn-row">
         <button type="submit">Add Location</button>
@@ -81,6 +115,24 @@ function ContactForm({ onSubmit, onCancel }) {
   );
 }
 
+// Primary-contact summary for the Account Summary section -- reuses
+// primaryContactState()'s three states; the MULTIPLE case surfaces the
+// same non-silent warning the source derivation was built for.
+function PrimaryContactSummary({ contacts }) {
+  const primary = primaryContactState(contacts);
+  if (primary.state === "ONE") {
+    return <div className="fo-muted">Primary contact: {primary.contact.name}</div>;
+  }
+  if (primary.state === "MULTIPLE") {
+    return (
+      <div className="fo-warning">
+        Warning: {primary.contacts.length} contacts are marked primary — resolve to a single primary contact.
+      </div>
+    );
+  }
+  return null; // NONE -> omit, never fabricate a primary
+}
+
 export default function AccountDetail() {
   const { accountId } = useParams();
   const navigate = useNavigate();
@@ -118,6 +170,10 @@ export default function AccountDetail() {
     setShowContactForm(false);
   }
 
+  const billingLine = formatAddress(account.billingAddress);
+  const hasIdentifiers =
+    account.customerNumber || account.erpId || account.accountingId || account.legacyId;
+
   return (
     <div className="fo-panel">
       <button type="button" onClick={() => navigate("/customers")} className="fo-link-btn">
@@ -128,70 +184,106 @@ export default function AccountDetail() {
         <AccountForm initialValues={account} onSubmit={handleEditSubmit} onCancel={() => setIsEditing(false)} submitLabel="Save Changes" />
       ) : (
         <>
-          <div className="disp-board-toolbar" style={{ justifyContent: "space-between" }}>
-            <h2 style={{ margin: 0 }}>{account.name}</h2>
-            <button type="button" onClick={() => setIsEditing(true)}>Edit</button>
-          </div>
-
-          {account.status && (
-            <span className={`fo-badge fo-badge-${account.status.toLowerCase()}`}>{account.status}</span>
-          )}
-          {(account.tags ?? []).length > 0 && (
-            <div className="fo-muted">Tags: {account.tags.join(", ")}</div>
-          )}
-          {account.billingAddress && (
-            <div className="fo-muted">
-              Billing: {[account.billingAddress.street, account.billingAddress.city, account.billingAddress.state, account.billingAddress.zip]
-                .filter(Boolean)
-                .join(", ")}
+          {/* 1. Account Summary -- always visible, never collapsed */}
+          <section className="fo-account-summary">
+            <div className="disp-board-toolbar" style={{ justifyContent: "space-between" }}>
+              <h2 style={{ margin: 0 }}>{account.name}</h2>
+              <button type="button" onClick={() => setIsEditing(true)}>Edit</button>
             </div>
-          )}
-          {account.notes && <div className="wo-inventory"><strong>Notes:</strong> {account.notes}</div>}
+
+            <div className="fo-badge-row">
+              {account.status && (
+                <span className={`fo-badge fo-badge-${account.status.toLowerCase()}`}>{account.status}</span>
+              )}
+              <RelationshipBadges relationshipTypes={account.relationshipTypes} />
+            </div>
+
+            {account.customerNumber && (
+              <div className="fo-muted">Customer #: {account.customerNumber}</div>
+            )}
+            {billingLine && <div className="fo-muted">Billing: {billingLine}</div>}
+            <PrimaryContactSummary contacts={contacts} />
+            {(account.tags ?? []).length > 0 && (
+              <div className="fo-muted">Tags: {account.tags.join(", ")}</div>
+            )}
+          </section>
+
+          {/* 2. Financial Summary -- inert mount point only (PR 4 adds behavior) */}
+          <section className="wo-history">
+            <h4>Financial Summary</h4>
+            <p className="fo-muted">Not yet available in this view.</p>
+          </section>
+
+          {/* 3. Contacts */}
+          <section className="wo-history">
+            <h4>Contacts ({contacts.length})</h4>
+            {contacts.length === 0 ? (
+              <p className="fo-muted">No contacts yet.</p>
+            ) : (
+              contacts.map((contact) => (
+                <div key={contact.id} className="wo-history-row">
+                  <strong>{contact.name}</strong>
+                  {contact.isPrimary && <span className="fo-badge fo-badge-active"> Primary</span>}
+                  {contact.phone && <span className="fo-muted"> -- {contact.phone}</span>}
+                  {contact.email && <span className="fo-muted"> -- {contact.email}</span>}
+                </div>
+              ))
+            )}
+            {showContactForm ? (
+              <ContactForm onSubmit={handleAddContact} onCancel={() => setShowContactForm(false)} />
+            ) : (
+              <button type="button" onClick={() => setShowContactForm(true)}>+ Add Contact</button>
+            )}
+          </section>
+
+          {/* 4. Locations -- add-only (no Location edit action exists) */}
+          <section className="wo-history">
+            <h4>Locations ({locations.length})</h4>
+            {locations.length === 0 ? (
+              <p className="fo-muted">No locations yet.</p>
+            ) : (
+              locations.map((loc) => {
+                const locLine = formatAddress(loc.address);
+                return (
+                  <div key={loc.id} className="wo-history-row">
+                    <strong>{loc.name}</strong>
+                    {locLine && <span className="fo-muted"> -- {locLine}</span>}
+                    {loc.accessNotes && <div className="fo-muted">{loc.accessNotes}</div>}
+                  </div>
+                );
+              })
+            )}
+            {showLocationForm ? (
+              <LocationForm onSubmit={handleAddLocation} onCancel={() => setShowLocationForm(false)} />
+            ) : (
+              <button type="button" onClick={() => setShowLocationForm(true)}>+ Add Location</button>
+            )}
+          </section>
+
+          {/* 5. Service Activity -- live summary counts + Account Activity timeline (PR 3) */}
+          <ServiceActivitySection accountId={account.id} />
+
+          {/* 6. Notes / Identifiers -- collapsed by default */}
+          <details className="fo-account-collapsible">
+            <summary>Notes &amp; Identifiers</summary>
+            {account.notes ? (
+              <div className="wo-inventory"><strong>Notes:</strong> {account.notes}</div>
+            ) : (
+              <p className="fo-muted">No notes.</p>
+            )}
+            {hasIdentifiers ? (
+              <div className="fo-muted">
+                {account.customerNumber && <div>Customer #: {account.customerNumber}</div>}
+                {account.erpId && <div>ERP ID: {account.erpId}</div>}
+                {account.accountingId && <div>Accounting ID: {account.accountingId}</div>}
+                {account.legacyId && <div>Legacy ID: {account.legacyId}</div>}
+              </div>
+            ) : (
+              <p className="fo-muted">No external identifiers.</p>
+            )}
+          </details>
         </>
       )}
-
-      <div className="wo-history">
-        <h4>Locations ({locations.length})</h4>
-        {locations.length === 0 ? (
-          <p className="fo-muted">No locations yet.</p>
-        ) : (
-          locations.map((loc) => (
-            <div key={loc.id} className="wo-history-row">
-              <strong>{loc.name}</strong>
-              {loc.address && (
-                <span className="fo-muted"> -- {[loc.address.street, loc.address.city, loc.address.state, loc.address.zip].filter(Boolean).join(", ")}</span>
-              )}
-              {loc.accessNotes && <div className="fo-muted">{loc.accessNotes}</div>}
-            </div>
-          ))
-        )}
-        {showLocationForm ? (
-          <LocationForm onSubmit={handleAddLocation} onCancel={() => setShowLocationForm(false)} />
-        ) : (
-          <button type="button" onClick={() => setShowLocationForm(true)}>+ Add Location</button>
-        )}
-      </div>
-
-      <div className="wo-history">
-        <h4>Contacts ({contacts.length})</h4>
-        {contacts.length === 0 ? (
-          <p className="fo-muted">No contacts yet.</p>
-        ) : (
-          contacts.map((contact) => (
-            <div key={contact.id} className="wo-history-row">
-              <strong>{contact.name}</strong>
-              {contact.isPrimary && <span className="fo-badge fo-badge-active"> Primary</span>}
-              {contact.phone && <span className="fo-muted"> -- {contact.phone}</span>}
-              {contact.email && <span className="fo-muted"> -- {contact.email}</span>}
-            </div>
-          ))
-        )}
-        {showContactForm ? (
-          <ContactForm onSubmit={handleAddContact} onCancel={() => setShowContactForm(false)} />
-        ) : (
-          <button type="button" onClick={() => setShowContactForm(true)}>+ Add Contact</button>
-        )}
-      </div>
     </div>
   );
 }
