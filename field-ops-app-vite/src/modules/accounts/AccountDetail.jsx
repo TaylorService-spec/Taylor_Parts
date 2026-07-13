@@ -10,6 +10,7 @@ import { formatAddress } from "../../domain/address";
 import { ACCOUNT_RELATIONSHIP_TYPE } from "../../domain/constants";
 import AddressFields from "../../shared/address/AddressFields";
 import AccountForm from "./AccountForm";
+import ServiceActivitySection from "./ServiceActivitySection";
 
 // Sprint 2.0.2 -- Customer Foundation. Internal name AccountDetail;
 // rendered UI says "Customer Detail" throughout.
@@ -259,11 +260,8 @@ export default function AccountDetail() {
             )}
           </section>
 
-          {/* 5. Service Activity -- inert mount point only (PR 3 adds queries) */}
-          <section className="wo-history">
-            <h4>Service Activity</h4>
-            <p className="fo-muted">Not yet available in this view.</p>
-          </section>
+          {/* 5. Service Activity -- live summary counts + Account Activity timeline (PR 3) */}
+          <ServiceActivitySection accountId={account.id} />
 
           {/* 6. Notes / Identifiers -- collapsed by default */}
           <details className="fo-account-collapsible">

@@ -104,7 +104,7 @@ import { chromium } from "@playwright/test";
 import { mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { DRIVER_ACCOUNTS, NOTIFICATION_IDENTITY_FIXTURE, CANCEL_VOID_FIXTURE, seedLedgerTransactions, db } from "./seed.mjs";
+import { DRIVER_ACCOUNTS, NOTIFICATION_IDENTITY_FIXTURE, CANCEL_VOID_FIXTURE, SERVICE_ACTIVITY_FIXTURE, seedLedgerTransactions, db } from "./seed.mjs";
 import { readFileSync } from "node:fs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -144,6 +144,17 @@ function inventoryUrl(partId, requestId) {
   const url = new URL(`inventory/${partId}`, APP_ROOT);
   url.searchParams.set("emulator", "1");
   if (requestId) url.searchParams.set("requestId", requestId);
+  return url.toString();
+}
+
+// Customer/Account Business Model -- Customer PR 3, Service Activity.
+// Direct /customers/:accountId URL carrying ?emulator=1. A full page.goto()
+// with this param preserves the Auth session (same as the inventory URL
+// path in verify-inventory-health-catalog -- distinct from the page.reload()
+// session-drop quirk).
+function customerUrl(accountId) {
+  const url = new URL(`customers/${accountId}`, APP_ROOT);
+  url.searchParams.set("emulator", "1");
   return url.toString();
 }
 
@@ -800,6 +811,161 @@ async function verifyInventoryHealthCatalog(browser, page, accountKey) {
   return niFailed === 0;
 }
 
+// Customer/Account Business Model -- Customer PR 3, Service Activity
+// (docs/specifications/customer-account-business-model.md). Same
+// niReport()-based PASS/FAIL style as the verify-* commands above. Expected
+// counts are DERIVED from SERVICE_ACTIVITY_FIXTURE.statuses (no magic
+// numbers) so they stay correct if the fixture changes.
+async function verifyServiceActivity(browser, page, accountKey) {
+  const st = SERVICE_ACTIVITY_FIXTURE.statuses;
+  const expectedCompleted = st.filter((s) => ["COMPLETED", "CLOSED"].includes(s)).length;
+  const expectedOpen = st.filter((s) => !["COMPLETED", "CLOSED", "CANCELLED"].includes(s)).length;
+  const total = st.length;
+  const pageSize = SERVICE_ACTIVITY_FIXTURE.pageSize;
+
+  await login(page, accountKey);
+  await page.goto(customerUrl(SERVICE_ACTIVITY_FIXTURE.accountId), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await page.getByRole("heading", { name: "Service Activity", exact: true }).waitFor({ timeout: 10000 });
+
+  // Counts and timeline are async one-shot reads, and the two counts resolve
+  // INDEPENDENTLY -- wait for each count's value and the timeline's first row
+  // before asserting, so these checks never race an in-flight fetch.
+  await page.getByText(`Completed Work Orders: ${expectedCompleted}`).waitFor({ timeout: 10000 });
+  await page.getByText(`Open Work Orders: ${expectedOpen}`).waitFor({ timeout: 10000 });
+  await page.locator("ul.fo-activity-list > li").first().waitFor({ timeout: 10000 });
+
+  // --- Counts: exact, and CANCELLED excluded from both ---
+  const countsText = await page.locator(".fo-service-activity-counts").innerText().catch(() => "");
+  niReport(
+    `Counts: Completed Work Orders is exactly ${expectedCompleted} (COMPLETED + CLOSED)`,
+    new RegExp(`Completed Work Orders:\\s*${expectedCompleted}\\b`).test(countsText),
+    countsText
+  );
+  niReport(
+    `Counts: Open Work Orders is exactly ${expectedOpen} (eight non-terminal statuses; CANCELLED excluded)`,
+    new RegExp(`Open Work Orders:\\s*${expectedOpen}\\b`).test(countsText),
+    countsText
+  );
+
+  // --- Count block and timeline are separate elements, both rendered ---
+  const countsPresent = await page.locator(".fo-service-activity-counts").isVisible().catch(() => false);
+  const listPresent = await page.locator("ul.fo-activity-list").isVisible().catch(() => false);
+  niReport("Count block and Account Activity timeline are distinct elements, both rendered (independent queries)", countsPresent && listPresent);
+
+  // --- Bounded first page = pageSize ---
+  const initialRows = await page.locator("ul.fo-activity-list > li").count();
+  niReport(`Timeline initial page is bounded to pageSize (${pageSize})`, initialRows === pageSize, `rows=${initialRows}`);
+
+  // --- Newest-first + CANCELLED present in the timeline (excluded from counts, shown in the record) ---
+  const firstRow = page.locator("ul.fo-activity-list > li").first();
+  const firstText = await firstRow.innerText().catch(() => "");
+  niReport("Timeline is newest-first: first row is WO-SA-000", /WO-SA-000/.test(firstText), firstText);
+  niReport("Timeline includes CANCELLED Work Orders (present in the record though excluded from counts)", /CANCELLED/.test(firstText), firstText);
+
+  // --- Exact Work Order drill-down link ---
+  const firstHref = await firstRow.locator("a").first().getAttribute("href").catch(() => null);
+  // The rendered href carries the app basename (/Taylor_Parts/field-ops) --
+  // match by the route suffix, which is what the <Link to> actually targets.
+  niReport(
+    "Timeline row links to the exact Work Order detail route (/service/work-orders/sa-wo-00)",
+    typeof firstHref === "string" && firstHref.endsWith("/service/work-orders/sa-wo-00"),
+    `href=${firstHref}`
+  );
+
+  // --- Cursor pagination: Load More to the end ---
+  const loadMore = page.getByRole("button", { name: "Load More" });
+  niReport("Load More is present on a full first page", await loadMore.isVisible().catch(() => false));
+  await loadMore.click();
+  await page.waitForTimeout(500);
+  const allRows = await page.locator("ul.fo-activity-list > li").count();
+  niReport(`After Load More, all ${total} Work Orders are shown`, allRows === total, `rows=${allRows}`);
+  const endVisible = await page.getByText("End of activity.").isVisible().catch(() => false);
+  niReport("End-of-activity indicator shows once fully paginated", endVisible);
+  const loadMoreGoneAtEnd = await page.getByRole("button", { name: "Load More" }).isVisible().catch(() => false);
+  niReport("Load More disappears at the end", !loadMoreGoneAtEnd);
+
+  // --- Accessibility: semantic list + a real link per row + section heading ---
+  const listCount = await page.locator("ul.fo-activity-list").count();
+  niReport("Accessibility: timeline is a semantic list (ul/li)", listCount === 1);
+  const anchorCount = await page.locator("ul.fo-activity-list > li a").count();
+  niReport("Accessibility: every timeline row exposes a real link", anchorCount === total, `anchors=${anchorCount}`);
+
+  // --- Failure INDEPENDENCE. Playwright request interception against the
+  // emulator's REST transport: each count is its own
+  // documents:runAggregationQuery (distinguishable by the status values in
+  // the request body -- "CLOSED" only in Completed, "WORK_IN_PROGRESS" only
+  // in Open); the timeline is documents:runQuery. Each scenario reloads the
+  // page with ONE specific request forced to a non-retryable 400 and asserts
+  // the OTHER elements still render -- proving no shared failure state. ---
+  const AGG = "**/documents:runAggregationQuery**";
+  const RUNQ = "**/documents:runQuery**";
+  async function withFailedRequests(urlGlob, shouldFail, fn) {
+    const handler = (route) => {
+      const req = route.request();
+      if (req.method() === "OPTIONS") return route.continue(); // let CORS preflight through
+      if (shouldFail(req.postData() || "")) {
+        return route.fulfill({
+          status: 400,
+          contentType: "application/json",
+          body: '{"error":{"code":400,"status":"INVALID_ARGUMENT","message":"injected test failure"}}',
+        });
+      }
+      return route.continue();
+    };
+    await page.route(urlGlob, handler);
+    try {
+      await page.goto(customerUrl(SERVICE_ACTIVITY_FIXTURE.accountId), { waitUntil: "domcontentloaded", timeout: 20000 });
+      await page.getByRole("heading", { name: "Service Activity", exact: true }).waitFor({ timeout: 10000 });
+      await fn();
+    } finally {
+      await page.unroute(urlGlob);
+    }
+  }
+  const seen = (loc) => loc.first().waitFor({ timeout: 12000 }).then(() => true).catch(() => false);
+
+  // A: Completed count fails -> Open count still renders its value.
+  await withFailedRequests(AGG, (b) => b.includes("CLOSED"), async () => {
+    const completedErr = await seen(page.getByText("Completed Work Orders: unavailable"));
+    const openValue = await seen(page.getByText(`Open Work Orders: ${expectedOpen}`));
+    niReport("Failure independence: Completed count fails while Open count still renders", completedErr && openValue, `completedErr=${completedErr} openValue=${openValue}`);
+  });
+
+  // B: Open count fails -> Completed count still renders its value.
+  await withFailedRequests(AGG, (b) => b.includes("WORK_IN_PROGRESS"), async () => {
+    const openErr = await seen(page.getByText("Open Work Orders: unavailable"));
+    const completedValue = await seen(page.getByText(`Completed Work Orders: ${expectedCompleted}`));
+    niReport("Failure independence: Open count fails while Completed count still renders", openErr && completedValue, `openErr=${openErr} completedValue=${completedValue}`);
+  });
+
+  // (The symmetric "timeline failure does not hide the counts" scenario is
+  // covered deterministically by test/serviceActivityView.test.mjs -- the
+  // timeline getDocs runs over the shared WebChannel, which can't be failed
+  // selectively at the network level without also breaking the account load
+  // that the counts depend on being on-screen; the pure render-view unit
+  // test proves that direction without that entanglement.)
+
+  // D: Both counts fail -> timeline still renders.
+  await withFailedRequests(AGG, () => true, async () => {
+    const completedErr = await seen(page.getByText("Completed Work Orders: unavailable"));
+    const openErr = await seen(page.getByText("Open Work Orders: unavailable"));
+    const timelineRows = await page.locator("ul.fo-activity-list > li").count();
+    niReport("Failure independence: count failure does not hide the timeline", completedErr && openErr && timelineRows > 0, `completedErr=${completedErr} openErr=${openErr} rows=${timelineRows}`);
+  });
+
+  // --- Responsive: no horizontal overflow at mobile width (fresh, un-faulted load) ---
+  await page.unroute(AGG).catch(() => {});
+  await page.unroute(RUNQ).catch(() => {});
+  await page.goto(customerUrl(SERVICE_ACTIVITY_FIXTURE.accountId), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await page.getByRole("heading", { name: "Service Activity", exact: true }).waitFor({ timeout: 10000 });
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.waitForTimeout(200);
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
+  niReport("Responsive: no horizontal overflow at 375px mobile", overflow === false);
+
+  console.log(`\n${niPassed} passed, ${niFailed} failed`);
+  return niFailed === 0;
+}
+
 async function main() {
   const [, , command, ...args] = process.argv;
   const browser = await chromium.launch();
@@ -866,6 +1032,10 @@ async function main() {
     } else if (command === "verify-inventory-health-catalog") {
       const [accountKey = "admin"] = args;
       const ok = await verifyInventoryHealthCatalog(browser, page, accountKey);
+      if (!ok) process.exitCode = 1;
+    } else if (command === "verify-service-activity") {
+      const [accountKey = "admin"] = args;
+      const ok = await verifyServiceActivity(browser, page, accountKey);
       if (!ok) process.exitCode = 1;
     } else {
       console.error(`Unknown command "${command}". See the header comment in this file for usage.`);
