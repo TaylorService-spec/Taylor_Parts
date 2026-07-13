@@ -265,7 +265,7 @@ import { dirname, join } from "node:path";
 // issue the exact query shape useReorderRequestsByStatuses() does,
 // the same way the real app would, rather than the Admin SDK's
 // rules-bypassing `db` handle everything else in this file uses.
-import { initializeApp } from "firebase/app";
+import { initializeApp, deleteApp } from "firebase/app";
 import { getAuth, connectAuthEmulator, signInWithEmailAndPassword } from "firebase/auth";
 import { getFirestore as getClientFirestore, connectFirestoreEmulator, collection, query, where, onSnapshot } from "firebase/firestore";
 import {
@@ -1017,6 +1017,20 @@ async function verifyInventoryHealthCatalog(browser, page, accountKey) {
 // the same commit sequence (per that Specification's own "Within PR A"
 // note), not because they share any UI state.
 async function verifyPrA(browser, page, accountKey) {
+  // CLEANUP FIX -- both isolated probe Firebase client apps below
+  // (probeApp2 "employee-directory-failure-probe", probeApp
+  // "query-failure-probe") were never deleted/terminated, and their
+  // onSnapshot() listeners' 15000ms fallback setTimeout()s were never
+  // cleared on the normal (non-timeout) resolution path -- either alone
+  // is enough to keep the Node process's event loop alive well past
+  // this function's own `return`, which is why `node
+  // driver.mjs verify-pr-a` previously had to be killed by an external
+  // timeout rather than exiting on its own. Declared here, at function
+  // scope, so the `finally` block below can always reach them
+  // regardless of which branch of the function body ran or threw.
+  let probeApp = null;
+  let probeApp2 = null;
+  try {
   await login(page, accountKey);
   await goToInventory(page);
 
@@ -1143,7 +1157,7 @@ async function verifyPrA(browser, page, accountKey) {
   // "Unknown assignee", never propagates or ignores the error), this
   // establishes the same guarantee an end-to-end DOM assertion would. ---
   {
-    const probeApp2 = initializeApp({ projectId: "taylor-parts", apiKey: "fake-key-emulator-only" }, "employee-directory-failure-probe");
+    probeApp2 = initializeApp({ projectId: "taylor-parts", apiKey: "fake-key-emulator-only" }, "employee-directory-failure-probe");
     const probeAuth2 = getAuth(probeApp2);
     connectAuthEmulator(probeAuth2, "http://127.0.0.1:9099", { disableWarnings: true });
     const probeDb2 = getClientFirestore(probeApp2);
@@ -1154,18 +1168,28 @@ async function verifyPrA(browser, page, accountKey) {
 
     const directoryProbeResult = await new Promise((resolve) => {
       const q = query(collection(probeDb2, "employees"));
+      let timeoutHandle;
       const unsubscribe = onSnapshot(
         q,
         (snap) => {
+          clearTimeout(timeoutHandle);
           unsubscribe();
           resolve({ succeeded: true, size: snap.size });
         },
         (err) => {
+          clearTimeout(timeoutHandle);
           unsubscribe();
           resolve({ succeeded: false, code: err.code });
         }
       );
-      setTimeout(() => resolve({ succeeded: null, timedOut: true }), 15000);
+      // Unsubscribes on the timeout path too -- previously, a listener
+      // that never fired at all (neither branch above) left its
+      // onSnapshot() subscription open indefinitely, since unsubscribe()
+      // was only reachable from inside the two branches it never took.
+      timeoutHandle = setTimeout(() => {
+        unsubscribe();
+        resolve({ succeeded: null, timedOut: true });
+      }, 15000);
     });
     niReport(
       "Employee directory's exact query shape: a genuinely unauthorized session gets an error, not empty results",
@@ -1293,7 +1317,7 @@ async function verifyPrA(browser, page, accountKey) {
   // needs a live check -- this establishes the same guarantee an
   // end-to-end DOM assertion would, without asserting something this
   // environment cannot actually produce. ---
-  const probeApp = initializeApp({ projectId: "taylor-parts", apiKey: "fake-key-emulator-only" }, "query-failure-probe");
+  probeApp = initializeApp({ projectId: "taylor-parts", apiKey: "fake-key-emulator-only" }, "query-failure-probe");
   const probeAuth = getAuth(probeApp);
   connectAuthEmulator(probeAuth, "http://127.0.0.1:9099", { disableWarnings: true });
   const probeDb = getClientFirestore(probeApp);
@@ -1307,18 +1331,26 @@ async function verifyPrA(browser, page, accountKey) {
       collection(probeDb, "reorder_requests"),
       where("status", "in", ["ASSIGNED_TO_PARTS_ASSOCIATE", "PURCHASING_IN_PROGRESS"])
     );
+    let timeoutHandle;
     const unsubscribe = onSnapshot(
       q,
       (snap) => {
+        clearTimeout(timeoutHandle);
         unsubscribe();
         resolve({ succeeded: true, size: snap.size });
       },
       (err) => {
+        clearTimeout(timeoutHandle);
         unsubscribe();
         resolve({ succeeded: false, code: err.code });
       }
     );
-    setTimeout(() => resolve({ succeeded: null, timedOut: true }), 15000);
+    // Unsubscribes on the timeout path too -- see the identical comment
+    // on the employee-directory probe above for why this matters.
+    timeoutHandle = setTimeout(() => {
+      unsubscribe();
+      resolve({ succeeded: null, timedOut: true });
+    }, 15000);
   });
   niReport(
     "All Assigned Work's exact query shape: a genuinely unauthorized session gets an error, not empty results",
@@ -1374,6 +1406,16 @@ async function verifyPrA(browser, page, accountKey) {
 
   console.log(`\n${niPassed} passed, ${niFailed} failed`);
   return niFailed === 0;
+  } finally {
+    // Deletes/terminates both isolated probe apps regardless of which
+    // branch above ran, threw, or was skipped -- an un-terminated
+    // Firebase client app keeps its Firestore/Auth connections open,
+    // which is what previously kept this command's Node process alive
+    // past its own final console.log()/return, requiring an external
+    // `timeout` to kill it rather than exiting cleanly on its own.
+    if (probeApp2) await deleteApp(probeApp2).catch(() => {});
+    if (probeApp) await deleteApp(probeApp).catch(() => {});
+  }
 }
 
 // Customer/Account Business Model -- Customer PR 3, Service Activity
