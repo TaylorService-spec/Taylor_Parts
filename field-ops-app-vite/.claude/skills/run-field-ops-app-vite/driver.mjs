@@ -1384,7 +1384,12 @@ async function verifyServiceActivity(browser, page, accountKey) {
   // before asserting, so these checks never race an in-flight fetch.
   await page.getByText(`Completed Work Orders: ${expectedCompleted}`).waitFor({ timeout: 10000 });
   await page.getByText(`Open Work Orders: ${expectedOpen}`).waitFor({ timeout: 10000 });
-  await page.locator("ul.fo-activity-list > li").first().waitFor({ timeout: 10000 });
+  // The Account Activity timeline is `ul.fo-activity-list` -- but PR 4's
+  // FinancialForecastSection reuses that class for its family label lists
+  // (`ul.fo-activity-list.fo-forecast-labels`) on this same page, so every
+  // timeline locator below is scoped with `:not(.fo-forecast-labels)` to match
+  // ONLY the Service Activity timeline (test-harness scoping; no app change).
+  await page.locator("ul.fo-activity-list:not(.fo-forecast-labels) > li").first().waitFor({ timeout: 10000 });
 
   // --- Counts: exact, and CANCELLED excluded from both ---
   const countsText = await page.locator(".fo-service-activity-counts").innerText().catch(() => "");
@@ -1401,15 +1406,15 @@ async function verifyServiceActivity(browser, page, accountKey) {
 
   // --- Count block and timeline are separate elements, both rendered ---
   const countsPresent = await page.locator(".fo-service-activity-counts").isVisible().catch(() => false);
-  const listPresent = await page.locator("ul.fo-activity-list").isVisible().catch(() => false);
+  const listPresent = await page.locator("ul.fo-activity-list:not(.fo-forecast-labels)").isVisible().catch(() => false);
   niReport("Count block and Account Activity timeline are distinct elements, both rendered (independent queries)", countsPresent && listPresent);
 
   // --- Bounded first page = pageSize ---
-  const initialRows = await page.locator("ul.fo-activity-list > li").count();
+  const initialRows = await page.locator("ul.fo-activity-list:not(.fo-forecast-labels) > li").count();
   niReport(`Timeline initial page is bounded to pageSize (${pageSize})`, initialRows === pageSize, `rows=${initialRows}`);
 
   // --- Newest-first + CANCELLED present in the timeline (excluded from counts, shown in the record) ---
-  const firstRow = page.locator("ul.fo-activity-list > li").first();
+  const firstRow = page.locator("ul.fo-activity-list:not(.fo-forecast-labels) > li").first();
   const firstText = await firstRow.innerText().catch(() => "");
   niReport("Timeline is newest-first: first row is WO-SA-000", /WO-SA-000/.test(firstText), firstText);
   niReport("Timeline includes CANCELLED Work Orders (present in the record though excluded from counts)", /CANCELLED/.test(firstText), firstText);
@@ -1428,18 +1433,25 @@ async function verifyServiceActivity(browser, page, accountKey) {
   const loadMore = page.getByRole("button", { name: "Load More" });
   niReport("Load More is present on a full first page", await loadMore.isVisible().catch(() => false));
   await loadMore.click();
-  await page.waitForTimeout(500);
-  const allRows = await page.locator("ul.fo-activity-list > li").count();
+  // Deterministic wait-on-expected-state (not a fixed sleep + immediate count):
+  // the full timeline has exactly `total` rows once the next-page getDocs
+  // resolves. That getDocs is multiplexed over the app's persistent onSnapshot
+  // WebChannel, so its latency varies with emulator load -- a fixed 500ms sleep
+  // raced it (the prior rows=10-not-14 flake). Wait for the total-th row to
+  // exist, then assert the exact count; a genuine failure to load still fails
+  // (waitFor times out -> allRows !== total), the meaning is unchanged.
+  await page.locator(`ul.fo-activity-list:not(.fo-forecast-labels) > li:nth-child(${total})`).waitFor({ timeout: 15000 }).catch(() => {});
+  const allRows = await page.locator("ul.fo-activity-list:not(.fo-forecast-labels) > li").count();
   niReport(`After Load More, all ${total} Work Orders are shown`, allRows === total, `rows=${allRows}`);
-  const endVisible = await page.getByText("End of activity.").isVisible().catch(() => false);
+  const endVisible = await page.getByText("End of activity.").waitFor({ timeout: 10000 }).then(() => true).catch(() => false);
   niReport("End-of-activity indicator shows once fully paginated", endVisible);
   const loadMoreGoneAtEnd = await page.getByRole("button", { name: "Load More" }).isVisible().catch(() => false);
   niReport("Load More disappears at the end", !loadMoreGoneAtEnd);
 
   // --- Accessibility: semantic list + a real link per row + section heading ---
-  const listCount = await page.locator("ul.fo-activity-list").count();
+  const listCount = await page.locator("ul.fo-activity-list:not(.fo-forecast-labels)").count();
   niReport("Accessibility: timeline is a semantic list (ul/li)", listCount === 1);
-  const anchorCount = await page.locator("ul.fo-activity-list > li a").count();
+  const anchorCount = await page.locator("ul.fo-activity-list:not(.fo-forecast-labels) > li a").count();
   niReport("Accessibility: every timeline row exposes a real link", anchorCount === total, `anchors=${anchorCount}`);
 
   // --- Failure INDEPENDENCE. Playwright request interception against the
@@ -1500,8 +1512,14 @@ async function verifyServiceActivity(browser, page, accountKey) {
   await withFailedRequests(AGG, () => true, async () => {
     const completedErr = await seen(page.getByText("Completed Work Orders: unavailable"));
     const openErr = await seen(page.getByText("Open Work Orders: unavailable"));
-    const timelineRows = await page.locator("ul.fo-activity-list > li").count();
-    niReport("Failure independence: count failure does not hide the timeline", completedErr && openErr && timelineRows > 0, `completedErr=${completedErr} openErr=${openErr} rows=${timelineRows}`);
+    // Deterministic: wait for the timeline's first row to render before counting,
+    // rather than reading the count immediately -- the timeline getDocs runs over
+    // the persistent WebChannel and may not have resolved yet (the prior rows=0
+    // flake). A genuine "timeline hidden" regression still fails (seen() times
+    // out -> timelineRendered false), so the meaning is unchanged.
+    const timelineRendered = await seen(page.locator("ul.fo-activity-list:not(.fo-forecast-labels) > li"));
+    const timelineRows = timelineRendered ? await page.locator("ul.fo-activity-list:not(.fo-forecast-labels) > li").count() : 0;
+    niReport("Failure independence: count failure does not hide the timeline", completedErr && openErr && timelineRendered && timelineRows > 0, `completedErr=${completedErr} openErr=${openErr} rows=${timelineRows}`);
   });
 
   // --- Responsive: no horizontal overflow at mobile width (fresh, un-faulted load) ---
