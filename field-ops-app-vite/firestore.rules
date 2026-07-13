@@ -41,27 +41,57 @@ service cloud.firestore {
       return isSignedIn() && userData().technicianId == technicianId;
     }
 
-    // Zero-history reorder behavior sprint (PR 2, docs/specifications/
-    // inventory-zero-history-reorder-behavior.md) -- gates who may
-    // manually enter a requestedQty for a NEEDS_PLANNING recommendation.
-    // get() here does not need its own `allow read` grant (a get()
-    // call inside a rule is not subject to the target document's read
-    // rules), but note this reads the exact same
-    // users/{uid}.employeeId -> employees/{employeeId} relationship
-    // the employees/{employeeId} rule's self-read clause already
-    // covers for actual client reads -- no new read *permission* is
-    // opened, this is just a new *consumer* of that relationship.
-    function hasOperationalRole(role) {
-      return isSignedIn()
-        && userData().employeeId != null
-        && get(/databases/$(database)/documents/employees/$(userData().employeeId)).data.operationalRoles.hasAny([role]);
+    // Issue #100 (docs/specifications/inventory-nav-access-alignment.md,
+    // docs/implementation-plans/inventory-nav-access-alignment.md, PR 1a).
+    // "Reciprocally linked" requires BOTH directions to agree:
+    // users/{uid}.employeeId == employeeId AND
+    // employees/{employeeId}.userId == uid. A one-directional pointer
+    // (e.g. a stale employeeId left on a users document after the
+    // corresponding Employee's own userId was reassigned elsewhere)
+    // does not satisfy this and fails closed. This is the ONE predicate
+    // every operational-role grant in this initiative uses -- no grant
+    // reimplements reciprocal-link/ACTIVE/role-membership independently.
+    // Additive alongside userData()/isAdminOrDispatcher() above --
+    // neither is replaced or narrowed.
+    function linkedEmployeeId() {
+      return userData().employeeId;
     }
 
+    function linkedEmployeeData() {
+      return get(/databases/$(database)/documents/employees/$(linkedEmployeeId())).data;
+    }
+
+    function reciprocallyLinkedEmployee() {
+      return isSignedIn()
+        && linkedEmployeeId() != null
+        && linkedEmployeeData().userId == request.auth.uid;
+    }
+
+    // An operationalRoles array containing an invalid/unrecognized
+    // string never matches any of the three literal role checks
+    // (hasAny([role]) against a specific literal) -- invalid values
+    // fail closed automatically, no separate validation branch
+    // required.
+    function isActiveOperationalRole(role) {
+      return reciprocallyLinkedEmployee()
+        && linkedEmployeeData().employmentStatus == "ACTIVE"
+        && linkedEmployeeData().operationalRoles is list
+        && linkedEmployeeData().operationalRoles.hasAny([role]);
+    }
+
+    // RETROFIT (Issue #100 PR 1a) -- previously used hasOperationalRole(),
+    // which checked neither reciprocal linkage nor ACTIVE employment.
+    // Behavior is unchanged for every Employee who was already ACTIVE
+    // and reciprocally linked (the overwhelming majority, and the only
+    // state functions/scripts/provisionEmployeeAccess.js is capable of
+    // producing today) -- this only tightens the previously-unguarded
+    // inactive/mismatched-linkage edge cases, a bug fix, not a behavior
+    // change for any valid Employee.
     function canSubmitManualZeroHistoryQuantity() {
       return isSignedIn()
         && (userRole() == "admin"
-            || hasOperationalRole("PARTS_MANAGER")
-            || hasOperationalRole("WAREHOUSE_MANAGER"));
+            || isActiveOperationalRole("PARTS_MANAGER")
+            || isActiveOperationalRole("WAREHOUSE_MANAGER"));
     }
 
     // Codex REQUEST CHANGES on PR #91 -- the new-shape create rule
@@ -235,8 +265,16 @@ service cloud.firestore {
     // added -- ADR-003 anticipated this exact moment ("no reporting
     // view exists yet"). inventory_sync_status stays fully closed --
     // internal retry/idempotency bookkeeping, no reporting value.
+    // Issue #100 PR 1a -- catalog/health is itself an Owner-adopted
+    // capability for PARTS_MANAGER and WAREHOUSE_MANAGER, not a
+    // data-minimization concern the way reorder_requests History is --
+    // both roles see the identical computed ledger view admin/
+    // dispatcher already see, under this one additive branch (there is
+    // no second, separate "stock visibility" query to design).
     match /inventory_transactions/{transactionId} {
-      allow read: if isAdminOrDispatcher();
+      allow read: if isAdminOrDispatcher()
+        || isActiveOperationalRole("PARTS_MANAGER")
+        || isActiveOperationalRole("WAREHOUSE_MANAGER");
       allow create, update, delete: if false;
     }
 
@@ -332,7 +370,29 @@ service cloud.firestore {
     // unchanged -- this transition never rewrites prior workflow
     // history.
     match /reorder_requests/{requestId} {
-      allow read: if isAdminOrDispatcher();
+      // Issue #100 PR 1a -- four additive read branches alongside the
+      // existing isAdminOrDispatcher() (unchanged, unnarrowed). Safe as
+      // a simple additive || because `allow read` is a single,
+      // undifferentiated boolean -- there is no transition/branch
+      // structure to accidentally cross here, unlike `allow update`
+      // below (which this PR does NOT touch -- the Assign-write's new
+      // PARTS_MANAGER branch and every PARTS_ASSOCIATE lifecycle-write
+      // branch land only in PR 3a's full restructuring, per the
+      // Implementation Plan's Sequencing notes).
+      allow read: if isAdminOrDispatcher()
+        // Parts Manager Queue.
+        || (isActiveOperationalRole("PARTS_MANAGER") && resource.data.status == "READY_FOR_PARTS_MANAGER")
+        // Assigned-work oversight.
+        || (isActiveOperationalRole("PARTS_MANAGER") && resource.data.status in ["ASSIGNED_TO_PARTS_ASSOCIATE", "PURCHASING_IN_PROGRESS"])
+        // Relevant (not global) History -- a request this Parts Manager
+        // personally reviewed (approved or rejected) or personally
+        // assigned.
+        || (isActiveOperationalRole("PARTS_MANAGER") && (resource.data.reviewedBy == request.auth.uid || resource.data.assignedBy == request.auth.uid))
+        // Bundled PARTS_ASSOCIATE grant (personal Waiting/In Progress,
+        // exact assigned-request details) -- landed here since the
+        // helpers above are shared groundwork, per the Implementation
+        // Plan's PR 1a scope.
+        || (isActiveOperationalRole("PARTS_ASSOCIATE") && resource.data.assignedToUserId == request.auth.uid);
 
       // Zero-history reorder behavior sprint, PR 4 (rollout step 3,
       // rules tightening) -- the transitional legacy branch PR 2
