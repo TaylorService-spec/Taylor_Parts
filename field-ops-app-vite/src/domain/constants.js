@@ -70,6 +70,17 @@ export const ACCOUNT_RELATIONSHIP_TYPE = {
   VENDOR: "VENDOR",
 };
 
+// Account Commercial Profile -- PR 1 (docs/specifications/
+// account-commercial-profile-and-financial-forecast-horizons.md;
+// docs/implementation-plans/...). How an invoice is delivered to the
+// customer -- process metadata, informational only, no monetary value.
+export const INVOICE_DELIVERY_METHOD = {
+  EMAIL: "EMAIL",
+  PORTAL: "PORTAL",
+  MAIL: "MAIL",
+  EDI: "EDI",
+};
+
 // Sprint 2.1.3 -- Reorder Request & Notification Foundation
 // (docs/BusinessEntityModel.md's Reorder Request entry). The platform's
 // first Operational Workflow Object / Business Object dual-classified

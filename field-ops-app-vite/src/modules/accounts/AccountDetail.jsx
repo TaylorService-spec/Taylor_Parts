@@ -12,6 +12,8 @@ import AddressFields from "../../shared/address/AddressFields";
 import AccountForm from "./AccountForm";
 import ServiceActivitySection from "./ServiceActivitySection";
 import FinancialSummarySection from "./FinancialSummarySection";
+import { useEmployeeDirectory } from "../../hooks/useEmployeeDirectory";
+import { resolveOwnerDisplayName, resolveContactName } from "../../domain/commercialProfile";
 
 // Sprint 2.0.2 -- Customer Foundation. Internal name AccountDetail;
 // rendered UI says "Customer Detail" throughout.
@@ -134,12 +136,42 @@ function PrimaryContactSummary({ contacts }) {
   return null; // NONE -> omit, never fabricate a primary
 }
 
+// Account Commercial Profile -- PR 1. Renders the informational fields. Every
+// ID-bearing field shows the CURRENT resolved name (re-resolved from the
+// stable reference), "Unknown …" when unresolved, and is omitted when unset.
+function CommercialProfileSection({ account, contacts, byUserId }) {
+  const currency = account.defaultCurrency || null;
+  const invoiceMethod = account.invoiceDeliveryMethod || null;
+  const billingContactName = resolveContactName(account.billingContact?.contactId, contacts);
+  const hasPo = account.purchaseOrderRequired === true || account.purchaseOrderRequired === false;
+  const ownerName = resolveOwnerDisplayName(account.accountOwner, byUserId);
+  const hasAny = currency || invoiceMethod || billingContactName || hasPo || ownerName;
+
+  return (
+    <section className="wo-history">
+      <h4>Commercial Profile</h4>
+      {hasAny ? (
+        <div className="fo-muted">
+          {ownerName && <div>Owner: {ownerName}</div>}
+          {currency && <div>Default currency: {currency}</div>}
+          {hasPo && <div>Purchase order required: {account.purchaseOrderRequired ? "Yes" : "No"}</div>}
+          {invoiceMethod && <div>Invoice delivery: {invoiceMethod}</div>}
+          {billingContactName && <div>Billing contact: {billingContactName}</div>}
+        </div>
+      ) : (
+        <p className="fo-muted">No commercial profile set yet.</p>
+      )}
+    </section>
+  );
+}
+
 export default function AccountDetail() {
   const { accountId } = useParams();
   const navigate = useNavigate();
   const { account, loading } = useAccount(accountId);
   const { data: locations } = useLocationsForAccount(accountId);
   const { data: contacts } = useContactsForAccount(accountId);
+  const { byUserId } = useEmployeeDirectory();
 
   const [isEditing, setIsEditing] = useState(false);
   const [showLocationForm, setShowLocationForm] = useState(false);
@@ -182,7 +214,7 @@ export default function AccountDetail() {
       </button>
 
       {isEditing ? (
-        <AccountForm initialValues={account} onSubmit={handleEditSubmit} onCancel={() => setIsEditing(false)} submitLabel="Save Changes" />
+        <AccountForm initialValues={account} onSubmit={handleEditSubmit} onCancel={() => setIsEditing(false)} submitLabel="Save Changes" contacts={contacts} />
       ) : (
         <>
           {/* 1. Account Summary -- always visible, never collapsed */}
@@ -208,6 +240,9 @@ export default function AccountDetail() {
               <div className="fo-muted">Tags: {account.tags.join(", ")}</div>
             )}
           </section>
+
+          {/* Commercial Profile -- informational fields + current-name identity (PR 1) */}
+          <CommercialProfileSection account={account} contacts={contacts} byUserId={byUserId} />
 
           {/* 2. Financial Summary -- provider-neutral surface; unconfigured only (PR 4) */}
           <FinancialSummarySection />
