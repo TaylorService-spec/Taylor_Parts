@@ -13,7 +13,7 @@ import AccountForm from "./AccountForm";
 import ServiceActivitySection from "./ServiceActivitySection";
 import FinancialSummarySection from "./FinancialSummarySection";
 import { useEmployeeDirectory } from "../../hooks/useEmployeeDirectory";
-import { resolveOwnerIdentity, resolveContactIdentity } from "../../domain/commercialProfile";
+import { resolveOwnerIdentity, resolveContactIdentity, resolveTaxStatus } from "../../domain/commercialProfile";
 import IdentityLine from "./IdentityLine";
 
 // Sprint 2.0.2 -- Customer Foundation. Internal name AccountDetail;
@@ -147,6 +147,15 @@ function CommercialProfileSection({ account, contacts, contactsLoading, contacts
   const invoiceMethod = account.invoiceDeliveryMethod || null;
   const hasPo = account.purchaseOrderRequired === true || account.purchaseOrderRequired === false;
 
+  // Governed enum fields (PR 2). paymentTerms is shown only when set; tax
+  // status is ALWAYS resolved (absent => UNKNOWN safe default, never silently
+  // TAXABLE) and shown whenever the profile section renders. `hasTaxStatus`
+  // (an explicitly stored value) is one of the signals that the section has
+  // content, so a stored UNKNOWN still surfaces the section.
+  const paymentTerms = account.paymentTerms || null;
+  const hasTaxStatus = typeof account.taxStatus === "string" && account.taxStatus !== "";
+  const taxStatus = resolveTaxStatus(account.taxStatus);
+
   const ownerIdentity = resolveOwnerIdentity(account.accountOwner, {
     byUserId,
     loading: directoryLoading,
@@ -162,6 +171,8 @@ function CommercialProfileSection({ account, contacts, contactsLoading, contacts
     currency ||
     invoiceMethod ||
     hasPo ||
+    paymentTerms ||
+    hasTaxStatus ||
     ownerIdentity.state !== "unset" ||
     billingIdentity.state !== "unset";
 
@@ -172,8 +183,12 @@ function CommercialProfileSection({ account, contacts, contactsLoading, contacts
         <div className="fo-muted">
           <IdentityLine label="Owner" identity={ownerIdentity} />
           {currency && <div>Default currency: {currency}</div>}
+          {paymentTerms && <div>Payment terms: {paymentTerms}</div>}
           {hasPo && <div>Purchase order required: {account.purchaseOrderRequired ? "Yes" : "No"}</div>}
           {invoiceMethod && <div>Invoice delivery: {invoiceMethod}</div>}
+          {/* Safe default made visible: an Account with a profile always shows
+              a tax status, resolving an absent value to UNKNOWN. */}
+          <div>Tax status: {taxStatus}</div>
           <IdentityLine label="Billing contact" identity={billingIdentity} />
         </div>
       ) : (
