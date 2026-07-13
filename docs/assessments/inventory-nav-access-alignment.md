@@ -17,16 +17,17 @@ target_release:
 
 **Business Request:** Issue #100. An Employee may hold `operationalRoles: ["PARTS_MANAGER"]` or `["WAREHOUSE_MANAGER"]`, and `firestore.rules`' `canSubmitManualZeroHistoryQuantity()` correctly authorizes that operational role independently of the caller's security `role`. But a user whose security `role` is `technician` cannot reach the Inventory screen at all, because `navConfig.js`'s nav-gating (and, as this assessment finds, the route-mounting logic built on the same predicate) never consults `operationalRoles`. A pure-technician Parts Manager — a real org shape — is locked out by navigation/routing alone, not by any Rules or eligibility logic. This assessment investigates the current implementation with no code, Rules, index, schema, production-data, or deployment change.
 
-**Revision note (this round):** `PartsList.jsx`/`PartDetail.jsx` — the pages a naive nav/route fix would make reachable — mount far more than the manual-reorder-entry flow: every reorder-request queue (including cross-user oversight and full History), the entire unscoped Employee directory, the full unfiltered `inventory_transactions` ledger, the Inventory Action Log, and Purchase Order/void/receiving actions. §2 below replaces the prior draft's narrower framing with a complete surface/read/action matrix, and the recommendation in §5/§10 is revised accordingly: capability-scoped access must be redefined at the component/query/action level, not merely "the `parts` nav item," because the `parts` nav item itself currently mounts all of the above.
+**Revision note (this round):** §2 (round 2) added a complete `PartsList.jsx`/`PartDetail.jsx` surface matrix and recommended granting every eligible operational role the *identical* minimal capability set (manual entry + two narrow reads), finding no distinction in the current authorization model between `PARTS_MANAGER` and `WAREHOUSE_MANAGER`. **This round replaces that "identical minimal capability" conclusion with an Owner-adopted, per-role capability matrix (new §4a)** — the three operational roles are differentiated, each with a distinct, real set of query/action grants, not one shared minimal bundle. §7, §9, §11, §12, the Sequencing section, and the Recommended design are all revised accordingly. A boundary note (new §13) records a related-but-separate future initiative (truck parts sale-to-invoice) explicitly out of scope here.
 
 ## Scope of this assessment
 
-Investigated: `field-ops-app-vite/src/domain/constants.js` (`ROLES`, `ROLE_NAV_ACCESS`, `OPERATIONAL_ROLE`), `field-ops-app-vite/src/navigation/navConfig.js`, `field-ops-app-vite/src/App.jsx` (routing), `field-ops-app-vite/src/auth/AuthContext.jsx`, `field-ops-app-vite/src/modules/inventory/PartsList.jsx` and `PartDetail.jsx` in full (every section, hook, and action — this round), `field-ops-app-vite/src/shared/inventory/RequestReorderControl.jsx`, `field-ops-app-vite/src/hooks/useAssignableEmployees.js`, `useEmployeeDirectory.js`, `useInventoryLedger.js`, `useInventoryActions.js`, `useReorderPurchaseOrders.js`, `useReorderPurchaseOrderVoids.js`, `field-ops-app-vite/src/domain/employees.js`, `firestore.rules` in full for every collection these two pages touch, `functions/scripts/provisionEmployeeAccess.js`, and the driver/seed test infrastructure (`field-ops-app-vite/.claude/skills/run-field-ops-app-vite/driver.mjs`, `seed.mjs`, `SKILL.md`).
+Investigated: `field-ops-app-vite/src/domain/constants.js` (`ROLES`, `ROLE_NAV_ACCESS`, `OPERATIONAL_ROLE`), `field-ops-app-vite/src/navigation/navConfig.js`, `field-ops-app-vite/src/App.jsx` (routing), `field-ops-app-vite/src/auth/AuthContext.jsx`, `field-ops-app-vite/src/modules/inventory/PartsList.jsx` and `PartDetail.jsx` in full (every section, hook, and action), `field-ops-app-vite/src/shared/inventory/RequestReorderControl.jsx`, `field-ops-app-vite/src/hooks/useAssignableEmployees.js`, `useEmployeeDirectory.js`, `useInventoryLedger.js`, `useInventoryActions.js`, `useReorderPurchaseOrders.js`, `useReorderPurchaseOrderVoids.js`, `field-ops-app-vite/src/domain/employees.js`, `firestore.rules` in full for every collection these two pages touch, `functions/scripts/provisionEmployeeAccess.js`, and the driver/seed test infrastructure (`field-ops-app-vite/.claude/skills/run-field-ops-app-vite/driver.mjs`, `seed.mjs`, `SKILL.md`).
 
 Explicitly **not** investigated or addressed here:
-- The broader manager-oversight/queue-visibility work from Issue #154 (PRs #164/#168/#173/#177) — that initiative explicitly deferred "any change broadening `reorder_requests` visibility to non-admin/dispatcher sign-in roles" to this issue (its own assessment's Risks section names Issue #100 directly), so this assessment picks that thread up rather than re-litigating it.
+- The broader manager-oversight/queue-visibility work from Issue #154 (PRs #164/#168/#173/#177) — that initiative explicitly deferred "any change broadening `reorder_requests` visibility to non-admin/dispatcher sign-in roles" to this issue, so this assessment picks that thread up rather than re-litigating it.
 - The Inventory Action Log (`inventory_actions`) redesign (Issue #152) — its read/write surface is inventoried in §2 below only because `PartDetail.jsx` mounts it, not because this assessment proposes changing it.
-- Any other domain's (Customer, Service Activity, Financial) nav/route gating — this assessment is Inventory-scoped only, per the directive.
+- Truck parts sale-to-invoice / consumption from an assigned truck by a base Technician — a related but structurally separate future initiative, recorded as Issue #182 and named in the boundary note (§13). No access model for it is proposed here.
+- Any other domain's (Customer, Service Activity, Financial) nav/route gating — this assessment is Inventory-scoped only.
 
 No application code, Firestore Rules, index, schema, deployment, or production-data change was made while producing this assessment — read-only investigation only.
 
@@ -34,7 +35,7 @@ No application code, Firestore Rules, index, schema, deployment, or production-d
 
 ### 1. Current navigation and route gating
 
-`ROLE_NAV_ACCESS` — the actual source of truth for who sees what — lives in `field-ops-app-vite/src/domain/constants.js:245-263`, not in `navConfig.js` itself (`navConfig.js`'s own header comment states it deliberately consumes this as a parameter "so this stays pure/testable and the actual permission source of truth stays in one place"):
+`ROLE_NAV_ACCESS` — the actual source of truth for who sees what — lives in `field-ops-app-vite/src/domain/constants.js:245-263`, not in `navConfig.js` itself:
 
 ```js
 export const ROLES = {
@@ -52,254 +53,230 @@ export const ROLE_NAV_ACCESS = {
 
 `technician`'s allowed legacy keys never include `"inventory"`; both `admin` and `dispatcher` do.
 
-`navConfig.js:163-176` defines the two visibility predicates, `isNavItemVisible()` and `isDomainVisible()`, both driven by `ROLE_NAV_ACCESS`'s `allowedLegacyKeys` (for items/domains carrying a `legacyKey`) or `PLACEHOLDER_DEFAULT_ROLES = ["admin", "dispatcher"]` (for items/domains without one). The Inventory domain's `parts` subnav item carries `legacyKey: "inventory"`; its sibling items (`warehouses`, `truckInventory`, `transfers`, `receiving`, `cycleCounts`, `backOrders`) have no `legacyKey` and fall to `PLACEHOLDER_DEFAULT_ROLES`, which also excludes `technician`. Either path, `isDomainVisible(inventoryDomain, "technician", [])` is `false`.
+`navConfig.js:163-176` defines `isNavItemVisible()`/`isDomainVisible()`, both driven by `ROLE_NAV_ACCESS`'s `allowedLegacyKeys` (for items/domains with a `legacyKey`) or `PLACEHOLDER_DEFAULT_ROLES = ["admin", "dispatcher"]` (for items/domains without one). The Inventory domain's `parts` subnav item carries `legacyKey: "inventory"`; every sibling item falls to `PLACEHOLDER_DEFAULT_ROLES`. Either path, `isDomainVisible(inventoryDomain, "technician", [])` is `false`.
 
-**Route gating is not a separate layer from nav visibility — it is the identical predicate, reused.** `App.jsx` builds `<Route>` elements from the same `isNavItemVisible`/`isDomainVisible` calls (`App.jsx:117-133`, `171-179`):
+**Route gating is not a separate layer from nav visibility — it is the identical predicate, reused.** `App.jsx` builds `<Route>` elements from the same calls (`App.jsx:117-133`, `171-179`). An ineligible role gets no matching `<Route>` mounted at all for `/inventory` or `/inventory/:partId` — react-router falls through to the catch-all (`App.jsx:191`, `Navigate to="/dashboard"`). A `technician` typing the URL directly is silently redirected, with no permission-denied page and no distinguishable signal that Inventory exists but is off-limits.
 
-```js
-{NAV_DOMAINS.filter((d) => !d.future).map((domain) => (
-  <Route key={domain.key} path={domain.path}>
-    {domain.subnav
-      .filter((item) => isNavItemVisible(item, role, allowedLegacyKeys))
-      .map((item) => (
-        <Route key={item.key} path={item.path || undefined} index={item.path === ""} element={renderSubnavItem(domain, item, role)} />
-      ))}
-```
-
-```js
-{domain.key === "inventory" && isDomainVisible(domain, role, allowedLegacyKeys) && (
-  <Route path=":partId" element={<PartDetail />} />
-)}
-```
-
-An ineligible role gets no matching `<Route>` mounted at all for `/inventory` or `/inventory/:partId` — react-router falls through to the catch-all (`App.jsx:191`, `<Route path="*" element={<Navigate to="/dashboard" replace />} />`). A `technician` typing the URL directly is silently redirected to `/dashboard`, with no permission-denied page, no Firestore error, and no distinguishable signal that Inventory exists but is off-limits versus simply not being a route at all.
-
-**Conclusion:** there is exactly one gate, applied twice (nav rendering and route mounting) from the same source of truth (`ROLE_NAV_ACCESS`/`PLACEHOLDER_DEFAULT_ROLES`), and it is keyed **only** on security `role`. `operationalRoles` never enters this decision at any point. **Critically — and this is the finding this revision corrects — that single gate is also all-or-nothing at the page level: today, "reachable" and "renders `PartsList.jsx`/`PartDetail.jsx` in full" are the same thing.** There is no existing mechanism that mounts only part of these pages for one audience and the rest for another. §2 inventories exactly what "in full" means; §5/§10 revise the recommendation to not conflate "make `/inventory` reachable" with "grant the complete `PartsList.jsx`/`PartDetail.jsx` surface."
+**Conclusion:** there is exactly one gate, applied twice (nav rendering and route mounting) from one source of truth, keyed only on security `role`. `operationalRoles` never enters this decision. That gate is also all-or-nothing at the page level: "reachable" and "renders `PartsList.jsx`/`PartDetail.jsx` in full" are the same thing today. §2 inventories what "in full" means; §7 revises the recommendation around per-role, per-capability grants rather than page-level reachability.
 
 ### 2. Complete surface/read/action matrix — `PartsList.jsx` and `PartDetail.jsx`
 
-This section replaces the prior draft's treatment of these two files as if they existed primarily for the manual-reorder-entry flow. They do not — that flow is one of roughly a dozen distinct sections/actions the two pages mount together. Every row below is a genuinely separate Firestore read or write, each with its own `firestore.rules` gate.
+Every row below is a genuinely separate Firestore read or write, each with its own `firestore.rules` gate — the manual-reorder-entry flow is one of roughly a dozen.
 
 #### 2a. `PartsList.jsx` — every rendered section
 
 | Section | Hook | Collection | Query shape | User action |
 |---|---|---|---|---|
-| Inventory Operational Queue (Critical & High / Needs Planning tabs) | `useInventoryLedger()` | `inventory_transactions` | One-shot, **entire collection, no filter** — client-derives health/urgency | "Request Reorder" button → **creates** a `reorder_requests` doc (NEEDS_PLANNING or READY branch) |
-| — (de-dup check for the above) | `useReorderRequests()` | `reorder_requests` | `where("status","==","PENDING_REVIEW")`, realtime | none (read-only de-dup) |
-| Parts Manager Queue | `useReorderRequestsByStatus(READY_FOR_PARTS_MANAGER)` | `reorder_requests` | `where("status","==",...)`, realtime, cross-user | Navigate only (Approve/Reject/Assign live on `PartDetail`) |
-| Parts Associate Waiting | `useReorderRequestsAssignedTo(uid, ASSIGNED_TO_PARTS_ASSOCIATE)` | `reorder_requests` | `where("assignedToUserId","==",uid) && where("status","==",...)`, realtime, **self-scoped** | Navigate only |
+| Inventory Operational Queue (Critical & High / Needs Planning tabs) | `useInventoryLedger()` | `inventory_transactions` | One-shot, **entire collection, no filter** | "Request Reorder" → **creates** a `reorder_requests` doc |
+| — (de-dup check) | `useReorderRequests()` | `reorder_requests` | `where("status","==","PENDING_REVIEW")`, realtime | none |
+| Parts Manager Queue | `useReorderRequestsByStatus(READY_FOR_PARTS_MANAGER)` | `reorder_requests` | `where("status","==",...)`, realtime, cross-user | Navigate only |
+| Parts Associate Waiting | `useReorderRequestsAssignedTo(uid, ASSIGNED_TO_PARTS_ASSOCIATE)` | `reorder_requests` | `where("assignedToUserId","==",uid) && where("status","==",...)`, **self-scoped** | Navigate only |
 | Parts Associate In Progress | `useReorderRequestsAssignedTo(uid, PURCHASING_IN_PROGRESS)` | `reorder_requests` | Same shape, **self-scoped** | Navigate only |
-| All Assigned Work (manager oversight) | `useReorderRequestsByStatuses([ASSIGNED_TO_PARTS_ASSOCIATE, PURCHASING_IN_PROGRESS])` | `reorder_requests` | `where("status","in",[...])`, realtime, **no assignee filter — every user's assignments** | Navigate only; renders every assignee's display name (see §2c) |
-| Parts Catalog | static `PARTS_CATALOG` + `useInventoryLedger()` (shared read, no second query) | `inventory_transactions` (via the same unfiltered ledger read above) | — | Navigate only |
-| History | `useReorderRequestsHistory({statuses:[CANCELLED,VOIDED,RECEIVED,REJECTED], pageSize:10})` + `useReorderRequestById()` | `reorder_requests` | One-shot `getDocs`: `where("status","in",[...]), orderBy("createdAt","desc"), limit(n)`, cursor-paginated, **cross-user, cross-status, no `requestedBy`/assignee scope**; exact-id lookup is an independent `doc()` read | Navigate/paginate/lookup only |
+| All Assigned Work (manager oversight) | `useReorderRequestsByStatuses([ASSIGNED_TO_PARTS_ASSOCIATE, PURCHASING_IN_PROGRESS])` | `reorder_requests` | `where("status","in",[...])`, **no assignee filter — every user's assignments** | Navigate only |
+| Parts Catalog | static `PARTS_CATALOG` + `useInventoryLedger()` | `inventory_transactions` (shared read) | — | Navigate only |
+| History | `useReorderRequestsHistory(...)` + `useReorderRequestById()` | `reorder_requests` | `where("status","in",[CANCELLED,VOIDED,RECEIVED,REJECTED]), orderBy("createdAt","desc")`, **cross-user, cross-status, no scope** | Navigate/paginate/lookup only |
 
 #### 2b. `PartDetail.jsx` — every write action
 
 | Action | Writes to | `firestore.rules` gate | Scope |
 |---|---|---|---|
-| Approve / Reject | `reorder_requests/{id}` update | `isAdminOrDispatcher()` (outer gate); Reject additionally requires non-blank `reviewNotes` | Any admin/dispatcher — not assignee-restricted |
-| Assign | `reorder_requests/{id}` update | `isAdminOrDispatcher()` + `assignedBy == auth.uid`; **no rules-level check that the target holds `PARTS_ASSOCIATE`** (client-side `EmployeeAssignmentPicker` filter only — an existing, separately-flagged gap, not created by this assessment) | Any admin/dispatcher |
-| Start Purchasing | `reorder_requests/{id}` update | `isAdminOrDispatcher()` **and** `auth.uid == resource.data.assignedToUserId` | Assignee only |
-| Post Purchasing Update | `reorder_requests/{id}` update | `auth.uid == resource.data.assignedToUserId` | Assignee only |
-| Record Purchase Order | Atomic: creates `reorder_purchase_orders/{requestId}` + updates `reorder_requests/{id}` → `ORDERED` | `auth.uid == assignedToUserId` on the linked request, `status == PURCHASING_IN_PROGRESS`, cross-document `getAfter()` invariant | Assignee only |
-| Void Purchase Order | Creates `reorder_purchase_order_voids/{requestId}` + updates `reorder_requests/{id}` → `VOIDED` | `isAdminOrDispatcher()` **and** assignee, double-gated | Assignee **and** admin/dispatcher |
-| Mark Received | `reorder_requests/{id}` update → `RECEIVED` | `auth.uid == assignedToUserId` | Assignee only |
-| Cancel | `reorder_requests/{id}` update → `CANCELLED` | `isAdminOrDispatcher()` alone — explicitly **not** assignee-restricted | Any admin/dispatcher |
-| Manual quantity entry (`RequestReorderControl`) | Creates `reorder_requests` doc | `canSubmitManualZeroHistoryQuantity()` (`userRole()=="admin"` OR `hasOperationalRole("PARTS_MANAGER"/"WAREHOUSE_MANAGER")`) | **The one action already operational-role-aware at the Rules layer** — this is Issue #100's entire evidenced scope |
-| Inventory Action Log entry (Receive/Adjust/Correct) | Creates `inventory_actions` doc | `isAdminOrDispatcher()`, no field-level Rules validation | Any admin/dispatcher; audit-only, never touches `inventory_transactions` |
+| Approve / Reject | `reorder_requests/{id}` update | `isAdminOrDispatcher()` (outer gate) | Any admin/dispatcher |
+| Assign | `reorder_requests/{id}` update | `isAdminOrDispatcher()` + `assignedBy == auth.uid` | Any admin/dispatcher |
+| Start Purchasing | `reorder_requests/{id}` update | `isAdminOrDispatcher()` **AND** `auth.uid == assignedToUserId` (double-gated — the outer admin/dispatcher requirement is why an assignee-only Parts Associate cannot use this today even if reachable) | Assignee **and** admin/dispatcher |
+| Post Purchasing Update | `reorder_requests/{id}` update | `auth.uid == assignedToUserId` only | Assignee only |
+| Record Purchase Order | Atomic: `reorder_purchase_orders/{requestId}` create + `reorder_requests/{id}` → `ORDERED` | `auth.uid == assignedToUserId`, `status == PURCHASING_IN_PROGRESS` | Assignee only |
+| Void Purchase Order | `reorder_purchase_order_voids/{requestId}` create + `reorder_requests/{id}` → `VOIDED` | `isAdminOrDispatcher()` **AND** assignee, double-gated | Assignee **and** admin/dispatcher |
+| Mark Received | `reorder_requests/{id}` → `RECEIVED` | `auth.uid == assignedToUserId` only | Assignee only |
+| Cancel | `reorder_requests/{id}` → `CANCELLED` | `isAdminOrDispatcher()` alone | Any admin/dispatcher |
+| Manual quantity entry (`RequestReorderControl`) | Creates `reorder_requests` doc | `canSubmitManualZeroHistoryQuantity()` | **Already operational-role-aware** |
+| Inventory Action Log entry | Creates `inventory_actions` doc | `isAdminOrDispatcher()` | Any admin/dispatcher |
 
-#### 2c. Cross-user, unscoped reads (the highest-risk surface if reachability alone is widened)
+Reads backing these actions on `PartDetail.jsx` (for the assignee's own request): the request document itself (currently only reachable via `isAdminOrDispatcher()` — **no self/assignee read branch exists on `reorder_requests` today**, per §11); `usePurchaseOrderForReorderRequest()`/`useReorderPurchaseOrderVoid()` (`reorder_purchase_orders`/`reorder_purchase_order_voids`, doc-id = request id, currently `isAdminOrDispatcher()`-only read, no self/assignee branch either).
 
-Both files call `useEmployeeDirectory()` (`hooks/useEmployeeDirectory.js`), backed by `buildEmployeeDirectoryQuery()` (`domain/employees.js:51-53`) — **`query(employeesRef)` with zero `where` clauses: every document in `employees`, unfiltered by `employmentStatus`, `operationalRoles`, or `userId`.** Gated by `firestore.rules:199`, `allow read: if isAdminOrDispatcher() || (isSignedIn() && userData().employeeId == employeeId)` — the admin/dispatcher branch is an unconditional, unfiltered grant over the entire collection, not a per-record or per-field scope. `PartsList.jsx` uses it to resolve every assignee's display name in "All Assigned Work"; `PartDetail.jsx` uses it for "Assigned to"/"Ordered by"/"Received by"/"Cancelled by"/"Voided by"/"Updated by" and the Inventory Action Log's "By" column — any of which may name a different employee than the one currently signed in.
+#### 2c. Cross-user, unscoped reads
 
-This is architecturally distinct from `useAssignableEmployees()`'s query (`domain/employees.js:24-36`), which **is** already scoped: `where("employmentStatus","==","ACTIVE"), where("operationalRoles","array-contains",role), where("userId","!=",null)`. That scoped-query pattern already exists in this codebase and is the right model to reuse — `useEmployeeDirectory()`'s unscoped read is not.
+Both files call `useEmployeeDirectory()`, backed by `buildEmployeeDirectoryQuery()` (`domain/employees.js:51-53`) — **`query(employeesRef)` with zero `where` clauses: every document in `employees`**, unfiltered. Gated by `firestore.rules:199`, `isAdminOrDispatcher() || self`. `useAssignableEmployees()`'s query (`domain/employees.js:24-36`) **is** already scoped (`employmentStatus=="ACTIVE"`, `operationalRoles array-contains role`, `userId!=null`) — the right model to imitate.
 
-### 3. Every affected collection and permission (do not widen wholesale)
+### 3. Every affected collection and permission, by capability
 
-| Collection | Current read gate | Current write gate | Relevant to Issue #100's evidenced capability? | Guidance |
-|---|---|---|---|---|
-| `reorder_requests` (NEEDS_PLANNING create) | — | `canSubmitManualZeroHistoryQuantity()` — **already correct** | **Yes — this is the actual capability** | No change needed |
-| `reorder_requests` (own submissions, `requestedBy == uid`) | `isAdminOrDispatcher()` only today; no self-scoped read path exists | — | Plausibly, if the operational-role user needs to see what they submitted | A **new, narrowly-scoped** query (`where("requestedBy","==",uid)`), not access to the existing Parts Manager Queue / All Assigned Work / History queries |
-| `reorder_requests` (Parts Manager Queue, All Assigned Work, History, Waiting/In Progress) | `isAdminOrDispatcher()` only | admin/dispatcher and/or assignee-gated, per §2b | **Not evidenced** by Issue #100 | **Do not widen.** These are cross-user oversight/workflow-management surfaces with no operational-role concept defined anywhere in Rules or client logic today |
-| `inventory_transactions` (full ledger) | `isAdminOrDispatcher()` only, unfiltered full-collection read | Admin-SDK only | Only indirectly — needed to know *what* needs a manual quantity | **Do not grant the same unfiltered full-collection read.** If the new capability needs to see "what needs planning," that is a narrower, purpose-built read (see §5) — not the same `useInventoryLedger()` call `PartsList.jsx` uses today |
-| `employees` (full directory, `useEmployeeDirectory()`) | `isAdminOrDispatcher()` unconditional, unscoped | Admin-SDK only | **No** — nothing in Issue #100 requires an operational-role user to resolve other employees' display names | **Do not widen.** This is explicitly the kind of grant the directive warns against — an operational-role technician does not need the same unscoped read admin/dispatcher has just because one component happens to import it |
-| `employees` (self-read, own `employeeId`) | Already permitted (`userData().employeeId == employeeId`) | — | Yes — this is how the user's own `operationalRoles`/`employmentStatus` are evaluated | No change needed |
-| `employees` (scoped, `useAssignableEmployees()`-style query) | Not applicable to this issue's scenario (that hook serves the *assigner*, not the eligible technician) | — | No | Not needed for this capability; cited only as the correct scoping *pattern* to imitate if a future need arises |
-| `inventory_actions` | `isAdminOrDispatcher()` | `isAdminOrDispatcher()`, client-validated only | **No** — audit log, unrelated to manual quantity entry | **Do not widen.** Out of scope; Issue #152 territory if ever revisited |
-| `reorder_purchase_orders` / `reorder_purchase_order_voids` | `isAdminOrDispatcher()` read; assignee-gated write | Assignee/admin-dispatcher, double-gated for void | **No** — these belong to the Parts Associate purchasing workflow, a different operational role than the PARTS_MANAGER/WAREHOUSE_MANAGER scenario Issue #100 evidences | **Do not widen** as part of this initiative |
+Restructured this round to key off the Owner-adopted role matrix (§4a) rather than a single blanket "do not widen" posture. **No row below proposes granting any role the same unfiltered/unscoped read admin/dispatcher has** — every grant is either an already-correct existing gate, or a new, narrowly-scoped Rules branch keyed to a specific `operationalRoles` value plus `ACTIVE` employment (decision 9.1).
 
-**This table is the explicit answer to the directive's instruction not to propose widening the full Employee directory or all Reorder Request history merely to enable one capability: none of those broad reads are proposed here. Every "yes" in the third column is satisfied by either an already-correct existing gate, or a new, narrowly-scoped query — never by granting the existing broad admin/dispatcher-shaped reads to a new audience.**
+| Collection / query shape | Current gate | Needed for | New grant required? |
+|---|---|---|---|
+| `reorder_requests`, NEEDS_PLANNING create | `canSubmitManualZeroHistoryQuantity()` | PARTS_MANAGER, WAREHOUSE_MANAGER | No — already correct |
+| `reorder_requests`, `status == READY_FOR_PARTS_MANAGER` (Parts Manager Queue) | `isAdminOrDispatcher()` only | **PARTS_MANAGER only** | Yes — new read branch: `hasOperationalRole("PARTS_MANAGER") && ACTIVE`, reusing the existing `useReorderRequestsByStatus()` query shape (already narrow/parameterized) |
+| `reorder_requests`, Assign write (`READY_FOR_PARTS_MANAGER → ASSIGNED_TO_PARTS_ASSOCIATE`) | `isAdminOrDispatcher()` + `assignedBy==uid` | **PARTS_MANAGER only** | Yes — new write branch for the same role/employment condition |
+| `employees`, `useAssignableEmployees({requiredOperationalRole: PARTS_ASSOCIATE})` (eligible-associate lookup for Assign) | Already scoped, admin/dispatcher-consumed today | **PARTS_MANAGER only** | Reuse as-is — already correctly scoped, no widening; only the *consumer* (who may call it) needs a new Rules branch matching this role |
+| `reorder_requests`, `status in [ASSIGNED_TO_PARTS_ASSOCIATE, PURCHASING_IN_PROGRESS]` (All Assigned Work / oversight) | `isAdminOrDispatcher()` only | **PARTS_MANAGER only** | Yes — new read branch, same role/employment condition. This is a deliberate, Owner-adopted cross-user grant, not an accidental one — see §7 |
+| `reorder_requests`, terminal-status History, **scoped to relevance** (not the full unscoped query) | No self-scoped path exists | **PARTS_MANAGER only ("relevant — not global — history")** | Yes — a **new, narrower** query than the existing History hook; exact relevance criterion (e.g. `reviewedBy==uid`, or requests tied to parts the Parts Manager has acted on) is Specification-level design, not resolved here. Explicitly **not** the unscoped `status in [...]` History query PartsList.jsx uses today |
+| `inventory_transactions` (or a derived recommendation/stock view) — "catalog/health" and "stock visibility" | `isAdminOrDispatcher()` only, unfiltered | **PARTS_MANAGER and WAREHOUSE_MANAGER** | Yes — new read branch, same role/employment condition. Whether this reuses `useInventoryLedger()`'s existing query shape or a narrower derived read is Specification-level design (Risks section) |
+| `inventory_actions`, scoped to "warehouse-relevant activity" | `isAdminOrDispatcher()` only | **WAREHOUSE_MANAGER only** | Yes — a **new, narrower** query than the existing `useInventoryActionsForPart()`'s admin/dispatcher-consumed shape; exact scope (e.g. by transaction type, by part) is Specification-level design |
+| Purchasing-management actions (Assign, Start Purchasing's admin/dispatcher branch, Cancel, Void, Approve/Reject) | Various, per §2b | **Explicitly NOT WAREHOUSE_MANAGER** ("no purchasing-management authority") | None — must not be granted to this role under any new branch |
+| `reorder_requests`, self-scoped by `assignedToUserId == uid` (Waiting/In Progress, exact assigned details) | **No self-read branch exists today** — read is `isAdminOrDispatcher()`-only, unconditionally, even for the assignee | **PARTS_ASSOCIATE only** | Yes — new read branch: `resource.data.assignedToUserId == request.auth.uid` (combined with `hasOperationalRole("PARTS_ASSOCIATE") && ACTIVE`) |
+| `reorder_purchase_orders` / `reorder_purchase_order_voids`, self-scoped read (own request's PO/void record) | `isAdminOrDispatcher()`-only read, no self branch | **PARTS_ASSOCIATE only** | Yes — new read branch, matching the linked request's `assignedToUserId` |
+| Start Purchasing write | Currently double-gated: `isAdminOrDispatcher()` **AND** assignee | **PARTS_ASSOCIATE only** | Yes — the outer `isAdminOrDispatcher()` requirement must gain an operational-role branch, or the assignee-only Rules used by Post Purchasing Update/Record PO/Receive (no outer admin/dispatcher requirement) must be extended to Start Purchasing consistently. Specification must resolve this asymmetry explicitly, not silently |
+| Post Purchasing Update, Record Purchase Order, Mark Received writes | Assignee-only already (`auth.uid==assignedToUserId`, no outer admin/dispatcher requirement) | **PARTS_ASSOCIATE only** | Likely none at the write layer once reachable — these already work for any assignee regardless of security role; reachability (nav/route) is the actual gap for this role, not Rules, for these three actions specifically |
+| Void Purchase Order write | Double-gated: `isAdminOrDispatcher()` **AND** assignee | **PARTS_ASSOCIATE, if "authorized PO actions" includes Void** | Open question (§14) — the double-gate is a deliberate existing design (`docs/assessments/inventory-operational-queue.md` precedent); whether it should gain an operational-role branch alongside/instead of the admin/dispatcher branch is not decided here |
+| `reorder_requests`, Parts Manager Queue / All Assigned Work / full History | `isAdminOrDispatcher()` only | **Explicitly NOT PARTS_ASSOCIATE** ("no manager queue, cross-user oversight, or global history") | None |
+| `employees` (full unscoped directory, `useEmployeeDirectory()`) | `isAdminOrDispatcher()` unconditional | **No role in the adopted matrix** | None — not granted to any operational role by this assessment |
+| Ineligible technician (no `operationalRoles`, or none matching any of the above) | — | **No general Inventory access, any capability** | None — unchanged from today |
 
 ### 4. Employee `operationalRoles` versus security `role` authority
 
 Three distinct fields across two documents:
 
-- **`users/{uid}.role`** — the security role (`admin`/`dispatcher`/`technician`). Read via `AuthContext`; the sole input to `ROLE_NAV_ACCESS` and to `firestore.rules`' `userRole()`/`isAdminOrDispatcher()`.
-- **`employees/{employeeId}.operationalRoles`** (array: `PARTS_MANAGER`/`WAREHOUSE_MANAGER`/`PARTS_ASSOCIATE`, `domain/constants.js:152-181`) — an assignment/task-eligibility marker, explicitly documented in that file's own header comment as independent of security role.
-- **`employees/{employeeId}.securityRole`** — a read-only *mirror* of `users/{uid}.role`, written only by `functions/scripts/provisionEmployeeAccess.js` or its drift-repair counterpart, explicitly "NEVER a source of authorization."
+- **`users/{uid}.role`** — the security role (`admin`/`dispatcher`/`technician`). The sole input to `ROLE_NAV_ACCESS` and `isAdminOrDispatcher()`.
+- **`employees/{employeeId}.operationalRoles`** (array: `PARTS_MANAGER`/`WAREHOUSE_MANAGER`/`PARTS_ASSOCIATE`) — an assignment/task-eligibility marker, independent of security role.
+- **`employees/{employeeId}.securityRole`** — a read-only mirror of `users/{uid}.role`, "NEVER a source of authorization."
 
-`RequestReorderControl.jsx:23-46` is the one place client-side eligibility logic already reads `operationalRoles`:
+`RequestReorderControl.jsx:23-46` is the one place client-side eligibility logic already reads `operationalRoles` (`role===ADMIN || operationalRoles.includes(PARTS_MANAGER) || operationalRoles.includes(WAREHOUSE_MANAGER)`) — blind to `isAdminOrDispatcher()`, correct once reached.
 
-```js
-const { role, operationalRoles } = useAuth();
-const isEligible =
-  role === ROLES.ADMIN ||
-  operationalRoles.includes(OPERATIONAL_ROLE.PARTS_MANAGER) ||
-  operationalRoles.includes(OPERATIONAL_ROLE.WAREHOUSE_MANAGER);
-```
+### 4a. Owner-adopted role capability matrix (this round — supersedes the prior "identical minimal capability" conclusion)
 
-This check is blind to `isAdminOrDispatcher()` — it would render the eligible UI for a `technician` holding `operationalRoles: ["PARTS_MANAGER"]`, *if* that technician could ever reach the component. Per §1, they cannot. `operationalRoles` is authoritative for exactly one write action in this codebase today (manual-quantity-entry, per §2b/§3) and is never consulted for navigation, routing, or any of the reads inventoried in §2/§3.
+The prior round found no *existing* distinction between `PARTS_MANAGER` and `WAREHOUSE_MANAGER` in today's Rules/client logic, and recommended granting both the same minimal bundle on that basis. That finding about *today's code* was accurate; the recommendation drawn from it is superseded here by an explicit Owner decision to differentiate all three operational roles going forward:
 
-**No differentiation exists today, anywhere in Rules or client logic, between what a `PARTS_MANAGER` and a `WAREHOUSE_MANAGER` may do** — `canSubmitManualZeroHistoryQuantity()` and `RequestReorderControl.jsx`'s mirror both treat the two values identically (either satisfies the same `OR` condition). This assessment does not invent a distinction that doesn't exist in the current authorization model — see §10.
+| Role | May see | May do | Explicitly excluded |
+|---|---|---|---|
+| **`PARTS_MANAGER`** | Catalog/health (Parts Catalog + Inventory Health); the Parts Manager Queue (`READY_FOR_PARTS_MANAGER`); assigned-work oversight (`ASSIGNED_TO_PARTS_ASSOCIATE`/`PURCHASING_IN_PROGRESS`, cross-user); relevant — not global — History | Submit manual NEEDS_PLANNING quantities (existing); assign eligible Parts Associates to `READY_FOR_PARTS_MANAGER` requests | Purchasing-execution actions (Start Purchasing, Record PO, Void, Receive) — those belong to the assignee, not the manager who assigned the work |
+| **`WAREHOUSE_MANAGER`** | Catalog/health; stock visibility; warehouse-relevant activity | Submit manual NEEDS_PLANNING quantities (existing) | **No purchasing-management authority** — no Parts Manager Queue, no Assign, no oversight view, no purchasing-execution actions |
+| **`PARTS_ASSOCIATE`** | Personal Waiting/In Progress (their own assignments only); exact details of a request assigned to them | Purchasing progress updates and authorized PO actions (Post Purchasing Update, Record Purchase Order, Mark Received; Void PO status TBD, §14) on requests assigned to them | **No Parts Manager Queue, no cross-user oversight, no global History** |
+| **Technician, no active eligible `operationalRoles`** | Nothing Inventory-related | Nothing | **No general Inventory access at all** — unchanged from today |
+
+`admin`/`dispatcher` access is unchanged throughout (decision 9.2) — this matrix describes only the new, additive `operationalRoles`-derived access paths.
 
 ### 5. Why an eligible technician cannot reach Inventory (mechanism)
 
-Directly established by §1: `ROLE_NAV_ACCESS[ROLES.TECHNICIAN]` never includes `"inventory"`, and `App.jsx`'s route tree is built from the identical predicate, so the `/inventory` route itself does not exist for a `technician` session regardless of that user's linked Employee's `operationalRoles`. The gap is structurally earlier than any eligibility logic: the navigation/routing layer decides reachability using a field (`role`) that has no relationship to the field (`operationalRoles`) the actual business eligibility check uses — and, per §2, that reachability decision is currently all-or-nothing over a page that mounts far more than the one eligible action.
-
-This is already documented as a known, live-discovered gap in three places in the repository today, none of which fix it: `seed.mjs:634-644`'s inline comment, `SKILL.md`'s Gotchas section, and `docs/assessments/inventory-operational-queue.md`'s Architecture Review decision #4, which named Issue #100 as the place the real fix belongs.
+`ROLE_NAV_ACCESS[ROLES.TECHNICIAN]` never includes `"inventory"`, and `App.jsx`'s route tree is built from the identical predicate, so `/inventory` does not exist for a `technician` session regardless of `operationalRoles`. The gap is structurally earlier than any eligibility logic — the nav/route layer decides reachability using `role`, which has no relationship to `operationalRoles`. Already documented, unfixed, in `seed.mjs:634-644`, `SKILL.md`'s Gotchas, and `docs/assessments/inventory-operational-queue.md`'s Architecture Review decision #4.
 
 ### 6. Loading, unresolved, and broken Employee/User linkage behavior
 
-`AuthContext.jsx`'s `resolveEmployeeSession(uid)` (lines ~43-77) is the sole resolver, called from `onAuthStateChanged`:
+`AuthContext.jsx`'s `resolveEmployeeSession(uid)`: one-shot `getDoc(users/{uid})`; if `employeeId==null`, returns immediately with empty operational identity ("a valid, expected migration state, not an error"); if `employeeId` present but the Employee doc doesn't exist, `console.warn`s and returns the same empty shape; otherwise returns `role`/`employeeId`/`displayName`/`operationalRoles`.
 
-1. One-shot `getDoc(users/{uid})` reads `role` and `employeeId`.
-2. `employeeId == null` → returns `{ role, employeeId: null, displayName: null, operationalRoles: [] }` immediately — "a valid, expected migration state, not an error."
-3. `employeeId` present → one-shot `getDoc(employees/{employeeId})`.
-4. Employee doc doesn't exist (broken link) → `console.warn`s the `employeeId` only, returns the same empty-operational-identity shape as step 2.
-5. Otherwise → `{ role, employeeId, displayName, operationalRoles: employeeData.operationalRoles ?? [] }`.
+**Unresolved and broken linkage are, today, indistinguishable in effect**, and neither affects nav/route gating since `operationalRoles` is never read there. Per decision 9.3, any new access path must fail closed on both states explicitly, not merely inherit today's incidental "denied either way" as a byproduct of the field never being consulted.
 
-**Loading:** `App.jsx` renders `<div className="fo-panel">Loading...</div>` and makes no role/nav decision while `loading` is true.
+### 7. Redefining "capability-scoped" — per-role component/query/action design, with a design comparison
 
-**Unresolved and broken linkage are, today, indistinguishable in effect:** both resolve to `operationalRoles: []`, and neither affects nav/route gating at all, since that gating never reads `operationalRoles`. A `technician` with a valid, `ACTIVE`, `PARTS_MANAGER`-tagged Employee link and a `technician` with no Employee link whatsoever are denied Inventory access **identically** today — clear evidence the gap is structural, not a data-quality edge case. **Per the architecture decisions adopted this round (§9), any new access path must fail closed on both of these states, not merely inherit today's incidental "denied either way" behavior as a byproduct of the field never being read at all.**
+§2/§3/§4a together establish that "capability-scoped" now means: **for each of the three operational roles, a distinct, individually-reasoned set of query/action grants — not one shared minimal bundle, and not the shared `PartsList.jsx`/`PartDetail.jsx` pages with conditional sections.**
 
-**Denied/failed read:** caught in a `try/catch`; all four fields reset to their empty/null defaults, never falls back to a default role.
+**Design (a) — dedicated, role-specific surfaces.** New routes/components, separate from `PartsList.jsx`/`PartDetail.jsx`, one per role's capability set from §4a. Each surface's reads may **reuse existing, already-parameterized query-building hooks** where the query shape itself matches (e.g. `useReorderRequestsByStatus(READY_FOR_PARTS_MANAGER)` for the Parts Manager Queue, `useReorderRequestsByStatuses([...])` for oversight, `useAssignableEmployees()` for the eligible-associate lookup — all already narrow, parameterized, and well-understood) — reusing a *hook*, which is just a parameterized query builder, is not the same risk as reusing a *shared page* with conditional rendering. What each surface must **not** do is reuse `useEmployeeDirectory()`'s unscoped read, `useInventoryLedger()`'s literal unfiltered call as-is without a new Rules branch reasoned specifically for that role, or the shared components themselves. Every reused hook still requires its own **new**, role-and-employment-conditioned Rules branch (per §3) — reusing the hook's query shape is not the same as inheriting its existing admin/dispatcher-only grant.
 
-**Related, narrower precedent:** `useAssignableEmployees.js`'s `applyPartsAssociateSecurityRoleEligibility()` filters out Employees whose `securityRole` mirror is missing/invalid and reports a count to an admin/dispatcher-visible warning banner. This is scoped to the assignment-picker's eligible-candidate list, not to the signed-in user's own session — a different mechanism from what a new nav/route eligibility check would need.
+**Design (b) — the shared `PartsList.jsx`/`PartDetail.jsx` pages, with conditional sections and disabled hooks.** Rejected for the same reason as the prior round: a hook left un-gated by a missed conditional still fires its query, and once the underlying Rules are widened at all (as §3 now requires for several query shapes, given the richer adopted matrix), every other unconditionally-reused hook on the same shared page silently inherits reachability to that widened grant — the exact "widening the full Employee directory or all Reorder Request history merely to enable one capability" failure mode the directive warns against, now with *more* surface area to accidentally leak than the prior round's narrower recommendation had.
 
-### 7. Redefining "capability-scoped" — component/query/action level, with a design comparison
-
-The prior draft of this assessment defined "capability-scoped" as "gate the `parts` nav item, leave the rest of Inventory alone." §2 shows that framing was insufficiently granular: the `parts` nav item **is** `PartsList.jsx`, and `PartsList.jsx` mounts roughly a dozen distinct reads and the routes into `PartDetail.jsx`'s roughly ten distinct write actions. Gating only at the nav-item level, without also deciding which of those component-internal sections/hooks/actions the new audience may reach, would either (a) expose the entire matrix in §2 to a technician on the strength of one eligible action, or (b) require a second, undefined layer of gating inside the already-reached component. Two concrete designs resolve this, compared below.
-
-**Design (a) — a dedicated, narrow Inventory-planning surface.** A new route/component, entirely separate from `PartsList.jsx`/`PartDetail.jsx`, that mounts *only*:
-- A purpose-built, narrowly-scoped read of "what needs a manual quantity submitted" — **not** `useInventoryLedger()`'s unfiltered full-collection read (§3). This likely needs its own Specification-level design (a filtered/aggregated read, or a narrower query), explicitly not a reuse of the existing admin/dispatcher-shaped ledger read.
-- `RequestReorderControl`'s existing, already-correct manual-entry action.
-- A new, narrowly-scoped "my submitted requests" read: `where("requestedBy","==",uid)` on `reorder_requests` (the `requestedBy` field already exists, set at creation — `domain/inventoryReorderRequests.js:70`, `firestore.rules:132`) — not the Parts Manager Queue, All Assigned Work, or History queries.
-
-Every read this surface needs is a **new, purpose-built query**, auditable in isolation, with its own Rules grant scoped to exactly that query shape — nothing reused wholesale from the existing admin/dispatcher-shaped hooks.
-
-**Design (b) — the shared `PartsList.jsx`/`PartDetail.jsx` pages, with conditional sections and disabled hooks.** Reuse the existing pages, but wrap each section/hook call in a role/operationalRoles conditional so an eligible technician sees only the Operational Queue tabs and `RequestReorderControl`, with the Parts Manager Queue, Waiting/In Progress, All Assigned Work, History, Parts Catalog, and every `PartDetail.jsx` action other than manual entry conditionally hidden.
-
-**Comparison and recommendation:** Design (b) is riskier for exactly the reason the directive is concerned about. Every one of the dozen-plus hooks in §2 is already wired into these two files; "conditionally hidden" describes UI rendering, not the underlying Firestore read/write authorization — a hook call left un-gated by a missed conditional (or a future edit to either file that doesn't preserve every existing conditional) still fires its query, and if any *future* change ever widens the underlying Rules grant to make the reused hooks work for this new audience at all (which several of them, per §3, are not designed to do without their own Rules change), every other unconditionally-reused hook on the same page inherits that same widened grant whether or not it was ever intended to. This is the literal shape of "widening the full Employee directory or all Reorder Request history merely to enable one capability" the directive warns against — design (b) makes that an easy, silent mistake, because the page's existing hooks already exist and are already imported; leaving one un-gated is an omission, not a new grant someone has to consciously add.
-
-Design (a) has no such failure mode: a new surface starts with zero reads, and every read it gains is a deliberate, individually-scoped addition, reviewed once, on its own Rules grant.
-
-**Recommendation: Design (a), a dedicated, narrow Inventory-planning surface — not Design (b).** This is the "smallest safe design" for the actual capability, superseding the prior draft's Option A/B framing (which compared nav-domain widths, not component/query/action granularity).
-
-**Parts Manager vs. Warehouse Manager scope:** as established in §4, no distinction exists anywhere in the current authorization model between these two `operationalRoles` values — both satisfy `canSubmitManualZeroHistoryQuantity()` and `RequestReorderControl.jsx`'s client mirror identically. This assessment recommends the new dedicated surface grant **the identical minimal capability set to both roles** (the manual-entry action plus the two narrowly-scoped reads above), matching the existing authorization model exactly, unless a future Specification identifies and justifies a divergent need for one role over the other — not assumed or invented here.
+**Recommendation: Design (a), per role — three distinct, dedicated surfaces (or, if a Specification finds it cleaner, one shell route with three independently-gated, role-conditional sections, provided each section's own hooks/Rules grants remain individually reasoned exactly as if it were a separate route).** The critical property, regardless of exact componentization chosen at Specification time, is: **every read/write in §3's table gets its own explicit, role-and-employment-conditioned Rules branch — never a shared grant reused across roles or inherited from the admin/dispatcher-shaped hooks as-is.**
 
 ### 8. Route-level enforcement, not navigation visibility alone
 
-Established in §1: this codebase does not have a separate "nav visibility" layer and "route guard" layer — `isNavItemVisible`/`isDomainVisible` gate both simultaneously, from one call site each in `App.jsx`. Design (a) from §7 is compatible with this property without modification: the new dedicated surface gets its own nav item and route, gated by its own eligibility input (operational role + `ACTIVE` employment, per §9), exactly like every existing item is gated by `role` today — no new route-guard mechanism is invented, and the existing `parts`/Inventory-domain nav item and its route remain untouched, still `admin`/`dispatcher`-only exactly as today.
+Unchanged finding: nav and route are the same predicate (§1). Each new role-specific surface gets its own nav item and route, gated by that role's specific eligibility input (operational role + `ACTIVE` employment, decision 9.1) — the existing `parts`/Inventory-domain item and route remain untouched, still `admin`/`dispatcher`-only exactly as today (decision 9.2).
 
-### 9. Architecture decisions adopted this round
+### 9. Architecture decisions adopted
 
-The following are adopted as binding constraints on any Specification/Implementation Plan that follows this assessment — not options, not open questions:
+Binding constraints on any Specification/Implementation Plan that follows this assessment:
 
-1. **Operational-role-derived access requires `ACTIVE` employment.** An Employee whose `employmentStatus` is not `ACTIVE` never grants nav/route/query access via `operationalRoles`, regardless of what that array contains — matching the existing `useAssignableEmployees()` precedent (`where("employmentStatus","==","ACTIVE")`) rather than leaving this as an unstated assumption.
-2. **Admin/dispatcher access remains unchanged.** Nothing in this initiative narrows, conditions, or re-gates any existing admin/dispatcher read or write path inventoried in §2/§3 — the new access path is strictly additive, for a new audience, over new or narrowly-scoped surfaces only.
-3. **Unresolved or broken Employee/User linkage fails closed.** Per §6, a `technician` with no `employeeId`, or an `employeeId` pointing at a nonexistent/unreadable Employee document, is denied the new access path exactly as they are denied today — never granted by default, never treated as "eligible until proven otherwise."
-4. **A nav-visible but permission-denied page is NOT an acceptable interim state.** The prior draft's Open Question #2 ("ship the nav fix, defer the Rules question, accept the resulting broken screen") is rejected outright. If a Specification cannot deliver both the reachability change and its matching, narrowly-scoped Rules/query grants together, it does not ship the reachability change.
-5. **Required Rules/query/index changes must be merged, separately deployed, and verified before the UI access change merges.** Mirrors this initiative's own established C0-index-before-query discipline (Issue #154's PR #173 deployed and confirmed `[READY]` before PR #177's query code merged) — the new narrowly-scoped Rules grants and any supporting index must be live and confirmed in production before the PR that makes the new surface reachable is allowed to merge, not merely committed alongside it.
-6. **The prior technician-assignee exclusion is reconsidered only after this initiative is safely complete, never automatically removed.** `docs/assessments/inventory-operational-queue.md`'s Architecture Review decision #4 (excluding `technician`-role employees from Parts Associate assignment eligibility) stays in force unchanged by this initiative. Resolving Issue #100 does not, by itself, revisit or lift that constraint — any future change to it requires its own explicit, separate Owner/Architecture decision, made after this initiative's own access model has shipped and been verified safe, not bundled into or inferred from it.
+1. **Operational-role-derived access requires `ACTIVE` employment.** No `operationalRoles` value grants any capability in §4a unless the linked Employee's `employmentStatus` is `ACTIVE`.
+2. **Admin/dispatcher access remains unchanged.** Every grant in §3/§4a is strictly additive, for a new audience, over new or narrowly-scoped surfaces only.
+3. **Unresolved or broken Employee/User linkage fails closed.** No `employeeId`, or an unreadable/nonexistent linked Employee document, denies every capability in §4a exactly as today — never a default grant.
+4. **A nav-visible but permission-denied page is NOT an acceptable interim state, for any role or capability.** If a Specification cannot deliver a given role's reachability change together with its full matching set of Rules/query grants from §3, it does not ship that role's reachability change.
+5. **Required Rules/query/index changes must be merged, separately deployed, and verified before *each corresponding* UI capability merges** — not once, generically, but per role/capability grouping (§3's rows), mirroring this initiative's own established C0-index-before-query discipline. A PARTS_ASSOCIATE capability's Rules work being live does not authorize merging a PARTS_MANAGER UI capability, and vice versa.
+6. **The prior technician-assignee exclusion is reconsidered only after this initiative is safely complete, never automatically removed.** `docs/assessments/inventory-operational-queue.md`'s Architecture Review decision #4 stays in force unchanged; any future change requires its own explicit, separate decision, made after this initiative ships and is verified safe.
 
 ### 10. Deny-by-default behavior and no raw IDs in human-facing flows
 
-**Deny-by-default:** confirmed already correct throughout the chain investigated — `isNavItemVisible`/`isDomainVisible` default to exclusion; `App.jsx`'s catch-all redirects to `/dashboard`; every Rules read/write gate inventoried in §2/§3 defaults deny; `resolveEmployeeSession()` resets to empty/null on any failure. Decision 9.3 above makes this explicit and binding for the new access path specifically, not merely inherited incidentally.
+Deny-by-default confirmed throughout the chain investigated; decision 9.3 makes it explicit and binding for every new access path in §4a. The established no-raw-ID convention (`resolveAssigneeDisplay()`/`resolveActorDisplayName()`) applies to any future surface that must resolve another employee's identity — note that under §4a, **PARTS_MANAGER's oversight view is the one role-specific surface that does need this** (it resolves assignee display names across users, deliberately, per the adopted matrix), while `WAREHOUSE_MANAGER`'s and `PARTS_ASSOCIATE`'s surfaces do not need cross-user identity resolution at all and should not import `useEmployeeDirectory()`.
 
-**No raw IDs in human-facing flows:** the established convention is `PartsList.jsx`'s `resolveAssigneeDisplay()`: resolve to a display name via the Employee directory, or an explicit placeholder (`"Unknown assignee"`) — never a raw uid, in any surface held to that stricter bar. The new dedicated surface (§7, Design (a)) does not itself need to resolve *other* employees' identities (it has no cross-user oversight section), which is a further argument for Design (a) over (b): it structurally avoids needing `useEmployeeDirectory()` at all, rather than needing to remember to keep that convention correct on a reused page.
+### 11. `firestore.rules`/schema/index implications, by role
 
-### 11. `firestore.rules`/schema/index implications
+**Already correct, no change needed:** `employees/{employeeId}` self-read; `canSubmitManualZeroHistoryQuantity()` (PARTS_MANAGER/WAREHOUSE_MANAGER manual entry); `useAssignableEmployees()`'s existing scoped query (reusable as-is for PARTS_MANAGER's Assign lookup); the three assignee-only writes with no outer admin/dispatcher requirement (Post Purchasing Update, Record PO, Mark Received — already correctly scoped for PARTS_ASSOCIATE once reachable).
 
-**Already correct, no change needed:** `employees/{employeeId}` self-read (`firestore.rules:198-202`); `canSubmitManualZeroHistoryQuantity()` (`firestore.rules:44-55`).
+**New grants needed, grouped by role (detail in §3):**
+- **PARTS_MANAGER:** read branches for `READY_FOR_PARTS_MANAGER` (Parts Manager Queue), the Assign write, cross-user oversight (`status in [...]`), and a new narrower "relevant history" query (design TBD, Specification-level).
+- **WAREHOUSE_MANAGER:** read branch for catalog/health/stock visibility (`inventory_transactions` or a derived view), and a new narrower "warehouse-relevant activity" query over `inventory_actions` (design TBD).
+- **PARTS_ASSOCIATE:** a self-scoped read branch on `reorder_requests` (`assignedToUserId==uid`, currently absent entirely — read is `isAdminOrDispatcher()`-only even for the assignee today), a matching self-scoped read on `reorder_purchase_orders`/`reorder_purchase_order_voids`, and resolution of the Start Purchasing double-gate asymmetry (§3, §14).
 
-**New, narrowly-scoped grants needed** (per §7 Design (a), §3): a Rules read grant for the new "my submitted requests" query shape (`where("requestedBy","==",uid)` on `reorder_requests`, likely expressible as a per-document rule — `resource.data.requestedBy == request.auth.uid` — combined with the eligibility check from decision 9.1, rather than a blanket collection-level grant); and a Rules read grant (and/or a purpose-built narrower query/read mechanism, TBD at Specification time) for "what needs a manual quantity submitted," explicitly **not** the same unfiltered `inventory_transactions` collection-level grant `isAdminOrDispatcher()` currently has.
+**Schema:** no new fields required — `operationalRoles`, `employmentStatus`, `requestedBy`, `assignedToUserId` all already exist.
 
-**Schema:** no new fields required — `operationalRoles`, `employmentStatus`, and `requestedBy` all already exist and are already populated by existing provisioning/creation paths.
-
-**Index:** the existing `reorder_requests` queries are single/double equality filters requiring no composite index; a new `where("requestedBy","==",uid)` query is a single equality filter, also requiring no composite index. Whatever narrower mechanism is chosen for the "what needs planning" read may or may not need one — Specification-level design, not resolved here. Per decision 9.5, whatever index is needed must be deployed and confirmed `[READY]` before the UI access change merges.
+**Index:** the reused query shapes (`READY_FOR_PARTS_MANAGER`, `status in [...]`, `assignedToUserId==uid`) already work without a new composite index in their existing admin/dispatcher-gated form — adding a new Rules branch to an existing query shape does not, by itself, require a new index. The two genuinely new query shapes (relevant-history for PARTS_MANAGER, warehouse-relevant-activity for WAREHOUSE_MANAGER) may need one — Specification-level design. Per decision 9.5, whatever index is needed must be deployed and confirmed `[READY]` before that specific role's UI capability merges.
 
 ### 12. Browser and Rules test matrix (for a future Implementation Plan, not performed here)
 
-No test seam or driver change was made — this is scope only. A future Implementation Plan's browser coverage should include, at minimum:
-
-| Account | Security `role` | `operationalRoles` | `employmentStatus` | Expected outcome (post-fix, Design (a) surface) |
+| Account | Security `role` | `operationalRoles` | `employmentStatus` | Expected outcome |
 |---|---|---|---|---|
-| admin | admin | — | — | Unchanged: full `PartsList.jsx`/`PartDetail.jsx` access; new surface irrelevant/not needed |
-| dispatcher | dispatcher | — | — | Unchanged: full `PartsList.jsx`/`PartDetail.jsx` access |
-| eligible technician (Parts Manager) | technician | `["PARTS_MANAGER"]` | ACTIVE | Reaches the new dedicated surface; can submit a manual NEEDS_PLANNING quantity; sees only their own `requestedBy`-scoped submissions; **does not** reach `PartsList.jsx`/`PartDetail.jsx`, the Employee directory, or the full ledger |
-| eligible technician (Warehouse Manager) | technician | `["WAREHOUSE_MANAGER"]` | ACTIVE | Identical outcome to Parts Manager (§7 — no differentiation in the current model) |
-| ineligible technician (no operational role) | technician | `[]` or absent | ACTIVE | Denied — unchanged from today |
-| technician, broken Employee link | technician | N/A (no Employee doc resolves) | N/A | Denied — fails closed per decision 9.3 |
-| technician, unresolved linkage (no `employeeId`) | technician | N/A | N/A | Denied — fails closed per decision 9.3 |
-| technician, inactive eligible Employee | technician | `["PARTS_MANAGER"]` | INACTIVE / TERMINATED | Denied — fails closed per decision 9.1, despite otherwise-eligible `operationalRoles` |
-| dispatcher/admin with no eligible operational role | dispatcher / admin | `[]` | — | Unchanged — full access via existing `role`, proving decision 9.2 (additive, not a replacement) |
+| admin | admin | — | — | Unchanged: full access |
+| dispatcher | dispatcher | — | — | Unchanged: full access |
+| eligible technician (Parts Manager) | technician | `["PARTS_MANAGER"]` | ACTIVE | Reaches Parts Manager surface: catalog/health, Parts Manager Queue, assign eligible associates, assigned-work oversight, relevant history. **Does not** reach purchasing-execution actions, the full unscoped History, or the Employee directory beyond the scoped assignable-employees lookup |
+| eligible technician (Warehouse Manager) | technician | `["WAREHOUSE_MANAGER"]` | ACTIVE | Reaches Warehouse Manager surface: catalog/health, stock visibility, manual entry, warehouse-relevant activity. **Does not** reach the Parts Manager Queue, Assign, or any purchasing-execution action |
+| eligible technician (Parts Associate) | technician | `["PARTS_ASSOCIATE"]` | ACTIVE | Reaches Parts Associate surface: personal Waiting/In Progress, exact assigned-request details, purchasing progress updates, Record PO, Mark Received. **Does not** reach the Parts Manager Queue, oversight, or global History |
+| ineligible technician (no operational role) | technician | `[]` or absent | ACTIVE | Denied all Inventory access — unchanged |
+| technician, broken or unresolved Employee link | technician | N/A | N/A | Denied all capabilities — fails closed (decision 9.3) |
+| technician, inactive eligible Employee | technician | any eligible value | INACTIVE / TERMINATED | Denied all capabilities despite otherwise-eligible `operationalRoles` (decision 9.1) |
+| dispatcher/admin, no eligible operational role | dispatcher / admin | `[]` | — | Unchanged — full access via existing `role` (decision 9.2) |
+| PARTS_MANAGER-only technician | technician | `["PARTS_MANAGER"]` | ACTIVE | Confirms exclusion: cannot Start Purchasing, Record PO, Void, or Receive on any request (those belong to the assignee) |
+| WAREHOUSE_MANAGER-only technician | technician | `["WAREHOUSE_MANAGER"]` | ACTIVE | Confirms exclusion: cannot reach the Parts Manager Queue, Assign, or any purchasing-execution action |
+| PARTS_ASSOCIATE-only technician | technician | `["PARTS_ASSOCIATE"]` | ACTIVE | Confirms exclusion: cannot reach the Parts Manager Queue, oversight view, or full History; a request assigned to a *different* Parts Associate is invisible to this account |
 
-**Rules-level assertions** (SDK probe or driver-level, per this repo's existing `queryFailureProbe` pattern where a browser session cannot reach the negative case): an eligible, `ACTIVE` technician's new `requestedBy`-scoped query succeeds and returns only their own documents; the same account's attempt to read the Parts Manager Queue / All Assigned Work / History query shapes, or the unfiltered `employees`/`inventory_transactions` collections, is denied — proving the new grants are exactly as narrow as §3/§11 specify, not accidentally broader. An inactive-employment or broken-linkage technician's attempt at the new query is denied even though the query shape itself would otherwise match.
-
-**Direct-URL-navigation assertions**, per §8: typing the new surface's URL and `/inventory`/`/inventory/:partId` directly for every account above, not merely checking nav-link presence.
+**Rules-level assertions**, per role: the new query/write grants succeed for an eligible `ACTIVE` account and are denied for the same account attempting a capability outside its own role's row in §4a (e.g. a WAREHOUSE_MANAGER technician attempting the Assign write, or a PARTS_ASSOCIATE technician attempting the oversight query) — proving each role's grants are exactly as scoped as §3 specifies, not accidentally shared across roles.
 
 ## Affected files (for a future implementation; unchanged by this assessment)
 
 | File | Current role | Why it's relevant |
 |---|---|---|
-| `field-ops-app-vite/src/domain/constants.js` | Defines `ROLES`, `ROLE_NAV_ACCESS`, `OPERATIONAL_ROLE` | Source of truth for nav/route gating; the new surface's nav item and its eligibility input are defined/consumed here |
-| `field-ops-app-vite/src/navigation/navConfig.js`, `App.jsx` | Nav + route predicates | A **new** nav item/route is added for the dedicated surface (§7 Design (a)); the existing `parts`/Inventory-domain item and route are **not** modified |
-| `field-ops-app-vite/src/auth/AuthContext.jsx` | Resolves `role`/`employeeId`/`operationalRoles` per session | Already exposes everything needed (`operationalRoles`); `employmentStatus` is not currently resolved into session state and would need to be, per decision 9.1 |
-| A **new** component/route (not yet named) | N/A — does not exist today | The dedicated Inventory-planning surface itself (§7 Design (a)) |
-| `field-ops-app-vite/src/shared/inventory/RequestReorderControl.jsx` | Existing operational-role-aware client eligibility check | Reused as-is inside the new surface; not modified |
-| `firestore.rules` | Gates every collection in §2/§3 | New, narrowly-scoped grants added per §11 — Tier 2, requires explicit Owner decision, deployed and verified per decision 9.5 before the UI PR merges |
-| `field-ops-app-vite/.claude/skills/run-field-ops-app-vite/seed.mjs`, `driver.mjs` | Test fixture/driver infrastructure | No `DRIVER_ACCOUNTS` entry today is seeded as `role: technician`; needs at least the fixtures in §12's matrix |
+| `field-ops-app-vite/src/domain/constants.js` | Defines `ROLES`, `ROLE_NAV_ACCESS`, `OPERATIONAL_ROLE` | Source of truth for nav/route gating; each new role-specific surface's nav item and eligibility input are defined/consumed here |
+| `field-ops-app-vite/src/navigation/navConfig.js`, `App.jsx` | Nav + route predicates | Up to three new nav items/routes (one per role in §4a); the existing `parts`/Inventory-domain item and route are **not** modified |
+| `field-ops-app-vite/src/auth/AuthContext.jsx` | Resolves `role`/`employeeId`/`operationalRoles` per session | `employmentStatus` is not currently resolved into session state and would need to be, per decision 9.1 |
+| New components/routes (not yet named) | N/A — do not exist today | The three role-specific surfaces (§7 Design (a)) |
+| `field-ops-app-vite/src/shared/inventory/RequestReorderControl.jsx`, `hooks/useReorderRequestsByStatus.js`-equivalents, `useAssignableEmployees.js` | Existing, already-parameterized hooks | Reused as query builders inside the new surfaces (§7); not modified themselves |
+| `firestore.rules` | Gates every collection in §2/§3 | New, role-and-employment-conditioned grants added per §11 — Tier 2, requires explicit Owner decision, deployed and verified per role/capability (decision 9.5) before each corresponding UI PR merges |
+| `field-ops-app-vite/.claude/skills/run-field-ops-app-vite/seed.mjs`, `driver.mjs` | Test fixture/driver infrastructure | Needs `technician`-role `DRIVER_ACCOUNTS` fixtures for all three operational roles, per §12 |
 
 ## Dependencies
 
-- Directly named as deferred-to by `docs/assessments/inventory-operational-queue.md` (Issue #154's own assessment, Architecture Review decision #4 and Risks section): that constraint stays in force per decision 9.6 above — this initiative does not lift or reconsider it.
-- `RequestReorderControl.jsx`'s existing `operationalRoles` eligibility check is unaffected — it already does the right thing once reached; this assessment's scope is entirely about what surface reaches it and what else that surface would otherwise expose.
+- `docs/assessments/inventory-operational-queue.md`'s Architecture Review decision #4 (technician-assignee exclusion) stays in force per decision 9.6.
+- `RequestReorderControl.jsx`'s existing eligibility check is unaffected — already correct once reached.
 - No dependency on the Customer or Platform initiatives.
+- Issue #182 (Truck Parts Sale-to-Invoice and Inventory Consumption, §13) is a related but structurally separate future initiative — not a dependency of this one, and this initiative is not a dependency of it either; the boundary is explicit, not merely sequential.
 
 ## Risks
 
-- **Design (b) (shared-page, conditional sections) was seriously considered and rejected** (§7) specifically because of how easily it produces exactly the over-broad grant the directive warns against — an un-gated hook left on a shared page is a silent omission, not a conscious new grant. This risk does not apply to the recommended Design (a), but is recorded here so a future Specification does not re-introduce it by reaching for the shared pages as a shortcut.
-- **The "what needs planning" read (§7/§11) has no existing narrow query to reuse** — `useInventoryLedger()`'s full unfiltered `inventory_transactions` read is the only existing implementation, and it is not appropriately scoped for a new, narrower audience. This is real, unresolved design work for the Specification stage, not a solved problem this assessment is deferring casually.
-- **`employmentStatus` is not currently part of `AuthContext`'s session state** — only `role`, `employeeId`, `displayName`, `operationalRoles` are resolved into `useAuth()` today. Decision 9.1 requires evaluating `employmentStatus`, which means either extending `resolveEmployeeSession()` to also read and expose it, or re-checking it at the Rules layer only (server-side) without surfacing it client-side — a Specification-level decision, not made here.
-- **Sequencing risk (decision 9.5):** if the Rules/index PR and the UI-reachability PR are not strictly sequenced with a verified production deployment gate between them, the same "nav-visible but permission-denied" failure mode this round explicitly rejects (decision 9.4) could still occur by accident, not intent — the Implementation Plan must enforce the gate procedurally, not merely state it.
-
-## Implementation options
-
-Superseded by §7's Design (a) / Design (b) comparison at the component/query/action level, which replaces the prior draft's Option A/B (full-domain vs. `parts`-item-only nav gating) — that framing did not account for what the `parts` item actually mounts (§2). Design (a), the dedicated narrow surface, is recommended.
+- **The richer, per-role matrix (§4a) has materially more new Rules surface than the prior round's single minimal bundle** — six distinct new grant groups (§11) instead of two. Each must be independently reasoned and verified; treating them as one undifferentiated "Inventory access" Rules PR risks re-introducing the over-broad-grant failure mode this assessment has twice now been asked to correct.
+- **The Start Purchasing double-gate asymmetry (§3, §14)** is a real, unresolved design question — the other three assignee-scoped writes (Post Purchasing Update, Record PO, Mark Received) have no outer admin/dispatcher requirement, but Start Purchasing does. A Specification must decide whether to remove that asymmetry (add an operational-role branch to Start Purchasing's outer gate) or intentionally preserve it (meaning a PARTS_ASSOCIATE technician could see an assigned request move to `ASSIGNED_TO_PARTS_ASSOCIATE` but not themselves start purchasing on it) — not assumed here.
+- **"Relevant — not global — history" (PARTS_MANAGER) and "warehouse-relevant activity" (WAREHOUSE_MANAGER) have no existing query to reuse** — both need genuine new query design at Specification time, not merely a Rules branch on an existing hook.
+- **`employmentStatus` is not currently part of `AuthContext`'s session state.** Decision 9.1 requires evaluating it, meaning either extending `resolveEmployeeSession()` or checking it Rules-side only — Specification-level decision.
+- **Sequencing risk (decision 9.5), now compounded by three role-specific pairings instead of one:** if any single role's Rules work and UI work are not strictly gated by a verified production deployment, that role alone could regress into the explicitly-rejected nav-visible-but-permission-denied state even if the other two roles are sequenced correctly.
 
 ## Recommended smallest safe design (for Architecture Review, not a final decision)
 
-1. **Build a new, dedicated, narrow Inventory-planning surface** (§7 Design (a)) — not a conditionally-gated version of `PartsList.jsx`/`PartDetail.jsx`. Its own nav item and route, gated by operational-role + `ACTIVE` employment (decision 9.1), entirely separate from the existing `parts`/Inventory-domain item, which remains admin/dispatcher-only and unmodified (decision 9.2).
-2. **The new surface's read surface is exactly three items**, each individually and narrowly scoped, per §3/§7/§11: (i) a purpose-built "what needs a manual quantity" read, not the existing unfiltered ledger read; (ii) `RequestReorderControl`'s existing, already-correct write action; (iii) a new `requestedBy == uid`-scoped read of the user's own submissions. No Employee directory read, no Parts Manager Queue/All Assigned Work/History access, no Purchase Order/void/receiving/Inventory Action Log surface.
-3. **Fail closed on every linkage and employment-status edge case** (decisions 9.1, 9.3) — unresolved, broken, or inactive-employment technicians get exactly the same denial as an ineligible one, never a default grant.
-4. **Sequence Rules/query/index work strictly before the UI PR, with a verified production deployment gate between them** (decision 9.5) — mirroring this initiative's own established C0-before-PR-C precedent.
-5. **Do not ship a nav-reachable, data-inaccessible interim state under any circumstance** (decision 9.4) — this supersedes the prior draft's Open Question #2, which is no longer open.
-6. **Leave the technician-assignee exclusion (`inventory-operational-queue.md` decision #4) untouched** (decision 9.6) — record this initiative's completion as the trigger for a *future*, separate reconsideration, not an automatic side effect.
-7. **Add a `technician`-role `DRIVER_ACCOUNTS` fixture** (with a linked, eligible, `ACTIVE` Employee) to `seed.mjs`, per §12 — today's fixture set has never been able to exercise this scenario in a real signed-in browser session.
+1. **Build three dedicated, role-specific Inventory surfaces** (§7 Design (a)) — not a conditionally-gated version of `PartsList.jsx`/`PartDetail.jsx`, and not one shared minimal bundle. Each with its own nav item/route, gated by that role's specific eligibility input (operational role + `ACTIVE` employment).
+2. **Every read/write is an individually-reasoned, role-and-employment-conditioned Rules grant** (§3/§11) — existing parameterized query hooks may be reused as query builders, but never their existing admin/dispatcher-only or unscoped grants as-is.
+3. **Fail closed on every linkage and employment-status edge case**, for all three roles uniformly (decisions 9.1, 9.3).
+4. **Sequence each role's Rules/query/index work strictly before that role's UI PR**, with a verified production deployment gate between them (decision 9.5) — per role, not once globally.
+5. **Do not ship any role's nav-reachable, data-inaccessible interim state under any circumstance** (decision 9.4).
+6. **Leave the technician-assignee exclusion untouched** (decision 9.6).
+7. **Add `technician`-role `DRIVER_ACCOUNTS` fixtures for all three operational roles** to `seed.mjs`, per §12.
+8. **Resolve the Start Purchasing double-gate asymmetry explicitly** (§14) before PARTS_ASSOCIATE's purchasing-progress capability is considered complete — not left as a silent gap discovered later.
 
-## Sequencing (replaces the prior draft's two-PR estimate)
+## Sequencing (per role/capability, replacing the prior round's generic two-PR shape)
 
-The prior draft's "Two PRs" estimate assumed capability-scoping meant a one-line nav-gate change plus an optional Rules PR. §2's complete surface matrix and §7's Design (a) recommendation both require materially more: a new surface, new narrowly-scoped queries, and a strictly-sequenced deployment gate (decision 9.5). Revised sequencing, derived directly from the completed capability matrix:
+Derived directly from §3's per-role grant groups, each independently subject to decision 9.5's deploy-before-merge gate:
 
-- **PR 1 — Rules, query, and (if needed) index changes only. No UI reachability change.** Adds the two new narrowly-scoped Rules grants from §11 (the "what needs planning" read and the `requestedBy`-scoped read), and any supporting index. Verified via SDK-level/driver probes (not a real browser session, since no reachable UI exists yet) that the new grants are exactly as narrow as specified — an eligible `ACTIVE` technician's new queries succeed; the same account's attempts at every existing admin/dispatcher-shaped query (Parts Manager Queue, All Assigned Work, History, full ledger, full Employee directory) are denied. **Must be merged, deployed to production, and confirmed [READY]/live before PR 2 merges** (decision 9.5).
-- **PR 2 — The new dedicated Inventory-planning surface, nav item, and route**, wired to PR 1's already-deployed grants. Includes the `employmentStatus`-aware `AuthContext` extension if needed (per the Risks section), the new `technician`-role `DRIVER_ACCOUNTS` fixture, and full browser coverage per §12's matrix, run against the real, already-live Rules from PR 1 — not mocked or deferred.
-- **PR 3 — reserved, not yet scoped.** Only if Architecture Review or a later Specification identifies a genuine divergence between Parts Manager and Warehouse Manager capability (§7's "no differentiation exists today" finding may not hold forever), or extends the surface beyond the three reads in §11. Not assumed, not started, not implied by this assessment.
+- **PR 0 — Shared infrastructure, no new capability.** `employmentStatus` added to `AuthContext` session state (if the Specification chooses client-side evaluation); the `technician`-role `DRIVER_ACCOUNTS` fixtures for all three roles. No Rules change, no new nav/route yet.
+- **PR 1a (Rules) → PR 1b (UI) — PARTS_MANAGER.** 1a: new Rules branches for the Parts Manager Queue read, the Assign write, the oversight read, and the relevant-history query (once designed); deployed, confirmed live, verified via SDK/driver probes before 1b merges. 1b: the PARTS_MANAGER surface itself, wired to 1a's live grants, with browser coverage from §12.
+- **PR 2a (Rules) → PR 2b (UI) — WAREHOUSE_MANAGER.** 2a: new Rules branches for catalog/health/stock-visibility and warehouse-relevant-activity reads; deployed and verified before 2b merges. 2b: the WAREHOUSE_MANAGER surface.
+- **PR 3a (Rules) → PR 3b (UI) — PARTS_ASSOCIATE.** 3a: new self-scoped read branches on `reorder_requests` and `reorder_purchase_orders`/`voids`, plus the Start Purchasing double-gate resolution (§14); deployed and verified before 3b merges. 3b: the PARTS_ASSOCIATE surface.
 
-This sequencing is itself an architecture decision this assessment recommends Architecture Review adopt explicitly, not merely a numbering convenience — it is what operationalizes decisions 9.4 and 9.5 into an enforceable PR order rather than a stated intention.
+The three role tracks (1, 2, 3) may proceed in parallel relative to each other — nothing in §4a makes one role's grant a prerequisite for another's — but within each track, the `a`→`b` deploy-then-merge gate is binding per decision 9.5, independently for each role.
+
+## Boundary note
+
+### 13. Truck parts sale-to-invoice — explicitly out of scope, tracked separately
+
+A base Technician (no eligible `operationalRoles`, per §4a's last row) may eventually need to record parts sold/consumed from their own assigned truck stock directly through the current Work Order/invoice flow — e.g., scanning a part via their phone camera while closing out a job. **This grants no general Inventory access** — it is not covered by, and does not extend, any of the role-specific surfaces in §4a/§7; a base Technician remains denied all Inventory nav/route/query access exactly as today. This is a structurally separate capability (Work-Order-scoped, truck-stock-scoped, invoice-integrated), not an `operationalRoles`/Inventory-planning concern, and is tracked as its own Assessment-only issue: **Issue #182, "Truck Parts Sale-to-Invoice and Inventory Consumption"** (adopted phone-camera QR workflow; reservation/consumption/reversal lifecycle; assigned-truck scope; pricing/tax; offline/retry; idempotency; names-with-IDs audit evidence; Issue #15's trusted-writer/Cloud-Function precedent as a dependency to evaluate). No access model for it is proposed here, and no implementation is authorized by either this assessment or Issue #182 itself.
 
 ## Open questions for Architecture Review
 
-1. **The "what needs planning" read mechanism** (§7, §11, Risks) — this assessment identifies that the existing `useInventoryLedger()` read is not appropriately scoped for the new audience, but does not design its replacement. Architecture Review/Specification must decide the shape of this new, narrower read.
-2. **Whether `employmentStatus` should be added to `AuthContext`'s client-side session state**, or checked only server-side at the Rules layer for this new access path (Risks section) — affects whether the client can proactively explain "your account is not currently active" versus simply denying the query.
-3. **Whether Parts Manager and Warehouse Manager will ever diverge in capability** — this assessment finds no existing basis for a distinction (§4, §7) and recommends treating them identically until a future need is evidenced; Architecture Review should confirm this is the intended posture, not an oversight.
-4. **Confirmation of the sequencing in the "Sequencing" section above as binding**, not merely advisory — since decisions 9.4/9.5 depend on it being enforced procedurally across two separately-merged, separately-deployed PRs.
+1. **The relevant-history query design (PARTS_MANAGER)** and **the warehouse-relevant-activity query design (WAREHOUSE_MANAGER)** — both need genuine new query shapes; this assessment identifies the need but does not design them (§3, §11, Risks).
+2. **Whether `employmentStatus` should be added to `AuthContext`'s client-side session state**, or checked only server-side (Risks).
+3. **Whether the "what needs planning"/catalog-health read for PARTS_MANAGER and WAREHOUSE_MANAGER reuses `useInventoryLedger()`'s existing query shape (under a new Rules branch) or a narrower derived view** — Specification-level design (§3, §11).
+4. **Confirmation of the per-role sequencing above as binding**, not merely advisory, across (up to) three independently-gated Rules-then-UI pairings.
+
+### 14. Open question: the Start Purchasing double-gate asymmetry
+
+Flagged in §3/Risks, restated here as its own item because it blocks declaring PARTS_ASSOCIATE's "purchasing progress and authorized PO actions" capability complete: Start Purchasing currently requires **both** `isAdminOrDispatcher()` **and** assignee, while Post Purchasing Update/Record PO/Mark Received require only assignee. Whether Void Purchase Order's own double-gate (`isAdminOrDispatcher()` **and** assignee) is intended to be part of PARTS_ASSOCIATE's "authorized PO actions" is likewise not decided here. Both require an explicit Architecture Review/Specification decision, not an assumption drawn from the asymmetry's current shape.
