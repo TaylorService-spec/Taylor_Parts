@@ -1,9 +1,11 @@
 import { useMemo, useState } from "react";
 import { ACCOUNT_STATUS, ACCOUNT_RELATIONSHIP_TYPE, INVOICE_DELIVERY_METHOD } from "../../domain/constants";
-import { commercialProfileErrors, isValidInvoiceDeliveryMethod, isContactOnAccount } from "../../domain/commercialProfile";
+import { commercialProfileErrors, isValidInvoiceDeliveryMethod, isContactOnAccount, resolveOwnerIdentity } from "../../domain/commercialProfile";
 import { useAuth } from "../../auth/AuthContext";
+import { useEmployeeDirectory } from "../../hooks/useEmployeeDirectory";
 import AddressFields from "../../shared/address/AddressFields";
 import EmployeeAssignmentPicker from "../../shared/assignment/EmployeeAssignmentPicker";
+import IdentityLine from "./IdentityLine";
 
 // Sprint 2.0.2 -- Customer Foundation. Shared create/edit form,
 // internal name AccountForm per the naming convention (rendered UI
@@ -27,8 +29,9 @@ import EmployeeAssignmentPicker from "../../shared/assignment/EmployeeAssignment
 // audit-integrity invariant): these are client-direct edits for now; once the
 // audit log + trusted server-side writer ship, mutation moves there and direct
 // client writes are denied.
-export default function AccountForm({ initialValues, onSubmit, onCancel, submitLabel, contacts = [], contactsLoading = false }) {
-  const { user, employeeId: sessionEmployeeId, loading: authLoading } = useAuth();
+export default function AccountForm({ initialValues, onSubmit, onCancel, submitLabel, contacts = [], contactsLoading = false, contactsError = null }) {
+  const { user, employeeId: sessionEmployeeId, displayName: sessionDisplayName, loading: authLoading } = useAuth();
+  const { byUserId, loading: directoryLoading, error: directoryError } = useEmployeeDirectory();
 
   const [name, setName] = useState(initialValues?.name ?? "");
   const [address, setAddress] = useState({
@@ -70,15 +73,26 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
     [defaultCurrency, invoiceDeliveryMethod, purchaseOrderRequired, billingContactId, accountOwner]
   );
   const { valid: cpValid, errors } = useMemo(
-    () => commercialProfileErrors(cpDraft, contacts, { contactsResolved: !contactsLoading }),
-    [cpDraft, contacts, contactsLoading]
+    () => commercialProfileErrors(cpDraft, contacts, { contactsResolved: !contactsLoading, contactsError: Boolean(contactsError) }),
+    [cpDraft, contacts, contactsLoading, contactsError]
   );
+
+  // Re-resolve the CURRENT owner identity from the stable userId (never the
+  // stored snapshot), so the "Current owner" line shows the live authority
+  // with proper loading/error/unknown states.
+  const currentOwnerIdentity = resolveOwnerIdentity(accountOwner, {
+    byUserId,
+    loading: directoryLoading,
+    error: directoryError,
+  });
 
   // A stored value that is set but not a member of the enum / this Account's
   // contacts: surfaced (as a labeled option + an error) rather than dropped.
+  // The foreign-contact case only applies once contacts have resolved without
+  // error -- on a lookup error we can't assert membership, so we don't.
   const invoiceMethodInvalid = Boolean(invoiceDeliveryMethod) && !isValidInvoiceDeliveryMethod(invoiceDeliveryMethod);
   const billingContactForeign =
-    Boolean(billingContactId) && !contactsLoading && !isContactOnAccount(billingContactId, contacts);
+    Boolean(billingContactId) && !contactsLoading && !contactsError && !isContactOnAccount(billingContactId, contacts);
 
   function handleAddressChange(field, value) {
     setAddress((cur) => ({ ...cur, [field]: value }));
@@ -90,11 +104,13 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
 
   // Builds a COMPLETE Person Assignment. The assignee (employeeId + userId +
   // resolved display name) comes from the picker; the assignor's employee/user
-  // IDs come from the authenticated session (never a client-chosen value); the
-  // timestamp is stamped now. If any required piece is missing (e.g. the
-  // signed-in user has no provisioned employeeId), the resulting record is
-  // incomplete and validation blocks the save -- an arbitrary/partial owner is
-  // never accepted.
+  // IDs AND resolved display-name snapshot come from the authenticated session
+  // (never a client-chosen value); the timestamp is stamped now. The assignor
+  // display name is the proof-of-resolution: AuthContext leaves it null when
+  // the session's employeeId has no matching Employee document, so an
+  // unresolved (broken-link) session yields an incomplete record that
+  // validation blocks -- a bare employeeId can't pass as a provisioned
+  // assignor. Any missing required piece is likewise rejected.
   function handleOwnerSelect(sel) {
     if (!sel) {
       setAccountOwner(null);
@@ -106,6 +122,7 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
       assignedToDisplayName: sel.displayName ?? null,
       assignedByEmployeeId: sessionEmployeeId ?? null,
       assignedByUserId: user?.uid ?? null,
+      assignedByDisplayName: sessionDisplayName ?? null,
       assignedAt: Date.now(),
     });
   }
@@ -252,8 +269,9 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
               {contacts.map((c) => (
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
-              {/* Surface a stored id that isn't one of this Account's contacts. */}
-              {billingContactForeign && <option value={billingContactId}>{billingContactId} (not on this account)</option>}
+              {/* Surface a stored id that isn't one of this Account's contacts
+                  -- name-only, never the raw contact ID. */}
+              {billingContactForeign && <option value={billingContactId}>Unknown contact (not on this account)</option>}
             </select>
             {errors.billingContact && <div className="fo-warning">{errors.billingContact}</div>}
           </div>
@@ -264,8 +282,10 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
         <div className="fo-form-field">
           {accountOwner && (
             <div className="fo-muted">
-              Current: {accountOwner.assignedToDisplayName ?? "—"}{" "}
-              <button type="button" className="fo-link-btn" onClick={() => setAccountOwner(null)}>Clear</button>
+              {/* CURRENT owner, re-resolved from userId -- not the stored
+                  historical snapshot; loading/error/unknown states preserved. */}
+              <IdentityLine label="Current owner" identity={currentOwnerIdentity} />
+              <button type="button" className="fo-link-btn" onClick={() => setAccountOwner(null)}>Clear owner</button>
             </div>
           )}
           <EmployeeAssignmentPicker

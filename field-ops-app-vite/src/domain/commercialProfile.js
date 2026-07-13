@@ -66,25 +66,42 @@ export function isContactOnAccount(contactId, accountContacts) {
 // record, never merely a present id:
 //   - reciprocally linked assignee pair: assignedToEmployeeId + assignedToUserId
 //   - resolved assignee display-name snapshot: assignedToDisplayName
-//   - assignor identity from the authenticated session: assignedByEmployeeId +
-//     assignedByUserId
+//   - a REAL, resolved assignor Employee identity: assignedByEmployeeId +
+//     assignedByUserId + assignedByDisplayName. The display-name snapshot is
+//     required because AuthContext retains an employeeId even when the linked
+//     Employee document is missing (a broken link resolves displayName to
+//     null); requiring the resolved name means a bare, unresolved employeeId
+//     can't pass as a provisioned assignor -- it fails closed.
 //   - a finite assignedAt timestamp
-// A partial record (e.g. an assignee id with no linked user, or no assignor)
-// is rejected -- an arbitrary id is not accepted just because it is present.
+// A partial record (e.g. an assignee id with no linked user, or an assignor
+// whose Employee didn't resolve) is rejected -- an arbitrary id is not
+// accepted just because it is present.
 export function isCompleteAccountOwner(accountOwner) {
   if (accountOwner == null) return true;
   const hasAssignee = Boolean(accountOwner.assignedToEmployeeId && accountOwner.assignedToUserId);
   const hasSnapshot = Boolean(accountOwner.assignedToDisplayName);
-  const hasAssignor = Boolean(accountOwner.assignedByEmployeeId && accountOwner.assignedByUserId);
+  const hasAssignor = Boolean(
+    accountOwner.assignedByEmployeeId &&
+    accountOwner.assignedByUserId &&
+    accountOwner.assignedByDisplayName
+  );
   return hasAssignee && hasSnapshot && hasAssignor && Number.isFinite(accountOwner.assignedAt);
 }
 
 // Pure aggregate validator used by the form. Returns { valid, errors } where
-// errors is keyed by field. Validates set fields; billingContact validation is
-// skipped while the Account's contacts are still resolving (contactsResolved:
-// false) so a not-yet-loaded list can't produce a spurious "not on account"
-// error.
-export function commercialProfileErrors(draft, accountContacts, { contactsResolved = true } = {}) {
+// errors is keyed by field. Validates set fields. Billing-contact handling
+// distinguishes three states of the contact lookup:
+//   - contactsError -> the lookup failed; we CANNOT verify membership, so this
+//     blocks with "Unable to verify billing contact" rather than falsely
+//     labeling the contact cross-account.
+//   - !contactsResolved (still loading) -> skipped, so a not-yet-loaded list
+//     can't produce a spurious "not on account" error.
+//   - resolved -> membership is checked normally.
+export function commercialProfileErrors(
+  draft,
+  accountContacts,
+  { contactsResolved = true, contactsError = false } = {}
+) {
   const errors = {};
   if (draft.defaultCurrency && !isValidIso4217(draft.defaultCurrency)) {
     errors.defaultCurrency = "Enter a valid ISO 4217 currency code (e.g. USD).";
@@ -95,12 +112,16 @@ export function commercialProfileErrors(draft, accountContacts, { contactsResolv
   if (draft.purchaseOrderRequired !== undefined && !isBooleanPurchaseOrderRequired(draft.purchaseOrderRequired)) {
     errors.purchaseOrderRequired = "Purchase-order-required must be true or false.";
   }
-  if (contactsResolved && !isContactOnAccount(draft.billingContactId, accountContacts)) {
-    errors.billingContact = "Billing contact must belong to this Account.";
+  if (draft.billingContactId) {
+    if (contactsError) {
+      errors.billingContact = "Unable to verify billing contact.";
+    } else if (contactsResolved && !isContactOnAccount(draft.billingContactId, accountContacts)) {
+      errors.billingContact = "Billing contact must belong to this Account.";
+    }
   }
   if (!isCompleteAccountOwner(draft.accountOwner)) {
     errors.accountOwner =
-      "Assign an account owner with a linked employee and user (and a provisioned assignor session).";
+      "Assign an account owner with a linked employee and user, from a provisioned (resolved) assignor session.";
   }
   return { valid: Object.keys(errors).length === 0, errors };
 }

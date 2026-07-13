@@ -80,6 +80,7 @@ const completeOwner = {
   assignedToDisplayName: "Sam Owner",
   assignedByEmployeeId: "emp-9",
   assignedByUserId: "u-9",
+  assignedByDisplayName: "Ada Assignor",
   assignedAt: 1_720_000_000_000,
 };
 ok("accountOwner: unset is valid (optional field)", () => {
@@ -98,6 +99,12 @@ ok("accountOwner: rejects an arbitrary/partial record (missing any required piec
   assert.equal(isCompleteAccountOwner({ ...completeOwner, assignedAt: undefined }), false); // no timestamp
   assert.equal(isCompleteAccountOwner({ ...completeOwner, assignedAt: NaN }), false); // non-finite timestamp
   assert.equal(isCompleteAccountOwner({ assignedToUserId: "u-1" }), false); // bare id only
+});
+ok("accountOwner: an UNRESOLVED assignor (bare employeeId, no resolved name) fails closed", () => {
+  // AuthContext keeps employeeId for a missing Employee document but leaves
+  // displayName null -- a bare, unresolved assignor must not pass as provisioned.
+  assert.equal(isCompleteAccountOwner({ ...completeOwner, assignedByDisplayName: null }), false);
+  assert.equal(isCompleteAccountOwner({ ...completeOwner, assignedByDisplayName: "" }), false);
 });
 
 // --- aggregate validator ---
@@ -129,6 +136,15 @@ ok("commercialProfileErrors: billing validation is skipped while contacts are st
   assert.equal(r.errors.billingContact, undefined); // not flagged mid-load
   const r2 = commercialProfileErrors({ billingContactId: "c-foreign" }, [], { contactsResolved: true });
   assert.ok(r2.errors.billingContact); // flagged once resolved
+});
+ok("commercialProfileErrors: a contact-lookup error blocks with 'Unable to verify', NOT cross-account", () => {
+  // Even an id that WOULD be a valid own-contact must block under a lookup
+  // error, and must never be mislabeled as cross-account.
+  const r = commercialProfileErrors({ billingContactId: "c-1" }, accountContacts, { contactsError: true });
+  assert.equal(r.valid, false);
+  assert.equal(r.errors.billingContact, "Unable to verify billing contact.");
+  const r2 = commercialProfileErrors({ billingContactId: "c-foreign" }, [], { contactsError: true });
+  assert.equal(r2.errors.billingContact, "Unable to verify billing contact.");
 });
 
 // --- identity resolution: states preserved (loading vs error vs unknown) ---
