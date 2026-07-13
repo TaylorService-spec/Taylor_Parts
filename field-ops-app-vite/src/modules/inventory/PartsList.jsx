@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { PARTS_CATALOG, getCatalogItem } from "../../data/partsCatalog";
 import { useInventoryLedger } from "../../hooks/useInventoryLedger";
 import {
@@ -7,6 +7,9 @@ import {
   useReorderRequestsByStatus,
   useReorderRequestsAssignedTo,
   useReorderRequestsByStatuses,
+  useReorderRequestsHistory,
+  useReorderRequestById,
+  fetchReorderRequestsHistoryPage,
 } from "../../hooks/useReorderRequests";
 import { requestReorderForRecommendation, getDisplayQty } from "../../domain/inventoryReorderRequests";
 import { REORDER_REQUEST_STATUS } from "../../domain/constants";
@@ -113,6 +116,89 @@ const ALL_ASSIGNED_WORK_STATUSES = [
   REORDER_REQUEST_STATUS.ASSIGNED_TO_PARTS_ASSOCIATE,
   REORDER_REQUEST_STATUS.PURCHASING_IN_PROGRESS,
 ];
+
+// Inventory Operational Queue, PR C (docs/specifications/inventory-
+// operational-queue.md). Every terminal Reorder Request status --
+// History only ever grows (nothing here is reachable again once it
+// lands in one of these), the exact set useReorderRequestsHistory()
+// queries via the C0-deployed `reorder_requests(status, createdAt)`
+// index.
+const HISTORY_STATUSES = [
+  REORDER_REQUEST_STATUS.CANCELLED,
+  REORDER_REQUEST_STATUS.VOIDED,
+  REORDER_REQUEST_STATUS.RECEIVED,
+  REORDER_REQUEST_STATUS.REJECTED,
+];
+// A small, explicit page size (not the Specification's illustrative 25) --
+// matching this codebase's own established precedent for making
+// pagination/end-of-history deterministically testable against a
+// reasonably-sized fixture, without needing dozens of seeded documents
+// (see SERVICE_ACTIVITY_PAGE_SIZE, domain/accountWorkOrders.js).
+const HISTORY_PAGE_SIZE = 10;
+const HISTORY_STATUS_LABEL = {
+  [REORDER_REQUEST_STATUS.CANCELLED]: "Cancelled",
+  [REORDER_REQUEST_STATUS.VOIDED]: "Voided",
+  [REORDER_REQUEST_STATUS.RECEIVED]: "Received",
+  [REORDER_REQUEST_STATUS.REJECTED]: "Rejected",
+};
+
+// Inventory Operational Queue, PR C, Final Review correction. A
+// deterministic TEST SEAM for History's loading/error/genuinely-empty/
+// Load-More-failure states -- network-level interception was confirmed
+// unreliable for this hook (its getDocs() call is multiplexed through
+// this page's already-open onSnapshot WebChannel, not a discrete
+// interceptable request; see useReorderRequests.js's own header comment
+// on fetchReorderRequestsHistoryPage for the full investigation).
+// Instead, useReorderRequestsHistory()'s own `fetchPageImpl` injection
+// point is used to substitute a deterministic implementation, driving
+// the SAME hook and the SAME rendered component tree production traffic
+// uses -- no component-level bypass, no fake DOM.
+//
+// Gated on BOTH import.meta.env.DEV (completely absent from any
+// production build, dead-code-eliminated by Vite -- same safety
+// posture as firebase.js's own `?emulator=1` gate) AND an explicit,
+// unguessable-by-accident query param (?historyTest=...) that does
+// nothing unless a value from HISTORY_TEST_MODES is present. Inert by
+// default; never reachable outside a dev-mode session that opts in
+// explicitly.
+const HISTORY_TEST_MODES = new Set(["error", "empty", "loading", "error-loadmore"]);
+
+function buildHistoryTestFetchImpl(mode) {
+  if (mode === "error") {
+    return async () => {
+      const err = new Error("Simulated test failure -- initial load");
+      err.code = "test-injected-failure";
+      throw err;
+    };
+  }
+  if (mode === "empty") {
+    return async () => ({ docs: [], lastVisible: null, size: 0 });
+  }
+  if (mode === "loading") {
+    // A promise that never resolves -- the hook's `loading` state has no
+    // path to ever leave `true` for this fetch, letting a test observe
+    // the Loading state deterministically instead of racing a real,
+    // fast-resolving fetch.
+    return () => new Promise(() => {});
+  }
+  if (mode === "error-loadmore") {
+    // The FIRST fetch (no cursor -- the initial page) delegates to the
+    // real implementation, so real fixture data loads normally; only a
+    // SUBSEQUENT fetch (cursor present -- a Load More click) fails. This
+    // is what makes "existing rows survive a Load More failure"
+    // deterministically testable: the initial success is real, not
+    // faked, and only the pagination step is forced to fail.
+    return async (args) => {
+      if (args.cursor) {
+        const err = new Error("Simulated test failure -- Load More");
+        err.code = "test-injected-failure";
+        throw err;
+      }
+      return fetchReorderRequestsHistoryPage(args);
+    };
+  }
+  return undefined;
+}
 
 const PAGE_SIZE = 25;
 const ACTIONABLE_URGENCIES = new Set(["CRITICAL", "HIGH"]);
@@ -233,6 +319,68 @@ export default function PartsList() {
       : allAssignedWork.length === 0
         ? "No requests are currently assigned to anyone."
         : `All Assigned Work: ${allAssignedWork.length} request${allAssignedWork.length === 1 ? "" : "s"} loaded.`;
+
+  // Inventory Operational Queue, PR C -- Reorder Request History.
+  // Test-seam wiring (see HISTORY_TEST_MODES/buildHistoryTestFetchImpl
+  // above for the full rationale) -- import.meta.env.DEV is
+  // statically known at build time, so this whole branch is
+  // dead-code-eliminated from any production bundle; searchParams'
+  // ?historyTest= value is otherwise inert (undefined -> the hook's own
+  // real default fetchPageImpl is used, unchanged).
+  const [historySearchParams] = useSearchParams();
+  const historyTestMode = import.meta.env.DEV ? historySearchParams.get("historyTest") : null;
+  const historyFetchPageImpl = useMemo(
+    () => (historyTestMode && HISTORY_TEST_MODES.has(historyTestMode) ? buildHistoryTestFetchImpl(historyTestMode) : undefined),
+    [historyTestMode]
+  );
+  const {
+    data: historyData,
+    loading: historyLoading,
+    error: historyError,
+    isEndOfHistory: historyIsEndOfHistory,
+    loadMore: historyLoadMore,
+  } = useReorderRequestsHistory({
+    statuses: HISTORY_STATUSES,
+    pageSize: HISTORY_PAGE_SIZE,
+    fetchPageImpl: historyFetchPageImpl,
+  });
+  // Distinguishes the INITIAL load failing (nothing to show at all -- the
+  // whole section becomes the error state, per the Specification's "never
+  // an empty table" requirement) from a later "Load More" call failing
+  // (already-loaded rows stay visible; only the pagination control's own
+  // area reflects the failure) -- a load-more failure must never blank
+  // out real, already-fetched history data.
+  const historyInitialLoadFailed = historyError && historyData.length === 0;
+  const historyStatusMessage = historyInitialLoadFailed
+    ? `Unable to load History (${historyError}).`
+    : historyLoading && historyData.length === 0
+      ? "Loading History..."
+      : historyData.length === 0
+        ? "No terminal Reorder Requests yet."
+        : `History: ${historyData.length} request${historyData.length === 1 ? "" : "s"} loaded${historyIsEndOfHistory ? ", end of history" : ""}.`;
+
+  // Exact-ID lookup, independent of History's own loaded pages/pagination
+  // state (Specification: "a known exact id is always reachable... without
+  // 'Load More'-ing through the entire history"). An explicit "Find"
+  // action, not auto-detection of the input's shape -- this repo's seeded/
+  // real Reorder Request ids aren't a fixed, sniffable format.
+  const [historyLookupInput, setHistoryLookupInput] = useState("");
+  const [historyLookupId, setHistoryLookupId] = useState(null);
+  const {
+    data: historyLookupResult,
+    loading: historyLookupLoading,
+    error: historyLookupError,
+  } = useReorderRequestById(historyLookupId);
+
+  function handleHistoryLookupSubmit(e) {
+    e.preventDefault();
+    setHistoryLookupId(historyLookupInput.trim() || null);
+  }
+  function handleHistoryLookupClear() {
+    setHistoryLookupId(null);
+    setHistoryLookupInput("");
+  }
+
   const categories = useCategories();
   const [category, setCategory] = useState("ALL");
   const [page, setPage] = useState(0);
@@ -620,6 +768,105 @@ export default function PartsList() {
           </div>
         </>
       </LoadingEmptyState>
+
+      <h3>History ({historyData.length})</h3>
+      <p className="fo-muted">Cancelled, Voided, Received, and Rejected Reorder Requests, newest first.</p>
+
+      <form className="fo-inline-form" onSubmit={handleHistoryLookupSubmit}>
+        <label htmlFor="history-lookup-input">Find by exact request ID</label>
+        <input
+          id="history-lookup-input"
+          type="text"
+          value={historyLookupInput}
+          onChange={(e) => setHistoryLookupInput(e.target.value)}
+          placeholder="Reorder Request document ID"
+        />
+        <button type="submit" disabled={!historyLookupInput.trim()}>
+          Find
+        </button>
+        {historyLookupId && (
+          <button type="button" onClick={handleHistoryLookupClear}>
+            Clear
+          </button>
+        )}
+      </form>
+      {historyLookupId && (
+        <p role="status" className="fo-muted">
+          {historyLookupLoading
+            ? "Looking up request..."
+            : historyLookupError === "not_found"
+              ? `No Reorder Request found with ID "${historyLookupId}".`
+              : historyLookupError
+                ? `Unable to look up request (${historyLookupError}).`
+                : historyLookupResult && (
+                    <>
+                      Found:{" "}
+                      <Link to={`/inventory/${historyLookupResult.partId}?requestId=${historyLookupResult.id}`}>
+                        {getCatalogItem(historyLookupResult.partId)?.name ?? historyLookupResult.partId}
+                      </Link>{" "}
+                      -- {HISTORY_STATUS_LABEL[historyLookupResult.status] ?? historyLookupResult.status}
+                    </>
+                  )}
+        </p>
+      )}
+
+      <p role="status" className="fo-sr-only">
+        {historyStatusMessage}
+      </p>
+      {historyInitialLoadFailed ? (
+        <p className="fo-muted">Unable to load History ({historyError}).</p>
+      ) : (
+        <LoadingEmptyState
+          loading={historyLoading && historyData.length === 0}
+          isEmpty={historyData.length === 0}
+          loadingText="Loading History..."
+          emptyText="No terminal Reorder Requests yet."
+        >
+          <div className="fo-table-scroll">
+            <table className="fo-table">
+              <thead>
+                <tr>
+                  <th>Part</th>
+                  <th>Qty</th>
+                  <th>Status</th>
+                  <th>Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                {historyData.map((request) => (
+                  <tr key={request.id}>
+                    <td>
+                      <Link to={`/inventory/${request.partId}?requestId=${request.id}`}>
+                        {getCatalogItem(request.partId)?.name ?? request.partId}
+                      </Link>
+                    </td>
+                    <td>{getDisplayQty(request)}</td>
+                    <td className="fo-muted">{HISTORY_STATUS_LABEL[request.status] ?? request.status}</td>
+                    <td className="fo-muted">{request.createdAt ? new Date(request.createdAt).toLocaleString() : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="disp-board-toolbar" style={{ justifyContent: "center" }}>
+            {historyError ? (
+              <p className="fo-muted">
+                Unable to load more History ({historyError}).{" "}
+                <button type="button" onClick={historyLoadMore}>
+                  Retry
+                </button>
+              </p>
+            ) : historyIsEndOfHistory ? (
+              <span className="fo-muted">End of history.</span>
+            ) : (
+              <button type="button" onClick={historyLoadMore} disabled={historyLoading}>
+                {historyLoading ? "Loading..." : "Load More"}
+              </button>
+            )}
+          </div>
+        </LoadingEmptyState>
+      )}
     </div>
   );
 }

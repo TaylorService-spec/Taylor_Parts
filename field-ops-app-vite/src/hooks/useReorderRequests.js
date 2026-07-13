@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
-import { collection, doc, onSnapshot, query, where } from "firebase/firestore";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { collection, doc, getDocs, limit, onSnapshot, orderBy, query, startAfter, where } from "firebase/firestore";
 import { db } from "../firebase/firebase";
 import { REORDER_REQUESTS_COLLECTION, REORDER_REQUEST_STATUS } from "../domain/constants";
 
@@ -243,6 +243,133 @@ export function useReorderRequestsByStatuses(statuses, enabled = true) {
 
     return unsubscribe;
   }, [statuses.join(","), enabled]);
+
+  return state;
+}
+
+// Inventory Operational Queue, PR C (docs/specifications/inventory-
+// operational-queue.md, "PR C: purpose-built, not shared with PR A --
+// and why"). Reorder Request History: deterministic newest-first
+// pagination over the terminal statuses (CANCELLED/VOIDED/RECEIVED/
+// REJECTED) -- History only ever grows, never churns down, the exact
+// opposite of useReorderRequestsByStatuses() above (unordered,
+// unbounded-but-small-in-practice). Deliberately NOT onSnapshot-based,
+// unlike every other hook in this file: an ordered/paginated view is
+// fundamentally a pull (getDocs + cursor), not a push subscription --
+// loadMore() is an imperative action with no onSnapshot equivalent, and
+// History has no "must never show stale data" requirement the way an
+// active work queue does (per the Specification's own "only ever grows"
+// reasoning for why this hook doesn't need the live-query treatment).
+//
+// Depends on C0's index (`reorder_requests`: status ASC, createdAt DESC)
+// already being live in production -- this hook makes no
+// firestore.indexes.json change of its own, it only queries against
+// what C0 deployed.
+//
+// Final Review correction: the real Firestore call is factored out into
+// its own named, exported function (fetchReorderRequestsHistoryPage)
+// rather than inlined -- this is the hook's deterministic TEST SEAM.
+// Network-level interception cannot reliably force this hook into an
+// error/empty state (confirmed: on pages with other onSnapshot()
+// listeners already active, e.g. PartsList.jsx, this getDocs() call is
+// multiplexed through the same already-open WebChannel connection, not
+// issued as its own discrete, interceptable REST request). Injecting a
+// replacement implementation at the hook's own boundary instead --
+// `fetchPageImpl`, defaulting to the real one -- drives this EXACT hook
+// and the EXACT component tree that consumes it into a real error/empty
+// render, through the same state machine production traffic uses, with
+// no network mocking and no component-level bypass.
+export async function fetchReorderRequestsHistoryPage({ statuses, pageSize, cursor }) {
+  const constraints = [where("status", "in", statuses), orderBy("createdAt", "desc"), limit(pageSize)];
+  if (cursor) constraints.push(startAfter(cursor));
+  const snap = await getDocs(query(reorderRequestsRef, ...constraints));
+  return {
+    docs: toDocs(snap),
+    lastVisible: snap.docs.length ? snap.docs[snap.docs.length - 1] : null,
+    size: snap.docs.length,
+  };
+}
+
+// hasMore is inferred from whether the just-fetched page was full
+// (page.length === pageSize) -- the standard Firestore cursor-pagination
+// heuristic (no cheap total-count query exists); isEndOfHistory is the
+// same signal, exposed under the Specification's own name for the
+// "Load More is hidden or disabled, not silently absent" state.
+export function useReorderRequestsHistory({ statuses, pageSize = 25, fetchPageImpl = fetchReorderRequestsHistoryPage }) {
+  const [state, setState] = useState({ data: [], loading: true, error: null, hasMore: false, isEndOfHistory: false });
+  const lastVisibleRef = useRef(null);
+  const statusesKey = statuses.join(",");
+
+  const fetchPage = useCallback(
+    async (isLoadMore) => {
+      setState((prev) => ({ ...prev, loading: true, error: null }));
+      try {
+        const { docs: pageDocs, lastVisible, size } = await fetchPageImpl({
+          statuses,
+          pageSize,
+          cursor: isLoadMore ? lastVisibleRef.current : null,
+        });
+        lastVisibleRef.current = lastVisible ?? lastVisibleRef.current;
+        const hasMore = size === pageSize;
+
+        setState((prev) => ({
+          data: isLoadMore ? [...prev.data, ...pageDocs] : pageDocs,
+          loading: false,
+          error: null,
+          hasMore,
+          isEndOfHistory: !hasMore,
+        }));
+      } catch (err) {
+        setState((prev) => ({ ...prev, loading: false, error: err.code ?? "unknown" }));
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- statusesKey is the intentional, stable proxy for `statuses` (see useReorderRequestsByStatuses() above for the identical, already-accepted pattern in this file).
+    [statusesKey, pageSize, fetchPageImpl]
+  );
+
+  useEffect(() => {
+    lastVisibleRef.current = null;
+    fetchPage(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusesKey, pageSize, fetchPageImpl]);
+
+  const loadMore = useCallback(() => fetchPage(true), [fetchPage]);
+
+  return { ...state, loadMore };
+}
+
+// Inventory Operational Queue, PR C. A second, independent function --
+// NOT part of useReorderRequestsHistory() above, so a known exact id is
+// always reachable regardless of loaded page/filter state (a request
+// several pages back, or not yet loaded, is still directly reachable
+// without "Load More"-ing through the entire history). Same
+// doc()/onSnapshot() pattern useReorderRequestForPart()'s requestId
+// branch already uses, above.
+export function useReorderRequestById(requestId) {
+  const [state, setState] = useState({ data: null, loading: !!requestId, error: null });
+
+  useEffect(() => {
+    if (!requestId) {
+      setState({ data: null, loading: false, error: null });
+      return;
+    }
+
+    setState({ data: null, loading: true, error: null });
+    const ref = doc(db, REORDER_REQUESTS_COLLECTION, requestId);
+    const unsubscribe = onSnapshot(
+      ref,
+      (snap) => {
+        if (!snap.exists()) {
+          setState({ data: null, loading: false, error: "not_found" });
+          return;
+        }
+        setState({ data: { id: snap.id, ...snap.data() }, loading: false, error: null });
+      },
+      (err) => setState({ data: null, loading: false, error: err.code ?? "unknown" })
+    );
+
+    return unsubscribe;
+  }, [requestId]);
 
   return state;
 }
