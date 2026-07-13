@@ -827,3 +827,67 @@ button:hover {
 .fo-forecast-labels {
   margin: 0 0 4px;
 }
+
+/* Customer Results Dashboard -- portfolio cards + local filters (AccountsList.jsx).
+   Additive, scoped to the dashboard's own classes. Cards and filter chips wrap
+   on narrow viewports and the results table sits in .fo-table-scroll, so there
+   is no horizontal overflow at 375px. */
+.fo-portfolio-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 8px 0 12px;
+}
+.fo-portfolio-card {
+  flex: 1 1 120px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 14px;
+  border: 1px solid #D8DEDD;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+.fo-portfolio-card:hover { background: #F2F5F4; }
+.fo-portfolio-card-active {
+  border-color: #2E4A50;
+  background: #EAF0EF;
+}
+.fo-portfolio-card-count { font-size: 20px; font-weight: 600; color: #23383D; }
+.fo-portfolio-card-label { font-size: 13px; color: #667; }
+
+.fo-portfolio-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin-bottom: 8px;
+}
+.fo-filter-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.fo-filter-label { font-size: 13px; color: #445559; }
+.fo-filter-chip {
+  padding: 3px 10px;
+  border: 1px solid #D8DEDD;
+  border-radius: 999px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 13px;
+}
+.fo-filter-chip:hover { background: #F2F5F4; }
+.fo-filter-chip-active {
+  border-color: #2E4A50;
+  background: #2E4A50;
+  color: #fff;
+}
+.fo-portfolio-count { margin: 4px 0 8px; font-size: 13px; }

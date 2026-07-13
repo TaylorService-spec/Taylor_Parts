@@ -277,6 +277,7 @@ import {
   HISTORY_FIXTURE,
   COMMERCIAL_PROFILE_FIXTURE,
   GOVERNED_FIELDS_FIXTURE,
+  DASHBOARD_FIXTURE,
   seedLedgerTransactions,
   db,
 } from "./seed.mjs";
@@ -2424,6 +2425,116 @@ async function verifyCustomerNavCleanup(browser, page, accountKey) {
   return niFailed === 0;
 }
 
+// Customer Results Dashboard -- verifies the /customers portfolio dashboard:
+// status cards (counts + click-to-filter), local relationship/tag filters with
+// clear/reset + live result count, filtered-no-results, keyboard/accessibility,
+// no raw IDs, detail navigation, and 375px layout. Expected status counts are
+// DERIVED live from the seeded accounts (Admin SDK read), and the tag/
+// relationship assertions use DASHBOARD_FIXTURE's unique tags so they're exact
+// and isolated from other fixtures.
+async function verifyCustomerDashboard(browser, page, accountKey) {
+  const F = DASHBOARD_FIXTURE;
+  const custUrl = (suffix = "") => { const u = new URL(`customers${suffix}`, APP_ROOT); u.searchParams.set("emulator", "1"); return u.toString(); };
+
+  const snap = await db.collection("accounts").get();
+  const all = snap.docs.map((d) => d.data());
+  const exp = {
+    total: all.length,
+    Active: all.filter((a) => a.status === "Active").length,
+    Prospect: all.filter((a) => a.status === "Prospect").length,
+    Inactive: all.filter((a) => a.status === "Inactive").length,
+    Archived: all.filter((a) => a.status === "Archived").length,
+  };
+
+  await login(page, accountKey);
+  await page.goto(custUrl(""), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await page.locator(".fo-portfolio-cards").waitFor({ timeout: 10000 });
+
+  const card = (label) =>
+    page.locator(".fo-portfolio-card").filter({ has: page.locator(".fo-portfolio-card-label", { hasText: new RegExp(`^${label}$`) }) }).first();
+  const cardCount = async (label) => parseInt((await card(label).locator(".fo-portfolio-card-count").innerText().catch(() => "NaN")).trim(), 10);
+  const resultText = () => page.locator(".fo-portfolio-count").innerText().catch(() => "");
+  const clear = () => page.getByRole("button", { name: "Clear filters" }).first().click();
+
+  // ===== Cards render the expected counts (derived from seeded data) =====
+  for (const label of ["Total", "Active", "Prospect", "Inactive", "Archived"]) {
+    const key = label === "Total" ? "total" : label;
+    const c = await cardCount(label);
+    niReport(`Card "${label}" shows the expected count (${exp[key]})`, c === exp[key], `got ${c}`);
+  }
+
+  // ===== Accessibility: cards are aria-pressed toggles; Total pressed initially =====
+  niReport("Accessibility: Total card pressed initially (no status filter)", (await card("Total").getAttribute("aria-pressed")) === "true");
+  niReport("Accessibility: a status card is unpressed initially", (await card("Active").getAttribute("aria-pressed")) === "false");
+  niReport(`Result count shows all initially (${exp.total} of ${exp.total})`, new RegExp(`^${exp.total} of ${exp.total} customer`).test(await resultText()), await resultText());
+
+  // ===== Click a status card filters + presses it =====
+  await card("Active").click();
+  await page.waitForTimeout(200);
+  niReport(`Clicking "Active" filters to ${exp.Active}`, new RegExp(`^${exp.Active} of ${exp.total}`).test(await resultText()), await resultText());
+  niReport("Accessibility: Active card becomes pressed after click", (await card("Active").getAttribute("aria-pressed")) === "true");
+  await clear();
+  await page.waitForTimeout(200);
+
+  // ===== Keyboard: focus Prospect card + Enter =====
+  await card("Prospect").focus();
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(200);
+  niReport(`Keyboard: activating "Prospect" via Enter filters to ${exp.Prospect}`, new RegExp(`^${exp.Prospect} of`).test(await resultText()), await resultText());
+
+  // ===== Reset =====
+  await clear();
+  await page.waitForTimeout(200);
+  niReport("Clear filters resets to all customers", new RegExp(`^${exp.total} of ${exp.total}`).test(await resultText()), await resultText());
+
+  // ===== Tag filter isolates the fixture; tag + relationship narrows further =====
+  await page.getByRole("button", { name: F.sharedTag, exact: true }).click();
+  await page.waitForTimeout(200);
+  niReport(`Tag "${F.sharedTag}" filters to the ${F.accounts.length} fixture accounts`, new RegExp(`^${F.accounts.length} of`).test(await resultText()), await resultText());
+  await page.getByRole("button", { name: "Customer", exact: true }).click();
+  await page.waitForTimeout(200);
+  const expSharedCustomer = F.accounts.filter((a) => a.relationshipTypes.includes("CUSTOMER")).length;
+  niReport(`Tag "${F.sharedTag}" + relationship Customer -> ${expSharedCustomer}`, new RegExp(`^${expSharedCustomer} of`).test(await resultText()), await resultText());
+  await clear();
+  await page.waitForTimeout(200);
+
+  // ===== filtered-no-results (Archived + soloTag, which is only on the Active fixture) =====
+  await card("Archived").click();
+  await page.getByRole("button", { name: F.soloTag, exact: true }).click();
+  await page.waitForTimeout(200);
+  niReport(`Filtered-no-results state renders (Archived + ${F.soloTag})`, await page.getByText("No customers match the current filters.").first().isVisible().catch(() => false));
+  await clear();
+  await page.waitForTimeout(200);
+
+  // ===== Results table columns + no raw IDs + human-readable last update =====
+  await page.getByRole("button", { name: F.sharedTag, exact: true }).click();
+  await page.waitForTimeout(200);
+  const headers = await page.locator(".fo-table-scroll table thead th").allInnerTexts().catch(() => []);
+  niReport("Results table has Name/Status/Relationship/Tags/Last update columns",
+    ["Name", "Status", "Relationship", "Tags", "Last update"].every((h) => headers.includes(h)), JSON.stringify(headers));
+  const bodyText = await page.locator(".fo-table-scroll table tbody").innerText().catch(() => "");
+  niReport("No raw IDs: results show no account document id", F.accounts.every((a) => !bodyText.includes(a.id)), bodyText.slice(0, 160));
+  niReport("Last update is human-readable ('just now'/'ago'/'Unknown'), not a raw epoch", /just now|ago|Unknown/.test(bodyText), bodyText.slice(0, 160));
+
+  // ===== Navigation to Account Detail =====
+  await page.getByRole("link", { name: F.accounts[0].name, exact: true }).first().click();
+  const detailOk = await page.getByRole("heading", { name: "Commercial Profile", exact: true }).first().waitFor({ timeout: 10000 }).then(() => true).catch(() => false);
+  niReport("Navigation: clicking a customer opens /customers/:accountId (Account Detail)",
+    detailOk && new URL(page.url()).pathname.endsWith(`/customers/${F.accounts[0].id}`), page.url());
+
+  // ===== 375px layout =====
+  await page.goto(custUrl(""), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await page.locator(".fo-portfolio-cards").waitFor({ timeout: 10000 });
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.waitForTimeout(200);
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
+  niReport("Responsive: no horizontal overflow at 375px on the dashboard", overflow === false);
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  console.log(`\n${niPassed} passed, ${niFailed} failed`);
+  return niFailed === 0;
+}
+
 async function main() {
   const [, , command, ...args] = process.argv;
   const browser = await chromium.launch();
@@ -2526,6 +2637,10 @@ async function main() {
     } else if (command === "verify-customer-nav-cleanup") {
       const [accountKey = "admin"] = args;
       const ok = await verifyCustomerNavCleanup(browser, page, accountKey);
+      if (!ok) process.exitCode = 1;
+    } else if (command === "verify-customer-dashboard") {
+      const [accountKey = "admin"] = args;
+      const ok = await verifyCustomerDashboard(browser, page, accountKey);
       if (!ok) process.exitCode = 1;
     } else {
       console.error(`Unknown command "${command}". See the header comment in this file for usage.`);
