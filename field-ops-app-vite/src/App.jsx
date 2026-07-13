@@ -146,7 +146,18 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
               AccountDetail and its Firestore listeners regardless of
               nav visibility, hitting permission-denied. */}
           {domain.key === "customers" && isDomainVisible(domain, role, allowedLegacyKeys, operationalContext) && (
-            <Route path=":accountId" element={<AccountDetail />} />
+            <>
+              {/* Customer hierarchy nav cleanup: the Contacts / Locations /
+                  Equipment / Service History subnav entries were removed
+                  (navConfig.js). Their retired paths redirect to /customers
+                  so they can NEVER be captured by the :accountId detail route
+                  (a static path segment outranks the dynamic :accountId in
+                  React Router's match ranking; listed first here for clarity). */}
+              {["contacts", "locations", "equipment", "service-history"].map((retired) => (
+                <Route key={retired} path={retired} element={<Navigate to="/customers" replace />} />
+              ))}
+              <Route path=":accountId" element={<AccountDetail />} />
+            </>
           )}
           {/* Sprint 2.0.3 -- gated to admin/dispatcher specifically,
               NOT isDomainVisible(service domain) -- a technician
