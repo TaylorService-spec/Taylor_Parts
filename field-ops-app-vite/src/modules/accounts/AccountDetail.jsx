@@ -12,6 +12,7 @@ import AddressFields from "../../shared/address/AddressFields";
 import AccountForm from "./AccountForm";
 import ServiceActivitySection from "./ServiceActivitySection";
 import FinancialSummarySection from "./FinancialSummarySection";
+import FinancialForecastSection from "./FinancialForecastSection";
 import { useEmployeeDirectory } from "../../hooks/useEmployeeDirectory";
 import { resolveOwnerIdentity, resolveContactIdentity } from "../../domain/commercialProfile";
 import IdentityLine from "./IdentityLine";
@@ -280,6 +281,10 @@ export default function AccountDetail() {
 
           {/* 2. Financial Summary -- provider-neutral surface; unconfigured only (PR 4) */}
           <FinancialSummarySection />
+
+          {/* Credit (unavailable) + Financial Forecast Horizons -- provider-neutral
+              surfaces; unconfigured only, definitions-only (Commercial Profile PR 4) */}
+          <FinancialForecastSection />
 
           {/* 3. Contacts */}
           <section className="wo-history">
