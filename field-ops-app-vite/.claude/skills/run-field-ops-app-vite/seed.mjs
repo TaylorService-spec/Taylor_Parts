@@ -312,6 +312,22 @@ export const GOVERNED_FIELDS_FIXTURE = {
   taxStatus: "EXEMPT",
 };
 
+// Customer Results Dashboard -- four accounts spanning every status and both
+// relationship shapes, all carrying the unique `sharedTag` (so a tag filter
+// isolates exactly these four regardless of other fixtures), plus `soloTag` on
+// ONLY the Active one (so an Archived + soloTag combo is a guaranteed
+// filtered-no-results case). Statuses use the ACCOUNT_STATUS display values.
+export const DASHBOARD_FIXTURE = {
+  sharedTag: "DashboardTest",
+  soloTag: "DashOnlyTag",
+  accounts: [
+    { id: "dash-active-customer", name: "Dash Active Customer", status: "Active", relationshipTypes: ["CUSTOMER"], tags: ["DashboardTest", "DashOnlyTag"] },
+    { id: "dash-prospect-vendor", name: "Dash Prospect Vendor", status: "Prospect", relationshipTypes: ["VENDOR"], tags: ["DashboardTest"] },
+    { id: "dash-inactive-both", name: "Dash Inactive Both", status: "Inactive", relationshipTypes: ["CUSTOMER", "VENDOR"], tags: ["DashboardTest"] },
+    { id: "dash-archived-none", name: "Dash Archived None", status: "Archived", relationshipTypes: [], tags: ["DashboardTest"] },
+  ],
+};
+
 async function seedReorderRequestFixture(docId, { partId, status, currentOwner, assignedToUserId, createdAt }) {
   const isCancelled = status === "CANCELLED";
   await db.doc(`reorder_requests/${docId}`).set({
@@ -885,6 +901,22 @@ async function seedIssue100RoleFixtures() {
 // session, never this direct Admin SDK handle.
 export { db };
 
+// Customer Results Dashboard -- seeds DASHBOARD_FIXTURE's four accounts (one per
+// status, varied relationships/tags) via the Admin SDK.
+async function seedDashboardFixture() {
+  const now = Date.now();
+  for (const a of DASHBOARD_FIXTURE.accounts) {
+    await db.doc(`accounts/${a.id}`).set({
+      name: a.name,
+      status: a.status,
+      relationshipTypes: a.relationshipTypes,
+      tags: a.tags,
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
+}
+
 async function seed() {
   for (const acct of Object.values(DRIVER_ACCOUNTS)) {
     await ensureAuthUser(acct);
@@ -955,6 +987,7 @@ async function seed() {
   await seedHistoryFixture();
   await seedCommercialProfileFixture();
   await seedGovernedFieldsFixture();
+  await seedDashboardFixture();
   await seedIssue100RoleFixtures();
 
   console.log("Seeded driver accounts:");
