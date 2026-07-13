@@ -13,10 +13,15 @@
 //
 // Explicitly does NOT probe (out of this PR's scope, confirmed by these
 // negative assertions below instead): the reorder_requests Assign-write
-// branch, inventory_actions' WAREHOUSE_MANAGER branch, and
-// reorder_purchase_orders/reorder_purchase_order_voids' PARTS_ASSOCIATE
-// read branch -- all three land only in PR 3a/2a, per the Implementation
-// Plan's Sequencing notes.
+// branch and reorder_purchase_orders/reorder_purchase_order_voids'
+// PARTS_ASSOCIATE read branch -- both land only in PR 3a, per the
+// Implementation Plan's Sequencing notes.
+//
+// UPDATED for PR 2a: inventory_actions' WAREHOUSE_MANAGER branch landed
+// in PR 2a (functions/test/issue100WarehouseManagerRules.test.js has
+// PR 2a's own dedicated coverage) -- this file's inventory_actions
+// assertion below now reflects that grant existing, rather than the
+// stale "not yet landed" expectation this file originally shipped with.
 //
 // Prerequisite: run against a live Firestore + Auth emulator pair, e.g.:
 //   firebase emulators:start --only firestore,auth --project taylor-parts
@@ -400,8 +405,17 @@ async function main() {
   report("Ineligible technician cannot read inventory_transactions",
     (await getDocAt("inventory_transactions", "txn-1", tokens["user-ineligible-1"])) === 403);
 
-  report("No new grant reaches inventory_actions -- WAREHOUSE_MANAGER still denied (PR 2a's own scope, not this PR's)",
-    (await getDocAt("inventory_actions", "action-1", tokens["user-wm-1"])) === 403);
+  // UPDATED for PR 2a (Issue #100): WAREHOUSE_MANAGER's inventory_actions
+  // read is PR 2a's own grant, not PR 1a's -- this PR 1a test file
+  // previously asserted denial here specifically to prove PR 2a's scope
+  // hadn't landed yet. Now that PR 2a has landed (see
+  // functions/test/issue100WarehouseManagerRules.test.js for PR 2a's own
+  // dedicated coverage), that premise is obsolete; this assertion is
+  // updated to the new correct expectation rather than left to fail
+  // permanently. PARTS_MANAGER/PARTS_ASSOCIATE remain unaffected by PR
+  // 2a and stay denied, unchanged below.
+  report("PR 2a's WAREHOUSE_MANAGER inventory_actions grant does not affect this PR's own PARTS_MANAGER/PARTS_ASSOCIATE scope",
+    (await getDocAt("inventory_actions", "action-1", tokens["user-wm-1"])) === 200);
 
   report("No new grant reaches reorder_purchase_orders -- PARTS_ASSOCIATE still denied (PR 3a's own scope, not this PR's)",
     (await getDocAt("reorder_purchase_orders", "req-purchasing-pa1", tokens["user-pa-1"])) === 403);

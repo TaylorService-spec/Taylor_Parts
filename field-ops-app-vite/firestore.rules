@@ -832,8 +832,17 @@ service cloud.firestore {
     // level validation here (same posture as reorder_requests' create
     // rule) -- validation lives in recordInventoryAction(), the sole
     // write path.
+    // Issue #100 PR 2a -- one additive read branch alongside the
+    // existing isAdminOrDispatcher() (unchanged, unnarrowed). Shape
+    // matches the existing grant exactly: collection-level, not
+    // per-document-scoped in Rules -- the client's own
+    // where("partId","==",partId) query (useInventoryActionsForPart(),
+    // unchanged) is what bounds the result set, identical to how the
+    // existing admin/dispatcher grant is also not per-document-scoped.
+    // No PARTS_MANAGER/PARTS_ASSOCIATE branch here -- neither role
+    // gains this capability per the Owner-adopted matrix.
     match /inventory_actions/{actionId} {
-      allow read: if isAdminOrDispatcher();
+      allow read: if isAdminOrDispatcher() || isActiveOperationalRole("WAREHOUSE_MANAGER");
       allow create: if isAdminOrDispatcher();
       allow update, delete: if false;
     }
