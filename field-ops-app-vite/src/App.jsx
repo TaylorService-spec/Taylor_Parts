@@ -114,7 +114,7 @@ function renderSubnavItem(domain, item, role) {
   return <PlaceholderPage title={item.label} />;
 }
 
-function AppRoutes({ role, allowedLegacyKeys }) {
+function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
   return (
     <Routes>
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
@@ -122,7 +122,7 @@ function AppRoutes({ role, allowedLegacyKeys }) {
       {NAV_DOMAINS.filter((d) => !d.future).map((domain) => (
         <Route key={domain.key} path={domain.path}>
           {domain.subnav
-            .filter((item) => isNavItemVisible(item, role, allowedLegacyKeys))
+            .filter((item) => isNavItemVisible(item, role, allowedLegacyKeys, operationalContext))
             .map((item) => (
               <Route
                 key={item.key}
@@ -145,7 +145,7 @@ function AppRoutes({ role, allowedLegacyKeys }) {
               directly navigating to /customers/:accountId would mount
               AccountDetail and its Firestore listeners regardless of
               nav visibility, hitting permission-denied. */}
-          {domain.key === "customers" && isDomainVisible(domain, role, allowedLegacyKeys) && (
+          {domain.key === "customers" && isDomainVisible(domain, role, allowedLegacyKeys, operationalContext) && (
             <Route path=":accountId" element={<AccountDetail />} />
           )}
           {/* Sprint 2.0.3 -- gated to admin/dispatcher specifically,
@@ -174,7 +174,7 @@ function AppRoutes({ role, allowedLegacyKeys }) {
               legacyKey/PLACEHOLDER_DEFAULT_ROLES access to any Inventory
               subnav item today, so isDomainVisible is already false for
               that role -- this route simply doesn't exist for them). */}
-          {domain.key === "inventory" && isDomainVisible(domain, role, allowedLegacyKeys) && (
+          {domain.key === "inventory" && isDomainVisible(domain, role, allowedLegacyKeys, operationalContext) && (
             <Route path=":partId" element={<PartDetail />} />
           )}
         </Route>
@@ -194,9 +194,14 @@ function AppRoutes({ role, allowedLegacyKeys }) {
 }
 
 export default function App() {
-  const { user, role, loading } = useAuth();
+  const { user, role, loading, operationalRoles, employmentStatus } = useAuth();
   const allowedLegacyKeys = ROLE_NAV_ACCESS[role] ?? [];
-  const hasAnyAccess = NAV_DOMAINS.some((d) => isDomainVisible(d, role, allowedLegacyKeys));
+  // Issue #100 -- PR 0. Threaded through as one stable object so every
+  // isNavItemVisible/isDomainVisible call site can accept it uniformly;
+  // no NAV_DOMAINS item declares operationalRoleAccess yet, so this has
+  // no observable effect until a later PR adds one.
+  const operationalContext = { operationalRoles, employmentStatus };
+  const hasAnyAccess = NAV_DOMAINS.some((d) => isDomainVisible(d, role, allowedLegacyKeys, operationalContext));
 
   if (loading) return <div className="fo-panel">Loading...</div>;
 
@@ -219,8 +224,8 @@ export default function App() {
         <div className="fo-app">
           {IS_DEMO && <div className="fo-demo-banner">DEMO MODE ACTIVE (SAFE - NO WRITES TO PRODUCTION)</div>}
           <AppHeader />
-          <AppShell role={role} allowedLegacyKeys={allowedLegacyKeys}>
-            <AppRoutes role={role} allowedLegacyKeys={allowedLegacyKeys} />
+          <AppShell role={role} allowedLegacyKeys={allowedLegacyKeys} operationalContext={operationalContext}>
+            <AppRoutes role={role} allowedLegacyKeys={allowedLegacyKeys} operationalContext={operationalContext} />
           </AppShell>
         </div>
       </BrowserRouter>

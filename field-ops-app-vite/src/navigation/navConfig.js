@@ -1,3 +1,5 @@
+import { ROLES, EMPLOYMENT_STATUS } from "../domain/constants.js";
+
 // Sprint 2.0.1 -- Navigation Foundation. Single source of truth for the
 // business-domain nav tree: top-level domains + their sub-nav, and
 // which existing screen (if any) each sub-item re-homes.
@@ -157,20 +159,52 @@ export const NAV_DOMAINS = [
   { key: "financials", label: "Financials", path: "financials", future: true },
 ];
 
+// Issue #100 (docs/specifications/inventory-nav-access-alignment.md,
+// PR 0) -- capability-scoped nav access for an ACTIVE, eligible
+// operationalRoles Employee whose security role is technician. Mirrors
+// firestore.rules' isActiveOperationalRole() at the presentation
+// layer: technician-only (admin/dispatcher already have full access
+// via their own legacyKey/PLACEHOLDER_DEFAULT_ROLES path above and
+// must never additionally need this branch), ACTIVE employment
+// required, and at least one of the item's operationalRoleAccess
+// values must be present in operationalContext.operationalRoles.
+// Fails closed on every edge case without a separate branch: a
+// missing/null operationalContext, an empty operationalRoles array
+// (unresolved or broken Employee linkage -- AuthContext's
+// resolveEmployeeSession() already resolves both to []), and a
+// non-ACTIVE employmentStatus (undefined/null/any other enum value)
+// all simply fail the checks below and return false.
+function hasEligibleOperationalRole(operationalRoleAccess, role, operationalContext) {
+  if (role !== ROLES.TECHNICIAN) return false;
+  const { operationalRoles = [], employmentStatus = null } = operationalContext ?? {};
+  if (employmentStatus !== EMPLOYMENT_STATUS.ACTIVE) return false;
+  return operationalRoleAccess.some((required) => operationalRoles.includes(required));
+}
+
 // `allowedLegacyKeys` is ROLE_NAV_ACCESS[role] (domain/constants.js) --
 // passed in rather than imported here so this stays pure/testable and
 // the actual permission source of truth stays in one place.
-export function isNavItemVisible(item, role, allowedLegacyKeys) {
+// `operationalContext` (optional -- omitted entirely for a role/item
+// combination that doesn't use it, per Issue #100's design) is
+// `{ operationalRoles, employmentStatus }` from AuthContext -- only
+// consulted when an item declares `operationalRoleAccess`, so every
+// existing legacyKey/PLACEHOLDER_DEFAULT_ROLES/alwaysVisible item's
+// behavior is byte-for-byte unchanged regardless of whether this
+// argument is passed at all.
+export function isNavItemVisible(item, role, allowedLegacyKeys, operationalContext) {
   if (item.alwaysVisible) return true;
+  if (item.operationalRoleAccess) {
+    return hasEligibleOperationalRole(item.operationalRoleAccess, role, operationalContext);
+  }
   if (item.legacyKey) {
     return (allowedLegacyKeys ?? []).includes(item.legacyKey);
   }
   return PLACEHOLDER_DEFAULT_ROLES.includes(role);
 }
 
-export function isDomainVisible(domain, role, allowedLegacyKeys) {
+export function isDomainVisible(domain, role, allowedLegacyKeys, operationalContext) {
   if (domain.future) {
     return PLACEHOLDER_DEFAULT_ROLES.includes(role);
   }
-  return domain.subnav.some((item) => isNavItemVisible(item, role, allowedLegacyKeys));
+  return domain.subnav.some((item) => isNavItemVisible(item, role, allowedLegacyKeys, operationalContext));
 }

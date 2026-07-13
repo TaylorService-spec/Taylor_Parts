@@ -6,15 +6,15 @@ import { NAV_DOMAINS, isDomainVisible, isNavItemVisible } from "./navConfig";
 // native back/forward + address bar all work without any custom
 // history plumbing -- see App.jsx's header comment for why that's the
 // whole point of this sprint.
-export default function AppShell({ role, allowedLegacyKeys, children }) {
+export default function AppShell({ role, allowedLegacyKeys, operationalContext, children }) {
   const location = useLocation();
   const activeDomainPath = location.pathname.split("/").filter(Boolean)[0];
   const activeDomain = NAV_DOMAINS.find((d) => d.path === activeDomainPath);
 
-  const visibleDomains = NAV_DOMAINS.filter((d) => isDomainVisible(d, role, allowedLegacyKeys));
+  const visibleDomains = NAV_DOMAINS.filter((d) => isDomainVisible(d, role, allowedLegacyKeys, operationalContext));
   const visibleSubnav = activeDomain?.future
     ? []
-    : (activeDomain?.subnav ?? []).filter((item) => isNavItemVisible(item, role, allowedLegacyKeys));
+    : (activeDomain?.subnav ?? []).filter((item) => isNavItemVisible(item, role, allowedLegacyKeys, operationalContext));
 
   return (
     <>

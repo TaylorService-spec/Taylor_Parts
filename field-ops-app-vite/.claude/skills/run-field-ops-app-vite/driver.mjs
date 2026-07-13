@@ -232,6 +232,29 @@
 //                                 report per assertion and exits non-zero on any
 //                                 failure.
 //
+//   verify-financial-forecast <accountKey>
+//                                 Account Commercial Profile & Financial
+//                                 Forecast Horizons PR 4 (docs/specifications/
+//                                 account-commercial-profile-and-financial-
+//                                 forecast-horizons.md) -- the PRIMARY
+//                                 implementation test for that PR. Reuses the
+//                                 seeded Service Activity account (all financial
+//                                 surfaces are unconfigured today). Asserts
+//                                 credit is rendered unavailable via the
+//                                 provider-state contract (exact copy, no $ /
+//                                 value); the two separately-labeled forecast
+//                                 families (Receivables + Pipeline / order,
+//                                 never merged) each show the exact unconfigured
+//                                 copy and no figure; the exact `Receivables
+//                                 Due` label is present and never relabeled
+//                                 `Projected Collections`; NO reachable
+//                                 real-figure/drill-down/export/AI control
+//                                 exists; the provider-state messages are
+//                                 aria-live status regions; and no 375px
+//                                 horizontal overflow. Prints a PASS/FAIL
+//                                 report per assertion and exits non-zero on
+//                                 any failure.
+//
 // All screenshots are written under .claude/skills/run-field-ops-app-vite/screenshots/.
 import { chromium } from "@playwright/test";
 import { mkdirSync } from "node:fs";
@@ -1526,6 +1549,90 @@ async function verifyFinancialSummary(browser, page, accountKey) {
   return niFailed === 0;
 }
 
+// Account Commercial Profile and Financial Forecast Horizons -- PR 4,
+// Phase 3 + 4 (docs/specifications/account-commercial-profile-and-financial-
+// forecast-horizons.md). Provider-neutral financial surfaces:
+//   * Credit rendered UNAVAILABLE via the provider-state contract only;
+//   * two separately-labeled forecast families (Receivables + Pipeline / order),
+//     `unconfigured` only, Family 1 carrying the exact `Receivables Due` label.
+// Only `unconfigured` is reachable, so this browser check asserts the real
+// surface shows the exact copy, NO figure/$, the `Receivables Due` label,
+// credit unavailable, and NO reachable real-figure/drill-down/export/AI path;
+// the definitions and the no-figure/no-bucketing guarantee are proven with
+// fixtures in test/financialForecastHorizons.test.mjs. Reuses the already-
+// seeded Service Activity account (any account's financial surfaces are
+// unconfigured today). Copy strings are a driver-side mirror of the app's
+// (same convention as STATUS_HEADING / CANCEL_VOID_CONFIRMATION_COPY above --
+// this file has no build step to import application source).
+async function verifyFinancialForecast(browser, page, accountKey) {
+  await login(page, accountKey);
+  await page.goto(customerUrl(SERVICE_ACTIVITY_FIXTURE.accountId), { waitUntil: "domcontentloaded", timeout: 20000 });
+
+  const creditSection = page
+    .locator("section.wo-history")
+    .filter({ has: page.locator("h4", { hasText: "Credit" }) });
+  const forecastSection = page
+    .locator("section.wo-history")
+    .filter({ has: page.locator("h4", { hasText: "Financial Forecast Horizons" }) });
+
+  await forecastSection.getByRole("heading", { name: "Financial Forecast Horizons", exact: true }).waitFor({ timeout: 10000 });
+
+  // --- Credit: rendered unavailable via the provider-state contract only ---
+  const creditHeadingVisible = await creditSection.getByRole("heading", { name: "Credit", exact: true }).isVisible().catch(() => false);
+  niReport("Accessibility: Credit is a section with an accessible heading", creditHeadingVisible);
+  const creditText = await creditSection.innerText().catch(() => "");
+  niReport("Credit: rendered unavailable with the exact unconfigured copy ('Sales data source not connected')", /Sales data source not connected/.test(creditText), creditText);
+  niReport("Credit: shows NO figure / $ / credit value (never a silent GOOD_STANDING, $0, or bare number)", !creditText.includes("$") && !/GOOD_STANDING|creditLimit|creditStatus/.test(creditText), creditText);
+
+  // --- Forecast horizons: two separately-labeled families, unconfigured only ---
+  const forecastHeadingVisible = await forecastSection.getByRole("heading", { name: "Financial Forecast Horizons", exact: true }).isVisible().catch(() => false);
+  niReport("Accessibility: Financial Forecast Horizons is a section with an accessible heading", forecastHeadingVisible);
+
+  const receivablesFamily = forecastSection.locator(".fo-forecast-family").filter({ has: page.locator("h5", { hasText: "Receivables" }) });
+  const pipelineFamily = forecastSection.locator(".fo-forecast-family").filter({ has: page.locator("h5", { hasText: "Pipeline / order" }) });
+
+  const receivablesVisible = await receivablesFamily.getByRole("heading", { name: "Receivables", exact: true }).isVisible().catch(() => false);
+  niReport("Forecast: the Receivables family sub-section renders with its own label", receivablesVisible);
+  const pipelineVisible = await pipelineFamily.getByRole("heading", { name: "Pipeline / order", exact: true }).isVisible().catch(() => false);
+  niReport("Forecast: the Pipeline / order family sub-section renders with its own label (families never merged)", pipelineVisible);
+
+  const forecastText = await forecastSection.innerText().catch(() => "");
+  // The `Receivables Due` due-date aging label is present, and NOT relabeled.
+  niReport("Forecast: the exact 'Receivables Due' due-date aging label is present", /Receivables Due/.test(forecastText), forecastText);
+  niReport("Forecast: the due-date aging is NOT labeled 'Projected Collections' (reserved for a future model)", !/Projected Collections/.test(forecastText), forecastText);
+
+  const receivablesText = await receivablesFamily.innerText().catch(() => "");
+  const pipelineText = await pipelineFamily.innerText().catch(() => "");
+  niReport("Forecast: the Receivables family shows the exact unconfigured copy, never a figure/$", /Sales data source not connected/.test(receivablesText) && !receivablesText.includes("$"), receivablesText);
+  niReport("Forecast: the Pipeline / order family shows the exact unconfigured copy, never a figure/$", /Sales data source not connected/.test(pipelineText) && !pipelineText.includes("$"), pipelineText);
+
+  // --- NO reachable real-figure / drill-down / export / AI path: neither the
+  // credit nor the forecast surface exposes any interactive control (button,
+  // link, or export/drill-down affordance). ---
+  const creditControls = await creditSection.locator("button, a, [role='button'], input, select").count().catch(() => -1);
+  niReport("No path: the Credit surface exposes no button/link/drill-down/export control", creditControls === 0, `control count = ${creditControls}`);
+  const forecastControls = await forecastSection.locator("button, a, [role='button'], input, select").count().catch(() => -1);
+  niReport("No path: the Financial Forecast Horizons surface exposes no button/link/drill-down/export control", forecastControls === 0, `control count = ${forecastControls}`);
+  const exportDrillVisible = await forecastSection.getByText(/export|drill.?down|view details|download/i).first().isVisible().catch(() => false);
+  niReport("No path: no export/drill-down affordance text is present on the forecast surface", !exportDrillVisible);
+
+  // --- Accessibility: the provider-state messages are aria-live status regions ---
+  const liveRegionCount = await forecastSection.locator("[role='status'][aria-live='polite']").count().catch(() => 0);
+  niReport("Accessibility: forecast provider-state messages are aria-live status regions", liveRegionCount >= 2, `role=status count = ${liveRegionCount}`);
+  const creditLiveRegion = await creditSection.locator("[role='status'][aria-live='polite']").count().catch(() => 0);
+  niReport("Accessibility: the credit provider-state message is an aria-live status region", creditLiveRegion >= 1, `role=status count = ${creditLiveRegion}`);
+
+  // --- Responsive: no horizontal overflow at 375px mobile ---
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.waitForTimeout(200);
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
+  niReport("Responsive: no horizontal overflow at 375px mobile (credit + forecast surfaces)", overflow === false);
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  console.log(`\n${niPassed} passed, ${niFailed} failed`);
+  return niFailed === 0;
+}
+
 // Inventory Operational Queue, PR C (docs/specifications/inventory-
 // operational-queue.md). Reorder Request History -- deterministic
 // ordering, bounded first page, cursor-based Load More, end-of-history,
@@ -2278,6 +2385,10 @@ async function main() {
     } else if (command === "verify-account-form-layout") {
       const [accountKey = "admin"] = args;
       const ok = await verifyAccountFormLayout(browser, page, accountKey);
+      if (!ok) process.exitCode = 1;
+    } else if (command === "verify-financial-forecast") {
+      const [accountKey = "admin"] = args;
+      const ok = await verifyFinancialForecast(browser, page, accountKey);
       if (!ok) process.exitCode = 1;
     } else {
       console.error(`Unknown command "${command}". See the header comment in this file for usage.`);

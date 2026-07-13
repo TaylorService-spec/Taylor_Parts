@@ -9,7 +9,7 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test": "node test/serviceActivityView.test.mjs && node test/financialSummaryView.test.mjs && node test/commercialProfile.test.mjs && node test/commercialProfileGoverned.test.mjs"
+    "test": "node test/serviceActivityView.test.mjs && node test/financialSummaryView.test.mjs && node test/commercialProfile.test.mjs && node test/employeeSession.test.mjs && node test/navConfigOperationalRoleAccess.test.mjs && node test/financialForecastHorizons.test.mjs && node test/commercialProfileGoverned.test.mjs"
   },
   "dependencies": {
     "firebase": "^12.15.0",

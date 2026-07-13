@@ -802,3 +802,28 @@ button:hover {
   .fo-account-form { grid-template-columns: 1fr; }
   .fo-account-form .fo-fieldset > .fo-form-field { flex-basis: 100%; }
 }
+
+/* Account Commercial Profile and Financial Forecast Horizons -- PR 4
+   (modules/accounts/FinancialForecastSection.jsx). Two separately-labeled
+   provider-neutral forecast family sub-sections; unconfigured only, no figure.
+   Wraps at narrow widths so there is no horizontal overflow at 375px. */
+.fo-forecast-families {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.fo-forecast-family {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.fo-forecast-family h5 {
+  margin: 0 0 4px;
+  font-size: 12px;
+  color: #667;
+}
+
+.fo-forecast-labels {
+  margin: 0 0 4px;
+}
