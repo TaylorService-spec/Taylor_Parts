@@ -810,13 +810,26 @@ async function verifyInventoryHealthCatalog(browser, page, accountKey) {
 
   // --- Inventory Health tabs show the EXACT expected count, not just a
   // digit -- 1 actionable (TST-1002, HIGH) and 1 Needs Planning
-  // (TST-1001), per the fixture ground truth documented above. ---
+  // (TST-1001), per the fixture ground truth documented above.
+  // useInventoryLedger() is a ONE-SHOT fetch (not a real-time listener --
+  // see src/hooks/useInventoryLedger.js), and FilterBar.jsx renders
+  // `option.count` unconditionally from the very first render
+  // (healthEntries starts as [], so both labels legitimately read "(0)"
+  // for a brief window before the fetch resolves -- confirmed live: the
+  // heading this function's goToInventory() waits for mounts before that
+  // fetch resolves). Wait for each label to reach its OWN exact expected
+  // string deterministically before reading it -- not merely "nonzero"
+  // -- so a genuine load failure (the count never reaching "(1)") still
+  // fails loudly below with the real observed label, rather than being
+  // masked by a longer fixed sleep or a loosened assertion. ---
+  await page.getByRole("button", { name: "Critical & High (1)", exact: true }).waitFor({ timeout: 5000 }).catch(() => {});
   const criticalHighLabel = await page.getByRole("button", { name: /^Critical & High/ }).innerText().catch(() => "");
   niReport(
     "Inventory Health: Critical & High tab shows the exact expected count (1)",
     criticalHighLabel === "Critical & High (1)",
     `label was "${criticalHighLabel}"`
   );
+  await page.getByRole("button", { name: "Needs Planning (1)", exact: true }).waitFor({ timeout: 5000 }).catch(() => {});
   const needsPlanningLabel = await page.getByRole("button", { name: /^Needs Planning/ }).innerText().catch(() => "");
   niReport(
     "Inventory Health: Needs Planning tab shows the exact expected count (1)",
