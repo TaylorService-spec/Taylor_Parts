@@ -7,6 +7,8 @@ import {
   useReorderRequestsByStatus,
   useReorderRequestsAssignedTo,
   useReorderRequestsByStatuses,
+  useReorderRequestsHistory,
+  useReorderRequestById,
 } from "../../hooks/useReorderRequests";
 import { requestReorderForRecommendation, getDisplayQty } from "../../domain/inventoryReorderRequests";
 import { REORDER_REQUEST_STATUS } from "../../domain/constants";
@@ -113,6 +115,31 @@ const ALL_ASSIGNED_WORK_STATUSES = [
   REORDER_REQUEST_STATUS.ASSIGNED_TO_PARTS_ASSOCIATE,
   REORDER_REQUEST_STATUS.PURCHASING_IN_PROGRESS,
 ];
+
+// Inventory Operational Queue, PR C (docs/specifications/inventory-
+// operational-queue.md). Every terminal Reorder Request status --
+// History only ever grows (nothing here is reachable again once it
+// lands in one of these), the exact set useReorderRequestsHistory()
+// queries via the C0-deployed `reorder_requests(status, createdAt)`
+// index.
+const HISTORY_STATUSES = [
+  REORDER_REQUEST_STATUS.CANCELLED,
+  REORDER_REQUEST_STATUS.VOIDED,
+  REORDER_REQUEST_STATUS.RECEIVED,
+  REORDER_REQUEST_STATUS.REJECTED,
+];
+// A small, explicit page size (not the Specification's illustrative 25) --
+// matching this codebase's own established precedent for making
+// pagination/end-of-history deterministically testable against a
+// reasonably-sized fixture, without needing dozens of seeded documents
+// (see SERVICE_ACTIVITY_PAGE_SIZE, domain/accountWorkOrders.js).
+const HISTORY_PAGE_SIZE = 10;
+const HISTORY_STATUS_LABEL = {
+  [REORDER_REQUEST_STATUS.CANCELLED]: "Cancelled",
+  [REORDER_REQUEST_STATUS.VOIDED]: "Voided",
+  [REORDER_REQUEST_STATUS.RECEIVED]: "Received",
+  [REORDER_REQUEST_STATUS.REJECTED]: "Rejected",
+};
 
 const PAGE_SIZE = 25;
 const ACTIONABLE_URGENCIES = new Set(["CRITICAL", "HIGH"]);
@@ -233,6 +260,52 @@ export default function PartsList() {
       : allAssignedWork.length === 0
         ? "No requests are currently assigned to anyone."
         : `All Assigned Work: ${allAssignedWork.length} request${allAssignedWork.length === 1 ? "" : "s"} loaded.`;
+
+  // Inventory Operational Queue, PR C -- Reorder Request History.
+  const {
+    data: historyData,
+    loading: historyLoading,
+    error: historyError,
+    isEndOfHistory: historyIsEndOfHistory,
+    loadMore: historyLoadMore,
+  } = useReorderRequestsHistory({ statuses: HISTORY_STATUSES, pageSize: HISTORY_PAGE_SIZE });
+  // Distinguishes the INITIAL load failing (nothing to show at all -- the
+  // whole section becomes the error state, per the Specification's "never
+  // an empty table" requirement) from a later "Load More" call failing
+  // (already-loaded rows stay visible; only the pagination control's own
+  // area reflects the failure) -- a load-more failure must never blank
+  // out real, already-fetched history data.
+  const historyInitialLoadFailed = historyError && historyData.length === 0;
+  const historyStatusMessage = historyInitialLoadFailed
+    ? `Unable to load History (${historyError}).`
+    : historyLoading && historyData.length === 0
+      ? "Loading History..."
+      : historyData.length === 0
+        ? "No terminal Reorder Requests yet."
+        : `History: ${historyData.length} request${historyData.length === 1 ? "" : "s"} loaded${historyIsEndOfHistory ? ", end of history" : ""}.`;
+
+  // Exact-ID lookup, independent of History's own loaded pages/pagination
+  // state (Specification: "a known exact id is always reachable... without
+  // 'Load More'-ing through the entire history"). An explicit "Find"
+  // action, not auto-detection of the input's shape -- this repo's seeded/
+  // real Reorder Request ids aren't a fixed, sniffable format.
+  const [historyLookupInput, setHistoryLookupInput] = useState("");
+  const [historyLookupId, setHistoryLookupId] = useState(null);
+  const {
+    data: historyLookupResult,
+    loading: historyLookupLoading,
+    error: historyLookupError,
+  } = useReorderRequestById(historyLookupId);
+
+  function handleHistoryLookupSubmit(e) {
+    e.preventDefault();
+    setHistoryLookupId(historyLookupInput.trim() || null);
+  }
+  function handleHistoryLookupClear() {
+    setHistoryLookupId(null);
+    setHistoryLookupInput("");
+  }
+
   const categories = useCategories();
   const [category, setCategory] = useState("ALL");
   const [page, setPage] = useState(0);
@@ -620,6 +693,105 @@ export default function PartsList() {
           </div>
         </>
       </LoadingEmptyState>
+
+      <h3>History ({historyData.length})</h3>
+      <p className="fo-muted">Cancelled, Voided, Received, and Rejected Reorder Requests, newest first.</p>
+
+      <form className="fo-inline-form" onSubmit={handleHistoryLookupSubmit}>
+        <label htmlFor="history-lookup-input">Find by exact request ID</label>
+        <input
+          id="history-lookup-input"
+          type="text"
+          value={historyLookupInput}
+          onChange={(e) => setHistoryLookupInput(e.target.value)}
+          placeholder="Reorder Request document ID"
+        />
+        <button type="submit" disabled={!historyLookupInput.trim()}>
+          Find
+        </button>
+        {historyLookupId && (
+          <button type="button" onClick={handleHistoryLookupClear}>
+            Clear
+          </button>
+        )}
+      </form>
+      {historyLookupId && (
+        <p role="status" className="fo-muted">
+          {historyLookupLoading
+            ? "Looking up request..."
+            : historyLookupError === "not_found"
+              ? `No Reorder Request found with ID "${historyLookupId}".`
+              : historyLookupError
+                ? `Unable to look up request (${historyLookupError}).`
+                : historyLookupResult && (
+                    <>
+                      Found:{" "}
+                      <Link to={`/inventory/${historyLookupResult.partId}?requestId=${historyLookupResult.id}`}>
+                        {getCatalogItem(historyLookupResult.partId)?.name ?? historyLookupResult.partId}
+                      </Link>{" "}
+                      -- {HISTORY_STATUS_LABEL[historyLookupResult.status] ?? historyLookupResult.status}
+                    </>
+                  )}
+        </p>
+      )}
+
+      <p role="status" className="fo-sr-only">
+        {historyStatusMessage}
+      </p>
+      {historyInitialLoadFailed ? (
+        <p className="fo-muted">Unable to load History ({historyError}).</p>
+      ) : (
+        <LoadingEmptyState
+          loading={historyLoading && historyData.length === 0}
+          isEmpty={historyData.length === 0}
+          loadingText="Loading History..."
+          emptyText="No terminal Reorder Requests yet."
+        >
+          <div className="fo-table-scroll">
+            <table className="fo-table">
+              <thead>
+                <tr>
+                  <th>Part</th>
+                  <th>Qty</th>
+                  <th>Status</th>
+                  <th>Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                {historyData.map((request) => (
+                  <tr key={request.id}>
+                    <td>
+                      <Link to={`/inventory/${request.partId}?requestId=${request.id}`}>
+                        {getCatalogItem(request.partId)?.name ?? request.partId}
+                      </Link>
+                    </td>
+                    <td>{getDisplayQty(request)}</td>
+                    <td className="fo-muted">{HISTORY_STATUS_LABEL[request.status] ?? request.status}</td>
+                    <td className="fo-muted">{request.createdAt ? new Date(request.createdAt).toLocaleString() : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="disp-board-toolbar" style={{ justifyContent: "center" }}>
+            {historyError ? (
+              <p className="fo-muted">
+                Unable to load more History ({historyError}).{" "}
+                <button type="button" onClick={historyLoadMore}>
+                  Retry
+                </button>
+              </p>
+            ) : historyIsEndOfHistory ? (
+              <span className="fo-muted">End of history.</span>
+            ) : (
+              <button type="button" onClick={historyLoadMore} disabled={historyLoading}>
+                {historyLoading ? "Loading..." : "Load More"}
+              </button>
+            )}
+          </div>
+        </LoadingEmptyState>
+      )}
     </div>
   );
 }

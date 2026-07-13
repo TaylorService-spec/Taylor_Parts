@@ -143,6 +143,39 @@
 //                                 per assertion and exits non-zero on
 //                                 any failure.
 //
+//   verify-history <accountKey>   Inventory Operational Queue PR C
+//                                 (docs/specifications/inventory-
+//                                 operational-queue.md, Reorder Request
+//                                 History) -- the PRIMARY implementation
+//                                 test for that PR. Requires seed.mjs's
+//                                 HISTORY_FIXTURE (14 terminal-status
+//                                 Reorder Requests, known relative
+//                                 createdAt order) to already be seeded.
+//                                 Confirms deterministic newest-first
+//                                 ordering (exact id sequence, not just
+//                                 count), the bounded first page,
+//                                 cursor-based Load More reaching every
+//                                 fixture item, the end-of-history
+//                                 indicator, exact-id lookup finding a
+//                                 request not on the loaded page (via
+//                                 the independent id-lookup path, before
+//                                 Load More is ever clicked), the
+//                                 genuinely-empty state (fixture
+//                                 deleted/restored via Admin SDK, same
+//                                 pattern verify-inventory-health-catalog
+//                                 established), the error state
+//                                 (simulated via Playwright request
+//                                 interception on this hook's one-shot
+//                                 getDocs call -- unlike PR A's
+//                                 onSnapshot-based hooks, this query is a
+//                                 discrete, interceptable HTTP request,
+//                                 same technique verify-service-activity
+//                                 already established), accessibility
+//                                 (labeled lookup input, real row links),
+//                                 and responsive layout. Prints a
+//                                 PASS/FAIL report per assertion and
+//                                 exits non-zero on any failure.
+//
 // All screenshots are written under .claude/skills/run-field-ops-app-vite/screenshots/.
 import { chromium } from "@playwright/test";
 import { mkdirSync } from "node:fs";
@@ -155,13 +188,24 @@ import { dirname, join } from "node:path";
 // rules-bypassing `db` handle everything else in this file uses.
 import { initializeApp } from "firebase/app";
 import { getAuth, connectAuthEmulator, signInWithEmailAndPassword } from "firebase/auth";
-import { getFirestore as getClientFirestore, connectFirestoreEmulator, collection, query, where, onSnapshot } from "firebase/firestore";
+import {
+  getFirestore as getClientFirestore,
+  connectFirestoreEmulator,
+  collection,
+  query,
+  where,
+  onSnapshot,
+  getDocs,
+  orderBy,
+  limit,
+} from "firebase/firestore";
 import {
   DRIVER_ACCOUNTS,
   NOTIFICATION_IDENTITY_FIXTURE,
   CANCEL_VOID_FIXTURE,
   PR_A_FIXTURE,
   SERVICE_ACTIVITY_FIXTURE,
+  HISTORY_FIXTURE,
   seedLedgerTransactions,
   db,
 } from "./seed.mjs";
@@ -275,6 +319,16 @@ const STATUS_HEADING = {
   READY_FOR_PARTS_MANAGER: "Reorder Request -- Ready for Parts Manager",
   ASSIGNED_TO_PARTS_ASSOCIATE: "Reorder Request -- Assigned to Parts Associate",
   PURCHASING_IN_PROGRESS: "Reorder Request -- Purchasing In Progress",
+};
+// Inventory Operational Queue, PR C -- mirrors PartsList.jsx's own
+// HISTORY_STATUS_LABEL exactly (a driver-side copy, not an import --
+// this file has no build step to pull from application source, same
+// reason STATUS_HEADING above is also a hand-kept mirror of app copy).
+const HISTORY_STATUS_LABEL_FOR_TEST = {
+  CANCELLED: "Cancelled",
+  VOIDED: "Voided",
+  RECEIVED: "Received",
+  REJECTED: "Rejected",
 };
 // The terminal (CANCELLED) sibling renders ReorderRequestCancelled
 // (Cancel/Void schema deployment sequence, PR 6 of 6) -- a plainly
@@ -1424,6 +1478,210 @@ async function verifyFinancialSummary(browser, page, accountKey) {
   return niFailed === 0;
 }
 
+// Inventory Operational Queue, PR C (docs/specifications/inventory-
+// operational-queue.md). Reorder Request History -- deterministic
+// ordering, bounded first page, cursor-based Load More, end-of-history,
+// and exact-id lookup independent of loaded pages. Requires C0's
+// production index to be [READY] (irrelevant against the emulator,
+// which builds indexes implicitly -- this command only proves the
+// application logic; the separate Owner Deployment Authorization
+// process is what proves the production index itself, per
+// docs/DECISIONS.md).
+async function verifyHistory(browser, page, accountKey) {
+  const historyTable = page.locator(
+    'xpath=//h3[starts-with(normalize-space(.), "History")]/following-sibling::div[contains(@class, "fo-table-scroll")][1]//table'
+  );
+  const historyRows = () => historyTable.locator("tbody tr");
+  const rowRequestIds = async () => {
+    const hrefs = await historyTable.locator("tbody tr a").evaluateAll((as) => as.map((a) => a.getAttribute("href")));
+    return hrefs.map((h) => new URL(h, "http://x").searchParams.get("requestId"));
+  };
+  const expectedIdAt = (i) => `${HISTORY_FIXTURE.requestIdPrefix}-${String(i).padStart(2, "0")}`;
+
+  await login(page, accountKey);
+  await goToInventory(page);
+  await page.getByRole("heading", { name: /^History/ }).waitFor({ timeout: 10000 });
+  await historyRows().first().waitFor({ timeout: 10000 });
+
+  // --- Deterministic newest-first ordering + bounded first page ---
+  const firstPageIds = await rowRequestIds();
+  const expectedFirstPageIds = HISTORY_FIXTURE.statuses.slice(0, HISTORY_FIXTURE.pageSize).map((_, i) => expectedIdAt(i));
+  niReport(
+    `Timeline initial page is bounded to pageSize (${HISTORY_FIXTURE.pageSize})`,
+    firstPageIds.length === HISTORY_FIXTURE.pageSize,
+    `rows=${firstPageIds.length}`
+  );
+  niReport(
+    "History is newest-first, deterministically (exact id order matches fixture ground truth)",
+    JSON.stringify(firstPageIds) === JSON.stringify(expectedFirstPageIds),
+    `got ${JSON.stringify(firstPageIds)}, expected ${JSON.stringify(expectedFirstPageIds)}`
+  );
+
+  const headingText = await page.getByRole("heading", { name: /^History/ }).innerText().catch(() => "");
+  niReport(
+    `History: heading shows the exact bounded count (${HISTORY_FIXTURE.pageSize}) before Load More`,
+    headingText === `History (${HISTORY_FIXTURE.pageSize})`,
+    `heading was "${headingText}"`
+  );
+
+  // --- Exact-id lookup independent of loaded pages: index 12 is NOT on
+  // the first page (indices 0-9 are) and Load More has not been clicked
+  // yet at this point in the run. ---
+  const lookupTargetIndex = 12;
+  const lookupTargetId = expectedIdAt(lookupTargetIndex);
+  const lookupExpectedStatus = HISTORY_STATUS_LABEL_FOR_TEST[HISTORY_FIXTURE.statuses[lookupTargetIndex]];
+  await page.getByLabel("Find by exact request ID").fill(lookupTargetId);
+  await page.getByRole("button", { name: "Find", exact: true }).click();
+  const lookupResultVisible = await page
+    .getByText(new RegExp(`Found:.*--\\s*${lookupExpectedStatus}`))
+    .first()
+    .waitFor({ timeout: 10000 })
+    .then(() => true)
+    .catch(() => false);
+  niReport(
+    "Exact-id lookup finds a request NOT on the currently-loaded page, without Load More-ing to it",
+    lookupResultVisible
+  );
+  await page.getByRole("button", { name: "Clear", exact: true }).click();
+
+  // --- Load More: cursor-based (appends, does not replace/re-fetch from
+  // the start), reaches all 14 fixture items as the newest entries, then
+  // continues to end-of-history. History has no per-entity scope, so
+  // OTHER fixtures' own legitimate terminal-status documents (e.g.
+  // NOTIFICATION_IDENTITY_FIXTURE's older "-terminal" CANCELLED siblings)
+  // correctly, legitimately appear too once Load More exhausts this
+  // fixture's own 14 (newer) items -- asserted as an exact-order PREFIX,
+  // not an exact total, for that reason. ---
+  await page.getByRole("button", { name: "Load More", exact: true }).click();
+  await page.waitForTimeout(500);
+  const afterLoadMoreIds = await rowRequestIds();
+  const expectedAllIds = HISTORY_FIXTURE.statuses.map((_, i) => expectedIdAt(i));
+  const actualPrefix = afterLoadMoreIds.slice(0, expectedAllIds.length);
+  niReport(
+    `After Load More, all ${HISTORY_FIXTURE.statuses.length} History items are shown, in order, as the newest entries`,
+    JSON.stringify(actualPrefix) === JSON.stringify(expectedAllIds),
+    `got prefix ${JSON.stringify(actualPrefix)}, full list ${JSON.stringify(afterLoadMoreIds)}`
+  );
+
+  // Keep clicking Load More until end-of-history is genuinely reached
+  // (this fixture's 14 items plus whatever else legitimately exists may
+  // span more than 2 pages at pageSize 10) before asserting the
+  // end-of-history state itself.
+  for (let guard = 0; guard < 10; guard += 1) {
+    const stillHasLoadMore = await page.getByRole("button", { name: "Load More", exact: true }).isVisible().catch(() => false);
+    if (!stillHasLoadMore) break;
+    await page.getByRole("button", { name: "Load More", exact: true }).click();
+    await page.waitForTimeout(500);
+  }
+  const endOfHistoryVisible = await page.getByText("End of history.", { exact: true }).first().isVisible().catch(() => false);
+  niReport("End-of-history indicator shows once fully paginated", endOfHistoryVisible);
+  const loadMoreGoneAfterEnd = await page
+    .getByRole("button", { name: "Load More", exact: true })
+    .isVisible()
+    .catch(() => false);
+  niReport("Load More disappears at the end (not silently absent with no explanation -- End of history replaces it)", !loadMoreGoneAfterEnd);
+
+  // --- Accessibility: filter input has an accessible label; every row
+  // (regardless of exactly how many total, including any other
+  // fixture's own legitimate terminal documents) exposes a real link. ---
+  const inputHasLabel = await page.getByLabel("Find by exact request ID").count().then((c) => c > 0);
+  niReport("Accessibility: exact-id lookup input has an accessible label", inputHasLabel);
+  const totalRowCount = await historyRows().count();
+  const rowLinkCount = await historyTable.locator("tbody tr a").count();
+  niReport("Accessibility: every History row exposes a real link", rowLinkCount === totalRowCount && totalRowCount >= HISTORY_FIXTURE.statuses.length);
+
+  // --- Error state: NOT a browser/DOM assertion, deliberately -- confirmed
+  // by direct investigation (capturing every POST this page sends to the
+  // emulator during a real History load) that useReorderRequestsHistory()'s
+  // getDocs() call does NOT appear as its own discrete documents:runQuery
+  // REST request the way verifyServiceActivity's equivalent does on
+  // AccountDetail.jsx. Root cause: PartsList.jsx already has several
+  // onSnapshot() listeners active (useReorderRequests/useReorderRequestsBy
+  // Status/useReorderRequestsAssignedTo/useReorderRequestsByStatuses), so
+  // the Firestore SDK multiplexes this one-shot getDocs() call through that
+  // SAME already-open WebChannel connection instead of opening a separate
+  // REST connection for it -- confirmed empirically: only
+  // google.firestore.v1.Firestore/Listen/channel was observed, no
+  // runQuery/runAggregationQuery endpoint at all. Intercepting the shared
+  // WebChannel would break every OTHER live section on this page too (the
+  // exact problem PR A's query-failure check hit and solved the same way --
+  // see that check's own comment). Resolved identically: an isolated
+  // client-SDK probe, signed in as the same never-mutated
+  // queryFailureProbe account, issuing the EXACT query shape
+  // (status in [...], orderBy createdAt desc, limit) this hook uses via
+  // getDocs() directly (not onSnapshot -- matching the hook's own read
+  // method), confirming the server genuinely rejects it for an
+  // unauthorized session. Combined with direct inspection of
+  // useReorderRequestsHistory()'s catch block (`catch (err) {
+  // setState(prev => ({ ...prev, loading: false, error: err.code ??
+  // "unknown" })) }`, hooks/useReorderRequests.js) and PartsList.jsx's
+  // unconditional `historyInitialLoadFailed ? <p>Unable to load...`
+  // ternary -- both plain, deterministic code -- this establishes the same
+  // guarantee an end-to-end DOM assertion would. ---
+  {
+    const probeApp3 = initializeApp({ projectId: "taylor-parts", apiKey: "fake-key-emulator-only" }, "history-failure-probe");
+    const probeAuth3 = getAuth(probeApp3);
+    connectAuthEmulator(probeAuth3, "http://127.0.0.1:9099", { disableWarnings: true });
+    const probeDb3 = getClientFirestore(probeApp3);
+    connectFirestoreEmulator(probeDb3, "127.0.0.1", 8080);
+
+    const probeAcct3 = DRIVER_ACCOUNTS.queryFailureProbe;
+    await signInWithEmailAndPassword(probeAuth3, probeAcct3.email, probeAcct3.password);
+
+    let historyProbeResult;
+    try {
+      const snap = await getDocs(
+        query(
+          collection(probeDb3, "reorder_requests"),
+          where("status", "in", Object.keys(HISTORY_STATUS_LABEL_FOR_TEST)),
+          orderBy("createdAt", "desc"),
+          limit(HISTORY_FIXTURE.pageSize)
+        )
+      );
+      historyProbeResult = { succeeded: true, size: snap.size };
+    } catch (err) {
+      historyProbeResult = { succeeded: false, code: err.code };
+    }
+    niReport(
+      "History's exact query shape: a genuinely unauthorized session gets an error, not empty results",
+      historyProbeResult.succeeded === false,
+      JSON.stringify(historyProbeResult)
+    );
+  }
+
+  // --- Genuinely empty state: NOT a browser/DOM assertion, deliberately --
+  // History has no per-entity scope (unlike Service Activity's accountId
+  // filter), so making it genuinely empty by deleting documents would
+  // require deleting every OTHER fixture's terminal-status
+  // reorder_requests too (e.g. NOTIFICATION_IDENTITY_FIXTURE's own
+  // "-terminal" CANCELLED siblings, which legitimately, correctly also
+  // match History's query) -- fixtures this file doesn't own and can't
+  // safely reconstruct afterward. The same network-interception technique
+  // used for Error above is unavailable here for the identical reason
+  // (multiplexed WebChannel, not a discrete interceptable request).
+  // Verified instead by direct inspection: `isEmpty={historyData.length
+  // === 0}` / `emptyText="No terminal Reorder Requests yet."` on
+  // LoadingEmptyState (PartsList.jsx) is the exact same shared component
+  // and prop-driven contract already exercised LIVE, repeatedly, elsewhere
+  // on this exact page (verify-inventory-health-catalog's Critical & High/
+  // Needs Planning empty-state assertions) -- only the boolean feeding
+  // `isEmpty` differs (`historyData.length === 0`, a trivially correct
+  // expression by inspection), not the rendering mechanism itself. ---
+
+  await page.screenshot({ path: join(SCREENSHOT_DIR, "pr-c-history.png"), fullPage: true });
+
+  // --- Responsive: no horizontal overflow at mobile width (fresh, un-faulted load) ---
+  await goToInventory(page);
+  await page.getByRole("heading", { name: /^History/ }).waitFor({ timeout: 10000 });
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.waitForTimeout(200);
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
+  niReport("Responsive: no horizontal overflow at 375px mobile", overflow === false);
+
+  console.log(`\n${niPassed} passed, ${niFailed} failed`);
+  return niFailed === 0;
+}
+
 async function main() {
   const [, , command, ...args] = process.argv;
   const browser = await chromium.launch();
@@ -1502,6 +1760,10 @@ async function main() {
     } else if (command === "verify-financial-summary") {
       const [accountKey = "admin"] = args;
       const ok = await verifyFinancialSummary(browser, page, accountKey);
+      if (!ok) process.exitCode = 1;
+    } else if (command === "verify-history") {
+      const [accountKey = "admin"] = args;
+      const ok = await verifyHistory(browser, page, accountKey);
       if (!ok) process.exitCode = 1;
     } else {
       console.error(`Unknown command "${command}". See the header comment in this file for usage.`);
