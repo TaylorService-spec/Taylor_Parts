@@ -1,7 +1,7 @@
 ---
 artifact_type: specification
 gate: Sprint Specification
-status: Draft
+status: Specification-Approved
 date: 2026-07-13
 owner: Claude Code
 related_adrs: []
@@ -16,7 +16,7 @@ target_release: TBD
 
 # Sprint Specification: Account Commercial Profile and Financial Forecast Horizons
 
-**Status: DRAFT.** Not yet reviewed. Derived from the merged, Architecture-Approved Assessment `docs/assessments/account-commercial-profile-and-financial-forecast-horizons.md` (PR #174) and reconciled against the Accepted Enterprise Business Metrics Framework (`docs/architecture/enterprise-business-metrics-framework.md`). Tracking issue: #175.
+**Status: SPECIFICATION-APPROVED.** Derived from the merged, Architecture-Approved Assessment `docs/assessments/account-commercial-profile-and-financial-forecast-horizons.md` (PR #174) and reconciled against the Accepted Enterprise Business Metrics Framework (`docs/architecture/enterprise-business-metrics-framework.md`). Tracking issue: #175.
 
 **This Specification authorizes no implementation.** It defines *what* to build and *what every future build must satisfy*. It does not authorize application code, Firestore Rules/schema/index changes, a financial-provider integration, deployment, migration, production-data access, or any `ROADMAP.md`/global-document edit. Each remains its own separate gate under `docs/ai/workflow.md`; an Implementation Plan is a separate, later authorization. Internal code says "Account"; UI says "Customer" (established convention).
 
@@ -173,4 +173,4 @@ Each phase is its own Implementation Plan + PR(s) + gates; nothing here authoriz
 
 ## Approval
 
-**Draft — pending ChatGPT Specification Final Review and Owner authorization.** No architecture approval, merge authorization, or implementation authorization is claimed. Authorizes no application code, Rules/schema/index change, provider integration, deployment, production-data action, Implementation Plan, or global-document edit.
+**Specification-Approved** (ChatGPT Specification review passed; Owner merge-authorized). No implementation authorization is claimed by this document. Authorizes no application code, Rules/schema/index change, provider integration, deployment, production-data action, Implementation Plan, or global-document edit.
