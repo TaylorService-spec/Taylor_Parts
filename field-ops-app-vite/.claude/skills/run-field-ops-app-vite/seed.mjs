@@ -203,6 +203,46 @@ export const SERVICE_ACTIVITY_FIXTURE = {
   ],
 };
 
+// Inventory Operational Queue, PR C (docs/specifications/inventory-
+// operational-queue.md) -- Reorder Request History. One real catalog
+// part reused across every fixture row (History never dedupes by part,
+// so this is deliberate, not an oversight); `statuses` is index-0 =
+// NEWEST, createdAt staggered so index 0 has the largest timestamp --
+// same "index-0-is-newest" convention SERVICE_ACTIVITY_FIXTURE already
+// established, for the same reason (driver.mjs derives exact expected
+// ordering/counts from this array directly, no magic numbers). 14 items,
+// matching HISTORY_PAGE_SIZE (10) with page 1 = indices 0-9 and page 2 =
+// indices 10-13 -- enough to exercise bounded-first-page, cursor Load
+// More, and end-of-history all in one fixture. All four terminal
+// statuses (CANCELLED/VOIDED/RECEIVED/REJECTED) appear at least twice.
+export const HISTORY_FIXTURE = {
+  partId: "TST-1012",
+  pageSize: 10,
+  requestIdPrefix: "driver-seed-history",
+  // Index 6 (RECEIVED) is deliberately NOT on the first page (indices
+  // 0-9 ARE on the first page for pageSize 10 -- see below) -- reused as
+  // the "on second page" exact-id-lookup case; index 13 is the oldest,
+  // deliberately used as the "definitely not loaded without Load More"
+  // case for the SAME assertion, kept for whichever is more convenient
+  // in driver.mjs.
+  statuses: [
+    "CANCELLED", // 0 -- newest, first page
+    "VOIDED", // 1
+    "RECEIVED", // 2
+    "REJECTED", // 3
+    "CANCELLED", // 4
+    "VOIDED", // 5
+    "RECEIVED", // 6
+    "REJECTED", // 7
+    "CANCELLED", // 8
+    "VOIDED", // 9 -- last item on the first page (indices 0-9, pageSize 10)
+    "RECEIVED", // 10 -- first item that requires Load More
+    "REJECTED", // 11
+    "CANCELLED", // 12
+    "VOIDED", // 13 -- oldest
+  ],
+};
+
 async function seedReorderRequestFixture(docId, { partId, status, currentOwner, assignedToUserId, createdAt }) {
   const isCancelled = status === "CANCELLED";
   await db.doc(`reorder_requests/${docId}`).set({
@@ -528,6 +568,45 @@ async function seedServiceActivityFixture() {
   );
 }
 
+// Inventory Operational Queue, PR C -- Reorder Request History. Reuses
+// seedReorderRequestFixture() (above) directly -- History's fixture is
+// structurally the same "one reorder_requests document" shape every
+// other fixture in this file already writes, just with a terminal
+// `status` and no `currentOwner`/`assignedToUserId` (no owner/assignee
+// -- once a request reaches a terminal status, it isn't queued for
+// anyone anymore). `createdAt` staggered so HISTORY_FIXTURE.statuses'
+// index 0 is the newest, matching that constant's own documented
+// index-0-is-newest convention.
+export async function seedHistoryFixture() {
+  // History has no per-entity scope (unlike Service Activity's
+  // accountId filter) -- it queries the WHOLE reorder_requests
+  // collection for terminal statuses, so it correctly, legitimately
+  // also surfaces OTHER fixtures' terminal-status documents (e.g.
+  // NOTIFICATION_IDENTITY_FIXTURE's "-terminal" CANCELLED siblings,
+  // always seeded a few moments before this function runs in seed()'s
+  // own call order). A large forward offset (not just Date.now())
+  // guarantees every item in this 14-row, 60s-staggered fixture sorts
+  // newer than anything else seeded moments earlier in the same run,
+  // so driver.mjs's exact-order assertions aren't contaminated by that
+  // legitimate cross-fixture overlap -- this is a fixture-ordering
+  // concern only, not something the application needs to know or care
+  // about (a real production reorder_requests collection has exactly
+  // this same "many unrelated terminal requests, ordered by real
+  // createdAt" shape).
+  const base = Date.now() + 1_000_000;
+  await Promise.all(
+    HISTORY_FIXTURE.statuses.map((status, i) =>
+      seedReorderRequestFixture(`${HISTORY_FIXTURE.requestIdPrefix}-${String(i).padStart(2, "0")}`, {
+        partId: HISTORY_FIXTURE.partId,
+        status,
+        currentOwner: null,
+        assignedToUserId: null,
+        createdAt: base - i * 60_000,
+      })
+    )
+  );
+}
+
 // Inventory Health / Parts Catalog separation (PR B) -- exported so
 // driver.mjs can delete/restore inventory_transactions documents
 // directly (Admin SDK, emulator-only) for the empty-state assertions
@@ -603,6 +682,7 @@ async function seed() {
   await seedCancelVoidFixture();
   await seedPrAFixture();
   await seedServiceActivityFixture();
+  await seedHistoryFixture();
 
   console.log("Seeded driver accounts:");
   for (const [key, acct] of Object.entries(DRIVER_ACCOUNTS)) {
