@@ -109,6 +109,14 @@ async function updateDoc(collection, docId, idToken, fields) {
   return res.status;
 }
 
+// Admin SDK snapshot (bypasses Rules, read-only) -- used to prove a
+// denied write attempt left the document byte-for-byte unchanged, not
+// merely that the HTTP status was 403.
+async function snapshot(collection, docId) {
+  const snap = await db.doc(`${collection}/${docId}`).get();
+  return snap.data();
+}
+
 // Never-before-used document ID -- exercises `create`.
 async function createDoc(collection, docId, idToken, fields) {
   const headers = { "Content-Type": "application/json" };
@@ -233,6 +241,31 @@ async function seed() {
   // -- Fixtures, one per transition under test --
   await seedReorderRequest("rr-assign-by-pm", {});
   await seedReorderRequest("rr-assign-by-pa", {}); // PARTS_ASSOCIATE attempting Assign -- must be denied
+
+  // Approve/Reject-attempt fixtures -- Issue #100 PR 3a's own required
+  // negative coverage (Approve/Reject remains isAdminOrDispatcher()
+  // alone, unchanged by this PR's restructuring; confirmed by the
+  // Rules diff touching only that branch's structural nesting, not its
+  // authorization clause -- these tests prove that empirically). One
+  // dedicated fixture per (role, decision) combination so a denied
+  // attempt's "left unchanged" check compares against a document no
+  // other test in this file has touched.
+  await seedReorderRequest("rr-approve-attempt-by-pm", {
+    status: "PENDING_REVIEW", currentOwner: "INVENTORY",
+    reviewedBy: null, reviewedAt: null, reviewDecision: null, reviewNotes: null,
+  });
+  await seedReorderRequest("rr-reject-attempt-by-pm", {
+    status: "PENDING_REVIEW", currentOwner: "INVENTORY",
+    reviewedBy: null, reviewedAt: null, reviewDecision: null, reviewNotes: null,
+  });
+  await seedReorderRequest("rr-approve-attempt-by-pa", {
+    status: "PENDING_REVIEW", currentOwner: "INVENTORY",
+    reviewedBy: null, reviewedAt: null, reviewDecision: null, reviewNotes: null,
+  });
+  await seedReorderRequest("rr-reject-attempt-by-pa", {
+    status: "PENDING_REVIEW", currentOwner: "INVENTORY",
+    reviewedBy: null, reviewedAt: null, reviewDecision: null, reviewNotes: null,
+  });
   await seedReorderRequest("rr-start-purchasing", {
     status: "ASSIGNED_TO_PARTS_ASSOCIATE", currentOwner: "PARTS_ASSOCIATE",
     assignedToUserId: "user-pa-1", assignedBy: "user-pm-1", assignedAt: now,
@@ -322,6 +355,68 @@ async function main() {
       assignedBy: str("user-pa-1"),
       assignedAt: int(now),
     })) === 403);
+
+  // === Approve/Reject -- confirmed still admin/dispatcher-only, no OR
+  // added for any operational role. Each denied attempt is verified
+  // TWICE: the write itself returns 403, AND a post-attempt Admin SDK
+  // snapshot is byte-for-byte identical to the pre-attempt snapshot --
+  // proving the denial is real (no partial write, no field leaking
+  // through despite the overall 403), not merely that the HTTP status
+  // code happened to be 403 while something else silently changed. ===
+
+  {
+    const before = await snapshot("reorder_requests", "rr-approve-attempt-by-pm");
+    const status = await updateDoc("reorder_requests", "rr-approve-attempt-by-pm", tokens["user-pm-1"], {
+      status: str("READY_FOR_PARTS_MANAGER"),
+      reviewDecision: str("APPROVED"),
+      currentOwner: str("PARTS_MANAGER"),
+    });
+    const after = await snapshot("reorder_requests", "rr-approve-attempt-by-pm");
+    report("PARTS_MANAGER cannot Approve -- Approve/Reject remains admin/dispatcher-only", status === 403);
+    report("PARTS_MANAGER's denied Approve attempt left the request byte-for-byte unchanged",
+      JSON.stringify(before) === JSON.stringify(after));
+  }
+
+  {
+    const before = await snapshot("reorder_requests", "rr-reject-attempt-by-pm");
+    const status = await updateDoc("reorder_requests", "rr-reject-attempt-by-pm", tokens["user-pm-1"], {
+      status: str("REJECTED"),
+      reviewDecision: str("REJECTED"),
+      reviewNotes: str("Attempted by an ineligible role"),
+      currentOwner: str("INVENTORY"),
+    });
+    const after = await snapshot("reorder_requests", "rr-reject-attempt-by-pm");
+    report("PARTS_MANAGER cannot Reject -- Approve/Reject remains admin/dispatcher-only", status === 403);
+    report("PARTS_MANAGER's denied Reject attempt left the request byte-for-byte unchanged",
+      JSON.stringify(before) === JSON.stringify(after));
+  }
+
+  {
+    const before = await snapshot("reorder_requests", "rr-approve-attempt-by-pa");
+    const status = await updateDoc("reorder_requests", "rr-approve-attempt-by-pa", tokens["user-pa-1"], {
+      status: str("READY_FOR_PARTS_MANAGER"),
+      reviewDecision: str("APPROVED"),
+      currentOwner: str("PARTS_MANAGER"),
+    });
+    const after = await snapshot("reorder_requests", "rr-approve-attempt-by-pa");
+    report("PARTS_ASSOCIATE cannot Approve -- Approve/Reject remains admin/dispatcher-only", status === 403);
+    report("PARTS_ASSOCIATE's denied Approve attempt left the request byte-for-byte unchanged",
+      JSON.stringify(before) === JSON.stringify(after));
+  }
+
+  {
+    const before = await snapshot("reorder_requests", "rr-reject-attempt-by-pa");
+    const status = await updateDoc("reorder_requests", "rr-reject-attempt-by-pa", tokens["user-pa-1"], {
+      status: str("REJECTED"),
+      reviewDecision: str("REJECTED"),
+      reviewNotes: str("Attempted by an ineligible role"),
+      currentOwner: str("INVENTORY"),
+    });
+    const after = await snapshot("reorder_requests", "rr-reject-attempt-by-pa");
+    report("PARTS_ASSOCIATE cannot Reject -- Approve/Reject remains admin/dispatcher-only", status === 403);
+    report("PARTS_ASSOCIATE's denied Reject attempt left the request byte-for-byte unchanged",
+      JSON.stringify(before) === JSON.stringify(after));
+  }
 
   // === Start Purchasing -- assignee-restricted, gains the new OR ===
 
