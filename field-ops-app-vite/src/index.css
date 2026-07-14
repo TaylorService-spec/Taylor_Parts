@@ -1101,3 +1101,56 @@ textarea.fo-wizard-control { min-height: 76px; resize: vertical; }
   .fo-wizard-actions { flex-direction: column; }
   .fo-wizard-actions button { width: 100%; }
 }
+
+/* ===== Platform Task 2 -- Group Service navigation =====
+   Two-level Service sub-nav: each group is a labelled column (group header +
+   its children); groups sit side by side compactly on desktop and STACK at
+   375px with no horizontal overflow. Scoped under .fo-service-subnav, so no
+   other sub-nav is affected. Child links reuse .fo-subnav .fo-nav-btn (active +
+   focus-visible already defined above). */
+.fo-service-subnav {
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 6px 20px;
+}
+.fo-nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.fo-nav-group-header {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #6b7a7f;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.fo-nav-group-header:hover { color: #23383D; }
+.fo-nav-group-header:focus-visible { outline: 2px solid #2E4A50; outline-offset: 2px; }
+.fo-nav-group-active .fo-nav-group-header { color: #23383D; border-bottom: 2px solid #2E4A50; }
+.fo-nav-group-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+/* Standalone item (e.g. Control Tower): drop its link to the children row so it
+   lines up with the grouped columns. */
+.fo-nav-group-standalone { justify-content: flex-end; }
+
+@media (max-width: 640px) {
+  /* Override the horizontal-scroll .fo-nav rule for the grouped service subnav:
+     stack groups vertically, wrap children -- no horizontal overflow at 375px. */
+  .fo-service-subnav {
+    flex-direction: column;
+    flex-wrap: wrap;
+    overflow-x: visible;
+    gap: 8px;
+  }
+  .fo-nav-group { width: 100%; }
+  .fo-nav-group-standalone { justify-content: flex-start; }
+}

@@ -179,6 +179,16 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
               <Route path="work-orders/:workOrderId" element={<WorkOrderDetailPage />} />
             </>
           )}
+          {/* Platform Task 3 -- the retired /service/control-tower URL redirects
+              to the new top-level /service-operations. A STATIC path segment, so
+              React Router never lets a dynamic route capture it, and it's one
+              declarative redirect (no double navigation). Unconditional: any role
+              hitting the old URL lands on /service-operations, which itself fails
+              closed for a role without Control Tower access (no index route ->
+              catch-all -> /dashboard), same as before. */}
+          {domain.key === "service" && (
+            <Route path="control-tower" element={<Navigate to="/service-operations" replace />} />
+          )}
           {/* Sprint 2.1.1 -- same pattern as /customers/:accountId above:
               gated by isDomainVisible() so this route isn't mounted at
               all for a role with no Inventory access (technician has no
@@ -187,6 +197,15 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
               that role -- this route simply doesn't exist for them). */}
           {domain.key === "inventory" && isDomainVisible(domain, role, allowedLegacyKeys, operationalContext) && (
             <Route path=":partId" element={<PartDetail />} />
+          )}
+          {/* Platform Task 3 -- Service Operations fails CLOSED for a role without
+              access. For admin/dispatcher the visible index item above renders
+              Control Tower; for anyone else no index route is generated, so this
+              explicit gated redirect (only when the domain is NOT visible) sends
+              them to /dashboard instead of an empty shell -- a stronger denial
+              than relying on the empty-Outlet fallthrough. */}
+          {domain.key === "serviceOperations" && !isDomainVisible(domain, role, allowedLegacyKeys, operationalContext) && (
+            <Route index element={<Navigate to="/dashboard" replace />} />
           )}
         </Route>
       ))}

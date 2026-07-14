@@ -46,7 +46,11 @@ export const NAV_DOMAINS = [
     path: "dashboard",
     subnav: [
       { key: "my", label: "My Dashboard", path: "", alwaysVisible: true },
-      { key: "operationsDashboard", label: "Operations Dashboard", path: "operations", legacyKey: "operations" },
+      // Platform Task 3 -- relabeled "Operations Dashboard" -> "Inventory & Supply
+      // Overview" to prevent confusion with the new top-level Service Operations
+      // area. Path/legacyKey UNCHANGED (still /dashboard/operations, legacyKey
+      // "operations") -- only the user-facing label moved.
+      { key: "operationsDashboard", label: "Inventory & Supply Overview", path: "operations", legacyKey: "operations" },
       { key: "activity", label: "Activity", path: "activity" },
       { key: "notifications", label: "Notifications", path: "notifications" },
     ],
@@ -93,12 +97,36 @@ export const NAV_DOMAINS = [
       // unchanged -- only its label/position moved, per explicit
       // instruction not to relabel this "Legacy" in user-facing UI.
       { key: "jobAssignments", label: "Job Assignments", path: "job-assignments", legacyKey: "jobs" },
-      { key: "dispatch", label: "Dispatch", path: "dispatch", legacyKey: "dispatch" },
+      // Platform Task 2 -- "Dispatch" relabeled "Dispatch Queue" (its child slot
+      // in the new Dispatch group). Path/legacyKey UNCHANGED, so its URL
+      // (/service/dispatch) and role access are identical -- only the label moved.
+      { key: "dispatch", label: "Dispatch Queue", path: "dispatch", legacyKey: "dispatch" },
       { key: "technicianWorkspace", label: "Technician Workspace", path: "technician-workspace", legacyKey: "fieldMode" },
-      { key: "controlTower", label: "Control Tower", path: "control-tower", legacyKey: "controlTower" },
+      // Platform Task 3 -- Control Tower left the Service sub-nav: it is now the
+      // top-level "Service Operations" area (NAV_DOMAINS' serviceOperations
+      // below), still rendered by LEGACY_COMPONENTS["controlTower"] with the same
+      // "controlTower" legacyKey (admin/dispatcher visibility unchanged). The
+      // retired /service/control-tower URL redirects to /service-operations
+      // (App.jsx).
       { key: "dispatcherBoard", label: "Dispatcher Board", path: "dispatcher-board", legacyKey: "dispatcherBoard" },
       { key: "scheduling", label: "Scheduling", path: "scheduling" },
       { key: "warranty", label: "Warranty", path: "warranty" },
+    ],
+  },
+  // Platform Task 3 -- Service Operations, promoted from the former Service >
+  // Control Tower sub-item to its own top-level area at /service-operations. Its
+  // single index screen renders the SAME component (LEGACY_COMPONENTS
+  // ["controlTower"] -> ControlTower) via the STABLE "controlTower" legacyKey, so
+  // behavior, data access, and admin/dispatcher-only visibility are unchanged
+  // (technician/unauthorized roles fail closed exactly as before -- the index
+  // route isn't generated for them). Single-item sub-nav, same shape as the
+  // Customers domain.
+  {
+    key: "serviceOperations",
+    label: "Service Operations",
+    path: "service-operations",
+    subnav: [
+      { key: "serviceOperations", label: "Service Operations", path: "", legacyKey: "controlTower" },
     ],
   },
   {
@@ -211,4 +239,48 @@ export function isDomainVisible(domain, role, allowedLegacyKeys, operationalCont
     return PLACEHOLDER_DEFAULT_ROLES.includes(role);
   }
   return domain.subnav.some((item) => isNavItemVisible(item, role, allowedLegacyKeys, operationalContext));
+}
+
+// Platform Task 2 -- Group Service navigation. The Service domain's flat subnav
+// is presented as a two-level hierarchy. This is PRESENTATION-ONLY metadata:
+// the `service` subnav array above (paths, legacyKeys, order) is unchanged, so
+// every route/permission/legacy mapping and App.jsx's route generator are
+// untouched. `itemKeys` is the DISPLAY order within a group (independent of the
+// subnav array order). Any service subnav item NOT listed here (e.g.
+// controlTower) renders as a standalone item, preserving its access + URL.
+export const SERVICE_NAV_GROUPS = [
+  { key: "workManagement", label: "Work Management", itemKeys: ["workOrders", "jobAssignments", "warranty"] },
+  { key: "dispatch", label: "Dispatch", itemKeys: ["dispatcherBoard", "scheduling", "dispatch"] },
+  { key: "technicianWorkspace", label: "Technician Workspace", itemKeys: ["technicianWorkspace"] },
+];
+
+// Build the two-level Service nav model from the ALREADY-VISIBILITY-FILTERED
+// service subnav items (i.e. the caller has already applied isNavItemVisible, so
+// access rules -- including the narrow technician scope -- are never broadened
+// here). For each group in order: its visible children (in SERVICE_NAV_GROUPS
+// order) and a `landing` = the FIRST VISIBLE child (so a group whose usual
+// first child is hidden for this role lands on the first child that role can
+// actually reach, never a hidden route). Empty groups are omitted. Items that
+// belong to no group are returned as `ungrouped`, in their original order. Pure.
+export function buildServiceNavGroups(visibleItems = []) {
+  const byKey = new Map(visibleItems.map((it) => [it.key, it]));
+  const groupedKeys = new Set();
+  const groups = [];
+  for (const g of SERVICE_NAV_GROUPS) {
+    const items = g.itemKeys.map((k) => byKey.get(k)).filter(Boolean);
+    for (const it of items) groupedKeys.add(it.key);
+    if (items.length === 0) continue; // hide empty group
+    groups.push({ key: g.key, label: g.label, items, landing: items[0] });
+  }
+  const ungrouped = visibleItems.filter((it) => !groupedKeys.has(it.key));
+  return { groups, ungrouped };
+}
+
+// Which group is active for a given in-domain path tail (the part AFTER
+// "/service/", e.g. "" for /service, "scheduling" for /service/scheduling), or
+// null when the active route is a standalone/ungrouped item or not a subnav
+// item. Pure -- drives the active-group highlight and is directly testable.
+export function findActiveServiceGroupKey(pathTail, groups = []) {
+  const match = groups.find((g) => g.items.some((it) => it.path === pathTail));
+  return match ? match.key : null;
 }

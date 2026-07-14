@@ -45,9 +45,12 @@ export const moduleRegistry = {
     screens: ["WorkOrders", "Queue", "DispatchBoard"],
   },
 
+  // Platform Task 3 -- user-facing rename to "Service Operations" (promoted to a
+  // top-level area at /service-operations). Internal key stays "controlTower"
+  // (stable -- it's the legacyKey wired to LEGACY_COMPONENTS/ROLE_NAV_ACCESS).
   controlTower: {
-    label: "Control Tower",
-    description: "Administrative oversight and system monitoring",
+    label: "Service Operations",
+    description: "Service operations oversight and system monitoring",
     uiGroup: "admin",
     icon: "tower",
     screens: ["Jobs", "Technicians", "Inventory", "Operations"],
