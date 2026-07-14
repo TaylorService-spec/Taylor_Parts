@@ -41,10 +41,10 @@ ok("admin: Work Management lands on Work Orders (/service, path '')", () =>
   assert.equal(groupByKey(groupsFor(ROLES.ADMIN), "workManagement").landing.path, ""));
 ok("admin: Dispatch lands on Dispatcher Board (the group landing)", () =>
   assert.equal(groupByKey(groupsFor(ROLES.ADMIN), "dispatch").landing.path, "dispatcher-board"));
-ok("admin: Control Tower is ungrouped/standalone (unchanged path)", () => {
+ok("admin: no ungrouped Service items (Control Tower promoted to Service Operations)", () => {
   const m = groupsFor(ROLES.ADMIN);
-  assert.deepEqual(keys(m.ungrouped), ["controlTower"]);
-  assert.equal(m.ungrouped[0].path, "control-tower");
+  assert.deepEqual(m.ungrouped, []);
+  assert.ok(!m.groups.some((g) => g.items.some((it) => it.key === "controlTower")));
 });
 ok("Dispatch Queue label applied; path unchanged", () => {
   const dq = groupByKey(groupsFor(ROLES.ADMIN), "dispatch").items.find((i) => i.key === "dispatch");
@@ -59,8 +59,8 @@ ok("dispatcher: Technician Workspace group is hidden (empty -> omitted)", () => 
   assert.deepEqual(m.groups.map((g) => g.key), ["workManagement", "dispatch"]);
   assert.equal(groupByKey(m, "technicianWorkspace"), undefined);
 });
-ok("dispatcher: still sees Control Tower standalone", () =>
-  assert.deepEqual(keys(groupsFor(ROLES.DISPATCHER).ungrouped), ["controlTower"]));
+ok("dispatcher: no ungrouped Service items either (Control Tower promoted)", () =>
+  assert.deepEqual(groupsFor(ROLES.DISPATCHER).ungrouped, []));
 
 // ===== technician: narrow scope preserved, never broadened =====
 ok("technician: Work Management shows only Job Assignments; lands there (not the hidden Work Orders)", () => {

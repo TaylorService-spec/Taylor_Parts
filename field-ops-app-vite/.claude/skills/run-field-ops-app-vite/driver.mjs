@@ -2861,7 +2861,7 @@ async function verifyCustomerCreateOverlay(browser, page, accountKey) {
 // sub-nav for admin / dispatcher / technician (fresh contexts, since Firebase
 // Auth persists): per-role group + child visibility (never broadened), group
 // landing behavior, direct-URL parent/child selection + active states, keyboard
-// operation, Control Tower still reachable + unchanged, and 375px stacked
+// operation, the retired /service/control-tower redirect (Task 3), and 375px stacked
 // layout. Uses only existing seeded accounts.
 async function verifyServiceNav(browser, page, accountKey) {
   const svcUrl = (tail = "") => { const u = new URL(`service${tail ? `/${tail}` : ""}`, APP_ROOT); u.searchParams.set("emulator", "1"); return u.toString(); };
@@ -2885,9 +2885,13 @@ async function verifyServiceNav(browser, page, accountKey) {
   for (const g of ["Work Management", "Dispatch", "Technician Workspace"]) {
     niReport(`Admin: "${g}" group is present`, (await group(page, g).count()) === 1);
   }
-  for (const c of ["Work Orders", "Job Assignments", "Warranty", "Dispatcher Board", "Scheduling", "Dispatch Queue", "Technician Workspace", "Control Tower"]) {
+  for (const c of ["Work Orders", "Job Assignments", "Warranty", "Dispatcher Board", "Scheduling", "Dispatch Queue", "Technician Workspace"]) {
     niReport(`Admin: child/link "${c}" is visible`, await linkVisible(page, c));
   }
+  // Platform Task 3 -- Control Tower is no longer a Service child (promoted to
+  // the top-level Service Operations area; see verify-service-operations).
+  niReport("Admin: Control Tower is NOT in the Service sub-nav (promoted to Service Operations)",
+    (await page.locator(".fo-service-subnav").getByRole("link", { name: "Control Tower", exact: true }).count()) === 0);
   niReport('Admin: "Dispatch" (renamed from Dispatch) label gone from children; "Dispatch Queue" present',
     (await linkCount(page, "Dispatch")) === 1 && (await linkVisible(page, "Dispatch Queue")));
 
@@ -2921,13 +2925,11 @@ async function verifyServiceNav(browser, page, accountKey) {
   await group(page, "Work Management").locator(":scope.fo-nav-group-active").waitFor({ timeout: 5000 }).catch(() => {});
   niReport("Keyboard: Work Management group active after navigating to Warranty", await groupActive(page, "Work Management"));
 
-  // Control Tower still reachable + unchanged.
+  // Platform Task 3 -- the retired /service/control-tower now redirects to the
+  // top-level /service-operations (no longer a Service child).
   await page.goto(svcUrl("control-tower"), { waitUntil: "domcontentloaded", timeout: 20000 });
-  await page.locator(".fo-service-subnav").waitFor({ timeout: 10000 });
-  niReport("Control Tower still reachable at /service/control-tower", /\/service\/control-tower/.test(page.url()));
-  niReport("Control Tower link is active there", await childActive(page, "Control Tower"));
-  niReport("Control Tower is standalone (no group is active)",
-    !(await groupActive(page, "Work Management")) && !(await groupActive(page, "Dispatch")) && !(await groupActive(page, "Technician Workspace")));
+  await page.waitForURL(/\/service-operations$/, { timeout: 10000 }).catch(() => {});
+  niReport("Retired /service/control-tower redirects to /service-operations", new URL(page.url()).pathname.endsWith("/service-operations"));
 
   // 375px: stacked, no horizontal overflow.
   await page.goto(svcUrl(""), { waitUntil: "domcontentloaded", timeout: 20000 });
@@ -2947,7 +2949,8 @@ async function verifyServiceNav(browser, page, accountKey) {
     niReport("Dispatcher: Work Management group present", (await group(p, "Work Management").count()) === 1);
     niReport("Dispatcher: Dispatch group present", (await group(p, "Dispatch").count()) === 1);
     niReport("Dispatcher: Technician Workspace group HIDDEN (no fieldMode access)", (await group(p, "Technician Workspace").count()) === 0);
-    niReport("Dispatcher: Control Tower still visible", await linkVisible(p, "Control Tower"));
+    niReport("Dispatcher: Control Tower NOT in the Service sub-nav (promoted to Service Operations)",
+      (await p.locator(".fo-service-subnav").getByRole("link", { name: "Control Tower", exact: true }).count()) === 0);
   });
 
   // ===== TECHNICIAN: narrow scope preserved, never broadened =====
@@ -2966,6 +2969,94 @@ async function verifyServiceNav(browser, page, accountKey) {
     niReport("Technician: Control Tower NOT shown (fails closed, no broadening)", (await linkCount(p, "Control Tower")) === 0);
     niReport("Technician: Job Assignments child is active", await childActive(p, "Job Assignments"));
     niReport("Technician: Work Management group is active", await groupActive(p, "Work Management"));
+  });
+
+  console.log(`\n${niPassed} passed, ${niFailed} failed`);
+  return niFailed === 0;
+}
+
+// Platform Task 3 -- Service Operations top-level area. Verifies the promoted
+// top-level tab for admin/dispatcher, that it renders the (renamed) Control
+// Tower content, the retired /service/control-tower redirect, Control Tower's
+// removal from the Service sub-nav, the Dashboard "Inventory & Supply Overview"
+// relabel, active top-level state, keyboard, technician fail-closed, and 375px.
+// Fresh contexts per role (Firebase Auth persists).
+async function verifyServiceOperations(browser, page, accountKey) {
+  const url = (path) => { const u = new URL(path, APP_ROOT); u.searchParams.set("emulator", "1"); return u.toString(); };
+  const topTab = (p, name) => p.locator('nav[aria-label="Primary"]').getByRole("link", { name, exact: true });
+  const mainHeading = (p, name) => p.locator("main").getByRole("heading", { name, exact: true });
+
+  async function withRole(acctKey, fn) {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    const p = await ctx.newPage();
+    try { await login(p, acctKey); await fn(p); } finally { await ctx.close(); }
+  }
+
+  // ===== ADMIN =====
+  await login(page, accountKey);
+  await page.goto(url("service-operations"), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await page.locator("main .fo-panel").first().waitFor({ timeout: 10000 });
+  niReport("Admin: Service Operations is a top-level tab", (await topTab(page, "Service Operations").count()) > 0);
+  niReport("Admin: on /service-operations the top-level tab is active (aria-current=page)",
+    (await topTab(page, "Service Operations").first().getAttribute("aria-current")) === "page");
+  niReport("Admin: renders the Control Tower functionality with the renamed 'Service Operations' heading",
+    await mainHeading(page, "Service Operations").first().isVisible());
+  niReport("Admin: Control Tower content is present ('Technician Load')",
+    await page.locator("main").getByText("Technician Load", { exact: false }).first().isVisible().catch(() => false));
+
+  // ===== Retired /service/control-tower redirect =====
+  await page.goto(url("service/control-tower"), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await page.waitForURL(/\/service-operations$/, { timeout: 10000 }).catch(() => {});
+  niReport("Retired /service/control-tower redirects to /service-operations",
+    new URL(page.url()).pathname.endsWith("/service-operations"));
+  niReport("Redirect lands on the Service Operations content", await mainHeading(page, "Service Operations").first().isVisible());
+
+  // ===== Control Tower removed from the Service sub-nav =====
+  await page.goto(url("service"), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await page.locator(".fo-service-subnav").waitFor({ timeout: 10000 });
+  niReport("Control Tower removed from the Service sub-nav",
+    (await page.locator(".fo-service-subnav").getByRole("link", { name: "Control Tower", exact: true }).count()) === 0);
+
+  // ===== Dashboard relabel =====
+  await page.goto(url("dashboard"), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await page.locator(".fo-subnav").first().waitFor({ timeout: 10000 });
+  niReport("Dashboard shows 'Inventory & Supply Overview'",
+    await page.getByRole("link", { name: "Inventory & Supply Overview", exact: true }).first().isVisible());
+  niReport("Dashboard no longer shows 'Operations Dashboard'",
+    (await page.getByRole("link", { name: "Operations Dashboard", exact: true }).count()) === 0);
+
+  // ===== Keyboard: focus + Enter on the Service Operations tab =====
+  const soTab = topTab(page, "Service Operations").first();
+  await soTab.focus();
+  niReport("Keyboard: the Service Operations tab is focusable", await soTab.evaluate((el) => el === document.activeElement));
+  await page.keyboard.press("Enter");
+  await page.waitForURL(/\/service-operations$/, { timeout: 10000 });
+  niReport("Keyboard: Enter on the Service Operations tab navigates", /\/service-operations$/.test(page.url()));
+
+  // ===== 375px =====
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.waitForTimeout(150);
+  niReport("375px: no horizontal overflow on /service-operations",
+    await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1));
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  // ===== DISPATCHER: has access =====
+  await withRole("ineligibleDispatcher", async (p) => {
+    await p.goto(url("service-operations"), { waitUntil: "domcontentloaded", timeout: 20000 });
+    await p.locator("main .fo-panel").first().waitFor({ timeout: 10000 });
+    niReport("Dispatcher: Service Operations tab present", (await topTab(p, "Service Operations").count()) > 0);
+    niReport("Dispatcher: /service-operations renders the content", await mainHeading(p, "Service Operations").first().isVisible());
+  });
+
+  // ===== TECHNICIAN: fails closed =====
+  await withRole("technicianPartsAssociate", async (p) => {
+    await p.goto(url("service-operations"), { waitUntil: "domcontentloaded", timeout: 20000 });
+    await p.waitForTimeout(500);
+    niReport("Technician: no Service Operations top-level tab", (await topTab(p, "Service Operations").count()) === 0);
+    niReport("Technician: /service-operations fails closed (redirected off it, to /dashboard)",
+      /\/dashboard/.test(p.url()) && !/\/service-operations/.test(p.url()));
+    niReport("Technician: the Service Operations content is NOT rendered",
+      (await mainHeading(p, "Service Operations").count()) === 0);
   });
 
   console.log(`\n${niPassed} passed, ${niFailed} failed`);
@@ -3078,6 +3169,10 @@ async function main() {
     } else if (command === "verify-customer-dashboard") {
       const [accountKey = "admin"] = args;
       const ok = await verifyCustomerDashboard(browser, page, accountKey);
+      if (!ok) process.exitCode = 1;
+    } else if (command === "verify-service-operations") {
+      const [accountKey = "admin"] = args;
+      const ok = await verifyServiceOperations(browser, page, accountKey);
       if (!ok) process.exitCode = 1;
     } else if (command === "verify-service-nav") {
       const [accountKey = "admin"] = args;
