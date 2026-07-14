@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAccount } from "../../hooks/useAccount";
 import { useLocationsForAccount } from "../../hooks/useLocationsForAccount";
@@ -10,6 +10,7 @@ import { formatAddress } from "../../domain/address";
 import { ACCOUNT_RELATIONSHIP_TYPE } from "../../domain/constants";
 import AddressFields from "../../shared/address/AddressFields";
 import AccountForm from "./AccountForm";
+import ContactImportModal from "./ContactImportModal";
 import ServiceActivitySection from "./ServiceActivitySection";
 import FinancialSummarySection from "./FinancialSummarySection";
 import FinancialForecastSection from "./FinancialForecastSection";
@@ -210,6 +211,21 @@ export default function AccountDetail() {
   const [isEditing, setIsEditing] = useState(false);
   const [showLocationForm, setShowLocationForm] = useState(false);
   const [showContactForm, setShowContactForm] = useState(false);
+  const [showImport, setShowImport] = useState(false);
+  const [importAnnouncement, setImportAnnouncement] = useState("");
+  // First imported contact id -- once the live subscription renders its row, move
+  // focus there (and consume the marker).
+  const [pendingContactFocus, setPendingContactFocus] = useState(null);
+  const importedRowRef = useRef(null);
+
+  // After a successful import, focus the first imported Contact's row once the
+  // live useContactsForAccount subscription has delivered it.
+  useEffect(() => {
+    if (pendingContactFocus && importedRowRef.current) {
+      importedRowRef.current.focus();
+      setPendingContactFocus(null);
+    }
+  }, [pendingContactFocus, contacts]);
 
   if (loading) return <div className="fo-panel"><p className="fo-muted">Loading customer...</p></div>;
 
@@ -235,6 +251,19 @@ export default function AccountDetail() {
   async function handleAddContact(values) {
     await createContact(account.id, values);
     setShowContactForm(false);
+  }
+
+  // Called by ContactImportModal on a successful atomic import. Close the modal,
+  // announce the totals, and queue focus onto the first imported Contact; the live
+  // subscription renders the new rows itself (no manual insert/refetch).
+  function handleImported({ importedIds, importedCount, skippedDuplicates, rejected, firstName }) {
+    setShowImport(false);
+    setPendingContactFocus(importedIds?.[0] ?? null);
+    const skipPart = skippedDuplicates ? `, ${skippedDuplicates} duplicate${skippedDuplicates === 1 ? "" : "s"} skipped` : "";
+    const rejPart = rejected ? `, ${rejected} rejected` : "";
+    setImportAnnouncement(
+      `Imported ${importedCount} contact${importedCount === 1 ? "" : "s"}${skipPart}${rejPart}${firstName ? ` — first: ${firstName}` : ""}.`
+    );
   }
 
   const billingLine = formatAddress(account.billingAddress);
@@ -304,11 +333,17 @@ export default function AccountDetail() {
           {/* 3. Contacts */}
           <section className="wo-history">
             <h4>Contacts ({contacts.length})</h4>
+            <p className="fo-sr-only" role="status" aria-live="polite">{importAnnouncement}</p>
             {contacts.length === 0 ? (
               <p className="fo-muted">No contacts yet.</p>
             ) : (
               contacts.map((contact) => (
-                <div key={contact.id} className="wo-history-row">
+                <div
+                  key={contact.id}
+                  className="wo-history-row"
+                  ref={contact.id === pendingContactFocus ? importedRowRef : undefined}
+                  tabIndex={contact.id === pendingContactFocus ? -1 : undefined}
+                >
                   <strong>{contact.name}</strong>
                   {contact.isPrimary && <span className="fo-badge fo-badge-active"> Primary</span>}
                   {contact.phone && <span className="fo-muted"> -- {contact.phone}</span>}
@@ -319,9 +354,22 @@ export default function AccountDetail() {
             {showContactForm ? (
               <ContactForm onSubmit={handleAddContact} onCancel={() => setShowContactForm(false)} />
             ) : (
-              <button type="button" onClick={() => setShowContactForm(true)}>+ Add Contact</button>
+              <div className="fo-btn-row">
+                <button type="button" onClick={() => setShowContactForm(true)}>+ Add Contact</button>
+                <button type="button" onClick={() => setShowImport(true)}>Import Contacts</button>
+              </div>
             )}
           </section>
+
+          {showImport && (
+            <ContactImportModal
+              accountId={account.id}
+              accountName={account.name}
+              existingContacts={contacts}
+              onClose={() => setShowImport(false)}
+              onImported={handleImported}
+            />
+          )}
 
           {/* 4. Locations -- add-only (no Location edit action exists) */}
           <section className="wo-history">

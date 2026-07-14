@@ -277,7 +277,7 @@ import { dirname, join } from "node:path";
 // rules-bypassing `db` handle everything else in this file uses.
 import { initializeApp, deleteApp } from "firebase/app";
 import { getAuth, connectAuthEmulator, signInWithEmailAndPassword } from "firebase/auth";
-import { getFirestore as getClientFirestore, connectFirestoreEmulator, collection, query, where, onSnapshot } from "firebase/firestore";
+import { getFirestore as getClientFirestore, connectFirestoreEmulator, collection, query, where, onSnapshot, writeBatch as clientWriteBatch, doc as clientDoc } from "firebase/firestore";
 import {
   DRIVER_ACCOUNTS,
   NOTIFICATION_IDENTITY_FIXTURE,
@@ -290,6 +290,7 @@ import {
   DASHBOARD_FIXTURE,
   WIZARD_FIXTURE,
   WO_CUSTOMER_SEARCH_FIXTURE,
+  CSV_IMPORT_FIXTURE,
   seedLedgerTransactions,
   db,
 } from "./seed.mjs";
@@ -3399,6 +3400,184 @@ async function verifyCrmSalesNav(browser, page, accountKey) {
   return niFailed === 0;
 }
 
+// Customer Contact CSV import (Issue #209). Drives the full flow on the seeded
+// CSV_IMPORT_FIXTURE account (one pre-existing Contact): open modal, upload a CSV
+// (valid rows + an existing-email duplicate + an invalid-email row + a missing-
+// name row), auto-suggested + manually-adjusted mapping, duplicate-mapping and
+// missing-required-mapping rejection, preview totals, confirm -> ONE atomic
+// writeBatch, live insertion + focus + announcement, no raw IDs. Then: an
+// over-limit file writes ZERO; a demo-write-blocked save keeps the modal open
+// with safe copy and ZERO writes; a technician SDK batch is Rules-denied with
+// ZERO persisted; Escape/focus-restore; and 375px full-screen no-overflow. The
+// admin `db` (Admin SDK) is used only to COUNT persisted contacts, never to write.
+async function verifyContactCsvImport(browser, page, accountKey) {
+  const F = CSV_IMPORT_FIXTURE;
+  const detailUrl = (extra) => {
+    const u = new URL(`customers/${F.accountId}`, APP_ROOT);
+    u.searchParams.set("emulator", "1");
+    if (extra) { const [k, v] = extra.split("="); u.searchParams.set(k, v); }
+    return u.toString();
+  };
+  const dialog = () => page.locator('[role="dialog"][aria-modal="true"]');
+  const contactCount = async () => (await db.collection("contacts").where("accountId", "==", F.accountId).get()).size;
+  const importBtn = () => page.getByRole("button", { name: "Import Contacts" });
+  const confirmBtn = () => page.getByRole("button", { name: /Import \d+ contact/ });
+  const setFile = (name, text) => dialog().locator("#contact-csv-file").setInputFiles({ name, mimeType: "text/csv", buffer: Buffer.from(text, "utf8") });
+
+  const csv = [
+    "Name,Email,Phone,Role",
+    "Ada Byte,ada@csv.test,555-0001,Owner",
+    "Grace Coder,grace@csv.test,555-0002,Manager",
+    `${F.existingContactName},${F.existingContactEmail},,Dup`, // duplicate email -> skipped
+    "No Email Person,,555-0003,Tech",
+    "Bad Email,not-an-email,555-0004,Tech", // invalid email -> rejected
+    ",,555-0005,Tech", // missing name -> rejected
+  ].join("\r\n"); // CRLF on purpose
+  const ACC = 3, DUP = 1, REJ = 2;
+
+  await login(page, accountKey);
+  await page.goto(detailUrl(), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await page.getByRole("heading", { name: F.accountName }).first().waitFor({ timeout: 10000 });
+  const startCount = await contactCount(); // 1 existing
+
+  // ===== open modal =====
+  await importBtn().click();
+  await dialog().waitFor({ timeout: 10000 });
+  niReport("Import Contacts opens a dialog (role=dialog, aria-modal, titled)",
+    (await dialog().getAttribute("aria-modal")) === "true" && /Import Contacts/.test(await dialog().locator(".fo-modal-title").innerText()));
+  niReport("Account is fixed context, shown and not CSV-mappable", new RegExp(F.accountName).test(await dialog().innerText()));
+  niReport("Initial focus is inside the dialog", await page.evaluate(() => Boolean(document.querySelector('[role="dialog"]')?.contains(document.activeElement))));
+
+  // ===== malformed CSV rejected WHOLE -> stays in modal, import unavailable, zero writes, then recovers =====
+  await setFile("malformed.csv", 'Name,Email\n"Ada,ada@x.com'); // unclosed quoted field
+  await dialog().getByText(/malformed/i).first().waitFor({ timeout: 6000 }).catch(() => {});
+  niReport("Malformed CSV: fixed 'This CSV file is malformed…' error stays inside the modal",
+    await dialog().getByText("This CSV file is malformed. Correct its rows or quotes and try again.").first().isVisible().catch(() => false));
+  niReport("Malformed CSV: import stays unavailable (still on select step, no Confirm)",
+    (await confirmBtn().count()) === 0 && (await page.getByLabel("Name (required)").count()) === 0);
+  niReport("Malformed CSV: no raw row/cell content echoed", !/ada@x\.com/.test(await dialog().innerText()));
+  niReport("Malformed CSV: contact count unchanged (zero writes)", (await contactCount()) === startCount);
+  // recovery: selecting a valid CSV advances to mapping
+  await setFile("contacts.csv", csv);
+  await page.getByLabel("Name (required)").waitFor({ timeout: 10000 });
+  niReport("Recovery: a valid CSV clears the error and advances to mapping",
+    (await page.getByLabel("Name (required)").count()) > 0 && (await dialog().getByText(/malformed/i).count()) === 0);
+
+  // ===== continue: map step, auto-suggest =====
+  await page.getByLabel("Name (required)").waitFor({ timeout: 10000 });
+  niReport("Auto-suggested mapping (Name->first column)", (await page.locator("#map-name").inputValue()) === "0");
+  niReport("Mapping controls are labelled selects (Email/Phone/Role)", (await page.getByLabel("Email").count()) > 0 && (await page.getByLabel("Role").count()) > 0);
+  niReport("Header + representative rows previewed", /Ada Byte/.test(await dialog().innerText()));
+
+  // ===== duplicate field mapping rejected =====
+  await page.locator("#map-email").selectOption("0"); // Email onto Name's column
+  niReport("Duplicate field mapping rejected (error + Validate disabled)",
+    (await dialog().getByText(/only one field/i).first().isVisible().catch(() => false)) && (await page.getByRole("button", { name: "Validate" }).isDisabled()));
+  await page.locator("#map-email").selectOption("1");
+
+  // ===== missing required Name mapping rejected =====
+  await page.locator("#map-name").selectOption("");
+  niReport("Missing required Name mapping rejected",
+    (await dialog().getByText(/required "Name"/i).first().isVisible().catch(() => false)) && (await page.getByRole("button", { name: "Validate" }).isDisabled()));
+  await page.locator("#map-name").selectOption("0");
+
+  // ===== validate -> preview totals =====
+  await page.getByRole("button", { name: "Validate" }).click();
+  await confirmBtn().waitFor({ timeout: 10000 });
+  const summary = await dialog().locator(".fo-contact-import-summary").innerText();
+  niReport(`Preview totals: ${ACC} to import, ${DUP} duplicate skipped, ${REJ} rejected`,
+    /To import[\s\S]*3/.test(summary) && /Skipped[\s\S]*1/.test(summary) && /Rejected[\s\S]*2/.test(summary), summary.replace(/\n/g, " | "));
+  niReport("Rejected rows listed with reasons", /Invalid email|Missing name/.test(await dialog().innerText()));
+
+  // ===== confirm -> atomic import, close, live render, announce, focus =====
+  await confirmBtn().click();
+  await dialog().waitFor({ state: "detached", timeout: 15000 });
+  niReport("Successful import closes the modal", (await dialog().count()) === 0);
+  await page.getByText("Ada Byte", { exact: false }).first().waitFor({ timeout: 10000 });
+  niReport("Live subscription renders imported contacts (Ada + Grace + No Email Person)",
+    (await page.getByText("Grace Coder").first().isVisible()) && (await page.getByText("No Email Person").first().isVisible()));
+  const ann = await page.locator('.wo-history .fo-sr-only[role="status"]').first().textContent().catch(() => "");
+  niReport("Completion totals announced (live region)", /Imported 3 contact/.test(ann || ""), ann || "");
+  niReport("Focus moved to the first imported contact (Ada Byte)", await page.evaluate(() => (document.activeElement?.textContent || "").includes("Ada Byte")));
+
+  const afterCount = await contactCount();
+  niReport(`Atomic batch imported exactly ${ACC} (count ${startCount} -> ${startCount + ACC})`, afterCount === startCount + ACC, `got ${afterCount}`);
+  const existing = (await db.collection("contacts").doc(F.existingContactId).get()).data();
+  niReport("Existing duplicate contact NOT overwritten", Boolean(existing) && existing.name === F.existingContactName && existing.email === F.existingContactEmail);
+  const allIds = (await db.collection("contacts").where("accountId", "==", F.accountId).get()).docs.map((d) => d.id);
+  const contactsText = await page.locator(".wo-history").first().innerText();
+  niReport("No raw contact document ids displayed", allIds.every((id) => !contactsText.includes(id)));
+
+  // ===== over-limit file -> zero writes =====
+  const overLimitCsv = ["Name,Email"].concat(Array.from({ length: 201 }, (_, i) => `P${i},p${i}@csv.test`)).join("\n");
+  await importBtn().click();
+  await dialog().waitFor({ timeout: 10000 });
+  await setFile("big.csv", overLimitCsv);
+  await page.getByLabel("Name (required)").waitFor({ timeout: 10000 });
+  await page.getByRole("button", { name: "Validate" }).click();
+  niReport("Over-limit file blocked (over the 200-row limit message)", await dialog().getByText(/over the 200-row limit/i).first().isVisible().catch(() => false));
+  niReport("Over-limit file: import is disabled", await confirmBtn().isDisabled());
+  niReport("Over-limit / invalid file wrote ZERO contacts", (await contactCount()) === afterCount);
+  await page.keyboard.press("Escape");
+  await dialog().waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
+
+  // ===== save failure via demo write-block -> modal open, safe copy, zero writes =====
+  await page.goto(detailUrl("env=demo"), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await page.getByRole("heading", { name: F.accountName }).first().waitFor({ timeout: 10000 });
+  await importBtn().click();
+  await dialog().waitFor({ timeout: 10000 });
+  await setFile("z.csv", "Name,Email\nZoe Zip,zoe@csv.test");
+  await page.getByRole("button", { name: "Validate" }).click();
+  await confirmBtn().click();
+  const saveErr = dialog().locator(".fo-contact-import-save-error");
+  await saveErr.waitFor({ timeout: 10000 }).catch(() => {});
+  niReport("Save failure keeps the modal open", await dialog().isVisible());
+  const saveTxt = await saveErr.innerText().catch(() => "");
+  niReport("Save failure shows safe copy, no raw Firebase detail",
+    /disabled in this mode|no contacts were imported/i.test(saveTxt) && !/FirebaseError|PERMISSION_DENIED|permission-denied/i.test(saveTxt), saveTxt);
+  niReport("Blocked save wrote ZERO contacts", (await contactCount()) === afterCount);
+  await page.keyboard.press("Escape").catch(() => {});
+
+  // ===== Rules-denied SDK batch (technician) -> zero writes =====
+  const probeApp = initializeApp({ projectId: "taylor-parts", apiKey: "fake-key-emulator-only" }, "contact-import-rules-probe");
+  try {
+    const probeAuth = getAuth(probeApp); connectAuthEmulator(probeAuth, "http://127.0.0.1:9099", { disableWarnings: true });
+    const probeDb = getClientFirestore(probeApp); connectFirestoreEmulator(probeDb, "127.0.0.1", 8080);
+    await signInWithEmailAndPassword(probeAuth, DRIVER_ACCOUNTS.technicianPartsAssociate.email, DRIVER_ACCOUNTS.technicianPartsAssociate.password);
+    const b = clientWriteBatch(probeDb);
+    b.set(clientDoc(collection(probeDb, "contacts")), { accountId: F.accountId, name: "Rules Denied", email: "denied@csv.test", isPrimary: false, createdAt: Date.now(), updatedAt: Date.now() });
+    let denied = false;
+    try { await b.commit(); } catch (e) { denied = /permission-denied/i.test(e?.code || "") || /PERMISSION_DENIED/i.test(String(e)); }
+    niReport("Rules-denied contact batch (technician session) is rejected", denied === true);
+    niReport("Rules-denied batch persisted ZERO contacts", (await contactCount()) === afterCount);
+  } finally {
+    await deleteApp(probeApp).catch(() => {});
+  }
+
+  // ===== keyboard: Escape closes + focus restore =====
+  await page.goto(detailUrl(), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await page.getByRole("heading", { name: F.accountName }).first().waitFor({ timeout: 10000 });
+  await importBtn().click();
+  await dialog().waitFor({ timeout: 10000 });
+  await page.keyboard.press("Escape");
+  await dialog().waitFor({ state: "detached", timeout: 5000 });
+  niReport("Escape closes the modal", (await dialog().count()) === 0);
+  niReport("Focus restored to the Import Contacts trigger", await page.evaluate(() => (document.activeElement?.textContent || "").includes("Import Contacts")));
+
+  // ===== 375px full-screen, no overflow =====
+  await page.setViewportSize({ width: 375, height: 812 });
+  await importBtn().click();
+  await dialog().waitFor({ timeout: 10000 });
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
+  niReport("375px: no horizontal overflow with the import modal open", overflow === false);
+  const fullScreen = await dialog().evaluate((el) => { const r = el.getBoundingClientRect(); return r.height >= window.innerHeight - 1 && r.width >= window.innerWidth - 1; });
+  niReport("375px: import modal is full-screen", fullScreen === true);
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  console.log(`\n${niPassed} passed, ${niFailed} failed`);
+  return niFailed === 0;
+}
+
 async function main() {
   const [, , command, ...args] = process.argv;
   const browser = await chromium.launch();
@@ -3529,6 +3708,10 @@ async function main() {
     } else if (command === "verify-wo-wizard") {
       const [accountKey = "admin"] = args;
       const ok = await verifyWoWizard(browser, page, accountKey);
+      if (!ok) process.exitCode = 1;
+    } else if (command === "verify-contact-csv-import") {
+      const [accountKey = "admin"] = args;
+      const ok = await verifyContactCsvImport(browser, page, accountKey);
       if (!ok) process.exitCode = 1;
     } else {
       console.error(`Unknown command "${command}". See the header comment in this file for usage.`);
