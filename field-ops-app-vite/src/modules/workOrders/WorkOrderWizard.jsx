@@ -140,7 +140,10 @@ export default function WorkOrderWizard() {
       <WizardProgress step={step} />
 
       {step === 1 && (
-        <div className="fo-wizard-panel">
+        // Step 1 only -- the Customer search + result panel benefit from more
+        // horizontal room, so this step opts into the wide modifier
+        // (fo-wizard-panel-wide). Steps 2-4 keep the default 560px panel.
+        <div className="fo-wizard-panel fo-wizard-panel-wide">
           <h3 className="fo-wizard-step-title">Step 1: Customer</h3>
           <div className="fo-wizard-field">
             <label className="fo-wizard-field-label" htmlFor="wo-customer-search">Customer</label>

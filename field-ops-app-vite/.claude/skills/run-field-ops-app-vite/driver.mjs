@@ -3211,45 +3211,75 @@ async function verifyCustomerPicker(browser, page, accountKey) {
     await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1));
   await page.setViewportSize({ width: 1280, height: 900 });
 
-  // ===== Responsive geometry across viewports (Issue #212) =====
-  // Measures the picker with "test" results open at each target viewport: the
-  // dropdown must match the input width/edges, use the wizard-content width,
-  // stay within the viewport (flipping up on short screens), let ONLY the result
-  // list scroll, and never give the wizard panel its own scrollbar.
+  // ===== Responsive geometry + horizontal scaling across viewports (Issue #212) =====
+  // Measures the Step-1 picker with "test" results open at each target viewport.
+  // Records actual widths so scaling is proven with numbers, not a tautology:
+  // the Step-1 panel uses nearly all available PARENT content width, grows past
+  // the old 560px cap, and stops at the ~896px readable maximum; the dropdown
+  // matches the input edges, stays within the viewport, lets ONLY the result list
+  // scroll, wraps rows, and never gives the wizard panel its own scrollbar.
   const measure = () => page.evaluate(() => {
     const inp = document.querySelector("#wo-customer-search").getBoundingClientRect();
     const dd = document.querySelector(".fo-customer-picker-dropdown");
     const ddr = dd.getBoundingClientRect();
     const panel = document.querySelector(".fo-wizard-panel");
+    const panelR = panel.getBoundingClientRect();
+    const parent = panel.parentElement; // .fo-panel.fo-wizard
+    const ppcs = getComputedStyle(parent);
+    const parentContentWidth = parent.clientWidth - parseFloat(ppcs.paddingLeft) - parseFloat(ppcs.paddingRight);
     const list = document.querySelector(".fo-customer-picker-list");
     const pcs = getComputedStyle(panel);
     const listcs = list ? getComputedStyle(list) : {};
-    // widest option must not exceed the dropdown content width (no clipped/overflowing rows)
     let optOverflow = false;
     document.querySelectorAll(".fo-customer-picker-option").forEach((o) => { if (o.scrollWidth > o.clientWidth + 1) optOverflow = true; });
     return {
+      ddWidth: Math.round(ddr.width),
+      inputWidth: Math.round(inp.width),
+      panelWidth: Math.round(panelR.width),
+      parentContentWidth: Math.round(parentContentWidth),
       edgeMatch: Math.abs(Math.round(inp.x) - Math.round(ddr.x)) <= 1 && Math.abs(Math.round(inp.right) - Math.round(ddr.right)) <= 1,
-      widthMatchesWizard: Math.abs(Math.round(ddr.width) - Math.round(panel.getBoundingClientRect().width)) <= 1,
       inViewport: ddr.top >= -1 && ddr.bottom <= window.innerHeight + 1,
       wholeDropdownScrolls: dd.scrollHeight > dd.clientHeight + 1,
       listIsScroller: !list || (listcs.overflowY === "auto" || listcs.overflowY === "scroll"),
       panelHasScrollbar: panel.scrollHeight > panel.clientHeight + 1 && pcs.overflowY !== "visible",
+      pageHOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
       optOverflow,
     };
   });
+  const READABLE_MAX = 896; // ~56rem
+  const OLD_CAP = 560;
+  const W = {};
   for (const [w, h] of [[375, 667], [768, 600], [1024, 768], [1366, 768], [1440, 900]]) {
     await page.setViewportSize({ width: w, height: h });
     await input().fill("test");
     await dropdown().waitFor({ timeout: 10000 });
     await page.waitForTimeout(250);
     const m = await measure();
-    niReport(`${w}x${h}: result panel width matches the input's edges`, m.edgeMatch);
-    niReport(`${w}x${h}: picker grows with the wizard content width`, m.widthMatchesWizard);
+    W[w] = m;
+    console.log(`  [scale] ${w}x${h}: pickerW=${m.ddWidth} inputW=${m.inputWidth} step1PanelW=${m.panelWidth} parentContentW=${m.parentContentWidth}`);
+    niReport(`${w}x${h}: input/dropdown edges match exactly`, m.edgeMatch);
+    // Step-1 panel = the available parent content width, capped at the readable
+    // max (56rem ~= 896px). So it uses nearly all width on tablet/small desktop
+    // and stops at the readable ceiling on wide screens.
+    {
+      const expected = Math.min(m.parentContentWidth, READABLE_MAX);
+      niReport(`${w}x${h}: Step-1 panel = min(available parent content, readable max)`,
+        Math.abs(m.panelWidth - expected) <= 4, `panel=${m.panelWidth} expected=${expected} (parent=${m.parentContentWidth}, cap=${READABLE_MAX})`);
+    }
+    niReport(`${w}x${h}: dropdown width equals the input width`, Math.abs(m.ddWidth - m.inputWidth) <= 2, `dd=${m.ddWidth} inp=${m.inputWidth}`);
     niReport(`${w}x${h}: dropdown stays within the visible viewport`, m.inViewport);
     niReport(`${w}x${h}: only the result list scrolls (dropdown itself does not)`, !m.wholeDropdownScrolls && m.listIsScroller);
     niReport(`${w}x${h}: wizard panel gains no internal scrollbar from the dropdown`, !m.panelHasScrollbar);
     niReport(`${w}x${h}: option rows wrap without clipping`, !m.optOverflow);
   }
+  // Scaling proof (numbers, not a tautology):
+  niReport(`Scaling: picker width strictly increases 375 < 768 < 1024 (${W[375].ddWidth} < ${W[768].ddWidth} < ${W[1024].ddWidth})`,
+    W[375].ddWidth < W[768].ddWidth && W[768].ddWidth < W[1024].ddWidth);
+  niReport(`Scaling: 768 grows past the old 560px cap (${W[768].ddWidth} > ${OLD_CAP})`, W[768].ddWidth > OLD_CAP);
+  niReport(`Scaling: 1024 grows past the old 560px cap (${W[1024].ddWidth} > ${OLD_CAP})`, W[1024].ddWidth > OLD_CAP);
+  niReport(`Scaling: 1366 stays at/below the readable max (${W[1366].ddWidth} <= ${READABLE_MAX})`, W[1366].ddWidth <= READABLE_MAX + 1);
+  niReport(`Scaling: 1440 stays at/below the readable max (${W[1440].ddWidth} <= ${READABLE_MAX})`, W[1440].ddWidth <= READABLE_MAX + 1);
+  niReport("Scaling: picker introduces no page horizontal overflow at 375px", W[375].pageHOverflow === false);
 
   // keyboard: at a viewport where the list scrolls, ArrowDown to the last option
   // and confirm it is scrolled into view WITHIN the list (not off-screen).
