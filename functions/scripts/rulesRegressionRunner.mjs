@@ -102,13 +102,49 @@ export function firebaseChildEnv(env = process.env) {
   return clean;
 }
 
+// The owned emulator's descendant PIDs, discovered from the process table via
+// parent->child (ppid) links ONLY. Every process is selected by its numeric PID
+// as a descendant of the owned root -- never by process name or command line.
+// We walk the descendant tree (not the process group) because firebase-tools
+// places the emulator's Java child in its OWN process group, so a group-kill of
+// the node parent would leave that Java process -- and its port -- alive.
+export function descendantPids(rootPid, psRunner = defaultPsRunner) {
+  const table = psRunner(); // [{ pid, ppid }, ...] snapshot of all processes
+  const childrenByParent = new Map();
+  for (const { pid, ppid } of table) {
+    if (!childrenByParent.has(ppid)) childrenByParent.set(ppid, []);
+    childrenByParent.get(ppid).push(pid);
+  }
+  const out = [];
+  const stack = [rootPid];
+  while (stack.length) {
+    for (const c of childrenByParent.get(stack.pop()) || []) { out.push(c); stack.push(c); }
+  }
+  return out;
+}
+
+function defaultPsRunner() {
+  const res = spawnSync("ps", ["-eo", "pid=,ppid="], { encoding: "utf8" });
+  if (res.status !== 0 || !res.stdout) return [];
+  const rows = [];
+  for (const line of res.stdout.split("\n")) {
+    const m = /^\s*(\d+)\s+(\d+)/.exec(line);
+    if (m) rows.push({ pid: Number(m[1]), ppid: Number(m[2]) });
+  }
+  return rows;
+}
+
 // Kill ONLY the given owned process TREE, by PID -- never by name/command-line.
+// win32: taskkill /pid /t walks and kills the owned tree by PID. POSIX: SIGKILL
+// each owned descendant PID (found via ppid links) plus the root PID.
 export function killTree(pid) {
   if (!pid) return;
   if (process.platform === "win32") {
     spawnSync("taskkill", ["/pid", String(pid), "/t", "/f"], { stdio: "ignore" });
-  } else {
-    try { process.kill(-pid, "SIGKILL"); } catch { try { process.kill(pid, "SIGKILL"); } catch { /* already gone */ } }
+    return;
+  }
+  for (const p of [...descendantPids(pid), pid]) {
+    try { process.kill(p, "SIGKILL"); } catch { /* already gone */ }
   }
 }
 

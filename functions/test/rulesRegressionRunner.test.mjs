@@ -12,6 +12,7 @@ import {
   checkRulesIdentical,
   parseSuiteResult,
   firebaseChildEnv,
+  descendantPids,
   SUITES,
   EXPECTED_TOTAL,
 } from "../scripts/rulesRegressionRunner.mjs";
@@ -133,9 +134,26 @@ ok("6. teardown is PID-only -- no name/command-line process termination anywhere
   assert.ok(/taskkill/.test(RUNNER_CODE), "expected a taskkill by PID on win32");
   assert.ok(!/\/IM\b/i.test(RUNNER_CODE), "must not taskkill by image name (/IM)");
   assert.ok(!/pkill|killall|Get-Process\s+-Name|wmic/i.test(RUNNER_CODE), "must not kill by process name");
-  // The kill path passes /pid + the tracked pid, and process.kill uses -pid (group of the owned child).
+  // The win32 kill passes /pid + the tracked pid; the POSIX kill sends signals to
+  // exact numeric descendant PIDs of the owned root (never a group or a name).
   assert.ok(/\"\/pid\"|'\/pid'/.test(RUNNER_CODE));
-  assert.ok(/process\.kill\(-pid/.test(RUNNER_CODE));
+  assert.ok(/process\.kill\(p, ?"SIGKILL"\)/.test(RUNNER_CODE), "POSIX kill must target exact descendant PIDs");
+  // The descendant set is built from ppid links only -- ps is asked for pid/ppid,
+  // never a name/command filter (no -C, no comm=, no grep-by-name).
+  assert.ok(/ps",\s*\["-eo",\s*"pid=,ppid="\]/.test(RUNNER_CODE), "ps must read pid/ppid only");
+  assert.ok(!/-C\b|comm=|args=|-o\s+command/.test(RUNNER_CODE), "ps must not select by process name/command");
+});
+
+// ===== 6b. descendantPids selects ONLY the owned subtree, never siblings =====
+ok("6b. descendantPids returns only the owned root's descendants by PID", () => {
+  // Fake process table: 100 -> {200 -> 300}, plus an unrelated foreign tree 900 -> 999.
+  const table = [
+    { pid: 100, ppid: 1 }, { pid: 200, ppid: 100 }, { pid: 300, ppid: 200 },
+    { pid: 900, ppid: 1 }, { pid: 999, ppid: 900 }, // foreign -- must NOT be selected
+  ];
+  const got = descendantPids(100, () => table).sort((a, b) => a - b);
+  assert.deepEqual(got, [200, 300], "only owned descendants; never the foreign 900/999 tree");
+  assert.deepEqual(descendantPids(555, () => table), [], "unknown root -> no PIDs");
 });
 
 // ===== 7. Successful execution reports exactly 178 passed and 0 failed =====
