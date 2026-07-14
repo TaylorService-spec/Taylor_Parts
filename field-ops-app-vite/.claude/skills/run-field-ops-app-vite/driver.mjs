@@ -2576,6 +2576,10 @@ async function verifyWoWizard(browser, page, accountKey) {
   // ===== Step 2: Location (progress, gating hint, visible label, gate clears) =====
   await page.getByRole("heading", { name: "Step 2: Location" }).waitFor({ timeout: 10000 });
   niReport('Step 2 progress marks "Location" active', (await activeStepLabel()) === "Location");
+  // Wait for the per-account location listener to resolve so the select renders
+  // (until then useLocationsForAccount returns [] and the hint legitimately
+  // reads the empty-state message) -- then assert the select-a-location hint.
+  await page.locator("#wo-location").waitFor({ timeout: 10000 });
   niReport('Step 2 gating hint explains the disabled Next ("Select a location")', (await hintText()) === "Select a location to continue.");
   niReport("Step 2 Next is disabled before a location is chosen", await nextBtn().isDisabled());
   niReport('Step 2 has a visible "Location" label bound to the select', (await labelFor("wo-location")) === "Location");
