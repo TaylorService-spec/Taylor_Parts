@@ -2677,12 +2677,27 @@ async function verifyWoWizard(browser, page, accountKey) {
   niReport("Error: internal shows a clear failure/no-record message", /unexpected error|no work order was created/i.test(internalMsg), internalMsg);
   niReport("Error: internal NEVER leaks the raw server detail", !internalMsg.includes("RAW-INTERNAL-LEAK-9f3"), internalMsg);
 
-  // ===== Success path: navigates to the created Work Order route =====
-  currentResponse = { success: true, result: { id: "wiz-created-wo", woNumber: "WO-WIZ-1" } };
-  await page.getByRole("button", { name: "Create Work Order" }).click();
-  const navigated = await page.waitForURL(/\/service\/work-orders\/wiz-created-wo/, { timeout: 10000 }).then(() => true).catch(() => false);
-  niReport("Success: create navigates to /service/work-orders/:id", navigated, page.url());
+  // ===== Real successful creation THROUGH the Functions emulator =====
+  // Remove all interception so the create hits the real createWorkOrder
+  // callable running in the Functions emulator (the signed-in admin passes its
+  // auth/role check; the wizard's inputs are valid), which writes a real
+  // fieldops_wos document and returns its id for the wizard to navigate to.
   await page.unroute("**/createWorkOrder");
+  const beforeIds = new Set(
+    (await db.collection("fieldops_wos").where("customerId", "==", F.accountId).get()).docs.map((d) => d.id)
+  );
+  await page.getByRole("button", { name: "Create Work Order" }).click();
+  const navigated = await page
+    .waitForURL((u) => { const p = new URL(u).pathname; return /\/service\/work-orders\//.test(p) && !p.endsWith("/new"); }, { timeout: 20000 })
+    .then(() => true)
+    .catch(() => false);
+  niReport("Success: real createWorkOrder navigates to the created Work Order route", navigated, page.url());
+  const afterDocs = (await db.collection("fieldops_wos").where("customerId", "==", F.accountId).get()).docs.filter((d) => !beforeIds.has(d.id));
+  niReport("Success: a real Work Order document was created via the Functions emulator", afterDocs.length === 1, `new docs=${afterDocs.length}`);
+  const created = afterDocs[0]?.data() ?? {};
+  niReport("Success: the created Work Order carries the wizard's customer/location/type",
+    created.customerId === F.accountId && created.locationId === F.locationId && created.type === "SERVICE_CALL",
+    JSON.stringify({ customerId: created.customerId, locationId: created.locationId, type: created.type }));
 
   console.log(`\n${niPassed} passed, ${niFailed} failed`);
   return niFailed === 0;
