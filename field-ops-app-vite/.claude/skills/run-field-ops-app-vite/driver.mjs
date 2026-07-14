@@ -3211,6 +3211,65 @@ async function verifyCustomerPicker(browser, page, accountKey) {
     await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1));
   await page.setViewportSize({ width: 1280, height: 900 });
 
+  // ===== Responsive geometry across viewports (Issue #212) =====
+  // Measures the picker with "test" results open at each target viewport: the
+  // dropdown must match the input width/edges, use the wizard-content width,
+  // stay within the viewport (flipping up on short screens), let ONLY the result
+  // list scroll, and never give the wizard panel its own scrollbar.
+  const measure = () => page.evaluate(() => {
+    const inp = document.querySelector("#wo-customer-search").getBoundingClientRect();
+    const dd = document.querySelector(".fo-customer-picker-dropdown");
+    const ddr = dd.getBoundingClientRect();
+    const panel = document.querySelector(".fo-wizard-panel");
+    const list = document.querySelector(".fo-customer-picker-list");
+    const pcs = getComputedStyle(panel);
+    const listcs = list ? getComputedStyle(list) : {};
+    // widest option must not exceed the dropdown content width (no clipped/overflowing rows)
+    let optOverflow = false;
+    document.querySelectorAll(".fo-customer-picker-option").forEach((o) => { if (o.scrollWidth > o.clientWidth + 1) optOverflow = true; });
+    return {
+      edgeMatch: Math.abs(Math.round(inp.x) - Math.round(ddr.x)) <= 1 && Math.abs(Math.round(inp.right) - Math.round(ddr.right)) <= 1,
+      widthMatchesWizard: Math.abs(Math.round(ddr.width) - Math.round(panel.getBoundingClientRect().width)) <= 1,
+      inViewport: ddr.top >= -1 && ddr.bottom <= window.innerHeight + 1,
+      wholeDropdownScrolls: dd.scrollHeight > dd.clientHeight + 1,
+      listIsScroller: !list || (listcs.overflowY === "auto" || listcs.overflowY === "scroll"),
+      panelHasScrollbar: panel.scrollHeight > panel.clientHeight + 1 && pcs.overflowY !== "visible",
+      optOverflow,
+    };
+  });
+  for (const [w, h] of [[375, 667], [768, 600], [1024, 768], [1366, 768], [1440, 900]]) {
+    await page.setViewportSize({ width: w, height: h });
+    await input().fill("test");
+    await dropdown().waitFor({ timeout: 10000 });
+    await page.waitForTimeout(250);
+    const m = await measure();
+    niReport(`${w}x${h}: result panel width matches the input's edges`, m.edgeMatch);
+    niReport(`${w}x${h}: picker grows with the wizard content width`, m.widthMatchesWizard);
+    niReport(`${w}x${h}: dropdown stays within the visible viewport`, m.inViewport);
+    niReport(`${w}x${h}: only the result list scrolls (dropdown itself does not)`, !m.wholeDropdownScrolls && m.listIsScroller);
+    niReport(`${w}x${h}: wizard panel gains no internal scrollbar from the dropdown`, !m.panelHasScrollbar);
+    niReport(`${w}x${h}: option rows wrap without clipping`, !m.optOverflow);
+  }
+
+  // keyboard: at a viewport where the list scrolls, ArrowDown to the last option
+  // and confirm it is scrolled into view WITHIN the list (not off-screen).
+  await page.setViewportSize({ width: 768, height: 600 });
+  await input().fill("test");
+  await dropdown().waitFor({ timeout: 10000 });
+  await page.waitForTimeout(200);
+  const optCount = await page.locator(".fo-customer-picker-option").count();
+  for (let i = 0; i < optCount; i++) await input().press("ArrowDown");
+  await page.waitForTimeout(150);
+  const activeInView = await page.evaluate(() => {
+    const active = document.querySelector(".fo-customer-picker-option-active");
+    const list = document.querySelector(".fo-customer-picker-list");
+    if (!active || !list) return false;
+    const a = active.getBoundingClientRect(), l = list.getBoundingClientRect();
+    return a.top >= l.top - 1 && a.bottom <= l.bottom + 1; // within the list's visible scroll area
+  });
+  niReport("Keyboard: ArrowDown scrolls the active option into view inside the result list", activeInView);
+  await page.setViewportSize({ width: 1280, height: 900 });
+
   console.log(`\n${niPassed} passed, ${niFailed} failed`);
   return niFailed === 0;
 }
