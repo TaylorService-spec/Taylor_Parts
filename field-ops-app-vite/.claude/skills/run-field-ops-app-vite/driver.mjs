@@ -3578,6 +3578,163 @@ async function verifyContactCsvImport(browser, page, accountKey) {
   return niFailed === 0;
 }
 
+// Issue #214 PR-1 -- AccountForm is migrated to the shared form primitives
+// (Field / FormActions / FormError / FormStatus) on the System-A `fo-wizard-*`
+// tokens. This verifies the consistency guarantees the migration is responsible
+// for, on BOTH the create overlay and the inline edit form: label-above +
+// label/control association, a TEXT (never colour-only) required indicator,
+// primary->secondary action order, a polite saving live region + duplicate-
+// submit prevention, per-field errors that stay inside the form below their
+// control with safe copy, the ~896px readable-width cap, and no 375px overflow
+// with the create modal still full-screen and internally scrollable. It does
+// NOT re-cover the two-column grid (verify-account-form-layout owns that) or the
+// governed-field / owner fail-closed behaviour (verify-governed-fields /
+// verify-commercial-profile own those) -- those must remain green unchanged.
+async function verifyAccountFormConsistency(browser, page, accountKey) {
+  const F = COMMERCIAL_PROFILE_FIXTURE;
+  const listUrl = () => { const u = new URL("customers", APP_ROOT); u.searchParams.set("emulator", "1"); return u.toString(); };
+  const dialog = () => page.locator('[role="dialog"][aria-modal="true"]');
+  const newBtn = () => page.getByRole("button", { name: /New Customer/ });
+  const nameInput = () => page.locator('input[placeholder="Customer name"]');
+  const uniqueName = `Consistency Customer ${Date.now()}`;
+
+  await login(page, accountKey);
+
+  // ===== CREATE overlay =====
+  await page.goto(listUrl(), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await page.locator(".fo-portfolio-cards").waitFor({ timeout: 10000 });
+  await newBtn().click();
+  await dialog().waitFor({ timeout: 10000 });
+  await nameInput().waitFor({ timeout: 10000 });
+
+  // Label association + TEXT required indicator (not colour alone).
+  const labelInfo = await page.evaluate(() => {
+    const assoc = (id) => {
+      const control = document.getElementById(id);
+      const label = document.querySelector(`label[for="${id}"]`);
+      return {
+        hasControl: Boolean(control),
+        labelText: label ? label.textContent.trim() : null,
+        // label sits ABOVE the control (lower y) and shares its left edge.
+        above: control && label
+          ? label.getBoundingClientRect().top <= control.getBoundingClientRect().top + 1
+          : false,
+      };
+    };
+    return { name: assoc("account-name"), status: assoc("account-status"), notes: assoc("account-notes"), tags: assoc("account-tags") };
+  });
+  niReport("Create: name control has an associated <label> rendered above it",
+    labelInfo.name.hasControl && /Customer name/.test(labelInfo.name.labelText || "") && labelInfo.name.above,
+    JSON.stringify(labelInfo.name));
+  niReport("Create: required state is conveyed as TEXT '(required)', not colour alone",
+    /\(required\)/.test(labelInfo.name.labelText || ""), labelInfo.name.labelText);
+  niReport("Create: status / notes / tags each have an associated label rendered above them",
+    ["status", "notes", "tags"].every((k) => labelInfo[k].hasControl && labelInfo[k].labelText && labelInfo[k].above),
+    JSON.stringify(labelInfo));
+
+  // Primary -> secondary action order (Create before Cancel), and a polite
+  // saving live region inside the form.
+  const actions = await page.evaluate(() => {
+    const row = document.querySelector("form.fo-account-form .fo-btn-row");
+    const btns = row ? [...row.querySelectorAll("button")].map((b) => ({ text: b.textContent.trim(), type: b.type })) : [];
+    const status = document.querySelector('form.fo-account-form [role="status"][aria-live="polite"]');
+    return { btns, hasStatus: Boolean(status) };
+  });
+  niReport("Create: primary action precedes secondary (submit 'Create Customer' before 'Cancel')",
+    actions.btns.length >= 2 && actions.btns[0].type === "submit" && /Create Customer/.test(actions.btns[0].text) && actions.btns.some((b) => /Cancel/.test(b.text)),
+    JSON.stringify(actions.btns));
+  niReport("Create: form has a polite live status region for the saving state", actions.hasStatus);
+
+  // Readable-width cap rule is applied to the form.
+  const capCss = await page.evaluate(() => getComputedStyle(document.querySelector("form.fo-account-form")).maxWidth);
+  niReport("Create: form carries the ~896px readable-width cap (max-width: 896px)", capCss === "896px", `max-width=${capCss}`);
+
+  // Duplicate-submit prevention: a rapid double-click must create exactly ONE
+  // customer. Fill valid data, double-click Create, wait for the overlay to
+  // close, then assert a single matching row.
+  await nameInput().fill(uniqueName);
+  const createBtn = page.getByRole("button", { name: "Create Customer" });
+  await createBtn.dblclick();
+  await dialog().waitFor({ state: "detached", timeout: 10000 }).catch(() => {});
+  await page.waitForTimeout(600);
+  const matchCount = await page.getByText(uniqueName, { exact: true }).count();
+  niReport("Create: a rapid double-submit creates exactly one customer (duplicate-submit prevented)",
+    matchCount === 1, `matches=${matchCount}`);
+
+  // ===== 375px: create modal full-screen + internally scrollable, no overflow =====
+  await newBtn().click();
+  await dialog().waitFor({ timeout: 10000 });
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.waitForTimeout(250);
+  const mobile = await page.evaluate(() => {
+    const d = document.querySelector('[role="dialog"]');
+    const body = document.querySelector(".fo-modal-body");
+    const r = d.getBoundingClientRect();
+    return {
+      fullScreen: r.height >= window.innerHeight - 1 && r.width >= window.innerWidth - 1,
+      scrollable: body ? (getComputedStyle(body).overflowY !== "visible" && body.scrollHeight > body.clientHeight) : false,
+      overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+    };
+  });
+  niReport("375px: create modal is full-screen", mobile.fullScreen === true);
+  niReport("375px: create modal body is internally scrollable", mobile.scrollable === true);
+  niReport("375px: no horizontal overflow (create overlay)", mobile.overflow === false);
+  await page.keyboard.press("Escape");
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  // ===== INLINE EDIT: per-field error placement + width cap + no overflow =====
+  await page.goto(customerUrl(F.editAccountId), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  await page.locator("form.fo-account-form").waitFor({ timeout: 10000 });
+  await page.locator("#cp-currency").waitFor({ timeout: 10000 });
+
+  // Edit form also has the labelled, required name control.
+  const editName = await page.evaluate(() => {
+    const label = document.querySelector('label[for="account-name"]');
+    return label ? label.textContent.trim() : null;
+  });
+  niReport("Edit: name control has an associated label with the text required indicator",
+    /Customer name/.test(editName || "") && /\(required\)/.test(editName || ""), editName);
+
+  // Enter an invalid currency and confirm the error renders INSIDE the same
+  // field, BELOW the control, with safe copy (no raw provider detail), and
+  // stays within the form (not a toast / navigation).
+  await page.locator("#cp-currency").fill("ZZ");
+  await page.waitForTimeout(150);
+  const err = await page.evaluate(() => {
+    const control = document.getElementById("cp-currency");
+    const field = control ? control.closest(".fo-form-field") : null;
+    const warn = field ? field.querySelector(".fo-warning") : null;
+    const inForm = warn ? Boolean(warn.closest("form.fo-account-form")) : false;
+    return {
+      present: Boolean(warn),
+      belowControl: warn && control ? warn.getBoundingClientRect().top >= control.getBoundingClientRect().bottom - 1 : false,
+      inForm,
+      text: warn ? warn.textContent.trim() : "",
+    };
+  });
+  niReport("Edit: an invalid field shows its error inside the same field, below the control", err.present && err.belowControl);
+  niReport("Edit: the field error stays inside the form", err.inForm === true);
+  niReport("Edit: the field error exposes no raw provider detail",
+    err.present && !/firebase|permission-denied|FirebaseError|code:/i.test(err.text), err.text);
+
+  const editCap = await page.evaluate(() => {
+    const form = document.querySelector("form.fo-account-form");
+    return { maxWidth: getComputedStyle(form).maxWidth, width: form.getBoundingClientRect().width };
+  });
+  niReport("Edit: form width is capped at the readable maximum (<= 896px)",
+    editCap.maxWidth === "896px" && editCap.width <= 897, JSON.stringify(editCap));
+
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.waitForTimeout(200);
+  const editOverflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
+  niReport("375px: no horizontal overflow (inline edit form)", editOverflow === false);
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  console.log(`\n${niPassed} passed, ${niFailed} failed`);
+  return niFailed === 0;
+}
+
 async function main() {
   const [, , command, ...args] = process.argv;
   const browser = await chromium.launch();
@@ -3712,6 +3869,10 @@ async function main() {
     } else if (command === "verify-contact-csv-import") {
       const [accountKey = "admin"] = args;
       const ok = await verifyContactCsvImport(browser, page, accountKey);
+      if (!ok) process.exitCode = 1;
+    } else if (command === "verify-account-form-consistency") {
+      const [accountKey = "admin"] = args;
+      const ok = await verifyAccountFormConsistency(browser, page, accountKey);
       if (!ok) process.exitCode = 1;
     } else {
       console.error(`Unknown command "${command}". See the header comment in this file for usage.`);
