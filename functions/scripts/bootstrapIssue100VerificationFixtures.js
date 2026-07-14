@@ -418,11 +418,12 @@ function parseIcaclsPrincipals(output, targetPath) {
 }
 
 // Strips inherited permissions and grants access to ONLY the current
-// user plus SYSTEM/Administrators, then re-reads the ACL back and
-// verifies no other principal is present. Throws on ANY failure --
-// icacls missing, a command erroring, or an unexpected principal found
-// -- so the caller can fail closed uniformly.
-function establishAndVerifyWindowsAcl(targetPath) {
+// user plus SYSTEM/Administrators. Throws on any icacls failure.
+// Deliberately separate from verifyWindowsAcl() below -- callers that
+// need to CONFIRM an already-established ACL survived an intervening
+// operation (e.g. a rename) call only the verify half, without
+// redundantly re-granting.
+function applyWindowsAcl(targetPath) {
   const username = os.userInfo().username;
   try {
     execFileSync("icacls", [targetPath, "/inheritance:r"], { stdio: "pipe" });
@@ -430,7 +431,13 @@ function establishAndVerifyWindowsAcl(targetPath) {
   } catch (err) {
     throw new Error("Could not establish restrictive Windows ACLs on the credentials/manifest file.");
   }
+}
 
+// Re-reads the ACL and verifies no principal beyond the current user/
+// SYSTEM/Administrators is present. Throws on ANY failure -- icacls
+// missing, a command erroring, or an unexpected principal found -- so
+// the caller can fail closed uniformly.
+function verifyWindowsAcl(targetPath) {
   let output;
   try {
     output = execFileSync("icacls", [targetPath], { stdio: "pipe" }).toString();
@@ -444,6 +451,11 @@ function establishAndVerifyWindowsAcl(targetPath) {
   if (unexpected.length > 0 || principals.length === 0) {
     throw new Error("Windows ACL verification found an unexpected principal (or no principals at all) on the credentials/manifest file.");
   }
+}
+
+function establishAndVerifyWindowsAcl(targetPath) {
+  applyWindowsAcl(targetPath);
+  verifyWindowsAcl(targetPath);
 }
 
 // POSIX: the mode is applied at file-creation time by the caller
@@ -460,6 +472,17 @@ function verifyPosixMode(targetPath) {
 function establishAndVerifySecretFilePermissions(targetPath) {
   if (process.platform === "win32") {
     establishAndVerifyWindowsAcl(targetPath);
+  } else {
+    verifyPosixMode(targetPath);
+  }
+}
+
+// VERIFY-ONLY (never re-applies/re-grants) -- used to confirm an
+// already-hardened file's ACL survived an intervening operation, e.g.
+// the atomic rename in writeSecretFileDurably below.
+function verifySecretFilePermissions(targetPath) {
+  if (process.platform === "win32") {
+    verifyWindowsAcl(targetPath);
   } else {
     verifyPosixMode(targetPath);
   }
@@ -483,22 +506,50 @@ function createSecretFileExclusively(targetPath, content) {
   }
 }
 
+// Ordered so NO secret byte is ever written before the file's ACL has
+// been established AND verified:
+//   1. Exclusively create an empty temporary file.
+//   2. Apply and verify the restrictive ACL while it is still empty.
+//   3. Write secret content through the already-secured file handle.
+//   4. Flush file content durably and close it.
+//   5. Atomically replace the destination.
+//   6. Verify the destination retains the restricted ACL.
+//   7. On any failure in 1-4, close and remove the temporary file
+//      without ever having exposed its contents under a weaker ACL.
 function writeSecretFileDurably(targetPath, content) {
   const tmpPath = `${targetPath}.tmp-${process.pid}-${Date.now()}-${crypto.randomBytes(4).toString("hex")}`;
-  const fd = fs.openSync(tmpPath, "w", 0o600);
+
+  const fd = fs.openSync(tmpPath, "wx", 0o600); // 1
   try {
-    fs.writeSync(fd, content);
-    fs.fsyncSync(fd);
-  } finally {
-    fs.closeSync(fd);
-  }
-  try {
-    establishAndVerifySecretFilePermissions(tmpPath);
+    establishAndVerifySecretFilePermissions(tmpPath); // 2 -- still empty at this point
+    fs.writeSync(fd, content); // 3
+    fs.fsyncSync(fd); // 4
   } catch (err) {
-    fs.unlinkSync(tmpPath);
+    fs.closeSync(fd);
+    try {
+      fs.unlinkSync(tmpPath);
+    } catch (unlinkErr) {
+      // Best-effort -- the original error is what matters to the caller.
+    }
+    throw err; // 7
+  }
+  fs.closeSync(fd); // 4, continued
+
+  try {
+    fs.renameSync(tmpPath, targetPath); // 5 -- preserves the temp file's own (already-hardened) ACL
+  } catch (err) {
+    try {
+      fs.unlinkSync(tmpPath);
+    } catch (unlinkErr) {
+      // Best-effort.
+    }
     throw err;
   }
-  fs.renameSync(tmpPath, targetPath); // preserves the temp file's own (now-hardened) permissions/ACL
+
+  verifySecretFilePermissions(targetPath); // 6 -- never re-deletes the destination on failure here: it may
+  // already hold the operator's only copy of real, newly-created
+  // resource records: surface the error to the caller's own recovery
+  // machinery instead of destroying it.
 }
 
 // ---------------------------------------------------------------
@@ -1265,6 +1316,9 @@ module.exports = {
   createSecretFileExclusively,
   writeSecretFileDurably,
   establishAndVerifySecretFilePermissions,
+  verifySecretFilePermissions,
+  applyWindowsAcl,
+  verifyWindowsAcl,
   parseIcaclsPrincipals,
   windowsAllowedPrincipalPatterns,
   readCurrentState,

@@ -85,6 +85,7 @@ const {
   applyBootstrapWithRecovery,
   createSecretFileExclusively,
   writeSecretFileDurably,
+  verifySecretFilePermissions,
   initialManifestState,
   uidFor,
   emailFor,
@@ -496,6 +497,123 @@ async function main() {
       failedClosed = !fs.existsSync(unreachablePath);
     }
     report("Windows ACL: fails closed (no file left behind) when the destination cannot be created/secured", failedClosed);
+
+    // Staged proof of writeSecretFileDurably()'s own internal ordering
+    // -- NOT a mocked return value. fs.openSync/fs.writeSync are called
+    // via `fs.<method>()` throughout the script (never destructured),
+    // so intercepting them here observes the REAL, unmodified function's
+    // own execution, pausing at two real intermediate points:
+    //   stage A -- the instant the temp file is created (still unhardened,
+    //              still empty);
+    //   stage B -- the instant secret content is about to land (after
+    //              hardening has already completed, still empty until
+    //              the real write proceeds).
+    {
+      const stagedPath = freshPath(scratchDir, "staged-write-proof");
+      createSecretFileExclusively(stagedPath, JSON.stringify({ initial: true }));
+
+      const originalOpenSync = fs.openSync;
+      const originalWriteSync = fs.writeSync;
+      let tmpPathSeen = null;
+      let stageA = null; // right after temp-file creation, before hardening
+      let stageB = null; // right before the real secret-content write, after hardening
+
+      fs.openSync = function (filePath, flags, mode) {
+        const fd = originalOpenSync.apply(fs, arguments);
+        if (typeof filePath === "string" && filePath.includes(".tmp-") && !tmpPathSeen) {
+          tmpPathSeen = filePath;
+          stageA = {
+            content: fs.readFileSync(filePath, "utf8"),
+            principals: parseIcaclsPrincipals(execFileSync("icacls", [filePath]).toString(), filePath),
+          };
+        }
+        return fd;
+      };
+      fs.writeSync = function (fd, content) {
+        if (typeof content === "string" && content.includes("STAGED-PROOF-SECRET-MARKER") && tmpPathSeen && !stageB) {
+          stageB = {
+            content: fs.readFileSync(tmpPathSeen, "utf8"),
+            principals: parseIcaclsPrincipals(execFileSync("icacls", [tmpPathSeen]).toString(), tmpPathSeen),
+          };
+        }
+        return originalWriteSync.apply(fs, arguments);
+      };
+
+      writeSecretFileDurably(stagedPath, JSON.stringify({ password: "STAGED-PROOF-SECRET-MARKER" }));
+
+      fs.openSync = originalOpenSync;
+      fs.writeSync = originalWriteSync;
+
+      const allowed = windowsAllowedPrincipalPatterns();
+      const stageAUnexpected = stageA.principals.filter((p) => !allowed.some((re) => re.test(p)));
+      report(
+        "staged write: stage A (temp file just created) is empty and NOT yet hardened (broad/inherited principals still present)",
+        stageA.content === "" && stageAUnexpected.length > 0,
+        `principals: ${JSON.stringify(stageA.principals)}`
+      );
+
+      const stageBUnexpected = stageB.principals.filter((p) => !allowed.some((re) => re.test(p)));
+      report(
+        "staged write: stage B (immediately before secret content lands) is STILL empty, but the ACL is ALREADY fully hardened -- content is written only after broad principals are removed",
+        stageB.content === "" && stageB.principals.length > 0 && stageBUnexpected.length === 0,
+        `principals: ${JSON.stringify(stageB.principals)}`
+      );
+
+      const finalContent = fs.readFileSync(stagedPath, "utf8");
+      const finalPrincipals = parseIcaclsPrincipals(execFileSync("icacls", [stagedPath]).toString(), stagedPath);
+      const finalUnexpected = finalPrincipals.filter((p) => !allowed.some((re) => re.test(p)));
+      report(
+        "staged write: the final destination has the real secret content AND remains fully hardened",
+        finalContent.includes("STAGED-PROOF-SECRET-MARKER") && finalUnexpected.length === 0
+      );
+      fs.unlinkSync(stagedPath);
+    }
+
+    // Repeated rewrites retain the restricted ACL -- not just at
+    // creation, and not just once, but after a realistic sequence of
+    // several independent writeSecretFileDurably() calls in a row
+    // (standing in for the many persist() calls a real apply/cleanup
+    // run performs).
+    {
+      const repeatedPath = freshPath(scratchDir, "repeated-rewrite-proof");
+      createSecretFileExclusively(repeatedPath, JSON.stringify({ n: 0 }));
+      for (let i = 1; i <= 5; i += 1) {
+        writeSecretFileDurably(repeatedPath, JSON.stringify({ n: i, password: `repeated-rewrite-secret-${i}` }));
+      }
+      let survivedAllRewrites = true;
+      try {
+        verifySecretFilePermissions(repeatedPath);
+      } catch {
+        survivedAllRewrites = false;
+      }
+      report("repeated rewrites: the ACL remains fully restricted after 5 independent writeSecretFileDurably() updates in a row", survivedAllRewrites);
+      report("repeated rewrites: the final content reflects the LAST update (proves the loop genuinely re-wrote the file each time, not just re-verified a stale one)", JSON.parse(fs.readFileSync(repeatedPath, "utf8")).n === 5);
+      fs.unlinkSync(repeatedPath);
+    }
+
+    // Injected failure writes zero secret bytes and leaves no temp file
+    // -- a genuine (not mocked) failure of writeSecretFileDurably()'s
+    // own create-and-secure step. A Windows file owner cannot be locked
+    // out of modifying their own file's ACL (WRITE_DAC is an implicit
+    // owner right the OS itself always grants, confirmed by direct
+    // experimentation: an explicit deny ACE against the owner does not
+    // block a subsequent icacls grant by that same owner) -- so the
+    // only portably-reproducible REAL failure of steps 1-2 is the
+    // target location itself being invalid, which is exactly what is
+    // exercised here, directly against writeSecretFileDurably (not just
+    // createSecretFileExclusively, covered separately above).
+    {
+      const unreachableUpdatePath = path.join(scratchDir, "does-not-exist-dir-2", "unreachable-update.json");
+      let updateFailedClosed = false;
+      try {
+        writeSecretFileDurably(unreachableUpdatePath, "SECRET-SHOULD-NEVER-BE-WRITTEN-DURING-UPDATE");
+      } catch {
+        const dir = path.dirname(unreachableUpdatePath);
+        const leftoverTempFiles = fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.includes(".tmp-")) : [];
+        updateFailedClosed = !fs.existsSync(unreachableUpdatePath) && leftoverTempFiles.length === 0;
+      }
+      report("injected failure (update path): writes zero secret bytes and leaves no temp file behind", updateFailedClosed);
+    }
   } else {
     skip("Windows ACL verification tests", `platform is ${process.platform}, not win32`);
   }
@@ -800,6 +918,21 @@ async function main() {
   const finalCleanupResult = await runCleanupCommand(db, auth, finalCleanupInput);
   report("cleanup all-or-nothing/TOCTOU: after resolving both scenarios, a final clean cleanup succeeds completely", finalCleanupResult.ok === true);
   report("cleanup all-or-nothing/TOCTOU: zero fixture Auth accounts remain", (await countFixtureAuthUsers()) === 0);
+
+  // Repeated rewrites during --cleanup's own progress-tracking persist()
+  // calls (one per deletion, across the dry-run + all-or-nothing abort +
+  // TOCTOU abort + final full run above -- several dozen rewrites to
+  // this SAME manifest file) must ALSO retain the restricted ACL, not
+  // just the apply-phase rewrites already checked earlier.
+  if (process.platform === "win32") {
+    let cleanupRewritesSurvived = true;
+    try {
+      verifySecretFilePermissions(cleanupTestPath);
+    } catch {
+      cleanupRewritesSurvived = false;
+    }
+    report("cleanup rewrites: the ACL remains fully restricted after the many progress-tracking rewrites cleanup performed to this same manifest file", cleanupRewritesSurvived);
+  }
 
   // A manifest whose own top-level fixtureMarker doesn't match this
   // script's constant is refused entirely, before touching any target.
