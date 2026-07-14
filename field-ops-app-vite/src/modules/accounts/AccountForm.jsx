@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { ACCOUNT_STATUS, ACCOUNT_RELATIONSHIP_TYPE, INVOICE_DELIVERY_METHOD, PAYMENT_TERMS, TAX_STATUS } from "../../domain/constants";
 import { commercialProfileErrors, isValidInvoiceDeliveryMethod, isValidPaymentTerms, isValidTaxStatus, isContactOnAccount, resolveOwnerIdentity } from "../../domain/commercialProfile";
+import { accountSaveErrorMessage } from "../../domain/accountPortfolio";
 import { useAuth } from "../../auth/AuthContext";
 import { useEmployeeDirectory } from "../../hooks/useEmployeeDirectory";
 import AddressFields from "../../shared/address/AddressFields";
@@ -67,6 +68,10 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
   const [billingContactId, setBillingContactId] = useState(initialValues?.billingContact?.contactId ?? "");
   const [accountOwner, setAccountOwner] = useState(initialValues?.accountOwner ?? null);
   const [submitAttempted, setSubmitAttempted] = useState(false);
+  // Save-time (post-validation) failure -- e.g. a Rules permission-denied. Shown
+  // inside the form so the creation overlay stays open and the user can retry.
+  const [saveError, setSaveError] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
 
   // Live Commercial Profile validation -- errors render beside their fields.
   const cpDraft = useMemo(
@@ -138,9 +143,10 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
     });
   }
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
     setSubmitAttempted(true);
+    setSaveError(null);
     const trimmedName = name.trim();
     if (!trimmedName) return;
     if (!cpValid) return; // errors are already rendered beside each field
@@ -162,7 +168,7 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
       relationshipTypes.includes(t)
     );
 
-    onSubmit({
+    const payload = {
       name: trimmedName,
       billingAddress: hasAddress ? { street: trimmedStreet, city: trimmedCity, state: trimmedState, zip: trimmedZip } : null,
       status,
@@ -186,7 +192,21 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
       taxStatus: taxStatus || null,
       billingContact: billingContactId ? { contactId: billingContactId } : null,
       accountOwner,
-    });
+    };
+
+    // Await the save so a post-validation failure (e.g. a Rules permission-
+    // denied) is caught HERE and surfaced inside the form -- the creation
+    // overlay stays open and nothing is lost. A caller whose onSubmit doesn't
+    // return a promise still works (await of a non-thenable resolves).
+    setSubmitting(true);
+    try {
+      await onSubmit(payload);
+    } catch (err) {
+      console.error("Account save failed:", err);
+      setSaveError(accountSaveErrorMessage(err));
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -388,10 +408,16 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
         <div className="fo-warning" role="alert">Fix the highlighted Commercial Profile fields before saving.</div>
       )}
 
+      {saveError && (
+        <div className="fo-warning fo-account-save-error" role="alert">{saveError}</div>
+      )}
+
       <div className="fo-btn-row">
-        <button type="submit">{submitLabel ?? "Save"}</button>
+        <button type="submit" disabled={submitting}>
+          {submitting ? "Saving..." : submitLabel ?? "Save"}
+        </button>
         {onCancel && (
-          <button type="button" onClick={onCancel}>
+          <button type="button" onClick={onCancel} disabled={submitting}>
             Cancel
           </button>
         )}

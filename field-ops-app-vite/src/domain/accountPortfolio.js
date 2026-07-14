@@ -94,3 +94,39 @@ function toEpochMs(value) {
   }
   return null;
 }
+
+// Would this single account survive the given filter set? (Same semantics as
+// filterAccounts.) Used to decide whether a just-created customer would be
+// hidden by the dashboard's current filters.
+export function accountPassesFilters(account, filters = {}) {
+  return filterAccounts([account], filters).length === 1;
+}
+
+// Given a just-created account and the active filters, return a filter set with
+// ONLY the dimensions that would hide that account cleared -- a status that
+// doesn't match, a relationship set not fully present (AND semantics), or a tag
+// set it shares none of (ANY semantics). Every other active filter is left
+// intact, so creating a customer never needlessly wipes an unrelated filter.
+export function clearedFiltersForAccount(account = {}, { status = null, relationshipTypes = [], tags = [] } = {}) {
+  const rt = account.relationshipTypes ?? [];
+  const at = account.tags ?? [];
+  return {
+    status: status && account.status !== status ? null : status,
+    relationshipTypes:
+      relationshipTypes.length && !relationshipTypes.every((t) => rt.includes(t)) ? [] : relationshipTypes,
+    tags: tags.length && !tags.some((t) => at.includes(t)) ? [] : tags,
+  };
+}
+
+// User-facing message for a FAILED Account save (create or edit). A demo/panic
+// blocked write, a Rules permission-denied (e.g. a non-admin changing a governed
+// field, or a dispatcher creating above the governed baseline), and any other
+// error each get a distinct, safe message -- never a raw error string/stack.
+export function accountSaveErrorMessage(err) {
+  if (err?.blocked) return "Saving is disabled in this mode -- no changes were made.";
+  const code = err?.code ?? "";
+  if (code === "permission-denied" || code === "firestore/permission-denied") {
+    return "You do not have permission to save this customer.";
+  }
+  return "Could not save this customer. Please try again.";
+}

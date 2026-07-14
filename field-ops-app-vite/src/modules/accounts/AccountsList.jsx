@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
 import { ACCOUNTS_COLLECTION, ACCOUNT_STATUS, ACCOUNT_RELATIONSHIP_TYPE } from "../../domain/constants";
@@ -9,9 +9,11 @@ import {
   collectTags,
   hasActiveFilters,
   formatLastUpdate,
+  clearedFiltersForAccount,
 } from "../../domain/accountPortfolio";
 import GlobalSearch from "../../shared/search/GlobalSearch";
 import WorkspaceHeader from "../../shared/ui/WorkspaceHeader";
+import Modal from "../../shared/ui/Modal";
 import AccountForm from "./AccountForm";
 
 // Sprint 2.0.2 -- Customer Foundation. Internal name AccountsList; rendered UI
@@ -42,10 +44,14 @@ const RELATIONSHIP_LABEL = {
 
 export default function AccountsList() {
   const { data: accounts, loading, error } = useFirestoreCollection(ACCOUNTS_COLLECTION);
-  const [showForm, setShowForm] = useState(false);
+  const [showCreate, setShowCreate] = useState(false);
   const [statusFilter, setStatusFilter] = useState(null);
   const [relationshipFilter, setRelationshipFilter] = useState([]);
   const [tagFilter, setTagFilter] = useState([]);
+  // After a successful create: the row to move focus to + a live announcement.
+  const [pendingFocus, setPendingFocus] = useState(null);
+  const [announcement, setAnnouncement] = useState("");
+  const newRowLinkRef = useRef(null);
 
   const summary = useMemo(() => summarizeAccounts(accounts), [accounts]);
   const allTags = useMemo(() => collectTags(accounts), [accounts]);
@@ -55,10 +61,41 @@ export default function AccountsList() {
   );
   const filtersActive = hasActiveFilters({ status: statusFilter, relationshipTypes: relationshipFilter, tags: tagFilter });
 
+  // Called by AccountForm inside the overlay. On failure this THROWS so
+  // AccountForm catches it, shows the error inside the still-open overlay, and
+  // nothing here runs (the overlay does not close). On success: clear only the
+  // filters that would hide the new customer, queue focus + a live announcement,
+  // and close the overlay. The live Accounts subscription adds the row itself --
+  // no manual insert, no refetch.
   async function handleCreate(values) {
-    await createAccount(values);
-    setShowForm(false);
+    const created = await createAccount(values);
+    if (created?.blocked) {
+      const blockedErr = new Error("write blocked");
+      blockedErr.blocked = true;
+      throw blockedErr;
+    }
+    const next = clearedFiltersForAccount(created, {
+      status: statusFilter,
+      relationshipTypes: relationshipFilter,
+      tags: tagFilter,
+    });
+    setStatusFilter(next.status);
+    setRelationshipFilter(next.relationshipTypes);
+    setTagFilter(next.tags);
+    setPendingFocus({ id: created.id, name: created.name });
+    setAnnouncement(`Customer ${created.name} created.`);
+    setShowCreate(false);
   }
+
+  // Once the newly created customer's row is rendered (the live subscription has
+  // delivered it and current filters don't hide it), move focus to its name and
+  // consume the pending-focus marker.
+  useEffect(() => {
+    if (pendingFocus && newRowLinkRef.current) {
+      newRowLinkRef.current.focus();
+      setPendingFocus(null);
+    }
+  }, [pendingFocus, filtered]);
 
   function toggleStatus(status) {
     // Total (status null) always clears; a status card toggles on/off.
@@ -82,12 +119,21 @@ export default function AccountsList() {
     <div className="fo-panel">
       <WorkspaceHeader title="Customers">
         <GlobalSearch providerKeys={["accounts"]} context={{ accounts }} placeholder="Search customers..." />
-        <button type="button" onClick={() => setShowForm((v) => !v)}>
-          {showForm ? "Cancel" : "+ New Customer"}
+        <button type="button" onClick={() => setShowCreate(true)}>
+          + New Customer
         </button>
       </WorkspaceHeader>
 
-      {showForm && <AccountForm onSubmit={handleCreate} onCancel={() => setShowForm(false)} submitLabel="Create Customer" />}
+      {/* Success announcement -- polite live region for assistive tech. */}
+      <p className="fo-sr-only" role="status" aria-live="polite">{announcement}</p>
+
+      {/* Creation overlay -- opens without navigating or moving the dashboard.
+          The form catches its own save failures and keeps the overlay open. */}
+      {showCreate && (
+        <Modal title="New Customer" onClose={() => setShowCreate(false)}>
+          <AccountForm onSubmit={handleCreate} onCancel={() => setShowCreate(false)} submitLabel="Create Customer" />
+        </Modal>
+      )}
 
       {loading ? (
         <p className="fo-muted" role="status">Loading customers...</p>
@@ -184,7 +230,12 @@ export default function AccountsList() {
                     return (
                       <tr key={account.id}>
                         <td>
-                          <Link to={`/customers/${account.id}`}>{account.name}</Link>
+                          <Link
+                            to={`/customers/${account.id}`}
+                            ref={account.id === pendingFocus?.id ? newRowLinkRef : undefined}
+                          >
+                            {account.name}
+                          </Link>
                         </td>
                         <td>
                           {account.status && (

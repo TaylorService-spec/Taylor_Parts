@@ -8,6 +8,9 @@ import {
   collectTags,
   hasActiveFilters,
   formatLastUpdate,
+  accountPassesFilters,
+  clearedFiltersForAccount,
+  accountSaveErrorMessage,
 } from "../src/domain/accountPortfolio.js";
 import { ACCOUNT_STATUS, ACCOUNT_RELATIONSHIP_TYPE } from "../src/domain/constants.js";
 
@@ -94,6 +97,62 @@ ok("formatLastUpdate: tolerant of Firestore Timestamp + ISO string", () => {
   assert.equal(formatLastUpdate({ toMillis: () => NOW - 2 * 3_600_000 }, NOW), "2 hours ago");
   assert.equal(formatLastUpdate({ seconds: (NOW - 86_400_000) / 1000 }, NOW), "1 day ago");
   assert.equal(formatLastUpdate(new Date(NOW - 3 * 60_000).toISOString(), NOW), "3 minutes ago");
+});
+
+// ===== Customer Creation Overlay -- filter clearing + save-error mapping =====
+const newProspectCustomer = { id: "new1", name: "New Co", status: A.PROSPECT, relationshipTypes: [R.CUSTOMER], tags: ["Fresh"] };
+
+ok("accountPassesFilters: matches when filters align", () => {
+  assert.equal(accountPassesFilters(newProspectCustomer, { status: A.PROSPECT }), true);
+  assert.equal(accountPassesFilters(newProspectCustomer, { status: A.ARCHIVED }), false);
+  assert.equal(accountPassesFilters(newProspectCustomer, { relationshipTypes: [R.VENDOR] }), false);
+  assert.equal(accountPassesFilters(newProspectCustomer, { tags: ["Fresh"] }), true);
+});
+
+ok("clearedFiltersForAccount: clears a status filter that would hide the new account", () => {
+  const next = clearedFiltersForAccount(newProspectCustomer, { status: A.ARCHIVED, relationshipTypes: [], tags: [] });
+  assert.equal(next.status, null);
+});
+ok("clearedFiltersForAccount: keeps a status filter that already matches", () => {
+  const next = clearedFiltersForAccount(newProspectCustomer, { status: A.PROSPECT, relationshipTypes: [], tags: [] });
+  assert.equal(next.status, A.PROSPECT);
+});
+ok("clearedFiltersForAccount: clears a relationship filter not fully present (AND)", () => {
+  const next = clearedFiltersForAccount(newProspectCustomer, { status: null, relationshipTypes: [R.CUSTOMER, R.VENDOR], tags: [] });
+  assert.deepEqual(next.relationshipTypes, []);
+});
+ok("clearedFiltersForAccount: keeps a relationship filter fully present", () => {
+  const next = clearedFiltersForAccount(newProspectCustomer, { status: null, relationshipTypes: [R.CUSTOMER], tags: [] });
+  assert.deepEqual(next.relationshipTypes, [R.CUSTOMER]);
+});
+ok("clearedFiltersForAccount: clears a tag filter sharing none (ANY); keeps one it shares", () => {
+  assert.deepEqual(clearedFiltersForAccount(newProspectCustomer, { status: null, relationshipTypes: [], tags: ["Other"] }).tags, []);
+  assert.deepEqual(clearedFiltersForAccount(newProspectCustomer, { status: null, relationshipTypes: [], tags: ["Fresh"] }).tags, ["Fresh"]);
+});
+ok("clearedFiltersForAccount: only hiding dimensions are cleared, others intact", () => {
+  // status matches (kept), relationship missing VENDOR (cleared), tag matches (kept)
+  const next = clearedFiltersForAccount(newProspectCustomer, { status: A.PROSPECT, relationshipTypes: [R.VENDOR], tags: ["Fresh"] });
+  assert.equal(next.status, A.PROSPECT);
+  assert.deepEqual(next.relationshipTypes, []);
+  assert.deepEqual(next.tags, ["Fresh"]);
+  // Result: the new account now passes the reduced filter set.
+  assert.equal(accountPassesFilters(newProspectCustomer, next), true);
+});
+
+ok("accountSaveErrorMessage: permission-denied -> authorization message", () => {
+  assert.match(accountSaveErrorMessage({ code: "permission-denied" }), /permission/i);
+  assert.match(accountSaveErrorMessage({ code: "firestore/permission-denied" }), /permission/i);
+});
+ok("accountSaveErrorMessage: blocked write -> disabled-mode message", () => {
+  assert.match(accountSaveErrorMessage({ blocked: true }), /disabled/i);
+});
+ok("accountSaveErrorMessage: generic error -> retry message, no raw detail", () => {
+  const msg = accountSaveErrorMessage({ code: "unavailable", message: "RAW-DETAIL-xyz" });
+  assert.match(msg, /try again/i);
+  assert.ok(!msg.includes("RAW-DETAIL-xyz"));
+});
+ok("accountSaveErrorMessage: null error -> generic retry message", () => {
+  assert.match(accountSaveErrorMessage(null), /try again/i);
 });
 
 console.log(`\n${passed} passed, 0 failed`);
