@@ -1,6 +1,56 @@
 # Sprint Status
 
-Snapshot as of 2026-07-11. This file is a point-in-time record, not a live dashboard — re-verify against `git log`/`gh pr list` before relying on it, especially PR merge state and Firestore Rules/Cloud Functions **deploy** state (merged ≠ deployed, checked separately every time in this repo). See `docs/CLAUDE_CONTEXT.md` for the full narrative (why decisions were made, what was learned); this file is the compact status table.
+Snapshot as of 2026-07-14 (Combined Release Checkpoint after PR #205 + PR #206; the older tables below remain accurate through their own dates). This file is a point-in-time record, not a live dashboard — re-verify against `git log`/`gh pr list` before relying on it, especially PR merge state and Firestore Rules/Cloud Functions **deploy** state (merged ≠ deployed, checked separately every time in this repo). See `docs/CLAUDE_CONTEXT.md` for the full narrative (why decisions were made, what was learned); this file is the compact status table.
+
+## Combined Release Checkpoint — 2026-07-14 (`origin/main` @ `414ea95`)
+
+Stable checkpoint after **PR #205** (accessible Work Order Customer picker + query-error recovery) and **PR #206** (Issue #152 Repository Assessment). Full checkpoint verification — unit, lint, typecheck, build, and all 18 `verify-*` browser suites — passed green at this head; the automatic GitHub Pages deploy at current `main` succeeded.
+
+**Customer**
+
+| Item | PR(s)/Issue | State |
+|---|---|---|
+| Commercial Profile | #179, #187, #189 | Merged/live |
+| Service Activity harness hardening | #193 | Merged |
+| Customer hierarchy cleanup | #194 | Merged |
+| Customer results dashboard | #196 | Merged |
+| Demo customer records — **emulator fixtures only, NOT production data** | #198 | Merged (fixtures) |
+| Customer creation overlay + filter-chip contrast | #201 | Merged |
+| Remaining Issue #175 work | Issue #175 | **Outstanding** |
+| Contact CSV import (column-to-field mapping) | — | Queued, not started |
+| Consistent creation-overlay + page-formatting migration | — | Queued, not started |
+| Production demo-customer creation | — | **Separate & unconfirmed** |
+
+**Platform**
+
+| Item | PR(s)/Issue | State |
+|---|---|---|
+| Work Order wizard layout/error clarity | #199 | Merged |
+| Grouped Service navigation | #203 | Merged |
+| Service Operations top-level area | #204 | Merged |
+| Accessible Work Order Customer picker + query-error recovery | #205 | Merged |
+| CRM/Sales top-level rename + remove superseded main tab | — | Queued (next Platform item) |
+| Cloud Functions deployment gate | Issue #15 | **Open — no production Functions confirmed; WO production creation NOT exercised** |
+
+**Inventory**
+
+| Item | PR(s)/Issue | State |
+|---|---|---|
+| Issue #100 infrastructure / Rules / deploys | Issue #100 | Merged & deployed (Rules) |
+| Issue #100 production verifier | #200 | Merged |
+| Issue #100 bootstrap/cleanup tooling | #202 | Merged |
+| Authenticated production verification / bootstrap | — | **UNRUN** (distinct from the merged/deployed Rules above) |
+| Issue #152 Repository Assessment | #206 | Merged; **Issue #152 CLOSED (completed)** — recommendation + five deferred future decisions preserved in the Assessment; **no Specification exists** |
+| Issue #182 | Issue #182 | Separate & **open** |
+
+**Repository / Project**
+
+- Open issues: **#15, #100, #140, #175, #182**. Open PRs: **#180, #188**.
+- **PR #180** — stale/Todo; must not resume without merging current `main` and an exact-head review.
+- **PR #188** — obsolete global-snapshot PR; to be **superseded, not merged/rebased/reused**.
+- Taylor Freezer (Project 1) contains all current repository issues/PRs; keep the zero-missing audit step (`gh project item-list 1 --owner TaylorService-spec --format json --limit 500`; the default 30-item page hides later items).
+
+**Known gaps (expected, not defects):** production Functions absent (Issue #15 gate); WO production creation not exercised; PR #198 demo customers are emulator fixtures; Inventory authenticated production bootstrap/verification unrun.
 
 ## Completed / merged (Release 1.0 + early Release 2.0)
 
