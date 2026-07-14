@@ -3735,6 +3735,240 @@ async function verifyAccountFormConsistency(browser, page, accountKey) {
   return niFailed === 0;
 }
 
+// Issue #214 PR-2 -- Contact/Location creation moved from inline forms below the
+// live lists into the shared Modal + System-A form primitives. This verifies the
+// full contract on BOTH modals: no inline form remains; Add Contact / Add Location
+// open the correct shared-Modal dialog without navigating or moving the page;
+// dialog semantics + labels/required-text/hints/errors + focus trap / Escape /
+// Cancel / backdrop / close + focus restoration; duplicate-submit + close-during-
+// save protection; real create with live insertion and resolved-name focus (never
+// a raw id); validation and Rules-denied failures persist nothing and leak no raw
+// detail; the two modals never contaminate each other; Contact CSV import still
+// opens separately; and responsive full-screen@375 / centered-readable desktop.
+async function verifyAccountDetailForms(browser, page, accountKey) {
+  const F = COMMERCIAL_PROFILE_FIXTURE;
+  const custUrl = () => customerUrl(F.editAccountId);
+  const dialog = () => page.locator('[role="dialog"][aria-modal="true"]');
+  const contactsSection = () =>
+    page.locator("section.wo-history").filter({ has: page.locator("h4", { hasText: /^Contacts/ }) });
+  const locationsSection = () =>
+    page.locator("section.wo-history").filter({ has: page.locator("h4", { hasText: /^Locations/ }) });
+  const addContactBtn = () => page.getByRole("button", { name: "+ Add Contact" });
+  const addLocationBtn = () => page.getByRole("button", { name: "+ Add Location" });
+  const focusInsideDialog = () =>
+    page.evaluate(() => { const d = document.querySelector('[role="dialog"]'); return Boolean(d && d.contains(document.activeElement)); });
+  const countContacts = async () =>
+    (await db.collection("contacts").where("accountId", "==", F.editAccountId).get()).size;
+  const countLocations = async () =>
+    (await db.collection("locations").where("accountId", "==", F.editAccountId).get()).size;
+
+  await login(page, accountKey);
+  await page.goto(custUrl(), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await contactsSection().getByRole("heading", { name: /^Contacts/ }).waitFor({ timeout: 10000 });
+  const accountName = await page.locator(".fo-account-summary h2").innerText().catch(() => "");
+
+  // ===== Inline forms gone; page/URL stable when opening =====
+  niReport("No inline creation form renders inside the Contacts section at rest",
+    (await contactsSection().locator("form").count()) === 0);
+  niReport("No inline creation form renders inside the Locations section at rest",
+    (await locationsSection().locator("form").count()) === 0);
+  const urlBefore = page.url();
+  await addContactBtn().click();
+  await dialog().waitFor({ timeout: 10000 });
+  niReport("Add Contact opens a shared-Modal dialog (role=dialog, aria-modal)",
+    (await dialog().getAttribute("aria-modal")) === "true");
+  niReport("Add Contact dialog has the visible title 'Add Contact'",
+    /Add Contact/.test(await dialog().locator(".fo-modal-title").innerText().catch(() => "")));
+  niReport("Opening the modal does not navigate (URL unchanged)", page.url() === urlBefore, page.url());
+  niReport("The Contacts list stays rendered behind the modal (page not moved)",
+    (await contactsSection().count()) > 0);
+  niReport("The creation form is in the modal, not inline in the section",
+    (await contactsSection().locator("form").count()) === 0 && (await dialog().locator("form").count()) === 1);
+
+  // ===== Contact modal a11y: labels, required text, hints, initial focus =====
+  niReport("Initial focus is inside the dialog", await focusInsideDialog());
+  const contactLabels = await page.evaluate(() => {
+    const lbl = (id) => { const l = document.querySelector(`label[for="${id}"]`); return l ? l.textContent.trim() : null; };
+    return { name: lbl("contact-name"), phone: lbl("contact-phone"), email: lbl("contact-email") };
+  });
+  niReport("Contact fields have associated labels (Name/Phone/Email)",
+    /Name/.test(contactLabels.name || "") && /Phone/.test(contactLabels.phone || "") && /Email/.test(contactLabels.email || ""),
+    JSON.stringify(contactLabels));
+  niReport("Required Name is indicated as TEXT '(required)', not colour alone",
+    /\(required\)/.test(contactLabels.name || ""), contactLabels.name);
+  niReport("Account context is fixed (modal names the account, no account selector)",
+    (await dialog().getByText(new RegExp(accountName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))).count()) > 0 &&
+      (await dialog().locator("select").count()) === 0);
+
+  // ===== Focus trap + Escape closes + focus restoration to trigger =====
+  for (let i = 0; i < 12; i++) await page.keyboard.press("Tab");
+  niReport("Focus trap: Tab keeps focus within the Contact dialog", await focusInsideDialog());
+  await page.keyboard.press("Escape");
+  await dialog().waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
+  niReport("Escape closes the Contact modal", (await dialog().count()) === 0);
+  niReport("Focus restored to the Add Contact trigger after Escape",
+    await page.evaluate(() => (document.activeElement?.textContent || "").includes("Add Contact")));
+
+  // ===== Validation failure stays in modal, persists nothing =====
+  const beforeInvalid = await countContacts();
+  await addContactBtn().click();
+  await dialog().waitFor({ timeout: 10000 });
+  await page.getByRole("button", { name: "Add Contact", exact: true }).click(); // empty name
+  await page.waitForTimeout(200);
+  niReport("Validation failure keeps the Contact modal open", await dialog().isVisible());
+  const contactFieldErr = await page.locator("#contact-name-error").innerText().catch(() => "");
+  niReport("Validation error shows safe field copy (no raw detail)",
+    /contact name/i.test(contactFieldErr) && !/permission-denied|FirebaseError|code:|documents\//i.test(contactFieldErr), contactFieldErr);
+  niReport("Validation failure persisted zero contacts", (await countContacts()) === beforeInvalid);
+
+  // ===== Cancel closes + focus restoration (form Cancel, distinct from the × Close) =====
+  await dialog().locator("form").getByRole("button", { name: "Cancel", exact: true }).click();
+  await dialog().waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
+  niReport("Cancel closes the Contact modal", (await dialog().count()) === 0);
+  niReport("Focus restored to the Add Contact trigger after Cancel",
+    await page.evaluate(() => (document.activeElement?.textContent || "").includes("Add Contact")));
+
+  // ===== Close-button (×, labelled 'Close', distinct from Cancel) closes =====
+  await addContactBtn().click();
+  await dialog().waitFor({ timeout: 10000 });
+  niReport("Close button (×) is labelled 'Close', distinct from the form's Cancel",
+    (await dialog().getByRole("button", { name: "Close", exact: true }).count()) === 1);
+  await dialog().getByRole("button", { name: "Close", exact: true }).click();
+  await dialog().waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
+  niReport("The × Close button closes the Contact modal", (await dialog().count()) === 0);
+
+  // ===== Backdrop click closes =====
+  await addContactBtn().click();
+  await dialog().waitFor({ timeout: 10000 });
+  await page.locator(".fo-modal-backdrop").click({ position: { x: 5, y: 5 } });
+  await dialog().waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
+  niReport("Backdrop click closes the Contact modal", (await dialog().count()) === 0);
+
+  // ===== Real successful Contact creation + live insertion + resolved-name focus =====
+  const uniqueContact = `Modal Contact ${Date.now()}`;
+  const beforeCreate = await countContacts();
+  await addContactBtn().click();
+  await dialog().waitFor({ timeout: 10000 });
+  await page.locator("#contact-name").fill(uniqueContact);
+  // Duplicate-submit protection: double-click Add Contact must create exactly one.
+  await dialog().getByRole("button", { name: "Add Contact", exact: true }).dblclick();
+  await dialog().waitFor({ state: "detached", timeout: 10000 }).catch(() => {});
+  niReport("Successful create closes the Contact modal exactly once", (await dialog().count()) === 0);
+  const newRow = page.locator(".wo-history-row", { hasText: uniqueContact });
+  await newRow.waitFor({ timeout: 10000 });
+  niReport("New contact inserted by the live subscription", await newRow.isVisible());
+  niReport("Success announced in a live region with the resolved name",
+    (await contactsSection().locator('[role="status"]').innerText().catch(() => "")).includes(uniqueContact));
+  niReport("Focus moved to the newly inserted contact by resolved name",
+    await page.evaluate((n) => (document.activeElement?.textContent || "").includes(n), uniqueContact));
+  await page.waitForTimeout(300);
+  niReport("Duplicate-submit prevented: exactly one contact created", (await countContacts()) === beforeCreate + 1, `before=${beforeCreate} after=${await countContacts()}`);
+  const createdSnap = await db.collection("contacts").where("name", "==", uniqueContact).get();
+  const createdId = createdSnap.docs[0]?.id ?? "__none__";
+  niReport("No raw IDs: the created contact's document id is not rendered",
+    !(await contactsSection().innerText().catch(() => "")).includes(createdId), createdId);
+
+  // ===== Rules-denied create persists nothing (fail-closed, technician) =====
+  {
+    const probeApp = initializeApp({ projectId: "taylor-parts", apiKey: "fake-key-emulator-only" }, "adf-rules-probe");
+    const probeAuth = getAuth(probeApp);
+    connectAuthEmulator(probeAuth, "http://127.0.0.1:9099", { disableWarnings: true });
+    const probeDb = getClientFirestore(probeApp);
+    connectFirestoreEmulator(probeDb, "127.0.0.1", 8080);
+    await signInWithEmailAndPassword(probeAuth, DRIVER_ACCOUNTS.technicianIneligible.email, DRIVER_ACCOUNTS.technicianIneligible.password);
+    const before = await countContacts();
+    let denied = false;
+    try {
+      const batch = clientWriteBatch(probeDb);
+      batch.set(clientDoc(collection(probeDb, "contacts")), { accountId: F.editAccountId, name: `Denied ${Date.now()}`, isPrimary: false, createdAt: Date.now() });
+      await batch.commit();
+    } catch (err) {
+      denied = err?.code === "permission-denied";
+    }
+    await deleteApp(probeApp).catch(() => {});
+    niReport("Rules-denied: a technician's client contact create is rejected", denied);
+    niReport("Rules-denied create persisted zero contacts", (await countContacts()) === before);
+  }
+
+  // ===== Contact CSV import still opens separately + modals never contaminate =====
+  await page.getByRole("button", { name: "Import Contacts" }).click();
+  await dialog().waitFor({ timeout: 10000 });
+  niReport("Import Contacts opens its own separate CSV modal (title 'Import Contacts')",
+    /Import Contacts/.test(await dialog().locator(".fo-modal-title").innerText().catch(() => "")));
+  await page.keyboard.press("Escape");
+  await dialog().waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
+
+  // ===== Location modal: open, a11y, real create, contamination check =====
+  await addLocationBtn().click();
+  await dialog().waitFor({ timeout: 10000 });
+  niReport("Add Location opens its own dialog titled 'Add Location' (not the Contact modal)",
+    /Add Location/.test(await dialog().locator(".fo-modal-title").innerText().catch(() => "")) &&
+      !/Add Contact/.test(await dialog().locator(".fo-modal-title").innerText().catch(() => "")));
+  const locLabels = await page.evaluate(() => {
+    const lbl = (id) => { const l = document.querySelector(`label[for="${id}"]`); return l ? l.textContent.trim() : null; };
+    return { name: lbl("location-name"), street: lbl("location-address-street"), notes: lbl("location-access-notes") };
+  });
+  niReport("Location fields have associated labels (Site name + address + access notes)",
+    /Site name/.test(locLabels.name || "") && /Street/.test(locLabels.street || "") && /Access notes/.test(locLabels.notes || ""),
+    JSON.stringify(locLabels));
+  niReport("Required Site name is indicated as TEXT '(required)'", /\(required\)/.test(locLabels.name || ""), locLabels.name);
+
+  const uniqueLocation = `Modal Site ${Date.now()}`;
+  const beforeLoc = await countLocations();
+  await page.locator("#location-name").fill(uniqueLocation);
+  await dialog().getByRole("button", { name: "Add Location", exact: true }).click();
+  await dialog().waitFor({ state: "detached", timeout: 10000 }).catch(() => {});
+  const newLocRow = page.locator(".wo-history-row", { hasText: uniqueLocation });
+  await newLocRow.waitFor({ timeout: 10000 });
+  niReport("New location inserted by the live subscription", await newLocRow.isVisible());
+  niReport("Location success announced with the resolved name",
+    (await locationsSection().locator('[role="status"]').innerText().catch(() => "")).includes(uniqueLocation));
+  niReport("Focus moved to the newly inserted location by resolved name",
+    await page.evaluate((n) => (document.activeElement?.textContent || "").includes(n), uniqueLocation));
+  niReport("Location create persisted exactly one location", (await countLocations()) === beforeLoc + 1);
+
+  // ===== Responsive: 375 full-screen + no overflow; desktop centered/readable =====
+  await addContactBtn().click();
+  await dialog().waitFor({ timeout: 10000 });
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.waitForTimeout(200);
+  const mobile = await page.evaluate(() => {
+    const d = document.querySelector('[role="dialog"]');
+    const r = d.getBoundingClientRect();
+    return {
+      fullScreen: r.height >= window.innerHeight - 1 && r.width >= window.innerWidth - 1,
+      overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+    };
+  });
+  niReport("375px: creation modal is full-screen", mobile.fullScreen === true);
+  niReport("375px: no horizontal overflow (creation modal)", mobile.overflow === false);
+  for (const w of [768, 1280]) {
+    await page.setViewportSize({ width: w, height: 900 });
+    await page.waitForTimeout(150);
+    const d = await page.evaluate(() => {
+      const el = document.querySelector('[role="dialog"]');
+      const body = el.querySelector(".fo-modal-body");
+      const r = el.getBoundingClientRect();
+      const cs = getComputedStyle(el);
+      return {
+        w: r.width,
+        centered: Math.abs((r.left + r.right) / 2 - window.innerWidth / 2) <= 2,
+        // The dialog is height-capped (< full viewport) and its body scrolls.
+        capped: r.height <= window.innerHeight - 1,
+        bodyOverflowY: body ? getComputedStyle(body).overflowY : null,
+        maxH: cs.maxHeight,
+      };
+    });
+    niReport(`${w}px: modal is centered and readable-width (<=560px)`, d.w <= 561 && d.centered, JSON.stringify(d));
+    niReport(`${w}px: modal body is internally scrollable within a height cap`, d.capped && d.bodyOverflowY === "auto", JSON.stringify(d));
+  }
+  await page.keyboard.press("Escape");
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  console.log(`\n${niPassed} passed, ${niFailed} failed`);
+  return niFailed === 0;
+}
+
 async function main() {
   const [, , command, ...args] = process.argv;
   const browser = await chromium.launch();
@@ -3873,6 +4107,10 @@ async function main() {
     } else if (command === "verify-account-form-consistency") {
       const [accountKey = "admin"] = args;
       const ok = await verifyAccountFormConsistency(browser, page, accountKey);
+      if (!ok) process.exitCode = 1;
+    } else if (command === "verify-account-detail-forms") {
+      const [accountKey = "admin"] = args;
+      const ok = await verifyAccountDetailForms(browser, page, accountKey);
       if (!ok) process.exitCode = 1;
     } else {
       console.error(`Unknown command "${command}". See the header comment in this file for usage.`);

@@ -1254,6 +1254,20 @@ textarea.fo-wizard-control { min-height: 76px; resize: vertical; }
   .fo-customer-picker-locs { flex-direction: column; gap: 2px; }
 }
 
+/* Issue #214 PR-2 -- Contact/Location creation modals. Single-column stacked
+   layout inside the shared Modal (max-width 560px), reusing the System-A form
+   primitives (Field renders `.fo-form-field`; controls carry `.fo-wizard-control`).
+   ADDITIVE and scoped to `.fo-create-modal-form`; nothing else is affected. */
+.fo-create-modal-form { display: flex; flex-direction: column; gap: 12px; }
+.fo-create-modal-form .fo-form-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.fo-create-modal-form .fo-form-field > input,
+.fo-create-modal-form .fo-form-field > select,
+.fo-create-modal-form .fo-form-field > textarea,
+.fo-create-modal-form .fo-form-field > .fo-wizard-control {
+  width: 100%;
+  box-sizing: border-box;
+}
+
 /* Contact CSV import (Issue #209) -- scoped under .fo-contact-import; inner
    content of the shared Modal (.fo-modal-*). Reuses .fo-wizard-field/.fo-table/
    .fo-warning; only adds the mapping grid, the capped preview, and list styling. */
