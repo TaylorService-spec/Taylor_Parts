@@ -2,6 +2,18 @@
 
 Forward-looking plan. For what's already shipped, see `SPRINT_STATUS.md`. For system design, see `PROJECT_ARCHITECTURE.md`. For product direction, see `ProductVision.md`. For capability-level maturity planning, see [`PlatformCapabilityModel.md`](PlatformCapabilityModel.md).
 
+## Combined Release Checkpoint — 2026-07-14 (`origin/main` @ `414ea95`)
+
+Current state after **PR #205** + **PR #206** (full checkpoint verification green; automatic GitHub Pages deploy at current `main` succeeded). `SPRINT_STATUS.md` holds the item-by-item tables; this section records the immediate forward queue and the known gates.
+
+**Next queued items (not started — each needs its own authorization/governance gate before implementation):**
+
+- **Customer:** remaining **Issue #175** work; **Contact CSV import** with column-to-field mapping; a consistent **creation-overlay + page-formatting migration** (the reusable overlay from PR #201 is the reference pattern). Production demo-customer creation is a separate, unconfirmed track — PR #198's ten demo customers are **emulator fixtures, not production data**.
+- **Platform:** **CRM/Sales top-level rename** and removal of the now-superseded existing main tab (Service Operations top-level landed in #204). Real Work Order production creation stays gated on **Issue #15** (Cloud Functions deployment) — no production Functions are currently confirmed, so it is exercised only against the Functions emulator.
+- **Inventory:** Issue #100 infrastructure/Rules/verifier (#200)/bootstrap tooling (#202) are merged; the **authenticated production verification/bootstrap remains UNRUN** and is distinct from the merged/deployed Rules. Issue #152's Assessment completed via #206 and **#152 is closed** — its recommendation and five deferred future decisions are preserved without any Specification implied. **Issue #182** is separate and open.
+
+**Open work:** issues **#15, #100, #140, #175, #182**; PRs **#180** (stale/Todo — do not resume without merging current `main` + exact-head review) and **#188** (obsolete global-snapshot PR — to be **superseded**, not merged/rebased/reused).
+
 ## Product Release Roadmap
 
 This is the platform's release-level roadmap, tracked by Product version (see `ProductVision.md`/`ProductBlueprint.md`). It complements — not replaces — the sprint/epic implementation roadmap below and in `SPRINT_STATUS.md`; a Product version spans many sprints/epics. Per [`PlatformCapabilityModel.md`](PlatformCapabilityModel.md)'s "Release Planning" section, future releases should also be expressible in capability-maturity terms (e.g. "Dispatch Management: Level 3 → 4"), not only as a list of unrelated shipped features.

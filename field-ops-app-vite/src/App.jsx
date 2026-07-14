@@ -114,7 +114,7 @@ function renderSubnavItem(domain, item, role) {
   return <PlaceholderPage title={item.label} />;
 }
 
-function AppRoutes({ role, allowedLegacyKeys }) {
+function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
   return (
     <Routes>
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
@@ -122,7 +122,7 @@ function AppRoutes({ role, allowedLegacyKeys }) {
       {NAV_DOMAINS.filter((d) => !d.future).map((domain) => (
         <Route key={domain.key} path={domain.path}>
           {domain.subnav
-            .filter((item) => isNavItemVisible(item, role, allowedLegacyKeys))
+            .filter((item) => isNavItemVisible(item, role, allowedLegacyKeys, operationalContext))
             .map((item) => (
               <Route
                 key={item.key}
@@ -145,8 +145,19 @@ function AppRoutes({ role, allowedLegacyKeys }) {
               directly navigating to /customers/:accountId would mount
               AccountDetail and its Firestore listeners regardless of
               nav visibility, hitting permission-denied. */}
-          {domain.key === "customers" && isDomainVisible(domain, role, allowedLegacyKeys) && (
-            <Route path=":accountId" element={<AccountDetail />} />
+          {domain.key === "customers" && isDomainVisible(domain, role, allowedLegacyKeys, operationalContext) && (
+            <>
+              {/* Customer hierarchy nav cleanup: the Contacts / Locations /
+                  Equipment / Service History subnav entries were removed
+                  (navConfig.js). Their retired paths redirect to /customers
+                  so they can NEVER be captured by the :accountId detail route
+                  (a static path segment outranks the dynamic :accountId in
+                  React Router's match ranking; listed first here for clarity). */}
+              {["contacts", "locations", "equipment", "service-history"].map((retired) => (
+                <Route key={retired} path={retired} element={<Navigate to="/customers" replace />} />
+              ))}
+              <Route path=":accountId" element={<AccountDetail />} />
+            </>
           )}
           {/* Sprint 2.0.3 -- gated to admin/dispatcher specifically,
               NOT isDomainVisible(service domain) -- a technician
@@ -168,14 +179,33 @@ function AppRoutes({ role, allowedLegacyKeys }) {
               <Route path="work-orders/:workOrderId" element={<WorkOrderDetailPage />} />
             </>
           )}
+          {/* Platform Task 3 -- the retired /service/control-tower URL redirects
+              to the new top-level /service-operations. A STATIC path segment, so
+              React Router never lets a dynamic route capture it, and it's one
+              declarative redirect (no double navigation). Unconditional: any role
+              hitting the old URL lands on /service-operations, which itself fails
+              closed for a role without Control Tower access (no index route ->
+              catch-all -> /dashboard), same as before. */}
+          {domain.key === "service" && (
+            <Route path="control-tower" element={<Navigate to="/service-operations" replace />} />
+          )}
           {/* Sprint 2.1.1 -- same pattern as /customers/:accountId above:
               gated by isDomainVisible() so this route isn't mounted at
               all for a role with no Inventory access (technician has no
               legacyKey/PLACEHOLDER_DEFAULT_ROLES access to any Inventory
               subnav item today, so isDomainVisible is already false for
               that role -- this route simply doesn't exist for them). */}
-          {domain.key === "inventory" && isDomainVisible(domain, role, allowedLegacyKeys) && (
+          {domain.key === "inventory" && isDomainVisible(domain, role, allowedLegacyKeys, operationalContext) && (
             <Route path=":partId" element={<PartDetail />} />
+          )}
+          {/* Platform Task 3 -- Service Operations fails CLOSED for a role without
+              access. For admin/dispatcher the visible index item above renders
+              Control Tower; for anyone else no index route is generated, so this
+              explicit gated redirect (only when the domain is NOT visible) sends
+              them to /dashboard instead of an empty shell -- a stronger denial
+              than relying on the empty-Outlet fallthrough. */}
+          {domain.key === "serviceOperations" && !isDomainVisible(domain, role, allowedLegacyKeys, operationalContext) && (
+            <Route index element={<Navigate to="/dashboard" replace />} />
           )}
         </Route>
       ))}
@@ -194,9 +224,14 @@ function AppRoutes({ role, allowedLegacyKeys }) {
 }
 
 export default function App() {
-  const { user, role, loading } = useAuth();
+  const { user, role, loading, operationalRoles, employmentStatus } = useAuth();
   const allowedLegacyKeys = ROLE_NAV_ACCESS[role] ?? [];
-  const hasAnyAccess = NAV_DOMAINS.some((d) => isDomainVisible(d, role, allowedLegacyKeys));
+  // Issue #100 -- PR 0. Threaded through as one stable object so every
+  // isNavItemVisible/isDomainVisible call site can accept it uniformly;
+  // no NAV_DOMAINS item declares operationalRoleAccess yet, so this has
+  // no observable effect until a later PR adds one.
+  const operationalContext = { operationalRoles, employmentStatus };
+  const hasAnyAccess = NAV_DOMAINS.some((d) => isDomainVisible(d, role, allowedLegacyKeys, operationalContext));
 
   if (loading) return <div className="fo-panel">Loading...</div>;
 
@@ -219,8 +254,8 @@ export default function App() {
         <div className="fo-app">
           {IS_DEMO && <div className="fo-demo-banner">DEMO MODE ACTIVE (SAFE - NO WRITES TO PRODUCTION)</div>}
           <AppHeader />
-          <AppShell role={role} allowedLegacyKeys={allowedLegacyKeys}>
-            <AppRoutes role={role} allowedLegacyKeys={allowedLegacyKeys} />
+          <AppShell role={role} allowedLegacyKeys={allowedLegacyKeys} operationalContext={operationalContext}>
+            <AppRoutes role={role} allowedLegacyKeys={allowedLegacyKeys} operationalContext={operationalContext} />
           </AppShell>
         </div>
       </BrowserRouter>

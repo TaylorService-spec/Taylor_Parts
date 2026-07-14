@@ -1,3 +1,5 @@
+import { ROLES, EMPLOYMENT_STATUS } from "../domain/constants.js";
+
 // Sprint 2.0.1 -- Navigation Foundation. Single source of truth for the
 // business-domain nav tree: top-level domains + their sub-nav, and
 // which existing screen (if any) each sub-item re-homes.
@@ -44,14 +46,26 @@ export const NAV_DOMAINS = [
     path: "dashboard",
     subnav: [
       { key: "my", label: "My Dashboard", path: "", alwaysVisible: true },
-      { key: "operationsDashboard", label: "Operations Dashboard", path: "operations", legacyKey: "operations" },
+      // Platform Task 3 -- relabeled "Operations Dashboard" -> "Inventory & Supply
+      // Overview" to prevent confusion with the new top-level Service Operations
+      // area. Path/legacyKey UNCHANGED (still /dashboard/operations, legacyKey
+      // "operations") -- only the user-facing label moved.
+      { key: "operationsDashboard", label: "Inventory & Supply Overview", path: "operations", legacyKey: "operations" },
       { key: "activity", label: "Activity", path: "activity" },
       { key: "notifications", label: "Notifications", path: "notifications" },
     ],
   },
   {
+    // CRM/Sales top-level area. The domain KEY stays "customers" (routes,
+    // legacyKey mappings, App.jsx's `domain.key === "customers"` gating, and
+    // /customers[/:accountId] are all unchanged) -- only the user-facing
+    // top-level LABEL is renamed to "CRM/Sales" so exactly ONE top-level entry
+    // names the overall Customer platform area. The customer LIST/records keep
+    // the "Customers"/"New Customer" terms (the subnav entry below, the
+    // dashboard heading, Global Search), which are entity-level, not the
+    // platform-area name.
     key: "customers",
-    label: "Customers",
+    label: "CRM/Sales",
     path: "customers",
     subnav: [
       // Sprint 2.0.2 -- Customer Foundation: real screen now
@@ -60,11 +74,15 @@ export const NAV_DOMAINS = [
       // re-homed one). Account Detail (/customers/:accountId) is a
       // sibling parameterized route added directly in App.jsx, not
       // representable in this static subnav list.
+      //
+      // Customer hierarchy nav cleanup: the global Contacts / Locations /
+      // Equipment / Service History subnav entries were removed -- Contacts
+      // and Locations belong to an individual Account (shown on Account
+      // Detail), and Equipment / Service History are not built. Their retired
+      // paths (customers/contacts|locations|equipment|service-history) are
+      // redirected to /customers in App.jsx so they can never be captured by
+      // the :accountId detail route.
       { key: "customers", label: "Customers", path: "" },
-      { key: "contacts", label: "Contacts", path: "contacts" },
-      { key: "locations", label: "Locations", path: "locations" },
-      { key: "equipment", label: "Equipment", path: "equipment" },
-      { key: "serviceHistory", label: "Service History", path: "service-history" },
     ],
   },
   {
@@ -87,12 +105,36 @@ export const NAV_DOMAINS = [
       // unchanged -- only its label/position moved, per explicit
       // instruction not to relabel this "Legacy" in user-facing UI.
       { key: "jobAssignments", label: "Job Assignments", path: "job-assignments", legacyKey: "jobs" },
-      { key: "dispatch", label: "Dispatch", path: "dispatch", legacyKey: "dispatch" },
+      // Platform Task 2 -- "Dispatch" relabeled "Dispatch Queue" (its child slot
+      // in the new Dispatch group). Path/legacyKey UNCHANGED, so its URL
+      // (/service/dispatch) and role access are identical -- only the label moved.
+      { key: "dispatch", label: "Dispatch Queue", path: "dispatch", legacyKey: "dispatch" },
       { key: "technicianWorkspace", label: "Technician Workspace", path: "technician-workspace", legacyKey: "fieldMode" },
-      { key: "controlTower", label: "Control Tower", path: "control-tower", legacyKey: "controlTower" },
+      // Platform Task 3 -- Control Tower left the Service sub-nav: it is now the
+      // top-level "Service Operations" area (NAV_DOMAINS' serviceOperations
+      // below), still rendered by LEGACY_COMPONENTS["controlTower"] with the same
+      // "controlTower" legacyKey (admin/dispatcher visibility unchanged). The
+      // retired /service/control-tower URL redirects to /service-operations
+      // (App.jsx).
       { key: "dispatcherBoard", label: "Dispatcher Board", path: "dispatcher-board", legacyKey: "dispatcherBoard" },
       { key: "scheduling", label: "Scheduling", path: "scheduling" },
       { key: "warranty", label: "Warranty", path: "warranty" },
+    ],
+  },
+  // Platform Task 3 -- Service Operations, promoted from the former Service >
+  // Control Tower sub-item to its own top-level area at /service-operations. Its
+  // single index screen renders the SAME component (LEGACY_COMPONENTS
+  // ["controlTower"] -> ControlTower) via the STABLE "controlTower" legacyKey, so
+  // behavior, data access, and admin/dispatcher-only visibility are unchanged
+  // (technician/unauthorized roles fail closed exactly as before -- the index
+  // route isn't generated for them). Single-item sub-nav, same shape as the
+  // Customers domain.
+  {
+    key: "serviceOperations",
+    label: "Service Operations",
+    path: "service-operations",
+    subnav: [
+      { key: "serviceOperations", label: "Service Operations", path: "", legacyKey: "controlTower" },
     ],
   },
   {
@@ -157,20 +199,96 @@ export const NAV_DOMAINS = [
   { key: "financials", label: "Financials", path: "financials", future: true },
 ];
 
+// Issue #100 (docs/specifications/inventory-nav-access-alignment.md,
+// PR 0) -- capability-scoped nav access for an ACTIVE, eligible
+// operationalRoles Employee whose security role is technician. Mirrors
+// firestore.rules' isActiveOperationalRole() at the presentation
+// layer: technician-only (admin/dispatcher already have full access
+// via their own legacyKey/PLACEHOLDER_DEFAULT_ROLES path above and
+// must never additionally need this branch), ACTIVE employment
+// required, and at least one of the item's operationalRoleAccess
+// values must be present in operationalContext.operationalRoles.
+// Fails closed on every edge case without a separate branch: a
+// missing/null operationalContext, an empty operationalRoles array
+// (unresolved or broken Employee linkage -- AuthContext's
+// resolveEmployeeSession() already resolves both to []), and a
+// non-ACTIVE employmentStatus (undefined/null/any other enum value)
+// all simply fail the checks below and return false.
+function hasEligibleOperationalRole(operationalRoleAccess, role, operationalContext) {
+  if (role !== ROLES.TECHNICIAN) return false;
+  const { operationalRoles = [], employmentStatus = null } = operationalContext ?? {};
+  if (employmentStatus !== EMPLOYMENT_STATUS.ACTIVE) return false;
+  return operationalRoleAccess.some((required) => operationalRoles.includes(required));
+}
+
 // `allowedLegacyKeys` is ROLE_NAV_ACCESS[role] (domain/constants.js) --
 // passed in rather than imported here so this stays pure/testable and
 // the actual permission source of truth stays in one place.
-export function isNavItemVisible(item, role, allowedLegacyKeys) {
+// `operationalContext` (optional -- omitted entirely for a role/item
+// combination that doesn't use it, per Issue #100's design) is
+// `{ operationalRoles, employmentStatus }` from AuthContext -- only
+// consulted when an item declares `operationalRoleAccess`, so every
+// existing legacyKey/PLACEHOLDER_DEFAULT_ROLES/alwaysVisible item's
+// behavior is byte-for-byte unchanged regardless of whether this
+// argument is passed at all.
+export function isNavItemVisible(item, role, allowedLegacyKeys, operationalContext) {
   if (item.alwaysVisible) return true;
+  if (item.operationalRoleAccess) {
+    return hasEligibleOperationalRole(item.operationalRoleAccess, role, operationalContext);
+  }
   if (item.legacyKey) {
     return (allowedLegacyKeys ?? []).includes(item.legacyKey);
   }
   return PLACEHOLDER_DEFAULT_ROLES.includes(role);
 }
 
-export function isDomainVisible(domain, role, allowedLegacyKeys) {
+export function isDomainVisible(domain, role, allowedLegacyKeys, operationalContext) {
   if (domain.future) {
     return PLACEHOLDER_DEFAULT_ROLES.includes(role);
   }
-  return domain.subnav.some((item) => isNavItemVisible(item, role, allowedLegacyKeys));
+  return domain.subnav.some((item) => isNavItemVisible(item, role, allowedLegacyKeys, operationalContext));
+}
+
+// Platform Task 2 -- Group Service navigation. The Service domain's flat subnav
+// is presented as a two-level hierarchy. This is PRESENTATION-ONLY metadata:
+// the `service` subnav array above (paths, legacyKeys, order) is unchanged, so
+// every route/permission/legacy mapping and App.jsx's route generator are
+// untouched. `itemKeys` is the DISPLAY order within a group (independent of the
+// subnav array order). Any service subnav item NOT listed here (e.g.
+// controlTower) renders as a standalone item, preserving its access + URL.
+export const SERVICE_NAV_GROUPS = [
+  { key: "workManagement", label: "Work Management", itemKeys: ["workOrders", "jobAssignments", "warranty"] },
+  { key: "dispatch", label: "Dispatch", itemKeys: ["dispatcherBoard", "scheduling", "dispatch"] },
+  { key: "technicianWorkspace", label: "Technician Workspace", itemKeys: ["technicianWorkspace"] },
+];
+
+// Build the two-level Service nav model from the ALREADY-VISIBILITY-FILTERED
+// service subnav items (i.e. the caller has already applied isNavItemVisible, so
+// access rules -- including the narrow technician scope -- are never broadened
+// here). For each group in order: its visible children (in SERVICE_NAV_GROUPS
+// order) and a `landing` = the FIRST VISIBLE child (so a group whose usual
+// first child is hidden for this role lands on the first child that role can
+// actually reach, never a hidden route). Empty groups are omitted. Items that
+// belong to no group are returned as `ungrouped`, in their original order. Pure.
+export function buildServiceNavGroups(visibleItems = []) {
+  const byKey = new Map(visibleItems.map((it) => [it.key, it]));
+  const groupedKeys = new Set();
+  const groups = [];
+  for (const g of SERVICE_NAV_GROUPS) {
+    const items = g.itemKeys.map((k) => byKey.get(k)).filter(Boolean);
+    for (const it of items) groupedKeys.add(it.key);
+    if (items.length === 0) continue; // hide empty group
+    groups.push({ key: g.key, label: g.label, items, landing: items[0] });
+  }
+  const ungrouped = visibleItems.filter((it) => !groupedKeys.has(it.key));
+  return { groups, ungrouped };
+}
+
+// Which group is active for a given in-domain path tail (the part AFTER
+// "/service/", e.g. "" for /service, "scheduling" for /service/scheduling), or
+// null when the active route is a standalone/ungrouped item or not a subnav
+// item. Pure -- drives the active-group highlight and is directly testable.
+export function findActiveServiceGroupKey(pathTail, groups = []) {
+  const match = groups.find((g) => g.items.some((it) => it.path === pathTail));
+  return match ? match.key : null;
 }

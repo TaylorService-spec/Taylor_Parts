@@ -717,3 +717,520 @@ button:hover {
   font-size: 13px;
   padding: 2px 0;
 }
+
+/* Account Commercial Profile and Financial Forecast Horizons -- PR 2.
+   Account-form-SPECIFIC layout. ADDITIVE to (never a modification of) the
+   global `.fo-form` used by LocationForm/ContactForm: the account form carries
+   BOTH classes (`fo-form fo-account-form`), and every rule below is scoped to
+   `.fo-account-form`, so global `.fo-form` behavior is unchanged. Goals:
+   consistent two-column desktop grid / single-column mobile; labels above
+   uniformly-sized controls; full-width fieldsets, notes, errors, action row;
+   aligned checkboxes / owner picker / Commercial Profile fields; and no
+   horizontal overflow at 375px. Behavior and accessibility are untouched
+   (JSX changes are class-only). */
+.fo-account-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 16px;
+  align-items: start;
+}
+/* Controls never impose a min-width that could overflow a narrow column, and
+   always include padding/border within their measured width. */
+.fo-account-form input,
+.fo-account-form select,
+.fo-account-form textarea {
+  min-width: 0;
+  box-sizing: border-box;
+}
+/* Direct-child bare controls (name, status, tags, external IDs) fill one cell. */
+.fo-account-form > input,
+.fo-account-form > select {
+  width: 100%;
+  margin: 0;
+}
+/* Full-width rows span both columns: both fieldsets, notes, the external-IDs
+   toggle, form-level warnings, and the action row. */
+.fo-account-form > fieldset,
+.fo-account-form > textarea,
+.fo-account-form > .fo-btn-row,
+.fo-account-form > .fo-warning,
+.fo-account-form > .fo-link-btn {
+  grid-column: 1 / -1;
+}
+.fo-account-form > textarea { width: 100%; }
+/* Keep the standalone external-IDs toggle at its natural size, not stretched. */
+.fo-account-form > .fo-link-btn { justify-self: start; }
+/* A labeled field group: label ABOVE a full-width, uniformly-sized control.
+   Applies to the address fields (direct grid cells) and every Commercial
+   Profile field. */
+.fo-account-form .fo-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  margin: 0;
+}
+.fo-account-form .fo-form-field > input,
+.fo-account-form .fo-form-field > select {
+  width: 100%;
+}
+/* Fieldsets lay their fields two-per-row via flex-basis (NOT grid, so <legend>
+   rendering stays intact). */
+.fo-account-form .fo-fieldset {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+  align-items: start;
+}
+.fo-account-form .fo-fieldset > legend { flex-basis: 100%; }
+.fo-account-form .fo-fieldset > .fo-form-field {
+  flex: 1 1 calc(50% - 8px);
+  min-width: 0;
+}
+/* The owner picker field reads better full-width (combobox + current-owner line
+   + error). */
+.fo-account-form .fo-fieldset > .fo-account-form-wide { flex-basis: 100%; }
+.fo-account-form .fo-employee-picker { width: 100%; }
+.fo-account-form .fo-employee-picker input { width: 100%; }
+/* Checkboxes: box and label on one left-aligned row. */
+.fo-account-form .fo-checkbox-label {
+  flex-direction: row;
+  align-items: center;
+}
+/* Single column at narrow widths -- guarantees no horizontal overflow at 375px. */
+@media (max-width: 640px) {
+  .fo-account-form { grid-template-columns: 1fr; }
+  .fo-account-form .fo-fieldset > .fo-form-field { flex-basis: 100%; }
+}
+
+/* Account Commercial Profile and Financial Forecast Horizons -- PR 4
+   (modules/accounts/FinancialForecastSection.jsx). Two separately-labeled
+   provider-neutral forecast family sub-sections; unconfigured only, no figure.
+   Wraps at narrow widths so there is no horizontal overflow at 375px. */
+.fo-forecast-families {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.fo-forecast-family {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.fo-forecast-family h5 {
+  margin: 0 0 4px;
+  font-size: 12px;
+  color: #667;
+}
+
+.fo-forecast-labels {
+  margin: 0 0 4px;
+}
+
+/* Customer Results Dashboard -- portfolio cards + local filters (AccountsList.jsx).
+   Additive, scoped to the dashboard's own classes. Cards and filter chips wrap
+   on narrow viewports and the results table sits in .fo-table-scroll, so there
+   is no horizontal overflow at 375px. */
+.fo-portfolio-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 8px 0 12px;
+}
+.fo-portfolio-card {
+  flex: 1 1 120px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 14px;
+  border: 1px solid #D8DEDD;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+.fo-portfolio-card:hover { background: #F2F5F4; }
+.fo-portfolio-card-active {
+  border-color: #2E4A50;
+  background: #EAF0EF;
+}
+.fo-portfolio-card-count { font-size: 20px; font-weight: 600; color: #23383D; }
+.fo-portfolio-card-label { font-size: 13px; color: #667; }
+
+.fo-portfolio-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin-bottom: 8px;
+}
+.fo-filter-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.fo-filter-label { font-size: 13px; color: #445559; }
+.fo-filter-chip {
+  padding: 3px 10px;
+  border: 1px solid #9AA8AB;
+  border-radius: 999px;
+  background: #fff;
+  /* WCAG-AA fix: unselected chips previously inherited a light/muted color on a
+     white pill (~2:1). Explicit dark ink on white is ~11:1; the darker border
+     keeps the pill visible against the panel. */
+  color: #1F2D31;
+  cursor: pointer;
+  font-size: 13px;
+}
+.fo-filter-chip:hover { background: #EDF1F0; }
+.fo-filter-chip:focus-visible {
+  outline: 2px solid #2E4A50;
+  outline-offset: 2px;
+}
+.fo-filter-chip-active {
+  border-color: #23383D;
+  background: #2E4A50;
+  color: #fff; /* white on #2E4A50 ~= 9:1, AA */
+}
+.fo-filter-chip-active:hover { background: #23383D; }
+.fo-portfolio-count { margin: 4px 0 8px; font-size: 13px; }
+
+/* Screen-reader-only live region (success announcements). */
+.fo-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ===== Shared Modal overlay (Customer Creation Overlay reference pattern) =====
+   Desktop: dimmed full-viewport backdrop with a centered, internally scrollable
+   card. Mobile/375px: the card becomes a full-screen overlay. Scoped entirely
+   under .fo-modal* -- no other component is affected. */
+.fo-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(20, 30, 33, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  box-sizing: border-box;
+}
+.fo-modal {
+  background: #fff;
+  border-radius: 12px;
+  width: 100%;
+  max-width: 560px;
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
+  outline: none;
+}
+.fo-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid #E1E6E5;
+}
+.fo-modal-title { margin: 0; font-size: 18px; color: #23383D; }
+.fo-modal-close {
+  border: none;
+  background: transparent;
+  font-size: 24px;
+  line-height: 1;
+  color: #445559;
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+.fo-modal-close:hover { background: #EDF1F0; }
+.fo-modal-close:focus-visible { outline: 2px solid #2E4A50; outline-offset: 2px; }
+/* Internally scrollable body -- the card stays put; only content scrolls. */
+.fo-modal-body {
+  padding: 16px 20px 20px;
+  overflow-y: auto;
+}
+.fo-account-save-error { margin-top: 4px; }
+
+@media (max-width: 480px) {
+  .fo-modal-backdrop { padding: 0; }
+  .fo-modal {
+    max-width: 100%;
+    width: 100%;
+    height: 100%;
+    max-height: 100%;
+    border-radius: 0;
+  }
+}
+
+/* Work Order Wizard -- layout & error clarity (Platform Task 1). Everything is
+   scoped under .fo-wizard so no other screen is affected. The per-step body is
+   a genuine vertical panel (NOT the old .fo-form flex-wrap): a single column
+   with a consistent max width, each field stacked label-above-control, and the
+   complaint / review / error / action rows all spanning full width. */
+.fo-wizard-steps {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0;
+  margin: 4px 0 16px;
+}
+.fo-wizard-step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid #D8DEDD;
+  border-radius: 999px;
+  font-size: 13px;
+  color: #667;
+}
+.fo-wizard-step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #E1E6E5;
+  color: #445559;
+  font-size: 12px;
+  font-weight: 600;
+}
+.fo-wizard-step-active {
+  border-color: #2E4A50;
+  color: #23383D;
+  font-weight: 600;
+}
+.fo-wizard-step-active .fo-wizard-step-num {
+  background: #2E4A50;
+  color: #fff;
+}
+.fo-wizard-step-done .fo-wizard-step-num {
+  background: #5B7A80;
+  color: #fff;
+}
+
+/* Step panel: single-column vertical stack, consistent max width. */
+.fo-wizard-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 560px;
+  width: 100%;
+  box-sizing: border-box;
+}
+/* Step-1 (Customer picker) wide modifier -- opt-in per step, applied ONLY to
+   Step 1 in WorkOrderWizard.jsx (Steps 2-4 keep the 560px panel above). width:100%
+   keeps it capped by the available parent content width (`.fo-main` maxes at
+   960px), and max-width:56rem is the readable desktop ceiling -- so it uses nearly
+   all available width on tablet/small desktop, grows well past 560px, and stops at
+   ~896px, while staying 100% (no overflow) on narrow screens. Placed AFTER
+   .fo-wizard-panel so it wins for the element carrying both classes. */
+.fo-wizard-panel-wide { max-width: 56rem; }
+.fo-wizard-step-title { margin: 0; }
+.fo-wizard-context { margin: 0; }
+
+/* Each field: label ABOVE control, control full width of the panel. */
+.fo-wizard-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+.fo-wizard-field-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #445559;
+}
+.fo-wizard-control,
+.fo-wizard-field .fo-global-search,
+.fo-wizard-field .fo-global-search input {
+  width: 100%;
+  box-sizing: border-box;
+}
+.fo-wizard-control {
+  padding: 8px 10px;
+  border: 1px solid #D8DEDD;
+  border-radius: 6px;
+  font-size: 14px;
+  font-family: inherit;
+}
+textarea.fo-wizard-control { min-height: 76px; resize: vertical; }
+.fo-wizard-field-wide { width: 100%; }
+
+.fo-wizard-hint {
+  margin: 0;
+  font-size: 13px;
+  color: #6b7a7f;
+}
+
+/* Review, error, and actions all span the full panel width. */
+.fo-wizard-review {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 16px;
+  margin: 0;
+  width: 100%;
+}
+.fo-wizard-review dt { font-size: 13px; color: #667; }
+.fo-wizard-review dd { margin: 0; font-size: 14px; color: #23383D; word-break: break-word; }
+.fo-wizard-error { width: 100%; box-sizing: border-box; }
+.fo-wizard-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  width: 100%;
+  margin-top: 4px;
+}
+
+/* Single column, no horizontal overflow at 375px. */
+@media (max-width: 480px) {
+  .fo-wizard-panel { max-width: 100%; }
+  .fo-wizard-review { grid-template-columns: 1fr; gap: 2px 0; }
+  .fo-wizard-review dd { margin-bottom: 6px; }
+  .fo-wizard-actions { flex-direction: column; }
+  .fo-wizard-actions button { width: 100%; }
+}
+
+/* ===== Platform Task 2 -- Group Service navigation =====
+   Two-level Service sub-nav: each group is a labelled column (group header +
+   its children); groups sit side by side compactly on desktop and STACK at
+   375px with no horizontal overflow. Scoped under .fo-service-subnav, so no
+   other sub-nav is affected. Child links reuse .fo-subnav .fo-nav-btn (active +
+   focus-visible already defined above). */
+.fo-service-subnav {
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 6px 20px;
+}
+.fo-nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.fo-nav-group-header {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #6b7a7f;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.fo-nav-group-header:hover { color: #23383D; }
+.fo-nav-group-header:focus-visible { outline: 2px solid #2E4A50; outline-offset: 2px; }
+.fo-nav-group-active .fo-nav-group-header { color: #23383D; border-bottom: 2px solid #2E4A50; }
+.fo-nav-group-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+/* Standalone item (e.g. Control Tower): drop its link to the children row so it
+   lines up with the grouped columns. */
+.fo-nav-group-standalone { justify-content: flex-end; }
+
+@media (max-width: 640px) {
+  /* Override the horizontal-scroll .fo-nav rule for the grouped service subnav:
+     stack groups vertically, wrap children -- no horizontal overflow at 375px. */
+  .fo-service-subnav {
+    flex-direction: column;
+    flex-wrap: wrap;
+    overflow-x: visible;
+    gap: 8px;
+  }
+  .fo-nav-group { width: 100%; }
+  .fo-nav-group-standalone { justify-content: flex-start; }
+}
+
+/* ===== Work Order wizard -- Customer picker (combobox/listbox) =====
+   Scoped under .fo-customer-picker. The dropdown is absolutely positioned and
+   layered above the wizard content below; strong contrast on options; results
+   and locations wrap with no horizontal overflow at 375px. */
+.fo-customer-picker { position: relative; width: 100%; }
+.fo-customer-picker-input { width: 100%; box-sizing: border-box; }
+.fo-customer-picker-input:focus-visible { outline: 2px solid #2E4A50; outline-offset: 1px; }
+.fo-customer-picker-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 50;
+  background: #fff;
+  border: 1px solid #C2CCCC;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  /* Column layout so only the result LIST scrolls (status pinned top, "more"
+     pinned bottom). Height is the MIN of a bounded clamp()/dvh rule and the
+     JS-measured space below/above the input (--fo-picker-space), so the panel
+     stays natural height, the dropdown never leaves the viewport, and no
+     page/panel scrollbar is created by opening it. */
+  display: flex;
+  flex-direction: column;
+  max-height: min(clamp(160px, 60dvh, 520px), var(--fo-picker-space, 60dvh));
+  overflow: hidden; /* clip to rounded corners; the list is the scroller */
+}
+/* Flipped up when there is little room below the input (short viewports). */
+.fo-customer-picker-dropdown-up { top: auto; bottom: calc(100% + 4px); }
+.fo-customer-picker-status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: #33474C;
+  border-bottom: 1px solid #EDF1F0;
+  flex-shrink: 0; /* pinned -- never scrolls with the list */
+}
+.fo-customer-picker-retry { font-size: 13px; }
+.fo-customer-picker-loc-error { color: #9a3412; } /* AA on white; distinct from muted */
+.fo-customer-picker-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  overflow-y: auto; /* ONLY the result list scrolls */
+  flex: 1 1 auto;
+  min-height: 0; /* allow the flex child to shrink so it (not the page) scrolls */
+  overscroll-behavior: contain; /* don't chain scroll to the page */
+}
+.fo-customer-picker-option {
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #1F2D31;
+  overflow-wrap: anywhere; /* long tokens wrap, never clip/overflow */
+}
+.fo-customer-picker-option-active,
+.fo-customer-picker-option:hover { background: #E6EEEC; }
+.fo-customer-picker-name { font-weight: 600; font-size: 14px; color: #23383D; overflow-wrap: anywhere; }
+.fo-customer-picker-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 2px; }
+.fo-customer-picker-secondary { font-size: 13px; color: #445559; overflow-wrap: anywhere; }
+.fo-customer-picker-locs { margin-top: 3px; display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: 12px; min-width: 0; }
+.fo-customer-picker-loc { color: #2F4247; overflow-wrap: anywhere; }
+.fo-customer-picker-more-locs { white-space: nowrap; }
+.fo-customer-picker-more { padding: 8px 12px; font-size: 12px; color: #56666B; border-top: 1px solid #EDF1F0; flex-shrink: 0; }
+
+@media (max-width: 480px) {
+  .fo-customer-picker-locs { flex-direction: column; gap: 2px; }
+}

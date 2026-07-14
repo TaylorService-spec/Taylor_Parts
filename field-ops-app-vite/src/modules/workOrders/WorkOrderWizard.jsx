@@ -4,7 +4,13 @@ import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
 import { useLocationsForAccount } from "../../hooks/useLocationsForAccount";
 import { ACCOUNTS_COLLECTION } from "../../domain/constants";
 import { createWorkOrder } from "../../services/workOrderService";
-import GlobalSearch from "../../shared/search/GlobalSearch";
+import {
+  WIZARD_STEPS,
+  WIZARD_STEP_COUNT,
+  getWizardCreateErrorMessage,
+  stepBlockedReason,
+} from "../../domain/workOrderWizard";
+import CustomerPicker from "./CustomerPicker";
 
 // Sprint 2.0.3 -- Work Order creation wizard. Four steps, mapped
 // directly to createWorkOrder()'s actual validated input
@@ -23,31 +29,14 @@ import GlobalSearch from "../../shared/search/GlobalSearch";
 // the Blaze plan upgrade, issue #15). createWorkOrder() is still
 // wired up and called exactly as it will be once deployed.
 //
-// Sprint 2.0.4 pre-deploy fix: the catch block differentiates two
-// genuinely different failure shapes, rather than showing the same
-// "not available" message for both --
-//   (A) the callable itself doesn't exist/can't be reached (functions
-//       not deployed, or a network-level failure reaching the Cloud
-//       Functions endpoint at all) -- the ONLY case where "Work Order
-//       creation service is not currently available in this
-//       environment" is actually true.
-//   (B) the callable exists and ran, but rejected the call (bad
-//       input, permission denied, or an unexpected runtime error) --
-//       shown as "Work Order could not be created. Please check the
-//       details and try again," with the callable's own safe message
-//       appended when present (HttpsError messages are
-//       deliberately-authored, safe, user-facing strings already --
-//       e.g. "customerId is required." -- never a raw stack trace;
-//       Firebase's SDK redacts uncaught-exception details by design,
-//       so nothing unsafe can leak through this path either).
-//
-// This heuristic is based on documented Firebase callable error-code
-// behavior, not empirically verified against an actual undeployed ->
-// deployed transition (that transition hadn't happened yet when this
-// was written) -- re-check both branches actually fire correctly
-// during this sprint's emulator and production validation passes, per
-// the implementation plan.
-const CALLABLE_UNAVAILABLE_CODES = new Set(["functions/not-found", "functions/unavailable"]);
+// Layout & error clarity pass: the step model, the per-step "why can't
+// this advance" rule, and the create-error messaging all live in the
+// pure, unit-tested domain/workOrderWizard.js -- this component is the
+// wiring only. A disabled "Next"/"Create" now always renders the exact
+// requirement that gates it (stepBlockedReason), and each control has a
+// visible <label>, so nothing depends on placeholder/aria text alone.
+// The catch-block create-error rationale (two distinct callable failure
+// shapes) is documented alongside getWizardCreateErrorMessage there.
 
 const PRIORITY_OPTIONS = [
   { value: 1, label: "1 - Emergency" },
@@ -59,16 +48,38 @@ const PRIORITY_OPTIONS = [
 const TYPE_OPTIONS = ["SERVICE_CALL", "PM", "INSTALL", "WARRANTY", "INSPECTION"];
 const SEVERITY_OPTIONS = ["EQUIPMENT_DOWN", "PARTIAL_OPERATION", "COSMETIC", "PREVENTIVE"];
 
-const CREATE_UNAVAILABLE_MESSAGE = "Work Order creation service is not currently available in this environment.";
-const CREATE_FAILED_MESSAGE = "Work Order could not be created. Please check the details and try again.";
+// Accessible step progress indicator. aria-current="step" marks the active
+// step for assistive tech; the numbered ol conveys order and completion
+// visually. Purely presentational -- step state stays owned by the component.
+function WizardProgress({ step }) {
+  return (
+    <ol className="fo-wizard-steps" aria-label={`Step ${step} of ${WIZARD_STEP_COUNT}`}>
+      {WIZARD_STEPS.map((s) => {
+        const state = s.n === step ? "active" : s.n < step ? "done" : "todo";
+        return (
+          <li
+            key={s.n}
+            className={`fo-wizard-step fo-wizard-step-${state}`}
+            aria-current={s.n === step ? "step" : undefined}
+          >
+            <span className="fo-wizard-step-num" aria-hidden="true">{s.n}</span>
+            <span className="fo-wizard-step-label">{s.label}</span>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
 
-function getWizardCreateErrorMessage(err) {
-  const code = err?.code ?? "";
-  if (CALLABLE_UNAVAILABLE_CODES.has(code)) {
-    return CREATE_UNAVAILABLE_MESSAGE;
-  }
-  const safeDetail = typeof err?.message === "string" && err.message.trim() ? err.message.trim() : null;
-  return safeDetail ? `${CREATE_FAILED_MESSAGE} ${safeDetail}` : CREATE_FAILED_MESSAGE;
+// Inline requirement hint -- the single reason the current step can't advance,
+// or nothing. role="status" + aria-live so it updates as the user fills fields.
+function StepHint({ reason }) {
+  if (!reason) return null;
+  return (
+    <p className="fo-wizard-hint" role="status" aria-live="polite">
+      {reason}
+    </p>
+  );
 }
 
 export default function WorkOrderWizard() {
@@ -87,15 +98,19 @@ export default function WorkOrderWizard() {
 
   const { data: locations } = useLocationsForAccount(selectedAccount?.id ?? null);
 
-  function handleAccountSelect(result) {
-    const account = accounts.find((a) => a.id === result.id);
-    setSelectedAccount(account ?? { id: result.id, name: result.primaryText });
+  // Single source of truth for "can this step advance, and if not, why."
+  const step2Reason = stepBlockedReason(2, {
+    hasLocations: locations.length > 0,
+    selectedLocationId,
+  });
+  const step3Reason = stepBlockedReason(3, { type, complaint });
+
+  // CustomerPicker hands back the chosen account object directly.
+  function handleAccountSelect(account) {
+    if (!account) return;
+    setSelectedAccount(account);
     setSelectedLocationId("");
     setStep(2);
-  }
-
-  function canProceedFromStep3() {
-    return Boolean(type || complaint.trim());
   }
 
   async function handleCreate() {
@@ -120,43 +135,52 @@ export default function WorkOrderWizard() {
   }
 
   return (
-    <div className="fo-panel">
+    <div className="fo-panel fo-wizard">
       <h2>New Work Order</h2>
-      <div className="fo-muted">Step {step} of 4</div>
+      <WizardProgress step={step} />
 
       {step === 1 && (
-        <div className="fo-form">
-          <h3>Step 1: Customer</h3>
-          <GlobalSearch
-            providerKeys={["accounts"]}
-            context={{ accounts }}
-            placeholder="Search customers..."
-            onResultSelect={handleAccountSelect}
-          />
+        // Step 1 only -- the Customer search + result panel benefit from more
+        // horizontal room, so this step opts into the wide modifier
+        // (fo-wizard-panel-wide). Steps 2-4 keep the default 560px panel.
+        <div className="fo-wizard-panel fo-wizard-panel-wide">
+          <h3 className="fo-wizard-step-title">Step 1: Customer</h3>
+          <div className="fo-wizard-field">
+            <label className="fo-wizard-field-label" htmlFor="wo-customer-search">Customer</label>
+            <CustomerPicker inputId="wo-customer-search" accounts={accounts} onSelect={handleAccountSelect} />
+          </div>
+          <StepHint reason={stepBlockedReason(1, { selectedAccountId: selectedAccount?.id })} />
         </div>
       )}
 
       {step === 2 && (
-        <div className="fo-form">
-          <h3>Step 2: Location</h3>
-          <p className="fo-muted">Customer: {selectedAccount?.name}</p>
-          {locations.length === 0 ? (
-            <p className="fo-muted">This customer has no locations yet. Add one from the Customer Detail page first.</p>
-          ) : (
-            <select value={selectedLocationId} onChange={(e) => setSelectedLocationId(e.target.value)}>
-              <option value="" disabled>
-                Select a location...
-              </option>
-              {locations.map((loc) => (
-                <option key={loc.id} value={loc.id}>
-                  {loc.name}
+        <div className="fo-wizard-panel">
+          <h3 className="fo-wizard-step-title">Step 2: Location</h3>
+          <p className="fo-muted fo-wizard-context">Customer: {selectedAccount?.name}</p>
+          {locations.length > 0 && (
+            <div className="fo-wizard-field">
+              <label className="fo-wizard-field-label" htmlFor="wo-location">Location</label>
+              <select
+                id="wo-location"
+                className="fo-wizard-control"
+                value={selectedLocationId}
+                onChange={(e) => setSelectedLocationId(e.target.value)}
+              >
+                <option value="" disabled>
+                  Select a location...
                 </option>
-              ))}
-            </select>
+                {locations.map((loc) => (
+                  <option key={loc.id} value={loc.id}>
+                    {loc.name}
+                  </option>
+                ))}
+              </select>
+            </div>
           )}
-          <div className="fo-btn-row">
+          <StepHint reason={step2Reason} />
+          <div className="fo-wizard-actions">
             <button type="button" onClick={() => setStep(1)}>Back</button>
-            <button type="button" disabled={!selectedLocationId} onClick={() => setStep(3)}>
+            <button type="button" disabled={Boolean(step2Reason)} onClick={() => setStep(3)}>
               Next
             </button>
           </div>
@@ -164,44 +188,60 @@ export default function WorkOrderWizard() {
       )}
 
       {step === 3 && (
-        <div className="fo-form">
-          <h3>Step 3: Service Details</h3>
-          <select value={priority} onChange={(e) => setPriority(Number(e.target.value))} aria-label="Priority">
-            {PRIORITY_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
+        <div className="fo-wizard-panel">
+          <h3 className="fo-wizard-step-title">Step 3: Service Details</h3>
 
-          <select value={type} onChange={(e) => setType(e.target.value)} aria-label="Type">
-            <option value="">(no type -- complaint required instead)</option>
-            {TYPE_OPTIONS.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
+          <div className="fo-wizard-field">
+            <label className="fo-wizard-field-label" htmlFor="wo-priority">Priority</label>
+            <select id="wo-priority" className="fo-wizard-control" value={priority} onChange={(e) => setPriority(Number(e.target.value))}>
+              {PRIORITY_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
 
-          <select value={severity} onChange={(e) => setSeverity(e.target.value)} aria-label="Severity (optional)">
-            <option value="">Severity (optional)</option>
-            {SEVERITY_OPTIONS.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
+          <div className="fo-wizard-field">
+            <label className="fo-wizard-field-label" htmlFor="wo-type">Type</label>
+            <select id="wo-type" className="fo-wizard-control" value={type} onChange={(e) => setType(e.target.value)}>
+              <option value="">(no type -- complaint required instead)</option>
+              {TYPE_OPTIONS.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          </div>
 
-          <textarea
-            placeholder="Complaint (required if no Type selected)"
-            value={complaint}
-            onChange={(e) => setComplaint(e.target.value)}
-            rows={3}
-          />
+          <div className="fo-wizard-field">
+            <label className="fo-wizard-field-label" htmlFor="wo-severity">Severity (optional)</label>
+            <select id="wo-severity" className="fo-wizard-control" value={severity} onChange={(e) => setSeverity(e.target.value)}>
+              <option value="">Severity (optional)</option>
+              {SEVERITY_OPTIONS.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          </div>
 
-          <div className="fo-btn-row">
+          <div className="fo-wizard-field fo-wizard-field-wide">
+            <label className="fo-wizard-field-label" htmlFor="wo-complaint">Complaint (required if no Type selected)</label>
+            <textarea
+              id="wo-complaint"
+              className="fo-wizard-control"
+              placeholder="Describe the customer's complaint..."
+              value={complaint}
+              onChange={(e) => setComplaint(e.target.value)}
+              rows={3}
+            />
+          </div>
+
+          <StepHint reason={step3Reason} />
+          <div className="fo-wizard-actions">
             <button type="button" onClick={() => setStep(2)}>Back</button>
-            <button type="button" disabled={!canProceedFromStep3()} onClick={() => setStep(4)}>
+            <button type="button" disabled={Boolean(step3Reason)} onClick={() => setStep(4)}>
               Next
             </button>
           </div>
@@ -209,22 +249,42 @@ export default function WorkOrderWizard() {
       )}
 
       {step === 4 && (
-        <div className="fo-form">
-          <h3>Step 4: Review &amp; Create</h3>
-          <div>Customer: {selectedAccount?.name}</div>
-          <div>Location: {locations.find((l) => l.id === selectedLocationId)?.name}</div>
-          <div>Priority: {PRIORITY_OPTIONS.find((p) => p.value === priority)?.label}</div>
-          {type && <div>Type: {type}</div>}
-          {severity && <div>Severity: {severity}</div>}
-          {complaint && <div>Complaint: {complaint}</div>}
+        <div className="fo-wizard-panel">
+          <h3 className="fo-wizard-step-title">Step 4: Review &amp; Create</h3>
+          <dl className="fo-wizard-review">
+            <dt>Customer</dt>
+            <dd>{selectedAccount?.name}</dd>
+            <dt>Location</dt>
+            <dd>{locations.find((l) => l.id === selectedLocationId)?.name}</dd>
+            <dt>Priority</dt>
+            <dd>{PRIORITY_OPTIONS.find((p) => p.value === priority)?.label}</dd>
+            {type && (
+              <>
+                <dt>Type</dt>
+                <dd>{type}</dd>
+              </>
+            )}
+            {severity && (
+              <>
+                <dt>Severity</dt>
+                <dd>{severity}</dd>
+              </>
+            )}
+            {complaint && (
+              <>
+                <dt>Complaint</dt>
+                <dd>{complaint}</dd>
+              </>
+            )}
+          </dl>
 
           {submitError && (
-            <div className="warning" role="alert">
+            <div className="warning fo-wizard-error" role="alert">
               {submitError}
             </div>
           )}
 
-          <div className="fo-btn-row">
+          <div className="fo-wizard-actions">
             <button type="button" onClick={() => setStep(3)} disabled={submitting}>
               Back
             </button>

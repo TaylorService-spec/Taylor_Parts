@@ -12,6 +12,10 @@ import AddressFields from "../../shared/address/AddressFields";
 import AccountForm from "./AccountForm";
 import ServiceActivitySection from "./ServiceActivitySection";
 import FinancialSummarySection from "./FinancialSummarySection";
+import FinancialForecastSection from "./FinancialForecastSection";
+import { useEmployeeDirectory } from "../../hooks/useEmployeeDirectory";
+import { resolveOwnerIdentity, resolveContactIdentity, resolveTaxStatus } from "../../domain/commercialProfile";
+import IdentityLine from "./IdentityLine";
 
 // Sprint 2.0.2 -- Customer Foundation. Internal name AccountDetail;
 // rendered UI says "Customer Detail" throughout.
@@ -134,12 +138,74 @@ function PrimaryContactSummary({ contacts }) {
   return null; // NONE -> omit, never fabricate a primary
 }
 
+// Account Commercial Profile -- PR 1. Renders the informational fields. Every
+// ID-bearing field shows its CURRENT resolved identity via IdentityLine (never
+// the stored snapshot), so loading/resolved/unknown/error stay distinct.
+// PO-required only renders when a real boolean is stored (a malformed stored
+// value is surfaced in the edit form, not silently shown as Yes/No here).
+function CommercialProfileSection({ account, contacts, contactsLoading, contactsError, byUserId, directoryLoading, directoryError }) {
+  const currency = account.defaultCurrency || null;
+  const invoiceMethod = account.invoiceDeliveryMethod || null;
+  const hasPo = account.purchaseOrderRequired === true || account.purchaseOrderRequired === false;
+
+  // Governed enum fields (PR 2). paymentTerms is shown only when set; tax
+  // status is ALWAYS resolved (absent => UNKNOWN safe default, never silently
+  // TAXABLE) and shown whenever the profile section renders. `hasTaxStatus`
+  // (an explicitly stored value) is one of the signals that the section has
+  // content, so a stored UNKNOWN still surfaces the section.
+  const paymentTerms = account.paymentTerms || null;
+  const hasTaxStatus = typeof account.taxStatus === "string" && account.taxStatus !== "";
+  const taxStatus = resolveTaxStatus(account.taxStatus);
+
+  const ownerIdentity = resolveOwnerIdentity(account.accountOwner, {
+    byUserId,
+    loading: directoryLoading,
+    error: directoryError,
+  });
+  const billingIdentity = resolveContactIdentity(account.billingContact?.contactId, {
+    contacts,
+    loading: contactsLoading,
+    error: contactsError,
+  });
+
+  const hasAny =
+    currency ||
+    invoiceMethod ||
+    hasPo ||
+    paymentTerms ||
+    hasTaxStatus ||
+    ownerIdentity.state !== "unset" ||
+    billingIdentity.state !== "unset";
+
+  return (
+    <section className="wo-history">
+      <h4>Commercial Profile</h4>
+      {hasAny ? (
+        <div className="fo-muted">
+          <IdentityLine label="Owner" identity={ownerIdentity} />
+          {currency && <div>Default currency: {currency}</div>}
+          {paymentTerms && <div>Payment terms: {paymentTerms}</div>}
+          {hasPo && <div>Purchase order required: {account.purchaseOrderRequired ? "Yes" : "No"}</div>}
+          {invoiceMethod && <div>Invoice delivery: {invoiceMethod}</div>}
+          {/* Safe default made visible: an Account with a profile always shows
+              a tax status, resolving an absent value to UNKNOWN. */}
+          <div>Tax status: {taxStatus}</div>
+          <IdentityLine label="Billing contact" identity={billingIdentity} />
+        </div>
+      ) : (
+        <p className="fo-muted">No commercial profile set yet.</p>
+      )}
+    </section>
+  );
+}
+
 export default function AccountDetail() {
   const { accountId } = useParams();
   const navigate = useNavigate();
   const { account, loading } = useAccount(accountId);
   const { data: locations } = useLocationsForAccount(accountId);
-  const { data: contacts } = useContactsForAccount(accountId);
+  const { data: contacts, loading: contactsLoading, error: contactsError } = useContactsForAccount(accountId);
+  const { byUserId, loading: directoryLoading, error: directoryError } = useEmployeeDirectory();
 
   const [isEditing, setIsEditing] = useState(false);
   const [showLocationForm, setShowLocationForm] = useState(false);
@@ -182,7 +248,15 @@ export default function AccountDetail() {
       </button>
 
       {isEditing ? (
-        <AccountForm initialValues={account} onSubmit={handleEditSubmit} onCancel={() => setIsEditing(false)} submitLabel="Save Changes" />
+        <AccountForm
+          initialValues={account}
+          onSubmit={handleEditSubmit}
+          onCancel={() => setIsEditing(false)}
+          submitLabel="Save Changes"
+          contacts={contacts}
+          contactsLoading={contactsLoading}
+          contactsError={contactsError}
+        />
       ) : (
         <>
           {/* 1. Account Summary -- always visible, never collapsed */}
@@ -209,8 +283,23 @@ export default function AccountDetail() {
             )}
           </section>
 
+          {/* Commercial Profile -- informational fields + current-name identity (PR 1) */}
+          <CommercialProfileSection
+            account={account}
+            contacts={contacts}
+            contactsLoading={contactsLoading}
+            contactsError={contactsError}
+            byUserId={byUserId}
+            directoryLoading={directoryLoading}
+            directoryError={directoryError}
+          />
+
           {/* 2. Financial Summary -- provider-neutral surface; unconfigured only (PR 4) */}
           <FinancialSummarySection />
+
+          {/* Credit (unavailable) + Financial Forecast Horizons -- provider-neutral
+              surfaces; unconfigured only, definitions-only (Commercial Profile PR 4) */}
+          <FinancialForecastSection />
 
           {/* 3. Contacts */}
           <section className="wo-history">

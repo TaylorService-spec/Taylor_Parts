@@ -26,6 +26,18 @@ import { makeCollectionStore } from "../firebase/collectionStore";
 // jobsStore/techniciansStore (see firebase/collectionStore.js), kept
 // consistent here rather than introducing a second timestamp
 // convention for only these three new collections.
+//
+// Commercial Profile fields (PR 1: defaultCurrency/purchaseOrderRequired/
+// invoiceDeliveryMethod/billingContact/accountOwner; PR 2:
+// paymentTerms/taxStatus) are additive and flow through this generic store
+// untouched -- there is no field-specific write logic here. The two PR-2
+// GOVERNED fields' value-validation AND admin-only-edit authorization are
+// enforced in firestore.rules, not in this client writer.
+//
+// INTERIM (audit-integrity invariant, per the Implementation Plan): this
+// admin/dispatcher client-direct-write path is valid only until PR 3b's
+// audit log + trusted server-side writer ship, at which point Commercial
+// Profile mutations move there and direct client mutation is Rules-denied.
 export const accountsStore = makeCollectionStore(ACCOUNTS_COLLECTION);
 
 export function createAccount(data) {

@@ -143,6 +143,128 @@
 //                                 per assertion and exits non-zero on
 //                                 any failure.
 //
+//   verify-history <accountKey>   Inventory Operational Queue PR C
+//                                 (docs/specifications/inventory-
+//                                 operational-queue.md, Reorder Request
+//                                 History) -- the PRIMARY implementation
+//                                 test for that PR. Requires seed.mjs's
+//                                 HISTORY_FIXTURE (14 terminal-status
+//                                 Reorder Requests, known relative
+//                                 createdAt order) to already be seeded.
+//                                 Against the real, unmodified fixture:
+//                                 confirms deterministic newest-first
+//                                 ordering (exact id sequence, not just
+//                                 count), the bounded first page,
+//                                 cursor-based Load More reaching every
+//                                 fixture item as an ordered prefix (other
+//                                 fixtures' own legitimate terminal
+//                                 documents may follow, since History has
+//                                 no per-entity scope), the end-of-history
+//                                 indicator, exact-id lookup finding a
+//                                 request not on the loaded page (before
+//                                 Load More is ever clicked), and
+//                                 accessibility (labeled lookup input,
+//                                 real row links). Against
+//                                 PartsList.jsx's dev-only ?historyTest=
+//                                 seam (see that file's own
+//                                 HISTORY_TEST_MODES/
+//                                 buildHistoryTestFetchImpl, and
+//                                 useReorderRequests.js's
+//                                 fetchReorderRequestsHistoryPage --
+//                                 network-level interception was confirmed
+//                                 unreliable for this hook specifically,
+//                                 since its getDocs() call is multiplexed
+//                                 through this page's already-open
+//                                 onSnapshot WebChannel, not issued as its
+//                                 own discrete request): confirms the
+//                                 Loading state renders and persists
+//                                 deterministically, the Error state
+//                                 renders with no table alongside it, the
+//                                 genuinely-empty state renders the exact
+//                                 mandated copy and an (0) count, and a
+//                                 Load More failure preserves the
+//                                 already-loaded rows and offers Retry
+//                                 (with its own distinct message) rather
+//                                 than blanking the table. Finally,
+//                                 responsive layout at a narrow viewport.
+//                                 Prints a PASS/FAIL report per assertion
+//                                 and exits non-zero on any failure.
+//
+//   verify-commercial-profile <accountKey>
+//                                 Account Commercial Profile PR 1
+//                                 (docs/specifications/account-commercial-
+//                                 profile-and-financial-forecast-horizons.md)
+//                                 -- the PRIMARY implementation test for that
+//                                 PR. Requires seed.mjs's
+//                                 COMMERCIAL_PROFILE_FIXTURE. Covers the
+//                                 informational field edit round-trip; the
+//                                 resolved / unknown / loading / error
+//                                 identity states; the unresolved-assignor
+//                                 fail-closed behavior; the no-raw-IDs
+//                                 guarantee; accessibility; and 375px layout.
+//                                 Prints a PASS/FAIL report per assertion and
+//                                 exits non-zero on any failure.
+//
+//   verify-governed-fields <accountKey>
+//                                 Account Commercial Profile PR 2 (same Spec)
+//                                 -- the PRIMARY browser test for the GOVERNED
+//                                 enum fields. Requires seed.mjs's
+//                                 GOVERNED_FIELDS_FIXTURE. Covers the admin
+//                                 render of paymentTerms + taxStatus; the
+//                                 absent => UNKNOWN taxStatus safe default
+//                                 (never TAXABLE); and the Rules-layer
+//                                 admin-only-edit enforcement -- a dispatcher
+//                                 CAN see/change the field in the form (not
+//                                 hidden), but the write is REJECTED by
+//                                 Firestore Rules, so the stored value is
+//                                 unchanged. Prints a PASS/FAIL report per
+//                                 assertion and exits non-zero on any failure.
+//
+//   verify-account-form-layout <accountKey>
+//                                 Account Commercial Profile PR 2 -- deterministic
+//                                 LAYOUT coverage for the `.fo-account-form`
+//                                 styles: two-column desktop grid + single-column
+//                                 375px, labels above uniformly-sized controls,
+//                                 full-width Commercial Profile fieldset + action
+//                                 row, and no horizontal overflow at 375px. Reads
+//                                 real getBoundingClientRect()/getComputedStyle()
+//                                 geometry (not screenshots). Prints a PASS/FAIL
+//                                 report per assertion and exits non-zero on any
+//                                 failure.
+//
+//   verify-financial-forecast <accountKey>
+//                                 Account Commercial Profile & Financial
+//                                 Forecast Horizons PR 4 (docs/specifications/
+//                                 account-commercial-profile-and-financial-
+//                                 forecast-horizons.md) -- the PRIMARY
+//                                 implementation test for that PR. Reuses the
+//                                 seeded Service Activity account (all financial
+//                                 surfaces are unconfigured today). Asserts
+//                                 credit is rendered unavailable via the
+//                                 provider-state contract (exact copy, no $ /
+//                                 value); the two separately-labeled forecast
+//                                 families (Receivables + Pipeline / order,
+//                                 never merged) each show the exact unconfigured
+//                                 copy and no figure; the exact `Receivables
+//                                 Due` label is present and never relabeled
+//                                 `Projected Collections`; NO reachable
+//                                 real-figure/drill-down/export/AI control
+//                                 exists; the provider-state messages are
+//                                 aria-live status regions; and no 375px
+//                                 horizontal overflow. Prints a PASS/FAIL
+//                                 report per assertion and exits non-zero on
+//                                 any failure.
+//   verify-wo-wizard <accountKey>
+//                                 Work Order Wizard layout & error clarity
+//                                 (Platform Task 1). Walks all four steps on the
+//                                 seeded WIZARD_FIXTURE account+location and
+//                                 asserts the step progress indicator, visible
+//                                 field labels, inline gating hints, review
+//                                 definition list, keyboard advance, every
+//                                 create-error mapping (via createWorkOrder
+//                                 callable interception -- no Functions backend
+//                                 needed), and 375px geometry.
+//
 // All screenshots are written under .claude/skills/run-field-ops-app-vite/screenshots/.
 import { chromium } from "@playwright/test";
 import { mkdirSync } from "node:fs";
@@ -153,7 +275,7 @@ import { dirname, join } from "node:path";
 // issue the exact query shape useReorderRequestsByStatuses() does,
 // the same way the real app would, rather than the Admin SDK's
 // rules-bypassing `db` handle everything else in this file uses.
-import { initializeApp } from "firebase/app";
+import { initializeApp, deleteApp } from "firebase/app";
 import { getAuth, connectAuthEmulator, signInWithEmailAndPassword } from "firebase/auth";
 import { getFirestore as getClientFirestore, connectFirestoreEmulator, collection, query, where, onSnapshot } from "firebase/firestore";
 import {
@@ -162,6 +284,12 @@ import {
   CANCEL_VOID_FIXTURE,
   PR_A_FIXTURE,
   SERVICE_ACTIVITY_FIXTURE,
+  HISTORY_FIXTURE,
+  COMMERCIAL_PROFILE_FIXTURE,
+  GOVERNED_FIELDS_FIXTURE,
+  DASHBOARD_FIXTURE,
+  WIZARD_FIXTURE,
+  WO_CUSTOMER_SEARCH_FIXTURE,
   seedLedgerTransactions,
   db,
 } from "./seed.mjs";
@@ -275,6 +403,16 @@ const STATUS_HEADING = {
   READY_FOR_PARTS_MANAGER: "Reorder Request -- Ready for Parts Manager",
   ASSIGNED_TO_PARTS_ASSOCIATE: "Reorder Request -- Assigned to Parts Associate",
   PURCHASING_IN_PROGRESS: "Reorder Request -- Purchasing In Progress",
+};
+// Inventory Operational Queue, PR C -- mirrors PartsList.jsx's own
+// HISTORY_STATUS_LABEL exactly (a driver-side copy, not an import --
+// this file has no build step to pull from application source, same
+// reason STATUS_HEADING above is also a hand-kept mirror of app copy).
+const HISTORY_STATUS_LABEL_FOR_TEST = {
+  CANCELLED: "Cancelled",
+  VOIDED: "Voided",
+  RECEIVED: "Received",
+  REJECTED: "Rejected",
 };
 // The terminal (CANCELLED) sibling renders ReorderRequestCancelled
 // (Cancel/Void schema deployment sequence, PR 6 of 6) -- a plainly
@@ -685,13 +823,26 @@ async function verifyInventoryHealthCatalog(browser, page, accountKey) {
 
   // --- Inventory Health tabs show the EXACT expected count, not just a
   // digit -- 1 actionable (TST-1002, HIGH) and 1 Needs Planning
-  // (TST-1001), per the fixture ground truth documented above. ---
+  // (TST-1001), per the fixture ground truth documented above.
+  // useInventoryLedger() is a ONE-SHOT fetch (not a real-time listener --
+  // see src/hooks/useInventoryLedger.js), and FilterBar.jsx renders
+  // `option.count` unconditionally from the very first render
+  // (healthEntries starts as [], so both labels legitimately read "(0)"
+  // for a brief window before the fetch resolves -- confirmed live: the
+  // heading this function's goToInventory() waits for mounts before that
+  // fetch resolves). Wait for each label to reach its OWN exact expected
+  // string deterministically before reading it -- not merely "nonzero"
+  // -- so a genuine load failure (the count never reaching "(1)") still
+  // fails loudly below with the real observed label, rather than being
+  // masked by a longer fixed sleep or a loosened assertion. ---
+  await page.getByRole("button", { name: "Critical & High (1)", exact: true }).waitFor({ timeout: 5000 }).catch(() => {});
   const criticalHighLabel = await page.getByRole("button", { name: /^Critical & High/ }).innerText().catch(() => "");
   niReport(
     "Inventory Health: Critical & High tab shows the exact expected count (1)",
     criticalHighLabel === "Critical & High (1)",
     `label was "${criticalHighLabel}"`
   );
+  await page.getByRole("button", { name: "Needs Planning (1)", exact: true }).waitFor({ timeout: 5000 }).catch(() => {});
   const needsPlanningLabel = await page.getByRole("button", { name: /^Needs Planning/ }).innerText().catch(() => "");
   niReport(
     "Inventory Health: Needs Planning tab shows the exact expected count (1)",
@@ -879,6 +1030,20 @@ async function verifyInventoryHealthCatalog(browser, page, accountKey) {
 // the same commit sequence (per that Specification's own "Within PR A"
 // note), not because they share any UI state.
 async function verifyPrA(browser, page, accountKey) {
+  // CLEANUP FIX -- both isolated probe Firebase client apps below
+  // (probeApp2 "employee-directory-failure-probe", probeApp
+  // "query-failure-probe") were never deleted/terminated, and their
+  // onSnapshot() listeners' 15000ms fallback setTimeout()s were never
+  // cleared on the normal (non-timeout) resolution path -- either alone
+  // is enough to keep the Node process's event loop alive well past
+  // this function's own `return`, which is why `node
+  // driver.mjs verify-pr-a` previously had to be killed by an external
+  // timeout rather than exiting on its own. Declared here, at function
+  // scope, so the `finally` block below can always reach them
+  // regardless of which branch of the function body ran or threw.
+  let probeApp = null;
+  let probeApp2 = null;
+  try {
   await login(page, accountKey);
   await goToInventory(page);
 
@@ -1005,7 +1170,7 @@ async function verifyPrA(browser, page, accountKey) {
   // "Unknown assignee", never propagates or ignores the error), this
   // establishes the same guarantee an end-to-end DOM assertion would. ---
   {
-    const probeApp2 = initializeApp({ projectId: "taylor-parts", apiKey: "fake-key-emulator-only" }, "employee-directory-failure-probe");
+    probeApp2 = initializeApp({ projectId: "taylor-parts", apiKey: "fake-key-emulator-only" }, "employee-directory-failure-probe");
     const probeAuth2 = getAuth(probeApp2);
     connectAuthEmulator(probeAuth2, "http://127.0.0.1:9099", { disableWarnings: true });
     const probeDb2 = getClientFirestore(probeApp2);
@@ -1016,18 +1181,28 @@ async function verifyPrA(browser, page, accountKey) {
 
     const directoryProbeResult = await new Promise((resolve) => {
       const q = query(collection(probeDb2, "employees"));
+      let timeoutHandle;
       const unsubscribe = onSnapshot(
         q,
         (snap) => {
+          clearTimeout(timeoutHandle);
           unsubscribe();
           resolve({ succeeded: true, size: snap.size });
         },
         (err) => {
+          clearTimeout(timeoutHandle);
           unsubscribe();
           resolve({ succeeded: false, code: err.code });
         }
       );
-      setTimeout(() => resolve({ succeeded: null, timedOut: true }), 15000);
+      // Unsubscribes on the timeout path too -- previously, a listener
+      // that never fired at all (neither branch above) left its
+      // onSnapshot() subscription open indefinitely, since unsubscribe()
+      // was only reachable from inside the two branches it never took.
+      timeoutHandle = setTimeout(() => {
+        unsubscribe();
+        resolve({ succeeded: null, timedOut: true });
+      }, 15000);
     });
     niReport(
       "Employee directory's exact query shape: a genuinely unauthorized session gets an error, not empty results",
@@ -1155,7 +1330,7 @@ async function verifyPrA(browser, page, accountKey) {
   // needs a live check -- this establishes the same guarantee an
   // end-to-end DOM assertion would, without asserting something this
   // environment cannot actually produce. ---
-  const probeApp = initializeApp({ projectId: "taylor-parts", apiKey: "fake-key-emulator-only" }, "query-failure-probe");
+  probeApp = initializeApp({ projectId: "taylor-parts", apiKey: "fake-key-emulator-only" }, "query-failure-probe");
   const probeAuth = getAuth(probeApp);
   connectAuthEmulator(probeAuth, "http://127.0.0.1:9099", { disableWarnings: true });
   const probeDb = getClientFirestore(probeApp);
@@ -1169,18 +1344,26 @@ async function verifyPrA(browser, page, accountKey) {
       collection(probeDb, "reorder_requests"),
       where("status", "in", ["ASSIGNED_TO_PARTS_ASSOCIATE", "PURCHASING_IN_PROGRESS"])
     );
+    let timeoutHandle;
     const unsubscribe = onSnapshot(
       q,
       (snap) => {
+        clearTimeout(timeoutHandle);
         unsubscribe();
         resolve({ succeeded: true, size: snap.size });
       },
       (err) => {
+        clearTimeout(timeoutHandle);
         unsubscribe();
         resolve({ succeeded: false, code: err.code });
       }
     );
-    setTimeout(() => resolve({ succeeded: null, timedOut: true }), 15000);
+    // Unsubscribes on the timeout path too -- see the identical comment
+    // on the employee-directory probe above for why this matters.
+    timeoutHandle = setTimeout(() => {
+      unsubscribe();
+      resolve({ succeeded: null, timedOut: true });
+    }, 15000);
   });
   niReport(
     "All Assigned Work's exact query shape: a genuinely unauthorized session gets an error, not empty results",
@@ -1236,6 +1419,16 @@ async function verifyPrA(browser, page, accountKey) {
 
   console.log(`\n${niPassed} passed, ${niFailed} failed`);
   return niFailed === 0;
+  } finally {
+    // Deletes/terminates both isolated probe apps regardless of which
+    // branch above ran, threw, or was skipped -- an un-terminated
+    // Firebase client app keeps its Firestore/Auth connections open,
+    // which is what previously kept this command's Node process alive
+    // past its own final console.log()/return, requiring an external
+    // `timeout` to kill it rather than exiting cleanly on its own.
+    if (probeApp2) await deleteApp(probeApp2).catch(() => {});
+    if (probeApp) await deleteApp(probeApp).catch(() => {});
+  }
 }
 
 // Customer/Account Business Model -- Customer PR 3, Service Activity
@@ -1259,7 +1452,12 @@ async function verifyServiceActivity(browser, page, accountKey) {
   // before asserting, so these checks never race an in-flight fetch.
   await page.getByText(`Completed Work Orders: ${expectedCompleted}`).waitFor({ timeout: 10000 });
   await page.getByText(`Open Work Orders: ${expectedOpen}`).waitFor({ timeout: 10000 });
-  await page.locator("ul.fo-activity-list > li").first().waitFor({ timeout: 10000 });
+  // The Account Activity timeline is `ul.fo-activity-list` -- but PR 4's
+  // FinancialForecastSection reuses that class for its family label lists
+  // (`ul.fo-activity-list.fo-forecast-labels`) on this same page, so every
+  // timeline locator below is scoped with `:not(.fo-forecast-labels)` to match
+  // ONLY the Service Activity timeline (test-harness scoping; no app change).
+  await page.locator("ul.fo-activity-list:not(.fo-forecast-labels) > li").first().waitFor({ timeout: 10000 });
 
   // --- Counts: exact, and CANCELLED excluded from both ---
   const countsText = await page.locator(".fo-service-activity-counts").innerText().catch(() => "");
@@ -1276,15 +1474,15 @@ async function verifyServiceActivity(browser, page, accountKey) {
 
   // --- Count block and timeline are separate elements, both rendered ---
   const countsPresent = await page.locator(".fo-service-activity-counts").isVisible().catch(() => false);
-  const listPresent = await page.locator("ul.fo-activity-list").isVisible().catch(() => false);
+  const listPresent = await page.locator("ul.fo-activity-list:not(.fo-forecast-labels)").isVisible().catch(() => false);
   niReport("Count block and Account Activity timeline are distinct elements, both rendered (independent queries)", countsPresent && listPresent);
 
   // --- Bounded first page = pageSize ---
-  const initialRows = await page.locator("ul.fo-activity-list > li").count();
+  const initialRows = await page.locator("ul.fo-activity-list:not(.fo-forecast-labels) > li").count();
   niReport(`Timeline initial page is bounded to pageSize (${pageSize})`, initialRows === pageSize, `rows=${initialRows}`);
 
   // --- Newest-first + CANCELLED present in the timeline (excluded from counts, shown in the record) ---
-  const firstRow = page.locator("ul.fo-activity-list > li").first();
+  const firstRow = page.locator("ul.fo-activity-list:not(.fo-forecast-labels) > li").first();
   const firstText = await firstRow.innerText().catch(() => "");
   niReport("Timeline is newest-first: first row is WO-SA-000", /WO-SA-000/.test(firstText), firstText);
   niReport("Timeline includes CANCELLED Work Orders (present in the record though excluded from counts)", /CANCELLED/.test(firstText), firstText);
@@ -1303,18 +1501,25 @@ async function verifyServiceActivity(browser, page, accountKey) {
   const loadMore = page.getByRole("button", { name: "Load More" });
   niReport("Load More is present on a full first page", await loadMore.isVisible().catch(() => false));
   await loadMore.click();
-  await page.waitForTimeout(500);
-  const allRows = await page.locator("ul.fo-activity-list > li").count();
+  // Deterministic wait-on-expected-state (not a fixed sleep + immediate count):
+  // the full timeline has exactly `total` rows once the next-page getDocs
+  // resolves. That getDocs is multiplexed over the app's persistent onSnapshot
+  // WebChannel, so its latency varies with emulator load -- a fixed 500ms sleep
+  // raced it (the prior rows=10-not-14 flake). Wait for the total-th row to
+  // exist, then assert the exact count; a genuine failure to load still fails
+  // (waitFor times out -> allRows !== total), the meaning is unchanged.
+  await page.locator(`ul.fo-activity-list:not(.fo-forecast-labels) > li:nth-child(${total})`).waitFor({ timeout: 15000 }).catch(() => {});
+  const allRows = await page.locator("ul.fo-activity-list:not(.fo-forecast-labels) > li").count();
   niReport(`After Load More, all ${total} Work Orders are shown`, allRows === total, `rows=${allRows}`);
-  const endVisible = await page.getByText("End of activity.").isVisible().catch(() => false);
+  const endVisible = await page.getByText("End of activity.").waitFor({ timeout: 10000 }).then(() => true).catch(() => false);
   niReport("End-of-activity indicator shows once fully paginated", endVisible);
   const loadMoreGoneAtEnd = await page.getByRole("button", { name: "Load More" }).isVisible().catch(() => false);
   niReport("Load More disappears at the end", !loadMoreGoneAtEnd);
 
   // --- Accessibility: semantic list + a real link per row + section heading ---
-  const listCount = await page.locator("ul.fo-activity-list").count();
+  const listCount = await page.locator("ul.fo-activity-list:not(.fo-forecast-labels)").count();
   niReport("Accessibility: timeline is a semantic list (ul/li)", listCount === 1);
-  const anchorCount = await page.locator("ul.fo-activity-list > li a").count();
+  const anchorCount = await page.locator("ul.fo-activity-list:not(.fo-forecast-labels) > li a").count();
   niReport("Accessibility: every timeline row exposes a real link", anchorCount === total, `anchors=${anchorCount}`);
 
   // --- Failure INDEPENDENCE. Playwright request interception against the
@@ -1375,8 +1580,14 @@ async function verifyServiceActivity(browser, page, accountKey) {
   await withFailedRequests(AGG, () => true, async () => {
     const completedErr = await seen(page.getByText("Completed Work Orders: unavailable"));
     const openErr = await seen(page.getByText("Open Work Orders: unavailable"));
-    const timelineRows = await page.locator("ul.fo-activity-list > li").count();
-    niReport("Failure independence: count failure does not hide the timeline", completedErr && openErr && timelineRows > 0, `completedErr=${completedErr} openErr=${openErr} rows=${timelineRows}`);
+    // Deterministic: wait for the timeline's first row to render before counting,
+    // rather than reading the count immediately -- the timeline getDocs runs over
+    // the persistent WebChannel and may not have resolved yet (the prior rows=0
+    // flake). A genuine "timeline hidden" regression still fails (seen() times
+    // out -> timelineRendered false), so the meaning is unchanged.
+    const timelineRendered = await seen(page.locator("ul.fo-activity-list:not(.fo-forecast-labels) > li"));
+    const timelineRows = timelineRendered ? await page.locator("ul.fo-activity-list:not(.fo-forecast-labels) > li").count() : 0;
+    niReport("Failure independence: count failure does not hide the timeline", completedErr && openErr && timelineRendered && timelineRows > 0, `completedErr=${completedErr} openErr=${openErr} rows=${timelineRows}`);
   });
 
   // --- Responsive: no horizontal overflow at mobile width (fresh, un-faulted load) ---
@@ -1419,6 +1630,1770 @@ async function verifyFinancialSummary(browser, page, accountKey) {
   await page.waitForTimeout(200);
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
   niReport("Responsive: no horizontal overflow at 375px mobile", overflow === false);
+
+  console.log(`\n${niPassed} passed, ${niFailed} failed`);
+  return niFailed === 0;
+}
+
+// Account Commercial Profile and Financial Forecast Horizons -- PR 4,
+// Phase 3 + 4 (docs/specifications/account-commercial-profile-and-financial-
+// forecast-horizons.md). Provider-neutral financial surfaces:
+//   * Credit rendered UNAVAILABLE via the provider-state contract only;
+//   * two separately-labeled forecast families (Receivables + Pipeline / order),
+//     `unconfigured` only, Family 1 carrying the exact `Receivables Due` label.
+// Only `unconfigured` is reachable, so this browser check asserts the real
+// surface shows the exact copy, NO figure/$, the `Receivables Due` label,
+// credit unavailable, and NO reachable real-figure/drill-down/export/AI path;
+// the definitions and the no-figure/no-bucketing guarantee are proven with
+// fixtures in test/financialForecastHorizons.test.mjs. Reuses the already-
+// seeded Service Activity account (any account's financial surfaces are
+// unconfigured today). Copy strings are a driver-side mirror of the app's
+// (same convention as STATUS_HEADING / CANCEL_VOID_CONFIRMATION_COPY above --
+// this file has no build step to import application source).
+async function verifyFinancialForecast(browser, page, accountKey) {
+  await login(page, accountKey);
+  await page.goto(customerUrl(SERVICE_ACTIVITY_FIXTURE.accountId), { waitUntil: "domcontentloaded", timeout: 20000 });
+
+  const creditSection = page
+    .locator("section.wo-history")
+    .filter({ has: page.locator("h4", { hasText: "Credit" }) });
+  const forecastSection = page
+    .locator("section.wo-history")
+    .filter({ has: page.locator("h4", { hasText: "Financial Forecast Horizons" }) });
+
+  await forecastSection.getByRole("heading", { name: "Financial Forecast Horizons", exact: true }).waitFor({ timeout: 10000 });
+
+  // --- Credit: rendered unavailable via the provider-state contract only ---
+  const creditHeadingVisible = await creditSection.getByRole("heading", { name: "Credit", exact: true }).isVisible().catch(() => false);
+  niReport("Accessibility: Credit is a section with an accessible heading", creditHeadingVisible);
+  const creditText = await creditSection.innerText().catch(() => "");
+  niReport("Credit: rendered unavailable with the exact unconfigured copy ('Sales data source not connected')", /Sales data source not connected/.test(creditText), creditText);
+  niReport("Credit: shows NO figure / $ / credit value (never a silent GOOD_STANDING, $0, or bare number)", !creditText.includes("$") && !/GOOD_STANDING|creditLimit|creditStatus/.test(creditText), creditText);
+
+  // --- Forecast horizons: two separately-labeled families, unconfigured only ---
+  const forecastHeadingVisible = await forecastSection.getByRole("heading", { name: "Financial Forecast Horizons", exact: true }).isVisible().catch(() => false);
+  niReport("Accessibility: Financial Forecast Horizons is a section with an accessible heading", forecastHeadingVisible);
+
+  const receivablesFamily = forecastSection.locator(".fo-forecast-family").filter({ has: page.locator("h5", { hasText: "Receivables" }) });
+  const pipelineFamily = forecastSection.locator(".fo-forecast-family").filter({ has: page.locator("h5", { hasText: "Pipeline / order" }) });
+
+  const receivablesVisible = await receivablesFamily.getByRole("heading", { name: "Receivables", exact: true }).isVisible().catch(() => false);
+  niReport("Forecast: the Receivables family sub-section renders with its own label", receivablesVisible);
+  const pipelineVisible = await pipelineFamily.getByRole("heading", { name: "Pipeline / order", exact: true }).isVisible().catch(() => false);
+  niReport("Forecast: the Pipeline / order family sub-section renders with its own label (families never merged)", pipelineVisible);
+
+  const forecastText = await forecastSection.innerText().catch(() => "");
+  // The `Receivables Due` due-date aging label is present, and NOT relabeled.
+  niReport("Forecast: the exact 'Receivables Due' due-date aging label is present", /Receivables Due/.test(forecastText), forecastText);
+  niReport("Forecast: the due-date aging is NOT labeled 'Projected Collections' (reserved for a future model)", !/Projected Collections/.test(forecastText), forecastText);
+
+  const receivablesText = await receivablesFamily.innerText().catch(() => "");
+  const pipelineText = await pipelineFamily.innerText().catch(() => "");
+  niReport("Forecast: the Receivables family shows the exact unconfigured copy, never a figure/$", /Sales data source not connected/.test(receivablesText) && !receivablesText.includes("$"), receivablesText);
+  niReport("Forecast: the Pipeline / order family shows the exact unconfigured copy, never a figure/$", /Sales data source not connected/.test(pipelineText) && !pipelineText.includes("$"), pipelineText);
+
+  // --- NO reachable real-figure / drill-down / export / AI path: neither the
+  // credit nor the forecast surface exposes any interactive control (button,
+  // link, or export/drill-down affordance). ---
+  const creditControls = await creditSection.locator("button, a, [role='button'], input, select").count().catch(() => -1);
+  niReport("No path: the Credit surface exposes no button/link/drill-down/export control", creditControls === 0, `control count = ${creditControls}`);
+  const forecastControls = await forecastSection.locator("button, a, [role='button'], input, select").count().catch(() => -1);
+  niReport("No path: the Financial Forecast Horizons surface exposes no button/link/drill-down/export control", forecastControls === 0, `control count = ${forecastControls}`);
+  const exportDrillVisible = await forecastSection.getByText(/export|drill.?down|view details|download/i).first().isVisible().catch(() => false);
+  niReport("No path: no export/drill-down affordance text is present on the forecast surface", !exportDrillVisible);
+
+  // --- Accessibility: the provider-state messages are aria-live status regions ---
+  const liveRegionCount = await forecastSection.locator("[role='status'][aria-live='polite']").count().catch(() => 0);
+  niReport("Accessibility: forecast provider-state messages are aria-live status regions", liveRegionCount >= 2, `role=status count = ${liveRegionCount}`);
+  const creditLiveRegion = await creditSection.locator("[role='status'][aria-live='polite']").count().catch(() => 0);
+  niReport("Accessibility: the credit provider-state message is an aria-live status region", creditLiveRegion >= 1, `role=status count = ${creditLiveRegion}`);
+
+  // --- Responsive: no horizontal overflow at 375px mobile ---
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.waitForTimeout(200);
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
+  niReport("Responsive: no horizontal overflow at 375px mobile (credit + forecast surfaces)", overflow === false);
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  console.log(`\n${niPassed} passed, ${niFailed} failed`);
+  return niFailed === 0;
+}
+
+// Inventory Operational Queue, PR C (docs/specifications/inventory-
+// operational-queue.md). Reorder Request History -- deterministic
+// ordering, bounded first page, cursor-based Load More, end-of-history,
+// and exact-id lookup independent of loaded pages. Requires C0's
+// production index to be [READY] (irrelevant against the emulator,
+// which builds indexes implicitly -- this command only proves the
+// application logic; the separate Owner Deployment Authorization
+// process is what proves the production index itself, per
+// docs/DECISIONS.md).
+async function verifyHistory(browser, page, accountKey) {
+  const historyTable = page.locator(
+    'xpath=//h3[starts-with(normalize-space(.), "History")]/following-sibling::div[contains(@class, "fo-table-scroll")][1]//table'
+  );
+  const historyRows = () => historyTable.locator("tbody tr");
+  const rowRequestIds = async () => {
+    const hrefs = await historyTable.locator("tbody tr a").evaluateAll((as) => as.map((a) => a.getAttribute("href")));
+    return hrefs.map((h) => new URL(h, "http://x").searchParams.get("requestId"));
+  };
+  const expectedIdAt = (i) => `${HISTORY_FIXTURE.requestIdPrefix}-${String(i).padStart(2, "0")}`;
+
+  await login(page, accountKey);
+  await goToInventory(page);
+  await page.getByRole("heading", { name: /^History/ }).waitFor({ timeout: 10000 });
+  await historyRows().first().waitFor({ timeout: 10000 });
+
+  // --- Deterministic newest-first ordering + bounded first page ---
+  const firstPageIds = await rowRequestIds();
+  const expectedFirstPageIds = HISTORY_FIXTURE.statuses.slice(0, HISTORY_FIXTURE.pageSize).map((_, i) => expectedIdAt(i));
+  niReport(
+    `Timeline initial page is bounded to pageSize (${HISTORY_FIXTURE.pageSize})`,
+    firstPageIds.length === HISTORY_FIXTURE.pageSize,
+    `rows=${firstPageIds.length}`
+  );
+  niReport(
+    "History is newest-first, deterministically (exact id order matches fixture ground truth)",
+    JSON.stringify(firstPageIds) === JSON.stringify(expectedFirstPageIds),
+    `got ${JSON.stringify(firstPageIds)}, expected ${JSON.stringify(expectedFirstPageIds)}`
+  );
+
+  const headingText = await page.getByRole("heading", { name: /^History/ }).innerText().catch(() => "");
+  niReport(
+    `History: heading shows the exact bounded count (${HISTORY_FIXTURE.pageSize}) before Load More`,
+    headingText === `History (${HISTORY_FIXTURE.pageSize})`,
+    `heading was "${headingText}"`
+  );
+
+  // --- Exact-id lookup independent of loaded pages: index 12 is NOT on
+  // the first page (indices 0-9 are) and Load More has not been clicked
+  // yet at this point in the run. ---
+  const lookupTargetIndex = 12;
+  const lookupTargetId = expectedIdAt(lookupTargetIndex);
+  const lookupExpectedStatus = HISTORY_STATUS_LABEL_FOR_TEST[HISTORY_FIXTURE.statuses[lookupTargetIndex]];
+  await page.getByLabel("Find by exact request ID").fill(lookupTargetId);
+  await page.getByRole("button", { name: "Find", exact: true }).click();
+  const lookupResultVisible = await page
+    .getByText(new RegExp(`Found:.*--\\s*${lookupExpectedStatus}`))
+    .first()
+    .waitFor({ timeout: 10000 })
+    .then(() => true)
+    .catch(() => false);
+  niReport(
+    "Exact-id lookup finds a request NOT on the currently-loaded page, without Load More-ing to it",
+    lookupResultVisible
+  );
+  await page.getByRole("button", { name: "Clear", exact: true }).click();
+
+  // --- Load More: cursor-based (appends, does not replace/re-fetch from
+  // the start), reaches all 14 fixture items as the newest entries, then
+  // continues to end-of-history. History has no per-entity scope, so
+  // OTHER fixtures' own legitimate terminal-status documents (e.g.
+  // NOTIFICATION_IDENTITY_FIXTURE's older "-terminal" CANCELLED siblings)
+  // correctly, legitimately appear too once Load More exhausts this
+  // fixture's own 14 (newer) items -- asserted as an exact-order PREFIX,
+  // not an exact total, for that reason. ---
+  await page.getByRole("button", { name: "Load More", exact: true }).click();
+  await page.waitForTimeout(500);
+  const afterLoadMoreIds = await rowRequestIds();
+  const expectedAllIds = HISTORY_FIXTURE.statuses.map((_, i) => expectedIdAt(i));
+  const actualPrefix = afterLoadMoreIds.slice(0, expectedAllIds.length);
+  niReport(
+    `After Load More, all ${HISTORY_FIXTURE.statuses.length} History items are shown, in order, as the newest entries`,
+    JSON.stringify(actualPrefix) === JSON.stringify(expectedAllIds),
+    `got prefix ${JSON.stringify(actualPrefix)}, full list ${JSON.stringify(afterLoadMoreIds)}`
+  );
+
+  // Keep clicking Load More until end-of-history is genuinely reached
+  // (this fixture's 14 items plus whatever else legitimately exists may
+  // span more than 2 pages at pageSize 10) before asserting the
+  // end-of-history state itself.
+  for (let guard = 0; guard < 10; guard += 1) {
+    const stillHasLoadMore = await page.getByRole("button", { name: "Load More", exact: true }).isVisible().catch(() => false);
+    if (!stillHasLoadMore) break;
+    await page.getByRole("button", { name: "Load More", exact: true }).click();
+    await page.waitForTimeout(500);
+  }
+  const endOfHistoryVisible = await page.getByText("End of history.", { exact: true }).first().isVisible().catch(() => false);
+  niReport("End-of-history indicator shows once fully paginated", endOfHistoryVisible);
+  const loadMoreGoneAfterEnd = await page
+    .getByRole("button", { name: "Load More", exact: true })
+    .isVisible()
+    .catch(() => false);
+  niReport("Load More disappears at the end (not silently absent with no explanation -- End of history replaces it)", !loadMoreGoneAfterEnd);
+
+  // --- Accessibility: filter input has an accessible label; every row
+  // (regardless of exactly how many total, including any other
+  // fixture's own legitimate terminal documents) exposes a real link. ---
+  const inputHasLabel = await page.getByLabel("Find by exact request ID").count().then((c) => c > 0);
+  niReport("Accessibility: exact-id lookup input has an accessible label", inputHasLabel);
+  const totalRowCount = await historyRows().count();
+  const rowLinkCount = await historyTable.locator("tbody tr a").count();
+  niReport("Accessibility: every History row exposes a real link", rowLinkCount === totalRowCount && totalRowCount >= HISTORY_FIXTURE.statuses.length);
+
+  await page.screenshot({ path: join(SCREENSHOT_DIR, "pr-c-history.png"), fullPage: true });
+
+  // --- Deterministic loading/error/empty/Load-More-failure states, via
+  // PartsList.jsx's dev-only ?historyTest= seam (see that file's own
+  // HISTORY_TEST_MODES/buildHistoryTestFetchImpl comment, and
+  // useReorderRequests.js's fetchReorderRequestsHistoryPage comment, for
+  // the full investigation into why network-level interception is
+  // unreliable for this hook specifically: its getDocs() call is
+  // multiplexed through this page's already-open onSnapshot WebChannel,
+  // confirmed empirically -- only google.firestore.v1.Firestore/Listen/
+  // channel was observed for this hook's traffic, no discrete
+  // documents:runQuery request to intercept the way
+  // verifyServiceActivity's equivalent has on the isolated
+  // AccountDetail.jsx page). The seam drives the SAME hook and the SAME
+  // rendered component tree real traffic uses -- through
+  // useReorderRequestsHistory()'s own `fetchPageImpl` injection point --
+  // not a network mock, not a component-level bypass. Gated behind
+  // import.meta.env.DEV (absent from any production build, confirmed via
+  // `grep` against the built bundle -- see this PR's own commit message)
+  // so it is never reachable in production regardless of URL. ---
+  function historyTestUrl(mode) {
+    const u = new URL("inventory", APP_ROOT);
+    u.searchParams.set("emulator", "1");
+    u.searchParams.set("historyTest", mode);
+    return u.toString();
+  }
+
+  // Loading: a fetch that never resolves -- the only reliable way to
+  // observe this state deterministically, since a real fetch against the
+  // local emulator resolves far too fast to reliably catch mid-flight.
+  await page.goto(historyTestUrl("loading"), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await page.getByRole("heading", { name: /^History/ }).waitFor({ timeout: 10000 });
+  const loadingVisible = await page
+    .getByText("Loading History...", { exact: true })
+    .first()
+    .waitFor({ timeout: 10000 })
+    .then(() => true)
+    .catch(() => false);
+  niReport("Loading: the exact loading text renders while the initial fetch is in flight", loadingVisible);
+  await page.waitForTimeout(1000);
+  const stillLoadingVisible = await page.getByText("Loading History...", { exact: true }).first().isVisible().catch(() => false);
+  niReport("Loading: state persists deterministically (the seam's fetch never resolves), not a lucky race window", stillLoadingVisible);
+
+  // Error (initial load): the whole section becomes the error state, per
+  // the Specification's "never an empty table" requirement -- confirm
+  // both the message renders AND no table renders alongside it.
+  await page.goto(historyTestUrl("error"), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await page.getByRole("heading", { name: /^History/ }).waitFor({ timeout: 10000 });
+  const errorVisible = await page
+    .getByText(/^Unable to load History \(test-injected-failure\)\.$/)
+    .first()
+    .waitFor({ timeout: 10000 })
+    .then(() => true)
+    .catch(() => false);
+  niReport("Error: a query failure renders the error state, not an empty table", errorVisible);
+  const noTableDuringError = await historyTable.count().then((c) => c === 0);
+  niReport("Error: no table renders alongside the error message", noTableDuringError);
+
+  // Genuinely empty: zero terminal requests, distinct from the error
+  // state above and from a populated one.
+  await page.goto(historyTestUrl("empty"), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await page.getByRole("heading", { name: /^History/ }).waitFor({ timeout: 10000 });
+  const emptyTextVisible = await page
+    .getByText("No terminal Reorder Requests yet.", { exact: true })
+    .first()
+    .waitFor({ timeout: 10000 })
+    .then(() => true)
+    .catch(() => false);
+  niReport("Genuinely empty: the exact mandated empty message renders when History has zero terminal requests", emptyTextVisible);
+  const emptyHeadingText = await page.getByRole("heading", { name: /^History/ }).innerText().catch(() => "");
+  niReport("Genuinely empty: heading count is exactly (0)", emptyHeadingText === "History (0)", `heading was "${emptyHeadingText}"`);
+
+  // Load More failure: the initial page is REAL (the seam's error-loadmore
+  // mode delegates the first, no-cursor fetch to the real implementation)
+  // -- only the Load More click itself is forced to fail. Existing rows
+  // must survive; a Retry action must appear.
+  await page.goto(historyTestUrl("error-loadmore"), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await page.getByRole("heading", { name: /^History/ }).waitFor({ timeout: 10000 });
+  await historyRows().first().waitFor({ timeout: 10000 });
+  const rowsBeforeFailedLoadMore = await historyRows().count();
+  await page.getByRole("button", { name: "Load More", exact: true }).click();
+  await page.waitForTimeout(500);
+  const rowsAfterFailedLoadMore = await historyRows().count();
+  niReport(
+    "Load More failure preserves the already-loaded rows (does not blank the table)",
+    rowsBeforeFailedLoadMore > 0 && rowsAfterFailedLoadMore === rowsBeforeFailedLoadMore,
+    `before=${rowsBeforeFailedLoadMore} after=${rowsAfterFailedLoadMore}`
+  );
+  const retryVisible = await page.getByRole("button", { name: "Retry", exact: true }).isVisible().catch(() => false);
+  niReport("Load More failure offers a Retry action", retryVisible);
+  const loadMoreFailureText = await page.getByText(/^Unable to load more History \(test-injected-failure\)\./).first().isVisible().catch(() => false);
+  niReport("Load More failure shows its own specific message, distinct from the initial-load error", loadMoreFailureText);
+
+  // --- Responsive: no horizontal overflow at mobile width (fresh, un-faulted load) ---
+  await goToInventory(page);
+  await page.getByRole("heading", { name: /^History/ }).waitFor({ timeout: 10000 });
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.waitForTimeout(200);
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
+  niReport("Responsive: no horizontal overflow at 375px mobile", overflow === false);
+
+  console.log(`\n${niPassed} passed, ${niFailed} failed`);
+  return niFailed === 0;
+}
+
+// Account Commercial Profile -- PR 1 (docs/specifications/
+// account-commercial-profile-and-financial-forecast-horizons.md). Same
+// niReport()-based PASS/FAIL style as the verify-* commands above. Covers:
+// the informational field edit round-trip; the resolved / unknown / loading /
+// error identity states; the unresolved-assignor fail-closed behavior; the
+// no-raw-IDs guarantee; accessibility; and 375px layout. Requires seed.mjs's
+// COMMERCIAL_PROFILE_FIXTURE. The signed-in `accountKey` (admin by default)
+// drives the read-only display + the fail-closed case (admin's session has no
+// resolved Employee); the successful round-trip re-logs-in as
+// eligiblePartsManager (a dispatcher WITH a resolved Employee -> a valid
+// assignor) on a fresh page.
+async function verifyCommercialProfile(browser, page, accountKey) {
+  const F = COMMERCIAL_PROFILE_FIXTURE;
+  // `page` is the function parameter (a mutable binding) -- reassigned below
+  // for the round-trip's fresh login, and this closure reads the current
+  // value, exactly like verifyNotificationIdentity() does.
+  const cpSection = () =>
+    page.locator("section.wo-history").filter({ has: page.locator("h4", { hasText: "Commercial Profile" }) });
+  const cpHeading = () => cpSection().getByRole("heading", { name: "Commercial Profile", exact: true });
+
+  await login(page, accountKey);
+
+  // ===== RESOLVED display state =====
+  await page.goto(customerUrl(F.resolvedAccountId), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await cpHeading().waitFor({ timeout: 10000 });
+  const resolvedOwnerVisible = await page
+    .getByText(`Owner: ${F.ownerEmployee.displayName}`, { exact: true })
+    .first()
+    .waitFor({ timeout: 10000 })
+    .then(() => true)
+    .catch(() => false);
+  niReport("Resolved: owner shows the CURRENT directory name", resolvedOwnerVisible);
+  const cpTextResolved = await cpSection().innerText().catch(() => "");
+  niReport(
+    "Resolved: owner shows the CURRENT name, never the stored (stale) snapshot",
+    cpTextResolved.includes(F.ownerEmployee.displayName) && !cpTextResolved.includes("STALE snapshot"),
+    cpTextResolved
+  );
+  niReport(
+    "Resolved: billing contact resolves to the Account's Contact name",
+    new RegExp(`Billing contact:\\s*${F.resolvedBillingContact.name}`).test(cpTextResolved),
+    cpTextResolved
+  );
+  niReport(
+    "Resolved: informational fields render (currency / PO / invoice delivery)",
+    /Default currency:\s*USD/.test(cpTextResolved) &&
+      /Purchase order required:\s*Yes/.test(cpTextResolved) &&
+      /Invoice delivery:\s*EMAIL/.test(cpTextResolved),
+    cpTextResolved
+  );
+  niReport(
+    "No raw IDs: resolved profile shows neither the owner userId nor the contact id",
+    !cpTextResolved.includes(F.ownerEmployee.userId) && !cpTextResolved.includes(F.resolvedBillingContact.id),
+    cpTextResolved
+  );
+
+  // ===== UNKNOWN display state (completed lookup, resolved to nobody) =====
+  await page.goto(customerUrl(F.unknownAccountId), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await cpHeading().waitFor({ timeout: 10000 });
+  const unknownOwnerVisible = await page
+    .getByText("Owner: Unknown owner", { exact: true })
+    .first()
+    .waitFor({ timeout: 10000 })
+    .then(() => true)
+    .catch(() => false);
+  niReport("Unknown: an owner with no Employee resolves to 'Unknown owner' after a completed lookup", unknownOwnerVisible);
+  const cpTextUnknown = await cpSection().innerText().catch(() => "");
+  niReport(
+    "Unknown: a billing contact not on the Account resolves to 'Unknown contact'",
+    /Billing contact:\s*Unknown contact/.test(cpTextUnknown),
+    cpTextUnknown
+  );
+  niReport(
+    "No raw IDs: unknown profile shows neither the ghost owner userId nor the foreign contact id",
+    !cpTextUnknown.includes(F.ghostOwnerUserId) && !cpTextUnknown.includes(F.foreignContactId),
+    cpTextUnknown
+  );
+
+  // ===== LOADING: the raw owner userId is never shown while the directory
+  // resolves (IdentityLine shows "resolving…", never the id). Rapid-sampled
+  // through a real navigation's actual loading window, same discipline as
+  // verify-pr-a's loading check. =====
+  await page.goto(customerUrl(F.resolvedAccountId), { waitUntil: "domcontentloaded", timeout: 20000 });
+  const ownerUidSightings = [];
+  const deadline = Date.now() + 3000;
+  while (Date.now() < deadline) {
+    const sample = await cpSection().innerText().catch(() => "");
+    if (sample.includes(F.ownerEmployee.userId)) ownerUidSightings.push(sample);
+    await page.waitForTimeout(50);
+  }
+  niReport(
+    "Loading: the owner's raw userId is never shown during the directory's real loading window",
+    ownerUidSightings.length === 0,
+    ownerUidSightings[0]
+  );
+
+  // ===== ERROR: the exact employee-directory query shape genuinely errors
+  // (not empties) for an unauthorized session -- isolated client-SDK probe,
+  // same pattern/reasoning as verify-pr-a's directory-error probe. Combined
+  // with IdentityLine's `error` branch (unit-tested in
+  // test/commercialProfile.test.mjs), this establishes the error identity
+  // state end to end. =====
+  {
+    const probeApp = initializeApp({ projectId: "taylor-parts", apiKey: "fake-key-emulator-only" }, "cp-directory-error-probe");
+    const probeAuth = getAuth(probeApp);
+    connectAuthEmulator(probeAuth, "http://127.0.0.1:9099", { disableWarnings: true });
+    const probeDb = getClientFirestore(probeApp);
+    connectFirestoreEmulator(probeDb, "127.0.0.1", 8080);
+    await signInWithEmailAndPassword(probeAuth, DRIVER_ACCOUNTS.queryFailureProbe.email, DRIVER_ACCOUNTS.queryFailureProbe.password);
+    const probeResult = await new Promise((resolve) => {
+      const q = query(collection(probeDb, "employees"));
+      const unsub = onSnapshot(
+        q,
+        (snap) => { unsub(); resolve({ succeeded: true, size: snap.size }); },
+        (err) => { unsub(); resolve({ succeeded: false, code: err.code }); }
+      );
+      setTimeout(() => resolve({ succeeded: null, timedOut: true }), 15000);
+    });
+    niReport(
+      "Error: the owner-directory query errors (not empties) for an unauthorized session; IdentityLine renders the error state",
+      probeResult.succeeded === false,
+      JSON.stringify(probeResult)
+    );
+  }
+
+  // ===== ACCESSIBILITY (view) + 375px layout =====
+  await page.goto(customerUrl(F.resolvedAccountId), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await cpHeading().waitFor({ timeout: 10000 });
+  const cpHeadingVisible = await cpHeading().isVisible().catch(() => false);
+  niReport("Accessibility: Commercial Profile is a section with an accessible heading", cpHeadingVisible);
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.waitForTimeout(200);
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
+  niReport("Responsive: no horizontal overflow at 375px mobile (Commercial Profile view)", overflow === false);
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  // ===== FAIL-CLOSED: an unresolved-assignor session cannot save an owner.
+  // The signed-in admin account's users/{uid} has no employeeId, so
+  // resolveEmployeeSession() yields displayName null -> the assignment built
+  // on selection carries assignedByDisplayName null -> isCompleteAccountOwner
+  // is false -> the save is blocked. =====
+  await page.goto(customerUrl(F.editAccountId), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await cpHeading().waitFor({ timeout: 10000 });
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  // Accessibility (edit form): controls are reachable by their labels.
+  const currencyLabeled = await page.getByLabel("Default currency (ISO 4217)").count().then((c) => c > 0);
+  const invoiceLabeled = await page.getByLabel("Invoice delivery method").count().then((c) => c > 0);
+  const ownerLabeled = await page.getByRole("combobox", { name: "Account owner" }).count().then((c) => c > 0);
+  niReport("Accessibility: edit-form currency / invoice / owner controls have accessible labels", currencyLabeled && invoiceLabeled && ownerLabeled);
+
+  const ownerPicker = page.getByRole("combobox", { name: "Account owner" });
+  await ownerPicker.click();
+  await ownerPicker.fill(F.ownerEmployee.displayName);
+  const ownerOption = page.getByRole("option", { name: new RegExp(`^${F.ownerEmployee.displayName}`) }).first();
+  const optionSelectable = await ownerOption.waitFor({ timeout: 10000 }).then(() => true).catch(() => false);
+  niReport("Fail-closed setup: the owner candidate is selectable in the picker", optionSelectable);
+  await ownerOption.click();
+  await page.getByRole("button", { name: "Save Changes", exact: true }).click();
+  await page.waitForTimeout(400);
+  const ownerErrorVisible = await page
+    .getByText(/Assign an account owner with a linked employee and user/)
+    .first()
+    .isVisible()
+    .catch(() => false);
+  niReport("Fail-closed: an unresolved-assignor session cannot save an owner assignment (validation error shown)", ownerErrorVisible);
+  const stillEditing = await page.getByRole("button", { name: "Save Changes", exact: true }).isVisible().catch(() => false);
+  niReport("Fail-closed: the form does not submit or close on the blocked save (still in edit mode)", stillEditing);
+
+  // ===== EDIT ROUND-TRIP (resolved assignor): re-login as a dispatcher WITH
+  // a linked Employee, set every informational field + assign the owner,
+  // save, then re-navigate fresh and confirm all of it persisted. =====
+  await page.close();
+  page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  await login(page, "eligiblePartsManager");
+  await page.goto(customerUrl(F.editAccountId), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await cpHeading().waitFor({ timeout: 10000 });
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  await page.getByLabel("Default currency (ISO 4217)").fill("EUR");
+  await page.getByLabel("Purchase order required").check();
+  await page.getByLabel("Invoice delivery method").selectOption("PORTAL");
+  await page.getByLabel("Billing contact").selectOption(F.editBillingContact.id);
+  const picker2 = page.getByRole("combobox", { name: "Account owner" });
+  await picker2.click();
+  await picker2.fill(F.ownerEmployee.displayName);
+  await page.getByRole("option", { name: new RegExp(`^${F.ownerEmployee.displayName}`) }).first().click();
+  await page.getByRole("button", { name: "Save Changes", exact: true }).click();
+  const backToView = await page
+    .getByRole("button", { name: "Edit", exact: true })
+    .waitFor({ timeout: 10000 })
+    .then(() => true)
+    .catch(() => false);
+  niReport("Edit round-trip: save succeeds with a resolved assignor (form returns to view mode)", backToView);
+
+  // Re-navigate fresh (a full goto carrying ?emulator=1 preserves the Auth
+  // session) so the assertions read from Firestore, not lingering form state.
+  await page.goto(customerUrl(F.editAccountId), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await cpHeading().waitFor({ timeout: 10000 });
+  await page
+    .getByText(`Owner: ${F.ownerEmployee.displayName}`, { exact: true })
+    .first()
+    .waitFor({ timeout: 10000 })
+    .catch(() => {});
+  const persisted = await cpSection().innerText().catch(() => "");
+  niReport("Edit round-trip persists: default currency EUR", /Default currency:\s*EUR/.test(persisted), persisted);
+  niReport("Edit round-trip persists: purchase order required Yes", /Purchase order required:\s*Yes/.test(persisted), persisted);
+  niReport("Edit round-trip persists: invoice delivery PORTAL", /Invoice delivery:\s*PORTAL/.test(persisted), persisted);
+  niReport(
+    "Edit round-trip persists: billing contact resolves to the Account's Contact",
+    new RegExp(`Billing contact:\\s*${F.editBillingContact.name}`).test(persisted),
+    persisted
+  );
+  niReport(
+    "Edit round-trip persists: owner resolves to the current directory name",
+    persisted.includes(`Owner: ${F.ownerEmployee.displayName}`),
+    persisted
+  );
+  niReport(
+    "Edit round-trip: no raw IDs after persistence",
+    !persisted.includes(F.ownerEmployee.userId) && !persisted.includes(F.editBillingContact.id),
+    persisted
+  );
+
+  console.log(`\n${niPassed} passed, ${niFailed} failed`);
+  return niFailed === 0;
+}
+
+// Account Commercial Profile -- PR 2. Governed enum fields (paymentTerms/
+// taxStatus) end-to-end browser checks against GOVERNED_FIELDS_FIXTURE: the
+// admin render of both governed fields; the absent => UNKNOWN taxStatus safe
+// default (never TAXABLE); and the Rules-layer admin-only-edit enforcement --
+// a dispatcher CAN see and change the field in the form (it is NOT hidden),
+// but the write is REJECTED by Firestore Rules, so the stored value is
+// unchanged after a fresh reload. `page` (the function parameter) is
+// reassigned for each fresh login, exactly like verifyCommercialProfile().
+async function verifyGovernedFields(browser, page, accountKey) {
+  const F = GOVERNED_FIELDS_FIXTURE;
+  const cpSection = () =>
+    page.locator("section.wo-history").filter({ has: page.locator("h4", { hasText: "Commercial Profile" }) });
+  const cpHeading = () => cpSection().getByRole("heading", { name: "Commercial Profile", exact: true });
+
+  await login(page, accountKey);
+
+  // ===== RESOLVED render (admin): both governed fields shown =====
+  await page.goto(customerUrl(F.governedAccountId), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await cpHeading().waitFor({ timeout: 10000 });
+  const govText = await cpSection().innerText().catch(() => "");
+  niReport(
+    "Render: paymentTerms shows the stored enum value",
+    new RegExp(`Payment terms:\\s*${F.paymentTerms}`).test(govText),
+    govText
+  );
+  niReport(
+    "Render: taxStatus shows the stored enum value",
+    new RegExp(`Tax status:\\s*${F.taxStatus}`).test(govText),
+    govText
+  );
+
+  // ===== SAFE DEFAULT: absent taxStatus renders UNKNOWN, never TAXABLE =====
+  await page.goto(customerUrl(F.safeDefaultAccountId), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await cpHeading().waitFor({ timeout: 10000 });
+  const safeText = await cpSection().innerText().catch(() => "");
+  niReport(
+    "Safe default: an Account with no stored taxStatus renders 'Tax status: UNKNOWN'",
+    /Tax status:\s*UNKNOWN/.test(safeText) && !/Tax status:\s*TAXABLE/.test(safeText),
+    safeText
+  );
+  niReport(
+    "Safe default: an Account with no paymentTerms shows no Payment terms line",
+    !/Payment terms:/.test(safeText),
+    safeText
+  );
+
+  // ===== RULES-LAYER admin-only edit: a DISPATCHER may open the edit form
+  // and change paymentTerms (the control is NOT hidden from them), but the
+  // write is DENIED by Firestore Rules -- so the stored value is unchanged
+  // after a fresh reload. Authorization is enforced at the Rules layer, not
+  // by UI hiding. =====
+  await page.close();
+  page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  // A denied client write rejects updateAccount's promise -> surfaces as a
+  // browser-side unhandled rejection; swallow it so it doesn't noise up the
+  // run (the authoritative check is the unchanged persisted value below).
+  page.on("pageerror", () => {});
+  await login(page, "ineligibleDispatcher");
+  await page.goto(customerUrl(F.governedAccountId), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await cpHeading().waitFor({ timeout: 10000 });
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+
+  const termsControl = page.getByLabel("Payment terms");
+  const termsVisibleToDispatcher = await termsControl.count().then((c) => c > 0);
+  niReport(
+    "Not hidden: the Payment terms control IS present in the edit form for a non-admin dispatcher (authorization is not UI hiding)",
+    termsVisibleToDispatcher
+  );
+  const taxVisibleToDispatcher = await page.getByLabel("Tax status").count().then((c) => c > 0);
+  niReport(
+    "Not hidden: the Tax status control IS present in the edit form for a non-admin dispatcher",
+    taxVisibleToDispatcher
+  );
+
+  const attemptedTerms = "NET_90"; // different from the stored F.paymentTerms
+  await termsControl.selectOption(attemptedTerms);
+  await page.getByRole("button", { name: "Save Changes", exact: true }).click();
+  await page.waitForTimeout(1200);
+
+  // Re-navigate fresh AS ADMIN to read the authoritative stored value.
+  await page.close();
+  page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  await login(page, accountKey);
+  await page.goto(customerUrl(F.governedAccountId), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await cpHeading().waitFor({ timeout: 10000 });
+  const afterText = await cpSection().innerText().catch(() => "");
+  niReport(
+    "Rules-layer denial: after a dispatcher tries to change paymentTerms, the stored value is UNCHANGED (write rejected by Rules, not persisted)",
+    new RegExp(`Payment terms:\\s*${F.paymentTerms}`).test(afterText) && !afterText.includes(attemptedTerms),
+    afterText
+  );
+
+  console.log(`\n${niPassed} passed, ${niFailed} failed`);
+  return niFailed === 0;
+}
+
+// Account Commercial Profile -- PR 2. Deterministic Account-edit-form LAYOUT
+// coverage for the `.fo-account-form` styles (index.css): two-column desktop
+// grid + single-column 375px, labels above uniformly-sized controls, full-width
+// fieldset/action row, and NO horizontal overflow at 375px. Geometry is read
+// from real getBoundingClientRect()/getComputedStyle() -- not screenshots --
+// so the assertions are deterministic. Opens the GOVERNED_FIELDS_FIXTURE
+// account's edit form as admin (any admin/dispatcher can open it).
+async function verifyAccountFormLayout(browser, page, accountKey) {
+  const F = GOVERNED_FIELDS_FIXTURE;
+  await login(page, accountKey);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(customerUrl(F.governedAccountId), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await page
+    .locator("section.wo-history")
+    .filter({ has: page.locator("h4", { hasText: "Commercial Profile" }) })
+    .getByRole("heading", { name: "Commercial Profile", exact: true })
+    .waitFor({ timeout: 10000 });
+  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  await page.locator("form.fo-account-form").waitFor({ timeout: 10000 });
+  await page.locator("#cp-currency").waitFor({ timeout: 10000 });
+
+  const trackCount = (gtc) => (gtc || "").trim().split(/\s+/).filter((t) => parseFloat(t) > 0).length;
+
+  // ===== Desktop (1280) =====
+  const d = await page.evaluate(() => {
+    const form = document.querySelector("form.fo-account-form");
+    const cs = getComputedStyle(form);
+    const rect = (sel) => {
+      const el = document.querySelector(sel);
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { x: r.x, y: r.y, w: r.width, right: r.right };
+    };
+    const labelFor = (id) => {
+      const el = document.querySelector(`label[for="${id}"]`);
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { x: r.x, y: r.y };
+    };
+    const fieldset = [...document.querySelectorAll("form.fo-account-form fieldset")].find((f) =>
+      /Commercial Profile/.test(f.querySelector("legend")?.textContent || "")
+    );
+    return {
+      display: cs.display,
+      gtc: cs.gridTemplateColumns,
+      formW: form.getBoundingClientRect().width,
+      street: rect("#account-billing-street"),
+      city: rect("#account-billing-city"),
+      currency: rect("#cp-currency"),
+      invoice: rect("#cp-invoice-delivery"),
+      currencyLabel: labelFor("cp-currency"),
+      fieldsetW: fieldset ? fieldset.getBoundingClientRect().width : null,
+      btnRow: rect("form.fo-account-form .fo-btn-row"),
+      docScroll: document.documentElement.scrollWidth,
+      docClient: document.documentElement.clientWidth,
+    };
+  });
+
+  niReport("Desktop: account edit form is a CSS grid", d.display === "grid", `display=${d.display}`);
+  niReport("Desktop: grid has exactly two columns", trackCount(d.gtc) === 2, `grid-template-columns="${d.gtc}"`);
+  niReport(
+    "Desktop: two-column layout -- Street and City sit side by side on one row",
+    !!d.street && !!d.city && Math.abs(d.street.y - d.city.y) <= 4 && d.city.x > d.street.x + 10,
+    JSON.stringify({ street: d.street, city: d.city })
+  );
+  niReport(
+    "Desktop: labels sit directly above their controls (same left edge, label higher)",
+    !!d.currencyLabel && !!d.currency && d.currencyLabel.y + 2 <= d.currency.y && Math.abs(d.currencyLabel.x - d.currency.x) <= 6,
+    JSON.stringify({ label: d.currencyLabel, input: d.currency })
+  );
+  niReport(
+    "Desktop: controls in a column are uniformly sized (currency input width == invoice select width)",
+    !!d.currency && !!d.invoice && Math.abs(d.currency.w - d.invoice.w) <= 3,
+    JSON.stringify({ currencyW: d.currency?.w, invoiceW: d.invoice?.w })
+  );
+  niReport(
+    "Desktop: the Commercial Profile fieldset spans the full form width",
+    !!d.fieldsetW && d.fieldsetW >= d.formW * 0.9,
+    JSON.stringify({ fieldsetW: d.fieldsetW, formW: d.formW })
+  );
+  niReport(
+    "Desktop: the action row spans the full form width",
+    !!d.btnRow && d.btnRow.w >= d.formW * 0.9,
+    JSON.stringify({ btnRowW: d.btnRow?.w, formW: d.formW })
+  );
+  niReport("Desktop: no horizontal overflow", d.docScroll <= d.docClient + 1, `scroll=${d.docScroll} client=${d.docClient}`);
+
+  // ===== Mobile (375) =====
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.waitForTimeout(250);
+  const m = await page.evaluate(() => {
+    const form = document.querySelector("form.fo-account-form");
+    const rect = (sel) => {
+      const el = document.querySelector(sel);
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { x: r.x, y: r.y, w: r.width };
+    };
+    return {
+      gtc: getComputedStyle(form).gridTemplateColumns,
+      street: rect("#account-billing-street"),
+      city: rect("#account-billing-city"),
+      docScroll: document.documentElement.scrollWidth,
+      docClient: document.documentElement.clientWidth,
+    };
+  });
+  niReport("375px: grid collapses to a single column", trackCount(m.gtc) === 1, `grid-template-columns="${m.gtc}"`);
+  niReport(
+    "375px: Street and City stack vertically (single column, same left edge)",
+    !!m.street && !!m.city && m.city.y > m.street.y + 4 && Math.abs(m.city.x - m.street.x) <= 4,
+    JSON.stringify({ street: m.street, city: m.city })
+  );
+  niReport("375px: no horizontal overflow", m.docScroll <= m.docClient + 1, `scroll=${m.docScroll} client=${m.docClient}`);
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+  console.log(`\n${niPassed} passed, ${niFailed} failed`);
+  return niFailed === 0;
+}
+
+// Customer hierarchy nav cleanup -- verifies the global Contacts / Locations /
+// Equipment / Service History Customer subnav entries are removed, that
+// /customers and /customers/:accountId still work, and that the four retired
+// paths redirect to /customers (never captured by the :accountId detail route).
+// Includes direct-URL navigation and 375px layout.
+async function verifyCustomerNavCleanup(browser, page, accountKey) {
+  const retired = ["contacts", "locations", "equipment", "service-history"];
+  const custUrl = (suffix = "") => {
+    const u = new URL(`customers${suffix}`, APP_ROOT);
+    u.searchParams.set("emulator", "1");
+    return u.toString();
+  };
+  await login(page, accountKey);
+
+  // ===== /customers list route + subnav cleanup =====
+  await page.goto(custUrl(""), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await page.locator("nav.fo-subnav").first().waitFor({ timeout: 10000 }).catch(() => {});
+  const subnav = page.locator("nav.fo-subnav");
+  const custPresent = await subnav.getByRole("link", { name: "Customers", exact: true }).first().isVisible().catch(() => false);
+  niReport("/customers: the Customers subnav entry is present", custPresent);
+  for (const label of ["Contacts", "Locations", "Equipment", "Service History"]) {
+    const count = await subnav.getByRole("link", { name: label, exact: true }).count().catch(() => 0);
+    niReport(`Subnav cleanup: "${label}" entry is removed`, count === 0, `count=${count}`);
+  }
+  niReport("/customers URL preserved (list route)", new URL(page.url()).pathname.endsWith("/customers"), page.url());
+
+  // ===== /customers/:accountId still works =====
+  await page.goto(customerUrl(SERVICE_ACTIVITY_FIXTURE.accountId), { waitUntil: "domcontentloaded", timeout: 20000 });
+  const detailOk = await page
+    .getByRole("heading", { name: "Commercial Profile", exact: true })
+    .first()
+    .waitFor({ timeout: 10000 })
+    .then(() => true)
+    .catch(() => false);
+  niReport("/customers/:accountId still renders Account Detail", detailOk);
+  niReport("/customers/:accountId URL preserved", /\/customers\/[^/]+$/.test(new URL(page.url()).pathname), page.url());
+
+  // ===== the four retired paths redirect to /customers (never :accountId) =====
+  for (const p of retired) {
+    await page.goto(custUrl(`/${p}`), { waitUntil: "domcontentloaded", timeout: 20000 });
+    await page.waitForFunction(() => location.pathname.endsWith("/customers"), null, { timeout: 10000 }).catch(() => {});
+    const finalPath = new URL(page.url()).pathname;
+    niReport(`Retired /customers/${p} redirects to /customers (not captured by :accountId)`, finalPath.endsWith("/customers"), `final=${finalPath}`);
+    const notFound = await page.getByText("Customer not found.").first().isVisible().catch(() => false);
+    niReport(`Retired /customers/${p} does not mount the :accountId detail (no "Customer not found")`, !notFound);
+  }
+
+  // ===== 375px: no horizontal overflow on /customers =====
+  await page.goto(custUrl(""), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await page.locator("nav.fo-subnav").first().waitFor({ timeout: 10000 }).catch(() => {});
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.waitForTimeout(200);
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
+  niReport("Responsive: no horizontal overflow at 375px on /customers", overflow === false);
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  console.log(`\n${niPassed} passed, ${niFailed} failed`);
+  return niFailed === 0;
+}
+
+// Customer Results Dashboard -- verifies the /customers portfolio dashboard:
+// status cards (counts + click-to-filter), local relationship/tag filters with
+// clear/reset + live result count, filtered-no-results, keyboard/accessibility,
+// no raw IDs, detail navigation, and 375px layout. Expected status counts are
+// DERIVED live from the seeded accounts (Admin SDK read), and the tag/
+// relationship assertions use DASHBOARD_FIXTURE's unique tags so they're exact
+// and isolated from other fixtures.
+async function verifyCustomerDashboard(browser, page, accountKey) {
+  const F = DASHBOARD_FIXTURE;
+  const custUrl = (suffix = "") => { const u = new URL(`customers${suffix}`, APP_ROOT); u.searchParams.set("emulator", "1"); return u.toString(); };
+
+  const snap = await db.collection("accounts").get();
+  const all = snap.docs.map((d) => d.data());
+  const exp = {
+    total: all.length,
+    Active: all.filter((a) => a.status === "Active").length,
+    Prospect: all.filter((a) => a.status === "Prospect").length,
+    Inactive: all.filter((a) => a.status === "Inactive").length,
+    Archived: all.filter((a) => a.status === "Archived").length,
+  };
+
+  await login(page, accountKey);
+  await page.goto(custUrl(""), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await page.locator(".fo-portfolio-cards").waitFor({ timeout: 10000 });
+
+  const card = (label) =>
+    page.locator(".fo-portfolio-card").filter({ has: page.locator(".fo-portfolio-card-label", { hasText: new RegExp(`^${label}$`) }) }).first();
+  const cardCount = async (label) => parseInt((await card(label).locator(".fo-portfolio-card-count").innerText().catch(() => "NaN")).trim(), 10);
+  const resultText = () => page.locator(".fo-portfolio-count").innerText().catch(() => "");
+  const clear = () => page.getByRole("button", { name: "Clear filters" }).first().click();
+
+  // ===== Cards render the expected counts (derived from seeded data) =====
+  for (const label of ["Total", "Active", "Prospect", "Inactive", "Archived"]) {
+    const key = label === "Total" ? "total" : label;
+    const c = await cardCount(label);
+    niReport(`Card "${label}" shows the expected count (${exp[key]})`, c === exp[key], `got ${c}`);
+  }
+
+  // ===== Accessibility: cards are aria-pressed toggles; Total pressed initially =====
+  niReport("Accessibility: Total card pressed initially (no status filter)", (await card("Total").getAttribute("aria-pressed")) === "true");
+  niReport("Accessibility: a status card is unpressed initially", (await card("Active").getAttribute("aria-pressed")) === "false");
+  niReport(`Result count shows all initially (${exp.total} of ${exp.total})`, new RegExp(`^${exp.total} of ${exp.total} customer`).test(await resultText()), await resultText());
+
+  // ===== Click a status card filters + presses it =====
+  await card("Active").click();
+  await page.waitForTimeout(200);
+  niReport(`Clicking "Active" filters to ${exp.Active}`, new RegExp(`^${exp.Active} of ${exp.total}`).test(await resultText()), await resultText());
+  niReport("Accessibility: Active card becomes pressed after click", (await card("Active").getAttribute("aria-pressed")) === "true");
+  await clear();
+  await page.waitForTimeout(200);
+
+  // ===== Keyboard: focus Prospect card + Enter =====
+  await card("Prospect").focus();
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(200);
+  niReport(`Keyboard: activating "Prospect" via Enter filters to ${exp.Prospect}`, new RegExp(`^${exp.Prospect} of`).test(await resultText()), await resultText());
+
+  // ===== Reset =====
+  await clear();
+  await page.waitForTimeout(200);
+  niReport("Clear filters resets to all customers", new RegExp(`^${exp.total} of ${exp.total}`).test(await resultText()), await resultText());
+
+  // ===== Tag filter isolates the fixture; tag + relationship narrows further =====
+  await page.getByRole("button", { name: F.sharedTag, exact: true }).click();
+  await page.waitForTimeout(200);
+  niReport(`Tag "${F.sharedTag}" filters to the ${F.accounts.length} fixture accounts`, new RegExp(`^${F.accounts.length} of`).test(await resultText()), await resultText());
+  await page.getByRole("button", { name: "Customer", exact: true }).click();
+  await page.waitForTimeout(200);
+  const expSharedCustomer = F.accounts.filter((a) => a.relationshipTypes.includes("CUSTOMER")).length;
+  niReport(`Tag "${F.sharedTag}" + relationship Customer -> ${expSharedCustomer}`, new RegExp(`^${expSharedCustomer} of`).test(await resultText()), await resultText());
+  await clear();
+  await page.waitForTimeout(200);
+
+  // ===== filtered-no-results (Archived + soloTag, which is only on the Active fixture) =====
+  await card("Archived").click();
+  await page.getByRole("button", { name: F.soloTag, exact: true }).click();
+  await page.waitForTimeout(200);
+  niReport(`Filtered-no-results state renders (Archived + ${F.soloTag})`, await page.getByText("No customers match the current filters.").first().isVisible().catch(() => false));
+  await clear();
+  await page.waitForTimeout(200);
+
+  // ===== Results table columns + no raw IDs + human-readable last update =====
+  await page.getByRole("button", { name: F.sharedTag, exact: true }).click();
+  await page.waitForTimeout(200);
+  const headers = await page.locator(".fo-table-scroll table thead th").allInnerTexts().catch(() => []);
+  niReport("Results table has Name/Status/Relationship/Tags/Last update columns",
+    ["Name", "Status", "Relationship", "Tags", "Last update"].every((h) => headers.includes(h)), JSON.stringify(headers));
+  const bodyText = await page.locator(".fo-table-scroll table tbody").innerText().catch(() => "");
+  niReport("No raw IDs: results show no account document id", F.accounts.every((a) => !bodyText.includes(a.id)), bodyText.slice(0, 160));
+  niReport("Last update is human-readable ('just now'/'ago'/'Unknown'), not a raw epoch", /just now|ago|Unknown/.test(bodyText), bodyText.slice(0, 160));
+
+  // ===== Navigation to Account Detail =====
+  await page.getByRole("link", { name: F.accounts[0].name, exact: true }).first().click();
+  const detailOk = await page.getByRole("heading", { name: "Commercial Profile", exact: true }).first().waitFor({ timeout: 10000 }).then(() => true).catch(() => false);
+  niReport("Navigation: clicking a customer opens /customers/:accountId (Account Detail)",
+    detailOk && new URL(page.url()).pathname.endsWith(`/customers/${F.accounts[0].id}`), page.url());
+
+  // ===== 375px layout =====
+  await page.goto(custUrl(""), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await page.locator(".fo-portfolio-cards").waitFor({ timeout: 10000 });
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.waitForTimeout(200);
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
+  niReport("Responsive: no horizontal overflow at 375px on the dashboard", overflow === false);
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  console.log(`\n${niPassed} passed, ${niFailed} failed`);
+  return niFailed === 0;
+}
+
+// Work Order Wizard (Platform Task 1) -- walks all four steps of the creation
+// wizard on the seeded WIZARD_FIXTURE account+location, asserting: the step
+// progress indicator (aria-current), visible field labels, the inline gating
+// hints (why a disabled Next is blocked), the review definition list, keyboard
+// advance, every create-error mapping, and 375px geometry. The create-error
+// cases intercept the createWorkOrder callable via page.route (no Functions
+// backend needed and none is deployed) and force each canonical error code, so
+// the message mapping is exercised deterministically end to end.
+async function verifyWoWizard(browser, page, accountKey) {
+  const F = WIZARD_FIXTURE;
+  const wizUrl = () => { const u = new URL("service/work-orders/new", APP_ROOT); u.searchParams.set("emulator", "1"); return u.toString(); };
+  const activeStepLabel = () => page.locator('.fo-wizard-step[aria-current="step"] .fo-wizard-step-label').innerText().catch(() => "");
+  const hintText = () => page.locator(".fo-wizard-hint").innerText().catch(() => "");
+  const nextBtn = () => page.getByRole("button", { name: "Next" });
+  const labelFor = (id) => page.locator(`label[for="${id}"]`).innerText().catch(() => "");
+
+  await login(page, accountKey);
+  await page.goto(wizUrl(), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await page.getByRole("heading", { name: "New Work Order" }).waitFor({ timeout: 10000 });
+
+  // ===== Step 1: Customer (progress + search-select) =====
+  niReport('Step 1 progress marks "Customer" active', (await activeStepLabel()) === "Customer");
+  niReport("Step 1 shows a guidance hint until a customer is chosen", (await hintText()).includes("select a customer"));
+  // Customer picker (customer-search visibility): type the full name, then pick
+  // the matching option from the listbox.
+  await page.locator("#wo-customer-search").fill(F.accountName);
+  await page.locator(".fo-customer-picker-option", { hasText: F.accountName }).first().waitFor({ timeout: 10000 });
+  await page.locator(".fo-customer-picker-option", { hasText: F.accountName }).first().click();
+
+  // ===== Step 2: Location (progress, gating hint, visible label, gate clears) =====
+  await page.getByRole("heading", { name: "Step 2: Location" }).waitFor({ timeout: 10000 });
+  niReport('Step 2 progress marks "Location" active', (await activeStepLabel()) === "Location");
+  // Wait for the per-account location listener to resolve so the select renders
+  // (until then useLocationsForAccount returns [] and the hint legitimately
+  // reads the empty-state message) -- then assert the select-a-location hint.
+  await page.locator("#wo-location").waitFor({ timeout: 10000 });
+  niReport('Step 2 gating hint explains the disabled Next ("Select a location")', (await hintText()) === "Select a location to continue.");
+  niReport("Step 2 Next is disabled before a location is chosen", await nextBtn().isDisabled());
+  niReport('Step 2 has a visible "Location" label bound to the select', (await labelFor("wo-location")) === "Location");
+  await page.locator("#wo-location").selectOption({ label: F.locationName });
+  await page.waitForTimeout(150);
+  niReport("Step 2 Next enables once a location is chosen", await nextBtn().isEnabled());
+  niReport("Step 2 gating hint clears once satisfied", (await hintText()) === "");
+  await nextBtn().click();
+
+  // ===== Step 3: Service Details (progress done/active, visible labels, gate) =====
+  await page.getByRole("heading", { name: "Step 3: Service Details" }).waitFor({ timeout: 10000 });
+  niReport('Step 3 progress marks "Service Details" active', (await activeStepLabel()) === "Service Details");
+  const doneCount = await page.locator(".fo-wizard-step-done").count();
+  niReport("Step 3 progress shows steps 1-2 as done", doneCount === 2, `done=${doneCount}`);
+  niReport('Step 3 visible label "Priority" bound to #wo-priority', (await labelFor("wo-priority")) === "Priority");
+  niReport('Step 3 visible label "Type" bound to #wo-type', (await labelFor("wo-type")) === "Type");
+  niReport('Step 3 visible label for Severity bound to #wo-severity', (await labelFor("wo-severity")).includes("Severity"));
+  niReport('Step 3 visible label for Complaint bound to #wo-complaint', (await labelFor("wo-complaint")).includes("Complaint"));
+  niReport('Step 3 gating hint requires a Type or Complaint', (await hintText()) === "Choose a Type, or enter a Complaint, to continue.");
+  niReport("Step 3 Next disabled with neither Type nor Complaint", await nextBtn().isDisabled());
+  await page.locator("#wo-type").selectOption("SERVICE_CALL");
+  await page.waitForTimeout(150);
+  niReport("Step 3 Next enables once a Type is chosen", await nextBtn().isEnabled());
+  niReport("Step 3 gating hint clears once satisfied", (await hintText()) === "");
+  // keyboard advance: focus Next and activate with Enter
+  await nextBtn().focus();
+  await page.keyboard.press("Enter");
+
+  // ===== Step 4: Review & Create (review dl) =====
+  await page.getByRole("heading", { name: "Step 4: Review & Create" }).waitFor({ timeout: 10000 });
+  niReport('Step 4 progress marks "Review & Create" active (reached via keyboard)', (await activeStepLabel()) === "Review & Create");
+  const reviewText = await page.locator(".fo-wizard-review").innerText().catch(() => "");
+  niReport("Step 4 review lists Customer / Location / Priority / Type with their values",
+    ["Customer", F.accountName, "Location", F.locationName, "Priority", "Type", "SERVICE_CALL"].every((t) => reviewText.includes(t)),
+    reviewText.replace(/\n/g, " | "));
+
+  // ===== 375px geometry (still on step 4, before any create attempt) =====
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.waitForTimeout(150);
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
+  niReport("Responsive: no horizontal overflow at 375px on the wizard", overflow === false);
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  // ===== Create-error mapping via callable interception =====
+  const cors = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  };
+  let currentResponse = null; // { http, canonical, message } or { success }
+  await page.route("**/createWorkOrder", async (route) => {
+    if (route.request().method() === "OPTIONS") {
+      return route.fulfill({ status: 204, headers: cors });
+    }
+    if (currentResponse?.success) {
+      return route.fulfill({ status: 200, headers: { ...cors, "Content-Type": "application/json" }, body: JSON.stringify({ result: currentResponse.result }) });
+    }
+    return route.fulfill({
+      status: currentResponse.http,
+      headers: { ...cors, "Content-Type": "application/json" },
+      body: JSON.stringify({ error: { status: currentResponse.canonical, message: currentResponse.message } }),
+    });
+  });
+
+  const errorText = () => page.locator(".fo-wizard-error").innerText().catch(() => "");
+  async function attemptCreate() {
+    await page.getByRole("button", { name: "Create Work Order" }).click();
+    await page.locator(".fo-wizard-error").waitFor({ timeout: 10000 }).catch(() => {});
+    await page.waitForTimeout(150);
+  }
+
+  currentResponse = { http: 400, canonical: "INVALID_ARGUMENT", message: "customerId is required." };
+  await attemptCreate();
+  niReport("Error: invalid-argument shows failed + the safe validation detail",
+    (await errorText()).includes("customerId is required."), await errorText());
+
+  currentResponse = { http: 401, canonical: "UNAUTHENTICATED", message: "auth required" };
+  await attemptCreate();
+  niReport("Error: unauthenticated shows a sign-in message",
+    (await errorText()).toLowerCase().includes("signed in"), await errorText());
+
+  currentResponse = { http: 403, canonical: "PERMISSION_DENIED", message: "nope" };
+  await attemptCreate();
+  niReport("Error: permission-denied shows an authorization message",
+    (await errorText()).toLowerCase().includes("permission"), await errorText());
+
+  currentResponse = { http: 503, canonical: "UNAVAILABLE", message: "down" };
+  await attemptCreate();
+  niReport("Error: unavailable shows the service-unavailable message",
+    (await errorText()).toLowerCase().includes("not currently available"), await errorText());
+
+  currentResponse = { http: 500, canonical: "INTERNAL", message: "RAW-INTERNAL-LEAK-9f3" };
+  await attemptCreate();
+  const internalMsg = await errorText();
+  niReport("Error: internal shows a clear failure/no-record message", /unexpected error|no work order was created/i.test(internalMsg), internalMsg);
+  niReport("Error: internal NEVER leaks the raw server detail", !internalMsg.includes("RAW-INTERNAL-LEAK-9f3"), internalMsg);
+
+  // ===== Real successful creation THROUGH the Functions emulator =====
+  // Remove all interception so the create hits the real createWorkOrder
+  // callable running in the Functions emulator (the signed-in admin passes its
+  // auth/role check; the wizard's inputs are valid), which writes a real
+  // fieldops_wos document and returns its id for the wizard to navigate to.
+  await page.unroute("**/createWorkOrder");
+  const beforeIds = new Set(
+    (await db.collection("fieldops_wos").where("customerId", "==", F.accountId).get()).docs.map((d) => d.id)
+  );
+  await page.getByRole("button", { name: "Create Work Order" }).click();
+  const navigated = await page
+    .waitForURL((u) => { const p = new URL(u).pathname; return /\/service\/work-orders\//.test(p) && !p.endsWith("/new"); }, { timeout: 20000 })
+    .then(() => true)
+    .catch(() => false);
+  niReport("Success: real createWorkOrder navigates to the created Work Order route", navigated, page.url());
+  const afterDocs = (await db.collection("fieldops_wos").where("customerId", "==", F.accountId).get()).docs.filter((d) => !beforeIds.has(d.id));
+  niReport("Success: a real Work Order document was created via the Functions emulator", afterDocs.length === 1, `new docs=${afterDocs.length}`);
+  const created = afterDocs[0]?.data() ?? {};
+  niReport("Success: the created Work Order carries the wizard's customer/location/type",
+    created.customerId === F.accountId && created.locationId === F.locationId && created.type === "SERVICE_CALL",
+    JSON.stringify({ customerId: created.customerId, locationId: created.locationId, type: created.type }));
+
+  console.log(`\n${niPassed} passed, ${niFailed} failed`);
+  return niFailed === 0;
+}
+
+// Customer Creation Overlay & form consistency. Exercises the reusable creation
+// overlay on /customers end to end: dialog semantics + focus trap + Escape/
+// focus-restore, a validation failure (keeps overlay open), a successful save
+// (overlay closes, hiding filter cleared, live subscription inserts the row,
+// success announced, focus moves to the new customer's name, no raw IDs), the
+// 375px full-screen overlay, the WCAG-AA filter-chip contrast fix, and a REAL
+// save failure via Rules (a dispatcher creating above the governed baseline is
+// denied -- overlay stays open, error shown inside). No fixture needed: the
+// success path creates its own customer; the failure path is denied and writes
+// nothing.
+async function verifyCustomerCreateOverlay(browser, page, accountKey) {
+  const listUrl = () => { const u = new URL("customers", APP_ROOT); u.searchParams.set("emulator", "1"); return u.toString(); };
+  const dialog = () => page.locator('[role="dialog"][aria-modal="true"]');
+  const newBtn = () => page.getByRole("button", { name: /New Customer/ });
+  const card = (label) =>
+    page.locator(".fo-portfolio-card").filter({ has: page.locator(".fo-portfolio-card-label", { hasText: new RegExp(`^${label}$`) }) }).first();
+  const nameInput = () => page.locator('input[placeholder="Customer name"]');
+  const uniqueName = `Overlay Customer ${Date.now()}`;
+  const focusInsideDialog = () => page.evaluate(() => {
+    const d = document.querySelector('[role="dialog"]');
+    return Boolean(d && d.contains(document.activeElement));
+  });
+
+  // ===== Open overlay: dialog semantics, no navigation, dashboard stays =====
+  await login(page, accountKey);
+  await page.goto(listUrl(), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await page.locator(".fo-portfolio-cards").waitFor({ timeout: 10000 });
+  const urlBefore = page.url();
+  await newBtn().click();
+  await dialog().waitFor({ timeout: 10000 });
+  niReport("New Customer opens a dialog (role=dialog, aria-modal=true)", await dialog().getAttribute("aria-modal") === "true");
+  niReport("Overlay opens without navigating (URL unchanged)", page.url() === urlBefore, page.url());
+  niReport("Dashboard remains rendered behind the overlay", (await page.locator(".fo-portfolio-cards").count()) > 0);
+  const titleId = await dialog().getAttribute("aria-labelledby");
+  const titleText = await dialog().locator(".fo-modal-title").innerText().catch(() => "");
+  const titleElemId = await dialog().locator(".fo-modal-title").getAttribute("id").catch(() => null);
+  niReport("Dialog has a visible title referenced by aria-labelledby",
+    /New Customer/.test(titleText) && Boolean(titleId) && titleId === titleElemId, `${titleText} / labelledby=${titleId} titleId=${titleElemId}`);
+  niReport("Initial focus is inside the dialog", await focusInsideDialog());
+
+  // ===== Focus trap: many Tabs stay inside =====
+  for (let i = 0; i < 15; i++) await page.keyboard.press("Tab");
+  niReport("Focus trap: Tab keeps focus within the dialog", await focusInsideDialog());
+
+  // ===== Escape closes + restores focus to New Customer =====
+  await page.keyboard.press("Escape");
+  await dialog().waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
+  niReport("Escape closes the overlay", (await dialog().count()) === 0);
+  niReport("Focus restored to the New Customer trigger after Escape",
+    await page.evaluate(() => (document.activeElement?.textContent || "").includes("New Customer")));
+
+  // ===== Set a hiding filter (Archived) so success must clear it =====
+  await card("Archived").click();
+  await page.waitForTimeout(150);
+  niReport("Precondition: Archived status filter is active", (await card("Archived").getAttribute("aria-pressed")) === "true");
+
+  // ===== Reopen: validation failure keeps overlay open, error inside =====
+  await newBtn().click();
+  await dialog().waitFor({ timeout: 10000 });
+  await nameInput().fill(uniqueName);
+  await page.locator("#cp-currency").fill("ZZ"); // invalid ISO 4217
+  await page.getByRole("button", { name: "Create Customer" }).click();
+  await page.waitForTimeout(300);
+  niReport("Validation failure keeps the overlay open", await dialog().isVisible());
+  niReport("Validation error shown inside the overlay",
+    await dialog().getByText(/Fix the highlighted/i).first().isVisible().catch(() => false));
+
+  // ===== Fix + successful save =====
+  await page.locator("#cp-currency").fill(""); // currency optional -> now valid
+  await page.getByRole("button", { name: "Create Customer" }).click();
+  await dialog().waitFor({ state: "detached", timeout: 10000 });
+  niReport("Successful save closes the overlay", (await dialog().count()) === 0);
+  niReport("Success announced in a live region", (await page.locator('.fo-sr-only[role="status"]').innerText().catch(() => "")).includes(uniqueName));
+  niReport("Hiding filter cleared so the new customer is visible (Total pressed)",
+    (await card("Total").getAttribute("aria-pressed")) === "true");
+  const newLink = page.getByRole("link", { name: uniqueName, exact: true });
+  await newLink.waitFor({ timeout: 10000 });
+  niReport("New customer inserted into the dashboard by the live subscription", await newLink.isVisible());
+  niReport("Focus moved to the new customer's resolved name",
+    await page.evaluate((n) => (document.activeElement?.textContent || "").trim() === n, uniqueName));
+
+  // ===== No raw IDs: the created account's document id is not shown as text =====
+  const createdSnap = await db.collection("accounts").where("name", "==", uniqueName).get();
+  const createdId = createdSnap.docs[0]?.id ?? "__none__";
+  const tableText = await page.locator(".fo-table-scroll table tbody").innerText().catch(() => "");
+  niReport("No raw IDs: the new customer's document id is not rendered", !tableText.includes(createdId), createdId);
+
+  // ===== 375px full-screen overlay, no horizontal overflow =====
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.waitForTimeout(150);
+  await newBtn().click();
+  await dialog().waitFor({ timeout: 10000 });
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
+  niReport("375px: overlay open with no horizontal overflow", overflow === false);
+  const fullScreen = await dialog().evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    return r.height >= window.innerHeight - 1 && r.width >= window.innerWidth - 1;
+  });
+  niReport("375px: overlay is full-screen", fullScreen === true);
+  await page.keyboard.press("Escape");
+  await dialog().waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.waitForTimeout(150);
+
+  // ===== Filter-chip contrast fix (WCAG-AA) =====
+  const contrast = (sel) => page.locator(sel).first().evaluate((el) => {
+    const cs = getComputedStyle(el);
+    const parse = (c) => (c.match(/\d+(\.\d+)?/g) || [0, 0, 0]).slice(0, 3).map(Number);
+    const lum = ([r, g, b]) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
+    const L1 = lum(parse(cs.color)), L2 = lum(parse(cs.backgroundColor));
+    const [hi, lo] = L1 > L2 ? [L1, L2] : [L2, L1];
+    return { color: cs.color, bg: cs.backgroundColor, ratio: (hi + 0.05) / (lo + 0.05) };
+  });
+  const relChip = page.getByRole("button", { name: "Customer", exact: true });
+  const unsel = await contrast(".fo-filter-chip");
+  niReport("Unselected filter chip meets WCAG-AA contrast (>=4.5)", unsel.ratio >= 4.5, `ratio=${unsel.ratio.toFixed(2)} (${unsel.color} on ${unsel.bg})`);
+  await relChip.click();
+  await page.waitForTimeout(100);
+  niReport("Selected chip gets the .fo-filter-chip-active class", await relChip.evaluate((el) => el.classList.contains("fo-filter-chip-active")));
+  const sel = await contrast(".fo-filter-chip-active");
+  niReport("Selected filter chip meets WCAG-AA contrast (>=4.5)", sel.ratio >= 4.5, `ratio=${sel.ratio.toFixed(2)} (${sel.color} on ${sel.bg})`);
+  await relChip.click(); // reset
+
+  // ===== REAL save failure: dispatcher creating above the governed baseline =====
+  // A fresh browser context (no persisted admin auth) so we can sign in as the
+  // dispatcher cleanly. Firestore Rules deny a dispatcher creating an Account
+  // with a non-baseline governed field, so the client write rejects -- the
+  // overlay must stay open with the error shown inside it.
+  const dispCtx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const dispPage = await dispCtx.newPage();
+  try {
+    const dDialog = () => dispPage.locator('[role="dialog"][aria-modal="true"]');
+    await login(dispPage, "ineligibleDispatcher");
+    await dispPage.goto(listUrl(), { waitUntil: "domcontentloaded", timeout: 20000 });
+    await dispPage.locator(".fo-panel").first().waitFor({ timeout: 10000 });
+    await dispPage.getByRole("button", { name: /New Customer/ }).click();
+    await dDialog().waitFor({ timeout: 10000 });
+    await dispPage.locator('input[placeholder="Customer name"]').fill(`Dispatcher Denied ${Date.now()}`);
+    await dispPage.locator("#cp-payment-terms").selectOption("NET_30"); // non-baseline -> dispatcher create denied by Rules
+    await dispPage.getByRole("button", { name: "Create Customer" }).click();
+    const saveErr = dDialog().locator(".fo-account-save-error");
+    await saveErr.waitFor({ timeout: 10000 }).catch(() => {});
+    niReport("Save failure (governed-field Rules deny) keeps the overlay open", await dDialog().isVisible());
+    niReport("Save error is shown inside the overlay", await saveErr.isVisible().catch(() => false));
+    niReport("Save error is the permission message (no raw error leaked)",
+      /permission/i.test(await saveErr.innerText().catch(() => "")));
+  } finally {
+    await dispCtx.close();
+  }
+
+  console.log(`\n${niPassed} passed, ${niFailed} failed`);
+  return niFailed === 0;
+}
+
+// Platform Task 2 -- Group Service navigation. Verifies the two-level Service
+// sub-nav for admin / dispatcher / technician (fresh contexts, since Firebase
+// Auth persists): per-role group + child visibility (never broadened), group
+// landing behavior, direct-URL parent/child selection + active states, keyboard
+// operation, the retired /service/control-tower redirect (Task 3), and 375px stacked
+// layout. Uses only existing seeded accounts.
+async function verifyServiceNav(browser, page, accountKey) {
+  const svcUrl = (tail = "") => { const u = new URL(`service${tail ? `/${tail}` : ""}`, APP_ROOT); u.searchParams.set("emulator", "1"); return u.toString(); };
+  const group = (p, label) => p.locator(`[role="group"][aria-label="${label}"]`);
+  const childActive = (p, name) => p.getByRole("link", { name, exact: true }).first().evaluate((el) => el.classList.contains("fo-nav-btn-active"));
+  const groupActive = (p, label) => group(p, label).evaluate((el) => el.classList.contains("fo-nav-group-active"));
+  const linkVisible = (p, name) => p.getByRole("link", { name, exact: true }).first().isVisible().catch(() => false);
+  const linkCount = (p, name) => p.getByRole("link", { name, exact: true }).count();
+
+  async function withRole(acctKey, fn) {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    const p = await ctx.newPage();
+    try { await login(p, acctKey); await fn(p); } finally { await ctx.close(); }
+  }
+
+  // ===== ADMIN (primary page) =====
+  await login(page, accountKey);
+  await page.goto(svcUrl(""), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await page.locator(".fo-service-subnav").waitFor({ timeout: 10000 });
+  niReport("Service sub-nav is a labelled two-level nav", (await page.locator('nav.fo-service-subnav[aria-label="Service sections"]').count()) === 1);
+  for (const g of ["Work Management", "Dispatch", "Technician Workspace"]) {
+    niReport(`Admin: "${g}" group is present`, (await group(page, g).count()) === 1);
+  }
+  for (const c of ["Work Orders", "Job Assignments", "Warranty", "Dispatcher Board", "Scheduling", "Dispatch Queue", "Technician Workspace"]) {
+    niReport(`Admin: child/link "${c}" is visible`, await linkVisible(page, c));
+  }
+  // Platform Task 3 -- Control Tower is no longer a Service child (promoted to
+  // the top-level Service Operations area; see verify-service-operations).
+  niReport("Admin: Control Tower is NOT in the Service sub-nav (promoted to Service Operations)",
+    (await page.locator(".fo-service-subnav").getByRole("link", { name: "Control Tower", exact: true }).count()) === 0);
+  niReport('Admin: "Dispatch" (renamed from Dispatch) label gone from children; "Dispatch Queue" present',
+    (await linkCount(page, "Dispatch")) === 1 && (await linkVisible(page, "Dispatch Queue")));
+
+  // Active state on /service: Work Management group + Work Orders child active.
+  niReport("Active: on /service, Work Management group is active", await groupActive(page, "Work Management"));
+  niReport("Active: on /service, Work Orders child is active", await childActive(page, "Work Orders"));
+
+  // Group landing behavior: clicking the "Dispatch" group header lands on Dispatcher Board.
+  await page.getByRole("link", { name: "Dispatch", exact: true }).click();
+  await page.waitForURL(/\/service\/dispatcher-board/, { timeout: 10000 });
+  niReport("Group landing: clicking the Dispatch group header navigates to /service/dispatcher-board", /\/service\/dispatcher-board/.test(page.url()));
+  // Wait for the client-side re-render to apply the active classes.
+  await group(page, "Dispatch").locator(":scope.fo-nav-group-active").waitFor({ timeout: 5000 }).catch(() => {});
+  niReport("Group landing: Dispatch group becomes active", await groupActive(page, "Dispatch"));
+  niReport("Group landing: Dispatcher Board child is active", await childActive(page, "Dispatcher Board"));
+
+  // Direct URL selects the correct parent group + child.
+  await page.goto(svcUrl("scheduling"), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await page.locator(".fo-service-subnav").waitFor({ timeout: 10000 });
+  niReport("Direct URL /service/scheduling: Dispatch group active", await groupActive(page, "Dispatch"));
+  niReport("Direct URL /service/scheduling: Scheduling child active", await childActive(page, "Scheduling"));
+  niReport("Direct URL: Work Management group is NOT active", !(await groupActive(page, "Work Management")));
+
+  // Keyboard: focus the Warranty child and activate with Enter.
+  const warranty = page.getByRole("link", { name: "Warranty", exact: true }).first();
+  await warranty.focus();
+  niReport("Keyboard: a child link is focusable", await warranty.evaluate((el) => el === document.activeElement));
+  await page.keyboard.press("Enter");
+  await page.waitForURL(/\/service\/warranty/, { timeout: 10000 });
+  niReport("Keyboard: Enter on a focused child navigates", /\/service\/warranty/.test(page.url()));
+  await group(page, "Work Management").locator(":scope.fo-nav-group-active").waitFor({ timeout: 5000 }).catch(() => {});
+  niReport("Keyboard: Work Management group active after navigating to Warranty", await groupActive(page, "Work Management"));
+
+  // Platform Task 3 -- the retired /service/control-tower now redirects to the
+  // top-level /service-operations (no longer a Service child).
+  await page.goto(svcUrl("control-tower"), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await page.waitForURL(/\/service-operations$/, { timeout: 10000 }).catch(() => {});
+  niReport("Retired /service/control-tower redirects to /service-operations", new URL(page.url()).pathname.endsWith("/service-operations"));
+
+  // 375px: stacked, no horizontal overflow.
+  await page.goto(svcUrl(""), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await page.locator(".fo-service-subnav").waitFor({ timeout: 10000 });
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.waitForTimeout(150);
+  niReport("375px: no horizontal overflow with the grouped Service nav",
+    (await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1)));
+  niReport("375px: Service sub-nav stacks (column direction)",
+    (await page.locator(".fo-service-subnav").evaluate((el) => getComputedStyle(el).flexDirection)) === "column");
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  // ===== DISPATCHER: Work Management + Dispatch, NO Technician Workspace group =====
+  await withRole("ineligibleDispatcher", async (p) => {
+    await p.goto(svcUrl(""), { waitUntil: "domcontentloaded", timeout: 20000 });
+    await p.locator(".fo-service-subnav").waitFor({ timeout: 10000 });
+    niReport("Dispatcher: Work Management group present", (await group(p, "Work Management").count()) === 1);
+    niReport("Dispatcher: Dispatch group present", (await group(p, "Dispatch").count()) === 1);
+    niReport("Dispatcher: Technician Workspace group HIDDEN (no fieldMode access)", (await group(p, "Technician Workspace").count()) === 0);
+    niReport("Dispatcher: Control Tower NOT in the Service sub-nav (promoted to Service Operations)",
+      (await p.locator(".fo-service-subnav").getByRole("link", { name: "Control Tower", exact: true }).count()) === 0);
+  });
+
+  // ===== TECHNICIAN: narrow scope preserved, never broadened =====
+  await withRole("technicianPartsAssociate", async (p) => {
+    // /service has no index route for a technician (Work Orders is admin/dispatcher-only),
+    // so inspect the grouped sub-nav at a route the technician can actually reach.
+    await p.goto(svcUrl("job-assignments"), { waitUntil: "domcontentloaded", timeout: 20000 });
+    await p.locator(".fo-service-subnav").waitFor({ timeout: 10000 });
+    niReport("Technician: Work Management group present", (await group(p, "Work Management").count()) === 1);
+    niReport("Technician: Work Management shows Job Assignments", await linkVisible(p, "Job Assignments"));
+    niReport("Technician: Work Orders NOT shown", (await linkCount(p, "Work Orders")) === 0);
+    niReport("Technician: Warranty NOT shown", (await linkCount(p, "Warranty")) === 0);
+    niReport("Technician: Dispatch group HIDDEN", (await group(p, "Dispatch").count()) === 0);
+    niReport("Technician: Dispatcher Board NOT shown", (await linkCount(p, "Dispatcher Board")) === 0);
+    niReport("Technician: Technician Workspace group present", (await group(p, "Technician Workspace").count()) === 1);
+    niReport("Technician: Control Tower NOT shown (fails closed, no broadening)", (await linkCount(p, "Control Tower")) === 0);
+    niReport("Technician: Job Assignments child is active", await childActive(p, "Job Assignments"));
+    niReport("Technician: Work Management group is active", await groupActive(p, "Work Management"));
+  });
+
+  console.log(`\n${niPassed} passed, ${niFailed} failed`);
+  return niFailed === 0;
+}
+
+// Platform Task 3 -- Service Operations top-level area. Verifies the promoted
+// top-level tab for admin/dispatcher, that it renders the (renamed) Control
+// Tower content, the retired /service/control-tower redirect, Control Tower's
+// removal from the Service sub-nav, the Dashboard "Inventory & Supply Overview"
+// relabel, active top-level state, keyboard, technician fail-closed, and 375px.
+// Fresh contexts per role (Firebase Auth persists).
+async function verifyServiceOperations(browser, page, accountKey) {
+  const url = (path) => { const u = new URL(path, APP_ROOT); u.searchParams.set("emulator", "1"); return u.toString(); };
+  const topTab = (p, name) => p.locator('nav[aria-label="Primary"]').getByRole("link", { name, exact: true });
+  const mainHeading = (p, name) => p.locator("main").getByRole("heading", { name, exact: true });
+
+  async function withRole(acctKey, fn) {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    const p = await ctx.newPage();
+    try { await login(p, acctKey); await fn(p); } finally { await ctx.close(); }
+  }
+
+  // ===== ADMIN =====
+  await login(page, accountKey);
+  await page.goto(url("service-operations"), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await page.locator("main .fo-panel").first().waitFor({ timeout: 10000 });
+  niReport("Admin: Service Operations is a top-level tab", (await topTab(page, "Service Operations").count()) > 0);
+  niReport("Admin: on /service-operations the top-level tab is active (aria-current=page)",
+    (await topTab(page, "Service Operations").first().getAttribute("aria-current")) === "page");
+  niReport("Admin: renders the Control Tower functionality with the renamed 'Service Operations' heading",
+    await mainHeading(page, "Service Operations").first().isVisible());
+  niReport("Admin: Control Tower content is present ('Technician Load')",
+    await page.locator("main").getByText("Technician Load", { exact: false }).first().isVisible().catch(() => false));
+
+  // ===== Retired /service/control-tower redirect =====
+  await page.goto(url("service/control-tower"), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await page.waitForURL(/\/service-operations$/, { timeout: 10000 }).catch(() => {});
+  niReport("Retired /service/control-tower redirects to /service-operations",
+    new URL(page.url()).pathname.endsWith("/service-operations"));
+  niReport("Redirect lands on the Service Operations content", await mainHeading(page, "Service Operations").first().isVisible());
+
+  // ===== Control Tower removed from the Service sub-nav =====
+  await page.goto(url("service"), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await page.locator(".fo-service-subnav").waitFor({ timeout: 10000 });
+  niReport("Control Tower removed from the Service sub-nav",
+    (await page.locator(".fo-service-subnav").getByRole("link", { name: "Control Tower", exact: true }).count()) === 0);
+
+  // ===== Dashboard relabel =====
+  await page.goto(url("dashboard"), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await page.locator(".fo-subnav").first().waitFor({ timeout: 10000 });
+  niReport("Dashboard shows 'Inventory & Supply Overview'",
+    await page.getByRole("link", { name: "Inventory & Supply Overview", exact: true }).first().isVisible());
+  niReport("Dashboard no longer shows 'Operations Dashboard'",
+    (await page.getByRole("link", { name: "Operations Dashboard", exact: true }).count()) === 0);
+
+  // ===== Keyboard: focus + Enter on the Service Operations tab =====
+  const soTab = topTab(page, "Service Operations").first();
+  await soTab.focus();
+  niReport("Keyboard: the Service Operations tab is focusable", await soTab.evaluate((el) => el === document.activeElement));
+  await page.keyboard.press("Enter");
+  await page.waitForURL(/\/service-operations$/, { timeout: 10000 });
+  niReport("Keyboard: Enter on the Service Operations tab navigates", /\/service-operations$/.test(page.url()));
+
+  // ===== 375px =====
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.waitForTimeout(150);
+  niReport("375px: no horizontal overflow on /service-operations",
+    await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1));
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  // ===== DISPATCHER: has access =====
+  await withRole("ineligibleDispatcher", async (p) => {
+    await p.goto(url("service-operations"), { waitUntil: "domcontentloaded", timeout: 20000 });
+    await p.locator("main .fo-panel").first().waitFor({ timeout: 10000 });
+    niReport("Dispatcher: Service Operations tab present", (await topTab(p, "Service Operations").count()) > 0);
+    niReport("Dispatcher: /service-operations renders the content", await mainHeading(p, "Service Operations").first().isVisible());
+  });
+
+  // ===== TECHNICIAN: fails closed =====
+  await withRole("technicianPartsAssociate", async (p) => {
+    await p.goto(url("service-operations"), { waitUntil: "domcontentloaded", timeout: 20000 });
+    await p.waitForTimeout(500);
+    niReport("Technician: no Service Operations top-level tab", (await topTab(p, "Service Operations").count()) === 0);
+    niReport("Technician: /service-operations fails closed (redirected off it, to /dashboard)",
+      /\/dashboard/.test(p.url()) && !/\/service-operations/.test(p.url()));
+    niReport("Technician: the Service Operations content is NOT rendered",
+      (await mainHeading(p, "Service Operations").count()) === 0);
+  });
+
+  console.log(`\n${niPassed} passed, ${niFailed} failed`);
+  return niFailed === 0;
+}
+
+// Work Order wizard -- Customer picker (customer-search visibility). Reproduces
+// the screenshot: typing "test" on Step 1 must visibly render the expected
+// customers with their status, safe secondary line, and location details --
+// including two identically named "Test Plumbing Co" accounts told apart by
+// billing + location, a "No locations" customer whose secondary falls back to
+// its customer number, and a "+N more locations" overflow. Also asserts the
+// never-blank states, combobox/listbox semantics, keyboard selection, no raw
+// IDs, and 375px no-overflow, then that selecting continues into Step 2.
+async function verifyCustomerPicker(browser, page, accountKey) {
+  const F = WO_CUSTOMER_SEARCH_FIXTURE;
+  const wizUrl = () => { const u = new URL("service/work-orders/new", APP_ROOT); u.searchParams.set("emulator", "1"); return u.toString(); };
+  const input = () => page.locator("#wo-customer-search");
+  const dropdown = () => page.locator(".fo-customer-picker-dropdown");
+  const options = () => page.locator(".fo-customer-picker-option");
+  const optionByName = (name) => options().filter({ has: page.locator(".fo-customer-picker-name", { hasText: new RegExp(`^${name}$`) }) });
+
+  await login(page, accountKey);
+  await page.goto(wizUrl(), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await input().waitFor({ timeout: 10000 });
+
+  // ===== Combobox semantics before typing =====
+  niReport("Picker input is a combobox (role + aria-controls + aria-autocomplete)",
+    (await input().getAttribute("role")) === "combobox" && Boolean(await input().getAttribute("aria-controls")) && (await input().getAttribute("aria-autocomplete")) === "list");
+  niReport("Combobox collapsed before typing (aria-expanded=false)", (await input().getAttribute("aria-expanded")) === "false");
+
+  // ===== Typing "test" immediately renders visible matching results =====
+  await input().fill("test");
+  await optionByName("Testerson Electric").first().waitFor({ timeout: 10000 });
+  niReport("Typing 'test' expands the combobox (aria-expanded=true)", (await input().getAttribute("aria-expanded")) === "true");
+  niReport("Dropdown + listbox render", (await dropdown().count()) === 1 && (await page.locator('[role="listbox"]').count()) === 1);
+  const names = await page.locator(".fo-customer-picker-name").allInnerTexts();
+  for (const expected of ["Test Plumbing Co", "Testerson Electric", "Best Test Services"]) {
+    niReport(`Result "${expected}" is visibly shown`, names.includes(expected));
+  }
+  niReport("Never blank: a status line is present (aria-live)",
+    (await page.locator('.fo-customer-picker-status[role="status"]').innerText().catch(() => "")).length > 0);
+  // The status transitions "Searching customers…" -> "N customers found" once the
+  // batched location query resolves; wait for it to settle before asserting count.
+  await page.locator(".fo-customer-picker-status").filter({ hasText: /found/ }).waitFor({ timeout: 10000 }).catch(() => {});
+  niReport("Result-count announcement reflects the matches", /customers? found/.test(await page.locator(".fo-customer-picker-status").innerText().catch(() => "")));
+
+  // ===== Duplicate names distinguishable by billing city/state + locations =====
+  const dupOpts = optionByName("Test Plumbing Co");
+  niReport("Two identically named 'Test Plumbing Co' results are shown", (await dupOpts.count()) === 2);
+  const dupTexts = await dupOpts.allInnerTexts();
+  const denver = dupTexts.find((t) => /Denver, CO/.test(t));
+  const austin = dupTexts.find((t) => /Austin, TX/.test(t));
+  niReport("Duplicate #1 distinguished by Denver, CO + its locations (Main Shop)", Boolean(denver) && /Main Shop/.test(denver));
+  niReport("Duplicate #2 distinguished by Austin, TX + its location (Austin HQ)", Boolean(austin) && /Austin HQ/.test(austin));
+
+  // ===== "No locations" + customer-number fallback (Testerson Electric) =====
+  const testerson = await optionByName("Testerson Electric").first().innerText();
+  niReport("No-location customer shows 'No locations'", /No locations/.test(testerson));
+  niReport("No-billing customer's secondary falls back to its customer number", /Customer #: TEST-9001/.test(testerson));
+
+  // ===== "+N more locations" overflow (Best Test Services has 4) =====
+  const bts = await optionByName("Best Test Services").first().innerText();
+  niReport("Customer with many locations shows a '+N more locations' overflow", /\+\d+ more location/.test(bts));
+
+  // ===== No raw IDs anywhere in the dropdown =====
+  const dropText = await dropdown().innerText();
+  const rawIds = [...F.accounts.map((a) => a.id), ...F.accounts.flatMap((a) => a.locations.map((l) => l.id))];
+  niReport("No raw account/location IDs are displayed", rawIds.every((id) => !dropText.includes(id)), dropText.slice(0, 160));
+
+  // ===== Location-query error state + retry recovery =====
+  // Pre-error: locations loaded successfully (so we can prove stale removal).
+  await page.locator(".fo-customer-picker-status").filter({ hasText: /found/ }).waitFor({ timeout: 10000 }).catch(() => {});
+  niReport("Pre-error: a real location detail is shown (Main Shop)",
+    (await dropdown().getByText("Main Shop", { exact: false }).count()) > 0);
+  // Force the batched locations query to fail TERMINALLY: rewrite its collection
+  // to a read-denied one (`counters`, `allow read: if false`) so onSnapshot's
+  // error callback fires (permission-denied) -- a real error, not a retryable
+  // abort. Accounts are already loaded, so results still render.
+  const failLocations = (route) => {
+    const pd = route.request().postData() || "";
+    if (pd.includes("collectionId%22%3A%22locations")) return route.continue({ postData: pd.replaceAll("%22locations%22", "%22counters%22") });
+    return route.continue();
+  };
+  await page.route("**/Listen/channel**", failLocations);
+  // Re-issue the same search as a fresh candidate query (clear then retype).
+  await input().fill("");
+  await input().fill("test");
+  await page.locator(".fo-customer-picker-status").filter({ hasText: /try again/ }).waitFor({ timeout: 12000 });
+  const errStatus = await page.locator(".fo-customer-picker-status").innerText();
+  niReport("Query error: distinct safe status copy appears (loading -> error)", /Couldn.t load customer locations — try again\./.test(errStatus), errStatus.replace(/\n/g, " "));
+  niReport("Query error: NOT stuck on 'Searching customers…'", !/Searching customers/.test(errStatus));
+  niReport("Query error: an explicit Retry control is offered", (await page.getByRole("button", { name: "Retry" }).count()) > 0);
+  niReport("Query error: per-result shows 'Locations unavailable', and NEVER 'No locations'",
+    (await dropdown().getByText("Locations unavailable").count()) > 0 && (await dropdown().getByText("No locations", { exact: true }).count()) === 0);
+  niReport("Query error: stale locations removed (previous 'Main Shop' gone)",
+    (await dropdown().getByText("Main Shop", { exact: false }).count()) === 0);
+  const errText = await dropdown().innerText();
+  niReport("Query error: customer results remain usable + distinguishable (names + Denver,CO / Austin,TX)",
+    (await page.locator(".fo-customer-picker-name").count()) >= 3 && /Denver, CO/.test(errText) && /Austin, TX/.test(errText));
+  niReport("Query error: no raw error details / IDs leaked",
+    rawIds.every((id) => !errText.includes(id)) && !/permission|denied|counters|firestore|undefined|\[object/i.test(errText), errText.slice(0, 160));
+  // Retry recovers (deterministic, user-initiated -- no auto-retry loop).
+  await page.unroute("**/Listen/channel**", failLocations);
+  await page.getByRole("button", { name: "Retry" }).click();
+  await page.locator(".fo-customer-picker-status").filter({ hasText: /found/ }).waitFor({ timeout: 12000 });
+  niReport("Retry recovers: status returns to 'N customers found'", /customers? found/.test(await page.locator(".fo-customer-picker-status").innerText()));
+  niReport("Retry recovers: a real location detail is shown again (Main Shop)",
+    (await dropdown().getByText("Main Shop", { exact: false }).count()) > 0);
+  niReport("Retry recovers: no 'Locations unavailable' remains", (await dropdown().getByText("Locations unavailable").count()) === 0);
+  niReport("Retry recovers: 'No locations' returns for the genuinely empty customer (success-only)",
+    (await optionByName("Testerson Electric").first().innerText()).includes("No locations"));
+
+  // ===== "No customers found" state =====
+  await input().fill("zzzzz-no-such-customer");
+  await page.waitForTimeout(300);
+  niReport('Unmatched query shows "No customers found"', /No customers found/.test(await page.locator(".fo-customer-picker-status").innerText().catch(() => "")));
+
+  // ===== Keyboard: Arrow + Enter selects and advances to Step 2 =====
+  await input().fill("Test Plumbing");
+  await optionByName("Test Plumbing Co").first().waitFor({ timeout: 10000 });
+  await input().focus();
+  await page.keyboard.press("ArrowDown");
+  niReport("ArrowDown marks an option active (aria-activedescendant set)", Boolean(await input().getAttribute("aria-activedescendant")));
+  const activeSelected = await page.locator('.fo-customer-picker-option[aria-selected="true"]').count();
+  niReport("Active option has aria-selected=true (listbox semantics)", activeSelected === 1);
+  await page.keyboard.press("Enter");
+  await page.getByRole("heading", { name: "Step 2: Location" }).waitFor({ timeout: 10000 });
+  niReport("Keyboard selection advances into the existing Step 2 Location workflow",
+    (await page.getByRole("heading", { name: "Step 2: Location" }).count()) === 1);
+  niReport("Step 2 shows the chosen customer name (selection carried through)",
+    /Test Plumbing Co/.test(await page.locator(".fo-wizard-context").innerText().catch(() => "")));
+
+  // ===== Escape closes the dropdown (back on step 1) =====
+  await page.goto(wizUrl(), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await input().waitFor({ timeout: 10000 });
+  await input().fill("test");
+  await dropdown().waitFor({ timeout: 10000 });
+  await input().press("Escape");
+  await page.waitForTimeout(150);
+  niReport("Escape closes the dropdown and clears the query", (await dropdown().count()) === 0 && (await input().inputValue()) === "");
+
+  // ===== 375px: dropdown open, no horizontal overflow =====
+  await input().fill("test");
+  await dropdown().waitFor({ timeout: 10000 });
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.waitForTimeout(150);
+  niReport("375px: customer picker dropdown has no horizontal overflow",
+    await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1));
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  // ===== Responsive geometry + horizontal scaling across viewports (Issue #212) =====
+  // Measures the Step-1 picker with "test" results open at each target viewport.
+  // Records actual widths so scaling is proven with numbers, not a tautology:
+  // the Step-1 panel uses nearly all available PARENT content width, grows past
+  // the old 560px cap, and stops at the ~896px readable maximum; the dropdown
+  // matches the input edges, stays within the viewport, lets ONLY the result list
+  // scroll, wraps rows, and never gives the wizard panel its own scrollbar.
+  const measure = () => page.evaluate(() => {
+    const inp = document.querySelector("#wo-customer-search").getBoundingClientRect();
+    const dd = document.querySelector(".fo-customer-picker-dropdown");
+    const ddr = dd.getBoundingClientRect();
+    const panel = document.querySelector(".fo-wizard-panel");
+    const panelR = panel.getBoundingClientRect();
+    const parent = panel.parentElement; // .fo-panel.fo-wizard
+    const ppcs = getComputedStyle(parent);
+    const parentContentWidth = parent.clientWidth - parseFloat(ppcs.paddingLeft) - parseFloat(ppcs.paddingRight);
+    const list = document.querySelector(".fo-customer-picker-list");
+    const pcs = getComputedStyle(panel);
+    const listcs = list ? getComputedStyle(list) : {};
+    let optOverflow = false;
+    document.querySelectorAll(".fo-customer-picker-option").forEach((o) => { if (o.scrollWidth > o.clientWidth + 1) optOverflow = true; });
+    return {
+      ddWidth: Math.round(ddr.width),
+      inputWidth: Math.round(inp.width),
+      panelWidth: Math.round(panelR.width),
+      parentContentWidth: Math.round(parentContentWidth),
+      edgeMatch: Math.abs(Math.round(inp.x) - Math.round(ddr.x)) <= 1 && Math.abs(Math.round(inp.right) - Math.round(ddr.right)) <= 1,
+      inViewport: ddr.top >= -1 && ddr.bottom <= window.innerHeight + 1,
+      wholeDropdownScrolls: dd.scrollHeight > dd.clientHeight + 1,
+      listIsScroller: !list || (listcs.overflowY === "auto" || listcs.overflowY === "scroll"),
+      panelHasScrollbar: panel.scrollHeight > panel.clientHeight + 1 && pcs.overflowY !== "visible",
+      pageHOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+      optOverflow,
+    };
+  });
+  const READABLE_MAX = 896; // ~56rem
+  const OLD_CAP = 560;
+  const W = {};
+  for (const [w, h] of [[375, 667], [768, 600], [1024, 768], [1366, 768], [1440, 900]]) {
+    await page.setViewportSize({ width: w, height: h });
+    await input().fill("test");
+    await dropdown().waitFor({ timeout: 10000 });
+    await page.waitForTimeout(250);
+    const m = await measure();
+    W[w] = m;
+    console.log(`  [scale] ${w}x${h}: pickerW=${m.ddWidth} inputW=${m.inputWidth} step1PanelW=${m.panelWidth} parentContentW=${m.parentContentWidth}`);
+    niReport(`${w}x${h}: input/dropdown edges match exactly`, m.edgeMatch);
+    // Step-1 panel = the available parent content width, capped at the readable
+    // max (56rem ~= 896px). So it uses nearly all width on tablet/small desktop
+    // and stops at the readable ceiling on wide screens.
+    {
+      const expected = Math.min(m.parentContentWidth, READABLE_MAX);
+      niReport(`${w}x${h}: Step-1 panel = min(available parent content, readable max)`,
+        Math.abs(m.panelWidth - expected) <= 4, `panel=${m.panelWidth} expected=${expected} (parent=${m.parentContentWidth}, cap=${READABLE_MAX})`);
+    }
+    niReport(`${w}x${h}: dropdown width equals the input width`, Math.abs(m.ddWidth - m.inputWidth) <= 2, `dd=${m.ddWidth} inp=${m.inputWidth}`);
+    niReport(`${w}x${h}: dropdown stays within the visible viewport`, m.inViewport);
+    niReport(`${w}x${h}: only the result list scrolls (dropdown itself does not)`, !m.wholeDropdownScrolls && m.listIsScroller);
+    niReport(`${w}x${h}: wizard panel gains no internal scrollbar from the dropdown`, !m.panelHasScrollbar);
+    niReport(`${w}x${h}: option rows wrap without clipping`, !m.optOverflow);
+  }
+  // Scaling proof (numbers, not a tautology):
+  niReport(`Scaling: picker width strictly increases 375 < 768 < 1024 (${W[375].ddWidth} < ${W[768].ddWidth} < ${W[1024].ddWidth})`,
+    W[375].ddWidth < W[768].ddWidth && W[768].ddWidth < W[1024].ddWidth);
+  niReport(`Scaling: 768 grows past the old 560px cap (${W[768].ddWidth} > ${OLD_CAP})`, W[768].ddWidth > OLD_CAP);
+  niReport(`Scaling: 1024 grows past the old 560px cap (${W[1024].ddWidth} > ${OLD_CAP})`, W[1024].ddWidth > OLD_CAP);
+  niReport(`Scaling: 1366 stays at/below the readable max (${W[1366].ddWidth} <= ${READABLE_MAX})`, W[1366].ddWidth <= READABLE_MAX + 1);
+  niReport(`Scaling: 1440 stays at/below the readable max (${W[1440].ddWidth} <= ${READABLE_MAX})`, W[1440].ddWidth <= READABLE_MAX + 1);
+  niReport("Scaling: picker introduces no page horizontal overflow at 375px", W[375].pageHOverflow === false);
+
+  // keyboard: at a viewport where the list scrolls, ArrowDown to the last option
+  // and confirm it is scrolled into view WITHIN the list (not off-screen).
+  await page.setViewportSize({ width: 768, height: 600 });
+  await input().fill("test");
+  await dropdown().waitFor({ timeout: 10000 });
+  await page.waitForTimeout(200);
+  const optCount = await page.locator(".fo-customer-picker-option").count();
+  for (let i = 0; i < optCount; i++) await input().press("ArrowDown");
+  await page.waitForTimeout(150);
+  const activeInView = await page.evaluate(() => {
+    const active = document.querySelector(".fo-customer-picker-option-active");
+    const list = document.querySelector(".fo-customer-picker-list");
+    if (!active || !list) return false;
+    const a = active.getBoundingClientRect(), l = list.getBoundingClientRect();
+    return a.top >= l.top - 1 && a.bottom <= l.bottom + 1; // within the list's visible scroll area
+  });
+  niReport("Keyboard: ArrowDown scrolls the active option into view inside the result list", activeInView);
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  console.log(`\n${niPassed} passed, ${niFailed} failed`);
+  return niFailed === 0;
+}
+
+// CRM/Sales top-level area (Issue #208). Verifies the top-level Customer -> CRM/
+// Sales nav rename end to end: exactly ONE top-level tab named "CRM/Sales" and
+// never a "Customers" top-level tab; admin + dispatcher see it, technician is
+// fail-closed; the /customers and /customers/:accountId routes, the retained
+// "Customers" subnav/list, retired-path redirects, keyboard + active-state, and
+// 375px layout all still work.
+async function verifyCrmSalesNav(browser, page, accountKey) {
+  const custUrl = (suffix = "") => { const u = new URL(`customers${suffix}`, APP_ROOT); u.searchParams.set("emulator", "1"); return u.toString(); };
+  const dashUrl = () => { const u = new URL("dashboard", APP_ROOT); u.searchParams.set("emulator", "1"); return u.toString(); };
+  const primary = (p) => p.locator('nav[aria-label="Primary"]');
+  const crmTab = (p) => primary(p).getByRole("link", { name: "CRM/Sales", exact: true });
+  const custTopTab = (p) => primary(p).getByRole("link", { name: "Customers", exact: true });
+
+  // ===== ADMIN =====
+  await login(page, accountKey);
+  await primary(page).waitFor({ timeout: 10000 });
+  niReport("Admin: exactly one top-level 'CRM/Sales' tab", (await crmTab(page).count()) === 1);
+  niReport("Admin: NO top-level 'Customers' tab (never both)", (await custTopTab(page).count()) === 0);
+  niReport("Admin: CRM/Sales tab points at the /customers route", ((await crmTab(page).getAttribute("href")) || "").includes("/customers"));
+
+  await crmTab(page).click();
+  await page.locator(".fo-portfolio-cards").waitFor({ timeout: 10000 });
+  niReport("Admin: CRM/Sales opens the Customer dashboard at /customers", new URL(page.url()).pathname.endsWith("/customers"), page.url());
+  const cls = (await crmTab(page).getAttribute("class")) || "";
+  const cur = await crmTab(page).getAttribute("aria-current");
+  niReport("Admin: active-tab state on CRM/Sales", /fo-nav-btn-active/.test(cls) || cur === "page", `class="${cls}" aria-current=${cur}`);
+  niReport("Admin: subnav retains the 'Customers' list entry", (await page.locator("nav.fo-subnav").getByRole("link", { name: "Customers", exact: true }).count()) >= 1);
+  niReport("Admin: accessible primary nav label present", (await page.locator('nav[aria-label="Primary"]').count()) === 1);
+
+  // keyboard: from another route, focus + Enter activates CRM/Sales
+  await page.goto(dashUrl(), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await primary(page).waitFor({ timeout: 10000 });
+  await crmTab(page).focus();
+  niReport("Admin/keyboard: CRM/Sales tab is focusable", await crmTab(page).evaluate((el) => el === document.activeElement));
+  await page.keyboard.press("Enter");
+  await page.locator(".fo-portfolio-cards").waitFor({ timeout: 10000 });
+  niReport("Admin/keyboard: Enter on CRM/Sales navigates to the dashboard", new URL(page.url()).pathname.endsWith("/customers"), page.url());
+
+  // direct routes preserved (wait for the live subscription to render, not an
+  // instantaneous isVisible right after domcontentloaded)
+  await page.goto(custUrl(""), { waitUntil: "domcontentloaded", timeout: 20000 });
+  niReport("Direct /customers still renders the Customer dashboard",
+    await page.locator(".fo-portfolio-cards").waitFor({ timeout: 10000 }).then(() => true).catch(() => false));
+  await page.goto(customerUrl(SERVICE_ACTIVITY_FIXTURE.accountId), { waitUntil: "domcontentloaded", timeout: 20000 });
+  niReport("Direct /customers/:accountId still renders Customer Detail",
+    await page.getByRole("heading", { name: "Commercial Profile", exact: true }).first().waitFor({ timeout: 10000 }).then(() => true).catch(() => false));
+
+  // retired/legacy paths still redirect to /customers (not reintroduced as pages)
+  for (const p of ["contacts", "locations", "equipment", "service-history"]) {
+    await page.goto(custUrl(`/${p}`), { waitUntil: "domcontentloaded", timeout: 20000 });
+    await page.waitForTimeout(200);
+    const ok = new URL(page.url()).pathname.endsWith("/customers") && (await page.locator(".fo-portfolio-cards").isVisible().catch(() => false));
+    niReport(`Retired /customers/${p} redirects to /customers`, ok, page.url());
+  }
+
+  // 375px
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto(custUrl(""), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await primary(page).waitFor({ timeout: 10000 });
+  niReport("375px: CRM/Sales tab present", (await crmTab(page).count()) === 1);
+  niReport("375px: no horizontal overflow", await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1));
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  // ===== DISPATCHER (fresh context) =====
+  const dctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const dpage = await dctx.newPage();
+  try {
+    await login(dpage, "ineligibleDispatcher");
+    await primary(dpage).waitFor({ timeout: 10000 });
+    niReport("Dispatcher: sees exactly one 'CRM/Sales' tab", (await crmTab(dpage).count()) === 1);
+    niReport("Dispatcher: NO top-level 'Customers' tab", (await custTopTab(dpage).count()) === 0);
+  } finally {
+    await dctx.close();
+  }
+
+  // ===== TECHNICIAN (fresh context, fail-closed) =====
+  const tctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const tpage = await tctx.newPage();
+  try {
+    await login(tpage, "technicianPartsAssociate");
+    await primary(tpage).waitFor({ timeout: 10000 });
+    niReport("Technician: does NOT see the CRM/Sales tab (fail-closed)", (await crmTab(tpage).count()) === 0);
+    niReport("Technician: does NOT see a 'Customers' tab either", (await custTopTab(tpage).count()) === 0);
+    await tpage.goto(custUrl(""), { waitUntil: "domcontentloaded", timeout: 20000 });
+    await tpage.waitForTimeout(300);
+    niReport("Technician: direct /customers is fail-closed (no dashboard)",
+      !(await tpage.locator(".fo-portfolio-cards").isVisible().catch(() => false)));
+  } finally {
+    await tctx.close();
+  }
 
   console.log(`\n${niPassed} passed, ${niFailed} failed`);
   return niFailed === 0;
@@ -1502,6 +3477,58 @@ async function main() {
     } else if (command === "verify-financial-summary") {
       const [accountKey = "admin"] = args;
       const ok = await verifyFinancialSummary(browser, page, accountKey);
+      if (!ok) process.exitCode = 1;
+    } else if (command === "verify-history") {
+      const [accountKey = "admin"] = args;
+      const ok = await verifyHistory(browser, page, accountKey);
+      if (!ok) process.exitCode = 1;
+    } else if (command === "verify-commercial-profile") {
+      const [accountKey = "admin"] = args;
+      const ok = await verifyCommercialProfile(browser, page, accountKey);
+      if (!ok) process.exitCode = 1;
+    } else if (command === "verify-governed-fields") {
+      const [accountKey = "admin"] = args;
+      const ok = await verifyGovernedFields(browser, page, accountKey);
+      if (!ok) process.exitCode = 1;
+    } else if (command === "verify-account-form-layout") {
+      const [accountKey = "admin"] = args;
+      const ok = await verifyAccountFormLayout(browser, page, accountKey);
+      if (!ok) process.exitCode = 1;
+    } else if (command === "verify-financial-forecast") {
+      const [accountKey = "admin"] = args;
+      const ok = await verifyFinancialForecast(browser, page, accountKey);
+      if (!ok) process.exitCode = 1;
+    } else if (command === "verify-customer-nav-cleanup") {
+      const [accountKey = "admin"] = args;
+      const ok = await verifyCustomerNavCleanup(browser, page, accountKey);
+      if (!ok) process.exitCode = 1;
+    } else if (command === "verify-customer-dashboard") {
+      const [accountKey = "admin"] = args;
+      const ok = await verifyCustomerDashboard(browser, page, accountKey);
+      if (!ok) process.exitCode = 1;
+    } else if (command === "verify-crm-sales-nav") {
+      const [accountKey = "admin"] = args;
+      const ok = await verifyCrmSalesNav(browser, page, accountKey);
+      if (!ok) process.exitCode = 1;
+    } else if (command === "verify-service-operations") {
+      const [accountKey = "admin"] = args;
+      const ok = await verifyServiceOperations(browser, page, accountKey);
+      if (!ok) process.exitCode = 1;
+    } else if (command === "verify-service-nav") {
+      const [accountKey = "admin"] = args;
+      const ok = await verifyServiceNav(browser, page, accountKey);
+      if (!ok) process.exitCode = 1;
+    } else if (command === "verify-customer-create-overlay") {
+      const [accountKey = "admin"] = args;
+      const ok = await verifyCustomerCreateOverlay(browser, page, accountKey);
+      if (!ok) process.exitCode = 1;
+    } else if (command === "verify-customer-picker") {
+      const [accountKey = "admin"] = args;
+      const ok = await verifyCustomerPicker(browser, page, accountKey);
+      if (!ok) process.exitCode = 1;
+    } else if (command === "verify-wo-wizard") {
+      const [accountKey = "admin"] = args;
+      const ok = await verifyWoWizard(browser, page, accountKey);
       if (!ok) process.exitCode = 1;
     } else {
       console.error(`Unknown command "${command}". See the header comment in this file for usage.`);

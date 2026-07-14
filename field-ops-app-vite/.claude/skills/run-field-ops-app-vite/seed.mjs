@@ -63,6 +63,27 @@ export const DRIVER_ACCOUNTS = {
   // reach the "All Assigned Work" UI to click through -- this is why the
   // check is a direct SDK-level listener assertion, not a browser one).
   queryFailureProbe: { email: "driver-query-failure-probe@example.test", password: "driver-pass-123", uid: null },
+  // Issue #100 (docs/specifications/inventory-nav-access-alignment.md,
+  // docs/implementation-plans/inventory-nav-access-alignment.md, PR 0)
+  // -- five fixtures exercising role=technician + operationalRoles
+  // combinations no existing account produces (every prior fixture
+  // deliberately avoids seeding a real role=technician account for
+  // Inventory scenarios -- see eligiblePartsManager's own comment
+  // above and SKILL.md's Gotchas). PR 0 itself adds no nav/route/Rules
+  // change that consumes these -- they exist so PR 1a/1b/2a/2b/3a/3b's
+  // browser/SDK-level coverage has real accounts to sign in as.
+  technicianPartsManager: { email: "driver-technician-parts-manager@example.test", password: "driver-pass-123", uid: null },
+  technicianWarehouseManager: { email: "driver-technician-warehouse-manager@example.test", password: "driver-pass-123", uid: null },
+  technicianPartsAssociate: { email: "driver-technician-parts-associate@example.test", password: "driver-pass-123", uid: null },
+  // Ineligible: real reciprocal Employee link, ACTIVE, but zero
+  // eligible operationalRoles -- must be denied every capability the
+  // three eligible fixtures above satisfy.
+  technicianIneligible: { email: "driver-technician-ineligible@example.test", password: "driver-pass-123", uid: null },
+  // Broken linkage: users/{uid}.employeeId points at an employees
+  // document that is never created -- proves fail-closed behavior for
+  // an unresolved/broken link specifically, not merely an empty
+  // operationalRoles array.
+  technicianBrokenLink: { email: "driver-technician-broken-link@example.test", password: "driver-pass-123", uid: null },
 };
 
 async function ensureAuthUser(acct) {
@@ -202,6 +223,418 @@ export const SERVICE_ACTIVITY_FIXTURE = {
     "CANCELLED", // 13 -- oldest; in the timeline, excluded from counts
   ],
 };
+
+// Inventory Operational Queue, PR C (docs/specifications/inventory-
+// operational-queue.md) -- Reorder Request History. One real catalog
+// part reused across every fixture row (History never dedupes by part,
+// so this is deliberate, not an oversight); `statuses` is index-0 =
+// NEWEST, createdAt staggered so index 0 has the largest timestamp --
+// same "index-0-is-newest" convention SERVICE_ACTIVITY_FIXTURE already
+// established, for the same reason (driver.mjs derives exact expected
+// ordering/counts from this array directly, no magic numbers). 14 items,
+// matching HISTORY_PAGE_SIZE (10) with page 1 = indices 0-9 and page 2 =
+// indices 10-13 -- enough to exercise bounded-first-page, cursor Load
+// More, and end-of-history all in one fixture. All four terminal
+// statuses (CANCELLED/VOIDED/RECEIVED/REJECTED) appear at least twice.
+export const HISTORY_FIXTURE = {
+  partId: "TST-1012",
+  pageSize: 10,
+  requestIdPrefix: "driver-seed-history",
+  // Index 6 (RECEIVED) is deliberately NOT on the first page (indices
+  // 0-9 ARE on the first page for pageSize 10 -- see below) -- reused as
+  // the "on second page" exact-id-lookup case; index 13 is the oldest,
+  // deliberately used as the "definitely not loaded without Load More"
+  // case for the SAME assertion, kept for whichever is more convenient
+  // in driver.mjs.
+  statuses: [
+    "CANCELLED", // 0 -- newest, first page
+    "VOIDED", // 1
+    "RECEIVED", // 2
+    "REJECTED", // 3
+    "CANCELLED", // 4
+    "VOIDED", // 5
+    "RECEIVED", // 6
+    "REJECTED", // 7
+    "CANCELLED", // 8
+    "VOIDED", // 9 -- last item on the first page (indices 0-9, pageSize 10)
+    "RECEIVED", // 10 -- first item that requires Load More
+    "REJECTED", // 11
+    "CANCELLED", // 12
+    "VOIDED", // 13 -- oldest
+  ],
+};
+
+// Account Commercial Profile -- PR 1 (docs/specifications/
+// account-commercial-profile-and-financial-forecast-horizons.md). Three
+// Accounts exercising the informational Commercial Profile + identity
+// display, plus one Employee the owner references so the directory resolves
+// a CURRENT name (deliberately DIFFERENT from the stored snapshot, to prove
+// re-resolution isn't merely echoing the persisted snapshot):
+//   - resolved: every field set; billingContact is a real Contact ON the
+//               Account; accountOwner links to ownerEmployee (resolves to a
+//               current name). Its stored assignedToDisplayName is a stale
+//               snapshot the UI must NOT surface.
+//   - unknown:  accountOwner links to a userId with NO Employee, and
+//               billingContact references a Contact NOT on the Account -- so
+//               both resolve to "Unknown ..." after a COMPLETED lookup.
+//   - edit:     no profile yet; drives the edit round-trip (as a resolved-
+//               assignor dispatcher) and the unresolved-assignor fail-closed
+//               check (as the admin account, whose users/{uid} has no
+//               employeeId, so its assignor identity never resolves).
+export const COMMERCIAL_PROFILE_FIXTURE = {
+  resolvedAccountId: "acct-cp-resolved",
+  unknownAccountId: "acct-cp-unknown",
+  editAccountId: "acct-cp-edit",
+  ownerEmployee: { employeeId: "cp-owner-emp", userId: "cp-owner-user", displayName: "Commercial Owner" },
+  resolvedBillingContact: { id: "cp-contact-1", name: "Billing Contact Person" },
+  editBillingContact: { id: "cp-edit-contact-1", name: "Edit Billing Contact" },
+  ghostOwnerUserId: "cp-owner-ghost-user-no-employee",
+  foreignContactId: "cp-foreign-contact-not-on-this-account",
+  staleOwnerSnapshotName: "Commercial Owner (STALE snapshot)",
+};
+
+// Account Commercial Profile -- PR 2 (docs/specifications/
+// account-commercial-profile-and-financial-forecast-horizons.md). Two
+// Accounts for the GOVERNED enum fields (paymentTerms/taxStatus). Neither
+// carries an accountOwner or billingContact, so the edit form validates with
+// only the governed fields in play -- letting driver.mjs's verify-governed-
+// fields exercise the Rules-layer admin-only-edit denial cleanly (a
+// dispatcher changing paymentTerms is rejected by Rules, not by the UI
+// hiding the field):
+//   - governed:     paymentTerms + taxStatus + a currency both set, for the
+//                   admin render check AND the dispatcher rules-denial check.
+//   - safeDefault:  a currency set but NO taxStatus stored, proving the
+//                   absent => UNKNOWN safe-default render (never TAXABLE).
+export const GOVERNED_FIELDS_FIXTURE = {
+  governedAccountId: "acct-governed-fields",
+  safeDefaultAccountId: "acct-governed-safe-default",
+  paymentTerms: "NET_30",
+  taxStatus: "EXEMPT",
+};
+
+// Customer Results Dashboard -- four accounts spanning every status and both
+// relationship shapes, all carrying the unique `sharedTag` (so a tag filter
+// isolates exactly these four regardless of other fixtures), plus `soloTag` on
+// ONLY the Active one (so an Archived + soloTag combo is a guaranteed
+// filtered-no-results case). Statuses use the ACCOUNT_STATUS display values.
+export const DASHBOARD_FIXTURE = {
+  sharedTag: "DashboardTest",
+  soloTag: "DashOnlyTag",
+  accounts: [
+    { id: "dash-active-customer", name: "Dash Active Customer", status: "Active", relationshipTypes: ["CUSTOMER"], tags: ["DashboardTest", "DashOnlyTag"] },
+    { id: "dash-prospect-vendor", name: "Dash Prospect Vendor", status: "Prospect", relationshipTypes: ["VENDOR"], tags: ["DashboardTest"] },
+    { id: "dash-inactive-both", name: "Dash Inactive Both", status: "Inactive", relationshipTypes: ["CUSTOMER", "VENDOR"], tags: ["DashboardTest"] },
+    { id: "dash-archived-none", name: "Dash Archived None", status: "Archived", relationshipTypes: [], tags: ["DashboardTest"] },
+  ],
+};
+
+// Demo Customers -- ten deterministic, emulator-only Accounts for the Customer
+// Results Dashboard, spanning every status (4 Active / 3 Prospect / 2 Inactive
+// / 1 Archived), all four relationship shapes (Customer / Vendor / both /
+// unset), and varied tags, billing addresses, notes, external identifiers,
+// currencies, purchaseOrderRequired flags, invoice delivery methods, payment
+// terms, and tax statuses. Several intentionally omit optional fields.
+//
+// Every value is a valid enum: status = ACCOUNT_STATUS display value;
+// relationshipTypes in {CUSTOMER, VENDOR}; defaultCurrency a valid ISO 4217
+// code (domain/commercialProfile.js's ISO_4217_CURRENCIES); invoiceDeliveryMethod
+// in INVOICE_DELIVERY_METHOD; paymentTerms in PAYMENT_TERMS; taxStatus in
+// TAX_STATUS (domain/constants.js). billingAddress is the {street,city,state,zip}
+// shape AccountForm/AccountDetail read; the four external-identifier fields
+// (customerNumber/erpId/accountingId/legacyId) render with their own labels in
+// AccountDetail -- never a raw Firestore document id.
+//
+// DELIBERATELY avoids DASHBOARD_FIXTURE's sharedTag ("DashboardTest") and
+// soloTag ("DashOnlyTag") and uses its OWN unique document ids/names, so
+// verify-customer-dashboard's tag-filter assertions (which expect exactly the
+// four DASHBOARD_FIXTURE accounts for "DashboardTest", and zero for
+// Archived + "DashOnlyTag") are unaffected. The dashboard's status/total card
+// counts are derived LIVE from the whole accounts collection by driver.mjs, so
+// these extra accounts are absorbed automatically -- no driver.mjs change is
+// needed or made. `ageMs` is how long ago the account was "last updated"
+// (updatedAt = now - ageMs), staggered so "Last update" spans just now /
+// minutes / hours / days / months / years; createdAt is set a little older
+// still. Timestamps are Date.now() epoch-ms numbers -- the same convention
+// domain/accounts.js writes and formatLastUpdate() reads.
+const _MIN = 60_000;
+const _HOUR = 60 * _MIN;
+const _DAY = 24 * _HOUR;
+const _MONTH = 30 * _DAY;
+const _YEAR = 365 * _DAY;
+
+export const DEMO_CUSTOMERS = [
+  {
+    id: "demo-cust-01-summit-mechanical",
+    name: "Summit Mechanical Services",
+    status: "Active",
+    relationshipTypes: ["CUSTOMER"],
+    tags: ["Priority", "HVAC"],
+    billingAddress: { street: "1420 Ridgeline Dr", city: "Denver", state: "CO", zip: "80202" },
+    notes: "Preferred service partner; quarterly maintenance contract.",
+    customerNumber: "SMS-1001",
+    defaultCurrency: "USD",
+    purchaseOrderRequired: true,
+    invoiceDeliveryMethod: "EMAIL",
+    paymentTerms: "NET_30",
+    taxStatus: "TAXABLE",
+    ageMs: 5 * _MIN,
+  },
+  {
+    id: "demo-cust-02-harbor-point",
+    name: "Harbor Point Logistics",
+    status: "Active",
+    relationshipTypes: ["CUSTOMER", "VENDOR"], // both
+    tags: ["Logistics", "National"],
+    billingAddress: { street: "88 Wharf St", city: "Seattle", state: "WA", zip: "98101" },
+    notes: "Buys and supplies; dual relationship account.",
+    erpId: "ERP-88213",
+    defaultCurrency: "USD",
+    purchaseOrderRequired: true,
+    invoiceDeliveryMethod: "PORTAL",
+    paymentTerms: "NET_60",
+    taxStatus: "EXEMPT",
+    ageMs: 3 * _HOUR,
+  },
+  {
+    id: "demo-cust-03-cedar-valley-foods",
+    name: "Cedar Valley Foods",
+    status: "Active",
+    relationshipTypes: ["VENDOR"],
+    tags: ["Food Service"],
+    billingAddress: { street: "77 Orchard Rd", city: "Toronto", state: "ON", zip: "M5H 2N2" },
+    // notes intentionally absent
+    // no external identifier intentionally absent
+    defaultCurrency: "CAD",
+    purchaseOrderRequired: false,
+    invoiceDeliveryMethod: "MAIL",
+    paymentTerms: "NET_90",
+    taxStatus: "RESELLER",
+    ageMs: 4 * _DAY,
+  },
+  {
+    id: "demo-cust-04-northwind-traders",
+    name: "Northwind Traders",
+    status: "Active",
+    relationshipTypes: [], // unset relationship
+    tags: ["Retail", "Seasonal"],
+    billingAddress: { street: "500 Market Ave", city: "Boston", state: "MA", zip: "02110" },
+    notes: "Seasonal ordering; no relationship classification yet.",
+    accountingId: "QB-4471",
+    defaultCurrency: "EUR",
+    purchaseOrderRequired: true,
+    invoiceDeliveryMethod: "EDI",
+    paymentTerms: "COD",
+    taxStatus: "TAXABLE",
+    ageMs: 30_000, // just now (< 1 min)
+  },
+  {
+    id: "demo-cust-05-blue-ridge-property",
+    name: "Blue Ridge Property Group",
+    status: "Prospect",
+    relationshipTypes: ["CUSTOMER"],
+    tags: ["Real Estate"],
+    billingAddress: { street: "9 Summit Ct", city: "Asheville", state: "NC", zip: "28801" },
+    notes: "Evaluating a facilities-wide service agreement.",
+    defaultCurrency: "USD",
+    purchaseOrderRequired: false,
+    invoiceDeliveryMethod: "EMAIL",
+    // paymentTerms + taxStatus intentionally absent (prospect, not yet set)
+    ageMs: 2 * _MONTH,
+  },
+  {
+    id: "demo-cust-06-pacific-coast-supply",
+    name: "Pacific Coast Supply Co",
+    status: "Prospect",
+    relationshipTypes: ["VENDOR"],
+    tags: ["Wholesale", "West Coast"],
+    billingAddress: { street: "310 Cannery Row", city: "Monterey", state: "CA", zip: "93940" },
+    // notes intentionally absent
+    legacyId: "LEG-2007",
+    defaultCurrency: "GBP",
+    purchaseOrderRequired: true,
+    invoiceDeliveryMethod: "PORTAL",
+    paymentTerms: "NET_30",
+    taxStatus: "UNKNOWN",
+    ageMs: 9 * _DAY,
+  },
+  {
+    id: "demo-cust-07-ironclad-manufacturing",
+    name: "Ironclad Manufacturing",
+    status: "Prospect",
+    relationshipTypes: ["CUSTOMER", "VENDOR"], // both
+    tags: ["Manufacturing"],
+    // Deliberately minimal: no billingAddress, notes, external id, or any
+    // commercial-profile field -- exercises the "many absent optional fields"
+    // display path end to end.
+    ageMs: 2 * _YEAR,
+  },
+  {
+    id: "demo-cust-08-maple-leaf-distributors",
+    name: "Maple Leaf Distributors",
+    status: "Inactive",
+    relationshipTypes: ["CUSTOMER"],
+    tags: ["Dormant"],
+    billingAddress: { street: "215 Birchwood Blvd", city: "Sydney", state: "NSW", zip: "2000" },
+    notes: "Account dormant since last contract lapsed.",
+    customerNumber: "MLD-556",
+    defaultCurrency: "AUD",
+    purchaseOrderRequired: false,
+    invoiceDeliveryMethod: "MAIL",
+    paymentTerms: "NET_60",
+    taxStatus: "EXEMPT",
+    ageMs: 5 * _MONTH,
+  },
+  {
+    id: "demo-cust-09-old-town-hardware",
+    name: "Old Town Hardware",
+    status: "Inactive",
+    relationshipTypes: [], // unset relationship
+    // tags intentionally absent
+    billingAddress: { street: "42 Main St", city: "Savannah", state: "GA", zip: "31401" },
+    notes: "Legacy walk-in account; retained for history.",
+    defaultCurrency: "USD",
+    purchaseOrderRequired: false,
+    // no invoiceDeliveryMethod / paymentTerms / taxStatus intentionally absent
+    ageMs: 3 * _YEAR,
+  },
+  {
+    id: "demo-cust-10-legacy-freight",
+    name: "Legacy Freight Systems",
+    status: "Archived",
+    relationshipTypes: ["VENDOR"],
+    tags: ["Archived", "Closed"],
+    billingAddress: { street: "1 Depot Way", city: "Kansas City", state: "MO", zip: "64101" },
+    notes: "Relationship closed; archived for audit trail.",
+    erpId: "ERP-00019",
+    defaultCurrency: "JPY",
+    purchaseOrderRequired: true,
+    invoiceDeliveryMethod: "EDI",
+    paymentTerms: "NET_90",
+    taxStatus: "TAXABLE",
+    ageMs: 4 * _YEAR,
+  },
+];
+
+// Customer Results Dashboard -- seeds the ten DEMO_CUSTOMERS via the Admin SDK
+// (bypasses the client-gated accounts rules, same as every other fixture here).
+// Only fields actually present on each fixture object are written -- absent
+// optional fields are genuinely omitted (never written as null), so the
+// dashboard/detail exercise their real "field absent" rendering. createdAt is
+// staggered a little older than updatedAt for realism.
+async function seedDemoCustomersFixture() {
+  const now = Date.now();
+  for (const c of DEMO_CUSTOMERS) {
+    const { id, ageMs, ...fields } = c;
+    const updatedAt = now - ageMs;
+    const createdAt = updatedAt - 30 * _DAY; // created a month before its last update
+    await db.doc(`accounts/${id}`).set({ ...fields, createdAt, updatedAt });
+  }
+}
+
+// Work Order Wizard (Platform Task 1) -- ONE Account that has exactly one
+// Location, so the driver's verify-wo-wizard can walk all four steps of the
+// creation wizard (Step 2 requires a selectable location to advance). Seeded
+// via the Admin SDK like every other fixture. Deliberately its own dedicated
+// account (not reused from DASHBOARD/DEMO, which have no locations) with a
+// distinctive, searchable name so GlobalSearch resolves it unambiguously in
+// Step 1. Adds no reorder/inventory data.
+export const WIZARD_FIXTURE = {
+  accountId: "acct-wo-wizard",
+  accountName: "Wizard Test Customer",
+  locationId: "wo-wizard-loc-1",
+  locationName: "Wizard Main Site",
+};
+
+async function seedWizardFixture() {
+  const now = Date.now();
+  await db.doc(`accounts/${WIZARD_FIXTURE.accountId}`).set({
+    name: WIZARD_FIXTURE.accountName,
+    status: "Active",
+    relationshipTypes: ["CUSTOMER"],
+    createdAt: now,
+    updatedAt: now,
+  });
+  await db.doc(`locations/${WIZARD_FIXTURE.locationId}`).set({
+    accountId: WIZARD_FIXTURE.accountId,
+    name: WIZARD_FIXTURE.locationName,
+    createdAt: now,
+    updatedAt: now,
+  });
+}
+
+// Work Order wizard -- Customer picker (customer-search visibility). Accounts
+// that all match "test", exercising every result state the picker must show:
+//   - two IDENTICALLY named "Test Plumbing Co" accounts distinguished ONLY by
+//     billing city/state + their location context (the duplicate-name case);
+//   - "Testerson Electric" with NO billing address and NO locations -> secondary
+//     line falls back to its external customer number, locations show "No
+//     locations";
+//   - "Best Test Services" with FOUR locations -> "+N more locations" overflow.
+// Each carries its own `locations` (accountId-scoped) so the picker's ONE
+// batched `accountId in [...]` query resolves them. Distinctive ids; realistic
+// names; no raw ids surfaced by the UI.
+export const WO_CUSTOMER_SEARCH_FIXTURE = {
+  accounts: [
+    {
+      id: "wocs-test-plumbing-denver",
+      name: "Test Plumbing Co",
+      status: "Active",
+      billingAddress: { street: "1420 Ridgeline Dr", city: "Denver", state: "CO", zip: "80202" },
+      locations: [
+        { id: "wocs-loc-tpden-main", name: "Main Shop", address: { city: "Denver", state: "CO" } },
+        { id: "wocs-loc-tpden-north", name: "North Yard", address: { city: "Boulder", state: "CO" } },
+      ],
+    },
+    {
+      id: "wocs-test-plumbing-austin",
+      name: "Test Plumbing Co", // duplicate name -- distinguished by billing + location
+      status: "Prospect",
+      billingAddress: { street: "88 Congress Ave", city: "Austin", state: "TX", zip: "73301" },
+      locations: [{ id: "wocs-loc-tpaus-hq", name: "Austin HQ", address: { city: "Austin", state: "TX" } }],
+    },
+    {
+      id: "wocs-testerson-electric",
+      name: "Testerson Electric",
+      status: "Active",
+      customerNumber: "TEST-9001", // no billingAddress -> secondary falls back to this
+      locations: [], // no locations -> "No locations"
+    },
+    {
+      id: "wocs-best-test-services",
+      name: "Best Test Services",
+      status: "Active",
+      billingAddress: { street: "9 Biscayne Blvd", city: "Miami", state: "FL", zip: "33101" },
+      locations: [
+        { id: "wocs-loc-bts-a", name: "Airport Depot", address: { city: "Miami", state: "FL" } },
+        { id: "wocs-loc-bts-b", name: "Brickell Office", address: { city: "Miami", state: "FL" } },
+        { id: "wocs-loc-bts-c", name: "Coral Gables Yard", address: { city: "Coral Gables", state: "FL" } },
+        { id: "wocs-loc-bts-d", name: "Doral Warehouse", address: { city: "Doral", state: "FL" } },
+      ],
+    },
+  ],
+};
+
+async function seedWoCustomerSearchFixture() {
+  const now = Date.now();
+  for (const a of WO_CUSTOMER_SEARCH_FIXTURE.accounts) {
+    const { id, locations, ...fields } = a;
+    await db.doc(`accounts/${id}`).set({
+      ...fields,
+      relationshipTypes: ["CUSTOMER"],
+      createdAt: now,
+      updatedAt: now,
+    });
+    for (const loc of locations) {
+      await db.doc(`locations/${loc.id}`).set({
+        accountId: id,
+        name: loc.name,
+        ...(loc.address ? { address: loc.address } : {}),
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+  }
+}
 
 async function seedReorderRequestFixture(docId, { partId, status, currentOwner, assignedToUserId, createdAt }) {
   const isCancelled = status === "CANCELLED";
@@ -528,6 +961,267 @@ async function seedServiceActivityFixture() {
   );
 }
 
+// Inventory Operational Queue, PR C -- Reorder Request History. Reuses
+// seedReorderRequestFixture() (above) directly -- History's fixture is
+// structurally the same "one reorder_requests document" shape every
+// other fixture in this file already writes, just with a terminal
+// `status` and no `currentOwner`/`assignedToUserId` (no owner/assignee
+// -- once a request reaches a terminal status, it isn't queued for
+// anyone anymore). `createdAt` staggered so HISTORY_FIXTURE.statuses'
+// index 0 is the newest, matching that constant's own documented
+// index-0-is-newest convention.
+export async function seedHistoryFixture() {
+  // History has no per-entity scope (unlike Service Activity's
+  // accountId filter) -- it queries the WHOLE reorder_requests
+  // collection for terminal statuses, so it correctly, legitimately
+  // also surfaces OTHER fixtures' terminal-status documents (e.g.
+  // NOTIFICATION_IDENTITY_FIXTURE's "-terminal" CANCELLED siblings,
+  // always seeded a few moments before this function runs in seed()'s
+  // own call order). A large forward offset (not just Date.now())
+  // guarantees every item in this 14-row, 60s-staggered fixture sorts
+  // newer than anything else seeded moments earlier in the same run,
+  // so driver.mjs's exact-order assertions aren't contaminated by that
+  // legitimate cross-fixture overlap -- this is a fixture-ordering
+  // concern only, not something the application needs to know or care
+  // about (a real production reorder_requests collection has exactly
+  // this same "many unrelated terminal requests, ordered by real
+  // createdAt" shape).
+  const base = Date.now() + 1_000_000;
+  await Promise.all(
+    HISTORY_FIXTURE.statuses.map((status, i) =>
+      seedReorderRequestFixture(`${HISTORY_FIXTURE.requestIdPrefix}-${String(i).padStart(2, "0")}`, {
+        partId: HISTORY_FIXTURE.partId,
+        status,
+        currentOwner: null,
+        assignedToUserId: null,
+        createdAt: base - i * 60_000,
+      })
+    )
+  );
+}
+
+// Account Commercial Profile -- PR 1. Seeds the three Accounts + owner
+// Employee + Contacts the COMMERCIAL_PROFILE_FIXTURE describes. All via the
+// Admin SDK (bypasses the client-gated accounts/contacts/employees rules,
+// same as every other fixture here). The owner Employee is ACTIVE with a
+// linked userId so it is BOTH directory-resolvable (useEmployeeDirectory)
+// AND selectable in the edit form's picker (buildAssignableEmployeesQuery:
+// employmentStatus ACTIVE + userId != null).
+async function seedCommercialProfileFixture() {
+  const now = Date.now();
+  const F = COMMERCIAL_PROFILE_FIXTURE;
+
+  await db.doc(`employees/${F.ownerEmployee.employeeId}`).set({
+    employeeId: F.ownerEmployee.employeeId,
+    displayName: F.ownerEmployee.displayName,
+    employmentStatus: "ACTIVE",
+    operationalRoles: ["PARTS_ASSOCIATE"],
+    userId: F.ownerEmployee.userId,
+    securityRole: "dispatcher",
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  await db.doc(`contacts/${F.resolvedBillingContact.id}`).set({
+    accountId: F.resolvedAccountId,
+    name: F.resolvedBillingContact.name,
+    isPrimary: true,
+    createdAt: now,
+    updatedAt: now,
+  });
+  await db.doc(`contacts/${F.editBillingContact.id}`).set({
+    accountId: F.editAccountId,
+    name: F.editBillingContact.name,
+    isPrimary: true,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  // A COMPLETE assignor snapshot (resolved Employee), reused by the two
+  // pre-populated accounts so their accountOwner is itself a valid, complete
+  // Person Assignment -- the display/identity states under test are about the
+  // ASSIGNEE resolving or not, independent of the assignor.
+  const completeAssignor = {
+    assignedByEmployeeId: "driver-emp-parts-manager",
+    assignedByUserId: DRIVER_ACCOUNTS.eligiblePartsManager.uid,
+    assignedByDisplayName: "Driver Parts Manager",
+  };
+
+  await db.doc(`accounts/${F.resolvedAccountId}`).set({
+    name: "Resolved Profile Co",
+    status: "Active",
+    relationshipTypes: ["CUSTOMER"],
+    defaultCurrency: "USD",
+    purchaseOrderRequired: true,
+    invoiceDeliveryMethod: "EMAIL",
+    billingContact: { contactId: F.resolvedBillingContact.id },
+    accountOwner: {
+      assignedToEmployeeId: F.ownerEmployee.employeeId,
+      assignedToUserId: F.ownerEmployee.userId,
+      assignedToDisplayName: F.staleOwnerSnapshotName, // stored snapshot; UI must show the CURRENT name instead
+      ...completeAssignor,
+      assignedAt: now,
+    },
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  await db.doc(`accounts/${F.unknownAccountId}`).set({
+    name: "Unknown Profile Co",
+    status: "Active",
+    relationshipTypes: ["CUSTOMER"],
+    defaultCurrency: "GBP",
+    purchaseOrderRequired: false,
+    invoiceDeliveryMethod: "MAIL",
+    billingContact: { contactId: F.foreignContactId }, // no Contact with this id on this Account
+    accountOwner: {
+      assignedToEmployeeId: "cp-owner-ghost-emp",
+      assignedToUserId: F.ghostOwnerUserId, // no Employee links to this userId
+      assignedToDisplayName: "Ghost Owner (snapshot only)",
+      ...completeAssignor,
+      assignedAt: now,
+    },
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  await db.doc(`accounts/${F.editAccountId}`).set({
+    name: "Editable Profile Co",
+    status: "Active",
+    relationshipTypes: ["CUSTOMER"],
+    createdAt: now,
+    updatedAt: now,
+  });
+}
+
+// Account Commercial Profile -- PR 2. Seeds the two GOVERNED_FIELDS_FIXTURE
+// Accounts via the Admin SDK (bypasses the client-gated accounts rules, same
+// as every other fixture here). Deliberately NO accountOwner/billingContact
+// on either -- see the fixture's header comment for why (clean Rules-denial
+// exercise in the edit form).
+async function seedGovernedFieldsFixture() {
+  const now = Date.now();
+  const F = GOVERNED_FIELDS_FIXTURE;
+
+  await db.doc(`accounts/${F.governedAccountId}`).set({
+    name: "Governed Fields Co",
+    status: "Active",
+    relationshipTypes: ["CUSTOMER"],
+    defaultCurrency: "USD",
+    paymentTerms: F.paymentTerms,
+    taxStatus: F.taxStatus,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  // No taxStatus stored at all -> the Commercial Profile section must render
+  // "Tax status: UNKNOWN" (the absent => UNKNOWN safe default, never TAXABLE).
+  await db.doc(`accounts/${F.safeDefaultAccountId}`).set({
+    name: "Safe Default Co",
+    status: "Active",
+    relationshipTypes: ["CUSTOMER"],
+    defaultCurrency: "USD",
+    createdAt: now,
+    updatedAt: now,
+  });
+}
+
+// Issue #100 -- PR 0. Seeds the five technician-role fixtures above:
+// three eligible (one operationalRoles entry each), one ineligible
+// (real link, ACTIVE, zero eligible roles), one broken-linkage
+// (employeeId points at a document that is never created). No
+// reorder_requests/inventory_transactions/inventory_actions documents
+// are seeded here -- PR 0 adds no query/Rules change that would ever
+// read them for these accounts; later PRs' own fixtures cover that.
+async function seedIssue100RoleFixtures() {
+  const now = Date.now();
+
+  // securityRole is a denormalized mirror of the linked users/{uid}.role
+  // (docs/PROJECT_ARCHITECTURE.md's Person Assignment Platform Service
+  // Standard) -- useAssignableEmployees()'s PARTS_ASSOCIATE-eligibility
+  // query (buildAssignableEmployeesQuery()) filters only on
+  // employmentStatus/operationalRoles/userId, so any ACTIVE Employee
+  // with operationalRoles containing "PARTS_ASSOCIATE" and a linked
+  // userId is included in its result regardless of securityRole --
+  // EmployeeAssignmentPicker.jsx's own client-side
+  // applyPartsAssociateSecurityRoleEligibility() then separately flags
+  // any candidate whose securityRole is missing/null/invalid-enum as a
+  // data-quality warning. Without this field, driver-emp-technician-
+  // parts-associate below was silently inflating that warning count
+  // from PR_A_FIXTURE's own intentional 2 to 3, since it matches this
+  // exact query scope. All four securityRole values here mirror each
+  // fixture's own linked users/{uid}.role ("technician") exactly, same
+  // as functions/scripts/provisionEmployeeAccess.js's production
+  // invariant.
+  await db.doc("employees/driver-emp-technician-parts-manager").set({
+    employeeId: "driver-emp-technician-parts-manager",
+    displayName: "Driver Technician Parts Manager",
+    employmentStatus: "ACTIVE",
+    operationalRoles: ["PARTS_MANAGER"],
+    securityRole: "technician",
+    userId: DRIVER_ACCOUNTS.technicianPartsManager.uid,
+    createdAt: now,
+    updatedAt: now,
+  });
+  await db.doc(`users/${DRIVER_ACCOUNTS.technicianPartsManager.uid}`).set({
+    role: "technician",
+    employeeId: "driver-emp-technician-parts-manager",
+  });
+
+  await db.doc("employees/driver-emp-technician-warehouse-manager").set({
+    employeeId: "driver-emp-technician-warehouse-manager",
+    displayName: "Driver Technician Warehouse Manager",
+    employmentStatus: "ACTIVE",
+    operationalRoles: ["WAREHOUSE_MANAGER"],
+    securityRole: "technician",
+    userId: DRIVER_ACCOUNTS.technicianWarehouseManager.uid,
+    createdAt: now,
+    updatedAt: now,
+  });
+  await db.doc(`users/${DRIVER_ACCOUNTS.technicianWarehouseManager.uid}`).set({
+    role: "technician",
+    employeeId: "driver-emp-technician-warehouse-manager",
+  });
+
+  await db.doc("employees/driver-emp-technician-parts-associate").set({
+    employeeId: "driver-emp-technician-parts-associate",
+    displayName: "Driver Technician Parts Associate",
+    employmentStatus: "ACTIVE",
+    operationalRoles: ["PARTS_ASSOCIATE"],
+    securityRole: "technician",
+    userId: DRIVER_ACCOUNTS.technicianPartsAssociate.uid,
+    createdAt: now,
+    updatedAt: now,
+  });
+  await db.doc(`users/${DRIVER_ACCOUNTS.technicianPartsAssociate.uid}`).set({
+    role: "technician",
+    employeeId: "driver-emp-technician-parts-associate",
+  });
+
+  await db.doc("employees/driver-emp-technician-ineligible").set({
+    employeeId: "driver-emp-technician-ineligible",
+    displayName: "Driver Technician Ineligible",
+    employmentStatus: "ACTIVE",
+    operationalRoles: [],
+    securityRole: "technician",
+    userId: DRIVER_ACCOUNTS.technicianIneligible.uid,
+    createdAt: now,
+    updatedAt: now,
+  });
+  await db.doc(`users/${DRIVER_ACCOUNTS.technicianIneligible.uid}`).set({
+    role: "technician",
+    employeeId: "driver-emp-technician-ineligible",
+  });
+
+  // No employees/driver-emp-technician-broken-link-does-not-exist
+  // document is ever written -- that's the entire point of this
+  // fixture.
+  await db.doc(`users/${DRIVER_ACCOUNTS.technicianBrokenLink.uid}`).set({
+    role: "technician",
+    employeeId: "driver-emp-technician-broken-link-does-not-exist",
+  });
+}
+
 // Inventory Health / Parts Catalog separation (PR B) -- exported so
 // driver.mjs can delete/restore inventory_transactions documents
 // directly (Admin SDK, emulator-only) for the empty-state assertions
@@ -535,6 +1229,22 @@ async function seedServiceActivityFixture() {
 // interaction with the app goes through the real signed-in browser
 // session, never this direct Admin SDK handle.
 export { db };
+
+// Customer Results Dashboard -- seeds DASHBOARD_FIXTURE's four accounts (one per
+// status, varied relationships/tags) via the Admin SDK.
+async function seedDashboardFixture() {
+  const now = Date.now();
+  for (const a of DASHBOARD_FIXTURE.accounts) {
+    await db.doc(`accounts/${a.id}`).set({
+      name: a.name,
+      status: a.status,
+      relationshipTypes: a.relationshipTypes,
+      tags: a.tags,
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
+}
 
 async function seed() {
   for (const acct of Object.values(DRIVER_ACCOUNTS)) {
@@ -603,6 +1313,14 @@ async function seed() {
   await seedCancelVoidFixture();
   await seedPrAFixture();
   await seedServiceActivityFixture();
+  await seedHistoryFixture();
+  await seedCommercialProfileFixture();
+  await seedGovernedFieldsFixture();
+  await seedDashboardFixture();
+  await seedDemoCustomersFixture();
+  await seedWizardFixture();
+  await seedWoCustomerSearchFixture();
+  await seedIssue100RoleFixtures();
 
   console.log("Seeded driver accounts:");
   for (const [key, acct] of Object.entries(DRIVER_ACCOUNTS)) {
