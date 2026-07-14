@@ -39,6 +39,8 @@ The single most visible inconsistency: the **Customer creation overlay** already
 
 Columns: (1) domain/route · (2) create/edit action · (3) presentation pattern · (4) width/spacing/type/action placement · (5) validation & disabled-state · (6) save/error/success · (7) keyboard/focus/dialog/SR · (8) responsive/overflow · (9) permission/write path & deps · (10) recommended target + priority + migration boundary.
 
+Scope: this matrix inventories create/edit/movement flows and their state surfaces. Pure read-only lookup/filter/search forms (e.g. the `PartsList` history-lookup `.fo-inline-form`, global search) are **excluded** — they create/edit no record — but any submit-styling they share should follow the same token system once adopted.
+
 ### Customer / CRM–Sales
 
 | # | Flow | Pattern | Layout / actions | Validation / disabled | Save / error / success | A11y | Responsive | Write path / deps | Target · priority · boundary |
@@ -64,8 +66,9 @@ Columns: (1) domain/route · (2) create/edit action · (3) presentation pattern 
 |---|---|---|---|---|---|---|---|---|---|
 | I1 | **Reorder request create** — `RequestReorderControl` (`PartDetail`/`PartsList`) | **Inline workflow control/action, System B** | inline control; manual-qty entry for NEEDS_PLANNING | eligibility-gated; manual-qty guarded | client write; error handling added in PR #73 | inline | not standardized | `domain/inventoryReorderRequests.js` client-direct + per-role Issue #100 Rules | **Inline workflow action** (correct container); align tokens/error copy · **P3** · presentation |
 | I2 | **Reorder review / reject** — `RejectForm` (reorder flow) | **Inline `.fo-form`, System B** | `.fo-form` reason field | reason required | client write | inline | not standardized | `inventoryReorderRequests.js` + Rules | Inline action or **confirmation dialog** (reject is consequential); align copy · **P3** · presentation (+ possible confirmation dialog) |
-| I3 | **Purchase Order / receiving / Cancel / Void** — `PartDetail` / reorder flow | **Inline workflow actions, System B** | `.fo-form` (×7 in `PartDetail`) | action-specific; Void requires a linked PO | client write / `runTransaction` | inline | not standardized | `reorderPurchaseOrders.js` client-direct + Rules; Cancel/Void PR #138 merged | Inline workflow actions (correct container); **Cancel/Void are destructive → confirmation-dialog pattern (§4)**; align copy · **P3** · presentation + confirmation-dialog behavior |
-| I4 | **Inventory stock actions** — `operations/panels/InventoryHealthPanel` etc. | Inline panels, System B | panels | — | client/logged | inline | not standardized | `inventoryActions.js` / Rules | Align tokens/copy · **P4** · presentation |
+| I3 | **Purchase Order / receiving / Cancel / Void** — `PartDetail` / reorder flow | **Inline workflow actions, System B** | 6 `.fo-form` blocks in `PartDetail` (+ `RequestReorderControl`) | action-specific; Void requires a linked PO | client write / `runTransaction` | inline | not standardized | `reorderPurchaseOrders.js` client-direct + Rules; Cancel/Void PR #138 merged | Inline workflow actions (correct container); **Cancel/Void are destructive → confirmation-dialog pattern (§4)**; align copy · **P3** · presentation + confirmation-dialog behavior |
+| I4 | **Warehouse → Truck stock transfer** — `Inventory.jsx` (`handleTransfer`) | **Inline `.fo-form`, System B** | `.fo-form` in a `.fo-card`: part `select` + qty `input` + submit; no field grid/labels/hints | none (bare `min="1"`; no disabled/guarded state) | client write; **no explicit save-error or success surface** | inline; no dialog | not specifically handled | client-direct stock write / Rules | Align to System-A field tokens + add validation/error/success states · **P4** · presentation |
+| I5 | **Inventory panel stock actions** — `operations/panels/InventoryHealthPanel` etc. | Inline panels, System B | panels | — | client/logged | inline | not standardized | `inventoryActions.js` / Rules | Align tokens/copy · **P4** · presentation |
 
 ### Administration / Identity
 
