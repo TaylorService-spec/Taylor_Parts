@@ -328,6 +328,209 @@ export const DASHBOARD_FIXTURE = {
   ],
 };
 
+// Demo Customers -- ten deterministic, emulator-only Accounts for the Customer
+// Results Dashboard, spanning every status (4 Active / 3 Prospect / 2 Inactive
+// / 1 Archived), all four relationship shapes (Customer / Vendor / both /
+// unset), and varied tags, billing addresses, notes, external identifiers,
+// currencies, purchaseOrderRequired flags, invoice delivery methods, payment
+// terms, and tax statuses. Several intentionally omit optional fields.
+//
+// Every value is a valid enum: status = ACCOUNT_STATUS display value;
+// relationshipTypes in {CUSTOMER, VENDOR}; defaultCurrency a valid ISO 4217
+// code (domain/commercialProfile.js's ISO_4217_CURRENCIES); invoiceDeliveryMethod
+// in INVOICE_DELIVERY_METHOD; paymentTerms in PAYMENT_TERMS; taxStatus in
+// TAX_STATUS (domain/constants.js). billingAddress is the {street,city,state,zip}
+// shape AccountForm/AccountDetail read; the four external-identifier fields
+// (customerNumber/erpId/accountingId/legacyId) render with their own labels in
+// AccountDetail -- never a raw Firestore document id.
+//
+// DELIBERATELY avoids DASHBOARD_FIXTURE's sharedTag ("DashboardTest") and
+// soloTag ("DashOnlyTag") and uses its OWN unique document ids/names, so
+// verify-customer-dashboard's tag-filter assertions (which expect exactly the
+// four DASHBOARD_FIXTURE accounts for "DashboardTest", and zero for
+// Archived + "DashOnlyTag") are unaffected. The dashboard's status/total card
+// counts are derived LIVE from the whole accounts collection by driver.mjs, so
+// these extra accounts are absorbed automatically -- no driver.mjs change is
+// needed or made. `ageMs` is how long ago the account was "last updated"
+// (updatedAt = now - ageMs), staggered so "Last update" spans just now /
+// minutes / hours / days / months / years; createdAt is set a little older
+// still. Timestamps are Date.now() epoch-ms numbers -- the same convention
+// domain/accounts.js writes and formatLastUpdate() reads.
+const _MIN = 60_000;
+const _HOUR = 60 * _MIN;
+const _DAY = 24 * _HOUR;
+const _MONTH = 30 * _DAY;
+const _YEAR = 365 * _DAY;
+
+export const DEMO_CUSTOMERS = [
+  {
+    id: "demo-cust-01-summit-mechanical",
+    name: "Summit Mechanical Services",
+    status: "Active",
+    relationshipTypes: ["CUSTOMER"],
+    tags: ["Priority", "HVAC"],
+    billingAddress: { street: "1420 Ridgeline Dr", city: "Denver", state: "CO", zip: "80202" },
+    notes: "Preferred service partner; quarterly maintenance contract.",
+    customerNumber: "SMS-1001",
+    defaultCurrency: "USD",
+    purchaseOrderRequired: true,
+    invoiceDeliveryMethod: "EMAIL",
+    paymentTerms: "NET_30",
+    taxStatus: "TAXABLE",
+    ageMs: 5 * _MIN,
+  },
+  {
+    id: "demo-cust-02-harbor-point",
+    name: "Harbor Point Logistics",
+    status: "Active",
+    relationshipTypes: ["CUSTOMER", "VENDOR"], // both
+    tags: ["Logistics", "National"],
+    billingAddress: { street: "88 Wharf St", city: "Seattle", state: "WA", zip: "98101" },
+    notes: "Buys and supplies; dual relationship account.",
+    erpId: "ERP-88213",
+    defaultCurrency: "USD",
+    purchaseOrderRequired: true,
+    invoiceDeliveryMethod: "PORTAL",
+    paymentTerms: "NET_60",
+    taxStatus: "EXEMPT",
+    ageMs: 3 * _HOUR,
+  },
+  {
+    id: "demo-cust-03-cedar-valley-foods",
+    name: "Cedar Valley Foods",
+    status: "Active",
+    relationshipTypes: ["VENDOR"],
+    tags: ["Food Service"],
+    billingAddress: { street: "77 Orchard Rd", city: "Toronto", state: "ON", zip: "M5H 2N2" },
+    // notes intentionally absent
+    // no external identifier intentionally absent
+    defaultCurrency: "CAD",
+    purchaseOrderRequired: false,
+    invoiceDeliveryMethod: "MAIL",
+    paymentTerms: "NET_90",
+    taxStatus: "RESELLER",
+    ageMs: 4 * _DAY,
+  },
+  {
+    id: "demo-cust-04-northwind-traders",
+    name: "Northwind Traders",
+    status: "Active",
+    relationshipTypes: [], // unset relationship
+    tags: ["Retail", "Seasonal"],
+    billingAddress: { street: "500 Market Ave", city: "Boston", state: "MA", zip: "02110" },
+    notes: "Seasonal ordering; no relationship classification yet.",
+    accountingId: "QB-4471",
+    defaultCurrency: "EUR",
+    purchaseOrderRequired: true,
+    invoiceDeliveryMethod: "EDI",
+    paymentTerms: "COD",
+    taxStatus: "TAXABLE",
+    ageMs: 30_000, // just now (< 1 min)
+  },
+  {
+    id: "demo-cust-05-blue-ridge-property",
+    name: "Blue Ridge Property Group",
+    status: "Prospect",
+    relationshipTypes: ["CUSTOMER"],
+    tags: ["Real Estate"],
+    billingAddress: { street: "9 Summit Ct", city: "Asheville", state: "NC", zip: "28801" },
+    notes: "Evaluating a facilities-wide service agreement.",
+    defaultCurrency: "USD",
+    purchaseOrderRequired: false,
+    invoiceDeliveryMethod: "EMAIL",
+    // paymentTerms + taxStatus intentionally absent (prospect, not yet set)
+    ageMs: 2 * _MONTH,
+  },
+  {
+    id: "demo-cust-06-pacific-coast-supply",
+    name: "Pacific Coast Supply Co",
+    status: "Prospect",
+    relationshipTypes: ["VENDOR"],
+    tags: ["Wholesale", "West Coast"],
+    billingAddress: { street: "310 Cannery Row", city: "Monterey", state: "CA", zip: "93940" },
+    // notes intentionally absent
+    legacyId: "LEG-2007",
+    defaultCurrency: "GBP",
+    purchaseOrderRequired: true,
+    invoiceDeliveryMethod: "PORTAL",
+    paymentTerms: "NET_30",
+    taxStatus: "UNKNOWN",
+    ageMs: 9 * _DAY,
+  },
+  {
+    id: "demo-cust-07-ironclad-manufacturing",
+    name: "Ironclad Manufacturing",
+    status: "Prospect",
+    relationshipTypes: ["CUSTOMER", "VENDOR"], // both
+    tags: ["Manufacturing"],
+    // Deliberately minimal: no billingAddress, notes, external id, or any
+    // commercial-profile field -- exercises the "many absent optional fields"
+    // display path end to end.
+    ageMs: 2 * _YEAR,
+  },
+  {
+    id: "demo-cust-08-maple-leaf-distributors",
+    name: "Maple Leaf Distributors",
+    status: "Inactive",
+    relationshipTypes: ["CUSTOMER"],
+    tags: ["Dormant"],
+    billingAddress: { street: "215 Birchwood Blvd", city: "Sydney", state: "NSW", zip: "2000" },
+    notes: "Account dormant since last contract lapsed.",
+    customerNumber: "MLD-556",
+    defaultCurrency: "AUD",
+    purchaseOrderRequired: false,
+    invoiceDeliveryMethod: "MAIL",
+    paymentTerms: "NET_60",
+    taxStatus: "EXEMPT",
+    ageMs: 5 * _MONTH,
+  },
+  {
+    id: "demo-cust-09-old-town-hardware",
+    name: "Old Town Hardware",
+    status: "Inactive",
+    relationshipTypes: [], // unset relationship
+    // tags intentionally absent
+    billingAddress: { street: "42 Main St", city: "Savannah", state: "GA", zip: "31401" },
+    notes: "Legacy walk-in account; retained for history.",
+    defaultCurrency: "USD",
+    purchaseOrderRequired: false,
+    // no invoiceDeliveryMethod / paymentTerms / taxStatus intentionally absent
+    ageMs: 3 * _YEAR,
+  },
+  {
+    id: "demo-cust-10-legacy-freight",
+    name: "Legacy Freight Systems",
+    status: "Archived",
+    relationshipTypes: ["VENDOR"],
+    tags: ["Archived", "Closed"],
+    billingAddress: { street: "1 Depot Way", city: "Kansas City", state: "MO", zip: "64101" },
+    notes: "Relationship closed; archived for audit trail.",
+    erpId: "ERP-00019",
+    defaultCurrency: "JPY",
+    purchaseOrderRequired: true,
+    invoiceDeliveryMethod: "EDI",
+    paymentTerms: "NET_90",
+    taxStatus: "TAXABLE",
+    ageMs: 4 * _YEAR,
+  },
+];
+
+// Customer Results Dashboard -- seeds the ten DEMO_CUSTOMERS via the Admin SDK
+// (bypasses the client-gated accounts rules, same as every other fixture here).
+// Only fields actually present on each fixture object are written -- absent
+// optional fields are genuinely omitted (never written as null), so the
+// dashboard/detail exercise their real "field absent" rendering. createdAt is
+// staggered a little older than updatedAt for realism.
+async function seedDemoCustomersFixture() {
+  const now = Date.now();
+  for (const c of DEMO_CUSTOMERS) {
+    const { id, ageMs, ...fields } = c;
+    const updatedAt = now - ageMs;
+    const createdAt = updatedAt - 30 * _DAY; // created a month before its last update
+    await db.doc(`accounts/${id}`).set({ ...fields, createdAt, updatedAt });
+  }
+}
+
 async function seedReorderRequestFixture(docId, { partId, status, currentOwner, assignedToUserId, createdAt }) {
   const isCancelled = status === "CANCELLED";
   await db.doc(`reorder_requests/${docId}`).set({
@@ -1009,6 +1212,7 @@ async function seed() {
   await seedCommercialProfileFixture();
   await seedGovernedFieldsFixture();
   await seedDashboardFixture();
+  await seedDemoCustomersFixture();
   await seedIssue100RoleFixtures();
 
   console.log("Seeded driver accounts:");
