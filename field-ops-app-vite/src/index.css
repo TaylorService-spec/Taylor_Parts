@@ -891,3 +891,76 @@ button:hover {
   color: #fff;
 }
 .fo-portfolio-count { margin: 4px 0 8px; font-size: 13px; }
+
+/* Work Order Wizard -- layout & error clarity (Platform Task 1). All scoped
+   under .fo-wizard so no other screen is affected. */
+.fo-wizard-steps {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0;
+  margin: 4px 0 16px;
+}
+.fo-wizard-step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid #D8DEDD;
+  border-radius: 999px;
+  font-size: 13px;
+  color: #667;
+}
+.fo-wizard-step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #E1E6E5;
+  color: #445559;
+  font-size: 12px;
+  font-weight: 600;
+}
+.fo-wizard-step-active {
+  border-color: #2E4A50;
+  color: #23383D;
+  font-weight: 600;
+}
+.fo-wizard-step-active .fo-wizard-step-num {
+  background: #2E4A50;
+  color: #fff;
+}
+.fo-wizard-step-done .fo-wizard-step-num {
+  background: #5B7A80;
+  color: #fff;
+}
+.fo-wizard-field-label {
+  flex-basis: 100%;
+  font-size: 13px;
+  font-weight: 600;
+  color: #445559;
+  margin-top: 4px;
+}
+.fo-wizard-hint {
+  flex-basis: 100%;
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: #6b7a7f;
+}
+.fo-wizard-review {
+  flex-basis: 100%;
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 16px;
+  margin: 4px 0 8px;
+}
+.fo-wizard-review dt { font-size: 13px; color: #667; }
+.fo-wizard-review dd { margin: 0; font-size: 14px; color: #23383D; }
+
+@media (max-width: 480px) {
+  .fo-wizard-review { grid-template-columns: 1fr; gap: 2px 0; }
+  .fo-wizard-review dd { margin-bottom: 6px; }
+}
