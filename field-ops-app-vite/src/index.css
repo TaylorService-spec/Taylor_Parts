@@ -878,19 +878,106 @@ button:hover {
 .fo-filter-label { font-size: 13px; color: #445559; }
 .fo-filter-chip {
   padding: 3px 10px;
-  border: 1px solid #D8DEDD;
+  border: 1px solid #9AA8AB;
   border-radius: 999px;
   background: #fff;
+  /* WCAG-AA fix: unselected chips previously inherited a light/muted color on a
+     white pill (~2:1). Explicit dark ink on white is ~11:1; the darker border
+     keeps the pill visible against the panel. */
+  color: #1F2D31;
   cursor: pointer;
   font-size: 13px;
 }
-.fo-filter-chip:hover { background: #F2F5F4; }
-.fo-filter-chip-active {
-  border-color: #2E4A50;
-  background: #2E4A50;
-  color: #fff;
+.fo-filter-chip:hover { background: #EDF1F0; }
+.fo-filter-chip:focus-visible {
+  outline: 2px solid #2E4A50;
+  outline-offset: 2px;
 }
+.fo-filter-chip-active {
+  border-color: #23383D;
+  background: #2E4A50;
+  color: #fff; /* white on #2E4A50 ~= 9:1, AA */
+}
+.fo-filter-chip-active:hover { background: #23383D; }
 .fo-portfolio-count { margin: 4px 0 8px; font-size: 13px; }
+
+/* Screen-reader-only live region (success announcements). */
+.fo-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ===== Shared Modal overlay (Customer Creation Overlay reference pattern) =====
+   Desktop: dimmed full-viewport backdrop with a centered, internally scrollable
+   card. Mobile/375px: the card becomes a full-screen overlay. Scoped entirely
+   under .fo-modal* -- no other component is affected. */
+.fo-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(20, 30, 33, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  box-sizing: border-box;
+}
+.fo-modal {
+  background: #fff;
+  border-radius: 12px;
+  width: 100%;
+  max-width: 560px;
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
+  outline: none;
+}
+.fo-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid #E1E6E5;
+}
+.fo-modal-title { margin: 0; font-size: 18px; color: #23383D; }
+.fo-modal-close {
+  border: none;
+  background: transparent;
+  font-size: 24px;
+  line-height: 1;
+  color: #445559;
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+.fo-modal-close:hover { background: #EDF1F0; }
+.fo-modal-close:focus-visible { outline: 2px solid #2E4A50; outline-offset: 2px; }
+/* Internally scrollable body -- the card stays put; only content scrolls. */
+.fo-modal-body {
+  padding: 16px 20px 20px;
+  overflow-y: auto;
+}
+.fo-account-save-error { margin-top: 4px; }
+
+@media (max-width: 480px) {
+  .fo-modal-backdrop { padding: 0; }
+  .fo-modal {
+    max-width: 100%;
+    width: 100%;
+    height: 100%;
+    max-height: 100%;
+    border-radius: 0;
+  }
+}
 
 /* Work Order Wizard -- layout & error clarity (Platform Task 1). Everything is
    scoped under .fo-wizard so no other screen is affected. The per-step body is

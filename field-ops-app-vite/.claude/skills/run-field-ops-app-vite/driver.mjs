@@ -2703,6 +2703,160 @@ async function verifyWoWizard(browser, page, accountKey) {
   return niFailed === 0;
 }
 
+// Customer Creation Overlay & form consistency. Exercises the reusable creation
+// overlay on /customers end to end: dialog semantics + focus trap + Escape/
+// focus-restore, a validation failure (keeps overlay open), a successful save
+// (overlay closes, hiding filter cleared, live subscription inserts the row,
+// success announced, focus moves to the new customer's name, no raw IDs), the
+// 375px full-screen overlay, the WCAG-AA filter-chip contrast fix, and a REAL
+// save failure via Rules (a dispatcher creating above the governed baseline is
+// denied -- overlay stays open, error shown inside). No fixture needed: the
+// success path creates its own customer; the failure path is denied and writes
+// nothing.
+async function verifyCustomerCreateOverlay(browser, page, accountKey) {
+  const listUrl = () => { const u = new URL("customers", APP_ROOT); u.searchParams.set("emulator", "1"); return u.toString(); };
+  const dialog = () => page.locator('[role="dialog"][aria-modal="true"]');
+  const newBtn = () => page.getByRole("button", { name: /New Customer/ });
+  const card = (label) =>
+    page.locator(".fo-portfolio-card").filter({ has: page.locator(".fo-portfolio-card-label", { hasText: new RegExp(`^${label}$`) }) }).first();
+  const nameInput = () => page.locator('input[placeholder="Customer name"]');
+  const uniqueName = `Overlay Customer ${Date.now()}`;
+  const focusInsideDialog = () => page.evaluate(() => {
+    const d = document.querySelector('[role="dialog"]');
+    return Boolean(d && d.contains(document.activeElement));
+  });
+
+  // ===== Open overlay: dialog semantics, no navigation, dashboard stays =====
+  await login(page, accountKey);
+  await page.goto(listUrl(), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await page.locator(".fo-portfolio-cards").waitFor({ timeout: 10000 });
+  const urlBefore = page.url();
+  await newBtn().click();
+  await dialog().waitFor({ timeout: 10000 });
+  niReport("New Customer opens a dialog (role=dialog, aria-modal=true)", await dialog().getAttribute("aria-modal") === "true");
+  niReport("Overlay opens without navigating (URL unchanged)", page.url() === urlBefore, page.url());
+  niReport("Dashboard remains rendered behind the overlay", (await page.locator(".fo-portfolio-cards").count()) > 0);
+  const titleId = await dialog().getAttribute("aria-labelledby");
+  const titleText = await dialog().locator(".fo-modal-title").innerText().catch(() => "");
+  const titleElemId = await dialog().locator(".fo-modal-title").getAttribute("id").catch(() => null);
+  niReport("Dialog has a visible title referenced by aria-labelledby",
+    /New Customer/.test(titleText) && Boolean(titleId) && titleId === titleElemId, `${titleText} / labelledby=${titleId} titleId=${titleElemId}`);
+  niReport("Initial focus is inside the dialog", await focusInsideDialog());
+
+  // ===== Focus trap: many Tabs stay inside =====
+  for (let i = 0; i < 15; i++) await page.keyboard.press("Tab");
+  niReport("Focus trap: Tab keeps focus within the dialog", await focusInsideDialog());
+
+  // ===== Escape closes + restores focus to New Customer =====
+  await page.keyboard.press("Escape");
+  await dialog().waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
+  niReport("Escape closes the overlay", (await dialog().count()) === 0);
+  niReport("Focus restored to the New Customer trigger after Escape",
+    await page.evaluate(() => (document.activeElement?.textContent || "").includes("New Customer")));
+
+  // ===== Set a hiding filter (Archived) so success must clear it =====
+  await card("Archived").click();
+  await page.waitForTimeout(150);
+  niReport("Precondition: Archived status filter is active", (await card("Archived").getAttribute("aria-pressed")) === "true");
+
+  // ===== Reopen: validation failure keeps overlay open, error inside =====
+  await newBtn().click();
+  await dialog().waitFor({ timeout: 10000 });
+  await nameInput().fill(uniqueName);
+  await page.locator("#cp-currency").fill("ZZ"); // invalid ISO 4217
+  await page.getByRole("button", { name: "Create Customer" }).click();
+  await page.waitForTimeout(300);
+  niReport("Validation failure keeps the overlay open", await dialog().isVisible());
+  niReport("Validation error shown inside the overlay",
+    await dialog().getByText(/Fix the highlighted/i).first().isVisible().catch(() => false));
+
+  // ===== Fix + successful save =====
+  await page.locator("#cp-currency").fill(""); // currency optional -> now valid
+  await page.getByRole("button", { name: "Create Customer" }).click();
+  await dialog().waitFor({ state: "detached", timeout: 10000 });
+  niReport("Successful save closes the overlay", (await dialog().count()) === 0);
+  niReport("Success announced in a live region", (await page.locator('.fo-sr-only[role="status"]').innerText().catch(() => "")).includes(uniqueName));
+  niReport("Hiding filter cleared so the new customer is visible (Total pressed)",
+    (await card("Total").getAttribute("aria-pressed")) === "true");
+  const newLink = page.getByRole("link", { name: uniqueName, exact: true });
+  await newLink.waitFor({ timeout: 10000 });
+  niReport("New customer inserted into the dashboard by the live subscription", await newLink.isVisible());
+  niReport("Focus moved to the new customer's resolved name",
+    await page.evaluate((n) => (document.activeElement?.textContent || "").trim() === n, uniqueName));
+
+  // ===== No raw IDs: the created account's document id is not shown as text =====
+  const createdSnap = await db.collection("accounts").where("name", "==", uniqueName).get();
+  const createdId = createdSnap.docs[0]?.id ?? "__none__";
+  const tableText = await page.locator(".fo-table-scroll table tbody").innerText().catch(() => "");
+  niReport("No raw IDs: the new customer's document id is not rendered", !tableText.includes(createdId), createdId);
+
+  // ===== 375px full-screen overlay, no horizontal overflow =====
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.waitForTimeout(150);
+  await newBtn().click();
+  await dialog().waitFor({ timeout: 10000 });
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
+  niReport("375px: overlay open with no horizontal overflow", overflow === false);
+  const fullScreen = await dialog().evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    return r.height >= window.innerHeight - 1 && r.width >= window.innerWidth - 1;
+  });
+  niReport("375px: overlay is full-screen", fullScreen === true);
+  await page.keyboard.press("Escape");
+  await dialog().waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.waitForTimeout(150);
+
+  // ===== Filter-chip contrast fix (WCAG-AA) =====
+  const contrast = (sel) => page.locator(sel).first().evaluate((el) => {
+    const cs = getComputedStyle(el);
+    const parse = (c) => (c.match(/\d+(\.\d+)?/g) || [0, 0, 0]).slice(0, 3).map(Number);
+    const lum = ([r, g, b]) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
+    const L1 = lum(parse(cs.color)), L2 = lum(parse(cs.backgroundColor));
+    const [hi, lo] = L1 > L2 ? [L1, L2] : [L2, L1];
+    return { color: cs.color, bg: cs.backgroundColor, ratio: (hi + 0.05) / (lo + 0.05) };
+  });
+  const relChip = page.getByRole("button", { name: "Customer", exact: true });
+  const unsel = await contrast(".fo-filter-chip");
+  niReport("Unselected filter chip meets WCAG-AA contrast (>=4.5)", unsel.ratio >= 4.5, `ratio=${unsel.ratio.toFixed(2)} (${unsel.color} on ${unsel.bg})`);
+  await relChip.click();
+  await page.waitForTimeout(100);
+  niReport("Selected chip gets the .fo-filter-chip-active class", await relChip.evaluate((el) => el.classList.contains("fo-filter-chip-active")));
+  const sel = await contrast(".fo-filter-chip-active");
+  niReport("Selected filter chip meets WCAG-AA contrast (>=4.5)", sel.ratio >= 4.5, `ratio=${sel.ratio.toFixed(2)} (${sel.color} on ${sel.bg})`);
+  await relChip.click(); // reset
+
+  // ===== REAL save failure: dispatcher creating above the governed baseline =====
+  // A fresh browser context (no persisted admin auth) so we can sign in as the
+  // dispatcher cleanly. Firestore Rules deny a dispatcher creating an Account
+  // with a non-baseline governed field, so the client write rejects -- the
+  // overlay must stay open with the error shown inside it.
+  const dispCtx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const dispPage = await dispCtx.newPage();
+  try {
+    const dDialog = () => dispPage.locator('[role="dialog"][aria-modal="true"]');
+    await login(dispPage, "ineligibleDispatcher");
+    await dispPage.goto(listUrl(), { waitUntil: "domcontentloaded", timeout: 20000 });
+    await dispPage.locator(".fo-panel").first().waitFor({ timeout: 10000 });
+    await dispPage.getByRole("button", { name: /New Customer/ }).click();
+    await dDialog().waitFor({ timeout: 10000 });
+    await dispPage.locator('input[placeholder="Customer name"]').fill(`Dispatcher Denied ${Date.now()}`);
+    await dispPage.locator("#cp-payment-terms").selectOption("NET_30"); // non-baseline -> dispatcher create denied by Rules
+    await dispPage.getByRole("button", { name: "Create Customer" }).click();
+    const saveErr = dDialog().locator(".fo-account-save-error");
+    await saveErr.waitFor({ timeout: 10000 }).catch(() => {});
+    niReport("Save failure (governed-field Rules deny) keeps the overlay open", await dDialog().isVisible());
+    niReport("Save error is shown inside the overlay", await saveErr.isVisible().catch(() => false));
+    niReport("Save error is the permission message (no raw error leaked)",
+      /permission/i.test(await saveErr.innerText().catch(() => "")));
+  } finally {
+    await dispCtx.close();
+  }
+
+  console.log(`\n${niPassed} passed, ${niFailed} failed`);
+  return niFailed === 0;
+}
+
 async function main() {
   const [, , command, ...args] = process.argv;
   const browser = await chromium.launch();
@@ -2809,6 +2963,10 @@ async function main() {
     } else if (command === "verify-customer-dashboard") {
       const [accountKey = "admin"] = args;
       const ok = await verifyCustomerDashboard(browser, page, accountKey);
+      if (!ok) process.exitCode = 1;
+    } else if (command === "verify-customer-create-overlay") {
+      const [accountKey = "admin"] = args;
+      const ok = await verifyCustomerCreateOverlay(browser, page, accountKey);
       if (!ok) process.exitCode = 1;
     } else if (command === "verify-wo-wizard") {
       const [accountKey = "admin"] = args;
