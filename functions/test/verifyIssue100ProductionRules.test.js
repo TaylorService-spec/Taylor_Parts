@@ -50,6 +50,8 @@ const {
   snapshotDocs,
   restoreIfMutated,
   runChecks,
+  resolveDisplayName,
+  NameResolutionError,
   REQUIRED_ACCOUNT_ENV,
   REQUIRED_FIXTURE_ENV,
 } = require("../scripts/verifyIssue100ProductionRules.js");
@@ -122,7 +124,20 @@ async function ensureAuthUser(email, password) {
   }
 }
 
-async function seedEmployeeAccount({ emailPrefix, employeeIdSuffix, displayName, employmentStatus, operationalRoles, mismatchedUserId }) {
+// An authenticatable account with NO linked Employee at all (users/{uid}
+// has a role but no employeeId) -- used ONLY to prove that a
+// role-authenticated account with no resolvable human identity is
+// correctly refused by runChecks() rather than treated as a passing
+// account ("role-only success cannot pass").
+async function seedNamelessAccount() {
+  const email = "nameless-prod-verify@example.test";
+  const password = "prod-verify-pass-123";
+  const uid = await ensureAuthUser(email, password);
+  await db.doc(`users/${uid}`).set({ role: "technician" });
+  return { email, password, uid };
+}
+
+async function seedEmployeeAccount({ emailPrefix, employeeIdSuffix, displayName, employmentStatus, operationalRoles, mismatchedUserId, role = "technician" }) {
   const email = `${emailPrefix}@example.test`;
   const password = "prod-verify-pass-123";
   const uid = await ensureAuthUser(email, password);
@@ -132,16 +147,21 @@ async function seedEmployeeAccount({ emailPrefix, employeeIdSuffix, displayName,
     operationalRoles, userId: mismatchedUserId ?? uid,
     createdAt: now, updatedAt: now,
   });
-  await db.doc(`users/${uid}`).set({ role: "technician", employeeId });
-  return { email, password, uid };
+  await db.doc(`users/${uid}`).set({ role, employeeId });
+  return { email, password, uid, displayName };
 }
 
 async function seedAll() {
-  // -- Admin/dispatcher-analog accounts --
-  const adminEmail = "admin-prod-verify@example.test";
-  const adminPassword = "prod-verify-pass-123";
-  const adminUid = await ensureAuthUser(adminEmail, adminPassword);
-  await db.doc(`users/${adminUid}`).set({ role: "admin" });
+  // -- Admin/dispatcher-analog account -- reciprocally linked to its
+  // own Employee record (with a displayName), same as every
+  // operational-role account, so it can be resolved and reported by
+  // name too -- isAdminOrDispatcher() itself has no Employee-linkage
+  // requirement, but this script's own name-resolution requirement
+  // applies to it regardless.
+  const admin = await seedEmployeeAccount({ emailPrefix: "admin-prod-verify", employeeIdSuffix: "admin", displayName: "Admin User", employmentStatus: "ACTIVE", operationalRoles: [], role: "admin" });
+  const adminEmail = admin.email;
+  const adminPassword = admin.password;
+  const adminUid = admin.uid;
 
   // -- Operational-role accounts, reciprocally linked, ACTIVE --
   const pm = await seedEmployeeAccount({ emailPrefix: "pm-prod-verify", employeeIdSuffix: "pm", displayName: "PM", employmentStatus: "ACTIVE", operationalRoles: ["PARTS_MANAGER"] });
@@ -374,20 +394,81 @@ async function main() {
   // Clean up this deliberately-corrupted document via the real Admin SDK.
   await db.doc("pv-restore-tests/broken-restore").set({ value: "original-value" });
 
-  // === 4. runChecks() against a fresh, correctly-shaped fixture set, real Rules ===
-  const { env } = await seedAll();
-  const r = await runChecks({
-    firestoreRestBase: FIRESTORE_REST_BASE,
-    identityToolkitBase: IDENTITY_TOOLKIT_BASE,
-    projectId: PROJECT_ID,
-    adminDb: db,
-    env,
-  });
+  // === 4. resolveDisplayName() -- direct, isolated proof ===
+  const seeded = await seedAll();
+  const { env } = seeded;
+  const pmForNameCheck = await auth.getUserByEmail(env.PARTS_MANAGER_EMAIL);
+  const resolvedPmName = await resolveDisplayName(db, pmForNameCheck.uid);
+  report("resolveDisplayName: resolves a reciprocally-linked account with a displayName to that name", resolvedPmName === "PM", `got ${JSON.stringify(resolvedPmName)}`);
+
+  const nameless = await seedNamelessAccount();
+  const resolvedNamelessName = await resolveDisplayName(db, nameless.uid);
+  report("resolveDisplayName: returns null for an account with no linked Employee at all", resolvedNamelessName === null);
+
+  // === 5. runChecks() against a fresh, correctly-shaped fixture set, real Rules --
+  // captures console.log output to prove resolved names actually appear
+  // in the human-facing report, and that no uid/employeeId/email leaks
+  // into any captured line. ===
+  const capturedLines = [];
+  const realConsoleLog = console.log;
+  console.log = (...args) => {
+    capturedLines.push(args.join(" "));
+    realConsoleLog(...args);
+  };
+  let r;
+  try {
+    r = await runChecks({
+      firestoreRestBase: FIRESTORE_REST_BASE,
+      identityToolkitBase: IDENTITY_TOOLKIT_BASE,
+      projectId: PROJECT_ID,
+      adminDb: db,
+      env,
+    });
+  } finally {
+    console.log = realConsoleLog;
+  }
 
   report("runChecks: every check passed against a correctly-shaped fixture set", r.failed === 0, `${r.passed} passed, ${r.failed} failed`);
   report("runChecks: zero restoration failures", r.restorationFailures === 0);
   const skippedCount = r.results.filter((x) => x.ok === null).length;
   report("runChecks: zero SKIPs when every optional fixture is supplied", skippedCount === 0, `${skippedCount} skipped`);
+
+  report(
+    "runChecks: RESOLVED -- ROLE -- Name lines actually appear for every required account",
+    capturedLines.includes("RESOLVED -- PARTS_MANAGER -- PM") &&
+      capturedLines.includes("RESOLVED -- WAREHOUSE_MANAGER -- WM") &&
+      capturedLines.includes("RESOLVED -- PARTS_ASSOCIATE -- PA") &&
+      capturedLines.includes("RESOLVED -- ADMIN -- Admin User")
+  );
+
+  const identifiersThatMustNeverAppear = [
+    pmForNameCheck.uid, env.PM_QUEUE_DOC_ID, env.PARTS_MANAGER_EMAIL, env.ADMIN_EMAIL,
+  ];
+  const leaked = identifiersThatMustNeverAppear.filter((id) => capturedLines.some((line) => line.includes(id)));
+  report("runChecks: no uid/docId/email appears in any captured output line", leaked.length === 0, `leaked: ${JSON.stringify(leaked)}`);
+
+  // === 6. Hard-fail path: a required account with NO resolvable human
+  // name must abort runChecks entirely -- role-only success (an
+  // authenticated token with no resolvable identity) must never be
+  // reported as passing. ===
+  const namelessAsPartsManagerEnv = { ...env, PARTS_MANAGER_EMAIL: nameless.email, PARTS_MANAGER_PASSWORD: nameless.password };
+  let hardFailError = null;
+  try {
+    await runChecks({
+      firestoreRestBase: FIRESTORE_REST_BASE,
+      identityToolkitBase: IDENTITY_TOOLKIT_BASE,
+      projectId: PROJECT_ID,
+      adminDb: db,
+      env: namelessAsPartsManagerEnv,
+    });
+  } catch (err) {
+    hardFailError = err;
+  }
+  report(
+    "runChecks: throws NameResolutionError (never a silent pass) when a required account cannot resolve to a human name",
+    hardFailError instanceof NameResolutionError && hardFailError.message.includes("PARTS_MANAGER") &&
+      !hardFailError.message.includes(nameless.uid) && !hardFailError.message.includes(nameless.email)
+  );
 
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed > 0 ? 1 : 0);

@@ -55,16 +55,38 @@
 //     PASS/FAIL classification itself is performed with the real,
 //     signed-in test accounts' own ID tokens against the real deployed
 //     Rules -- never the Admin SDK bypass.
+//   - Every REQUIRED account (PARTS_MANAGER/WAREHOUSE_MANAGER/
+//     PARTS_ASSOCIATE/ADMIN) is resolved, via the SAME User ->
+//     reciprocal Employee linkage firestore.rules itself requires
+//     (users/{uid}.employeeId -> employees/{employeeId}.userId == uid),
+//     to its human Employee displayName. A role-authenticated account
+//     that cannot resolve to a human name is NOT an acceptable
+//     verification outcome -- the run aborts (exit code 2) before any
+//     read/write check is attempted. Each resolved account is reported
+//     as "RESOLVED -- <ROLE> -- <Name>". The deliberately-broken/
+//     inactive/ineligible/non-reciprocal optional linkage probes are
+//     exempt from this -- their entire purpose is to exercise a linkage
+//     that may not resolve, so they are reported with a safe scenario
+//     label ("RESOLVED -- BROKEN_LINKAGE fixture account
+//     authenticated"), never a resolved name or any identifier.
 //   - Never prints an email, password, ID token, service-account path
-//     or content, document ID, or any other document field value.
-//     Output is limited to: resolved role labels ("RESOLVED --
-//     PARTS_MANAGER account authenticated"), PASS/FAIL/SKIP per named
-//     check, a final count, restoration status, and exit code.
+//     or content, uid, Employee ID, document ID, or any other document
+//     field value. The ONLY document field this script ever surfaces is
+//     a resolved Employee displayName for a required account, by
+//     design (see above). Output is otherwise limited to: role/scenario
+//     labels, PASS/FAIL/SKIP per named check, a final count, restoration
+//     status, and exit code.
 //   - Creates nothing. Every fixture document this script exercises
 //     must already exist, supplied by the operator via the fixture-ID
 //     environment variables below -- this script errors out rather
 //     than fabricate one if a required read returns 404 unexpectedly
-//     for reasons other than the specific check under test.
+//     for reasons other than the specific check under test. (The single
+//     unavoidable exception is inherent to the Record PO check itself,
+//     which -- like the real production action it verifies -- creates a
+//     reorder_purchase_orders document as part of a real, Rules-
+//     enforced write; this is immediately reverted and byte-for-byte
+//     re-verified by the same snapshot/restore path every other
+//     mutating check uses, per the safety rule above.)
 //
 // USAGE:
 //   All credentials and fixture identifiers are supplied ONLY via
@@ -82,9 +104,13 @@
 //         mutation was cleanly restored and verified).
 //   1  -- one or more checks failed (a real Rules-behavior mismatch),
 //         but no restoration failure occurred.
-//   2  -- a required prerequisite (env var, project guard, or
-//         production-data authorization) was missing -- aborted before
-//         any network call.
+//   2  -- a required prerequisite was missing: either an env var,
+//         project guard, or production-data authorization (aborted
+//         before any network call), OR a required account (PARTS_
+//         MANAGER/WAREHOUSE_MANAGER/PARTS_ASSOCIATE/ADMIN) could not be
+//         resolved to a human display name via User -> reciprocal
+//         Employee linkage (aborted after sign-in, before any
+//         read/write check).
 //   3  -- a write attempt mutated production data and the subsequent
 //         restore could NOT be verified byte-for-byte. Requires
 //         immediate manual operator intervention. Always takes
@@ -96,6 +122,15 @@ const { getFirestore } = require("firebase-admin/firestore");
 
 const REQUIRED_PROJECT_ID = "taylor-parts";
 
+// Each of these four accounts must ALSO have a reciprocally-linked
+// Employee document (users/{uid}.employeeId -> employees/{employeeId}.
+// userId == uid) with a non-empty displayName -- required so this
+// script can resolve and report a human name for every one of them
+// (see resolveDisplayName()/NameResolutionError below). This applies
+// to the ADMIN fixture too, even though isAdminOrDispatcher() itself
+// has no Employee-linkage requirement -- an Employee record must still
+// be provisioned for the dedicated admin test account specifically so
+// it can be named in this script's output.
 const REQUIRED_ACCOUNT_ENV = [
   "PARTS_MANAGER_EMAIL", "PARTS_MANAGER_PASSWORD",
   "WAREHOUSE_MANAGER_EMAIL", "WAREHOUSE_MANAGER_PASSWORD",
@@ -198,6 +233,46 @@ function decodeUidFromIdToken(idToken) {
   const claims = JSON.parse(json);
   return claims.user_id || claims.sub;
 }
+
+// Resolves a signed-in account's own uid to its human Employee display
+// name via the SAME reciprocal linkage firestore.rules' own
+// reciprocallyLinkedEmployee()/isActiveOperationalRole() require:
+// users/{uid}.employeeId -> employees/{employeeId}.userId == uid, both
+// directions. Uses the Admin SDK (bypasses Rules, same as the
+// snapshot/restore path) purely to READ the two documents needed to
+// resolve a name -- never to establish authorization, which is always
+// decided by the real signed-in token against the real deployed Rules
+// elsewhere in this file. Returns the displayName string, or null if
+// the account is unsigned-in-linkable (no employeeId, no Employee
+// document, a broken/non-reciprocal link, or a missing/empty
+// displayName) -- deliberately the SAME "cannot resolve" outcome for
+// every failure mode, since the caller's response (abort, for a
+// required account) does not depend on which sub-check failed. Never
+// logs, prints, or returns anything but the display name itself or
+// null -- the caller is responsible for only ever surfacing the name,
+// not the uid/employeeId this function reads along the way.
+async function resolveDisplayName(adminDb, uid) {
+  const userSnap = await adminDb.collection("users").doc(uid).get();
+  if (!userSnap.exists) return null;
+  const employeeId = userSnap.data().employeeId;
+  if (!employeeId) return null;
+  const employeeSnap = await adminDb.collection("employees").doc(employeeId).get();
+  if (!employeeSnap.exists) return null;
+  const employee = employeeSnap.data();
+  if (employee.userId !== uid) return null; // reciprocal check, mirrors firestore.rules exactly
+  return employee.displayName || null;
+}
+
+// Thrown when a REQUIRED account (PARTS_MANAGER/WAREHOUSE_MANAGER/
+// PARTS_ASSOCIATE/ADMIN) cannot resolve to a human display name.
+// Deliberately distinct from an ordinary check failure -- main()
+// treats this the same as a missing prerequisite (exit code 2),
+// aborting before any read/write check or mutation is attempted,
+// because role-only success (an authenticated token with no resolvable
+// human identity behind it) is not an acceptable verification outcome
+// for this script. The message never includes the uid/employeeId that
+// failed to resolve -- only the role label, which is not a secret.
+class NameResolutionError extends Error {}
 
 async function getDocStatus(firestoreRestBase, projectId, collection, docId, idToken) {
   const headers = idToken ? { Authorization: `Bearer ${idToken}` } : {};
@@ -354,15 +429,35 @@ async function runChecks({ firestoreRestBase, identityToolkitBase, projectId, ad
     ["ADMIN", "ADMIN_EMAIL", "ADMIN_PASSWORD"],
   ]) {
     tokens[label] = await signIn(identityToolkitBase, env.FIREBASE_WEB_API_KEY, env[emailKey], env[passKey]);
-    console.log(`RESOLVED -- ${label} account authenticated.`);
   }
 
-  // Decoded ONLY to populate Rules-required self-referential write
-  // fields (assignedBy == request.auth.uid, purchasingStartedBy,
-  // orderedBy, receivedBy) with each account's own real uid -- never
-  // logged, never printed, never included in any report() call.
+  // Decoded to populate Rules-required self-referential write fields
+  // (assignedBy == request.auth.uid, purchasingStartedBy, orderedBy,
+  // receivedBy) with each account's own real uid, AND to resolve each
+  // required account's human display name below -- the uid itself is
+  // never logged, never printed, never included in any report() call.
   const uids = {};
   for (const label of Object.keys(tokens)) uids[label] = decodeUidFromIdToken(tokens[label]);
+
+  // Every REQUIRED account (PARTS_MANAGER/WAREHOUSE_MANAGER/
+  // PARTS_ASSOCIATE/ADMIN) must resolve, via User -> reciprocal
+  // Employee linkage, to a human display name -- an authenticated
+  // token with no resolvable human identity behind it is not an
+  // acceptable verification outcome ("role-only success"). Aborts
+  // before any read/write check runs; never logs the uid/employeeId
+  // that failed to resolve, only the role label.
+  const names = {};
+  for (const label of Object.keys(tokens)) {
+    const name = await resolveDisplayName(adminDb, uids[label]);
+    if (!name) {
+      throw new NameResolutionError(
+        `Required account ${label} could not be resolved to a human display name via User -> reciprocal Employee ` +
+          `linkage (no identifier logged) -- aborting before any check runs.`
+      );
+    }
+    names[label] = name;
+    console.log(`RESOLVED -- ${label} -- ${name}`);
+  }
 
   const optional = {};
   const { present, skipped } = resolveOptionalPairs(env);
@@ -694,7 +789,13 @@ async function main() {
       env,
     });
   } catch (err) {
-    console.error("Verification aborted with an unexpected error (no credential/detail logged).");
+    if (err instanceof NameResolutionError) {
+      // Safe to print verbatim -- this message is entirely under this
+      // script's own control and never includes a uid/employeeId/email.
+      console.error(`FAIL -- ${err.message}`);
+    } else {
+      console.error("Verification aborted with an unexpected error (no credential/detail logged).");
+    }
     process.exitCode = 2;
     return;
   }
@@ -719,6 +820,8 @@ module.exports = {
   resolveOptionalPairs,
   signIn,
   decodeUidFromIdToken,
+  resolveDisplayName,
+  NameResolutionError,
   getDocStatus,
   updateDocStatus,
   commitStatus,
