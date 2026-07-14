@@ -239,10 +239,12 @@ human with a browser.
   resolution quirk); just use `localhost` and it works.
 - **Stray/duplicate dev-server processes accumulate across a long
   session.** Branch-switching + repeated `npm run dev` calls left two
-  Vite processes running on different ports at once mid-session.
-  Check `Get-CimInstance Win32_Process | Where CommandLine -match
-  'vite'` (PowerShell) before assuming a fresh port means a fresh
-  server.
+  Vite processes running on different ports at once mid-session. Track
+  the exact PID of each `npm run dev` / `emulator.mjs start` you launch
+  and stop only that PID (see step 5). A broad `CommandLine -match
+  'vite'` listing is a last-resort *diagnostic* only -- it also matches
+  other worktrees' and concurrent sessions' servers, so never feed its
+  output into a bulk `Stop-Process`.
 
 ## Troubleshooting
 
