@@ -42,16 +42,28 @@ already used elsewhere in this repo for `firestore:rules` deploys.
 
 Three things need to be running, in order, then the driver:
 
-**1. Start the Firestore + Auth emulator** (from the repo root, not
-`field-ops-app-vite/` -- `firebase.json` lives at the root):
+**1. Start the Firestore + Auth emulator** via the worktree-anchored launcher.
+**Do NOT run `firebase emulators:start` by hand from the repo root.** The
+emulator loads `firestore.rules` from the `firebase.json` in whatever directory
+it is launched from -- if the repo root is checked out on a different/stale
+branch, it silently enforces THAT branch's Rules, not the code under test. This
+caused a false governed-field "Rules gap" diagnosis twice (see Issue #219). The
+launcher (`emulator.mjs`) instead resolves config + Rules from the skill's OWN
+worktree (from the skill's filesystem location, never your cwd), runs a
+fail-closed preflight (config exists, Rules target exists, root and Vite Rules
+byte-identical), prints provenance (worktree HEAD, config path, Rules path, Rules
+sha256), launches Firebase with an explicit absolute
+`--config <this-worktree>/firebase.json --project taylor-parts`, and does a
+BOUNDED readiness wait:
 ```bash
-firebase emulators:start --only firestore,auth --project taylor-parts
+node .claude/skills/run-field-ops-app-vite/emulator.mjs start
 ```
-Wait for both to respond before continuing:
-```bash
-curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8080   # expect 200
-curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:9099   # expect 200
-```
+Run it in the background; it stays alive holding the emulator and prints
+`EMULATOR READY pid=... rulesSha=sha256:...` once both ports answer. Because the
+config is anchored to the skill's worktree, it always tests THIS worktree
+regardless of your current directory. If the preflight fails (missing config,
+missing Rules, or a root/Vite Rules mismatch) it aborts before starting anything
+(exit 2) -- fix the worktree, do not bypass it.
 
 **2. Seed test accounts** (from `field-ops-app-vite/`):
 ```bash
@@ -114,19 +126,21 @@ node .claude/skills/run-field-ops-app-vite/driver.mjs submit-manual-qty eligible
 node .claude/skills/run-field-ops-app-vite/driver.mjs submit-ready admin
 ```
 
-**5. Tear down** when done. The dev server and emulator are both plain
-background processes (`node`/`java`) -- on Windows, find and stop them
-by command line (this is what actually worked in this environment):
-```powershell
-Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'vite' -or $_.CommandLine -match 'firebase emulators' -or $_.CommandLine -match 'cloud-firestore-emulator' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+**5. Tear down** when done. Stop the emulator by its EXACT owned PID(s) -- the
+launcher recorded them in `.emulator-pids.json`; it kills only that PID tree:
+```bash
+node .claude/skills/run-field-ops-app-vite/emulator.mjs stop
 ```
-On Linux/macOS, `pkill -f "firebase emulators"` and `pkill -f vite`
-are the equivalent (not verified in this environment -- it's Windows,
-see Gotchas).
+Stop the dev server by the exact PID you started with `npm run dev` (e.g. on
+Windows `Stop-Process -Id <that-pid>`).
 
-The emulator holds no persistent state by default -- next
-`emulators:start` begins empty, so `seed.mjs` must re-run each
-session.
+**Never** tear down by a broad command-line match (`CommandLine -match 'vite'` /
+`'firebase emulators'`, `pkill -f`): in this repo multiple worktrees and
+concurrent sessions can each run their own emulator/dev server, and a broad sweep
+kills a foreign session's processes. Stop only the exact PIDs you own.
+
+The emulator holds no persistent state by default -- next `emulator.mjs start`
+begins empty, so `seed.mjs` must re-run each session.
 
 ## Direct invocation (no browser needed)
 
