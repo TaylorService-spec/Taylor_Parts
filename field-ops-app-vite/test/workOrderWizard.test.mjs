@@ -5,7 +5,10 @@ import {
   stepBlockedReason,
   canAdvance,
   CREATE_UNAVAILABLE_MESSAGE,
+  CREATE_UNAUTHENTICATED_MESSAGE,
+  CREATE_PERMISSION_DENIED_MESSAGE,
   CREATE_FAILED_MESSAGE,
+  CREATE_INTERNAL_MESSAGE,
 } from "../src/domain/workOrderWizard.js";
 
 let passed = 0;
@@ -24,22 +27,31 @@ ok("step model has four ordered steps", WIZARD_STEP_COUNT === 4 && WIZARD_STEPS.
 ok("step labels are the four wizard stages",
   WIZARD_STEPS.map((s) => s.label).join("|") === "Customer|Location|Service Details|Review & Create");
 
-// ----- getWizardCreateErrorMessage: unavailable (A) vs failed (B) -----
-ok("unavailable code -> service-not-available message",
+// ----- getWizardCreateErrorMessage: explicit per-code mapping -----
+ok("not-found -> service unavailable",
   getWizardCreateErrorMessage({ code: "functions/not-found" }) === CREATE_UNAVAILABLE_MESSAGE);
-ok("unavailable (functions/unavailable) -> service-not-available message",
+ok("unavailable -> service unavailable",
   getWizardCreateErrorMessage({ code: "functions/unavailable" }) === CREATE_UNAVAILABLE_MESSAGE);
-ok("rejected call with safe message -> failed + appended detail",
+ok("unauthenticated -> sign-in message",
+  getWizardCreateErrorMessage({ code: "functions/unauthenticated" }) === CREATE_UNAUTHENTICATED_MESSAGE);
+ok("permission-denied -> authorization message",
+  getWizardCreateErrorMessage({ code: "functions/permission-denied" }) === CREATE_PERMISSION_DENIED_MESSAGE);
+ok("invalid-argument -> failed + appended safe validation detail",
   getWizardCreateErrorMessage({ code: "functions/invalid-argument", message: "customerId is required." })
     === `${CREATE_FAILED_MESSAGE} customerId is required.`);
-ok("rejected call without a message -> plain failed message",
-  getWizardCreateErrorMessage({ code: "functions/internal" }) === CREATE_FAILED_MESSAGE);
-ok("blank/whitespace message is not appended",
-  getWizardCreateErrorMessage({ code: "functions/internal", message: "   " }) === CREATE_FAILED_MESSAGE);
-ok("null error is handled -> plain failed message",
-  getWizardCreateErrorMessage(null) === CREATE_FAILED_MESSAGE);
-ok("unavailable code takes precedence even if a message is present",
-  getWizardCreateErrorMessage({ code: "functions/unavailable", message: "ignored" }) === CREATE_UNAVAILABLE_MESSAGE);
+ok("invalid-argument with blank message -> plain failed (nothing appended)",
+  getWizardCreateErrorMessage({ code: "functions/invalid-argument", message: "   " }) === CREATE_FAILED_MESSAGE);
+ok("internal -> internal/no-record message, raw detail NOT appended",
+  getWizardCreateErrorMessage({ code: "functions/internal", message: "TypeError: x is undefined at line 42" })
+    === CREATE_INTERNAL_MESSAGE);
+ok("unknown -> internal/no-record message, raw detail NOT appended",
+  getWizardCreateErrorMessage({ code: "functions/unknown", message: "raw stack leak" }) === CREATE_INTERNAL_MESSAGE);
+ok("internal message never contains the raw server detail",
+  !getWizardCreateErrorMessage({ code: "functions/internal", message: "SECRET-RAW-DETAIL" }).includes("SECRET-RAW-DETAIL"));
+ok("unrecognized code -> plain failed, nothing appended",
+  getWizardCreateErrorMessage({ code: "functions/resource-exhausted", message: "should not leak" }) === CREATE_FAILED_MESSAGE);
+ok("null error -> plain failed message", getWizardCreateErrorMessage(null) === CREATE_FAILED_MESSAGE);
+ok("missing code -> plain failed message", getWizardCreateErrorMessage({ message: "no code" }) === CREATE_FAILED_MESSAGE);
 
 // ----- stepBlockedReason: step 1 (customer) -----
 ok("step1 blocked until a customer is selected",

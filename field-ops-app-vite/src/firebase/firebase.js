@@ -1,7 +1,7 @@
 import { initializeApp } from "firebase/app";
 import { getFirestore, connectFirestoreEmulator } from "firebase/firestore";
 import { getAuth, connectAuthEmulator } from "firebase/auth";
-import { getFunctions } from "firebase/functions";
+import { getFunctions, connectFunctionsEmulator } from "firebase/functions";
 
 const firebaseConfig = {
   apiKey: "AIzaSyATXIiI5C1m" + "LmsvS0k-x3i7ZxAbAPtRpSY",
@@ -35,4 +35,10 @@ export const functions = getFunctions(app, "us-central1");
 if (import.meta.env.DEV && new URLSearchParams(window.location.search).get("emulator") === "1") {
   connectFirestoreEmulator(db, "127.0.0.1", 8080);
   connectAuthEmulator(auth, "http://127.0.0.1:9099", { disableWarnings: true });
+  // Functions emulator (firebase.json: functions port 5001) so the Work Order
+  // callables (createWorkOrder/transitionWorkOrder/updateWorkOrderExecutionData)
+  // resolve against the local emulator in ?emulator=1 dev instead of production
+  // -- same DEV-only, opt-in gate as Firestore/Auth above. Never active in a
+  // production build or without the param.
+  connectFunctionsEmulator(functions, "127.0.0.1", 5001);
 }

@@ -892,8 +892,11 @@ button:hover {
 }
 .fo-portfolio-count { margin: 4px 0 8px; font-size: 13px; }
 
-/* Work Order Wizard -- layout & error clarity (Platform Task 1). All scoped
-   under .fo-wizard so no other screen is affected. */
+/* Work Order Wizard -- layout & error clarity (Platform Task 1). Everything is
+   scoped under .fo-wizard so no other screen is affected. The per-step body is
+   a genuine vertical panel (NOT the old .fo-form flex-wrap): a single column
+   with a consistent max width, each field stacked label-above-control, and the
+   complaint / review / error / action rows all spanning full width. */
 .fo-wizard-steps {
   list-style: none;
   display: flex;
@@ -937,30 +940,77 @@ button:hover {
   background: #5B7A80;
   color: #fff;
 }
+
+/* Step panel: single-column vertical stack, consistent max width. */
+.fo-wizard-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 560px;
+  width: 100%;
+  box-sizing: border-box;
+}
+.fo-wizard-step-title { margin: 0; }
+.fo-wizard-context { margin: 0; }
+
+/* Each field: label ABOVE control, control full width of the panel. */
+.fo-wizard-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
 .fo-wizard-field-label {
-  flex-basis: 100%;
   font-size: 13px;
   font-weight: 600;
   color: #445559;
-  margin-top: 4px;
 }
+.fo-wizard-control,
+.fo-wizard-field .fo-global-search,
+.fo-wizard-field .fo-global-search input {
+  width: 100%;
+  box-sizing: border-box;
+}
+.fo-wizard-control {
+  padding: 8px 10px;
+  border: 1px solid #D8DEDD;
+  border-radius: 6px;
+  font-size: 14px;
+  font-family: inherit;
+}
+textarea.fo-wizard-control { min-height: 76px; resize: vertical; }
+.fo-wizard-field-wide { width: 100%; }
+
 .fo-wizard-hint {
-  flex-basis: 100%;
-  margin: 4px 0 0;
+  margin: 0;
   font-size: 13px;
   color: #6b7a7f;
 }
+
+/* Review, error, and actions all span the full panel width. */
 .fo-wizard-review {
-  flex-basis: 100%;
   display: grid;
   grid-template-columns: max-content 1fr;
   gap: 4px 16px;
-  margin: 4px 0 8px;
+  margin: 0;
+  width: 100%;
 }
 .fo-wizard-review dt { font-size: 13px; color: #667; }
-.fo-wizard-review dd { margin: 0; font-size: 14px; color: #23383D; }
+.fo-wizard-review dd { margin: 0; font-size: 14px; color: #23383D; word-break: break-word; }
+.fo-wizard-error { width: 100%; box-sizing: border-box; }
+.fo-wizard-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  width: 100%;
+  margin-top: 4px;
+}
 
+/* Single column, no horizontal overflow at 375px. */
 @media (max-width: 480px) {
+  .fo-wizard-panel { max-width: 100%; }
   .fo-wizard-review { grid-template-columns: 1fr; gap: 2px 0; }
   .fo-wizard-review dd { margin-bottom: 6px; }
+  .fo-wizard-actions { flex-direction: column; }
+  .fo-wizard-actions button { width: 100%; }
 }

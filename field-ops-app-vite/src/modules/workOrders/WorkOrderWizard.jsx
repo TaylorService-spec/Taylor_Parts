@@ -139,43 +139,49 @@ export default function WorkOrderWizard() {
       <WizardProgress step={step} />
 
       {step === 1 && (
-        <div className="fo-form">
-          <h3>Step 1: Customer</h3>
-          <GlobalSearch
-            providerKeys={["accounts"]}
-            context={{ accounts }}
-            placeholder="Search customers..."
-            onResultSelect={handleAccountSelect}
-          />
+        <div className="fo-wizard-panel">
+          <h3 className="fo-wizard-step-title">Step 1: Customer</h3>
+          <div className="fo-wizard-field">
+            <span className="fo-wizard-field-label" id="wo-customer-label">Customer</span>
+            <div className="fo-wizard-control" role="group" aria-labelledby="wo-customer-label">
+              <GlobalSearch
+                providerKeys={["accounts"]}
+                context={{ accounts }}
+                placeholder="Search customers..."
+                onResultSelect={handleAccountSelect}
+              />
+            </div>
+          </div>
           <StepHint reason={stepBlockedReason(1, { selectedAccountId: selectedAccount?.id })} />
         </div>
       )}
 
       {step === 2 && (
-        <div className="fo-form">
-          <h3>Step 2: Location</h3>
-          <p className="fo-muted">Customer: {selectedAccount?.name}</p>
+        <div className="fo-wizard-panel">
+          <h3 className="fo-wizard-step-title">Step 2: Location</h3>
+          <p className="fo-muted fo-wizard-context">Customer: {selectedAccount?.name}</p>
           {locations.length > 0 && (
-            <label className="fo-wizard-field-label" htmlFor="wo-location">Location</label>
-          )}
-          {locations.length > 0 && (
-            <select
-              id="wo-location"
-              value={selectedLocationId}
-              onChange={(e) => setSelectedLocationId(e.target.value)}
-            >
-              <option value="" disabled>
-                Select a location...
-              </option>
-              {locations.map((loc) => (
-                <option key={loc.id} value={loc.id}>
-                  {loc.name}
+            <div className="fo-wizard-field">
+              <label className="fo-wizard-field-label" htmlFor="wo-location">Location</label>
+              <select
+                id="wo-location"
+                className="fo-wizard-control"
+                value={selectedLocationId}
+                onChange={(e) => setSelectedLocationId(e.target.value)}
+              >
+                <option value="" disabled>
+                  Select a location...
                 </option>
-              ))}
-            </select>
+                {locations.map((loc) => (
+                  <option key={loc.id} value={loc.id}>
+                    {loc.name}
+                  </option>
+                ))}
+              </select>
+            </div>
           )}
           <StepHint reason={step2Reason} />
-          <div className="fo-btn-row">
+          <div className="fo-wizard-actions">
             <button type="button" onClick={() => setStep(1)}>Back</button>
             <button type="button" disabled={Boolean(step2Reason)} onClick={() => setStep(3)}>
               Next
@@ -185,49 +191,58 @@ export default function WorkOrderWizard() {
       )}
 
       {step === 3 && (
-        <div className="fo-form">
-          <h3>Step 3: Service Details</h3>
+        <div className="fo-wizard-panel">
+          <h3 className="fo-wizard-step-title">Step 3: Service Details</h3>
 
-          <label className="fo-wizard-field-label" htmlFor="wo-priority">Priority</label>
-          <select id="wo-priority" value={priority} onChange={(e) => setPriority(Number(e.target.value))}>
-            {PRIORITY_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
+          <div className="fo-wizard-field">
+            <label className="fo-wizard-field-label" htmlFor="wo-priority">Priority</label>
+            <select id="wo-priority" className="fo-wizard-control" value={priority} onChange={(e) => setPriority(Number(e.target.value))}>
+              {PRIORITY_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
 
-          <label className="fo-wizard-field-label" htmlFor="wo-type">Type</label>
-          <select id="wo-type" value={type} onChange={(e) => setType(e.target.value)}>
-            <option value="">(no type -- complaint required instead)</option>
-            {TYPE_OPTIONS.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
+          <div className="fo-wizard-field">
+            <label className="fo-wizard-field-label" htmlFor="wo-type">Type</label>
+            <select id="wo-type" className="fo-wizard-control" value={type} onChange={(e) => setType(e.target.value)}>
+              <option value="">(no type -- complaint required instead)</option>
+              {TYPE_OPTIONS.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          </div>
 
-          <label className="fo-wizard-field-label" htmlFor="wo-severity">Severity (optional)</label>
-          <select id="wo-severity" value={severity} onChange={(e) => setSeverity(e.target.value)}>
-            <option value="">Severity (optional)</option>
-            {SEVERITY_OPTIONS.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
+          <div className="fo-wizard-field">
+            <label className="fo-wizard-field-label" htmlFor="wo-severity">Severity (optional)</label>
+            <select id="wo-severity" className="fo-wizard-control" value={severity} onChange={(e) => setSeverity(e.target.value)}>
+              <option value="">Severity (optional)</option>
+              {SEVERITY_OPTIONS.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          </div>
 
-          <label className="fo-wizard-field-label" htmlFor="wo-complaint">Complaint (required if no Type selected)</label>
-          <textarea
-            id="wo-complaint"
-            placeholder="Describe the customer's complaint..."
-            value={complaint}
-            onChange={(e) => setComplaint(e.target.value)}
-            rows={3}
-          />
+          <div className="fo-wizard-field fo-wizard-field-wide">
+            <label className="fo-wizard-field-label" htmlFor="wo-complaint">Complaint (required if no Type selected)</label>
+            <textarea
+              id="wo-complaint"
+              className="fo-wizard-control"
+              placeholder="Describe the customer's complaint..."
+              value={complaint}
+              onChange={(e) => setComplaint(e.target.value)}
+              rows={3}
+            />
+          </div>
 
           <StepHint reason={step3Reason} />
-          <div className="fo-btn-row">
+          <div className="fo-wizard-actions">
             <button type="button" onClick={() => setStep(2)}>Back</button>
             <button type="button" disabled={Boolean(step3Reason)} onClick={() => setStep(4)}>
               Next
@@ -237,8 +252,8 @@ export default function WorkOrderWizard() {
       )}
 
       {step === 4 && (
-        <div className="fo-form">
-          <h3>Step 4: Review &amp; Create</h3>
+        <div className="fo-wizard-panel">
+          <h3 className="fo-wizard-step-title">Step 4: Review &amp; Create</h3>
           <dl className="fo-wizard-review">
             <dt>Customer</dt>
             <dd>{selectedAccount?.name}</dd>
@@ -267,12 +282,12 @@ export default function WorkOrderWizard() {
           </dl>
 
           {submitError && (
-            <div className="warning" role="alert">
+            <div className="warning fo-wizard-error" role="alert">
               {submitError}
             </div>
           )}
 
-          <div className="fo-btn-row">
+          <div className="fo-wizard-actions">
             <button type="button" onClick={() => setStep(3)} disabled={submitting}>
               Back
             </button>
