@@ -56,8 +56,16 @@ export const NAV_DOMAINS = [
     ],
   },
   {
+    // CRM/Sales top-level area. The domain KEY stays "customers" (routes,
+    // legacyKey mappings, App.jsx's `domain.key === "customers"` gating, and
+    // /customers[/:accountId] are all unchanged) -- only the user-facing
+    // top-level LABEL is renamed to "CRM/Sales" so exactly ONE top-level entry
+    // names the overall Customer platform area. The customer LIST/records keep
+    // the "Customers"/"New Customer" terms (the subnav entry below, the
+    // dashboard heading, Global Search), which are entity-level, not the
+    // platform-area name.
     key: "customers",
-    label: "Customers",
+    label: "CRM/Sales",
     path: "customers",
     subnav: [
       // Sprint 2.0.2 -- Customer Foundation: real screen now
