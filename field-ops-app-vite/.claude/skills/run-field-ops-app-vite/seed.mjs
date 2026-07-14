@@ -828,11 +828,29 @@ async function seedGovernedFieldsFixture() {
 async function seedIssue100RoleFixtures() {
   const now = Date.now();
 
+  // securityRole is a denormalized mirror of the linked users/{uid}.role
+  // (docs/PROJECT_ARCHITECTURE.md's Person Assignment Platform Service
+  // Standard) -- useAssignableEmployees()'s PARTS_ASSOCIATE-eligibility
+  // query (buildAssignableEmployeesQuery()) filters only on
+  // employmentStatus/operationalRoles/userId, so any ACTIVE Employee
+  // with operationalRoles containing "PARTS_ASSOCIATE" and a linked
+  // userId is included in its result regardless of securityRole --
+  // EmployeeAssignmentPicker.jsx's own client-side
+  // applyPartsAssociateSecurityRoleEligibility() then separately flags
+  // any candidate whose securityRole is missing/null/invalid-enum as a
+  // data-quality warning. Without this field, driver-emp-technician-
+  // parts-associate below was silently inflating that warning count
+  // from PR_A_FIXTURE's own intentional 2 to 3, since it matches this
+  // exact query scope. All four securityRole values here mirror each
+  // fixture's own linked users/{uid}.role ("technician") exactly, same
+  // as functions/scripts/provisionEmployeeAccess.js's production
+  // invariant.
   await db.doc("employees/driver-emp-technician-parts-manager").set({
     employeeId: "driver-emp-technician-parts-manager",
     displayName: "Driver Technician Parts Manager",
     employmentStatus: "ACTIVE",
     operationalRoles: ["PARTS_MANAGER"],
+    securityRole: "technician",
     userId: DRIVER_ACCOUNTS.technicianPartsManager.uid,
     createdAt: now,
     updatedAt: now,
@@ -847,6 +865,7 @@ async function seedIssue100RoleFixtures() {
     displayName: "Driver Technician Warehouse Manager",
     employmentStatus: "ACTIVE",
     operationalRoles: ["WAREHOUSE_MANAGER"],
+    securityRole: "technician",
     userId: DRIVER_ACCOUNTS.technicianWarehouseManager.uid,
     createdAt: now,
     updatedAt: now,
@@ -861,6 +880,7 @@ async function seedIssue100RoleFixtures() {
     displayName: "Driver Technician Parts Associate",
     employmentStatus: "ACTIVE",
     operationalRoles: ["PARTS_ASSOCIATE"],
+    securityRole: "technician",
     userId: DRIVER_ACCOUNTS.technicianPartsAssociate.uid,
     createdAt: now,
     updatedAt: now,
@@ -875,6 +895,7 @@ async function seedIssue100RoleFixtures() {
     displayName: "Driver Technician Ineligible",
     employmentStatus: "ACTIVE",
     operationalRoles: [],
+    securityRole: "technician",
     userId: DRIVER_ACCOUNTS.technicianIneligible.uid,
     createdAt: now,
     updatedAt: now,
