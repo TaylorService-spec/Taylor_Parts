@@ -3215,6 +3215,101 @@ async function verifyCustomerPicker(browser, page, accountKey) {
   return niFailed === 0;
 }
 
+// CRM/Sales top-level area (Issue #208). Verifies the top-level Customer -> CRM/
+// Sales nav rename end to end: exactly ONE top-level tab named "CRM/Sales" and
+// never a "Customers" top-level tab; admin + dispatcher see it, technician is
+// fail-closed; the /customers and /customers/:accountId routes, the retained
+// "Customers" subnav/list, retired-path redirects, keyboard + active-state, and
+// 375px layout all still work.
+async function verifyCrmSalesNav(browser, page, accountKey) {
+  const custUrl = (suffix = "") => { const u = new URL(`customers${suffix}`, APP_ROOT); u.searchParams.set("emulator", "1"); return u.toString(); };
+  const dashUrl = () => { const u = new URL("dashboard", APP_ROOT); u.searchParams.set("emulator", "1"); return u.toString(); };
+  const primary = (p) => p.locator('nav[aria-label="Primary"]');
+  const crmTab = (p) => primary(p).getByRole("link", { name: "CRM/Sales", exact: true });
+  const custTopTab = (p) => primary(p).getByRole("link", { name: "Customers", exact: true });
+
+  // ===== ADMIN =====
+  await login(page, accountKey);
+  await primary(page).waitFor({ timeout: 10000 });
+  niReport("Admin: exactly one top-level 'CRM/Sales' tab", (await crmTab(page).count()) === 1);
+  niReport("Admin: NO top-level 'Customers' tab (never both)", (await custTopTab(page).count()) === 0);
+  niReport("Admin: CRM/Sales tab points at the /customers route", ((await crmTab(page).getAttribute("href")) || "").includes("/customers"));
+
+  await crmTab(page).click();
+  await page.locator(".fo-portfolio-cards").waitFor({ timeout: 10000 });
+  niReport("Admin: CRM/Sales opens the Customer dashboard at /customers", new URL(page.url()).pathname.endsWith("/customers"), page.url());
+  const cls = (await crmTab(page).getAttribute("class")) || "";
+  const cur = await crmTab(page).getAttribute("aria-current");
+  niReport("Admin: active-tab state on CRM/Sales", /fo-nav-btn-active/.test(cls) || cur === "page", `class="${cls}" aria-current=${cur}`);
+  niReport("Admin: subnav retains the 'Customers' list entry", (await page.locator("nav.fo-subnav").getByRole("link", { name: "Customers", exact: true }).count()) >= 1);
+  niReport("Admin: accessible primary nav label present", (await page.locator('nav[aria-label="Primary"]').count()) === 1);
+
+  // keyboard: from another route, focus + Enter activates CRM/Sales
+  await page.goto(dashUrl(), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await primary(page).waitFor({ timeout: 10000 });
+  await crmTab(page).focus();
+  niReport("Admin/keyboard: CRM/Sales tab is focusable", await crmTab(page).evaluate((el) => el === document.activeElement));
+  await page.keyboard.press("Enter");
+  await page.locator(".fo-portfolio-cards").waitFor({ timeout: 10000 });
+  niReport("Admin/keyboard: Enter on CRM/Sales navigates to the dashboard", new URL(page.url()).pathname.endsWith("/customers"), page.url());
+
+  // direct routes preserved (wait for the live subscription to render, not an
+  // instantaneous isVisible right after domcontentloaded)
+  await page.goto(custUrl(""), { waitUntil: "domcontentloaded", timeout: 20000 });
+  niReport("Direct /customers still renders the Customer dashboard",
+    await page.locator(".fo-portfolio-cards").waitFor({ timeout: 10000 }).then(() => true).catch(() => false));
+  await page.goto(customerUrl(SERVICE_ACTIVITY_FIXTURE.accountId), { waitUntil: "domcontentloaded", timeout: 20000 });
+  niReport("Direct /customers/:accountId still renders Customer Detail",
+    await page.getByRole("heading", { name: "Commercial Profile", exact: true }).first().waitFor({ timeout: 10000 }).then(() => true).catch(() => false));
+
+  // retired/legacy paths still redirect to /customers (not reintroduced as pages)
+  for (const p of ["contacts", "locations", "equipment", "service-history"]) {
+    await page.goto(custUrl(`/${p}`), { waitUntil: "domcontentloaded", timeout: 20000 });
+    await page.waitForTimeout(200);
+    const ok = new URL(page.url()).pathname.endsWith("/customers") && (await page.locator(".fo-portfolio-cards").isVisible().catch(() => false));
+    niReport(`Retired /customers/${p} redirects to /customers`, ok, page.url());
+  }
+
+  // 375px
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto(custUrl(""), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await primary(page).waitFor({ timeout: 10000 });
+  niReport("375px: CRM/Sales tab present", (await crmTab(page).count()) === 1);
+  niReport("375px: no horizontal overflow", await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1));
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  // ===== DISPATCHER (fresh context) =====
+  const dctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const dpage = await dctx.newPage();
+  try {
+    await login(dpage, "ineligibleDispatcher");
+    await primary(dpage).waitFor({ timeout: 10000 });
+    niReport("Dispatcher: sees exactly one 'CRM/Sales' tab", (await crmTab(dpage).count()) === 1);
+    niReport("Dispatcher: NO top-level 'Customers' tab", (await custTopTab(dpage).count()) === 0);
+  } finally {
+    await dctx.close();
+  }
+
+  // ===== TECHNICIAN (fresh context, fail-closed) =====
+  const tctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const tpage = await tctx.newPage();
+  try {
+    await login(tpage, "technicianPartsAssociate");
+    await primary(tpage).waitFor({ timeout: 10000 });
+    niReport("Technician: does NOT see the CRM/Sales tab (fail-closed)", (await crmTab(tpage).count()) === 0);
+    niReport("Technician: does NOT see a 'Customers' tab either", (await custTopTab(tpage).count()) === 0);
+    await tpage.goto(custUrl(""), { waitUntil: "domcontentloaded", timeout: 20000 });
+    await tpage.waitForTimeout(300);
+    niReport("Technician: direct /customers is fail-closed (no dashboard)",
+      !(await tpage.locator(".fo-portfolio-cards").isVisible().catch(() => false)));
+  } finally {
+    await tctx.close();
+  }
+
+  console.log(`\n${niPassed} passed, ${niFailed} failed`);
+  return niFailed === 0;
+}
+
 async function main() {
   const [, , command, ...args] = process.argv;
   const browser = await chromium.launch();
@@ -3321,6 +3416,10 @@ async function main() {
     } else if (command === "verify-customer-dashboard") {
       const [accountKey = "admin"] = args;
       const ok = await verifyCustomerDashboard(browser, page, accountKey);
+      if (!ok) process.exitCode = 1;
+    } else if (command === "verify-crm-sales-nav") {
+      const [accountKey = "admin"] = args;
+      const ok = await verifyCrmSalesNav(browser, page, accountKey);
       if (!ok) process.exitCode = 1;
     } else if (command === "verify-service-operations") {
       const [accountKey = "admin"] = args;
