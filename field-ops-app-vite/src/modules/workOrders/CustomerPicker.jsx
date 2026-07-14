@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useLocationsForAccounts } from "../../hooks/useLocationsForAccounts";
 import {
   rankCustomerMatches,
@@ -41,10 +41,50 @@ export default function CustomerPicker({ accounts = [], onSelect, inputId }) {
   const trimmed = query.trim();
   const open = trimmed.length > 0;
 
+  const containerRef = useRef(null);
+  const listRef = useRef(null);
+  const [dropUp, setDropUp] = useState(false);
+  // Space (px) available for the dropdown below (or, when flipped, above) the
+  // input. Written to a CSS custom property so the dropdown's max-height is the
+  // MIN of a bounded clamp()/dvh rule and this measured space -- so the panel
+  // stays natural height, the dropdown never leaves the viewport, and only the
+  // result list scrolls. Recomputed on open, viewport resize, and page scroll.
+  const [space, setSpace] = useState(null);
+
+  useLayoutEffect(() => {
+    if (!open) return undefined;
+    const compute = () => {
+      const el = containerRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect(); // the input's box (dropdown is absolute)
+      const margin = 8;
+      const below = window.innerHeight - rect.bottom - margin;
+      const above = rect.top - margin;
+      // Flip up only when there is genuinely little room below AND more above.
+      const up = below < 200 && above > below;
+      setDropUp(up);
+      setSpace(Math.max(140, Math.floor(up ? above : below)));
+    };
+    compute();
+    window.addEventListener("resize", compute);
+    window.addEventListener("scroll", compute, true);
+    return () => {
+      window.removeEventListener("resize", compute);
+      window.removeEventListener("scroll", compute, true);
+    };
+  }, [open, results.length]);
+
   // Reset the active option whenever the result set changes.
   useEffect(() => {
     setActiveIndex(-1);
   }, [query]);
+
+  // Keyboard navigation scrolls the active option into view WITHIN the result
+  // list (block:"nearest" -> scrolls the list, never the page).
+  useEffect(() => {
+    if (activeIndex < 0) return;
+    listRef.current?.children?.[activeIndex]?.scrollIntoView({ block: "nearest" });
+  }, [activeIndex]);
 
   // Never-blank status: exactly one distinct state (loading / query-error /
   // no-results / results) while the combobox is open.
@@ -77,7 +117,7 @@ export default function CustomerPicker({ accounts = [], onSelect, inputId }) {
   }
 
   return (
-    <div className="fo-customer-picker">
+    <div className="fo-customer-picker" ref={containerRef}>
       <input
         id={boxId}
         type="text"
@@ -95,7 +135,10 @@ export default function CustomerPicker({ accounts = [], onSelect, inputId }) {
       />
 
       {open && (
-        <div className="fo-customer-picker-dropdown">
+        <div
+          className={`fo-customer-picker-dropdown${dropUp ? " fo-customer-picker-dropdown-up" : ""}`}
+          style={space != null ? { "--fo-picker-space": `${space}px` } : undefined}
+        >
           {/* Never blank: exactly one distinct state (incl. a fail-closed query
               error) with an explicit Retry -- never stuck on "Searching…". */}
           <div className="fo-customer-picker-status" role="status" aria-live="polite">
@@ -108,7 +151,7 @@ export default function CustomerPicker({ accounts = [], onSelect, inputId }) {
           </div>
 
           {results.length > 0 && (
-            <ul className="fo-customer-picker-list" role="listbox" id={listboxId} aria-label="Customer results">
+            <ul className="fo-customer-picker-list" role="listbox" id={listboxId} aria-label="Customer results" ref={listRef}>
               {results.map((account, i) => {
                 const secondary = customerSecondaryLine(account);
                 const locs = summarizeLocations(byAccount.get(account.id) ?? [], LOCATIONS_SHOWN);

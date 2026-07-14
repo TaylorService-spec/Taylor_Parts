@@ -1037,6 +1037,14 @@ button:hover {
   width: 100%;
   box-sizing: border-box;
 }
+/* Step-1 (Customer picker) wide modifier -- opt-in per step, applied ONLY to
+   Step 1 in WorkOrderWizard.jsx (Steps 2-4 keep the 560px panel above). width:100%
+   keeps it capped by the available parent content width (`.fo-main` maxes at
+   960px), and max-width:56rem is the readable desktop ceiling -- so it uses nearly
+   all available width on tablet/small desktop, grows well past 560px, and stops at
+   ~896px, while staying 100% (no overflow) on narrow screens. Placed AFTER
+   .fo-wizard-panel so it wins for the element carrying both classes. */
+.fo-wizard-panel-wide { max-width: 56rem; }
 .fo-wizard-step-title { margin: 0; }
 .fo-wizard-context { margin: 0; }
 
@@ -1172,9 +1180,18 @@ textarea.fo-wizard-control { min-height: 76px; resize: vertical; }
   border: 1px solid #C2CCCC;
   border-radius: 8px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
-  max-height: 360px;
-  overflow-y: auto;
+  /* Column layout so only the result LIST scrolls (status pinned top, "more"
+     pinned bottom). Height is the MIN of a bounded clamp()/dvh rule and the
+     JS-measured space below/above the input (--fo-picker-space), so the panel
+     stays natural height, the dropdown never leaves the viewport, and no
+     page/panel scrollbar is created by opening it. */
+  display: flex;
+  flex-direction: column;
+  max-height: min(clamp(160px, 60dvh, 520px), var(--fo-picker-space, 60dvh));
+  overflow: hidden; /* clip to rounded corners; the list is the scroller */
 }
+/* Flipped up when there is little room below the input (short viewports). */
+.fo-customer-picker-dropdown-up { top: auto; bottom: calc(100% + 4px); }
 .fo-customer-picker-status {
   display: flex;
   align-items: center;
@@ -1184,28 +1201,37 @@ textarea.fo-wizard-control { min-height: 76px; resize: vertical; }
   font-size: 13px;
   color: #33474C;
   border-bottom: 1px solid #EDF1F0;
+  flex-shrink: 0; /* pinned -- never scrolls with the list */
 }
 .fo-customer-picker-retry { font-size: 13px; }
 .fo-customer-picker-loc-error { color: #9a3412; } /* AA on white; distinct from muted */
-.fo-customer-picker-list { list-style: none; margin: 0; padding: 4px; }
+.fo-customer-picker-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  overflow-y: auto; /* ONLY the result list scrolls */
+  flex: 1 1 auto;
+  min-height: 0; /* allow the flex child to shrink so it (not the page) scrolls */
+  overscroll-behavior: contain; /* don't chain scroll to the page */
+}
 .fo-customer-picker-option {
   padding: 8px 10px;
   border-radius: 6px;
   cursor: pointer;
   color: #1F2D31;
+  overflow-wrap: anywhere; /* long tokens wrap, never clip/overflow */
 }
 .fo-customer-picker-option-active,
 .fo-customer-picker-option:hover { background: #E6EEEC; }
-.fo-customer-picker-name { font-weight: 600; font-size: 14px; color: #23383D; }
+.fo-customer-picker-name { font-weight: 600; font-size: 14px; color: #23383D; overflow-wrap: anywhere; }
 .fo-customer-picker-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 2px; }
-.fo-customer-picker-secondary { font-size: 13px; color: #445559; }
-.fo-customer-picker-locs { margin-top: 3px; display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: 12px; }
-.fo-customer-picker-loc { color: #2F4247; }
+.fo-customer-picker-secondary { font-size: 13px; color: #445559; overflow-wrap: anywhere; }
+.fo-customer-picker-locs { margin-top: 3px; display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: 12px; min-width: 0; }
+.fo-customer-picker-loc { color: #2F4247; overflow-wrap: anywhere; }
 .fo-customer-picker-more-locs { white-space: nowrap; }
-.fo-customer-picker-more { padding: 8px 12px; font-size: 12px; color: #56666B; border-top: 1px solid #EDF1F0; }
+.fo-customer-picker-more { padding: 8px 12px; font-size: 12px; color: #56666B; border-top: 1px solid #EDF1F0; flex-shrink: 0; }
 
 @media (max-width: 480px) {
-  .fo-customer-picker-dropdown { max-height: 60vh; }
   .fo-customer-picker-locs { flex-direction: column; gap: 2px; }
 }
 
