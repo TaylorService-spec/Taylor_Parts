@@ -1,7 +1,7 @@
 ---
 artifact_type: assessment
 gate: Repository Assessment
-status: Draft
+status: Architecture-Approved
 date: 2026-07-14
 owner: Claude Code
 related_adrs: []
@@ -9,14 +9,14 @@ depends_on: [docs/PROJECT_ARCHITECTURE.md, docs/PlatformOperatingModel.md]
 implements: []
 supersedes: []
 superseded_by: []
-related_pr: null
+related_pr: 215
 related_issue: 214
 target_release: TBD
 ---
 
 # Assessment: Application-wide Creation / Edit / Modal / Wizard / Page-formatting Consistency
 
-**Status: DRAFT (pending Architecture Review).** Assesses **Issue #214** only — the current divergence across the app's create/edit flows, modals, wizards, inline forms, and principal page layouts after PRs **#199** (Work Order wizard), **#201** (Customer creation overlay + shared `Modal`), **#211** (Contact CSV import), and **#213** (responsive picker). It inventories every user-facing flow into a matrix, proposes a consistency *system* (not an implementation), and recommends small, reversible migration PRs.
+**Status: Architecture-Approved.** Independent Architecture Review **passed** and this Assessment **merged through PR #215** (one round-1 correction applied — the Warehouse → Truck stock transfer flow was added to the inventory as row I4; no recommendation or migration boundary changed). The approved design reference derived from it is [`docs/design/creation-and-page-formatting-design-reference.md`](../design/creation-and-page-formatting-design-reference.md). Assesses **Issue #214** only — the current divergence across the app's create/edit flows, modals, wizards, inline forms, and principal page layouts after PRs **#199** (Work Order wizard), **#201** (Customer creation overlay + shared `Modal`), **#211** (Contact CSV import), and **#213** (responsive picker). It inventories every user-facing flow into a matrix, proposes a consistency *system* (not an implementation), and recommends small, reversible migration PRs.
 
 **Merging this Assessment authorizes NO migrations.** It changes no application code, CSS, Firestore Rules, or indexes; it deploys nothing; it accesses no production data; and it edits no global/status document (`ROADMAP.md`, `SPRINT_STATUS.md`, `CLAUDE_CONTEXT.md`, capability/entity models). Every migration named here is its own separately-authorized gate under `docs/ai/workflow.md`. It deliberately does **not** conclude that every creation belongs in a modal.
 
