@@ -4,6 +4,9 @@ import {
   rankCustomerMatches,
   customerSecondaryLine,
   summarizeLocations,
+  customerPickerStatus,
+  customerLocationState,
+  LOCATIONS_ERROR_LINE,
 } from "../../domain/customerSearch";
 
 // Work Order wizard, Step 1 -- accessible Customer picker. Replaces the generic
@@ -33,7 +36,7 @@ export default function CustomerPicker({ accounts = [], onSelect, inputId }) {
 
   const { results, total } = useMemo(() => rankCustomerMatches(accounts, query, RESULT_LIMIT), [accounts, query]);
   const candidateIds = useMemo(() => results.map((a) => a.id), [results]);
-  const { byAccount, loading: locLoading } = useLocationsForAccounts(candidateIds);
+  const { byAccount, loading: locLoading, error: locError, retry } = useLocationsForAccounts(candidateIds);
 
   const trimmed = query.trim();
   const open = trimmed.length > 0;
@@ -43,13 +46,9 @@ export default function CustomerPicker({ accounts = [], onSelect, inputId }) {
     setActiveIndex(-1);
   }, [query]);
 
-  // Never-blank status: exactly one of the three states while typing.
-  let statusMessage = "";
-  if (open) {
-    if (locLoading) statusMessage = "Searching customers…";
-    else if (results.length === 0) statusMessage = "No customers found";
-    else statusMessage = `${results.length} customer${results.length === 1 ? "" : "s"} found`;
-  }
+  // Never-blank status: exactly one distinct state (loading / query-error /
+  // no-results / results) while the combobox is open.
+  const statusMessage = customerPickerStatus({ open, locLoading, locError, resultCount: results.length });
 
   function choose(account) {
     if (account) onSelect?.(account);
@@ -97,16 +96,23 @@ export default function CustomerPicker({ accounts = [], onSelect, inputId }) {
 
       {open && (
         <div className="fo-customer-picker-dropdown">
-          {/* Never blank: this status line is always one of the three states. */}
+          {/* Never blank: exactly one distinct state (incl. a fail-closed query
+              error) with an explicit Retry -- never stuck on "Searching…". */}
           <div className="fo-customer-picker-status" role="status" aria-live="polite">
-            {statusMessage}
+            <span>{statusMessage}</span>
+            {locError && (
+              <button type="button" className="fo-link-btn fo-customer-picker-retry" onClick={retry}>
+                Retry
+              </button>
+            )}
           </div>
 
           {results.length > 0 && (
             <ul className="fo-customer-picker-list" role="listbox" id={listboxId} aria-label="Customer results">
               {results.map((account, i) => {
                 const secondary = customerSecondaryLine(account);
-                const locs = locLoading ? null : summarizeLocations(byAccount.get(account.id) ?? [], LOCATIONS_SHOWN);
+                const locs = summarizeLocations(byAccount.get(account.id) ?? [], LOCATIONS_SHOWN);
+                const locState = customerLocationState({ locLoading, locError, total: locs.total });
                 return (
                   <li
                     key={account.id}
@@ -125,9 +131,11 @@ export default function CustomerPicker({ accounts = [], onSelect, inputId }) {
                       {secondary && <span className="fo-customer-picker-secondary">{secondary}</span>}
                     </div>
                     <div className="fo-customer-picker-locs">
-                      {locs === null ? (
+                      {locState === "loading" ? (
                         <span className="fo-muted">Searching customers…</span>
-                      ) : locs.total === 0 ? (
+                      ) : locState === "error" ? (
+                        <span className="fo-muted fo-customer-picker-loc-error">{LOCATIONS_ERROR_LINE}</span>
+                      ) : locState === "none" ? (
                         <span className="fo-muted">No locations</span>
                       ) : (
                         <>

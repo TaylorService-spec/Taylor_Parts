@@ -64,3 +64,29 @@ export function summarizeLocations(locations = [], maxShown = 2) {
   }));
   return { shown, moreCount: Math.max(0, sorted.length - maxShown), total: sorted.length };
 }
+
+// Safe, distinct copy for the location-query FAILURE state (never a raw Firebase
+// message/code/id).
+export const LOCATIONS_ERROR_STATUS = "Couldn’t load customer locations — try again.";
+export const LOCATIONS_ERROR_LINE = "Locations unavailable";
+
+// The picker's OVERALL status line -- exactly one state while the combobox is
+// open, never blank. Location-query error takes precedence over the loading
+// message so the failure is never misrepresented as "Searching customers…".
+export function customerPickerStatus({ open = false, locLoading = false, locError = false, resultCount = 0 } = {}) {
+  if (!open) return "";
+  if (locError) return LOCATIONS_ERROR_STATUS;
+  if (locLoading) return "Searching customers…";
+  if (resultCount === 0) return "No customers found";
+  return `${resultCount} customer${resultCount === 1 ? "" : "s"} found`;
+}
+
+// The per-result LOCATION line state. "none" (rendered as "No locations") is used
+// ONLY for a successful empty result -- never for the loading or error states, so
+// a failure is never misrepresented as "No locations".
+export function customerLocationState({ locLoading = false, locError = false, total = 0 } = {}) {
+  if (locError) return "error"; // -> LOCATIONS_ERROR_LINE ("Locations unavailable")
+  if (locLoading) return "loading"; // -> "Searching customers…"
+  if (total === 0) return "none"; // -> "No locations" (success + empty ONLY)
+  return "list";
+}

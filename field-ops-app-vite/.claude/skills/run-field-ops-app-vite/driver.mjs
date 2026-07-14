@@ -3130,6 +3130,49 @@ async function verifyCustomerPicker(browser, page, accountKey) {
   const rawIds = [...F.accounts.map((a) => a.id), ...F.accounts.flatMap((a) => a.locations.map((l) => l.id))];
   niReport("No raw account/location IDs are displayed", rawIds.every((id) => !dropText.includes(id)), dropText.slice(0, 160));
 
+  // ===== Location-query error state + retry recovery =====
+  // Pre-error: locations loaded successfully (so we can prove stale removal).
+  await page.locator(".fo-customer-picker-status").filter({ hasText: /found/ }).waitFor({ timeout: 10000 }).catch(() => {});
+  niReport("Pre-error: a real location detail is shown (Main Shop)",
+    (await dropdown().getByText("Main Shop", { exact: false }).count()) > 0);
+  // Force the batched locations query to fail TERMINALLY: rewrite its collection
+  // to a read-denied one (`counters`, `allow read: if false`) so onSnapshot's
+  // error callback fires (permission-denied) -- a real error, not a retryable
+  // abort. Accounts are already loaded, so results still render.
+  const failLocations = (route) => {
+    const pd = route.request().postData() || "";
+    if (pd.includes("collectionId%22%3A%22locations")) return route.continue({ postData: pd.replaceAll("%22locations%22", "%22counters%22") });
+    return route.continue();
+  };
+  await page.route("**/Listen/channel**", failLocations);
+  // Re-issue the same search as a fresh candidate query (clear then retype).
+  await input().fill("");
+  await input().fill("test");
+  await page.locator(".fo-customer-picker-status").filter({ hasText: /try again/ }).waitFor({ timeout: 12000 });
+  const errStatus = await page.locator(".fo-customer-picker-status").innerText();
+  niReport("Query error: distinct safe status copy appears (loading -> error)", /Couldn.t load customer locations — try again\./.test(errStatus), errStatus.replace(/\n/g, " "));
+  niReport("Query error: NOT stuck on 'Searching customers…'", !/Searching customers/.test(errStatus));
+  niReport("Query error: an explicit Retry control is offered", (await page.getByRole("button", { name: "Retry" }).count()) > 0);
+  niReport("Query error: per-result shows 'Locations unavailable', and NEVER 'No locations'",
+    (await dropdown().getByText("Locations unavailable").count()) > 0 && (await dropdown().getByText("No locations", { exact: true }).count()) === 0);
+  niReport("Query error: stale locations removed (previous 'Main Shop' gone)",
+    (await dropdown().getByText("Main Shop", { exact: false }).count()) === 0);
+  const errText = await dropdown().innerText();
+  niReport("Query error: customer results remain usable + distinguishable (names + Denver,CO / Austin,TX)",
+    (await page.locator(".fo-customer-picker-name").count()) >= 3 && /Denver, CO/.test(errText) && /Austin, TX/.test(errText));
+  niReport("Query error: no raw error details / IDs leaked",
+    rawIds.every((id) => !errText.includes(id)) && !/permission|denied|counters|firestore|undefined|\[object/i.test(errText), errText.slice(0, 160));
+  // Retry recovers (deterministic, user-initiated -- no auto-retry loop).
+  await page.unroute("**/Listen/channel**", failLocations);
+  await page.getByRole("button", { name: "Retry" }).click();
+  await page.locator(".fo-customer-picker-status").filter({ hasText: /found/ }).waitFor({ timeout: 12000 });
+  niReport("Retry recovers: status returns to 'N customers found'", /customers? found/.test(await page.locator(".fo-customer-picker-status").innerText()));
+  niReport("Retry recovers: a real location detail is shown again (Main Shop)",
+    (await dropdown().getByText("Main Shop", { exact: false }).count()) > 0);
+  niReport("Retry recovers: no 'Locations unavailable' remains", (await dropdown().getByText("Locations unavailable").count()) === 0);
+  niReport("Retry recovers: 'No locations' returns for the genuinely empty customer (success-only)",
+    (await optionByName("Testerson Electric").first().innerText()).includes("No locations"));
+
   // ===== "No customers found" state =====
   await input().fill("zzzzz-no-such-customer");
   await page.waitForTimeout(300);

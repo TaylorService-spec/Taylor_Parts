@@ -7,6 +7,10 @@ import {
   customerSecondaryLine,
   summarizeLocations,
   locationCityState,
+  customerPickerStatus,
+  customerLocationState,
+  LOCATIONS_ERROR_STATUS,
+  LOCATIONS_ERROR_LINE,
 } from "../src/domain/customerSearch.js";
 
 let passed = 0;
@@ -92,6 +96,41 @@ ok("unnamed location + missing address render safely", () => {
   const s = summarizeLocations([{ id: "l", address: null }], 2);
   assert.equal(s.shown[0].name, "Unnamed location");
   assert.equal(s.shown[0].cityState, "");
+});
+
+// ===== customerPickerStatus: distinct states, error precedence, never blank =====
+ok("status: not open -> empty", () =>
+  assert.equal(customerPickerStatus({ open: false, locLoading: true, resultCount: 3 }), ""));
+ok("status: loading -> 'Searching customers…'", () =>
+  assert.equal(customerPickerStatus({ open: true, locLoading: true, resultCount: 3 }), "Searching customers…"));
+ok("status: query error -> safe distinct copy (takes precedence over loading)", () => {
+  assert.equal(customerPickerStatus({ open: true, locError: true, resultCount: 3 }), LOCATIONS_ERROR_STATUS);
+  assert.equal(customerPickerStatus({ open: true, locError: true, locLoading: true, resultCount: 3 }), LOCATIONS_ERROR_STATUS);
+  assert.match(LOCATIONS_ERROR_STATUS, /try again/i);
+});
+ok("status: no results -> 'No customers found'", () =>
+  assert.equal(customerPickerStatus({ open: true, locLoading: false, resultCount: 0 }), "No customers found"));
+ok("status: results -> 'N customers found'", () => {
+  assert.equal(customerPickerStatus({ open: true, resultCount: 3 }), "3 customers found");
+  assert.equal(customerPickerStatus({ open: true, resultCount: 1 }), "1 customer found");
+});
+ok("status: error copy exposes no raw code/message/id", () => {
+  const s = customerPickerStatus({ open: true, locError: true, resultCount: 2 });
+  assert.ok(!/permission|denied|firestore|code|undefined|null/i.test(s));
+});
+
+// ===== customerLocationState: "No locations" ONLY on a successful empty result =====
+ok("location state: error -> 'error' (never 'none')", () =>
+  assert.equal(customerLocationState({ locError: true, total: 0 }), "error"));
+ok("location state: loading -> 'loading' (never 'none')", () =>
+  assert.equal(customerLocationState({ locLoading: true, total: 0 }), "loading"));
+ok("location state: successful empty -> 'none' (this is the ONLY 'No locations' case)", () =>
+  assert.equal(customerLocationState({ locLoading: false, locError: false, total: 0 }), "none"));
+ok("location state: successful non-empty -> 'list'", () =>
+  assert.equal(customerLocationState({ total: 2 }), "list"));
+ok("error line copy is 'Locations unavailable', not 'No locations'", () => {
+  assert.equal(LOCATIONS_ERROR_LINE, "Locations unavailable");
+  assert.notEqual(LOCATIONS_ERROR_LINE, "No locations");
 });
 
 console.log(`\n${passed} passed, 0 failed`);

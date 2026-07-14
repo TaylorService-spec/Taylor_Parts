@@ -1176,11 +1176,17 @@ textarea.fo-wizard-control { min-height: 76px; resize: vertical; }
   overflow-y: auto;
 }
 .fo-customer-picker-status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
   padding: 8px 12px;
   font-size: 13px;
   color: #33474C;
   border-bottom: 1px solid #EDF1F0;
 }
+.fo-customer-picker-retry { font-size: 13px; }
+.fo-customer-picker-loc-error { color: #9a3412; } /* AA on white; distinct from muted */
 .fo-customer-picker-list { list-style: none; margin: 0; padding: 4px; }
 .fo-customer-picker-option {
   padding: 8px 10px;
