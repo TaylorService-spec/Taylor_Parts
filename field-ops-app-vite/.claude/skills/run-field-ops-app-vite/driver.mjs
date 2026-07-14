@@ -2857,6 +2857,121 @@ async function verifyCustomerCreateOverlay(browser, page, accountKey) {
   return niFailed === 0;
 }
 
+// Platform Task 2 -- Group Service navigation. Verifies the two-level Service
+// sub-nav for admin / dispatcher / technician (fresh contexts, since Firebase
+// Auth persists): per-role group + child visibility (never broadened), group
+// landing behavior, direct-URL parent/child selection + active states, keyboard
+// operation, Control Tower still reachable + unchanged, and 375px stacked
+// layout. Uses only existing seeded accounts.
+async function verifyServiceNav(browser, page, accountKey) {
+  const svcUrl = (tail = "") => { const u = new URL(`service${tail ? `/${tail}` : ""}`, APP_ROOT); u.searchParams.set("emulator", "1"); return u.toString(); };
+  const group = (p, label) => p.locator(`[role="group"][aria-label="${label}"]`);
+  const childActive = (p, name) => p.getByRole("link", { name, exact: true }).first().evaluate((el) => el.classList.contains("fo-nav-btn-active"));
+  const groupActive = (p, label) => group(p, label).evaluate((el) => el.classList.contains("fo-nav-group-active"));
+  const linkVisible = (p, name) => p.getByRole("link", { name, exact: true }).first().isVisible().catch(() => false);
+  const linkCount = (p, name) => p.getByRole("link", { name, exact: true }).count();
+
+  async function withRole(acctKey, fn) {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    const p = await ctx.newPage();
+    try { await login(p, acctKey); await fn(p); } finally { await ctx.close(); }
+  }
+
+  // ===== ADMIN (primary page) =====
+  await login(page, accountKey);
+  await page.goto(svcUrl(""), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await page.locator(".fo-service-subnav").waitFor({ timeout: 10000 });
+  niReport("Service sub-nav is a labelled two-level nav", (await page.locator('nav.fo-service-subnav[aria-label="Service sections"]').count()) === 1);
+  for (const g of ["Work Management", "Dispatch", "Technician Workspace"]) {
+    niReport(`Admin: "${g}" group is present`, (await group(page, g).count()) === 1);
+  }
+  for (const c of ["Work Orders", "Job Assignments", "Warranty", "Dispatcher Board", "Scheduling", "Dispatch Queue", "Technician Workspace", "Control Tower"]) {
+    niReport(`Admin: child/link "${c}" is visible`, await linkVisible(page, c));
+  }
+  niReport('Admin: "Dispatch" (renamed from Dispatch) label gone from children; "Dispatch Queue" present',
+    (await linkCount(page, "Dispatch")) === 1 && (await linkVisible(page, "Dispatch Queue")));
+
+  // Active state on /service: Work Management group + Work Orders child active.
+  niReport("Active: on /service, Work Management group is active", await groupActive(page, "Work Management"));
+  niReport("Active: on /service, Work Orders child is active", await childActive(page, "Work Orders"));
+
+  // Group landing behavior: clicking the "Dispatch" group header lands on Dispatcher Board.
+  await page.getByRole("link", { name: "Dispatch", exact: true }).click();
+  await page.waitForURL(/\/service\/dispatcher-board/, { timeout: 10000 });
+  niReport("Group landing: clicking the Dispatch group header navigates to /service/dispatcher-board", /\/service\/dispatcher-board/.test(page.url()));
+  // Wait for the client-side re-render to apply the active classes.
+  await group(page, "Dispatch").locator(":scope.fo-nav-group-active").waitFor({ timeout: 5000 }).catch(() => {});
+  niReport("Group landing: Dispatch group becomes active", await groupActive(page, "Dispatch"));
+  niReport("Group landing: Dispatcher Board child is active", await childActive(page, "Dispatcher Board"));
+
+  // Direct URL selects the correct parent group + child.
+  await page.goto(svcUrl("scheduling"), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await page.locator(".fo-service-subnav").waitFor({ timeout: 10000 });
+  niReport("Direct URL /service/scheduling: Dispatch group active", await groupActive(page, "Dispatch"));
+  niReport("Direct URL /service/scheduling: Scheduling child active", await childActive(page, "Scheduling"));
+  niReport("Direct URL: Work Management group is NOT active", !(await groupActive(page, "Work Management")));
+
+  // Keyboard: focus the Warranty child and activate with Enter.
+  const warranty = page.getByRole("link", { name: "Warranty", exact: true }).first();
+  await warranty.focus();
+  niReport("Keyboard: a child link is focusable", await warranty.evaluate((el) => el === document.activeElement));
+  await page.keyboard.press("Enter");
+  await page.waitForURL(/\/service\/warranty/, { timeout: 10000 });
+  niReport("Keyboard: Enter on a focused child navigates", /\/service\/warranty/.test(page.url()));
+  await group(page, "Work Management").locator(":scope.fo-nav-group-active").waitFor({ timeout: 5000 }).catch(() => {});
+  niReport("Keyboard: Work Management group active after navigating to Warranty", await groupActive(page, "Work Management"));
+
+  // Control Tower still reachable + unchanged.
+  await page.goto(svcUrl("control-tower"), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await page.locator(".fo-service-subnav").waitFor({ timeout: 10000 });
+  niReport("Control Tower still reachable at /service/control-tower", /\/service\/control-tower/.test(page.url()));
+  niReport("Control Tower link is active there", await childActive(page, "Control Tower"));
+  niReport("Control Tower is standalone (no group is active)",
+    !(await groupActive(page, "Work Management")) && !(await groupActive(page, "Dispatch")) && !(await groupActive(page, "Technician Workspace")));
+
+  // 375px: stacked, no horizontal overflow.
+  await page.goto(svcUrl(""), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await page.locator(".fo-service-subnav").waitFor({ timeout: 10000 });
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.waitForTimeout(150);
+  niReport("375px: no horizontal overflow with the grouped Service nav",
+    (await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1)));
+  niReport("375px: Service sub-nav stacks (column direction)",
+    (await page.locator(".fo-service-subnav").evaluate((el) => getComputedStyle(el).flexDirection)) === "column");
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  // ===== DISPATCHER: Work Management + Dispatch, NO Technician Workspace group =====
+  await withRole("ineligibleDispatcher", async (p) => {
+    await p.goto(svcUrl(""), { waitUntil: "domcontentloaded", timeout: 20000 });
+    await p.locator(".fo-service-subnav").waitFor({ timeout: 10000 });
+    niReport("Dispatcher: Work Management group present", (await group(p, "Work Management").count()) === 1);
+    niReport("Dispatcher: Dispatch group present", (await group(p, "Dispatch").count()) === 1);
+    niReport("Dispatcher: Technician Workspace group HIDDEN (no fieldMode access)", (await group(p, "Technician Workspace").count()) === 0);
+    niReport("Dispatcher: Control Tower still visible", await linkVisible(p, "Control Tower"));
+  });
+
+  // ===== TECHNICIAN: narrow scope preserved, never broadened =====
+  await withRole("technicianPartsAssociate", async (p) => {
+    // /service has no index route for a technician (Work Orders is admin/dispatcher-only),
+    // so inspect the grouped sub-nav at a route the technician can actually reach.
+    await p.goto(svcUrl("job-assignments"), { waitUntil: "domcontentloaded", timeout: 20000 });
+    await p.locator(".fo-service-subnav").waitFor({ timeout: 10000 });
+    niReport("Technician: Work Management group present", (await group(p, "Work Management").count()) === 1);
+    niReport("Technician: Work Management shows Job Assignments", await linkVisible(p, "Job Assignments"));
+    niReport("Technician: Work Orders NOT shown", (await linkCount(p, "Work Orders")) === 0);
+    niReport("Technician: Warranty NOT shown", (await linkCount(p, "Warranty")) === 0);
+    niReport("Technician: Dispatch group HIDDEN", (await group(p, "Dispatch").count()) === 0);
+    niReport("Technician: Dispatcher Board NOT shown", (await linkCount(p, "Dispatcher Board")) === 0);
+    niReport("Technician: Technician Workspace group present", (await group(p, "Technician Workspace").count()) === 1);
+    niReport("Technician: Control Tower NOT shown (fails closed, no broadening)", (await linkCount(p, "Control Tower")) === 0);
+    niReport("Technician: Job Assignments child is active", await childActive(p, "Job Assignments"));
+    niReport("Technician: Work Management group is active", await groupActive(p, "Work Management"));
+  });
+
+  console.log(`\n${niPassed} passed, ${niFailed} failed`);
+  return niFailed === 0;
+}
+
 async function main() {
   const [, , command, ...args] = process.argv;
   const browser = await chromium.launch();
@@ -2963,6 +3078,10 @@ async function main() {
     } else if (command === "verify-customer-dashboard") {
       const [accountKey = "admin"] = args;
       const ok = await verifyCustomerDashboard(browser, page, accountKey);
+      if (!ok) process.exitCode = 1;
+    } else if (command === "verify-service-nav") {
+      const [accountKey = "admin"] = args;
+      const ok = await verifyServiceNav(browser, page, accountKey);
       if (!ok) process.exitCode = 1;
     } else if (command === "verify-customer-create-overlay") {
       const [accountKey = "admin"] = args;
