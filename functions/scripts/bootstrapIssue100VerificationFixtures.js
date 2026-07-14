@@ -23,66 +23,97 @@
 //      ANY target Auth email or ANY target Firestore document already
 //      exists, the entire run throws and writes NOTHING. This script
 //      never updates an existing document -- create-only, always.
-//   3. Crash-safe recovery manifest, exclusively created BEFORE any
-//      mutation. Immediately after conflict detection passes and before
-//      the first Auth/Firestore write, the credentials/manifest file is
-//      created with `wx` (exclusive -- fails if anything already exists
-//      at that exact path, refusing to overwrite a stale file OR a
-//      prior run's still-needed manifest) and restrictive permissions
-//      (0o600). EVERY subsequent successful creation -- one Auth
-//      account, one Firestore document, one at a time -- is recorded
-//      into that SAME file via an atomic write-temp-then-rename update
-//      (durable: survives a crash between any two steps, and a reader
-//      never observes a half-written file). If a write fails partway
-//      through, every already-created resource is compensated (deleted)
-//      in REVERSE order; if compensation itself fully succeeds, the run
-//      still fails (exit 1) but leaves no residual state; if ANY
-//      compensating delete also fails, the manifest is retained exactly
-//      as-is (marking what could and couldn't be undone) and the run
-//      exits with a DISTINCT hard-failure code (4) -- the manifest is
-//      the recovery record for a human or a later --cleanup pass. No
-//      created resource is ever left without a durable record of its
-//      existence, even across a hard process kill between steps
-//      (each step's record is durably persisted before the next step
-//      begins).
-//   4. Deviation from provisionEmployeeAccess.js's passwordless
+//   3. TRUE write-ahead recovery manifest. Every Auth account and
+//      Firestore document this script will ever create has a
+//      DETERMINISTIC identity (a fixed uid derived from its role,
+//      exactly like its email/employeeId/docId already were) -- known
+//      BEFORE the mutation is even attempted. For every single
+//      creation: a manifest entry in state "planned" (naming the exact
+//      uid/collection+docId that is ABOUT to be created) is durably
+//      persisted FIRST; only then is the real Auth/Firestore write
+//      attempted; only then is that SAME entry flipped to "created" and
+//      persisted again. A crash at ANY point -- including exactly
+//      between the real write landing and the "created" transition --
+//      leaves a manifest that already names the resource, because its
+//      identity was recorded before the mutation, not after. Recovery
+//      (this run's own catch-based compensation, OR a later --cleanup
+//      pointed at a manifest left behind by a hard crash) never needs
+//      to guess: for any non-"deleted" entry it re-checks reality by
+//      that exact deterministic identity -- if the resource exists, it
+//      is compensated; if it doesn't (the crash landed before the
+//      mutation ever reached Firebase), the entry is simply marked
+//      resolved. No created resource -- planned-then-crashed or fully
+//      confirmed -- is ever left without a durable, discoverable
+//      record.
+//   4. On any failure, every touched entry (whether it reached "created"
+//      or was left "planned") is compensated in REVERSE creation order
+//      via that same reality-check-then-delete-if-present logic. If
+//      compensation fully resolves everything, the run still fails
+//      (exit 1) but leaves no residual state. If any compensating
+//      delete itself fails, the manifest is retained exactly as-is and
+//      the run exits with a DISTINCT hard-failure code (4).
+//   5. Deviation from provisionEmployeeAccess.js's passwordless
 //      convention, deliberate and scoped: that script never generates a
 //      credential because it provisions REAL employee access records.
 //      This script provisions DISPOSABLE, clearly-fixture-labeled test
 //      identities whose entire purpose is signing in with a password via
 //      verifyIssue100ProductionRules.js's Identity Toolkit REST calls --
 //      a passwordless account cannot do that. A strong, random password
-//      is generated per account and written ONLY into the exclusively-
-//      created credentials/manifest file described above -- never to
-//      stdout, never logged, never included in any error message.
-//   5. Console output is limited to fixed, classified, identifier-free
-//      messages and aggregate counts -- never an email, password, uid,
-//      document ID, or a caught error's own raw message (which could,
-//      in principle, echo request detail from an underlying SDK/network
-//      failure). A caught error's real message is preserved ONLY in
-//      values this script returns to its own caller (consumed by tests
-//      directly, never printed) -- never interpolated into anything
-//      passed to console.log/console.error.
-//   6. --credentialsOutFile/--manifestFile must resolve, via the REAL
+//      is generated per account and written ONLY into the credentials/
+//      manifest file described below -- never to stdout, never logged,
+//      never included in any error message.
+//   6. Secret-file protection is ESTABLISHED AND VERIFIED, not merely
+//      requested. The file is first exclusively created empty (`wx` --
+//      refuses any pre-existing destination, never truncates/overwrites
+//      a prior manifest); on POSIX, 0o600 is applied and re-read back to
+//      confirm it actually took; on Windows, this script shells out to
+//      `icacls` to strip inherited permissions and grant access to
+//      ONLY the current operator plus the unavoidable SYSTEM/
+//      Administrators principals, then re-reads the ACL back and
+//      refuses to proceed (deleting the still-empty, still-secret-free
+//      file) if any OTHER principal (Users, Authenticated Users,
+//      Everyone, or any other group) is present, or if establishing/
+//      verifying the ACL failed for any reason -- fail closed, no
+//      secret is ever written otherwise. EVERY subsequent update to the
+//      file (one per creation/compensation/cleanup step) re-applies and
+//      re-verifies this same protection on the temp file BEFORE it is
+//      renamed over the target, so the guarantee holds for the file's
+//      entire lifetime, not just its first byte.
+//   7. --credentialsOutFile/--manifestFile must resolve, via the REAL
 //      (symlink/junction-resolved) filesystem path of their PARENT
-//      directory, outside this repository -- not merely a lexical
-//      `path.resolve()` check, which a symlinked parent directory could
-//      defeat.
-//   7. Marker- and manifest-guarded cleanup, never automatic, always
-//      all-or-nothing. --cleanup [--apply] first PREVALIDATES every
-//      not-yet-deleted manifest entry (Firestore fixtureMarker, Auth
-//      account identity/email-domain) with ZERO deletions attempted --
-//      if ANY entry mismatches, the whole cleanup aborts having deleted
-//      nothing. Only once every entry validates does deletion begin,
-//      one target at a time, each immediately marked `deleted: true` in
-//      the SAME manifest file (durable, same atomic-rename update as
-//      apply) -- an interrupted cleanup can always be safely re-run: an
-//      already-deleted entry is skipped (never re-validated, never
-//      re-attempted), and any remaining entry is prevalidated and
-//      deleted exactly as a fresh run would. Cleanup is NEVER invoked
-//      automatically by the create path (not on error, not on exit) --
-//      always a separate, explicit operator decision.
-//   8. Never executes on import. Every exported function is a plain,
+//      directory, outside this repository -- compared CASE-
+//      INSENSITIVELY on Windows (a case-different alias of the same
+//      physical directory is the same directory on NTFS/Windows,
+//      confirmed by direct testing that fs.realpathSync() does NOT
+//      itself normalize case) -- not merely a lexical path.resolve()
+//      check, which neither a symlinked parent NOR a case-different
+//      alias could be caught by alone.
+//   8. Marker- and manifest-guarded cleanup, never automatic, always
+//      all-or-nothing, TOCTOU-resistant. --cleanup [--apply] first
+//      PREVALIDATES every non-"deleted" manifest entry (Firestore
+//      fixtureMarker, Auth account identity/email-domain) with ZERO
+//      deletions attempted -- if ANY entry mismatches, the whole
+//      cleanup aborts having deleted nothing. Only once every entry
+//      validates does deletion begin, one target at a time -- and
+//      immediately before each individual deletion, identity is
+//      RE-VERIFIED again (Auth: a fresh getUser() re-check; Firestore:
+//      the delete itself carries a `lastUpdateTime` precondition
+//      captured at validation time, so Firestore itself atomically
+//      refuses the delete if the document changed in between). If a
+//      target genuinely changed between validation and its own
+//      deletion, cleanup stops immediately, persists the accurate
+//      progress so far, and returns a DISTINCT recoverable-failure
+//      result -- never silently deleting stale-validated data. Each
+//      deletion is immediately marked in the SAME manifest file,
+//      durably, so an interrupted cleanup is always safely re-runnable.
+//      Cleanup is NEVER invoked automatically by the create path.
+//   9. Console output is limited to fixed, classified, identifier-free
+//      messages and aggregate counts -- never an email, password, uid,
+//      document ID, the credentials/manifest file's own path, or a
+//      caught error's raw message. A caught error's real message is
+//      preserved ONLY on the value this script returns to its own
+//      caller (consumed by tests directly, never printed).
+//  10. Never executes on import. Every exported function is a plain,
 //      side-effect-free (until explicitly called) unit; main() only runs
 //      under `if (require.main === module)`, identical to this
 //      project's other operator scripts.
@@ -113,15 +144,19 @@
 //        mismatch was found (zero deletions occurred), OR an apply
 //        failed but was FULLY compensated (no residual Auth/Firestore
 //        state -- the run still failed, but nothing was left behind).
-//   4 -- an apply failed AND compensation could NOT fully undo it.
-//        The manifest file has been retained exactly as-is and MUST be
-//        used (via --cleanup, or manual review) to resolve the
-//        remaining state. Always takes precedence over exit code 1.
+//   4 -- an apply failed AND compensation could NOT fully undo it, OR a
+//        cleanup target changed between validation and its own
+//        deletion partway through. The manifest file has been retained
+//        exactly as-is and MUST be used (via --cleanup, or manual
+//        review) to resolve the remaining state. Always takes
+//        precedence over exit code 1.
 "use strict";
 
 const path = require("path");
+const os = require("os");
 const crypto = require("crypto");
 const fs = require("fs");
+const { execFileSync } = require("child_process");
 const { initializeApp, getApps } = require("firebase-admin/app");
 const { getAuth } = require("firebase-admin/auth");
 const { getFirestore } = require("firebase-admin/firestore");
@@ -136,7 +171,7 @@ const {
 // Versioned so a future shape change can distinguish its own fixtures
 // from an older run's, if ever needed -- deterministic, not per-run
 // random (see "Deterministic fixture IDs" below).
-const FIXTURE_MARKER = "ISSUE_100_VERIFICATION_FIXTURE_V1";
+const FIXTURE_MARKER = "ISSUE_100_VERIFICATION_FIXTURE_V2";
 
 // RFC 2606 reserves `.invalid` as a TLD guaranteed to never resolve --
 // every fixture Auth account's email lives under this domain, doubling
@@ -146,6 +181,14 @@ const FIXTURE_MARKER = "ISSUE_100_VERIFICATION_FIXTURE_V1";
 const FIXTURE_EMAIL_DOMAIN = "issue100-verify.fixtures.invalid";
 
 const ID_PREFIX = "issue100-verify";
+
+// Deterministic Auth uid per account -- known BEFORE auth.createUser()
+// is ever called, which is what makes a true write-ahead manifest entry
+// possible for Auth accounts (Firebase would otherwise only hand back a
+// uid AFTER creation succeeds).
+function uidFor(slug) {
+  return `${ID_PREFIX}-uid-${slug}`;
+}
 
 const REQUIRED_ACCOUNTS = [
   { key: "PARTS_MANAGER", slug: "parts-manager", displayName: "Issue 100 Verify - Parts Manager", operationalRoles: ["PARTS_MANAGER"], securityRole: "technician" },
@@ -190,6 +233,13 @@ function parseArgs(argv) {
   return args;
 }
 
+class ValidationError extends Error {
+  constructor(code, message) {
+    super(message);
+    this.code = code;
+  }
+}
+
 // This file lives at functions/scripts/<this file> -- repo root is two
 // directories up. Used only to refuse an --credentialsOutFile/--manifestFile
 // path whose REAL parent directory resolves inside this repository.
@@ -197,63 +247,80 @@ function repoRoot() {
   return fs.realpathSync(path.resolve(__dirname, "..", ".."));
 }
 
+// Windows/NTFS (and, by default, macOS/APFS) are case-insensitive but
+// case-PRESERVING filesystems -- two differently-cased strings can name
+// the exact same physical directory. fs.realpathSync() does NOT itself
+// normalize case (confirmed by direct testing: realpathSync of a
+// lowercased real path returns it lowercased, not canonicalized) -- so
+// the containment comparison itself must be case-insensitive on
+// case-insensitive platforms, or a same-directory alias with different
+// case bypasses it entirely.
+function normalizeForContainmentComparison(p) {
+  return process.platform === "win32" ? p.toLowerCase() : p;
+}
+
 // Resolves the REAL (symlink/junction-free) parent directory of
 // `absPath` and refuses if that real location is inside this
 // repository -- a lexical path.resolve() check alone cannot catch a
-// symlinked/junctioned parent directory that actually points back into
-// the repo. The target file itself need not exist yet (exclusive
-// creation happens later); its parent directory must.
-function assertOutsideRepo(label, absPath) {
+// symlinked/junctioned parent directory, or a differently-cased alias
+// of the same directory, that actually points back into the repo. The
+// target file itself need not exist yet; its parent directory must.
+function assertOutsideRepo(label, code, absPath) {
   const parent = path.dirname(path.resolve(absPath));
   let realParent;
   try {
     realParent = fs.realpathSync(parent);
   } catch (err) {
-    throw new Error(`${label}'s parent directory "${parent}" does not exist or is not accessible.`);
+    throw new ValidationError(`${code}_PARENT_MISSING`, `${label}'s parent directory "${parent}" does not exist or is not accessible.`);
   }
   const root = repoRoot();
-  const rootWithSep = root + path.sep;
-  if (realParent === root || realParent.startsWith(rootWithSep)) {
-    throw new Error(`${label} must be OUTSIDE this repository -- its real (symlink-resolved) parent directory "${realParent}" resolves inside it.`);
+  const normalizedParent = normalizeForContainmentComparison(realParent);
+  const normalizedRoot = normalizeForContainmentComparison(root);
+  const normalizedRootWithSep = normalizedRoot + path.sep;
+  if (normalizedParent === normalizedRoot || normalizedParent.startsWith(normalizedRootWithSep)) {
+    throw new ValidationError(`${code}_INSIDE_REPO`, `${label} must be OUTSIDE this repository -- its real (symlink-resolved) parent directory resolves inside it.`);
   }
 }
 
 // ---------------------------------------------------------------
 // Phase A -- parse and validate input. No I/O beyond the parent-
-// directory realpath check above (no Firebase SDK call).
+// directory realpath check above (no Firebase SDK call). Every failure
+// throws a ValidationError with a stable `.code` -- console output is
+// keyed off that code (see VALIDATION_FIXED_MESSAGES), never off the
+// message text itself, which may include a real filesystem path.
 // ---------------------------------------------------------------
 function validateInput(rawArgs, env) {
   const apply = rawArgs.apply === "true";
   const cleanup = rawArgs.cleanup === "true";
 
   if (env.FIREBASE_PROJECT_ID !== REQUIRED_PROJECT_ID) {
-    throw new Error(`FIREBASE_PROJECT_ID must be exactly "${REQUIRED_PROJECT_ID}" (no default target).`);
+    throw new ValidationError("BAD_PROJECT_ID", `FIREBASE_PROJECT_ID must be exactly "${REQUIRED_PROJECT_ID}" (no default target).`);
   }
   if (env.PRODUCTION_DATA_AUTHORIZED !== "YES") {
-    throw new Error('PRODUCTION_DATA_AUTHORIZED must be exactly "YES" (explicit, per-run Owner authorization).');
+    throw new ValidationError("BAD_PRODUCTION_AUTHORIZATION", 'PRODUCTION_DATA_AUTHORIZED must be exactly "YES" (explicit, per-run Owner authorization).');
   }
   if (!env.GOOGLE_APPLICATION_CREDENTIALS) {
-    throw new Error("GOOGLE_APPLICATION_CREDENTIALS is required (Admin SDK credential path).");
+    throw new ValidationError("MISSING_ADMIN_CREDENTIALS", "GOOGLE_APPLICATION_CREDENTIALS is required (Admin SDK credential path).");
   }
 
   if (cleanup) {
     if (!rawArgs.manifestFile) {
-      throw new Error("--cleanup requires --manifestFile <absolute path to a file this script previously wrote>.");
+      throw new ValidationError("MISSING_MANIFEST_FILE_FLAG", "--cleanup requires --manifestFile <absolute path to a file this script previously wrote>.");
     }
     if (!path.isAbsolute(rawArgs.manifestFile)) {
-      throw new Error("--manifestFile must be an absolute path.");
+      throw new ValidationError("MANIFEST_FILE_NOT_ABSOLUTE", "--manifestFile must be an absolute path.");
     }
-    assertOutsideRepo("--manifestFile", rawArgs.manifestFile);
+    assertOutsideRepo("--manifestFile", "MANIFEST_FILE", rawArgs.manifestFile);
     return { mode: "cleanup", apply, manifestFile: path.resolve(rawArgs.manifestFile), projectId: env.FIREBASE_PROJECT_ID };
   }
 
   if (!rawArgs.credentialsOutFile) {
-    throw new Error("--credentialsOutFile <absolute path outside this repository> is required.");
+    throw new ValidationError("MISSING_CREDENTIALS_OUT_FILE_FLAG", "--credentialsOutFile <absolute path outside this repository> is required.");
   }
   if (!path.isAbsolute(rawArgs.credentialsOutFile)) {
-    throw new Error("--credentialsOutFile must be an absolute path.");
+    throw new ValidationError("CREDENTIALS_OUT_FILE_NOT_ABSOLUTE", "--credentialsOutFile must be an absolute path.");
   }
-  assertOutsideRepo("--credentialsOutFile", rawArgs.credentialsOutFile);
+  assertOutsideRepo("--credentialsOutFile", "CREDENTIALS_OUT_FILE", rawArgs.credentialsOutFile);
 
   return {
     mode: "bootstrap",
@@ -264,6 +331,20 @@ function validateInput(rawArgs, env) {
     googleApplicationCredentials: env.GOOGLE_APPLICATION_CREDENTIALS,
   };
 }
+
+const VALIDATION_FIXED_MESSAGES = {
+  BAD_PROJECT_ID: "FAIL -- invalid or missing FIREBASE_PROJECT_ID.",
+  BAD_PRODUCTION_AUTHORIZATION: "FAIL -- invalid or missing PRODUCTION_DATA_AUTHORIZED.",
+  MISSING_ADMIN_CREDENTIALS: "FAIL -- missing GOOGLE_APPLICATION_CREDENTIALS.",
+  MISSING_MANIFEST_FILE_FLAG: "FAIL -- --cleanup requires --manifestFile.",
+  MANIFEST_FILE_NOT_ABSOLUTE: "FAIL -- --manifestFile must be an absolute path.",
+  MANIFEST_FILE_PARENT_MISSING: "FAIL -- --manifestFile's parent directory does not exist or is not accessible.",
+  MANIFEST_FILE_INSIDE_REPO: "FAIL -- --manifestFile must resolve outside this repository.",
+  MISSING_CREDENTIALS_OUT_FILE_FLAG: "FAIL -- --credentialsOutFile is required.",
+  CREDENTIALS_OUT_FILE_NOT_ABSOLUTE: "FAIL -- --credentialsOutFile must be an absolute path.",
+  CREDENTIALS_OUT_FILE_PARENT_MISSING: "FAIL -- --credentialsOutFile's parent directory does not exist or is not accessible.",
+  CREDENTIALS_OUT_FILE_INSIDE_REPO: "FAIL -- --credentialsOutFile must resolve outside this repository.",
+};
 
 function generateStrongPassword() {
   // 24 random bytes, base64url-encoded -- 32 characters, cryptographically
@@ -285,28 +366,124 @@ function fixtureDocId(name) {
 }
 
 // ---------------------------------------------------------------
-// Durable file I/O -- two distinct operations, deliberately not
-// interchangeable:
-//   - createExclusively(): used EXACTLY ONCE per apply run, at the very
-//     start of Phase E, on a path that must not already exist ("refuse
-//     any existing destination", "never overwrite a prior manifest").
-//   - writeDurably(): used for every subsequent update to that SAME,
-//     now-existing file (this run's own in-progress manifest) and for
-//     every cleanup progress update to an existing manifest -- an
-//     atomic write-temp-then-rename so a reader (or a crashed process
-//     restarting) never observes a half-written file.
+// Secret-file protection -- established AND verified, not merely
+// requested. Two entry points:
+//   - createSecretFileExclusively(): used EXACTLY ONCE per apply run, at
+//     the very start of Phase E, on a path that must not already exist.
+//     Creates an EMPTY file first, hardens+verifies its permissions,
+//     and ONLY THEN writes the real (still secret-free at this exact
+//     moment) initial content -- if hardening/verification fails, the
+//     empty file is removed and NOTHING is written.
+//   - writeSecretFileDurably(): every subsequent update to that SAME,
+//     now-existing file (this run's own in-progress manifest, or a
+//     cleanup's progress updates to an existing manifest) -- writes to
+//     a temp file, hardens+verifies THAT temp file's permissions (a
+//     rename preserves the source file's permissions/ACL exactly, so
+//     hardening the temp file before the atomic rename is what makes
+//     the guarantee hold for the file's entire lifetime, not just its
+//     first byte), then atomically renames it over the target.
 // ---------------------------------------------------------------
-function createExclusively(targetPath, content) {
-  const fd = fs.openSync(targetPath, "wx", 0o600);
+
+// Principal-name allowlist for the Windows ACL verification below --
+// deliberately narrow: the current operator (by OS username, however
+// icacls chooses to qualify it -- e.g. "MACHINE\\name" or "DOMAIN\\name"),
+// plus the two unavoidable built-in principals every Windows ACL
+// realistically still carries. Anything else (Users, Authenticated
+// Users, Everyone, a custom group, an unresolvable raw SID) fails
+// verification.
+function windowsAllowedPrincipalPatterns() {
+  const username = os.userInfo().username;
+  const escapedUsername = username.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return [
+    new RegExp(`(^|\\\\)${escapedUsername}$`, "i"),
+    /(^|\\)SYSTEM$/i,
+    /(^|\\)Administrators$/i,
+  ];
+}
+
+function parseIcaclsPrincipals(output, targetPath) {
+  const principals = [];
+  for (const rawLine of output.split(/\r?\n/)) {
+    const trimmedWhole = rawLine.trim();
+    if (!trimmedWhole) continue;
+    if (/^Successfully processed/i.test(trimmedWhole)) continue;
+    if (/^Failed processing/i.test(trimmedWhole)) continue;
+    let line = rawLine;
+    if (line.startsWith(targetPath)) line = line.slice(targetPath.length);
+    line = line.trim();
+    const match = line.match(/^(.+?):\(/);
+    if (match) principals.push(match[1].trim());
+  }
+  return principals;
+}
+
+// Strips inherited permissions and grants access to ONLY the current
+// user plus SYSTEM/Administrators, then re-reads the ACL back and
+// verifies no other principal is present. Throws on ANY failure --
+// icacls missing, a command erroring, or an unexpected principal found
+// -- so the caller can fail closed uniformly.
+function establishAndVerifyWindowsAcl(targetPath) {
+  const username = os.userInfo().username;
   try {
-    fs.writeSync(fd, content);
-    fs.fsyncSync(fd);
-  } finally {
-    fs.closeSync(fd);
+    execFileSync("icacls", [targetPath, "/inheritance:r"], { stdio: "pipe" });
+    execFileSync("icacls", [targetPath, "/grant:r", `${username}:F`, "SYSTEM:F", "Administrators:F"], { stdio: "pipe" });
+  } catch (err) {
+    throw new Error("Could not establish restrictive Windows ACLs on the credentials/manifest file.");
+  }
+
+  let output;
+  try {
+    output = execFileSync("icacls", [targetPath], { stdio: "pipe" }).toString();
+  } catch (err) {
+    throw new Error("Could not verify Windows ACLs on the credentials/manifest file.");
+  }
+
+  const principals = parseIcaclsPrincipals(output, targetPath);
+  const allowed = windowsAllowedPrincipalPatterns();
+  const unexpected = principals.filter((p) => !allowed.some((re) => re.test(p)));
+  if (unexpected.length > 0 || principals.length === 0) {
+    throw new Error("Windows ACL verification found an unexpected principal (or no principals at all) on the credentials/manifest file.");
   }
 }
 
-function writeDurably(targetPath, content) {
+// POSIX: the mode is applied at file-creation time by the caller
+// (fs.openSync's third argument) -- this only VERIFIES it actually
+// took (some filesystems/mount options can silently ignore or alter
+// requested modes), failing closed if not.
+function verifyPosixMode(targetPath) {
+  const mode = fs.statSync(targetPath).mode & 0o777;
+  if (mode !== 0o600) {
+    throw new Error("POSIX file permissions could not be verified as restrictive (0600).");
+  }
+}
+
+function establishAndVerifySecretFilePermissions(targetPath) {
+  if (process.platform === "win32") {
+    establishAndVerifyWindowsAcl(targetPath);
+  } else {
+    verifyPosixMode(targetPath);
+  }
+}
+
+function createSecretFileExclusively(targetPath, content) {
+  const fd = fs.openSync(targetPath, "wx", 0o600);
+  fs.closeSync(fd);
+  try {
+    establishAndVerifySecretFilePermissions(targetPath);
+  } catch (err) {
+    fs.unlinkSync(targetPath); // still empty, still secret-free -- safe to remove
+    throw err;
+  }
+  const writeFd = fs.openSync(targetPath, "w");
+  try {
+    fs.writeSync(writeFd, content);
+    fs.fsyncSync(writeFd);
+  } finally {
+    fs.closeSync(writeFd);
+  }
+}
+
+function writeSecretFileDurably(targetPath, content) {
   const tmpPath = `${targetPath}.tmp-${process.pid}-${Date.now()}-${crypto.randomBytes(4).toString("hex")}`;
   const fd = fs.openSync(tmpPath, "w", 0o600);
   try {
@@ -315,7 +492,13 @@ function writeDurably(targetPath, content) {
   } finally {
     fs.closeSync(fd);
   }
-  fs.renameSync(tmpPath, targetPath);
+  try {
+    establishAndVerifySecretFilePermissions(tmpPath);
+  } catch (err) {
+    fs.unlinkSync(tmpPath);
+    throw err;
+  }
+  fs.renameSync(tmpPath, targetPath); // preserves the temp file's own (now-hardened) permissions/ACL
 }
 
 // ---------------------------------------------------------------
@@ -384,6 +567,7 @@ function buildAccountPlan() {
     accounts[spec.key] = {
       ...spec,
       email: emailFor(spec.slug),
+      uid: uidFor(spec.slug),
       password: generateStrongPassword(),
       employeeId: employeeIdFor(spec.slug),
       employmentStatus: "ACTIVE",
@@ -393,6 +577,7 @@ function buildAccountPlan() {
     accounts[spec.key] = {
       ...spec,
       email: emailFor(spec.slug),
+      uid: uidFor(spec.slug),
       password: generateStrongPassword(),
       employeeId: employeeIdFor(spec.slug),
     };
@@ -423,8 +608,8 @@ function canonicalReorderRequestFields(now, overrides) {
 // REQUIRED_FIXTURE_ENV's twelve names (imported from
 // verifyIssue100ProductionRules.js -- see that file's own inline
 // comments for each fixture's required shape, mirrored here verbatim).
-// `uids` maps account key -> Firebase Auth uid (only known once Phase E
-// has created/resolved every account).
+// `uids` maps account key -> Firebase Auth uid (deterministic --
+// available even before any account is actually created).
 function buildFixturePlan(now, uids) {
   const docs = [];
 
@@ -591,8 +776,8 @@ function buildFixturePlan(now, uids) {
 // any write. `now` is only needed for buildFixturePlan's timestamps, not
 // for target enumeration, so a placeholder uid map is fine here.
 function enumerateTargets(accounts) {
-  const placeholderUids = Object.fromEntries(Object.keys(accounts).map((k) => [k, `placeholder-${k}`]));
-  const { docs } = buildFixturePlan(0, placeholderUids);
+  const uids = Object.fromEntries(Object.entries(accounts).map(([k, a]) => [k, a.uid]));
+  const { docs } = buildFixturePlan(0, uids);
   return {
     emails: Object.values(accounts).map((a) => a.email),
     docRefs: [
@@ -636,16 +821,16 @@ function initialManifestState(input) {
   };
 }
 
-// Builds the plain (collection/employees + fixture docs) creation order
-// as a flat list of { kind: "auth"|"employee"|"user"|"doc", ... } steps,
-// so Phase E can iterate ONE list, persisting after every single step,
-// and compensation can walk the exact same list in reverse.
+// Builds the plain (employees/users + fixture docs) creation order as a
+// flat list of { collection, docId, data, label } steps, so Phase E can
+// iterate ONE list, write-ahead-persisting before and after every
+// single step.
 function buildAccountFirestoreSteps(accounts, uids, now) {
   const steps = [];
   for (const [key, spec] of Object.entries(accounts)) {
     if (spec.kind === "broken") {
       steps.push({
-        kind: "doc", collection: "users", docId: uids[key], role: key,
+        collection: "users", docId: uids[key], role: key,
         data: { role: "technician", employeeId: employeeIdFor(`${spec.slug}-target-missing`), fixtureMarker: FIXTURE_MARKER },
         label: `${key} user`,
       });
@@ -653,7 +838,7 @@ function buildAccountFirestoreSteps(accounts, uids, now) {
     }
     if (spec.kind === "nonreciprocal") {
       steps.push({
-        kind: "doc", collection: "employees", docId: spec.employeeId, role: key,
+        collection: "employees", docId: spec.employeeId, role: key,
         data: {
           employeeId: spec.employeeId, displayName: spec.displayName, firstName: null, lastName: null,
           employmentStatus: spec.employmentStatus, operationalRoles: spec.operationalRoles, securityRole: null,
@@ -664,14 +849,14 @@ function buildAccountFirestoreSteps(accounts, uids, now) {
         label: `${key} employee`,
       });
       steps.push({
-        kind: "doc", collection: "users", docId: uids[key], role: key,
+        collection: "users", docId: uids[key], role: key,
         data: { role: "technician", employeeId: spec.employeeId, fixtureMarker: FIXTURE_MARKER },
         label: `${key} user`,
       });
       continue;
     }
     steps.push({
-      kind: "doc", collection: "employees", docId: spec.employeeId, role: key,
+      collection: "employees", docId: spec.employeeId, role: key,
       data: {
         employeeId: spec.employeeId, displayName: spec.displayName, firstName: null, lastName: null,
         employmentStatus: spec.employmentStatus ?? "ACTIVE", operationalRoles: spec.operationalRoles,
@@ -681,7 +866,7 @@ function buildAccountFirestoreSteps(accounts, uids, now) {
       label: `${key} employee`,
     });
     steps.push({
-      kind: "doc", collection: "users", docId: uids[key], role: key,
+      collection: "users", docId: uids[key], role: key,
       data: { role: spec.securityRole ?? "technician", employeeId: spec.employeeId, fixtureMarker: FIXTURE_MARKER },
       label: `${key} user`,
     });
@@ -690,37 +875,87 @@ function buildAccountFirestoreSteps(accounts, uids, now) {
 }
 
 // ---------------------------------------------------------------
-// Phase E -- apply with crash-safe recovery. Only reached when
-// input.apply === true and conflict detection has already passed.
-// Exclusively creates the manifest file, then performs every Auth/
-// Firestore write one at a time, durably persisting the manifest after
-// EACH one. On any failure, compensates (deletes) everything already
-// created, in exact reverse order, persisting after each compensating
-// delete too.
+// Reality-check-then-compensate -- the SAME logic used both by this
+// run's own catch-based compensation AND by --cleanup (including a
+// --cleanup pointed at a manifest left behind by a hard crash). Never
+// assumes an entry's recorded state ("planned" or "created") reflects
+// reality -- always re-checks by the entry's own deterministic
+// identity. A "planned" entry that turns out not to exist resolves
+// cleanly (the crash landed before the mutation ever reached Firebase)
+// -- NOT an error. An entry that exists but fails identity verification
+// throws, refusing to delete something that isn't provably ours.
+// ---------------------------------------------------------------
+async function resolveAndCompensateAuthEntry(auth, entry) {
+  if (entry.state === "deleted") return { deleted: false, wasPresent: false };
+  const user = await auth.getUser(entry.uid).catch(() => null);
+  if (!user) {
+    entry.state = "deleted";
+    return { deleted: false, wasPresent: false };
+  }
+  const matches = user.email && user.email.endsWith(`@${FIXTURE_EMAIL_DOMAIN}`) && user.email === entry.email;
+  if (!matches) {
+    throw new Error("Auth identity verification failed during compensation -- refusing to delete.");
+  }
+  await auth.deleteUser(entry.uid);
+  entry.state = "deleted";
+  return { deleted: true, wasPresent: true };
+}
+
+async function resolveAndCompensateDocEntry(db, entry) {
+  if (entry.state === "deleted") return { deleted: false, wasPresent: false };
+  const ref = db.collection(entry.collection).doc(entry.docId);
+  const snap = await ref.get();
+  if (!snap.exists) {
+    entry.state = "deleted";
+    return { deleted: false, wasPresent: false };
+  }
+  if (snap.data().fixtureMarker !== FIXTURE_MARKER) {
+    throw new Error("Firestore marker verification failed during compensation -- refusing to delete.");
+  }
+  await ref.delete({ lastUpdateTime: snap.updateTime });
+  entry.state = "deleted";
+  return { deleted: true, wasPresent: true };
+}
+
+// ---------------------------------------------------------------
+// Phase E -- apply with crash-safe, write-ahead recovery. Only reached
+// when input.apply === true and conflict detection has already passed.
+// Exclusively creates the manifest file, then for EVERY Auth account
+// and Firestore document: persists a "planned" entry (naming its
+// already-known deterministic identity) BEFORE attempting the real
+// write, then flips that SAME entry to "created" and persists again
+// AFTER the write succeeds. On any failure, every touched entry
+// (planned or created) is resolved/compensated in exact reverse order
+// via the reality-check logic above.
 // ---------------------------------------------------------------
 async function applyBootstrapWithRecovery(db, auth, accounts, input) {
   let manifestState;
   try {
     manifestState = initialManifestState(input);
-    createExclusively(input.credentialsOutFile, JSON.stringify(manifestState, null, 2));
+    createSecretFileExclusively(input.credentialsOutFile, JSON.stringify(manifestState, null, 2));
   } catch (err) {
     return { ok: false, exitCode: 1, reason: "MANIFEST_CREATE_FAILED", internalErrorDetail: err.message };
   }
 
   function persist() {
-    writeDurably(input.credentialsOutFile, JSON.stringify(manifestState, null, 2));
+    writeSecretFileDurably(input.credentialsOutFile, JSON.stringify(manifestState, null, 2));
   }
 
-  const createdAuth = []; // [{ uid, role }], in creation order
-  const createdDocs = []; // [{ collection, docId }], in creation order
+  const touchedAuthUids = []; // in creation-attempt order, for reverse compensation
+  const touchedDocRefs = []; // [{ collection, docId }], in creation-attempt order
 
   try {
     const uids = {};
     for (const [key, spec] of Object.entries(accounts)) {
-      const userRecord = await auth.createUser({ email: spec.email, password: spec.password, displayName: spec.displayName ?? undefined, emailVerified: true });
-      uids[key] = userRecord.uid;
-      manifestState.manifest.authUsers.push({ role: key, uid: userRecord.uid, email: spec.email, deleted: false });
-      createdAuth.push({ uid: userRecord.uid, role: key });
+      const authEntry = { role: key, uid: spec.uid, email: spec.email, state: "planned" };
+      manifestState.manifest.authUsers.push(authEntry);
+      touchedAuthUids.push(spec.uid);
+      persist();
+
+      await auth.createUser({ uid: spec.uid, email: spec.email, password: spec.password, displayName: spec.displayName ?? undefined, emailVerified: true });
+      uids[key] = spec.uid;
+
+      authEntry.state = "created";
       persist();
       console.log(`Created Firebase Auth account for ${key}.`);
     }
@@ -728,18 +963,28 @@ async function applyBootstrapWithRecovery(db, auth, accounts, input) {
     const now = Date.now();
     const accountSteps = buildAccountFirestoreSteps(accounts, uids, now);
     for (const step of accountSteps) {
+      const docEntry = { collection: step.collection, docId: step.docId, label: step.label, state: "planned" };
+      manifestState.manifest.firestoreDocs.push(docEntry);
+      touchedDocRefs.push({ collection: step.collection, docId: step.docId });
+      persist();
+
       await db.collection(step.collection).doc(step.docId).set(step.data);
-      manifestState.manifest.firestoreDocs.push({ collection: step.collection, docId: step.docId, label: step.label, deleted: false });
-      createdDocs.push({ collection: step.collection, docId: step.docId });
+
+      docEntry.state = "created";
       persist();
       console.log(`Created ${step.collection}/${step.label}.`);
     }
 
     const { docs, envDocIds } = buildFixturePlan(now, uids);
     for (const d of docs) {
+      const docEntry = { collection: d.collection, docId: d.docId, label: d.envKey ?? d.label, state: "planned" };
+      manifestState.manifest.firestoreDocs.push(docEntry);
+      touchedDocRefs.push({ collection: d.collection, docId: d.docId });
+      persist();
+
       await db.collection(d.collection).doc(d.docId).set(d.data);
-      manifestState.manifest.firestoreDocs.push({ collection: d.collection, docId: d.docId, label: d.envKey ?? d.label, deleted: false });
-      createdDocs.push({ collection: d.collection, docId: d.docId });
+
+      docEntry.state = "created";
       persist();
       console.log(`Created ${d.collection}/${d.envKey ?? d.label}.`);
     }
@@ -752,52 +997,53 @@ async function applyBootstrapWithRecovery(db, auth, accounts, input) {
   } catch (err) {
     const compensationFailures = [];
 
-    for (let i = createdDocs.length - 1; i >= 0; i -= 1) {
-      const ref = createdDocs[i];
+    for (let i = touchedDocRefs.length - 1; i >= 0; i -= 1) {
+      const ref = touchedDocRefs[i];
+      const entry = manifestState.manifest.firestoreDocs.find((d) => d.collection === ref.collection && d.docId === ref.docId && d.state !== "deleted");
+      if (!entry) continue;
       try {
-        await db.collection(ref.collection).doc(ref.docId).delete();
-        const entry = manifestState.manifest.firestoreDocs.find((d) => d.collection === ref.collection && d.docId === ref.docId && !d.deleted);
-        if (entry) entry.deleted = true;
+        await resolveAndCompensateDocEntry(db, entry);
         persist();
       } catch (compErr) {
         compensationFailures.push({ type: "doc", collection: ref.collection, docId: ref.docId, detail: compErr.message });
       }
     }
 
-    for (let i = createdAuth.length - 1; i >= 0; i -= 1) {
-      const a = createdAuth[i];
+    for (let i = touchedAuthUids.length - 1; i >= 0; i -= 1) {
+      const uid = touchedAuthUids[i];
+      const entry = manifestState.manifest.authUsers.find((u) => u.uid === uid && u.state !== "deleted");
+      if (!entry) continue;
       try {
-        await auth.deleteUser(a.uid);
-        const entry = manifestState.manifest.authUsers.find((u) => u.uid === a.uid && !u.deleted);
-        if (entry) entry.deleted = true;
+        await resolveAndCompensateAuthEntry(auth, entry);
         persist();
       } catch (compErr) {
-        compensationFailures.push({ type: "auth", uid: a.uid, role: a.role, detail: compErr.message });
+        compensationFailures.push({ type: "auth", uid, detail: compErr.message });
       }
     }
 
     if (compensationFailures.length === 0) {
       manifestState.status = "FAILED_COMPENSATED";
       persist();
-      return { ok: false, exitCode: 1, reason: "APPLY_FAILED_FULLY_COMPENSATED", internalErrorDetail: err.message, manifestPath: input.credentialsOutFile };
+      return { ok: false, exitCode: 1, reason: "APPLY_FAILED_FULLY_COMPENSATED", internalErrorDetail: err.message };
     }
 
     manifestState.status = "FAILED_INCOMPLETE_COMPENSATION";
     persist();
-    return {
-      ok: false, exitCode: 4, reason: "APPLY_FAILED_INCOMPLETE_COMPENSATION",
-      internalErrorDetail: err.message, compensationFailures, manifestPath: input.credentialsOutFile,
-    };
+    return { ok: false, exitCode: 4, reason: "APPLY_FAILED_INCOMPLETE_COMPENSATION", internalErrorDetail: err.message, compensationFailures };
   }
 }
 
 // ---------------------------------------------------------------
-// Cleanup -- two strict phases. Phase 1 prevalidates EVERY not-yet-
-// deleted manifest entry with zero mutation; if anything mismatches,
-// returns immediately having deleted nothing. Phase 2 (only reached if
-// phase 1 found zero mismatches) deletes one target at a time, marking
-// it `deleted: true` in the SAME manifest file durably after each one --
-// an interruption mid-phase-2 leaves an accurate, re-runnable record.
+// Cleanup -- two strict phases, TOCTOU-resistant. Phase 1 prevalidates
+// EVERY non-"deleted" manifest entry (planned OR created, treated
+// identically -- see resolveAndCompensate* above) with zero mutation;
+// if anything mismatches, returns immediately having deleted nothing.
+// Phase 2 (only reached if phase 1 found zero mismatches) deletes one
+// target at a time, IMMEDIATELY re-verifying identity right before each
+// Auth deletion and carrying a Firestore `lastUpdateTime` precondition
+// captured at validation time on each Firestore deletion -- if a target
+// genuinely changed in between, this phase stops immediately, persists
+// accurate progress, and reports a distinct recoverable-failure result.
 // ---------------------------------------------------------------
 async function runCleanup(db, auth, manifestFile, apply) {
   const raw = fs.readFileSync(manifestFile, "utf8");
@@ -806,16 +1052,9 @@ async function runCleanup(db, auth, manifestFile, apply) {
     throw new Error(`Manifest fixtureMarker "${parsed.fixtureMarker}" does not match this script's own "${FIXTURE_MARKER}" -- refusing to clean up a manifest from a different/incompatible run.`);
   }
 
-  // Phase 1 -- prevalidate. A target already marked deleted (from a
-  // prior, interrupted cleanup run) is skipped entirely -- never
-  // re-validated, never re-attempted. A target whose live Auth/Firestore
-  // state is simply GONE already (not just marked so) is treated the
-  // same as already-deleted, not a mismatch -- this is what makes a
-  // cleanup safely re-runnable after a crash between a real delete and
-  // its own manifest persistence.
   const authPlan = [];
   for (const entry of parsed.manifest.authUsers) {
-    if (entry.deleted) continue;
+    if (entry.state === "deleted") continue;
     const user = await auth.getUser(entry.uid).catch(() => null);
     if (!user) {
       authPlan.push({ entry, action: "already-gone" });
@@ -827,7 +1066,7 @@ async function runCleanup(db, auth, manifestFile, apply) {
 
   const docPlan = [];
   for (const entry of parsed.manifest.firestoreDocs) {
-    if (entry.deleted) continue;
+    if (entry.state === "deleted") continue;
     const ref = db.collection(entry.collection).doc(entry.docId);
     const snap = await ref.get();
     if (!snap.exists) {
@@ -835,7 +1074,7 @@ async function runCleanup(db, auth, manifestFile, apply) {
       continue;
     }
     const matches = snap.data().fixtureMarker === FIXTURE_MARKER;
-    docPlan.push({ entry, ref, action: matches ? "delete" : "mismatch" });
+    docPlan.push({ entry, ref, action: matches ? "delete" : "mismatch", expectedUpdateTime: snap.updateTime });
   }
 
   const mismatches = [
@@ -855,26 +1094,47 @@ async function runCleanup(db, auth, manifestFile, apply) {
   }
 
   function persist() {
-    writeDurably(manifestFile, JSON.stringify(parsed, null, 2));
+    writeSecretFileDurably(manifestFile, JSON.stringify(parsed, null, 2));
   }
 
   let deletedAuthUsers = 0;
   for (const { entry, action } of authPlan) {
     if (action === "delete") {
-      await auth.deleteUser(entry.uid);
-      deletedAuthUsers += 1;
+      // Immediate revalidation -- re-check identity right before this
+      // specific deletion, not just at Phase 1 validation time.
+      const recheck = await auth.getUser(entry.uid).catch(() => null);
+      if (recheck) {
+        const stillMatches = recheck.email && recheck.email.endsWith(`@${FIXTURE_EMAIL_DOMAIN}`) && recheck.email === entry.email;
+        if (!stillMatches) {
+          persist();
+          return { aborted: false, targetChangedMidRun: true, changedTarget: entry.role, deletedAuthUsers, deletedDocs: 0 };
+        }
+        await auth.deleteUser(entry.uid);
+        deletedAuthUsers += 1;
+      }
+      // If recheck is null, it vanished between phase 1 and phase 2 --
+      // nothing to delete, not a change requiring abort.
     }
-    entry.deleted = true;
+    entry.state = "deleted";
     persist();
   }
 
   let deletedDocs = 0;
-  for (const { entry, ref, action } of docPlan) {
+  for (const { entry, ref, action, expectedUpdateTime } of docPlan) {
     if (action === "delete") {
-      await ref.delete();
-      deletedDocs += 1;
+      try {
+        await ref.delete({ lastUpdateTime: expectedUpdateTime });
+        deletedDocs += 1;
+      } catch (err) {
+        const isPreconditionFailure = err.code === 9 || /FAILED_PRECONDITION/i.test(err.message || "");
+        if (isPreconditionFailure) {
+          persist();
+          return { aborted: false, targetChangedMidRun: true, changedTarget: `${entry.collection}/${entry.label}`, deletedAuthUsers, deletedDocs };
+        }
+        throw err;
+      }
     }
-    entry.deleted = true;
+    entry.state = "deleted";
     persist();
   }
 
@@ -887,14 +1147,16 @@ async function runCleanup(db, auth, manifestFile, apply) {
 // a real (emulator) db/auth without spawning a subprocess or parsing
 // captured stdout to determine outcome. Console output is always a
 // fixed, classified message keyed off `reason` -- never a caught
-// error's own raw message, which is preserved only on the returned
+// error's own raw message, and never the credentials/manifest file's
+// own path. The real message/path is preserved only on the returned
 // result object for direct test inspection.
 // ---------------------------------------------------------------
 const FIXED_MESSAGES = {
-  MANIFEST_CREATE_FAILED: "FAIL -- could not exclusively create the credentials/manifest file (it may already exist, or its location may be invalid). No Auth account or Firestore document was created.",
+  MANIFEST_CREATE_FAILED: "FAIL -- could not exclusively create and secure the credentials/manifest file (it may already exist, its location may be invalid, or restrictive permissions could not be established and verified). No Auth account or Firestore document was created.",
   APPLY_FAILED_FULLY_COMPENSATED: "FAIL -- apply could not complete; every partially-created Auth account and Firestore document was successfully removed. No residual state remains.",
   APPLY_FAILED_INCOMPLETE_COMPENSATION: "FAIL -- apply could not complete and some partially-created state could NOT be removed automatically. The manifest file has been retained -- immediate manual review (or --cleanup with that file) is required.",
   CLEANUP_MISMATCH: "FAIL -- one or more manifest targets did not verify (marker/identity mismatch, or the manifest itself is stale). Aborting with ZERO deletions.",
+  CLEANUP_TARGET_CHANGED_MID_RUN: "FAIL -- a manifest target changed between validation and its own deletion. Cleanup stopped immediately; progress made so far has been durably recorded. Re-run --cleanup to resolve the remainder after investigating the change.",
 };
 
 async function runCleanupCommand(db, auth, input) {
@@ -910,6 +1172,11 @@ async function runCleanupCommand(db, auth, input) {
   if (results.aborted) {
     console.error(FIXED_MESSAGES.CLEANUP_MISMATCH);
     return { ok: false, exitCode: 1, reason: "CLEANUP_MISMATCH", results };
+  }
+
+  if (results.targetChangedMidRun) {
+    console.error(FIXED_MESSAGES.CLEANUP_TARGET_CHANGED_MID_RUN);
+    return { ok: false, exitCode: 4, reason: "CLEANUP_TARGET_CHANGED_MID_RUN", results };
   }
 
   if (!input.apply) {
@@ -950,8 +1217,8 @@ async function runBootstrapCommand(db, auth, input) {
   }
 
   console.log(`\nOK -- ${result.manifest.authUsers.length} Auth account(s) and ${result.manifest.firestoreDocs.length} Firestore document(s) created.`);
-  console.log(`Credentials and verifier environment variables written to: ${input.credentialsOutFile}`);
-  console.log("This file contains real passwords -- keep it outside version control, delete it when no longer needed, and use --cleanup with it when you are done verifying.");
+  console.log("Credentials and verifier environment variables have been written to the configured output file.");
+  console.log("That file contains real passwords -- keep it outside version control, delete it when no longer needed, and use --cleanup with it when you are done verifying.");
   return result;
 }
 
@@ -961,7 +1228,7 @@ async function main() {
   try {
     input = validateInput(rawArgs, process.env);
   } catch (err) {
-    console.error(`FAIL -- ${err.message}`);
+    console.error(VALIDATION_FIXED_MESSAGES[err.code] ?? "FAIL -- invalid configuration (no detail logged).");
     process.exitCode = 1;
     return;
   }
@@ -986,14 +1253,20 @@ if (require.main === module) {
 module.exports = {
   parseArgs,
   validateInput,
+  ValidationError,
   assertOutsideRepo,
   repoRoot,
+  normalizeForContainmentComparison,
   generateStrongPassword,
   emailFor,
   employeeIdFor,
   fixtureDocId,
-  createExclusively,
-  writeDurably,
+  uidFor,
+  createSecretFileExclusively,
+  writeSecretFileDurably,
+  establishAndVerifySecretFilePermissions,
+  parseIcaclsPrincipals,
+  windowsAllowedPrincipalPatterns,
   readCurrentState,
   detectConflicts,
   buildAccountPlan,
@@ -1003,11 +1276,14 @@ module.exports = {
   enumerateTargets,
   buildEnvBlock,
   initialManifestState,
+  resolveAndCompensateAuthEntry,
+  resolveAndCompensateDocEntry,
   applyBootstrapWithRecovery,
   runCleanup,
   runBootstrapCommand,
   runCleanupCommand,
   FIXED_MESSAGES,
+  VALIDATION_FIXED_MESSAGES,
   FIXTURE_MARKER,
   FIXTURE_EMAIL_DOMAIN,
   ID_PREFIX,
