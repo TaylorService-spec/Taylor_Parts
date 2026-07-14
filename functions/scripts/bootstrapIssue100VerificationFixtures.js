@@ -16,48 +16,73 @@
 //      -- validates input, connects with real Admin SDK credentials,
 //      reads current state, and detects every conflict a real run would
 //      hit. Only --apply additionally permits the write phase to run.
-//      A dry-run is therefore a genuine preview (it reflects real
-//      collisions), not a structural-only simulation -- and it performs
-//      zero Auth or Firestore writes and produces no credentials file.
-//   2. Refuse to overwrite. Conflict detection runs BEFORE any write --
-//      if ANY target Auth email or ANY target Firestore document
-//      already exists, the entire run throws and writes NOTHING (all-
-//      or-nothing, matching functions/scripts/provisionEmployeeAccess.js's
-//      own established phase-ordering discipline). This script never
-//      updates an existing document -- create-only, always.
-//   3. Deviation from provisionEmployeeAccess.js's passwordless
+//      A dry-run performs zero Auth/Firestore writes and creates no
+//      file of any kind.
+//   2. Refuse to overwrite Auth/Firestore state. Conflict detection
+//      (readCurrentState/detectConflicts) runs BEFORE any write -- if
+//      ANY target Auth email or ANY target Firestore document already
+//      exists, the entire run throws and writes NOTHING. This script
+//      never updates an existing document -- create-only, always.
+//   3. Crash-safe recovery manifest, exclusively created BEFORE any
+//      mutation. Immediately after conflict detection passes and before
+//      the first Auth/Firestore write, the credentials/manifest file is
+//      created with `wx` (exclusive -- fails if anything already exists
+//      at that exact path, refusing to overwrite a stale file OR a
+//      prior run's still-needed manifest) and restrictive permissions
+//      (0o600). EVERY subsequent successful creation -- one Auth
+//      account, one Firestore document, one at a time -- is recorded
+//      into that SAME file via an atomic write-temp-then-rename update
+//      (durable: survives a crash between any two steps, and a reader
+//      never observes a half-written file). If a write fails partway
+//      through, every already-created resource is compensated (deleted)
+//      in REVERSE order; if compensation itself fully succeeds, the run
+//      still fails (exit 1) but leaves no residual state; if ANY
+//      compensating delete also fails, the manifest is retained exactly
+//      as-is (marking what could and couldn't be undone) and the run
+//      exits with a DISTINCT hard-failure code (4) -- the manifest is
+//      the recovery record for a human or a later --cleanup pass. No
+//      created resource is ever left without a durable record of its
+//      existence, even across a hard process kill between steps
+//      (each step's record is durably persisted before the next step
+//      begins).
+//   4. Deviation from provisionEmployeeAccess.js's passwordless
 //      convention, deliberate and scoped: that script never generates a
 //      credential because it provisions REAL employee access records.
 //      This script provisions DISPOSABLE, clearly-fixture-labeled test
 //      identities whose entire purpose is signing in with a password via
 //      verifyIssue100ProductionRules.js's Identity Toolkit REST calls --
 //      a passwordless account cannot do that. A strong, random password
-//      is generated per account and written ONLY to the operator-
-//      selected credentials file (see #4) -- never to stdout, never
-//      logged, never returned from any function that isn't explicitly
-//      building that file's contents.
-//   4. Secrets and every REQUIRED_ACCOUNT_ENV/REQUIRED_FIXTURE_ENV/
-//      OPTIONAL_ACCOUNT_ENV_PAIRS value go ONLY into --credentialsOutFile,
-//      an operator-chosen ABSOLUTE path that this script refuses to
-//      accept if it resolves inside this repository (checked in phase A,
-//      before any Firebase SDK call, via a plain path-prefix test against
-//      this file's own repo root). Console output during a run is limited
-//      to role/collection/label progress lines and counts -- never an
-//      email, password, uid, or the credentials file's own contents.
-//   5. Marker- and manifest-guarded cleanup, never automatic. --apply
-//      writes a manifest (exactly which Auth uids and Firestore
-//      collection/docId pairs were created) into the SAME credentials
-//      file. A separate, always-explicit --cleanup [--apply] mode reads
-//      that manifest and deletes ONLY what it lists -- and, as a second,
-//      independent safety layer, re-reads each target immediately before
-//      deleting it and refuses to delete anything whose fixtureMarker
-//      field (Firestore) or fixture email domain (Auth) does not still
-//      match this script's own FIXTURE_MARKER/FIXTURE_EMAIL_DOMAIN
-//      constants -- protecting against a stale or hand-edited manifest.
-//      Cleanup is NEVER invoked automatically by the create path (not on
-//      error, not on exit) -- it is a wholly separate operator decision,
-//      exactly once, when explicitly requested.
-//   6. Never executes on import. Every exported function is a plain,
+//      is generated per account and written ONLY into the exclusively-
+//      created credentials/manifest file described above -- never to
+//      stdout, never logged, never included in any error message.
+//   5. Console output is limited to fixed, classified, identifier-free
+//      messages and aggregate counts -- never an email, password, uid,
+//      document ID, or a caught error's own raw message (which could,
+//      in principle, echo request detail from an underlying SDK/network
+//      failure). A caught error's real message is preserved ONLY in
+//      values this script returns to its own caller (consumed by tests
+//      directly, never printed) -- never interpolated into anything
+//      passed to console.log/console.error.
+//   6. --credentialsOutFile/--manifestFile must resolve, via the REAL
+//      (symlink/junction-resolved) filesystem path of their PARENT
+//      directory, outside this repository -- not merely a lexical
+//      `path.resolve()` check, which a symlinked parent directory could
+//      defeat.
+//   7. Marker- and manifest-guarded cleanup, never automatic, always
+//      all-or-nothing. --cleanup [--apply] first PREVALIDATES every
+//      not-yet-deleted manifest entry (Firestore fixtureMarker, Auth
+//      account identity/email-domain) with ZERO deletions attempted --
+//      if ANY entry mismatches, the whole cleanup aborts having deleted
+//      nothing. Only once every entry validates does deletion begin,
+//      one target at a time, each immediately marked `deleted: true` in
+//      the SAME manifest file (durable, same atomic-rename update as
+//      apply) -- an interrupted cleanup can always be safely re-run: an
+//      already-deleted entry is skipped (never re-validated, never
+//      re-attempted), and any remaining entry is prevalidated and
+//      deleted exactly as a fresh run would. Cleanup is NEVER invoked
+//      automatically by the create path (not on error, not on exit) --
+//      always a separate, explicit operator decision.
+//   8. Never executes on import. Every exported function is a plain,
 //      side-effect-free (until explicitly called) unit; main() only runs
 //      under `if (require.main === module)`, identical to this
 //      project's other operator scripts.
@@ -69,23 +94,29 @@
 //     node scripts/bootstrapIssue100VerificationFixtures.js \
 //     --credentialsOutFile /absolute/path/outside/this/repo/issue100-verify-fixtures.json
 //
-// USAGE (apply -- creates real accounts/documents and writes the file):
+// USAGE (apply -- creates real accounts/documents and the manifest file;
+// the target path must NOT already exist):
 //   ...same as above, plus --apply
 //
-// USAGE (cleanup preview, deletes nothing):
+// USAGE (cleanup preview, validates only, deletes nothing):
 //   node scripts/bootstrapIssue100VerificationFixtures.js --cleanup \
 //     --manifestFile /absolute/path/outside/this/repo/issue100-verify-fixtures.json
 //
-// USAGE (cleanup, apply -- actually deletes, marker-guarded):
+// USAGE (cleanup, apply -- deletes only if every entry validates):
 //   ...same as above, plus --apply
 //
 // Exit codes:
 //   0 -- completed (dry-run preview, or a real apply/cleanup) with no
 //        unresolved issue.
-//   1 -- a prerequisite was missing/invalid, a conflict was detected
-//        (refusing to overwrite), or one or more cleanup targets were
-//        skipped because their marker no longer matched (requires
-//        manual operator review -- see the printed SKIPPED lines).
+//   1 -- a prerequisite was missing/invalid, a pre-mutation conflict was
+//        detected (zero writes occurred), a cleanup prevalidation
+//        mismatch was found (zero deletions occurred), OR an apply
+//        failed but was FULLY compensated (no residual Auth/Firestore
+//        state -- the run still failed, but nothing was left behind).
+//   4 -- an apply failed AND compensation could NOT fully undo it.
+//        The manifest file has been retained exactly as-is and MUST be
+//        used (via --cleanup, or manual review) to resolve the
+//        remaining state. Always takes precedence over exit code 1.
 "use strict";
 
 const path = require("path");
@@ -104,14 +135,14 @@ const {
 
 // Versioned so a future shape change can distinguish its own fixtures
 // from an older run's, if ever needed -- deterministic, not per-run
-// random (see "Deterministic fixture IDs" -- item 4).
+// random (see "Deterministic fixture IDs" below).
 const FIXTURE_MARKER = "ISSUE_100_VERIFICATION_FIXTURE_V1";
 
 // RFC 2606 reserves `.invalid` as a TLD guaranteed to never resolve --
 // every fixture Auth account's email lives under this domain, doubling
 // as a second, independent marker (alongside FIXTURE_MARKER on every
-// Firestore document) that cleanup's marker-guard re-checks against a
-// live Auth record before ever deleting it.
+// Firestore document) that cleanup's prevalidation re-checks against a
+// live Auth record before ever deleting anything.
 const FIXTURE_EMAIL_DOMAIN = "issue100-verify.fixtures.invalid";
 
 const ID_PREFIX = "issue100-verify";
@@ -161,21 +192,35 @@ function parseArgs(argv) {
 
 // This file lives at functions/scripts/<this file> -- repo root is two
 // directories up. Used only to refuse an --credentialsOutFile/--manifestFile
-// path that resolves inside this repository.
+// path whose REAL parent directory resolves inside this repository.
 function repoRoot() {
-  return path.resolve(__dirname, "..", "..");
+  return fs.realpathSync(path.resolve(__dirname, "..", ".."));
 }
 
+// Resolves the REAL (symlink/junction-free) parent directory of
+// `absPath` and refuses if that real location is inside this
+// repository -- a lexical path.resolve() check alone cannot catch a
+// symlinked/junctioned parent directory that actually points back into
+// the repo. The target file itself need not exist yet (exclusive
+// creation happens later); its parent directory must.
 function assertOutsideRepo(label, absPath) {
-  const resolved = path.resolve(absPath);
-  const root = repoRoot() + path.sep;
-  if (resolved === repoRoot() || resolved.startsWith(root)) {
-    throw new Error(`${label} must be OUTSIDE this repository -- "${resolved}" resolves inside it.`);
+  const parent = path.dirname(path.resolve(absPath));
+  let realParent;
+  try {
+    realParent = fs.realpathSync(parent);
+  } catch (err) {
+    throw new Error(`${label}'s parent directory "${parent}" does not exist or is not accessible.`);
+  }
+  const root = repoRoot();
+  const rootWithSep = root + path.sep;
+  if (realParent === root || realParent.startsWith(rootWithSep)) {
+    throw new Error(`${label} must be OUTSIDE this repository -- its real (symlink-resolved) parent directory "${realParent}" resolves inside it.`);
   }
 }
 
 // ---------------------------------------------------------------
-// Phase A -- parse and validate input. No I/O, no Firebase SDK call.
+// Phase A -- parse and validate input. No I/O beyond the parent-
+// directory realpath check above (no Firebase SDK call).
 // ---------------------------------------------------------------
 function validateInput(rawArgs, env) {
   const apply = rawArgs.apply === "true";
@@ -237,6 +282,40 @@ function employeeIdFor(slug) {
 
 function fixtureDocId(name) {
   return `${ID_PREFIX}-${name}`;
+}
+
+// ---------------------------------------------------------------
+// Durable file I/O -- two distinct operations, deliberately not
+// interchangeable:
+//   - createExclusively(): used EXACTLY ONCE per apply run, at the very
+//     start of Phase E, on a path that must not already exist ("refuse
+//     any existing destination", "never overwrite a prior manifest").
+//   - writeDurably(): used for every subsequent update to that SAME,
+//     now-existing file (this run's own in-progress manifest) and for
+//     every cleanup progress update to an existing manifest -- an
+//     atomic write-temp-then-rename so a reader (or a crashed process
+//     restarting) never observes a half-written file.
+// ---------------------------------------------------------------
+function createExclusively(targetPath, content) {
+  const fd = fs.openSync(targetPath, "wx", 0o600);
+  try {
+    fs.writeSync(fd, content);
+    fs.fsyncSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+function writeDurably(targetPath, content) {
+  const tmpPath = `${targetPath}.tmp-${process.pid}-${Date.now()}-${crypto.randomBytes(4).toString("hex")}`;
+  const fd = fs.openSync(tmpPath, "w", 0o600);
+  try {
+    fs.writeSync(fd, content);
+    fs.fsyncSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
+  fs.renameSync(tmpPath, targetPath);
 }
 
 // ---------------------------------------------------------------
@@ -345,7 +424,7 @@ function canonicalReorderRequestFields(now, overrides) {
 // verifyIssue100ProductionRules.js -- see that file's own inline
 // comments for each fixture's required shape, mirrored here verbatim).
 // `uids` maps account key -> Firebase Auth uid (only known once Phase E
-// has created/resolved every account -- see applyBootstrap()).
+// has created/resolved every account).
 function buildFixturePlan(now, uids) {
   const docs = [];
 
@@ -374,13 +453,24 @@ function buildFixturePlan(now, uids) {
     }),
   });
 
+  // Realistic terminal history: Admin approves (reviewedBy/reviewDecision),
+  // the PARTS_MANAGER fixture performs a REAL Assign (assignedBy -- the
+  // one transition a plain, non-admin/dispatcher Parts Manager account
+  // can actually perform under firestore.rules), then Admin cancels
+  // (admin/dispatcher-only, unchanged by this transition's own pinning
+  // of assignedBy) -- every field reflects a transition its own actor
+  // could really have performed; never attributes an admin-only Approve/
+  // Reject/Cancel decision to the Parts Manager fixture itself. Relevant
+  // History's Rules OR-condition (reviewedBy==uid || assignedBy==uid) is
+  // satisfied via assignedBy, not reviewedBy.
   const pmHistoryId = fixtureDocId("pm-history");
   docs.push({
     envKey: "PM_HISTORY_DOC_ID", collection: "reorder_requests", docId: pmHistoryId,
     data: canonicalReorderRequestFields(now, {
-      status: "REJECTED", currentOwner: "INVENTORY",
-      requestedBy: uids.ADMIN, reviewedBy: uids.PARTS_MANAGER, reviewedAt: now, reviewDecision: "REJECTED",
-      reviewNotes: "Issue 100 verification fixture -- historical record.",
+      status: "CANCELLED", currentOwner: "PARTS_ASSOCIATE",
+      requestedBy: uids.ADMIN, reviewedBy: uids.ADMIN, reviewedAt: now, reviewDecision: "APPROVED",
+      assignedToUserId: uids.PARTS_ASSOCIATE_OTHER, assignedBy: uids.PARTS_MANAGER, assignedAt: now,
+      cancelledBy: uids.ADMIN, cancelledAt: now, cancellationReason: "Issue 100 verification fixture -- historical record.",
     }),
   });
 
@@ -512,78 +602,7 @@ function enumerateTargets(accounts) {
   };
 }
 
-// ---------------------------------------------------------------
-// Phase E -- apply. Only reached when input.apply === true. Creates
-// every Auth account, then every Firestore document (employees/users
-// first, so uids exist before fixture docs that reference them),
-// returning the full manifest for the credentials file.
-// ---------------------------------------------------------------
-async function applyBootstrap(db, auth, accounts) {
-  const now = Date.now();
-  const manifest = { authUsers: [], firestoreDocs: [] };
-
-  const uids = {};
-  for (const [key, spec] of Object.entries(accounts)) {
-    const userRecord = await auth.createUser({ email: spec.email, password: spec.password, displayName: spec.displayName ?? undefined, emailVerified: true });
-    uids[key] = userRecord.uid;
-    manifest.authUsers.push({ role: key, uid: userRecord.uid, email: spec.email });
-    console.log(`Created Firebase Auth account for ${key}.`);
-  }
-
-  for (const [key, spec] of Object.entries(accounts)) {
-    if (spec.kind === "broken") {
-      // No employees/{employeeId} document at all -- the whole point of
-      // this probe. users/{uid}.employeeId points to an id that will
-      // never resolve.
-      await db.collection("users").doc(uids[key]).set({ role: "technician", employeeId: employeeIdFor(`${spec.slug}-target-missing`), fixtureMarker: FIXTURE_MARKER });
-      manifest.firestoreDocs.push({ collection: "users", docId: uids[key], label: `${key} user` });
-      continue;
-    }
-
-    if (spec.kind === "nonreciprocal") {
-      // employees/{employeeId}.userId points to a deliberately mismatched
-      // sentinel, never this account's own real uid -- users/{uid}.
-      // employeeId still points at it, so the link is one-directional.
-      const employeeDoc = {
-        employeeId: spec.employeeId, displayName: spec.displayName, firstName: null, lastName: null,
-        employmentStatus: spec.employmentStatus, operationalRoles: spec.operationalRoles, securityRole: null,
-        companyId: null, departmentId: null, locationId: null,
-        userId: "issue100-verify-nonreciprocal-mismatched-uid-placeholder",
-        createdAt: now, updatedAt: now, fixtureMarker: FIXTURE_MARKER,
-      };
-      await db.collection("employees").doc(spec.employeeId).set(employeeDoc);
-      manifest.firestoreDocs.push({ collection: "employees", docId: spec.employeeId, label: `${key} employee` });
-      await db.collection("users").doc(uids[key]).set({ role: "technician", employeeId: spec.employeeId, fixtureMarker: FIXTURE_MARKER });
-      manifest.firestoreDocs.push({ collection: "users", docId: uids[key], label: `${key} user` });
-      continue;
-    }
-
-    // Normal reciprocal linkage -- every REQUIRED/CROSS_USER account,
-    // plus INACTIVE_LINKAGE/INELIGIBLE.
-    const employeeDoc = {
-      employeeId: spec.employeeId, displayName: spec.displayName, firstName: null, lastName: null,
-      employmentStatus: spec.employmentStatus ?? "ACTIVE", operationalRoles: spec.operationalRoles,
-      securityRole: null, companyId: null, departmentId: null, locationId: null,
-      userId: uids[key], createdAt: now, updatedAt: now, fixtureMarker: FIXTURE_MARKER,
-    };
-    await db.collection("employees").doc(spec.employeeId).set(employeeDoc);
-    manifest.firestoreDocs.push({ collection: "employees", docId: spec.employeeId, label: `${key} employee` });
-    await db.collection("users").doc(uids[key]).set({ role: spec.securityRole ?? "technician", employeeId: spec.employeeId, fixtureMarker: FIXTURE_MARKER });
-    manifest.firestoreDocs.push({ collection: "users", docId: uids[key], label: `${key} user` });
-    console.log(`Created reciprocally-linked Employee/User records for ${key}.`);
-  }
-
-  const { docs, envDocIds } = buildFixturePlan(now, uids);
-  for (const d of docs) {
-    await db.collection(d.collection).doc(d.docId).set(d.data);
-    manifest.firestoreDocs.push({ collection: d.collection, docId: d.docId, label: d.envKey ?? d.label });
-    console.log(`Created ${d.collection}/${d.envKey ?? d.label}.`);
-  }
-
-  return { uids, manifest, envDocIds };
-}
-
-function buildCredentialsFileContent({ accounts, manifest, envDocIds, input }) {
+function buildEnvBlock(accounts, envDocIds, input) {
   const lines = [];
   lines.push(`FIREBASE_PROJECT_ID=${input.projectId}`);
   lines.push("PRODUCTION_DATA_AUTHORIZED=YES");
@@ -603,25 +622,182 @@ function buildCredentialsFileContent({ accounts, manifest, envDocIds, input }) {
     lines.push(`${emailKey}=${a.email}`);
     lines.push(`${passKey}=${a.password}`);
   }
+  return lines.join("\n");
+}
 
-  return JSON.stringify(
-    {
-      fixtureMarker: FIXTURE_MARKER,
-      generatedAt: new Date().toISOString(),
-      projectId: input.projectId,
-      envBlock: lines.join("\n"),
-      manifest,
-    },
-    null,
-    2
-  );
+function initialManifestState(input) {
+  return {
+    fixtureMarker: FIXTURE_MARKER,
+    generatedAt: new Date().toISOString(),
+    projectId: input.projectId,
+    status: "IN_PROGRESS",
+    envBlock: null,
+    manifest: { authUsers: [], firestoreDocs: [] },
+  };
+}
+
+// Builds the plain (collection/employees + fixture docs) creation order
+// as a flat list of { kind: "auth"|"employee"|"user"|"doc", ... } steps,
+// so Phase E can iterate ONE list, persisting after every single step,
+// and compensation can walk the exact same list in reverse.
+function buildAccountFirestoreSteps(accounts, uids, now) {
+  const steps = [];
+  for (const [key, spec] of Object.entries(accounts)) {
+    if (spec.kind === "broken") {
+      steps.push({
+        kind: "doc", collection: "users", docId: uids[key], role: key,
+        data: { role: "technician", employeeId: employeeIdFor(`${spec.slug}-target-missing`), fixtureMarker: FIXTURE_MARKER },
+        label: `${key} user`,
+      });
+      continue;
+    }
+    if (spec.kind === "nonreciprocal") {
+      steps.push({
+        kind: "doc", collection: "employees", docId: spec.employeeId, role: key,
+        data: {
+          employeeId: spec.employeeId, displayName: spec.displayName, firstName: null, lastName: null,
+          employmentStatus: spec.employmentStatus, operationalRoles: spec.operationalRoles, securityRole: null,
+          companyId: null, departmentId: null, locationId: null,
+          userId: "issue100-verify-nonreciprocal-mismatched-uid-placeholder",
+          createdAt: now, updatedAt: now, fixtureMarker: FIXTURE_MARKER,
+        },
+        label: `${key} employee`,
+      });
+      steps.push({
+        kind: "doc", collection: "users", docId: uids[key], role: key,
+        data: { role: "technician", employeeId: spec.employeeId, fixtureMarker: FIXTURE_MARKER },
+        label: `${key} user`,
+      });
+      continue;
+    }
+    steps.push({
+      kind: "doc", collection: "employees", docId: spec.employeeId, role: key,
+      data: {
+        employeeId: spec.employeeId, displayName: spec.displayName, firstName: null, lastName: null,
+        employmentStatus: spec.employmentStatus ?? "ACTIVE", operationalRoles: spec.operationalRoles,
+        securityRole: null, companyId: null, departmentId: null, locationId: null,
+        userId: uids[key], createdAt: now, updatedAt: now, fixtureMarker: FIXTURE_MARKER,
+      },
+      label: `${key} employee`,
+    });
+    steps.push({
+      kind: "doc", collection: "users", docId: uids[key], role: key,
+      data: { role: spec.securityRole ?? "technician", employeeId: spec.employeeId, fixtureMarker: FIXTURE_MARKER },
+      label: `${key} user`,
+    });
+  }
+  return steps;
 }
 
 // ---------------------------------------------------------------
-// Cleanup mode -- reads a manifest, re-verifies each target's marker
-// live (never trusts the manifest alone), deletes only what still
-// matches. Runs its OWN dry-run/apply split, identical in spirit to
-// bootstrap's -- --cleanup without --apply previews only.
+// Phase E -- apply with crash-safe recovery. Only reached when
+// input.apply === true and conflict detection has already passed.
+// Exclusively creates the manifest file, then performs every Auth/
+// Firestore write one at a time, durably persisting the manifest after
+// EACH one. On any failure, compensates (deletes) everything already
+// created, in exact reverse order, persisting after each compensating
+// delete too.
+// ---------------------------------------------------------------
+async function applyBootstrapWithRecovery(db, auth, accounts, input) {
+  let manifestState;
+  try {
+    manifestState = initialManifestState(input);
+    createExclusively(input.credentialsOutFile, JSON.stringify(manifestState, null, 2));
+  } catch (err) {
+    return { ok: false, exitCode: 1, reason: "MANIFEST_CREATE_FAILED", internalErrorDetail: err.message };
+  }
+
+  function persist() {
+    writeDurably(input.credentialsOutFile, JSON.stringify(manifestState, null, 2));
+  }
+
+  const createdAuth = []; // [{ uid, role }], in creation order
+  const createdDocs = []; // [{ collection, docId }], in creation order
+
+  try {
+    const uids = {};
+    for (const [key, spec] of Object.entries(accounts)) {
+      const userRecord = await auth.createUser({ email: spec.email, password: spec.password, displayName: spec.displayName ?? undefined, emailVerified: true });
+      uids[key] = userRecord.uid;
+      manifestState.manifest.authUsers.push({ role: key, uid: userRecord.uid, email: spec.email, deleted: false });
+      createdAuth.push({ uid: userRecord.uid, role: key });
+      persist();
+      console.log(`Created Firebase Auth account for ${key}.`);
+    }
+
+    const now = Date.now();
+    const accountSteps = buildAccountFirestoreSteps(accounts, uids, now);
+    for (const step of accountSteps) {
+      await db.collection(step.collection).doc(step.docId).set(step.data);
+      manifestState.manifest.firestoreDocs.push({ collection: step.collection, docId: step.docId, label: step.label, deleted: false });
+      createdDocs.push({ collection: step.collection, docId: step.docId });
+      persist();
+      console.log(`Created ${step.collection}/${step.label}.`);
+    }
+
+    const { docs, envDocIds } = buildFixturePlan(now, uids);
+    for (const d of docs) {
+      await db.collection(d.collection).doc(d.docId).set(d.data);
+      manifestState.manifest.firestoreDocs.push({ collection: d.collection, docId: d.docId, label: d.envKey ?? d.label, deleted: false });
+      createdDocs.push({ collection: d.collection, docId: d.docId });
+      persist();
+      console.log(`Created ${d.collection}/${d.envKey ?? d.label}.`);
+    }
+
+    manifestState.status = "COMPLETE";
+    manifestState.envBlock = buildEnvBlock(accounts, envDocIds, input);
+    persist();
+
+    return { ok: true, exitCode: 0, applied: true, accounts, manifest: manifestState.manifest, envDocIds };
+  } catch (err) {
+    const compensationFailures = [];
+
+    for (let i = createdDocs.length - 1; i >= 0; i -= 1) {
+      const ref = createdDocs[i];
+      try {
+        await db.collection(ref.collection).doc(ref.docId).delete();
+        const entry = manifestState.manifest.firestoreDocs.find((d) => d.collection === ref.collection && d.docId === ref.docId && !d.deleted);
+        if (entry) entry.deleted = true;
+        persist();
+      } catch (compErr) {
+        compensationFailures.push({ type: "doc", collection: ref.collection, docId: ref.docId, detail: compErr.message });
+      }
+    }
+
+    for (let i = createdAuth.length - 1; i >= 0; i -= 1) {
+      const a = createdAuth[i];
+      try {
+        await auth.deleteUser(a.uid);
+        const entry = manifestState.manifest.authUsers.find((u) => u.uid === a.uid && !u.deleted);
+        if (entry) entry.deleted = true;
+        persist();
+      } catch (compErr) {
+        compensationFailures.push({ type: "auth", uid: a.uid, role: a.role, detail: compErr.message });
+      }
+    }
+
+    if (compensationFailures.length === 0) {
+      manifestState.status = "FAILED_COMPENSATED";
+      persist();
+      return { ok: false, exitCode: 1, reason: "APPLY_FAILED_FULLY_COMPENSATED", internalErrorDetail: err.message, manifestPath: input.credentialsOutFile };
+    }
+
+    manifestState.status = "FAILED_INCOMPLETE_COMPENSATION";
+    persist();
+    return {
+      ok: false, exitCode: 4, reason: "APPLY_FAILED_INCOMPLETE_COMPENSATION",
+      internalErrorDetail: err.message, compensationFailures, manifestPath: input.credentialsOutFile,
+    };
+  }
+}
+
+// ---------------------------------------------------------------
+// Cleanup -- two strict phases. Phase 1 prevalidates EVERY not-yet-
+// deleted manifest entry with zero mutation; if anything mismatches,
+// returns immediately having deleted nothing. Phase 2 (only reached if
+// phase 1 found zero mismatches) deletes one target at a time, marking
+// it `deleted: true` in the SAME manifest file durably after each one --
+// an interruption mid-phase-2 leaves an accurate, re-runnable record.
 // ---------------------------------------------------------------
 async function runCleanup(db, auth, manifestFile, apply) {
   const raw = fs.readFileSync(manifestFile, "utf8");
@@ -630,58 +806,119 @@ async function runCleanup(db, auth, manifestFile, apply) {
     throw new Error(`Manifest fixtureMarker "${parsed.fixtureMarker}" does not match this script's own "${FIXTURE_MARKER}" -- refusing to clean up a manifest from a different/incompatible run.`);
   }
 
-  const results = { deletedAuthUsers: 0, deletedDocs: 0, skippedAuthUsers: [], skippedDocs: [] };
-
+  // Phase 1 -- prevalidate. A target already marked deleted (from a
+  // prior, interrupted cleanup run) is skipped entirely -- never
+  // re-validated, never re-attempted. A target whose live Auth/Firestore
+  // state is simply GONE already (not just marked so) is treated the
+  // same as already-deleted, not a mismatch -- this is what makes a
+  // cleanup safely re-runnable after a crash between a real delete and
+  // its own manifest persistence.
+  const authPlan = [];
   for (const entry of parsed.manifest.authUsers) {
+    if (entry.deleted) continue;
     const user = await auth.getUser(entry.uid).catch(() => null);
-    if (!user || !user.email || !user.email.endsWith(`@${FIXTURE_EMAIL_DOMAIN}`) || user.email !== entry.email) {
-      results.skippedAuthUsers.push(entry.role);
-      console.log(`SKIPPED -- ${entry.role} Auth account: marker/email no longer matches (or already gone). Not deleted.`);
+    if (!user) {
+      authPlan.push({ entry, action: "already-gone" });
       continue;
     }
-    if (apply) await auth.deleteUser(entry.uid);
-    results.deletedAuthUsers += 1;
-    console.log(`${apply ? "Deleted" : "Would delete"} Auth account for ${entry.role}.`);
+    const matches = user.email && user.email.endsWith(`@${FIXTURE_EMAIL_DOMAIN}`) && user.email === entry.email;
+    authPlan.push({ entry, action: matches ? "delete" : "mismatch" });
   }
 
+  const docPlan = [];
   for (const entry of parsed.manifest.firestoreDocs) {
+    if (entry.deleted) continue;
     const ref = db.collection(entry.collection).doc(entry.docId);
     const snap = await ref.get();
-    if (!snap.exists || snap.data().fixtureMarker !== FIXTURE_MARKER) {
-      results.skippedDocs.push(`${entry.collection}/${entry.label}`);
-      console.log(`SKIPPED -- ${entry.collection}/${entry.label}: marker no longer matches (or already gone). Not deleted.`);
+    if (!snap.exists) {
+      docPlan.push({ entry, ref, action: "already-gone" });
       continue;
     }
-    if (apply) await ref.delete();
-    results.deletedDocs += 1;
-    console.log(`${apply ? "Deleted" : "Would delete"} ${entry.collection}/${entry.label}.`);
+    const matches = snap.data().fixtureMarker === FIXTURE_MARKER;
+    docPlan.push({ entry, ref, action: matches ? "delete" : "mismatch" });
   }
 
-  return results;
+  const mismatches = [
+    ...authPlan.filter((p) => p.action === "mismatch").map((p) => p.entry.role),
+    ...docPlan.filter((p) => p.action === "mismatch").map((p) => `${p.entry.collection}/${p.entry.label}`),
+  ];
+
+  if (mismatches.length > 0) {
+    return { aborted: true, deletedAuthUsers: 0, deletedDocs: 0, mismatches };
+  }
+
+  const toDeleteAuthCount = authPlan.filter((p) => p.action === "delete").length;
+  const toDeleteDocCount = docPlan.filter((p) => p.action === "delete").length;
+
+  if (!apply) {
+    return { aborted: false, wouldDeleteAuthUsers: toDeleteAuthCount, wouldDeleteDocs: toDeleteDocCount, mismatches: [] };
+  }
+
+  function persist() {
+    writeDurably(manifestFile, JSON.stringify(parsed, null, 2));
+  }
+
+  let deletedAuthUsers = 0;
+  for (const { entry, action } of authPlan) {
+    if (action === "delete") {
+      await auth.deleteUser(entry.uid);
+      deletedAuthUsers += 1;
+    }
+    entry.deleted = true;
+    persist();
+  }
+
+  let deletedDocs = 0;
+  for (const { entry, ref, action } of docPlan) {
+    if (action === "delete") {
+      await ref.delete();
+      deletedDocs += 1;
+    }
+    entry.deleted = true;
+    persist();
+  }
+
+  return { aborted: false, deletedAuthUsers, deletedDocs, mismatches: [] };
 }
 
 // ---------------------------------------------------------------
 // Orchestration -- one function per mode, each doing exactly what
 // main() invokes, factored out so tests can drive them directly against
 // a real (emulator) db/auth without spawning a subprocess or parsing
-// captured stdout to determine outcome. Both return { ok, exitCode }
-// alongside whatever the caller needs to assert on.
+// captured stdout to determine outcome. Console output is always a
+// fixed, classified message keyed off `reason` -- never a caught
+// error's own raw message, which is preserved only on the returned
+// result object for direct test inspection.
 // ---------------------------------------------------------------
+const FIXED_MESSAGES = {
+  MANIFEST_CREATE_FAILED: "FAIL -- could not exclusively create the credentials/manifest file (it may already exist, or its location may be invalid). No Auth account or Firestore document was created.",
+  APPLY_FAILED_FULLY_COMPENSATED: "FAIL -- apply could not complete; every partially-created Auth account and Firestore document was successfully removed. No residual state remains.",
+  APPLY_FAILED_INCOMPLETE_COMPENSATION: "FAIL -- apply could not complete and some partially-created state could NOT be removed automatically. The manifest file has been retained -- immediate manual review (or --cleanup with that file) is required.",
+  CLEANUP_MISMATCH: "FAIL -- one or more manifest targets did not verify (marker/identity mismatch, or the manifest itself is stale). Aborting with ZERO deletions.",
+};
+
 async function runCleanupCommand(db, auth, input) {
   console.log(`Issue #100 verification fixture cleanup -- project "${input.projectId}" -- ${input.apply ? "APPLY" : "DRY-RUN preview"}.\n`);
   let results;
   try {
     results = await runCleanup(db, auth, input.manifestFile, input.apply);
   } catch (err) {
-    console.error(`FAIL -- ${err.message}`);
-    return { ok: false, exitCode: 1, error: err.message };
+    console.error("FAIL -- cleanup aborted due to an unexpected error (no detail logged).");
+    return { ok: false, exitCode: 1, reason: "CLEANUP_UNEXPECTED_ERROR", internalErrorDetail: err.message };
   }
-  console.log(
-    `\n${input.apply ? "Deleted" : "Would delete"} ${results.deletedAuthUsers} Auth account(s), ${results.deletedDocs} Firestore document(s). ` +
-      `${results.skippedAuthUsers.length + results.skippedDocs.length} skipped (marker mismatch).`
-  );
-  const exitCode = results.skippedAuthUsers.length + results.skippedDocs.length > 0 ? 1 : 0;
-  return { ok: exitCode === 0, exitCode, results };
+
+  if (results.aborted) {
+    console.error(FIXED_MESSAGES.CLEANUP_MISMATCH);
+    return { ok: false, exitCode: 1, reason: "CLEANUP_MISMATCH", results };
+  }
+
+  if (!input.apply) {
+    console.log(`\nWould delete ${results.wouldDeleteAuthUsers} Auth account(s), ${results.wouldDeleteDocs} Firestore document(s). Every target validated.`);
+    return { ok: true, exitCode: 0, results };
+  }
+
+  console.log(`\nDeleted ${results.deletedAuthUsers} Auth account(s), ${results.deletedDocs} Firestore document(s). Every target validated before any deletion.`);
+  return { ok: true, exitCode: 0, results };
 }
 
 async function runBootstrapCommand(db, auth, input) {
@@ -695,8 +932,8 @@ async function runBootstrapCommand(db, auth, input) {
     state = await readCurrentState(db, auth, targets);
     detectConflicts(state);
   } catch (err) {
-    console.error(`FAIL -- ${err.message}`);
-    return { ok: false, exitCode: 1, error: err.message };
+    console.error("FAIL -- one or more targets already exist; refusing to create anything.");
+    return { ok: false, exitCode: 1, reason: "CONFLICT", internalErrorDetail: err.message };
   }
 
   console.log(`Plan: ${Object.keys(accounts).length} Auth account(s), ${targets.docRefs.length} Firestore document(s). No conflicts detected.`);
@@ -706,14 +943,16 @@ async function runBootstrapCommand(db, auth, input) {
     return { ok: true, exitCode: 0, applied: false, accounts, targets };
   }
 
-  const { manifest, envDocIds } = await applyBootstrap(db, auth, accounts);
-  const fileContent = buildCredentialsFileContent({ accounts, manifest, envDocIds, input });
-  fs.writeFileSync(input.credentialsOutFile, fileContent, { mode: 0o600 });
+  const result = await applyBootstrapWithRecovery(db, auth, accounts, input);
+  if (!result.ok) {
+    console.error(FIXED_MESSAGES[result.reason] ?? "FAIL -- apply aborted due to an unexpected error (no detail logged).");
+    return result;
+  }
 
-  console.log(`\nOK -- ${manifest.authUsers.length} Auth account(s) and ${manifest.firestoreDocs.length} Firestore document(s) created.`);
+  console.log(`\nOK -- ${result.manifest.authUsers.length} Auth account(s) and ${result.manifest.firestoreDocs.length} Firestore document(s) created.`);
   console.log(`Credentials and verifier environment variables written to: ${input.credentialsOutFile}`);
   console.log("This file contains real passwords -- keep it outside version control, delete it when no longer needed, and use --cleanup with it when you are done verifying.");
-  return { ok: true, exitCode: 0, applied: true, accounts, manifest, envDocIds };
+  return result;
 }
 
 async function main() {
@@ -753,17 +992,22 @@ module.exports = {
   emailFor,
   employeeIdFor,
   fixtureDocId,
+  createExclusively,
+  writeDurably,
   readCurrentState,
   detectConflicts,
   buildAccountPlan,
   canonicalReorderRequestFields,
   buildFixturePlan,
+  buildAccountFirestoreSteps,
   enumerateTargets,
-  applyBootstrap,
-  buildCredentialsFileContent,
+  buildEnvBlock,
+  initialManifestState,
+  applyBootstrapWithRecovery,
   runCleanup,
   runBootstrapCommand,
   runCleanupCommand,
+  FIXED_MESSAGES,
   FIXTURE_MARKER,
   FIXTURE_EMAIL_DOMAIN,
   ID_PREFIX,
