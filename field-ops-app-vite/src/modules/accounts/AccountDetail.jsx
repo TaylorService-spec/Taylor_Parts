@@ -8,9 +8,10 @@ import { createLocation } from "../../domain/locations";
 import { createContact, primaryContactState } from "../../domain/contacts";
 import { formatAddress } from "../../domain/address";
 import { ACCOUNT_RELATIONSHIP_TYPE } from "../../domain/constants";
-import AddressFields from "../../shared/address/AddressFields";
 import AccountForm from "./AccountForm";
 import ContactImportModal from "./ContactImportModal";
+import ContactCreateModal from "./ContactCreateModal";
+import LocationCreateModal from "./LocationCreateModal";
 import ServiceActivitySection from "./ServiceActivitySection";
 import FinancialSummarySection from "./FinancialSummarySection";
 import FinancialForecastSection from "./FinancialForecastSection";
@@ -53,73 +54,9 @@ function RelationshipBadges({ relationshipTypes }) {
   );
 }
 
-function LocationForm({ onSubmit, onCancel }) {
-  const [name, setName] = useState("");
-  const [address, setAddress] = useState({ street: "", city: "", state: "", zip: "" });
-  const [accessNotes, setAccessNotes] = useState("");
-
-  function handleAddressChange(field, value) {
-    setAddress((cur) => ({ ...cur, [field]: value }));
-  }
-
-  function handleSubmit(e) {
-    e.preventDefault();
-    const trimmedName = name.trim();
-    if (!trimmedName) return;
-    onSubmit({
-      name: trimmedName,
-      address: {
-        street: address.street.trim(),
-        city: address.city.trim(),
-        state: address.state.trim(),
-        zip: address.zip.trim(),
-      },
-      accessNotes: accessNotes.trim() || null,
-    });
-  }
-
-  return (
-    <form className="fo-form" onSubmit={handleSubmit}>
-      <input placeholder="Site name (e.g. Main Office)" value={name} onChange={(e) => setName(e.target.value)} />
-      <AddressFields value={address} onChange={handleAddressChange} idPrefix="location-address" />
-      <input placeholder="Access notes (optional)" value={accessNotes} onChange={(e) => setAccessNotes(e.target.value)} />
-      <div className="fo-btn-row">
-        <button type="submit">Add Location</button>
-        <button type="button" onClick={onCancel}>Cancel</button>
-      </div>
-    </form>
-  );
-}
-
-function ContactForm({ onSubmit, onCancel }) {
-  const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
-  const [isPrimary, setIsPrimary] = useState(false);
-
-  function handleSubmit(e) {
-    e.preventDefault();
-    const trimmedName = name.trim();
-    if (!trimmedName) return;
-    onSubmit({ name: trimmedName, phone: phone.trim() || null, email: email.trim() || null, isPrimary });
-  }
-
-  return (
-    <form className="fo-form" onSubmit={handleSubmit}>
-      <input placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} />
-      <input placeholder="Phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
-      <input placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
-      <label className="fo-checkbox-label">
-        <input type="checkbox" checked={isPrimary} onChange={(e) => setIsPrimary(e.target.checked)} />
-        Primary Contact
-      </label>
-      <div className="fo-btn-row">
-        <button type="submit">Add Contact</button>
-        <button type="button" onClick={onCancel}>Cancel</button>
-      </div>
-    </form>
-  );
-}
+// Issue #214 PR-2 -- the inline ContactForm / LocationForm that used to render
+// below the live lists have been replaced by ContactCreateModal /
+// LocationCreateModal (shared Modal + System-A form primitives). See those files.
 
 // Primary-contact summary for the Account Summary section -- reuses
 // primaryContactState()'s three states; the MULTIPLE case surfaces the
@@ -209,23 +146,36 @@ export default function AccountDetail() {
   const { byUserId, loading: directoryLoading, error: directoryError } = useEmployeeDirectory();
 
   const [isEditing, setIsEditing] = useState(false);
-  const [showLocationForm, setShowLocationForm] = useState(false);
-  const [showContactForm, setShowContactForm] = useState(false);
+  const [showLocationModal, setShowLocationModal] = useState(false);
+  const [showContactModal, setShowContactModal] = useState(false);
   const [showImport, setShowImport] = useState(false);
-  const [importAnnouncement, setImportAnnouncement] = useState("");
-  // First imported contact id -- once the live subscription renders its row, move
-  // focus there (and consume the marker).
+  // One polite live region per section; written by both the import and the
+  // single-add create flow (they never run at once).
+  const [contactAnnouncement, setContactAnnouncement] = useState("");
+  const [locationAnnouncement, setLocationAnnouncement] = useState("");
+  // The contact/location id to move focus to once the live subscription renders
+  // its row (matched by id internally; the id is never rendered/announced).
   const [pendingContactFocus, setPendingContactFocus] = useState(null);
-  const importedRowRef = useRef(null);
+  const [pendingLocationFocus, setPendingLocationFocus] = useState(null);
+  const contactRowRef = useRef(null);
+  const locationRowRef = useRef(null);
 
-  // After a successful import, focus the first imported Contact's row once the
-  // live useContactsForAccount subscription has delivered it.
+  // After a successful import OR single add, focus the target Contact's row once
+  // the live useContactsForAccount subscription has delivered it.
   useEffect(() => {
-    if (pendingContactFocus && importedRowRef.current) {
-      importedRowRef.current.focus();
+    if (pendingContactFocus && contactRowRef.current) {
+      contactRowRef.current.focus();
       setPendingContactFocus(null);
     }
   }, [pendingContactFocus, contacts]);
+
+  // Same for a newly added Location once useLocationsForAccount delivers it.
+  useEffect(() => {
+    if (pendingLocationFocus && locationRowRef.current) {
+      locationRowRef.current.focus();
+      setPendingLocationFocus(null);
+    }
+  }, [pendingLocationFocus, locations]);
 
   if (loading) return <div className="fo-panel"><p className="fo-muted">Loading customer...</p></div>;
 
@@ -243,14 +193,33 @@ export default function AccountDetail() {
     setIsEditing(false);
   }
 
+  // Called by LocationCreateModal. On a blocked/denied write this THROWS so the
+  // modal stays open with safe copy and nothing is persisted. On success: close
+  // once, announce the resolved name, queue focus onto the new row (the live
+  // subscription inserts it) -- the raw id is only an internal match key.
   async function handleAddLocation(values) {
-    await createLocation(account.id, values);
-    setShowLocationForm(false);
+    const created = await createLocation(account.id, values);
+    if (created?.blocked) {
+      const blockedErr = new Error("write blocked");
+      blockedErr.blocked = true;
+      throw blockedErr;
+    }
+    setShowLocationModal(false);
+    setPendingLocationFocus(created.id);
+    setLocationAnnouncement(`Location ${created.name} added.`);
   }
 
+  // Called by ContactCreateModal -- same contract as handleAddLocation.
   async function handleAddContact(values) {
-    await createContact(account.id, values);
-    setShowContactForm(false);
+    const created = await createContact(account.id, values);
+    if (created?.blocked) {
+      const blockedErr = new Error("write blocked");
+      blockedErr.blocked = true;
+      throw blockedErr;
+    }
+    setShowContactModal(false);
+    setPendingContactFocus(created.id);
+    setContactAnnouncement(`Contact ${created.name} added.`);
   }
 
   // Called by ContactImportModal on a successful atomic import. Close the modal,
@@ -261,7 +230,7 @@ export default function AccountDetail() {
     setPendingContactFocus(importedIds?.[0] ?? null);
     const skipPart = skippedDuplicates ? `, ${skippedDuplicates} duplicate${skippedDuplicates === 1 ? "" : "s"} skipped` : "";
     const rejPart = rejected ? `, ${rejected} rejected` : "";
-    setImportAnnouncement(
+    setContactAnnouncement(
       `Imported ${importedCount} contact${importedCount === 1 ? "" : "s"}${skipPart}${rejPart}${firstName ? ` — first: ${firstName}` : ""}.`
     );
   }
@@ -333,7 +302,7 @@ export default function AccountDetail() {
           {/* 3. Contacts */}
           <section className="wo-history">
             <h4>Contacts ({contacts.length})</h4>
-            <p className="fo-sr-only" role="status" aria-live="polite">{importAnnouncement}</p>
+            <p className="fo-sr-only" role="status" aria-live="polite">{contactAnnouncement}</p>
             {contacts.length === 0 ? (
               <p className="fo-muted">No contacts yet.</p>
             ) : (
@@ -341,7 +310,7 @@ export default function AccountDetail() {
                 <div
                   key={contact.id}
                   className="wo-history-row"
-                  ref={contact.id === pendingContactFocus ? importedRowRef : undefined}
+                  ref={contact.id === pendingContactFocus ? contactRowRef : undefined}
                   tabIndex={contact.id === pendingContactFocus ? -1 : undefined}
                 >
                   <strong>{contact.name}</strong>
@@ -351,15 +320,21 @@ export default function AccountDetail() {
                 </div>
               ))
             )}
-            {showContactForm ? (
-              <ContactForm onSubmit={handleAddContact} onCancel={() => setShowContactForm(false)} />
-            ) : (
-              <div className="fo-btn-row">
-                <button type="button" onClick={() => setShowContactForm(true)}>+ Add Contact</button>
-                <button type="button" onClick={() => setShowImport(true)}>Import Contacts</button>
-              </div>
-            )}
+            {/* Add Contact opens the shared-Modal creation flow; Import Contacts
+                keeps its own separate CSV modal. No inline form below the list. */}
+            <div className="fo-btn-row">
+              <button type="button" onClick={() => setShowContactModal(true)}>+ Add Contact</button>
+              <button type="button" onClick={() => setShowImport(true)}>Import Contacts</button>
+            </div>
           </section>
+
+          {showContactModal && (
+            <ContactCreateModal
+              accountName={account.name}
+              onCreate={handleAddContact}
+              onClose={() => setShowContactModal(false)}
+            />
+          )}
 
           {showImport && (
             <ContactImportModal
@@ -374,13 +349,19 @@ export default function AccountDetail() {
           {/* 4. Locations -- add-only (no Location edit action exists) */}
           <section className="wo-history">
             <h4>Locations ({locations.length})</h4>
+            <p className="fo-sr-only" role="status" aria-live="polite">{locationAnnouncement}</p>
             {locations.length === 0 ? (
               <p className="fo-muted">No locations yet.</p>
             ) : (
               locations.map((loc) => {
                 const locLine = formatAddress(loc.address);
                 return (
-                  <div key={loc.id} className="wo-history-row">
+                  <div
+                    key={loc.id}
+                    className="wo-history-row"
+                    ref={loc.id === pendingLocationFocus ? locationRowRef : undefined}
+                    tabIndex={loc.id === pendingLocationFocus ? -1 : undefined}
+                  >
                     <strong>{loc.name}</strong>
                     {locLine && <span className="fo-muted"> -- {locLine}</span>}
                     {loc.accessNotes && <div className="fo-muted">{loc.accessNotes}</div>}
@@ -388,12 +369,17 @@ export default function AccountDetail() {
                 );
               })
             )}
-            {showLocationForm ? (
-              <LocationForm onSubmit={handleAddLocation} onCancel={() => setShowLocationForm(false)} />
-            ) : (
-              <button type="button" onClick={() => setShowLocationForm(true)}>+ Add Location</button>
-            )}
+            {/* Add Location opens the shared-Modal creation flow; no inline form. */}
+            <button type="button" onClick={() => setShowLocationModal(true)}>+ Add Location</button>
           </section>
+
+          {showLocationModal && (
+            <LocationCreateModal
+              accountName={account.name}
+              onCreate={handleAddLocation}
+              onClose={() => setShowLocationModal(false)}
+            />
+          )}
 
           {/* 5. Service Activity -- live summary counts + Account Activity timeline (PR 3) */}
           <ServiceActivitySection accountId={account.id} />
