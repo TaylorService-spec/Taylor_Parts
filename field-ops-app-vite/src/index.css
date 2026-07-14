@@ -1154,3 +1154,51 @@ textarea.fo-wizard-control { min-height: 76px; resize: vertical; }
   .fo-nav-group { width: 100%; }
   .fo-nav-group-standalone { justify-content: flex-start; }
 }
+
+/* ===== Work Order wizard -- Customer picker (combobox/listbox) =====
+   Scoped under .fo-customer-picker. The dropdown is absolutely positioned and
+   layered above the wizard content below; strong contrast on options; results
+   and locations wrap with no horizontal overflow at 375px. */
+.fo-customer-picker { position: relative; width: 100%; }
+.fo-customer-picker-input { width: 100%; box-sizing: border-box; }
+.fo-customer-picker-input:focus-visible { outline: 2px solid #2E4A50; outline-offset: 1px; }
+.fo-customer-picker-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 50;
+  background: #fff;
+  border: 1px solid #C2CCCC;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  max-height: 360px;
+  overflow-y: auto;
+}
+.fo-customer-picker-status {
+  padding: 8px 12px;
+  font-size: 13px;
+  color: #33474C;
+  border-bottom: 1px solid #EDF1F0;
+}
+.fo-customer-picker-list { list-style: none; margin: 0; padding: 4px; }
+.fo-customer-picker-option {
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #1F2D31;
+}
+.fo-customer-picker-option-active,
+.fo-customer-picker-option:hover { background: #E6EEEC; }
+.fo-customer-picker-name { font-weight: 600; font-size: 14px; color: #23383D; }
+.fo-customer-picker-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 2px; }
+.fo-customer-picker-secondary { font-size: 13px; color: #445559; }
+.fo-customer-picker-locs { margin-top: 3px; display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: 12px; }
+.fo-customer-picker-loc { color: #2F4247; }
+.fo-customer-picker-more-locs { white-space: nowrap; }
+.fo-customer-picker-more { padding: 8px 12px; font-size: 12px; color: #56666B; border-top: 1px solid #EDF1F0; }
+
+@media (max-width: 480px) {
+  .fo-customer-picker-dropdown { max-height: 60vh; }
+  .fo-customer-picker-locs { flex-direction: column; gap: 2px; }
+}

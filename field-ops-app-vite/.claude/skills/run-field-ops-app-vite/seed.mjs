@@ -562,6 +562,80 @@ async function seedWizardFixture() {
   });
 }
 
+// Work Order wizard -- Customer picker (customer-search visibility). Accounts
+// that all match "test", exercising every result state the picker must show:
+//   - two IDENTICALLY named "Test Plumbing Co" accounts distinguished ONLY by
+//     billing city/state + their location context (the duplicate-name case);
+//   - "Testerson Electric" with NO billing address and NO locations -> secondary
+//     line falls back to its external customer number, locations show "No
+//     locations";
+//   - "Best Test Services" with FOUR locations -> "+N more locations" overflow.
+// Each carries its own `locations` (accountId-scoped) so the picker's ONE
+// batched `accountId in [...]` query resolves them. Distinctive ids; realistic
+// names; no raw ids surfaced by the UI.
+export const WO_CUSTOMER_SEARCH_FIXTURE = {
+  accounts: [
+    {
+      id: "wocs-test-plumbing-denver",
+      name: "Test Plumbing Co",
+      status: "Active",
+      billingAddress: { street: "1420 Ridgeline Dr", city: "Denver", state: "CO", zip: "80202" },
+      locations: [
+        { id: "wocs-loc-tpden-main", name: "Main Shop", address: { city: "Denver", state: "CO" } },
+        { id: "wocs-loc-tpden-north", name: "North Yard", address: { city: "Boulder", state: "CO" } },
+      ],
+    },
+    {
+      id: "wocs-test-plumbing-austin",
+      name: "Test Plumbing Co", // duplicate name -- distinguished by billing + location
+      status: "Prospect",
+      billingAddress: { street: "88 Congress Ave", city: "Austin", state: "TX", zip: "73301" },
+      locations: [{ id: "wocs-loc-tpaus-hq", name: "Austin HQ", address: { city: "Austin", state: "TX" } }],
+    },
+    {
+      id: "wocs-testerson-electric",
+      name: "Testerson Electric",
+      status: "Active",
+      customerNumber: "TEST-9001", // no billingAddress -> secondary falls back to this
+      locations: [], // no locations -> "No locations"
+    },
+    {
+      id: "wocs-best-test-services",
+      name: "Best Test Services",
+      status: "Active",
+      billingAddress: { street: "9 Biscayne Blvd", city: "Miami", state: "FL", zip: "33101" },
+      locations: [
+        { id: "wocs-loc-bts-a", name: "Airport Depot", address: { city: "Miami", state: "FL" } },
+        { id: "wocs-loc-bts-b", name: "Brickell Office", address: { city: "Miami", state: "FL" } },
+        { id: "wocs-loc-bts-c", name: "Coral Gables Yard", address: { city: "Coral Gables", state: "FL" } },
+        { id: "wocs-loc-bts-d", name: "Doral Warehouse", address: { city: "Doral", state: "FL" } },
+      ],
+    },
+  ],
+};
+
+async function seedWoCustomerSearchFixture() {
+  const now = Date.now();
+  for (const a of WO_CUSTOMER_SEARCH_FIXTURE.accounts) {
+    const { id, locations, ...fields } = a;
+    await db.doc(`accounts/${id}`).set({
+      ...fields,
+      relationshipTypes: ["CUSTOMER"],
+      createdAt: now,
+      updatedAt: now,
+    });
+    for (const loc of locations) {
+      await db.doc(`locations/${loc.id}`).set({
+        accountId: id,
+        name: loc.name,
+        ...(loc.address ? { address: loc.address } : {}),
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+  }
+}
+
 async function seedReorderRequestFixture(docId, { partId, status, currentOwner, assignedToUserId, createdAt }) {
   const isCancelled = status === "CANCELLED";
   await db.doc(`reorder_requests/${docId}`).set({
@@ -1245,6 +1319,7 @@ async function seed() {
   await seedDashboardFixture();
   await seedDemoCustomersFixture();
   await seedWizardFixture();
+  await seedWoCustomerSearchFixture();
   await seedIssue100RoleFixtures();
 
   console.log("Seeded driver accounts:");

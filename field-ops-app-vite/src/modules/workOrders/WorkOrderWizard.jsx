@@ -10,7 +10,7 @@ import {
   getWizardCreateErrorMessage,
   stepBlockedReason,
 } from "../../domain/workOrderWizard";
-import GlobalSearch from "../../shared/search/GlobalSearch";
+import CustomerPicker from "./CustomerPicker";
 
 // Sprint 2.0.3 -- Work Order creation wizard. Four steps, mapped
 // directly to createWorkOrder()'s actual validated input
@@ -105,9 +105,10 @@ export default function WorkOrderWizard() {
   });
   const step3Reason = stepBlockedReason(3, { type, complaint });
 
-  function handleAccountSelect(result) {
-    const account = accounts.find((a) => a.id === result.id);
-    setSelectedAccount(account ?? { id: result.id, name: result.primaryText });
+  // CustomerPicker hands back the chosen account object directly.
+  function handleAccountSelect(account) {
+    if (!account) return;
+    setSelectedAccount(account);
     setSelectedLocationId("");
     setStep(2);
   }
@@ -142,15 +143,8 @@ export default function WorkOrderWizard() {
         <div className="fo-wizard-panel">
           <h3 className="fo-wizard-step-title">Step 1: Customer</h3>
           <div className="fo-wizard-field">
-            <span className="fo-wizard-field-label" id="wo-customer-label">Customer</span>
-            <div className="fo-wizard-control" role="group" aria-labelledby="wo-customer-label">
-              <GlobalSearch
-                providerKeys={["accounts"]}
-                context={{ accounts }}
-                placeholder="Search customers..."
-                onResultSelect={handleAccountSelect}
-              />
-            </div>
+            <label className="fo-wizard-field-label" htmlFor="wo-customer-search">Customer</label>
+            <CustomerPicker inputId="wo-customer-search" accounts={accounts} onSelect={handleAccountSelect} />
           </div>
           <StepHint reason={stepBlockedReason(1, { selectedAccountId: selectedAccount?.id })} />
         </div>

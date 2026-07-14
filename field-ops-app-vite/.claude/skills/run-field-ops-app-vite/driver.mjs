@@ -289,6 +289,7 @@ import {
   GOVERNED_FIELDS_FIXTURE,
   DASHBOARD_FIXTURE,
   WIZARD_FIXTURE,
+  WO_CUSTOMER_SEARCH_FIXTURE,
   seedLedgerTransactions,
   db,
 } from "./seed.mjs";
@@ -2569,9 +2570,11 @@ async function verifyWoWizard(browser, page, accountKey) {
   // ===== Step 1: Customer (progress + search-select) =====
   niReport('Step 1 progress marks "Customer" active', (await activeStepLabel()) === "Customer");
   niReport("Step 1 shows a guidance hint until a customer is chosen", (await hintText()).includes("select a customer"));
-  await page.locator(".fo-wizard-field .fo-global-search input").fill(F.accountName);
-  await page.waitForTimeout(400);
-  await page.locator(".fo-global-search-result", { hasText: F.accountName }).first().click();
+  // Customer picker (customer-search visibility): type the full name, then pick
+  // the matching option from the listbox.
+  await page.locator("#wo-customer-search").fill(F.accountName);
+  await page.locator(".fo-customer-picker-option", { hasText: F.accountName }).first().waitFor({ timeout: 10000 });
+  await page.locator(".fo-customer-picker-option", { hasText: F.accountName }).first().click();
 
   // ===== Step 2: Location (progress, gating hint, visible label, gate clears) =====
   await page.getByRole("heading", { name: "Step 2: Location" }).waitFor({ timeout: 10000 });
@@ -3063,6 +3066,112 @@ async function verifyServiceOperations(browser, page, accountKey) {
   return niFailed === 0;
 }
 
+// Work Order wizard -- Customer picker (customer-search visibility). Reproduces
+// the screenshot: typing "test" on Step 1 must visibly render the expected
+// customers with their status, safe secondary line, and location details --
+// including two identically named "Test Plumbing Co" accounts told apart by
+// billing + location, a "No locations" customer whose secondary falls back to
+// its customer number, and a "+N more locations" overflow. Also asserts the
+// never-blank states, combobox/listbox semantics, keyboard selection, no raw
+// IDs, and 375px no-overflow, then that selecting continues into Step 2.
+async function verifyCustomerPicker(browser, page, accountKey) {
+  const F = WO_CUSTOMER_SEARCH_FIXTURE;
+  const wizUrl = () => { const u = new URL("service/work-orders/new", APP_ROOT); u.searchParams.set("emulator", "1"); return u.toString(); };
+  const input = () => page.locator("#wo-customer-search");
+  const dropdown = () => page.locator(".fo-customer-picker-dropdown");
+  const options = () => page.locator(".fo-customer-picker-option");
+  const optionByName = (name) => options().filter({ has: page.locator(".fo-customer-picker-name", { hasText: new RegExp(`^${name}$`) }) });
+
+  await login(page, accountKey);
+  await page.goto(wizUrl(), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await input().waitFor({ timeout: 10000 });
+
+  // ===== Combobox semantics before typing =====
+  niReport("Picker input is a combobox (role + aria-controls + aria-autocomplete)",
+    (await input().getAttribute("role")) === "combobox" && Boolean(await input().getAttribute("aria-controls")) && (await input().getAttribute("aria-autocomplete")) === "list");
+  niReport("Combobox collapsed before typing (aria-expanded=false)", (await input().getAttribute("aria-expanded")) === "false");
+
+  // ===== Typing "test" immediately renders visible matching results =====
+  await input().fill("test");
+  await optionByName("Testerson Electric").first().waitFor({ timeout: 10000 });
+  niReport("Typing 'test' expands the combobox (aria-expanded=true)", (await input().getAttribute("aria-expanded")) === "true");
+  niReport("Dropdown + listbox render", (await dropdown().count()) === 1 && (await page.locator('[role="listbox"]').count()) === 1);
+  const names = await page.locator(".fo-customer-picker-name").allInnerTexts();
+  for (const expected of ["Test Plumbing Co", "Testerson Electric", "Best Test Services"]) {
+    niReport(`Result "${expected}" is visibly shown`, names.includes(expected));
+  }
+  niReport("Never blank: a status line is present (aria-live)",
+    (await page.locator('.fo-customer-picker-status[role="status"]').innerText().catch(() => "")).length > 0);
+  // The status transitions "Searching customers…" -> "N customers found" once the
+  // batched location query resolves; wait for it to settle before asserting count.
+  await page.locator(".fo-customer-picker-status").filter({ hasText: /found/ }).waitFor({ timeout: 10000 }).catch(() => {});
+  niReport("Result-count announcement reflects the matches", /customers? found/.test(await page.locator(".fo-customer-picker-status").innerText().catch(() => "")));
+
+  // ===== Duplicate names distinguishable by billing city/state + locations =====
+  const dupOpts = optionByName("Test Plumbing Co");
+  niReport("Two identically named 'Test Plumbing Co' results are shown", (await dupOpts.count()) === 2);
+  const dupTexts = await dupOpts.allInnerTexts();
+  const denver = dupTexts.find((t) => /Denver, CO/.test(t));
+  const austin = dupTexts.find((t) => /Austin, TX/.test(t));
+  niReport("Duplicate #1 distinguished by Denver, CO + its locations (Main Shop)", Boolean(denver) && /Main Shop/.test(denver));
+  niReport("Duplicate #2 distinguished by Austin, TX + its location (Austin HQ)", Boolean(austin) && /Austin HQ/.test(austin));
+
+  // ===== "No locations" + customer-number fallback (Testerson Electric) =====
+  const testerson = await optionByName("Testerson Electric").first().innerText();
+  niReport("No-location customer shows 'No locations'", /No locations/.test(testerson));
+  niReport("No-billing customer's secondary falls back to its customer number", /Customer #: TEST-9001/.test(testerson));
+
+  // ===== "+N more locations" overflow (Best Test Services has 4) =====
+  const bts = await optionByName("Best Test Services").first().innerText();
+  niReport("Customer with many locations shows a '+N more locations' overflow", /\+\d+ more location/.test(bts));
+
+  // ===== No raw IDs anywhere in the dropdown =====
+  const dropText = await dropdown().innerText();
+  const rawIds = [...F.accounts.map((a) => a.id), ...F.accounts.flatMap((a) => a.locations.map((l) => l.id))];
+  niReport("No raw account/location IDs are displayed", rawIds.every((id) => !dropText.includes(id)), dropText.slice(0, 160));
+
+  // ===== "No customers found" state =====
+  await input().fill("zzzzz-no-such-customer");
+  await page.waitForTimeout(300);
+  niReport('Unmatched query shows "No customers found"', /No customers found/.test(await page.locator(".fo-customer-picker-status").innerText().catch(() => "")));
+
+  // ===== Keyboard: Arrow + Enter selects and advances to Step 2 =====
+  await input().fill("Test Plumbing");
+  await optionByName("Test Plumbing Co").first().waitFor({ timeout: 10000 });
+  await input().focus();
+  await page.keyboard.press("ArrowDown");
+  niReport("ArrowDown marks an option active (aria-activedescendant set)", Boolean(await input().getAttribute("aria-activedescendant")));
+  const activeSelected = await page.locator('.fo-customer-picker-option[aria-selected="true"]').count();
+  niReport("Active option has aria-selected=true (listbox semantics)", activeSelected === 1);
+  await page.keyboard.press("Enter");
+  await page.getByRole("heading", { name: "Step 2: Location" }).waitFor({ timeout: 10000 });
+  niReport("Keyboard selection advances into the existing Step 2 Location workflow",
+    (await page.getByRole("heading", { name: "Step 2: Location" }).count()) === 1);
+  niReport("Step 2 shows the chosen customer name (selection carried through)",
+    /Test Plumbing Co/.test(await page.locator(".fo-wizard-context").innerText().catch(() => "")));
+
+  // ===== Escape closes the dropdown (back on step 1) =====
+  await page.goto(wizUrl(), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await input().waitFor({ timeout: 10000 });
+  await input().fill("test");
+  await dropdown().waitFor({ timeout: 10000 });
+  await input().press("Escape");
+  await page.waitForTimeout(150);
+  niReport("Escape closes the dropdown and clears the query", (await dropdown().count()) === 0 && (await input().inputValue()) === "");
+
+  // ===== 375px: dropdown open, no horizontal overflow =====
+  await input().fill("test");
+  await dropdown().waitFor({ timeout: 10000 });
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.waitForTimeout(150);
+  niReport("375px: customer picker dropdown has no horizontal overflow",
+    await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1));
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  console.log(`\n${niPassed} passed, ${niFailed} failed`);
+  return niFailed === 0;
+}
+
 async function main() {
   const [, , command, ...args] = process.argv;
   const browser = await chromium.launch();
@@ -3181,6 +3290,10 @@ async function main() {
     } else if (command === "verify-customer-create-overlay") {
       const [accountKey = "admin"] = args;
       const ok = await verifyCustomerCreateOverlay(browser, page, accountKey);
+      if (!ok) process.exitCode = 1;
+    } else if (command === "verify-customer-picker") {
+      const [accountKey = "admin"] = args;
+      const ok = await verifyCustomerPicker(browser, page, accountKey);
       if (!ok) process.exitCode = 1;
     } else if (command === "verify-wo-wizard") {
       const [accountKey = "admin"] = args;
