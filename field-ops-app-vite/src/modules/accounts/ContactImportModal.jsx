@@ -6,6 +6,7 @@ import {
   validateMapping,
   validateRows,
   contactImportErrorMessage,
+  MALFORMED_FILE_MESSAGE,
   SUPPORTED_CONTACT_FIELDS,
   MAX_IMPORT_ROWS,
 } from "../../domain/contactCsvImport";
@@ -49,12 +50,20 @@ export default function ContactImportModal({ accountId, accountName, existingCon
       return;
     }
     const result = parseCsv(text);
+    // Structurally malformed (unclosed quote, ragged record, stray quote, etc.):
+    // reject the whole file with fixed, actionable copy -- never surface raw
+    // parser content or row data, stay on this step (import stays unavailable).
+    if (!result.ok) {
+      setParseError(MALFORMED_FILE_MESSAGE);
+      setParsed({ headers: [], rows: [] });
+      return;
+    }
     if (result.headers.length === 0 || result.rows.length === 0) {
       setParseError("This file has no header row and data rows to import.");
       setParsed({ headers: [], rows: [] });
       return;
     }
-    setParsed(result);
+    setParsed({ headers: result.headers, rows: result.rows });
     setMapping(suggestMapping(result.headers));
     setValidation(null);
     setStep("map");

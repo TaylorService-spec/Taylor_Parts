@@ -3359,8 +3359,22 @@ async function verifyContactCsvImport(browser, page, accountKey) {
   niReport("Account is fixed context, shown and not CSV-mappable", new RegExp(F.accountName).test(await dialog().innerText()));
   niReport("Initial focus is inside the dialog", await page.evaluate(() => Boolean(document.querySelector('[role="dialog"]')?.contains(document.activeElement))));
 
-  // ===== select file -> map step, auto-suggest =====
+  // ===== malformed CSV rejected WHOLE -> stays in modal, import unavailable, zero writes, then recovers =====
+  await setFile("malformed.csv", 'Name,Email\n"Ada,ada@x.com'); // unclosed quoted field
+  await dialog().getByText(/malformed/i).first().waitFor({ timeout: 6000 }).catch(() => {});
+  niReport("Malformed CSV: fixed 'This CSV file is malformed…' error stays inside the modal",
+    await dialog().getByText("This CSV file is malformed. Correct its rows or quotes and try again.").first().isVisible().catch(() => false));
+  niReport("Malformed CSV: import stays unavailable (still on select step, no Confirm)",
+    (await confirmBtn().count()) === 0 && (await page.getByLabel("Name (required)").count()) === 0);
+  niReport("Malformed CSV: no raw row/cell content echoed", !/ada@x\.com/.test(await dialog().innerText()));
+  niReport("Malformed CSV: contact count unchanged (zero writes)", (await contactCount()) === startCount);
+  // recovery: selecting a valid CSV advances to mapping
   await setFile("contacts.csv", csv);
+  await page.getByLabel("Name (required)").waitFor({ timeout: 10000 });
+  niReport("Recovery: a valid CSV clears the error and advances to mapping",
+    (await page.getByLabel("Name (required)").count()) > 0 && (await dialog().getByText(/malformed/i).count()) === 0);
+
+  // ===== continue: map step, auto-suggest =====
   await page.getByLabel("Name (required)").waitFor({ timeout: 10000 });
   niReport("Auto-suggested mapping (Name->first column)", (await page.locator("#map-name").inputValue()) === "0");
   niReport("Mapping controls are labelled selects (Email/Phone/Role)", (await page.getByLabel("Email").count()) > 0 && (await page.getByLabel("Role").count()) > 0);

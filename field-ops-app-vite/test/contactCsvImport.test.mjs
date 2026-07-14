@@ -6,6 +6,7 @@ import {
   validateRows,
   contactDuplicateKey,
   contactImportErrorMessage,
+  MALFORMED_FILE_MESSAGE,
   SUPPORTED_CONTACT_FIELDS,
   MAX_IMPORT_ROWS,
 } from "../src/domain/contactCsvImport.js";
@@ -13,48 +14,90 @@ import {
 let passed = 0;
 function ok(name, fn) { fn(); passed += 1; console.log("PASS -- " + name); }
 
-// ===== parseCsv =====
-ok("parseCsv: simple LF rows + header", () => {
-  const { headers, rows } = parseCsv("Name,Email\nAda,ada@x.com\nGrace,grace@x.com");
-  assert.deepEqual(headers, ["Name", "Email"]);
-  assert.deepEqual(rows, [["Ada", "ada@x.com"], ["Grace", "grace@x.com"]]);
+// ===== parseCsv (strict, typed result) =====
+ok("parseCsv: simple LF rows + header -> ok", () => {
+  const r = parseCsv("Name,Email\nAda,ada@x.com\nGrace,grace@x.com");
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.headers, ["Name", "Email"]);
+  assert.deepEqual(r.rows, [["Ada", "ada@x.com"], ["Grace", "grace@x.com"]]);
 });
 ok("parseCsv: strips a leading UTF-8 BOM", () => {
   const bom = String.fromCharCode(0xfeff);
-  const { headers } = parseCsv(bom + "Name,Email\nAda,ada@x.com");
-  assert.deepEqual(headers, ["Name", "Email"]); // BOM removed, not part of first header
+  const r = parseCsv(bom + "Name,Email\nAda,ada@x.com");
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.headers, ["Name", "Email"]);
 });
 ok("parseCsv: CRLF line endings", () => {
-  const { rows } = parseCsv("Name,Email\r\nAda,ada@x.com\r\nGrace,grace@x.com\r\n");
-  assert.deepEqual(rows, [["Ada", "ada@x.com"], ["Grace", "grace@x.com"]]);
+  const r = parseCsv("Name,Email\r\nAda,ada@x.com\r\nGrace,grace@x.com\r\n");
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.rows, [["Ada", "ada@x.com"], ["Grace", "grace@x.com"]]);
 });
 ok("parseCsv: quoted field with embedded comma", () => {
-  const { rows } = parseCsv('Name,Role\n"Doe, John",Manager');
-  assert.deepEqual(rows, [["Doe, John", "Manager"]]);
+  const r = parseCsv('Name,Role\n"Doe, John",Manager');
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.rows, [["Doe, John", "Manager"]]);
 });
 ok("parseCsv: escaped quotes inside a quoted field", () => {
-  const { rows } = parseCsv('Name,Role\n"She said ""hi""",Owner');
-  assert.deepEqual(rows, [['She said "hi"', "Owner"]]);
+  const r = parseCsv('Name,Role\n"She said ""hi""",Owner');
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.rows, [['She said "hi"', "Owner"]]);
 });
-ok("parseCsv: embedded newline inside a quoted field", () => {
-  const { rows } = parseCsv('Name,Note\n"Line1\nLine2",ok');
-  assert.deepEqual(rows, [["Line1\nLine2", "ok"]]);
+ok("parseCsv: VALID embedded newline inside a quoted field stays accepted", () => {
+  const r = parseCsv('Name,Note\n"Line1\nLine2",ok');
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.rows, [["Line1\nLine2", "ok"]]);
 });
-ok("parseCsv: blank cells preserved", () => {
-  const { rows } = parseCsv("Name,Email,Phone\nAda,,555");
-  assert.deepEqual(rows, [["Ada", "", "555"]]);
+ok("parseCsv: blank interior cells preserved", () => {
+  const r = parseCsv("Name,Email,Phone\nAda,,555");
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.rows, [["Ada", "", "555"]]);
+});
+ok("parseCsv: VALID trailing empty columns (represented by delimiters) accepted", () => {
+  const r = parseCsv("Name,Email,Phone\nAda,ada@x.com,"); // 3 cells, last empty
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.rows, [["Ada", "ada@x.com", ""]]);
 });
 ok("parseCsv: trailing newline does not add a phantom row", () => {
-  const { rows } = parseCsv("Name\nAda\n");
-  assert.deepEqual(rows, [["Ada"]]);
+  const r = parseCsv("Name\nAda\n");
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.rows, [["Ada"]]);
 });
-ok("parseCsv: ragged/malformed row is still returned (validated later)", () => {
-  const { rows } = parseCsv("Name,Email\nAda"); // one cell where two expected
-  assert.deepEqual(rows, [["Ada"]]);
+ok("parseCsv: blank physical lines are ignored", () => {
+  const r = parseCsv("Name,Email\nAda,ada@x.com\n\nGrace,grace@x.com\n");
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.rows, [["Ada", "ada@x.com"], ["Grace", "grace@x.com"]]);
 });
-ok("parseCsv: empty/whitespace input -> no headers/rows", () => {
-  assert.deepEqual(parseCsv(""), { headers: [], rows: [] });
-  assert.deepEqual(parseCsv(123), { headers: [], rows: [] });
+// --- structural rejections (all-or-nothing) ---
+ok("parseCsv: unclosed quoted field -> MALFORMED", () => {
+  const r = parseCsv('Name,Email\n"Ada,ada@x.com');
+  assert.equal(r.ok, false);
+  assert.equal(r.error, "MALFORMED");
+  assert.deepEqual(r.rows, []);
+});
+ok("parseCsv: EOF inside a quoted field -> MALFORMED", () => {
+  assert.equal(parseCsv('Name\n"Ada').ok, false);
+});
+ok("parseCsv: quote inside unquoted content -> MALFORMED", () => {
+  assert.equal(parseCsv('Name,Role\nAd"a,Owner').ok, false);
+});
+ok("parseCsv: unexpected char after a closing quote -> MALFORMED", () => {
+  assert.equal(parseCsv('Name,Role\n"Ada"x,Owner').ok, false);
+});
+ok("parseCsv: too FEW columns -> MALFORMED", () => {
+  assert.equal(parseCsv("Name,Email\nAda").ok, false); // 1 cell, 2 expected
+});
+ok("parseCsv: too MANY columns -> MALFORMED", () => {
+  assert.equal(parseCsv("Name,Email\nAda,a@x.com,extra").ok, false); // 3 cells, 2 expected
+});
+ok("parseCsv: empty/whitespace input -> ok with no headers/rows; non-string -> MALFORMED", () => {
+  assert.deepEqual(parseCsv(""), { ok: true, headers: [], rows: [] });
+  assert.equal(parseCsv(123).ok, false);
+});
+ok("malformed input yields ZERO accepted contacts (parse rejected before validate)", () => {
+  const r = parseCsv('Name,Email\n"Ada,ada@x.com'); // unclosed quote
+  assert.equal(r.ok, false);
+  // A malformed parse never produces rows to validate -> nothing can be accepted.
+  assert.equal(validateRows(r.rows, { name: 0 }, []).accepted.length, 0);
 });
 
 // ===== suggestMapping =====
@@ -175,6 +218,16 @@ ok("contactImportErrorMessage: generic error -> retry copy, no raw detail leaked
 });
 ok("contactImportErrorMessage: null error -> generic copy", () => {
   assert.match(contactImportErrorMessage(null), /no contacts were imported/i);
+});
+
+// ===== malformed-file copy is fixed + contains no raw file content =====
+ok("MALFORMED_FILE_MESSAGE is fixed actionable copy with no row/file content", () => {
+  assert.equal(MALFORMED_FILE_MESSAGE, "This CSV file is malformed. Correct its rows or quotes and try again.");
+  // Prove it can't echo a malformed file's contents: the message is a constant,
+  // independent of any parse input.
+  const badFile = '"Ada,SECRET-ROW-DATA,oops';
+  assert.equal(parseCsv(badFile).ok, false);
+  assert.ok(!MALFORMED_FILE_MESSAGE.includes("SECRET-ROW-DATA"));
 });
 
 console.log(`\n${passed} passed, 0 failed`);

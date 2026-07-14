@@ -22,48 +22,83 @@ export const SUPPORTED_CONTACT_FIELDS = [
 // this is rejected whole (never partially imported).
 export const MAX_IMPORT_ROWS = 200;
 
-// ---- CSV parsing (RFC 4180-ish) ----
-// Handles quoted fields, embedded commas AND newlines inside quotes, escaped
-// quotes (""), CRLF or LF line endings, blank cells, and a leading UTF-8 BOM.
-// Returns { headers, rows } where headers is the first record (trimmed) and rows
-// are the remaining records as string[] (cells NOT trimmed here -- validation
-// trims). A trailing newline does not produce a phantom empty record.
+// ---- CSV parsing (strict RFC 4180) ----
+// Returns a TYPED result: `{ ok: true, headers, rows }` for a structurally valid
+// file, or `{ ok: false, error: "MALFORMED", headers: [], rows: [] }` for a
+// structurally invalid one. A malformed file is rejected WHOLE, before any batch
+// is built -- consistent with the all-or-nothing import policy (never accept a
+// ragged or unclosed-quote file and silently coerce it).
+//
+// Structural contract (each violation => MALFORMED):
+//   1. EOF while still inside a quoted field.
+//   2. A quote may open ONLY at the start of a field (a quote inside unquoted
+//      content is invalid).
+//   3. After a quoted field's closing quote, the next char must be a comma, CR/LF,
+//      or EOF (any other char is invalid).
+//   4/5. Every non-blank data record must have EXACTLY as many cells as the
+//      header row -- both missing and extra cells are errors.
+// Valid: embedded commas/newlines and escaped quotes ("") inside a properly
+// quoted field (7); legitimate trailing empty cells represented by their
+// delimiters, e.g. `a,b,` (6); blank physical lines, which are ignored (8);
+// CRLF or LF endings; a leading UTF-8 BOM.
 export function parseCsv(text) {
-  if (typeof text !== "string") return { headers: [], rows: [] };
+  const fail = { ok: false, error: "MALFORMED", headers: [], rows: [] };
+  if (typeof text !== "string") return fail;
   let s = text;
   if (s.charCodeAt(0) === 0xfeff) s = s.slice(1); // strip UTF-8 BOM
 
   const records = [];
   let field = "";
   let record = [];
-  let inQuotes = false;
-  let started = false; // has the current record seen any char (so we can flush)
   let i = 0;
-  const pushField = () => { record.push(field); field = ""; };
-  const endRecord = () => { pushField(); records.push(record); record = []; started = false; };
+  let inQuotes = false;
+  let fieldStart = true; // at the start of the current field (no char yet)?
+  let afterClose = false; // just closed a quoted field, awaiting a delimiter?
+  let sawChar = false; // did the current record see any content char/delimiter?
+  const pushField = () => { record.push(field); field = ""; fieldStart = true; afterClose = false; };
+  const endRecord = () => { pushField(); records.push(record); record = []; sawChar = false; };
 
   while (i < s.length) {
     const c = s[i];
     if (inQuotes) {
       if (c === '"') {
         if (s[i + 1] === '"') { field += '"'; i += 2; continue; } // escaped quote
-        inQuotes = false; i += 1; continue;
+        inQuotes = false; afterClose = true; i += 1; continue; // close quote
       }
-      field += c; i += 1; started = true; continue;
+      field += c; i += 1; continue; // any char (incl. , \r \n) is literal inside quotes
     }
-    if (c === '"') { inQuotes = true; i += 1; started = true; continue; }
-    if (c === ",") { pushField(); i += 1; started = true; continue; }
+    if (afterClose) {
+      // Rule 3: only a delimiter or EOF may follow a closing quote.
+      if (c === ",") { pushField(); sawChar = true; i += 1; continue; }
+      if (c === "\r") { if (s[i + 1] === "\n") i += 1; endRecord(); i += 1; continue; }
+      if (c === "\n") { endRecord(); i += 1; continue; }
+      return fail;
+    }
+    if (c === '"') {
+      if (!fieldStart) return fail; // Rule 2: quote not at field start
+      inQuotes = true; fieldStart = false; sawChar = true; i += 1; continue;
+    }
+    if (c === ",") { pushField(); sawChar = true; i += 1; continue; }
     if (c === "\r") { if (s[i + 1] === "\n") i += 1; endRecord(); i += 1; continue; }
     if (c === "\n") { endRecord(); i += 1; continue; }
-    field += c; i += 1; started = true;
+    field += c; fieldStart = false; sawChar = true; i += 1;
   }
-  // Flush a final record only if the file did not end exactly on a line break
-  // (i.e. there is a real trailing field or partial record).
-  if (started || field.length > 0 || record.length > 0) endRecord();
+  if (inQuotes) return fail; // Rule 1: EOF inside a quoted field
+  // Flush a trailing record unless the file ended exactly on a line break.
+  if (sawChar || field.length > 0 || record.length > 0) endRecord();
 
-  if (records.length === 0) return { headers: [], rows: [] };
-  const [headers, ...rows] = records;
-  return { headers: headers.map((h) => h.trim()), rows };
+  // Ignore blank physical lines (a lone empty cell) everywhere (rule 8), then the
+  // first remaining record is the header and every data record must match its
+  // cell count (rules 4/5).
+  const nonBlank = records.filter((rec) => !(rec.length === 1 && rec[0] === ""));
+  if (nonBlank.length === 0) return { ok: true, headers: [], rows: [] };
+  const [headerRec, ...dataRecs] = nonBlank;
+  const headers = headerRec.map((h) => h.trim());
+  const colCount = headers.length;
+  for (const rec of dataRecs) {
+    if (rec.length !== colCount) return fail;
+  }
+  return { ok: true, headers, rows: dataRecs };
 }
 
 // ---- Header auto-suggestion ----
@@ -123,6 +158,10 @@ export function validateMapping(mapping = {}) {
 function cell(row, idx) { return !hasIdx(idx) ? "" : (row[idx] ?? "").trim(); }
 function normKey(s) { return (s ?? "").trim().toLowerCase(); }
 function isValidEmail(e) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e); }
+
+// Fixed, actionable copy for a structurally malformed CSV file. Deliberately
+// generic -- it never contains raw parser output or any row/file content.
+export const MALFORMED_FILE_MESSAGE = "This CSV file is malformed. Correct its rows or quotes and try again.";
 
 // Safe, user-facing message for a FAILED contact import (batch commit). A
 // permission-denied (Rules rejection) and a demo/panic blocked write each get a
