@@ -803,6 +803,25 @@ button:hover {
   .fo-account-form .fo-fieldset > .fo-form-field { flex-basis: 100%; }
 }
 
+/* Issue #214 PR-1 -- the account form is migrated to the shared form primitives
+   (Field / FormActions / FormError / FormStatus) built on the System-A
+   `fo-wizard-*` tokens. Everything here is ADDITIVE and scoped to
+   `.fo-account-form`; the global `.fo-form`, the `.fo-wizard-*` tokens
+   themselves, and every other form are unchanged. */
+/* Readable width cap (~896px) for the form; tables/dashboards keep their own
+   wider patterns. Does not touch `.fo-main`. */
+.fo-account-form { max-width: 56rem; }
+/* Full-width field rows (e.g. Notes) span both grid columns. */
+.fo-account-form > .fo-form-field-wide { grid-column: 1 / -1; }
+.fo-account-form .fo-form-field > textarea { width: 100%; }
+/* The System-A control token inside an account-form field fills its cell (same
+   sizing the field already gives its input/select). */
+.fo-account-form .fo-form-field > .fo-wizard-control { width: 100%; }
+/* Required indicator is TEXT (never colour alone). */
+.fo-field-required { font-weight: 600; }
+/* Hint sits tight under its control. */
+.fo-account-form .fo-form-field .fo-wizard-hint { margin: 0; }
+
 /* Account Commercial Profile and Financial Forecast Horizons -- PR 4
    (modules/accounts/FinancialForecastSection.jsx). Two separately-labeled
    provider-neutral forecast family sub-sections; unconfigured only, no figure.

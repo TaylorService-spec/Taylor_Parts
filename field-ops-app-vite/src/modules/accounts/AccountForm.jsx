@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { ACCOUNT_STATUS, ACCOUNT_RELATIONSHIP_TYPE, INVOICE_DELIVERY_METHOD, PAYMENT_TERMS, TAX_STATUS } from "../../domain/constants";
 import { commercialProfileErrors, isValidInvoiceDeliveryMethod, isValidPaymentTerms, isValidTaxStatus, isContactOnAccount, resolveOwnerIdentity } from "../../domain/commercialProfile";
 import { accountSaveErrorMessage } from "../../domain/accountPortfolio";
@@ -7,6 +7,8 @@ import { useEmployeeDirectory } from "../../hooks/useEmployeeDirectory";
 import AddressFields from "../../shared/address/AddressFields";
 import EmployeeAssignmentPicker from "../../shared/assignment/EmployeeAssignmentPicker";
 import IdentityLine from "./IdentityLine";
+import { Field, FormActions, FormError, FormStatus } from "../../shared/ui/form";
+import { describedBy } from "../../shared/ui/form/fieldA11y";
 
 // Sprint 2.0.2 -- Customer Foundation. Shared create/edit form,
 // internal name AccountForm per the naming convention (rendered UI
@@ -30,6 +32,16 @@ import IdentityLine from "./IdentityLine";
 // audit-integrity invariant): these are client-direct edits for now; once the
 // audit log + trusted server-side writer ship, mutation moves there and direct
 // client writes are denied.
+//
+// Issue #214 PR-1 -- migrated to the shared form primitives (Field / FormActions
+// / FormError / FormStatus) built on the System-A `fo-wizard-*` visual tokens:
+// labels ABOVE controls with correct label/control association, a text (never
+// colour-only) required indicator, consistent hint/error placement, a clear
+// saving state announced to assistive tech, and a readable-width cap. Every
+// field, option, payload key, validation rule, governed-field, owner
+// fail-closed behaviour, permission, and write path is unchanged -- this is a
+// presentation-only migration. The `.fo-account-form` class + its two-column
+// grid, `.fo-btn-row`, all control ids and label text are preserved.
 export default function AccountForm({ initialValues, onSubmit, onCancel, submitLabel, contacts = [], contactsLoading = false, contactsError = null }) {
   const { user, employeeId: sessionEmployeeId, displayName: sessionDisplayName, loading: authLoading } = useAuth();
   const { byUserId, loading: directoryLoading, error: directoryError } = useEmployeeDirectory();
@@ -72,6 +84,10 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
   // inside the form so the creation overlay stays open and the user can retry.
   const [saveError, setSaveError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  // Duplicate-submit guard: a ref, so it blocks a second submit synchronously
+  // within the same tick (before React re-renders the disabled button), which a
+  // stale `submitting` state read cannot.
+  const submittingRef = useRef(false);
 
   // Live Commercial Profile validation -- errors render beside their fields.
   const cpDraft = useMemo(
@@ -110,6 +126,10 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
   const billingContactForeign =
     Boolean(billingContactId) && !contactsLoading && !contactsError && !isContactOnAccount(billingContactId, contacts);
 
+  // Customer name is required (empty name blocks submit -- unchanged rule);
+  // surface it consistently once a submit has been attempted.
+  const nameError = submitAttempted && !name.trim() ? "Enter a customer name." : null;
+
   function handleAddressChange(field, value) {
     setAddress((cur) => ({ ...cur, [field]: value }));
   }
@@ -145,6 +165,7 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
 
   async function handleSubmit(e) {
     e.preventDefault();
+    if (submittingRef.current) return; // a save is already in flight
     setSubmitAttempted(true);
     setSaveError(null);
     const trimmedName = name.trim();
@@ -198,6 +219,7 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
     // denied) is caught HERE and surfaced inside the form -- the creation
     // overlay stays open and nothing is lost. A caller whose onSubmit doesn't
     // return a promise still works (await of a non-thenable resolves).
+    submittingRef.current = true;
     setSubmitting(true);
     try {
       await onSubmit(payload);
@@ -205,6 +227,7 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
       console.error("Account save failed:", err);
       setSaveError(accountSaveErrorMessage(err));
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   }
@@ -214,15 +237,27 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
     // control styling/behavior; global `.fo-form` used by other forms is
     // unchanged). See index.css's `.fo-account-form` block.
     <form className="fo-form fo-account-form" onSubmit={handleSubmit}>
-      <input placeholder="Customer name" value={name} onChange={(e) => setName(e.target.value)} />
+      <Field id="account-name" label="Customer name" required error={nameError}>
+        <input
+          id="account-name"
+          className="fo-wizard-control"
+          placeholder="Customer name"
+          value={name}
+          aria-invalid={nameError ? true : undefined}
+          aria-describedby={describedBy("account-name", { hasError: Boolean(nameError) })}
+          onChange={(e) => setName(e.target.value)}
+        />
+      </Field>
 
-      <select value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Status">
-        {Object.values(ACCOUNT_STATUS).map((s) => (
-          <option key={s} value={s}>
-            {s}
-          </option>
-        ))}
-      </select>
+      <Field id="account-status" label="Status">
+        <select id="account-status" className="fo-wizard-control" value={status} onChange={(e) => setStatus(e.target.value)}>
+          {Object.values(ACCOUNT_STATUS).map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </select>
+      </Field>
 
       <fieldset className="fo-fieldset">
         <legend>Relationship</legend>
@@ -250,37 +285,40 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
       <fieldset className="fo-fieldset">
         <legend>Commercial Profile</legend>
 
-        <div className="fo-form-field">
-          <label htmlFor="cp-currency">Default currency (ISO 4217)</label>
+        <Field id="cp-currency" label="Default currency (ISO 4217)" error={errors.defaultCurrency}>
           <input
             id="cp-currency"
+            className="fo-wizard-control"
             placeholder="e.g. USD"
             value={defaultCurrency}
             maxLength={3}
             aria-invalid={errors.defaultCurrency ? true : undefined}
+            aria-describedby={describedBy("cp-currency", { hasError: Boolean(errors.defaultCurrency) })}
             onChange={(e) => setDefaultCurrency(e.target.value.toUpperCase())}
           />
-          {errors.defaultCurrency && <div className="fo-warning">{errors.defaultCurrency}</div>}
-        </div>
+        </Field>
 
         <div className="fo-form-field">
           <label className="fo-checkbox-label">
             <input
               type="checkbox"
               checked={purchaseOrderRequired === true}
+              aria-invalid={errors.purchaseOrderRequired ? true : undefined}
+              aria-describedby={describedBy("cp-po-required", { hasError: Boolean(errors.purchaseOrderRequired) })}
               onChange={(e) => setPurchaseOrderRequired(e.target.checked)}
             />
             Purchase order required
           </label>
-          {errors.purchaseOrderRequired && <div className="fo-warning">{errors.purchaseOrderRequired}</div>}
+          <FormError id="cp-po-required-error">{errors.purchaseOrderRequired}</FormError>
         </div>
 
-        <div className="fo-form-field">
-          <label htmlFor="cp-invoice-delivery">Invoice delivery method</label>
+        <Field id="cp-invoice-delivery" label="Invoice delivery method" error={errors.invoiceDeliveryMethod}>
           <select
             id="cp-invoice-delivery"
+            className="fo-wizard-control"
             value={invoiceDeliveryMethod}
             aria-invalid={errors.invoiceDeliveryMethod ? true : undefined}
+            aria-describedby={describedBy("cp-invoice-delivery", { hasError: Boolean(errors.invoiceDeliveryMethod) })}
             onChange={(e) => setInvoiceDeliveryMethod(e.target.value)}
           >
             <option value="">—</option>
@@ -290,19 +328,19 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
             {/* Surface a malformed stored value instead of silently blanking it. */}
             {invoiceMethodInvalid && <option value={invoiceDeliveryMethod}>{invoiceDeliveryMethod} (invalid)</option>}
           </select>
-          {errors.invoiceDeliveryMethod && <div className="fo-warning">{errors.invoiceDeliveryMethod}</div>}
-        </div>
+        </Field>
 
         {/* Governed enum fields (PR 2) -- admin-edit-only ENFORCED IN RULES,
             not by hiding them here. Shown to any admin/dispatcher who can
             open this form; a non-admin's write that CHANGES either is
             rejected at the Firestore Rules layer. */}
-        <div className="fo-form-field">
-          <label htmlFor="cp-payment-terms">Payment terms</label>
+        <Field id="cp-payment-terms" label="Payment terms" error={errors.paymentTerms}>
           <select
             id="cp-payment-terms"
+            className="fo-wizard-control"
             value={paymentTerms}
             aria-invalid={errors.paymentTerms ? true : undefined}
+            aria-describedby={describedBy("cp-payment-terms", { hasError: Boolean(errors.paymentTerms) })}
             onChange={(e) => setPaymentTerms(e.target.value)}
           >
             <option value="">—</option>
@@ -312,15 +350,15 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
             {/* Surface a malformed stored value instead of silently blanking it. */}
             {paymentTermsInvalid && <option value={paymentTerms}>{paymentTerms} (invalid)</option>}
           </select>
-          {errors.paymentTerms && <div className="fo-warning">{errors.paymentTerms}</div>}
-        </div>
+        </Field>
 
-        <div className="fo-form-field">
-          <label htmlFor="cp-tax-status">Tax status</label>
+        <Field id="cp-tax-status" label="Tax status" error={errors.taxStatus}>
           <select
             id="cp-tax-status"
+            className="fo-wizard-control"
             value={taxStatus}
             aria-invalid={errors.taxStatus ? true : undefined}
+            aria-describedby={describedBy("cp-tax-status", { hasError: Boolean(errors.taxStatus) })}
             onChange={(e) => setTaxStatus(e.target.value)}
           >
             {/* Blank == absent == the UNKNOWN safe default (never TAXABLE). */}
@@ -330,19 +368,19 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
             ))}
             {taxStatusInvalid && <option value={taxStatus}>{taxStatus} (invalid)</option>}
           </select>
-          {errors.taxStatus && <div className="fo-warning">{errors.taxStatus}</div>}
-        </div>
+        </Field>
 
         {/* Billing contact — only a Contact belonging to THIS Account. The
             picker is shown once this Account has contacts; the error is shown
             regardless (so a foreign stored id surfaces even with no contacts). */}
         {contacts.length > 0 ? (
-          <div className="fo-form-field">
-            <label htmlFor="cp-billing-contact">Billing contact</label>
+          <Field id="cp-billing-contact" label="Billing contact" error={errors.billingContact}>
             <select
               id="cp-billing-contact"
+              className="fo-wizard-control"
               value={billingContactId}
               aria-invalid={errors.billingContact ? true : undefined}
+              aria-describedby={describedBy("cp-billing-contact", { hasError: Boolean(errors.billingContact) })}
               onChange={(e) => setBillingContactId(e.target.value)}
             >
               <option value="">—</option>
@@ -353,12 +391,14 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
                   -- name-only, never the raw contact ID. */}
               {billingContactForeign && <option value={billingContactId}>Unknown contact (not on this account)</option>}
             </select>
-            {errors.billingContact && <div className="fo-warning">{errors.billingContact}</div>}
-          </div>
+          </Field>
         ) : (
-          errors.billingContact && <div className="fo-warning">{errors.billingContact}</div>
+          <FormError>{errors.billingContact}</FormError>
         )}
 
+        {/* Owner picker keeps its own composite structure -- the picker renders
+            its own labelled combobox ("Account owner"), so wrapping it in a
+            second Field label would double the accessible name. */}
         <div className="fo-form-field fo-account-form-wide">
           {accountOwner && (
             <div className="fo-muted">
@@ -374,22 +414,31 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
             placeholder="Search owner by name..."
             disabled={authLoading}
           />
-          {errors.accountOwner && <div className="fo-warning">{errors.accountOwner}</div>}
+          <FormError>{errors.accountOwner}</FormError>
         </div>
       </fieldset>
 
-      <textarea
-        placeholder="Notes (alarm codes, call-ahead requirements, billing reminders, preferences...)"
-        value={notes}
-        onChange={(e) => setNotes(e.target.value)}
-        rows={3}
-      />
+      <Field id="account-notes" label="Notes" className="fo-form-field-wide">
+        <textarea
+          id="account-notes"
+          className="fo-wizard-control"
+          placeholder="Notes (alarm codes, call-ahead requirements, billing reminders, preferences...)"
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          rows={3}
+        />
+      </Field>
 
-      <input
-        placeholder="Tags, comma-separated (e.g. Restaurant, VIP, Chain Store)"
-        value={tagsInput}
-        onChange={(e) => setTagsInput(e.target.value)}
-      />
+      <Field id="account-tags" label="Tags" hint="Comma-separated (e.g. Restaurant, VIP, Chain Store)">
+        <input
+          id="account-tags"
+          className="fo-wizard-control"
+          placeholder="Tags, comma-separated (e.g. Restaurant, VIP, Chain Store)"
+          value={tagsInput}
+          aria-describedby={describedBy("account-tags", { hasHint: true })}
+          onChange={(e) => setTagsInput(e.target.value)}
+        />
+      </Field>
 
       <button type="button" onClick={() => setShowExternalIds((v) => !v)} className="fo-link-btn">
         {showExternalIds ? "Hide" : "Show"} external IDs (future integrations)
@@ -397,22 +446,32 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
 
       {showExternalIds && (
         <>
-          <input placeholder="Customer number (optional)" value={customerNumber} onChange={(e) => setCustomerNumber(e.target.value)} />
-          <input placeholder="ERP ID (optional)" value={erpId} onChange={(e) => setErpId(e.target.value)} />
-          <input placeholder="Accounting ID (optional)" value={accountingId} onChange={(e) => setAccountingId(e.target.value)} />
-          <input placeholder="Legacy ID (optional)" value={legacyId} onChange={(e) => setLegacyId(e.target.value)} />
+          <Field id="account-customer-number" label="Customer number">
+            <input id="account-customer-number" className="fo-wizard-control" placeholder="Customer number (optional)" value={customerNumber} onChange={(e) => setCustomerNumber(e.target.value)} />
+          </Field>
+          <Field id="account-erp-id" label="ERP ID">
+            <input id="account-erp-id" className="fo-wizard-control" placeholder="ERP ID (optional)" value={erpId} onChange={(e) => setErpId(e.target.value)} />
+          </Field>
+          <Field id="account-accounting-id" label="Accounting ID">
+            <input id="account-accounting-id" className="fo-wizard-control" placeholder="Accounting ID (optional)" value={accountingId} onChange={(e) => setAccountingId(e.target.value)} />
+          </Field>
+          <Field id="account-legacy-id" label="Legacy ID">
+            <input id="account-legacy-id" className="fo-wizard-control" placeholder="Legacy ID (optional)" value={legacyId} onChange={(e) => setLegacyId(e.target.value)} />
+          </Field>
         </>
       )}
 
       {submitAttempted && !cpValid && (
-        <div className="fo-warning" role="alert">Fix the highlighted Commercial Profile fields before saving.</div>
+        <FormError role="alert">Fix the highlighted Commercial Profile fields before saving.</FormError>
       )}
 
-      {saveError && (
-        <div className="fo-warning fo-account-save-error" role="alert">{saveError}</div>
-      )}
+      <FormError role="alert" className="fo-account-save-error">{saveError}</FormError>
 
-      <div className="fo-btn-row">
+      {/* Saving state announced politely to assistive tech (the submit button
+          shows it visually and is disabled to prevent a duplicate submit). */}
+      <FormStatus>{submitting ? "Saving customer..." : ""}</FormStatus>
+
+      <FormActions>
         <button type="submit" disabled={submitting}>
           {submitting ? "Saving..." : submitLabel ?? "Save"}
         </button>
@@ -421,7 +480,7 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
             Cancel
           </button>
         )}
-      </div>
+      </FormActions>
     </form>
   );
 }
