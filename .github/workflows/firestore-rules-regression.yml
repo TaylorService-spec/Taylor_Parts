@@ -1,0 +1,82 @@
+name: Firestore Rules Regression
+
+# Runs the canonical Firestore Rules emulator suite (178 assertions across six
+# suites, each against a freshly started Firestore+Auth emulator) via the pinned
+# runner. Emulator-only, project "taylor-parts", loopback hosts -- no production
+# access, no credentials, no repository secrets.
+
+on:
+  pull_request:
+    paths:
+      - "firestore.rules"
+      - "field-ops-app-vite/firestore.rules"
+      - "firebase.json"
+      - "functions/test/**Rules*.test.js"
+      - "functions/scripts/rulesRegressionRunner.mjs"
+      - "functions/test/rulesRegressionRunner.test.mjs"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - ".github/workflows/firestore-rules-regression.yml"
+  push:
+    branches: [main]
+    paths:
+      - "firestore.rules"
+      - "field-ops-app-vite/firestore.rules"
+      - "firebase.json"
+      - "functions/test/**Rules*.test.js"
+      - "functions/scripts/rulesRegressionRunner.mjs"
+      - "functions/test/rulesRegressionRunner.test.mjs"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - ".github/workflows/firestore-rules-regression.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rules-regression:
+    name: Firestore Rules Regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      # The Firestore emulator is a Java process.
+      - name: Set up Java (required by the Firestore emulator)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+
+      - name: Runner self-tests
+        run: npm run test:runner
+        working-directory: functions
+
+      - name: Canonical Firestore Rules regression (178 assertions)
+        run: npm run test:rules
+        working-directory: functions
+
+      # Only safe diagnostics -- the emulator's own debug logs (no secrets/tokens).
+      - name: Upload emulator debug logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: firestore-rules-emulator-logs
+          path: |
+            firestore-debug.log
+            firebase-debug.log
+            ui-debug.log
+          if-no-files-found: ignore
+          retention-days: 7
