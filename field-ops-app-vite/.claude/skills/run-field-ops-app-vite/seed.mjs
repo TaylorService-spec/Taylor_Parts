@@ -531,6 +531,37 @@ async function seedDemoCustomersFixture() {
   }
 }
 
+// Work Order Wizard (Platform Task 1) -- ONE Account that has exactly one
+// Location, so the driver's verify-wo-wizard can walk all four steps of the
+// creation wizard (Step 2 requires a selectable location to advance). Seeded
+// via the Admin SDK like every other fixture. Deliberately its own dedicated
+// account (not reused from DASHBOARD/DEMO, which have no locations) with a
+// distinctive, searchable name so GlobalSearch resolves it unambiguously in
+// Step 1. Adds no reorder/inventory data.
+export const WIZARD_FIXTURE = {
+  accountId: "acct-wo-wizard",
+  accountName: "Wizard Test Customer",
+  locationId: "wo-wizard-loc-1",
+  locationName: "Wizard Main Site",
+};
+
+async function seedWizardFixture() {
+  const now = Date.now();
+  await db.doc(`accounts/${WIZARD_FIXTURE.accountId}`).set({
+    name: WIZARD_FIXTURE.accountName,
+    status: "Active",
+    relationshipTypes: ["CUSTOMER"],
+    createdAt: now,
+    updatedAt: now,
+  });
+  await db.doc(`locations/${WIZARD_FIXTURE.locationId}`).set({
+    accountId: WIZARD_FIXTURE.accountId,
+    name: WIZARD_FIXTURE.locationName,
+    createdAt: now,
+    updatedAt: now,
+  });
+}
+
 async function seedReorderRequestFixture(docId, { partId, status, currentOwner, assignedToUserId, createdAt }) {
   const isCancelled = status === "CANCELLED";
   await db.doc(`reorder_requests/${docId}`).set({
@@ -1213,6 +1244,7 @@ async function seed() {
   await seedGovernedFieldsFixture();
   await seedDashboardFixture();
   await seedDemoCustomersFixture();
+  await seedWizardFixture();
   await seedIssue100RoleFixtures();
 
   console.log("Seeded driver accounts:");

@@ -254,6 +254,16 @@
 //                                 horizontal overflow. Prints a PASS/FAIL
 //                                 report per assertion and exits non-zero on
 //                                 any failure.
+//   verify-wo-wizard <accountKey>
+//                                 Work Order Wizard layout & error clarity
+//                                 (Platform Task 1). Walks all four steps on the
+//                                 seeded WIZARD_FIXTURE account+location and
+//                                 asserts the step progress indicator, visible
+//                                 field labels, inline gating hints, review
+//                                 definition list, keyboard advance, every
+//                                 create-error mapping (via createWorkOrder
+//                                 callable interception -- no Functions backend
+//                                 needed), and 375px geometry.
 //
 // All screenshots are written under .claude/skills/run-field-ops-app-vite/screenshots/.
 import { chromium } from "@playwright/test";
@@ -278,6 +288,7 @@ import {
   COMMERCIAL_PROFILE_FIXTURE,
   GOVERNED_FIELDS_FIXTURE,
   DASHBOARD_FIXTURE,
+  WIZARD_FIXTURE,
   seedLedgerTransactions,
   db,
 } from "./seed.mjs";
@@ -2535,6 +2546,163 @@ async function verifyCustomerDashboard(browser, page, accountKey) {
   return niFailed === 0;
 }
 
+// Work Order Wizard (Platform Task 1) -- walks all four steps of the creation
+// wizard on the seeded WIZARD_FIXTURE account+location, asserting: the step
+// progress indicator (aria-current), visible field labels, the inline gating
+// hints (why a disabled Next is blocked), the review definition list, keyboard
+// advance, every create-error mapping, and 375px geometry. The create-error
+// cases intercept the createWorkOrder callable via page.route (no Functions
+// backend needed and none is deployed) and force each canonical error code, so
+// the message mapping is exercised deterministically end to end.
+async function verifyWoWizard(browser, page, accountKey) {
+  const F = WIZARD_FIXTURE;
+  const wizUrl = () => { const u = new URL("service/work-orders/new", APP_ROOT); u.searchParams.set("emulator", "1"); return u.toString(); };
+  const activeStepLabel = () => page.locator('.fo-wizard-step[aria-current="step"] .fo-wizard-step-label').innerText().catch(() => "");
+  const hintText = () => page.locator(".fo-wizard-hint").innerText().catch(() => "");
+  const nextBtn = () => page.getByRole("button", { name: "Next" });
+  const labelFor = (id) => page.locator(`label[for="${id}"]`).innerText().catch(() => "");
+
+  await login(page, accountKey);
+  await page.goto(wizUrl(), { waitUntil: "domcontentloaded", timeout: 20000 });
+  await page.getByRole("heading", { name: "New Work Order" }).waitFor({ timeout: 10000 });
+
+  // ===== Step 1: Customer (progress + search-select) =====
+  niReport('Step 1 progress marks "Customer" active', (await activeStepLabel()) === "Customer");
+  niReport("Step 1 shows a guidance hint until a customer is chosen", (await hintText()).includes("select a customer"));
+  await page.locator(".fo-wizard-field .fo-global-search input").fill(F.accountName);
+  await page.waitForTimeout(400);
+  await page.locator(".fo-global-search-result", { hasText: F.accountName }).first().click();
+
+  // ===== Step 2: Location (progress, gating hint, visible label, gate clears) =====
+  await page.getByRole("heading", { name: "Step 2: Location" }).waitFor({ timeout: 10000 });
+  niReport('Step 2 progress marks "Location" active', (await activeStepLabel()) === "Location");
+  // Wait for the per-account location listener to resolve so the select renders
+  // (until then useLocationsForAccount returns [] and the hint legitimately
+  // reads the empty-state message) -- then assert the select-a-location hint.
+  await page.locator("#wo-location").waitFor({ timeout: 10000 });
+  niReport('Step 2 gating hint explains the disabled Next ("Select a location")', (await hintText()) === "Select a location to continue.");
+  niReport("Step 2 Next is disabled before a location is chosen", await nextBtn().isDisabled());
+  niReport('Step 2 has a visible "Location" label bound to the select', (await labelFor("wo-location")) === "Location");
+  await page.locator("#wo-location").selectOption({ label: F.locationName });
+  await page.waitForTimeout(150);
+  niReport("Step 2 Next enables once a location is chosen", await nextBtn().isEnabled());
+  niReport("Step 2 gating hint clears once satisfied", (await hintText()) === "");
+  await nextBtn().click();
+
+  // ===== Step 3: Service Details (progress done/active, visible labels, gate) =====
+  await page.getByRole("heading", { name: "Step 3: Service Details" }).waitFor({ timeout: 10000 });
+  niReport('Step 3 progress marks "Service Details" active', (await activeStepLabel()) === "Service Details");
+  const doneCount = await page.locator(".fo-wizard-step-done").count();
+  niReport("Step 3 progress shows steps 1-2 as done", doneCount === 2, `done=${doneCount}`);
+  niReport('Step 3 visible label "Priority" bound to #wo-priority', (await labelFor("wo-priority")) === "Priority");
+  niReport('Step 3 visible label "Type" bound to #wo-type', (await labelFor("wo-type")) === "Type");
+  niReport('Step 3 visible label for Severity bound to #wo-severity', (await labelFor("wo-severity")).includes("Severity"));
+  niReport('Step 3 visible label for Complaint bound to #wo-complaint', (await labelFor("wo-complaint")).includes("Complaint"));
+  niReport('Step 3 gating hint requires a Type or Complaint', (await hintText()) === "Choose a Type, or enter a Complaint, to continue.");
+  niReport("Step 3 Next disabled with neither Type nor Complaint", await nextBtn().isDisabled());
+  await page.locator("#wo-type").selectOption("SERVICE_CALL");
+  await page.waitForTimeout(150);
+  niReport("Step 3 Next enables once a Type is chosen", await nextBtn().isEnabled());
+  niReport("Step 3 gating hint clears once satisfied", (await hintText()) === "");
+  // keyboard advance: focus Next and activate with Enter
+  await nextBtn().focus();
+  await page.keyboard.press("Enter");
+
+  // ===== Step 4: Review & Create (review dl) =====
+  await page.getByRole("heading", { name: "Step 4: Review & Create" }).waitFor({ timeout: 10000 });
+  niReport('Step 4 progress marks "Review & Create" active (reached via keyboard)', (await activeStepLabel()) === "Review & Create");
+  const reviewText = await page.locator(".fo-wizard-review").innerText().catch(() => "");
+  niReport("Step 4 review lists Customer / Location / Priority / Type with their values",
+    ["Customer", F.accountName, "Location", F.locationName, "Priority", "Type", "SERVICE_CALL"].every((t) => reviewText.includes(t)),
+    reviewText.replace(/\n/g, " | "));
+
+  // ===== 375px geometry (still on step 4, before any create attempt) =====
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.waitForTimeout(150);
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
+  niReport("Responsive: no horizontal overflow at 375px on the wizard", overflow === false);
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  // ===== Create-error mapping via callable interception =====
+  const cors = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  };
+  let currentResponse = null; // { http, canonical, message } or { success }
+  await page.route("**/createWorkOrder", async (route) => {
+    if (route.request().method() === "OPTIONS") {
+      return route.fulfill({ status: 204, headers: cors });
+    }
+    if (currentResponse?.success) {
+      return route.fulfill({ status: 200, headers: { ...cors, "Content-Type": "application/json" }, body: JSON.stringify({ result: currentResponse.result }) });
+    }
+    return route.fulfill({
+      status: currentResponse.http,
+      headers: { ...cors, "Content-Type": "application/json" },
+      body: JSON.stringify({ error: { status: currentResponse.canonical, message: currentResponse.message } }),
+    });
+  });
+
+  const errorText = () => page.locator(".fo-wizard-error").innerText().catch(() => "");
+  async function attemptCreate() {
+    await page.getByRole("button", { name: "Create Work Order" }).click();
+    await page.locator(".fo-wizard-error").waitFor({ timeout: 10000 }).catch(() => {});
+    await page.waitForTimeout(150);
+  }
+
+  currentResponse = { http: 400, canonical: "INVALID_ARGUMENT", message: "customerId is required." };
+  await attemptCreate();
+  niReport("Error: invalid-argument shows failed + the safe validation detail",
+    (await errorText()).includes("customerId is required."), await errorText());
+
+  currentResponse = { http: 401, canonical: "UNAUTHENTICATED", message: "auth required" };
+  await attemptCreate();
+  niReport("Error: unauthenticated shows a sign-in message",
+    (await errorText()).toLowerCase().includes("signed in"), await errorText());
+
+  currentResponse = { http: 403, canonical: "PERMISSION_DENIED", message: "nope" };
+  await attemptCreate();
+  niReport("Error: permission-denied shows an authorization message",
+    (await errorText()).toLowerCase().includes("permission"), await errorText());
+
+  currentResponse = { http: 503, canonical: "UNAVAILABLE", message: "down" };
+  await attemptCreate();
+  niReport("Error: unavailable shows the service-unavailable message",
+    (await errorText()).toLowerCase().includes("not currently available"), await errorText());
+
+  currentResponse = { http: 500, canonical: "INTERNAL", message: "RAW-INTERNAL-LEAK-9f3" };
+  await attemptCreate();
+  const internalMsg = await errorText();
+  niReport("Error: internal shows a clear failure/no-record message", /unexpected error|no work order was created/i.test(internalMsg), internalMsg);
+  niReport("Error: internal NEVER leaks the raw server detail", !internalMsg.includes("RAW-INTERNAL-LEAK-9f3"), internalMsg);
+
+  // ===== Real successful creation THROUGH the Functions emulator =====
+  // Remove all interception so the create hits the real createWorkOrder
+  // callable running in the Functions emulator (the signed-in admin passes its
+  // auth/role check; the wizard's inputs are valid), which writes a real
+  // fieldops_wos document and returns its id for the wizard to navigate to.
+  await page.unroute("**/createWorkOrder");
+  const beforeIds = new Set(
+    (await db.collection("fieldops_wos").where("customerId", "==", F.accountId).get()).docs.map((d) => d.id)
+  );
+  await page.getByRole("button", { name: "Create Work Order" }).click();
+  const navigated = await page
+    .waitForURL((u) => { const p = new URL(u).pathname; return /\/service\/work-orders\//.test(p) && !p.endsWith("/new"); }, { timeout: 20000 })
+    .then(() => true)
+    .catch(() => false);
+  niReport("Success: real createWorkOrder navigates to the created Work Order route", navigated, page.url());
+  const afterDocs = (await db.collection("fieldops_wos").where("customerId", "==", F.accountId).get()).docs.filter((d) => !beforeIds.has(d.id));
+  niReport("Success: a real Work Order document was created via the Functions emulator", afterDocs.length === 1, `new docs=${afterDocs.length}`);
+  const created = afterDocs[0]?.data() ?? {};
+  niReport("Success: the created Work Order carries the wizard's customer/location/type",
+    created.customerId === F.accountId && created.locationId === F.locationId && created.type === "SERVICE_CALL",
+    JSON.stringify({ customerId: created.customerId, locationId: created.locationId, type: created.type }));
+
+  console.log(`\n${niPassed} passed, ${niFailed} failed`);
+  return niFailed === 0;
+}
+
 async function main() {
   const [, , command, ...args] = process.argv;
   const browser = await chromium.launch();
@@ -2641,6 +2809,10 @@ async function main() {
     } else if (command === "verify-customer-dashboard") {
       const [accountKey = "admin"] = args;
       const ok = await verifyCustomerDashboard(browser, page, accountKey);
+      if (!ok) process.exitCode = 1;
+    } else if (command === "verify-wo-wizard") {
+      const [accountKey = "admin"] = args;
+      const ok = await verifyWoWizard(browser, page, accountKey);
       if (!ok) process.exitCode = 1;
     } else {
       console.error(`Unknown command "${command}". See the header comment in this file for usage.`);
