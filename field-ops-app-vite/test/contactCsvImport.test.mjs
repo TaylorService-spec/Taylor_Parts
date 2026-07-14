@@ -5,6 +5,7 @@ import {
   validateMapping,
   validateRows,
   contactDuplicateKey,
+  contactImportErrorMessage,
   SUPPORTED_CONTACT_FIELDS,
   MAX_IMPORT_ROWS,
 } from "../src/domain/contactCsvImport.js";
@@ -157,6 +158,23 @@ ok("SUPPORTED_CONTACT_FIELDS: Name required; no accountId/id exposed", () => {
   assert.deepEqual(keys, ["name", "email", "phone", "role"]);
   assert.equal(SUPPORTED_CONTACT_FIELDS.find((f) => f.key === "name").required, true);
   assert.ok(!keys.includes("accountId") && !keys.includes("id"));
+});
+
+// ===== contactImportErrorMessage (safe copy, no raw detail) =====
+ok("contactImportErrorMessage: permission-denied -> authorization copy", () => {
+  assert.match(contactImportErrorMessage({ code: "permission-denied" }), /permission/i);
+  assert.match(contactImportErrorMessage({ code: "firestore/permission-denied" }), /permission/i);
+});
+ok("contactImportErrorMessage: blocked -> disabled-mode copy", () => {
+  assert.match(contactImportErrorMessage({ blocked: true }), /disabled/i);
+});
+ok("contactImportErrorMessage: generic error -> retry copy, no raw detail leaked", () => {
+  const msg = contactImportErrorMessage({ code: "unavailable", message: "RAW-FIRE-DETAIL-42" });
+  assert.match(msg, /no contacts were imported/i);
+  assert.ok(!msg.includes("RAW-FIRE-DETAIL-42"));
+});
+ok("contactImportErrorMessage: null error -> generic copy", () => {
+  assert.match(contactImportErrorMessage(null), /no contacts were imported/i);
 });
 
 console.log(`\n${passed} passed, 0 failed`);

@@ -562,6 +562,39 @@ async function seedWizardFixture() {
   });
 }
 
+// Contact CSV import (Issue #209) -- a DEDICATED account with exactly one
+// pre-existing Contact, so verify-contact-csv-import can prove the duplicate
+// policy (a CSV row matching this contact's email is SKIPPED, never overwritten)
+// against a known-clean starting state independent of other fixtures' contacts.
+export const CSV_IMPORT_FIXTURE = {
+  accountId: "acct-csv-import",
+  accountName: "CSV Import Co",
+  existingContactId: "csv-existing-contact-1",
+  existingContactName: "Existing Contact",
+  existingContactEmail: "existing@csv.test",
+};
+
+async function seedCsvImportFixture() {
+  const now = Date.now();
+  await db.doc(`accounts/${CSV_IMPORT_FIXTURE.accountId}`).set({
+    name: CSV_IMPORT_FIXTURE.accountName,
+    status: "Active",
+    relationshipTypes: ["CUSTOMER"],
+    createdAt: now,
+    updatedAt: now,
+  });
+  await db.doc(`contacts/${CSV_IMPORT_FIXTURE.existingContactId}`).set({
+    accountId: CSV_IMPORT_FIXTURE.accountId,
+    name: CSV_IMPORT_FIXTURE.existingContactName,
+    email: CSV_IMPORT_FIXTURE.existingContactEmail,
+    phone: null,
+    role: null,
+    isPrimary: true,
+    createdAt: now,
+    updatedAt: now,
+  });
+}
+
 // Work Order wizard -- Customer picker (customer-search visibility). Accounts
 // that all match "test", exercising every result state the picker must show:
 //   - two IDENTICALLY named "Test Plumbing Co" accounts distinguished ONLY by
@@ -1319,6 +1352,7 @@ async function seed() {
   await seedDashboardFixture();
   await seedDemoCustomersFixture();
   await seedWizardFixture();
+  await seedCsvImportFixture();
   await seedWoCustomerSearchFixture();
   await seedIssue100RoleFixtures();
 

@@ -124,6 +124,19 @@ function cell(row, idx) { return !hasIdx(idx) ? "" : (row[idx] ?? "").trim(); }
 function normKey(s) { return (s ?? "").trim().toLowerCase(); }
 function isValidEmail(e) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e); }
 
+// Safe, user-facing message for a FAILED contact import (batch commit). A
+// permission-denied (Rules rejection) and a demo/panic blocked write each get a
+// distinct message; anything else is a generic retry line -- NEVER a raw Firebase
+// message/code/detail. Pure, so it is unit-testable.
+export function contactImportErrorMessage(err) {
+  if (err?.blocked) return "Importing is disabled in this mode -- no contacts were imported.";
+  const code = err?.code ?? "";
+  if (code === "permission-denied" || code === "firestore/permission-denied") {
+    return "You do not have permission to import contacts for this customer.";
+  }
+  return "Could not import these contacts. No contacts were imported -- please try again.";
+}
+
 // Duplicate key from EXISTING Contact fields (never a document id): same email
 // (case-insensitive) marks a duplicate; when a row has no email, same name + same
 // phone does. Used to SKIP duplicates -- an existing Contact is never overwritten.

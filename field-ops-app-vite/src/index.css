@@ -1208,3 +1208,25 @@ textarea.fo-wizard-control { min-height: 76px; resize: vertical; }
   .fo-customer-picker-dropdown { max-height: 60vh; }
   .fo-customer-picker-locs { flex-direction: column; gap: 2px; }
 }
+
+/* Contact CSV import (Issue #209) -- scoped under .fo-contact-import; inner
+   content of the shared Modal (.fo-modal-*). Reuses .fo-wizard-field/.fo-table/
+   .fo-warning; only adds the mapping grid, the capped preview, and list styling. */
+.fo-contact-import { display: flex; flex-direction: column; gap: 12px; }
+.fo-contact-import-context { margin: 0; }
+.fo-contact-import-map {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 16px;
+}
+.fo-contact-import-preview { max-height: 220px; overflow: auto; }
+.fo-contact-import-errors { margin: 4px 0 0; padding-left: 18px; }
+.fo-contact-import-errors li { font-size: 13px; }
+.fo-contact-import-summary { margin: 0; }
+.fo-contact-import-rejected { font-size: 13px; }
+.fo-contact-import-save-error { margin-top: 4px; }
+
+@media (max-width: 480px) {
+  .fo-contact-import-map { grid-template-columns: 1fr; }
+  .fo-contact-import-preview { max-height: 40vh; }
+}
