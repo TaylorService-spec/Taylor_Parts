@@ -85,7 +85,10 @@ export default function ControlTower() {
 
   return (
     <div className="fo-panel">
-      <h2>Control Tower</h2>
+      {/* Platform Task 3 -- user-facing rename to "Service Operations". The
+          component (behavior, data access, internal wiring) is otherwise
+          unchanged; only this heading text moved. */}
+      <h2>Service Operations</h2>
       <div className="fo-stat-grid">
         <div className="fo-stat">
           <div className="fo-stat-value">{openJobs}</div>

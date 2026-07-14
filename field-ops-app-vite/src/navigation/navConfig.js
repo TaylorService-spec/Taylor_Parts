@@ -46,7 +46,11 @@ export const NAV_DOMAINS = [
     path: "dashboard",
     subnav: [
       { key: "my", label: "My Dashboard", path: "", alwaysVisible: true },
-      { key: "operationsDashboard", label: "Operations Dashboard", path: "operations", legacyKey: "operations" },
+      // Platform Task 3 -- relabeled "Operations Dashboard" -> "Inventory & Supply
+      // Overview" to prevent confusion with the new top-level Service Operations
+      // area. Path/legacyKey UNCHANGED (still /dashboard/operations, legacyKey
+      // "operations") -- only the user-facing label moved.
+      { key: "operationsDashboard", label: "Inventory & Supply Overview", path: "operations", legacyKey: "operations" },
       { key: "activity", label: "Activity", path: "activity" },
       { key: "notifications", label: "Notifications", path: "notifications" },
     ],
@@ -98,13 +102,31 @@ export const NAV_DOMAINS = [
       // (/service/dispatch) and role access are identical -- only the label moved.
       { key: "dispatch", label: "Dispatch Queue", path: "dispatch", legacyKey: "dispatch" },
       { key: "technicianWorkspace", label: "Technician Workspace", path: "technician-workspace", legacyKey: "fieldMode" },
-      // Kept temporarily accessible + unchanged (path/legacyKey) -- Platform Task
-      // 3 renames it to "Service Operations" and promotes it to a top-level area.
-      // Not a member of any Task 2 group (rendered as a standalone Service item).
-      { key: "controlTower", label: "Control Tower", path: "control-tower", legacyKey: "controlTower" },
+      // Platform Task 3 -- Control Tower left the Service sub-nav: it is now the
+      // top-level "Service Operations" area (NAV_DOMAINS' serviceOperations
+      // below), still rendered by LEGACY_COMPONENTS["controlTower"] with the same
+      // "controlTower" legacyKey (admin/dispatcher visibility unchanged). The
+      // retired /service/control-tower URL redirects to /service-operations
+      // (App.jsx).
       { key: "dispatcherBoard", label: "Dispatcher Board", path: "dispatcher-board", legacyKey: "dispatcherBoard" },
       { key: "scheduling", label: "Scheduling", path: "scheduling" },
       { key: "warranty", label: "Warranty", path: "warranty" },
+    ],
+  },
+  // Platform Task 3 -- Service Operations, promoted from the former Service >
+  // Control Tower sub-item to its own top-level area at /service-operations. Its
+  // single index screen renders the SAME component (LEGACY_COMPONENTS
+  // ["controlTower"] -> ControlTower) via the STABLE "controlTower" legacyKey, so
+  // behavior, data access, and admin/dispatcher-only visibility are unchanged
+  // (technician/unauthorized roles fail closed exactly as before -- the index
+  // route isn't generated for them). Single-item sub-nav, same shape as the
+  // Customers domain.
+  {
+    key: "serviceOperations",
+    label: "Service Operations",
+    path: "service-operations",
+    subnav: [
+      { key: "serviceOperations", label: "Service Operations", path: "", legacyKey: "controlTower" },
     ],
   },
   {
