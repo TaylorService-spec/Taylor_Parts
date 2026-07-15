@@ -4968,6 +4968,191 @@ async function verifyInventoryRoleWarehouseManager(browser, page, accountKey) {
 // live-inserts + focuses the new row; and 375px full-screen with no overflow.
 // Payload/write paths (createJob / createTechnician) and the isSignedIn() Rules
 // gate are unchanged.
+// Issue #293 -- the shared Modal's focus stability under REAL TYPING.
+//
+// The defect: Modal had ONE effect keyed [onClose] doing both focus setup and keydown
+// registration. Callers pass a plain `function requestClose()` -- a new identity every
+// render -- and a modal re-renders on every keystroke as its form state changes, so the
+// effect tore down and re-ran PER CHARACTER: the cleanup restored focus to the trigger
+// and the re-run focused the dialog's first focusable, the ✕ button. Typing a
+// multi-word value lost characters, and the first SPACE pressed ✕ and DISCARDED THE
+// FORM. Verified live on main: typing "Main Office" into Add Location closed the modal.
+//
+// Why no existing suite caught it: every one drives fields with fill(), which sets a
+// value in ONE event. Real typing re-renders per keystroke -- that IS the mechanism. A
+// fill()-only gate is structurally blind to this whole class, which is why this suite
+// types one character at a time, across EVERY modal flow, and asserts the caller does
+// NOT need useCallback for the shared component to be correct.
+async function verifyModalTyping(browser, page, accountKey) {
+  const url = (path) => { const u = new URL(path, APP_ROOT); u.searchParams.set("emulator", "1"); return u.toString(); };
+  const dlg = () => page.locator('[role="dialog"][aria-modal="true"]');
+  const dlgCount = () => page.locator('[role="dialog"][aria-modal="true"]').count();
+
+  // The core assertion, applied identically to every flow: click the field, type a
+  // MULTI-WORD value one character at a time, and require that every character landed,
+  // focus never left the field, and the modal is still open (i.e. no SPACE reached the
+  // ✕ button).
+  const typeCheck = async (label, fieldId, value) => {
+    // Capture the dialog NODE before typing. A count check alone is anti-correlated
+    // with the bug: when the space activates ✕ the modal closes, focus restores to the
+    // trigger, and a LATER space in the same string presses that trigger and re-opens a
+    // fresh empty modal -- so the count is 1 again and a naive "still open" assertion
+    // PASSES in exactly the run where the form was discarded. Identity is what
+    // distinguishes "never closed" from "closed and reopened".
+    const nodeBefore = await page.locator('[role="dialog"][aria-modal="true"]').elementHandle();
+    await page.locator(`#${fieldId}`).click();
+    await page.keyboard.type(value, { delay: 15 });
+    await page.waitForTimeout(150);
+    const got = await page.locator(`#${fieldId}`).inputValue().catch(() => "(FIELD GONE)");
+    const focus = await page.evaluate(() => document.activeElement?.id || document.activeElement?.tagName);
+    const sameNode = await page.evaluate(
+      (el) => el?.isConnected === true && el === document.querySelector('[role="dialog"][aria-modal="true"]'),
+      nodeBefore
+    ).catch(() => false);
+    niReport(`${label}: typing "${value}" keeps every character`, got === value, `got ${JSON.stringify(got)}`);
+    niReport(`${label}: focus stays in the field while typing`, focus === fieldId, `focus=${focus}`);
+    niReport(`${label}: a SPACE never closes the form -- it is the SAME dialog throughout`,
+      sameNode && (await dlgCount()) === 1, sameNode ? "" : "the dialog was replaced or discarded mid-typing");
+    await nodeBefore?.dispose();
+  };
+
+  await login(page, accountKey);
+
+  // ===== 1. Customer (AccountForm in a Modal) =====
+  await page.goto(url("customers"), { waitUntil: "domcontentloaded" });
+  await page.getByRole("button", { name: /new customer/i }).first().click();
+  await dlg().waitFor({ timeout: 5000 });
+  await typeCheck("Customer modal", "account-name", "Acme Facilities Group");
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(300);
+  niReport("Customer modal: Escape still closes it", (await dlgCount()) === 0);
+
+  // ===== 2. Location + 3. Contact (Account Detail) =====
+  await page.goto(url("customers"), { waitUntil: "domcontentloaded" });
+  await page.locator("table a").first().click();
+  await page.waitForTimeout(1500);
+
+  const addLoc = page.getByRole("button", { name: /add location/i }).first();
+  if (await addLoc.count()) {
+    await addLoc.click();
+    await dlg().waitFor({ timeout: 5000 });
+    // THE exact case that was broken on main.
+    await typeCheck("Location modal", "location-name", "Main Office");
+    await typeCheck("Location modal (2nd field)", "location-access-notes", "Gate code 1234 side entrance");
+    // Focus restoration must still work after the fix.
+    const trigger = await page.evaluate(() => document.activeElement?.id);
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(300);
+    niReport("Location modal: Escape closes and restores focus to the trigger",
+      (await dlgCount()) === 0 &&
+        (await page.evaluate(() => document.activeElement?.textContent?.toLowerCase() ?? "")).includes("location"),
+      `trigger-before=${trigger}`);
+  } else {
+    niReport("Location modal: Add Location action reachable", false, "button not found");
+  }
+
+  const addContact = page.getByRole("button", { name: /add contact/i }).first();
+  if (await addContact.count()) {
+    await addContact.click();
+    await dlg().waitFor({ timeout: 5000 });
+    await typeCheck("Contact modal", "contact-name", "Dana Ruiz Prieto");
+    // Explicit Cancel must still close.
+    await dlg().getByRole("button", { name: /^Cancel$/ }).click();
+    await page.waitForTimeout(300);
+    niReport("Contact modal: explicit Cancel still closes it", (await dlgCount()) === 0);
+  } else {
+    niReport("Contact modal: Add Contact action reachable", false, "button not found");
+  }
+
+  // ===== 4. Contact Import (no text field -- assert the modal's own stability) =====
+  const importBtn = page.getByRole("button", { name: /import/i }).first();
+  if (await importBtn.count()) {
+    await importBtn.click();
+    await dlg().waitFor({ timeout: 5000 }).catch(() => {});
+    if ((await dlgCount()) === 1) {
+      // It has a file input rather than a text field, so there is nothing to type --
+      // what matters is that the dialog survives keyboard interaction and closes.
+      await page.keyboard.press("Tab");
+      await page.waitForTimeout(150);
+      niReport("Contact Import modal: stays open under keyboard interaction", (await dlgCount()) === 1);
+      const inside = await page.evaluate(() =>
+        document.querySelector('[role="dialog"]')?.contains(document.activeElement) ?? false);
+      niReport("Contact Import modal: focus stays trapped inside the dialog", inside);
+      await page.keyboard.press("Escape");
+      await page.waitForTimeout(300);
+      niReport("Contact Import modal: Escape closes it", (await dlgCount()) === 0);
+    }
+  }
+
+  // ===== 5. Job =====
+  // Route per verifyJobsTechniciansModals -- the Jobs workspace lives under
+  // service/job-assignments, not /jobs (my first guess reported "button not found",
+  // which would have read as a missing feature rather than a wrong URL).
+  await page.goto(url("service/job-assignments"), { waitUntil: "domcontentloaded" });
+  await page.getByRole("heading", { name: "Work Orders", exact: true }).waitFor({ timeout: 10000 }).catch(() => {});
+  const newJob = page.getByRole("button", { name: "New Job", exact: true });
+  if (await newJob.count()) {
+    await newJob.first().click();
+    await dlg().waitFor({ timeout: 5000 });
+    await typeCheck("Job modal", "job-description", "Replace condenser fan motor");
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(300);
+    niReport("Job modal: Escape still closes it", (await dlgCount()) === 0);
+  } else {
+    niReport("Job modal: New Job action reachable", false, "button not found");
+  }
+
+  // ===== 6. Technician =====
+  // Technicians live under /administration (same source: verifyJobsTechniciansModals).
+  await page.goto(url("administration"), { waitUntil: "domcontentloaded" });
+  await page.getByRole("heading", { name: "Technicians", exact: true }).waitFor({ timeout: 10000 }).catch(() => {});
+  const newTech = page.getByRole("button", { name: "New Technician", exact: true });
+  if (await newTech.count()) {
+    await newTech.first().click();
+    await dlg().waitFor({ timeout: 5000 });
+    await typeCheck("Technician modal", "tech-name", "Jordan Alvarez Diaz");
+    // Backdrop click must still close.
+    await page.locator(".fo-modal-backdrop").click({ position: { x: 5, y: 5 } });
+    await page.waitForTimeout(300);
+    niReport("Technician modal: a backdrop click still closes it", (await dlgCount()) === 0);
+  } else {
+    niReport("Technician modal: New Technician action reachable", false, "button not found");
+  }
+
+  // ===== 7. Equipment (E5/E6 -- only present once those units land) =====
+  await page.goto(url("equipment"), { waitUntil: "domcontentloaded" }).catch(() => {});
+  const equipAcct = page.locator("#equipment-account");
+  if (await equipAcct.count()) {
+    await equipAcct.selectOption({ label: "Alpha Facilities Co" }).catch(() => {});
+    await page.waitForTimeout(1200);
+    const addEquip = page.getByRole("button", { name: /new equipment/i });
+    if (await addEquip.count()) {
+      await addEquip.first().click();
+      await dlg().waitFor({ timeout: 5000 });
+      await typeCheck("Equipment modal", "equipment-create-name", "Rooftop Unit 1");
+      await page.keyboard.press("Escape");
+      await page.waitForTimeout(300);
+      niReport("Equipment modal: Escape still closes it", (await dlgCount()) === 0);
+    }
+  }
+  // Absent on a branch without E5/E6 -- not a failure, just nothing to assert.
+
+  // ===== 375px: the dialog still fits =====
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto(url("customers"), { waitUntil: "domcontentloaded" });
+  await page.getByRole("button", { name: /new customer/i }).first().click();
+  await dlg().waitFor({ timeout: 5000 });
+  await typeCheck("Customer modal @375px", "account-name", "Narrow Viewport Co");
+  const overflow = await page.evaluate(() => ({
+    scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth,
+  }));
+  niReport("Modal @375px: no horizontal page overflow", overflow.scroll <= overflow.client + 1, JSON.stringify(overflow));
+  await page.setViewportSize({ width: 1280, height: 800 });
+
+  console.log(`\n${niPassed} passed, ${niFailed} failed`);
+  return niFailed === 0;
+}
+
 async function verifyJobsTechniciansModals(browser, page, accountKey) {
   const url = (path) => { const u = new URL(path, APP_ROOT); u.searchParams.set("emulator", "1"); return u.toString(); };
   const dlg = () => page.locator('[role="dialog"][aria-modal="true"]');
@@ -5790,6 +5975,10 @@ async function main() {
     } else if (command === "verify-inventory-role-warehouse-manager") {
       const [accountKey = "technicianWarehouseManager"] = args;
       const ok = await verifyInventoryRoleWarehouseManager(browser, page, accountKey);
+      if (!ok) process.exitCode = 1;
+    } else if (command === "verify-modal-typing") {
+      const [accountKey = "admin"] = args;
+      const ok = await verifyModalTyping(browser, page, accountKey);
       if (!ok) process.exitCode = 1;
     } else if (command === "verify-jobs-technicians-modals") {
       const [accountKey = "admin"] = args;
