@@ -166,6 +166,76 @@ export function equipmentSaveErrorMessage(err) {
   return "Could not save this equipment. Nothing was saved — please try again.";
 }
 
+// ------------------------------------------------- payloads & field guards ---
+// (Issue #232 unit E2 -- still PURE. The firebase-touching repository that consumes
+// these lives in ./equipmentRepository.js; these builders stay here so they are
+// node-testable and so the field policy has exactly one definition.)
+
+// Spec §1/§4: ownership + lifecycle + createdAt are governed. An ORDINARY edit must
+// never change them -- a Location change is only the audited move, and a status
+// change is only an explicit lifecycle action. Rules (E3) re-enforce this
+// independently; this constant is the client-side single source of that policy.
+export const GOVERNED_EQUIPMENT_FIELDS = Object.freeze(["accountId", "locationId", "status", "createdAt"]);
+
+// Everything an ordinary edit MAY change (Spec §6: descriptive/optional fields).
+export const EDITABLE_EQUIPMENT_FIELDS = Object.freeze([
+  "name", "manufacturer", "model", "serialNumber", "assetTag",
+  "installedDate", "warrantyExpiresDate", "notes",
+]);
+
+// Create payload: the full validated record + timestamps. `now` is injected so this
+// stays pure/testable (no Date.now() inside).
+export function buildEquipmentCreatePayload(values = {}, now = 0) {
+  const { valid, errors, value } = validateEquipmentInput(values);
+  if (!valid) return { valid: false, errors, payload: null };
+  return { valid: true, errors: {}, payload: { ...value, createdAt: now, updatedAt: now } };
+}
+
+// Ordinary-edit payload: ONLY the editable fields survive. Any governed field the
+// caller passes is DROPPED here (not merely ignored downstream) so an ordinary edit
+// can never silently re-own, move, or re-status a record even if a future caller
+// spreads a whole object in. `changedGoverned` reports what was dropped so the caller
+// can fail loudly rather than quietly diverge.
+export function buildEquipmentEditPayload(values = {}, before = {}, now = 0) {
+  const normalized = normalizeEquipmentInput(values);
+  const errors = {};
+  if (!normalized.name) errors.name = "Enter an equipment name.";
+
+  const changedGoverned = GOVERNED_EQUIPMENT_FIELDS.filter(
+    (f) => values[f] !== undefined && before[f] !== undefined && values[f] !== before[f]
+  );
+
+  const payload = { updatedAt: now };
+  for (const f of EDITABLE_EQUIPMENT_FIELDS) payload[f] = normalized[f];
+
+  return {
+    valid: Object.keys(errors).length === 0,
+    errors,
+    payload: Object.keys(errors).length === 0 ? payload : null,
+    changedGoverned,
+  };
+}
+
+// ------------------------------------------- trusted-writer seam (contract) ---
+
+// Move / retire / reactivate are trusted-writer, audited actions (Spec §5/§11) and
+// are gated on Issue #15 (Functions undeployed). Until then they are UNAVAILABLE --
+// never a client-direct fallback, never optimistic success, never simulated. This is
+// the single shape every such contract returns, so callers (E9/E10 UI) can render a
+// clear reason and keep the action disabled.
+export const TRUSTED_ACTION_UNAVAILABLE_REASON = "trusted-writer-unavailable";
+
+export function trustedActionUnavailable(action) {
+  return Object.freeze({
+    ok: false,
+    unavailable: true,
+    reason: TRUSTED_ACTION_UNAVAILABLE_REASON,
+    action: action ?? null,
+    // Safe, human copy -- names no provider, code, id, or credential.
+    message: "This action isn't available yet. Nothing was changed.",
+  });
+}
+
 // ---------------------------------------------------------------- search -----
 
 // Spec §7: match over name / assetTag / serialNumber / manufacturer / model,

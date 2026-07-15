@@ -12,6 +12,9 @@ import {
   equipmentDisplayName, equipmentSummary, equipmentSaveErrorMessage,
   equipmentMatchesSearch, compareEquipment, searchEquipment,
   equipmentServiceHistory, groupServiceHistoryByYear,
+  GOVERNED_EQUIPMENT_FIELDS, EDITABLE_EQUIPMENT_FIELDS,
+  buildEquipmentCreatePayload, buildEquipmentEditPayload,
+  trustedActionUnavailable, TRUSTED_ACTION_UNAVAILABLE_REASON,
 } from "../src/domain/equipment.js";
 
 let passed = 0;
@@ -210,6 +213,92 @@ ok("history survives retirement (status is never a filter) and groups by year, n
   const groups = groupServiceHistoryByYear(h);
   assert.deepEqual(groups.map((g) => g.year), [2026, 2024, "Unknown"]);
   assert.deepEqual(groups[0].entries.map((e) => e.workOrderId), ["new"]);
+});
+
+// ---- E2: create payload ---------------------------------------------------
+ok("create payload carries the normalized record + both timestamps from injected now", () => {
+  const { valid, payload } = buildEquipmentCreatePayload(
+    { accountId: " a1 ", locationId: "l1", name: " Rooftop Unit ", model: "", notes: "  " },
+    1234
+  );
+  assert.equal(valid, true);
+  assert.equal(payload.accountId, "a1");
+  assert.equal(payload.name, "Rooftop Unit");
+  assert.equal(payload.status, EQUIPMENT_STATUS.ACTIVE, "status defaults ACTIVE on create");
+  assert.equal(payload.model, null, "blank optional normalizes to null, not empty string");
+  assert.equal(payload.notes, null);
+  assert.equal(payload.createdAt, 1234);
+  assert.equal(payload.updatedAt, 1234);
+});
+
+ok("create payload fails closed on missing required fields and yields no payload", () => {
+  const { valid, errors, payload } = buildEquipmentCreatePayload({ name: "Orphan" }, 1);
+  assert.equal(valid, false);
+  assert.equal(payload, null, "invalid input must not produce a writable payload");
+  assert.ok(errors.accountId && errors.locationId);
+});
+
+// ---- E2: ordinary-edit payload (governed-field immutability) --------------
+ok("edit payload contains only editable fields -- never a governed one", () => {
+  const { valid, payload } = buildEquipmentEditPayload(
+    { name: "Renamed", model: "M2", accountId: "a1", locationId: "l1", status: "RETIRED" },
+    { name: "Old", accountId: "a1", locationId: "l1", status: "ACTIVE" },
+    99
+  );
+  assert.equal(valid, true);
+  for (const f of GOVERNED_EQUIPMENT_FIELDS) {
+    assert.equal(Object.hasOwn(payload, f), false, `edit payload must not contain governed field ${f}`);
+  }
+  assert.equal(payload.name, "Renamed");
+  assert.equal(payload.updatedAt, 99);
+  assert.deepEqual(
+    Object.keys(payload).sort(),
+    [...EDITABLE_EQUIPMENT_FIELDS, "updatedAt"].sort(),
+    "edit payload surface is exactly the editable fields + updatedAt"
+  );
+});
+
+ok("edit reports an attempted governed change instead of silently dropping it", () => {
+  const before = { name: "Unit", accountId: "a1", locationId: "l1", status: "ACTIVE" };
+  const moved = buildEquipmentEditPayload({ ...before, locationId: "l2" }, before, 1);
+  assert.deepEqual(moved.changedGoverned, ["locationId"], "a Location change is the audited move, not an edit");
+
+  const restatused = buildEquipmentEditPayload({ ...before, status: "RETIRED" }, before, 1);
+  assert.deepEqual(restatused.changedGoverned, ["status"], "a status change is an explicit lifecycle action");
+
+  const reowned = buildEquipmentEditPayload({ ...before, accountId: "a2", locationId: "l9" }, before, 1);
+  assert.deepEqual(reowned.changedGoverned, ["accountId", "locationId"]);
+});
+
+ok("an unchanged governed field passed through by a whole-object edit is not flagged", () => {
+  const before = { name: "Unit", accountId: "a1", locationId: "l1", status: "ACTIVE" };
+  const { changedGoverned, valid } = buildEquipmentEditPayload({ ...before, name: "Unit 2" }, before, 1);
+  assert.deepEqual(changedGoverned, [], "spreading the record is normal; only real changes are refused");
+  assert.equal(valid, true);
+});
+
+ok("edit still enforces the required name", () => {
+  const { valid, errors, payload } = buildEquipmentEditPayload({ name: "   " }, { name: "Unit" }, 1);
+  assert.equal(valid, false);
+  assert.equal(payload, null);
+  assert.ok(errors.name);
+});
+
+// ---- E2: trusted-writer seam ----------------------------------------------
+ok("trusted actions report unavailable, never success, with safe copy", () => {
+  const r = trustedActionUnavailable("equipment.move");
+  assert.equal(r.ok, false, "an unavailable trusted action must never look like success");
+  assert.equal(r.unavailable, true);
+  assert.equal(r.reason, TRUSTED_ACTION_UNAVAILABLE_REASON);
+  assert.equal(r.action, "equipment.move");
+  assert.match(r.message, /Nothing was changed/);
+});
+
+ok("unavailable copy leaks no provider, code, id, or credential detail", () => {
+  for (const action of ["equipment.move", "equipment.retire", "equipment.reactivate", "equipment.setStatus"]) {
+    const { message } = trustedActionUnavailable(action);
+    assert.doesNotMatch(message, /firebase|firestore|functions|permission-denied|unauthenticated|internal|uid|token|[A-Za-z0-9_-]{20,}/i);
+  }
 });
 
 console.log(`\n${passed} passed, 0 failed`);
