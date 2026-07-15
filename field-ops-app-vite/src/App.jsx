@@ -15,6 +15,7 @@ import WorkOrderWizard from "./modules/workOrders/WorkOrderWizard";
 import WorkOrderDetailPage from "./modules/workOrders/WorkOrderDetailPage";
 import PartsList from "./modules/inventory/PartsList";
 import PartDetail from "./modules/inventory/PartDetail";
+import WarehouseManagerHome from "./modules/inventoryRole/WarehouseManagerHome";
 import { useAuth } from "./auth/AuthContext";
 import Login from "./auth/Login";
 import AppHeader from "./shared/ui/AppHeader";
@@ -106,6 +107,15 @@ function renderSubnavItem(domain, item, role) {
   // untouched.
   if (domain.key === "inventory" && item.key === "parts") {
     return <PartsList />;
+  }
+  // Issue #100 PR 2b -- WAREHOUSE_MANAGER's dedicated, role-scoped
+  // surface. No legacyKey (net-new screen); item.operationalRoleAccess
+  // (navConfig.js) already keeps this route from being generated at all
+  // for any role/session other than an ACTIVE, reciprocally linked
+  // WAREHOUSE_MANAGER, so this case never renders for admin/dispatcher
+  // or an ineligible technician.
+  if (domain.key === "inventoryRole" && item.key === "warehouse") {
+    return <WarehouseManagerHome />;
   }
   if (item.legacyKey) {
     const Component = LEGACY_COMPONENTS[item.legacyKey];
@@ -207,6 +217,50 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
           {domain.key === "serviceOperations" && !isDomainVisible(domain, role, allowedLegacyKeys, operationalContext) && (
             <Route index element={<Navigate to="/dashboard" replace />} />
           )}
+          {/* Issue #100 PR 2b -- per the Specification's "admin/dispatcher
+              behavior: unchanged, and not reachable through the new
+              routes" requirement: this domain's items all declare
+              operationalRoleAccess, so isNavItemVisible() is already
+              false for admin/dispatcher (hasEligibleOperationalRole()
+              requires role === TECHNICIAN) -- no route under
+              /inventory-role is ever generated for them. Left alone,
+              that would fall through to the generic top-level catch-all
+              (Navigate to="/dashboard"), same as any ineligible
+              technician. Admin/dispatcher get an explicit, DIFFERENT
+              redirect instead: the existing /inventory (Parts) domain is
+              already a strict superset of every role-scoped surface this
+              domain will ever offer, so a direct hit on any current or
+              future /inventory-role/* path sends them there rather than
+              /dashboard. path="*" (not index) so it also catches
+              /inventory-role/warehouse itself, not just the bare
+              /inventory-role index. An ineligible/inactive/broken-link/
+              wrong-role TECHNICIAN gets no route here at all and falls
+              through to the ordinary top-level catch-all below -- same
+              mechanism as every other operationalRoleAccess-gated item,
+              no separate handling needed. */}
+          {domain.key === "inventoryRole" && (role === "admin" || role === "dispatcher") && (
+            <Route path="*" element={<Navigate to="/inventory" replace />} />
+          )}
+          {/* Issue #100 PR 2b -- unlike Customers/Service Operations, this
+              domain's sole subnav item has a real path segment ("warehouse"),
+              not "" -- so, unlike those single-item domains, the top-level
+              nav tab's own link (`/${domain.path}`, i.e. bare
+              /inventory-role) does not itself match any generated child
+              route. Without this index redirect, an eligible
+              WAREHOUSE_MANAGER clicking the top-level tab would land on a
+              blank Outlet instead of their page (confirmed live). Redirect
+              to the first VISIBLE subnav item -- computed via the same
+              isNavItemVisible() every other route/nav decision already
+              uses, so this automatically keeps working, unchanged, once
+              PR 1b/3b add their own sibling items (manager/mine) to this
+              domain's subnav; nothing here needs to be revisited then. */}
+          {domain.key === "inventoryRole" &&
+            (() => {
+              const firstVisible = domain.subnav.find((item) =>
+                isNavItemVisible(item, role, allowedLegacyKeys, operationalContext)
+              );
+              return firstVisible ? <Route index element={<Navigate to={firstVisible.path} replace />} /> : null;
+            })()}
         </Route>
       ))}
 

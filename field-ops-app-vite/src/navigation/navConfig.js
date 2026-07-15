@@ -1,4 +1,4 @@
-import { ROLES, EMPLOYMENT_STATUS } from "../domain/constants.js";
+import { ROLES, EMPLOYMENT_STATUS, OPERATIONAL_ROLE } from "../domain/constants.js";
 
 // Sprint 2.0.1 -- Navigation Foundation. Single source of truth for the
 // business-domain nav tree: top-level domains + their sub-nav, and
@@ -149,6 +149,32 @@ export const NAV_DOMAINS = [
       { key: "receiving", label: "Receiving", path: "receiving" },
       { key: "cycleCounts", label: "Cycle Counts", path: "cycle-counts" },
       { key: "backOrders", label: "Back Orders", path: "back-orders" },
+    ],
+  },
+  // Issue #100 PR 2b (docs/specifications/inventory-nav-access-alignment.md)
+  // -- the first of three planned role-scoped Inventory surfaces for an
+  // ACTIVE, reciprocally linked technician operationalRole. Domain key
+  // "inventoryRole" is shared/future-shaped: PR 1b (PARTS_MANAGER, path
+  // "manager") and PR 3b (PARTS_ASSOCIATE, path "mine") are each expected
+  // to add their OWN sibling subnav item here later, gated the same way --
+  // this PR adds ONLY the "warehouse" item. Every item declares
+  // operationalRoleAccess, so isDomainVisible() is false (and the whole
+  // domain doesn't render) for admin/dispatcher and for any technician
+  // without a matching, ACTIVE operationalRole -- see the explicit
+  // admin/dispatcher redirect to /inventory added in App.jsx; every other
+  // ineligible case falls through to the existing top-level catch-all
+  // (Navigate to="/dashboard"), same mechanism as every other gated route.
+  {
+    key: "inventoryRole",
+    label: "My Inventory Role",
+    path: "inventory-role",
+    subnav: [
+      {
+        key: "warehouse",
+        label: "Warehouse Manager",
+        path: "warehouse",
+        operationalRoleAccess: [OPERATIONAL_ROLE.WAREHOUSE_MANAGER],
+      },
     ],
   },
   {
