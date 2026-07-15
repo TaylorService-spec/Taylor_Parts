@@ -20,7 +20,9 @@ target_release: TBD
 
 **Merging this Assessment authorizes NOTHING.** No permission engine, Admin UI, new collection, Firestore Rule, Cloud Function, index, deployment, or production-data action is authorized. Each later stage (Architecture ADRs → Specification → Implementation Plan → foundation → Admin portal → domain-by-domain migration → legacy-role retirement) is its own separately-authorized gate under `docs/ai/workflow.md`. **The referenced ChatGPT design is input, not repository authority** — the audited current state below and the Owner's decisions are authoritative. **AI may recommend and explain, but never grants, revokes, or approves access.**
 
-Verified against `origin/main` @ `23e5577`.
+Verified against `origin/main` @ `9f801a3`.
+
+**Repository-path convention:** `firestore.rules`, `functions/…`, and `docs/…` are repo-root-relative; application-code paths written as `src/…` are relative to `field-ops-app-vite/` (e.g. `src/auth/AuthContext.jsx` = `field-ops-app-vite/src/auth/AuthContext.jsx`).
 
 ---
 
@@ -40,13 +42,13 @@ There is **no token custom-claim / `accessVersion` mechanism anywhere** in the a
 
 | Capability | admin | dispatcher | technician | Enforced where |
 |---|---|---|---|---|
-| Reach Customers / Service (dispatcher) nav + routes | ✅ | ✅ | ❌ | `navConfig` `ROLE_NAV_ACCESS` + `App.jsx` route gates |
+| Reach Customers / Service (dispatcher) nav + routes | ✅ | ✅ | ❌ | `src/navigation/navConfig.js` `ROLE_NAV_ACCESS` + `src/App.jsx` route gates |
 | Reach Inventory nav | ✅ | ✅ | ❌ (even with a PARTS_MANAGER operationalRole) | `ROLE_NAV_ACCESS` (security-role only) |
 | Customer read / create / edit | ✅ | ✅ | ❌ | `accounts` Rules `allow read, create, update: if isAdminOrDispatcher()` |
 | Governed commercial fields (`paymentTerms`/`taxStatus`) edit | ✅ (admin) | ❌ (Rules-denied) | ❌ | `firestore.rules` accounts governed helpers (Issue #175) |
 | Work Order lifecycle actions | via `getAllowedActions(status, role, …)` → `transitionWorkOrder` **Cloud Function** | (technician actions only) | `functions/src/transitionEngine.ts` (canonical authority) |
 | Reorder request review / cancel; PO void | admin/dispatcher; PO Void **assignee-only** | operational-role-gated (Issue #100) | client-direct writes + `firestore.rules` |
-| Administration / Roles & Permissions | ❌ built (renders `PlaceholderPage`) | — | — | `navConfig` `administration` domain (unbuilt) |
+| Administration / Roles & Permissions | ❌ built (renders `PlaceholderPage`) | — | — | `src/navigation/navConfig.js` `administration` domain (unbuilt) |
 
 Two special narrowings layered in the UI (documented, not competing authorities): the dispatcher **cannot cancel an in-flight technician** through `WorkOrderActions` (`READ_ONLY_STATUSES`), and a **pure technician has zero Inventory nav** even with an eligible `operationalRole` (a known product gap, `ROLE_NAV_ACCESS`).
 
@@ -82,9 +84,9 @@ Every capability must be enforceable at each layer that applies; **the lower lay
 
 | Layer | Today | Target |
 |---|---|---|
-| **Navigation** | `ROLE_NAV_ACCESS` + `operationalRoleAccess` items (`navConfig`) | derive from Permissions; presentation-only |
+| **Navigation** | `ROLE_NAV_ACCESS` + `operationalRoleAccess` items (`src/navigation/navConfig.js`) | derive from Permissions; presentation-only |
 | **Component** | ad-hoc role checks (e.g. `isAssignee`, `WorkOrderActions`) | derive from Permissions; presentation-only |
-| **Client service** | domain functions (`domain/accounts.js`, `services/workOrderService.ts`) | carry the intended action; never the authority |
+| **Client service** | domain functions (`src/domain/accounts.js`, `src/services/workOrderService.ts`) | carry the intended action; never the authority |
 | **Cloud Function** | `transitionWorkOrder`/`createWorkOrder` (authoritative for Work Orders) | authoritative for all trusted/audited writes |
 | **Firestore Rules** | `isAdmin`/`isAdminOrDispatcher`/`isActiveOperationalRole` + governed-field + assignee checks | authoritative for client-direct writes; must express Permissions/Scope/Condition |
 | **Audit** | per-domain only (`inventory_actions`, PO void records); **no unified audit log** | trusted-writer append-only Audit Events for all access + governed mutations |
@@ -94,6 +96,7 @@ Every capability must be enforceable at each layer that applies; **the lower lay
 - **Current admin/dispatcher/technician behavior must remain byte-for-byte compatible** throughout any migration — seed the three as first-class Roles whose Permission sets reproduce today's matrix exactly.
 - **Issue #100 linkage & role behavior preserved:** the `users/{uid}.employeeId ↔ employees/{employeeId}` reciprocal link, `operationalRoles` eligibility (PARTS_MANAGER/WAREHOUSE_MANAGER/PARTS_ASSOCIATE), and `isActiveOperationalRole` Rules semantics must survive unchanged.
 - **Issue #175 governed-field enforcement remains authoritative:** admin-only `paymentTerms`/`taxStatus` (Rules-enforced, not UI hiding) is a Permission that must map cleanly, never weaken.
+- **Issue #182 (truck parts sale-to-invoice) has separate, future truck/invoice authorization needs** (`docs/assessments/truck-parts-sale-to-invoice.md`) — a new capability surface the Enterprise Access model must be able to *accommodate later as its own Permission set*, not design or pre-empt here.
 - **`operationalRoles` must never silently become security roles** — eligibility and authorization stay distinct objects.
 - Migration is **domain-by-domain, additive**; legacy-role retirement is **last**, only after every domain is proven on the new model.
 
@@ -115,8 +118,8 @@ No tenant/company boundary exists today (single implicit org). A real Permission
 
 ## 9. Administrative-write & audit requirements
 
-- Access changes today happen **out-of-app** via Admin-SDK scripts (`functions/scripts/provisionEmployeeAccess.js`, `assignTechnicianToUser.js`, `onboardEmployeePreflight/Verify.js`, `auditSecurityRoleMirror.js`) — powerful, unaudited-in-app, and **not a governed workflow**.
-- **Detailed configurable permissions cannot be trusted solely to client-editable documents** — an admin editing a permission doc from the client is itself a governed, audited, server-side/trusted-write operation. Every grant/revoke/approval must produce an append-only **Audit Event** via a trusted writer (the same trust class as `createWorkOrder` and `provisionEmployeeAccess.js`).
+- Access changes today happen **out-of-app** via Admin-SDK scripts (`functions/scripts/provisionEmployeeAccess.js`, `functions/scripts/assignTechnicianToUser.js`, `functions/scripts/onboardEmployeePreflight.js`, `functions/scripts/onboardEmployeeVerify.js`, `functions/scripts/auditSecurityRoleMirror.js`) — powerful, unaudited-in-app, and **not a governed workflow**.
+- **Detailed configurable permissions cannot be trusted solely to client-editable documents** — an admin editing a permission doc from the client is itself a governed, audited, server-side/trusted-write operation. Every grant/revoke/approval must produce an append-only **Audit Event** via a trusted writer (the same trust class as `createWorkOrder` and `functions/scripts/provisionEmployeeAccess.js`).
 - **Production Cloud Functions dependency #15 remains material:** trusted/audited writers require deployed Functions (Blaze-plan blocker); until then, governed access changes run only through the separately-authorized Admin-SDK operator path, never a client write.
 
 ## 10. Impersonation risk assessment — **explicitly deferred**
@@ -161,10 +164,38 @@ AI (Claude/ChatGPT/Codex) may **recommend, explain, audit, and draft** authoriza
 
 ---
 
-## Inventory domain audit (verified facts — to be incorporated from Issue #226)
+## Inventory domain audit (verified facts, contributed by Inventory to Issue #226)
 
-> **Pending.** Per the input gate, this Assessment is not finalized until **Inventory** posts its evidence-backed domain audit to Issue #226. Inventory's verified facts (Inventory/Reorder/PO/receiving authorization surfaces, `operationalRoles` eligibility enforcement points, client-direct-vs-Function writes, and audit collections) will be incorporated here **as stated**, without rewriting them into unsupported architectural conclusions.
+Incorporated as stated from Inventory's evidence-backed audit ([#226 comment, 2026-07-15](https://github.com/TaylorService-spec/Taylor_Parts/issues/226#issuecomment-4976586878)), sourced directly from `firestore.rules` on `main` with line references and Inventory's own Issue #100 implementation/verification work — **not** rewritten into architectural conclusions. This section grounds §1/§4/§5/§9 for the Inventory surfaces.
+
+**Model in use today (Issue #100).** The Inventory security model is exactly the eligibility model §1–§2 describe, made concrete:
+
+- **Security role** (`users/{uid}.role`) is unrelated to and independent from **`operationalRoles`** (an array on the linked `employees/{employeeId}` document: `PARTS_MANAGER`, `WAREHOUSE_MANAGER`, `PARTS_ASSOCIATE`).
+- `isActiveOperationalRole(role)` (`firestore.rules` L112) requires all of: a `technician` whose `users/{uid}.employeeId` resolves to a real Employee document, that document's `employmentStatus == "ACTIVE"`, and `role` present in its `operationalRoles[]`. Any broken linkage, inactive employment, or missing/mismatched role **fails closed** with no fallback branch.
+- The same predicate is mirrored client-side by `src/navigation/navConfig.js`'s `hasEligibleOperationalRole()` for **nav/route visibility only** — Rules are the enforcement boundary in every case; UI hiding is never authorization.
+
+**Rules grants by operational role (`firestore.rules`, current `main`):**
+
+| Collection | PARTS_MANAGER | WAREHOUSE_MANAGER | PARTS_ASSOCIATE |
+|---|---|---|---|
+| `inventory_transactions` (read) | ✅ L317-318 | ✅ L317-318 | — |
+| `inventory_actions` (read) | — | ✅ L973 (`allow create` stays `isAdminOrDispatcher()`-only) | — |
+| `reorder_requests` (read) | ✅ queue/oversight/history, scoped (L425-431) | — | ✅ own assignments only (L436) |
+| `reorder_requests` (create) | ✅ manual/NEEDS_PLANNING path only, via `canSubmitManualZeroHistoryQuantity()` (L131-136 @ L481) | ✅ same manual/NEEDS_PLANNING path, same helper | — (READY-path create stays `isAdminOrDispatcher()`-only, L476) |
+| `reorder_requests` (update: Assign) | ✅ added OR (L555) | — | — |
+| `reorder_requests` (update: Start Purchasing / Post Purchasing Update / Record PO / Mark Received) | — | — | ✅ added OR on each (L569, L585, L603, L651) |
+| `reorder_requests` (Approve / Reject / Cancel / Void) | — | — | — (all remain `isAdminOrDispatcher()`-only; Void also requires assignee) |
+| `reorder_purchase_orders` (read/create/update) | — | — | ✅ L862-870, L920 |
+
+No operational role has any grant beyond the above. In particular **no** operational role gains Approve/Reject/Cancel/Void, and WAREHOUSE_MANAGER has **no** `reorder_requests` *read* access — its entire `reorder_requests` footprint is the NEEDS_PLANNING-only manual `create` (shared with PARTS_MANAGER via `canSubmitManualZeroHistoryQuantity()`), and its read footprint is `inventory_transactions` + `inventory_actions` only.
+
+**Issue #100 UI/Rules status (Inventory-tracked as three separate facts — merge ≠ deploy ≠ confirmed-live):**
+
+- PR 0 (shared infra) merged; PR 1a (PARTS_MANAGER Rules + PARTS_ASSOCIATE personal-queue), PR 2a (WAREHOUSE_MANAGER Rules), PR 3a (PARTS_ASSOCIATE Rules restructuring) **merged to `main`** and passing the full Firestore Rules Regression suite (178/178) against the local emulator.
+- **The combined authenticated Issue #100 production verification/bootstrap that would confirm those Rules are actually live in production has NOT been run — recorded as UNRUN.** PR 2b (WAREHOUSE_MANAGER UI, `/inventory-role/warehouse`) is intentionally held in Draft until that production verification confirms its gates; PR 1b / PR 3b UI are not started.
+
+**Bearing on this Assessment.** This confirms and sharpens §5 (compatibility: the operational-role grants above must map to Permissions unchanged, and no role may gain the currently-withheld Approve/Reject/Cancel/Void), §9 (a Permission model layered here must not weaken any of these Rules), and §8/§9 + Issue #15: because the Rules are merged but production-**unverified**, "authorization is correct in the repo" and "authorization is correct in production" remain distinct facts the migration must not conflate — the same merge/deploy/live discipline any Enterprise Access rollout must carry.
 
 ## Scope honored
 
-Single file: `docs/assessments/enterprise-access-and-administration-platform.md`. No `ROADMAP.md`/`SPRINT_STATUS.md`/`CLAUDE_CONTEXT.md`, capability/entity model, ADR, Specification, application code, Rules, index, or Function touched. **Draft — pending Inventory input, then Architecture Review.**
+Single file: `docs/assessments/enterprise-access-and-administration-platform.md`. No `docs/ROADMAP.md`/`docs/SPRINT_STATUS.md`/`docs/CLAUDE_CONTEXT.md`, capability/entity model, ADR, Specification, application code, Rules, index, or Function touched. Inventory's verified domain audit is incorporated. **Draft — ready for Architecture Review; merging this Assessment authorizes no architecture or implementation.**
