@@ -166,6 +166,131 @@ export function equipmentSaveErrorMessage(err) {
   return "Could not save this equipment. Nothing was saved — please try again.";
 }
 
+// ------------------------------------------------- payloads & field guards ---
+// (Issue #232 unit E2 -- still PURE. The firebase-touching repository that consumes
+// these lives in ./equipmentRepository.js; these builders stay here so they are
+// node-testable and so the field policy has exactly one definition.)
+
+// Spec §1/§4: ownership + lifecycle + createdAt are governed. An ORDINARY edit must
+// never change them -- a Location change is only the audited move, and a status
+// change is only an explicit lifecycle action. Rules (E3) re-enforce this
+// independently; this constant is the client-side single source of that policy.
+export const GOVERNED_EQUIPMENT_FIELDS = Object.freeze(["accountId", "locationId", "status", "createdAt"]);
+
+// Everything an ordinary edit MAY change (Spec §6: descriptive/optional fields).
+export const EDITABLE_EQUIPMENT_FIELDS = Object.freeze([
+  "name", "manufacturer", "model", "serialNumber", "assetTag",
+  "installedDate", "warrantyExpiresDate", "notes",
+]);
+
+// Create payload: the full validated record + updatedAt.
+//
+// `createdAt` is deliberately NOT set here -- makeCollectionStore.add() stamps it on
+// write (the app-wide convention). Setting it here too would return one value to the
+// caller while persisting another.
+//
+// Status is pinned ACTIVE (Spec §2). Reaching RETIRED/INACTIVE is a lifecycle
+// transition that belongs to the trusted, audited seam, so create must not be usable
+// as a side door into a non-ACTIVE state. A caller that explicitly asks for one is
+// refused rather than silently overridden.
+export function buildEquipmentCreatePayload(values = {}, now = 0) {
+  const { errors, value } = validateEquipmentInput(values);
+
+  // An UNRECOGNIZED status is refused too, not quietly defaulted to ACTIVE: the
+  // caller asked for something we could not honour, and silently substituting a
+  // lifecycle state is exactly the kind of quiet divergence this unit exists to
+  // prevent -- even when the substitute is the safe one.
+  if (values.status !== undefined) {
+    const requested = normalizeEquipmentStatus(values.status);
+    if (requested === null) errors.status = "Select a valid status.";
+    else if (requested !== EQUIPMENT_STATUS.ACTIVE) errors.status = "New equipment is always created active.";
+  }
+
+  if (Object.keys(errors).length > 0) return { valid: false, errors, payload: null };
+
+  return {
+    valid: true,
+    errors: {},
+    payload: { ...value, status: EQUIPMENT_STATUS.ACTIVE, updatedAt: now },
+  };
+}
+
+// The governed value as it would actually be stored, so the change check compares
+// like with like. Without this, a caller round-tripping a record with "active" or a
+// padded id reads as a governed CHANGE and gets its whole edit refused.
+function governedValue(field, raw) {
+  if (raw === undefined) return undefined;
+  if (field === "status") return normalizeEquipmentStatus(raw);
+  if (field === "createdAt") return raw;
+  return trimmedOrNull(raw);
+}
+
+// Ordinary-edit payload.
+//
+// Two independent protections, because they fail differently:
+//
+//  1. BY CONSTRUCTION -- only editable fields the caller actually supplied reach the
+//     payload. A governed field can never be written here even if a caller spreads a
+//     whole record in, and fields the caller did not touch are left alone rather than
+//     overwritten with null.
+//  2. LOUDLY -- if the caller genuinely ASKED to change a governed field, refuse the
+//     whole edit via `changedGoverned` instead of dropping it and reporting success.
+//
+// `before` is what proves a governed field is unchanged. Both refusals fail closed,
+// but they are reported SEPARATELY because they are different bugs with different
+// audiences: `changedGoverned` is a user asking for something this surface may not do,
+// while `unprovableGoverned` is a CALLER that supplied no `before` to compare against.
+// Conflating them makes E8 accuse the user of a programming error they cannot fix.
+export function buildEquipmentEditPayload(values = {}, before = {}, now = 0) {
+  const normalized = normalizeEquipmentInput(values);
+  const errors = {};
+  // Only validate what the caller is actually editing; an absent key means unchanged.
+  if (values.name !== undefined && !normalized.name) errors.name = "Enter an equipment name.";
+
+  const changedGoverned = [];
+  const unprovableGoverned = [];
+  for (const f of GOVERNED_EQUIPMENT_FIELDS) {
+    const asked = governedValue(f, values[f]);
+    if (asked === undefined) continue;           // not asked for -> nothing to police
+    const current = governedValue(f, before[f]);
+    if (current === undefined) unprovableGoverned.push(f);
+    else if (asked !== current) changedGoverned.push(f);
+  }
+
+  const payload = { updatedAt: now };
+  for (const f of EDITABLE_EQUIPMENT_FIELDS) {
+    if (values[f] !== undefined) payload[f] = normalized[f];
+  }
+
+  return {
+    valid: Object.keys(errors).length === 0,
+    errors,
+    payload: Object.keys(errors).length === 0 ? payload : null,
+    changedGoverned,
+    unprovableGoverned,
+  };
+}
+
+// ------------------------------------------- trusted-writer seam (contract) ---
+
+// Move / retire / reactivate are trusted-writer, audited actions (Spec §5/§11) and
+// are gated on Issue #15 (Functions undeployed). Until then they are UNAVAILABLE --
+// never a client-direct fallback, never optimistic success, never simulated. This is
+// the single shape every such contract returns, so callers (E9/E10 UI) can render a
+// clear reason and keep the action disabled.
+export const TRUSTED_ACTION_UNAVAILABLE_REASON = "trusted-writer-unavailable";
+
+export function trustedActionUnavailable(action) {
+  return Object.freeze({
+    ok: false,
+    unavailable: true,
+    reason: TRUSTED_ACTION_UNAVAILABLE_REASON,
+    action: action ?? null,
+    // Safe, human copy -- names no provider, code, id, or credential.
+    message: "This action isn't available yet. Nothing was changed.",
+  });
+}
+
 // ---------------------------------------------------------------- search -----
 
 // Spec §7: match over name / assetTag / serialNumber / manufacturer / model,
