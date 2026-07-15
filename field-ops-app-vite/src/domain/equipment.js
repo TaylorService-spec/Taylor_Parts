@@ -297,9 +297,15 @@ export function trustedActionUnavailable(action) {
 // case-insensitive substring. A blank term matches everything (the caller's filters
 // still apply). Pure over an already-bounded, Account/Location-scoped set -- this
 // never issues a query and never loops per record over the network.
+// An OMITTED or empty term matches everything -- that is the documented "no search
+// applied" case. A MALFORMED term (a number, an object, null) does not: it means the
+// caller is not asking what they think they are asking, and answering "everything"
+// turns a caller bug into a silent data disclosure. Fails closed instead.
 export function equipmentMatchesSearch(equipment, term) {
-  const q = typeof term === "string" ? term.trim().toLowerCase() : "";
-  if (q === "") return true;
+  if (term === undefined || term === null) return true;   // omitted -> no search applied
+  if (typeof term !== "string") return false;             // malformed -> fail closed
+  const q = term.trim().toLowerCase();
+  if (q === "") return true;                              // empty -> no search applied
   return [equipment?.name, equipment?.assetTag, equipment?.serialNumber, equipment?.manufacturer, equipment?.model]
     .some((f) => typeof f === "string" && f.toLowerCase().includes(q));
 }
@@ -318,8 +324,65 @@ export function compareEquipment(a, b) {
 
 // Search + optional Location/status filters + deterministic order, in one pure pass.
 // Returns a new array; never mutates the input.
-export function searchEquipment(equipment = [], { term = "", locationId = null, status = null } = {}) {
-  const wantStatus = normalizeEquipmentStatus(status);
+// Exactly the options searchEquipment implements. Anything else is a caller error.
+const SEARCH_OPTION_KEYS = ["term", "locationId", "status"];
+
+// A real options bag -- not an array, not a string, not a class instance masquerading
+// as one. Deliberately strict: this guards a boundary where being generous is what
+// caused the defect.
+function isPlainObject(value) {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}
+
+// The options argument is UNTRUSTED INPUT, not a convenience.
+//
+// The destructuring default `= {}` only fires for `undefined`, so any other malformed
+// argument -- a bare string, an array, a number -- destructures to all-defaults and
+// silently means "no filters", i.e. RETURN EVERYTHING. That is fail-OPEN: the caller
+// asked to narrow and got the whole register instead. It is an easy mistake to make,
+// because `searchEquipment(list, "rooftop")` reads perfectly naturally and answers
+// without complaint.
+//
+// The same trap exists one level down, at the KEY: `{ search: q }` or `{ location: id }`
+// also destructures to all-defaults and returns everything, and is a likelier slip
+// than the bare string. So an unrecognized key is rejected too -- guarding only the
+// argument would relocate the defect rather than close it.
+//
+// The one behaviour deliberately preserved: a VALID omitted/empty options object
+// still means "no search applied" and returns everything, ordered.
+export function searchEquipment(equipment, options = {}) {
+  if (!Array.isArray(equipment)) return [];
+  if (!isPlainObject(options)) return [];
+  // An unknown key means the caller is asking something this function does not
+  // implement. Answering "everything" would be answering a question nobody asked.
+  if (Object.keys(options).some((k) => !SEARCH_OPTION_KEYS.includes(k))) return [];
+
+  const { term = "", locationId = null, status = null } = options;
+
+  // term: omitted/empty is a valid no-op search; a non-string is malformed.
+  if (term !== null && term !== undefined && typeof term !== "string") return [];
+
+  // locationId: omitted is no filter; anything present must be a real, non-blank id.
+  if (locationId !== null && locationId !== undefined) {
+    if (typeof locationId !== "string" || locationId.trim() === "") return [];
+  }
+
+  // status: omitted is no filter. An explicitly supplied status must be a KNOWN one --
+  // an unknown value returns nothing. It must never fall back to disabling the filter,
+  // which would answer a narrower question with a broader answer.
+  //
+  // NOTE for the filter UI (E9): this is deliberately asymmetric with `term`. An empty
+  // term means "no search typed" -> everything; an empty STATUS is an unknown status
+  // -> nothing. So a status <select> must NOT use the usual `<option value="">All</option>`
+  // sentinel -- "" selects nothing, not all. Omit the key, or pass null, for "All".
+  let wantStatus = null;
+  if (status !== null && status !== undefined) {
+    wantStatus = normalizeEquipmentStatus(status);
+    if (wantStatus === null) return [];
+  }
+
   return equipment
     .filter((e) => equipmentMatchesSearch(e, term))
     .filter((e) => (locationId ? e?.locationId === locationId : true))
@@ -365,10 +428,23 @@ function toMillis(value) {
 // Group a derived history into buckets by calendar year, newest year first --
 // the shape the detail page's Service History section renders.
 export function groupServiceHistoryByYear(entries = []) {
+  // A non-array is malformed input, not "iterate whatever this is". A string here
+  // used to be walked CHARACTER BY CHARACTER into a fabricated group: each character
+  // has a truthy `.at` (String.prototype.at), so the year guard passed and produced
+  // `new Date(fn).getFullYear()` -> NaN, which `?? "Unknown"` does not catch. Garbage
+  // in, confident-looking history out.
+  if (!Array.isArray(entries)) return [];
   const buckets = new Map();
   for (const entry of entries) {
-    const year = entry?.at ? new Date(entry.at).getFullYear() : null;
-    const key = year ?? "Unknown";
+    const at = entry?.at;
+    // Require an actual number: the original truthiness check let a function or string
+    // through. `at !== 0` (not `at > 0`) reproduces the old falsy check EXACTLY --
+    // 0/null/absent stay "Unknown", and a NEGATIVE at (a pre-1970 service date) still
+    // groups by its real year rather than being quietly relabelled Unknown. The
+    // Number.isFinite(year) guard catches an out-of-range timestamp, whose
+    // getFullYear() is NaN -- which `?? "Unknown"` would NOT have caught.
+    const year = typeof at === "number" && Number.isFinite(at) && at !== 0 ? new Date(at).getFullYear() : null;
+    const key = Number.isFinite(year) ? year : "Unknown";
     if (!buckets.has(key)) buckets.set(key, []);
     buckets.get(key).push(entry);
   }

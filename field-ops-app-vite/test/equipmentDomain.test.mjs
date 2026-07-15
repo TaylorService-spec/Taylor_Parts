@@ -215,6 +215,136 @@ ok("history survives retirement (status is never a filter) and groups by year, n
   assert.deepEqual(groups[0].entries.map((e) => e.workOrderId), ["new"]);
 });
 
+// ---- search fail-closed hardening -----------------------------------------
+// The options argument is untrusted input. The destructuring default `= {}` only
+// fires for `undefined`, so every OTHER malformed argument used to destructure to
+// all-defaults and mean "no filters" -- returning the ENTIRE register to a caller who
+// asked to narrow it. Fail-open, and silent.
+ok("a malformed options argument returns NOTHING, never everything", () => {
+  const all = searchEquipment(FIXTURE, {});
+  assert.ok(all.length >= 3, "precondition: the fixture has records to leak");
+
+  for (const [label, bad] of [
+    ["bare string (searchEquipment(list, \"rtu\") reads naturally and used to return ALL)", "rtu"],
+    ["array", ["rtu"]],
+    ["number", 42],
+    ["boolean", true],
+    ["null", null],
+    ["string object", new String("rtu")],
+    ["Map (object, but not a plain one)", new Map([["term", "rtu"]])],
+  ]) {
+    assert.deepEqual(searchEquipment(FIXTURE, bad), [], `options as ${label} must return no results`);
+  }
+});
+
+ok("an UNRECOGNIZED option key returns nothing -- the same trap, one level down", () => {
+  // Guarding only the argument would have relocated the defect rather than closed it:
+  // `{search: q}` also destructures to all-defaults and used to return the whole
+  // register -- a likelier slip than the bare string, and just as silent.
+  for (const bad of [
+    { search: "rtu" },        // the obvious wrong name
+    { query: "rtu" },
+    { location: "l2" },       // near-miss on locationId
+    { statuses: ["ACTIVE"] }, // near-miss on status
+    { Term: "rtu" },          // casing slip
+    { term: "rtu", extra: 1 },// a valid key alongside an unknown one
+    { length: 2 },            // array-like that passes a plain-object check
+  ]) {
+    assert.deepEqual(searchEquipment(FIXTURE, bad), [], `unknown key in ${JSON.stringify(bad)} must return no results`);
+  }
+});
+
+ok("a malformed FIELD inside a valid options object returns nothing", () => {
+  for (const [label, opts] of [
+    ["term: number", { term: 42 }],
+    ["term: object -- the bare-object mistake", { term: { term: "rtu" } }],
+    ["term: array", { term: ["rtu"] }],
+    ["locationId: number", { locationId: 7 }],
+    ["locationId: empty string", { locationId: "" }],
+    ["locationId: blank string", { locationId: "   " }],
+    ["locationId: object", { locationId: {} }],
+    ["status: number", { status: 3 }],
+    ["status: object", { status: {} }],
+  ]) {
+    assert.deepEqual(searchEquipment(FIXTURE, opts), [], `${label} must return no results`);
+  }
+});
+
+ok("an explicitly unknown status returns nothing -- it never disables the filter", () => {
+  // The original normalized "BOGUS" to null, which read as "no status filter" and
+  // BROADENED the result: a narrower question answered with a wider answer.
+  for (const status of ["BOGUS", "PENDING", "active-ish", ""]) {
+    assert.deepEqual(
+      searchEquipment(FIXTURE, { status }), [],
+      `unknown status ${JSON.stringify(status)} must return no results, not disable the filter`
+    );
+  }
+  // A narrowing combination cannot widen either.
+  assert.deepEqual(searchEquipment(FIXTURE, { term: "rtu", status: "BOGUS" }), []);
+});
+
+ok("a non-array Equipment input returns nothing instead of throwing", () => {
+  for (const bad of ["notarray", 42, null, undefined, {}, { length: 2 }]) {
+    assert.deepEqual(searchEquipment(bad, { term: "rtu" }), [], `equipment as ${JSON.stringify(bad)} -> []`);
+  }
+});
+
+ok("VALID omitted/empty/default options still return everything, ordered", () => {
+  // The one documented broad behaviour, deliberately preserved.
+  const expected = FIXTURE.slice().sort(compareEquipment).map((e) => e.id);
+  assert.deepEqual(searchEquipment(FIXTURE).map((e) => e.id), expected, "options omitted entirely");
+  assert.deepEqual(searchEquipment(FIXTURE, {}).map((e) => e.id), expected, "empty options object");
+  assert.deepEqual(searchEquipment(FIXTURE, { term: "" }).map((e) => e.id), expected, "empty term");
+  assert.deepEqual(searchEquipment(FIXTURE, { term: "   " }).map((e) => e.id), expected, "blank term");
+  assert.deepEqual(
+    searchEquipment(FIXTURE, { term: undefined, locationId: undefined, status: undefined }).map((e) => e.id),
+    expected, "explicitly undefined fields == omitted"
+  );
+  assert.deepEqual(
+    searchEquipment(FIXTURE, { term: null, locationId: null, status: null }).map((e) => e.id),
+    expected, "explicitly null fields == no filter (the documented defaults)"
+  );
+});
+
+ok("equipmentMatchesSearch fails closed on a malformed term but still no-ops on an empty one", () => {
+  const e = { name: "RTU-1" };
+  assert.equal(equipmentMatchesSearch(e, ""), true, "empty term -> no search applied");
+  assert.equal(equipmentMatchesSearch(e, "   "), true, "blank term -> no search applied");
+  assert.equal(equipmentMatchesSearch(e, undefined), true, "omitted -> no search applied");
+  assert.equal(equipmentMatchesSearch(e, null), true, "null -> no search applied");
+  assert.equal(equipmentMatchesSearch(e, 42), false, "number -> fail closed, not match-everything");
+  assert.equal(equipmentMatchesSearch(e, { term: "RTU" }), false, "object -> fail closed");
+  assert.equal(equipmentMatchesSearch(e, ["RTU"]), false, "array -> fail closed");
+  assert.equal(equipmentMatchesSearch(e, "rtu"), true, "a real term still matches");
+});
+
+ok("groupServiceHistoryByYear rejects malformed input instead of fabricating history", () => {
+  // A string used to be walked character by character into a phantom bucket: each
+  // character's `.at` is String.prototype.at (truthy), so the guard passed and
+  // produced year NaN -- which `?? "Unknown"` never caught.
+  for (const bad of ["notarray", 42, null, undefined, { 0: "x" }]) {
+    assert.deepEqual(groupServiceHistoryByYear(bad), [], `${JSON.stringify(bad)} -> no groups`);
+  }
+  // Real entries still group, and a non-numeric/absent `at` is still "Unknown".
+  const groups = groupServiceHistoryByYear([
+    // Mid-year: getFullYear() is LOCAL, so a Jan 1 UTC instant is the PREVIOUS year in
+    // any negative offset (this machine is UTC-7) -- the same trap E4's fixture dates
+    // avoid. Not the behaviour under test; don't let it decide the result.
+    { workOrderId: "a", at: Date.UTC(2026, 5, 15, 12) },
+    { workOrderId: "b", at: null },
+    { workOrderId: "c", at: 0 },
+    { workOrderId: "d", at: Number.NaN },
+    { workOrderId: "e", at: 8.64e15 * 2 }, // out of Date range -> getFullYear() is NaN
+  ]);
+  assert.deepEqual(groups.map((g) => g.year), [2026, "Unknown"]);
+  assert.deepEqual(groups[1].entries.map((e) => e.workOrderId), ["b", "c", "d", "e"], "0/null/NaN/out-of-range all Unknown");
+
+  // A NEGATIVE at is a real pre-1970 date, not malformed -- it must still group by its
+  // year. The hardening must not quietly relabel real history as Unknown.
+  const old = groupServiceHistoryByYear([{ workOrderId: "old", at: Date.UTC(1965, 5, 15, 12) }]);
+  assert.deepEqual(old.map((g) => g.year), [1965], "pre-1970 history groups by its real year, not Unknown");
+});
+
 // ---- E2: create payload ---------------------------------------------------
 ok("create payload carries the normalized record + updatedAt; createdAt is the store's to stamp", () => {
   const { valid, payload } = buildEquipmentCreatePayload(
