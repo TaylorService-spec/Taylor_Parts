@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { getCatalogItem } from "../../data/partsCatalog";
 import { useAuth } from "../../auth/AuthContext";
 import { useReorderRequestsAssignedTo, useReorderRequestById } from "../../hooks/useReorderRequests";
@@ -86,7 +86,13 @@ function RequestSummary({ request }) {
   );
 }
 
-function StartPurchasingCard({ request, onDone }) {
+// No onDone/onRecorded-style callback on any card below -- unlike
+// PartsManagerHome.jsx's AssignPanel (a one-shot action that closes
+// itself), useReorderRequestById(requestId) above is realtime: this
+// panel re-renders into the NEXT status's own card automatically the
+// instant a write lands, with no imperative "now refresh" signal
+// needed. Passing a no-op callback here would be dead code.
+function StartPurchasingCard({ request }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
 
@@ -95,7 +101,6 @@ function StartPurchasingCard({ request, onDone }) {
     setError(null);
     try {
       await startPurchasing(request.id);
-      onDone();
     } catch (err) {
       setError(err.message);
       setSubmitting(false);
@@ -116,7 +121,7 @@ function StartPurchasingCard({ request, onDone }) {
   );
 }
 
-function PurchasingInProgressCard({ request, onDone }) {
+function PurchasingInProgressCard({ request }) {
   const [purchasingNotes, setPurchasingNotes] = useState(request.purchasingNotes ?? "");
   const [vendorContacted, setVendorContacted] = useState(!!request.vendorContacted);
   const [expectedAvailabilityDate, setExpectedAvailabilityDate] = useState(request.expectedAvailabilityDate ?? "");
@@ -157,7 +162,6 @@ function PurchasingInProgressCard({ request, onDone }) {
         orderedDate,
         expectedArrivalDate,
       });
-      onDone();
     } catch (err) {
       setPoError(err.message);
       setPoSubmitting(false);
@@ -256,7 +260,7 @@ function PurchasingInProgressCard({ request, onDone }) {
   );
 }
 
-function OrderedCard({ request, onDone }) {
+function OrderedCard({ request }) {
   const { data: purchaseOrder, loading } = usePurchaseOrderForReorderRequest(request.id);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
@@ -266,7 +270,6 @@ function OrderedCard({ request, onDone }) {
     setError(null);
     try {
       await receiveReorderRequest(request.id);
-      onDone();
     } catch (err) {
       setError(err.message);
       setSubmitting(false);
@@ -410,12 +413,12 @@ function AssignedRequestDetail({ requestId, onClose }) {
         </button>
       </div>
       {request.status === REORDER_REQUEST_STATUS.ASSIGNED_TO_PARTS_ASSOCIATE && (
-        <StartPurchasingCard request={request} onDone={() => {}} />
+        <StartPurchasingCard request={request} />
       )}
       {request.status === REORDER_REQUEST_STATUS.PURCHASING_IN_PROGRESS && (
-        <PurchasingInProgressCard request={request} onDone={() => {}} />
+        <PurchasingInProgressCard request={request} />
       )}
-      {request.status === REORDER_REQUEST_STATUS.ORDERED && <OrderedCard request={request} onDone={() => {}} />}
+      {request.status === REORDER_REQUEST_STATUS.ORDERED && <OrderedCard request={request} />}
       {[REORDER_REQUEST_STATUS.RECEIVED, REORDER_REQUEST_STATUS.CANCELLED, REORDER_REQUEST_STATUS.VOIDED].includes(request.status) && (
         <TerminalCard request={request} />
       )}
@@ -450,7 +453,7 @@ function RequestTable({ requests, onSelect }) {
               <button
                 type="button"
                 aria-label={`View ${getCatalogItem(request.partId)?.name ?? request.partId}`}
-                onClick={() => onSelect(request.id)}
+                onClick={(e) => onSelect(request.id, e.currentTarget)}
               >
                 View
               </button>
@@ -473,6 +476,21 @@ export default function PartsAssociateHome() {
     REORDER_REQUEST_STATUS.PURCHASING_IN_PROGRESS
   );
   const [selectedRequestId, setSelectedRequestId] = useState(null);
+  // Focus restoration: the triggering "View" button that opened the
+  // inline Request Detail panel, so closing it returns focus there
+  // instead of dropping it to <body> -- same convention
+  // WarehouseManagerHome.jsx/PartsManagerHome.jsx already establish.
+  const lastTriggerRef = useRef(null);
+
+  function handleSelect(requestId, triggerEl) {
+    lastTriggerRef.current = triggerEl;
+    setSelectedRequestId(requestId);
+  }
+
+  function handleCloseDetail() {
+    setSelectedRequestId(null);
+    lastTriggerRef.current?.focus();
+  }
 
   return (
     <div className="fo-panel">
@@ -486,7 +504,7 @@ export default function PartsAssociateHome() {
         loadingText="Loading your assigned requests..."
         emptyText="No requests currently waiting on you."
       >
-        <RequestTable requests={waiting} onSelect={setSelectedRequestId} />
+        <RequestTable requests={waiting} onSelect={handleSelect} />
       </LoadingEmptyState>
 
       <h3>In Progress</h3>
@@ -496,11 +514,11 @@ export default function PartsAssociateHome() {
         loadingText="Loading your in-progress purchasing..."
         emptyText="No purchasing currently in progress."
       >
-        <RequestTable requests={inProgress} onSelect={setSelectedRequestId} />
+        <RequestTable requests={inProgress} onSelect={handleSelect} />
       </LoadingEmptyState>
 
       {selectedRequestId && (
-        <AssignedRequestDetail requestId={selectedRequestId} onClose={() => setSelectedRequestId(null)} />
+        <AssignedRequestDetail requestId={selectedRequestId} onClose={handleCloseDetail} />
       )}
     </div>
   );
