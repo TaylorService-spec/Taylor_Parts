@@ -1,4 +1,4 @@
-// Firestore Rules Regression runner (Issue #221). Runs the SIX permanent
+// Firestore Rules Regression runner (Issue #221). Runs the SEVEN permanent
 // Firestore Rules emulator suites SEQUENTIALLY, each against a FRESHLY started
 // Firestore+Auth emulator, and reports a concise per-suite + total summary.
 //
@@ -45,8 +45,9 @@ export const SUITES = Object.freeze([
   { file: "issue100PartsManagerRules.test.js", expected: 40 },
   { file: "issue100WarehouseManagerRules.test.js", expected: 11 },
   { file: "issue100PartsAssociateRules.test.js", expected: 23 },
+  { file: "enterpriseAccessFoundationRules.test.js", expected: 62 },
 ]);
-export const EXPECTED_TOTAL = SUITES.reduce((n, s) => n + s.expected, 0); // 194 (PR #236: issue100PartsManager 34->40; PR #237 tightening: employees 10->20)
+export const EXPECTED_TOTAL = SUITES.reduce((n, s) => n + s.expected, 0); // 256 (PR #236: issue100PartsManager 34->40; PR #237 tightening: employees 10->20; Issue #226 Row 3: +62 enterpriseAccessFoundationRules)
 
 export const SUITE_TIMEOUT_MS = 180_000;
 export const EMULATOR_STARTUP_TIMEOUT_MS = 120_000;
