@@ -4253,8 +4253,7 @@ async function verifyWorkflowConfirmations(browser, page, accountKey) {
     await page.locator(".wo-actions").getByRole("button", { name: "Cancel", exact: true }).click();
     await dlg().waitFor({ timeout: 10000 });
     await dlg().getByRole("button", { name: "Cancel work order", exact: true }).click();
-    await page.waitForTimeout(3000);
-    niReport("WO Cancel: one confirmation performs exactly one Cancel transition (CANCELLED)", (await woStatus(woConf)) === "CANCELLED");
+    niReport("WO Cancel: one confirmation performs exactly one Cancel transition (CANCELLED)", await waitForWoStatus(woConf, "CANCELLED"));
   } finally {
     await db.collection("fieldops_wos").doc(woConf).delete().catch(() => {});
   }
@@ -4267,8 +4266,7 @@ async function verifyWorkflowConfirmations(browser, page, accountKey) {
     await page.locator(".wo-actions").getByRole("button", { name: "Cancel", exact: true }).click();
     await dlg().waitFor({ timeout: 10000 });
     await dlg().getByRole("button", { name: "Cancel work order", exact: true }).dblclick();
-    await page.waitForTimeout(3000);
-    niReport("WO Cancel: rapid double-confirm still results in exactly one CANCELLED transition", (await woStatus(woDup)) === "CANCELLED");
+    niReport("WO Cancel: rapid double-confirm still results in exactly one CANCELLED transition", await waitForWoStatus(woDup, "CANCELLED"));
   } finally {
     await db.collection("fieldops_wos").doc(woDup).delete().catch(() => {});
   }
