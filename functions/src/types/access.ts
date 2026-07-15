@@ -60,17 +60,23 @@ export interface Permission {
   deprecatedInFavorOf?: PermissionId;
 }
 
-// Spec §5.5 -- a Permission's grant within a Role may carry Conditions;
-// this is the "Permission-within-a-Role" pairing the Role's
-// `permissions` list actually stores (Spec §5.2 calls it a bundle of
-// Permission ids, this refines that to allow the attached Conditions
-// §5.5 requires without inventing a new top-level object).
-export interface RolePermissionGrant {
-  permissionId: PermissionId;
-  conditions?: Condition[];
-}
+// Spec §5.2 -- a named bundle of Permission ids. This field is
+// literally `PermissionId[]`, matching the Specification-Approved
+// shape exactly -- it is not restructured here, even though Conditions
+// (below) attach to individual grants.
+export type RolePermissions = PermissionId[];
 
-// Spec §5.2 -- a named bundle of Permission ids (with their Conditions).
+// Spec §5.5 -- Conditions are "attached to Permissions-within-Roles by
+// repository declaration." Rather than changing `Role.permissions`'
+// approved `PermissionId[]` shape to carry them, this is a side map
+// keyed by the same PermissionId: a Role's optional
+// `conditionsByPermission` supplies the Conditions (if any) that gate
+// that particular grant. A PermissionId absent from this map carries
+// no Condition beyond Scope matching (Spec §8 step 3).
+export type RoleConditionsByPermission = Partial<
+  Record<PermissionId, Condition[]>
+>;
+
 // The three seeded compatibility Roles (`admin`, `dispatcher`,
 // `technician`) are `systemSeed: true, compatibility: true` and their
 // grants are repository-declared and frozen to reproduce today's
@@ -79,7 +85,8 @@ export interface Role {
   id: string;
   name: string;
   description: string;
-  permissions: RolePermissionGrant[];
+  permissions: RolePermissions;
+  conditionsByPermission?: RoleConditionsByPermission;
   compatibility?: boolean;
   systemSeed?: boolean;
 }
