@@ -17,6 +17,7 @@ import PartsList from "./modules/inventory/PartsList";
 import PartDetail from "./modules/inventory/PartDetail";
 import WarehouseManagerHome from "./modules/inventoryRole/WarehouseManagerHome";
 import PartsManagerHome from "./modules/inventoryRole/PartsManagerHome";
+import PartsAssociateHome from "./modules/inventoryRole/PartsAssociateHome";
 import { useAuth } from "./auth/AuthContext";
 import Login from "./auth/Login";
 import AppHeader from "./shared/ui/AppHeader";
@@ -123,6 +124,11 @@ function renderSubnavItem(domain, item, role) {
   // or an ineligible technician.
   if (domain.key === "inventoryRole" && item.key === "warehouse") {
     return <WarehouseManagerHome />;
+  }
+  // Issue #100 PR 3b -- PARTS_ASSOCIATE's dedicated, role-scoped surface.
+  // Same operationalRoleAccess-gated pattern as PR 1b/2b above.
+  if (domain.key === "inventoryRole" && item.key === "mine") {
+    return <PartsAssociateHome />;
   }
   if (item.legacyKey) {
     const Component = LEGACY_COMPONENTS[item.legacyKey];
