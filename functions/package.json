@@ -12,7 +12,7 @@
     "deploy": "npm run build && firebase deploy --only functions",
     "test:rules": "node scripts/rulesRegressionRunner.mjs",
     "test:runner": "node test/rulesRegressionRunner.test.mjs",
-    "test:access": "npm run build && node test/permissionCatalog.test.mjs"
+    "test:access": "npm run build && node test/permissionCatalog.test.mjs && node test/resolveEffectivePermission.test.mjs"
   },
   "dependencies": {
     "firebase-admin": "^12.7.0",
