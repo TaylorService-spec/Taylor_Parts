@@ -1,22 +1,24 @@
 ---
 artifact_type: assessment
 gate: Repository Assessment
-status: Draft
+status: Accepted
 date: 2026-07-15
 owner: Claude Code (Customer/Platform)
-related_adrs: []
+related_adrs: [docs/architecture/ADR-005-enterprise-authorization-migration-strategy.md]
 depends_on: [docs/PROJECT_ARCHITECTURE.md, docs/PlatformOperatingModel.md, docs/DelegationCharter.md]
 implements: []
 supersedes: []
 superseded_by: []
-related_pr: null
+related_pr: 229
 related_issue: 226
 target_release: TBD
 ---
 
 # Assessment: Enterprise Access & Administration Platform
 
-**Status: DRAFT (pending Architecture Review).** Assesses **Issue #226** only — the current-state authorization model across every enforcement layer and a proposed governed **Enterprise Access & Administration** capability. It inventories what exists (with citations), draws the authentication/authorization/eligibility/organization/approval distinctions, proposes a capability + enforcement model, weighs architecture options, and recommends a governance chain.
+**Status: Accepted.** Assesses **Issue #226** only — the current-state authorization model across every enforcement layer and a proposed governed **Enterprise Access & Administration** capability. It inventories what exists (with citations), draws the authentication/authorization/eligibility/organization/approval distinctions, proposes a capability + enforcement model, weighs architecture options, and recommends a governance chain.
+
+> **Post-merge note (metadata only, not a change to the findings or option matrix below).** This Assessment merged in [PR #229](https://github.com/TaylorService-spec/Taylor_Parts/pull/229) and passed its independent Architecture Review. The Owner subsequently approved **Option D — the Hybrid Compatibility Model** (Assessment §12), recorded in **[ADR-005](../architecture/ADR-005-enterprise-authorization-migration-strategy.md)**, which now governs the authorization architecture decision (architecture, tenant-Scope-for-later, hybrid claims+`accessVersion` enforcement, approval principles, Admin-portal MVP, #15 sequencing, legacy-role retirement criteria, impersonation deferral). The §12 option matrix and all findings here remain as originally written, as the input to that decision.
 
 **Merging this Assessment authorizes NOTHING.** No permission engine, Admin UI, new collection, Firestore Rule, Cloud Function, index, deployment, or production-data action is authorized. Each later stage (Architecture ADRs → Specification → Implementation Plan → foundation → Admin portal → domain-by-domain migration → legacy-role retirement) is its own separately-authorized gate under `docs/ai/workflow.md`. **The referenced ChatGPT design is input, not repository authority** — the audited current state below and the Owner's decisions are authoritative. **AI may recommend and explain, but never grants, revokes, or approves access.**
 
