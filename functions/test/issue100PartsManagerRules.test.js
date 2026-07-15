@@ -371,6 +371,28 @@ async function main() {
   report("WAREHOUSE_MANAGER reads inventory_transactions (catalog/health)",
     (await getDocAt("inventory_transactions", "txn-1", tokens["user-wm-1"])) === 200);
 
+  // === PR 1b: employees Assign-candidate read (discovered during PR 1b's
+  //     own implementation, not part of PR 1a's original scope -- see
+  //     firestore.rules' own comment on this branch) ===
+
+  report("PARTS_MANAGER reads an Employee document whose operationalRoles contains PARTS_ASSOCIATE (Assign-candidate lookup)",
+    (await getDocAt("employees", "emp-pa-1", tokens["user-pm-1"])) === 200);
+
+  report("PARTS_MANAGER cannot read an arbitrary Employee document lacking PARTS_ASSOCIATE (another Parts Manager's own record)",
+    (await getDocAt("employees", "emp-pm-2", tokens["user-pm-1"])) === 403);
+
+  report("WAREHOUSE_MANAGER cannot read a PARTS_ASSOCIATE Employee document through this PARTS_MANAGER-only branch",
+    (await getDocAt("employees", "emp-pa-1", tokens["user-wm-1"])) === 403);
+
+  report("Ineligible technician cannot read a PARTS_ASSOCIATE Employee document",
+    (await getDocAt("employees", "emp-pa-1", tokens["user-ineligible-1"])) === 403);
+
+  report("An INACTIVE, otherwise-PARTS_MANAGER-eligible technician cannot read a PARTS_ASSOCIATE Employee document",
+    (await getDocAt("employees", "emp-pa-1", tokens["user-inactive-1"])) === 403);
+
+  report("PARTS_MANAGER still reads their own Employee document via the existing self-read path, unaffected",
+    (await getDocAt("employees", "emp-pm-1", tokens["user-pm-1"])) === 200);
+
   // === Isolation between accounts of the same role ===
 
   report("PARTS_MANAGER's Relevant History does NOT include a different Parts Manager's reviewed request",

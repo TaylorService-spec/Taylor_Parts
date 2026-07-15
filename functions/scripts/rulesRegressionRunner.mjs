@@ -42,11 +42,11 @@ export const SUITES = Object.freeze([
   { file: "employeesRules.test.js", expected: 10 },
   { file: "reorderRequestsRules.test.js", expected: 82 },
   { file: "accountsGovernedFieldsRules.test.js", expected: 18 },
-  { file: "issue100PartsManagerRules.test.js", expected: 34 },
+  { file: "issue100PartsManagerRules.test.js", expected: 40 },
   { file: "issue100WarehouseManagerRules.test.js", expected: 11 },
   { file: "issue100PartsAssociateRules.test.js", expected: 23 },
 ]);
-export const EXPECTED_TOTAL = SUITES.reduce((n, s) => n + s.expected, 0); // 178
+export const EXPECTED_TOTAL = SUITES.reduce((n, s) => n + s.expected, 0); // 184
 
 export const SUITE_TIMEOUT_MS = 180_000;
 export const EMULATOR_STARTUP_TIMEOUT_MS = 120_000;
