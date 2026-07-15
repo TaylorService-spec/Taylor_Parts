@@ -1,0 +1,80 @@
+name: Access Claims Tests
+
+# Enterprise Access & Administration Platform (Issue #226) test for
+# functions/src/access/claimsWriter.ts -- runs against a freshly started
+# Auth-only emulator (no Firestore needed: this module only mints/revokes
+# Firebase Auth custom claims). Emulator-only, project "taylor-parts",
+# loopback host -- no production access, no credentials, no repository
+# secrets. NOT a production claims-activation workflow -- see
+# claimsWriter.ts's own header for the Issue #15 gating this preserves.
+
+on:
+  pull_request:
+    paths:
+      - "functions/src/types/access.ts"
+      - "functions/src/access/compactClaims.ts"
+      - "functions/src/access/claimsWriter.ts"
+      - "functions/test/claimsWriter.test.mjs"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - "firebase.json"
+      - ".github/workflows/access-claims-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/src/types/access.ts"
+      - "functions/src/access/compactClaims.ts"
+      - "functions/src/access/claimsWriter.ts"
+      - "functions/test/claimsWriter.test.mjs"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - "firebase.json"
+      - ".github/workflows/access-claims-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  access-claims-tests:
+    name: Compact-claims mint/refresh/revoke tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+
+      - name: Start Auth emulator (background)
+        run: |
+          nohup node node_modules/firebase-tools/lib/bin/firebase.js emulators:start --only auth --project taylor-parts --config ../firebase.json > /tmp/auth-emulator.log 2>&1 &
+          for i in $(seq 1 60); do
+            if grep -q "All emulators ready" /tmp/auth-emulator.log 2>/dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "Auth emulator did not become ready in time"
+          cat /tmp/auth-emulator.log
+          exit 1
+        working-directory: functions
+
+      - name: Compact-claims mint/refresh/revoke tests (build + run)
+        run: npm run test:claims
+        working-directory: functions
+
+      - name: Upload emulator debug logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: access-claims-emulator-logs
+          path: /tmp/auth-emulator.log
+          if-no-files-found: ignore
+          retention-days: 7
