@@ -4061,6 +4061,301 @@ async function verifyAccountDetailForms(browser, page, accountKey) {
 // /customers), recovery after data returns, and 375/tablet/desktop layout with no
 // overflow. Destructive empty-state setups snapshot + restore in try/finally so
 // the shared seed is never left damaged.
+// Issue #232 unit E6 -- Equipment creation (Spec §6).
+//
+// Proves the create flow in a real signed-in browser against a live emulator whose
+// Rules are E3's: the Account is fixed, Locations are restricted to that Account,
+// required-field indicators and errors, safe in-modal failure that leaks nothing,
+// duplicate-submit and close-during-save guards, and success closing once,
+// live-inserting the confirmed row, and focusing it.
+async function verifyEquipmentCreate(browser, page, accountKey) {
+  const F = EQUIPMENT_FIXTURE;
+  const url = (path) => { const u = new URL(path, APP_ROOT); u.searchParams.set("emulator", "1"); return u.toString(); };
+  const rows = () => page.locator("[data-equipment-row]");
+  const modal = () => page.locator(".fo-modal, [role='dialog']").first();
+  const RAW = /permission-denied|FirebaseError|firestore\/|code:|Missing or insufficient|AIza|documents\//i;
+
+  // A DEDICATED throwaway customer, not one of the E4 fixture Accounts.
+  //
+  // This suite creates records, and verify-equipment-register asserts Alpha's EXACT
+  // fixture count. Creating into Alpha therefore breaks the register suite the moment
+  // anything leaks -- and it did: an aborted run left five stray rows behind and
+  // verify-equipment-register started reporting "saw 11" against a register that was
+  // perfectly correct. Test-created data does not belong in a shared fixture Account.
+  // Locations here are named distinctly so the restricted-to-Account assertion can tell
+  // them from every fixture Location.
+  const CREATE_ACCT = "acct-equip-create-target";
+  const CREATE_LOC_1 = "equip-loc-create-1";
+  const CREATE_LOC_2 = "equip-loc-create-2";
+  const LOC_1_NAME = "Create Test -- Plant A";
+  const LOC_2_NAME = "Create Test -- Plant B";
+  const purgeCreateAccount = async () => {
+    const snap = await db.collection("equipment").where("accountId", "==", CREATE_ACCT).get();
+    for (const d of snap.docs) await d.ref.delete().catch(() => {});
+  };
+  const now = Date.now();
+  await db.doc(`accounts/${CREATE_ACCT}`).set({
+    name: "Create Target Co", status: "Active", relationshipTypes: ["CUSTOMER"], createdAt: now, updatedAt: now,
+  });
+  await db.doc(`locations/${CREATE_LOC_1}`).set({ accountId: CREATE_ACCT, name: LOC_1_NAME, createdAt: now, updatedAt: now });
+  await db.doc(`locations/${CREATE_LOC_2}`).set({ accountId: CREATE_ACCT, name: LOC_2_NAME, createdAt: now, updatedAt: now });
+  // Self-healing: clear anything a previous aborted run left in this account.
+  await purgeCreateAccount();
+
+  try {
+  await login(page, accountKey);
+  await page.goto(url("equipment"), { waitUntil: "domcontentloaded" });
+
+  // The action only exists once a customer is chosen -- there is nothing to add to.
+  niReport("Create: no Add action before a customer is chosen (nothing to add to)",
+    (await page.getByRole("button", { name: /new equipment/i }).count()) === 0);
+
+  await page.locator("#equipment-account").selectOption({ label: "Create Target Co" });
+  await page.waitForTimeout(800); // the create-target account starts empty -- no rows to wait for
+  const before = await rows().count();
+  await page.getByRole("button", { name: /new equipment/i }).click();
+  await modal().waitFor({ timeout: 5000 });
+
+  // ===== the Account is FIXED, and Locations are restricted to it (§4/§6) =====
+  niReport("Create: the customer is stated as fixed, with no picker in the modal",
+    /the customer is fixed and cannot be changed/i.test(await modal().innerText()) &&
+      (await modal().locator("#equipment-account").count()) === 0);
+  const locOptions = await modal().locator("#equipment-create-location option").allInnerTexts();
+  niReport("Create: only THIS customer's locations are offered -- no cross-Account destination (§4)",
+    locOptions.some((t) => t.includes(LOC_1_NAME)) &&
+      locOptions.some((t) => t.includes(LOC_2_NAME)) &&
+      !locOptions.some((t) => /Harbor Tower|Main Plant|North Annex/.test(t)), JSON.stringify(locOptions));
+
+  // ===== status is ABSENT from the form (Owner decision preserved for E6) =====
+  niReport("Create: the form offers no status control -- create is always ACTIVE (§2)",
+    (await modal().locator("#equipment-create-status, [name='status']").count()) === 0 &&
+      !/status/i.test(await modal().locator("form").innerText()));
+
+  // ===== required indicators + labels above controls (§6/§13) =====
+  const nameField = modal().locator(".fo-form-field", { has: page.locator("#equipment-create-name") });
+  const locField = modal().locator(".fo-form-field", { has: page.locator("#equipment-create-location") });
+  niReport("Create: name and location carry TEXT required indicators (§6)",
+    /\(required\)/i.test(await nameField.innerText()) && /\(required\)/i.test(await locField.innerText()));
+
+  // The modal renders OVER the register, so both are in the DOM at once. An earlier
+  // revision gave the modal's Location field the same id as the register's Location
+  // FILTER -- a duplicate id, which silently binds the modal's <label for> to the
+  // register's control instead and breaks the label association the required-indicator
+  // assertion above depends on. This suite found it; keep it found.
+  const dupIds = await page.evaluate(() => {
+    const seen = new Map();
+    for (const el of document.querySelectorAll("[id]")) seen.set(el.id, (seen.get(el.id) ?? 0) + 1);
+    return [...seen.entries()].filter(([, n]) => n > 1).map(([id]) => id);
+  });
+  niReport("Create: the open modal introduces no duplicate DOM id (§13 label association)",
+    dupIds.length === 0, JSON.stringify(dupIds));
+
+  // ===== validation: submitting empty shows field errors and writes nothing =====
+  await modal().getByRole("button", { name: /^Add Equipment$/ }).click();
+  await page.waitForTimeout(300);
+  niReport("Create: submitting empty reports both required fields",
+    /Enter an equipment name/i.test(await nameField.innerText()) &&
+      /Select a location/i.test(await locField.innerText()));
+  niReport("Create: an invalid submit marks the fields aria-invalid",
+    (await page.locator("#equipment-create-name").getAttribute("aria-invalid")) === "true" &&
+      (await page.locator("#equipment-create-location").getAttribute("aria-invalid")) === "true");
+  niReport("Create: an invalid submit persists nothing and keeps the modal open",
+    (await rows().count()) === before && (await modal().count()) === 1);
+
+  // ===== success: closes once, live-inserts the CONFIRMED row, focuses it =====
+  const newName = `Register Created Unit ${Date.now()}`;
+  await page.locator("#equipment-create-name").fill(newName);
+  await page.locator("#equipment-create-location").selectOption({ label: LOC_2_NAME });
+  await page.locator("#equipment-create-serial").fill("SN-CREATED-1");
+  await modal().getByRole("button", { name: /^Add Equipment$/ }).click();
+  // Wait for the ASYNC SETTLE, not a fixed tick. The write round-trips to the emulator,
+  // the row arrives via onSnapshot, the modal closes, and only then does the focus
+  // effect run -- and Modal's own focus-restore fires in between, briefly parking focus
+  // on the trigger button. Asserting before all that settles measures the driver's
+  // timing, not the feature's behaviour; an earlier version of this suite did exactly
+  // that and reported three failures against a register that was working correctly.
+  const closed = await page.waitForFunction(
+    () => document.querySelectorAll(".fo-modal, [role='dialog']").length === 0,
+    null, { timeout: 15000 }
+  ).then(() => true).catch(() => false);
+  niReport("Create: the modal closes exactly once on success", closed);
+  await page.waitForFunction((n) => document.querySelectorAll("[data-equipment-row]").length === n + 1,
+    before, { timeout: 15000 }).catch(() => {});
+  niReport("Create: the new row live-inserts into the register", (await rows().count()) === before + 1);
+  const newRow = page.locator("[data-equipment-row]", { has: page.locator(`.fo-equipment-name:text-is("${newName}")`) });
+  niReport("Create: the created record is the one that appears", (await newRow.count()) === 1);
+  // The row must actually HOLD focus -- an earlier sibling feature cleared its focus id
+  // after focusing, which stripped the row's tabIndex and dropped focus to <body>. Note
+  // Modal restores focus to the trigger on close, so this also proves the register's
+  // focus wins that race rather than being silently undone.
+  const focusLanded = await page.waitForFunction(
+    () => document.activeElement?.tagName === "TR" && document.activeElement?.hasAttribute("data-equipment-row"),
+    null, { timeout: 10000 }
+  ).then(() => true).catch(() => false);
+  const focusedRow = await page.evaluate(() => {
+    const el = document.activeElement;
+    return el ? { tag: el.tagName, id: el.getAttribute("data-equipment-row") } : null;
+  });
+  niReport("Create: focus lands on the new row and STAYS there (not <body>, not the trigger)",
+    focusLanded && focusedRow?.tag === "TR" && focusedRow?.id !== null, JSON.stringify(focusedRow));
+  // ...and it must still hold focus a beat later -- proving nothing steals it back.
+  await page.waitForTimeout(600);
+  niReport("Create: the new row still holds focus after the dust settles",
+    (await page.evaluate(() => document.activeElement?.tagName)) === "TR");
+  const newId = focusedRow?.id;
+
+  const announced = await page.waitForFunction(
+    () => /added/i.test(document.querySelector('.fo-sr-only[role="status"]')?.textContent ?? ""),
+    null, { timeout: 8000 }
+  ).then(() => true).catch(() => false);
+  niReport("Create: success is announced politely to assistive tech", announced,
+    await page.locator('.fo-sr-only[role="status"]').first().textContent().catch(() => "(none)"));
+
+  // ===== the created record really is ACTIVE and correctly owned (server truth) =====
+  if (newId) {
+    const doc = (await db.doc(`equipment/${newId}`).get()).data();
+    niReport("Create: the persisted record is ACTIVE, owned by the fixed Account, at the chosen Location",
+      doc?.status === "ACTIVE" && doc?.accountId === CREATE_ACCT && doc?.locationId === CREATE_LOC_2,
+      JSON.stringify({ status: doc?.status, accountId: doc?.accountId, locationId: doc?.locationId }));
+    niReport("Create: no status was submitted -- it was defaulted, not chosen", doc?.status === "ACTIVE");
+  }
+
+  // ===== duplicate-submit guard =====
+  await page.getByRole("button", { name: /new equipment/i }).click();
+  await modal().waitFor({ timeout: 5000 });
+  const dupName = `Dup Guard Unit ${Date.now()}`;
+  await page.locator("#equipment-create-name").fill(dupName);
+  await page.locator("#equipment-create-location").selectOption({ label: LOC_1_NAME });
+  const submitBtn = modal().getByRole("button", { name: /^Add Equipment$/ });
+  // Two clicks as fast as Playwright can issue them; the in-flight guard must collapse
+  // them into ONE record, not two identically named ones.
+  await Promise.all([submitBtn.click(), submitBtn.click().catch(() => {})]);
+  await page.waitForTimeout(2500);
+  const dupDocs = await db.collection("equipment").where("name", "==", dupName).get();
+  niReport("Create: a double submit creates exactly ONE record (duplicate-submit guard)",
+    dupDocs.size === 1, `created ${dupDocs.size}`);
+
+
+  // ===== safe in-modal failure: never a raw error/code/id =====
+  // Deny the write at the RULES layer for real, rather than faking a UI error: sign the
+  // page's own session out of authority by pointing its write at a Location that does
+  // not belong to the Account. E2 refuses before writing and E3 would refuse after --
+  // either way the modal must say something safe.
+  await page.goto(url("equipment"), { waitUntil: "domcontentloaded" });
+  await page.locator("#equipment-account").selectOption({ label: "Create Target Co" });
+  await page.waitForTimeout(800); // the create-target account starts empty -- no rows to wait for
+  await page.getByRole("button", { name: /new equipment/i }).click();
+  await modal().waitFor({ timeout: 5000 });
+  await page.locator("#equipment-create-name").fill("Should Never Persist");
+  await page.locator("#equipment-create-location").selectOption({ label: LOC_1_NAME });
+  // Rewrite the selected option's value to a FOREIGN Location id -- the DOM-level
+  // equivalent of a tampered client. The relationship guard must still refuse.
+  await page.evaluate((foreign) => {
+    const sel = document.querySelector("#equipment-create-location");
+    sel.options[sel.selectedIndex].value = foreign;
+    sel.value = foreign;
+    sel.dispatchEvent(new Event("change", { bubbles: true }));
+  }, F.betaLocation1Id);
+  await modal().getByRole("button", { name: /^Add Equipment$/ }).click();
+  await page.waitForTimeout(2000);
+  const failText = await modal().innerText().catch(() => "");
+  niReport("Create: a cross-Account destination is REFUSED, and nothing is persisted (§4)",
+    (await db.collection("equipment").where("name", "==", "Should Never Persist").get()).size === 0);
+  niReport("Create: the refusal stays in the modal with safe copy -- no raw code, path, or id",
+    (await page.locator(".fo-modal, [role='dialog']").count()) === 1 && !RAW.test(failText) &&
+      !failText.includes(F.betaLocation1Id));
+
+  // ===== close-during-save is ignored =====
+  // The in-flight window has to be REAL for this to prove anything, so add network
+  // LATENCY via CDP rather than intercepting the request. An earlier version routed
+  // /8080/ and slept inside the handler before continue(): that broke Firestore's
+  // WebChannel and the write was LOST (the suite reported "saved 0"), which looks
+  // exactly like a catastrophic product bug and was purely the test's own doing.
+  // Latency slows the round trip without touching the channel.
+  // Latency is applied ONLY around the submit -- enabling it before navigation makes
+  // page.goto itself time out, since it slows every request including the app load.
+  await page.goto(url("equipment"), { waitUntil: "domcontentloaded" });
+  await page.locator("#equipment-account").selectOption({ label: "Create Target Co" });
+  await page.waitForTimeout(800); // the create-target account starts empty -- no rows to wait for
+  await page.getByRole("button", { name: /new equipment/i }).click();
+  await modal().waitFor({ timeout: 5000 });
+  const closeName = `Close Guard Unit ${Date.now()}`;
+  await page.locator("#equipment-create-name").fill(closeName);
+  await page.locator("#equipment-create-location").selectOption({ label: LOC_1_NAME });
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("Network.enable");
+  await cdp.send("Network.emulateNetworkConditions", {
+    offline: false, latency: 1500, downloadThroughput: -1, uploadThroughput: -1,
+  });
+  await modal().getByRole("button", { name: /^Add Equipment$/ }).click();
+  await page.waitForTimeout(200); // mid-flight
+  const cancelBtn = modal().getByRole("button", { name: /^Cancel$/ });
+  const cancelDisabled = await cancelBtn.isDisabled().catch(() => false);
+  await cancelBtn.click({ force: true }).catch(() => {});
+  await page.keyboard.press("Escape").catch(() => {});
+  const stillOpenMidSave = (await page.locator(".fo-modal, [role='dialog']").count()) === 1;
+  niReport("Create: Cancel is disabled while saving, and a close mid-save is ignored",
+    cancelDisabled || stillOpenMidSave, `cancelDisabled=${cancelDisabled} stillOpen=${stillOpenMidSave}`);
+  // Let the (latency-slowed) write land, then confirm the close attempt neither lost
+  // nor duplicated it -- the record must exist exactly once.
+  let closeDocs = await db.collection("equipment").where("name", "==", closeName).get();
+  for (let i = 0; i < 12 && closeDocs.size === 0; i++) {
+    await page.waitForTimeout(1000);
+    closeDocs = await db.collection("equipment").where("name", "==", closeName).get();
+  }
+  niReport("Create: the mid-save close neither lost nor duplicated the write", closeDocs.size === 1, `saved ${closeDocs.size}`);
+
+  // Once the save completes, the modal closes on its own -- the ignored close was a
+  // deferral, not a swallow.
+  niReport("Create: after the save completes, the modal closes",
+    await page.waitForFunction(() => document.querySelectorAll(".fo-modal, [role='dialog']").length === 0,
+      null, { timeout: 10000 }).then(() => true).catch(() => false));
+  await cdp.send("Network.emulateNetworkConditions", {
+    offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1,
+  }).catch(() => {});
+  await cdp.detach().catch(() => {});
+
+  // ===== keyboard operability (§13) =====
+  await page.goto(url("equipment"), { waitUntil: "domcontentloaded" });
+  await page.locator("#equipment-account").selectOption({ label: "Create Target Co" });
+  await page.waitForTimeout(800); // the create-target account starts empty -- no rows to wait for
+  await page.getByRole("button", { name: /new equipment/i }).focus();
+  await page.keyboard.press("Enter");
+  await modal().waitFor({ timeout: 5000 });
+  niReport("Create: the Add action is keyboard-operable (§13)", (await modal().count()) === 1);
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(300);
+  niReport("Create: Escape closes the modal when NOT saving (§13)",
+    (await page.locator(".fo-modal, [role='dialog']").count()) === 0);
+
+  // ===== 375px (§13) =====
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.getByRole("button", { name: /new equipment/i }).click();
+  await modal().waitFor({ timeout: 5000 });
+  const overflow = await page.evaluate(() => ({
+    scroll: document.documentElement.scrollWidth,
+    client: document.documentElement.clientWidth,
+  }));
+  niReport("Create: at 375px the create modal does not overflow the page horizontally (§13)",
+    overflow.scroll <= overflow.client + 1, JSON.stringify(overflow));
+  await page.setViewportSize({ width: 1280, height: 800 });
+
+  await page.screenshot({ path: join(SCREENSHOT_DIR, "equipment-create.png"), fullPage: true });
+  } finally {
+    // In a `finally` so an ABORTED run still cleans up. The previous version deleted a
+    // list of captured ids at the end of the happy path; when the run threw partway
+    // through, the records survived -- and because they lived in a shared fixture
+    // Account, they broke verify-equipment-register on the next run instead of this one.
+    // Everything this suite creates lives in the throwaway account, so purging it by
+    // query needs no bookkeeping and cannot miss a record.
+    await purgeCreateAccount();
+    await db.doc(`locations/${CREATE_LOC_1}`).delete().catch(() => {});
+    await db.doc(`locations/${CREATE_LOC_2}`).delete().catch(() => {});
+    await db.doc(`accounts/${CREATE_ACCT}`).delete().catch(() => {});
+  }
+  return niFailed === 0;
+}
+
 // Issue #232 unit E5 -- the Equipment register (Spec §7/§9/§13).
 //
 // Proves the register in a real signed-in browser against the E4 fixtures: the
@@ -5778,6 +6073,10 @@ async function main() {
     } else if (command === "verify-equipment-register") {
       const [accountKey = "admin"] = args;
       const ok = await verifyEquipmentRegister(browser, page, accountKey);
+      if (!ok) process.exitCode = 1;
+    } else if (command === "verify-equipment-create") {
+      const [accountKey = "admin"] = args;
+      const ok = await verifyEquipmentCreate(browser, page, accountKey);
       if (!ok) process.exitCode = 1;
     } else if (command === "verify-shared-application-states") {
       const [accountKey = "admin"] = args;

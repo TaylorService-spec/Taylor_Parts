@@ -1,10 +1,12 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
 import { ACCOUNTS_COLLECTION, EQUIPMENT_STATUS } from "../../domain/constants";
 import { useEquipmentForAccount } from "../../hooks/useEquipment";
 import { useLocationsForAccount } from "../../hooks/useLocationsForAccount";
 import { searchEquipment, equipmentDisplayName, equipmentSummary } from "../../domain/equipment";
+import { createEquipment } from "../../domain/equipmentRepository";
 import { STATUS_FILTERS, statusFilterValue } from "./equipmentStatusFilters";
+import EquipmentCreateModal from "./EquipmentCreateModal";
 import { loadErrorMessage } from "../../domain/loadErrorMessage";
 import WorkspaceHeader from "../../shared/ui/WorkspaceHeader";
 import LoadingState from "../../shared/ui/LoadingState";
@@ -31,6 +33,17 @@ export default function EquipmentRegister() {
   const [term, setTerm] = useState("");
   const [locationId, setLocationId] = useState("");
   const [statusKey, setStatusKey] = useState("all");
+  const [showCreate, setShowCreate] = useState(false);
+  const [announcement, setAnnouncement] = useState("");
+  // The row to focus after a successful create. It must PERSIST rather than be
+  // cleared on focus: the row carries tabIndex only while it is the focus target, so
+  // clearing this id would strip the tabIndex off the element that currently has
+  // focus and drop focus to <body>. (Exactly that bug shipped once in Issue #214
+  // PR-2's new-row focus.) focusedOnceRef is what prevents re-stealing focus on every
+  // later re-render instead.
+  const [focusRowId, setFocusRowId] = useState(null);
+  const focusedOnceRef = useRef(false);
+  const focusRowRef = useRef(null);
 
   const { data: equipment, loading, error } = useEquipmentForAccount(accountId || null);
   const { data: locations } = useLocationsForAccount(accountId || null);
@@ -55,6 +68,33 @@ export default function EquipmentRegister() {
     setStatusKey("all");
   };
 
+  // Focus the newly created row once it actually exists in the live list. The row
+  // arrives via the register's own onSnapshot -- there is no optimistic insert, so
+  // what gets focused is the record the server confirmed, not one we hoped for.
+  useEffect(() => {
+    if (!focusRowId || focusedOnceRef.current) return;
+    if (focusRowRef.current) {
+      focusRowRef.current.focus();
+      focusedOnceRef.current = true;
+    }
+  }, [focusRowId, results]);
+
+  async function handleCreate(values, location) {
+    // The Account is fixed by the register's selection -- the modal never chooses it.
+    const result = await createEquipment({ ...values, accountId }, { location });
+    if (result.ok) {
+      focusedOnceRef.current = false;
+      setFocusRowId(result.equipment.id);
+      setShowCreate(false); // closes ONCE, here, on the confirmed write
+      setAnnouncement(`${equipmentDisplayName(result.equipment)} added.`);
+      // A new record is ACTIVE and may not match the current filters, in which case it
+      // would be created and then immediately invisible. Clearing the filters is what
+      // makes "success live-inserts the row" true rather than nominally true.
+      resetFilters();
+    }
+    return result;
+  }
+
   return (
     <section className="fo-workspace fo-equipment-register">
       <WorkspaceHeader title="Equipment">
@@ -77,7 +117,25 @@ export default function EquipmentRegister() {
             ))}
           </select>
         </label>
+        {/* Creation needs the fixed Account, so the action only exists once one is
+            chosen -- an "Add Equipment" button with no customer would have nothing to
+            add to. */}
+        {accountChosen && (
+          <button type="button" onClick={() => setShowCreate(true)}>+ New Equipment</button>
+        )}
       </WorkspaceHeader>
+
+      {/* Success announcement -- polite live region for assistive tech. */}
+      <p className="fo-sr-only" role="status" aria-live="polite">{announcement}</p>
+
+      {showCreate && accountChosen && (
+        <EquipmentCreateModal
+          accountName={accounts.find((a) => a.id === accountId)?.name ?? "this customer"}
+          locations={locations}
+          onCreate={handleCreate}
+          onClose={() => setShowCreate(false)}
+        />
+      )}
 
       {accountsLoading ? (
         <LoadingState>Loading customers…</LoadingState>
@@ -184,7 +242,14 @@ export default function EquipmentRegister() {
               </thead>
               <tbody>
                 {results.map((e) => (
-                  <tr key={e.id} data-equipment-row={e.id}>
+                  <tr
+                    key={e.id}
+                    data-equipment-row={e.id}
+                    // tabIndex stays on the focused row for as long as focusRowId
+                    // names it. Removing it after focusing would blur to <body>.
+                    tabIndex={focusRowId === e.id ? -1 : undefined}
+                    ref={focusRowId === e.id ? focusRowRef : undefined}
+                  >
                     <td>
                       {/* §8: the display name is the human reference -- never a raw
                           id. equipmentSummary disambiguates duplicate names (which are
