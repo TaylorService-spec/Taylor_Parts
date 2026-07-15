@@ -123,7 +123,10 @@ export const PARITY_FIXTURES: readonly ShadowComparisonInput[] = Object.freeze([
     },
   },
   {
-    fixtureLabel: "admin: reorder purchase order void",
+    // firestore.rules (current `main`, ~L794-798) double-gates Void:
+    // isAdminOrDispatcher() AND the caller is the request's own
+    // recorded assignee -- even admin must be the assignee.
+    fixtureLabel: "admin: reorder purchase order void (as the request's own assignee)",
     permissionId: "reorder.purchaseOrder.void",
     legacyDecision: "ALLOW",
     resolverInput: {
@@ -131,7 +134,19 @@ export const PARITY_FIXTURES: readonly ShadowComparisonInput[] = Object.freeze([
       assignments: [assignment("admin")],
       roles: COMPATIBILITY_ROLES,
       currentAccessVersion: 1,
-      target: target(),
+      target: target({ isOwnAssignment: true }),
+    },
+  },
+  {
+    fixtureLabel: "admin: reorder purchase order void DENIED when not the request's own assignee",
+    permissionId: "reorder.purchaseOrder.void",
+    legacyDecision: "DENY",
+    resolverInput: {
+      permissionId: "reorder.purchaseOrder.void",
+      assignments: [assignment("admin")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target({ isOwnAssignment: false }),
     },
   },
 
