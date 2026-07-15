@@ -1166,38 +1166,64 @@ service cloud.firestore {
       ];
     }
 
-    // An ordinary edit may touch descriptive fields only.
+    // An ordinary edit may touch descriptive fields, plus `status` -- but ONLY across
+    // the plain ACTIVE<->INACTIVE pair, which equipmentTransitionAllowed() enforces.
     //
     // accountId/locationId: ownership. §4 and §11 both require Rules to deny changing
     // them here; a Location change is the audited MOVE (§5). createdAt is immutable.
     //
-    // status: EXCLUDED HERE ON PURPOSE, and this is stricter than the Specification
-    // rather than an implementation of it -- flagged rather than buried:
-    //   * §3 marks setStatus (ACTIVE<->INACTIVE) "plain"; only retire/reactivate are
-    //     trusted-writer. §6 and AC3 say status is editable. §11 -- the Rules
-    //     obligations section -- lists ONLY accountId/locationId as must-deny.
-    //   * This follows the E3 authorization ("ordinary edit cannot change ... lifecycle
-    //     status") and an Owner decision deferring the ACTIVE<->INACTIVE lifecycle path
-    //     to E10. Both are out-of-band instructions, NOT repository documents -- do not
-    //     go looking for them in the Spec, and do not treat this comment as evidence
-    //     they exist. What IS verifiable in-tree: E2 (#282, merged) implements no
-    //     lifecycle write at all, and the plan's E10 row owns active/inactive/retire/
-    //     reactivate. Allowing the write here while no caller may perform it would open
-    //     authority nothing uses.
-    // Consequence, stated plainly: AC3 does not pass against these Rules as written.
-    // Whichever way E10 resolves it, either these Rules relax or the Spec is amended;
-    // denying now is the reversible direction.
+    // status is present here so that §3 ("setStatus ... plain"), §6 and AC3
+    // ("descriptive/status(ACTIVE<->INACTIVE) editable") pass as written. Membership in
+    // this list only means "may appear in an edit"; which VALUES are legal is a
+    // separate guard, because reaching or leaving RETIRED is a trusted, audited action
+    // (§5) that this path must never perform.
+    //
+    // Note the client is currently STRICTER than these Rules: E2 (#282) strips status
+    // from its edit payload entirely, so nothing performs an ACTIVE<->INACTIVE write
+    // yet. E10 wires that up. Rules being the authoritative boundary, they encode the
+    // Specification's contract rather than the current caller's subset.
     function equipmentEditableKeys() {
       return [
         "name", "manufacturer", "model", "serialNumber", "assetTag",
-        "installedDate", "warrantyExpiresDate", "notes", "updatedAt",
+        "installedDate", "warrantyExpiresDate", "notes", "status", "updatedAt",
       ];
+    }
+
+    function equipmentStatusValid(status) {
+      return status == "ACTIVE" || status == "INACTIVE" || status == "RETIRED";
+    }
+
+    // The ONLY lifecycle movement an ordinary client edit may perform: the plain
+    // ACTIVE<->INACTIVE pair (§3), or no movement at all.
+    //
+    // Everything else is denied by omission rather than by a deny-list, so an
+    // unforeseen value cannot slip through:
+    //   ACTIVE/INACTIVE -> RETIRED  : retiring is trusted + audited (§5, E10)
+    //   RETIRED -> ACTIVE/INACTIVE  : reactivation is trusted + audited (§5, E10)
+    //   invalid/missing on EITHER side: fails closed -- a document whose stored status
+    //     is absent or malformed cannot be edited into a valid one by this path, which
+    //     is the no-grandfathering rule (whole-document validity, not just the delta).
+    // `unchanged` is allowed for RETIRED too: descriptive corrections to a retired
+    // record are permitted, they simply may not revive it.
+    function equipmentTransitionAllowed(before, after) {
+      return equipmentStatusValid(before)
+        && equipmentStatusValid(after)
+        && (after == before
+            || (before == "ACTIVE" && after == "INACTIVE")
+            || (before == "INACTIVE" && after == "ACTIVE"));
     }
 
     // Spec §4: the Location must belong to the owning Account. Read the Location and
     // compare -- a missing Location makes exists() false and the write is denied, so a
     // dangling or cross-Account reference fails closed rather than being taken on
     // trust from the client.
+    //
+    // Read this as an INTEGRITY guard, NOT a tenant-security boundary. `locations`
+    // above allows admin/dispatcher create/update with no validation, so the same
+    // principal could forge a Location to satisfy this check. No privilege is gained
+    // -- admin/dispatcher are global and this ruleset has no per-account tenancy at all
+    // -- and E3 deliberately does not try to invent one: #140 is authoritative for that
+    // architecture.
     function equipmentLocationBelongsToAccount(data) {
       return data.locationId is string
         && data.accountId is string
@@ -1278,12 +1304,21 @@ service cloud.firestore {
       // editable list. E2's client guard enforces the same contract independently;
       // this is the authoritative one.
       // affectedKeys() covers REMOVALS as well as changes, so deleting a governed
-      // field (e.g. dropping `status` to escape the lifecycle guard) is denied by the
-      // same condition -- verified live, not assumed.
+      // field is denied by the same condition -- verified live, not assumed. Dropping
+      // `status` (now an editable key) is caught instead by equipmentTransitionAllowed,
+      // whose `after` would be null and fail equipmentStatusValid.
+      //
+      // The shape guards validate the WHOLE RESULTING DOCUMENT, not just the changed
+      // keys: a record holding a malformed value cannot be edited until that value is
+      // repaired (repairing it in the same write is the escape hatch). This is the
+      // deliberate no-grandfathering rule -- an ordinary update must leave the document
+      // compliant. E9/E10's trusted writers bypass Rules entirely, so they must
+      // validate their own output against this same contract before writing.
       allow update: if isAdminOrDispatcher()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(equipmentEditableKeys())
         && equipmentNameValid(request.resource.data.name)
         && equipmentOptionalFieldsValid(request.resource.data)
+        && equipmentTransitionAllowed(resource.data.get("status", null), request.resource.data.get("status", null))
         && request.resource.data.updatedAt is number;
 
       // Never, for anyone, including admin (Spec §11). Equipment is retired via the

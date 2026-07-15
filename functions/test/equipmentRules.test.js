@@ -407,7 +407,7 @@ async function main() {
   report("update: changing locationId DENIED (a Location change is the audited MOVE)",
     (await updateEquipment(SEEDED, adminToken,
       { locationId: str(LOCATION_A2), updatedAt: int(Date.now()) })) === 403);
-  report("update: changing status DENIED (lifecycle is the trusted action)",
+  report("update: ACTIVE -> RETIRED DENIED (retiring is the trusted, audited action)",
     (await updateEquipment(SEEDED, adminToken,
       { status: str("RETIRED"), updatedAt: int(Date.now()) })) === 403);
   report("update: changing createdAt DENIED (immutable)",
@@ -488,6 +488,82 @@ async function main() {
       same[k] = seeded[k] == null ? nul() : str(seeded[k]);
     }
     return (await createEquipment(SEEDED, adminToken, same)) === 403;
+  })());
+
+  // ---- UPDATE: the plain lifecycle pair (§3 / §6 / AC3) ---------------------
+  // Ordinary client editing may move status across ACTIVE<->INACTIVE and nowhere else.
+  // Each case seeds its own document so one transition cannot mask another.
+  const tx = async (label, from, to, expected, extra = {}) => {
+    const id = uniq("eq-tx");
+    await seedEquipmentDoc(id, { status: from });
+    const fields = { status: str(to), updatedAt: int(Date.now()), ...extra };
+    report(label, (await updateEquipment(id, adminToken, fields)) === expected);
+  };
+
+  await tx("update: ACTIVE -> INACTIVE ALLOWED (the plain pair, AC3)", "ACTIVE", "INACTIVE", 200);
+  await tx("update: INACTIVE -> ACTIVE ALLOWED (the plain pair, AC3)", "INACTIVE", "ACTIVE", 200);
+  await tx("update: ACTIVE -> ACTIVE ALLOWED (unchanged status)", "ACTIVE", "ACTIVE", 200);
+  await tx("update: INACTIVE -> INACTIVE ALLOWED (unchanged status)", "INACTIVE", "INACTIVE", 200);
+  await tx("update: RETIRED -> RETIRED ALLOWED (unchanged -- a retired record may be corrected)", "RETIRED", "RETIRED", 200);
+
+  await tx("update: INACTIVE -> RETIRED DENIED (retiring is trusted + audited)", "INACTIVE", "RETIRED", 403);
+  await tx("update: RETIRED -> ACTIVE DENIED (reactivation is trusted + audited, E10)", "RETIRED", "ACTIVE", 403);
+  await tx("update: RETIRED -> INACTIVE DENIED (no side door out of RETIRED)", "RETIRED", "INACTIVE", 403);
+
+  await tx("update: status -> unknown value DENIED", "ACTIVE", "BOGUS", 403);
+  await tx("update: status -> lowercase variant DENIED (Rules compare exact stored values)", "ACTIVE", "active", 403);
+  await tx("update: status -> empty string DENIED", "ACTIVE", "", 403);
+
+  // A document whose STORED status is malformed/absent cannot be edited into validity
+  // by this path -- the no-grandfathering rule (whole-document validity, not the delta).
+  report("update: a stored status that is malformed DENIES the edit (no grandfathering)", await (async () => {
+    const id = uniq("eq-tx-bad");
+    await seedEquipmentDoc(id, { status: "NOT_A_STATUS" });
+    return (await updateEquipment(id, adminToken, { name: str("Fix"), updatedAt: int(Date.now()) })) === 403;
+  })());
+  report("update: a stored status that is ABSENT DENIES the edit", await (async () => {
+    const id = uniq("eq-tx-missing");
+    await seedEquipmentDoc(id);
+    await db.doc(`equipment/${id}`).update({ status: admin.firestore.FieldValue.delete() });
+    return (await updateEquipment(id, adminToken, { name: str("Fix"), updatedAt: int(Date.now()) })) === 403;
+  })());
+  report("update: REMOVING status DENIES the edit (after-status becomes absent)", await (async () => {
+    const id = uniq("eq-tx-drop");
+    await seedEquipmentDoc(id, { status: "ACTIVE" });
+    return (await deleteFields(id, adminToken, ["status"])) === 403;
+  })());
+  report("update: status -> null DENIED", await (async () => {
+    const id = uniq("eq-tx-null");
+    await seedEquipmentDoc(id, { status: "ACTIVE" });
+    return (await updateEquipment(id, adminToken, { status: nul(), updatedAt: int(Date.now()) })) === 403;
+  })());
+
+  // A legal transition must not become a carrier for an illegal change.
+  await tx("update: ACTIVE -> INACTIVE smuggling an accountId change DENIED", "ACTIVE", "INACTIVE", 403,
+    { accountId: str(ACCOUNT_B) });
+  await tx("update: ACTIVE -> INACTIVE smuggling a locationId change DENIED", "ACTIVE", "INACTIVE", 403,
+    { locationId: str(LOCATION_A2) });
+  await tx("update: ACTIVE -> INACTIVE alongside a legitimate rename ALLOWED", "ACTIVE", "INACTIVE", 200,
+    { name: str("Renamed While Deactivating") });
+
+  // ---- UPDATE: a RETIRED record is correctable, not revivable ---------------
+  report("update: descriptive edit of a RETIRED record ALLOWED (Owner decision 2)", await (async () => {
+    const id = uniq("eq-retired-edit");
+    await seedEquipmentDoc(id, { status: "RETIRED" });
+    return (await updateEquipment(id, adminToken,
+      { name: str("Corrected Name"), notes: str("serial was mistyped"), updatedAt: int(Date.now()) })) === 200;
+  })());
+  report("update: a RETIRED record's accountId still DENIED", await (async () => {
+    const id = uniq("eq-retired-acct");
+    await seedEquipmentDoc(id, { status: "RETIRED" });
+    return (await updateEquipment(id, adminToken,
+      { accountId: str(ACCOUNT_B), updatedAt: int(Date.now()) })) === 403;
+  })());
+  report("update: a RETIRED record's locationId still DENIED", await (async () => {
+    const id = uniq("eq-retired-loc");
+    await seedEquipmentDoc(id, { status: "RETIRED" });
+    return (await updateEquipment(id, adminToken,
+      { locationId: str(LOCATION_A2), updatedAt: int(Date.now()) })) === 403;
   })());
 
   // ---- DELETE (§11) --------------------------------------------------------
