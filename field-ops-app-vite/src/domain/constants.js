@@ -49,6 +49,24 @@ export const ACCOUNTS_COLLECTION = "accounts";
 export const LOCATIONS_COLLECTION = "locations";
 export const CONTACTS_COLLECTION = "contacts";
 
+// Equipment & Installed Asset Management -- Issue #232, unit E1 (docs/
+// implementation-plans/equipment-and-installed-asset-management.md).
+// A flat, first-class collection per ADR-006: one Account owns many
+// Equipment; each Equipment is installed at exactly one Location of that
+// same Account. Distinct from Inventory Parts (data/partsCatalog.ts) --
+// Equipment is an installed, customer-serviceable asset; a Part is a
+// stocked catalog item. No financial fields (Equipment carries no
+// financial authority, Spec §1).
+export const EQUIPMENT_COLLECTION = "equipment";
+
+// Spec §3. ACTIVE (installed/serviceable) | INACTIVE (temporarily out of
+// service) | RETIRED (decommissioned -- history retained, never deleted).
+export const EQUIPMENT_STATUS = {
+  ACTIVE: "ACTIVE",
+  INACTIVE: "INACTIVE",
+  RETIRED: "RETIRED",
+};
+
 export const ACCOUNT_STATUS = {
   ACTIVE: "Active",
   INACTIVE: "Inactive",
