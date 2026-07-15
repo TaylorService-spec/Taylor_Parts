@@ -36,6 +36,7 @@ import {
   UnavailableAccessDataError,
   InvalidStateError,
   ClaimsSyncPendingError,
+  IdempotencyKeyConflictError,
 } from "../lib/access/trustedWriterCommands.js";
 
 const PROJECT_ID = "taylor-parts";
@@ -521,7 +522,7 @@ async function main() {
     assert.equal(userSnapAfterRetry.data().pendingClaimsSyncAccessVersion, null, "the pending marker must now be cleared");
     const assignmentsCount = await countDocs("roleAssignments", "principalUid", principal);
     assert.equal(assignmentsCount, 1, "the retry must not have created a second assignment");
-    const auditCount = await countDocs("auditEvents", "targetId", key);
+    const auditCount = await countDocs("auditEvents", "targetId", principal);
     assert.equal(auditCount, 1, "the retry must not have created a second Audit Event");
     const userRecord = await auth.getUser(principal);
     assert.equal(userRecord.customClaims.accessVersion, 1, "claims are now correctly synced");
@@ -547,6 +548,77 @@ async function main() {
     assert.equal(audit.outcome, "denied");
     const userRecord = await auth.getUser(principal);
     assert.equal(userRecord.disabled, false, "no Auth-layer side effect may occur for a denied command");
+  });
+
+  // =====================================================================
+  // Independent review round 1 fixes -- regression coverage
+  // =====================================================================
+
+  await check("idempotencyKey reused for a DIFFERENT command/target fails closed with IdempotencyKeyConflictError, not a silent alreadyApplied", async () => {
+    const actor = await makeAdminActor();
+    const principalA = await makePrincipal();
+    const principalB = await makePrincipal();
+    const key = `conflict-${uid("k")}`;
+    const first = await grantRole({ actorUid: actor, principalUid: principalA, roleId: "technician", scope: { type: "global" }, idempotencyKey: key });
+    assert.equal(first.status, "applied");
+
+    // Same key, DIFFERENT principal -- must fail closed, not silently
+    // report "alreadyApplied" against the wrong principal's grant.
+    await assertRejectsWith(
+      grantRole({ actorUid: actor, principalUid: principalB, roleId: "technician", scope: { type: "global" }, idempotencyKey: key }),
+      IdempotencyKeyConflictError,
+    );
+    const principalBSnap = await db.collection("users").doc(principalB).get();
+    assert.equal(principalBSnap.exists, false, "principalB must receive NO accessVersion bump from the conflicting call");
+
+    // Same key, DIFFERENT command entirely (setUserStatus vs grantRole).
+    await auth.createUser({ uid: principalA }).catch(() => {});
+    await assertRejectsWith(
+      setUserStatus({ actorUid: actor, principalUid: principalA, status: "disabled", idempotencyKey: key }),
+      IdempotencyKeyConflictError,
+    );
+    const userRecord = await auth.getUser(principalA);
+    assert.equal(userRecord.disabled, false, "the conflicting setUserStatus call must NOT have actually disabled the account");
+  });
+
+  await check("revokeRole: an assignment referencing an unrecognized roleId fails closed (UnknownRoleError), never silently treated as non-privileged", async () => {
+    const actor = await makeAdminActor();
+    const principal = uid("principal");
+    const assignmentId = uid("corrupt-assignment");
+    await db.collection("roleAssignments").doc(assignmentId).set({
+      principalUid: principal,
+      roleId: "not-a-real-role-in-the-catalog",
+      scope: { type: "global" },
+      grantedBy: "test-seed",
+      grantedAt: admin.firestore.Timestamp.now(),
+      status: "active",
+      accessVersionAtGrant: 0,
+    });
+    const key = `revoke-unknownrole-${uid("k")}`;
+    await assertRejectsWith(
+      revokeRole({ actorUid: actor, assignmentId, idempotencyKey: key }),
+      UnknownRoleError,
+    );
+    const assignmentSnap = await db.collection("roleAssignments").doc(assignmentId).get();
+    assert.equal(assignmentSnap.data().status, "active", "an unrecognized-role assignment must NOT be revocable by a single ordinary admin");
+  });
+
+  await check("sequential grants to the same principal each correctly clear their own pendingClaimsSyncAccessVersion (compare-and-clear does not regress the normal case)", async () => {
+    const actor = await makeAdminActor();
+    const principal = await makePrincipal();
+    const key1 = `seq-grant-1-${uid("k")}`;
+    const key2 = `seq-grant-2-${uid("k")}`;
+    const r1 = await grantRole({ actorUid: actor, principalUid: principal, roleId: "technician", scope: { type: "global" }, idempotencyKey: key1 });
+    assert.equal(r1.accessVersionAfter, 1);
+    const afterFirst = await db.collection("users").doc(principal).get();
+    assert.equal(afterFirst.data().pendingClaimsSyncAccessVersion, null);
+
+    const r2 = await assignApprovedRole({ actorUid: actor, principalUid: principal, roleId: "dispatcher", scope: { type: "global" }, idempotencyKey: key2 });
+    assert.equal(r2.accessVersionAfter, 2);
+    const afterSecond = await db.collection("users").doc(principal).get();
+    assert.equal(afterSecond.data().pendingClaimsSyncAccessVersion, null);
+    const userRecord = await auth.getUser(principal);
+    assert.equal(userRecord.customClaims.accessVersion, 2, "claims must reflect the LATEST accessVersion after two sequential grants");
   });
 
   console.log(`\n${passed} passed, ${failed} failed`);

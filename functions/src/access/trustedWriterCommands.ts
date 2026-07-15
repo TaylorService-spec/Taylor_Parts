@@ -65,6 +65,14 @@ export class InvalidStateError extends Error {}
 // the SAME idempotencyKey will skip the state mutation entirely and
 // resynchronize only the pending post-commit step.
 export class ClaimsSyncPendingError extends Error {}
+// Independent review round 1 finding: an idempotencyKey is the SOLE
+// identity the idempotency gate checks -- reusing the same key for a
+// semantically DIFFERENT command/target must never silently resolve as
+// "alreadyApplied" (which would report the wrong command's
+// accessVersionAfter and skip the second command's actual mutation
+// entirely). Thrown when an existing Audit Event at this idempotencyKey
+// has a different action/targetType/targetId than the current call.
+export class IdempotencyKeyConflictError extends Error {}
 
 const USERS_COLLECTION = "users";
 const ROLE_ASSIGNMENTS_COLLECTION = "roleAssignments";
@@ -200,6 +208,29 @@ export interface CommandOutcome {
   accessVersionAfter?: number;
 }
 
+// Independent review round 1: the idempotency gate must never let a
+// reused idempotencyKey silently resolve as "alreadyApplied" for a
+// DIFFERENT logical command -- that would both report the wrong
+// command's accessVersionAfter and skip the current command's actual
+// mutation. Compares the action/targetType/targetId an EXISTING Audit
+// Event at this id was written for against what the CURRENT call
+// expects; any mismatch fails closed (a conflict, not a silent no-op).
+function assertSameCommandFingerprint(
+  idempotencyKey: string,
+  existing: Record<string, unknown>,
+  expected: { action: string; targetType: string; targetId: string },
+): void {
+  if (
+    existing.action !== expected.action ||
+    existing.targetType !== expected.targetType ||
+    existing.targetId !== expected.targetId
+  ) {
+    throw new IdempotencyKeyConflictError(
+      `idempotencyKey "${idempotencyKey}" was already used for a different command (existing: action="${existing.action}", targetType="${existing.targetType}", targetId="${existing.targetId}"; this call: action="${expected.action}", targetType="${expected.targetType}", targetId="${expected.targetId}") -- reuse a fresh idempotencyKey per logical operation`,
+    );
+  }
+}
+
 // Exactly one immutable Audit Event per applied OR DENIED command
 // attempt (Task 12). Idempotent on the same idempotencyKey as the
 // applied path -- if this exact call already produced an Audit Event
@@ -267,6 +298,7 @@ async function runAccessMutationCommand(
     const auditSnap = await txn.get(auditRef);
     if (auditSnap.exists) {
       const existing = auditSnap.data() as Record<string, unknown>;
+      assertSameCommandFingerprint(idempotencyKey, existing, plan.auditInput);
       return {
         status: "alreadyApplied",
         auditEventId: idempotencyKey,
@@ -329,7 +361,29 @@ async function syncPendingClaims(
       `Firestore state already committed (accessVersion=${pending}) but the post-commit sync failed for ${uid} -- a retry with the same idempotencyKey will resynchronize without repeating the state mutation: ${(err as Error).message}`,
     );
   }
-  await userRef.set({ pendingClaimsSyncAccessVersion: null }, { merge: true });
+
+  // Compare-and-clear (independent review round 1 finding): only clear
+  // the pending marker if it STILL equals the exact value just synced.
+  // Under concurrent grants on the SAME principal, a second call may
+  // have already bumped pendingClaimsSyncAccessVersion further by the
+  // time this (slower) call finishes its own Auth round-trip --
+  // clearing unconditionally here would silently drop that newer sync
+  // obligation, leaving claims possibly stale with no pending marker
+  // left to ever retry it. Leaving the marker set when it no longer
+  // matches lets the newer call's own sync (already in flight, or a
+  // future retry) finish the job and correctly clear it once its own
+  // value matches -- the invariant that matters (the marker is never
+  // falsely cleared) is what this guarantees, converging to the
+  // correct final claims value even though a momentary stale-claims
+  // window between two racing Auth API calls isn't itself eliminable
+  // without a distributed lock, out of this row's scope.
+  await db.runTransaction(async (txn) => {
+    const freshSnap = await txn.get(userRef);
+    const freshPending = (freshSnap.data() || {}).pendingClaimsSyncAccessVersion;
+    if (freshPending === pending) {
+      txn.set(userRef, { pendingClaimsSyncAccessVersion: null }, { merge: true });
+    }
+  });
 }
 
 // Refreshes ONLY the accessVersion claim, preserving whatever
@@ -376,8 +430,13 @@ export async function grantRole(input: GrantRoleInput): Promise<CommandOutcome> 
   assertValidScope(input.scope);
 
   await withDeniedAuditOnError(
+    // targetId is the PRINCIPAL, not the idempotencyKey/assignment id
+    // (independent review round 1: reusing this idempotencyKey for a
+    // DIFFERENT principal must be distinguishable by the fingerprint
+    // check below -- an idempotencyKey-shaped targetId would be
+    // identical across both calls and could never catch that).
     input.idempotencyKey,
-    { actorUid: input.actorUid, action: "grantRole", targetType: "roleAssignment", targetId: input.idempotencyKey },
+    { actorUid: input.actorUid, action: "grantRole", targetType: "roleAssignment", targetId: input.principalUid },
     async () => {
       const role = COMPATIBILITY_ROLES[input.roleId];
       if (!role) throw new UnknownRoleError(`unknown roleId: "${input.roleId}"`);
@@ -413,7 +472,7 @@ export async function grantRole(input: GrantRoleInput): Promise<CommandOutcome> 
       actorUid: input.actorUid,
       action: "grantRole",
       targetType: "roleAssignment",
-      targetId: input.idempotencyKey,
+      targetId: input.principalUid,
       outcome: "applied",
       summary: `Granted role "${input.roleId}" to principal ${input.principalUid}`,
       scope: input.scope,
@@ -478,8 +537,19 @@ export async function revokeRole(input: RevokeRoleInput): Promise<CommandOutcome
       const roleIdValue = assignmentData.roleId;
       const assignmentScope = assignmentData.scope;
       const role = COMPATIBILITY_ROLES[roleIdValue];
+      // Independent review round 1: an unrecognized roleId must fail
+      // closed, never be silently treated as "not privileged" (which
+      // would skip the second-approver requirement for a Role this
+      // catalog doesn't even know about -- exactly the fail-open
+      // pattern Spec sec13 prohibits). This mirrors grantRole/
+      // assignApprovedRole's own `if (!role) throw UnknownRoleError`.
+      if (!role) {
+        throw new UnknownRoleError(
+          `roleAssignments/${input.assignmentId} references unknown roleId "${roleIdValue}"`,
+        );
+      }
 
-      if (role?.privileged) {
+      if (role.privileged) {
         if (input.actorUid === principalUidValue) {
           throw new SelfApprovalError("an actor may not revoke their own privileged Role");
         }
@@ -542,8 +612,10 @@ export async function assignApprovedRole(
   assertValidScope(input.scope);
 
   await withDeniedAuditOnError(
+    // targetId is the PRINCIPAL, not the idempotencyKey/assignment id --
+    // see grantRole's identical comment (independent review round 1).
     input.idempotencyKey,
-    { actorUid: input.actorUid, action: "assignApprovedRole", targetType: "roleAssignment", targetId: input.idempotencyKey },
+    { actorUid: input.actorUid, action: "assignApprovedRole", targetType: "roleAssignment", targetId: input.principalUid },
     async () => {
       const role = COMPATIBILITY_ROLES[input.roleId];
       if (!role) throw new UnknownRoleError(`unknown roleId: "${input.roleId}"`);
@@ -569,7 +641,7 @@ export async function assignApprovedRole(
       actorUid: input.actorUid,
       action: "assignApprovedRole",
       targetType: "roleAssignment",
-      targetId: input.idempotencyKey,
+      targetId: input.principalUid,
       outcome: "applied",
       summary: `Assigned pre-approved role "${input.roleId}" to principal ${input.principalUid}`,
       scope: input.scope,
@@ -694,6 +766,12 @@ async function decideAccessRequest(input: DecideAccessRequestInput): Promise<Com
   return db.runTransaction(async (txn): Promise<CommandOutcome> => {
     const auditSnap = await txn.get(auditRef);
     if (auditSnap.exists) {
+      const existing = auditSnap.data() as Record<string, unknown>;
+      assertSameCommandFingerprint(input.idempotencyKey, existing, {
+        action,
+        targetType: "accessRequest",
+        targetId: input.requestId,
+      });
       return { status: "alreadyApplied", auditEventId: input.idempotencyKey };
     }
 
