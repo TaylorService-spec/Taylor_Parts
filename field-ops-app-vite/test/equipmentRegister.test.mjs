@@ -48,13 +48,18 @@ ok("every register status entry is either null or a real EQUIPMENT_STATUS", () =
 });
 
 ok("feeding each register filter to searchEquipment gives the intended set -- All means ALL", () => {
-  // The end-to-end contract, through the component's real values: whatever the table
-  // says for "all" must return every record. This is what fails if the table regresses
-  // to "" -- the register would render an EMPTY list for its default selection.
-  assert.equal(searchEquipment(FIXTURE, { status: statusFilterValue("all") }).length, 3);
-  assert.equal(searchEquipment(FIXTURE, { status: statusFilterValue("active") }).length, 1);
-  assert.equal(searchEquipment(FIXTURE, { status: statusFilterValue("inactive") }).length, 1);
-  assert.equal(searchEquipment(FIXTURE, { status: statusFilterValue("retired") }).length, 1);
+  // The end-to-end contract, through the component's real values.
+  //
+  // Assert IDENTITIES, not counts. The fixture holds exactly one record per status, so
+  // a `.length === 1` check cannot tell ACTIVE from INACTIVE -- review proved it by
+  // swapping the `active` entry to EQUIPMENT_STATUS.INACTIVE (clicking "Active" would
+  // list INACTIVE equipment) and watching the whole suite stay green. Counts are the
+  // weakest thing a filter test can assert.
+  assert.deepEqual(searchEquipment(FIXTURE, { status: statusFilterValue("all") }).map((e) => e.id), ["c", "a", "b"],
+    "All must return every record -- this is what breaks if the table regresses to \"\"");
+  assert.deepEqual(searchEquipment(FIXTURE, { status: statusFilterValue("active") }).map((e) => e.id), ["b"]);
+  assert.deepEqual(searchEquipment(FIXTURE, { status: statusFilterValue("inactive") }).map((e) => e.id), ["a"]);
+  assert.deepEqual(searchEquipment(FIXTURE, { status: statusFilterValue("retired") }).map((e) => e.id), ["c"]);
   // ...and the precondition that makes the null spelling necessary in the first place.
   assert.equal(searchEquipment(FIXTURE, { status: "" }).length, 0,
     "\"\" really does return nothing -- which is exactly why All must be null");

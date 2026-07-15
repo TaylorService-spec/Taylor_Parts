@@ -143,12 +143,22 @@ body { -webkit-font-smoothing: antialiased; font-family: -apple-system, BlinkMac
 .fo-badge-available { background: #E6F6EC; color: #237A45; }
 .fo-badge-off_shift { background: #EEF1F0; color: #667; }
 .fo-badge-low-stock { background: #FDECEC; color: #B23B3B; }
-/* Equipment lifecycle (Issue #232). RETIRED is deliberately the neutral/grey
-   treatment rather than a red one -- retiring is a normal end-of-life state, not an
-   error or an alert. INACTIVE reuses the existing amber "paused" language. */
-.fo-badge-active { background: #E6F6EC; color: #237A45; }
-.fo-badge-inactive { background: #FFF4DE; color: #A9740D; }
-.fo-badge-retired { background: #EEF1F0; color: #667; }
+/* Equipment lifecycle (Issue #232 unit E5). NAMESPACED to equipment on purpose.
+   `.fo-badge-active` / `.fo-badge-inactive` already exist below for Account status, and
+   both Accounts and this register build their class as fo-badge-${status.toLowerCase()}
+   -- so an un-namespaced equipment badge collides with Account's BY CONSTRUCTION. An
+   earlier revision did exactly that: it redefined both, lost to the later Account rule
+   on source order (equal specificity), silently rendered INACTIVE grey instead of the
+   amber its own comment claimed, and made INACTIVE and RETIRED byte-identical -- two of
+   the three states this column exists to distinguish. Worse, had the block landed after
+   the Account rules instead of before, every Account "Inactive" badge in the app would
+   have flipped to amber. Sharing a global status class means inheriting whatever the
+   other feature says about it, whichever way the cascade happens to fall.
+   RETIRED is neutral/grey rather than red: retiring is a normal end-of-life state, not
+   an error. INACTIVE is amber ("paused"), distinct from both. */
+.fo-badge-equipment-active { background: #E6F6EC; color: #237A45; }
+.fo-badge-equipment-inactive { background: #FFF4DE; color: #A9740D; }
+.fo-badge-equipment-retired { background: #EEF1F0; color: #667; }
 
 /* Operations dashboard -- severity/urgency levels shared by the
    Inventory Health, Warehouse reconciliation, and Procurement panels

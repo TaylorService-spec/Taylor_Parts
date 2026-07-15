@@ -195,7 +195,10 @@ export default function EquipmentRegister() {
                     </td>
                     <td>{locationName(locations, e.locationId)}</td>
                     <td>
-                      <span className={`fo-badge fo-badge-${String(e.status ?? "").toLowerCase()}`}>
+                      {/* Namespaced to equipment: `fo-badge-${status}` would collide
+                          with Account's status badges, which are built the same way.
+                          See index.css's equipment lifecycle block. */}
+                      <span className={`fo-badge fo-badge-equipment-${String(e.status ?? "").toLowerCase()}`}>
                         {statusLabel(e.status)}
                       </span>
                     </td>
