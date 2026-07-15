@@ -12,7 +12,7 @@ import {
   equipmentDisplayName, equipmentSummary, equipmentSaveErrorMessage,
   equipmentMatchesSearch, compareEquipment, searchEquipment,
   equipmentServiceHistory, groupServiceHistoryByYear,
-  GOVERNED_EQUIPMENT_FIELDS, EDITABLE_EQUIPMENT_FIELDS,
+  GOVERNED_EQUIPMENT_FIELDS,
   buildEquipmentCreatePayload, buildEquipmentEditPayload,
   trustedActionUnavailable, TRUSTED_ACTION_UNAVAILABLE_REASON,
 } from "../src/domain/equipment.js";
@@ -216,7 +216,7 @@ ok("history survives retirement (status is never a filter) and groups by year, n
 });
 
 // ---- E2: create payload ---------------------------------------------------
-ok("create payload carries the normalized record + both timestamps from injected now", () => {
+ok("create payload carries the normalized record + updatedAt; createdAt is the store's to stamp", () => {
   const { valid, payload } = buildEquipmentCreatePayload(
     { accountId: " a1 ", locationId: "l1", name: " Rooftop Unit ", model: "", notes: "  " },
     1234
@@ -227,8 +227,24 @@ ok("create payload carries the normalized record + both timestamps from injected
   assert.equal(payload.status, EQUIPMENT_STATUS.ACTIVE, "status defaults ACTIVE on create");
   assert.equal(payload.model, null, "blank optional normalizes to null, not empty string");
   assert.equal(payload.notes, null);
-  assert.equal(payload.createdAt, 1234);
   assert.equal(payload.updatedAt, 1234);
+  assert.equal(
+    Object.hasOwn(payload, "createdAt"), false,
+    "makeCollectionStore.add() stamps createdAt; setting it here too would return one value and persist another"
+  );
+});
+
+ok("create cannot be used as a side door into a non-ACTIVE lifecycle state", () => {
+  const base = { accountId: "a1", locationId: "l1", name: "Unit" };
+  for (const status of ["RETIRED", "INACTIVE", "retired"]) {
+    const { valid, errors, payload } = buildEquipmentCreatePayload({ ...base, status }, 1);
+    assert.equal(valid, false, `create must refuse status ${status} -- retiring is the audited trusted action`);
+    assert.equal(payload, null);
+    assert.ok(errors.status);
+  }
+  const active = buildEquipmentCreatePayload({ ...base, status: "active" }, 1);
+  assert.equal(active.valid, true, "an explicit ACTIVE (any casing) is fine");
+  assert.equal(active.payload.status, EQUIPMENT_STATUS.ACTIVE);
 });
 
 ok("create payload fails closed on missing required fields and yields no payload", () => {
@@ -239,26 +255,39 @@ ok("create payload fails closed on missing required fields and yields no payload
 });
 
 // ---- E2: ordinary-edit payload (governed-field immutability) --------------
-ok("edit payload contains only editable fields -- never a governed one", () => {
-  const { valid, payload } = buildEquipmentEditPayload(
-    { name: "Renamed", model: "M2", accountId: "a1", locationId: "l1", status: "RETIRED" },
-    { name: "Old", accountId: "a1", locationId: "l1", status: "ACTIVE" },
+ok("edit payload can never carry a governed field, whatever the caller passes", () => {
+  const { payload } = buildEquipmentEditPayload(
+    { name: "Renamed", model: "M2", accountId: "a1", locationId: "l1", status: "ACTIVE", createdAt: 5 },
+    { name: "Old", accountId: "a1", locationId: "l1", status: "ACTIVE", createdAt: 5 },
     99
   );
-  assert.equal(valid, true);
   for (const f of GOVERNED_EQUIPMENT_FIELDS) {
     assert.equal(Object.hasOwn(payload, f), false, `edit payload must not contain governed field ${f}`);
   }
   assert.equal(payload.name, "Renamed");
   assert.equal(payload.updatedAt, 99);
-  assert.deepEqual(
-    Object.keys(payload).sort(),
-    [...EDITABLE_EQUIPMENT_FIELDS, "updatedAt"].sort(),
-    "edit payload surface is exactly the editable fields + updatedAt"
-  );
 });
 
-ok("edit reports an attempted governed change instead of silently dropping it", () => {
+ok("a partial edit touches only what it was given -- untouched fields are not nulled out", () => {
+  const before = {
+    name: "Unit", manufacturer: "Carrier", model: "48TC", serialNumber: "SN-9",
+    assetTag: "TAG-1", notes: "quarterly PM", accountId: "a1", locationId: "l1", status: "ACTIVE",
+  };
+  const { valid, payload } = buildEquipmentEditPayload({ name: "Renamed only" }, before, 7);
+  assert.equal(valid, true);
+  assert.deepEqual(
+    Object.keys(payload).sort(), ["name", "updatedAt"],
+    "an absent key means UNCHANGED -- writing null would silently erase stored data"
+  );
+  for (const f of ["manufacturer", "model", "serialNumber", "assetTag", "notes"]) {
+    assert.equal(Object.hasOwn(payload, f), false, `${f} was not edited and must not be written`);
+  }
+  // ...and a field the caller DID clear on purpose still clears.
+  const cleared = buildEquipmentEditPayload({ notes: "" }, before, 7);
+  assert.equal(cleared.payload.notes, null, "an explicitly emptied field is a real edit to null");
+});
+
+ok("edit refuses an attempted governed change instead of silently dropping it", () => {
   const before = { name: "Unit", accountId: "a1", locationId: "l1", status: "ACTIVE" };
   const moved = buildEquipmentEditPayload({ ...before, locationId: "l2" }, before, 1);
   assert.deepEqual(moved.changedGoverned, ["locationId"], "a Location change is the audited move, not an edit");
@@ -268,20 +297,42 @@ ok("edit reports an attempted governed change instead of silently dropping it", 
 
   const reowned = buildEquipmentEditPayload({ ...before, accountId: "a2", locationId: "l9" }, before, 1);
   assert.deepEqual(reowned.changedGoverned, ["accountId", "locationId"]);
+
+  const restamped = buildEquipmentEditPayload({ ...before, createdAt: 999 }, { ...before, createdAt: 1 }, 1);
+  assert.deepEqual(restamped.changedGoverned, ["createdAt"]);
 });
 
-ok("an unchanged governed field passed through by a whole-object edit is not flagged", () => {
+ok("an unchanged governed field is not flagged, even re-cased or padded by a round-trip", () => {
   const before = { name: "Unit", accountId: "a1", locationId: "l1", status: "ACTIVE" };
-  const { changedGoverned, valid } = buildEquipmentEditPayload({ ...before, name: "Unit 2" }, before, 1);
-  assert.deepEqual(changedGoverned, [], "spreading the record is normal; only real changes are refused");
-  assert.equal(valid, true);
+  const spread = buildEquipmentEditPayload({ ...before, name: "Unit 2" }, before, 1);
+  assert.deepEqual(spread.changedGoverned, [], "spreading the record is normal; only real changes are refused");
+  assert.equal(spread.valid, true);
+
+  // The comparison must be against the value as it would be STORED, not the raw input:
+  // a form that lowercases status or pads an id is not requesting a governed change.
+  const roundTripped = buildEquipmentEditPayload(
+    { ...before, status: "active", accountId: " a1 ", locationId: "l1 ", name: "Unit 2" }, before, 1
+  );
+  assert.deepEqual(roundTripped.changedGoverned, [], "normalized-equal governed values are not a change");
 });
 
-ok("edit still enforces the required name", () => {
-  const { valid, errors, payload } = buildEquipmentEditPayload({ name: "   " }, { name: "Unit" }, 1);
-  assert.equal(valid, false);
-  assert.equal(payload, null);
-  assert.ok(errors.name);
+ok("edit fails closed when `before` cannot prove a governed field is unchanged", () => {
+  // No `before` -> we cannot know the stored Location, so a caller spreading a whole
+  // record must NOT be told the edit succeeded while the move was quietly dropped.
+  const { changedGoverned } = buildEquipmentEditPayload(
+    { name: "Unit", accountId: "a1", locationId: "l2" }, {}, 1
+  );
+  assert.deepEqual(changedGoverned, ["accountId", "locationId"], "unprovable == changed, not == fine");
+});
+
+ok("edit enforces the required name when the caller edits it, and ignores it when absent", () => {
+  const blank = buildEquipmentEditPayload({ name: "   " }, { name: "Unit" }, 1);
+  assert.equal(blank.valid, false);
+  assert.equal(blank.payload, null);
+  assert.ok(blank.errors.name);
+
+  const untouched = buildEquipmentEditPayload({ notes: "x" }, { name: "Unit" }, 1);
+  assert.equal(untouched.valid, true, "not editing the name is not a missing name");
 });
 
 // ---- E2: trusted-writer seam ----------------------------------------------

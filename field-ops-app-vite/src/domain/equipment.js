@@ -183,30 +183,75 @@ export const EDITABLE_EQUIPMENT_FIELDS = Object.freeze([
   "installedDate", "warrantyExpiresDate", "notes",
 ]);
 
-// Create payload: the full validated record + timestamps. `now` is injected so this
-// stays pure/testable (no Date.now() inside).
+// Create payload: the full validated record + updatedAt.
+//
+// `createdAt` is deliberately NOT set here -- makeCollectionStore.add() stamps it on
+// write (the app-wide convention). Setting it here too would return one value to the
+// caller while persisting another.
+//
+// Status is pinned ACTIVE (Spec §2). Reaching RETIRED/INACTIVE is a lifecycle
+// transition that belongs to the trusted, audited seam, so create must not be usable
+// as a side door into a non-ACTIVE state. A caller that explicitly asks for one is
+// refused rather than silently overridden.
 export function buildEquipmentCreatePayload(values = {}, now = 0) {
   const { valid, errors, value } = validateEquipmentInput(values);
+
+  const requested = values.status === undefined ? null : normalizeEquipmentStatus(values.status);
+  if (requested !== null && requested !== EQUIPMENT_STATUS.ACTIVE) {
+    errors.status = "New equipment is always created active.";
+  }
+  if (Object.keys(errors).length > 0) return { valid: false, errors, payload: null };
   if (!valid) return { valid: false, errors, payload: null };
-  return { valid: true, errors: {}, payload: { ...value, createdAt: now, updatedAt: now } };
+
+  return {
+    valid: true,
+    errors: {},
+    payload: { ...value, status: EQUIPMENT_STATUS.ACTIVE, updatedAt: now },
+  };
 }
 
-// Ordinary-edit payload: ONLY the editable fields survive. Any governed field the
-// caller passes is DROPPED here (not merely ignored downstream) so an ordinary edit
-// can never silently re-own, move, or re-status a record even if a future caller
-// spreads a whole object in. `changedGoverned` reports what was dropped so the caller
-// can fail loudly rather than quietly diverge.
+// The governed value as it would actually be stored, so the change check compares
+// like with like. Without this, a caller round-tripping a record with "active" or a
+// padded id reads as a governed CHANGE and gets its whole edit refused.
+function governedValue(field, raw) {
+  if (raw === undefined) return undefined;
+  if (field === "status") return normalizeEquipmentStatus(raw);
+  if (field === "createdAt") return raw;
+  return trimmedOrNull(raw);
+}
+
+// Ordinary-edit payload.
+//
+// Two independent protections, because they fail differently:
+//
+//  1. BY CONSTRUCTION -- only editable fields the caller actually supplied reach the
+//     payload. A governed field can never be written here even if a caller spreads a
+//     whole record in, and fields the caller did not touch are left alone rather than
+//     overwritten with null.
+//  2. LOUDLY -- if the caller genuinely ASKED to change a governed field, refuse the
+//     whole edit via `changedGoverned` instead of dropping it and reporting success.
+//
+// `before` is what proves a governed field is unchanged. If it cannot prove that, the
+// field is reported as changed and the caller fails closed -- silence here is what
+// would turn a dropped move into a false success.
 export function buildEquipmentEditPayload(values = {}, before = {}, now = 0) {
   const normalized = normalizeEquipmentInput(values);
   const errors = {};
-  if (!normalized.name) errors.name = "Enter an equipment name.";
+  // Only validate what the caller is actually editing; an absent key means unchanged.
+  if (values.name !== undefined && !normalized.name) errors.name = "Enter an equipment name.";
 
-  const changedGoverned = GOVERNED_EQUIPMENT_FIELDS.filter(
-    (f) => values[f] !== undefined && before[f] !== undefined && values[f] !== before[f]
-  );
+  const changedGoverned = GOVERNED_EQUIPMENT_FIELDS.filter((f) => {
+    const asked = governedValue(f, values[f]);
+    if (asked === undefined) return false;
+    const current = governedValue(f, before[f]);
+    if (current === undefined) return true;
+    return asked !== current;
+  });
 
   const payload = { updatedAt: now };
-  for (const f of EDITABLE_EQUIPMENT_FIELDS) payload[f] = normalized[f];
+  for (const f of EDITABLE_EQUIPMENT_FIELDS) {
+    if (values[f] !== undefined) payload[f] = normalized[f];
+  }
 
   return {
     valid: Object.keys(errors).length === 0,
