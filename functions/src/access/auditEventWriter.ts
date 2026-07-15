@@ -194,6 +194,40 @@ export function stageAuditEvent(writer: AuditEventWriter, input: RecordAuditEven
   return docRef.id;
 }
 
+// Row 7 (Task 12) addition: an ID-AWARE variant for callers that need a
+// DETERMINISTIC Audit Event document id -- specifically, the trusted-
+// writer commands' own idempotency mechanism (functions/src/access/
+// trustedWriterCommands.ts), which uses this doc's existence as the
+// single source of truth for "was this exact call already applied."
+// Still create-only: the caller is REQUIRED to have already checked
+// (via `auditEventDocRef(id)` + a transactional `.get()`) that no
+// document exists at this id before ever calling this -- this function
+// itself does not re-check, so it must never be called standalone
+// outside that established check-then-write pattern (unlike
+// stageAuditEvent, whose auto-id makes a collision structurally
+// impossible without any caller-side discipline required).
+export function stageAuditEventWithId(
+  writer: AuditEventWriter,
+  id: string,
+  input: RecordAuditEventInput,
+): string {
+  if (!id || typeof id !== "string") {
+    throw new AuditEventValidationError("id must be a non-empty string");
+  }
+  assertValid(input);
+  const docRef = auditEventDocRef(id);
+  writer.set(docRef, buildAuditEventDoc(input));
+  return id;
+}
+
+// Exposes the exact DocumentReference a given Audit Event id resolves
+// to, so a caller can `.get()` it (inside their own transaction, for
+// the idempotency check) before deciding whether to call
+// stageAuditEventWithId.
+export function auditEventDocRef(id: string): DocumentReference {
+  return getFirestore().collection(AUDIT_EVENTS_COLLECTION).doc(id);
+}
+
 // Convenience wrapper for the audit-only case (no accompanying business
 // mutation -- e.g. a denied-access record). Still create-only, still
 // goes through the identical validation + document-shape path as
