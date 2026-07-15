@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { getCatalogItem } from "../../data/partsCatalog";
 import { useAuth } from "../../auth/AuthContext";
 import { useInventoryLedger } from "../../hooks/useInventoryLedger";
@@ -121,6 +121,12 @@ export default function PartsManagerHome() {
   // independent copy of this same query for the picker itself.
   const { employees: assignableEmployees } = useAssignableEmployees({ requiredOperationalRole: OPERATIONAL_ROLE.PARTS_ASSOCIATE });
   const [assigningRequestId, setAssigningRequestId] = useState(null);
+  // Focus restoration: the triggering "Assign" button that opened the
+  // inline Assign panel, so closing it (button or after a successful
+  // assign) returns focus there instead of dropping it to <body> -- same
+  // convention WarehouseManagerHome.jsx's Part Activity panel already
+  // establishes.
+  const lastTriggerRef = useRef(null);
 
   const employeesByUserId = useMemo(() => {
     const map = new Map();
@@ -131,6 +137,11 @@ export default function PartsManagerHome() {
   }, [assignableEmployees]);
 
   const assigningRequest = queue.find((r) => r.id === assigningRequestId) ?? null;
+
+  function handleCloseAssignPanel() {
+    setAssigningRequestId(null);
+    lastTriggerRef.current?.focus();
+  }
 
   return (
     <div className="fo-panel">
@@ -181,7 +192,14 @@ export default function PartsManagerHome() {
                 </td>
                 <td className="fo-muted">{request.reviewedAt ? new Date(request.reviewedAt).toLocaleString() : "—"}</td>
                 <td>
-                  <button type="button" onClick={() => setAssigningRequestId(request.id)}>
+                  <button
+                    type="button"
+                    aria-label={`Assign ${getCatalogItem(request.partId)?.name ?? request.partId}`}
+                    onClick={(e) => {
+                      lastTriggerRef.current = e.currentTarget;
+                      setAssigningRequestId(request.id);
+                    }}
+                  >
                     Assign
                   </button>
                 </td>
@@ -194,8 +212,8 @@ export default function PartsManagerHome() {
       {assigningRequest && (
         <AssignPanel
           request={assigningRequest}
-          onAssigned={() => setAssigningRequestId(null)}
-          onClose={() => setAssigningRequestId(null)}
+          onAssigned={handleCloseAssignPanel}
+          onClose={handleCloseAssignPanel}
         />
       )}
 

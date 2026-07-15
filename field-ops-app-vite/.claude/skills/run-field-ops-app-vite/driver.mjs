@@ -4962,7 +4962,18 @@ async function verifyInventoryRolePartsManager(browser, page, accountKey) {
       .then(() => true)
       .catch(() => false);
     niReport("Assign: succeeds (panel closes)", assignPanelClosed);
-    const afterAssign = (await fixtureRef.get()).data();
+    // Poll rather than a single immediate read -- the panel closing
+    // reflects the CLIENT SDK's own local write resolving, which can
+    // (confirmed live) resolve slightly before this separate Admin SDK
+    // read observes the same committed document under emulator
+    // conditions. Same polling-not-fixed-sleep rationale
+    // verifyWorkflowConfirmations' waitForWoStatus() already documents.
+    let afterAssign = null;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      afterAssign = (await fixtureRef.get()).data();
+      if (afterAssign?.status === "ASSIGNED_TO_PARTS_ASSOCIATE") break;
+      await new Promise((r) => setTimeout(r, 300));
+    }
     niReport("Assign: status transitions to ASSIGNED_TO_PARTS_ASSOCIATE", afterAssign?.status === "ASSIGNED_TO_PARTS_ASSOCIATE");
     niReport("Assign: assignedToUserId is the selected candidate", afterAssign?.assignedToUserId === assignTargetUserId);
     niReport("Assign: assignedBy is this Parts Manager's own uid", afterAssign?.assignedBy === partsManagerUid);
