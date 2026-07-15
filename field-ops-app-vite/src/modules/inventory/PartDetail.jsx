@@ -23,6 +23,9 @@ import { recordPurchaseOrder, voidPurchaseOrder } from "../../domain/reorderPurc
 import { REORDER_REQUEST_STATUS, INVENTORY_ACTION_TYPE, OPERATIONAL_ROLE } from "../../domain/constants";
 import { useAuth } from "../../auth/AuthContext";
 import LoadingEmptyState from "../../shared/ui/LoadingEmptyState";
+import ConfirmDialog from "../../shared/ui/ConfirmDialog";
+import { FormError } from "../../shared/ui/form";
+import { workflowActionErrorMessage } from "../../domain/workflowActionError";
 import RequestReorderControl from "../../shared/inventory/RequestReorderControl";
 import EmployeeAssignmentPicker from "../../shared/assignment/EmployeeAssignmentPicker";
 
@@ -128,90 +131,6 @@ function formatTimestamp(ms) {
 const CANCEL_VOID_CONFIRMATION_COPY =
   "This action does not delete history. The record will remain visible for audit purposes.";
 
-// Shared required-reason-then-explicit-confirmation shape for both
-// Cancel and Void -- not a new card, rendered inline at the bottom of
-// whichever active card is currently shown (per the Specification).
-// Three steps: idle (just the trigger button) -> reason entry (a
-// genuinely non-blank reason required to continue, same client-side
-// check firestore.rules independently re-enforces server-side) ->
-// confirmation (the exact mandated copy, requiring an explicit second
-// click). onSubmit receives the trimmed reason; onDone runs after a
-// successful write (the parent's existing refresh callback).
-function ReasonConfirmAction({ idPrefix, actionLabel, onSubmit, onDone }) {
-  const [step, setStep] = useState("idle"); // "idle" | "reason" | "confirm"
-  const [reason, setReason] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState(null);
-  const trimmedReason = reason.trim();
-
-  function handleContinue(e) {
-    e.preventDefault();
-    if (!trimmedReason) return;
-    setStep("confirm");
-  }
-
-  async function handleConfirm() {
-    setSubmitting(true);
-    setError(null);
-    try {
-      await onSubmit(trimmedReason);
-      onDone();
-    } catch (err) {
-      setError(err.message);
-      setSubmitting(false);
-    }
-  }
-
-  if (step === "idle") {
-    return (
-      <div className="disp-board-toolbar">
-        <button type="button" onClick={() => setStep("reason")}>
-          {actionLabel}
-        </button>
-      </div>
-    );
-  }
-
-  if (step === "confirm") {
-    return (
-      <div className="fo-form">
-        <p>{CANCEL_VOID_CONFIRMATION_COPY}</p>
-        {error && <p className="fo-muted">{error}</p>}
-        <div className="disp-board-toolbar">
-          <button type="button" onClick={handleConfirm} disabled={submitting}>
-            Confirm {actionLabel}
-          </button>
-          <button type="button" onClick={() => setStep("reason")} disabled={submitting}>
-            Back
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <form className="fo-form" onSubmit={handleContinue}>
-      <label htmlFor={`${idPrefix}-reason`}>Reason</label>
-      <textarea id={`${idPrefix}-reason`} value={reason} onChange={(e) => setReason(e.target.value)} />
-      {error && <p className="fo-muted">{error}</p>}
-      <div className="disp-board-toolbar">
-        <button type="submit" disabled={!trimmedReason}>
-          Continue
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            setStep("idle");
-            setReason("");
-          }}
-        >
-          Dismiss
-        </button>
-      </div>
-    </form>
-  );
-}
-
 // Cancel is available from all three pre-order active statuses, for
 // any isAdminOrDispatcher() reader -- unrestricted to a specific
 // individual (matches every other hand-off-type action on this
@@ -221,13 +140,29 @@ function ReasonConfirmAction({ idPrefix, actionLabel, onSubmit, onDone }) {
 // Gotchas) -- firestore.rules is the actual enforcement, same posture
 // as every other write on this object.
 function CancelReorderRequestAction({ request, onCancelled }) {
+  const [open, setOpen] = useState(false);
   return (
-    <ReasonConfirmAction
-      idPrefix={`cancel-${request.id}`}
-      actionLabel="Cancel Reorder Request"
-      onSubmit={(reason) => cancelReorderRequest(request.id, { reason })}
-      onDone={onCancelled}
-    />
+    <div className="disp-board-toolbar">
+      <button type="button" onClick={() => setOpen(true)}>Cancel Reorder Request</button>
+      {open && (
+        <ConfirmDialog
+          title="Cancel Reorder Request"
+          consequence={CANCEL_VOID_CONFIRMATION_COPY}
+          confirmLabel="Cancel Reorder Request"
+          requireReason
+          reasonLabel="Reason"
+          onConfirm={async (reason) => {
+            // Same payload + callback as before; the required nonblank reason is
+            // guaranteed by ConfirmDialog. firestore.rules still authorizes the write.
+            await cancelReorderRequest(request.id, { reason });
+            setOpen(false);
+            onCancelled();
+          }}
+          onClose={() => setOpen(false)}
+          mapError={workflowActionErrorMessage}
+        />
+      )}
+    </div>
   );
 }
 
@@ -240,16 +175,30 @@ function CancelReorderRequestAction({ request, onCancelled }) {
 // firestore.rules enforces both conditions server-side.
 function VoidPurchaseOrderAction({ request, onVoided }) {
   const { user } = useAuth();
+  const [open, setOpen] = useState(false);
   const isAssignee = user?.uid === request.assignedToUserId;
-  if (!isAssignee) return null;
+  if (!isAssignee) return null; // assignee-only UI restriction preserved (Rules enforce it too)
 
   return (
-    <ReasonConfirmAction
-      idPrefix={`void-${request.id}`}
-      actionLabel="Void Purchase Order"
-      onSubmit={(reason) => voidPurchaseOrder(request.id, { reason })}
-      onDone={onVoided}
-    />
+    <div className="disp-board-toolbar">
+      <button type="button" onClick={() => setOpen(true)}>Void Purchase Order</button>
+      {open && (
+        <ConfirmDialog
+          title="Void Purchase Order"
+          consequence={CANCEL_VOID_CONFIRMATION_COPY}
+          confirmLabel="Void Purchase Order"
+          requireReason
+          reasonLabel="Reason"
+          onConfirm={async (reason) => {
+            await voidPurchaseOrder(request.id, { reason });
+            setOpen(false);
+            onVoided();
+          }}
+          onClose={() => setOpen(false)}
+          mapError={workflowActionErrorMessage}
+        />
+      )}
+    </div>
   );
 }
 
@@ -264,11 +213,11 @@ function VoidPurchaseOrderAction({ request, onVoided }) {
 // request.urgency is null for NEEDS_PLANNING -- shown as a distinct
 // badge, not a crash.
 function ReorderRequestReview({ request, onReviewed }) {
-  const [showRejectForm, setShowRejectForm] = useState(false);
-  const [rejectNotes, setRejectNotes] = useState("");
+  const [confirmingReject, setConfirmingReject] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
 
+  // Approve stays IMMEDIATE and unchanged -- no confirmation.
   async function handleApprove() {
     setSubmitting(true);
     setError(null);
@@ -276,20 +225,7 @@ function ReorderRequestReview({ request, onReviewed }) {
       await reviewReorderRequest(request.id, { decision: REORDER_REQUEST_STATUS.APPROVED });
       onReviewed();
     } catch (err) {
-      setError(err.message);
-      setSubmitting(false);
-    }
-  }
-
-  async function handleReject(e) {
-    e.preventDefault();
-    setSubmitting(true);
-    setError(null);
-    try {
-      await reviewReorderRequest(request.id, { decision: REORDER_REQUEST_STATUS.REJECTED, notes: rejectNotes });
-      onReviewed();
-    } catch (err) {
-      setError(err.message);
+      setError(workflowActionErrorMessage(err));
       setSubmitting(false);
     }
   }
@@ -332,35 +268,34 @@ function ReorderRequestReview({ request, onReviewed }) {
         </tbody>
       </table>
 
-      {error && <p className="fo-muted">{error}</p>}
+      <FormError role="alert">{error}</FormError>
 
-      {!showRejectForm ? (
-        <div className="disp-board-toolbar">
-          <button type="button" onClick={handleApprove} disabled={submitting}>
-            Approve
-          </button>
-          <button type="button" onClick={() => setShowRejectForm(true)} disabled={submitting}>
-            Reject
-          </button>
-        </div>
-      ) : (
-        <form className="fo-form" onSubmit={handleReject}>
-          <label htmlFor="reject-notes">Review notes (required to reject)</label>
-          <textarea
-            id="reject-notes"
-            value={rejectNotes}
-            onChange={(e) => setRejectNotes(e.target.value)}
-            required
-          />
-          <div className="disp-board-toolbar">
-            <button type="submit" disabled={submitting || !rejectNotes.trim()}>
-              Confirm Rejection
-            </button>
-            <button type="button" onClick={() => setShowRejectForm(false)} disabled={submitting}>
-              Cancel
-            </button>
-          </div>
-        </form>
+      <div className="disp-board-toolbar">
+        <button type="button" onClick={handleApprove} disabled={submitting}>
+          Approve
+        </button>
+        <button type="button" className="fo-btn-destructive" onClick={() => { setError(null); setConfirmingReject(true); }} disabled={submitting}>
+          Reject
+        </button>
+      </div>
+
+      {confirmingReject && (
+        <ConfirmDialog
+          title="Reject Reorder Request"
+          consequence="This rejects the reorder request. The record remains visible for audit purposes."
+          confirmLabel="Confirm Rejection"
+          requireReason
+          reasonLabel="Review notes (required to reject)"
+          reasonRequiredMessage="Enter review notes to reject."
+          onConfirm={async (notes) => {
+            // Exact Reject payload + transition preserved.
+            await reviewReorderRequest(request.id, { decision: REORDER_REQUEST_STATUS.REJECTED, notes });
+            setConfirmingReject(false);
+            onReviewed();
+          }}
+          onClose={() => setConfirmingReject(false)}
+          mapError={workflowActionErrorMessage}
+        />
       )}
     </div>
   );

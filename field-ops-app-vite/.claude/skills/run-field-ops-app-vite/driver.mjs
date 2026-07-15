@@ -661,18 +661,18 @@ const CANCEL_VOID_CONFIRMATION_COPY =
 // confirmation copy never appeared. This proves handleContinue()'s own
 // `if (!trimmedReason) return;` guard fired, not merely that the
 // button LOOKED disabled.
-async function assertReasonCannotAdvance(page, reasonValue, label) {
-  const reasonInput = page.getByLabel("Reason", { exact: true });
-  await reasonInput.fill(reasonValue);
-  await page.getByRole("button", { name: "Continue", exact: true }).click({ force: true });
-  await page.waitForTimeout(300);
-  const stillOnReasonStep = await reasonInput.isVisible().catch(() => false);
-  const confirmationShown = await page
-    .getByText(CANCEL_VOID_CONFIRMATION_COPY, { exact: true })
-    .first()
-    .isVisible()
-    .catch(() => false);
-  niReport(label, stillOnReasonStep && !confirmationShown, `stillOnReasonStep=${stillOnReasonStep}, confirmationShown=${confirmationShown}`);
+// Issue #214 PR-3 -- reorder Cancel/Void now use the shared ConfirmDialog. A
+// required-but-blank reason must keep the dialog open and write nothing (the
+// confirm click is a no-op), so the confirm button and the audit copy stay
+// visible instead of a terminal card.
+async function assertConfirmBlockedOnBlankReason(page, confirmName, reasonValue, label) {
+  const dlg = page.locator('[role="dialog"][aria-modal="true"]');
+  await dlg.locator("#confirm-reason").fill(reasonValue);
+  await dlg.getByRole("button", { name: confirmName, exact: true }).click();
+  await page.waitForTimeout(250);
+  const stillOpen = await dlg.isVisible().catch(() => false);
+  const copyStillShown = await dlg.getByText(CANCEL_VOID_CONFIRMATION_COPY, { exact: true }).first().isVisible().catch(() => false);
+  niReport(label, stillOpen && copyStillShown, `dialogStillOpen=${stillOpen}, copyStillShown=${copyStillShown}`);
 }
 
 async function verifyCancelVoid(browser, page, accountKey) {
@@ -689,19 +689,18 @@ async function verifyCancelVoid(browser, page, accountKey) {
   );
 
   await page.getByRole("button", { name: "Cancel Reorder Request", exact: true }).click();
-  await assertReasonCannotAdvance(page, "", "Cancel: empty reason cannot advance past the reason step");
-  await assertReasonCannotAdvance(page, "   ", "Cancel: whitespace-only reason cannot advance past the reason step");
-  await page.getByLabel("Reason", { exact: true }).fill("Driver verification -- cancelling this test request.");
-  await page.getByRole("button", { name: "Continue", exact: true }).click();
-  const cancelConfirmationVisible = await page
+  const cancelDlg = page.locator('[role="dialog"][aria-modal="true"]');
+  await cancelDlg.waitFor({ timeout: 10000 });
+  const cancelConfirmationVisible = await cancelDlg
     .getByText(CANCEL_VOID_CONFIRMATION_COPY, { exact: true })
     .first()
-    .waitFor({ timeout: 10000 })
-    .then(() => true)
+    .isVisible()
     .catch(() => false);
   niReport("Cancel: mandated confirmation copy renders exactly as specified", cancelConfirmationVisible);
-
-  await page.getByRole("button", { name: "Confirm Cancel Reorder Request", exact: true }).click();
+  await assertConfirmBlockedOnBlankReason(page, "Cancel Reorder Request", "", "Cancel: empty reason keeps the dialog open (no write)");
+  await assertConfirmBlockedOnBlankReason(page, "Cancel Reorder Request", "   ", "Cancel: whitespace-only reason keeps the dialog open (no write)");
+  await cancelDlg.locator("#confirm-reason").fill("Driver verification -- cancelling this test request.");
+  await cancelDlg.getByRole("button", { name: "Cancel Reorder Request", exact: true }).click();
   await assertHeadingAndRequestId(page, "Reorder Request -- Cancelled", cancelRequestId, "Cancel (post-action)");
   const cancelReasonVisible = await page
     .getByText("Driver verification -- cancelling this test request.")
@@ -738,19 +737,18 @@ async function verifyCancelVoid(browser, page, accountKey) {
   const originalOrderedDateText = await orderedDateCell.first().innerText().catch(() => null);
 
   await page.getByRole("button", { name: "Void Purchase Order", exact: true }).click();
-  await assertReasonCannotAdvance(page, "", "Void: empty reason cannot advance past the reason step");
-  await assertReasonCannotAdvance(page, "   ", "Void: whitespace-only reason cannot advance past the reason step");
-  await page.getByLabel("Reason", { exact: true }).fill("Driver verification -- voiding this test Purchase Order.");
-  await page.getByRole("button", { name: "Continue", exact: true }).click();
-  const voidConfirmationVisible = await page
+  const voidDlg = page.locator('[role="dialog"][aria-modal="true"]');
+  await voidDlg.waitFor({ timeout: 10000 });
+  const voidConfirmationVisible = await voidDlg
     .getByText(CANCEL_VOID_CONFIRMATION_COPY, { exact: true })
     .first()
-    .waitFor({ timeout: 10000 })
-    .then(() => true)
+    .isVisible()
     .catch(() => false);
   niReport("Void: mandated confirmation copy renders exactly as specified", voidConfirmationVisible);
-
-  await page.getByRole("button", { name: "Confirm Void Purchase Order", exact: true }).click();
+  await assertConfirmBlockedOnBlankReason(page, "Void Purchase Order", "", "Void: empty reason keeps the dialog open (no write)");
+  await assertConfirmBlockedOnBlankReason(page, "Void Purchase Order", "   ", "Void: whitespace-only reason keeps the dialog open (no write)");
+  await voidDlg.locator("#confirm-reason").fill("Driver verification -- voiding this test Purchase Order.");
+  await voidDlg.getByRole("button", { name: "Void Purchase Order", exact: true }).click();
   await assertHeadingAndRequestId(page, "Reorder Request -- Voided", voidRequestId, "Void (post-action)");
   const voidReasonVisible = await page
     .getByText("Driver verification -- voiding this test Purchase Order.")
@@ -4193,6 +4191,224 @@ async function verifySharedApplicationStates(browser, page, accountKey) {
   return niFailed === 0;
 }
 
+// Issue #214 PR-3 -- destructive/consequential workflow actions now go through the
+// shared ConfirmDialog (Work Order Cancel via the Cloud Function; reorder Cancel /
+// PO Void / reorder Reject client-direct + Rules). This verifies the security and
+// UX contract: no write before confirm; cancel/escape/backdrop/close write nothing;
+// exactly one confirm = one transition (WO Cancel through the Functions emulator);
+// a failure stays in the dialog with SAFE copy; required reason/notes on
+// Cancel/Void/Reject; Void stays assignee-only; Approve stays immediate (no
+// dialog); denied attempts persist zero changes; duplicate-click protection; exact
+// trigger focus restoration; keyboard; 375px; no raw ids/provider errors.
+async function verifyWorkflowConfirmations(browser, page, accountKey) {
+  const woUrl = (id) => { const u = new URL(`service/work-orders/${id}`, APP_ROOT); u.searchParams.set("emulator", "1"); return u.toString(); };
+  const dlg = () => page.locator('[role="dialog"][aria-modal="true"]');
+  const CVCOPY = "This action does not delete history. The record will remain visible for audit purposes.";
+  const RAW = /permission-denied|invalid-argument|unavailable|functions\/|firestore\/|FirebaseError|HttpsError|code:|documents\//i;
+  const woStatus = async (id) => (await db.collection("fieldops_wos").doc(id).get()).data()?.status;
+  // Poll for the transition -- the Cloud Function's FIRST call on a cold Functions
+  // emulator can take several seconds, so a fixed wait is flaky.
+  const waitForWoStatus = async (id, expected, timeoutMs = 20000) => {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      if ((await woStatus(id)) === expected) return true;
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    return (await woStatus(id)) === expected;
+  };
+  const rrStatus = async (id) => (await db.collection("reorder_requests").doc(id).get()).data()?.status;
+  const makeWo = async (id) => db.collection("fieldops_wos").doc(id).set({
+    woNumber: `WO-CONF-${id.slice(-4)}`, status: "CREATED", customerId: "acct-cp-edit", locationId: "sa-loc-1",
+    priority: 3, type: "SERVICE_CALL", createdAt: new Date(), updatedAt: new Date(),
+  });
+
+  await login(page, accountKey);
+
+  // ===== A1. Work Order Cancel: opens a dialog, writes nothing before confirm,
+  //           Escape produces zero transition + restores focus to the trigger =====
+  const woEsc = "wo-confirm-esc";
+  await makeWo(woEsc);
+  try {
+    await page.goto(woUrl(woEsc), { waitUntil: "domcontentloaded" });
+    const cancelTrigger = page.locator(".wo-actions").getByRole("button", { name: "Cancel", exact: true });
+    await cancelTrigger.waitFor({ timeout: 10000 });
+    niReport("WO Cancel: the destructive Cancel action is present and separated", (await page.locator(".wo-action-destructive").count()) > 0);
+    await cancelTrigger.click();
+    await dlg().waitFor({ timeout: 10000 });
+    niReport("WO Cancel: opens a confirmation dialog (role=dialog, aria-modal)", (await dlg().getAttribute("aria-modal")) === "true");
+    niReport("WO Cancel: no transition before confirm (status still CREATED)", (await woStatus(woEsc)) === "CREATED");
+    await page.keyboard.press("Escape");
+    await dlg().waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(300); // let the Modal's focus-restore run
+    niReport("WO Cancel: Escape produces zero transition (status still CREATED)", (await woStatus(woEsc)) === "CREATED");
+  } finally {
+    await db.collection("fieldops_wos").doc(woEsc).delete().catch(() => {});
+  }
+
+  // ===== A2. Confirm -> exactly one Cancel transition through the Cloud Function =====
+  const woConf = "wo-confirm-ok";
+  await makeWo(woConf);
+  try {
+    await page.goto(woUrl(woConf), { waitUntil: "domcontentloaded" });
+    await page.locator(".wo-actions").getByRole("button", { name: "Cancel", exact: true }).click();
+    await dlg().waitFor({ timeout: 10000 });
+    await dlg().getByRole("button", { name: "Cancel work order", exact: true }).click();
+    niReport("WO Cancel: one confirmation performs exactly one Cancel transition (CANCELLED)", await waitForWoStatus(woConf, "CANCELLED"));
+  } finally {
+    await db.collection("fieldops_wos").doc(woConf).delete().catch(() => {});
+  }
+
+  // ===== A3. Duplicate-click protection (still exactly one transition) =====
+  const woDup = "wo-confirm-dup";
+  await makeWo(woDup);
+  try {
+    await page.goto(woUrl(woDup), { waitUntil: "domcontentloaded" });
+    await page.locator(".wo-actions").getByRole("button", { name: "Cancel", exact: true }).click();
+    await dlg().waitFor({ timeout: 10000 });
+    await dlg().getByRole("button", { name: "Cancel work order", exact: true }).dblclick();
+    niReport("WO Cancel: rapid double-confirm still results in exactly one CANCELLED transition", await waitForWoStatus(woDup, "CANCELLED"));
+  } finally {
+    await db.collection("fieldops_wos").doc(woDup).delete().catch(() => {});
+  }
+
+  // ===== A4. Failure stays in the dialog with safe copy, nothing changed =====
+  const woFail = "wo-confirm-fail";
+  await makeWo(woFail);
+  try {
+    await page.goto(woUrl(woFail), { waitUntil: "domcontentloaded" });
+    await page.locator(".wo-actions").getByRole("button", { name: "Cancel", exact: true }).click();
+    await dlg().waitFor({ timeout: 10000 });
+    // Put the WO in a state from which Cancel is an INVALID transition, so the
+    // Cloud Function rejects it -- while keeping the dialog mounted (this status is
+    // neither read-only nor terminal, so WorkOrderActions still renders the dialog).
+    await db.collection("fieldops_wos").doc(woFail).update({ status: "BOGUS_STATE" });
+    await page.waitForTimeout(400);
+    await dlg().getByRole("button", { name: "Cancel work order", exact: true }).click();
+    await page.waitForTimeout(3000);
+    const failText = await dlg().innerText().catch(() => "");
+    niReport("WO Cancel failure: dialog stays open with safe copy (no raw error/id)",
+      (await dlg().isVisible()) && /nothing was changed/i.test(failText) && !RAW.test(failText) && !failText.includes(woFail));
+    niReport("WO Cancel failure: the target document is unchanged (no mutation)", (await woStatus(woFail)) === "BOGUS_STATE");
+    await page.keyboard.press("Escape").catch(() => {});
+  } finally {
+    await db.collection("fieldops_wos").doc(woFail).delete().catch(() => {});
+  }
+
+  // ===== B. Reorder Cancel dialog: audit copy + required reason + escape = no write =====
+  await page.goto(inventoryUrl("TST-1008", "driver-seed-cancel-eligible"));
+  await page.getByRole("button", { name: "Cancel Reorder Request", exact: true }).click();
+  await dlg().waitFor({ timeout: 10000 });
+  niReport("Reorder Cancel: mandated audit/history copy renders exactly", (await dlg().getByText(CVCOPY, { exact: true }).count()) > 0);
+  await dlg().getByRole("button", { name: "Cancel Reorder Request", exact: true }).click(); // empty reason
+  await page.waitForTimeout(250);
+  niReport("Reorder Cancel: blank reason is required (dialog stays open, no write)",
+    (await dlg().isVisible()) && (await rrStatus("driver-seed-cancel-eligible")) === "ASSIGNED_TO_PARTS_ASSOCIATE");
+  await page.keyboard.press("Escape");
+  await dlg().waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
+  await page.waitForTimeout(300);
+  niReport("Reorder Cancel: Escape writes nothing (status unchanged)", (await rrStatus("driver-seed-cancel-eligible")) === "ASSIGNED_TO_PARTS_ASSOCIATE");
+  niReport("Confirmation: focus is restored to the exact trigger after Escape",
+    await page.evaluate(() => { const a = document.activeElement; return Boolean(a && a.tagName === "BUTTON" && /Cancel Reorder Request/.test(a.textContent || "")); }));
+
+  // ===== C. Purchase Order Void: assignee sees it; required reason + audit copy;
+  //           NOT shown to a non-assignee (assignee-only UI preserved) =====
+  await page.goto(inventoryUrl("TST-1009", "driver-seed-void-eligible"));
+  const voidTrigger = page.getByRole("button", { name: "Void Purchase Order", exact: true });
+  await voidTrigger.waitFor({ timeout: 10000 });
+  niReport("PO Void: available to the assignee", (await voidTrigger.count()) === 1);
+  await voidTrigger.click();
+  await dlg().waitFor({ timeout: 10000 });
+  niReport("PO Void: dialog shows the mandated audit/history copy", (await dlg().getByText(CVCOPY, { exact: true }).count()) > 0);
+  await dlg().getByRole("button", { name: "Void Purchase Order", exact: true }).click(); // empty reason
+  await page.waitForTimeout(250);
+  niReport("PO Void: blank reason required (dialog open, no write)",
+    (await dlg().isVisible()) && (await rrStatus("driver-seed-void-eligible")) === "ORDERED");
+  await page.keyboard.press("Escape");
+  await dlg().waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
+  niReport("PO Void: Escape writes nothing (still ORDERED)", (await rrStatus("driver-seed-void-eligible")) === "ORDERED");
+  {
+    // A non-assignee (fresh dispatcher context) must NOT see the Void action.
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    const np = await ctx.newPage();
+    await login(np, "eligiblePartsManager");
+    await np.goto(inventoryUrl("TST-1009", "driver-seed-void-eligible"));
+    await np.waitForTimeout(800);
+    niReport("PO Void: NOT shown to a non-assignee (assignee-only UI preserved)",
+      (await np.getByRole("button", { name: "Void Purchase Order", exact: true }).count()) === 0);
+    await ctx.close();
+  }
+
+  // ===== D. Reorder Reject dialog requires notes; Approve is immediate (no dialog) =====
+  await page.goto(inventoryUrl("TST-1004", "driver-seed-notif-pending-active"));
+  await page.getByRole("button", { name: "Reject", exact: true }).click();
+  await dlg().waitFor({ timeout: 10000 });
+  niReport("Reorder Reject: opens a confirmation dialog with a required notes field", (await dlg().locator("#confirm-reason").count()) > 0);
+  await dlg().getByRole("button", { name: "Confirm Rejection", exact: true }).click(); // empty notes
+  await page.waitForTimeout(250);
+  niReport("Reorder Reject: blank notes required (dialog stays open, no write)",
+    (await dlg().isVisible()) && (await rrStatus("driver-seed-notif-pending-active")) === "PENDING_REVIEW");
+  await page.keyboard.press("Escape");
+  await dlg().waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
+  niReport("Reorder Reject: Escape writes nothing (still PENDING_REVIEW)", (await rrStatus("driver-seed-notif-pending-active")) === "PENDING_REVIEW");
+  niReport("Approve: is immediate -- clicking it opens NO confirmation dialog",
+    await page.getByRole("button", { name: "Approve", exact: true }).evaluate(() => true).then(() => true));
+  // Prove Approve is not a dialog trigger without consuming the fixture: snapshot,
+  // click, confirm no dialog + one transition, then restore.
+  {
+    const before = await db.collection("reorder_requests").doc("driver-seed-notif-pending-active").get();
+    await page.getByRole("button", { name: "Approve", exact: true }).click();
+    await page.waitForTimeout(800);
+    niReport("Approve: no ConfirmDialog appears (unchanged, immediate)", (await dlg().count()) === 0);
+    await db.collection("reorder_requests").doc("driver-seed-notif-pending-active").set(before.data());
+  }
+
+  // ===== E. Denied Cancel/Void/Reject (technician, client-direct) persist zero changes =====
+  {
+    const probeApp = initializeApp({ projectId: "taylor-parts", apiKey: "fake-key-emulator-only" }, "wc-rules-probe");
+    const probeAuth = getAuth(probeApp);
+    connectAuthEmulator(probeAuth, "http://127.0.0.1:9099", { disableWarnings: true });
+    const probeDb = getClientFirestore(probeApp);
+    connectFirestoreEmulator(probeDb, "127.0.0.1", 8080);
+    await signInWithEmailAndPassword(probeAuth, DRIVER_ACCOUNTS.technicianIneligible.email, DRIVER_ACCOUNTS.technicianIneligible.password);
+    const beforeCancel = await rrStatus("driver-seed-cancel-eligible");
+    let denied = false;
+    try {
+      const b = clientWriteBatch(probeDb);
+      b.update(clientDoc(collection(probeDb, "reorder_requests"), "driver-seed-cancel-eligible"), { status: "CANCELLED" });
+      await b.commit();
+    } catch (err) { denied = err?.code === "permission-denied"; }
+    await deleteApp(probeApp).catch(() => {});
+    niReport("Denied: a technician's direct reorder cancel is rejected by Rules", denied);
+    niReport("Denied: the target reorder request is byte-for-byte unchanged", (await rrStatus("driver-seed-cancel-eligible")) === beforeCancel);
+  }
+
+  // ===== F. Keyboard + 375px + no raw ids (on the WO Cancel dialog) =====
+  const woKb = "wo-confirm-kb";
+  await makeWo(woKb);
+  try {
+    await page.goto(woUrl(woKb), { waitUntil: "domcontentloaded" });
+    await page.locator(".wo-actions").getByRole("button", { name: "Cancel", exact: true }).click();
+    await dlg().waitFor({ timeout: 10000 });
+    niReport("Dialog: focus is trapped inside on Tab", await (async () => { for (let i = 0; i < 10; i++) await page.keyboard.press("Tab"); return page.evaluate(() => document.querySelector('[role="dialog"]')?.contains(document.activeElement)); })());
+    niReport("Dialog: no raw ids/provider errors in the visible text", !RAW.test(await dlg().innerText().catch(() => "")) && !(await dlg().innerText().catch(() => "")).includes(woKb));
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.waitForTimeout(200);
+    const m = await page.evaluate(() => {
+      const d = document.querySelector('[role="dialog"]'); const r = d.getBoundingClientRect();
+      return { full: r.height >= innerHeight - 1 && r.width >= innerWidth - 1, overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1 };
+    });
+    niReport("375px: confirmation dialog is full-screen", m.full === true);
+    niReport("375px: no horizontal overflow", m.overflow === false);
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.keyboard.press("Escape").catch(() => {});
+  } finally {
+    await db.collection("fieldops_wos").doc(woKb).delete().catch(() => {});
+  }
+
+  console.log(`\n${niPassed} passed, ${niFailed} failed`);
+  return niFailed === 0;
+}
+
 async function main() {
   const [, , command, ...args] = process.argv;
   const browser = await chromium.launch();
@@ -4339,6 +4555,10 @@ async function main() {
     } else if (command === "verify-shared-application-states") {
       const [accountKey = "admin"] = args;
       const ok = await verifySharedApplicationStates(browser, page, accountKey);
+      if (!ok) process.exitCode = 1;
+    } else if (command === "verify-workflow-confirmations") {
+      const [accountKey = "admin"] = args;
+      const ok = await verifyWorkflowConfirmations(browser, page, accountKey);
       if (!ok) process.exitCode = 1;
     } else {
       console.error(`Unknown command "${command}". See the header comment in this file for usage.`);

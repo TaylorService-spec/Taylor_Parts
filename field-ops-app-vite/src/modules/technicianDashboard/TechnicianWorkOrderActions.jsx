@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { getAllowedActions } from "../../domain/workOrderWorkflow";
 import { transitionWorkOrder } from "../../services/workOrderService";
+import { FormError } from "../../shared/ui/form";
+import { workflowActionErrorMessage } from "../../domain/workflowActionError";
 
 // Epic 6 Phase 6.2 -- technician-side lifecycle action UI. Mirrors
 // modules/controlTower/WorkOrderActions.jsx's pattern (getAllowedActions()
@@ -65,8 +67,9 @@ export default function TechnicianWorkOrderActions({ workOrder }) {
     try {
       await transitionWorkOrder(workOrder.id, action);
     } catch (err) {
+      // Safe, categorized copy -- never the raw message / Functions code.
       console.error(err);
-      setError(err.message);
+      setError(workflowActionErrorMessage(err));
     } finally {
       setSubmitting(false);
     }
@@ -76,11 +79,7 @@ export default function TechnicianWorkOrderActions({ workOrder }) {
     <div className="wo-actions">
       <span className={`wo-status wo-${workOrder.status.toLowerCase()}`}>{STATUS_LABEL[workOrder.status] ?? workOrder.status}</span>
 
-      {error && (
-        <div className="warning" role="alert">
-          {error}
-        </div>
-      )}
+      <FormError role="alert">{error}</FormError>
 
       {allowedActions.length > 0 && (
         <div className="fo-btn-row">

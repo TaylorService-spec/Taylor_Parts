@@ -37,9 +37,10 @@ function emulatorPorts(configPath) {
     return {
       firestore: (e.firestore && e.firestore.port) || 8080,
       auth: (e.auth && e.auth.port) || 9099,
+      functions: (e.functions && e.functions.port) || 5001,
     };
   } catch {
-    return { firestore: 8080, auth: 9099 };
+    return { firestore: 8080, auth: 9099, functions: 5001 };
   }
 }
 
@@ -55,15 +56,24 @@ async function portResponds(port) {
 // Bounded readiness -- a finite number of attempts, then give up. NOT a
 // background poller: it runs inside `start` and either resolves or the command
 // fails closed.
-async function waitForReady(ports, { attempts = 60, delayMs = 1000 } = {}) {
+async function waitForReady(ports, needFunctions, { attempts = 90, delayMs = 1000 } = {}) {
   for (let i = 0; i < attempts; i++) {
-    if ((await portResponds(ports.firestore)) && (await portResponds(ports.auth))) return true;
+    const core = (await portResponds(ports.firestore)) && (await portResponds(ports.auth));
+    const fns = !needFunctions || (await portResponds(ports.functions || 5001));
+    if (core && fns) return true;
     await new Promise((r) => setTimeout(r, delayMs));
   }
   return false;
 }
 
 async function start() {
+  // Optional first arg selects the emulators to run (default firestore,auth).
+  // Issue #214 PR-3 needs the Cloud Functions emulator for Work Order transitions:
+  //   node emulator.mjs start functions,firestore,auth
+  // Provenance/anchoring are unchanged -- only the `--only` list differs.
+  const onlyArg = process.argv[3];
+  const only = onlyArg && /^[a-z,]+$/.test(onlyArg) ? onlyArg : "firestore,auth";
+  const needFunctions = only.split(",").includes("functions");
   // Preflight FIRST -- any ambiguity fails closed before anything is spawned.
   let prov;
   try {
@@ -86,7 +96,7 @@ async function start() {
     [
       "emulators:start",
       "--only",
-      "firestore,auth",
+      only,
       "--project",
       EMULATOR_PROJECT,
       "--config",
@@ -115,7 +125,7 @@ async function start() {
     process.exit(code == null ? 1 : code);
   });
 
-  const ready = await waitForReady(ports);
+  const ready = await waitForReady(ports, needFunctions);
   if (!ready) {
     console.error(
       `FAIL-CLOSED: emulator did not become ready on ports ${ports.firestore}/${ports.auth} within the bound. See ${LOG_PATH}`
@@ -130,7 +140,7 @@ async function start() {
   }
 
   console.log(
-    `EMULATOR READY pid=${child.pid} firestore=${ports.firestore} auth=${ports.auth} rulesSha=sha256:${prov.rulesHash}`
+    `EMULATOR READY pid=${child.pid} only=${only} firestore=${ports.firestore} auth=${ports.auth}${needFunctions ? ` functions=${ports.functions || 5001}` : ""} rulesSha=sha256:${prov.rulesHash}`
   );
   // Intentionally stay alive holding the child so the agent can run this in the
   // background; `stop` (or killing this owned PID) tears it down.
