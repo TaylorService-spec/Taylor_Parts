@@ -4642,6 +4642,135 @@ async function verifyInventoryRoleWarehouseManager(browser, page, accountKey) {
   return niFailed === 0;
 }
 
+// Issue #214 PR-5 -- the retained Jobs (/service/job-assignments) and Technicians
+// (/administration) screens: the create form that used to sit above each live
+// table is now a "New Job" / "New Technician" action opening the shared accessible
+// Modal. This verifies both screens: no inline form remains above the table; the
+// modal's dialog semantics, labels-above + required text + focus trap; validation
+// stays inside the modal writing nothing; Escape/Cancel close + focus restoration;
+// duplicate-submit yields exactly one write; success closes once + announces +
+// live-inserts + focuses the new row; and 375px full-screen with no overflow.
+// Payload/write paths (createJob / createTechnician) and the isSignedIn() Rules
+// gate are unchanged.
+async function verifyJobsTechniciansModals(browser, page, accountKey) {
+  const url = (path) => { const u = new URL(path, APP_ROOT); u.searchParams.set("emulator", "1"); return u.toString(); };
+  const dlg = () => page.locator('[role="dialog"][aria-modal="true"]');
+  const RAW = /permission-denied|firestore\/|FirebaseError|code:|documents\//i;
+  const countIn = async (coll) => (await db.collection(coll).get()).size;
+
+  await login(page, accountKey);
+
+  // ============================ JOBS ============================
+  await page.goto(url("service/job-assignments"), { waitUntil: "domcontentloaded" });
+  await page.getByRole("heading", { name: "Work Orders", exact: true }).waitFor({ timeout: 10000 });
+  niReport("Jobs: a clear New Job action is present", (await page.getByRole("button", { name: "New Job", exact: true }).count()) === 1);
+  niReport("Jobs: NO inline create form remains above the table (old placeholder inputs gone)",
+    (await page.locator('input[placeholder="Customer"], input[placeholder="Work order description"]').count()) === 0);
+
+  const jobsBefore = await countIn("fieldops_jobs");
+  const newJob = page.getByRole("button", { name: "New Job", exact: true });
+  await newJob.click();
+  await dlg().waitFor({ timeout: 10000 });
+  niReport("Jobs: creation opens in the shared Modal (role=dialog, aria-modal, titled New Job)",
+    (await dlg().getAttribute("aria-modal")) === "true" && (await dlg().getByText("New Job", { exact: true }).count()) > 0);
+  niReport("Jobs: fields use labels above controls (Customer / Work order description)",
+    (await dlg().getByText("Customer", { exact: false }).count()) > 0 && (await dlg().locator("#job-customer").count()) === 1);
+
+  // Empty submit: validation stays inside the modal, nothing written.
+  await dlg().getByRole("button", { name: "New Job", exact: true }).click();
+  await page.waitForTimeout(250);
+  const jobErrText = await dlg().innerText().catch(() => "");
+  niReport("Jobs: empty submit keeps the modal open with required-field errors, no raw detail",
+    (await dlg().isVisible()) && /enter a customer/i.test(jobErrText) && /enter a work order description/i.test(jobErrText) && !RAW.test(jobErrText));
+  niReport("Jobs: invalid submit wrote nothing", (await countIn("fieldops_jobs")) === jobsBefore);
+  niReport("Jobs: focus is trapped inside the dialog on Tab",
+    await (async () => { for (let i = 0; i < 8; i++) await page.keyboard.press("Tab"); return page.evaluate(() => document.querySelector('[role="dialog"]')?.contains(document.activeElement)); })());
+
+  // Escape closes, writes nothing, focus restored to the trigger.
+  await page.keyboard.press("Escape");
+  await dlg().waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
+  await page.waitForTimeout(250);
+  niReport("Jobs: Escape closes the modal and writes nothing", (await dlg().count()) === 0 && (await countIn("fieldops_jobs")) === jobsBefore);
+  niReport("Jobs: focus restored to the New Job trigger after Escape",
+    await page.evaluate(() => { const a = document.activeElement; return Boolean(a && a.tagName === "BUTTON" && (a.textContent || "").trim() === "New Job"); }));
+
+  // Real create -> closes once, announces, live-inserts, focuses the new row.
+  const jobCustomer = `Driver Job Co ${Date.now()}`;
+  await newJob.click();
+  await dlg().waitFor({ timeout: 10000 });
+  await dlg().locator("#job-customer").fill(jobCustomer);
+  await dlg().locator("#job-description").fill("Driver verification work order");
+  await dlg().getByRole("button", { name: "New Job", exact: true }).click();
+  await dlg().waitFor({ state: "detached", timeout: 10000 });
+  niReport("Jobs: success closes the modal exactly once", (await dlg().count()) === 0);
+  await page.getByRole("cell", { name: jobCustomer, exact: true }).waitFor({ timeout: 10000 });
+  niReport("Jobs: the new row is live-inserted with its human-readable customer", (await page.getByRole("cell", { name: jobCustomer, exact: true }).count()) === 1);
+  niReport("Jobs: exactly one job was written", (await countIn("fieldops_jobs")) === jobsBefore + 1);
+  niReport("Jobs: a polite success announcement was made",
+    /added/i.test(await page.locator('.fo-sr-only[role="status"]').innerText().catch(() => "")));
+  niReport("Jobs: focus lands on the new row (not a raw id)",
+    await page.evaluate((c) => { const a = document.activeElement; return Boolean(a && a.tagName === "TR" && a.textContent.includes(c) && !/[A-Za-z0-9]{20,}/.test(a.textContent)); }, jobCustomer));
+
+  // Duplicate-submit: exactly one write.
+  const beforeDup = await countIn("fieldops_jobs");
+  await newJob.click();
+  await dlg().waitFor({ timeout: 10000 });
+  await dlg().locator("#job-customer").fill(`Dup Job ${Date.now()}`);
+  await dlg().locator("#job-description").fill("dup guard");
+  await dlg().getByRole("button", { name: "New Job", exact: true }).dblclick();
+  await dlg().waitFor({ state: "detached", timeout: 10000 }).catch(() => {});
+  await page.waitForTimeout(500);
+  niReport("Jobs: rapid double-submit writes exactly one job", (await countIn("fieldops_jobs")) === beforeDup + 1);
+
+  // 375px full-screen, no overflow.
+  await newJob.click();
+  await dlg().waitFor({ timeout: 10000 });
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.waitForTimeout(200);
+  const jm = await page.evaluate(() => { const d = document.querySelector('[role="dialog"]'); const r = d.getBoundingClientRect(); return { full: r.height >= innerHeight - 1 && r.width >= innerWidth - 1, overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1 }; });
+  niReport("Jobs 375px: modal is full-screen with no horizontal page overflow", jm.full === true && jm.overflow === false, JSON.stringify(jm));
+  await page.keyboard.press("Escape").catch(() => {});
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  // ========================= TECHNICIANS =========================
+  await page.goto(url("administration"), { waitUntil: "domcontentloaded" });
+  await page.getByRole("heading", { name: "Technicians", exact: true }).waitFor({ timeout: 10000 });
+  niReport("Technicians: a clear New Technician action is present", (await page.getByRole("button", { name: "New Technician", exact: true }).count()) === 1);
+  niReport("Technicians: NO inline create form remains above the table (old placeholder inputs gone)",
+    (await page.locator('input[placeholder="Name"], input[placeholder="Phone"]').count()) === 0);
+
+  const techsBefore = await countIn("fieldops_technicians");
+  const newTech = page.getByRole("button", { name: "New Technician", exact: true });
+  await newTech.click();
+  await dlg().waitFor({ timeout: 10000 });
+  niReport("Technicians: creation opens in the shared Modal (role=dialog, titled New Technician)",
+    (await dlg().getAttribute("aria-modal")) === "true" && (await dlg().getByText("New Technician", { exact: true }).count()) > 0);
+  await dlg().getByRole("button", { name: "New Technician", exact: true }).click(); // empty submit
+  await page.waitForTimeout(250);
+  niReport("Technicians: empty submit keeps the modal open with a required-name error, no raw detail",
+    (await dlg().isVisible()) && /enter a technician name/i.test(await dlg().innerText().catch(() => "")) && (await countIn("fieldops_technicians")) === techsBefore);
+  await page.keyboard.press("Escape");
+  await dlg().waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
+  niReport("Technicians: Escape writes nothing", (await countIn("fieldops_technicians")) === techsBefore);
+
+  const techName = `Driver Tech ${Date.now()}`;
+  await newTech.click();
+  await dlg().waitFor({ timeout: 10000 });
+  await dlg().locator("#tech-name").fill(techName);
+  await dlg().locator("#tech-phone").fill("555-0101");
+  await dlg().getByRole("button", { name: "New Technician", exact: true }).click();
+  await dlg().waitFor({ state: "detached", timeout: 10000 });
+  await page.getByRole("cell", { name: techName, exact: true }).waitFor({ timeout: 10000 });
+  niReport("Technicians: success closes once + live-inserts the new row + writes exactly one",
+    (await dlg().count()) === 0 && (await page.getByRole("cell", { name: techName, exact: true }).count()) === 1 && (await countIn("fieldops_technicians")) === techsBefore + 1);
+  niReport("Technicians: polite success announcement + focus on the new row",
+    /added/i.test(await page.locator('.fo-sr-only[role="status"]').innerText().catch(() => "")) &&
+    await page.evaluate((n) => { const a = document.activeElement; return Boolean(a && a.tagName === "TR" && a.textContent.includes(n)); }, techName));
+
+  console.log(`\n${niPassed} passed, ${niFailed} failed`);
+  return niFailed === 0;
+}
+
 async function main() {
   const [, , command, ...args] = process.argv;
   const browser = await chromium.launch();
@@ -4796,6 +4925,10 @@ async function main() {
     } else if (command === "verify-inventory-role-warehouse-manager") {
       const [accountKey = "technicianWarehouseManager"] = args;
       const ok = await verifyInventoryRoleWarehouseManager(browser, page, accountKey);
+      if (!ok) process.exitCode = 1;
+    } else if (command === "verify-jobs-technicians-modals") {
+      const [accountKey = "admin"] = args;
+      const ok = await verifyJobsTechniciansModals(browser, page, accountKey);
       if (!ok) process.exitCode = 1;
     } else {
       console.error(`Unknown command "${command}". See the header comment in this file for usage.`);
