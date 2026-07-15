@@ -318,6 +318,28 @@ ok("equipmentMatchesSearch fails closed on a malformed term but still no-ops on 
   assert.equal(equipmentMatchesSearch(e, "rtu"), true, "a real term still matches");
 });
 
+ok("collection helpers answer [] on a non-array instead of crashing the caller", () => {
+  // The `= []` default only fires for undefined, so every other malformed collection
+  // reached .filter and raised a TypeError -- a crash at whatever surface called it,
+  // rather than an answer it could handle. Empty is the honest answer: no usable set.
+  for (const bad of ["notarray", 42, null, {}, { length: 2 }, true, new Set()]) {
+    assert.deepEqual(locationsForAccount(bad, "a1"), [], `locationsForAccount(${JSON.stringify(bad)}) -> []`);
+    assert.deepEqual(equipmentServiceHistory(bad, "e1"), [], `equipmentServiceHistory(${JSON.stringify(bad)}) -> []`);
+  }
+  // Omitted still means "nothing supplied" -> [], as before.
+  assert.deepEqual(locationsForAccount(undefined, "a1"), []);
+  assert.deepEqual(equipmentServiceHistory(undefined, "e1"), []);
+
+  // ...and real collections are untouched: valid work still works.
+  const locs = [{ id: "l1", accountId: "a1" }, { id: "l2", accountId: "OTHER" }];
+  assert.deepEqual(locationsForAccount(locs, "a1").map((l) => l.id), ["l1"], "valid Locations still filter");
+  const wos = [
+    { id: "w1", equipmentId: "e1", woNumber: "WO-1", createdAt: Date.UTC(2026, 5, 15, 12) },
+    { id: "w2", equipmentId: "OTHER", woNumber: "WO-2", createdAt: Date.UTC(2026, 5, 16, 12) },
+  ];
+  assert.deepEqual(equipmentServiceHistory(wos, "e1").map((h) => h.workOrderId), ["w1"], "valid Work Orders still derive history");
+});
+
 ok("groupServiceHistoryByYear rejects malformed input instead of fabricating history", () => {
   // A string used to be walked character by character into a phantom bucket: each
   // character's `.at` is String.prototype.at (truthy), so the guard passed and
