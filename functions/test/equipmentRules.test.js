@@ -100,6 +100,24 @@ async function updateEquipment(docId, idToken, fields) {
   return res.status;
 }
 
+// PATCH with an updateMask naming fields but sending NO values for them -> Firestore
+// DELETES those fields. Rules see them in diff().affectedKeys(), so a removal is an
+// edit like any other -- this proves dropping a governed field cannot escape the guard.
+async function deleteFields(docId, idToken, fieldPaths) {
+  const headers = { "Content-Type": "application/json" };
+  if (idToken) headers.Authorization = `Bearer ${idToken}`;
+  const mask = fieldPaths
+    .concat(["updatedAt"])
+    .map((key) => `updateMask.fieldPaths=${encodeURIComponent(key)}`)
+    .join("&");
+  const res = await fetch(`${DOC_BASE}/equipment/${docId}?${mask}`, {
+    method: "PATCH",
+    headers,
+    body: JSON.stringify({ fields: { updatedAt: { integerValue: String(Date.now()) } } }),
+  });
+  return res.status;
+}
+
 async function readEquipment(docId, idToken) {
   const headers = {};
   if (idToken) headers.Authorization = `Bearer ${idToken}`;
@@ -345,6 +363,43 @@ async function main() {
   report("update: emptying the name DENIED",
     (await updateEquipment(SEEDED, adminToken,
       { name: str(""), updatedAt: int(Date.now()) })) === 403);
+
+  // ---- UPDATE: shape validity ----------------------------------------------
+  // trim(), not size(): a whitespace-only name is empty to every reader while passing
+  // a length check, and E1 normalizes it away client-side -- Rules must not accept
+  // what the domain would reject.
+  report("update: whitespace-only name DENIED (trim, not length)",
+    (await updateEquipment(SEEDED, adminToken,
+      { name: str("   "), updatedAt: int(Date.now()) })) === 403);
+  report("update: optional field written as a MAP DENIED (Spec §1: string|null)",
+    (await updateEquipment(SEEDED, adminToken,
+      { notes: { mapValue: { fields: { evil: str("x") } } }, updatedAt: int(Date.now()) })) === 403);
+  report("update: optional field written as a NUMBER DENIED",
+    (await updateEquipment(SEEDED, adminToken,
+      { manufacturer: int(42), updatedAt: int(Date.now()) })) === 403);
+  report("update: clearing an optional field to null ALLOWED",
+    (await updateEquipment(SEEDED, adminToken,
+      { notes: nul(), updatedAt: int(Date.now()) })) === 200);
+
+  // ---- UPDATE: field REMOVAL and maskless overwrite -------------------------
+  // Gaps the first version of this suite missed (independent review of PR #289).
+  // affectedKeys() covers removals, and a maskless PATCH is an overwrite of the whole
+  // document -- both must be denied when they touch governed state.
+  report("update: DELETING the status field DENIED (removal is an affected key)",
+    (await deleteFields(SEEDED, adminToken, ["status"])) === 403);
+  report("update: DELETING accountId DENIED", (await deleteFields(SEEDED, adminToken, ["accountId"])) === 403);
+  report("update: DELETING locationId DENIED", (await deleteFields(SEEDED, adminToken, ["locationId"])) === 403);
+  report("update: DELETING createdAt DENIED", (await deleteFields(SEEDED, adminToken, ["createdAt"])) === 403);
+  report("update: deleting an EDITABLE optional field ALLOWED",
+    (await deleteFields(SEEDED, adminToken, ["assetTag"])) === 200);
+  // A maskless PATCH on an EXISTING doc replaces it wholesale -- the client-SDK
+  // setDoc()-without-merge shape. Anything it drops or changes in governed state must
+  // deny, exactly as a masked write would.
+  report("update: maskless full overwrite that drops governed fields DENIED",
+    (await createEquipment(SEEDED, adminToken, { name: str("Overwritten"), updatedAt: int(Date.now()) })) === 403);
+  report("update: maskless full overwrite changing locationId DENIED",
+    (await createEquipment(SEEDED, adminToken,
+      equipmentFields({ locationId: str(LOCATION_A2) }))) === 403);
 
   // ---- DELETE (§11) --------------------------------------------------------
   report("delete: admin DENIED (nobody may delete Equipment)",

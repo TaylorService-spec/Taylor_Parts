@@ -1166,9 +1166,23 @@ service cloud.firestore {
       ];
     }
 
-    // Spec §6: an ordinary edit may touch descriptive fields only. accountId and
-    // locationId are ownership (a Location change is the audited MOVE, §5), status is
-    // a lifecycle action (§5), and createdAt is immutable -- none may be edited here.
+    // An ordinary edit may touch descriptive fields only.
+    //
+    // accountId/locationId: ownership. §4 and §11 both require Rules to deny changing
+    // them here; a Location change is the audited MOVE (§5). createdAt is immutable.
+    //
+    // status: EXCLUDED HERE ON PURPOSE, and this is stricter than the Specification
+    // rather than an implementation of it -- flagged rather than buried:
+    //   * §3 marks setStatus (ACTIVE<->INACTIVE) "plain"; only retire/reactivate are
+    //     trusted-writer. §6 and AC3 say status is editable. §11 -- the Rules
+    //     obligations section -- lists ONLY accountId/locationId as must-deny.
+    //   * The Owner's standing decision defers the ACTIVE<->INACTIVE lifecycle-path
+    //     question to E10, and E2 (#282, merged) already implements NO lifecycle write
+    //     for the same reason. Allowing the write here while no caller may perform it
+    //     would open authority nothing uses.
+    // Consequence, stated plainly: AC3 does not pass against these Rules as written.
+    // Whichever way E10 resolves it, either these Rules relax or the Spec is amended;
+    // denying now is the reversible direction.
     function equipmentEditableKeys() {
       return [
         "name", "manufacturer", "model", "serialNumber", "assetTag",
@@ -1187,6 +1201,28 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/locations/$(data.locationId)).data.accountId == data.accountId;
     }
 
+    // Spec §1 declares every optional field string|null. Without this, a trusted
+    // principal could store `notes` as a map or `manufacturer` as a number: the
+    // register's search (§7) reads these client-side, so a wrong-typed value is a
+    // render hazard carried by real data. Rules are where the shape is authoritative.
+    function equipmentOptionalFieldsValid(data) {
+      return (data.get("manufacturer", null) == null || data.get("manufacturer", null) is string)
+        && (data.get("model", null) == null || data.get("model", null) is string)
+        && (data.get("serialNumber", null) == null || data.get("serialNumber", null) is string)
+        && (data.get("assetTag", null) == null || data.get("assetTag", null) is string)
+        && (data.get("installedDate", null) == null || data.get("installedDate", null) is string)
+        && (data.get("warrantyExpiresDate", null) == null || data.get("warrantyExpiresDate", null) is string)
+        && (data.get("notes", null) == null || data.get("notes", null) is string);
+    }
+
+    // §2: the name is the human reference (§8). trim() -- not size() -- because a
+    // whitespace-only name is empty to every reader while passing a length check, and
+    // E1 normalizes it away client-side, so Rules must not accept what the domain
+    // would reject.
+    function equipmentNameValid(name) {
+      return name is string && name.trim().size() > 0 && name.size() <= 200;
+    }
+
     function equipmentCreateShapeValid(data) {
       // hasOnly is the anti-injection guard: any key not on this list -- movedBy,
       // retiredAt, auditEventId, a permissions blob, anything invented -- denies the
@@ -1194,7 +1230,8 @@ service cloud.firestore {
       // a deny-list would not.
       return data.keys().hasOnly(equipmentWritableKeys())
         && data.keys().hasAll(["accountId", "locationId", "name", "status", "createdAt", "updatedAt"])
-        && data.name is string && data.name.size() > 0 && data.name.size() <= 200
+        && equipmentNameValid(data.name)
+        && equipmentOptionalFieldsValid(data)
         // Spec §2: status defaults ACTIVE on create. Reaching RETIRED/INACTIVE is a
         // lifecycle transition owned by the trusted, audited writer (§5), so create
         // must not be usable as a side door into a non-ACTIVE state.
@@ -1215,11 +1252,13 @@ service cloud.firestore {
       // denies adding any trusted/audit field -- both are simply keys absent from the
       // editable list. E2's client guard enforces the same contract independently;
       // this is the authoritative one.
+      // affectedKeys() covers REMOVALS as well as changes, so deleting a governed
+      // field (e.g. dropping `status` to escape the lifecycle guard) is denied by the
+      // same condition -- verified live, not assumed.
       allow update: if isAdminOrDispatcher()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(equipmentEditableKeys())
-        && request.resource.data.name is string
-        && request.resource.data.name.size() > 0
-        && request.resource.data.name.size() <= 200
+        && equipmentNameValid(request.resource.data.name)
+        && equipmentOptionalFieldsValid(request.resource.data)
         && request.resource.data.updatedAt is number;
 
       // Never, for anyone, including admin (Spec §11). Equipment is retired via the
