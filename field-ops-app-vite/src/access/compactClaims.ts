@@ -36,6 +36,24 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+// The one shape an accessVersion (from EITHER side of a comparison, or
+// from claims-build input) is ever allowed to have: a finite,
+// non-negative integer. `unknown` in, not `number` in -- a decoded JWT
+// claim or a value read back from storage is untrusted data, never
+// something a TypeScript parameter annotation actually validates at
+// runtime (Customer review round 3 finding). Number.isInteger() alone
+// already excludes NaN/Infinity/fractions/strings/objects/arrays;
+// Number.isFinite() is kept alongside it for explicitness matching the
+// Specification's "finite, non-negative integer" wording exactly.
+export function isValidAccessVersionValue(value: unknown): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isFinite(value) &&
+    Number.isInteger(value) &&
+    value >= 0
+  );
+}
+
 // Builds a validated CompactClaims payload. Throws (fail-closed) on:
 // any key outside the four permitted ones; a wrong-typed permitted
 // key; or a missing/invalid accessVersion (the one required field --
@@ -53,11 +71,7 @@ export function buildCompactClaims(input: unknown): CompactClaims {
       `claims may only contain ${ALLOWED_CLAIM_KEYS.join(", ")} -- rejected extra key(s): ${extraKeys.join(", ")}`,
     );
   }
-  if (
-    typeof input.accessVersion !== "number" ||
-    !Number.isInteger(input.accessVersion) ||
-    input.accessVersion < 0
-  ) {
+  if (!isValidAccessVersionValue(input.accessVersion)) {
     throw new CompactClaimsValidationError("accessVersion must be a non-negative integer");
   }
   if (input.companyId !== undefined && typeof input.companyId !== "string") {
@@ -78,27 +92,54 @@ export function buildCompactClaims(input: unknown): CompactClaims {
 }
 
 // Spec sec11: "A mismatch (stale token) fails closed -- the request is
-// denied until the client refreshes." Any mismatch (not merely
-// "token is behind") is treated as stale: a token accessVersion GREATER
-// than the authoritative value is impossible under a correctly
+// denied until the client refreshes." Spec sec13: malformed access data
+// must fail closed too. Both values arrive as `unknown` -- a decoded
+// JWT claim (tokenAccessVersion) is untrusted data by definition, and
+// the "authoritative" value may itself come from an untrusted read
+// path upstream of this function; a TypeScript `number` annotation
+// does NOT validate either one at runtime (Customer review round 3
+// finding: identical malformed values, e.g. `-1 === -1` or `"1" === "1"`,
+// previously compared equal and were wrongly treated as fresh).
+//
+// Correction: EITHER value failing the finite/non-negative/integer
+// shape check makes the pair stale, full stop -- never reached by the
+// equality comparison at all. Only when BOTH values are validly
+// shaped does this fall through to the equality check, which remains
+// a strict inequality (not less-than-only): a token accessVersion
+// GREATER than the authoritative value is impossible under a correctly
 // operating writer and must never be treated as more-trusted-than-
-// authoritative, so this is a strict inequality check, not a
-// less-than-only check.
+// authoritative, so both lower AND higher valid values are stale.
 export function isAccessVersionStale(
-  tokenAccessVersion: number,
-  authoritativeAccessVersion: number,
+  tokenAccessVersion: unknown,
+  authoritativeAccessVersion: unknown,
 ): boolean {
+  if (
+    !isValidAccessVersionValue(tokenAccessVersion) ||
+    !isValidAccessVersionValue(authoritativeAccessVersion)
+  ) {
+    return true;
+  }
   return tokenAccessVersion !== authoritativeAccessVersion;
 }
 
 export class StaleAccessVersionError extends Error {}
 
 // Fail-closed helper an enforcement point calls before trusting any
-// claim beyond accessVersion itself (Spec sec13).
+// claim beyond accessVersion itself (Spec sec13). Rejects missing,
+// malformed, or mismatched values -- distinguished only in the thrown
+// message, never in the fail-closed outcome.
 export function assertFreshAccessVersion(
-  tokenAccessVersion: number,
-  authoritativeAccessVersion: number,
+  tokenAccessVersion: unknown,
+  authoritativeAccessVersion: unknown,
 ): void {
+  if (
+    !isValidAccessVersionValue(tokenAccessVersion) ||
+    !isValidAccessVersionValue(authoritativeAccessVersion)
+  ) {
+    throw new StaleAccessVersionError(
+      `accessVersion comparison failed closed -- malformed or missing value (token=${JSON.stringify(tokenAccessVersion)}, authoritative=${JSON.stringify(authoritativeAccessVersion)})`,
+    );
+  }
   if (isAccessVersionStale(tokenAccessVersion, authoritativeAccessVersion)) {
     throw new StaleAccessVersionError(
       `token accessVersion (${tokenAccessVersion}) does not match the authoritative value (${authoritativeAccessVersion}) -- refresh required`,

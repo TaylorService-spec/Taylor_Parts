@@ -12,7 +12,7 @@
     "deploy": "npm run build && firebase deploy --only functions",
     "test:rules": "node scripts/rulesRegressionRunner.mjs",
     "test:runner": "node test/rulesRegressionRunner.test.mjs",
-    "test:access": "npm run build && node test/permissionCatalog.test.mjs && node test/resolveEffectivePermission.test.mjs && node test/shadowParityHarness.test.mjs && node test/compactClaims.test.mjs",
+    "test:access": "npm run build && node test/permissionCatalog.test.mjs && node test/resolveEffectivePermission.test.mjs && node test/shadowParityHarness.test.mjs && node test/compactClaims.test.mjs && node test/compactClaimsMirrorIntegrity.test.mjs",
     "test:audit": "npm run build && node test/auditEventWriter.test.mjs",
     "test:claims": "npm run build && node test/claimsWriter.test.mjs"
   },

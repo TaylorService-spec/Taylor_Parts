@@ -15,6 +15,7 @@ import {
   buildCompactClaims,
   isAccessVersionStale,
   assertFreshAccessVersion,
+  isValidAccessVersionValue,
   CompactClaimsValidationError,
   StaleAccessVersionError,
 } from "../lib/access/compactClaims.js";
@@ -118,6 +119,55 @@ check("assertFreshAccessVersion does not throw when versions match", () => {
 });
 check("assertFreshAccessVersion throws StaleAccessVersionError on mismatch (fail-closed)", () => {
   assert.throws(() => assertFreshAccessVersion(1, 2), StaleAccessVersionError);
+});
+
+// --- Customer review round 3: malformed/untrusted values must fail
+// closed, even when IDENTICAL on both sides (Spec sec13). Prior to
+// this correction, isAccessVersionStale(-1, -1) or
+// isAccessVersionStale("1", "1") returned false (treated as fresh) --
+// a strict `!==` comparison never validated either side's shape. ---
+const MALFORMED_VALUES = [undefined, null, "1", -1, 1.5, NaN, Infinity, -Infinity, {}, [], {}, ["1"]];
+
+check("isValidAccessVersionValue rejects every malformed shape", () => {
+  for (const bad of MALFORMED_VALUES) {
+    assert.equal(isValidAccessVersionValue(bad), false, `expected ${JSON.stringify(bad)} to be invalid`);
+  }
+});
+check("isValidAccessVersionValue accepts 0 and ordinary positive integers", () => {
+  assert.equal(isValidAccessVersionValue(0), true);
+  assert.equal(isValidAccessVersionValue(7), true);
+});
+
+check("isAccessVersionStale: an IDENTICAL malformed pair is still stale (fail-closed, not accepted as fresh)", () => {
+  for (const bad of MALFORMED_VALUES) {
+    assert.equal(
+      isAccessVersionStale(bad, bad),
+      true,
+      `expected identical malformed pair ${JSON.stringify(bad)}/${JSON.stringify(bad)} to be stale`,
+    );
+  }
+  // The two specific cases the review named explicitly.
+  assert.equal(isAccessVersionStale(-1, -1), true);
+  assert.equal(isAccessVersionStale("1", "1"), true);
+});
+
+check("isAccessVersionStale: a malformed value on EITHER side (even paired with a valid one) is stale", () => {
+  assert.equal(isAccessVersionStale(undefined, 5), true);
+  assert.equal(isAccessVersionStale(5, undefined), true);
+  assert.equal(isAccessVersionStale(null, 5), true);
+  assert.equal(isAccessVersionStale("5", 5), true);
+  assert.equal(isAccessVersionStale(NaN, 5), true);
+  assert.equal(isAccessVersionStale(Infinity, 5), true);
+  assert.equal(isAccessVersionStale({}, 5), true);
+  assert.equal(isAccessVersionStale([5], 5), true);
+});
+
+check("assertFreshAccessVersion throws (fail-closed) for every malformed value, on either side, including identical malformed pairs", () => {
+  for (const bad of MALFORMED_VALUES) {
+    assert.throws(() => assertFreshAccessVersion(bad, 5), StaleAccessVersionError);
+    assert.throws(() => assertFreshAccessVersion(5, bad), StaleAccessVersionError);
+    assert.throws(() => assertFreshAccessVersion(bad, bad), StaleAccessVersionError);
+  }
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);
