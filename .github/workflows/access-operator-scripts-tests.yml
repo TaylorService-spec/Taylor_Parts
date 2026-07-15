@@ -1,0 +1,89 @@
+name: Access Operator Script Tests
+
+# Enterprise Access & Administration Platform (Issue #226) test for
+# functions/scripts/operatorAccessCommand.js -- the Owner-authorized
+# operator-script CLI wrapper around the Row 7 trusted-writer commands
+# (Spec sec17). Runs the pure-logic suite unconditionally (no emulator
+# needed) plus the --execute wiring suite against freshly started
+# Firestore + Auth emulators. Emulator-only, project "taylor-parts",
+# loopback host -- no production access, no credentials, no repository
+# secrets. NOT a production activation workflow -- this script requires
+# an interactive human to type the exact --ownerAuthorization phrase and
+# pass --execute; nothing here runs it against a real project.
+
+on:
+  pull_request:
+    paths:
+      - "functions/src/types/access.ts"
+      - "functions/src/access/**"
+      - "functions/scripts/operatorAccessCommand.js"
+      - "functions/test/operatorAccessCommand.test.js"
+      - "functions/test/operatorAccessCommandExecute.test.js"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - "firebase.json"
+      - ".github/workflows/access-operator-scripts-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/src/types/access.ts"
+      - "functions/src/access/**"
+      - "functions/scripts/operatorAccessCommand.js"
+      - "functions/test/operatorAccessCommand.test.js"
+      - "functions/test/operatorAccessCommandExecute.test.js"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - "firebase.json"
+      - ".github/workflows/access-operator-scripts-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  access-operator-scripts-tests:
+    name: Operator-script command tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+
+      - name: Pure-logic tests (no emulator)
+        run: npm run test:operatorAccess
+        working-directory: functions
+
+      - name: Start Firestore + Auth emulators (background)
+        run: |
+          nohup node node_modules/firebase-tools/lib/bin/firebase.js emulators:start --only firestore,auth --project taylor-parts --config ../firebase.json > /tmp/operator-access-emulator.log 2>&1 &
+          for i in $(seq 1 60); do
+            if grep -q "All emulators ready" /tmp/operator-access-emulator.log 2>/dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "Emulators did not become ready in time"
+          cat /tmp/operator-access-emulator.log
+          exit 1
+        working-directory: functions
+
+      - name: --execute wiring tests (build + run)
+        run: npm run test:operatorAccessExecute
+        working-directory: functions
+
+      - name: Upload emulator debug logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: access-operator-scripts-emulator-logs
+          path: /tmp/operator-access-emulator.log
+          if-no-files-found: ignore
+          retention-days: 7

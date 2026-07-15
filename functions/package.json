@@ -15,7 +15,9 @@
     "test:access": "npm run build && node test/permissionCatalog.test.mjs && node test/resolveEffectivePermission.test.mjs && node test/shadowParityHarness.test.mjs && node test/compactClaims.test.mjs && node test/compactClaimsMirrorIntegrity.test.mjs",
     "test:audit": "npm run build && node test/auditEventWriter.test.mjs",
     "test:claims": "npm run build && node test/claimsWriter.test.mjs",
-    "test:trustedWriter": "npm run build && node test/trustedWriterCommands.test.mjs"
+    "test:trustedWriter": "npm run build && node test/trustedWriterCommands.test.mjs",
+    "test:operatorAccess": "node --test test/operatorAccessCommand.test.js",
+    "test:operatorAccessExecute": "npm run build && node --test test/operatorAccessCommandExecute.test.js"
   },
   "dependencies": {
     "firebase-admin": "^12.7.0",
