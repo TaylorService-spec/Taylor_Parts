@@ -1,9 +1,10 @@
-name: Access Catalog Unit Tests
+name: Access Catalog & Resolver Unit Tests
 
 # Enterprise Access & Administration Platform (Issue #226) pure-logic unit
 # tests -- no emulator, no deployment, no production access, no repository
 # secrets. Runs functions/test/permissionCatalog.test.mjs (Spec sec21
-# acceptance criteria A2) against the compiled functions/lib output.
+# acceptance criteria A2) and functions/test/resolveEffectivePermission.test.mjs
+# (Spec sec21 A1/A3, S1/S2) against the compiled functions/lib output.
 
 on:
   pull_request:
@@ -11,6 +12,7 @@ on:
       - "functions/src/types/access.ts"
       - "functions/src/access/**"
       - "functions/test/permissionCatalog.test.mjs"
+      - "functions/test/resolveEffectivePermission.test.mjs"
       - "functions/package.json"
       - "functions/package-lock.json"
       - ".github/workflows/access-catalog-unit-tests.yml"
@@ -20,6 +22,7 @@ on:
       - "functions/src/types/access.ts"
       - "functions/src/access/**"
       - "functions/test/permissionCatalog.test.mjs"
+      - "functions/test/resolveEffectivePermission.test.mjs"
       - "functions/package.json"
       - "functions/package-lock.json"
       - ".github/workflows/access-catalog-unit-tests.yml"
@@ -30,7 +33,7 @@ permissions:
 
 jobs:
   access-catalog-unit-tests:
-    name: Permission catalog unit tests
+    name: Permission catalog + resolver unit tests
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -47,6 +50,6 @@ jobs:
         run: npm ci
         working-directory: functions
 
-      - name: Permission catalog unit tests (build + run)
+      - name: Permission catalog + resolver unit tests (build + run)
         run: npm run test:access
         working-directory: functions
