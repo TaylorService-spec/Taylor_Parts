@@ -122,15 +122,24 @@ function scopeMatches(assignmentScope: Scope, target: TargetContext): boolean {
   switch (assignmentScope.type) {
     case "global":
       return true;
-    // Spec §10: tenant is reserved and inert until Issue #140 defines
-    // it -- it resolves as "no tenant boundary configured" and must
-    // never widen access. Implemented as a neutral pass-through (it
-    // narrows nothing beyond what the Permission/Condition checks
-    // already decide) rather than a bypass of any other check.
-    case "tenant":
-      return true;
     case "ownAssignment":
       return target.condition.isOwnAssignment === true;
+    // Spec §10: tenant is reserved and inert until Issue #140 defines
+    // it, and "must never widen access." Correction (Inventory review
+    // round 4, prior implementation confirmed a real defect here): an
+    // unconditional `true` made a tenant-scoped assignment match ANY
+    // target -- functionally identical to `global` -- which is exactly
+    // the widening Spec §10 prohibits (a tenant-scoped admin assignment
+    // could satisfy a global-scoped trusted-command check). Fixed by
+    // requiring the SAME exact match domain/location already require:
+    // the target must itself declare a matching tenant Scope+value.
+    // Since #140 does not exist, no caller in this repository ever
+    // constructs a tenant-scoped target -- every trusted-writer command
+    // checks against `{ type: "global" }` -- so a tenant-scoped
+    // assignment cannot match anything today. That IS "genuinely
+    // inert": not a bypass, not a widening, and not authoritative for
+    // any real target until #140 defines what a tenant target even is.
+    case "tenant":
     case "domain":
     case "location":
       return (

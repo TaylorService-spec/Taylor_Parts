@@ -56,6 +56,16 @@ function normalizeForMirrorComparison(source, peerPathVariants) {
   for (const variant of peerPathVariants) {
     text = text.split(variant).join("<PEER_ACCESS_MODULE_PATH>");
   }
+  // Normalize CRLF -> LF first. A git checkout on Windows (core.autocrlf)
+  // rewrites working-tree files to CRLF; without this, the trailing "\r"
+  // left on each line after split("\n") makes the `.` in the comment
+  // regex below refuse to match up to the true end of line (`.` never
+  // matches \r), so the regex fails outright and comment lines silently
+  // stop being recognized as comment lines -- reintroducing the exact
+  // wrap-point false-positive this normalization exists to prevent.
+  // Caught live: this test passed against LF-written files and then
+  // failed on a freshly `git worktree add`-checked-out (CRLF) copy.
+  text = text.replace(/\r\n/g, "\n");
   const lines = text.split("\n");
   const normalizedLines = [];
   let paragraph = null;
