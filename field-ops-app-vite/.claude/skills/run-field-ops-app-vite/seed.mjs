@@ -92,6 +92,25 @@ export const DRIVER_ACCOUNTS = {
   // now implemented. ACTIVE, reciprocally linked, operationalRoles:
   // ["PARTS_ASSOCIATE", "WAREHOUSE_MANAGER"].
   technicianMultiRole: { email: "driver-technician-multi-role@example.test", password: "driver-pass-123", uid: null },
+  // Issue #232 unit E4 -- Equipment. The Specification's compatibility matrix
+  // (§Seed compatibility) gives admin/dispatcher the full Equipment surface and
+  // restricts a technician to Equipment reachable through their OWN assigned Work
+  // Orders. That self-scope needs two accounts no existing fixture produces, because
+  // every prior technician fixture links via users/{uid}.employeeId (Inventory's
+  // operationalRoles model) and none carries the users/{uid}.technicianId that
+  // fieldops_wos' isOwnTechnician() actually reads:
+  //   assigned   -- technicianId matches the assignedTechId on Work Orders that link
+  //                 to Equipment: the only technician who may reach any of it.
+  //   unassigned -- a real, well-formed technician with ZERO Work Orders linking to
+  //                 Equipment: proves self-scope denies by ABSENCE OF ASSIGNMENT,
+  //                 not merely by a broken link or a wrong role.
+  // Deliberately NOT added: an "inactive employee" persona. Equipment authority per
+  // §11 is role + technician self-scope; it never consults employees/{id}, so an
+  // employmentStatus fixture would be dead weight asserting nothing. Inventory's
+  // technicianBrokenLink (role=technician, no technicianId) already covers
+  // fail-closed on unresolved linkage, and queryFailureProbe covers an invalid role.
+  equipmentTechAssigned: { email: "driver-equipment-tech-assigned@example.test", password: "driver-pass-123", uid: null },
+  equipmentTechUnassigned: { email: "driver-equipment-tech-unassigned@example.test", password: "driver-pass-123", uid: null },
 };
 
 async function ensureAuthUser(acct) {
@@ -1282,6 +1301,328 @@ async function seedIssue100RoleFixtures() {
   });
 }
 
+// ============================================================================
+// Issue #232 unit E4 -- Equipment & Installed Asset Management fixtures.
+//
+// Additive: every id below is new, and nothing here mutates an existing fixture.
+//
+// THE INVALID CASES ARE NOT SEEDED. Per the Specification, an Equipment's Location
+// must belong to its owning Account (§4) -- so a cross-Account Equipment document is
+// a state the system must never hold, and writing one as "baseline data" would seed
+// exactly the corruption E3's Rules exist to prevent (and would leave later readers
+// unable to tell a fixture from a real defect). Instead `EQUIPMENT_FIXTURE.attempts`
+// describes operations later Rules/browser tests ATTEMPT and must see DENIED. The
+// only documents created here are valid ones.
+//
+// Work Order timestamps are ABSOLUTE (see EQUIPMENT_WO_DATES) -- do NOT make them
+// offsets from `now`. Service History is grouped by calendar year (§10), so relative
+// ages silently change the BUCKETS as the wall clock moves and would break an E16
+// assertion on a date with no code change. Only createdAt/updatedAt on the
+// account/location/equipment/technician documents use `now`; nothing orders, groups,
+// or filters on those. Every write is a .set() on a fixed id, so reseeding is
+// idempotent and repeatable.
+export const EQUIPMENT_FIXTURE = {
+  // Two Accounts, so cross-Account denial has a real second tenant to point at.
+  alphaAccountId: "acct-equip-alpha",
+  betaAccountId: "acct-equip-beta",
+  // Alpha owns two Locations -- the move destination has to be a SIBLING Location of
+  // the same Account for a move to be legal at all.
+  alphaLocation1Id: "equip-loc-alpha-1",
+  alphaLocation2Id: "equip-loc-alpha-2",
+  betaLocation1Id: "equip-loc-beta-1",
+
+  // Duplicate names are LEGAL (§8: the display name is the human reference, not a
+  // unique key). Two Equipment share this name at different Locations of the same
+  // Account, so any surface that treats a name as an identifier breaks here.
+  duplicateName: "Rooftop Unit",
+
+  // --- valid Equipment -----------------------------------------------------
+  activeWithHistoryId: "equip-alpha-rtu-1",     // ACTIVE, duplicate name, 3 linked WOs
+  activeNoHistoryId: "equip-alpha-rtu-2",       // ACTIVE, duplicate name, ZERO linked WOs
+  inactiveId: "equip-alpha-chiller",            // INACTIVE
+  retiredId: "equip-alpha-boiler",              // RETIRED (reachable only via trusted retire)
+  movedId: "equip-alpha-ahu-moved",             // ACTIVE, now at Location 2, serviced at 1
+  sparseId: "equip-alpha-sparse",               // every optional field absent
+  betaEquipmentId: "equip-beta-rtu-1",          // other tenant -- must never be readable cross-Account
+
+  // --- personas ------------------------------------------------------------
+  assignedTechnicianId: "equip-tech-assigned",
+  unassignedTechnicianId: "equip-tech-unassigned",
+
+  // --- linked Work Orders ---------------------------------------------------
+  historyWorkOrderIds: ["equip-wo-rtu1-newest", "equip-wo-rtu1-middle", "equip-wo-rtu1-oldest"],
+  movedWorkOrderIds: ["equip-wo-moved-after", "equip-wo-moved-before"],
+  unassignedTechWorkOrderId: "equip-wo-unassigned-tech",  // real WO, links to NO Equipment
+  betaWorkOrderId: "equip-wo-beta",                       // real WO at the other tenant, links NO Equipment
+  // The exact calendar years E16's Service History grouping must render for
+  // activeWithHistoryId, newest first. Pinned, so this never depends on today's date.
+  historyYears: [2026, 2025, 2024],
+
+  // --- operations later tests must see DENIED (never written here) ----------
+  attempts: {
+    // A Location belonging to a DIFFERENT Account than the Equipment names.
+    crossAccountCreate: {
+      equipmentId: "equip-attempt-cross-account",
+      accountId: "acct-equip-alpha",
+      locationId: "equip-loc-beta-1",
+      name: "Cross-Account Attempt",
+    },
+    // A Location that does not exist at all.
+    danglingLocationCreate: {
+      equipmentId: "equip-attempt-dangling-location",
+      accountId: "acct-equip-alpha",
+      locationId: "equip-loc-does-not-exist",
+      name: "Dangling Location Attempt",
+    },
+    // An ordinary edit trying to re-own / move / re-status (§4: denied by Rules,
+    // independently of the client guard E2 already applies).
+    reownEdit: { equipmentId: "equip-alpha-rtu-1", accountId: "acct-equip-beta" },
+    moveViaEdit: { equipmentId: "equip-alpha-rtu-1", locationId: "equip-loc-alpha-2" },
+    retireViaEdit: { equipmentId: "equip-alpha-rtu-1", status: "RETIRED" },
+    // Trusted/audit field injection from a client.
+    trustedFieldInjection: {
+      equipmentId: "equip-alpha-rtu-1",
+      fields: { movedBy: "equip-tech-assigned", movedAt: 1, auditEventId: "forged", retiredBy: "forged" },
+    },
+    // Deletes are ALWAYS denied, for every principal including admin (§11).
+    deleteAny: { equipmentId: "equip-alpha-rtu-1" },
+    // Self-scope denials. Each names the principal it applies to, because these are
+    // NOT denials for everyone: per §10 admin/dispatcher get the FULL Equipment
+    // surface, so both legitimately CAN read either record below. Asserting otherwise
+    // would fail against a correct implementation and invite bolting account-scoping
+    // onto the admin rule -- which the Specification explicitly does not want.
+    //
+    // Note there is no "Account-scoped principal" in this model at all: technicians
+    // are ASSIGNMENT-scoped (isOwnTechnician reads assignedTechId, never a tenant).
+    unassignedTechnicianRead: {
+      equipmentId: "equip-alpha-rtu-1",
+      principal: "equipmentTechUnassigned", // holds real Work Orders, none linking this
+    },
+    crossTenantRead: {
+      equipmentId: "equip-beta-rtu-1",
+      principal: "equipmentTechAssigned", // holds a beta Work Order, but none linking this
+    },
+  },
+};
+
+// Absolute Work Order dates for the Equipment fixtures (see seedEquipmentFixture's
+// Work Order block for why these are not offsets from now). Chosen to sit mid-year so
+// no timezone interpretation can push one across a year boundary.
+const EQUIPMENT_WO_DATES = {
+  rtu1Newest: Date.UTC(2026, 5, 10, 15, 0, 0),   // 2026-06-10
+  rtu1Middle: Date.UTC(2025, 5, 12, 15, 0, 0),   // 2025-06-12
+  rtu1Oldest: Date.UTC(2024, 5, 14, 15, 0, 0),   // 2024-06-14
+  movedAfter: Date.UTC(2026, 4, 20, 15, 0, 0),   // 2026-05-20, at its CURRENT Location
+  movedBefore: Date.UTC(2025, 4, 22, 15, 0, 0),  // 2025-05-22, at its PREVIOUS Location
+  unassignedTechWo: Date.UTC(2026, 5, 1, 15, 0, 0),
+  betaWo: Date.UTC(2026, 5, 5, 15, 0, 0),
+};
+
+async function seedEquipmentFixture() {
+  const F = EQUIPMENT_FIXTURE;
+  const now = Date.now();
+
+  // -- Accounts + Locations (all relationships VALID) ------------------------
+  await db.doc(`accounts/${F.alphaAccountId}`).set({
+    name: "Alpha Facilities Co",
+    status: "Active",
+    relationshipTypes: ["CUSTOMER"],
+    defaultCurrency: "USD",
+    createdAt: now,
+    updatedAt: now,
+  });
+  await db.doc(`accounts/${F.betaAccountId}`).set({
+    name: "Beta Property Group",
+    status: "Active",
+    relationshipTypes: ["CUSTOMER"],
+    defaultCurrency: "USD",
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  for (const [id, accountId, name] of [
+    [F.alphaLocation1Id, F.alphaAccountId, "Alpha -- Main Plant"],
+    [F.alphaLocation2Id, F.alphaAccountId, "Alpha -- North Annex"],
+    [F.betaLocation1Id, F.betaAccountId, "Beta -- Harbor Tower"],
+  ]) {
+    await db.doc(`locations/${id}`).set({ accountId, name, createdAt: now, updatedAt: now });
+  }
+
+  // -- Equipment -------------------------------------------------------------
+  // Manufacturer/model/serial variations across the set: differing manufacturers,
+  // same manufacturer with different models, and serials whose casing/format differ,
+  // so search and disambiguation have something real to separate.
+  const equipment = [
+    {
+      id: F.activeWithHistoryId, locationId: F.alphaLocation1Id, name: F.duplicateName,
+      status: "ACTIVE", manufacturer: "Carrier", model: "48TCED12", serialNumber: "SN-ALPHA-0001",
+      assetTag: "AT-1001", installedDate: "2019-04-02", warrantyExpiresDate: "2029-04-02",
+      notes: "Quarterly PM. Duplicate display name with the North Annex unit -- deliberate.",
+    },
+    {
+      // Same NAME as the record above, different Location: proves a name is not an id.
+      id: F.activeNoHistoryId, locationId: F.alphaLocation2Id, name: F.duplicateName,
+      status: "ACTIVE", manufacturer: "Trane", model: "Precedent 4TCC3", serialNumber: "sn-alpha-0002",
+      assetTag: "AT-1002", installedDate: "2021-09-15", warrantyExpiresDate: null,
+      notes: null,
+    },
+    {
+      id: F.inactiveId, locationId: F.alphaLocation1Id, name: "Basement Chiller",
+      status: "INACTIVE", manufacturer: "York", model: "YCAL0080", serialNumber: "SN-ALPHA-0003",
+      assetTag: "AT-1003", installedDate: "2016-01-20", warrantyExpiresDate: "2021-01-20",
+      notes: "Isolated pending compressor replacement.",
+    },
+    {
+      // RETIRED is reachable in production ONLY through the trusted, audited retire
+      // action (§5) -- seeded directly here because E4 has no trusted writer to call
+      // (Issue #15) and the retired-state surfaces still need a record to render.
+      id: F.retiredId, locationId: F.alphaLocation2Id, name: "Annex Boiler",
+      status: "RETIRED", manufacturer: "Lochinvar", model: "CBN1501", serialNumber: "SN-ALPHA-0004",
+      assetTag: "AT-1004", installedDate: "2008-11-05", warrantyExpiresDate: "2013-11-05",
+      notes: "Decommissioned; retained for service history.",
+    },
+    {
+      // Valid moved-equipment CONTEXT: currently installed at Location 2, but its
+      // older Work Order was performed while it was at Location 1 -- so its Service
+      // History legitimately spans two Locations. No audit/move record is invented
+      // here: the move Audit Event is trusted-writer output (§5, E19/#15-gated), and
+      // fabricating one would forge exactly the evidence the audit trail exists to be.
+      id: F.movedId, locationId: F.alphaLocation2Id, name: "Air Handler 2",
+      status: "ACTIVE", manufacturer: "Carrier", model: "39M", serialNumber: "SN-ALPHA-0005",
+      assetTag: "AT-1005", installedDate: "2020-06-11", warrantyExpiresDate: "2030-06-11",
+      notes: "Relocated from Main Plant to North Annex.",
+    },
+    {
+      // Every optional field absent -- not null, ABSENT. Proves the read surfaces
+      // handle a minimal record without inventing defaults.
+      id: F.sparseId, locationId: F.alphaLocation1Id, name: "Unlabeled Pump",
+      status: "ACTIVE",
+    },
+  ];
+
+  for (const e of equipment) {
+    const { id, ...rest } = e;
+    await db.doc(`equipment/${id}`).set({
+      accountId: F.alphaAccountId,
+      ...rest,
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
+
+  // The other tenant's Equipment: the target of cross-Account read denial.
+  await db.doc(`equipment/${F.betaEquipmentId}`).set({
+    accountId: F.betaAccountId,
+    locationId: F.betaLocation1Id,
+    name: "Harbor Rooftop",
+    status: "ACTIVE",
+    manufacturer: "Lennox",
+    model: "KGA092",
+    serialNumber: "SN-BETA-0001",
+    assetTag: "AT-2001",
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  // -- Technician personas ---------------------------------------------------
+  // users/{uid}.technicianId is what fieldops_wos' isOwnTechnician() reads; the
+  // fieldops_technicians document is the directory entry the app resolves names from.
+  // The directory document is name/phone/STATUS (constants.js TECH_STATUS), which is
+  // what useCurrentTechnician, TechnicianDashboard's badge and Dispatch's
+  // recommendation scoring actually read. A truthy `active` flag would be a phantom
+  // field no code consults: the badge would render "Unknown" and the recommender
+  // would score them on a fabricated neutral availability. These are the first
+  // fieldops_technicians documents the seed writes, so an off-schema shape here would
+  // become the example everyone copies.
+  for (const [acct, technicianId, displayName] of [
+    [DRIVER_ACCOUNTS.equipmentTechAssigned, F.assignedTechnicianId, "Equip Assigned Tech"],
+    [DRIVER_ACCOUNTS.equipmentTechUnassigned, F.unassignedTechnicianId, "Equip Unassigned Tech"],
+  ]) {
+    await db.doc(`users/${acct.uid}`).set({ role: "technician", technicianId });
+    await db.doc(`fieldops_technicians/${technicianId}`).set({
+      name: displayName,
+      phone: "555-0100",
+      status: "available", // TECH_STATUS.AVAILABLE -- literal, as this file imports no src module
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
+
+  // -- Work Orders linking to Equipment --------------------------------------
+  // Dates are ABSOLUTE, not offsets from now. Service History is grouped BY YEAR
+  // (§10, rendered by E16), and relative offsets make the BUCKETS wall-clock
+  // dependent even though the ordering stays fixed: 30d/200d/2y ago spans three
+  // calendar years today and only two a few days from now, so a test asserting three
+  // year headings would start failing on a date with no code change. Fixed dates give
+  // three stable years (2026 / 2025 / 2024) and a stable newest-first order forever.
+  const [newest, middle, oldest] = F.historyWorkOrderIds;
+  const linked = [
+    { id: newest, equipmentId: F.activeWithHistoryId, locationId: F.alphaLocation1Id, status: "COMPLETED", type: "SERVICE_CALL", woNumber: "WO-EQ-001", at: EQUIPMENT_WO_DATES.rtu1Newest },
+    { id: middle, equipmentId: F.activeWithHistoryId, locationId: F.alphaLocation1Id, status: "COMPLETED", type: "PM", woNumber: "WO-EQ-002", at: EQUIPMENT_WO_DATES.rtu1Middle },
+    { id: oldest, equipmentId: F.activeWithHistoryId, locationId: F.alphaLocation1Id, status: "CANCELLED", type: "SERVICE_CALL", woNumber: "WO-EQ-003", at: EQUIPMENT_WO_DATES.rtu1Oldest },
+    // The moved unit: the newer WO is at its CURRENT Location, the older at its
+    // previous one -- history that legitimately spans Locations.
+    { id: F.movedWorkOrderIds[0], equipmentId: F.movedId, locationId: F.alphaLocation2Id, status: "COMPLETED", type: "PM", woNumber: "WO-EQ-004", at: EQUIPMENT_WO_DATES.movedAfter },
+    { id: F.movedWorkOrderIds[1], equipmentId: F.movedId, locationId: F.alphaLocation1Id, status: "COMPLETED", type: "SERVICE_CALL", woNumber: "WO-EQ-005", at: EQUIPMENT_WO_DATES.movedBefore },
+  ];
+
+  for (const wo of linked) {
+    await db.doc(`fieldops_wos/${wo.id}`).set({
+      woNumber: wo.woNumber,
+      status: wo.status,
+      customerId: F.alphaAccountId,
+      locationId: wo.locationId,
+      equipmentId: wo.equipmentId,
+      assignedTechId: F.assignedTechnicianId,
+      priority: 3,
+      type: wo.type,
+      createdAt: new Date(wo.at),
+      updatedAt: new Date(wo.at),
+    });
+  }
+
+  // A real Work Order for the unassigned technician that links to NO Equipment: they
+  // are a legitimate, well-formed technician with work of their own -- they simply
+  // hold no assignment reaching any Equipment. Denial here is about SCOPE, not shape.
+  await db.doc(`fieldops_wos/${F.unassignedTechWorkOrderId}`).set({
+    woNumber: "WO-EQ-006",
+    status: "ASSIGNED",
+    customerId: F.alphaAccountId,
+    locationId: F.alphaLocation1Id,
+    assignedTechId: F.unassignedTechnicianId,
+    priority: 3,
+    type: "SERVICE_CALL",
+    createdAt: new Date(EQUIPMENT_WO_DATES.unassignedTechWo),
+    updatedAt: new Date(EQUIPMENT_WO_DATES.unassignedTechWo),
+  });
+
+  // The other tenant's Work Order, assigned to the SAME technician as alpha's work,
+  // deliberately linking NO Equipment.
+  //
+  // It must not link betaEquipmentId. Technician self-scope (§10) is reachability
+  // through their OWN assigned Work Orders -- so a WO that both links that Equipment
+  // AND is assigned to this technician would make it legitimately readable, and
+  // `attempts.crossTenantRead` would then be asserting a denial the Specification
+  // does not call for. (An earlier revision did exactly that: linkage is SPECIFIC,
+  // not ambient, so linking the beta WO to the denial target is what would grant the
+  // access it was meant to disprove.)
+  //
+  // As written it proves the intended thing: this technician holds real work at the
+  // beta tenant, and still cannot reach beta's Equipment -- because no assignment of
+  // theirs links it. Ambient presence at a tenant is not access to its register.
+  await db.doc(`fieldops_wos/${F.betaWorkOrderId}`).set({
+    woNumber: "WO-EQ-007",
+    status: "COMPLETED",
+    customerId: F.betaAccountId,
+    locationId: F.betaLocation1Id,
+    assignedTechId: F.assignedTechnicianId,
+    priority: 3,
+    type: "SERVICE_CALL",
+    createdAt: new Date(EQUIPMENT_WO_DATES.betaWo),
+    updatedAt: new Date(EQUIPMENT_WO_DATES.betaWo),
+  });
+}
+
 // Inventory Health / Parts Catalog separation (PR B) -- exported so
 // driver.mjs can delete/restore inventory_transactions documents
 // directly (Admin SDK, emulator-only) for the empty-state assertions
@@ -1382,6 +1723,7 @@ async function seed() {
   await seedCsvImportFixture();
   await seedWoCustomerSearchFixture();
   await seedIssue100RoleFixtures();
+  await seedEquipmentFixture();
 
   console.log("Seeded driver accounts:");
   for (const [key, acct] of Object.entries(DRIVER_ACCOUNTS)) {
