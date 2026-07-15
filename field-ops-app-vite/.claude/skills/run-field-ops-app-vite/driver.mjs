@@ -4633,9 +4633,9 @@ async function verifyInventoryRoleWarehouseManager(browser, page, accountKey) {
     niReport(`Nav: 'My Inventory Role' tab is never visible to ${adminLikeAccount}`, !navLinkVisibleForAdminLike);
   }
 
-  // ===== 8. Ineligible / broken-linkage / wrong-role technicians fail
-  //          closed: no nav item, direct URL falls through to /dashboard =====
-  for (const ineligibleAccount of ["technicianIneligible", "technicianBrokenLink", "technicianPartsManager"]) {
+  // ===== 8. Ineligible / broken-linkage technicians fail closed: no nav
+  //          item at all, direct URL falls through to /dashboard =====
+  for (const ineligibleAccount of ["technicianIneligible", "technicianBrokenLink"]) {
     await page.close();
     page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     await login(page, ineligibleAccount);
@@ -4645,6 +4645,29 @@ async function verifyInventoryRoleWarehouseManager(browser, page, accountKey) {
     await page.waitForTimeout(500);
     const landedOnDashboard = new URL(page.url()).pathname.endsWith("/dashboard");
     niReport(`Direct route: ${ineligibleAccount} hitting /inventory-role/warehouse falls through to /dashboard`, landedOnDashboard);
+  }
+
+  // ===== 8b. Wrong-role: technicianPartsManager -- since Issue #100 PR
+  //           1b, this account IS eligible for its OWN sibling
+  //           "inventoryRole" subnav item ("manager"), so the top-level
+  //           "My Inventory Role" tab is now legitimately visible to
+  //           them (unlike the fully-ineligible accounts above). What
+  //           must still fail closed is the WAREHOUSE-specific subnav
+  //           item and the direct /inventory-role/warehouse URL. =====
+  {
+    await page.close();
+    page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    await login(page, "technicianPartsManager");
+    const navTabVisible = await page.getByRole("link", { name: "My Inventory Role" }).first().isVisible().catch(() => false);
+    niReport("Nav: 'My Inventory Role' tab IS visible to technicianPartsManager (their own sibling item)", navTabVisible);
+    await page.getByRole("link", { name: "My Inventory Role" }).first().click();
+    await page.waitForTimeout(500);
+    const warehouseSubnavHidden = await page.getByRole("link", { name: "Warehouse Manager" }).first().isVisible().catch(() => false);
+    niReport("Nav: 'Warehouse Manager' sub-nav item is hidden for technicianPartsManager (wrong operationalRole)", !warehouseSubnavHidden);
+    await page.goto(warehouseUrl(), { waitUntil: "domcontentloaded", timeout: 20000 });
+    await page.waitForTimeout(500);
+    const landedOnDashboard = new URL(page.url()).pathname.endsWith("/dashboard");
+    niReport("Direct route: technicianPartsManager hitting /inventory-role/warehouse falls through to /dashboard", landedOnDashboard);
   }
 
   // ===== 9. Inactive employment (temporarily TERMINATED, restored after) =====
@@ -4876,6 +4899,12 @@ async function verifyInventoryRolePartsManager(browser, page, accountKey) {
     createdAt: Date.now(),
   });
 
+  // driver.mjs deliberately never populates DRIVER_ACCOUNTS[key].uid (see
+  // seed.mjs's own header comment on why) -- resolve the real uid here,
+  // in-process, via the already-imported Admin SDK `db` handle instead.
+  const pmUserSnap = await db.collection("users").where("employeeId", "==", "driver-emp-technician-parts-manager").limit(1).get();
+  const partsManagerUid = pmUserSnap.docs[0]?.id ?? null;
+
   try {
     // ===== 1. Eligible PARTS_MANAGER: nav item, Health, Catalog =====
     await login(page, accountKey);
@@ -4883,7 +4912,7 @@ async function verifyInventoryRolePartsManager(browser, page, accountKey) {
     niReport("Nav: 'My Inventory Role' top-level tab is visible to an ACTIVE, eligible PARTS_MANAGER", navLinkVisible);
     await page.getByRole("link", { name: "My Inventory Role" }).first().click();
     const headerVisible = await page
-      .getByRole("heading", { name: "Parts Manager" })
+      .getByRole("heading", { name: "Parts Manager", exact: true })
       .first()
       .waitFor({ timeout: 10000 })
       .then(() => true)
@@ -4909,13 +4938,13 @@ async function verifyInventoryRolePartsManager(browser, page, accountKey) {
 
     // ===== 3. Assign to an eligible candidate =====
     await queueRow.getByRole("button", { name: "Assign" }).click();
-    const assignPanelVisible = await page
-      .getByRole("heading", { name: /Assign --/ })
+    const assignPanel = page.locator(".fo-card").filter({ has: page.getByRole("heading", { name: /^Assign --/ }) });
+    const assignPanelVisible = await assignPanel
       .waitFor({ timeout: 10000 })
       .then(() => true)
       .catch(() => false);
     niReport("Assign: panel opens for the selected request", assignPanelVisible);
-    const picker = page.getByRole("combobox", { name: "Assign to Parts Associate" });
+    const picker = assignPanel.getByRole("combobox", { name: "Assign to Parts Associate" });
     await picker.click();
     // Same pattern as verifyPrA's own assignment-picker check above --
     // wait on the known-good option directly (unfiltered result list;
@@ -4923,9 +4952,12 @@ async function verifyInventoryRolePartsManager(browser, page, accountKey) {
     // the dropdown opens), no .fill() needed.
     await page.getByRole("option", { name: new RegExp(`^${PR_A_FIXTURE.securityRoleEmployees.eligible.displayName}`) }).waitFor({ timeout: 10000 });
     await page.getByRole("option", { name: new RegExp(`^${PR_A_FIXTURE.securityRoleEmployees.eligible.displayName}`) }).first().click();
-    await page.getByRole("button", { name: "Assign", exact: true }).click();
-    const assignPanelClosed = await page
-      .getByRole("heading", { name: /Assign --/ })
+    // Scoped to the panel itself -- the Queue's own per-row "Assign"
+    // trigger buttons (type="button") share the same accessible name as
+    // this panel's submit button, so an unscoped page-wide locator would
+    // be ambiguous (confirmed live: 3+ Queue rows all render one).
+    await assignPanel.getByRole("button", { name: "Assign", exact: true }).click();
+    const assignPanelClosed = await assignPanel
       .waitFor({ state: "detached", timeout: 10000 })
       .then(() => true)
       .catch(() => false);
@@ -4933,7 +4965,7 @@ async function verifyInventoryRolePartsManager(browser, page, accountKey) {
     const afterAssign = (await fixtureRef.get()).data();
     niReport("Assign: status transitions to ASSIGNED_TO_PARTS_ASSOCIATE", afterAssign?.status === "ASSIGNED_TO_PARTS_ASSOCIATE");
     niReport("Assign: assignedToUserId is the selected candidate", afterAssign?.assignedToUserId === assignTargetUserId);
-    niReport("Assign: assignedBy is this Parts Manager's own uid", afterAssign?.assignedBy === DRIVER_ACCOUNTS.technicianPartsManager.uid);
+    niReport("Assign: assignedBy is this Parts Manager's own uid", afterAssign?.assignedBy === partsManagerUid);
 
     // ===== 4. Assigned-Work Oversight shows the now-assigned request,
     //          with a resolved name, never a raw uid =====
@@ -4953,7 +4985,7 @@ async function verifyInventoryRolePartsManager(browser, page, accountKey) {
     //          account's uid =====
     await fixtureRef.update({ status: "VOIDED", voidedBy: "driver-seed-admin-uid", voidedAt: Date.now(), voidReason: "driver verification" });
     await page.goto(managerUrl(), { waitUntil: "domcontentloaded", timeout: 20000 });
-    await page.getByRole("heading", { name: "Parts Manager" }).waitFor({ timeout: 10000 });
+    await page.getByRole("heading", { name: "Parts Manager", exact: true }).waitFor({ timeout: 10000 });
     const historyTable = page.locator('xpath=//h3[text()="Relevant History"]/following::table[1]');
     const historyRowVisible = await historyTable
       .locator("tr", { hasText: "Hopper Agitator - Single Flavor" })
@@ -4967,9 +4999,13 @@ async function verifyInventoryRolePartsManager(browser, page, accountKey) {
 
     // ===== 6. Denied capabilities: no purchasing-execution/Cancel/Void/
     //          Approve/Reject controls anywhere on this page =====
+    // getByRole("button", { name, exact: true }), not getByText -- this
+    // page's own Queue table has a legitimate "Approved" column header
+    // (the reviewedAt date), whose substring would false-positive against
+    // a getByText(..., { exact: false }) check for "Approve".
     const deniedControls = ["Start Purchasing", "Cancel Reorder Request", "Void Purchase Order", "Approve", "Reject", "Record Purchase Order", "Mark Received"];
     for (const label of deniedControls) {
-      const count = await page.getByText(label, { exact: false }).count().catch(() => 0);
+      const count = await page.getByRole("button", { name: label, exact: true }).count().catch(() => 0);
       niReport(`Denied: no "${label}" control is rendered on the Parts Manager page`, count === 0);
     }
 
