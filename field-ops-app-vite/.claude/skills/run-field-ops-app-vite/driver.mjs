@@ -3969,6 +3969,230 @@ async function verifyAccountDetailForms(browser, page, accountKey) {
   return niFailed === 0;
 }
 
+// Issue #214 PR-4 -- shared application-state primitives (LoadingState /
+// EmptyState / FailureState) migrated onto the four high-traffic surfaces
+// (AccountsList, AccountDetail, WorkOrdersList, WorkOrderDetailPage). This
+// verifies the state contract on real pages: loading (role=status, delayed via
+// Firestore-channel interception so it is reliably observable), populated,
+// database-empty vs filtered-empty (distinct, never conflated, no alert),
+// not-found and load-failure (role=alert, safe copy, keyboard action, no raw
+// id/code), the accounts fail-closed read (the subscription-failure condition;
+// the UI state is defensively unreachable because technicians can't mount
+// /customers), recovery after data returns, and 375/tablet/desktop layout with no
+// overflow. Destructive empty-state setups snapshot + restore in try/finally so
+// the shared seed is never left damaged.
+async function verifySharedApplicationStates(browser, page, accountKey) {
+  const F = COMMERCIAL_PROFILE_FIXTURE;
+  const url = (path) => { const u = new URL(path, APP_ROOT); u.searchParams.set("emulator", "1"); return u.toString(); };
+  const loadingState = () => page.locator('.fo-state-loading[role="status"]');
+  const failureState = () => page.locator('.fo-failure-state[role="alert"]');
+  const emptyState = () => page.locator(".fo-empty-state");
+  const table = () => page.locator(".fo-table-scroll table");
+  const EMU = /127\.0\.0\.1:8080/;
+  // Persistent route with a TOGGLED delay -- avoids unroute-during-flight races
+  // (`route.continue` on an unrouted handler throws). Set emuDelayMs=700 to make a
+  // loading state reliably observable, then back to 0.
+  let emuDelayMs = 0;
+  const delayEmu = async (route) => {
+    if (emuDelayMs) await new Promise((r) => setTimeout(r, emuDelayMs));
+    try { await route.continue(); } catch { /* route no longer owned */ }
+  };
+  const RAW = /permission-denied|FirebaseError|firestore\/|code:|Missing or insufficient|AIza|documents\//i;
+
+  await login(page, accountKey);
+  await page.route(EMU, delayEmu);
+
+  // ===== ACCOUNTS: loading (delayed) -> populated + count live region =====
+  emuDelayMs = 700;
+  await page.goto(url("customers"), { waitUntil: "commit" });
+  const acctLoading = await loadingState().first().waitFor({ timeout: 4000 }).then(() => true).catch(() => false);
+  niReport("Accounts loading: a role=status polite region with human text",
+    acctLoading &&
+      (await loadingState().first().getAttribute("aria-live")) === "polite" &&
+      /loading customers/i.test(await loadingState().first().innerText().catch(() => "")));
+  emuDelayMs = 0;
+  await table().first().waitFor({ timeout: 15000 });
+  niReport("Accounts populated: the results table renders", (await table().count()) > 0);
+  niReport("Accounts populated: the result-count live region is preserved",
+    (await page.locator('.fo-portfolio-count[role="status"][aria-live="polite"]').count()) > 0);
+
+  // ===== ACCOUNTS: filtered-empty (distinct, no alert) + keyboard recovery =====
+  // Deterministic no-match filter: a throwaway account with a unique tag but NO
+  // relationship type. Filtering by that tag AND the CUSTOMER relationship matches
+  // nothing (the throwaway lacks the relationship; every other account lacks the
+  // tag), independent of the rest of the seed.
+  const filterTag = "ZZ-STATE-FILTER-NOMATCH";
+  const filterAcctId = "acct-shared-states-filter";
+  await db.collection("accounts").doc(filterAcctId).set({ name: "State Filter Probe", status: "Prospect", relationshipTypes: [], tags: [filterTag], createdAt: Date.now() });
+  try {
+    await page.goto(url("customers"), { waitUntil: "domcontentloaded" });
+    await table().first().waitFor({ timeout: 10000 });
+    await page.locator('.fo-filter-group[aria-label="Filter by relationship type"]').getByRole("button", { name: "Customer", exact: true }).click();
+    await page.locator('.fo-filter-group[aria-label="Filter by tag"]').getByRole("button", { name: filterTag, exact: true }).click();
+    await emptyState().waitFor({ timeout: 5000 });
+    niReport("Accounts filtered-empty: EmptyState variant=filtered (not database)",
+      (await emptyState().getAttribute("data-empty-variant")) === "filtered");
+    niReport("Accounts filtered-empty: not an alert (no alert semantics)",
+      (await emptyState().getAttribute("role")) === null);
+    niReport("Accounts filtered-empty: no stale results table", (await table().count()) === 0);
+    const clearBtn = emptyState().getByRole("button", { name: /clear filters/i });
+    await clearBtn.focus();
+    await page.keyboard.press("Enter"); // optional action, keyboard-activated
+    await table().first().waitFor({ timeout: 5000 });
+    niReport("Accounts filtered-empty: Clear filters (keyboard) recovers to populated", (await table().count()) > 0);
+  } finally {
+    await db.collection("accounts").doc(filterAcctId).delete().catch(() => {});
+  }
+
+  // ===== ACCOUNTS: empty-database (snapshot/delete/restore) + recovery =====
+  const acctSnap = await db.collection("accounts").get();
+  const acctBackup = acctSnap.docs.map((d) => ({ id: d.id, data: d.data() }));
+  try {
+    const del = db.batch();
+    acctSnap.docs.forEach((d) => del.delete(d.ref));
+    await del.commit();
+    await page.goto(url("customers"), { waitUntil: "domcontentloaded" });
+    await emptyState().waitFor({ timeout: 10000 });
+    niReport("Accounts empty-database: EmptyState variant=database (distinct from filtered)",
+      (await emptyState().getAttribute("data-empty-variant")) === "database");
+    niReport("Accounts empty-database: shows no stale results table", (await table().count()) === 0);
+    niReport("Accounts empty-database: a keyboard-accessible New Customer action",
+      (await emptyState().getByRole("button", { name: /new customer/i }).count()) > 0);
+    niReport("Accounts empty-database: no raw id/error detail in the empty copy",
+      !RAW.test(await emptyState().innerText().catch(() => "")));
+  } finally {
+    const rest = db.batch();
+    acctBackup.forEach((b) => rest.set(db.collection("accounts").doc(b.id), b.data));
+    await rest.commit();
+  }
+  await page.goto(url("customers"), { waitUntil: "domcontentloaded" });
+  await table().first().waitFor({ timeout: 10000 });
+  niReport("Accounts recovery: populated returns after the data is restored", (await table().count()) > 0);
+
+  // ===== ACCOUNTS load-failure condition: technician read is denied (fail-closed) =====
+  {
+    const probeApp = initializeApp({ projectId: "taylor-parts", apiKey: "fake-key-emulator-only" }, "sas-rules-probe");
+    const probeAuth = getAuth(probeApp);
+    connectAuthEmulator(probeAuth, "http://127.0.0.1:9099", { disableWarnings: true });
+    const probeDb = getClientFirestore(probeApp);
+    connectFirestoreEmulator(probeDb, "127.0.0.1", 8080);
+    await signInWithEmailAndPassword(probeAuth, DRIVER_ACCOUNTS.technicianIneligible.email, DRIVER_ACCOUNTS.technicianIneligible.password);
+    const res = await new Promise((resolve) => {
+      const unsub = onSnapshot(query(collection(probeDb, "accounts")),
+        () => { unsub(); resolve({ denied: false }); },
+        (err) => { unsub(); resolve({ denied: err.code === "permission-denied" }); });
+      setTimeout(() => resolve({ denied: null }), 8000);
+    });
+    await deleteApp(probeApp).catch(() => {});
+    niReport("Accounts load-failure: a non-authorized read is denied at the Rules layer (the FailureState trigger)", res.denied === true);
+  }
+
+  // ===== CUSTOMER DETAIL: loading + not-found (FailureState role=alert, safe, keyboard back) =====
+  emuDelayMs = 700;
+  await page.goto(customerUrl(F.editAccountId), { waitUntil: "commit" });
+  const cdLoading = await loadingState().first().waitFor({ timeout: 4000 }).then(() => true).catch(() => false);
+  niReport("Customer Detail loading: role=status region shown", cdLoading);
+  emuDelayMs = 0;
+  await page.waitForTimeout(300);
+
+  await page.goto(customerUrl("nonexistent-shared-states-account"), { waitUntil: "domcontentloaded" });
+  await failureState().waitFor({ timeout: 10000 });
+  const cdText = await failureState().innerText().catch(() => "");
+  niReport("Customer Detail not-found: FailureState uses role=alert", (await failureState().getAttribute("role")) === "alert");
+  niReport("Customer Detail not-found: safe copy, no raw id or Firebase detail",
+    /could not be found/i.test(cdText) && !RAW.test(cdText) && !/nonexistent-shared-states-account/.test(cdText));
+  const cdBack = failureState().getByRole("button", { name: /back to customers/i });
+  niReport("Customer Detail not-found: a keyboard-accessible Back action", (await cdBack.count()) === 1);
+  await cdBack.focus();
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(500);
+  niReport("Customer Detail not-found: Back (keyboard) navigates to Customers", /\/customers(\?|$|\b)/.test(page.url()), page.url());
+
+  // ===== CUSTOMER DETAIL: Contacts empty + Locations empty (throwaway account) =====
+  const emptyAcctId = "acct-shared-states-empty";
+  await db.collection("accounts").doc(emptyAcctId).set({ name: "Empty State Test Co", status: "PROSPECT", relationshipTypes: ["CUSTOMER"], createdAt: Date.now() });
+  try {
+    await page.goto(customerUrl(emptyAcctId), { waitUntil: "domcontentloaded" });
+    await page.getByRole("heading", { name: /^Contacts/ }).waitFor({ timeout: 10000 });
+    const contactsEmpty = page.locator("section.wo-history").filter({ has: page.locator("h4", { hasText: /^Contacts/ }) }).locator(".fo-empty-state");
+    niReport("Customer Detail: Contacts empty renders an EmptyState with 'No contacts yet.'",
+      (await contactsEmpty.count()) > 0 && /no contacts yet/i.test(await contactsEmpty.innerText().catch(() => "")));
+    const locEmpty = page.locator("section.wo-history").filter({ has: page.locator("h4", { hasText: /^Locations/ }) }).locator(".fo-empty-state");
+    niReport("Customer Detail: Locations empty renders an EmptyState with 'No locations yet.'",
+      (await locEmpty.count()) > 0 && /no locations yet/i.test(await locEmpty.innerText().catch(() => "")));
+  } finally {
+    await db.collection("accounts").doc(emptyAcctId).delete().catch(() => {});
+  }
+
+  // ===== WORK ORDERS: loading -> populated + navigation; detail not-found; empty =====
+  emuDelayMs = 700;
+  await page.goto(url("service"), { waitUntil: "commit" });
+  const woLoading = await loadingState().first().waitFor({ timeout: 4000 }).then(() => true).catch(() => false);
+  niReport("Work Orders loading: role=status region shown", woLoading);
+  emuDelayMs = 0;
+  await page.locator("table.fo-table").waitFor({ timeout: 15000 });
+  niReport("Work Orders populated: the table renders rows", (await page.locator("table.fo-table tbody tr").count()) > 0);
+  const firstWo = page.locator("table.fo-table tbody tr td a").first();
+  await firstWo.click();
+  await page.waitForTimeout(500);
+  niReport("Work Orders: row navigation reaches a work-order detail route", /\/service\/work-orders\/[^/]+/.test(page.url()), page.url());
+
+  await page.goto(url("service/work-orders/nonexistent-shared-states-wo"), { waitUntil: "domcontentloaded" });
+  await failureState().waitFor({ timeout: 10000 });
+  const wdText = await failureState().innerText().catch(() => "");
+  niReport("Work Order detail not-found: FailureState role=alert + safe copy, no raw id",
+    (await failureState().getAttribute("role")) === "alert" && /could not be found/i.test(wdText) && !RAW.test(wdText) && !/nonexistent-shared-states-wo/.test(wdText));
+  niReport("Work Order detail not-found: a keyboard-accessible Back to Work Orders action",
+    (await failureState().getByRole("button", { name: /back to work orders/i }).count()) === 1);
+
+  const woSnap = await db.collection("fieldops_wos").get();
+  const woBackup = woSnap.docs.map((d) => ({ id: d.id, data: d.data() }));
+  try {
+    const del = db.batch();
+    woSnap.docs.forEach((d) => del.delete(d.ref));
+    await del.commit();
+    await page.goto(url("service"), { waitUntil: "domcontentloaded" });
+    await emptyState().waitFor({ timeout: 10000 });
+    niReport("Work Orders empty-database: EmptyState variant=database (All group)",
+      (await emptyState().getAttribute("data-empty-variant")) === "database");
+    niReport("Work Orders empty: no stale table rows", (await page.locator("table.fo-table tbody tr").count()) === 0);
+  } finally {
+    const rest = db.batch();
+    woBackup.forEach((b) => rest.set(db.collection("fieldops_wos").doc(b.id), b.data));
+    await rest.commit();
+  }
+
+  // ===== Responsive: state layouts wrap, no overflow, readable measure =====
+  await page.goto(url("service/work-orders/nonexistent-shared-states-wo"), { waitUntil: "domcontentloaded" });
+  await failureState().waitFor({ timeout: 10000 });
+  for (const w of [375, 768, 1280]) {
+    await page.setViewportSize({ width: w, height: 812 });
+    await page.waitForTimeout(150);
+    const m = await page.evaluate(() => {
+      const el = document.querySelector(".fo-state");
+      const r = el.getBoundingClientRect();
+      const de = document.documentElement;
+      return {
+        docOverflow: de.scrollWidth > de.clientWidth + 1,
+        stateRight: r.right,
+        stateW: r.width,
+        clientW: de.clientWidth,
+        maxW: parseFloat(getComputedStyle(el).maxWidth) || Infinity,
+      };
+    });
+    // Hard requirement: no horizontal DOCUMENT overflow at 375px. (At tablet the
+    // app's own dense top nav scrolls horizontally within itself -- an existing
+    // app-shell concern outside PR-4; the state content is measured directly.)
+    if (w === 375) niReport("375px: no horizontal document overflow", m.docOverflow === false, JSON.stringify(m));
+    niReport(`${w}px: state content fits the viewport within a readable measure`,
+      m.stateRight <= m.clientW + 1 && m.stateW <= m.maxW + 1, JSON.stringify(m));
+  }
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  console.log(`\n${niPassed} passed, ${niFailed} failed`);
+  return niFailed === 0;
+}
+
 async function main() {
   const [, , command, ...args] = process.argv;
   const browser = await chromium.launch();
@@ -4111,6 +4335,10 @@ async function main() {
     } else if (command === "verify-account-detail-forms") {
       const [accountKey = "admin"] = args;
       const ok = await verifyAccountDetailForms(browser, page, accountKey);
+      if (!ok) process.exitCode = 1;
+    } else if (command === "verify-shared-application-states") {
+      const [accountKey = "admin"] = args;
+      const ok = await verifySharedApplicationStates(browser, page, accountKey);
       if (!ok) process.exitCode = 1;
     } else {
       console.error(`Unknown command "${command}". See the header comment in this file for usage.`);

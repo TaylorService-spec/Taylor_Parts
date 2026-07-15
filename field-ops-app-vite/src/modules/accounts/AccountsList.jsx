@@ -14,6 +14,10 @@ import {
 import GlobalSearch from "../../shared/search/GlobalSearch";
 import WorkspaceHeader from "../../shared/ui/WorkspaceHeader";
 import Modal from "../../shared/ui/Modal";
+import LoadingState from "../../shared/ui/LoadingState";
+import EmptyState from "../../shared/ui/EmptyState";
+import FailureState from "../../shared/ui/FailureState";
+import { loadErrorMessage } from "../../domain/loadErrorMessage";
 import AccountForm from "./AccountForm";
 
 // Sprint 2.0.2 -- Customer Foundation. Internal name AccountsList; rendered UI
@@ -136,11 +140,18 @@ export default function AccountsList() {
       )}
 
       {loading ? (
-        <p className="fo-muted" role="status">Loading customers...</p>
+        <LoadingState>Loading customers…</LoadingState>
       ) : error ? (
-        <p className="fo-warning" role="status">Unable to load customers ({error.code ?? "error"}).</p>
+        // Terminal subscription failure -- safe categorized copy only (never the
+        // raw code); the content branch below is not reached, so no stale data.
+        <FailureState message={loadErrorMessage(error, { entity: "customers" })} />
       ) : accounts.length === 0 ? (
-        <p className="fo-muted" role="status">No customers yet. Create one above.</p>
+        <EmptyState
+          variant="database"
+          title="No customers yet"
+          message="Add your first customer to get started."
+          action={<button type="button" onClick={() => setShowCreate(true)}>+ New Customer</button>}
+        />
       ) : (
         <>
           {/* Portfolio cards -- click to filter by status; Total clears the status filter */}
@@ -206,10 +217,11 @@ export default function AccountsList() {
           </p>
 
           {filtered.length === 0 ? (
-            <p className="fo-muted" role="status">
-              No customers match the current filters.{" "}
-              <button type="button" className="fo-link-btn" onClick={clearFilters}>Clear filters</button>
-            </p>
+            <EmptyState
+              variant="filtered"
+              message="No customers match the current filters."
+              action={<button type="button" className="fo-link-btn" onClick={clearFilters}>Clear filters</button>}
+            />
           ) : (
             <div className="fo-table-scroll">
               <table className="fo-table">

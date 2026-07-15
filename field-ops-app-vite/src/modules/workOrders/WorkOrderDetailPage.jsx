@@ -5,6 +5,8 @@ import { useAccount } from "../../hooks/useAccount";
 import { useLocation as useLocationDoc } from "../../hooks/useLocation";
 import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
 import { JOBS_COLLECTION, TECHNICIANS_COLLECTION } from "../../domain/constants";
+import LoadingState from "../../shared/ui/LoadingState";
+import FailureState from "../../shared/ui/FailureState";
 import WorkOrderDetail from "../controlTower/WorkOrderDetail";
 
 // Sprint 2.0.3 -- Service > Work Orders detail route
@@ -32,13 +34,15 @@ export default function WorkOrderDetailPage() {
   const { data: jobs } = useFirestoreCollection(JOBS_COLLECTION);
   const { data: technicians } = useFirestoreCollection(TECHNICIANS_COLLECTION);
 
-  if (loading) return <div className="fo-panel"><p className="fo-muted">Loading work order...</p></div>;
+  if (loading) return <div className="fo-panel"><LoadingState>Loading work order…</LoadingState></div>;
 
   if (!workOrder) {
     return (
       <div className="fo-panel">
-        <p className="fo-muted">Work order not found.</p>
-        <button type="button" onClick={() => navigate("/service/work-orders")}>Back to Work Orders</button>
+        <FailureState
+          message="This work order could not be found."
+          action={<button type="button" onClick={() => navigate("/service/work-orders")}>Back to Work Orders</button>}
+        />
       </div>
     );
   }
