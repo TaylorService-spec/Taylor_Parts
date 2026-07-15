@@ -406,9 +406,10 @@ export function searchEquipment(equipment, options = {}) {
 // select those linked to this equipment and order them newest-first.
 //
 // Historical entries survive retirement (Spec §3) -- nothing here filters by the
-// equipment's status. Returns { id, workOrderId, status, at, ... } shaped entries
-// carrying the Work Order through for linking; the raw equipment id is never a
-// rendered reference.
+// equipment's status. Returns { workOrderId, woNumber, status, type, at } entries --
+// note workOrderId, NOT id: there is no `id` field on an entry, so a consumer keying
+// a list by entry.id gets undefined for every row. The Work Order is carried through
+// for linking; the raw equipment id is never a rendered reference.
 export function equipmentServiceHistory(workOrders = [], equipmentId) {
   // Same boundary as locationsForAccount: a non-array raised a TypeError instead of
   // answering. Service History is DERIVED (§10) -- with no usable Work Orders there is

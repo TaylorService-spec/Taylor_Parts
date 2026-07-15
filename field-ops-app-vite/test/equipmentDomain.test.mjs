@@ -340,6 +340,20 @@ ok("collection helpers answer [] on a non-array instead of crashing the caller",
   assert.deepEqual(equipmentServiceHistory(wos, "e1").map((h) => h.workOrderId), ["w1"], "valid Work Orders still derive history");
 });
 
+ok("a service-history entry's shape is exactly what the doc comment promises", () => {
+  // The comment claimed an `id` field this function has never returned. E7 renders
+  // this list, so a dev trusting it writes key={entry.id} -> undefined key on every
+  // row of an explicitly ordered list. Pin the real shape so the comment cannot drift
+  // from the code again.
+  const [entry] = equipmentServiceHistory(
+    [{ id: "w1", equipmentId: "e1", woNumber: "WO-1", status: "COMPLETED", type: "PM", createdAt: 1 }],
+    "e1"
+  );
+  assert.deepEqual(Object.keys(entry).sort(), ["at", "status", "type", "woNumber", "workOrderId"]);
+  assert.equal(entry.workOrderId, "w1");
+  assert.equal(Object.hasOwn(entry, "id"), false, "there is no `id` on an entry -- the key is workOrderId");
+});
+
 ok("groupServiceHistoryByYear rejects malformed input instead of fabricating history", () => {
   // A string used to be walked character by character into a phantom bucket: each
   // character's `.at` is String.prototype.at (truthy), so the guard passed and
