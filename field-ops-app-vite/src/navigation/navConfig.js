@@ -187,6 +187,16 @@ export const NAV_DOMAINS = [
         path: "warehouse",
         operationalRoleAccess: [OPERATIONAL_ROLE.WAREHOUSE_MANAGER],
       },
+      // Issue #100 PR 3b -- adds "mine" (PARTS_ASSOCIATE), the third and
+      // final sibling item this domain was shaped for. Same generic
+      // App.jsx routing (admin/dispatcher redirect, top-level-tab index
+      // redirect) applies with no further App.jsx change.
+      {
+        key: "mine",
+        label: "My Purchasing",
+        path: "mine",
+        operationalRoleAccess: [OPERATIONAL_ROLE.PARTS_ASSOCIATE],
+      },
     ],
   },
   {

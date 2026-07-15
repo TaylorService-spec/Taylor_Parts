@@ -316,6 +316,35 @@
 //                                 technicianBrokenLink, technicianWarehouseManager
 //                                 (wrong operationalRole), and a temporarily
 //                                 TERMINATED technicianPartsManager.
+//   verify-inventory-role-parts-associate <accountKey>
+//                                 Issue #100 PR 3b (docs/specifications/
+//                                 inventory-nav-access-alignment.md) -- the
+//                                 /inventory-role/mine surface. Asserts (as
+//                                 technicianPartsAssociate): Waiting shows
+//                                 only this account's own assigned request,
+//                                 never a different associate's; Start
+//                                 Purchasing, Post Purchasing Update, Record
+//                                 Purchase Order, and Mark Received each
+//                                 succeed in sequence on the same fixture
+//                                 request, preserving exact status
+//                                 transitions (ASSIGNED_TO_PARTS_ASSOCIATE ->
+//                                 PURCHASING_IN_PROGRESS -> ORDERED ->
+//                                 RECEIVED); no Cancel/Void/Approve/Reject/
+//                                 Assign control renders; a direct client
+//                                 SDK write to a DIFFERENT associate's
+//                                 request is denied at the Rules layer
+//                                 (SDK-level probe, not merely UI-absence);
+//                                 no raw ids; 375px has no horizontal
+//                                 overflow. Also asserts fail-closed behavior
+//                                 for admin/ineligibleDispatcher (redirect to
+//                                 /inventory), technicianIneligible,
+//                                 technicianBrokenLink, technicianPartsManager
+//                                 (wrong operationalRole), a temporarily
+//                                 TERMINATED technicianPartsAssociate, and a
+//                                 multi-operational-role union check
+//                                 (technicianMultiRole sees both 'My
+//                                 Purchasing' and 'Warehouse Manager'
+//                                 simultaneously).
 //
 // All screenshots are written under .claude/skills/run-field-ops-app-vite/screenshots/.
 import { chromium } from "@playwright/test";
@@ -5085,6 +5114,288 @@ async function verifyInventoryRolePartsManager(browser, page, accountKey) {
   return niFailed === 0;
 }
 
+// Issue #100 PR 3b (docs/specifications/inventory-nav-access-alignment.md,
+// docs/implementation-plans/inventory-nav-access-alignment.md). The
+// /inventory-role/mine surface for an ACTIVE, reciprocally linked
+// PARTS_ASSOCIATE technician (seed.mjs's technicianPartsAssociate
+// fixture, added by PR 0 -- no new fixture needed for the eligible
+// case itself). No Rules change needed for this PR -- PR 3a's
+// restructured reorder_requests allow update, reorder_purchase_orders/
+// reorder_purchase_order_voids self-scoped reads, and reorder_purchase_
+// orders create widening are all already merged and live (confirmed
+// production Gates 4+7+10 PASS, per this initiative's own production
+// verification record).
+const NO_RAW_IDS_PA = /driver-emp-technician-parts-associate|driver-emp-technician-multi-role/i;
+
+async function verifyInventoryRolePartsAssociate(browser, page, accountKey) {
+  const mineUrl = () => {
+    const u = new URL("inventory-role/mine", APP_ROOT);
+    u.searchParams.set("emulator", "1");
+    return u.toString();
+  };
+  const waitingId = "driver-seed-pr3b-waiting";
+  const otherAssociateId = "driver-seed-pr3b-other-associate";
+  const waitingRef = db.doc(`reorder_requests/${waitingId}`);
+  const otherAssociateRef = db.doc(`reorder_requests/${otherAssociateId}`);
+
+  const paUserSnap = await db.collection("users").where("employeeId", "==", "driver-emp-technician-parts-associate").limit(1).get();
+  const partsAssociateUid = paUserSnap.docs[0]?.id ?? null;
+
+  const canonicalRequestFields = {
+    recommendationStatus: "READY",
+    urgency: "MEDIUM",
+    quantitySource: "ANALYTICS",
+    recommendedQty: 3,
+    requestedQty: 3,
+    currentOwner: "PARTS_ASSOCIATE",
+    requestedBy: "driver-seed-admin-uid",
+    reviewedBy: "driver-seed-admin-uid",
+    reviewedAt: Date.now(),
+    reviewDecision: "APPROVED",
+    reviewNotes: null,
+    purchasingStartedAt: null,
+    purchasingStartedBy: null,
+    purchasingNotes: null,
+    vendorContacted: null,
+    expectedAvailabilityDate: null,
+    lastPurchasingUpdateAt: null,
+    lastPurchasingUpdateBy: null,
+    purchaseOrderId: null,
+    orderedBy: null,
+    orderedAt: null,
+    receivedBy: null,
+    receivedAt: null,
+    cancelledBy: null,
+    cancelledAt: null,
+    cancellationReason: null,
+    voidedBy: null,
+    voidedAt: null,
+    voidReason: null,
+    createdAt: Date.now(),
+  };
+
+  // ===== 0. Seed: one request assigned to technicianPartsAssociate
+  //          (Waiting), one assigned to a DIFFERENT associate (cross-
+  //          user denial fixture). Deleted in the finally block. =====
+  await waitingRef.set({
+    ...canonicalRequestFields,
+    partId: "TST-1005",
+    status: "ASSIGNED_TO_PARTS_ASSOCIATE",
+    assignedToUserId: partsAssociateUid,
+    assignedBy: "driver-seed-admin-uid",
+    assignedAt: Date.now(),
+  });
+  await otherAssociateRef.set({
+    ...canonicalRequestFields,
+    partId: "TST-1006",
+    status: "ASSIGNED_TO_PARTS_ASSOCIATE",
+    assignedToUserId: "driver-seed-pr3b-other-associate-uid",
+    assignedBy: "driver-seed-admin-uid",
+    assignedAt: Date.now(),
+  });
+
+  try {
+    // ===== 1. Eligible PARTS_ASSOCIATE: nav item, route, Waiting =====
+    await login(page, accountKey);
+    const navLinkVisible = await page.getByRole("link", { name: "My Inventory Role" }).first().isVisible().catch(() => false);
+    niReport("Nav: 'My Inventory Role' top-level tab is visible to an ACTIVE, eligible PARTS_ASSOCIATE", navLinkVisible);
+    await page.getByRole("link", { name: "My Inventory Role" }).first().click();
+    const headerVisible = await page
+      .getByRole("heading", { name: "My Purchasing", exact: true })
+      .first()
+      .waitFor({ timeout: 10000 })
+      .then(() => true)
+      .catch(() => false);
+    niReport("Route: the top-level tab's index redirect lands directly on /inventory-role/mine", headerVisible);
+    const subnavLinkVisible = await page.getByRole("link", { name: "My Purchasing" }).first().isVisible().catch(() => false);
+    niReport("Nav: 'My Purchasing' sub-nav item is visible once inside the domain", subnavLinkVisible);
+
+    const waitingTable = page.locator('xpath=//h3[text()="Waiting"]/following::table[1]');
+    const waitingRowVisible = await waitingTable
+      .locator("tr", { hasText: "Syrup Pump - Floor Model" })
+      .first()
+      .waitFor({ timeout: 10000 })
+      .then(() => true)
+      .catch(() => false);
+    niReport("Waiting: shows only this account's own assigned request", waitingRowVisible);
+    const otherAssociateRowVisible = await waitingTable
+      .locator("tr", { hasText: "Auger Shaft - Gen II" })
+      .first()
+      .isVisible()
+      .catch(() => false);
+    niReport("Waiting: a DIFFERENT Parts Associate's assigned request is invisible", !otherAssociateRowVisible);
+
+    // ===== 2. Start Purchasing =====
+    await waitingTable.locator("tr", { hasText: "Syrup Pump - Floor Model" }).getByRole("button", { name: "View" }).click();
+    await page.getByRole("heading", { name: "Reorder Request -- Assigned to You" }).waitFor({ timeout: 10000 });
+    await page.getByRole("button", { name: "Start Purchasing" }).click();
+    let afterStart = null;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      afterStart = (await waitingRef.get()).data();
+      if (afterStart?.status === "PURCHASING_IN_PROGRESS") break;
+      await new Promise((r) => setTimeout(r, 300));
+    }
+    niReport("Start Purchasing: succeeds, status -> PURCHASING_IN_PROGRESS", afterStart?.status === "PURCHASING_IN_PROGRESS");
+    niReport("Start Purchasing: purchasingStartedBy is this account's own uid", afterStart?.purchasingStartedBy === partsAssociateUid);
+
+    // ===== 3. Post Purchasing Update =====
+    await page.getByRole("heading", { name: "Reorder Request -- Purchasing In Progress" }).waitFor({ timeout: 10000 });
+    await page.locator("#pa-purchasing-notes").fill("Contacted supplier, awaiting confirmation.");
+    await page.getByRole("button", { name: "Post Update" }).click();
+    let afterUpdate = null;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      afterUpdate = (await waitingRef.get()).data();
+      if (afterUpdate?.lastPurchasingUpdateAt) break;
+      await new Promise((r) => setTimeout(r, 300));
+    }
+    niReport("Post Purchasing Update: succeeds, lastPurchasingUpdateBy is this account's own uid", afterUpdate?.lastPurchasingUpdateBy === partsAssociateUid);
+
+    // ===== 4. Record Purchase Order =====
+    await page.locator("#pa-po-supplier").fill("Acme Supply Co");
+    await page.locator("#pa-po-number").fill("PO-DRIVER-3B");
+    await page.locator("#pa-po-qty").fill("3");
+    await page.locator("#pa-po-ordered-date").fill("2026-07-15");
+    await page.getByRole("button", { name: "Record Purchase Order" }).click();
+    let afterRecordPo = null;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      afterRecordPo = (await waitingRef.get()).data();
+      if (afterRecordPo?.status === "ORDERED") break;
+      await new Promise((r) => setTimeout(r, 300));
+    }
+    niReport("Record Purchase Order: succeeds, status -> ORDERED", afterRecordPo?.status === "ORDERED");
+    niReport("Record Purchase Order: orderedBy is this account's own uid", afterRecordPo?.orderedBy === partsAssociateUid);
+
+    // ===== 5. Mark Received =====
+    await page.getByRole("heading", { name: "Reorder Request -- Ordered" }).waitFor({ timeout: 10000 });
+    await page.getByRole("button", { name: "Mark Received" }).click();
+    let afterReceive = null;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      afterReceive = (await waitingRef.get()).data();
+      if (afterReceive?.status === "RECEIVED") break;
+      await new Promise((r) => setTimeout(r, 300));
+    }
+    niReport("Mark Received: succeeds, status -> RECEIVED", afterReceive?.status === "RECEIVED");
+    niReport("Mark Received: receivedBy is this account's own uid", afterReceive?.receivedBy === partsAssociateUid);
+
+    // ===== 6. Denied capabilities: no Cancel/Void/Approve/Reject/Assign
+    //          controls anywhere on this page =====
+    const deniedControls = ["Cancel Reorder Request", "Void Purchase Order", "Approve", "Reject", "Assign"];
+    for (const label of deniedControls) {
+      const count = await page.getByRole("button", { name: label, exact: true }).count().catch(() => 0);
+      niReport(`Denied: no "${label}" control is rendered on the My Purchasing page`, count === 0);
+    }
+
+    // ===== 7. Cross-user denial at the Rules layer (SDK-level probe,
+    //          not merely UI-absence): this account's own client SDK
+    //          write attempt against the OTHER associate's request must
+    //          be denied. =====
+    {
+      const probeApp = initializeApp({ projectId: "taylor-parts", apiKey: "fake-key-emulator-only" }, "pa-cross-user-probe");
+      const probeAuth = getAuth(probeApp);
+      connectAuthEmulator(probeAuth, "http://127.0.0.1:9099", { disableWarnings: true });
+      const probeDb = getClientFirestore(probeApp);
+      connectFirestoreEmulator(probeDb, "127.0.0.1", 8080);
+      await signInWithEmailAndPassword(probeAuth, DRIVER_ACCOUNTS.technicianPartsAssociate.email, DRIVER_ACCOUNTS.technicianPartsAssociate.password);
+      let denied = false;
+      try {
+        const b = clientWriteBatch(probeDb);
+        b.update(clientDoc(collection(probeDb, "reorder_requests"), otherAssociateId), { status: "PURCHASING_IN_PROGRESS" });
+        await b.commit();
+      } catch (err) {
+        denied = err?.code === "permission-denied";
+      }
+      await deleteApp(probeApp).catch(() => {});
+      niReport("Denied: this account's direct write to a DIFFERENT associate's assigned request is rejected by Rules", denied);
+    }
+
+    // ===== 8. No raw ids anywhere on the rendered page =====
+    const bodyText = await page.locator("body").innerText().catch(() => "");
+    niReport("No raw ids: the page never renders a fixture Employee document id", !NO_RAW_IDS_PA.test(bodyText));
+
+    // ===== 9. 375px layout: no horizontal overflow =====
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.waitForTimeout(200);
+    const overflow375 = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
+    niReport("375px: My Purchasing page has no horizontal overflow", overflow375 === false);
+    await page.setViewportSize({ width: 1280, height: 900 });
+  } finally {
+    await waitingRef.delete().catch(() => {});
+    await otherAssociateRef.delete().catch(() => {});
+  }
+
+  // ===== 10. admin/dispatcher: direct-route access redirects to /inventory =====
+  for (const adminLikeAccount of ["admin", "ineligibleDispatcher"]) {
+    await page.close();
+    page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    await login(page, adminLikeAccount);
+    await page.goto(mineUrl(), { waitUntil: "domcontentloaded", timeout: 20000 });
+    await page.getByRole("heading", { name: "Inventory Operational Queue" }).waitFor({ timeout: 10000 }).catch(() => {});
+    const landedOnInventory = new URL(page.url()).pathname.endsWith("/inventory");
+    niReport(`Direct route: ${adminLikeAccount} hitting /inventory-role/mine is redirected to /inventory`, landedOnInventory);
+  }
+
+  // ===== 11. Ineligible / broken-linkage / wrong-role technicians fail
+  //           closed: no relevant nav item, direct URL falls through =====
+  for (const ineligibleAccount of ["technicianIneligible", "technicianBrokenLink"]) {
+    await page.close();
+    page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    await login(page, ineligibleAccount);
+    const navHidden = await page.getByRole("link", { name: "My Inventory Role" }).first().isVisible().catch(() => false);
+    niReport(`Nav: 'My Inventory Role' tab is hidden for ${ineligibleAccount}`, !navHidden);
+    await page.goto(mineUrl(), { waitUntil: "domcontentloaded", timeout: 20000 });
+    await page.waitForTimeout(500);
+    const landedOnDashboard = new URL(page.url()).pathname.endsWith("/dashboard");
+    niReport(`Direct route: ${ineligibleAccount} hitting /inventory-role/mine falls through to /dashboard`, landedOnDashboard);
+  }
+  {
+    await page.close();
+    page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    await login(page, "technicianPartsManager");
+    const mineSubnavHidden = await page.getByRole("link", { name: "My Purchasing" }).first().isVisible().catch(() => false);
+    niReport("Nav: 'My Purchasing' sub-nav item is hidden for technicianPartsManager (wrong operationalRole)", !mineSubnavHidden);
+    await page.goto(mineUrl(), { waitUntil: "domcontentloaded", timeout: 20000 });
+    await page.waitForTimeout(500);
+    const landedOnDashboard = new URL(page.url()).pathname.endsWith("/dashboard");
+    niReport("Direct route: technicianPartsManager hitting /inventory-role/mine falls through to /dashboard", landedOnDashboard);
+  }
+
+  // ===== 12. Inactive employment (temporarily TERMINATED, restored after) =====
+  const empRef = db.doc("employees/driver-emp-technician-parts-associate");
+  try {
+    await empRef.update({ employmentStatus: "TERMINATED" });
+    await page.close();
+    page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    await login(page, accountKey);
+    const navHiddenInactive = await page.getByRole("link", { name: "My Inventory Role" }).first().isVisible().catch(() => false);
+    niReport("Nav: 'My Inventory Role' tab is hidden for an otherwise-eligible but INACTIVE employment", !navHiddenInactive);
+    await page.goto(mineUrl(), { waitUntil: "domcontentloaded", timeout: 20000 });
+    await page.waitForTimeout(500);
+    const landedOnDashboardInactive = new URL(page.url()).pathname.endsWith("/dashboard");
+    niReport("Direct route: an INACTIVE PARTS_ASSOCIATE falls through to /dashboard", landedOnDashboardInactive);
+  } finally {
+    await empRef.update({ employmentStatus: "ACTIVE" }).catch((restoreErr) => {
+      niReport("Fixture restoration: technicianPartsAssociate's employmentStatus restored to ACTIVE", false, `restoration itself threw: ${restoreErr.message}`);
+    });
+  }
+
+  // ===== 13. Multi-operational-role union: technicianMultiRole
+  //           (PARTS_ASSOCIATE + WAREHOUSE_MANAGER) sees BOTH
+  //           corresponding sub-nav items simultaneously =====
+  {
+    await page.close();
+    page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    await login(page, "technicianMultiRole");
+    await page.getByRole("link", { name: "My Inventory Role" }).first().click();
+    await page.waitForTimeout(500);
+    const seesMine = await page.getByRole("link", { name: "My Purchasing" }).first().isVisible().catch(() => false);
+    const seesWarehouse = await page.getByRole("link", { name: "Warehouse Manager" }).first().isVisible().catch(() => false);
+    niReport("Union: a multi-operational-role technician sees BOTH 'My Purchasing' and 'Warehouse Manager' simultaneously", seesMine && seesWarehouse);
+  }
+
+  console.log(`\n${niPassed} passed, ${niFailed} failed`);
+  return niFailed === 0;
+}
+
 async function main() {
   const [, , command, ...args] = process.argv;
   const browser = await chromium.launch();
@@ -5247,6 +5558,10 @@ async function main() {
     } else if (command === "verify-inventory-role-parts-manager") {
       const [accountKey = "technicianPartsManager"] = args;
       const ok = await verifyInventoryRolePartsManager(browser, page, accountKey);
+      if (!ok) process.exitCode = 1;
+    } else if (command === "verify-inventory-role-parts-associate") {
+      const [accountKey = "technicianPartsAssociate"] = args;
+      const ok = await verifyInventoryRolePartsAssociate(browser, page, accountKey);
       if (!ok) process.exitCode = 1;
     } else {
       console.error(`Unknown command "${command}". See the header comment in this file for usage.`);
