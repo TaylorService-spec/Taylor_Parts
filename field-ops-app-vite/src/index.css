@@ -1254,6 +1254,18 @@ textarea.fo-wizard-control { min-height: 76px; resize: vertical; }
   .fo-customer-picker-locs { flex-direction: column; gap: 2px; }
 }
 
+/* Issue #214 PR-5 -- retained Jobs/Technicians screens: heading + "New …" action
+   on one row, wrapping cleanly on narrow screens. The results table keeps its own
+   independent horizontal scroll via the existing .fo-table-scroll wrapper. */
+.fo-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.fo-panel-head h2 { margin: 0; }
+
 /* Issue #214 PR-3 -- destructive workflow action + shared ConfirmDialog. Additive.
    The destructive confirm/trigger is visually distinct and, in the Work Order
    action row, separated from the primary actions. */
