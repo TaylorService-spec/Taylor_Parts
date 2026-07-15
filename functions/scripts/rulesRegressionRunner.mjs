@@ -42,7 +42,7 @@ export const SUITES = Object.freeze([
   { file: "employeesRules.test.js", expected: 10 },
   { file: "reorderRequestsRules.test.js", expected: 82 },
   { file: "accountsGovernedFieldsRules.test.js", expected: 18 },
-  { file: "issue100PartsManagerRules.test.js", expected: 34 },
+  { file: "issue100PartsManagerRules.test.js", expected: 40 },
   { file: "issue100WarehouseManagerRules.test.js", expected: 11 },
   { file: "issue100PartsAssociateRules.test.js", expected: 23 },
 ]);
