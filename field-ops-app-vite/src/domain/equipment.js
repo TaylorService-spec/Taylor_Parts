@@ -301,18 +301,6 @@ export function trustedActionUnavailable(action) {
 // applied" case. A MALFORMED term (a number, an object, null) does not: it means the
 // caller is not asking what they think they are asking, and answering "everything"
 // turns a caller bug into a silent data disclosure. Fails closed instead.
-// Exactly the options searchEquipment implements. Anything else is a caller error.
-const SEARCH_OPTION_KEYS = ["term", "locationId", "status"];
-
-// A real options bag -- not an array, not a string, not a class instance masquerading
-// as one. Deliberately strict: this guards a boundary where being generous is what
-// caused the defect.
-function isPlainObject(value) {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
-  const proto = Object.getPrototypeOf(value);
-  return proto === Object.prototype || proto === null;
-}
-
 export function equipmentMatchesSearch(equipment, term) {
   if (term === undefined || term === null) return true;   // omitted -> no search applied
   if (typeof term !== "string") return false;             // malformed -> fail closed
@@ -336,6 +324,18 @@ export function compareEquipment(a, b) {
 
 // Search + optional Location/status filters + deterministic order, in one pure pass.
 // Returns a new array; never mutates the input.
+// Exactly the options searchEquipment implements. Anything else is a caller error.
+const SEARCH_OPTION_KEYS = ["term", "locationId", "status"];
+
+// A real options bag -- not an array, not a string, not a class instance masquerading
+// as one. Deliberately strict: this guards a boundary where being generous is what
+// caused the defect.
+function isPlainObject(value) {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}
+
 // The options argument is UNTRUSTED INPUT, not a convenience.
 //
 // The destructuring default `= {}` only fires for `undefined`, so any other malformed
