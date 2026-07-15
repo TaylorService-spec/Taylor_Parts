@@ -9,6 +9,7 @@ import Operations from "./modules/operations/Operations";
 import DispatcherBoard from "./modules/dispatcherBoard/DispatcherBoard";
 import TechnicianDashboard from "./modules/technicianDashboard/TechnicianDashboard";
 import AccountsList from "./modules/accounts/AccountsList";
+import EquipmentRegister from "./modules/equipment/EquipmentRegister";
 import AccountDetail from "./modules/accounts/AccountDetail";
 import WorkOrdersList from "./modules/workOrders/WorkOrdersList";
 import WorkOrderWizard from "./modules/workOrders/WorkOrderWizard";
@@ -91,6 +92,12 @@ function renderSubnavItem(domain, item, role) {
   // rather than the generic legacyKey/PlaceholderPage branches below.
   if (domain.key === "customers" && item.key === "customers") {
     return <AccountsList />;
+  }
+  // Issue #232 unit E5 -- Equipment register. Same special-case pattern: a brand new
+  // screen with no legacyKey, so it needs an explicit branch rather than the generic
+  // legacyKey/PlaceholderPage ones.
+  if (domain.key === "equipment" && item.key === "equipment") {
+    return <EquipmentRegister />;
   }
   // Sprint 2.0.3 -- Work Order Experience. "Work Orders" now renders
   // the real workspace; the legacy Jobs.jsx screen it used to render
