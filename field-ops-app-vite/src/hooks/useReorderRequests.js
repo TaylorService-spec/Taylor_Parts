@@ -338,6 +338,59 @@ export function useReorderRequestsHistory({ statuses, pageSize = 25, fetchPageIm
   return { ...state, loadMore };
 }
 
+// Issue #100 PR 1b (docs/specifications/inventory-nav-access-alignment.md,
+// § "1. PARTS_MANAGER surface"). "Relevant -- not global -- History":
+// two independent single-field equality queries, `reviewedBy == uid` and
+// `assignedBy == uid`, each one-shot getDocs() (History has no "must
+// never show stale data" requirement, same reasoning
+// useReorderRequestsHistory() above already documents for the admin/
+// dispatcher History view -- this is a personal, typically-small result
+// set, not a live work queue), merged and de-duplicated by document id,
+// then client-filtered to the four terminal statuses for display. Both
+// queries are single-field equality -- no composite index, same as
+// every other query in this file (§ "Firestore indexes impact").
+const TERMINAL_STATUSES = new Set([
+  REORDER_REQUEST_STATUS.CANCELLED,
+  REORDER_REQUEST_STATUS.VOIDED,
+  REORDER_REQUEST_STATUS.RECEIVED,
+  REORDER_REQUEST_STATUS.REJECTED,
+]);
+
+export function useReviewedRequestsHistory(uid) {
+  const [state, setState] = useState({ data: [], loading: !!uid, error: null });
+
+  useEffect(() => {
+    if (!uid) {
+      setState({ data: [], loading: false, error: null });
+      return;
+    }
+
+    let cancelled = false;
+    setState({ data: [], loading: true, error: null });
+
+    Promise.all([
+      getDocs(query(reorderRequestsRef, where("reviewedBy", "==", uid))),
+      getDocs(query(reorderRequestsRef, where("assignedBy", "==", uid))),
+    ])
+      .then(([reviewedSnap, assignedSnap]) => {
+        if (cancelled) return;
+        const byId = new Map();
+        for (const d of [...toDocs(reviewedSnap), ...toDocs(assignedSnap)]) byId.set(d.id, d);
+        const relevant = [...byId.values()].filter((d) => TERMINAL_STATUSES.has(d.status));
+        setState({ data: relevant, loading: false, error: null });
+      })
+      .catch((err) => {
+        if (!cancelled) setState({ data: [], loading: false, error: err.code ?? "unknown" });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [uid]);
+
+  return state;
+}
+
 // Inventory Operational Queue, PR C. A second, independent function --
 // NOT part of useReorderRequestsHistory() above, so a known exact id is
 // always reachable regardless of loaded page/filter state (a request
