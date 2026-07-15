@@ -1176,10 +1176,14 @@ service cloud.firestore {
     //   * §3 marks setStatus (ACTIVE<->INACTIVE) "plain"; only retire/reactivate are
     //     trusted-writer. §6 and AC3 say status is editable. §11 -- the Rules
     //     obligations section -- lists ONLY accountId/locationId as must-deny.
-    //   * The Owner's standing decision defers the ACTIVE<->INACTIVE lifecycle-path
-    //     question to E10, and E2 (#282, merged) already implements NO lifecycle write
-    //     for the same reason. Allowing the write here while no caller may perform it
-    //     would open authority nothing uses.
+    //   * This follows the E3 authorization ("ordinary edit cannot change ... lifecycle
+    //     status") and an Owner decision deferring the ACTIVE<->INACTIVE lifecycle path
+    //     to E10. Both are out-of-band instructions, NOT repository documents -- do not
+    //     go looking for them in the Spec, and do not treat this comment as evidence
+    //     they exist. What IS verifiable in-tree: E2 (#282, merged) implements no
+    //     lifecycle write at all, and the plan's E10 row owns active/inactive/retire/
+    //     reactivate. Allowing the write here while no caller may perform it would open
+    //     authority nothing uses.
     // Consequence, stated plainly: AC3 does not pass against these Rules as written.
     // Whichever way E10 resolves it, either these Rules relax or the Spec is amended;
     // denying now is the reversible direction.
@@ -1215,12 +1219,22 @@ service cloud.firestore {
         && (data.get("notes", null) == null || data.get("notes", null) is string);
     }
 
-    // §2: the name is the human reference (§8). trim() -- not size() -- because a
-    // whitespace-only name is empty to every reader while passing a length check, and
-    // E1 normalizes it away client-side, so Rules must not accept what the domain
-    // would reject.
+    // §2: the name is the human reference (§8), so it must contain something a person
+    // can actually see -- not merely some bytes.
+    //
+    // trim() alone is NOT enough: Rules' trim() is ASCII-only, so a name of U+00A0
+    // (NBSP), U+3000, U+2000 or U+FEFF passes it while JS .trim() -- what E1 applies
+    // client-side -- treats all of them as empty. That gap let Rules accept exactly
+    // what the domain rejects, and such a name renders BLANK in the register. The
+    // matches() guard closes it: \p{Z} covers every Unicode separator and \p{Cf} the
+    // format characters (BOM/ZWNBSP), so a name made only of invisibles is denied.
+    // Both guards are kept -- trim() is the readable intent, matches() the complete
+    // one, and neither is load-bearing alone.
     function equipmentNameValid(name) {
-      return name is string && name.trim().size() > 0 && name.size() <= 200;
+      return name is string
+        && name.trim().size() > 0
+        && !name.matches("[\\p{Z}\\p{Cf}\\s]*")
+        && name.size() <= 200;
     }
 
     function equipmentCreateShapeValid(data) {

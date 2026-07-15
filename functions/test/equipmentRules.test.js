@@ -312,6 +312,51 @@ async function main() {
     (await createEquipment(uniq("eq-inject-unknown"), adminToken,
       equipmentFields({ somethingNobodyPlanned: str("x") }))) === 403);
 
+  // ---- CREATE shape guards (create-side twins of the update cases below) ----
+  // These exist because BOTH guards are applied to create AND update, but every
+  // assertion for them was update-side: independent review mutation-tested it and
+  // found that deleting equipmentOptionalFieldsValid(), or reverting the name guard
+  // to size(), FROM THE CREATE CALL SITE left the whole suite green. The protection
+  // was real; the regression protection was not. An unprotected guard is one refactor
+  // from being an absent one.
+  report("create: whitespace-only name DENIED (trim, not length)",
+    (await createEquipment(uniq("eq-ws-name"), adminToken,
+      equipmentFields({ name: str("   ") }))) === 403);
+  report("create: tab/newline-only name DENIED",
+    (await createEquipment(uniq("eq-tab-name"), adminToken,
+      equipmentFields({ name: str("\t\n") }))) === 403);
+  // Rules' trim() is ASCII-ONLY, so each of these passes trim() while JS .trim() --
+  // what E1 applies client-side -- treats it as empty. Without the matches() guard
+  // they all created successfully and rendered as a BLANK name in the register.
+  for (const [label, ch] of [
+    ["U+00A0 NBSP", " "],
+    ["U+3000 ideographic space", "　"],
+    ["U+2000 en-quad", " "],
+    ["U+FEFF BOM/ZWNBSP", "﻿"],
+    ["NBSP + ASCII space mix", "   "],
+  ]) {
+    report(`create: name of only ${label} DENIED (Rules trim() is ASCII-only)`,
+      (await createEquipment(uniq("eq-uni-name"), adminToken,
+        equipmentFields({ name: str(ch) }))) === 403);
+  }
+  report("create: a name CONTAINING a NBSP but with visible text ALLOWED",
+    (await createEquipment(uniq("eq-uni-ok"), adminToken,
+      equipmentFields({ name: str("Rooftop Unit") }))) === 200);
+  report("create: optional field written as a MAP DENIED (Spec §1: string|null)",
+    (await createEquipment(uniq("eq-map-notes"), adminToken,
+      equipmentFields({ notes: { mapValue: { fields: { evil: str("x") } } } }))) === 403);
+  report("create: optional field written as a NUMBER DENIED",
+    (await createEquipment(uniq("eq-num-mfr"), adminToken,
+      equipmentFields({ manufacturer: int(42) }))) === 403);
+  report("create: optional field written as an ARRAY DENIED",
+    (await createEquipment(uniq("eq-arr-model"), adminToken,
+      equipmentFields({ model: { arrayValue: { values: [str("x")] } } }))) === 403);
+  report("create: optionals omitted entirely ALLOWED (absent is not invalid)", await (async () => {
+    const f = equipmentFields();
+    for (const k of ["manufacturer", "model", "serialNumber", "assetTag", "installedDate", "warrantyExpiresDate", "notes"]) delete f[k];
+    return (await createEquipment(uniq("eq-minimal"), adminToken, f)) === 200;
+  })());
+
   // ---- UPDATE: ordinary edit (§6) ------------------------------------------
   report("update: admin editing a descriptive field ALLOWED",
     (await updateEquipment(SEEDED, adminToken,
@@ -397,9 +442,26 @@ async function main() {
   // deny, exactly as a masked write would.
   report("update: maskless full overwrite that drops governed fields DENIED",
     (await createEquipment(SEEDED, adminToken, { name: str("Overwritten"), updatedAt: int(Date.now()) })) === 403);
-  report("update: maskless full overwrite changing locationId DENIED",
-    (await createEquipment(SEEDED, adminToken,
-      equipmentFields({ locationId: str(LOCATION_A2) }))) === 403);
+  // Precisely locationId: every other field is written back at its SEEDED value, so a
+  // denial can only come from the locationId change. (The earlier version of this case
+  // used a fresh equipmentFields() payload, which also altered createdAt and the
+  // optionals -- it denied for reasons unrelated to its own name. Independent review
+  // caught that it still passed when locationId was made editable.)
+  report("update: maskless full overwrite changing ONLY locationId DENIED", await (async () => {
+    const seeded = (await db.doc(`equipment/${SEEDED}`).get()).data();
+    const same = {
+      accountId: str(seeded.accountId),
+      locationId: str(LOCATION_A2), // the ONLY difference
+      name: str(seeded.name),
+      status: str(seeded.status),
+      createdAt: int(seeded.createdAt),
+      updatedAt: int(seeded.updatedAt),
+    };
+    for (const k of ["manufacturer", "model", "serialNumber", "assetTag", "installedDate", "warrantyExpiresDate", "notes"]) {
+      same[k] = seeded[k] == null ? nul() : str(seeded[k]);
+    }
+    return (await createEquipment(SEEDED, adminToken, same)) === 403;
+  })());
 
   // ---- DELETE (§11) --------------------------------------------------------
   report("delete: admin DENIED (nobody may delete Equipment)",
