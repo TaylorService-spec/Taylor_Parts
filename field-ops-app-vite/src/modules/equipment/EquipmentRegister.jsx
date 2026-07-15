@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
 import { ACCOUNTS_COLLECTION, EQUIPMENT_STATUS } from "../../domain/constants";
 import { useEquipmentForAccount } from "../../hooks/useEquipment";
@@ -68,6 +68,13 @@ export default function EquipmentRegister() {
     setStatusKey("all");
   };
 
+  // Stable identity, deliberately. Modal's focus effect is keyed on [onClose], so an
+  // inline arrow here would give it a new identity on every register re-render -- and
+  // the register re-renders whenever its live Equipment subscription delivers -- which
+  // tears down and re-runs Modal's focus effect and yanks focus to the dialog's ✕
+  // button mid-typing. See EquipmentCreateModal's requestClose for the full trap.
+  const closeCreate = useCallback(() => setShowCreate(false), []);
+
   // Focus the newly created row once it actually exists in the live list. The row
   // arrives via the register's own onSnapshot -- there is no optimistic insert, so
   // what gets focused is the record the server confirmed, not one we hoped for.
@@ -87,10 +94,15 @@ export default function EquipmentRegister() {
       setFocusRowId(result.equipment.id);
       setShowCreate(false); // closes ONCE, here, on the confirmed write
       setAnnouncement(`${equipmentDisplayName(result.equipment)} added.`);
-      // A new record is ACTIVE and may not match the current filters, in which case it
-      // would be created and then immediately invisible. Clearing the filters is what
-      // makes "success live-inserts the row" true rather than nominally true.
-      resetFilters();
+      // Clear the filters ONLY if the new row would otherwise be invisible. A new
+      // record is ACTIVE and may not match the current search/filters, and creating
+      // something that immediately vanishes is worse than useless. But wiping a user's
+      // search when their new row already matches destroys state they still want --
+      // so ask first, using the same pure filter the list itself uses.
+      const visible = searchEquipment([result.equipment], {
+        term, locationId: locationId || null, status: statusValue,
+      }).length === 1;
+      if (!visible) resetFilters();
     }
     return result;
   }
@@ -121,7 +133,19 @@ export default function EquipmentRegister() {
             chosen -- an "Add Equipment" button with no customer would have nothing to
             add to. */}
         {accountChosen && (
-          <button type="button" onClick={() => setShowCreate(true)}>+ New Equipment</button>
+          <button
+            type="button"
+            onClick={() => {
+              // Clear the live region on OPEN. Duplicate names are legal (§8), so
+              // creating "Unit A" twice would set an identical announcement string --
+              // React mutates no text node, and the live region stays SILENT for the
+              // second create. Resetting here guarantees the text always changes.
+              setAnnouncement("");
+              setShowCreate(true);
+            }}
+          >
+            + New Equipment
+          </button>
         )}
       </WorkspaceHeader>
 
@@ -133,7 +157,7 @@ export default function EquipmentRegister() {
           accountName={accounts.find((a) => a.id === accountId)?.name ?? "this customer"}
           locations={locations}
           onCreate={handleCreate}
-          onClose={() => setShowCreate(false)}
+          onClose={closeCreate}
         />
       )}
 

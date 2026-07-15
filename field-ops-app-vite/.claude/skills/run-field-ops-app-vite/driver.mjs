@@ -4093,6 +4093,18 @@ async function verifyEquipmentCreate(browser, page, accountKey) {
     const snap = await db.collection("equipment").where("accountId", "==", CREATE_ACCT).get();
     for (const d of snap.docs) await d.ref.delete().catch(() => {});
   };
+  // Network throttling is emulated for the close-during-save case. It MUST be undone
+  // even if an assertion throws first -- otherwise the page stays throttled and the CDP
+  // session stays attached for whatever runs next.
+  let cdp = null;
+  const resetLatency = async () => {
+    if (!cdp) return;
+    await cdp.send("Network.emulateNetworkConditions", {
+      offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1,
+    }).catch(() => {});
+    await cdp.detach().catch(() => {});
+    cdp = null;
+  };
   const now = Date.now();
   await db.doc(`accounts/${CREATE_ACCT}`).set({
     name: "Create Target Co", status: "Active", relationshipTypes: ["CUSTOMER"], createdAt: now, updatedAt: now,
@@ -4149,6 +4161,25 @@ async function verifyEquipmentCreate(browser, page, accountKey) {
   });
   niReport("Create: the open modal introduces no duplicate DOM id (§13 label association)",
     dupIds.length === 0, JSON.stringify(dupIds));
+
+  // ===== TYPE LIKE A HUMAN, not fill() (§13) =====
+  // fill() sets a value in ONE event. Real typing re-renders the modal per keystroke,
+  // and that is what exposed the worst defect in this unit: Modal's focus effect is
+  // keyed on [onClose], so an unstable handler tore the effect down and re-ran it on
+  // every character, yanking focus to the ✕ button. Typing "Rooftop Unit 1" left the
+  // field EMPTY and the first SPACE pressed ✕ and discarded the form. A fill()-only
+  // suite passes green against a form no human can complete -- so this asserts real
+  // keystrokes, and every text field below is typed rather than filled.
+  await page.locator("#equipment-create-name").click();
+  await page.keyboard.type("Rooftop Unit 1");
+  await page.waitForTimeout(200);
+  niReport("Create: typing a multi-word name keeps every character (§13)",
+    (await page.locator("#equipment-create-name").inputValue().catch(() => "(gone)")) === "Rooftop Unit 1");
+  niReport("Create: focus stays in the field while typing -- it is not yanked to the dialog chrome",
+    (await page.evaluate(() => document.activeElement?.id)) === "equipment-create-name");
+  niReport("Create: a SPACE while typing does not activate the close button and discard the form",
+    (await page.locator(".fo-modal, [role='dialog']").count()) === 1);
+  await page.locator("#equipment-create-name").fill("");
 
   // ===== validation: submitting empty shows field errors and writes nothing =====
   await modal().getByRole("button", { name: /^Add Equipment$/ }).click();
@@ -4212,13 +4243,23 @@ async function verifyEquipmentCreate(browser, page, accountKey) {
     await page.locator('.fo-sr-only[role="status"]').first().textContent().catch(() => "(none)"));
 
   // ===== the created record really is ACTIVE and correctly owned (server truth) =====
-  if (newId) {
-    const doc = (await db.doc(`equipment/${newId}`).get()).data();
-    niReport("Create: the persisted record is ACTIVE, owned by the fixed Account, at the chosen Location",
-      doc?.status === "ACTIVE" && doc?.accountId === CREATE_ACCT && doc?.locationId === CREATE_LOC_2,
-      JSON.stringify({ status: doc?.status, accountId: doc?.accountId, locationId: doc?.locationId }));
-    niReport("Create: no status was submitted -- it was defaulted, not chosen", doc?.status === "ACTIVE");
-  }
+  // Looked up BY NAME, not from document.activeElement. Gating the server-truth checks
+  // on the focus assertion meant that whenever focus was flaky these silently SKIPPED
+  // -- the most important assertions in the suite were conditional on the least
+  // reliable one, and a skipped assertion reports nothing at all.
+  const createdSnap = await db.collection("equipment").where("name", "==", newName).get();
+  niReport("Create: exactly one record was persisted for the submitted name", createdSnap.size === 1, `found ${createdSnap.size}`);
+  const doc = createdSnap.docs[0]?.data();
+  niReport("Create: the persisted record is ACTIVE, owned by the fixed Account, at the chosen Location",
+    doc?.status === "ACTIVE" && doc?.accountId === CREATE_ACCT && doc?.locationId === CREATE_LOC_2,
+    JSON.stringify({ status: doc?.status, accountId: doc?.accountId, locationId: doc?.locationId }));
+  // Distinct from the line above: that one checks the VALUE is ACTIVE; this checks the
+  // form never had a status control to submit from, so ACTIVE can only have come from
+  // E1's default. (An earlier version asserted `status === "ACTIVE"` twice and called
+  // the second one "defaulted, not chosen" -- it could not tell the two apart at all.)
+  niReport("Create: ACTIVE was DEFAULTED -- the form has no status control to submit from",
+    doc?.status === "ACTIVE" &&
+      (await page.locator("#equipment-create-status, [name='status']").count()) === 0);
 
   // ===== duplicate-submit guard =====
   await page.getByRole("button", { name: /new equipment/i }).click();
@@ -4226,10 +4267,17 @@ async function verifyEquipmentCreate(browser, page, accountKey) {
   const dupName = `Dup Guard Unit ${Date.now()}`;
   await page.locator("#equipment-create-name").fill(dupName);
   await page.locator("#equipment-create-location").selectOption({ label: LOC_1_NAME });
-  const submitBtn = modal().getByRole("button", { name: /^Add Equipment$/ });
-  // Two clicks as fast as Playwright can issue them; the in-flight guard must collapse
-  // them into ONE record, not two identically named ones.
-  await Promise.all([submitBtn.click(), submitBtn.click().catch(() => {})]);
+  // Fire TWO submits synchronously, from inside the page, bypassing Playwright's
+  // actionability wait. Two .click() calls proved nothing: Playwright waits for the
+  // button to be enabled, and it is disabled={submitting} the moment the first submit
+  // lands -- so the second click was simply swallowed and the assertion passed even
+  // with submittingRef deleted entirely. requestSubmit() goes straight at the form's
+  // onSubmit, which is exactly what submittingRef exists to guard.
+  await page.evaluate(() => {
+    const form = document.querySelector(".fo-create-modal-form");
+    form.requestSubmit();
+    form.requestSubmit();
+  });
   await page.waitForTimeout(2500);
   const dupDocs = await db.collection("equipment").where("name", "==", dupName).get();
   niReport("Create: a double submit creates exactly ONE record (duplicate-submit guard)",
@@ -4282,7 +4330,7 @@ async function verifyEquipmentCreate(browser, page, accountKey) {
   const closeName = `Close Guard Unit ${Date.now()}`;
   await page.locator("#equipment-create-name").fill(closeName);
   await page.locator("#equipment-create-location").selectOption({ label: LOC_1_NAME });
-  const cdp = await page.context().newCDPSession(page);
+  cdp = await page.context().newCDPSession(page);
   await cdp.send("Network.enable");
   await cdp.send("Network.emulateNetworkConditions", {
     offline: false, latency: 1500, downloadThroughput: -1, uploadThroughput: -1,
@@ -4310,10 +4358,9 @@ async function verifyEquipmentCreate(browser, page, accountKey) {
   niReport("Create: after the save completes, the modal closes",
     await page.waitForFunction(() => document.querySelectorAll(".fo-modal, [role='dialog']").length === 0,
       null, { timeout: 10000 }).then(() => true).catch(() => false));
-  await cdp.send("Network.emulateNetworkConditions", {
-    offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1,
-  }).catch(() => {});
-  await cdp.detach().catch(() => {});
+  // Reset is registered for the finally too -- see below. Doing it here as well keeps
+  // the remaining assertions running at normal speed.
+  await resetLatency();
 
   // ===== keyboard operability (§13) =====
   await page.goto(url("equipment"), { waitUntil: "domcontentloaded" });
@@ -4348,11 +4395,14 @@ async function verifyEquipmentCreate(browser, page, accountKey) {
     // Account, they broke verify-equipment-register on the next run instead of this one.
     // Everything this suite creates lives in the throwaway account, so purging it by
     // query needs no bookkeeping and cannot miss a record.
+    await resetLatency();
     await purgeCreateAccount();
     await db.doc(`locations/${CREATE_LOC_1}`).delete().catch(() => {});
     await db.doc(`locations/${CREATE_LOC_2}`).delete().catch(() => {});
     await db.doc(`accounts/${CREATE_ACCT}`).delete().catch(() => {});
   }
+  // Every other suite here prints its own totals; this one silently didn't.
+  console.log(`\n${niPassed} passed, ${niFailed} failed`);
   return niFailed === 0;
 }
 

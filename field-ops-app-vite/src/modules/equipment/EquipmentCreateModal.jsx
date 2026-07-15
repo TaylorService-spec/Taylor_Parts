@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import Modal from "../../shared/ui/Modal";
 import { Field, FormActions, FormError, FormStatus } from "../../shared/ui/form";
 import { describedBy } from "../../shared/ui/form/fieldA11y";
@@ -45,12 +45,30 @@ export default function EquipmentCreateModal({ accountName, locations, onCreate,
   const nameError = (submitAttempted && !name.trim() ? "Enter an equipment name." : null) ?? fieldErrors.name ?? null;
   const locationError = (submitAttempted && !locationId ? "Select a location." : null) ?? fieldErrors.locationId ?? null;
 
-  function requestClose() {
+  // Drop a field's SERVER error as soon as the user edits that field. Without this it
+  // survived until the next submit: after a refused cross-Account destination, picking
+  // a valid location still showed "Select a location that belongs to this customer."
+  // on a now-valid control, with aria-invalid stuck true. An error must not outlive the
+  // input it describes.
+  const clearFieldError = (field) =>
+    setFieldErrors((cur) => (cur[field] ? { ...cur, [field]: undefined } : cur));
+
+  // useCallback is LOAD-BEARING, not tidiness. Modal's focus effect is keyed on
+  // [onClose] (shared/ui/Modal.jsx), so a handler with a fresh identity each render
+  // makes that effect tear down and re-run on EVERY KEYSTROKE: the cleanup restores
+  // focus to the trigger and the re-run focuses the dialog's first focusable -- the ✕
+  // button. Verified in a real browser: typing "Rooftop Unit 1" left the field EMPTY
+  // with focus on ✕, and the first SPACE activated ✕ and discarded the form.
+  //
+  // This makes E6 correct within its own surface. It does NOT fix the root cause,
+  // which is Modal's dependency array -- every other modal passing a plain function has
+  // the same defect today. Reported to the Owner; see the PR.
+  const requestClose = useCallback(() => {
     // Close-during-save protection: a close while the write is in flight is ignored,
     // so the modal cannot disappear before its own result is known.
     if (submittingRef.current) return;
     onClose();
-  }
+  }, [onClose]);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -67,7 +85,6 @@ export default function EquipmentCreateModal({ accountName, locations, onCreate,
 
     // Note what is NOT here: `status`. See the header.
     const values = {
-      accountId: undefined, // supplied by the caller, which owns the fixed Account
       locationId,
       name: name.trim(),
       manufacturer: manufacturer.trim() || null,
@@ -78,7 +95,6 @@ export default function EquipmentCreateModal({ accountName, locations, onCreate,
       warrantyExpiresDate: warrantyExpiresDate.trim() || null,
       notes: notes.trim() || null,
     };
-    delete values.accountId;
 
     submittingRef.current = true;
     setSubmitting(true);
@@ -113,7 +129,7 @@ export default function EquipmentCreateModal({ accountName, locations, onCreate,
             value={name}
             aria-invalid={nameError ? true : undefined}
             aria-describedby={describedBy("equipment-create-name", { hasHint: true, hasError: Boolean(nameError) })}
-            onChange={(e) => setName(e.target.value)}
+            onChange={(e) => { setName(e.target.value); clearFieldError("name"); }}
           />
         </Field>
 
@@ -130,7 +146,7 @@ export default function EquipmentCreateModal({ accountName, locations, onCreate,
             value={locationId}
             aria-invalid={locationError ? true : undefined}
             aria-describedby={describedBy("equipment-create-location", { hasHint: true, hasError: Boolean(locationError) })}
-            onChange={(e) => setLocationId(e.target.value)}
+            onChange={(e) => { setLocationId(e.target.value); clearFieldError("locationId"); }}
           >
             <option value="">Select a location…</option>
             {locations.map((l) => (
