@@ -1133,6 +1133,214 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Equipment & Installed Asset Management -- Issue #232 unit E3
+    // (docs/specifications/equipment-and-installed-asset-management.md,
+    // docs/architecture/ADR-006-...). Client-direct create/ordinary-edit only;
+    // move/retire/reactivate are trusted-writer actions gated on Issue #15 and are
+    // NOT reachable from here.
+    //
+    // AUTHORITY (Spec §10 "Seed compatibility"): admin/dispatcher -> full Equipment
+    // surface. Nothing else. In particular:
+    //
+    //  * operationalRoles are NEVER consulted. They express work eligibility, not
+    //    security authority -- an Employee holding PARTS_MANAGER gets no Equipment
+    //    authority from it, and this block deliberately contains no
+    //    isActiveOperationalRole() call.
+    //  * TECHNICIANS ARE DENIED HERE, deliberately. Spec §10 restricts a technician
+    //    to Equipment reachable through their OWN assigned Work Orders -- but Rules
+    //    cannot express that: it requires QUERYING fieldops_wos for an assignment
+    //    naming this equipment, and Rules can only get()/exists() a KNOWN path. The
+    //    Work Order id is not derivable from the equipment id. Granting technicians a
+    //    plain read to satisfy §10 early would hand every technician the entire
+    //    register -- exactly the "general Equipment-register authority" §10 forbids.
+    //    The self-scoped mechanism is E17's, which depends on E3 and carries its own
+    //    security review. Denying now is the fail-closed direction: E17 can open a
+    //    precise door, whereas an over-broad grant shipped here would have to be
+    //    taken back after technicians already had it.
+    function equipmentWritableKeys() {
+      return [
+        "accountId", "locationId", "name", "status",
+        "manufacturer", "model", "serialNumber", "assetTag",
+        "installedDate", "warrantyExpiresDate", "notes",
+        "createdAt", "updatedAt",
+      ];
+    }
+
+    // An ordinary edit may touch descriptive fields, plus `status` -- but ONLY across
+    // the plain ACTIVE<->INACTIVE pair, which equipmentTransitionAllowed() enforces.
+    //
+    // accountId/locationId: ownership. §4 and §11 both require Rules to deny changing
+    // them here; a Location change is the audited MOVE (§5). createdAt is immutable.
+    //
+    // status is present here so that §3 ("setStatus ... plain"), §6 and AC3
+    // ("descriptive/status(ACTIVE<->INACTIVE) editable") pass as written. Membership in
+    // this list only means "may appear in an edit"; which VALUES are legal is a
+    // separate guard, because reaching or leaving RETIRED is a trusted, audited action
+    // (§5) that this path must never perform.
+    //
+    // Note the client is currently STRICTER than these Rules: E2 (#282) strips status
+    // from its edit payload entirely, so nothing performs an ACTIVE<->INACTIVE write
+    // yet. E10 wires that up. Rules being the authoritative boundary, they encode the
+    // Specification's contract rather than the current caller's subset.
+    function equipmentEditableKeys() {
+      return [
+        "name", "manufacturer", "model", "serialNumber", "assetTag",
+        "installedDate", "warrantyExpiresDate", "notes", "status", "updatedAt",
+      ];
+    }
+
+    function equipmentStatusValid(status) {
+      return status == "ACTIVE" || status == "INACTIVE" || status == "RETIRED";
+    }
+
+    // The ONLY lifecycle movement an ordinary client edit may perform: the plain
+    // ACTIVE<->INACTIVE pair (§3), or no movement at all.
+    //
+    // Everything else is denied by omission rather than by a deny-list, so an
+    // unforeseen value cannot slip through:
+    //   ACTIVE/INACTIVE -> RETIRED  : retiring is trusted + audited (§5, E10)
+    //   RETIRED -> ACTIVE/INACTIVE  : reactivation is trusted + audited (§5, E10)
+    //   invalid/missing on EITHER side: fails closed -- a document whose stored status
+    //     is absent or malformed cannot be edited into a valid one by this path, which
+    //     is the no-grandfathering rule (whole-document validity, not just the delta).
+    // `unchanged` is allowed for RETIRED too: descriptive corrections to a retired
+    // record are permitted, they simply may not revive it.
+    function equipmentTransitionAllowed(before, after) {
+      return equipmentStatusValid(before)
+        && equipmentStatusValid(after)
+        && (after == before
+            || (before == "ACTIVE" && after == "INACTIVE")
+            || (before == "INACTIVE" && after == "ACTIVE"));
+    }
+
+    // Spec §4: the Location must belong to the owning Account. Read the Location and
+    // compare -- a missing Location makes exists() false and the write is denied, so a
+    // dangling or cross-Account reference fails closed rather than being taken on
+    // trust from the client.
+    //
+    // Read this as an INTEGRITY guard, NOT a tenant-security boundary. `locations`
+    // above allows admin/dispatcher create/update with no validation, so the same
+    // principal could forge a Location to satisfy this check. No privilege is gained
+    // -- admin/dispatcher are global and this ruleset has no per-account tenancy at all
+    // -- and E3 deliberately does not try to invent one: #140 is authoritative for that
+    // architecture.
+    function equipmentLocationBelongsToAccount(data) {
+      return data.locationId is string
+        && data.accountId is string
+        && exists(/databases/$(database)/documents/locations/$(data.locationId))
+        && get(/databases/$(database)/documents/locations/$(data.locationId)).data.accountId == data.accountId;
+    }
+
+    // Spec §1 declares every optional field string|null. Without this, a trusted
+    // principal could store `notes` as a map or `manufacturer` as a number: the
+    // register's search (§7) reads these client-side, so a wrong-typed value is a
+    // render hazard carried by real data. Rules are where the shape is authoritative.
+    function equipmentOptionalFieldsValid(data) {
+      return (data.get("manufacturer", null) == null || data.get("manufacturer", null) is string)
+        && (data.get("model", null) == null || data.get("model", null) is string)
+        && (data.get("serialNumber", null) == null || data.get("serialNumber", null) is string)
+        && (data.get("assetTag", null) == null || data.get("assetTag", null) is string)
+        && (data.get("installedDate", null) == null || data.get("installedDate", null) is string)
+        && (data.get("warrantyExpiresDate", null) == null || data.get("warrantyExpiresDate", null) is string)
+        && (data.get("notes", null) == null || data.get("notes", null) is string);
+    }
+
+    // §2: the name is the human reference (§8), so it must contain something a person
+    // can actually see -- not merely some bytes.
+    //
+    // The bar is DOMAIN PARITY -- Rules must not accept what E1 rejects client-side --
+    // not "no invisible character may exist". Being precise about that:
+    //
+    //   trim() alone is NOT enough: Rules' trim() is ASCII-only, so U+00A0 (NBSP),
+    //   U+3000, U+2000 and U+FEFF pass it while JS .trim() treats each as empty. Such
+    //   a name renders BLANK in the register (§8: the name is the human reference).
+    //   matches() closes exactly that gap: \p{Z} is every Unicode separator, \p{Cf}
+    //   the format characters (BOM/ZWNBSP).
+    //
+    //   matches() alone is NOT enough either: RE2's \s excludes \v, which JS .trim()
+    //   DOES strip -- so dropping trim() would let a vertical-tab-only name through.
+    //   Each guard catches what the other cannot; both are asserted below.
+    //
+    // What this deliberately does NOT catch: a name of only U+3164, U+2800, U+034F,
+    // U+115F, U+FFA0 or U+0085. They are Lo/So/Mn/Cc, not Z/Cf -- and JS .trim()
+    // accepts them too, so there is no divergence from the domain. Excluding them
+    // would mean excluding \p{Lo}, which contains every CJK, Arabic, Hebrew and Thai
+    // letter: it would deny a real customer's equipment name to stop a trusted admin
+    // from deliberately typing a blank one. Do not chase this further.
+    function equipmentNameValid(name) {
+      return name is string
+        && name.trim().size() > 0
+        && !name.matches("[\\p{Z}\\p{Cf}\\s]*")
+        && name.size() <= 200;
+    }
+
+    function equipmentCreateShapeValid(data) {
+      // hasOnly is the anti-injection guard: any key not on this list -- movedBy,
+      // retiredAt, auditEventId, a permissions blob, anything invented -- denies the
+      // whole write. An allow-list fails closed for fields nobody has thought of yet;
+      // a deny-list would not.
+      return data.keys().hasOnly(equipmentWritableKeys())
+        && data.keys().hasAll(["accountId", "locationId", "name", "status", "createdAt", "updatedAt"])
+        && equipmentNameValid(data.name)
+        && equipmentOptionalFieldsValid(data)
+        // Spec §2: status defaults ACTIVE on create. Reaching RETIRED/INACTIVE is a
+        // lifecycle transition owned by the trusted, audited writer (§5), so create
+        // must not be usable as a side door into a non-ACTIVE state.
+        && data.status == "ACTIVE"
+        && data.createdAt is number
+        && data.updatedAt is number;
+    }
+
+    match /equipment/{equipmentId} {
+      allow read: if isAdminOrDispatcher();
+
+      allow create: if isAdminOrDispatcher()
+        && equipmentCreateShapeValid(request.resource.data)
+        && equipmentLocationBelongsToAccount(request.resource.data);
+
+      // Ordinary edit. affectedKeys().hasOnly(...) is doing the governance work: it
+      // denies ANY change to accountId/locationId/status/createdAt and simultaneously
+      // denies adding any trusted/audit field -- both are simply keys absent from the
+      // editable list. E2's client guard enforces the same contract independently;
+      // this is the authoritative one.
+      // affectedKeys() covers REMOVALS as well as changes, so deleting a governed
+      // field is denied by the same condition -- verified live, not assumed. Dropping
+      // `status` (now an editable key) is caught instead by equipmentTransitionAllowed,
+      // whose `after` would be null and fail equipmentStatusValid.
+      //
+      // The shape guards validate the WHOLE RESULTING DOCUMENT'S VALUES, not just the
+      // changed keys, so an ordinary update must leave the document compliant -- the
+      // deliberate no-grandfathering rule. Two limits on that sentence, stated because
+      // each is easy to assume wrongly:
+      //
+      //  * SCOPE IS VALUES, NOT THE KEY SET. `update` intentionally does NOT re-apply
+      //    hasOnly(equipmentWritableKeys()) -- only `create` does. So a document that
+      //    already carries an extra key (an audit field stamped by an E9/E10 trusted
+      //    writer) stays ordinarily editable. Enforcing the key set here would brick
+      //    every record those writers touch. No client can EXPLOIT this: affectedKeys()
+      //    .hasOnly(editable) still denies ADDING any such key, so the extra key can
+      //    only arrive from a trusted writer or the Admin SDK.
+      //  * REPAIR-IN-THE-SAME-WRITE WORKS FOR name/optionals, but NOT for status: the
+      //    transition guard gates on the STORED status, so a record whose stored status
+      //    is malformed/absent is denied whatever `after` it is given. Such a record is
+      //    permanently uneditable on this path and is repairable only by E10's trusted
+      //    writer. That is the fail-closed direction, not an oversight.
+      //
+      // E9/E10's trusted writers bypass Rules entirely, so they must validate their own
+      // output against this same contract before writing.
+      allow update: if isAdminOrDispatcher()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(equipmentEditableKeys())
+        && equipmentNameValid(request.resource.data.name)
+        && equipmentOptionalFieldsValid(request.resource.data)
+        && equipmentTransitionAllowed(resource.data.get("status", null), request.resource.data.get("status", null))
+        && request.resource.data.updatedAt is number;
+
+      // Never, for anyone, including admin (Spec §11). Equipment is retired via the
+      // trusted writer, never deleted -- Service History (§10) is derived from Work
+      // Orders that reference it, so a delete would silently orphan real history.
+      allow delete: if false;
+    }
+
     match /contacts/{contactId} {
       allow read: if isAdminOrDispatcher();
       allow create, update: if isAdminOrDispatcher();
