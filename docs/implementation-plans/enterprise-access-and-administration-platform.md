@@ -41,7 +41,7 @@ This Plan does **not** decide anything the Specification or ADR-005 left open: t
 - Issue #100 operational-role behavior and Issue #175 governed-field enforcement are preserved exactly throughout (Spec §7/§9, ADR-005 §2.1/§4).
 - No break-glass UI; break-glass stays an operator-script-only, audited procedure (Spec §20).
 
-## 3. Bounded PR sequence (maps to the governing program's Tasks 6-30)
+## 3. Bounded PR sequence (maps to the governing program's Tasks 6-33)
 
 Each row is one or more bounded PRs. "Authority" marks whether it is mergeable under standing docs/UI authority or requires the Owner's explicit go-ahead per this session's merge-authority decision.
 
@@ -55,26 +55,27 @@ Each row is one or more bounded PRs. "Authority" marks whether it is mergeable u
 | 6 | accessVersion + compact claims (Task 11) | Claims model, refresh/stale-token fail-closed, rollback, emulator tests; **not activated in production** | §11 | **Functions/claims — hold for Owner go-ahead**; inert until #15 |
 | 7 | Trusted-writer commands (Task 12) | `grantRole`/`revokeRole`/`assignApprovedRole`/`setUserStatus`/`approveAccessRequest`/`rejectAccessRequest`; separation-of-duty, idempotency | §15 | **Functions — hold for Owner go-ahead**; merges but stays inactive until #15 deployment is authorized |
 | 8 | Operator-script parity (Task 13) | Update Admin-SDK scripts to the same validation/audit/break-glass contract | §17, §20 | **Owner-authorized operator scripts — hold for Owner go-ahead** |
-| 9 | Prototype reconciliation record (Task 14) | Adopt/adapt/defer/reject mapping for every prototype area; no mock data or wholesale replacement | §16, §22-24 (ADR §2.5) | Docs-only — self-mergeable |
+| 9 | Prototype reconciliation record (Task 14) | Adopt/adapt/defer/reject mapping for every prototype area; no mock data or wholesale replacement | §3, §16 (ADR §2.5) | Docs-only — self-mergeable |
 | 10 | Admin portal foundation (Task 15) | Administration top-level nav + MVP surfaces (Overview, Users, Roles & Permissions, Permission Preview, Audit History) using existing patterns | §16 | App-code, presentation-only — self-mergeable after review |
 | 11 | Read-only Admin MVP (Task 16) | Status/Role display, effective-permission preview, denial explanation, read-only audit history; no client-direct writes | §16 | App-code, read-only — self-mergeable after review |
 | 12 | Admin mutation UI (Task 17) | UI calling only trusted-writer contracts; actions visibly unavailable until #15 Functions are deployed+verified | §16 | App-code, but gated inert — self-mergeable; **activation is a separate Owner gate** |
 | 13-15 | Domain shadow migration: Customer (18), Inventory (19), Service (20) | Per-domain mapping + parity tests, legacy stays authoritative | §19, §21 | App-code/tests, non-authoritative — self-mergeable after review |
-| 16 | Navigation/shared UI (Task 21) | Permission-preview helpers replace scattered UI-only role checks; legacy fallback retained | §12 | App-code, presentation-only — self-mergeable after review |
+| 16 | Navigation/shared UI (Task 21) | Permission-preview helpers replace scattered UI-only role checks; legacy fallback retained; own display-parity check against the same fixture set (no Rules surface — presentation only, never authoritative per §12) | §12 | App-code, presentation-only — self-mergeable after review |
 | 17 | Complete parity review (Task 22) | 100% expected-outcome parity report per persona/action; drift resolved or explicitly deferred | §21 | Docs-only — self-mergeable |
 | 18 | Consolidated review package (Task 23) | Owner checkpoint report | — | Docs-only — self-mergeable; checkpoint, not a stop |
 | 19 | Production authorization request (Task 24) | Explicit scope-of-deployment request | — | **Owner decision, not a PR** |
 | 20 | Deploy trusted backend (Task 25) | Deployment of PR 5/6/7 surfaces only, post-authorization | — | **Production deployment — Owner-executed or Owner-witnessed** |
 | 21 | Production foundation verification (Task 26) | Dedicated-fixture verification of trusted commands/claims/audit/break-glass in production | §21 V1 | **Production verification — hold for Owner go-ahead** |
 | 22 | Enable admin mutations (Task 27) | Activate PR 12's UI against verified production Functions | §16 | **Production activation — Owner-authorized** |
-| 23-26 | Domain enforcement cutovers (Task 28): Customer, Inventory, Service, Nav | One domain at a time, smallest boundary, immediate rollback on regression | §19, §21 | **Production Rules/enforcement flips — Owner-authorized per domain** |
+| 23-25 | Domain enforcement cutovers (Task 28, 1-3): Customer, Inventory, Service | One domain at a time, smallest boundary (Rules and/or trusted-Function flip per §12), immediate rollback on regression | §19, §21 | **Production Rules/enforcement flips — Owner-authorized per domain** |
+| 26 | Navigation/shared-UI cutover (Task 28, 4) | Switch coarse UI/nav gating from the legacy mirror to the Permission-engine mirror built in row 16; **not a Rules/enforcement flip** — nav gating stays presentation-only per §12, so this row activates row 16's already-merged helper as the UI's primary source, with the legacy check retained as fallback | §12, §19 | App-code, presentation-only — self-mergeable after the three domain cutovers (23-25) it visually depends on are live |
 | 27 | Retirement readiness review (Task 29) | Proof of all 12 ADR-005 §2.7 criteria | §21 | Docs-only — self-mergeable; **Owner confirms retirement timing** |
 | 28 | Retire raw role authority (Task 30) | Remove hard-coded role checks outside the compatibility boundary | §7, §21 | **App-code + Rules — Owner-authorized, post-readiness-review** |
 | 29 | Full release verification (Task 31) | Complete suite/build/Rules-regression/browser/accessibility/rollback verification | — | Verification only |
 | 30 | Document reconciliation (Task 32) | Update current-state docs; no historical-Assessment rewrites | — | Docs-only — self-mergeable |
 | 31 | Close Issue #226 (Task 33) | Final closeout, only when every closure criterion is met | — | Issue action, not a PR |
 
-Each PR is independently revertible (Spec §18 rollback invariant); no PR in rows 13-26 activates production enforcement without the specific Owner authorization named in that row.
+Each PR is independently revertible (Spec §18 rollback invariant); no PR in rows 13-26 activates production enforcement without the specific Owner authorization named in that row (rows 16/26 are the sole exception, since navigation gating is presentation-only and never an enforcement authority per §12).
 
 ## 4. Object/storage ownership
 
@@ -138,7 +139,7 @@ Foundation (row 10) → read-only MVP (row 11) → mutation UI wired to trusted 
 
 ## 13. Domain migration order
 
-Customer/Account (row 13) → Inventory/Reorder/Purchasing (row 14) → Service/Work Orders (row 15) → Navigation/shared UI (row 16), per ADR-005 §4/Spec §19's stated order. Each domain: seed mapping → shadow parity (row 4's harness) → (later, post-#15) flip enforcement → verify → proceed. No domain's cutover (rows 23-26) is scheduled before its shadow parity (rows 13-15) is 100% green.
+Customer/Account (row 13) → Inventory/Reorder/Purchasing (row 14) → Service/Work Orders (row 15) → Navigation/shared UI (row 16), per ADR-005 §4/Spec §19's stated order. For the three Rules/Function-authoritative domains (Customer, Inventory, Service): seed mapping → shadow parity (row 4's harness) → (later, post-#15) flip enforcement → verify → proceed; no domain's cutover (rows 23-25) is scheduled before its own shadow parity (rows 13-15) is 100% green. Navigation/shared UI (row 16/26) has no Rules surface to flip (§12) — its own "cutover" (row 26) is switching the UI's presentation mirror to the Permission-engine helper, gated on the three domain cutovers it visually reflects being live, not on a parity-blocked Rules flip of its own.
 
 ## 14. Shadow/parity mode
 
