@@ -12,6 +12,9 @@ import {
   equipmentDisplayName, equipmentSummary, equipmentSaveErrorMessage,
   equipmentMatchesSearch, compareEquipment, searchEquipment,
   equipmentServiceHistory, groupServiceHistoryByYear,
+  GOVERNED_EQUIPMENT_FIELDS,
+  buildEquipmentCreatePayload, buildEquipmentEditPayload,
+  trustedActionUnavailable, TRUSTED_ACTION_UNAVAILABLE_REASON,
 } from "../src/domain/equipment.js";
 
 let passed = 0;
@@ -210,6 +213,291 @@ ok("history survives retirement (status is never a filter) and groups by year, n
   const groups = groupServiceHistoryByYear(h);
   assert.deepEqual(groups.map((g) => g.year), [2026, 2024, "Unknown"]);
   assert.deepEqual(groups[0].entries.map((e) => e.workOrderId), ["new"]);
+});
+
+// ---- search fail-closed hardening -----------------------------------------
+// The options argument is untrusted input. The destructuring default `= {}` only
+// fires for `undefined`, so every OTHER malformed argument used to destructure to
+// all-defaults and mean "no filters" -- returning the ENTIRE register to a caller who
+// asked to narrow it. Fail-open, and silent.
+ok("a malformed options argument returns NOTHING, never everything", () => {
+  const all = searchEquipment(FIXTURE, {});
+  assert.ok(all.length >= 3, "precondition: the fixture has records to leak");
+
+  for (const [label, bad] of [
+    ["bare string (searchEquipment(list, \"rtu\") reads naturally and used to return ALL)", "rtu"],
+    ["array", ["rtu"]],
+    ["number", 42],
+    ["boolean", true],
+    ["null", null],
+    ["string object", new String("rtu")],
+    ["Map (object, but not a plain one)", new Map([["term", "rtu"]])],
+  ]) {
+    assert.deepEqual(searchEquipment(FIXTURE, bad), [], `options as ${label} must return no results`);
+  }
+});
+
+ok("an UNRECOGNIZED option key returns nothing -- the same trap, one level down", () => {
+  // Guarding only the argument would have relocated the defect rather than closed it:
+  // `{search: q}` also destructures to all-defaults and used to return the whole
+  // register -- a likelier slip than the bare string, and just as silent.
+  for (const bad of [
+    { search: "rtu" },        // the obvious wrong name
+    { query: "rtu" },
+    { location: "l2" },       // near-miss on locationId
+    { statuses: ["ACTIVE"] }, // near-miss on status
+    { Term: "rtu" },          // casing slip
+    { term: "rtu", extra: 1 },// a valid key alongside an unknown one
+    { length: 2 },            // array-like that passes a plain-object check
+  ]) {
+    assert.deepEqual(searchEquipment(FIXTURE, bad), [], `unknown key in ${JSON.stringify(bad)} must return no results`);
+  }
+});
+
+ok("a malformed FIELD inside a valid options object returns nothing", () => {
+  for (const [label, opts] of [
+    ["term: number", { term: 42 }],
+    ["term: object -- the bare-object mistake", { term: { term: "rtu" } }],
+    ["term: array", { term: ["rtu"] }],
+    ["locationId: number", { locationId: 7 }],
+    ["locationId: empty string", { locationId: "" }],
+    ["locationId: blank string", { locationId: "   " }],
+    ["locationId: object", { locationId: {} }],
+    ["status: number", { status: 3 }],
+    ["status: object", { status: {} }],
+  ]) {
+    assert.deepEqual(searchEquipment(FIXTURE, opts), [], `${label} must return no results`);
+  }
+});
+
+ok("an explicitly unknown status returns nothing -- it never disables the filter", () => {
+  // The original normalized "BOGUS" to null, which read as "no status filter" and
+  // BROADENED the result: a narrower question answered with a wider answer.
+  for (const status of ["BOGUS", "PENDING", "active-ish", ""]) {
+    assert.deepEqual(
+      searchEquipment(FIXTURE, { status }), [],
+      `unknown status ${JSON.stringify(status)} must return no results, not disable the filter`
+    );
+  }
+  // A narrowing combination cannot widen either.
+  assert.deepEqual(searchEquipment(FIXTURE, { term: "rtu", status: "BOGUS" }), []);
+});
+
+ok("a non-array Equipment input returns nothing instead of throwing", () => {
+  for (const bad of ["notarray", 42, null, undefined, {}, { length: 2 }]) {
+    assert.deepEqual(searchEquipment(bad, { term: "rtu" }), [], `equipment as ${JSON.stringify(bad)} -> []`);
+  }
+});
+
+ok("VALID omitted/empty/default options still return everything, ordered", () => {
+  // The one documented broad behaviour, deliberately preserved.
+  const expected = FIXTURE.slice().sort(compareEquipment).map((e) => e.id);
+  assert.deepEqual(searchEquipment(FIXTURE).map((e) => e.id), expected, "options omitted entirely");
+  assert.deepEqual(searchEquipment(FIXTURE, {}).map((e) => e.id), expected, "empty options object");
+  assert.deepEqual(searchEquipment(FIXTURE, { term: "" }).map((e) => e.id), expected, "empty term");
+  assert.deepEqual(searchEquipment(FIXTURE, { term: "   " }).map((e) => e.id), expected, "blank term");
+  assert.deepEqual(
+    searchEquipment(FIXTURE, { term: undefined, locationId: undefined, status: undefined }).map((e) => e.id),
+    expected, "explicitly undefined fields == omitted"
+  );
+  assert.deepEqual(
+    searchEquipment(FIXTURE, { term: null, locationId: null, status: null }).map((e) => e.id),
+    expected, "explicitly null fields == no filter (the documented defaults)"
+  );
+});
+
+ok("equipmentMatchesSearch fails closed on a malformed term but still no-ops on an empty one", () => {
+  const e = { name: "RTU-1" };
+  assert.equal(equipmentMatchesSearch(e, ""), true, "empty term -> no search applied");
+  assert.equal(equipmentMatchesSearch(e, "   "), true, "blank term -> no search applied");
+  assert.equal(equipmentMatchesSearch(e, undefined), true, "omitted -> no search applied");
+  assert.equal(equipmentMatchesSearch(e, null), true, "null -> no search applied");
+  assert.equal(equipmentMatchesSearch(e, 42), false, "number -> fail closed, not match-everything");
+  assert.equal(equipmentMatchesSearch(e, { term: "RTU" }), false, "object -> fail closed");
+  assert.equal(equipmentMatchesSearch(e, ["RTU"]), false, "array -> fail closed");
+  assert.equal(equipmentMatchesSearch(e, "rtu"), true, "a real term still matches");
+});
+
+ok("groupServiceHistoryByYear rejects malformed input instead of fabricating history", () => {
+  // A string used to be walked character by character into a phantom bucket: each
+  // character's `.at` is String.prototype.at (truthy), so the guard passed and
+  // produced year NaN -- which `?? "Unknown"` never caught.
+  for (const bad of ["notarray", 42, null, undefined, { 0: "x" }]) {
+    assert.deepEqual(groupServiceHistoryByYear(bad), [], `${JSON.stringify(bad)} -> no groups`);
+  }
+  // Real entries still group, and a non-numeric/absent `at` is still "Unknown".
+  const groups = groupServiceHistoryByYear([
+    // Mid-year: getFullYear() is LOCAL, so a Jan 1 UTC instant is the PREVIOUS year in
+    // any negative offset (this machine is UTC-7) -- the same trap E4's fixture dates
+    // avoid. Not the behaviour under test; don't let it decide the result.
+    { workOrderId: "a", at: Date.UTC(2026, 5, 15, 12) },
+    { workOrderId: "b", at: null },
+    { workOrderId: "c", at: 0 },
+    { workOrderId: "d", at: Number.NaN },
+    { workOrderId: "e", at: 8.64e15 * 2 }, // out of Date range -> getFullYear() is NaN
+  ]);
+  assert.deepEqual(groups.map((g) => g.year), [2026, "Unknown"]);
+  assert.deepEqual(groups[1].entries.map((e) => e.workOrderId), ["b", "c", "d", "e"], "0/null/NaN/out-of-range all Unknown");
+
+  // A NEGATIVE at is a real pre-1970 date, not malformed -- it must still group by its
+  // year. The hardening must not quietly relabel real history as Unknown.
+  const old = groupServiceHistoryByYear([{ workOrderId: "old", at: Date.UTC(1965, 5, 15, 12) }]);
+  assert.deepEqual(old.map((g) => g.year), [1965], "pre-1970 history groups by its real year, not Unknown");
+});
+
+// ---- E2: create payload ---------------------------------------------------
+ok("create payload carries the normalized record + updatedAt; createdAt is the store's to stamp", () => {
+  const { valid, payload } = buildEquipmentCreatePayload(
+    { accountId: " a1 ", locationId: "l1", name: " Rooftop Unit ", model: "", notes: "  " },
+    1234
+  );
+  assert.equal(valid, true);
+  assert.equal(payload.accountId, "a1");
+  assert.equal(payload.name, "Rooftop Unit");
+  assert.equal(payload.status, EQUIPMENT_STATUS.ACTIVE, "status defaults ACTIVE on create");
+  assert.equal(payload.model, null, "blank optional normalizes to null, not empty string");
+  assert.equal(payload.notes, null);
+  assert.equal(payload.updatedAt, 1234);
+  assert.equal(
+    Object.hasOwn(payload, "createdAt"), false,
+    "makeCollectionStore.add() stamps createdAt; setting it here too would return one value and persist another"
+  );
+});
+
+ok("create cannot be used as a side door into a non-ACTIVE lifecycle state", () => {
+  const base = { accountId: "a1", locationId: "l1", name: "Unit" };
+  for (const status of ["RETIRED", "INACTIVE", "retired"]) {
+    const { valid, errors, payload } = buildEquipmentCreatePayload({ ...base, status }, 1);
+    assert.equal(valid, false, `create must refuse status ${status} -- retiring is the audited trusted action`);
+    assert.equal(payload, null);
+    assert.ok(errors.status);
+  }
+  // An unrecognized status is refused too -- quietly substituting ACTIVE would be a
+  // silent divergence from what the caller asked for, even though ACTIVE is safe.
+  const bogus = buildEquipmentCreatePayload({ ...base, status: "BOGUS" }, 1);
+  assert.equal(bogus.valid, false, "garbage status must not be silently coerced to ACTIVE");
+  assert.equal(bogus.payload, null);
+  assert.ok(bogus.errors.status);
+
+  const active = buildEquipmentCreatePayload({ ...base, status: "active" }, 1);
+  assert.equal(active.valid, true, "an explicit ACTIVE (any casing) is fine");
+  assert.equal(active.payload.status, EQUIPMENT_STATUS.ACTIVE);
+
+  const unspecified = buildEquipmentCreatePayload(base, 1);
+  assert.equal(unspecified.valid, true, "the ordinary create path supplies no status at all");
+  assert.equal(unspecified.payload.status, EQUIPMENT_STATUS.ACTIVE);
+});
+
+ok("create payload fails closed on missing required fields and yields no payload", () => {
+  const { valid, errors, payload } = buildEquipmentCreatePayload({ name: "Orphan" }, 1);
+  assert.equal(valid, false);
+  assert.equal(payload, null, "invalid input must not produce a writable payload");
+  assert.ok(errors.accountId && errors.locationId);
+});
+
+// ---- E2: ordinary-edit payload (governed-field immutability) --------------
+ok("edit payload can never carry a governed field, whatever the caller passes", () => {
+  const { payload } = buildEquipmentEditPayload(
+    { name: "Renamed", model: "M2", accountId: "a1", locationId: "l1", status: "ACTIVE", createdAt: 5 },
+    { name: "Old", accountId: "a1", locationId: "l1", status: "ACTIVE", createdAt: 5 },
+    99
+  );
+  for (const f of GOVERNED_EQUIPMENT_FIELDS) {
+    assert.equal(Object.hasOwn(payload, f), false, `edit payload must not contain governed field ${f}`);
+  }
+  assert.equal(payload.name, "Renamed");
+  assert.equal(payload.updatedAt, 99);
+});
+
+ok("a partial edit touches only what it was given -- untouched fields are not nulled out", () => {
+  const before = {
+    name: "Unit", manufacturer: "Carrier", model: "48TC", serialNumber: "SN-9",
+    assetTag: "TAG-1", notes: "quarterly PM", accountId: "a1", locationId: "l1", status: "ACTIVE",
+  };
+  const { valid, payload } = buildEquipmentEditPayload({ name: "Renamed only" }, before, 7);
+  assert.equal(valid, true);
+  assert.deepEqual(
+    Object.keys(payload).sort(), ["name", "updatedAt"],
+    "an absent key means UNCHANGED -- writing null would silently erase stored data"
+  );
+  for (const f of ["manufacturer", "model", "serialNumber", "assetTag", "notes"]) {
+    assert.equal(Object.hasOwn(payload, f), false, `${f} was not edited and must not be written`);
+  }
+  // ...and a field the caller DID clear on purpose still clears.
+  const cleared = buildEquipmentEditPayload({ notes: "" }, before, 7);
+  assert.equal(cleared.payload.notes, null, "an explicitly emptied field is a real edit to null");
+});
+
+ok("edit refuses an attempted governed change instead of silently dropping it", () => {
+  const before = { name: "Unit", accountId: "a1", locationId: "l1", status: "ACTIVE" };
+  const moved = buildEquipmentEditPayload({ ...before, locationId: "l2" }, before, 1);
+  assert.deepEqual(moved.changedGoverned, ["locationId"], "a Location change is the audited move, not an edit");
+
+  const restatused = buildEquipmentEditPayload({ ...before, status: "RETIRED" }, before, 1);
+  assert.deepEqual(restatused.changedGoverned, ["status"], "a status change is an explicit lifecycle action");
+
+  const reowned = buildEquipmentEditPayload({ ...before, accountId: "a2", locationId: "l9" }, before, 1);
+  assert.deepEqual(reowned.changedGoverned, ["accountId", "locationId"]);
+
+  const restamped = buildEquipmentEditPayload({ ...before, createdAt: 999 }, { ...before, createdAt: 1 }, 1);
+  assert.deepEqual(restamped.changedGoverned, ["createdAt"]);
+});
+
+ok("an unchanged governed field is not flagged, even re-cased or padded by a round-trip", () => {
+  const before = { name: "Unit", accountId: "a1", locationId: "l1", status: "ACTIVE" };
+  const spread = buildEquipmentEditPayload({ ...before, name: "Unit 2" }, before, 1);
+  assert.deepEqual(spread.changedGoverned, [], "spreading the record is normal; only real changes are refused");
+  assert.equal(spread.valid, true);
+
+  // The comparison must be against the value as it would be STORED, not the raw input:
+  // a form that lowercases status or pads an id is not requesting a governed change.
+  const roundTripped = buildEquipmentEditPayload(
+    { ...before, status: "active", accountId: " a1 ", locationId: "l1 ", name: "Unit 2" }, before, 1
+  );
+  assert.deepEqual(roundTripped.changedGoverned, [], "normalized-equal governed values are not a change");
+});
+
+ok("edit fails closed when `before` cannot prove a governed field is unchanged", () => {
+  // No `before` -> we cannot know the stored Location, so a caller spreading a whole
+  // record must NOT be told the edit succeeded while the move was quietly dropped.
+  const unprovable = buildEquipmentEditPayload({ name: "Unit", accountId: "a1", locationId: "l2" }, {}, 1);
+  assert.deepEqual(unprovable.unprovableGoverned, ["accountId", "locationId"], "unprovable != fine");
+  assert.deepEqual(
+    unprovable.changedGoverned, [],
+    "a missing `before` is a CALLER bug -- reported apart from a user attempting a real change"
+  );
+
+  // Governed fields the caller never supplied are nobody's problem.
+  const clean = buildEquipmentEditPayload({ name: "Unit" }, {}, 1);
+  assert.deepEqual(clean.unprovableGoverned, []);
+  assert.equal(clean.valid, true, "an ordinary descriptive edit must not need `before`");
+});
+
+ok("edit enforces the required name when the caller edits it, and ignores it when absent", () => {
+  const blank = buildEquipmentEditPayload({ name: "   " }, { name: "Unit" }, 1);
+  assert.equal(blank.valid, false);
+  assert.equal(blank.payload, null);
+  assert.ok(blank.errors.name);
+
+  const untouched = buildEquipmentEditPayload({ notes: "x" }, { name: "Unit" }, 1);
+  assert.equal(untouched.valid, true, "not editing the name is not a missing name");
+});
+
+// ---- E2: trusted-writer seam ----------------------------------------------
+ok("trusted actions report unavailable, never success, with safe copy", () => {
+  const r = trustedActionUnavailable("equipment.move");
+  assert.equal(r.ok, false, "an unavailable trusted action must never look like success");
+  assert.equal(r.unavailable, true);
+  assert.equal(r.reason, TRUSTED_ACTION_UNAVAILABLE_REASON);
+  assert.equal(r.action, "equipment.move");
+  assert.match(r.message, /Nothing was changed/);
+});
+
+ok("unavailable copy leaks no provider, code, id, or credential detail", () => {
+  for (const action of ["equipment.move", "equipment.retire", "equipment.reactivate", "equipment.setStatus"]) {
+    const { message } = trustedActionUnavailable(action);
+    assert.doesNotMatch(message, /firebase|firestore|functions|permission-denied|unauthenticated|internal|uid|token|[A-Za-z0-9_-]{20,}/i);
+  }
 });
 
 console.log(`\n${passed} passed, 0 failed`);
