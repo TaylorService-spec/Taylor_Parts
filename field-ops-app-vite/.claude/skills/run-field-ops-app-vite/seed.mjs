@@ -1314,9 +1314,13 @@ async function seedIssue100RoleFixtures() {
 // describes operations later Rules/browser tests ATTEMPT and must see DENIED. The
 // only documents created here are valid ones.
 //
-// Timestamps are relative offsets from a single `now`, so Service History ordering is
-// deterministic across reseeds even though the absolute values move. Every write is a
-// .set() on a fixed id, so reseeding is idempotent and repeatable.
+// Work Order timestamps are ABSOLUTE (see EQUIPMENT_WO_DATES) -- do NOT make them
+// offsets from `now`. Service History is grouped by calendar year (§10), so relative
+// ages silently change the BUCKETS as the wall clock moves and would break an E16
+// assertion on a date with no code change. Only createdAt/updatedAt on the
+// account/location/equipment/technician documents use `now`; nothing orders, groups,
+// or filters on those. Every write is a .set() on a fixed id, so reseeding is
+// idempotent and repeatable.
 export const EQUIPMENT_FIXTURE = {
   // Two Accounts, so cross-Account denial has a real second tenant to point at.
   alphaAccountId: "acct-equip-alpha",
@@ -1382,10 +1386,22 @@ export const EQUIPMENT_FIXTURE = {
     },
     // Deletes are ALWAYS denied, for every principal including admin (§11).
     deleteAny: { equipmentId: "equip-alpha-rtu-1" },
-    // Self-scope: the unassigned technician reaching for Equipment they hold no
-    // assignment to, and the beta tenant's Equipment from an alpha-scoped principal.
-    unassignedTechnicianRead: { equipmentId: "equip-alpha-rtu-1" },
-    crossTenantRead: { equipmentId: "equip-beta-rtu-1" },
+    // Self-scope denials. Each names the principal it applies to, because these are
+    // NOT denials for everyone: per §10 admin/dispatcher get the FULL Equipment
+    // surface, so both legitimately CAN read either record below. Asserting otherwise
+    // would fail against a correct implementation and invite bolting account-scoping
+    // onto the admin rule -- which the Specification explicitly does not want.
+    //
+    // Note there is no "Account-scoped principal" in this model at all: technicians
+    // are ASSIGNMENT-scoped (isOwnTechnician reads assignedTechId, never a tenant).
+    unassignedTechnicianRead: {
+      equipmentId: "equip-alpha-rtu-1",
+      principal: "equipmentTechUnassigned", // holds real Work Orders, none linking this
+    },
+    crossTenantRead: {
+      equipmentId: "equip-beta-rtu-1",
+      principal: "equipmentTechAssigned", // holds a beta Work Order, but none linking this
+    },
   },
 };
 
@@ -1401,7 +1417,6 @@ const EQUIPMENT_WO_DATES = {
   unassignedTechWo: Date.UTC(2026, 5, 1, 15, 0, 0),
   betaWo: Date.UTC(2026, 5, 5, 15, 0, 0),
 };
-const BETA_WO_AT = EQUIPMENT_WO_DATES.betaWo;
 
 async function seedEquipmentFixture() {
   const F = EQUIPMENT_FIXTURE;
@@ -1603,8 +1618,8 @@ async function seedEquipmentFixture() {
     assignedTechId: F.assignedTechnicianId,
     priority: 3,
     type: "SERVICE_CALL",
-    createdAt: new Date(BETA_WO_AT),
-    updatedAt: new Date(BETA_WO_AT),
+    createdAt: new Date(EQUIPMENT_WO_DATES.betaWo),
+    updatedAt: new Date(EQUIPMENT_WO_DATES.betaWo),
   });
 }
 
