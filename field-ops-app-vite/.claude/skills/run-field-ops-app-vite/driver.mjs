@@ -4162,23 +4162,44 @@ async function verifyEquipmentCreate(browser, page, accountKey) {
   niReport("Create: the open modal introduces no duplicate DOM id (§13 label association)",
     dupIds.length === 0, JSON.stringify(dupIds));
 
-  // ===== TYPE LIKE A HUMAN, not fill() (§13) =====
-  // fill() sets a value in ONE event. Real typing re-renders the modal per keystroke,
-  // and that is what exposed the worst defect in this unit: Modal's focus effect is
-  // keyed on [onClose], so an unstable handler tore the effect down and re-ran it on
-  // every character, yanking focus to the ✕ button. Typing "Rooftop Unit 1" left the
-  // field EMPTY and the first SPACE pressed ✕ and discarded the form. A fill()-only
-  // suite passes green against a form no human can complete -- so this asserts real
-  // keystrokes, and every text field below is typed rather than filled.
+  // ===== TYPE LIKE A HUMAN, with the live subscription DELIVERING mid-type (§13) =====
+  // fill() sets a value in ONE event; real typing re-renders per keystroke, and that
+  // re-render is the entire mechanism of this unit's worst defect: Modal's focus effect
+  // is keyed on [onClose], so an unstable handler tears it down and re-runs it, yanking
+  // focus to the ✕ button -- after which a SPACE presses ✕ and discards the form.
+  //
+  // Typing ALONE is not enough to catch the class, which is why this provokes a
+  // delivery in the middle. Two identities feed Modal: the modal's own requestClose,
+  // and the register's onClose. Typing re-renders only the MODAL -- so a regression in
+  // the REGISTER's onClose (an inline arrow) survives a pure typing test untouched, and
+  // an earlier version of these assertions passed 30/30 with the register's useCallback
+  // deleted. The register re-renders when its Equipment subscription delivers, which is
+  // exactly what a second dispatcher adding equipment does in real life. Writing a
+  // throwaway record mid-type reproduces that, and is what makes this assertion protect
+  // the CLASS rather than one instance.
   await page.locator("#equipment-create-name").click();
-  await page.keyboard.type("Rooftop Unit 1");
+  await page.keyboard.type("Rooftop");
+  const tickId = "equip-live-delivery-tick";
+  await db.doc(`equipment/${tickId}`).set({
+    accountId: CREATE_ACCT, locationId: CREATE_LOC_1, name: "Live Delivery Tick", status: "ACTIVE",
+    manufacturer: null, model: null, serialNumber: null, assetTag: null,
+    installedDate: null, warrantyExpiresDate: null, notes: null,
+    createdAt: Date.now(), updatedAt: Date.now(),
+  });
+  await page.waitForTimeout(900); // let the snapshot land and re-render the register
+  niReport("Create: a live subscription delivery mid-type does not yank focus out of the field",
+    (await page.evaluate(() => document.activeElement?.id)) === "equipment-create-name",
+    await page.evaluate(() => document.activeElement?.id || document.activeElement?.tagName));
+  await page.keyboard.type(" Unit 1");
   await page.waitForTimeout(200);
-  niReport("Create: typing a multi-word name keeps every character (§13)",
+  niReport("Create: typing a multi-word name keeps every character across a delivery (§13)",
     (await page.locator("#equipment-create-name").inputValue().catch(() => "(gone)")) === "Rooftop Unit 1");
   niReport("Create: focus stays in the field while typing -- it is not yanked to the dialog chrome",
     (await page.evaluate(() => document.activeElement?.id)) === "equipment-create-name");
   niReport("Create: a SPACE while typing does not activate the close button and discard the form",
     (await page.locator(".fo-modal, [role='dialog']").count()) === 1);
+  await db.doc(`equipment/${tickId}`).delete().catch(() => {});
+  await page.waitForTimeout(400);
   await page.locator("#equipment-create-name").fill("");
 
   // ===== validation: submitting empty shows field errors and writes nothing =====
@@ -4201,10 +4222,15 @@ async function verifyEquipmentCreate(browser, page, accountKey) {
   await modal().getByRole("button", { name: /^Add Equipment$/ }).click();
   // Wait for the ASYNC SETTLE, not a fixed tick. The write round-trips to the emulator,
   // the row arrives via onSnapshot, the modal closes, and only then does the focus
-  // effect run -- and Modal's own focus-restore fires in between, briefly parking focus
-  // on the trigger button. Asserting before all that settles measures the driver's
-  // timing, not the feature's behaviour; an earlier version of this suite did exactly
-  // that and reported three failures against a register that was working correctly.
+  // effect run -- and Modal's CLOSE-TIME focus-restore (its unmount cleanup, which is
+  // correct and intended) fires in between, briefly parking focus on the trigger.
+  // Asserting before all that settles measures the driver's timing, not the feature;
+  // an earlier version did exactly that and reported three failures against a register
+  // that was working correctly.
+  //
+  // Do NOT read this as excusing a focus yank WHILE TYPING -- that was a real defect
+  // (Modal's effect re-running on every keystroke), it is asserted against above, and
+  // an earlier version of this very comment rationalised it away as timing.
   const closed = await page.waitForFunction(
     () => document.querySelectorAll(".fo-modal, [role='dialog']").length === 0,
     null, { timeout: 15000 }
@@ -4233,7 +4259,6 @@ async function verifyEquipmentCreate(browser, page, accountKey) {
   await page.waitForTimeout(600);
   niReport("Create: the new row still holds focus after the dust settles",
     (await page.evaluate(() => document.activeElement?.tagName)) === "TR");
-  const newId = focusedRow?.id;
 
   const announced = await page.waitForFunction(
     () => /added/i.test(document.querySelector('.fo-sr-only[role="status"]')?.textContent ?? ""),
@@ -4253,13 +4278,13 @@ async function verifyEquipmentCreate(browser, page, accountKey) {
   niReport("Create: the persisted record is ACTIVE, owned by the fixed Account, at the chosen Location",
     doc?.status === "ACTIVE" && doc?.accountId === CREATE_ACCT && doc?.locationId === CREATE_LOC_2,
     JSON.stringify({ status: doc?.status, accountId: doc?.accountId, locationId: doc?.locationId }));
-  // Distinct from the line above: that one checks the VALUE is ACTIVE; this checks the
-  // form never had a status control to submit from, so ACTIVE can only have come from
-  // E1's default. (An earlier version asserted `status === "ACTIVE"` twice and called
-  // the second one "defaulted, not chosen" -- it could not tell the two apart at all.)
-  niReport("Create: ACTIVE was DEFAULTED -- the form has no status control to submit from",
-    doc?.status === "ACTIVE" &&
-      (await page.locator("#equipment-create-status, [name='status']").count()) === 0);
+  // NOTE: there is deliberately no second "defaulted, not chosen" assertion here.
+  // Two attempts at one were vacuous: the first re-asserted `status === "ACTIVE"`
+  // verbatim, and the replacement queried for a status control while the modal was
+  // already CLOSED -- against a selector that matches nothing in any state, so it was
+  // unconditionally true. "The form offers no status control" is asserted once, above,
+  // while the modal is OPEN, which is the only place it can mean anything. Together
+  // with this line (the persisted value IS ACTIVE), that is the whole claim.
 
   // ===== duplicate-submit guard =====
   await page.getByRole("button", { name: /new equipment/i }).click();
