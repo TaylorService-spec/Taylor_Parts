@@ -123,10 +123,15 @@ export const TECHNICIAN_ROLE: Role = Object.freeze({
     "reorder.request.markReceived",
     "reorder.purchaseOrder.read",
     "reorder.purchaseOrder.create",
-    "reorder.purchaseOrder.void",
     "inventory.transaction.read",
     "inventory.action.read",
   ],
+  // reorder.purchaseOrder.void is deliberately NOT granted to technician
+  // at all -- firestore.rules (current `main`) keeps Void gated to
+  // isAdminOrDispatcher() + assignee only, with its own inline comment
+  // that this is NOT extended to PARTS_ASSOCIATE even though it is
+  // already the assignee (matching the Assessment's Inventory domain
+  // audit table: "no operational role gets Approve/Reject/Cancel/Void").
   conditionsByPermission: {
     "reorder.request.read.queue": [
       { kind: "operationalRoleActive", params: PARTS_MANAGER_ONLY },
@@ -157,13 +162,6 @@ export const TECHNICIAN_ROLE: Role = Object.freeze({
     ],
     "reorder.purchaseOrder.create": [
       { kind: "operationalRoleActive", params: PARTS_ASSOCIATE_ONLY },
-    ],
-    // PO Void, technician path: must be an active PARTS_ASSOCIATE AND
-    // the request's own recorded assignee -- both Conditions must pass
-    // (array = AND), matching the existing assignee-only narrowing.
-    "reorder.purchaseOrder.void": [
-      { kind: "operationalRoleActive", params: PARTS_ASSOCIATE_ONLY },
-      { kind: "isOwnAssignment", params: {} },
     ],
     "inventory.transaction.read": [
       { kind: "operationalRoleActive", params: MANAGER_OR_WAREHOUSE },

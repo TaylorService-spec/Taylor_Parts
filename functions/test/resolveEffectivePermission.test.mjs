@@ -151,19 +151,11 @@ check("technician: reorder.request.create.manual ALLOW for either PARTS_MANAGER 
   assert.equal(resolve("technician", "reorder.request.create.manual", asManager).decision, "ALLOW");
   assert.equal(resolve("technician", "reorder.request.create.manual", asWarehouse).decision, "ALLOW");
 });
-check("technician: reorder.purchaseOrder.void requires BOTH PARTS_ASSOCIATE active AND isOwnAssignment (AND semantics)", () => {
-  const roleOnly = baseTarget({
-    condition: { operationalRoleActive: () => true, isOwnAssignment: false },
-  });
-  const ownOnly = baseTarget({
-    condition: { operationalRoleActive: () => false, isOwnAssignment: true },
-  });
-  const both = baseTarget({
+check("technician: reorder.purchaseOrder.void DENY even as an active PARTS_ASSOCIATE and the request's own assignee (no operational role gets Void)", () => {
+  const target = baseTarget({
     condition: { operationalRoleActive: () => true, isOwnAssignment: true },
   });
-  assert.equal(resolve("technician", "reorder.purchaseOrder.void", roleOnly).decision, "DENY");
-  assert.equal(resolve("technician", "reorder.purchaseOrder.void", ownOnly).decision, "DENY");
-  assert.equal(resolve("technician", "reorder.purchaseOrder.void", both).decision, "ALLOW");
+  assert.equal(resolve("technician", "reorder.purchaseOrder.void", target).decision, "DENY");
 });
 
 // --- S1: fail-closed on missing/stale/malformed/unavailable access data ---
