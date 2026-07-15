@@ -20,7 +20,7 @@ target_release: TBD
 
 **Merging this Assessment authorizes NO implementation.** No collection, Firestore Rule, Cloud Function, index, route, component, deployment, or production-data change is authorized here. The chain is Assessment → Architecture (ADR) → Specification → Implementation Plan → bounded child PRs → pre-production review → separately-authorized production deployment → closeout. Each stage is its own Owner gate. Production Rules/indexes/Functions/Storage/fixtures/data remain **separately authorized** at their deployment gates.
 
-Verified against `origin/main` @ `0124280`. Path convention: `firestore.rules`, `functions/…`, `docs/…` are repo-root-relative; `src/…` is relative to `field-ops-app-vite/`.
+Verified against `origin/main` @ `0124280`. Path convention: `firestore.rules`, `functions/…`, `docs/…` are repo-root-relative; `src/…` is relative to `field-ops-app-vite/`. Bare component filenames below use these prefixes (e.g. `src/modules/accounts/ServiceActivitySection.jsx` = `field-ops-app-vite/src/modules/accounts/ServiceActivitySection.jsx`).
 
 ---
 
@@ -30,8 +30,8 @@ Verified against `origin/main` @ `0124280`. Path convention: `firestore.rules`, 
 - **No real code.** No Equipment domain module, collection constant, repository, hook, component, route screen, Rule, index, emulator fixture, or browser driver exists (verified). `src/domain/constants.js` defines `accounts`/`locations` collections but **no** `EQUIPMENT_COLLECTION`.
 - **Retired/stub nav.** `src/navigation/navConfig.js` retains a customers-domain subnav stub `{ key: "equipment", label: "Equipment", path: "equipment" }` (alongside contacts/locations/serviceHistory stubs); the standalone global sub-navigation for these was removed by PR #194 ("Customer hierarchy nav cleanup"). There is **no built Equipment screen** — the stub is not a real capability.
 - **Ownership pattern to mirror.** `locations` are `{ id, accountId, name, address, … }` (`src/domain/locations.js`) — a first-class collection related to Account by `accountId`. `firestore.rules` gates `accounts`/`locations`/`contacts` uniformly: `allow read, create, update: if isAdminOrDispatcher(); allow delete: if false`.
-- **Work Order seam.** `WorkOrderWizard.jsx` selects Customer → Location (`selectedLocationId`) with a documented "future extension point" for Equipment after Location; `WorkOrder` carries `customerId`/`locationId` but **no** `equipmentId`.
-- **Service history is derived.** `ServiceActivitySection.jsx` derives an account's service activity from linked Work Orders (no duplicate ledger) — the pattern Equipment service history should follow.
+- **Work Order seam.** `src/modules/workOrders/WorkOrderWizard.jsx` selects Customer → Location (`selectedLocationId`) with a documented "future extension point" for Equipment after Location; `WorkOrder` carries `customerId`/`locationId` but **no** `equipmentId`.
+- **Service history is derived.** `src/modules/accounts/ServiceActivitySection.jsx` derives an account's service activity from linked Work Orders (no duplicate ledger) — the pattern Equipment service history should follow.
 - **Parts ≠ Equipment already.** `src/data/partsCatalog.ts` is the stocked Inventory Parts catalog — a separate concept; no code conflates the two.
 - **Warranty is a placeholder** nav item only (`navConfig` Service domain); no warranty logic exists.
 
@@ -43,7 +43,7 @@ Give service operations a first-class, searchable register of the **installed, c
 
 ## 3. Terminology — "Equipment" vs "Installed Asset"
 
-The domain object is **Equipment** (the platform's existing name in `BusinessEntityModel.md`); "installed asset" is a synonym describing its nature (a physical asset installed at a customer Location). This Assessment uses **Equipment** as the canonical term to avoid a second vocabulary; "asset tag" remains a field name (§8). No separate "Asset" entity is introduced.
+The domain object is **Equipment** (the platform's existing name in `docs/BusinessEntityModel.md`); "installed asset" is a synonym describing its nature (a physical asset installed at a customer Location). This Assessment uses **Equipment** as the canonical term to avoid a second vocabulary; "asset tag" remains a field name (§8). No separate "Asset" entity is introduced.
 
 ## 4. Ownership — Account and Location
 
@@ -54,7 +54,7 @@ The domain object is **Equipment** (the platform's existing name in `BusinessEnt
 ## 5. Equipment vs Inventory Part boundary (hard)
 
 - **Equipment** = a specific, serialized, installed/serviceable asset owned by a Customer Account at a Location, with its own lifecycle and service history.
-- **Inventory Part** (`partsCatalog.ts`, reorder/PO domain) = a stocked, fungible catalog item counted in inventory and consumed on Work Orders.
+- **Inventory Part** (`src/data/partsCatalog.ts`, reorder/PO domain) = a stocked, fungible catalog item counted in inventory and consumed on Work Orders.
 - They are **separate collections, separate domains, separate UIs**. A part is not equipment; equipment is not stock. No shared identity, no cross-writes. (A future capability may record "parts consumed servicing this equipment" via Work Orders, but that is derived, not a merge.)
 
 ## 6. Lifecycle & status
@@ -151,4 +151,4 @@ Service Contracts; PM Schedules; warranty claims/adjudication; IoT/telemetry; cu
 
 ## Scope honored
 
-Single file: `docs/assessments/equipment-and-installed-asset-management.md`. No `ROADMAP.md`/`SPRINT_STATUS.md`/`CLAUDE_CONTEXT.md`, entity/capability model, ADR, Specification, application code, Rules, index, or Function touched. Inventory Parts remain a separate capability. **Draft — pending Architecture Review; merging authorizes no implementation.**
+Single file: `docs/assessments/equipment-and-installed-asset-management.md`. No `docs/ROADMAP.md`/`docs/SPRINT_STATUS.md`/`docs/CLAUDE_CONTEXT.md`, entity/capability model, ADR, Specification, application code, Rules, index, or Function touched. Inventory Parts remain a separate capability. **Draft — pending Architecture Review; merging authorizes no implementation.**
