@@ -1,7 +1,7 @@
 ---
 artifact_type: implementation-plan
 gate: Implementation Plan
-status: Draft
+status: Approved -- complete, all seven PRs merged (PR 0, 1a, 1b #238, 2a, 2b #227, 3a, 3b #240); PR 1b's own employees-read grant (#236/#237) merged but not yet deployed to production -- see Tracking below
 date: 2026-07-13
 owner: Claude Code
 related_adrs: []
@@ -107,20 +107,21 @@ Restated from the Specification's own "Rollback strategy," expanded per-PR for t
 
 | Item | Merged | Rules deployed | Confirmed live |
 |---|---|---|---|
-| PR 0 | Not started | N/A -- no Rules/index in this PR | N/A |
-| PR 1a | Not started | Not authorized / not deployed | Not verified |
-| PR 2a | Not started | Not authorized / not deployed | Not verified |
-| PR 3a | Not started | Not authorized / not deployed | Not verified -- **also requires the full regression suite passing clean against production (gate 10) before this row can read "confirmed live"** |
+| PR 0 | Merged | N/A -- no Rules/index in this PR | N/A |
+| PR 1a | Merged | Deployed | **Confirmed live -- Gate 4 PASS** |
+| PR 2a | Merged | Deployed | **Confirmed live -- Gate 7 PASS** |
+| PR 3a | Merged | Deployed | **Confirmed live -- Gate 10 PASS** (full regression suite passed clean against production) |
+| PR 1b employees-read grant (PRs #236 correction #237 -- a previously-unrecorded read dependency discovered during PR 1b's own implementation; see PR 1b's own row and its Correction note above) | Merged | **Not deployed** | **Not verified -- this is a real, currently-open gap, not an oversight in this record.** The Assign capability it supports is confirmed working only against the local Firestore emulator (`verify-inventory-role-parts-manager`, 37/37); it has not been deployed to the live `taylor-parts` project and has no post-deployment production verification evidence. Requires its own separate Owner Deployment Authorization and live-verification step before Assign can be considered production-ready, exactly like every other Rules grant in this initiative. |
 
 **Application PRs:**
 
 | PR | Merged | GitHub Pages workflow | Live URL reachable | Browser verification |
 |---|---|---|---|---|
-| 1b | Not started -- **gated on both PR 1a and PR 3a rows above reading "confirmed live"** | Not run | Not confirmed | Not run |
-| 2b | Not started -- gated on PR 1a (catalog/health) and PR 2a (Part Activity) both reading "confirmed live" | Not run | Not confirmed | Not run |
-| 3b | Not started -- gated on PR 3a reading "confirmed live" | Not run | Not confirmed | Not run |
+| 1b | **Merged** (PR #238) | Ran, succeeded | Confirmed (build + Pages deploy both succeeded on the merge commit) | `verify-inventory-role-parts-manager` 37/37 against the local emulator -- **Assign's own production readiness remains gated on the still-undeployed employees-read grant above** |
+| 2b | **Merged** (PR #227) | Ran, succeeded | Confirmed | `verify-inventory-role-warehouse-manager` 38/38 |
+| 3b | **Merged** (PR #240) | Ran, succeeded | Confirmed | `verify-inventory-role-parts-associate` 31/31, including the multi-operational-role union check |
 
-Update both tables as each item merges, deploys, and is verified -- this document is the running source of truth for "what's left in this initiative" until it completes. Link from `docs/SPRINT_STATUS.md` once PR 0 opens.
+All three UI tracks (`manager`/`warehouse`/`mine`) are now implemented, merged, and browser-verified against the local emulator. The one open item this initiative leaves behind is the PR 1b employees-read grant's own production deployment and live verification -- tracked going forward as its own narrow, separately-authorized deployment action, not as unfinished UI work.
 
 ## Testing strategy
 
