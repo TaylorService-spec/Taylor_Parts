@@ -4,6 +4,7 @@ import { ACCOUNTS_COLLECTION, EQUIPMENT_STATUS } from "../../domain/constants";
 import { useEquipmentForAccount } from "../../hooks/useEquipment";
 import { useLocationsForAccount } from "../../hooks/useLocationsForAccount";
 import { searchEquipment, equipmentDisplayName, equipmentSummary } from "../../domain/equipment";
+import { STATUS_FILTERS, statusFilterValue } from "./equipmentStatusFilters";
 import { loadErrorMessage } from "../../domain/loadErrorMessage";
 import WorkspaceHeader from "../../shared/ui/WorkspaceHeader";
 import LoadingState from "../../shared/ui/LoadingState";
@@ -24,18 +25,6 @@ import FailureState from "../../shared/ui/FailureState";
 // set (§7 explicitly authorizes this): search, Location filter, status filter, count,
 // and ordering all run through the E1 domain helpers. No per-record query loop.
 
-const STATUS_FILTERS = [
-  // `value: null` is "All statuses" and is the ONLY correct spelling of it.
-  // searchEquipment treats an explicitly supplied unknown status -- including "" --
-  // as a real filter that matches nothing, so the conventional
-  // <option value="">All</option> sentinel would silently show zero rows. Passing
-  // null (or omitting the key) is what means "no status filter".
-  { key: "all", label: "All statuses", value: null },
-  { key: "active", label: "Active", value: EQUIPMENT_STATUS.ACTIVE },
-  { key: "inactive", label: "Inactive", value: EQUIPMENT_STATUS.INACTIVE },
-  { key: "retired", label: "Retired", value: EQUIPMENT_STATUS.RETIRED },
-];
-
 export default function EquipmentRegister() {
   const { data: accounts, loading: accountsLoading, error: accountsError } = useFirestoreCollection(ACCOUNTS_COLLECTION);
   const [accountId, setAccountId] = useState("");
@@ -46,10 +35,7 @@ export default function EquipmentRegister() {
   const { data: equipment, loading, error } = useEquipmentForAccount(accountId || null);
   const { data: locations } = useLocationsForAccount(accountId || null);
 
-  const statusValue = useMemo(
-    () => STATUS_FILTERS.find((s) => s.key === statusKey)?.value ?? null,
-    [statusKey]
-  );
+  const statusValue = useMemo(() => statusFilterValue(statusKey), [statusKey]);
 
   // One call, one already-bounded array. Options are built explicitly rather than
   // spread from state so a stray key can never reach searchEquipment -- it rejects an
@@ -98,9 +84,12 @@ export default function EquipmentRegister() {
       ) : accountsError ? (
         <FailureState message={loadErrorMessage(accountsError, { entity: "customers" })} />
       ) : !accountChosen ? (
-        // Not an empty database and not a failure -- nothing has been asked for yet.
-        // §9 requires these be distinguishable; mislabelling this as "no equipment"
-        // would assert something we have not looked up.
+        // Nothing has been asked for yet -- not an empty database, not a failure.
+        // Mislabelling this as "no equipment" would assert something we have not
+        // looked up. NOTE the variant is "database" only because EmptyState offers
+        // just database|filtered; the distinction §9 needs is carried by the title and
+        // message, not by the variant. Do not read `variant="database"` here as a
+        // claim that the collection was read and found empty -- it wasn't read at all.
         <EmptyState
           variant="database"
           title="Choose a customer"
@@ -181,6 +170,9 @@ export default function EquipmentRegister() {
               action={<button type="button" onClick={resetFilters}>Clear filters</button>}
             />
           ) : (
+            // Wide content scrolls inside its own container rather than widening the
+            // page -- the same .fo-table-scroll treatment every other table uses.
+            <div className="fo-table-scroll">
             <table className="fo-table fo-equipment-table">
               <caption className="fo-sr-only">Equipment for the selected customer</caption>
               <thead>
@@ -211,6 +203,7 @@ export default function EquipmentRegister() {
                 ))}
               </tbody>
             </table>
+            </div>
           )}
         </>
       )}
@@ -219,8 +212,16 @@ export default function EquipmentRegister() {
 }
 
 // A Location that cannot be resolved is reported as unknown rather than rendered as
-// its raw id (§8). This is reachable in practice: the Locations subscription and the
-// Equipment subscription settle independently.
+// its raw id (§8).
+//
+// KNOWN LIMITATION, reported rather than papered over: useLocationsForAccount (a
+// pre-existing Customer hook) passes no error callback to onSnapshot and returns no
+// error, so a DENIED or failed Locations read is indistinguishable here from "still
+// settling" -- every row would read "Unknown location" and the Location filter would
+// offer only "All locations", permanently and with no failure shown (§9 would want a
+// failure). Fixing that means changing a shared Customer hook, which is outside E5's
+// authorized surface; it is raised for the Owner to route. The Equipment read itself
+// does report failures correctly (E2 maps them through loadErrorMessage).
 function locationName(locations, id) {
   return locations.find((l) => l.id === id)?.name ?? "Unknown location";
 }

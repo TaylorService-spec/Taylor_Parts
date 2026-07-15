@@ -11,6 +11,7 @@ import { EQUIPMENT_STATUS } from "../src/domain/constants.js";
 import { searchEquipment, equipmentDisplayName, equipmentSummary } from "../src/domain/equipment.js";
 import { NAV_DOMAINS, isNavItemVisible } from "../src/navigation/navConfig.js";
 import { ROLES, ROLE_NAV_ACCESS } from "../src/domain/constants.js";
+import { STATUS_FILTERS, statusFilterValue } from "../src/modules/equipment/equipmentStatusFilters.js";
 
 let passed = 0;
 function ok(name, fn) { fn(); passed += 1; console.log("PASS -- " + name); }
@@ -25,14 +26,44 @@ const FIXTURE = [
 ];
 
 // ---- the "All statuses" contract (the trap this screen must not fall into) ----
-ok("'All statuses' passes null and returns every record -- it never passes \"\"", () => {
-  // The register builds its status from a table whose "All" entry is `value: null`.
-  // If it ever used the conventional <option value=""> sentinel, searchEquipment would
-  // treat "" as an explicitly supplied UNKNOWN status and return ZERO rows -- the
-  // screen would look empty for the default selection.
-  assert.equal(searchEquipment(FIXTURE, { term: "", locationId: null, status: null }).length, 3);
-  assert.equal(searchEquipment(FIXTURE, { term: "", locationId: null, status: "" }).length, 0,
-    "precondition: \"\" really does return nothing -- which is why All must be null");
+// These assert the REGISTER'S OWN table, imported from the module the component uses.
+// An earlier version asserted only searchEquipment's behaviour and merely *described*
+// the register's -- independent review mutation-proved it worthless: flipping
+// `value: null` to `value: ""`, the exact bug it claimed to guard, left all 10
+// assertions green.
+ok("the register's 'All statuses' entry carries null -- literally, not \"\" or undefined", () => {
+  const all = STATUS_FILTERS.find((s) => s.key === "all");
+  assert.ok(all, "the table has an All entry");
+  assert.equal(all.value, null);
+  assert.notEqual(all.value, "", "\"\" is an explicitly supplied UNKNOWN status -- it matches nothing");
+  assert.equal(statusFilterValue("all"), null, "and the accessor the component calls returns it");
+});
+
+ok("every register status entry is either null or a real EQUIPMENT_STATUS", () => {
+  for (const s of STATUS_FILTERS) {
+    const valid = s.value === null || Object.values(EQUIPMENT_STATUS).includes(s.value);
+    assert.ok(valid, `filter '${s.key}' carries ${JSON.stringify(s.value)}, which is neither null nor a real status`);
+  }
+  assert.deepEqual(STATUS_FILTERS.map((s) => s.key), ["all", "active", "inactive", "retired"]);
+});
+
+ok("feeding each register filter to searchEquipment gives the intended set -- All means ALL", () => {
+  // The end-to-end contract, through the component's real values: whatever the table
+  // says for "all" must return every record. This is what fails if the table regresses
+  // to "" -- the register would render an EMPTY list for its default selection.
+  assert.equal(searchEquipment(FIXTURE, { status: statusFilterValue("all") }).length, 3);
+  assert.equal(searchEquipment(FIXTURE, { status: statusFilterValue("active") }).length, 1);
+  assert.equal(searchEquipment(FIXTURE, { status: statusFilterValue("inactive") }).length, 1);
+  assert.equal(searchEquipment(FIXTURE, { status: statusFilterValue("retired") }).length, 1);
+  // ...and the precondition that makes the null spelling necessary in the first place.
+  assert.equal(searchEquipment(FIXTURE, { status: "" }).length, 0,
+    "\"\" really does return nothing -- which is exactly why All must be null");
+});
+
+ok("an unrecognized filter key falls back to 'no filter', never to a bogus status", () => {
+  assert.equal(statusFilterValue("nope"), null);
+  assert.equal(statusFilterValue(undefined), null);
+  assert.equal(searchEquipment(FIXTURE, { status: statusFilterValue("nope") }).length, 3);
 });
 
 ok("each concrete status filter narrows to exactly its own records", () => {

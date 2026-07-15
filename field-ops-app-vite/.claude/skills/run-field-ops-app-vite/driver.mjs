@@ -4131,6 +4131,14 @@ async function verifyEquipmentRegister(browser, page, accountKey) {
   const bodyText = await page.locator("body").innerText();
   niReport("Register: no raw document id is rendered as a reference (§8)",
     !bodyText.includes(F.activeWithHistoryId) && !bodyText.includes(F.sparseId) && !bodyText.includes(F.alphaAccountId));
+  // The name and its summary must be VISUALLY SEPARATE, not one run-together string.
+  // Asserted on the CELL's rendered text rather than on each span, because querying the
+  // spans individually is exactly why the first version of this gate could not see that
+  // the register shipped with no CSS at all and rendered "Rooftop UnitTrane XR14 ...".
+  // innerText reflects layout, so a missing display:block shows up here as a lost break.
+  const dupCellText = await dupRows.first().locator("td").first().innerText();
+  niReport("Register: the name and its summary render as separate lines, not one string (§8)",
+    dupCellText.includes("\n") && dupCellText.split("\n")[0].trim() === F.duplicateName, JSON.stringify(dupCellText));
 
   // ===== search over the §7 fields =====
   const search = page.locator("#equipment-search");
