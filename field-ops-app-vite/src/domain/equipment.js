@@ -113,6 +113,11 @@ export function locationBelongsToAccount(location, accountId) {
 // The Locations a piece of Equipment for `accountId` may be installed at / moved to.
 // Cross-Account destinations are excluded here as well as denied by Rules (E3).
 export function locationsForAccount(locations = [], accountId) {
+  // A non-array collection is malformed input. The `= []` default only fires for
+  // undefined, so anything else reached .filter and raised a TypeError -- a crash at
+  // whatever surface happened to call it, rather than an answer it could handle.
+  // Empty is the honest answer: we were given no usable set of Locations.
+  if (!Array.isArray(locations)) return [];
   if (typeof accountId !== "string" || accountId === "") return [];
   return locations.filter((l) => locationBelongsToAccount(l, accountId));
 }
@@ -373,10 +378,13 @@ export function searchEquipment(equipment, options = {}) {
   // an unknown value returns nothing. It must never fall back to disabling the filter,
   // which would answer a narrower question with a broader answer.
   //
-  // NOTE for the filter UI (E9): this is deliberately asymmetric with `term`. An empty
-  // term means "no search typed" -> everything; an empty STATUS is an unknown status
-  // -> nothing. So a status <select> must NOT use the usual `<option value="">All</option>`
-  // sentinel -- "" selects nothing, not all. Omit the key, or pass null, for "All".
+  // NOTE for E5's status selector (the register filter -- NOT E9, which is the move
+  // flow and does not filter the register). This is deliberately asymmetric with
+  // `term`: an empty term means "no search typed" -> everything, while an empty STATUS
+  // is an explicitly supplied unknown status -> nothing.
+  //   All      -> omit the property entirely, or pass status: null
+  //   NOT      -> value="" -- the conventional <option value="">All</option> sentinel
+  //               selects NOTHING here, not all.
   let wantStatus = null;
   if (status !== null && status !== undefined) {
     wantStatus = normalizeEquipmentStatus(status);
@@ -398,10 +406,15 @@ export function searchEquipment(equipment, options = {}) {
 // select those linked to this equipment and order them newest-first.
 //
 // Historical entries survive retirement (Spec §3) -- nothing here filters by the
-// equipment's status. Returns { id, workOrderId, status, at, ... } shaped entries
-// carrying the Work Order through for linking; the raw equipment id is never a
-// rendered reference.
+// equipment's status. Returns { workOrderId, woNumber, status, type, at } entries --
+// note workOrderId, NOT id: there is no `id` field on an entry, so a consumer keying
+// a list by entry.id gets undefined for every row. The Work Order is carried through
+// for linking; the raw equipment id is never a rendered reference.
 export function equipmentServiceHistory(workOrders = [], equipmentId) {
+  // Same boundary as locationsForAccount: a non-array raised a TypeError instead of
+  // answering. Service History is DERIVED (§10) -- with no usable Work Orders there is
+  // no history to derive, which is exactly an empty one.
+  if (!Array.isArray(workOrders)) return [];
   if (typeof equipmentId !== "string" || equipmentId === "") return [];
   return workOrders
     .filter((wo) => wo?.equipmentId === equipmentId)
