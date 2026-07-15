@@ -300,11 +300,26 @@ service cloud.firestore {
     // scoped assignment-candidate lookup, matching this initiative's
     // existing least-privilege posture for every other new grant.
     match /employees/{employeeId} {
+      // Issue #100 (PR 1b dependency): a PARTS_MANAGER's assignment picker
+      // (useAssignableEmployees({ requiredOperationalRole: PARTS_ASSOCIATE }))
+      // must READ its candidate Employee docs, but the original PR 1b spec
+      // recorded only the Assign *write* Rules branch and reused the picker read
+      // "verbatim, no change" -- yet this block previously allowed only
+      // admin/dispatcher or self-read, so the PARTS_MANAGER candidate read was
+      // denied. This adds a LEAST-PRIVILEGE read: a PARTS_MANAGER may read ONLY
+      // Employee docs matching the assignment-candidate contract -- ACTIVE +
+      // PARTS_ASSOCIATE-eligible + linked user -- never the general directory.
+      // The three resource.data conditions mirror buildAssignableEmployeesQuery()
+      // exactly (employmentStatus=="ACTIVE", operationalRoles array-contains
+      // "PARTS_ASSOCIATE", userId!=null), so the picker's list query is provably
+      // within this grant and needs no new index. Any non-candidate doc (inactive,
+      // not PARTS_ASSOCIATE-eligible, or unlinked) stays denied for a PARTS_MANAGER.
       allow read: if isAdminOrDispatcher()
         || (isSignedIn() && userData().employeeId == employeeId)
         || (isActiveOperationalRole("PARTS_MANAGER")
-            && resource.data.operationalRoles is list
-            && resource.data.operationalRoles.hasAny(["PARTS_ASSOCIATE"]));
+            && resource.data.employmentStatus == "ACTIVE"
+            && resource.data.operationalRoles.hasAny(["PARTS_ASSOCIATE"])
+            && resource.data.get("userId", null) != null);
       allow create, update, delete: if false;
     }
 
