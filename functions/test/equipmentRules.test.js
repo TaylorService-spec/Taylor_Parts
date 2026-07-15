@@ -538,6 +538,57 @@ async function main() {
     return (await updateEquipment(id, adminToken, { status: nul(), updatedAt: int(Date.now()) })) === 403;
   })());
 
+  // Non-string status on the INCOMING side. CEL cross-type == yields false, so these
+  // are already denied -- but unasserted, and this suite's whole point is that an
+  // unprotected guard is one refactor from an absent one.
+  for (const [label, value] of [
+    ["number", int(1)],
+    ["boolean", { booleanValue: true }],
+    ["map", { mapValue: { fields: { s: str("ACTIVE") } } }],
+    ["array", { arrayValue: { values: [str("ACTIVE")] } }],
+  ]) {
+    report(`update: status written as a ${label} DENIED`, await (async () => {
+      const id = uniq("eq-tx-type");
+      await seedEquipmentDoc(id, { status: "ACTIVE" });
+      return (await updateEquipment(id, adminToken, { status: value, updatedAt: int(Date.now()) })) === 403;
+    })());
+  }
+  // Non-string status on the STORED side: the doc is uneditable, and (per the rule's
+  // own comment) NOT repairable in the same write -- status has no escape hatch.
+  report("update: a stored status of the wrong TYPE DENIES the edit", await (async () => {
+    const id = uniq("eq-tx-stored-type");
+    await seedEquipmentDoc(id);
+    await db.doc(`equipment/${id}`).update({ status: 42 });
+    return (await updateEquipment(id, adminToken, { name: str("Fix"), updatedAt: int(Date.now()) })) === 403;
+  })());
+  report("update: a malformed stored status is NOT repairable in the same write (no escape hatch)", await (async () => {
+    const id = uniq("eq-tx-norepair");
+    await seedEquipmentDoc(id, { status: "NOT_A_STATUS" });
+    return (await updateEquipment(id, adminToken, { status: str("ACTIVE"), updatedAt: int(Date.now()) })) === 403;
+  })());
+  // ...whereas name/optionals ARE repairable in the same write -- the asymmetry the
+  // rule comment now spells out, pinned so the comment cannot drift from the code.
+  report("update: a malformed stored NAME is repairable in the same write", await (async () => {
+    const id = uniq("eq-name-repair");
+    await seedEquipmentDoc(id);
+    await db.doc(`equipment/${id}`).update({ name: "   " });
+    return (await updateEquipment(id, adminToken, { name: str("Repaired"), updatedAt: int(Date.now()) })) === 200;
+  })());
+  report("update: a malformed stored OPTIONAL is repairable in the same write", await (async () => {
+    const id = uniq("eq-opt-repair");
+    await seedEquipmentDoc(id);
+    await db.doc(`equipment/${id}`).update({ notes: 42 });
+    return (await updateEquipment(id, adminToken, { notes: str("repaired"), updatedAt: int(Date.now()) })) === 200;
+  })());
+  // A pre-existing trusted-writer audit key does NOT brick ordinary editing -- the
+  // deliberate key-set carve-out. A client still cannot ADD one (asserted above).
+  report("update: a doc already carrying a trusted-writer audit key stays editable", await (async () => {
+    const id = uniq("eq-audit-key");
+    await seedEquipmentDoc(id);
+    await db.doc(`equipment/${id}`).update({ retiredBy: "e10-trusted-writer", auditEventId: "evt-1" });
+    return (await updateEquipment(id, adminToken, { name: str("Still Editable"), updatedAt: int(Date.now()) })) === 200;
+  })());
+
   // A legal transition must not become a carrier for an illegal change.
   await tx("update: ACTIVE -> INACTIVE smuggling an accountId change DENIED", "ACTIVE", "INACTIVE", 403,
     { accountId: str(ACCOUNT_B) });

@@ -166,8 +166,8 @@ ok("6b. descendantPids returns only the owned root's descendants by PID", () => 
 // (Issue #226 Row 3 / Task 8) when enterpriseAccessFoundationRules.test.js
 // added 62 assertions proving the five new governed-storage collections
 // (permissions/roles/roleAssignments/accessRequests/auditEvents) are closed
-// to all client read/write, then from 256 to 356 (Issue #232 unit E3) when
-// equipmentRules.test.js added 100 assertions for the new `equipment` match
+// to all client read/write, then from 256 to 365 (Issue #232 unit E3) when
+// equipmentRules.test.js added 109 assertions for the new `equipment` match
 // block: admin/dispatcher authority only, cross-Account/dangling Location
 // denial, governed-field immutability on ordinary edit, trusted/audit field
 // injection denial, and delete denied for everyone. This self-test's own
@@ -175,7 +175,7 @@ ok("6b. descendantPids returns only the owned root's descendants by PID", () => 
 // time SUITES' expected counts change -- a deliberate hardcoded cross-check
 // that EXPECTED_TOTAL wasn't silently miscomputed, not a value that should
 // ever drift unnoticed.
-await okAsync("7. a fully-passing run reports exactly 356 passed, 0 failed", async () => {
+await okAsync("7. a fully-passing run reports exactly 365 passed, 0 failed", async () => {
   const byFile = new Map(SUITES.map((s) => [s.file, s.expected]));
   const lines = [];
   const r = await runAll({
@@ -191,8 +191,8 @@ await okAsync("7. a fully-passing run reports exactly 356 passed, 0 failed", asy
   assert.equal(r.ok, true);
   assert.equal(r.code, 0);
   assert.equal(r.totalPassed, EXPECTED_TOTAL);
-  assert.equal(EXPECTED_TOTAL, 356);
-  assert.ok(lines.some((l) => /356 passed, 0 failed/.test(l)), "summary must state 356 passed, 0 failed");
+  assert.equal(EXPECTED_TOTAL, 365);
+  assert.ok(lines.some((l) => /365 passed, 0 failed/.test(l)), "summary must state 365 passed, 0 failed");
   // parseSuiteResult correctness (count-mismatch and failed>0 both fail).
   assert.equal(parseSuiteResult("10 passed, 0 failed", 10).ok, true);
   assert.equal(parseSuiteResult("9 passed, 0 failed", 10).ok, false);

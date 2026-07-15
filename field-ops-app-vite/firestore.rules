@@ -1308,12 +1308,26 @@ service cloud.firestore {
       // `status` (now an editable key) is caught instead by equipmentTransitionAllowed,
       // whose `after` would be null and fail equipmentStatusValid.
       //
-      // The shape guards validate the WHOLE RESULTING DOCUMENT, not just the changed
-      // keys: a record holding a malformed value cannot be edited until that value is
-      // repaired (repairing it in the same write is the escape hatch). This is the
-      // deliberate no-grandfathering rule -- an ordinary update must leave the document
-      // compliant. E9/E10's trusted writers bypass Rules entirely, so they must
-      // validate their own output against this same contract before writing.
+      // The shape guards validate the WHOLE RESULTING DOCUMENT'S VALUES, not just the
+      // changed keys, so an ordinary update must leave the document compliant -- the
+      // deliberate no-grandfathering rule. Two limits on that sentence, stated because
+      // each is easy to assume wrongly:
+      //
+      //  * SCOPE IS VALUES, NOT THE KEY SET. `update` intentionally does NOT re-apply
+      //    hasOnly(equipmentWritableKeys()) -- only `create` does. So a document that
+      //    already carries an extra key (an audit field stamped by an E9/E10 trusted
+      //    writer) stays ordinarily editable. Enforcing the key set here would brick
+      //    every record those writers touch. No client can EXPLOIT this: affectedKeys()
+      //    .hasOnly(editable) still denies ADDING any such key, so the extra key can
+      //    only arrive from a trusted writer or the Admin SDK.
+      //  * REPAIR-IN-THE-SAME-WRITE WORKS FOR name/optionals, but NOT for status: the
+      //    transition guard gates on the STORED status, so a record whose stored status
+      //    is malformed/absent is denied whatever `after` it is given. Such a record is
+      //    permanently uneditable on this path and is repairable only by E10's trusted
+      //    writer. That is the fail-closed direction, not an oversight.
+      //
+      // E9/E10's trusted writers bypass Rules entirely, so they must validate their own
+      // output against this same contract before writing.
       allow update: if isAdminOrDispatcher()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(equipmentEditableKeys())
         && equipmentNameValid(request.resource.data.name)
