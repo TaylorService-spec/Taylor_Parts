@@ -3,8 +3,10 @@ name: Access Catalog & Resolver Unit Tests
 # Enterprise Access & Administration Platform (Issue #226) pure-logic unit
 # tests -- no emulator, no deployment, no production access, no repository
 # secrets. Runs functions/test/permissionCatalog.test.mjs (Spec sec21
-# acceptance criteria A2) and functions/test/resolveEffectivePermission.test.mjs
-# (Spec sec21 A1/A3, S1/S2) against the compiled functions/lib output.
+# acceptance criteria A2), functions/test/resolveEffectivePermission.test.mjs
+# (Spec sec21 A1/A3, S1/S2), functions/test/shadowParityHarness.test.mjs
+# (Spec sec21 P1/P2), and functions/test/compactClaims.test.mjs (Spec sec11/
+# sec13) against the compiled functions/lib output.
 
 on:
   pull_request:
@@ -13,6 +15,8 @@ on:
       - "functions/src/access/**"
       - "functions/test/permissionCatalog.test.mjs"
       - "functions/test/resolveEffectivePermission.test.mjs"
+      - "functions/test/shadowParityHarness.test.mjs"
+      - "functions/test/compactClaims.test.mjs"
       - "functions/package.json"
       - "functions/package-lock.json"
       - ".github/workflows/access-catalog-unit-tests.yml"
@@ -23,6 +27,8 @@ on:
       - "functions/src/access/**"
       - "functions/test/permissionCatalog.test.mjs"
       - "functions/test/resolveEffectivePermission.test.mjs"
+      - "functions/test/shadowParityHarness.test.mjs"
+      - "functions/test/compactClaims.test.mjs"
       - "functions/package.json"
       - "functions/package-lock.json"
       - ".github/workflows/access-catalog-unit-tests.yml"
