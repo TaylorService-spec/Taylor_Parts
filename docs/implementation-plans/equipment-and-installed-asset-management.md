@@ -18,7 +18,9 @@ target_release: TBD
 
 **Status: PLAN-APPROVED.** Sequences the [Specification](../specifications/equipment-and-installed-asset-management.md) (ADR-006) into small, reversible, independently-reviewable PRs. **Merging this plan authorizes NO implementation** — each PR below is its own bounded gate; production Rules/indexes/Functions/Storage/data remain **separately authorized** at their deployment gates. Issue #232 stays OPEN. **AI plans; it never grants, revokes, or approves access.**
 
-Verified against `origin/main` @ `f461ff0`. Path convention as prior Equipment docs.
+Verified against `origin/main` @ `b68c7b1`. Path convention as prior Equipment docs.
+
+**Re-audited against current `main` (2026-07-15).** The governing artifacts are unchanged — the merged [Assessment](../assessments/equipment-and-installed-asset-management.md) (PR #233), [ADR-006](../architecture/ADR-006-equipment-and-installed-asset-management.md) (PR #234) and [Specification](../specifications/equipment-and-installed-asset-management.md) (PR #235) all still govern this plan verbatim. One current-source change matters: the **Enterprise Access (#226) foundation primitives have since landed on `main`** (`src/access/permissionCatalog.ts`, `compatibilityRoles.ts`, `resolveEffectivePermission.ts`, `shadowParityHarness.ts`, `parityFixtures.ts`, plus the Functions-side audit writer). No `equipment.*` permission exists yet, so E18 is unchanged in intent but is now concrete: it **registers into those landed primitives** rather than anticipating them, and E19 remains gated on #226 becoming *authoritative* plus #15. Equipment itself remains greenfield (no Equipment domain module, collection, Rules, fixtures, or UI on `main`).
 
 ---
 
@@ -50,8 +52,8 @@ Verified against `origin/main` @ `f461ff0`. Path convention as prior Equipment d
 | E15 | **Work Order detail integration** | linked-Equipment context on WO detail; preserve WO lifecycle/assignment/technician/Customer behaviour | T22 | E14 | WO detail verify |
 | E16 | **Equipment service history** | derived from linked Work Orders (no duplicate ledger); chronological + WO link + states; visible after retirement | T23 | E7,E14 | service-history verify |
 | E17 | **Technician experience** | self-scoped to assigned-WO Equipment; no general register; no financial/governed fields; fail-closed; direct-URL denial verified; coordinated with #226 | T24 | E3,E7 | technician verify + denial |
-| E18 | **Permission catalog + compatibility/shadow** | define `equipment.*` ids via #226 catalog; compatibility mappings; shadow/parity while #226 not authoritative; no duplicate engine | T25,T26 | E3 | parity tests |
-| E19 | **Authorization cutover** | activate Equipment permissions via the governed model after #226 foundations + production gates ready; nav/UI/Rules/Functions/audit/direct-denial agree | T27 | E18 + #226 + #15 | full matrix |
+| E18 | **Permission catalog + compatibility/shadow** | register the `equipment.*` ids **into the existing #226 primitives now on `main`** — `src/access/permissionCatalog.ts` (ids), `src/access/compatibilityRoles.ts` (admin/dispatcher full; technician self-scoped per E17), evaluated through `src/access/resolveEffectivePermission.ts`; run parity via `src/access/shadowParityHarness.ts` + `src/access/parityFixtures.ts` while #226 is **not yet authoritative** (existing authorization stays authoritative). **No new/duplicate engine** — extend the landed catalog, never fork it. | T25,T26 | E3 + the #226 foundation on `main` | parity tests (shadow harness) |
+| E19 | **Authorization cutover** | activate Equipment permissions through the governed model once **#226 is authoritative** and its production gates + #15 are satisfied; nav/UI/Rules/Functions/audit/direct-denial all agree | T27 | E18 + #226 authoritative + #15 | full matrix |
 | E20 | **CSV import assessment** (separate bounded initiative, only if approved) | assess need; if approved implement with Contact-CSV safety patterns | T28 | E2 | strict-parser tests |
 | E21 | **Export** (only if authorized) | permissioned, no sensitive/cross-Account leakage | T29 | E18 | verify |
 | E22 | **Deferred-capability register** | record (not build) service contracts/PM/warranty-adjudication/IoT/portal/Storage-files/scanning/bulk-cross-Account/tenant/AI; future issues only when approved | T30 | — | docs |
