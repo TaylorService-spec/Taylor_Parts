@@ -64,13 +64,11 @@ function resolve(roleId, permissionId, target, accessVersion = 1) {
 }
 
 // --- A3: every catalog id is accounted for by at least one seeded Role ---
-check("A3: every Permission id is granted by at least one compatibility Role (directly or Conditioned) except the deferred admin.*/audit.* ids", () => {
-  const deferredForNow = new Set([
-    "admin.userStatus.write",
-    "admin.roleAssignment.write",
-    "admin.accessRequest.decide",
-    "audit.event.read",
-  ]);
+check("A3: every Permission id is granted by at least one compatibility Role (directly or Conditioned) except the still-deferred audit.event.read (Row 11)", () => {
+  // admin.userStatus.write/admin.roleAssignment.write/admin.
+  // accessRequest.decide were granted to ADMIN_ROLE in Row 7 (Task 12) --
+  // Row 7 is the trusted-writer row Row 2's own comment deferred them to.
+  const deferredForNow = new Set(["audit.event.read"]);
   const grantedIds = new Set([
     ...ADMIN_ROLE.permissions,
     ...DISPATCHER_ROLE.permissions,
@@ -118,6 +116,24 @@ check("dispatcher: account.record.read ALLOW", () => {
 });
 check("dispatcher: reorder.request.cancel ALLOW", () => {
   assert.equal(resolve("dispatcher", "reorder.request.cancel", baseTarget()).decision, "ALLOW");
+});
+check("dispatcher: none of the Row 7 admin.* authorities (regression guard: admin/dispatcher no longer share a filter-derived permission list)", () => {
+  for (const permissionId of [
+    "admin.userStatus.write",
+    "admin.roleAssignment.write",
+    "admin.accessRequest.decide",
+  ]) {
+    assert.equal(resolve("dispatcher", permissionId, baseTarget()).decision, "DENY", `expected dispatcher DENY for ${permissionId}`);
+  }
+});
+check("admin: all three Row 7 admin.* authorities ALLOW", () => {
+  for (const permissionId of [
+    "admin.userStatus.write",
+    "admin.roleAssignment.write",
+    "admin.accessRequest.decide",
+  ]) {
+    assert.equal(resolve("admin", permissionId, baseTarget()).decision, "ALLOW", `expected admin ALLOW for ${permissionId}`);
+  }
 });
 
 // --- technician: no Customer access, no approve/reject/cancel/system-create ---

@@ -89,6 +89,12 @@ export interface Role {
   conditionsByPermission?: RoleConditionsByPermission;
   compatibility?: boolean;
   systemSeed?: boolean;
+  // Row 7 (Task 12) / ADR-005 sec2.4: a privileged Role's grant/revoke
+  // requires a second, distinct authorized approver and is never
+  // eligible for the single-admin assignApprovedRole path. Absent or
+  // false means "ordinary pre-approved, non-privileged" (Spec sec2.4's
+  // single-admin-assignable category).
+  privileged?: boolean;
 }
 
 export type RoleAssignmentStatus = "active" | "disabled";

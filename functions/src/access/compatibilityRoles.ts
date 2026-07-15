@@ -17,14 +17,16 @@
 // today via `users/{uid}.role` until a later, separately-authorized row
 // activates the Permission engine for any domain.
 //
-// Recorded scope decision (owner review welcome, not blocking Row 2):
-// the `admin.*`/`audit.event.read` Permission ids (functions/src/access/
-// permissionCatalog.ts) are deliberately NOT granted to any Role here.
-// The Administration surface is unbuilt in production today (renders a
-// PlaceholderPage) -- granting those ids now would specify a capability
-// that does not yet exist anywhere, which is not what "reproduce
-// today's matrix exactly" asks for. They are seeded onto `admin` when
-// the Admin Portal / trusted-writer rows (5, 7, 10-12) actually ship.
+// Recorded scope decision from Row 2 (now resolved by Row 7 / Task 12):
+// the `admin.*` Permission ids (functions/src/access/permissionCatalog.ts)
+// were deliberately withheld from every Role until "the Admin Portal /
+// trusted-writer rows (5, 7, 10-12) actually ship." Row 7 is that row --
+// the three ids Row 7's trusted-writer commands actually check
+// (admin.userStatus.write, admin.roleAssignment.write,
+// admin.accessRequest.decide) are now granted, to `admin` ONLY, never
+// `dispatcher` (Assessment/Spec describe no Admin Portal authority for
+// dispatcher). `audit.event.read` remains deferred to Row 11 (the Admin
+// Portal's own read surface), since Row 7 does not consume it.
 //
 // Mirrored (not imported -- no shared/monorepo tooling exists in this
 // repo) at field-ops-app-vite/src/access/compatibilityRoles.ts. If
@@ -36,8 +38,53 @@ const PARTS_ASSOCIATE_ONLY = { role: "PARTS_ASSOCIATE" };
 const WAREHOUSE_MANAGER_ONLY = { role: "WAREHOUSE_MANAGER" };
 const MANAGER_OR_WAREHOUSE = { roles: ["PARTS_MANAGER", "WAREHOUSE_MANAGER"] };
 
+// Shared base: every Permission both admin and dispatcher hold today,
+// per the Assessment's current-state matrix. Not exported -- ADMIN_ROLE
+// and DISPATCHER_ROLE each derive their own final list from this base
+// PLUS their own additions, rather than one being derived by filtering
+// the other -- so adding an admin-only id to ADMIN_ROLE can never leak
+// into DISPATCHER_ROLE by accident (the failure mode a filter-based
+// derivation would risk).
+const SHARED_ADMIN_DISPATCHER_BASE_PERMISSIONS = [
+  "account.record.read",
+  "account.record.create",
+  "account.record.update",
+  "workOrder.create",
+  "workOrder.transition",
+  "workOrder.cancel",
+  "reorder.request.read.queue",
+  "reorder.request.read.own",
+  "reorder.request.create.manual",
+  "reorder.request.create.system",
+  "reorder.request.assign",
+  "reorder.request.startPurchasing",
+  "reorder.request.postPurchasingUpdate",
+  "reorder.request.recordPurchaseOrder",
+  "reorder.request.markReceived",
+  "reorder.request.approve",
+  "reorder.request.reject",
+  "reorder.request.cancel",
+  "reorder.purchaseOrder.read",
+  "reorder.purchaseOrder.create",
+  "reorder.purchaseOrder.void",
+  "inventory.transaction.read",
+  "inventory.action.read",
+  "inventory.action.create",
+] as const;
+
+// reorder.purchaseOrder.void is double-gated in firestore.rules
+// (current `main`, ~L794-798): `isAdminOrDispatcher() AND
+// request.auth.uid == resource.data.assignedToUserId` -- even
+// admin/dispatcher must be the request's own recorded assignee, not
+// just hold the security role. Both compatibility Roles carry this
+// Condition.
+const SHARED_ADMIN_DISPATCHER_CONDITIONS = {
+  "reorder.purchaseOrder.void": [{ kind: "isOwnAssignment" as const, params: {} }],
+};
+
 // Assessment §1: admin has every capability audited there, including the
-// Issue #175 governed-field write withheld from dispatcher.
+// Issue #175 governed-field write withheld from dispatcher, plus the
+// Row 7 Admin Portal / trusted-writer authorities.
 export const ADMIN_ROLE: Role = Object.freeze({
   id: "admin",
   name: "Administrator (compatibility)",
@@ -45,48 +92,23 @@ export const ADMIN_ROLE: Role = Object.freeze({
     "Seeded compatibility Role reproducing today's admin security-role matrix exactly.",
   systemSeed: true,
   compatibility: true,
+  // Privileged (Spec sec2.4 / ADR-005 sec2.4): granting/revoking this
+  // Role requires a second, distinct authorized approver, and it is
+  // never eligible for the single-admin assignApprovedRole path (Row 7).
+  privileged: true,
   permissions: [
-    "account.record.read",
-    "account.record.create",
-    "account.record.update",
+    ...SHARED_ADMIN_DISPATCHER_BASE_PERMISSIONS,
     "account.governedField.write",
-    "workOrder.create",
-    "workOrder.transition",
-    "workOrder.cancel",
-    "reorder.request.read.queue",
-    "reorder.request.read.own",
-    "reorder.request.create.manual",
-    "reorder.request.create.system",
-    "reorder.request.assign",
-    "reorder.request.startPurchasing",
-    "reorder.request.postPurchasingUpdate",
-    "reorder.request.recordPurchaseOrder",
-    "reorder.request.markReceived",
-    "reorder.request.approve",
-    "reorder.request.reject",
-    "reorder.request.cancel",
-    "reorder.purchaseOrder.read",
-    "reorder.purchaseOrder.create",
-    "reorder.purchaseOrder.void",
-    "inventory.transaction.read",
-    "inventory.action.read",
-    "inventory.action.create",
+    "admin.userStatus.write",
+    "admin.roleAssignment.write",
+    "admin.accessRequest.decide",
   ],
-  // reorder.purchaseOrder.void is double-gated in firestore.rules
-  // (current `main`, ~L794-798): `isAdminOrDispatcher() AND
-  // request.auth.uid == resource.data.assignedToUserId` -- even
-  // admin/dispatcher must be the request's own recorded assignee, not
-  // just hold the security role. Both compatibility Roles carry this
-  // Condition (DISPATCHER_ROLE inherits it below, since it derives its
-  // conditionsByPermission from ADMIN_ROLE the same way it derives its
-  // permissions list).
-  conditionsByPermission: {
-    "reorder.purchaseOrder.void": [{ kind: "isOwnAssignment", params: {} }],
-  },
+  conditionsByPermission: SHARED_ADMIN_DISPATCHER_CONDITIONS,
 }) as Role;
 
-// Assessment §1: dispatcher matches admin except the Issue #175
-// governed-field write, which is Rules-denied to dispatcher today.
+// Assessment §1: dispatcher matches the shared base exactly -- no
+// governed-field write (Issue #175), no Admin Portal / trusted-writer
+// authority (Row 7).
 export const DISPATCHER_ROLE: Role = Object.freeze({
   id: "dispatcher",
   name: "Dispatcher (compatibility)",
@@ -94,10 +116,8 @@ export const DISPATCHER_ROLE: Role = Object.freeze({
     "Seeded compatibility Role reproducing today's dispatcher security-role matrix exactly.",
   systemSeed: true,
   compatibility: true,
-  permissions: ADMIN_ROLE.permissions.filter(
-    (id) => id !== "account.governedField.write",
-  ),
-  conditionsByPermission: ADMIN_ROLE.conditionsByPermission,
+  permissions: [...SHARED_ADMIN_DISPATCHER_BASE_PERMISSIONS],
+  conditionsByPermission: SHARED_ADMIN_DISPATCHER_CONDITIONS,
 }) as Role;
 
 // Assessment's Inventory domain audit table: a pure technician has none
