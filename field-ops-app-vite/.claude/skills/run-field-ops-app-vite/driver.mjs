@@ -4479,6 +4479,15 @@ async function verifyInventoryRoleWarehouseManager(browser, page, accountKey) {
   niReport("Warehouse Manager: Inventory Health section is visible", healthHeadingVisible);
   const catalogHeadingVisible = await page.getByRole("heading", { name: "Parts Catalog" }).isVisible().catch(() => false);
   niReport("Warehouse Manager: Parts Catalog section is visible", catalogHeadingVisible);
+  // Review-pass fix: the read-only Inventory Health table must NOT wire
+  // onRequestReorder -- firestore.rules only allows isAdminOrDispatcher()
+  // to create a READY-status reorder_requests document, so a
+  // WAREHOUSE_MANAGER "Request Reorder" button there would always fail
+  // with permission-denied. Only the separate "Needs Planning" section
+  // (asserted below) is actionable for this role.
+  const readOnlyHealthTable = page.locator('xpath=//h3[text()="Inventory Health"]/following::table[1]');
+  const readOnlyHealthHasActionColumn = await readOnlyHealthTable.getByRole("columnheader", { name: "Action" }).count().catch(() => 0);
+  niReport("Warehouse Manager: the read-only Inventory Health table has no Action column (no READY one-click submit)", readOnlyHealthHasActionColumn === 0);
 
   // ===== 2. Denied capabilities: no Parts Manager Queue, assignment,
   //          purchasing, Cancel, or Void controls anywhere on this page =====
@@ -4501,8 +4510,8 @@ async function verifyInventoryRoleWarehouseManager(browser, page, accountKey) {
   // ===== 3. Manual Needs Planning submission (TST-1001 -- the same
   //          RESERVED-only, no-CONSUMED fixture verify-inventory-health-
   //          catalog already establishes as the NEEDS_PLANNING case) =====
-  const healthTable = page.locator('xpath=//h3[text()="Inventory Health"]/following::table[1]');
-  const needsPlanningRow = healthTable.locator("tr", { hasText: "Hex Coupler" });
+  const needsPlanningTable = page.locator('xpath=//h3[text()="Needs Planning"]/following::table[1]');
+  const needsPlanningRow = needsPlanningTable.locator("tr", { hasText: "Hex Coupler" });
   const qtyInput = needsPlanningRow.getByLabel("Manual reorder quantity");
   const qtyInputVisible = await qtyInput.isVisible().catch(() => false);
   niReport("Needs Planning: manual quantity input is present for the eligible role", qtyInputVisible);

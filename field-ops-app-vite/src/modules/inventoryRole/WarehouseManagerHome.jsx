@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { getCatalogItem, PARTS_CATALOG } from "../../data/partsCatalog";
 import { useInventoryLedger } from "../../hooks/useInventoryLedger";
 import { useInventoryActionsForPart } from "../../hooks/useInventoryActions";
@@ -24,6 +24,21 @@ import LoadingEmptyState from "../../shared/ui/LoadingEmptyState";
 // onRequestReorder prop -- already recognizes WAREHOUSE_MANAGER
 // eligibility for the NEEDS_PLANNING manual-quantity path), and
 // useInventoryActionsForPart(partId) (PR 2a's inventory_actions read).
+//
+// Inventory Health is rendered TWICE, deliberately: a read-only "Inventory
+// Health" view of every entry (satisfies "Catalog and inventory-health
+// visibility"), and a separate, filtered "Needs Planning" section with
+// onRequestReorder wired (satisfies "RequestReorderControl reuse for the
+// Needs Planning/manual-reorder path" -- and ONLY that path). This is not
+// cosmetic: firestore.rules' reorder_requests create rule requires
+// isAdminOrDispatcher() for the READY branch (analytics-computed,
+// urgency-based) and canSubmitManualZeroHistoryQuantity() -- which
+// WAREHOUSE_MANAGER satisfies -- only for the NEEDS_PLANNING branch.
+// Wiring onRequestReorder across ALL entries (as PartsList.jsx's own
+// "Inventory Operational Queue" does for admin/dispatcher) would render a
+// "Request Reorder" button on READY/urgency rows that always fails with
+// permission-denied for this role -- a real bug, not just noise, caught in
+// this PR's own review pass before merge.
 // Not reused: PartsList.jsx / PartDetail.jsx themselves (admin/dispatcher
 // surfaces, explicitly out of scope) and useReorderRequests() -- this
 // role has no reorder_requests read grant (Rules impact section of the
@@ -107,6 +122,17 @@ export default function WarehouseManagerHome() {
   const [justRequestedPartIds, setJustRequestedPartIds] = useState(() => new Set());
   const [submittingPartId, setSubmittingPartId] = useState(null);
   const [reorderError, setReorderError] = useState(null);
+  // Focus restoration: the triggering "View Activity" button that opened
+  // the inline Part Activity panel, so closing it (button or keyboard)
+  // returns focus there instead of dropping it to <body> -- same
+  // trigger-restore convention this app's ConfirmDialog/Modal flows
+  // already establish, applied here even though this panel isn't a modal.
+  const lastTriggerRef = useRef(null);
+
+  function handleClosePartActivity() {
+    setSelectedPartId(null);
+    lastTriggerRef.current?.focus();
+  }
 
   async function handleRequestReorder(partId, recommendation, manualQty) {
     setSubmittingPartId(partId);
@@ -127,6 +153,11 @@ export default function WarehouseManagerHome() {
     for (const entry of healthEntries) map.set(entry.partId, entry);
     return map;
   }, [healthEntries]);
+
+  const needsPlanningEntries = useMemo(
+    () => healthEntries.filter((entry) => entry.recommendation.recommendationStatus === "NEEDS_PLANNING"),
+    [healthEntries]
+  );
 
   const filteredParts = useMemo(() => {
     if (category === "ALL") return PARTS_CATALOG;
@@ -154,17 +185,37 @@ export default function WarehouseManagerHome() {
 
       <p className="fo-muted">
         Parts ranked by urgency, from the same analytics used by the Operations dashboard's Inventory Health panel.
+        Read-only -- Reorder Requests for these analytics-computed recommendations are submitted by Purchasing, not
+        here.
+      </p>
+      {error ? (
+        <p className="fo-muted">Unable to load inventory health right now. Try again shortly.</p>
+      ) : (
+        <LoadingEmptyState loading={loading} isEmpty={false} loadingText="Loading inventory health..." emptyText="">
+          <InventoryHealthPanel healthEntries={healthEntries} />
+        </LoadingEmptyState>
+      )}
+
+      <p className="fo-muted">
+        Parts with no usage history yet -- enter a manual reorder quantity to submit a Reorder Request.
       </p>
       {reorderError && <p className="fo-muted">{reorderError}</p>}
       {error ? (
-        <p className="fo-muted">Unable to load inventory health ({error.message ?? "unknown error"}).</p>
+        <p className="fo-muted">Unable to load Needs Planning right now. Try again shortly.</p>
       ) : (
-        <LoadingEmptyState loading={loading} isEmpty={false} loadingText="Loading inventory health..." emptyText="">
+        <LoadingEmptyState
+          loading={loading}
+          isEmpty={needsPlanningEntries.length === 0}
+          loadingText="Loading Needs Planning..."
+          emptyText="No parts currently need planning."
+        >
           <InventoryHealthPanel
-            healthEntries={healthEntries}
+            healthEntries={needsPlanningEntries}
+            title="Needs Planning"
             onRequestReorder={handleRequestReorder}
             requestedPartIds={justRequestedPartIds}
             submittingPartId={submittingPartId}
+            emptyText="No parts currently need planning."
           />
         </LoadingEmptyState>
       )}
@@ -177,7 +228,7 @@ export default function WarehouseManagerHome() {
       <FilterBar options={filterOptions} activeKey={category} onChange={handleCategoryChange} />
 
       {error ? (
-        <p className="fo-muted">Unable to load stock position ({error.message ?? "unknown error"}).</p>
+        <p className="fo-muted">Unable to load stock position right now. Try again shortly.</p>
       ) : (
         <LoadingEmptyState loading={loading} isEmpty={false} loadingText="Loading stock position..." emptyText="">
           <>
@@ -214,7 +265,14 @@ export default function WarehouseManagerHome() {
                           )}
                         </td>
                         <td>
-                          <button type="button" onClick={() => setSelectedPartId(part.sku)}>
+                          <button
+                            type="button"
+                            aria-label={`View Activity for ${part.name}`}
+                            onClick={(e) => {
+                              lastTriggerRef.current = e.currentTarget;
+                              setSelectedPartId(part.sku);
+                            }}
+                          >
                             View Activity
                           </button>
                         </td>
@@ -241,7 +299,7 @@ export default function WarehouseManagerHome() {
       )}
 
       {selectedPartId && (
-        <PartActivityPanel partId={selectedPartId} onClose={() => setSelectedPartId(null)} />
+        <PartActivityPanel partId={selectedPartId} onClose={handleClosePartActivity} />
       )}
     </div>
   );
