@@ -156,24 +156,46 @@ export const NAV_DOMAINS = [
   // ACTIVE, reciprocally linked technician operationalRole. Domain key
   // "inventoryRole" is shared/future-shaped: PR 1b (PARTS_MANAGER, path
   // "manager") and PR 3b (PARTS_ASSOCIATE, path "mine") are each expected
-  // to add their OWN sibling subnav item here later, gated the same way --
-  // this PR adds ONLY the "warehouse" item. Every item declares
-  // operationalRoleAccess, so isDomainVisible() is false (and the whole
-  // domain doesn't render) for admin/dispatcher and for any technician
-  // without a matching, ACTIVE operationalRole -- see the explicit
-  // admin/dispatcher redirect to /inventory added in App.jsx; every other
-  // ineligible case falls through to the existing top-level catch-all
-  // (Navigate to="/dashboard"), same mechanism as every other gated route.
+  // to add their OWN sibling subnav item here, gated the same way. Every
+  // item declares operationalRoleAccess, so isDomainVisible() is false
+  // (and the whole domain doesn't render) for admin/dispatcher and for
+  // any technician without a matching, ACTIVE operationalRole -- see the
+  // explicit admin/dispatcher redirect to /inventory added in App.jsx;
+  // every other ineligible case falls through to the existing top-level
+  // catch-all (Navigate to="/dashboard"), same mechanism as every other
+  // gated route.
+  //
+  // Issue #100 PR 1b -- adds "manager" (PARTS_MANAGER), the second item.
+  // App.jsx's admin/dispatcher redirect and its top-level-tab index
+  // redirect (both keyed off domain.key === "inventoryRole", not any
+  // specific item) already generalize to this item with no further
+  // App.jsx routing change -- see that file's own PR 2b comments.
   {
     key: "inventoryRole",
     label: "My Inventory Role",
     path: "inventory-role",
     subnav: [
       {
+        key: "manager",
+        label: "Parts Manager",
+        path: "manager",
+        operationalRoleAccess: [OPERATIONAL_ROLE.PARTS_MANAGER],
+      },
+      {
         key: "warehouse",
         label: "Warehouse Manager",
         path: "warehouse",
         operationalRoleAccess: [OPERATIONAL_ROLE.WAREHOUSE_MANAGER],
+      },
+      // Issue #100 PR 3b -- adds "mine" (PARTS_ASSOCIATE), the third and
+      // final sibling item this domain was shaped for. Same generic
+      // App.jsx routing (admin/dispatcher redirect, top-level-tab index
+      // redirect) applies with no further App.jsx change.
+      {
+        key: "mine",
+        label: "My Purchasing",
+        path: "mine",
+        operationalRoleAccess: [OPERATIONAL_ROLE.PARTS_ASSOCIATE],
       },
     ],
   },

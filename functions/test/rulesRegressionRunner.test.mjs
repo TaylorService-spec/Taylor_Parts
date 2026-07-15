@@ -156,8 +156,21 @@ ok("6b. descendantPids returns only the owned root's descendants by PID", () => 
   assert.deepEqual(descendantPids(555, () => table), [], "unknown root -> no PIDs");
 });
 
-// ===== 7. Successful execution reports exactly 178 passed and 0 failed =====
-await okAsync("7. a fully-passing run reports exactly 178 passed, 0 failed", async () => {
+// ===== 7. Successful execution reports exactly EXPECTED_TOTAL passed and 0 failed =====
+// Issue #100 PR 1b -- EXPECTED_TOTAL grew from 178 to 184 (PR #236) when
+// issue100PartsManagerRules.test.js gained 6 new assertions for the scoped
+// employees Assign-candidate read grant, then from 184 to 194 (PR #237, the
+// least-privilege correction to PR #236) when employeesRules.test.js gained 10
+// assertions tightening that read to the full assignment-candidate contract
+// (ACTIVE + PARTS_ASSOCIATE-eligible + linked user), then from 194 to 256
+// (Issue #226 Row 3 / Task 8) when enterpriseAccessFoundationRules.test.js
+// added 62 assertions proving the five new governed-storage collections
+// (permissions/roles/roleAssignments/accessRequests/auditEvents) are closed
+// to all client read/write. This self-test's own literal sanity-check is
+// updated to match, same as it must be updated any time SUITES' expected
+// counts change -- a deliberate hardcoded cross-check that EXPECTED_TOTAL
+// wasn't silently miscomputed, not a value that should ever drift unnoticed.
+await okAsync("7. a fully-passing run reports exactly 256 passed, 0 failed", async () => {
   const byFile = new Map(SUITES.map((s) => [s.file, s.expected]));
   const lines = [];
   const r = await runAll({
@@ -173,8 +186,8 @@ await okAsync("7. a fully-passing run reports exactly 178 passed, 0 failed", asy
   assert.equal(r.ok, true);
   assert.equal(r.code, 0);
   assert.equal(r.totalPassed, EXPECTED_TOTAL);
-  assert.equal(EXPECTED_TOTAL, 178);
-  assert.ok(lines.some((l) => /178 passed, 0 failed/.test(l)), "summary must state 178 passed, 0 failed");
+  assert.equal(EXPECTED_TOTAL, 256);
+  assert.ok(lines.some((l) => /256 passed, 0 failed/.test(l)), "summary must state 256 passed, 0 failed");
   // parseSuiteResult correctness (count-mismatch and failed>0 both fail).
   assert.equal(parseSuiteResult("10 passed, 0 failed", 10).ok, true);
   assert.equal(parseSuiteResult("9 passed, 0 failed", 10).ok, false);

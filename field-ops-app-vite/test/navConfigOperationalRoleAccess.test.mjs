@@ -7,9 +7,17 @@
 // 1. Regression -- every EXISTING NAV_DOMAINS item (legacyKey,
 //    PLACEHOLDER_DEFAULT_ROLES, alwaysVisible) renders identically
 //    whether or not operationalContext is passed at all, for every
-//    existing role. PR 0 adds no operationalRoleAccess item to
-//    NAV_DOMAINS itself -- a later PR does -- so this suite proves the
-//    extension is genuinely additive against the real, current tree.
+//    existing role. PR 0 itself added no operationalRoleAccess item to
+//    NAV_DOMAINS -- PR 1b/2b (WAREHOUSE_MANAGER, PARTS_MANAGER) later
+//    did -- so this suite proves the extension is genuinely additive
+//    against the real, current tree. Items/domains that themselves
+//    declare (or are composed entirely of) operationalRoleAccess are
+//    correctly EXCLUDED from this specific "never changes" invariant --
+//    those are the intentionally-reactive ones this whole feature
+//    exists to add; asserting they never change with operationalContext
+//    would contradict their own design, not protect against a
+//    regression. The invariant still applies in full to every
+//    legacyKey/PLACEHOLDER_DEFAULT_ROLES/alwaysVisible item, unchanged.
 // 2. Fail-closed -- a synthetic item declaring operationalRoleAccess
 //    is denied for every edge case (wrong role, missing/null
 //    operationalContext, inactive employment, ineligible/empty
@@ -37,16 +45,32 @@ ok("regression: every existing NAV_DOMAINS item's visibility is identical regard
   for (const role of REAL_ROLES) {
     const allowedLegacyKeys = ROLE_NAV_ACCESS[role] ?? [];
     for (const domain of NAV_DOMAINS) {
-      const baseline = isDomainVisible(domain, role, allowedLegacyKeys);
-      for (const operationalContext of SOME_OPERATIONAL_CONTEXTS) {
-        assert.equal(
-          isDomainVisible(domain, role, allowedLegacyKeys, operationalContext),
-          baseline,
-          `domain "${domain.key}" for role "${role}" changed with operationalContext=${JSON.stringify(operationalContext)}`
-        );
+      // A domain composed entirely of operationalRoleAccess items (e.g.
+      // "inventoryRole") has no legacyKey/PLACEHOLDER baseline to
+      // protect -- its own isDomainVisible() is BY DESIGN a function of
+      // operationalContext, not a regression if it changes. Domains that
+      // mix such items with ordinary ones (none currently do) would
+      // still need per-item exclusion below; the domain-level check here
+      // only skips wholesale-reactive domains.
+      const domainIsWhollyOperationalRoleGated =
+        !domain.future && domain.subnav.length > 0 && domain.subnav.every((item) => item.operationalRoleAccess);
+      if (!domainIsWhollyOperationalRoleGated) {
+        const baseline = isDomainVisible(domain, role, allowedLegacyKeys);
+        for (const operationalContext of SOME_OPERATIONAL_CONTEXTS) {
+          assert.equal(
+            isDomainVisible(domain, role, allowedLegacyKeys, operationalContext),
+            baseline,
+            `domain "${domain.key}" for role "${role}" changed with operationalContext=${JSON.stringify(operationalContext)}`
+          );
+        }
       }
       if (domain.future) continue;
       for (const item of domain.subnav) {
+        // operationalRoleAccess items are intentionally reactive to
+        // operationalContext -- excluded from this "never changes"
+        // invariant; covered instead by the dedicated
+        // operationalRoleAccess assertions below.
+        if (item.operationalRoleAccess) continue;
         const itemBaseline = isNavItemVisible(item, role, allowedLegacyKeys);
         for (const operationalContext of SOME_OPERATIONAL_CONTEXTS) {
           assert.equal(

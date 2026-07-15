@@ -84,6 +84,14 @@ export const DRIVER_ACCOUNTS = {
   // an unresolved/broken link specifically, not merely an empty
   // operationalRoles array.
   technicianBrokenLink: { email: "driver-technician-broken-link@example.test", password: "driver-pass-123", uid: null },
+  // Issue #100 PR 3b -- the Specification's own "Union behavior" design
+  // (an Employee with two eligible operationalRoles sees BOTH
+  // corresponding nav items simultaneously, no exclusivity/precedence)
+  // recommended a dedicated multi-role fixture in whichever UI PR lands
+  // last -- PR 3b, since all three tracks (manager/warehouse/mine) are
+  // now implemented. ACTIVE, reciprocally linked, operationalRoles:
+  // ["PARTS_ASSOCIATE", "WAREHOUSE_MANAGER"].
+  technicianMultiRole: { email: "driver-technician-multi-role@example.test", password: "driver-pass-123", uid: null },
 };
 
 async function ensureAuthUser(acct) {
@@ -1252,6 +1260,25 @@ async function seedIssue100RoleFixtures() {
   await db.doc(`users/${DRIVER_ACCOUNTS.technicianBrokenLink.uid}`).set({
     role: "technician",
     employeeId: "driver-emp-technician-broken-link-does-not-exist",
+  });
+
+  // Issue #100 PR 3b -- multi-role union fixture (see DRIVER_ACCOUNTS'
+  // own comment above). Two eligible operationalRoles -> both the
+  // "Warehouse Manager" and "My Purchasing" subnav items must render
+  // simultaneously, no exclusivity/precedence between them.
+  await db.doc("employees/driver-emp-technician-multi-role").set({
+    employeeId: "driver-emp-technician-multi-role",
+    displayName: "Driver Technician Multi Role",
+    employmentStatus: "ACTIVE",
+    operationalRoles: ["PARTS_ASSOCIATE", "WAREHOUSE_MANAGER"],
+    securityRole: "technician",
+    userId: DRIVER_ACCOUNTS.technicianMultiRole.uid,
+    createdAt: now,
+    updatedAt: now,
+  });
+  await db.doc(`users/${DRIVER_ACCOUNTS.technicianMultiRole.uid}`).set({
+    role: "technician",
+    employeeId: "driver-emp-technician-multi-role",
   });
 }
 

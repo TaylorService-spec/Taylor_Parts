@@ -16,6 +16,8 @@ import WorkOrderDetailPage from "./modules/workOrders/WorkOrderDetailPage";
 import PartsList from "./modules/inventory/PartsList";
 import PartDetail from "./modules/inventory/PartDetail";
 import WarehouseManagerHome from "./modules/inventoryRole/WarehouseManagerHome";
+import PartsManagerHome from "./modules/inventoryRole/PartsManagerHome";
+import PartsAssociateHome from "./modules/inventoryRole/PartsAssociateHome";
 import { useAuth } from "./auth/AuthContext";
 import Login from "./auth/Login";
 import AppHeader from "./shared/ui/AppHeader";
@@ -108,6 +110,12 @@ function renderSubnavItem(domain, item, role) {
   if (domain.key === "inventory" && item.key === "parts") {
     return <PartsList />;
   }
+  // Issue #100 PR 1b -- PARTS_MANAGER's dedicated, role-scoped surface.
+  // Same operationalRoleAccess-gated pattern as PR 2b's WAREHOUSE_MANAGER
+  // case below.
+  if (domain.key === "inventoryRole" && item.key === "manager") {
+    return <PartsManagerHome />;
+  }
   // Issue #100 PR 2b -- WAREHOUSE_MANAGER's dedicated, role-scoped
   // surface. No legacyKey (net-new screen); item.operationalRoleAccess
   // (navConfig.js) already keeps this route from being generated at all
@@ -116,6 +124,11 @@ function renderSubnavItem(domain, item, role) {
   // or an ineligible technician.
   if (domain.key === "inventoryRole" && item.key === "warehouse") {
     return <WarehouseManagerHome />;
+  }
+  // Issue #100 PR 3b -- PARTS_ASSOCIATE's dedicated, role-scoped surface.
+  // Same operationalRoleAccess-gated pattern as PR 1b/2b above.
+  if (domain.key === "inventoryRole" && item.key === "mine") {
+    return <PartsAssociateHome />;
   }
   if (item.legacyKey) {
     const Component = LEGACY_COMPONENTS[item.legacyKey];
