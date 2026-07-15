@@ -94,6 +94,18 @@ async function getAuditEvent(id) {
   return snap.exists ? snap.data() : null;
 }
 
+// Finds every auditEvents doc whose id starts with the given
+// idempotencyKey -- the primary doc (id === key) plus any derived
+// conflict-record docs (id === `${key}--conflict--<hash>`).
+async function findAuditEventsWithIdPrefix(prefix) {
+  return db
+    .collection("auditEvents")
+    .orderBy(admin.firestore.FieldPath.documentId())
+    .startAt(prefix)
+    .endAt(`${prefix}~`)
+    .get();
+}
+
 async function makeAdminActor() {
   const u = uid("admin-actor");
   await seedActiveRoleAssignment(u, "admin");
@@ -653,6 +665,145 @@ async function main() {
     const freshKey = `denied-then-retry-fresh-${uid("k")}`;
     const result = await grantRole({ actorUid: adminActor, principalUid: principal, roleId: "technician", scope: { type: "global" }, idempotencyKey: freshKey });
     assert.equal(result.status, "applied");
+  });
+
+  // =====================================================================
+  // Inventory review round 4 fixes -- regression coverage
+  // =====================================================================
+
+  // --- Finding 1: tenant Scope must never widen to global authority ---
+
+  await check("grantRole: a tenant-scoped admin assignment cannot serve as the actor's own authority for a global trusted command (tenant Scope never widens)", async () => {
+    const tenantScopedActor = uid("tenant-actor");
+    await seedActiveRoleAssignment(tenantScopedActor, "admin", { type: "tenant", value: "some-tenant" });
+    const principal = await makePrincipal();
+    const key = `tenant-actor-denied-${uid("k")}`;
+    await assertRejectsWith(
+      grantRole({ actorUid: tenantScopedActor, principalUid: principal, roleId: "technician", scope: { type: "global" }, idempotencyKey: key }),
+      UnauthorizedActorError,
+    );
+    const assignmentSnap = await db.collection("roleAssignments").doc(key).get();
+    assert.equal(assignmentSnap.exists, false, "a tenant-scoped admin assignment must not authorize a global grant");
+  });
+
+  await check("grantRole: a tenant-scoped admin assignment cannot serve as the APPROVER's authority for a privileged grant either (tenant Scope never widens, approver side)", async () => {
+    const actor = await makeAdminActor();
+    const tenantScopedApprover = uid("tenant-approver");
+    await seedActiveRoleAssignment(tenantScopedApprover, "admin", { type: "tenant", value: "some-tenant" });
+    const principal = await makePrincipal();
+    const key = `tenant-approver-denied-${uid("k")}`;
+    await assertRejectsWith(
+      grantRole({ actorUid: actor, principalUid: principal, roleId: "admin", scope: { type: "global" }, approverUid: tenantScopedApprover, idempotencyKey: key }),
+      InsufficientApproverAuthorityError,
+    );
+  });
+
+  // --- Finding 2: the approver must pass the FULL fail-closed effective-permission path ---
+
+  await check("grantRole: an approver assignment with a MALFORMED shape (missing scope) fails closed via InsufficientApproverAuthorityError, not accepted merely for roleId=\"admin\"", async () => {
+    const actor = await makeAdminActor();
+    const malformedApprover = uid("malformed-approver");
+    // Deliberately malformed: no `scope` field at all -- fails
+    // isWellFormedAssignment() inside the resolver.
+    await db.collection("roleAssignments").doc(`seed-${malformedApprover}-admin`).set({
+      principalUid: malformedApprover,
+      roleId: "admin",
+      grantedBy: "test-seed",
+      grantedAt: admin.firestore.Timestamp.now(),
+      status: "active",
+      accessVersionAtGrant: 0,
+    });
+    const principal = await makePrincipal();
+    const key = `malformed-approver-${uid("k")}`;
+    await assertRejectsWith(
+      grantRole({ actorUid: actor, principalUid: principal, roleId: "admin", scope: { type: "global" }, approverUid: malformedApprover, idempotencyKey: key }),
+      InsufficientApproverAuthorityError,
+    );
+  });
+
+  await check("grantRole: an approver assignment with a STALE/FUTURE accessVersionAtGrant (greater than the approver's own current accessVersion) fails closed via InsufficientApproverAuthorityError", async () => {
+    const actor = await makeAdminActor();
+    const staleApprover = uid("stale-approver");
+    // accessVersionAtGrant=99 while the approver's own users/{uid}
+    // document does not exist (accessVersion reads as 0) -- inconsistent,
+    // excluded by the resolver's own fail-closed accessVersion check.
+    await seedActiveRoleAssignment(staleApprover, "admin");
+    await db.collection("roleAssignments").doc(`seed-${staleApprover}-admin`).update({ accessVersionAtGrant: 99 });
+    const principal = await makePrincipal();
+    const key = `stale-approver-${uid("k")}`;
+    await assertRejectsWith(
+      grantRole({ actorUid: actor, principalUid: principal, roleId: "admin", scope: { type: "global" }, approverUid: staleApprover, idempotencyKey: key }),
+      InsufficientApproverAuthorityError,
+    );
+  });
+
+  await check("grantRole: an approver assignment scoped NARROWLY (domain, not global) fails closed via InsufficientApproverAuthorityError for a global privileged grant", async () => {
+    const actor = await makeAdminActor();
+    const narrowApprover = uid("narrow-approver");
+    await seedActiveRoleAssignment(narrowApprover, "admin", { type: "domain", value: "customer" });
+    const principal = await makePrincipal();
+    const key = `narrow-approver-${uid("k")}`;
+    await assertRejectsWith(
+      grantRole({ actorUid: actor, principalUid: principal, roleId: "admin", scope: { type: "global" }, approverUid: narrowApprover, idempotencyKey: key }),
+      InsufficientApproverAuthorityError,
+    );
+  });
+
+  // --- Finding 3: idempotency-key reuse must not silently suppress a denial audit ---
+
+  await check("idempotencyKey reused across an EXISTING APPLIED event and a new DENIED command still fails loud with the denial's own real error, AND records a distinct, auditable conflict Audit Event", async () => {
+    const dispatcherActor = await makeDispatcherActor();
+    const adminActor = await makeAdminActor();
+    const principalA = await makePrincipal();
+    const principalB = uid("principal-b");
+    const key = `conflict-applied-then-denied-${uid("k")}`;
+
+    // First: a genuinely APPLIED grant at this key.
+    const applied = await grantRole({ actorUid: adminActor, principalUid: principalA, roleId: "technician", scope: { type: "global" }, idempotencyKey: key });
+    assert.equal(applied.status, "applied");
+
+    // Second: a DIFFERENT command/target reusing the SAME key, denied
+    // for its own real reason (unauthorized actor) -- must still throw
+    // that real reason, not a generic idempotency error, and the
+    // conflict must remain auditable.
+    await assertRejectsWith(
+      setUserStatus({ actorUid: dispatcherActor, principalUid: principalB, status: "disabled", idempotencyKey: key }),
+      UnauthorizedActorError,
+    );
+    const primaryAudit = await getAuditEvent(key);
+    assert.equal(primaryAudit.outcome, "applied", "the original applied Audit Event must remain untouched (immutable)");
+    assert.equal(primaryAudit.action, "grantRole");
+
+    const allAuditsForKey = await findAuditEventsWithIdPrefix(key);
+    assert.ok(allAuditsForKey.size >= 2, "a distinct conflict Audit Event must exist alongside the untouched primary record");
+    const conflictDoc = allAuditsForKey.docs.find((d) => d.id !== key);
+    assert.ok(conflictDoc, "a conflict Audit Event must exist at a derived id");
+    assert.equal(conflictDoc.data().outcome, "denied");
+    assert.equal(conflictDoc.data().action, "setUserStatus");
+  });
+
+  await check("idempotencyKey reused across an EXISTING DENIED event and a new, differently-shaped DENIED command still records a distinct conflict Audit Event", async () => {
+    const dispatcherActor = await makeDispatcherActor();
+    const principalA = await makePrincipal();
+    const principalB = uid("principal-b");
+    const key = `conflict-denied-then-denied-${uid("k")}`;
+
+    await assertRejectsWith(
+      grantRole({ actorUid: dispatcherActor, principalUid: principalA, roleId: "technician", scope: { type: "global" }, idempotencyKey: key }),
+      UnauthorizedActorError,
+    );
+    await assertRejectsWith(
+      setUserStatus({ actorUid: dispatcherActor, principalUid: principalB, status: "disabled", idempotencyKey: key }),
+      UnauthorizedActorError,
+    );
+
+    const allAuditsForKey = await findAuditEventsWithIdPrefix(key);
+    assert.ok(allAuditsForKey.size >= 2, "both distinct denials must be auditable -- the second must not be silently dropped");
+    const primary = allAuditsForKey.docs.find((d) => d.id === key);
+    const conflict = allAuditsForKey.docs.find((d) => d.id !== key);
+    assert.equal(primary.data().action, "grantRole");
+    assert.equal(conflict.data().action, "setUserStatus");
+    assert.equal(conflict.data().outcome, "denied");
   });
 
   console.log(`\n${passed} passed, ${failed} failed`);

@@ -263,8 +263,8 @@ check("S1: unknown ConditionKind never passes (fails closed)", () => {
   assert.equal(result.decision, "DENY");
 });
 
-// --- Scope: tenant is inert/neutral, ownAssignment requires the flag, domain/location require exact match ---
-check("Scope: tenant-scoped assignment matches (neutral pass-through per Spec sec10)", () => {
+// --- Scope: tenant is inert/never-widening (requires exact match like domain/location), ownAssignment requires the flag ---
+check("Scope: tenant-scoped assignment DENY against a global target (genuinely inert -- never widens to global authority)", () => {
   const result = resolveEffectivePermission({
     permissionId: "account.record.read",
     assignments: [activeAssignment("admin", { scope: { type: "tenant", value: "unresolved" } })],
@@ -272,7 +272,27 @@ check("Scope: tenant-scoped assignment matches (neutral pass-through per Spec se
     currentAccessVersion: 1,
     target: baseTarget(),
   });
-  assert.equal(result.decision, "ALLOW");
+  assert.equal(result.decision, "DENY");
+});
+check("Scope: tenant-scoped assignment DENY even against a matching-shaped tenant target (no live tenant model exists -- #140 is the only future authority for this)", () => {
+  const result = resolveEffectivePermission({
+    permissionId: "account.record.read",
+    assignments: [activeAssignment("admin", { scope: { type: "tenant", value: "tenant-a" } })],
+    roles: COMPATIBILITY_ROLES,
+    currentAccessVersion: 1,
+    target: baseTarget({ scope: { type: "tenant", value: "tenant-b" } }),
+  });
+  assert.equal(result.decision, "DENY");
+});
+check("Scope: a tenant-scoped admin assignment cannot authorize a global trusted command (admin.roleAssignment.write) -- proves tenant Scope never widens to global authority", () => {
+  const result = resolveEffectivePermission({
+    permissionId: "admin.roleAssignment.write",
+    assignments: [activeAssignment("admin", { scope: { type: "tenant", value: "any-tenant" } })],
+    roles: COMPATIBILITY_ROLES,
+    currentAccessVersion: 1,
+    target: baseTarget({ scope: { type: "global" } }),
+  });
+  assert.equal(result.decision, "DENY");
 });
 check("Scope: domain-scoped assignment DENY against a non-matching target domain", () => {
   const result = resolveEffectivePermission({

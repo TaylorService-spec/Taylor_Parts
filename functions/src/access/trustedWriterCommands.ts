@@ -25,6 +25,7 @@
 // (every query here is either a direct doc-id .get() or a two-field
 // equality-only `where` query, both servable without any index
 // deployment).
+import { createHash } from "node:crypto";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import type {
   DocumentSnapshot,
@@ -33,7 +34,11 @@ import type {
 import { getAuth } from "firebase-admin/auth";
 import type { CompactClaims, Scope, ScopeType } from "../types/access";
 import { COMPATIBILITY_ROLES } from "./compatibilityRoles";
-import { resolveEffectivePermission, type TargetContext } from "./resolveEffectivePermission";
+import {
+  resolveEffectivePermission,
+  type TargetContext,
+  type ResolveResult,
+} from "./resolveEffectivePermission";
 import { isValidAccessVersionValue } from "./compactClaims";
 import { setCompactClaims } from "./claimsWriter";
 import {
@@ -152,30 +157,38 @@ function readAuthoritativeAccessVersion(snap: DocumentSnapshot): number {
 // id, no active assignments (a brand-new/unprovisioned actor), a stale/
 // malformed actor accessVersion, or a resolver DENY for any other
 // reason.
+async function resolvePrincipalPermission(
+  principalUid: string,
+  permissionId: string,
+  target: TargetContext,
+): Promise<ResolveResult> {
+  assertNonEmptyString(principalUid, "principalUid");
+  const db = getFirestore();
+  const [userSnap, assignmentsSnap] = await Promise.all([
+    db.collection(USERS_COLLECTION).doc(principalUid).get(),
+    db
+      .collection(ROLE_ASSIGNMENTS_COLLECTION)
+      .where("principalUid", "==", principalUid)
+      .where("status", "==", "active")
+      .get(),
+  ]);
+  const accessVersion = readAuthoritativeAccessVersion(userSnap);
+  const assignments = assignmentsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })) as never[];
+  return resolveEffectivePermission({
+    permissionId,
+    assignments,
+    roles: COMPATIBILITY_ROLES,
+    currentAccessVersion: accessVersion,
+    target,
+  });
+}
+
 async function verifyActorPermission(
   actorUid: string,
   permissionId: string,
   target: TargetContext,
 ): Promise<void> {
-  assertNonEmptyString(actorUid, "actorUid");
-  const db = getFirestore();
-  const [actorUserSnap, actorAssignmentsSnap] = await Promise.all([
-    db.collection(USERS_COLLECTION).doc(actorUid).get(),
-    db
-      .collection(ROLE_ASSIGNMENTS_COLLECTION)
-      .where("principalUid", "==", actorUid)
-      .where("status", "==", "active")
-      .get(),
-  ]);
-  const actorAccessVersion = readAuthoritativeAccessVersion(actorUserSnap);
-  const assignments = actorAssignmentsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })) as never[];
-  const result = resolveEffectivePermission({
-    permissionId,
-    assignments,
-    roles: COMPATIBILITY_ROLES,
-    currentAccessVersion: actorAccessVersion,
-    target,
-  });
+  const result = await resolvePrincipalPermission(actorUid, permissionId, target);
   if (result.decision !== "ALLOW") {
     throw new UnauthorizedActorError(
       `actor is not authorized for "${permissionId}" (${result.reason})`,
@@ -184,25 +197,40 @@ async function verifyActorPermission(
 }
 
 // ADR-005 sec2.4: a privileged grant/revoke requires a second, distinct
-// authorized approver -- "authorized" is verified here, not merely
-// "a different uid": the approver must themselves currently hold an
-// ACTIVE assignment for a privileged Role.
+// authorized approver. Correction (Inventory review round 4, prior
+// implementation confirmed a real defect here): the previous check
+// only asked "does the approver hold ANY active roleAssignment doc
+// whose roleId happens to map to a privileged Role" -- it never ran
+// the assignment through the same fail-closed effective-permission
+// path the ACTOR gets (shape validation via isWellFormedAssignment,
+// accessVersionAtGrant consistency, Scope matching). A malformed,
+// stale/future-version, or narrow-scoped (non-global) assignment
+// document referencing roleId "admin" could therefore satisfy the old
+// check even though the resolver itself would deny that exact
+// assignment for a real global action. Fixed: the approver is now run
+// through the IDENTICAL resolvePrincipalPermission() path used for the
+// actor, requiring "admin.roleAssignment.write" at GLOBAL scope --
+// this enforces shape/version/Scope exactly like any other caller.
+// The privileged-Role constraint is preserved as an explicit,
+// additional check on top (not merely implied by which Permissions
+// "admin" happens to carry today): the qualifying assignment's Role
+// must itself be marked `privileged`, guarding against a future
+// non-privileged Role gaining `admin.roleAssignment.write` without
+// also being an acceptable approver authority.
 async function verifyApproverIsPrivileged(approverUid: string): Promise<void> {
-  assertNonEmptyString(approverUid, "approverUid");
-  const db = getFirestore();
-  const snap = await db
-    .collection(ROLE_ASSIGNMENTS_COLLECTION)
-    .where("principalUid", "==", approverUid)
-    .where("status", "==", "active")
-    .get();
-  const hasPrivilegedRole = snap.docs.some((doc) => {
-    const roleId = doc.data().roleId;
-    const role = typeof roleId === "string" ? COMPATIBILITY_ROLES[roleId] : undefined;
-    return !!role?.privileged;
+  const result = await resolvePrincipalPermission(approverUid, "admin.roleAssignment.write", {
+    scope: { type: "global" },
+    condition: {},
   });
-  if (!hasPrivilegedRole) {
+  if (result.decision !== "ALLOW") {
     throw new InsufficientApproverAuthorityError(
-      "approverUid does not currently hold an active privileged Role",
+      `approverUid is not currently authorized for "admin.roleAssignment.write" at global scope (${result.reason})`,
+    );
+  }
+  const matchedRole = result.matchedRoleId ? COMPATIBILITY_ROLES[result.matchedRoleId] : undefined;
+  if (!matchedRole?.privileged) {
+    throw new InsufficientApproverAuthorityError(
+      "approverUid's qualifying Role assignment is not a privileged Role",
     );
   }
 }
@@ -249,20 +277,84 @@ function assertSameCommandFingerprint(
   }
 }
 
+// Deterministic secondary id for a CONFLICTING reuse of an
+// idempotencyKey (independent review round 4): derived only from the
+// idempotencyKey plus the conflicting attempt's own action/targetType/
+// targetId, so a repeated retry of the exact SAME conflicting call
+// always resolves to the SAME derived id (no duplicate audit spam),
+// while a THIRD, differently-shaped conflicting attempt gets its own
+// distinct derived id. This is still an ordinary AuditEvent document in
+// the existing `auditEvents` collection, under the exact Spec sec5.8
+// shape -- no new object/collection/schema is introduced; only the id-
+// derivation rule differs for this specific conflict case.
+function deriveConflictAuditId(
+  idempotencyKey: string,
+  fingerprint: { action: string; targetType: string; targetId: string },
+): string {
+  const hash = createHash("sha256")
+    .update(`${fingerprint.action}|${fingerprint.targetType}|${fingerprint.targetId}`)
+    .digest("hex")
+    .slice(0, 16);
+  return `${idempotencyKey}--conflict--${hash}`;
+}
+
 // Exactly one immutable Audit Event per applied OR DENIED command
 // attempt (Task 12). Idempotent on the same idempotencyKey as the
 // applied path -- if this exact call already produced an Audit Event
-// (applied OR a prior denial), this is a no-op; it never overwrites.
+// for the SAME command/target (applied or a prior denial), this is a
+// no-op; it never overwrites the immutable primary record.
+//
+// Correction (Inventory review round 4, prior implementation confirmed
+// a real defect here): reusing an idempotencyKey for a DIFFERENT
+// command/target used to silently return without recording anything --
+// the calling command still failed loud (its own real error, e.g.
+// UnauthorizedActorError, always propagates via withDeniedAuditOnError
+// regardless of this function's outcome), but the audit trail for that
+// SECOND, distinct denial was lost entirely, contradicting "every
+// authorization-relevant denial emits exactly one denied Audit Event."
+// Fixed: a fingerprint MISMATCH now records the conflicting denial at a
+// separate, deterministic id (deriveConflictAuditId) rather than
+// silently dropping it or overwriting the immutable primary record --
+// satisfying both the immutable-Audit-Event contract (Spec sec14) and
+// complete denial auditing (Task 12) without inventing any new object
+// or schema.
 async function recordDeniedAttempt(
   idempotencyKey: string,
   auditInput: Omit<RecordAuditEventInput, "outcome" | "accessVersionAfter">,
 ): Promise<void> {
   const db = getFirestore();
-  const auditRef = auditEventDocRef(idempotencyKey);
+  const primaryRef = auditEventDocRef(idempotencyKey);
   await db.runTransaction(async (txn) => {
-    const snap = await txn.get(auditRef);
-    if (snap.exists) return;
-    stageAuditEventWithId(txn, idempotencyKey, { ...auditInput, outcome: "denied" });
+    const primarySnap = await txn.get(primaryRef);
+    if (!primarySnap.exists) {
+      stageAuditEventWithId(txn, idempotencyKey, { ...auditInput, outcome: "denied" });
+      return;
+    }
+    const existing = primarySnap.data() as Record<string, unknown>;
+    const sameCommand =
+      existing.action === auditInput.action &&
+      existing.targetType === auditInput.targetType &&
+      existing.targetId === auditInput.targetId;
+    if (sameCommand) {
+      // Same command/target already recorded at this key (applied or a
+      // prior denial) -- nothing new to record; the immutable primary
+      // record remains authoritative and untouched.
+      return;
+    }
+    const conflictId = deriveConflictAuditId(idempotencyKey, auditInput);
+    const conflictRef = auditEventDocRef(conflictId);
+    const conflictSnap = await txn.get(conflictRef);
+    if (conflictSnap.exists) return; // this exact conflicting retry already recorded
+    const conflictNote = ` [idempotencyKey "${idempotencyKey}" reuse conflict -- a different command/target already used this key]`;
+    // Guarantee the concatenated summary never exceeds the writer's own
+    // MAX_SUMMARY_LENGTH cap (500) regardless of how long auditInput's
+    // own summary happens to be.
+    const truncatedSummary = auditInput.summary.slice(0, 499 - conflictNote.length);
+    stageAuditEventWithId(txn, conflictId, {
+      ...auditInput,
+      outcome: "denied",
+      summary: `${truncatedSummary}${conflictNote}`,
+    });
   });
 }
 
