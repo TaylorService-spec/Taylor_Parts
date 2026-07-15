@@ -242,9 +242,20 @@ ok("create cannot be used as a side door into a non-ACTIVE lifecycle state", () 
     assert.equal(payload, null);
     assert.ok(errors.status);
   }
+  // An unrecognized status is refused too -- quietly substituting ACTIVE would be a
+  // silent divergence from what the caller asked for, even though ACTIVE is safe.
+  const bogus = buildEquipmentCreatePayload({ ...base, status: "BOGUS" }, 1);
+  assert.equal(bogus.valid, false, "garbage status must not be silently coerced to ACTIVE");
+  assert.equal(bogus.payload, null);
+  assert.ok(bogus.errors.status);
+
   const active = buildEquipmentCreatePayload({ ...base, status: "active" }, 1);
   assert.equal(active.valid, true, "an explicit ACTIVE (any casing) is fine");
   assert.equal(active.payload.status, EQUIPMENT_STATUS.ACTIVE);
+
+  const unspecified = buildEquipmentCreatePayload(base, 1);
+  assert.equal(unspecified.valid, true, "the ordinary create path supplies no status at all");
+  assert.equal(unspecified.payload.status, EQUIPMENT_STATUS.ACTIVE);
 });
 
 ok("create payload fails closed on missing required fields and yields no payload", () => {
@@ -319,10 +330,17 @@ ok("an unchanged governed field is not flagged, even re-cased or padded by a rou
 ok("edit fails closed when `before` cannot prove a governed field is unchanged", () => {
   // No `before` -> we cannot know the stored Location, so a caller spreading a whole
   // record must NOT be told the edit succeeded while the move was quietly dropped.
-  const { changedGoverned } = buildEquipmentEditPayload(
-    { name: "Unit", accountId: "a1", locationId: "l2" }, {}, 1
+  const unprovable = buildEquipmentEditPayload({ name: "Unit", accountId: "a1", locationId: "l2" }, {}, 1);
+  assert.deepEqual(unprovable.unprovableGoverned, ["accountId", "locationId"], "unprovable != fine");
+  assert.deepEqual(
+    unprovable.changedGoverned, [],
+    "a missing `before` is a CALLER bug -- reported apart from a user attempting a real change"
   );
-  assert.deepEqual(changedGoverned, ["accountId", "locationId"], "unprovable == changed, not == fine");
+
+  // Governed fields the caller never supplied are nobody's problem.
+  const clean = buildEquipmentEditPayload({ name: "Unit" }, {}, 1);
+  assert.deepEqual(clean.unprovableGoverned, []);
+  assert.equal(clean.valid, true, "an ordinary descriptive edit must not need `before`");
 });
 
 ok("edit enforces the required name when the caller edits it, and ignores it when absent", () => {

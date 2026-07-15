@@ -17,8 +17,16 @@ import {
 let passed = 0;
 async function ok(name, fn) { await fn(); passed += 1; console.log("PASS -- " + name); }
 
-// A store that records every call, so "no write was attempted" is provable rather
-// than assumed. Each mode is one the real Firestore store can actually produce.
+// A store that records every call, so "no write was attempted" is provable rather than
+// assumed. Each mode is one the real store can actually produce.
+//
+// This fake is the oracle the whole suite rests on, so it must model
+// makeCollectionStore's REAL contract exactly:
+//   add(data)       -> { id, ...data }   | { blocked: true } | throws
+//   update(id, data)-> { id, ...data }   | { blocked: true } | throws
+// (An earlier version of this fake spread `args[0]` for both ops -- for `update` that
+// is the id STRING, so it returned {0:'e',1:'q',...}. It stayed green only because no
+// test asserted the edit's success shape. A wrong oracle proves nothing.)
 function fakeStore(mode = "ok") {
   const calls = [];
   const handler = async (op, args) => {
@@ -27,7 +35,9 @@ function fakeStore(mode = "ok") {
     if (mode === "denied") throw Object.assign(new Error("Missing or insufficient permissions."), { code: "permission-denied" });
     if (mode === "offline") throw Object.assign(new Error("backend unreachable"), { code: "unavailable" });
     if (mode === "raw") throw new Error("FIRESTORE (10.0.0) INTERNAL ASSERTION FAILED: doc equipment/abc123");
-    return { id: "eq1", ...args[0] };
+    const id = op === "add" ? "eq1" : args[0];
+    const data = op === "add" ? args[0] : args[1];
+    return { id, ...data };
   };
   return {
     calls,
@@ -86,6 +96,11 @@ await ok("edit writes only the editable fields it was given", async () => {
   for (const f of ["accountId", "locationId", "status", "createdAt"]) {
     assert.equal(Object.hasOwn(payload, f), false, `${f} must never be written by an ordinary edit`);
   }
+  // Assert the SUCCESS SHAPE too -- without this the oracle can misreport what the
+  // store returned and the suite would never notice.
+  // `model` is here because the caller spread `before` in and so did supply it -- an
+  // edit writes what it was given, governed fields excepted.
+  assert.deepEqual(res.equipment, { id: "eq1", name: "Renamed", model: "48TC", updatedAt: 55 });
 });
 
 await ok("an attempted governed change attempts NO write and never reports success", async () => {
@@ -111,6 +126,18 @@ await ok("a whole-record edit without `before` fails closed rather than reportin
   const res = await updateEquipmentWith(store, "eq1", { name: "Unit", accountId: "a1", locationId: "l2" }, {}, 1);
   assert.equal(res.ok, false, "unprovable governed state must not resolve to success");
   assert.equal(store.calls.length, 0);
+  // ...and it is reported as OUR missing proof, not as the user attempting a move.
+  assert.equal(res.unprovable, true);
+  assert.doesNotMatch(res.message, /can't be changed here/, "don't accuse the user of a caller bug");
+});
+
+await ok("a partial edit that touches nothing governed still succeeds without `before`", async () => {
+  // The fail-closed rule must only fire when a governed field was actually supplied --
+  // otherwise every ordinary descriptive edit would be refused.
+  const store = fakeStore();
+  const res = await updateEquipmentWith(store, "eq1", { name: "Renamed", notes: "n" }, {}, 3);
+  assert.equal(res.ok, true);
+  assert.equal(store.calls.length, 1);
 });
 
 await ok("edit attempts NO write for a missing id or an invalid field", async () => {

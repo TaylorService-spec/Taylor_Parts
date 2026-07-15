@@ -57,7 +57,8 @@ export async function updateEquipmentWith(store, id, values, { before = {} } = {
     return { ok: false, errors: {}, message: equipmentSaveErrorMessage(null) };
   }
 
-  const { valid, errors, payload, changedGoverned } = buildEquipmentEditPayload(values, before, now);
+  const { valid, errors, payload, changedGoverned, unprovableGoverned } =
+    buildEquipmentEditPayload(values, before, now);
 
   if (changedGoverned.length > 0) {
     return {
@@ -66,6 +67,18 @@ export async function updateEquipmentWith(store, id, values, { before = {} } = {
       governedFields: changedGoverned,
       // Safe copy: names the concept, never a field path, code, or document id.
       message: "Customer, location, and status can't be changed here. Nothing was saved.",
+    };
+  }
+  // The caller supplied governed fields but no `before` to prove them unchanged. Still
+  // fails closed, but this is OUR bug, not the user's -- so report it generically
+  // rather than telling them they attempted something they did not.
+  if (unprovableGoverned.length > 0) {
+    return {
+      ok: false,
+      errors: {},
+      unprovable: true,
+      governedFields: unprovableGoverned,
+      message: equipmentSaveErrorMessage(null),
     };
   }
   if (!valid) return { ok: false, errors, message: INVALID_MESSAGE };
