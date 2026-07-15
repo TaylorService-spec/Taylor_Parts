@@ -37,6 +37,7 @@ import {
   InvalidStateError,
   ClaimsSyncPendingError,
   IdempotencyKeyConflictError,
+  IdempotencyKeyAlreadyDeniedError,
 } from "../lib/access/trustedWriterCommands.js";
 
 const PROJECT_ID = "taylor-parts";
@@ -619,6 +620,39 @@ async function main() {
     assert.equal(afterSecond.data().pendingClaimsSyncAccessVersion, null);
     const userRecord = await auth.getUser(principal);
     assert.equal(userRecord.customClaims.accessVersion, 2, "claims must reflect the LATEST accessVersion after two sequential grants");
+  });
+
+  await check("a previously-DENIED idempotencyKey can never later resolve as applied -- retrying with the same key after fixing the denial cause fails loud (IdempotencyKeyAlreadyDeniedError), never silently no-ops without ever mutating", async () => {
+    const dispatcherActor = await makeDispatcherActor();
+    const principal = await makePrincipal();
+    const key = `denied-then-retry-${uid("k")}`;
+
+    // First attempt: denied (dispatcher lacks admin.roleAssignment.write).
+    await assertRejectsWith(
+      grantRole({ actorUid: dispatcherActor, principalUid: principal, roleId: "technician", scope: { type: "global" }, idempotencyKey: key }),
+      UnauthorizedActorError,
+    );
+    const deniedAudit = await getAuditEvent(key);
+    assert.equal(deniedAudit.outcome, "denied");
+
+    // Fix the underlying cause (use a real admin actor this time) and
+    // retry with the SAME idempotencyKey -- must fail loud, not
+    // silently resolve as "alreadyApplied" while never actually
+    // granting anything.
+    const adminActor = await makeAdminActor();
+    await assertRejectsWith(
+      grantRole({ actorUid: adminActor, principalUid: principal, roleId: "technician", scope: { type: "global" }, idempotencyKey: key }),
+      IdempotencyKeyAlreadyDeniedError,
+    );
+    const assignmentSnap = await db.collection("roleAssignments").doc(key).get();
+    assert.equal(assignmentSnap.exists, false, "the retry must NOT have silently granted the role");
+    const userSnap = await db.collection("users").doc(principal).get();
+    assert.equal(userSnap.exists, false, "no accessVersion may exist -- the grant never actually happened");
+
+    // A FRESH idempotencyKey, however, succeeds normally.
+    const freshKey = `denied-then-retry-fresh-${uid("k")}`;
+    const result = await grantRole({ actorUid: adminActor, principalUid: principal, roleId: "technician", scope: { type: "global" }, idempotencyKey: freshKey });
+    assert.equal(result.status, "applied");
   });
 
   console.log(`\n${passed} passed, ${failed} failed`);

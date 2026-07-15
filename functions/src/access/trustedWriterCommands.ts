@@ -73,6 +73,11 @@ export class ClaimsSyncPendingError extends Error {}
 // entirely). Thrown when an existing Audit Event at this idempotencyKey
 // has a different action/targetType/targetId than the current call.
 export class IdempotencyKeyConflictError extends Error {}
+// Thrown when an idempotencyKey's existing Audit Event has outcome
+// "denied" -- since Audit Events are immutable, this key can never
+// later resolve as "applied"; the caller must mint a fresh
+// idempotencyKey rather than retry with this one.
+export class IdempotencyKeyAlreadyDeniedError extends Error {}
 
 const USERS_COLLECTION = "users";
 const ROLE_ASSIGNMENTS_COLLECTION = "roleAssignments";
@@ -227,6 +232,19 @@ function assertSameCommandFingerprint(
   ) {
     throw new IdempotencyKeyConflictError(
       `idempotencyKey "${idempotencyKey}" was already used for a different command (existing: action="${existing.action}", targetType="${existing.targetType}", targetId="${existing.targetId}"; this call: action="${expected.action}", targetType="${expected.targetType}", targetId="${expected.targetId}") -- reuse a fresh idempotencyKey per logical operation`,
+    );
+  }
+  // Independent review round 2: an Audit Event is IMMUTABLE (Spec
+  // sec14) -- a previously DENIED attempt at this idempotencyKey can
+  // never later become "applied" by silently falling through as
+  // "alreadyApplied" (that would report accessVersionAfter=undefined
+  // as if the call succeeded, while the real mutation -- the whole
+  // reason the caller retried -- silently never runs, forever, for
+  // this key). Fails loud instead: the caller must mint a fresh
+  // idempotencyKey to retry a previously-denied attempt.
+  if (existing.outcome === "denied") {
+    throw new IdempotencyKeyAlreadyDeniedError(
+      `idempotencyKey "${idempotencyKey}" was already used for a DENIED attempt of this command -- Audit Events are immutable, so this key can never become "applied"; retry with a fresh idempotencyKey`,
     );
   }
 }
