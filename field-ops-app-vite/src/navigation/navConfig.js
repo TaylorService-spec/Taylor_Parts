@@ -78,12 +78,38 @@ export const NAV_DOMAINS = [
       // Customer hierarchy nav cleanup: the global Contacts / Locations /
       // Equipment / Service History subnav entries were removed -- Contacts
       // and Locations belong to an individual Account (shown on Account
-      // Detail), and Equipment / Service History are not built. Their retired
-      // paths (customers/contacts|locations|equipment|service-history) are
+      // Detail), and Service History is not built. Their retired paths
+      // (customers/contacts|locations|equipment|service-history) are
       // redirected to /customers in App.jsx so they can never be captured by
       // the :accountId detail route.
+      //
+      // Equipment is now BUILT (Issue #232) and has its own top-level area at
+      // /equipment -- see the domain below. That does not resurrect this
+      // subnav entry or its retired path: customers/equipment still redirects
+      // to /customers, and the register deliberately lives outside the
+      // Customer hierarchy because it spans customers.
       { key: "customers", label: "Customers", path: "" },
     ],
+  },
+  {
+    // Equipment & Installed Asset Management -- Issue #232 unit E5.
+    //
+    // A TOP-LEVEL area, not a CRM/Sales subnav item. The retired
+    // `customers/equipment` path (redirected to /customers in App.jsx) was a
+    // placeholder under the Customer hierarchy; this is the real register and it
+    // spans customers, so it gets its own domain at /equipment. The two paths do not
+    // collide -- that redirect stays exactly as it is.
+    //
+    // No `legacyKey`: per this file's own rule, an item without one defaults to
+    // admin/dispatcher only and NOT technician. That default is exactly right here
+    // rather than incidental -- it mirrors E3's Rules (#289), where admin/dispatcher
+    // are the only principals with any Equipment authority and a technician is denied
+    // outright. A technician's self-scoped Equipment view is E17's, and nav visibility
+    // is not a security boundary in any case: Rules are.
+    key: "equipment",
+    label: "Equipment",
+    path: "equipment",
+    subnav: [{ key: "equipment", label: "Equipment", path: "" }],
   },
   {
     key: "service",

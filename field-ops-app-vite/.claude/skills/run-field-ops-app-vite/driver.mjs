@@ -372,6 +372,7 @@ import {
   WIZARD_FIXTURE,
   WO_CUSTOMER_SEARCH_FIXTURE,
   CSV_IMPORT_FIXTURE,
+  EQUIPMENT_FIXTURE,
   seedLedgerTransactions,
   db,
 } from "./seed.mjs";
@@ -4060,6 +4061,233 @@ async function verifyAccountDetailForms(browser, page, accountKey) {
 // /customers), recovery after data returns, and 375/tablet/desktop layout with no
 // overflow. Destructive empty-state setups snapshot + restore in try/finally so
 // the shared seed is never left damaged.
+// Issue #232 unit E5 -- the Equipment register (Spec §7/§9/§13).
+//
+// Proves the register in a real signed-in browser against the E4 fixtures: the
+// Account-scoped bound, search over the §7 fields, Location + status filters, the
+// "All statuses" spelling that must be null (never value=""), the live count,
+// deterministic ordering, all four §9 states kept distinct, no raw ids or provider
+// errors on screen, keyboard operability, and 375px with no horizontal page overflow.
+async function verifyEquipmentRegister(browser, page, accountKey) {
+  const F = EQUIPMENT_FIXTURE;
+  const url = (path) => { const u = new URL(path, APP_ROOT); u.searchParams.set("emulator", "1"); return u.toString(); };
+  const loadingState = () => page.locator('.fo-state-loading[role="status"]');
+  const failureState = () => page.locator('.fo-failure-state[role="alert"]');
+  const emptyState = () => page.locator(".fo-empty-state");
+  const rows = () => page.locator("[data-equipment-row]");
+  const count = () => page.locator('.fo-result-count[role="status"]');
+  const EMU = /127\.0\.0\.1:8080/;
+  let emuDelayMs = 0;
+  const delayEmu = async (route) => {
+    if (emuDelayMs) await new Promise((r) => setTimeout(r, emuDelayMs));
+    try { await route.continue(); } catch { /* route no longer owned */ }
+  };
+  // Code-SHAPED tokens only. Matching bare English words would flag our own safe copy
+  // ("temporarily unavailable" is human text, not the `unavailable` code).
+  const RAW = /permission-denied|FirebaseError|firestore\/|code:|Missing or insufficient|AIza|documents\//i;
+  const pickAccount = (name) => page.locator("#equipment-account").selectOption({ label: name });
+
+  await login(page, accountKey);
+  await page.route(EMU, delayEmu);
+
+  // ===== the Account bound: nothing is read until a customer is chosen =====
+  await page.goto(url("equipment"), { waitUntil: "domcontentloaded" });
+  await emptyState().first().waitFor({ timeout: 10000 });
+  niReport("Register: without a customer, prompts to choose one -- it does not read the whole collection",
+    /choose a customer/i.test(await emptyState().first().innerText()) && (await rows().count()) === 0);
+  niReport("Register: the choose-a-customer state is NOT an error",
+    (await failureState().count()) === 0);
+
+  // ===== loading -> populated, with the live count =====
+  emuDelayMs = 700;
+  await pickAccount("Alpha Facilities Co");
+  const sawLoading = await loadingState().first().waitFor({ timeout: 5000 }).then(() => true).catch(() => false);
+  niReport("Register: loading is a polite role=status region with human text",
+    sawLoading &&
+      (await loadingState().first().getAttribute("aria-live")) === "polite" &&
+      /loading equipment/i.test(await loadingState().first().innerText().catch(() => "")));
+  emuDelayMs = 0;
+  await rows().first().waitFor({ timeout: 15000 });
+
+  // Alpha has 6 seeded Equipment (E4): 2 duplicate-named, inactive, retired, moved, sparse.
+  const total = await rows().count();
+  niReport("Register: the Account-scoped set renders every one of that customer's records", total === 6, `saw ${total}`);
+  niReport("Register: the result count is a polite live region matching the rows",
+    (await count().getAttribute("aria-live")) === "polite" &&
+      new RegExp(`\\b${total}\\b`).test(await count().innerText()));
+
+  // ===== deterministic ordering (§7): name asc, tie-break id =====
+  const names = await page.locator("[data-equipment-row] .fo-equipment-name").allInnerTexts();
+  const sorted = [...names].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+  niReport("Register: rows are ordered by name ascending (§7)", JSON.stringify(names) === JSON.stringify(sorted),
+    JSON.stringify(names));
+
+  // ===== duplicate names are disambiguated WITHOUT exposing an id (§8) =====
+  const dupRows = page.locator("[data-equipment-row]", { has: page.locator(`.fo-equipment-name:text-is("${F.duplicateName}")`) });
+  const dupCount = await dupRows.count();
+  const dupSummaries = await dupRows.locator(".fo-equipment-summary").allInnerTexts();
+  niReport("Register: duplicate display names both render and are disambiguated by summary (§8)",
+    dupCount === 2 && dupSummaries.length === 2 && dupSummaries[0] !== dupSummaries[1]);
+  const bodyText = await page.locator("body").innerText();
+  niReport("Register: no raw document id is rendered as a reference (§8)",
+    !bodyText.includes(F.activeWithHistoryId) && !bodyText.includes(F.sparseId) && !bodyText.includes(F.alphaAccountId));
+
+  // ===== search over the §7 fields =====
+  const search = page.locator("#equipment-search");
+  await search.fill("Carrier");
+  await page.waitForFunction(() => document.querySelectorAll("[data-equipment-row]").length === 2, null, { timeout: 5000 })
+    .then(() => true).catch(() => false);
+  niReport("Register: search by manufacturer narrows the list (§7)", (await rows().count()) === 2);
+  await search.fill("SN-ALPHA-0003");
+  await page.waitForTimeout(150);
+  niReport("Register: search by serial finds exactly one (§7)", (await rows().count()) === 1);
+  await search.fill("");
+  await page.waitForTimeout(150);
+  niReport("Register: clearing the search restores the full set -- an empty term is not 'match nothing'",
+    (await rows().count()) === 6);
+
+  // ===== status filter, including the "All statuses" trap =====
+  await page.locator('.fo-filter-group[aria-label="Filter by status"]').getByRole("button", { name: "Retired", exact: true }).click();
+  await page.waitForTimeout(150);
+  niReport("Register: the Retired filter isolates the retired record", (await rows().count()) === 1);
+  const allBtn = page.locator('.fo-filter-group[aria-label="Filter by status"]').getByRole("button", { name: "All statuses", exact: true });
+  await allBtn.click();
+  await page.waitForTimeout(150);
+  // THE TRAP: if "All statuses" ever passed status:"" instead of null, searchEquipment
+  // would treat it as an explicitly supplied unknown status and return ZERO rows.
+  niReport("Register: 'All statuses' shows every record -- it passes null, never status:\"\"",
+    (await rows().count()) === 6);
+  niReport("Register: 'All statuses' is announced as pressed", (await allBtn.getAttribute("aria-pressed")) === "true");
+
+  // ===== Location filter =====
+  await page.locator("#equipment-location").selectOption({ label: "Alpha -- North Annex" });
+  await page.waitForTimeout(150);
+  const atAnnex = await rows().count();
+  niReport("Register: the Location filter bounds the list to one Location", atAnnex > 0 && atAnnex < 6, `saw ${atAnnex}`);
+  await page.locator("#equipment-location").selectOption({ value: "" });
+  await page.waitForTimeout(150);
+  niReport("Register: 'All locations' restores the full set", (await rows().count()) === 6);
+
+  // ===== filtered-empty is DISTINCT from database-empty, and is not an error =====
+  await search.fill("ZZ-NOTHING-MATCHES-THIS");
+  await emptyState().first().waitFor({ timeout: 5000 });
+  const filteredVariant = await emptyState().first().getAttribute("data-empty-variant");
+  niReport("Register: a no-match search shows the FILTERED empty state, not the database one (§9)",
+    filteredVariant === "filtered" && /no matching equipment/i.test(await emptyState().first().innerText()));
+  niReport("Register: filtered-empty is not labelled an error (§9)", (await failureState().count()) === 0);
+  niReport("Register: the count live region reports zero", /\b0\b/.test(await count().innerText()));
+
+  // Keyboard recovery from the filtered-empty state.
+  const clearBtn = emptyState().first().getByRole("button", { name: /clear filters/i });
+  await clearBtn.focus();
+  await page.keyboard.press("Enter");
+  await rows().first().waitFor({ timeout: 5000 });
+  niReport("Register: the filtered-empty recovery action is keyboard-operable (§13)", (await rows().count()) === 6);
+
+  // ===== database-empty: a customer with NO equipment (distinct from filtered) =====
+  await pickAccount("Beta Property Group");
+  await page.waitForTimeout(400);
+  // Beta HAS equipment in the fixtures, so use a throwaway customer with none.
+  const emptyAcctId = "acct-equip-register-empty";
+  await db.doc(`accounts/${emptyAcctId}`).set({ name: "Zeta Empty Co", status: "Active", relationshipTypes: ["CUSTOMER"], createdAt: Date.now(), updatedAt: Date.now() });
+  try {
+    await page.goto(url("equipment"), { waitUntil: "domcontentloaded" });
+    await pickAccount("Zeta Empty Co");
+    await emptyState().first().waitFor({ timeout: 10000 });
+    niReport("Register: a customer with no equipment shows the DATABASE empty state (§9)",
+      (await emptyState().first().getAttribute("data-empty-variant")) === "database" &&
+        /no equipment yet/i.test(await emptyState().first().innerText()));
+    niReport("Register: database-empty is not labelled an error (§9)", (await failureState().count()) === 0);
+  } finally {
+    await db.doc(`accounts/${emptyAcctId}`).delete().catch(() => {});
+  }
+
+  // ===== read-failure CONDITION: proven at the Rules layer, not by network abort =====
+  // The same approach verifySharedApplicationStates uses for the Accounts list, and for
+  // the same reason: an authorized admin session cannot reach a denied read, and a
+  // network abort does NOT trigger onSnapshot's error callback -- Firestore treats a
+  // dead socket as "offline" and retries forever, so the FailureState never renders and
+  // an abort-based assertion proves nothing. (I tried it first; it fails for exactly
+  // that reason.) permission-denied is the real trigger, so prove THAT, at the SDK
+  // level, with the exact query the register's hook issues.
+  {
+    const probeApp = initializeApp({ projectId: "taylor-parts", apiKey: "fake-key-emulator-only" }, "equip-register-rules-probe");
+    const probeAuth = getAuth(probeApp);
+    connectAuthEmulator(probeAuth, "http://127.0.0.1:9099", { disableWarnings: true });
+    const probeDb = getClientFirestore(probeApp);
+    connectFirestoreEmulator(probeDb, "127.0.0.1", 8080);
+    await signInWithEmailAndPassword(probeAuth, DRIVER_ACCOUNTS.equipmentTechAssigned.email, DRIVER_ACCOUNTS.equipmentTechAssigned.password);
+    const res = await new Promise((resolve) => {
+      // Byte-for-byte the query useEquipmentForAccount() issues.
+      const unsub = onSnapshot(
+        query(collection(probeDb, "equipment"), where("accountId", "==", F.alphaAccountId)),
+        () => { unsub(); resolve({ denied: false }); },
+        (err) => { unsub(); resolve({ denied: err.code === "permission-denied" }); }
+      );
+      setTimeout(() => resolve({ denied: null }), 8000);
+    });
+    await deleteApp(probeApp).catch(() => {});
+    niReport("Register load-failure: a non-authorized read is denied at the Rules layer (the FailureState trigger)",
+      res.denied === true, `denied=${res.denied}`);
+  }
+
+  // ===== a technician cannot reach the register at all (nav + route, fail-closed) =====
+  // Nav visibility is not a security boundary -- Rules are (proven just above) -- but
+  // the two must agree: E3 denies a technician every Equipment read, so the route must
+  // not mount and mount listeners that can only fail.
+  {
+    const techContext = await browser.newContext();
+    const techPage = await techContext.newPage();
+    try {
+      await login(techPage, "equipmentTechAssigned");
+      await techPage.goto(url("equipment"), { waitUntil: "domcontentloaded" });
+      await techPage.waitForTimeout(1200);
+      const techBody = await techPage.locator("body").innerText();
+      niReport("Register: a technician navigating directly to /equipment does not get the register",
+        (await techPage.locator("[data-equipment-row]").count()) === 0 &&
+          (await techPage.locator("#equipment-account").count()) === 0);
+      niReport("Register: the technician's direct-URL denial leaks no provider error",
+        !RAW.test(techBody));
+    } finally {
+      await techPage.close().catch(() => {});
+      await techContext.close().catch(() => {});
+    }
+  }
+
+  // ===== 375px: no HORIZONTAL PAGE overflow (§13) =====
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto(url("equipment"), { waitUntil: "domcontentloaded" });
+  await pickAccount("Alpha Facilities Co");
+  await rows().first().waitFor({ timeout: 15000 });
+  // Scoped to the register's own section: the app's global .fo-nav is a known,
+  // pre-existing 966px-wide element and is not this unit's to fix.
+  const overflow = await page.evaluate(() => {
+    const el = document.querySelector(".fo-equipment-register");
+    return el ? { scroll: el.scrollWidth, client: document.documentElement.clientWidth } : null;
+  });
+  niReport("Register: at 375px the register does not overflow the viewport horizontally (§13)",
+    overflow !== null && overflow.scroll <= overflow.client + 1, JSON.stringify(overflow));
+  await page.setViewportSize({ width: 1280, height: 800 });
+
+  // ===== keyboard: the controls are reachable and operable (§13) =====
+  await page.goto(url("equipment"), { waitUntil: "domcontentloaded" });
+  await pickAccount("Alpha Facilities Co");
+  await rows().first().waitFor({ timeout: 15000 });
+  await search.focus();
+  await page.keyboard.type("Carrier");
+  await page.waitForTimeout(200);
+  niReport("Register: the search field is keyboard-operable (§13)", (await rows().count()) === 2);
+  const retiredBtn = page.locator('.fo-filter-group[aria-label="Filter by status"]').getByRole("button", { name: "Retired", exact: true });
+  await retiredBtn.focus();
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(200);
+  niReport("Register: a status filter chip is keyboard-operable and announces pressed state (§13)",
+    (await retiredBtn.getAttribute("aria-pressed")) === "true");
+
+  await page.screenshot({ path: join(SCREENSHOT_DIR, "equipment-register.png"), fullPage: true });
+  return niFailed === 0;
+}
+
 async function verifySharedApplicationStates(browser, page, accountKey) {
   const F = COMMERCIAL_PROFILE_FIXTURE;
   const url = (path) => { const u = new URL(path, APP_ROOT); u.searchParams.set("emulator", "1"); return u.toString(); };
@@ -5538,6 +5766,10 @@ async function main() {
     } else if (command === "verify-account-detail-forms") {
       const [accountKey = "admin"] = args;
       const ok = await verifyAccountDetailForms(browser, page, accountKey);
+      if (!ok) process.exitCode = 1;
+    } else if (command === "verify-equipment-register") {
+      const [accountKey = "admin"] = args;
+      const ok = await verifyEquipmentRegister(browser, page, accountKey);
       if (!ok) process.exitCode = 1;
     } else if (command === "verify-shared-application-states") {
       const [accountKey = "admin"] = args;
