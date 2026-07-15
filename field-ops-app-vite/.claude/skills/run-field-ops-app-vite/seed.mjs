@@ -1301,12 +1301,6 @@ async function seedIssue100RoleFixtures() {
   });
 }
 
-// Inventory Health / Parts Catalog separation (PR B) -- exported so
-// driver.mjs can delete/restore inventory_transactions documents
-// directly (Admin SDK, emulator-only) for the empty-state assertions
-// above. Not used for any other purpose -- every other driver.mjs
-// interaction with the app goes through the real signed-in browser
-// session, never this direct Admin SDK handle.
 // ============================================================================
 // Issue #232 unit E4 -- Equipment & Installed Asset Management fixtures.
 //
@@ -1355,7 +1349,10 @@ export const EQUIPMENT_FIXTURE = {
   historyWorkOrderIds: ["equip-wo-rtu1-newest", "equip-wo-rtu1-middle", "equip-wo-rtu1-oldest"],
   movedWorkOrderIds: ["equip-wo-moved-after", "equip-wo-moved-before"],
   unassignedTechWorkOrderId: "equip-wo-unassigned-tech",  // real WO, links to NO Equipment
-  betaWorkOrderId: "equip-wo-beta",
+  betaWorkOrderId: "equip-wo-beta",                       // real WO at the other tenant, links NO Equipment
+  // The exact calendar years E16's Service History grouping must render for
+  // activeWithHistoryId, newest first. Pinned, so this never depends on today's date.
+  historyYears: [2026, 2025, 2024],
 
   // --- operations later tests must see DENIED (never written here) ----------
   attempts: {
@@ -1391,6 +1388,20 @@ export const EQUIPMENT_FIXTURE = {
     crossTenantRead: { equipmentId: "equip-beta-rtu-1" },
   },
 };
+
+// Absolute Work Order dates for the Equipment fixtures (see seedEquipmentFixture's
+// Work Order block for why these are not offsets from now). Chosen to sit mid-year so
+// no timezone interpretation can push one across a year boundary.
+const EQUIPMENT_WO_DATES = {
+  rtu1Newest: Date.UTC(2026, 5, 10, 15, 0, 0),   // 2026-06-10
+  rtu1Middle: Date.UTC(2025, 5, 12, 15, 0, 0),   // 2025-06-12
+  rtu1Oldest: Date.UTC(2024, 5, 14, 15, 0, 0),   // 2024-06-14
+  movedAfter: Date.UTC(2026, 4, 20, 15, 0, 0),   // 2026-05-20, at its CURRENT Location
+  movedBefore: Date.UTC(2025, 4, 22, 15, 0, 0),  // 2025-05-22, at its PREVIOUS Location
+  unassignedTechWo: Date.UTC(2026, 5, 1, 15, 0, 0),
+  betaWo: Date.UTC(2026, 5, 5, 15, 0, 0),
+};
+const BETA_WO_AT = EQUIPMENT_WO_DATES.betaWo;
 
 async function seedEquipmentFixture() {
   const F = EQUIPMENT_FIXTURE;
@@ -1501,6 +1512,13 @@ async function seedEquipmentFixture() {
   // -- Technician personas ---------------------------------------------------
   // users/{uid}.technicianId is what fieldops_wos' isOwnTechnician() reads; the
   // fieldops_technicians document is the directory entry the app resolves names from.
+  // The directory document is name/phone/STATUS (constants.js TECH_STATUS), which is
+  // what useCurrentTechnician, TechnicianDashboard's badge and Dispatch's
+  // recommendation scoring actually read. A truthy `active` flag would be a phantom
+  // field no code consults: the badge would render "Unknown" and the recommender
+  // would score them on a fabricated neutral availability. These are the first
+  // fieldops_technicians documents the seed writes, so an off-schema shape here would
+  // become the example everyone copies.
   for (const [acct, technicianId, displayName] of [
     [DRIVER_ACCOUNTS.equipmentTechAssigned, F.assignedTechnicianId, "Equip Assigned Tech"],
     [DRIVER_ACCOUNTS.equipmentTechUnassigned, F.unassignedTechnicianId, "Equip Unassigned Tech"],
@@ -1508,23 +1526,29 @@ async function seedEquipmentFixture() {
     await db.doc(`users/${acct.uid}`).set({ role: "technician", technicianId });
     await db.doc(`fieldops_technicians/${technicianId}`).set({
       name: displayName,
-      active: true,
+      phone: "555-0100",
+      status: "available", // TECH_STATUS.AVAILABLE -- literal, as this file imports no src module
       createdAt: now,
       updatedAt: now,
     });
   }
 
   // -- Work Orders linking to Equipment --------------------------------------
-  // Newest first by createdAt, so equipmentServiceHistory()'s ordering is pinned.
+  // Dates are ABSOLUTE, not offsets from now. Service History is grouped BY YEAR
+  // (§10, rendered by E16), and relative offsets make the BUCKETS wall-clock
+  // dependent even though the ordering stays fixed: 30d/200d/2y ago spans three
+  // calendar years today and only two a few days from now, so a test asserting three
+  // year headings would start failing on a date with no code change. Fixed dates give
+  // three stable years (2026 / 2025 / 2024) and a stable newest-first order forever.
   const [newest, middle, oldest] = F.historyWorkOrderIds;
   const linked = [
-    { id: newest, equipmentId: F.activeWithHistoryId, locationId: F.alphaLocation1Id, status: "COMPLETED", type: "SERVICE_CALL", woNumber: "WO-EQ-001", age: 30 * _DAY },
-    { id: middle, equipmentId: F.activeWithHistoryId, locationId: F.alphaLocation1Id, status: "COMPLETED", type: "PM", woNumber: "WO-EQ-002", age: 200 * _DAY },
-    { id: oldest, equipmentId: F.activeWithHistoryId, locationId: F.alphaLocation1Id, status: "CANCELLED", type: "SERVICE_CALL", woNumber: "WO-EQ-003", age: 2 * _YEAR },
+    { id: newest, equipmentId: F.activeWithHistoryId, locationId: F.alphaLocation1Id, status: "COMPLETED", type: "SERVICE_CALL", woNumber: "WO-EQ-001", at: EQUIPMENT_WO_DATES.rtu1Newest },
+    { id: middle, equipmentId: F.activeWithHistoryId, locationId: F.alphaLocation1Id, status: "COMPLETED", type: "PM", woNumber: "WO-EQ-002", at: EQUIPMENT_WO_DATES.rtu1Middle },
+    { id: oldest, equipmentId: F.activeWithHistoryId, locationId: F.alphaLocation1Id, status: "CANCELLED", type: "SERVICE_CALL", woNumber: "WO-EQ-003", at: EQUIPMENT_WO_DATES.rtu1Oldest },
     // The moved unit: the newer WO is at its CURRENT Location, the older at its
     // previous one -- history that legitimately spans Locations.
-    { id: F.movedWorkOrderIds[0], equipmentId: F.movedId, locationId: F.alphaLocation2Id, status: "COMPLETED", type: "PM", woNumber: "WO-EQ-004", age: 10 * _DAY },
-    { id: F.movedWorkOrderIds[1], equipmentId: F.movedId, locationId: F.alphaLocation1Id, status: "COMPLETED", type: "SERVICE_CALL", woNumber: "WO-EQ-005", age: 1 * _YEAR },
+    { id: F.movedWorkOrderIds[0], equipmentId: F.movedId, locationId: F.alphaLocation2Id, status: "COMPLETED", type: "PM", woNumber: "WO-EQ-004", at: EQUIPMENT_WO_DATES.movedAfter },
+    { id: F.movedWorkOrderIds[1], equipmentId: F.movedId, locationId: F.alphaLocation1Id, status: "COMPLETED", type: "SERVICE_CALL", woNumber: "WO-EQ-005", at: EQUIPMENT_WO_DATES.movedBefore },
   ];
 
   for (const wo of linked) {
@@ -1537,8 +1561,8 @@ async function seedEquipmentFixture() {
       assignedTechId: F.assignedTechnicianId,
       priority: 3,
       type: wo.type,
-      createdAt: new Date(now - wo.age),
-      updatedAt: new Date(now - wo.age),
+      createdAt: new Date(wo.at),
+      updatedAt: new Date(wo.at),
     });
   }
 
@@ -1553,27 +1577,43 @@ async function seedEquipmentFixture() {
     assignedTechId: F.unassignedTechnicianId,
     priority: 3,
     type: "SERVICE_CALL",
-    createdAt: new Date(now - _DAY),
-    updatedAt: new Date(now - _DAY),
+    createdAt: new Date(EQUIPMENT_WO_DATES.unassignedTechWo),
+    updatedAt: new Date(EQUIPMENT_WO_DATES.unassignedTechWo),
   });
 
-  // The other tenant's Work Order, assigned to the SAME technician as alpha's work:
-  // proves cross-Account Equipment denial cannot be satisfied merely by holding some
-  // assignment somewhere.
+  // The other tenant's Work Order, assigned to the SAME technician as alpha's work,
+  // deliberately linking NO Equipment.
+  //
+  // It must not link betaEquipmentId. Technician self-scope (§10) is reachability
+  // through their OWN assigned Work Orders -- so a WO that both links that Equipment
+  // AND is assigned to this technician would make it legitimately readable, and
+  // `attempts.crossTenantRead` would then be asserting a denial the Specification
+  // does not call for. (An earlier revision did exactly that: linkage is SPECIFIC,
+  // not ambient, so linking the beta WO to the denial target is what would grant the
+  // access it was meant to disprove.)
+  //
+  // As written it proves the intended thing: this technician holds real work at the
+  // beta tenant, and still cannot reach beta's Equipment -- because no assignment of
+  // theirs links it. Ambient presence at a tenant is not access to its register.
   await db.doc(`fieldops_wos/${F.betaWorkOrderId}`).set({
     woNumber: "WO-EQ-007",
     status: "COMPLETED",
     customerId: F.betaAccountId,
     locationId: F.betaLocation1Id,
-    equipmentId: F.betaEquipmentId,
     assignedTechId: F.assignedTechnicianId,
     priority: 3,
     type: "SERVICE_CALL",
-    createdAt: new Date(now - 5 * _DAY),
-    updatedAt: new Date(now - 5 * _DAY),
+    createdAt: new Date(BETA_WO_AT),
+    updatedAt: new Date(BETA_WO_AT),
   });
 }
 
+// Inventory Health / Parts Catalog separation (PR B) -- exported so
+// driver.mjs can delete/restore inventory_transactions documents
+// directly (Admin SDK, emulator-only) for the empty-state assertions
+// above. Not used for any other purpose -- every other driver.mjs
+// interaction with the app goes through the real signed-in browser
+// session, never this direct Admin SDK handle.
 export { db };
 
 // Customer Results Dashboard -- seeds DASHBOARD_FIXTURE's four accounts (one per
