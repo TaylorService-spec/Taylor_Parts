@@ -1133,6 +1133,101 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Equipment & Installed Asset Management -- Issue #232 unit E3
+    // (docs/specifications/equipment-and-installed-asset-management.md,
+    // docs/architecture/ADR-006-...). Client-direct create/ordinary-edit only;
+    // move/retire/reactivate are trusted-writer actions gated on Issue #15 and are
+    // NOT reachable from here.
+    //
+    // AUTHORITY (Spec §10 "Seed compatibility"): admin/dispatcher -> full Equipment
+    // surface. Nothing else. In particular:
+    //
+    //  * operationalRoles are NEVER consulted. They express work eligibility, not
+    //    security authority -- an Employee holding PARTS_MANAGER gets no Equipment
+    //    authority from it, and this block deliberately contains no
+    //    isActiveOperationalRole() call.
+    //  * TECHNICIANS ARE DENIED HERE, deliberately. Spec §10 restricts a technician
+    //    to Equipment reachable through their OWN assigned Work Orders -- but Rules
+    //    cannot express that: it requires QUERYING fieldops_wos for an assignment
+    //    naming this equipment, and Rules can only get()/exists() a KNOWN path. The
+    //    Work Order id is not derivable from the equipment id. Granting technicians a
+    //    plain read to satisfy §10 early would hand every technician the entire
+    //    register -- exactly the "general Equipment-register authority" §10 forbids.
+    //    The self-scoped mechanism is E17's, which depends on E3 and carries its own
+    //    security review. Denying now is the fail-closed direction: E17 can open a
+    //    precise door, whereas an over-broad grant shipped here would have to be
+    //    taken back after technicians already had it.
+    function equipmentWritableKeys() {
+      return [
+        "accountId", "locationId", "name", "status",
+        "manufacturer", "model", "serialNumber", "assetTag",
+        "installedDate", "warrantyExpiresDate", "notes",
+        "createdAt", "updatedAt",
+      ];
+    }
+
+    // Spec §6: an ordinary edit may touch descriptive fields only. accountId and
+    // locationId are ownership (a Location change is the audited MOVE, §5), status is
+    // a lifecycle action (§5), and createdAt is immutable -- none may be edited here.
+    function equipmentEditableKeys() {
+      return [
+        "name", "manufacturer", "model", "serialNumber", "assetTag",
+        "installedDate", "warrantyExpiresDate", "notes", "updatedAt",
+      ];
+    }
+
+    // Spec §4: the Location must belong to the owning Account. Read the Location and
+    // compare -- a missing Location makes exists() false and the write is denied, so a
+    // dangling or cross-Account reference fails closed rather than being taken on
+    // trust from the client.
+    function equipmentLocationBelongsToAccount(data) {
+      return data.locationId is string
+        && data.accountId is string
+        && exists(/databases/$(database)/documents/locations/$(data.locationId))
+        && get(/databases/$(database)/documents/locations/$(data.locationId)).data.accountId == data.accountId;
+    }
+
+    function equipmentCreateShapeValid(data) {
+      // hasOnly is the anti-injection guard: any key not on this list -- movedBy,
+      // retiredAt, auditEventId, a permissions blob, anything invented -- denies the
+      // whole write. An allow-list fails closed for fields nobody has thought of yet;
+      // a deny-list would not.
+      return data.keys().hasOnly(equipmentWritableKeys())
+        && data.keys().hasAll(["accountId", "locationId", "name", "status", "createdAt", "updatedAt"])
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 200
+        // Spec §2: status defaults ACTIVE on create. Reaching RETIRED/INACTIVE is a
+        // lifecycle transition owned by the trusted, audited writer (§5), so create
+        // must not be usable as a side door into a non-ACTIVE state.
+        && data.status == "ACTIVE"
+        && data.createdAt is number
+        && data.updatedAt is number;
+    }
+
+    match /equipment/{equipmentId} {
+      allow read: if isAdminOrDispatcher();
+
+      allow create: if isAdminOrDispatcher()
+        && equipmentCreateShapeValid(request.resource.data)
+        && equipmentLocationBelongsToAccount(request.resource.data);
+
+      // Ordinary edit. affectedKeys().hasOnly(...) is doing the governance work: it
+      // denies ANY change to accountId/locationId/status/createdAt and simultaneously
+      // denies adding any trusted/audit field -- both are simply keys absent from the
+      // editable list. E2's client guard enforces the same contract independently;
+      // this is the authoritative one.
+      allow update: if isAdminOrDispatcher()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(equipmentEditableKeys())
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 200
+        && request.resource.data.updatedAt is number;
+
+      // Never, for anyone, including admin (Spec §11). Equipment is retired via the
+      // trusted writer, never deleted -- Service History (§10) is derived from Work
+      // Orders that reference it, so a delete would silently orphan real history.
+      allow delete: if false;
+    }
+
     match /contacts/{contactId} {
       allow read: if isAdminOrDispatcher();
       allow create, update: if isAdminOrDispatcher();
