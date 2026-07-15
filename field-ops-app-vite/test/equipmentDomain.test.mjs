@@ -237,6 +237,23 @@ ok("a malformed options argument returns NOTHING, never everything", () => {
   }
 });
 
+ok("an UNRECOGNIZED option key returns nothing -- the same trap, one level down", () => {
+  // Guarding only the argument would have relocated the defect rather than closed it:
+  // `{search: q}` also destructures to all-defaults and used to return the whole
+  // register -- a likelier slip than the bare string, and just as silent.
+  for (const bad of [
+    { search: "rtu" },        // the obvious wrong name
+    { query: "rtu" },
+    { location: "l2" },       // near-miss on locationId
+    { statuses: ["ACTIVE"] }, // near-miss on status
+    { Term: "rtu" },          // casing slip
+    { term: "rtu", extra: 1 },// a valid key alongside an unknown one
+    { length: 2 },            // array-like that passes a plain-object check
+  ]) {
+    assert.deepEqual(searchEquipment(FIXTURE, bad), [], `unknown key in ${JSON.stringify(bad)} must return no results`);
+  }
+});
+
 ok("a malformed FIELD inside a valid options object returns nothing", () => {
   for (const [label, opts] of [
     ["term: number", { term: 42 }],
@@ -321,6 +338,11 @@ ok("groupServiceHistoryByYear rejects malformed input instead of fabricating his
   ]);
   assert.deepEqual(groups.map((g) => g.year), [2026, "Unknown"]);
   assert.deepEqual(groups[1].entries.map((e) => e.workOrderId), ["b", "c", "d", "e"], "0/null/NaN/out-of-range all Unknown");
+
+  // A NEGATIVE at is a real pre-1970 date, not malformed -- it must still group by its
+  // year. The hardening must not quietly relabel real history as Unknown.
+  const old = groupServiceHistoryByYear([{ workOrderId: "old", at: Date.UTC(1965, 5, 15, 12) }]);
+  assert.deepEqual(old.map((g) => g.year), [1965], "pre-1970 history groups by its real year, not Unknown");
 });
 
 // ---- E2: create payload ---------------------------------------------------
