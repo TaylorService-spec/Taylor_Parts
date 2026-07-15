@@ -138,10 +138,26 @@ function assertValidCommand(args) {
   return args.command;
 }
 
-// --- Deterministic identity: --idempotencyKey is always required, never generated. ---
+// --- Deterministic identity: --idempotencyKey is always required, never
+// generated. Charset is constrained here, BEFORE this value is ever used
+// as a filename component (intentFilePath()) -- independent review
+// finding: without this, an idempotencyKey like "../../../tmp/evil"
+// would path-traverse out of the intent directory and write/overwrite an
+// arbitrary file with mode 0o600. This mirrors trustedWriterCommands.ts's
+// own assertValidIdempotencyKey (8-200 chars, [A-Za-z0-9_-] only) -- the
+// SAME constraint enforced at BOTH the operator-script boundary (before
+// any local filesystem use) and the trusted-writer boundary (before any
+// Firestore document id use), neither trusting the other layer alone. ---
 function assertIdempotencyKey(args) {
-  if (!args.idempotencyKey || typeof args.idempotencyKey !== "string") {
-    throw new Error("--idempotencyKey is required (supply your own deterministic value -- never auto-generated).");
+  if (
+    typeof args.idempotencyKey !== "string" ||
+    args.idempotencyKey.length < 8 ||
+    args.idempotencyKey.length > 200 ||
+    !/^[A-Za-z0-9_-]+$/.test(args.idempotencyKey)
+  ) {
+    throw new Error(
+      "--idempotencyKey is required and must be an 8-200 character string of letters, digits, underscore, or hyphen (supply your own deterministic value -- never auto-generated)."
+    );
   }
   return args.idempotencyKey;
 }
@@ -357,6 +373,21 @@ async function main() {
         "setUserStatus|approveAccessRequest|rejectAccessRequest> --idempotencyKey <key> [--execute] " +
         "[command-specific args...]"
     );
+    process.exitCode = 1;
+    return;
+  }
+
+  // Independent review finding: the Owner-authorization guard must fire
+  // before ANY Firebase SDK call, not merely before the mutating
+  // execution path -- checked here, before initializeApp(), matching
+  // assertProjectTarget()'s own placement immediately above and this
+  // repo's established convention (provisionEmployeeAccess.js's
+  // --requireExistingAuthUser guard is checked in this exact same spot,
+  // for the exact same reason).
+  try {
+    assertOwnerAuthorized(args);
+  } catch (err) {
+    console.error(err.message);
     process.exitCode = 1;
     return;
   }

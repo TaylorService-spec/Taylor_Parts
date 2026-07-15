@@ -14,6 +14,7 @@ const {
   buildScope,
   runOperatorAccessCommand,
   redactForLogging,
+  intentFilePath,
   PRODUCTION_PROJECT_ID,
   OWNER_AUTHORIZATION_PHRASE,
   VALID_COMMANDS,
@@ -84,6 +85,21 @@ test("assertIdempotencyKey: is always required, never generated", () => {
   assert.equal(assertIdempotencyKey({ idempotencyKey: "operator-key-1" }), "operator-key-1");
 });
 
+test("assertIdempotencyKey: rejects a path-traversal-shaped key (independent review finding -- this value is used as a local filename)", () => {
+  assert.throws(
+    () => assertIdempotencyKey({ idempotencyKey: "../../../../tmp/evil" }),
+    /--idempotencyKey is required/
+  );
+  assert.throws(() => assertIdempotencyKey({ idempotencyKey: "key/with/slashes" }), /--idempotencyKey is required/);
+  assert.throws(() => assertIdempotencyKey({ idempotencyKey: "short" }), /--idempotencyKey is required/);
+});
+
+test("intentFilePath: a valid idempotencyKey never resolves outside the intent directory", () => {
+  const intentDir = path.join(os.tmpdir(), "operator-access-traversal-check");
+  const resolved = path.resolve(intentFilePath(intentDir, "a-valid-key-12345"));
+  assert.ok(resolved.startsWith(path.resolve(intentDir)));
+});
+
 test("buildScope: requires --scopeType and carries --scopeValue when present", () => {
   assert.throws(() => buildScope({}), /--scopeType is required/);
   assert.deepEqual(buildScope({ scopeType: "global" }), { type: "global" });
@@ -99,7 +115,7 @@ test("buildCommandInput: grantRole assembles the exact trustedWriterCommands.gra
     principalUid: "principal-1",
     roleId: "technician",
     scopeType: "global",
-    idempotencyKey: "key-1",
+    idempotencyKey: "operator-key-01",
   });
   assert.deepEqual(input, {
     actorUid: "actor-1",
@@ -107,7 +123,7 @@ test("buildCommandInput: grantRole assembles the exact trustedWriterCommands.gra
     roleId: "technician",
     scope: { type: "global" },
     approverUid: undefined,
-    idempotencyKey: "key-1",
+    idempotencyKey: "operator-key-01",
   });
 });
 
@@ -116,13 +132,13 @@ test("buildCommandInput: setUserStatus assembles the exact input shape", () => {
     actorUid: "actor-1",
     principalUid: "principal-1",
     status: "disabled",
-    idempotencyKey: "key-2",
+    idempotencyKey: "operator-key-02",
   });
   assert.deepEqual(input, {
     actorUid: "actor-1",
     principalUid: "principal-1",
     status: "disabled",
-    idempotencyKey: "key-2",
+    idempotencyKey: "operator-key-02",
   });
 });
 
@@ -132,7 +148,7 @@ test("buildCommandInput: rejectAccessRequest requires --reason", () => {
       buildCommandInput("rejectAccessRequest", {
         actorUid: "actor-1",
         requestId: "request-1",
-        idempotencyKey: "key-3",
+        idempotencyKey: "operator-key-03",
       }),
     /--reason is required/
   );
@@ -144,7 +160,7 @@ test("redactForLogging: only ever echoes the fixed allowlist of command-input fi
     principalUid: "principal-1",
     roleId: "technician",
     scope: { type: "global" },
-    idempotencyKey: "key-1",
+    idempotencyKey: "operator-key-01",
     // Deliberately simulating a field that must NEVER be echoed even if
     // it somehow appeared on the input object -- proves the allowlist,
     // not a denylist, is what protects credential/token material.
