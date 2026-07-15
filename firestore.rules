@@ -276,6 +276,29 @@ service cloud.firestore {
     // functions/scripts/provisionEmployeeAccess.js (Admin SDK, bypasses
     // these rules by design). Employee Administration UI is explicitly
     // out of scope for this phase; do not loosen this to add one.
+    // Issue #100 PR 1b -- a third, narrowly-scoped read path, added
+    // during PR 1b's own implementation (not anticipated by PR 1a):
+    // EmployeeAssignmentPicker/useAssignableEmployees({ requiredOperationalRole:
+    // PARTS_ASSOCIATE }) issues a COLLECTION-LEVEL query, which path (B)
+    // above cannot satisfy (it only permits a single-document self-read).
+    // Confirmed live: without this branch, an ACTIVE, reciprocally
+    // linked PARTS_MANAGER technician's Assign picker fails outright
+    // ("Unable to load employees.") -- the Specification's "reuses
+    // EmployeeAssignmentPicker/useAssignableEmployees... verbatim -- no
+    // change" assumed this read path already existed for a technician
+    // caller; it did not. This grant is deliberately as narrow as the
+    // query it exists to satisfy: gated on
+    // isActiveOperationalRole("PARTS_MANAGER") (never a bare technician
+    // role) AND restricted, per-document, to exactly the documents whose
+    // own operationalRoles already contains "PARTS_ASSOCIATE" -- the
+    // same population useAssignableEmployees()'s own client-side query
+    // already targets. A PARTS_MANAGER can never read an arbitrary
+    // Employee document through this branch (e.g. another PARTS_MANAGER's
+    // or an admin's own record) -- this is NOT the "Employee
+    // Administration UI" the comment above (path A/B) warns against
+    // loosening for; it is a single-purpose, read-only, PARTS_ASSOCIATE-
+    // scoped assignment-candidate lookup, matching this initiative's
+    // existing least-privilege posture for every other new grant.
     match /employees/{employeeId} {
       // Issue #100 (PR 1b dependency): a PARTS_MANAGER's assignment picker
       // (useAssignableEmployees({ requiredOperationalRole: PARTS_ASSOCIATE }))
@@ -295,6 +318,7 @@ service cloud.firestore {
         || (isSignedIn() && userData().employeeId == employeeId)
         || (isActiveOperationalRole("PARTS_MANAGER")
             && resource.data.employmentStatus == "ACTIVE"
+            && resource.data.operationalRoles is list
             && resource.data.operationalRoles.hasAny(["PARTS_ASSOCIATE"])
             && resource.data.get("userId", null) != null);
       allow create, update, delete: if false;
