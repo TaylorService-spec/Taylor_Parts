@@ -1138,5 +1138,45 @@ service cloud.firestore {
       allow create, update: if isAdminOrDispatcher();
       allow delete: if false;
     }
+
+    // Enterprise Access & Administration Platform (Issue #226) --
+    // governed-storage foundation (docs/specifications/
+    // enterprise-access-and-administration-platform.md sec5,
+    // docs/implementation-plans/enterprise-access-and-administration-
+    // platform.md Row 3 / Task 8). These five collections back the
+    // Permission/Role/RoleAssignment/AccessRequest/AuditEvent contracts.
+    // Nothing in the app reads or writes them yet -- no Rule, Function,
+    // or route is wired to them (that is later, separately-authorized
+    // work: the trusted-writer commands of Row 7, gated on Issue #15,
+    // and the Admin Portal reads of Rows 10-12). Every one of these is
+    // closed to ALL client access, for every principal including admin,
+    // matching the Specification's explicit hard prohibitions: "no
+    // client-direct permission administration" (sec3), Permission/Role
+    // definitions are "not client-editable" (sec5.1/5.2), Role
+    // assignment is "no client-direct write, ever" (sec5.3), Access
+    // Request is "never client-direct" (sec5.7), and Audit Events are
+    // "written only by a trusted writer" (sec5.8/sec14). This is
+    // strictly additive -- it creates no new read/write surface for any
+    // existing admin/dispatcher/technician/operational-role behavior,
+    // and changes no currently-enforced Rule.
+    match /permissions/{permissionId} {
+      allow read, write: if false;
+    }
+
+    match /roles/{roleId} {
+      allow read, write: if false;
+    }
+
+    match /roleAssignments/{assignmentId} {
+      allow read, write: if false;
+    }
+
+    match /accessRequests/{requestId} {
+      allow read, write: if false;
+    }
+
+    match /auditEvents/{eventId} {
+      allow read, write: if false;
+    }
   }
 }
