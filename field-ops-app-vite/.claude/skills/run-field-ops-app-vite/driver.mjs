@@ -4206,6 +4206,16 @@ async function verifyWorkflowConfirmations(browser, page, accountKey) {
   const CVCOPY = "This action does not delete history. The record will remain visible for audit purposes.";
   const RAW = /permission-denied|invalid-argument|unavailable|functions\/|firestore\/|FirebaseError|HttpsError|code:|documents\//i;
   const woStatus = async (id) => (await db.collection("fieldops_wos").doc(id).get()).data()?.status;
+  // Poll for the transition -- the Cloud Function's FIRST call on a cold Functions
+  // emulator can take several seconds, so a fixed wait is flaky.
+  const waitForWoStatus = async (id, expected, timeoutMs = 20000) => {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      if ((await woStatus(id)) === expected) return true;
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    return (await woStatus(id)) === expected;
+  };
   const rrStatus = async (id) => (await db.collection("reorder_requests").doc(id).get()).data()?.status;
   const makeWo = async (id) => db.collection("fieldops_wos").doc(id).set({
     woNumber: `WO-CONF-${id.slice(-4)}`, status: "CREATED", customerId: "acct-cp-edit", locationId: "sa-loc-1",
