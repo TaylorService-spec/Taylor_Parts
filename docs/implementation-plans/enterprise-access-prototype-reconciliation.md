@@ -19,11 +19,13 @@ target_release: TBD
 
 **This record authorizes no implementation.** It is documentation only -- no route, component, Rule, Function, schema, or nav-config change is made by this PR. Rows 10-12 remain separately-authorized units of work that consume this mapping.
 
-## 1. What "the prototype" actually is (verified against current `main`)
+## 1. What "the prototype" actually is (verified against current `origin/main`, correcting a review-caught error)
 
-Before mapping anything, the actual current state was verified directly (not assumed from an earlier, less precise description): the `Administration` nav domain (`field-ops-app-vite/src/navigation/navConfig.js`) declares eight sub-items. Two are real, built screens; the other six render the shared generic `PlaceholderPage` component (`field-ops-app-vite/src/App.jsx`'s `renderSubnavItem()`). There is no separate, richer "Admin dashboard prototype" with its own mock data store beyond this -- the Administration domain's real content today is exactly these eight nav slots and the two built screens behind two of them.
+Before mapping anything, the actual current state was verified directly against `origin/main`'s committed history (not a local working directory, and not assumed from an earlier, less precise description). An initial draft of this record incorrectly treated `field-ops-app-vite/src/modules/administration/IntegrationsFaq.jsx` as a real, shipped screen -- independent review caught that this file exists ONLY as an untracked, uncommitted file sitting in a local working copy; `git log --all` shows it was never added in any commit, and `App.jsx`'s `renderSubnavItem()` has no case for it and `navConfig.js`'s `integrations` item carries no `legacyKey`, so on `origin/main` it falls through to the generic `PlaceholderPage` exactly like every other unbuilt slot. That stray file is someone else's uncommitted, unreviewed work-in-progress sitting in a shared working directory -- this record does not treat it as authoritative, does not build on its content, and flags its existence here only so a future contributor isn't confused by finding it on disk.
 
-| Nav slot (`navConfig.js` key) | Label | Current implementation |
+The `Administration` nav domain (`field-ops-app-vite/src/navigation/navConfig.js`) declares eight sub-items. Exactly **one** (`employees`) is a real, built screen; the other **seven** render the shared generic `PlaceholderPage` component (`field-ops-app-vite/src/App.jsx`'s `renderSubnavItem()`) on `origin/main` today. There is no separate, richer "Admin dashboard prototype" with its own mock data store -- the Administration domain's real content today is exactly these eight nav slots and the one built screen behind one of them.
+
+| Nav slot (`navConfig.js` key) | Label | Current implementation on `origin/main` |
 |---|---|---|
 | `employees` | Employees | Real, built screen (pre-existing Technicians/Employee directory feature, `legacyKey: "technicians"`) |
 | `users` | Users | Generic `PlaceholderPage` |
@@ -31,17 +33,17 @@ Before mapping anything, the actual current state was verified directly (not ass
 | `vehicles` | Vehicles | Generic `PlaceholderPage` |
 | `regions` | Regions | Generic `PlaceholderPage` |
 | `companySettings` | Company Settings | Generic `PlaceholderPage` |
-| `integrations` | Integrations | Real, built screen (`IntegrationsFaq.jsx` -- an informational FAQ/readiness-checklist page for connecting Field Ops to external company infrastructure, e.g. ERP/CRM/BI; unrelated to Role/Permission administration) |
+| `integrations` | Integrations | Generic `PlaceholderPage` (an uncommitted, untracked `IntegrationsFaq.jsx` exists in at least one local working copy but is not part of `origin/main` and is not treated as real by this record) |
 | `auditLogs` | Audit Logs | Generic `PlaceholderPage` |
 
-No mock data, no fixture store, and no prototype-only schema exist behind any of the six placeholder slots today -- `PlaceholderPage` renders only a title and a static note. This significantly narrows Row 9's actual scope relative to a hypothetical richer prototype: there is nothing to extract mock data FROM for `users`/`rolesPermissions`/`auditLogs`, because none exists yet.
+No mock data, no fixture store, and no prototype-only schema exist behind any of the seven placeholder slots today -- `PlaceholderPage` renders only a title and a static note. This significantly narrows Row 9's actual scope relative to a hypothetical richer prototype: there is nothing to extract mock data FROM for `users`/`rolesPermissions`/`auditLogs`/`integrations`, because none exists yet in the committed codebase.
 
 ## 2. Adopt / Adapt / Defer / Reject mapping
 
 | Nav slot | Disposition | Reasoning |
 |---|---|---|
 | **`employees`** | **Reject (out of scope for #226)** | A pre-existing, already-governed Employee/workforce-identity feature (Issue #100's own operational-role model, `docs/BusinessEntityModel.md` Section 8a). Not part of the Enterprise Access & Administration Platform's Permission/Role/Scope/Audit model. #226 must never touch this screen or its route. |
-| **`integrations`** | **Reject (out of scope for #226)** | `IntegrationsFaq.jsx` is a real, complete, already-shipped feature about connecting Field Ops to *external* company systems (ERP/CRM/BI) -- a different capability domain entirely from *internal* Role/Permission administration. #226 must never touch this screen, its route, or its content. |
+| **`integrations`** | **Adopt the nav slot; defer all content** | Currently a generic `PlaceholderPage` on `origin/main`, same as `users`/`rolesPermissions`/`vehicles`/`regions`/`companySettings`/`auditLogs` -- there is no shipped Integrations screen to reject. Whether Integrations ends up part of #226's Admin Portal or a separate, later initiative is not decided by this record; it is left as an open placeholder slot, not adopted into Rows 10-12's MVP scope (Spec sec16 does not name Integrations among the MVP surfaces) and not rejected either. Rows 10-12 must not build Integrations content; a future, separately-authorized row may. |
 | **`vehicles`** | **Reject (out of scope for #226)** | Fleet/asset administration -- unrelated to authorization. Stays a `PlaceholderPage` until some other, separate initiative builds it. |
 | **`regions`** | **Reject (out of scope for #226)** | Organizational/territory configuration -- unrelated to authorization (and, notably, adjacent to but NOT the same as the Scope `region`/`location`/`tenant` concepts Spec sec5.4/sec10 define; this nav slot is a business-data screen, not a Scope-administration UI). Stays a `PlaceholderPage`. |
 | **`companySettings`** | **Reject (out of scope for #226)** | General company configuration -- unrelated to authorization. Stays a `PlaceholderPage`. |
