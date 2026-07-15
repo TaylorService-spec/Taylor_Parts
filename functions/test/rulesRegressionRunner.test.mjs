@@ -156,8 +156,16 @@ ok("6b. descendantPids returns only the owned root's descendants by PID", () => 
   assert.deepEqual(descendantPids(555, () => table), [], "unknown root -> no PIDs");
 });
 
-// ===== 7. Successful execution reports exactly 178 passed and 0 failed =====
-await okAsync("7. a fully-passing run reports exactly 178 passed, 0 failed", async () => {
+// ===== 7. Successful execution reports exactly EXPECTED_TOTAL passed and 0 failed =====
+// Issue #100 PR 1b -- EXPECTED_TOTAL grew from 178 to 184 when
+// issue100PartsManagerRules.test.js gained 6 new assertions for the new
+// scoped employees Assign-candidate read grant (see that file's own
+// PR 1b section). This self-test's own literal sanity-check is updated
+// to match, same as it must be updated any time SUITES' expected counts
+// change -- it is a deliberate hardcoded cross-check that EXPECTED_TOTAL
+// wasn't silently miscomputed, not a value that should ever drift
+// unnoticed from the real SUITES total.
+await okAsync("7. a fully-passing run reports exactly 184 passed, 0 failed", async () => {
   const byFile = new Map(SUITES.map((s) => [s.file, s.expected]));
   const lines = [];
   const r = await runAll({
@@ -173,8 +181,8 @@ await okAsync("7. a fully-passing run reports exactly 178 passed, 0 failed", asy
   assert.equal(r.ok, true);
   assert.equal(r.code, 0);
   assert.equal(r.totalPassed, EXPECTED_TOTAL);
-  assert.equal(EXPECTED_TOTAL, 178);
-  assert.ok(lines.some((l) => /178 passed, 0 failed/.test(l)), "summary must state 178 passed, 0 failed");
+  assert.equal(EXPECTED_TOTAL, 184);
+  assert.ok(lines.some((l) => /184 passed, 0 failed/.test(l)), "summary must state 184 passed, 0 failed");
   // parseSuiteResult correctness (count-mismatch and failed>0 both fail).
   assert.equal(parseSuiteResult("10 passed, 0 failed", 10).ok, true);
   assert.equal(parseSuiteResult("9 passed, 0 failed", 10).ok, false);
