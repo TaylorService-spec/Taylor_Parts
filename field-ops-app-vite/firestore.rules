@@ -318,7 +318,6 @@ service cloud.firestore {
         || (isSignedIn() && userData().employeeId == employeeId)
         || (isActiveOperationalRole("PARTS_MANAGER")
             && resource.data.employmentStatus == "ACTIVE"
-            && resource.data.operationalRoles is list
             && resource.data.operationalRoles.hasAny(["PARTS_ASSOCIATE"])
             && resource.data.get("userId", null) != null);
       allow create, update, delete: if false;
