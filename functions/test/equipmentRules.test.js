@@ -339,6 +339,33 @@ async function main() {
       (await createEquipment(uniq("eq-uni-name"), adminToken,
         equipmentFields({ name: str(ch) }))) === 403);
   }
+  // The OTHER half of the pair: RE2's \s excludes \v, which JS .trim() DOES strip, so
+  // trim() catches what matches() cannot. Without this, removing trim() leaves the
+  // suite green and the comment's "neither guard is load-bearing alone" is unproven --
+  // the same claim-without-an-assertion trap this suite keeps having to close.
+  report("create: vertical-tab-only name DENIED (RE2 \\s excludes \\v -- trim()'s job)",
+    (await createEquipment(uniq("eq-vt-name"), adminToken,
+      equipmentFields({ name: str("\v\v") }))) === 403);
+  // Real names must not be collateral damage: a false denial on a customer's actual
+  // equipment name would be worse than the hole the guard closes.
+  for (const [label, nm] of [
+    ["CJK", "屋上ユニット"],
+    ["Arabic RTL with a U+200F RLM prefix", "‏وحدة السطح"],
+    ["emoji only", "🔥"],
+    ["combining mark", "Café Unit"],
+    ["NBSP between words", "Rooftop Unit"],
+    ["single visible char", "A"],
+  ]) {
+    report(`create: legitimate name (${label}) ALLOWED`,
+      (await createEquipment(uniq("eq-real-name"), adminToken,
+        equipmentFields({ name: str(nm) }))) === 200);
+  }
+  // Update side too: equipmentNameValid is shared, but every Unicode assertion above is
+  // create-side, so a weaker check inlined at the update call site would go unnoticed.
+  report("update: Unicode-invisible-only name DENIED (guards the update call site too)",
+    (await updateEquipment(SEEDED, adminToken,
+      { name: str(" 　"), updatedAt: int(Date.now()) })) === 403);
+
   report("create: a name CONTAINING a NBSP but with visible text ALLOWED",
     (await createEquipment(uniq("eq-uni-ok"), adminToken,
       equipmentFields({ name: str("Rooftop Unit") }))) === 200);

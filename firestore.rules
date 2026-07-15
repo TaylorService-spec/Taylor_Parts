@@ -1222,14 +1222,25 @@ service cloud.firestore {
     // §2: the name is the human reference (§8), so it must contain something a person
     // can actually see -- not merely some bytes.
     //
-    // trim() alone is NOT enough: Rules' trim() is ASCII-only, so a name of U+00A0
-    // (NBSP), U+3000, U+2000 or U+FEFF passes it while JS .trim() -- what E1 applies
-    // client-side -- treats all of them as empty. That gap let Rules accept exactly
-    // what the domain rejects, and such a name renders BLANK in the register. The
-    // matches() guard closes it: \p{Z} covers every Unicode separator and \p{Cf} the
-    // format characters (BOM/ZWNBSP), so a name made only of invisibles is denied.
-    // Both guards are kept -- trim() is the readable intent, matches() the complete
-    // one, and neither is load-bearing alone.
+    // The bar is DOMAIN PARITY -- Rules must not accept what E1 rejects client-side --
+    // not "no invisible character may exist". Being precise about that:
+    //
+    //   trim() alone is NOT enough: Rules' trim() is ASCII-only, so U+00A0 (NBSP),
+    //   U+3000, U+2000 and U+FEFF pass it while JS .trim() treats each as empty. Such
+    //   a name renders BLANK in the register (§8: the name is the human reference).
+    //   matches() closes exactly that gap: \p{Z} is every Unicode separator, \p{Cf}
+    //   the format characters (BOM/ZWNBSP).
+    //
+    //   matches() alone is NOT enough either: RE2's \s excludes \v, which JS .trim()
+    //   DOES strip -- so dropping trim() would let a vertical-tab-only name through.
+    //   Each guard catches what the other cannot; both are asserted below.
+    //
+    // What this deliberately does NOT catch: a name of only U+3164, U+2800, U+034F,
+    // U+115F, U+FFA0 or U+0085. They are Lo/So/Mn/Cc, not Z/Cf -- and JS .trim()
+    // accepts them too, so there is no divergence from the domain. Excluding them
+    // would mean excluding \p{Lo}, which contains every CJK, Arabic, Hebrew and Thai
+    // letter: it would deny a real customer's equipment name to stop a trusted admin
+    // from deliberately typing a blank one. Do not chase this further.
     function equipmentNameValid(name) {
       return name is string
         && name.trim().size() > 0
