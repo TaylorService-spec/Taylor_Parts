@@ -106,6 +106,17 @@ async function runCompositeQuery(idToken) {
   return { status: res.status, body };
 }
 
+async function runUnconstrainedQuery(idToken) {
+  const headers = { "Content-Type": "application/json" };
+  if (idToken) headers.Authorization = `Bearer ${idToken}`;
+  const res = await fetch(`${DOC_BASE.replace("/documents", "")}/documents:runQuery`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ structuredQuery: { from: [{ collectionId: "employees" }] } }),
+  });
+  return res.status;
+}
+
 async function seed() {
   await db.doc("employees/emp-directory-1").set({
     employeeId: "emp-directory-1",
@@ -131,6 +142,40 @@ async function seed() {
   await db.doc("users/user-technician-1").set({ role: "technician", employeeId: "emp-self-1" });
   await db.doc("users/user-no-link-1").set({ role: "technician" });
   await db.doc("users/user-mismatched-1").set({ role: "technician", employeeId: "emp-nonexistent" });
+
+  // Issue #100 (PR 1b dependency) -- PARTS_MANAGER assignment-candidate read.
+  // Requester: an ACTIVE, reciprocally-linked PARTS_MANAGER (technician security
+  // role). emp-directory-1 above is the positive candidate (ACTIVE +
+  // PARTS_ASSOCIATE + userId). Three NON-candidates each violate exactly one leg
+  // of the contract, and a separate PARTS_ASSOCIATE requester proves the branch
+  // is PARTS_MANAGER-only.
+  await db.doc("employees/emp-pm-1").set({
+    employeeId: "emp-pm-1", displayName: "Parts Manager", employmentStatus: "ACTIVE",
+    operationalRoles: ["PARTS_MANAGER"], userId: "user-pm-1", createdAt: Date.now(), updatedAt: Date.now(),
+  });
+  await db.doc("users/user-pm-1").set({ role: "technician", employeeId: "emp-pm-1" });
+
+  await db.doc("employees/emp-assoc-1").set({
+    employeeId: "emp-assoc-1", displayName: "Parts Associate", employmentStatus: "ACTIVE",
+    operationalRoles: ["PARTS_ASSOCIATE"], userId: "user-assoc-1", createdAt: Date.now(), updatedAt: Date.now(),
+  });
+  await db.doc("users/user-assoc-1").set({ role: "technician", employeeId: "emp-assoc-1" });
+
+  // Non-candidate: INACTIVE (fails employmentStatus).
+  await db.doc("employees/emp-noncand-inactive").set({
+    employeeId: "emp-noncand-inactive", displayName: "Inactive Associate", employmentStatus: "INACTIVE",
+    operationalRoles: ["PARTS_ASSOCIATE"], userId: "user-noncand-inactive", createdAt: Date.now(), updatedAt: Date.now(),
+  });
+  // Non-candidate: ACTIVE but not PARTS_ASSOCIATE-eligible (fails operationalRoles).
+  await db.doc("employees/emp-noncand-nonassoc").set({
+    employeeId: "emp-noncand-nonassoc", displayName: "Warehouse Manager", employmentStatus: "ACTIVE",
+    operationalRoles: ["WAREHOUSE_MANAGER"], userId: "user-noncand-nonassoc", createdAt: Date.now(), updatedAt: Date.now(),
+  });
+  // Non-candidate: ACTIVE + PARTS_ASSOCIATE but no linked user (fails userId!=null).
+  await db.doc("employees/emp-noncand-nolink").set({
+    employeeId: "emp-noncand-nolink", displayName: "Unlinked Associate", employmentStatus: "ACTIVE",
+    operationalRoles: ["PARTS_ASSOCIATE"], createdAt: Date.now(), updatedAt: Date.now(),
+  });
 }
 
 async function main() {
@@ -204,6 +249,45 @@ async function main() {
     composite.status === 200 && !composite.body?.error,
     JSON.stringify(composite.body).slice(0, 300)
   );
+
+  // ===== Issue #100 (PR 1b dependency): PARTS_MANAGER assignment-candidate read =====
+  const [pmToken, associateToken] = await Promise.all([idTokenFor("user-pm-1"), idTokenFor("user-assoc-1")]);
+
+  // ALLOW: a PARTS_MANAGER reads a candidate Employee (ACTIVE + PARTS_ASSOCIATE + linked user).
+  report("PARTS_MANAGER reads an assignment candidate (ACTIVE + PARTS_ASSOCIATE + linked)",
+    (await getEmployee("emp-directory-1", pmToken)) === 200);
+
+  // DENY: each non-candidate violates exactly one leg of the contract.
+  report("PARTS_MANAGER denied a non-candidate: INACTIVE",
+    (await getEmployee("emp-noncand-inactive", pmToken)) === 403);
+  report("PARTS_MANAGER denied a non-candidate: not PARTS_ASSOCIATE-eligible",
+    (await getEmployee("emp-noncand-nonassoc", pmToken)) === 403);
+  report("PARTS_MANAGER denied a non-candidate: no linked user",
+    (await getEmployee("emp-noncand-nolink", pmToken)) === 403);
+
+  // DENY: a PARTS_MANAGER cannot read a non-candidate that is NOT a Parts Associate
+  // (e.g. another PARTS_MANAGER, or the self-read technician fixture) -- proving this
+  // is not general directory access.
+  report("PARTS_MANAGER denied reading a non-PARTS_ASSOCIATE Employee (no general directory)",
+    (await getEmployee("emp-self-1", pmToken)) === 403);
+
+  // ALLOW: the exact candidate list query the picker issues is within the grant.
+  const pmComposite = await runCompositeQuery(pmToken);
+  report("PARTS_MANAGER candidate list query (the picker query) is allowed",
+    pmComposite.status === 200 && !pmComposite.body?.error, JSON.stringify(pmComposite.body).slice(0, 200));
+
+  // DENY: an unconstrained employees list (general directory) is refused for a PARTS_MANAGER.
+  report("PARTS_MANAGER denied an unconstrained employees list (general directory)",
+    (await runUnconstrainedQuery(pmToken)) === 403);
+
+  // DENY: the branch is PARTS_MANAGER-only -- a PARTS_ASSOCIATE cannot read another candidate.
+  report("PARTS_ASSOCIATE cannot read another candidate (branch is PARTS_MANAGER-only)",
+    (await getEmployee("emp-directory-1", associateToken)) === 403);
+  report("PARTS_ASSOCIATE candidate list query denied (branch is PARTS_MANAGER-only)",
+    (await runCompositeQuery(associateToken)).status === 403);
+
+  // Regression: a PARTS_MANAGER still reads their OWN Employee via the self-read clause.
+  report("PARTS_MANAGER self-read still succeeds", (await getEmployee("emp-pm-1", pmToken)) === 200);
 
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed > 0 ? 1 : 0);

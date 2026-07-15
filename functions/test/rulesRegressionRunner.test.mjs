@@ -156,8 +156,8 @@ ok("6b. descendantPids returns only the owned root's descendants by PID", () => 
   assert.deepEqual(descendantPids(555, () => table), [], "unknown root -> no PIDs");
 });
 
-// ===== 7. Successful execution reports exactly 178 passed and 0 failed =====
-await okAsync("7. a fully-passing run reports exactly 178 passed, 0 failed", async () => {
+// ===== 7. Successful execution reports exactly 188 passed and 0 failed =====
+await okAsync("7. a fully-passing run reports exactly 188 passed, 0 failed", async () => {
   const byFile = new Map(SUITES.map((s) => [s.file, s.expected]));
   const lines = [];
   const r = await runAll({
@@ -173,8 +173,8 @@ await okAsync("7. a fully-passing run reports exactly 178 passed, 0 failed", asy
   assert.equal(r.ok, true);
   assert.equal(r.code, 0);
   assert.equal(r.totalPassed, EXPECTED_TOTAL);
-  assert.equal(EXPECTED_TOTAL, 178);
-  assert.ok(lines.some((l) => /178 passed, 0 failed/.test(l)), "summary must state 178 passed, 0 failed");
+  assert.equal(EXPECTED_TOTAL, 188);
+  assert.ok(lines.some((l) => /188 passed, 0 failed/.test(l)), "summary must state 188 passed, 0 failed");
   // parseSuiteResult correctness (count-mismatch and failed>0 both fail).
   assert.equal(parseSuiteResult("10 passed, 0 failed", 10).ok, true);
   assert.equal(parseSuiteResult("9 passed, 0 failed", 10).ok, false);
