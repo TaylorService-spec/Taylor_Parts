@@ -72,6 +72,17 @@ export const ADMIN_ROLE: Role = Object.freeze({
     "inventory.action.read",
     "inventory.action.create",
   ],
+  // reorder.purchaseOrder.void is double-gated in firestore.rules
+  // (current `main`, ~L794-798): `isAdminOrDispatcher() AND
+  // request.auth.uid == resource.data.assignedToUserId` -- even
+  // admin/dispatcher must be the request's own recorded assignee, not
+  // just hold the security role. Both compatibility Roles carry this
+  // Condition (DISPATCHER_ROLE inherits it below, since it derives its
+  // conditionsByPermission from ADMIN_ROLE the same way it derives its
+  // permissions list).
+  conditionsByPermission: {
+    "reorder.purchaseOrder.void": [{ kind: "isOwnAssignment", params: {} }],
+  },
 }) as Role;
 
 // Assessment §1: dispatcher matches admin except the Issue #175
@@ -86,6 +97,7 @@ export const DISPATCHER_ROLE: Role = Object.freeze({
   permissions: ADMIN_ROLE.permissions.filter(
     (id) => id !== "account.governedField.write",
   ),
+  conditionsByPermission: ADMIN_ROLE.conditionsByPermission,
 }) as Role;
 
 // Assessment's Inventory domain audit table: a pure technician has none

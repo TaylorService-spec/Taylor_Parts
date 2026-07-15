@@ -96,10 +96,16 @@ check("admin: account.governedField.write ALLOW", () => {
 check("admin: reorder.request.approve ALLOW", () => {
   assert.equal(resolve("admin", "reorder.request.approve", baseTarget()).decision, "ALLOW");
 });
-check("admin: reorder.purchaseOrder.void ALLOW even without isOwnAssignment", () => {
+check("admin: reorder.purchaseOrder.void ALLOW as the request's own assignee", () => {
+  assert.equal(
+    resolve("admin", "reorder.purchaseOrder.void", baseTarget({ condition: { isOwnAssignment: true } })).decision,
+    "ALLOW",
+  );
+});
+check("admin: reorder.purchaseOrder.void DENY when not the request's own assignee (firestore.rules double-gates Void: isAdminOrDispatcher() AND assignee)", () => {
   assert.equal(
     resolve("admin", "reorder.purchaseOrder.void", baseTarget({ condition: { isOwnAssignment: false } })).decision,
-    "ALLOW",
+    "DENY",
   );
 });
 
