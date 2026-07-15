@@ -264,6 +264,30 @@
 //                                 create-error mapping (via createWorkOrder
 //                                 callable interception -- no Functions backend
 //                                 needed), and 375px geometry.
+//   verify-inventory-role-warehouse-manager <accountKey>
+//                                 Issue #100 PR 2b (docs/specifications/
+//                                 inventory-nav-access-alignment.md) --
+//                                 the /inventory-role/warehouse surface.
+//                                 Asserts (as technicianWarehouseManager):
+//                                 the nav item + route render Inventory
+//                                 Health and Parts Catalog; a NEEDS_PLANNING
+//                                 manual reorder submission succeeds; a
+//                                 read-only Part Activity panel shows a
+//                                 seeded inventory_actions entry with no "By"
+//                                 column and no raw ids; the Parts Manager
+//                                 Queue/assignment/purchasing/Cancel/Void
+//                                 controls are absent (denied capabilities);
+//                                 focus/keyboard reach the panel's Close
+//                                 control; and 375px has no horizontal
+//                                 overflow. Also asserts fail-closed behavior
+//                                 for admin (redirects to /inventory),
+//                                 ineligibleDispatcher (redirects to
+//                                 /inventory), technicianIneligible,
+//                                 technicianBrokenLink, technicianPartsManager
+//                                 (wrong operationalRole), and a temporarily
+//                                 TERMINATED technicianWarehouseManager --
+//                                 none of these seven ever see the nav item
+//                                 or reach a rendered warehouse-manager page.
 //
 // All screenshots are written under .claude/skills/run-field-ops-app-vite/screenshots/.
 import { chromium } from "@playwright/test";
@@ -4409,6 +4433,215 @@ async function verifyWorkflowConfirmations(browser, page, accountKey) {
   return niFailed === 0;
 }
 
+// Issue #100 PR 2b (docs/specifications/inventory-nav-access-alignment.md,
+// docs/implementation-plans/inventory-nav-access-alignment.md). The
+// /inventory-role/warehouse surface for an ACTIVE, reciprocally linked
+// WAREHOUSE_MANAGER technician (seed.mjs's technicianWarehouseManager
+// fixture, added by PR 0 -- no new fixture needed for the eligible case).
+// No raw-id regex reuse from verifyWorkflowConfirmations -- this
+// surface's own header comment documents exactly why "By" is omitted
+// from Part Activity (useEmployeeDirectory() is out of scope for every
+// new surface here), so the no-raw-ids check below asserts the fixture's
+// Employee document id (never legitimately rendered) does not appear in
+// the page text. Deliberately NOT the technician's own account
+// email/uid -- AppHeader legitimately shows "signed in as" the current
+// user's own email, which is not the kind of raw-id leak this app's
+// convention cares about (see e.g. resolveActorDisplayName()'s own
+// accepted-uid-fallback precedent for OTHER users' ids, not one's own).
+const NO_RAW_IDS = /driver-emp-technician-warehouse-manager/i;
+
+async function verifyInventoryRoleWarehouseManager(browser, page, accountKey) {
+  const warehouseUrl = () => {
+    const u = new URL("inventory-role/warehouse", APP_ROOT);
+    u.searchParams.set("emulator", "1");
+    return u.toString();
+  };
+
+  // ===== 1. Eligible WAREHOUSE_MANAGER: nav item, Health, Catalog =====
+  await login(page, accountKey);
+  const navLinkVisible = await page.getByRole("link", { name: "My Inventory Role" }).first().isVisible().catch(() => false);
+  niReport("Nav: 'My Inventory Role' top-level tab is visible to an ACTIVE, eligible WAREHOUSE_MANAGER", navLinkVisible);
+  await page.getByRole("link", { name: "My Inventory Role" }).first().click();
+  const headerVisible = await page
+    .getByRole("heading", { name: "Warehouse Manager" })
+    .first()
+    .waitFor({ timeout: 10000 })
+    .then(() => true)
+    .catch(() => false);
+  niReport("Route: the top-level tab's index redirect lands directly on /inventory-role/warehouse", headerVisible);
+  const subnavLinkVisible = await page.getByRole("link", { name: "Warehouse Manager" }).first().isVisible().catch(() => false);
+  niReport("Nav: 'Warehouse Manager' sub-nav item is visible once inside the domain", subnavLinkVisible);
+  const healthHeadingVisible = await page
+    .getByRole("heading", { name: "Inventory Health" })
+    .waitFor({ timeout: 10000 })
+    .then(() => true)
+    .catch(() => false);
+  niReport("Warehouse Manager: Inventory Health section is visible", healthHeadingVisible);
+  const catalogHeadingVisible = await page.getByRole("heading", { name: "Parts Catalog" }).isVisible().catch(() => false);
+  niReport("Warehouse Manager: Parts Catalog section is visible", catalogHeadingVisible);
+  // Review-pass fix: the read-only Inventory Health table must NOT wire
+  // onRequestReorder -- firestore.rules only allows isAdminOrDispatcher()
+  // to create a READY-status reorder_requests document, so a
+  // WAREHOUSE_MANAGER "Request Reorder" button there would always fail
+  // with permission-denied. Only the separate "Needs Planning" section
+  // (asserted below) is actionable for this role.
+  const readOnlyHealthTable = page.locator('xpath=//h3[text()="Inventory Health"]/following::table[1]');
+  const readOnlyHealthHasActionColumn = await readOnlyHealthTable.getByRole("columnheader", { name: "Action" }).count().catch(() => 0);
+  niReport("Warehouse Manager: the read-only Inventory Health table has no Action column (no READY one-click submit)", readOnlyHealthHasActionColumn === 0);
+
+  // ===== 2. Denied capabilities: no Parts Manager Queue, assignment,
+  //          purchasing, Cancel, or Void controls anywhere on this page =====
+  const deniedControls = [
+    "Parts Manager Queue",
+    "Parts Associate Queue",
+    "All Assigned Work",
+    "Assign",
+    "Start Purchasing",
+    "Cancel Reorder Request",
+    "Void Purchase Order",
+    "Approve",
+    "Reject",
+  ];
+  for (const label of deniedControls) {
+    const count = await page.getByText(label, { exact: false }).count().catch(() => 0);
+    niReport(`Denied: no "${label}" control/heading is rendered on the Warehouse Manager page`, count === 0);
+  }
+
+  // ===== 3. Manual Needs Planning submission (TST-1001 -- the same
+  //          RESERVED-only, no-CONSUMED fixture verify-inventory-health-
+  //          catalog already establishes as the NEEDS_PLANNING case) =====
+  const needsPlanningTable = page.locator('xpath=//h3[text()="Needs Planning"]/following::table[1]');
+  const needsPlanningRow = needsPlanningTable.locator("tr", { hasText: "Hex Coupler" });
+  const qtyInput = needsPlanningRow.getByLabel("Manual reorder quantity");
+  const qtyInputVisible = await qtyInput.isVisible().catch(() => false);
+  niReport("Needs Planning: manual quantity input is present for the eligible role", qtyInputVisible);
+  await qtyInput.fill("7");
+  await needsPlanningRow.getByRole("button", { name: "Request Reorder" }).click();
+  const requestedVisible = await needsPlanningRow
+    .getByText("Requested", { exact: true })
+    .first()
+    .waitFor({ timeout: 10000 })
+    .then(() => true)
+    .catch(() => false);
+  niReport("Needs Planning: manual submission succeeds (control shows 'Requested')", requestedVisible);
+  const createdRequests = await db.collection("reorder_requests").where("partId", "==", "TST-1001").where("quantitySource", "==", "MANUAL_ZERO_HISTORY").get();
+  const created = createdRequests.docs.find((d) => d.data().requestedQty === 7);
+  niReport("Needs Planning: a reorder_requests document was created with the entered quantity (7)", Boolean(created));
+  if (created) await db.doc(`reorder_requests/${created.id}`).delete().catch(() => {});
+
+  // ===== 4. Read-only Part Activity (seeded, deleted after) =====
+  const actionId = "driver-seed-warehouse-manager-activity";
+  await db.doc(`inventory_actions/${actionId}`).set({
+    partId: "TST-1002",
+    transactionType: "RECEIVE_STOCK",
+    quantityDelta: 12,
+    reason: "Driver-seeded Part Activity fixture",
+    notes: null,
+    createdBy: "driver-seed-admin-uid",
+    createdAt: Date.now(),
+  });
+  try {
+    const catalogTable = page.locator('xpath=//h3[text()="Parts Catalog"]/following::table[1]');
+    await catalogTable.locator("tr", { hasText: "Tune-Up Kit — Deluxe - 3 Ton" }).getByRole("button", { name: "View Activity" }).click();
+    const activityHeadingVisible = await page
+      .getByRole("heading", { name: /Part Activity/ })
+      .first()
+      .waitFor({ timeout: 10000 })
+      .then(() => true)
+      .catch(() => false);
+    niReport("Part Activity: panel opens on selecting a part from the Catalog", activityHeadingVisible);
+    const activityRowVisible = await page
+      .getByRole("cell", { name: "Stock Received (log only)" })
+      .first()
+      .waitFor({ timeout: 10000 })
+      .then(() => true)
+      .catch(() => false);
+    niReport("Part Activity: the seeded inventory_actions entry is visible, read-only", activityRowVisible);
+    const noByColumn = await page.getByRole("columnheader", { name: "By" }).count().catch(() => 0);
+    niReport("Part Activity: no 'By' column (no useEmployeeDirectory import, per the Specification)", noByColumn === 0);
+
+    // Keyboard/focus: Close is reachable and dismisses the panel.
+    const closeButton = page.getByRole("button", { name: "Close" });
+    await closeButton.focus();
+    const closeFocused = await page.evaluate(() => document.activeElement?.textContent === "Close");
+    niReport("Part Activity: the Close control is keyboard-focusable", closeFocused);
+    await page.keyboard.press("Enter");
+    const panelClosed = await page
+      .getByRole("heading", { name: /Part Activity/ })
+      .waitFor({ state: "detached", timeout: 5000 })
+      .then(() => true)
+      .catch(() => false);
+    niReport("Part Activity: Close (via keyboard) dismisses the panel", panelClosed);
+  } finally {
+    await db.doc(`inventory_actions/${actionId}`).delete().catch(() => {});
+  }
+
+  // ===== 5. No raw ids anywhere on the rendered page =====
+  const bodyText = await page.locator("body").innerText().catch(() => "");
+  niReport("No raw ids: the page never renders the technician's own uid or Employee document id", !NO_RAW_IDS.test(bodyText));
+
+  // ===== 6. 375px layout: no horizontal overflow =====
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.waitForTimeout(200);
+  const overflow375 = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
+  niReport("375px: Warehouse Manager page has no horizontal overflow", overflow375 === false);
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  // ===== 7. admin/dispatcher: direct-route access redirects to /inventory =====
+  // Re-login as a DIFFERENT account requires a fresh page (page.close() +
+  // browser.newPage()), same convention verifyGovernedFields()/
+  // verifyCommercialProfile() already establish -- calling login() again on
+  // an already-authenticated page's persistent Firestore onSnapshot
+  // connections never lets networkidle fire (confirmed live).
+  for (const adminLikeAccount of ["admin", "ineligibleDispatcher"]) {
+    await page.close();
+    page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    await login(page, adminLikeAccount);
+    await page.goto(warehouseUrl(), { waitUntil: "domcontentloaded", timeout: 20000 });
+    await page.getByRole("heading", { name: "Inventory Operational Queue" }).waitFor({ timeout: 10000 }).catch(() => {});
+    const landedOnInventory = new URL(page.url()).pathname.endsWith("/inventory");
+    niReport(`Direct route: ${adminLikeAccount} hitting /inventory-role/warehouse is redirected to /inventory`, landedOnInventory);
+    const navLinkVisibleForAdminLike = await page.getByRole("link", { name: "My Inventory Role" }).first().isVisible().catch(() => false);
+    niReport(`Nav: 'My Inventory Role' tab is never visible to ${adminLikeAccount}`, !navLinkVisibleForAdminLike);
+  }
+
+  // ===== 8. Ineligible / broken-linkage / wrong-role technicians fail
+  //          closed: no nav item, direct URL falls through to /dashboard =====
+  for (const ineligibleAccount of ["technicianIneligible", "technicianBrokenLink", "technicianPartsManager"]) {
+    await page.close();
+    page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    await login(page, ineligibleAccount);
+    const navHidden = await page.getByRole("link", { name: "My Inventory Role" }).first().isVisible().catch(() => false);
+    niReport(`Nav: 'My Inventory Role' tab is hidden for ${ineligibleAccount}`, !navHidden);
+    await page.goto(warehouseUrl(), { waitUntil: "domcontentloaded", timeout: 20000 });
+    await page.waitForTimeout(500);
+    const landedOnDashboard = new URL(page.url()).pathname.endsWith("/dashboard");
+    niReport(`Direct route: ${ineligibleAccount} hitting /inventory-role/warehouse falls through to /dashboard`, landedOnDashboard);
+  }
+
+  // ===== 9. Inactive employment (temporarily TERMINATED, restored after) =====
+  const empRef = db.doc("employees/driver-emp-technician-warehouse-manager");
+  try {
+    await empRef.update({ employmentStatus: "TERMINATED" });
+    await page.close();
+    page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    await login(page, accountKey);
+    const navHiddenInactive = await page.getByRole("link", { name: "My Inventory Role" }).first().isVisible().catch(() => false);
+    niReport("Nav: 'My Inventory Role' tab is hidden for an otherwise-eligible but INACTIVE employment", !navHiddenInactive);
+    await page.goto(warehouseUrl(), { waitUntil: "domcontentloaded", timeout: 20000 });
+    await page.waitForTimeout(500);
+    const landedOnDashboardInactive = new URL(page.url()).pathname.endsWith("/dashboard");
+    niReport("Direct route: an INACTIVE WAREHOUSE_MANAGER falls through to /dashboard", landedOnDashboardInactive);
+  } finally {
+    await empRef.update({ employmentStatus: "ACTIVE" }).catch((restoreErr) => {
+      niReport("Fixture restoration: technicianWarehouseManager's employmentStatus restored to ACTIVE", false, `restoration itself threw: ${restoreErr.message}`);
+    });
+  }
+
+  console.log(`\n${niPassed} passed, ${niFailed} failed`);
+  return niFailed === 0;
+}
+
 // Issue #214 PR-5 -- the retained Jobs (/service/job-assignments) and Technicians
 // (/administration) screens: the create form that used to sit above each live
 // table is now a "New Job" / "New Technician" action opening the shared accessible
@@ -4688,6 +4921,10 @@ async function main() {
     } else if (command === "verify-workflow-confirmations") {
       const [accountKey = "admin"] = args;
       const ok = await verifyWorkflowConfirmations(browser, page, accountKey);
+      if (!ok) process.exitCode = 1;
+    } else if (command === "verify-inventory-role-warehouse-manager") {
+      const [accountKey = "technicianWarehouseManager"] = args;
+      const ok = await verifyInventoryRoleWarehouseManager(browser, page, accountKey);
       if (!ok) process.exitCode = 1;
     } else if (command === "verify-jobs-technicians-modals") {
       const [accountKey = "admin"] = args;
