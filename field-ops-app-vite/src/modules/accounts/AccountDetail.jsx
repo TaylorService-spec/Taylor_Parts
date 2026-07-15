@@ -18,6 +18,9 @@ import FinancialForecastSection from "./FinancialForecastSection";
 import { useEmployeeDirectory } from "../../hooks/useEmployeeDirectory";
 import { resolveOwnerIdentity, resolveContactIdentity, resolveTaxStatus } from "../../domain/commercialProfile";
 import IdentityLine from "./IdentityLine";
+import LoadingState from "../../shared/ui/LoadingState";
+import EmptyState from "../../shared/ui/EmptyState";
+import FailureState from "../../shared/ui/FailureState";
 
 // Sprint 2.0.2 -- Customer Foundation. Internal name AccountDetail;
 // rendered UI says "Customer Detail" throughout.
@@ -177,13 +180,15 @@ export default function AccountDetail() {
     }
   }, [pendingLocationFocus, locations]);
 
-  if (loading) return <div className="fo-panel"><p className="fo-muted">Loading customer...</p></div>;
+  if (loading) return <div className="fo-panel"><LoadingState>Loading customer…</LoadingState></div>;
 
   if (!account) {
     return (
       <div className="fo-panel">
-        <p className="fo-muted">Customer not found.</p>
-        <button type="button" onClick={() => navigate("/customers")}>Back to Customers</button>
+        <FailureState
+          message="This customer could not be found."
+          action={<button type="button" onClick={() => navigate("/customers")}>Back to Customers</button>}
+        />
       </div>
     );
   }
@@ -304,7 +309,7 @@ export default function AccountDetail() {
             <h4>Contacts ({contacts.length})</h4>
             <p className="fo-sr-only" role="status" aria-live="polite">{contactAnnouncement}</p>
             {contacts.length === 0 ? (
-              <p className="fo-muted">No contacts yet.</p>
+              <EmptyState variant="database" message="No contacts yet." />
             ) : (
               contacts.map((contact) => (
                 <div
@@ -351,7 +356,7 @@ export default function AccountDetail() {
             <h4>Locations ({locations.length})</h4>
             <p className="fo-sr-only" role="status" aria-live="polite">{locationAnnouncement}</p>
             {locations.length === 0 ? (
-              <p className="fo-muted">No locations yet.</p>
+              <EmptyState variant="database" message="No locations yet." />
             ) : (
               locations.map((loc) => {
                 const locLine = formatAddress(loc.address);

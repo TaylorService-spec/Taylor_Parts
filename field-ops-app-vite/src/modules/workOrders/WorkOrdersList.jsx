@@ -4,7 +4,8 @@ import { useWorkOrders } from "../../hooks/useWorkOrders";
 import GlobalSearch from "../../shared/search/GlobalSearch";
 import WorkspaceHeader from "../../shared/ui/WorkspaceHeader";
 import FilterBar from "../../shared/ui/FilterBar";
-import LoadingEmptyState from "../../shared/ui/LoadingEmptyState";
+import LoadingState from "../../shared/ui/LoadingState";
+import EmptyState from "../../shared/ui/EmptyState";
 
 // Sprint 2.0.3 -- Work Order Experience. The real Service > Work
 // Orders screen, replacing the placeholder-adjacent legacy Jobs.jsx
@@ -72,12 +73,17 @@ export default function WorkOrdersList() {
 
       <FilterBar options={filterOptions} activeKey={statusGroup} onChange={setStatusGroup} />
 
-      <LoadingEmptyState
-        loading={loading}
-        isEmpty={filteredWorkOrders.length === 0}
-        loadingText="Loading work orders..."
-        emptyText="No work orders in this group."
-      >
+      {loading ? (
+        <LoadingState>Loading work orders…</LoadingState>
+      ) : filteredWorkOrders.length === 0 ? (
+        // Distinguish a genuinely empty database (the "All" group) from filters
+        // that merely hide existing work orders.
+        statusGroup === "ALL" ? (
+          <EmptyState variant="database" title="No work orders yet" message="New work orders will appear here." />
+        ) : (
+          <EmptyState variant="filtered" message="No work orders in this group." />
+        )
+      ) : (
         <table className="fo-table">
           <thead>
             <tr>
@@ -104,7 +110,7 @@ export default function WorkOrdersList() {
             ))}
           </tbody>
         </table>
-      </LoadingEmptyState>
+      )}
     </div>
   );
 }

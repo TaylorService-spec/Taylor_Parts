@@ -1254,6 +1254,28 @@ textarea.fo-wizard-control { min-height: 76px; resize: vertical; }
   .fo-customer-picker-locs { flex-direction: column; gap: 2px; }
 }
 
+/* Issue #214 PR-4 -- shared application-state primitives (LoadingState /
+   EmptyState / FailureState). ADDITIVE; reuses the existing `.fo-muted` /
+   `.fo-warning` text tokens. Content uses the available panel width up to a
+   readable text measure, wraps safely, and never overflows at 375px. Does not
+   touch `.fo-main`. */
+.fo-state {
+  margin: 12px 0;
+  max-width: 60ch;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.fo-empty-state,
+.fo-failure-state {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+.fo-state-title { margin: 0; font-weight: 600; color: #23383D; }
+.fo-state-message { margin: 0; }
+.fo-state-action { margin-top: 2px; }
+
 /* Issue #214 PR-2 -- Contact/Location creation modals. Single-column stacked
    layout inside the shared Modal (max-width 560px), reusing the System-A form
    primitives (Field renders `.fo-form-field`; controls carry `.fo-wizard-control`).
