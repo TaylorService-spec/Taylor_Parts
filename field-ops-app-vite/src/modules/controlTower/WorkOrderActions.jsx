@@ -2,6 +2,10 @@ import { useState } from "react";
 import { getAllowedActions } from "../../domain/workOrderWorkflow";
 import { transitionWorkOrder } from "../../services/workOrderService";
 import { TECH_STATUS } from "../../domain/constants";
+import ConfirmDialog from "../../shared/ui/ConfirmDialog";
+import { FormError } from "../../shared/ui/form";
+import { workflowActionErrorMessage } from "../../domain/workflowActionError";
+import { orderWorkflowActions } from "../../domain/workflowActionOrder";
 
 // Epic 2 Phase 2B -- Work Order Lifecycle UI (dispatcher side only; see
 // WorkOrderDetail.jsx's former "Phase 2 TODO" comment this replaces).
@@ -73,19 +77,26 @@ export default function WorkOrderActions({ workOrder, role, technicians }) {
   const [submitting, setSubmitting] = useState(false);
   const [showTechPicker, setShowTechPicker] = useState(false);
   const [selectedTechId, setSelectedTechId] = useState("");
+  const [confirmingCancel, setConfirmingCancel] = useState(false);
+  const [actionError, setActionError] = useState(null);
 
   const isOwnAssignment = false; // dispatcher-only view -- see header comment
   const allowedActions = getAllowedActions(workOrder.status, role, isOwnAssignment);
+  // Presentation only: keep the canonical resolver's result, but render the
+  // non-destructive actions first and the destructive Cancel visually separated.
+  const { primary: primaryActions, cancelAllowed } = orderWorkflowActions(allowedActions);
 
   async function runAction(action, extra = {}) {
     setSubmitting(true);
+    setActionError(null);
     try {
       await transitionWorkOrder(workOrder.id, action, extra);
       setShowTechPicker(false);
       setSelectedTechId("");
     } catch (err) {
+      // Safe, categorized in-surface copy -- never a browser alert or raw message.
       console.error(err);
-      alert(err.message);
+      setActionError(workflowActionErrorMessage(err));
     } finally {
       setSubmitting(false);
     }
@@ -94,6 +105,12 @@ export default function WorkOrderActions({ workOrder, role, technicians }) {
   function handleActionClick(action) {
     if (action === "Dispatch") {
       setShowTechPicker(true);
+      return;
+    }
+    // Cancel is destructive -- confirm before the transition runs.
+    if (action === "Cancel") {
+      setActionError(null);
+      setConfirmingCancel(true);
       return;
     }
     runAction(action);
@@ -112,8 +129,8 @@ export default function WorkOrderActions({ workOrder, role, technicians }) {
     <div className="wo-actions">
       <span className={`wo-status wo-${workOrder.status.toLowerCase()}`}>{STATUS_LABEL[workOrder.status]}</span>
 
-      <div className="fo-btn-row">
-        {allowedActions.map((action) => (
+      <div className="fo-btn-row wo-action-row">
+        {primaryActions.map((action) => (
           <button
             key={action}
             type="button"
@@ -123,7 +140,35 @@ export default function WorkOrderActions({ workOrder, role, technicians }) {
             {ACTION_LABEL[action] ?? action}
           </button>
         ))}
+        {cancelAllowed && (
+          <button
+            key="Cancel"
+            type="button"
+            className="fo-btn-destructive wo-action-destructive"
+            disabled={submitting}
+            onClick={() => handleActionClick("Cancel")}
+          >
+            {ACTION_LABEL.Cancel}
+          </button>
+        )}
       </div>
+
+      <FormError role="alert" className="wo-action-error">{actionError}</FormError>
+
+      {confirmingCancel && (
+        <ConfirmDialog
+          title="Cancel work order"
+          consequence="This cancels the work order. It can't be resumed from here."
+          confirmLabel="Cancel work order"
+          cancelLabel="Keep work order"
+          onConfirm={async () => {
+            await transitionWorkOrder(workOrder.id, "Cancel");
+            setConfirmingCancel(false); // success -- the live subscription re-renders the read-only status
+          }}
+          onClose={() => setConfirmingCancel(false)}
+          mapError={workflowActionErrorMessage}
+        />
+      )}
 
       {showTechPicker && (
         <div className="fo-form">

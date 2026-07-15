@@ -81,10 +81,16 @@ export default function Modal({ title, onClose, children, closeLabel = "Cancel" 
     return () => {
       document.removeEventListener("keydown", onKeyDown, true);
       document.body.style.overflow = prevOverflow;
-      // Restore focus to the trigger, unless the app moved focus elsewhere
-      // (e.g. onto the newly created customer's name) while we were open.
+      // Restore focus to the trigger, UNLESS the app deliberately moved focus to
+      // some element OUTSIDE this dialog (e.g. onto a newly created row on
+      // success). At cleanup the focused element is still inside the closing
+      // dialog (or has already fallen to <body>) -- both mean the app did not
+      // steal focus, so we restore to the trigger. If focus is on an external
+      // element, we leave it there.
       const restore = previouslyFocusedRef.current;
-      if (restore && typeof restore.focus === "function" && document.activeElement === document.body) {
+      const active = document.activeElement;
+      const appMovedFocusAway = active && active !== document.body && dialog && !dialog.contains(active);
+      if (restore && typeof restore.focus === "function" && !appMovedFocusAway) {
         restore.focus();
       }
     };

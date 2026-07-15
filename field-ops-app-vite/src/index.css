@@ -1254,6 +1254,26 @@ textarea.fo-wizard-control { min-height: 76px; resize: vertical; }
   .fo-customer-picker-locs { flex-direction: column; gap: 2px; }
 }
 
+/* Issue #214 PR-3 -- destructive workflow action + shared ConfirmDialog. Additive.
+   The destructive confirm/trigger is visually distinct and, in the Work Order
+   action row, separated from the primary actions. */
+.fo-btn-destructive {
+  background: #B23B3B;
+  color: #fff;
+  border: none;
+}
+.fo-btn-destructive:hover:not(:disabled) { background: #963232; }
+.fo-btn-destructive:focus-visible { outline: 2px solid #7a2727; outline-offset: 2px; }
+/* Work Order action row: destructive Cancel pushed to its own end, clearly apart. */
+.wo-action-row { flex-wrap: wrap; align-items: center; }
+.wo-action-row .wo-action-destructive { margin-left: auto; }
+@media (max-width: 480px) {
+  .wo-action-row { flex-direction: column; align-items: stretch; }
+  .wo-action-row .wo-action-destructive { margin-left: 0; }
+}
+.fo-confirm-consequence { margin: 0; }
+.fo-confirm-note { margin: 0; font-size: 13px; }
+
 /* Issue #214 PR-4 -- shared application-state primitives (LoadingState /
    EmptyState / FailureState). ADDITIVE; reuses the existing `.fo-muted` /
    `.fo-warning` text tokens. Content uses the available panel width up to a
