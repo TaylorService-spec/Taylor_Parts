@@ -9,9 +9,9 @@ import {
   availableObjects, availableFieldGroups, defaultComparator,
   setObject, toggleField, toggleGroupBy, addFilter, updateFilter, removeFilter,
   addSort, updateSort, removeSort, builderErrors, builderStatus,
+  hasCountRows, toggleCountRows,
 } from "../src/domain/reporting/reportBuilderModel.js";
 import { createReportDefinition } from "../src/domain/reporting/reportQueryModel.js";
-import { runReport, reportRunUnavailable, REPORT_RUN_UNAVAILABLE_REASON } from "../src/domain/reporting/reportExecutionSeam.js";
 import { describeRunOutcome } from "../src/domain/reporting/reportResultState.js";
 
 let passed = 0;
@@ -122,6 +122,26 @@ ok("changing the base object clears field-referencing clauses (they can't carry 
   assert.equal(switched.objectId, "equipment");
 });
 
+ok("countRows toggle adds/removes the fieldless aggregate and stays grouping-consistent", () => {
+  let def = setObject(createReportDefinition(null), "customer");
+  assert.equal(hasCountRows(def), false);
+  def = toggleCountRows(def);
+  assert.equal(hasCountRows(def), true);
+  assert.deepEqual(def.aggregates, [{ fn: "countRows" }]);
+  // countRows alone (no projected fields) is a valid total-count report
+  assert.deepEqual(builderErrors(def), []);
+  assert.equal(builderStatus(def), "ready");
+  // adding an ungrouped column makes it invalid (grouping consistency); grouping it fixes it
+  def = toggleField(def, "customer.status");
+  assert.ok(builderErrors(def).some((e) => e.includes("must be grouped")));
+  def = toggleGroupBy(def, "customer.status");
+  assert.deepEqual(builderErrors(def), []);
+  // toggling countRows off removes it (non-mutating)
+  const off = toggleCountRows(def);
+  assert.equal(hasCountRows(off), false);
+  assert.equal(hasCountRows(def), true);
+});
+
 ok("builderStatus reflects empty -> invalid -> ready", () => {
   assert.equal(builderStatus(createReportDefinition(null)), "empty");
   const noCols = setObject(createReportDefinition(null), "customer"); // object but no fields
@@ -130,20 +150,8 @@ ok("builderStatus reflects empty -> invalid -> ready", () => {
   assert.equal(builderStatus(ready), "ready");
 });
 
-// ---- gated execution seam --------------------------------------------------
-ok("the run seam is inert: it resolves to the unavailable outcome and never throws", async () => {
-  const outcome = await runReport({ objectId: "customer", fields: ["customer.name"] });
-  assert.equal(outcome.ok, false);
-  assert.equal(outcome.unavailable, true);
-  assert.equal(outcome.kind, "unavailable");
-  assert.equal(outcome.reason, REPORT_RUN_UNAVAILABLE_REASON);
-  assert.equal(outcome.rows, null, "never returns rows");
-  // safe copy names no backend
-  assert.doesNotMatch(outcome.message, RAW_LEAKS);
-  // frozen contract
-  assert.throws(() => { outcome.ok = true; });
-  assert.deepEqual(reportRunUnavailable(), outcome);
-});
+// (The execution seam's D-FN wiring and its outcome/error mapping are tested in
+// reportRunOutcome.test.mjs -- that logic is pure; the seam itself just imports firebase.)
 
 // ---- result-state categorizer: full matrix, safe copy ----------------------
 ok("describeRunOutcome maps every state-matrix kind to safe, correctly-toned copy", () => {
