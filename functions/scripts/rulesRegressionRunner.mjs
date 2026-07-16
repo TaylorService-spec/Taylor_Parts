@@ -48,8 +48,9 @@ export const SUITES = Object.freeze([
   { file: "enterpriseAccessFoundationRules.test.js", expected: 62 },
   { file: "equipmentRules.test.js", expected: 109 },
   { file: "workOrderEngineRules.test.js", expected: 20 },
+  { file: "warehouseManagerScopedAccessRules.test.js", expected: 25 },
 ]);
-export const EXPECTED_TOTAL = SUITES.reduce((n, s) => n + s.expected, 0); // 385 (PR #236: issue100PartsManager 34->40; PR #237 tightening: employees 10->20; Issue #226 Row 3: +62 enterpriseAccessFoundationRules; Issue #232 E3: +109 equipmentRules; Issue #15 readiness closeout part 2: +20 workOrderEngineRules)
+export const EXPECTED_TOTAL = SUITES.reduce((n, s) => n + s.expected, 0); // 410 (PR #236: issue100PartsManager 34->40; PR #237 tightening: employees 10->20; Issue #226 Row 3: +62 enterpriseAccessFoundationRules; Issue #232 E3: +109 equipmentRules; Issue #15 readiness closeout part 2: +20 workOrderEngineRules; Issue #226 WAREHOUSE_MANAGER scoped access Row B: +25 warehouseManagerScopedAccessRules)
 
 export const SUITE_TIMEOUT_MS = 180_000;
 export const EMULATOR_STARTUP_TIMEOUT_MS = 120_000;

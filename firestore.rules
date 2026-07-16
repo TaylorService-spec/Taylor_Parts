@@ -120,6 +120,35 @@ service cloud.firestore {
         && employee.operationalRoles.hasAny([role]);
     }
 
+    // Issue #226 -- WAREHOUSE_MANAGER scoped access (docs/assessments/
+    // warehouse-manager-scoped-access.md, docs/specifications/
+    // warehouse-manager-scoped-access.md, Implementation Plan Row B).
+    // Deliberately does NOT call isActiveOperationalRole("WAREHOUSE_MANAGER")
+    // + linkedEmployeeData() separately -- that would pay for a second,
+    // redundant get(employees/{employeeId}) per call (see the PERFORMANCE
+    // note on isActiveOperationalRole() above for why this codebase binds
+    // the Employee document once via `let` instead). Inlines the identical
+    // reciprocal-link/ACTIVE/role-membership checks, plus the additional
+    // per-warehouse assignment check: employee.assignedWarehouseIds must be
+    // a list (fails closed on absent/malformed -- see employees/{employeeId}
+    // schema addition, Specification sec2) AND contain warehouseId. Absent
+    // or empty assignedWarehouseIds denies every warehouse, for any role --
+    // never "all warehouses." Never grants global Warehouse visibility from
+    // the WAREHOUSE_MANAGER operational role alone (Owner's own framing of
+    // this task).
+    function isAssignedToWarehouse(warehouseId) {
+      let employeeId = linkedEmployeeId();
+      let employee = get(/databases/$(database)/documents/employees/$(employeeId)).data;
+      return isSignedIn()
+        && employeeId != null
+        && employee.userId == request.auth.uid
+        && employee.employmentStatus == "ACTIVE"
+        && employee.operationalRoles is list
+        && employee.operationalRoles.hasAny(["WAREHOUSE_MANAGER"])
+        && employee.assignedWarehouseIds is list
+        && employee.assignedWarehouseIds.hasAny([warehouseId]);
+    }
+
     // RETROFIT (Issue #100 PR 1a) -- previously used hasOperationalRole(),
     // which checked neither reciprocal linkage nor ACTIVE employment.
     // Behavior is unchanged for every Employee who was already ACTIVE
@@ -1021,18 +1050,37 @@ service cloud.firestore {
     // second source of truth, so no direct client writes here either.
     // Read access opened to admin/dispatcher for the Operations
     // dashboard, same reasoning as inventory_transactions above.
+    //
+    // Issue #226 -- WAREHOUSE_MANAGER scoped access. Each `allow read`
+    // below gains one additive `|| isAssignedToWarehouse(...)` arm --
+    // admin/dispatcher's existing unconditional read is unchanged. A
+    // WAREHOUSE_MANAGER-eligible technician may read ONLY the
+    // warehouses (and their stock locations, and transfer orders
+    // touching either endpoint) named on their own linked Employee's
+    // assignedWarehouseIds -- never the general directory. See
+    // isAssignedToWarehouse() above for the full fail-closed contract
+    // (missing/inactive/unlinked Employee, missing WAREHOUSE_MANAGER
+    // role, or missing/empty/malformed assignedWarehouseIds all deny).
     match /warehouses/{warehouseId} {
-      allow read: if isAdminOrDispatcher();
+      allow read: if isAdminOrDispatcher() || isAssignedToWarehouse(warehouseId);
       allow create, update, delete: if false;
     }
 
     match /stock_locations/{stockLocationId} {
-      allow read: if isAdminOrDispatcher();
+      allow read: if isAdminOrDispatcher() || isAssignedToWarehouse(resource.data.warehouseId);
       allow create, update, delete: if false;
     }
 
+    // Two-field OR: a transfer touching either endpoint warehouse is
+    // readable by a manager assigned to THAT endpoint, even if they are
+    // not assigned to the other one. Short-circuits on the first match
+    // (OR), so the common admin/dispatcher path never evaluates either
+    // isAssignedToWarehouse() call, and a WAREHOUSE_MANAGER match on
+    // fromWarehouseId never evaluates the second (toWarehouseId) call.
     match /transfer_orders/{transferOrderId} {
-      allow read: if isAdminOrDispatcher();
+      allow read: if isAdminOrDispatcher()
+        || isAssignedToWarehouse(resource.data.fromWarehouseId)
+        || isAssignedToWarehouse(resource.data.toWarehouseId);
       allow create, update, delete: if false;
     }
 
