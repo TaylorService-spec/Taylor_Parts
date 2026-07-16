@@ -170,12 +170,16 @@ ok("6b. descendantPids returns only the owned root's descendants by PID", () => 
 // equipmentRules.test.js added 109 assertions for the new `equipment` match
 // block: admin/dispatcher authority only, cross-Account/dangling Location
 // denial, governed-field immutability on ordinary edit, trusted/audit field
-// injection denial, and delete denied for everyone. This self-test's own
-// literal sanity-check is updated to match, same as it must be updated any
-// time SUITES' expected counts change -- a deliberate hardcoded cross-check
-// that EXPECTED_TOTAL wasn't silently miscomputed, not a value that should
-// ever drift unnoticed.
-await okAsync("7. a fully-passing run reports exactly 365 passed, 0 failed", async () => {
+// injection denial, and delete denied for everyone, then from 365 to 385
+// (Issue #15 production-readiness closeout, part 2) when
+// workOrderEngineRules.test.js added 20 assertions proving fieldops_wos/
+// counters/inventory_sync_status are unconditionally closed to direct
+// client writes and fieldops_wos reads are role/ownership-scoped. This
+// self-test's own literal sanity-check is updated to match, same as it
+// must be updated any time SUITES' expected counts change -- a deliberate
+// hardcoded cross-check that EXPECTED_TOTAL wasn't silently miscomputed,
+// not a value that should ever drift unnoticed.
+await okAsync("7. a fully-passing run reports exactly 385 passed, 0 failed", async () => {
   const byFile = new Map(SUITES.map((s) => [s.file, s.expected]));
   const lines = [];
   const r = await runAll({
@@ -191,8 +195,8 @@ await okAsync("7. a fully-passing run reports exactly 365 passed, 0 failed", asy
   assert.equal(r.ok, true);
   assert.equal(r.code, 0);
   assert.equal(r.totalPassed, EXPECTED_TOTAL);
-  assert.equal(EXPECTED_TOTAL, 365);
-  assert.ok(lines.some((l) => /365 passed, 0 failed/.test(l)), "summary must state 365 passed, 0 failed");
+  assert.equal(EXPECTED_TOTAL, 385);
+  assert.ok(lines.some((l) => /385 passed, 0 failed/.test(l)), "summary must state 385 passed, 0 failed");
   // parseSuiteResult correctness (count-mismatch and failed>0 both fail).
   assert.equal(parseSuiteResult("10 passed, 0 failed", 10).ok, true);
   assert.equal(parseSuiteResult("9 passed, 0 failed", 10).ok, false);

@@ -1,4 +1,4 @@
-// Firestore Rules Regression runner (Issue #221). Runs the EIGHT permanent
+// Firestore Rules Regression runner (Issue #221). Runs the NINE permanent
 // Firestore Rules emulator suites SEQUENTIALLY, each against a FRESHLY started
 // Firestore+Auth emulator, and reports a concise per-suite + total summary.
 //

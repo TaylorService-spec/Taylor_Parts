@@ -3,12 +3,15 @@
 // (createWorkOrder.ts/transitionWorkOrder.ts/updateWorkOrderExecutionData.ts)
 // genuinely behave as documented in
 // docs/deployment/issue-15-work-order-engine-deployment-manifest.md,
-// against a live Firestore + Auth emulator. Confirmed gap this file
-// closes: zero automated tests existed anywhere for these three
-// Functions or their shared dependencies (callerContext.ts,
-// woNumbering.ts, transitionEngine.ts -- transitionEngine.ts's own pure
-// logic is separately covered by transitionEngine.test.mjs, no emulator
-// needed there).
+// against a live Firestore emulator (no Auth emulator needed: each
+// `.run(request)` call below fabricates `request.auth` directly, the same
+// pattern accessCommandCallables.test.js uses -- there is no real Auth
+// sign-in anywhere in this file). Confirmed gap this file closes: zero
+// automated tests existed anywhere for these three Functions or their
+// shared dependencies (callerContext.ts, woNumbering.ts,
+// transitionEngine.ts -- transitionEngine.ts's own pure logic is
+// separately covered by transitionEngine.test.mjs, no emulator needed
+// there).
 //
 // Same pattern as functions/test/accessCommandCallables.test.js: each
 // compiled onCall handler is invoked directly via its own `.run(request)`
@@ -18,8 +21,8 @@
 // itself and would collide with this file's own admin.initializeApp()
 // call below).
 //
-// Prerequisite: run against live Firestore + Auth emulators, e.g.:
-//   firebase emulators:start --only firestore,auth --project taylor-parts
+// Prerequisite: run against a live Firestore emulator, e.g.:
+//   firebase emulators:start --only firestore --project taylor-parts
 // then, in a second terminal (after `npm run build`):
 //   node --test test/workOrderEngineFunctions.test.js
 //
@@ -27,7 +30,6 @@
 "use strict";
 
 process.env.FIRESTORE_EMULATOR_HOST = "127.0.0.1:8080";
-process.env.FIREBASE_AUTH_EMULATOR_HOST = "127.0.0.1:9099";
 
 const assert = require("node:assert/strict");
 const test = require("node:test");
