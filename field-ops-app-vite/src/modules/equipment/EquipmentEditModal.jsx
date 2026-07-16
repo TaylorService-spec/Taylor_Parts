@@ -156,12 +156,19 @@ export default function EquipmentEditModal({ equipment, accountName, locationNam
       // the diff used, so the evidence and the diff can never disagree about what the
       // record looked like.
       //
-      // It is DEFENSIVE, and the honest statement of why: changedEquipmentFields iterates
-      // EDITABLE_EQUIPMENT_FIELDS, so this form cannot produce a governed key even if its
-      // state were polluted with one -- which means `before` has nothing to prove today,
-      // and removing it leaves the gate green. It is passed anyway so that IF a governed
-      // key ever reached E2 from here, it would be refused as a proven change rather than
-      // silently unprovable (#287).
+      // IT IS LOAD-BEARING as of #312, and this comment used to say the opposite. It was
+      // right when written: changedEquipmentFields iterates EDITABLE_EQUIPMENT_FIELDS, so
+      // the form could not produce a governed key, and `before` had nothing to prove. Then
+      // this form gained a status control. Validating a transition REQUIRES the status the
+      // record is moving from, so removing `before` now turns every status change into
+      // `unprovableStatus` and a generic error:
+      //
+      //     with `before`:    valid, payload { ..., status: "INACTIVE" }
+      //     without:          refused, unprovableStatus, payload null
+      //
+      // It still also does the defensive job it was added for (#287): a governed key that
+      // ever reached E2 from here would be refused as a proven change rather than
+      // silently unprovable.
       const result = await onSave(changed, base);
       if (!result?.ok) {
         setFieldErrors(result?.errors ?? {});
