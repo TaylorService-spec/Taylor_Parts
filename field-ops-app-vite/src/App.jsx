@@ -12,6 +12,7 @@ import AccountsList from "./modules/accounts/AccountsList";
 import EquipmentRegister from "./modules/equipment/EquipmentRegister";
 import AccountDetail from "./modules/accounts/AccountDetail";
 import AdministrationOverview from "./modules/administration/AdministrationOverview";
+import AdministrationUnavailable from "./modules/administration/AdministrationUnavailable";
 import WorkOrdersList from "./modules/workOrders/WorkOrdersList";
 import WorkOrderWizard from "./modules/workOrders/WorkOrderWizard";
 import WorkOrderDetailPage from "./modules/workOrders/WorkOrderDetailPage";
@@ -143,6 +144,21 @@ function renderSubnavItem(domain, item, role) {
   // not a re-homed one.
   if (domain.key === "administration" && item.key === "overview") {
     return <AdministrationOverview />;
+  }
+  // Issue #226 Row 11 -- Read-only Admin MVP (Task 16). These four MVP
+  // surfaces have no live data source yet: firestore.rules deny all
+  // client-direct access to the governed collections (Row 3/PR #276), and no
+  // Cloud Function read path is deployed (blocked on Issue #15, Spec sec17).
+  // Real content replaces this once that backend ships and is verified --
+  // see AdministrationUnavailable.jsx's own doc comment.
+  if (
+    domain.key === "administration" &&
+    (item.key === "users" ||
+      item.key === "rolesPermissions" ||
+      item.key === "permissionPreview" ||
+      item.key === "auditLogs")
+  ) {
+    return <AdministrationUnavailable title={item.label} />;
   }
   if (item.legacyKey) {
     const Component = LEGACY_COMPONENTS[item.legacyKey];
