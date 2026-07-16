@@ -504,6 +504,107 @@ async function main() {
     assert.equal(grantedAgain.rowCount, 1);
   });
 
+  // --- Sort (review round 1 fix: sort was authorization-filtered but never applied) ---
+  await check("an authorized sort clause actually orders the returned rows", async () => {
+    const runnerUid = await seedRunner();
+    await grantRole(runnerUid, "fullCustomer");
+    const marker = uid("mk");
+    await seedCustomers([
+      { name: `${marker}-Charlie`, status: "Active", createdAt: now },
+      { name: `${marker}-Alpha`, status: "Active", createdAt: now },
+      { name: `${marker}-Bravo`, status: "Active", createdAt: now },
+    ]);
+    const asc = await runReportDefinition(
+      {
+        runnerUid,
+        definition: {
+          objectId: "customer",
+          fields: ["customer.name"],
+          filters: [{ fieldId: "customer.name", op: "startsWith", value: marker }],
+          sort: [{ fieldId: "customer.name", direction: "asc" }],
+        },
+      },
+      { roles: TEST_ROLES },
+    );
+    assert.deepEqual(asc.rows.map((r) => r["customer.name"]), [`${marker}-Alpha`, `${marker}-Bravo`, `${marker}-Charlie`]);
+
+    const desc = await runReportDefinition(
+      {
+        runnerUid,
+        definition: {
+          objectId: "customer",
+          fields: ["customer.name"],
+          filters: [{ fieldId: "customer.name", op: "startsWith", value: marker }],
+          sort: [{ fieldId: "customer.name", direction: "desc" }],
+        },
+      },
+      { roles: TEST_ROLES },
+    );
+    assert.deepEqual(desc.rows.map((r) => r["customer.name"]), [`${marker}-Charlie`, `${marker}-Bravo`, `${marker}-Alpha`]);
+  });
+
+  // --- Relationship-field filter/group/aggregate execution (review round 1 fix) ---
+  await check("a filter on an AUTHORIZED related-object field actually narrows the result, not silently drops everything or no-ops", async () => {
+    const runnerUid = await seedRunner();
+    await grantRole(runnerUid, "fullEquipmentWithLocation");
+    const marker = uid("mk");
+    const matchLocId = uid("loc");
+    const otherLocId = uid("loc");
+    await db.collection("locations").doc(matchLocId).set({ name: `${marker}-Main Warehouse` });
+    await db.collection("locations").doc(otherLocId).set({ name: `${marker}-Other Site` });
+    await db.collection("equipment").doc(uid("eq")).set({ name: `${marker}-Forklift A`, locationId: matchLocId });
+    await db.collection("equipment").doc(uid("eq")).set({ name: `${marker}-Forklift B`, locationId: otherLocId });
+
+    const outcome = await runReportDefinition(
+      {
+        runnerUid,
+        definition: {
+          objectId: "equipment",
+          fields: ["equipment.name", "location.name"],
+          filters: [
+            { fieldId: "equipment.name", op: "startsWith", value: marker },
+            { fieldId: "location.name", op: "eq", value: `${marker}-Main Warehouse` },
+          ],
+        },
+      },
+      { roles: TEST_ROLES },
+    );
+    assert.equal(outcome.rowCount, 1, "a real related-field filter must actually narrow, not drop everything (silent-exclude bug) or match everything (silent-no-op bug)");
+    assert.equal(outcome.rows[0]["equipment.name"], `${marker}-Forklift A`);
+    assert.equal(outcome.widened, false, "the related-field filter was authorized, so nothing was dropped/widened");
+  });
+
+  await check("groupBy on an AUTHORIZED related-object field actually groups by its real joined value, not a single empty bucket", async () => {
+    const runnerUid = await seedRunner();
+    await grantRole(runnerUid, "fullEquipmentWithLocation");
+    const marker = uid("mk");
+    const locA = uid("loc");
+    const locB = uid("loc");
+    await db.collection("locations").doc(locA).set({ name: `${marker}-Warehouse A` });
+    await db.collection("locations").doc(locB).set({ name: `${marker}-Warehouse B` });
+    await db.collection("equipment").doc(uid("eq")).set({ name: `${marker}-Item 1`, locationId: locA });
+    await db.collection("equipment").doc(uid("eq")).set({ name: `${marker}-Item 2`, locationId: locA });
+    await db.collection("equipment").doc(uid("eq")).set({ name: `${marker}-Item 3`, locationId: locB });
+
+    const outcome = await runReportDefinition(
+      {
+        runnerUid,
+        definition: {
+          objectId: "equipment",
+          fields: ["location.name"],
+          groupBy: ["location.name"],
+          aggregates: [{ fn: "countRows" }],
+          filters: [{ fieldId: "equipment.name", op: "startsWith", value: marker }],
+        },
+      },
+      { roles: TEST_ROLES },
+    );
+    assert.equal(outcome.aggregates.length, 2, "must group into the two REAL joined location buckets, not one empty-key bucket");
+    const byLocation = Object.fromEntries(outcome.aggregates.map((r) => [r["location.name"], r.countRows]));
+    assert.equal(byLocation[`${marker}-Warehouse A`], 2);
+    assert.equal(byLocation[`${marker}-Warehouse B`], 1);
+  });
+
   // --- No module-level mutable state (structural, static-text proof) ---
   await check("reportExecutionService.ts declares no top-level mutable (let/var) binding -- no cache, anywhere, of any kind", () => {
     const here = dirname(fileURLToPath(import.meta.url));

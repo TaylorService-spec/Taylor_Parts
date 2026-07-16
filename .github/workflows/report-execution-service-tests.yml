@@ -1,0 +1,109 @@
+name: Report Execution Service Tests
+
+# Issue #325 / ADR-007 D-FN: the trusted, field-projecting report
+# execution service (functions/src/reporting/). Independent-review round
+# 1 finding: this PR originally shipped no CI wiring at all for its own
+# tests -- the most security-sensitive code in the #325/#226 chain had
+# zero enforced regression coverage. Closes that gap, matching every
+# other access-related test file's own dedicated workflow (e.g.
+# access-audit-service-tests.yml).
+#
+# Runs the parity test (no emulator needed -- imports the client's actual
+# reportCatalog.js/reportQueryModel.js/reportQueryValidation.js via a
+# relative path from field-ops-app-vite/, present in this same checkout)
+# and the execution-service emulator test (Firestore only -- no Auth
+# needed, since runReportDefinition() takes a runnerUid directly rather
+# than an ID token). Emulator-only, project "taylor-parts", loopback
+# host -- no production access, no credentials, no repository secrets.
+
+on:
+  pull_request:
+    paths:
+      - "functions/src/types/access.ts"
+      - "functions/src/access/**"
+      - "functions/src/reporting/**"
+      - "functions/test/reportCatalogParity.test.mjs"
+      - "functions/test/reportExecutionService.test.mjs"
+      - "field-ops-app-vite/src/domain/reporting/reportCatalog.js"
+      - "field-ops-app-vite/src/domain/reporting/reportQueryModel.js"
+      - "field-ops-app-vite/src/domain/reporting/reportQueryValidation.js"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - "firebase.json"
+      - ".github/workflows/report-execution-service-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/src/types/access.ts"
+      - "functions/src/access/**"
+      - "functions/src/reporting/**"
+      - "functions/test/reportCatalogParity.test.mjs"
+      - "functions/test/reportExecutionService.test.mjs"
+      - "field-ops-app-vite/src/domain/reporting/reportCatalog.js"
+      - "field-ops-app-vite/src/domain/reporting/reportQueryModel.js"
+      - "field-ops-app-vite/src/domain/reporting/reportQueryValidation.js"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - "firebase.json"
+      - ".github/workflows/report-execution-service-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  report-execution-service-tests:
+    name: D-FN report execution + catalog parity tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      # The Firestore emulator is a Java process.
+      - name: Set up Java (required by the Firestore emulator)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+
+      - name: Catalog/query-model/validator parity vs. the client (no emulator)
+        run: npm run build && node test/reportCatalogParity.test.mjs
+        working-directory: functions
+
+      - name: Start Firestore emulator (background)
+        run: |
+          nohup node node_modules/firebase-tools/lib/bin/firebase.js emulators:start --only firestore --project taylor-parts --config ../firebase.json > /tmp/firestore-emulator.log 2>&1 &
+          for i in $(seq 1 60); do
+            if grep -q "All emulators ready" /tmp/firestore-emulator.log 2>/dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "Firestore emulator did not become ready in time"
+          cat /tmp/firestore-emulator.log
+          exit 1
+        working-directory: functions
+
+      - name: Report execution service tests
+        run: node test/reportExecutionService.test.mjs
+        working-directory: functions
+
+      - name: Upload emulator debug logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: report-execution-service-emulator-logs
+          path: |
+            /tmp/firestore-emulator.log
+            firestore-debug.log
+          if-no-files-found: ignore
+          retention-days: 7

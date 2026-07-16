@@ -300,6 +300,27 @@ function getAtPath(doc: Record<string, unknown>, path: string): unknown {
   }, doc);
 }
 
+// Independent-review finding (round 1): the original design read a
+// related-object field's value ONLY in projectDoc() (final projection),
+// but matchesFilter()/groupDocuments()/computeAggregate() ran BEFORE the
+// relationship join and read only the base document -- so a filter/
+// group/aggregate on an AUTHORIZED related-object field (e.g.
+// `location.name` from an `equipment` report) silently produced wrong
+// results (an `eq` filter dropped every row; grouping bucketed
+// everything together) instead of actually applying against the joined
+// value. Fixed by: (a) joining EVERY referenced related field -- not
+// just ones in `fields[]` -- BEFORE filtering/grouping/aggregation/sort
+// run (see the reordered pipeline in runReportDefinition below), and
+// (b) this single shared getFieldValue() used by every execution-time
+// consumer (filter/group/aggregate/sort/project), so there is exactly
+// ONE place that knows how to resolve a field id (own or joined) to a
+// value, never two independently-written copies that can drift.
+function getFieldValue(doc: Record<string, unknown>, baseObjectId: string, field: ReportField): unknown {
+  if (field.objectId === baseObjectId) return getAtPath(doc, rawFieldPath(field));
+  const related = doc[`__related__${field.objectId}`] as Record<string, unknown> | undefined;
+  return related ? getAtPath(related, rawFieldPath(field)) : undefined;
+}
+
 // ---------------------------------------------------------------------
 // The public entry point.
 // ---------------------------------------------------------------------
@@ -412,28 +433,45 @@ export async function runReportDefinition(
   const widened = droppedPredicateFieldIds.length > 0;
 
   // --- Fetch (index-free: no server-side where(), bounded fetch, all
-  // filtering/grouping/aggregation in-memory -- see maxScanDocs's
+  // filtering/grouping/aggregation/sort in-memory -- see maxScanDocs's
   // module-level doc comment for why) ---
   const snap = await db.collection(object.collection).limit(maxScanDocs + 1).get();
   const scanTruncated = snap.size > maxScanDocs;
   const rawDocs = snap.docs.slice(0, maxScanDocs).map((d) => ({ id: d.id, ...d.data() }) as Record<string, unknown>);
 
-  // --- Apply active filters in-memory ---
-  const filtered = rawDocs.filter((doc) => activeFilters.every((flt) => matchesFilter(doc, objectId, flt)));
-
-  // --- One-hop relationship join for any authorized related-object
-  // field actually selected (Spec sec2.5: projected columns from a
-  // related object are authorized by THAT object's own field
-  // capabilities for the SAME runner -- already enforced above via
-  // resolveFieldAuthorization requiring BOTH the traversal capability
-  // AND the related field's own capability). Direct .doc(id).get() per
-  // referenced related row -- no query, no index, batched. ---
-  const relatedFieldsByBase = activeFields
+  // --- One-hop relationship join, BEFORE filtering/grouping/aggregation/
+  // sort -- for EVERY authorized field referenced ANYWHERE in the
+  // definition (not only the selected `fields[]`). Independent-review
+  // finding (round 1): the original code joined only `activeFields` and
+  // joined AFTER filtering, so a filter/groupBy/aggregate/sort on an
+  // authorized related-object field (e.g. `location.name` from an
+  // `equipment` report) always read `undefined` (nothing had been
+  // joined yet) and silently produced wrong results (an `eq` filter
+  // dropped every row; grouping bucketed everything together) instead
+  // of a real error OR a leak -- fixed by joining first, from the full
+  // authorized-and-referenced field set. Spec sec2.5's own authorization
+  // rule is unaffected: which related fields are ELIGIBLE to join here
+  // was already decided by resolveFieldAuthorization() above (BOTH the
+  // traversal capability AND the related object's own field capability
+  // required) -- this only fixes WHEN the already-authorized join
+  // happens, not what is authorized to join. ---
+  const authorizedReferencedFields = Array.from(authorizedFieldIds)
     .map((id) => resolveDefinitionField(objectId, id))
-    .filter((r): r is NonNullable<typeof r> => !!r && !!r.relationship);
-  const joined = relatedFieldsByBase.length > 0
-    ? await joinRelatedDocs(db, objectId, filtered, relatedFieldsByBase)
-    : filtered;
+    .filter((r): r is NonNullable<typeof r> => !!r);
+  const relatedFieldsByBase = authorizedReferencedFields.filter((r) => !!r.relationship);
+  const joinedRaw = relatedFieldsByBase.length > 0
+    ? await joinRelatedDocs(db, objectId, rawDocs, relatedFieldsByBase)
+    : rawDocs;
+
+  // --- Apply active filters in-memory (now against joined docs, so a
+  // related-object predicate actually has a value to compare) ---
+  const filtered = joinedRaw.filter((doc) => activeFilters.every((flt) => matchesFilter(doc, objectId, flt)));
+
+  // --- Sort (ungrouped path only -- Spec's own field-catalog `sort`
+  // operator is declared per-field for RAW column sort; sorting grouped/
+  // aggregated output by a group key is a distinct, un-specified
+  // feature not implemented here) ---
+  const sorted = sortRows(filtered, objectId, activeSort);
 
   // --- Grouping + aggregation ---
   let resultRows: Array<Record<string, unknown>>;
@@ -441,14 +479,14 @@ export async function runReportDefinition(
   let groupCardinalityTruncated = false;
 
   if (activeGroupBy.length > 0 || activeAggregates.length > 0) {
-    const groups = groupDocuments(joined, objectId, activeGroupBy);
+    const groups = groupDocuments(filtered, objectId, activeGroupBy);
     groupCardinalityTruncated = groups.size > maxGroupCardinality;
     const cappedGroupEntries = Array.from(groups.entries()).slice(0, maxGroupCardinality);
     aggregateRows = cappedGroupEntries.map(([, rows]) => {
       const row: Record<string, unknown> = {};
       for (const fieldId of activeGroupBy) {
         const field = getReportField(fieldId);
-        if (field) row[fieldId] = getAtPath(rows[0], rawFieldPath(field));
+        if (field) row[fieldId] = getFieldValue(rows[0], objectId, field);
       }
       for (const agg of activeAggregates) {
         row[aggregateResultKey(agg)] = computeAggregate(rows, objectId, agg);
@@ -457,7 +495,7 @@ export async function runReportDefinition(
     });
     resultRows = []; // grouped/aggregated runs return aggregateRows, not raw rows
   } else {
-    resultRows = joined;
+    resultRows = sorted;
   }
 
   const rowCountBeforeCap = activeGroupBy.length > 0 || activeAggregates.length > 0
@@ -474,7 +512,7 @@ export async function runReportDefinition(
   // -- never blanked, never returned-then-hidden") ---
   const projectedRows = (activeGroupBy.length > 0 || activeAggregates.length > 0)
     ? null
-    : cappedRows.map((doc) => projectDoc(doc, objectId, activeFields, relatedFieldsByBase));
+    : cappedRows.map((doc) => projectDoc(doc, objectId, activeFields));
 
   const rowCount = (activeGroupBy.length > 0 || activeAggregates.length > 0)
     ? (cappedAggregateRows as Array<Record<string, unknown>>).length
@@ -530,7 +568,7 @@ export async function runReportDefinition(
 function matchesFilter(doc: Record<string, unknown>, objectId: string, flt: { fieldId: string; op: string; value: unknown }): boolean {
   const field = getReportField(flt.fieldId);
   if (!field) return true; // unresolvable somehow; validator already guarantees this never happens for an active filter
-  const raw = field.objectId === objectId ? getAtPath(doc, rawFieldPath(field)) : undefined;
+  const raw = getFieldValue(doc, objectId, field);
   switch (flt.op) {
     case "eq": return raw === flt.value;
     case "ne": return raw !== flt.value;
@@ -579,8 +617,8 @@ function groupDocuments(
     const key = groupBy
       .map((fieldId) => {
         const field = getReportField(fieldId);
-        if (!field || field.objectId !== objectId) return "";
-        return JSON.stringify(getAtPath(doc, rawFieldPath(field)) ?? null);
+        if (!field) return "";
+        return JSON.stringify(getFieldValue(doc, objectId, field) ?? null);
       })
       .join(" ");
     const bucket = groups.get(key);
@@ -597,9 +635,9 @@ function aggregateResultKey(agg: { fieldId?: string; fn: string }): string {
 function computeAggregate(rows: Array<Record<string, unknown>>, objectId: string, agg: { fieldId?: string; fn: string }): number {
   if (isFieldlessAggregate(agg.fn)) return rows.length; // countRows: bounded by the runner's own authorized/filtered row set
   const field = getReportField(agg.fieldId as string);
-  if (!field || field.objectId !== objectId) return 0;
+  if (!field) return 0;
   const values = rows
-    .map((doc) => getAtPath(doc, rawFieldPath(field)))
+    .map((doc) => getFieldValue(doc, objectId, field))
     .filter((v): v is number => typeof v === "number" && Number.isFinite(v));
   switch (agg.fn) {
     case "count": return values.length;
@@ -660,27 +698,73 @@ async function joinRelatedDocs(
   return joinedDocs;
 }
 
+// Independent-review finding (round 1): `sort` was authorization-filtered
+// into `activeSort` but never actually applied anywhere -- a definition
+// with a `sort` clause silently returned Firestore's raw fetch order
+// (and the row cap then truncated an arbitrary, not a sorted, set).
+// Fixed: applied to the ungrouped row list before capping/projecting
+// (see runReportDefinition below). Stable (Array.prototype.sort's
+// documented guarantee since ES2019) so a multi-key sort composes
+// correctly across successive single-key comparisons.
+function sortRows(
+  rows: Array<Record<string, unknown>>,
+  objectId: string,
+  sort: readonly { fieldId: string; direction: "asc" | "desc" }[],
+): Array<Record<string, unknown>> {
+  if (sort.length === 0) return rows;
+  const sorted = [...rows];
+  // Apply sort keys in REVERSE order with a stable sort, so the FIRST
+  // key in `sort` ends up the primary key (each later stable pass only
+  // breaks ties left by the previous one).
+  for (const s of [...sort].reverse()) {
+    const field = getReportField(s.fieldId);
+    if (!field) continue;
+    sorted.sort((a, b) => {
+      const av = getFieldValue(a, objectId, field);
+      const bv = getFieldValue(b, objectId, field);
+      const cmp = compareValues(av, bv);
+      return s.direction === "desc" ? -cmp : cmp;
+    });
+  }
+  return sorted;
+}
+
+// A field's declared dataType (from the catalog) isn't threaded through
+// to this comparator, so it infers by RUNTIME shape instead: two numbers
+// compare numerically; a Firestore Timestamp-shaped value (has
+// `.toMillis()`, e.g. a `date` field's raw stored value) compares by
+// millis; everything else compares as a string. `null`/`undefined`
+// (a field genuinely absent on a document, or the runner-authorized-but-
+// unset case) always sorts last, regardless of asc/desc, matching the
+// conventional "nulls last" sort convention.
+function compareValues(a: unknown, b: unknown): number {
+  if (a === b) return 0;
+  if (a === undefined || a === null) return 1;
+  if (b === undefined || b === null) return -1;
+  if (typeof a === "number" && typeof b === "number") return a - b;
+  const aMillis = toTimestampMillis(a);
+  const bMillis = toTimestampMillis(b);
+  if (aMillis !== null && bMillis !== null) return aMillis - bMillis;
+  return String(a).localeCompare(String(b));
+}
+
+function toTimestampMillis(value: unknown): number | null {
+  if (value && typeof value === "object" && typeof (value as { toMillis?: () => number }).toMillis === "function") {
+    return (value as { toMillis: () => number }).toMillis();
+  }
+  return null;
+}
+
 function projectDoc(
   doc: Record<string, unknown>,
   baseObjectId: string,
   activeFields: readonly string[],
-  relatedFields: Array<{ field: ReportField; relationship: NonNullable<ReturnType<typeof resolveDefinitionField>>["relationship"] }>,
 ): Record<string, unknown> {
   const projected: Record<string, unknown> = {};
   for (const fieldId of activeFields) {
     const field = getReportField(fieldId);
     if (!field) continue;
-    if (field.objectId === baseObjectId) {
-      projected[fieldId] = getAtPath(doc, rawFieldPath(field));
-    } else {
-      const related = doc[`__related__${field.objectId}`] as Record<string, unknown> | undefined;
-      projected[fieldId] = related ? getAtPath(related, rawFieldPath(field)) : null;
-    }
+    projected[fieldId] = getFieldValue(doc, baseObjectId, field) ?? null;
   }
-  // relatedFields is accepted only to keep the projection contract
-  // explicit at call sites (which related-object fields were actually
-  // authorized) -- the loop above already re-derives it from
-  // activeFields, so no further use is needed here.
-  void relatedFields;
   return projected;
 }
