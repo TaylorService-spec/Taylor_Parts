@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useEquipmentDoc, useWorkOrdersForEquipment } from "../../hooks/useEquipment";
 import { useAccount } from "../../hooks/useAccount";
@@ -68,9 +68,19 @@ export default function EquipmentDetail() {
   // useState after them would run conditionally.
   const [editing, setEditing] = useState(false);
 
-  // The saved record arrives through useEquipmentDoc's live subscription, so there is
-  // no local copy to update and none to drift. Closing is this component's single
-  // decision; the modal never closes itself (E6's rule).
+  // Close the editor when the route moves to a DIFFERENT asset. Without this, browser
+  // Back between two detail pages re-opens the modal unrequested on the new record --
+  // the user asked to leave, and instead they land in an editor they never opened.
+  // Data-safe either way (the modal remounts re-seeded from the new record), but a form
+  // appearing over an asset you merely navigated to is a surprise, not a feature.
+  useEffect(() => { setEditing(false); }, [equipmentId]);
+
+  // The saved record arrives through useEquipmentDoc's live subscription, so this page
+  // has nothing to update by hand. That is true of the PAGE only -- the modal does hold a
+  // local copy of the values, and its drift against a concurrent write was E8's blocker:
+  // it freezes the record it seeded from and diffs against that, so a save is a
+  // field-level merge rather than an overwrite. See EquipmentEditModal's header.
+  // Closing is this component's single decision; the modal never closes itself (E6's rule).
   const handleSave = useCallback(async (changed, before) => {
     const result = await updateEquipment(equipmentId, changed, { before });
     if (result?.ok) setEditing(false);
