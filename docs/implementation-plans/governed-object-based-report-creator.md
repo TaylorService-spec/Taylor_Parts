@@ -48,6 +48,8 @@ Repository-path convention: `firestore.rules`, `functions/…`, `docs/…` repo-
 
 Customer implements the left/top rows; the bottom rows are prerequisites Customer **coordinates with and depends on**, never edits. A Customer PR that discovers it needs a Rule, a Function, an index, or a permission-engine change **stops and routes to the owning lane** (a hard stop of this workstream).
 
+**Naming:** a wave name (`W1`, `W-SAVE`) denotes the *activation* — Customer's UI slice plus the backend capability it switches on; a `-UI` suffix (`W1-UI`, `W-SAVE-UI`) denotes **only Customer's slice** of that activation. They are the same wave, split by lane.
+
 ## 3. Foundation PRs (no user-visible capability; Customer-buildable now)
 
 | PR | Title | Lane | Deliverable | Depends on | Reversible by |
@@ -91,7 +93,7 @@ Each wave is a **catalog/capability activation over the build-once engine** (ADR
 ## 6. Gates (applied per PR)
 
 - **Test gate.** Foundation + Customer PRs: unit tests for catalog integrity (F1) and query validation (F2), mutation-proven where a guard is load-bearing; browser verification for the builder UI (F3/W1) with keyboard + 375px + the state matrix. The projection/predicate-drop/limit behavior of D-FN is tested in the Functions lane with emulator field-level cases proving unauthorized fields are absent from the payload and predicates on unreadable fields are dropped.
-- **Security-review gate.** A **dedicated independent security review** before merge of: D-226, D-FN, D-RULES, D-AUDIT, and every sensitive-domain wave (W4 employee, W5 financial/audit), specifically checking no field/predicate/membership leakage, no privilege escalation via saved/shared/scheduled definitions, and no cross-principal caching.
+- **Security-review gate.** A **dedicated independent security review** before merge of every backend dependency (D-226, D-FN, D-RULES, D-AUDIT) and every wave that changes what data can leave the system — mandatory for the sensitive-domain waves (W4 employee, W5 financial/audit), and applied to W-SAVE (saved definitions as an escalation surface), W-CSV (a new egress channel), W-SHARE (cross-principal exposure), and W2/W3 (new objects/fields) per the §5 table. Each checks no field/predicate/membership leakage, no privilege escalation via saved/shared/scheduled definitions, and no cross-principal caching. The §5 table is the authoritative per-PR list; this paragraph states the minimum-mandatory backend + sensitive set.
 - **Rollback gate.** Customer PRs revert cleanly. Activation waves roll back by **de-activating catalog entries/capabilities** — no schema migration, no backfill, no engine change; a field found to leak or be mis-classified is de-activated (denied) without touching other objects (ADR-007 §13).
 - **Production gate (G-PROD).** No report executes in production until #15 deploys + verifies the Functions and the Owner issues production authorization. Every surface stays unavailable-not-unsafe until then. Tenant Scope stays inert until #140 across all waves.
 
