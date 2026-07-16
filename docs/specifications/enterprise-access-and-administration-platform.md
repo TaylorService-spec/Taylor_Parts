@@ -234,3 +234,66 @@ Exactly one new file: `docs/specifications/enterprise-access-and-administration-
 ## 25. Approval
 
 Specification-Approved as the contract layer derived from Owner-approved ADR-005. Merging records the contracts only; it authorizes **no** implementation. The Implementation Plan is the next separately-authorized gate; Issue #226 remains OPEN/In Progress. **AI specifies; it never grants, revokes, or approves access.**
+
+## 26. Addendum — Governed business Role catalog (Owner direction, Issue #226 comments dated 2026-07-16)
+
+**Source of authority:** two Owner comments on Issue #226 (2026-07-16T09:58:58Z and 2026-07-16T09:59:51Z, main head `d4bae4b54496a515cf60cfc9018409559d98ea02`), naming eight new governed business Roles and restating classification. This addendum reconciles that direction with §5–§9 without reopening or renumbering the sections above.
+
+### 26.1 Classification (restates the Owner comments)
+
+- **Compatibility Roles remain exactly** `admin`, `dispatcher`, `technician` (§7) — unchanged, byte-for-byte, until §21's retirement criteria pass. None of the eight names below is a fourth compatibility Role or a new raw `users/{uid}.role` value; writing one to that field is prohibited and would fail existing hard-coded Rules/Functions.
+- Each of the eight is a **governed business Role** (§5.2 `Role` contract): `systemSeed: true` (repository-declared, not client-created), `compatibility: false` (reproduces no legacy raw-role matrix — it is new, not a restatement of existing behavior).
+- **Inert on merge:** declaring these Role objects (§26.3) grants nothing to anyone. No Rule, Function, or claim consumes them. A principal may hold a compatibility Role and, once the trusted-writer Role-assignment command (§15) is later authorized for general use, also hold one or more governed business Role assignments — the compatibility Role continues to be what actually authorizes every request until a domain's permission-engine cutover (§19) is separately authorized.
+- **Owner is not a bypass** (Owner direction, verbatim): the `Owner` Role's grants are ordinary Permission entries evaluated by the same resolver (§8), subject to the same Scope/Condition matching, the same Audit Event trail (§14), and the same separation-of-duty rule (§15) as every other Role. Its `privileged: true` flag (§5.2) means grant/revoke requires a second, distinct approver — the same rule §7 already applies to `admin`.
+
+### 26.2 Least-privilege Permission / Scope / Condition matrix
+
+Every grant below cites an **existing** `PermissionId` from §6's catalog (`permissionCatalog.ts`) — this addendum invents no new capability. Where a role's stated mapping principle names a capability this repository has no permission id for yet, it is recorded as a **catalog gap** in §26.4, not silently granted via an unrelated id and not fabricated. `Scope` is a property of a **Role assignment** (§5.3), not the Role definition itself — the "Typical scope" column is assignment-time guidance for whoever later authorizes real assignments, not a new schema field.
+
+| Role | Permissions granted (existing ids only) | Conditions | Typical scope | Rationale / exclusions |
+|---|---|---|---|---|
+| **General Employee** | *(none)* | — | — | Least-privilege baseline per the Owner direction: "grants no broad domain access by title alone." Authentication and identity alone; every further capability comes from an explicit additional Role assignment, never from holding this one. |
+| **Office Manager** | `account.record.read`, `account.record.create`, `account.record.update`, `workOrder.create` | — | `domain` or `location` | Office/customer/service **coordination** — Customer intake/edit and Work Order creation/scheduling. Deliberately excludes `account.governedField.write` ("no...unrestricted financial authority") and `workOrder.transition`/`workOrder.cancel` (lifecycle **execution**, not coordination — reserved for Field Manager/Operations Manager below). No `admin.*` id ("no automatic role administration"). |
+| **Sales Manager** | `account.record.read`, `account.record.create`, `account.record.update` | — | `domain` | Customer/CRM coverage from the existing catalog. **Sales-specific and quote/reporting capabilities are a catalog gap (§26.4)** — not granted via a substitute id. |
+| **Accounting Manager** | `account.record.read` | — | `domain` | Read-only customer visibility only (billing-adjacent context). **Invoice/payment/credit/accounting-reporting capabilities do not exist in the catalog — entirely a gap (§26.4).** Deliberately holds no write permission and no overlap with Finance Manager's `account.governedField.write` below, preserving the Owner's explicit "remain distinct" requirement. |
+| **Finance Manager** | `account.record.read`, `account.governedField.write` | — | `domain` or `global` | `account.governedField.write` (Issue #175's admin-only commercial-terms/tax-status field) is financial **policy** authority, not day-to-day accounting operations — the one existing id that concretely matches "financial oversight...approvals" without overlapping Accounting Manager. **Margin/cost visibility and finance-reporting capabilities do not exist in the catalog — a gap (§26.4).** |
+| **Field Manager** | `workOrder.create`, `workOrder.transition`, `workOrder.cancel`, `inventory.transaction.read` | — | `domain` or `location` | Full existing Work Order lifecycle authority (technicians/dispatch/Work Orders) plus field inventory **visibility**. Deliberately excludes `reorder.*`/`inventory.action.*` write-side ids — reorder/purchasing execution authority stays with the roles Issue #100 already scopes it to (PARTS_MANAGER/PARTS_ASSOCIATE eligibility, expressed as Conditions on `technician`, §9), not duplicated here as an unconditioned grant. **Equipment capabilities do not exist in the catalog — a gap (§26.4).** |
+| **Operations Manager** | `account.record.read`, `workOrder.create`, `workOrder.transition`, `workOrder.cancel`, `inventory.transaction.read`, `inventory.action.read`, `reorder.request.read.queue`, `reorder.purchaseOrder.read` | — | `domain`, `tenant` once #140 exists | Cross-domain **oversight** (Customer, Service, Inventory, Purchasing) via read-heavy + Work Order lifecycle grants. Deliberately excludes `account.record.create`/`account.record.update` (oversight is not direct customer-editing authority in this conservative reading), `account.governedField.write`, and every `admin.*`/`reorder.request.assign`/`reorder.request.approve`/`reorder.request.reject`/`reorder.request.cancel` id ("no automatic role administration", and reorder decision authority stays with the Roles Issue #100 already names). **Warehouse-specific ids (transfers, locations) do not exist in the catalog — a gap (§26.4).** |
+| **Owner** | Every id `ADMIN_ROLE` holds (§7): the full `SHARED_ADMIN_DISPATCHER_BASE_PERMISSIONS` set, `account.governedField.write`, `admin.userStatus.write`, `admin.roleAssignment.write`, `admin.accessRequest.decide` | `reorder.purchaseOrder.void`: `isOwnAssignment` (identical to `ADMIN_ROLE`'s existing Condition on the same id) | `global` | Privileged full-platform role, matching today's highest existing grant (`admin`) exactly rather than inventing a broader one — "privileged/full-access but...not a security bypass" is satisfied by holding the same audited, Condition-gated grant `admin` already holds, through the same resolver, not a special-cased escape hatch. |
+
+### 26.3 Implementation form
+
+Declared in a new, separate module — **not** appended to `compatibilityRoles.ts`, whose own header comment scopes it explicitly to the three seeded compatibility Roles and names it the shadow-mode **parity oracle** (§7, §18); mixing governed business Roles into that file would blur that boundary:
+
+- `field-ops-app-vite/src/access/governedBusinessRoles.ts`
+- `functions/src/access/governedBusinessRoles.ts` (mirrored, not imported — same convention as every other file in this domain)
+
+Both export the eight `Role` objects individually and as a single `GOVERNED_BUSINESS_ROLES: Readonly<Record<string, Role>>` map, consumable by the same `resolveEffectivePermission()` (§8) the compatibility Roles already use — no resolver change. Neither file is imported by `AdminRolesPermissions.jsx`'s `ASSIGNABLE_ROLES` (still derived from `COMPATIBILITY_ROLES` only) or by any Rule/Function — remaining fully inert until a later, separately-authorized row wires assignment.
+
+### 26.4 Permission-catalog gaps identified (no id registered by this addendum)
+
+Per domain, restating exactly which of the eight roles' stated mapping principles name a capability the current `PERMISSION_CATALOG` (§6) has no id for. Each is a candidate for a **future Assessment/Specification/Implementation Plan cycle** — this addendum registers the gap, not the id, per the Owner direction's "register it through the normal...chain before implementing it."
+
+| Domain | Gap | Which role(s) need it |
+|---|---|---|
+| Sales / CRM | Quote creation/read, sales-pipeline capabilities distinct from bare Customer record access | Sales Manager |
+| Accounting | Invoice read/create, payment record, credit/adjustment record, accounting-specific reporting | Accounting Manager |
+| Finance | Margin/cost visibility, financial-approval workflow (distinct from Issue #175's single governed-field write), finance-specific reporting | Finance Manager |
+| Field Service / Equipment | Equipment/installed-asset read/write (ADR-006, `docs/specifications/equipment-and-installed-asset-management.md` — no application code yet), technician-management capabilities distinct from raw Employee administration | Field Manager |
+| Warehouse | Location/transfer-specific ids distinct from the existing part-level `inventory.transaction.*`/`inventory.action.*` | Operations Manager |
+| Reporting | No `reporting.*` domain exists at all in the catalog — every role's "authorized reporting" language above is satisfied only to the extent an underlying domain permission already exists (e.g. reading Customer/Work Order/Inventory records); there is no cross-domain report-generation or report-access capability today | Sales Manager, Accounting Manager, Finance Manager |
+
+**Customer, Purchasing, Inventory, and Administration** have no gap relative to this addendum's eight roles — every capability those roles need from those domains already has a catalog id, used in §26.2 above.
+
+### 26.5 Decisions this addendum does not resolve
+
+Recorded for the Owner rather than inferred (per the Owner direction's "collect truly irreducible...decisions for the final report" instruction to the implementing agent):
+
+- Whether any of the six §26.4 gap domains should be prioritized for its own Assessment next, and in what order.
+- Whether `Accounting Manager`/`Finance Manager` should eventually gain a *write* capability in their own domains once one exists, or remain read-mostly/oversight roles even after the catalog gap closes.
+- Whether `Owner` should ever diverge from mirroring `admin`'s exact grant (e.g. an Owner-only capability with no `admin` equivalent) once real platform-owner-specific capabilities are identified.
+- The real-world job-title-to-Role assignment mapping for actual principals — out of scope for this addendum by design (§26.1: inert, no assignment authorized).
+
+### 26.6 Approval
+
+This addendum is Specification-Approved on the same terms as §25: contract-layer only, records the eight governed business Roles' Permission/Scope/Condition mapping and the identified catalog gaps. It authorizes no Role assignment, no claims change, no Rules/Functions change, no production deployment, and no permission-catalog addition beyond the existing ids cited in §26.2. Issue #226 remains OPEN/In Progress.

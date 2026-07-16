@@ -1,0 +1,281 @@
+// Enterprise Access & Administration Platform (Issue #226) -- Row 1a
+// acceptance tests for the eight governed business Roles added per
+// Owner direction (docs/specifications/enterprise-access-and-
+// administration-platform.md §26, docs/implementation-plans/
+// enterprise-access-and-administration-platform.md §21).
+//
+// Dependency-free: plain Node assert against the compiled catalog/
+// resolver/Role definitions, no test runner, matching this repo's
+// existing pure-logic test convention.
+//
+// Prerequisite: `npm run build` in functions/ first (imports the
+// compiled lib/ output, not the TypeScript source).
+import assert from "node:assert/strict";
+import { resolveEffectivePermission } from "../lib/access/resolveEffectivePermission.js";
+import { COMPATIBILITY_ROLES, ADMIN_ROLE, DISPATCHER_ROLE, TECHNICIAN_ROLE } from "../lib/access/compatibilityRoles.js";
+import {
+  GOVERNED_BUSINESS_ROLES,
+  GENERAL_EMPLOYEE_ROLE,
+  OFFICE_MANAGER_ROLE,
+  SALES_MANAGER_ROLE,
+  ACCOUNTING_MANAGER_ROLE,
+  FINANCE_MANAGER_ROLE,
+  FIELD_MANAGER_ROLE,
+  OPERATIONS_MANAGER_ROLE,
+  OWNER_ROLE,
+} from "../lib/access/governedBusinessRoles.js";
+import { findPermission } from "../lib/access/permissionCatalog.js";
+
+let passed = 0;
+let failed = 0;
+
+function check(name, fn) {
+  try {
+    fn();
+    passed += 1;
+    console.log(`PASS: ${name}`);
+  } catch (err) {
+    failed += 1;
+    console.error(`FAIL: ${name}`);
+    console.error(err);
+  }
+}
+
+const ALL_GOVERNED_ROLES = Object.values(GOVERNED_BUSINESS_ROLES);
+const EXPECTED_IDS = [
+  "generalEmployee",
+  "officeManager",
+  "salesManager",
+  "accountingManager",
+  "financeManager",
+  "fieldManager",
+  "operationsManager",
+  "owner",
+];
+
+function grant(roleId, roles) {
+  return {
+    id: `test-${roleId}`,
+    principalUid: "test-principal",
+    roleId,
+    scope: { type: "global" },
+    grantedBy: "test",
+    grantedAt: { toMillis: () => 0 },
+    status: "active",
+    accessVersionAtGrant: 1,
+  };
+}
+
+function resolve(permissionId, roleId, roles) {
+  return resolveEffectivePermission({
+    permissionId,
+    assignments: [grant(roleId, roles)],
+    roles,
+    currentAccessVersion: 1,
+    target: { scope: { type: "global" }, condition: {} },
+  });
+}
+
+// === Catalog membership: exactly the eight named Roles, no more, no fewer ===
+
+check("GOVERNED_BUSINESS_ROLES contains exactly the eight Owner-directed ids", () => {
+  assert.deepEqual(Object.keys(GOVERNED_BUSINESS_ROLES).sort(), [...EXPECTED_IDS].sort());
+  assert.equal(ALL_GOVERNED_ROLES.length, 8);
+});
+
+check("every governed business Role's own .id matches its map key", () => {
+  for (const [key, role] of Object.entries(GOVERNED_BUSINESS_ROLES)) {
+    assert.equal(role.id, key);
+  }
+});
+
+// === Shape / classification invariants (Spec §26.1) ===
+
+check("every governed business Role is systemSeed:true, compatibility:false", () => {
+  for (const role of ALL_GOVERNED_ROLES) {
+    assert.equal(role.systemSeed, true, `${role.id} must be systemSeed`);
+    assert.equal(role.compatibility, false, `${role.id} must not be a compatibility Role`);
+  }
+});
+
+check("none of the eight ids collides with a compatibility Role id", () => {
+  for (const role of ALL_GOVERNED_ROLES) {
+    assert.equal(role.id in COMPATIBILITY_ROLES, false, `${role.id} must not shadow a compatibility Role`);
+  }
+});
+
+check("every governed business Role has a non-empty name and description", () => {
+  for (const role of ALL_GOVERNED_ROLES) {
+    assert.ok(role.name && role.name.length > 0, `${role.id} needs a name`);
+    assert.ok(role.description && role.description.length > 0, `${role.id} needs a description`);
+  }
+});
+
+// === Every cited PermissionId is real (Spec §26.2's "existing ids only" rule) ===
+
+check("every Permission id referenced by any governed business Role exists in the catalog", () => {
+  for (const role of ALL_GOVERNED_ROLES) {
+    for (const permissionId of role.permissions) {
+      assert.ok(findPermission(permissionId), `${role.id} references unknown PermissionId "${permissionId}"`);
+    }
+    for (const permissionId of Object.keys(role.conditionsByPermission ?? {})) {
+      assert.ok(role.permissions.includes(permissionId), `${role.id} has a Condition for "${permissionId}" it doesn't grant`);
+    }
+  }
+});
+
+// === Per-role least-privilege assertions (Spec §26.2 matrix) ===
+
+check("General Employee grants nothing", () => {
+  assert.deepEqual(GENERAL_EMPLOYEE_ROLE.permissions, []);
+  for (const permissionId of ["account.record.read", "workOrder.create", "admin.userStatus.write"]) {
+    assert.equal(resolve(permissionId, "generalEmployee", GOVERNED_BUSINESS_ROLES).decision, "DENY");
+  }
+});
+
+check("Office Manager: Customer read/create/update + Work Order create; no governed-field write, no lifecycle execution, no admin authority", () => {
+  for (const id of ["account.record.read", "account.record.create", "account.record.update", "workOrder.create"]) {
+    assert.equal(resolve(id, "officeManager", GOVERNED_BUSINESS_ROLES).decision, "ALLOW", id);
+  }
+  for (const id of ["account.governedField.write", "workOrder.transition", "workOrder.cancel", "admin.roleAssignment.write"]) {
+    assert.equal(resolve(id, "officeManager", GOVERNED_BUSINESS_ROLES).decision, "DENY", id);
+  }
+});
+
+check("Sales Manager: Customer read/create/update only", () => {
+  for (const id of ["account.record.read", "account.record.create", "account.record.update"]) {
+    assert.equal(resolve(id, "salesManager", GOVERNED_BUSINESS_ROLES).decision, "ALLOW", id);
+  }
+  assert.equal(resolve("account.governedField.write", "salesManager", GOVERNED_BUSINESS_ROLES).decision, "DENY");
+});
+
+check("Accounting Manager: Customer read-only, no governed-field write", () => {
+  assert.equal(resolve("account.record.read", "accountingManager", GOVERNED_BUSINESS_ROLES).decision, "ALLOW");
+  for (const id of ["account.record.create", "account.record.update", "account.governedField.write"]) {
+    assert.equal(resolve(id, "accountingManager", GOVERNED_BUSINESS_ROLES).decision, "DENY", id);
+  }
+});
+
+check("Finance Manager: Customer read + governed-field write; no ordinary Customer create/update", () => {
+  for (const id of ["account.record.read", "account.governedField.write"]) {
+    assert.equal(resolve(id, "financeManager", GOVERNED_BUSINESS_ROLES).decision, "ALLOW", id);
+  }
+  for (const id of ["account.record.create", "account.record.update"]) {
+    assert.equal(resolve(id, "financeManager", GOVERNED_BUSINESS_ROLES).decision, "DENY", id);
+  }
+});
+
+check("Accounting Manager and Finance Manager remain distinct (Owner's explicit requirement)", () => {
+  const accountingSet = new Set(ACCOUNTING_MANAGER_ROLE.permissions);
+  const financeSet = new Set(FINANCE_MANAGER_ROLE.permissions);
+  assert.equal(accountingSet.has("account.governedField.write"), false, "Accounting Manager must not hold the Finance-distinguishing permission");
+  assert.equal(financeSet.has("account.governedField.write"), true, "Finance Manager must hold its distinguishing permission");
+  assert.notDeepEqual([...accountingSet].sort(), [...financeSet].sort(), "the two Roles' grant sets must not be identical");
+});
+
+check("Field Manager: full Work Order lifecycle + field-inventory read; no reorder/purchasing execution", () => {
+  for (const id of ["workOrder.create", "workOrder.transition", "workOrder.cancel", "inventory.transaction.read"]) {
+    assert.equal(resolve(id, "fieldManager", GOVERNED_BUSINESS_ROLES).decision, "ALLOW", id);
+  }
+  for (const id of ["reorder.request.assign", "reorder.purchaseOrder.create", "inventory.action.create"]) {
+    assert.equal(resolve(id, "fieldManager", GOVERNED_BUSINESS_ROLES).decision, "DENY", id);
+  }
+});
+
+check("Operations Manager: cross-domain oversight reads + Work Order lifecycle; no role administration, no reorder decisions", () => {
+  for (const id of [
+    "account.record.read",
+    "workOrder.create",
+    "workOrder.transition",
+    "workOrder.cancel",
+    "inventory.transaction.read",
+    "inventory.action.read",
+    "reorder.request.read.queue",
+    "reorder.purchaseOrder.read",
+  ]) {
+    assert.equal(resolve(id, "operationsManager", GOVERNED_BUSINESS_ROLES).decision, "ALLOW", id);
+  }
+  for (const id of [
+    "account.record.create",
+    "account.record.update",
+    "account.governedField.write",
+    "admin.userStatus.write",
+    "admin.roleAssignment.write",
+    "reorder.request.assign",
+    "reorder.request.approve",
+    "reorder.request.reject",
+    "reorder.request.cancel",
+  ]) {
+    assert.equal(resolve(id, "operationsManager", GOVERNED_BUSINESS_ROLES).decision, "DENY", id);
+  }
+});
+
+check("Owner holds exactly ADMIN_ROLE's permission set, through the same governed resolver -- never a bypass", () => {
+  assert.deepEqual([...OWNER_ROLE.permissions].sort(), [...ADMIN_ROLE.permissions].sort());
+  assert.equal(OWNER_ROLE.privileged, true);
+  for (const id of ADMIN_ROLE.permissions) {
+    // reorder.purchaseOrder.void carries an isOwnAssignment Condition
+    // (both admin's and Owner's) -- resolve() below always targets an
+    // empty condition context, so this one id legitimately DENIES here,
+    // exactly matching resolveEffectivePermission.test.mjs's own "admin:
+    // reorder.purchaseOrder.void DENY when not the request's own
+    // assignee" assertion. The Condition itself is checked separately,
+    // right below.
+    if (id === "reorder.purchaseOrder.void") continue;
+    assert.equal(resolve(id, "owner", GOVERNED_BUSINESS_ROLES).decision, "ALLOW", id);
+  }
+  assert.equal(
+    resolveEffectivePermission({
+      permissionId: "reorder.purchaseOrder.void",
+      assignments: [grant("owner", GOVERNED_BUSINESS_ROLES)],
+      roles: GOVERNED_BUSINESS_ROLES,
+      currentAccessVersion: 1,
+      target: { scope: { type: "global" }, condition: { isOwnAssignment: true } },
+    }).decision,
+    "ALLOW",
+    "reorder.purchaseOrder.void must ALLOW when Owner IS the request's own assignee"
+  );
+  // Owner never gains a capability admin itself doesn't have.
+  const ownerSet = new Set(OWNER_ROLE.permissions);
+  const adminSet = new Set(ADMIN_ROLE.permissions);
+  for (const id of ownerSet) assert.ok(adminSet.has(id), `Owner has "${id}" that admin does not -- not a mirror`);
+});
+
+check("Owner's reorder.purchaseOrder.void Condition matches admin's exactly (same audited boundary)", () => {
+  assert.deepEqual(
+    OWNER_ROLE.conditionsByPermission?.["reorder.purchaseOrder.void"],
+    ADMIN_ROLE.conditionsByPermission?.["reorder.purchaseOrder.void"]
+  );
+});
+
+// === Compatibility Roles are byte-for-byte unaffected (this addendum's hard requirement) ===
+
+check("the three compatibility Roles are unchanged: same ids, same permission sets, same privileged/compatibility flags", () => {
+  assert.deepEqual(Object.keys(COMPATIBILITY_ROLES).sort(), ["admin", "dispatcher", "technician"]);
+  assert.equal(ADMIN_ROLE.compatibility, true);
+  assert.equal(ADMIN_ROLE.systemSeed, true);
+  assert.equal(ADMIN_ROLE.privileged, true);
+  assert.equal(DISPATCHER_ROLE.compatibility, true);
+  assert.equal(DISPATCHER_ROLE.privileged, undefined);
+  assert.equal(TECHNICIAN_ROLE.compatibility, true);
+  // A spot-check of admin's own long-standing grant, unaffected by this file's import.
+  assert.ok(ADMIN_ROLE.permissions.includes("account.governedField.write"));
+  assert.ok(ADMIN_ROLE.permissions.includes("admin.roleAssignment.write"));
+});
+
+check("resolving against COMPATIBILITY_ROLES alone (no governed business Roles mixed in) is unaffected by this file existing", () => {
+  assert.equal(resolve("account.record.read", "admin", COMPATIBILITY_ROLES).decision, "ALLOW");
+  assert.equal(resolve("account.record.read", "technician", COMPATIBILITY_ROLES).decision, "DENY");
+});
+
+// === Inert-on-merge: the two catalogs are disjoint id spaces, never silently merged ===
+
+check("GOVERNED_BUSINESS_ROLES and COMPATIBILITY_ROLES share no id (no accidental collision/merge)", () => {
+  const compatIds = new Set(Object.keys(COMPATIBILITY_ROLES));
+  for (const id of Object.keys(GOVERNED_BUSINESS_ROLES)) {
+    assert.equal(compatIds.has(id), false, `"${id}" collides with a compatibility Role id`);
+  }
+});
+
+console.log(`\n${passed} passed, ${failed} failed`);
+process.exit(failed > 0 ? 1 : 0);
