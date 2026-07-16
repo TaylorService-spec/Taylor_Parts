@@ -2,7 +2,10 @@ import { useCallback, useRef, useState } from "react";
 import Modal from "../../shared/ui/Modal";
 import { Field, FormActions, FormError, FormStatus } from "../../shared/ui/form";
 import { describedBy } from "../../shared/ui/form/fieldA11y";
-import { EDITABLE_EQUIPMENT_FIELDS, changedEquipmentFields, trimmedOrNull } from "../../domain/equipment";
+import {
+  EDITABLE_EQUIPMENT_FIELDS, changedEquipmentFields, trimmedOrNull, canonicalEquipmentStatus,
+} from "../../domain/equipment";
+import { EQUIPMENT_STATUS } from "../../domain/constants";
 
 // Issue #232 unit E8 -- ordinary Equipment editing, on the same shared Modal +
 // form-primitive pattern as EquipmentCreateModal (E6). Close paths are ignored and a
@@ -21,12 +24,18 @@ import { EDITABLE_EQUIPMENT_FIELDS, changedEquipmentFields, trimmedOrNull } from
 // asset with no owner. E1 refuses a governed change, E2 refuses the write, and E3's
 // Rules refuse it server-side; this form simply never asks.
 //
-// STATUS IS DELIBERATELY ABSENT, and this is not an oversight. Spec §3 defines
-// ACTIVE<->INACTIVE as `setStatus` -- a named ACTION whose confirmation is "plain",
-// as opposed to retire's "confirm" -- not a field on this form. Spec §6's "status
-// (ACTIVE<->INACTIVE via the plain path)" names that action's plain path. E10 owns all
-// four lifecycle actions and, per the Owner's E3 decision, resolves the ACTIVE<->INACTIVE
-// path question. Ordinary edit treats status as governed and refuses it.
+// STATUS IS EDITABLE HERE, ACTIVE <-> INACTIVE, with no confirmation (#312, Spec §6/AC3).
+// This form originally omitted it on my reading that §6's "via the plain path" meant an
+// E10 action. That reading was wrong on every count: the Owner's E3 decision assigns
+// ACTIVE<->INACTIVE to the ordinary client edit and gives E10 retire/reactivate ONLY,
+// and our own Rules have always permitted ACTIVE<->INACTIVE on this path -- widened
+// deliberately so "§6 and AC3 pass as written".
+//
+// A RETIRED asset renders its status READ-ONLY while staying descriptively editable
+// (Owner E3 decision 2). Leaving retirement is `reactivate`: a trusted, audited action
+// (E10), not a dropdown choice. Rendering it read-only rather than omitting it keeps the
+// asset's own state visible -- and offering a control that Rules would refuse would be
+// the form promising something it cannot do.
 //
 // RETIRED EQUIPMENT IS EDITABLE HERE, per the Owner's E3 decision (2): ordinary
 // corrections to descriptive fields remain allowed on a retired asset, while status,
@@ -67,6 +76,24 @@ export default function EquipmentEditModal({ equipment, accountName, locationNam
   // record we cannot render, not a value.
   const [values, setValues] = useState(() =>
     Object.fromEntries(EDITABLE_EQUIPMENT_FIELDS.map((f) => [f, trimmedOrNull(base[f]) ?? ""])));
+
+  // Status is not one of EDITABLE_EQUIPMENT_FIELDS -- it is transition-controlled, not a
+  // free-text field -- so it is held separately and compared by the payload builder
+  // against the frozen `base`, which is the only thing that can prove the transition.
+  // Editable only when the STORED status is exactly one of the two the ordinary path may
+  // move between. That covers RETIRED (reactivating is a trusted action) and also a
+  // record whose stored status is not canonical at all -- "active", " ACTIVE ", missing.
+  // Rules deny every update to such a record ("permanently uneditable on this path and
+  // repairable only by E10's trusted writer"), so offering a dropdown over it would be
+  // the form promising a write that cannot land.
+  //
+  // Seeded through canonicalEquipmentStatus for the same reason the text fields seed
+  // through trimmedOrNull: the control and the comparison must agree about what the
+  // record says. Seeding raw put a non-canonical value into the <select>, matching no
+  // <option>, so React rendered a BLANK status on a legitimately active asset.
+  const storedStatus = canonicalEquipmentStatus(base.status);
+  const statusLocked = storedStatus === null || storedStatus === EQUIPMENT_STATUS.RETIRED;
+  const [status, setStatus] = useState(() => storedStatus ?? "");
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [saveError, setSaveError] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({});
@@ -111,6 +138,17 @@ export default function EquipmentEditModal({ equipment, accountName, locationNam
     // Against `base`, not the live prop -- see the freeze at the top.
     const changed = changedEquipmentFields(values, base);
 
+    // Send the status only when this form actually offers the control -- and this guard
+    // is LOAD-BEARING, not decoration. For a locked record the state holds "" (there is no
+    // canonical status to seed from), so sending it anyway yields errors.status: a field
+    // error pointing at a control this form does not render, which is exactly the #287
+    // trap of blaming a field the user cannot see. For a RETIRED record it would be
+    // merely inert -- the builder reads it as unchanged -- but "inert in one of the two
+    // locked cases" is not a reason to send a field the user cannot see.
+    // An unchanged status from the dropdown is likewise not an edit: the builder compares
+    // it to `base` and writes nothing.
+    if (!statusLocked) changed.status = status;
+
     submittingRef.current = true;
     setSubmitting(true);
     try {
@@ -118,12 +156,19 @@ export default function EquipmentEditModal({ equipment, accountName, locationNam
       // the diff used, so the evidence and the diff can never disagree about what the
       // record looked like.
       //
-      // It is DEFENSIVE, and the honest statement of why: changedEquipmentFields iterates
-      // EDITABLE_EQUIPMENT_FIELDS, so this form cannot produce a governed key even if its
-      // state were polluted with one -- which means `before` has nothing to prove today,
-      // and removing it leaves the gate green. It is passed anyway so that IF a governed
-      // key ever reached E2 from here, it would be refused as a proven change rather than
-      // silently unprovable (#287).
+      // IT IS LOAD-BEARING as of #312, and this comment used to say the opposite. It was
+      // right when written: changedEquipmentFields iterates EDITABLE_EQUIPMENT_FIELDS, so
+      // the form could not produce a governed key, and `before` had nothing to prove. Then
+      // this form gained a status control. Validating a transition REQUIRES the status the
+      // record is moving from, so removing `before` now turns every status change into
+      // `unprovableStatus` and a generic error:
+      //
+      //     with `before`:    valid, payload { ..., status: "INACTIVE" }
+      //     without:          refused, unprovableStatus, payload null
+      //
+      // It still also does the defensive job it was added for (#287): a governed key that
+      // ever reached E2 from here would be refused as a proven change rather than
+      // silently unprovable.
       const result = await onSave(changed, base);
       if (!result?.ok) {
         setFieldErrors(result?.errors ?? {});
@@ -151,6 +196,46 @@ export default function EquipmentEditModal({ equipment, accountName, locationNam
           The customer and location can't be changed here. Use <strong>Move</strong> to install this
           equipment at a different location.
         </p>
+
+        {statusLocked ? (
+          // Read-only, and it says WHY. A greyed-out control with no reason reads as a
+          // bug; naming the action tells the user where the capability actually lives.
+          <div className="fo-field" data-equipment-edit-status-locked>
+            <span className="fo-field-label">Status</span>
+            <p data-equipment-edit-status-value>
+              <strong>{storedStatus === EQUIPMENT_STATUS.RETIRED ? "Retired" : "Unknown"}</strong>
+              <span className="fo-muted">
+                {storedStatus === EQUIPMENT_STATUS.RETIRED
+                  ? " — reactivating retired equipment isn't available here."
+                  : " — this equipment's status can't be changed here."}
+              </span>
+            </p>
+          </div>
+        ) : (
+          <Field
+            id="equipment-edit-status"
+            label="Status"
+            error={fieldErrors.status ?? null}
+            hint="Retiring equipment is a separate action"
+          >
+            <select
+              id="equipment-edit-status"
+              className="fo-wizard-control"
+              value={status}
+              aria-invalid={fieldErrors.status ? true : undefined}
+              aria-describedby={describedBy("equipment-edit-status", { hasHint: true, hasError: Boolean(fieldErrors.status) })}
+              onChange={(e) => {
+                setStatus(e.target.value);
+                setFieldErrors((cur) => (cur.status ? { ...cur, status: undefined } : cur));
+              }}
+            >
+              {/* Only the two the ordinary path may reach. RETIRED is deliberately not an
+                  option: an option Rules would refuse is a promise this form cannot keep. */}
+              <option value={EQUIPMENT_STATUS.ACTIVE}>Active</option>
+              <option value={EQUIPMENT_STATUS.INACTIVE}>Inactive</option>
+            </select>
+          </Field>
+        )}
 
         <Field id="equipment-edit-name" label="Equipment name" required error={nameError} hint="e.g. Rooftop Unit 1">
           <input

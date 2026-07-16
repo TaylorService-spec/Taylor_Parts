@@ -108,7 +108,6 @@ await ok("an attempted governed change attempts NO write and never reports succe
   for (const [label, values] of [
     ["move", { ...before, locationId: "l2" }],
     ["re-own", { ...before, accountId: "a2" }],
-    ["retire via the edit form", { ...before, status: "RETIRED" }],
   ]) {
     const store = fakeStore();
     const res = await updateEquipmentWith(store, "eq1", values, { before }, 1);
@@ -116,6 +115,62 @@ await ok("an attempted governed change attempts NO write and never reports succe
     assert.equal(store.calls.length, 0, `${label}: nothing may be written`);
     assert.ok(res.governedFields.length > 0);
     assert.match(res.message, /Nothing was saved/);
+  }
+
+  // #312: the governed refusal must no longer CLAIM status. An ordinary edit may move it
+  // ACTIVE<->INACTIVE, so listing status as unchangeable-here would be false to a user
+  // who is doing exactly that in the dropdown beside it.
+  const store = fakeStore();
+  const res = await updateEquipmentWith(store, "eq1", { ...before, locationId: "l2" }, { before }, 1);
+  assert.doesNotMatch(res.message, /status/i, "the governed refusal must not claim status (#312)");
+  assert.match(res.message, /Customer and location/);
+});
+
+await ok("#312 retiring through the edit form is refused as a trusted action, not as governed", async () => {
+  const before = { name: "Unit", accountId: "a1", locationId: "l1", status: "ACTIVE" };
+  for (const [label, from, to] of [
+    ["retire an ACTIVE asset", "ACTIVE", "RETIRED"],
+    ["retire an INACTIVE asset", "INACTIVE", "RETIRED"],
+    ["reactivate a RETIRED asset", "RETIRED", "ACTIVE"],
+    ["move a RETIRED asset to INACTIVE", "RETIRED", "INACTIVE"],
+  ]) {
+    const store = fakeStore();
+    const res = await updateEquipmentWith(store, "eq1", { status: to }, { before: { ...before, status: from } }, 1);
+    assert.equal(res.ok, false, `${label} must be refused`);
+    assert.equal(store.calls.length, 0, `${label}: nothing may be written`);
+    assert.equal(res.refusedStatus, true, `${label}: refused as a trusted-action boundary`);
+    // NOT a governed refusal: status is not governed any more, and saying so would send
+    // the user looking for a permission they do have.
+    assert.equal(res.governedFields, undefined, `${label}: status is not a governed field`);
+    assert.match(res.message, /Nothing was saved/);
+    assert.doesNotMatch(res.message, /firebase|firestore|permission-denied|uid|token|[A-Za-z0-9_-]{20,}/i);
+  }
+});
+
+await ok("#312 an ordinary ACTIVE<->INACTIVE change is written through the ordinary path", async () => {
+  for (const [from, to] of [["ACTIVE", "INACTIVE"], ["INACTIVE", "ACTIVE"]]) {
+    const store = fakeStore();
+    const before = { name: "Unit", accountId: "a1", locationId: "l1", status: from };
+    const res = await updateEquipmentWith(store, "eq1", { status: to }, { before }, 9);
+    assert.equal(res.ok, true, `${from} -> ${to} must be an ordinary edit`);
+    assert.equal(store.calls.length, 1, "exactly one write");
+    // Only the status and the timestamp -- an ordinary status change is not an excuse to
+    // rewrite the descriptive fields the caller never mentioned.
+    assert.deepEqual(store.calls[0].args[1], { status: to, updatedAt: 9 });
+  }
+});
+
+await ok("#312 a status change with no readable `before` fails closed -- a transition needs a FROM", async () => {
+  // `before` is LOAD-BEARING here, for the first time in the edit path: without knowing
+  // the status it starts from, ACTIVE->INACTIVE and RETIRED->INACTIVE are the same
+  // request, and one of them is a trusted action. Guessing is not an option.
+  for (const noEvidence of [{}, { name: "Unit" }, { status: "BOGUS" }]) {
+    const store = fakeStore();
+    const res = await updateEquipmentWith(store, "eq1", { status: "INACTIVE" }, { before: noEvidence }, 1);
+    assert.equal(res.ok, false);
+    assert.equal(store.calls.length, 0, "nothing may be written without evidence");
+    assert.equal(res.unprovable, true);
+    assert.doesNotMatch(res.message, /firebase|firestore|permission-denied|uid|token/i);
   }
 });
 

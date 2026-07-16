@@ -4419,8 +4419,6 @@ async function verifyEquipmentEdit(browser, page, accountKey) {
   niReport("Edit: the read-only ownership shows NAMES, never a raw id (§8)",
     !/acct-equip-alpha|equip-loc-alpha/.test(await page.locator(".fo-equipment-edit-fixed").innerText()),
     await page.locator(".fo-equipment-edit-fixed").innerText());
-  niReport("Edit: status is not a form field -- lifecycle transitions are actions (§3/§6, E10)",
-    (await page.locator("#equipment-edit-status, select[name='status'], [data-equipment-edit-status]").count()) === 0);
 
   // ===== §13 per-keystroke integrity: the E6 bug class =====
   await page.locator("#equipment-edit-name").fill("");
@@ -4566,20 +4564,124 @@ async function verifyEquipmentEdit(browser, page, accountKey) {
   await page.keyboard.press("Escape");
   await page.waitForTimeout(400);
 
-  // ===== RETIRED equipment stays editable (Owner E3 decision 2) =====
-  const retiredBefore = await serverDoc(F.editableRetiredId);
-  niReport("Edit: the retired fixture really is RETIRED (precondition)",
-    retiredBefore.status === "RETIRED", `status=${retiredBefore.status}`);
-  await openEditor(F.editableRetiredId);
-  niReport("Edit: a RETIRED asset can still be edited -- retiring is not a freeze (Owner E3 decision)",
-    (await page.locator("#equipment-edit-name").count()) === 1);
-  await page.locator("#equipment-edit-serial").fill(`SN-CORRECTED-${RUN}`);
-  await saveAndWait();
-  const retiredAfter = await serverDoc(F.editableRetiredId);
-  niReport("Edit: a retired asset's descriptive correction is PERSISTED (Rules permit it)",
-    retiredAfter.serialNumber === `SN-CORRECTED-${RUN}`, `serial=${retiredAfter.serialNumber}`);
-  niReport("Edit: correcting a retired asset does NOT resurrect it -- status stays RETIRED",
-    retiredAfter.status === "RETIRED", `status=${retiredAfter.status}`);
+  // ===== §6/AC3 status: editable ACTIVE <-> INACTIVE, no confirmation (#312) =====
+  // Opens its own editor: this block sits where the old retired-only block did, after an
+  // Escape, so nothing is on screen yet. (The first run of it asserted against a closed
+  // modal and reported "no status control" -- true, and about nothing.)
+  await openEditor(F.editableId);
+  // This REPLACES an assertion that pinned status as ABSENT from this form. That
+  // assertion encoded my misreading of §6 and was wrong in both directions: the Owner's
+  // E3 decision assigns ACTIVE<->INACTIVE to the ordinary edit, and Rules have always
+  // permitted it. A gate can pin a wrong contract just as firmly as a right one.
+  niReport("Edit: status IS an ordinary control for an ACTIVE asset (§6/AC3, #312)",
+    (await page.locator("#equipment-edit-status").count()) === 1);
+  {
+    const options = await page.locator("#equipment-edit-status option").allTextContents();
+    niReport("Edit: the status control offers ONLY Active and Inactive -- never Retired",
+      options.length === 2 && options.includes("Active") && options.includes("Inactive")
+        && !options.some((o) => /retire/i.test(o)),
+      JSON.stringify(options));
+    niReport("Edit: the status control opens on the asset's CURRENT status, not a default",
+      (await page.locator("#equipment-edit-status").inputValue()) === "ACTIVE",
+      await page.locator("#equipment-edit-status").inputValue());
+  }
+
+  // ACTIVE -> INACTIVE, and it must reach the server.
+  {
+    const beforeStatus = await serverDoc(F.editableId);
+    niReport("Edit: the editable fixture starts ACTIVE (precondition)",
+      beforeStatus.status === "ACTIVE", `status=${beforeStatus.status}`);
+    await page.locator("#equipment-edit-status").selectOption("INACTIVE");
+    await saveAndWait();
+    const afterInactive = await serverDoc(F.editableId);
+    niReport("Edit: ACTIVE -> INACTIVE is PERSISTED through the ordinary path -- no confirmation",
+      afterInactive.status === "INACTIVE", `server status=${afterInactive.status}`);
+    niReport("Edit: an ordinary status change leaves ownership untouched",
+      afterInactive.accountId === beforeStatus.accountId &&
+        afterInactive.locationId === beforeStatus.locationId);
+    niReport("Edit: an ordinary status change rewrites no descriptive field",
+      afterInactive.name === beforeStatus.name &&
+        afterInactive.serialNumber === beforeStatus.serialNumber,
+      `name=${afterInactive.name} serial=${afterInactive.serialNumber}`);
+    // (An assertion that "no confirmation dialog appeared" lived here and was VACUOUS: it
+    // ran after saveAndWait() had already waited for the modal to detach, so nothing was
+    // on screen to find, and this form never imports ConfirmDialog in the first place. The
+    // real proof that nothing intervened is that saveAndWait() returned and the status
+    // below persisted -- a confirmation would have blocked the detach and timed it out.)
+    niReport("Edit: the detail page shows the new status live, with no reload",
+      (await page.locator("[data-equipment-status]").getAttribute("data-equipment-status")) === "INACTIVE");
+  }
+
+  // INACTIVE -> ACTIVE, the other direction, from the state the last block left behind.
+  {
+    await openEditor(F.editableId);
+    niReport("Edit: the control reflects the now-INACTIVE stored status",
+      (await page.locator("#equipment-edit-status").inputValue()) === "INACTIVE",
+      await page.locator("#equipment-edit-status").inputValue());
+    await page.locator("#equipment-edit-status").selectOption("ACTIVE");
+    await saveAndWait();
+    niReport("Edit: INACTIVE -> ACTIVE is PERSISTED through the ordinary path",
+      (await serverDoc(F.editableId)).status === "ACTIVE",
+      `server status=${(await serverDoc(F.editableId)).status}`);
+  }
+
+  // An UNCHANGED status must not write. This is the common case once a control exists:
+  // the form re-submits whatever the dropdown holds on every save.
+  {
+    const before = await serverDoc(F.editableId);
+    await openEditor(F.editableId);
+    await page.locator('button[type="submit"]').click();
+    await page.waitForTimeout(1500);
+    const after = await serverDoc(F.editableId);
+    niReport("Edit: re-submitting an UNCHANGED status writes nothing -- updatedAt is not bumped",
+      after.updatedAt === before.updatedAt, `before=${before.updatedAt} after=${after.updatedAt}`);
+    niReport("Edit: ...and it is still reported as nothing changed, not as a save",
+      /nothing was changed/i.test(await formText()), await formText().then((t) => t.slice(0, 100)));
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(400);
+  }
+
+  // A descriptive edit alongside an unchanged status writes ONLY the descriptive field.
+  {
+    const before = await serverDoc(F.editableId);
+    await openEditor(F.editableId);
+    const note = `Status untouched ${RUN}`;
+    await page.locator("#equipment-edit-notes").fill(note);
+    await saveAndWait();
+    const after = await serverDoc(F.editableId);
+    niReport("Edit: a descriptive edit beside an unchanged status saves the field",
+      after.notes === note, `notes=${after.notes}`);
+    niReport("Edit: ...and does not rewrite the status it did not touch",
+      after.status === before.status, `before=${before.status} after=${after.status}`);
+  }
+
+  // ===== RETIRED: status locked, descriptive editing preserved (Owner E3 decision 2) =====
+  {
+    const retired = await serverDoc(F.editableRetiredId);
+    niReport("Edit: the retired fixture really is RETIRED (precondition)",
+      retired.status === "RETIRED", `status=${retired.status}`);
+    await openEditor(F.editableRetiredId);
+    niReport("Edit: a RETIRED asset offers NO status control -- reactivating is a trusted action",
+      (await page.locator("#equipment-edit-status").count()) === 0);
+    niReport("Edit: ...and it SHOWS the locked status rather than hiding the asset's own state",
+      (await page.locator("[data-equipment-edit-status-locked]").count()) === 1 &&
+        /retired/i.test(await page.locator("[data-equipment-edit-status-value]").innerText()),
+      await page.locator("[data-equipment-edit-status-value]").innerText().catch(() => "(absent)"));
+    niReport("Edit: ...and says WHY it is locked, rather than greying out with no reason",
+      /isn't available here|is not available here/i.test(
+        await page.locator("[data-equipment-edit-status-locked]").innerText()),
+      await page.locator("[data-equipment-edit-status-locked]").innerText().catch(() => "(absent)"));
+
+    // The lock must not cost the retired asset its descriptive editing.
+    const serial = `SN-RETIRED-${RUN}`;
+    await page.locator("#equipment-edit-serial").fill(serial);
+    await saveAndWait();
+    const afterFix = await serverDoc(F.editableRetiredId);
+    niReport("Edit: a RETIRED asset's descriptive correction still PERSISTS (Owner E3 decision 2)",
+      afterFix.serialNumber === serial, `serial=${afterFix.serialNumber}`);
+    niReport("Edit: correcting a retired asset does not resurrect it -- status stays RETIRED",
+      afterFix.status === "RETIRED", `status=${afterFix.status}`);
+  }
 
   // ===== a11y + 375px =====
   await openEditor(F.editableId);
