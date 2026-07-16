@@ -46,6 +46,7 @@ export interface ResolveInput {
 
 export type DenialReason =
   | "unknownPermission"
+  | "inactivePermission"
   | "malformedAssignments"
   | "noQualifyingGrant";
 
@@ -208,8 +209,23 @@ function evaluateConditions(
 // context, accessVersion) -- identical inputs always yield an
 // identical decision (Spec §21 A1).
 export function resolveEffectivePermission(input: ResolveInput): ResolveResult {
-  if (!findPermission(input.permissionId)) {
+  const permission = findPermission(input.permissionId);
+  if (!permission) {
     return { decision: "DENY", reason: "unknownPermission" };
+  }
+  // Issue #325 / ADR-007 D-226: a REGISTERED capability (found above)
+  // whose `active` flag is explicitly `false` denies unconditionally,
+  // ahead of and regardless of any Role grant -- the mechanism ADR-007
+  // §2.6 requires for "sensitive fields are denied by default and
+  // activated only through dedicated security review." Every permission
+  // declared before this addition omits `active` (undefined !== false),
+  // so this is a strict no-op for all of them; it only ever fires for a
+  // capability that explicitly opts in to this denied-by-default state
+  // (today: the field-read capabilities documented as pending their
+  // wave's review in permissionCatalog.ts, e.g. `customer.notes`'s
+  // security-text field or `customer.accountOwner`'s wave-4 deferral).
+  if (permission.active === false) {
+    return { decision: "DENY", reason: "inactivePermission" };
   }
   if (!Array.isArray(input.assignments)) {
     return { decision: "DENY", reason: "malformedAssignments" };
