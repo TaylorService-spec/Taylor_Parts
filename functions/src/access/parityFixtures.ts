@@ -833,4 +833,126 @@ export const PARITY_FIXTURES: readonly ShadowComparisonInput[] = Object.freeze([
       target: target(),
     },
   },
+
+  // --- Row 15 (Task 20): Service/Work Order domain shadow migration --
+  // firestore.rules' `fieldops_wos` collection (~L204-214) denies ALL
+  // client-direct writes unconditionally (`allow create, update, delete:
+  // if false`) -- every real workOrder.* authorization decision lives in
+  // the createWorkOrder/transitionWorkOrder trusted Cloud Functions, not
+  // Rules. createWorkOrder.ts and transitionWorkOrder's Cancel action both
+  // gate to admin/dispatcher only; technician is denied create/cancel
+  // entirely (absent from TECHNICIAN_ROLE.permissions). workOrder.transition
+  // itself IS granted to technician, unconditioned (compatibilityRoles.ts's
+  // own comment: the specific forward/backward action/status/ownership
+  // narrowing is transitionEngine.ts's ACTION_PERMISSIONS table --
+  // trusted-Function-authoritative territory this resolver does not take
+  // over, Spec sec12).
+  {
+    fixtureLabel: "admin: work order create",
+    permissionId: "workOrder.create",
+    legacyDecision: "ALLOW",
+    resolverInput: {
+      permissionId: "workOrder.create",
+      assignments: [assignment("admin")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target(),
+    },
+  },
+  {
+    fixtureLabel: "dispatcher: work order create",
+    permissionId: "workOrder.create",
+    legacyDecision: "ALLOW",
+    resolverInput: {
+      permissionId: "workOrder.create",
+      assignments: [assignment("dispatcher")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target(),
+    },
+  },
+  {
+    fixtureLabel: "technician: work order create -- admin/dispatcher only",
+    permissionId: "workOrder.create",
+    legacyDecision: "DENY",
+    resolverInput: {
+      permissionId: "workOrder.create",
+      assignments: [assignment("technician")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target(),
+    },
+  },
+  {
+    fixtureLabel: "admin: work order transition",
+    permissionId: "workOrder.transition",
+    legacyDecision: "ALLOW",
+    resolverInput: {
+      permissionId: "workOrder.transition",
+      assignments: [assignment("admin")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target(),
+    },
+  },
+  {
+    fixtureLabel: "dispatcher: work order transition",
+    permissionId: "workOrder.transition",
+    legacyDecision: "ALLOW",
+    resolverInput: {
+      permissionId: "workOrder.transition",
+      assignments: [assignment("dispatcher")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target(),
+    },
+  },
+  {
+    fixtureLabel: "technician: work order transition -- unconditioned grant (specific action/status/ownership narrowed by the trusted transitionWorkOrder Function, not this resolver)",
+    permissionId: "workOrder.transition",
+    legacyDecision: "ALLOW",
+    resolverInput: {
+      permissionId: "workOrder.transition",
+      assignments: [assignment("technician")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target(),
+    },
+  },
+  {
+    fixtureLabel: "admin: work order cancel",
+    permissionId: "workOrder.cancel",
+    legacyDecision: "ALLOW",
+    resolverInput: {
+      permissionId: "workOrder.cancel",
+      assignments: [assignment("admin")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target(),
+    },
+  },
+  {
+    fixtureLabel: "dispatcher: work order cancel",
+    permissionId: "workOrder.cancel",
+    legacyDecision: "ALLOW",
+    resolverInput: {
+      permissionId: "workOrder.cancel",
+      assignments: [assignment("dispatcher")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target(),
+    },
+  },
+  {
+    fixtureLabel: "technician: work order cancel -- admin/dispatcher only",
+    permissionId: "workOrder.cancel",
+    legacyDecision: "DENY",
+    resolverInput: {
+      permissionId: "workOrder.cancel",
+      assignments: [assignment("technician")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target(),
+    },
+  },
 ]) as readonly ShadowComparisonInput[];
