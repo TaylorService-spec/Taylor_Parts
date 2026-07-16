@@ -182,6 +182,26 @@ ok("the validator CATCHES each class of corruption (feeding it broken catalogs)"
   caught((o, f, r) => { r[0].toObjectId = "ghost"; }, "unknown toObjectId");
   caught((o, f, r) => { r[0].traversalCapability = "report.other.read"; }, "traversalCapability must equal");
   caught((o, f, r) => { r.length = 0; }, "no matching relationship catalog entry"); // orphan reference field
+  // review-round findings:
+  caught((o, f) => { f[0].readCapability = "report.contact.field.name.read"; }, "readCapability must be report.customer.field."); // field gated by WRONG object's capability (Finding 1)
+  caught((o, f) => { f[0].readCapability = "report.customer.field.name.write"; }, "readCapability must be report.customer.field."); // not a .read capability
+  caught((o, f, r) => {
+    // a relationship whose viaField lives on a different object than fromObjectId (Finding 2)
+    f.push({ fieldId: "contact.acct", objectId: "contact", label: "Acct", dataType: "reference", referenceTo: "customer", sensitivity: "standard", operators: ["filter"], readCapability: "report.contact.field.acct.read" });
+    r.push({ relationshipId: "customer->customer", fromObjectId: "customer", toObjectId: "customer", viaField: "contact.acct", cardinality: "one", traversalCapability: "report.contact.field.acct.read", hop: 1 });
+  }, "belongs to contact, not fromObjectId customer");
+  caught((o) => { o[1].label = "Customer"; }, "duplicate object label"); // Finding 3 (objects)
+  caught((o, f) => {
+    f.push({ fieldId: "customer.name2", objectId: "customer", label: "Name", dataType: "string", sensitivity: "standard", operators: ["filter"], readCapability: "report.customer.field.name2.read" });
+  }, 'duplicate field label "Name"'); // Finding 3 (fields, per-object)
+});
+
+ok("labels repeating ACROSS objects are fine -- 'Name' on four objects is not a duplicate", () => {
+  // Guard against over-zealous label uniqueness: the shipped catalog has four 'Name' fields
+  // on different objects and must stay valid.
+  const names = REPORT_FIELDS.filter((x) => x.label === "Name").map((x) => x.objectId).sort();
+  assert.deepEqual(names, ["contact", "customer", "equipment", "location"]);
+  assert.deepEqual(validateReportCatalog(), []);
 });
 
 console.log(`\n${passed} passed, 0 failed`);

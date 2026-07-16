@@ -31,7 +31,9 @@ export function validateReportCatalog(
 ) {
   const errors = [];
   const seenObjectIds = new Set();
+  const seenObjectLabels = new Set();
   const seenFieldIds = new Set();
+  const seenFieldLabelsByObject = new Map(); // objectId -> Set<label>; labels repeat across objects, unique within one
   const OBJECT_IDS = new Set(objects.map((o) => o.objectId));
   const FIELD_IDS = new Set(fields.map((x) => x.fieldId));
 
@@ -42,6 +44,8 @@ export function validateReportCatalog(
     if (seenObjectIds.has(id)) errors.push(`duplicate objectId: ${id}`);
     seenObjectIds.add(id);
     if (!isNonEmptyString(o.label)) errors.push(`${id}: missing label`);
+    else if (seenObjectLabels.has(o.label)) errors.push(`duplicate object label: ${o.label}`);
+    else seenObjectLabels.add(o.label);
     if (!Number.isInteger(o.activationWave) || o.activationWave < 1 || o.activationWave > 6) {
       errors.push(`${id}: activationWave must be an integer 1-6, got ${JSON.stringify(o.activationWave)}`);
     }
@@ -73,13 +77,34 @@ export function validateReportCatalog(
     if (seenFieldIds.has(id)) errors.push(`duplicate fieldId: ${id}`);
     seenFieldIds.add(id);
     if (!OBJECT_IDS.has(x.objectId)) errors.push(`${id}: unknown objectId ${x.objectId}`);
-    if (id !== `${x.objectId}.${id.slice(x.objectId.length + 1)}` || !id.startsWith(`${x.objectId}.`)) {
+    // fieldId must be `<objectId>.<non-empty field>` (stable identifier, Spec §2).
+    if (!id.startsWith(`${x.objectId}.`) || id.length <= x.objectId.length + 1) {
       errors.push(`${id}: fieldId must be <objectId>.<field> and match objectId ${x.objectId}`);
     }
-    if (!isNonEmptyString(x.label)) errors.push(`${id}: missing label`);
+    if (!isNonEmptyString(x.label)) {
+      errors.push(`${id}: missing label`);
+    } else {
+      // Labels repeat across objects ("Name" on customer/contact/location/equipment) but
+      // must be unique WITHIN an object so the builder never shows two identical column names.
+      const labels = seenFieldLabelsByObject.get(x.objectId) ?? new Set();
+      if (labels.has(x.label)) errors.push(`${x.objectId}: duplicate field label "${x.label}"`);
+      labels.add(x.label);
+      seenFieldLabelsByObject.set(x.objectId, labels);
+    }
     if (!REPORT_DATA_TYPES.includes(x.dataType)) errors.push(`${id}: unknown dataType ${x.dataType}`);
     if (!REPORT_SENSITIVITY_CLASSES.includes(x.sensitivity)) errors.push(`${id}: unknown sensitivity ${x.sensitivity}`);
-    if (!isNonEmptyString(x.readCapability)) errors.push(`${id}: a field must declare a readCapability (Spec §3.2)`);
+    // A field's read capability must belong to the field's OWN object. Without this, a
+    // hand-authored later-wave field could be gated by another object's capability
+    // (e.g. a `job` field gated on `report.customer.field.x.read`), so a runner holding
+    // the wrong object's capability could read it -- exactly the mis-binding this catalog
+    // exists to prevent. The object-level capability already gets a strict check above;
+    // the field level must be equally strict, because the field lists are the surface
+    // authored by hand behind this validator (Spec §5.5).
+    if (!isNonEmptyString(x.readCapability)) {
+      errors.push(`${id}: a field must declare a readCapability (Spec §3.2)`);
+    } else if (!x.readCapability.startsWith(`report.${x.objectId}.field.`) || !x.readCapability.endsWith(".read")) {
+      errors.push(`${id}: readCapability must be report.${x.objectId}.field.<group>.read, got ${x.readCapability}`);
+    }
 
     // Operators must be known, unique, and LEGAL for the field's type.
     if (!Array.isArray(x.operators)) {
@@ -121,6 +146,12 @@ export function validateReportCatalog(
       errors.push(`${id}: viaField ${r.viaField} is not a catalogued field`);
     } else {
       const via = fields.find((x) => x.fieldId === r.viaField);
+      // The traversal field must live on the relationship's FROM object -- otherwise the
+      // relationship claims to originate from an object that does not own the field, and
+      // relationshipsFrom() would surface a traversal gated by the wrong object's field.
+      if (via.objectId !== r.fromObjectId) {
+        errors.push(`${id}: viaField ${r.viaField} belongs to ${via.objectId}, not fromObjectId ${r.fromObjectId}`);
+      }
       if (via.dataType !== "reference") errors.push(`${id}: viaField ${r.viaField} must be a reference field`);
       else if (via.referenceTo !== r.toObjectId) {
         errors.push(`${id}: viaField ${r.viaField} references ${via.referenceTo}, not ${r.toObjectId}`);
