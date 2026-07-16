@@ -53,16 +53,14 @@ export default function EquipmentCreateModal({ accountName, locations, onCreate,
   const clearFieldError = (field) =>
     setFieldErrors((cur) => (cur[field] ? { ...cur, [field]: undefined } : cur));
 
-  // useCallback is LOAD-BEARING, not tidiness. Modal's focus effect is keyed on
-  // [onClose] (shared/ui/Modal.jsx), so a handler with a fresh identity each render
-  // makes that effect tear down and re-run on EVERY KEYSTROKE: the cleanup restores
-  // focus to the trigger and the re-run focuses the dialog's first focusable -- the ✕
-  // button. Verified in a real browser: typing "Rooftop Unit 1" left the field EMPTY
-  // with focus on ✕, and the first SPACE activated ✕ and discarded the form.
-  //
-  // This makes E6 correct within its own surface. It does NOT fix the root cause,
-  // which is Modal's dependency array -- every other modal passing a plain function has
-  // the same defect today. Reported to the Owner; see the PR.
+  // useCallback here is now DEFENSIVE, not load-bearing -- keep it, but do not read it
+  // as required. It was load-bearing when this unit was written: Modal's focus effect
+  // was keyed on [onClose], so a handler with a fresh identity each render tore that
+  // effect down and re-ran it on EVERY KEYSTROKE, yanking focus to the ✕ button (typing
+  // "Rooftop Unit 1" left the field EMPTY, and the first SPACE activated ✕ and
+  // discarded the form). That root cause is FIXED (#293, PR #296): Modal's mount/focus
+  // effect is now [] and reads onClose through a ref, so no caller needs useCallback
+  // for correctness -- requiring that of every caller was the trap that shipped the bug.
   const requestClose = useCallback(() => {
     // Close-during-save protection: a close while the write is in flight is ignored,
     // so the modal cannot disappear before its own result is known.

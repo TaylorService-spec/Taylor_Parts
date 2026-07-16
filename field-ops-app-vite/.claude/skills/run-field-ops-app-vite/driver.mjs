@@ -4177,6 +4177,12 @@ async function verifyEquipmentCreate(browser, page, accountKey) {
   // exactly what a second dispatcher adding equipment does in real life. Writing a
   // throwaway record mid-type reproduces that, and is what makes this assertion protect
   // the CLASS rather than one instance.
+  // Hold the dialog NODE: a count check is ANTI-CORRELATED with this bug. When the
+  // space activates ✕ the modal closes and focus restores to the trigger, and a LATER
+  // space in the same string presses that trigger and re-opens a fresh EMPTY modal --
+  // count is 1 again, so "still open" PASSES in exactly the run where the form was
+  // discarded. Identity is what separates "never closed" from "closed and reopened".
+  const nodeBefore = await page.locator(".fo-modal, [role='dialog']").first().elementHandle();
   await page.locator("#equipment-create-name").click();
   await page.keyboard.type("Rooftop");
   const tickId = "equip-live-delivery-tick";
@@ -4186,7 +4192,16 @@ async function verifyEquipmentCreate(browser, page, accountKey) {
     installedDate: null, warrantyExpiresDate: null, notes: null,
     createdAt: Date.now(), updatedAt: Date.now(),
   });
-  await page.waitForTimeout(900); // let the snapshot land and re-render the register
+  // Wait for the DELIVERY ITSELF, not a fixed sleep. A timeout that expires before the
+  // snapshot lands means the register never re-rendered, no yank was possible, and the
+  // assertion passes FOR THE WRONG REASON -- flaking green and silently un-protecting
+  // the register-level regression. The account starts empty, so the tick's row
+  // appearing is proof the snapshot landed and the register re-rendered. (The register
+  // stays in the DOM under the modal: Modal portals to document.body.)
+  const delivered = await page.waitForFunction(
+    () => document.querySelectorAll("[data-equipment-row]").length === 1, null, { timeout: 15000 }
+  ).then(() => true).catch(() => false);
+  niReport("Create: the live delivery actually landed (precondition for the next assertion)", delivered);
   niReport("Create: a live subscription delivery mid-type does not yank focus out of the field",
     (await page.evaluate(() => document.activeElement?.id)) === "equipment-create-name",
     await page.evaluate(() => document.activeElement?.id || document.activeElement?.tagName));
@@ -4196,10 +4211,16 @@ async function verifyEquipmentCreate(browser, page, accountKey) {
     (await page.locator("#equipment-create-name").inputValue().catch(() => "(gone)")) === "Rooftop Unit 1");
   niReport("Create: focus stays in the field while typing -- it is not yanked to the dialog chrome",
     (await page.evaluate(() => document.activeElement?.id)) === "equipment-create-name");
-  niReport("Create: a SPACE while typing does not activate the close button and discard the form",
-    (await page.locator(".fo-modal, [role='dialog']").count()) === 1);
+  const sameNode = await page.evaluate(
+    (el) => el?.isConnected === true && el === document.querySelector(".fo-modal, [role='dialog']"),
+    nodeBefore
+  ).catch(() => false);
+  niReport("Create: a SPACE never discards the form -- it is the SAME dialog throughout",
+    sameNode, sameNode ? "" : "the dialog was replaced or discarded mid-typing");
+  await nodeBefore?.dispose();
   await db.doc(`equipment/${tickId}`).delete().catch(() => {});
-  await page.waitForTimeout(400);
+  await page.waitForFunction(() => document.querySelectorAll("[data-equipment-row]").length === 0,
+    null, { timeout: 10000 }).catch(() => {});
   await page.locator("#equipment-create-name").fill("");
 
   // ===== validation: submitting empty shows field errors and writes nothing =====
@@ -5513,13 +5534,20 @@ async function verifyModalTyping(browser, page, accountKey) {
   // there is no create modal to type into -- but "no assertions emitted" and "covered"
   // must not look identical in the output. When E6 lands, this flow runs for real and
   // the skip line disappears.
-  await page.goto(url("equipment"), { waitUntil: "domcontentloaded" }).catch(() => {});
+  // No .catch() on the navigation: swallowing a goto failure turned a BROKEN step into
+  // a silent "not on this branch" skip. It did exactly that -- this flow reported SKIP
+  // on a branch that has the create modal, while a direct check found the picker, the
+  // button and six rows all present. A skip must mean "absent", never "I gave up".
+  await page.goto(url("equipment"), { waitUntil: "domcontentloaded" });
   const equipAcct = page.locator("#equipment-account");
+  await equipAcct.waitFor({ timeout: 8000 }).catch(() => {});
   let equipCovered = false;
   if (await equipAcct.count()) {
-    await equipAcct.selectOption({ label: "Alpha Facilities Co" }).catch(() => {});
-    await page.waitForTimeout(1200);
+    await equipAcct.selectOption({ label: "Alpha Facilities Co" });
+    // Wait for the register to settle rather than sleeping: the "+ New Equipment"
+    // action only renders once an Account is chosen.
     const addEquip = page.getByRole("button", { name: /new equipment/i });
+    await addEquip.waitFor({ timeout: 10000 }).catch(() => {});
     if (await addEquip.count()) {
       equipCovered = true;
       await addEquip.first().click();

@@ -68,11 +68,13 @@ export default function EquipmentRegister() {
     setStatusKey("all");
   };
 
-  // Stable identity, deliberately. Modal's focus effect is keyed on [onClose], so an
-  // inline arrow here would give it a new identity on every register re-render -- and
-  // the register re-renders whenever its live Equipment subscription delivers -- which
-  // tears down and re-runs Modal's focus effect and yanks focus to the dialog's ✕
-  // button mid-typing. See EquipmentCreateModal's requestClose for the full trap.
+  // Stable identity. This was REQUIRED when the unit was written -- Modal's focus effect
+  // was keyed on [onClose], so an inline arrow here handed it a new identity every time
+  // the live Equipment subscription delivered, tearing the effect down and yanking focus
+  // to the dialog's ✕ mid-typing. #293 (PR #296) fixed that at the root: Modal's
+  // mount/focus effect is now [] and reads onClose via a ref, so this is defensive
+  // rather than load-bearing. Kept because a stable handler is right regardless; the
+  // driver's delivery-mid-type assertion still covers the behaviour either way.
   const closeCreate = useCallback(() => setShowCreate(false), []);
 
   // Focus the newly created row once it actually exists in the live list. The row
