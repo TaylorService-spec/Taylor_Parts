@@ -2954,10 +2954,14 @@ async function verifyCustomerCreateOverlay(browser, page, accountKey) {
     await dialog().waitFor({ timeout: 10000 });
     await nameInput().fill(guardName);
 
+    // 6s of latency gives the three dismiss attempts below (~900ms of fixed waits plus
+    // overhead) comfortable headroom before the commit could land -- the "nothing written
+    // while the guard holds" check is the tightest-margin assertion here, so it is
+    // deliberately slack, not snug (review finding).
     const cdp = await page.context().newCDPSession(page);
     await cdp.send("Network.enable");
     await cdp.send("Network.emulateNetworkConditions",
-      { offline: false, latency: 2500, downloadThroughput: -1, uploadThroughput: -1 });
+      { offline: false, latency: 6000, downloadThroughput: -1, uploadThroughput: -1 });
 
     const savingBtn = () => dialog().getByRole("button", { name: /Saving/ });
     try {
@@ -2987,6 +2991,7 @@ async function verifyCustomerCreateOverlay(browser, page, accountKey) {
     } finally {
       await cdp.send("Network.emulateNetworkConditions",
         { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
+      await cdp.detach().catch(() => {});
     }
 
     // Latency removed: the create lands, and the overlay closes on its OWN success --
