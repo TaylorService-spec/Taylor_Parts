@@ -259,6 +259,39 @@ export const EDITABLE_EQUIPMENT_FIELDS = Object.freeze([
   "installedDate", "warrantyExpiresDate", "notes",
 ]);
 
+// E8: which editable fields an edit form actually changed, against the stored record.
+//
+// This lives here, not in the form, because "did the user change anything?" is not
+// `!==` and getting it wrong is invisible in a browser -- everything still saves. The
+// form holds a STRING for every control ("" where the record holds null, padding where
+// it holds a trimmed value), so a raw comparison reports a change on every optional
+// field nobody touched: untouched values get rewritten, updatedAt is stamped on records
+// nobody edited, another session's concurrent change is silently restored, and #287's
+// "nothing was changed" answer becomes unreachable.
+//
+// It is also the reason the form cannot smuggle a governed field: the loop is over
+// EDITABLE_EQUIPMENT_FIELDS, not over the caller's keys, so accountId/locationId/
+// status/createdAt cannot enter the result whatever the form holds. E1's governed
+// guard, E2's write path and E3's Rules each re-check that independently -- this is the
+// first of four, not the only one.
+//
+// Returns only the changed keys. buildEquipmentEditPayload reads an ABSENT key as
+// "unchanged", so a partial result is the point rather than an omission.
+export function changedEquipmentFields(values, equipment) {
+  if (!isRecord(values) || !isRecord(equipment)) return {};
+  const changed = {};
+  for (const f of EDITABLE_EQUIPMENT_FIELDS) {
+    const raw = values[f];
+    // A control the form does not offer is absent, not blank -- absent means unchanged,
+    // and must not be read as a request to clear the field.
+    if (raw === undefined) continue;
+    const next = typeof raw === "string" ? (raw.trim() === "" ? null : raw.trim()) : raw ?? null;
+    const current = equipment[f] ?? null;
+    if (next !== current) changed[f] = next;
+  }
+  return changed;
+}
+
 // Create payload: the full validated record + updatedAt.
 //
 // `createdAt` is deliberately NOT set here -- makeCollectionStore.add() stamps it on

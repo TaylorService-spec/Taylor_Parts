@@ -1345,6 +1345,28 @@ export const EQUIPMENT_FIXTURE = {
   sparseId: "equip-alpha-sparse",               // every optional field absent
   betaEquipmentId: "equip-beta-rtu-1",          // other tenant -- must never be readable cross-Account
 
+  // --- E8 edit fixtures: WRITTEN BY the edit gate, asserted on by nobody else -------
+  // The edit gate MUTATES what it edits, so it cannot share a record with a gate that
+  // asserts on that record's contents. Pointing it at activeWithHistoryId renamed the
+  // duplicate-named sibling and broke FIVE assertions across the register and detail
+  // gates -- the same shared-fixture pollution that once made E5's gate "see 11".
+  // These two exist so the edit gate has something it is allowed to ruin.
+  editableId: "equip-alpha-editable",           // ACTIVE, fully populated
+  editableRetiredId: "equip-alpha-editable-retired", // RETIRED, still correctable (Owner E3 decision 2)
+
+  // Alpha's full roster and its RETIRED subset, published so gates ASSERT AGAINST THE
+  // FIXTURE rather than a hardcoded literal. The register gate hardcoded `6`, so simply
+  // adding the two edit fixtures above turned four of its assertions red -- a fixture
+  // addition should never look like an application regression. Any unit that adds an
+  // Alpha record adds it here too, and the counts follow.
+  get alphaEquipmentIds() {
+    return [this.activeWithHistoryId, this.activeNoHistoryId, this.inactiveId, this.retiredId,
+            this.movedId, this.sparseId, this.editableId, this.editableRetiredId];
+  },
+  get alphaRetiredIds() {
+    return [this.retiredId, this.editableRetiredId];
+  },
+
   // --- personas ------------------------------------------------------------
   assignedTechnicianId: "equip-tech-assigned",
   unassignedTechnicianId: "equip-tech-unassigned",
@@ -1504,6 +1526,25 @@ async function seedEquipmentFixture() {
       // handle a minimal record without inventing defaults.
       id: F.sparseId, locationId: F.alphaLocation1Id, name: "Unlabeled Pump",
       status: "ACTIVE",
+    },
+    {
+      // E8's scratch record. Fully populated so the edit gate can prove that untouched
+      // fields survive a partial write. Deliberately NOT duplicate-named and NOT linked
+      // to a Work Order: nothing else asserts on it, so the gate is free to rewrite it.
+      id: F.editableId, locationId: F.alphaLocation1Id, name: "Editable Unit",
+      status: "ACTIVE", manufacturer: "Lennox", model: "EL16XC1", serialNumber: "SN-ALPHA-0009",
+      assetTag: "AT-1009", installedDate: "2023-05-04", warrantyExpiresDate: "2033-05-04",
+      notes: "Scratch record for the E8 edit gate.",
+    },
+    {
+      // E8's retired scratch record. The Owner's E3 decision keeps descriptive
+      // corrections legal on a RETIRED asset, and that needs its own fixture: the
+      // detail gate asserts on the retired boiler's history and status, so the edit
+      // gate must not be writing to it.
+      id: F.editableRetiredId, locationId: F.alphaLocation1Id, name: "Editable Retired Unit",
+      status: "RETIRED", manufacturer: "Weil-McLain", model: "CGA-6", serialNumber: "SN-ALPHA-0010",
+      assetTag: "AT-1010", installedDate: "2011-02-02", warrantyExpiresDate: "2021-02-02",
+      notes: "Scratch retired record for the E8 edit gate.",
     },
   ];
 

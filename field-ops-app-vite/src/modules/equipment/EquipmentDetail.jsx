@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useEquipmentDoc, useWorkOrdersForEquipment } from "../../hooks/useEquipment";
 import { useAccount } from "../../hooks/useAccount";
@@ -11,6 +11,8 @@ import {
   isRetired,
 } from "../../domain/equipment";
 import { trustedActionUnavailable } from "../../domain/equipment";
+import { updateEquipment } from "../../domain/equipmentRepository";
+import EquipmentEditModal from "./EquipmentEditModal";
 import LoadingState from "../../shared/ui/LoadingState";
 import EmptyState from "../../shared/ui/EmptyState";
 import FailureState from "../../shared/ui/FailureState";
@@ -28,8 +30,13 @@ import { EQUIPMENT_STATUS } from "../../domain/constants";
 // reactivate are trusted-writer actions gated on Issue #15 (Functions undeployed), and
 // E2's seam reports that rather than pretending. Showing them disabled with the real
 // reason is the honest rendering: hiding them would imply the asset cannot be moved or
-// retired at all, and enabling them would promise a write nothing can perform. Edit is
-// E8's; it is not stubbed here.
+// retired at all, and enabling them would promise a write nothing can perform.
+//
+// EDIT (E8) IS DIFFERENT, and sits apart from them for that reason: it is an ordinary
+// client write that Rules permit today, so it is genuinely available -- including on a
+// RETIRED asset, per the Owner's E3 decision (descriptive corrections stay allowed; a
+// wrong serial number is still worth fixing after the asset leaves service). It edits
+// descriptive fields only; ownership and status are not its to change.
 
 const STATUS_LABEL = {
   [EQUIPMENT_STATUS.ACTIVE]: "Active",
@@ -56,6 +63,19 @@ export default function EquipmentDetail() {
     () => groupServiceHistoryByYear(equipmentServiceHistory(workOrders, equipmentId)),
     [workOrders, equipmentId]
   );
+
+  // E8. Declared with the other hooks, above this component's early returns -- a
+  // useState after them would run conditionally.
+  const [editing, setEditing] = useState(false);
+
+  // The saved record arrives through useEquipmentDoc's live subscription, so there is
+  // no local copy to update and none to drift. Closing is this component's single
+  // decision; the modal never closes itself (E6's rule).
+  const handleSave = useCallback(async (changed, before) => {
+    const result = await updateEquipment(equipmentId, changed, { before });
+    if (result?.ok) setEditing(false);
+    return result;
+  }, [equipmentId]);
 
   const backToRegister = (
     <button type="button" onClick={() => navigate("/equipment")}>Back to Equipment</button>
@@ -104,6 +124,13 @@ export default function EquipmentDetail() {
           {STATUS_LABEL[equipment.status] ?? "Unknown"}
         </span>
         <p className="fo-muted fo-equipment-subtitle">{equipmentSummary(equipment)}</p>
+        {/* Available, so it is a live control -- placed with the asset's identity rather
+            than among the #15-gated lifecycle actions below. */}
+        <div className="fo-btn-row fo-equipment-detail-actions">
+          <button type="button" data-equipment-action="edit" onClick={() => setEditing(true)}>
+            Edit
+          </button>
+        </div>
       </header>
 
       <div className="fo-detail-grid">
@@ -164,7 +191,10 @@ export default function EquipmentDetail() {
           </dl>
         </section>
 
-        {/* §8 lifecycle actions, each per §5 gating. */}
+        {/* §8 lifecycle actions, each per §5 gating.
+            Edit is NOT among them and is not disabled: it is an ordinary write Rules
+            permit today. Grouping an available action beside unavailable ones under one
+            "not available yet" note would make it read as gated too. */}
         <section className="fo-panel" aria-labelledby="equip-actions">
           <h2 id="equip-actions">Lifecycle actions</h2>
           <div className="fo-btn-row">
@@ -222,6 +252,21 @@ export default function EquipmentDetail() {
           ))
         )}
       </section>
+
+      {/* Mounted only while open, so the form always seeds from the CURRENT record: a
+          modal kept mounted and merely hidden would reopen holding whatever the user
+          typed and abandoned last time, and present it as the stored value.
+          `locationName` is passed already resolved -- the modal shows ownership as
+          context and must never re-derive it, let alone offer it. */}
+      {editing ? (
+        <EquipmentEditModal
+          equipment={equipment}
+          accountName={account?.name ?? "Unknown customer"}
+          locationName={locationName}
+          onSave={handleSave}
+          onClose={() => setEditing(false)}
+        />
+      ) : null}
     </section>
   );
 }

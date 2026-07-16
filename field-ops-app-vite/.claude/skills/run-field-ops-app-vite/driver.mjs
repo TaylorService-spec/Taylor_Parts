@@ -4331,6 +4331,228 @@ async function verifyEquipmentDetail(browser, page, accountKey) {
   return niFailed === 0;
 }
 
+
+// Issue #232 unit E8 -- Equipment editing (Spec §6). The "edit verify" gate.
+//
+// EVERY FIELD THAT MATTERS IS TYPED, NOT filled(). `fill()` sets the value in one shot
+// and fires a single input event, so it is structurally blind to per-keystroke bugs --
+// E6's create form shipped UNUSABLE (Modal's focus effect re-ran on every keystroke, so
+// typing "Rooftop Unit 1" left the field EMPTY and the first SPACE activated the close
+// button) while a 26/26 fill()-based gate stayed green. fill() is still used where the
+// value is incidental to the assertion; it is never used for the typing assertions.
+//
+// EVERY SAVE IS CHECKED AGAINST SERVER TRUTH over the emulator's REST API, never against
+// what the page believes. The client SDK answers reads from its local cache, so a write
+// that never reached Firestore still reads back as "saved" -- "the UI says it saved" is
+// the claim under test, not the evidence for it.
+async function verifyEquipmentEdit(browser, page, accountKey) {
+  const F = EQUIPMENT_FIXTURE;
+  const url = (path) => { const u = new URL(path, APP_ROOT); u.searchParams.set("emulator", "1"); return u.toString(); };
+  const RAW = /permission-denied|FirebaseError|firestore\/|code:|Missing or insufficient|AIza|documents\//i;
+
+  // Server truth, straight from the emulator, bypassing every client cache.
+  const serverDoc = async (id) => {
+    const res = await fetch(
+      `http://127.0.0.1:8080/v1/projects/taylor-parts/databases/(default)/documents/equipment/${id}`,
+      { headers: { Authorization: "Bearer owner" } }
+    );
+    if (!res.ok) return null;
+    const json = await res.json();
+    const out = {};
+    for (const [k, v] of Object.entries(json.fields ?? {})) {
+      out[k] = "nullValue" in v ? null
+        : "stringValue" in v ? v.stringValue
+        : "integerValue" in v ? Number(v.integerValue)
+        : "doubleValue" in v ? v.doubleValue
+        : JSON.stringify(v);
+    }
+    return out;
+  };
+
+  const openEditor = async (id) => {
+    await page.goto(url(`equipment/${id}`), { waitUntil: "domcontentloaded" });
+    await page.locator(".fo-equipment-detail").waitFor({ timeout: 15000 });
+    await page.locator('[data-equipment-action="edit"]').click();
+    await page.locator("#equipment-edit-name").waitFor({ timeout: 10000 });
+  };
+  const saveAndWait = async () => {
+    await page.locator('button[type="submit"]').click();
+    await page.locator("#equipment-edit-name").waitFor({ state: "detached", timeout: 15000 }).catch(() => {});
+  };
+  const formText = async () => page.locator(".fo-form").innerText().catch(() => "");
+
+  await login(page, accountKey);
+
+  // A UNIQUE value per run. Without this the gate is only correct against a fresh seed:
+  // run it twice and the second rename is a no-op, the modal correctly stays open, and
+  // "closed exactly once on success" goes red against code that is fine. A gate that
+  // passes once and then lies is worse than no gate -- the next person debugs the app.
+  const RUN = String(Date.now() % 100000);
+  const newName = `Rooftop Unit ${RUN}`;   // still multi-word: the space is the point (§13)
+
+  // ===== the form seeds from the STORED record (§6) =====
+  const stored = await serverDoc(F.editableId);
+  await openEditor(F.editableId);
+  niReport("Edit: the form seeds from the stored record, not from blanks",
+    (await page.locator("#equipment-edit-name").inputValue()) === stored.name &&
+      (await page.locator("#equipment-edit-manufacturer").inputValue()) === (stored.manufacturer ?? ""),
+    `name=${await page.locator("#equipment-edit-name").inputValue()}`);
+
+  // A null optional field seeds EMPTY, not as the text "null". The precondition is
+  // asserted too -- without it, a fixture that happened to have a model would make the
+  // check pass while proving nothing.
+  const sparseStored = await serverDoc(F.sparseId);
+  niReport("Edit: the sparse fixture really has no model (precondition -- else the next check is vacuous)",
+    (sparseStored.model ?? null) === null, `model=${JSON.stringify(sparseStored.model)}`);
+  await openEditor(F.sparseId);
+  niReport("Edit: an absent optional field seeds empty -- never the text 'null' or 'undefined'",
+    (await page.locator("#equipment-edit-model").inputValue()) === "" &&
+      (await page.locator("#equipment-edit-notes").inputValue()) === "",
+    `model=${JSON.stringify(await page.locator("#equipment-edit-model").inputValue())}`);
+
+  // ===== §6: ownership and status are not offered =====
+  await openEditor(F.editableId);
+  niReport("Edit: identity/ownership are read-only -- there is no customer or location CONTROL (§6)",
+    (await page.locator("#equipment-edit-account, #equipment-edit-location, select[name='accountId'], select[name='locationId']").count()) === 0 &&
+      (await page.locator("[data-equipment-edit-account]").count()) === 1 &&
+      (await page.locator("[data-equipment-edit-location]").count()) === 1);
+  niReport("Edit: the read-only ownership shows NAMES, never a raw id (§8)",
+    !/acct-equip-alpha|equip-loc-alpha/.test(await page.locator(".fo-equipment-edit-fixed").innerText()),
+    await page.locator(".fo-equipment-edit-fixed").innerText());
+  niReport("Edit: status is not a form field -- lifecycle transitions are actions (§3/§6, E10)",
+    (await page.locator("#equipment-edit-status, select[name='status'], [data-equipment-edit-status]").count()) === 0);
+
+  // ===== §13 per-keystroke integrity: the E6 bug class =====
+  await page.locator("#equipment-edit-name").fill("");
+  await page.locator("#equipment-edit-name").focus();
+  await page.keyboard.type(newName, { delay: 15 });
+  niReport("Edit: typing a multi-word name keeps every character (typed, not filled) (§13)",
+    (await page.locator("#equipment-edit-name").inputValue()) === newName,
+    JSON.stringify(await page.locator("#equipment-edit-name").inputValue()));
+  niReport("Edit: focus stays in the field while typing -- SPACE never activates the close button",
+    (await page.evaluate(() => document.activeElement?.id)) === "equipment-edit-name",
+    await page.evaluate(() => document.activeElement?.id || document.activeElement?.tagName));
+  niReport("Edit: the modal survives typing a space -- it was not dismissed",
+    (await page.locator("#equipment-edit-name").count()) === 1);
+
+  // ===== a real edit reaches the SERVER, and touches only what changed =====
+  await saveAndWait();
+  const afterRename = await serverDoc(F.editableId);
+  niReport("Edit: the rename is PERSISTED on the server, not merely rendered",
+    afterRename.name === newName, `server name=${afterRename.name}`);
+  niReport("Edit: untouched fields are not rewritten -- only the changed key was sent",
+    afterRename.serialNumber === stored.serialNumber &&
+      afterRename.installedDate === stored.installedDate &&
+      afterRename.manufacturer === stored.manufacturer &&
+      afterRename.notes === stored.notes,
+    `serial=${afterRename.serialNumber} manufacturer=${afterRename.manufacturer}`);
+  niReport("Edit: an ordinary edit leaves every governed field untouched (§6)",
+    afterRename.accountId === stored.accountId &&
+      afterRename.locationId === stored.locationId &&
+      afterRename.status === stored.status);
+  niReport("Edit: the modal closed exactly once on success",
+    (await page.locator(".fo-modal, [role='dialog']").count()) === 0);
+  niReport("Edit: the detail page reflects the new name with no reload (live subscription)",
+    (await page.locator(".fo-equipment-title").innerText()).includes(newName),
+    await page.locator(".fo-equipment-title").innerText());
+
+  // ===== a no-op save writes NOTHING and says so (#287) =====
+  const beforeNoop = await serverDoc(F.editableId);
+  await openEditor(F.editableId);
+  await page.locator('button[type="submit"]').click();
+  await page.waitForTimeout(1500);
+  const afterNoop = await serverDoc(F.editableId);
+  niReport("Edit: saving an untouched form writes NOTHING -- updatedAt is not bumped (#287)",
+    afterNoop.updatedAt === beforeNoop.updatedAt,
+    `before=${beforeNoop.updatedAt} after=${afterNoop.updatedAt}`);
+  niReport("Edit: a no-op says nothing changed, and never claims success",
+    /nothing was changed/i.test(await formText()), await formText().then((t) => t.slice(0, 120)));
+  niReport("Edit: a no-op leaves the modal OPEN rather than closing as if it had saved",
+    (await page.locator("#equipment-edit-name").count()) === 1);
+
+  // ===== an optional field round-trips: set it, then clear it =====
+  // BOTH directions, in this order, because the gate must not depend on the seed's
+  // starting value: on a re-run the field is already null, so a bare clear-and-check
+  // would assert null === null and prove nothing.
+  await page.locator("#equipment-edit-manufacturer").fill(`Trane ${RUN}`);
+  await saveAndWait();
+  niReport("Edit: setting an optional field persists it",
+    (await serverDoc(F.editableId)).manufacturer === `Trane ${RUN}`,
+    `manufacturer=${JSON.stringify((await serverDoc(F.editableId)).manufacturer)}`);
+
+  await openEditor(F.editableId);
+  await page.locator("#equipment-edit-manufacturer").fill("");
+  await saveAndWait();
+  const afterClear = await serverDoc(F.editableId);
+  niReport("Edit: clearing an optional field stores null, never an empty string",
+    afterClear.manufacturer === null, `manufacturer=${JSON.stringify(afterClear.manufacturer)}`);
+
+  // ===== a required field fails CLOSED, in-modal, with no raw detail =====
+  await openEditor(F.editableId);
+  const beforeBlank = await serverDoc(F.editableId);
+  await page.locator("#equipment-edit-name").fill("");
+  await page.locator('button[type="submit"]').click();
+  await page.waitForTimeout(900);
+  niReport("Edit: a blank required name is refused in-modal, and the modal stays open",
+    (await page.locator("#equipment-edit-name").count()) === 1 &&
+      /enter an equipment name/i.test(await formText()));
+  niReport("Edit: a refused edit writes nothing",
+    (await serverDoc(F.editableId)).name === beforeBlank.name);
+  niReport("Edit: no raw provider code, id or credential is ever rendered (§9)",
+    !RAW.test(await formText()), await formText().then((t) => t.slice(0, 120)));
+
+  // ===== Escape / Cancel close, and discard =====
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(500);
+  niReport("Edit: Escape closes the modal", (await page.locator("#equipment-edit-name").count()) === 0);
+
+  await openEditor(F.editableId);
+  await page.locator("#equipment-edit-name").fill("Discarded Name");
+  await page.locator('button:has-text("Cancel")').click();
+  await page.waitForTimeout(800);
+  niReport("Edit: Cancel closes and discards -- nothing is written",
+    (await page.locator("#equipment-edit-name").count()) === 0 &&
+      (await serverDoc(F.editableId)).name !== "Discarded Name");
+
+  await openEditor(F.editableId);
+  niReport("Edit: reopening shows the STORED value, not the abandoned edit",
+    (await page.locator("#equipment-edit-name").inputValue()) === (await serverDoc(F.editableId)).name,
+    await page.locator("#equipment-edit-name").inputValue());
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(400);
+
+  // ===== RETIRED equipment stays editable (Owner E3 decision 2) =====
+  const retiredBefore = await serverDoc(F.editableRetiredId);
+  niReport("Edit: the retired fixture really is RETIRED (precondition)",
+    retiredBefore.status === "RETIRED", `status=${retiredBefore.status}`);
+  await openEditor(F.editableRetiredId);
+  niReport("Edit: a RETIRED asset can still be edited -- retiring is not a freeze (Owner E3 decision)",
+    (await page.locator("#equipment-edit-name").count()) === 1);
+  await page.locator("#equipment-edit-serial").fill(`SN-CORRECTED-${RUN}`);
+  await saveAndWait();
+  const retiredAfter = await serverDoc(F.editableRetiredId);
+  niReport("Edit: a retired asset's descriptive correction is PERSISTED (Rules permit it)",
+    retiredAfter.serialNumber === `SN-CORRECTED-${RUN}`, `serial=${retiredAfter.serialNumber}`);
+  niReport("Edit: correcting a retired asset does NOT resurrect it -- status stays RETIRED",
+    retiredAfter.status === "RETIRED", `status=${retiredAfter.status}`);
+
+  // ===== a11y + 375px =====
+  await openEditor(F.editableId);
+  niReport("Edit: the name control is labelled (a11y)",
+    (await page.locator('label[for="equipment-edit-name"]').count()) === 1);
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.waitForTimeout(400);
+  const overflows = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
+  niReport("Edit: the modal does not overflow horizontally at 375px (§13)", !overflows);
+  niReport("Edit: the save action is reachable at 375px",
+    await page.locator('button[type="submit"]').isVisible());
+  await page.setViewportSize({ width: 1280, height: 800 });
+
+  await page.screenshot({ path: join(SCREENSHOT_DIR, "equipment-edit.png"), fullPage: true });
+  console.log(`\n${niPassed} passed, ${niFailed} failed`);
+  return niFailed === 0;
+}
+
 // Issue #232 unit E6 -- Equipment creation (Spec §6).
 //
 // Proves the create flow in a real signed-in browser against a live emulator whose
@@ -4770,9 +4992,12 @@ async function verifyEquipmentRegister(browser, page, accountKey) {
   emuDelayMs = 0;
   await rows().first().waitFor({ timeout: 15000 });
 
-  // Alpha has 6 seeded Equipment (E4): 2 duplicate-named, inactive, retired, moved, sparse.
+  // Alpha's seeded Equipment (E4 + E8's two edit fixtures). Counted FROM THE FIXTURE,
+  // not hardcoded: a literal `6` here meant that adding a fixture reported itself as an
+  // application regression in four assertions at once.
+  const ALPHA_TOTAL = F.alphaEquipmentIds.length;
   const total = await rows().count();
-  niReport("Register: the Account-scoped set renders every one of that customer's records", total === 6, `saw ${total}`);
+  niReport("Register: the Account-scoped set renders every one of that customer's records", total === ALPHA_TOTAL, `saw ${total}, fixture has ${ALPHA_TOTAL}`);
   niReport("Register: the result count is a polite live region matching the rows",
     (await count().getAttribute("aria-live")) === "polite" &&
       new RegExp(`\\b${total}\\b`).test(await count().innerText()));
@@ -4813,29 +5038,30 @@ async function verifyEquipmentRegister(browser, page, accountKey) {
   await search.fill("");
   await page.waitForTimeout(150);
   niReport("Register: clearing the search restores the full set -- an empty term is not 'match nothing'",
-    (await rows().count()) === 6);
+    (await rows().count()) === ALPHA_TOTAL);
 
   // ===== status filter, including the "All statuses" trap =====
   await page.locator('.fo-filter-group[aria-label="Filter by status"]').getByRole("button", { name: "Retired", exact: true }).click();
   await page.waitForTimeout(150);
-  niReport("Register: the Retired filter isolates the retired record", (await rows().count()) === 1);
+  niReport("Register: the Retired filter isolates the retired records",
+    (await rows().count()) === F.alphaRetiredIds.length, `saw ${await rows().count()}, fixture has ${F.alphaRetiredIds.length}`);
   const allBtn = page.locator('.fo-filter-group[aria-label="Filter by status"]').getByRole("button", { name: "All statuses", exact: true });
   await allBtn.click();
   await page.waitForTimeout(150);
   // THE TRAP: if "All statuses" ever passed status:"" instead of null, searchEquipment
   // would treat it as an explicitly supplied unknown status and return ZERO rows.
   niReport("Register: 'All statuses' shows every record -- it passes null, never status:\"\"",
-    (await rows().count()) === 6);
+    (await rows().count()) === ALPHA_TOTAL);
   niReport("Register: 'All statuses' is announced as pressed", (await allBtn.getAttribute("aria-pressed")) === "true");
 
   // ===== Location filter =====
   await page.locator("#equipment-location").selectOption({ label: "Alpha -- North Annex" });
   await page.waitForTimeout(150);
   const atAnnex = await rows().count();
-  niReport("Register: the Location filter bounds the list to one Location", atAnnex > 0 && atAnnex < 6, `saw ${atAnnex}`);
+  niReport("Register: the Location filter bounds the list to one Location", atAnnex > 0 && atAnnex < ALPHA_TOTAL, `saw ${atAnnex}`);
   await page.locator("#equipment-location").selectOption({ value: "" });
   await page.waitForTimeout(150);
-  niReport("Register: 'All locations' restores the full set", (await rows().count()) === 6);
+  niReport("Register: 'All locations' restores the full set", (await rows().count()) === ALPHA_TOTAL);
 
   // ===== filtered-empty is DISTINCT from database-empty, and is not an error =====
   await search.fill("ZZ-NOTHING-MATCHES-THIS");
@@ -4851,7 +5077,7 @@ async function verifyEquipmentRegister(browser, page, accountKey) {
   await clearBtn.focus();
   await page.keyboard.press("Enter");
   await rows().first().waitFor({ timeout: 5000 });
-  niReport("Register: the filtered-empty recovery action is keyboard-operable (§13)", (await rows().count()) === 6);
+  niReport("Register: the filtered-empty recovery action is keyboard-operable (§13)", (await rows().count()) === ALPHA_TOTAL);
 
   // ===== database-empty: a customer with NO equipment (distinct from filtered) =====
   await pickAccount("Beta Property Group");
@@ -6662,6 +6888,10 @@ async function main() {
     } else if (command === "verify-equipment-detail") {
       const [accountKey = "admin"] = args;
       const ok = await verifyEquipmentDetail(browser, page, accountKey);
+      if (!ok) process.exitCode = 1;
+    } else if (command === "verify-equipment-edit") {
+      const [accountKey = "admin"] = args;
+      const ok = await verifyEquipmentEdit(browser, page, accountKey);
       if (!ok) process.exitCode = 1;
     } else if (command === "verify-equipment-create") {
       const [accountKey = "admin"] = args;
