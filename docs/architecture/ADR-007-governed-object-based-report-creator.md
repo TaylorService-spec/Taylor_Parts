@@ -27,14 +27,18 @@ This ADR records the architecture that satisfies those constraints and does not 
 
 Adopt a **trusted field-projecting report architecture**: a single, shared, server-authoritative report execution service that reads governed collections with elevated privilege and returns only the fields and rows the *runner* is authorized to see, driven by a static repository-owned metadata catalog and the ADR-005 authorization engine. The following sub-decisions are binding on the Specification and all later stages.
 
-### 2.1 Trusted field projection is the only architecture that can meet the field-level guarantee (D1)
+### 2.1 Trusted field projection is the only class of architecture that can meet the field-level guarantee (D1)
 
 **Report reads are server-mediated by a trusted execution service; there is no client-direct report read path.** The service (a Cloud Function in the Issue #15 lane) resolves the caller's identity, loads the requested object's documents, and **projects each document down to the fields the caller's effective field-level read capabilities allow** before returning anything. A field the caller may not read is **absent from the response payload**, not blanked and not returned-then-hidden.
 
-Two alternatives are **rejected explicitly**:
+Four alternatives were considered and **rejected**:
 
 - **Client-direct Firestore read + UI field-hiding — REJECTED as a data-exposure defect.** Firestore Rules cannot project fields (Assessment §3), so any client-direct read returns whole documents; hiding fields in the UI leaves the privileged data in the delivered payload. This violates the Owner's "unauthorized fields must never be returned by the backend" and is the single largest risk this ADR exists to prevent.
 - **Per-field Firestore Security Rules — REJECTED as impossible.** Rules gate document reads, not field reads; there is no rule form that returns a partial document.
+- **Field-level encryption (unreadable fields shipped as ciphertext) — REJECTED.** It does not remove the trust boundary, it relocates it: filtering, sorting, grouping, and aggregating still require the plaintext, so a trusted server that holds keys and computes is still required — and per-field, per-principal key management layered on ADR-005's dynamic grants is strictly more complex than projection, for no additional guarantee.
+- **Materialized per-role projections (precomputed views per role) — REJECTED.** ADR-005 access is per-*principal*, Scope-qualified, and version-stamped, not per-role; a materialized view would have to be cut across role × Scope × `accessVersion` and rebuilt on every grant change, and would still need a trusted writer. It collapses into the same trust boundary as live projection while adding a staleness surface that fights the re-evaluation-at-run contract (§2.4).
+
+All four collapse to the same point: any design that meets the field-level guarantee over ADR-005's *dynamic, per-principal, versioned* access must mediate reads through a trusted server that projects. Hence "class of architecture" — the decision is which member of that class, and **live trusted projection** is chosen as the simplest that also satisfies re-evaluation-at-run.
 
 The service is **one engine for all objects and all waves**. A wave activates catalog entries and capabilities; it does not add a new engine, query path, or projection mechanism.
 
@@ -58,11 +62,20 @@ The engine authorizes each field by calling the ADR-005 decision engine (`resolv
 
 A **saved report definition is pure metadata** — an object id, a set of field ids, operators, filters, grouping/sort, and presentation — carrying **no data, no results, and none of its author's privileges**. Execution (interactive, scheduled, shared-open, or export) **re-resolves the runner's current permissions and Scope every time**, and compares against `currentAccessVersion` so a revoked or version-bumped grant cannot be replayed from a stale definition.
 
-Definitions must **tolerate fields becoming unavailable**: if a field a definition names is one the current runner may not read (revoked capability, re-classified sensitivity, or a field removed from the catalog), that field is **dropped from the result and the omission surfaced to the runner** — never returned, and never a hard failure of the whole report. This makes a saved or shared definition safe to open by a lower-privileged user without becoming a privilege-escalation path.
+Definitions must **tolerate fields becoming unavailable**, and this applies to **every way a field is used, not only as a displayed column**:
+
+- **Column projection:** a field the runner may not read is **dropped from the result and the omission surfaced** — never returned.
+- **Filter / group / sort / aggregate predicates:** a predicate that *references* a field the runner may not read is **dropped (the predicate is removed), never applied**. This is a load-bearing security rule, not an optional one. The trusted engine *can* read every field, so if it kept applying an author's `salary > 100000` filter for a lower-privileged runner, the **result-set membership would itself leak the hidden field** (which rows satisfy the predicate) even though the salary column is projected out. Dropping the predicate widens the result rather than leaking; a leak is never the safe direction. The dropped predicate is surfaced to the runner exactly like a dropped column, so the widening is visible, not silent.
+
+Because column projection, predicate application, grouping, and aggregation are **all** gated by the same per-field capability (§2.2), a runner can never see, filter by, group by, sort by, or aggregate over a field they may not read — and therefore cannot infer its values through membership either. This is what makes a saved, shared, or scheduled definition safe to open by a lower-privileged user without becoming a privilege-escalation path.
+
+**Results are never cached across principals.** Any execution-result cache the engine keeps must be keyed to the *runner's* resolved access set and `accessVersion`, so a projection computed for a higher-privileged principal can never be served to a lower-privileged one — the cache must not become a side channel around re-evaluation.
 
 ### 2.5 Relationships are predefined, governed, and bounded to one hop at first activation (D5)
 
 Related-object columns come only from the **relationship catalog** (§2.2). **No arbitrary joins.** The first activation wave permits **bounded one-hop** traversals only (e.g. Equipment's Location name); deeper traversal is a later, separately-reviewed capability. A traversal never widens field visibility beyond what the traversed object's own field capabilities allow — the projected columns from a related object are authorized by *that object's* field capabilities, evaluated for the same runner.
+
+The predicate rule of §2.4 crosses the hop identically: **a filter/group/sort/aggregate on a related object's field the runner may not read is dropped, not applied.** Filtering base rows by a related object's unreadable field (e.g. *Work Orders where Equipment.cost > X*) would leak that field through base-result membership exactly as a same-object predicate would, so it is refused the same way.
 
 ### 2.6 Sensitive fields are denied by default and activated only through dedicated security review (D6)
 
@@ -93,15 +106,16 @@ The six activation waves (Customer/Contact/Location/Equipment → Jobs/WorkOrder
 - **Enables** a single Specification to catalog all existing objects/fields/relationships and define the field-level read authorization, query/validation, saved reports, sharing/scheduling, export, audit, limits, states, and staged activation — over one architecture.
 - **Creates a hard dependency on the Issue #15 Functions lane** (Inventory-owned): the execution/projection/export service is a trusted Function and cannot be activated until #15 is deployed and verified. The report creator is **unavailable-not-unsafe** until then — visibly gated, never a client-direct fallback (the platform's established #15 pattern).
 - **Creates a dependency on a field-level read extension to #226** (Inventory-owned): the object/field catalog can be authored now (Specification), but enforcement waits on the engine extension. The Specification must define the capability shape so the two lanes can align.
-- **Tenant Scope stays inert (#140).** Cross-tenant report isolation/sharing is out of scope until #140 defines `tenant`; the engine must treat `tenant` as reserved and never widen access on it — matching the existing `access.ts` contract.
+- **Tenant Scope stays inert (#140).** Cross-tenant report isolation/sharing is out of scope until #140 defines `tenant`; the engine must treat `tenant` as reserved and never widen access on it — matching the existing `src/types/access.ts` contract.
 - **No production or implementation consequence today.** This is a decision record; nothing ships.
 
 ### Open decisions carried to the Specification / Owner (§ "irreducible decisions")
 
 1. The exact **field-level read capability form** (`report.<object>.field.<id>.read` vs a field-set on an object read permission) — coordinate with the #226 lane.
-2. Concrete **execution/row/runtime/export limit values**.
-3. Whether **scheduling** is in the first activation at all, or design-only until a later wave (the Owner said "design support … but stage activation conservatively").
-4. Sharing model specifics (private-only first? governed share to named principals/roles?).
+2. **Operator-differentiated capability granularity.** The model above binds *all* operators on a field to one capability, so a field is either fully readable (raw values, projected as a column) or entirely unreportable. That cannot express **aggregate-only** access — "may see `SUM(salary)` by department but not any individual salary" — which is the single most common sensitive report (totals without line items). Whether the capability form distinguishes *aggregate-only* / *filter-only* from *raw read* is a real dimension of decision (1) and may affect the shape of the #226 field-level extension; it is surfaced now rather than discovered in wave 5. Until decided, sensitive-domain reports are all-or-nothing per field, which is the conservative (safe) default.
+3. Concrete **execution/row/runtime/export limit values**.
+4. Whether **scheduling** is in the first activation at all, or design-only until a later wave (the Owner said "design support … but stage activation conservatively").
+5. Sharing model specifics (private-only first? governed share to named principals/roles?).
 
 ## 5. Governance & scope honored
 
