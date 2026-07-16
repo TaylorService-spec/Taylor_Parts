@@ -28,6 +28,20 @@
 // audit-only case (e.g. a denied-access record with no state change) --
 // it still goes through the identical validation + document-shape path,
 // just via a batch of one.
+//
+// Issue #325 / ADR-007 D-AUDIT (docs/architecture/ADR-007-governed-
+// object-based-report-creator.md sec2.7, docs/specifications/governed-
+// object-based-report-creator.md sec11): extends this SAME writer (no
+// second audit system) with eight report AuditActions (create/rename/
+// duplicate/delete/run/export/share/schedule a report definition) and
+// five report-only RecordAuditEventInput fields (objectId, and --
+// meaningful only for run/export, per Spec sec11's "for runs/exports" --
+// rowCount/droppedFieldIds/droppedPredicateFieldIds/truncated). Inert:
+// nothing calls this extension yet -- the trusted execution/projection
+// service (D-FN) that would be the actual caller is out of THIS PR's
+// scope by direction (D-FN is its own, later, separately-authorized
+// row) and remains #15-gated regardless of the Customer Reporting
+// lane's own F1-F4 catalog/query-model/builder-UI work already merged.
 import {
   getFirestore,
   FieldValue,
@@ -54,7 +68,43 @@ const AUDIT_ACTIONS: readonly AuditAction[] = [
   "approveAccessRequest",
   "rejectAccessRequest",
   "breakGlassRestore",
+  "createReportDefinition",
+  "renameReportDefinition",
+  "duplicateReportDefinition",
+  "deleteReportDefinition",
+  "runReportDefinition",
+  "exportReportDefinition",
+  "shareReportDefinition",
+  "scheduleReportDefinition",
 ];
+
+// Issue #325 / ADR-007 D-AUDIT -- the subset of AUDIT_ACTIONS this
+// extension adds, exported so a future caller (or a test) can ask "is
+// this a report action" without hand-maintaining a second copy of the
+// list. Still purely data -- nothing here emits any of these actions.
+export const REPORT_AUDIT_ACTIONS: readonly AuditAction[] = [
+  "createReportDefinition",
+  "renameReportDefinition",
+  "duplicateReportDefinition",
+  "deleteReportDefinition",
+  "runReportDefinition",
+  "exportReportDefinition",
+  "shareReportDefinition",
+  "scheduleReportDefinition",
+];
+
+// Spec §11: row counts / dropped-field / dropped-predicate / truncation
+// facts are meaningful only "for runs/exports" -- every other report
+// action (create/rename/duplicate/delete/share/schedule) never carries
+// them, enforced below (assertValid rejects their presence outside
+// these two actions, not merely "ignores" them).
+const REPORT_ROW_FACT_ACTIONS: ReadonlySet<AuditAction> = new Set([
+  "runReportDefinition",
+  "exportReportDefinition",
+]);
+
+const MAX_FIELD_ID_LENGTH = 200;
+const MAX_DROPPED_LIST_LENGTH = 500;
 
 const SCOPE_TYPES: readonly ScopeType[] = [
   "global",
@@ -86,6 +136,13 @@ export interface RecordAuditEventInput {
   scope?: Scope;
   approverUid?: string;
   accessVersionAfter?: number;
+  // Issue #325 / ADR-007 D-AUDIT -- see the matching comment on
+  // AuditEvent (types/access.ts) for the full field-level contract.
+  objectId?: string;
+  rowCount?: number;
+  droppedFieldIds?: string[];
+  droppedPredicateFieldIds?: string[];
+  truncated?: boolean;
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -155,6 +212,77 @@ function assertValid(input: RecordAuditEventInput): void {
       );
     }
   }
+
+  // Issue #325 / ADR-007 D-AUDIT (Spec §11: "definition id, object id,
+  // Scope, accessVersion, and (for runs/exports) row counts and any
+  // dropped-field/dropped-predicate/truncation facts"). Validated
+  // unconditionally (not only when `action` is a report action) so a
+  // caller can never attach report-shaped facts to an unrelated action
+  // by mistake -- these fields are report-only, full stop.
+  const isReportAction = REPORT_AUDIT_ACTIONS.includes(input.action as AuditAction);
+  const isReportRowFactAction = REPORT_ROW_FACT_ACTIONS.has(input.action as AuditAction);
+
+  if (isReportAction) {
+    if (!input.objectId || typeof input.objectId !== "string") {
+      throw new AuditEventValidationError("objectId is required for a report AuditAction");
+    }
+    if (input.objectId.length > MAX_FIELD_ID_LENGTH) {
+      throw new AuditEventValidationError(`objectId exceeds ${MAX_FIELD_ID_LENGTH} characters`);
+    }
+  } else if (input.objectId !== undefined) {
+    throw new AuditEventValidationError("objectId is only valid for a report AuditAction");
+  }
+
+  if (input.rowCount !== undefined) {
+    if (!isReportRowFactAction) {
+      throw new AuditEventValidationError(
+        "rowCount is only valid for runReportDefinition/exportReportDefinition",
+      );
+    }
+    if (
+      typeof input.rowCount !== "number" ||
+      !Number.isInteger(input.rowCount) ||
+      input.rowCount < 0
+    ) {
+      throw new AuditEventValidationError("rowCount must be a non-negative integer when present");
+    }
+  }
+
+  for (const [field, value] of [
+    ["droppedFieldIds", input.droppedFieldIds],
+    ["droppedPredicateFieldIds", input.droppedPredicateFieldIds],
+  ] as const) {
+    if (value === undefined) continue;
+    if (!isReportRowFactAction) {
+      throw new AuditEventValidationError(
+        `${field} is only valid for runReportDefinition/exportReportDefinition`,
+      );
+    }
+    if (!Array.isArray(value)) {
+      throw new AuditEventValidationError(`${field} must be an array when present`);
+    }
+    if (value.length > MAX_DROPPED_LIST_LENGTH) {
+      throw new AuditEventValidationError(`${field} exceeds ${MAX_DROPPED_LIST_LENGTH} entries`);
+    }
+    for (const entry of value) {
+      if (typeof entry !== "string" || !entry || entry.length > MAX_FIELD_ID_LENGTH) {
+        throw new AuditEventValidationError(
+          `${field} entries must be non-empty strings no longer than ${MAX_FIELD_ID_LENGTH} characters`,
+        );
+      }
+    }
+  }
+
+  if (input.truncated !== undefined) {
+    if (!isReportRowFactAction) {
+      throw new AuditEventValidationError(
+        "truncated is only valid for runReportDefinition/exportReportDefinition",
+      );
+    }
+    if (typeof input.truncated !== "boolean") {
+      throw new AuditEventValidationError("truncated must be a boolean when present");
+    }
+  }
 }
 
 function buildAuditEventDoc(input: RecordAuditEventInput): DocumentData {
@@ -170,6 +298,13 @@ function buildAuditEventDoc(input: RecordAuditEventInput): DocumentData {
   if (input.scope !== undefined) doc.scope = input.scope;
   if (input.approverUid !== undefined) doc.approverUid = input.approverUid;
   if (input.accessVersionAfter !== undefined) doc.accessVersionAfter = input.accessVersionAfter;
+  if (input.objectId !== undefined) doc.objectId = input.objectId;
+  if (input.rowCount !== undefined) doc.rowCount = input.rowCount;
+  if (input.droppedFieldIds !== undefined) doc.droppedFieldIds = input.droppedFieldIds;
+  if (input.droppedPredicateFieldIds !== undefined) {
+    doc.droppedPredicateFieldIds = input.droppedPredicateFieldIds;
+  }
+  if (input.truncated !== undefined) doc.truncated = input.truncated;
   return doc;
 }
 
