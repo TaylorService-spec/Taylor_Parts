@@ -176,3 +176,15 @@ Exactly one new file: `docs/implementation-plans/enterprise-access-and-administr
 ## 20. Approval
 
 Implementation-Plan-Draft, pending independent review and merge under this session's established docs-only merge authority. Merging this Plan authorizes only the PR sequence and ownership decisions above — it does not itself implement, deploy, or activate anything. Row 1 (Task 6, permission catalog) is the next eligible unit of independent work once this Plan merges. **AI plans; it never grants, revokes, or approves access.**
+
+## 21. Addendum — Governed business Role catalog (Owner direction, Issue #226 comments dated 2026-07-16)
+
+A single additive row, triggered by Owner direction naming eight new governed business Roles (General Employee, Office Manager, Sales Manager, Accounting Manager, Finance Manager, Field Manager, Operations Manager, Owner) after this Plan's original §3 table was written. Not a renumbering of §3 — inserted here as its own bounded unit, same reasoning as Specification §26's own addendum treatment.
+
+| Row | Task | Deliverable | Spec section(s) | Merge posture |
+|---|---|---|---|---|
+| 1a | Governed business Role catalog | Eight new `Role` objects (`governedBusinessRoles.ts`, both mirrors) with a least-privilege Permission/Scope/Condition matrix (Spec §26.2); permission-catalog gap record (Spec §26.4) for domains with no existing capability id; unit tests proving every cited id is real and every role's shape is internally consistent | §26 | Docs/types-only, inert — self-mergeable after review, same posture as Row 1 |
+
+**Dependency:** builds directly on Row 1's `permissionCatalog.ts`/`types/access.ts` and Row 2's `resolveEffectivePermission.ts` — no change to either. **Inert, same as Row 2's compatibility Roles were at merge time**: no Rule, Function, or claim consumes `governedBusinessRoles.ts`; `AdminRolesPermissions.jsx`'s `ASSIGNABLE_ROLES` continues to derive from `COMPATIBILITY_ROLES` only. Row 7 (trusted-writer Role-assignment commands) is the first row that could ever assign one of these eight Roles to a real principal, and remains its own separate, later Owner gate regardless of this row merging.
+
+**Expected file scope:** `docs/specifications/enterprise-access-and-administration-platform.md` (§26 addendum), this file (§21 addendum), `field-ops-app-vite/src/access/governedBusinessRoles.ts`, `functions/src/access/governedBusinessRoles.ts`, and their test files. No Rules, indexes, Functions behavior, schemas, routes, deployment, or production-data change.
