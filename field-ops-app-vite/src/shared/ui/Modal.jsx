@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef } from "react";
+import { useCallback, useEffect, useId, useRef } from "react";
 import { createPortal } from "react-dom";
 
 // Shared modal overlay -- the REFERENCE creation-overlay pattern (Customer
@@ -36,6 +36,33 @@ export default function Modal({ title, onClose, children, closeLabel = "Cancel" 
   // Captured once, at mount, so we can restore focus to the trigger on close.
   const previouslyFocusedRef = useRef(null);
 
+  // Issue #293. The keydown handler needs the CURRENT onClose, but the mount effect
+  // below must not re-run when onClose's identity changes -- so the callback reaches
+  // the handler through a ref instead of through the dependency array.
+  //
+  // What went wrong before: this component had ONE effect keyed [onClose] that both
+  // set up focus AND registered keydown. Callers pass a plain `function requestClose()`
+  // (a new identity every render), and a modal re-renders on every keystroke as its
+  // form state changes -- so the effect tore down and re-ran per character. The
+  // cleanup's focus-restore fired (focus was still inside the dialog, so
+  // appMovedFocusAway was false) and the re-run focused the dialog's first focusable,
+  // the ✕ button. Typing a multi-word value therefore lost characters, and the first
+  // SPACE activated the focused ✕ and DISCARDED THE FORM. Verified live against
+  // LocationCreateModal on main: typing "Main Office" closed the modal.
+  //
+  // Correctness must not depend on every caller remembering useCallback -- that is a
+  // trap that re-arms itself for the next modal author. Callers may pass whatever they
+  // like; this component is now indifferent to onClose's identity.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+  // Stable for the whole mount, so it is safe in the mount effect's closure and as an
+  // event handler prop.
+  const requestClose = useCallback(() => onCloseRef.current?.(), []);
+
+  // MOUNT-ONLY effect: focus setup, scroll lock, and the keydown listener. Deps are []
+  // deliberately -- everything time-varying is read through a ref.
   useEffect(() => {
     previouslyFocusedRef.current = document.activeElement;
     const dialog = dialogRef.current;
@@ -51,7 +78,7 @@ export default function Modal({ title, onClose, children, closeLabel = "Cancel" 
     function onKeyDown(e) {
       if (e.key === "Escape") {
         e.stopPropagation();
-        onClose();
+        onCloseRef.current?.();
         return;
       }
       if (e.key !== "Tab") return;
@@ -94,10 +121,13 @@ export default function Modal({ title, onClose, children, closeLabel = "Cancel" 
         restore.focus();
       }
     };
-  }, [onClose]);
+    // MOUNT-ONLY on purpose (Issue #293). The body reads onCloseRef.current rather than
+    // onClose, so [] is genuinely exhaustive -- adding onClose here would restore the
+    // per-keystroke teardown this fix removes.
+  }, []);
 
   return createPortal(
-    <div className="fo-modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div className="fo-modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) requestClose(); }}>
       <div
         className="fo-modal"
         role="dialog"
@@ -108,7 +138,7 @@ export default function Modal({ title, onClose, children, closeLabel = "Cancel" 
       >
         <div className="fo-modal-header">
           <h2 id={titleId} className="fo-modal-title">{title}</h2>
-          <button type="button" className="fo-modal-close" aria-label={closeLabel} onClick={onClose}>
+          <button type="button" className="fo-modal-close" aria-label={closeLabel} onClick={requestClose}>
             &times;
           </button>
         </div>

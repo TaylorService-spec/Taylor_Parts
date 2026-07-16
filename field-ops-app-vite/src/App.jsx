@@ -11,6 +11,10 @@ import TechnicianDashboard from "./modules/technicianDashboard/TechnicianDashboa
 import AccountsList from "./modules/accounts/AccountsList";
 import EquipmentRegister from "./modules/equipment/EquipmentRegister";
 import AccountDetail from "./modules/accounts/AccountDetail";
+import AdministrationOverview from "./modules/administration/AdministrationOverview";
+import AdministrationUnavailable from "./modules/administration/AdministrationUnavailable";
+import AdminUsers from "./modules/administration/AdminUsers";
+import AdminRolesPermissions from "./modules/administration/AdminRolesPermissions";
 import WorkOrdersList from "./modules/workOrders/WorkOrdersList";
 import WorkOrderWizard from "./modules/workOrders/WorkOrderWizard";
 import WorkOrderDetailPage from "./modules/workOrders/WorkOrderDetailPage";
@@ -136,6 +140,32 @@ function renderSubnavItem(domain, item, role) {
   // Same operationalRoleAccess-gated pattern as PR 1b/2b above.
   if (domain.key === "inventoryRole" && item.key === "mine") {
     return <PartsAssociateHome />;
+  }
+  // Issue #226 Row 10 -- Admin Portal foundation. Same special-case pattern as
+  // every other net-new, no-legacyKey screen above: a brand-new Overview hub,
+  // not a re-homed one.
+  if (domain.key === "administration" && item.key === "overview") {
+    return <AdministrationOverview />;
+  }
+  // Issue #226 Row 12 -- Admin mutation UI (Task 17), gated inert. Users and
+  // Roles & Permissions each get a real component showing their MVP mutation
+  // affordance (setUserStatus / assignApprovedRole) visibly but disabled --
+  // see AdminUsers.jsx/AdminRolesPermissions.jsx's own doc comments.
+  if (domain.key === "administration" && item.key === "users") {
+    return <AdminUsers />;
+  }
+  if (domain.key === "administration" && item.key === "rolesPermissions") {
+    return <AdminRolesPermissions />;
+  }
+  // Issue #226 Row 11 -- Read-only Admin MVP (Task 16). These two MVP
+  // surfaces have no live data source yet and no MVP mutation of their own:
+  // firestore.rules deny all client-direct access to the governed
+  // collections (Row 3/PR #276), and no Cloud Function read path is
+  // deployed (blocked on Issue #15, Spec sec17). Real content replaces this
+  // once that backend ships and is verified -- see AdministrationUnavailable
+  // .jsx's own doc comment.
+  if (domain.key === "administration" && (item.key === "permissionPreview" || item.key === "auditLogs")) {
+    return <AdministrationUnavailable title={item.label} />;
   }
   if (item.legacyKey) {
     const Component = LEGACY_COMPONENTS[item.legacyKey];
