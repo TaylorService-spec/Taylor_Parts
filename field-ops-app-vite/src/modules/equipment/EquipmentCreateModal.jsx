@@ -71,6 +71,12 @@ export default function EquipmentCreateModal({ accountName, locations, locations
   async function handleSubmit(e) {
     e.preventDefault();
     if (submittingRef.current) return; // duplicate-submit guard
+    // #324: the submit BUTTON is disabled while locations failed, but Enter in another
+    // field still fires the form's onSubmit. A create needs a location we could not load,
+    // so refuse here too rather than proceed with a stale locationId toward a doomed write
+    // (ownership would fail closed anyway, but showing a generic "check the fields" error
+    // over a form whose location control is a failure notice is the wrong answer).
+    if (locationsError) return;
     setSubmitAttempted(true);
     setSaveError(null);
     setFieldErrors({});
