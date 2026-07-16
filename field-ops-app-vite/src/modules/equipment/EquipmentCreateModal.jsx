@@ -25,7 +25,7 @@ import { describedBy } from "../../shared/ui/form/fieldA11y";
 // status: null or status: "" would be rejected as an invalid status for a control this
 // form does not even offer. Reaching INACTIVE/RETIRED is a lifecycle action (§3/§5),
 // never a create-time choice.
-export default function EquipmentCreateModal({ accountName, locations, onCreate, onClose }) {
+export default function EquipmentCreateModal({ accountName, locations, locationsError, onRetryLocations, onCreate, onClose }) {
   const [name, setName] = useState("");
   const [locationId, setLocationId] = useState("");
   const [manufacturer, setManufacturer] = useState("");
@@ -71,6 +71,12 @@ export default function EquipmentCreateModal({ accountName, locations, onCreate,
   async function handleSubmit(e) {
     e.preventDefault();
     if (submittingRef.current) return; // duplicate-submit guard
+    // #324: the submit BUTTON is disabled while locations failed, but Enter in another
+    // field still fires the form's onSubmit. A create needs a location we could not load,
+    // so refuse here too rather than proceed with a stale locationId toward a doomed write
+    // (ownership would fail closed anyway, but showing a generic "check the fields" error
+    // over a form whose location control is a failure notice is the wrong answer).
+    if (locationsError) return;
     setSubmitAttempted(true);
     setSaveError(null);
     setFieldErrors({});
@@ -131,27 +137,45 @@ export default function EquipmentCreateModal({ accountName, locations, onCreate,
           />
         </Field>
 
-        <Field
-          id="equipment-create-location"
-          label="Location"
-          required
-          error={locationError}
-          hint="Only this customer's locations can be selected"
-        >
-          <select
+        {/* #324: a FAILED locations read is shown as a failure, not an empty picker.
+            Equipment requires a location, so an empty <select> here would look like the
+            customer has none when we merely could not load them -- and no valid choice
+            could be made. The failure + retry replaces the control; submit stays blocked
+            because no locationId can be set. */}
+        {locationsError ? (
+          <div className="fo-field">
+            <span className="fo-field-label">Location</span>
+            <div className="fo-inline-error" role="alert" data-create-location-error>
+              {locationsError}{" "}
+              {onRetryLocations && (
+                <button type="button" className="fo-link-btn" onClick={onRetryLocations}>Retry</button>
+              )}
+            </div>
+            <p className="fo-muted">Equipment can&apos;t be added until its locations load.</p>
+          </div>
+        ) : (
+          <Field
             id="equipment-create-location"
-            className="fo-wizard-control"
-            value={locationId}
-            aria-invalid={locationError ? true : undefined}
-            aria-describedby={describedBy("equipment-create-location", { hasHint: true, hasError: Boolean(locationError) })}
-            onChange={(e) => { setLocationId(e.target.value); clearFieldError("locationId"); }}
+            label="Location"
+            required
+            error={locationError}
+            hint="Only this customer's locations can be selected"
           >
-            <option value="">Select a location…</option>
-            {locations.map((l) => (
-              <option key={l.id} value={l.id}>{l.name}</option>
-            ))}
-          </select>
-        </Field>
+            <select
+              id="equipment-create-location"
+              className="fo-wizard-control"
+              value={locationId}
+              aria-invalid={locationError ? true : undefined}
+              aria-describedby={describedBy("equipment-create-location", { hasHint: true, hasError: Boolean(locationError) })}
+              onChange={(e) => { setLocationId(e.target.value); clearFieldError("locationId"); }}
+            >
+              <option value="">Select a location…</option>
+              {locations.map((l) => (
+                <option key={l.id} value={l.id}>{l.name}</option>
+              ))}
+            </select>
+          </Field>
+        )}
 
         <Field id="equipment-create-manufacturer" label="Manufacturer">
           <input id="equipment-create-manufacturer" className="fo-wizard-control" value={manufacturer}
@@ -194,7 +218,10 @@ export default function EquipmentCreateModal({ accountName, locations, onCreate,
         <FormStatus>{submitting ? "Saving equipment..." : ""}</FormStatus>
 
         <FormActions>
-          <button type="submit" disabled={submitting}>{submitting ? "Saving..." : "Add Equipment"}</button>
+          {/* #324: no valid create is possible while locations failed to load -- a
+              location is required and none can be chosen -- so the action is disabled
+              rather than silently doing nothing on click. */}
+          <button type="submit" disabled={submitting || Boolean(locationsError)}>{submitting ? "Saving..." : "Add Equipment"}</button>
           <button type="button" onClick={requestClose} disabled={submitting}>Cancel</button>
         </FormActions>
       </form>

@@ -112,7 +112,13 @@ export default function EquipmentDetail() {
     );
   }
 
-  const locationName = locations.find((l) => l.id === equipment.locationId)?.name ?? "Unknown location";
+  // #324: distinct on a FAILED read, so the edit modal (which shows this as read-only
+  // context) reads "Location unavailable" rather than "Unknown location" -- the latter
+  // would assert the location is genuinely unset when we merely could not load it. The
+  // inline cell above renders its own failure+retry; this string is what feeds the modal.
+  const locationName = locationsError
+    ? "Location unavailable"
+    : locations.find((l) => l.id === equipment.locationId)?.name ?? "Unknown location";
   const retired = isRetired(equipment);
   // One shared reason string, from the same seam the buttons would call -- so the copy
   // a user reads cannot drift from what the action would actually do.
