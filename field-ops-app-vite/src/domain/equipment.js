@@ -67,18 +67,25 @@ function isNonEmptyString(value) {
   return typeof value === "string" && value.trim() !== "";
 }
 
-// THE RECORD CONTRACT (#287). Every helper in this module that takes an Equipment-like
-// record answers the same question the same way: is this a thing I can read fields off?
+// THE RECORD CONTRACT (#287). One question, one answer: is this a thing I can read
+// fields off? Before this existed, the helpers disagreed -- the `= {}` parameter default
+// only fires for `undefined`, so every OTHER malformed input flowed straight past it.
+// `null` threw a TypeError, while a string or a number silently produced an all-null
+// record that later read as "valid". Two different wrong answers, neither of them "no".
 //
-// The `= {}` parameter default only fires for `undefined`, so before this existed every
-// OTHER malformed input flowed straight past it: `null` threw a TypeError, and a string
-// or a number silently produced an all-null record that later read as "valid". Two
-// different wrong answers to the same question, neither of them "no".
+// isRecord itself answers for exactly these:
+//    a plain object (incl. Object.create(null))     -> a record; read it
+//    null, undefined                                -> not a record
+//    string/number/boolean/array/Map/Date/instance  -> not a record
 //
-// The contract these helpers now share:
-//    a plain object  -> read it
-//    null/undefined  -> not a record
-//    string/number/boolean/array/Map/Date/class instance -> not a record
+// Note what the PUBLIC helpers layer on top, because it is a deliberate difference and
+// not an oversight: their `= {}` default fires first, so an OMITTED argument never
+// reaches isRecord and is read as the empty record. Absent is not malformed. Calling
+// with no argument is the normal JS affordance and its meaning is `{}` -- an empty
+// create form owes the user field errors naming what to fill in, not an opaque "could
+// not read" pointing at no control. Only a supplied non-record is `malformed`.
+// So: absent -> empty record; malformed -> refused; a record -> read. Three cases,
+// two of which fail closed, none of which throw.
 //
 // Both tests below are load-bearing, and neither subsumes the other:
 //   - The PROTOTYPE test rejects Map, Date and class instances, whose `.accountId` is
@@ -281,10 +288,14 @@ export function buildEquipmentCreatePayload(values = {}, now = 0) {
     else if (requested !== EQUIPMENT_STATUS.ACTIVE) errors.status = "New equipment is always created active.";
   }
 
-  if (Object.keys(errors).length > 0) return { valid: false, errors, payload: null };
+  // Every return path below carries the same keys, `malformed` included. A shape that
+  // varies by path forces callers (and tests) to write `!== true` where they mean
+  // `=== false`, and makes an absent key indistinguishable from a false one.
+  if (Object.keys(errors).length > 0) return { valid: false, malformed: false, errors, payload: null };
 
   return {
     valid: true,
+    malformed: false,
     errors: {},
     payload: { ...value, status: EQUIPMENT_STATUS.ACTIVE, updatedAt: now },
   };
@@ -382,7 +393,22 @@ export function buildEquipmentEditPayload(values = {}, before = {}, now = 0) {
   // as an empty edit would tell them the opposite of what they just did. That refusal
   // is `changedGoverned`'s to report, not this one's.
   const noop = editedKeys.length === 0 && changedGoverned.length === 0 && unprovableGoverned.length === 0;
-  const valid = Object.keys(errors).length === 0 && editedKeys.length > 0;
+
+  // `valid` means "this payload may be written" -- nothing weaker. A governed attempt
+  // makes the WHOLE edit invalid, even when it also carries a legitimate rename.
+  //
+  // It previously did not: { name: "New", accountId: "acct-2" } returned valid:true with
+  // payload { updatedAt, name }, because the payload loop simply never copies a governed
+  // field. A caller doing the obvious `if (valid) store.update(id, payload)` would write
+  // the rename, silently drop the move, and report success -- the exact failure
+  // equipmentWrites names ("a dropped move reported as success is worse than a refused
+  // edit"). updateEquipmentWith checks changedGoverned first and so was never exposed,
+  // but E8 is a new caller and `valid` must not be a trap that only some callers dodge.
+  const valid =
+    Object.keys(errors).length === 0 &&
+    editedKeys.length > 0 &&
+    changedGoverned.length === 0 &&
+    unprovableGoverned.length === 0;
 
   return {
     valid,

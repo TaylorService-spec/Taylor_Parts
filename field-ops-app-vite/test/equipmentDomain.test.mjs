@@ -555,7 +555,15 @@ ok("unavailable copy leaks no provider, code, id, or credential detail", () => {
 //
 // Both failing cases fail closed and neither throws. MALFORMED_RECORDS is shared by the
 // tests below on purpose: the contract must not vary by helper or by input flavour.
-const MALFORMED_RECORDS = [null, "garbage", "", 0, 42, true, false, [], ["a"], Symbol("x")];
+//
+// `arrayCarryingAField` earns its place: for every OTHER member, reading `.name` yields
+// undefined anyway, so a helper with no guard at all still answers "null" and looks
+// correct. This is the only member that makes the guard observable -- without it,
+// replacing the isRecord check with `values ?? {}` passes the whole suite.
+const arrayCarryingAField = Object.assign([], { name: "Sneaky", accountId: "acct-9" });
+const MALFORMED_RECORDS = [
+  null, "garbage", "", 0, 42, true, false, [], ["a"], Symbol("x"), arrayCarryingAField,
+];
 
 ok("#287 record helpers refuse every malformed input -- no throw, no plausible answer", () => {
   for (const bad of MALFORMED_RECORDS) {
@@ -567,6 +575,7 @@ ok("#287 record helpers refuse every malformed input -- no throw, no plausible a
     // record, through the public API rather than by reaching for the private guard.
     assert.ok(n !== null && typeof n === "object" && !Array.isArray(n),
       `normalize(${String(bad)}) must return a real record`);
+    assert.equal(n.name, null, `normalize(${String(bad)}) must read no fields off it`);
     assert.equal(n.accountId, null);
     assert.equal(n.locationId, null);
     assert.equal(n.name, null);
@@ -641,6 +650,9 @@ ok("#287 unreadable `before` proves nothing -- governed edits fail closed, descr
     assert.equal(g.payload, null);
     assert.deepEqual(g.unprovableGoverned, ["accountId"], `before=${String(bad)} proves nothing`);
     assert.deepEqual(g.changedGoverned, []);
+    // Not an empty edit either: the caller asked for a governed field. Same bug class
+    // as a changedGoverned attempt reporting "nothing changed", in its other form.
+    assert.equal(g.noop, false, "an unprovable governed attempt is not an empty edit");
 
     // A descriptive-only edit needs no evidence and still works -- identical to the
     // legitimate `before = {}` path that updateEquipmentWith already relies on.
@@ -725,6 +737,41 @@ ok("#287 the record contract accepts records, and only records", () => {
   assert.equal(buildEquipmentEditPayload(bare, before, 7).valid, true);
 });
 
+ok("#287 `valid` never coexists with a governed attempt, even alongside a real edit", () => {
+  const before = { accountId: "acct-1", locationId: "loc-1", name: "Freezer", status: "ACTIVE" };
+
+  // The trap: a rename AND a move in one call. The payload loop never copies a governed
+  // field, so this returned valid:true with payload { updatedAt, name } -- a caller
+  // doing `if (valid) store.update(id, payload)` writes the rename, SILENTLY DROPS the
+  // move, and reports success. `valid` must mean "this payload may be written", with no
+  // caveats a caller has to know to check.
+  for (const governed of [
+    { accountId: "acct-2" }, { locationId: "loc-2" },
+    { status: "RETIRED" }, { createdAt: 123 },
+  ]) {
+    const r = buildEquipmentEditPayload({ name: "Walk-in Freezer", ...governed }, before, 7);
+    assert.equal(r.valid, false, `valid must be false alongside ${Object.keys(governed)[0]}`);
+    assert.equal(r.payload, null, "a refused edit hands back nothing writable");
+    assert.equal(r.noop, false, "the user did touch something");
+    assert.ok(r.changedGoverned.length > 0 || r.unprovableGoverned.length > 0,
+      "and the governed attempt is still reported, not swallowed");
+  }
+
+  // Unprovable governed (no evidence) must refuse the whole edit the same way -- the
+  // legitimate rename does not get through on a technicality.
+  const unprovable = buildEquipmentEditPayload({ name: "New", accountId: "acct-2" }, {}, 7);
+  assert.equal(unprovable.valid, false);
+  assert.equal(unprovable.payload, null);
+  assert.deepEqual(unprovable.unprovableGoverned, ["accountId"]);
+
+  // ...and a governed field the caller merely CONFIRMS (unchanged) is not an attempt,
+  // so the rename beside it still writes.
+  const confirmed = buildEquipmentEditPayload({ name: "New", accountId: "acct-1" }, before, 7);
+  assert.equal(confirmed.valid, true, "an unchanged governed field is not a change");
+  assert.deepEqual(confirmed.payload, { name: "New", updatedAt: 7 });
+  assert.deepEqual(confirmed.changedGoverned, []);
+});
+
 ok("#287 an ABSENT argument is not a malformed one -- the `= {}` affordance is preserved", () => {
   const before = { accountId: "acct-1", locationId: "loc-1", name: "Freezer", status: "ACTIVE" };
   // Omitting the argument is a normal JS call, not a caller bug, and it behaves exactly
@@ -749,6 +796,43 @@ ok("#287 an ABSENT argument is not a malformed one -- the `= {}` affordance is p
   // The distinction is real: a string IS unreadable, and says so instead.
   assert.equal(buildEquipmentCreatePayload("garbage", 1).malformed, true);
   assert.deepEqual(buildEquipmentCreatePayload("garbage", 1).errors, {});
+});
+
+ok("#287 both builders return the same shape on every path", () => {
+  const before = { accountId: "acct-1", locationId: "loc-1", name: "Freezer", status: "ACTIVE" };
+  const good = { accountId: "acct-1", locationId: "loc-1", name: "Chiller 1" };
+
+  // A shape that varies by path is what forces a caller to write `!== true` where it
+  // means `=== false`, and makes an absent key indistinguishable from a false one. The
+  // module claims uniformity in a comment; this is the assertion that holds it to it.
+  const createPaths = [
+    buildEquipmentCreatePayload("garbage", 1),   // malformed
+    buildEquipmentCreatePayload({}, 1),          // field errors
+    buildEquipmentCreatePayload(good, 1),        // success
+  ];
+  for (const r of createPaths) {
+    assert.deepEqual(Object.keys(r).sort(), ["errors", "malformed", "payload", "valid"]);
+    assert.equal(typeof r.malformed, "boolean", "malformed is never absent -- absent is not false");
+    assert.equal(typeof r.valid, "boolean");
+  }
+  assert.equal(createPaths[2].valid, true, "the success path must actually succeed");
+  assert.equal(createPaths[2].malformed, false);
+
+  const editPaths = [
+    buildEquipmentEditPayload("garbage", before, 1),            // malformed
+    buildEquipmentEditPayload({}, before, 1),                   // no-op
+    buildEquipmentEditPayload({ name: "   " }, before, 1),      // field error
+    buildEquipmentEditPayload({ accountId: "acct-2" }, before, 1), // governed
+    buildEquipmentEditPayload({ name: "New" }, before, 1),      // success
+  ];
+  for (const r of editPaths) {
+    assert.deepEqual(Object.keys(r).sort(),
+      ["changedGoverned", "errors", "malformed", "noop", "payload", "unprovableGoverned", "valid"]);
+    for (const flag of ["valid", "malformed", "noop"]) {
+      assert.equal(typeof r[flag], "boolean", `${flag} is never absent`);
+    }
+  }
+  assert.equal(editPaths[4].valid, true, "the success path must actually succeed");
 });
 
 ok("#287 refusal copy is safe and blames no field it cannot highlight", () => {

@@ -88,10 +88,13 @@ export async function updateEquipmentWith(store, id, values, { before = {} } = {
       message: equipmentSaveErrorMessage(null),
     };
   }
-  // Nothing to write. Reported AFTER the governed refusals above, so a caller who
-  // attempted a move is told about the move, not that they changed nothing. Distinct
-  // from an error: the user did nothing wrong, there is simply no write to make -- and
-  // no write is made, rather than a bare { updatedAt } reported as success.
+  // Nothing to write. Distinct from an error: the user did nothing wrong, there is
+  // simply no write to make -- and none is made, rather than a bare { updatedAt }
+  // reported as success.
+  //
+  // What keeps a governed attempt from landing here is `noop`'s own definition (it
+  // requires changedGoverned and unprovableGoverned to be empty), NOT this line's
+  // position below them. The order is belt-and-braces; the definition is the guard.
   if (noop) return { ok: false, errors: {}, noop: true, message: "Nothing was changed." };
   if (!valid) return { ok: false, errors, message: INVALID_MESSAGE };
 
