@@ -3,7 +3,7 @@ artifact_type: assessment
 gate: Repository Assessment
 status: Accepted (merged; superseded by the governing ADR-007 + Specification)
 date: 2026-07-16
-updated: 2026-07-16 (metadata: recorded review/merge state and the governing ADR/Specification)
+updated: "2026-07-16 (metadata: recorded review/merge state and the governing ADR/Specification)"
 owner: Claude Code
 related_adrs: [docs/architecture/ADR-007-governed-object-based-report-creator.md]
 depends_on: [docs/PROJECT_ARCHITECTURE.md, docs/architecture/SYSTEM_AUTHORITIES.md, docs/specifications/enterprise-access-and-administration-platform.md, docs/architecture/ADR-005-enterprise-authorization-migration-strategy.md]
