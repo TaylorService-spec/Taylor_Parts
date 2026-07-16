@@ -4065,9 +4065,15 @@ async function verifyAccountDetailForms(browser, page, accountKey) {
 //
 // Proves the detail route in a real browser against the E4 fixtures: every §8 section,
 // the DERIVED Service History (§10) with its year grouping, lifecycle actions rendered
-// as unavailable with a stated reason (§5, Issue #15), the three §9 states kept
-// distinct (loading / not-found / failure), safe Back, no raw ids as references, and
-// 375px.
+// as unavailable with a stated reason (§5, Issue #15), safe Back, no raw ids as
+// references, and 375px.
+//
+// §9 coverage, stated precisely rather than claimed wholesale: LOADING and NOT-FOUND
+// are asserted here. The page's FAILURE state is NOT driven -- an authorized admin
+// cannot reach a denied read, and a network abort does not trigger onSnapshot's error
+// callback (Firestore treats it as offline and retries), so the failure CONDITION is
+// proven at the Rules layer instead, exactly as the register's suite does. An earlier
+// version of this header claimed all three states were driven; only two are.
 async function verifyEquipmentDetail(browser, page, accountKey) {
   const F = EQUIPMENT_FIXTURE;
   const url = (path) => { const u = new URL(path, APP_ROOT); u.searchParams.set("emulator", "1"); return u.toString(); };
@@ -4075,6 +4081,50 @@ async function verifyEquipmentDetail(browser, page, accountKey) {
   const RAW = /permission-denied|FirebaseError|firestore\/|code:|Missing or insufficient|AIza|documents\//i;
 
   await login(page, accountKey);
+
+  // ===== §9 LOADING: the history says "loading", never "none", before it knows =====
+  // WARMING THE CACHE FIRST IS WHAT MAKES THIS OBSERVABLE. Slowing everything equally
+  // does NOT reproduce the defect: the page-level loading gate hides the whole history
+  // section while the equipment doc is also in flight, so the window closes before it
+  // can be sampled -- I confirmed that by mutation (removing the loading branch left
+  // both assertions green, i.e. they proved nothing).
+  //
+  // The real-world shape is: the equipment document is ALREADY cached (the user just
+  // came from the register, which subscribes to it), so the page renders instantly
+  // while the equipmentId-scoped Work Order query still has to go to the network. That
+  // is a long, very real window -- and the one in which the page used to state, as
+  // fact, that an asset with three work orders had none.
+  await page.goto(url("equipment"), { waitUntil: "domcontentloaded" });
+  await page.locator("#equipment-account").selectOption({ label: "Alpha Facilities Co" });
+  await page.locator("[data-equipment-row]").first().waitFor({ timeout: 15000 });
+  {
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send("Network.enable");
+    await cdp.send("Network.emulateNetworkConditions", {
+      offline: false, latency: 1200, downloadThroughput: -1, uploadThroughput: -1,
+    });
+    try {
+      // In-app navigation, so the warmed Firestore cache survives (a full page load
+      // would throw it away and re-create the equal-latency race above).
+      await page.locator(`[data-equipment-row="${F.activeWithHistoryId}"] .fo-equipment-name`).click();
+      await page.locator(".fo-equipment-detail").waitFor({ timeout: 15000 });
+      const sawLoading = await page.locator('[data-history-section] .fo-state-loading[role="status"]')
+        .waitFor({ timeout: 12000 }).then(() => true).catch(() => false);
+      // ONE assertion, and it is mutation-proven: removing the page's loading branch
+      // makes this FAIL. A sibling assertion sampling the section's text for "no
+      // service history" was deleted rather than kept -- by the time it could sample,
+      // the query had returned and the history had rendered, so it passed under the
+      // mutation too. A green assertion that cannot fail is worse than no assertion:
+      // it reports coverage that does not exist.
+      niReport("Detail: while the history is in flight it says LOADING, not 'no service history' (§9)",
+        sawLoading, "the section claimed the asset has no history before the query returned");
+    } finally {
+      await cdp.send("Network.emulateNetworkConditions", {
+        offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1,
+      }).catch(() => {});
+      await cdp.detach().catch(() => {});
+    }
+  }
 
   // ===== reached BY NAME from the register, not by typing an id =====
   await page.goto(url("equipment"), { waitUntil: "domcontentloaded" });
@@ -4157,16 +4207,32 @@ async function verifyEquipmentDetail(browser, page, accountKey) {
   niReport("Detail: a RETIRED asset offers Reactivate, not Retire (§3/§5)",
     (await page.locator('[data-equipment-action="reactivate"]').count()) === 1 &&
       (await page.locator('[data-equipment-action="retire"]').count()) === 0);
-  niReport("Detail: a retired asset still shows its history (retirement does not erase the record, §3)",
+  // §3: "Historical entries survive retirement." This ASSERTS THE HISTORY, not the
+  // status badge -- an earlier version read data-equipment-status and claimed to test
+  // history, which would have passed with the entire history section deleted, against
+  // a retired asset that had no Work Orders to show in the first place.
+  await page.waitForFunction(
+    () => document.querySelectorAll("[data-history-entry]").length > 0, null, { timeout: 15000 }
+  ).catch(() => {});
+  niReport("Detail: a RETIRED asset still shows its service history -- retiring does not erase the record (§3)",
+    (await page.locator("[data-history-entry]").count()) === 1 &&
+      /WO-EQ-008/.test(await page.locator("[data-history-section]").innerText()),
+    `entries=${await page.locator("[data-history-entry]").count()}`);
+  niReport("Detail: the retired asset's status is still reported as RETIRED",
     (await page.locator("[data-equipment-status]").getAttribute("data-equipment-status")) === "RETIRED");
 
   // ===== an asset with NO history: empty state, not an error (§9) =====
   await page.goto(url(`equipment/${F.activeNoHistoryId}`), { waitUntil: "domcontentloaded" });
   await page.locator(".fo-equipment-detail").waitFor({ timeout: 10000 });
-  // Settle the WO subscription before asserting "empty": an unsettled history looks
-  // identical to a genuinely empty one, so this could pass for the wrong reason.
+  // This settle is only MEANINGFUL because the page now has a loading branch. Before
+  // that, .fo-empty-state was present on the very first render -- so waiting for it
+  // resolved instantly against an UNSETTLED history, and both assertions below passed
+  // even if the Work Order subscription never fired at all. The page defect and the
+  // vacuous test were the same bug wearing two hats.
   const emptyHist = page.locator("[data-history-section] .fo-empty-state");
   await emptyHist.waitFor({ timeout: 10000 }).catch(() => {});
+  niReport("Detail: the history settled before 'empty' was asserted (the loading branch is gone)",
+    (await page.locator("[data-history-section] .fo-state-loading").count()) === 0);
   niReport("Detail: an asset with no linked work orders shows an empty history state (§9)",
     (await emptyHist.count()) === 1 && /no service history/i.test(await emptyHist.innerText()));
   niReport("Detail: an empty history is not labelled an error (§9)",

@@ -965,31 +965,31 @@ button:hover {
 /* Equipment detail (Issue #232 unit E7). Namespaced like the register's badges: no
    rule here redefines a pre-existing global. */
 .fo-equipment-detail { display: flex; flex-direction: column; gap: 12px; }
-.fo-back-link { font-size: 13px; align-self: flex-start; }
-.fo-detail-header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
-.fo-equipment-title { margin: 0; font-size: 20px; }
+.fo-equipment-detail .fo-back-link { font-size: 13px; align-self: flex-start; }
+.fo-equipment-detail .fo-detail-header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.fo-equipment-detail .fo-equipment-title { margin: 0; font-size: 20px; }
 /* Full-width so the summary sits UNDER the title rather than running on after the
    status badge -- the same inline-run-together trap the register's name/summary hit. */
-.fo-equipment-subtitle { flex-basis: 100%; margin: 0; }
+.fo-equipment-detail .fo-equipment-subtitle { flex-basis: 100%; margin: 0; }
 /* Wraps to a single column at narrow widths; auto-fit keeps 375px free of horizontal
    overflow without a media query. */
-.fo-detail-grid {
+.fo-equipment-detail .fo-detail-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 12px;
 }
-.fo-detail-list {
+.fo-equipment-detail .fo-detail-list {
   display: grid;
   grid-template-columns: auto 1fr;
   gap: 4px 12px;
   margin: 0;
 }
-.fo-detail-list dt { font-size: 13px; color: #8A9694; }
-.fo-detail-list dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
-.fo-action-reason { margin: 8px 0 0; }
-.fo-history-year + .fo-history-year { margin-top: 12px; }
-.fo-history-year-heading { margin: 0 0 4px; font-size: 14px; }
-.fo-history-list { margin: 0; padding-left: 18px; }
+.fo-equipment-detail .fo-detail-list dt { font-size: 13px; color: #8A9694; }
+.fo-equipment-detail .fo-detail-list dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.fo-equipment-detail .fo-action-reason { margin: 8px 0 0; }
+.fo-equipment-detail .fo-history-year + .fo-history-year { margin-top: 12px; }
+.fo-equipment-detail .fo-history-year-heading { margin: 0 0 4px; font-size: 14px; }
+.fo-equipment-detail .fo-history-list { margin: 0; padding-left: 18px; }
 
 /* The identity cell stacks the display name over its disambiguating summary. Without
    the block, the two inline spans render as one run-together string

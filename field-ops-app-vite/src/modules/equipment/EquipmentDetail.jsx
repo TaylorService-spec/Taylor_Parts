@@ -41,9 +41,16 @@ export default function EquipmentDetail() {
   const { equipmentId } = useParams();
   const navigate = useNavigate();
   const { equipment, loading, error } = useEquipmentDoc(equipmentId);
-  const { data: workOrders, error: woError } = useWorkOrdersForEquipment(equipmentId);
-  const { account } = useAccount(equipment?.accountId ?? null);
-  const { data: locations } = useLocationsForAccount(equipment?.accountId ?? null);
+  // `loading` on each of these is load-bearing, not decoration. The equipment document
+  // and everything keyed off it are INDEPENDENT subscriptions, and the doc always wins
+  // (a single-doc read resolves before a collection query, and the Account/Location
+  // subscriptions cannot even start until accountId is known). So there is always at
+  // least one render where the page has the asset but not its context -- and rendering
+  // a not-yet-known answer as a fact is how "No service history" ends up on an asset
+  // with three work orders.
+  const { data: workOrders, loading: woLoading, error: woError } = useWorkOrdersForEquipment(equipmentId);
+  const { account, loading: accountLoading } = useAccount(equipment?.accountId ?? null);
+  const { data: locations, loading: locationsLoading } = useLocationsForAccount(equipment?.accountId ?? null);
 
   const history = useMemo(
     () => groupServiceHistoryByYear(equipmentServiceHistory(workOrders, equipmentId)),
@@ -101,20 +108,32 @@ export default function EquipmentDetail() {
 
       <div className="fo-detail-grid">
         {/* §8 Account + installed Location. Both render their NAME; an unresolved
-            reference says so rather than exposing the raw id. */}
+            reference says so rather than exposing the raw id.
+            KNOWN LIMITATION, inherited and disclosed rather than papered over:
+            useAccount and useLocationsForAccount (pre-existing Customer hooks) pass no
+            error callback to onSnapshot and return no error, so a DENIED or failed read
+            is indistinguishable from "genuinely unknown" -- these would read "Unknown
+            customer"/"Unknown location" forever with no failure shown (§9 would want
+            one). Fixing that means changing shared Customer hooks, outside E7's
+            surface; it is routed as #291. The `loading` flags above at least stop us
+            asserting "unknown" before we have looked. */}
         <section className="fo-panel" aria-labelledby="equip-where">
           <h2 id="equip-where">Customer &amp; location</h2>
           <dl className="fo-detail-list">
             <dt>Customer</dt>
             <dd data-equipment-account>
-              {account ? (
+              {accountLoading ? (
+                <span className="fo-muted">Loading…</span>
+              ) : account ? (
                 <Link to={`/customers/${equipment.accountId}`}>{account.name}</Link>
               ) : (
                 <span className="fo-muted">Unknown customer</span>
               )}
             </dd>
             <dt>Installed location</dt>
-            <dd data-equipment-location>{locationName}</dd>
+            <dd data-equipment-location>
+              {locationsLoading ? <span className="fo-muted">Loading…</span> : locationName}
+            </dd>
           </dl>
         </section>
 
@@ -160,7 +179,15 @@ export default function EquipmentDetail() {
           because "this asset has no service history" is a claim we would be making. */}
       <section className="fo-panel" aria-labelledby="equip-history" data-history-section>
         <h2 id="equip-history">Service history</h2>
-        {woError ? (
+        {woLoading ? (
+          // §9: loading is NOT database-empty. Without this branch the page rendered
+          // "No work orders reference this equipment yet" on every cold load, as a
+          // statement of fact, until the query returned -- on an asset with three of
+          // them. The register got this right; the detail page did not, and its own
+          // comment above ("a failure is reported rather than rendered as 'none'
+          // because that is a claim we would be making") named the principle it broke.
+          <LoadingState>Loading service history…</LoadingState>
+        ) : woError ? (
           <FailureState message={woError} />
         ) : history.length === 0 ? (
           <EmptyState
