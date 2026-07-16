@@ -96,7 +96,8 @@ export default function WorkOrderWizard() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
 
-  const { data: locations } = useLocationsForAccount(selectedAccount?.id ?? null);
+  const { data: locations, error: locationsError, retry: retryLocations } =
+    useLocationsForAccount(selectedAccount?.id ?? null);
 
   // Single source of truth for "can this step advance, and if not, why."
   const step2Reason = stepBlockedReason(2, {
@@ -157,7 +158,18 @@ export default function WorkOrderWizard() {
         <div className="fo-wizard-panel">
           <h3 className="fo-wizard-step-title">Step 2: Location</h3>
           <p className="fo-muted fo-wizard-context">Customer: {selectedAccount?.name}</p>
-          {locations.length > 0 && (
+          {/* #291: a FAILED locations read is distinct from "this customer has no
+              locations". Without this the picker just vanished and Next stayed blocked,
+              indistinguishable from a genuinely location-less customer. Fail closed to an
+              actionable failure with retry; Next stays blocked (step2Reason has no
+              location selected), which is correct -- a WO must not be created against a
+              location we could not load. */}
+          {locationsError ? (
+            <div className="fo-inline-error" role="alert" data-location-error>
+              {locationsError}{" "}
+              <button type="button" className="fo-link-btn" onClick={retryLocations}>Retry</button>
+            </div>
+          ) : locations.length > 0 && (
             <div className="fo-wizard-field">
               <label className="fo-wizard-field-label" htmlFor="wo-location">Location</label>
               <select
@@ -177,7 +189,12 @@ export default function WorkOrderWizard() {
               </select>
             </div>
           )}
-          <StepHint reason={step2Reason} />
+          {/* Suppress the "no locations yet" hint during a FAILURE: the banner above
+              already explains it, and step2Reason falls back to hasLocations:false when
+              the read failed (the hook fails closed to []) -- so without this guard the
+              user would see the failure AND "this customer has no locations yet" at once,
+              the exact false fact #291 exists to remove. Next stays blocked either way. */}
+          {!locationsError && <StepHint reason={step2Reason} />}
           <div className="fo-wizard-actions">
             <button type="button" onClick={() => setStep(1)}>Back</button>
             <button type="button" disabled={Boolean(step2Reason)} onClick={() => setStep(3)}>
