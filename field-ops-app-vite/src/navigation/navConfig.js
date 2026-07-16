@@ -1,4 +1,5 @@
 import { ROLES, EMPLOYMENT_STATUS, OPERATIONAL_ROLE } from "../domain/constants.js";
+import { REPORT_WAVE1_OBJECT_READ_CAPABILITIES } from "../access/reportAccess.js";
 
 // Sprint 2.0.1 -- Navigation Foundation. Single source of truth for the
 // business-domain nav tree: top-level domains + their sub-nav, and
@@ -242,6 +243,13 @@ export const NAV_DOMAINS = [
     label: "Reporting",
     path: "reporting",
     subnav: [
+      // Issue #325 / ADR-007 W1 -- the governed report builder, activated for wave-1. Unlike the
+      // placeholder items below (admin/dispatcher via PLACEHOLDER_DEFAULT_ROLES), this is
+      // CAPABILITY-gated: visible only to a principal who effectively holds a wave-1 report
+      // object-read capability -- today the Owner Role alone (governedBusinessRoles.ts). Nav
+      // visibility is a preview, never the security boundary: the trusted Function (D-FN)
+      // re-authorizes every run server-side.
+      { key: "builder", label: "Report Builder", path: "builder", capabilityAccess: REPORT_WAVE1_OBJECT_READ_CAPABILITIES },
       { key: "executive", label: "Executive", path: "" },
       { key: "service", label: "Service", path: "service" },
       { key: "inventory", label: "Inventory", path: "inventory" },
@@ -321,6 +329,15 @@ function hasEligibleOperationalRole(operationalRoleAccess, role, operationalCont
 // argument is passed at all.
 export function isNavItemVisible(item, role, allowedLegacyKeys, operationalContext) {
   if (item.alwaysVisible) return true;
+  // Issue #325 W1 -- capability-gated item: visible iff the session effectively holds at least one
+  // of the item's declared capabilities, decided by the injected `hasCapability` preview
+  // (operationalContext.hasCapability, bound in App.jsx to the Permission resolver over the
+  // compatibility + governed-business Roles). Fails closed when no previewer is supplied.
+  if (item.capabilityAccess) {
+    const hasCapability = operationalContext?.hasCapability;
+    return typeof hasCapability === "function"
+      && item.capabilityAccess.some((cap) => hasCapability(cap) === true);
+  }
   if (item.operationalRoleAccess) {
     return hasEligibleOperationalRole(item.operationalRoleAccess, role, operationalContext);
   }

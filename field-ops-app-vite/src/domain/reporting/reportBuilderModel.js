@@ -102,6 +102,22 @@ export function removeFilter(def, index) {
   return { ...def, filters: def.filters.filter((_, i) => i !== index) };
 }
 
+// countRows -- the fieldless aggregate (Spec §7). A count of the runner's authorized rows, total
+// or (with grouping) per group. Toggling it on/off is the builder's only aggregate control at
+// wave-1 (no wave-1 field supports a field-bound aggregate).
+export function hasCountRows(def) {
+  return (def.aggregates ?? []).some((a) => a.fn === "countRows");
+}
+export function toggleCountRows(def) {
+  const aggregates = def.aggregates ?? [];
+  return {
+    ...def,
+    aggregates: hasCountRows(def)
+      ? aggregates.filter((a) => a.fn !== "countRows")
+      : [...aggregates, { fn: "countRows" }],
+  };
+}
+
 // Sort is a small ordered list; the view offers add / change-direction / remove.
 export function addSort(def, fieldId, direction = SORT_DIRECTIONS[0]) {
   if (def.sort.some((s) => s.fieldId === fieldId)) return def; // one sort entry per field

@@ -33,8 +33,19 @@ import { ROLE_NAV_ACCESS } from "./domain/constants";
 import { createPermissionPreviewer } from "./access/navPermissionPreview";
 import { resolveEffectivePermission } from "./access/resolveEffectivePermission";
 import { COMPATIBILITY_ROLES } from "./access/compatibilityRoles";
+import { GOVERNED_BUSINESS_ROLES } from "./access/governedBusinessRoles";
+import ReportBuilder from "./modules/reporting/ReportBuilder";
 
 const previewHasPermission = createPermissionPreviewer(resolveEffectivePermission, COMPATIBILITY_ROLES);
+// Issue #325 W1 -- a SECOND previewer over the compatibility + governed-business Roles, so a
+// governed Role id (e.g. `owner`) resolves. Used only for the capability-gated Reports nav/route:
+// today `owner` holds the wave-1 report.* capabilities and no compatibility role does, so this
+// naturally yields Owner-access / non-Owner-denial. Presentation-only, like previewHasPermission
+// (the trusted Function re-authorizes every run server-side).
+const reportHasPermission = createPermissionPreviewer(
+  resolveEffectivePermission,
+  { ...COMPATIBILITY_ROLES, ...GOVERNED_BUSINESS_ROLES },
+);
 import AppShell from "./navigation/AppShell";
 import PlaceholderPage from "./navigation/PlaceholderPage";
 import { NAV_DOMAINS, isDomainVisible, isNavItemVisible } from "./navigation/navConfig";
@@ -162,6 +173,12 @@ function renderSubnavItem(domain, item, role) {
   }
   if (domain.key === "administration" && item.key === "rolesPermissions") {
     return <AdminRolesPermissions />;
+  }
+  // Issue #325 / ADR-007 W1 -- the governed report builder. Net-new, no legacyKey; reached only
+  // through the capability-gated route above (isNavItemVisible checks the item's capabilityAccess),
+  // so this branch never renders for a role without report access.
+  if (domain.key === "reporting" && item.key === "builder") {
+    return <ReportBuilder />;
   }
   // Issue #226 Row 11 -- Read-only Admin MVP (Task 16). These two MVP
   // surfaces have no live data source yet and no MVP mutation of their own:
@@ -337,6 +354,21 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
               );
               return firstVisible ? <Route index element={<Navigate to={firstVisible.path} replace />} /> : null;
             })()}
+          {/* Issue #325 W1 -- Reporting index redirect. For a role WITHOUT the report capability
+              (admin/dispatcher) the placeholder "Executive" item (path "") already supplies the
+              index route, so this is a no-op. For an Owner, none of the placeholder items is
+              visible and only "Report Builder" (path "builder") is, so the bare /reporting URL has
+              no index route -- clicking the top-level Reporting tab would fall through to the
+              catch-all (/dashboard). Same fix, and same guard-against-double-index shape, as the
+              inventoryRole redirect above: only emit it when no VISIBLE item already owns path "". */}
+          {domain.key === "reporting" &&
+            (() => {
+              const visible = domain.subnav.filter((item) =>
+                isNavItemVisible(item, role, allowedLegacyKeys, operationalContext)
+              );
+              if (visible.length === 0 || visible.some((item) => item.path === "")) return null;
+              return <Route index element={<Navigate to={visible[0].path} replace />} />;
+            })()}
         </Route>
       ))}
 
@@ -360,7 +392,12 @@ export default function App() {
   // isNavItemVisible/isDomainVisible call site can accept it uniformly;
   // no NAV_DOMAINS item declares operationalRoleAccess yet, so this has
   // no observable effect until a later PR adds one.
-  const operationalContext = { operationalRoles, employmentStatus };
+  // Issue #325 W1 -- `hasCapability(capabilityId)` is the presentation-only preview the
+  // capability-gated nav item consults (navConfig.js isNavItemVisible). Bound to this session's
+  // `role` so nav visibility tracks whoever is signed in; the trusted Function remains the real,
+  // server-side authority for any run.
+  const hasCapability = (capabilityId) => reportHasPermission(capabilityId, role);
+  const operationalContext = { operationalRoles, employmentStatus, hasCapability };
   const hasAnyAccess = NAV_DOMAINS.some((d) => isDomainVisible(d, role, allowedLegacyKeys, operationalContext));
 
   if (loading) return <div className="fo-panel">Loading...</div>;

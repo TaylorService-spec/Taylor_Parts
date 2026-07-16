@@ -38,6 +38,10 @@ const auth = getAuth(app);
 
 export const DRIVER_ACCOUNTS = {
   admin: { email: "driver-admin@example.test", password: "driver-pass-123", uid: null },
+  // Issue #325 W1 -- a governed `Owner` (users/{uid}.role: "owner"). The ONLY seeded role that
+  // holds the wave-1 report.* capabilities, so it's the fixture for proving the capability-gated
+  // Report Builder nav/route is visible to Owner and denied to admin/dispatcher/technician.
+  owner: { email: "driver-owner@example.test", password: "driver-pass-123", uid: null },
   eligiblePartsManager: { email: "driver-parts-manager@example.test", password: "driver-pass-123", uid: null },
   ineligibleDispatcher: { email: "driver-dispatcher@example.test", password: "driver-pass-123", uid: null },
   // Inventory Operational Queue, PR A -- dedicated account for the
@@ -1733,6 +1737,10 @@ async function seed() {
   }
 
   await db.doc(`users/${DRIVER_ACCOUNTS.admin.uid}`).set({ role: "admin" });
+
+  // Issue #325 W1 -- governed Owner. resolveEmployeeSession reads users/{uid}.role verbatim, so
+  // this session resolves role="owner"; App.jsx's report previewer then grants the Report Builder.
+  await db.doc(`users/${DRIVER_ACCOUNTS.owner.uid}`).set({ role: "owner" });
 
   await db.doc("employees/driver-emp-parts-manager").set({
     employeeId: "driver-emp-parts-manager",
