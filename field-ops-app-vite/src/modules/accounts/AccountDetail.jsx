@@ -144,7 +144,7 @@ export default function AccountDetail() {
   const { accountId } = useParams();
   const navigate = useNavigate();
   const { account, loading } = useAccount(accountId);
-  const { data: locations } = useLocationsForAccount(accountId);
+  const { data: locations, error: locationsError, retry: retryLocations } = useLocationsForAccount(accountId);
   const { data: contacts, loading: contactsLoading, error: contactsError } = useContactsForAccount(accountId);
   const { byUserId, loading: directoryLoading, error: directoryError } = useEmployeeDirectory();
 
@@ -353,9 +353,17 @@ export default function AccountDetail() {
 
           {/* 4. Locations -- add-only (no Location edit action exists) */}
           <section className="wo-history">
-            <h4>Locations ({locations.length})</h4>
+            <h4>Locations ({locationsError ? "—" : locations.length})</h4>
             <p className="fo-sr-only" role="status" aria-live="polite">{locationAnnouncement}</p>
-            {locations.length === 0 ? (
+            {locationsError ? (
+              // #291: a FAILED read is not "No locations yet". Fail closed to an
+              // actionable failure with retry, never an empty state that would tell the
+              // user this customer has no locations when we simply could not look.
+              <div className="fo-inline-error" role="alert" data-location-error>
+                {locationsError}{" "}
+                <button type="button" className="fo-link-button" onClick={retryLocations}>Retry</button>
+              </div>
+            ) : locations.length === 0 ? (
               <EmptyState variant="database" message="No locations yet." />
             ) : (
               locations.map((loc) => {

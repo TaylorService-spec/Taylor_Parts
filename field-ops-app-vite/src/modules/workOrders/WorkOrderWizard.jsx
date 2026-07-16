@@ -96,7 +96,8 @@ export default function WorkOrderWizard() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
 
-  const { data: locations } = useLocationsForAccount(selectedAccount?.id ?? null);
+  const { data: locations, error: locationsError, retry: retryLocations } =
+    useLocationsForAccount(selectedAccount?.id ?? null);
 
   // Single source of truth for "can this step advance, and if not, why."
   const step2Reason = stepBlockedReason(2, {
@@ -157,7 +158,18 @@ export default function WorkOrderWizard() {
         <div className="fo-wizard-panel">
           <h3 className="fo-wizard-step-title">Step 2: Location</h3>
           <p className="fo-muted fo-wizard-context">Customer: {selectedAccount?.name}</p>
-          {locations.length > 0 && (
+          {/* #291: a FAILED locations read is distinct from "this customer has no
+              locations". Without this the picker just vanished and Next stayed blocked,
+              indistinguishable from a genuinely location-less customer. Fail closed to an
+              actionable failure with retry; Next stays blocked (step2Reason has no
+              location selected), which is correct -- a WO must not be created against a
+              location we could not load. */}
+          {locationsError ? (
+            <div className="fo-inline-error" role="alert" data-location-error>
+              {locationsError}{" "}
+              <button type="button" className="fo-link-button" onClick={retryLocations}>Retry</button>
+            </div>
+          ) : locations.length > 0 && (
             <div className="fo-wizard-field">
               <label className="fo-wizard-field-label" htmlFor="wo-location">Location</label>
               <select

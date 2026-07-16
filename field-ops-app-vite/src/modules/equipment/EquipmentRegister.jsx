@@ -47,7 +47,8 @@ export default function EquipmentRegister() {
   const focusRowRef = useRef(null);
 
   const { data: equipment, loading, error } = useEquipmentForAccount(accountId || null);
-  const { data: locations } = useLocationsForAccount(accountId || null);
+  const { data: locations, error: locationsError, retry: retryLocations } =
+    useLocationsForAccount(accountId || null);
 
   const statusValue = useMemo(() => statusFilterValue(statusKey), [statusKey]);
 
@@ -194,6 +195,17 @@ export default function EquipmentRegister() {
         />
       ) : (
         <>
+          {/* #291: locations failed but equipment loaded. Non-blocking -- the equipment
+              is still worth showing; only its location column is unreliable. The banner
+              names the failure with safe copy and offers recovery, so the "Location
+              unavailable" cells and the filter offering only "All locations" are
+              explained rather than silently wrong. */}
+          {locationsError && (
+            <div className="fo-inline-error" role="alert" data-locations-banner>
+              {locationsError}{" "}
+              <button type="button" className="fo-link-button" onClick={retryLocations}>Retry</button>
+            </div>
+          )}
           <div className="fo-portfolio-filters">
             <label className="fo-field-inline" htmlFor="equipment-search">
               <span>Search</span>
@@ -290,7 +302,7 @@ export default function EquipmentRegister() {
                       </Link>
                       <span className="fo-equipment-summary fo-muted">{equipmentSummary(e)}</span>
                     </td>
-                    <td>{locationName(locations, e.locationId)}</td>
+                    <td>{locationName(locations, e.locationId, locationsError)}</td>
                     <td>
                       {/* Namespaced to equipment: `fo-badge-${status}` would collide
                           with Account's status badges, which are built the same way.
@@ -314,15 +326,14 @@ export default function EquipmentRegister() {
 // A Location that cannot be resolved is reported as unknown rather than rendered as
 // its raw id (§8).
 //
-// KNOWN LIMITATION, reported rather than papered over: useLocationsForAccount (a
-// pre-existing Customer hook) passes no error callback to onSnapshot and returns no
-// error, so a DENIED or failed Locations read is indistinguishable here from "still
-// settling" -- every row would read "Unknown location" and the Location filter would
-// offer only "All locations", permanently and with no failure shown (§9 would want a
-// failure). Fixing that means changing a shared Customer hook, which is outside E5's
-// authorized surface; it is raised for the Owner to route. The Equipment read itself
-// does report failures correctly (E2 maps them through loadErrorMessage).
-function locationName(locations, id) {
+// #291: a FAILED Locations read is now distinct from a genuinely-unset one. When the
+// query failed, `locations` is empty (the hook fails closed), so EVERY row would read
+// "Unknown location" -- a failure rendered as a fact. With `failed` set, the cell reads
+// "Location unavailable" instead, and a retry banner above the table explains and
+// recovers. Only when the read SUCCEEDED and the id genuinely resolves to nothing does
+// it read "Unknown location".
+function locationName(locations, id, failed) {
+  if (failed) return "Location unavailable";
   return locations.find((l) => l.id === id)?.name ?? "Unknown location";
 }
 

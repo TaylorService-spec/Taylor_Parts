@@ -57,7 +57,8 @@ export default function EquipmentDetail() {
   // with three work orders.
   const { data: workOrders, loading: woLoading, error: woError } = useWorkOrdersForEquipment(equipmentId);
   const { account, loading: accountLoading } = useAccount(equipment?.accountId ?? null);
-  const { data: locations, loading: locationsLoading } = useLocationsForAccount(equipment?.accountId ?? null);
+  const { data: locations, loading: locationsLoading, error: locationsError, retry: retryLocations } =
+    useLocationsForAccount(equipment?.accountId ?? null);
 
   const history = useMemo(
     () => groupServiceHistoryByYear(equipmentServiceHistory(workOrders, equipmentId)),
@@ -146,20 +147,12 @@ export default function EquipmentDetail() {
       <div className="fo-detail-grid">
         {/* §8 Account + installed Location. Both render their NAME; an unresolved
             reference says so rather than exposing the raw id.
-            KNOWN LIMITATION, inherited and disclosed rather than papered over:
-            useAccount and useLocationsForAccount (pre-existing Customer hooks) pass no
-            error callback to onSnapshot and return no error, so a DENIED or failed read
-            is indistinguishable from "genuinely unknown" -- these would read "Unknown
-            customer"/"Unknown location" forever with no failure shown (§9 would want
-            one). Fixing that means changing shared Customer hooks, outside E7's
-            surface; it is routed as #291.
-            The `loading` flags above reduce the window to a SINGLE COMMIT -- they do
-            not close it. The first commit after accountId resolves still reads
-            "Unknown", because these hooks reset `loading` in an EFFECT rather than
-            during render: while accountId is null the effect parks loading=false, and
-            the render where it first becomes non-null happens before the effect re-runs.
-            One frame instead of a network round trip. Also #291 -- only the hook can
-            tell stale-loading apart from genuinely-not-found. */}
+            LOCATION now distinguishes a FAILED read from a genuinely-unknown one (#291):
+            a denied/failed Locations query shows an actionable failure with retry instead
+            of "Unknown location" stated as a fact.
+            ACCOUNT still cannot: useAccount passes no error callback and returns no error,
+            so "Unknown customer" remains ambiguous there. That is the same class one hook
+            over, out of #291's Location scope; not fixed here rather than widened silently. */}
         <section className="fo-panel" aria-labelledby="equip-where">
           <h2 id="equip-where">Customer &amp; location</h2>
           <dl className="fo-detail-list">
@@ -175,7 +168,16 @@ export default function EquipmentDetail() {
             </dd>
             <dt>Installed location</dt>
             <dd data-equipment-location>
-              {locationsLoading ? <span className="fo-muted">Loading…</span> : locationName}
+              {locationsLoading ? (
+                <span className="fo-muted">Loading…</span>
+              ) : locationsError ? (
+                <span className="fo-inline-error" role="alert" data-location-error>
+                  {locationsError}{" "}
+                  <button type="button" className="fo-link-button" onClick={retryLocations}>Retry</button>
+                </span>
+              ) : (
+                locationName
+              )}
             </dd>
           </dl>
         </section>

@@ -182,6 +182,14 @@ body { -webkit-font-smoothing: antialiased; font-family: -apple-system, BlinkMac
 .fo-badge-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0; }
 .fo-account-summary { margin-bottom: 8px; }
 .fo-warning { color: #B23B3B; font-size: 14px; }
+/* #291: an inline, non-blocking load failure with an adjacent retry -- used where a
+   FAILED lookup must read differently from empty/unknown without taking over the page. */
+.fo-inline-error { color: #B23B3B; font-size: 14px; display: inline-flex; align-items: baseline; gap: 6px; }
+.fo-link-button {
+  background: none; border: none; padding: 0; font: inherit; color: #1F6F63;
+  text-decoration: underline; cursor: pointer;
+}
+.fo-link-button:hover { color: #124A42; }
 .fo-fieldset { border: 1px solid #E1E6E5; border-radius: 8px; padding: 8px 12px; display: flex; gap: 16px; flex-wrap: wrap; }
 .fo-fieldset legend { font-size: 13px; color: #667; padding: 0 4px; }
 .fo-account-collapsible { margin-top: 12px; }
