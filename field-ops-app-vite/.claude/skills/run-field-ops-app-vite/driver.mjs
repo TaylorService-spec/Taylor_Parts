@@ -4061,6 +4061,197 @@ async function verifyAccountDetailForms(browser, page, accountKey) {
 // /customers), recovery after data returns, and 375/tablet/desktop layout with no
 // overflow. Destructive empty-state setups snapshot + restore in try/finally so
 // the shared seed is never left damaged.
+// Issue #232 unit E7 -- the Equipment detail page (Spec §8/§9/§10/§13).
+//
+// Proves the detail route in a real browser against the E4 fixtures: every §8 section,
+// the DERIVED Service History (§10) with its year grouping, lifecycle actions rendered
+// as unavailable with a stated reason (§5, Issue #15), the three §9 states kept
+// distinct (loading / not-found / failure), safe Back, no raw ids as references, and
+// 375px.
+async function verifyEquipmentDetail(browser, page, accountKey) {
+  const F = EQUIPMENT_FIXTURE;
+  const url = (path) => { const u = new URL(path, APP_ROOT); u.searchParams.set("emulator", "1"); return u.toString(); };
+  const failureState = () => page.locator('.fo-failure-state[role="alert"]');
+  const RAW = /permission-denied|FirebaseError|firestore\/|code:|Missing or insufficient|AIza|documents\//i;
+
+  await login(page, accountKey);
+
+  // ===== reached BY NAME from the register, not by typing an id =====
+  await page.goto(url("equipment"), { waitUntil: "domcontentloaded" });
+  await page.locator("#equipment-account").selectOption({ label: "Alpha Facilities Co" });
+  await page.locator("[data-equipment-row]").first().waitFor({ timeout: 15000 });
+  await page.locator(`[data-equipment-row="${F.activeWithHistoryId}"] .fo-equipment-name`).click();
+  await page.locator(".fo-equipment-detail").waitFor({ timeout: 10000 });
+  niReport("Detail: a register row navigates to the equipment's own route",
+    page.url().includes(`/equipment/${F.activeWithHistoryId}`));
+
+  // ===== §8 identity + status =====
+  niReport("Detail: the title is the display name (§8)",
+    (await page.locator(".fo-equipment-title").innerText()) === F.duplicateName);
+  niReport("Detail: the status is shown as a labelled badge",
+    (await page.locator("[data-equipment-status]").getAttribute("data-equipment-status")) === "ACTIVE" &&
+      /active/i.test(await page.locator("[data-equipment-status]").innerText()));
+  // Duplicate names are legal (§8), so the summary must disambiguate -- and it must
+  // read as its own line, not run on after the title.
+  const subtitle = await page.locator(".fo-equipment-subtitle").innerText();
+  niReport("Detail: the summary disambiguates this unit from its duplicate-named sibling",
+    /Carrier/.test(subtitle) && /SN-ALPHA-0001/.test(subtitle));
+  const headerText = await page.locator(".fo-detail-header").innerText();
+  niReport("Detail: the title and summary are separate lines, not one run-together string",
+    headerText.includes("\n") && headerText.split("\n")[0].trim() === F.duplicateName, JSON.stringify(headerText));
+
+  // ===== §8 Account + installed Location, by NAME =====
+  niReport("Detail: the customer is named and links to its record (§8)",
+    /Alpha Facilities Co/.test(await page.locator("[data-equipment-account]").innerText()));
+  niReport("Detail: the installed location is named, not shown as an id (§8)",
+    (await page.locator("[data-equipment-location]").innerText()).trim() === "Alpha -- Main Plant");
+
+  // ===== §8 identification + service information =====
+  const body = await page.locator(".fo-equipment-detail").innerText();
+  niReport("Detail: manufacturer / model / serial / asset tag are all present (§8)",
+    /Carrier/.test(body) && /48TCED12/.test(body) && /SN-ALPHA-0001/.test(body) && /AT-1001/.test(body));
+  niReport("Detail: service information (installed / warranty / notes) is present (§8)",
+    /2019-04-02/.test(body) && /2029-04-02/.test(body) && /Quarterly PM/.test(body));
+
+  // ===== no raw ids rendered as references (§8) =====
+  niReport("Detail: no raw document id is rendered as a reference (§8)",
+    !body.includes(F.activeWithHistoryId) && !body.includes(F.alphaAccountId) && !body.includes(F.alphaLocation1Id),
+    "an id appeared in the page text");
+
+  // ===== §10 Service History: derived, grouped, bounded =====
+  // Wait for the WO subscription to SETTLE. The equipment document and its Work Orders
+  // are two independent subscriptions: the page renders as soon as the asset arrives,
+  // and the history fills in after. Asserting on .fo-equipment-detail alone measured
+  // the driver's timing and reported an empty history against a page that renders it
+  // correctly -- a direct check found 3 groups and 3 entries at the same URL.
+  await page.waitForFunction(
+    () => document.querySelectorAll("[data-history-entry]").length > 0, null, { timeout: 15000 }
+  ).catch(() => {});
+  const years = await page.locator("[data-history-year]").evaluateAll((els) => els.map((e) => e.dataset.historyYear));
+  niReport("Detail: service history is grouped by year, newest first (§10)",
+    JSON.stringify(years) === JSON.stringify(F.historyYears.map(String)), JSON.stringify(years));
+  const entries = await page.locator("[data-history-entry]").count();
+  niReport("Detail: every linked work order appears in the history (§10)", entries === 3, `saw ${entries}`);
+  const histText = await page.locator("[data-history-section]").innerText();
+  niReport("Detail: history entries reference the WO NUMBER, never a raw id (§8/§10)",
+    /WO-EQ-001/.test(histText) && !histText.includes(F.historyWorkOrderIds[0]));
+  // The history is DERIVED and bounded to this asset -- another asset's WO must not leak.
+  niReport("Detail: another equipment's work order does not appear here (§10)",
+    !histText.includes("WO-EQ-004") && !histText.includes("WO-EQ-007"));
+
+  // ===== §5 lifecycle actions: present, unavailable, with a stated reason =====
+  const moveBtn = page.locator('[data-equipment-action="move"]');
+  niReport("Detail: Move is offered but DISABLED while the trusted writer is unavailable (§5, #15)",
+    (await moveBtn.count()) === 1 && (await moveBtn.isDisabled()));
+  niReport("Detail: an ACTIVE asset offers Retire (not Reactivate)",
+    (await page.locator('[data-equipment-action="retire"]').count()) === 1 &&
+      (await page.locator('[data-equipment-action="reactivate"]').count()) === 0);
+  const reason = await page.locator(".fo-action-reason").innerText();
+  niReport("Detail: the unavailable reason is STATED, not implied by a greyed-out button",
+    /isn't available yet/i.test(reason) && /Nothing was changed/i.test(reason));
+  niReport("Detail: the reason leaks no provider detail", !RAW.test(reason));
+
+  // ===== a RETIRED asset offers Reactivate instead =====
+  await page.goto(url(`equipment/${F.retiredId}`), { waitUntil: "domcontentloaded" });
+  await page.locator(".fo-equipment-detail").waitFor({ timeout: 10000 });
+  niReport("Detail: a RETIRED asset offers Reactivate, not Retire (§3/§5)",
+    (await page.locator('[data-equipment-action="reactivate"]').count()) === 1 &&
+      (await page.locator('[data-equipment-action="retire"]').count()) === 0);
+  niReport("Detail: a retired asset still shows its history (retirement does not erase the record, §3)",
+    (await page.locator("[data-equipment-status]").getAttribute("data-equipment-status")) === "RETIRED");
+
+  // ===== an asset with NO history: empty state, not an error (§9) =====
+  await page.goto(url(`equipment/${F.activeNoHistoryId}`), { waitUntil: "domcontentloaded" });
+  await page.locator(".fo-equipment-detail").waitFor({ timeout: 10000 });
+  // Settle the WO subscription before asserting "empty": an unsettled history looks
+  // identical to a genuinely empty one, so this could pass for the wrong reason.
+  const emptyHist = page.locator("[data-history-section] .fo-empty-state");
+  await emptyHist.waitFor({ timeout: 10000 }).catch(() => {});
+  niReport("Detail: an asset with no linked work orders shows an empty history state (§9)",
+    (await emptyHist.count()) === 1 && /no service history/i.test(await emptyHist.innerText()));
+  niReport("Detail: an empty history is not labelled an error (§9)",
+    (await page.locator("[data-history-section] .fo-failure-state").count()) === 0);
+
+  // ===== a sparse record: absent optionals are reported, not blank =====
+  await page.goto(url(`equipment/${F.sparseId}`), { waitUntil: "domcontentloaded" });
+  await page.locator(".fo-equipment-detail").waitFor({ timeout: 10000 });
+  niReport("Detail: absent optional fields read 'Not recorded' rather than rendering blank",
+    (await page.locator("[data-identification-section]").innerText()).includes("Not recorded"));
+
+  // ===== §9 NOT-FOUND is distinct from a failure, with safe Back =====
+  await page.goto(url("equipment/equip-does-not-exist-at-all"), { waitUntil: "domcontentloaded" });
+  await failureState().first().waitFor({ timeout: 10000 });
+  const nf = await failureState().first().innerText();
+  niReport("Detail: a nonexistent id reports NOT FOUND (§9)", /could not be found/i.test(nf));
+  niReport("Detail: not-found leaks no provider error or raw id (§9)",
+    !RAW.test(nf) && !nf.includes("equip-does-not-exist-at-all"));
+  await failureState().first().getByRole("button", { name: /back to equipment/i }).click();
+  await page.waitForTimeout(500);
+  niReport("Detail: not-found offers a safe Back to the register",
+    page.url().endsWith("/equipment") || page.url().includes("/equipment?"));
+
+  // ===== direct link + safe Back from a real record =====
+  await page.goto(url(`equipment/${F.activeWithHistoryId}`), { waitUntil: "domcontentloaded" });
+  await page.locator(".fo-equipment-detail").waitFor({ timeout: 10000 });
+  niReport("Detail: a DIRECT link to the route renders the record (no register visit needed)",
+    (await page.locator(".fo-equipment-title").innerText()) === F.duplicateName);
+  await page.locator(".fo-back-link").click();
+  await page.waitForTimeout(600);
+  niReport("Detail: Back returns to the register route (a real route, never history.back())",
+    page.url().includes("/equipment") && (await page.locator("#equipment-account").count()) === 1);
+
+  // ===== read failure CONDITION, at the Rules layer =====
+  // Same approach as the register's: an authorized admin cannot reach a denied read,
+  // and a network abort does not trigger onSnapshot's error callback (Firestore treats
+  // it as offline and retries), so permission-denied is the only real trigger.
+  {
+    const probeApp = initializeApp({ projectId: "taylor-parts", apiKey: "fake-key-emulator-only" }, "equip-detail-rules-probe");
+    const probeAuth = getAuth(probeApp);
+    connectAuthEmulator(probeAuth, "http://127.0.0.1:9099", { disableWarnings: true });
+    const probeDb = getClientFirestore(probeApp);
+    connectFirestoreEmulator(probeDb, "127.0.0.1", 8080);
+    await signInWithEmailAndPassword(probeAuth, DRIVER_ACCOUNTS.equipmentTechAssigned.email, DRIVER_ACCOUNTS.equipmentTechAssigned.password);
+    const res = await new Promise((resolve) => {
+      const unsub = onSnapshot(
+        query(collection(probeDb, "fieldops_wos"), where("equipmentId", "==", F.activeWithHistoryId)),
+        () => { unsub(); resolve({ denied: false }); },
+        (err) => { unsub(); resolve({ denied: err.code === "permission-denied" }); }
+      );
+      setTimeout(() => resolve({ denied: null }), 8000);
+    });
+    await deleteApp(probeApp).catch(() => {});
+    // DENIED -- and correctly so. I expected this to be ALLOWED (the technician holds
+    // assignments on these very Work Orders, and fieldops_wos permits
+    // isOwnTechnician), but RULES ARE NOT FILTERS: this query constrains only
+    // equipmentId, so Firestore cannot prove every document it would return satisfies
+    // isOwnTechnician(assignedTechId), and it rejects the whole query rather than
+    // filtering. The technician's own assignment is irrelevant to a query that does not
+    // say so.
+    //
+    // This is load-bearing for E17 (the technician's self-scoped Equipment view): it
+    // cannot reuse this hook. It will need a query constrained by assignedTechId, or a
+    // different shape entirely -- discovered here rather than in E17.
+    niReport("Detail: a technician's equipmentId-scoped Work Order query is DENIED -- rules are not filters",
+      res.denied === true, `denied=${res.denied}`);
+  }
+
+  // ===== 375px (§13) =====
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto(url(`equipment/${F.activeWithHistoryId}`), { waitUntil: "domcontentloaded" });
+  await page.locator(".fo-equipment-detail").waitFor({ timeout: 10000 });
+  const overflow = await page.evaluate(() => {
+    const el = document.querySelector(".fo-equipment-detail");
+    return el ? { scroll: el.scrollWidth, client: document.documentElement.clientWidth } : null;
+  });
+  niReport("Detail: at 375px the detail page does not overflow horizontally (§13)",
+    overflow !== null && overflow.scroll <= overflow.client + 1, JSON.stringify(overflow));
+  await page.setViewportSize({ width: 1280, height: 800 });
+
+  await page.screenshot({ path: join(SCREENSHOT_DIR, "equipment-detail.png"), fullPage: true });
+  console.log(`\n${niPassed} passed, ${niFailed} failed`);
+  return niFailed === 0;
+}
+
 // Issue #232 unit E6 -- Equipment creation (Spec §6).
 //
 // Proves the create flow in a real signed-in browser against a live emulator whose
@@ -6388,6 +6579,10 @@ async function main() {
     } else if (command === "verify-equipment-register") {
       const [accountKey = "admin"] = args;
       const ok = await verifyEquipmentRegister(browser, page, accountKey);
+      if (!ok) process.exitCode = 1;
+    } else if (command === "verify-equipment-detail") {
+      const [accountKey = "admin"] = args;
+      const ok = await verifyEquipmentDetail(browser, page, accountKey);
       if (!ok) process.exitCode = 1;
     } else if (command === "verify-equipment-create") {
       const [accountKey = "admin"] = args;

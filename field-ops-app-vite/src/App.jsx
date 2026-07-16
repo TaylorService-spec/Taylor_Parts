@@ -10,6 +10,7 @@ import DispatcherBoard from "./modules/dispatcherBoard/DispatcherBoard";
 import TechnicianDashboard from "./modules/technicianDashboard/TechnicianDashboard";
 import AccountsList from "./modules/accounts/AccountsList";
 import EquipmentRegister from "./modules/equipment/EquipmentRegister";
+import EquipmentDetail from "./modules/equipment/EquipmentDetail";
 import AccountDetail from "./modules/accounts/AccountDetail";
 import AdministrationOverview from "./modules/administration/AdministrationOverview";
 import AdministrationUnavailable from "./modules/administration/AdministrationUnavailable";
@@ -218,6 +219,16 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
               ))}
               <Route path=":accountId" element={<AccountDetail />} />
             </>
+          )}
+          {/* Issue #232 unit E7 -- Equipment detail. Same shape and same reasoning as
+              the /customers/:accountId route above: gated by isDomainVisible(), not
+              just domain.key, so a role without Equipment nav access never MOUNTS the
+              route and its Firestore listeners. E3's Rules (#289) deny a technician
+              every Equipment read, so mounting this for them would only produce a
+              permission-denied they cannot act on. Rules remain the boundary; this
+              keeps the route from disagreeing with them. */}
+          {domain.key === "equipment" && isDomainVisible(domain, role, allowedLegacyKeys, operationalContext) && (
+            <Route path=":equipmentId" element={<EquipmentDetail />} />
           )}
           {/* Sprint 2.0.3 -- gated to admin/dispatcher specifically,
               NOT isDomainVisible(service domain) -- a technician
