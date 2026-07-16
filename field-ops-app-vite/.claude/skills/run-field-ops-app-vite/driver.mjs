@@ -6163,6 +6163,22 @@ async function verifyInventoryRoleWarehouseManager(browser, page, accountKey) {
 // fill()-only gate is structurally blind to this whole class, which is why this suite
 // types one character at a time, across EVERY modal flow, and asserts the caller does
 // NOT need useCallback for the shared component to be correct.
+//
+// THE COVERAGE CONTRACT (#302), because this is fragile in a way nothing else states:
+// this suite catches a REGRESSION of #293 (a focus effect re-keyed on [onClose]) ONLY
+// while it exercises at least one caller whose onClose identity CHANGES every render.
+// Those callers are the canaries, and they protect the shared Modal by NOT being tidied:
+//   CANARIES (unstable onClose, must stay so): New Customer (AccountsList, inline arrow),
+//     Add Location, Add Contact, New Job, New Technician (each a plain `function
+//     requestClose()`). Add Location is the flow that reproduced the live bug.
+//   IMMUNE (memoized onClose, cannot catch the regression): Add Equipment
+//     (EquipmentCreateModal) and -- since #298 -- Import Contacts (ContactImportModal),
+//     whose requestClose is a useCallback for close-during-save. So the canary set is
+//     FIVE, down from six; the issue #302 table predates #298.
+// The realistic failure is not "someone deletes the last canary" but a consistency pass
+// that memoizes the canaries one at a time to match the newest, most-reviewed modals --
+// the suite stays green while #293's protection quietly evaporates. Each canary caller
+// now carries a comment saying so; do not memoize them without deleting this contract.
 async function verifyModalTyping(browser, page, accountKey) {
   const url = (path) => { const u = new URL(path, APP_ROOT); u.searchParams.set("emulator", "1"); return u.toString(); };
   const dlg = () => page.locator('[role="dialog"][aria-modal="true"]');

@@ -47,6 +47,13 @@ export default function ContactImportModal({ accountId, accountName, existingCon
   // bulk, atomic writeBatch -- losing its UI mid-commit would leave the user with no
   // result, no error, and no way to tell whether their rows landed. Every other create
   // modal already guards this; this one passed onClose straight through.
+  //
+  // Because this is a useCallback, this modal is IMMUNE to a #293 regression rather than
+  // a canary for it -- like EquipmentCreateModal, and unlike the five plain-function
+  // callers (#302). #298 converting it from a raw onClose pass-through to this ref-based
+  // useCallback is why the canary set is five, not the six issue #302's table lists. The
+  // memoization is right for close-during-save; it just means the #293 regression
+  // protection lives in the OTHER five callers, not here.
   const requestClose = useCallback(() => {
     if (importingRef.current) return;
     onClose();
