@@ -11,6 +11,7 @@ import TechnicianDashboard from "./modules/technicianDashboard/TechnicianDashboa
 import AccountsList from "./modules/accounts/AccountsList";
 import EquipmentRegister from "./modules/equipment/EquipmentRegister";
 import AccountDetail from "./modules/accounts/AccountDetail";
+import AdministrationOverview from "./modules/administration/AdministrationOverview";
 import WorkOrdersList from "./modules/workOrders/WorkOrdersList";
 import WorkOrderWizard from "./modules/workOrders/WorkOrderWizard";
 import WorkOrderDetailPage from "./modules/workOrders/WorkOrderDetailPage";
@@ -136,6 +137,12 @@ function renderSubnavItem(domain, item, role) {
   // Same operationalRoleAccess-gated pattern as PR 1b/2b above.
   if (domain.key === "inventoryRole" && item.key === "mine") {
     return <PartsAssociateHome />;
+  }
+  // Issue #226 Row 10 -- Admin Portal foundation. Same special-case pattern as
+  // every other net-new, no-legacyKey screen above: a brand-new Overview hub,
+  // not a re-homed one.
+  if (domain.key === "administration" && item.key === "overview") {
+    return <AdministrationOverview />;
   }
   if (item.legacyKey) {
     const Component = LEGACY_COMPONENTS[item.legacyKey];
