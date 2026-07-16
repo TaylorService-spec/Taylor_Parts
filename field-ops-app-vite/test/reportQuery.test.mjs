@@ -9,6 +9,7 @@
 import assert from "node:assert/strict";
 import {
   createReportDefinition, AGGREGATE_FUNCTIONS, SORT_DIRECTIONS,
+  FIELD_AGGREGATE_FUNCTIONS, FIELDLESS_AGGREGATE_FUNCTIONS, isFieldlessAggregate,
 } from "../src/domain/reporting/reportQueryModel.js";
 import {
   validateReportDefinition, resolveDefinitionField,
@@ -17,15 +18,16 @@ import {
 let passed = 0;
 function ok(name, fn) { fn(); passed += 1; console.log("PASS -- " + name); }
 
-// A structurally-valid definition over the wave-1 catalog: base=customer, real fields, a
-// well-typed enum filter, a groupable field, and a sortable field. The mutation tests clone and
-// break exactly one thing.
+// A structurally-valid FLAT (non-grouped) definition over the wave-1 catalog: base=customer,
+// real fields, a well-typed enum filter, a sort. It deliberately does NOT group -- so the
+// grouping-consistency rule (Spec §7) is inactive here and the mutation tests that DO set groupBy
+// activate it. The mutation tests clone this and break exactly one thing.
 function baseValid() {
   return {
     objectId: "customer",
     fields: ["customer.name", "customer.status"],
     filters: [{ fieldId: "customer.status", op: "eq", value: "active" }],
-    groupBy: ["customer.status"],
+    groupBy: [],
     sort: [{ fieldId: "customer.name", direction: "asc" }],
     aggregates: [],
     presentation: {},
@@ -137,12 +139,51 @@ ok("the validator CATCHES each class of corruption (feeding it broken definition
   bad((d) => { d.sort[0].direction = "up"; }, "direction must be one of");
   bad((d) => { d.sort = [{ fieldId: "customer.status", direction: "asc" }]; }, "does not support sort"); // enum w/o sort op
   bad((d) => { d.sort[0].wat = 1; }, "unknown keys");
-  // aggregates (no wave-1 field supports `aggregate`, so both the operator gate and the fn gate fire)
+  // aggregates -- field-bound (no wave-1 field supports `aggregate`, so the operator gate fires)
   bad((d) => { d.aggregates = [{ fieldId: "customer.name", fn: "sum" }]; }, "does not support aggregate");
   bad((d) => { d.aggregates = [{ fieldId: "customer.name", fn: "bogus" }]; }, "fn must be one of");
   bad((d) => { d.aggregates = [{ fieldId: "customer.name", fn: "sum", extra: 1 }]; }, "unknown keys");
+  // aggregates -- fieldless countRows must NOT carry a fieldId (F4)
+  bad((d) => { d.fields = ["customer.status"]; d.groupBy = ["customer.status"]; d.aggregates = [{ fn: "countRows", fieldId: "customer.name" }]; }, "takes no fieldId");
+  // grouping consistency (F4): a projected non-aggregate column not in groupBy
+  bad((d) => { d.groupBy = ["customer.status"]; }, "must be grouped"); // customer.name projected but not grouped
+  bad((d) => { d.aggregates = [{ fn: "countRows" }]; }, "must be grouped"); // aggregating -> every projected field must be grouped
   // presentation
   bad((d) => { d.presentation = "nope"; }, "presentation must be an object");
+});
+
+// ---- F4: fieldless countRows + grouping consistency, positive paths ---------
+ok("countRows is a fieldless aggregate: valid alone and per-group, rejected with a fieldId", () => {
+  // total authorized row count -- no fields, no grouping needed
+  assert.deepEqual(validateReportDefinition({ objectId: "customer", aggregates: [{ fn: "countRows" }] }), []);
+  // authorized count per group -- the one projected field is grouped
+  assert.deepEqual(validateReportDefinition({
+    objectId: "customer", fields: ["customer.status"], groupBy: ["customer.status"],
+    aggregates: [{ fn: "countRows" }],
+  }), []);
+  // a fieldId on countRows is rejected fail-closed
+  const withField = validateReportDefinition({ objectId: "customer", aggregates: [{ fn: "countRows", fieldId: "customer.name" }] });
+  assert.ok(withField.some((e) => e.includes("takes no fieldId")));
+  assert.equal(isFieldlessAggregate("countRows"), true);
+  assert.equal(isFieldlessAggregate("sum"), false);
+});
+
+ok("grouping consistency: a grouped report is valid only when every projected field is grouped", () => {
+  // both projected columns are grouped -> valid
+  assert.deepEqual(validateReportDefinition({
+    objectId: "customer", fields: ["customer.status", "customer.tags"],
+    groupBy: ["customer.status", "customer.tags"],
+  }), []);
+  // one projected column ungrouped -> refused
+  const bad1 = validateReportDefinition({
+    objectId: "customer", fields: ["customer.status", "customer.name"],
+    groupBy: ["customer.status"],
+  });
+  assert.ok(bad1.some((e) => e.includes("customer.name") && e.includes("must be grouped")));
+  // a flat (non-grouped, non-aggregated) report is unaffected by the rule
+  assert.deepEqual(validateReportDefinition({
+    objectId: "customer", fields: ["customer.name", "customer.status"],
+  }), []);
 });
 
 // ---- activation is injectable so the Function reuses the same validator ------
@@ -165,7 +206,9 @@ ok("a non-object definition is refused fail-closed, not thrown", () => {
 
 // ---- vocab sanity ----------------------------------------------------------
 ok("aggregate functions and sort directions are the documented closed sets", () => {
-  assert.deepEqual([...AGGREGATE_FUNCTIONS].sort(), ["avg", "count", "max", "min", "sum"]);
+  assert.deepEqual([...FIELD_AGGREGATE_FUNCTIONS].sort(), ["avg", "count", "max", "min", "sum"]);
+  assert.deepEqual([...FIELDLESS_AGGREGATE_FUNCTIONS], ["countRows"]);
+  assert.deepEqual([...AGGREGATE_FUNCTIONS].sort(), ["avg", "count", "countRows", "max", "min", "sum"]);
   assert.deepEqual([...SORT_DIRECTIONS].sort(), ["asc", "desc"]);
 });
 

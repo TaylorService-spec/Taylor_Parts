@@ -24,9 +24,19 @@ export const AGGREGATE_KEYS = Object.freeze(["fieldId", "fn"]);
 
 export const SORT_DIRECTIONS = Object.freeze(["asc", "desc"]);
 
-// Aggregate functions legal on a field that supports the `aggregate` operator (number-only by
-// the catalog's LEGAL_OPERATORS_BY_TYPE construction, Spec §3.2 / §7 "no aggregating a string").
-export const AGGREGATE_FUNCTIONS = Object.freeze(["count", "sum", "avg", "min", "max"]);
+// Aggregate functions. Two shapes (Spec §7):
+//  - FIELD-bound: applied to a field that supports the `aggregate` operator (number-only by the
+//    catalog's LEGAL_OPERATORS_BY_TYPE construction -- "no aggregating a string"). Shape { fieldId, fn }.
+//  - FIELDLESS: `countRows` counts the rows the run produced. It references NO field, so it needs
+//    no field readCapability; it is bounded by the object gate and the runner's authorized row
+//    set (§6), so it can only ever count rows the runner may already see. Shape { fn }.
+export const FIELD_AGGREGATE_FUNCTIONS = Object.freeze(["count", "sum", "avg", "min", "max"]);
+export const FIELDLESS_AGGREGATE_FUNCTIONS = Object.freeze(["countRows"]);
+export const AGGREGATE_FUNCTIONS = Object.freeze([...FIELD_AGGREGATE_FUNCTIONS, ...FIELDLESS_AGGREGATE_FUNCTIONS]);
+
+export function isFieldlessAggregate(fn) {
+  return FIELDLESS_AGGREGATE_FUNCTIONS.includes(fn);
+}
 
 // Concrete filter comparators that are WELL-TYPED per data type (Spec §7: "Filters must be
 // well-typed against the field dataType"). A field must ALSO declare the `filter` operator in

@@ -171,6 +171,8 @@ A report definition is validated **server-side against the catalog** on save and
 - Every operator used on a field must be in that field's `operators` set (no sorting a `notes`, no aggregating a `string`).
 - Filters must be well-typed against the field `dataType`; unknown/extra keys are rejected (fail-closed), never ignored.
 - Relationship references must be in the relationship catalog and `hop = 1` at first activation; arbitrary paths are rejected.
+- **Aggregates** take two shapes. A **field-bound** aggregate (`count`/`sum`/`avg`/`min`/`max`) requires a field that supports the `aggregate` operator (number-only by construction) and its `readCapability`. A **fieldless `countRows`** aggregate counts the rows the run produced: it references no field, so it carries **no `fieldId`** (a stray one is rejected) and needs no field `readCapability` — it is bounded only by the object gate and the runner's authorized row set (§6), so it can only ever count rows the runner may already see, never a channel to probe hidden rows. Combined with grouping it yields authorized **counts per group**.
+- **Grouping consistency:** when a definition groups or aggregates, **every projected non-aggregate field must appear in `groupBy`** — a raw column that is neither grouped nor aggregated is ambiguous under aggregation and is **refused on save**. (At run, §6 keeps this consistent: a grouped field dropped as unreadable drops the column it backed with it.)
 - A definition that references an unknown/unactivated object or field is **refused on save**; one that becomes partly unreadable *later* is **run with the unreadable parts dropped** (§6), not refused — the difference between "never valid" and "no longer fully authorized."
 
 ## 8. Saved reports
