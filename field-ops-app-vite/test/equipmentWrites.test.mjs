@@ -129,6 +129,18 @@ await ok("a whole-record edit without `before` fails closed rather than reportin
   // ...and it is reported as OUR missing proof, not as the user attempting a move.
   assert.equal(res.unprovable, true);
   assert.doesNotMatch(res.message, /can't be changed here/, "don't accuse the user of a caller bug");
+
+  // A SINGLE unprovable field must trip it too. The case above supplies two, so a guard
+  // reading `length > 1` passes it -- and then a one-field edit falls through to
+  // INVALID_MESSAGE, telling the user to check highlighted fields while `errors` is
+  // empty and nothing is highlighted, with `unprovable`/`governedFields` lost to E8.
+  const one = fakeStore();
+  const single = await updateEquipmentWith(one, "eq1", { name: "New", accountId: "a1" }, {}, 1);
+  assert.equal(single.ok, false);
+  assert.equal(one.calls.length, 0);
+  assert.equal(single.unprovable, true, "one unprovable field is enough to refuse");
+  assert.deepEqual(single.governedFields, ["accountId"]);
+  assert.doesNotMatch(single.message, /highlighted/i, "nothing is highlighted -- don't say there is");
 });
 
 await ok("a partial edit that touches nothing governed still succeeds without `before`", async () => {

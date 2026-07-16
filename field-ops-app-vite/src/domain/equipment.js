@@ -84,8 +84,11 @@ function isNonEmptyString(value) {
 // with no argument is the normal JS affordance and its meaning is `{}` -- an empty
 // create form owes the user field errors naming what to fill in, not an opaque "could
 // not read" pointing at no control. Only a supplied non-record is `malformed`.
-// So: absent -> empty record; malformed -> refused; a record -> read. Three cases,
-// two of which fail closed, none of which throw.
+// So, for the two payload BUILDERS: absent -> empty record; malformed -> refused; a
+// record -> read. Three cases, two of which fail closed, none of which throw.
+// normalizeEquipmentInput is the one exception, and deliberately so: it has no refusal
+// channel, so malformed also yields the empty record and fails closed downstream when
+// validation finds every required field null.
 //
 // Both tests below are load-bearing, and neither subsumes the other:
 //   - The PROTOTYPE test rejects Map, Date and class instances, whose `.accountId` is
