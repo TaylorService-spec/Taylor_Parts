@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import Modal from "../../shared/ui/Modal";
 import {
   parseCsv,
@@ -33,8 +33,24 @@ export default function ContactImportModal({ accountId, accountName, existingCon
   const [importing, setImporting] = useState(false);
   const [saveError, setSaveError] = useState("");
   const fileInputRef = useRef(null);
+  // Read synchronously by requestClose, which runs from Modal's keydown/backdrop handlers
+  // -- a ref, not the `importing` state, because those handlers must see the CURRENT
+  // in-flight status, not whatever was captured when they were bound. The sibling create
+  // modals (LocationCreateModal / ContactCreateModal) use exactly this pattern.
+  const importingRef = useRef(false);
 
   const mappingCheck = useMemo(() => validateMapping(mapping), [mapping]);
+
+  // CLOSE-DURING-IMPORT PROTECTION (#298). Escape, the ✕ control, and a backdrop click
+  // all reach the modal through onClose; a close WHILE a write is committing is ignored,
+  // so the modal cannot vanish before its own result is known. Contact CSV import is a
+  // bulk, atomic writeBatch -- losing its UI mid-commit would leave the user with no
+  // result, no error, and no way to tell whether their rows landed. Every other create
+  // modal already guards this; this one passed onClose straight through.
+  const requestClose = useCallback(() => {
+    if (importingRef.current) return;
+    onClose();
+  }, [onClose]);
 
   async function handleFile(e) {
     setParseError("");
@@ -87,6 +103,8 @@ export default function ContactImportModal({ accountId, accountName, existingCon
 
   async function handleConfirm() {
     if (!validation || validation.overLimit || validation.accepted.length === 0) return;
+    if (importingRef.current) return; // duplicate-submit guard: one commit at a time
+    importingRef.current = true;
     setImporting(true);
     setSaveError("");
     try {
@@ -110,6 +128,7 @@ export default function ContactImportModal({ accountId, accountName, existingCon
       console.error("Contact import failed:", err);
       setSaveError(contactImportErrorMessage(err));
     } finally {
+      importingRef.current = false;
       setImporting(false);
     }
   }
@@ -118,7 +137,7 @@ export default function ContactImportModal({ accountId, accountName, existingCon
   const otherRejected = validation ? validation.rejected.filter((r) => !/duplicate/i.test(r.reason)) : [];
 
   return (
-    <Modal title="Import Contacts" onClose={onClose}>
+    <Modal title="Import Contacts" onClose={requestClose}>
       <div className="fo-contact-import">
         <p className="fo-muted fo-contact-import-context">
           Importing into: <strong>{accountName}</strong> (the customer is fixed and cannot be changed from the CSV).

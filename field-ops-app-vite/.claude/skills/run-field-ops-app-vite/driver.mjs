@@ -3654,6 +3654,86 @@ async function verifyContactCsvImport(browser, page, accountKey) {
   niReport("375px: import modal is full-screen", fullScreen === true);
   await page.setViewportSize({ width: 1280, height: 900 });
 
+
+  // ===== #298: close-during-import protection =====
+  // A CSV import is a bulk, atomic writeBatch. If the modal could be dismissed while it
+  // is committing, the write finishes with its UI gone -- no result, no error, no way to
+  // tell whether the rows landed. Every sibling create modal already guards this; this one
+  // passed onClose straight through until #298.
+  //
+  // The window has to be MADE observable: in the emulator a commit is near-instant, so
+  // the "Importing…" state flickers past. CDP latency slows the round trip WITHOUT
+  // breaking Firestore's WebChannel -- a route-intercept delay does break it and silently
+  // loses the write (learned on E6), so it is deliberately not used here.
+  {
+    await page.goto(detailUrl(), { waitUntil: "domcontentloaded", timeout: 20000 });
+    await page.getByRole("heading", { name: F.accountName }).first().waitFor({ timeout: 10000 });
+    const before = await contactCount();
+
+    await importBtn().click();
+    await dialog().waitFor({ timeout: 10000 });
+    await setFile("guarded.csv", "Name,Email\nGuarded Gwen,gwen@csv.test\nHeld Hank,hank@csv.test");
+    await page.getByRole("button", { name: "Validate" }).click();
+    await confirmBtn().waitFor({ timeout: 10000 });
+
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send("Network.enable");
+    await cdp.send("Network.emulateNetworkConditions",
+      { offline: false, latency: 2500, downloadThroughput: -1, uploadThroughput: -1 });
+
+    const importingBtn = () => dialog().getByRole("button", { name: /Importing/ });
+    try {
+      await confirmBtn().click();
+      // The commit is now in flight behind 2.5s of latency.
+      await importingBtn().waitFor({ timeout: 8000 });
+      niReport("#298 the import is genuinely in flight (Importing… shown) -- precondition",
+        await importingBtn().isVisible());
+
+      // Escape must NOT dismiss it.
+      await page.keyboard.press("Escape");
+      await page.waitForTimeout(300);
+      niReport("#298 Escape does not dismiss an active import",
+        (await dialog().count()) === 1 && (await importingBtn().count()) === 1);
+
+      // A backdrop click must NOT dismiss it. mousedown on the backdrop itself is the
+      // path Modal treats as a close request.
+      await page.locator(".fo-modal-backdrop").dispatchEvent("mousedown").catch(() => {});
+      await page.waitForTimeout(300);
+      niReport("#298 a backdrop click does not dismiss an active import",
+        (await dialog().count()) === 1);
+
+      // The ✕ control must NOT dismiss it.
+      await dialog().locator(".fo-modal-close").click().catch(() => {});
+      await page.waitForTimeout(300);
+      niReport("#298 the close (x) control does not dismiss an active import",
+        (await dialog().count()) === 1);
+
+      // Duplicate submit: the confirm control is gone/disabled while importing, so a
+      // second commit cannot be started.
+      niReport("#298 a second import cannot be started mid-commit (no active confirm control)",
+        (await confirmBtn().count()) === 0 || (await confirmBtn().isDisabled().catch(() => true)));
+
+      // Nothing has been written yet -- the guard held the UI, and the commit is still
+      // behind the latency.
+      niReport("#298 nothing is written while the guard holds and the commit is in flight",
+        (await contactCount()) === before, `count moved to ${await contactCount()}`);
+    } finally {
+      await cdp.send("Network.emulateNetworkConditions",
+        { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
+    }
+
+    // With latency removed the commit lands, and the modal closes on its OWN success --
+    // it was never dismissed. The import is atomic: both rows or neither.
+    await dialog().waitFor({ state: "detached", timeout: 15000 });
+    niReport("#298 the modal closes on its own success once the import completes",
+      (await dialog().count()) === 0);
+    niReport("#298 the guarded import committed ATOMICALLY -- both rows landed, none lost",
+      (await contactCount()) === before + 2, `count ${before} -> ${await contactCount()}`);
+    await page.getByText("Guarded Gwen", { exact: false }).first().waitFor({ timeout: 10000 });
+    niReport("#298 the live subscription renders the guarded import",
+      (await page.getByText("Held Hank").first().isVisible()));
+  }
+
   console.log(`\n${niPassed} passed, ${niFailed} failed`);
   return niFailed === 0;
 }
