@@ -134,11 +134,15 @@ export default function AccountsList() {
       {/* Creation overlay -- opens without navigating or moving the dashboard.
           The form catches its own save failures and keeps the overlay open.
           The inline-arrow onClose is DELIBERATE, not sloppy: a fresh identity every
-          render makes this modal a CANARY for #293 (see verify-modal-typing and #302).
-          Modal reads onClose through a ref, so this costs nothing -- but a regression to
-          a [onClose]-keyed focus effect would show up HERE as focus lost mid-type. Do not
-          "tidy" it into a useCallback; that would make the suite immune to the very
-          regression it guards. */}
+          render makes this modal a structural CANARY for #293 (see verify-modal-typing
+          and #302). Modal reads onClose through a ref, so this costs nothing.
+          One honesty caveat, matching the driver's own note: the deterministic typing
+          suite PASSES here even on unfixed main, because AccountForm holds its own state
+          so typing re-renders the form, not AccountsList -- the arrow keeps its identity
+          through the burst. The Location flow is the hard reproducer; the Customer modal
+          was exposed on main only via an AccountsList re-render from a Firestore snapshot
+          mid-type. Still: do not "tidy" this into a useCallback -- it is a real canary,
+          just not the one the suite fails on. */}
       {showCreate && (
         <Modal title="New Customer" onClose={() => setShowCreate(false)}>
           <AccountForm onSubmit={handleCreate} onCancel={() => setShowCreate(false)} submitLabel="Create Customer" />
