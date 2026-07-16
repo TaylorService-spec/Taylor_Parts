@@ -1,7 +1,7 @@
 ---
 artifact_type: deployment-manifest
 gate: Issue #15 production-authorization checkpoint
-status: Audit complete; code/test gaps identified -- closure in progress. NOT deployed; Owner production authorization still required.
+status: Audit complete; code/test gaps closed (part 2). NOT deployed; Owner production authorization still required. Live-state capture (section 5) remains the one gap requiring production credentials.
 date: 2026-07-16
 owner: Claude Code (Inventory)
 related_adrs: [docs/architecture/ADR-002-work-order-engine.md, docs/architecture/ADR-003-inventory-trigger-system.md, docs/architecture/ADR-005-enterprise-authorization-migration-strategy.md]
@@ -79,11 +79,13 @@ The six Enterprise Access callables (`grantRole`, `revokeRole`, `assignApprovedR
 
 **Correction to Issue #15's own recorded deploy steps:** Issue #15's issue body currently instructs `firebase deploy --only firestore:rules` followed by `firebase deploy --only functions` (both **blanket**, unscoped commands). Run today, against current main, `firebase deploy --only functions` would deploy **all nine** functions in the codebase -- Issue #15's three **and** the six Enterprise Access callables together, with no independent per-function control -- and `firebase deploy --only firestore:rules` would push the **entire current `firestore.rules` file**, including every Rules change accumulated since the last confirmed-live deployment (the Issue #226 deny-all blocks, Issue #100 changes, Issue #232 Equipment changes, and more), none of which this audit re-verifies as production-ready. Neither blanket command is authorized by this manifest. Section 3 below replaces them with exact, scoped commands.
 
-## 2. Existing test coverage audit -- confirmed gaps
+## 2. Existing test coverage audit -- confirmed gaps, now closed (part 2)
 
-**Functions:** Zero automated tests exist for `createWorkOrder.ts`, `transitionWorkOrder.ts`, `updateWorkOrderExecutionData.ts`, `woNumbering.ts`, `callerContext.ts`, `inventoryService.ts`, or `transitionEngine.ts` anywhere in `functions/test/` (confirmed: none of the 26 pre-existing files under `functions/test/` reference any of these modules by name).
+**Functions -- CLOSED.** At the time of this audit, zero automated tests existed for `createWorkOrder.ts`, `transitionWorkOrder.ts`, `updateWorkOrderExecutionData.ts`, `woNumbering.ts`, `callerContext.ts`, `inventoryService.ts`, or `transitionEngine.ts` anywhere in `functions/test/` (confirmed: none of the 26 pre-existing files under `functions/test/` reference any of these modules by name). This is now closed: `functions/test/transitionEngine.test.mjs` (24 tests, no emulator needed, merged in PR #317) covers the pure state-machine/permissions module; `functions/test/workOrderEngineFunctions.test.js` (29 tests, live Firestore+Auth emulator) covers `createWorkOrder`/`transitionWorkOrder`/`updateWorkOrderExecutionData` end-to-end, including every documented error path (unauthenticated, wrong role, missing/invalid input, not-found, invalid transition, ownership gate) and the happy paths (real `fieldops_wos` doc creation with a genuine `WO-YYYY-######` number, real status transitions, real `executionLog`/`inventorySnapshot` mutation). `woNumbering.ts` and `callerContext.ts` are exercised indirectly through these same integration tests (both have no independent public surface to test in isolation -- `woNumbering.ts` requires an open transaction, `callerContext.ts` is a single Firestore read already covered by every role-gate test case).
 
-**Rules Regression:** The permanent 8-suite Rules Regression runner (`functions/scripts/rulesRegressionRunner.mjs`, 365 total expected passes) has **zero** coverage of the `fieldops_wos`/`counters`/`inventory_sync_status` Rules blocks -- none of the 8 registered suite files test these collections (confirmed by reading `SUITES` in the runner and grepping all 8 files for these collection names).
+**Rules Regression -- CLOSED.** The permanent Rules Regression runner (`functions/scripts/rulesRegressionRunner.mjs`) had zero coverage of the `fieldops_wos`/`counters`/`inventory_sync_status` Rules blocks across its original 8 suites (365 total expected passes). This is now closed: a 9th permanent suite, `functions/test/workOrderEngineRules.test.js` (20 tests), is registered in `SUITES`, bringing `EXPECTED_TOTAL` to 385. Confirmed via a live run of the full runner: `385 passed, 0 failed (9 suites)`.
+
+**`inventoryService.ts` (Epic 2D post-commit side effect) is NOT separately tested by this closure** -- it is a related but functionally separate module under ADR-003, outside Issue #15's own scope (see section 1.2's note), and is not itself part of this manifest's production-authorization package.
 
 **Frontend mirror:** `field-ops-app-vite/src/domain/workOrderWorkflow.js` (the client-side mirror of `transitionEngine.ts`'s state machine, used for defense-in-depth UI action disabling) has no test file exercising it either (confirmed: no file under `field-ops-app-vite/test/` imports it).
 
@@ -137,12 +139,16 @@ firebase functions:delete createWorkOrder transitionWorkOrder updateWorkOrderExe
 
 Per the Owner's explicit decision (2026-07-16): **Issue #15 must be deployed and verified before Enterprise Access Row 20 proceeds; the "deployed but inert" Enterprise Access callables are not decoupled from this governance gate** (ADR-005 §2.6, Spec §17, unchanged). This manifest's section 1.5 confirms the two surfaces are technically independent (a scoped Issue #15 deploy cannot touch Enterprise Access, and vice versa) -- that technical fact does not itself authorize skipping the sequencing decision above; it only means the two deployments, when both eventually authorized, can be executed and rolled back independently without cross-contamination risk.
 
-## 8. Remaining gaps this manifest does not close (see section 9 for closure plan)
+## 8. Remaining gaps
 
-- No automated Functions test coverage for any of the three Issue #15 Functions or their four shared dependency modules.
-- No Rules Regression coverage for `fieldops_wos`/`counters`/`inventory_sync_status`.
-- No production-verification script analogous to `functions/scripts/productionFoundationVerification.js` exists for Issue #15's own criteria (a smoke-test `createWorkOrder` → read cycle, role-denial checks, etc.) -- Issue #15's body sketches a manual verification procedure but no automated tooling exists yet.
-- The "last-known-good ruleset" baseline needed for a real Rules rollback does not exist yet (section 5).
+Closed by this manifest's part 2 (PR pending independent review at time of writing):
+- ~~No automated Functions test coverage for any of the three Issue #15 Functions or their four shared dependency modules~~ -- closed, see section 2.
+- ~~No Rules Regression coverage for `fieldops_wos`/`counters`/`inventory_sync_status`~~ -- closed, see section 2 (385/385, 9 suites).
+
+Still open, and out of this manifest's reach without production access:
+- No production-verification script analogous to `functions/scripts/productionFoundationVerification.js` exists for Issue #15's own criteria (a smoke-test `createWorkOrder` → read cycle against a real deployed project, role-denial checks against real production, etc.) -- section 6's failure thresholds describe what such a check would need to verify, but no automated tooling exists yet. This is a reasonable next unit of work once Row 20/Issue #15 deployment is actually authorized (mirroring how `productionFoundationVerification.js` was built for Enterprise Access before its own deployment authorization).
+- The "last-known-good ruleset" baseline needed for a real Rules rollback does not exist yet (section 5) -- requires a live, credential-backed query this manifest does not perform.
+- Section 1.4's unresolved item: whether the production Field Ops UI's Work Order features are actually broken today (Issue #15's three Functions not yet deployed) remains unconfirmed without a production query.
 
 ## What this manifest does not do
 
