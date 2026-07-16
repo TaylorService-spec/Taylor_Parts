@@ -257,9 +257,23 @@ export const NAV_DOMAINS = [
     label: "Administration",
     path: "administration",
     subnav: [
+      // Issue #226 Row 10 -- Admin Portal foundation (Spec sec16 MVP surfaces:
+      // Overview, Users, Roles & Permissions, Permission Preview, Audit Logs).
+      // "Overview" is net-new and deliberately does NOT take path "" -- Employees
+      // (docs/implementation-plans/enterprise-access-prototype-reconciliation.md
+      // sec2) keeps its existing index route/legacyKey byte-for-byte untouched, so
+      // the bare /administration URL still resolves to Employees exactly as
+      // before; Overview is reached at /administration/overview like every other
+      // named sub-item. Listed first only for tab-bar display order (array order
+      // has no effect on routing/gating).
+      { key: "overview", label: "Overview", path: "overview" },
       { key: "employees", label: "Employees", path: "", legacyKey: "technicians" },
       { key: "users", label: "Users", path: "users" },
       { key: "rolesPermissions", label: "Roles & Permissions", path: "roles-permissions" },
+      // Net-new per Spec sec16's "permission preview/explanation" MVP surface.
+      // Real read-only content (effective-permission preview render) lands in
+      // Row 11 (Task 16) -- this row only adds the reachable nav slot.
+      { key: "permissionPreview", label: "Permission Preview", path: "permission-preview" },
       { key: "vehicles", label: "Vehicles", path: "vehicles" },
       { key: "regions", label: "Regions", path: "regions" },
       { key: "companySettings", label: "Company Settings", path: "company-settings" },
