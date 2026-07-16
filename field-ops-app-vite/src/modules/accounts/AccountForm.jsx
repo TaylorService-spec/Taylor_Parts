@@ -42,7 +42,7 @@ import { describedBy } from "../../shared/ui/form/fieldA11y";
 // fail-closed behaviour, permission, and write path is unchanged -- this is a
 // presentation-only migration. The `.fo-account-form` class + its two-column
 // grid, `.fo-btn-row`, all control ids and label text are preserved.
-export default function AccountForm({ initialValues, onSubmit, onCancel, submitLabel, contacts = [], contactsLoading = false, contactsError = null }) {
+export default function AccountForm({ initialValues, onSubmit, onCancel, submitLabel, contacts = [], contactsLoading = false, contactsError = null, onSavingChange }) {
   const { user, employeeId: sessionEmployeeId, displayName: sessionDisplayName, loading: authLoading } = useAuth();
   const { byUserId, loading: directoryLoading, error: directoryError } = useEmployeeDirectory();
 
@@ -221,6 +221,13 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
     // return a promise still works (await of a non-thenable resolves).
     submittingRef.current = true;
     setSubmitting(true);
+    // Tell an enclosing overlay (e.g. AccountsList's New Customer Modal) that a save is
+    // in flight, SYNCHRONOUSLY before the await, so a close request that arrives mid-save
+    // -- Escape, ✕, or a backdrop click on the Modal chrome, which the form's own
+    // disabled Cancel button does not intercept -- can be refused (#322). Cleared in
+    // finally alongside the local flags. Optional: callers that render the form inline
+    // (AccountDetail edit) simply pass no callback.
+    onSavingChange?.(true);
     try {
       await onSubmit(payload);
     } catch (err) {
@@ -229,6 +236,7 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
     } finally {
       submittingRef.current = false;
       setSubmitting(false);
+      onSavingChange?.(false);
     }
   }
 

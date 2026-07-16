@@ -2937,6 +2937,76 @@ async function verifyCustomerCreateOverlay(browser, page, accountKey) {
     await dispCtx.close();
   }
 
+
+  // ===== #322: close-during-save protection for the New Customer overlay =====
+  // AccountForm's Cancel + submit buttons are already disabled while saving, but the
+  // Modal chrome (Escape / ✕ / backdrop) routes through AccountsList's onClose, which the
+  // buttons do not intercept. Before #322 a dismissal there let the create finish with its
+  // UI gone -- no result, no error surfaced. The window is made observable with CDP
+  // latency (never a route intercept, which breaks Firestore's WebChannel -- learned E6).
+  {
+    const guardName = `Guarded Customer ${Date.now()}`;
+    const beforeCount = (await db.collection("accounts").get()).size;
+
+    await page.goto(listUrl(), { waitUntil: "domcontentloaded", timeout: 20000 });
+    await page.locator(".fo-portfolio-cards").waitFor({ timeout: 10000 });
+    await newBtn().click();
+    await dialog().waitFor({ timeout: 10000 });
+    await nameInput().fill(guardName);
+
+    // 6s of latency gives the three dismiss attempts below (~900ms of fixed waits plus
+    // overhead) comfortable headroom before the commit could land -- the "nothing written
+    // while the guard holds" check is the tightest-margin assertion here, so it is
+    // deliberately slack, not snug (review finding).
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send("Network.enable");
+    await cdp.send("Network.emulateNetworkConditions",
+      { offline: false, latency: 6000, downloadThroughput: -1, uploadThroughput: -1 });
+
+    const savingBtn = () => dialog().getByRole("button", { name: /Saving/ });
+    try {
+      await page.getByRole("button", { name: "Create Customer" }).click();
+      await savingBtn().waitFor({ timeout: 8000 });
+      niReport("#322 the create is genuinely in flight (Saving… shown) -- precondition",
+        await savingBtn().isVisible());
+
+      await page.keyboard.press("Escape");
+      await page.waitForTimeout(300);
+      niReport("#322 Escape does not dismiss an active create",
+        (await dialog().count()) === 1 && (await savingBtn().count()) === 1);
+
+      await page.locator(".fo-modal-backdrop").dispatchEvent("mousedown").catch(() => {});
+      await page.waitForTimeout(300);
+      niReport("#322 a backdrop click does not dismiss an active create",
+        (await dialog().count()) === 1);
+
+      await dialog().locator(".fo-modal-close").click().catch(() => {});
+      await page.waitForTimeout(300);
+      niReport("#322 the close (x) control does not dismiss an active create",
+        (await dialog().count()) === 1);
+
+      niReport("#322 nothing is written while the guard holds and the create is in flight",
+        (await db.collection("accounts").get()).size === beforeCount,
+        `count moved to ${(await db.collection("accounts").get()).size}`);
+    } finally {
+      await cdp.send("Network.emulateNetworkConditions",
+        { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
+      await cdp.detach().catch(() => {});
+    }
+
+    // Latency removed: the create lands, and the overlay closes on its OWN success --
+    // it was never dismissed.
+    await dialog().waitFor({ state: "detached", timeout: 15000 });
+    niReport("#322 the overlay closes on its own success once the create completes",
+      (await dialog().count()) === 0);
+    const created = await db.collection("accounts").where("name", "==", guardName).get();
+    niReport("#322 the guarded create was persisted exactly once",
+      created.size === 1 && (await db.collection("accounts").get()).size === beforeCount + 1,
+      `matches=${created.size}`);
+    niReport("#322 the new customer appears in the dashboard (live subscription)",
+      await page.getByRole("link", { name: guardName, exact: true }).isVisible().catch(() => false));
+  }
+
   console.log(`\n${niPassed} passed, ${niFailed} failed`);
   return niFailed === 0;
 }

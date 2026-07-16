@@ -56,6 +56,11 @@ export default function AccountsList() {
   const [pendingFocus, setPendingFocus] = useState(null);
   const [announcement, setAnnouncement] = useState("");
   const newRowLinkRef = useRef(null);
+  // Set by AccountForm's onSavingChange while a create is committing. Read synchronously
+  // by the Modal's onClose so Escape / ✕ / backdrop cannot dismiss the overlay mid-save
+  // (#322) -- a ref, not state, so the close handler sees the CURRENT status, not a value
+  // captured on an earlier render.
+  const creatingRef = useRef(false);
 
   const summary = useMemo(() => summarizeAccounts(accounts), [accounts]);
   const allTags = useMemo(() => collectTags(accounts), [accounts]);
@@ -133,19 +138,30 @@ export default function AccountsList() {
 
       {/* Creation overlay -- opens without navigating or moving the dashboard.
           The form catches its own save failures and keeps the overlay open.
-          The inline-arrow onClose is DELIBERATE, not sloppy: a fresh identity every
-          render makes this modal a structural CANARY for #293 (see verify-modal-typing
-          and #302). Modal reads onClose through a ref, so this costs nothing.
-          One honesty caveat, matching the driver's own note: the deterministic typing
-          suite PASSES here even on unfixed main, because AccountForm holds its own state
-          so typing re-renders the form, not AccountsList -- the arrow keeps its identity
-          through the burst. The Location flow is the hard reproducer; the Customer modal
-          was exposed on main only via an AccountsList re-render from a Firestore snapshot
-          mid-type. Still: do not "tidy" this into a useCallback -- it is a real canary,
-          just not the one the suite fails on. */}
+
+          CLOSE-DURING-SAVE GUARD (#322): onClose refuses while a create is committing, so
+          Escape / ✕ / backdrop cannot dismiss the overlay mid-write. The form's own Cancel
+          button is already disabled during save, but the Modal chrome routes through
+          onClose, which the button does not intercept -- so the guard lives here, reading
+          the ref AccountForm sets via onSavingChange.
+
+          Still a #293 CANARY (#302): the guard is a fresh-identity inline arrow every
+          render, exactly as before -- guarding it did not memoize it, so its identity
+          still changes each render and it still exposes a [onClose]-keyed regression.
+          Modal reads onClose through a ref, so this costs nothing. Honesty caveat, per the
+          driver's own note: the deterministic typing suite PASSES here even on unfixed
+          main (AccountForm holds its own state, so typing re-renders the form, not
+          AccountsList, and the arrow keeps its identity through the burst); the Location
+          flow is the hard reproducer. Do NOT "tidy" this into a useCallback -- it is a
+          real canary, just not the one the suite fails on. */}
       {showCreate && (
-        <Modal title="New Customer" onClose={() => setShowCreate(false)}>
-          <AccountForm onSubmit={handleCreate} onCancel={() => setShowCreate(false)} submitLabel="Create Customer" />
+        <Modal title="New Customer" onClose={() => { if (creatingRef.current) return; setShowCreate(false); }}>
+          <AccountForm
+            onSubmit={handleCreate}
+            onCancel={() => setShowCreate(false)}
+            onSavingChange={(v) => { creatingRef.current = v; }}
+            submitLabel="Create Customer"
+          />
         </Modal>
       )}
 
