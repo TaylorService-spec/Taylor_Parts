@@ -38,7 +38,7 @@ employees/{employeeId} {
 
 ## 3. Firestore Rules contract (illustrative — not implemented by this Specification)
 
-Restates Assessment §4/§5.1 as the exact intended `firestore.rules` shape, for a **future, separately-authorized** Rules PR to implement verbatim or adapt:
+Restates Assessment §4/§5 (item 1) as the exact intended `firestore.rules` shape, for a **future, separately-authorized** Rules PR to implement verbatim or adapt:
 
 ```
 // Helper (new, alongside isActiveOperationalRole()):
@@ -70,7 +70,7 @@ match /transfer_orders/{transferOrderId} {
 - **`isAssignedToWarehouse()` re-derives the linked Employee via the existing `linkedEmployeeData()`/`isActiveOperationalRole()` helpers** — no new `get()` call pattern, reusing the exact performance-conscious binding (Issue #100 PR 3a's own "one `get()` per invocation" optimization) those helpers already provide.
 - **`assignedWarehouseIds is list` guard** mirrors this codebase's own established defensive pattern (`operationalRoles is list` inside `isActiveOperationalRole()` itself, `resource.data.operationalRoles is list` in PR #332's own `employees` branch) — fails closed on a malformed/legacy document shape rather than throwing.
 
-## 4. Governed-model contract (Issue #226 layer, future — Assessment §5.2)
+## 4. Governed-model contract (Issue #226 layer, future — Assessment §5 (item 2))
 
 ### 4.1 New `ConditionKind`
 
