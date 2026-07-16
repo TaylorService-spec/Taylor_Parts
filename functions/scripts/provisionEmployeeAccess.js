@@ -25,6 +25,16 @@
 //                                                TOGETHER -- see the securityRole
 //                                                mirror note below)
 //
+// --assignedWarehouseIds (Issue #226 -- WAREHOUSE_MANAGER scoped access,
+// docs/specifications/warehouse-manager-scoped-access.md) is independent
+// of the four cases above -- like --operationalRoles, it is an
+// Employee-side-only field settable in the same invocation as any case,
+// or on its own in a later call (case C-style). Every referenced
+// warehouses/{id} must already exist (checked in phase B/C, see
+// detectConflicts below) -- absent or [] denies every warehouse for
+// that Employee, regardless of role; this script never defaults it to
+// "all warehouses."
+//
 // SECURITY-ROLE MIRROR (Inventory Operational Queue A0, docs/specifications/
 // inventory-operational-queue.md; documented in docs/BusinessEntityModel.md
 // Section 8a) -- employees/{employeeId}.securityRole is a denormalized,
@@ -122,6 +132,8 @@
 //     a DIFFERENT employeeId.
 //   - Any --operationalRoles value outside the governance-approved
 //     set (see VALID_OPERATIONAL_ROLES).
+//   - Any --assignedWarehouseIds value that does not reference an
+//     existing warehouses/{id} document.
 //
 // PROJECT TARGET: no hard-coded default. --projectId is required and
 // fails before any Firebase SDK call. Running against the production
@@ -165,7 +177,7 @@
 //     --projectId taylor-parts --confirmProduction taylor-parts \
 //     --employeeId emp-001 --displayName "Jane Doe" \
 //     [--email jane@example.com] [--securityRole dispatcher] [--operationalRoles PARTS_ASSOCIATE,PARTS_MANAGER] \
-//     [--requireExistingAuthUser]
+//     [--assignedWarehouseIds wh-main,wh-satellite] [--requireExistingAuthUser]
 // (or `gcloud auth application-default login` first, then omit the
 //  env var -- either way you need real credentials for the target
 //  project.)
@@ -196,6 +208,7 @@ const { getFirestore } = require("firebase-admin/firestore");
 
 const EMPLOYEES_COLLECTION = "employees";
 const USERS_COLLECTION = "users";
+const WAREHOUSES_COLLECTION = "warehouses";
 const EMPLOYMENT_STATUS_ACTIVE = "ACTIVE";
 const VALID_SECURITY_ROLES = ["admin", "dispatcher", "technician"];
 
@@ -251,11 +264,42 @@ function normalizeOperationalRoles(raw) {
   return normalized;
 }
 
+// Issue #226 -- WAREHOUSE_MANAGER scoped access (docs/specifications/
+// warehouse-manager-scoped-access.md, Implementation Plan Row A).
+// Unlike normalizeOperationalRoles() above, warehouse IDs are NOT a
+// fixed, governance-approved enum -- they are arbitrary
+// warehouses/{warehouseId} document IDs, so there is no fixed value
+// set to validate against here. Format validation only (trim, drop
+// empties, de-duplicate, preserve first-occurrence order); referential
+// validation (does the warehouse actually exist) happens later in
+// detectConflicts(), against real state read in readCurrentState() --
+// consistent with this file's existing "reads inform conflicts,
+// normalization stays pure" split.
+function normalizeAssignedWarehouseIds(raw) {
+  if (!raw) return undefined;
+  const seen = new Set();
+  const normalized = [];
+  for (const value of raw.split(",").map((w) => w.trim()).filter(Boolean)) {
+    if (!seen.has(value)) {
+      seen.add(value);
+      normalized.push(value);
+    }
+  }
+  return normalized;
+}
+
 // ---------------------------------------------------------------
 // Phase A -- parse and validate input shape. No reads, no writes.
 // ---------------------------------------------------------------
 function validateInput(rawArgs) {
-  const { employeeId, displayName, email, securityRole, operationalRoles: rawOperationalRoles } = rawArgs;
+  const {
+    employeeId,
+    displayName,
+    email,
+    securityRole,
+    operationalRoles: rawOperationalRoles,
+    assignedWarehouseIds: rawAssignedWarehouseIds,
+  } = rawArgs;
   const requireExistingAuthUser = rawArgs.requireExistingAuthUser === "true";
 
   if (!employeeId) {
@@ -277,17 +321,41 @@ function validateInput(rawArgs) {
   // Throws on any invalid role -- the entire command is rejected
   // before any read or write if operationalRoles is malformed.
   const operationalRoles = normalizeOperationalRoles(rawOperationalRoles);
+  const assignedWarehouseIds = normalizeAssignedWarehouseIds(rawAssignedWarehouseIds);
 
-  return { employeeId, displayName, email, securityRole, operationalRoles, requireExistingAuthUser };
+  return {
+    employeeId,
+    displayName,
+    email,
+    securityRole,
+    operationalRoles,
+    assignedWarehouseIds,
+    requireExistingAuthUser,
+  };
 }
 
 // ---------------------------------------------------------------
 // Phase B -- read current state. Reads only, no mutation.
 // ---------------------------------------------------------------
-async function readCurrentState(db, auth, { employeeId, email }) {
+async function readCurrentState(db, auth, { employeeId, email, assignedWarehouseIds }) {
   const employeeRef = db.collection(EMPLOYEES_COLLECTION).doc(employeeId);
   const employeeSnap = await employeeRef.get();
   const employee = employeeSnap.exists ? employeeSnap.data() : null;
+
+  // Referential check for --assignedWarehouseIds: every referenced
+  // warehouses/{id} must actually exist. Read here (phase B), enforced
+  // in detectConflicts (phase C) -- assigning a WAREHOUSE_MANAGER to a
+  // nonexistent warehouse would be silently inert (firestore.rules'
+  // isAssignedToWarehouse() would simply never match that ID), which
+  // this script's "fails loudly, writes nothing" posture does not
+  // permit passing through unnoticed.
+  let missingWarehouseIds = [];
+  if (assignedWarehouseIds && assignedWarehouseIds.length) {
+    const snaps = await Promise.all(
+      assignedWarehouseIds.map((id) => db.collection(WAREHOUSES_COLLECTION).doc(id).get())
+    );
+    missingWarehouseIds = assignedWarehouseIds.filter((id, i) => !snaps[i].exists);
+  }
 
   // The account CURRENTLY linked to this Employee, if any -- read by
   // uid, not by the requested email, so phase C can compare against
@@ -315,7 +383,7 @@ async function readCurrentState(db, auth, { employeeId, email }) {
     targetUserDoc = snap.exists ? snap.data() : null;
   }
 
-  return { employeeRef, employee, linkedUserRecord, targetAuthUser, targetUserDoc };
+  return { employeeRef, employee, linkedUserRecord, targetAuthUser, targetUserDoc, missingWarehouseIds };
 }
 
 // ---------------------------------------------------------------
@@ -324,11 +392,28 @@ async function readCurrentState(db, auth, { employeeId, email }) {
 // having made zero Firestore or Auth writes, because phases D/E never
 // run when this phase throws.
 // ---------------------------------------------------------------
-function detectConflicts({ employeeId, displayName, email, securityRole, requireExistingAuthUser }, state) {
-  const { employee, linkedUserRecord, targetAuthUser, targetUserDoc } = state;
+function detectConflicts(
+  { employeeId, displayName, email, securityRole, assignedWarehouseIds, requireExistingAuthUser },
+  state
+) {
+  const { employee, linkedUserRecord, targetAuthUser, targetUserDoc, missingWarehouseIds } = state;
 
   if (!employee && !displayName) {
     throw new Error(`employees/${employeeId} does not exist yet -- --displayName is required to create it.`);
+  }
+
+  // Issue #226 -- WAREHOUSE_MANAGER scoped access. Every --assignedWarehouseIds
+  // entry must reference a real warehouses/{id} document -- see the
+  // referential read in readCurrentState() above. Checked unconditionally
+  // (not just when --operationalRoles includes WAREHOUSE_MANAGER): this
+  // field is independently settable across separate invocations, same as
+  // --operationalRoles and --securityRole, so a caller may legitimately
+  // assign warehouses before granting the operational role itself.
+  if (assignedWarehouseIds && missingWarehouseIds && missingWarehouseIds.length) {
+    throw new Error(
+      `Warehouse(s) not found: ${missingWarehouseIds.join(", ")}. Refusing to assign a Warehouse Manager to a ` +
+        "nonexistent warehouse -- verify the warehouse ID(s) and that they exist, then re-run."
+    );
   }
 
   // --requireExistingAuthUser's entire purpose: this project's default
@@ -377,7 +462,7 @@ function detectConflicts({ employeeId, displayName, email, securityRole, require
 // object. Pure (no I/O) -- classifies the operation explicitly rather
 // than re-deriving intent from ambiguous state during phase E.
 // ---------------------------------------------------------------
-function buildPlan({ employeeId, displayName, email, securityRole, operationalRoles }, state) {
+function buildPlan({ employeeId, displayName, email, securityRole, operationalRoles, assignedWarehouseIds }, state) {
   const { employee, targetAuthUser } = state;
   const now = Date.now();
 
@@ -394,6 +479,11 @@ function buildPlan({ employeeId, displayName, email, securityRole, operationalRo
           lastName: null,
           employmentStatus: EMPLOYMENT_STATUS_ACTIVE,
           operationalRoles: operationalRoles ?? [],
+          // Issue #226 -- WAREHOUSE_MANAGER scoped access. Absent/empty
+          // denies every warehouse, for any role -- never defaults to
+          // "all warehouses" (docs/specifications/
+          // warehouse-manager-scoped-access.md sec2/sec5).
+          assignedWarehouseIds: assignedWarehouseIds ?? [],
           securityRole: securityRole ?? null,
           companyId: null,
           departmentId: null,
@@ -410,6 +500,12 @@ function buildPlan({ employeeId, displayName, email, securityRole, operationalRo
           if (displayName && displayName !== employee.displayName) updates.displayName = displayName;
           if (operationalRoles && JSON.stringify(operationalRoles) !== JSON.stringify(employee.operationalRoles)) {
             updates.operationalRoles = operationalRoles;
+          }
+          if (
+            assignedWarehouseIds &&
+            JSON.stringify(assignedWarehouseIds) !== JSON.stringify(employee.assignedWarehouseIds)
+          ) {
+            updates.assignedWarehouseIds = assignedWarehouseIds;
           }
           if (securityRole && securityRole !== employee.securityRole) {
             updates.securityRole = securityRole;
@@ -466,6 +562,7 @@ function buildPlan({ employeeId, displayName, email, securityRole, operationalRo
         lastName: null,
         employmentStatus: EMPLOYMENT_STATUS_ACTIVE,
         operationalRoles: operationalRoles ?? [],
+        assignedWarehouseIds: assignedWarehouseIds ?? [],
         securityRole: null,
         companyId: null,
         departmentId: null,
@@ -481,6 +578,12 @@ function buildPlan({ employeeId, displayName, email, securityRole, operationalRo
   if (displayName && displayName !== employee.displayName) updates.displayName = displayName;
   if (operationalRoles && JSON.stringify(operationalRoles) !== JSON.stringify(employee.operationalRoles)) {
     updates.operationalRoles = operationalRoles;
+  }
+  if (
+    assignedWarehouseIds &&
+    JSON.stringify(assignedWarehouseIds) !== JSON.stringify(employee.assignedWarehouseIds)
+  ) {
+    updates.assignedWarehouseIds = assignedWarehouseIds;
   }
   return {
     operation: "UPDATE_EMPLOYEE_ONLY",
@@ -692,7 +795,7 @@ async function main() {
       "Usage: node scripts/provisionEmployeeAccess.js --projectId <id> [--confirmProduction taylor-parts] " +
         "--employeeId <id> [--displayName <name>] [--email <email>] " +
         "[--securityRole admin|dispatcher|technician] [--operationalRoles ROLE1,ROLE2] " +
-        "[--requireExistingAuthUser]"
+        "[--assignedWarehouseIds warehouseId1,warehouseId2] [--requireExistingAuthUser]"
     );
     process.exitCode = 1;
     return;
@@ -722,6 +825,7 @@ async function main() {
     email: args.email,
     securityRole: args.securityRole,
     operationalRoles: args.operationalRoles,
+    assignedWarehouseIds: args.assignedWarehouseIds,
     requireExistingAuthUser: args.requireExistingAuthUser,
   });
 }
@@ -753,10 +857,12 @@ module.exports = {
   buildPlan,
   applyPlan,
   normalizeOperationalRoles,
+  normalizeAssignedWarehouseIds,
   assertProjectTarget,
   VALID_SECURITY_ROLES,
   VALID_OPERATIONAL_ROLES,
   PRODUCTION_PROJECT_ID,
   EMPLOYEES_COLLECTION,
   USERS_COLLECTION,
+  WAREHOUSES_COLLECTION,
 };
