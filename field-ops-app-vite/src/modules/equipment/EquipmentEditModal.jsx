@@ -2,7 +2,10 @@ import { useCallback, useRef, useState } from "react";
 import Modal from "../../shared/ui/Modal";
 import { Field, FormActions, FormError, FormStatus } from "../../shared/ui/form";
 import { describedBy } from "../../shared/ui/form/fieldA11y";
-import { EDITABLE_EQUIPMENT_FIELDS, changedEquipmentFields, trimmedOrNull } from "../../domain/equipment";
+import {
+  EDITABLE_EQUIPMENT_FIELDS, changedEquipmentFields, trimmedOrNull, isRetired,
+} from "../../domain/equipment";
+import { EQUIPMENT_STATUS } from "../../domain/constants";
 
 // Issue #232 unit E8 -- ordinary Equipment editing, on the same shared Modal +
 // form-primitive pattern as EquipmentCreateModal (E6). Close paths are ignored and a
@@ -21,12 +24,18 @@ import { EDITABLE_EQUIPMENT_FIELDS, changedEquipmentFields, trimmedOrNull } from
 // asset with no owner. E1 refuses a governed change, E2 refuses the write, and E3's
 // Rules refuse it server-side; this form simply never asks.
 //
-// STATUS IS DELIBERATELY ABSENT, and this is not an oversight. Spec §3 defines
-// ACTIVE<->INACTIVE as `setStatus` -- a named ACTION whose confirmation is "plain",
-// as opposed to retire's "confirm" -- not a field on this form. Spec §6's "status
-// (ACTIVE<->INACTIVE via the plain path)" names that action's plain path. E10 owns all
-// four lifecycle actions and, per the Owner's E3 decision, resolves the ACTIVE<->INACTIVE
-// path question. Ordinary edit treats status as governed and refuses it.
+// STATUS IS EDITABLE HERE, ACTIVE <-> INACTIVE, with no confirmation (#312, Spec §6/AC3).
+// This form originally omitted it on my reading that §6's "via the plain path" meant an
+// E10 action. That reading was wrong on every count: the Owner's E3 decision assigns
+// ACTIVE<->INACTIVE to the ordinary client edit and gives E10 retire/reactivate ONLY,
+// and our own Rules have always permitted ACTIVE<->INACTIVE on this path -- widened
+// deliberately so "§6 and AC3 pass as written".
+//
+// A RETIRED asset renders its status READ-ONLY while staying descriptively editable
+// (Owner E3 decision 2). Leaving retirement is `reactivate`: a trusted, audited action
+// (E10), not a dropdown choice. Rendering it read-only rather than omitting it keeps the
+// asset's own state visible -- and offering a control that Rules would refuse would be
+// the form promising something it cannot do.
 //
 // RETIRED EQUIPMENT IS EDITABLE HERE, per the Owner's E3 decision (2): ordinary
 // corrections to descriptive fields remain allowed on a retired asset, while status,
@@ -67,6 +76,12 @@ export default function EquipmentEditModal({ equipment, accountName, locationNam
   // record we cannot render, not a value.
   const [values, setValues] = useState(() =>
     Object.fromEntries(EDITABLE_EQUIPMENT_FIELDS.map((f) => [f, trimmedOrNull(base[f]) ?? ""])));
+
+  // Status is not one of EDITABLE_EQUIPMENT_FIELDS -- it is transition-controlled, not a
+  // free-text field -- so it is held separately and compared by the payload builder
+  // against the frozen `base`, which is the only thing that can prove the transition.
+  const statusLocked = isRetired(base);
+  const [status, setStatus] = useState(() => base.status ?? "");
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [saveError, setSaveError] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({});
@@ -111,6 +126,14 @@ export default function EquipmentEditModal({ equipment, accountName, locationNam
     // Against `base`, not the live prop -- see the freeze at the top.
     const changed = changedEquipmentFields(values, base);
 
+    // Send the status only when this form actually offers the control. For a RETIRED
+    // asset it does not, and sending the unchanged value anyway would be the form
+    // asserting a lifecycle state it is not authorised to speak for -- the builder would
+    // read it as "unchanged" and ignore it, but an ordinary edit should not be sending a
+    // field the user cannot see. An unchanged status from the dropdown is likewise not an
+    // edit: buildEquipmentEditPayload compares it to `base` and writes nothing.
+    if (!statusLocked) changed.status = status;
+
     submittingRef.current = true;
     setSubmitting(true);
     try {
@@ -151,6 +174,42 @@ export default function EquipmentEditModal({ equipment, accountName, locationNam
           The customer and location can't be changed here. Use <strong>Move</strong> to install this
           equipment at a different location.
         </p>
+
+        {statusLocked ? (
+          // Read-only, and it says WHY. A greyed-out control with no reason reads as a
+          // bug; naming the action tells the user where the capability actually lives.
+          <div className="fo-field" data-equipment-edit-status-locked>
+            <span className="fo-field-label">Status</span>
+            <p data-equipment-edit-status-value>
+              <strong>Retired</strong>
+              <span className="fo-muted"> — reactivating retired equipment isn&apos;t available here.</span>
+            </p>
+          </div>
+        ) : (
+          <Field
+            id="equipment-edit-status"
+            label="Status"
+            error={fieldErrors.status ?? null}
+            hint="Retiring equipment is a separate action"
+          >
+            <select
+              id="equipment-edit-status"
+              className="fo-wizard-control"
+              value={status}
+              aria-invalid={fieldErrors.status ? true : undefined}
+              aria-describedby={describedBy("equipment-edit-status", { hasHint: true, hasError: Boolean(fieldErrors.status) })}
+              onChange={(e) => {
+                setStatus(e.target.value);
+                setFieldErrors((cur) => (cur.status ? { ...cur, status: undefined } : cur));
+              }}
+            >
+              {/* Only the two the ordinary path may reach. RETIRED is deliberately not an
+                  option: an option Rules would refuse is a promise this form cannot keep. */}
+              <option value={EQUIPMENT_STATUS.ACTIVE}>Active</option>
+              <option value={EQUIPMENT_STATUS.INACTIVE}>Inactive</option>
+            </select>
+          </Field>
+        )}
 
         <Field id="equipment-edit-name" label="Equipment name" required error={nameError} hint="e.g. Rooftop Unit 1">
           <input

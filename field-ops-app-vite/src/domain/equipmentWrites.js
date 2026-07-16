@@ -62,10 +62,32 @@ export async function updateEquipmentWith(store, id, values, { before = {} } = {
     return { ok: false, errors: {}, message: equipmentSaveErrorMessage(null) };
   }
 
-  const { valid, malformed, noop, errors, payload, changedGoverned, unprovableGoverned } =
+  const { valid, malformed, noop, refusedStatus, unprovableStatus,
+          errors, payload, changedGoverned, unprovableGoverned } =
     buildEquipmentEditPayload(values, before, now);
 
   if (malformed) return { ok: false, errors: {}, malformed: true, message: equipmentSaveErrorMessage(null) };
+
+  // #312: a status change this ordinary path may not make -- into or out of RETIRED.
+  // Reported before the governed refusal because it is a DIFFERENT answer: the customer
+  // and location genuinely cannot change here at all, whereas the status can, just not
+  // this way. Telling a user "status can't be changed here" while they are actively
+  // switching ACTIVE->INACTIVE in a dropdown would be false.
+  if (refusedStatus) {
+    return {
+      ok: false,
+      errors: {},
+      refusedStatus: true,
+      // Names the concept and the reason, never a field path, code, or document id.
+      message: "Retiring or reactivating equipment isn't available here. Nothing was saved.",
+    };
+  }
+  // The caller asked to move the status but supplied no readable `before` to prove what
+  // it is moving FROM. Our bug, not the user's -- reported generically, like
+  // unprovableGoverned below.
+  if (unprovableStatus) {
+    return { ok: false, errors: {}, unprovable: true, message: equipmentSaveErrorMessage(null) };
+  }
 
   if (changedGoverned.length > 0) {
     return {
@@ -73,7 +95,9 @@ export async function updateEquipmentWith(store, id, values, { before = {} } = {
       errors: {},
       governedFields: changedGoverned,
       // Safe copy: names the concept, never a field path, code, or document id.
-      message: "Customer, location, and status can't be changed here. Nothing was saved.",
+      // Status is NOT in this list any more (#312) -- an ordinary edit may move it
+      // ACTIVE<->INACTIVE, so saying it cannot be changed here would be a lie.
+      message: "Customer and location can't be changed here. Nothing was saved.",
     };
   }
   // The caller supplied governed fields but no `before` to prove them unchanged. Still

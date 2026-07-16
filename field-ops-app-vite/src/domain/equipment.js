@@ -250,11 +250,42 @@ export function equipmentSaveErrorMessage(err) {
 // these lives in ./equipmentRepository.js; these builders stay here so they are
 // node-testable and so the field policy has exactly one definition.)
 
-// Spec §1/§4: ownership + lifecycle + createdAt are governed. An ORDINARY edit must
-// never change them -- a Location change is only the audited move, and a status
-// change is only an explicit lifecycle action. Rules (E3) re-enforce this
+// Spec §1/§4: ownership + createdAt are GOVERNED. An ORDINARY edit must never change
+// them -- a Location change is only the audited move. Rules (E3) re-enforce this
 // independently; this constant is the client-side single source of that policy.
-export const GOVERNED_EQUIPMENT_FIELDS = Object.freeze(["accountId", "locationId", "status", "createdAt"]);
+//
+// STATUS IS NOT GOVERNED, and this is the #312 correction. It was in this list, so an
+// ordinary edit refused every status change outright -- which contradicted Spec §6, AC3,
+// and the Owner's E3 decision, and contradicted our own Rules, which have always
+// permitted ACTIVE<->INACTIVE on the ordinary update path. Status is instead
+// TRANSITION-CONTROLLED: the ordinary path may move it ACTIVE<->INACTIVE and no further
+// (see ordinaryStatusChangeAllowed). Retire and reactivate remain trusted, audited
+// lifecycle actions (§3/§5, E10) -- that is the whole of what E10 owns here.
+export const GOVERNED_EQUIPMENT_FIELDS = Object.freeze(["accountId", "locationId", "createdAt"]);
+
+// Spec §3 + the Owner's E3 decision: what an ORDINARY edit may do to `status`.
+//
+// This MIRRORS equipmentTransitionAllowed() in firestore.rules exactly, and the two must
+// stay in lockstep -- Rules are the authority, this is the client saying the same thing
+// so a user is told "no" by a control rather than by a rejected write:
+//
+//     unchanged            -> allowed
+//     ACTIVE  <-> INACTIVE -> allowed (plain, no confirmation)
+//     anything -> RETIRED  -> DENIED here; retire is a trusted, audited action (E10)
+//     RETIRED  -> anything -> DENIED here; reactivate is a trusted action (E10)
+//     unknown/missing      -> DENIED; a status we cannot read is not a status we may move
+//
+// A RETIRED asset therefore has a locked status in the ordinary form while staying
+// descriptively editable (Owner E3 decision 2) -- retiring is not a freeze, but leaving
+// retirement is not something you do by picking from a dropdown.
+export function ordinaryStatusChangeAllowed(from, to) {
+  const a = normalizeEquipmentStatus(from);
+  const b = normalizeEquipmentStatus(to);
+  if (a === null || b === null) return false;
+  if (a === b) return true;
+  return (a === EQUIPMENT_STATUS.ACTIVE && b === EQUIPMENT_STATUS.INACTIVE)
+      || (a === EQUIPMENT_STATUS.INACTIVE && b === EQUIPMENT_STATUS.ACTIVE);
+}
 
 // Everything an ordinary edit MAY change (Spec §6: descriptive/optional fields).
 export const EDITABLE_EQUIPMENT_FIELDS = Object.freeze([
@@ -410,6 +441,8 @@ export function buildEquipmentEditPayload(values = {}, before = {}, now = 0) {
       valid: false,
       malformed: true,
       noop: false,
+      refusedStatus: false,
+      unprovableStatus: false,
       errors: {},
       payload: null,
       changedGoverned: [],
@@ -422,10 +455,11 @@ export function buildEquipmentEditPayload(values = {}, before = {}, now = 0) {
   // passes when it has no prior record -- and it means "I cannot prove anything". So
   // unreadable evidence collapses to that same no-evidence case rather than becoming a
   // separate error: absent, null and malformed all prove nothing, and saying so once is
-  // the consistent contract. This stays fail-closed where it matters, because the
-  // governed loop below reports any governed field it cannot prove unchanged as
-  // `unprovableGoverned`, which the caller refuses. A descriptive-only edit needs no
-  // evidence and proceeds, exactly as it does today with `before = {}`.
+  // the consistent contract. This stays fail-closed where it matters: the governed loop
+  // reports any governed field it cannot prove unchanged as `unprovableGoverned`, and
+  // (#312) a status change against unreadable evidence is refused outright, since a
+  // transition cannot be checked without knowing the status it starts from. A
+  // descriptive-only edit needs no evidence and proceeds, exactly as with `before = {}`.
   if (!isRecord(before)) before = {};
 
   const normalized = normalizeEquipmentInput(values);
@@ -439,6 +473,33 @@ export function buildEquipmentEditPayload(values = {}, before = {}, now = 0) {
   // reason -- but the REASON is reported separately below, because a governed-only edit
   // is a different thing from an empty one and the two owe the user different answers.
   const editedKeys = EDITABLE_EQUIPMENT_FIELDS.filter((f) => values[f] !== undefined);
+
+  // STATUS (#312): transition-controlled, not governed and not an ordinary field.
+  //
+  //   not supplied      -> unchanged; nothing to check
+  //   unrecognized      -> a FIELD error; the form has a status control to highlight
+  //   same as `before`  -> not an edit; a re-submitted unchanged value writes nothing
+  //   ACTIVE <-> INACTIVE -> a real edit, written through this ordinary path
+  //   anything else     -> REFUSED (`refusedStatus`), not a field error: retire and
+  //                        reactivate are trusted actions, so this is "not available
+  //                        here", not "you typed it wrong" -- and for a RETIRED asset
+  //                        the form does not even render the control.
+  //   `before` unreadable -> `unprovableStatus`: a transition cannot be validated
+  //                        without the status it starts from, so it fails closed. This
+  //                        is what makes `before` LOAD-BEARING in the edit path for the
+  //                        first time; it was defensive-only while status was governed.
+  let statusChange = null;
+  let refusedStatus = false;
+  let unprovableStatus = false;
+  if (values.status !== undefined) {
+    const asked = normalizeEquipmentStatus(values.status);
+    const current = normalizeEquipmentStatus(before.status);
+    if (asked === null) errors.status = "Select a valid status.";
+    else if (current === null) unprovableStatus = true;
+    else if (asked === current) { /* unchanged -- not an edit, and not an error */ }
+    else if (ordinaryStatusChangeAllowed(current, asked)) statusChange = asked;
+    else refusedStatus = true;
+  }
 
   const changedGoverned = [];
   const unprovableGoverned = [];
@@ -454,12 +515,17 @@ export function buildEquipmentEditPayload(values = {}, before = {}, now = 0) {
   for (const f of EDITABLE_EQUIPMENT_FIELDS) {
     if (values[f] !== undefined) payload[f] = normalized[f];
   }
+  // Only an actual transition reaches the payload -- never an unchanged status, which
+  // would rewrite the field and bump updatedAt for a change nobody made.
+  if (statusChange !== null) payload.status = statusChange;
 
   // "Nothing was changed" means exactly that: no editable field, AND no governed field
   // attempted. A caller asking to move an Account touched something real -- refusing it
   // as an empty edit would tell them the opposite of what they just did. That refusal
   // is `changedGoverned`'s to report, not this one's.
-  const noop = editedKeys.length === 0 && changedGoverned.length === 0 && unprovableGoverned.length === 0;
+  const noop = editedKeys.length === 0 && statusChange === null
+    && changedGoverned.length === 0 && unprovableGoverned.length === 0
+    && !refusedStatus && !unprovableStatus;
 
   // `valid` means "this payload may be written" -- nothing weaker. A governed attempt
   // makes the WHOLE edit invalid, even when it also carries a legitimate rename.
@@ -473,14 +539,18 @@ export function buildEquipmentEditPayload(values = {}, before = {}, now = 0) {
   // but E8 is a new caller and `valid` must not be a trap that only some callers dodge.
   const valid =
     Object.keys(errors).length === 0 &&
-    editedKeys.length > 0 &&
+    (editedKeys.length > 0 || statusChange !== null) &&
     changedGoverned.length === 0 &&
-    unprovableGoverned.length === 0;
+    unprovableGoverned.length === 0 &&
+    !refusedStatus &&
+    !unprovableStatus;
 
   return {
     valid,
     malformed: false,
     noop,
+    refusedStatus,
+    unprovableStatus,
     errors,
     payload: valid ? payload : null,
     changedGoverned,

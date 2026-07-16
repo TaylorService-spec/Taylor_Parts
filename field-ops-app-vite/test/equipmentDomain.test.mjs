@@ -13,7 +13,7 @@ import {
   equipmentMatchesSearch, compareEquipment, searchEquipment,
   equipmentServiceHistory, groupServiceHistoryByYear,
   GOVERNED_EQUIPMENT_FIELDS,
-  buildEquipmentCreatePayload, buildEquipmentEditPayload,
+  buildEquipmentCreatePayload, buildEquipmentEditPayload, ordinaryStatusChangeAllowed,
   trustedActionUnavailable, TRUSTED_ACTION_UNAVAILABLE_REASON,
 } from "../src/domain/equipment.js";
 
@@ -469,8 +469,15 @@ ok("edit refuses an attempted governed change instead of silently dropping it", 
   const moved = buildEquipmentEditPayload({ ...before, locationId: "l2" }, before, 1);
   assert.deepEqual(moved.changedGoverned, ["locationId"], "a Location change is the audited move, not an edit");
 
-  const restatused = buildEquipmentEditPayload({ ...before, status: "RETIRED" }, before, 1);
-  assert.deepEqual(restatused.changedGoverned, ["status"], "a status change is an explicit lifecycle action");
+  // #312: status is no longer GOVERNED -- an ordinary edit may move it ACTIVE<->INACTIVE.
+  // Retiring is still refused here, but as `refusedStatus`, not as a governed change:
+  // "not available here" and "cannot change here at all" are different answers, and the
+  // status can change here.
+  const retiring = buildEquipmentEditPayload({ ...before, status: "RETIRED" }, before, 1);
+  assert.deepEqual(retiring.changedGoverned, [], "status is not a governed field (#312)");
+  assert.equal(retiring.refusedStatus, true, "retiring is a trusted lifecycle action (E10)");
+  assert.equal(retiring.valid, false);
+  assert.equal(retiring.payload, null);
 
   const reowned = buildEquipmentEditPayload({ ...before, accountId: "a2", locationId: "l9" }, before, 1);
   assert.deepEqual(reowned.changedGoverned, ["accountId", "locationId"]);
@@ -746,8 +753,7 @@ ok("#287 `valid` never coexists with a governed attempt, even alongside a real e
   // move, and reports success. `valid` must mean "this payload may be written", with no
   // caveats a caller has to know to check.
   for (const governed of [
-    { accountId: "acct-2" }, { locationId: "loc-2" },
-    { status: "RETIRED" }, { createdAt: 123 },
+    { accountId: "acct-2" }, { locationId: "loc-2" }, { createdAt: 123 },
   ]) {
     const r = buildEquipmentEditPayload({ name: "Walk-in Freezer", ...governed }, before, 7);
     assert.equal(r.valid, false, `valid must be false alongside ${Object.keys(governed)[0]}`);
@@ -756,6 +762,14 @@ ok("#287 `valid` never coexists with a governed attempt, even alongside a real e
     assert.ok(r.changedGoverned.length > 0 || r.unprovableGoverned.length > 0,
       "and the governed attempt is still reported, not swallowed");
   }
+
+  // #312: a REFUSED status carries the same rule -- a legitimate rename beside an
+  // attempt to retire does not get through on a technicality.
+  const retiring = buildEquipmentEditPayload({ name: "Walk-in Freezer", status: "RETIRED" }, before, 7);
+  assert.equal(retiring.valid, false, "valid must be false alongside a retire attempt");
+  assert.equal(retiring.payload, null);
+  assert.equal(retiring.refusedStatus, true);
+  assert.equal(retiring.noop, false, "the user did touch something");
 
   // Unprovable governed (no evidence) must refuse the whole edit the same way -- the
   // legitimate rename does not get through on a technicality.
@@ -823,16 +837,21 @@ ok("#287 both builders return the same shape on every path", () => {
     buildEquipmentEditPayload({}, before, 1),                   // no-op
     buildEquipmentEditPayload({ name: "   " }, before, 1),      // field error
     buildEquipmentEditPayload({ accountId: "acct-2" }, before, 1), // governed
+    buildEquipmentEditPayload({ status: "RETIRED" }, before, 1),   // refused status (#312)
+    buildEquipmentEditPayload({ status: "INACTIVE" }, {}, 1),      // unprovable status (#312)
+    buildEquipmentEditPayload({ status: "INACTIVE" }, before, 1),  // status transition (#312)
     buildEquipmentEditPayload({ name: "New" }, before, 1),      // success
   ];
   for (const r of editPaths) {
     assert.deepEqual(Object.keys(r).sort(),
-      ["changedGoverned", "errors", "malformed", "noop", "payload", "unprovableGoverned", "valid"]);
-    for (const flag of ["valid", "malformed", "noop"]) {
+      ["changedGoverned", "errors", "malformed", "noop", "payload", "refusedStatus",
+       "unprovableGoverned", "unprovableStatus", "valid"]);
+    for (const flag of ["valid", "malformed", "noop", "refusedStatus", "unprovableStatus"]) {
       assert.equal(typeof r[flag], "boolean", `${flag} is never absent`);
     }
   }
-  assert.equal(editPaths[4].valid, true, "the success path must actually succeed");
+  assert.equal(editPaths[7].valid, true, "the success path must actually succeed");
+  assert.equal(editPaths[6].valid, true, "an ACTIVE->INACTIVE transition is an ordinary edit (#312)");
 });
 
 ok("#287 refusal copy is safe and blames no field it cannot highlight", () => {
@@ -864,6 +883,137 @@ ok("#287 refusal copy is safe and blames no field it cannot highlight", () => {
   assert.deepEqual(buildEquipmentEditPayload({}, before, 1).errors, {});
   // ...while a genuine field mistake still names its field, so E8 can highlight it.
   assert.ok(buildEquipmentEditPayload({ name: "   " }, before, 1).errors.name);
+});
+
+
+// ---- #312: status is transition-controlled, not governed --------------------
+
+ok("#312 ordinaryStatusChangeAllowed mirrors the Rules helper exactly", () => {
+  // firestore.rules equipmentTransitionAllowed(before, after):
+  //   both valid && (after == before || ACTIVE->INACTIVE || INACTIVE->ACTIVE)
+  // If these two ever disagree, a user is told "yes" by a control and "no" by the write.
+  const A = EQUIPMENT_STATUS.ACTIVE, I = EQUIPMENT_STATUS.INACTIVE, R = EQUIPMENT_STATUS.RETIRED;
+  assert.equal(ordinaryStatusChangeAllowed(A, I), true);
+  assert.equal(ordinaryStatusChangeAllowed(I, A), true);
+  for (const s of [A, I, R]) {
+    assert.equal(ordinaryStatusChangeAllowed(s, s), true, `${s} unchanged is allowed`);
+  }
+  // Everything touching RETIRED is a trusted lifecycle action (E10), never this path.
+  assert.equal(ordinaryStatusChangeAllowed(A, R), false, "retiring is not an ordinary edit");
+  assert.equal(ordinaryStatusChangeAllowed(I, R), false, "retiring is not an ordinary edit");
+  assert.equal(ordinaryStatusChangeAllowed(R, A), false, "reactivating is not an ordinary edit");
+  assert.equal(ordinaryStatusChangeAllowed(R, I), false, "a retired asset does not go to INACTIVE");
+  // A status we cannot read is not a status we may move.
+  for (const bad of [null, undefined, "", "BOGUS", 5, {}, []]) {
+    assert.equal(ordinaryStatusChangeAllowed(bad, A), false, `from ${String(bad)} must be refused`);
+    assert.equal(ordinaryStatusChangeAllowed(A, bad), false, `to ${String(bad)} must be refused`);
+    // BOTH sides unreadable is the pair the null guard actually decides: two unreadable
+    // statuses are `a === b` and would read as "unchanged, allowed" without it. Testing
+    // only (bad, valid) and (valid, bad) leaves that guard unpinned -- it survived
+    // mutation until this line existed.
+    assert.equal(ordinaryStatusChangeAllowed(bad, bad), false,
+      `two unreadable statuses (${String(bad)}) are not "unchanged"`);
+  }
+  // Case/padding normalize, like every other status read in this module.
+  assert.equal(ordinaryStatusChangeAllowed(" active ", "inactive"), true);
+});
+
+ok("#312 status is NOT a governed field -- an ordinary edit may move it ACTIVE<->INACTIVE", () => {
+  assert.equal(GOVERNED_EQUIPMENT_FIELDS.includes("status"), false,
+    "status left the governed set; ownership and createdAt did not");
+  assert.deepEqual([...GOVERNED_EQUIPMENT_FIELDS].sort(), ["accountId", "createdAt", "locationId"]);
+
+  for (const [from, to] of [["ACTIVE", "INACTIVE"], ["INACTIVE", "ACTIVE"]]) {
+    const before = { accountId: "a1", locationId: "l1", name: "Unit", status: from };
+    const r = buildEquipmentEditPayload({ status: to }, before, 7);
+    assert.equal(r.valid, true, `${from} -> ${to} is an ordinary edit`);
+    assert.deepEqual(r.payload, { status: to, updatedAt: 7 }, "only the status and the timestamp");
+    assert.deepEqual(r.changedGoverned, [], "status is not governed");
+    assert.equal(r.refusedStatus, false);
+    assert.equal(r.noop, false);
+  }
+});
+
+ok("#312 an UNCHANGED status is not an edit -- it writes nothing", () => {
+  // The form re-submits whatever the dropdown holds, so the overwhelmingly common case is
+  // a status that did not move. Writing it would bump updatedAt for a change nobody made
+  // and make #287's "nothing was changed" unreachable the moment a status control exists.
+  for (const s of ["ACTIVE", "INACTIVE", "RETIRED"]) {
+    const before = { accountId: "a1", locationId: "l1", name: "Unit", status: s };
+    const r = buildEquipmentEditPayload({ status: s }, before, 7);
+    assert.equal(r.valid, false);
+    assert.equal(r.noop, true, `an unchanged ${s} is a no-op`);
+    assert.equal(r.payload, null);
+    assert.equal(r.refusedStatus, false, "unchanged is allowed, not refused");
+  }
+  // ...and it normalizes: a round-tripped " active " is still unchanged.
+  const before = { accountId: "a1", locationId: "l1", name: "Unit", status: "ACTIVE" };
+  assert.equal(buildEquipmentEditPayload({ status: " active " }, before, 7).noop, true);
+  // A descriptive edit alongside an unchanged status still writes -- and writes only the
+  // descriptive field.
+  const withName = buildEquipmentEditPayload({ name: "Renamed", status: "ACTIVE" }, before, 7);
+  assert.equal(withName.valid, true);
+  assert.deepEqual(withName.payload, { name: "Renamed", updatedAt: 7 }, "no status in the payload");
+});
+
+ok("#312 RETIRED is locked in the ordinary path, and descriptive editing survives", () => {
+  const retired = { accountId: "a1", locationId: "l1", name: "Unit", status: "RETIRED" };
+  for (const to of ["ACTIVE", "INACTIVE"]) {
+    const r = buildEquipmentEditPayload({ status: to }, retired, 7);
+    assert.equal(r.valid, false, `RETIRED -> ${to} is a trusted action, not an ordinary edit`);
+    assert.equal(r.payload, null);
+    assert.equal(r.refusedStatus, true);
+    assert.deepEqual(r.errors, {}, "not a field error -- the form does not offer the control");
+    assert.deepEqual(r.changedGoverned, [], "and not a governed refusal either");
+  }
+  // Retiring an ACTIVE/INACTIVE asset is equally not this path's to do.
+  for (const from of ["ACTIVE", "INACTIVE"]) {
+    const r = buildEquipmentEditPayload({ status: "RETIRED" }, { ...retired, status: from }, 7);
+    assert.equal(r.refusedStatus, true, `${from} -> RETIRED is the trusted retire action`);
+    assert.equal(r.valid, false);
+  }
+  // Owner E3 decision (2): descriptive corrections stay legal on a retired asset.
+  const fixed = buildEquipmentEditPayload({ serialNumber: "SN-CORRECTED" }, retired, 7);
+  assert.equal(fixed.valid, true, "retiring is not a freeze");
+  assert.deepEqual(fixed.payload, { serialNumber: "SN-CORRECTED", updatedAt: 7 });
+  assert.equal("status" in fixed.payload, false, "and the status is not touched");
+});
+
+ok("#312 a status change needs a readable `before` -- a transition has a FROM", () => {
+  // This is what makes `before` LOAD-BEARING in the edit path. Without it, ACTIVE->INACTIVE
+  // and RETIRED->INACTIVE are the same request, and one of them is a trusted action.
+  for (const noEvidence of [{}, { name: "Unit" }, { status: "BOGUS" }, { status: null }]) {
+    const r = buildEquipmentEditPayload({ status: "INACTIVE" }, noEvidence, 7);
+    assert.equal(r.valid, false, "an unprovable transition must not be written");
+    assert.equal(r.payload, null);
+    assert.equal(r.unprovableStatus, true);
+    assert.equal(r.noop, false, "the caller asked for something -- this is not an empty edit");
+  }
+  // An unreadable `before` (not just an empty one) is the same answer.
+  assert.equal(buildEquipmentEditPayload({ status: "INACTIVE" }, "garbage", 7).unprovableStatus, true);
+
+  // THE MIXED CASE, and the one that makes `!unprovableStatus` load-bearing in `valid`.
+  // A status change asked for alongside a legitimate rename: without the conjunct the
+  // rename is valid, the payload carries { name, updatedAt }, the status change is
+  // silently DROPPED, and the caller is told it saved. Same partial-success shape #287
+  // refused for governed fields -- and, like that one, invisible to a test that only
+  // exercises the status in isolation (where editedKeys is empty and `valid` is false
+  // for an unrelated reason).
+  const mixed = buildEquipmentEditPayload({ name: "New", status: "INACTIVE" }, {}, 7);
+  assert.equal(mixed.valid, false, "an unprovable status must refuse the whole edit");
+  assert.equal(mixed.payload, null, "including the rename beside it");
+  assert.equal(mixed.unprovableStatus, true);
+});
+
+ok("#312 an unrecognized status is a FIELD error -- the form has a control to highlight", () => {
+  const before = { accountId: "a1", locationId: "l1", name: "Unit", status: "ACTIVE" };
+  for (const bad of ["BOGUS", "", "  ", 5, null, {}]) {
+    const r = buildEquipmentEditPayload({ status: bad }, before, 7);
+    assert.equal(r.valid, false, `status=${String(bad)} must be refused`);
+    assert.equal(r.payload, null);
+    assert.ok(r.errors.status, "names the status field, which the form renders as a select");
+    assert.equal(r.refusedStatus, false, "a typo is not a trusted-action boundary");
+  }
 });
 
 console.log(`\n${passed} passed, 0 failed`);
