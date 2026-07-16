@@ -1,7 +1,7 @@
 ---
 artifact_type: verification-plan
 gate: Row 21 -- Production Foundation Verification
-status: Tooling prepared and tested against the emulator -- NOT yet run against production; depends on Row 20 (deployment)
+status: Tooling merged via PR #315 (commit 549a7a5271df09acca8cdf3c219710a3df42e79f) and verified against the emulator -- NOT yet run against production; depends on Row 20 (deployment)
 date: 2026-07-16
 owner: Claude Code (Inventory)
 related_adrs: [docs/architecture/ADR-005-enterprise-authorization-migration-strategy.md]
@@ -69,4 +69,4 @@ A failed verification (any criterion `pass: false`) is itself the signal to invo
 
 ## Local (emulator) test evidence for this plan
 
-Before this plan is used against production, `functions/scripts/productionFoundationVerification.js` must be exercised against the Firestore+Auth emulator (not the Functions emulator, since `checkUnauthenticatedRejection`/`checkFunctionsDeployed` are inherently only meaningful against a real deployed project -- those two checks are expected to report `unreachable`/absent in an emulator-only run, which is correct and does not indicate a defect in the script). The S1/S3/S4/S5 fixture-based checks exercise the real `trustedWriterCommands.ts` functions against live Firestore+Auth and must show `pass: true` for each before this PR merges -- see the PR that introduced this file for the actual recorded run output (this document is written before that run completes and does not itself assert the run already passed).
+Before this plan is used against production, `functions/scripts/productionFoundationVerification.js` must be exercised against the Firestore+Auth emulator (not the Functions emulator, since `checkUnauthenticatedRejection`/`checkFunctionsDeployed` are inherently only meaningful against a real deployed project -- those two checks are expected to report `unreachable`/absent in an emulator-only run, which is correct and does not indicate a defect in the script). The S1/S3/S4/S5 fixture-based checks exercise the real `trustedWriterCommands.ts` functions against live Firestore+Auth and must show `pass: true` for each before this PR merges -- per PR #315's (commit `549a7a5271df09acca8cdf3c219710a3df42e79f`) recorded test plan and the session's own live emulator run at merge time: `s1FailClosedMissing`, `s1FailClosedStale`, `s4SelfElevation`, `s4NonPrivilegedApprover`, `s3ClaimsShape`, `s5AuditImmutable`, and `s5AuditSecretFree` all `pass: true`, exit code 0. (This run's raw JSON output is not separately archived as a PR artifact; it is recorded here and in the merging session's own transcript.)
