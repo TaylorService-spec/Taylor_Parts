@@ -71,6 +71,8 @@ Because column projection, predicate application, grouping, and aggregation are 
 
 **Results are never cached across principals.** Any execution-result cache the engine keeps must be keyed to the *runner's* resolved access set and `accessVersion`, so a projection computed for a higher-privileged principal can never be served to a lower-privileged one — the cache must not become a side channel around re-evaluation.
 
+A widened result (from a dropped predicate) stays bounded by the execution limits of §2.8 — widening never becomes an unbounded scan — and, when widening pushes a result past the row cap, the runner must be shown that the result is both **widened and truncated** so it is not read as the author's authoritative report. The exact presentation is a Specification concern; the architectural requirement is only that widening is bounded and disclosed.
+
 ### 2.5 Relationships are predefined, governed, and bounded to one hop at first activation (D5)
 
 Related-object columns come only from the **relationship catalog** (§2.2). **No arbitrary joins.** The first activation wave permits **bounded one-hop** traversals only (e.g. Equipment's Location name); deeper traversal is a later, separately-reviewed capability. A traversal never widens field visibility beyond what the traversed object's own field capabilities allow — the projected columns from a related object are authorized by *that object's* field capabilities, evaluated for the same runner.
