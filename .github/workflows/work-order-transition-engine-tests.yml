@@ -1,0 +1,54 @@
+name: Work Order Transition Engine Tests
+
+# Issue #15 production-readiness closeout -- unit tests for
+# functions/src/transitionEngine.ts, the Work Order Engine's pure
+# state-machine/permissions module. No Firestore/Auth emulator needed:
+# the module under test performs no Firestore access by design.
+
+on:
+  pull_request:
+    paths:
+      - "functions/src/transitionEngine.ts"
+      - "functions/src/types/workOrder.ts"
+      - "functions/src/callerContext.ts"
+      - "functions/test/transitionEngine.test.mjs"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - ".github/workflows/work-order-transition-engine-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/src/transitionEngine.ts"
+      - "functions/src/types/workOrder.ts"
+      - "functions/src/callerContext.ts"
+      - "functions/test/transitionEngine.test.mjs"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - ".github/workflows/work-order-transition-engine-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  transition-engine-tests:
+    name: transitionEngine state-machine/permissions tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+
+      - name: transitionEngine tests (build + run)
+        run: npm run test:transitionEngine
+        working-directory: functions
