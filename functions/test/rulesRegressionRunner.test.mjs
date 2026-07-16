@@ -174,12 +174,20 @@ ok("6b. descendantPids returns only the owned root's descendants by PID", () => 
 // (Issue #15 production-readiness closeout, part 2) when
 // workOrderEngineRules.test.js added 20 assertions proving fieldops_wos/
 // counters/inventory_sync_status are unconditionally closed to direct
-// client writes and fieldops_wos reads are role/ownership-scoped. This
-// self-test's own literal sanity-check is updated to match, same as it
+// client writes and fieldops_wos reads are role/ownership-scoped, then from
+// 385 to 406 (Issue #226 WAREHOUSE_MANAGER scoped access, Implementation
+// Plan Row B) when warehouseManagerScopedAccessRules.test.js added 21
+// assertions proving the new isAssignedToWarehouse() additive read arms on
+// warehouses/stock_locations/transfer_orders: admin/dispatcher unaffected,
+// a scoped manager reads only their assigned warehouse(s) (both
+// transfer_orders endpoints), and every fail-closed case (missing/inactive/
+// unlinked Employee, wrong operational role, missing/empty/malformed
+// assignedWarehouseIds) denies -- write posture (Admin-SDK-only) unchanged.
+// This self-test's own literal sanity-check is updated to match, same as it
 // must be updated any time SUITES' expected counts change -- a deliberate
 // hardcoded cross-check that EXPECTED_TOTAL wasn't silently miscomputed,
 // not a value that should ever drift unnoticed.
-await okAsync("7. a fully-passing run reports exactly 385 passed, 0 failed", async () => {
+await okAsync("7. a fully-passing run reports exactly 406 passed, 0 failed", async () => {
   const byFile = new Map(SUITES.map((s) => [s.file, s.expected]));
   const lines = [];
   const r = await runAll({
@@ -195,8 +203,8 @@ await okAsync("7. a fully-passing run reports exactly 385 passed, 0 failed", asy
   assert.equal(r.ok, true);
   assert.equal(r.code, 0);
   assert.equal(r.totalPassed, EXPECTED_TOTAL);
-  assert.equal(EXPECTED_TOTAL, 385);
-  assert.ok(lines.some((l) => /385 passed, 0 failed/.test(l)), "summary must state 385 passed, 0 failed");
+  assert.equal(EXPECTED_TOTAL, 406);
+  assert.ok(lines.some((l) => /406 passed, 0 failed/.test(l)), "summary must state 406 passed, 0 failed");
   // parseSuiteResult correctness (count-mismatch and failed>0 both fail).
   assert.equal(parseSuiteResult("10 passed, 0 failed", 10).ok, true);
   assert.equal(parseSuiteResult("9 passed, 0 failed", 10).ok, false);
