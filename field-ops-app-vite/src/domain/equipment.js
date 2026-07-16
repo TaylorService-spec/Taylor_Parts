@@ -80,21 +80,23 @@ function isNonEmptyString(value) {
 //    null/undefined  -> not a record
 //    string/number/boolean/array/Map/Date/class instance -> not a record
 //
-// The prototype test carries the whole contract, including arrays: an Array, Map, Date
-// or class instance each has its own prototype, so none of them is Object.prototype.
-// That matters most for the types that would otherwise slip through -- `[].accountId`
-// and `new Foo().accountId` are `undefined` rather than an error, so a check that only
-// asked "typeof === object" would read them as a record full of blanks. A
-// null-prototype object IS accepted: `Object.create(null)` is what some deserializers
-// hand back, and it is readable in exactly the way that matters here.
+// Both tests below are load-bearing, and neither subsumes the other:
+//   - The PROTOTYPE test rejects Map, Date and class instances, whose `.accountId` is
+//     `undefined` rather than an error -- exactly how they slip past a check that only
+//     asks "typeof === object" and get read as a record full of blanks. It accepts a
+//     null prototype, because `Object.create(null)` is what some deserializers hand
+//     back and it is readable in the way that matters here.
+//   - Array.isArray is NOT redundant with it. `Object.setPrototypeOf([], Object.prototype)`
+//     is still a real array yet passes the prototype test, so dropping this line lets an
+//     array carrying a `name` produce a valid edit payload. Removing it as "dead code"
+//     is a mistake this module has already made once, in review of #287.
 //
-// The COLLECTION helpers (searchEquipment, locationsForAccount, equipmentServiceHistory,
-// groupServiceHistoryByYear) return [] for a non-array -- see #285/#286. Together those
-// are the module's two boundary rules, and this comment is the only place they are
-// stated side by side: collections answer "nothing", records answer "invalid". Neither
-// throws, and neither guesses.
+// This is also the single type test for the searchEquipment options bag (#285/#286),
+// which previously had a byte-identical private copy. Collections answer "nothing" ([])
+// and records answer "invalid" -- but that difference lives in the callers, not in two
+// copies of the same question that can drift apart.
 function isRecord(value) {
-  if (typeof value !== "object" || value === null) return false;
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
   const proto = Object.getPrototypeOf(value);
   return proto === Object.prototype || proto === null;
 }
@@ -260,10 +262,11 @@ export const EDITABLE_EQUIPMENT_FIELDS = Object.freeze([
 export function buildEquipmentCreatePayload(values = {}, now = 0) {
   // A non-record is refused explicitly rather than reaching validateEquipmentInput.
   // It would be rejected there anyway (normalize yields all-null, so accountId /
-  // locationId / name all error), but saying so here means the caller gets one clear
-  // reason instead of three field errors about fields they never supplied.
+  // locationId / name all error), but those would be field errors blaming the user for
+  // three fields they never supplied. `malformed` says what is actually true: the
+  // caller handed us something unreadable, and no control on the form can fix it.
   if (!isRecord(values)) {
-    return { valid: false, errors: { input: "Could not read the equipment to save." }, payload: null };
+    return { valid: false, malformed: true, errors: {}, payload: null };
   }
 
   const { errors, value } = validateEquipmentInput(values);
@@ -320,10 +323,16 @@ export function buildEquipmentEditPayload(values = {}, before = {}, now = 0) {
   // { updatedAt: 1 } }: every editable key was absent from the string, so nothing was
   // written except a timestamp -- and the caller was told the edit SUCCEEDED. An edit
   // that changed nothing must never look like an edit that worked.
+  // Reported as `malformed`, NOT as a field error. A malformed `values` is a CALLER
+  // bug: there is no field the user could correct, so a { field: message } entry would
+  // send E8 looking for a control to highlight and find none. Same reasoning, and the
+  // same shape, as `unprovableGoverned` below.
   if (!isRecord(values)) {
     return {
       valid: false,
-      errors: { input: "Could not read the changes to save." },
+      malformed: true,
+      noop: false,
+      errors: {},
       payload: null,
       changedGoverned: [],
       unprovableGoverned: [],
@@ -348,9 +357,10 @@ export function buildEquipmentEditPayload(values = {}, before = {}, now = 0) {
 
   // An edit that touches no editable field is not an edit. Writing a bare { updatedAt }
   // would report success for a change nobody made, and would bump the record's
-  // timestamp as if something had happened to it.
+  // timestamp as if something had happened to it. This is never `valid`, whatever the
+  // reason -- but the REASON is reported separately below, because a governed-only edit
+  // is a different thing from an empty one and the two owe the user different answers.
   const editedKeys = EDITABLE_EQUIPMENT_FIELDS.filter((f) => values[f] !== undefined);
-  if (editedKeys.length === 0) errors.input = "Nothing was changed.";
 
   const changedGoverned = [];
   const unprovableGoverned = [];
@@ -367,10 +377,19 @@ export function buildEquipmentEditPayload(values = {}, before = {}, now = 0) {
     if (values[f] !== undefined) payload[f] = normalized[f];
   }
 
+  // "Nothing was changed" means exactly that: no editable field, AND no governed field
+  // attempted. A caller asking to move an Account touched something real -- refusing it
+  // as an empty edit would tell them the opposite of what they just did. That refusal
+  // is `changedGoverned`'s to report, not this one's.
+  const noop = editedKeys.length === 0 && changedGoverned.length === 0 && unprovableGoverned.length === 0;
+  const valid = Object.keys(errors).length === 0 && editedKeys.length > 0;
+
   return {
-    valid: Object.keys(errors).length === 0,
+    valid,
+    malformed: false,
+    noop,
     errors,
-    payload: Object.keys(errors).length === 0 ? payload : null,
+    payload: valid ? payload : null,
     changedGoverned,
     unprovableGoverned,
   };
@@ -432,14 +451,11 @@ export function compareEquipment(a, b) {
 // Exactly the options searchEquipment implements. Anything else is a caller error.
 const SEARCH_OPTION_KEYS = ["term", "locationId", "status"];
 
-// A real options bag -- not an array, not a string, not a class instance masquerading
-// as one. Deliberately strict: this guards a boundary where being generous is what
-// caused the defect.
-function isPlainObject(value) {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
-  const proto = Object.getPrototypeOf(value);
-  return proto === Object.prototype || proto === null;
-}
+// The options bag is checked with isRecord (above): "is this a plain object I can read
+// keys off?" is the same question, and it had drifted into two near-identical helpers
+// that disagreed on one input. One test, one answer. What differs is what each CALLER
+// does with a "no" -- this boundary returns [], the record helpers return invalid --
+// and that belongs at the call site, not in a second copy of the type test.
 
 // The options argument is UNTRUSTED INPUT, not a convenience.
 //
@@ -459,7 +475,7 @@ function isPlainObject(value) {
 // still means "no search applied" and returns everything, ordered.
 export function searchEquipment(equipment, options = {}) {
   if (!Array.isArray(equipment)) return [];
-  if (!isPlainObject(options)) return [];
+  if (!isRecord(options)) return [];
   // An unknown key means the caller is asking something this function does not
   // implement. Answering "everything" would be answering a question nobody asked.
   if (Object.keys(options).some((k) => !SEARCH_OPTION_KEYS.includes(k))) return [];

@@ -27,7 +27,12 @@ const INVALID_MESSAGE = "Check the highlighted fields and try again. Nothing was
 // / useEquipmentForAccount). If the relationship cannot be PROVEN here, fail closed --
 // never write and hope Rules catch it. Rules (E3) enforce this independently.
 export async function createEquipmentWith(store, values, { location } = {}, now = 0) {
-  const { valid, errors, payload } = buildEquipmentCreatePayload(values, now);
+  const { valid, malformed, errors, payload } = buildEquipmentCreatePayload(values, now);
+
+  // Unreadable input is OUR bug, not the user's (#287). It has no field to highlight,
+  // so INVALID_MESSAGE would tell them to check highlighted fields while nothing is
+  // highlighted. Report it generically instead -- same treatment as unprovableGoverned.
+  if (malformed) return { ok: false, errors: {}, malformed: true, message: equipmentSaveErrorMessage(null) };
   if (!valid) return { ok: false, errors, message: INVALID_MESSAGE };
 
   if (!equipmentOwnershipValid(payload, location)) {
@@ -57,8 +62,10 @@ export async function updateEquipmentWith(store, id, values, { before = {} } = {
     return { ok: false, errors: {}, message: equipmentSaveErrorMessage(null) };
   }
 
-  const { valid, errors, payload, changedGoverned, unprovableGoverned } =
+  const { valid, malformed, noop, errors, payload, changedGoverned, unprovableGoverned } =
     buildEquipmentEditPayload(values, before, now);
+
+  if (malformed) return { ok: false, errors: {}, malformed: true, message: equipmentSaveErrorMessage(null) };
 
   if (changedGoverned.length > 0) {
     return {
@@ -81,6 +88,11 @@ export async function updateEquipmentWith(store, id, values, { before = {} } = {
       message: equipmentSaveErrorMessage(null),
     };
   }
+  // Nothing to write. Reported AFTER the governed refusals above, so a caller who
+  // attempted a move is told about the move, not that they changed nothing. Distinct
+  // from an error: the user did nothing wrong, there is simply no write to make -- and
+  // no write is made, rather than a bare { updatedAt } reported as success.
+  if (noop) return { ok: false, errors: {}, noop: true, message: "Nothing was changed." };
   if (!valid) return { ok: false, errors, message: INVALID_MESSAGE };
 
   try {

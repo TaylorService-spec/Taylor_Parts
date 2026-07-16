@@ -196,4 +196,55 @@ await ok("every trusted action reports unavailable, performs no write, and is no
   }
 });
 
+// ---- #287: malformed input and no-op edits never reach the store ------------
+
+await ok("#287 malformed input attempts NO write and reports it as our bug, not the user's", async () => {
+  const before = { accountId: "acct-1", locationId: "loc-1", name: "Freezer", status: "ACTIVE" };
+  for (const bad of [null, "garbage", [], 42, true]) {
+    const cs = fakeStore();
+    const c = await createEquipmentWith(cs, bad, { location: { id: "loc-1", accountId: "acct-1" } }, 5);
+    assert.equal(c.ok, false);
+    assert.equal(cs.calls.length, 0, `create(${String(bad)}) must attempt no write`);
+
+    const us = fakeStore();
+    const u = await updateEquipmentWith(us, "equip-1", bad, { before }, 5);
+    assert.equal(u.ok, false);
+    assert.equal(us.calls.length, 0, `update(${String(bad)}) must attempt no write`);
+
+    // No field error, because no field can fix a caller bug -- INVALID_MESSAGE would
+    // tell the user to check highlighted fields while nothing is highlighted.
+    for (const res of [c, u]) {
+      assert.deepEqual(res.errors, {}, "malformed input must blame no field");
+      assert.doesNotMatch(res.message, /highlighted/i,
+        "must not point at highlights that do not exist");
+      assert.doesNotMatch(res.message, /firebase|firestore|permission-denied|uid|token|apiKey|[A-Za-z0-9_-]{20,}/i);
+    }
+  }
+});
+
+await ok("#287 a no-op edit attempts no write and is never reported as saved", async () => {
+  const before = { accountId: "acct-1", locationId: "loc-1", name: "Freezer", status: "ACTIVE" };
+  const store = fakeStore();
+  const res = await updateEquipmentWith(store, "equip-1", {}, { before }, 5);
+  // The original defect end to end: this once wrote { updatedAt: 5 } and returned ok.
+  assert.equal(res.ok, false);
+  assert.equal(store.calls.length, 0, "no write -- there was nothing to write");
+  assert.deepEqual(res.errors, {}, "the user did nothing wrong");
+  assert.match(res.message, /Nothing was changed/);
+});
+
+await ok("#287 a governed attempt is reported as governed, never as 'nothing changed'", async () => {
+  const before = { accountId: "acct-1", locationId: "loc-1", name: "Freezer", status: "ACTIVE" };
+  const store = fakeStore();
+  // The user asked to move the Account and touched no editable field. Telling them
+  // "Nothing was changed" would be the exact inverse of what they just did.
+  const res = await updateEquipmentWith(store, "equip-1", { accountId: "acct-2" }, { before }, 5);
+  assert.equal(res.ok, false);
+  assert.equal(store.calls.length, 0);
+  assert.deepEqual(res.governedFields, ["accountId"]);
+  assert.match(res.message, /can't be changed here/);
+  assert.doesNotMatch(res.message, /Nothing was changed/,
+    "a governed refusal must not masquerade as an empty edit");
+});
+
 console.log(`\n${passed} passed, 0 failed`);
