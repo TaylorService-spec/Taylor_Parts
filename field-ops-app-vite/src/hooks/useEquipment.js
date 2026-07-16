@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { collection, doc, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../firebase/firebase";
-import { EQUIPMENT_COLLECTION } from "../domain/constants";
+import { EQUIPMENT_COLLECTION, WORK_ORDERS_COLLECTION } from "../domain/constants";
 import { loadErrorMessage } from "../domain/loadErrorMessage";
 
 // Issue #232 unit E2 -- the Equipment read path.
@@ -93,6 +93,55 @@ export function useEquipmentForLocation(locationId) {
 
     return () => unsub();
   }, [locationId]);
+
+  return { data, loading, error };
+}
+
+// Issue #232 unit E7 -- the Work Orders linked to ONE piece of equipment, for the
+// detail page's linked-Work-Orders section and its derived Service History (§10).
+//
+// A single bounded, server-filtered query on equipmentId. Deliberately NOT
+// useWorkOrders(), which subscribes to the entire collection: pulling every Work Order
+// in the business to show one asset's history would be an unbounded read to render a
+// handful of rows. Single-field equality, so no composite index is required.
+//
+// Service History is DERIVED from these (§10) -- there is no separate history ledger --
+// so this hook is the only source, and equipmentServiceHistory()/groupServiceHistoryBy
+// Year() shape it purely, client-side, over this already-bounded set.
+export function useWorkOrdersForEquipment(equipmentId) {
+  const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (!equipmentId) {
+      setData([]);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    const q = query(collection(db, WORK_ORDERS_COLLECTION), where("equipmentId", "==", equipmentId));
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        setData(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        setError(null);
+        setLoading(false);
+      },
+      (err) => {
+        // Fail closed: an empty history is honest; a partial one is a lie about an
+        // asset's service record.
+        setData([]);
+        setError(loadErrorMessage(err, { entity: "work orders" }));
+        setLoading(false);
+      }
+    );
+
+    return () => unsub();
+  }, [equipmentId]);
 
   return { data, loading, error };
 }
