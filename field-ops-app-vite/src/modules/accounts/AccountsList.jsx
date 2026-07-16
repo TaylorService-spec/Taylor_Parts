@@ -132,7 +132,13 @@ export default function AccountsList() {
       <p className="fo-sr-only" role="status" aria-live="polite">{announcement}</p>
 
       {/* Creation overlay -- opens without navigating or moving the dashboard.
-          The form catches its own save failures and keeps the overlay open. */}
+          The form catches its own save failures and keeps the overlay open.
+          The inline-arrow onClose is DELIBERATE, not sloppy: a fresh identity every
+          render makes this modal a CANARY for #293 (see verify-modal-typing and #302).
+          Modal reads onClose through a ref, so this costs nothing -- but a regression to
+          a [onClose]-keyed focus effect would show up HERE as focus lost mid-type. Do not
+          "tidy" it into a useCallback; that would make the suite immune to the very
+          regression it guards. */}
       {showCreate && (
         <Modal title="New Customer" onClose={() => setShowCreate(false)}>
           <AccountForm onSubmit={handleCreate} onCancel={() => setShowCreate(false)} submitLabel="Create Customer" />

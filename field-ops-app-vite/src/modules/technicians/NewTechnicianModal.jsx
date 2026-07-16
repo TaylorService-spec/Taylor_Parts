@@ -24,6 +24,14 @@ export default function NewTechnicianModal({ onCreate, onClose }) {
 
   const nameError = submitAttempted && !name.trim() ? "Enter a technician name." : null;
 
+  // DELIBERATELY a plain function, NOT useCallback -- and this is load-bearing for the
+  // test suite, not just close-during-save. A plain declaration gets a fresh identity
+  // every render, which makes this modal a CANARY for #293: Modal's mount/focus effect is
+  // now [] and reads onClose through a ref (#293/PR #296), so onClose identity no longer
+  // matters -- but if that regressed to [onClose], THIS caller's changing identity would
+  // tear the focus effect down every render and yank focus mid-type, and
+  // verify-modal-typing would catch it. Memoize this and the suite goes immune to exactly
+  // the regression it exists to catch. Modal does NOT require useCallback (see #302).
   function requestClose() {
     if (submittingRef.current) return;
     onClose();
