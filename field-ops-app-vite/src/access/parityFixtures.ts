@@ -97,6 +97,116 @@ export const PARITY_FIXTURES: readonly ShadowComparisonInput[] = Object.freeze([
     },
   },
 
+  // --- Row 13 (Task 18): Customer/Account domain shadow migration --
+  // completes the admin/dispatcher/technician x {read, create, update,
+  // governedField.write} matrix (firestore.rules ~L1108-1128's `accounts`
+  // match block: read/create/update all gate on isAdminOrDispatcher();
+  // the separate governed-field nuance -- dispatcher may create/update only
+  // at the governed baseline, admin may set any valid value -- is modeled
+  // by the distinct account.governedField.write permission/Condition,
+  // already covered above; account.record.create/update themselves are
+  // unconditional admin/dispatcher grants in compatibilityRoles.ts's shared
+  // base, matching the Rules' base isAdminOrDispatcher() gate exactly).
+  // `delete` has no corresponding permission id -- firestore.rules denies it
+  // unconditionally (`allow delete: if false`) for every role, so there is
+  // nothing for the resolver to parity-check.
+  {
+    fixtureLabel: "admin: Customer record read",
+    permissionId: "account.record.read",
+    legacyDecision: "ALLOW",
+    resolverInput: {
+      permissionId: "account.record.read",
+      assignments: [assignment("admin")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target(),
+    },
+  },
+  {
+    fixtureLabel: "admin: Customer record create",
+    permissionId: "account.record.create",
+    legacyDecision: "ALLOW",
+    resolverInput: {
+      permissionId: "account.record.create",
+      assignments: [assignment("admin")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target(),
+    },
+  },
+  {
+    fixtureLabel: "admin: Customer record update",
+    permissionId: "account.record.update",
+    legacyDecision: "ALLOW",
+    resolverInput: {
+      permissionId: "account.record.update",
+      assignments: [assignment("admin")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target(),
+    },
+  },
+  {
+    fixtureLabel: "dispatcher: Customer record create",
+    permissionId: "account.record.create",
+    legacyDecision: "ALLOW",
+    resolverInput: {
+      permissionId: "account.record.create",
+      assignments: [assignment("dispatcher")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target(),
+    },
+  },
+  {
+    fixtureLabel: "dispatcher: Customer record update",
+    permissionId: "account.record.update",
+    legacyDecision: "ALLOW",
+    resolverInput: {
+      permissionId: "account.record.update",
+      assignments: [assignment("dispatcher")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target(),
+    },
+  },
+  {
+    fixtureLabel: "technician (no operational role): Customer record create",
+    permissionId: "account.record.create",
+    legacyDecision: "DENY",
+    resolverInput: {
+      permissionId: "account.record.create",
+      assignments: [assignment("technician")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target(),
+    },
+  },
+  {
+    fixtureLabel: "technician (no operational role): Customer record update",
+    permissionId: "account.record.update",
+    legacyDecision: "DENY",
+    resolverInput: {
+      permissionId: "account.record.update",
+      assignments: [assignment("technician")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target(),
+    },
+  },
+  {
+    fixtureLabel: "technician (no operational role): Customer governed field write",
+    permissionId: "account.governedField.write",
+    legacyDecision: "DENY",
+    resolverInput: {
+      permissionId: "account.governedField.write",
+      assignments: [assignment("technician")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target(),
+    },
+  },
+
   // --- admin / dispatcher: reorder approve/reject/cancel/void ---
   {
     fixtureLabel: "admin: reorder request approve",
