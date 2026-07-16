@@ -52,11 +52,18 @@ export async function createEquipmentWith(store, values, { location } = {}, now 
   }
 }
 
-// Ordinary edit: descriptive fields only. Account, Location, status and createdAt can
-// never be written here (buildEquipmentEditPayload omits them by construction). If the
-// caller actually asked to change one, refuse the whole write loudly -- a dropped move
-// reported as success is worse than a refused edit. `before` is required to prove a
-// governed field is unchanged; without it the edit fails closed.
+// Ordinary edit: descriptive fields, plus an ACTIVE<->INACTIVE status change (#312).
+// Account, Location and createdAt can never be written here -- buildEquipmentEditPayload
+// omits them by construction, and if the caller actually asked to change one, the whole
+// write is refused loudly: a dropped move reported as success is worse than a refused edit.
+//
+// STATUS IS WRITTEN HERE, ACTIVE<->INACTIVE only. Retiring and reactivating are trusted,
+// audited actions (E10) and are refused as `refusedStatus` -- a different answer from the
+// governed refusal, because the status CAN change here, just not that way.
+//
+// `before` is required to prove a governed field is unchanged AND to prove a status
+// transition is legal -- without the status a record is moving FROM, ACTIVE->INACTIVE and
+// RETIRED->INACTIVE are the same request. Without it the edit fails closed.
 export async function updateEquipmentWith(store, id, values, { before = {} } = {}, now = 0) {
   if (typeof id !== "string" || id === "") {
     return { ok: false, errors: {}, message: equipmentSaveErrorMessage(null) };
@@ -150,10 +157,19 @@ export async function reactivateEquipment(/* id, { reason } */) {
   return trustedActionUnavailable("equipment.reactivate");
 }
 
-// Every lifecycle transition -- including ACTIVE<->INACTIVE -- routes through the
-// trusted seam under this authorization. Spec §3 contemplates a plain client path for
-// ACTIVE<->INACTIVE; that is deliberately NOT implemented in E2 (the conservative
-// direction: no lifecycle write exists yet to get wrong). E10 decides it.
+// DEPRECATED BY #312 for the ACTIVE<->INACTIVE case, and left only as an unavailable
+// contract so no caller can mistake it for a working seam.
+//
+// This comment used to say "Every lifecycle transition -- including ACTIVE<->INACTIVE --
+// routes through the trusted seam ... E10 decides it." That was the misreading #312
+// corrects, written down as if settled: the Owner's E3 decision assigns ACTIVE<->INACTIVE
+// to the ORDINARY client edit (updateEquipmentWith, above), and gives E10 retire and
+// reactivate only. Rules had always permitted the ordinary path.
+//
+// Nothing calls this. E10 should use retireEquipment/reactivateEquipment, which name the
+// two actions that are genuinely trusted; a general "set any status" seam is what let the
+// wrong reading look reasonable in the first place. Removing it is routed as a follow-up
+// rather than folded in here, since it is exported through equipmentRepository.
 export async function setEquipmentStatus(/* id, nextStatus */) {
   return trustedActionUnavailable("equipment.setStatus");
 }

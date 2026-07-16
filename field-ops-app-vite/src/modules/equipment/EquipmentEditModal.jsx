@@ -3,7 +3,7 @@ import Modal from "../../shared/ui/Modal";
 import { Field, FormActions, FormError, FormStatus } from "../../shared/ui/form";
 import { describedBy } from "../../shared/ui/form/fieldA11y";
 import {
-  EDITABLE_EQUIPMENT_FIELDS, changedEquipmentFields, trimmedOrNull, isRetired,
+  EDITABLE_EQUIPMENT_FIELDS, changedEquipmentFields, trimmedOrNull, canonicalEquipmentStatus,
 } from "../../domain/equipment";
 import { EQUIPMENT_STATUS } from "../../domain/constants";
 
@@ -80,8 +80,20 @@ export default function EquipmentEditModal({ equipment, accountName, locationNam
   // Status is not one of EDITABLE_EQUIPMENT_FIELDS -- it is transition-controlled, not a
   // free-text field -- so it is held separately and compared by the payload builder
   // against the frozen `base`, which is the only thing that can prove the transition.
-  const statusLocked = isRetired(base);
-  const [status, setStatus] = useState(() => base.status ?? "");
+  // Editable only when the STORED status is exactly one of the two the ordinary path may
+  // move between. That covers RETIRED (reactivating is a trusted action) and also a
+  // record whose stored status is not canonical at all -- "active", " ACTIVE ", missing.
+  // Rules deny every update to such a record ("permanently uneditable on this path and
+  // repairable only by E10's trusted writer"), so offering a dropdown over it would be
+  // the form promising a write that cannot land.
+  //
+  // Seeded through canonicalEquipmentStatus for the same reason the text fields seed
+  // through trimmedOrNull: the control and the comparison must agree about what the
+  // record says. Seeding raw put a non-canonical value into the <select>, matching no
+  // <option>, so React rendered a BLANK status on a legitimately active asset.
+  const storedStatus = canonicalEquipmentStatus(base.status);
+  const statusLocked = storedStatus === null || storedStatus === EQUIPMENT_STATUS.RETIRED;
+  const [status, setStatus] = useState(() => storedStatus ?? "");
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [saveError, setSaveError] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({});
@@ -126,12 +138,15 @@ export default function EquipmentEditModal({ equipment, accountName, locationNam
     // Against `base`, not the live prop -- see the freeze at the top.
     const changed = changedEquipmentFields(values, base);
 
-    // Send the status only when this form actually offers the control. For a RETIRED
-    // asset it does not, and sending the unchanged value anyway would be the form
-    // asserting a lifecycle state it is not authorised to speak for -- the builder would
-    // read it as "unchanged" and ignore it, but an ordinary edit should not be sending a
-    // field the user cannot see. An unchanged status from the dropdown is likewise not an
-    // edit: buildEquipmentEditPayload compares it to `base` and writes nothing.
+    // Send the status only when this form actually offers the control -- and this guard
+    // is LOAD-BEARING, not decoration. For a locked record the state holds "" (there is no
+    // canonical status to seed from), so sending it anyway yields errors.status: a field
+    // error pointing at a control this form does not render, which is exactly the #287
+    // trap of blaming a field the user cannot see. For a RETIRED record it would be
+    // merely inert -- the builder reads it as unchanged -- but "inert in one of the two
+    // locked cases" is not a reason to send a field the user cannot see.
+    // An unchanged status from the dropdown is likewise not an edit: the builder compares
+    // it to `base` and writes nothing.
     if (!statusLocked) changed.status = status;
 
     submittingRef.current = true;
@@ -181,8 +196,12 @@ export default function EquipmentEditModal({ equipment, accountName, locationNam
           <div className="fo-field" data-equipment-edit-status-locked>
             <span className="fo-field-label">Status</span>
             <p data-equipment-edit-status-value>
-              <strong>Retired</strong>
-              <span className="fo-muted"> — reactivating retired equipment isn&apos;t available here.</span>
+              <strong>{storedStatus === EQUIPMENT_STATUS.RETIRED ? "Retired" : "Unknown"}</strong>
+              <span className="fo-muted">
+                {storedStatus === EQUIPMENT_STATUS.RETIRED
+                  ? " — reactivating retired equipment isn't available here."
+                  : " — this equipment's status can't be changed here."}
+              </span>
             </p>
           </div>
         ) : (

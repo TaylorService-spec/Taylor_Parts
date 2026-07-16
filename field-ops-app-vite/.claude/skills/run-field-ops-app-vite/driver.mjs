@@ -4603,8 +4603,11 @@ async function verifyEquipmentEdit(browser, page, accountKey) {
       afterInactive.name === beforeStatus.name &&
         afterInactive.serialNumber === beforeStatus.serialNumber,
       `name=${afterInactive.name} serial=${afterInactive.serialNumber}`);
-    niReport("Edit: no confirmation dialog stands between the user and a plain status change",
-      (await page.locator('[role="alertdialog"], .fo-confirm-dialog').count()) === 0);
+    // (An assertion that "no confirmation dialog appeared" lived here and was VACUOUS: it
+    // ran after saveAndWait() had already waited for the modal to detach, so nothing was
+    // on screen to find, and this form never imports ConfirmDialog in the first place. The
+    // real proof that nothing intervened is that saveAndWait() returned and the status
+    // below persisted -- a confirmation would have blocked the detach and timed it out.)
     niReport("Edit: the detail page shows the new status live, with no reload",
       (await page.locator("[data-equipment-status]").getAttribute("data-equipment-status")) === "INACTIVE");
   }

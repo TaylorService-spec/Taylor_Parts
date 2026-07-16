@@ -914,8 +914,54 @@ ok("#312 ordinaryStatusChangeAllowed mirrors the Rules helper exactly", () => {
     assert.equal(ordinaryStatusChangeAllowed(bad, bad), false,
       `two unreadable statuses (${String(bad)}) are not "unchanged"`);
   }
-  // Case/padding normalize, like every other status read in this module.
-  assert.equal(ordinaryStatusChangeAllowed(" active ", "inactive"), true);
+  // CANONICAL ONLY -- and this is the assertion that makes the title true. It used to
+  // read `(" active ", "inactive") === true` under the same "mirrors exactly" heading,
+  // which the suite's own title falsified: Rules compare exact strings (equipmentStatusValid
+  // is `status == "ACTIVE" || ...`, no trim, no case-fold), so the client answering "yes"
+  // here means the control says go and the write comes back denied.
+  for (const noncanonical of [" ACTIVE ", "active", "Active", "inactive ", "RETIRED "]) {
+    assert.equal(ordinaryStatusChangeAllowed(noncanonical, "INACTIVE"), false,
+      `a stored ${JSON.stringify(noncanonical)} is not canonical -- Rules deny it, so we must too`);
+    assert.equal(ordinaryStatusChangeAllowed("ACTIVE", noncanonical), false,
+      `${JSON.stringify(noncanonical)} is not a status Rules would accept`);
+  }
+});
+
+ok("#312 a non-canonical STORED status is uneditable here, exactly as Rules say", () => {
+  // firestore.rules: "a record whose stored status is malformed/absent is denied whatever
+  // `after` it is given. Such a record is permanently uneditable on this path and is
+  // repairable only by E10's trusted writer. That is the fail-closed direction."
+  // The client agreeing is the whole point of the mirror.
+  for (const stored of ["active", " ACTIVE ", "Active", "BOGUS", "", null, undefined, 5]) {
+    const before = { accountId: "a1", locationId: "l1", name: "Unit", status: stored };
+    const r = buildEquipmentEditPayload({ status: "INACTIVE" }, before, 7);
+    assert.equal(r.valid, false, `stored ${JSON.stringify(stored)} must not be movable here`);
+    assert.equal(r.payload, null);
+    assert.equal(r.unprovableStatus, true, "we cannot prove a transition from a status Rules reject");
+  }
+  // A CALLER's input is still read forgivingly -- being generous about what we are handed
+  // is fine, because the payload always writes the canonical value.
+  const before = { accountId: "a1", locationId: "l1", name: "Unit", status: "ACTIVE" };
+  const r = buildEquipmentEditPayload({ status: " inactive " }, before, 7);
+  assert.equal(r.valid, true, "a padded/cased FORM value is normalized, not refused");
+  assert.deepEqual(r.payload, { status: "INACTIVE", updatedAt: 7 }, "and canonical is what gets written");
+});
+
+ok("#312 an invalid status is never reported as 'nothing was changed'", () => {
+  // Status is the first error-producing field that is NOT in EDITABLE_EQUIPMENT_FIELDS,
+  // so it does not contribute to editedKeys -- and `noop` did not consult `errors`. The
+  // result: the user picked an invalid status and updateEquipmentWith, which checks
+  // `noop` before `!valid`, told them nothing had changed. On main the pairing was
+  // structurally unreachable (errors.name forces editedKeys > 0), so #312 broke it.
+  const before = { accountId: "a1", locationId: "l1", name: "Unit", status: "ACTIVE" };
+  const r = buildEquipmentEditPayload({ status: "GARBAGE" }, before, 7);
+  assert.equal(r.noop, false, "an invalid status is a mistake, not an absence of one");
+  assert.ok(r.errors.status, "and the field error survives to be rendered");
+  assert.equal(r.valid, false);
+  // The invariant, stated once: a no-op means nothing to do AND nothing wrong.
+  const empty = buildEquipmentEditPayload({}, before, 7);
+  assert.equal(empty.noop, true);
+  assert.deepEqual(empty.errors, {});
 });
 
 ok("#312 status is NOT a governed field -- an ordinary edit may move it ACTIVE<->INACTIVE", () => {

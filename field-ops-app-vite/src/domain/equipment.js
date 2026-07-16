@@ -43,6 +43,23 @@ export function isValidEquipmentStatus(value) {
   return normalizeEquipmentStatus(value) !== null;
 }
 
+// The status EXACTLY as Rules read it: `status == "ACTIVE" || ...`, with no trim and no
+// case-fold (firestore.rules equipmentStatusValid). Anything else is null.
+//
+// This exists because normalizeEquipmentStatus is more forgiving than Rules are, and for
+// a STORED status that difference is a live divergence rather than a nicety: a record
+// holding "active" or " ACTIVE " normalizes to ACTIVE here while Rules see a status that
+// is not valid at all and deny the write. Rules say so deliberately -- such a record "is
+// permanently uneditable on this path and is repairable only by E10's trusted writer".
+// The client has to agree, or it tells the user yes and the write says no.
+//
+// Incoming FORM values still go through normalizeEquipmentStatus: being forgiving about
+// what a caller hands us is fine, because the payload always writes the canonical value.
+// Being forgiving about what is already STORED is what breaks the mirror.
+export function canonicalEquipmentStatus(value) {
+  return STATUSES.has(value) ? value : null;
+}
+
 // Is `to` reachable from `from`? Unknown statuses on either side => false.
 export function canTransitionEquipmentStatus(from, to) {
   const a = normalizeEquipmentStatus(from);
@@ -279,8 +296,12 @@ export const GOVERNED_EQUIPMENT_FIELDS = Object.freeze(["accountId", "locationId
 // descriptively editable (Owner E3 decision 2) -- retiring is not a freeze, but leaving
 // retirement is not something you do by picking from a dropdown.
 export function ordinaryStatusChangeAllowed(from, to) {
-  const a = normalizeEquipmentStatus(from);
-  const b = normalizeEquipmentStatus(to);
+  // CANONICAL, not normalized -- see canonicalEquipmentStatus. Rules compare exact
+  // strings, so a helper that trims and upper-cases would answer "yes" to transitions
+  // Rules deny, which is the one direction that hurts: the control says go, the write
+  // comes back permission-denied, and the user reads a generic failure.
+  const a = canonicalEquipmentStatus(from);
+  const b = canonicalEquipmentStatus(to);
   if (a === null || b === null) return false;
   if (a === b) return true;
   return (a === EQUIPMENT_STATUS.ACTIVE && b === EQUIPMENT_STATUS.INACTIVE)
@@ -404,7 +425,6 @@ export function buildEquipmentCreatePayload(values = {}, now = 0) {
 // padded id reads as a governed CHANGE and gets its whole edit refused.
 function governedValue(field, raw) {
   if (raw === undefined) return undefined;
-  if (field === "status") return normalizeEquipmentStatus(raw);
   if (field === "createdAt") return raw;
   return trimmedOrNull(raw);
 }
@@ -492,8 +512,8 @@ export function buildEquipmentEditPayload(values = {}, before = {}, now = 0) {
   let refusedStatus = false;
   let unprovableStatus = false;
   if (values.status !== undefined) {
-    const asked = normalizeEquipmentStatus(values.status);
-    const current = normalizeEquipmentStatus(before.status);
+    const asked = normalizeEquipmentStatus(values.status);      // a caller's input: forgiving
+    const current = canonicalEquipmentStatus(before.status);     // what is STORED: exact, as Rules read it
     if (asked === null) errors.status = "Select a valid status.";
     else if (current === null) unprovableStatus = true;
     else if (asked === current) { /* unchanged -- not an edit, and not an error */ }
@@ -523,7 +543,16 @@ export function buildEquipmentEditPayload(values = {}, before = {}, now = 0) {
   // attempted. A caller asking to move an Account touched something real -- refusing it
   // as an empty edit would tell them the opposite of what they just did. That refusal
   // is `changedGoverned`'s to report, not this one's.
+  // "Nothing was changed" must also mean nothing was WRONG. `errors` is in this
+  // conjunction because #312 made the combination reachable for the first time: status is
+  // the first error-producing field that is NOT in EDITABLE_EQUIPMENT_FIELDS, so it does
+  // not contribute to editedKeys, and { status: "GARBAGE" } produced noop:true carrying
+  // errors.status. updateEquipmentWith checks `noop` before `!valid`, so the user picked
+  // an invalid status and was told "Nothing was changed." On main the pairing was
+  // structurally unreachable -- errors.name required values.name, which forced
+  // editedKeys > 0 -- so the invariant broke silently.
   const noop = editedKeys.length === 0 && statusChange === null
+    && Object.keys(errors).length === 0
     && changedGoverned.length === 0 && unprovableGoverned.length === 0
     && !refusedStatus && !unprovableStatus;
 
