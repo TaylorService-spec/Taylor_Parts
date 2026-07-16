@@ -260,6 +260,459 @@ export const PARITY_FIXTURES: readonly ShadowComparisonInput[] = Object.freeze([
     },
   },
 
+  // --- Row 14 (Task 19): Inventory/Reorder/Purchasing domain shadow
+  // migration -- completes coverage of the remaining reorder.*/inventory.*
+  // permission ids (permissionCatalog.ts). admin/dispatcher: both are
+  // unconditional grants in compatibilityRoles.ts's shared base for every id
+  // below (SHARED_ADMIN_DISPATCHER_BASE_PERMISSIONS), matching firestore.rules'
+  // isAdminOrDispatcher() base gate. technician: TECHNICIAN_ROLE.permissions
+  // grants each id only via its own operationalRoleActive Condition
+  // (conditionsByPermission) -- three ids (create.system, reject,
+  // inventory.action.create) are absent from technician's permissions list
+  // entirely, so DENY is unconditional (no operational role can unlock them),
+  // matching the Assessment's "no operational role gets Approve/Reject/
+  // Cancel/Void" audit finding extended to these three as well. The
+  // "wrong-role DENIES" behavior itself is already proven generically by the
+  // existing PARTS_ASSOCIATE/INACTIVE-employment/broken-linkage fixtures
+  // above/below, so it is not re-proven per id here -- each id gets exactly
+  // one admin ALLOW, one dispatcher ALLOW, and (only where technician holds
+  // any grant) one technician + correct-operational-role ALLOW.
+  {
+    fixtureLabel: "admin: reorder request read queue",
+    permissionId: "reorder.request.read.queue",
+    legacyDecision: "ALLOW",
+    resolverInput: {
+      permissionId: "reorder.request.read.queue",
+      assignments: [assignment("admin")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target(),
+    },
+  },
+  {
+    fixtureLabel: "dispatcher: reorder request read queue",
+    permissionId: "reorder.request.read.queue",
+    legacyDecision: "ALLOW",
+    resolverInput: {
+      permissionId: "reorder.request.read.queue",
+      assignments: [assignment("dispatcher")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target(),
+    },
+  },
+  {
+    fixtureLabel: "technician + PARTS_MANAGER (active): reorder request read queue",
+    permissionId: "reorder.request.read.queue",
+    legacyDecision: "ALLOW",
+    resolverInput: {
+      permissionId: "reorder.request.read.queue",
+      assignments: [assignment("technician")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target({ operationalRoleActive: onlyRole("PARTS_MANAGER") }),
+    },
+  },
+  {
+    fixtureLabel: "admin: reorder request create (system)",
+    permissionId: "reorder.request.create.system",
+    legacyDecision: "ALLOW",
+    resolverInput: {
+      permissionId: "reorder.request.create.system",
+      assignments: [assignment("admin")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target(),
+    },
+  },
+  {
+    fixtureLabel: "dispatcher: reorder request create (system)",
+    permissionId: "reorder.request.create.system",
+    legacyDecision: "ALLOW",
+    resolverInput: {
+      permissionId: "reorder.request.create.system",
+      assignments: [assignment("dispatcher")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target(),
+    },
+  },
+  {
+    // No operational role unlocks this -- absent from TECHNICIAN_ROLE.permissions.
+    fixtureLabel: "technician: reorder request create (system) -- no operational role grants this",
+    permissionId: "reorder.request.create.system",
+    legacyDecision: "DENY",
+    resolverInput: {
+      permissionId: "reorder.request.create.system",
+      assignments: [assignment("technician")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target({ operationalRoleActive: onlyRole("PARTS_MANAGER") }),
+    },
+  },
+  {
+    fixtureLabel: "admin: reorder request start purchasing",
+    permissionId: "reorder.request.startPurchasing",
+    legacyDecision: "ALLOW",
+    resolverInput: {
+      permissionId: "reorder.request.startPurchasing",
+      assignments: [assignment("admin")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target(),
+    },
+  },
+  {
+    fixtureLabel: "dispatcher: reorder request start purchasing",
+    permissionId: "reorder.request.startPurchasing",
+    legacyDecision: "ALLOW",
+    resolverInput: {
+      permissionId: "reorder.request.startPurchasing",
+      assignments: [assignment("dispatcher")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target(),
+    },
+  },
+  {
+    fixtureLabel: "technician + PARTS_ASSOCIATE (active): reorder request start purchasing",
+    permissionId: "reorder.request.startPurchasing",
+    legacyDecision: "ALLOW",
+    resolverInput: {
+      permissionId: "reorder.request.startPurchasing",
+      assignments: [assignment("technician")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target({ operationalRoleActive: onlyRole("PARTS_ASSOCIATE") }),
+    },
+  },
+  {
+    fixtureLabel: "admin: reorder request post-purchasing update",
+    permissionId: "reorder.request.postPurchasingUpdate",
+    legacyDecision: "ALLOW",
+    resolverInput: {
+      permissionId: "reorder.request.postPurchasingUpdate",
+      assignments: [assignment("admin")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target(),
+    },
+  },
+  {
+    fixtureLabel: "dispatcher: reorder request post-purchasing update",
+    permissionId: "reorder.request.postPurchasingUpdate",
+    legacyDecision: "ALLOW",
+    resolverInput: {
+      permissionId: "reorder.request.postPurchasingUpdate",
+      assignments: [assignment("dispatcher")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target(),
+    },
+  },
+  {
+    fixtureLabel: "technician + PARTS_ASSOCIATE (active): reorder request post-purchasing update",
+    permissionId: "reorder.request.postPurchasingUpdate",
+    legacyDecision: "ALLOW",
+    resolverInput: {
+      permissionId: "reorder.request.postPurchasingUpdate",
+      assignments: [assignment("technician")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target({ operationalRoleActive: onlyRole("PARTS_ASSOCIATE") }),
+    },
+  },
+  {
+    fixtureLabel: "admin: reorder request record purchase order",
+    permissionId: "reorder.request.recordPurchaseOrder",
+    legacyDecision: "ALLOW",
+    resolverInput: {
+      permissionId: "reorder.request.recordPurchaseOrder",
+      assignments: [assignment("admin")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target(),
+    },
+  },
+  {
+    fixtureLabel: "dispatcher: reorder request record purchase order",
+    permissionId: "reorder.request.recordPurchaseOrder",
+    legacyDecision: "ALLOW",
+    resolverInput: {
+      permissionId: "reorder.request.recordPurchaseOrder",
+      assignments: [assignment("dispatcher")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target(),
+    },
+  },
+  {
+    fixtureLabel: "technician + PARTS_ASSOCIATE (active): reorder request record purchase order",
+    permissionId: "reorder.request.recordPurchaseOrder",
+    legacyDecision: "ALLOW",
+    resolverInput: {
+      permissionId: "reorder.request.recordPurchaseOrder",
+      assignments: [assignment("technician")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target({ operationalRoleActive: onlyRole("PARTS_ASSOCIATE") }),
+    },
+  },
+  {
+    fixtureLabel: "admin: reorder request mark received",
+    permissionId: "reorder.request.markReceived",
+    legacyDecision: "ALLOW",
+    resolverInput: {
+      permissionId: "reorder.request.markReceived",
+      assignments: [assignment("admin")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target(),
+    },
+  },
+  {
+    fixtureLabel: "dispatcher: reorder request mark received",
+    permissionId: "reorder.request.markReceived",
+    legacyDecision: "ALLOW",
+    resolverInput: {
+      permissionId: "reorder.request.markReceived",
+      assignments: [assignment("dispatcher")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target(),
+    },
+  },
+  {
+    fixtureLabel: "technician + PARTS_ASSOCIATE (active): reorder request mark received",
+    permissionId: "reorder.request.markReceived",
+    legacyDecision: "ALLOW",
+    resolverInput: {
+      permissionId: "reorder.request.markReceived",
+      assignments: [assignment("technician")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target({ operationalRoleActive: onlyRole("PARTS_ASSOCIATE") }),
+    },
+  },
+  {
+    fixtureLabel: "admin: reorder request reject",
+    permissionId: "reorder.request.reject",
+    legacyDecision: "ALLOW",
+    resolverInput: {
+      permissionId: "reorder.request.reject",
+      assignments: [assignment("admin")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target(),
+    },
+  },
+  {
+    fixtureLabel: "dispatcher: reorder request reject",
+    permissionId: "reorder.request.reject",
+    legacyDecision: "ALLOW",
+    resolverInput: {
+      permissionId: "reorder.request.reject",
+      assignments: [assignment("dispatcher")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target(),
+    },
+  },
+  {
+    // No operational role unlocks this -- absent from TECHNICIAN_ROLE.permissions.
+    fixtureLabel: "technician: reorder request reject -- no operational role grants this",
+    permissionId: "reorder.request.reject",
+    legacyDecision: "DENY",
+    resolverInput: {
+      permissionId: "reorder.request.reject",
+      assignments: [assignment("technician")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target({ operationalRoleActive: onlyRole("PARTS_MANAGER") }),
+    },
+  },
+  {
+    fixtureLabel: "admin: reorder purchase order read",
+    permissionId: "reorder.purchaseOrder.read",
+    legacyDecision: "ALLOW",
+    resolverInput: {
+      permissionId: "reorder.purchaseOrder.read",
+      assignments: [assignment("admin")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target(),
+    },
+  },
+  {
+    fixtureLabel: "dispatcher: reorder purchase order read",
+    permissionId: "reorder.purchaseOrder.read",
+    legacyDecision: "ALLOW",
+    resolverInput: {
+      permissionId: "reorder.purchaseOrder.read",
+      assignments: [assignment("dispatcher")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target(),
+    },
+  },
+  {
+    fixtureLabel: "technician + PARTS_ASSOCIATE (active): reorder purchase order read",
+    permissionId: "reorder.purchaseOrder.read",
+    legacyDecision: "ALLOW",
+    resolverInput: {
+      permissionId: "reorder.purchaseOrder.read",
+      assignments: [assignment("technician")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target({ operationalRoleActive: onlyRole("PARTS_ASSOCIATE") }),
+    },
+  },
+  {
+    fixtureLabel: "admin: reorder purchase order create",
+    permissionId: "reorder.purchaseOrder.create",
+    legacyDecision: "ALLOW",
+    resolverInput: {
+      permissionId: "reorder.purchaseOrder.create",
+      assignments: [assignment("admin")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target(),
+    },
+  },
+  {
+    fixtureLabel: "dispatcher: reorder purchase order create",
+    permissionId: "reorder.purchaseOrder.create",
+    legacyDecision: "ALLOW",
+    resolverInput: {
+      permissionId: "reorder.purchaseOrder.create",
+      assignments: [assignment("dispatcher")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target(),
+    },
+  },
+  {
+    fixtureLabel: "technician + PARTS_ASSOCIATE (active): reorder purchase order create",
+    permissionId: "reorder.purchaseOrder.create",
+    legacyDecision: "ALLOW",
+    resolverInput: {
+      permissionId: "reorder.purchaseOrder.create",
+      assignments: [assignment("technician")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target({ operationalRoleActive: onlyRole("PARTS_ASSOCIATE") }),
+    },
+  },
+  {
+    fixtureLabel: "admin: inventory transaction read",
+    permissionId: "inventory.transaction.read",
+    legacyDecision: "ALLOW",
+    resolverInput: {
+      permissionId: "inventory.transaction.read",
+      assignments: [assignment("admin")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target(),
+    },
+  },
+  {
+    fixtureLabel: "dispatcher: inventory transaction read",
+    permissionId: "inventory.transaction.read",
+    legacyDecision: "ALLOW",
+    resolverInput: {
+      permissionId: "inventory.transaction.read",
+      assignments: [assignment("dispatcher")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target(),
+    },
+  },
+  {
+    fixtureLabel: "technician + PARTS_MANAGER (active): inventory transaction read",
+    permissionId: "inventory.transaction.read",
+    legacyDecision: "ALLOW",
+    resolverInput: {
+      permissionId: "inventory.transaction.read",
+      assignments: [assignment("technician")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target({ operationalRoleActive: onlyRole("PARTS_MANAGER") }),
+    },
+  },
+  {
+    fixtureLabel: "admin: inventory action read",
+    permissionId: "inventory.action.read",
+    legacyDecision: "ALLOW",
+    resolverInput: {
+      permissionId: "inventory.action.read",
+      assignments: [assignment("admin")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target(),
+    },
+  },
+  {
+    fixtureLabel: "dispatcher: inventory action read",
+    permissionId: "inventory.action.read",
+    legacyDecision: "ALLOW",
+    resolverInput: {
+      permissionId: "inventory.action.read",
+      assignments: [assignment("dispatcher")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target(),
+    },
+  },
+  {
+    fixtureLabel: "technician + WAREHOUSE_MANAGER (active): inventory action read",
+    permissionId: "inventory.action.read",
+    legacyDecision: "ALLOW",
+    resolverInput: {
+      permissionId: "inventory.action.read",
+      assignments: [assignment("technician")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target({ operationalRoleActive: onlyRole("WAREHOUSE_MANAGER") }),
+    },
+  },
+  {
+    fixtureLabel: "admin: inventory action create",
+    permissionId: "inventory.action.create",
+    legacyDecision: "ALLOW",
+    resolverInput: {
+      permissionId: "inventory.action.create",
+      assignments: [assignment("admin")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target(),
+    },
+  },
+  {
+    fixtureLabel: "dispatcher: inventory action create",
+    permissionId: "inventory.action.create",
+    legacyDecision: "ALLOW",
+    resolverInput: {
+      permissionId: "inventory.action.create",
+      assignments: [assignment("dispatcher")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target(),
+    },
+  },
+  {
+    // No operational role unlocks this -- absent from TECHNICIAN_ROLE.permissions.
+    fixtureLabel: "technician: inventory action create -- no operational role grants this",
+    permissionId: "inventory.action.create",
+    legacyDecision: "DENY",
+    resolverInput: {
+      permissionId: "inventory.action.create",
+      assignments: [assignment("technician")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target({ operationalRoleActive: onlyRole("WAREHOUSE_MANAGER") }),
+    },
+  },
+
   // --- pure technician (no operational role): no Customer, no approve ---
   {
     fixtureLabel: "technician (no operational role): Customer record read",
@@ -375,6 +828,128 @@ export const PARITY_FIXTURES: readonly ShadowComparisonInput[] = Object.freeze([
     resolverInput: {
       permissionId: "account.record.read",
       assignments: [],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target(),
+    },
+  },
+
+  // --- Row 15 (Task 20): Service/Work Order domain shadow migration --
+  // firestore.rules' `fieldops_wos` collection (~L204-214) denies ALL
+  // client-direct writes unconditionally (`allow create, update, delete:
+  // if false`) -- every real workOrder.* authorization decision lives in
+  // the createWorkOrder/transitionWorkOrder trusted Cloud Functions, not
+  // Rules. createWorkOrder.ts and transitionWorkOrder's Cancel action both
+  // gate to admin/dispatcher only; technician is denied create/cancel
+  // entirely (absent from TECHNICIAN_ROLE.permissions). workOrder.transition
+  // itself IS granted to technician, unconditioned (compatibilityRoles.ts's
+  // own comment: the specific forward/backward action/status/ownership
+  // narrowing is transitionEngine.ts's ACTION_PERMISSIONS table --
+  // trusted-Function-authoritative territory this resolver does not take
+  // over, Spec sec12).
+  {
+    fixtureLabel: "admin: work order create",
+    permissionId: "workOrder.create",
+    legacyDecision: "ALLOW",
+    resolverInput: {
+      permissionId: "workOrder.create",
+      assignments: [assignment("admin")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target(),
+    },
+  },
+  {
+    fixtureLabel: "dispatcher: work order create",
+    permissionId: "workOrder.create",
+    legacyDecision: "ALLOW",
+    resolverInput: {
+      permissionId: "workOrder.create",
+      assignments: [assignment("dispatcher")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target(),
+    },
+  },
+  {
+    fixtureLabel: "technician: work order create -- admin/dispatcher only",
+    permissionId: "workOrder.create",
+    legacyDecision: "DENY",
+    resolverInput: {
+      permissionId: "workOrder.create",
+      assignments: [assignment("technician")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target(),
+    },
+  },
+  {
+    fixtureLabel: "admin: work order transition",
+    permissionId: "workOrder.transition",
+    legacyDecision: "ALLOW",
+    resolverInput: {
+      permissionId: "workOrder.transition",
+      assignments: [assignment("admin")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target(),
+    },
+  },
+  {
+    fixtureLabel: "dispatcher: work order transition",
+    permissionId: "workOrder.transition",
+    legacyDecision: "ALLOW",
+    resolverInput: {
+      permissionId: "workOrder.transition",
+      assignments: [assignment("dispatcher")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target(),
+    },
+  },
+  {
+    fixtureLabel: "technician: work order transition -- unconditioned grant (specific action/status/ownership narrowed by the trusted transitionWorkOrder Function, not this resolver)",
+    permissionId: "workOrder.transition",
+    legacyDecision: "ALLOW",
+    resolverInput: {
+      permissionId: "workOrder.transition",
+      assignments: [assignment("technician")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target(),
+    },
+  },
+  {
+    fixtureLabel: "admin: work order cancel",
+    permissionId: "workOrder.cancel",
+    legacyDecision: "ALLOW",
+    resolverInput: {
+      permissionId: "workOrder.cancel",
+      assignments: [assignment("admin")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target(),
+    },
+  },
+  {
+    fixtureLabel: "dispatcher: work order cancel",
+    permissionId: "workOrder.cancel",
+    legacyDecision: "ALLOW",
+    resolverInput: {
+      permissionId: "workOrder.cancel",
+      assignments: [assignment("dispatcher")],
+      roles: COMPATIBILITY_ROLES,
+      currentAccessVersion: 1,
+      target: target(),
+    },
+  },
+  {
+    fixtureLabel: "technician: work order cancel -- admin/dispatcher only",
+    permissionId: "workOrder.cancel",
+    legacyDecision: "DENY",
+    resolverInput: {
+      permissionId: "workOrder.cancel",
+      assignments: [assignment("technician")],
       roles: COMPATIBILITY_ROLES,
       currentAccessVersion: 1,
       target: target(),
