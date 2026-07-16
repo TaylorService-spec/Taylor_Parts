@@ -962,8 +962,15 @@ button:hover {
   cursor: pointer;
 }
 
-/* Equipment detail (Issue #232 unit E7). Namespaced like the register's badges: no
-   rule here redefines a pre-existing global. */
+/* Equipment detail (Issue #232 unit E7). Every selector is SCOPED under
+   .fo-equipment-detail -- a DESCENDANT scope, which is a different technique from the
+   register's PREFIX-namespaced .fo-badge-equipment-* badges; both are sound, and an
+   earlier version of this comment described the wrong one.
+   Scoping is not tidiness here: fo-detail-grid, fo-back-link, fo-detail-list and
+   friends are generic names in a single shared global stylesheet -- exactly the shape
+   that produced E5's .fo-badge-active collision, where a feature-local rule silently
+   redefined Account status badges. A descendant scope makes that structurally
+   impossible rather than merely absent today. No rule here redefines a global. */
 .fo-equipment-detail { display: flex; flex-direction: column; gap: 12px; }
 .fo-equipment-detail .fo-back-link { font-size: 13px; align-self: flex-start; }
 .fo-equipment-detail .fo-detail-header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }

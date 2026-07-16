@@ -115,8 +115,14 @@ export default function EquipmentDetail() {
             is indistinguishable from "genuinely unknown" -- these would read "Unknown
             customer"/"Unknown location" forever with no failure shown (§9 would want
             one). Fixing that means changing shared Customer hooks, outside E7's
-            surface; it is routed as #291. The `loading` flags above at least stop us
-            asserting "unknown" before we have looked. */}
+            surface; it is routed as #291.
+            The `loading` flags above reduce the window to a SINGLE COMMIT -- they do
+            not close it. The first commit after accountId resolves still reads
+            "Unknown", because these hooks reset `loading` in an EFFECT rather than
+            during render: while accountId is null the effect parks loading=false, and
+            the render where it first becomes non-null happens before the effect re-runs.
+            One frame instead of a network round trip. Also #291 -- only the hook can
+            tell stale-loading apart from genuinely-not-found. */}
         <section className="fo-panel" aria-labelledby="equip-where">
           <h2 id="equip-where">Customer &amp; location</h2>
           <dl className="fo-detail-list">

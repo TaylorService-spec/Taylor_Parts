@@ -4151,8 +4151,21 @@ async function verifyEquipmentDetail(browser, page, accountKey) {
     headerText.includes("\n") && headerText.split("\n")[0].trim() === F.duplicateName, JSON.stringify(headerText));
 
   // ===== §8 Account + installed Location, by NAME =====
+  // SETTLE first. The Account/Location subscriptions cannot start until the equipment
+  // doc resolves, so these fields pass through "Unknown"/"Loading…" before the name
+  // arrives. These were the only §8 assertions here without a settle -- they passed
+  // only because the register visit above warms Firestore's cache, i.e. they would
+  // race the moment this suite was reordered to hit the detail route first.
+  await page.waitForFunction(
+    () => /Alpha Facilities Co/.test(document.querySelector("[data-equipment-account]")?.textContent ?? ""),
+    null, { timeout: 10000 }
+  ).catch(() => {});
   niReport("Detail: the customer is named and links to its record (§8)",
     /Alpha Facilities Co/.test(await page.locator("[data-equipment-account]").innerText()));
+  await page.waitForFunction(
+    () => (document.querySelector("[data-equipment-location]")?.textContent ?? "").includes("Main Plant"),
+    null, { timeout: 10000 }
+  ).catch(() => {});
   niReport("Detail: the installed location is named, not shown as an id (§8)",
     (await page.locator("[data-equipment-location]").innerText()).trim() === "Alpha -- Main Plant");
 
@@ -4231,7 +4244,7 @@ async function verifyEquipmentDetail(browser, page, accountKey) {
   // vacuous test were the same bug wearing two hats.
   const emptyHist = page.locator("[data-history-section] .fo-empty-state");
   await emptyHist.waitFor({ timeout: 10000 }).catch(() => {});
-  niReport("Detail: the history settled before 'empty' was asserted (the loading branch is gone)",
+  niReport("Detail: the history had SETTLED before 'empty' was asserted (no loading state remains)",
     (await page.locator("[data-history-section] .fo-state-loading").count()) === 0);
   niReport("Detail: an asset with no linked work orders shows an empty history state (§9)",
     (await emptyHist.count()) === 1 && /no service history/i.test(await emptyHist.innerText()));
