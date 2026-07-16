@@ -88,6 +88,10 @@ node scripts/operatorAccessCommand.js \
 - **Verification:** `firebase auth:export` or an Admin SDK `getUser(uid).customClaims` check confirms `accessVersion` is set; the `roleAssignments` and `auditEvents` docs are inspectable via the Firebase Console or an Admin SDK read.
 - **Cleanup/rollback:** re-run the same script with `--command revokeRole --assignmentId <the-idempotencyKey-used-above>` and a fresh `--idempotencyKey`, which disables the assignment, bumps `accessVersion` again, and re-syncs claims -- fully reversing the grant through the same reviewed, audited path (never a manual Firestore edit).
 
+**Rollback target (Functions):** if a regression is found post-deployment, `firebase functions:delete grantRole revokeRole assignApprovedRole setUserStatus approveAccessRequest rejectAccessRequest --region us-central1 --project taylor-parts` immediately removes all six callable endpoints (clients then receive `NOT_FOUND`, not a silent fallback to an insecure path -- there is no other route to these commands, since the operator-script path (`operatorAccessCommand.js`) remains available independently and unaffected). Any Firestore state a removed-then-redeployed command mutated before rollback (a `roleAssignments`/`auditEvents` write) is reversed the same way as the claims-bootstrap rollback above -- `revokeRole` via the still-available operator-script path -- never a manual Firestore edit. Redeploying a prior version is `git checkout <prior-good-commit> -- functions/src/access/accessCommandCallables.ts functions/src/index.ts && npm run build && firebase deploy --only functions:grantRole,functions:revokeRole,functions:assignApprovedRole,functions:setUserStatus,functions:approveAccessRequest,functions:rejectAccessRequest --project taylor-parts`.
+
+**Production verification:** see `docs/deployment/enterprise-access-production-verification-plan.md` and `functions/scripts/productionFoundationVerification.js` (Row 21 prep -- prepared and tested against the emulator now, not yet run against production; itself performs no deployment).
+
 **Firebase project:** `taylor-parts`
 **Region:** `us-central1`
 
