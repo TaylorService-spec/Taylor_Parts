@@ -157,19 +157,12 @@ export async function reactivateEquipment(/* id, { reason } */) {
   return trustedActionUnavailable("equipment.reactivate");
 }
 
-// DEPRECATED BY #312 for the ACTIVE<->INACTIVE case, and left only as an unavailable
-// contract so no caller can mistake it for a working seam.
+// NOTE: there is deliberately no `setEquipmentStatus` seam (#314).
 //
-// This comment used to say "Every lifecycle transition -- including ACTIVE<->INACTIVE --
-// routes through the trusted seam ... E10 decides it." That was the misreading #312
-// corrects, written down as if settled: the Owner's E3 decision assigns ACTIVE<->INACTIVE
-// to the ORDINARY client edit (updateEquipmentWith, above), and gives E10 retire and
-// reactivate only. Rules had always permitted the ordinary path.
-//
-// Nothing calls this. E10 should use retireEquipment/reactivateEquipment, which name the
-// two actions that are genuinely trusted; a general "set any status" seam is what let the
-// wrong reading look reasonable in the first place. Removing it is routed as a follow-up
-// rather than folded in here, since it is exported through equipmentRepository.
-export async function setEquipmentStatus(/* id, nextStatus */) {
-  return trustedActionUnavailable("equipment.setStatus");
-}
+// One existed, and it carried the misreading #312 corrects: "Every lifecycle transition
+// -- including ACTIVE<->INACTIVE -- routes through the trusted seam ... E10 decides it."
+// A general "set any status" trusted action is what made that reading look reasonable --
+// it implied every transition belonged to the trusted path. It does not: ACTIVE<->INACTIVE
+// is the ordinary client edit above, and the only genuinely trusted transitions are
+// retire and reactivate, which have their own named seams. Naming the two real actions,
+// and nothing broader, is what keeps the boundary legible.

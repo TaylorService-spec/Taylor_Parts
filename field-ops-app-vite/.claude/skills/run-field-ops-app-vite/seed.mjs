@@ -1354,6 +1354,23 @@ export const EQUIPMENT_FIXTURE = {
   editableId: "equip-alpha-editable",           // ACTIVE, fully populated
   editableRetiredId: "equip-alpha-editable-retired", // RETIRED, still correctable (Owner E3 decision 2)
 
+  // A record whose STORED status is not canonical: "active", not "ACTIVE" (#314).
+  //
+  // Rules compare exact strings (equipmentStatusValid), and equipmentTransitionAllowed
+  // gates EVERY update on the stored status -- so this record is uneditable on the
+  // ordinary path entirely, descriptive fields included, and is repairable only by E10's
+  // trusted writer. Rules say so deliberately.
+  //
+  // It has to be seeded, not constructed by a test: the client cannot create it (E1 pins
+  // create to ACTIVE and Rules re-check it), so only the Admin SDK -- which this seed
+  // already uses -- or a real import can produce one. Without it the browser gate cannot
+  // see the modal's behaviour for this record class at all, and two mutations survived.
+  //
+  // This is BASELINE data, unlike the cross-Account attempts below, and deliberately so:
+  // a malformed status is a data-quality fact that real imports produce, not an invalid
+  // relationship we would be forging. It is what E10's repair action exists for.
+  malformedStatusId: "equip-alpha-malformed-status",
+
   // Alpha's full roster and its RETIRED subset, published so gates ASSERT AGAINST THE
   // FIXTURE rather than a hardcoded literal. The register gate hardcoded `6`, so simply
   // adding the two edit fixtures above turned four of its assertions red -- a fixture
@@ -1361,7 +1378,8 @@ export const EQUIPMENT_FIXTURE = {
   // Alpha record adds it here too, and the counts follow.
   get alphaEquipmentIds() {
     return [this.activeWithHistoryId, this.activeNoHistoryId, this.inactiveId, this.retiredId,
-            this.movedId, this.sparseId, this.editableId, this.editableRetiredId];
+            this.movedId, this.sparseId, this.editableId, this.editableRetiredId,
+            this.malformedStatusId];
   },
   get alphaRetiredIds() {
     return [this.retiredId, this.editableRetiredId];
@@ -1535,6 +1553,16 @@ async function seedEquipmentFixture() {
       status: "ACTIVE", manufacturer: "Lennox", model: "EL16XC1", serialNumber: "SN-ALPHA-0009",
       assetTag: "AT-1009", installedDate: "2023-05-04", warrantyExpiresDate: "2033-05-04",
       notes: "Scratch record for the E8 edit gate.",
+    },
+    {
+      // #314: stored status is "active" -- lowercase, so NOT canonical. Rules reject every
+      // update to it; the register still lists it (its filter normalizes for READING,
+      // which is a different question from what may be written). Distinct manufacturer and
+      // serial so it collides with no search assertion.
+      id: F.malformedStatusId, locationId: F.alphaLocation1Id, name: "Imported Condenser",
+      status: "active", manufacturer: "Rheem", model: "RA14", serialNumber: "SN-ALPHA-0011",
+      assetTag: "AT-1011", installedDate: "2019-09-09", warrantyExpiresDate: "2029-09-09",
+      notes: "Legacy import with a malformed status -- E10 repair target.",
     },
     {
       // E8's retired scratch record. The Owner's E3 decision keeps descriptive

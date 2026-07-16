@@ -14,6 +14,7 @@ import {
   equipmentServiceHistory, groupServiceHistoryByYear,
   GOVERNED_EQUIPMENT_FIELDS,
   buildEquipmentCreatePayload, buildEquipmentEditPayload, ordinaryStatusChangeAllowed,
+  canonicalEquipmentStatus,
   trustedActionUnavailable, TRUSTED_ACTION_UNAVAILABLE_REASON,
 } from "../src/domain/equipment.js";
 
@@ -537,7 +538,7 @@ ok("trusted actions report unavailable, never success, with safe copy", () => {
 });
 
 ok("unavailable copy leaks no provider, code, id, or credential detail", () => {
-  for (const action of ["equipment.move", "equipment.retire", "equipment.reactivate", "equipment.setStatus"]) {
+  for (const action of ["equipment.move", "equipment.retire", "equipment.reactivate"]) {
     const { message } = trustedActionUnavailable(action);
     assert.doesNotMatch(message, /firebase|firestore|functions|permission-denied|unauthenticated|internal|uid|token|[A-Za-z0-9_-]{20,}/i);
   }

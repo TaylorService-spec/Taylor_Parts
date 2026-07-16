@@ -4683,6 +4683,72 @@ async function verifyEquipmentEdit(browser, page, accountKey) {
       afterFix.status === "RETIRED", `status=${afterFix.status}`);
   }
 
+
+  // ===== #314: a record whose STORED status is not canonical is locked ENTIRELY =====
+  // Rules gate EVERY update on the stored status (equipmentTransitionAllowed reads
+  // resource.data.status), and equipmentStatusValid is exact string equality. So a record
+  // storing "active" is denied any write at all -- a descriptive edit included, since the
+  // unchanged "active" still fails the validity check. Rules call it "permanently
+  // uneditable on this path and repairable only by E10's trusted writer".
+  //
+  // This block exists because the gate previously could not see this record class at all:
+  // no fixture had a non-canonical status, so two mutations survived (unlocking such a
+  // record, and seeding the control raw). The domain side was covered; the modal's
+  // rendering was not.
+  {
+    const malformed = await serverDoc(F.malformedStatusId);
+    niReport("Edit: the malformed fixture really stores a NON-canonical status (precondition)",
+      malformed.status === "active", `status=${JSON.stringify(malformed.status)}`);
+
+    await page.goto(url(`equipment/${F.malformedStatusId}`), { waitUntil: "domcontentloaded" });
+    await page.locator(".fo-equipment-detail").waitFor({ timeout: 15000 });
+    await page.locator('[data-equipment-action="edit"]').click();
+    await page.locator("[data-equipment-edit-uneditable]").waitFor({ timeout: 10000 }).catch(() => {});
+
+    niReport("Edit: a malformed-status record offers NO edit form at all (#314)",
+      (await page.locator("[data-equipment-edit-uneditable]").count()) === 1 &&
+        (await page.locator("#equipment-edit-name").count()) === 0 &&
+        (await page.locator("#equipment-edit-status").count()) === 0);
+    niReport("Edit: ...and offers no Save -- the button would promise a write Rules deny",
+      (await page.locator('button[type="submit"]').count()) === 0);
+    // "status" is plain English and belongs in this copy -- an earlier version of this
+    // assertion banned the word itself and failed against correct, readable text. What
+    // must not appear is a raw provider code, an enum literal the user never chose, a
+    // document id, or a field path.
+    niReport("Edit: ...and says so in plain language, leaking no code, enum, or id",
+      /nothing about it can be changed here/i.test(
+        await page.locator("[data-equipment-edit-uneditable]").innerText().catch(() => "")) &&
+      !RAW.test(await page.locator("[data-equipment-edit-uneditable]").innerText().catch(() => "x")) &&
+      !/ACTIVE|INACTIVE|RETIRED|equip-alpha|resource\.data/.test(
+        await page.locator("[data-equipment-edit-uneditable]").innerText().catch(() => "x")),
+      await page.locator("[data-equipment-edit-uneditable]").innerText().catch(() => "(absent)"));
+
+    // Nothing may reach the server from this dialog.
+    const beforeClose = await serverDoc(F.malformedStatusId);
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(500);
+    niReport("Edit: the uneditable dialog closes on Escape and writes nothing",
+      (await page.locator("[data-equipment-edit-uneditable]").count()) === 0 &&
+        (await serverDoc(F.malformedStatusId)).updatedAt === beforeClose.updatedAt);
+  }
+
+  // ...and the SAME code path must still render a canonical ACTIVE record normally. This
+  // is the other half of the pair: a lock that fires too eagerly is as wrong as one that
+  // never fires, and only checking the malformed record cannot tell the two apart.
+  {
+    await openEditor(F.editableId);
+    niReport("Edit: a canonical ACTIVE record still gets the full form, not the lock (#314)",
+      (await page.locator("[data-equipment-edit-uneditable]").count()) === 0 &&
+        (await page.locator("#equipment-edit-name").count()) === 1 &&
+        (await page.locator("#equipment-edit-status").count()) === 1 &&
+        (await page.locator('button[type="submit"]').count()) === 1);
+    niReport("Edit: ...and its status control reads the canonical stored value",
+      (await page.locator("#equipment-edit-status").inputValue()) === "ACTIVE",
+      await page.locator("#equipment-edit-status").inputValue());
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(400);
+  }
+
   // ===== a11y + 375px =====
   await openEditor(F.editableId);
   niReport("Edit: the name control is labelled (a11y)",
