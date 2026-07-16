@@ -36,7 +36,12 @@
 // duplicate/delete/run/export/share/schedule a report definition) and
 // five report-only RecordAuditEventInput fields (objectId, and --
 // meaningful only for run/export, per Spec sec11's "for runs/exports" --
-// rowCount/droppedFieldIds/droppedPredicateFieldIds/truncated). Inert:
+// rowCount/droppedFieldIds/droppedPredicateFieldIds/truncated), the
+// latter two additionally shape-guarded (FIELD_ID_SHAPE_PATTERN below)
+// so an entry must look like a dotted field id, never free text or an
+// actual row value -- closed during this PR's own independent review
+// (round 1), the same class of structural guard SECRET_LIKE_PATTERN
+// already gives `summary`. Inert:
 // nothing calls this extension yet -- the trusted execution/projection
 // service (D-FN) that would be the actual caller is out of THIS PR's
 // scope by direction (D-FN is its own, later, separately-authorized
@@ -105,6 +110,24 @@ const REPORT_ROW_FACT_ACTIONS: ReadonlySet<AuditAction> = new Set([
 
 const MAX_FIELD_ID_LENGTH = 200;
 const MAX_DROPPED_LIST_LENGTH = 500;
+
+// Independent-review finding (D-AUDIT round 1): the length/count bounds
+// above are not, by themselves, a guarantee that an entry is actually a
+// catalog field identifier rather than an arbitrary string a caller
+// mistakenly (or maliciously) populated with row-shaped data (e.g. a
+// real customer name). This shape guard is the analogous structural
+// check `summary` already has via SECRET_LIKE_PATTERN below: an entry
+// must look like a dotted lower-camel identifier path (matching every
+// real fieldId in docs/specifications/governed-object-based-report-
+// creator.md sec5's tables, e.g. "customer.notes",
+// "customer.billingAddress" -- objectId.fieldName, arbitrary depth) --
+// free text, sentences, or values with spaces/punctuation never match.
+// Same caveat as SECRET_LIKE_PATTERN: not exhaustive (a caller could
+// still supply a wrong-but-shape-valid field id), but it closes off the
+// class of obviously-wrong "this looks like row data, not a field id"
+// input this validator can catch cheaply, exactly as SECRET_LIKE_PATTERN
+// does for summary.
+const FIELD_ID_SHAPE_PATTERN = /^[a-z][a-zA-Z0-9]*(\.[a-zA-Z0-9]+)+$/;
 
 const SCOPE_TYPES: readonly ScopeType[] = [
   "global",
@@ -268,6 +291,11 @@ function assertValid(input: RecordAuditEventInput): void {
       if (typeof entry !== "string" || !entry || entry.length > MAX_FIELD_ID_LENGTH) {
         throw new AuditEventValidationError(
           `${field} entries must be non-empty strings no longer than ${MAX_FIELD_ID_LENGTH} characters`,
+        );
+      }
+      if (!FIELD_ID_SHAPE_PATTERN.test(entry)) {
+        throw new AuditEventValidationError(
+          `${field} entries must look like a dotted field id (e.g. "customer.notes"), not free text or row data: "${entry}"`,
         );
       }
     }

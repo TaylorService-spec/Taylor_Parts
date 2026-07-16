@@ -366,6 +366,46 @@ async function main() {
     }
   });
 
+  await check("stageAuditEvent rejects droppedFieldIds/droppedPredicateFieldIds entries that don't look like a field id (row-data/free-text shape guard, review round 1)", () => {
+    for (const field of ["droppedFieldIds", "droppedPredicateFieldIds"]) {
+      for (const bad of [
+        ["John Smith"], // a real row value, not a field id -- exactly what this guard exists to catch
+        ["the customer's notes field"], // free text
+        ["Customer.notes"], // wrong case
+        ["customer notes"], // space instead of dot
+        ["customer."], // trailing dot, no field segment
+        ["123.456"], // digit-leading segment
+      ]) {
+        assert.throws(
+          () =>
+            stageAuditEvent(db.batch(), {
+              ...VALID_EVENT,
+              action: "runReportDefinition",
+              targetType: "reportDefinition",
+              objectId: "customer",
+              [field]: bad,
+            }),
+          AuditEventValidationError,
+          `expected rejection for ${field}=${JSON.stringify(bad)}`,
+        );
+      }
+    }
+  });
+
+  await check("stageAuditEvent accepts droppedFieldIds/droppedPredicateFieldIds entries at every real fieldId depth (2 and 3 dotted segments)", () => {
+    for (const field of ["droppedFieldIds", "droppedPredicateFieldIds"]) {
+      assert.doesNotThrow(() =>
+        stageAuditEvent(db.batch(), {
+          ...VALID_EVENT,
+          action: "runReportDefinition",
+          targetType: "reportDefinition",
+          objectId: "customer",
+          [field]: ["customer.notes", "customer.billingAddress.street"],
+        }),
+      );
+    }
+  });
+
   await check("stageAuditEvent rejects a droppedFieldIds/droppedPredicateFieldIds array exceeding the length cap", () => {
     const tooMany = Array.from({ length: 501 }, (_, i) => `customer.field${i}`);
     for (const field of ["droppedFieldIds", "droppedPredicateFieldIds"]) {
