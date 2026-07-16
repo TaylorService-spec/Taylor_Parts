@@ -21,7 +21,7 @@ target_release: TBD
 
 ## 1. What is being reported
 
-Every row of the approved Implementation Plan from Row 1 (Task 6) through Row 17 (Task 22) is complete, merged into `main`, and independently reviewed. `main`'s HEAD at the time of this report is `06d4cdb` (`origin/main`, includes PR #307).
+Every row of the approved Implementation Plan from Row 1 (Task 6) through Row 17 (Task 22) is complete, merged into `main`, and independently reviewed. `main`'s HEAD at the time of this report is `de78688` (`origin/main`, includes PR #307 plus unrelated, concurrent Equipment work through PR #305 -- no file overlap with this program).
 
 ## 2. Merged PRs (in Plan-row order)
 
@@ -51,7 +51,7 @@ Rows 1-8 (PRs #274-#294) were implemented and merged under this session's earlie
 
 - **Independent reviews:** at least one per PR from #274 onward; #284 (trusted-writer commands) received 4 rounds, including one blocking round from an external reviewer (Codex) that found 3 P1 findings, all corrected and re-verified clean. Every Row 9-17 review re-derived its findings from source (reading the actual Rules/Functions/code directly) rather than trusting the implementing session's own claims, and several independently re-ran the relevant test suite themselves rather than accepting a reported pass/fail.
 - **Shadow-parity fixtures:** 69 total (`docs/reviews/enterprise-access-parity-review.md`), 100% parity (`report.fullParity === true`, 0 mismatches) across all three Rules/Function-authoritative domains (Customer/Account, Inventory/Reorder/Purchasing, Service/Work Order).
-- **Test suites green throughout:** `functions/test/*` (resolveEffectivePermission, auditEventWriter, compactClaims, trustedWriterCommands, shadowParityHarness, operatorAccessCommand) and `field-ops-app-vite`'s unit suite (grew from 23 to 27 test files across this session's rows) -- every PR's merge required a fully green run, not merely "believed passing."
+- **Test suites green throughout:** `functions/test/*` (resolveEffectivePermission, auditEventWriter, compactClaims, trustedWriterCommands, shadowParityHarness, operatorAccessCommand) and `field-ops-app-vite`'s unit suite (grew from 23 to 27 test files across this session's rows; 28 as of this report's own commit, after merging in one unrelated, concurrent Equipment test file) -- every PR's merge required a fully green run, not merely "believed passing."
 - **Rules Regression suite:** 365/365 (documented count as of the last Rules change in this program, Row 3/PR #276; unchanged since, since no later row touched `firestore.rules`).
 - **Builds/typechecks:** clean on every `field-ops-app-vite` and `functions` PR in this program.
 
