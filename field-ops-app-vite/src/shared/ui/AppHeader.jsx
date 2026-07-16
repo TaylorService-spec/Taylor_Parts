@@ -4,6 +4,11 @@ import { useAuth } from "../../auth/AuthContext";
 import { useReorderRequests, useReorderRequestsByStatus, useReorderRequestsAssignedTo } from "../../hooks/useReorderRequests";
 import { REORDER_REQUEST_STATUS } from "../../domain/constants";
 import NotificationPanel from "./NotificationPanel";
+import { createPermissionPreviewer } from "../../access/navPermissionPreview";
+import { resolveEffectivePermission } from "../../access/resolveEffectivePermission";
+import { COMPATIBILITY_ROLES } from "../../access/compatibilityRoles";
+
+const previewHasPermission = createPermissionPreviewer(resolveEffectivePermission, COMPATIBILITY_ROLES);
 
 // Sprint 2.1.3 -- Reorder Request & Notification Foundation. Notification
 // Panel is admin/dispatcher only (same role scope as Inventory today) --
@@ -28,7 +33,14 @@ import NotificationPanel from "./NotificationPanel";
 // notifying the Parts Manager that purchasing has begun.
 export default function AppHeader() {
   const { user, role, logout } = useAuth();
-  const canSeeReorderRequests = role === "admin" || role === "dispatcher";
+  // Issue #226 Row 16 -- presentation-only permission preview (Spec sec8/
+  // sec12: never authoritative, UI visibility stays convenience only).
+  // Legacy admin/dispatcher check retained as the `fallback` in case the
+  // preview can't resolve (unknown role, resolver throws) -- see
+  // navPermissionPreview.js's own doc comment.
+  const canSeeReorderRequests = previewHasPermission("reorder.request.read.queue", role, {
+    fallback: role === "admin" || role === "dispatcher",
+  });
   const { data: pendingReorderRequests } = useReorderRequests(canSeeReorderRequests);
   const { data: partsManagerRequests } = useReorderRequestsByStatus(
     REORDER_REQUEST_STATUS.READY_FOR_PARTS_MANAGER,

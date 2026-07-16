@@ -29,6 +29,11 @@ import AppHeader from "./shared/ui/AppHeader";
 import { InventoryProvider } from "./demo/InventoryContext";
 import { IS_DEMO } from "./config/env";
 import { ROLE_NAV_ACCESS } from "./domain/constants";
+import { createPermissionPreviewer } from "./access/navPermissionPreview";
+import { resolveEffectivePermission } from "./access/resolveEffectivePermission";
+import { COMPATIBILITY_ROLES } from "./access/compatibilityRoles";
+
+const previewHasPermission = createPermissionPreviewer(resolveEffectivePermission, COMPATIBILITY_ROLES);
 import AppShell from "./navigation/AppShell";
 import PlaceholderPage from "./navigation/PlaceholderPage";
 import { NAV_DOMAINS, isDomainVisible, isNavItemVisible } from "./navigation/navConfig";
@@ -233,12 +238,22 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
               two routes simply don't exist for that role, same
               "route doesn't exist, falls through to the catch-all"
               behavior as the /customers/:accountId gate. */}
-          {domain.key === "service" && (role === "admin" || role === "dispatcher") && (
-            <>
-              <Route path="work-orders/new" element={<WorkOrderWizard />} />
-              <Route path="work-orders/:workOrderId" element={<WorkOrderDetailPage />} />
-            </>
-          )}
+          {/* Issue #226 Row 16 -- presentation-only permission preview
+              (Spec sec8/sec12: never authoritative, UI visibility stays
+              convenience only). Legacy admin/dispatcher check retained as
+              the `fallback` -- see navPermissionPreview.js's own doc
+              comment. workOrder.create is the representative permission
+              for this combined Wizard+Detail gate; today only admin/
+              dispatcher hold it, matching the original check exactly. */}
+          {domain.key === "service" &&
+            previewHasPermission("workOrder.create", role, {
+              fallback: role === "admin" || role === "dispatcher",
+            }) && (
+              <>
+                <Route path="work-orders/new" element={<WorkOrderWizard />} />
+                <Route path="work-orders/:workOrderId" element={<WorkOrderDetailPage />} />
+              </>
+            )}
           {/* Platform Task 3 -- the retired /service/control-tower URL redirects
               to the new top-level /service-operations. A STATIC path segment, so
               React Router never lets a dynamic route capture it, and it's one
