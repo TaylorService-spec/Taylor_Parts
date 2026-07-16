@@ -13,7 +13,7 @@ import { createEquipmentWith, updateEquipmentWith } from "./equipmentWrites.js";
 // are separately merged AND deployed, create/edit fail closed with safe copy. That is
 // the correct behaviour under this authorization, not a defect.
 //
-// The trusted-writer contracts (move / retire / reactivate / setStatus) are
+// The trusted-writer contracts (move / retire / reactivate) are
 // re-exported unchanged from the pure core -- they are declared in a module with no
 // firebase import at all, so they cannot write even by accident. See Issue #15.
 
@@ -31,5 +31,4 @@ export {
   moveEquipment,
   retireEquipment,
   reactivateEquipment,
-  setEquipmentStatus,
 } from "./equipmentWrites.js";

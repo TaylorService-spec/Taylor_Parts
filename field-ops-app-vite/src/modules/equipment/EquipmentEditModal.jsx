@@ -92,7 +92,25 @@ export default function EquipmentEditModal({ equipment, accountName, locationNam
   // record says. Seeding raw put a non-canonical value into the <select>, matching no
   // <option>, so React rendered a BLANK status on a legitimately active asset.
   const storedStatus = canonicalEquipmentStatus(base.status);
-  const statusLocked = storedStatus === null || storedStatus === EQUIPMENT_STATUS.RETIRED;
+  // Only RETIRED here. A non-canonical status (storedStatus === null) is handled by the
+  // whole-record lock below, which returns before this form renders -- so folding it into
+  // statusLocked too would be a clause that can never be observed as true, and #287
+  // taught this file exactly what "unobservable guard" costs. The lock is one place.
+  const statusLocked = storedStatus === EQUIPMENT_STATUS.RETIRED;
+
+  // THE WHOLE RECORD is uneditable when its stored status is not canonical (#314), not
+  // just its status. equipmentTransitionAllowed gates EVERY update on the stored status,
+  // including a descriptive-only one: a name change leaves request.resource.data.status
+  // as the stored "active", Rules evaluate equipmentTransitionAllowed("active","active"),
+  // equipmentStatusValid("active") is false, and the write is DENIED.
+  //
+  // Locking only the dropdown -- which is where #312 stopped -- left the Save button
+  // promising exactly the write the comment above says cannot land: the user fixes a
+  // serial number, saves, and gets permission-denied rendered as a generic failure. Rules
+  // are explicit that such a record "is permanently uneditable on this path and is
+  // repairable only by E10's trusted writer", so the honest form is one that says so
+  // instead of offering fields.
+  const recordUneditable = storedStatus === null;
   const [status, setStatus] = useState(() => storedStatus ?? "");
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [saveError, setSaveError] = useState(null);
@@ -180,6 +198,25 @@ export default function EquipmentEditModal({ equipment, accountName, locationNam
       submittingRef.current = false;
       setSubmitting(false);
     }
+  }
+
+  if (recordUneditable) {
+    return (
+      <Modal title="Edit Equipment" onClose={requestClose} closeLabel="Close">
+        <div className="fo-form" data-equipment-edit-uneditable>
+          <p>
+            This equipment&apos;s status isn&apos;t one this app recognizes, so nothing about it
+            can be changed here — including its name and other details.
+          </p>
+          <p className="fo-muted">
+            An administrator needs to repair the record before it can be edited.
+          </p>
+          <FormActions>
+            <button type="button" onClick={requestClose}>Close</button>
+          </FormActions>
+        </div>
+      </Modal>
+    );
   }
 
   return (

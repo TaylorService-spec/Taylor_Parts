@@ -14,6 +14,7 @@ import {
   equipmentServiceHistory, groupServiceHistoryByYear,
   GOVERNED_EQUIPMENT_FIELDS,
   buildEquipmentCreatePayload, buildEquipmentEditPayload, ordinaryStatusChangeAllowed,
+  canonicalEquipmentStatus,
   trustedActionUnavailable, TRUSTED_ACTION_UNAVAILABLE_REASON,
 } from "../src/domain/equipment.js";
 

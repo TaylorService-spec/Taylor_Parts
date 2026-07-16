@@ -11,7 +11,7 @@
 import assert from "node:assert/strict";
 import {
   createEquipmentWith, updateEquipmentWith,
-  moveEquipment, retireEquipment, reactivateEquipment, setEquipmentStatus,
+  moveEquipment, retireEquipment, reactivateEquipment,
 } from "../src/domain/equipmentWrites.js";
 
 let passed = 0;
@@ -251,7 +251,6 @@ await ok("every trusted action reports unavailable, performs no write, and is no
     [moveEquipment, "equipment.move"],
     [retireEquipment, "equipment.retire"],
     [reactivateEquipment, "equipment.reactivate"],
-    [setEquipmentStatus, "equipment.setStatus"],
   ]) {
     const res = await fn("eq1", { toLocationId: "l2", reason: "x" });
     assert.equal(res.ok, false, `${action} must never look like success while Issue #15 is unresolved`);
