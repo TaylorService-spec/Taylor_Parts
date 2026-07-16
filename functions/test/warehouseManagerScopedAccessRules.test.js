@@ -199,8 +199,12 @@ async function main() {
     (await getDocAt("warehouses", "wh-satellite", tokens["user-dispatcher-wh"])) === 200);
   report("admin still reads stock_locations (regression, unaffected)",
     (await getDocAt("stock_locations", "sl-satellite-1", tokens["user-admin-wh"])) === 200);
+  report("dispatcher still reads stock_locations (regression, unaffected)",
+    (await getDocAt("stock_locations", "sl-satellite-1", tokens["user-dispatcher-wh"])) === 200);
   report("admin still reads transfer_orders (regression, unaffected)",
     (await getDocAt("transfer_orders", "to-other-other", tokens["user-admin-wh"])) === 200);
+  report("dispatcher still reads transfer_orders (regression, unaffected)",
+    (await getDocAt("transfer_orders", "to-other-other", tokens["user-dispatcher-wh"])) === 200);
 
   // === Scoped WAREHOUSE_MANAGER -- assigned warehouse is readable ===
 
@@ -252,9 +256,20 @@ async function main() {
       id: { stringValue: "sl-wm-create-attempt" }, warehouseId: { stringValue: "wh-main" },
       partId: { stringValue: "part-1" }, quantity: { integerValue: "1" }, binCode: { stringValue: "x" },
     })) === 403);
+  report("Admin still denied creating a stock_location (unconditional Admin-SDK-only posture, unaffected)",
+    (await createDocAt("stock_locations", "sl-admin-create-attempt", tokens["user-admin-wh"], {
+      id: { stringValue: "sl-admin-create-attempt" }, warehouseId: { stringValue: "wh-main" },
+      partId: { stringValue: "part-1" }, quantity: { integerValue: "1" }, binCode: { stringValue: "x" },
+    })) === 403);
   report("Scoped manager still denied creating a transfer_order",
     (await createDocAt("transfer_orders", "to-wm-create-attempt", tokens["user-wm-scoped-1"], {
       id: { stringValue: "to-wm-create-attempt" }, partId: { stringValue: "part-1" }, quantity: { integerValue: "1" },
+      fromWarehouseId: { stringValue: "wh-main" }, toWarehouseId: { stringValue: "wh-satellite" },
+      status: { stringValue: "PENDING" }, createdAt: { integerValue: String(now) }, updatedAt: { integerValue: String(now) },
+    })) === 403);
+  report("Admin still denied creating a transfer_order (unconditional Admin-SDK-only posture, unaffected)",
+    (await createDocAt("transfer_orders", "to-admin-create-attempt", tokens["user-admin-wh"], {
+      id: { stringValue: "to-admin-create-attempt" }, partId: { stringValue: "part-1" }, quantity: { integerValue: "1" },
       fromWarehouseId: { stringValue: "wh-main" }, toWarehouseId: { stringValue: "wh-satellite" },
       status: { stringValue: "PENDING" }, createdAt: { integerValue: String(now) }, updatedAt: { integerValue: String(now) },
     })) === 403);

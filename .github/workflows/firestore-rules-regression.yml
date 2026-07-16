@@ -1,6 +1,6 @@
 name: Firestore Rules Regression
 
-# Runs the canonical Firestore Rules emulator suite (406 assertions across ten
+# Runs the canonical Firestore Rules emulator suite (410 assertions across ten
 # suites, each against a freshly started Firestore+Auth emulator) via the pinned
 # runner. Emulator-only, project "taylor-parts", loopback hosts -- no production
 # access, no credentials, no repository secrets.
@@ -64,7 +64,7 @@ jobs:
         run: npm run test:runner
         working-directory: functions
 
-      - name: Canonical Firestore Rules regression (406 assertions)
+      - name: Canonical Firestore Rules regression (410 assertions)
         run: npm run test:rules
         working-directory: functions
 
