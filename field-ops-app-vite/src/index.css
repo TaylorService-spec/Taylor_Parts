@@ -1401,6 +1401,12 @@ textarea.fo-wizard-control { min-height: 76px; resize: vertical; }
 .fo-state-message { margin: 0; }
 .fo-state-action { margin-top: 2px; }
 
+/* Issue #325 unit F3 -- report builder result tones. A left accent bar distinguishes an
+   informational result (unavailable/idle) from a warning one (partially-authorized,
+   truncated/widened) without the alert semantics FailureState carries for real errors. */
+.fo-tone-info { border-left: 3px solid #2E4A50; padding-left: 12px; }
+.fo-tone-warning { border-left: 3px solid #A9740D; padding-left: 12px; }
+
 /* Issue #214 PR-2 -- Contact/Location creation modals. Single-column stacked
    layout inside the shared Modal (max-width 560px), reusing the System-A form
    primitives (Field renders `.fo-form-field`; controls carry `.fo-wizard-control`).
