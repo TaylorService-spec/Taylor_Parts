@@ -18,7 +18,8 @@ import {
 } from "./reportCatalog.js";
 import {
   DEFINITION_KEYS, FILTER_KEYS, SORT_KEYS, AGGREGATE_KEYS,
-  SORT_DIRECTIONS, AGGREGATE_FUNCTIONS, FILTER_COMPARATORS_BY_TYPE, ARRAY_VALUE_COMPARATORS,
+  SORT_DIRECTIONS, AGGREGATE_FUNCTIONS, FIELD_AGGREGATE_FUNCTIONS, isFieldlessAggregate,
+  FILTER_COMPARATORS_BY_TYPE, ARRAY_VALUE_COMPARATORS,
 } from "./reportQueryModel.js";
 
 function isPlainObject(v) {
@@ -164,8 +165,9 @@ export function validateReportDefinition(def, options = {}) {
     }
   }
 
-  // -- aggregates -- each { fieldId, fn }; field must support `aggregate` (number-only by the
-  // catalog's construction), fn must be a known aggregate function.
+  // -- aggregates -- two shapes (Spec §7):
+  //   fieldless `countRows` -> { fn }, no fieldId (counts authorized rows);
+  //   field-bound sum/avg/min/max/count -> { fieldId, fn }, field must support `aggregate`.
   if (def.aggregates !== undefined) {
     if (!Array.isArray(def.aggregates)) {
       errors.push("definition.aggregates must be an array");
@@ -175,11 +177,16 @@ export function validateReportDefinition(def, options = {}) {
         if (!isPlainObject(a)) { errors.push(`${where} must be an object`); return; }
         const xk = unknownKeys(a, AGGREGATE_KEYS);
         if (xk.length > 0) errors.push(`${where} has unknown keys: ${xk.join(", ")}`);
-        const resolved = resolveFor(a.fieldId, where);
-        if (resolved && !resolved.field.operators.includes("aggregate")) {
-          errors.push(`${where}: field ${a.fieldId} does not support aggregate`);
-        }
-        if (!AGGREGATE_FUNCTIONS.includes(a.fn)) {
+        if (isFieldlessAggregate(a.fn)) {
+          // countRows references no field, so a fieldId is meaningless -- reject it fail-closed
+          // rather than silently ignoring it (a stray fieldId may signal author confusion).
+          if (a.fieldId !== undefined) errors.push(`${where}: ${a.fn} takes no fieldId`);
+        } else if (FIELD_AGGREGATE_FUNCTIONS.includes(a.fn)) {
+          const resolved = resolveFor(a.fieldId, where);
+          if (resolved && !resolved.field.operators.includes("aggregate")) {
+            errors.push(`${where}: field ${a.fieldId} does not support aggregate`);
+          }
+        } else {
           errors.push(`${where}: fn must be one of ${AGGREGATE_FUNCTIONS.join("|")}`);
         }
       });
@@ -192,6 +199,20 @@ export function validateReportDefinition(def, options = {}) {
     const hasFields = Array.isArray(def.fields) && def.fields.length > 0;
     const hasAggs = Array.isArray(def.aggregates) && def.aggregates.length > 0;
     if (!hasFields && !hasAggs) errors.push("definition selects no fields and no aggregates");
+
+    // Grouping consistency (Spec §7): when a definition groups or aggregates, every projected
+    // NON-aggregate column must itself be grouped -- a raw column that is neither grouped nor
+    // aggregated is ambiguous under aggregation (which of its many per-group values would show?).
+    // Refuse it on save. (At run, §6 keeps this consistent: a grouped field dropped as unreadable
+    // drops the column it backed with it.)
+    if ((hasAggs || (Array.isArray(def.groupBy) && def.groupBy.length > 0)) && Array.isArray(def.fields)) {
+      const grouped = new Set(Array.isArray(def.groupBy) ? def.groupBy : []);
+      for (const fieldId of def.fields) {
+        if (!grouped.has(fieldId)) {
+          errors.push(`fields: ${fieldId} must be grouped (added to groupBy) when the report groups or aggregates`);
+        }
+      }
+    }
   }
 
   // -- presentation -- inert display metadata; must be an object if present, not validated for

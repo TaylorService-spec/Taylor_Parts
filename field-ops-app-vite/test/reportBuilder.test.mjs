@@ -71,8 +71,10 @@ ok("reducers build a valid definition without mutating their input", () => {
   // toggle off again
   assert.deepEqual(toggleField(d2, "customer.name").fields, []);
 
-  const d3 = toggleGroupBy(d2, "customer.status");
-  assert.deepEqual(d3.groupBy, ["customer.status"]);
+  // group by the PROJECTED field so the definition stays grouping-consistent (Spec §7, F4):
+  // a projected non-aggregate column must itself be grouped when the report groups.
+  const d3 = toggleGroupBy(d2, "customer.name");
+  assert.deepEqual(d3.groupBy, ["customer.name"]);
 
   const op = defaultComparator("enum");
   assert.equal(op, "eq");
