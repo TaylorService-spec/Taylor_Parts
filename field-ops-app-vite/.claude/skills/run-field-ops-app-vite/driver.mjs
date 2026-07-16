@@ -4456,6 +4456,36 @@ async function verifyEquipmentEdit(browser, page, accountKey) {
     (await page.locator(".fo-equipment-title").innerText()).includes(newName),
     await page.locator(".fo-equipment-title").innerText());
 
+  // ===== a concurrent write is MERGED, not reverted (review round 1, finding 1) =====
+  // The modal seeds its values at open and must diff against the record AS IT WAS THEN.
+  // Diffing against the LIVE prop instead loses another session's write: `equipment`
+  // comes from onSnapshot, so it updates underneath an open modal, and every field the
+  // user never touched then reads as "changed back" to what they were shown at open.
+  //
+  // This is the only assertion here that needs a SECOND writer, so it writes directly
+  // over REST -- the app has no second session to drive.
+  {
+    await openEditor(F.editableId);                     // seeds manufacturer as-stored
+    const concurrent = `Trane-Concurrent-${RUN}`;
+    await fetch(
+      `http://127.0.0.1:8080/v1/projects/taylor-parts/databases/(default)/documents/equipment/${F.editableId}?updateMask.fieldPaths=manufacturer`,
+      { method: "PATCH", headers: { Authorization: "Bearer owner", "Content-Type": "application/json" },
+        body: JSON.stringify({ fields: { manufacturer: { stringValue: concurrent } } }) }
+    );
+    // Let the open modal's subscription actually deliver the change -- without this the
+    // page never sees it and the assertion passes for the wrong reason.
+    await page.waitForTimeout(2500);
+    const renamed = `Merged Unit ${RUN}`;
+    await page.locator("#equipment-edit-name").fill(renamed);
+    await saveAndWait();
+    const merged = await serverDoc(F.editableId);
+    niReport("Edit: a concurrent write to an untouched field SURVIVES this save (not reverted)",
+      merged.manufacturer === concurrent,
+      `expected ${concurrent}, server has ${merged.manufacturer}`);
+    niReport("Edit: ...and this session's own edit still lands (a merge, not a discard)",
+      merged.name === renamed, `name=${merged.name}`);
+  }
+
   // ===== a no-op save writes NOTHING and says so (#287) =====
   const beforeNoop = await serverDoc(F.editableId);
   await openEditor(F.editableId);

@@ -33,11 +33,32 @@ import { EDITABLE_EQUIPMENT_FIELDS, changedEquipmentFields } from "../../domain/
 // accountId and locationId stay unchanged and hard deletion stays denied. A typo in a
 // serial number is still worth fixing after the asset leaves service.
 export default function EquipmentEditModal({ equipment, accountName, locationName, onSave, onClose }) {
-  // Seed from the stored record. `?? ""` because a controlled input needs a string and
-  // the stored optional fields are null -- not because null and "" mean the same thing;
-  // the diff below maps "" back to null before comparing.
+  // THE FORM AND ITS DIFF BASIS ARE FROZEN TOGETHER, at open. `equipment` arrives from a
+  // LIVE onSnapshot subscription, so its identity changes whenever anyone writes this
+  // record -- including another session, while this modal sits open.
+  //
+  // Diffing the seeded values against the LIVE record loses that other session's write:
+  //
+  //   open:      { name: "RTU 1", manufacturer: "Carrier" }   -- form seeds "Carrier"
+  //   meanwhile: session B saves manufacturer: "Trane"        -- prop updates, form does not
+  //   user:      retypes the name only, saves
+  //   diff(values@open, equipment@submit) -> { name: "RTU 2", manufacturer: "Carrier" }
+  //                                          ^ reverts B, a field this user never touched
+  //   diff(values@open, equipment@open)   -> { name: "RTU 2" }   -- correct field merge
+  //
+  // The values were seeded from THIS record, so it is the only honest thing to compare
+  // them against: a difference must mean "the user changed it", never "the record moved
+  // underneath them". Freezing is what makes the diff a field-level merge rather than a
+  // last-writer-wins overwrite of everything the form happens to be holding.
+  const [base] = useState(equipment);
+
+  // `?? ""` because a controlled input needs a string and the stored optional fields are
+  // null -- not because null and "" mean the same thing; the diff maps "" back to null.
+  // Non-strings are coerced away rather than trusted: Rules forbid them, so one here
+  // would be a record we cannot render, not a value to put in a text box.
   const [values, setValues] = useState(() =>
-    Object.fromEntries(EDITABLE_EQUIPMENT_FIELDS.map((f) => [f, equipment[f] ?? ""])));
+    Object.fromEntries(EDITABLE_EQUIPMENT_FIELDS.map(
+      (f) => [f, typeof base[f] === "string" ? base[f] : ""])));
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [saveError, setSaveError] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({});
@@ -79,18 +100,23 @@ export default function EquipmentEditModal({ equipment, accountName, locationNam
     // `!==`; see changedEquipmentFields). Deliberately NOT reimplemented here: a copy
     // in this file would be a second definition for the unit test to pin, and the test
     // would then prove things about the copy rather than about what this form sends.
-    const changed = changedEquipmentFields(values, equipment);
+    // Against `base`, not the live prop -- see the freeze at the top.
+    const changed = changedEquipmentFields(values, base);
 
     submittingRef.current = true;
     setSubmitting(true);
     try {
-      // `before` is the stored record. It is DEFENSIVE here, and the honest statement of
-      // why is: changedEquipmentFields iterates EDITABLE_EQUIPMENT_FIELDS, so this form
-      // cannot produce a governed key even if its state were polluted with one -- which
-      // means `before` has nothing to prove today, and removing it leaves the gate green.
-      // It is passed anyway so that IF a governed key ever reached E2 from here, it would
-      // be refused as a proven change rather than silently unprovable (#287).
-      const result = await onSave(changed, equipment);
+      // `before` is the record this edit was actually based on -- the same frozen `base`
+      // the diff used, so the evidence and the diff can never disagree about what the
+      // record looked like.
+      //
+      // It is DEFENSIVE, and the honest statement of why: changedEquipmentFields iterates
+      // EDITABLE_EQUIPMENT_FIELDS, so this form cannot produce a governed key even if its
+      // state were polluted with one -- which means `before` has nothing to prove today,
+      // and removing it leaves the gate green. It is passed anyway so that IF a governed
+      // key ever reached E2 from here, it would be refused as a proven change rather than
+      // silently unprovable (#287).
+      const result = await onSave(changed, base);
       if (!result?.ok) {
         setFieldErrors(result?.errors ?? {});
         setSaveError(result?.message ?? "Could not save this equipment. Nothing was saved — please try again.");

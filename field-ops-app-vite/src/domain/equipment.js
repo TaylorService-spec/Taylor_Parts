@@ -282,11 +282,25 @@ export function changedEquipmentFields(values, equipment) {
   const changed = {};
   for (const f of EDITABLE_EQUIPMENT_FIELDS) {
     const raw = values[f];
-    // A control the form does not offer is absent, not blank -- absent means unchanged,
-    // and must not be read as a request to clear the field.
-    if (raw === undefined) continue;
-    const next = typeof raw === "string" ? (raw.trim() === "" ? null : raw.trim()) : raw ?? null;
-    const current = equipment[f] ?? null;
+    // A field is edited only if the caller supplied a STRING (a value) or NULL (cleared).
+    // Everything else contributes nothing, for two different reasons that happen to share
+    // an answer:
+    //   undefined -- the control was not offered. Absent means unchanged; it is not a
+    //                request to blank the field.
+    //   anything else (number, object, Date...) -- a caller bug. The fail-closed answer
+    //                is to write NOTHING for that field. Coercing it to null would CLEAR
+    //                a stored value on the strength of that bug, and a clear is a write.
+    // One check rather than two: a separate `raw === undefined` guard read as though it
+    // were load-bearing, but this line already subsumes it -- verified, not assumed.
+    if (raw !== null && typeof raw !== "string") continue;
+    // BOTH SIDES ARE NORMALIZED THE SAME WAY. Normalizing only `next` compares a trimmed
+    // form value against a raw stored one, so a record holding " Carrier " reports a
+    // change on an untouched form and rewrites itself on save. Rules permit padded
+    // strings (they only require a non-blank trimmed name), so such records are legal --
+    // from an import, a seed, or a future trusted writer -- and "saving an untouched form
+    // writes nothing" has to hold for them too.
+    const next = trimmedOrNull(raw);
+    const current = trimmedOrNull(equipment[f]);
     if (next !== current) changed[f] = next;
   }
   return changed;

@@ -136,6 +136,46 @@ ok("E8 the diff honours the #287 record contract instead of throwing", () => {
   }
 });
 
+// A GENUINELY sparse record: optional fields ABSENT, not null -- exactly what the
+// `equip-alpha-sparse` fixture is ("every optional field absent -- not null, ABSENT").
+// STORED above declares every key explicitly, so it never exercises `undefined`, and
+// that hole let `equipment[f] ?? null -> equipment[f]` survive mutation while being a
+// REAL defect: over this record it makes an untouched form report all seven optionals
+// as cleared, and write them.
+const SPARSE = Object.freeze({ accountId: "acct-1", locationId: "loc-1", status: "ACTIVE", name: "Unlabeled Pump" });
+
+ok("E8 an untouched form over a SPARSE record (fields absent, not null) changes nothing", () => {
+  assert.deepEqual(changedFields(seed(SPARSE), SPARSE), {});
+  const r = buildEquipmentEditPayload(changedFields(seed(SPARSE), SPARSE), SPARSE, 7);
+  assert.equal(r.noop, true, "an absent field is not a cleared field");
+  assert.equal(r.payload, null);
+  // ...and filling one of those absent fields is still a real edit.
+  assert.deepEqual(changedFields({ ...seed(SPARSE), model: "48TC" }, SPARSE), { model: "48TC" });
+});
+
+ok("E8 a PADDED stored value is not a change -- both sides normalize the same way", () => {
+  // Rules permit padded strings (they only require a non-blank TRIMMED name), so such
+  // records are legal -- from an import, a seed, or a trusted writer. Normalizing only
+  // the form side made an untouched form rewrite the record on save.
+  const padded = { ...STORED, manufacturer: "  Carrier  ", serialNumber: "SN-9 " };
+  assert.deepEqual(changedFields(seed(padded), padded), {},
+    "opening and saving an untouched padded record must write nothing");
+  // A real edit against a padded record still registers, and is stored trimmed.
+  assert.deepEqual(changedFields({ ...seed(padded), manufacturer: "Trane" }, padded), { manufacturer: "Trane" });
+});
+
+ok("E8 a non-string field value is skipped, never normalized into a silent clear", () => {
+  // Every editable field is a string (or null = cleared). Anything else is a caller bug,
+  // and the fail-closed answer is to write NOTHING for it -- coercing to null would
+  // CLEAR a stored value on the strength of that bug, which is a write, not a refusal.
+  for (const bad of [5, true, {}, [], new Date()]) {
+    assert.deepEqual(changedFields({ manufacturer: bad }, STORED), {},
+      `a ${typeof bad} must not become an edit`);
+  }
+  // null IS a legitimate clear, and is distinguishable from the above.
+  assert.deepEqual(changedFields({ manufacturer: null }, STORED), { manufacturer: null });
+});
+
 ok("E8 the diff covers exactly the domain's editable fields", () => {
   // If E1 gains an editable field and this form does not, the control is missing and no
   // test would otherwise notice. The form seeds and diffs from the same imported list,
