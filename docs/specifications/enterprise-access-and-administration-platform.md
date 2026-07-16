@@ -297,3 +297,51 @@ Recorded for the Owner rather than inferred (per the Owner direction's "collect 
 ### 26.6 Approval
 
 This addendum is Specification-Approved on the same terms as §25: contract-layer only, records the eight governed business Roles' Permission/Scope/Condition mapping and the identified catalog gaps. It authorizes no Role assignment, no claims change, no Rules/Functions change, no production deployment, and no permission-catalog addition beyond the existing ids cited in §26.2. Issue #226 remains OPEN/In Progress.
+
+## 27. Addendum — Warehouse authorization gap (closes §26.4's "Warehouse-specific ids" row)
+
+**Source:** the Owner's follow-up direction to continue Issue #226 from PR #329 by resolving the Warehouse permission-catalog gap §26.4 identified. **Scope boundary, per that direction:** Equipment and the #325 Reporting initiative are Customer-owned and not touched here — this addendum covers only the "Epic 4 Warehouse + Fulfillment System" collections below.
+
+### 27.1 Current-state evidence (repository, not inferred)
+
+Three collections, all under the header comment `// Epic 4 Warehouse + Fulfillment System` (`firestore.rules`, current `main`):
+
+| Collection | Rules today | Client write path | Backend logic |
+|---|---|---|---|
+| `warehouses` | `allow read: if isAdminOrDispatcher(); allow create, update, delete: if false;` | **None** | `functions/src/warehouseService.ts` (Admin-SDK internal only) |
+| `stock_locations` | same shape | **None** | same file |
+| `transfer_orders` | same shape | **None** | same file (`TransferOrder` type) |
+
+**Confirmed, not assumed:** `warehouseService.ts`, `warehouseReconciliationService.ts` (pure read-only reconciliation, no mutation), and `warehouseAnalyticsBridge.ts` (pure read-only suggestion generation, explicitly documented as never calling `updateStockLocation`/`createTransferOrder`) are **not wired to any `onCall`/HTTPS Cloud Function** — grepped `functions/src/index.ts` for every export name in `warehouseService.ts`, zero matches. There is today **no client-reachable write path of any kind** for this domain, matching the Rules comment's own claim ("a physical-reality layer, not a second source of truth"). The three collections are read today by `field-ops-app-vite/src/services/operationsQueries.ts` (`fetchTransferOrders`) for the Operations Intelligence dashboard's `activeWarehouseTransfers`/`warehouseTransferDelays` figures (admin/dispatcher-only surface).
+
+**Explicitly excluded from this addendum (adjacent, not Warehouse):** `purchase_orders` (Epic 5 Procurement/Supplier Management — `supplierId`/`items`/`totalCost` shape, a distinct collection from Issue #100's `reorder_purchase_orders`) and `suppliers`/`supplier_catalog` share the identical admin/dispatcher-read-only/no-client-write posture, but are Purchasing/Procurement-domain, not Warehouse — flagged here as their own, separate, still-open catalog gap for a future addendum, not resolved by this one.
+
+### 27.2 New Permission ids (§6 format, capability-based, matching this repository's own `<domain>.record.read` naming precedent)
+
+| PermissionId | Resource | Action | Reproduces |
+|---|---|---|---|
+| `warehouse.record.read` | `warehouse.record` | `read` | The existing `warehouses` collection's `isAdminOrDispatcher()` read grant. |
+| `warehouse.stockLocation.read` | `warehouse.stockLocation` | `read` | The existing `stock_locations` collection's `isAdminOrDispatcher()` read grant. |
+| `warehouse.transferOrder.read` | `warehouse.transferOrder` | `read` | The existing `transfer_orders` collection's `isAdminOrDispatcher()` read grant. |
+
+**No write id is registered for any of the three** — there is no capability to reproduce; inventing one would violate §6's "names a capability that already exists" rule and this Specification's standing "do not silently make unsupported permissions equivalent" instruction.
+
+### 27.3 Compatibility-Role update (§7) — additive only, zero behaviour change
+
+`ADMIN_ROLE` and `DISPATCHER_ROLE` both already hold this exact read access today via `isAdminOrDispatcher()` — §7's compatibility Roles are defined to "reproduce today's effective matrix **exactly**," and the resolver's own acceptance test (A3, `resolveEffectivePermission.test.mjs`) requires every catalog id to be granted by at least one compatibility Role (the sole named exception is the still-deferred `audit.event.read`, Row 11). Leaving these three ids ungranted would make the parity oracle **inaccurate** (a real, unchanged admin/dispatcher capability with no catalog representation), not merely incomplete.
+
+**Resolution:** add all three ids to `SHARED_ADMIN_DISPATCHER_BASE_PERMISSIONS` (`compatibilityRoles.ts`) — the same shared base `inventory.transaction.read` and every other admin/dispatcher-common id already lives in. This is **purely additive to the catalog representation of an already-existing, unchanged Rules grant** — it changes no `firestore.rules` file, no deployed behaviour, and no principal's actual access. `TECHNICIAN_ROLE` is **not** touched: `firestore.rules`' `warehouses`/`stock_locations`/`transfer_orders` blocks have no `isActiveOperationalRole(...)` branch of any kind today (unlike `inventory_transactions`/`inventory_actions`), so granting `WAREHOUSE_MANAGER` these ids would misrepresent Issue #100 behaviour — recorded as an open observation in §27.5, not resolved here (a real Rules change would be required, which is this addendum's own hard stop).
+
+### 27.4 Governed business Role update (§26.2) — Operations Manager only
+
+Per §26.4's own attribution ("Warehouse-specific ids... Operations Manager"), `OPERATIONS_MANAGER_ROLE` gains all three ids — consistent with its existing read-heavy, cross-domain oversight shape (Customer, Service, Inventory, Purchasing reads) and its explicit mapping principle ("...across Customer, Service, Inventory, **Warehouse**, and Purchasing"). No other governed business Role gains a Warehouse id: `Field Manager`'s own stated principle names "authorized field **inventory**" (already satisfied by `inventory.transaction.read`), not warehouse site/transfer records specifically, and granting it here would be an inference beyond what that role's own mapping actually states.
+
+### 27.5 Decisions this addendum does not resolve
+
+- `WAREHOUSE_MANAGER` (Issue #100 operational role) has no real Rules-granted access to `warehouses`/`stock_locations`/`transfer_orders` today, despite its name — whether that is an intentional scope boundary (this Epic 4 layer is deliberately admin/dispatcher-oversight-only, distinct from the ledger-level `inventory_transactions`/`inventory_actions` grants Issue #100 already gives that role) or a genuine product gap is an Owner decision, not inferred here; resolving it would require its own `firestore.rules` change, out of this addendum's scope regardless.
+- Whether the adjacent Epic 5 Procurement gap (`purchase_orders`/`suppliers`/`supplier_catalog`) should be assessed next, and whether it belongs to a "Purchasing" or "Warehouse" governed-role boundary.
+- Whether any governed business Role beyond Operations Manager should eventually gain warehouse-read visibility once real job-title-to-Role assignment mapping is decided (out of scope for every addendum in this series, by design).
+
+### 27.6 Approval
+
+Specification-Approved on the same terms as §25/§26.6: contract-layer only. Authorizes the three new Permission ids, their additive-only compatibility-Role and Operations-Manager grants, and nothing else — no Rules, Functions, claims, enforcement, deployment, credential, or production-data action of any kind. Issue #226 remains OPEN/In Progress.

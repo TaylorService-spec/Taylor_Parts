@@ -192,6 +192,9 @@ check("Operations Manager: cross-domain oversight reads + Work Order lifecycle; 
     "inventory.action.read",
     "reorder.request.read.queue",
     "reorder.purchaseOrder.read",
+    "warehouse.record.read",
+    "warehouse.stockLocation.read",
+    "warehouse.transferOrder.read",
   ]) {
     assert.equal(resolve(id, "operationsManager", GOVERNED_BUSINESS_ROLES).decision, "ALLOW", id);
   }
@@ -207,6 +210,62 @@ check("Operations Manager: cross-domain oversight reads + Work Order lifecycle; 
     "reorder.request.cancel",
   ]) {
     assert.equal(resolve(id, "operationsManager", GOVERNED_BUSINESS_ROLES).decision, "DENY", id);
+  }
+});
+
+// === Spec §27: the Warehouse permission-catalog gap closure ===
+
+check("the three warehouse.*.read ids exist and are read-only (no create/update/delete id for any of the three collections)", () => {
+  for (const id of ["warehouse.record.read", "warehouse.stockLocation.read", "warehouse.transferOrder.read"]) {
+    const permission = findPermission(id);
+    assert.ok(permission, id);
+    assert.equal(permission.action, "read", id);
+  }
+  for (const resource of ["warehouse.record", "warehouse.stockLocation", "warehouse.transferOrder"]) {
+    for (const action of ["create", "update", "delete", "write"]) {
+      assert.equal(findPermission(`${resource}.${action}`), undefined, `${resource}.${action} must not exist -- no client-reachable write path`);
+    }
+  }
+});
+
+check("admin and dispatcher both gain the three warehouse ids (additive-only, reproduces their already-existing Rules grant)", () => {
+  for (const id of ["warehouse.record.read", "warehouse.stockLocation.read", "warehouse.transferOrder.read"]) {
+    for (const roleId of ["admin", "dispatcher"]) {
+      assert.equal(resolve(id, roleId, COMPATIBILITY_ROLES).decision, "ALLOW", `${roleId}: ${id}`);
+    }
+  }
+});
+
+check("technician gains none of the three warehouse ids (no operational-role Rules branch exists for this domain -- Spec §27.3/§27.5)", () => {
+  for (const id of ["warehouse.record.read", "warehouse.stockLocation.read", "warehouse.transferOrder.read"]) {
+    assert.equal(resolve(id, "technician", COMPATIBILITY_ROLES).decision, "DENY", id);
+  }
+  assert.equal(
+    TECHNICIAN_ROLE.permissions.some((id) => id.startsWith("warehouse.")),
+    false
+  );
+});
+
+check("only Operations Manager, among the eight governed business Roles, holds any warehouse.*.read id (Spec §27.4)", () => {
+  const warehouseIds = new Set(["warehouse.record.read", "warehouse.stockLocation.read", "warehouse.transferOrder.read"]);
+  for (const role of Object.values(GOVERNED_BUSINESS_ROLES)) {
+    const holdsAny = role.permissions.some((id) => warehouseIds.has(id));
+    if (role.id === "operationsManager") {
+      assert.equal(holdsAny, true, "Operations Manager must hold all three");
+      for (const id of warehouseIds) assert.ok(role.permissions.includes(id), id);
+    } else if (role.id === "owner") {
+      // Owner mirrors admin, which (as of this addendum) DOES hold these -- see the dedicated Owner check below.
+      continue;
+    } else {
+      assert.equal(holdsAny, false, `${role.id} must not hold a warehouse id`);
+    }
+  }
+});
+
+check("Owner mirrors admin's warehouse grant too, since Owner is defined as ADMIN_ROLE.permissions verbatim", () => {
+  for (const id of ["warehouse.record.read", "warehouse.stockLocation.read", "warehouse.transferOrder.read"]) {
+    assert.ok(OWNER_ROLE.permissions.includes(id), id);
+    assert.equal(resolve(id, "owner", GOVERNED_BUSINESS_ROLES).decision, "ALLOW", id);
   }
 });
 

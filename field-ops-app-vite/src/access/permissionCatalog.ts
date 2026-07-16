@@ -194,6 +194,30 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     action: "create",
   }),
 
+  // --- Warehouse domain (Epic 4 Warehouse + Fulfillment System; Spec §27) --
+  // read-only: no create/update/delete permission exists for any of the
+  // three collections below because no client-reachable write path
+  // exists (Admin-SDK-internal only) -- see Spec §27.1 for the repository
+  // evidence this claim is grounded in.
+  Object.freeze({
+    id: "warehouse.record.read",
+    description: "Read a warehouses record (physical warehouse site).",
+    resource: "warehouse.record",
+    action: "read",
+  }),
+  Object.freeze({
+    id: "warehouse.stockLocation.read",
+    description: "Read a stock_locations record (bin-level quantity within a warehouse).",
+    resource: "warehouse.stockLocation",
+    action: "read",
+  }),
+  Object.freeze({
+    id: "warehouse.transferOrder.read",
+    description: "Read a transfer_orders record (inter-warehouse stock transfer).",
+    resource: "warehouse.transferOrder",
+    action: "read",
+  }),
+
   // --- Enterprise Access & Administration domain (this platform; Spec §16) ---
   Object.freeze({
     id: "admin.userStatus.write",
