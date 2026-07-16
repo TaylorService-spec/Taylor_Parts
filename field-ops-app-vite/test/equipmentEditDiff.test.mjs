@@ -11,7 +11,7 @@
 // Run: node test/equipmentEditDiff.test.mjs   (also `npm test`)
 import assert from "node:assert/strict";
 import {
-  EDITABLE_EQUIPMENT_FIELDS, buildEquipmentEditPayload, changedEquipmentFields,
+  EDITABLE_EQUIPMENT_FIELDS, buildEquipmentEditPayload, changedEquipmentFields, trimmedOrNull,
 } from "../src/domain/equipment.js";
 
 let passed = 0;
@@ -23,8 +23,10 @@ function ok(name, fn) { fn(); passed += 1; console.log("PASS -- " + name); }
 const changedFields = changedEquipmentFields;
 
 // The form's seed: every editable field as a string, null rendered as "".
+// The form's seed, matching EquipmentEditModal exactly: trimmed, through the same
+// normalizer the diff uses, so the two agree on what the record says.
 function seed(equipment) {
-  return Object.fromEntries(EDITABLE_EQUIPMENT_FIELDS.map((f) => [f, equipment[f] ?? ""]));
+  return Object.fromEntries(EDITABLE_EQUIPMENT_FIELDS.map((f) => [f, trimmedOrNull(equipment[f]) ?? ""]));
 }
 
 const STORED = Object.freeze({
@@ -164,16 +166,71 @@ ok("E8 a PADDED stored value is not a change -- both sides normalize the same wa
   assert.deepEqual(changedFields({ ...seed(padded), manufacturer: "Trane" }, padded), { manufacturer: "Trane" });
 });
 
-ok("E8 a non-string field value is skipped, never normalized into a silent clear", () => {
-  // Every editable field is a string (or null = cleared). Anything else is a caller bug,
-  // and the fail-closed answer is to write NOTHING for it -- coercing to null would
-  // CLEAR a stored value on the strength of that bug, which is a write, not a refusal.
+ok("E8 a non-string field value refuses the WHOLE diff -- never a partial success", () => {
+  // Every editable field is a string (or null = cleared). Anything else is a caller bug.
   for (const bad of [5, true, {}, [], new Date()]) {
     assert.deepEqual(changedFields({ manufacturer: bad }, STORED), {},
       `a ${typeof bad} must not become an edit`);
+    // THE MIXED CASE is the one that matters, and the one an isolated check cannot see:
+    // dropping only the bad field would save the name and silently discard the
+    // manufacturer edit while reporting success -- the shape #287 refused for governed
+    // fields ("a dropped move reported as success is worse than a refused edit").
+    const mixed = changedFields({ name: "RTU 2", manufacturer: bad }, STORED);
+    assert.deepEqual(mixed, {}, `a ${typeof bad} beside a valid edit must refuse the whole diff`);
+    const r = buildEquipmentEditPayload(mixed, STORED, 7);
+    assert.equal(r.valid, false, "a refused diff must never report a successful save");
+    assert.equal(r.payload, null);
   }
-  // null IS a legitimate clear, and is distinguishable from the above.
+  // null IS a legitimate clear, and stays distinguishable from all of the above.
   assert.deepEqual(changedFields({ manufacturer: null }, STORED), { manufacturer: null });
+});
+
+ok("E8 a user CAN remove padding a record legitimately holds", () => {
+  // Seeding raw would strand them: the input shows "  RTU 1  ", they delete the spaces,
+  // the diff normalizes both sides to "RTU 1", and the app answers "Nothing was changed"
+  // to a change they can see. Seeding trimmed means the padding is never shown.
+  const padded = { ...STORED, name: "  RTU 1  " };
+  assert.equal(seed(padded).name, "RTU 1", "the form never displays the stored padding");
+  assert.deepEqual(changedFields(seed(padded), padded), {}, "and an untouched form still writes nothing");
+  // A real edit off that trimmed seed lands normally.
+  assert.deepEqual(changedFields({ ...seed(padded), name: "RTU 2" }, padded), { name: "RTU 2" });
+});
+
+ok("E8 EVERY editable field round-trips -- each one is behaviorally covered", () => {
+  // Without this, a diff that silently dropped assetTag / installedDate /
+  // warrantyExpiresDate / notes passed the whole suite: only name, manufacturer, model
+  // and serialNumber were exercised, and the rest were pinned by nothing but the
+  // field-list equality check.
+  const VALUES = {
+    name: "Edited Name", manufacturer: "Trane", model: "XR16", serialNumber: "SN-NEW",
+    assetTag: "AT-NEW", installedDate: "2025-01-02", warrantyExpiresDate: "2035-01-02",
+    notes: "Edited notes",
+  };
+  // A FULLY POPULATED record, so "clear it" is a real change for every optional field.
+  // STORED leaves four of them null, where clearing is correctly a no-op -- which would
+  // have made half of the clear assertions below vacuous.
+  const FULL = Object.freeze({
+    accountId: "acct-1", locationId: "loc-1", status: "ACTIVE", createdAt: 1000,
+    name: "Rooftop Unit 1", manufacturer: "Carrier", model: "48TC", serialNumber: "SN-9",
+    assetTag: "AT-1", installedDate: "2024-03-01", warrantyExpiresDate: "2034-03-01",
+    notes: "Some notes",
+  });
+  for (const f of EDITABLE_EQUIPMENT_FIELDS) {
+    const one = changedFields({ ...seed(FULL), [f]: VALUES[f] }, FULL);
+    assert.deepEqual(one, { [f]: VALUES[f] }, `editing ${f} alone must send exactly ${f}`);
+    const r = buildEquipmentEditPayload(one, FULL, 7);
+    assert.equal(r.valid, true, `${f} must be a valid edit`);
+    assert.deepEqual(r.payload, { [f]: VALUES[f], updatedAt: 7 }, `${f} must reach the payload`);
+    // ...and clearing it, for the seven that are optional. `name` is required, so an
+    // empty name is a validation error rather than a clear.
+    if (f !== "name") {
+      assert.deepEqual(changedFields({ ...seed(FULL), [f]: "" }, FULL), { [f]: null },
+        `clearing ${f} must send null`);
+    } else {
+      assert.ok(buildEquipmentEditPayload({ name: "" }, FULL, 7).errors.name,
+        "an empty name is refused, not treated as a clear");
+    }
+  }
 });
 
 ok("E8 the diff covers exactly the domain's editable fields", () => {

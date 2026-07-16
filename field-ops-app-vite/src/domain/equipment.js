@@ -57,7 +57,10 @@ export function isRetired(equipment) {
 
 // ------------------------------------------------------ input normalization --
 
-function trimmedOrNull(value) {
+// Exported for the edit form (E8): it must seed its controls through the SAME normalizer
+// the diff compares with, or the two disagree about what the record says and a change the
+// user can see reports as no change.
+export function trimmedOrNull(value) {
   if (typeof value !== "string") return null;
   const t = value.trim();
   return t === "" ? null : t;
@@ -292,7 +295,21 @@ export function changedEquipmentFields(values, equipment) {
     //                a stored value on the strength of that bug, and a clear is a write.
     // One check rather than two: a separate `raw === undefined` guard read as though it
     // were load-bearing, but this line already subsumes it -- verified, not assumed.
-    if (raw !== null && typeof raw !== "string") continue;
+    if (raw === undefined) continue;
+
+    // Anything that is neither a string nor null REFUSES THE WHOLE DIFF, rather than
+    // dropping just that field. Dropping it reports success for an edit that was partly
+    // discarded:
+    //   { name: "RTU 2", manufacturer: 5 }  ->  { name: "RTU 2" }  ->  valid, saved
+    // The name lands, the manufacturer edit vanishes, and the caller is told it worked --
+    // exactly the shape #287 hardened `valid` against ("a dropped move reported as
+    // success is worse than a refused edit"). The same reasoning holds for an ordinary
+    // field. Returning {} makes it a no-op instead: nothing is written, and
+    // buildEquipmentEditPayload answers `noop` rather than a partial success.
+    //
+    // Unreachable from the form, whose seed guarantees strings. This is the trap closed
+    // before a future caller finds it -- the way ownershipUnchanged was closed for E8.
+    if (raw !== null && typeof raw !== "string") return {};
     // BOTH SIDES ARE NORMALIZED THE SAME WAY. Normalizing only `next` compares a trimmed
     // form value against a raw stored one, so a record holding " Carrier " reports a
     // change on an untouched form and rewrites itself on save. Rules permit padded

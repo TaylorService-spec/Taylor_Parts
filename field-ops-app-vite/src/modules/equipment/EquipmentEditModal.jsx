@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from "react";
 import Modal from "../../shared/ui/Modal";
 import { Field, FormActions, FormError, FormStatus } from "../../shared/ui/form";
 import { describedBy } from "../../shared/ui/form/fieldA11y";
-import { EDITABLE_EQUIPMENT_FIELDS, changedEquipmentFields } from "../../domain/equipment";
+import { EDITABLE_EQUIPMENT_FIELDS, changedEquipmentFields, trimmedOrNull } from "../../domain/equipment";
 
 // Issue #232 unit E8 -- ordinary Equipment editing, on the same shared Modal +
 // form-primitive pattern as EquipmentCreateModal (E6). Close paths are ignored and a
@@ -52,13 +52,21 @@ export default function EquipmentEditModal({ equipment, accountName, locationNam
   // last-writer-wins overwrite of everything the form happens to be holding.
   const [base] = useState(equipment);
 
-  // `?? ""` because a controlled input needs a string and the stored optional fields are
-  // null -- not because null and "" mean the same thing; the diff maps "" back to null.
-  // Non-strings are coerced away rather than trusted: Rules forbid them, so one here
-  // would be a record we cannot render, not a value to put in a text box.
+  // Seeded TRIMMED, and through the same normalizer the diff uses, so the form and the
+  // comparison agree on what the record says.
+  //
+  // Seeding raw would strand the user on a record that legitimately holds padding (Rules
+  // permit it -- they require only a non-blank TRIMMED name): the input would show
+  // "  RTU 1  ", deleting the spaces would diff to no change, and the app would answer
+  // "Nothing was changed" to a change they can see, with no way forward. Trimming here
+  // means the padding is neither shown nor reachable.
+  //
+  // `?? ""` because a controlled input needs a string where the record holds null -- not
+  // because null and "" mean the same thing; the diff maps "" back to null. A non-string
+  // becomes "" rather than being trusted into a text box: Rules forbid it, so it is a
+  // record we cannot render, not a value.
   const [values, setValues] = useState(() =>
-    Object.fromEntries(EDITABLE_EQUIPMENT_FIELDS.map(
-      (f) => [f, typeof base[f] === "string" ? base[f] : ""])));
+    Object.fromEntries(EDITABLE_EQUIPMENT_FIELDS.map((f) => [f, trimmedOrNull(base[f]) ?? ""])));
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [saveError, setSaveError] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({});

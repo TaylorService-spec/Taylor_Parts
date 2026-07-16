@@ -4467,14 +4467,29 @@ async function verifyEquipmentEdit(browser, page, accountKey) {
   {
     await openEditor(F.editableId);                     // seeds manufacturer as-stored
     const concurrent = `Trane-Concurrent-${RUN}`;
-    await fetch(
+    const patched = await fetch(
       `http://127.0.0.1:8080/v1/projects/taylor-parts/databases/(default)/documents/equipment/${F.editableId}?updateMask.fieldPaths=manufacturer`,
       { method: "PATCH", headers: { Authorization: "Bearer owner", "Content-Type": "application/json" },
         body: JSON.stringify({ fields: { manufacturer: { stringValue: concurrent } } }) }
     );
-    // Let the open modal's subscription actually deliver the change -- without this the
-    // page never sees it and the assertion passes for the wrong reason.
-    await page.waitForTimeout(2500);
+    niReport("Edit: the simulated second session's write actually landed (precondition)",
+      patched.ok, `PATCH returned ${patched.status}`);
+
+    // WAIT FOR THE DELIVERY, do not sleep and hope. Modal portals to document.body, so
+    // the detail page's identification section is still mounted behind it, rendering the
+    // LIVE equipment.manufacturer -- seeing `concurrent` there is proof the subscription
+    // delivered into the open modal's tree.
+    //
+    // A fixed timeout would pass whether or not the snapshot arrived, and delivery is the
+    // entire discriminating power of the assertion below: on a slow emulator the gate
+    // would stay green while the only check covering the lost-update fix proved nothing.
+    // That is the same vacuous-green this file already refuses elsewhere ("else the next
+    // check is vacuous"), and it fails LOUDLY here instead.
+    const delivered = await page.locator("[data-identification-section]")
+      .filter({ hasText: concurrent }).first()
+      .waitFor({ timeout: 15000 }).then(() => true).catch(() => false);
+    niReport("Edit: the concurrent write was DELIVERED to the open modal's page (precondition)",
+      delivered, "the live subscription never showed the second session's value");
     const renamed = `Merged Unit ${RUN}`;
     await page.locator("#equipment-edit-name").fill(renamed);
     await saveAndWait();
