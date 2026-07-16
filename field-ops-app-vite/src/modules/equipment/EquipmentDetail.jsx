@@ -173,7 +173,7 @@ export default function EquipmentDetail() {
               ) : locationsError ? (
                 <span className="fo-inline-error" role="alert" data-location-error>
                   {locationsError}{" "}
-                  <button type="button" className="fo-link-button" onClick={retryLocations}>Retry</button>
+                  <button type="button" className="fo-link-btn" onClick={retryLocations}>Retry</button>
                 </span>
               ) : (
                 locationName

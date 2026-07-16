@@ -203,7 +203,7 @@ export default function EquipmentRegister() {
           {locationsError && (
             <div className="fo-inline-error" role="alert" data-locations-banner>
               {locationsError}{" "}
-              <button type="button" className="fo-link-button" onClick={retryLocations}>Retry</button>
+              <button type="button" className="fo-link-btn" onClick={retryLocations}>Retry</button>
             </div>
           )}
           <div className="fo-portfolio-filters">

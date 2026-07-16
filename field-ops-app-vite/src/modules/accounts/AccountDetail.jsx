@@ -361,7 +361,7 @@ export default function AccountDetail() {
               // user this customer has no locations when we simply could not look.
               <div className="fo-inline-error" role="alert" data-location-error>
                 {locationsError}{" "}
-                <button type="button" className="fo-link-button" onClick={retryLocations}>Retry</button>
+                <button type="button" className="fo-link-btn" onClick={retryLocations}>Retry</button>
               </div>
             ) : locations.length === 0 ? (
               <EmptyState variant="database" message="No locations yet." />

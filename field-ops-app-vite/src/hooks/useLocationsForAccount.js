@@ -21,7 +21,9 @@ import {
 // In the Equipment register that surfaced as rows stuck on "Unknown location", a failure
 // rendered as a fact. It now fails closed to a safe `error` and clears stale data, so a
 // failed lookup is distinct from loading, from empty, and from a genuinely unresolved
-// reference. Matches the useEquipment.js read hooks exactly.
+// reference. The fail-closed OUTCOME matches the useEquipment.js read hooks; this hook is
+// a superset -- it also carries the obsolete-callback guard, retry re-subscription, and
+// the pure-outcome delegation those hooks do not.
 export function useLocationsForAccount(accountId) {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);

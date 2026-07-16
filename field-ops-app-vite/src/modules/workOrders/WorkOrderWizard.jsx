@@ -167,7 +167,7 @@ export default function WorkOrderWizard() {
           {locationsError ? (
             <div className="fo-inline-error" role="alert" data-location-error>
               {locationsError}{" "}
-              <button type="button" className="fo-link-button" onClick={retryLocations}>Retry</button>
+              <button type="button" className="fo-link-btn" onClick={retryLocations}>Retry</button>
             </div>
           ) : locations.length > 0 && (
             <div className="fo-wizard-field">
@@ -189,7 +189,12 @@ export default function WorkOrderWizard() {
               </select>
             </div>
           )}
-          <StepHint reason={step2Reason} />
+          {/* Suppress the "no locations yet" hint during a FAILURE: the banner above
+              already explains it, and step2Reason falls back to hasLocations:false when
+              the read failed (the hook fails closed to []) -- so without this guard the
+              user would see the failure AND "this customer has no locations yet" at once,
+              the exact false fact #291 exists to remove. Next stays blocked either way. */}
+          {!locationsError && <StepHint reason={step2Reason} />}
           <div className="fo-wizard-actions">
             <button type="button" onClick={() => setStep(1)}>Back</button>
             <button type="button" disabled={Boolean(step2Reason)} onClick={() => setStep(3)}>
