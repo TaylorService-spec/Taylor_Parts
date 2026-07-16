@@ -121,8 +121,8 @@ export default function Modal({ title, onClose, children, closeLabel = "Cancel" 
         restore.focus();
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- Issue #293: MOUNT-ONLY on
-    // purpose. onClose is read via onCloseRef, so adding it here would restore the very
+    // MOUNT-ONLY on purpose (Issue #293). The body reads onCloseRef.current rather than
+    // onClose, so [] is genuinely exhaustive -- adding onClose here would restore the
     // per-keystroke teardown this fix removes.
   }, []);
 

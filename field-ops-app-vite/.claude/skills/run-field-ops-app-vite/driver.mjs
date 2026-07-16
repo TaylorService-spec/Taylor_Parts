@@ -5019,6 +5019,13 @@ async function verifyModalTyping(browser, page, accountKey) {
   await login(page, accountKey);
 
   // ===== 1. Customer (AccountForm in a Modal) =====
+  // NOTE on what this flow does and does not prove: AccountForm holds all its own form
+  // state, so typing re-renders AccountForm and NOT AccountsList -- the arrow passed as
+  // onClose keeps its identity for the whole typing burst, and these assertions
+  // therefore PASS even on unfixed main. They are a real regression guard (and the
+  // Customer modal genuinely was exposed on main, via an AccountsList re-render from a
+  // Firestore snapshot mid-typing), but they are not evidence FOR the fix. The Location
+  // flow below is: its modal re-renders per keystroke and fails hard without it.
   await page.goto(url("customers"), { waitUntil: "domcontentloaded" });
   await page.getByRole("button", { name: /new customer/i }).first().click();
   await dlg().waitFor({ timeout: 5000 });
@@ -5034,19 +5041,26 @@ async function verifyModalTyping(browser, page, accountKey) {
 
   const addLoc = page.getByRole("button", { name: /add location/i }).first();
   if (await addLoc.count()) {
+    // Hold the TRIGGER node so restoration can be asserted by IDENTITY. An earlier
+    // version checked document.activeElement.textContent.includes("location") -- but if
+    // restoration breaks, activeElement falls back to <body>, whose textContent is the
+    // whole Account Detail page and certainly contains "location". That assertion
+    // passed whether focus was restored or lost, i.e. it could never fail.
+    const triggerHandle = await addLoc.elementHandle();
     await addLoc.click();
     await dlg().waitFor({ timeout: 5000 });
     // THE exact case that was broken on main.
     await typeCheck("Location modal", "location-name", "Main Office");
     await typeCheck("Location modal (2nd field)", "location-access-notes", "Gate code 1234 side entrance");
-    // Focus restoration must still work after the fix.
-    const trigger = await page.evaluate(() => document.activeElement?.id);
     await page.keyboard.press("Escape");
     await page.waitForTimeout(300);
-    niReport("Location modal: Escape closes and restores focus to the trigger",
-      (await dlgCount()) === 0 &&
-        (await page.evaluate(() => document.activeElement?.textContent?.toLowerCase() ?? "")).includes("location"),
-      `trigger-before=${trigger}`);
+    const restoredToTrigger = await page.evaluate(
+      (el) => el != null && document.activeElement === el, triggerHandle
+    ).catch(() => false);
+    niReport("Location modal: Escape closes and restores focus to the EXACT trigger element",
+      (await dlgCount()) === 0 && restoredToTrigger,
+      restoredToTrigger ? "" : `activeElement=${await page.evaluate(() => document.activeElement?.tagName + "/" + (document.activeElement?.className || ""))}`);
+    await triggerHandle?.dispose();
   } else {
     niReport("Location modal: Add Location action reachable", false, "button not found");
   }
@@ -5065,10 +5079,15 @@ async function verifyModalTyping(browser, page, accountKey) {
   }
 
   // ===== 4. Contact Import (no text field -- assert the modal's own stability) =====
-  const importBtn = page.getByRole("button", { name: /import/i }).first();
+  // Exact name, matching verifyContactCsvImport's selector. A loose /import/i with
+  // .first() would silently match some other control (or nothing) and the whole flow
+  // would vanish from the output without a single assertion.
+  const importBtn = page.getByRole("button", { name: "Import Contacts", exact: true });
+  niReport("Contact Import modal: the Import Contacts action is reachable", (await importBtn.count()) > 0);
   if (await importBtn.count()) {
-    await importBtn.click();
+    await importBtn.first().click();
     await dlg().waitFor({ timeout: 5000 }).catch(() => {});
+    niReport("Contact Import modal: it opens", (await dlgCount()) === 1);
     if ((await dlgCount()) === 1) {
       // It has a file input rather than a text field, so there is nothing to type --
       // what matters is that the dialog survives keyboard interaction and closes.
@@ -5119,14 +5138,20 @@ async function verifyModalTyping(browser, page, accountKey) {
     niReport("Technician modal: New Technician action reachable", false, "button not found");
   }
 
-  // ===== 7. Equipment (E5/E6 -- only present once those units land) =====
+  // ===== 7. Equipment (E6's create modal -- only once that unit lands) =====
+  // A skip is REPORTED, never silent. E6 (#292) is not on main yet, so on this branch
+  // there is no create modal to type into -- but "no assertions emitted" and "covered"
+  // must not look identical in the output. When E6 lands, this flow runs for real and
+  // the skip line disappears.
   await page.goto(url("equipment"), { waitUntil: "domcontentloaded" }).catch(() => {});
   const equipAcct = page.locator("#equipment-account");
+  let equipCovered = false;
   if (await equipAcct.count()) {
     await equipAcct.selectOption({ label: "Alpha Facilities Co" }).catch(() => {});
     await page.waitForTimeout(1200);
     const addEquip = page.getByRole("button", { name: /new equipment/i });
     if (await addEquip.count()) {
+      equipCovered = true;
       await addEquip.first().click();
       await dlg().waitFor({ timeout: 5000 });
       await typeCheck("Equipment modal", "equipment-create-name", "Rooftop Unit 1");
@@ -5135,7 +5160,9 @@ async function verifyModalTyping(browser, page, accountKey) {
       niReport("Equipment modal: Escape still closes it", (await dlgCount()) === 0);
     }
   }
-  // Absent on a branch without E5/E6 -- not a failure, just nothing to assert.
+  if (!equipCovered) {
+    console.log("SKIP -- Equipment modal: no create modal on this branch (E6/#292 not merged yet) -- 0 assertions run");
+  }
 
   // ===== 375px: the dialog still fits =====
   await page.setViewportSize({ width: 375, height: 812 });
