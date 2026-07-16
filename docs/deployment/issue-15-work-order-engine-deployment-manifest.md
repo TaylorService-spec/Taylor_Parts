@@ -81,7 +81,7 @@ The six Enterprise Access callables (`grantRole`, `revokeRole`, `assignApprovedR
 
 ## 2. Existing test coverage audit -- confirmed gaps
 
-**Functions:** Zero automated tests exist for `createWorkOrder.ts`, `transitionWorkOrder.ts`, `updateWorkOrderExecutionData.ts`, `woNumbering.ts`, `callerContext.ts`, `inventoryService.ts`, or `transitionEngine.ts` anywhere in `functions/test/` (confirmed: none of the 24 files under `functions/test/` reference any of these modules by name).
+**Functions:** Zero automated tests exist for `createWorkOrder.ts`, `transitionWorkOrder.ts`, `updateWorkOrderExecutionData.ts`, `woNumbering.ts`, `callerContext.ts`, `inventoryService.ts`, or `transitionEngine.ts` anywhere in `functions/test/` (confirmed: none of the 26 pre-existing files under `functions/test/` reference any of these modules by name).
 
 **Rules Regression:** The permanent 8-suite Rules Regression runner (`functions/scripts/rulesRegressionRunner.mjs`, 365 total expected passes) has **zero** coverage of the `fieldops_wos`/`counters`/`inventory_sync_status` Rules blocks -- none of the 8 registered suite files test these collections (confirmed by reading `SUITES` in the runner and grepping all 8 files for these collection names).
 
