@@ -63,10 +63,63 @@ function trimmedOrNull(value) {
   return t === "" ? null : t;
 }
 
+function isNonEmptyString(value) {
+  return typeof value === "string" && value.trim() !== "";
+}
+
+// THE RECORD CONTRACT (#287). One question, one answer: is this a thing I can read
+// fields off? Before this existed, the helpers disagreed -- the `= {}` parameter default
+// only fires for `undefined`, so every OTHER malformed input flowed straight past it.
+// `null` threw a TypeError, while a string or a number silently produced an all-null
+// record that later read as "valid". Two different wrong answers, neither of them "no".
+//
+// isRecord itself answers for exactly these:
+//    a plain object (incl. Object.create(null))     -> a record; read it
+//    null, undefined                                -> not a record
+//    string/number/boolean/array/Map/Date/instance  -> not a record
+//
+// Note what the PUBLIC helpers layer on top, because it is a deliberate difference and
+// not an oversight: their `= {}` default fires first, so an OMITTED argument never
+// reaches isRecord and is read as the empty record. Absent is not malformed. Calling
+// with no argument is the normal JS affordance and its meaning is `{}` -- an empty
+// create form owes the user field errors naming what to fill in, not an opaque "could
+// not read" pointing at no control. Only a supplied non-record is `malformed`.
+// So, for the two payload BUILDERS: absent -> empty record; malformed -> refused; a
+// record -> read. Three cases, two of which fail closed, none of which throw.
+// normalizeEquipmentInput is the one exception, and deliberately so: it has no refusal
+// channel, so malformed also yields the empty record and fails closed downstream when
+// validation finds every required field null.
+//
+// Both tests below are load-bearing, and neither subsumes the other:
+//   - The PROTOTYPE test rejects Map, Date and class instances, whose `.accountId` is
+//     `undefined` rather than an error -- exactly how they slip past a check that only
+//     asks "typeof === object" and get read as a record full of blanks. It accepts a
+//     null prototype, because `Object.create(null)` is what some deserializers hand
+//     back and it is readable in the way that matters here.
+//   - Array.isArray is NOT redundant with it. `Object.setPrototypeOf([], Object.prototype)`
+//     is still a real array yet passes the prototype test, so dropping this line lets an
+//     array carrying a `name` produce a valid edit payload. Removing it as "dead code"
+//     is a mistake this module has already made once, in review of #287.
+//
+// This is also the single type test for the searchEquipment options bag (#285/#286),
+// which previously had a byte-identical private copy. Collections answer "nothing" ([])
+// and records answer "invalid" -- but that difference lives in the callers, not in two
+// copies of the same question that can drift apart.
+function isRecord(value) {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}
+
 // Spec §1/§2: optional strings are trimmed, empty -> null; required strings are
 // trimmed. Only the specified fields survive -- unknown keys are dropped here, and
 // the write path (E2) plus Rules (E3) reject them independently.
 export function normalizeEquipmentInput(values = {}) {
+  // A non-record normalizes to the empty record rather than throwing (null) or
+  // pretending (a string, whose .accountId is undefined). Every field then reads null,
+  // which validateEquipmentInput rejects -- so garbage in becomes INVALID, not a crash
+  // and not a plausible-looking record.
+  if (!isRecord(values)) values = {};
   return {
     accountId: trimmedOrNull(values.accountId),
     locationId: trimmedOrNull(values.locationId),
@@ -132,7 +185,25 @@ export function equipmentOwnershipValid(equipment, location) {
 
 // Spec §4: ordinary edits must never change ownership. Pure predicate the edit
 // surface (E8) and its tests use; Rules (E3) enforce it independently.
-export function ownershipUnchanged(before = {}, after = {}) {
+//
+// FAILS CLOSED ON INPUT IT CANNOT EVALUATE (#287). This is a GOVERNANCE PREDICATE:
+// answering "yes, ownership is unchanged" is a safety claim, and it must only ever be
+// made about two records we actually understood. It used to answer TRUE for garbage --
+// ownershipUnchanged("garbage", {}) was true, because "garbage".accountId and
+// {}.accountId are both undefined and undefined === undefined. That is the worst
+// possible direction for a predicate whose true means "go ahead".
+//
+// Not exploitable when filed (nothing called it -- E2 governs via changedGoverned), but
+// this module names E8 as its intended consumer, so it was a trap set for E8 rather
+// than a live defect. Fixed before E8 arrives.
+export function ownershipUnchanged(before, after) {
+  if (!isRecord(before) || !isRecord(after)) return false;
+  // Ownership must be PRESENT and comparable on both sides. Two records that merely
+  // agree on "undefined" have not been shown to share an owner -- they have been shown
+  // to lack one.
+  const beforeOwned = isNonEmptyString(before.accountId) && isNonEmptyString(before.locationId);
+  const afterOwned = isNonEmptyString(after.accountId) && isNonEmptyString(after.locationId);
+  if (!beforeOwned || !afterOwned) return false;
   return before.accountId === after.accountId && before.locationId === after.locationId;
 }
 
@@ -199,6 +270,15 @@ export const EDITABLE_EQUIPMENT_FIELDS = Object.freeze([
 // as a side door into a non-ACTIVE state. A caller that explicitly asks for one is
 // refused rather than silently overridden.
 export function buildEquipmentCreatePayload(values = {}, now = 0) {
+  // A non-record is refused explicitly rather than reaching validateEquipmentInput.
+  // It would be rejected there anyway (normalize yields all-null, so accountId /
+  // locationId / name all error), but those would be field errors blaming the user for
+  // three fields they never supplied. `malformed` says what is actually true: the
+  // caller handed us something unreadable, and no control on the form can fix it.
+  if (!isRecord(values)) {
+    return { valid: false, malformed: true, errors: {}, payload: null };
+  }
+
   const { errors, value } = validateEquipmentInput(values);
 
   // An UNRECOGNIZED status is refused too, not quietly defaulted to ACTIVE: the
@@ -211,10 +291,14 @@ export function buildEquipmentCreatePayload(values = {}, now = 0) {
     else if (requested !== EQUIPMENT_STATUS.ACTIVE) errors.status = "New equipment is always created active.";
   }
 
-  if (Object.keys(errors).length > 0) return { valid: false, errors, payload: null };
+  // Every return path below carries the same keys, `malformed` included. A shape that
+  // varies by path forces callers (and tests) to write `!== true` where they mean
+  // `=== false`, and makes an absent key indistinguishable from a false one.
+  if (Object.keys(errors).length > 0) return { valid: false, malformed: false, errors, payload: null };
 
   return {
     valid: true,
+    malformed: false,
     errors: {},
     payload: { ...value, status: EQUIPMENT_STATUS.ACTIVE, updatedAt: now },
   };
@@ -247,10 +331,50 @@ function governedValue(field, raw) {
 // while `unprovableGoverned` is a CALLER that supplied no `before` to compare against.
 // Conflating them makes E8 accuse the user of a programming error they cannot fix.
 export function buildEquipmentEditPayload(values = {}, before = {}, now = 0) {
+  // MALFORMED `values` IS REFUSED, not quietly turned into a no-op (#287).
+  //
+  // buildEquipmentEditPayload("garbage", {}, 1) used to return { valid: true, payload:
+  // { updatedAt: 1 } }: every editable key was absent from the string, so nothing was
+  // written except a timestamp -- and the caller was told the edit SUCCEEDED. An edit
+  // that changed nothing must never look like an edit that worked.
+  // Reported as `malformed`, NOT as a field error. A malformed `values` is a CALLER
+  // bug: there is no field the user could correct, so a { field: message } entry would
+  // send E8 looking for a control to highlight and find none. Same reasoning, and the
+  // same shape, as `unprovableGoverned` below.
+  if (!isRecord(values)) {
+    return {
+      valid: false,
+      malformed: true,
+      noop: false,
+      errors: {},
+      payload: null,
+      changedGoverned: [],
+      unprovableGoverned: [],
+    };
+  }
+
+  // `before` is EVIDENCE, and it is treated differently from `values` on purpose.
+  // An empty `before` is already legal and meaningful -- it is what updateEquipmentWith
+  // passes when it has no prior record -- and it means "I cannot prove anything". So
+  // unreadable evidence collapses to that same no-evidence case rather than becoming a
+  // separate error: absent, null and malformed all prove nothing, and saying so once is
+  // the consistent contract. This stays fail-closed where it matters, because the
+  // governed loop below reports any governed field it cannot prove unchanged as
+  // `unprovableGoverned`, which the caller refuses. A descriptive-only edit needs no
+  // evidence and proceeds, exactly as it does today with `before = {}`.
+  if (!isRecord(before)) before = {};
+
   const normalized = normalizeEquipmentInput(values);
   const errors = {};
   // Only validate what the caller is actually editing; an absent key means unchanged.
   if (values.name !== undefined && !normalized.name) errors.name = "Enter an equipment name.";
+
+  // An edit that touches no editable field is not an edit. Writing a bare { updatedAt }
+  // would report success for a change nobody made, and would bump the record's
+  // timestamp as if something had happened to it. This is never `valid`, whatever the
+  // reason -- but the REASON is reported separately below, because a governed-only edit
+  // is a different thing from an empty one and the two owe the user different answers.
+  const editedKeys = EDITABLE_EQUIPMENT_FIELDS.filter((f) => values[f] !== undefined);
 
   const changedGoverned = [];
   const unprovableGoverned = [];
@@ -267,10 +391,34 @@ export function buildEquipmentEditPayload(values = {}, before = {}, now = 0) {
     if (values[f] !== undefined) payload[f] = normalized[f];
   }
 
+  // "Nothing was changed" means exactly that: no editable field, AND no governed field
+  // attempted. A caller asking to move an Account touched something real -- refusing it
+  // as an empty edit would tell them the opposite of what they just did. That refusal
+  // is `changedGoverned`'s to report, not this one's.
+  const noop = editedKeys.length === 0 && changedGoverned.length === 0 && unprovableGoverned.length === 0;
+
+  // `valid` means "this payload may be written" -- nothing weaker. A governed attempt
+  // makes the WHOLE edit invalid, even when it also carries a legitimate rename.
+  //
+  // It previously did not: { name: "New", accountId: "acct-2" } returned valid:true with
+  // payload { updatedAt, name }, because the payload loop simply never copies a governed
+  // field. A caller doing the obvious `if (valid) store.update(id, payload)` would write
+  // the rename, silently drop the move, and report success -- the exact failure
+  // equipmentWrites names ("a dropped move reported as success is worse than a refused
+  // edit"). updateEquipmentWith checks changedGoverned first and so was never exposed,
+  // but E8 is a new caller and `valid` must not be a trap that only some callers dodge.
+  const valid =
+    Object.keys(errors).length === 0 &&
+    editedKeys.length > 0 &&
+    changedGoverned.length === 0 &&
+    unprovableGoverned.length === 0;
+
   return {
-    valid: Object.keys(errors).length === 0,
+    valid,
+    malformed: false,
+    noop,
     errors,
-    payload: Object.keys(errors).length === 0 ? payload : null,
+    payload: valid ? payload : null,
     changedGoverned,
     unprovableGoverned,
   };
@@ -332,14 +480,11 @@ export function compareEquipment(a, b) {
 // Exactly the options searchEquipment implements. Anything else is a caller error.
 const SEARCH_OPTION_KEYS = ["term", "locationId", "status"];
 
-// A real options bag -- not an array, not a string, not a class instance masquerading
-// as one. Deliberately strict: this guards a boundary where being generous is what
-// caused the defect.
-function isPlainObject(value) {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
-  const proto = Object.getPrototypeOf(value);
-  return proto === Object.prototype || proto === null;
-}
+// The options bag is checked with isRecord (above): "is this a plain object I can read
+// keys off?" is the same question, and it had drifted into two near-identical helpers
+// that disagreed on one input. One test, one answer. What differs is what each CALLER
+// does with a "no" -- this boundary returns [], the record helpers return invalid --
+// and that belongs at the call site, not in a second copy of the type test.
 
 // The options argument is UNTRUSTED INPUT, not a convenience.
 //
@@ -359,7 +504,7 @@ function isPlainObject(value) {
 // still means "no search applied" and returns everything, ordered.
 export function searchEquipment(equipment, options = {}) {
   if (!Array.isArray(equipment)) return [];
-  if (!isPlainObject(options)) return [];
+  if (!isRecord(options)) return [];
   // An unknown key means the caller is asking something this function does not
   // implement. Answering "everything" would be answering a question nobody asked.
   if (Object.keys(options).some((k) => !SEARCH_OPTION_KEYS.includes(k))) return [];
