@@ -536,4 +536,152 @@ ok("unavailable copy leaks no provider, code, id, or credential detail", () => {
   }
 });
 
+// ---- #287: the record contract at the input boundary ----------------------
+// Every record helper answers "can I read fields off this?" the same way. Before #287
+// they disagreed: `null` threw, a string sailed through the `= {}` default (which only
+// fires for `undefined`) and produced a plausible-looking all-null record. Two wrong
+// answers, neither of them "no".
+//
+// MALFORMED_RECORDS is deliberately shared by the tests below: the point of the
+// contract is that it does not vary by helper or by input flavour. A `= {}` default
+// restored to any one of these helpers puts `undefined` back in this list's blind spot
+// and the string/number/array cases fail immediately.
+const MALFORMED_RECORDS = [null, undefined, "garbage", "", 0, 42, true, false, [], ["a"], Symbol("x")];
+
+ok("#287 record helpers refuse every malformed input -- no throw, no plausible answer", () => {
+  for (const bad of MALFORMED_RECORDS) {
+    // normalize: refuses by yielding an all-null record, never by throwing.
+    const n = normalizeEquipmentInput(bad);
+    assert.equal(typeof n, "object", `normalize(${String(bad)}) must return a record`);
+    assert.equal(n.accountId, null);
+    assert.equal(n.locationId, null);
+    assert.equal(n.name, null);
+
+    // validate: an unreadable input is INVALID, never valid-by-omission.
+    const v = validateEquipmentInput(bad);
+    assert.equal(v.valid, false, `validate(${String(bad)}) must be invalid`);
+
+    // create: refuses and yields no payload. A payload here would be a write.
+    const c = buildEquipmentCreatePayload(bad, 1);
+    assert.equal(c.valid, false, `create(${String(bad)}) must be invalid`);
+    assert.equal(c.payload, null, `create(${String(bad)}) must yield no payload`);
+    assert.ok(Object.keys(c.errors).length > 0, "an invalid create must say why");
+  }
+});
+
+ok("#287 ownershipUnchanged fails closed on unreadable records instead of throwing or affirming", () => {
+  const good = { accountId: "acct-1", locationId: "loc-1" };
+  for (const bad of MALFORMED_RECORDS) {
+    // Never throws -- `ownershipUnchanged(null, null)` used to be a TypeError.
+    assert.equal(ownershipUnchanged(bad, good), false, `(${String(bad)}, good) must be false`);
+    assert.equal(ownershipUnchanged(good, bad), false, `(good, ${String(bad)}) must be false`);
+    assert.equal(ownershipUnchanged(bad, bad), false, `(${String(bad)}, ${String(bad)}) must be false`);
+  }
+  // The headline defect: two unreadable records once "proved" ownership unchanged.
+  assert.equal(ownershipUnchanged("garbage", {}), false);
+  // Ownership is only PROVABLE when both sides actually carry both ids. A record
+  // missing an id cannot prove anything about it, so it is not "unchanged".
+  assert.equal(ownershipUnchanged({ accountId: "acct-1" }, { accountId: "acct-1" }), false);
+  assert.equal(ownershipUnchanged({ accountId: "acct-1", locationId: "" }, good), false);
+
+  // Records that AGREE on a blank or whitespace id must not be read as agreeing on an
+  // owner: `"" === ""` is true, so a check that only compared values would call two
+  // wholly unowned records "unchanged" -- affirming ownership that does not exist.
+  // These cases are what make the id checks load-bearing rather than decorative.
+  for (const blank of ["", "   ", null, undefined]) {
+    assert.equal(ownershipUnchanged({ accountId: blank, locationId: blank },
+                                    { accountId: blank, locationId: blank }), false,
+      `two records sharing a blank (${JSON.stringify(blank)}) id prove nothing`);
+    assert.equal(ownershipUnchanged({ accountId: "acct-1", locationId: blank },
+                                    { accountId: "acct-1", locationId: blank }), false);
+  }
+  // ...and the valid path still answers truthfully in both directions.
+  assert.equal(ownershipUnchanged(good, { ...good }), true);
+  assert.equal(ownershipUnchanged(good, { ...good, locationId: "loc-2" }), false);
+  assert.equal(ownershipUnchanged(good, { ...good, accountId: "acct-2" }), false);
+});
+
+ok("#287 a malformed edit is refused, not reported as a successful {updatedAt} no-op", () => {
+  const before = { accountId: "acct-1", locationId: "loc-1", name: "Freezer", status: "ACTIVE" };
+  for (const bad of MALFORMED_RECORDS) {
+    const r = buildEquipmentEditPayload(bad, before, 1);
+    assert.equal(r.valid, false, `edit(${String(bad)}) must be invalid`);
+    assert.equal(r.payload, null, `edit(${String(bad)}) must yield no payload`);
+    // The exact defect: valid:true carrying { updatedAt: 1 } and nothing else.
+    assert.notDeepEqual(r.payload, { updatedAt: 1 });
+  }
+});
+
+ok("#287 unreadable `before` proves nothing -- governed edits fail closed, descriptive edits proceed", () => {
+  for (const bad of MALFORMED_RECORDS) {
+    // Evidence we cannot read is not proof, so a governed edit against it must be
+    // refused as UNPROVABLE -- never silently allowed, and never miscast as an
+    // attempted change the user did not make.
+    const g = buildEquipmentEditPayload({ accountId: "acct-2" }, bad, 1);
+    assert.equal(g.valid, false, `governed edit(before=${String(bad)}) must be invalid`);
+    assert.equal(g.payload, null);
+    assert.deepEqual(g.unprovableGoverned, ["accountId"], `before=${String(bad)} proves nothing`);
+    assert.deepEqual(g.changedGoverned, []);
+
+    // A descriptive-only edit needs no evidence and still works -- identical to the
+    // legitimate `before = {}` path that updateEquipmentWith already relies on.
+    const d = buildEquipmentEditPayload({ name: "New name" }, bad, 1);
+    assert.equal(d.valid, true, `descriptive edit(before=${String(bad)}) must succeed`);
+    assert.deepEqual(d.payload, { name: "New name", updatedAt: 1 });
+  }
+});
+
+ok("#287 an edit that touches no editable field is not a valid edit", () => {
+  const before = { accountId: "acct-1", locationId: "loc-1", name: "Freezer", status: "ACTIVE" };
+  // A well-formed but empty edit: previously valid, writing a bare timestamp and
+  // reporting success for a change nobody made.
+  const empty = buildEquipmentEditPayload({}, before, 7);
+  assert.equal(empty.valid, false);
+  assert.equal(empty.payload, null);
+
+  // Unknown keys are not editable fields -- they are dropped, so this is still a no-op.
+  const unknown = buildEquipmentEditPayload({ bogusKey: "x" }, before, 7);
+  assert.equal(unknown.valid, false);
+  assert.equal(unknown.payload, null);
+
+  // A governed-only edit is refused as well, and still reports WHICH governed field
+  // was attempted -- refusing early must not blind the caller to the attempt.
+  const governed = buildEquipmentEditPayload({ accountId: "acct-2" }, before, 7);
+  assert.equal(governed.valid, false);
+  assert.equal(governed.payload, null);
+  assert.deepEqual(governed.changedGoverned, ["accountId"]);
+
+  // ...while a real single-field edit still succeeds and still stamps updatedAt.
+  const real = buildEquipmentEditPayload({ name: "Walk-in Freezer" }, before, 7);
+  assert.equal(real.valid, true);
+  assert.deepEqual(real.payload, { name: "Walk-in Freezer", updatedAt: 7 });
+});
+
+ok("#287 the record contract accepts records, and only records", () => {
+  const before = { accountId: "acct-1", locationId: "loc-1", name: "Freezer", status: "ACTIVE" };
+  // A class instance and a Map have fields, but they are not Equipment records read
+  // off a Firestore snapshot. Reading them would mean guessing at their shape.
+  class EquipmentLike { constructor() { this.name = "Freezer"; } }
+  for (const exotic of [new EquipmentLike(), new Map([["name", "Freezer"]]), new Date()]) {
+    assert.equal(buildEquipmentEditPayload(exotic, before, 1).valid, false);
+    assert.equal(buildEquipmentCreatePayload(exotic, 1).valid, false);
+    assert.equal(ownershipUnchanged(exotic, before), false);
+  }
+  // An array CARRYING a field is the case that makes the array exclusion observable:
+  // a bare [] is indistinguishable from {} (both read all-undefined), but this one
+  // would be accepted as a real edit by any check that merely asked "is it an object?".
+  const arrayWithField = [];
+  arrayWithField.name = "Walk-in Freezer";
+  assert.equal(buildEquipmentEditPayload(arrayWithField, before, 7).valid, false);
+  assert.equal(buildEquipmentEditPayload(arrayWithField, before, 7).payload, null);
+  // An array carrying BOTH ownership ids -- values that would otherwise compare equal.
+  assert.equal(ownershipUnchanged(Object.assign([], { accountId: "acct-1", locationId: "loc-1" }), before), false);
+
+  // A null-prototype object IS a plain record -- `Object.create(null)` is what you get
+  // from some deserializers, and it is readable in exactly the way that matters.
+  const bare = Object.create(null);
+  Object.assign(bare, { name: "Walk-in Freezer" });
+  assert.equal(buildEquipmentEditPayload(bare, before, 7).valid, true);
+});
+
 console.log(`\n${passed} passed, 0 failed`);
