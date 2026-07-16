@@ -39,7 +39,7 @@ Specifies the governed report creator whose architecture ADR-007 selected: a sin
 - **Report definition** — inert saved metadata: an object, selected field ids, filters, grouping, sort, aggregates, presentation. Carries no data, no results, no author privileges.
 - **Run / execution** — a server-side evaluation of a definition for a specific **runner** at a specific time, producing a projected, authorized result.
 - **Runner** — the authenticated principal a run executes as; its *live* permissions and Scope are what a run is authorized against.
-- **Sensitivity class** — a field-level classification (`standard | governed | financial | employee | audit`) that determines default reportability and which review gate must pass before the field activates.
+- **Sensitivity class** — a field-level classification (`standard | commercial | governed | security-text | financial | employee | audit`; see §5 legend) that determines default reportability and which review gate must pass before the field activates.
 
 ## 3. Catalog schema (the metadata shape)
 
@@ -62,7 +62,7 @@ Three static, version-controlled, repository-owned catalogs. Never client-editab
 
 | objectId | label | collection | wave | object read capability | sensitivity posture |
 |---|---|---|---|---|---|
-| `customer` | Customer | `accounts` | 1 | `report.customer.read` | standard + governed commercial fields |
+| `customer` | Customer | `accounts` | 1 | `report.customer.read` | standard; `paymentTerms`/`taxStatus` governed; `accountOwner` employee (→ wave 4); notes security-text |
 | `contact` | Contact | `contacts` | 1 | `report.contact.read` | standard |
 | `location` | Location | `locations` | 1 | `report.location.read` | standard |
 | `equipment` | Equipment | `equipment` | 1 | `report.equipment.read` | standard |
@@ -80,11 +80,13 @@ Three static, version-controlled, repository-owned catalogs. Never client-editab
 - **Inventory Part** — `src/data/partsCatalog.ts` is a **static, non-authoritative metadata catalog**, not a governed Firestore collection ("METADATA ONLY … NOT Firestore-backed"). Recorded as a **deferred or separately-governed source**; it is not presented as a live governed object. A future "Part" report object requires a governed Parts collection first.
 - **`users`, `counters`, `reorder_purchase_order_voids`** — infrastructure/ledger collections, not user-facing report objects at first; `voids` may later be modelled as a Purchase Order sub-fact.
 
-Financial/cost/margin/audit **fields** across the above objects (e.g. Purchase Order cost lines) stay **denied by default** and activate only in **wave 5** after their dedicated security review, regardless of their host object's earlier wave (ADR-007 §2.6).
+Financial/cost/margin/audit **and employee** **fields** across the above objects stay **denied by default** and activate only in their sensitive-domain wave after that domain's dedicated security review — **regardless of their host object's earlier wave** (ADR-007 §2.6). This is load-bearing for the one such field that sits in a wave-1 table: `customer.accountOwner` (§5.1) references an Employee and is classified `employee`, so it is **deferred to wave 4**, not activated with the Customer object in wave 1. Financial fields (e.g. Purchase Order cost lines, whose host object activates in wave 3) likewise defer to wave 5.
 
 ## 5. Field catalog
 
-Sensitivity legend: `standard` (activatable with its object), `governed` (admin-governed commercial), `financial` (cost/margin — wave 5 + security review), `employee` (wave 4 + review), `audit` (wave 5 + review).
+Sensitivity legend: `standard` (activatable with its object under Architecture review), `commercial` (informational Commercial-Profile fields — activatable with the object, grouped under one capability), `governed` (Rules-governed admin-only commercial: `paymentTerms`/`taxStatus` only), `security-text` (free-text that may hold physical-security data such as alarm codes or site-entry instructions — activatable with its object **but only after the wave-1 review explicitly confirms it**, never silently `standard`), `financial` (cost/margin — wave 5 + security review), `employee` (wave 4 + review), `audit` (wave 5 + review).
+
+The distinction between `governed` and `commercial` matters and the code draws it: only `paymentTerms` and `taxStatus` are Rules-governed, admin-edit-only (`constants.js`, "the two GOVERNED enum fields"); `defaultCurrency`, `purchaseOrderRequired`, and `invoiceDeliveryMethod` are informational Commercial-Profile fields (`AccountForm.jsx`), not Rules-governed. Classifying them as their own `commercial` class rather than `governed` keeps the Spec honest about which fields the Rules layer actually protects.
 
 ### 5.1 `customer` (wave 1) — backing `accounts`
 | fieldId | label | type | operators | sensitivity | readCapability |
@@ -92,19 +94,20 @@ Sensitivity legend: `standard` (activatable with its object), `governed` (admin-
 | `customer.name` | Name | string | filter, sort, group | standard | `report.customer.field.name.read` |
 | `customer.status` | Status | enum | filter, group | standard | `report.customer.field.status.read` |
 | `customer.relationshipTypes` | Relationship types | list | filter, group | standard | `report.customer.field.relationshipTypes.read` |
+| `customer.billingAddress.street` | Billing street | string | filter, sort | standard | `report.customer.field.billingAddress.read` |
 | `customer.billingAddress.city` | Billing city | string | filter, sort, group | standard | `report.customer.field.billingAddress.read` |
 | `customer.billingAddress.state` | Billing state | string | filter, sort, group | standard | `report.customer.field.billingAddress.read` |
 | `customer.billingAddress.zip` | Billing ZIP | string | filter, sort, group | standard | `report.customer.field.billingAddress.read` |
 | `customer.tags` | Tags | list | filter, group | standard | `report.customer.field.tags.read` |
 | `customer.customerNumber` | Customer # | string | filter, sort | standard | `report.customer.field.externalIds.read` |
 | `customer.erpId` / `.accountingId` / `.legacyId` | External IDs | string | filter | standard | `report.customer.field.externalIds.read` |
-| `customer.notes` | Notes | string | (none) | standard | `report.customer.field.notes.read` |
+| `customer.notes` | Notes | string | (none) | **security-text** | `report.customer.field.notes.read` |
 | `customer.createdAt` | Created | date | filter, sort, group | standard | `report.customer.field.createdAt.read` |
 | `customer.paymentTerms` | Payment terms | enum | filter, group | **governed** | `report.customer.field.paymentTerms.read` |
 | `customer.taxStatus` | Tax status | enum | filter, group | **governed** | `report.customer.field.taxStatus.read` |
-| `customer.defaultCurrency` | Default currency | string | filter, group | governed | `report.customer.field.commercialProfile.read` |
-| `customer.purchaseOrderRequired` | PO required | boolean | filter, group | governed | `report.customer.field.commercialProfile.read` |
-| `customer.invoiceDeliveryMethod` | Invoice delivery | enum | filter, group | governed | `report.customer.field.commercialProfile.read` |
+| `customer.defaultCurrency` | Default currency | string | filter, group | commercial | `report.customer.field.commercialProfile.read` |
+| `customer.purchaseOrderRequired` | PO required | boolean | filter, group | commercial | `report.customer.field.commercialProfile.read` |
+| `customer.invoiceDeliveryMethod` | Invoice delivery | enum | filter, group | commercial | `report.customer.field.commercialProfile.read` |
 | `customer.billingContact` | Billing contact | reference→contact | filter | standard | `report.customer.field.billingContact.read` |
 | `customer.accountOwner` | Account owner | reference→employee | filter, group | **employee** | `report.customer.field.accountOwner.read` |
 
@@ -121,8 +124,8 @@ Sensitivity legend: `standard` (activatable with its object), `governed` (admin-
 | fieldId | label | type | operators | sensitivity | readCapability |
 |---|---|---|---|---|---|
 | `location.name` | Name | string | filter, sort, group | standard | `report.location.field.name.read` |
-| `location.address.city` / `.state` / `.zip` | Address parts | string | filter, sort, group | standard | `report.location.field.address.read` |
-| `location.accessNotes` | Access notes | string | (none) | standard | `report.location.field.accessNotes.read` |
+| `location.address.street` / `.city` / `.state` / `.zip` | Address parts | string | filter, sort, group | standard | `report.location.field.address.read` |
+| `location.accessNotes` | Access notes | string | (none) | **security-text** | `report.location.field.accessNotes.read` |
 | `location.accountId` | Customer | reference→customer | filter, group | standard | `report.location.field.customer.read` |
 
 ### 5.4 `equipment` (wave 1) — backing `equipment`
@@ -149,13 +152,14 @@ The schema of §3.2 applies uniformly. The following are catalogued at object + 
 
 ## 6. Field-level read authorization (the enforcement contract)
 
-Every operation on every field is authorized **server-side, at run time**, by the trusted engine calling the ADR-005 decision engine (`resolveEffectivePermission(ResolveInput): ResolveResult`, `src/access/resolveEffectivePermission.ts`) for the field's `readCapability`, in the runner's live Scope, comparing `currentAccessVersion` for freshness.
+Every operation on every field is authorized **server-side, at run time**, by the trusted engine calling the ADR-005 decision engine for the field's `readCapability`, in the runner's live Scope, comparing `currentAccessVersion` for freshness. The decision contract is `resolveEffectivePermission(ResolveInput): ResolveResult` (the client-side mirror is `src/access/resolveEffectivePermission.ts`; the **authoritative engine is functions-side and #226-owned**, and the report service calls that server engine, not the client mirror).
 
 - **Object gate first:** a run requires the object's `objectReadCapability`; without it, nothing is read.
 - **Per-field gate:** each selected/filtered/sorted/grouped/aggregated field requires its `readCapability`. A field the runner may not read is **absent from the response payload** — never blanked, never returned-then-hidden.
 - **Predicate-drop rule (ADR-007 §2.4):** a **filter, group, sort, or aggregate predicate that references a field the runner may not read is dropped (removed), never applied** — so result-set *membership* cannot leak the hidden field (e.g. a shared `salary > X` filter). A dropped predicate **widens** the result and is **surfaced to the runner** exactly like a dropped column. Widening never leaks; it never bypasses object/record-level read (the runner's authorized row set still bounds it), and it stays inside the execution limits of §10 (a widened result past the row cap is shown as **widened and truncated**, not authoritative).
 - **Relationship-hop rule (ADR-007 §2.5):** projected columns from a related object are authorized by *that object's* field capabilities for the same runner; a filter/group/sort/aggregate on a related object's unreadable field is dropped identically.
 - **No client-direct read path.** The client never reads a report collection directly; the engine is the only reader.
+- **No cross-principal result caching (ADR-007 §2.4).** Any execution-result cache is keyed to the runner's resolved access set and `accessVersion`, so a projection computed for a higher-privileged principal is never served to a lower-privileged one — the cache is never a side channel around re-evaluation.
 
 **This Specification defines the capability *contract*, not the engine.** The `report.*` capability ids above are the shape the #226 field-level read extension must provide; the extension's code is Inventory's lane (Issue #226) and is **not modified here**. Enforcement is unavailable-not-unsafe until that extension and the #15 Functions lane ship and are verified.
 
