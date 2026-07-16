@@ -20,6 +20,24 @@ import type { Permission } from "../types/access";
 // (`deprecated: true` + `deprecatedInFavorOf`), never a silent rename.
 const PERMISSION_ID_PATTERN = /^[a-z][a-zA-Z0-9]*(\.[a-z][a-zA-Z0-9]*)+$/;
 
+// Issue #325 / ADR-007 D-226 -- field-level read-capability extension.
+// docs/architecture/ADR-007-governed-object-based-report-creator.md §2.2/
+// §2.3 and docs/specifications/governed-object-based-report-creator.md §3
+// adopt "report.<objectId>.field.<fieldId>.read" (object read capability:
+// "report.<objectId>.read") as the id shape -- both already satisfy
+// PERMISSION_ID_PATTERN above unchanged (5 and 3 lower-camel dot segments
+// respectively; no core pattern change required). These two STRICTER
+// patterns exist only to give "malformed" its own explicit, testable
+// failure mode for this capability class (a caller authoring or
+// validating a `report.*` id gets a shape check narrower than the
+// generic one) -- they are not consulted by findPermission()/
+// resolveEffectivePermission(), which deny an unregistered or malformed
+// id identically via exact catalog lookup (DenialReason
+// "unknownPermission" either way).
+const REPORT_OBJECT_READ_CAPABILITY_PATTERN = /^report\.[a-z][a-zA-Z0-9]*\.read$/;
+const REPORT_FIELD_READ_CAPABILITY_PATTERN =
+  /^report\.[a-z][a-zA-Z0-9]*\.field\.[a-zA-Z0-9]+\.read$/;
+
 // Every id below reproduces a capability that already exists in
 // production today (Assessment §1 current-state matrix, Assessment's
 // "Inventory domain audit" table, and firestore.rules on `main`). This
@@ -218,6 +236,287 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     action: "read",
   }),
 
+  // --- Report field-level read capabilities (Issue #325 / ADR-007 D-226) ---
+  // docs/specifications/governed-object-based-report-creator.md §4/§5,
+  // wave 1 only (customer/contact/location/equipment -- the four objects
+  // whose Specification field tables are already fully authored and
+  // Owner-approved; later waves' fields are catalogued at their own,
+  // separately-authorized activation per ADR-007 §2.9/§4). No Rule,
+  // Function, or Role grants any of these ids yet (see
+  // resolveEffectivePermission.test.mjs's A3 acceptance test, which
+  // defers this whole class the same way it already defers
+  // `audit.event.read`) -- this is catalog data only, exactly as
+  // required for D-226 ("resolvable by resolveEffectivePermission per
+  // field") and no more. One capability governs every operation on a
+  // field (select/filter/sort/group/aggregate/display/share/schedule/
+  // export) -- ADR-007 §4 open decision 2, resolved here as NOT
+  // operator-differentiated (the Specification's own adopted default).
+  // A field id is never embedded as a static Role.conditionsByPermission
+  // param -- the field identity IS the PermissionId itself (catalog
+  // data), and any future genuinely per-target authorization for a
+  // report capability must use a ConditionContext closure, never a
+  // static param, per the precedent set by Issue #226 Warehouse Rows A/B
+  // (isAssignedToWarehouse()).
+  //
+  // `active: false` marks a REGISTERED-but-not-yet-grantable capability
+  // (ADR-007 §2.6): `customer.notes`/`location.accessNotes` are
+  // `security-text` fields the Specification requires the wave-1 review
+  // to explicitly confirm before activation (Spec §5, sensitivity
+  // legend) -- not yet done here; `customer.accountOwner` is `employee`-
+  // sensitivity and explicitly deferred to wave 4 despite sitting in the
+  // wave-1 table (Spec §4, load-bearing example). Every other wave-1
+  // field/object id is `active: true` -- their review IS the merged
+  // Specification itself.
+  Object.freeze({
+    id: "report.customer.read",
+    description: "Object-level read gate for reporting on Customer/Account records.",
+    resource: "report.customer",
+    action: "read",
+    active: true,
+  }),
+  Object.freeze({
+    id: "report.customer.field.name.read",
+    description: "Report field-read: customer.name.",
+    resource: "report.customer.field.name",
+    action: "read",
+    active: true,
+  }),
+  Object.freeze({
+    id: "report.customer.field.status.read",
+    description: "Report field-read: customer.status.",
+    resource: "report.customer.field.status",
+    action: "read",
+    active: true,
+  }),
+  Object.freeze({
+    id: "report.customer.field.relationshipTypes.read",
+    description: "Report field-read: customer.relationshipTypes.",
+    resource: "report.customer.field.relationshipTypes",
+    action: "read",
+    active: true,
+  }),
+  Object.freeze({
+    id: "report.customer.field.billingAddress.read",
+    description:
+      "Report field-read: customer.billingAddress (street/city/state/zip -- one capability, grouped per Spec §5.1).",
+    resource: "report.customer.field.billingAddress",
+    action: "read",
+    active: true,
+  }),
+  Object.freeze({
+    id: "report.customer.field.tags.read",
+    description: "Report field-read: customer.tags.",
+    resource: "report.customer.field.tags",
+    action: "read",
+    active: true,
+  }),
+  Object.freeze({
+    id: "report.customer.field.externalIds.read",
+    description:
+      "Report field-read: customer.customerNumber/erpId/accountingId/legacyId (one capability, grouped per Spec §5.1).",
+    resource: "report.customer.field.externalIds",
+    action: "read",
+    active: true,
+  }),
+  Object.freeze({
+    id: "report.customer.field.notes.read",
+    description:
+      "Report field-read: customer.notes -- security-text, inactive pending the wave-1 review's explicit confirmation (Spec §5 sensitivity legend).",
+    resource: "report.customer.field.notes",
+    action: "read",
+    active: false,
+  }),
+  Object.freeze({
+    id: "report.customer.field.createdAt.read",
+    description: "Report field-read: customer.createdAt.",
+    resource: "report.customer.field.createdAt",
+    action: "read",
+    active: true,
+  }),
+  Object.freeze({
+    id: "report.customer.field.paymentTerms.read",
+    description: "Report field-read: customer.paymentTerms -- governed (Rules admin-only write, Issue #175).",
+    resource: "report.customer.field.paymentTerms",
+    action: "read",
+    active: true,
+  }),
+  Object.freeze({
+    id: "report.customer.field.taxStatus.read",
+    description: "Report field-read: customer.taxStatus -- governed (Rules admin-only write, Issue #175).",
+    resource: "report.customer.field.taxStatus",
+    action: "read",
+    active: true,
+  }),
+  Object.freeze({
+    id: "report.customer.field.commercialProfile.read",
+    description:
+      "Report field-read: customer.defaultCurrency/purchaseOrderRequired/invoiceDeliveryMethod (one capability, grouped per Spec §5.1).",
+    resource: "report.customer.field.commercialProfile",
+    action: "read",
+    active: true,
+  }),
+  Object.freeze({
+    id: "report.customer.field.billingContact.read",
+    description: "Report field-read: customer.billingContact (reference -> contact).",
+    resource: "report.customer.field.billingContact",
+    action: "read",
+    active: true,
+  }),
+  Object.freeze({
+    id: "report.customer.field.accountOwner.read",
+    description:
+      "Report field-read: customer.accountOwner (reference -> employee) -- employee-sensitivity, deferred to wave 4 despite sitting in the wave-1 object table (Spec §4).",
+    resource: "report.customer.field.accountOwner",
+    action: "read",
+    active: false,
+  }),
+
+  Object.freeze({
+    id: "report.contact.read",
+    description: "Object-level read gate for reporting on Contact records.",
+    resource: "report.contact",
+    action: "read",
+    active: true,
+  }),
+  Object.freeze({
+    id: "report.contact.field.name.read",
+    description: "Report field-read: contact.name.",
+    resource: "report.contact.field.name",
+    action: "read",
+    active: true,
+  }),
+  Object.freeze({
+    id: "report.contact.field.email.read",
+    description: "Report field-read: contact.email.",
+    resource: "report.contact.field.email",
+    action: "read",
+    active: true,
+  }),
+  Object.freeze({
+    id: "report.contact.field.phone.read",
+    description: "Report field-read: contact.phone.",
+    resource: "report.contact.field.phone",
+    action: "read",
+    active: true,
+  }),
+  Object.freeze({
+    id: "report.contact.field.role.read",
+    description: "Report field-read: contact.role.",
+    resource: "report.contact.field.role",
+    action: "read",
+    active: true,
+  }),
+  Object.freeze({
+    id: "report.contact.field.customer.read",
+    description: "Report field-read: contact.accountId (reference -> customer).",
+    resource: "report.contact.field.customer",
+    action: "read",
+    active: true,
+  }),
+
+  Object.freeze({
+    id: "report.location.read",
+    description: "Object-level read gate for reporting on Location records.",
+    resource: "report.location",
+    action: "read",
+    active: true,
+  }),
+  Object.freeze({
+    id: "report.location.field.name.read",
+    description: "Report field-read: location.name.",
+    resource: "report.location.field.name",
+    action: "read",
+    active: true,
+  }),
+  Object.freeze({
+    id: "report.location.field.address.read",
+    description:
+      "Report field-read: location.address.street/city/state/zip (one capability, grouped per Spec §5.3).",
+    resource: "report.location.field.address",
+    action: "read",
+    active: true,
+  }),
+  Object.freeze({
+    id: "report.location.field.accessNotes.read",
+    description:
+      "Report field-read: location.accessNotes -- security-text, inactive pending the wave-1 review's explicit confirmation (Spec §5 sensitivity legend).",
+    resource: "report.location.field.accessNotes",
+    action: "read",
+    active: false,
+  }),
+  Object.freeze({
+    id: "report.location.field.customer.read",
+    description: "Report field-read: location.accountId (reference -> customer).",
+    resource: "report.location.field.customer",
+    action: "read",
+    active: true,
+  }),
+
+  Object.freeze({
+    id: "report.equipment.read",
+    description: "Object-level read gate for reporting on Equipment records.",
+    resource: "report.equipment",
+    action: "read",
+    active: true,
+  }),
+  Object.freeze({
+    id: "report.equipment.field.name.read",
+    description: "Report field-read: equipment.name.",
+    resource: "report.equipment.field.name",
+    action: "read",
+    active: true,
+  }),
+  Object.freeze({
+    id: "report.equipment.field.status.read",
+    description: "Report field-read: equipment.status.",
+    resource: "report.equipment.field.status",
+    action: "read",
+    active: true,
+  }),
+  Object.freeze({
+    id: "report.equipment.field.identity.read",
+    description:
+      "Report field-read: equipment.manufacturer/model/serialNumber/assetTag (one capability, grouped per Spec §5.4).",
+    resource: "report.equipment.field.identity",
+    action: "read",
+    active: true,
+  }),
+  Object.freeze({
+    id: "report.equipment.field.dates.read",
+    description: "Report field-read: equipment.installedDate/warrantyExpiresDate (one capability, grouped per Spec §5.4).",
+    resource: "report.equipment.field.dates",
+    action: "read",
+    active: true,
+  }),
+  Object.freeze({
+    id: "report.equipment.field.notes.read",
+    description: "Report field-read: equipment.notes -- standard (not security-text; distinct from customer/location notes, Spec §5.4).",
+    resource: "report.equipment.field.notes",
+    action: "read",
+    active: true,
+  }),
+  Object.freeze({
+    id: "report.equipment.field.customer.read",
+    description: "Report field-read: equipment.accountId (reference -> customer).",
+    resource: "report.equipment.field.customer",
+    action: "read",
+    active: true,
+  }),
+  Object.freeze({
+    id: "report.equipment.field.location.read",
+    description: "Report field-read: equipment.locationId (reference -> location).",
+    resource: "report.equipment.field.location",
+    action: "read",
+    active: true,
+  }),
+  Object.freeze({
+    id: "report.equipment.field.createdAt.read",
+    description: "Report field-read: equipment.createdAt.",
+    resource: "report.equipment.field.createdAt",
+    action: "read",
+    active: true,
+  }),
+
   // --- Enterprise Access & Administration domain (this platform; Spec §16) ---
   Object.freeze({
     id: "admin.userStatus.write",
@@ -262,4 +561,34 @@ export function requirePermission(id: string): Permission {
     throw new Error(`Unknown PermissionId: "${id}"`);
   }
   return permission;
+}
+
+// Issue #325 / ADR-007 D-226 -- shape-only validators (no catalog
+// lookup) for the report.* capability class. `isValidPermissionId`
+// above already accepts both shapes (they satisfy the generic
+// "<domain>.<resource>.<action>"+ pattern); these exist so a caller
+// authoring or validating a `report.*` id -- e.g. a future Reporting-
+// lane catalog-authoring script -- gets a check narrower than the
+// generic one, with "malformed" as its own distinguishable outcome
+// from "not shaped like a report id at all".
+export function isValidReportObjectReadCapabilityId(id: string): boolean {
+  return REPORT_OBJECT_READ_CAPABILITY_PATTERN.test(id);
+}
+
+export function isValidReportFieldReadCapabilityId(id: string): boolean {
+  return REPORT_FIELD_READ_CAPABILITY_PATTERN.test(id);
+}
+
+// Fail-closed helper (ADR-007 §2.6 / Spec §4-§5's "denied by default
+// until dedicated security review" sensitive-field posture): true only
+// for a REGISTERED (found in the catalog) capability whose `active`
+// flag is not explicitly `false`. An unregistered id is never "active"
+// -- this is not a substitute for `findPermission`, it is stricter.
+// resolveEffectivePermission() (resolveEffectivePermission.ts) enforces
+// this same rule as an unconditional gate ahead of any Role-grant
+// check; this export exists for callers (tests, future catalog
+// tooling) that want the same answer without invoking the full resolver.
+export function isActivePermission(id: string): boolean {
+  const permission = findPermission(id);
+  return !!permission && permission.active !== false;
 }

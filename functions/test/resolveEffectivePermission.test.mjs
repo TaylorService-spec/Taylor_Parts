@@ -64,11 +64,25 @@ function resolve(roleId, permissionId, target, accessVersion = 1) {
 }
 
 // --- A3: every catalog id is accounted for by at least one seeded Role ---
-check("A3: every Permission id is granted by at least one compatibility Role (directly or Conditioned) except the still-deferred audit.event.read (Row 11)", () => {
+check("A3: every Permission id is granted by at least one compatibility Role (directly or Conditioned) except the still-deferred audit.event.read (Row 11) and the report.* field-read capability class (Issue #325 / ADR-007 D-226)", () => {
   // admin.userStatus.write/admin.roleAssignment.write/admin.
   // accessRequest.decide were granted to ADMIN_ROLE in Row 7 (Task 12) --
   // Row 7 is the trusted-writer row Row 2's own comment deferred them to.
-  const deferredForNow = new Set(["audit.event.read"]);
+  //
+  // report.* (34 ids, permissionCatalog.ts's "Report field-level read
+  // capabilities" section): D-226 is catalog-only per its own scope --
+  // no Rule, Function, or Role grants these ids yet. Granting them here
+  // would be premature: the trusted execution/projection service (D-FN)
+  // that would be the actual caller does not exist, is #15-gated, and
+  // per ADR-007 is "unavailable-not-unsafe" until then. Whether/how
+  // report.* ids are eventually granted to a compatibility Role (vs.
+  // only to a future reporting-specific Role) is an open decision for
+  // that later, separately-authorized row -- not resolved by this
+  // catalog-only PR.
+  const deferredForNow = new Set([
+    "audit.event.read",
+    ...PERMISSION_CATALOG.filter((p) => p.id.startsWith("report.")).map((p) => p.id),
+  ]);
   const grantedIds = new Set([
     ...ADMIN_ROLE.permissions,
     ...DISPATCHER_ROLE.permissions,
@@ -313,6 +327,134 @@ check("Scope: domain-scoped assignment ALLOW against a matching target domain", 
     target: baseTarget({ scope: { type: "domain", value: "customer" } }),
   });
   assert.equal(result.decision, "ALLOW");
+});
+
+// --- Issue #325 / ADR-007 D-226: field-level read-capability extension.
+// "Unknown, inactive, malformed, or unregistered field capabilities
+// deny" -- each of the four is exercised as its own distinguishable
+// case, including proving `inactivePermission` denies UNCONDITIONALLY,
+// ahead of and regardless of any Role grant (a synthetic Role fixture
+// below, never COMPATIBILITY_ROLES, so this is provably not "denied
+// only because nothing grants it").
+
+check("D-226: unregistered field capability id denies as unknownPermission, even with a synthetic grant", () => {
+  const roles = {
+    syntheticGrantsAll: {
+      id: "syntheticGrantsAll",
+      name: "test fixture",
+      description: "grants an unregistered id -- proves the catalog gate, not the grant, denies",
+      permissions: ["report.customer.field.doesNotExist.read"],
+    },
+  };
+  const result = resolveEffectivePermission({
+    permissionId: "report.customer.field.doesNotExist.read",
+    assignments: [activeAssignment("syntheticGrantsAll")],
+    roles,
+    currentAccessVersion: 1,
+    target: baseTarget(),
+  });
+  assert.equal(result.decision, "DENY");
+  assert.equal(result.reason, "unknownPermission");
+});
+
+check("D-226: malformed field-shaped id (missing the literal 'field' segment) denies as unknownPermission", () => {
+  const roles = {
+    syntheticGrantsAll: {
+      id: "syntheticGrantsAll",
+      name: "test fixture",
+      description: "grants a malformed id -- proves the catalog gate denies a shape that was never registered",
+      permissions: ["report.customer.name.read"],
+    },
+  };
+  const result = resolveEffectivePermission({
+    permissionId: "report.customer.name.read",
+    assignments: [activeAssignment("syntheticGrantsAll")],
+    roles,
+    currentAccessVersion: 1,
+    target: baseTarget(),
+  });
+  assert.equal(result.decision, "DENY");
+  assert.equal(result.reason, "unknownPermission");
+});
+
+check("D-226: inactive field capability denies as inactivePermission EVEN WHEN a Role grants it (ADR-007 sec2.6 override)", () => {
+  const roles = {
+    syntheticGrantsNotes: {
+      id: "syntheticGrantsNotes",
+      name: "test fixture",
+      description: "grants the registered-but-inactive customer.notes field-read capability",
+      permissions: ["report.customer.field.notes.read"],
+    },
+  };
+  const result = resolveEffectivePermission({
+    permissionId: "report.customer.field.notes.read",
+    assignments: [activeAssignment("syntheticGrantsNotes")],
+    roles,
+    currentAccessVersion: 1,
+    target: baseTarget(),
+  });
+  assert.equal(result.decision, "DENY");
+  assert.equal(result.reason, "inactivePermission");
+});
+
+check("D-226: inactive wave-4-deferred accountOwner field capability denies the same way", () => {
+  const roles = {
+    syntheticGrantsOwner: {
+      id: "syntheticGrantsOwner",
+      name: "test fixture",
+      permissions: ["report.customer.field.accountOwner.read"],
+    },
+  };
+  const result = resolveEffectivePermission({
+    permissionId: "report.customer.field.accountOwner.read",
+    assignments: [activeAssignment("syntheticGrantsOwner")],
+    roles,
+    currentAccessVersion: 1,
+    target: baseTarget(),
+  });
+  assert.equal(result.decision, "DENY");
+  assert.equal(result.reason, "inactivePermission");
+});
+
+check("D-226: an ACTIVE, registered field capability ALLOWs normally when actually granted (the mechanism works, not just denies)", () => {
+  const roles = {
+    syntheticGrantsName: {
+      id: "syntheticGrantsName",
+      name: "test fixture",
+      permissions: ["report.customer.field.name.read"],
+    },
+  };
+  const result = resolveEffectivePermission({
+    permissionId: "report.customer.field.name.read",
+    assignments: [activeAssignment("syntheticGrantsName")],
+    roles,
+    currentAccessVersion: 1,
+    target: baseTarget(),
+  });
+  assert.equal(result.decision, "ALLOW");
+  assert.equal(result.reason, "qualifyingGrant");
+  assert.equal(result.matchedRoleId, "syntheticGrantsName");
+});
+
+check("D-226: an active, registered field capability with NO grant at all denies as noQualifyingGrant (not inactivePermission/unknownPermission)", () => {
+  const result = resolveEffectivePermission({
+    permissionId: "report.customer.field.name.read",
+    assignments: [activeAssignment("admin")], // admin's real grants never include report.* (A3 deferral)
+    roles: COMPATIBILITY_ROLES,
+    currentAccessVersion: 1,
+    target: baseTarget(),
+  });
+  assert.equal(result.decision, "DENY");
+  assert.equal(result.reason, "noQualifyingGrant");
+});
+
+check("D-226: no compatibility Role (admin/dispatcher/technician) is granted any report.* id today (catalog-only, no premature grant)", () => {
+  const reportIds = new Set(PERMISSION_CATALOG.filter((p) => p.id.startsWith("report.")).map((p) => p.id));
+  for (const role of Object.values(COMPATIBILITY_ROLES)) {
+    for (const id of role.permissions) {
+      assert.ok(!reportIds.has(id), `compatibility Role "${role.id}" unexpectedly grants "${id}"`);
+    }
+  }
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

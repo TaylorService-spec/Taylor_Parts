@@ -58,6 +58,25 @@ export interface Permission {
   // should migrate to. Deprecation is additive, never a silent rename
   // (Spec §6).
   deprecatedInFavorOf?: PermissionId;
+  // Issue #325 / ADR-007 D-226 -- a REGISTERED capability (present in
+  // the catalog, so `findPermission` finds it) that is not currently
+  // grantable. Distinct from absent-from-catalog ("unregistered" --
+  // `findPermission` returns undefined, DenialReason "unknownPermission")
+  // and from `deprecated` (a superseded-but-still-live id). Omitted or
+  // `true` means active -- every existing catalog entry is unaffected by
+  // this addition. `false` is a hard, unconditional DENY in
+  // resolveEffectivePermission regardless of any Role grant (Spec §13
+  // fail-closed posture) -- the mechanism ADR-007 §2.6 requires for
+  // "sensitive fields are denied by default and activated only through
+  // dedicated security review" (e.g. a field-read capability catalogued
+  // ahead of its wave's review, or a security-text field pending its
+  // wave-1 review's explicit confirmation, per docs/specifications/
+  // governed-object-based-report-creator.md §4/§5). Generic on Permission
+  // (not a field-only type) since the same "registered but not yet live"
+  // need is not inherently field-specific, but its first and, as of this
+  // addition, only use is the `report.*` field-read/object-read
+  // capability class below.
+  active?: boolean;
 }
 
 // Spec §5.2 -- a named bundle of Permission ids. This field is
