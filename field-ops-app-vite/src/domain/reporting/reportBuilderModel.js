@@ -69,8 +69,20 @@ export function setObject(def, objectId) {
 }
 
 export function toggleField(def, fieldId) {
-  const has = def.fields.includes(fieldId);
-  return { ...def, fields: has ? def.fields.filter((f) => f !== fieldId) : [...def.fields, fieldId] };
+  if (!def.fields.includes(fieldId)) {
+    return { ...def, fields: [...def.fields, fieldId] };
+  }
+  // Removing a column also prunes every clause that referenced it -- the filter/group/sort
+  // controls are shown per selected field, so an orphaned clause on a now-unselected field would
+  // render against the wrong field. (Its catalog entry still exists, so F2 wouldn't reject it;
+  // this is a UI-consistency prune, not a validity fix.)
+  return {
+    ...def,
+    fields: def.fields.filter((f) => f !== fieldId),
+    filters: def.filters.filter((flt) => flt.fieldId !== fieldId),
+    groupBy: def.groupBy.filter((f) => f !== fieldId),
+    sort: def.sort.filter((s) => s.fieldId !== fieldId),
+  };
 }
 
 export function toggleGroupBy(def, fieldId) {

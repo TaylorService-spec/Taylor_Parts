@@ -93,6 +93,23 @@ ok("reducers build a valid definition without mutating their input", () => {
   assert.deepEqual(builderErrors(d6), []);
 });
 
+ok("deselecting a column prunes its filter/group/sort so no clause is orphaned", () => {
+  let def = setObject(createReportDefinition(null), "customer");
+  def = toggleField(def, "customer.name");   // string: filter/sort/group
+  def = toggleField(def, "customer.status"); // enum: filter/group
+  def = addFilter(def, { fieldId: "customer.name", op: "contains", value: "Acme" });
+  def = toggleGroupBy(def, "customer.name");
+  def = addSort(def, "customer.name");
+  // remove the customer.name column -> its filter, groupBy, and sort go with it
+  const pruned = toggleField(def, "customer.name");
+  assert.deepEqual(pruned.fields, ["customer.status"]);
+  assert.deepEqual(pruned.filters, []);
+  assert.deepEqual(pruned.groupBy, []);
+  assert.deepEqual(pruned.sort, []);
+  // the earlier def is untouched (non-mutating)
+  assert.equal(def.filters.length, 1);
+});
+
 ok("changing the base object clears field-referencing clauses (they can't carry over)", () => {
   let def = setObject(createReportDefinition(null), "customer");
   def = toggleField(def, "customer.name");
