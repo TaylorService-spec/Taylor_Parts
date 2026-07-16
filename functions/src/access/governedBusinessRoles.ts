@@ -127,19 +127,20 @@ export const FIELD_MANAGER_ROLE: Role = Object.freeze({
   permissions: ["workOrder.create", "workOrder.transition", "workOrder.cancel", "inventory.transaction.read"],
 }) as Role;
 
-// Spec §26.2 -- cross-domain operational oversight (Customer, Service,
-// Inventory, Purchasing) via read-heavy grants plus Work Order
-// lifecycle authority. Deliberately excludes account.record.create/
-// update (oversight is not direct customer-editing authority in this
-// conservative reading), account.governedField.write, and every
-// admin.*/reorder.request.assign/approve/reject/cancel id ("no
-// automatic role administration"). Warehouse-specific ids are a
-// recorded catalog gap (Spec §26.4).
+// Spec §26.2/§27.4 -- cross-domain operational oversight (Customer,
+// Service, Inventory, Warehouse, Purchasing) via read-heavy grants plus
+// Work Order lifecycle authority. Deliberately excludes
+// account.record.create/update (oversight is not direct customer-
+// editing authority in this conservative reading),
+// account.governedField.write, and every admin.*/reorder.request.assign/
+// approve/reject/cancel id ("no automatic role administration"). The
+// three warehouse.*.read ids (Spec §27.2) close the Warehouse-specific
+// catalog gap §26.4 originally recorded here.
 export const OPERATIONS_MANAGER_ROLE: Role = Object.freeze({
   id: "operationsManager",
   name: "Operations Manager",
   description:
-    "Cross-domain operational oversight across Customer, Service, Inventory, and Purchasing. No role administration, no governed-field write, no reorder decision authority. Warehouse-specific capabilities are a recorded permission-catalog gap (Spec §26.4).",
+    "Cross-domain operational oversight across Customer, Service, Inventory, Warehouse, and Purchasing. No role administration, no governed-field write, no reorder decision authority.",
   systemSeed: true,
   compatibility: false,
   permissions: [
@@ -151,6 +152,9 @@ export const OPERATIONS_MANAGER_ROLE: Role = Object.freeze({
     "inventory.action.read",
     "reorder.request.read.queue",
     "reorder.purchaseOrder.read",
+    "warehouse.record.read",
+    "warehouse.stockLocation.read",
+    "warehouse.transferOrder.read",
   ],
 }) as Role;
 
