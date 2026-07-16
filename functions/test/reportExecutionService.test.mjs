@@ -605,6 +605,66 @@ async function main() {
     assert.equal(byLocation[`${marker}-Warehouse B`], 1);
   });
 
+  // --- Issue #325 W1: Owner's real (not synthetic-test) grant works end-to-end ---
+  // Every other check() in this file passes `{ roles: TEST_ROLES }`, the
+  // service's test-only injection seam -- proving the MECHANISM works,
+  // never that a real Role actually grants anything (this session's own
+  // hard requirement was "no premature grant" until this task). This is
+  // the ONE check that omits `roles` entirely, so runReportDefinition()
+  // falls back to its real production default (COMPATIBILITY_ROLES +
+  // GOVERNED_BUSINESS_ROLES, genuinely merged) -- proving the real,
+  // merged Owner Role can now run a real W1 report end-to-end, which is
+  // this task's own stated purpose ("enables emulator W1 testing").
+  await check("W1: the REAL Owner Role (no test-role injection) runs a real report end-to-end via GOVERNED_BUSINESS_ROLES", async () => {
+    const runnerUid = await seedRunner();
+    await grantRole(runnerUid, "owner");
+    const marker = uid("mk");
+    await seedCustomers([
+      { name: `${marker}-Acme Corp`, status: "Active", createdAt: now },
+      { name: `${marker}-Beta LLC`, status: "Inactive", createdAt: now },
+    ]);
+    const outcome = await runReportDefinition(
+      {
+        runnerUid,
+        definition: {
+          objectId: "customer",
+          fields: ["customer.name", "customer.status"],
+          filters: [{ fieldId: "customer.name", op: "startsWith", value: marker }],
+        },
+      },
+      // No `roles` override -- exercises the REAL production default.
+    );
+    assert.equal(outcome.kind, "results");
+    assert.equal(outcome.rowCount, 2);
+    assert.deepEqual(outcome.droppedColumnLabels, []);
+  });
+
+  await check("W1: the REAL Owner Role still can't read an inactive field (customer.notes) -- active:false overrides even the real grant", async () => {
+    const runnerUid = await seedRunner();
+    await grantRole(runnerUid, "owner");
+    const outcome = await runReportDefinition(
+      { runnerUid, definition: { objectId: "customer", fields: ["customer.notes"] } },
+    );
+    assert.deepEqual(outcome.droppedFieldIds, ["customer.notes"]);
+  });
+
+  await check("W1: a runner with NO Role assignment is still denied against the REAL production role default (no accidental global widening)", async () => {
+    const runnerUid = await seedRunner();
+    const outcome = await runReportDefinition(
+      { runnerUid, definition: { objectId: "customer", fields: ["customer.name"] } },
+    );
+    assert.equal(outcome.kind, "permission-denied");
+  });
+
+  await check("W1: a non-Owner governed business Role (e.g. Operations Manager) is still denied against the REAL production role default", async () => {
+    const runnerUid = await seedRunner();
+    await grantRole(runnerUid, "operationsManager");
+    const outcome = await runReportDefinition(
+      { runnerUid, definition: { objectId: "customer", fields: ["customer.name"] } },
+    );
+    assert.equal(outcome.kind, "permission-denied");
+  });
+
   // --- No module-level mutable state (structural, static-text proof) ---
   await check("reportExecutionService.ts declares no top-level mutable (let/var) binding -- no cache, anywhere, of any kind", () => {
     const here = dirname(fileURLToPath(import.meta.url));

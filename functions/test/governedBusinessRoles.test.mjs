@@ -24,7 +24,7 @@ import {
   OPERATIONS_MANAGER_ROLE,
   OWNER_ROLE,
 } from "../lib/access/governedBusinessRoles.js";
-import { findPermission } from "../lib/access/permissionCatalog.js";
+import { findPermission, PERMISSION_CATALOG } from "../lib/access/permissionCatalog.js";
 
 let passed = 0;
 let failed = 0;
@@ -262,15 +262,14 @@ check("only Operations Manager, among the eight governed business Roles, holds a
   }
 });
 
-check("Owner mirrors admin's warehouse grant too, since Owner is defined as ADMIN_ROLE.permissions verbatim", () => {
+check("Owner mirrors admin's warehouse grant too, since Owner always includes every ADMIN_ROLE id", () => {
   for (const id of ["warehouse.record.read", "warehouse.stockLocation.read", "warehouse.transferOrder.read"]) {
     assert.ok(OWNER_ROLE.permissions.includes(id), id);
     assert.equal(resolve(id, "owner", GOVERNED_BUSINESS_ROLES).decision, "ALLOW", id);
   }
 });
 
-check("Owner holds exactly ADMIN_ROLE's permission set, through the same governed resolver -- never a bypass", () => {
-  assert.deepEqual([...OWNER_ROLE.permissions].sort(), [...ADMIN_ROLE.permissions].sort());
+check("Owner holds every ADMIN_ROLE permission, through the same governed resolver -- never a bypass", () => {
   assert.equal(OWNER_ROLE.privileged, true);
   for (const id of ADMIN_ROLE.permissions) {
     // reorder.purchaseOrder.void carries an isOwnAssignment Condition
@@ -294,10 +293,71 @@ check("Owner holds exactly ADMIN_ROLE's permission set, through the same governe
     "ALLOW",
     "reorder.purchaseOrder.void must ALLOW when Owner IS the request's own assignee"
   );
-  // Owner never gains a capability admin itself doesn't have.
-  const ownerSet = new Set(OWNER_ROLE.permissions);
+  // Every non-admin id Owner holds must be an active wave-1 report.* id
+  // (Issue #325 W1) -- Owner never gains any OTHER capability admin
+  // itself doesn't have.
   const adminSet = new Set(ADMIN_ROLE.permissions);
-  for (const id of ownerSet) assert.ok(adminSet.has(id), `Owner has "${id}" that admin does not -- not a mirror`);
+  for (const id of OWNER_ROLE.permissions) {
+    if (adminSet.has(id)) continue;
+    assert.ok(id.startsWith("report."), `Owner has "${id}" that admin does not, and it isn't a report.* id -- not a mirror plus the documented W1 addition`);
+  }
+});
+
+// === Issue #325 / ADR-007 W1 -- Owner's active wave-1 report.* grant ===
+
+const ACTIVE_WAVE1_REPORT_IDS = PERMISSION_CATALOG.filter(
+  (p) => p.id.startsWith("report.") && p.active !== false,
+).map((p) => p.id);
+const INACTIVE_REPORT_IDS = PERMISSION_CATALOG.filter(
+  (p) => p.id.startsWith("report.") && p.active === false,
+).map((p) => p.id);
+
+check("ACTIVE_WAVE1_REPORT_IDS is exactly 31 ids (4 object + 27 field) -- the catalog's own D-226 count minus the 3 inactive ones", () => {
+  assert.equal(ACTIVE_WAVE1_REPORT_IDS.length, 31);
+  assert.equal(INACTIVE_REPORT_IDS.length, 3);
+});
+
+check("Owner holds every ACTIVE wave-1 report.* id, resolving ALLOW", () => {
+  for (const id of ACTIVE_WAVE1_REPORT_IDS) {
+    assert.ok(OWNER_ROLE.permissions.includes(id), `Owner is missing "${id}"`);
+    assert.equal(resolve(id, "owner", GOVERNED_BUSINESS_ROLES).decision, "ALLOW", id);
+  }
+});
+
+check("Owner does NOT hold any inactive report.* id, and resolving any of them still DENIES (active:false overrides any grant)", () => {
+  for (const id of INACTIVE_REPORT_IDS) {
+    assert.equal(OWNER_ROLE.permissions.includes(id), false, `Owner must not list "${id}" -- it is registered active:false`);
+    const result = resolve(id, "owner", GOVERNED_BUSINESS_ROLES);
+    assert.equal(result.decision, "DENY", id);
+    assert.equal(result.reason, "inactivePermission", id);
+  }
+});
+
+check("Owner is the ONLY Role (of all eleven) that holds any report.* id -- compatibility Roles and the other seven governed business Roles are untouched", () => {
+  for (const role of Object.values(COMPATIBILITY_ROLES)) {
+    assert.equal(role.permissions.some((id) => id.startsWith("report.")), false, `compatibility Role "${role.id}" must not hold a report.* id`);
+  }
+  for (const role of ALL_GOVERNED_ROLES) {
+    const holdsReport = role.permissions.some((id) => id.startsWith("report."));
+    if (role.id === "owner") {
+      assert.equal(holdsReport, true);
+    } else {
+      assert.equal(holdsReport, false, `governed business Role "${role.id}" must not hold a report.* id yet`);
+    }
+  }
+});
+
+check("no compatibility Role or non-Owner governed business Role can read any report.* capability, resolver-verified", () => {
+  const sampleIds = ["report.customer.read", "report.customer.field.name.read", "report.equipment.field.location.read"];
+  for (const id of sampleIds) {
+    assert.equal(resolve(id, "admin", COMPATIBILITY_ROLES).decision, "DENY", `admin + ${id}`);
+    assert.equal(resolve(id, "dispatcher", COMPATIBILITY_ROLES).decision, "DENY", `dispatcher + ${id}`);
+    assert.equal(resolve(id, "technician", COMPATIBILITY_ROLES).decision, "DENY", `technician + ${id}`);
+    for (const role of ALL_GOVERNED_ROLES) {
+      if (role.id === "owner") continue;
+      assert.equal(resolve(id, role.id, GOVERNED_BUSINESS_ROLES).decision, "DENY", `${role.id} + ${id}`);
+    }
+  }
 });
 
 check("Owner's reorder.purchaseOrder.void Condition matches admin's exactly (same audited boundary)", () => {

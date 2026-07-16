@@ -28,11 +28,34 @@
 // file changes, change the other to match.
 import type { Role } from "../types/access";
 import { ADMIN_ROLE } from "./compatibilityRoles";
+import { PERMISSION_CATALOG } from "./permissionCatalog";
 
 // Spec §26.2: Owner's own grant is defined as "every id ADMIN_ROLE
 // holds" rather than a hand-copied list, so the two can never silently
 // drift apart if ADMIN_ROLE's own grant set is ever revised.
-const OWNER_PERMISSIONS = [...ADMIN_ROLE.permissions];
+//
+// Issue #325 / ADR-007 W1 (docs/implementation-plans/governed-object-
+// based-report-creator.md): Owner ADDITIONALLY holds every ACTIVE
+// wave-1 `report.*` capability (the 4 object-level `report.<object>.
+// read` ids plus the 27 active field-level `report.<object>.field.
+// <id>.read` ids -- customer/contact/location/equipment). Derived from
+// permissionCatalog.ts, not hand-listed, so this can never silently
+// drift from D-226's own registration. `active:false` ids (customer.
+// notes/accountOwner, location.accessNotes -- security-text/employee-
+// sensitivity fields pending their own later review/wave, per D-226's
+// own catalog comment) are deliberately EXCLUDED from this list, not
+// merely relied on to deny via the resolver's own active check: Owner's
+// catalog membership should reflect exactly what's currently
+// reportable, not carry ids that aren't yet meaningfully grantable.
+// This is the ONLY Role (of all eleven -- three compatibility, eight
+// governed business) that holds any report.* id; admin/dispatcher/
+// technician and the other seven governed business Roles are
+// byte-unchanged by this addition (see the dedicated tests).
+const OWNER_ACTIVE_WAVE1_REPORT_PERMISSIONS = PERMISSION_CATALOG.filter(
+  (p) => p.id.startsWith("report.") && p.active !== false,
+).map((p) => p.id);
+
+const OWNER_PERMISSIONS = [...ADMIN_ROLE.permissions, ...OWNER_ACTIVE_WAVE1_REPORT_PERMISSIONS];
 const OWNER_CONDITIONS = ADMIN_ROLE.conditionsByPermission;
 
 // Spec §26.2 -- least-privilege baseline. Deliberately zero permissions:
@@ -170,7 +193,7 @@ export const OWNER_ROLE: Role = Object.freeze({
   id: "owner",
   name: "Owner",
   description:
-    "Privileged full-platform Role. Holds the identical grant set as the admin compatibility Role, through the same governed resolver, Scope, Condition, and audit path -- never a bypass.",
+    "Privileged full-platform Role. Holds every capability the admin compatibility Role holds, through the same governed resolver, Scope, Condition, and audit path -- never a bypass -- PLUS every active wave-1 report.* object/field capability (Issue #325 W1), which admin itself does not hold. The only Role with report access today.",
   systemSeed: true,
   compatibility: false,
   privileged: true,
