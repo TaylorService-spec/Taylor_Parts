@@ -6,14 +6,16 @@
 // and-administration-platform.md (Row 7 / Task 12).
 //
 // Server-side ONLY -- not mirrored to field-ops-app-vite: clients never
-// call these directly. Every command is INERT -- none is exported from
-// functions/src/index.ts, so none is a deployed, callable Cloud
-// Function yet. Nothing calls these from a real request path. Per
-// ADR-005 sec2.6/Spec sec17, trusted-writer ACTIVATION is blocked until
-// Issue #15's Cloud Functions are deployed and verified -- writing and
-// testing this module now is explicitly allowed ("pure authorization-
-// logic resolution" work); exporting/deploying it as a callable
-// endpoint is a separate, later-authorized action.
+// call these functions directly. As of the deployment-candidate row
+// (docs/deployment/enterprise-access-deployment-manifest.md), each
+// command has a thin callable adapter (./accessCommandCallables.ts)
+// exported from functions/src/index.ts -- but export is not deployment.
+// These remain INERT in production: not yet deployed to the live
+// project, and no Admin-mutation UI calls them, until a separate, later
+// Owner production authorization (Implementation Plan Row 19+) is
+// issued. Per ADR-005 sec2.6/Spec sec17, trusted-writer ACTIVATION is
+// additionally blocked until Issue #15's own Cloud Functions are
+// deployed and verified.
 //
 // ZERO Rules/index changes: every collection this module writes
 // (roleAssignments, accessRequests, auditEvents) already has its Row 3
