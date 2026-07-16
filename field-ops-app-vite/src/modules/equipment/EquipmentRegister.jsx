@@ -160,6 +160,8 @@ export default function EquipmentRegister() {
         <EquipmentCreateModal
           accountName={accounts.find((a) => a.id === accountId)?.name ?? "this customer"}
           locations={locations}
+          locationsError={locationsError}
+          onRetryLocations={retryLocations}
           onCreate={handleCreate}
           onClose={closeCreate}
         />
@@ -218,14 +220,29 @@ export default function EquipmentRegister() {
               />
             </label>
 
+            {/* #324: with locations failed to load, the filter has no options to offer
+                and cannot meaningfully bound the list, so it is disabled rather than
+                presenting a lone "All locations" that looks like the customer has none.
+                The retry banner above already explains and recovers. */}
             <label className="fo-field-inline" htmlFor="equipment-location">
               <span>Location</span>
-              <select id="equipment-location" value={locationId} onChange={(e) => setLocationId(e.target.value)}>
-                <option value="">All locations</option>
+              <select
+                id="equipment-location"
+                value={locationId}
+                onChange={(e) => setLocationId(e.target.value)}
+                disabled={Boolean(locationsError)}
+                aria-describedby={locationsError ? "equipment-location-unavailable" : undefined}
+              >
+                <option value="">{locationsError ? "Locations unavailable" : "All locations"}</option>
                 {locations.map((l) => (
                   <option key={l.id} value={l.id}>{l.name}</option>
                 ))}
               </select>
+              {locationsError && (
+                <span id="equipment-location-unavailable" className="fo-sr-only">
+                  Location filtering is unavailable because locations could not be loaded.
+                </span>
+              )}
             </label>
 
             <div className="fo-filter-group" role="group" aria-label="Filter by status">
