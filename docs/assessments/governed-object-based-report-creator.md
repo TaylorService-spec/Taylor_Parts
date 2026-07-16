@@ -1,22 +1,30 @@
 ---
 artifact_type: assessment
 gate: Repository Assessment
-status: Draft
+status: Accepted (merged; superseded by the governing ADR-007 + Specification)
 date: 2026-07-16
+updated: 2026-07-16 (metadata: recorded review/merge state and the governing ADR/Specification)
 owner: Claude Code
-related_adrs: []
+related_adrs: [docs/architecture/ADR-007-governed-object-based-report-creator.md]
 depends_on: [docs/PROJECT_ARCHITECTURE.md, docs/architecture/SYSTEM_AUTHORITIES.md, docs/specifications/enterprise-access-and-administration-platform.md, docs/architecture/ADR-005-enterprise-authorization-migration-strategy.md]
+related_specs: [docs/specifications/governed-object-based-report-creator.md]
 implements: []
 supersedes: []
 superseded_by: []
-related_pr: null
+related_pr: [330, 331, 333]
 related_issue: 325
 target_release: TBD
 ---
 
 # Assessment: Governed Object-Based Report Creator (#325)
 
-**Status: DRAFT (pending Architecture Review).** This is the **current-state / data-availability Assessment** and stage 1 of Issue #325's own governance sequence. It inventories what "Reporting" is today, which governed business objects and fields exist and how they are authorized, and defines the authorization, sharing, export, audit, and saved-report **boundaries** a future report creator must satisfy. It names the gaps between what #325 requires and what the platform provides today.
+> **Governance status (metadata update, 2026-07-16).** This Assessment was reviewed and merged (PR #330). Its downstream stages are now merged and are the authoritative design going forward:
+> - **Architecture:** `docs/architecture/ADR-007-governed-object-based-report-creator.md` (PR #331, Architecture/Security-reviewed) — selects the trusted field-projecting report architecture this Assessment's field-level finding pointed to.
+> - **Specification:** `docs/specifications/governed-object-based-report-creator.md` (PR #333, Architecture/Security-reviewed) — the object/field/relationship catalogs, field-level read authorization contract, query/validation, saved reports, sharing/scheduling, export, audit, limits, states, and staged activation.
+>
+> This Assessment's body below is preserved as the current-state record it was at merge; where it and the ADR/Specification differ on design, **the ADR and Specification govern.** Issue #325 remains OPEN for the Implementation Plan and per-wave activation stages.
+
+**Status: Merged (current-state record; superseded on design by ADR-007 + the Specification).** This is the **current-state / data-availability Assessment** and stage 1 of Issue #325's own governance sequence. It inventories what "Reporting" is today, which governed business objects and fields exist and how they are authorized, and defines the authorization, sharing, export, audit, and saved-report **boundaries** a future report creator must satisfy. It names the gaps between what #325 requires and what the platform provides today.
 
 **This is a documentation-only Assessment and authorizes nothing.** It changes no application code, no Firestore Rules, no indexes, no Functions; it deploys nothing; it accesses no production data; it edits no global/status document. It does not begin architecture (stage 3), specification, or implementation. Issue #325 stays open. Every design decision named here is deferred to the Owner and to the later ADR/Specification stages that #325 itself sequences.
 
