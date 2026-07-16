@@ -1,0 +1,95 @@
+name: Work Order Engine Functions Tests
+
+# Issue #15 production-readiness closeout, part 2 -- integration tests for
+# the three Work Order Engine v1.2 Cloud Functions (createWorkOrder/
+# transitionWorkOrder/updateWorkOrderExecutionData), against a freshly
+# started Firestore emulator. Emulator-only, project "taylor-parts",
+# loopback host -- no production access, no credentials, no repository
+# secrets.
+
+on:
+  pull_request:
+    paths:
+      - "functions/src/createWorkOrder.ts"
+      - "functions/src/transitionWorkOrder.ts"
+      - "functions/src/updateWorkOrderExecutionData.ts"
+      - "functions/src/callerContext.ts"
+      - "functions/src/woNumbering.ts"
+      - "functions/src/transitionEngine.ts"
+      - "functions/src/inventoryService.ts"
+      - "functions/src/data/partsCatalog.ts"
+      - "functions/src/types/inventoryTransaction.ts"
+      - "functions/src/constants/collections.ts"
+      - "functions/src/types/workOrder.ts"
+      - "functions/test/workOrderEngineFunctions.test.js"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - "firebase.json"
+      - ".github/workflows/work-order-engine-functions-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/src/createWorkOrder.ts"
+      - "functions/src/transitionWorkOrder.ts"
+      - "functions/src/updateWorkOrderExecutionData.ts"
+      - "functions/src/callerContext.ts"
+      - "functions/src/woNumbering.ts"
+      - "functions/src/transitionEngine.ts"
+      - "functions/src/inventoryService.ts"
+      - "functions/src/data/partsCatalog.ts"
+      - "functions/src/types/inventoryTransaction.ts"
+      - "functions/src/constants/collections.ts"
+      - "functions/src/types/workOrder.ts"
+      - "functions/test/workOrderEngineFunctions.test.js"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - "firebase.json"
+      - ".github/workflows/work-order-engine-functions-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  work-order-engine-functions-tests:
+    name: createWorkOrder/transitionWorkOrder/updateWorkOrderExecutionData integration tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+
+      - name: Start Firestore emulator (background)
+        run: |
+          nohup node node_modules/firebase-tools/lib/bin/firebase.js emulators:start --only firestore --project taylor-parts --config ../firebase.json > /tmp/firestore-emulator.log 2>&1 &
+          for i in $(seq 1 60); do
+            if grep -q "All emulators ready" /tmp/firestore-emulator.log 2>/dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "Firestore emulator did not become ready in time"
+          cat /tmp/firestore-emulator.log
+          exit 1
+        working-directory: functions
+
+      - name: Work Order Engine Functions tests (build + run)
+        run: npm run build && node --test test/workOrderEngineFunctions.test.js
+        working-directory: functions
+
+      - name: Upload emulator debug logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: work-order-engine-functions-emulator-logs
+          path: /tmp/firestore-emulator.log
+          if-no-files-found: ignore
+          retention-days: 7

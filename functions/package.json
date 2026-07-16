@@ -18,7 +18,8 @@
     "test:trustedWriter": "npm run build && node test/trustedWriterCommands.test.mjs",
     "test:operatorAccess": "node --test test/operatorAccessCommand.test.js",
     "test:operatorAccessExecute": "npm run build && node --test test/operatorAccessCommandExecute.test.js",
-    "test:transitionEngine": "npm run build && node test/transitionEngine.test.mjs"
+    "test:transitionEngine": "npm run build && node test/transitionEngine.test.mjs",
+    "test:workOrderEngineFunctions": "npm run build && node --test test/workOrderEngineFunctions.test.js"
   },
   "dependencies": {
     "firebase-admin": "^12.7.0",
