@@ -1352,6 +1352,12 @@ export const EQUIPMENT_FIXTURE = {
   // --- linked Work Orders ---------------------------------------------------
   historyWorkOrderIds: ["equip-wo-rtu1-newest", "equip-wo-rtu1-middle", "equip-wo-rtu1-oldest"],
   movedWorkOrderIds: ["equip-wo-moved-after", "equip-wo-moved-before"],
+  // Spec §3: "Historical entries survive retirement" -- so a RETIRED asset must have a
+  // Work Order to survive WITH. Without one that property is unfixturable and any
+  // assertion about it is decoration (E7's review caught exactly that: an assertion
+  // labelled "a retired asset still shows its history" was reading the status badge,
+  // against a retired boiler with zero linked Work Orders).
+  retiredWorkOrderId: "equip-wo-retired-boiler",
   unassignedTechWorkOrderId: "equip-wo-unassigned-tech",  // real WO, links to NO Equipment
   betaWorkOrderId: "equip-wo-beta",                       // real WO at the other tenant, links NO Equipment
   // The exact calendar years E16's Service History grouping must render for
@@ -1412,6 +1418,7 @@ const EQUIPMENT_WO_DATES = {
   rtu1Newest: Date.UTC(2026, 5, 10, 15, 0, 0),   // 2026-06-10
   rtu1Middle: Date.UTC(2025, 5, 12, 15, 0, 0),   // 2025-06-12
   rtu1Oldest: Date.UTC(2024, 5, 14, 15, 0, 0),   // 2024-06-14
+  retiredBoiler: Date.UTC(2023, 5, 16, 15, 0, 0), // 2023-06-16, before its retirement
   movedAfter: Date.UTC(2026, 4, 20, 15, 0, 0),   // 2026-05-20, at its CURRENT Location
   movedBefore: Date.UTC(2025, 4, 22, 15, 0, 0),  // 2025-05-22, at its PREVIOUS Location
   unassignedTechWo: Date.UTC(2026, 5, 1, 15, 0, 0),
@@ -1564,6 +1571,10 @@ async function seedEquipmentFixture() {
     // previous one -- history that legitimately spans Locations.
     { id: F.movedWorkOrderIds[0], equipmentId: F.movedId, locationId: F.alphaLocation2Id, status: "COMPLETED", type: "PM", woNumber: "WO-EQ-004", at: EQUIPMENT_WO_DATES.movedAfter },
     { id: F.movedWorkOrderIds[1], equipmentId: F.movedId, locationId: F.alphaLocation1Id, status: "COMPLETED", type: "SERVICE_CALL", woNumber: "WO-EQ-005", at: EQUIPMENT_WO_DATES.movedBefore },
+    // The RETIRED boiler's service record, from before it was decommissioned. Retiring
+    // an asset must not erase what was done to it (§3) -- this is the Work Order that
+    // makes that property assertable rather than merely claimed.
+    { id: F.retiredWorkOrderId, equipmentId: F.retiredId, locationId: F.alphaLocation2Id, status: "COMPLETED", type: "SERVICE_CALL", woNumber: "WO-EQ-008", at: EQUIPMENT_WO_DATES.retiredBoiler },
   ];
 
   for (const wo of linked) {

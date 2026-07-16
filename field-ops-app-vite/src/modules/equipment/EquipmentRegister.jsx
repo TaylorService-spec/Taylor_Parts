@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
 import { ACCOUNTS_COLLECTION, EQUIPMENT_STATUS } from "../../domain/constants";
 import { useEquipmentForAccount } from "../../hooks/useEquipment";
@@ -281,7 +282,12 @@ export default function EquipmentRegister() {
                           id. equipmentSummary disambiguates duplicate names (which are
                           legal) using manufacturer/model/serial, so two "Rooftop Unit"
                           rows stay tellable apart without exposing an id. */}
-                      <span className="fo-equipment-name">{equipmentDisplayName(e)}</span>
+                      {/* E7: the display name is the link to the detail page -- the
+                          human reference doubles as the affordance, so no raw id is
+                          rendered even though the id is the route param. */}
+                      <Link to={`/equipment/${e.id}`} className="fo-equipment-name">
+                        {equipmentDisplayName(e)}
+                      </Link>
                       <span className="fo-equipment-summary fo-muted">{equipmentSummary(e)}</span>
                     </td>
                     <td>{locationName(locations, e.locationId)}</td>
