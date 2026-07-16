@@ -166,6 +166,16 @@ export interface AccessRequest {
   reason?: string;
 }
 
+// Issue #325 / ADR-007 D-AUDIT (docs/architecture/ADR-007-governed-
+// object-based-report-creator.md §2.7, docs/specifications/governed-
+// object-based-report-creator.md §11) -- report definition changes,
+// runs, exports, sharing, and (designed, not yet activated) scheduling
+// each get their own AuditAction, extending this SAME immutable Audit
+// Event path rather than creating a second audit system. Inert: nothing
+// in this repository emits any of these eight values yet (the trusted
+// execution/projection service, D-FN, does not exist -- #15-gated and
+// additionally gated on the Customer Reporting lane's own F4 completing
+// first). Naming matches this union's existing verb+Noun convention.
 export type AuditAction =
   | "grantRole"
   | "revokeRole"
@@ -173,7 +183,15 @@ export type AuditAction =
   | "setUserStatus"
   | "approveAccessRequest"
   | "rejectAccessRequest"
-  | "breakGlassRestore";
+  | "breakGlassRestore"
+  | "createReportDefinition"
+  | "renameReportDefinition"
+  | "duplicateReportDefinition"
+  | "deleteReportDefinition"
+  | "runReportDefinition"
+  | "exportReportDefinition"
+  | "shareReportDefinition"
+  | "scheduleReportDefinition";
 
 export type AuditOutcome = "applied" | "denied";
 
@@ -181,6 +199,21 @@ export type AuditOutcome = "applied" | "denied";
 // anyone, including admins); written only by a trusted writer; never
 // contains secrets, tokens, raw credentials, full permission graphs, or
 // PII beyond the minimal targetId.
+//
+// Issue #325 / ADR-007 D-AUDIT -- the four report-only fields below
+// (objectId/rowCount/droppedFieldIds/droppedPredicateFieldIds/truncated)
+// carry exactly the facts Spec §11 names ("definition id, object id,
+// Scope, accessVersion, row counts and any dropped-field/dropped-
+// predicate/truncation facts -- enough to reconstruct what was
+// authorized and returned, never the row data itself"). `targetType`/
+// `targetId` already generically carry "definition id" (e.g.
+// targetType: "reportDefinition", targetId: the definition's id);
+// `scope`/`accessVersionAfter` already generically carry Scope/
+// accessVersion -- neither needs a report-specific duplicate field.
+// These new fields are narrow and purpose-typed (a field-id string
+// array, a non-negative row count, a boolean) -- structurally incapable
+// of carrying row data, unlike a generic `details: Record<string,
+// unknown>` catch-all would be, which this design deliberately avoids.
 export interface AuditEvent {
   id: string;
   at: Timestamp;
@@ -193,6 +226,18 @@ export interface AuditEvent {
   outcome: AuditOutcome;
   summary: string;
   accessVersionAfter?: number;
+  // Issue #325 / ADR-007 D-AUDIT -- present only when `action` is one of
+  // the eight report AuditActions above; `objectId` is required on all
+  // eight, `rowCount`/`droppedFieldIds`/`droppedPredicateFieldIds`/
+  // `truncated` are meaningful only for runReportDefinition/
+  // exportReportDefinition (Spec §11: "for runs/exports"). Enforced at
+  // runtime by auditEventWriter.ts's assertValid(), same as every other
+  // field on this interface.
+  objectId?: string;
+  rowCount?: number;
+  droppedFieldIds?: string[];
+  droppedPredicateFieldIds?: string[];
+  truncated?: boolean;
 }
 
 // Spec §11 -- the ONLY four fields ever permitted in a custom claim.

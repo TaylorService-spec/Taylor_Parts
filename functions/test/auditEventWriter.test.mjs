@@ -28,6 +28,7 @@ import {
   recordStandaloneAuditEvent,
   listRecentAuditEvents,
   AuditEventValidationError,
+  REPORT_AUDIT_ACTIONS,
 } from "../lib/access/auditEventWriter.js";
 
 const PROJECT_ID = "taylor-parts";
@@ -165,6 +166,304 @@ async function main() {
       "breakGlassRestore",
     ]) {
       assert.doesNotThrow(() => stageAuditEvent(db.batch(), { ...VALID_EVENT, action }));
+    }
+  });
+
+  // --- Issue #325 / ADR-007 D-AUDIT: report definition changes, runs,
+  // exports, sharing, and (designed) scheduling, extending this SAME
+  // Audit Event path -- never row data or secrets. ---
+
+  await check("REPORT_AUDIT_ACTIONS is exactly the eight report actions, in the documented set", () => {
+    assert.deepEqual(
+      [...REPORT_AUDIT_ACTIONS].sort(),
+      [
+        "createReportDefinition",
+        "renameReportDefinition",
+        "duplicateReportDefinition",
+        "deleteReportDefinition",
+        "runReportDefinition",
+        "exportReportDefinition",
+        "shareReportDefinition",
+        "scheduleReportDefinition",
+      ].sort(),
+    );
+  });
+
+  await check("stageAuditEvent accepts every report AuditAction value with a valid objectId", () => {
+    for (const action of REPORT_AUDIT_ACTIONS) {
+      assert.doesNotThrow(() =>
+        stageAuditEvent(db.batch(), {
+          ...VALID_EVENT,
+          action,
+          targetType: "reportDefinition",
+          objectId: "customer",
+        }),
+      );
+    }
+  });
+
+  await check("stageAuditEvent rejects a report AuditAction with no objectId", () => {
+    for (const action of REPORT_AUDIT_ACTIONS) {
+      assert.throws(
+        () => stageAuditEvent(db.batch(), { ...VALID_EVENT, action, targetType: "reportDefinition" }),
+        AuditEventValidationError,
+        `expected rejection for action="${action}" with no objectId`,
+      );
+    }
+  });
+
+  await check("stageAuditEvent rejects objectId on a NON-report AuditAction (report-only field, no drift onto grantRole/etc.)", () => {
+    assert.throws(
+      () => stageAuditEvent(db.batch(), { ...VALID_EVENT, objectId: "customer" }),
+      AuditEventValidationError,
+    );
+  });
+
+  await check("stageAuditEvent rejects an empty or over-length objectId", () => {
+    assert.throws(
+      () =>
+        stageAuditEvent(db.batch(), {
+          ...VALID_EVENT,
+          action: "createReportDefinition",
+          objectId: "",
+        }),
+      AuditEventValidationError,
+    );
+    assert.throws(
+      () =>
+        stageAuditEvent(db.batch(), {
+          ...VALID_EVENT,
+          action: "createReportDefinition",
+          objectId: "x".repeat(201),
+        }),
+      AuditEventValidationError,
+    );
+  });
+
+  const NON_ROW_FACT_REPORT_ACTIONS = REPORT_AUDIT_ACTIONS.filter(
+    (a) => a !== "runReportDefinition" && a !== "exportReportDefinition",
+  );
+
+  await check("stageAuditEvent rejects rowCount/droppedFieldIds/droppedPredicateFieldIds/truncated on a non-run/export report action", () => {
+    for (const action of NON_ROW_FACT_REPORT_ACTIONS) {
+      const base = { ...VALID_EVENT, action, targetType: "reportDefinition", objectId: "customer" };
+      for (const bad of [
+        { rowCount: 5 },
+        { droppedFieldIds: ["customer.notes"] },
+        { droppedPredicateFieldIds: ["customer.notes"] },
+        { truncated: false },
+      ]) {
+        assert.throws(
+          () => stageAuditEvent(db.batch(), { ...base, ...bad }),
+          AuditEventValidationError,
+          `expected rejection for action="${action}" with ${JSON.stringify(bad)}`,
+        );
+      }
+    }
+  });
+
+  await check("stageAuditEvent rejects rowCount/droppedFieldIds/droppedPredicateFieldIds/truncated on a non-report AuditAction too", () => {
+    for (const bad of [
+      { rowCount: 5 },
+      { droppedFieldIds: ["customer.notes"] },
+      { droppedPredicateFieldIds: ["customer.notes"] },
+      { truncated: false },
+    ]) {
+      assert.throws(
+        () => stageAuditEvent(db.batch(), { ...VALID_EVENT, ...bad }),
+        AuditEventValidationError,
+      );
+    }
+  });
+
+  await check("stageAuditEvent accepts a well-formed runReportDefinition event with every row fact", () => {
+    assert.doesNotThrow(() =>
+      stageAuditEvent(db.batch(), {
+        ...VALID_EVENT,
+        action: "runReportDefinition",
+        targetType: "reportDefinition",
+        objectId: "customer",
+        rowCount: 42,
+        droppedFieldIds: ["customer.notes"],
+        droppedPredicateFieldIds: ["customer.accountOwner"],
+        truncated: false,
+      }),
+    );
+  });
+
+  await check("stageAuditEvent accepts a well-formed exportReportDefinition event", () => {
+    assert.doesNotThrow(() =>
+      stageAuditEvent(db.batch(), {
+        ...VALID_EVENT,
+        action: "exportReportDefinition",
+        targetType: "reportDefinition",
+        objectId: "customer",
+        rowCount: 10000,
+        truncated: true,
+      }),
+    );
+  });
+
+  await check("stageAuditEvent accepts a run/export event with NO row facts at all (they are optional, not required)", () => {
+    assert.doesNotThrow(() =>
+      stageAuditEvent(db.batch(), {
+        ...VALID_EVENT,
+        action: "runReportDefinition",
+        targetType: "reportDefinition",
+        objectId: "customer",
+      }),
+    );
+  });
+
+  for (const bad of [-1, 1.5, "3", NaN]) {
+    await check(`stageAuditEvent rejects an invalid rowCount (${JSON.stringify(bad)})`, () => {
+      assert.throws(
+        () =>
+          stageAuditEvent(db.batch(), {
+            ...VALID_EVENT,
+            action: "runReportDefinition",
+            targetType: "reportDefinition",
+            objectId: "customer",
+            rowCount: bad,
+          }),
+        AuditEventValidationError,
+      );
+    });
+  }
+
+  await check("stageAuditEvent rejects a non-array droppedFieldIds/droppedPredicateFieldIds", () => {
+    for (const field of ["droppedFieldIds", "droppedPredicateFieldIds"]) {
+      assert.throws(
+        () =>
+          stageAuditEvent(db.batch(), {
+            ...VALID_EVENT,
+            action: "runReportDefinition",
+            targetType: "reportDefinition",
+            objectId: "customer",
+            [field]: "customer.notes",
+          }),
+        AuditEventValidationError,
+      );
+    }
+  });
+
+  await check("stageAuditEvent rejects droppedFieldIds/droppedPredicateFieldIds containing a non-string, empty, or over-length entry", () => {
+    for (const field of ["droppedFieldIds", "droppedPredicateFieldIds"]) {
+      for (const bad of [[123], [""], ["x".repeat(201)], [null]]) {
+        assert.throws(
+          () =>
+            stageAuditEvent(db.batch(), {
+              ...VALID_EVENT,
+              action: "runReportDefinition",
+              targetType: "reportDefinition",
+              objectId: "customer",
+              [field]: bad,
+            }),
+          AuditEventValidationError,
+          `expected rejection for ${field}=${JSON.stringify(bad)}`,
+        );
+      }
+    }
+  });
+
+  await check("stageAuditEvent rejects droppedFieldIds/droppedPredicateFieldIds entries that don't look like a field id (row-data/free-text shape guard, review round 1)", () => {
+    for (const field of ["droppedFieldIds", "droppedPredicateFieldIds"]) {
+      for (const bad of [
+        ["John Smith"], // a real row value, not a field id -- exactly what this guard exists to catch
+        ["the customer's notes field"], // free text
+        ["Customer.notes"], // wrong case
+        ["customer notes"], // space instead of dot
+        ["customer."], // trailing dot, no field segment
+        ["123.456"], // digit-leading segment
+      ]) {
+        assert.throws(
+          () =>
+            stageAuditEvent(db.batch(), {
+              ...VALID_EVENT,
+              action: "runReportDefinition",
+              targetType: "reportDefinition",
+              objectId: "customer",
+              [field]: bad,
+            }),
+          AuditEventValidationError,
+          `expected rejection for ${field}=${JSON.stringify(bad)}`,
+        );
+      }
+    }
+  });
+
+  await check("stageAuditEvent accepts droppedFieldIds/droppedPredicateFieldIds entries at every real fieldId depth (2 and 3 dotted segments)", () => {
+    for (const field of ["droppedFieldIds", "droppedPredicateFieldIds"]) {
+      assert.doesNotThrow(() =>
+        stageAuditEvent(db.batch(), {
+          ...VALID_EVENT,
+          action: "runReportDefinition",
+          targetType: "reportDefinition",
+          objectId: "customer",
+          [field]: ["customer.notes", "customer.billingAddress.street"],
+        }),
+      );
+    }
+  });
+
+  await check("stageAuditEvent rejects a droppedFieldIds/droppedPredicateFieldIds array exceeding the length cap", () => {
+    const tooMany = Array.from({ length: 501 }, (_, i) => `customer.field${i}`);
+    for (const field of ["droppedFieldIds", "droppedPredicateFieldIds"]) {
+      assert.throws(
+        () =>
+          stageAuditEvent(db.batch(), {
+            ...VALID_EVENT,
+            action: "runReportDefinition",
+            targetType: "reportDefinition",
+            objectId: "customer",
+            [field]: tooMany,
+          }),
+        AuditEventValidationError,
+      );
+    }
+  });
+
+  await check("stageAuditEvent rejects a non-boolean truncated", () => {
+    assert.throws(
+      () =>
+        stageAuditEvent(db.batch(), {
+          ...VALID_EVENT,
+          action: "runReportDefinition",
+          targetType: "reportDefinition",
+          objectId: "customer",
+          truncated: "yes",
+        }),
+      AuditEventValidationError,
+    );
+  });
+
+  await check("a persisted runReportDefinition event round-trips every report field correctly, and carries no row data field", async () => {
+    const id = await recordStandaloneAuditEvent({
+      ...VALID_EVENT,
+      action: "runReportDefinition",
+      targetType: "reportDefinition",
+      targetId: `def-${Date.now()}`,
+      objectId: "customer",
+      rowCount: 7,
+      droppedFieldIds: ["customer.notes"],
+      droppedPredicateFieldIds: ["customer.accountOwner"],
+      truncated: false,
+      accessVersionAfter: 3,
+    });
+    const snap = await db.collection("auditEvents").doc(id).get();
+    const data = snap.data();
+    assert.equal(data.action, "runReportDefinition");
+    assert.equal(data.objectId, "customer");
+    assert.equal(data.rowCount, 7);
+    assert.deepEqual(data.droppedFieldIds, ["customer.notes"]);
+    assert.deepEqual(data.droppedPredicateFieldIds, ["customer.accountOwner"]);
+    assert.equal(data.truncated, false);
+    assert.equal(data.accessVersionAfter, 3);
+    // Structural guarantee: no field on the persisted document can carry
+    // arbitrary row data -- the only fields present are the fixed,
+    // narrow-typed contract, never a generic "rows"/"data"/"results" blob.
+    for (const key of ["rows", "data", "results", "records"]) {
+      assert.equal(key in data, false, `persisted document must never carry a "${key}" field`);
     }
   });
 
