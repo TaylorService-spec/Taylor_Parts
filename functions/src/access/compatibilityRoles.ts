@@ -70,6 +70,15 @@ const SHARED_ADMIN_DISPATCHER_BASE_PERMISSIONS = [
   "inventory.transaction.read",
   "inventory.action.read",
   "inventory.action.create",
+  // Spec §27.3 -- additive-only: reproduces admin/dispatcher's already-
+  // existing, unchanged `warehouses`/`stock_locations`/`transfer_orders`
+  // read grant (Epic 4), not a new capability. Required to keep this
+  // parity oracle accurate and resolveEffectivePermission.test.mjs's own
+  // A3 acceptance test passing (every catalog id must be granted by at
+  // least one compatibility Role).
+  "warehouse.record.read",
+  "warehouse.stockLocation.read",
+  "warehouse.transferOrder.read",
 ] as const;
 
 // reorder.purchaseOrder.void is double-gated in firestore.rules
