@@ -197,6 +197,59 @@ async function main() {
     assert.equal(outcome.kind, "permission-denied");
   });
 
+  // --- W1 compatibility-boundary regression (uses the REAL Role catalog, no TEST_ROLES) ---
+  // These prove D-FN authorizes governed report access ONLY through a valid, active Owner
+  // RoleAssignment -- never through a raw `users/{uid}.role` string. D-FN never reads that field.
+  await check("W1 boundary: a RAW role string `owner` on users/{uid} grants NOTHING (D-FN ignores the raw role)", async () => {
+    const runnerUid = uid("runner");
+    // A raw role string that merely LOOKS like the governed Owner Role, and NO RoleAssignment.
+    await db.collection("users").doc(runnerUid).set({ role: "owner", accessVersion: 1 });
+    // Default roles (the REAL COMPATIBILITY_ROLES + GOVERNED_BUSINESS_ROLES merge) -- no injection.
+    const outcome = await runReportDefinition({
+      runnerUid,
+      definition: { objectId: "customer", fields: ["customer.name"] },
+    });
+    assert.equal(outcome.kind, "permission-denied");
+    assert.equal(outcome.rows, null);
+  });
+
+  await check("W1 boundary: raw role `admin` + an ACTIVE Owner RoleAssignment authorizes the run (real Owner Role)", async () => {
+    const runnerUid = uid("runner");
+    // Exactly the seed's model: raw role is the compatibility role `admin`; Owner comes from the
+    // assignment, whose accessVersionAtGrant matches users/{uid}.accessVersion.
+    await db.collection("users").doc(runnerUid).set({ role: "admin", accessVersion: 1 });
+    await grantRole(runnerUid, "owner", 1);
+    const marker = uid("mk");
+    await seedCustomers([{ name: `${marker}-Owned Co`, status: "Active", createdAt: now }]);
+    const outcome = await runReportDefinition({
+      runnerUid,
+      definition: {
+        objectId: "customer",
+        fields: ["customer.name"],
+        filters: [{ fieldId: "customer.name", op: "startsWith", value: marker }],
+      },
+    });
+    assert.notEqual(outcome.kind, "permission-denied", "a valid active Owner assignment must authorize");
+    assert.equal(outcome.kind, "results");
+    assert.deepEqual(outcome.rows.map((r) => r["customer.name"]), [`${marker}-Owned Co`]);
+  });
+
+  await check("W1 boundary: a DISABLED Owner RoleAssignment does not authorize (only active assignments count)", async () => {
+    const runnerUid = uid("runner");
+    await db.collection("users").doc(runnerUid).set({ role: "admin", accessVersion: 1 });
+    const id = uid("assignment");
+    await db.collection("roleAssignments").doc(id).set({
+      id, principalUid: runnerUid, roleId: "owner", scope: { type: "global" },
+      grantedBy: "test-fixture", grantedAt: admin.firestore.Timestamp.now(),
+      status: "disabled", accessVersionAtGrant: 1,
+    });
+    const outcome = await runReportDefinition({
+      runnerUid,
+      definition: { objectId: "customer", fields: ["customer.name"] },
+    });
+    assert.equal(outcome.kind, "permission-denied");
+  });
+
   // --- Full authorized run ---
   // NOTE: this whole file runs against ONE shared emulator collection
   // per object (accounts/equipment/locations), across every check() in
