@@ -1,28 +1,23 @@
-// Issue #325 / ADR-007 W1 -- the client-side, presentation-only gate for the report builder.
+// Issue #325 / ADR-007 W1 -- the capabilities the Report Builder nav item declares it needs.
 //
-// PURE, dependency-free (the previewer is injected, exactly like navPermissionPreview.js) so it
-// stays node-testable. NEVER authoritative: nav visibility is a convenience preview, never a
-// security boundary. The real gate is the trusted Function (D-FN), which re-resolves the runner's
-// live access server-side (Spec §6/§12) -- this only decides whether to SHOW the Reports nav.
+// These four wave-1 object-read capabilities are the ones D-226 registered active; the governed
+// Owner Role holds them (governedBusinessRoles.ts) via a RoleAssignment, resolved server-side by
+// the trusted effective-permission engine. The nav item lists them as its `capabilityAccess`
+// (navConfig.js) so that WHEN a trusted client feed of the session's effective access exists, the
+// item can be shown to a principal who actually holds one.
 //
-// The four wave-1 object-read capabilities are the ones D-226 registered active and W1 granted to
-// the Owner Role only (governedBusinessRoles.ts). A principal who holds ANY of them can open the
-// builder; today that is Owner alone (admin/dispatcher/technician hold none). Listed here (not
-// derived from permissionCatalog.ts, which is TypeScript this node-tested module cannot import)
-// and kept in step with Spec §5's wave-1 object rows; a drift is caught by the resolver denying an
-// id that isn't actually granted.
+// There is deliberately NO client resolver here. An earlier W1 revision resolved these directly
+// from the session's raw `role` string (treating the governed `owner` Role as a compatibility
+// role) -- that collapses the governance boundary and is removed. A raw role must never confer a
+// governed capability; governed access lives only in RoleAssignments, which the client cannot read
+// yet. Until a trusted effective-access feed exists, the item's capabilityAccess gate fails closed
+// (App.jsx supplies no `hasCapability`), and the trusted Function remains the sole authority.
+//
+// Listed here (not derived from permissionCatalog.ts, which is TypeScript this node-tested access
+// layer cannot import) and kept in step with Spec §5's wave-1 object rows.
 export const REPORT_WAVE1_OBJECT_READ_CAPABILITIES = Object.freeze([
   "report.customer.read",
   "report.contact.read",
   "report.location.read",
   "report.equipment.read",
 ]);
-
-// Given a bound previewer (previewHasPermission(permissionId, role) -> boolean, from
-// createPermissionPreviewer with a role map that INCLUDES the governed business Roles so `owner`
-// resolves), returns true iff `role` effectively holds at least one wave-1 report object-read
-// capability. Fail-closed: a non-function previewer or an unknown role yields false.
-export function previewHasReportAccess(previewHasPermission, role) {
-  if (typeof previewHasPermission !== "function") return false;
-  return REPORT_WAVE1_OBJECT_READ_CAPABILITIES.some((cap) => previewHasPermission(cap, role) === true);
-}

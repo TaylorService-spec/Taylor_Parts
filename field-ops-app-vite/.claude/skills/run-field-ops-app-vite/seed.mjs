@@ -28,7 +28,7 @@ process.env.FIRESTORE_EMULATOR_HOST = "127.0.0.1:8080";
 process.env.FIREBASE_AUTH_EMULATOR_HOST = "127.0.0.1:9099";
 
 import { initializeApp } from "firebase-admin/app";
-import { getFirestore } from "firebase-admin/firestore";
+import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
 import { fileURLToPath } from "node:url";
 
@@ -38,10 +38,12 @@ const auth = getAuth(app);
 
 export const DRIVER_ACCOUNTS = {
   admin: { email: "driver-admin@example.test", password: "driver-pass-123", uid: null },
-  // Issue #325 W1 -- a governed `Owner` (users/{uid}.role: "owner"). The ONLY seeded role that
-  // holds the wave-1 report.* capabilities, so it's the fixture for proving the capability-gated
-  // Report Builder nav/route is visible to Owner and denied to admin/dispatcher/technician.
-  owner: { email: "driver-owner@example.test", password: "driver-pass-123", uid: null },
+  // Issue #325 W1 correction -- the governed-Owner test principal. Its RAW `role` is the
+  // compatibility role `admin` (a governed role is NEVER a raw role); its Owner access comes ONLY
+  // from an active Owner RoleAssignment + a matching accessVersion (seeded in seed()). This is the
+  // fixture for proving D-FN authorizes report runs through the assignment, never through a raw
+  // role string.
+  ownerAssignee: { email: "driver-owner-assignee@example.test", password: "driver-pass-123", uid: null },
   eligiblePartsManager: { email: "driver-parts-manager@example.test", password: "driver-pass-123", uid: null },
   ineligibleDispatcher: { email: "driver-dispatcher@example.test", password: "driver-pass-123", uid: null },
   // Inventory Operational Queue, PR A -- dedicated account for the
@@ -1738,9 +1740,26 @@ async function seed() {
 
   await db.doc(`users/${DRIVER_ACCOUNTS.admin.uid}`).set({ role: "admin" });
 
-  // Issue #325 W1 -- governed Owner. resolveEmployeeSession reads users/{uid}.role verbatim, so
-  // this session resolves role="owner"; App.jsx's report previewer then grants the Report Builder.
-  await db.doc(`users/${DRIVER_ACCOUNTS.owner.uid}`).set({ role: "owner" });
+  // Issue #325 W1 correction -- the governed-Owner test principal. Its RAW `role` is the
+  // compatibility role `admin`; a governed Role is NEVER a raw role. Owner access comes ONLY from
+  // an active Owner RoleAssignment whose accessVersionAtGrant matches users/{uid}.accessVersion.
+  // D-FN reads roleAssignments + accessVersion (never users/{uid}.role), so this assignment -- not
+  // the raw role -- is what authorizes a report run for this principal.
+  const OWNER_ACCESS_VERSION = 1;
+  await db.doc(`users/${DRIVER_ACCOUNTS.ownerAssignee.uid}`).set({
+    role: "admin",
+    accessVersion: OWNER_ACCESS_VERSION,
+  });
+  await db.doc("roleAssignments/driver-seed-owner-assignment").set({
+    id: "driver-seed-owner-assignment",
+    principalUid: DRIVER_ACCOUNTS.ownerAssignee.uid,
+    roleId: "owner",
+    scope: { type: "global" },
+    grantedBy: "driver-seed",
+    grantedAt: Timestamp.now(),
+    status: "active",
+    accessVersionAtGrant: OWNER_ACCESS_VERSION,
+  });
 
   await db.doc("employees/driver-emp-parts-manager").set({
     employeeId: "driver-emp-parts-manager",
