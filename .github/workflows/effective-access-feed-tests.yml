@@ -1,0 +1,89 @@
+name: Effective Access Feed Tests
+
+# Enterprise Access & Administration Platform (Issue #226) test for
+# functions/src/access/effectiveAccessFeed.ts -- the trusted, read-only
+# feed a client uses to resolve governed capability decisions without
+# interpreting users/{uid}.role as a governed role. Runs against a
+# freshly started Firestore-only emulator (no Auth needed: this module
+# is exercised via the Admin SDK directly, taking principalUid as a
+# plain parameter, matching how the callable wrapper supplies
+# request.auth.uid). Emulator-only, project "taylor-parts", loopback
+# host -- no production access, no credentials, no repository secrets.
+
+on:
+  pull_request:
+    paths:
+      - "functions/src/types/access.ts"
+      - "functions/src/access/**"
+      - "functions/test/effectiveAccessFeed.test.mjs"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - "firebase.json"
+      - ".github/workflows/effective-access-feed-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/src/types/access.ts"
+      - "functions/src/access/**"
+      - "functions/test/effectiveAccessFeed.test.mjs"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - "firebase.json"
+      - ".github/workflows/effective-access-feed-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  effective-access-feed-tests:
+    name: Effective access feed tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      # The Firestore emulator is a Java process.
+      - name: Set up Java (required by the Firestore emulator)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+
+      - name: Start Firestore emulator (background)
+        run: |
+          nohup node node_modules/firebase-tools/lib/bin/firebase.js emulators:start --only firestore --project taylor-parts --config ../firebase.json > /tmp/firestore-emulator.log 2>&1 &
+          for i in $(seq 1 60); do
+            if grep -q "All emulators ready" /tmp/firestore-emulator.log 2>/dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "Firestore emulator did not become ready in time"
+          cat /tmp/firestore-emulator.log
+          exit 1
+        working-directory: functions
+
+      - name: Effective access feed tests (build + run)
+        run: npm run test:effectiveAccess
+        working-directory: functions
+
+      - name: Upload emulator debug logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: effective-access-feed-emulator-logs
+          path: |
+            /tmp/firestore-emulator.log
+            firestore-debug.log
+          if-no-files-found: ignore
+          retention-days: 7

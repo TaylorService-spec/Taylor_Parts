@@ -35,3 +35,14 @@ export {
 // by construction of the access layer this depends on, independent of
 // deployment/export status.
 export { runReportDefinitionCallable } from "./reporting/runReportDefinitionCallable";
+
+// --- Issue #226 surface: trusted effective-access feed ---
+// Same "export is not deployment" posture as the surfaces above: not
+// deployed to the live project, and no client calls it (Customer's own
+// W1 UI integration is a separate, later, explicitly out-of-scope step
+// for this PR) until a separate, later Owner production authorization.
+// Read-only, mutates nothing, writes no Audit Event -- see
+// effectiveAccessFeed.ts's own header for why this surface doesn't
+// audit (unlike the mutating commands above or the row-reading report
+// execution service).
+export { resolveEffectiveAccessCallable } from "./access/effectiveAccessFeedCallable";
