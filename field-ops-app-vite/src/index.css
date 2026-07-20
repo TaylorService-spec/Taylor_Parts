@@ -1407,6 +1407,13 @@ textarea.fo-wizard-control { min-height: 76px; resize: vertical; }
 .fo-tone-info { border-left: 3px solid #2E4A50; padding-left: 12px; }
 .fo-tone-warning { border-left: 3px solid #A9740D; padding-left: 12px; }
 
+/* Issue #325 W-SAVE-UI -- inert saved-report list. */
+.fo-saved-report-list { list-style: none; margin: 12px 0 0; padding: 0; }
+.fo-saved-report { border-top: 1px solid #EEF1F0; padding: 10px 0; }
+.fo-saved-report-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.fo-saved-report-name { font-weight: 600; }
+.fo-saved-report-meta { margin-right: auto; }
+
 /* Issue #214 PR-2 -- Contact/Location creation modals. Single-column stacked
    layout inside the shared Modal (max-width 560px), reusing the System-A form
    primitives (Field renders `.fo-form-field`; controls carry `.fo-wizard-control`).
