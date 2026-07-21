@@ -37,10 +37,11 @@ credentials).
 **Deployed commit vs. current head:** `docs/DECISIONS.md` entry #36 records the
 live deploy as exact `main` commit `3a9c3ff71c66f228bcfc6c3479d08da63ebe467f`.
 Confirmed: `git diff 3a9c3ff71c66f228bcfc6c3479d08da63ebe467f..0320229036ac4790f249dda7d14a83ffb75e6f45 -- firestore.rules field-ops-app-vite/firestore.rules functions/src`
-produces **no output** — every commit between the deployed candidate and the
-current head (`7944ccd` PR #358, `ec9afd8`/`0320229` PR #359) is documentation-
-only. **Live Rules and Functions match the current repository head exactly**, not
-merely the deployed commit.
+produces **no output** — `3a9c3ff` is itself PR #358's merge commit (the
+accessVersion-contract fix, documentation and one additive test only); the only
+commits between it and current head are `ec9afd8`/`0320229` (PR #359, also
+documentation-only). **Live Rules and Functions match the current repository
+head exactly**, not merely the deployed commit.
 
 ---
 
@@ -121,8 +122,11 @@ functions:setUserStatus,functions:approveAccessRequest,functions:rejectAccessReq
 **Rollback command:**
 ```bash
 firebase functions:delete grantRole revokeRole assignApprovedRole setUserStatus \
-  approveAccessRequest rejectAccessRequest --region us-central1 --project taylor-parts --force
+  approveAccessRequest rejectAccessRequest --region us-central1 --project taylor-parts
 ```
+(Exactly as specified in `enterprise-access-deployment-manifest.md` §Section B —
+no `--force`; the interactive confirmation prompt is deliberately left in place
+for this command, unlike the current 11-function candidate's own rollback.)
 Preserves (does not revert) any `roleAssignments`/`auditEvents`/claims already
 written by a call made before rollback — reversing those requires a real
 `revokeRole` call via the operator script, never a manual Firestore edit (same
