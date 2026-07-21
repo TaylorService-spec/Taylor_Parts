@@ -231,6 +231,16 @@ check("S1: stale assignment (accessVersionAtGrant > current) contributes nothing
   });
   assert.equal(result.decision, "DENY");
 });
+check("S1: a version bump does not revoke an older active assignment (accessVersionAtGrant <= current) -> ALLOW", () => {
+  const result = resolveEffectivePermission({
+    permissionId: "account.record.read",
+    assignments: [activeAssignment("admin", { accessVersionAtGrant: 1 })],
+    roles: COMPATIBILITY_ROLES,
+    currentAccessVersion: 5,
+    target: baseTarget(),
+  });
+  assert.equal(result.decision, "ALLOW");
+});
 check("S1: assignment referencing an unknown roleId contributes nothing -> DENY", () => {
   const result = resolveEffectivePermission({
     permissionId: "account.record.read",

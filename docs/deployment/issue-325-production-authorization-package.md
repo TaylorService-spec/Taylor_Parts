@@ -1,6 +1,10 @@
 # Issue #325 — Production Authorization Package
 
-**Status: PENDING OWNER AUTHORIZATION. NOTHING IN THIS PACKAGE HAS BEEN DEPLOYED.**
+**Status: SUPERSEDED; CORRECTED AFTER THE 2026-07-20 PRODUCTION TEST AND ROLLBACK.**
+The authorized deployment was attempted from later commit `d5f2172`, then rolled
+back in full after scenario 3 exposed the verification-contract error corrected
+below. Production currently has none of the package's Functions and its prior
+Rules were restored. See `docs/DECISIONS.md` entry #35.
 No production write, credential access, role assignment, or claims change has been
 performed to produce this document. Every command below is presented for Owner
 review and is not to be executed by an AI session under this package alone — each
@@ -315,10 +319,13 @@ distinct from any principal already used for prior manual production
 verification (e.g. the account used in `docs/DECISIONS.md` entry #32's smoke
 check).
 
-**Revocation, for symmetry with §9's "stale/revoked" verification row:** flipping
-the same document's `status` to `"disabled"` (or bumping `users/{uid}.accessVersion`
-past the assignment's `accessVersionAtGrant`) is the exact mechanism the
-verification matrix exercises — no separate write path exists or is needed.
+**Revocation, for symmetry with §9's verification rows:** flip the assignment's
+`status` to `"disabled"`; the trusted writer also bumps `users/{uid}.accessVersion`
+so cached decisions/tokens fail freshness checks and refresh. A version bump by
+itself is **not** assignment revocation: an active assignment remains consistent
+when `accessVersionAtGrant <= users/{uid}.accessVersion`. Only an impossible
+future-dated assignment (`accessVersionAtGrant > current accessVersion`) is
+excluded as malformed/stale.
 
 ---
 
@@ -393,8 +400,8 @@ functions/Rules — no additional writes beyond §8's single grant.
 |---|---|---|---|
 | 1 | Denied / unassigned principal | Call `resolveEffectiveAccessCallable` or any saved-definition callable as an authenticated user with **no** `roleAssignments` doc at all | `permission-denied` (saved-definition callables) or an all-`false` decisions map (effective-access feed) — never a silent allow |
 | 2 | Valid Owner | Call `createSavedDefinitionCallable` → `listSavedDefinitionsCallable` → `getSavedDefinitionCallable` as the §8 test principal (active `owner` assignment, fresh `accessVersion`) | Create succeeds, returns a real document id; list includes it; get returns it, `ownerUid` equal to the caller's own uid |
-| 3 | Stale accessVersion | Bump `users/{uid}.accessVersion` on the test principal without updating the assignment's `accessVersionAtGrant` | Every subsequent call from that principal denies (`noQualifyingGrant`/`UnauthorizedActorError`) until a fresh assignment or version reconciliation |
-| 4 | Revoked assignment | Flip the test principal's `roleAssignments` doc `status` to `"disabled"` | Every subsequent call from that principal denies immediately, no propagation delay beyond normal Firestore read consistency |
+| 3 | Assignment-version consistency | Temporarily set the test assignment's `accessVersionAtGrant` **above** `users/{uid}.accessVersion` | Every subsequent trusted resolver/callable decision denies because a future-dated assignment is malformed/stale; restore the original assignment value immediately after the check |
+| 4 | Revoked assignment and client freshness | Flip the test assignment's `status` to `"disabled"` and bump `users/{uid}.accessVersion`; first confirm the trusted callable denies, then confirm a client holding the prior version denies while refreshing and accepts no cached `true` decision | Server authorization denies immediately from the disabled assignment; the client clears the old decision before its refreshed feed returns. The version bump alone is not expected to invalidate another still-active, older assignment |
 | 5 | Field omission | Call `runReportDefinitionCallable` with a definition selecting a field the test principal's Role does not grant (any non-Owner-adjacent field, or omit a required field entirely) | Result either drops the field from the projected output (never silently returns it) or denies outright — never returns unauthorized field data |
 | 6 | Saved-definition CRUD | Full cycle: create → rename → duplicate → delete, all as the same owning principal | Each step succeeds exactly once; `list` reflects the current state after each step; the deleted id 404s afterward |
 | 7 | Cross-principal denial | As a second authenticated principal with **no** ownership of the first principal's saved definition (capability held or not — both sub-cases), attempt `get`/`rename`/`duplicate`/`delete` on the first principal's definition id | Denied identically whether or not the second principal holds the capability at all, and identically whether or not the target id exists (the existence-oracle fix from PR #354's review round 1 — re-verify this holds against REAL production state, not only the emulator) |
