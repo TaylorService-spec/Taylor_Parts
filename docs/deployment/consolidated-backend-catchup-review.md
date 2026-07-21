@@ -1,6 +1,10 @@
 # Consolidated Backend Catch-Up Review — Production Release Decision
 
-**Status: PENDING OWNER AUTHORIZATION. NOTHING IN THIS DOCUMENT HAS BEEN DEPLOYED.**
+**Status: CORRECTED AFTER AUTHORIZED DEPLOYMENT TEST AND FULL ROLLBACK.**
+The 2026-07-20 deployment from `d5f2172` was rolled back after row 3 exposed a
+verification-contract error: a version bump does not revoke an active older
+assignment. Production currently has none of the reviewed Functions and its prior
+Rules were restored. See `docs/DECISIONS.md` entry #35.
 No production write, credential access, RoleAssignment, claims change, or Admin
 activation was performed to produce this document. Every command below is
 presented for Owner review; each stage requires its own explicit, scoped Owner
@@ -345,8 +349,8 @@ unchanged from the prior #325-only package, still accurate.
 | 0 | Stage 0 (Rules-only) behavior check | Read-only: attempt an `equipment` read as admin/dispatcher (expect success, previously likely denied); attempt an `accounts.paymentTerms` write as a non-admin test principal (expect denial if changing the value) | `equipment` read now succeeds; `accounts` governed-field write behaves exactly as §3c documents — confirms Stage 0 landed as designed before any Function deploys |
 | 1 | Denied / unassigned principal | Call `resolveEffectiveAccessCallable` or any saved-definition callable as an authenticated user with no `roleAssignments` doc | `permission-denied` or an all-`false` decisions map — never silent allow |
 | 2 | Valid Owner | `createSavedDefinitionCallable` → `listSavedDefinitionsCallable` → `getSavedDefinitionCallable` as the approved test principal | Create succeeds; list includes it; get returns it, correct `ownerUid` |
-| 3 | Stale accessVersion | Bump `users/{uid}.accessVersion` without updating `accessVersionAtGrant` | Every subsequent call denies |
-| 4 | Revoked assignment | Flip the test principal's `roleAssignments` doc to `status: "disabled"` | Every subsequent call denies immediately |
+| 3 | Assignment-version consistency | Temporarily set `accessVersionAtGrant` above the principal's current `accessVersion` | Every subsequent trusted resolver/callable decision denies because a future-dated assignment is malformed/stale; restore the assignment immediately after the check |
+| 4 | Revoked assignment and client freshness | Flip the assignment to `status: "disabled"` and bump `accessVersion`; verify the callable denies and a client holding the prior version clears cached grants before refresh | Server authorization denies immediately; the stale client decision never grants. A version bump alone does not revoke another active older assignment |
 | 5 | Field omission | `runReportDefinitionCallable` with a definition selecting an ungranted field | Field dropped from output, or denied outright — never leaked |
 | 6 | Saved-definition CRUD | Full create → rename → duplicate → delete cycle | Each step succeeds once; deleted id 404s afterward |
 | 7 | Cross-principal denial | A second principal (with/without the capability) attempts `get`/`rename`/`duplicate`/`delete` on the first principal's definition | Denied identically regardless of capability or target existence (existence-oracle fix, PR #354 review round 1 — re-verify against real production state) |
@@ -381,8 +385,9 @@ Authorization** — no assignment has been created.
 ```
 `users/{uid}.accessVersion` for that principal: existing value, or `0` if this
 is their first-ever grant. No principal is nominated in this document — the
-Owner must name the uid(s). Revocation for row 4/9 uses the same mechanism
-(flip `status` to `"disabled"`, or bump `accessVersion`).
+Owner must name the uid(s). Revocation for row 4/9 requires disabling the
+assignment. The accompanying `accessVersion` bump invalidates cached client/token
+state and triggers refresh; it does not independently revoke active assignments.
 
 ---
 
