@@ -1,0 +1,136 @@
+{
+  "generatedAt": "2026-07-21T19:16:46.151Z",
+  "projectId": "taylor-parts",
+  "readOnly": true,
+  "inspected": {
+    "users": 16,
+    "fieldops_jobs": 12,
+    "fieldops_technicians": 8
+  },
+  "blockerCount": 0,
+  "reviewCount": 2,
+  "checkResults": [
+    {
+      "id": "A1",
+      "classification": "BLOCKER",
+      "description": "Technician-role users missing technicianId",
+      "count": 0,
+      "documentIds": []
+    },
+    {
+      "id": "A2",
+      "classification": "BLOCKER",
+      "description": "Users whose technicianId points to a missing technician document",
+      "count": 0,
+      "documentIds": []
+    },
+    {
+      "id": "A3",
+      "classification": "REVIEW",
+      "description": "technicianId shared by multiple user documents",
+      "count": 0,
+      "documentIds": []
+    },
+    {
+      "id": "A4",
+      "classification": "REVIEW",
+      "description": "Technician documents not referenced by any user",
+      "count": 4,
+      "documentIds": [
+        "3tKtmPVy6rpaOIr4zbJi",
+        "BsPNkZlkFeP96gipQWr8",
+        "mebWzAr2LksXBIyp24ST",
+        "qptheawjtf308iY6Mt3R"
+      ]
+    },
+    {
+      "id": "B1",
+      "classification": "BLOCKER",
+      "description": "Jobs missing status",
+      "count": 0,
+      "documentIds": []
+    },
+    {
+      "id": "B2",
+      "classification": "BLOCKER",
+      "description": "Jobs with status outside the approved enum",
+      "count": 0,
+      "documentIds": []
+    },
+    {
+      "id": "B3",
+      "classification": "BLOCKER",
+      "description": "assigned/in_progress jobs with missing/blank/non-string technicianId",
+      "count": 0,
+      "documentIds": []
+    },
+    {
+      "id": "B4",
+      "classification": "REVIEW",
+      "description": "open jobs with a populated technicianId",
+      "count": 0,
+      "documentIds": []
+    },
+    {
+      "id": "B5",
+      "classification": "REVIEW",
+      "description": "Jobs whose technicianId points to a missing technician document",
+      "count": 0,
+      "documentIds": []
+    },
+    {
+      "id": "B6",
+      "classification": "REVIEW",
+      "description": "complete jobs with missing/non-string technicianId (structural)",
+      "count": 0,
+      "documentIds": []
+    },
+    {
+      "id": "C1",
+      "classification": "BLOCKER",
+      "description": "Technician documents missing name/phone/status",
+      "count": 0,
+      "documentIds": []
+    },
+    {
+      "id": "C1_createdAt",
+      "classification": "REVIEW",
+      "description": "Technician documents missing createdAt (legacy-uncertain)",
+      "count": 3,
+      "documentIds": [
+        "5LLf25B4V6dBrsQSBoAG",
+        "TaEjkELasHkFt5JNeHvU",
+        "VUZvMG4t5DBYvYosPrGo"
+      ]
+    },
+    {
+      "id": "C2",
+      "classification": "BLOCKER",
+      "description": "Technician status outside the approved enum",
+      "count": 0,
+      "documentIds": []
+    },
+    {
+      "id": "C3",
+      "classification": "BLOCKER",
+      "description": "Technician documents with malformed field types",
+      "count": 0,
+      "documentIds": []
+    },
+    {
+      "id": "C4",
+      "classification": "REVIEW",
+      "description": "Technician documents with unknown/compatibility fields",
+      "count": 0,
+      "documentIds": []
+    },
+    {
+      "id": "D1",
+      "classification": "BLOCKER",
+      "description": "Technician-role users whose scoped Field Mode read would fail",
+      "count": 0,
+      "documentIds": []
+    }
+  ],
+  "finalDecision": "GO"
+}
