@@ -1395,6 +1395,109 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Issue #325 / ADR-007 D-RULES -- the Firestore collection for
+    // inert saved report definitions (docs/specifications/governed-
+    // object-based-report-creator.md sec8/sec9; docs/implementation-
+    // plans/governed-object-based-report-creator.md sec4's D-RULES row:
+    // "the Firestore collection for inert saved definitions, its Rules
+    // (a definition confers no data access; per-action create/read/
+    // rename/duplicate/delete capabilities), and any index"). A saved
+    // definition carries NO data, NO results, and NO author privileges
+    // (ADR-007 sec2.4) -- it is inert metadata, matching field-ops-app-
+    // vite/src/domain/reporting/savedReportModel.js's own
+    // SAVED_REPORT_KEYS exactly: id, name, ownerUid, definition,
+    // createdAt, updatedAt.
+    //
+    // "A definition confers no data access" -- the Rules below govern
+    // only who may create/read/rename/duplicate/delete the DEFINITION
+    // DOCUMENT itself, never whether its embedded
+    // definition.objectId/fields are actually readable. That
+    // authorization is entirely reportExecutionService.ts's (D-FN) job,
+    // re-evaluated at RUN time every time (ADR-007 sec2.4) -- never
+    // implied by this document's mere existence or by who owns it.
+    //
+    // Private by owner (Spec sec9 "Private by default"): every action
+    // is gated on ownerUid == request.auth.uid, with NO admin/
+    // dispatcher override -- not specified by the Implementation Plan's
+    // D-RULES row, and adding one would be scope creep beyond "exactly
+    // as defined." Governed sharing (W-SHARE) is a separate, later,
+    // gated wave -- this collection has no shared-with concept yet.
+    //
+    // Document ID is the definition's own `id` field (client-generated,
+    // matching reorder_purchase_orders' own "document ID is its own X"
+    // idiom elsewhere in this file) -- create cross-checks this.
+    //
+    // Deep validation of the EMBEDDED definition's own structure
+    // (legal object/field/operator/relationship shape) is deliberately
+    // NOT this Rules block's job -- Firestore Rules cannot invoke the
+    // F2/D-FN validator, and re-implementing its logic here would be a
+    // THIRD, drift-prone copy of what already exists twice (the client
+    // and server reportQueryValidation.ts ports). A malformed
+    // `definition` CAN be saved (it is still inert metadata, confers no
+    // access) -- reportExecutionService.ts's own validateReportDefinition()
+    // call refuses to RUN it (Spec sec7's own "never valid, refuse on
+    // save" vs. "no longer fully authorized, run with parts dropped"
+    // distinction only applies to the RUN path). The save path here is
+    // deliberately structure-shallow; the run path is where "well-formed"
+    // is actually enforced.
+    //
+    // No composite Firestore index: the only query this collection
+    // needs is an owner-scoped equality filter (where ownerUid == uid),
+    // serviced by Firestore's automatic single-field index --
+    // sorting/filtering beyond that happens client-side over the
+    // (bounded, per-owner) result set, matching this program's
+    // established zero-new-index discipline (reportExecutionService.ts's
+    // own in-memory filtering, D-FN).
+    function reportDefinitionKeys() {
+      return ["id", "name", "ownerUid", "definition", "createdAt", "updatedAt"];
+    }
+
+    function reportDefinitionNameValid(name) {
+      return name is string && name.size() > 0 && name.size() <= 120;
+    }
+
+    function reportDefinitionCreateValid(data) {
+      return data.keys().hasOnly(reportDefinitionKeys())
+        && data.keys().hasAll(reportDefinitionKeys())
+        && data.id is string && data.id.size() > 0
+        && data.ownerUid == request.auth.uid
+        && reportDefinitionNameValid(data.name)
+        && data.definition is map
+        && data.createdAt is number
+        && data.updatedAt is number
+        && data.updatedAt == data.createdAt;
+    }
+
+    match /reportDefinitions/{definitionId} {
+      // Owner-only read -- both the single-document get() a saved-report
+      // open uses and the list query the "My Reports" view uses
+      // (where("ownerUid","==",uid)) are gated identically, per-document,
+      // by this same clause (the established list-query idiom this
+      // codebase already uses elsewhere, e.g. employees/{employeeId}'s
+      // own candidate-read grant).
+      allow read: if isSignedIn() && resource.data.ownerUid == request.auth.uid;
+
+      // Create covers BOTH "new report" and "duplicate" (a duplicate is,
+      // client-side, just a new document with a fresh id/name copying an
+      // existing definition) -- no separate Rules branch is needed for
+      // duplicate.
+      allow create: if isSignedIn()
+        && definitionId == request.resource.data.id
+        && reportDefinitionCreateValid(request.resource.data);
+
+      // Rename ONLY: name + updatedAt are the sole editable keys on this
+      // path -- id/ownerUid/definition/createdAt are immutable. There is
+      // no other update-shaped W-SAVE action (create/duplicate are both
+      // creates of a new document; delete is its own allow block below).
+      allow update: if isSignedIn()
+        && resource.data.ownerUid == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["name", "updatedAt"])
+        && reportDefinitionNameValid(request.resource.data.name)
+        && request.resource.data.updatedAt is number;
+
+      allow delete: if isSignedIn() && resource.data.ownerUid == request.auth.uid;
+    }
+
     // Enterprise Access & Administration Platform (Issue #226) --
     // governed-storage foundation (docs/specifications/
     // enterprise-access-and-administration-platform.md sec5,
