@@ -38,6 +38,20 @@ const REPORT_OBJECT_READ_CAPABILITY_PATTERN = /^report\.[a-z][a-zA-Z0-9]*\.read$
 const REPORT_FIELD_READ_CAPABILITY_PATTERN =
   /^report\.[a-z][a-zA-Z0-9]*\.field\.[a-zA-Z0-9]+\.read$/;
 
+// Issue #325 / ADR-007 W-SAVE -- the saved-DEFINITION CRUD capability
+// shape, "report.definition.<action>". NOTE: "report.definition.read"
+// structurally also matches REPORT_OBJECT_READ_CAPABILITY_PATTERN above
+// (both are the generic 3-segment "report.<x>.read" shape) -- this is a
+// deliberate, harmless naming coincidence, not a real ambiguity:
+// "definition" is not a catalogued report OBJECT (see reportCatalog.ts's
+// REPORT_OBJECTS -- "definition" is not among them), so no caller
+// confuses the two, but a shape-only check can't tell them apart. Any
+// code that needs to categorize a `report.*` id correctly must check
+// this pattern FIRST (or exclude these five known ids) before falling
+// back to the object/field patterns -- see permissionCatalog.test.mjs's
+// own id-shape-partition test for the canonical example.
+const REPORT_DEFINITION_CAPABILITY_PATTERN = /^report\.definition\.(create|read|rename|duplicate|delete)$/;
+
 // Every id below reproduces a capability that already exists in
 // production today (Assessment §1 current-state matrix, Assessment's
 // "Inventory domain audit" table, and firestore.rules on `main`). This
@@ -517,6 +531,59 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     active: true,
   }),
 
+  // --- Report saved-definition domain (Issue #325 / ADR-007 W-SAVE) ---
+  // Governs CRUD authority over the reportDefinitions collection's
+  // DOCUMENTS via the trusted saved-definition service
+  // (functions/src/reporting/savedDefinitionCommands.ts) -- never
+  // client-direct Firestore access (firestore.rules denies all direct
+  // client read/write on this collection unconditionally). Holding one
+  // of these ids says nothing about which REPORT DATA a principal may
+  // see -- "a definition confers no data access" (Spec sec8/sec9);
+  // running a saved definition still re-authorizes every object/field
+  // through the SAME resolver via reportExecutionService.ts (D-FN),
+  // every time. `read` covers both a single get() and the caller's own
+  // list -- ownership (ownerUid == the trusted actor) is enforced by
+  // the service itself, not by these ids (a capability answers "may
+  // this principal use this action on THEIR OWN definitions at all",
+  // never "on any definition regardless of owner" -- there is no
+  // owner-override id here, matching Spec sec9's "private by default,
+  // no admin override" invariant carried over from D-RULES).
+  Object.freeze({
+    id: "report.definition.create",
+    description: "Create a saved report definition (trusted saved-definition service).",
+    resource: "report.definition",
+    action: "create",
+    active: true,
+  }),
+  Object.freeze({
+    id: "report.definition.read",
+    description: "Read (get one or list one's own) saved report definitions (trusted saved-definition service).",
+    resource: "report.definition",
+    action: "read",
+    active: true,
+  }),
+  Object.freeze({
+    id: "report.definition.rename",
+    description: "Rename one's own saved report definition (trusted saved-definition service).",
+    resource: "report.definition",
+    action: "rename",
+    active: true,
+  }),
+  Object.freeze({
+    id: "report.definition.duplicate",
+    description: "Duplicate one's own saved report definition (trusted saved-definition service).",
+    resource: "report.definition",
+    action: "duplicate",
+    active: true,
+  }),
+  Object.freeze({
+    id: "report.definition.delete",
+    description: "Delete one's own saved report definition (trusted saved-definition service).",
+    resource: "report.definition",
+    action: "delete",
+    active: true,
+  }),
+
   // --- Enterprise Access & Administration domain (this platform; Spec §16) ---
   Object.freeze({
     id: "admin.userStatus.write",
@@ -577,6 +644,10 @@ export function isValidReportObjectReadCapabilityId(id: string): boolean {
 
 export function isValidReportFieldReadCapabilityId(id: string): boolean {
   return REPORT_FIELD_READ_CAPABILITY_PATTERN.test(id);
+}
+
+export function isValidReportDefinitionCapabilityId(id: string): boolean {
+  return REPORT_DEFINITION_CAPABILITY_PATTERN.test(id);
 }
 
 // Fail-closed helper (ADR-007 §2.6 / Spec §4-§5's "denied by default
