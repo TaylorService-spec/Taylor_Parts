@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
 import { onSnapshot } from "firebase/firestore";
 import { buildEmployeeDirectoryQuery } from "../domain/employees";
+// F-UID-1: resolveActorDisplayName is now a pure module in domain/ so it
+// can be unit-tested; re-exported here to keep every existing
+// `import { ..., resolveActorDisplayName } from ".../useEmployeeDirectory"`
+// call site working unchanged.
+export { resolveActorDisplayName, UNKNOWN_ACTOR_DISPLAY_NAME } from "../domain/actorDisplayName";
 
 // PR #105 follow-up -- resolves an already-persisted actor uid
 // (Reorder Request's assignedToUserId/orderedBy/receivedBy/
@@ -15,8 +20,8 @@ import { buildEmployeeDirectoryQuery } from "../domain/employees";
 // Returns byUserId, a Map<userId, employee> -- a userId with no
 // linked Employee record (a plain admin/dispatcher account, or a
 // legacy assignment predating this initiative) simply has no entry;
-// callers fall back to displaying the raw uid in that case, never an
-// error.
+// resolveActorDisplayName() (domain/actorDisplayName.js) maps that case
+// to a neutral "Unknown user" label, never the raw uid (F-UID-1).
 export function useEmployeeDirectory({ enabled = true } = {}) {
   const [state, setState] = useState({ byUserId: new Map(), loading: enabled });
 
@@ -45,12 +50,4 @@ export function useEmployeeDirectory({ enabled = true } = {}) {
   }, [enabled]);
 
   return { byUserId: state.byUserId, loading: state.loading, error: state.error ?? null };
-}
-
-// Resolves a stored actor uid to a display name, falling back to the
-// raw uid when no linked Employee record exists (or the directory is
-// still loading) -- never blank, never an error state.
-export function resolveActorDisplayName(userId, byUserId) {
-  if (!userId) return userId;
-  return byUserId?.get(userId)?.displayName ?? userId;
 }
