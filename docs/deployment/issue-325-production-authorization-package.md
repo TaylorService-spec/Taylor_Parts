@@ -264,8 +264,11 @@ state — 12/12 checks green:**
 - Vite Build Check — https://github.com/TaylorService-spec/Taylor_Parts/actions/runs/29793791921
 - Deploy Field Ops (Vite) to GitHub Pages — https://github.com/TaylorService-spec/Taylor_Parts/actions/runs/29793792001
 
-PR #355 (client-only Saved Reports UI wiring, `ebe62a6`) added no backend delta;
-its own CI (Vite Build Check, Pages deploy) is also green:
+PR #355 (client-only Saved Reports UI wiring, squash commit `ebe62a6` on `main`)
+added no backend delta; its own CI, triggered on merge commit `cd81cdd` (this
+repo's Actions workflows trigger on the merge commit, not the pre-merge PR head
+SHA — `gh run list --commit ebe62a6` returns no runs; `cd81cdd` is the correct,
+already-verified target commit either way), is also green:
 https://github.com/TaylorService-spec/Taylor_Parts/actions/runs/29795250454 /
 https://github.com/TaylorService-spec/Taylor_Parts/actions/runs/29795250482
 
