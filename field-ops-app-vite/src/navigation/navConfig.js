@@ -1,5 +1,5 @@
 import { ROLES, EMPLOYMENT_STATUS, OPERATIONAL_ROLE } from "../domain/constants.js";
-import { REPORT_WAVE1_OBJECT_READ_CAPABILITIES } from "../access/reportAccess.js";
+import { REPORT_WAVE1_OBJECT_READ_CAPABILITIES, REPORT_DEFINITION_CAPABILITIES } from "../access/reportAccess.js";
 
 // Sprint 2.0.1 -- Navigation Foundation. Single source of truth for the
 // business-domain nav tree: top-level domains + their sub-nav, and
@@ -250,6 +250,11 @@ export const NAV_DOMAINS = [
       // visibility is a preview, never the security boundary: the trusted Function (D-FN)
       // re-authorizes every run server-side.
       { key: "builder", label: "Report Builder", path: "builder", capabilityAccess: REPORT_WAVE1_OBJECT_READ_CAPABILITIES },
+      // Issue #325 W-SAVE -- the Saved Reports surface, backed by the trusted saved-definition
+      // callables. Capability-gated on report.definition.read (resolved by the trusted feed); shown
+      // only to a principal the feed grants read, hidden/unavailable otherwise (incl. production,
+      // where the callables are undeployed and the feed itself errors).
+      { key: "savedReports", label: "Saved Reports", path: "saved", capabilityAccess: [REPORT_DEFINITION_CAPABILITIES.read] },
       { key: "executive", label: "Executive", path: "" },
       { key: "service", label: "Service", path: "service" },
       { key: "inventory", label: "Inventory", path: "inventory" },

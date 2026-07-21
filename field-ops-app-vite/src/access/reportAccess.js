@@ -22,3 +22,19 @@ export const REPORT_WAVE1_OBJECT_READ_CAPABILITIES = Object.freeze([
   "report.location.read",
   "report.equipment.read",
 ]);
+
+// Issue #325 W-SAVE -- the five per-action saved-definition capabilities the trusted saved-
+// definition service (functions/src/reporting/savedDefinitionCommands.ts) enforces. The Saved
+// Reports UI requests these from the same trusted feed and gates each action (create / read+list /
+// rename / duplicate / delete) on its decision; the service ALSO re-checks each server-side, so
+// the client gate is convenience/UX, never the authority. Mirrors permissionCatalog.ts's
+// report.definition.* ids (all active).
+export const REPORT_DEFINITION_CAPABILITIES = Object.freeze({
+  create: "report.definition.create",
+  read: "report.definition.read",
+  rename: "report.definition.rename",
+  duplicate: "report.definition.duplicate",
+  delete: "report.definition.delete",
+});
+
+export const REPORT_DEFINITION_CAPABILITY_IDS = Object.freeze(Object.values(REPORT_DEFINITION_CAPABILITIES));

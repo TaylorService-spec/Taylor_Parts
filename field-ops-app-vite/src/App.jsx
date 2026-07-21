@@ -35,6 +35,7 @@ import { resolveEffectivePermission } from "./access/resolveEffectivePermission"
 import { COMPATIBILITY_ROLES } from "./access/compatibilityRoles";
 import { useReportCapabilities } from "./access/useReportCapabilities";
 import ReportBuilder from "./modules/reporting/ReportBuilder";
+import SavedReports from "./modules/reporting/SavedReports";
 
 const previewHasPermission = createPermissionPreviewer(resolveEffectivePermission, COMPATIBILITY_ROLES);
 // Issue #325 -- the Report Builder nav item is capability-gated (navConfig.js: `capabilityAccess`)
@@ -101,7 +102,7 @@ function DashboardIndex({ role }) {
   );
 }
 
-function renderSubnavItem(domain, item, role) {
+function renderSubnavItem(domain, item, role, operationalContext) {
   if (domain.key === "dashboard" && item.key === "my") {
     return <DashboardIndex role={role} />;
   }
@@ -180,6 +181,12 @@ function renderSubnavItem(domain, item, role) {
   if (domain.key === "reporting" && item.key === "builder") {
     return <ReportBuilder />;
   }
+  // Issue #325 W-SAVE -- Saved Reports, backed by the trusted saved-definition callables. Reached
+  // only through the capabilityAccess gate (report.definition.read from the feed); receives the
+  // feed's hasCapability + accessVersion so it gates each action and re-lists on every access change.
+  if (domain.key === "reporting" && item.key === "savedReports") {
+    return <SavedReports hasCapability={operationalContext?.hasCapability} accessVersion={operationalContext?.accessVersion} />;
+  }
   // Issue #226 Row 11 -- Read-only Admin MVP (Task 16). These two MVP
   // surfaces have no live data source yet and no MVP mutation of their own:
   // firestore.rules deny all client-direct access to the governed
@@ -211,7 +218,7 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
                 key={item.key}
                 path={item.path || undefined}
                 index={item.path === ""}
-                element={renderSubnavItem(domain, item, role)}
+                element={renderSubnavItem(domain, item, role, operationalContext)}
               />
             ))}
           {/* Sprint 2.0.2 -- first parameterized route in this
@@ -379,12 +386,13 @@ export default function App() {
   // granted only from a successful, current-principal decision; denied while loading, on
   // error/unavailable/malformed, when signed out, and across a principal change. Since the callable
   // is undeployed, this stays fail-closed in production until a separate deployment + authorization.
-  const { hasCapability } = useReportCapabilities(user);
+  const { hasCapability, accessVersion } = useReportCapabilities(user);
   // Issue #100 -- PR 0. Threaded through as one stable object so every isNavItemVisible/
-  // isDomainVisible call site can accept it uniformly. `hasCapability` gates the Report Builder
-  // item (navConfig.js capabilityAccess); the raw-role paths (legacyKey/PLACEHOLDER_DEFAULT_ROLES/
-  // operationalRoleAccess) are unchanged.
-  const operationalContext = { operationalRoles, employmentStatus, hasCapability };
+  // isDomainVisible call site can accept it uniformly. `hasCapability` gates the Report Builder and
+  // Saved Reports items (navConfig.js capabilityAccess); the raw-role paths (legacyKey/
+  // PLACEHOLDER_DEFAULT_ROLES/operationalRoleAccess) are unchanged. `accessVersion` is threaded to
+  // Saved Reports so it re-lists from the server on every access change (freshness).
+  const operationalContext = { operationalRoles, employmentStatus, hasCapability, accessVersion };
   const hasAnyAccess = NAV_DOMAINS.some((d) => isDomainVisible(d, role, allowedLegacyKeys, operationalContext));
 
   if (loading) return <div className="fo-panel">Loading...</div>;

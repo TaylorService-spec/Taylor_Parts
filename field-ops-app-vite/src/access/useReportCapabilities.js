@@ -97,5 +97,8 @@ export function useReportCapabilities(user, deps = {}) {
   }, [uid, version.status, version.uid, version.version, callFeed]);
 
   const hasCapability = buildHasCapability({ version, feed }, uid);
-  return { hasCapability, versionStatus: version.status, feedStatus: feed.status };
+  // `accessVersion` is the current observed version (null unless ready); a consumer keys on it to
+  // re-fetch its own data on every access change (freshness), e.g. Saved Reports re-lists.
+  const accessVersion = version.status === VERSION_STATUS.READY ? version.version : null;
+  return { hasCapability, accessVersion, versionStatus: version.status, feedStatus: feed.status };
 }
