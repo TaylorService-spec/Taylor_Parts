@@ -86,6 +86,23 @@ const ROLE_ASSIGNMENTS_COLLECTION = "roleAssignments";
 
 export const MAX_NAME_LENGTH = 120;
 
+// Independent-review finding (round 1): the capability gate for rename/
+// duplicate/delete used to run AFTER an unconditional Admin-SDK
+// existence read of the target document (needed to learn its real
+// objectId for the audit event) -- so a caller holding NO
+// report.definition.* capability at all could still distinguish
+// "this id exists" (denied for lacking the capability) from "this id
+// doesn't exist" (NotFoundError) via two different HttpsError codes,
+// a cross-principal existence oracle reachable by ANY authenticated
+// caller regardless of role. Fixed: the capability gate now runs FIRST,
+// before any read of the target document, exactly like getSavedDefinition/
+// listSavedDefinitions already did. Since the real objectId isn't yet
+// known at that point, a capability denial is audited against this
+// fixed, non-catalog sentinel instead -- still a complete, honest audit
+// trail (every denial is still recorded exactly once), just without
+// depending on a read that must not happen yet.
+const UNRESOLVED_OBJECT_ID_SENTINEL = "reportDefinition:unresolved";
+
 export interface SavedDefinitionRecord {
   id: string;
   name: string;
@@ -401,23 +418,21 @@ export async function renameSavedDefinition(
     throw new InvalidInputError("definitionId is required");
   }
 
-  // Loaded once, BEFORE the capability check, so a denial can still be
-  // attributed to the real objectId -- this is an Admin-SDK-privileged
-  // read, never exposed to the caller beyond the fields this command
-  // explicitly returns.
-  const { ref, data, objectId } = await loadDefinitionForMutation(db, params.definitionId);
-
+  // Capability check FIRST, before any read of the target document (see
+  // UNRESOLVED_OBJECT_ID_SENTINEL's doc comment -- this ordering is
+  // what closes the cross-principal existence oracle).
   await requireMutationCapabilityOrAudit(
     db,
     roles,
     params.actorUid,
     "report.definition.rename",
     "renameReportDefinition",
-    objectId,
+    UNRESOLVED_OBJECT_ID_SENTINEL,
     params.definitionId,
-    `Denied: actor lacks "report.definition.rename" for object "${objectId}".`,
+    `Denied: actor lacks "report.definition.rename".`,
   );
 
+  const { ref, data, objectId } = await loadDefinitionForMutation(db, params.definitionId);
   await requireOwnershipOrAudit(params.actorUid, "renameReportDefinition", params.definitionId, objectId, data);
 
   await db.runTransaction(async (txn: Transaction) => {
@@ -457,19 +472,18 @@ export async function duplicateSavedDefinition(
     throw new InvalidInputError("definitionId is required");
   }
 
-  const { data: source, objectId } = await loadDefinitionForMutation(db, params.definitionId);
-
   await requireMutationCapabilityOrAudit(
     db,
     roles,
     params.actorUid,
     "report.definition.duplicate",
     "duplicateReportDefinition",
-    objectId,
+    UNRESOLVED_OBJECT_ID_SENTINEL,
     params.definitionId,
-    `Denied: actor lacks "report.definition.duplicate" for object "${objectId}".`,
+    `Denied: actor lacks "report.definition.duplicate".`,
   );
 
+  const { data: source, objectId } = await loadDefinitionForMutation(db, params.definitionId);
   await requireOwnershipOrAudit(params.actorUid, "duplicateReportDefinition", params.definitionId, objectId, source);
 
   const name = params.name !== undefined ? params.name : `${source.name} (copy)`;
@@ -521,19 +535,18 @@ export async function deleteSavedDefinition(
     throw new InvalidInputError("definitionId is required");
   }
 
-  const { ref, data, objectId } = await loadDefinitionForMutation(db, params.definitionId);
-
   await requireMutationCapabilityOrAudit(
     db,
     roles,
     params.actorUid,
     "report.definition.delete",
     "deleteReportDefinition",
-    objectId,
+    UNRESOLVED_OBJECT_ID_SENTINEL,
     params.definitionId,
-    `Denied: actor lacks "report.definition.delete" for object "${objectId}".`,
+    `Denied: actor lacks "report.definition.delete".`,
   );
 
+  const { ref, data, objectId } = await loadDefinitionForMutation(db, params.definitionId);
   await requireOwnershipOrAudit(params.actorUid, "deleteReportDefinition", params.definitionId, objectId, data);
 
   await db.runTransaction(async (txn: Transaction) => {

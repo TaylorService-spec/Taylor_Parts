@@ -150,6 +150,61 @@ async function main() {
     );
   });
 
+  // Independent-review round 1 finding: rename/duplicate/delete must deny
+  // a no-grant actor with the IDENTICAL error (UnauthorizedActorError,
+  // never NotFoundError) whether the target id exists or not -- the
+  // capability gate must run BEFORE any Firestore read of the target
+  // document, or a zero-privilege caller could distinguish "this id
+  // exists" from "it doesn't" purely from which error class comes back
+  // (a cross-principal existence oracle reachable with no grant at all).
+  await check("rename/duplicate/delete deny a no-grant actor identically for an EXISTING id (no existence oracle)", async () => {
+    const ownerUid = await seedActor();
+    await grantRole(ownerUid, "fullDefinitionAccess");
+    const record = await createSavedDefinition(
+      { actorUid: ownerUid, name: "Real Target", definition: VALID_DEFINITION },
+      { roles: TEST_ROLES },
+    );
+
+    const noGrantUid = await seedActor();
+    await grantRole(noGrantUid, "noGrant");
+
+    await assert.rejects(
+      renameSavedDefinition({ actorUid: noGrantUid, definitionId: record.id, name: "x" }, { roles: TEST_ROLES }),
+      UnauthorizedActorError,
+    );
+    await assert.rejects(
+      duplicateSavedDefinition({ actorUid: noGrantUid, definitionId: record.id }, { roles: TEST_ROLES }),
+      UnauthorizedActorError,
+    );
+    await assert.rejects(
+      deleteSavedDefinition({ actorUid: noGrantUid, definitionId: record.id }, { roles: TEST_ROLES }),
+      UnauthorizedActorError,
+    );
+  });
+
+  await check("rename/duplicate/delete deny a no-grant actor identically for a NONEXISTENT id (same error class as the existing-id case)", async () => {
+    const noGrantUid = await seedActor();
+    await grantRole(noGrantUid, "noGrant");
+    const bogusId = uid("nonexistent-for-no-grant");
+
+    await assert.rejects(
+      renameSavedDefinition({ actorUid: noGrantUid, definitionId: bogusId, name: "x" }, { roles: TEST_ROLES }),
+      UnauthorizedActorError,
+    );
+    await assert.rejects(
+      duplicateSavedDefinition({ actorUid: noGrantUid, definitionId: bogusId }, { roles: TEST_ROLES }),
+      UnauthorizedActorError,
+    );
+    await assert.rejects(
+      deleteSavedDefinition({ actorUid: noGrantUid, definitionId: bogusId }, { roles: TEST_ROLES }),
+      UnauthorizedActorError,
+    );
+    // The target document must never have been read/created as a side
+    // effect of a capability-denied attempt.
+    const snap = await db.collection("reportDefinitions").doc(bogusId).get();
+    assert.equal(snap.exists, false);
+  });
+
   // === Malformed definitions (rejected before any Firestore write, no audit event) ===
 
   await check("createSavedDefinition rejects a structurally invalid definition before any write or audit", async () => {
