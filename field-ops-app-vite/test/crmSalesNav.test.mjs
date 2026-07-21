@@ -117,4 +117,39 @@ ok("the CRM/Sales area is untouched by the Equipment addition (preserved by unio
   assert.deepEqual(customersDomain.subnav.map((i) => i.key), ["customers"]);
 });
 
+// ===== Issue #288: the stale "Sales / CRM" future placeholder is removed =====
+ok("Issue #288: the stale salesCrm / 'Sales / CRM' / /sales-crm future placeholder is gone", () => {
+  assert.equal(NAV_DOMAINS.some((d) => d.key === "salesCrm"), false, "no salesCrm domain");
+  assert.equal(NAV_DOMAINS.some((d) => d.label === "Sales / CRM"), false, "no 'Sales / CRM' label");
+  assert.equal(NAV_DOMAINS.some((d) => d.path === "sales-crm"), false, "no /sales-crm path");
+});
+
+ok("Issue #288: exactly ONE CRM/Sales domain remains -- the real, routed `customers` domain", () => {
+  // The whole CRM/Sales family (matched by any of label/key/path) collapses to the one real domain.
+  const crmFamily = NAV_DOMAINS.filter((d) => /crm/i.test(d.label) || /crm/i.test(d.key) || /crm/i.test(d.path ?? ""));
+  assert.deepEqual(crmFamily.map((d) => d.key), ["customers"]);
+  assert.equal(customersDomain.future, undefined, "the real CRM/Sales domain is NOT a future placeholder");
+});
+
+ok("Issue #288: no future domain generates a /sales-crm route; the real CRM/Sales routes still generate", () => {
+  // Future routes are generated from NAV_DOMAINS.filter(d => d.future) (App.jsx); none is /sales-crm, so
+  // a hit on the retired /sales-crm URL matches no route and falls through to the catch-all (Navigate to
+  // /dashboard). The real CRM/Sales domain lives in the NON-future set, so its routes still generate.
+  assert.equal(NAV_DOMAINS.filter((d) => d.future).some((d) => d.path === "sales-crm"), false);
+  assert.equal(NAV_DOMAINS.filter((d) => !d.future).some((d) => d.key === "customers"), true);
+});
+
+ok("Issue #288: ONLY salesCrm was removed -- the `financials` future placeholder is preserved", () => {
+  assert.equal(NAV_DOMAINS.some((d) => d.key === "financials" && d.future === true), true);
+});
+
+ok("Issue #288: role visibility of the real CRM/Sales domain is unchanged after the removal", () => {
+  // admin/dispatcher visible, technician + unknown fail-closed -- identical to the #208 assertions above,
+  // re-asserted here to prove the salesCrm removal did not perturb the real domain's access behavior.
+  assert.equal(isDomainVisible(customersDomain, ROLES.ADMIN, allowed(ROLES.ADMIN)), true);
+  assert.equal(isDomainVisible(customersDomain, ROLES.DISPATCHER, allowed(ROLES.DISPATCHER)), true);
+  assert.equal(isDomainVisible(customersDomain, ROLES.TECHNICIAN, allowed(ROLES.TECHNICIAN)), false);
+  assert.equal(isDomainVisible(customersDomain, "not_a_real_role", []), false);
+});
+
 console.log(`\n${passed} passed, 0 failed`);

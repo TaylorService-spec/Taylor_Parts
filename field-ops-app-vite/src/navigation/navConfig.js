@@ -296,7 +296,12 @@ export const NAV_DOMAINS = [
   },
   // Future placeholder top-level areas (requirement: "Future placeholder
   // top-level areas"). No sub-nav yet -- a single stub page each.
-  { key: "salesCrm", label: "Sales / CRM", path: "sales-crm", future: true },
+  //
+  // Issue #288 -- the "Sales / CRM" (salesCrm, /sales-crm) future placeholder was removed: the real
+  // CRM/Sales platform area already exists as the `customers` domain above (label "CRM/Sales",
+  // /customers), so this stub was obsolete and redundant. Its route was generated only from this
+  // future list, so removing the entry removes the /sales-crm route (App.jsx unchanged); a hit on
+  // the retired /sales-crm URL falls through to the top-level catch-all (Navigate to /dashboard).
   { key: "financials", label: "Financials", path: "financials", future: true },
 ];
 
