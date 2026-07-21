@@ -1,0 +1,59 @@
+{
+  "buildConfig": {
+    "automaticUpdatePolicy": {},
+    "build": "projects/664399427363/locations/us-central1/builds/4e9b5596-1efa-46e2-ac02-a42cfb843eef",
+    "dockerRegistry": "ARTIFACT_REGISTRY",
+    "dockerRepository": "projects/taylor-parts/locations/us-central1/repositories/gcf-artifacts",
+    "entryPoint": "createWorkOrder",
+    "environmentVariables": {
+      "GOOGLE_NODE_RUN_SCRIPTS": ""
+    },
+    "runtime": "nodejs20",
+    "serviceAccount": "projects/taylor-parts/serviceAccounts/664399427363-compute@developer.gserviceaccount.com",
+    "source": {
+      "storageSource": {
+        "bucket": "gcf-v2-sources-664399427363-us-central1",
+        "generation": "1784610359276262",
+        "object": "createWorkOrder/function-source.zip"
+      }
+    },
+    "sourceProvenance": {
+      "resolvedStorageSource": {
+        "bucket": "gcf-v2-sources-664399427363-us-central1",
+        "generation": "1784610359276262",
+        "object": "createWorkOrder/function-source.zip"
+      }
+    }
+  },
+  "createTime": "2026-07-21T05:05:59.636833677Z",
+  "environment": "GEN_2",
+  "labels": {
+    "deployment-callable": "true",
+    "deployment-tool": "cli-firebase",
+    "firebase-functions-hash": "9a780b2573fab4908feb11948e32ef451f6764ee"
+  },
+  "name": "projects/taylor-parts/locations/us-central1/functions/createWorkOrder",
+  "satisfiesPzi": true,
+  "serviceConfig": {
+    "allTrafficOnLatestRevision": true,
+    "availableCpu": "1",
+    "availableMemory": "256Mi",
+    "environmentVariables": {
+      "EVENTARC_CLOUD_EVENT_SOURCE": "projects/taylor-parts/locations/us-central1/services/createWorkOrder",
+      "FIREBASE_CONFIG": "{\"projectId\":\"taylor-parts\",\"storageBucket\":\"taylor-parts.firebasestorage.app\"}",
+      "FUNCTION_TARGET": "createWorkOrder",
+      "GCLOUD_PROJECT": "taylor-parts",
+      "LOG_EXECUTION_ID": "true"
+    },
+    "ingressSettings": "ALLOW_ALL",
+    "maxInstanceRequestConcurrency": 80,
+    "revision": "createworkorder-00001-cej",
+    "service": "projects/taylor-parts/locations/us-central1/services/createworkorder",
+    "serviceAccountEmail": "664399427363-compute@developer.gserviceaccount.com",
+    "timeoutSeconds": 60,
+    "uri": "https://createworkorder-5d4sshsceq-uc.a.run.app"
+  },
+  "state": "ACTIVE",
+  "updateTime": "2026-07-21T05:07:32.525249498Z",
+  "url": "https://us-central1-taylor-parts.cloudfunctions.net/createWorkOrder"
+}

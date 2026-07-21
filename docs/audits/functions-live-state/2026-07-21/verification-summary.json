@@ -1,0 +1,8 @@
+{
+  "generatedAt": "20260721T225517Z",
+  "projectId": "taylor-parts",
+  "region": "us-central1",
+  "readOnly": true,
+  "deployedFunctionCount": "11",
+  "artifacts": ["environment.txt","project-metadata.json","functions-all.json","functions-gen1.json","functions-gen2.json","function-describes/","cloud-run-services.json","eventarc-triggers.json","scheduler-jobs.json"]
+}
