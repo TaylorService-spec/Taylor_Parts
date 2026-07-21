@@ -90,6 +90,16 @@ function isNonEmptyString(v) {
   return typeof v === "string" && v.length > 0;
 }
 
+// A valid PERSISTED identifier (technicianId): a non-empty string with
+// NO surrounding whitespace. The future F-RULES-1 Rules identity contract
+// compares EXACT document ids and must fail closed on malformed persisted
+// data, so a whitespace-only id ("   ", "\t") is invalid and a padded id
+// (" T1 ") is malformed -- it must NEVER be silently trimmed/normalized
+// into "T1" for document matching. (PR-0 review correction.)
+function isValidIdentifier(v) {
+  return typeof v === "string" && v.length > 0 && v === v.trim();
+}
+
 function sortedUnique(ids) {
   return Array.from(new Set(ids)).sort();
 }
@@ -105,7 +115,7 @@ function analyzeLegacyData({ users = [], jobs = [], technicians = [] } = {}) {
   // user.technicianId occurrences (for A3 shared-mapping detection).
   const techIdToUserIds = new Map();
   for (const u of users) {
-    if (isNonEmptyString(u.technicianId)) {
+    if (isValidIdentifier(u.technicianId)) {
       if (!techIdToUserIds.has(u.technicianId)) techIdToUserIds.set(u.technicianId, []);
       techIdToUserIds.get(u.technicianId).push(u.id);
     }
@@ -118,7 +128,7 @@ function analyzeLegacyData({ users = [], jobs = [], technicians = [] } = {}) {
   // A. user <-> technician mapping ------------------------------------
   for (const u of users) {
     const isTechRole = u.role === "technician";
-    const hasValidId = isNonEmptyString(u.technicianId);
+    const hasValidId = isValidIdentifier(u.technicianId);
     if (isTechRole && !hasValidId) findings.A1.push(u.id);                 // BLOCKER
     if (hasValidId && !techIdSet.has(u.technicianId)) findings.A2.push(u.id); // BLOCKER (dangling)
     // D1: a technician-role user whose scoped Field Mode read cannot
@@ -141,7 +151,7 @@ function analyzeLegacyData({ users = [], jobs = [], technicians = [] } = {}) {
     } else if (!JOB_STATUSES.includes(status)) {
       findings.B2.push(j.id);                                             // BLOCKER (unknown)
     }
-    const techIdValid = isNonEmptyString(j.technicianId);
+    const techIdValid = isValidIdentifier(j.technicianId);
     if ((status === "assigned" || status === "in_progress") && !techIdValid) {
       findings.B3.push(j.id);                                             // BLOCKER
     }
@@ -348,6 +358,7 @@ module.exports = {
   formatSummary,
   parseArgs,
   assertProjectTarget,
+  isValidIdentifier,
   InvalidInvocationError,
   PRODUCTION_PROJECT_ID,
   JOB_STATUSES,

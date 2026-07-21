@@ -11,6 +11,7 @@ const {
   analyzeLegacyData,
   assertProjectTarget,
   parseArgs,
+  isValidIdentifier,
   InvalidInvocationError,
   FIRESTORE_METHODS_USED,
   PRODUCTION_PROJECT_ID,
@@ -216,6 +217,78 @@ test("22. read-only method surface contains no write API", () => {
     assert.ok(!WRITE_APIS.test(m), `declared method "${m}" must not be a write API`);
   }
   assert.ok(FIRESTORE_METHODS_USED.some((m) => m.includes("get")), "must declare a read (get) method");
+});
+
+// --------------------------------------------------------------------
+// PR-0 review correction: blank / whitespace-only / whitespace-padded
+// technician identifiers must be rejected and never trimmed-and-matched.
+// --------------------------------------------------------------------
+
+test("23. predicate: blank/whitespace/padded ids are invalid; exact ids valid", () => {
+  for (const bad of [null, undefined, "", "   ", "\t", " T1 ", "T1 ", " T1"]) {
+    assert.equal(isValidIdentifier(bad), false, `${JSON.stringify(bad)} must be invalid`);
+  }
+  assert.equal(isValidIdentifier("T1"), true);
+});
+
+test("24. technician-role user with technicianId '   ' -> A1 + D1 + NO-GO", () => {
+  const d = cleanDataset();
+  d.users.push({ id: "u-ws", role: "technician", technicianId: "   " });
+  const r = analyzeLegacyData(d);
+  assert.equal(r.finalDecision, "NO-GO");
+  assert.ok(checkById(r, "A1").documentIds.includes("u-ws"));
+  assert.ok(checkById(r, "D1").documentIds.includes("u-ws"));
+});
+
+test("25. technician-role user with technicianId '\\t' is invalid (A1 + D1)", () => {
+  const d = cleanDataset();
+  d.users.push({ id: "u-tab", role: "technician", technicianId: "\t" });
+  const r = analyzeLegacyData(d);
+  assert.equal(r.finalDecision, "NO-GO");
+  assert.ok(checkById(r, "A1").documentIds.includes("u-tab"));
+  assert.ok(checkById(r, "D1").documentIds.includes("u-tab"));
+});
+
+test("26. user technicianId ' T1 ' is malformed and NOT silently matched to T1", () => {
+  // Only this padded reference "points at" T1; if it were normalized, T1
+  // would look referenced. It must NOT be -> A1 fires for the user AND
+  // T1 shows up as unreferenced (A4), proving no trim-and-match occurred.
+  const d = {
+    users: [{ id: "u-pad", role: "technician", technicianId: " T1 " }],
+    technicians: [{ id: "T1", name: "One", phone: "5", status: "available", createdAt: 1 }],
+    jobs: [],
+  };
+  const r = analyzeLegacyData(d);
+  assert.equal(r.finalDecision, "NO-GO");
+  assert.ok(checkById(r, "A1").documentIds.includes("u-pad"), "padded id is invalid -> A1");
+  assert.ok(checkById(r, "D1").documentIds.includes("u-pad"));
+  assert.ok(checkById(r, "A4").documentIds.includes("T1"), "T1 must remain UNreferenced (not matched to ' T1 ')");
+  assert.equal(checkById(r, "A3").count, 0, "no shared-mapping match for a padded id");
+});
+
+test("27. assigned job with technicianId '   ' -> B3 + NO-GO", () => {
+  const d = cleanDataset();
+  d.jobs.push({ id: "J-ws", status: "assigned", technicianId: "   " });
+  const r = analyzeLegacyData(d);
+  assert.equal(r.finalDecision, "NO-GO");
+  assert.ok(checkById(r, "B3").documentIds.includes("J-ws"));
+});
+
+test("28. in_progress job with technicianId ' T1 ' -> B3, not normalized to T1", () => {
+  const d = cleanDataset();
+  d.jobs.push({ id: "J-pad", status: "in_progress", technicianId: " T1 " });
+  const r = analyzeLegacyData(d);
+  assert.equal(r.finalDecision, "NO-GO");
+  assert.ok(checkById(r, "B3").documentIds.includes("J-pad"), "padded id invalid -> B3");
+  assert.ok(!checkById(r, "B5").documentIds.includes("J-pad"), "not treated as a valid-but-dangling ref to T1");
+});
+
+test("29. exact 'T1' remains valid and resolves normally (regression guard)", () => {
+  const r = analyzeLegacyData(cleanDataset()); // J1 assigned->T1, u-tech1->T1
+  assert.equal(r.finalDecision, "GO");
+  assert.equal(checkById(r, "A1").count, 0);
+  assert.equal(checkById(r, "B3").count, 0);
+  assert.equal(checkById(r, "A4").count, 0, "T1 is referenced -> not unreferenced");
 });
 
 // Note: a genuine Firestore READ FAILURE (exit code 2, distinct from
