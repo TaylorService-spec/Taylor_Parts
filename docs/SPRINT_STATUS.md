@@ -1,5 +1,8 @@
 # Sprint Status
 
+> **⚠️ SUPERSEDED AS CURRENT STATUS — see [Roadmap Reconciliation — July 2026](roadmaps/roadmap-reconciliation-2026-07.md).**
+> The snapshot below is stamped `origin/main` @ `414ea95` (2026-07-14) and is **~139 merges stale** as of `origin/main` @ `b31f871`. Major programs merged since (Report Creator #325, Enterprise Access #226, Equipment #232, F-UID-1, F-RULES-1 governance) are not reflected here, and `DECISIONS.md` #36 records a production deploy of Rules + 11 Cloud Functions. Retained below as history.
+
 Snapshot as of 2026-07-14 (Combined Release Checkpoint after PR #205 + PR #206; the older tables below remain accurate through their own dates). This file is a point-in-time record, not a live dashboard — re-verify against `git log`/`gh pr list` before relying on it, especially PR merge state and Firestore Rules/Cloud Functions **deploy** state (merged ≠ deployed, checked separately every time in this repo). See `docs/CLAUDE_CONTEXT.md` for the full narrative (why decisions were made, what was learned); this file is the compact status table.
 
 ## Combined Release Checkpoint — 2026-07-14 (`origin/main` @ `414ea95`)

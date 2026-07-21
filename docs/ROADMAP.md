@@ -1,5 +1,8 @@
 # Roadmap
 
+> **⚠️ SUPERSEDED AS CURRENT STATUS — see [Roadmap Reconciliation — July 2026](roadmaps/roadmap-reconciliation-2026-07.md).**
+> The checkpoint below is stamped `origin/main` @ `414ea95` (2026-07-14) and is **~139 merges stale** as of `origin/main` @ `b31f871`. It omits the Governed Report Creator (#325), Enterprise Access (#226), Equipment (#232), F-UID-1, and the F-RULES-1 governance chain, and its statement that "no production Functions are currently confirmed" is **contradicted by `DECISIONS.md` #36** (Rules + 11 Cloud Functions deployed and verified). Retained below as history; use the reconciliation report for current status.
+
 Forward-looking plan. For what's already shipped, see `SPRINT_STATUS.md`. For system design, see `PROJECT_ARCHITECTURE.md`. For product direction, see `ProductVision.md`. For capability-level maturity planning, see [`PlatformCapabilityModel.md`](PlatformCapabilityModel.md).
 
 ## Combined Release Checkpoint — 2026-07-14 (`origin/main` @ `414ea95`)
