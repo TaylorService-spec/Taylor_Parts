@@ -44,6 +44,12 @@ export const DRIVER_ACCOUNTS = {
   // fixture for proving D-FN authorizes report runs through the assignment, never through a raw
   // role string.
   ownerAssignee: { email: "driver-owner-assignee@example.test", password: "driver-pass-123", uid: null },
+  // Issue #325 access-feed integration -- denial fixtures for the client capability gate. rawOwner
+  // has RAW role "owner" but NO RoleAssignment (proves the feed ignores the raw role: still DENY).
+  // disabledOwner has an Owner RoleAssignment whose status is "disabled" (proves an inactive
+  // assignment does not grant). Both must leave the Report Builder nav hidden.
+  rawOwner: { email: "driver-raw-owner@example.test", password: "driver-pass-123", uid: null },
+  disabledOwner: { email: "driver-disabled-owner@example.test", password: "driver-pass-123", uid: null },
   eligiblePartsManager: { email: "driver-parts-manager@example.test", password: "driver-pass-123", uid: null },
   ineligibleDispatcher: { email: "driver-dispatcher@example.test", password: "driver-pass-123", uid: null },
   // Inventory Operational Queue, PR A -- dedicated account for the
@@ -1759,6 +1765,24 @@ async function seed() {
     grantedAt: Timestamp.now(),
     status: "active",
     accessVersionAtGrant: OWNER_ACCESS_VERSION,
+  });
+
+  // Issue #325 access-feed integration -- rawOwner: RAW role "owner", NO RoleAssignment. The feed
+  // ignores users/{uid}.role, so it must DENY every report capability (governance boundary).
+  await db.doc(`users/${DRIVER_ACCOUNTS.rawOwner.uid}`).set({ role: "owner", accessVersion: 1 });
+
+  // disabledOwner: an Owner RoleAssignment that is `disabled` -- excluded by the feed's active-only
+  // query, so it grants nothing.
+  await db.doc(`users/${DRIVER_ACCOUNTS.disabledOwner.uid}`).set({ role: "admin", accessVersion: 1 });
+  await db.doc("roleAssignments/driver-seed-disabled-owner-assignment").set({
+    id: "driver-seed-disabled-owner-assignment",
+    principalUid: DRIVER_ACCOUNTS.disabledOwner.uid,
+    roleId: "owner",
+    scope: { type: "global" },
+    grantedBy: "driver-seed",
+    grantedAt: Timestamp.now(),
+    status: "disabled",
+    accessVersionAtGrant: 1,
   });
 
   await db.doc("employees/driver-emp-parts-manager").set({

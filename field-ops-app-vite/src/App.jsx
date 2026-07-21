@@ -33,20 +33,17 @@ import { ROLE_NAV_ACCESS } from "./domain/constants";
 import { createPermissionPreviewer } from "./access/navPermissionPreview";
 import { resolveEffectivePermission } from "./access/resolveEffectivePermission";
 import { COMPATIBILITY_ROLES } from "./access/compatibilityRoles";
+import { useReportCapabilities } from "./access/useReportCapabilities";
 import ReportBuilder from "./modules/reporting/ReportBuilder";
 
 const previewHasPermission = createPermissionPreviewer(resolveEffectivePermission, COMPATIBILITY_ROLES);
-// Issue #325 W1 correction -- the Report Builder nav item is capability-gated
-// (navConfig.js: `capabilityAccess`), but there is deliberately NO client feed that resolves
-// those governed capabilities today. The earlier W1 wired a previewer over the governed-business
-// Roles keyed by the session's RAW `role` string -- treating the governed `owner` Role as if it
-// were a compatibility role and granting from it. That collapses the governance boundary: a raw
-// role must never confer a governed capability. Governed access lives in RoleAssignments resolved
-// by the trusted effective-permission engine, which the client cannot read yet (no trusted
-// effective-access feed exists). Until one does, the builder stays hidden/unavailable and the
-// trusted Function (D-FN) remains the sole authority -- it re-resolves the runner's real
-// RoleAssignments server-side on every run. So `operationalContext` carries no `hasCapability`
-// and the capabilityAccess branch fails closed for every role, including a raw `owner`.
+// Issue #325 -- the Report Builder nav item is capability-gated (navConfig.js: `capabilityAccess`)
+// and resolved by the TRUSTED effective-access feed (useReportCapabilities, in App() below), never
+// from the raw `role`. A raw role must never confer a governed capability (the W1 correction);
+// governed access lives only in RoleAssignments resolved server-side by the trusted engine, which
+// the feed's callable reports back as ALLOW/DENY decisions. The feed is fail-closed in every
+// non-success state, and its callable is undeployed, so production stays fail-closed until a
+// separate deployment + Owner authorization.
 import AppShell from "./navigation/AppShell";
 import PlaceholderPage from "./navigation/PlaceholderPage";
 import { NAV_DOMAINS, isDomainVisible, isNavItemVisible } from "./navigation/navConfig";
@@ -175,12 +172,11 @@ function renderSubnavItem(domain, item, role) {
   if (domain.key === "administration" && item.key === "rolesPermissions") {
     return <AdminRolesPermissions />;
   }
-  // Issue #325 / ADR-007 W1 -- the governed report builder. Net-new, no legacyKey; reached only
-  // through the capability-gated item (isNavItemVisible checks capabilityAccess). With no trusted
-  // effective-access feed today (operationalContext carries no hasCapability), that gate fails
-  // closed for every role, so this route is never GENERATED and this branch never renders. The
-  // wiring is kept intact and correct so that lighting up a real feed is the only change needed --
-  // never a raw-role grant.
+  // Issue #325 / ADR-007 -- the governed report builder. Net-new, no legacyKey; reached only
+  // through the capability-gated item (isNavItemVisible checks capabilityAccess, resolved by the
+  // trusted effective-access feed). The route is generated -- and this branch renders -- ONLY for a
+  // principal the feed grants a wave-1 report capability; every fail-closed state (loading /
+  // unavailable / denied / signed out / principal change / undeployed callable) hides it.
   if (domain.key === "reporting" && item.key === "builder") {
     return <ReportBuilder />;
   }
@@ -377,13 +373,18 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
 export default function App() {
   const { user, role, loading, operationalRoles, employmentStatus } = useAuth();
   const allowedLegacyKeys = ROLE_NAV_ACCESS[role] ?? [];
-  // Issue #100 -- PR 0. Threaded through as one stable object so every
-  // isNavItemVisible/isDomainVisible call site can accept it uniformly.
-  // Issue #325 W1 correction -- no `hasCapability` is provided: there is no trusted client feed of
-  // the session's effective governed access, and a raw role must never stand in for one. With no
-  // hasCapability, navConfig's capabilityAccess branch fails closed, so the Report Builder item
-  // stays hidden for every role. (Wire a real effective-access feed here when one exists.)
-  const operationalContext = { operationalRoles, employmentStatus };
+  // Issue #325 -- capability gating from the TRUSTED effective-access feed (Inventory's
+  // resolveEffectiveAccess callable), never from the raw role. The hook asks the callable for a
+  // decision on the wave-1 Report Builder capabilities and yields a fail-closed hasCapability:
+  // granted only from a successful, current-principal decision; denied while loading, on
+  // error/unavailable/malformed, when signed out, and across a principal change. Since the callable
+  // is undeployed, this stays fail-closed in production until a separate deployment + authorization.
+  const { hasCapability } = useReportCapabilities(user);
+  // Issue #100 -- PR 0. Threaded through as one stable object so every isNavItemVisible/
+  // isDomainVisible call site can accept it uniformly. `hasCapability` gates the Report Builder
+  // item (navConfig.js capabilityAccess); the raw-role paths (legacyKey/PLACEHOLDER_DEFAULT_ROLES/
+  // operationalRoleAccess) are unchanged.
+  const operationalContext = { operationalRoles, employmentStatus, hasCapability };
   const hasAnyAccess = NAV_DOMAINS.some((d) => isDomainVisible(d, role, allowedLegacyKeys, operationalContext));
 
   if (loading) return <div className="fo-panel">Loading...</div>;

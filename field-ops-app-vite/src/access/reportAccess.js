@@ -9,9 +9,10 @@
 // There is deliberately NO client resolver here. An earlier W1 revision resolved these directly
 // from the session's raw `role` string (treating the governed `owner` Role as a compatibility
 // role) -- that collapses the governance boundary and is removed. A raw role must never confer a
-// governed capability; governed access lives only in RoleAssignments, which the client cannot read
-// yet. Until a trusted effective-access feed exists, the item's capabilityAccess gate fails closed
-// (App.jsx supplies no `hasCapability`), and the trusted Function remains the sole authority.
+// governed capability; governed access lives only in RoleAssignments. The client now learns its
+// decisions ONLY from the trusted effective-access feed (useReportCapabilities.js ->
+// resolveEffectiveAccess callable), which resolves those RoleAssignments server-side and returns
+// ALLOW/DENY; the capabilityAccess gate consults that via operationalContext.hasCapability.
 //
 // Listed here (not derived from permissionCatalog.ts, which is TypeScript this node-tested access
 // layer cannot import) and kept in step with Spec §5's wave-1 object rows.
