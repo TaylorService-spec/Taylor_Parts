@@ -18,6 +18,7 @@
     "test:claims": "npm run build && node test/claimsWriter.test.mjs",
     "test:trustedWriter": "npm run build && node test/trustedWriterCommands.test.mjs",
     "test:operatorAccess": "node --test test/operatorAccessCommand.test.js",
+    "test:legacyDataAudit": "node --test test/auditLegacyJobTechnicianData.test.js",
     "test:operatorAccessExecute": "npm run build && node --test test/operatorAccessCommandExecute.test.js",
     "test:reporting": "npm run build && node test/reportCatalogParity.test.mjs && node test/reportExecutionService.test.mjs && node test/savedDefinitionCommands.test.mjs",
     "test:transitionEngine": "npm run build && node test/transitionEngine.test.mjs",
