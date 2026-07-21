@@ -16,10 +16,15 @@
 // GOVERNANCE BOUNDARY: governed access comes ONLY from the callable's decisions. This module never
 // reads users/{uid}.role, never inspects Role names, and never builds a Role definition -- a raw
 // role can never confer a governed capability (the W1 correction; this keeps it true).
-import { REPORT_WAVE1_OBJECT_READ_CAPABILITIES } from "./reportAccess.js";
+import { REPORT_WAVE1_OBJECT_READ_CAPABILITIES, REPORT_DEFINITION_CAPABILITY_IDS } from "./reportAccess.js";
 
-// Request ONLY the wave-1 Report Builder capability ids -- never a broader or arbitrary set.
-export const REPORT_CAPABILITY_REQUEST = REPORT_WAVE1_OBJECT_READ_CAPABILITIES;
+// The capabilities the trusted feed is asked to decide, in ONE consistent request (all resolved
+// against the same accessVersion): the four wave-1 Report Builder object-read ids, plus the five
+// per-action saved-definition ids the Saved Reports UI gates on. Never a broader or arbitrary set.
+export const REPORT_CAPABILITY_REQUEST = Object.freeze([
+  ...REPORT_WAVE1_OBJECT_READ_CAPABILITIES,
+  ...REPORT_DEFINITION_CAPABILITY_IDS,
+]);
 
 // Observed-version subscription status. hasCapability requires `ready` with a valid version.
 export const VERSION_STATUS = Object.freeze({

@@ -12,7 +12,7 @@ import {
   REPORT_CAPABILITY_REQUEST, VERSION_STATUS, FEED_STATUS,
   SIGNED_OUT_VERSION, IDLE_FEED, isValidObservedVersion, interpretAccessResult, buildHasCapability,
 } from "../src/access/reportCapabilityAccess.js";
-import { REPORT_WAVE1_OBJECT_READ_CAPABILITIES } from "../src/access/reportAccess.js";
+import { REPORT_WAVE1_OBJECT_READ_CAPABILITIES, REPORT_DEFINITION_CAPABILITY_IDS } from "../src/access/reportAccess.js";
 
 let passed = 0;
 function ok(name, fn) { fn(); passed += 1; console.log("PASS -- " + name); }
@@ -22,8 +22,15 @@ const versionReady = (uid, v) => ({ status: VERSION_STATUS.READY, uid, version: 
 const feedReady = (uid, forVersion, decisions) => ({ status: FEED_STATUS.READY, forUid: uid, forVersion, decisions });
 const grants = (version, feed, uid) => buildHasCapability({ version, feed }, uid)(CAP);
 
-ok("requests ONLY the four wave-1 Report Builder capability ids", () => {
-  assert.deepEqual([...REPORT_CAPABILITY_REQUEST], [...REPORT_WAVE1_OBJECT_READ_CAPABILITIES]);
+ok("requests the four wave-1 object-read ids PLUS the five saved-definition ids -- nothing more", () => {
+  assert.deepEqual([...REPORT_CAPABILITY_REQUEST], [
+    ...REPORT_WAVE1_OBJECT_READ_CAPABILITIES, ...REPORT_DEFINITION_CAPABILITY_IDS,
+  ]);
+  assert.deepEqual([...REPORT_DEFINITION_CAPABILITY_IDS].sort(), [
+    "report.definition.create", "report.definition.delete", "report.definition.duplicate",
+    "report.definition.read", "report.definition.rename",
+  ]);
+  assert.equal(REPORT_CAPABILITY_REQUEST.length, 9);
 });
 
 // ---- observed-version validation -------------------------------------------
