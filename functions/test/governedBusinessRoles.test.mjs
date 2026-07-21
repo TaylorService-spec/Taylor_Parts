@@ -303,24 +303,45 @@ check("Owner holds every ADMIN_ROLE permission, through the same governed resolv
   }
 });
 
-// === Issue #325 / ADR-007 W1 -- Owner's active wave-1 report.* grant ===
+// === Issue #325 / ADR-007 W1 + W-SAVE -- Owner's active report.* grant ===
 
-const ACTIVE_WAVE1_REPORT_IDS = PERMISSION_CATALOG.filter(
+const ACTIVE_REPORT_IDS = PERMISSION_CATALOG.filter(
   (p) => p.id.startsWith("report.") && p.active !== false,
 ).map((p) => p.id);
 const INACTIVE_REPORT_IDS = PERMISSION_CATALOG.filter(
   (p) => p.id.startsWith("report.") && p.active === false,
 ).map((p) => p.id);
+const DEFINITION_CRUD_IDS = [
+  "report.definition.create",
+  "report.definition.read",
+  "report.definition.rename",
+  "report.definition.duplicate",
+  "report.definition.delete",
+];
 
-check("ACTIVE_WAVE1_REPORT_IDS is exactly 31 ids (4 object + 27 field) -- the catalog's own D-226 count minus the 3 inactive ones", () => {
-  assert.equal(ACTIVE_WAVE1_REPORT_IDS.length, 31);
+check("ACTIVE_REPORT_IDS is exactly 36 ids (31 wave-1 object/field + 5 W-SAVE definition-CRUD) -- the catalog's own count minus the 3 inactive wave-1 ids", () => {
+  assert.equal(ACTIVE_REPORT_IDS.length, 36);
   assert.equal(INACTIVE_REPORT_IDS.length, 3);
+  for (const id of DEFINITION_CRUD_IDS) assert.ok(ACTIVE_REPORT_IDS.includes(id), id);
 });
 
-check("Owner holds every ACTIVE wave-1 report.* id, resolving ALLOW", () => {
-  for (const id of ACTIVE_WAVE1_REPORT_IDS) {
+check("Owner holds every ACTIVE report.* id (wave-1 + W-SAVE), resolving ALLOW", () => {
+  for (const id of ACTIVE_REPORT_IDS) {
     assert.ok(OWNER_ROLE.permissions.includes(id), `Owner is missing "${id}"`);
     assert.equal(resolve(id, "owner", GOVERNED_BUSINESS_ROLES).decision, "ALLOW", id);
+  }
+});
+
+check("Owner holds exactly the five W-SAVE definition-CRUD ids, and only Owner among all eleven Roles holds any of them", () => {
+  for (const id of DEFINITION_CRUD_IDS) {
+    assert.ok(OWNER_ROLE.permissions.includes(id), id);
+  }
+  for (const role of Object.values(COMPATIBILITY_ROLES)) {
+    assert.equal(role.permissions.some((id) => DEFINITION_CRUD_IDS.includes(id)), false, `compatibility Role "${role.id}" must not hold a definition-CRUD id`);
+  }
+  for (const role of ALL_GOVERNED_ROLES) {
+    if (role.id === "owner") continue;
+    assert.equal(role.permissions.some((id) => DEFINITION_CRUD_IDS.includes(id)), false, `governed business Role "${role.id}" must not hold a definition-CRUD id -- only the approved W-SAVE role (Owner) does`);
   }
 });
 

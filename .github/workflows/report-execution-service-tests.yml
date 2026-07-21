@@ -10,11 +10,13 @@ name: Report Execution Service Tests
 #
 # Runs the parity test (no emulator needed -- imports the client's actual
 # reportCatalog.js/reportQueryModel.js/reportQueryValidation.js via a
-# relative path from field-ops-app-vite/, present in this same checkout)
-# and the execution-service emulator test (Firestore only -- no Auth
-# needed, since runReportDefinition() takes a runnerUid directly rather
-# than an ID token). Emulator-only, project "taylor-parts", loopback
-# host -- no production access, no credentials, no repository secrets.
+# relative path from field-ops-app-vite/, present in this same checkout),
+# the execution-service emulator test, and (Issue #325 D-RULES,
+# corrected before W-SAVE activation) the trusted saved-definition
+# command emulator test -- both Firestore only, no Auth needed, since
+# neither service takes an ID token, only a server-resolved uid.
+# Emulator-only, project "taylor-parts", loopback host -- no production
+# access, no credentials, no repository secrets.
 
 on:
   pull_request:
@@ -24,6 +26,7 @@ on:
       - "functions/src/reporting/**"
       - "functions/test/reportCatalogParity.test.mjs"
       - "functions/test/reportExecutionService.test.mjs"
+      - "functions/test/savedDefinitionCommands.test.mjs"
       - "field-ops-app-vite/src/domain/reporting/reportCatalog.js"
       - "field-ops-app-vite/src/domain/reporting/reportQueryModel.js"
       - "field-ops-app-vite/src/domain/reporting/reportQueryValidation.js"
@@ -39,6 +42,7 @@ on:
       - "functions/src/reporting/**"
       - "functions/test/reportCatalogParity.test.mjs"
       - "functions/test/reportExecutionService.test.mjs"
+      - "functions/test/savedDefinitionCommands.test.mjs"
       - "field-ops-app-vite/src/domain/reporting/reportCatalog.js"
       - "field-ops-app-vite/src/domain/reporting/reportQueryModel.js"
       - "field-ops-app-vite/src/domain/reporting/reportQueryValidation.js"
@@ -95,6 +99,10 @@ jobs:
 
       - name: Report execution service tests
         run: node test/reportExecutionService.test.mjs
+        working-directory: functions
+
+      - name: Saved-definition trusted command tests (Issue #325 D-RULES corrected)
+        run: node test/savedDefinitionCommands.test.mjs
         working-directory: functions
 
       - name: Upload emulator debug logs

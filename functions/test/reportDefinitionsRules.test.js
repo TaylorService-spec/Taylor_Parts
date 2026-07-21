@@ -1,18 +1,16 @@
-// Issue #325 / ADR-007 D-RULES (docs/specifications/governed-object-
-// based-report-creator.md sec8/sec9; docs/implementation-plans/
-// governed-object-based-report-creator.md sec4). Firestore Rules
-// emulator test for the reportDefinitions collection: the inert saved-
-// report-definition store, private by owner, "a definition confers no
-// data access." Same zero-new-dependency posture as this repo's other
-// Rules emulator tests (firebase-admin + Node's built-in fetch against
-// the emulator REST APIs, no @firebase/rules-unit-testing, no test
-// runner).
-//
-// Explicitly does NOT probe (out of D-RULES's own scope): whether the
-// embedded `definition` field is itself well-formed/authorized to RUN
-// (that is reportExecutionService.ts's / D-FN's job, already tested in
-// reportExecutionService.test.mjs) -- this file proves only the
-// DOCUMENT-level create/read/rename/duplicate/delete access contract.
+// Issue #325 / ADR-007 D-RULES, CORRECTED (docs/specifications/governed-
+// object-based-report-creator.md sec8/sec9). Firestore Rules emulator
+// test for the reportDefinitions collection's CORRECTED posture: ALL
+// direct client read/write is denied, unconditionally, for every
+// principal including admin -- the trusted saved-definition service
+// (functions/src/reporting/savedDefinitionCommands.ts,
+// savedDefinitionCommands.test.mjs) is now the ONLY path to this
+// collection. This file replaces the original D-RULES PR's much larger
+// suite (which tested a client-direct-write ownership model this task
+// explicitly supersedes) with the much smaller "deny everyone,
+// unconditionally" contract this collection now has -- matching the
+// same zero-new-dependency emulator-REST convention as this repo's
+// other Rules tests.
 //
 // Prerequisite: run against a live Firestore + Auth emulator pair, e.g.:
 //   firebase emulators:start --only firestore,auth --project taylor-parts
@@ -66,68 +64,38 @@ async function idTokenFor(uid) {
   return body.idToken;
 }
 
-// Recursively converts a plain JS value into the Firestore REST "Value"
-// wire format -- lets every test build fixtures as plain JS objects
-// instead of hand-nesting {stringValue:...}/{mapValue:...} everywhere.
-function toFirestoreValue(v) {
-  if (v === null || v === undefined) return { nullValue: null };
-  if (typeof v === "string") return { stringValue: v };
-  if (typeof v === "number") return { integerValue: String(v) };
-  if (typeof v === "boolean") return { booleanValue: v };
-  if (Array.isArray(v)) return { arrayValue: { values: v.map(toFirestoreValue) } };
-  if (typeof v === "object") {
-    const fields = {};
-    for (const [k, val] of Object.entries(v)) fields[k] = toFirestoreValue(val);
-    return { mapValue: { fields } };
-  }
-  throw new Error(`Unsupported fixture value: ${JSON.stringify(v)}`);
+const str = (v) => ({ stringValue: v });
+const int = (v) => ({ integerValue: String(v) });
+
+function sampleFields(ownerUid) {
+  return {
+    id: str("rules-rd2-seeded-1"),
+    name: str("Seeded Report"),
+    ownerUid: str(ownerUid),
+    definition: { mapValue: { fields: { objectId: str("customer") } } },
+    createdAt: int(Date.now()),
+    updatedAt: int(Date.now()),
+  };
 }
 
-function toFirestoreFields(obj) {
-  const fields = {};
-  for (const [k, v] of Object.entries(obj)) fields[k] = toFirestoreValue(v);
-  return fields;
-}
-
-// Creates (PATCH to a never-before-used doc id, exercising `create`).
-async function createDocAt(collection, docId, idToken, plainFields) {
+async function createDocAt(collection, docId, idToken, fields) {
   const headers = { "Content-Type": "application/json" };
   if (idToken) headers.Authorization = `Bearer ${idToken}`;
   const res = await fetch(`${DOC_BASE}/${collection}/${docId}`, {
     method: "PATCH",
     headers,
-    body: JSON.stringify({ fields: toFirestoreFields(plainFields) }),
+    body: JSON.stringify({ fields }),
   });
   return res.status;
 }
 
-// PATCH an EXISTING document with an explicit updateMask -> exercises
-// `update` with the same "merged existing doc + these fields" semantics
-// the client SDK's .update() produces, so diff().affectedKeys() sees
-// exactly the changed keys, not the whole document.
-async function updateDocAt(collection, docId, idToken, plainFields) {
+async function updateDocAt(collection, docId, idToken, fields) {
   const headers = { "Content-Type": "application/json" };
   if (idToken) headers.Authorization = `Bearer ${idToken}`;
-  const mask = Object.keys(plainFields)
+  const mask = Object.keys(fields)
     .map((key) => `updateMask.fieldPaths=${encodeURIComponent(key)}`)
     .join("&");
   const res = await fetch(`${DOC_BASE}/${collection}/${docId}?${mask}`, {
-    method: "PATCH",
-    headers,
-    body: JSON.stringify({ fields: toFirestoreFields(plainFields) }),
-  });
-  return res.status;
-}
-
-// Builds plain fixture fields, converts them, then overrides specific
-// keys with already-Firestore-shaped raw values -- for cases that need
-// a wrong TYPE (e.g. definition as a string instead of a map), which
-// toFirestoreValue's plain-JS-value inference can't express directly.
-async function createDocWithRawOverride(collection, docId, idToken, plainFields, rawOverrides) {
-  const headers = { "Content-Type": "application/json" };
-  if (idToken) headers.Authorization = `Bearer ${idToken}`;
-  const fields = { ...toFirestoreFields(plainFields), ...rawOverrides };
-  const res = await fetch(`${DOC_BASE}/${collection}/${docId}`, {
     method: "PATCH",
     headers,
     body: JSON.stringify({ fields }),
@@ -164,203 +132,90 @@ async function runOwnerQuery(idToken, ownerUid) {
   return { status: res.status, body };
 }
 
-const OWNER_A = "rules-rd-owner-a";
-const OWNER_B = "rules-rd-owner-b";
-const ADMIN_UID = "rules-rd-admin";
-
-const SAMPLE_DEFINITION = { objectId: "customer", fields: ["customer.name"], filters: [], groupBy: [], sort: [], aggregates: [], presentation: {} };
-
-function reportDefinitionFixture({ id, ownerUid = OWNER_A, name = "My Report", now = Date.now() } = {}) {
-  return {
-    id,
-    name,
-    ownerUid,
-    definition: SAMPLE_DEFINITION,
-    createdAt: now,
-    updatedAt: now,
-  };
-}
+const OWNER_A = "rules-rd2-owner-a";
+const ADMIN_UID = "rules-rd2-admin";
 
 async function seed() {
-  await db.doc("users/rules-rd-owner-a-user").set({ role: "technician" });
-  await db.doc("users/rules-rd-owner-b-user").set({ role: "technician" });
-  await db.doc("users/rules-rd-admin-user").set({ role: "admin" });
-
-  // A pre-existing document (owned by OWNER_A) for read/update/delete/query probes.
-  await db.doc("reportDefinitions/rules-rd-seeded-1").set(
-    reportDefinitionFixture({ id: "rules-rd-seeded-1", ownerUid: OWNER_A, name: "Seeded Report" })
-  );
+  // Seeded via the Admin SDK (bypasses Rules by design, matching this
+  // codebase's established seeding convention) so the read/update/
+  // delete DENY probes below have a real, owned document to target.
+  await db.doc("reportDefinitions/rules-rd2-seeded-1").set({
+    id: "rules-rd2-seeded-1",
+    name: "Seeded Report",
+    ownerUid: OWNER_A,
+    definition: { objectId: "customer" },
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  });
 }
 
 async function main() {
   await seed();
 
   const tokens = {};
-  for (const uid of [OWNER_A, OWNER_B, ADMIN_UID]) {
+  for (const uid of [OWNER_A, ADMIN_UID]) {
     tokens[uid] = await idTokenFor(uid);
   }
-  // Link each auth uid to its users/{uid} doc via a distinct uid per role
-  // (kept simple: the collection's own Rules never consult users/{uid} at
-  // all -- only request.auth.uid -- so no reciprocal-link fixture is
-  // needed here, unlike employees/operational-role Rules elsewhere).
 
-  // === Create ===
+  // === Read (get) -- denied for everyone, including the document's own owner ===
 
-  report("owner can create their own report definition",
-    (await createDocAt("reportDefinitions", "rules-rd-create-1", tokens[OWNER_A],
-      reportDefinitionFixture({ id: "rules-rd-create-1", ownerUid: OWNER_A }))) === 200);
+  report("the document's own owner cannot read it directly (client-direct read removed)",
+    (await getDocAt("reportDefinitions", "rules-rd2-seeded-1", tokens[OWNER_A])) === 403);
 
-  report("signed-out caller cannot create a report definition",
-    (await createDocAt("reportDefinitions", "rules-rd-create-signedout", null,
-      reportDefinitionFixture({ id: "rules-rd-create-signedout", ownerUid: OWNER_A }))) === 403);
+  report("admin cannot read another principal's saved definition directly",
+    (await getDocAt("reportDefinitions", "rules-rd2-seeded-1", tokens[ADMIN_UID])) === 403);
 
-  report("caller cannot create a report definition claiming a DIFFERENT owner (identity spoofing)",
-    (await createDocAt("reportDefinitions", "rules-rd-create-spoof", tokens[OWNER_A],
-      reportDefinitionFixture({ id: "rules-rd-create-spoof", ownerUid: OWNER_B }))) === 403);
+  report("a signed-out caller cannot read a saved definition directly",
+    (await getDocAt("reportDefinitions", "rules-rd2-seeded-1", null)) === 403);
 
-  report("admin has NO special create authority over another principal's report (private-by-owner, no override)",
-    (await createDocAt("reportDefinitions", "rules-rd-create-adminspoof", tokens[ADMIN_UID],
-      reportDefinitionFixture({ id: "rules-rd-create-adminspoof", ownerUid: OWNER_B }))) === 403);
+  // === Read (list/query) -- denied for everyone, even a query for one's own uid ===
 
-  report("create denied when the document id does not match the embedded id field",
-    (await createDocAt("reportDefinitions", "rules-rd-create-idmismatch", tokens[OWNER_A],
-      reportDefinitionFixture({ id: "some-other-id", ownerUid: OWNER_A }))) === 403);
-
-  report("create denied when a required key is missing (hasAll)",
-    (await createDocAt("reportDefinitions", "rules-rd-create-missingkey", tokens[OWNER_A], {
-      id: "rules-rd-create-missingkey", name: "x", ownerUid: OWNER_A, definition: SAMPLE_DEFINITION,
-      // updatedAt intentionally omitted
-      createdAt: Date.now(),
-    })) === 403);
-
-  report("create denied when an extra/unknown key is present (hasOnly)",
-    (await createDocAt("reportDefinitions", "rules-rd-create-extrakey", tokens[OWNER_A], {
-      ...reportDefinitionFixture({ id: "rules-rd-create-extrakey", ownerUid: OWNER_A }),
-      sharedWith: ["someone"],
-    })) === 403);
-
-  report("create denied when definition is not a map",
-    (await createDocWithRawOverride("reportDefinitions", "rules-rd-create-notmap", tokens[OWNER_A],
-      reportDefinitionFixture({ id: "rules-rd-create-notmap", ownerUid: OWNER_A }),
-      { definition: { stringValue: "not-a-map" } })) === 403);
-
-  report("create denied when name is empty",
-    (await createDocAt("reportDefinitions", "rules-rd-create-emptyname", tokens[OWNER_A],
-      reportDefinitionFixture({ id: "rules-rd-create-emptyname", ownerUid: OWNER_A, name: "" }))) === 403);
-
-  report("create denied when name exceeds 120 characters",
-    (await createDocAt("reportDefinitions", "rules-rd-create-longname", tokens[OWNER_A],
-      reportDefinitionFixture({ id: "rules-rd-create-longname", ownerUid: OWNER_A, name: "x".repeat(121) }))) === 403);
-
-  report("create ALLOWED with a name at the exact 120-character boundary (independent review round 1 gap -- only the 121-char reject side was previously tested)",
-    (await createDocAt("reportDefinitions", "rules-rd-create-boundaryname", tokens[OWNER_A],
-      reportDefinitionFixture({ id: "rules-rd-create-boundaryname", ownerUid: OWNER_A, name: "x".repeat(120) }))) === 200);
-
-  report("create denied when updatedAt differs from createdAt (creation baseline)",
-    (await createDocAt("reportDefinitions", "rules-rd-create-tsmismatch", tokens[OWNER_A], {
-      id: "rules-rd-create-tsmismatch", name: "x", ownerUid: OWNER_A, definition: SAMPLE_DEFINITION,
-      createdAt: 1000, updatedAt: 2000,
-    })) === 403);
-
-  // === Read ===
-
-  report("owner can read their own report definition",
-    (await getDocAt("reportDefinitions", "rules-rd-seeded-1", tokens[OWNER_A])) === 200);
-
-  report("a different signed-in user cannot read another owner's report definition",
-    (await getDocAt("reportDefinitions", "rules-rd-seeded-1", tokens[OWNER_B])) === 403);
-
-  report("admin has NO special read authority over another principal's report (private-by-owner, no override)",
-    (await getDocAt("reportDefinitions", "rules-rd-seeded-1", tokens[ADMIN_UID])) === 403);
-
-  report("signed-out caller cannot read a report definition",
-    (await getDocAt("reportDefinitions", "rules-rd-seeded-1", null)) === 403);
-
-  // === Owner-scoped list query ===
-
-  report("an owner-scoped query returns only that owner's report definitions",
+  report("an owner-scoped LIST query is denied outright, even a query for the caller's own uid (no client-direct list path remains)",
     await (async () => {
       const { status, body } = await runOwnerQuery(tokens[OWNER_A], OWNER_A);
-      if (status !== 200) return false;
-      const docs = body.filter((entry) => entry.document);
-      return docs.length >= 1 && docs.every((entry) => entry.document.fields.ownerUid.stringValue === OWNER_A);
-    })());
-
-  report("a query for another owner's uid, run by a non-matching caller, returns zero documents (never another principal's data)",
-    await (async () => {
-      const { status, body } = await runOwnerQuery(tokens[OWNER_B], OWNER_A);
-      if (status !== 200) return true; // some emulator versions 200 with an empty array; handled below too
+      if (status !== 200) return true; // denied outright is the expected/safe outcome
+      // Some emulator versions 200 an empty/error-shaped result rather than a
+      // transport-level denial for a query whose only candidate document is
+      // denied per-document -- either shape is safe as long as ZERO real
+      // documents are returned.
       const docs = body.filter((entry) => entry.document);
       return docs.length === 0;
     })());
 
-  // === Update (rename only) ===
+  // === Create -- denied for everyone ===
 
-  await db.doc("reportDefinitions/rules-rd-rename-1").set(reportDefinitionFixture({ id: "rules-rd-rename-1", ownerUid: OWNER_A, name: "Before Rename" }));
+  report("the claimed owner cannot create a saved definition directly",
+    (await createDocAt("reportDefinitions", "rules-rd2-create-1", tokens[OWNER_A], sampleFields(OWNER_A))) === 403);
 
-  report("owner can rename their own report definition (name + updatedAt only)",
-    (await updateDocAt("reportDefinitions", "rules-rd-rename-1", tokens[OWNER_A], { name: "After Rename", updatedAt: Date.now() })) === 200);
+  report("admin cannot create a saved definition directly (no override -- Rules are unconditionally closed)",
+    (await createDocAt("reportDefinitions", "rules-rd2-create-2", tokens[ADMIN_UID], sampleFields(ADMIN_UID))) === 403);
 
-  await db.doc("reportDefinitions/rules-rd-rename-2").set(reportDefinitionFixture({ id: "rules-rd-rename-2", ownerUid: OWNER_A }));
+  report("a signed-out caller cannot create a saved definition directly",
+    (await createDocAt("reportDefinitions", "rules-rd2-create-3", null, sampleFields(OWNER_A))) === 403);
 
-  report("a non-owner cannot rename another owner's report definition",
-    (await updateDocAt("reportDefinitions", "rules-rd-rename-2", tokens[OWNER_B], { name: "Hijacked", updatedAt: Date.now() })) === 403);
+  // === Update (rename) -- denied for everyone ===
 
-  await db.doc("reportDefinitions/rules-rd-rename-2b").set(reportDefinitionFixture({ id: "rules-rd-rename-2b", ownerUid: OWNER_A }));
+  report("the document's own owner cannot rename it directly",
+    (await updateDocAt("reportDefinitions", "rules-rd2-seeded-1", tokens[OWNER_A], { name: str("Renamed"), updatedAt: int(Date.now()) })) === 403);
 
-  report("admin has NO special rename/update authority over another principal's report (private-by-owner, no override -- independent review round 1 gap)",
-    (await updateDocAt("reportDefinitions", "rules-rd-rename-2b", tokens[ADMIN_UID], { name: "Admin Hijack", updatedAt: Date.now() })) === 403);
+  report("admin cannot rename another principal's saved definition directly",
+    (await updateDocAt("reportDefinitions", "rules-rd2-seeded-1", tokens[ADMIN_UID], { name: str("Admin Renamed"), updatedAt: int(Date.now()) })) === 403);
 
-  await db.doc("reportDefinitions/rules-rd-rename-3").set(reportDefinitionFixture({ id: "rules-rd-rename-3", ownerUid: OWNER_A }));
+  // === Delete -- denied for everyone ===
 
-  report("owner cannot change the embedded definition via update (only name/updatedAt are editable)",
-    (await updateDocAt("reportDefinitions", "rules-rd-rename-3", tokens[OWNER_A], {
-      definition: { objectId: "equipment", fields: [], filters: [], groupBy: [], sort: [], aggregates: [], presentation: {} },
-      updatedAt: Date.now(),
-    })) === 403);
+  report("the document's own owner cannot delete it directly",
+    (await deleteDocAt("reportDefinitions", "rules-rd2-seeded-1", tokens[OWNER_A])) === 403);
 
-  await db.doc("reportDefinitions/rules-rd-rename-4").set(reportDefinitionFixture({ id: "rules-rd-rename-4", ownerUid: OWNER_A }));
+  report("admin cannot delete another principal's saved definition directly",
+    (await deleteDocAt("reportDefinitions", "rules-rd2-seeded-1", tokens[ADMIN_UID])) === 403);
 
-  report("owner cannot change ownerUid via update (cannot transfer ownership)",
-    (await updateDocAt("reportDefinitions", "rules-rd-rename-4", tokens[OWNER_A], { ownerUid: OWNER_B, updatedAt: Date.now() })) === 403);
+  report("a signed-out caller cannot delete a saved definition directly",
+    (await deleteDocAt("reportDefinitions", "rules-rd2-seeded-1", null)) === 403);
 
-  await db.doc("reportDefinitions/rules-rd-rename-5").set(reportDefinitionFixture({ id: "rules-rd-rename-5", ownerUid: OWNER_A }));
+  // === Confirm the seeded document really does still exist (Admin SDK bypasses Rules) ===
 
-  report("owner cannot rename to an empty name",
-    (await updateDocAt("reportDefinitions", "rules-rd-rename-5", tokens[OWNER_A], { name: "", updatedAt: Date.now() })) === 403);
-
-  await db.doc("reportDefinitions/rules-rd-rename-6").set(reportDefinitionFixture({ id: "rules-rd-rename-6", ownerUid: OWNER_A }));
-
-  report("owner cannot rename by adding an unrelated extra key alongside name",
-    (await updateDocAt("reportDefinitions", "rules-rd-rename-6", tokens[OWNER_A], { name: "x", updatedAt: Date.now(), extra: "nope" })) === 403);
-
-  await db.doc("reportDefinitions/rules-rd-rename-7").set(reportDefinitionFixture({ id: "rules-rd-rename-7", ownerUid: OWNER_A }));
-
-  report("owner CAN rename to a name at the exact 120-character boundary (independent review round 1 gap -- only the 121-char reject side was previously tested)",
-    (await updateDocAt("reportDefinitions", "rules-rd-rename-7", tokens[OWNER_A], { name: "x".repeat(120), updatedAt: Date.now() })) === 200);
-
-  // === Delete ===
-
-  await db.doc("reportDefinitions/rules-rd-delete-1").set(reportDefinitionFixture({ id: "rules-rd-delete-1", ownerUid: OWNER_A }));
-
-  report("owner can delete their own report definition",
-    (await deleteDocAt("reportDefinitions", "rules-rd-delete-1", tokens[OWNER_A])) === 200);
-
-  await db.doc("reportDefinitions/rules-rd-delete-2").set(reportDefinitionFixture({ id: "rules-rd-delete-2", ownerUid: OWNER_A }));
-
-  report("a non-owner cannot delete another owner's report definition",
-    (await deleteDocAt("reportDefinitions", "rules-rd-delete-2", tokens[OWNER_B])) === 403);
-
-  await db.doc("reportDefinitions/rules-rd-delete-3").set(reportDefinitionFixture({ id: "rules-rd-delete-3", ownerUid: OWNER_A }));
-
-  report("admin has NO special delete authority over another principal's report (private-by-owner, no override)",
-    (await deleteDocAt("reportDefinitions", "rules-rd-delete-3", tokens[ADMIN_UID])) === 403);
-
-  // === Duplicate (a create of a NEW document, no separate Rules branch) ===
-
-  report("'duplicate' -- a fresh create copying an existing definition's content under a new id -- succeeds for the owner",
-    (await createDocAt("reportDefinitions", "rules-rd-duplicate-1", tokens[OWNER_A],
-      reportDefinitionFixture({ id: "rules-rd-duplicate-1", ownerUid: OWNER_A, name: "Copy of Seeded Report" }))) === 200);
+  report("the seeded document is still present via the Admin SDK (proves the denials above are real Rules denials, not a missing-document 404)",
+    (await db.doc("reportDefinitions/rules-rd2-seeded-1").get()).exists === true);
 
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed > 0 ? 1 : 0);

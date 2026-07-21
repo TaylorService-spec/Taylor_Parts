@@ -17,6 +17,7 @@ import {
   requirePermission,
   isValidReportObjectReadCapabilityId,
   isValidReportFieldReadCapabilityId,
+  isValidReportDefinitionCapabilityId,
   isActivePermission,
 } from "../lib/access/permissionCatalog.js";
 
@@ -96,13 +97,31 @@ check("requirePermission resolves a known id", () => {
 
 // --- Issue #325 / ADR-007 D-226: field-level read-capability extension ---
 
-check("wave-1 report.* catalog: exactly 4 object-read + 30 field-read ids (34 total)", () => {
+check("wave-1 report.* catalog: exactly 4 object-read + 30 field-read + 5 definition-CRUD ids (39 total)", () => {
+  // Categorize definition ids FIRST (permissionCatalog.ts's own header
+  // comment on REPORT_DEFINITION_CAPABILITY_PATTERN: "report.definition.
+  // read" also structurally matches the generic object-read pattern --
+  // a deliberate, harmless naming coincidence, not a real ambiguity, but
+  // a categorizer must exclude it from the object-read count explicitly
+  // rather than relying on pattern exclusivity).
   const reportIds = PERMISSION_CATALOG.filter((p) => p.id.startsWith("report."));
-  const objectIds = reportIds.filter((p) => isValidReportObjectReadCapabilityId(p.id));
-  const fieldIds = reportIds.filter((p) => isValidReportFieldReadCapabilityId(p.id));
+  const definitionIds = reportIds.filter((p) => isValidReportDefinitionCapabilityId(p.id));
+  const nonDefinitionIds = reportIds.filter((p) => !isValidReportDefinitionCapabilityId(p.id));
+  const objectIds = nonDefinitionIds.filter((p) => isValidReportObjectReadCapabilityId(p.id));
+  const fieldIds = nonDefinitionIds.filter((p) => isValidReportFieldReadCapabilityId(p.id));
+  assert.equal(definitionIds.length, 5, "expected exactly 5 W-SAVE definition-CRUD capabilities");
   assert.equal(objectIds.length, 4, "expected exactly 4 wave-1 object read capabilities");
   assert.equal(fieldIds.length, 30, "expected exactly 30 wave-1 field read capabilities");
-  assert.equal(reportIds.length, 34, "every report.* id must be either object- or field-shaped, no third shape");
+  assert.equal(reportIds.length, 39, "every report.* id must be definition-, object-, or field-shaped, no fourth shape");
+});
+
+check("isValidReportDefinitionCapabilityId accepts exactly the five adopted actions, nothing else", () => {
+  for (const action of ["create", "read", "rename", "duplicate", "delete"]) {
+    assert.ok(isValidReportDefinitionCapabilityId(`report.definition.${action}`), action);
+  }
+  assert.ok(!isValidReportDefinitionCapabilityId("report.definition.share"), "share is not one of the five adopted actions");
+  assert.ok(!isValidReportDefinitionCapabilityId("report.customer.read"), "an object id is not a definition id");
+  assert.ok(!isValidReportDefinitionCapabilityId("Report.definition.read"), "wrong case must not match");
 });
 
 check("isValidReportObjectReadCapabilityId accepts the exact adopted shape only", () => {

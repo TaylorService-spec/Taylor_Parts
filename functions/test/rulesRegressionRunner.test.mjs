@@ -184,22 +184,23 @@ ok("6b. descendantPids returns only the owned root's descendants by PID", () => 
 // (missing/inactive/unlinked Employee, wrong operational role, missing/
 // empty/malformed assignedWarehouseIds) denies, and write posture
 // (Admin-SDK-only) is unchanged for both a scoped manager and admin across
-// all three collections, then from 410 to 440 (Issue #325 D-RULES) when
-// reportDefinitionsRules.test.js added 30 assertions proving the new
-// reportDefinitions collection's create/read/rename/duplicate/delete
-// contract: owner-only for every action with NO admin/dispatcher override
-// ("a definition confers no data access" -- private by owner, Spec sec9),
-// identity-spoofing denial on create, id/shape/key/type validation on
-// create (hasOnly/hasAll, definition must be a map, name bounds,
-// updatedAt==createdAt baseline), update restricted to name+updatedAt only
-// (id/ownerUid/definition/createdAt immutable), an owner-scoped list query
-// returning only that owner's own documents, and "duplicate" reusing the
-// same create path with no separate Rules branch. This self-test's own
-// literal sanity-check is updated to match, same as it must be updated any
-// time SUITES' expected counts change -- a deliberate hardcoded cross-check
-// that EXPECTED_TOTAL wasn't silently miscomputed, not a value that should
-// ever drift unnoticed.
-await okAsync("7. a fully-passing run reports exactly 440 passed, 0 failed", async () => {
+// all three collections, then from 410 to 440 (Issue #325 D-RULES,
+// original design) when reportDefinitionsRules.test.js added 30
+// assertions proving a client-direct-write, owner-only Rules contract
+// for the new reportDefinitions collection, then from 440 to 423 (Issue
+// #325, D-RULES CORRECTED before W-SAVE activation) when that same
+// suite was REWRITTEN down to 13 assertions proving the opposite: ALL
+// direct client read/write on reportDefinitions is now denied
+// unconditionally, for every principal including admin -- the trusted
+// saved-definition service (functions/src/reporting/
+// savedDefinitionCommands.ts) is the only remaining path, matching this
+// program's own governed-storage posture (roleAssignments/auditEvents/
+// etc.) rather than a bespoke ownership-Rules model. This self-test's
+// own literal sanity-check is updated to match, same as it must be
+// updated any time SUITES' expected counts change -- a deliberate
+// hardcoded cross-check that EXPECTED_TOTAL wasn't silently miscomputed,
+// not a value that should ever drift unnoticed.
+await okAsync("7. a fully-passing run reports exactly 423 passed, 0 failed", async () => {
   const byFile = new Map(SUITES.map((s) => [s.file, s.expected]));
   const lines = [];
   const r = await runAll({
@@ -215,8 +216,8 @@ await okAsync("7. a fully-passing run reports exactly 440 passed, 0 failed", asy
   assert.equal(r.ok, true);
   assert.equal(r.code, 0);
   assert.equal(r.totalPassed, EXPECTED_TOTAL);
-  assert.equal(EXPECTED_TOTAL, 440);
-  assert.ok(lines.some((l) => /440 passed, 0 failed/.test(l)), "summary must state 440 passed, 0 failed");
+  assert.equal(EXPECTED_TOTAL, 423);
+  assert.ok(lines.some((l) => /423 passed, 0 failed/.test(l)), "summary must state 423 passed, 0 failed");
   // parseSuiteResult correctness (count-mismatch and failed>0 both fail).
   assert.equal(parseSuiteResult("10 passed, 0 failed", 10).ok, true);
   assert.equal(parseSuiteResult("9 passed, 0 failed", 10).ok, false);

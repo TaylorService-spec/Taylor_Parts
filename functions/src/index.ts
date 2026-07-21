@@ -36,6 +36,26 @@ export {
 // deployment/export status.
 export { runReportDefinitionCallable } from "./reporting/runReportDefinitionCallable";
 
+// --- Issue #325 / ADR-007 D-RULES CORRECTED surface: trusted saved-
+// definition CRUD ---
+// Same "export is not deployment" posture as the surfaces above: not
+// deployed to the live project, and no client calls these (Customer
+// persistence integration is explicitly out of scope for this task)
+// until a separate, later Owner production authorization. firestore.
+// rules denies ALL direct client read/write on reportDefinitions
+// unconditionally -- these six callables are now the ONLY path to that
+// collection. A saved definition confers no report-data access;
+// executing a saved definition's query still reauthorizes independently
+// through the D-FN surface above.
+export {
+  createSavedDefinitionCallable,
+  getSavedDefinitionCallable,
+  listSavedDefinitionsCallable,
+  renameSavedDefinitionCallable,
+  duplicateSavedDefinitionCallable,
+  deleteSavedDefinitionCallable,
+} from "./reporting/savedDefinitionCallables";
+
 // --- Issue #226 surface: trusted effective-access feed ---
 // Same "export is not deployment" posture as the surfaces above: not
 // deployed to the live project, and no client calls it (Customer's own

@@ -34,28 +34,39 @@ import { PERMISSION_CATALOG } from "./permissionCatalog";
 // holds" rather than a hand-copied list, so the two can never silently
 // drift apart if ADMIN_ROLE's own grant set is ever revised.
 //
-// Issue #325 / ADR-007 W1 (docs/implementation-plans/governed-object-
-// based-report-creator.md): Owner ADDITIONALLY holds every ACTIVE
-// wave-1 `report.*` capability (the 4 object-level `report.<object>.
-// read` ids plus the 27 active field-level `report.<object>.field.
-// <id>.read` ids -- customer/contact/location/equipment). Derived from
+// Issue #325 / ADR-007: Owner ADDITIONALLY holds every ACTIVE `report.*`
+// capability the catalog currently registers -- derived from
 // permissionCatalog.ts, not hand-listed, so this can never silently
-// drift from D-226's own registration. `active:false` ids (customer.
-// notes/accountOwner, location.accessNotes -- security-text/employee-
-// sensitivity fields pending their own later review/wave, per D-226's
-// own catalog comment) are deliberately EXCLUDED from this list, not
-// merely relied on to deny via the resolver's own active check: Owner's
-// catalog membership should reflect exactly what's currently
-// reportable, not carry ids that aren't yet meaningfully grantable.
-// This is the ONLY Role (of all eleven -- three compatibility, eight
-// governed business) that holds any report.* id; admin/dispatcher/
-// technician and the other seven governed business Roles are
-// byte-unchanged by this addition (see the dedicated tests).
-const OWNER_ACTIVE_WAVE1_REPORT_PERMISSIONS = PERMISSION_CATALOG.filter(
+// drift from D-226's own registration and automatically picks up each
+// later wave's additions without a code change here. Two waves
+// contribute ids as of this comment:
+//   - W1 (4 object-level `report.<object>.read` + 27 active field-level
+//     `report.<object>.field.<id>.read` ids -- customer/contact/
+//     location/equipment).
+//   - W-SAVE (5 saved-definition CRUD ids: `report.definition.
+//     {create,read,rename,duplicate,delete}` -- enforced exclusively
+//     through the trusted saved-definition service,
+//     functions/src/reporting/savedDefinitionCommands.ts; firestore.
+//     rules denies ALL direct client read/write on reportDefinitions
+//     unconditionally, so holding these ids confers nothing outside
+//     that service).
+// `active:false` ids (customer.notes/accountOwner, location.accessNotes
+// -- security-text/employee-sensitivity fields pending their own later
+// review/wave, per D-226's own catalog comment) are deliberately
+// EXCLUDED from this list, not merely relied on to deny via the
+// resolver's own active check: Owner's catalog membership should
+// reflect exactly what's currently reportable, not carry ids that
+// aren't yet meaningfully grantable. This is the ONLY Role (of all
+// eleven -- three compatibility, eight governed business) that holds
+// any report.* id; admin/dispatcher/technician and the other seven
+// governed business Roles are byte-unchanged by this addition (see the
+// dedicated tests) -- "only the approved W-SAVE role" (Owner) holds the
+// five new ids, per this task's own explicit requirement.
+const OWNER_ACTIVE_REPORT_PERMISSIONS = PERMISSION_CATALOG.filter(
   (p) => p.id.startsWith("report.") && p.active !== false,
 ).map((p) => p.id);
 
-const OWNER_PERMISSIONS = [...ADMIN_ROLE.permissions, ...OWNER_ACTIVE_WAVE1_REPORT_PERMISSIONS];
+const OWNER_PERMISSIONS = [...ADMIN_ROLE.permissions, ...OWNER_ACTIVE_REPORT_PERMISSIONS];
 const OWNER_CONDITIONS = ADMIN_ROLE.conditionsByPermission;
 
 // Spec §26.2 -- least-privilege baseline. Deliberately zero permissions:
