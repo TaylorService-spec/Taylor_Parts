@@ -252,6 +252,10 @@ async function main() {
     (await createDocAt("reportDefinitions", "rules-rd-create-longname", tokens[OWNER_A],
       reportDefinitionFixture({ id: "rules-rd-create-longname", ownerUid: OWNER_A, name: "x".repeat(121) }))) === 403);
 
+  report("create ALLOWED with a name at the exact 120-character boundary (independent review round 1 gap -- only the 121-char reject side was previously tested)",
+    (await createDocAt("reportDefinitions", "rules-rd-create-boundaryname", tokens[OWNER_A],
+      reportDefinitionFixture({ id: "rules-rd-create-boundaryname", ownerUid: OWNER_A, name: "x".repeat(120) }))) === 200);
+
   report("create denied when updatedAt differs from createdAt (creation baseline)",
     (await createDocAt("reportDefinitions", "rules-rd-create-tsmismatch", tokens[OWNER_A], {
       id: "rules-rd-create-tsmismatch", name: "x", ownerUid: OWNER_A, definition: SAMPLE_DEFINITION,
@@ -302,6 +306,11 @@ async function main() {
   report("a non-owner cannot rename another owner's report definition",
     (await updateDocAt("reportDefinitions", "rules-rd-rename-2", tokens[OWNER_B], { name: "Hijacked", updatedAt: Date.now() })) === 403);
 
+  await db.doc("reportDefinitions/rules-rd-rename-2b").set(reportDefinitionFixture({ id: "rules-rd-rename-2b", ownerUid: OWNER_A }));
+
+  report("admin has NO special rename/update authority over another principal's report (private-by-owner, no override -- independent review round 1 gap)",
+    (await updateDocAt("reportDefinitions", "rules-rd-rename-2b", tokens[ADMIN_UID], { name: "Admin Hijack", updatedAt: Date.now() })) === 403);
+
   await db.doc("reportDefinitions/rules-rd-rename-3").set(reportDefinitionFixture({ id: "rules-rd-rename-3", ownerUid: OWNER_A }));
 
   report("owner cannot change the embedded definition via update (only name/updatedAt are editable)",
@@ -324,6 +333,11 @@ async function main() {
 
   report("owner cannot rename by adding an unrelated extra key alongside name",
     (await updateDocAt("reportDefinitions", "rules-rd-rename-6", tokens[OWNER_A], { name: "x", updatedAt: Date.now(), extra: "nope" })) === 403);
+
+  await db.doc("reportDefinitions/rules-rd-rename-7").set(reportDefinitionFixture({ id: "rules-rd-rename-7", ownerUid: OWNER_A }));
+
+  report("owner CAN rename to a name at the exact 120-character boundary (independent review round 1 gap -- only the 121-char reject side was previously tested)",
+    (await updateDocAt("reportDefinitions", "rules-rd-rename-7", tokens[OWNER_A], { name: "x".repeat(120), updatedAt: Date.now() })) === 200);
 
   // === Delete ===
 
