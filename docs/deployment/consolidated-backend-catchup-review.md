@@ -1,10 +1,11 @@
 # Consolidated Backend Catch-Up Review — Production Release Decision
 
-**Status: CORRECTED AFTER AUTHORIZED DEPLOYMENT TEST AND FULL ROLLBACK.**
-The 2026-07-20 deployment from `d5f2172` was rolled back after row 3 exposed a
-verification-contract error: a version bump does not revoke an active older
-assignment. Production currently has none of the reviewed Functions and its prior
-Rules were restored. See `docs/DECISIONS.md` entry #35.
+**Status: DEPLOYED; CORRECTED PRODUCTION VERIFICATION PASSED.**
+The first 2026-07-20 deployment from `d5f2172` was rolled back after row 3 exposed
+a verification-contract error. After PR #358 corrected the matrix, the reviewed
+Rules and exactly 11 authorized Functions were redeployed from `3a9c3ff`; the
+corrected assignment-consistency and revocation checks passed and all temporary
+data was removed. See `docs/DECISIONS.md` entries #35–#36.
 No production write, credential access, RoleAssignment, claims change, or Admin
 activation was performed to produce this document. Every command below is
 presented for Owner review; each stage requires its own explicit, scoped Owner
