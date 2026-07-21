@@ -1,0 +1,5 @@
+rudy.digiorgio@gmail.com	*
+region=us-central1
+expected_project=taylor-parts
+active_project=taylor-parts
+timestamp_utc=20260721T225517Z
