@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
+import { useCurrentTechnician } from "../../hooks/useCurrentTechnician";
+import { useAssignedJobs } from "../../hooks/useAssignedJobs";
 import { updateJobStatus } from "../../domain/jobActions";
-import { JOBS_COLLECTION, JOB_STATUS } from "../../domain/constants";
+import { JOB_STATUS } from "../../domain/constants";
 import { useInventory } from "../../demo/InventoryContext";
 import { isHeroActiveJob, HERO_JOB_PARTS_REQUIRED } from "../../demo/heroConfig";
 
@@ -21,7 +22,14 @@ const TRAVEL_STAGE = {
 };
 
 export default function FieldMode() {
-  const { data: jobs, loading } = useFirestoreCollection(JOBS_COLLECTION);
+  // Read-scoping: Field Mode reads ONLY the caller's own jobs, via a query
+  // constrained to their mapped technicianId (useCurrentTechnician's first
+  // hop) -- never a full-collection read. An unmapped user gets no jobs and a
+  // clear prompt (fail closed), which also matches the scoped read rule.
+  const { technicianId, loading: technicianLoading } = useCurrentTechnician();
+  const { data: jobs, loading: jobsLoading } = useAssignedJobs(technicianId);
+  const loading = technicianLoading || jobsLoading;
+  const unmapped = !technicianLoading && !technicianId;
   const { parts, truckStock, usedPartsByJob, consumePart } = useInventory();
   const [travelStageByJob, setTravelStageByJob] = useState({});
 
@@ -58,6 +66,11 @@ export default function FieldMode() {
 
       {loading ? (
         <p className="fo-muted">Loading work orders…</p>
+      ) : unmapped ? (
+        <p className="fo-muted">
+          Your account isn’t linked to a technician profile yet. Ask a
+          dispatcher to link your account before using Field Mode.
+        </p>
       ) : assignedJobs.length === 0 ? (
         <p className="fo-muted">No assigned work orders</p>
       ) : (

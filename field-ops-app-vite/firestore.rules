@@ -302,10 +302,16 @@ service cloud.firestore {
     }
 
     match /fieldops_jobs/{jobId} {
-      // READ: DEFERRED (still permissive). Read scoping (a/d all; technician
-      // own-assigned only) requires the Field Mode query migration -- tracked
-      // for a later slice, must precede deployment of a scoped read rule.
-      allow read: if isSignedIn();
+      // READ: admin/dispatcher read all; a technician reads ONLY jobs assigned
+      // to their mapped technicianId (proven via users/{uid}.technicianId).
+      // Field Mode issues the matching scoped query (where technicianId ==
+      // callerTechnicianId), so the LIST is provably authorized; an
+      // unconstrained technician read is denied (fail closed). operationalRoles
+      // are not consulted.
+      allow read: if isAdminOrDispatcher()
+        || (isSignedIn()
+          && callerTechnicianId() != null
+          && resource.data.technicianId == callerTechnicianId());
 
       // CREATE: admin/dispatcher only; a new job must start open + unassigned.
       allow create: if isAdminOrDispatcher()
@@ -333,8 +339,13 @@ service cloud.firestore {
     }
 
     match /fieldops_technicians/{techId} {
-      // READ: DEFERRED (still permissive) -- see fieldops_jobs read note.
-      allow read: if isSignedIn();
+      // READ: admin/dispatcher read all; a technician reads ONLY their OWN
+      // mapped technician record (direct doc read via useCurrentTechnician).
+      // An unconstrained technician read is denied (fail closed).
+      allow read: if isAdminOrDispatcher()
+        || (isSignedIn()
+          && callerTechnicianId() != null
+          && techId == callerTechnicianId());
 
       // CREATE: admin/dispatcher only; a new technician starts `available`.
       allow create: if isAdminOrDispatcher()
