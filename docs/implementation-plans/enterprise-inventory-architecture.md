@@ -99,10 +99,10 @@ Mapped against `docs/roadmaps/roadmap-reconciliation-2026-07.md` (this plan prop
 
 The Owner approved INV-1 Phase 0 as a governed sequence: **PR 0.1** (detection engine + tests), **PR 0.2** (operator audit + retry tooling, script-based form approved), **PR 0.3** (runbook + governance registration), **Gate 0.4(a)** (read-only production detection, separately authorized), **Gate 0.4(b)** (production retries for an exact Owner-approved list, separately authorized). Every PR stops for Owner review before merge. Current status:
 
-- **PR 0.1 — proposed** (pure detection engine; validation doc: `docs/audits/inv1-phase0/pr01-detection-validation.md`); complete only after Owner-reviewed merge.
-- **PR 0.2 — not started.**
+- **PR 0.1 — merged** (PR #373, merge commit `0b82009`, 2026-07-22; pure detection engine; validation doc: `docs/audits/inv1-phase0/pr01-detection-validation.md`).
+- **PR 0.2 — implemented, pending Owner review** (operator audit + controlled retry scripts; validation doc: `docs/audits/inv1-phase0/pr02-operator-tooling-validation.md`); complete only after Owner-reviewed merge.
 - **PR 0.3 — not started.**
-- **Gate 0.4 — not authorized.**
+- **Gate 0.4 — not authorized** (no production detection run, no production retry).
 - **Phase 0 — not complete.** Phases 1–8 remain NOT AUTHORIZED.
 
 ## 8. Validation
