@@ -1533,6 +1533,21 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // INV-1 Phase 1 PR 1.2 (ADR-008 Accepted / Decision #40) -- canonical
+    // Part Master storage: parts/{partId} and manufacturers/{manufacturerId}.
+    // Trusted-writer-only (functions/src/partMaster/partMasterCommands.ts,
+    // Admin SDK -- bypasses Rules): ALL client access is denied, including
+    // admin -- there is no client-direct admin write path, and no client
+    // read model is authorized yet (the PR 1.9 UI read posture is its own
+    // later Tier 2 gate). No tenant enforcement (Issue #140). Physical
+    // delete does not exist anywhere -- lifecycle status only.
+    match /parts/{partId} {
+      allow read, write: if false;
+    }
+    match /manufacturers/{manufacturerId} {
+      allow read, write: if false;
+    }
+
     // Enterprise Access & Administration Platform (Issue #226) --
     // governed-storage foundation (docs/specifications/
     // enterprise-access-and-administration-platform.md sec5,
