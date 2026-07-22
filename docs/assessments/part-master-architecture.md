@@ -1,7 +1,7 @@
 ---
 artifact_type: assessment
 gate: Repository Assessment
-status: Draft — awaiting Owner review (Phase 1 gate)
+status: Approved — Owner decisions O-1…O-12 (2026-07-22), recorded in DECISIONS.md #40
 date: 2026-07-22
 owner: Claude Code (Inventory)
 related_adrs:
@@ -52,7 +52,7 @@ Every present-day source of part identity/descriptive data. **No current collect
 
 ## 3. Timing observation
 
-Production currently holds **zero Work Orders and no real part data** (Gate 0.4(a) evidence, disposition A). This is the cheapest possible moment to introduce a canonical Part Master: there is no production part data to migrate — "migration" reduces to schema adoption, reference-compatibility for the sku-shaped IDs already embedded in code/tests, and a seed path for real data.
+The only production evidence available (Gate 0.4(a), disposition A) shows **zero Work Orders in the audited `fieldops_wos` collection**; that audit did not inspect other collections, so this assessment does not claim broader production-data absence. What IS established from the schema itself: **no canonical Part Master collection exists anywhere** (no `parts` collection appears in `firestore.rules` or code), and descriptive part identity in the repository is synthetic. This still makes now the cheapest moment to introduce the Part Master: there is no Part Master data anywhere to migrate — "migration" reduces to schema adoption, reference-compatibility for the sku-shaped IDs already embedded in code/tests, profiling of any part-adjacent production collections at migration time (plan §4 step 1), and a seed path for real data.
 
 ## 4. Risks
 

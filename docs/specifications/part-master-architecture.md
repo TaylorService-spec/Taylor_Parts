@@ -1,7 +1,7 @@
 ---
 artifact_type: specification
 gate: Sprint Specification
-status: Draft — awaiting Owner review (Phase 1 gate)
+status: Approved — Owner decisions O-1…O-12 (2026-07-22), recorded in DECISIONS.md #40
 date: 2026-07-22
 owner: Claude Code (Inventory)
 related_adrs:
@@ -20,7 +20,7 @@ target_release: none — governance artifact only
 
 # Part Master Specification — Enterprise Operations OS
 
-**This Specification authorizes NO implementation.** Company-neutral; Taylor Parts is the reference implementation. Verified against `origin/main` @ `8147c1a`. Design decisions herein are **recommendations pending Owner decisions O-1…O-12** (Implementation Plan §6).
+**This Specification authorizes NO implementation.** Company-neutral; Taylor Parts is the reference implementation. Verified against `origin/main` @ `8147c1a`. Design decisions herein are **approved per Owner decisions O-1…O-12** (2026-07-22; dispositions in Implementation Plan §6, adopted as DECISIONS.md #40).
 
 ## 1. Canonical identity (recommendation for O-1: Option D, hybrid)
 

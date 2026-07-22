@@ -1,6 +1,6 @@
 # ADR-008: Part Master — canonical part identity and governed catalog
 
-**Status:** Proposed (2026-07-22) — awaiting Owner decisions O-1…O-12 (see `docs/implementation-plans/inv1-phase1-part-master.md` §6). Acceptance is an explicit Owner gate; this ADR authorizes no implementation, schema, Rules, index, Function, migration, or deployment.
+**Status:** Accepted (2026-07-22) — Owner decisions O-1…O-12 approved (recorded in `docs/DECISIONS.md` #40; dispositions in `docs/implementation-plans/inv1-phase1-part-master.md` §6). Acceptance authorizes no implementation, schema, Rules, index, Function, migration, or deployment — each Phase 1 PR remains its own governed gate, and only PR 1.1 is recommended for the next separately authorized gate.
 
 ## Context
 
@@ -30,7 +30,7 @@ Immutable referential identity vs human usability; append-only history that must
 - Every stock-bearing domain references one immutable `partId`; barcode/import resolve through one alias mechanism; supplier/manufacturer churn never destabilizes references.
 - The static catalog becomes a bootstrap/seed source only, then retires (its `warehouseQty` baseline replacement is a Phase-1 ledger-aggregate concern flagged in the implementation plan).
 - New composite indexes and new trusted-writer Functions are required (each behind its own gated row; none authorized by this ADR).
-- Migration is additive and cheap now (no production part data); deferring it makes the sku freeze-in permanent.
+- Migration is additive and cheap now (no Part Master collection exists anywhere; the only production audit to date found the Work Order collection empty — part-adjacent collections are profiled at migration step 1); deferring makes the sku freeze-in permanent.
 - More collections than an embedded design — the cost of bounded documents, simple Rules, and indexable lookups.
 
 ## Migration implications

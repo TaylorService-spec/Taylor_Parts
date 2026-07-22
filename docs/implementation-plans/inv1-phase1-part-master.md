@@ -1,7 +1,7 @@
 ---
 artifact_type: implementation-plan
 gate: Implementation Plan
-status: Draft — awaiting Owner decisions O-1…O-12
+status: Approved — Owner decisions O-1…O-12 (2026-07-22), recorded in DECISIONS.md #40
 date: 2026-07-22
 owner: Claude Code (Inventory)
 related_adrs:
@@ -48,29 +48,29 @@ Merge gate per PR: Owner review. Deployment gates: Rules (1.2–1.4 blocks) and 
 
 ## 4. Migration strategy (O-8; execution NOT authorized)
 
-1. Profile current data (production parts data: none — Gate 0.4(a) found zero WOs; repo data is synthetic). 2. Canonical IDs: grandfather existing sku strings as `partId` for anything referenced by ledger/workflow/test fixtures; opaque IDs for new parts. 3. Alias map: sku → INTERNAL_PN + LEGACY aliases. 4. Create `parts` records (seed via 1.8 CSV dry-run → authorized run). 5. Supplier items from real supplier data (dormant `supplier_catalog` content, if any, mapped — not deleted). 6. Backfill references only where a field is absent; **never rewrite ledger/snapshot history**. 7. Dual-read (Part Master first, static catalog fallback). 8. Validation: parity report (counts, availability math, alias resolution) as evidence artifact. 9. Controlled cutover (Owner gate): fallback removed. 10. Legacy deprecation: static catalog files retired; dormant Epic 5 surfaces retired per D-3's later migration gate. Rollback pre-cutover: additive collections unused, fallback intact. Reconciliation: re-runnable parity report.
+1. Profile current data — including an authorized read-only inspection of any part-adjacent production collections (`suppliers`, `supplier_catalog`, `stock_locations`, `purchase_orders`, reorder collections), since Gate 0.4(a) evidenced only that `fieldops_wos` is empty; repo part data is synthetic and no Part Master collection exists in the schema. 2. Canonical IDs: grandfather existing sku strings as `partId` for anything referenced by ledger/workflow/test fixtures; opaque IDs for new parts. 3. Alias map: sku → INTERNAL_PN + LEGACY aliases. 4. Create `parts` records (seed via 1.8 CSV dry-run → authorized run). 5. Supplier items from real supplier data (dormant `supplier_catalog` content, if any, mapped — not deleted). 6. Backfill references only where a field is absent; **never rewrite ledger/snapshot history**. 7. Dual-read (Part Master first, static catalog fallback). 8. Validation: parity report (counts, availability math, alias resolution) as evidence artifact. 9. Controlled cutover (Owner gate): fallback removed. 10. Legacy deprecation: static catalog files retired; dormant Epic 5 surfaces retired per D-3's later migration gate. Rollback pre-cutover: additive collections unused, fallback intact. Reconciliation: re-runnable parity report.
 
 ## 5. Registration in the enterprise plan
 
-`docs/implementation-plans/enterprise-inventory-architecture.md` §7b is updated in this PR to add: Phase 0 CLOSED (evidence merged, PR #379); **Part Master ADR (ADR-008) Proposed — in Owner review; Phase 1 implementation NOT started; first implementation PR NOT authorized.** No prior governance history rewritten.
+`docs/implementation-plans/enterprise-inventory-architecture.md` §7c records: Phase 0 CLOSED (evidence merged, PR #379); **ADR-008 Accepted (O-1…O-12 approved, DECISIONS.md #40); Phase 1 implementation NOT started; PR 1.1 is the recommended next separately authorized unit; PRs 1.2–1.10 remain unauthorized.** No prior governance history rewritten.
 
-## 6. Owner decisions required (none assumed)
+## 6. Owner decisions (APPROVED 2026-07-22 — recorded in `docs/DECISIONS.md` #40)
 
-| # | Decision | Recommendation |
+| # | Decision | Disposition |
 |---|---|---|
-| O-1 | Canonical identity | Option D hybrid + sku-grandfathering (Spec §1) |
-| O-2 | Data model | Option C normalized top-level collections (Spec §4) |
-| O-3 | Alias storage | Separate indexed `part_aliases`, doc-ID structural uniqueness (Spec §2) |
-| O-4 | Unit-of-measure | Stocking unit on Part + per-supplier purchase unit/conversion; history preserved as transacted (Spec §11) |
-| O-5 | Supplier catalog | Normalized `part_supplier_items`; dormant `supplier_catalog` superseded, not deleted (Spec §3) |
-| O-6 | Control classification | controlType × stockingClass + flags, stored inert in Phase 1 (Spec §6) |
-| O-7 | Tenant posture | Tenant-ready-tenant-inert per Spec §12; no fields now |
-| O-8 | Migration strategy | §4 ten-step, grandfathered IDs, no history rewrite |
-| O-9 | CSV contract | Spec §8, contactCsvImport pattern, dry-run default |
-| O-10 | Phase 1 PR sequence | §2 (1.1–1.10) |
-| O-11 | ADR-008 status | Accept (currently Proposed) |
-| O-12 | First implementation PR | Authorize PR 1.1 (pure types/domain — zero Rules/index/deploy surface) as the next gate after O-1…O-11 |
+| O-1 | Canonical identity | **APPROVED** — Option D hybrid + sku-grandfathering; ledger history never rewritten (Spec §1) |
+| O-2 | Data model | **APPROVED** — Option C normalized top-level collections; Option D partial embedding remains a measured fallback only for bounded metadata proven necessary by implementation evidence (Spec §4) |
+| O-3 | Alias storage | **APPROVED** — separately indexed alias docs, deterministic normalized doc IDs, structural uniqueness, explicit conflicts, active/inactive + source/audit metadata, tenant-prefix-compatible (Spec §2) |
+| O-4 | Unit-of-measure | **APPROVED** — stockingUnit on Part + per-supplier purchaseUnit/conversion; one pure conversion authority; precision/rounding rules; history preserved as transacted (Spec §11) |
+| O-5 | Supplier catalog | **APPROVED** — normalized `part_supplier_items` owning supplier identity/SKU/cost/currency/leadTime/MOQ/multiple/contract/availability/preferred/verification; supplier change never alters Part identity (Spec §3) |
+| O-6 | Control classification | **APPROVED** — controlType (STANDARD/SERIALIZED/LOT/SERIALIZED_LOT + expiry tracking) × stockingClass (STOCKED/NON_STOCK/SERVICE/KIT) + flags; fields definable in Phase 1, serial/lot/expiry *behavior* deferred to its governed later phase; ADR-006 Part/serialized-instance/company-asset/customer-equipment boundary preserved (Spec §6) |
+| O-7 | Tenant posture | **APPROVED** — tenant-ready, tenant-inert; no tenant records/fields/Rules/company-scoped runtime behavior; partitioning documented for #140 (Spec §12) |
+| O-8 | Migration | **APPROVED** — §4 additive ten-step, grandfathered IDs, dual-read, parity evidence, Owner-gated cutover; **no migration authorized by the ADR merge** |
+| O-9 | CSV contract | **APPROVED** — dry-run-first per Spec §8; explicit authorization before mutation mode; **no CSV implementation authorized by the ADR merge** |
+| O-10 | Phase 1 PR sequence | **APPROVED as roadmap** — approval of the sequence does not authorize any of the ten PRs; each requires its own governed gate |
+| O-11 | ADR-008 status | **APPROVED** — Accepted; adopted as `DECISIONS.md` #40 |
+| O-12 | First implementation PR | **APPROVED AS NEXT-GATE RECOMMENDATION** — PR 1.1 (pure types/enums/validators/normalization/domain model) may be separately authorized after the ADR PR merges; **not authorized by that merge** |
 
 ## 7. Validation (of this package)
 
-All current-state claims verified against `origin/main` @ `8147c1a` code (catalog interfaces, units distribution, rules write-postures, indexes file, CSV precedent, ADR-006 boundary, free-text supplierName, DECISIONS tail #38); ADR numbered 008 after inspecting `docs/architecture/`; deployment claims grounded in DECISIONS #36/#38 and the Gate 0.4(a) evidence; docs-only diff; no schema/Rules/Functions/index/frontend/migration/production change; DECISIONS.md untouched (posture per gate §24: ADR Proposed, decisions presented, no entry before Owner approval).
+All current-state claims verified against `origin/main` @ `8147c1a` code (catalog interfaces, units distribution, rules write-postures, indexes file, CSV precedent, ADR-006 boundary, free-text supplierName, DECISIONS tail #38); ADR numbered 008 after inspecting `docs/architecture/`; deployment claims grounded in DECISIONS #36/#38 and the Gate 0.4(a) evidence; docs-only diff; no schema/Rules/Functions/index/frontend/migration/production change; DECISIONS.md #40 records the adoption (appended at the finalization gate after Owner approval of O-1…O-12).
