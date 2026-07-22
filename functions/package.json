@@ -28,7 +28,8 @@
     "audit:inventory-effects": "npm run build && node scripts/auditInventoryEffects.js",
     "retry:inventory-effects": "npm run build && node scripts/retryInventoryEffects.js",
     "test:workOrderEngineFunctions": "npm run build && node --test test/workOrderEngineFunctions.test.js",
-    "test:completeAssignedJob": "npm run build && node --test test/completeAssignedJob.test.js"
+    "test:completeAssignedJob": "npm run build && node --test test/completeAssignedJob.test.js",
+    "test:fRules1": "node test/legacyJobsTechniciansRules.test.js"
   },
   "dependencies": {
     "firebase-admin": "^12.7.0",

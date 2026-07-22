@@ -289,10 +289,17 @@ service cloud.firestore {
         || (from == 'assigned' && (to == 'in_progress' || to == 'open'))
         || (from == 'in_progress' && to == 'complete');
     }
-    // The two transitions a technician may perform on their OWN assigned job.
+    // The ONLY transition a technician may perform directly on their OWN
+    // assigned job (Decision #39 / O-3): start work. Completion
+    // (in_progress -> complete, plus the technician -> available cascade)
+    // is exclusively the trusted completeAssignedJob callable's authority
+    // (functions/src/completeAssignedJob.ts, Admin SDK -- bypasses these
+    // Rules by design). Deploy-order dependency: these hardened Rules must
+    // deploy only AFTER Gate D1 (callable live + frontend gate flipped),
+    // or production completion breaks -- see the technician-self-write
+    // implementation plan.
     function isTechnicianJobTransition(from, to) {
-      return (from == 'assigned' && to == 'in_progress')
-        || (from == 'in_progress' && to == 'complete');
+      return from == 'assigned' && to == 'in_progress';
     }
     function isTechnicianStatus(s) {
       return s in ['available', 'on_job', 'off_shift'];
@@ -319,9 +326,16 @@ service cloud.firestore {
         && request.resource.data.technicianId == null;
 
       // UPDATE: a completed job is terminal for every client; otherwise either
-      // (a) admin/dispatcher performing a valid lifecycle/assignment change, or
-      // (b) the ASSIGNED technician performing a status-only valid transition
-      //     on their OWN job (proven via users/{uid}.technicianId).
+      // (a) admin/dispatcher performing a previously-approved lifecycle/
+      //     assignment change (PR-2 contract, unchanged here), or
+      // (b) the ASSIGNED technician performing a STATUS-ONLY start
+      //     (assigned -> in_progress) on their OWN job (proven via
+      //     users/{uid}.technicianId). Direct client completion is DENIED
+      //     for technicians -- completion is Function-only
+      //     (completeAssignedJob). jobStatusOnlyChange()'s hasOnly(['status'])
+      //     allowlist also makes technicianId/workOrderId/customer/address/
+      //     completedAt/completedBy or any other field client-immutable in
+      //     this transition.
       allow update: if resource.data.status != 'complete'
         && (
           (isAdminOrDispatcher()
@@ -351,20 +365,16 @@ service cloud.firestore {
       allow create: if isAdminOrDispatcher()
         && request.resource.data.status == 'available';
 
-      // UPDATE: status must remain a valid enum, and either admin/dispatcher,
-      // or the mapped technician updating ONLY their OWN status. (Own-status
-      // write is the interim accommodation for the client-direct assign/
-      // complete cascade -- Specification section 17; full technician
-      // self-write denial is DEFERRED to the trusted-Function cascade.)
-      allow update: if isTechnicianStatus(request.resource.data.status)
-        && (
-          isAdminOrDispatcher()
-          ||
-          (isSignedIn()
-            && callerTechnicianId() != null
-            && techId == callerTechnicianId()
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']))
-        );
+      // UPDATE: admin/dispatcher ONLY, and status must remain a valid enum
+      // (their previously-approved operational-correction authority, PR-2
+      // contract -- e.g. assign sets on_job). The interim technician
+      // own-`status` branch is REMOVED (Decision #39): a technician holds NO
+      // direct write on this collection -- completion-derived `available` is
+      // exclusively the trusted completeAssignedJob callable's write (Admin
+      // SDK). A technician can therefore no longer imitate the completion
+      // cascade client-side.
+      allow update: if isAdminOrDispatcher()
+        && isTechnicianStatus(request.resource.data.status);
 
       // DELETE: denied for all clients.
       allow delete: if false;

@@ -195,12 +195,18 @@ ok("6b. descendantPids returns only the owned root's descendants by PID", () => 
 // saved-definition service (functions/src/reporting/
 // savedDefinitionCommands.ts) is the only remaining path, matching this
 // program's own governed-storage posture (roleAssignments/auditEvents/
-// etc.) rather than a bespoke ownership-Rules model. This self-test's
+// etc.) rather than a bespoke ownership-Rules model. Then from 423 to
+// 466 (F-RULES-1 PR-C) when legacyJobsTechniciansRules.test.js was
+// registered STRICT with 43 assertions: technician direct completion and
+// the interim technician own-status write are DENIED (completion is the
+// trusted completeAssignedJob callable's sole authority), plus audit-
+// forgery and field-smuggling denial coverage -- deploy-order
+// D1-before-D2 is documented in that suite's header. This self-test's
 // own literal sanity-check is updated to match, same as it must be
 // updated any time SUITES' expected counts change -- a deliberate
 // hardcoded cross-check that EXPECTED_TOTAL wasn't silently miscomputed,
 // not a value that should ever drift unnoticed.
-await okAsync("7. a fully-passing run reports exactly 423 passed, 0 failed", async () => {
+await okAsync("7. a fully-passing run reports exactly 466 passed, 0 failed", async () => {
   const byFile = new Map(SUITES.map((s) => [s.file, s.expected]));
   const lines = [];
   const r = await runAll({
@@ -216,8 +222,8 @@ await okAsync("7. a fully-passing run reports exactly 423 passed, 0 failed", asy
   assert.equal(r.ok, true);
   assert.equal(r.code, 0);
   assert.equal(r.totalPassed, EXPECTED_TOTAL);
-  assert.equal(EXPECTED_TOTAL, 423);
-  assert.ok(lines.some((l) => /423 passed, 0 failed/.test(l)), "summary must state 423 passed, 0 failed");
+  assert.equal(EXPECTED_TOTAL, 466);
+  assert.ok(lines.some((l) => /466 passed, 0 failed/.test(l)), "summary must state 466 passed, 0 failed");
   // parseSuiteResult correctness (count-mismatch and failed>0 both fail).
   assert.equal(parseSuiteResult("10 passed, 0 failed", 10).ok, true);
   assert.equal(parseSuiteResult("9 passed, 0 failed", 10).ok, false);
