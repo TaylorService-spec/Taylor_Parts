@@ -37,17 +37,17 @@ Contract suite (pre-PR-C, default mode): **COMPAT 13 / ENFORCED 16 / DEFERRED 1*
 
 - `functions/test/legacyJobsTechniciansRules.test.js` — **STRICT by default** (`F_RULES_1_STRICT=0` = local debug escape only), emits the runner-standard `N passed, M failed` summary.
 - **43 assertions: COMPAT 13 / ENFORCED 30 / DEFERRED 0.** New coverage beyond the prior 30: workOrderId-smuggle during start · completedAt/completedBy injection · arbitrary status (`cancelled`) · multi-field overwrite-as-complete · technician self-`available` (completion imitation) · dispatcher tech-status correction preserved (COMPAT) · 6 auditEvents cases (unauth/tech/admin/dispatcher forge-create incl. a forged `completeAssignedJob` action+actorUid, update, delete — against a seeded trusted-writer event).
-- Registered in `rulesRegressionRunner.mjs` `SUITES` (12th suite); **`EXPECTED_TOTAL` 423 → 466**; runner self-test cross-check updated (10/10 pass). Existing CI workflow (`firestore-rules-regression.yml`) already triggers on every touched path — no workflow change, no parallel CI, no continue-on-error.
-- Commands: full governed run `npm run test:rules` (functions; spawns its own emulators; expect **466 passed, 0 failed (12 suites)**); focused run `npm run test:fRules1` against a running firestore+auth emulator (expect **43 passed, 0 failed**). Emulator-only; no production access or credentials.
+- Registered in `rulesRegressionRunner.mjs` `SUITES` (13th suite; Inventory PR #383's `partMasterRules` +16 landed first during final reconciliation, 423→439); **`EXPECTED_TOTAL` 439 → 482**; runner self-test cross-check updated (10/10 pass). Existing CI workflow (`firestore-rules-regression.yml`) already triggers on every touched path — no workflow change, no parallel CI, no continue-on-error.
+- Commands: full governed run `npm run test:rules` (functions; spawns its own emulators; expect **482 passed, 0 failed (13 suites)**); focused run `npm run test:fRules1` against a running firestore+auth emulator (expect **43 passed, 0 failed**). Emulator-only; no production access or credentials.
 
 ## After-state validation results
 
 | Check | Result |
 |---|---|
 | Strict contract suite | **43 passed, 0 failed** — `STRICT: all contract assertions satisfied.` |
-| Full Rules regression | **466 passed, 0 failed (12 suites)** — all 11 prior suites unchanged |
+| Full Rules regression | **482 passed, 0 failed (13 suites)** — all 12 prior suites (incl. Inventory's partMasterRules 16/16) unchanged |
 | Root/mirror parity | byte-identical |
-| Runner self-test (`test:runner`) | 10/10 pass (466 cross-check) |
+| Runner self-test (`test:runner`) | 10/10 pass (482 cross-check) |
 | Frontend payload parity | start payload `{status:"in_progress"}` (exact `jobActions` write) **passes**; legacy completion payload `{status:"complete"}` **fails** — both as in-suite assertions |
 | Read-scoping regression | preserved (scoped-read assertions still pass; no read broadened) |
 | `git diff --check` | clean |
