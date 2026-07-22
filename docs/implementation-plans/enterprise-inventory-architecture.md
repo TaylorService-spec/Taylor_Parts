@@ -100,10 +100,15 @@ Mapped against `docs/roadmaps/roadmap-reconciliation-2026-07.md` (this plan prop
 The Owner approved INV-1 Phase 0 as a governed sequence: **PR 0.1** (detection engine + tests), **PR 0.2** (operator audit + retry tooling, script-based form approved), **PR 0.3** (runbook + governance registration), **Gate 0.4(a)** (read-only production detection, separately authorized), **Gate 0.4(b)** (production retries for an exact Owner-approved list, separately authorized). Every PR stops for Owner review before merge. Current status:
 
 - **PR 0.1 — merged** (PR #373, merge commit `0b82009`, 2026-07-22; pure detection engine; validation doc: `docs/audits/inv1-phase0/pr01-detection-validation.md`).
-- **PR 0.2 — implemented, pending Owner review** (operator audit + controlled retry scripts; validation doc: `docs/audits/inv1-phase0/pr02-operator-tooling-validation.md`); complete only after Owner-reviewed merge.
-- **PR 0.3 — not started.**
-- **Gate 0.4 — not authorized** (no production detection run, no production retry).
-- **Phase 0 — not complete.** Phases 1–8 remain NOT AUTHORIZED.
+- **PR 0.2 — merged** (PR #374, merge commit `c975258`, 2026-07-22; operator audit + controlled retry scripts; validation doc: `docs/audits/inv1-phase0/pr02-operator-tooling-validation.md`).
+- **PR 0.3 — implemented, pending Owner-reviewed merge** (runbook `docs/operations/inventory-effect-recovery-runbook.md`, SYSTEM_AUTHORITIES registration, this closeout; validation doc: `docs/audits/inv1-phase0/pr03-runbook-governance-validation.md`).
+- **Gate 0.4(a) — not authorized.** No production detection run has occurred; **production findings are unknown**.
+- **Gate 0.4(b) — not authorized.** No production recovery of any kind has been performed.
+- **Phase 0 completion is three distinct states — do not conflate them:**
+  1. **Repository implementation** — complete only after PR 0.3's Owner-reviewed merge.
+  2. **Production audit** — NOT complete; requires a separately authorized Gate 0.4(a) run with imported evidence.
+  3. **Production recovery** — NOT complete; requires Gate 0.4(b) exact-batch authorization(s), execution, and verified evidence — and is only meaningful after (2) establishes what, if anything, needs recovery.
+- Phases 1–8 remain NOT AUTHORIZED.
 
 ## 8. Validation
 
