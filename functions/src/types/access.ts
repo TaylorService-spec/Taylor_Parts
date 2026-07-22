@@ -191,7 +191,12 @@ export type AuditAction =
   | "runReportDefinition"
   | "exportReportDefinition"
   | "shareReportDefinition"
-  | "scheduleReportDefinition";
+  | "scheduleReportDefinition"
+  // F-RULES-1 / Decision #39 (Owner O-5) -- technician completes their own
+  // assigned legacy job through the trusted completeAssignedJob callable
+  // (functions/src/completeAssignedJob.ts). Same verb+Noun convention,
+  // extending this SAME immutable Audit Event path -- no parallel enum.
+  | "completeAssignedJob";
 
 export type AuditOutcome = "applied" | "denied";
 
