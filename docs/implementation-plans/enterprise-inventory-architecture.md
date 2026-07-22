@@ -95,6 +95,16 @@ Mapped against `docs/roadmaps/roadmap-reconciliation-2026-07.md` (this plan prop
 - **D-6 APPROVED** — adoption recorded as `DECISIONS.md` #37.
 - **Sequencing:** Customer (F-RULES-1 PR-2) and Inventory proceed in parallel; Inventory Phase 0 must not modify Firestore Rules files concurrently changed by the Customer session without explicit cross-session coordination.
 
+### 7b. Phase 0 authorization status (recorded 2026-07-22)
+
+The Owner approved INV-1 Phase 0 as a governed sequence: **PR 0.1** (detection engine + tests), **PR 0.2** (operator audit + retry tooling, script-based form approved), **PR 0.3** (runbook + governance registration), **Gate 0.4(a)** (read-only production detection, separately authorized), **Gate 0.4(b)** (production retries for an exact Owner-approved list, separately authorized). Every PR stops for Owner review before merge. Current status:
+
+- **PR 0.1 — proposed** (pure detection engine; validation doc: `docs/audits/inv1-phase0/pr01-detection-validation.md`); complete only after Owner-reviewed merge.
+- **PR 0.2 — not started.**
+- **PR 0.3 — not started.**
+- **Gate 0.4 — not authorized.**
+- **Phase 0 — not complete.** Phases 1–8 remain NOT AUTHORIZED.
+
 ## 8. Validation
 
 **Of this package (done now):**
