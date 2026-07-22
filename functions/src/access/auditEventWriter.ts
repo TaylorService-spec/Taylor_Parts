@@ -84,6 +84,13 @@ const AUDIT_ACTIONS: readonly AuditAction[] = [
   // F-RULES-1 / Decision #39 (Owner O-5) -- see the matching entry on the
   // AuditAction union (types/access.ts).
   "completeAssignedJob",
+  // INV-1 Phase 1 PR 1.2 -- Part Master trusted mutations (ADR-008 / Decision #40)
+  "createPart",
+  "updatePart",
+  "changePartStatus",
+  "createManufacturer",
+  "updateManufacturer",
+  "changeManufacturerStatus",
 ];
 
 // Issue #325 / ADR-007 D-AUDIT -- the subset of AUDIT_ACTIONS this

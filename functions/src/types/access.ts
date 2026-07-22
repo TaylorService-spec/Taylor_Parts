@@ -196,7 +196,14 @@ export type AuditAction =
   // assigned legacy job through the trusted completeAssignedJob callable
   // (functions/src/completeAssignedJob.ts). Same verb+Noun convention,
   // extending this SAME immutable Audit Event path -- no parallel enum.
-  | "completeAssignedJob";
+  | "completeAssignedJob"
+  // INV-1 Phase 1 PR 1.2 -- Part Master trusted mutations (ADR-008 / Decision #40)
+  | "createPart"
+  | "updatePart"
+  | "changePartStatus"
+  | "createManufacturer"
+  | "updateManufacturer"
+  | "changeManufacturerStatus";
 
 export type AuditOutcome = "applied" | "denied";
 

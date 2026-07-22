@@ -609,6 +609,23 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     resource: "audit.event",
     action: "read",
   }),
+  // INV-1 Phase 1 PR 1.2 -- Part Master trusted write service (ADR-008 /
+  // Decision #40; capability ids named by the accepted Part Master spec
+  // sec10). Registered-but-ungranted: no Role grants these yet, so every
+  // real resolution DENIES (unavailable-not-unsafe, same posture the
+  // report.* ids launched with).
+  Object.freeze({
+    id: "inventory.catalog.manage",
+    description: "Create and edit canonical Part and Manufacturer descriptive records (trusted Part Master service).",
+    resource: "inventory.catalog",
+    action: "manage",
+  }),
+  Object.freeze({
+    id: "inventory.catalog.activate",
+    description: "Change Part or Manufacturer lifecycle status (trusted Part Master service).",
+    resource: "inventory.catalog",
+    action: "activate",
+  }),
 ]) as readonly Permission[];
 
 export function isValidPermissionId(id: string): boolean {
