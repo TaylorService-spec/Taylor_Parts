@@ -268,13 +268,95 @@ service cloud.firestore {
         && data.voidReason == null;
     }
 
+    // ---- F-RULES-1 PR-2 helpers (legacy job/technician enforcement) ----
+    // Bounded first enforcement slice: WRITE/CREATE/DELETE only. READ stays
+    // `isSignedIn()` (DEFERRED -- read scoping requires the Field Mode client
+    // query migration to land before it can deploy without breaking Field
+    // Mode's broad jobs read). Compatibility source is users/{uid}.role
+    // (reuses isAdminOrDispatcher()); operationalRoles are NOT consulted here.
+
+    // The caller's trusted technicianId from users/{uid} (Admin-SDK-written,
+    // `allow write: if false`, so client-immutable). null when signed out,
+    // when the user doc is absent, or when the field is missing (fail closed).
+    function callerTechnicianId() {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('technicianId', null)
+        : null;
+    }
+    // jobWorkflow.js transitions (admin/dispatcher path).
+    function isValidJobTransition(from, to) {
+      return (from == 'open' && to == 'assigned')
+        || (from == 'assigned' && (to == 'in_progress' || to == 'open'))
+        || (from == 'in_progress' && to == 'complete');
+    }
+    // The two transitions a technician may perform on their OWN assigned job.
+    function isTechnicianJobTransition(from, to) {
+      return (from == 'assigned' && to == 'in_progress')
+        || (from == 'in_progress' && to == 'complete');
+    }
+    function isTechnicianStatus(s) {
+      return s in ['available', 'on_job', 'off_shift'];
+    }
+    function jobStatusOnlyChange() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
+    }
+
     match /fieldops_jobs/{jobId} {
+      // READ: DEFERRED (still permissive). Read scoping (a/d all; technician
+      // own-assigned only) requires the Field Mode query migration -- tracked
+      // for a later slice, must precede deployment of a scoped read rule.
       allow read: if isSignedIn();
-      allow write: if isSignedIn();
+
+      // CREATE: admin/dispatcher only; a new job must start open + unassigned.
+      allow create: if isAdminOrDispatcher()
+        && request.resource.data.status == 'open'
+        && request.resource.data.technicianId == null;
+
+      // UPDATE: a completed job is terminal for every client; otherwise either
+      // (a) admin/dispatcher performing a valid lifecycle/assignment change, or
+      // (b) the ASSIGNED technician performing a status-only valid transition
+      //     on their OWN job (proven via users/{uid}.technicianId).
+      allow update: if resource.data.status != 'complete'
+        && (
+          (isAdminOrDispatcher()
+            && isValidJobTransition(resource.data.status, request.resource.data.status))
+          ||
+          (isSignedIn()
+            && callerTechnicianId() != null
+            && resource.data.technicianId == callerTechnicianId()
+            && jobStatusOnlyChange()
+            && isTechnicianJobTransition(resource.data.status, request.resource.data.status))
+        );
+
+      // DELETE: denied for all clients (no job delete path exists).
+      allow delete: if false;
     }
 
     match /fieldops_technicians/{techId} {
-      allow read, write: if isSignedIn();
+      // READ: DEFERRED (still permissive) -- see fieldops_jobs read note.
+      allow read: if isSignedIn();
+
+      // CREATE: admin/dispatcher only; a new technician starts `available`.
+      allow create: if isAdminOrDispatcher()
+        && request.resource.data.status == 'available';
+
+      // UPDATE: status must remain a valid enum, and either admin/dispatcher,
+      // or the mapped technician updating ONLY their OWN status. (Own-status
+      // write is the interim accommodation for the client-direct assign/
+      // complete cascade -- Specification section 17; full technician
+      // self-write denial is DEFERRED to the trusted-Function cascade.)
+      allow update: if isTechnicianStatus(request.resource.data.status)
+        && (
+          isAdminOrDispatcher()
+          ||
+          (isSignedIn()
+            && callerTechnicianId() != null
+            && techId == callerTechnicianId()
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']))
+        );
+
+      // DELETE: denied for all clients.
+      allow delete: if false;
     }
 
     // Role docs are provisioned by an admin (console or Admin SDK), never

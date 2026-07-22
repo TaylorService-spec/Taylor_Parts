@@ -13,31 +13,28 @@
 // touches the live "taylor-parts" project; all reads/writes go to the
 // emulator.
 //
-// PR-1 POSTURE (test-first; NOT registered in rulesRegressionRunner.mjs's
-// SUITES). The current firestore.rules are still permissive for these two
-// collections (`allow read, write: if isSignedIn()`), so this suite proves
-// the F-RULES-1 vulnerability WITHOUT changing any Rule:
+// POSTURE (test-first; NOT registered in rulesRegressionRunner.mjs's SUITES
+// yet -- registration deferred to PR-3, since 3 DEFERRED gaps below remain).
+// As of PR-2, firestore.rules enforces the WRITE/CREATE/DELETE slice for these
+// two collections (reads remain `isSignedIn()`, deferred). Assertion phases:
 //
-//   * COMPAT assertions   -- the contract expectation ALREADY holds under
-//                            the current Rules (e.g. unauthenticated is
-//                            denied; admin/dispatcher and a technician's
-//                            own-assigned status transition are allowed).
-//                            These MUST pass now; a COMPAT failure is a
-//                            real defect.
-//   * HARDENING assertions -- the contract requires DENY, but the current
-//                            permissive Rules PERMIT it (the vulnerability).
-//                            Run today, these are confirmed "currently
-//                            permitted" (the documented gap PR-3 closes).
+//   * COMPAT   -- an approved compatibility expectation that already holds
+//                 (unauth denied; admin/dispatcher and a technician's
+//                 own-assigned status transition allowed). MUST pass.
+//   * ENFORCED -- a contract=DENY gap that PR-2 now CLOSES. MUST be denied.
+//   * HARDENING (DEFERRED) -- a contract=DENY gap intentionally deferred past
+//                 PR-2: the two READ-scoping gaps (need the Field Mode client
+//                 query migration before a scoped read can deploy) and the
+//                 technician self-write gap (needs the cross-doc assign/
+//                 complete cascade to move to trusted Functions -- Spec sec17).
+//                 Still permitted today; documented, not a failure in default.
 //
 // Two run modes:
-//   default (PR-1): PASS iff every COMPAT assertion matches the contract
-//     AND every HARDENING assertion is confirmed currently-permitted
-//     (i.e. the vulnerability is present exactly where predicted). Exit 0
-//     documents the current state. This mode proves the vulnerability.
-//   strict  (PR-3): set F_RULES_1_STRICT=1. PASS iff EVERY assertion
-//     (COMPAT + HARDENING) matches the contract -- i.e. the hardened Rules
-//     now DENY what the contract denies. This is the mode used once the
-//     hardened Rules land and this suite is registered in SUITES.
+//   default (PR-2): PASS iff every COMPAT holds, every ENFORCED gap now denies,
+//     and the DEFERRED gaps are the expected still-permitted set.
+//   strict  (PR-3): set F_RULES_1_STRICT=1. PASS iff EVERY assertion (incl. the
+//     deferred DENY gaps) matches the contract -- used once ALL gaps are closed
+//     and this suite is registered in SUITES.
 //
 // Direct run (documented, deterministic):
 //   firebase emulators:exec --only firestore,auth \
@@ -69,30 +66,41 @@ const bool = (v) => ({ booleanValue: v });
 const mapv = (obj) => ({ mapValue: { fields: obj } });
 
 // ---- assertion tallies ---------------------------------------------------------
-let compatPass = 0, compatFail = 0, hardeningGap = 0, hardeningEnforced = 0, unexpected = 0;
+// Phases:
+//   COMPAT    -- contract expectation already holds; must match now.
+//   ENFORCED  -- contract=DENY and PR-2 now enforces it; MUST be denied now.
+//   HARDENING -- contract=DENY but intentionally DEFERRED past PR-2 (read
+//                scoping needs the Field Mode query migration; full technician
+//                self-write denial needs the cross-doc cascade -> trusted
+//                Functions, Spec sec17). Still permitted; documented, not a
+//                failure in default mode.
+let compatPass = 0, compatFail = 0, enforcedPass = 0, enforcedFail = 0, deferredGap = 0, unexpected = 0;
 const failures = [];
 
-// contract: "ALLOW" | "DENY"; phase: "COMPAT" | "HARDENING"
 function record(name, phase, contract, status) {
   const denied = status === 401 || status === 403;
   const allowed = status >= 200 && status < 300;
   const matchesContract = contract === "ALLOW" ? allowed : denied;
 
   if (STRICT) {
-    if (matchesContract) { console.log(`PASS  [${phase}] ${name} (${contract}, status ${status})`); (phase === "COMPAT" ? compatPass++ : hardeningEnforced++); }
-    else { console.log(`FAIL  [${phase}] ${name} -- expected ${contract}, got status ${status}`); failures.push(name); (phase === "COMPAT" ? compatFail++ : unexpected++); }
+    // PR-3 posture: EVERY assertion must match the contract.
+    if (matchesContract) { console.log(`PASS  [${phase}] ${name} (${contract}, status ${status})`); (phase === "COMPAT" ? compatPass++ : enforcedPass++); }
+    else { console.log(`FAIL  [${phase}] ${name} -- expected ${contract}, got status ${status}`); failures.push(name); (phase === "COMPAT" ? compatFail++ : enforcedFail++); }
     return;
   }
 
-  // default (PR-1) mode
   if (phase === "COMPAT") {
     if (matchesContract) { compatPass++; console.log(`PASS  [COMPAT] ${name} (${contract}, status ${status})`); }
     else { compatFail++; failures.push(name); console.log(`FAIL  [COMPAT] ${name} -- expected ${contract}, got status ${status} (real defect)`); }
+  } else if (phase === "ENFORCED") {
+    if (denied) { enforcedPass++; console.log(`PASS  [ENFORCED] ${name} -- now DENY (status ${status})`); }
+    else if (allowed) { enforcedFail++; failures.push(name); console.log(`FAIL  [ENFORCED] ${name} -- expected DENY but PERMITTED (status ${status}) -- PR-2 gap not closed`); }
+    else { unexpected++; failures.push(name); console.log(`FAIL  [ENFORCED] ${name} -- unexpected status ${status}`); }
   } else {
-    // HARDENING: contract is DENY; today's permissive Rules should ALLOW it.
-    if (allowed) { hardeningGap++; console.log(`GAP   [HARDENING] ${name} -- contract=DENY but currently PERMITTED (status ${status}) -> PR-3 closes this`); }
-    else if (denied) { hardeningEnforced++; console.log(`NOTE  [HARDENING] ${name} -- already DENY under current Rules (status ${status}); contract already satisfied`); }
-    else { unexpected++; failures.push(name); console.log(`FAIL  [HARDENING] ${name} -- unexpected status ${status}`); }
+    // HARDENING (deferred past PR-2): contract=DENY, still permitted.
+    if (allowed) { deferredGap++; console.log(`GAP   [DEFERRED] ${name} -- contract=DENY, still PERMITTED (status ${status}) -> future PR closes this`); }
+    else if (denied) { console.log(`NOTE  [DEFERRED] ${name} -- already DENY (status ${status}); contract already satisfied`); }
+    else { unexpected++; failures.push(name); console.log(`FAIL  [DEFERRED] ${name} -- unexpected status ${status}`); }
   }
 }
 
@@ -197,16 +205,16 @@ async function main() {
 
   // -- HARDENING (contract=DENY; currently permitted) --
   record("technician cannot read another technician's job", "HARDENING", "DENY", await readDoc("fieldops_jobs", "job-assigned-T2-fr1", t1Tok));
-  record("technician cannot create a job", "HARDENING", "DENY", await createDoc("fieldops_jobs", "job-tech-forge-fr1", t1Tok, validJobCreateFields()));
-  record("technician cannot update another technician's job status", "HARDENING", "DENY", await updateDoc("fieldops_jobs", "job-assigned-T2-fr1", t1Tok, { status: str("in_progress") }));
-  record("technician cannot change technicianId (assignment is admin/dispatcher-only)", "HARDENING", "DENY", await updateDoc("fieldops_jobs", "job-assigned-T1-fr1", t1Tok, { technicianId: str("T2-fr1") }));
-  record("technician status write cannot smuggle an extra field (hasOnly status)", "HARDENING", "DENY", await updateDoc("fieldops_jobs", "job-assigned-T1-fr1", t1Tok, { status: str("in_progress"), customer: mapv({ name: str("HIJACK") }) }));
-  record("technician cannot skip lifecycle (assigned->complete directly)", "HARDENING", "DENY", await updateDoc("fieldops_jobs", "job-assigned-T2-fr1", t2Tok, { status: str("complete") }));
-  record("a completed job is terminal (cannot be reopened)", "HARDENING", "DENY", await updateDoc("fieldops_jobs", "job-complete-T1-fr1", adminTok, { status: str("open") }));
-  record("no client can delete a job", "HARDENING", "DENY", await deleteDoc("fieldops_jobs", "job-assigned-T2-fr1", adminTok));
-  record("unmapped technician (no technicianId) cannot update a job (fail closed)", "HARDENING", "DENY", await updateDoc("fieldops_jobs", "job-assigned-T1-fr1", unmappedTok, { status: str("in_progress") }));
-  record("operationalRole-only principal cannot create a job (opRole is not authorization)", "HARDENING", "DENY", await createDoc("fieldops_jobs", "job-oprole-forge-fr1", oproleTok, validJobCreateFields()));
-  record("technician cannot forge a job with arbitrary status/technicianId", "HARDENING", "DENY", await createDoc("fieldops_jobs", "job-tech-forge2-fr1", t1Tok, { customer: mapv({ name: str("X") }), description: str("d"), status: str("complete"), technicianId: str("T1-fr1"), workOrderId: nul(), address: nul(), createdAt: int(Date.now()) }));
+  record("technician cannot create a job", "ENFORCED", "DENY", await createDoc("fieldops_jobs", "job-tech-forge-fr1", t1Tok, validJobCreateFields()));
+  record("technician cannot update another technician's job status", "ENFORCED", "DENY", await updateDoc("fieldops_jobs", "job-assigned-T2-fr1", t1Tok, { status: str("in_progress") }));
+  record("technician cannot change technicianId (assignment is admin/dispatcher-only)", "ENFORCED", "DENY", await updateDoc("fieldops_jobs", "job-assigned-T1-fr1", t1Tok, { technicianId: str("T2-fr1") }));
+  record("technician status write cannot smuggle an extra field (hasOnly status)", "ENFORCED", "DENY", await updateDoc("fieldops_jobs", "job-assigned-T1-fr1", t1Tok, { status: str("in_progress"), customer: mapv({ name: str("HIJACK") }) }));
+  record("technician cannot skip lifecycle (assigned->complete directly)", "ENFORCED", "DENY", await updateDoc("fieldops_jobs", "job-assigned-T2-fr1", t2Tok, { status: str("complete") }));
+  record("a completed job is terminal (cannot be reopened)", "ENFORCED", "DENY", await updateDoc("fieldops_jobs", "job-complete-T1-fr1", adminTok, { status: str("open") }));
+  record("no client can delete a job", "ENFORCED", "DENY", await deleteDoc("fieldops_jobs", "job-assigned-T2-fr1", adminTok));
+  record("unmapped technician (no technicianId) cannot update a job (fail closed)", "ENFORCED", "DENY", await updateDoc("fieldops_jobs", "job-assigned-T1-fr1", unmappedTok, { status: str("in_progress") }));
+  record("operationalRole-only principal cannot create a job (opRole is not authorization)", "ENFORCED", "DENY", await createDoc("fieldops_jobs", "job-oprole-forge-fr1", oproleTok, validJobCreateFields()));
+  record("technician cannot forge a job with arbitrary status/technicianId", "ENFORCED", "DENY", await createDoc("fieldops_jobs", "job-tech-forge2-fr1", t1Tok, { customer: mapv({ name: str("X") }), description: str("d"), status: str("complete"), technicianId: str("T1-fr1"), workOrderId: nul(), address: nul(), createdAt: int(Date.now()) }));
 
   // ================= fieldops_technicians =================
   // -- COMPAT --
@@ -218,30 +226,30 @@ async function main() {
   // -- HARDENING --
   record("technician cannot read another technician's record", "HARDENING", "DENY", await readDoc("fieldops_technicians", "T2-fr1", t1Tok));
   record("technician cannot update own technician record (no self-write)", "HARDENING", "DENY", await updateDoc("fieldops_technicians", "T1-fr1", t1Tok, { status: str("off_shift") }));
-  record("technician cannot update another technician's record", "HARDENING", "DENY", await updateDoc("fieldops_technicians", "T2-fr1", t1Tok, { status: str("off_shift") }));
-  record("technician cannot create a technician record", "HARDENING", "DENY", await createDoc("fieldops_technicians", "T-tech-forge-fr1", t1Tok, { name: str("Forge"), phone: str("5"), status: str("available"), createdAt: int(Date.now()) }));
-  record("no client can delete a technician record", "HARDENING", "DENY", await deleteDoc("fieldops_technicians", "T2-fr1", adminTok));
-  record("a technician record cannot be set to an invalid status", "HARDENING", "DENY", await updateDoc("fieldops_technicians", "T1-fr1", adminTok, { status: str("vacationing") }));
+  record("technician cannot update another technician's record", "ENFORCED", "DENY", await updateDoc("fieldops_technicians", "T2-fr1", t1Tok, { status: str("off_shift") }));
+  record("technician cannot create a technician record", "ENFORCED", "DENY", await createDoc("fieldops_technicians", "T-tech-forge-fr1", t1Tok, { name: str("Forge"), phone: str("5"), status: str("available"), createdAt: int(Date.now()) }));
+  record("no client can delete a technician record", "ENFORCED", "DENY", await deleteDoc("fieldops_technicians", "T2-fr1", adminTok));
+  record("a technician record cannot be set to an invalid status", "ENFORCED", "DENY", await updateDoc("fieldops_technicians", "T1-fr1", adminTok, { status: str("vacationing") }));
 
   // ================= summary =================
-  console.log("\n---- F-RULES-1 PR-1 contract-test summary ----");
-  console.log(`mode: ${STRICT ? "STRICT (PR-3: all assertions must match the contract)" : "default (PR-1: prove vulnerability against current permissive Rules)"}`);
-  console.log(`COMPAT: ${compatPass} pass, ${compatFail} fail`);
-  console.log(`HARDENING: ${hardeningGap} currently-permitted gaps (PR-3 closes), ${hardeningEnforced} already-enforced, ${unexpected} unexpected`);
+  console.log("\n---- F-RULES-1 contract-test summary ----");
+  console.log(`mode: ${STRICT ? "STRICT (PR-3: all DENY assertions must be enforced)" : "default (PR-2: enforced gaps must deny; deferred gaps documented)"}`);
+  console.log(`COMPAT:   ${compatPass} pass, ${compatFail} fail`);
+  console.log(`ENFORCED: ${enforcedPass} now-denied, ${enforcedFail} not-yet-denied`);
+  console.log(`DEFERRED: ${deferredGap} still-permitted gaps (later PR closes), ${unexpected} unexpected`);
 
   if (STRICT) {
     const ok = failures.length === 0;
     console.log(ok ? "\nSTRICT: all contract assertions satisfied." : `\nSTRICT FAIL: ${failures.length} assertion(s) do not match the contract:\n- ${failures.join("\n- ")}`);
     process.exitCode = ok ? 0 : 1;
   } else {
-    // PR-1 success = harness healthy: every COMPAT holds AND every hardening
-    // target is a confirmed currently-permitted gap (the vulnerability is
-    // present exactly where the contract will close it). Any COMPAT fail or
-    // unexpected status is a real problem.
-    const ok = compatFail === 0 && unexpected === 0;
+    // PR-2 success: every COMPAT holds, every ENFORCED gap now denies, and the
+    // remaining DEFERRED gaps are the expected still-permitted set. A COMPAT
+    // failure, an un-closed ENFORCED gap, or any unexpected status is a defect.
+    const ok = compatFail === 0 && enforcedFail === 0 && unexpected === 0;
     console.log(ok
-      ? `\nPR-1 OK: compatibility preserved; ${hardeningGap} vulnerability gap(s) confirmed present (to be closed by PR-3 hardened Rules).`
-      : `\nPR-1 FAIL: ${compatFail} compatibility defect(s) and/or ${unexpected} unexpected result(s):\n- ${failures.join("\n- ")}`);
+      ? `\nPR-2 OK: compatibility preserved; ${enforcedPass} gap(s) now enforced; ${deferredGap} gap(s) intentionally deferred (read scoping + technician self-write cascade).`
+      : `\nPR-2 FAIL: ${compatFail} compat defect(s), ${enforcedFail} un-closed enforced gap(s), ${unexpected} unexpected:\n- ${failures.join("\n- ")}`);
     process.exitCode = ok ? 0 : 1;
   }
 }
