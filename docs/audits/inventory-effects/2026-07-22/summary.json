@@ -1,0 +1,33 @@
+{
+  "countsByClassification": {
+    "NOT_EXPECTED": 0,
+    "PROCESSED": 0,
+    "RECORDED_FAILURE": 0,
+    "SILENT_MISS": 0
+  },
+  "countsByState": {
+    "CANCELLED": {
+      "NOT_EXPECTED": 0,
+      "PROCESSED": 0,
+      "RECORDED_FAILURE": 0,
+      "SILENT_MISS": 0
+    },
+    "COMPLETED": {
+      "NOT_EXPECTED": 0,
+      "PROCESSED": 0,
+      "RECORDED_FAILURE": 0,
+      "SILENT_MISS": 0
+    },
+    "DISPATCHED": {
+      "NOT_EXPECTED": 0,
+      "PROCESSED": 0,
+      "RECORDED_FAILURE": 0,
+      "SILENT_MISS": 0
+    }
+  },
+  "flaggedCount": 0,
+  "invalidRecordCount": 0,
+  "retryCandidateCount": 0,
+  "scannedWorkOrders": 0,
+  "truncated": false
+}
