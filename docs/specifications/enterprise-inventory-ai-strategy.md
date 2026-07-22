@@ -1,7 +1,7 @@
 ---
 artifact_type: specification
 gate: Sprint Specification
-status: Draft — awaiting Architecture Review
+status: Approved — Owner decisions D-1–D-6 (2026-07-21), recorded in DECISIONS.md #37; adopted on merge
 date: 2026-07-21
 owner: Claude Code (Inventory)
 related_adrs:
@@ -13,7 +13,7 @@ depends_on:
 implements: Owner authorization "Begin INV-1 Governance and Architecture" (2026-07-21)
 supersedes: none
 superseded_by: none
-related_pr: TBD (this PR)
+related_pr: "#371"
 target_release: none — governance artifact only
 ---
 

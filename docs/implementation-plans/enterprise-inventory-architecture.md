@@ -1,7 +1,7 @@
 ---
 artifact_type: implementation-plan
 gate: Implementation Plan
-status: Draft — awaiting Architecture Review
+status: Approved — Owner decisions D-1–D-6 (2026-07-21), recorded in DECISIONS.md #37; adopted on merge
 date: 2026-07-21
 owner: Claude Code (Inventory)
 related_adrs:
@@ -16,7 +16,7 @@ depends_on:
 implements: Owner authorization "Begin INV-1 Governance and Architecture" (2026-07-21)
 supersedes: none
 superseded_by: none
-related_pr: TBD (this PR)
+related_pr: "#371"
 target_release: none — governance artifact only
 ---
 
@@ -84,6 +84,16 @@ Mapped against `docs/roadmaps/roadmap-reconciliation-2026-07.md` (this plan prop
 | D-4 | Require an ADR for Part-master-as-data before Phase 1 (Assessment OQ-C) | Yes | 1 (ADR authoring) |
 | D-5 | Resolve AI OQ-1 (platform-wide recommendation envelope) at Architecture Review of Phase 7's spec row, not before | Defer to Phase 7 | 1 |
 | D-6 | Record adoption in `docs/DECISIONS.md` (append-only, house format) upon Owner decision on D-1 | Record | — (mechanical) |
+
+### 7a. Owner decision outcomes (recorded 2026-07-21, PR #371 review)
+
+- **D-1 APPROVED** — this four-document chain is adopted as the governing Tier-2 chain for the Enterprise Inventory domain.
+- **D-2 DEFERRED to a separate Owner gate** — Phase 0 is NOT started in PR #371; after merge it may be presented for separate authorization.
+- **D-3 APPROVED IN PRINCIPLE** — unified Purchase Order direction recorded; no collection deletion, no data migration, no code/Rules change, no new-PO-model activation; compatibility preserved until an explicit migration gate.
+- **D-4 APPROVED** — the Part Master ADR is the Phase 1 prerequisite (not part of this package) and must address at minimum: part identity; manufacturer and supplier identifiers; aliases and supersession; units of measure; serialized, lot-controlled, and non-controlled parts; tenant-ready-but-tenant-inert structure; ownership of descriptive vs. operational inventory data.
+- **D-5 APPROVED** — recommendation-envelope decision deferred to Phase 7; invariant preserved: AI may recommend but must not directly execute inventory, purchasing, warehouse, or transfer mutations.
+- **D-6 APPROVED** — adoption recorded as `DECISIONS.md` #37.
+- **Sequencing:** Customer (F-RULES-1 PR-2) and Inventory proceed in parallel; Inventory Phase 0 must not modify Firestore Rules files concurrently changed by the Customer session without explicit cross-session coordination.
 
 ## 8. Validation
 
