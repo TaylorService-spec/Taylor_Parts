@@ -101,13 +101,13 @@ The Owner approved INV-1 Phase 0 as a governed sequence: **PR 0.1** (detection e
 
 - **PR 0.1 — merged** (PR #373, merge commit `0b82009`, 2026-07-22; pure detection engine; validation doc: `docs/audits/inv1-phase0/pr01-detection-validation.md`).
 - **PR 0.2 — merged** (PR #374, merge commit `c975258`, 2026-07-22; operator audit + controlled retry scripts; validation doc: `docs/audits/inv1-phase0/pr02-operator-tooling-validation.md`).
-- **PR 0.3 — implemented, pending Owner-reviewed merge** (runbook `docs/operations/inventory-effect-recovery-runbook.md`, SYSTEM_AUTHORITIES registration, this closeout; validation doc: `docs/audits/inv1-phase0/pr03-runbook-governance-validation.md`).
-- **Gate 0.4(a) — not authorized.** No production detection run has occurred; **production findings are unknown**.
-- **Gate 0.4(b) — not authorized.** No production recovery of any kind has been performed.
+- **PR 0.3 — merged** (PR #376, merge commit `0d1ff0f`, 2026-07-22; runbook `docs/operations/inventory-effect-recovery-runbook.md`, SYSTEM_AUTHORITIES registration; validation doc: `docs/audits/inv1-phase0/pr03-runbook-governance-validation.md`). Operational handoff merged separately (PR #378, `ce1f713`).
+- **Gate 0.4(a) — authorized and EXECUTED** (2026-07-22, authenticated Cloud Shell operator, read-only): complete unfiltered production scan, **0 Work Orders scanned, 0 retry candidates, 0 warnings, 0 invalid records**; evidence at `docs/audits/inventory-effects/2026-07-22/` with report `docs/audits/inventory-effects/inventory-effects-production-detection-report.md`. **Disposition: A — no recovery required for the current production scan scope** (qualification: the audited collection currently contains zero Work Orders; the result makes no claim about deleted/archived/externally-stored records and does not exercise effect integrity against real Work Orders). Evidence import is complete upon Owner-reviewed merge of the evidence PR.
+- **Gate 0.4(b) — not warranted and NOT authorized.** No production recovery of any kind has been performed; none is required by this evidence.
 - **Phase 0 completion is three distinct states — do not conflate them:**
-  1. **Repository implementation** — complete only after PR 0.3's Owner-reviewed merge.
-  2. **Production audit** — NOT complete; requires a separately authorized Gate 0.4(a) run with imported evidence.
-  3. **Production recovery** — NOT complete; requires Gate 0.4(b) exact-batch authorization(s), execution, and verified evidence — and is only meaningful after (2) establishes what, if anything, needs recovery.
+  1. **Repository implementation** — COMPLETE (PRs 0.1/0.2/0.3 merged).
+  2. **Production audit** — executed; complete upon Owner-reviewed merge of the Gate 0.4(a) evidence PR. Any future audit against a dataset that actually contains Work Orders is a fresh Gate 0.4(a) authorization.
+  3. **Production recovery** — NOT performed and NOT required by the current evidence; would need its own Gate 0.4(b) exact-batch authorization if a future detection run finds candidates.
 - Phases 1–8 remain NOT AUTHORIZED.
 
 ## 8. Validation
