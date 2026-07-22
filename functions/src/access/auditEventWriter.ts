@@ -81,6 +81,9 @@ const AUDIT_ACTIONS: readonly AuditAction[] = [
   "exportReportDefinition",
   "shareReportDefinition",
   "scheduleReportDefinition",
+  // F-RULES-1 / Decision #39 (Owner O-5) -- see the matching entry on the
+  // AuditAction union (types/access.ts).
+  "completeAssignedJob",
 ];
 
 // Issue #325 / ADR-007 D-AUDIT -- the subset of AUDIT_ACTIONS this

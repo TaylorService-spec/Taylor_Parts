@@ -32,6 +32,9 @@ target_release: TBD
 **Ordering constraint:** Gate D1 (Function live) **must precede** D2 (Rules that deny the direct-client completion), and PR-B (client calls the Function) must be merged before D2, so completion never breaks in production. PR-A/PR-B are safe to merge before any deploy because the interim Rules still permit the old path until D2.
 
 ## PR-A — Trusted callable + tests
+
+> **STATUS (2026-07-22): IMPLEMENTED.** `functions/src/completeAssignedJob.ts` exists and is exported from `functions/src/index.ts` (export ≠ deployment; **not deployed**); one `AuditAction` value `completeAssignedJob` added (union + runtime mirror); 23 emulator unit tests added (`functions/test/completeAssignedJob.test.js`, `npm run test:completeAssignedJob`) — all passing, neighbor suites (auditEventWriter 54, workOrderEngineFunctions 29, trustedWriterCommands 37, accessCommandCallables 13) unaffected. **PR-B frontend integration NOT started · PR-C Rules/strict registration NOT started · Function deployment NOT authorized · Rules deployment NOT authorized · production verification NOT authorized.** Input contract note: the request field is `jobId` per Specification §1.D (the gate template's `workOrderId` name would collide with the legacy job document's own `workOrderId` link field).
+
 - **Objective:** implement `completeAssignedJob` per Specification §1; export from `functions/src/index.ts` under the established "export ≠ deployment" posture. No client calls it yet.
 - **Files likely affected:** `functions/src/completeAssignedJob.ts` (new); `functions/src/index.ts` (one export); `functions/src/types/access.ts` + `functions/src/access/auditEventWriter.ts` (add one `AuditAction` value — Owner decision O-5); `functions/test/completeAssignedJob.test.*` (new); possibly `functions/src/constants/collections.ts` (reuse existing legacy-collection constants).
 - **Dependencies:** none deployed; reuses `getCallerContext`, `auditEventWriter`, `idempotencyKey` precedent.

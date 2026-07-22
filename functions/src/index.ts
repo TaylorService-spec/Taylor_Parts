@@ -9,6 +9,15 @@ export { createWorkOrder } from "./createWorkOrder";
 export { transitionWorkOrder } from "./transitionWorkOrder";
 export { updateWorkOrderExecutionData } from "./updateWorkOrderExecutionData";
 
+// --- F-RULES-1 surface: trusted technician job completion (Decision #39) ---
+// Same "export is not deployment" posture as the surfaces below: not
+// deployed to the live project, and no client calls it (Field Mode's
+// integration is PR-B, a separate Owner gate) until Gate D1's Owner
+// production authorization. Until then the legacy client completion path
+// remains permitted by the interim Firestore Rules; the Rules that deny it
+// land in PR-C and deploy at Gate D2, strictly after D1.
+export { completeAssignedJob } from "./completeAssignedJob";
+
 // --- Issue #226 surface: Enterprise Access & Administration Platform ---
 // Exactly these six -- see docs/deployment/enterprise-access-deployment-
 // manifest.md Section B. Not deployed, and no client calls them, until a
