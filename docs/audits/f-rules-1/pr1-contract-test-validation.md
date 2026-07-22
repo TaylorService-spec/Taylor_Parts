@@ -77,6 +77,41 @@ Legend: A/D = admin or dispatcher · Tech = mapped technician (`users/{uid}.tech
 
 Coverage confirms the required areas: authentication states; admin/dispatcher/technician compatibility roles (`users/{uid}.role`); technician identity mapping (`users/{uid}.technicianId`, incl. unmapped fail-closed); cross-user isolation; trusted-writer boundaries (assignment/delete/terminal/self-write denied); operationalRoles-are-not-authorization; and the protected collections. Enterprise Access future fixtures are represented via the seeded compatibility roles; deployed Work Order / Saved Definition / Reporting / Effective-Access **Functions** are out of this Rules-suite's scope (verified separately under `../functions-live-state/`).
 
+### Platform security model — all currently-relevant protected domains
+
+This section documents the **complete** platform authorization model for context; it is **documentation only**. The emulator suite in this PR remains scoped to the approved **Legacy Jobs + Legacy Technicians** contract (30 assertions) — **no Rules tests are added for callable Functions**, and the emulator suite is not expanded here.
+
+**Enforcement mechanism legend**
+- **R** = **Rules-enforced** — `firestore.rules` gates client-direct access.
+- **CF** = **Callable-Function-enforced** — client-direct denied by Rules; the only write path is a trusted `onCall` Function that reauthorizes server-side.
+- **TS** = **Trusted-server-only** — client-direct denied; written only by the Admin SDK (inside Functions/operator scripts); no client callable exists.
+- **FP** = **Future enforcement / pending** — target enforcement not yet in place.
+
+Deployment state per `../functions-live-state/` (2026-07-21): **11 Functions live** (Work Order ×3, report execution, saved-definition ×6, effective-access); the **6 Enterprise Access mutation Functions are exported but undeployed**.
+
+| Domain / resource | Enforcement | Client read | Client write | Trusted writer / callable boundary | Rules-test coverage | Future enforcement dependency | Owning gate / workstream |
+|---|---|---|---|---|---|---|---|
+| Legacy Jobs (`fieldops_jobs`) | R (**permissive today**) → target R | any signed-in *(target: a/d all; tech own-assigned)* | any signed-in *(target: a/d + tech own-status)* | none (app-only `jobActions.js`) | **PR-1 contract suite (this PR, un-registered)** | F-RULES-1 PR-3 hardened Rules | F-RULES-1 |
+| Legacy Technicians (`fieldops_technicians`) | R (**permissive today**) → target R | any signed-in *(target: a/d all; tech own)* | any signed-in *(target: a/d only)* | none (app-only `jobActions.js`) | **PR-1 contract suite (this PR, un-registered)** | F-RULES-1 PR-3 hardened Rules | F-RULES-1 |
+| Work Orders (`fieldops_wos`) | R (read) + CF (write) | adminOrDispatcher (+ technician-scoped assigned query) | DENIED (`if false`) | createWorkOrder / transitionWorkOrder / updateWorkOrderExecutionData — **deployed** | `workOrderEngineRules.test.js` (registered) | none (live) | ADR-002 / Issue #15 |
+| WO counters (`counters`) | TS | DENIED (`if false`) | DENIED (`if false`) | `woNumbering` (Admin SDK, in createWorkOrder tx) | via `workOrderEngineRules.test.js` | none | ADR-002 |
+| Saved Definitions (`reportDefinitions`) | CF | DENIED (`if false`) | DENIED (`if false`) | 6 `*SavedDefinitionCallable` — **deployed** | `reportDefinitionsRules.test.js` (registered) | none (live) | #325 / ADR-007 |
+| Reporting execution | CF | n/a (no client collection) | n/a | `runReportDefinitionCallable` — **deployed** (per-field auth; no `report.*` grant → denies) | n/a — Functions unit (`reportExecutionService.test.mjs`) | none (live; activation gated) | #325 |
+| Effective Access | CF | n/a (no client collection) | n/a | `resolveEffectiveAccessCallable` — **deployed** (read-only feed) | n/a — Functions unit (`effectiveAccessFeed.test.mjs`) | none (live) | #226 |
+| Enterprise Access mutations (`roleAssignments`, `roles`, `permissions`) | CF (**pending deploy**) | DENIED (`if false`) | DENIED (`if false`) | grantRole / revokeRole / assignApprovedRole / setUserStatus — **exported, NOT deployed** | `enterpriseAccessFoundationRules.test.js` (registered) | mutation Function **deployment** + Admin activation | #226 / ADR-005 |
+| Approval records (`accessRequests`) | CF (**pending deploy**) | DENIED (`if false`) | DENIED (`if false`) | approveAccessRequest / rejectAccessRequest — **exported, NOT deployed** | `enterpriseAccessFoundationRules.test.js` (registered) | mutation Function deployment + Admin activation | #226 |
+| Audit records (`auditEvents`) | TS | DENIED (`if false`) | DENIED (`if false`, immutable) | `auditEventWriter` (Admin SDK, one event/mutation) | `enterpriseAccessFoundationRules.test.js` (deny) | none (append-only) | #226 / ADR-005 |
+| Inventory ledger (`inventory_transactions`) | R (read) + TS (write) | adminOrDispatcher | DENIED (`if false`) | `inventoryService` (Admin SDK, append-only, post-commit of WO transition) | **none dedicated (gap)** | INV-1 effect-recovery | ADR-003 / INV-1 |
+| Inventory action records (`inventory_actions`) | R | adminOrDispatcher \|\| WAREHOUSE_MANAGER | adminOrDispatcher create; update/delete DENIED (append-only) | n/a (client-direct create) | partial (inventory-action-log; no standalone suite) | — | Inventory |
+| Warehouse (`warehouses`, `stock_locations`, `transfer_orders`) | R (scoped read) + TS (write, **dormant**) | adminOrDispatcher \|\| isAssignedToWarehouse | DENIED (`if false`) | `warehouseService` (Admin SDK) — **dormant/unwired** | `warehouseManagerScopedAccessRules.test.js` (registered) | Epic 4 activation | Epic 4 / Issue #15 |
+| Procurement (`suppliers`, `supplier_catalog`, `purchase_orders`) | R (read) + TS (write, **dormant**) | adminOrDispatcher | DENIED (`if false`) | `procurementService` / `supplierService` (Admin SDK) — **dormant/unwired** | **none dedicated (gap)** | Epic 5 activation | Epic 5 |
+| Reorder (`reorder_requests`, `reorder_purchase_orders`, `*_voids`) — **live client-direct** | R | adminOrDispatcher \|\| operationalRole | operationalRole-gated client-direct (canonical shape, anti-injection) | n/a (client-direct + Rules) | `reorderRequestsRules.test.js` (registered) | none (live) | Reorder specs |
+| User↔technician mapping (`users/{uid}`) | R (own-read) + TS (write) | own doc only (`request.auth.uid == userId`) | DENIED (`if false`) | Admin SDK only (`assignTechnicianToUser.js`) | (exercised by employees/reorder suites) | none | Platform / F-RULES-1 identity |
+| Employees (`employees`) | R (read) + TS (write) | adminOrDispatcher + self (linked) | DENIED (`if false`) | trusted writer / `provisionEmployeeAccess.js` (Admin SDK) | `employeesRules.test.js` (registered) | none | #226 / Employee Foundation |
+| Customer & Equipment (`accounts`, `locations`, `contacts`, `equipment`) | R | adminOrDispatcher | adminOrDispatcher client-direct + governed-field validation; delete DENIED | `accountsGovernedFieldsRules.test.js`, `equipmentRules.test.js` (registered) | none | Customer / #232 (ADR-006) |
+
+**Enforcement summary:** R (client-direct, Rules-gated): Legacy Jobs/Technicians (permissive→hardening), Reorder, inventory_actions, Customer/Equipment, scoped Warehouse/Procurement/inventory-ledger reads. CF (trusted callable, client-direct denied): Work Order writes, Saved Definitions, Reporting, Effective Access, Enterprise Access mutations *(pending deploy)*, Approval records *(pending deploy)*. TS (Admin-SDK-only): audit records, inventory ledger writes, counters, users/employees writes, dormant Warehouse/Procurement writers. FP (future/pending): F-RULES-1 legacy hardening, Enterprise Access mutation deployment + Admin activation, INV-1 recovery, Epic 4/5 activation.
+
 ## Validation performed
 
 - `node -c` syntax OK; `npm ci` (functions) clean.
