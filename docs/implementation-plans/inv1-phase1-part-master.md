@@ -74,3 +74,8 @@ Merge gate per PR: Owner review. Deployment gates: Rules (1.2–1.4 blocks) and 
 ## 7. Validation (of this package)
 
 All current-state claims verified against `origin/main` @ `8147c1a` code (catalog interfaces, units distribution, rules write-postures, indexes file, CSV precedent, ADR-006 boundary, free-text supplierName, DECISIONS tail #38); ADR numbered 008 after inspecting `docs/architecture/`; deployment claims grounded in DECISIONS #36/#38 and the Gate 0.4(a) evidence; docs-only diff; no schema/Rules/Functions/index/frontend/migration/production change; DECISIONS.md #40 records the adoption (appended at the finalization gate after Owner approval of O-1…O-12).
+
+### 2a. PR status (recorded 2026-07-22)
+
+- **PR 1.1 — implemented, pending Owner-reviewed merge.** Pure-domain scope only: `functions/src/partMaster/` (types/enums/branded IDs, single normalization authority + GS1 check-digit validator + deterministic alias-key helper, scaled-integer unit conversion, validators, barrel) + `functions/test/partMasterDomain.test.mjs` (44 assertions, `npm run test:partMasterDomain`). **No persistence, no Firestore collections/Rules/indexes, no Functions-export change (`functions/src/index.ts` untouched), no frontend, no deployment, no migration.** Client mirrors deferred to the first client consumer (PR 1.9) per house mirror-what-you-consume convention.
+- **PR 1.2 — not started. PRs 1.2–1.10 remain unauthorized. Migration not started.**
