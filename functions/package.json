@@ -23,6 +23,9 @@
     "test:reporting": "npm run build && node test/reportCatalogParity.test.mjs && node test/reportExecutionService.test.mjs && node test/savedDefinitionCommands.test.mjs",
     "test:transitionEngine": "npm run build && node test/transitionEngine.test.mjs",
     "test:inventoryEffectDetection": "npm run build && node test/inventoryEffectDetection.test.mjs",
+    "test:inventoryEffectOperatorTools": "npm run build && node --test test/inventoryEffectOperatorTools.test.js",
+    "audit:inventory-effects": "npm run build && node scripts/auditInventoryEffects.js",
+    "retry:inventory-effects": "npm run build && node scripts/retryInventoryEffects.js",
     "test:workOrderEngineFunctions": "npm run build && node --test test/workOrderEngineFunctions.test.js"
   },
   "dependencies": {
