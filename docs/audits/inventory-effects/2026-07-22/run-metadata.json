@@ -1,0 +1,24 @@
+{
+  "emulatorHost": null,
+  "filters": {
+    "maxWorkOrders": null,
+    "pageSize": 300,
+    "workOrderIds": []
+  },
+  "firestoreMethodsUsed": [
+    "initializeApp",
+    "getFirestore",
+    "collection().orderBy(FieldPath.documentId()).limit().get()",
+    "collection().orderBy(FieldPath.documentId()).startAfter().limit().get()",
+    "collection().doc().get()",
+    "QuerySnapshot.docs",
+    "DocumentSnapshot.id / .exists / .data()"
+  ],
+  "generatedAt": "2026-07-22T20:49:08.989Z",
+  "mode": "READ_ONLY_AUDIT",
+  "projectId": "taylor-parts",
+  "scannedWorkOrders": 0,
+  "scriptVersion": "inv1-phase0-pr02",
+  "tool": "auditInventoryEffects",
+  "truncated": false
+}
