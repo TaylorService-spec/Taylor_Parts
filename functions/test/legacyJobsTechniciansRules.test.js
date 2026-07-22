@@ -15,27 +15,30 @@
 //
 // POSTURE (test-first; NOT registered in rulesRegressionRunner.mjs's SUITES
 // yet -- registration deferred to PR-3, since 3 DEFERRED gaps below remain).
-// PR-2 enforced the WRITE/CREATE/DELETE slice for these two collections. The
-// read-scoping slice then scoped reads (admin/dispatcher read all; a technician
-// reads only their own record and only jobs assigned to them), landed together
-// with the Field Mode client query migration. Assertion phases:
+// PR-2 enforced the WRITE/CREATE/DELETE slice; the read-scoping slice scoped
+// reads; PR-C (Decision #39) closed the FINAL gap: the interim technician
+// own-`status` write is removed and the technician's only remaining direct
+// job transition is assigned -> in_progress (status-only). Completion --
+// job -> complete plus technician -> available plus the applied Audit Event
+// -- is exclusively the trusted completeAssignedJob callable (Admin SDK,
+// bypasses Rules; its own contract is covered by completeAssignedJob.test.js).
+// auditEvents stay client-deny-all (forgery cases below). Assertion phases:
 //
 //   * COMPAT   -- an approved compatibility expectation that already holds
-//                 (unauth denied; admin/dispatcher and a technician's
-//                 own-assigned status transition allowed). MUST pass.
-//   * ENFORCED -- a contract=DENY gap now CLOSED (the WRITE/CREATE/DELETE gaps
-//                 from PR-2 plus the two READ-scoping gaps). MUST be denied.
-//   * HARDENING (DEFERRED) -- a contract=DENY gap still intentionally deferred:
-//                 the technician self-write gap (needs the cross-doc assign/
-//                 complete cascade to move to trusted Functions -- Spec sec17).
-//                 Still permitted today; documented, not a failure in default.
+//                 (unauth denied; admin/dispatcher approved operations; the
+//                 technician's own-assigned START transition). MUST pass.
+//   * ENFORCED -- a contract=DENY gap now CLOSED. MUST be denied. All prior
+//                 DEFERRED gaps are ENFORCED as of PR-C (DEFERRED = 0).
 //
-// Two run modes:
-//   default (PR-2): PASS iff every COMPAT holds, every ENFORCED gap now denies,
-//     and the DEFERRED gaps are the expected still-permitted set.
-//   strict  (PR-3): set F_RULES_1_STRICT=1. PASS iff EVERY assertion (incl. the
-//     deferred DENY gaps) matches the contract -- used once ALL gaps are closed
-//     and this suite is registered in SUITES.
+// STRICT is the default mode (all assertions must match the contract);
+// F_RULES_1_STRICT=0 is a local debugging escape hatch only. The suite is
+// registered in scripts/rulesRegressionRunner.mjs SUITES (PR-C) and runs in
+// the firestore-rules-regression CI workflow.
+//
+// DEPLOY-ORDER DEPENDENCY (critical): these hardened Rules deny the legacy
+// production completion payload. They must deploy only at Gate D2, strictly
+// AFTER Gate D1 (completeAssignedJob deployed + frontend trustedCompletion
+// gate flipped) -- deploying them first would break production completion.
 //
 // Direct run (documented, deterministic):
 //   firebase emulators:exec --only firestore,auth \
@@ -53,7 +56,10 @@ const PROJECT_ID = "taylor-parts";
 const FIRESTORE_HOST = "http://127.0.0.1:8080";
 const AUTH_HOST = "http://127.0.0.1:9099";
 const DOC_BASE = `${FIRESTORE_HOST}/v1/projects/${PROJECT_ID}/databases/(default)/documents`;
-const STRICT = process.env.F_RULES_1_STRICT === "1";
+// PR-C: STRICT is now the DEFAULT (all gaps closed; every assertion must
+// match the contract). F_RULES_1_STRICT=0 remains only as a local debugging
+// escape hatch -- CI and the regression runner run strict.
+const STRICT = process.env.F_RULES_1_STRICT !== "0";
 
 admin.initializeApp({ projectId: PROJECT_ID });
 const db = admin.firestore();
@@ -176,6 +182,13 @@ async function seed() {
     await db.doc(`fieldops_technicians/${t}`).set({ name: `Tech ${t}`, phone: "555", status: "available", createdAt: Date.now() });
   }
 
+  // one trusted-writer Audit Event (Admin SDK), so client update/delete
+  // denial can be asserted against a real existing document
+  await db.doc("auditEvents/seed-evt-fr1").set({
+    actorUid: "u-tech1-fr1", action: "completeAssignedJob", targetType: "fieldops_job",
+    targetId: "job-complete-T1-fr1", outcome: "applied", summary: "seeded for PR-C client-denial tests", at: new Date(),
+  });
+
   // job docs at each lifecycle state
   await db.doc("fieldops_jobs/job-open-fr1").set({ customer: { name: "ACME" }, description: "d", status: "open", technicianId: null, workOrderId: null, address: null, createdAt: Date.now() });
   await db.doc("fieldops_jobs/job-assigned-T1-fr1").set({ customer: { name: "ACME" }, description: "d", status: "assigned", technicianId: "T1-fr1", workOrderId: null, address: null, createdAt: Date.now() });
@@ -200,7 +213,18 @@ async function main() {
   record("admin can create a valid (open, unassigned) job", "COMPAT", "ALLOW", await createDoc("fieldops_jobs", "job-admin-new-fr1", adminTok, validJobCreateFields()));
   record("dispatcher can assign a job (technicianId + status)", "COMPAT", "ALLOW", await updateDoc("fieldops_jobs", "job-open-fr1", dispTok, { technicianId: str("T1-fr1"), status: str("assigned") }));
   record("assigned technician can start own job (assigned->in_progress, status only)", "COMPAT", "ALLOW", await updateDoc("fieldops_jobs", "job-assigned-T1-fr1", t1Tok, { status: str("in_progress") }));
-  record("assigned technician can complete own job (in_progress->complete)", "COMPAT", "ALLOW", await updateDoc("fieldops_jobs", "job-inprogress-T1-fr1", t1Tok, { status: str("complete") }));
+  // PR-C (Decision #39 / O-3): direct client completion is DENIED -- the
+  // technician capability "complete my job" is preserved exclusively through
+  // the trusted completeAssignedJob callable (covered by functions/test/
+  // completeAssignedJob.test.js). Characterization: this exact payload was
+  // COMPAT-ALLOW (HTTP 200) under the pre-PR-C Rules -- see the PR-C
+  // validation report's before/after evidence.
+  record("technician cannot directly complete own job (completion is Function-only)", "ENFORCED", "DENY", await updateDoc("fieldops_jobs", "job-inprogress-T1-fr1", t1Tok, { status: str("complete") }));
+  record("technician cannot start with a smuggled workOrderId change", "ENFORCED", "DENY", await updateDoc("fieldops_jobs", "job-assigned-T1-fr1", t1Tok, { status: str("in_progress"), workOrderId: str("WO-999") }));
+  record("technician cannot add completedAt during a transition", "ENFORCED", "DENY", await updateDoc("fieldops_jobs", "job-assigned-T1-fr1", t1Tok, { status: str("in_progress"), completedAt: int(Date.now()) }));
+  record("technician cannot add completedBy during a transition", "ENFORCED", "DENY", await updateDoc("fieldops_jobs", "job-inprogress-T1-fr1", t1Tok, { completedBy: str("T1-fr1") }));
+  record("technician cannot set an arbitrary status (assigned->cancelled)", "ENFORCED", "DENY", await updateDoc("fieldops_jobs", "job-assigned-T1-fr1", t1Tok, { status: str("cancelled") }));
+  record("technician cannot overwrite own job as complete (multi-field replace)", "ENFORCED", "DENY", await updateDoc("fieldops_jobs", "job-inprogress-T1-fr1", t1Tok, { status: str("complete"), description: str("done"), customer: mapv({ name: str("X") }) }));
   record("assigned technician can read own job", "COMPAT", "ALLOW", await readDoc("fieldops_jobs", "job-assigned-T1-fr1", t1Tok));
 
   // -- ENFORCED (read scoping: technician reads only jobs assigned to them) --
@@ -225,12 +249,29 @@ async function main() {
 
   // -- ENFORCED (read scoping: technician reads only their own record) --
   record("technician cannot read another technician's record", "ENFORCED", "DENY", await readDoc("fieldops_technicians", "T2-fr1", t1Tok));
-  // -- HARDENING (DEFERRED: self-write denial needs the assign/complete cascade in trusted Functions, Spec sec17) --
-  record("technician cannot update own technician record (no self-write)", "HARDENING", "DENY", await updateDoc("fieldops_technicians", "T1-fr1", t1Tok, { status: str("off_shift") }));
+  // -- ENFORCED (PR-C: the interim technician own-status branch is removed;
+  //    the trusted callable is now the only completion-cascade writer) --
+  record("technician cannot update own technician record (no self-write)", "ENFORCED", "DENY", await updateDoc("fieldops_technicians", "T1-fr1", t1Tok, { status: str("off_shift") }));
+  record("technician cannot set own availability to available (imitate completion)", "ENFORCED", "DENY", await updateDoc("fieldops_technicians", "T1-fr1", t1Tok, { status: str("available") }));
+  record("dispatcher can correct a technician's status (previously-approved authority)", "COMPAT", "ALLOW", await updateDoc("fieldops_technicians", "T3-fr1", dispTok, { status: str("off_shift") }));
   record("technician cannot update another technician's record", "ENFORCED", "DENY", await updateDoc("fieldops_technicians", "T2-fr1", t1Tok, { status: str("off_shift") }));
   record("technician cannot create a technician record", "ENFORCED", "DENY", await createDoc("fieldops_technicians", "T-tech-forge-fr1", t1Tok, { name: str("Forge"), phone: str("5"), status: str("available"), createdAt: int(Date.now()) }));
   record("no client can delete a technician record", "ENFORCED", "DENY", await deleteDoc("fieldops_technicians", "T2-fr1", adminTok));
   record("a technician record cannot be set to an invalid status", "ENFORCED", "DENY", await updateDoc("fieldops_technicians", "T1-fr1", adminTok, { status: str("vacationing") }));
+
+  // ================= auditEvents (append-only, trusted-writer only) =================
+  // firestore.rules: `allow read, write: if false` -- no client, whatever its
+  // role, can create/forge/update/delete an Audit Event. The forged-fields
+  // cases exercise exactly the fields the trusted completeAssignedJob
+  // callable writes (action/actorUid/outcome), proving a client cannot
+  // fabricate the completion audit trail.
+  const forgedAudit = { actorUid: str("u-tech1-fr1"), action: str("completeAssignedJob"), targetType: str("fieldops_job"), targetId: str("job-inprogress-T1-fr1"), outcome: str("applied"), summary: str("forged") };
+  record("unauthenticated cannot create an audit event", "ENFORCED", "DENY", await createDoc("auditEvents", "forge-unauth-fr1", null, forgedAudit));
+  record("technician cannot forge a completeAssignedJob audit event", "ENFORCED", "DENY", await createDoc("auditEvents", "forge-tech-fr1", t1Tok, forgedAudit));
+  record("admin client cannot create an audit event", "ENFORCED", "DENY", await createDoc("auditEvents", "forge-admin-fr1", adminTok, forgedAudit));
+  record("dispatcher client cannot create an audit event", "ENFORCED", "DENY", await createDoc("auditEvents", "forge-disp-fr1", dispTok, forgedAudit));
+  record("no client can update an audit event", "ENFORCED", "DENY", await updateDoc("auditEvents", "seed-evt-fr1", adminTok, { outcome: str("denied") }));
+  record("no client can delete an audit event", "ENFORCED", "DENY", await deleteDoc("auditEvents", "seed-evt-fr1", adminTok));
 
   // ================= summary =================
   console.log("\n---- F-RULES-1 contract-test summary ----");
@@ -241,7 +282,10 @@ async function main() {
 
   if (STRICT) {
     const ok = failures.length === 0;
-    console.log(ok ? "\nSTRICT: all contract assertions satisfied." : `\nSTRICT FAIL: ${failures.length} assertion(s) do not match the contract:\n- ${failures.join("\n- ")}`);
+    // Standard runner-parseable summary line (rulesRegressionRunner.mjs
+    // parseSuiteResult expects "N passed, M failed").
+    console.log(`\n${compatPass + enforcedPass} passed, ${compatFail + enforcedFail + unexpected} failed`);
+    console.log(ok ? "STRICT: all contract assertions satisfied." : `STRICT FAIL: ${failures.length} assertion(s) do not match the contract:\n- ${failures.join("\n- ")}`);
     process.exitCode = ok ? 0 : 1;
   } else {
     // PR-2 success: every COMPAT holds, every ENFORCED gap now denies, and the

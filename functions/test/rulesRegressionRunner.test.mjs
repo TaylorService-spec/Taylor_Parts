@@ -195,12 +195,19 @@ ok("6b. descendantPids returns only the owned root's descendants by PID", () => 
 // saved-definition service (functions/src/reporting/
 // savedDefinitionCommands.ts) is the only remaining path, matching this
 // program's own governed-storage posture (roleAssignments/auditEvents/
-// etc.) rather than a bespoke ownership-Rules model. This self-test's
+// etc.) rather than a bespoke ownership-Rules model. Then from 439 to
+// 482 (F-RULES-1 PR-C; INV-1 PR 1.2's partMasterRules +16 landed first,
+// 423->439) when legacyJobsTechniciansRules.test.js was registered
+// STRICT with 43 assertions: technician direct completion and the
+// interim technician own-status write are DENIED (completion is the
+// trusted completeAssignedJob callable's sole authority), plus audit-
+// forgery and field-smuggling denial coverage -- deploy-order
+// D1-before-D2 is documented in that suite's header. This self-test's
 // own literal sanity-check is updated to match, same as it must be
 // updated any time SUITES' expected counts change -- a deliberate
 // hardcoded cross-check that EXPECTED_TOTAL wasn't silently miscomputed,
 // not a value that should ever drift unnoticed.
-await okAsync("7. a fully-passing run reports exactly 439 passed, 0 failed", async () => {
+await okAsync("7. a fully-passing run reports exactly 482 passed, 0 failed", async () => {
   const byFile = new Map(SUITES.map((s) => [s.file, s.expected]));
   const lines = [];
   const r = await runAll({
@@ -217,9 +224,13 @@ await okAsync("7. a fully-passing run reports exactly 439 passed, 0 failed", asy
   assert.equal(r.code, 0);
   assert.equal(r.totalPassed, EXPECTED_TOTAL);
   // 423 -> 439: INV-1 Phase 1 PR 1.2 added partMasterRules.test.js (16
-  // assertions -- parts + manufacturers fully client-closed).
-  assert.equal(EXPECTED_TOTAL, 439);
-  assert.ok(lines.some((l) => /439 passed, 0 failed/.test(l)), "summary must state 439 passed, 0 failed");
+  // assertions -- parts + manufacturers fully client-closed). 439 -> 482:
+  // F-RULES-1 PR-C registered legacyJobsTechniciansRules.test.js (43
+  // assertions, STRICT by default -- technician direct completion and the
+  // interim own-status write are denied; deploy-order D1-before-D2 in the
+  // suite header).
+  assert.equal(EXPECTED_TOTAL, 482);
+  assert.ok(lines.some((l) => /482 passed, 0 failed/.test(l)), "summary must state 482 passed, 0 failed");
   // parseSuiteResult correctness (count-mismatch and failed>0 both fail).
   assert.equal(parseSuiteResult("10 passed, 0 failed", 10).ok, true);
   assert.equal(parseSuiteResult("9 passed, 0 failed", 10).ok, false);
