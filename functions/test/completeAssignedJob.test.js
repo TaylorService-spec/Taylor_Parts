@@ -184,6 +184,10 @@ test("request-supplied identity/authority fields are rejected, not ignored", asy
     { role: "admin" },
     { assignedTechnicianId: techId },
     { targetState: "complete" },
+    // The legacy job document's OWN workOrderId field (its upward
+    // fieldops_wos link) is a different concept from the job id -- a
+    // request supplying it must be rejected, never silently interpreted.
+    { workOrderId: "WO-123" },
   ]) {
     await assertHttpsErrorCode(
       completeAssignedJob.run(callRequest({ jobId, idempotencyKey: key("k"), ...extra }, uid)),
