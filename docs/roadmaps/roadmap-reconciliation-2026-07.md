@@ -180,3 +180,11 @@ This report does **not** select the next gate. Candidate next gates, with tradeo
 - **OQ-4:** Where does **INV-1** get its governance home, and at what priority relative to F-RULES-1 PR-1?
 - **OQ-5:** Do any **Sales/Customer/Accounting** items have committed repository artifacts that should be promoted, or do they remain ideas (not active priorities)?
 - **OQ-6:** Confirmation of the **F-RULES-1 Unresolved contract items** (U-R1–U-R4) ownership/timing — required before PR-3, not PR-1.
+
+## Addendum — 2026-07-21: INV-1 governance home authored (candidate gate B executed; OQ-4 resolved)
+
+Recorded post-merge of this report; this addendum does not rewrite any section above.
+
+- **Candidate gate B was authorized and executed** (Owner authorization "Begin INV-1 Governance and Architecture," 2026-07-21). The INV-1 governance home is the **Enterprise Inventory Architecture chain** (PR #371): `docs/assessments/enterprise-inventory-architecture.md`, `docs/specifications/enterprise-inventory-architecture.md`, `docs/specifications/enterprise-inventory-ai-strategy.md`, `docs/implementation-plans/enterprise-inventory-architecture.md`. Owner decisions D-1–D-6 adopting the chain are recorded in `DECISIONS.md` #37.
+- **OQ-4 is resolved:** the home is the chain above. Its Phase 0 ("Work-Order Inventory Effect Recovery" — detection + retry driver) is **separately Owner-gated and NOT started**; Phases 1–8 are **NOT AUTHORIZED**.
+- The "Blocked Work" INV-1 entry above changes status from *blocked pending an authoring authorization* to *governance chain adopted; implementation separately gated*. INV-1 itself (the production integrity gap) remains **unremediated** until Phase 0 is authorized, implemented, and deployed.
