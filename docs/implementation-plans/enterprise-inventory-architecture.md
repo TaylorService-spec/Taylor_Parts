@@ -110,6 +110,12 @@ The Owner approved INV-1 Phase 0 as a governed sequence: **PR 0.1** (detection e
   3. **Production recovery** — NOT performed and NOT required by the current evidence; would need its own Gate 0.4(b) exact-batch authorization if a future detection run finds candidates.
 - Phases 1–8 remain NOT AUTHORIZED.
 
+### 7c. Phase 0 closure and Phase 1 prerequisite status (recorded 2026-07-22)
+
+- **Phase 0 — CLOSED.** Gate 0.4(a) evidence merged (PR #379, merge `8147c1a`): repository implementation ✔; production audit ✔ (zero-Work-Order qualified); production recovery not performed and not required; Gate 0.4(b) never warranted, remains unauthorized.
+- **Part Master ADR (D-4 prerequisite): ADR-008 Proposed — in Owner review** (`docs/architecture/ADR-008-part-master.md`, with `docs/assessments/part-master-architecture.md`, `docs/specifications/part-master-architecture.md`, `docs/implementation-plans/inv1-phase1-part-master.md`; Owner decisions O-1…O-12 pending).
+- **Phase 1 implementation — NOT started; first implementation PR — NOT authorized.**
+
 ## 8. Validation
 
 **Of this package (done now):**
