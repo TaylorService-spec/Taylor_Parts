@@ -84,3 +84,14 @@ PR-1 is test-only and un-registered; rollback is a plain revert of the PR. It ca
 ## Explicit next gate
 
 After PR-1 review/merge: **PR-2** (Field Mode / technician client query migration to `where("technicianId","==",callerTechnicianId)`, with a fail-closed missing-mapping state), then **PR-2A** (lifecycle canonicalization + executable parity), then **PR-3** (hardened `firestore.rules` + register the suite), then **PR-4** (deployment package). Each is separately authorized; every Rules deploy requires its own Owner deployment authorization and is preceded by the merged audit **GO** already on record.
+
+## Registered dependency: technician self-write (final deferred gap)
+
+**Status as of `cc94b9c`:** PR-1 (contract suite), PR-2 (write enforcement), and the read-scoping slice are merged. The single remaining `DEFERRED` assertion — *technician cannot update own technician record* — is the interim technician-own-`status` write that supports the client-side job completion cascade (`jobActions.js#updateJobStatus(COMPLETE)`).
+
+Its closure is designed in a dedicated governance chain (the technician self-write design gate):
+- `docs/assessments/technician-self-write.md`
+- `docs/specifications/technician-self-write.md`
+- `docs/implementation-plans/technician-self-write.md`
+
+That chain refines the generic "PR-3 hardened Rules + register the suite" step **for this gap only**: the deferred assertion cannot become `ENFORCED` by Rules alone — it requires relocating the completion cascade into a trusted callable (`completeAssignedJob`) first. The concrete final sequence is **PR-A** (callable + tests), **PR-B** (Field Mode integration), **PR-C** (Rules hardening + strict-suite registration), then deploy **Gates D1→D2→D3**. Strict registration and the `EXPECTED_TOTAL` change land in **PR-C**, not before. All steps remain separately Owner-gated; nothing is deployed by the design gate.
