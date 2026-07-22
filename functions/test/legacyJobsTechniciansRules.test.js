@@ -15,17 +15,18 @@
 //
 // POSTURE (test-first; NOT registered in rulesRegressionRunner.mjs's SUITES
 // yet -- registration deferred to PR-3, since 3 DEFERRED gaps below remain).
-// As of PR-2, firestore.rules enforces the WRITE/CREATE/DELETE slice for these
-// two collections (reads remain `isSignedIn()`, deferred). Assertion phases:
+// PR-2 enforced the WRITE/CREATE/DELETE slice for these two collections. The
+// read-scoping slice then scoped reads (admin/dispatcher read all; a technician
+// reads only their own record and only jobs assigned to them), landed together
+// with the Field Mode client query migration. Assertion phases:
 //
 //   * COMPAT   -- an approved compatibility expectation that already holds
 //                 (unauth denied; admin/dispatcher and a technician's
 //                 own-assigned status transition allowed). MUST pass.
-//   * ENFORCED -- a contract=DENY gap that PR-2 now CLOSES. MUST be denied.
-//   * HARDENING (DEFERRED) -- a contract=DENY gap intentionally deferred past
-//                 PR-2: the two READ-scoping gaps (need the Field Mode client
-//                 query migration before a scoped read can deploy) and the
-//                 technician self-write gap (needs the cross-doc assign/
+//   * ENFORCED -- a contract=DENY gap now CLOSED (the WRITE/CREATE/DELETE gaps
+//                 from PR-2 plus the two READ-scoping gaps). MUST be denied.
+//   * HARDENING (DEFERRED) -- a contract=DENY gap still intentionally deferred:
+//                 the technician self-write gap (needs the cross-doc assign/
 //                 complete cascade to move to trusted Functions -- Spec sec17).
 //                 Still permitted today; documented, not a failure in default.
 //
@@ -69,11 +70,10 @@ const mapv = (obj) => ({ mapValue: { fields: obj } });
 // Phases:
 //   COMPAT    -- contract expectation already holds; must match now.
 //   ENFORCED  -- contract=DENY and PR-2 now enforces it; MUST be denied now.
-//   HARDENING -- contract=DENY but intentionally DEFERRED past PR-2 (read
-//                scoping needs the Field Mode query migration; full technician
-//                self-write denial needs the cross-doc cascade -> trusted
-//                Functions, Spec sec17). Still permitted; documented, not a
-//                failure in default mode.
+//   HARDENING -- contract=DENY but intentionally DEFERRED: full technician
+//                self-write denial needs the cross-doc assign/complete cascade
+//                to move to trusted Functions (Spec sec17). Still permitted;
+//                documented, not a failure in default mode.
 let compatPass = 0, compatFail = 0, enforcedPass = 0, enforcedFail = 0, deferredGap = 0, unexpected = 0;
 const failures = [];
 
@@ -203,8 +203,8 @@ async function main() {
   record("assigned technician can complete own job (in_progress->complete)", "COMPAT", "ALLOW", await updateDoc("fieldops_jobs", "job-inprogress-T1-fr1", t1Tok, { status: str("complete") }));
   record("assigned technician can read own job", "COMPAT", "ALLOW", await readDoc("fieldops_jobs", "job-assigned-T1-fr1", t1Tok));
 
-  // -- HARDENING (contract=DENY; currently permitted) --
-  record("technician cannot read another technician's job", "HARDENING", "DENY", await readDoc("fieldops_jobs", "job-assigned-T2-fr1", t1Tok));
+  // -- ENFORCED (read scoping: technician reads only jobs assigned to them) --
+  record("technician cannot read another technician's job", "ENFORCED", "DENY", await readDoc("fieldops_jobs", "job-assigned-T2-fr1", t1Tok));
   record("technician cannot create a job", "ENFORCED", "DENY", await createDoc("fieldops_jobs", "job-tech-forge-fr1", t1Tok, validJobCreateFields()));
   record("technician cannot update another technician's job status", "ENFORCED", "DENY", await updateDoc("fieldops_jobs", "job-assigned-T2-fr1", t1Tok, { status: str("in_progress") }));
   record("technician cannot change technicianId (assignment is admin/dispatcher-only)", "ENFORCED", "DENY", await updateDoc("fieldops_jobs", "job-assigned-T1-fr1", t1Tok, { technicianId: str("T2-fr1") }));
@@ -223,8 +223,9 @@ async function main() {
   record("admin can create a technician record", "COMPAT", "ALLOW", await createDoc("fieldops_technicians", "T-new-fr1", adminTok, { name: str("New"), phone: str("555"), status: str("available"), createdAt: int(Date.now()) }));
   record("technician can read own technician record", "COMPAT", "ALLOW", await readDoc("fieldops_technicians", "T1-fr1", t1Tok));
 
-  // -- HARDENING --
-  record("technician cannot read another technician's record", "HARDENING", "DENY", await readDoc("fieldops_technicians", "T2-fr1", t1Tok));
+  // -- ENFORCED (read scoping: technician reads only their own record) --
+  record("technician cannot read another technician's record", "ENFORCED", "DENY", await readDoc("fieldops_technicians", "T2-fr1", t1Tok));
+  // -- HARDENING (DEFERRED: self-write denial needs the assign/complete cascade in trusted Functions, Spec sec17) --
   record("technician cannot update own technician record (no self-write)", "HARDENING", "DENY", await updateDoc("fieldops_technicians", "T1-fr1", t1Tok, { status: str("off_shift") }));
   record("technician cannot update another technician's record", "ENFORCED", "DENY", await updateDoc("fieldops_technicians", "T2-fr1", t1Tok, { status: str("off_shift") }));
   record("technician cannot create a technician record", "ENFORCED", "DENY", await createDoc("fieldops_technicians", "T-tech-forge-fr1", t1Tok, { name: str("Forge"), phone: str("5"), status: str("available"), createdAt: int(Date.now()) }));
@@ -248,8 +249,8 @@ async function main() {
     // failure, an un-closed ENFORCED gap, or any unexpected status is a defect.
     const ok = compatFail === 0 && enforcedFail === 0 && unexpected === 0;
     console.log(ok
-      ? `\nPR-2 OK: compatibility preserved; ${enforcedPass} gap(s) now enforced; ${deferredGap} gap(s) intentionally deferred (read scoping + technician self-write cascade).`
-      : `\nPR-2 FAIL: ${compatFail} compat defect(s), ${enforcedFail} un-closed enforced gap(s), ${unexpected} unexpected:\n- ${failures.join("\n- ")}`);
+      ? `\nContract OK: compatibility preserved; ${enforcedPass} gap(s) now enforced; ${deferredGap} gap(s) intentionally deferred (technician self-write cascade -> trusted Functions, Spec sec17).`
+      : `\nContract FAIL: ${compatFail} compat defect(s), ${enforcedFail} un-closed enforced gap(s), ${unexpected} unexpected:\n- ${failures.join("\n- ")}`);
     process.exitCode = ok ? 0 : 1;
   }
 }
