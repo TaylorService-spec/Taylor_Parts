@@ -44,9 +44,12 @@ surface is exported as FIRESTORE_METHODS_USED and recorded in run-metadata.json.
 1. origin/main contains PRs #373/#374/#376 (detection engine, operator tooling, runbook).
 2. Checkout is clean and detached at 0d1ff0fb26a5ac16ffd0ce3c26550f45a8a54faf.
 3. Script integrity — SHA-256 must match exactly (stop on mismatch):
-   59e2edeb41234c6b066cb605d04a0437729d7be7c25ffc480478441c01df1538  functions/scripts/auditInventoryEffects.js
-   ea6e8e66f5978b35e691e66aacdbf9b1c39fc29ede4f1997b0e1790753656919  functions/scripts/inventoryEffectOperatorShared.js
-   e7e7275ce61dff16e60dbc088651e968080d15e37943642b409c53a55c5bf084  functions/src/inventoryEffectDetection.ts
+   59508810889f70f57481af9ca33302605b09cceea389414a043b607292831222  functions/scripts/auditInventoryEffects.js
+   cbe8dd2d060aaa5b8bb5cfb3f84cffc9c4f0cea6b0ab6b27a98c18b0f6c4da81  functions/scripts/inventoryEffectOperatorShared.js
+   a5a739f77f09ab5eb3ff4c046e73473a1ab3411dacf03c1ac94253c9a8b8637d  functions/src/inventoryEffectDetection.ts
+   (Hashes are of the canonical git blob bytes — LF line endings — exactly what a Linux
+   checkout contains. Verify with `git show origin/main:<path> | sha256sum` if in doubt;
+   a Windows CRLF working copy will legitimately hash differently.)
 4. Identity/project verification (record outputs):
    gcloud auth list
    gcloud config get-value project        # must be taylor-parts; stop otherwise
@@ -60,9 +63,9 @@ OUT="$HOME/$RUN_ID"                       # OUTSIDE the repository — never a r
 cd ~/Taylor_Parts
 git fetch origin && git checkout --detach 0d1ff0fb26a5ac16ffd0ce3c26550f45a8a54faf
 sha256sum -c <<'EOF'
-59e2edeb41234c6b066cb605d04a0437729d7be7c25ffc480478441c01df1538  functions/scripts/auditInventoryEffects.js
-ea6e8e66f5978b35e691e66aacdbf9b1c39fc29ede4f1997b0e1790753656919  functions/scripts/inventoryEffectOperatorShared.js
-e7e7275ce61dff16e60dbc088651e968080d15e37943642b409c53a55c5bf084  functions/src/inventoryEffectDetection.ts
+59508810889f70f57481af9ca33302605b09cceea389414a043b607292831222  functions/scripts/auditInventoryEffects.js
+cbe8dd2d060aaa5b8bb5cfb3f84cffc9c4f0cea6b0ab6b27a98c18b0f6c4da81  functions/scripts/inventoryEffectOperatorShared.js
+a5a739f77f09ab5eb3ff4c046e73473a1ab3411dacf03c1ac94253c9a8b8637d  functions/src/inventoryEffectDetection.ts
 EOF
 cd functions && npm ci && npm run build
 date -u +%Y-%m-%dT%H:%M:%SZ               # record start time
