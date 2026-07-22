@@ -1,7 +1,7 @@
 ---
 artifact_type: specification
 gate: Sprint Specification
-status: Draft
+status: Approved
 date: 2026-07-22
 owner: Claude Code
 related_adrs: []
@@ -22,14 +22,14 @@ target_release: TBD
 
 Closes the F-RULES-1 deferred gap by relocating the client-side completion cascade in `jobActions.js#updateJobStatus(COMPLETE)` into a trusted Function. After this exists, a technician holds **no** write grant on `fieldops_technicians`.
 
-Conceptual name `updateTechnicianProfile` from the gate is retained only for the **future** profile surface (§9); the field-accurate name for the required capability is a verb-noun completion callable. Final name subject to Owner confirmation.
+Conceptual name `updateTechnicianProfile` from the gate is retained only for the **future** profile surface (Assessment §6); the field-accurate name for the required capability is a verb-noun completion callable. **Name `completeAssignedJob` confirmed (Owner O-4).**
 
 ### A. Authentication
 - `onCall`, region `us-central1` (match existing callables). Reject when `!request.auth` → `HttpsError('unauthenticated')`.
 - Caller uid is taken **only** from `request.auth.uid`. No caller-supplied uid is honored.
 
 ### B. Authorization
-- `getCallerContext(request.auth.uid)` must yield `role === 'technician'`. `admin`/`dispatcher` are **rejected** here (they complete jobs through their own admin/dispatcher path; this callable is the technician path) → `HttpsError('permission-denied')`. *(Owner decision O-2: whether a/d may also call this callable; default = technician-only, mirroring `updateWorkOrderExecutionData`.)*
+- `getCallerContext(request.auth.uid)` must yield `role === 'technician'`. `admin`/`dispatcher` are **rejected** here (they complete jobs through their own admin/dispatcher path; this callable is the technician path) → `HttpsError('permission-denied')`. *(Owner decision **O-2 APPROVED**: technician-only caller, mirroring `updateWorkOrderExecutionData`; admin/dispatcher continue through their existing operational workflows.)*
 - `operationalRoles` are **never** consulted for authorization.
 - Compatibility-role behavior documented: authorization is the `users/{uid}.role` compatibility field, identical to the deployed WO-engine callables. Future effective-access integration is **planned, not activated** (§ Assessment 7).
 
@@ -65,7 +65,7 @@ Append-only `auditEvents` write within the flow (Admin SDK), consistent with `au
 `unauthenticated` · `permission-denied` (not a technician / not owner) · `failed-precondition` (no technicianId mapping / job not `in_progress` / job terminal) · `not-found` (job or technician doc missing) · `invalid-argument` (bad/unknown input) · `already-exists` (idempotency key reused for a different request) · `internal` (unexpected). Messages describe the condition without leaking other users' data.
 
 ### I. Rate / abuse controls
-- Completion is a low-frequency, ownership-bounded action; **no dedicated rate limiter is required now.** App Check and per-caller rate limiting are **documented as deferred** (revisit if the surface widens to profile self-service, §9). The `idempotencyKey` already prevents accidental double-submits.
+- Completion is a low-frequency, ownership-bounded action; **no dedicated rate limiter is required now.** App Check and per-caller rate limiting are **documented as deferred** (revisit if the surface widens to profile self-service, Assessment §6). The `idempotencyKey` already prevents accidental double-submits.
 
 ## 2. Rules target-state matrix (applied later, in PR-C — not this gate)
 
@@ -87,7 +87,7 @@ Moving completion to the Function **changes the Rules contract for the completio
 
 - **`technician cannot update own technician record (no self-write)`** — `HARDENING/DEFERRED` → **`ENFORCED`** (technician direct `fieldops_technicians` write now denied). *This is the gap closure.*
 - **`assigned technician can complete own job (in_progress→complete)`** — currently a **COMPAT `ALLOW`** direct-write assertion. Because direct-client completion is now denied, this assertion must be **re-expressed**: the technician's *capability* to complete is preserved **via the Function** (covered by Function/emulator tests, §Test-Plan), while the *direct-write* transition becomes **`ENFORCED` DENY** ("technician cannot directly complete a job; completion is Function-only"). 
-  - **Consequence:** the gate's expectation that "all 13 COMPAT assertions remain passing unchanged" is **not exactly** met — one COMPAT assertion changes shape (direct-write completion moves from ALLOW to a DENY under the strict contract, with the feature preserved through the Function). **Owner decision O-3** must accept this contract re-expression. Net counts after PR-C: COMPAT 12 (completion-by-direct-write removed) + ENFORCED 18 (16 prior + self-write + direct-complete-denied) + DEFERRED 0 — *exact numbers to be finalized in PR-C; the material point is DEFERRED reaches 0 and the suite becomes strict-eligible.*
+  - **Consequence:** the gate's expectation that "all 13 COMPAT assertions remain passing unchanged" is **not exactly** met — one COMPAT assertion changes shape (direct-write completion moves from ALLOW to a DENY under the strict contract, with the feature preserved through the Function). **Owner decision O-3 APPROVED** this contract re-expression: technicians may directly perform `assigned→in_progress`, while completion must go through the trusted callable. Net counts after PR-C: COMPAT 12 (completion-by-direct-write removed) + ENFORCED 18 (16 prior + self-write + direct-complete-denied) + DEFERRED 0 — *exact numbers to be finalized in PR-C; the material point is DEFERRED reaches 0 and the suite becomes strict-eligible.*
 - With **DEFERRED = 0**, the suite becomes eligible for **strict CI registration** (`F_RULES_1_STRICT=1`) and addition to `rulesRegressionRunner.mjs SUITES` — performed in **PR-C**, raising `EXPECTED_TOTAL` accordingly.
 
 ## 4. UX contract (technician-facing; scope = completion + access-safe states)
@@ -105,15 +105,13 @@ Field Mode's existing "Complete Job" action changes from a client transaction to
 
 Field Mode is **not** otherwise redesigned.
 
-## 5. Decision recommendation (for a future DECISIONS.md #38 — record only on Owner approval)
+## 5. Decision record — DECISIONS.md #39 (Owner-approved)
 
-> **38. Technician self-write closed via a trusted completion callable (F-RULES-1 final gap)** — Adopt **Option B**: a technician-only `onCall` Function performs the legacy job completion cascade (`fieldops_jobs.status=complete` + `fieldops_technicians.status=available`) atomically with the Admin SDK; Rules then deny all technician writes to `fieldops_technicians` and restrict the direct-client jobs transition to `assigned→in_progress`. Source-of-truth unchanged (`users/{uid}` identity/access, Admin-SDK-only; `fieldops_technicians` operational profile). The six Enterprise Access mutation Functions are unrelated and not prerequisites; this Function may deploy independently. Implementation and deployment remain separately gated (PR-A/B/C, Gates D1–D3). *Alternatives rejected:* direct client write (leaves the write surface), approval workflow (overkill for a routine completion), hybrid (no safe self-editable field exists). *Strategic alternative deferred (O-1):* migrating Field Mode onto the deployed WO engine.
+Recorded as **`docs/DECISIONS.md` #39** ("Technician self-write closed via a dedicated trusted callable — F-RULES-1 final gap") on Owner approval of O-1…O-5, 2026-07-22. *(Number is #39, not #38: DECISIONS #38 is the merged INV-1 Phase 0 recovery-tooling decision.)* Summary: **Option B** is adopted — a **technician-only** `onCall` `completeAssignedJob` performs the legacy job completion cascade (`fieldops_jobs.status=complete` + `fieldops_technicians.status=available`) atomically with the Admin SDK; Rules then deny all technician `fieldops_technicians` writes and restrict the direct-client jobs transition to `assigned→in_progress`. Source-of-truth unchanged. The six Enterprise Access mutation Functions are unrelated and not prerequisites. Implementation and deployment remain separately gated (PR-A/B/C, Gates D1–D3). The strategic WO-engine migration alternative (O-1) is deferred.
 
-This gate does **not** append the entry; it presents it for approval.
-
-## 6. Owner decisions required
-- **O-1:** Close the gap with `completeAssignedJob` (recommended), **or** pursue the larger WO-engine migration that retires the legacy collections?
-- **O-2:** Technician-only caller (default), or also allow admin/dispatcher to call the completion callable?
-- **O-3:** Accept the contract re-expression in §3 (direct-write completion → Function-only; one COMPAT assertion changes shape)?
-- **O-4:** Confirm the final Function name (`completeAssignedJob` proposed).
-- **O-5:** Approve adding a `completeAssignedJob` value to the `AuditAction` union (audit taxonomy change).
+## 6. Owner decisions — RESOLVED (O-1…O-5 approved, 2026-07-22)
+- **O-1 — APPROVED:** dedicated trusted callable `completeAssignedJob`; do **not** widen Issue #15 or redesign the Work Order engine; the callable stays part of the F-RULES-1 completion path. WO-engine migration is **not** pursued in this slice.
+- **O-2 — APPROVED:** technician-only caller; admin/dispatcher continue through existing operational workflows (do not broaden without a later concrete need).
+- **O-3 — APPROVED:** completion contract re-expression accepted — technician direct `assigned→in_progress` retained; completion via the trusted callable; direct technician completion-cascade writes denied; the callable atomically preserves the jobs↔technicians cascade.
+- **O-4 — APPROVED:** Function name `completeAssignedJob`; follow current repo export/file-naming/callable/error conventions in the implementation PR.
+- **O-5 — APPROVED:** add one new `AuditAction` value in the **implementation PR** (PR-A), named per the existing enum convention, semantically "technician completes assigned job through the trusted callable." Not added to code in this documentation-only update; the future name is documented here per convention.

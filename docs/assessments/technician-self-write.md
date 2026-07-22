@@ -1,7 +1,7 @@
 ---
 artifact_type: assessment
 gate: Design / Decision Analysis
-status: Draft
+status: Approved
 date: 2026-07-22
 owner: Claude Code
 related_adrs: []
@@ -77,7 +77,7 @@ Every `users/{uid}` field is already D/E and already denied to all clients. **No
 
 ## 5. Mutation options assessed
 
-| Criterion | A. Direct client write + Rules | B. Single trusted callable *(recommended)* | C. Trusted callable + approval workflow | D. Hybrid (safe prefs direct + Function governed) |
+| Criterion | A. Direct client write + Rules | B. Single trusted callable *(approved — Owner O-1)* | C. Trusted callable + approval workflow | D. Hybrid (safe prefs direct + Function governed) |
 |---|---|---|---|---|
 | Security | Weak — keeps a technician write surface on `fieldops_technicians`; Rules cannot express "status changes only via a valid job completion" | Strong — technician holds **no** write grant on `fieldops_technicians`; Admin SDK performs the cascade | Strong (same) plus dual-control | Mixed — reintroduces a (narrow) direct-write surface |
 | Cross-doc consistency | Cannot guarantee atomic jobs↔technicians under client Rules the way a server transaction can, once the technician grant is removed | Atomic server `runTransaction` | Atomic | Atomic for the governed half only |
@@ -92,7 +92,7 @@ Every `users/{uid}` field is already D/E and already denied to all clients. **No
 | Testability | Rules-only | Function unit + emulator + Rules contract | Same + workflow | Most surface |
 | Rollback | — | Revert Function + Rules; feature reverts to interim | Same | Two rollbacks |
 
-**Recommendation: Option B — a single trusted callable that performs the technician-initiated legacy job completion cascade atomically**, after which Rules deny **all** technician writes to `fieldops_technicians`. This is the minimal, honest closure of the deferred gap and directly mirrors the already-deployed, production-proven `updateWorkOrderExecutionData` pattern. Option C's approval workflow is reserved for *category-B* profile changes (e.g. `name`), which are not wired; Option D's direct-write half has no genuinely-safe self-editable field to carry today.
+**Decision (Owner-approved O-1): Option B — a single dedicated trusted callable (`completeAssignedJob`) that performs the technician-initiated legacy job completion cascade atomically**, after which Rules deny **all** technician writes to `fieldops_technicians`. This is the minimal, honest closure of the deferred gap and directly mirrors the already-deployed, production-proven `updateWorkOrderExecutionData` pattern. Option C's approval workflow is reserved for *category-B* profile changes (e.g. `name`), which are not wired; Option D's direct-write half has no genuinely-safe self-editable field to carry today.
 
 ### Strategic alternative (surfaced for the Owner, not recommended for this gap)
 The Work Order Engine (`fieldops_wos` + the **deployed** `transitionWorkOrder`) already has a server-only completion path with **no** client cascade. Migrating Field Mode off the legacy `fieldops_jobs`/`fieldops_technicians` collections onto the WO engine would close this gap with **zero new Functions** — but is a substantially larger frontend migration and a strategic collections decision beyond F-RULES-1's scope. **Owner decision O-1** (§12) records this fork. Option B does not preclude a later WO migration.
@@ -118,7 +118,7 @@ Issue #15 (Work Order Engine v1.2) delivered and **deployed** `createWorkOrder` 
 
 ## 9. DECISIONS.md disposition
 
-Per the gate, because **Owner approval is still required** after this design, this gate does **not** append a decision as *adopted*. The recommended entry text (a future **#38**, next after #37) is drafted in the Specification's "Decision recommendation" section for the Owner to approve. No `DECISIONS.md` change is made in this PR.
+Owner decisions O-1…O-5 were **approved** in the PR #377 review (2026-07-22). The decision is recorded as **`docs/DECISIONS.md` #39** — *not* #38, which is now occupied by the merged INV-1 Phase 0 recovery-tooling decision (PR #376). The entry records the dedicated `completeAssignedJob` callable, technician-only authorization, UID-resolved identity, atomic cascade, direct-completion denial with `assigned→in_progress` retained, idempotency, append-only audit, the non-prerequisite status of Enterprise Access mutations, and that implementation/deployment remain separately gated.
 
 ## 10. F-RULES-1 completion path
 

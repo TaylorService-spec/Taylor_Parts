@@ -1,7 +1,7 @@
 ---
 artifact_type: implementation-plan
 gate: Implementation Plan
-status: Draft
+status: Approved
 date: 2026-07-22
 owner: Claude Code
 related_adrs: []
@@ -64,7 +64,7 @@ target_release: TBD
 
 ### A. Function unit tests (`completeAssignedJob`)
 - unauthenticated → `unauthenticated`.
-- caller role `admin`/`dispatcher` → `permission-denied` (unless O-2 changes this).
+- caller role `admin`/`dispatcher` → `permission-denied` (technician-only per Owner O-2).
 - missing `users/{uid}` / no `technicianId` → `failed-precondition`.
 - caller-supplied `technicianId` in input → rejected/ignored (only resolved id used).
 - job not found / technician doc not found → `not-found`.
