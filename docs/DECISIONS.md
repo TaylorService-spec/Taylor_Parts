@@ -458,3 +458,16 @@ Every linked-persona command carried `--requireExistingAuthUser` (PR #114) — n
 **Effect:** Governance only. Phase 0 (INV-1 detection + retry recovery) is deferred to a separate Owner gate (D-2) and has not started; Phases 1–8 remain NOT AUTHORIZED. Customer (F-RULES-1 PR-2) and Inventory work proceed in parallel; Inventory Phase 0 must not modify Firestore Rules files concurrently changed by the Customer session without explicit cross-session coordination.
 **Not done:** No implementation, no Firestore Rules change, no Functions change, no index change, no frontend change, no deployment, no production operation, and no Phase 0 work.
 **Alternatives rejected:** None — this entry records the Owner's decisions D-1 through D-6 on PR #371, not a choice among options.
+
+## 38. INV-1 Phase 0 inventory-effect recovery tooling adopted (repository only)
+
+**Date:** 2026-07-22
+**Decision:** Under the Owner's Phase 0 sequence approval and per-PR merge decisions, adopted the governed inventory-effect recovery mechanism: the pure detection engine (`functions/src/inventoryEffectDetection.ts`, PR #373 / `0b82009`) plus the operator audit and exact-batch retry scripts (`functions/scripts/auditInventoryEffects.js`, `functions/scripts/retryInventoryEffects.js`, PR #374 / `c975258`), with the operating procedure recorded in `docs/operations/inventory-effect-recovery-runbook.md` and ownership registered in `docs/architecture/SYSTEM_AUTHORITIES.md` (PR 0.3).
+**Standing constraints:**
+- Production detection remains separately authorized (Gate 0.4(a), read-only).
+- Production retry requires an Owner Production Data Authorization naming the exact `workOrderId`/`state` pairs (Gate 0.4(b)); the retry tooling may not auto-expand candidates and has no wildcard mode.
+- No deployed callable, scheduled Function, Eventarc trigger, or Scheduler job is authorized for Phase 0; the scripts are operator-invoked only and are referenced by no runtime, CI, build, install, deploy, or emulator path.
+- Retry execution reuses the existing idempotent `triggerInventoryEffects` path exclusively; ledger and sync-status write authority is unchanged (`inventoryService.ts`).
+**Effect:** Repository tooling exists and is governed. Production findings are unknown — no production audit or recovery has been performed. The legacy Epic 5 `purchase_orders` deprecation direction (#37, D-3) and Phases 1–8 of the enterprise inventory architecture are unaffected.
+**Not done:** No production read, write, or retry; no Gate 0.4 execution; no deployment; no Rules/index/schema/frontend change; no Phase 0 operational completion claim.
+**Alternatives rejected:** A deployed admin callable for recovery was considered in the Phase 0 proposal and not chosen -- script-based operator tooling was the Owner-approved form; a callable remains a possible later-phase decision under its own gates.
