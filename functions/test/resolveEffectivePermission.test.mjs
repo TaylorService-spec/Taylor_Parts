@@ -82,6 +82,10 @@ check("A3: every Permission id is granted by at least one compatibility Role (di
   const deferredForNow = new Set([
     "audit.event.read",
     ...PERMISSION_CATALOG.filter((p) => p.id.startsWith("report.")).map((p) => p.id),
+    // INV-1 Phase 1 PR 1.2 (ADR-008 / Decision #40): registered-but-
+    // ungranted by design -- the trusted Part Master service denies for
+    // every real principal until a Role grants these under its own gate.
+    ...PERMISSION_CATALOG.filter((p) => p.id.startsWith("inventory.catalog.")).map((p) => p.id),
   ]);
   const grantedIds = new Set([
     ...ADMIN_ROLE.permissions,
