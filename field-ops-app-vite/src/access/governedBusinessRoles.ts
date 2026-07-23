@@ -212,6 +212,32 @@ export const OWNER_ROLE: Role = Object.freeze({
   conditionsByPermission: OWNER_CONDITIONS,
 }) as Role;
 
+// INV-1 Post-Phase-1 -- temporary, execution-scoped Role for the approved
+// 190-Part CREATE run (Decision #42; CREATE Execution Authorization gate).
+// NOT one of Spec §26's eight business-oversight Roles: it exists solely to
+// make `inventory.catalog.manage` grantable to the approved operator for the
+// ONE approved CREATE execution, then be revoked immediately after execution
+// and reconciliation. Least privilege by construction: carries ONLY
+// `inventory.catalog.manage` (create/edit canonical Part records through the
+// trusted Part Master service) -- deliberately NOT `inventory.catalog.
+// activate` (lifecycle changes remain a separate step) and no other id.
+// `privileged: true` so BOTH its grant and its revoke require a second,
+// distinct authorized approver and are never eligible for the single-admin
+// assign path (ADR-005 §2.4). Declaring this object grants nothing: a
+// principal gains the capability only when a governed, audited roleAssignment
+// (functions/src/access/trustedWriterCommands.ts) assigns them this roleId,
+// and loses it the instant that assignment is revoked.
+export const INVENTORY_CREATE_EXECUTOR_ROLE: Role = Object.freeze({
+  id: "inventoryCreateExecutor",
+  name: "Inventory CREATE Executor (temporary)",
+  description:
+    "Temporary execution-scoped Role for the approved Part Master CREATE run (INV-1, Decision #42). Grants only inventory.catalog.manage; assigned to the approved operator for one CREATE execution and revoked immediately after execution and reconciliation.",
+  systemSeed: true,
+  compatibility: false,
+  privileged: true,
+  permissions: ["inventory.catalog.manage"],
+}) as Role;
+
 export const GOVERNED_BUSINESS_ROLES: Readonly<Record<string, Role>> = Object.freeze({
   generalEmployee: GENERAL_EMPLOYEE_ROLE,
   officeManager: OFFICE_MANAGER_ROLE,
@@ -221,4 +247,5 @@ export const GOVERNED_BUSINESS_ROLES: Readonly<Record<string, Role>> = Object.fr
   fieldManager: FIELD_MANAGER_ROLE,
   operationsManager: OPERATIONS_MANAGER_ROLE,
   owner: OWNER_ROLE,
+  inventoryCreateExecutor: INVENTORY_CREATE_EXECUTOR_ROLE,
 });
