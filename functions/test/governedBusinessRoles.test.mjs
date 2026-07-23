@@ -23,6 +23,7 @@ import {
   FIELD_MANAGER_ROLE,
   OPERATIONS_MANAGER_ROLE,
   OWNER_ROLE,
+  INVENTORY_CREATE_EXECUTOR_ROLE,
 } from "../lib/access/governedBusinessRoles.js";
 import { findPermission, PERMISSION_CATALOG } from "../lib/access/permissionCatalog.js";
 
@@ -51,6 +52,7 @@ const EXPECTED_IDS = [
   "fieldManager",
   "operationsManager",
   "owner",
+  "inventoryCreateExecutor",
 ];
 
 function grant(roleId, roles) {
@@ -78,9 +80,9 @@ function resolve(permissionId, roleId, roles) {
 
 // === Catalog membership: exactly the eight named Roles, no more, no fewer ===
 
-check("GOVERNED_BUSINESS_ROLES contains exactly the eight Owner-directed ids", () => {
+check("GOVERNED_BUSINESS_ROLES contains exactly the nine ids (the eight Owner-directed business Roles + the temporary INV-1 CREATE executor)", () => {
   assert.deepEqual(Object.keys(GOVERNED_BUSINESS_ROLES).sort(), [...EXPECTED_IDS].sort());
-  assert.equal(ALL_GOVERNED_ROLES.length, 8);
+  assert.equal(ALL_GOVERNED_ROLES.length, 9);
 });
 
 check("every governed business Role's own .id matches its map key", () => {
@@ -210,6 +212,49 @@ check("Operations Manager: cross-domain oversight reads + Work Order lifecycle; 
     "reorder.request.cancel",
   ]) {
     assert.equal(resolve(id, "operationsManager", GOVERNED_BUSINESS_ROLES).decision, "DENY", id);
+  }
+});
+
+// === INV-1: temporary CREATE execution capability Role ===
+
+check("Inventory CREATE Executor: grants ONLY inventory.catalog.manage", () => {
+  assert.deepEqual(INVENTORY_CREATE_EXECUTOR_ROLE.permissions, ["inventory.catalog.manage"]);
+  assert.equal(resolve("inventory.catalog.manage", "inventoryCreateExecutor", GOVERNED_BUSINESS_ROLES).decision, "ALLOW");
+});
+
+check("Inventory CREATE Executor: inherits NO other capability (activate, admin, customer, work order, reorder, warehouse)", () => {
+  for (const id of [
+    "inventory.catalog.activate", // deliberately withheld -- lifecycle is a separate step
+    "account.record.read", "account.record.create", "account.governedField.write",
+    "workOrder.create", "workOrder.transition", "workOrder.cancel",
+    "admin.roleAssignment.write", "admin.userStatus.write",
+    "reorder.request.assign", "warehouse.record.read", "inventory.transaction.read",
+  ]) {
+    assert.equal(resolve(id, "inventoryCreateExecutor", GOVERNED_BUSINESS_ROLES).decision, "DENY", id);
+  }
+});
+
+check("Inventory CREATE Executor: is privileged (two-approver grant/revoke), systemSeed, non-compatibility", () => {
+  assert.equal(INVENTORY_CREATE_EXECUTOR_ROLE.privileged, true);
+  assert.equal(INVENTORY_CREATE_EXECUTOR_ROLE.systemSeed, true);
+  assert.equal(INVENTORY_CREATE_EXECUTOR_ROLE.compatibility, false);
+});
+
+check("without any assignment, inventory.catalog.manage remains DENIED (grant removes access on revoke)", () => {
+  const denied = resolveEffectivePermission({
+    permissionId: "inventory.catalog.manage",
+    assignments: [], // revoked / never granted
+    roles: GOVERNED_BUSINESS_ROLES,
+    currentAccessVersion: 1,
+    target: { scope: { type: "global" }, condition: {} },
+  });
+  assert.equal(denied.decision, "DENY");
+});
+
+check("no OTHER governed business Role grants inventory.catalog.manage (only the temporary executor)", () => {
+  for (const [id, role] of Object.entries(GOVERNED_BUSINESS_ROLES)) {
+    if (id === "inventoryCreateExecutor") continue;
+    assert.equal(resolve("inventory.catalog.manage", id, GOVERNED_BUSINESS_ROLES).decision, "DENY", id);
   }
 });
 
