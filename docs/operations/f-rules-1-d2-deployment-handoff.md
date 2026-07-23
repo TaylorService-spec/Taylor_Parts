@@ -2,7 +2,7 @@
 
 **Gate:** D2 — deploy the current governed `firestore.rules`, verify the technician self-write closure in production, preserve rollback. **Operator-executed**; prepared by the Customer session per the Owner's D2 authorization. Governing: Decision #39 · PR-C validation · D1 activation report (`../audits/f-rules-1/d1-activation/`).
 
-**Combined-content acknowledgement (Owner-confirmed):** this deploy ships the ENTIRE current Rules file — the F-RULES-1 technician hardening (start-only direct transition, status-only, completion/self-availability denied, audit client-deny) **plus** Inventory's client-closed blocks (`parts`, `manufacturers`, `part_aliases`, `part_supplier_items`). Pre-verified at `75289cc`: byte-identical mirror, full regression **498/0 (15 suites)** incl. strict 43/43, partMaster 16/16, partAlias 8/8, partSupplierItem 8/8. Repository Rules sha256: `0eb9bf4675793fde1897b859d7101700cd5618fdf346a69871a46c4864a30ca9`.
+**Combined-content acknowledgement (Owner-confirmed):** this deploy ships the ENTIRE current Rules file — the F-RULES-1 technician hardening (start-only direct transition, status-only, completion/self-availability denied, audit client-deny) **plus** Inventory's client-closed blocks (`parts`, `manufacturers`, `part_aliases`, `part_supplier_items`). Pre-verified at `75289cc`: byte-identical mirror, full regression **498/0 (15 suites)** incl. strict 43/43, partMaster 16/16, partAlias 8/8, partSupplierItem 8/8. Governed Rules **git-blob** sha256 (derive, never hand-copy: `git show HEAD:firestore.rules | sha256sum`): `b37c666fff0018375df11afa5078f8499e10fea9df7a862d5c373e112f5903fd`. (Correction note: an earlier handoff revision recorded a Windows-worktree CRLF hash; every check below now derives from the git blob, which is byte-identical to a Linux/Cloud Shell working tree and to what `firebase deploy` uploads.)
 
 **Hard boundaries:** deploy ONLY `firestore:rules` · no Functions/hosting/indexes/extensions · no Rules edits during the run · fixtures strictly `d2smoke`-prefixed · D3 not begun.
 
@@ -13,9 +13,9 @@ Run each step as one block; **pause and compare with the expected output**.
 ## Step 1 — Clone the handoff branch and install
 
 ```bash
-git clone --branch ops/f-rules-1-d2-handoff https://github.com/TaylorService-spec/Taylor_Parts.git d2 && cd d2 && sha256sum firestore.rules && cd functions && npm ci >/dev/null && cd ..
+git clone --branch ops/f-rules-1-d2-handoff https://github.com/TaylorService-spec/Taylor_Parts.git d2 && cd d2 && EXPECTED_RULES_SHA=$(git show HEAD:firestore.rules | sha256sum | cut -d" " -f1) && echo "governed blob: $EXPECTED_RULES_SHA" && test "$(sha256sum firestore.rules | cut -d" " -f1)" = "$EXPECTED_RULES_SHA" && echo TREE-MATCHES-BLOB && test "$(git show HEAD:field-ops-app-vite/firestore.rules | sha256sum | cut -d" " -f1)" = "$EXPECTED_RULES_SHA" && echo MIRROR-MATCHES-BLOB && cd functions && npm ci >/dev/null && cd ..
 ```
-**Expected:** sha256 `0eb9bf4675793fde1897b859d7101700cd5618fdf346a69871a46c4864a30ca9` (must MATCH exactly — else STOP). **PAUSE.**
+**Expected:** `governed blob: b37c666fff0018375df11afa5078f8499e10fea9df7a862d5c373e112f5903fd` then `TREE-MATCHES-BLOB` and `MIRROR-MATCHES-BLOB` (all derived from the repository blob at your checkout — if any line is missing, STOP). Keep this shell session: `$EXPECTED_RULES_SHA` is reused in Step 4. **PAUSE.**
 
 ## Step 2 — Capture the production Rules baseline (rollback artifact)
 
@@ -34,9 +34,9 @@ firebase deploy --only firestore:rules --project taylor-parts 2>&1 | tee d2-evid
 ## Step 4 — Verify the deployed ruleset equals the repository file
 
 ```bash
-TOKEN=$(gcloud auth print-access-token) && REL=$(curl -s -H "Authorization: Bearer $TOKEN" "https://firebaserules.googleapis.com/v1/projects/taylor-parts/releases" | python3 -c "import sys,json; rs=json.load(sys.stdin)['releases']; print([r['rulesetName'] for r in rs if r['name'].endswith('cloud.firestore')][0])") && curl -s -H "Authorization: Bearer $TOKEN" "https://firebaserules.googleapis.com/v1/$REL" | python3 -c "import sys,json; sys.stdout.write(json.load(sys.stdin)['source']['files'][0]['content'])" > d2-evidence/post-deploy-production.rules && sha256sum d2-evidence/post-deploy-production.rules firestore.rules
+TOKEN=$(gcloud auth print-access-token) && REL=$(curl -s -H "Authorization: Bearer $TOKEN" "https://firebaserules.googleapis.com/v1/projects/taylor-parts/releases" | python3 -c "import sys,json; rs=json.load(sys.stdin)['releases']; print([r['rulesetName'] for r in rs if r['name'].endswith('cloud.firestore')][0])") && curl -s -H "Authorization: Bearer $TOKEN" "https://firebaserules.googleapis.com/v1/$REL" | python3 -c "import sys,json; sys.stdout.write(json.load(sys.stdin)['source']['files'][0]['content'])" > d2-evidence/post-deploy-production.rules && test "$(sha256sum d2-evidence/post-deploy-production.rules | cut -d" " -f1)" = "$(git show HEAD:firestore.rules | sha256sum | cut -d" " -f1)" && echo LIVE-EQUALS-GOVERNED-BLOB && sha256sum d2-evidence/post-deploy-production.rules
 ```
-**Expected:** the two hashes are **IDENTICAL** (both `0eb9bf46…a30ca9`) — the live ruleset is exactly the governed repo file. If not, STOP → ROLLBACK. **PAUSE.**
+**Expected:** `LIVE-EQUALS-GOVERNED-BLOB` followed by the hash (must equal Step 1's `governed blob` value, `b37c666…903fd`) — the live ruleset is byte-exactly the governed repository blob. If the check line is missing, STOP → ROLLBACK. **PAUSE.**
 
 ## Step 5 — Post-deploy production verification (seed → run)
 
