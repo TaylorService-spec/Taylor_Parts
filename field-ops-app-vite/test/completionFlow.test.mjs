@@ -322,9 +322,11 @@ ok("completion button is only rendered for an in_progress job", () => {
   assert.doesNotMatch(assignedBranch, /Complete Job|onComplete\(/);
 });
 
-ok("release gate is statically unreachable in production builds", () => {
-  assert.match(gate, /import\.meta\.env\.DEV/);
-  assert.match(gate, /emulator/, "trusted path active only where the callable exists (emulator dev)");
+ok("release gate is ACTIVE (Gate D1): trusted completion enabled everywhere", () => {
+  // Flipped by the D1 release change after completeAssignedJob was deployed
+  // and smoke-verified -- the trusted path is now the production path.
+  assert.match(stripComments(gate), /TRUSTED_COMPLETION_ENABLED = true/);
+  assert.doesNotMatch(stripComments(gate), /import\.meta\.env\.DEV/, "the pre-D1 conditional gate must be gone from code");
 });
 
 console.log(`\ncompletionFlow: ${passed} passed, 0 failed`);
