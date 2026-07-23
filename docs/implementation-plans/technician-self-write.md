@@ -29,6 +29,8 @@ target_release: TBD
 | **Gate D2** | Deploy hardened Firestore Rules (pre-deploy SHA capture) | Owner deploy gate | **yes** |
 | **Gate D3** | Production smoke verification (read-only operator) | Owner verify gate | verify-only |
 
+> **WORKSTREAM CLOSED (2026-07-23, Decision #41):** PR-A/PR-B/PR-C merged; **D1 COMPLETE** (callable live, 12/12 smoke, frontend gate flipped, published bundle byte-verified); **D2 COMPLETE** (governed Rules live == blob `b37c666…903fd`, 22/22 production verification, rollback baseline preserved/unused); **D3 COMPLETE** (shipped-UI completion verified 7/7; run-1 React #31 display blocker fixed via PR #393). Evidence: `docs/audits/f-rules-1/{d1-activation,d2-rules-deployment,d3-closure}/`. Open successor item: U-R1–U-R4 (separate gate).
+
 **Ordering constraint:** Gate D1 (Function live) **must precede** D2 (Rules that deny the direct-client completion), and PR-B (client calls the Function) must be merged before D2, so completion never breaks in production. PR-A/PR-B are safe to merge before any deploy because the interim Rules still permit the old path until D2.
 
 ## PR-A — Trusted callable + tests
