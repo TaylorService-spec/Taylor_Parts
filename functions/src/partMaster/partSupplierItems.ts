@@ -313,6 +313,13 @@ export async function createPartSupplierItem(input: CreatePartSupplierItemInput,
     if (part === null) throw new NotFoundError(`part ${partId.value} not found`);
     const existing = await getItem(db, txn, itemId);
     if (existing !== null) throw new AlreadyExistsError(`supplier item ${itemId} already exists`);
+    // PR 1.5: purchase unit must share the part stocking unit family
+    if (validated.value.purchaseUnit !== undefined) {
+      const { areUnitsCompatible } = await import("./units.js");
+      if (!areUnitsCompatible(validated.value.purchaseUnit, part.part.stockingUnit)) {
+        throw new InvalidInputError(`purchaseUnit family is incompatible with stocking unit ${part.part.stockingUnit}`);
+      }
+    }
     const at = now();
     txn.create(ref(db, itemId), supplierItemToFirestore({
       itemId,
