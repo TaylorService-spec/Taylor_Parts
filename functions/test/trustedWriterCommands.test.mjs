@@ -806,6 +806,97 @@ async function main() {
     assert.equal(conflict.data().outcome, "denied");
   });
 
+  // =====================================================================
+  // INV-1 / ADR-009 / Decision #42 -- governed-Role assignment wiring (G3):
+  // the curated ASSIGNABLE_ROLES registry lets the single governed,
+  // non-privileged `inventoryCreateExecutor` be assigned/revoked through the
+  // trusted commands, fail-closed for everything else, two-person untouched.
+  // =====================================================================
+
+  await check("wiring: assignApprovedRole assigns inventoryCreateExecutor (single admin) -> active assignment + applied audit", async () => {
+    const actor = await makeAdminActor();
+    const principal = await makePrincipal();
+    const key = `assign-ice-${uid("k")}`;
+    const result = await assignApprovedRole({ actorUid: actor, principalUid: principal, roleId: "inventoryCreateExecutor", scope: { type: "global" }, idempotencyKey: key });
+    assert.equal(result.status, "applied");
+    const snap = await db.collection("roleAssignments").doc(key).get();
+    assert.ok(snap.exists);
+    assert.equal(snap.data().status, "active");
+    assert.equal(snap.data().roleId, "inventoryCreateExecutor");
+    const audit = await getAuditEvent(key);
+    assert.equal(audit.action, "assignApprovedRole");
+    assert.equal(audit.outcome, "applied");
+  });
+
+  await check("wiring: inventoryCreateExecutor assignment can be revoked through the trusted command -> disabled + applied audit", async () => {
+    const actor = await makeAdminActor();
+    const principal = await makePrincipal();
+    const grantKey = `assign-ice-rev-${uid("k")}`;
+    await assignApprovedRole({ actorUid: actor, principalUid: principal, roleId: "inventoryCreateExecutor", scope: { type: "global" }, idempotencyKey: grantKey });
+    const revokeKey = `revoke-ice-${uid("k")}`;
+    const result = await revokeRole({ actorUid: actor, assignmentId: grantKey, idempotencyKey: revokeKey });
+    assert.equal(result.status, "applied");
+    assert.equal((await db.collection("roleAssignments").doc(grantKey).get()).data().status, "disabled");
+    assert.equal((await getAuditEvent(revokeKey)).action, "revokeRole");
+  });
+
+  await check("wiring: unauthorized assigner (dispatcher lacks admin.roleAssignment.write) is DENIED for inventoryCreateExecutor", async () => {
+    const actor = await makeDispatcherActor();
+    const principal = await makePrincipal();
+    await assertRejectsWith(
+      assignApprovedRole({ actorUid: actor, principalUid: principal, roleId: "inventoryCreateExecutor", scope: { type: "global" }, idempotencyKey: `assign-ice-unauth-${uid("k")}` }),
+      UnauthorizedActorError, "dispatcher may not assign",
+    );
+  });
+
+  await check("wiring: unknown roleId still fails closed (UnknownRoleError) through the curated registry", async () => {
+    const actor = await makeAdminActor();
+    const principal = await makePrincipal();
+    await assertRejectsWith(
+      assignApprovedRole({ actorUid: actor, principalUid: principal, roleId: "not-a-real-governed-role", scope: { type: "global" }, idempotencyKey: `assign-unknown-${uid("k")}` }),
+      UnknownRoleError, "unknown roleId denied",
+    );
+  });
+
+  await check("wiring: a non-allowlisted governed Role (officeManager) is NOT assignable -> UnknownRoleError (allowlist, not all governed Roles)", async () => {
+    const actor = await makeAdminActor();
+    const principal = await makePrincipal();
+    for (const roleId of ["officeManager", "operationsManager", "owner"]) {
+      await assertRejectsWith(
+        assignApprovedRole({ actorUid: actor, principalUid: principal, roleId, scope: { type: "global" }, idempotencyKey: `assign-${roleId}-${uid("k")}` }),
+        UnknownRoleError, `${roleId} not allowlisted`,
+      );
+    }
+  });
+
+  await check("wiring: admin privileged approval behavior unchanged (grantRole admin still needs a distinct approver)", async () => {
+    const actor = await makeAdminActor();
+    const principal = await makePrincipal();
+    await assertRejectsWith(
+      grantRole({ actorUid: actor, principalUid: principal, roleId: "admin", scope: { type: "global" }, idempotencyKey: `grant-admin-noapprover-${uid("k")}` }),
+      InvalidInputError, "admin still requires approverUid",
+    );
+  });
+
+  await check("wiring: end-to-end -- createPart resolves inventory.catalog.manage AFTER trusted assignment, and DENIES after revoke", async () => {
+    const { createPart, UnauthorizedActorError: PMUnauthorized } = await import("../lib/partMaster/partMasterCommands.js");
+    const actor = await makeAdminActor();
+    const operator = await makePrincipal("ice-operator");
+    const grantKey = `assign-ice-e2e-${uid("k")}`;
+    // Grant through the TRUSTED command (real allRoles() resolution, no deps injection):
+    await assignApprovedRole({ actorUid: actor, principalUid: operator, roleId: "inventoryCreateExecutor", scope: { type: "global" }, idempotencyKey: grantKey });
+    const pid = uid("E2E-PART").toUpperCase().replace(/[^A-Z0-9_-]/g, "-");
+    const created = await createPart({ actorUid: operator, idempotencyKey: `pmcreate-${uid("k")}`, part: { partId: pid, internalPartNumber: pid, name: "Wired", status: "DRAFT", stockingUnit: "EACH", controlType: "STANDARD", stockingClass: "STOCKED" } });
+    assert.equal(created.outcome, "applied");
+    // Revoke through the trusted command; the capability must resolve DENY:
+    await revokeRole({ actorUid: actor, assignmentId: grantKey, idempotencyKey: `revoke-ice-e2e-${uid("k")}` });
+    const pid2 = uid("E2E-PART2").toUpperCase().replace(/[^A-Z0-9_-]/g, "-");
+    await assertRejectsWith(
+      createPart({ actorUid: operator, idempotencyKey: `pmcreate2-${uid("k")}`, part: { partId: pid2, internalPartNumber: pid2, name: "AfterRevoke", status: "DRAFT", stockingUnit: "EACH", controlType: "STANDARD", stockingClass: "STOCKED" } }),
+      PMUnauthorized, "createPart denies after revoke",
+    );
+  });
+
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed > 0 ? 1 : 0);
 }

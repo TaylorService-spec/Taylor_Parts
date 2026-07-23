@@ -34,8 +34,9 @@ import type {
   Transaction,
 } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
-import type { CompactClaims, Scope, ScopeType } from "../types/access";
+import type { CompactClaims, Scope, ScopeType, Role } from "../types/access";
 import { COMPATIBILITY_ROLES } from "./compatibilityRoles";
+import { INVENTORY_CREATE_EXECUTOR_ROLE } from "./governedBusinessRoles";
 import {
   resolveEffectivePermission,
   type TargetContext,
@@ -89,6 +90,27 @@ export class IdempotencyKeyAlreadyDeniedError extends Error {}
 const USERS_COLLECTION = "users";
 const ROLE_ASSIGNMENTS_COLLECTION = "roleAssignments";
 const ACCESS_REQUESTS_COLLECTION = "accessRequests";
+
+// Curated registry of Roles assignable through the trusted role-assignment
+// commands. It is the compatibility Roles PLUS an explicit allowlist of
+// GOVERNED business Roles cleared for the trusted-command grant path --
+// deliberately NOT every governed Role (declaring a Role in
+// governedBusinessRoles.ts does not make it assignable here; it must be
+// explicitly added below under its own governed gate). INV-1 / ADR-009 /
+// Decision #42: the sole entry is the operational, non-privileged
+// `inventoryCreateExecutor` (privileged:false -> assignApprovedRole's
+// single authorized admin + append-only audit). All four role-lookup sites
+// below resolve against this registry uniformly, so an unknown or
+// non-allowlisted roleId fails closed (UnknownRoleError) exactly as before,
+// and the privileged two-person rule is unaffected (compatibility Roles are
+// unchanged; the one governed entry is non-privileged).
+const GOVERNED_ASSIGNABLE_ROLES: Readonly<Record<string, Role>> = Object.freeze({
+  inventoryCreateExecutor: INVENTORY_CREATE_EXECUTOR_ROLE,
+});
+const ASSIGNABLE_ROLES: Readonly<Record<string, Role>> = Object.freeze({
+  ...COMPATIBILITY_ROLES,
+  ...GOVERNED_ASSIGNABLE_ROLES,
+});
 
 const SCOPE_TYPES: readonly ScopeType[] = [
   "global",
@@ -229,7 +251,7 @@ async function verifyApproverIsPrivileged(approverUid: string): Promise<void> {
       `approverUid is not currently authorized for "admin.roleAssignment.write" at global scope (${result.reason})`,
     );
   }
-  const matchedRole = result.matchedRoleId ? COMPATIBILITY_ROLES[result.matchedRoleId] : undefined;
+  const matchedRole = result.matchedRoleId ? ASSIGNABLE_ROLES[result.matchedRoleId] : undefined;
   if (!matchedRole?.privileged) {
     throw new InsufficientApproverAuthorityError(
       "approverUid's qualifying Role assignment is not a privileged Role",
@@ -550,7 +572,7 @@ export async function grantRole(input: GrantRoleInput): Promise<CommandOutcome> 
     input.idempotencyKey,
     { actorUid: input.actorUid, action: "grantRole", targetType: "roleAssignment", targetId: input.principalUid },
     async () => {
-      const role = COMPATIBILITY_ROLES[input.roleId];
+      const role = ASSIGNABLE_ROLES[input.roleId];
       if (!role) throw new UnknownRoleError(`unknown roleId: "${input.roleId}"`);
 
       if (role.privileged) {
@@ -648,7 +670,7 @@ export async function revokeRole(input: RevokeRoleInput): Promise<CommandOutcome
       const principalUidValue = assignmentData.principalUid;
       const roleIdValue = assignmentData.roleId;
       const assignmentScope = assignmentData.scope;
-      const role = COMPATIBILITY_ROLES[roleIdValue];
+      const role = ASSIGNABLE_ROLES[roleIdValue];
       // Independent review round 1: an unrecognized roleId must fail
       // closed, never be silently treated as "not privileged" (which
       // would skip the second-approver requirement for a Role this
@@ -729,7 +751,7 @@ export async function assignApprovedRole(
     input.idempotencyKey,
     { actorUid: input.actorUid, action: "assignApprovedRole", targetType: "roleAssignment", targetId: input.principalUid },
     async () => {
-      const role = COMPATIBILITY_ROLES[input.roleId];
+      const role = ASSIGNABLE_ROLES[input.roleId];
       if (!role) throw new UnknownRoleError(`unknown roleId: "${input.roleId}"`);
       if (role.privileged) {
         throw new InvalidStateError(
