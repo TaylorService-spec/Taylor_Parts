@@ -53,8 +53,9 @@ export const SUITES = Object.freeze([
   { file: "partMasterRules.test.js", expected: 16 },
   { file: "legacyJobsTechniciansRules.test.js", expected: 43 },
   { file: "partAliasRules.test.js", expected: 8 },
+  { file: "partSupplierItemRules.test.js", expected: 8 },
 ]);
-export const EXPECTED_TOTAL = SUITES.reduce((n, s) => n + s.expected, 0); // 490 (INV-1 PR 1.3: +8 partAliasRules) (F-RULES-1 PR-C strict registration: +43 legacyJobsTechniciansRules, STRICT by default -- deploy-order D1-before-D2 documented in that suite's header) (INV-1 PR 1.2: +16 partMasterRules) (was 423) (PR #236: issue100PartsManager 34->40; PR #237 tightening: employees 10->20; Issue #226 Row 3: +62 enterpriseAccessFoundationRules; Issue #232 E3: +109 equipmentRules; Issue #15 readiness closeout part 2: +20 workOrderEngineRules; Issue #226 WAREHOUSE_MANAGER scoped access Row B: +25 warehouseManagerScopedAccessRules; Issue #325 D-RULES saved report definitions (corrected to trusted-service-only): 30->13 reportDefinitionsRules)
+export const EXPECTED_TOTAL = SUITES.reduce((n, s) => n + s.expected, 0); // 498 (INV-1 PR 1.4: +8 partSupplierItemRules) (INV-1 PR 1.3: +8 partAliasRules) (F-RULES-1 PR-C strict registration: +43 legacyJobsTechniciansRules, STRICT by default -- deploy-order D1-before-D2 documented in that suite's header) (INV-1 PR 1.2: +16 partMasterRules) (was 423) (PR #236: issue100PartsManager 34->40; PR #237 tightening: employees 10->20; Issue #226 Row 3: +62 enterpriseAccessFoundationRules; Issue #232 E3: +109 equipmentRules; Issue #15 readiness closeout part 2: +20 workOrderEngineRules; Issue #226 WAREHOUSE_MANAGER scoped access Row B: +25 warehouseManagerScopedAccessRules; Issue #325 D-RULES saved report definitions (corrected to trusted-service-only): 30->13 reportDefinitionsRules)
 
 export const SUITE_TIMEOUT_MS = 180_000;
 export const EMULATOR_STARTUP_TIMEOUT_MS = 120_000;
