@@ -1547,6 +1547,13 @@ service cloud.firestore {
     match /manufacturers/{manufacturerId} {
       allow read, write: if false;
     }
+    // INV-1 Phase 1 PR 1.3 (ADR-008 / Decision #40) -- part identifier
+    // aliases: trusted-writer-only (partAliasCommands.ts, Admin SDK).
+    // ALL client access denied incl. admin; deterministic doc-id lookup
+    // happens server-side only. No tenant enforcement (Issue #140).
+    match /part_aliases/{aliasId} {
+      allow read, write: if false;
+    }
 
     // Enterprise Access & Administration Platform (Issue #226) --
     // governed-storage foundation (docs/specifications/

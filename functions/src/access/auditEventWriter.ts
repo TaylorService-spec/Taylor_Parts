@@ -91,6 +91,11 @@ const AUDIT_ACTIONS: readonly AuditAction[] = [
   "createManufacturer",
   "updateManufacturer",
   "changeManufacturerStatus",
+  // INV-1 Phase 1 PR 1.3 -- Part alias trusted mutations (ADR-008 / Decision #40)
+  "createPartAlias",
+  "deactivatePartAlias",
+  "reactivatePartAlias",
+  "preserveInternalPartNumberAlias",
 ];
 
 // Issue #325 / ADR-007 D-AUDIT -- the subset of AUDIT_ACTIONS this
