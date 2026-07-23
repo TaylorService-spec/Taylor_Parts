@@ -207,7 +207,7 @@ ok("6b. descendantPids returns only the owned root's descendants by PID", () => 
 // updated any time SUITES' expected counts change -- a deliberate
 // hardcoded cross-check that EXPECTED_TOTAL wasn't silently miscomputed,
 // not a value that should ever drift unnoticed.
-await okAsync("7. a fully-passing run reports exactly 482 passed, 0 failed", async () => {
+await okAsync("7. a fully-passing run reports exactly 490 passed, 0 failed", async () => {
   const byFile = new Map(SUITES.map((s) => [s.file, s.expected]));
   const lines = [];
   const r = await runAll({
@@ -226,11 +226,10 @@ await okAsync("7. a fully-passing run reports exactly 482 passed, 0 failed", asy
   // 423 -> 439: INV-1 Phase 1 PR 1.2 added partMasterRules.test.js (16
   // assertions -- parts + manufacturers fully client-closed). 439 -> 482:
   // F-RULES-1 PR-C registered legacyJobsTechniciansRules.test.js (43
-  // assertions, STRICT by default -- technician direct completion and the
-  // interim own-status write are denied; deploy-order D1-before-D2 in the
-  // suite header).
-  assert.equal(EXPECTED_TOTAL, 482);
-  assert.ok(lines.some((l) => /482 passed, 0 failed/.test(l)), "summary must state 482 passed, 0 failed");
+  // assertions, STRICT by default). 482 -> 490: INV-1 PR 1.3 registered
+  // partAliasRules.test.js (8 assertions -- part_aliases fully closed).
+  assert.equal(EXPECTED_TOTAL, 490);
+  assert.ok(lines.some((l) => /490 passed, 0 failed/.test(l)), "summary must state 490 passed, 0 failed");
   // parseSuiteResult correctness (count-mismatch and failed>0 both fail).
   assert.equal(parseSuiteResult("10 passed, 0 failed", 10).ok, true);
   assert.equal(parseSuiteResult("9 passed, 0 failed", 10).ok, false);
