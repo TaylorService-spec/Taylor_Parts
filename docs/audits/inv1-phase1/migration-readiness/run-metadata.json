@@ -1,0 +1,37 @@
+{
+  "conflictCount": 6,
+  "duplicateCount": 2,
+  "emulatorHost": "127.0.0.1:8080",
+  "generatedAt": "2026-07-23T06:08:42.774Z",
+  "ignoredInformationalColumns": [
+    "qtyOnHand"
+  ],
+  "inputSha256": "97b1864f744264cb70e95f720acc23347c9ed1adaaa2c6669b458b41ec1b3a09",
+  "mode": "DRY_RUN_ONLY",
+  "projectId": "taylor-parts",
+  "reasonCounts": {
+    "ALIAS_OWNED_BY_OTHER_PART": 1,
+    "DOMAIN_VALIDATION_FAILED": 1,
+    "DUPLICATE_IPN_IN_FILE": 1,
+    "DUPLICATE_PART_ID_IN_FILE": 1,
+    "FIELDS_DIFFER": 1,
+    "IDENTICAL": 1,
+    "IMMUTABLE_ID_MUTATION": 1,
+    "MALFORMED_IDENTIFIER": 2,
+    "MISSING_REQUIRED_FIELD": 1,
+    "MULTIPLE_MATCHES": 1,
+    "NEW_PART": 4,
+    "TARGET_PART_INACTIVE": 1,
+    "UNKNOWN_UNIT": 1
+  },
+  "rowCounts": {
+    "CONFLICT": 6,
+    "CREATE": 4,
+    "INVALID": 5,
+    "NO_CHANGE": 1,
+    "UPDATE": 1
+  },
+  "scriptVersion": "inv1-phase0-pr02+pr1.8",
+  "tool": "analyzePartMasterCsv",
+  "zeroWriteAttestation": "this tool has no write-enabled mode; no Firestore/Auth/Storage write API is imported or invoked"
+}

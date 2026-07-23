@@ -1,0 +1,6 @@
+rowNumber,normalizedLegacyId,proposedPartId,classification,reasonCode,reason
+13,,,INVALID,MALFORMED_IDENTIFIER,"internalPartNumber ""bad id!!"" fails normalization"
+14,MIGFIX-BAD-UNIT,,INVALID,UNKNOWN_UNIT,"stockingUnit ""PALLET"" is not a governed unit"
+15,MIGFIX-NO-NAME,,INVALID,MISSING_REQUIRED_FIELD,internalPartNumber and name are required
+16,MIGFIX-BAD-DOMAIN,MIGFIX-BAD-DOMAIN,INVALID,DOMAIN_VALIDATION_FAILED,controlType:INVALID_ENUM
+17,MIGFIX-BAD-LEGACY,MIGFIX-BAD-LEGACY,INVALID,MALFORMED_IDENTIFIER,"legacySku ""bad legacy!!"" fails normalization"
