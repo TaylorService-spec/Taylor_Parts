@@ -1543,6 +1543,14 @@ service cloud.firestore {
     // reusing existing role semantics, not inventing new access. Cost/
     // procurement data is NOT exposed here (part_supplier_items stays
     // fully closed below). No tenant enforcement (Issue #140).
+    // OWNER-APPROVED COMPATIBILITY POSTURE (PR 1.9 merge gate), not the
+    // final authorization model: operational roles (PARTS_MANAGER,
+    // WAREHOUSE_MANAGER, ...) represent work eligibility, NOT security
+    // permission, and must never grant access via raw role checks here.
+    // Broader Part Master read access is deferred to the governed
+    // permission/access matrix of Issue #100; these seeded admin/
+    // dispatcher role checks are retired only after permission-model
+    // parity and production verification.
     match /parts/{partId} {
       allow read: if isAdminOrDispatcher();
       allow create, update, delete: if false;
