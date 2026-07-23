@@ -1,0 +1,14 @@
+{
+  "conflictCount": 0,
+  "counts": {
+    "CONFLICT": 0,
+    "CREATE": 190,
+    "INVALID": 0,
+    "NO_CHANGE": 0,
+    "UPDATE": 0
+  },
+  "duplicateCount": 0,
+  "reasonCounts": {
+    "NEW_PART": 190
+  }
+}

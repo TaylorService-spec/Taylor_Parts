@@ -4,3 +4,6 @@
 # evidence. Force LF so autocrlf checkouts can never change the bytes.
 docs/audits/inv1-phase1/migration-readiness/** text eol=lf
 functions/test/fixtures/part-master-migration-fixture.csv text eol=lf
+
+# INV-1 production dry-run evidence: byte-exact, checksum-verified; never convert EOL.
+docs/audits/inv1-phase1/production-dryrun-20260723-01/** -text
