@@ -1,0 +1,25 @@
+┌──────────────────────────────────┬─────────┬──────────┬─────────────┬────────┬──────────┐
+│ Function                         │ Version │ Trigger  │ Location    │ Memory │ Runtime  │
+├──────────────────────────────────┼─────────┼──────────┼─────────────┼────────┼──────────┤
+│ createSavedDefinitionCallable    │ v2      │ callable │ us-central1 │ 256    │ nodejs20 │
+├──────────────────────────────────┼─────────┼──────────┼─────────────┼────────┼──────────┤
+│ createWorkOrder                  │ v2      │ callable │ us-central1 │ 256    │ nodejs20 │
+├──────────────────────────────────┼─────────┼──────────┼─────────────┼────────┼──────────┤
+│ deleteSavedDefinitionCallable    │ v2      │ callable │ us-central1 │ 256    │ nodejs20 │
+├──────────────────────────────────┼─────────┼──────────┼─────────────┼────────┼──────────┤
+│ duplicateSavedDefinitionCallable │ v2      │ callable │ us-central1 │ 256    │ nodejs20 │
+├──────────────────────────────────┼─────────┼──────────┼─────────────┼────────┼──────────┤
+│ getSavedDefinitionCallable       │ v2      │ callable │ us-central1 │ 256    │ nodejs20 │
+├──────────────────────────────────┼─────────┼──────────┼─────────────┼────────┼──────────┤
+│ listSavedDefinitionsCallable     │ v2      │ callable │ us-central1 │ 256    │ nodejs20 │
+├──────────────────────────────────┼─────────┼──────────┼─────────────┼────────┼──────────┤
+│ renameSavedDefinitionCallable    │ v2      │ callable │ us-central1 │ 256    │ nodejs20 │
+├──────────────────────────────────┼─────────┼──────────┼─────────────┼────────┼──────────┤
+│ resolveEffectiveAccessCallable   │ v2      │ callable │ us-central1 │ 256    │ nodejs20 │
+├──────────────────────────────────┼─────────┼──────────┼─────────────┼────────┼──────────┤
+│ runReportDefinitionCallable      │ v2      │ callable │ us-central1 │ 256    │ nodejs20 │
+├──────────────────────────────────┼─────────┼──────────┼─────────────┼────────┼──────────┤
+│ transitionWorkOrder              │ v2      │ callable │ us-central1 │ 256    │ nodejs20 │
+├──────────────────────────────────┼─────────┼──────────┼─────────────┼────────┼──────────┤
+│ updateWorkOrderExecutionData     │ v2      │ callable │ us-central1 │ 256    │ nodejs20 │
+└──────────────────────────────────┴─────────┴──────────┴─────────────┴────────┴──────────┘
