@@ -10,6 +10,7 @@
 // It never touches a real customer, technician, user, or job.
 //
 // Usage (Cloud Shell, after `firebase deploy --only functions:completeAssignedJob`):
+//   export D1_SMOKE_PASSWORD="$(openssl rand -base64 18)"   # session-only throwaway
 //   cd functions && npm ci && node scripts/d1SmokeCompleteAssignedJob.js seed
 //   node scripts/d1SmokeCompleteAssignedJob.js run
 //   node scripts/d1SmokeCompleteAssignedJob.js cleanup
@@ -60,14 +61,34 @@ function check(name, ok, detail) {
   if (!ok) failures += 1;
 }
 
+// D1 correction (operator run 1 blocker): auth.createCustomToken() requires
+// service-account SIGNING (iam signBlob), which Cloud Shell user-ADC cannot
+// do and which we deliberately do NOT grant (no Token Creator role, no SA
+// keys). Instead the smoke signs in EXACTLY like the real client app does:
+// password sign-in through the public Identity Toolkit endpoint. The
+// throwaway password comes ONLY from the D1_SMOKE_PASSWORD env var (operator
+// generates it for the session, e.g. openssl rand); it is never printed,
+// never written to evidence, and dies with the Auth users at cleanup.
+function smokePassword() {
+  const pw = process.env.D1_SMOKE_PASSWORD;
+  if (typeof pw !== "string" || pw.length < 12) {
+    throw new Error("D1_SMOKE_PASSWORD env var is required (>= 12 chars); generate a throwaway, e.g.: export D1_SMOKE_PASSWORD=\"$(openssl rand -base64 18)\"");
+  }
+  return pw;
+}
+function smokeEmail(uid) {
+  return `${uid}@d1smoke.example.com`; // reserved example domain, no real mailbox
+}
 async function idTokenFor(uid) {
-  const customToken = await auth.createCustomToken(uid);
   const res = await fetch(
-    `https://identitytoolkit.googleapis.com/v1/accounts:signInWithCustomToken?key=${WEB_API_KEY}`,
-    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: customToken, returnSecureToken: true }) },
+    `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${WEB_API_KEY}`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: smokeEmail(uid), password: smokePassword(), returnSecureToken: true }) },
   );
   const body = await res.json();
-  if (!body.idToken) throw new Error(`token exchange failed: ${JSON.stringify(body).slice(0, 200)}`);
+  if (!body.idToken) {
+    // never echo the request body or password -- surface only the API's error code
+    throw new Error(`password sign-in failed for ${uid}: ${body?.error?.message ?? `HTTP ${res.status}`}`);
+  }
   return body.idToken;
 }
 
@@ -83,6 +104,11 @@ async function callCallable(idToken, data) {
 }
 
 async function seed() {
+  const password = smokePassword();
+  for (const uid of [IDS.techUser1, IDS.techUser2]) {
+    try { await auth.deleteUser(uid); } catch { /* not present -- fine */ }
+    await auth.createUser({ uid, email: smokeEmail(uid), password, emailVerified: true });
+  }
   await db.doc(`users/${IDS.techUser1}`).set({ role: "technician", technicianId: IDS.tech1 });
   await db.doc(`users/${IDS.techUser2}`).set({ role: "technician", technicianId: IDS.tech2 });
   await db.doc(`fieldops_technicians/${IDS.tech1}`).set({ name: "D1 Smoke Tech 1", phone: "000", status: "on_job", createdAt: Date.now() });
@@ -155,7 +181,7 @@ async function cleanup() {
     `users/${IDS.techUser1}`, `users/${IDS.techUser2}`,
   ]) await db.doc(p).delete();
   for (const uid of [IDS.techUser1, IDS.techUser2]) {
-    try { await auth.deleteUser(uid); } catch { /* auth user may not exist -- custom tokens create on first sign-in */ }
+    try { await auth.deleteUser(uid); } catch { /* already gone (partial seed / re-run) */ }
   }
   console.log("d1-smoke fixture documents and auth users removed (audit events retained, append-only)");
 }

@@ -42,8 +42,10 @@ firebase functions:list --project taylor-parts | tee d1-evidence-post-functions-
 
 Fixtures are ALL prefixed `d1smoke` (fake customer name, no real records). The smoke proves: positive completion cascade, applied Audit Event, technician→available, **exact idempotent replay with no duplicate mutation**, wrong-technician denial, invalid-state denial.
 
+> **Correction (operator run 1):** the original script used `auth.createCustomToken()`, which requires service-account signing that Cloud Shell user-ADC cannot perform (impersonation correctly denied; no IAM widened, no SA key created). The smoke now signs in exactly like the real client app: two deterministic `d1smoke` Auth users (synthetic `@d1smoke.example.com` emails) created at seed with a **session-only throwaway password from `D1_SMOKE_PASSWORD`**, exchanged via the public `signInWithPassword` endpoint. The password is never printed or written to evidence; the Auth users die at cleanup. Static validation: `node --test test/d1SmokeStatic.test.js` (8 checks).
+
 ```bash
-cd functions && node scripts/d1SmokeCompleteAssignedJob.js seed && node scripts/d1SmokeCompleteAssignedJob.js run
+export D1_SMOKE_PASSWORD="$(openssl rand -base64 18)" && cd functions && node scripts/d1SmokeCompleteAssignedJob.js seed && node scripts/d1SmokeCompleteAssignedJob.js run
 ```
 **Expected (all 12 checks):** `PASS -- positive: HTTP 200` · `positive: response contract` · `cascade: job -> complete` · `cascade: technician -> available` · `audit: applied event at the idempotency key` · `replay: HTTP 200` · `replay: idempotentReplay true` · `replay: no duplicate cascade (perturbed tech status untouched)` · `replay: exactly one applied audit event` · `negative: wrong technician denied (permission-denied)` · `negative: assigned state denied (failed-precondition)` · `negative: no mutation from denied attempts` — ending `D1 SMOKE PASS: 12 passed, 0 failed`. Any FAIL → STOP, run Step 7 cleanup, report. **PAUSE.**
 
@@ -59,7 +61,17 @@ mkdir -p d1-evidence && cp d1-smoke-evidence/d1-smoke-results.json ../d1-evidenc
 ```bash
 node scripts/d1SmokeCompleteAssignedJob.js cleanup
 ```
-**Expected:** `d1-smoke fixture documents and auth users removed (audit events retained, append-only)`. The two `d1smoke`-keyed Audit Events remain by design — auditEvents are append-only; they record genuine trusted-writer activity and are identifiable by their `d1smoke` ids. **DONE — report back with the evidence tarball.**
+**Expected:** `d1-smoke fixture documents and auth users removed (audit events retained, append-only)`. Then `unset D1_SMOKE_PASSWORD`. The two `d1smoke`-keyed Audit Events remain by design — auditEvents are append-only; they record genuine trusted-writer activity and are identifiable by their `d1smoke` ids. **DONE — report back with the evidence tarball.**
+
+## Rerun after the run-1 correction (deploy already done)
+
+Steps 2–4 are complete (callable ACTIVE/GEN_2/us-central1/nodejs20 — do NOT redeploy). From the existing `d1` clone:
+
+```bash
+cd d1 && git fetch origin && git checkout ops/f-rules-1-d1-handoff && git pull && cd functions && npm ci
+```
+
+then run **Step 5 → Step 6 → Step 7** exactly as written above (Step 5 now begins with the `D1_SMOKE_PASSWORD` export).
 
 ## After this handoff (Customer session, separately)
 
