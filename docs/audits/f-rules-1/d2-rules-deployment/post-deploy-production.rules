@@ -1,0 +1,1605 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Introduced for Work Order Engine v1.2 (docs/architecture/ADR-002).
+    // Not present elsewhere on this branch yet -- the richer role-based
+    // rules on feature-dispatch-control-tower (unmerged as of this
+    // writing) define similar helpers; reconcile when that branch merges.
+    function userData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function userRole() {
+      return userData().role;
+    }
+
+    function isAdminOrDispatcher() {
+      return isSignedIn() && (userRole() == "admin" || userRole() == "dispatcher");
+    }
+
+    // Account Commercial Profile -- PR 2 (docs/specifications/
+    // account-commercial-profile-and-financial-forecast-horizons.md).
+    // The GOVERNED Commercial Profile fields (paymentTerms/taxStatus) are
+    // admin-edit-only -- a strictly narrower authority than the
+    // admin/dispatcher gate the rest of the accounts document keeps. This
+    // is the first admin-only helper in this ruleset.
+    function isAdmin() {
+      return isSignedIn() && userRole() == "admin";
+    }
+
+    function isTechnician() {
+      return isSignedIn() && userRole() == "technician";
+    }
+
+    function isOwnTechnician(technicianId) {
+      return isSignedIn() && userData().technicianId == technicianId;
+    }
+
+    // Issue #100 (docs/specifications/inventory-nav-access-alignment.md,
+    // docs/implementation-plans/inventory-nav-access-alignment.md, PR 1a).
+    // "Reciprocally linked" requires BOTH directions to agree:
+    // users/{uid}.employeeId == employeeId AND
+    // employees/{employeeId}.userId == uid. A one-directional pointer
+    // (e.g. a stale employeeId left on a users document after the
+    // corresponding Employee's own userId was reassigned elsewhere)
+    // does not satisfy this and fails closed. This is the ONE predicate
+    // every operational-role grant in this initiative uses -- no grant
+    // reimplements reciprocal-link/ACTIVE/role-membership independently.
+    // Additive alongside userData()/isAdminOrDispatcher() above --
+    // neither is replaced or narrowed.
+    function linkedEmployeeId() {
+      return userData().employeeId;
+    }
+
+    function linkedEmployeeData() {
+      return get(/databases/$(database)/documents/employees/$(linkedEmployeeId())).data;
+    }
+
+    // PERFORMANCE (Issue #100 PR 3a) -- reciprocallyLinkedEmployee(), as
+    // originally written in PR 1a, called linkedEmployeeId()/
+    // linkedEmployeeData() multiple times, each of which independently
+    // re-executes get(users/{uid}) and/or get(employees/{employeeId}) --
+    // up to several redundant, uncached document reads per single call.
+    // That was affordable when isActiveOperationalRole() was invoked at
+    // most once per rule evaluation (every PR 1a/2a read grant is its
+    // own independent, single match-block evaluation). PR 3a's
+    // restructured reorder_requests allow update evaluates
+    // isActiveOperationalRole() as part of FIVE separate OR'd branches
+    // within ONE rule statement -- empirically, this multiplied the
+    // redundant-read cost enough to exceed Firestore's Rules evaluation
+    // budget ("Unable to evaluate the expression as the maximum of 1000
+    // expressions to evaluate has been reached"), confirmed via
+    // functions/test/issue100PartsAssociateRules.test.js's Mark Received
+    // and Record PO probes failing with exactly that error before this
+    // fix, passing cleanly after. reciprocallyLinkedEmployee() now binds
+    // the Employee document ONCE via `let` and reuses it -- one
+    // get(employees/{employeeId}) call total, not four -- with
+    // IDENTICAL semantics (still requires isSignedIn(), a non-null
+    // linked employeeId, and the reciprocal userId match). Every
+    // existing call site's observable behavior is unchanged; verified
+    // by re-running the complete PR 1a/2a/3a regression suite after
+    // this change.
+    function reciprocallyLinkedEmployee() {
+      let employeeId = linkedEmployeeId();
+      return isSignedIn()
+        && employeeId != null
+        && get(/databases/$(database)/documents/employees/$(employeeId)).data.userId == request.auth.uid;
+    }
+
+    // An operationalRoles array containing an invalid/unrecognized
+    // string never matches any of the three literal role checks
+    // (hasAny([role]) against a specific literal) -- invalid values
+    // fail closed automatically, no separate validation branch
+    // required.
+    //
+    // PERFORMANCE (Issue #100 PR 3a, same rationale as
+    // reciprocallyLinkedEmployee() above): binds the linked Employee
+    // document ONCE via `let` -- one get(employees/{employeeId}) call
+    // total per isActiveOperationalRole() invocation, not up to five --
+    // rather than calling reciprocallyLinkedEmployee() (its own
+    // independent get()) plus three further linkedEmployeeData() calls.
+    // Inlines the exact same reciprocal-link/ACTIVE/role-membership
+    // checks reciprocallyLinkedEmployee() itself performs, so behavior
+    // is byte-for-byte identical to calling it -- this function no
+    // longer calls reciprocallyLinkedEmployee() directly specifically
+    // to avoid paying for its get() a second time.
+    function isActiveOperationalRole(role) {
+      let employeeId = linkedEmployeeId();
+      let employee = get(/databases/$(database)/documents/employees/$(employeeId)).data;
+      return isSignedIn()
+        && employeeId != null
+        && employee.userId == request.auth.uid
+        && employee.employmentStatus == "ACTIVE"
+        && employee.operationalRoles is list
+        && employee.operationalRoles.hasAny([role]);
+    }
+
+    // Issue #226 -- WAREHOUSE_MANAGER scoped access (docs/assessments/
+    // warehouse-manager-scoped-access.md, docs/specifications/
+    // warehouse-manager-scoped-access.md, Implementation Plan Row B).
+    // Deliberately does NOT call isActiveOperationalRole("WAREHOUSE_MANAGER")
+    // + linkedEmployeeData() separately -- that would pay for a second,
+    // redundant get(employees/{employeeId}) per call (see the PERFORMANCE
+    // note on isActiveOperationalRole() above for why this codebase binds
+    // the Employee document once via `let` instead). Inlines the identical
+    // reciprocal-link/ACTIVE/role-membership checks, plus the additional
+    // per-warehouse assignment check: employee.assignedWarehouseIds must be
+    // a list (fails closed on absent/malformed -- see employees/{employeeId}
+    // schema addition, Specification sec2) AND contain warehouseId. Absent
+    // or empty assignedWarehouseIds denies every warehouse, for any role --
+    // never "all warehouses." Never grants global Warehouse visibility from
+    // the WAREHOUSE_MANAGER operational role alone (Owner's own framing of
+    // this task).
+    function isAssignedToWarehouse(warehouseId) {
+      let employeeId = linkedEmployeeId();
+      let employee = get(/databases/$(database)/documents/employees/$(employeeId)).data;
+      return isSignedIn()
+        && employeeId != null
+        && employee.userId == request.auth.uid
+        && employee.employmentStatus == "ACTIVE"
+        && employee.operationalRoles is list
+        && employee.operationalRoles.hasAny(["WAREHOUSE_MANAGER"])
+        && employee.assignedWarehouseIds is list
+        && employee.assignedWarehouseIds.hasAny([warehouseId]);
+    }
+
+    // RETROFIT (Issue #100 PR 1a) -- previously used hasOperationalRole(),
+    // which checked neither reciprocal linkage nor ACTIVE employment.
+    // Behavior is unchanged for every Employee who was already ACTIVE
+    // and reciprocally linked (the overwhelming majority, and the only
+    // state functions/scripts/provisionEmployeeAccess.js is capable of
+    // producing today) -- this only tightens the previously-unguarded
+    // inactive/mismatched-linkage edge cases, a bug fix, not a behavior
+    // change for any valid Employee.
+    function canSubmitManualZeroHistoryQuantity() {
+      return isSignedIn()
+        && (userRole() == "admin"
+            || isActiveOperationalRole("PARTS_MANAGER")
+            || isActiveOperationalRole("WAREHOUSE_MANAGER"));
+    }
+
+    // Codex REQUEST CHANGES on PR #91 -- the new-shape create rule
+    // originally validated only the recommendation fields
+    // (recommendationStatus/urgency/quantitySource/recommendedQty/
+    // requestedQty), leaving every other field on the document
+    // completely unconstrained. That was a latent gap for the
+    // existing admin/dispatcher-only legacy path too (today's create
+    // rule has never validated status/currentOwner/requestedBy), but
+    // it only became a real privilege-escalation risk once
+    // NEEDS_PLANNING widened who may create at all beyond admin/
+    // dispatcher: an eligible Parts Manager/Warehouse Manager who is
+    // NOT admin/dispatcher could otherwise forge status: "ORDERED",
+    // an arbitrary currentOwner, or a spoofed requestedBy, bypassing
+    // every workflow invariant the update rules below assume a
+    // creation already established. These two helpers enforce the
+    // exact, complete creation contract the real writer
+    // (domain/inventoryReorderRequests.js's createReorderRequest())
+    // has always sent -- 23 explicit fields plus createdAt
+    // (auto-stamped by firebase/collectionStore.js's add()), plus the
+    // 3 new recommendation fields (recommendationStatus/requestedQty/
+    // quantitySource) once PR 3's writer sends them -- 27 total, see
+    // the exact list below. Applied to BOTH READY and NEEDS_PLANNING
+    // (identical requirement either way, so enforced once, not
+    // duplicated per branch).
+    // TIGHTENED (docs/specifications/reorder-request-cancellation.md,
+    // "Schema deployment sequence" step D -- Implementation Plan PR 3).
+    // Requires the full 35-key canonical creation shape unconditionally:
+    // the original 29 fields plus all six of cancelledBy/cancelledAt/
+    // cancellationReason/voidedBy/voidedAt/voidReason. The prior
+    // transitional 29-key-only branch (Implementation Plan PR 1,
+    // hasOnly/hasAll on just the original 29 keys) is REMOVED here --
+    // step B/C confirmed the live writer (createReorderRequest()) has
+    // sent the 35-key shape unconditionally since PR #127 (see
+    // docs/DECISIONS.md entry #18 for the deploy confirmation and entry
+    // #24 for the authoritative resolution -- a full production audit
+    // of the three reorder_requests documents created after PR #127's
+    // deployment cutoff, every one with the complete 35-key shape;
+    // entry #21's original claim was disputed in entry #23 and
+    // resolved, not superseded, by entry #24's audit), so no live
+    // client still sends the old 29-key shape. A create in the old
+    // shape is now rejected for every caller, same as every other
+    // canonical field.
+    function hasCanonicalReorderRequestKeys(data) {
+      return data.keys().hasOnly([
+        "partId", "recommendationStatus", "urgency", "quantitySource", "recommendedQty", "requestedQty",
+        "status", "currentOwner", "requestedBy", "createdAt",
+        "reviewedBy", "reviewedAt", "reviewDecision", "reviewNotes",
+        "assignedToUserId", "assignedBy", "assignedAt",
+        "purchasingStartedAt", "purchasingStartedBy",
+        "purchasingNotes", "vendorContacted", "expectedAvailabilityDate",
+        "lastPurchasingUpdateAt", "lastPurchasingUpdateBy",
+        "purchaseOrderId", "orderedBy", "orderedAt", "receivedBy", "receivedAt",
+        "cancelledBy", "cancelledAt", "cancellationReason", "voidedBy", "voidedAt", "voidReason"
+      ]) && data.keys().hasAll([
+        "partId", "recommendationStatus", "urgency", "quantitySource", "recommendedQty", "requestedQty",
+        "status", "currentOwner", "requestedBy", "createdAt",
+        "reviewedBy", "reviewedAt", "reviewDecision", "reviewNotes",
+        "assignedToUserId", "assignedBy", "assignedAt",
+        "purchasingStartedAt", "purchasingStartedBy",
+        "purchasingNotes", "vendorContacted", "expectedAvailabilityDate",
+        "lastPurchasingUpdateAt", "lastPurchasingUpdateBy",
+        "purchaseOrderId", "orderedBy", "orderedAt", "receivedBy", "receivedAt",
+        "cancelledBy", "cancelledAt", "cancellationReason", "voidedBy", "voidedAt", "voidReason"
+      ]);
+    }
+
+    // TIGHTENED -- see hasCanonicalReorderRequestKeys() above. The
+    // shared 29-field baseline is unchanged; the six new fields are now
+    // required present and explicitly null unconditionally, same as
+    // every other canonical field below. hasCanonicalReorderRequestKeys()
+    // already makes "absent" or "partial" impossible to reach this
+    // function with (its single exact-key branch requires all 35 keys),
+    // so no absent-vs-present OR remains here.
+    function hasCanonicalReorderRequestCreationBaseline(data) {
+      return data.status == "PENDING_REVIEW"
+        && data.currentOwner == "INVENTORY"
+        && data.requestedBy == request.auth.uid
+        && data.createdAt is number
+        && data.reviewedBy == null
+        && data.reviewedAt == null
+        && data.reviewDecision == null
+        && data.reviewNotes == null
+        && data.assignedToUserId == null
+        && data.assignedBy == null
+        && data.assignedAt == null
+        && data.purchasingStartedAt == null
+        && data.purchasingStartedBy == null
+        && data.purchasingNotes == null
+        && data.vendorContacted == null
+        && data.expectedAvailabilityDate == null
+        && data.lastPurchasingUpdateAt == null
+        && data.lastPurchasingUpdateBy == null
+        && data.purchaseOrderId == null
+        && data.orderedBy == null
+        && data.orderedAt == null
+        && data.receivedBy == null
+        && data.receivedAt == null
+        && data.cancelledBy == null
+        && data.cancelledAt == null
+        && data.cancellationReason == null
+        && data.voidedBy == null
+        && data.voidedAt == null
+        && data.voidReason == null;
+    }
+
+    // ---- F-RULES-1 PR-2 helpers (legacy job/technician enforcement) ----
+    // Bounded first enforcement slice: WRITE/CREATE/DELETE only. READ stays
+    // `isSignedIn()` (DEFERRED -- read scoping requires the Field Mode client
+    // query migration to land before it can deploy without breaking Field
+    // Mode's broad jobs read). Compatibility source is users/{uid}.role
+    // (reuses isAdminOrDispatcher()); operationalRoles are NOT consulted here.
+
+    // The caller's trusted technicianId from users/{uid} (Admin-SDK-written,
+    // `allow write: if false`, so client-immutable). null when signed out,
+    // when the user doc is absent, or when the field is missing (fail closed).
+    function callerTechnicianId() {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('technicianId', null)
+        : null;
+    }
+    // jobWorkflow.js transitions (admin/dispatcher path).
+    function isValidJobTransition(from, to) {
+      return (from == 'open' && to == 'assigned')
+        || (from == 'assigned' && (to == 'in_progress' || to == 'open'))
+        || (from == 'in_progress' && to == 'complete');
+    }
+    // The ONLY transition a technician may perform directly on their OWN
+    // assigned job (Decision #39 / O-3): start work. Completion
+    // (in_progress -> complete, plus the technician -> available cascade)
+    // is exclusively the trusted completeAssignedJob callable's authority
+    // (functions/src/completeAssignedJob.ts, Admin SDK -- bypasses these
+    // Rules by design). Deploy-order dependency: these hardened Rules must
+    // deploy only AFTER Gate D1 (callable live + frontend gate flipped),
+    // or production completion breaks -- see the technician-self-write
+    // implementation plan.
+    function isTechnicianJobTransition(from, to) {
+      return from == 'assigned' && to == 'in_progress';
+    }
+    function isTechnicianStatus(s) {
+      return s in ['available', 'on_job', 'off_shift'];
+    }
+    function jobStatusOnlyChange() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
+    }
+
+    match /fieldops_jobs/{jobId} {
+      // READ: admin/dispatcher read all; a technician reads ONLY jobs assigned
+      // to their mapped technicianId (proven via users/{uid}.technicianId).
+      // Field Mode issues the matching scoped query (where technicianId ==
+      // callerTechnicianId), so the LIST is provably authorized; an
+      // unconstrained technician read is denied (fail closed). operationalRoles
+      // are not consulted.
+      allow read: if isAdminOrDispatcher()
+        || (isSignedIn()
+          && callerTechnicianId() != null
+          && resource.data.technicianId == callerTechnicianId());
+
+      // CREATE: admin/dispatcher only; a new job must start open + unassigned.
+      allow create: if isAdminOrDispatcher()
+        && request.resource.data.status == 'open'
+        && request.resource.data.technicianId == null;
+
+      // UPDATE: a completed job is terminal for every client; otherwise either
+      // (a) admin/dispatcher performing a previously-approved lifecycle/
+      //     assignment change (PR-2 contract, unchanged here), or
+      // (b) the ASSIGNED technician performing a STATUS-ONLY start
+      //     (assigned -> in_progress) on their OWN job (proven via
+      //     users/{uid}.technicianId). Direct client completion is DENIED
+      //     for technicians -- completion is Function-only
+      //     (completeAssignedJob). jobStatusOnlyChange()'s hasOnly(['status'])
+      //     allowlist also makes technicianId/workOrderId/customer/address/
+      //     completedAt/completedBy or any other field client-immutable in
+      //     this transition.
+      allow update: if resource.data.status != 'complete'
+        && (
+          (isAdminOrDispatcher()
+            && isValidJobTransition(resource.data.status, request.resource.data.status))
+          ||
+          (isSignedIn()
+            && callerTechnicianId() != null
+            && resource.data.technicianId == callerTechnicianId()
+            && jobStatusOnlyChange()
+            && isTechnicianJobTransition(resource.data.status, request.resource.data.status))
+        );
+
+      // DELETE: denied for all clients (no job delete path exists).
+      allow delete: if false;
+    }
+
+    match /fieldops_technicians/{techId} {
+      // READ: admin/dispatcher read all; a technician reads ONLY their OWN
+      // mapped technician record (direct doc read via useCurrentTechnician).
+      // An unconstrained technician read is denied (fail closed).
+      allow read: if isAdminOrDispatcher()
+        || (isSignedIn()
+          && callerTechnicianId() != null
+          && techId == callerTechnicianId());
+
+      // CREATE: admin/dispatcher only; a new technician starts `available`.
+      allow create: if isAdminOrDispatcher()
+        && request.resource.data.status == 'available';
+
+      // UPDATE: admin/dispatcher ONLY, and status must remain a valid enum
+      // (their previously-approved operational-correction authority, PR-2
+      // contract -- e.g. assign sets on_job). The interim technician
+      // own-`status` branch is REMOVED (Decision #39): a technician holds NO
+      // direct write on this collection -- completion-derived `available` is
+      // exclusively the trusted completeAssignedJob callable's write (Admin
+      // SDK). A technician can therefore no longer imitate the completion
+      // cascade client-side.
+      allow update: if isAdminOrDispatcher()
+        && isTechnicianStatus(request.resource.data.status);
+
+      // DELETE: denied for all clients.
+      allow delete: if false;
+    }
+
+    // Role docs are provisioned by an admin (console or Admin SDK), never
+    // by the client -- a user must not be able to grant themself a role.
+    match /users/{userId} {
+      allow read: if isSignedIn() && request.auth.uid == userId;
+      allow write: if false;
+    }
+
+    // Phase 3 -- Platform Assignment Foundation (docs/specifications/
+    // employee-foundation.md). Employee is the authoritative workforce
+    // identity (docs/PROJECT_ARCHITECTURE.md's Person Assignment
+    // Platform Service Standard, docs/BusinessEntityModel.md Section 8a)
+    // -- separate from users/{uid}'s application-access identity above.
+    // Two read paths, not one: (A) admin/dispatcher may read the
+    // assignment-eligible Employee directory, same gate as every other
+    // Reorder-Request-adjacent collection; (B) any authenticated user
+    // (including technician) may read ONLY their own linked Employee --
+    // AuthContext must resolve a technician's own Employee identity,
+    // which admin/dispatcher-only read could never support. The self-
+    // read path reuses userData() (already defined above) rather than a
+    // second get() -- userData().employeeId == employeeId denies access
+    // outright when users/{uid}.employeeId is null (a valid, expected
+    // migration state, not an error) and denies a technician reading
+    // any Employee record other than their own linked one. No client,
+    // in any role including admin, may create/update/delete an Employee
+    // -- linkage is established exclusively by
+    // functions/scripts/provisionEmployeeAccess.js (Admin SDK, bypasses
+    // these rules by design). Employee Administration UI is explicitly
+    // out of scope for this phase; do not loosen this to add one.
+    // Issue #100 PR 1b -- a third, narrowly-scoped read path, added
+    // during PR 1b's own implementation (not anticipated by PR 1a):
+    // EmployeeAssignmentPicker/useAssignableEmployees({ requiredOperationalRole:
+    // PARTS_ASSOCIATE }) issues a COLLECTION-LEVEL query, which path (B)
+    // above cannot satisfy (it only permits a single-document self-read).
+    // Confirmed live: without this branch, an ACTIVE, reciprocally
+    // linked PARTS_MANAGER technician's Assign picker fails outright
+    // ("Unable to load employees.") -- the Specification's "reuses
+    // EmployeeAssignmentPicker/useAssignableEmployees... verbatim -- no
+    // change" assumed this read path already existed for a technician
+    // caller; it did not. This grant is deliberately as narrow as the
+    // query it exists to satisfy: gated on
+    // isActiveOperationalRole("PARTS_MANAGER") (never a bare technician
+    // role) AND restricted, per-document, to exactly the documents whose
+    // own operationalRoles already contains "PARTS_ASSOCIATE" -- the
+    // same population useAssignableEmployees()'s own client-side query
+    // already targets. A PARTS_MANAGER can never read an arbitrary
+    // Employee document through this branch (e.g. another PARTS_MANAGER's
+    // or an admin's own record) -- this is NOT the "Employee
+    // Administration UI" the comment above (path A/B) warns against
+    // loosening for; it is a single-purpose, read-only, PARTS_ASSOCIATE-
+    // scoped assignment-candidate lookup, matching this initiative's
+    // existing least-privilege posture for every other new grant.
+    match /employees/{employeeId} {
+      // Issue #100 (PR 1b dependency): a PARTS_MANAGER's assignment picker
+      // (useAssignableEmployees({ requiredOperationalRole: PARTS_ASSOCIATE }))
+      // must READ its candidate Employee docs, but the original PR 1b spec
+      // recorded only the Assign *write* Rules branch and reused the picker read
+      // "verbatim, no change" -- yet this block previously allowed only
+      // admin/dispatcher or self-read, so the PARTS_MANAGER candidate read was
+      // denied. This adds a LEAST-PRIVILEGE read: a PARTS_MANAGER may read ONLY
+      // Employee docs matching the assignment-candidate contract -- ACTIVE +
+      // PARTS_ASSOCIATE-eligible + linked user -- never the general directory.
+      // The three resource.data conditions mirror buildAssignableEmployeesQuery()
+      // exactly (employmentStatus=="ACTIVE", operationalRoles array-contains
+      // "PARTS_ASSOCIATE", userId!=null), so the picker's list query is provably
+      // within this grant and needs no new index. Any non-candidate doc (inactive,
+      // not PARTS_ASSOCIATE-eligible, or unlinked) stays denied for a PARTS_MANAGER.
+      allow read: if isAdminOrDispatcher()
+        || (isSignedIn() && userData().employeeId == employeeId)
+        || (isActiveOperationalRole("PARTS_MANAGER")
+            && resource.data.employmentStatus == "ACTIVE"
+            && resource.data.operationalRoles.hasAny(["PARTS_ASSOCIATE"])
+            && resource.data.get("userId", null) != null);
+      allow create, update, delete: if false;
+    }
+
+    // Work Order Engine v1.2 (docs/architecture/ADR-002). All writes go
+    // through the createWorkOrder/transitionWorkOrder Cloud Functions
+    // (Admin SDK, bypasses these rules by design) -- clients are
+    // read-only here, unconditionally, with NO admin/dispatcher
+    // exception: there is no future path for an "admin UI" to grow a
+    // direct-write shortcut around the Cloud Functions.
+    match /fieldops_wos/{woId} {
+      allow read: if isAdminOrDispatcher()
+        || (isTechnician() && isOwnTechnician(resource.data.assignedTechId));
+      allow create, update, delete: if false;
+    }
+
+    match /counters/{counterId} {
+      allow read: if false;
+      allow create, update, delete: if false;
+    }
+
+    // Epic 2D Inventory Trigger System (docs/architecture/ADR-003).
+    // Admin-SDK-only writes, same posture as counters above. Read
+    // access opened to admin/dispatcher when the Operations dashboard
+    // (functions/src/inventoryAnalyticsService.ts's client mirror) was
+    // added -- ADR-003 anticipated this exact moment ("no reporting
+    // view exists yet"). inventory_sync_status stays fully closed --
+    // internal retry/idempotency bookkeeping, no reporting value.
+    // Issue #100 PR 1a -- catalog/health is itself an Owner-adopted
+    // capability for PARTS_MANAGER and WAREHOUSE_MANAGER, not a
+    // data-minimization concern the way reorder_requests History is --
+    // both roles see the identical computed ledger view admin/
+    // dispatcher already see, under this one additive branch (there is
+    // no second, separate "stock visibility" query to design).
+    match /inventory_transactions/{transactionId} {
+      allow read: if isAdminOrDispatcher()
+        || isActiveOperationalRole("PARTS_MANAGER")
+        || isActiveOperationalRole("WAREHOUSE_MANAGER");
+      allow create, update, delete: if false;
+    }
+
+    match /inventory_sync_status/{workOrderId} {
+      allow read: if false;
+      allow create, update, delete: if false;
+    }
+
+    // Sprint 2.1.3 -- Reorder Request & Notification Foundation
+    // (docs/BusinessEntityModel.md's Reorder Request entry). Unlike the
+    // ledger above, this IS a client-direct-write collection (Inventory
+    // Management's domain/inventoryReorderRequests.js, mirroring the
+    // accounts/locations/contacts pattern) -- no Cloud Function.
+    //
+    // Sprint 2.1.4 -- Reorder Review & Decision. Update is now allowed,
+    // but narrowly: only via domain/inventoryReorderRequests.js's
+    // reviewReorderRequest(). The original request facts (partId,
+    // urgency, recommendedQty, requestedBy, createdAt) are immutable --
+    // a client cannot rewrite them, and an already-decided request
+    // cannot be re-reviewed (resource.data.status must still be
+    // PENDING_REVIEW). affectedKeys() further pins the write to exactly
+    // the review/ownership fields reviewReorderRequest() sets, so no
+    // other field can ride along on the same write even if it happened
+    // to match its prior value. This is the only write path for a
+    // review decision; there is no Cloud Function for this sprint
+    // either.
+    //
+    // Sprint 2.1.5 -- Inventory -> Parts Manager Handoff. An approval
+    // now advances status to READY_FOR_PARTS_MANAGER (not APPROVED)
+    // and hands currentOwner to PARTS_MANAGER; reviewDecision still
+    // permanently records APPROVED, separately from status. A
+    // rejection is terminal (status == REJECTED, reviewDecision ==
+    // REJECTED) and leaves currentOwner unchanged (still INVENTORY --
+    // there is no further hand-off for a rejected request).
+    //
+    // Sprint 2.1.6 -- Parts Manager -> Parts Associate Assignment.
+    // READY_FOR_PARTS_MANAGER is no longer terminal: a second update
+    // path allows READY_FOR_PARTS_MANAGER -> ASSIGNED_TO_PARTS_ASSOCIATE,
+    // via domain/inventoryReorderRequests.js's assignReorderRequest().
+    // This is the platform's first per-user ownership write --
+    // assignedBy is pinned to the caller's own uid (no assigning on
+    // someone else's behalf), assignedToUserId must be a non-empty
+    // string (the manually-entered target uid; there is no
+    // client-side user list to validate against, see
+    // firestore.rules' users/{userId} self-only read above), and the
+    // review fields (reviewDecision/reviewedBy/reviewedAt/reviewNotes)
+    // are pinned unchanged so an assignment can never rewrite review
+    // history.
+    //
+    // Sprint 2.1.7 -- Purchase Execution Foundation. A third update
+    // path allows ASSIGNED_TO_PARTS_ASSOCIATE -> PURCHASING_IN_PROGRESS,
+    // via domain/inventoryReorderRequests.js's startPurchasing(). This
+    // is the platform's first update restricted to one specific
+    // individual, not just admin/dispatcher generally:
+    // request.auth.uid must equal the request's OWN assignedToUserId
+    // (resource.data, not request.resource.data -- the assignee can't
+    // reassign it to themselves as part of this write, that field is
+    // pinned unchanged below) -- so only the assigned Parts Associate
+    // can start purchasing on their own request, not any other
+    // admin/dispatcher. currentOwner, all three assignment fields, and
+    // all four review fields are pinned unchanged -- this transition
+    // never rewrites prior workflow history.
+    //
+    // Sprint 2.1.8 -- Purchasing Progress Update. A fourth update path
+    // allows PURCHASING_IN_PROGRESS -> PURCHASING_IN_PROGRESS (status
+    // unchanged -- this is the first branch here that is NOT a
+    // transition, via domain/inventoryReorderRequests.js's
+    // updatePurchasingProgress()), so the assigned Parts Associate can
+    // post any number of progress updates while purchasing is
+    // underway. Same per-user restriction as Sprint 2.1.7's branch:
+    // request.auth.uid must equal the request's OWN assignedToUserId.
+    // currentOwner, all three assignment fields, both purchasing-start
+    // fields, and all four review fields are pinned unchanged --
+    // deliberately does not create a Purchase Order or Vendor
+    // Management record, just informal progress fields on the
+    // existing Reorder Request.
+    //
+    // Sprint 2.1.10 -- Purchase Order Foundation. A fifth update path
+    // allows PURCHASING_IN_PROGRESS -> ORDERED, via
+    // domain/reorderPurchaseOrders.js's recordPurchaseOrder() -- the
+    // ONLY function that ever writes this transition, and it does so
+    // in the SAME Firestore transaction as creating the linked
+    // reorder_purchase_orders/{requestId} document below, so the two
+    // can never drift out of sync (both writes commit together or
+    // neither does). purchaseOrderId is pinned to equal this
+    // document's own requestId (the Reorder Purchase Order's ID is
+    // always its linked Reorder Request's ID -- see that collection's
+    // rule for why this also prevents duplicates). Same per-user
+    // restriction as Sprints 2.1.7/2.1.8: request.auth.uid must equal
+    // the request's OWN assignedToUserId. currentOwner, all three
+    // assignment fields, both purchasing-start fields, all five
+    // purchasing-update fields, and all four review fields are pinned
+    // unchanged -- this transition never rewrites prior workflow
+    // history.
+    match /reorder_requests/{requestId} {
+      // Issue #100 PR 1a -- four additive read branches alongside the
+      // existing isAdminOrDispatcher() (unchanged, unnarrowed). Safe as
+      // a simple additive || because `allow read` is a single,
+      // undifferentiated boolean -- there is no transition/branch
+      // structure to accidentally cross here, unlike `allow update`
+      // below (which this PR does NOT touch -- the Assign-write's new
+      // PARTS_MANAGER branch and every PARTS_ASSOCIATE lifecycle-write
+      // branch land only in PR 3a's full restructuring, per the
+      // Implementation Plan's Sequencing notes).
+      allow read: if isAdminOrDispatcher()
+        // Parts Manager Queue.
+        || (isActiveOperationalRole("PARTS_MANAGER") && resource.data.status == "READY_FOR_PARTS_MANAGER")
+        // Assigned-work oversight.
+        || (isActiveOperationalRole("PARTS_MANAGER") && resource.data.status in ["ASSIGNED_TO_PARTS_ASSOCIATE", "PURCHASING_IN_PROGRESS"])
+        // Relevant (not global) History -- a request this Parts Manager
+        // personally reviewed (approved or rejected) or personally
+        // assigned.
+        || (isActiveOperationalRole("PARTS_MANAGER") && (resource.data.reviewedBy == request.auth.uid || resource.data.assignedBy == request.auth.uid))
+        // Bundled PARTS_ASSOCIATE grant (personal Waiting/In Progress,
+        // exact assigned-request details) -- landed here since the
+        // helpers above are shared groundwork, per the Implementation
+        // Plan's PR 1a scope.
+        || (isActiveOperationalRole("PARTS_ASSOCIATE") && resource.data.assignedToUserId == request.auth.uid);
+
+      // Zero-history reorder behavior sprint, PR 4 (rollout step 3,
+      // rules tightening) -- the transitional legacy branch PR 2
+      // intentionally left in place (no `recommendationStatus` key ->
+      // `isAdminOrDispatcher()` and nothing else) is now REMOVED.
+      // Precondition verified before this PR was opened: PR 3's writer
+      // is confirmed live, and a production spot-check confirmed zero
+      // `reorder_requests` documents created after that deploy lack
+      // the canonical shape -- see docs/implementation-plans/inventory-
+      // zero-history-reorder-behavior.md's Deployment status section
+      // for the full record. Every create must now satisfy the
+      // canonical schema unconditionally; a legacy-shape write that
+      // used to succeed under `isAdminOrDispatcher()` alone is
+      // rejected from this point on.
+      //
+      // Authorization is BRANCH-SCOPED, not layered: READY requires
+      // isAdminOrDispatcher() (unchanged); NEEDS_PLANNING requires
+      // canSubmitManualZeroHistoryQuantity() ALONE (it already
+      // includes the admin override internally) -- ANDing it under
+      // isAdminOrDispatcher() would silently block every eligible
+      // Parts Manager/Warehouse Manager whose security role isn't
+      // also admin/dispatcher (ROLES and Employee operationalRoles[]
+      // are independent fields on independent documents).
+      // requestedQty's positivity is also branch-scoped: >= 0 for
+      // READY (0 is a legitimate computed value, mirrors
+      // recommendedQty), > 0 for NEEDS_PLANNING (a manual entry must
+      // be meaningful). Rules deliberately do not reproduce the
+      // analytics formula -- only structural/authorization validity is
+      // enforced.
+      //
+      // hasCanonicalReorderRequestKeys()/...CreationBaseline() (above)
+      // apply to BOTH branches identically -- enforced for both since
+      // Codex's PR #91 finding.
+      allow create: if hasCanonicalReorderRequestKeys(request.resource.data)
+        && hasCanonicalReorderRequestCreationBaseline(request.resource.data)
+        && request.resource.data.partId is string && request.resource.data.partId.size() > 0
+        && request.resource.data.recommendationStatus in ["READY", "NEEDS_PLANNING"]
+        && request.resource.data.quantitySource in ["ANALYTICS", "MANUAL_ZERO_HISTORY"]
+        && (request.resource.data.recommendationStatus == "READY"
+              ? (isAdminOrDispatcher()
+                 && request.resource.data.urgency in ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
+                 && request.resource.data.quantitySource == "ANALYTICS"
+                 && request.resource.data.recommendedQty is number
+                 && request.resource.data.requestedQty is int && request.resource.data.requestedQty >= 0)
+              : (canSubmitManualZeroHistoryQuantity()
+                 && request.resource.data.urgency == null
+                 && request.resource.data.quantitySource == "MANUAL_ZERO_HISTORY"
+                 && request.resource.data.recommendedQty == null
+                 && request.resource.data.requestedQty is int && request.resource.data.requestedQty > 0));
+
+      // Issue #100 PR 3a -- RESTRUCTURED (docs/specifications/
+      // inventory-nav-access-alignment.md's "Restructuring
+      // reorder_requests' allow update"). The prior single shared outer
+      // isAdminOrDispatcher() gate (identical across all eight
+      // transition branches) is removed from its top-level position;
+      // each of the resulting EIGHT self-contained branches carries its
+      // own leading authorization clause instead, still combined with
+      // || into one allow update, still ANDed with the unchanged
+      // pinned-base-fields tail at the very end. Every existing
+      // field-level validation clause inside each branch is preserved
+      // EXACTLY, byte-for-byte, unchanged -- only the leading
+      // authorization clause each branch is prefixed with changes.
+      // Approve/Reject and Cancel stay isAdminOrDispatcher() alone;
+      // Void stays isAdminOrDispatcher() AND assignee -- all three
+      // unchanged in substance. Start Purchasing, Post Purchasing
+      // Update, Record PO, and Mark Received gain the new
+      // `|| isActiveOperationalRole("PARTS_ASSOCIATE")` OR. Assign
+      // gains the new `|| isActiveOperationalRole("PARTS_MANAGER")` OR.
+      //
+      // DEVIATION FROM THE SPECIFICATION'S ILLUSTRATIVE CODE, flagged
+      // explicitly for Architecture Review: the Specification's own
+      // illustrative shape shows Assign split into TWO separate
+      // branches (an unchanged admin/dispatcher-only branch, plus a
+      // new, distinct PARTS_MANAGER branch with an identical body) --
+      // nine branches total. Implementing that literally, verified
+      // empirically against a live Firestore emulator, causes the
+      // ORDERED -> VOIDED transition's two-document atomic commit
+      // (this update + the linked reorder_purchase_order_voids create,
+      // evaluated together in one request) to exceed Firestore's
+      // undocumented ~1000-subexpression Rules evaluation budget,
+      // failing with "Unable to evaluate the expression as the maximum
+      // of 1000 expressions to evaluate has been reached" -- a real
+      // platform limit, not a logic error (confirmed via
+      // functions/test/reorderRequestsRules.test.js's full VOID
+      // coverage failing 2/82 with exactly that error at this
+      // restructuring's initial nine-branch form, and passing 82/82
+      // once merged to eight). Since the admin/dispatcher Assign
+      // branch's body and the PARTS_MANAGER Assign branch's body were
+      // BYTE-FOR-BYTE IDENTICAL in the Specification's own illustrative
+      // code (both require only the leading authorization clause plus
+      // `assignedBy == request.auth.uid`, no additional distinguishing
+      // condition), merging them into ONE branch with an OR'd leading
+      // authorization -- `(isAdminOrDispatcher() ||
+      // isActiveOperationalRole("PARTS_MANAGER"))`, mirroring the exact
+      // pattern already used for Start Purchasing/Post Purchasing
+      // Update/Record PO/Mark Received -- is behaviorally IDENTICAL
+      // (same set of callers authorized, same field validation, same
+      // affectedKeys() pin) while eliminating the duplicated
+      // subexpression cost that caused the platform limit to be
+      // exceeded. This is an implementation-level fix to the
+      // Specification's illustrative code, not a scope, authorization,
+      // or security change -- restated for the Owner/ChatGPT's next
+      // Architecture Review pass per this project's standing
+      // finding-classification discipline, not decided unilaterally as
+      // final.
+      allow update: if
+        ( ( isAdminOrDispatcher() // Approve/Reject -- unchanged, admin/dispatcher only
+            && resource.data.status == "PENDING_REVIEW"
+            && ((request.resource.data.status == "READY_FOR_PARTS_MANAGER"
+                  && request.resource.data.reviewDecision == "APPROVED"
+                  && request.resource.data.currentOwner == "PARTS_MANAGER")
+                || (request.resource.data.status == "REJECTED"
+                  && request.resource.data.reviewDecision == "REJECTED"
+                  && request.resource.data.currentOwner == resource.data.currentOwner))
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(["status", "reviewDecision", "reviewedBy", "reviewedAt", "reviewNotes", "currentOwner"])
+            && (request.resource.data.status != "REJECTED"
+                || (request.resource.data.reviewNotes is string && request.resource.data.reviewNotes.size() > 0)) )
+          || ( (isAdminOrDispatcher() || isActiveOperationalRole("PARTS_MANAGER")) // Assign -- gains the new OR (Issue #100 PR 3a)
+            && resource.data.status == "READY_FOR_PARTS_MANAGER"
+            && request.resource.data.status == "ASSIGNED_TO_PARTS_ASSOCIATE"
+            && request.resource.data.currentOwner == "PARTS_ASSOCIATE"
+            && request.resource.data.assignedToUserId is string
+            && request.resource.data.assignedToUserId.size() > 0
+            && request.resource.data.assignedBy == request.auth.uid
+            && request.resource.data.assignedAt is number
+            && request.resource.data.reviewDecision == resource.data.reviewDecision
+            && request.resource.data.reviewedBy == resource.data.reviewedBy
+            && request.resource.data.reviewedAt == resource.data.reviewedAt
+            && request.resource.data.reviewNotes == resource.data.reviewNotes
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(["status", "currentOwner", "assignedToUserId", "assignedBy", "assignedAt"]) )
+          || ( (isAdminOrDispatcher() || isActiveOperationalRole("PARTS_ASSOCIATE")) // Start Purchasing -- gains the new OR (Issue #100 PR 3a)
+            && resource.data.status == "ASSIGNED_TO_PARTS_ASSOCIATE"
+            && request.resource.data.status == "PURCHASING_IN_PROGRESS"
+            && request.auth.uid == resource.data.assignedToUserId
+            && request.resource.data.purchasingStartedBy == request.auth.uid
+            && request.resource.data.purchasingStartedAt is number
+            && request.resource.data.currentOwner == resource.data.currentOwner
+            && request.resource.data.assignedToUserId == resource.data.assignedToUserId
+            && request.resource.data.assignedBy == resource.data.assignedBy
+            && request.resource.data.assignedAt == resource.data.assignedAt
+            && request.resource.data.reviewDecision == resource.data.reviewDecision
+            && request.resource.data.reviewedBy == resource.data.reviewedBy
+            && request.resource.data.reviewedAt == resource.data.reviewedAt
+            && request.resource.data.reviewNotes == resource.data.reviewNotes
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(["status", "purchasingStartedAt", "purchasingStartedBy"]) )
+          || ( (isAdminOrDispatcher() || isActiveOperationalRole("PARTS_ASSOCIATE")) // Post Purchasing Update -- gains the new OR (Issue #100 PR 3a)
+            && resource.data.status == "PURCHASING_IN_PROGRESS"
+            && request.resource.data.status == "PURCHASING_IN_PROGRESS"
+            && request.auth.uid == resource.data.assignedToUserId
+            && request.resource.data.lastPurchasingUpdateBy == request.auth.uid
+            && request.resource.data.lastPurchasingUpdateAt is number
+            && request.resource.data.currentOwner == resource.data.currentOwner
+            && request.resource.data.assignedToUserId == resource.data.assignedToUserId
+            && request.resource.data.assignedBy == resource.data.assignedBy
+            && request.resource.data.assignedAt == resource.data.assignedAt
+            && request.resource.data.purchasingStartedAt == resource.data.purchasingStartedAt
+            && request.resource.data.purchasingStartedBy == resource.data.purchasingStartedBy
+            && request.resource.data.reviewDecision == resource.data.reviewDecision
+            && request.resource.data.reviewedBy == resource.data.reviewedBy
+            && request.resource.data.reviewedAt == resource.data.reviewedAt
+            && request.resource.data.reviewNotes == resource.data.reviewNotes
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(["purchasingNotes", "vendorContacted", "expectedAvailabilityDate", "lastPurchasingUpdateAt", "lastPurchasingUpdateBy"]) )
+          || ( (isAdminOrDispatcher() || isActiveOperationalRole("PARTS_ASSOCIATE")) // Record PO (reorder_requests half) -- gains the new OR (Issue #100 PR 3a)
+            && resource.data.status == "PURCHASING_IN_PROGRESS"
+            && request.resource.data.status == "ORDERED"
+            && request.auth.uid == resource.data.assignedToUserId
+            && request.resource.data.purchaseOrderId == requestId
+            && request.resource.data.orderedBy == request.auth.uid
+            && request.resource.data.orderedAt is number
+            && request.resource.data.currentOwner == resource.data.currentOwner
+            && request.resource.data.assignedToUserId == resource.data.assignedToUserId
+            && request.resource.data.assignedBy == resource.data.assignedBy
+            && request.resource.data.assignedAt == resource.data.assignedAt
+            && request.resource.data.purchasingStartedAt == resource.data.purchasingStartedAt
+            && request.resource.data.purchasingStartedBy == resource.data.purchasingStartedBy
+            && request.resource.data.purchasingNotes == resource.data.purchasingNotes
+            && request.resource.data.vendorContacted == resource.data.vendorContacted
+            && request.resource.data.expectedAvailabilityDate == resource.data.expectedAvailabilityDate
+            && request.resource.data.lastPurchasingUpdateAt == resource.data.lastPurchasingUpdateAt
+            && request.resource.data.lastPurchasingUpdateBy == resource.data.lastPurchasingUpdateBy
+            && request.resource.data.reviewDecision == resource.data.reviewDecision
+            && request.resource.data.reviewedBy == resource.data.reviewedBy
+            && request.resource.data.reviewedAt == resource.data.reviewedAt
+            && request.resource.data.reviewNotes == resource.data.reviewNotes
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(["status", "purchaseOrderId", "orderedBy", "orderedAt"])
+            // Cross-document invariant (ChatGPT PR #77 review): a
+            // rules-independent write of THIS transition alone,
+            // without the matching reorder_purchase_orders/{requestId}
+            // create also landing in the SAME commit, is rejected --
+            // getAfter()/existsAfter() read the post-transaction state,
+            // so both writes are provably part of one atomic operation,
+            // not just independently-valid writes that happened to be
+            // sent together.
+            && existsAfter(/databases/$(database)/documents/reorder_purchase_orders/$(requestId))
+            && getAfter(/databases/$(database)/documents/reorder_purchase_orders/$(requestId)).data.reorderRequestId == requestId
+            && getAfter(/databases/$(database)/documents/reorder_purchase_orders/$(requestId)).data.createdBy == request.auth.uid
+            && getAfter(/databases/$(database)/documents/reorder_purchase_orders/$(requestId)).data.status == "ORDERED"
+            && getAfter(/databases/$(database)/documents/reorder_purchase_orders/$(requestId)).data.partId == resource.data.partId )
+          // Sprint 2.1.11 -- Receiving (Reorder Request closeout).
+          // Terminal ORDERED -> RECEIVED transition, assignee-restricted,
+          // same single-document-transition shape as Sprint 2.1.7/
+          // 2.1.8 (no getAfter()/existsAfter() cross-document
+          // invariant needed here -- unlike Sprint 2.1.10, this
+          // transition doesn't create a second linked document).
+          // This is a status-closeout note only -- does NOT write to
+          // inventory_transactions (Admin-SDK-only, Work-Order-
+          // driven ledger, ADR-003); reconciling against real stock
+          // stays on FUTURE_ARCHITECTURE_BACKLOG.md, blocked on
+          // Firebase Blaze (issue #15), not this sprint's concern.
+          || ( (isAdminOrDispatcher() || isActiveOperationalRole("PARTS_ASSOCIATE")) // Mark Received -- gains the new OR (Issue #100 PR 3a)
+            && resource.data.status == "ORDERED"
+            && request.resource.data.status == "RECEIVED"
+            && request.auth.uid == resource.data.assignedToUserId
+            && request.resource.data.receivedBy == request.auth.uid
+            && request.resource.data.receivedAt is number
+            && request.resource.data.currentOwner == resource.data.currentOwner
+            && request.resource.data.assignedToUserId == resource.data.assignedToUserId
+            && request.resource.data.assignedBy == resource.data.assignedBy
+            && request.resource.data.assignedAt == resource.data.assignedAt
+            && request.resource.data.purchasingStartedAt == resource.data.purchasingStartedAt
+            && request.resource.data.purchasingStartedBy == resource.data.purchasingStartedBy
+            && request.resource.data.purchasingNotes == resource.data.purchasingNotes
+            && request.resource.data.vendorContacted == resource.data.vendorContacted
+            && request.resource.data.expectedAvailabilityDate == resource.data.expectedAvailabilityDate
+            && request.resource.data.lastPurchasingUpdateAt == resource.data.lastPurchasingUpdateAt
+            && request.resource.data.lastPurchasingUpdateBy == resource.data.lastPurchasingUpdateBy
+            && request.resource.data.purchaseOrderId == resource.data.purchaseOrderId
+            && request.resource.data.orderedBy == resource.data.orderedBy
+            && request.resource.data.orderedAt == resource.data.orderedAt
+            && request.resource.data.reviewDecision == resource.data.reviewDecision
+            && request.resource.data.reviewedBy == resource.data.reviewedBy
+            && request.resource.data.reviewedAt == resource.data.reviewedAt
+            && request.resource.data.reviewNotes == resource.data.reviewNotes
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(["status", "receivedBy", "receivedAt"]) )
+          // Cancel/Void schema deployment sequence, PR 4 of 6
+          // (docs/specifications/reorder-request-cancellation.md) --
+          // Cancel Reorder Request. Terminal. Reachable from any of
+          // the three pre-order active statuses. Authorization is
+          // isAdminOrDispatcher() alone -- unchanged, no additional
+          // per-user restriction, matching every other hand-off-type
+          // transition on this object (review, assign). NOT extended to
+          // PARTS_ASSOCIATE -- confirmed by the Specification's
+          // Architecture Review decision 9.x, restated in PR 3a's own
+          // Scope: PARTS_ASSOCIATE never gains Cancel. This branch
+          // never reads cancelledBy/cancelledAt/cancellationReason from
+          // resource.data -- see the Specification's "Legacy document
+          // behavior" section: a document that predates this sprint's
+          // schema entirely lacks those three keys, and reading an
+          // absent map key here would be a Rules evaluation error, not
+          // a null value. Every earlier-stage field is pinned
+          // unchanged, same discipline as every prior branch;
+          // affectedKeys() restricts the actual diff to exactly the
+          // four fields this transition owns, so a legacy document
+          // (missing the six Cancel/Void keys entirely) only ever
+          // gains the three relevant to this transition -- voidedBy/
+          // voidedAt/voidReason are never backfilled by this branch.
+          || ( isAdminOrDispatcher() // Cancel -- unchanged, admin/dispatcher only, NOT assignee-restricted, NOT extended to PARTS_ASSOCIATE
+            && (resource.data.status == "READY_FOR_PARTS_MANAGER"
+                  || resource.data.status == "ASSIGNED_TO_PARTS_ASSOCIATE"
+                  || resource.data.status == "PURCHASING_IN_PROGRESS")
+            && request.resource.data.status == "CANCELLED"
+            && request.resource.data.cancelledBy == request.auth.uid
+            && request.resource.data.cancelledAt is number
+            && request.resource.data.cancellationReason is string
+            && request.resource.data.cancellationReason.matches('.*\\S.*')
+            && request.resource.data.currentOwner == resource.data.currentOwner
+            && request.resource.data.assignedToUserId == resource.data.assignedToUserId
+            && request.resource.data.assignedBy == resource.data.assignedBy
+            && request.resource.data.assignedAt == resource.data.assignedAt
+            && request.resource.data.purchasingStartedAt == resource.data.purchasingStartedAt
+            && request.resource.data.purchasingStartedBy == resource.data.purchasingStartedBy
+            && request.resource.data.purchasingNotes == resource.data.purchasingNotes
+            && request.resource.data.vendorContacted == resource.data.vendorContacted
+            && request.resource.data.expectedAvailabilityDate == resource.data.expectedAvailabilityDate
+            && request.resource.data.lastPurchasingUpdateAt == resource.data.lastPurchasingUpdateAt
+            && request.resource.data.lastPurchasingUpdateBy == resource.data.lastPurchasingUpdateBy
+            && request.resource.data.reviewDecision == resource.data.reviewDecision
+            && request.resource.data.reviewedBy == resource.data.reviewedBy
+            && request.resource.data.reviewedAt == resource.data.reviewedAt
+            && request.resource.data.reviewNotes == resource.data.reviewNotes
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(["status", "cancelledBy", "cancelledAt", "cancellationReason"]) )
+          // Cancel/Void schema deployment sequence, PR 5 of 6
+          // (docs/specifications/reorder-request-cancellation.md) --
+          // Void Purchase Order. Terminal. Reachable ONLY from
+          // ORDERED. Authorization is isAdminOrDispatcher() AND
+          // request.auth.uid == resource.data.assignedToUserId --
+          // BOTH conditions, unchanged, NOT extended to PARTS_ASSOCIATE
+          // -- confirmed by the Specification's Architecture Review
+          // decision, restated in PR 3a's own Scope: PARTS_ASSOCIATE
+          // never gains Void either, even though it is already the
+          // assignee on every request it could otherwise target. Three
+          // checks beyond the existing ORDERED->RECEIVED branch's
+          // shape:
+          //   (1) Purchase-Order-existence proof -- the linked
+          //       reorder_purchase_orders document must actually
+          //       exist, agree on reorderRequestId/partId, and
+          //       itself be status ORDERED. Read via a plain get()
+          //       (the document already exists before this
+          //       transaction and is never written by it).
+          //   (2) Cross-document invariant on the NEW
+          //       reorder_purchase_order_voids record -- mirrors
+          //       Sprint 2.1.10's getAfter()/existsAfter() pattern
+          //       for a document THIS transaction creates.
+          //   (3) Reason binding -- this branch's voidReason must
+          //       equal the void record's own reason (getAfter()),
+          //       not merely be independently non-blank.
+          // This branch never reads voidedBy/voidedAt/voidReason
+          // from resource.data, same legacy-document-safe posture
+          // as the Cancel branch above.
+          || ( isAdminOrDispatcher() // Void (reorder_requests half) -- unchanged, admin/dispatcher AND assignee, double-gated, NOT extended to PARTS_ASSOCIATE
+            && resource.data.status == "ORDERED"
+            && request.resource.data.status == "VOIDED"
+            && request.auth.uid == resource.data.assignedToUserId
+            && request.resource.data.voidedBy == request.auth.uid
+            && request.resource.data.voidedAt is number
+            && request.resource.data.voidReason is string
+            && request.resource.data.voidReason.matches('.*\\S.*')
+            && request.resource.data.currentOwner == resource.data.currentOwner
+            && request.resource.data.assignedToUserId == resource.data.assignedToUserId
+            && request.resource.data.assignedBy == resource.data.assignedBy
+            && request.resource.data.assignedAt == resource.data.assignedAt
+            && request.resource.data.purchasingStartedAt == resource.data.purchasingStartedAt
+            && request.resource.data.purchasingStartedBy == resource.data.purchasingStartedBy
+            && request.resource.data.purchasingNotes == resource.data.purchasingNotes
+            && request.resource.data.vendorContacted == resource.data.vendorContacted
+            && request.resource.data.expectedAvailabilityDate == resource.data.expectedAvailabilityDate
+            && request.resource.data.lastPurchasingUpdateAt == resource.data.lastPurchasingUpdateAt
+            && request.resource.data.lastPurchasingUpdateBy == resource.data.lastPurchasingUpdateBy
+            && request.resource.data.purchaseOrderId == resource.data.purchaseOrderId
+            && request.resource.data.orderedBy == resource.data.orderedBy
+            && request.resource.data.orderedAt == resource.data.orderedAt
+            && request.resource.data.reviewDecision == resource.data.reviewDecision
+            && request.resource.data.reviewedBy == resource.data.reviewedBy
+            && request.resource.data.reviewedAt == resource.data.reviewedAt
+            && request.resource.data.reviewNotes == resource.data.reviewNotes
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(["status", "voidedBy", "voidedAt", "voidReason"])
+            // (1) Purchase-Order-existence proof. resource.data.
+            // purchaseOrderId == requestId is already guaranteed by
+            // the pinned-earlier-stage-fields check above
+            // (purchaseOrderId was set, and has been pinned
+            // unchanged, since PURCHASING_IN_PROGRESS -> ORDERED) --
+            // restated here explicitly, not merely relied on
+            // implicitly.
+            && resource.data.purchaseOrderId == requestId
+            && exists(/databases/$(database)/documents/reorder_purchase_orders/$(requestId))
+            && get(/databases/$(database)/documents/reorder_purchase_orders/$(requestId)).data.reorderRequestId == requestId
+            && get(/databases/$(database)/documents/reorder_purchase_orders/$(requestId)).data.partId == resource.data.partId
+            && get(/databases/$(database)/documents/reorder_purchase_orders/$(requestId)).data.status == "ORDERED"
+            // (2) Cross-document invariant -- the void record.
+            && existsAfter(/databases/$(database)/documents/reorder_purchase_order_voids/$(requestId))
+            && getAfter(/databases/$(database)/documents/reorder_purchase_order_voids/$(requestId)).data.voidedBy == request.auth.uid
+            && getAfter(/databases/$(database)/documents/reorder_purchase_order_voids/$(requestId)).data.createdAt == request.resource.data.voidedAt
+            && getAfter(/databases/$(database)/documents/reorder_purchase_order_voids/$(requestId)).data.reorderRequestId == requestId
+            && getAfter(/databases/$(database)/documents/reorder_purchase_order_voids/$(requestId)).data.reorderPurchaseOrderId == requestId
+            && getAfter(/databases/$(database)/documents/reorder_purchase_order_voids/$(requestId)).data.partId == resource.data.partId
+            // (3) Reason binding.
+            && getAfter(/databases/$(database)/documents/reorder_purchase_order_voids/$(requestId)).data.reason == request.resource.data.voidReason ) )
+        && request.resource.data.partId == resource.data.partId
+        && request.resource.data.urgency == resource.data.urgency
+        && request.resource.data.recommendedQty == resource.data.recommendedQty
+        && request.resource.data.requestedBy == resource.data.requestedBy
+        && request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if false;
+    }
+
+    // Sprint 2.1.10 -- Purchase Order Foundation. A NEW, separate
+    // collection -- deliberately NOT the existing purchase_orders
+    // collection below (Epic 5, Procurement + Supplier Management:
+    // Admin-SDK-only, Supplier-linked, unrelated to this minimal,
+    // Reorder-Request-linked record). Documented as "Reorder Purchase
+    // Order" specifically to avoid confusion with that entity -- see
+    // docs/BusinessEntityModel.md Section 4b.
+    //
+    // The document ID is its own linked reorderRequestId (not an
+    // auto-generated ID) -- this is what makes "no duplicate Purchase
+    // Order per Reorder Request" enforceable by Firestore itself: a
+    // second write to the same ID is evaluated as an `update` (since
+    // the document already exists), which is denied unconditionally
+    // below, not just discouraged by a client-side check.
+    //
+    // Only the assigned Parts Associate (checked via a get() against
+    // the linked reorder_requests document's CURRENT, pre-transaction
+    // state) on a request that is currently PURCHASING_IN_PROGRESS may
+    // create one -- and only via domain/reorderPurchaseOrders.js's
+    // recordPurchaseOrder(), which creates this document AND
+    // transitions the linked Reorder Request to ORDERED in the same
+    // Firestore transaction, so the two can never drift out of sync.
+    //
+    // Cross-document invariant (ChatGPT PR #77 review): getAfter() on
+    // reorder_requests/{requestId} requires that, after this write's
+    // transaction commits, the linked Reorder Request is actually
+    // ORDERED with a matching purchaseOrderId/orderedBy/orderedAt --
+    // so this document cannot be created without the matching
+    // reorder_requests transition landing in the SAME commit. Combined
+    // with that transition's own getAfter() check (above), the two
+    // writes are provably atomic from the rules' perspective, not just
+    // independently-valid writes that happened to arrive together.
+    // orderedAt is required to equal this document's own createdAt,
+    // since domain/reorderPurchaseOrders.js's recordPurchaseOrder()
+    // intentionally stamps both fields with the same `now` value.
+    //
+    // Field validation: partId must equal the linked Reorder Request's
+    // OWN existing partId (not merely "is string") -- a Purchase Order
+    // can never claim a different part than the request it's for.
+    // keys().hasOnly() pins the write to exactly the fields
+    // recordPurchaseOrder() sets, so no extra field can ride along.
+    // expectedArrivalDate is optional -- null or a string, never
+    // omitted (recordPurchaseOrder() always writes it, as null when
+    // not provided).
+    match /reorder_purchase_orders/{requestId} {
+      // Issue #100 PR 3a -- read gains one additive, self-scoped
+      // PARTS_ASSOCIATE branch: the linked reorder_requests document's
+      // assignedToUserId must equal the caller. Reads via get(), not a
+      // per-document Rules-scoped field on this collection itself
+      // (this collection has no assignedToUserId of its own -- the
+      // ownership fact lives on the linked Reorder Request).
+      allow read: if isAdminOrDispatcher()
+        || (isActiveOperationalRole("PARTS_ASSOCIATE")
+            && get(/databases/$(database)/documents/reorder_requests/$(requestId)).data.assignedToUserId == request.auth.uid);
+      // Issue #100 PR 3a -- create gains isActiveOperationalRole("PARTS_ASSOCIATE")
+      // alongside the existing isAdminOrDispatcher(), ANDed with the
+      // unchanged assignee/status/field validation below (unchanged --
+      // this single-condition allow create is not shared with any
+      // other transition, so this is a safe additive ||, same reasoning
+      // as every read-side widening above).
+      allow create: if (isAdminOrDispatcher() || isActiveOperationalRole("PARTS_ASSOCIATE"))
+        && request.auth.uid == get(/databases/$(database)/documents/reorder_requests/$(requestId)).data.assignedToUserId
+        && get(/databases/$(database)/documents/reorder_requests/$(requestId)).data.status == "PURCHASING_IN_PROGRESS"
+        && request.resource.data.keys().hasOnly([
+             "reorderRequestId", "partId", "supplierName", "externalPoNumber",
+             "orderedQuantity", "orderedDate", "expectedArrivalDate", "status",
+             "createdBy", "createdAt"
+           ])
+        && request.resource.data.reorderRequestId == requestId
+        && request.resource.data.partId == get(/databases/$(database)/documents/reorder_requests/$(requestId)).data.partId
+        && request.resource.data.supplierName is string
+        && request.resource.data.supplierName.size() > 0
+        && request.resource.data.externalPoNumber is string
+        && request.resource.data.externalPoNumber.size() > 0
+        && request.resource.data.orderedQuantity is number
+        && request.resource.data.orderedQuantity > 0
+        && request.resource.data.orderedDate is string
+        && request.resource.data.orderedDate.size() > 0
+        && (request.resource.data.expectedArrivalDate == null || request.resource.data.expectedArrivalDate is string)
+        && request.resource.data.status == "ORDERED"
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.createdAt is number
+        && existsAfter(/databases/$(database)/documents/reorder_requests/$(requestId))
+        && getAfter(/databases/$(database)/documents/reorder_requests/$(requestId)).data.status == "ORDERED"
+        && getAfter(/databases/$(database)/documents/reorder_requests/$(requestId)).data.purchaseOrderId == requestId
+        && getAfter(/databases/$(database)/documents/reorder_requests/$(requestId)).data.orderedBy == request.auth.uid
+        && getAfter(/databases/$(database)/documents/reorder_requests/$(requestId)).data.orderedAt == request.resource.data.createdAt;
+      allow update, delete: if false;
+    }
+
+    // Cancel/Void schema deployment sequence, PR 5 of 6
+    // (docs/specifications/reorder-request-cancellation.md). The sole
+    // record of a void event -- append-only, never updated or
+    // deleted. Document ID is its own reorderPurchaseOrderId (== the
+    // Reorder Request/Purchase Order's shared ID), same duplicate-
+    // prevention-via-create-vs-update technique as
+    // reorder_purchase_orders above. Purchase-Order-existence proof,
+    // same three checks as the reorder_requests-side VOIDED branch
+    // above, defense-in-depth (this codebase's established style --
+    // e.g. reorder_purchase_orders' own create rule above already
+    // double-checks the linked Reorder Request's pre-transaction
+    // status directly rather than relying solely on the other side's
+    // invariant). This is the same two-sided cross-document invariant
+    // shape Sprint 2.1.10 established for ORDERED (each side's rule
+    // checks the other side's post-transaction state), additionally
+    // bound on reason/createdAt-voidedAt agreement.
+    match /reorder_purchase_order_voids/{reorderPurchaseOrderId} {
+      // Issue #100 PR 3a -- read gains the same additive, self-scoped
+      // PARTS_ASSOCIATE branch as reorder_purchase_orders above.
+      allow read: if isAdminOrDispatcher()
+        || (isActiveOperationalRole("PARTS_ASSOCIATE")
+            && get(/databases/$(database)/documents/reorder_requests/$(reorderPurchaseOrderId)).data.assignedToUserId == request.auth.uid);
+      // create is UNCHANGED -- remains isAdminOrDispatcher() && assignee,
+      // confirmed by omission. PARTS_ASSOCIATE never gains Void, per
+      // the Specification's Architecture Review decision (restated in
+      // the reorder_requests VOIDED branch's own comment above).
+      allow create: if isAdminOrDispatcher()
+        && request.auth.uid == get(/databases/$(database)/documents/reorder_requests/$(reorderPurchaseOrderId)).data.assignedToUserId
+        && get(/databases/$(database)/documents/reorder_requests/$(reorderPurchaseOrderId)).data.status == "ORDERED"
+        && exists(/databases/$(database)/documents/reorder_purchase_orders/$(reorderPurchaseOrderId))
+        && get(/databases/$(database)/documents/reorder_purchase_orders/$(reorderPurchaseOrderId)).data.reorderRequestId == reorderPurchaseOrderId
+        && get(/databases/$(database)/documents/reorder_purchase_orders/$(reorderPurchaseOrderId)).data.status == "ORDERED"
+        && request.resource.data.keys().hasOnly([
+             "reorderPurchaseOrderId", "reorderRequestId", "partId",
+             "voidedBy", "reason", "createdAt"
+           ])
+        && request.resource.data.reorderPurchaseOrderId == reorderPurchaseOrderId
+        && request.resource.data.reorderRequestId == reorderPurchaseOrderId
+        && request.resource.data.partId == get(/databases/$(database)/documents/reorder_purchase_orders/$(reorderPurchaseOrderId)).data.partId
+        && request.resource.data.voidedBy == request.auth.uid
+        && request.resource.data.reason is string && request.resource.data.reason.matches('.*\\S.*')
+        && request.resource.data.createdAt is number
+        && existsAfter(/databases/$(database)/documents/reorder_requests/$(reorderPurchaseOrderId))
+        && getAfter(/databases/$(database)/documents/reorder_requests/$(reorderPurchaseOrderId)).data.status == "VOIDED"
+        && getAfter(/databases/$(database)/documents/reorder_requests/$(reorderPurchaseOrderId)).data.voidedBy == request.auth.uid
+        && getAfter(/databases/$(database)/documents/reorder_requests/$(reorderPurchaseOrderId)).data.voidedAt == request.resource.data.createdAt
+        && getAfter(/databases/$(database)/documents/reorder_requests/$(reorderPurchaseOrderId)).data.voidReason == request.resource.data.reason;
+      allow update, delete: if false;
+    }
+
+    // Sprint 2.1.9 -- Inventory Actions Foundation. A new, separate,
+    // append-only audit collection for human-initiated inventory
+    // adjustments (Receive Stock/Adjust Stock/Correct Mistake) via
+    // domain/inventoryActions.js's recordInventoryAction() -- NOT a
+    // modification of inventory_transactions (Epic 2D/3, ADR-003)
+    // below, which remains Admin-SDK-only/Work-Order-driven and
+    // completely untouched. Mirrors reorder_requests' client-direct-
+    // write pattern: no Cloud Function, admin/dispatcher only,
+    // create-only -- no update/delete, since correcting a mistake
+    // means recording ANOTHER action, never editing history. No field-
+    // level validation here (same posture as reorder_requests' create
+    // rule) -- validation lives in recordInventoryAction(), the sole
+    // write path.
+    // Issue #100 PR 2a -- one additive read branch alongside the
+    // existing isAdminOrDispatcher() (unchanged, unnarrowed). Shape
+    // matches the existing grant exactly: collection-level, not
+    // per-document-scoped in Rules -- the client's own
+    // where("partId","==",partId) query (useInventoryActionsForPart(),
+    // unchanged) is what bounds the result set, identical to how the
+    // existing admin/dispatcher grant is also not per-document-scoped.
+    // No PARTS_MANAGER/PARTS_ASSOCIATE branch here -- neither role
+    // gains this capability per the Owner-adopted matrix.
+    match /inventory_actions/{actionId} {
+      allow read: if isAdminOrDispatcher() || isActiveOperationalRole("WAREHOUSE_MANAGER");
+      allow create: if isAdminOrDispatcher();
+      allow update, delete: if false;
+    }
+
+    // Epic 4 Warehouse + Fulfillment System. Same Admin-SDK-only write
+    // posture as the ledger above -- a physical-reality layer, not a
+    // second source of truth, so no direct client writes here either.
+    // Read access opened to admin/dispatcher for the Operations
+    // dashboard, same reasoning as inventory_transactions above.
+    //
+    // Issue #226 -- WAREHOUSE_MANAGER scoped access. Each `allow read`
+    // below gains one additive `|| isAssignedToWarehouse(...)` arm --
+    // admin/dispatcher's existing unconditional read is unchanged. A
+    // WAREHOUSE_MANAGER-eligible technician may read ONLY the
+    // warehouses (and their stock locations, and transfer orders
+    // touching either endpoint) named on their own linked Employee's
+    // assignedWarehouseIds -- never the general directory. See
+    // isAssignedToWarehouse() above for the full fail-closed contract
+    // (missing/inactive/unlinked Employee, missing WAREHOUSE_MANAGER
+    // role, or missing/empty/malformed assignedWarehouseIds all deny).
+    match /warehouses/{warehouseId} {
+      allow read: if isAdminOrDispatcher() || isAssignedToWarehouse(warehouseId);
+      allow create, update, delete: if false;
+    }
+
+    match /stock_locations/{stockLocationId} {
+      allow read: if isAdminOrDispatcher() || isAssignedToWarehouse(resource.data.warehouseId);
+      allow create, update, delete: if false;
+    }
+
+    // Two-field OR: a transfer touching either endpoint warehouse is
+    // readable by a manager assigned to THAT endpoint, even if they are
+    // not assigned to the other one. Short-circuits on the first match
+    // (OR), so the common admin/dispatcher path never evaluates either
+    // isAssignedToWarehouse() call, and a WAREHOUSE_MANAGER match on
+    // fromWarehouseId never evaluates the second (toWarehouseId) call.
+    match /transfer_orders/{transferOrderId} {
+      allow read: if isAdminOrDispatcher()
+        || isAssignedToWarehouse(resource.data.fromWarehouseId)
+        || isAssignedToWarehouse(resource.data.toWarehouseId);
+      allow create, update, delete: if false;
+    }
+
+    // Epic 5 Procurement + Supplier Management System. Same Admin-SDK-
+    // only write posture as the ledger/warehouse collections above --
+    // fully internal, no external vendor integration, no client writes.
+    // Read access opened to admin/dispatcher for the Operations
+    // dashboard, same reasoning as above.
+    match /suppliers/{supplierId} {
+      allow read: if isAdminOrDispatcher();
+      allow create, update, delete: if false;
+    }
+
+    match /supplier_catalog/{catalogItemId} {
+      allow read: if isAdminOrDispatcher();
+      allow create, update, delete: if false;
+    }
+
+    match /purchase_orders/{purchaseOrderId} {
+      allow read: if isAdminOrDispatcher();
+      allow create, update, delete: if false;
+    }
+
+    // Sprint 2.0.2 -- Customer Foundation (docs/BusinessEntityModel.md).
+    // Unlike Work Orders, Accounts/Locations/Contacts have no state
+    // machine and no cross-document transactional invariant to
+    // protect -- client-direct-write-with-rules, same pipeline shape
+    // as fieldops_jobs/fieldops_technicians, not a Cloud Function.
+    // No deletion UX exists yet (deactivation is via the `status`
+    // field), so delete stays closed rather than added speculatively.
+    // Technician read access deliberately NOT granted yet -- see
+    // docs/BusinessEntityModel.md's Sprint 2.0.2 implementation plan
+    // for the open question this defers (technician-facing screens
+    // that display a raw customerId/locationId today keep doing so
+    // rather than erroring).
+    // Account Commercial Profile -- PR 2 governed-field helpers
+    // (docs/specifications/account-commercial-profile-and-financial-
+    // forecast-horizons.md). These validate the two GOVERNED enum fields'
+    // VALUES and gate who may EDIT them. The enum literals are duplicated
+    // from domain/constants.js's PAYMENT_TERMS/TAX_STATUS -- there is no
+    // shared source between JS and the Rules DSL; keep them in sync. Uses
+    // .get(field, null) so the optional (often-absent) fields are read
+    // safely rather than erroring on a document that never set them.
+    function accountPaymentTermsValid(data) {
+      return data.get('paymentTerms', null) == null
+        || data.get('paymentTerms', null) in ['COD', 'NET_30', 'NET_60', 'NET_90'];
+    }
+    function accountTaxStatusValid(data) {
+      return data.get('taxStatus', null) == null
+        || data.get('taxStatus', null) in ['UNKNOWN', 'TAXABLE', 'EXEMPT', 'RESELLER'];
+    }
+    function accountGovernedFieldsValid(data) {
+      return accountPaymentTermsValid(data) && accountTaxStatusValid(data);
+    }
+    // The two governed fields are byte-identical between the prior and the
+    // incoming document -- i.e. this write does NOT edit either. A non-admin
+    // may only write the accounts document when this holds (they may freely
+    // edit every OTHER field; existing admin/dispatcher permission on the
+    // rest of the document is unchanged).
+    function accountGovernedFieldsUnchanged() {
+      return request.resource.data.get('paymentTerms', null) == resource.data.get('paymentTerms', null)
+        && request.resource.data.get('taxStatus', null) == resource.data.get('taxStatus', null);
+    }
+    // The non-admin CREATE baseline: a create that leaves paymentTerms unset
+    // and taxStatus at its absent==UNKNOWN safe default is not a governed
+    // write, so a dispatcher may perform it. Setting paymentTerms to any
+    // value, or taxStatus to TAXABLE/EXEMPT/RESELLER, is admin-only.
+    function accountGovernedCreateBaseline(data) {
+      return data.get('paymentTerms', null) == null
+        && (data.get('taxStatus', null) == null || data.get('taxStatus', null) == 'UNKNOWN');
+    }
+
+    match /accounts/{accountId} {
+      allow read: if isAdminOrDispatcher();
+      // Value validity (enum) is enforced for EVERYONE, including admin
+      // (an invalid enum is denied regardless of who writes it). Editing
+      // the two governed fields to a non-default value is admin-only:
+      //   - create: a dispatcher may create only at the governed baseline;
+      //     an admin may create with any valid governed value.
+      //   - update: a dispatcher may write only if the governed fields are
+      //     unchanged (they keep full edit rights on every other field);
+      //     an admin may change them (to a valid enum).
+      // Enforced HERE, in Rules, never by UI hiding. INTERIM path: PR 3b
+      // converts this to the trusted audited server-side writer and denies
+      // direct client mutation of every Commercial Profile field.
+      allow create: if isAdminOrDispatcher()
+        && accountGovernedFieldsValid(request.resource.data)
+        && (isAdmin() || accountGovernedCreateBaseline(request.resource.data));
+      allow update: if isAdminOrDispatcher()
+        && accountGovernedFieldsValid(request.resource.data)
+        && (isAdmin() || accountGovernedFieldsUnchanged());
+      allow delete: if false;
+    }
+
+    match /locations/{locationId} {
+      allow read: if isAdminOrDispatcher();
+      allow create, update: if isAdminOrDispatcher();
+      allow delete: if false;
+    }
+
+    // Equipment & Installed Asset Management -- Issue #232 unit E3
+    // (docs/specifications/equipment-and-installed-asset-management.md,
+    // docs/architecture/ADR-006-...). Client-direct create/ordinary-edit only;
+    // move/retire/reactivate are trusted-writer actions gated on Issue #15 and are
+    // NOT reachable from here.
+    //
+    // AUTHORITY (Spec §10 "Seed compatibility"): admin/dispatcher -> full Equipment
+    // surface. Nothing else. In particular:
+    //
+    //  * operationalRoles are NEVER consulted. They express work eligibility, not
+    //    security authority -- an Employee holding PARTS_MANAGER gets no Equipment
+    //    authority from it, and this block deliberately contains no
+    //    isActiveOperationalRole() call.
+    //  * TECHNICIANS ARE DENIED HERE, deliberately. Spec §10 restricts a technician
+    //    to Equipment reachable through their OWN assigned Work Orders -- but Rules
+    //    cannot express that: it requires QUERYING fieldops_wos for an assignment
+    //    naming this equipment, and Rules can only get()/exists() a KNOWN path. The
+    //    Work Order id is not derivable from the equipment id. Granting technicians a
+    //    plain read to satisfy §10 early would hand every technician the entire
+    //    register -- exactly the "general Equipment-register authority" §10 forbids.
+    //    The self-scoped mechanism is E17's, which depends on E3 and carries its own
+    //    security review. Denying now is the fail-closed direction: E17 can open a
+    //    precise door, whereas an over-broad grant shipped here would have to be
+    //    taken back after technicians already had it.
+    function equipmentWritableKeys() {
+      return [
+        "accountId", "locationId", "name", "status",
+        "manufacturer", "model", "serialNumber", "assetTag",
+        "installedDate", "warrantyExpiresDate", "notes",
+        "createdAt", "updatedAt",
+      ];
+    }
+
+    // An ordinary edit may touch descriptive fields, plus `status` -- but ONLY across
+    // the plain ACTIVE<->INACTIVE pair, which equipmentTransitionAllowed() enforces.
+    //
+    // accountId/locationId: ownership. §4 and §11 both require Rules to deny changing
+    // them here; a Location change is the audited MOVE (§5). createdAt is immutable.
+    //
+    // status is present here so that §3 ("setStatus ... plain"), §6 and AC3
+    // ("descriptive/status(ACTIVE<->INACTIVE) editable") pass as written. Membership in
+    // this list only means "may appear in an edit"; which VALUES are legal is a
+    // separate guard, because reaching or leaving RETIRED is a trusted, audited action
+    // (§5) that this path must never perform.
+    //
+    // Note the client is currently STRICTER than these Rules: E2 (#282) strips status
+    // from its edit payload entirely, so nothing performs an ACTIVE<->INACTIVE write
+    // yet. E10 wires that up. Rules being the authoritative boundary, they encode the
+    // Specification's contract rather than the current caller's subset.
+    function equipmentEditableKeys() {
+      return [
+        "name", "manufacturer", "model", "serialNumber", "assetTag",
+        "installedDate", "warrantyExpiresDate", "notes", "status", "updatedAt",
+      ];
+    }
+
+    function equipmentStatusValid(status) {
+      return status == "ACTIVE" || status == "INACTIVE" || status == "RETIRED";
+    }
+
+    // The ONLY lifecycle movement an ordinary client edit may perform: the plain
+    // ACTIVE<->INACTIVE pair (§3), or no movement at all.
+    //
+    // Everything else is denied by omission rather than by a deny-list, so an
+    // unforeseen value cannot slip through:
+    //   ACTIVE/INACTIVE -> RETIRED  : retiring is trusted + audited (§5, E10)
+    //   RETIRED -> ACTIVE/INACTIVE  : reactivation is trusted + audited (§5, E10)
+    //   invalid/missing on EITHER side: fails closed -- a document whose stored status
+    //     is absent or malformed cannot be edited into a valid one by this path, which
+    //     is the no-grandfathering rule (whole-document validity, not just the delta).
+    // `unchanged` is allowed for RETIRED too: descriptive corrections to a retired
+    // record are permitted, they simply may not revive it.
+    function equipmentTransitionAllowed(before, after) {
+      return equipmentStatusValid(before)
+        && equipmentStatusValid(after)
+        && (after == before
+            || (before == "ACTIVE" && after == "INACTIVE")
+            || (before == "INACTIVE" && after == "ACTIVE"));
+    }
+
+    // Spec §4: the Location must belong to the owning Account. Read the Location and
+    // compare -- a missing Location makes exists() false and the write is denied, so a
+    // dangling or cross-Account reference fails closed rather than being taken on
+    // trust from the client.
+    //
+    // Read this as an INTEGRITY guard, NOT a tenant-security boundary. `locations`
+    // above allows admin/dispatcher create/update with no validation, so the same
+    // principal could forge a Location to satisfy this check. No privilege is gained
+    // -- admin/dispatcher are global and this ruleset has no per-account tenancy at all
+    // -- and E3 deliberately does not try to invent one: #140 is authoritative for that
+    // architecture.
+    function equipmentLocationBelongsToAccount(data) {
+      return data.locationId is string
+        && data.accountId is string
+        && exists(/databases/$(database)/documents/locations/$(data.locationId))
+        && get(/databases/$(database)/documents/locations/$(data.locationId)).data.accountId == data.accountId;
+    }
+
+    // Spec §1 declares every optional field string|null. Without this, a trusted
+    // principal could store `notes` as a map or `manufacturer` as a number: the
+    // register's search (§7) reads these client-side, so a wrong-typed value is a
+    // render hazard carried by real data. Rules are where the shape is authoritative.
+    function equipmentOptionalFieldsValid(data) {
+      return (data.get("manufacturer", null) == null || data.get("manufacturer", null) is string)
+        && (data.get("model", null) == null || data.get("model", null) is string)
+        && (data.get("serialNumber", null) == null || data.get("serialNumber", null) is string)
+        && (data.get("assetTag", null) == null || data.get("assetTag", null) is string)
+        && (data.get("installedDate", null) == null || data.get("installedDate", null) is string)
+        && (data.get("warrantyExpiresDate", null) == null || data.get("warrantyExpiresDate", null) is string)
+        && (data.get("notes", null) == null || data.get("notes", null) is string);
+    }
+
+    // §2: the name is the human reference (§8), so it must contain something a person
+    // can actually see -- not merely some bytes.
+    //
+    // The bar is DOMAIN PARITY -- Rules must not accept what E1 rejects client-side --
+    // not "no invisible character may exist". Being precise about that:
+    //
+    //   trim() alone is NOT enough: Rules' trim() is ASCII-only, so U+00A0 (NBSP),
+    //   U+3000, U+2000 and U+FEFF pass it while JS .trim() treats each as empty. Such
+    //   a name renders BLANK in the register (§8: the name is the human reference).
+    //   matches() closes exactly that gap: \p{Z} is every Unicode separator, \p{Cf}
+    //   the format characters (BOM/ZWNBSP).
+    //
+    //   matches() alone is NOT enough either: RE2's \s excludes \v, which JS .trim()
+    //   DOES strip -- so dropping trim() would let a vertical-tab-only name through.
+    //   Each guard catches what the other cannot; both are asserted below.
+    //
+    // What this deliberately does NOT catch: a name of only U+3164, U+2800, U+034F,
+    // U+115F, U+FFA0 or U+0085. They are Lo/So/Mn/Cc, not Z/Cf -- and JS .trim()
+    // accepts them too, so there is no divergence from the domain. Excluding them
+    // would mean excluding \p{Lo}, which contains every CJK, Arabic, Hebrew and Thai
+    // letter: it would deny a real customer's equipment name to stop a trusted admin
+    // from deliberately typing a blank one. Do not chase this further.
+    function equipmentNameValid(name) {
+      return name is string
+        && name.trim().size() > 0
+        && !name.matches("[\\p{Z}\\p{Cf}\\s]*")
+        && name.size() <= 200;
+    }
+
+    function equipmentCreateShapeValid(data) {
+      // hasOnly is the anti-injection guard: any key not on this list -- movedBy,
+      // retiredAt, auditEventId, a permissions blob, anything invented -- denies the
+      // whole write. An allow-list fails closed for fields nobody has thought of yet;
+      // a deny-list would not.
+      return data.keys().hasOnly(equipmentWritableKeys())
+        && data.keys().hasAll(["accountId", "locationId", "name", "status", "createdAt", "updatedAt"])
+        && equipmentNameValid(data.name)
+        && equipmentOptionalFieldsValid(data)
+        // Spec §2: status defaults ACTIVE on create. Reaching RETIRED/INACTIVE is a
+        // lifecycle transition owned by the trusted, audited writer (§5), so create
+        // must not be usable as a side door into a non-ACTIVE state.
+        && data.status == "ACTIVE"
+        && data.createdAt is number
+        && data.updatedAt is number;
+    }
+
+    match /equipment/{equipmentId} {
+      allow read: if isAdminOrDispatcher();
+
+      allow create: if isAdminOrDispatcher()
+        && equipmentCreateShapeValid(request.resource.data)
+        && equipmentLocationBelongsToAccount(request.resource.data);
+
+      // Ordinary edit. affectedKeys().hasOnly(...) is doing the governance work: it
+      // denies ANY change to accountId/locationId/status/createdAt and simultaneously
+      // denies adding any trusted/audit field -- both are simply keys absent from the
+      // editable list. E2's client guard enforces the same contract independently;
+      // this is the authoritative one.
+      // affectedKeys() covers REMOVALS as well as changes, so deleting a governed
+      // field is denied by the same condition -- verified live, not assumed. Dropping
+      // `status` (now an editable key) is caught instead by equipmentTransitionAllowed,
+      // whose `after` would be null and fail equipmentStatusValid.
+      //
+      // The shape guards validate the WHOLE RESULTING DOCUMENT'S VALUES, not just the
+      // changed keys, so an ordinary update must leave the document compliant -- the
+      // deliberate no-grandfathering rule. Two limits on that sentence, stated because
+      // each is easy to assume wrongly:
+      //
+      //  * SCOPE IS VALUES, NOT THE KEY SET. `update` intentionally does NOT re-apply
+      //    hasOnly(equipmentWritableKeys()) -- only `create` does. So a document that
+      //    already carries an extra key (an audit field stamped by an E9/E10 trusted
+      //    writer) stays ordinarily editable. Enforcing the key set here would brick
+      //    every record those writers touch. No client can EXPLOIT this: affectedKeys()
+      //    .hasOnly(editable) still denies ADDING any such key, so the extra key can
+      //    only arrive from a trusted writer or the Admin SDK.
+      //  * REPAIR-IN-THE-SAME-WRITE WORKS FOR name/optionals, but NOT for status: the
+      //    transition guard gates on the STORED status, so a record whose stored status
+      //    is malformed/absent is denied whatever `after` it is given. Such a record is
+      //    permanently uneditable on this path and is repairable only by E10's trusted
+      //    writer. That is the fail-closed direction, not an oversight.
+      //
+      // E9/E10's trusted writers bypass Rules entirely, so they must validate their own
+      // output against this same contract before writing.
+      allow update: if isAdminOrDispatcher()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(equipmentEditableKeys())
+        && equipmentNameValid(request.resource.data.name)
+        && equipmentOptionalFieldsValid(request.resource.data)
+        && equipmentTransitionAllowed(resource.data.get("status", null), request.resource.data.get("status", null))
+        && request.resource.data.updatedAt is number;
+
+      // Never, for anyone, including admin (Spec §11). Equipment is retired via the
+      // trusted writer, never deleted -- Service History (§10) is derived from Work
+      // Orders that reference it, so a delete would silently orphan real history.
+      allow delete: if false;
+    }
+
+    match /contacts/{contactId} {
+      allow read: if isAdminOrDispatcher();
+      allow create, update: if isAdminOrDispatcher();
+      allow delete: if false;
+    }
+
+    // Issue #325 / ADR-007 D-RULES, CORRECTED (this task supersedes the
+    // original D-RULES PR's client-direct-write design before W-SAVE
+    // activation). The Firestore collection for saved report
+    // definitions (docs/specifications/governed-object-based-report-
+    // creator.md sec8/sec9) is now governed EXCLUSIVELY by the trusted
+    // saved-definition service (functions/src/reporting/
+    // savedDefinitionCommands.ts), the same posture this file already
+    // uses for roleAssignments/auditEvents/etc. below: Firestore Rules
+    // deny ALL direct client read and write here, unconditionally, for
+    // every principal including admin -- there is no client-direct
+    // mutation authority left to validate in Rules at all (the original
+    // reportDefinitionKeys()/reportDefinitionCreateValid() ownership-
+    // and-shape validation functions are REMOVED, not merely
+    // unreachable, since Rules can no longer be the enforcement point).
+    //
+    // Why: the original design let the CLIENT choose its own accessVersion-
+    // consistency-free write path -- correct for "private by owner," but
+    // unable to (a) check a REAL, live RoleAssignment/accessVersion
+    // (Rules has no access to resolveEffectivePermission.ts's decision,
+    // only to the caller's own claimed request payload), (b) atomically
+    // pair the mutation with an immutable Audit Event (Rules cannot call
+    // auditEventWriter.ts), or (c) validate the embedded definition's
+    // structure server-side before persisting it (Rules cannot invoke
+    // the F2/D-FN validator). The trusted service closes all three gaps.
+    //
+    // "A definition confers no data access" still holds: these Rules
+    // (now `if false` unconditionally) govern nothing about whether the
+    // embedded definition.objectId/fields are readable -- that remains
+    // entirely reportExecutionService.ts's (D-FN) job, re-evaluated at
+    // RUN time every time, completely independent of this collection's
+    // own (now Rules-closed) access story.
+    match /reportDefinitions/{definitionId} {
+      allow read, write: if false;
+    }
+
+    // INV-1 Phase 1 PR 1.2 (ADR-008 Accepted / Decision #40) -- canonical
+    // Part Master storage: parts/{partId} and manufacturers/{manufacturerId}.
+    // Trusted-writer-only (functions/src/partMaster/partMasterCommands.ts,
+    // Admin SDK -- bypasses Rules): ALL client access is denied, including
+    // admin -- there is no client-direct admin write path, and no client
+    // read model is authorized yet (the PR 1.9 UI read posture is its own
+    // later Tier 2 gate). No tenant enforcement (Issue #140). Physical
+    // delete does not exist anywhere -- lifecycle status only.
+    match /parts/{partId} {
+      allow read, write: if false;
+    }
+    match /manufacturers/{manufacturerId} {
+      allow read, write: if false;
+    }
+    // INV-1 Phase 1 PR 1.3 (ADR-008 / Decision #40) -- part identifier
+    // aliases: trusted-writer-only (partAliasCommands.ts, Admin SDK).
+    // ALL client access denied incl. admin; deterministic doc-id lookup
+    // happens server-side only. No tenant enforcement (Issue #140).
+    match /part_aliases/{aliasId} {
+      allow read, write: if false;
+    }
+    // INV-1 Phase 1 PR 1.4 (ADR-008 / Decision #40) -- normalized supplier
+    // catalog items: trusted-writer-only (partSupplierItems.ts, Admin SDK).
+    // ALL client access denied incl. admin. Procurement terms live here,
+    // never on the Part core. No tenant enforcement (Issue #140).
+    match /part_supplier_items/{itemId} {
+      allow read, write: if false;
+    }
+
+    // Enterprise Access & Administration Platform (Issue #226) --
+    // governed-storage foundation (docs/specifications/
+    // enterprise-access-and-administration-platform.md sec5,
+    // docs/implementation-plans/enterprise-access-and-administration-
+    // platform.md Row 3 / Task 8). These five collections back the
+    // Permission/Role/RoleAssignment/AccessRequest/AuditEvent contracts.
+    // Nothing in the app reads or writes them yet -- no Rule, Function,
+    // or route is wired to them (that is later, separately-authorized
+    // work: the trusted-writer commands of Row 7, gated on Issue #15,
+    // and the Admin Portal reads of Rows 10-12). Every one of these is
+    // closed to ALL client access, for every principal including admin,
+    // matching the Specification's explicit hard prohibitions: "no
+    // client-direct permission administration" (sec3), Permission/Role
+    // definitions are "not client-editable" (sec5.1/5.2), Role
+    // assignment is "no client-direct write, ever" (sec5.3), Access
+    // Request is "never client-direct" (sec5.7), and Audit Events are
+    // "written only by a trusted writer" (sec5.8/sec14). This is
+    // strictly additive -- it creates no new read/write surface for any
+    // existing admin/dispatcher/technician/operational-role behavior,
+    // and changes no currently-enforced Rule.
+    match /permissions/{permissionId} {
+      allow read, write: if false;
+    }
+
+    match /roles/{roleId} {
+      allow read, write: if false;
+    }
+
+    match /roleAssignments/{assignmentId} {
+      allow read, write: if false;
+    }
+
+    match /accessRequests/{requestId} {
+      allow read, write: if false;
+    }
+
+    match /auditEvents/{eventId} {
+      allow read, write: if false;
+    }
+  }
+}
