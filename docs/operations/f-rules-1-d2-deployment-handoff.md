@@ -43,7 +43,7 @@ TOKEN=$(gcloud auth print-access-token) && REL=$(curl -s -H "Authorization: Bear
 ```bash
 export D2_SMOKE_PASSWORD="$(openssl rand -base64 18)" && cd functions && node scripts/d2SmokeRulesVerification.js seed && node scripts/d2SmokeRulesVerification.js run
 ```
-**Expected (all 21):** wrong-tech direct start denied · direct start (status-only) **allowed** · job in_progress · **direct completion denied** · job unchanged · **self-availability denied** · callable 200 + contract · job→complete · technician→available · applied audit at key · replay `idempotentReplay true` · no duplicate cascade · exactly one applied audit · client **read denied** ×4 (parts/manufacturers/part_aliases/part_supplier_items) · client **create denied** ×4 — ending **`D2 SMOKE PASS: 21 passed, 0 failed`**. Any FAIL → STOP → cleanup (Step 7) → ROLLBACK → report. **PAUSE.**
+**Expected (all 22):** wrong-tech direct start denied · direct start (status-only) **allowed** · job in_progress · **direct completion denied** · job unchanged · **self-availability denied** · callable 200 + contract · job→complete · technician→available · applied audit at key · replay `idempotentReplay true` · no duplicate cascade · exactly one applied audit · client **read denied** ×4 (parts/manufacturers/part_aliases/part_supplier_items) · client **create denied** ×4 — ending **`D2 SMOKE PASS: 22 passed, 0 failed`**. Any FAIL → STOP → cleanup (Step 7) → ROLLBACK → report. **PAUSE.**
 
 ## Step 6 — Package evidence
 

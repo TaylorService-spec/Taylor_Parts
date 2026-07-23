@@ -18,7 +18,7 @@
 //   cd functions && node scripts/d2SmokeRulesVerification.js seed
 //   node scripts/d2SmokeRulesVerification.js run
 //   node scripts/d2SmokeRulesVerification.js cleanup
-// `run` exits 0 only if ALL 21 checks pass.
+// `run` exits 0 only if ALL 22 checks pass.
 "use strict";
 
 const { writeFileSync, mkdirSync } = require("node:fs");
@@ -170,7 +170,7 @@ async function run() {
   const applied = await db.collection("auditEvents").where("targetId", "==", IDS.job).where("outcome", "==", "applied").get();
   check("replay: exactly one applied audit event", applied.size === 1, { count: applied.size });
 
-  // 14-21. Inventory client closure: read AND create denied on all four
+  // 15-22. Inventory client closure: read AND create denied on all four
   // trusted-writer-only collections (fixture ids only; nothing real is read).
   for (const coll of INVENTORY_COLLECTIONS) {
     const readStatus = await clientGet(tok1, `${coll}/${RUN_TAG}-probe`);
