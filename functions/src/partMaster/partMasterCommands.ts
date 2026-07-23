@@ -270,6 +270,64 @@ export async function updatePart(input: UpdatePartInput, deps?: PartMasterDeps):
     if (!merged.valid) {
       throw new InvalidInputError(`invalid update: ${merged.errors.map((e) => `${e.path}:${e.code}`).join(",")}`);
     }
+    // INV-1 PR 1.3 -- internalPartNumber historical-alias backfill (the
+    // documented PR 1.2 -> 1.3 dependency). When the governed business
+    // number changes: the OLD value is preserved as an ACTIVE INTERNAL_PN
+    // alias resolving to this same part, atomically with the Part update;
+    // a conflicting alias identity (old OR new value owned by another
+    // part) rejects the ENTIRE update before any write. All reads happen
+    // before any staged write (Firestore transaction rule).
+    const ipnChanged =
+      merged.value.internalPartNumber !== existing.part.internalPartNumber;
+    let backfill: { stage: () => void } | null = null;
+    if (ipnChanged) {
+      const { deriveAliasDocId: deriveId, buildFirestorePartAliasRepository: aliasRepoFor } =
+        await import("./partAliasRepository.js");
+      const aliasRepo = aliasRepoFor(db);
+      const oldD = deriveId("INTERNAL_PN", existing.part.internalPartNumber);
+      const newD = deriveId("INTERNAL_PN", merged.value.internalPartNumber);
+      if (oldD === null || newD === null) throw new InvalidInputError("internalPartNumber failed alias derivation");
+      const [oldAlias, newAlias] = [
+        await aliasRepo.getByAliasId(txn, oldD.docId),
+        await aliasRepo.getByAliasId(txn, newD.docId),
+      ];
+      if (newAlias !== null && newAlias.partId !== partId.value) {
+        throw new AlreadyExistsError("new internalPartNumber is an alias identity owned by another part");
+      }
+      if (oldAlias !== null && oldAlias.partId !== partId.value) {
+        throw new AlreadyExistsError("previous internalPartNumber is an alias identity owned by another part");
+      }
+      if (oldAlias === null) {
+        const at = now();
+        backfill = {
+          stage: () => {
+            aliasRepo.stageCreate(txn, {
+              aliasId: oldD.docId,
+              partId: partId.value,
+              aliasType: "INTERNAL_PN",
+              originalValue: existing.part.internalPartNumber,
+              normalizedValue: oldD.normalizedValue,
+              status: "ACTIVE",
+              source: "internalPartNumber-backfill",
+              version: 1,
+              createdAt: at,
+              createdBy: input.actorUid,
+              updatedAt: at,
+              updatedBy: input.actorUid,
+            });
+            stageAuditEventWithId(txn, `${auditId}a`, {
+              actorUid: input.actorUid,
+              action: "preserveInternalPartNumberAlias",
+              targetType: "part_alias",
+              targetId: oldD.docId,
+              outcome: "applied",
+              summary: `preserved prior internalPartNumber of part ${partId.value} as INTERNAL_PN alias v=1 fp=${fp}`,
+            });
+          },
+        };
+      }
+      // oldAlias !== null && same part: already preserved -- no duplicate.
+    }
     const newVersion = existing.version + 1;
     repo.stageUpdate(txn, {
       part: merged.value,
@@ -279,6 +337,7 @@ export async function updatePart(input: UpdatePartInput, deps?: PartMasterDeps):
       updatedAt: now(),
       updatedBy: input.actorUid,
     });
+    if (backfill) backfill.stage();
     stageAuditEventWithId(txn, auditId, {
       actorUid: input.actorUid,
       action: "updatePart",
@@ -511,3 +570,18 @@ export async function changeManufacturerStatus(input: ChangeManufacturerStatusIn
     return { outcome: "applied", version: newVersion };
   });
 }
+
+// ---------------------------------------------------------------------------
+// INV-1 Phase 1 PR 1.3 -- shared internals re-exported for
+// partAliasCommands.ts ONLY (single capability/idempotency/deps
+// implementation; not part of any public surface).
+// ---------------------------------------------------------------------------
+export {
+  resolveDeps as __pm_internal_resolveDeps,
+  assertActorUid as __pm_internal_assertActorUid,
+  assertIdempotencyKey as __pm_internal_assertIdempotencyKey,
+  requireCapabilityOrAudit as __pm_internal_requireCapabilityOrAudit,
+  fingerprint as __pm_internal_fingerprint,
+  auditDocId as __pm_internal_auditDocId,
+  checkIdempotency as __pm_internal_checkIdempotency,
+};

@@ -203,7 +203,17 @@ export type AuditAction =
   | "changePartStatus"
   | "createManufacturer"
   | "updateManufacturer"
-  | "changeManufacturerStatus";
+  | "changeManufacturerStatus"
+  // INV-1 Phase 1 PR 1.3 -- Part alias trusted mutations (ADR-008 / Decision #40)
+  | "createPartAlias"
+  | "deactivatePartAlias"
+  | "reactivatePartAlias"
+  | "preserveInternalPartNumberAlias"
+  // INV-1 Phase 1 PR 1.4 -- part supplier items (ADR-008 / Decision #40)
+  | "createPartSupplierItem"
+  | "updatePartSupplierItem"
+  | "changePartSupplierItemStatus"
+  | "setPreferredSupplier";
 
 export type AuditOutcome = "applied" | "denied";
 
