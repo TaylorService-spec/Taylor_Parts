@@ -65,17 +65,21 @@ Computed by `functions/src/partMaster/cutoverReadiness.ts` (`evaluateCutoverRead
 14. **Flag sequencing:** `PART_MASTER_REFERENCE` stays OFF through cutover; activation (if D-M6 = separate) is its own later gate with its own parity evidence.
 15. **Quantity separation:** quantity/availability migration is **out of scope permanently for this plan**; any future quantity work is a distinct Owner-gated program against the ledger, never this CSV path.
 
-## 6. Unresolved Owner decisions (each BLOCKS cutover — C20)
+## 6. Owner cutover decisions — RESOLVED by Decision #42 (DECISIONS.md)
 
-| Id | Question |
-|---|---|
-| D-M1 | CREATE and UPDATE in one cutover, or separate gates? |
-| D-M2 | Aliases created in the same execution, or a follow-up gate? |
-| D-M3 | Inactive-target Parts excluded from input, or remediated first? |
-| D-M4 | part_supplier_items relationships deferred, or included? |
-| D-M5 | Historical identifiers: LEGACY-alias backfill beyond row-declared values? |
-| D-M6 | PART_MASTER_REFERENCE activation separate from migration execution? (recommended: yes) |
-| D-M7 | Repository-only client-read Rules: deploy before, during, or after cutover? |
+All seven decisions are resolved prospectively; **Decision #42 is the authority.** In future **cutover-qualifying** evidence runs the resolved set is supplied as invocation input, so criterion **C20 may evaluate as PASS** (`evaluateCutoverReadiness` is unchanged — unresolved decisions are an input). The demonstration generator intentionally remains configured with all seven unresolved so it keeps reproducing the original BLOCKED demonstration evidence; the committed Phase 1 package under `docs/audits/inv1-phase1/migration-readiness/` is historically accurate (the seven decisions WERE unresolved at generation time) and must never be regenerated or altered.
+
+| Id | Question | Disposition (Decision #42) |
+|---|---|---|
+| D-M1 | CREATE and UPDATE in one cutover, or separate gates? | **B** — CREATE first, reconcile, then UPDATE separately |
+| D-M2 | Aliases created in the same execution, or a follow-up gate? | **B** — Parts first; aliases in a separate reconciled gate |
+| D-M3 | Inactive-target Parts excluded from input, or remediated first? | **A** — excluded until separately remediated via lifecycle governance |
+| D-M4 | part_supplier_items relationships deferred, or included? | **B** — deferred to a separate gate |
+| D-M5 | Historical identifiers: LEGACY-alias backfill beyond row-declared values? | **B** — no historical rewrite; aliases + PR 1.6/1.7 compatibility resolution |
+| D-M6 | PART_MASTER_REFERENCE activation separate from migration execution? | **B** — separate post-reconciliation gate |
+| D-M7 | Repository-only client-read Rules: deploy before, during, or after cutover? | **C** — after migration and reconciliation |
+
+**Per-gate readiness rule (Decision #42):** each future execution gate evaluates C1–C20 against that gate's own approved population and scope; a passing CREATE gate approves nothing else — not UPDATE, aliases, supplier items, Rules deployment, resolver wiring, feature activation, or any later population. Every step of the Decision #42 successor sequence requires separate Owner authorization.
 
 ## 7. Source-data safety (standing constraints)
 
