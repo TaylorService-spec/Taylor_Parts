@@ -20,6 +20,7 @@ import WorkOrdersList from "./modules/workOrders/WorkOrdersList";
 import WorkOrderWizard from "./modules/workOrders/WorkOrderWizard";
 import WorkOrderDetailPage from "./modules/workOrders/WorkOrderDetailPage";
 import PartsList from "./modules/inventory/PartsList";
+import PartMasterList from "./modules/inventory/PartMasterList";
 import PartDetail from "./modules/inventory/PartDetail";
 import WarehouseManagerHome from "./modules/inventoryRole/WarehouseManagerHome";
 import PartsManagerHome from "./modules/inventoryRole/PartsManagerHome";
@@ -136,6 +137,14 @@ function renderSubnavItem(domain, item, role, operationalContext) {
   // untouched.
   if (domain.key === "inventory" && item.key === "parts") {
     return <PartsList />;
+  }
+  // INV-1 Phase 1 PR 1.9 -- governed read-only Part Master registry. Same
+  // brand-new-screen pattern as AccountsList/EquipmentRegister: no
+  // legacyKey, explicit branch. Inventory domain is already
+  // admin/dispatcher-gated (ROLE_NAV_ACCESS); Rules enforce the same
+  // posture server-side -- the UI gate is never the sole enforcement.
+  if (domain.key === "inventory" && item.key === "partMaster") {
+    return <PartMasterList />;
   }
   // Issue #100 PR 1b -- PARTS_MANAGER's dedicated, role-scoped surface.
   // Same operationalRoleAccess-gated pattern as PR 2b's WAREHOUSE_MANAGER

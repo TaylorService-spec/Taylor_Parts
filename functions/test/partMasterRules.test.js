@@ -50,6 +50,8 @@ async function main() {
   const dispTok = await idTokenFor("pm-dispatcher");
   const techTok = await idTokenFor("pm-tech");
 
+  // PR 1.9 Tier 2 read posture: parts readable by admin/dispatcher ONLY;
+  // manufacturers stay fully closed; ALL client writes stay denied.
   for (const [label, coll, seedId] of [["parts", "parts", "PM-SEED-1"], ["manufacturers", "manufacturers", "MFR-SEED-1"]]) {
     report(`${label}: unauthenticated create denied`, denied(await rest("POST", `${coll}?documentId=x-${label}-1`, null, { fields: { name: str("x") } })));
     report(`${label}: technician create denied`, denied(await rest("POST", `${coll}?documentId=x-${label}-2`, techTok, { fields: { name: str("x") } })));
@@ -57,9 +59,14 @@ async function main() {
     report(`${label}: admin client create denied`, denied(await rest("POST", `${coll}?documentId=x-${label}-4`, adminTok, { fields: { name: str("x") } })));
     report(`${label}: admin client update denied`, denied(await rest("PATCH", `${coll}/${seedId}`, adminTok, { fields: { name: str("y") } })));
     report(`${label}: admin client delete denied`, denied(await rest("DELETE", `${coll}/${seedId}`, adminTok)));
-    report(`${label}: admin client read denied`, denied(await rest("GET", `${coll}/${seedId}`, adminTok)));
+    report(`${label}: unauthenticated read denied`, denied(await rest("GET", `${coll}/${seedId}`, null)));
     report(`${label}: technician client read denied`, denied(await rest("GET", `${coll}/${seedId}`, techTok)));
   }
+  // parts: authorized reads ALLOWED (PR 1.9); manufacturers: still denied.
+  report("parts: admin client read allowed", (await rest("GET", "parts/PM-SEED-1", adminTok)) === 200);
+  report("parts: dispatcher client read allowed", (await rest("GET", "parts/PM-SEED-1", dispTok)) === 200);
+  report("manufacturers: admin client read denied", denied(await rest("GET", "manufacturers/MFR-SEED-1", adminTok)));
+  report("manufacturers: dispatcher client read denied", denied(await rest("GET", "manufacturers/MFR-SEED-1", dispTok)));
 
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed === 0 ? 0 : 1);
