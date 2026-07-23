@@ -1,0 +1,101 @@
+{
+  "runTag": "d1smoke",
+  "startedAt": "2026-07-23T01:51:05.584Z",
+  "checks": [
+    {
+      "name": "positive: HTTP 200",
+      "ok": true,
+      "detail": {
+        "status": 200
+      }
+    },
+    {
+      "name": "positive: response contract",
+      "ok": true,
+      "detail": {
+        "jobId": "d1smoke-job-inprogress",
+        "status": "complete",
+        "idempotentReplay": false
+      }
+    },
+    {
+      "name": "cascade: job -> complete",
+      "ok": true,
+      "detail": {
+        "status": "complete"
+      }
+    },
+    {
+      "name": "cascade: technician -> available",
+      "ok": true,
+      "detail": {
+        "status": "available"
+      }
+    },
+    {
+      "name": "audit: applied event at the idempotency key",
+      "ok": true,
+      "detail": {
+        "action": "completeAssignedJob",
+        "actorUid": "d1smoke-user-t1",
+        "outcome": "applied"
+      }
+    },
+    {
+      "name": "replay: HTTP 200",
+      "ok": true,
+      "detail": {
+        "status": 200
+      }
+    },
+    {
+      "name": "replay: idempotentReplay true",
+      "ok": true,
+      "detail": {
+        "jobId": "d1smoke-job-inprogress",
+        "status": "complete",
+        "idempotentReplay": true
+      }
+    },
+    {
+      "name": "replay: no duplicate cascade (perturbed tech status untouched)",
+      "ok": true,
+      "detail": {
+        "status": "off_shift"
+      }
+    },
+    {
+      "name": "replay: exactly one applied audit event",
+      "ok": true,
+      "detail": {
+        "count": 1
+      }
+    },
+    {
+      "name": "negative: wrong technician denied (permission-denied)",
+      "ok": true,
+      "detail": {
+        "status": 403,
+        "err": "PERMISSION_DENIED"
+      }
+    },
+    {
+      "name": "negative: assigned state denied (failed-precondition)",
+      "ok": true,
+      "detail": {
+        "status": 400,
+        "err": "FAILED_PRECONDITION"
+      }
+    },
+    {
+      "name": "negative: no mutation from denied attempts",
+      "ok": true,
+      "detail": {
+        "job": "assigned",
+        "tech2": "available"
+      }
+    }
+  ],
+  "finishedAt": "2026-07-23T01:51:10.033Z",
+  "result": "PASS"
+}
