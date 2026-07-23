@@ -1534,15 +1534,26 @@ service cloud.firestore {
     }
 
     // INV-1 Phase 1 PR 1.2 (ADR-008 Accepted / Decision #40) -- canonical
-    // Part Master storage: parts/{partId} and manufacturers/{manufacturerId}.
-    // Trusted-writer-only (functions/src/partMaster/partMasterCommands.ts,
-    // Admin SDK -- bypasses Rules): ALL client access is denied, including
-    // admin -- there is no client-direct admin write path, and no client
-    // read model is authorized yet (the PR 1.9 UI read posture is its own
-    // later Tier 2 gate). No tenant enforcement (Issue #140). Physical
-    // delete does not exist anywhere -- lifecycle status only.
+    // Part Master storage. Trusted-writer-only mutation (partMasterCommands
+    // .ts, Admin SDK -- bypasses Rules): ALL client writes denied, admin
+    // included; no client-direct admin write path; physical delete does
+    // not exist. PR 1.9 Tier 2 client-READ posture: authenticated admin/
+    // dispatcher read-only -- the exact posture of the sibling read-only
+    // inventory collections (suppliers/supplier_catalog/purchase_orders),
+    // reusing existing role semantics, not inventing new access. Cost/
+    // procurement data is NOT exposed here (part_supplier_items stays
+    // fully closed below). No tenant enforcement (Issue #140).
+    // OWNER-APPROVED COMPATIBILITY POSTURE (PR 1.9 merge gate), not the
+    // final authorization model: operational roles (PARTS_MANAGER,
+    // WAREHOUSE_MANAGER, ...) represent work eligibility, NOT security
+    // permission, and must never grant access via raw role checks here.
+    // Broader Part Master read access is deferred to the governed
+    // permission/access matrix of Issue #100; these seeded admin/
+    // dispatcher role checks are retired only after permission-model
+    // parity and production verification.
     match /parts/{partId} {
-      allow read, write: if false;
+      allow read: if isAdminOrDispatcher();
+      allow create, update, delete: if false;
     }
     match /manufacturers/{manufacturerId} {
       allow read, write: if false;
