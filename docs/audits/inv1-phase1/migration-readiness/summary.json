@@ -1,0 +1,26 @@
+{
+  "conflictCount": 6,
+  "counts": {
+    "CONFLICT": 6,
+    "CREATE": 4,
+    "INVALID": 5,
+    "NO_CHANGE": 1,
+    "UPDATE": 1
+  },
+  "duplicateCount": 2,
+  "reasonCounts": {
+    "ALIAS_OWNED_BY_OTHER_PART": 1,
+    "DOMAIN_VALIDATION_FAILED": 1,
+    "DUPLICATE_IPN_IN_FILE": 1,
+    "DUPLICATE_PART_ID_IN_FILE": 1,
+    "FIELDS_DIFFER": 1,
+    "IDENTICAL": 1,
+    "IMMUTABLE_ID_MUTATION": 1,
+    "MALFORMED_IDENTIFIER": 2,
+    "MISSING_REQUIRED_FIELD": 1,
+    "MULTIPLE_MATCHES": 1,
+    "NEW_PART": 4,
+    "TARGET_PART_INACTIVE": 1,
+    "UNKNOWN_UNIT": 1
+  }
+}

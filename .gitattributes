@@ -1,0 +1,6 @@
+# Evidence-integrity byte stability (INV-1 PR 1.10): the migration-readiness
+# package is checksum-verified continuously by functions/test/
+# migrationEvidence.test.mjs, and the fixture's SHA-256 is pinned inside the
+# evidence. Force LF so autocrlf checkouts can never change the bytes.
+docs/audits/inv1-phase1/migration-readiness/** text eol=lf
+functions/test/fixtures/part-master-migration-fixture.csv text eol=lf
