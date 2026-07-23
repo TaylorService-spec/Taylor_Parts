@@ -1,0 +1,2852 @@
+[
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1001"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1001",
+    "proposedPartId": "TST-1001",
+    "proposedSummary": "TST-1001 \"Hex Coupler\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 1,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1002"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1002",
+    "proposedPartId": "TST-1002",
+    "proposedSummary": "TST-1002 \"Tune-Up Kit — Deluxe - 3 Ton\" unit=KIT status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 2,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1003"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1003",
+    "proposedPartId": "TST-1003",
+    "proposedSummary": "TST-1003 \"Freezer Cylinder - Compact\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 3,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1004"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1004",
+    "proposedPartId": "TST-1004",
+    "proposedSummary": "TST-1004 \"Hopper Agitator - Single Flavor\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 4,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1005"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1005",
+    "proposedPartId": "TST-1005",
+    "proposedSummary": "TST-1005 \"Syrup Pump - Floor Model\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 5,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1006"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1006",
+    "proposedPartId": "TST-1006",
+    "proposedSummary": "TST-1006 \"Auger Shaft - Gen II\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 6,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1007"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1007",
+    "proposedPartId": "TST-1007",
+    "proposedSummary": "TST-1007 \"Door Gasket - HD\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 7,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1008"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1008",
+    "proposedPartId": "TST-1008",
+    "proposedSummary": "TST-1008 \"Sanitizer Solution 32oz - Countertop\" unit=BOTTLE status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 8,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1009"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1009",
+    "proposedPartId": "TST-1009",
+    "proposedSummary": "TST-1009 \"Beater Assembly\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 9,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1010"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1010",
+    "proposedPartId": "TST-1010",
+    "proposedSummary": "TST-1010 \"Drive Belt - Gen II\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 10,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1011"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1011",
+    "proposedPartId": "TST-1011",
+    "proposedSummary": "TST-1011 \"Mix Pump Tube - Floor Model\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 11,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1012"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1012",
+    "proposedPartId": "TST-1012",
+    "proposedSummary": "TST-1012 \"Brush Kit — Large - Twin Twist\" unit=KIT status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 12,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1013"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1013",
+    "proposedPartId": "TST-1013",
+    "proposedSummary": "TST-1013 \"Thermistor Sensor - Compact\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 13,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1014"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1014",
+    "proposedPartId": "TST-1014",
+    "proposedSummary": "TST-1014 \"Door Gasket - Floor Model\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 14,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1015"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1015",
+    "proposedPartId": "TST-1015",
+    "proposedSummary": "TST-1015 \"Condenser Fan Motor - HD\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 15,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1016"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1016",
+    "proposedPartId": "TST-1016",
+    "proposedSummary": "TST-1016 \"Expansion Valve - Twin Twist\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 16,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1017"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1017",
+    "proposedPartId": "TST-1017",
+    "proposedSummary": "TST-1017 \"Brush Kit — Small - Gen II\" unit=KIT status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 17,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1018"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1018",
+    "proposedPartId": "TST-1018",
+    "proposedSummary": "TST-1018 \"Consistency Control Knob - 3 Ton\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 18,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1019"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1019",
+    "proposedPartId": "TST-1019",
+    "proposedSummary": "TST-1019 \"Syrup Pump - Pro Series\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 19,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1020"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1020",
+    "proposedPartId": "TST-1020",
+    "proposedSummary": "TST-1020 \"Expansion Valve - Compact\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 20,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1021"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1021",
+    "proposedPartId": "TST-1021",
+    "proposedSummary": "TST-1021 \"Tune-Up Kit — Deluxe - Countertop\" unit=KIT status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 21,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1022"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1022",
+    "proposedPartId": "TST-1022",
+    "proposedSummary": "TST-1022 \"Beater Motor - HD\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 22,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1023"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1023",
+    "proposedPartId": "TST-1023",
+    "proposedSummary": "TST-1023 \"Draw Handle - Twin Twist\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 23,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1024"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1024",
+    "proposedPartId": "TST-1024",
+    "proposedSummary": "TST-1024 \"Draw Handle - Pro Series\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 24,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1025"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1025",
+    "proposedPartId": "TST-1025",
+    "proposedSummary": "TST-1025 \"Tune-Up Kit — Standard\" unit=KIT status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 25,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1026"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1026",
+    "proposedPartId": "TST-1026",
+    "proposedSummary": "TST-1026 \"Relay Switch - Single Flavor\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 26,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1027"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1027",
+    "proposedPartId": "TST-1027",
+    "proposedSummary": "TST-1027 \"Tune-Up Kit — Deluxe - Twin Twist\" unit=KIT status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 27,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1028"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1028",
+    "proposedPartId": "TST-1028",
+    "proposedSummary": "TST-1028 \"Brush Kit — Large - Gen II\" unit=KIT status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 28,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1029"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1029",
+    "proposedPartId": "TST-1029",
+    "proposedSummary": "TST-1029 \"Relay Switch - Gen II\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 29,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1030"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1030",
+    "proposedPartId": "TST-1030",
+    "proposedSummary": "TST-1030 \"Drip Tray - 3 Ton\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 30,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1031"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1031",
+    "proposedPartId": "TST-1031",
+    "proposedSummary": "TST-1031 \"Freezer Cylinder - Pro Series\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 31,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1032"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1032",
+    "proposedPartId": "TST-1032",
+    "proposedSummary": "TST-1032 \"Freezer Cylinder - 3 Ton\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 32,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1033"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1033",
+    "proposedPartId": "TST-1033",
+    "proposedSummary": "TST-1033 \"Evaporator Barrel - Countertop\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 33,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1034"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1034",
+    "proposedPartId": "TST-1034",
+    "proposedSummary": "TST-1034 \"Evaporator Barrel - HD\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 34,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1035"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1035",
+    "proposedPartId": "TST-1035",
+    "proposedSummary": "TST-1035 \"Air Valve Assembly - Gen II\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 35,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1036"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1036",
+    "proposedPartId": "TST-1036",
+    "proposedSummary": "TST-1036 \"O-Ring Kit - Gen II\" unit=KIT status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 36,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1037"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1037",
+    "proposedPartId": "TST-1037",
+    "proposedSummary": "TST-1037 \"Compressor 1.5 HP - Single Flavor\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 37,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1038"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1038",
+    "proposedPartId": "TST-1038",
+    "proposedSummary": "TST-1038 \"Splash Panel - Single Flavor\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 38,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1039"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1039",
+    "proposedPartId": "TST-1039",
+    "proposedSummary": "TST-1039 \"O-Ring Kit - Compact\" unit=KIT status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 39,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1040"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1040",
+    "proposedPartId": "TST-1040",
+    "proposedSummary": "TST-1040 \"Hopper Agitator - HD\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 40,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1041"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1041",
+    "proposedPartId": "TST-1041",
+    "proposedSummary": "TST-1041 \"Mix Pump Assembly\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 41,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1042"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1042",
+    "proposedPartId": "TST-1042",
+    "proposedSummary": "TST-1042 \"Syrup Pump - Compact\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 42,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1043"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1043",
+    "proposedPartId": "TST-1043",
+    "proposedSummary": "TST-1043 \"Condenser Fan Motor\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 43,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1044"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1044",
+    "proposedPartId": "TST-1044",
+    "proposedSummary": "TST-1044 \"O-Ring Kit\" unit=KIT status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 44,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1045"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1045",
+    "proposedPartId": "TST-1045",
+    "proposedSummary": "TST-1045 \"Auger Shaft - Twin Twist\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 45,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1046"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1046",
+    "proposedPartId": "TST-1046",
+    "proposedSummary": "TST-1046 \"Hex Coupler - Pro Series\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 46,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1048"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1048",
+    "proposedPartId": "TST-1048",
+    "proposedSummary": "TST-1048 \"Power Supply Board - Single Flavor\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 47,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1049"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1049",
+    "proposedPartId": "TST-1049",
+    "proposedSummary": "TST-1049 \"Splash Panel - Floor Model\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 48,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1050"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1050",
+    "proposedPartId": "TST-1050",
+    "proposedSummary": "TST-1050 \"Cleaning Cartridge - Pro Series\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 49,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1051"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1051",
+    "proposedPartId": "TST-1051",
+    "proposedSummary": "TST-1051 \"Air Valve Assembly - 3 Ton\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 50,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1052"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1052",
+    "proposedPartId": "TST-1052",
+    "proposedSummary": "TST-1052 \"Cleaning Cartridge - Compact\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 51,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1053"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1053",
+    "proposedPartId": "TST-1053",
+    "proposedSummary": "TST-1053 \"Drive Motor 1/4 HP - Countertop\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 52,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1054"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1054",
+    "proposedPartId": "TST-1054",
+    "proposedSummary": "TST-1054 \"Thermistor Sensor - Countertop\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 53,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1055"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1055",
+    "proposedPartId": "TST-1055",
+    "proposedSummary": "TST-1055 \"Draw Handle - HD\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 54,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1056"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1056",
+    "proposedPartId": "TST-1056",
+    "proposedSummary": "TST-1056 \"Syrup Pump - Countertop\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 55,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1057"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1057",
+    "proposedPartId": "TST-1057",
+    "proposedSummary": "TST-1057 \"Sanitizer Solution 32oz - Gen II\" unit=BOTTLE status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 56,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1058"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1058",
+    "proposedPartId": "TST-1058",
+    "proposedSummary": "TST-1058 \"Tune-Up Kit — Deluxe\" unit=KIT status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 57,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1059"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1059",
+    "proposedPartId": "TST-1059",
+    "proposedSummary": "TST-1059 \"Drive Motor 1/4 HP\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 58,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1060"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1060",
+    "proposedPartId": "TST-1060",
+    "proposedSummary": "TST-1060 \"Condenser Fan Motor - Single Flavor\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 59,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1061"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1061",
+    "proposedPartId": "TST-1061",
+    "proposedSummary": "TST-1061 \"Cleaning Cartridge - Twin Twist\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 60,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1062"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1062",
+    "proposedPartId": "TST-1062",
+    "proposedSummary": "TST-1062 \"Hopper Agitator\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 61,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1063"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1063",
+    "proposedPartId": "TST-1063",
+    "proposedSummary": "TST-1063 \"Thermistor Sensor - Twin Twist\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 62,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1064"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1064",
+    "proposedPartId": "TST-1064",
+    "proposedSummary": "TST-1064 \"Freezer Cylinder - Single Flavor\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 63,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1065"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1065",
+    "proposedPartId": "TST-1065",
+    "proposedSummary": "TST-1065 \"Freezer Cylinder\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 64,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1066"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1066",
+    "proposedPartId": "TST-1066",
+    "proposedSummary": "TST-1066 \"Thermistor Sensor - Floor Model\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 65,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1067"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1067",
+    "proposedPartId": "TST-1067",
+    "proposedSummary": "TST-1067 \"Blade Assembly Kit - 3 Ton\" unit=KIT status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 66,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1068"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1068",
+    "proposedPartId": "TST-1068",
+    "proposedSummary": "TST-1068 \"Door Gasket - 3 Ton\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 67,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1069"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1069",
+    "proposedPartId": "TST-1069",
+    "proposedSummary": "TST-1069 \"Brush Kit — Large - Compact\" unit=KIT status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 68,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1071"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1071",
+    "proposedPartId": "TST-1071",
+    "proposedSummary": "TST-1071 \"Mix Pump Tube - Gen II\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 69,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1072"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1072",
+    "proposedPartId": "TST-1072",
+    "proposedSummary": "TST-1072 \"Hex Coupler - Countertop\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 70,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1073"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1073",
+    "proposedPartId": "TST-1073",
+    "proposedSummary": "TST-1073 \"Control Board - Compact\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 71,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1075"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1075",
+    "proposedPartId": "TST-1075",
+    "proposedSummary": "TST-1075 \"Splash Panel - HD\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 72,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1076"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1076",
+    "proposedPartId": "TST-1076",
+    "proposedSummary": "TST-1076 \"Auger Shaft - Countertop\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 73,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1077"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1077",
+    "proposedPartId": "TST-1077",
+    "proposedSummary": "TST-1077 \"Drive Motor 1/2 HP\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 74,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1078"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1078",
+    "proposedPartId": "TST-1078",
+    "proposedSummary": "TST-1078 \"Splash Panel - Gen II\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 75,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1079"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1079",
+    "proposedPartId": "TST-1079",
+    "proposedSummary": "TST-1079 \"Consistency Control Knob - Gen II\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 76,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1081"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1081",
+    "proposedPartId": "TST-1081",
+    "proposedSummary": "TST-1081 \"Evaporator Barrel - 3 Ton\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 77,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1082"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1082",
+    "proposedPartId": "TST-1082",
+    "proposedSummary": "TST-1082 \"Sanitizer Solution 32oz - Pro Series\" unit=BOTTLE status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 78,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1083"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1083",
+    "proposedPartId": "TST-1083",
+    "proposedSummary": "TST-1083 \"Drip Tray - Twin Twist\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 79,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1084"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1084",
+    "proposedPartId": "TST-1084",
+    "proposedSummary": "TST-1084 \"Consistency Control Knob - Single Flavor\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 80,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1085"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1085",
+    "proposedPartId": "TST-1085",
+    "proposedSummary": "TST-1085 \"Power Supply Board - Compact\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 81,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1086"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1086",
+    "proposedPartId": "TST-1086",
+    "proposedSummary": "TST-1086 \"Condenser Fan Motor - 3 Ton\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 82,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1087"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1087",
+    "proposedPartId": "TST-1087",
+    "proposedSummary": "TST-1087 \"O-Ring Kit - Single Flavor\" unit=KIT status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 83,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1088"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1088",
+    "proposedPartId": "TST-1088",
+    "proposedSummary": "TST-1088 \"Lubricant Tube 4oz - Gen II\" unit=TUBE status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 84,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1089"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1089",
+    "proposedPartId": "TST-1089",
+    "proposedSummary": "TST-1089 \"Hopper Agitator - Compact\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 85,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1090"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1090",
+    "proposedPartId": "TST-1090",
+    "proposedSummary": "TST-1090 \"Thermistor Sensor - Gen II\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 86,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1091"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1091",
+    "proposedPartId": "TST-1091",
+    "proposedSummary": "TST-1091 \"Drive Motor 1/4 HP - Pro Series\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 87,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1092"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1092",
+    "proposedPartId": "TST-1092",
+    "proposedSummary": "TST-1092 \"Drive Motor 1/4 HP - HD\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 88,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1093"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1093",
+    "proposedPartId": "TST-1093",
+    "proposedSummary": "TST-1093 \"Wiring Harness - Gen II\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 89,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1094"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1094",
+    "proposedPartId": "TST-1094",
+    "proposedSummary": "TST-1094 \"Auger Shaft - HD\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 90,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1095"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1095",
+    "proposedPartId": "TST-1095",
+    "proposedSummary": "TST-1095 \"Blade Assembly Kit - Single Flavor\" unit=KIT status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 91,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1096"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1096",
+    "proposedPartId": "TST-1096",
+    "proposedSummary": "TST-1096 \"Expansion Valve - Floor Model\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 92,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1097"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1097",
+    "proposedPartId": "TST-1097",
+    "proposedSummary": "TST-1097 \"Beater Motor - Countertop\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 93,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1098"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1098",
+    "proposedPartId": "TST-1098",
+    "proposedSummary": "TST-1098 \"Hopper Lid - Single Flavor\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 94,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1099"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1099",
+    "proposedPartId": "TST-1099",
+    "proposedSummary": "TST-1099 \"Drive Belt - Countertop\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 95,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1100"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1100",
+    "proposedPartId": "TST-1100",
+    "proposedSummary": "TST-1100 \"Air Valve Assembly - Compact\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 96,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1101"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1101",
+    "proposedPartId": "TST-1101",
+    "proposedSummary": "TST-1101 \"Scraper Blade - Gen II\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 97,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1102"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1102",
+    "proposedPartId": "TST-1102",
+    "proposedSummary": "TST-1102 \"Drive Motor 1/2 HP - Gen II\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 98,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1103"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1103",
+    "proposedPartId": "TST-1103",
+    "proposedSummary": "TST-1103 \"Front Panel Assembly - HD\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 99,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1104"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1104",
+    "proposedPartId": "TST-1104",
+    "proposedSummary": "TST-1104 \"Thermistor Sensor - HD\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 100,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1105"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1105",
+    "proposedPartId": "TST-1105",
+    "proposedSummary": "TST-1105 \"Wiring Harness\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 101,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1106"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1106",
+    "proposedPartId": "TST-1106",
+    "proposedSummary": "TST-1106 \"Air Valve Assembly - Countertop\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 102,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1107"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1107",
+    "proposedPartId": "TST-1107",
+    "proposedSummary": "TST-1107 \"Tune-Up Kit — Standard - Single Flavor\" unit=KIT status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 103,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1108"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1108",
+    "proposedPartId": "TST-1108",
+    "proposedSummary": "TST-1108 \"Consistency Control Knob - HD\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 104,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1109"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1109",
+    "proposedPartId": "TST-1109",
+    "proposedSummary": "TST-1109 \"Brush Kit — Small - Floor Model\" unit=KIT status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 105,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1110"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1110",
+    "proposedPartId": "TST-1110",
+    "proposedSummary": "TST-1110 \"Wiring Harness - Floor Model\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 106,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1111"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1111",
+    "proposedPartId": "TST-1111",
+    "proposedSummary": "TST-1111 \"Hex Coupler - Single Flavor\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 107,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1113"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1113",
+    "proposedPartId": "TST-1113",
+    "proposedSummary": "TST-1113 \"Drive Belt - Single Flavor\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 108,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1114"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1114",
+    "proposedPartId": "TST-1114",
+    "proposedSummary": "TST-1114 \"Thermistor Sensor\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 109,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1115"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1115",
+    "proposedPartId": "TST-1115",
+    "proposedSummary": "TST-1115 \"Scraper Blade - Pro Series\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 110,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1116"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1116",
+    "proposedPartId": "TST-1116",
+    "proposedSummary": "TST-1116 \"O-Ring Kit - Countertop\" unit=KIT status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 111,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1117"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1117",
+    "proposedPartId": "TST-1117",
+    "proposedSummary": "TST-1117 \"Lubricant Tube 4oz\" unit=TUBE status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 112,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1118"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1118",
+    "proposedPartId": "TST-1118",
+    "proposedSummary": "TST-1118 \"Brush Kit — Large - Pro Series\" unit=KIT status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 113,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1119"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1119",
+    "proposedPartId": "TST-1119",
+    "proposedSummary": "TST-1119 \"Drip Tray - HD\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 114,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1120"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1120",
+    "proposedPartId": "TST-1120",
+    "proposedSummary": "TST-1120 \"Lubricant Tube 4oz - Pro Series\" unit=TUBE status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 115,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1121"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1121",
+    "proposedPartId": "TST-1121",
+    "proposedSummary": "TST-1121 \"Condenser Fan Motor - Countertop\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 116,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1122"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1122",
+    "proposedPartId": "TST-1122",
+    "proposedSummary": "TST-1122 \"Beater Assembly - Twin Twist\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 117,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1123"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1123",
+    "proposedPartId": "TST-1123",
+    "proposedSummary": "TST-1123 \"Control Board\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 118,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1124"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1124",
+    "proposedPartId": "TST-1124",
+    "proposedSummary": "TST-1124 \"Beater Assembly - Single Flavor\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 119,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1125"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1125",
+    "proposedPartId": "TST-1125",
+    "proposedSummary": "TST-1125 \"Syrup Pump - 3 Ton\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 120,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1126"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1126",
+    "proposedPartId": "TST-1126",
+    "proposedSummary": "TST-1126 \"Control Board - HD\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 121,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1127"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1127",
+    "proposedPartId": "TST-1127",
+    "proposedSummary": "TST-1127 \"Tune-Up Kit — Deluxe - HD\" unit=KIT status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 122,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1128"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1128",
+    "proposedPartId": "TST-1128",
+    "proposedSummary": "TST-1128 \"Brush Kit — Large - Countertop\" unit=KIT status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 123,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1129"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1129",
+    "proposedPartId": "TST-1129",
+    "proposedSummary": "TST-1129 \"Thermistor Sensor - Pro Series\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 124,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1130"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1130",
+    "proposedPartId": "TST-1130",
+    "proposedSummary": "TST-1130 \"Drip Tray - Countertop\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 125,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1131"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1131",
+    "proposedPartId": "TST-1131",
+    "proposedSummary": "TST-1131 \"Drive Belt - Twin Twist\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 126,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1132"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1132",
+    "proposedPartId": "TST-1132",
+    "proposedSummary": "TST-1132 \"Splash Panel - 3 Ton\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 127,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1133"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1133",
+    "proposedPartId": "TST-1133",
+    "proposedSummary": "TST-1133 \"Scraper Blade - Compact\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 128,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1134"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1134",
+    "proposedPartId": "TST-1134",
+    "proposedSummary": "TST-1134 \"Cleaning Cartridge - HD\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 129,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1135"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1135",
+    "proposedPartId": "TST-1135",
+    "proposedSummary": "TST-1135 \"Sanitizer Solution 32oz - Twin Twist\" unit=BOTTLE status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 130,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1137"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1137",
+    "proposedPartId": "TST-1137",
+    "proposedSummary": "TST-1137 \"Hopper Agitator - 3 Ton\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 131,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1138"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1138",
+    "proposedPartId": "TST-1138",
+    "proposedSummary": "TST-1138 \"Hex Coupler - Twin Twist\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 132,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1139"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1139",
+    "proposedPartId": "TST-1139",
+    "proposedSummary": "TST-1139 \"Front Panel Assembly - Single Flavor\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 133,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1140"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1140",
+    "proposedPartId": "TST-1140",
+    "proposedSummary": "TST-1140 \"Drive Motor 1/4 HP - 3 Ton\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 134,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1141"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1141",
+    "proposedPartId": "TST-1141",
+    "proposedSummary": "TST-1141 \"Draw Handle - Countertop\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 135,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1142"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1142",
+    "proposedPartId": "TST-1142",
+    "proposedSummary": "TST-1142 \"Drive Motor 1/2 HP - HD\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 136,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1144"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1144",
+    "proposedPartId": "TST-1144",
+    "proposedSummary": "TST-1144 \"Freezer Cylinder - Gen II\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 137,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1145"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1145",
+    "proposedPartId": "TST-1145",
+    "proposedSummary": "TST-1145 \"Mix Pump Assembly - Twin Twist\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 138,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1146"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1146",
+    "proposedPartId": "TST-1146",
+    "proposedSummary": "TST-1146 \"Drive Belt - HD\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 139,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1147"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1147",
+    "proposedPartId": "TST-1147",
+    "proposedSummary": "TST-1147 \"Hopper Agitator - Twin Twist\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 140,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1148"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1148",
+    "proposedPartId": "TST-1148",
+    "proposedSummary": "TST-1148 \"Cleaning Cartridge - Gen II\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 141,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1149"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1149",
+    "proposedPartId": "TST-1149",
+    "proposedSummary": "TST-1149 \"Mix Pump Assembly - Floor Model\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 142,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1150"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1150",
+    "proposedPartId": "TST-1150",
+    "proposedSummary": "TST-1150 \"Door Gasket - Pro Series\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 143,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1151"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1151",
+    "proposedPartId": "TST-1151",
+    "proposedSummary": "TST-1151 \"Drive Belt - 3 Ton\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 144,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1152"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1152",
+    "proposedPartId": "TST-1152",
+    "proposedSummary": "TST-1152 \"Power Supply Board\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 145,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1153"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1153",
+    "proposedPartId": "TST-1153",
+    "proposedSummary": "TST-1153 \"Tune-Up Kit — Standard - Gen II\" unit=KIT status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 146,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1154"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1154",
+    "proposedPartId": "TST-1154",
+    "proposedSummary": "TST-1154 \"Auger Shaft - Pro Series\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 147,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1155"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1155",
+    "proposedPartId": "TST-1155",
+    "proposedSummary": "TST-1155 \"Brush Kit — Small - Twin Twist\" unit=KIT status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 148,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1156"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1156",
+    "proposedPartId": "TST-1156",
+    "proposedSummary": "TST-1156 \"Scraper Blade - HD\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 149,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1157"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1157",
+    "proposedPartId": "TST-1157",
+    "proposedSummary": "TST-1157 \"Drip Tray - Floor Model\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 150,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1158"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1158",
+    "proposedPartId": "TST-1158",
+    "proposedSummary": "TST-1158 \"Splash Panel - Countertop\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 151,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1159"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1159",
+    "proposedPartId": "TST-1159",
+    "proposedSummary": "TST-1159 \"Evaporator Barrel - Gen II\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 152,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1160"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1160",
+    "proposedPartId": "TST-1160",
+    "proposedSummary": "TST-1160 \"Blade Assembly Kit - Gen II\" unit=KIT status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 153,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1161"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1161",
+    "proposedPartId": "TST-1161",
+    "proposedSummary": "TST-1161 \"Brush Kit — Large - HD\" unit=KIT status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 154,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1162"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1162",
+    "proposedPartId": "TST-1162",
+    "proposedSummary": "TST-1162 \"Cleaning Cartridge - Countertop\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 155,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1163"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1163",
+    "proposedPartId": "TST-1163",
+    "proposedSummary": "TST-1163 \"Drive Belt\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 156,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1164"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1164",
+    "proposedPartId": "TST-1164",
+    "proposedSummary": "TST-1164 \"Control Board - Floor Model\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 157,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1165"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1165",
+    "proposedPartId": "TST-1165",
+    "proposedSummary": "TST-1165 \"Mix Pump Tube - Compact\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 158,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1166"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1166",
+    "proposedPartId": "TST-1166",
+    "proposedSummary": "TST-1166 \"Wiring Harness - 3 Ton\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 159,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1167"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1167",
+    "proposedPartId": "TST-1167",
+    "proposedSummary": "TST-1167 \"Sanitizer Solution 32oz - Floor Model\" unit=BOTTLE status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 160,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1168"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1168",
+    "proposedPartId": "TST-1168",
+    "proposedSummary": "TST-1168 \"Hex Coupler - HD\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 161,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1169"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1169",
+    "proposedPartId": "TST-1169",
+    "proposedSummary": "TST-1169 \"Mix Pump Tube - 3 Ton\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 162,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1170"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1170",
+    "proposedPartId": "TST-1170",
+    "proposedSummary": "TST-1170 \"Power Supply Board - Pro Series\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 163,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1171"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1171",
+    "proposedPartId": "TST-1171",
+    "proposedSummary": "TST-1171 \"Door Gasket - Countertop\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 164,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1172"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1172",
+    "proposedPartId": "TST-1172",
+    "proposedSummary": "TST-1172 \"Drive Motor 1/4 HP - Gen II\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 165,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1173"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1173",
+    "proposedPartId": "TST-1173",
+    "proposedSummary": "TST-1173 \"Mix Pump Tube - Single Flavor\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 166,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1174"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1174",
+    "proposedPartId": "TST-1174",
+    "proposedSummary": "TST-1174 \"Air Valve Assembly\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 167,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1176"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1176",
+    "proposedPartId": "TST-1176",
+    "proposedSummary": "TST-1176 \"Wiring Harness - Single Flavor\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 168,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1177"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1177",
+    "proposedPartId": "TST-1177",
+    "proposedSummary": "TST-1177 \"Sanitizer Solution 32oz - Single Flavor\" unit=BOTTLE status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 169,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1178"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1178",
+    "proposedPartId": "TST-1178",
+    "proposedSummary": "TST-1178 \"Drive Motor 1/2 HP - Pro Series\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 170,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1179"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1179",
+    "proposedPartId": "TST-1179",
+    "proposedSummary": "TST-1179 \"Compressor 1 HP - 3 Ton\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 171,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1180"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1180",
+    "proposedPartId": "TST-1180",
+    "proposedSummary": "TST-1180 \"Evaporator Barrel - Pro Series\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 172,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1181"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1181",
+    "proposedPartId": "TST-1181",
+    "proposedSummary": "TST-1181 \"Hex Coupler - 3 Ton\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 173,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1182"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1182",
+    "proposedPartId": "TST-1182",
+    "proposedSummary": "TST-1182 \"Drip Tray - Compact\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 174,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1183"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1183",
+    "proposedPartId": "TST-1183",
+    "proposedSummary": "TST-1183 \"Relay Switch - HD\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 175,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1184"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1184",
+    "proposedPartId": "TST-1184",
+    "proposedSummary": "TST-1184 \"Beater Assembly - 3 Ton\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 176,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1185"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1185",
+    "proposedPartId": "TST-1185",
+    "proposedSummary": "TST-1185 \"Mix Pump Assembly - Pro Series\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 177,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1186"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1186",
+    "proposedPartId": "TST-1186",
+    "proposedSummary": "TST-1186 \"Syrup Pump - HD\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 178,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1187"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1187",
+    "proposedPartId": "TST-1187",
+    "proposedSummary": "TST-1187 \"Power Supply Board - Gen II\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 179,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1188"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1188",
+    "proposedPartId": "TST-1188",
+    "proposedSummary": "TST-1188 \"Auger Shaft - 3 Ton\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 180,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1190"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1190",
+    "proposedPartId": "TST-1190",
+    "proposedSummary": "TST-1190 \"Syrup Pump\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 181,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1191"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1191",
+    "proposedPartId": "TST-1191",
+    "proposedSummary": "TST-1191 \"Lubricant Tube 4oz - Compact\" unit=TUBE status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 182,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1192"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1192",
+    "proposedPartId": "TST-1192",
+    "proposedSummary": "TST-1192 \"Blade Assembly Kit - Pro Series\" unit=KIT status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 183,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1194"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1194",
+    "proposedPartId": "TST-1194",
+    "proposedSummary": "TST-1194 \"Scraper Blade - Twin Twist\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 184,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1195"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1195",
+    "proposedPartId": "TST-1195",
+    "proposedSummary": "TST-1195 \"Auger Shaft - Compact\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 185,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1196"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1196",
+    "proposedPartId": "TST-1196",
+    "proposedSummary": "TST-1196 \"Mix Pump Tube - Countertop\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 186,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1197"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1197",
+    "proposedPartId": "TST-1197",
+    "proposedSummary": "TST-1197 \"O-Ring Kit - Twin Twist\" unit=KIT status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 187,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1198"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1198",
+    "proposedPartId": "TST-1198",
+    "proposedSummary": "TST-1198 \"Hopper Agitator - Countertop\" unit=EACH status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 188,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1199"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1199",
+    "proposedPartId": "TST-1199",
+    "proposedSummary": "TST-1199 \"Brush Kit — Small - HD\" unit=KIT status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 189,
+    "unitCompatible": true
+  },
+  {
+    "aliasImplications": [
+      "would create LEGACY alias LEGACY__TST-1200"
+    ],
+    "classification": "CREATE",
+    "currentSummary": null,
+    "informationalQuantities": {},
+    "normalizedLegacyId": "TST-1200",
+    "proposedPartId": "TST-1200",
+    "proposedSummary": "TST-1200 \"Brush Kit — Large\" unit=KIT status=DRAFT",
+    "reason": "no existing Part or alias matches this identifier",
+    "reasonCode": "NEW_PART",
+    "rowNumber": 190,
+    "unitCompatible": true
+  }
+]
