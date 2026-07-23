@@ -8,7 +8,7 @@
 // stays trusted-service-only (ADR-008 / Decision #40). Optionality is kept
 // loose (description/category/manufacturer fields optional) so historical
 // or partial records stay representable.
-// Parity is enforced by field-ops-app-vite/test/partMasterTypes.test.mjs
+// Parity is enforced by field-ops-app-vite/test/partMasterView.test.mjs
 // against these exact literals.
 
 export const PART_STATUSES = ["DRAFT", "ACTIVE", "INACTIVE", "SUPERSEDED", "DISCONTINUED"] as const;
