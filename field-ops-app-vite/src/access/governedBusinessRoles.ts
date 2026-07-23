@@ -221,20 +221,31 @@ export const OWNER_ROLE: Role = Object.freeze({
 // `inventory.catalog.manage` (create/edit canonical Part records through the
 // trusted Part Master service) -- deliberately NOT `inventory.catalog.
 // activate` (lifecycle changes remain a separate step) and no other id.
-// `privileged: true` so BOTH its grant and its revoke require a second,
-// distinct authorized approver and are never eligible for the single-admin
-// assign path (ADR-005 §2.4). Declaring this object grants nothing: a
+// `privileged: false` per the Privileged Approval Scope Correction
+// (docs/governance/privileged-approval-classification.md): two-person
+// approval is reserved for capabilities that can materially administer
+// security/access policy, grant platform/security-admin authority, change
+// role/permission definitions or tenant isolation, deploy/weaken security
+// enforcement, bypass trusted-command authorization, or alter/suppress audit
+// evidence. `inventory.catalog.manage` is ordinary OPERATIONAL authority
+// (create/edit descriptive Part records through the trusted service) -- it
+// administers no security, grants no admin authority, changes no policy, and
+// cannot touch audit integrity -- so it requires ONE authorized Owner/admin
+// plus append-only audit, not a second approver. Least privilege is
+// unchanged: carries ONLY `inventory.catalog.manage` (NOT `inventory.
+// catalog.activate`, no other id). Declaring this object grants nothing: a
 // principal gains the capability only when a governed, audited roleAssignment
 // (functions/src/access/trustedWriterCommands.ts) assigns them this roleId,
-// and loses it the instant that assignment is revoked.
+// and loses it the instant that assignment is revoked (revoke after CREATE
+// execution and reconciliation).
 export const INVENTORY_CREATE_EXECUTOR_ROLE: Role = Object.freeze({
   id: "inventoryCreateExecutor",
   name: "Inventory CREATE Executor (temporary)",
   description:
-    "Temporary execution-scoped Role for the approved Part Master CREATE run (INV-1, Decision #42). Grants only inventory.catalog.manage; assigned to the approved operator for one CREATE execution and revoked immediately after execution and reconciliation.",
+    "Temporary execution-scoped Role for the approved Part Master CREATE run (INV-1, Decision #42). Grants only inventory.catalog.manage (operational authority -- single-approver + audited, not two-person); assigned to the approved operator for one CREATE execution and revoked immediately after execution and reconciliation.",
   systemSeed: true,
   compatibility: false,
-  privileged: true,
+  privileged: false,
   permissions: ["inventory.catalog.manage"],
 }) as Role;
 
