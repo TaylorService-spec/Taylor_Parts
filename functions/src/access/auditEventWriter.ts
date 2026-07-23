@@ -96,6 +96,11 @@ const AUDIT_ACTIONS: readonly AuditAction[] = [
   "deactivatePartAlias",
   "reactivatePartAlias",
   "preserveInternalPartNumberAlias",
+  // INV-1 Phase 1 PR 1.4 -- part supplier items (ADR-008 / Decision #40)
+  "createPartSupplierItem",
+  "updatePartSupplierItem",
+  "changePartSupplierItemStatus",
+  "setPreferredSupplier",
 ];
 
 // Issue #325 / ADR-007 D-AUDIT -- the subset of AUDIT_ACTIONS this

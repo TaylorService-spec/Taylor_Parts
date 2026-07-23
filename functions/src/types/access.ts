@@ -208,7 +208,12 @@ export type AuditAction =
   | "createPartAlias"
   | "deactivatePartAlias"
   | "reactivatePartAlias"
-  | "preserveInternalPartNumberAlias";
+  | "preserveInternalPartNumberAlias"
+  // INV-1 Phase 1 PR 1.4 -- part supplier items (ADR-008 / Decision #40)
+  | "createPartSupplierItem"
+  | "updatePartSupplierItem"
+  | "changePartSupplierItemStatus"
+  | "setPreferredSupplier";
 
 export type AuditOutcome = "applied" | "denied";
 
