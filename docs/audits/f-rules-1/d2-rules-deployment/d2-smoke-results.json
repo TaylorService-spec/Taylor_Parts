@@ -1,0 +1,168 @@
+{
+  "runTag": "d2smoke",
+  "gate": "D2",
+  "startedAt": "2026-07-23T02:42:36.951Z",
+  "checks": [
+    {
+      "name": "wrong technician direct start denied",
+      "ok": true,
+      "detail": {
+        "status": 403
+      }
+    },
+    {
+      "name": "assigned technician direct start (status-only) allowed",
+      "ok": true,
+      "detail": {
+        "status": 200
+      }
+    },
+    {
+      "name": "job is in_progress after direct start",
+      "ok": true,
+      "detail": {
+        "status": "in_progress"
+      }
+    },
+    {
+      "name": "technician direct completion denied",
+      "ok": true,
+      "detail": {
+        "status": 403
+      }
+    },
+    {
+      "name": "job unchanged after denied direct completion",
+      "ok": true,
+      "detail": {
+        "status": "in_progress"
+      }
+    },
+    {
+      "name": "technician self-availability update denied",
+      "ok": true,
+      "detail": {
+        "status": 403
+      }
+    },
+    {
+      "name": "callable completion HTTP 200",
+      "ok": true,
+      "detail": {
+        "status": 200
+      }
+    },
+    {
+      "name": "callable response contract",
+      "ok": true,
+      "detail": {
+        "jobId": "d2smoke-job-flow",
+        "status": "complete",
+        "idempotentReplay": false
+      }
+    },
+    {
+      "name": "cascade: job -> complete",
+      "ok": true,
+      "detail": {
+        "status": "complete"
+      }
+    },
+    {
+      "name": "cascade: technician -> available",
+      "ok": true,
+      "detail": {
+        "status": "available"
+      }
+    },
+    {
+      "name": "audit: applied event at the idempotency key",
+      "ok": true,
+      "detail": {
+        "action": "completeAssignedJob",
+        "outcome": "applied"
+      }
+    },
+    {
+      "name": "replay: idempotentReplay true",
+      "ok": true,
+      "detail": {
+        "jobId": "d2smoke-job-flow",
+        "status": "complete",
+        "idempotentReplay": true
+      }
+    },
+    {
+      "name": "replay: no duplicate cascade (perturbed tech untouched)",
+      "ok": true,
+      "detail": {
+        "status": "off_shift"
+      }
+    },
+    {
+      "name": "replay: exactly one applied audit event",
+      "ok": true,
+      "detail": {
+        "count": 1
+      }
+    },
+    {
+      "name": "inventory closure: client read of parts denied",
+      "ok": true,
+      "detail": {
+        "status": 403
+      }
+    },
+    {
+      "name": "inventory closure: client read of manufacturers denied",
+      "ok": true,
+      "detail": {
+        "status": 403
+      }
+    },
+    {
+      "name": "inventory closure: client read of part_aliases denied",
+      "ok": true,
+      "detail": {
+        "status": 403
+      }
+    },
+    {
+      "name": "inventory closure: client read of part_supplier_items denied",
+      "ok": true,
+      "detail": {
+        "status": 403
+      }
+    },
+    {
+      "name": "inventory closure: client create in parts denied",
+      "ok": true,
+      "detail": {
+        "status": 403
+      }
+    },
+    {
+      "name": "inventory closure: client create in manufacturers denied",
+      "ok": true,
+      "detail": {
+        "status": 403
+      }
+    },
+    {
+      "name": "inventory closure: client create in part_aliases denied",
+      "ok": true,
+      "detail": {
+        "status": 403
+      }
+    },
+    {
+      "name": "inventory closure: client create in part_supplier_items denied",
+      "ok": true,
+      "detail": {
+        "status": 403
+      }
+    }
+  ],
+  "finishedAt": "2026-07-23T02:42:43.763Z",
+  "result": "PASS"
+}
