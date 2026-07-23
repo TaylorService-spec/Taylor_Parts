@@ -234,10 +234,23 @@ check("Inventory CREATE Executor: inherits NO other capability (activate, admin,
   }
 });
 
-check("Inventory CREATE Executor: is privileged (two-approver grant/revoke), systemSeed, non-compatibility", () => {
-  assert.equal(INVENTORY_CREATE_EXECUTOR_ROLE.privileged, true);
+check("Inventory CREATE Executor: NOT privileged (operational -- single-approver + audited, not two-person), systemSeed, non-compatibility", () => {
+  // Privileged Approval Scope Correction: inventory.catalog.manage is
+  // operational authority, not security/access-policy/audit-integrity, so it
+  // must NOT require a second approver.
+  assert.equal(INVENTORY_CREATE_EXECUTOR_ROLE.privileged, false);
   assert.equal(INVENTORY_CREATE_EXECUTOR_ROLE.systemSeed, true);
   assert.equal(INVENTORY_CREATE_EXECUTOR_ROLE.compatibility, false);
+});
+
+check("security-sensitive Roles remain privileged (two-person preserved): owner privileged; the operational executor is not", () => {
+  assert.equal(OWNER_ROLE.privileged, true, "owner administers security/access policy -- stays two-person");
+  assert.equal(INVENTORY_CREATE_EXECUTOR_ROLE.privileged, false);
+  // The ONLY governed business Role flipped to operational (non-privileged
+  // while still systemSeed) is the inventory CREATE executor; every other
+  // governed Role keeps its prior privileged setting.
+  const privilegedGoverned = Object.values(GOVERNED_BUSINESS_ROLES).filter((r) => r.privileged).map((r) => r.id);
+  assert.deepEqual(privilegedGoverned, ["owner"], "only owner remains a privileged governed Role");
 });
 
 check("without any assignment, inventory.catalog.manage remains DENIED (grant removes access on revoke)", () => {
