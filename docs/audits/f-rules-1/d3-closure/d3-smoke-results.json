@@ -1,0 +1,62 @@
+{
+  "runTag": "d3smoke",
+  "gate": "D3",
+  "startedAt": "2026-07-23T03:56:58.674Z",
+  "checks": [
+    {
+      "name": "UI completion: job is complete",
+      "ok": true,
+      "detail": {
+        "status": "complete"
+      }
+    },
+    {
+      "name": "job untouched otherwise (assignment + description intact)",
+      "ok": true,
+      "detail": {
+        "technicianId": "d3smoke-T1"
+      }
+    },
+    {
+      "name": "cascade: technician is available",
+      "ok": true,
+      "detail": {
+        "status": "available"
+      }
+    },
+    {
+      "name": "exactly ONE applied audit event (no duplicate cascade)",
+      "ok": true,
+      "detail": {
+        "count": 1
+      }
+    },
+    {
+      "name": "audit: action completeAssignedJob by the signed-in technician",
+      "ok": true,
+      "detail": {
+        "action": "completeAssignedJob",
+        "actorUid": "d3smoke-user-t1"
+      }
+    },
+    {
+      "name": "audit id is a UI-minted idempotency key (cmpl-*)",
+      "ok": true,
+      "detail": {
+        "id": "cmpl-312501be-9e6b-469a-a37a-65b44d141d80"
+      }
+    },
+    {
+      "name": "audit scope: ownAssignment of the fixture technician",
+      "ok": true,
+      "detail": {
+        "scope": {
+          "type": "ownAssignment",
+          "value": "d3smoke-T1"
+        }
+      }
+    }
+  ],
+  "finishedAt": "2026-07-23T03:56:59.702Z",
+  "result": "PASS"
+}

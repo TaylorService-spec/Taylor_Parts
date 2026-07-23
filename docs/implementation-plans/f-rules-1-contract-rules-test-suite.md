@@ -96,6 +96,10 @@ Its closure is designed in a dedicated governance chain (the technician self-wri
 
 That chain refines the generic "PR-3 hardened Rules + register the suite" step **for this gap only**: the deferred assertion cannot become `ENFORCED` by Rules alone — it requires relocating the completion cascade into a trusted callable (`completeAssignedJob`) first. The concrete final sequence is **PR-A** (callable + tests), **PR-B** (Field Mode integration), **PR-C** (Rules hardening + strict-suite registration), then deploy **Gates D1→D2→D3**. Strict registration and the `EXPECTED_TOTAL` change land in **PR-C**, not before. All steps remain separately Owner-gated; nothing is deployed by the design gate.
 
+## F-RULES-1 CLOSURE (2026-07-23, Decision #41)
+
+The workstream is **COMPLETE**: strict suite in CI; hardened Rules deployed and byte-verified live (D2); trusted completion live and verified through the shipped UI (D1/D3). Evidence under `docs/audits/f-rules-1/`. Remaining successor item: Specification U-R1–U-R4 (separate governed gate).
+
 ## Strict-suite registration record (PR-C)
 
 - **Suite:** `functions/test/legacyJobsTechniciansRules.test.js` — **STRICT by default** (`F_RULES_1_STRICT=0` is a local debugging escape hatch only); emits the runner-standard `N passed, M failed` summary.
