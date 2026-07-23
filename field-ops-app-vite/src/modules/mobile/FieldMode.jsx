@@ -3,6 +3,7 @@ import { useCurrentTechnician } from "../../hooks/useCurrentTechnician";
 import { useAssignedJobs } from "../../hooks/useAssignedJobs";
 import { updateJobStatus } from "../../domain/jobActions";
 import { JOB_STATUS } from "../../domain/constants";
+import { jobCustomerName } from "../../domain/jobDisplay";
 import { TRUSTED_COMPLETION_ENABLED } from "../../config/trustedCompletion";
 import {
   completeAssignedJobViaCallable,
@@ -55,7 +56,7 @@ export default function FieldMode() {
   // mutation. Falls back to whatever's first when no hero job matches.
   const assignedJobs = jobs
     .filter((j) => j.status === JOB_STATUS.ASSIGNED || j.status === JOB_STATUS.IN_PROGRESS)
-    .sort((a, b) => (isHeroActiveJob(b.customer) ? 1 : 0) - (isHeroActiveJob(a.customer) ? 1 : 0));
+    .sort((a, b) => (isHeroActiveJob(jobCustomerName(b.customer)) ? 1 : 0) - (isHeroActiveJob(jobCustomerName(a.customer)) ? 1 : 0));
 
   const [activeJob, ...upNext] = assignedJobs;
 
@@ -145,14 +146,14 @@ export default function FieldMode() {
           <div className="fo-card fo-card--field fo-card--field-active">
             <div className="fo-muted">Active Job</div>
             <h3>
-              {activeJob.customer}
-              {isHeroActiveJob(activeJob.customer) && (
+              {jobCustomerName(activeJob.customer)}
+              {isHeroActiveJob(jobCustomerName(activeJob.customer)) && (
                 <span className="fo-chip fo-chip-hero">Active Demo Job</span>
               )}
             </h3>
             <p>{activeJob.description}</p>
 
-            {isHeroActiveJob(activeJob.customer) && (
+            {isHeroActiveJob(jobCustomerName(activeJob.customer)) && (
               <div className="fo-muted" style={{ marginBottom: 8 }}>
                 Parts required: {HERO_JOB_PARTS_REQUIRED.join(", ")}
               </div>
@@ -177,7 +178,7 @@ export default function FieldMode() {
               <h3>Up Next</h3>
               {upNext.map((job) => (
                 <div key={job.id} className="fo-upnext-row">
-                  {job.customer} — {job.description}
+                  {jobCustomerName(job.customer)} — {job.description}
                 </div>
               ))}
             </div>
