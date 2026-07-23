@@ -1,6 +1,8 @@
 # Part Master Migration — Cutover Readiness & Plan (INV-1 Phase 1 PR 1.10)
 
-**Status:** PREPARATION ONLY. Nothing in this document authorizes execution. Migration writes, backfills, Rules/frontend deployment, and `PART_MASTER_REFERENCE` activation each remain separately Owner-gated. The PR 1.8 analyzer has **no write mode**; no write tooling exists in the repository.
+**Status:** PREPARATION ONLY. Nothing in this document authorizes execution. Migration writes, backfills, Rules/frontend deployment, and `PART_MASTER_REFERENCE` activation each remain separately Owner-gated. The PR 1.8 analyzer has **no write mode**; the CREATE importer defaults to dry-run.
+
+**Governance:** the CREATE importer (`executePartMasterCreate.js`) is a **temporary migration exception** under the Business-Operations-Through-Application principle (`docs/architecture/ADR-009-business-operations-through-application.md`, Decision 4): an audited, rollback-protected, reconciled, technical-operator script — **not** a routine business workflow. After migration, routine Part creation/maintenance must occur through the site via the trusted `createPart` command; business users never access Firestore to manage Parts.
 
 Governing artifacts: ADR-008 (Accepted), Decisions #37/#38/#40, `docs/implementation-plans/inv1-phase1-part-master.md`, `docs/operations/inventory-effect-recovery-runbook.md` (operator-evidence conventions), SYSTEM_AUTHORITIES.md.
 
