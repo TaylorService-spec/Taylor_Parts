@@ -35,6 +35,36 @@ The generator **refuses to run** without `FIRESTORE_EMULATOR_HOST` and refuses i
 
 A **cutover-qualifying** run differs only in input: the Owner-approved production-source CSV (separately gated, incl. any production reads) replaces the synthetic fixture, and its package must PASS every criterion below.
 
+## 2b. Three governed paths (do not conflate)
+
+| Path | Tool | Data | State touched | Status |
+|---|---|---|---|---|
+| **(1) Emulator demonstration** | `generatePartMasterMigrationEvidence.js` | synthetic MIGFIX fixture | disposable emulator fixtures only | live; reproduces the historical BLOCKED package; intentionally keeps all seven decisions unresolved |
+| **(2) Production-read dry-run preparation** | `runPartMasterProductionDryRun.js` | Owner-approved production-source CSV (custody per the authorization record) | **ZERO writes** — reads `parts`/`part_aliases` from `taylor-parts` only | tooling merged; **execution remains a separate Owner gate** |
+| **(3) Production execution (cutover)** | does not exist yet | approved analysis package | writes via trusted commands | future, separately gated write-tool PR (§5.6) |
+
+### Production-read dry-run invocation (path 2 — documented, NOT executed)
+
+`runPartMasterProductionDryRun.js` hard-refuses (all reasons reported, nothing written, no connection made) when: project ≠ `taylor-parts` or `--project-id`/`--confirm-project` mismatch; the file's SHA-256 ≠ the Owner-approved `--input-sha256` (any modification voids the authorization); the source CSV is inside the repository or inside the evidence output dir; the output dir already exists non-empty (evidence is never overwritten); `--resolved-decisions` is not exactly the Decision #42 set `D-M1:B,D-M2:B,D-M3:A,D-M4:B,D-M5:B,D-M6:B,D-M7:C`; `--commit` ≠ checked-out HEAD; `--snapshot-date`/`--operator` missing; either explicit acknowledgement (`--acknowledge-dry-run`, `--acknowledge-production-read`) absent; `FIRESTORE_EMULATOR_HOST` is set (emulator/production ambiguity); or `PART_MASTER_REFERENCE` is enabled. It reuses the PR 1.8 analysis core (classification-only) and the Phase 1 readiness authority (C20 evaluates the resolved set; execution-gate approvals C9–C17 stay honestly pending per the per-gate rule), and writes the standard 10-artifact package — the source CSV is never copied into evidence (hash only). Tool-level zero-write enforcement is mandatory and credential-independent; no infrastructure-level read-only IAM is assumed or claimed.
+
+**Cloud Shell operator sequence (execution gate only — the gate pins commit, snapshot date, path, and hash first):**
+
+```
+git clone https://github.com/TaylorService-spec/Taylor_Parts.git && cd Taylor_Parts
+git checkout <pinned-commit>
+cd functions && npm ci && npm run build
+sha256sum <approved-csv-path-outside-repo>   # operator independently re-verifies the approved hash
+node scripts/runPartMasterProductionDryRun.js \
+  --project-id taylor-parts --confirm-project taylor-parts \
+  --input <approved-csv-path-outside-repo> \
+  --output-dir "$HOME/inv1-prod-dryrun-<runid>" \
+  --input-sha256 <approved-sha256> --commit <pinned-commit> \
+  --snapshot-date <YYYY-MM-DD> --operator "<approved operator>" \
+  --resolved-decisions D-M1:B,D-M2:B,D-M3:A,D-M4:B,D-M5:B,D-M6:B,D-M7:C \
+  --acknowledge-dry-run --acknowledge-production-read
+sha256sum "$HOME/inv1-prod-dryrun-<runid>"/*   # record; import to the repo via governed PR (evidence-retention policy)
+```
+
 ## 3. Cutover entry criteria (all must hold before execution is even proposed)
 
 Computed by `functions/src/partMaster/cutoverReadiness.ts` (`evaluateCutoverReadiness`, C1–C20): zero INVALID rows; zero duplicate partIds / normalized IPNs; zero ambiguous or multi-match rows; zero alias conflicts; all units recognized; inactive-target conflicts resolved; immutable-id mutations absent; supplier-item inconsistencies reviewed; Owner approval of the exact CREATE and UPDATE populations; approved rollback point, reconciliation method, production operator, and maintenance window (or explicit waiver); `PART_MASTER_REFERENCE` verified OFF; repository-vs-production Rules state confirmed; no quantity/availability recalculation in scope; no historical Work Order rewrite in scope; **every D-M decision (§6) resolved**. Any failure ⇒ **BLOCKED**.

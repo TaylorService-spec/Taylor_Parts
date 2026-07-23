@@ -25,6 +25,7 @@
     "test:inventoryEffectDetection": "npm run build && node test/inventoryEffectDetection.test.mjs",
     "test:csvMigrationAnalysis": "npm run build && node test/csvMigrationAnalysis.test.mjs",
     "test:migrationEvidence": "npm run build && node test/migrationEvidence.test.mjs",
+    "test:productionDryRun": "npm run build && node test/productionDryRun.test.mjs",
     "test:workOrderSnapshotCompatibility": "npm run build && node test/workOrderSnapshotCompatibility.test.mjs",
     "test:partReferenceCompatibility": "npm run build && node test/partReferenceCompatibility.test.mjs",
     "test:partMasterUnits": "npm run build && node test/partMasterUnits.test.mjs",
