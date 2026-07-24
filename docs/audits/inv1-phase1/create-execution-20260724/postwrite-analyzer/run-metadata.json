@@ -1,0 +1,44 @@
+{
+  "approvedInputSha256": "53471fcdd5c24f5c6cd24443ffe67073153f817d2001e27b52ae0dd48613744b",
+  "conflictCount": 0,
+  "duplicateCount": 0,
+  "emulatorHost": null,
+  "generatedAt": "2026-07-24T14:01:00.663Z",
+  "ignoredInformationalColumns": [],
+  "mode": "DRY_RUN_ONLY",
+  "operator": "Rudy DiGiorgio",
+  "projectId": "taylor-parts",
+  "reasonCounts": {
+    "IDENTICAL": 190
+  },
+  "repositoryCommit": "d0dad859ca67fbcfc955c41f4713ec4467a7206c",
+  "resolvedDecisions": {
+    "authority": "DECISIONS.md #42",
+    "set": {
+      "D-M1": "B",
+      "D-M2": "B",
+      "D-M3": "A",
+      "D-M4": "B",
+      "D-M5": "B",
+      "D-M6": "B",
+      "D-M7": "C"
+    }
+  },
+  "reviewerRoles": {
+    "evidenceVerificationReviewer": "Claude Code Inventory session",
+    "finalApprover": "Owner",
+    "technicalReviewer": "ChatGPT (architecture review)"
+  },
+  "rowCounts": {
+    "CONFLICT": 0,
+    "CREATE": 0,
+    "INVALID": 0,
+    "NO_CHANGE": 190,
+    "UPDATE": 0
+  },
+  "runKind": "PRODUCTION_SOURCE_DRY_RUN",
+  "sourceCsvExcludedFromEvidence": true,
+  "sourceSnapshotDate": "2026-07-23",
+  "tool": "runPartMasterProductionDryRun",
+  "zeroWriteAttestation": "this tool has no write-enabled mode; no Firestore/Auth/Storage/Functions write API is imported or invoked; no trusted mutation command is imported; no fixture is seeded; operator credentials never imply write authorization in this tool"
+}

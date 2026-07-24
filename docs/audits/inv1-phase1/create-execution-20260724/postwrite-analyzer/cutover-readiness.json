@@ -1,0 +1,141 @@
+{
+  "criteria": [
+    {
+      "description": "zero INVALID rows",
+      "detail": "INVALID=0",
+      "id": "C1",
+      "status": "PASS"
+    },
+    {
+      "description": "zero unresolved duplicate partIds",
+      "detail": "DUPLICATE_PART_ID_IN_FILE=0",
+      "id": "C2",
+      "status": "PASS"
+    },
+    {
+      "description": "zero unresolved duplicate normalized internal part numbers",
+      "detail": "DUPLICATE_IPN_IN_FILE=0",
+      "id": "C3",
+      "status": "PASS"
+    },
+    {
+      "description": "zero ambiguous create-versus-update rows",
+      "detail": "AMBIGUOUS=0 MULTIPLE_MATCHES=0",
+      "id": "C4",
+      "status": "PASS"
+    },
+    {
+      "description": "zero conflicting aliases",
+      "detail": "ALIAS_OWNED_BY_OTHER_PART=0",
+      "id": "C5",
+      "status": "PASS"
+    },
+    {
+      "description": "all required units recognized",
+      "detail": "UNKNOWN_UNIT=0",
+      "id": "C6",
+      "status": "PASS"
+    },
+    {
+      "description": "all inactive-target conflicts resolved",
+      "detail": "TARGET_PART_INACTIVE=0",
+      "id": "C7",
+      "status": "PASS"
+    },
+    {
+      "description": "immutable identifier changes rejected and absent from the approved input",
+      "detail": "IMMUTABLE_ID_MUTATION=0",
+      "id": "C8",
+      "status": "PASS"
+    },
+    {
+      "description": "supplier-item inconsistencies reviewed",
+      "detail": "Owner/operator review of part_supplier_items consistency",
+      "id": "C9",
+      "status": "BLOCKED"
+    },
+    {
+      "description": "Owner approval of the CREATE population",
+      "detail": "CREATE=0",
+      "id": "C10",
+      "status": "BLOCKED"
+    },
+    {
+      "description": "Owner approval of the UPDATE population",
+      "detail": "UPDATE=0",
+      "id": "C11",
+      "status": "BLOCKED"
+    },
+    {
+      "description": "approved rollback point",
+      "detail": "pre-cutover backup/export identity recorded and Owner-approved",
+      "id": "C12",
+      "status": "BLOCKED"
+    },
+    {
+      "description": "approved reconciliation method",
+      "detail": "post-write reconciliation procedure Owner-approved",
+      "id": "C13",
+      "status": "BLOCKED"
+    },
+    {
+      "description": "approved production operator",
+      "detail": "named operator + reviewer approved",
+      "id": "C14",
+      "status": "BLOCKED"
+    },
+    {
+      "description": "approved maintenance window (or explicit waiver)",
+      "detail": "window approved or formally waived",
+      "id": "C15",
+      "status": "BLOCKED"
+    },
+    {
+      "description": "PART_MASTER_REFERENCE remains OFF before cutover authorization",
+      "detail": "flag verified OFF",
+      "id": "C16",
+      "status": "PASS"
+    },
+    {
+      "description": "repository and production Rules state confirmed",
+      "detail": "repo Rules vs deployed Rules divergence reviewed and accepted",
+      "id": "C17",
+      "status": "BLOCKED"
+    },
+    {
+      "description": "no quantity or availability recalculation included",
+      "detail": "quantity columns are informational-only; ledger untouched",
+      "id": "C18",
+      "status": "PASS"
+    },
+    {
+      "description": "no historical Work Order rewrite included",
+      "detail": "snapshots preserved verbatim (PR 1.7 contract)",
+      "id": "C19",
+      "status": "PASS"
+    },
+    {
+      "description": "all Owner cutover decisions resolved",
+      "detail": "none unresolved",
+      "id": "C20",
+      "status": "PASS"
+    }
+  ],
+  "inputSha256": "53471fcdd5c24f5c6cd24443ffe67073153f817d2001e27b52ae0dd48613744b",
+  "note": "C20 evaluates against the Decision #42 resolved set. Population/operational approval criteria (C9-C17) are evaluated at their own later execution gates per the per-gate readiness rule; they are recorded pending here, never implied by this dry run.",
+  "resolvedDecisions": {
+    "authority": "DECISIONS.md #42",
+    "set": {
+      "D-M1": "B",
+      "D-M2": "B",
+      "D-M3": "A",
+      "D-M4": "B",
+      "D-M5": "B",
+      "D-M6": "B",
+      "D-M7": "C"
+    }
+  },
+  "runKind": "PRODUCTION_SOURCE_DRY_RUN",
+  "status": "BLOCKED",
+  "tool": "runPartMasterProductionDryRun"
+}

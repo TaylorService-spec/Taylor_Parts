@@ -1,0 +1,17 @@
+{
+  "documentId": "assign-inventory-create-executor-20260724T134344Z",
+  "collection": "auditEvents",
+  "data": {
+    "actorUid": "JBslDvmpq8RqQAiyzfvwne9yCWc2",
+    "action": "assignApprovedRole",
+    "targetType": "roleAssignment",
+    "targetId": "JBslDvmpq8RqQAiyzfvwne9yCWc2",
+    "outcome": "applied",
+    "summary": "Assigned pre-approved role \"inventoryCreateExecutor\" to principal JBslDvmpq8RqQAiyzfvwne9yCWc2",
+    "scope": {
+      "type": "global"
+    },
+    "accessVersionAfter": 2,
+    "at": "2026-07-24T13:43:45.519Z"
+  }
+}
