@@ -101,6 +101,9 @@ const AUDIT_ACTIONS: readonly AuditAction[] = [
   "updatePartSupplierItem",
   "changePartSupplierItemStatus",
   "setPreferredSupplier",
+  // Legacy Compatibility-Admin Bootstrap -- one-time audited migration of a
+  // legacy users.role=admin principal into the governed roleAssignment model.
+  "bootstrapCompatibilityAdmin",
 ];
 
 // Issue #325 / ADR-007 D-AUDIT -- the subset of AUDIT_ACTIONS this

@@ -795,6 +795,170 @@ export async function assignApprovedRole(
 }
 
 // ---------------------------------------------------------------------
+// bootstrapCompatibilityAdmin -- ONE-TIME, audited migration of an existing
+// LEGACY compatibility administrator (`users/{uid}.role === "admin"`, the
+// pre-governed raw-role source of truth) into the governed roleAssignment
+// model. Break-glass seam for the chicken-and-egg bootstrap: grantRole/
+// assignApprovedRole resolve `admin.roleAssignment.write` through the
+// resolver (which reads roleAssignments, NOT `users.role`), so the FIRST
+// governed admin cannot be created by them. This command's authority is NOT
+// a governed grant -- it is (1) the existing legacy `users.role === "admin"`
+// fact, (2) an enabled Auth user whose email exactly matches the approved
+// binding, and (3) designated-technical-operator infrastructure access
+// (ADR-009 controlled technical exception: explicitly authorized, narrowly
+// scoped, audited, idempotent, never a routine business workflow). It
+// migrates existing authority -- granting nothing the legacy raw-role model
+// did not already confer -- and does NOT weaken two-person approval for
+// FUTURE privileged grants (those still route through grantRole with a
+// distinct approver). It creates only a Firestore roleAssignment; never
+// Firebase/Google Cloud IAM, never a manual document edit. The audit
+// distinguishes the infrastructure operator (actorUid) from the migrated
+// principal (targetId) and records the source legacy authority + migration
+// provenance + project + approved commit in the summary (no email/PII).
+export interface BootstrapCompatibilityAdminInput {
+  operatorUid: string; // infrastructure operator identity (audit actorUid)
+  uid: string; // target principal being migrated (audit targetId)
+  expectedEmail: string; // the Auth user's email must match this exactly
+  provenanceCommit: string; // approved repository commit, recorded in the audit
+  idempotencyKey: string; // fresh per attempt (a denied attempt burns its key)
+}
+const LEGACY_ADMIN_ROLE_ID = "admin";
+const BOOTSTRAP_ADMIN_PROVENANCE = "bootstrap:legacy-admin-migration";
+const BOOTSTRAP_ADMIN_PROJECT = "taylor-parts";
+const bootstrapAdminAssignmentId = (uid: string): string => `bootstrap-admin-${uid}`;
+
+// Full-equivalence test for the deterministic bootstrap assignment: only a
+// document matching ALL of these is treated as "already migrated". Anything
+// else at the deterministic id is a non-equivalent conflict (fail closed).
+function isEquivalentBootstrapAdminAssignment(data: Record<string, unknown> | undefined, uid: string): boolean {
+  const scope = data?.scope as { type?: unknown } | undefined;
+  return (
+    data !== undefined &&
+    data.principalUid === uid &&
+    data.roleId === LEGACY_ADMIN_ROLE_ID &&
+    data.status === "active" &&
+    data.grantedBy === BOOTSTRAP_ADMIN_PROVENANCE &&
+    scope?.type === "global"
+  );
+}
+
+export async function bootstrapCompatibilityAdmin(
+  input: BootstrapCompatibilityAdminInput,
+): Promise<CommandOutcome> {
+  assertValidIdempotencyKey(input.idempotencyKey);
+  assertNonEmptyString(input.operatorUid, "operatorUid");
+  assertNonEmptyString(input.uid, "uid");
+  assertNonEmptyString(input.expectedEmail, "expectedEmail");
+  assertNonEmptyString(input.provenanceCommit, "provenanceCommit");
+
+  const db = getFirestore();
+  const assignmentRef = db.collection(ROLE_ASSIGNMENTS_COLLECTION).doc(bootstrapAdminAssignmentId(input.uid));
+  const userRef = db.collection(USERS_COLLECTION).doc(input.uid);
+  const auditRef = auditEventDocRef(input.idempotencyKey);
+  const activeAdminQuery = db
+    .collection(ROLE_ASSIGNMENTS_COLLECTION)
+    .where("principalUid", "==", input.uid)
+    .where("status", "==", "active")
+    .where("roleId", "==", LEGACY_ADMIN_ROLE_ID);
+  // actorUid = infrastructure operator (distinct from the migrated target).
+  const auditContext = {
+    actorUid: input.operatorUid,
+    action: "bootstrapCompatibilityAdmin" as const,
+    targetType: "roleAssignment",
+    targetId: input.uid,
+  };
+  const summary =
+    `bootstrap compatibility admin migration; source=legacy users.role=admin; ` +
+    `provenance=${BOOTSTRAP_ADMIN_PROVENANCE}; operator=${input.operatorUid}; target=${input.uid}; ` +
+    `project=${BOOTSTRAP_ADMIN_PROJECT}; commit=${input.provenanceCommit}`;
+
+  const result = await withDeniedAuditOnError(input.idempotencyKey, auditContext, async () => {
+    // --- Immediately-before-mutation Auth verification (not transactional):
+    // existence, enabled state, and EXACT email must all hold. ---
+    let userRecord;
+    try {
+      userRecord = await getAuth().getUser(input.uid);
+    } catch {
+      throw new InvalidStateError(`no Auth user exists for uid "${input.uid}"`);
+    }
+    if (userRecord.disabled) {
+      throw new InvalidStateError(`Auth user "${input.uid}" is disabled`);
+    }
+    if (userRecord.email !== input.expectedEmail) {
+      throw new InvalidStateError(`Auth user "${input.uid}" email does not match the approved binding`);
+    }
+
+    return db.runTransaction(async (txn): Promise<CommandOutcome> => {
+      // Idempotency gate (identical semantics to runAccessMutationCommand):
+      const auditSnap = await txn.get(auditRef);
+      if (auditSnap.exists) {
+        assertSameCommandFingerprint(input.idempotencyKey, auditSnap.data() as Record<string, unknown>, auditContext);
+        return {
+          status: "alreadyApplied",
+          auditEventId: input.idempotencyKey,
+          accessVersionAfter: (auditSnap.data() as Record<string, unknown>).accessVersionAfter as number | undefined,
+        };
+      }
+      // Deterministic-assignment revalidation IN the transaction: an
+      // equivalent bootstrap doc -> alreadyApplied (no second version bump);
+      // a NON-equivalent doc at the deterministic id -> fail closed.
+      const existingAssignment = await txn.get(assignmentRef);
+      if (existingAssignment.exists) {
+        if (isEquivalentBootstrapAdminAssignment(existingAssignment.data() as Record<string, unknown>, input.uid)) {
+          return { status: "alreadyApplied", auditEventId: input.idempotencyKey };
+        }
+        throw new InvalidStateError(`a non-equivalent deterministic bootstrap assignment already exists (${assignmentRef.id})`);
+      }
+      // Legacy authority revalidation IN the transaction: users/{uid}.role
+      // must be EXACTLY "admin".
+      const userSnap = await txn.get(userRef);
+      const legacyRole = userSnap.exists ? (userSnap.data() as Record<string, unknown>).role : undefined;
+      if (legacyRole !== LEGACY_ADMIN_ROLE_ID) {
+        throw new InvalidStateError(`users/${input.uid}.role is not exactly "admin" (got ${JSON.stringify(legacyRole)})`);
+      }
+      // No CONFLICTING active admin assignment (any other doc) IN the txn.
+      const activeAdmins = await txn.get(activeAdminQuery);
+      for (const doc of activeAdmins.docs) {
+        if (doc.id !== assignmentRef.id) {
+          throw new InvalidStateError(`a conflicting active admin roleAssignment already exists (${doc.id})`);
+        }
+      }
+      // Atomic write: assignment (create -> fails closed on concurrent
+      // create) + accessVersion bump + exactly one applied audit.
+      const newAccessVersion = readAuthoritativeAccessVersion(userSnap) + 1;
+      txn.create(assignmentRef, {
+        principalUid: input.uid,
+        roleId: LEGACY_ADMIN_ROLE_ID,
+        scope: { type: "global" },
+        grantedBy: BOOTSTRAP_ADMIN_PROVENANCE,
+        grantedAt: FieldValue.serverTimestamp(),
+        status: "active",
+        accessVersionAtGrant: newAccessVersion,
+      });
+      txn.set(
+        userRef,
+        { accessVersion: newAccessVersion, pendingClaimsSyncAccessVersion: newAccessVersion },
+        { merge: true },
+      );
+      stageAuditEventWithId(txn, input.idempotencyKey, {
+        ...auditContext,
+        outcome: "applied",
+        summary,
+        scope: { type: "global" },
+        accessVersionAfter: newAccessVersion,
+      });
+      return { status: "applied", auditEventId: input.idempotencyKey, accessVersionAfter: newAccessVersion };
+    });
+  });
+
+  // Post-commit, retry-safe claims synchronization (runs on the
+  // alreadyApplied path too, in case a prior attempt committed state but
+  // died before claims sync).
+  await syncPendingClaims(input.uid);
+  return result;
+}
+
+// ---------------------------------------------------------------------
 // setUserStatus -- enforced at the Auth layer (disabled accounts cannot
 // authenticate at all), with the same accessVersion-bump defense in
 // depth for any token already issued before the disable.
