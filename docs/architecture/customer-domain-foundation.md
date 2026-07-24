@@ -293,26 +293,43 @@ Account (Customer)
   a soft-unique, system-assigned sequence (like `employeeNumber`) versus remain
   free-text is an unresolved decision, called out in §14.
 
-**Merge policy (PROPOSED — D-C1-7).** Because uniqueness is advisory, true
-duplicates will occasionally be created. C-1 defines the governing merge model
-(a later C-4 build, not C-1):
+**Merge policy (PROPOSED — D-C1-7; Owner-approved with the historical-reference
+correction below).** Because uniqueness is advisory, true duplicates will
+occasionally be created. C-1 defines the governing merge model (a later C-4
+build, not C-1). The governing principle is **re-point live references, preserve
+history in place, resolve the rest through a tombstone** — a merge must never
+rewrite closed operational history as a side effect:
 
-- A merge names **one surviving Account** and one or more **merged-away Accounts**.
-- Child references re-point to the survivor: `locations.accountId`,
-  `contacts.accountId`, `equipment.accountId` (ADR-006), `parentAccountId` links,
-  and — critically — the **historical `fieldops_wos.customerId`** on already-closed
-  Work Orders. Because `customerId` is a live Cloud Function contract that is never
-  renamed, re-pointing it is a **trusted-writer operation** (ADR-005 / Issue #226),
-  never a client-direct rewrite.
-- The merged-away Account is **`ARCHIVED`, never hard-deleted** — it retains a
-  `mergedIntoAccountId` tombstone pointer so historical links and audit trails
-  stay resolvable.
-- A merge is a **single audited, reversible-by-record action** emitting an audit
-  event; it is not a bulk silent overwrite.
-- **Governing constraint:** merge is impossible to do safely client-direct (it
-  crosses the `customerId` Function contract), so it is explicitly gated on the
-  trusted-writer seam (Issue #15) — the same blocker as C-6. C-1 defines the
-  policy; it builds nothing.
+1. A merge names **one surviving Account** and one or more **merged-away
+   Accounts**.
+2. **Open / operationally active records may be re-pointed** to the survivor:
+   `locations.accountId`, `contacts.accountId`, `equipment.accountId` (ADR-006),
+   `parentAccountId` links, and the `customerId` of **open / in-flight Work
+   Orders**. Because `customerId` is a live Cloud Function contract that is never
+   renamed, even this re-point is a **trusted-writer operation** (ADR-005 /
+   Issue #226), never a client-direct rewrite.
+3. **Closed and historical `fieldops_wos` records retain their original
+   `customerId`.** A merge does **not** rewrite already-closed Work Orders —
+   their point-in-time customer linkage is preserved exactly as recorded.
+4. The merged-away Account is **`ARCHIVED`, never hard-deleted**, and retains a
+   **`mergedIntoAccountId` tombstone** pointing at the survivor.
+5. **Reads and reports resolve the archived Account through the tombstone to the
+   canonical survivor** — a closed Work Order still pointing at the merged-away
+   Account is displayed/aggregated under the survivor *without* rewriting the
+   historical record. Resolution is a read-side concern; the stored history is
+   immutable.
+6. The **merge audit event records**, at minimum: the **survivor Account**, the
+   **merged-away Account**, the **active references re-pointed**, and the
+   **historical references intentionally preserved** (i.e. the closed records
+   left pointing at the tombstone). It is a single audited action, not a bulk
+   silent overwrite.
+7. **Any physical rewrite of closed historical `customerId` values is out of
+   scope for the merge action** and requires its **own explicit migration
+   decision and evidence gate** — it is never an implicit consequence of a merge.
+8. **Governing constraint:** merge crosses the `customerId` Function contract and
+   is impossible to do safely client-direct, so the whole operation is gated on
+   the **trusted-writer / audited-merge seam** (Issue #15 / #226 — the same
+   blocker as C-6). C-1 defines the policy; it builds nothing.
 
 ---
 
@@ -447,7 +464,7 @@ Customer.** Sequence chosen so each unit depends only on prior ones:
 | **C-1** | *This* Domain Foundation | — | Domain Foundation (docs) |
 | **C-2** | Customer Hierarchy — `parentAccountId`, acyclic/depth invariants, derived rollups | C-1 | Assessment → Spec → Impl Plan → build |
 | **C-3** | Status Lifecycle enforcement — transition rules in `firestore.rules`/writer | C-1 | Spec → Impl Plan → build (Rules = Tier 2) |
-| **C-4** | Customer Identity, Duplicate Prevention & Merge — advisory dedupe at create, identifier governance, trusted-writer merge | C-1, Issue #15 (merge writer) | Assessment → Spec → build |
+| **C-4** | Customer Identity, Duplicate Prevention & Merge — advisory dedupe at create, identifier governance, trusted-writer audited merge that **re-points live references only and preserves closed Work Order `customerId` in place** (survivor resolved via `mergedIntoAccountId` tombstone; any rewrite of closed history is a separate migration + evidence gate, §8) | C-1, Issue #15 (merge writer) | Assessment → Spec → build |
 | **C-5** | Territory & Ownership model — `territoryId` reporting/assignment (non-auth) | C-1, coordinates w/ ADR-005 | Assessment → Spec |
 | **C-6** | Customer Audit Trail — governed mutations via trusted writer + audit events | C-1, ADR-005, Issue #15/#226 | Blocked on Functions (Issue #15) |
 
@@ -458,24 +475,30 @@ Any unit touching `firestore.rules` or Functions is **Tier 2** under
 
 ## 14. Open decisions & risks
 
-**Required decisions (for Owner):**
+**Decisions — Owner dispositions (recorded from PR #410 Domain/Governance
+Review, round 1):**
 
-- **D-C1-1 — Customer = role on Account, no `customers` collection.** *(recommend
-  ADOPT.)* Foundational; everything else depends on it.
-- **D-C1-OPEN-b — Single billing party per Account?** Recommend **yes** for now;
+- **D-C1-1 — Customer = role on Account, no `customers` collection.**
+  **ADOPTED.** Foundational; everything else depends on it.
+- **D-C1-OPEN-b — Single billing party per Account?** **ADOPTED — YES** for now;
   defer Location-level / third-party bill-to to a future ADR when a real
   requirement appears.
 - **D-C1-OPEN-c — `customerNumber`: system-assigned soft-unique sequence vs
-  free-text?** Unresolved; recommend deciding in C-4.
-- **D-C1-OPEN-d — May territory ever scope access?** Recommend **no** in the
-  Customer domain; route any territory-based partitioning through ADR-005, not C-1.
+  free-text?** **DEFERRED to C-4.**
+- **D-C1-OPEN-d — May territory ever scope access?** **ADOPTED — NO.** Territory
+  must not authorize access; route any territory-based partitioning through
+  ADR-005, not C-1.
 - **D-C1-OPEN-e — Child-under-archived-parent invariant** and **hierarchy depth
-  bound** — recommend deciding in C-2.
-- **D-C1-OPEN-f — Equipment-owning party vs serviced party** (§7) — recommend **no
-  split** now; reserve for ADR-006's program.
-- **D-C1-7 — Merge policy** (§8): surviving-Account + archived tombstone +
-  trusted-writer re-point of `customerId`. Recommend ADOPT as policy; build in C-4,
-  gated on Issue #15.
+  bound** — **DEFERRED to C-2.**
+- **D-C1-OPEN-f — Equipment-owning party vs serviced party** (§7) — **ADOPTED —
+  no split** now; reserve for ADR-006's program.
+- **D-C1-7 — Merge policy** (§8): **APPROVED with the historical-reference
+  correction** — re-point **live/active** references only; **closed historical
+  `fieldops_wos.customerId` is preserved in place** and resolved to the survivor
+  via the `mergedIntoAccountId` tombstone; the audit records both re-pointed and
+  intentionally-preserved references; any physical rewrite of closed history is a
+  separate migration + evidence gate. Trusted-writer + audited-merge requirement
+  preserved. Build in C-4, gated on Issue #15.
 
 **Risks:**
 
@@ -501,8 +524,10 @@ Customer/Inventory deployment-lock transfer.
 
 ## 15. Approval
 
-**Gate:** Domain Foundation (C-1). **Status: DRAFT.** Awaits ChatGPT Domain/
-Governance review and separate Owner authorization. This document authorizes no
-implementation and no production-data action. The Customer runtime lane remains
-**BLOCKED** until Inventory I-1 closes and the deployment lock is explicitly
-transferred. **STOP before merge — Owner review required.**
+**Gate:** Domain Foundation (C-1). **Status: DRAFT — Domain/Governance Review
+round 1 addressed.** The core model is Owner-approved (D-C1-1/-b/-c/-d/-e/-f, §14);
+D-C1-7 was revised to the Owner-required historical-reference-preserving merge
+policy (§8). This document authorizes no implementation and no production-data
+action. The Customer runtime lane remains **BLOCKED** until Inventory I-1 closes
+and the deployment lock is explicitly transferred. **STOP before merge — final
+Owner authorization required.**
