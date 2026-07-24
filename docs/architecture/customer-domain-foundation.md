@@ -37,7 +37,7 @@ a release until the deployment lock is explicitly transferred to Customer.
 Every claim below is marked **VERIFIED** (checked directly against the codebase
 or a governance doc this session), **PROPOSED** (a new C-1 design decision, not
 yet built), or **CARRIED OVER** (stated from an existing doc, not re-derived).
-Verified against `origin/main` @ `a6daf63`. Path convention: `firestore.rules`,
+Verified against `origin/main` @ `6cc50b9`. Path convention: `firestore.rules`,
 `functions/…`, `docs/…` are repo-root-relative; `src/…` is relative to
 `field-ops-app-vite/`.
 
