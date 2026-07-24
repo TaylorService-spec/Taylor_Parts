@@ -1,0 +1,21 @@
+{
+  "allowedClassification": "CREATE",
+  "approvedInputSha256": "53471fcdd5c24f5c6cd24443ffe67073153f817d2001e27b52ae0dd48613744b",
+  "complete": true,
+  "counts": {
+    "SUCCESS": 190
+  },
+  "emulatorHost": null,
+  "expectedCount": 190,
+  "generatedAt": "2026-07-24T13:56:13.064Z",
+  "mode": "EXECUTE",
+  "operator": "JBslDvmpq8RqQAiyzfvwne9yCWc2",
+  "partMasterReferenceOff": true,
+  "productionWriteAcknowledged": true,
+  "projectId": "taylor-parts",
+  "repositoryCommit": "d0dad859ca67fbcfc955c41f4713ec4467a7206c",
+  "runKind": "CREATE_IMPORT",
+  "tool": "executePartMasterCreate",
+  "writesOnlyVia": "createPart (trusted command); no raw Firestore write; no alias/supplier-item/quantity/Rules write",
+  "zeroWriteInDryRun": false
+}
