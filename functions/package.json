@@ -17,6 +17,7 @@
     "test:effectiveAccess": "npm run build && node test/effectiveAccessFeed.test.mjs",
     "test:claims": "npm run build && node test/claimsWriter.test.mjs",
     "test:trustedWriter": "npm run build && node test/trustedWriterCommands.test.mjs",
+    "test:bootstrapCompatibilityAdmin": "npm run build && node test/bootstrapCompatibilityAdmin.test.mjs",
     "test:operatorAccess": "node --test test/operatorAccessCommand.test.js",
     "test:legacyDataAudit": "node --test test/auditLegacyJobTechnicianData.test.js",
     "test:operatorAccessExecute": "npm run build && node --test test/operatorAccessCommandExecute.test.js",
