@@ -64,7 +64,9 @@ Operator/Cloud Shell from a clean checkout of the authorized commit; project `ta
 | dispatcher | **ALLOW** (sees 190) | deny | deny |
 | admin | **ALLOW** (sees 190) | deny | deny |
 
-Plus: live-ruleset SHA-256 == governed blob; an admin `parts` create/update/delete attempt **denied**; siblings read+write denied for all; UI at `inventory/part-master` renders read-only (no write affordance), lists 190 for admin/dispatcher, shows access-denied for technician. Pre-deploy test basis (already green in CI): `functions/test/partMasterRules.test.js` (parts read matrix, 20 checks, in the pinned Rules regression) and `field-ops-app-vite/test/partMasterView.test.mjs` (client read-only proofs, 8 checks). Use disposable fixtures only for the production run (D2 seed→run→cleanup pattern).
+Plus: live-ruleset SHA-256 == governed blob; an admin `parts` create/update/delete attempt **denied**; siblings read+write denied for all; UI at `inventory/part-master` renders read-only (no write affordance), lists 190 for admin/dispatcher, shows access-denied for technician. Pre-deploy test basis (already green in CI): `functions/test/partMasterRules.test.js` (parts read matrix, 20 checks, in the pinned Rules regression) and `field-ops-app-vite/test/partMasterView.test.mjs` (client read-only proofs, 8 checks).
+
+**Owner constraint (production verification):** the deployment/verification gate **must not create production Part fixtures or mutate production Part data.** Read verification uses the **existing 190 Parts** only; write denial is confirmed by **safe denied-write probes** (a `parts` write that is *expected to be rejected* by Rules and therefore persists nothing). Any role-acting needed to probe read as admin/dispatcher/technician uses **disposable test principals** (users/roleAssignments), never Part-collection fixtures — and those principals are cleaned up. No `parts`/`part_aliases`/`part_supplier_items` document is ever created or changed during verification.
 
 ## 5. Reconciliation
 
@@ -83,11 +85,11 @@ The 190 Parts are already reconciled at write time (`docs/audits/inv1-phase1/cre
 - **Customer C-1 may do docs-only architecture in parallel** but may **not** merge deployment-bound runtime changes or deploy.
 - **Release-lock:** freeze `firestore.rules` merges from baseline capture (§3.A.2) through post-deploy byte-verify (§3.A.4); record a combined-content acknowledgement of exactly which commit's full ruleset ships. If a Customer rules change is mid-flight, wait-and-re-pin or defer — never deploy a file whose Customer content wasn't intended.
 
-## 8. Decisions needed
+## 8. Decisions — RESOLVED (Owner, at the #411 plan-review gate)
 
-- **D-I1-1 — read-authorization posture.** Ship the seeded `admin`/`dispatcher` **compatibility** read grant as-is (already merged; the PR 1.9 Owner-approved compatibility posture), **or** first move `parts` read to the **Issue #100 governed permission matrix**? The PR 1.9 record and `docs/architecture/SYSTEM_AUTHORITIES.md` note that operational-role read expansion belongs to Issue #100 and raw role checks retire only after permission-model parity + production verification. *Recommended for I-1: ship the compatibility posture (zero runtime change, simplest supported design); treat the matrix migration as a separate later unit.* Choosing the matrix now = a runtime `firestore.rules` change (both files) + new tests — no longer deploy-only.
-- **D-I1-2 — deploy pairing.** Rules-only (data-layer read) vs Rules + frontend together (visible UI). *Recommended: together, Rules first.*
-- **D-I1-3 — release-lock window.** When to take the shared-rules freeze with the Customer session.
+- **D-I1-1 — read-authorization posture: APPROVE the existing `admin`/`dispatcher` compatibility read posture** (already merged; PR 1.9). The Issue #100 governed permission matrix is **not** introduced in I-1 → I-1 stays **deploy-only, zero runtime change**. (Matrix migration remains a separate later unit; raw-role retirement tracked under Issue #100.)
+- **D-I1-2 — deploy pairing: APPROVE Rules + frontend together.** Deploy and verify **Firestore Rules first**, then build and deploy hosting (§3 A→B).
+- **D-I1-3 — release-lock window:** take the shared-rules release lock **immediately before capturing the production rollback baseline** (§3.A.1→A.2) and **hold it until the deployed live ruleset has been byte-verified** against the authorized repository commit (§3.A.4).
 
 ## 9. Risks
 
