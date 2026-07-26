@@ -11,3 +11,4 @@ docs/audits/inv1-phase1/production-dryrun-20260723-01/** -text
 # INV-1 CREATE execution evidence: byte-exact, checksum-verified; never convert EOL.
 docs/audits/inv1-phase1/create-execution-20260724/** -text
 docs/audits/inv-convergence-b/** -text
+docs/audits/inv-convergence-e-stage-a/** -text

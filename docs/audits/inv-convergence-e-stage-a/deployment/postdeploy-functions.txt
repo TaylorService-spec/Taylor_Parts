@@ -1,0 +1,9 @@
+Postdeploy deployed Functions inventory
+
+source: firebase functions:list --project taylor-parts (operator-captured, after deployment)
+result: EQUAL to the predeploy Functions inventory → Functions inventory unchanged by this deployment.
+
+Note: the raw `firebase functions:list` listing is the operator's captured artifact. It is
+represented here by the confirmed pre/post EQUALITY result; the listing content is not
+reconstructed here (no fabrication). Pre/post Functions inventory equality: PASS.
+No `firebase deploy --only functions` was executed.
