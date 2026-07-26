@@ -65,7 +65,20 @@ async function authenticatePersona(apiKey, persona) {
       body: JSON.stringify({ email, password, returnSecureToken: true }),
     }
   );
-  if (!response.ok || !json.idToken) throw new VerificationError(`Authentication preflight failed for ${persona.label} (${response.status}).`);
+  if (!response.ok || !json.idToken) {
+    const rawCode = String(json && json.error && json.error.message || "UNKNOWN").split(/\s*:\s*/)[0];
+    const safeCodes = new Set([
+      "EMAIL_NOT_FOUND",
+      "INVALID_EMAIL",
+      "INVALID_LOGIN_CREDENTIALS",
+      "INVALID_PASSWORD",
+      "TOO_MANY_ATTEMPTS_TRY_LATER",
+      "USER_DISABLED",
+      "OPERATION_NOT_ALLOWED",
+    ]);
+    const code = safeCodes.has(rawCode) ? rawCode : "AUTH_REJECTED";
+    throw new VerificationError(`Authentication preflight failed for ${persona.label}: ${code} (${response.status}).`);
+  }
   return json.idToken;
 }
 
