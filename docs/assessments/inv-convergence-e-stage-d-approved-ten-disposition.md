@@ -2,7 +2,7 @@
 artifact_type: assessment
 unit: INV-CONVERGENCE-E Stage D — approved-ten static-only disposition
 gate: Owner decision (approved-ten)
-status: Draft — awaiting Owner decision + ChatGPT review (docs-only); authorizes no implementation
+status: Approved — Owner decision recorded 2026-07-26 (all ten KEEP_VISIBLE_STATIC_ONLY_EXCLUDED; UQ-D1/D2/D3 resolved); docs-only, authorizes no implementation
 date: 2026-07-26
 owner: Claude Code (Inventory)
 baseline: db5fc5bf85cd2c6b562fea50741b7eddc5255821 (origin/main)
@@ -63,10 +63,15 @@ Removing any of the ten from the static source requires **all** of:
 
 Until then, the ten **remain visible** and no static-catalog removal is authorized.
 
-## 6. Unresolved questions
-- **UQ-D1:** production reference status for each of the ten (ledger/reorder/PO/WO-snapshot) — requires a read-only production query or Owner-supplied evidence; only then can any row move to `RETIRE_AFTER_DEPENDENCY_CLEARANCE`.
-- **UQ-D2:** does the Owner want a durable governed `status`/lifecycle field for "excluded/retired" parts (beyond the adapter's `STATIC_ONLY_EXCLUDED` classification), or is UI-level static compatibility sufficient through convergence?
-- **UQ-D3:** confirm none of the ten should be `PROMOTE_TO_CANONICAL` (that is a separate governed `createPart` write gate, not authorized here).
+## 6. Owner decisions (RESOLVED — 2026-07-26)
+
+**Disposition of all ten:** the Owner **APPROVES all ten SKUs** (TST-1047, TST-1070, TST-1074, TST-1080, TST-1112, TST-1136, TST-1143, TST-1175, TST-1189, TST-1193) as **`KEEP_VISIBLE_STATIC_ONLY_EXCLUDED`**. This is the recorded Owner decision, not merely the default recommendation.
+
+- **UQ-D1 — RESOLVED:** production reference evidence is **not required** for the current keep-visible disposition. A **governed production reference assessment is mandatory before any future proposal** to (a) hide, (b) inactivate, (c) remove from the static catalog, or (d) retire after dependency clearance. No such proposal is authorized here.
+- **UQ-D2 — RESOLVED:** **do not introduce a durable canonical lifecycle/`status` field in Stage D.** Continue using the governed `APPROVED_STATIC_ONLY_EXCLUSIONS` compatibility mechanism through C1 and C2. Any durable lifecycle model requires a **separate specification and decision**.
+- **UQ-D3 — RESOLVED:** **none of the ten is approved for `PROMOTE_TO_CANONICAL`** in this unit. Any future promotion requires a **separate governed CREATE/write gate**.
+
+**Boundaries preserved by this decision:** no deletion · no hiding · no canonical creation · no static-catalog edit · no adapter implementation change · no Firestore write · no deployment · no C1 authorization. The ten remain visible with `identityState = STATIC_ONLY_EXCLUDED`; behavior is unchanged (KEEP_VISIBLE is a no-op).
 
 ## 7. Non-authorizations
 No Firestore writes, static-catalog edits, adapter edits, PartsList/PartDetail changes, or deployment. This package records a disposition recommendation for Owner decision; it does not itself change behavior. Decisions #43–#46 unchanged. This is a prerequisite (with Stage B) for C1; it does not authorize C1.
