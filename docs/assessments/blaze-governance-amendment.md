@@ -5,7 +5,7 @@ status: Draft
 date: 2026-07-26
 owner: Claude Code
 baseline: f38703dca4cc6e07c782b098f2677015d68ce648
-related_decisions: [47]
+related_decisions: [47, 48]
 depends_on: []
 implements: []
 supersedes: []
@@ -56,26 +56,25 @@ saved-definition callables (`create`/`get`/`list`/`rename`/`duplicate`/`delete`)
 `rejectAccessRequest`) — marked "ACTIVE (undeployed)" in the live-state audit. No claims
 bootstrap, no Admin-mutation activation, no enforcement cutover.
 
-## Issue #15 — partial, not closed (Owner decision A2)
+## Issue #15 — complete and closed; enterprise-access remainder is Issue #226 (corrected by DECISIONS #48)
 
-Issue #15 is referenced across `ADR-005`, `ADR-006`, `ADR-007`, and
-`docs/architecture/customer-domain-foundation.md` as "production Cloud Functions **deployed
-and verified**" — a deploy-and-verify gate, not a billing-availability question. It is
-therefore **substantially advanced but not fully resolved**:
+> **Correction (DECISIONS #48, 2026-07-26):** an earlier draft of this section described
+> Issue #15 as "partial, not closed." That was wrong and is corrected below. #15 is
+> complete and correctly closed; the remaining enterprise-access work is Issue #226.
 
-- **Completed:** the Work Order Functions deployment lane (`createWorkOrder`,
-  `transitionWorkOrder`, `updateWorkOrderExecutionData`, deployed + verified, #36); the
-  existing 11-Function production deployment and verification; retirement of
-  "Blaze-unavailable" as a general technical blocker.
-- **Still open:** the enterprise-access mutation Functions; claims bootstrap/migration
-  where applicable; `accessVersion`/enforcement cutover; any other explicit #15
-  deployment-and-verification obligations not completed.
+Issue #15 is narrowly scoped to deploying the **Epic 1 Work Order Engine backend**
+(Firestore Rules + the Work Order Functions). That scope is **complete**: `createWorkOrder`,
+`transitionWorkOrder`, and `updateWorkOrderExecutionData` are deployed and verified (#36),
+and Issue #15 was **closed as COMPLETED on 2026-07-16**. It must **not** be reopened or
+re-scoped.
 
-**Action (after #47 merges):** update Issue #15 with completed vs remaining scope; re-scope
-it (or split the remaining work into a clearly linked replacement issue) with updated
-cross-references. **Do NOT blanket-close** #15 or represent the entire authorization
-migration as complete; close it only if its remaining scope is moved to an explicit
-replacement issue.
+The remaining enterprise-access work — the undeployed access-mutation Functions
+(`grantRole`, `revokeRole`, `assignApprovedRole`, `setUserStatus`, `approveAccessRequest`,
+`rejectAccessRequest`), claims bootstrap/migration, `accessVersion` behavior, enforcement
+cutover, Admin portal, auditing, migration, and production verification — belongs to the
+**OPEN Issue #226 (Enterprise Access & Administration Platform)**, not Issue #15. No part
+of #226 is remaining #15 scope, and completion of #15 does not authorize any #226
+deployment (#226 keeps its own implementation and deployment gates).
 
 ## Stale-reference classification (reconciled in PR-A per decision A3)
 
@@ -95,7 +94,7 @@ is distinguished from "capability still not implemented or deployed."
 | `ROADMAP.md` :53 | Sprint 2.0.4 "Blaze is not being adopted… standing decision" | Historical narrative preserved + superseded annotation |
 | `PlatformCapabilityModel.md` :60 | WO creation "currently blocked on a standing Firebase Blaze-plan decision" | Present-tense clause superseded (Functions deployed) |
 | `BusinessEntityModel.md` :71, :87 | "Blaze-blocked" backlog note / cross-ref | Reconciled: plan-unblocked; restated as unimplemented capability |
-| `CLAUDE_CONTEXT.md` :86 | "Issue #15 … Blaze-blocked" | Annotated: partial per #36/#47 |
+| `CLAUDE_CONTEXT.md` :86 | "Issue #15 … Blaze-blocked" | Annotated: #15 complete/closed per #36; enterprise-access remainder → #226 (#47/#48) |
 | `SPRINT_STATUS.md` :100, :191 | "blocked on Blaze… standing decision" | File already globally superseded; #47 pointer added |
 
 **Deferred (NOT in PR-A — outside decision A3's file list):**
@@ -103,10 +102,19 @@ is distinguished from "capability still not implemented or deployed."
 It is not in A3's enumerated file list, so it is left untouched here to avoid scope
 expansion; flag for a later pass if desired.
 
-**References that must NOT be changed** (they gate on Functions being *deployed and
-verified*, which remains partly true): the #15-gating language in `ADR-005`, `ADR-006`,
-`ADR-007`, and `customer-domain-foundation.md` for the **undeployed** enterprise-access
-mutation set. These stay valid.
+**Pre-existing `#15` references flagged but NOT changed here** (corrected framing per
+DECISIONS #48): several architecture/assessment records use "#15" as the *general
+Cloud-Functions-deployment-gate* shorthand — `ADR-005`, `ADR-006`, `ADR-007`,
+`docs/architecture/customer-domain-foundation.md`, `docs/assessments/customer-hierarchy.md`,
+`docs/assessments/customer-operability-data-ownership-and-analytical-export.md`, and
+`docs/assessments/creation-and-page-formatting-consistency.md`. The *substance* they gate
+on (enterprise-access / trusted-writer / audit Functions must be deployed and verified
+before production) remains valid, but the correct owning issue for that remaining work is
+**#226**, not #15 — and any statement that `createWorkOrder`/`transitionWorkOrder` are
+"undeployed" is now stale (they are deployed, #36). These records are point-in-time
+artifacts owned by other workstreams; their #15→#226 re-attribution and post-#36 staleness
+are **flagged for the owning lanes**, not rewritten here, to keep this correction within the
+#15/#226 ownership scope and avoid cross-workstream edits.
 
 ## Architectural corrections (record across the auth program)
 
