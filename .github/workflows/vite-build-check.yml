@@ -19,3 +19,6 @@ jobs:
       - name: Build project
         run: npm run build
         working-directory: field-ops-app-vite
+      - name: Verify build base (GitHub Pages + Firebase Hosting modes)
+        run: npm run verify:build-base
+        working-directory: field-ops-app-vite

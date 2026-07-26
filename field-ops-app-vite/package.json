@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:firebase": "vite build --base=/",
+    "verify:build-base": "node test/verifyBuildBase.mjs",
     "lint": "oxlint",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
