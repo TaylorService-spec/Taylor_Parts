@@ -1,38 +1,45 @@
-// INV-CONVERGENCE-E Stage A FOUNDATION -- reader bundle for the diagnostics surface.
-//
-// FOUNDATION ONLY: this bundle deliberately CANNOT execute live Stage A parity yet.
-// The ledger/reorder/PO live one-shot readers and a real build/commit identifier must
-// be supplied by a separate, explicitly-reviewed Stage A "live-reader + reviewed route"
-// step before Decision #44 pre-cutover parity evidence can exist. Until then:
-//   - ledger/reorder/PO readers report `unavailable`, and
-//   - adapterCommit is null,
-// so a live run resolves BLOCKED_INCOMPLETE_INPUT -- honest and safe, never a false PASS.
-//
-// clock/runId live HERE (orchestrator wiring), never in the pure core. Performs no
-// writes. Any caller may override readers (tests, or the future wiring step).
+// INV-CONVERGENCE-E Stage A completion -- production reader bundle for the diagnostics
+// surface. Wires the EXISTING one-shot read-only paths (no new query surface, no
+// subscriptions, one call each) and a deterministic build identifier:
+//   - canonical : fetchPartMasterList()          (services/partMasterQueries)
+//   - static    : PARTS_CATALOG                  (data/partsCatalog)
+//   - ledger    : fetchInventoryTransactions()   (operationsQueries; inventory_transactions)
+//   - reorder   : fetchReorderRequests()         (operationsQueries; reorder_requests)
+//   - PO        : fetchReorderPurchaseOrders()   (operationsQueries; LIVE reorder_purchase_orders)
+// Overlays are DERIVED from these snapshots inside the pure core; availability reuses
+// the existing computeAvailableStockByPart semantics. Performs NO writes. clock/runId
+// live here (never in the pure core). adapterCommit = the injected build id; when it is
+// absent/"unknown" the pure core resolves BLOCKED_INCOMPLETE_INPUT (never a false PASS).
 import { fetchPartMasterList } from "../../services/partMasterQueries";
 import { PARTS_CATALOG } from "../../data/partsCatalog";
+import { fetchInventoryTransactions, fetchReorderRequests, fetchReorderPurchaseOrders } from "../../services/operationsQueries";
+import { readOnce } from "../../domain/partsShadowParityReadOnce";
+import { createRunIdProvider } from "../../domain/partsShadowParityRunId";
 
+// Deterministic build/commit identifier injected at build time (vite `define`).
+const ADAPTER_COMMIT = typeof __APP_COMMIT__ !== "undefined" ? __APP_COMMIT__ : null;
+
+// One reader bundle is created per component mount (via useRef) and reused across runs,
+// so this run-ID provider's sequence persists -> every execution gets a distinct opaque
+// run id (opaque prefix + incrementing sequence; no user identity).
 export function defaultReaders(overrides = {}) {
-  let seq = 0;
   return {
-    canonicalPartsReader: fetchPartMasterList,
+    canonicalPartsReader: fetchPartMasterList, // already returns { ok, parts } | { ok:false, code }
     staticCatalogProvider: async () => ({ ok: true, rows: PARTS_CATALOG }),
-    // Deferred to the separate live-reader step (one-shot reads; no subscriptions):
-    ledgerReader: async () => ({ ok: false, code: "unavailable" }),
-    reorderReader: async () => ({ ok: false, code: "unavailable" }),
-    purchaseOrderReader: async () => ({ ok: false, code: "unavailable" }),
+    ledgerReader: () => readOnce(fetchInventoryTransactions),
+    reorderReader: () => readOnce(fetchReorderRequests),
+    purchaseOrderReader: () => readOnce(fetchReorderPurchaseOrders),
     clock: () => new Date().toISOString(),
-    runId: () => `run-${(seq += 1)}`,
-    adapterCommit: null, // foundation: no real build identifier yet -> run BLOCKS
+    runId: createRunIdProvider(),
+    adapterCommit: ADAPTER_COMMIT,
     ...overrides,
   };
 }
 
-/** True only when a reader bundle can actually execute live parity (all live readers
- * wired + a real commit id). The foundation default returns false. */
+/** True only when the bundle can execute live parity: a real build identifier is
+ * present (all three live readers are wired above). A missing/"unknown" id -> false,
+ * and the pure core then resolves BLOCKED_INCOMPLETE_INPUT. */
 export function isLiveReaderBundleComplete(readers) {
   const r = readers || {};
-  const commitOk = typeof r.adapterCommit === "string" && r.adapterCommit.length > 0 && r.adapterCommit !== "unknown";
-  return commitOk && [r.ledgerReader, r.reorderReader, r.purchaseOrderReader].every((fn) => typeof fn === "function" && fn !== defaultReaders().ledgerReader);
+  return typeof r.adapterCommit === "string" && r.adapterCommit.length > 0 && r.adapterCommit !== "unknown";
 }

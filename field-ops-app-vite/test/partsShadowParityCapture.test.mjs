@@ -105,6 +105,31 @@ await check("no reader invoked more than once per run (success path)", async () 
   }
 });
 
+await check("a required reader returning code:'incomplete-input' -> BLOCKED_INCOMPLETE_INPUT (never empty data)", async () => {
+  const r = readers({ ledgerReader: fake({ ok: false, code: "incomplete-input" }) });
+  const { status, evidence } = await captureShadowParity(r);
+  assert.equal(status, "BLOCKED_INCOMPLETE_INPUT");
+  assert.equal(evidence.sourceCounts, null); // no fabricated zero-record snapshot / no PASS/FAIL
+});
+await check("a malformed non-array canonical result FAILS CLOSED (not an empty OK)", async () => {
+  const r = readers({ canonicalPartsReader: fake({ ok: true, parts: "not-an-array" }) });
+  const { status } = await captureShadowParity(r);
+  assert.ok(status.startsWith("BLOCKED_"), `expected BLOCKED_*, got ${status}`);
+  assert.notEqual(status, "PASS");
+  assert.notEqual(status, "FAIL_PARITY");
+});
+await check("consecutive runs receive DISTINCT run IDs; run ID is in sanitized evidence", async () => {
+  let n = 0;
+  const provider = () => `run-x-${(n += 1)}`;
+  const r1 = readers({ runId: provider });
+  const r2 = readers({ runId: provider });
+  const a = await captureShadowParity(r1);
+  const b = await captureShadowParity(r2);
+  assert.equal(a.evidence.runId, "run-x-1");
+  assert.equal(b.evidence.runId, "run-x-2");
+  assert.notEqual(a.evidence.runId, b.evidence.runId);
+});
+
 await check("orchestrator source imports no Firebase and performs no writes", () => {
   assert.ok(!/from\s+["'][^"']*firebase/i.test(CAPTURE_SRC));
   assert.ok(!/partMasterQueries/.test(CAPTURE_SRC));

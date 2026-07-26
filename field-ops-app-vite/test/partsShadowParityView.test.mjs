@@ -2,7 +2,7 @@
 // PartsList/PartDetail isolation. Plain Node; offline; no Firebase/network.
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { toDiagnosticsView, isDiagnosticsAuthorized } from "../src/domain/partsShadowParityView.js";
+import { toDiagnosticsView, isDiagnosticsAuthorized, runFailureView } from "../src/domain/partsShadowParityView.js";
 
 const rel = (p) => new URL(p, new URL("../", import.meta.url));
 const read = (p) => fs.readFileSync(rel(p), "utf8");
@@ -82,23 +82,72 @@ check("PartsList and PartDetail do not import the Stage A shadow-parity modules"
   }
 });
 
-// ---- production reader bundle is explicitly classified as FOUNDATION --------
+// ---- production reader bundle wires the existing one-shot live readers + build id --
 // (source scan: the module imports Firebase, so it is not node-importable here)
-check("production reader bundle is explicitly classified as foundation (cannot run live parity)", () => {
+check("production reader bundle wires the existing one-shot readers via readOnce + build id", () => {
   const src = read("src/modules/inventory/partsShadowParityReaders.js");
-  assert.ok(/FOUNDATION/.test(src), "must be labelled FOUNDATION");
-  assert.ok(/adapterCommit:\s*null/.test(src), "foundation adapterCommit must be null (run BLOCKS)");
-  // ledger/reorder/PO live readers are deferred -> report unavailable
+  assert.ok(/fetchInventoryTransactions/.test(src), "ledger: fetchInventoryTransactions");
+  assert.ok(/fetchReorderRequests/.test(src), "reorder: fetchReorderRequests");
+  assert.ok(/fetchReorderPurchaseOrders/.test(src), "PO: fetchReorderPurchaseOrders (live reorder_purchase_orders)");
   for (const reader of ["ledgerReader", "reorderReader", "purchaseOrderReader"]) {
-    const re = new RegExp(reader + ":[^\\n]*unavailable");
-    assert.ok(re.test(src), `${reader} must report unavailable in the foundation bundle`);
+    assert.ok(new RegExp(reader + ":[^\\n]*readOnce").test(src), `${reader} must wrap a fetch via readOnce`);
   }
+  assert.ok(/__APP_COMMIT__/.test(src), "adapterCommit sourced from the injected build id __APP_COMMIT__");
+  assert.ok(!/adapterCommit:\s*null/.test(src), "no longer the foundation null commit");
 });
-check("diagnostics surface is NOT wired into navigation/App in this unit", () => {
-  for (const p of ["src/App.jsx", "src/navigation/navConfig.js"]) {
-    const src = read(p);
-    assert.ok(!/PartsShadowParityDiagnostics|partsShadowParity/i.test(src), `${p} must not wire the diagnostics surface`);
-  }
+check("the new one-shot readers exist and use the LIVE reorder collections (not dormant purchase_orders)", () => {
+  const src = read("src/services/operationsQueries.ts");
+  assert.ok(/reorder_requests/.test(src) && /fetchReorderRequests/.test(src));
+  assert.ok(/reorder_purchase_orders/.test(src) && /fetchReorderPurchaseOrders/.test(src));
+  assert.ok(!/onSnapshot\s*\(/.test(src), "operationsQueries stays one-shot (no onSnapshot call)");
+});
+
+// ---- dedicated gated route; no ordinary Inventory nav exposure -------------
+check("diagnostics has a dedicated operator-only route and NO navigation entry", () => {
+  const app = read("src/App.jsx");
+  assert.ok(/path="\/admin\/diagnostics\/inventory-parts-parity"/.test(app), "exact diagnostics route present");
+  assert.ok(/PartsShadowParityDiagnostics/.test(app), "route renders the diagnostics surface");
+  assert.ok(!/PartsShadowParityDiagnostics|inventory-parts-parity|partsShadowParity/i.test(read("src/navigation/navConfig.js")), "no nav entry");
+});
+check("route authorization is enforced by the component gate (standard No Access, not obscurity)", () => {
+  const comp = read("src/modules/inventory/PartsShadowParityDiagnostics.jsx");
+  assert.ok(/isDiagnosticsAuthorized\(role\)/.test(comp), "component gates on admin/dispatcher role");
+  assert.ok(/available to admin\/dispatcher only/.test(comp), "renders a standard No Access state when unauthorized");
+});
+
+// ---- execution behavior: manual, single active run, ephemeral, no persistence
+check("execution is manual, single-active-run, ephemeral, and never persists/writes", () => {
+  const comp = read("src/modules/inventory/PartsShadowParityDiagnostics.jsx");
+  assert.ok(/onClick=\{run\}/.test(comp) && /disabled=\{running\}/.test(comp), "manual Run button, disabled while running");
+  assert.ok(/if \(running\) return;/.test(comp), "repeat clicks ignored while running (single active run)");
+  assert.ok(!/localStorage|sessionStorage|indexedDB/.test(comp), "no client persistence");
+  assert.ok(!/setDoc|updateDoc|addDoc|deleteDoc|writeBatch|runTransaction|onSnapshot/.test(comp), "no Firestore writes/subscriptions");
+});
+
+// ---- unique run id: one reader bundle per mount (useRef) + provider from bundle ------
+check("reader bundle is created once per mount (useRef) and run id comes from a provider", () => {
+  const comp = read("src/modules/inventory/PartsShadowParityDiagnostics.jsx");
+  assert.ok(/useRef/.test(comp) && /readersRef/.test(comp), "reader bundle stored in a ref (stable across runs/re-renders)");
+  const readersSrc = read("src/modules/inventory/partsShadowParityReaders.js");
+  assert.ok(/createRunIdProvider\(\)/.test(readersSrc), "runId sourced from createRunIdProvider() (persistent sequence)");
+});
+
+// ---- unexpected rejection handling ----------------------------------------
+check("runFailureView is a sanitized blocked/unavailable view (no raw error/records)", () => {
+  const v = runFailureView("run-x-1");
+  assert.equal(v.invalid, false);
+  assert.equal(v.status, "BLOCKED_UNAVAILABLE");
+  assert.equal(v.isBlocked, true);
+  const json = JSON.stringify(v);
+  assert.ok(!/stack|Error:|password|token|"cost"|"price"|currentSummary/.test(json), "no raw error/record leakage");
+});
+check("component catches rejection: leaves running, keeps Run enabled, shows sanitized state", () => {
+  const comp = read("src/modules/inventory/PartsShadowParityDiagnostics.jsx");
+  assert.ok(/\.catch\(/.test(comp), "capture promise has a catch");
+  assert.ok(/runFailureView\(\)/.test(comp), "catch renders the sanitized failure view");
+  const catchBlock = comp.slice(comp.indexOf(".catch("));
+  assert.ok(/phase:\s*"ready"/.test(catchBlock), "catch leaves running (sets phase ready -> button re-enabled, retry possible)");
+  assert.ok(!/phase:\s*"running"/.test(catchBlock), "catch never re-enters running");
 });
 
 console.log(`\n${passed} passed`);

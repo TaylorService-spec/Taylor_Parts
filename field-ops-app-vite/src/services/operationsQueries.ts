@@ -82,3 +82,17 @@ export const fetchTransferOrders = () => listCollection<RawTransferOrder>(TRANSF
 export const fetchSuppliers = () => listCollection<RawSupplier>(SUPPLIERS_COLLECTION);
 export const fetchSupplierCatalog = () => listCollection<RawSupplierCatalogItem>(SUPPLIER_CATALOG_COLLECTION);
 export const fetchPurchaseOrders = () => listCollection<RawPurchaseOrder>(PURCHASE_ORDERS_COLLECTION);
+
+// INV-CONVERGENCE-E Stage A completion -- one-shot read-only lists of the reorder
+// workflow collections for the shadow-parity diagnostic. These two collections ARE
+// client-writable elsewhere (the reorder lifecycle), but this file only READS them
+// (getDocs, no subscription, no filter/index/query-shape change). The PO list is the
+// LIVE `reorder_purchase_orders`, NOT the dormant Epic-5 `purchase_orders` above.
+const REORDER_REQUESTS_COLLECTION = "reorder_requests";
+const REORDER_PURCHASE_ORDERS_COLLECTION = "reorder_purchase_orders";
+
+export interface RawReorderRequest { id: string; partId: string; status: string; }
+export interface RawReorderPurchaseOrder { id: string; partId: string; status: string; }
+
+export const fetchReorderRequests = () => listCollection<RawReorderRequest>(REORDER_REQUESTS_COLLECTION);
+export const fetchReorderPurchaseOrders = () => listCollection<RawReorderPurchaseOrder>(REORDER_PURCHASE_ORDERS_COLLECTION);
