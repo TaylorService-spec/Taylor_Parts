@@ -79,7 +79,7 @@ The standing decision recorded above (items 1–2 of this section -- deliberatel
 Two constraints carry forward unchanged:
 
 - **Spend is still governed per-feature, proportionately.** Blaze availability does not grant blanket spend authorization; each cost-incurring capability remains individually justified, cost-assessed, and Owner-approved (see [`DECISIONS.md`](DECISIONS.md) #47). Governance is applied **proportionately** -- trivial use of already-deployed infrastructure operating within an approved bounded design does not require a separate full cost gate; a new material spending exposure does.
-- **Issue #15 is not closed by this amendment.** Its Cloud-Functions-deployment question is substantially advanced (the Work Order Functions are live) but not fully resolved -- the enterprise-access mutation Functions remain undeployed. See #47 for the partial-resolution scope.
+- **Issue #15 is complete and closed** (Epic 1 Work Order backend deploy, closed COMPLETED 2026-07-16) -- the Work Order Functions are live. The separate enterprise-access Functions deployment remainder is tracked by the **OPEN Issue #226**, not #15. See [`DECISIONS.md`](DECISIONS.md) #47 and #48. *(This bullet was corrected by #48; the original wording mischaracterized #15 as partially open.)*
 
 ## 10. Relationship to Other Governance Documents
 
