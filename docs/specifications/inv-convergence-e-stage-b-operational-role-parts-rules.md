@@ -5,7 +5,8 @@ gate: Rules design (Tier 2) — no deployment
 status: Draft (corrections round 1 applied 2026-07-26) — awaiting Owner and ChatGPT review (docs-only); authorizes no Rules deployment. Permitted set narrowed to PARTS_MANAGER + WAREHOUSE_MANAGER (PARTS_ASSOCIATE DENY); accessVersion narrative corrected; 12-principal matrix.
 date: 2026-07-26
 owner: Claude Code (Inventory)
-baseline: db5fc5bf85cd2c6b562fea50741b7eddc5255821 (origin/main)
+baseline: 36efca0cabbe0d4119437c2a2ea778daa5e07855 (origin/main — current; incorporates Stage D PR #430)
+baseline_history: db5fc5bf85cd2c6b562fea50741b7eddc5255821 (historical — where this Stage B work originally began, pre Stage D merge; the governed `parts` Rules blob is byte-identical between db5fc5b and 36efca0, both Stage A/D being docs-only)
 related_decisions: "DECISIONS.md #40 (ADR-008), #43, #44, #46; Issue #100; Issue #226"
 authorizes: nothing — no Rules/Functions/index deployment, no data writes, no source switch, no PartsList/PartDetail change
 ---
@@ -14,7 +15,7 @@ authorizes: nothing — no Rules/Functions/index deployment, no data writes, no 
 
 Design for broadening **read** access to the canonical `parts` collection from admin/dispatcher-only to explicitly-named, active operational roles — **without changing write authority** — so the operational Parts surfaces can source canonical identity after C1. **This document authorizes no Rules deployment** (Rules edit, emulator verification, and production deploy are each separate, reviewed gates). Hard prerequisite (with Stage D) for C1.
 
-## 1. Current posture (baseline `db5fc5b`)
+## 1. Current posture (baseline `36efca0` — current `origin/main`)
 `firestore.rules`:
 - `match /parts/{partId}` → `allow read: if isAdminOrDispatcher(); allow create, update, delete: if false;`
 - `manufacturers` / `part_aliases` / `part_supplier_items` → `allow read, write: if false;` (fully closed; trusted-writer-only per ADR-008 PR 1.3/1.4).
