@@ -57,7 +57,7 @@ Every capability entry below follows this shape:
 - **Purpose**: Manage the lifecycle of field service work from request to completion.
 - **Business Objects**: Work Order, Account, Location.
 - **Primary Users**: Admin, Dispatcher, Technician (read-scoped).
-- **Current Maturity**: Level 2 — real Work Order lifecycle (11-status state machine), creation wizard UI, detail route; live Cloud-Function-backed creation currently blocked on a standing Firebase Blaze-plan decision — see [`DeploymentModeStrategy.md`](DeploymentModeStrategy.md).
+- **Current Maturity**: Level 2 — real Work Order lifecycle (11-status state machine), creation wizard UI, detail route; live Cloud-Function-backed creation was blocked on the former Firebase Blaze-plan decision, now **retired** — the creation Functions (`createWorkOrder`/`transitionWorkOrder`/`updateWorkOrderExecutionData`) are deployed and production-verified (see [`DECISIONS.md`](DECISIONS.md) #47 and #36) — see [`DeploymentModeStrategy.md`](DeploymentModeStrategy.md) §9.
 - **Target Maturity**: Level 4 — automated scheduling/PM triggers once Service Contracts (future entity) exist.
 - **Key Workflows**: Create Work Order, transition through lifecycle, view Work Order Detail, technician-assignment.
 - **Future Expansion**: Service Contract → PM Schedule → Work Order chain (`BusinessEntityModel.md`'s Version 3+ future entities), Equipment-scoped service history.
