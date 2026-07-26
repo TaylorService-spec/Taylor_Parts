@@ -34,24 +34,37 @@ Stage A is **not complete** until this plan's separate, reviewed implementation 
 
 Replace the foundation's `adapterCommit: null` with a **deterministic build/commit identifier** injected at build time (e.g. a Vite `define` such as `__APP_COMMIT__`, or `import.meta.env.VITE_APP_COMMIT`, sourced from the git SHA in the build config). The pure core already **requires** it: a missing/`"unknown"` value yields `BLOCKED_INCOMPLETE_INPUT`, so an unidentified build cannot PASS. (Touches the build config only; named here, authorized in the implementation gate.)
 
-## 3. Reviewed admin/dispatcher-only diagnostics route
+## 3. Selected diagnostics access path
 
-Expose the merged `PartsShadowParityDiagnostics` surface through **one** of:
-- a **dedicated admin/dispatcher-only diagnostics route** (its own gated path), or
-- an **existing administration diagnostics host** (e.g. under the administration module).
+**Selected (one implementation, not a choice):**
+- **Route:** `/admin/diagnostics/inventory-parts-parity`.
+- **Navigation — Option A (selected):** a **direct operator-only route with NO navigation entry**. Not added to Inventory navigation, and not linked from PartsList/PartDetail. (Option B — a link from an already-restricted Administration diagnostics surface — is **not** selected.)
+- **Authorization:** authenticated session required **and** role is `admin` or `dispatcher`, enforced through the **existing application access / no-access pattern** (`isDiagnosticsAuthorized(role)` at the component, plus the same route-gating the app already uses for restricted surfaces). Unauthorized users get the **standard No Access state** — access is **not** by route obscurity alone. **Firestore Rules remain unchanged** (admin/dispatcher already read the involved collections).
+- **Isolation:** isolated from PartsList/PartDetail (no import either direction); **no change to PartsList/PartDetail behavior**. The route registration (an `App.jsx`/route-registry edit) is the single consumer-surface change, done **only** in the reviewed implementation gate; it adds **no** Inventory nav entry.
 
-Requirements: **admin/dispatcher only**; **zero ordinary Inventory navigation exposure** (not added to the Inventory subnav); isolated from PartsList/PartDetail (no import either direction); **no change to PartsList/PartDetail behavior**. The route wiring (an `App.jsx`/route-registry edit and/or an administration host) is the one consumer-surface change and is done **only** in the reviewed implementation gate.
+## 4. Live execution behavior + sanitized evidence capture
 
-## 4. Live execution + sanitized evidence capture
+Wire the production reader bundle to the §1 readers + §2 build id, run `captureShadowParity` on **manual operator start**, and render the sanitized result (counts/hash/timestamps/`{key,kind}` summaries). Execution rules:
+- the operator **starts the run manually**;
+- **only one run may be active** in the component at a time — repeated clicks while a run is in flight are **ignored/disabled**;
+- the result is **ephemeral in memory**; a **refresh clears** it;
+- **no background execution**, **no automatic persistence**, **no Firestore write**.
 
-Wire the production reader bundle to the §1 readers + §2 build id, run `captureShadowParity` on operator demand, and render the sanitized result (counts/hash/timestamps/`{key,kind}` summaries). Output stays **ephemeral in-memory**; **not persisted to Firestore**. Optional archival remains a **separate reviewed operator step**: a manual sanitized export committed under `docs/audits/inv-convergence-e-stage-a/` (SHA-256 + attestation) — that committed artifact is the Decision #44 evidence.
+Optional archival remains a **separate reviewed operator step**: a manual sanitized export committed under `docs/audits/inv-convergence-e-stage-a/` (SHA-256 + attestation).
+
+### 4.1 Decision #44 evidence qualification
+
+- **Only a live exported result with `status = PASS`** can satisfy the Decision #44 live pre-cutover parity gate.
+- That PASS evidence **must include** the required sanitized fields: the parity/source **counts**, the **static-catalog hash**, the **application/build identifier**, the **run ID**, and the **capture timestamps**.
+- **`FAIL_PARITY` and all `BLOCKED_*` results do NOT satisfy the gate.** They may be exported **only as diagnostic evidence**, never as pre-cutover clearance.
+- Manual export **and** repository commit of the PASS artifact remain a **separate reviewed operator step**; the committed PASS artifact is the Decision #44 evidence.
 
 ## 5. Acceptance for the implementation gate
 
-- All three readers are one-shot, invoked at most once per run, with **no active subscriptions** during comparison.
-- A live run over production `parts` + the three snapshots yields `PASS` reproducing the expected totals (200 source / 190 CANONICAL_MATCH / 10 STATIC_ONLY_EXCLUDED / 0 row-missing / 0 field / 0 availability / 0 workflow divergence) — this `PASS` is the Decision #44 live pre-cutover parity.
-- A denied/unavailable canonical read → `BLOCKED_*`; a missing snapshot or build id → `BLOCKED_INCOMPLETE_INPUT`.
-- Diagnostics reachable only by admin/dispatcher via the reviewed route; not in ordinary Inventory nav; PartsList/PartDetail unchanged.
+- All three readers are one-shot, invoked at most once per run, with **no active subscriptions** during comparison; **only one run active at a time** (repeated clicks ignored/disabled).
+- A live run over production `parts` + the three snapshots yields `PASS` reproducing the expected totals (200 source / 190 CANONICAL_MATCH / 10 STATIC_ONLY_EXCLUDED / 0 row-missing / 0 field / 0 availability / 0 workflow divergence) — and **only** an exported `PASS` (with counts, catalog hash, build id, run ID, timestamps) is the Decision #44 live pre-cutover parity (§4.1).
+- A denied/unavailable canonical read → `BLOCKED_*`; a missing snapshot or build id → `BLOCKED_INCOMPLETE_INPUT`. `FAIL_PARITY`/`BLOCKED_*` never satisfy the gate.
+- Diagnostics reachable only by admin/dispatcher via `/admin/diagnostics/inventory-parts-parity` (Option A, no nav entry, standard No Access state for others); not in ordinary Inventory nav; PartsList/PartDetail unchanged.
 
 ## 6. Non-authorizations and dependencies
 
