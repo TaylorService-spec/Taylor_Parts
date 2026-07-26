@@ -1,0 +1,12 @@
+# INV-CONVERGENCE-B evidence hashes (sha256)
+# --- inputs (read-only sources, committed on origin/main @ d229af4) ---
+3a68e075746ec80408225db2061371277a00785ab05240ef6994cbd87dadad8d  INPUT docs/audits/inv1-phase1/create-execution-20260724/postwrite-analyzer/row-results.json
+8afe25ea588010488e396bfcbce16b22348551963d0c7546b99929babb0a32c1  INPUT docs/audits/inv1-phase1/create-execution-20260724/execution/per-row-results.json
+088a7d8fa4bd6eecc0098d22c97335e68140029b7020419a38557d810d6e998d  INPUT docs/audits/inv1-phase1/production-dryrun-20260723-01/row-results.json
+4050c214a89362ce59698f3348f95ef80e7a46023dd724ea93a854c2bfb54af1  INPUT field-ops-app-vite/src/data/partsCatalog.ts
+# --- generated outputs (docs/audits/inv-convergence-b/) ---
+36b41cb162bb0e6888a1bcee09a2f82bd52038e23b9d208876407e4f2c85c99b  evidence-review.md
+6fae7450f45c25d70815d356b4186c9dba1e48fa3f0ae4e7ab598ab379392b06  production-parts-export.csv
+c2007d1b8f236e50334870f029971993ce862d97423759a789c589db018c4adf  static-catalog-population.csv
+b3aa53616d330a4665b63f98fe9546825795998eb37c9e722e6b02d0fe5a1aec  canonical-operational-join.csv
+133773032ff8bbdc06b5dfc7c4e1cd67daaa74ed97de1b33cba0d5edbd0b4cfc  excluded-ten-part-manifest.csv

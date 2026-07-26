@@ -1,0 +1,201 @@
+sku,name,category,unit,cost,price,reorderThreshold,warehouseQty
+TST-1001,Hex Coupler,Drive Components,ea,17.89,38.02,1,2
+TST-1002,Tune-Up Kit — Deluxe - 3 Ton,Maintenance Kits,kit,59.27,119.29,1,6
+TST-1003,Freezer Cylinder - Compact,Refrigeration Assembly,ea,258.25,751.01,4,20
+TST-1004,Hopper Agitator - Single Flavor,Mix System,ea,41.38,88.69,1,4
+TST-1005,Syrup Pump - Floor Model,Mix System,ea,42.02,88.62,2,2
+TST-1006,Auger Shaft - Gen II,Drive Components,ea,26.16,71.61,3,8
+TST-1007,Door Gasket - HD,Seals & Gaskets,ea,7.17,18.72,2,2
+TST-1008,Sanitizer Solution 32oz - Countertop,Cleaning Supplies,bottle,11.55,22.78,2,6
+TST-1009,Beater Assembly,Drive Components,ea,86.44,252.25,1,6
+TST-1010,Drive Belt - Gen II,Drive Components,ea,8.03,18.39,2,4
+TST-1011,Mix Pump Tube - Floor Model,Mix System,ea,5.63,10.93,4,2
+TST-1012,Brush Kit — Large - Twin Twist,Cleaning Supplies,kit,20.33,38.68,2,12
+TST-1013,Thermistor Sensor - Compact,Electrical,ea,7.31,14.39,1,6
+TST-1014,Door Gasket - Floor Model,Seals & Gaskets,ea,7.88,16.02,3,10
+TST-1015,Condenser Fan Motor - HD,Compressors,ea,45.04,125.61,2,4
+TST-1016,Expansion Valve - Twin Twist,Refrigeration Assembly,ea,21.01,48.56,2,12
+TST-1017,Brush Kit — Small - Gen II,Cleaning Supplies,kit,10.39,23.07,1,20
+TST-1018,Consistency Control Knob - 3 Ton,Controls,ea,9.35,21.34,1,4
+TST-1019,Syrup Pump - Pro Series,Mix System,ea,31.98,70.4,2,20
+TST-1020,Expansion Valve - Compact,Refrigeration Assembly,ea,41.06,82.34,4,2
+TST-1021,Tune-Up Kit — Deluxe - Countertop,Maintenance Kits,kit,61.81,132.64,2,12
+TST-1022,Beater Motor - HD,Motors,ea,78.93,240.78,4,8
+TST-1023,Draw Handle - Twin Twist,Controls,ea,13.48,25.15,4,8
+TST-1024,Draw Handle - Pro Series,Controls,ea,9.52,18.98,1,20
+TST-1025,Tune-Up Kit — Standard,Maintenance Kits,kit,26.6,58.96,1,10
+TST-1026,Relay Switch - Single Flavor,Electrical,ea,6.12,15.51,1,2
+TST-1027,Tune-Up Kit — Deluxe - Twin Twist,Maintenance Kits,kit,38.29,84.63,3,4
+TST-1028,Brush Kit — Large - Gen II,Cleaning Supplies,kit,21.62,47.29,4,6
+TST-1029,Relay Switch - Gen II,Electrical,ea,16.83,39.87,2,20
+TST-1030,Drip Tray - 3 Ton,Cabinet Parts,ea,9.59,17.7,1,20
+TST-1031,Freezer Cylinder - Pro Series,Refrigeration Assembly,ea,220.07,560.11,4,0
+TST-1032,Freezer Cylinder - 3 Ton,Refrigeration Assembly,ea,283.48,902.71,1,20
+TST-1033,Evaporator Barrel - Countertop,Refrigeration Assembly,ea,229.97,607.45,1,15
+TST-1034,Evaporator Barrel - HD,Refrigeration Assembly,ea,249.36,654.55,1,12
+TST-1035,Air Valve Assembly - Gen II,Pneumatics,ea,16.42,41.44,1,2
+TST-1036,O-Ring Kit - Gen II,Seals & Gaskets,kit,7.59,17.65,1,6
+TST-1037,Compressor 1.5 HP - Single Flavor,Compressors,ea,227.12,559.43,1,8
+TST-1038,Splash Panel - Single Flavor,Cabinet Parts,ea,22.77,46.23,3,2
+TST-1039,O-Ring Kit - Compact,Seals & Gaskets,kit,7.84,19.38,1,4
+TST-1040,Hopper Agitator - HD,Mix System,ea,36.1,91.1,1,4
+TST-1041,Mix Pump Assembly,Mix System,ea,134.4,317.36,2,8
+TST-1042,Syrup Pump - Compact,Mix System,ea,53.55,121.26,1,8
+TST-1043,Condenser Fan Motor,Compressors,ea,56.25,142.13,4,10
+TST-1044,O-Ring Kit,Seals & Gaskets,kit,7.28,15.35,3,4
+TST-1045,Auger Shaft - Twin Twist,Drive Components,ea,30.24,68.22,1,12
+TST-1046,Hex Coupler - Pro Series,Drive Components,ea,10.57,24.65,3,2
+TST-1047,Hopper Agitator - Pro Series,Mix System,ea,45,97.39,2,6
+TST-1048,Power Supply Board - Single Flavor,Electrical,ea,39.35,81.25,4,8
+TST-1049,Splash Panel - Floor Model,Cabinet Parts,ea,19.46,47.87,1,15
+TST-1050,Cleaning Cartridge - Pro Series,Cleaning Supplies,ea,12.98,21.95,1,20
+TST-1051,Air Valve Assembly - 3 Ton,Pneumatics,ea,27.42,60.17,1,15
+TST-1052,Cleaning Cartridge - Compact,Cleaning Supplies,ea,5.06,10.09,2,2
+TST-1053,Drive Motor 1/4 HP - Countertop,Motors,ea,73.67,189.23,3,4
+TST-1054,Thermistor Sensor - Countertop,Electrical,ea,10.09,22.1,1,8
+TST-1055,Draw Handle - HD,Controls,ea,8.65,20.02,1,2
+TST-1056,Syrup Pump - Countertop,Mix System,ea,31.62,68.75,1,8
+TST-1057,Sanitizer Solution 32oz - Gen II,Cleaning Supplies,bottle,11.25,19.29,4,4
+TST-1058,Tune-Up Kit — Deluxe,Maintenance Kits,kit,60.78,137.59,1,12
+TST-1059,Drive Motor 1/4 HP,Motors,ea,63.47,204.66,1,10
+TST-1060,Condenser Fan Motor - Single Flavor,Compressors,ea,62.2,150.02,3,12
+TST-1061,Cleaning Cartridge - Twin Twist,Cleaning Supplies,ea,12.07,21.11,1,4
+TST-1062,Hopper Agitator,Mix System,ea,26.63,68.45,2,6
+TST-1063,Thermistor Sensor - Twin Twist,Electrical,ea,13.8,25.75,1,15
+TST-1064,Freezer Cylinder - Single Flavor,Refrigeration Assembly,ea,303.81,858.29,2,6
+TST-1065,Freezer Cylinder,Refrigeration Assembly,ea,280.93,780.02,2,2
+TST-1066,Thermistor Sensor - Floor Model,Electrical,ea,11.37,22.83,3,10
+TST-1067,Blade Assembly Kit - 3 Ton,Wear Parts,kit,35.28,83.24,3,8
+TST-1068,Door Gasket - 3 Ton,Seals & Gaskets,ea,9.14,19.93,2,12
+TST-1069,Brush Kit — Large - Compact,Cleaning Supplies,kit,13.94,30.31,1,8
+TST-1070,Door Gasket - Gen II,Seals & Gaskets,ea,3.12,8.03,3,6
+TST-1071,Mix Pump Tube - Gen II,Mix System,ea,4.16,8.98,2,10
+TST-1072,Hex Coupler - Countertop,Drive Components,ea,13.31,31.69,2,12
+TST-1073,Control Board - Compact,Electrical,ea,70.88,179.28,2,4
+TST-1074,Sanitizer Solution 32oz,Cleaning Supplies,bottle,9.07,15.95,3,10
+TST-1075,Splash Panel - HD,Cabinet Parts,ea,15.92,33.26,2,4
+TST-1076,Auger Shaft - Countertop,Drive Components,ea,47.12,121.85,2,2
+TST-1077,Drive Motor 1/2 HP,Motors,ea,80.65,267.39,3,2
+TST-1078,Splash Panel - Gen II,Cabinet Parts,ea,20.61,46.58,4,12
+TST-1079,Consistency Control Knob - Gen II,Controls,ea,6.35,13.66,1,2
+TST-1080,Syrup Pump - Single Flavor,Mix System,ea,30.78,79.95,3,15
+TST-1081,Evaporator Barrel - 3 Ton,Refrigeration Assembly,ea,171.19,535.2,4,20
+TST-1082,Sanitizer Solution 32oz - Pro Series,Cleaning Supplies,bottle,7.85,16.12,2,20
+TST-1083,Drip Tray - Twin Twist,Cabinet Parts,ea,14.21,29.1,2,6
+TST-1084,Consistency Control Knob - Single Flavor,Controls,ea,7.62,14.12,2,6
+TST-1085,Power Supply Board - Compact,Electrical,ea,32.02,66.45,2,4
+TST-1086,Condenser Fan Motor - 3 Ton,Compressors,ea,53.09,127.34,2,12
+TST-1087,O-Ring Kit - Single Flavor,Seals & Gaskets,kit,9.5,19.33,3,0
+TST-1088,Lubricant Tube 4oz - Gen II,Cleaning Supplies,tube,5.98,11.82,2,12
+TST-1089,Hopper Agitator - Compact,Mix System,ea,48.25,111.06,3,6
+TST-1090,Thermistor Sensor - Gen II,Electrical,ea,9.84,19.71,4,12
+TST-1091,Drive Motor 1/4 HP - Pro Series,Motors,ea,68.89,222.73,3,0
+TST-1092,Drive Motor 1/4 HP - HD,Motors,ea,72.75,194.54,2,6
+TST-1093,Wiring Harness - Gen II,Electrical,ea,12.68,29.74,2,8
+TST-1094,Auger Shaft - HD,Drive Components,ea,24.69,62.33,2,6
+TST-1095,Blade Assembly Kit - Single Flavor,Wear Parts,kit,20.59,45.96,1,6
+TST-1096,Expansion Valve - Floor Model,Refrigeration Assembly,ea,18.89,44.23,4,2
+TST-1097,Beater Motor - Countertop,Motors,ea,105.69,265.94,2,12
+TST-1098,Hopper Lid - Single Flavor,Mix System,ea,8.64,20.05,4,6
+TST-1099,Drive Belt - Countertop,Drive Components,ea,13.89,31.56,1,0
+TST-1100,Air Valve Assembly - Compact,Pneumatics,ea,19.2,42.14,3,10
+TST-1101,Scraper Blade - Gen II,Wear Parts,ea,5.33,12.22,2,15
+TST-1102,Drive Motor 1/2 HP - Gen II,Motors,ea,100.24,288.18,4,8
+TST-1103,Front Panel Assembly - HD,Cabinet Parts,ea,31.3,73.31,2,10
+TST-1104,Thermistor Sensor - HD,Electrical,ea,7.29,14.88,3,12
+TST-1105,Wiring Harness,Electrical,ea,18.94,37.3,2,6
+TST-1106,Air Valve Assembly - Countertop,Pneumatics,ea,15.23,38.61,4,8
+TST-1107,Tune-Up Kit — Standard - Single Flavor,Maintenance Kits,kit,16.44,38.42,2,20
+TST-1108,Consistency Control Knob - HD,Controls,ea,11.77,21.89,1,12
+TST-1109,Brush Kit — Small - Floor Model,Cleaning Supplies,kit,12.24,24.63,2,20
+TST-1110,Wiring Harness - Floor Model,Electrical,ea,22.96,44.6,2,6
+TST-1111,Hex Coupler - Single Flavor,Drive Components,ea,10.9,26.52,4,4
+TST-1112,Front Panel Assembly - Countertop,Cabinet Parts,ea,37.06,92.1,3,8
+TST-1113,Drive Belt - Single Flavor,Drive Components,ea,8.73,18.81,2,0
+TST-1114,Thermistor Sensor,Electrical,ea,14.1,29.49,4,4
+TST-1115,Scraper Blade - Pro Series,Wear Parts,ea,2.65,6.84,2,4
+TST-1116,O-Ring Kit - Countertop,Seals & Gaskets,kit,10.07,21.06,1,12
+TST-1117,Lubricant Tube 4oz,Cleaning Supplies,tube,4.78,9.21,2,2
+TST-1118,Brush Kit — Large - Pro Series,Cleaning Supplies,kit,23.11,43.81,3,12
+TST-1119,Drip Tray - HD,Cabinet Parts,ea,8.92,18.84,2,8
+TST-1120,Lubricant Tube 4oz - Pro Series,Cleaning Supplies,tube,4.27,8.48,1,6
+TST-1121,Condenser Fan Motor - Countertop,Compressors,ea,64.9,149.44,1,20
+TST-1122,Beater Assembly - Twin Twist,Drive Components,ea,45.2,120.54,3,15
+TST-1123,Control Board,Electrical,ea,72.78,203.24,4,15
+TST-1124,Beater Assembly - Single Flavor,Drive Components,ea,104,304.78,4,6
+TST-1125,Syrup Pump - 3 Ton,Mix System,ea,47,111.29,2,4
+TST-1126,Control Board - HD,Electrical,ea,64.38,178.6,4,12
+TST-1127,Tune-Up Kit — Deluxe - HD,Maintenance Kits,kit,47.47,107.83,2,10
+TST-1128,Brush Kit — Large - Countertop,Cleaning Supplies,kit,15.03,28.52,4,0
+TST-1129,Thermistor Sensor - Pro Series,Electrical,ea,4.88,10.8,2,20
+TST-1130,Drip Tray - Countertop,Cabinet Parts,ea,7.66,16.17,4,15
+TST-1131,Drive Belt - Twin Twist,Drive Components,ea,8.44,19.59,2,12
+TST-1132,Splash Panel - 3 Ton,Cabinet Parts,ea,13.77,29.44,2,20
+TST-1133,Scraper Blade - Compact,Wear Parts,ea,3.82,8.62,3,10
+TST-1134,Cleaning Cartridge - HD,Cleaning Supplies,ea,8.9,17.5,1,8
+TST-1135,Sanitizer Solution 32oz - Twin Twist,Cleaning Supplies,bottle,12.85,24.06,4,15
+TST-1136,Brush Kit — Large - Single Flavor,Cleaning Supplies,kit,21.9,42.2,1,20
+TST-1137,Hopper Agitator - 3 Ton,Mix System,ea,28.67,71.85,1,15
+TST-1138,Hex Coupler - Twin Twist,Drive Components,ea,13.02,31.46,3,8
+TST-1139,Front Panel Assembly - Single Flavor,Cabinet Parts,ea,36.26,74.69,1,20
+TST-1140,Drive Motor 1/4 HP - 3 Ton,Motors,ea,64.87,202.1,2,10
+TST-1141,Draw Handle - Countertop,Controls,ea,16.12,31.41,2,15
+TST-1142,Drive Motor 1/2 HP - HD,Motors,ea,126.52,346.17,3,20
+TST-1143,Mix Pump Assembly - HD,Mix System,ea,111.78,307.91,4,6
+TST-1144,Freezer Cylinder - Gen II,Refrigeration Assembly,ea,153.59,471.82,4,12
+TST-1145,Mix Pump Assembly - Twin Twist,Mix System,ea,102.27,229.16,3,10
+TST-1146,Drive Belt - HD,Drive Components,ea,5.84,14.29,1,4
+TST-1147,Hopper Agitator - Twin Twist,Mix System,ea,24.62,60.61,2,10
+TST-1148,Cleaning Cartridge - Gen II,Cleaning Supplies,ea,8.86,17.8,4,20
+TST-1149,Mix Pump Assembly - Floor Model,Mix System,ea,91.33,252.82,2,20
+TST-1150,Door Gasket - Pro Series,Seals & Gaskets,ea,3.98,9.37,2,6
+TST-1151,Drive Belt - 3 Ton,Drive Components,ea,9.56,22.2,1,0
+TST-1152,Power Supply Board,Electrical,ea,37.98,83.47,1,6
+TST-1153,Tune-Up Kit — Standard - Gen II,Maintenance Kits,kit,24.25,57.64,1,4
+TST-1154,Auger Shaft - Pro Series,Drive Components,ea,63.83,164.5,1,15
+TST-1155,Brush Kit — Small - Twin Twist,Cleaning Supplies,kit,10.33,21.25,2,8
+TST-1156,Scraper Blade - HD,Wear Parts,ea,4.71,13.01,1,2
+TST-1157,Drip Tray - Floor Model,Cabinet Parts,ea,17.75,34.72,2,8
+TST-1158,Splash Panel - Countertop,Cabinet Parts,ea,11.99,25.98,2,2
+TST-1159,Evaporator Barrel - Gen II,Refrigeration Assembly,ea,196.76,574.45,4,8
+TST-1160,Blade Assembly Kit - Gen II,Wear Parts,kit,19.71,50.1,4,0
+TST-1161,Brush Kit — Large - HD,Cleaning Supplies,kit,20.53,44.66,1,10
+TST-1162,Cleaning Cartridge - Countertop,Cleaning Supplies,ea,9.31,18.13,4,4
+TST-1163,Drive Belt,Drive Components,ea,8.71,19.11,3,10
+TST-1164,Control Board - Floor Model,Electrical,ea,137.51,321.92,1,20
+TST-1165,Mix Pump Tube - Compact,Mix System,ea,7.73,15.03,1,8
+TST-1166,Wiring Harness - 3 Ton,Electrical,ea,19.66,36.39,1,12
+TST-1167,Sanitizer Solution 32oz - Floor Model,Cleaning Supplies,bottle,7.12,13.17,2,20
+TST-1168,Hex Coupler - HD,Drive Components,ea,11.46,27.95,2,12
+TST-1169,Mix Pump Tube - 3 Ton,Mix System,ea,8.53,17.45,3,20
+TST-1170,Power Supply Board - Pro Series,Electrical,ea,38.27,77.71,2,8
+TST-1171,Door Gasket - Countertop,Seals & Gaskets,ea,13.57,27.92,1,20
+TST-1172,Drive Motor 1/4 HP - Gen II,Motors,ea,72.01,216.29,4,20
+TST-1173,Mix Pump Tube - Single Flavor,Mix System,ea,6.06,14.21,2,2
+TST-1174,Air Valve Assembly,Pneumatics,ea,19.53,40.93,1,15
+TST-1175,Auger Shaft - Single Flavor,Drive Components,ea,53.47,137,1,0
+TST-1176,Wiring Harness - Single Flavor,Electrical,ea,24.45,54.61,1,2
+TST-1177,Sanitizer Solution 32oz - Single Flavor,Cleaning Supplies,bottle,9.38,19.62,1,10
+TST-1178,Drive Motor 1/2 HP - Pro Series,Motors,ea,81.82,260.45,1,4
+TST-1179,Compressor 1 HP - 3 Ton,Compressors,ea,166.55,398.99,1,10
+TST-1180,Evaporator Barrel - Pro Series,Refrigeration Assembly,ea,187.49,490.08,1,4
+TST-1181,Hex Coupler - 3 Ton,Drive Components,ea,12.55,30.86,3,2
+TST-1182,Drip Tray - Compact,Cabinet Parts,ea,8.04,17.1,4,20
+TST-1183,Relay Switch - HD,Electrical,ea,15.25,30.73,2,12
+TST-1184,Beater Assembly - 3 Ton,Drive Components,ea,74.72,184.42,1,8
+TST-1185,Mix Pump Assembly - Pro Series,Mix System,ea,95.29,235.5,3,12
+TST-1186,Syrup Pump - HD,Mix System,ea,63.27,140.49,2,12
+TST-1187,Power Supply Board - Gen II,Electrical,ea,39.9,85,1,15
+TST-1188,Auger Shaft - 3 Ton,Drive Components,ea,42,111.83,2,4
+TST-1189,Brush Kit — Small - Compact,Cleaning Supplies,kit,12.49,25.86,2,10
+TST-1190,Syrup Pump,Mix System,ea,63.04,147.31,2,2
+TST-1191,Lubricant Tube 4oz - Compact,Cleaning Supplies,tube,5.18,9.7,1,2
+TST-1192,Blade Assembly Kit - Pro Series,Wear Parts,kit,31.6,86.1,2,0
+TST-1193,Compressor 1 HP - Countertop,Compressors,ea,158.17,406.49,2,10
+TST-1194,Scraper Blade - Twin Twist,Wear Parts,ea,4.78,12.7,2,2
+TST-1195,Auger Shaft - Compact,Drive Components,ea,35.02,85.82,2,4
+TST-1196,Mix Pump Tube - Countertop,Mix System,ea,8.13,18.1,3,2
+TST-1197,O-Ring Kit - Twin Twist,Seals & Gaskets,kit,3.9,8.52,4,2
+TST-1198,Hopper Agitator - Countertop,Mix System,ea,31.21,71.17,2,12
+TST-1199,Brush Kit — Small - HD,Cleaning Supplies,kit,13.18,25.38,1,12
+TST-1200,Brush Kit — Large,Cleaning Supplies,kit,14.63,28.15,1,4
