@@ -2,7 +2,7 @@
 artifact_type: assessment
 unit: INV-CONVERGENCE-E Stage B — production persona readiness (PARTS_MANAGER, WAREHOUSE_MANAGER)
 gate: read-only persona readiness assessment — no identity mutation, no deployment
-status: Draft — Path-A candidates identified; live readiness PENDING operator read-only re-verification
+status: Approved — both roles READY VIA EXISTING GOVERNED PERSONA — PATH A SATISFIED (operator read-only re-verify dual PASS, 2026-07-26); authorizes no deployment
 date: 2026-07-26
 baseline: f38703dca4cc6e07c782b098f2677015d68ce648 (origin/main — after PR #434 deploy handoff merge)
 related: docs/operations/inv-convergence-e-stage-b-rules-deploy-handoff.md (§3.1 Path A / Path B); docs/DECISIONS.md #11
@@ -40,12 +40,29 @@ Supporting facts:
 
 ## 3. Classification
 
-An **unverified production identity is not called READY.** On the repo-grounded record, both branches are **PATH A CANDIDATE IDENTIFIED — LIVE READINESS PENDING**; each only advances to **READY VIA EXISTING GOVERNED PERSONA — PATH A SATISFIED** after the operator's read-only re-verification (§4) returns PASS.
+An unverified production identity is not called READY. Both Path-A candidates were identified from the repo-grounded record (DECISIONS #11) and then **confirmed live** by the operator's read-only re-verification (§4, dual PASS 2026-07-26). Both branches are therefore:
 
-- **PARTS_MANAGER → PATH A CANDIDATE IDENTIFIED — LIVE READINESS PENDING.** Candidate of record: `emp-rudy-parts-manager`, `operationalRoles:[PARTS_MANAGER]`, ACTIVE, reciprocally linked (DECISIONS #11). No new identity is required; **no mutation** is needed to use it. Live state pending §4.
-- **WAREHOUSE_MANAGER → PATH A CANDIDATE IDENTIFIED — LIVE READINESS PENDING.** Candidate of record: `emp-rudy-warehouse-manager`, `operationalRoles:[WAREHOUSE_MANAGER]`, ACTIVE, reciprocally linked (DECISIONS #11). Same — no new identity, no mutation. Live state pending §4.
+- **PARTS_MANAGER → READY VIA EXISTING GOVERNED PERSONA — PATH A SATISFIED.** `emp-rudy-parts-manager`, `operationalRoles:[PARTS_MANAGER]`, ACTIVE, reciprocally linked; live-verified. No new identity; no mutation.
+- **WAREHOUSE_MANAGER → READY VIA EXISTING GOVERNED PERSONA — PATH A SATISFIED.** `emp-rudy-warehouse-manager`, `operationalRoles:[WAREHOUSE_MANAGER]`, ACTIVE, reciprocally linked; live-verified. No new identity; no mutation.
 
 Each candidate is **distinct** and carries **only its own** operational role; PARTS_MANAGER and WAREHOUSE_MANAGER are exercised independently (neither substitutes for the other), exactly as the deploy matrix requires.
+
+### 3.1 Live re-verification result (operator, read-only, 2026-07-26)
+
+Operator ran `onboardEmployeeVerify.js --projectId taylor-parts --confirmProduction taylor-parts` (read-only; no mutation) once per candidate. Sanitized results — **dual PASS**:
+
+| Check | PARTS_MANAGER | WAREHOUSE_MANAGER |
+|---|---|---|
+| Auth identity resolves | PASS | PASS |
+| `users` document exists | PASS | PASS |
+| `employee` document exists | PASS | PASS |
+| reciprocal linkage valid | PASS | PASS |
+| `employmentStatus == ACTIVE` | PASS | PASS |
+| required operational role present | PASS | PASS |
+| verifier completed without mutation | PASS | PASS |
+| unexpected additional governed-role conflict | NOT EVALUATED | NOT EVALUATED |
+
+("NOT EVALUATED" is correct and expected — the verifier does not inspect roleAssignments/claims/accessVersion; §4.2.) No UID/email/token/raw record was recorded. **No fixture gate is required.**
 
 ## 4. Operator read-only live re-verification (OPERATOR action — not performed here)
 
@@ -109,11 +126,12 @@ If (and only if) re-verification shows a persona no longer satisfies the state, 
 
 ## 6. Confirmations
 
-- **No identity mutation occurred.** This assessment is a read-only, repository-only determination; no production user/employee/role/claim/link/status/accessVersion was created, read live, or changed.
-- **No production credentials were used** (none are held); no live production inspection was performed.
-- **Deployment remains BLOCKED** unless **both** PARTS_MANAGER and WAREHOUSE_MANAGER are READY (Path A confirmed by operator read-only re-verification, or Path B fixture gate completed) **and** each is exercised **directly** in production returning ALLOW during the deploy verification matrix.
+- **No identity mutation occurred.** This assessment is a read-only determination; the Inventory session made no production writes. The operator's live re-verification (§3.1) was **read-only** — no production user/employee/role/claim/link/status/accessVersion was created or changed.
+- **The Inventory session used no production credentials and performed no live production reads** (none are held); the live re-verification was an operator/Cloud-Shell action, reported back sanitized.
+- **Path A is SATISFIED for both roles** (dual PASS, §3.1); no fixture gate is required.
+- **Deployment remains BLOCKED.** Path-A readiness is necessary but not sufficient: the Stage B Rules deployment still requires a **separate explicit deployment authorization**, and the post-deploy verification matrix must still **exercise both PARTS_MANAGER and WAREHOUSE_MANAGER directly in production and return ALLOW** (each independently; neither substitutes for the other).
 - Decisions #43–#46 unchanged.
 
-## 7. Recommended next step (for the Owner — a hard stop, not performed here)
+## 7. Next step (a hard stop — separate gate)
 
-Operator runs the **read-only** re-verification of §4 for the two Employee IDs and reports sanitized PASS/FAIL. On dual PASS, Path A is satisfied and the deploy gate's persona precondition for #5/#6 is met (deployment still separately authorized). On any FAIL, open the Path B fixture gate for the affected role.
+Persona readiness is resolved (Path A satisfied for both). The next gate is the **separately-authorized Stage B Rules deployment** (`docs/operations/inv-convergence-e-stage-b-rules-deploy-handoff.md`), which — after deployment — exercises both roles directly in production per its verification matrix. This assessment authorizes **no** deployment, fixture creation, identity mutation, or C1/C2.
