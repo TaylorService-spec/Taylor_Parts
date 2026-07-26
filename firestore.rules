@@ -1551,8 +1551,28 @@ service cloud.firestore {
     // permission/access matrix of Issue #100; these seeded admin/
     // dispatcher role checks are retired only after permission-model
     // parity and production verification.
+    //
+    // INV-CONVERGENCE-E Stage B (PR-B1, docs/specifications/
+    // inv-convergence-e-stage-b-operational-role-parts-rules.md; design
+    // approved + merged PR #431) -- canonical `parts` READ broadens from
+    // admin/dispatcher-only to also active, reciprocally-linked
+    // PARTS_MANAGER and WAREHOUSE_MANAGER, reusing the existing
+    // isActiveOperationalRole() helper and mirroring the
+    // inventory_transactions precedent verbatim (two operational
+    // branches). PARTS_ASSOCIATE is deliberately NOT granted (DQ-B1;
+    // any future grant is a separate governed decision). accessVersion
+    // is NOT consulted -- authorization is evaluated live against the
+    // reciprocally-linked Employee document each read (a stale
+    // accessVersion with an otherwise-valid live ACTIVE record still
+    // reads, and is NOT fail-closed). Writes stay trusted-writer-only
+    // (create/update/delete: if false); manufacturers/part_aliases/
+    // part_supplier_items stay fully closed. This repository change is
+    // NOT deployed here -- production Rules deployment is a separate,
+    // separately-authorized Owner + ChatGPT gate.
     match /parts/{partId} {
-      allow read: if isAdminOrDispatcher();
+      allow read: if isAdminOrDispatcher()
+        || isActiveOperationalRole("PARTS_MANAGER")
+        || isActiveOperationalRole("WAREHOUSE_MANAGER");
       allow create, update, delete: if false;
     }
     match /manufacturers/{manufacturerId} {
