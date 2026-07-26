@@ -29,7 +29,7 @@ The repository is the sole source of truth. No decision exists until it is writt
 
 ### Tier 2 — Escalate (Claude proposes, Rudy decides)
 
-- Anything touching a **standing decision** — e.g., the no-Blaze-plan decision. Claude never works around a standing decision, including "temporary" workarounds (the rejected Spark-compatible rewrite stays rejected).
+- Anything touching a **standing decision** — e.g., the no-Blaze-plan decision (that specific decision was later superseded — see [`DECISIONS.md`](DECISIONS.md) #47; the principle here still governs any *current* standing decision). Claude never works around a standing decision, including "temporary" workarounds (the rejected Spark-compatible rewrite stays rejected — superseding the Blaze-plan decision did **not** revive it).
 - Anything on the roadmap's "explicitly out of scope until named otherwise" list.
 - Changing the *meaning* of a governance document (Constitution, Capability Model, Deployment Mode Strategy, Operating Model, Integration Architecture). Editorial corrections are Tier 1.
 - Opening or closing a release version; declaring Version 2 complete.
@@ -66,8 +66,8 @@ Every Tier 1 decision that a future session would need to know is recorded in `d
 Version 2 (Platform Experience) is complete when all of the following are live-verified in production:
 
 1. Every Version-2 capability in `PlatformCapabilityModel.md`'s release plan reaches its target maturity level.
-2. Inventory Management: the Reorder Request lifecycle closes end-to-end (request → review/approval → procurement handoff → receiving), within Spark-plan constraints.
-3. Work Orders: everything achievable without Cloud Functions is done; the Blaze-blocked remainder is documented as the explicit Version 3 entry condition, not silently absorbed.
+2. Inventory Management: the Reorder Request lifecycle closes end-to-end (request → review/approval → procurement handoff → receiving). *(The original "within Spark-plan constraints" qualifier is superseded — see [`DECISIONS.md`](DECISIONS.md) #47; Blaze is active.)*
+3. Work Orders: everything achievable without Cloud Functions is done. *(Reconciled 2026-07-26, [`DECISIONS.md`](DECISIONS.md) #47: the former "Blaze-blocked remainder" is no longer Blaze-blocked — the Work Order Functions are deployed and verified (#36). Any remaining Work Order gap is a deploy/enable/wiring item, and its V2-vs-V3 placement is a scoping call, not a billing constraint.)*
 4. Notification Panel has graduated to "My Work" (second workflow notification type exists) or the graduation is explicitly deferred to V3 by a logged decision.
 5. `FUTURE_ARCHITECTURE_BACKLOG.md` contains no item marked "must fix before V2 close."
 6. All docs pass the same audit standard as the Governance Foundation audit: no stale sections, all cross-references resolve.

@@ -72,6 +72,15 @@ This strategy was reached after two rejected alternatives, worth recording so th
 
 Neither alternative is revisited by this document. This document does not resolve the underlying Blaze-plan/Cloud-Functions-deployment question (tracked in issue #15) — it establishes deployment mode as a durable concept so that question, and others like it, have a stable place to be answered rather than being reframed from scratch each time.
 
+### Amendment (2026-07-26): the no-Blaze standing decision is superseded
+
+The standing decision recorded above (items 1–2 of this section -- deliberately not adopting the Firebase Blaze billing plan) is **SUPERSEDED as of 2026-07-26**. Production is confirmed on Blaze: [`DECISIONS.md`](DECISIONS.md) entries #35 and #36 (2026-07-20) record an Owner-authorized deploy of the repository Firestore Rules plus 11 Cloud Functions to `taylor-parts`/`us-central1`, and the read-only functions-live-state audit (2026-07-21, `docs/audits/functions-live-state/`) verified them live. The original text above is **retained as historical rationale**, not deleted.
+
+Two constraints carry forward unchanged:
+
+- **Spend is still governed per-feature, proportionately.** Blaze availability does not grant blanket spend authorization; each cost-incurring capability remains individually justified, cost-assessed, and Owner-approved (see [`DECISIONS.md`](DECISIONS.md) #47). Governance is applied **proportionately** -- trivial use of already-deployed infrastructure operating within an approved bounded design does not require a separate full cost gate; a new material spending exposure does.
+- **Issue #15 is not closed by this amendment.** Its Cloud-Functions-deployment question is substantially advanced (the Work Order Functions are live) but not fully resolved -- the enterprise-access mutation Functions remain undeployed. See #47 for the partial-resolution scope.
+
 ## 10. Relationship to Other Governance Documents
 
 - **[`ProductVision.md`](ProductVision.md)** — this document is the deployment-level realization of its Multi-Tenant Principle; it does not restate that principle, only operationalizes it.
