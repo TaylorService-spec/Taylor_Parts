@@ -2,7 +2,7 @@
 // PartsList/PartDetail isolation. Plain Node; offline; no Firebase/network.
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { toDiagnosticsView, isDiagnosticsAuthorized, runFailureView } from "../src/domain/partsShadowParityView.js";
+import { toDiagnosticsView, isDiagnosticsAuthorized, runFailureView, sanitizedEvidencePayload } from "../src/domain/partsShadowParityView.js";
 
 const rel = (p) => new URL(p, new URL("../", import.meta.url));
 const read = (p) => fs.readFileSync(rel(p), "utf8");
@@ -148,6 +148,75 @@ check("component catches rejection: leaves running, keeps Run enabled, shows san
   const catchBlock = comp.slice(comp.indexOf(".catch("));
   assert.ok(/phase:\s*"ready"/.test(catchBlock), "catch leaves running (sets phase ready -> button re-enabled, retry possible)");
   assert.ok(!/phase:\s*"running"/.test(catchBlock), "catch never re-enters running");
+});
+
+// ---- evidence surface: sanitized payload ----------------------------------
+const REQUIRED_PAYLOAD_KEYS = ["status", "counts", "sourceCounts", "staticCatalogHash", "buildId", "runId", "capturedAtStart", "capturedAtEnd"];
+const COUNT_KEYS = ["canonicalMatch", "staticOnlyExcluded", "rowMissing", "fieldDivergence", "availabilityDivergence", "workflowDivergence", "unexpectedUnmatched", "structuralIssue"];
+const passView = () => toDiagnosticsView({
+  status: "PASS",
+  evidence: {
+    runId: "run-f8f26d71-1", adapterCommit: "5609496", staticCatalogHash: "fnv1a32:f65d57fb",
+    capturedAtStart: "2026-07-26T00:00:00.000Z", capturedAtEnd: "2026-07-26T00:00:01.000Z",
+    sourceCounts: { canonical: 190, static: 200, ledger: 0, reorder: 0, po: 0 },
+    canonicalMatchCount: 190, staticOnlyExcludedCount: 10, rowMissingCount: 0, fieldDivergenceCount: 0,
+    availabilityDivergenceCount: 0, workflowDivergenceCount: 0, unexpectedUnmatchedCount: 0, structuralIssueCount: 0,
+    status: "PASS", reason: null, divergences: [],
+  },
+});
+
+check("copied payload contains EVERY required field (incl. capture timestamps + sourceCounts)", () => {
+  const p = sanitizedEvidencePayload(passView());
+  assert.deepEqual(Object.keys(p).sort(), [...REQUIRED_PAYLOAD_KEYS].sort());
+  assert.deepEqual(Object.keys(p.counts).sort(), [...COUNT_KEYS].sort());
+  assert.equal(p.status, "PASS");
+  assert.equal(p.buildId, "5609496");
+  assert.equal(p.runId, "run-f8f26d71-1");
+  assert.equal(p.staticCatalogHash, "fnv1a32:f65d57fb");
+  assert.equal(p.capturedAtStart, "2026-07-26T00:00:00.000Z");
+  assert.equal(p.capturedAtEnd, "2026-07-26T00:00:01.000Z");
+  assert.deepEqual(p.sourceCounts, { canonical: 190, static: 200, ledger: 0, reorder: 0, po: 0 });
+  assert.equal(p.counts.canonicalMatch, 190);
+  assert.equal(p.counts.staticOnlyExcluded, 10);
+});
+check("copied payload exposes NO identity / raw-record / divergence-value fields", () => {
+  const json = JSON.stringify(sanitizedEvidencePayload(passView()));
+  for (const bad of ["uid", "email", "password", "token", "divergenceSummary", "divergences", "key", "kind", "cost", "price", "currentSummary", "reason", "tone"]) {
+    assert.ok(!new RegExp('"' + bad + '"').test(json), `payload must not contain "${bad}"`);
+  }
+});
+check("copy is unavailable before a result exists (null payload for absent/invalid view)", () => {
+  assert.equal(sanitizedEvidencePayload(null), null);
+  assert.equal(sanitizedEvidencePayload(undefined), null);
+  assert.equal(sanitizedEvidencePayload({ invalid: true }), null);
+});
+check("BLOCKED and FAIL results yield a copyable payload (diagnostic evidence only)", () => {
+  const fail = sanitizedEvidencePayload(toDiagnosticsView({ status: "FAIL_PARITY", evidence: { status: "FAIL_PARITY", runId: "r", adapterCommit: "5609496", fieldDivergenceCount: 1, divergences: [{ key: "TST-1001", kind: "CURRENT_SHADOW_FIELD_DIVERGENCE" }] } }));
+  assert.equal(fail.status, "FAIL_PARITY");
+  assert.deepEqual(Object.keys(fail).sort(), [...REQUIRED_PAYLOAD_KEYS].sort());
+  assert.ok(!/TST-1001|CURRENT_SHADOW/.test(JSON.stringify(fail)), "no divergence values in the payload");
+  const blocked = sanitizedEvidencePayload(toDiagnosticsView({ status: "BLOCKED_PERMISSION", evidence: { status: "BLOCKED_PERMISSION", reason: "denied" } }));
+  assert.equal(blocked.status, "BLOCKED_PERMISSION");
+  assert.equal(blocked.staticCatalogHash, null); // absent -> null, not fabricated
+});
+
+check("component renders sanitized timestamps + sourceCounts + a manual Copy action (gated on a result)", () => {
+  const comp = read("src/modules/inventory/PartsShadowParityDiagnostics.jsx");
+  assert.ok(/capturedAtStart:/.test(comp) && /capturedAtEnd:/.test(comp), "renders capture timestamps");
+  assert.ok(/sourceCounts:/.test(comp), "renders sourceCounts");
+  assert.ok(/Copy sanitized evidence/.test(comp), "manual Copy action present");
+  assert.ok(/sanitizedEvidencePayload\(v\)/.test(comp), "copies from the sanitized view model");
+  // copy action lives inside the result-present branch (unavailable before a result)
+  const resultBranch = comp.slice(comp.indexOf("v && !v.invalid ? ("));
+  assert.ok(/Copy sanitized evidence/.test(resultBranch), "Copy button only rendered when a result exists");
+});
+check("copy action performs no write / network / download / persistence", () => {
+  const comp = read("src/modules/inventory/PartsShadowParityDiagnostics.jsx");
+  assert.ok(/navigator\.clipboard/.test(comp), "uses the clipboard copy action");
+  assert.ok(!/fetch\(|XMLHttpRequest|axios/.test(comp), "no network");
+  assert.ok(!/setDoc|updateDoc|addDoc|deleteDoc|writeBatch|runTransaction|onSnapshot/.test(comp), "no Firestore writes/subscriptions");
+  // real persistence/download APIs only (avoid matching the word in comments)
+  assert.ok(!/localStorage\.|sessionStorage\.|indexedDB\b|createObjectURL|download=|\.click\(\)/.test(comp), "no persistence / automatic download");
 });
 
 console.log(`\n${passed} passed`);

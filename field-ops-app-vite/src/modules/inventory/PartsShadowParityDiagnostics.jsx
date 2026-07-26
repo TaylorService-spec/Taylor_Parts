@@ -11,7 +11,7 @@
 import { useRef, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import { captureShadowParity } from "../../domain/partsShadowParityCapture";
-import { toDiagnosticsView, isDiagnosticsAuthorized, runFailureView } from "../../domain/partsShadowParityView";
+import { toDiagnosticsView, isDiagnosticsAuthorized, runFailureView, sanitizedEvidencePayload } from "../../domain/partsShadowParityView";
 import { defaultReaders } from "./partsShadowParityReaders";
 
 const box = { padding: 12, border: "1px solid #dadce0", borderRadius: 8, marginTop: 8 };
@@ -21,6 +21,7 @@ export default function PartsShadowParityDiagnostics({ readers }) {
   const authorized = isDiagnosticsAuthorized(role);
   // phases: "idle" | "running" | "ready"; result ephemeral, reset on mount/refresh.
   const [state, setState] = useState({ phase: "idle" });
+  const [copied, setCopied] = useState(false);
   // One reader bundle per mount (stable across re-renders and across runs) so the
   // run-ID sequence persists and each execution gets a distinct run id.
   const readersRef = useRef(null);
@@ -34,6 +35,7 @@ export default function PartsShadowParityDiagnostics({ readers }) {
   const running = state.phase === "running";
   function run() {
     if (running) return; // single active run: ignore repeat clicks while in flight
+    setCopied(false);
     setState({ phase: "running" });
     captureShadowParity(readersRef.current)
       .then((result) => {
@@ -48,12 +50,28 @@ export default function PartsShadowParityDiagnostics({ readers }) {
 
   const v = state.phase === "ready" ? state.view : null;
   const c = v && !v.invalid ? v.counts : null;
+  const m = v && !v.invalid ? v.meta : null;
+
+  // Manual "Copy sanitized evidence": copies ONLY the sanitized payload built from the
+  // view model (no write, no network, no download, no persistence, no secrets/records).
+  // Unavailable before a result exists (button only rendered when a result is present).
+  function copyEvidence() {
+    const payload = sanitizedEvidencePayload(v);
+    if (!payload) return;
+    const text = JSON.stringify(payload, null, 2);
+    if (typeof navigator !== "undefined" && navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(() => setCopied(true)).catch(() => setCopied(false));
+    }
+  }
+
+  const cell = { padding: "2px 0" };
   return (
     <div>
       <h2>Parts shadow-parity (diagnostic — non-authoritative)</h2>
       <p style={{ color: "#5f6368", fontSize: 13 }}>
         Read-only comparison of the canonical Part identity model against the current static-backed
         workspace model. Evidence only; changes no product behavior, is not persisted, and clears on refresh.
+        Only a PASS result can qualify for Decision #44; FAIL/BLOCKED results are diagnostic evidence only.
       </p>
       <button type="button" onClick={run} disabled={running}>
         {running ? "Running…" : "Run shadow-parity"}
@@ -65,21 +83,28 @@ export default function PartsShadowParityDiagnostics({ readers }) {
             <strong>{v.tone.label}</strong>
             {v.reason ? <span> — {v.reason}</span> : null}
           </div>
-          {!v.isBlocked ? (
-            <ul style={{ marginTop: 12 }}>
-              <li>canonicalMatch: {c.canonicalMatch ?? "—"}</li>
-              <li>staticOnlyExcluded: {c.staticOnlyExcluded ?? "—"}</li>
-              <li>current↔shadow rowMissing: {c.rowMissing ?? "—"}</li>
-              <li>current↔shadow fieldDivergence: {c.fieldDivergence ?? "—"}</li>
-              <li>current↔shadow availabilityDivergence: {c.availabilityDivergence ?? "—"}</li>
-              <li>current↔shadow workflowDivergence: {c.workflowDivergence ?? "—"}</li>
-              <li>unexpectedUnmatched: {c.unexpectedUnmatched ?? "—"}</li>
-              <li>structuralIssue: {c.structuralIssue ?? "—"}</li>
-            </ul>
-          ) : null}
-          <p style={{ color: "#5f6368", fontSize: 12, fontFamily: "monospace" }}>
-            run={v.meta.runId ?? "—"} · commit={v.meta.adapterCommit ?? "—"} · staticHash={v.meta.staticCatalogHash ?? "—"}
-          </p>
+          {/* Sanitized fields rendered for EVERY recognized result (— where absent). */}
+          <ul style={{ marginTop: 12, listStyle: "none", padding: 0, fontFamily: "monospace", fontSize: 13 }}>
+            <li style={cell}>status: {v.status}</li>
+            <li style={cell}>capturedAtStart: {m.capturedAtStart ?? "—"}</li>
+            <li style={cell}>capturedAtEnd: {m.capturedAtEnd ?? "—"}</li>
+            <li style={cell}>runId: {m.runId ?? "—"}</li>
+            <li style={cell}>buildId: {m.adapterCommit ?? "—"}</li>
+            <li style={cell}>staticCatalogHash: {m.staticCatalogHash ?? "—"}</li>
+            <li style={cell}>sourceCounts: {m.sourceCounts ? JSON.stringify(m.sourceCounts) : "—"}</li>
+            <li style={cell}>canonicalMatch: {c.canonicalMatch ?? "—"}</li>
+            <li style={cell}>staticOnlyExcluded: {c.staticOnlyExcluded ?? "—"}</li>
+            <li style={cell}>rowMissing: {c.rowMissing ?? "—"}</li>
+            <li style={cell}>fieldDivergence: {c.fieldDivergence ?? "—"}</li>
+            <li style={cell}>availabilityDivergence: {c.availabilityDivergence ?? "—"}</li>
+            <li style={cell}>workflowDivergence: {c.workflowDivergence ?? "—"}</li>
+            <li style={cell}>unexpectedUnmatched: {c.unexpectedUnmatched ?? "—"}</li>
+            <li style={cell}>structuralIssue: {c.structuralIssue ?? "—"}</li>
+          </ul>
+          <button type="button" onClick={copyEvidence} style={{ marginTop: 8 }}>
+            Copy sanitized evidence
+          </button>
+          {copied ? <span style={{ marginLeft: 8, color: "#137333", fontSize: 12 }}>copied</span> : null}
         </>
       ) : null}
     </div>
