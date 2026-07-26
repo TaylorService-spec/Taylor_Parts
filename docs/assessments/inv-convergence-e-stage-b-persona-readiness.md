@@ -85,16 +85,18 @@ The verifier must **not**: create an Auth user or employee; update `users/{uid}`
 
 ### 4.2 Required sanitized checks — per candidate (return PASS/FAIL only)
 
-- Auth identity reference resolves
-- `users` document exists
-- `employee` document exists
-- reciprocal `users` ↔ `employees` linkage is valid
-- `employmentStatus == "ACTIVE"`
-- required operational role present (PARTS_MANAGER for the first; WAREHOUSE_MANAGER for the second)
-- no unexpected additional governed-role conflict
-- verifier completed without mutation
+What `onboardEmployeeVerify.js` actually evaluates (verified against the script, `functions/scripts/onboardEmployeeVerify.js:120-178`), so each item is reported truthfully:
 
-**Return sanitized labels + PASS/FAIL only — never** UID, email, tokens, full document contents, password information, or raw production records.
+- **Auth identity reference resolves** — `getUserByEmail(email)` resolves to an Auth account (PASS/FAIL).
+- **`users` document exists** — the resolved account's `users/{uid}` doc exists (PASS/FAIL).
+- **`employee` document exists** — `employees/{employeeId}` exists (PASS/FAIL).
+- **reciprocal `users` ↔ `employees` linkage valid** — `employees/{id}.userId == uid` **and** `users/{uid}.employeeId == employeeId` (PASS/FAIL).
+- **`employmentStatus == "ACTIVE"`** (PASS/FAIL).
+- **required operational role present** — the verifier checks `operationalRoles` for **exact set-equality** to the plan's expected value (`["PARTS_MANAGER"]` / `["WAREHOUSE_MANAGER"]`); an exact-match PASS necessarily satisfies the Stage B `hasAny([role])` requirement (PASS/FAIL).
+- **verifier completed without mutation** — the script is read-only by construction; report PASS on a clean read-only completion (never inferred from a FAIL/error alone).
+- **no unexpected additional governed-role conflict** — **report `NOT EVALUATED`.** This verifier does **not** inspect `roleAssignments`, custom claims, or `accessVersion`; it evaluates only Employee/User document state above. (An unexpected extra *operationalRole* would surface via the exact-set-equality check as an operational-role FAIL, but that is not a governed-role/roleAssignment conflict check.) Do **not** infer "no conflict" from a successful exit.
+
+**Return sanitized labels + PASS/FAIL (or NOT EVALUATED) only — never** UID, email, tokens, full document contents, password information, credential paths, operator account, or raw production records.
 
 ### 4.3 Result handling
 
