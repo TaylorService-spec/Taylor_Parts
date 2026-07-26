@@ -1,0 +1,40 @@
+Stage B emulator suite -- inventoryConvergenceStageBPartsRules.test.js
+=====================================================================
+Command: npx firebase emulators:exec --only firestore,auth --project taylor-parts \
+         "node functions/test/inventoryConvergenceStageBPartsRules.test.js"
+Result:  142 passed, 0 failed   (exit 0)
+Rules compiled/loaded by the emulator: PASS
+
+12-principal parts-read outcomes (list read & single read identical per principal):
+  P01 signed-out ................................. DENY
+  P02 authenticated, no application access ....... DENY
+  P03 admin ...................................... ALLOW
+  P04 dispatcher ................................. ALLOW
+  P05 active PARTS_MANAGER ....................... ALLOW
+  P06 active WAREHOUSE_MANAGER ................... ALLOW
+  P07 active PARTS_ASSOCIATE only ................ DENY
+  P08 technician, no operational role ............ DENY
+  P09 suspended employee (was PARTS_MANAGER) ..... DENY
+  P10 broken reciprocal linkage .................. DENY
+  P11 stale accessVersion + live PARTS_MANAGER ... ALLOW  (accessVersion not consulted; NOT fail-closed)
+  P12 malformed / missing user+employee docs ..... DENY
+
+Every principal, every collection:
+  parts create / update / delete ................. DENY (all 12)
+  manufacturers read + write ..................... DENY (all 12)
+  part_aliases read + write ...................... DENY (all 12)
+  part_supplier_items read + write ............... DENY (all 12)
+
+Behavioral proofs (all PASS):
+  - removing PARTS_MANAGER from the live record -> parts single read DENY
+  - removing PARTS_MANAGER from the live record -> parts list read DENY
+  - employmentStatus away from ACTIVE -> parts read DENY
+  - restore ACTIVE + PARTS_MANAGER -> parts single read ALLOW
+  - restore ACTIVE + PARTS_MANAGER -> parts list read ALLOW
+  - removing WAREHOUSE_MANAGER from the live record -> parts read DENY
+  - stale accessVersion alone does not deny -> parts read ALLOW
+  - bare admin retains parts read ALLOW
+  - bare dispatcher retains parts read ALLOW
+  - bare technician grants no parts read -> DENY
+
+Assertion count: 12 principals x 11 operations (132) + 10 proofs = 142.

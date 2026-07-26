@@ -1,0 +1,25 @@
+Full Firestore Rules regression -- npm run test:rules (scripts/rulesRegressionRunner.mjs)
+=========================================================================================
+Runs all 16 permanent Rules suites SEQUENTIALLY, each against a FRESHLY started
+Firestore+Auth emulator; refuses to start if root/mirror Rules differ.
+Result: 644 passed, 0 failed across 16 suites (exit 0).
+
+Per-suite:
+OK   root and field-ops-app-vite firestore.rules are byte-identical
+PASS employeesRules.test.js: 20/20
+PASS reorderRequestsRules.test.js: 82/82
+PASS accountsGovernedFieldsRules.test.js: 18/18
+PASS issue100PartsManagerRules.test.js: 40/40
+PASS issue100WarehouseManagerRules.test.js: 11/11
+PASS issue100PartsAssociateRules.test.js: 23/23
+PASS enterpriseAccessFoundationRules.test.js: 62/62
+PASS equipmentRules.test.js: 109/109
+PASS workOrderEngineRules.test.js: 20/20
+PASS warehouseManagerScopedAccessRules.test.js: 25/25
+PASS reportDefinitionsRules.test.js: 13/13
+PASS partMasterRules.test.js: 20/20
+PASS legacyJobsTechniciansRules.test.js: 43/43
+PASS partAliasRules.test.js: 8/8
+PASS partSupplierItemRules.test.js: 8/8
+PASS inventoryConvergenceStageBPartsRules.test.js: 142/142
+

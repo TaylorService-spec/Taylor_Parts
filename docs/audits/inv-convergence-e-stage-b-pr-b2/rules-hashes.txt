@@ -1,0 +1,7 @@
+Governed Firestore Rules SHA-256 (clean checkout of 60dc8458a61a83b6121d7841b51a7e480356b2df)
+============================================================================================
+root   firestore.rules                    = 02663e0a730c3e70339f35b78245306ac4a14781b896be67d618f720fb1aa139
+mirror field-ops-app-vite/firestore.rules = 02663e0a730c3e70339f35b78245306ac4a14781b896be67d618f720fb1aa139
+
+Expected (from PR-B1 / gate): 02663e0a730c3e70339f35b78245306ac4a14781b896be67d618f720fb1aa139
+Match: CONFIRMED (both files equal the expected hash)

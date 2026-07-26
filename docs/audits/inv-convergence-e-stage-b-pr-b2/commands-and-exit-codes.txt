@@ -1,0 +1,51 @@
+Exact commands and exit codes -- PR-B2 clean-checkout validation
+================================================================
+All commands were run from a fresh git worktree pinned to the exact PR #432
+merge commit 60dc8458a61a83b6121d7841b51a7e480356b2df. Firestore + Auth emulator
+only; no production project, credentials, or data.
+
+1. Confirm exact commit
+   $ git rev-parse HEAD
+   -> 60dc8458a61a83b6121d7841b51a7e480356b2df                       (exit 0)
+
+2. Confirm clean worktree before execution
+   $ git status --porcelain
+   -> (empty)  == CLEAN                                              (exit 0)
+
+3. Root/mirror byte-identity
+   $ diff firestore.rules field-ops-app-vite/firestore.rules
+   -> (no output) == byte-identical                                 (exit 0)
+
+4. Rules SHA-256
+   $ sha256sum firestore.rules field-ops-app-vite/firestore.rules
+   -> 02663e0a...1aa139  firestore.rules
+   -> 02663e0a...1aa139  field-ops-app-vite/firestore.rules          (exit 0)
+
+5. Install test dependencies (offline/emulator tests)
+   $ ( cd functions && npm ci )
+   -> deps installed                                                (exit 0)
+
+6. Stage B emulator suite
+   $ npx firebase emulators:exec --only firestore,auth --project taylor-parts \
+       "node functions/test/inventoryConvergenceStageBPartsRules.test.js"
+   -> 142 passed, 0 failed                                          (exit 0)
+
+7. Full Firestore Rules regression (all 16 suites, fresh emulator each)
+   $ ( cd functions && npm run test:rules )
+   -> 644 passed, 0 failed  (16 suites)                             (exit 0)
+
+8. Regression-runner unit tests (no emulator)
+   $ ( cd functions && node test/rulesRegressionRunner.test.mjs )
+   -> 10 passed, 0 failed                                           (exit 0)
+
+9. Post-execution worktree cleanliness
+   $ git status --porcelain
+   -> only transient emulator debug logs (firebase-debug.log,
+      firestore-debug.log) + this evidence directory; functions/node_modules
+      is gitignored. Debug logs are transient emulator artifacts, removed
+      before commit; they contain no production data.
+
+Notes:
+- No production project was targeted; the emulator ran on 127.0.0.1 (Firestore
+  8080 / Auth 9099) against the local governed firestore.rules.
+- No production credentials or identity values were used or required.
