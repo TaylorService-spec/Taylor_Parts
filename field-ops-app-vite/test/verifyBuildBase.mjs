@@ -34,6 +34,18 @@ function assetRefs(html) {
   return [...html.matchAll(/(?:src|href)="([^"]*\/assets\/[^"]+)"/g)].map((m) => m[1]);
 }
 
+// Full built-output text: index.html + every emitted JS chunk. Used to prove
+// (I-1H) that NO GitHub Pages host path survives anywhere in the Firebase
+// build — asset base (I-1F), router basename (I-1R), and header link (I-1H)
+// are all base-derived, so the string is entirely absent when base is "/".
+function readDistText() {
+  const assetsDir = path.join(appDir, "dist", "assets");
+  const js = fs.existsSync(assetsDir)
+    ? fs.readdirSync(assetsDir).filter((f) => f.endsWith(".js")).map((f) => fs.readFileSync(path.join(assetsDir, f), "utf8"))
+    : [];
+  return [fs.readFileSync(indexPath, "utf8"), ...js].join("\n");
+}
+
 let passed = 0;
 function check(name, fn) { fn(); passed += 1; console.log(`  ok - ${name}`); }
 
@@ -41,6 +53,7 @@ console.log("verifyBuildBase.mjs");
 
 console.log("[1/2] standard/GitHub build (npm run build)");
 const gh = build("build");
+const ghTree = readDistText();
 const ghAssets = assetRefs(gh);
 check("GitHub build emits at least one hashed asset reference", () => {
   assert.ok(ghAssets.length > 0, "no /assets/ references found in dist/index.html");
@@ -53,6 +66,7 @@ check(`GitHub build references are under ${GITHUB_BASE}assets/`, () => {
 
 console.log("[2/2] Firebase build (npm run build:firebase)");
 const fb = build("build:firebase");
+const fbTree = readDistText();
 const fbAssets = assetRefs(fb);
 check("Firebase build emits at least one hashed asset reference", () => {
   assert.ok(fbAssets.length > 0, "no /assets/ references found in dist/index.html");
@@ -88,6 +102,23 @@ check("GitHub build router basename resolves to /Taylor_Parts/field-ops", () => 
 });
 check("Firebase build router basename resolves to /", () => {
   assert.equal(routerBasenameFrom(fbBase), "/");
+});
+
+// --- I-1H: no GitHub Pages host path survives ANYWHERE in the Firebase
+// build (index.html + all JS chunks) -- asset base, router basename, and the
+// AppHeader home link are all base-derived. The GitHub build DOES carry it.
+console.log("[whole-bundle host-path scan]");
+check("GitHub build bundle contains the GitHub Pages base (sanity)", () => {
+  assert.ok(ghTree.includes("/Taylor_Parts/field-ops"), "GitHub build unexpectedly has no /Taylor_Parts/field-ops anywhere");
+});
+check("Firebase build bundle contains ZERO /Taylor_Parts/field-ops occurrences (assets + router + header)", () => {
+  const hits = fbTree.split("/Taylor_Parts/field-ops").length - 1;
+  assert.equal(hits, 0, `Firebase build still references /Taylor_Parts/field-ops ${hits} time(s) — a hard-coded host path survived`);
+});
+check("AppHeader home link is base-derived (source: no hard-coded host path)", () => {
+  const header = fs.readFileSync(path.join(appDir, "src", "shared", "ui", "AppHeader.jsx"), "utf8");
+  assert.ok(header.includes("href={import.meta.env.BASE_URL}"), "AppHeader must derive the home href from import.meta.env.BASE_URL");
+  assert.ok(!header.includes("/Taylor_Parts/field-ops"), "AppHeader still contains a hard-coded /Taylor_Parts/field-ops path");
 });
 
 console.log(`\nverifyBuildBase: ${passed} passed, 0 failed`);
