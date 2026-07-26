@@ -13,6 +13,7 @@ import AccountsList from "./modules/accounts/AccountsList";
 import EquipmentRegister from "./modules/equipment/EquipmentRegister";
 import EquipmentDetail from "./modules/equipment/EquipmentDetail";
 import AccountDetail from "./modules/accounts/AccountDetail";
+import PartsShadowParityDiagnostics from "./modules/inventory/PartsShadowParityDiagnostics";
 import AdministrationOverview from "./modules/administration/AdministrationOverview";
 import AdministrationUnavailable from "./modules/administration/AdministrationUnavailable";
 import AdminUsers from "./modules/administration/AdminUsers";
@@ -220,6 +221,13 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
   return (
     <Routes>
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
+
+      {/* INV-CONVERGENCE-E Stage A -- dedicated operator-only shadow-parity diagnostics
+          route. NOT a navigation entry (no Inventory/nav exposure); reached only by
+          direct URL. The component self-gates to admin/dispatcher via useAuth and shows
+          the standard No Access state otherwise (real gate, not route obscurity);
+          Firestore Rules are unchanged. Isolated from PartsList/PartDetail. */}
+      <Route path="/admin/diagnostics/inventory-parts-parity" element={<PartsShadowParityDiagnostics />} />
 
       {NAV_DOMAINS.filter((d) => !d.future).map((domain) => (
         <Route key={domain.key} path={domain.path}>

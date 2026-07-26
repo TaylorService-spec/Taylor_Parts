@@ -1,5 +1,19 @@
+import { execSync } from 'node:child_process'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+
+// INV-CONVERGENCE-E Stage A completion -- deterministic application/build commit
+// identifier, injected as the `__APP_COMMIT__` global. Sourced from the git short SHA
+// at build time; falls back to "unknown" when git is unavailable (the shadow-parity
+// pure core treats "unknown" as BLOCKED_INCOMPLETE_INPUT, never a false PASS). Build-
+// time constant only -- no runtime, routing, Firestore Rules, or authorization effect.
+function resolveAppCommit() {
+  try {
+    return execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim() || 'unknown'
+  } catch {
+    return 'unknown'
+  }
+}
 
 // https://vite.dev/config/
 //
@@ -16,6 +30,9 @@ const DEFAULT_BASE = "/Taylor_Parts/field-ops/";
 
 export default defineConfig({
   base: process.env.VITE_BASE || DEFAULT_BASE,
+  define: {
+    __APP_COMMIT__: JSON.stringify(resolveAppCommit()),
+  },
   plugins: [react()],
   build: {
     chunkSizeWarningLimit: 800,
