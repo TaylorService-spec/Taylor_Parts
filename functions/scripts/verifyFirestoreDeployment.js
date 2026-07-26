@@ -15,6 +15,7 @@ const {
   sha256,
   validateConfig,
   verifyDeploymentLog,
+  verifyFunctionsAttestation,
   writeEvidence,
 } = require("./firestoreDeploymentVerificationShared");
 
@@ -27,8 +28,11 @@ function parseArgs(argv) {
     if (!value || value.startsWith("--")) throw new VerificationError(`Missing value for --${key}.`);
     result[key] = value;
   }
-  for (const required of ["config", "deployment-log", "functions-baseline", "evidence-dir"]) {
+  for (const required of ["config", "deployment-log", "evidence-dir"]) {
     if (!result[required]) throw new VerificationError(`--${required} is required.`);
+  }
+  if (Boolean(result["functions-baseline"]) === Boolean(result["functions-attestation"])) {
+    throw new VerificationError("Provide exactly one of --functions-baseline or --functions-attestation.");
   }
   return result;
 }
@@ -141,10 +145,19 @@ async function main(argv = process.argv.slice(2)) {
   if (sha256(governedSource) !== config.governedRulesSha256) throw new VerificationError("Governed Git/LF Rules hash mismatch.");
 
   const deploymentScope = verifyDeploymentLog(fs.readFileSync(args["deployment-log"], "utf8"));
-  const functionsBaselineInput = JSON.parse(fs.readFileSync(args["functions-baseline"], "utf8"));
-  const functionsBaseline = Array.isArray(functionsBaselineInput)
-    ? functionsBaselineInput
-    : normalizeFunctionsInventory(functionsBaselineInput);
+  let functionsBaseline = null;
+  let functionsScopeEvidence = null;
+  if (args["functions-baseline"]) {
+    const functionsBaselineInput = JSON.parse(fs.readFileSync(args["functions-baseline"], "utf8"));
+    functionsBaseline = Array.isArray(functionsBaselineInput)
+      ? functionsBaselineInput
+      : normalizeFunctionsInventory(functionsBaselineInput);
+    functionsScopeEvidence = { exactInventoryComparison: true };
+  } else {
+    functionsScopeEvidence = verifyFunctionsAttestation(
+      fs.readFileSync(args["functions-attestation"], "utf8")
+    );
+  }
 
   const apiKey = process.env[config.webApiKeyEnv];
   if (!apiKey) throw new VerificationError(`Missing ${config.webApiKeyEnv}.`);
@@ -163,7 +176,7 @@ async function main(argv = process.argv.slice(2)) {
   if (liveRulesSha256 !== config.governedRulesSha256 || liveSource !== governedSource) {
     throw new VerificationError("Live extracted Rules source does not match governed Git/LF source.");
   }
-  if (canonicalJson(functionsLive) !== canonicalJson(functionsBaseline)) {
+  if (functionsBaseline && canonicalJson(functionsLive) !== canonicalJson(functionsBaseline)) {
     throw new VerificationError("Live Functions inventory differs from the governed predeployment baseline.");
   }
 
@@ -179,7 +192,7 @@ async function main(argv = process.argv.slice(2)) {
     liveRulesSha256,
     identitiesPreflightedBeforeFirestore: config.personas.map((p) => p.label),
     deploymentScope,
-    functionsUnchanged: true,
+    functionsScopeEvidence,
     matrixAssertions: matrix.length,
     matrixPassed: matrix.every((row) => row.pass),
     firestoreMutations: "NONE (all write probes returned 403)",

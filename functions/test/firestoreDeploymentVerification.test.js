@@ -15,6 +15,7 @@ const {
   sha256,
   validateConfig,
   verifyDeploymentLog,
+  verifyFunctionsAttestation,
   writeEvidence,
 } = require("../scripts/firestoreDeploymentVerificationShared");
 
@@ -55,6 +56,13 @@ test("deployment scope accepts Rules-only and rejects Functions or incomplete lo
   assert.equal(ok.firestoreRulesOnly, true);
   assert.throws(() => verifyDeploymentLog("deploying firestore\ndeploying functions\nreleased rules firestore.rules"), VerificationError);
   assert.throws(() => verifyDeploymentLog("Deploy complete!"), VerificationError);
+});
+
+test("retroactive Functions exception accepts only the exact governed Stage B markers", () => {
+  const result = verifyFunctionsAttestation("FIRESTORE-RULES-DEPLOY-CONFIRMED\nFUNCTIONS-UNCHANGED\n");
+  assert.equal(result.acceptedRetroactiveAttestation, true);
+  assert.throws(() => verifyFunctionsAttestation("FUNCTIONS-UNCHANGED\n"), VerificationError);
+  assert.throws(() => verifyFunctionsAttestation("functions unchanged\nfirestore rules deploy confirmed\n"), VerificationError);
 });
 
 test("live source extraction distinguishes source bytes from API artifact", () => {

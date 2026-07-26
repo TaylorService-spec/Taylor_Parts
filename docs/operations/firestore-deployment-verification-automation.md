@@ -11,6 +11,7 @@ This operator workflow automates the read-only verification that follows a separ
 - Every attempted write targets the governed probe ID and must return `403`; a different status fails immediately. No successful Firestore write is accepted.
 - The extracted live `firestore.rules` source must be byte-identical to `git show <commit>:firestore.rules` and match its configured Git/LF SHA-256.
 - A normalized, read-only live Functions inventory must exactly match a separately captured governed predeployment baseline. The supplied deployment log must prove `firestore:rules` scope and contain no Functions, Hosting, Storage, or Extensions deployment.
+- For the one retroactive Stage B run, the Owner approved using the merged `sb-evidence/deployment-scope-verification.txt` attestation because the raw predeployment inventory was not retained. The tool accepts that exception only when both exact markers are present, hashes the attestation, and captures the current live inventory. Future runs require the raw baseline.
 - Evidence is sanitized, secret-scanned, written with restrictive permissions, and checksummed. Tokens live only in memory and are cleared before evidence writing.
 
 ## Operator contract
@@ -29,6 +30,14 @@ npm run verify:firestore-deployment -- \
 ```
 
 The command is intentionally all-or-nothing. It returns PASS only after 55/55 matrix checks, live Rules byte equality, Rules-only scope proof, and exact Functions-inventory equality. A failure produces no success evidence and requires operator review; it never attempts rollback or deployment.
+
+For the Owner-approved retroactive Stage B exception only, replace `--functions-baseline ...` with:
+
+```text
+--functions-attestation ../sb-evidence/deployment-scope-verification.txt
+```
+
+This proves the governed deployment-scope attestation and current inventory capture, but it is not equivalent to a raw pre/post inventory comparison. The limitation is recorded in generated evidence.
 
 ## Evidence
 

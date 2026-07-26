@@ -110,6 +110,14 @@ function verifyDeploymentLog(text) {
   return { firestoreRulesOnly: true, deploymentLogSha256: sha256(text) };
 }
 
+function verifyFunctionsAttestation(text) {
+  const lines = new Set(text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean));
+  if (!lines.has("FIRESTORE-RULES-DEPLOY-CONFIRMED") || !lines.has("FUNCTIONS-UNCHANGED")) {
+    throw new VerificationError("Functions attestation lacks the exact governed Stage B scope markers.");
+  }
+  return { acceptedRetroactiveAttestation: true, attestationSha256: sha256(text) };
+}
+
 function extractRulesSource(apiPayload) {
   const files = apiPayload && apiPayload.source && apiPayload.source.files;
   if (!Array.isArray(files) || files.length === 0) throw new VerificationError("Live Rules API response has no source files.");
@@ -152,5 +160,6 @@ module.exports = {
   sha256,
   validateConfig,
   verifyDeploymentLog,
+  verifyFunctionsAttestation,
   writeEvidence,
 };
