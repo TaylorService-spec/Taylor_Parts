@@ -25,17 +25,33 @@ This contract builds on and does not alter: Decision #43 (Inventory→Parts prim
 
 ## 1. UD-3 — On-hand authority
 
-A movement ledger alone **cannot** derive absolute on-hand: it needs either a complete movement history beginning at zero, or a governed opening balance. The target on-hand authority is therefore a **three-part composition**, not a ledger aggregate alone:
+**Physical on-hand, reserved, and available are three different quantities and must not be conflated.** A movement ledger alone cannot derive absolute physical on-hand — it needs either a complete physical-movement history beginning at zero, or a governed opening physical balance — and **the current `inventory_transactions` event set (RESERVED / RELEASED / CONSUMED) is not a complete physical on-hand ledger.**
 
-1. **Governed opening balance / inventory-initialization event** — the absolute starting quantity, under trusted-writer governance.
-2. **Append-only inventory movement ledger** — `inventory_transactions` (RESERVED / RELEASED / CONSUMED), unchanged.
-3. **Trusted calculated on-hand projection** — derived from (1) + (2).
+Definitions:
+- **PHYSICAL ON-HAND** — the actual quantity physically present at a governed stock location.
+- **RESERVED** — the portion of physical on-hand committed to work but still physically present.
+- **AVAILABLE** — physical on-hand minus active reserved quantity.
 
-**Deferred (implementation form of the opening balance):** either a governed opening-balance ledger event, or a separately controlled initialization record feeding the projection. Not chosen here.
+Event effects: **RESERVED / RELEASED affect *availability*, not physical on-hand. CONSUMED reduces physical on-hand.** A complete physical on-hand projection additionally requires governed treatment of all approved physical stock movements — opening balance / initialization, receiving, positive and negative inventory adjustments, inbound and outbound transfers, consumption, cycle-count corrections, returns to stock, damage / loss / write-off, and other approved physical movement types — **none of which the current taxonomy fully covers.**
 
-**Interim:** static `warehouseQty` is preserved as an **explicitly temporary compatibility fallback**. It is **not** current stock truth and must never be described as such; current availability behavior is unchanged by this gate.
+**Target authority (four parts):**
+1. **Governed opening physical balance / initialization event** — the absolute starting quantity, under trusted-writer governance.
+2. **Governed append-only physical inventory movement authority** — covering *all* approved quantity-changing events (the physical-movement taxonomy above).
+3. **Governed reservation ledger / state** — for commitments that do not yet change physical possession.
+4. **Trusted projections:**
+   - `physicalOnHand` = opening balance + physical movements (2);
+   - `reserved` = active reservation / release events (3);
+   - `available` = `physicalOnHand − reserved`.
 
-**Required before:** static client catalog retirement · Functions catalog-mirror retirement · any declaration that all availability is ledger-derived. Coordinates with the INV-1 enterprise-plan ledger work.
+**Do not assume the current `inventory_transactions` event taxonomy is already sufficient for the final physical on-hand authority.** Two safe directions are recorded; **neither is chosen in this gate** — the final ledger topology is **DEFERRED** and must not be decided here unless the repository already proves it (it does not):
+- **Direction A** — in a future separately governed phase, expand `inventory_transactions` to support the complete physical-movement taxonomy while preserving all historical event semantics; **or**
+- **Direction B** — retain `inventory_transactions` as the work-order reservation/consumption ledger and establish a *separate* governed physical-stock movement ledger / projection.
+
+**Deferred:** the implementation form of the opening balance (governed ledger event vs separately controlled initialization record) **and** the A-vs-B ledger topology.
+
+**Interim (behavior unchanged):** static `warehouseQty` remains an **explicitly temporary compatibility baseline** — **not** physical on-hand truth and never described as such. The current reservation / release / consumption overlay and availability computation are unchanged; no new event types, no writes, no Functions, no source switch, no deployment in this gate.
+
+**Required before:** static client catalog retirement · Functions catalog-mirror retirement · any declaration that availability (or physical on-hand) is ledger-derived. Coordinates with the INV-1 enterprise-plan ledger work.
 
 ## 2. UD-4 — Field authority separation
 
@@ -71,7 +87,7 @@ The future read model is a **layered composition** of three sources. Every outpu
 `cost` · `price` · `reorderThreshold` · temporary `warehouseQty` baseline. Compatibility enrichment only; each explicitly flagged `STATIC_FALLBACK`; retired per its UD-3/UD-4 dependency.
 
 ### 4.3 Layer 3 — Inventory ledger / workflow overlay
-- `reserved` / `released` / `consumed` and **calculated availability using current, unchanged behavior** → `LEDGER_DERIVED`.
+- `reserved` / `released` / `consumed` and **calculated availability using current, unchanged behavior** → `LEDGER_DERIVED`. (Per §1, availability and physical on-hand are distinct; the interim overlay computes availability against the static baseline and is unchanged by this gate.)
 - reorder and purchasing workflow state → `WORKFLOW_DERIVED`.
 - any denormalized Work Order snapshot values consumed for display → `HISTORICAL_SNAPSHOT` (never rewritten).
 
@@ -85,8 +101,9 @@ The future read model is a **layered composition** of three sources. Every outpu
 | `cost` | static catalog | STATIC_FALLBACK | → `part_supplier_items` (UD-4) |
 | `price` | static catalog | STATIC_FALLBACK | → pricing/price-book authority (UD-4) |
 | `reorderThreshold` | static catalog | STATIC_FALLBACK | → governed reorder policy (UD-4) |
-| `warehouseQty` (baseline) | static catalog | STATIC_FALLBACK | → opening-balance + projection (UD-3) |
-| `reserved` / `released` / `consumed` / availability | ledger | LEDGER_DERIVED | behavior unchanged |
+| `warehouseQty` (baseline) | static catalog | STATIC_FALLBACK | → `physicalOnHand` projection from governed opening balance + physical movements (UD-3) |
+| `reserved` / `released` / `consumed` | ledger | LEDGER_DERIVED | RESERVED/RELEASED affect availability; CONSUMED reduces physical on-hand (behavior unchanged) |
+| `available` (= physicalOnHand − reserved) | ledger projection | LEDGER_DERIVED | interim computed against static baseline; target = governed physical-on-hand − reserved (UD-3) |
 | reorder / purchasing state | reorder collections | WORKFLOW_DERIVED | unchanged |
 | WO snapshot display values | `fieldops_wos.inventorySnapshot` | HISTORICAL_SNAPSHOT | never rewritten |
 
@@ -98,7 +115,10 @@ The future read model is a **layered composition** of three sources. Every outpu
 
 | Concept | Interim (now) | Target |
 |---|---|---|
-| On-hand / availability | static `warehouseQty` baseline − ledger movement (unchanged) | opening balance + append-only ledger → trusted on-hand projection |
+| Physical on-hand | static `warehouseQty` baseline (temporary; NOT physical truth) | `physicalOnHand` = governed opening balance + governed physical-movement authority (full taxonomy) |
+| Reserved | current RESERVED/RELEASED overlay (unchanged) | governed reservation ledger/state (does not change physical possession) |
+| Available | interim: baseline − active reservations (unchanged behavior) | `available` = physicalOnHand − reserved |
+| Final ledger topology | n/a | **DEFERRED** — Direction A (expand `inventory_transactions`) vs B (separate physical-stock ledger) |
 | Cost | static `cost` (STATIC_FALLBACK) | `part_supplier_items` / supplier catalog |
 | Selling price | static `price` (STATIC_FALLBACK) | pricing / price-book authority |
 | Reorder policy | static `reorderThreshold` (STATIC_FALLBACK; engine already ignores it) | governed, scoped inventory policy |
@@ -121,12 +141,14 @@ The future read model is a **layered composition** of three sources. Every outpu
 - The static catalog is **not** current stock truth and **not** canonical identity — it is temporary compatibility enrichment.
 - `part_supplier_items` is **not** the home of customer-facing selling price.
 - The canonical Part document is **not** the permanent home of a universal reorder threshold, nor of cost/price.
-- A ledger aggregate **alone** is **not** a complete on-hand authority.
+- The current `inventory_transactions` taxonomy (RESERVED / RELEASED / CONSUMED) is **not** a complete physical on-hand authority; a movement ledger **alone** (without a governed opening physical balance) is **not** a complete on-hand authority.
+- **Reserved is not physical on-hand**, and **availability is not physical on-hand** — they are distinct quantities (physicalOnHand − reserved = available).
 - JOIN_CLEAN is **not** authorization for a source switch, and does not replace live shadow-parity before cutover.
 
 ## 8. Deferred decisions
 
-- Opening-balance implementation form (governed ledger event vs initialization record) — UD-3.
+- **Final physical on-hand ledger topology — Direction A (expand `inventory_transactions` for the full physical-movement taxonomy) vs Direction B (separate governed physical-stock movement ledger)** — UD-3; not decided here.
+- Opening-balance / initialization implementation form (governed physical-balance ledger event vs separately controlled initialization record) — UD-3.
 - Concrete supplier-cost, selling-price, and reorder-policy models and their scopes — UD-4.
 - Retain-admin-only vs delete for Part Master — UD-5 (Phase E).
 - Operational-role `parts` read-broadening Rules change — separate future gate (Phase C).
