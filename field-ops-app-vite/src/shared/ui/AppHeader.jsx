@@ -69,7 +69,12 @@ export default function AppHeader() {
           Home
         </Link>
 
-        <a href="/Taylor_Parts/field-ops/" style={styles.link}>
+        {/* Full-reload link to the app root. Href is derived from Vite's
+            build-time base (import.meta.env.BASE_URL) -- the same authority
+            the asset base (I-1F) and router basename (I-1R) use -- so it
+            resolves to the app's served root on GitHub Pages and on Firebase
+            Hosting, never a hard-coded host path. */}
+        <a href={import.meta.env.BASE_URL} style={styles.link}>
           Refresh
         </a>
       </div>
