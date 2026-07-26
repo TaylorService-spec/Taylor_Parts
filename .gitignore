@@ -4,6 +4,7 @@
 # lives on this machine).
 .claude/skills/*/keypath.local.txt
 *.local.txt
+*.local.json
 
 build/
 dist/

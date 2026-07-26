@@ -1,0 +1,14 @@
+{
+  "projectId": "taylor-parts",
+  "confirmProject": "taylor-parts",
+  "governedCommit": "804351831d2d5a90c97481a57373a5960e42ab75",
+  "governedRulesSha256": "cf6681c61f7c93a6b5b5385212518636b855b24a751225564429e0f8932bc381",
+  "webApiKeyEnv": "FIREBASE_WEB_API_KEY",
+  "personas": [
+    { "label": "admin", "emailEnv": "TEST_ADMIN_EMAIL", "passwordEnv": "TEST_ADMIN_PASSWORD" },
+    { "label": "dispatcher", "emailEnv": "TEST_DISPATCHER_EMAIL", "passwordEnv": "TEST_DISPATCHER_PASSWORD" },
+    { "label": "PARTS_MANAGER", "emailEnv": "TEST_PARTS_MANAGER_EMAIL", "passwordEnv": "TEST_PARTS_MANAGER_PASSWORD" },
+    { "label": "WAREHOUSE_MANAGER", "emailEnv": "TEST_WAREHOUSE_MANAGER_EMAIL", "passwordEnv": "TEST_WAREHOUSE_MANAGER_PASSWORD" },
+    { "label": "technician", "emailEnv": "TEST_TECHNICIAN_EMAIL", "passwordEnv": "TEST_TECHNICIAN_PASSWORD" }
+  ]
+}
