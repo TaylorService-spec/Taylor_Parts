@@ -2,7 +2,9 @@
 
 **Unit:** Stage B production deployment of the canonical `parts` read broadening (PR-B1, merged) + production verification, preserving rollback. **Operator-executed** in Cloud Shell; prepared by the Inventory session. **This document authorizes NO deployment.** Deployment (and any production persona provisioning) is a separate, separately Owner + ChatGPT authorized gate.
 
-Follows the **F-RULES-1 D2 precedent** (`f-rules-1-d2-deployment-handoff.md`): self-derive every hash from the git blob, capture a rollback baseline before deploying, byte-verify the live ruleset equals the governed blob, run a production matrix, package sanitized evidence.
+> **DEPLOYMENT READINESS: BLOCKED (Owner decision, 2026-07-26).** The two new positive production branches — active reciprocally-linked **PARTS_MANAGER** and active reciprocally-linked **WAREHOUSE_MANAGER** — are **not yet READY**. PR-B2 emulator evidence proves the Rules logic locally but does **not** independently prove that **both** operational-role branches resolve correctly against the **live production** user/employee linkage model. Each branch must be made READY via exactly one approved path (§3: A — existing governed persona, or B — a separate governed fixture gate) and then **exercised directly in production** before the deployment can be authorized. **No fixture creation is authorized by this handoff.** Deployment stays BLOCKED until both new positive branches are READY and directly verified.
+
+Follows the **F-RULES-1 D2 precedent** (`f-rules-1-d2-deployment-handoff.md`): self-derive the governed hash from the Git/LF source, capture a rollback baseline (extracted source) before deploying, verify the **extracted live source** equals the governed Git/LF source, run a production matrix, package sanitized evidence.
 
 **Governing inputs (all merged):** Stage B design (PR #431) · PR-B1 Rules implementation (PR #432, merge `60dc845`) · PR-B2 clean-checkout emulator evidence (PR #433, merge `8043518`) · `docs/specifications/inv-convergence-e-stage-b-operational-role-parts-rules.md` · `docs/audits/inv-convergence-e-stage-b-pr-b2/`.
 
@@ -11,16 +13,33 @@ Follows the **F-RULES-1 D2 precedent** (`f-rules-1-d2-deployment-handoff.md`): s
 ## 0. Baseline, governed commit, and Rules hash
 
 - **Deploy commit (pinned):** `804351831d2d5a90c97481a57373a5960e42ab75` (current `origin/main`; the PR-B2 evidence merge). The governed `firestore.rules` blob is **byte-identical** to PR-B1 merge `60dc845` — the PR-B2 merge changed only `docs/**` + `.gitattributes`, no Rules bytes.
-- **Governed root `firestore.rules` git-blob SHA-256 (canonical — derive, never hand-copy):**
+- **Canonical governed deployment hash (Owner-approved, 2026-07-26) — the Git/LF stored-source SHA-256:**
   `cf6681c61f7c93a6b5b5385212518636b855b24a751225564429e0f8932bc381`
-  Derive on the operator's Linux checkout with `git show HEAD:firestore.rules | sha256sum` (equivalently `git cat-file blob HEAD:firestore.rules | sha256sum`). Root and mirror `field-ops-app-vite/firestore.rules` produce the **same** blob hash → byte-identical.
+  This is the SHA-256 of the **LF-normalized Rules source content stored in Git**, produced by `git show <DEPLOY_COMMIT>:firestore.rules | sha256sum` (equivalently `git cat-file blob <DEPLOY_COMMIT>:firestore.rules | sha256sum`). Root and mirror `field-ops-app-vite/firestore.rules` produce the **same** hash → byte-identical.
 
-> **⚠ OPEN ITEM for Owner + ChatGPT — hash reconciliation (must confirm before deploy).**
-> The Stage B PR-B1/PR-B2 evidence (and the deploy-authorization gate text) pinned the governed root Rules SHA-256 as
-> `02663e0a730c3e70339f35b78245306ac4a14781b896be67d618f720fb1aa139`.
-> That value is the **Windows working-copy hash** (CRLF, 101,639 bytes) produced by the authoring machine's autocrlf checkout. The **raw stored git blob is LF** (100,003 bytes) and hashes to
-> `cf6681c61f7c93a6b5b5385212518636b855b24a751225564429e0f8932bc381`,
-> which is exactly what a **Linux Cloud Shell** `git clone`/`git show` materializes and what `firebase deploy` uploads and the live-ruleset fetch returns. The two hashes describe the **same governed content** under different line-ending encodings (byte-identity of root vs mirror holds under both). **This handoff pins the Linux/Cloud-Shell git-blob hash `cf6681c6…` as canonical for all deploy-side comparisons**, because `02663e0a…` will never appear in Cloud Shell. No Rules bytes are changed to reconcile this (that would be an unauthorized change); the reconciliation is documentary. **Do not proceed to deploy until Owner + ChatGPT confirm `cf6681c6…` is the value the deploy gate should verify against.**
+### 0.1 Hash reconciliation (Owner decision — recorded additively)
+
+Two hashes describe the **same governed textual Rules content** under different line-ending byte encodings:
+
+| Hash | Byte representation | Role |
+|---|---|---|
+| `cf6681c61f7c93a6b5b5385212518636b855b24a751225564429e0f8932bc381` | **Git/LF stored source** (100,003 bytes) | **CANONICAL deployment hash.** Cloud Shell and all deploy-side verification MUST use this value. |
+| `02663e0a730c3e70339f35b78245306ac4a14781b896be67d618f720fb1aa139` | **Windows CRLF working-copy** (101,639 bytes) | **Historical** — the PR-B1/PR-B2 evidence bytes on the authoring machine. Retained as-is; **not** used for deploy-side verification. |
+
+Governance rules (apply going forward):
+- Both hashes represent the **same governed textual Rules content**; they differ **only** by line-ending encoding.
+- `02663e0a…` is the **Windows CRLF working-copy hash**; `cf6681c6…` is the **canonical stored-Git/LF deployment hash**.
+- **Cloud Shell and deploy-side verification must use `cf6681c6…`.**
+- **Historical PR-B2 evidence must not be rewritten** — the `02663e0a…` value stays in the PR-B1/PR-B2 audit records exactly as recorded.
+- This reconciliation is recorded **additively** here and in `docs/SPRINT_STATUS.md`.
+- **Future Rules evidence must identify the byte representation (Git/LF source vs. CRLF working-copy) before stating any hash.**
+
+Deploy-side verification always operates on **extracted LF source content bytes**, never on a raw Firebase Rules API JSON response (see §0.2 and Steps 3 & 6). Do not hash a full API JSON body and compare it to the repository source file — those are different artifact types.
+
+### 0.2 Hash terminology (two distinct artifact classes)
+
+- **Source-content hash** — SHA-256 of the extracted `firestore.rules` LF source bytes (from Git, or extracted from a live ruleset's source file). Only source-content hashes are compared for equivalence, and they must equal `cf6681c6…`.
+- **API-artifact hash** — SHA-256 of a **complete** Firebase Rules API JSON response saved verbatim. Captured and retained for provenance **only**; it is **never** compared to a source-content hash. Always label API-artifact hashes as such.
 
 - **Authorized Rules semantic change (the ONLY one this deployment carries):**
   ```
@@ -51,8 +70,8 @@ This handoff does **not** assume the 12 verification personas exist in productio
 | 2 | authenticated, no application access | DENY | **N/A WITH APPROVED SUBSTITUTE** | PR-B2 emulator DENY proof + read-only Rules inspection (read requires `isSignedIn()` + role/employee); do not fabricate a no-access prod account |
 | 3 | admin | ALLOW | **READY** | pre-approved admin test principal |
 | 4 | dispatcher | ALLOW | **READY** | pre-approved dispatcher test principal |
-| 5 | active reciprocally-linked PARTS_MANAGER | ALLOW | **REQUIRES GOVERNED FIXTURE** | positive proof of the NEW grant. Do **not** create here. If Owner confirms an existing pre-approved active reciprocally-linked PARTS_MANAGER test principal → **READY**; else the deploy gate decides between (a) governed provisioning via the approved provisioning path (separate authorization) or (b) the APPROVED SUBSTITUTE below |
-| 6 | active reciprocally-linked WAREHOUSE_MANAGER | ALLOW | **REQUIRES GOVERNED FIXTURE** | same as #5 for WAREHOUSE_MANAGER |
+| 5 | active reciprocally-linked PARTS_MANAGER | ALLOW | **BLOCKED — must become READY (Path A or B) then be exercised DIRECTLY** | positive proof of a NEW branch; substitute is NOT sufficient. Resolve via §3.1 Path A (existing governed persona) or Path B (separate governed fixture gate). Must be exercised directly in production and return ALLOW before deployment authorization. Do **not** create here. |
+| 6 | active reciprocally-linked WAREHOUSE_MANAGER | ALLOW | **BLOCKED — must become READY (Path A or B) then be exercised DIRECTLY** | same as #5 for WAREHOUSE_MANAGER — its own distinct branch; **may not** be substituted by the PARTS_MANAGER result. Resolve via §3.1 Path A or B; exercise directly; ALLOW required before deployment authorization. |
 | 7 | PARTS_ASSOCIATE-only | DENY | **N/A WITH APPROVED SUBSTITUTE** | negative check; PR-B2 emulator DENY proof + read-only inspection. If a PARTS_ASSOCIATE test principal already exists → **READY** (low-risk negative check) |
 | 8 | technician without permitted operational role | DENY | **READY** | pre-approved technician test principal |
 | 9 | suspended employee (holds otherwise-permitted role) | DENY | **NOT SAFE TO CREATE** | do not suspend a real employee; substitute = PR-B2 emulator DENY proof + read-only inspection |
@@ -60,9 +79,24 @@ This handoff does **not** assume the 12 verification personas exist in productio
 | 11 | stale accessVersion + otherwise-valid live PARTS_MANAGER | ALLOW | **NOT SAFE TO CREATE** | do not manipulate accessVersion; substitute = PR-B2 emulator ALLOW proof (accessVersion not consulted) + (if #5 READY) read-only confirmation the same principal reads regardless of accessVersion |
 | 12 | malformed / missing user or employee document | DENY | **NOT SAFE TO CREATE** | do not fabricate malformed identity; substitute = PR-B2 emulator DENY proof + read-only Rules inspection |
 
-**APPROVED SUBSTITUTE VERIFICATION METHOD (for every REQUIRES-FIXTURE / NOT-SAFE / N/A persona above):** rely on (a) the committed PR-B2 emulator proof for that exact principal (`docs/audits/inv-convergence-e-stage-b-pr-b2/stage-b-matrix-summary.txt`), (b) read-only inspection of the relevant production identity data shape (never acting as, never mutating), and (c) production negative-path checks that cannot mutate identity data (a denied read/write returns 403 before any change). **No persona is created or mutated.**
+### 3.1 Resolving the two new positive branches (BLOCKING prerequisite)
 
-The MINIMUM safe production signal set is: **admin ALLOW + dispatcher ALLOW (no-regression) + technician DENY (no accidental broadening) + signed-out DENY**, plus, where a PARTS_MANAGER/WAREHOUSE_MANAGER principal is Owner-confirmed to exist, a positive ALLOW for the new grant. Everything else is covered by the PR-B2 emulator proof + read-only inspection. **The deploy gate must record which personas were exercised live vs. by approved substitute.**
+Both **PARTS_MANAGER** (#5) and **WAREHOUSE_MANAGER** (#6) must independently become READY via **exactly one** of the following approved paths, and then be **exercised directly in production**. **Neither may substitute for the other** — each named Rules branch (`isActiveOperationalRole("PARTS_MANAGER")` and `isActiveOperationalRole("WAREHOUSE_MANAGER")`) must be exercised and return the expected ALLOW.
+
+- **Path A — EXISTING GOVERNED PERSONA.** Use an existing production test principal whose **current** state already satisfies: existing authenticated test account · existing `users` document · existing reciprocally-linked `employees` document · `employmentStatus == "ACTIVE"` · `operationalRoles` includes the required role · **no identity or access mutation needed**. Record only a **sanitized readiness label + evidence result** — never email, UID, employee ID, token, or raw document.
+- **Path B — SEPARATE GOVERNED FIXTURE GATE.** If no existing governed persona satisfies the state, prepare a **separate Owner-reviewed fixture plan** covering: why the fixture is required · the exact existing test identity to be used · the proposed employee linkage · the proposed operational role · lifecycle and cleanup · audit record · rollback · confirmation that **no real employee's access is changed**. **No fixture creation is authorized by this handoff (PR #434);** Path B is its own gate.
+
+Until BOTH branches are READY (via A or B) **and** directly verified in production returning ALLOW, **deployment readiness is BLOCKED**.
+
+### 3.2 Deploy-gate persona classification
+
+**Must be exercised DIRECTLY in production before deployment-gate closure (6):** signed out · admin · dispatcher · active reciprocally-linked PARTS_MANAGER · active reciprocally-linked WAREHOUSE_MANAGER · technician without a permitted operational role.
+
+**May use APPROVED SUBSTITUTE evidence where creating the state would be unsafe (6):** authenticated without application access · PARTS_ASSOCIATE-only · suspended employee · broken reciprocal linkage · stale accessVersion · malformed or missing documents.
+
+**APPROVED SUBSTITUTE VERIFICATION METHOD (substitute personas only):** for each, the evidence must identify (a) the **emulator test reference** — the committed PR-B2 proof for that exact principal (`docs/audits/inv-convergence-e-stage-b-pr-b2/stage-b-matrix-summary.txt`); (b) **read-only production inspection** of the relevant identity data shape where available (never acting as, never mutating); (c) **why direct production construction is unsafe or unnecessary**; and (d) **confirmation no identity data was mutated**. Production negative-path checks (a denied read/write returns 403 before any change) never mutate data.
+
+**The production deployment cannot be declared verified unless both new positive role branches are exercised directly and return the expected ALLOW.** The deploy gate must record, per persona, whether it was exercised live or by approved substitute.
 
 ## 4. Full production verification matrix
 
@@ -85,14 +119,19 @@ Probe mechanism: obtain each available persona's ID token (existing pre-approved
 ## Step 1 — Clone the pinned commit and self-derive the governed hash
 
 ```bash
-git clone --branch docs/inv-convergence-e-stage-b-deploy-handoff https://github.com/TaylorService-spec/Taylor_Parts.git sb && cd sb \
- && git checkout 804351831d2d5a90c97481a57373a5960e42ab75 \
- && EXPECTED_RULES_SHA=$(git show HEAD:firestore.rules | sha256sum | cut -d" " -f1) \
- && echo "governed blob: $EXPECTED_RULES_SHA" \
- && test "$(sha256sum firestore.rules | cut -d" " -f1)" = "$EXPECTED_RULES_SHA" && echo TREE-MATCHES-BLOB \
- && test "$(git show HEAD:field-ops-app-vite/firestore.rules | sha256sum | cut -d" " -f1)" = "$EXPECTED_RULES_SHA" && echo MIRROR-MATCHES-BLOB
+git clone https://github.com/TaylorService-spec/Taylor_Parts.git sb && cd sb \
+ && DEPLOY_COMMIT=804351831d2d5a90c97481a57373a5960e42ab75 \
+ && git checkout "$DEPLOY_COMMIT" \
+ && git show "$DEPLOY_COMMIT:firestore.rules" > governed-root.rules \
+ && git show "$DEPLOY_COMMIT:field-ops-app-vite/firestore.rules" > governed-mirror.rules \
+ && cmp governed-root.rules governed-mirror.rules && echo ROOT-MIRROR-IDENTICAL \
+ && sha256sum governed-root.rules governed-mirror.rules \
+ && EXPECTED_RULES_SHA=$(sha256sum governed-root.rules | cut -d" " -f1) \
+ && echo "governed Git/LF source hash: $EXPECTED_RULES_SHA"
 ```
-**Expected:** `governed blob: cf6681c61f7c93a6b5b5385212518636b855b24a751225564429e0f8932bc381`, then `TREE-MATCHES-BLOB` and `MIRROR-MATCHES-BLOB`. On Linux the working tree equals the blob, so all three agree. If `governed blob:` is not `cf6681c6…`, **STOP** (see the §0 open item; do not substitute `02663e0a…`). Keep this shell — `$EXPECTED_RULES_SHA` is reused in Step 6. **PAUSE.**
+**Expected:** `ROOT-MIRROR-IDENTICAL` (cmp exit 0), then both `sha256sum` lines equal to
+`cf6681c61f7c93a6b5b5385212518636b855b24a751225564429e0f8932bc381`, then
+`governed Git/LF source hash: cf6681c6…`. Both `governed-root.rules` and `governed-mirror.rules` are **extracted Git/LF source** (from `git show`), so this is a **source-content hash** (§0.2), not a working-copy or API-artifact hash. If `cmp` fails, or either hash is not `cf6681c6…`, **STOP** (do not substitute the historical `02663e0a…` Windows-CRLF value). Keep this shell — `$EXPECTED_RULES_SHA` and `$DEPLOY_COMMIT` are reused below. **PAUSE.**
 
 ## Step 2 — Confirm no Functions/index/data are in scope (pre-deploy inventory)
 
@@ -103,26 +142,39 @@ TOKEN=$(gcloud auth print-access-token) \
 ```
 **Expected:** the current Functions list — recorded as the pre-deploy baseline for the post-deploy comparison (Step 7). No change is made to Functions. **PAUSE.**
 
-## Step 3 — Capture the production Rules baseline (rollback artifact)
+## Step 3 — Capture the production Rules baseline as EXTRACTED SOURCE + full API artifact (rollback artifact)
+
+Capture the rollback baseline as **extracted `firestore.rules` source bytes** (not merely an API JSON artifact), and separately retain the **complete live Rules API artifact** with its own labeled artifact hash.
 
 ```bash
 mkdir -p rollback sb-evidence \
  && TOKEN=$(gcloud auth print-access-token) \
  && REL=$(curl -s -H "Authorization: Bearer $TOKEN" "https://firebaserules.googleapis.com/v1/projects/taylor-parts/releases" | python3 -c "import sys,json; rs=json.load(sys.stdin)['releases']; print([r['rulesetName'] for r in rs if r['name'].endswith('cloud.firestore')][0])") \
- && curl -s -H "Authorization: Bearer $TOKEN" "https://firebaserules.googleapis.com/v1/$REL" | python3 -c "import sys,json; sys.stdout.write(json.load(sys.stdin)['source']['files'][0]['content'])" > rollback/firestore.rules \
+ && curl -s -H "Authorization: Bearer $TOKEN" "https://firebaserules.googleapis.com/v1/$REL" > sb-evidence/predeploy-live-rules-api.json \
+ # 1) EXTRACT ONLY the firestore.rules source file's content bytes -- no JSON quoting, no added trailing newline:
+ && python3 -c "import sys,json; fs=json.load(open('sb-evidence/predeploy-live-rules-api.json'))['source']['files']; f=[x for x in fs if x.get('name','').endswith('firestore.rules')] or fs; sys.stdout.write(f[0]['content'])" > rollback/firestore.rules \
+ && cp rollback/firestore.rules sb-evidence/predeploy-live-firestore.rules \
  && printf '{"firestore":{"rules":"firestore.rules"}}\n' > rollback/firebase.json \
  && head -1 rollback/firestore.rules \
- && sha256sum rollback/firestore.rules | tee sb-evidence/pre-deploy-production-rules.sha256 \
- && cp rollback/firestore.rules sb-evidence/pre-deploy-production.rules
+ # 2) SOURCE-content hash of the extracted predeploy source (rollback baseline):
+ && echo -n "predeploy EXTRACTED SOURCE sha256: " && sha256sum rollback/firestore.rules | tee sb-evidence/predeploy-live-firestore.rules.sha256 \
+ # 3) API-ARTIFACT hash of the complete JSON response (provenance only -- NEVER compared to a source hash):
+ && echo -n "predeploy API-ARTIFACT sha256: " && sha256sum sb-evidence/predeploy-live-rules-api.json | tee sb-evidence/predeploy-live-rules-api.json.sha256
 ```
-**Expected:** first line `rules_version = '2';` and a sha256 (the PRE-Stage-B live production baseline — record it; it reflects the current admin/dispatcher-only `parts` read predicate and will differ from `cf6681c6…`). If empty/malformed, **STOP — do not deploy without a preserved baseline.** `rollback/` is now an independently deployable artifact. **PAUSE.**
+**Expected:** first line `rules_version = '2';`; a `predeploy EXTRACTED SOURCE sha256` (the PRE-Stage-B live baseline source hash — reflects the current admin/dispatcher-only `parts` read predicate; it will differ from `cf6681c6…`); and a separately-labeled `predeploy API-ARTIFACT sha256`. If the extracted source is empty/malformed, **STOP — do not deploy without a preserved source baseline.** `rollback/` (extracted **source** + `firebase.json`) is now an independently deployable artifact. **PAUSE.**
 
-## Step 4 — Confirm the baseline is the pre-Stage-B predicate (sanity)
+## Step 4 — Validate the rollback baseline source (predicate + compile)
 
 ```bash
-grep -n "match /parts/{partId}" -A3 rollback/firestore.rules
+echo "== parts block ==" && grep -n "match /parts/{partId}" -A3 rollback/firestore.rules \
+ && grep -q "allow read: if isAdminOrDispatcher();" rollback/firestore.rules && echo PRIOR-PREDICATE-PRESENT \
+ && ! grep -q 'isActiveOperationalRole("PARTS_MANAGER")' rollback/firestore.rules \
+ && ! grep -q 'isActiveOperationalRole("WAREHOUSE_MANAGER")' rollback/firestore.rules \
+ && echo NEW-BRANCHES-ABSENT-IN-BASELINE
+# Optional dry-run compile validation of the rollback source where supported:
+# ( cd rollback && firebase deploy --only firestore:rules --project taylor-parts --dry-run )
 ```
-**Expected:** the live baseline shows `allow read: if isAdminOrDispatcher();` (admin/dispatcher only) — i.e., the new operational-role branches are **not** yet live. If the baseline already contains the PARTS_MANAGER/WAREHOUSE_MANAGER branches, the change is already deployed — **STOP and report** (no deploy needed). **PAUSE.**
+**Expected:** the parts block, then `PRIOR-PREDICATE-PRESENT` and `NEW-BRANCHES-ABSENT-IN-BASELINE` — i.e., the baseline `parts` read is `allow read: if isAdminOrDispatcher();` and contains **neither** new operational-role branch (so a rollback provably restores admin/dispatcher-only reads). Where a Rules dry-run/compile validation is supported, run it against the rollback source and confirm it validates. If `PRIOR-PREDICATE-PRESENT` is missing, or either new branch is already present in the live baseline, the change may already be deployed — **STOP and report** (no deploy needed). **PAUSE.**
 
 ## Step 5 — Deploy ONLY Firestore Rules
 
@@ -131,16 +183,29 @@ firebase deploy --only firestore:rules --project taylor-parts 2>&1 | tee sb-evid
 ```
 **Expected:** `firestore: released rules firestore.rules to cloud.firestore` … `Deploy complete!` — nothing about functions/hosting/indexes. **PAUSE.**
 
-## Step 6 — Verify the live ruleset equals the governed blob
+## Step 6 — Verify the live ruleset EXTRACTED SOURCE equals the governed Git/LF source
+
+Do **not** hash the complete Rules API JSON response and compare it to the repository source. Instead: (1) fetch the active `cloud.firestore` release, (2) resolve its ruleset name, (3) fetch that ruleset, (4) locate the source file representing `firestore.rules`, (5) extract **only its content bytes** (no JSON quoting, no added trailing newline), (6) save those extracted LF source bytes, (7) hash the extracted **source**, (8) compare to the governed Git/LF source hash. Separately retain the complete API artifact with its own **API-artifact** hash.
 
 ```bash
 TOKEN=$(gcloud auth print-access-token) \
+ # (1)(2) active cloud.firestore release -> ruleset name
  && REL=$(curl -s -H "Authorization: Bearer $TOKEN" "https://firebaserules.googleapis.com/v1/projects/taylor-parts/releases" | python3 -c "import sys,json; rs=json.load(sys.stdin)['releases']; print([r['rulesetName'] for r in rs if r['name'].endswith('cloud.firestore')][0])") \
- && curl -s -H "Authorization: Bearer $TOKEN" "https://firebaserules.googleapis.com/v1/$REL" | python3 -c "import sys,json; sys.stdout.write(json.load(sys.stdin)['source']['files'][0]['content'])" > sb-evidence/post-deploy-production.rules \
- && sha256sum sb-evidence/post-deploy-production.rules | tee sb-evidence/post-deploy-production-rules.sha256 \
- && test "$(sha256sum sb-evidence/post-deploy-production.rules | cut -d" " -f1)" = "$EXPECTED_RULES_SHA" && echo LIVE-EQUALS-GOVERNED-BLOB
+ # (3) fetch that ruleset -- retain the COMPLETE API artifact verbatim
+ && curl -s -H "Authorization: Bearer $TOKEN" "https://firebaserules.googleapis.com/v1/$REL" > sb-evidence/postdeploy-live-rules-api.json \
+ # (4)(5)(6) locate the firestore.rules source file, extract ONLY its content bytes, save as LF source
+ && python3 -c "import sys,json; fs=json.load(open('sb-evidence/postdeploy-live-rules-api.json'))['source']['files']; f=[x for x in fs if x.get('name','').endswith('firestore.rules')] or fs; sys.stdout.write(f[0]['content'])" > sb-evidence/postdeploy-live-firestore.rules \
+ # (7) SOURCE-content hash of the extracted live source
+ && POSTDEPLOY_EXTRACTED_SOURCE_SHA256=$(sha256sum sb-evidence/postdeploy-live-firestore.rules | cut -d" " -f1) \
+ && echo "POSTDEPLOY EXTRACTED SOURCE sha256: $POSTDEPLOY_EXTRACTED_SOURCE_SHA256" | tee sb-evidence/postdeploy-live-firestore.rules.sha256 \
+ # API-ARTIFACT hash (provenance only -- NEVER compared to a source hash)
+ && echo -n "postdeploy API-ARTIFACT sha256: " && sha256sum sb-evidence/postdeploy-live-rules-api.json | tee sb-evidence/postdeploy-live-rules-api.json.sha256 \
+ # (8) source-equivalence assertion
+ && test "$POSTDEPLOY_EXTRACTED_SOURCE_SHA256" = "$EXPECTED_RULES_SHA" \
+ && test "$POSTDEPLOY_EXTRACTED_SOURCE_SHA256" = "cf6681c61f7c93a6b5b5385212518636b855b24a751225564429e0f8932bc381" \
+ && echo LIVE-EXTRACTED-SOURCE-EQUALS-GOVERNED-GIT-LF
 ```
-**Expected:** the post-deploy live hash, then `LIVE-EQUALS-GOVERNED-BLOB` (== `cf6681c6…`). If the check line is missing, **STOP → ROLLBACK.** The release lock may be released only after this line prints. **PAUSE.**
+**Required assertion:** `POSTDEPLOY_EXTRACTED_SOURCE_SHA256 == GOVERNED_GIT_LF_SHA256 == cf6681c61f7c93a6b5b5385212518636b855b24a751225564429e0f8932bc381`, printed as `LIVE-EXTRACTED-SOURCE-EQUALS-GOVERNED-GIT-LF`. The `postdeploy API-ARTIFACT sha256` is retained **separately and labeled as an API-artifact hash** — it is provenance only and is **never** compared to the source hash. If the source-equivalence line is missing, **STOP → ROLLBACK.** The release lock may be released only after this line prints. **PAUSE.**
 
 ## Step 7 — Post-deploy Functions inventory comparison
 
@@ -154,13 +219,14 @@ TOKEN=$(gcloud auth print-access-token) \
 
 ## Step 8 — Production persona verification matrix
 
-Run §4 for every available/authorized persona (per the §3 readiness table; existing pre-approved principals only). Record HTTP status per (persona, operation) into `sb-evidence/production-matrix.md` — **labels and statuses only, no tokens/UIDs/emails/raw records.** Assertions:
+Run §4 for every persona in the §3.2 **must-exercise-directly** set, plus each **substitute** persona's approved evidence. Record HTTP status per (persona, operation) into `sb-evidence/production-matrix.md` — **labels and statuses only, no tokens/UIDs/emails/raw records** — and note, per persona, whether it was exercised **live** or by **approved substitute**. Assertions:
 
-- ALLOW reads only for admin, dispatcher, and (where exercised live) valid PARTS_MANAGER / WAREHOUSE_MANAGER / stale-accessVersion-PM.
-- DENY reads for signed-out, technician, and every persona covered by approved substitute.
-- Every write DENY; every adjacent-collection read/write DENY.
+- **Directly exercised (required live):** signed-out **DENY** · admin **ALLOW** · dispatcher **ALLOW** · active PARTS_MANAGER **ALLOW** · active WAREHOUSE_MANAGER **ALLOW** · technician-without-role **DENY**.
+- **Both new positive branches must be exercised DIRECTLY and return ALLOW** — `isActiveOperationalRole("PARTS_MANAGER")` via persona #5 and `isActiveOperationalRole("WAREHOUSE_MANAGER")` via persona #6, **independently** (one may not stand in for the other). If either is not directly exercised, the deployment **cannot be declared verified** ⇒ **ROLLBACK**.
+- **Substitute personas:** DENY (or the documented outcome) confirmed via the §3.2 approved-substitute evidence (emulator reference + read-only inspection + no-mutation confirmation).
+- Every `parts` write **DENY**; every adjacent-collection read/write **DENY** — for every persona.
 
-Any unexpected ALLOW (unauthorized reader, any successful write, any adjacent-collection access), any expected-reader DENY, or any Rules mismatch ⇒ **STOP → ROLLBACK.** **PAUSE.**
+Any unexpected ALLOW (unauthorized reader, any successful write, any adjacent-collection access), any expected-reader DENY (including a PARTS_MANAGER or WAREHOUSE_MANAGER expected-ALLOW returning DENY), or any Rules mismatch ⇒ **STOP → ROLLBACK.** **PAUSE.**
 
 ## Step 9 — Package sanitized evidence
 
@@ -170,7 +236,7 @@ cd sb-evidence \
  && ( grep -riE "token|password|secret|bearer|@[A-Za-z0-9.-]+\.[A-Za-z]{2,}|eyJ[A-Za-z0-9_-]{10,}" . | grep -v SHA256SUMS.txt && echo "SENSITIVE-FOUND -- REDACT BEFORE EXPORT" || echo SENSITIVE-SCAN-CLEAN ) \
  && cd .. && tar czf inv-convergence-e-stage-b-deploy-evidence.tgz sb-evidence && sha256sum inv-convergence-e-stage-b-deploy-evidence.tgz
 ```
-**Expected:** `SENSITIVE-SCAN-CLEAN`; tarball + its sha256 (record it). Download for the Inventory-session evidence import PR. Evidence includes: predeploy/postdeploy live `.rules` + their SHA-256, deploy output, pre/post Functions inventory + `FUNCTIONS-UNCHANGED`, `LIVE-EQUALS-GOVERNED-BLOB` confirmation, the production matrix, and a note recording which personas were live vs. approved-substitute. **No credential, token, UID, email, or raw record in committed evidence.** **DONE — report back with the tarball + both production Rules SHA-256 values (pre + post) + the matrix result.**
+**Expected:** `SENSITIVE-SCAN-CLEAN`; tarball + its sha256 (record it). Download for the Inventory-session evidence import PR. Evidence includes, each clearly labeled by artifact class: **extracted source** files (`predeploy-live-firestore.rules`, `postdeploy-live-firestore.rules`) + their **source-content** SHA-256; **complete API artifacts** (`predeploy-live-rules-api.json`, `postdeploy-live-rules-api.json`) + their **API-artifact** SHA-256 (provenance only, not equivalence); deploy output; pre/post Functions inventory + `FUNCTIONS-UNCHANGED`; the `LIVE-EXTRACTED-SOURCE-EQUALS-GOVERNED-GIT-LF` confirmation; the production matrix with per-persona live-vs-substitute notes. **No credential, token, UID, email, or raw record in committed evidence.** **DONE — report back with the tarball + both predeploy/postdeploy extracted-source SHA-256 + both API-artifact SHA-256 (labeled) + the matrix result.**
 
 ---
 
@@ -179,28 +245,37 @@ cd sb-evidence \
 ```bash
 cd ~/sb/rollback && firebase deploy --only firestore:rules --project taylor-parts && sha256sum firestore.rules
 ```
-Then re-run Step 6's fetch and confirm the live ruleset hash equals the **Step 3 baseline** hash. Report immediately either way.
+Then re-run Step 6's fetch + **extraction**, and confirm the postdeploy **extracted source** hash equals the **Step 3 predeploy extracted-source baseline** hash. Report immediately either way.
 
 - **Rollback target:** restore the prior production `parts` read predicate `allow read: if isAdminOrDispatcher();`.
-- **Rollback method:** redeploy the captured Step 3 predeploy live-Rules artifact (`rollback/`), or a reviewed prior governed Rules commit. **Rules only. No data change.** Restores admin/dispatcher-only reads.
+- **Rollback source:** the Step 3 captured **extracted source bytes** (`rollback/firestore.rules`), validated in Step 4 (prior predicate present, both new branches absent, compile/dry-run where supported), or a reviewed prior governed Rules commit. **Rules only. No data change.** Restores admin/dispatcher-only reads.
 - **No data rollback** is ever involved (read-only grant; no writes changed).
 
 ## Stop conditions (abort → run ROLLBACK → report)
 
-- `governed blob:` ≠ `cf6681c6…`, or root/mirror not byte-identical (Step 1).
-- The §0 hash open item is not resolved by Owner + ChatGPT before deploy.
-- Predeploy live baseline empty/malformed or not captured (Step 3).
-- Baseline already contains the new branches (Step 4) — no deploy needed.
+- `ROOT-MIRROR-IDENTICAL` fails or the governed Git/LF source hash ≠ `cf6681c6…` (Step 1).
+- Predeploy live baseline **extracted source** empty/malformed or not captured, or its API artifact/hash not retained (Step 3).
+- Rollback source fails validation: prior predicate absent, either new branch present, or compile/dry-run fails (Step 4) — change may already be deployed; STOP and report.
 - Deploy output mentions functions/hosting/indexes, or deploy fails (Step 5).
-- `LIVE-EQUALS-GOVERNED-BLOB` missing (Step 6).
+- `LIVE-EXTRACTED-SOURCE-EQUALS-GOVERNED-GIT-LF` missing, or the deployed **extracted-source** hash differs from the governed Git/LF hash (Step 6).
 - Functions inventory changed (Step 7).
-- Any unauthorized `parts` read ALLOW, any expected-reader DENY, any successful client write, any adjacent-collection access (Step 8).
-- Any attempt would require creating/mutating a production user/employee/role/claim/accessVersion (prohibited) — STOP and request a separate governed provisioning authorization instead.
+- Either new positive branch (PARTS_MANAGER, WAREHOUSE_MANAGER) not exercised **directly**, or its expected ALLOW returns DENY (Step 8).
+- Any unauthorized `parts` read ALLOW, admin/dispatcher read regression, any successful client write, any adjacent-collection access (Step 8).
+- Any step would require creating/mutating a production user/employee/role/claim/accessVersion (prohibited) — STOP and request a separate governed provisioning authorization (§3.1 Path B) instead.
 - Sensitive data present in evidence (Step 9).
 
-## Rollback conditions
+## Rollback conditions (trigger rollback immediately on any of)
 
-Trigger rollback immediately on: any unauthorized ALLOW, any expected-reader DENY, any adjacent-collection broadening, any live-vs-governed Rules mismatch, or incomplete/again-unverifiable evidence.
+- any unauthorized ALLOW;
+- **PARTS_MANAGER** expected ALLOW returns DENY;
+- **WAREHOUSE_MANAGER** expected ALLOW returns DENY;
+- admin or dispatcher read regression;
+- any `parts` client write succeeds;
+- any adjacent canonical collection (`manufacturers`/`part_aliases`/`part_supplier_items`) becomes accessible;
+- the deployed **extracted-source** hash differs from the governed Git/LF hash (`cf6681c6…`);
+- Functions inventory changes;
+- deployment scope expands beyond Firestore Rules;
+- evidence is incomplete or contains sensitive information.
 
 ## After this handoff (separately Owner-authorized)
 
