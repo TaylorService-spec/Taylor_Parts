@@ -126,7 +126,7 @@ accounts/{id}.parentAccountId : string | null
 | **D-C2-1** | `parentAccountId` model | **ADOPT** nullable self-reference (adjacency list) on `accounts`, §3. |
 | **D-C2-2** | Single-parent rule | **ADOPT.** An Account has **at most one** `parentAccountId`. No multi-parent / DAG. |
 | **D-C2-3** | Cycle prevention | **ADOPT.** Reject self-parent and any link that would close a cycle (a node may not be its own ancestor). *Enforcement note in §5 — this is why re-parent is a trusted-writer action.* |
-| **D-C2-4** | Maximum depth | **ADOPT a bounded depth (recommend 5 levels).** A create/re-parent that would exceed the bound is rejected. Keeps read-side traversal cheap and trees sane; the exact number is a single named constant. |
+| **D-C2-4** | Maximum depth | **ADOPTED — bounded depth.** **Root depth = 0**; the maximum of **5** means **five parent–child edges below the root** (a root and up to five further generations). A create/re-parent that would exceed the bound is rejected. A single named constant. |
 | **D-C2-5** | May an ACTIVE child exist under an ARCHIVED parent? | **NO.** An `ARCHIVED` root implies a retired family; a live billable child must not be buried under it (default lists/reports exclude archived roots). |
 | **D-C2-6** | Behavior when a parent is archived | **No silent cascade.** Archiving a parent does **not** auto-archive or delete children. If the parent still has non-`ARCHIVED` children, the archive is **blocked** until they are explicitly detached (`parentAccountId → null`) or archived first — an explicit, audited choice. Children are never hard-deleted (`delete: if false` stands). |
 | **D-C2-7** | Behavior during customer merge (C-1 D-C1-7) | Hierarchy links are **live references**: on merge, a `parentAccountId` pointing at the merged-away Account, and the merged-away Account's own parent/children links, **re-point to the survivor** via the trusted writer; **acyclicity is re-validated post-merge**; **closed historical records are untouched** (C-1 §8). A self-loop created by re-pointing (e.g. survivor would become its own parent) resolves to `null`. |
@@ -135,12 +135,16 @@ accounts/{id}.parentAccountId : string | null
 | **D-C2-10** | Migration & backfill | **NONE.** Additive nullable field; all existing Accounts default to `null` (roots). No data migration, no backfill, no customer-data change. |
 | **D-C2-11** | Audit requirements | Setting/changing/clearing `parentAccountId` (link, re-parent, detach) is an **audit-class** mutation (C-1 §11): it must route through the trusted writer and emit an audit event once that seam exists (Issue #15/#226). It records the affected Account, prior parent, new parent, and actor. |
 
-**Minor open items (recommend deferring within C-2 detailed spec):**
+**Owner disposition (PR #413 approval):** **D-C2-1 through D-C2-11 are ADOPTED as
+recommended.** Depth semantics are fixed per D-C2-4 (root = 0; max 5 edges below
+root). See §6a for the Owner's binding directives on the follow-on C-2.S spec.
 
-- **D-C2-OPEN-a** — exact depth constant (5 vs other). Recommend 5; finalize in the
-  C-2 Specification.
+**Minor open items (deferred within the C-2.S detailed spec):**
+
+- **D-C2-OPEN-a** — RESOLVED: depth constant = **5 edges below the root** (D-C2-4).
 - **D-C2-OPEN-b** — whether "detach" on parent-archive should be operator-manual
-  only or offered as an explicit bulk action. Recommend manual/explicit first.
+  only or offered as an explicit bulk action. Recommend manual/explicit first;
+  finalize in C-2.S.
 
 ---
 
@@ -189,6 +193,29 @@ deployment-lock transfer.
 The detailed Firestore Rules/index and Cloud Function contracts are **named here,
 authorized nowhere** — each is its own gate.
 
+### 6a. Owner directives binding on C-2.S (recorded from PR #413 approval)
+
+The follow-on C-2 Specification & Implementation Plan (**C-2.S**) must satisfy all
+of the following, in addition to D-C2-1..11:
+
+1. **Depth semantics.** Root depth = **0**; the maximum depth of **5** represents
+   **five parent–child edges below the root** (D-C2-4).
+2. **Full post-operation graph validation.** Merge and re-parent must be validated
+   against the **complete proposed post-operation graph before committing** — not
+   just the single edge being changed. This explicitly includes **duplicate-link**
+   cases and **survivor-within-subtree** cases (e.g. a merge whose survivor is a
+   descendant of the merged-away node, which would otherwise close a cycle). The
+   write commits only if the entire resulting graph is single-parent, acyclic, and
+   within the depth bound.
+3. **Hard boundary preserved.** Hierarchy affects **organizational grouping and
+   derived reporting only** — never billing, service routing, Account ownership
+   inheritance, access authorization, or tenant scope. No C-2.S surface may read
+   `parentAccountId` for any of those purposes.
+4. **Trusted-writer + append-only audit for every hierarchy mutation.** All
+   **link, re-parent, detach, archive-conflict, and merge** hierarchy mutations
+   stay behind the trusted writer with **append-only audit evidence**. **No interim
+   client-direct hierarchy writes** are permitted at any point.
+
 ---
 
 ## 7. Risks & dependencies
@@ -218,8 +245,9 @@ here); Customer/Inventory deployment-lock transfer.
 
 ## 8. Approval
 
-**Gate:** Assessment (C-2). **Status: DRAFT.** Awaits ChatGPT Domain/Governance
-review and separate Owner authorization. Authorizes no implementation and no
-production-data action. Customer runtime remains **BLOCKED** until Inventory I-1
-closes and the deployment lock is explicitly transferred. **STOP before merge —
-Owner review required.**
+**Gate:** Assessment (C-2). **Status: APPROVED (docs-only merge) — Owner authorized
+via PR #413.** D-C2-1..11 adopted as recommended; C-2.S directives recorded (§6a).
+Authorizes no implementation and no production-data action. Customer runtime
+remains **BLOCKED** until Inventory I-1 closes and the deployment lock is
+explicitly transferred; C-2.1/C-2.2, C-3, migration, index deployment, and all
+production activity remain **not started**.
