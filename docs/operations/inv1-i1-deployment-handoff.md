@@ -72,9 +72,9 @@ Verify with **existing, pre-approved production test accounts** for admin, dispa
 - Record outcomes to `i1-evidence/rules-matrix.txt` using **role labels and redacted account references only** (no UIDs/credentials/tokens/PII). No production user record is created or altered. **PAUSE.**
 
 ## Step 6 — Build and deploy the frontend (hosting)
-`firebase.json` has **no predeploy hook**, so the build is a manual prerequisite (a stale/absent `dist/` would ship stale assets):
+`firebase.json` has **no predeploy hook**, so the build is a manual prerequisite (a stale/absent `dist/` would ship stale assets). **Use the Firebase build (`build:firebase`) — NOT `npm run build`.** The default `npm run build` emits the GitHub Pages base (`/Taylor_Parts/field-ops/assets/…`), which 404s on Firebase Hosting (served at `/`) and yields a blank site (the I-1F production failure). `build:firebase` emits root-relative `/assets/…`. **This requires a checkout that includes unit I-1F** (the `build:firebase` script + env-specific `vite.config.js`); pin the hosting build/deploy to a commit containing I-1F — an earlier commit without it cannot produce a correct Firebase bundle.
 ```
-cd field-ops-app-vite && npm ci && npm run build && cd ..    # produces field-ops-app-vite/dist/
+cd field-ops-app-vite && npm ci && npm run build:firebase && cd ..   # dist/ with ROOT-relative /assets/... URLs
 firebase deploy --only hosting --project taylor-parts 2>&1 | tee i1-evidence/hosting-deploy-output.txt
 ```
 **PAUSE.**
