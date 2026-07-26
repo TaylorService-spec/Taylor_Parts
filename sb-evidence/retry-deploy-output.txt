@@ -1,0 +1,20 @@
+
+=== Deploying to 'taylor-parts'...
+
+i  deploying firestore
+i  firestore: ensuring required API firestore.googleapis.com is enabled...
+i  firestore: ensuring required API firestore.googleapis.com is enabled...
+i  firestore: reading indexes from firestore.indexes.json...
+i  cloud.firestore: checking firestore.rules for compilation errors...
+⚠  [W] 60:14 - Unused function: linkedEmployeeData.
+⚠  [W] 61:14 - Invalid function name: get.
+⚠  [W] 88:14 - Unused function: reciprocallyLinkedEmployee.
+⚠  [W] 92:12 - Invalid function name: get.
+⚠  [W] 92:89 - Invalid variable name: request.
+✔  cloud.firestore: rules file firestore.rules compiled successfully
+i  firestore: uploading rules firestore.rules...
+✔  firestore: released rules firestore.rules to cloud.firestore
+
+✔  Deploy complete!
+
+Project Console: https://console.firebase.google.com/project/taylor-parts/overview
