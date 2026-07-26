@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { routerBasenameFrom } from "./routerBasename";
 import ControlTower from "./modules/controlTower/ControlTower";
 import Jobs from "./modules/jobs/Jobs";
 import Technicians from "./modules/technicians/Technicians";
@@ -69,8 +70,10 @@ import { NAV_DOMAINS, isDomainVisible, isNavItemVisible } from "./navigation/nav
 // GitHub Pages has no server-side rewrite rules, so a deep link (or a
 // refresh on any non-root path) needs the standard SPA fallback --
 // see public/404.html + the redirect-restore script in index.html.
-// BrowserRouter's `basename` matches vite.config's `base`
-// ("/Taylor_Parts/field-ops/") so both agree on the same root.
+// BrowserRouter's `basename` is derived from the SAME build-time base as
+// Vite (import.meta.env.BASE_URL) via routerBasename.js, so the router mount
+// point always matches where the bundle is served -- "/Taylor_Parts/field-ops"
+// on GitHub Pages, "/" on Firebase Hosting -- with no hard-coded host path.
 //
 // Legacy screen -> domain/sub-nav mapping lives in navConfig.js
 // (`legacyKey` on each sub-nav item); this map below is just the
@@ -386,6 +389,10 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
   );
 }
 
+// Computed once at build time: Vite replaces import.meta.env.BASE_URL with
+// the resolved `base` for the active build (GitHub Pages vs Firebase).
+const ROUTER_BASENAME = routerBasenameFrom(import.meta.env.BASE_URL);
+
 export default function App() {
   const { user, role, loading, operationalRoles, employmentStatus } = useAuth();
   const allowedLegacyKeys = ROLE_NAV_ACCESS[role] ?? [];
@@ -421,7 +428,7 @@ export default function App() {
 
   return (
     <InventoryProvider>
-      <BrowserRouter basename="/Taylor_Parts/field-ops/">
+      <BrowserRouter basename={ROUTER_BASENAME}>
         <div className="fo-app">
           {IS_DEMO && <div className="fo-demo-banner">DEMO MODE ACTIVE (SAFE - NO WRITES TO PRODUCTION)</div>}
           <AppHeader />

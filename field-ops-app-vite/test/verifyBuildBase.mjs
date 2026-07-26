@@ -1,9 +1,11 @@
-// I-1F — deterministic build-base verification. Builds the app in BOTH
-// output modes and asserts index.html emits the correct asset base for each
-// host, so the GitHub Pages and Firebase Hosting builds can never silently
-// diverge again (the I-1 production failure: a Firebase build carrying the
-// GitHub Pages /Taylor_Parts/field-ops/ asset base 404s every asset → blank
-// site). Build-time asset-URL check only — no runtime/domain/Rules logic.
+// I-1F/I-1R — deterministic build verification. Builds the app in BOTH
+// output modes and asserts, per mode, (a) index.html emits the correct asset
+// base and (b) the React Router basename resolves correctly from that same
+// build base — so the GitHub Pages and Firebase Hosting builds can never
+// silently diverge again (I-1 failures: a Firebase build carrying the GitHub
+// Pages /Taylor_Parts/field-ops/ asset base 404s assets → blank shell; and a
+// hard-coded router basename → post-login blank page). Build-time asset-URL +
+// basename derivation check only — no runtime/domain/Rules logic.
 //
 // Run: npm run verify:build-base  (from field-ops-app-vite/)
 import assert from "node:assert/strict";
@@ -11,6 +13,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { execSync } from "node:child_process";
+import { routerBasenameFrom } from "../src/routerBasename.js";
 
 const appDir = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const indexPath = path.join(appDir, "dist", "index.html");
@@ -65,6 +68,26 @@ check("Firebase build carries NO GitHub Pages base anywhere in index.html", () =
 check("the two modes actually differ (GitHub base present in GitHub build, absent in Firebase build)", () => {
   assert.ok(gh.includes(GITHUB_BASE), "GitHub build unexpectedly lost its base");
   assert.ok(!fb.includes(GITHUB_BASE), "Firebase build unexpectedly kept the GitHub base");
+});
+
+// --- I-1R: router basename resolves correctly per build mode ---
+// The app computes basename = routerBasenameFrom(import.meta.env.BASE_URL),
+// where BASE_URL == the observed build base. Deriving expected basename from
+// each build's observed asset base, through the SAME helper the app uses,
+// deterministically proves the router mount point per mode.
+console.log("[router basename]");
+const ghBase = GITHUB_BASE; // observed from the GitHub asset refs above
+const fbBase = "/";          // observed from the Firebase root-relative refs above
+check("App.jsx derives the basename from import.meta.env.BASE_URL (no hard-coded host path)", () => {
+  const app = fs.readFileSync(path.join(appDir, "src", "App.jsx"), "utf8");
+  assert.ok(app.includes("routerBasenameFrom(import.meta.env.BASE_URL)"), "App.jsx must derive basename from import.meta.env.BASE_URL");
+  assert.ok(!/basename="\/Taylor_Parts\/field-ops\/?"/.test(app), "App.jsx still hard-codes a BrowserRouter basename");
+});
+check("GitHub build router basename resolves to /Taylor_Parts/field-ops", () => {
+  assert.equal(routerBasenameFrom(ghBase), "/Taylor_Parts/field-ops");
+});
+check("Firebase build router basename resolves to /", () => {
+  assert.equal(routerBasenameFrom(fbBase), "/");
 });
 
 console.log(`\nverifyBuildBase: ${passed} passed, 0 failed`);
