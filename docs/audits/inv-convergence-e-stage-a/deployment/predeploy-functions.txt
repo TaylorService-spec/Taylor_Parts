@@ -1,0 +1,9 @@
+Predeploy deployed Functions inventory
+
+source: firebase functions:list --project taylor-parts (operator-captured, before deployment)
+result: operator-confirmed; used as the pre baseline for the pre/post equality assertion.
+
+Note: the raw `firebase functions:list` listing is the operator's captured artifact. It is
+represented here by the confirmed pre/post EQUALITY result (see postdeploy-functions.txt and
+verification-summary.md); the listing content is not reconstructed here (no fabrication).
+Pre/post Functions inventory equality: PASS. No `firebase deploy --only functions` was executed.

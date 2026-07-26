@@ -1,0 +1,7 @@
+Postdeploy live production Rules artifact SHA-256 (operator-captured export of the live ruleset)
+
+sha256: a17f791df72208657117ca6d43fa8b31caa624339ba69640bf4de890b46b4bd8
+
+Captured by the operator from the live production ruleset immediately after the Hosting-only
+deployment. EQUAL to the predeploy live Rules hash (a17f791d…b46b4bd8) → live production Rules
+were unchanged by this deployment. No `firebase deploy --only firestore:rules` was executed.

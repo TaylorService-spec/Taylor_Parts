@@ -1,0 +1,12 @@
+Firebase Hosting-only deployment record
+
+deployed commit (clean detached checkout): 73d9e1b07f13c7f42cc525c3c037dec6b47d289d
+deploy command:                            firebase deploy --only hosting --project taylor-parts
+deploy exit code:                          0
+deploy started (UTC):                      2026-07-26T09:41:10Z
+deploy ended   (UTC):                      2026-07-26T09:41:16Z
+Hosting URL:                               https://taylor-parts.web.app
+expected build id:                         73d9e1b
+rendered/served build id:                  73d9e1b   (equal → build identity confirmed)
+
+scope: Firebase Hosting only. No firestore:rules, no functions, no indexes deployment; no data change.

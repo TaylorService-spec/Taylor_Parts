@@ -1,0 +1,7 @@
+Predeploy live production Rules artifact SHA-256 (operator-captured export of the live ruleset)
+
+sha256: a17f791df72208657117ca6d43fa8b31caa624339ba69640bf4de890b46b4bd8
+
+Captured by the operator from the live production ruleset immediately before the Hosting-only
+deployment. This is a live-ruleset artifact hash (a different artifact type from the governed
+repository Rules hash). Compared against the postdeploy live hash to prove Rules were unchanged.

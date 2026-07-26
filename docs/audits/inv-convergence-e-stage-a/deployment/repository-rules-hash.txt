@@ -1,0 +1,9 @@
+Governed repository firestore.rules SHA-256 (at deployed commit 73d9e1b07f13c7f42cc525c3c037dec6b47d289d)
+
+source: git show 73d9e1b:firestore.rules | sha256sum
+sha256: fda242399023b400c0f441b96e4103fc86f79f18e2bf04005cbc745e3785bac7
+
+Independently recomputed at evidence-authoring time and verified EQUAL to the governed
+expected value. This is the governed repository Rules artifact hash; it is a DIFFERENT
+artifact type from the live production Rules ruleset export (see predeploy/postdeploy-live-rules-hash.txt)
+and is not asserted to be equal to it.

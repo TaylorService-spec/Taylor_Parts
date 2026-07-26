@@ -1,0 +1,25 @@
+{
+  "status": "PASS",
+  "counts": {
+    "canonicalMatch": 190,
+    "staticOnlyExcluded": 10,
+    "rowMissing": 0,
+    "fieldDivergence": 0,
+    "availabilityDivergence": 0,
+    "workflowDivergence": 0,
+    "unexpectedUnmatched": 0,
+    "structuralIssue": 0
+  },
+  "sourceCounts": {
+    "canonical": 190,
+    "static": 200,
+    "ledger": 3,
+    "reorder": 15,
+    "po": 0
+  },
+  "staticCatalogHash": "fnv1a32:f65d57fb",
+  "buildId": "73d9e1b",
+  "runId": "run-7b7ee3db-1",
+  "capturedAtStart": "2026-07-26T09:44:36.539Z",
+  "capturedAtEnd": "2026-07-26T09:44:37.010Z"
+}
