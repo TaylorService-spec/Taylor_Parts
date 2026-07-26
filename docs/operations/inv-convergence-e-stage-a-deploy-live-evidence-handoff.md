@@ -23,13 +23,64 @@ Operator handoff to make the code-complete Stage A diagnostic (merged, PR #425) 
 ## 2. Deployment scope — Firebase Hosting only
 - Build: `cd field-ops-app-vite && npm ci && npm run build:firebase` (`vite build --base=/`; produces `field-ops-app-vite/dist`, the Hosting `public` dir; `firebase.json` has **no predeploy hook**, so the build is a manual prerequisite — a stale/absent `dist/` would publish stale assets).
 - Deploy: **`firebase deploy --only hosting --project taylor-parts`**. The SPA rewrite (`**` → `/index.html`) makes the client route resolve.
-- **Confirm untouched — never pass these:** no `--only firestore:rules`, no `--only firestore:indexes`, no `--only functions`, no data writes. After deploy, confirm the live ruleset hash and the deployed Functions list are **unchanged** from pre-deploy (Rules/Functions/indexes/data are outside this deploy's scope).
+- **Confirm untouched — never pass these:** no `--only firestore:rules`, no `--only firestore:indexes`, no `--only functions`, no data writes. Rules/Functions/indexes/data are outside this deploy's scope; the §2.5 pre/post evidence proves it.
+
+## 2.5 Exact pre/post infrastructure evidence
+Capture the following, sanitized (no credentials/tokens/UIDs/emails/records), into `docs/audits/inv-convergence-e-stage-a/deployment/`.
+
+**Before deployment (predeploy):**
+- clean checkout commit = `56094960f3e98fe3478ab3e1745acae1e6ac50ef`;
+- governed **root `firestore.rules` SHA-256** (`git show 56094960:firestore.rules | sha256sum`);
+- **live production Rules hash** (fetch the live ruleset via the Firebase Rules REST API and `sha256sum`, or hash the exported live-Rules artifact) → `predeploy-rules-hash.txt`;
+- **deployed Functions inventory** (`firebase functions:list --project taylor-parts`, names/regions/runtimes only) → `predeploy-functions.txt`;
+- **current Hosting release identifier** where available (Firebase Hosting release id/version).
+
+**After deployment (postdeploy):**
+- deploy command; deploy **exit code**; Hosting **release timestamp**; **Hosting URL**; deployed **bundle build identifier** (`__APP_COMMIT__` from the served bundle) → `hosting-deploy.txt`;
+- **live production Rules hash** → `postdeploy-rules-hash.txt`;
+- **deployed Functions inventory** → `postdeploy-functions.txt`.
+
+**Explicit required assertions (record PASS/FAIL for each in `verification-summary.md`):**
+- postdeploy Rules hash **equals** predeploy Rules hash;
+- postdeploy Functions inventory **equals** predeploy Functions inventory;
+- **no Rules deployment occurred**;
+- **no Functions deployment occurred**;
+- **no indexes or data changes occurred**;
+- rendered/deployed build identifier **equals short SHA `5609496`**.
+
+**Sanitized evidence layout:**
+```
+docs/audits/inv-convergence-e-stage-a/deployment/
+  predeploy-rules-hash.txt
+  predeploy-functions.txt
+  hosting-deploy.txt
+  postdeploy-rules-hash.txt
+  postdeploy-functions.txt
+  verification-summary.md
+  SHA256SUMS.txt
+```
+No credentials, tokens, UIDs, emails, or full production records in any file. (Committing this evidence is part of the separate reviewed evidence-commit step, §7.)
 
 ## 3. Route + authorization verification (post-deploy)
-Route: **`/admin/diagnostics/inventory-parts-parity`** (Firebase Hosting site root; no navigation entry — reached only by direct URL).
-- **admin** session → route renders the diagnostic (Run button visible).
-- **dispatcher** session → route renders the diagnostic.
-- **unauthorized role** (e.g. technician / PARTS_MANAGER / signed-out) → the **standard No Access** state ("available to admin/dispatcher only"); no diagnostic, no data. This is a real gate (component `isDiagnosticsAuthorized(role)`), not route obscurity. **Firestore Rules unchanged** — the involved collections (`parts`, `inventory_transactions`, `reorder_requests`, `reorder_purchase_orders`) are already admin/dispatcher-readable, so no Rules change is required for a `PASS`.
+Route: **`/admin/diagnostics/inventory-parts-parity`** (Firebase Hosting site root; no navigation entry — reached only by direct URL). Verify **all five** states — the app distinguishes signed-out and no-application-access from the component's admin/dispatcher denial:
+
+| # | State | Expected |
+|---|---|---|
+| A | **Signed out** | The **login screen**; the diagnostics route/component is **not mounted** (this is app auth, **not** the component No Access state). |
+| B | **Authenticated, no application access** | The **application-level standard "No access" screen**; the diagnostics route/component is **not mounted**. |
+| C | **Authenticated, has app access, role not admin/dispatcher** (e.g. technician) | The **route resolves** and the diagnostics component displays **its own admin/dispatcher-only denial**; the **Run button and diagnostics data are unavailable**. |
+| D | **Authenticated admin** | Diagnostic **renders**; **Run** button visible. |
+| E | **Authenticated dispatcher** | Diagnostic **renders**; **Run** button visible. |
+
+**Firestore Rules unchanged** — the involved collections (`parts`, `inventory_transactions`, `reorder_requests`, `reorder_purchase_orders`) are already admin/dispatcher-readable, so no Rules change is required for a `PASS`. Do **not** describe the signed-out state (A) as the component No Access state; A/B are app-level auth, C is the component gate.
+
+## 3.5 Dispatcher credential readiness — HARD PRECONDITION
+Before deployment execution, confirm that a **valid dispatcher test credential can authenticate** (state E is required; admin verification alone does **not** complete the route matrix).
+
+- **Current state:** the previously attempted dispatcher account was **blocked at authentication** with **"Invalid email or password"** — a **credential failure that occurs before any Firestore authorization**. Record this as **`BLOCKED_CREDENTIAL`**.
+- **Do NOT** change the Firestore user role, `operationalRoles`, custom claims, or Rules to resolve it — this is a credential-provisioning issue, not an authorization one.
+- **Dispatcher verification (E) cannot be marked PASS until a valid dispatcher credential is available.** The route matrix (and therefore the deployment's verification) stays incomplete while dispatcher readiness is `BLOCKED_CREDENTIAL`.
+- **Never** place passwords, tokens, UIDs, or authentication secrets in evidence — record only the readiness state (`BLOCKED_CREDENTIAL` vs `READY`) and the account label.
 
 ## 4. One live diagnostic run
 As an **admin or dispatcher**, open the route and click **Run shadow-parity** once (single active run; the button disables while running). The run performs one-shot reads only (no subscriptions, no writes).
@@ -47,7 +98,8 @@ Record: **status**, source/parity **counts** (canonicalMatch, staticOnlyExcluded
 - `FAIL_PARITY` and every `BLOCKED_*` result **do not** satisfy the gate; they may be retained only as diagnostic evidence.
 
 ## 8. Safeguards / non-authorizations
-- **Hosting-only** deploy; **no** Rules / Functions / indexes / data change; **no** source switch; **no** PartsList/PartDetail behavior change; **no** ordinary Inventory navigation exposure.
+- **Hosting-only** deploy; **no** Rules / Functions / indexes / data change (proven by §2.5 pre/post evidence); **no** source switch; **no** PartsList/PartDetail behavior change; **no** ordinary Inventory navigation exposure.
+- **Dispatcher credential readiness (§3.5) is a hard precondition** — while it is `BLOCKED_CREDENTIAL` the route matrix (state E) is incomplete and the deployment verification cannot be marked complete; do **not** alter role/`operationalRoles`/claims/Rules to work around it.
 - This handoff authorizes nothing; the build+deploy and the evidence export/commit are each separate, Owner-authorized operator actions.
 - Decisions #43–#45 unchanged. Stage A remains a diagnostic gate — it does not perform D (approved-ten) or B (operational-role Rules) or C1/C2 cutover.
 
