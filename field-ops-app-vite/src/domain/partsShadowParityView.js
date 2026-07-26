@@ -71,3 +71,34 @@ export function runFailureView(runId) {
     evidence: { status: "BLOCKED_UNAVAILABLE", reason: "diagnostic run failed", runId: runId ?? null },
   });
 }
+
+/** Build the exact sanitized evidence payload from a diagnostics VIEW model (the output
+ * of toDiagnosticsView). Contains only status, the parity counts, sourceCounts, hashes,
+ * build/run identifiers and capture timestamps -- NEVER credentials, tokens, UIDs, emails,
+ * raw records, or per-row divergence values. Returns null for an invalid/absent view (so
+ * the copy action is unavailable before a result exists). Only a PASS payload can qualify
+ * for Decision #44; FAIL_PARITY/BLOCKED_* payloads are diagnostic evidence only. */
+export function sanitizedEvidencePayload(view) {
+  if (!view || view.invalid) return null;
+  const c = view.counts ?? {};
+  const m = view.meta ?? {};
+  return {
+    status: view.status,
+    counts: {
+      canonicalMatch: c.canonicalMatch ?? null,
+      staticOnlyExcluded: c.staticOnlyExcluded ?? null,
+      rowMissing: c.rowMissing ?? null,
+      fieldDivergence: c.fieldDivergence ?? null,
+      availabilityDivergence: c.availabilityDivergence ?? null,
+      workflowDivergence: c.workflowDivergence ?? null,
+      unexpectedUnmatched: c.unexpectedUnmatched ?? null,
+      structuralIssue: c.structuralIssue ?? null,
+    },
+    sourceCounts: m.sourceCounts ?? null,
+    staticCatalogHash: m.staticCatalogHash ?? null,
+    buildId: m.adapterCommit ?? null,
+    runId: m.runId ?? null,
+    capturedAtStart: m.capturedAtStart ?? null,
+    capturedAtEnd: m.capturedAtEnd ?? null,
+  };
+}
