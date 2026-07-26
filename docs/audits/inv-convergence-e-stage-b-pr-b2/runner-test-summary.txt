@@ -1,0 +1,9 @@
+Regression-runner unit tests -- rulesRegressionRunner.test.mjs
+=============================================================
+Command: node functions/test/rulesRegressionRunner.test.mjs   (no emulator required)
+Result:  10 passed, 0 failed   (exit 0)
+
+Confirms: byte-identical Rules gate blocks emulator startup on mismatch; ordered
+suite table + EXPECTED_TOTAL = 644; a fully-passing run reports exactly
+"644 passed, 0 failed"; emulator-only / no production prerequisite; win32
+tree-kill by PID.

@@ -1,0 +1,11 @@
+INV-CONVERGENCE-E Stage B PR-B2 -- clean-checkout evidence
+==========================================================
+Validated merge commit (PR #432): 60dc8458a61a83b6121d7841b51a7e480356b2df
+Checkout HEAD at validation time:  60dc8458a61a83b6121d7841b51a7e480356b2df
+Exact-commit match:                CONFIRMED
+
+Worktree state BEFORE test execution: CLEAN (git status --porcelain empty)
+Checkout method: fresh git worktree pinned to the exact PR #432 merge commit.
+
+No production project selected for validation; Firestore + Auth emulator only.
+No production credentials or identity values were used or required.

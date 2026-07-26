@@ -1,0 +1,8 @@
+Root vs mirror byte-consistency (clean checkout)
+================================================
+diff firestore.rules field-ops-app-vite/firestore.rules  -> no differences
+Result: root and application mirror are BYTE-IDENTICAL (PASS)
+
+Also enforced programmatically by the regression runner's checkRulesIdentical,
+which reports "OK   root and field-ops-app-vite firestore.rules are byte-identical"
+before any emulator is started (see full-rules-regression-summary.txt).
