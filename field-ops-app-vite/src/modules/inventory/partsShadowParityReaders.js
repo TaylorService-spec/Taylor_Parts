@@ -14,12 +14,15 @@ import { fetchPartMasterList } from "../../services/partMasterQueries";
 import { PARTS_CATALOG } from "../../data/partsCatalog";
 import { fetchInventoryTransactions, fetchReorderRequests, fetchReorderPurchaseOrders } from "../../services/operationsQueries";
 import { readOnce } from "../../domain/partsShadowParityReadOnce";
+import { createRunIdProvider } from "../../domain/partsShadowParityRunId";
 
 // Deterministic build/commit identifier injected at build time (vite `define`).
 const ADAPTER_COMMIT = typeof __APP_COMMIT__ !== "undefined" ? __APP_COMMIT__ : null;
 
+// One reader bundle is created per component mount (via useRef) and reused across runs,
+// so this run-ID provider's sequence persists -> every execution gets a distinct opaque
+// run id (opaque prefix + incrementing sequence; no user identity).
 export function defaultReaders(overrides = {}) {
-  let seq = 0;
   return {
     canonicalPartsReader: fetchPartMasterList, // already returns { ok, parts } | { ok:false, code }
     staticCatalogProvider: async () => ({ ok: true, rows: PARTS_CATALOG }),
@@ -27,7 +30,7 @@ export function defaultReaders(overrides = {}) {
     reorderReader: () => readOnce(fetchReorderRequests),
     purchaseOrderReader: () => readOnce(fetchReorderPurchaseOrders),
     clock: () => new Date().toISOString(),
-    runId: () => `run-${(seq += 1)}`,
+    runId: createRunIdProvider(),
     adapterCommit: ADAPTER_COMMIT,
     ...overrides,
   };

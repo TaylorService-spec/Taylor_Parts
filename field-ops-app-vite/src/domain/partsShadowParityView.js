@@ -61,3 +61,13 @@ export function toDiagnosticsView(result) {
       : [],
   };
 }
+
+/** Sanitized view for an UNEXPECTED execution rejection -- never exposes the raw error,
+ * stack, credentials, or record data. Renders a blocked/unavailable state; the operator
+ * can retry. */
+export function runFailureView(runId) {
+  return toDiagnosticsView({
+    status: "BLOCKED_UNAVAILABLE",
+    evidence: { status: "BLOCKED_UNAVAILABLE", reason: "diagnostic run failed", runId: runId ?? null },
+  });
+}

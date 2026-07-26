@@ -12,16 +12,21 @@
 import { runShadowParity } from "./partsShadowParity.js";
 
 // canonical reader may resolve { ok, parts | rows, code } (fetchPartMasterList uses `parts`).
+// FAILS CLOSED: a successful-but-malformed (non-array) result does NOT become an empty
+// list -- it is treated as UNAVAILABLE so it can never masquerade as a real 0-row read.
 function toCanonicalRead(result) {
   if (result && result.ok) {
-    const rows = Array.isArray(result.parts) ? result.parts : Array.isArray(result.rows) ? result.rows : [];
+    const rows = Array.isArray(result.parts) ? result.parts : Array.isArray(result.rows) ? result.rows : null;
+    if (rows === null) return { status: "UNAVAILABLE", rows: null }; // malformed -> fail closed
     return { status: "OK", rows };
   }
   const status = result && result.code === "permission-denied" ? "PERMISSION_DENIED" : "UNAVAILABLE";
   return { status, rows: null }; // never [] on failure
 }
 
-// non-canonical readers: { ok:true, rows } -> rows; failure/missing -> null (=> incomplete).
+// non-canonical readers: { ok:true, rows } -> rows; any failure (incl. code:"incomplete-input"
+// from a malformed non-array read) or missing -> null, which the pure core turns into
+// BLOCKED_INCOMPLETE_INPUT. A malformed read can never become a legitimate 0-row snapshot.
 function toRows(result) {
   if (result && result.ok && Array.isArray(result.rows)) return result.rows;
   if (Array.isArray(result)) return result; // tolerate a bare array provider

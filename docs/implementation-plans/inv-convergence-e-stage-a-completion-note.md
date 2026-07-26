@@ -41,10 +41,18 @@ Only a live exported `status = PASS` (with sanitized source/parity counts, stati
 
 ## Tests (offline; registered in `npm test`)
 - `partsShadowParityReadOnce.test.mjs` (4) — success→{ok,rows} one call; `permission-denied`→code; other→`unavailable`; non-array→[].
-- `partsShadowParityView.test.mjs` (13) — + reader bundle wires the one-shot readers via `readOnce` + `__APP_COMMIT__`; new readers use the live reorder collections (not dormant `purchase_orders`); dedicated route present and **no nav entry**; route authorization via the component gate (standard No Access); execution manual/single-active-run/ephemeral/no-persistence/no-writes.
-- Preserved: `partsShadowParity` (21), `partsShadowParityCapture` (8) — current-vs-shadow comparison, snapshot-derived overlays, injected-overlay-cannot-bypass, every BLOCKED incl. missing-commit, purity, sanitization, PartsList/PartDetail isolation.
+- `partsShadowParityReadOnce.test.mjs` (5) — `[]` valid; non-array success → `incomplete-input`; permission-denied/unavailable throws; one call per read.
+- `partsShadowParityRunId.test.mjs` (3) — consecutive ids distinct/opaque; no user identity; independent providers don't collide.
+- `partsShadowParityCapture.test.mjs` (11) — + `incomplete-input` reader → `BLOCKED_INCOMPLETE_INPUT` (no fabricated empty snapshot); malformed canonical fails closed; consecutive runs get distinct run ids in evidence.
+- `partsShadowParityView.test.mjs` (16) — + reader bundle wires one-shot readers via `readOnce` + `__APP_COMMIT__`; live reorder collections; dedicated route + **no nav entry**; route authorization via component gate; execution manual/single-run/ephemeral/no-persistence/no-writes; `useRef` reader bundle + `createRunIdProvider`; `runFailureView` sanitized; component `.catch` leaves running/re-enables/retry.
+- Preserved: `partsShadowParity` (21) — current-vs-shadow comparison, snapshot-derived overlays, injected-overlay-cannot-bypass, every BLOCKED incl. missing-commit, purity, sanitization, PartsList/PartDetail isolation.
 
 Full `npm test` chain, `typecheck`, `oxlint`, and `build` are green (the build injects the git SHA as `__APP_COMMIT__`). **No deployment.** Decisions #43–#45 unchanged; no contradiction found.
+
+## Review round 2 corrections
+1. **Fail closed on malformed reads.** `readOnce()` now returns `{ ok:false, code:"incomplete-input" }` for a successful **non-array** result (`[]` remains a valid empty collection); a thrown `permission-denied`/other maps as before. The capture translation turns any reader failure (incl. `incomplete-input`) into a null snapshot → `BLOCKED_INCOMPLETE_INPUT`, so a malformed read can never become a legitimate zero-record snapshot or a PASS/FAIL_PARITY. The canonical translation also fails closed: a non-array `parts` → `UNAVAILABLE` (never an empty OK).
+2. **Unique run ID per execution.** A new `createRunIdProvider()` (opaque prefix via `crypto.randomUUID` + monotonic sequence; no user identity) supplies the reader bundle's `runId`; the component creates the bundle **once per mount via `useRef`**, so the sequence persists and every run gets a distinct id (proven), a re-render never replaces a run's id, and the id appears in sanitized evidence.
+3. **Unexpected rejection handled.** The manual run wraps `captureShadowParity` in `.catch`, rendering a sanitized `runFailureView()` (a `BLOCKED_UNAVAILABLE` state with **no** raw error/stack/credentials/records), leaving the running state so the **Run** button re-enables for a later retry; nothing is persisted.
 
 ## Not done (separate steps)
 No deployment of the build-config change; no live run executed here; the exported PASS artifact (Decision #44 evidence) is a separate reviewed operator step. Stage A only — it gates, and does not perform, D (approved-ten) and B (operational-role Rules) then C1/C2.

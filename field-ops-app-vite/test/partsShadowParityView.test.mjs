@@ -2,7 +2,7 @@
 // PartsList/PartDetail isolation. Plain Node; offline; no Firebase/network.
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { toDiagnosticsView, isDiagnosticsAuthorized } from "../src/domain/partsShadowParityView.js";
+import { toDiagnosticsView, isDiagnosticsAuthorized, runFailureView } from "../src/domain/partsShadowParityView.js";
 
 const rel = (p) => new URL(p, new URL("../", import.meta.url));
 const read = (p) => fs.readFileSync(rel(p), "utf8");
@@ -122,6 +122,32 @@ check("execution is manual, single-active-run, ephemeral, and never persists/wri
   assert.ok(/if \(running\) return;/.test(comp), "repeat clicks ignored while running (single active run)");
   assert.ok(!/localStorage|sessionStorage|indexedDB/.test(comp), "no client persistence");
   assert.ok(!/setDoc|updateDoc|addDoc|deleteDoc|writeBatch|runTransaction|onSnapshot/.test(comp), "no Firestore writes/subscriptions");
+});
+
+// ---- unique run id: one reader bundle per mount (useRef) + provider from bundle ------
+check("reader bundle is created once per mount (useRef) and run id comes from a provider", () => {
+  const comp = read("src/modules/inventory/PartsShadowParityDiagnostics.jsx");
+  assert.ok(/useRef/.test(comp) && /readersRef/.test(comp), "reader bundle stored in a ref (stable across runs/re-renders)");
+  const readersSrc = read("src/modules/inventory/partsShadowParityReaders.js");
+  assert.ok(/createRunIdProvider\(\)/.test(readersSrc), "runId sourced from createRunIdProvider() (persistent sequence)");
+});
+
+// ---- unexpected rejection handling ----------------------------------------
+check("runFailureView is a sanitized blocked/unavailable view (no raw error/records)", () => {
+  const v = runFailureView("run-x-1");
+  assert.equal(v.invalid, false);
+  assert.equal(v.status, "BLOCKED_UNAVAILABLE");
+  assert.equal(v.isBlocked, true);
+  const json = JSON.stringify(v);
+  assert.ok(!/stack|Error:|password|token|"cost"|"price"|currentSummary/.test(json), "no raw error/record leakage");
+});
+check("component catches rejection: leaves running, keeps Run enabled, shows sanitized state", () => {
+  const comp = read("src/modules/inventory/PartsShadowParityDiagnostics.jsx");
+  assert.ok(/\.catch\(/.test(comp), "capture promise has a catch");
+  assert.ok(/runFailureView\(\)/.test(comp), "catch renders the sanitized failure view");
+  const catchBlock = comp.slice(comp.indexOf(".catch("));
+  assert.ok(/phase:\s*"ready"/.test(catchBlock), "catch leaves running (sets phase ready -> button re-enabled, retry possible)");
+  assert.ok(!/phase:\s*"running"/.test(catchBlock), "catch never re-enters running");
 });
 
 console.log(`\n${passed} passed`);

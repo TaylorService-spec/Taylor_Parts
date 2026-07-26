@@ -8,10 +8,10 @@
 // Execution: MANUAL start; only ONE run active at a time (the button is disabled and
 // repeat clicks are ignored while running); the result is ephemeral in memory and a
 // refresh clears it (no background execution, no persistence, no Firestore write).
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useAuth } from "../../auth/AuthContext";
 import { captureShadowParity } from "../../domain/partsShadowParityCapture";
-import { toDiagnosticsView, isDiagnosticsAuthorized } from "../../domain/partsShadowParityView";
+import { toDiagnosticsView, isDiagnosticsAuthorized, runFailureView } from "../../domain/partsShadowParityView";
 import { defaultReaders } from "./partsShadowParityReaders";
 
 const box = { padding: 12, border: "1px solid #dadce0", borderRadius: 8, marginTop: 8 };
@@ -21,6 +21,10 @@ export default function PartsShadowParityDiagnostics({ readers }) {
   const authorized = isDiagnosticsAuthorized(role);
   // phases: "idle" | "running" | "ready"; result ephemeral, reset on mount/refresh.
   const [state, setState] = useState({ phase: "idle" });
+  // One reader bundle per mount (stable across re-renders and across runs) so the
+  // run-ID sequence persists and each execution gets a distinct run id.
+  const readersRef = useRef(null);
+  if (readersRef.current === null) readersRef.current = readers ?? defaultReaders();
 
   // Standard No Access state for unauthorized sessions -- real gate, not obscurity.
   if (!authorized) {
@@ -31,9 +35,15 @@ export default function PartsShadowParityDiagnostics({ readers }) {
   function run() {
     if (running) return; // single active run: ignore repeat clicks while in flight
     setState({ phase: "running" });
-    captureShadowParity(readers ?? defaultReaders()).then((result) => {
-      setState({ phase: "ready", view: toDiagnosticsView(result) });
-    });
+    captureShadowParity(readersRef.current)
+      .then((result) => {
+        setState({ phase: "ready", view: toDiagnosticsView(result) });
+      })
+      .catch(() => {
+        // Unexpected rejection: leave running, show a sanitized blocked/unavailable state
+        // (no raw error/stack/credentials/records), keep Run enabled for a later retry.
+        setState({ phase: "ready", view: runFailureView() });
+      });
   }
 
   const v = state.phase === "ready" ? state.view : null;
