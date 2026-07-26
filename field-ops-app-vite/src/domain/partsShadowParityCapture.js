@@ -62,6 +62,8 @@ export async function captureShadowParity(readers) {
   const poSnapshot = toRows(await r.purchaseOrderReader());
   const capturedAtEnd = clock();
 
+  // Overlays are DERIVED from the captured snapshots inside runShadowParity -- the
+  // orchestrator supplies only the snapshots, never a separate overlay authority.
   return runShadowParity({
     runId, adapterCommit, capturedAtStart, capturedAtEnd,
     canonicalRead,
@@ -69,7 +71,5 @@ export async function captureShadowParity(readers) {
     ledgerSnapshot,
     reorderSnapshot,
     poSnapshot,
-    overlayBySku: r.overlayBySku ?? {},
-    workflowBySku: r.workflowBySku ?? {},
   });
 }

@@ -91,6 +91,12 @@ await check("failed static provider -> BLOCKED_INCOMPLETE_INPUT", async () => {
   assert.equal(status, "BLOCKED_INCOMPLETE_INPUT");
 });
 
+await check("missing adapterCommit (foundation) -> BLOCKED_INCOMPLETE_INPUT", async () => {
+  const r = readers({ adapterCommit: null });
+  const { status } = await captureShadowParity(r);
+  assert.equal(status, "BLOCKED_INCOMPLETE_INPUT");
+});
+
 await check("no reader invoked more than once per run (success path)", async () => {
   const r = readers();
   await captureShadowParity(r);

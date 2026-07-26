@@ -82,4 +82,23 @@ check("PartsList and PartDetail do not import the Stage A shadow-parity modules"
   }
 });
 
+// ---- production reader bundle is explicitly classified as FOUNDATION --------
+// (source scan: the module imports Firebase, so it is not node-importable here)
+check("production reader bundle is explicitly classified as foundation (cannot run live parity)", () => {
+  const src = read("src/modules/inventory/partsShadowParityReaders.js");
+  assert.ok(/FOUNDATION/.test(src), "must be labelled FOUNDATION");
+  assert.ok(/adapterCommit:\s*null/.test(src), "foundation adapterCommit must be null (run BLOCKS)");
+  // ledger/reorder/PO live readers are deferred -> report unavailable
+  for (const reader of ["ledgerReader", "reorderReader", "purchaseOrderReader"]) {
+    const re = new RegExp(reader + ":[^\\n]*unavailable");
+    assert.ok(re.test(src), `${reader} must report unavailable in the foundation bundle`);
+  }
+});
+check("diagnostics surface is NOT wired into navigation/App in this unit", () => {
+  for (const p of ["src/App.jsx", "src/navigation/navConfig.js"]) {
+    const src = read(p);
+    assert.ok(!/PartsShadowParityDiagnostics|partsShadowParity/i.test(src), `${p} must not wire the diagnostics surface`);
+  }
+});
+
 console.log(`\n${passed} passed`);

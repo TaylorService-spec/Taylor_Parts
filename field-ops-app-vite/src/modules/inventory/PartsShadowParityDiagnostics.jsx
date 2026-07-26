@@ -59,10 +59,12 @@ export default function PartsShadowParityDiagnostics({ readers }) {
         <ul style={{ marginTop: 12 }}>
           <li>canonicalMatch: {c.canonicalMatch ?? "—"}</li>
           <li>staticOnlyExcluded: {c.staticOnlyExcluded ?? "—"}</li>
+          <li>current↔shadow rowMissing: {c.rowMissing ?? "—"}</li>
+          <li>current↔shadow fieldDivergence: {c.fieldDivergence ?? "—"}</li>
+          <li>current↔shadow availabilityDivergence: {c.availabilityDivergence ?? "—"}</li>
+          <li>current↔shadow workflowDivergence: {c.workflowDivergence ?? "—"}</li>
           <li>unexpectedUnmatched: {c.unexpectedUnmatched ?? "—"}</li>
-          <li>nameDivergence: {c.nameDivergence ?? "—"}</li>
-          <li>normalizedUnitDivergence: {c.normalizedUnitDivergence ?? "—"}</li>
-          <li>provenanceIssue: {c.provenanceIssue ?? "—"}</li>
+          <li>structuralIssue: {c.structuralIssue ?? "—"}</li>
         </ul>
       ) : null}
       <p style={{ color: "#5f6368", fontSize: 12, fontFamily: "monospace" }}>

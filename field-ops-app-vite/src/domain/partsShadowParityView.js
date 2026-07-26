@@ -44,10 +44,16 @@ export function toDiagnosticsView(result) {
     counts: {
       canonicalMatch: num(e.canonicalMatchCount),
       staticOnlyExcluded: num(e.staticOnlyExcludedCount),
+      // current-vs-shadow model comparison (primary parity signal)
+      rowMissing: num(e.rowMissingCount),
+      fieldDivergence: num(e.fieldDivergenceCount),
+      availabilityDivergence: num(e.availabilityDivergenceCount),
+      workflowDivergence: num(e.workflowDivergenceCount),
+      // adapter self-validation (additional evidence)
       unexpectedUnmatched: num(e.unexpectedUnmatchedCount),
       nameDivergence: num(e.nameDivergenceCount),
       normalizedUnitDivergence: num(e.normalizedUnitDivergenceCount),
-      provenanceIssue: num(e.provenanceIssueCount),
+      structuralIssue: num(e.structuralIssueCount),
     },
     // divergence summaries are { key, kind } only -- never record values
     divergenceSummary: Array.isArray(e.divergences)
