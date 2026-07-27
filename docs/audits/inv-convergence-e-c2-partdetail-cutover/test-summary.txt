@@ -1,0 +1,52 @@
+INV-CONVERGENCE-E C2 -- test evidence
+commit: 94e322e5299e56e67fa8c8b99e46558d56a62502
+node: v22.19.0
+
+=== npm test (full client chain) ===
+FULL_CHAIN_EXIT=0
+partDetailView.test.mjs
+  ok - fixture sanity: 200 static, 190 canonical, 10 approved exclusions
+  ok - back-compat: all 200 pre-existing Part IDs still resolve to READY
+  ok - back-compat: the 10 approved static-only Parts still have working detail pages
+  ok - back-compat: resolved identity === route param === sku for all 200 (no id rewrite)
+  ok - routing: every C1 PartsList route resolves in C2 PartDetail (search->route->detail)
+  ok - routing: unknown id under a verified catalog is NOT_FOUND (not BLOCKED)
+  ok - parity: name/category identical to the pre-C2 static page for all 200
+  ok - parity: commercial + baseline fields are the UNCHANGED static values (UD-3/UD-4 pending)
+  ok - parity: unit is the canonical-preferred normalized code (documented display change)
+  ok - parity: canonical-matched Parts carry CANONICAL identity provenance
+  ok - BLOCKED_PERMISSION on a denied canonical read (never a static fallback page)
+  ok - BLOCKED_UNAVAILABLE on an unavailable canonical read
+  ok - BLOCKED_INCOMPLETE_INPUT on missing/unknown/LOADING canonical status
+  ok - BLOCKED_INCOMPLETE_INPUT when canonical rows are missing/malformed
+  ok - BLOCKED (not a stale page) when the canonical read omits this very Part
+  ok - BLOCKED on a malformed/absent route part id (not 'Unknown part')
+  ok - BLOCKED on a missing/empty static compatibility catalog
+  ok - BLOCKED on a duplicate canonical partId (ambiguous identity never renders)
+  ok - every BLOCKED_* state has explicit non-empty user copy
+  ok - PART_DETAIL_STATES enumerates exactly the produced statuses
+  ok - ledger: selects only this part's transactions, newest first (pre-C2 behavior)
+  ok - ledger: identical to the pre-C2 raw-param filter for every one of the 200
+  ok - ledger: caps at 20 rows, unchanged
+  ok - ledger: fail-closed -- no resolved identity yields an EMPTY slice, never unfiltered
+  ok - ledger: a BLOCKED detail yields no resolved id, hence no ledger (paired fail-closed)
+  ok - ledger: health lookup keys on the resolved id, no cross-part bleed
+  ok - ledger: tolerates malformed transaction/health entries without throwing
+  ok - wiring: PartDetail no longer imports the static getCatalogItem metadata source
+  ok - wiring: PartDetail composes via the governed view + uses the existing canonical read
+  ok - wiring: the raw-param ledger filter is gone (re-pointed to resolved identity)
+  ok - wiring: write surface preserved (reorder/PO/receive/cancel/void/actions intact)
+  ok - wiring: blocked render path exists and precedes the Unknown-part path
+  ok - purity: same inputs -> deep-equal output; inputs not mutated
+  ok - purity: selectPartLedger does not mutate the caller's transaction array
+
+34 passed, 0 failed
+
+=== partsCatalogView (C1 regression after shared-guard extraction) ===
+
+23 passed, 0 failed
+
+=== lint / build / build-base ===
+npm run lint            exit 0 (pre-existing warnings only; ZERO findings in C2 files)
+npm run build           exit 0
+npm run verify:build-base  12 passed, 0 failed

@@ -1,0 +1,6 @@
+ field-ops-app-vite/package.json                    |   2 +-
+ field-ops-app-vite/src/domain/partDetailView.js    | 174 ++++++++++++
+ field-ops-app-vite/src/domain/partsCatalogView.js  |  86 +++---
+ .../src/modules/inventory/PartDetail.jsx           | 133 +++++++--
+ field-ops-app-vite/test/partDetailView.test.mjs    | 309 +++++++++++++++++++++
+ 5 files changed, 648 insertions(+), 56 deletions(-)
