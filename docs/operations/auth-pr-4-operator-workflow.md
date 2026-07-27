@@ -34,7 +34,7 @@ passwords, or UIDs.
 | Fail closed | Disabled / missing / UID-mismatch / alias-collision → **halt** (never skip, never enable). |
 | Exact rollback | Before mutation, the workflow writes a strict, signed `0600` rollback artifact to the explicitly supplied `--capturedStateOut`. It binds project, persona, position, UID, and migrated alias; rollback revalidates the signature, mapping, current alias, account state, and prior-address availability before restoring the exact prior address + boolean. |
 | Sanitized evidence | Booleans / patterns / per-run random-salted opaque references only — never an address, alias tag, UID, or address-linked prior-verified value. The salt is not persisted. |
-| Secret lifecycle | Dry runs create no rollback state. Failed pre-write/write attempts remove it. A successful mutation retains the protected artifact for recovery; successful rollback deletes it. The operator deletes it after the separately reviewed verification/rollback window closes. |
+| Secret lifecycle | Dry runs create no rollback state. Only a failure **proven to be pre-mutation** (before `updateUser` is invoked) removes the artifact. **Once a mutation is attempted, any uncertain outcome — including a read-back (`getUser`) failure after a successful `updateUser` — RETAINS** the signed artifact and prints an uncertain-outcome warning telling the operator to preserve it; a successful mutation also retains it. Only a **confirmed successful rollback** (or explicit operator closure after the reviewed verification/rollback window) deletes it. A read-back failure never destroys recovery state. |
 
 Migration order (readiness §4): `emp-rudy-driver` (1) → `emp-rudy-parts-associate`
 (2) → `emp-rudy-warehouse-manager` (3) → `emp-rudy-parts-manager` (4) →

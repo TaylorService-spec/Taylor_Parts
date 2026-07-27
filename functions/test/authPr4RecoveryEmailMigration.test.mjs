@@ -235,6 +235,58 @@ ok("signed captured state is bound, tamper-evident, owner-only, and removable", 
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+ok("retainArtifactOnError: true only when a mutation was attempted", () => {
+  assert.equal(wf.retainArtifactOnError(Object.assign(new Error("x"), { mutationAttempted: true })), true);
+  assert.equal(wf.retainArtifactOnError(Object.assign(new Error("x"), { mutationAttempted: false })), false);
+  assert.equal(wf.retainArtifactOnError(new Error("pre-mutation, flag absent")), false);
+  assert.equal(wf.retainArtifactOnError(undefined), false);
+});
+
+ok("uncertainOutcomeMessage tells the operator to PRESERVE the recovery artifact", () => {
+  const msg = wf.uncertainOutcomeMessage("emp-rudy-driver", "/secure/driver.rollback.json");
+  assert.match(msg, /UNCERTAIN OUTCOME/);
+  assert.match(msg, /PRESERVED/);
+  assert.match(msg, /do NOT delete/);
+  assert.match(msg, /--rollback/);
+});
+
+await okAsync("applyPlan dry-run: mutationAttempted=false and NO auth method is called", async () => {
+  const calls = [];
+  const stub = {
+    updateUser: async () => { calls.push("updateUser"); },
+    getUser: async () => { calls.push("getUser"); return {}; },
+  };
+  const res = await wf.applyPlan(stub, { kind: "forward", uid: "u1", update: {} }, { execute: false });
+  assert.equal(res.applied, false);
+  assert.equal(res.mutationAttempted, false);
+  assert.equal(calls.length, 0);
+});
+
+await okAsync("applyPlan: a read-back (getUser) failure AFTER a successful updateUser marks mutationAttempted=true", async () => {
+  const stub = {
+    updateUser: async () => {}, // succeeds -- the identity is (or may be) changed
+    getUser: async () => { const e = new Error("read-back unavailable"); e.code = "readback/down"; throw e; },
+  };
+  await assert.rejects(
+    () => wf.applyPlan(stub, { kind: "forward", uid: "u1", update: { email: "a", emailVerified: false } }, { execute: true }),
+    (err) => {
+      assert.equal(wf.retainArtifactOnError(err), true); // => artifact MUST be retained
+      return true;
+    },
+  );
+});
+
+await okAsync("applyPlan: an updateUser failure is also treated as attempted (uncertain -> retain)", async () => {
+  const stub = {
+    updateUser: async () => { throw new Error("update timed out (may have committed server-side)"); },
+    getUser: async () => ({}),
+  };
+  await assert.rejects(
+    () => wf.applyPlan(stub, { kind: "forward", uid: "u1", update: {} }, { execute: true }),
+    (err) => wf.retainArtifactOnError(err) === true,
+  );
+});
+
 // ----------------------------------------------------------------------------
 // 2. AUTH-EMULATOR INTEGRATION TESTS (non-production only)
 // ----------------------------------------------------------------------------
@@ -352,6 +404,88 @@ await okAsync("real CLI retains bound rollback state, rejects tampering, then re
   after = await auth.getUser(user.uid);
   assert.equal(after.email, priorAddress);
   assert.equal(after.emailVerified, true);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+await okAsync("READ-BACK FAILURE after a successful updateUser: uncertain outcome, artifact RETAINED, governed rollback still restores exact prior + emailVerified", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-readback-"));
+  const mappingFile = path.join(dir, "mapping.json");
+  const keyFile = path.join(dir, "state.key");
+  const stateFile = path.join(dir, "rollback.json");
+  const priorAddress = `rb_prior_${uniq()}@example.com`;
+  const newAlias = `base+rb_${uniq()}@gmail.com`;
+  const user = await auth.createUser({ email: priorAddress, emailVerified: true, password: "Passw0rd!23" });
+  const key = crypto.randomBytes(48);
+  fs.writeFileSync(mappingFile, JSON.stringify({ "emp-rudy-driver": { uid: user.uid, newAlias } }), { mode: 0o600 });
+  fs.writeFileSync(keyFile, key, { mode: 0o600 });
+
+  // Simulate main()'s forward EXECUTE: write the signed artifact BEFORE mutation.
+  wf.writeCapturedState(stateFile, {
+    version: 1, projectId: "demo-authpr4", employeeId: "emp-rudy-driver", position: 1,
+    uid: user.uid, priorAddress, priorEmailVerified: true, newAlias, createdAt: new Date().toISOString(),
+  }, key);
+
+  // Faulting auth: updateUser succeeds against the emulator; the NEXT getUser
+  // (the read-back) throws -- the exact failure window from the defect.
+  let failNext = false;
+  const faultingAuth = {
+    getUserByEmail: (e) => auth.getUserByEmail(e),
+    updateUser: async (uid, u) => { const r = await auth.updateUser(uid, u); failNext = true; return r; },
+    getUser: async (uid) => {
+      if (failNext) { failNext = false; const e = new Error("injected read-back failure"); e.code = "injected/readback"; throw e; }
+      return auth.getUser(uid);
+    },
+  };
+  const plan = wf.buildForwardPlan({ employeeId: "emp-rudy-driver", uid: user.uid, priorAddress, priorEmailVerified: true, newAlias });
+
+  // The corrected lifecycle: applyPlan throws with mutationAttempted, and main's
+  // decision (retainArtifactOnError) keeps the artifact -- it is NOT unlinked.
+  let retained = null;
+  await assert.rejects(
+    () => wf.applyPlan(faultingAuth, plan, { execute: true }),
+    (err) => { retained = wf.retainArtifactOnError(err); return true; },
+  );
+  assert.equal(retained, true, "a read-back failure after updateUser must retain the artifact");
+  if (!retained) wf.secureUnlink(stateFile); // (never reached) mirrors main's guarded cleanup
+
+  // The mutation really landed, and the recovery artifact survives.
+  const mutated = await auth.getUser(user.uid);
+  assert.equal(mutated.email, newAlias, "updateUser committed the migrated alias");
+  assert.equal(mutated.emailVerified, false);
+  assert.ok(fs.existsSync(stateFile), "exact-rollback artifact MUST survive a read-back failure");
+
+  // A later GOVERNED rollback (real CLI) restores the exact prior state and cleans up.
+  const script = path.resolve("scripts/authPr4RecoveryEmailMigration.js");
+  const rollback = spawnSync(process.execPath, [
+    script, "--projectId", "demo-authpr4", "--employeeId", "emp-rudy-driver", "--position", "1",
+    "--mappingFile", mappingFile, "--stateKeyFile", keyFile, "--rollback", "--capturedStateFile", stateFile,
+  ], { cwd: path.resolve("."), env: process.env, encoding: "utf8" });
+  assert.equal(rollback.status, 0, rollback.stderr);
+  const restored = await auth.getUser(user.uid);
+  assert.equal(restored.email, priorAddress, "governed rollback restores the exact prior address");
+  assert.equal(restored.emailVerified, true, "governed rollback restores the exact prior emailVerified");
+  assert.ok(!fs.existsSync(stateFile), "successful rollback removes the artifact");
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+await okAsync("failed preflight under --execute creates NO artifact (disabled account, real CLI)", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-nopre-"));
+  const mappingFile = path.join(dir, "mapping.json");
+  const keyFile = path.join(dir, "state.key");
+  const stateFile = path.join(dir, "rollback.json");
+  const priorAddress = `nopre_${uniq()}@example.com`;
+  const newAlias = `base+nopre_${uniq()}@gmail.com`;
+  const user = await auth.createUser({ email: priorAddress, password: "Passw0rd!23", disabled: true });
+  fs.writeFileSync(mappingFile, JSON.stringify({ "emp-rudy-driver": { uid: user.uid, newAlias } }), { mode: 0o600 });
+  fs.writeFileSync(keyFile, crypto.randomBytes(48), { mode: 0o600 });
+  const script = path.resolve("scripts/authPr4RecoveryEmailMigration.js");
+  const res = spawnSync(process.execPath, [
+    script, "--projectId", "demo-authpr4", "--employeeId", "emp-rudy-driver", "--position", "1",
+    "--mappingFile", mappingFile, "--stateKeyFile", keyFile, "--execute", "--capturedStateOut", stateFile,
+  ], { cwd: path.resolve("."), env: process.env, encoding: "utf8" });
+  assert.notEqual(res.status, 0);
+  assert.match(res.stderr, /DISABLED/);
+  assert.ok(!fs.existsSync(stateFile), "a failed preflight must create no rollback artifact");
   fs.rmSync(dir, { recursive: true, force: true });
 });
 

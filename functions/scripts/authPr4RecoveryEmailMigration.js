@@ -46,9 +46,12 @@
 //     verified status on another address.
 //   - SANITIZED EVIDENCE: evidence records booleans / patterns only -- never a
 //     real address, UID, or the address-linked prior emailVerified value.
-//   - SECRET LIFECYCLE: dry runs create no rollback artifact; failed writes clean
-//     it; successful writes retain a signed, protected artifact until rollback or
-//     operator-confirmed closure; successful rollback removes it.
+//   - SECRET LIFECYCLE: dry runs create no rollback artifact; a failure PROVEN to
+//     be pre-mutation (before updateUser was invoked) cleans it; once a mutation is
+//     attempted, an uncertain/failed outcome (including a read-back failure after a
+//     successful updateUser) RETAINS the signed, protected artifact -- cleanup then
+//     happens only after a confirmed successful rollback or explicit operator
+//     closure. A read-back failure never destroys recovery state.
 //   - EMULATOR / NON-PRODUCTION ONLY for testing: see
 //     functions/test/authPr4RecoveryEmailMigration.test.mjs.
 //
@@ -439,22 +442,59 @@ async function preflight(auth, { employeeId, uid, newAlias }) {
 
 // Apply a plan. Dry-run prints the plan and writes nothing. Execute performs a
 // SINGLE auth.updateUser (email + emailVerified only) then reads back.
+//
+// MUTATION-ATTEMPT BOUNDARY: from the instant updateUser is invoked, the outcome
+// is no longer provably "no mutation" -- a thrown updateUser (network/timeout) or
+// a thrown read-back may still have committed the change server-side. We therefore
+// mark `mutationAttempted` at that boundary and attach it to any thrown error, so
+// callers RETAIN the exact-rollback artifact for every error past this point and
+// only clean up when it is PROVEN no mutation occurred.
 async function applyPlan(auth, plan, { execute }) {
   if (!execute) {
-    return { applied: false, mode: "dry-run" };
+    return { applied: false, mode: "dry-run", mutationAttempted: false };
   }
-  await auth.updateUser(plan.uid, plan.update);
-  const after = await auth.getUser(plan.uid);
-  return {
-    applied: true,
-    mode: plan.kind === "rollback" ? "rollback" : "execute",
-    readback: {
-      uid: after.uid,
-      email: after.email || "",
-      emailVerified: Boolean(after.emailVerified),
-      disabled: Boolean(after.disabled),
-    },
-  };
+  let mutationAttempted = false;
+  try {
+    mutationAttempted = true; // about to mutate -- outcome is now uncertain on any throw
+    await auth.updateUser(plan.uid, plan.update);
+    const after = await auth.getUser(plan.uid);
+    return {
+      applied: true,
+      mode: plan.kind === "rollback" ? "rollback" : "execute",
+      mutationAttempted: true,
+      readback: {
+        uid: after.uid,
+        email: after.email || "",
+        emailVerified: Boolean(after.emailVerified),
+        disabled: Boolean(after.disabled),
+      },
+    };
+  } catch (err) {
+    // A read-back (getUser) failure after a successful updateUser lands here with
+    // mutationAttempted === true: the identity is (or may be) changed and the
+    // recovery artifact MUST survive.
+    err.mutationAttempted = mutationAttempted;
+    throw err;
+  }
+}
+
+// Cleanup of the exact-rollback artifact after an apply error is only safe when
+// it is PROVEN no mutation occurred (the error happened strictly before updateUser
+// was invoked). Any attempted mutation -> retain.
+function retainArtifactOnError(err) {
+  return Boolean(err && err.mutationAttempted);
+}
+
+// Operator-facing message for an uncertain outcome: the identity may already be
+// changed and the recovery artifact must be preserved for a governed rollback.
+function uncertainOutcomeMessage(employeeId, capturedStatePath) {
+  return (
+    `UNCERTAIN OUTCOME for ${employeeId}: an Auth mutation was ATTEMPTED and its success ` +
+    `was not confirmed (write or read-back error). The identity MAY already be changed. The ` +
+    `signed exact-rollback artifact${capturedStatePath ? ` at "${capturedStatePath}"` : ""} has ` +
+    `been PRESERVED -- do NOT delete it. Recover with a governed --rollback using this artifact ` +
+    `to restore the exact prior address + emailVerified, or follow operator closure (readiness §6/§8).`
+  );
 }
 
 function projectClass(projectId) {
@@ -521,12 +561,23 @@ async function main() {
         priorAddress: captured.priorAddress,
         priorEmailVerified: captured.priorEmailVerified,
       });
-      const result = await applyPlan(auth, plan, { execute: true });
+      let result;
+      try {
+        result = await applyPlan(auth, plan, { execute: true });
+      } catch (err) {
+        // A rollback whose success was not confirmed must also RETAIN the artifact
+        // so recovery can be re-attempted -- never delete it on an uncertain rollback.
+        if (retainArtifactOnError(err)) {
+          console.error(uncertainOutcomeMessage(args.employeeId, args.capturedStateFile));
+        }
+        throw err;
+      }
       evidence.mode = "rollback";
       evidence.priorAddressRef = addressRef(captured.priorAddress, runSalt);
       evidence.newAliasRef = addressRef(captured.newAlias, runSalt);
       evidence.checks.uidUnchanged = result.readback?.uid === captured.uid;
       evidence.outcome = "applied";
+      // Only a CONFIRMED successful rollback removes the recovery artifact.
       secureUnlink(args.capturedStateFile);
       console.log(`ROLLBACK applied for ${args.employeeId}: restored exact prior address + prior emailVerified.`);
     } else {
@@ -570,7 +621,15 @@ async function main() {
       try {
         result = await applyPlan(auth, plan, { execute: args.execute });
       } catch (err) {
-        if (args.execute) secureUnlink(args.capturedStateOut);
+        if (args.execute && retainArtifactOnError(err)) {
+          // Mutation was attempted -- the identity may already be changed. NEVER
+          // destroy recovery state here; tell the operator the outcome is uncertain.
+          console.error(uncertainOutcomeMessage(args.employeeId, args.capturedStateOut));
+        } else if (args.execute) {
+          // Proven pre-mutation failure (error before updateUser was invoked): no
+          // change occurred, so the just-written artifact is safe to remove.
+          secureUnlink(args.capturedStateOut);
+        }
         throw err;
       }
       evidence.mode = args.execute ? "execute" : "dry-run";
@@ -629,6 +688,8 @@ module.exports = {
   secureUnlink,
   preflight,
   applyPlan,
+  retainArtifactOnError,
+  uncertainOutcomeMessage,
   projectClass,
   MIGRATION_PERSONA_ORDER,
   PRIMARY_ADMIN_EMPLOYEE_ID,
