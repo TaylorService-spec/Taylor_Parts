@@ -217,7 +217,15 @@ export type AuditAction =
   // Legacy Compatibility-Admin Bootstrap -- one-time, audited migration of an
   // existing legacy `users/{uid}.role === "admin"` principal into the governed
   // roleAssignment model (ADR-005 / ADR-009 controlled technical exception).
-  | "bootstrapCompatibilityAdmin";
+  | "bootstrapCompatibilityAdmin"
+  // AUTH-PR-3 (Authentication Modernization) -- admin-initiated password
+  // recovery. Durable, SEPARATE events for initiation, delivery outcome, and
+  // session revocation (docs/assessments/auth-modernization-architecture.md
+  // §6.2). Same verb+Noun convention, extending this SAME immutable Audit Event
+  // path -- no parallel audit system.
+  | "initiateAdminPasswordReset"
+  | "deliverAdminPasswordReset"
+  | "revokeUserSessions";
 
 export type AuditOutcome = "applied" | "denied";
 
