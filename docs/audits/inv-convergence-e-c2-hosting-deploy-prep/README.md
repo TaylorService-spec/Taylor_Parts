@@ -128,6 +128,15 @@ check.
 - This package proves the runbook is **ready for review**. It does not certify a
   deployment, and no deployment has occurred.
 
+## Changed-file scope
+
+**10 files** = **3 implementation/test** (`scripts/c2LiveParity.mjs`, `test/c2LiveParity.test.mjs`,
+`field-ops-app-vite/package.json` registration) + **7 governance/ops/evidence** (the four files
+in this directory, the runbook, the `.gitattributes` EOL pin, and the `docs/SPRINT_STATUS.md` entry).
+
+**Zero** Rules, Functions source, indexes, Firebase configuration, CI, Auth, or app-module
+changes. No deployment and no production change of any kind.
+
 ## Files
 
 | File | Purpose |
