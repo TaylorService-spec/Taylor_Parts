@@ -69,6 +69,13 @@ function requireAuthUid(request: CallableRequest): string {
 
 // The Admin-SDK deps, wired with NOT_CONFIGURED_DELIVERY so no email is sent
 // until an Owner-approved provider (D-EMAIL-DELIVERY) is added here.
+//
+// PRODUCTION-GATE CONDITION (Codex round 5): a real ResetDelivery may only be
+// wired here after it is verified to DEDUPLICATE on the governed idempotencyKey
+// (see the ResetDelivery contract in adminCredentialCommands.ts). Delivery is
+// internally at-least-once; provider dedup is what makes user-visible delivery
+// exactly-once. A provider that cannot attest idempotency-key dedup must not be
+// wired (its isConfigured() must stay false, keeping the command fail-closed).
 function adminSdkDeps(): commands.AdminResetDeps {
   return {
     generateResetLink: (email: string) => getAuth().generatePasswordResetLink(email),

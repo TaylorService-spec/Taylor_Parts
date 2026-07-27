@@ -65,6 +65,23 @@ export class AdminResetStageError extends Error {}
 // Raised when a lease-bound write is refused because a newer attempt owns the op.
 export class LeaseLostError extends AdminResetStageError {}
 
+// SAFETY CONTRACT (Codex round 5) -- delivery is internally AT-LEAST-ONCE:
+// after a >5min stale takeover, a worker that had already claimed the deliver
+// stage may still generate an extra reset link and call deliverResetLink() a
+// second time before its lease-bound state write is refused. Exactly-once
+// USER-VISIBLE delivery therefore depends on MANDATORY provider-side
+// deduplication keyed on `idempotencyKey`:
+//  - `deliverResetLink` MUST be idempotent on `idempotencyKey` -- a repeat call
+//    with the same key MUST NOT send a second message (return the prior result).
+//  - `isConfigured()` returning true is the provider's ATTESTATION that it both
+//    can send AND deduplicates on `idempotencyKey`. Wiring any real provider is
+//    a production-gate condition: it may return true only once idempotency-key
+//    dedup is verified (D-EMAIL-DELIVERY). The command fails closed when
+//    isConfigured() is false, so no un-attested provider ever sends.
+// The extra link a stale worker may generate is harmless (a link is not a
+// message); only delivery and state-persistence need protection -- provided
+// here by provider dedup + attempt-bound writes. Session revocation is
+// idempotent (see AdminResetDeps.revokeRefreshTokens), so a repeat is safe.
 export interface ResetDelivery {
   isConfigured(): boolean;
   deliverResetLink(args: {
@@ -85,7 +102,12 @@ export const NOT_CONFIGURED_DELIVERY: ResetDelivery = {
 };
 
 export interface AdminResetDeps {
+  // Generating a link is non-destructive; a stale worker regenerating an extra
+  // link after takeover is harmless (a link is not a delivered message).
   generateResetLink(email: string): Promise<string>;
+  // MUST be idempotent: revoking already-revoked refresh tokens is a safe no-op
+  // (Firebase's revocation is a timestamp bump). The safety contract relies on
+  // this so a stale-worker or resume repeat of revocation cannot cause harm.
   revokeRefreshTokens(uid: string): Promise<void>;
   getRecoverableEmail(uid: string): Promise<string | null>;
   delivery: ResetDelivery;

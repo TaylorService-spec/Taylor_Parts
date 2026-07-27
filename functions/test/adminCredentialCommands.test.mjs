@@ -25,6 +25,7 @@ import {
   OperationKeyConflictError,
   MalformedOperationError,
   AdminResetStageError,
+  LeaseLostError,
   claimStage,
   recordStageOwned,
   setStatusOwned,
@@ -389,6 +390,76 @@ await okAsync("listResetEligibleUsers (admin) returns sanitized rows only", asyn
   for (const forbidden of ["email", "password", "claims", "token", "@"]) assert.ok(!blob.includes(forbidden), `no "${forbidden}"`);
 });
 await expectThrows("listResetEligibleUsers denies a non-admin", UnauthorizedActorError, () => listResetEligibleUsers({ actorUid: DISP }));
+
+// -- #6 (round 5) TRUE interleaving: A claims + pauses -> B stale takeover -> A resumes
+await reset(); await seedRoles();
+await okAsync("interleaving: A claims+pauses, B stale-takes-over, A resumes -> duplicate delivery suppressed, revocation safe, A cannot persist stale state", async () => {
+  const key = "interleave-key-abcdef123";
+  const req = { actorUid: ADMIN, targetUid: TARGET, mode: "routine", idempotencyKey: key };
+
+  // Shared provider with idempotency-key dedup + shared idempotent revoke.
+  const sentKeys = new Set();
+  let deliverCalls = 0;
+  let revokeCalls = 0;
+  const delivery = {
+    isConfigured: () => true,
+    deliverResetLink: async ({ idempotencyKey }) => {
+      deliverCalls += 1;
+      if (sentKeys.has(idempotencyKey)) return { delivered: true }; // dedup: no new send
+      sentKeys.add(idempotencyKey);
+      return { delivered: true };
+    },
+  };
+  const revoke = async () => { revokeCalls += 1; }; // idempotent no-op
+
+  // Worker A's FIRST link generation blocks on a gate, so A pauses AFTER
+  // claiming the deliver stage but BEFORE delivering.
+  let releaseGate;
+  const gate = new Promise((res) => { releaseGate = res; });
+  let aGen = 0;
+  const depsA = {
+    generateResetLink: async () => { aGen += 1; if (aGen === 1) await gate; return RESET_LINK; },
+    revokeRefreshTokens: revoke,
+    getRecoverableEmail: async () => TEST_EMAIL,
+    delivery,
+  };
+  const depsB = {
+    generateResetLink: async () => RESET_LINK,
+    revokeRefreshTokens: revoke,
+    getRecoverableEmail: async () => TEST_EMAIL,
+    delivery,
+  };
+
+  // Start A; wait until it has claimed (attempt 1) and parked in generation.
+  const pA = initiateAdminPasswordReset(req, depsA);
+  for (let i = 0; i < 200; i++) {
+    const op = await opDoc(key);
+    if (op && op.attempt === 1 && aGen === 1) break;
+    await new Promise((r) => setTimeout(r, 10));
+  }
+  // Simulate 5+ minutes elapsing while A is stuck -> A's lease goes stale.
+  await db.collection(OPS).doc(key).update({ updatedAtMs: Date.now() - 6 * 60 * 1000 });
+
+  // B stale-takes-over (attempt 2) and completes.
+  assert.deepStrictEqual(await initiateAdminPasswordReset(req, depsB), { status: "accepted" });
+  let op = await opDoc(key);
+  assert.strictEqual(op.attempt, 2);
+  assert.strictEqual(op.status, "completed");
+  assert.strictEqual(op.stages.deliver, "delivered");
+  assert.strictEqual(op.stages.revoke, "done");
+
+  // Release A: it resumes, generates an EXTRA link, calls deliver again (dedup
+  // suppresses the duplicate), then its stale state write is refused.
+  releaseGate();
+  await assert.rejects(() => pA, (e) => e instanceof LeaseLostError, "A must be unable to persist stale state");
+
+  assert.strictEqual(sentKeys.size, 1, "duplicate delivery suppressed by provider dedup");
+  assert.ok(deliverCalls >= 2, "A did attempt an extra delivery (at-least-once internally)");
+  assert.strictEqual(revokeCalls, 1, "revocation occurred once (B); idempotent + safe");
+  op = await opDoc(key);
+  assert.strictEqual(op.attempt, 2, "stale A did not overwrite the owner's attempt");
+  assert.strictEqual(op.status, "completed", "stale A did not overwrite terminal status");
+});
 
 console.log(`\n${passed} passed`);
 process.exit(0);
