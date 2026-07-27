@@ -78,18 +78,22 @@ export class LeaseLostError extends AdminResetStageError {}
 //    a production-gate condition: it may return true only once idempotency-key
 //    dedup is verified (D-EMAIL-DELIVERY). The command fails closed when
 //    isConfigured() is false, so no un-attested provider ever sends.
-// The extra link a stale worker may generate does NOT break recovery: it is a
-// distinct OOB code AND it does NOT invalidate the earlier, already-delivered
-// link -- PROVEN against the Auth emulator by
-// functions/test/adminCredentialResetLinkValidity.test.mjs (evidence:
-// docs/audits/auth-pr-3-oob-validity/). So only DELIVERY (message) and
-// state-persistence need protection -- provided by provider send-dedup +
-// attempt-bound writes. Session revocation is idempotent (see
-// AdminResetDeps.revokeRefreshTokens), so a repeat is safe. Re-verifying this
-// OOB-validity behavior against real Firebase Auth is a production-enablement
-// condition (see the evidence doc); if a later generation ever invalidated the
-// earlier code, link generation must move inside the idempotent provider
-// boundary (one key -> one effective link + send).
+// A stale worker that resumes after takeover may generate an EXTRA reset link
+// (delivery is internally at-least-once). Handling of that extra link:
+//  - It is a distinct OOB code. The Auth-emulator observation
+//    (functions/test/adminCredentialResetLinkValidity.test.mjs; evidence:
+//    docs/audits/auth-pr-3-oob-validity/) shows the earlier code is NOT REMOVED
+//    from the emulator's outstanding oobCodes list by a later generation (list
+//    persistence). This is NOT proof of end-to-end consumability, and is
+//    emulator behavior, not a real-Firebase guarantee.
+//  - Whether an earlier already-delivered link REMAINS CONSUMABLE after a later
+//    generation is therefore a PRODUCTION-ENABLEMENT condition to verify against
+//    real Firebase Auth (see the evidence doc). If it does not hold, link
+//    generation must move INSIDE the idempotent provider boundary (one key ->
+//    one effective link + send).
+//  - DELIVERY (the message) is protected by provider send-dedup on
+//    idempotencyKey; STATE by attempt-bound writes; session revocation is
+//    idempotent (a repeat is a no-op).
 export interface ResetDelivery {
   isConfigured(): boolean;
   deliverResetLink(args: {
@@ -110,8 +114,11 @@ export const NOT_CONFIGURED_DELIVERY: ResetDelivery = {
 };
 
 export interface AdminResetDeps {
-  // Generating a link is non-destructive; a stale worker regenerating an extra
-  // link after takeover is harmless (a link is not a delivered message).
+  // Generating a link is non-destructive (no message is sent by generation). A
+  // stale worker may regenerate an EXTRA link after takeover; whether that
+  // affects the earlier already-delivered link is a production-enablement
+  // verification against real Firebase Auth (see adminCredentialResetLinkValidity
+  // + docs/audits/auth-pr-3-oob-validity/), not assumed here.
   generateResetLink(email: string): Promise<string>;
   // MUST be idempotent: revoking already-revoked refresh tokens is a safe no-op
   // (Firebase's revocation is a timestamp bump). The safety contract relies on
