@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState } from "react";
 import { auth } from "../firebase/firebase";
 import {
   onAuthStateChanged,
+  sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signOut
 } from "firebase/auth";
@@ -126,9 +127,17 @@ export function AuthProvider({ children }) {
 
   const logout = () => signOut(auth);
 
+  // AUTH-PR-2 self-service recovery (email-input path). Fire-and-forget: asks
+  // Firebase to send a password-reset email. Callers MUST show a neutral
+  // confirmation regardless of the outcome -- never reveal whether the address
+  // exists (see Login.jsx). This does not touch auth STATE, so AuthContext
+  // remains the single source of auth truth. Username-input recovery and
+  // username login are DEFERRED (D-RESOLVER) and are intentionally absent.
+  const resetPassword = (email) => sendPasswordResetEmail(auth, email);
+
   return (
     <AuthContext.Provider
-      value={{ user, role, employeeId, displayName, operationalRoles, employmentStatus, login, logout, loading }}
+      value={{ user, role, employeeId, displayName, operationalRoles, employmentStatus, login, logout, resetPassword, loading }}
     >
       {children}
     </AuthContext.Provider>
