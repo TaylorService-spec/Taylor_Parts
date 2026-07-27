@@ -47,19 +47,44 @@ a specific PR and a specific head rather than living only in conversation.
 | Stage D — approved-ten disposition | hard prerequisite for cutover | **DECIDED** — the ten remain visible as `STATIC_ONLY_EXCLUDED`, routes preserved |
 | Stage B — operational-role `parts` Rules | hard prerequisite for cutover | **DEPLOYED + VERIFIED** |
 | **C1 — PartsList cutover** | must precede C2 | **MERGED + DEPLOYED + VERIFIED LIVE** (PR #441 → `3827ce37`; Hosting gate closed via PR #443 → `f97edf1`) |
-| **C2 — PartDetail cutover** | **this gate** | **CODE COMPLETE, AWAITING THIS AUTHORIZATION** |
+| **C2 — PartDetail cutover** | **this gate** | **AUTHORIZED for repository-only merge** (Owner, 2026-07-27, §6; `DECISIONS.md` #49) — **not yet merged**, pending Codex final drift clearance |
 
 C2's own ordering precondition (C1 first) is satisfied: C1 is not merely merged, it
 is live in production and verified.
 
 ## 3. What is being requested
 
-**Authorization to merge PR #445 into `main` at head `53ec60020e98c8e8d8a79ee236ae835f56416442`, as a repository-only change.**
+**Authorization to merge PR #445 into `main` as a repository-only change.**
 
 That is the entire request. Specifically **in scope**:
 
-- merge the 13-file change (5 implementation/test, 8 evidence/governance);
+- merge the change (see the scope table below);
 - delete the merged branch and synchronize `main`.
+
+### 3.1 Scope as originally reviewed vs. current PR scope
+
+The head and file count below changed as governance records were added. Both are
+recorded so neither figure is read as describing the other.
+
+| | Head | Files | Split |
+|---|---|---|---|
+| **As originally reviewed** (the request this package was drafted against; Codex CODE PASS) | `53ec60020e98c8e8d8a79ee236ae835f56416442` | **13** | 5 implementation/test + 8 evidence/governance |
+| **Owner-authorized head** (§6) | `abfb1a4718bba4e0be95f8b3449d6723a6c8da00` | 14 | 5 implementation/test + 9 evidence/governance |
+| **Current PR scope** | see §6 disclosure | **15** | **5 implementation/test + 10 evidence/governance** |
+
+**Every post-review change is documentation-only.** The 5 implementation/test files
+are unchanged throughout and remain **byte-identical to the Codex-passed head
+`53ec600…`**; the growth from 8 → 10 evidence/governance files is this authorization
+package, `DECISIONS.md` #49, and the `SPRINT_STATUS.md` update — i.e. the act of
+recording the authorization itself.
+
+The 5 implementation/test files: `src/domain/partDetailView.js`,
+`src/domain/partsCatalogView.js`, `src/modules/inventory/PartDetail.jsx`,
+`test/partDetailView.test.mjs`, `field-ops-app-vite/package.json`.
+
+The 10 evidence/governance files: the six under
+`docs/audits/inv-convergence-e-c2-partdetail-cutover/`, plus `.gitattributes`,
+`docs/SPRINT_STATUS.md`, `docs/DECISIONS.md`, and this package.
 
 Explicitly **NOT** in scope and **NOT** requested here:
 
@@ -104,7 +129,7 @@ immediately before preparing this package (no drift: local head == `origin` head
 | GitHub Vite checks | both pass; PR `MERGEABLE` / `CLEAN` |
 | Evidence checksums (`sha256sum -c`) | OK |
 | Sensitive scan | CLEAN |
-| Scope | 13 files; **zero** Rules / Functions / Firebase config / Auth / Customer / production changes |
+| Scope | **13 files as reviewed at `53ec600…`; 15 files currently** (5 implementation/test + 10 evidence/governance — see §3.1; all growth documentation-only). **Zero** Rules / Functions / Firebase config / Auth / Customer / production changes throughout |
 
 **Design decisions approved by Codex** (and requiring Owner ratification in §6):
 
