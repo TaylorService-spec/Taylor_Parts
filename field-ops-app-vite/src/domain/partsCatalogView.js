@@ -39,38 +39,35 @@ const BLOCKING_ISSUE_CODES = new Set([
   "MISSING_IDENTIFIER",
 ]);
 
-const blocked = (status, reason) => ({ status, rows: [], meta: { reason } });
-
 /**
- * Build the PartsList catalog rows from a live canonical read + the static catalog.
+ * INV-CONVERGENCE-E C2 -- the SHARED governed composition guard.
  *
- * @param {object} input
- * @param {{ status: string, rows?: Array }} input.canonicalRead
- *   status: "OK" | "PERMISSION_DENIED" | "UNAVAILABLE" | (anything else -> incomplete).
- *   rows: canonical part view models ({ partId, name, category, stockingUnit, ... }).
- * @param {Array} input.staticCatalog  the static compatibility catalog (PARTS_CATALOG).
- * @returns {{ status: string, rows: Array<{sku,name,category,warehouseQty,identityState}>, meta: object }}
- *   status === "READY" iff every static sku is accounted for (CANONICAL_MATCH or
- *   approved STATIC_ONLY_EXCLUDED) with no blocking structural issue; else BLOCKED_*.
+ * Extracted verbatim from buildPartsCatalogRows (C1) so that PartsList (C1) and
+ * PartDetail (C2) enforce ONE fail-closed precedence ladder and ONE full-accounting
+ * invariant, rather than two drifting copies. Behavior is unchanged for C1.
+ *
+ * @returns {{ status: string, ws: object|null, meta: object }}
+ *   status "READY" with the composed adapter workspace, or a BLOCKED_* with ws:null.
  */
-export function buildPartsCatalogRows(input = {}) {
+export function composeGovernedPartsWorkspace(input = {}) {
   const canonicalRead = input.canonicalRead || {};
   const staticCatalog = input.staticCatalog;
+  const block = (status, reason) => ({ status, ws: null, meta: { reason } });
 
   // 1. Canonical read status precedence -- short-circuit BEFORE any composition
   //    (identical precedence to partsShadowParity.runShadowParity).
   const cstatus = canonicalRead.status;
-  if (cstatus === "PERMISSION_DENIED") return blocked("BLOCKED_PERMISSION", "canonical read permission denied");
-  if (cstatus === "UNAVAILABLE") return blocked("BLOCKED_UNAVAILABLE", "canonical read unavailable");
-  if (cstatus !== "OK") return blocked("BLOCKED_INCOMPLETE_INPUT", "canonical read status missing or unknown");
+  if (cstatus === "PERMISSION_DENIED") return block("BLOCKED_PERMISSION", "canonical read permission denied");
+  if (cstatus === "UNAVAILABLE") return block("BLOCKED_UNAVAILABLE", "canonical read unavailable");
+  if (cstatus !== "OK") return block("BLOCKED_INCOMPLETE_INPUT", "canonical read status missing or unknown");
 
   // 2. Required inputs present as arrays.
-  if (!Array.isArray(canonicalRead.rows)) return blocked("BLOCKED_INCOMPLETE_INPUT", "canonical rows missing");
+  if (!Array.isArray(canonicalRead.rows)) return block("BLOCKED_INCOMPLETE_INPUT", "canonical rows missing");
   if (!Array.isArray(staticCatalog) || staticCatalog.length === 0) {
-    return blocked("BLOCKED_INCOMPLETE_INPUT", "static catalog missing or empty");
+    return block("BLOCKED_INCOMPLETE_INPUT", "static catalog missing or empty");
   }
 
-  // 3. Compose via the governed adapter (no overlay/workflow -- PartsList overlays
+  // 3. Compose via the governed adapter (no overlay/workflow -- consumers overlay
   //    ledger health separately; this composition is identity/metadata only).
   const ws = buildPartsWorkspace({
     canonicalParts: canonicalRead.rows,
@@ -86,7 +83,7 @@ export function buildPartsCatalogRows(input = {}) {
   if (!fullyAccounted || blockingIssues.length > 0) {
     return {
       status: "BLOCKED_INCOMPLETE_INPUT",
-      rows: [],
+      ws: null,
       meta: {
         reason: "canonical composition did not fully account for the static catalog",
         staticCount: ws.totals.staticCount,
@@ -97,22 +94,9 @@ export function buildPartsCatalogRows(input = {}) {
     };
   }
 
-  // 5. Flatten to the PartsList row shape. Identity/name/category are canonical-
-  //    preferred (adapter), warehouseQty is the static baseline (STATIC_FALLBACK,
-  //    unchanged value). key === sku === partId, so routes/overlays/search are
-  //    preserved. Adapter already sorted rows by key.
-  const val = (f, k) => (f[k] ? f[k].value : null);
-  const rows = ws.rows.map((r) => ({
-    sku: r.key,
-    name: val(r.fields, "name"),
-    category: val(r.fields, "category"),
-    warehouseQty: val(r.fields, "warehouseQty"),
-    identityState: r.identityState,
-  }));
-
   return {
     status: "READY",
-    rows,
+    ws,
     meta: {
       staticCount: ws.totals.staticCount,
       canonicalCount: ws.totals.canonicalCount,
@@ -125,6 +109,42 @@ export function buildPartsCatalogRows(input = {}) {
       fullyAccounted,
     },
   };
+}
+
+/**
+ * Build the PartsList catalog rows from a live canonical read + the static catalog.
+ *
+ * @param {object} input
+ * @param {{ status: string, rows?: Array }} input.canonicalRead
+ *   status: "OK" | "PERMISSION_DENIED" | "UNAVAILABLE" | (anything else -> incomplete).
+ *   rows: canonical part view models ({ partId, name, category, stockingUnit, ... }).
+ * @param {Array} input.staticCatalog  the static compatibility catalog (PARTS_CATALOG).
+ * @returns {{ status: string, rows: Array<{sku,name,category,warehouseQty,identityState}>, meta: object }}
+ *   status === "READY" iff every static sku is accounted for (CANONICAL_MATCH or
+ *   approved STATIC_ONLY_EXCLUDED) with no blocking structural issue; else BLOCKED_*.
+ */
+export function buildPartsCatalogRows(input = {}) {
+  // Single shared fail-closed guard + full-accounting invariant (C2 extraction).
+  const composed = composeGovernedPartsWorkspace(input);
+  if (composed.status !== "READY") {
+    return { status: composed.status, rows: [], meta: composed.meta };
+  }
+  const ws = composed.ws;
+
+  // Flatten to the PartsList row shape. Identity/name/category are canonical-
+  // preferred (adapter), warehouseQty is the static baseline (STATIC_FALLBACK,
+  // unchanged value). key === sku === partId, so routes/overlays/search are
+  // preserved. Adapter already sorted rows by key.
+  const val = (f, k) => (f[k] ? f[k].value : null);
+  const rows = ws.rows.map((r) => ({
+    sku: r.key,
+    name: val(r.fields, "name"),
+    category: val(r.fields, "category"),
+    warehouseQty: val(r.fields, "warehouseQty"),
+    identityState: r.identityState,
+  }));
+
+  return { status: "READY", rows, meta: composed.meta };
 }
 
 /** The Parts Catalog detail route for a composed row. The route key is the row's

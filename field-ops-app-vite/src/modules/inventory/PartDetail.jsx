@@ -1,6 +1,13 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { getCatalogItem } from "../../data/partsCatalog";
+import { PARTS_CATALOG } from "../../data/partsCatalog";
+import { fetchPartMasterList } from "../../services/partMasterQueries";
+import {
+  buildPartDetailView,
+  selectPartLedger,
+  isPartDetailBlocked,
+  partDetailBlockedMessage,
+} from "../../domain/partDetailView";
 import { useInventoryLedger } from "../../hooks/useInventoryLedger";
 import { hasUsageHistory } from "../../domain/inventoryAnalyticsEngine";
 import { useReorderRequestForPart } from "../../hooks/useReorderRequests";
@@ -30,12 +37,26 @@ import RequestReorderControl from "../../shared/inventory/RequestReorderControl"
 import EmployeeAssignmentPicker from "../../shared/assignment/EmployeeAssignmentPicker";
 
 // Sprint 2.1.1 -- Inventory Domain Foundation. Part detail screen,
-// reached from PartsList.jsx or Global Search. Read-only: catalog
-// metadata comes from data/partsCatalog.ts (static), stock position/
-// usage/recommendation and transaction history come from
-// useInventoryLedger() -- the same one-shot read + pure analytics
-// functions PartsList.jsx and Operations.jsx both use. No new
-// Firestore query, no new computed math.
+// reached from PartsList.jsx or Global Search.
+//
+// INV-CONVERGENCE-E C2 -- catalog metadata NO LONGER comes from the static
+// per-sku catalog lookup. It is the GOVERNED compatibility-adapter output: the live
+// canonical `parts` read (fetchPartMasterList, PR 1.9 -- the same authorized
+// one-shot read C1 uses, no new query surface) composed with the static catalog
+// through buildPartsWorkspace(), via the pure domain/partDetailView.js. The static
+// PARTS_CATALOG remains the compatibility INPUT to that composition, not a parallel
+// source of truth. Canonical is authoritative; a denied / unavailable / malformed /
+// incomplete canonical read renders an explicit BLOCKED state with NO page body and
+// NO write surface (never a silent static fallback, never a partial page).
+//
+// C2 re-points metadata and the ledger key TOGETHER: stock position/usage/
+// recommendation and transaction history still come from useInventoryLedger() --
+// the same one-shot read + pure analytics functions PartsList.jsx and
+// Operations.jsx both use -- but are now selected by the RESOLVED governed
+// identity (selectPartLedger), so metadata and ledger cannot diverge. Same
+// equality test, same sort, same 20-row cap. No new Firestore query, no new
+// computed math, and every reorder / PO / receive / cancel / void / inventory-
+// action write surface below is unchanged.
 //
 // Sprint 2.1.4 -- Reorder Review & Decision. This is also where the
 // Notification Panel routes an approver to (Header -> Notification
@@ -122,6 +143,13 @@ import EmployeeAssignmentPicker from "../../shared/assignment/EmployeeAssignment
 function formatTimestamp(ms) {
   if (!ms) return "—";
   return new Date(ms).toLocaleString();
+}
+
+// INV-CONVERGENCE-E C2 -- null-safe money render. The composed Catalog card values
+// (cost/price) remain the unchanged STATIC_FALLBACK numbers; this only avoids a
+// hard crash if a value is ever absent, rather than rendering a partial/broken page.
+function money(n) {
+  return typeof n === "number" && Number.isFinite(n) ? `$${n.toFixed(2)}` : "—";
 }
 
 // Cancel/Void schema deployment sequence, PR 6 of 6 (docs/specifications/
@@ -1171,7 +1199,41 @@ export default function PartDetail() {
   // most-recent-by-createdAt fallback as before this fix.
   const [searchParams] = useSearchParams();
   const requestId = searchParams.get("requestId") || undefined;
-  const part = getCatalogItem(partId);
+  // INV-CONVERGENCE-E C2 -- live canonical `parts` read (one-shot, PR 1.9's
+  // fetchPartMasterList; the SAME authorized read C1 uses -- no new query surface).
+  // null until the first read resolves. Mapped to the canonicalRead status contract
+  // the pure buildPartDetailView() consumes (OK / PERMISSION_DENIED / UNAVAILABLE).
+  const [canonicalRead, setCanonicalRead] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetchPartMasterList().then((result) => {
+      if (cancelled) return;
+      if (result.ok) setCanonicalRead({ status: "OK", rows: result.parts });
+      else setCanonicalRead({ status: result.code === "permission-denied" ? "PERMISSION_DENIED" : "UNAVAILABLE" });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const canonicalLoading = canonicalRead === null;
+
+  // Governed detail composition (pure). While the read is in flight we pass a
+  // LOADING sentinel (composes to BLOCKED with part:null) but render the loading
+  // state, not the blocked banner (canonicalLoading gate below).
+  const detail = useMemo(
+    () =>
+      buildPartDetailView({
+        canonicalRead: canonicalRead ?? { status: "LOADING" },
+        staticCatalog: PARTS_CATALOG,
+        partId,
+      }),
+    [canonicalRead, partId]
+  );
+  const part = detail.part;
+  // The resolved governed identity -- every ledger/health key below uses THIS, not
+  // the raw route param. null while loading / BLOCKED / NOT_FOUND (fail-closed).
+  const resolvedPartId = part ? part.partId : null;
+
   const { transactions, healthEntries, loading } = useInventoryLedger();
   const {
     data: reorderRequest,
@@ -1181,15 +1243,14 @@ export default function PartDetail() {
   } = useReorderRequestForPart(partId, requestId);
   const { byUserId: employeeDirectory } = useEmployeeDirectory();
 
-  const health = useMemo(() => healthEntries.find((entry) => entry.partId === partId), [healthEntries, partId]);
-
-  const partTransactions = useMemo(
-    () =>
-      transactions
-        .filter((t) => t.partId === partId)
-        .sort((a, b) => b.timestamp - a.timestamp)
-        .slice(0, 20),
-    [transactions, partId]
+  // INV-CONVERGENCE-E C2 -- the ledger half of the paired re-point. Same equality
+  // test, same sort, same 20-row cap as pre-C2; the only change is that the key is
+  // the RESOLVED governed identity (resolvedPartId) instead of the raw route param,
+  // so metadata and stock position can never be keyed differently. No ledger,
+  // usage-history, reorder, or purchasing behavior changes.
+  const { transactions: partTransactions, health } = useMemo(
+    () => selectPartLedger({ transactions, healthEntries, resolvedPartId }),
+    [transactions, healthEntries, resolvedPartId]
   );
 
   // Zero-history reorder behavior sprint, PR 3 -- the per-part
@@ -1208,12 +1269,38 @@ export default function PartDetail() {
     setReorderSubmitting(true);
     setReorderError(null);
     try {
-      await requestReorderForRecommendation({ partId, recommendation: health.recommendation, manualQty });
+      // C2: write keyed on the resolved governed identity (only reachable when
+      // READY, where resolvedPartId === the route partId). Workflow unchanged.
+      await requestReorderForRecommendation({ partId: resolvedPartId, recommendation: health.recommendation, manualQty });
     } catch (err) {
       setReorderError(err.message);
     } finally {
       setReorderSubmitting(false);
     }
+  }
+
+  // INV-CONVERGENCE-E C2 -- explicit, mutually exclusive pre-render states. No
+  // partial page is ever rendered: under LOADING / BLOCKED_* / NOT_FOUND the entire
+  // detail body -- including the reorder / PO / receive / cancel / void / inventory-
+  // action write surface -- is withheld. A BLOCKED_* is reported as a verification
+  // failure, NOT as the pre-existing "Unknown part" copy, which is now reserved for
+  // a genuinely unknown id under a fully-verified canonical catalog.
+  if (canonicalLoading) {
+    return (
+      <div className="fo-panel">
+        <Link to="/inventory">← Back to Parts</Link>
+        <p className="fo-muted">Loading part…</p>
+      </div>
+    );
+  }
+
+  if (isPartDetailBlocked(detail.status)) {
+    return (
+      <div className="fo-panel">
+        <Link to="/inventory">← Back to Parts</Link>
+        <p className="fo-muted">{partDetailBlockedMessage(detail.status)}</p>
+      </div>
+    );
   }
 
   if (!part) {
@@ -1279,11 +1366,11 @@ export default function PartDetail() {
           <tbody>
             <tr>
               <td>Cost</td>
-              <td>${part.cost.toFixed(2)}</td>
+              <td>{money(part.cost)}</td>
             </tr>
             <tr>
               <td>Price</td>
-              <td>${part.price.toFixed(2)}</td>
+              <td>{money(part.price)}</td>
             </tr>
             <tr>
               <td>Warehouse baseline</td>
@@ -1371,7 +1458,9 @@ export default function PartDetail() {
         <p className="fo-muted">No ledger activity yet for this part -- stock position not yet forecastable.</p>
       )}
 
-      <InventoryActionsPanel partId={partId} />
+      {/* C2: keyed on the resolved governed identity (=== route partId when READY,
+          the only state in which this renders). Write surface itself unchanged. */}
+      <InventoryActionsPanel partId={resolvedPartId} />
 
       <div className="fo-card">
         <h3>Recent Transactions</h3>
