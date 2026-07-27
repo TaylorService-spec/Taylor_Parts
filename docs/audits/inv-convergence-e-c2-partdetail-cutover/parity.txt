@@ -1,0 +1,80 @@
+INV-CONVERGENCE-E C2 -- PartDetail composition parity (OFFLINE, deterministic)
+commit: 94e322e5299e56e67fa8c8b99e46558d56a62502
+
+SCOPE OF THIS EVIDENCE
+  Offline, fixture-based parity proving the PURE composition, the paired ledger
+  re-point, and the fail-closed semantics. This is NOT the live pre-cutover
+  shadow-parity run (Stage A owns that, and it PASSed in production). No
+  Firebase, no credentials, no network, no production access was used here.
+
+FIXTURES (both committed in-repo)
+  static compatibility catalog  field-ops-app-vite/src/data/partsCatalog.ts   200 rows
+  canonical parts read-back     docs/audits/inv1-phase1/create-execution-20260724/
+                                postwrite-analyzer/row-results.json           190 rows
+  approved static-only set      partsCompatibilityAdapter.APPROVED_STATIC_ONLY_EXCLUSIONS
+                                                                               10 skus
+
+IDENTITY / BACKWARD COMPATIBILITY
+  Part IDs resolving to READY .................... 200 / 200
+  Part IDs rewritten, renamed, or remapped ....... 0
+  CANONICAL_MATCH details ........................ 190
+  STATIC_ONLY_EXCLUDED details (approved ten) .... 10   (all still render)
+  resolved identity == route param == sku ........ 200 / 200
+
+ROUTING CONTINUITY (C1 PartsList -> C2 PartDetail)
+  C1 composed rows ............................... 200
+  routes of the form /inventory/<sku> ............ 200 / 200
+  routes resolving to a READY C2 detail .......... 200 / 200
+  route key is the sku (never name/index) ........ verified
+  unknown id under a verified catalog ............ NOT_FOUND (not BLOCKED, not blank)
+
+FIELD PARITY vs THE PRE-C2 STATIC-DERIVED PAGE
+  name mismatches ................................ 0 / 200
+  category mismatches ............................ 0 / 200
+  cost mismatches ................................ 0 / 200   (STATIC_FALLBACK)
+  price mismatches ............................... 0 / 200   (STATIC_FALLBACK)
+  reorderThreshold mismatches .................... 0 / 200   (STATIC_FALLBACK)
+  warehouseQty mismatches ........................ 0 / 200   (STATIC_FALLBACK)
+  unit: rendered token CHANGES -- see disclosure below
+
+  Commercial + availability fields intentionally remain STATIC_FALLBACK pending
+  UD-3 (on-hand) and UD-4 (commercial/pricing/reorder policy), per the authority
+  contract. C2 changes neither their values nor their provenance.
+
+LEDGER PARITY (the paired re-point)
+  pre-C2 predicate ....... transactions.filter(t => t.partId === <route param>)
+  post-C2 predicate ...... transactions.filter(t => t.partId === <resolved id>)
+  slices compared for all 200 skus ............... identical, 200 / 200
+  sort order (timestamp desc) .................... unchanged
+  row cap ........................................ 20, unchanged
+  healthEntries lookup key ....................... resolved id; no cross-part bleed
+  Because resolved id === route param === sku for all 200, this re-point is
+  value-neutral today; it exists so metadata and ledger CANNOT be keyed apart.
+
+FAIL-CLOSED MATRIX (all assert part:null and no rendered page body)
+  canonical PERMISSION_DENIED .................... BLOCKED_PERMISSION
+  canonical UNAVAILABLE .......................... BLOCKED_UNAVAILABLE
+  canonical status LOADING / absent / unknown .... BLOCKED_INCOMPLETE_INPUT
+  canonical rows missing or non-array ............ BLOCKED_INCOMPLETE_INPUT
+  canonical read OMITS this very Part ............ BLOCKED_INCOMPLETE_INPUT
+  duplicate canonical partId (ambiguous) ......... BLOCKED_INCOMPLETE_INPUT
+  static catalog missing or empty ................ BLOCKED_INCOMPLETE_INPUT
+  malformed / absent route part id ............... BLOCKED_INCOMPLETE_INPUT
+  silent static fallback in ANY of the above ..... none (0 occurrences)
+  partial page or exposed write surface .......... none (0 occurrences)
+
+DISCLOSED BEHAVIOR CHANGES (2)
+  1. UNIT TOKEN. The Catalog card previously rendered the raw static token
+     (e.g. "ea", "kit"); it now renders the canonical normalized stocking code
+     (e.g. "EACH", "KIT"). Verified for all 200: rendered unit ==
+     normalizeUnit(static unit). Stage A measured UNIT_DIVERGENCE = 0 in
+     production, so the underlying meaning is unchanged -- only the displayed
+     token differs. Canonical is authoritative on divergence by contract.
+  2. BLOCKED PAGE. A denied / unavailable / incomplete canonical read now blocks
+     the detail page instead of rendering static metadata. This is the intended
+     fail-closed posture and is the same posture C1 shipped for the list.
+
+DIVERGENCE COUNTS FROM THE COMPOSITION META
+  nameDivergenceCount ............................ 0
+  unitDivergenceCount ............................ 0
+  fullyAccounted ................................. true (190 + 10 == 200)
