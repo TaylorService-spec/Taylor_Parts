@@ -127,6 +127,15 @@ export function buildPartsCatalogRows(input = {}) {
   };
 }
 
+/** The Parts Catalog detail route for a composed row. The route key is the row's
+ * `sku` (== canonical partId), NEVER the display name or the array position -- this
+ * is what preserves detail-link continuity into the unchanged PartDetail. PartsList's
+ * catalog table renders its Link via this helper so the routing contract is explicit
+ * and testable. */
+export function partCatalogRoute(row) {
+  return `/inventory/${row && row.sku != null ? row.sku : ""}`;
+}
+
 /** Map partId -> display name from composed rows (for reorder-queue name resolution).
  * Covers all accounted skus when READY; empty under BLOCKED. */
 export function nameBySkuFromRows(rows) {

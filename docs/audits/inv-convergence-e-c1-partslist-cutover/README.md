@@ -8,7 +8,12 @@ every Part ID/route, ledger overlays, reorder analytics, and Global Search.
 
 **Draft, repository-only. No deployment. No production data or credentials touched.**
 
-## What changed (frontend only)
+## Changed-file accounting
+This PR changes **12 files total**: **4 implementation/test-registration files
+(frontend-only)** + **8 governance/evidence files** (docs/evidence, non-runtime). See
+`diff-scope.txt` for the itemized split. The *implementation scope* is frontend-only.
+
+## What changed (implementation — frontend only)
 - **NEW** `field-ops-app-vite/src/domain/partsCatalogView.js` — pure
   `buildPartsCatalogRows({canonicalRead, staticCatalog}) → {status, rows, meta}`.
   Reuses the governed `buildPartsWorkspace` composition (the same one Stage A's
@@ -22,8 +27,10 @@ every Part ID/route, ledger overlays, reorder analytics, and Global Search.
   name lookups resolve via the composed rows with a static `getCatalogItem` fallback
   (so those Firestore-backed workflows never regress to raw partId). Adds explicit
   loading / BLOCKED / READY rendering for the Parts Catalog section.
-- **NEW** `field-ops-app-vite/test/partsCatalogView.test.mjs` (19 assertions) +
-  registered in `field-ops-app-vite/package.json` test chain.
+- **NEW** `field-ops-app-vite/test/partsCatalogView.test.mjs` (23 assertions) +
+  registered in `field-ops-app-vite/package.json` test chain. Includes a pure
+  `partCatalogRoute(row)` route contract (keys on `sku`, not name/index) and a
+  source-scan proving PartsList's catalog Link is wired via `partCatalogRoute(part)`.
 
 ## Preserved (unchanged)
 `PartDetail.jsx` (still static `getCatalogItem` — C1/PartDetail boundary), the
@@ -34,7 +41,7 @@ Functions mirror (no removal, no restructure). Route key stays `sku`==`partId` s
 every catalog/search/reorder link lands on the identical PartDetail.
 
 ## Files
-- `test-summary.txt` — new suite (19/19), full client chain (exit 0), lint, build, build-base guard.
+- `test-summary.txt` — new suite (23/23, incl. the route contract), full client chain (exit 0), lint, build, build-base guard.
 - `parity.txt` — deterministic offline parity (200/190/10, 0 divergence) + live-parity provenance (Decision #46).
 - `diff-scope.txt` — exact changed files + the zero-change list.
 - `rollback.md` — pure code revert, no data effect.

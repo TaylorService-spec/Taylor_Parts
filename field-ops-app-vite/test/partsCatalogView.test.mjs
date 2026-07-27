@@ -10,12 +10,14 @@ import {
   buildPartsCatalogRows,
   nameBySkuFromRows,
   isCatalogBlocked,
+  partCatalogRoute,
   CATALOG_STATES,
 } from "../src/domain/partsCatalogView.js";
 import { APPROVED_STATIC_ONLY_EXCLUSIONS } from "../src/domain/partsCompatibilityAdapter.js";
 
 const rel = (p) => new URL(p, new URL("../", import.meta.url));
 const CATALOG_SRC = fs.readFileSync(rel("src/data/partsCatalog.ts"), "utf8");
+const PARTSLIST_SRC = fs.readFileSync(rel("src/modules/inventory/PartsList.jsx"), "utf8");
 const POSTWRITE = JSON.parse(fs.readFileSync(
   rel("../docs/audits/inv1-phase1/create-execution-20260724/postwrite-analyzer/row-results.json"), "utf8"));
 
@@ -77,12 +79,44 @@ check("no dropped Parts: every static sku is present exactly once", () => {
   for (const s of STATIC) assert.ok(rowSkus.has(s.sku), `static sku ${s.sku} must be visible`);
   assert.equal(rowSkus.size, STATIC.length);
 });
-check("routes: every row yields a stable /inventory/<sku> route target", () => {
+check("route contract: partCatalogRoute keys on sku, NOT the display name", () => {
+  // name deliberately unrelated to sku -> route must still be the sku.
+  assert.equal(partCatalogRoute({ sku: "TST-1001", name: "Totally Different Name" }), "/inventory/TST-1001");
+  assert.equal(partCatalogRoute({ sku: "TST-1193", name: "x" }), "/inventory/TST-1193");
+});
+check("route contract: position-independent (same sku at different indices -> same route)", () => {
+  const a = [{ sku: "TST-1001", name: "A" }, { sku: "TST-1002", name: "B" }];
+  const b = [{ sku: "TST-1002", name: "B" }, { sku: "TST-1001", name: "A" }];
+  assert.equal(partCatalogRoute(a[0]), partCatalogRoute(b[1])); // TST-1001 in both -> identical route regardless of index
+  assert.notEqual(partCatalogRoute(a[0]), partCatalogRoute(a[1]));
+});
+check("route contract: every composed row routes to /inventory/<its own sku> (detail-link continuity)", () => {
   const { rows } = buildPartsCatalogRows({ canonicalRead: OK(), staticCatalog: STATIC });
-  for (const r of rows) assert.equal(`/inventory/${r.sku}`, `/inventory/${r.sku}`); // shape guard: sku is the sole route key
-  // and each maps back to a real static row (detail-link continuity)
   const bySku = new Map(STATIC.map((s) => [s.sku, s]));
-  for (const r of rows) assert.ok(bySku.has(r.sku));
+  for (const r of rows) {
+    assert.equal(partCatalogRoute(r), `/inventory/${r.sku}`);
+    assert.ok(bySku.has(r.sku), `route target ${r.sku} must resolve to a real static/PartDetail row`);
+  }
+});
+check("PartsList catalog link is wired to partCatalogRoute(composed row), not name/index", () => {
+  // Extracted-contract + structural proof that the RENDERED catalog link uses the
+  // composed row's sku. The catalog table maps the composed `pagedParts` rows, keys
+  // each row by its sku, and builds the Link via partCatalogRoute(part).
+  assert.ok(/import\s*\{[^}]*\bpartCatalogRoute\b[^}]*\}\s*from\s*"\.\.\/\.\.\/domain\/partsCatalogView"/.test(PARTSLIST_SRC),
+    "PartsList must import partCatalogRoute from the governed catalog view");
+  assert.ok(/pagedParts\.map\(\(part\)\s*=>/.test(PARTSLIST_SRC),
+    "the catalog table must map the composed pagedParts rows");
+  assert.ok(/<tr key=\{part\.sku\}>/.test(PARTSLIST_SRC),
+    "each catalog row must be keyed by the composed row's sku");
+  assert.ok(/<Link to=\{partCatalogRoute\(part\)\}>\{part\.name\}<\/Link>/.test(PARTSLIST_SRC),
+    "the catalog Link must route via partCatalogRoute(part) (sku), rendering part.name as label");
+  // negative guards: the catalog link must NOT route by display name or an index
+  assert.ok(!/to=\{`\/inventory\/\$\{part\.name\}`\}/.test(PARTSLIST_SRC), "catalog link must not route by part.name");
+  assert.ok(!/\.map\(\(part,\s*\w+\)\s*=>[^]*?to=\{`\/inventory\/\$\{\w+\}`\}/.test(PARTSLIST_SRC), "catalog link must not route by array index");
+});
+check("partCatalogRoute is defensive on a missing sku (no 'undefined' in the path)", () => {
+  assert.equal(partCatalogRoute({ name: "no sku" }), "/inventory/");
+  assert.equal(partCatalogRoute(null), "/inventory/");
 });
 
 // ---- identity/metadata values ----------------------------------------------

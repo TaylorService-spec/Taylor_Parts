@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { PARTS_CATALOG, getCatalogItem } from "../../data/partsCatalog";
 import { fetchPartMasterList } from "../../services/partMasterQueries";
-import { buildPartsCatalogRows, nameBySkuFromRows, isCatalogBlocked } from "../../domain/partsCatalogView";
+import { buildPartsCatalogRows, nameBySkuFromRows, isCatalogBlocked, partCatalogRoute } from "../../domain/partsCatalogView";
 import { useInventoryLedger } from "../../hooks/useInventoryLedger";
 import {
   useReorderRequests,
@@ -794,7 +794,7 @@ export default function PartsList() {
                 return (
                   <tr key={part.sku}>
                     <td>
-                      <Link to={`/inventory/${part.sku}`}>{part.name}</Link>
+                      <Link to={partCatalogRoute(part)}>{part.name}</Link>
                     </td>
                     <td className="fo-muted">{part.sku}</td>
                     <td className="fo-muted">{part.category}</td>

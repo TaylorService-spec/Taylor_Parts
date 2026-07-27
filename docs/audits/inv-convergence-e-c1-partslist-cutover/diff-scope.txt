@@ -1,12 +1,24 @@
- field-ops-app-vite/package.json                    |   2 +-
- .../src/modules/inventory/PartsList.jsx            | 113 ++++++++++++++++-----
- 2 files changed, 89 insertions(+), 26 deletions(-)
+INV-CONVERGENCE-E C1 -- changed-file accounting
+================================================
+This PR changes 12 files total: 4 implementation/test-registration files
+(frontend-only) + 8 governance/evidence files. The IMPLEMENTATION SCOPE is
+frontend-only; the additional 8 are documentation/evidence, not runtime code.
 
-Changed files (exactly 4; frontend-only):
+IMPLEMENTATION / TEST-REGISTRATION (4, frontend-only):
   M field-ops-app-vite/package.json                         (register the new test in the chain)
-  M field-ops-app-vite/src/modules/inventory/PartsList.jsx  (source cutover + BLOCKED states + name fallback)
-  A field-ops-app-vite/src/domain/partsCatalogView.js       (NEW pure composition; the governed catalog source)
-  A field-ops-app-vite/test/partsCatalogView.test.mjs       (NEW offline suite, 19 assertions)
+  M field-ops-app-vite/src/modules/inventory/PartsList.jsx  (source cutover + BLOCKED states + name fallback + partCatalogRoute)
+  A field-ops-app-vite/src/domain/partsCatalogView.js       (NEW pure composition; the governed catalog source + partCatalogRoute)
+  A field-ops-app-vite/test/partsCatalogView.test.mjs       (NEW offline suite, 23 assertions)
+
+GOVERNANCE / EVIDENCE (8, non-runtime):
+  M .gitattributes                                          (byte-stability -text for this evidence dir)
+  M docs/SPRINT_STATUS.md                                   (Stage B closed + C1 status entry)
+  A docs/audits/inv-convergence-e-c1-partslist-cutover/README.md
+  A docs/audits/inv-convergence-e-c1-partslist-cutover/diff-scope.txt        (this file)
+  A docs/audits/inv-convergence-e-c1-partslist-cutover/parity.txt
+  A docs/audits/inv-convergence-e-c1-partslist-cutover/rollback.md
+  A docs/audits/inv-convergence-e-c1-partslist-cutover/test-summary.txt
+  A docs/audits/inv-convergence-e-c1-partslist-cutover/SHA256SUMS.txt
 
 ZERO changes to: firestore.rules, functions/**, firestore.indexes, firebase.json,
   PartDetail.jsx, App.jsx routes, useInventoryLedger.js, searchProviders.js,

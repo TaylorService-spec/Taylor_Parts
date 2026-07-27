@@ -4,14 +4,19 @@ All commands run in field-ops-app-vite/ from the C1 worktree at baseline
 origin/main 3020213e. Offline/emulator-free; no production access.
 
 1. New pure-module suite -- node test/partsCatalogView.test.mjs
-   -> 19 passed, 0 failed   (exit 0)
+   -> 23 passed, 0 failed   (exit 0)
    Proves: READY shows all 200 (190 CANONICAL_MATCH + 10 STATIC_ONLY_EXCLUDED);
-   the ten exclusions are exactly the approved set; stable unique sku IDs; every
-   row -> /inventory/<sku>; no duplicates; no dropped Parts; canonical-preferred
-   name/category + static warehouseQty baseline; BLOCKED_PERMISSION /
-   BLOCKED_UNAVAILABLE / BLOCKED_INCOMPLETE_INPUT (incl. "omitted Part" and
-   empty-static) with rows:[] (never empty-as-success, never silent static
-   fallback); purity + no input mutation.
+   the ten exclusions are exactly the approved set; stable unique sku IDs; no
+   duplicates; no dropped Parts; canonical-preferred name/category + static
+   warehouseQty baseline; BLOCKED_PERMISSION / BLOCKED_UNAVAILABLE /
+   BLOCKED_INCOMPLETE_INPUT (incl. "omitted Part" and empty-static) with rows:[]
+   (never empty-as-success, never silent static fallback); purity + no input
+   mutation. ROUTE CONTRACT (non-tautological, review correction #2):
+   partCatalogRoute(row) keys on `sku` NOT the display name (name-unrelated-to-sku
+   fixture) and is position-independent (same sku at different indices -> same
+   route); every composed row routes to /inventory/<its own sku>; and a source-scan
+   proves PartsList's catalog Link is wired via partCatalogRoute(part) (keyed by
+   part.sku), never by part.name or an array index.
 
 2. Full client test chain -- npm test  -> exit 0 (every suite passed)
    Includes the parts/adapter/parity/search/nav/routing regressions:
@@ -21,7 +26,7 @@ origin/main 3020213e. Offline/emulator-free; no production access.
    - partsShadowParity.test.mjs ............... pass (deterministic current-vs-shadow
        parity; sanitized {key,kind} divergences)
    - partsShadowParityCapture/View/ReadOnce/RunId.test.mjs ... pass
-   - partsCatalogView.test.mjs ................ 19 passed, 0 failed
+   - partsCatalogView.test.mjs ................ 23 passed, 0 failed
    - customerSearch / serviceNav / routerBasename / appHeaderBase / ... all pass
 
 3. Lint -- npx oxlint src/modules/inventory/PartsList.jsx src/domain/partsCatalogView.js
