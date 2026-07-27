@@ -1,0 +1,50 @@
+INV-CONVERGENCE-E C2 Hosting gate -- BUILD/COMMIT CORRESPONDENCE (preparation)
+prepared: 2026-07-27 by the Inventory session (credential-free, no production access)
+
+PURPOSE
+  Resolve which commit the operator deploys, and prove that choice does not change
+  what ships. The C2 application code merged at 2d08e2e; the Step 5 fresh-live-parity
+  tool and this runbook are added by the preparation PR, so the operator must clone a
+  commit that CONTAINS the tool.
+
+RESOLUTION
+  AUTHORIZED_COMMIT = the merge commit of the C2 Hosting preparation PR,
+  to be pinned by the Owner in the separate deployment authorization.
+  MERGED_C2_SOURCE_COMMIT = 2d08e2e495448e6f0bb523a58675c195a805c13e
+
+EMPIRICAL EQUIVALENCE (performed by the Inventory session)
+  Two independent `npm run build:firebase` runs -- one from a clean worktree at
+  2d08e2e, one from the preparation branch -- produced a BYTE-IDENTICAL dist/:
+
+    0ae843d4180e83a5a5e99064e0f50693ac3a0a1c0d2a9bd7c63cefa67d545cc4  404.html
+    3417e1faa227f9c2aa8757f2c5489cece2f36500c1cbc3d0e2b25c8567b029b5  assets/index-CSg6YUa7.css
+    02a667c4df2a9fdc77bc37ce35c405be43feeb3461f5097ce5342032be557722  assets/index-DadxuIqI.js
+    61bc9a161de58248288e6905425d7180f0624c2865007b97d763fdac12043a66  favicon.svg
+    bdc62e06d7a48149d3f077041f5db3a8a02e7879611b11d259b1e9aab12c7ac8  index.html
+
+  diff of the two manifests: IDENTICAL (zero differing lines).
+
+WHY
+  The preparation PR adds only scripts/, test/, and docs/ paths. None of them is
+  imported by src/, so none participates in the Vite bundle graph. The deployed
+  artifact is therefore exactly the reviewed and merged C2 frontend.
+
+AUTHORITY LIMIT OF THESE HASHES  (important)
+  These were produced on Windows and are CORROBORATING, NOT AUTHORITATIVE. Vite
+  content hashes can differ across OS/EOL. The governing comparison is runbook Step 7,
+  which binds the LIVE asset bytes to the operator's own Cloud Shell build manifest
+  (local-dist-manifest.sha256) with an exact-equality assertion and a hard STOP on
+  mismatch. Do not substitute the hashes above for that check.
+
+DELTA VS THE C1 DEPLOYED BUNDLE
+  C1 live asset (per the C1 Hosting evidence): /assets/index-BJCJSmRw.js
+  C2 expected asset name differs (PartDetail changed) -- a differing asset name is
+  EXPECTED at this gate and is not, by itself, evidence of correctness. Correctness
+  comes from the Step 7 manifest equality plus the Step 8 browser observations.
+
+GOVERNED RULES (must be unchanged by a Hosting deploy)
+  firestore.rules Git/LF sha256 @ 2d08e2e =
+    cf6681c61f7c93a6b5b5385212518636b855b24a751225564429e0f8932bc381
+  Identical to the value recorded at the C1 Hosting gate -> C2 changed no Rules.
+  Note: this GOVERNED REPOSITORY hash and a LIVE RULESET EXPORT hash are different
+  artifact types and are deliberately NOT asserted equal (C1 / Decision #46 precedent).
