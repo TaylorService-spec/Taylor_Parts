@@ -1,76 +1,94 @@
 // AUTH-PR-3 (Authentication Modernization) -- admin-initiated password reset.
 // Trusted command module (Admin SDK; bypasses Firestore Rules) that lets a
 // governed ADMIN initiate a secure password reset for ANOTHER user. Extends the
-// Issue #226 enterprise-access lane: it reuses the existing immutable Audit
-// Event writer (auditEventWriter.ts) and never re-implements a second audit or
-// authorization system.
+// Issue #226 enterprise-access lane: reuses the existing immutable Audit Event
+// writer (auditEventWriter.ts); never re-implements a second audit/authz system.
 //
-// SECURITY MODEL (docs/assessments/auth-modernization-architecture.md §6):
-//  - Authorization is the SINGLE governed admin authority. Until the Issue #226
-//    permission engine is the LIVE authority (ADR-005 §1), the concrete check is
-//    a server-side Admin-SDK read of `users/{actorUid}.role === "admin"`,
-//    encapsulated in assertActorIsAdmin() so a later row can swap in
-//    resolveEffectivePermission() WITHOUT changing callers. Dispatcher and
-//    operational roles never qualify. The actor uid is supplied by the callable
-//    wrapper from the AUTHENTICATED SERVER CONTEXT only -- never client data.
-//  - No admin-visible temporary password (D-TEMP-PW rejected): the user always
-//    sets their own password via a reset link the admin never sees. This module
-//    NEVER returns the reset link or token to any caller.
-//  - Routine reset uses DELIVERY-CONFIRMED revocation (revoke only after the
-//    reset link is confirmed delivered, so a legitimate user is not locked out
-//    when delivery fails). Suspected-compromise revokes immediately (accepted
-//    lockout) with recovery. Durable, SEPARATE audit events are written for
-//    initiation, delivery outcome, and revocation outcome.
-//  - Delivery is an INJECTED seam (ResetDelivery). NO email provider is
-//    configured here (D-EMAIL-DELIVERY is an implementation-time Owner
-//    decision); the deployed callable wires NOT_CONFIGURED_DELIVERY so no email
-//    is ever sent and (routine) no revocation occurs until a provider exists.
+// SECURITY MODEL (docs/assessments/auth-modernization-architecture.md §6 +
+// Codex round-2 corrections):
+//  - Authorization = the SINGLE governed admin authority. Until the Issue #226
+//    permission engine is the LIVE authority (ADR-005 §1), assertActorIsAdmin()
+//    is a server-side Admin-SDK read of users/{actorUid}.role === "admin",
+//    encapsulated for a later resolveEffectivePermission() swap. Dispatcher/
+//    operational never qualify. actorUid comes from the callable's authenticated
+//    server context only.
+//  - No admin-visible temp password: the user sets their own via a reset link
+//    the admin never sees. The link/token/email are NEVER returned to a caller
+//    and NEVER written to an audit event.
+//  - FAIL CLOSED on delivery capability: if delivery is not configured, NO Auth
+//    side effect (no link generation, no revocation) occurs, in EITHER mode --
+//    so suspected-compromise can never revoke into an unrecoverable state.
+//  - Delivery is an injected seam that receives the server-resolved recovery
+//    email so a real provider can send without a second identity lookup; the
+//    impl must not return/log/audit the email/link/token.
+//  - Routine = delivery-CONFIRMED revocation; suspectedCompromise = generate ->
+//    revoke -> deliver (immediate revoke with a recovery link). Every attempted
+//    stage records a durable applied/denied audit outcome; an audit write is
+//    awaited BEFORE the next side effect (fail-closed).
+//  - IDEMPOTENCY: a caller-supplied key claims a durable operation record in a
+//    transaction; completed replays return the neutral result with no side
+//    effects, a fresh pending claim rejects concurrent/duplicate calls, and a
+//    recent failure is cooled down.
+//  - NEUTRAL caller output: target eligibility and per-message delivery results
+//    never change the caller-facing result ({ status: "accepted" }); detailed
+//    causes live only in the durable audit trail.
 //
 // Repository-only: no deployment; tests run only against the emulator.
-import { getFirestore } from "firebase-admin/firestore";
+import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { recordStandaloneAuditEvent } from "./auditEventWriter";
-import type { Scope } from "../types/access";
+import type { AuditAction, AuditOutcome, Scope } from "../types/access";
 
 const USERS_COLLECTION = "users";
+const RESET_OPS_COLLECTION = "admin_credential_reset_ops";
 const ADMIN_ROLE = "admin";
 const GLOBAL_SCOPE: Scope = { type: "global" };
 const TARGET_TYPE = "user";
 const MAX_LIST_LIMIT = 100;
 const DEFAULT_LIST_LIMIT = 50;
+const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9._:-]{8,200}$/;
+const STALE_PENDING_MS = 5 * 60 * 1000; // a pending op older than this may be retaken (crash recovery)
+const RETRY_COOLDOWN_MS = 30 * 1000; // a failed op may be retried only after this
 
 export class UnauthorizedActorError extends Error {}
 export class InvalidInputError extends Error {}
 export class ProtectedAccountError extends Error {}
+export class DeliveryUnavailableError extends Error {}
+export class OperationInProgressError extends Error {}
+export class RetryCooldownError extends Error {}
+// A generic failure of an internal stage (generation / delivery / revocation).
+// The specific cause is recorded in the audit trail, NOT surfaced to the caller.
+export class AdminResetStageError extends Error {}
 
 export type ResetMode = "routine" | "suspectedCompromise";
 
-// Injected delivery seam. An implementation MUST deliver the reset link
-// out-of-band to the user's recovery email and MUST NOT return the link/token
-// to its caller; it reports ONLY whether delivery was confirmed. No provider is
-// implemented in this PR.
+// Injected delivery seam. Receives the server-resolved recovery email so a real
+// transactional provider can send without a second identity lookup. An impl
+// MUST NOT return the email/link/token to its caller, and MUST NOT log/audit
+// them. isConfigured() reports delivery CAPABILITY (not per-message success).
 export interface ResetDelivery {
-  deliverResetLink(args: { targetUid: string; link: string }): Promise<{ delivered: boolean }>;
+  isConfigured(): boolean;
+  deliverResetLink(args: { targetUid: string; email: string; link: string }): Promise<{ delivered: boolean }>;
 }
 
-// The deployed default: intentionally NOT configured, so absent an Owner-
-// approved provider (D-EMAIL-DELIVERY) no email is ever sent. Reports
-// delivered:false, which (routine) also means no session revocation occurs.
+// The deployed default: intentionally NOT configured. Because the command fails
+// closed on an unconfigured delivery, the deployed callable performs NO Auth
+// side effect at all until an Owner-approved provider (D-EMAIL-DELIVERY) is
+// wired here.
 export const NOT_CONFIGURED_DELIVERY: ResetDelivery = {
+  isConfigured() {
+    return false;
+  },
   async deliverResetLink() {
     return { delivered: false };
   },
 };
 
-// Injected Admin-SDK capabilities -- kept behind an interface so the command is
-// unit-testable against the emulator and never hard-binds a real send/mutation.
 export interface AdminResetDeps {
-  // Generates a password-reset link WITHOUT sending an email
-  // (getAuth().generatePasswordResetLink). The link is handed only to
-  // `delivery` and is NEVER returned to the caller.
+  // Generates a reset link WITHOUT sending an email
+  // (getAuth().generatePasswordResetLink). Handed only to `delivery`; NEVER
+  // returned to the caller or audited.
   generateResetLink(email: string): Promise<string>;
-  // Revokes all refresh tokens for a uid (getAuth().revokeRefreshTokens).
   revokeRefreshTokens(uid: string): Promise<void>;
-  // Resolves the target's recoverable email (getAuth().getUser(uid).email).
   getRecoverableEmail(uid: string): Promise<string | null>;
   delivery: ResetDelivery;
 }
@@ -78,14 +96,16 @@ export interface AdminResetDeps {
 export interface InitiateAdminPasswordResetInput {
   actorUid: string;
   targetUid: string;
+  idempotencyKey: string;
   mode?: ResetMode;
 }
 
+// Neutral caller-facing result -- identical for delivered / not-delivered /
+// target-ineligible so the admin cannot enumerate target state.
 export interface AdminPasswordResetOutcome {
-  status: "reset_initiated" | "sessions_revoked";
-  deliveryOutcome: "delivered" | "not_delivered";
-  sessionRevocationOutcome: "revoked" | "skipped";
+  status: "accepted";
 }
+const NEUTRAL_ACCEPTED: AdminPasswordResetOutcome = { status: "accepted" };
 
 function assertNonEmptyString(value: unknown, field: string): asserts value is string {
   if (typeof value !== "string" || value.trim().length === 0) {
@@ -100,9 +120,8 @@ async function readUserRole(uid: string): Promise<string | null> {
   return typeof data?.role === "string" ? data.role : null;
 }
 
-// The single admin-authority choke point. Today: server-side read of
-// users/{actorUid}.role === "admin". Later (#226 live): swap the body for
-// resolveEffectivePermission(...) -- callers are unaffected.
+// Single admin-authority choke point (swap the body for the #226 resolver when
+// that engine becomes the live authority).
 async function assertActorIsAdmin(actorUid: string): Promise<void> {
   const role = await readUserRole(actorUid);
   if (role !== ADMIN_ROLE) {
@@ -110,116 +129,218 @@ async function assertActorIsAdmin(actorUid: string): Promise<void> {
   }
 }
 
-async function auditDenied(actorUid: string, targetUid: string, action: "initiateAdminPasswordReset", summary: string): Promise<void> {
+// Durable audit write. Awaited so it fails closed BEFORE the next side effect --
+// if the audit cannot be recorded, the operation stops rather than proceeding
+// to a side effect that would go unrecorded.
+async function audit(
+  actorUid: string,
+  targetUid: string,
+  action: AuditAction,
+  outcome: AuditOutcome,
+  summary: string,
+): Promise<void> {
   await recordStandaloneAuditEvent({
     actorUid,
     action,
     targetType: TARGET_TYPE,
     targetId: targetUid,
-    outcome: "denied",
+    outcome,
     summary,
     scope: GLOBAL_SCOPE,
   });
 }
 
-// Initiate an admin-driven password reset for `targetUid`. Returns ONLY a
-// coarse, non-sensitive status -- never the reset link, token, or password.
+interface ResetOpRecord {
+  status?: "pending" | "completed" | "failed";
+  attempt?: number;
+  createdAtMs?: number;
+  updatedAtMs?: number;
+}
+
+// Transactionally claim the operation for this idempotency key. Returns
+// { replay } for an already-completed op (no side effects), otherwise
+// { proceed }. Concurrent/duplicate fresh-pending claims and too-soon retries
+// after a failure are rejected. Firestore's transactional read-then-write
+// serializes concurrent callers: exactly one creates the pending record; the
+// other re-reads it and rejects.
+async function claimOperation(
+  key: string,
+  actorUid: string,
+  targetUid: string,
+  mode: ResetMode,
+): Promise<{ replay: AdminPasswordResetOutcome } | { proceed: true }> {
+  const db = getFirestore();
+  const ref = db.collection(RESET_OPS_COLLECTION).doc(key);
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const now = Date.now();
+    let attempt = 0;
+    let createdAtMs = now;
+    if (snap.exists) {
+      const d = (snap.data() ?? {}) as ResetOpRecord;
+      attempt = d.attempt ?? 0;
+      createdAtMs = d.createdAtMs ?? now;
+      if (d.status === "completed") {
+        return { replay: NEUTRAL_ACCEPTED };
+      }
+      if (d.status === "pending" && now - (d.updatedAtMs ?? 0) < STALE_PENDING_MS) {
+        throw new OperationInProgressError("A reset for this key is already in progress.");
+      }
+      if (d.status === "failed" && now - (d.updatedAtMs ?? 0) < RETRY_COOLDOWN_MS) {
+        throw new RetryCooldownError("This reset was recently attempted; retry shortly.");
+      }
+    }
+    tx.set(
+      ref,
+      {
+        status: "pending",
+        actorUid,
+        targetUid,
+        mode,
+        attempt: attempt + 1,
+        createdAtMs,
+        updatedAtMs: now,
+        at: FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
+    return { proceed: true };
+  });
+}
+
+async function markOp(key: string, status: "completed" | "failed"): Promise<void> {
+  await getFirestore()
+    .collection(RESET_OPS_COLLECTION)
+    .doc(key)
+    .set({ status, updatedAtMs: Date.now(), at: FieldValue.serverTimestamp() }, { merge: true });
+}
+
+// Initiate an admin-driven password reset. Returns ONLY the neutral
+// { status: "accepted" } for any processed request; never the link/token/email
+// and never a target-eligibility or delivery-outcome reason.
 export async function initiateAdminPasswordReset(
   input: InitiateAdminPasswordResetInput,
   deps: AdminResetDeps,
 ): Promise<AdminPasswordResetOutcome> {
   assertNonEmptyString(input.actorUid, "actorUid");
   assertNonEmptyString(input.targetUid, "targetUid");
+  assertNonEmptyString(input.idempotencyKey, "idempotencyKey");
+  if (!IDEMPOTENCY_KEY_PATTERN.test(input.idempotencyKey)) {
+    throw new InvalidInputError("idempotencyKey must be 8-200 chars of [A-Za-z0-9._:-]");
+  }
   const mode: ResetMode = input.mode ?? "routine";
   if (mode !== "routine" && mode !== "suspectedCompromise") {
     throw new InvalidInputError("mode must be 'routine' or 'suspectedCompromise'");
   }
+  const { actorUid, targetUid, idempotencyKey: key } = input;
 
-  // Authorization (records a denied audit on failure).
+  // Authorization (about the ACTOR -- a distinct permission-denied is fine).
   try {
-    await assertActorIsAdmin(input.actorUid);
+    await assertActorIsAdmin(actorUid);
   } catch (err) {
-    await auditDenied(input.actorUid, input.targetUid, "initiateAdminPasswordReset", `Admin password reset denied: actor not authorized (mode ${mode}).`);
+    await audit(actorUid, targetUid, "initiateAdminPasswordReset", "denied", `Denied: actor not authorized (mode ${mode}).`);
     throw err;
   }
 
-  // Protected account: no self-reset through the admin tool (use self-service).
-  if (input.actorUid === input.targetUid) {
-    await auditDenied(input.actorUid, input.targetUid, "initiateAdminPasswordReset", "Admin password reset denied: self-reset via admin tool is not permitted.");
+  // Protected account: no self-reset via the admin tool (actor's own choice --
+  // not a target-eligibility leak).
+  if (actorUid === targetUid) {
+    await audit(actorUid, targetUid, "initiateAdminPasswordReset", "denied", "Denied: self-reset via admin tool is not permitted.");
     throw new ProtectedAccountError("Use self-service password recovery to reset your own password.");
   }
 
-  // Final-active-admin lockout is structurally prevented for RESET, so no
-  // separate guard is needed here: (1) an admin cannot reset their own
-  // credential through this tool (the self-reset check above), and (2) reaching
-  // this point for an admin target requires the actor to ALSO be an admin (the
-  // authorization check) and to be a DIFFERENT principal (the self check) --
-  // which means at least one other admin exists after the reset. Reset is also
-  // non-destructive (the target keeps their account and sets a new password via
-  // the emailed link). Destructive credential ops (disable / role removal /
-  // session-only revocation) carry their own final-admin guard in their own
-  // rows; they are out of scope for AUTH-PR-3.
-  const email = await deps.getRecoverableEmail(input.targetUid);
-  if (!email) {
-    await auditDenied(input.actorUid, input.targetUid, "initiateAdminPasswordReset", "Admin password reset denied: target has no recoverable email.");
-    throw new InvalidInputError("The target account has no recoverable email address.");
+  // FAIL CLOSED before ANY Auth side effect or op claim if delivery capability
+  // is unavailable -- prevents suspected-compromise lockout with no recovery.
+  if (!deps.delivery.isConfigured()) {
+    await audit(actorUid, targetUid, "deliverAdminPasswordReset", "denied", "Denied: delivery capability not configured; no Auth side effect performed.");
+    throw new DeliveryUnavailableError("Password reset delivery is not configured.");
   }
 
-  // Durable initiation event (BEFORE any side effect).
-  await recordStandaloneAuditEvent({
-    actorUid: input.actorUid,
-    action: "initiateAdminPasswordReset",
-    targetType: TARGET_TYPE,
-    targetId: input.targetUid,
-    outcome: "applied",
-    summary: `Admin password reset initiated (mode ${mode}).`,
-    scope: GLOBAL_SCOPE,
-  });
-
-  const recordDelivery = async (delivered: boolean): Promise<void> => {
-    await recordStandaloneAuditEvent({
-      actorUid: input.actorUid,
-      action: "deliverAdminPasswordReset",
-      targetType: TARGET_TYPE,
-      targetId: input.targetUid,
-      outcome: delivered ? "applied" : "denied",
-      summary: delivered ? "Reset link delivered to the registered email." : "Reset link not delivered (no provider configured or delivery not confirmed).",
-      scope: GLOBAL_SCOPE,
-    });
-  };
-  const recordRevocation = async (revoked: boolean, note: string): Promise<void> => {
-    await recordStandaloneAuditEvent({
-      actorUid: input.actorUid,
-      action: "revokeUserSessions",
-      targetType: TARGET_TYPE,
-      targetId: input.targetUid,
-      outcome: revoked ? "applied" : "denied",
-      summary: note,
-      scope: GLOBAL_SCOPE,
-    });
-  };
-
-  if (mode === "suspectedCompromise") {
-    // Immediate revocation (accepted lockout) + recovery link.
-    await deps.revokeRefreshTokens(input.targetUid);
-    await recordRevocation(true, "Sessions revoked immediately (suspected compromise).");
-    const link = await deps.generateResetLink(email);
-    const { delivered } = await deps.delivery.deliverResetLink({ targetUid: input.targetUid, link });
-    await recordDelivery(delivered);
-    return { status: "sessions_revoked", deliveryOutcome: delivered ? "delivered" : "not_delivered", sessionRevocationOutcome: "revoked" };
+  // Idempotency / concurrency claim.
+  const claim = await claimOperation(key, actorUid, targetUid, mode);
+  if ("replay" in claim) {
+    return claim.replay;
   }
 
-  // Routine: generate -> deliver -> revoke ONLY after confirmed delivery.
-  const link = await deps.generateResetLink(email);
-  const { delivered } = await deps.delivery.deliverResetLink({ targetUid: input.targetUid, link });
-  await recordDelivery(delivered);
-  if (delivered) {
-    await deps.revokeRefreshTokens(input.targetUid);
-    await recordRevocation(true, "Sessions revoked after confirmed delivery.");
-    return { status: "reset_initiated", deliveryOutcome: "delivered", sessionRevocationOutcome: "revoked" };
+  try {
+    // Durable initiation event BEFORE any side effect.
+    await audit(actorUid, targetUid, "initiateAdminPasswordReset", "applied", `Initiated (mode ${mode}).`);
+
+    const email = await deps.getRecoverableEmail(targetUid);
+    if (!email) {
+      // Neutral to the caller; the real reason is only in the audit trail.
+      await audit(actorUid, targetUid, "deliverAdminPasswordReset", "denied", "Not delivered: target has no recoverable email.");
+      await audit(actorUid, targetUid, "revokeUserSessions", "denied", "Skipped: target ineligible.");
+      await markOp(key, "completed");
+      return NEUTRAL_ACCEPTED;
+    }
+
+    // Generate the link first (non-destructive), so a generation failure never
+    // leaves a target with revoked sessions.
+    let link: string;
+    try {
+      link = await deps.generateResetLink(email);
+    } catch {
+      await audit(actorUid, targetUid, "deliverAdminPasswordReset", "denied", "Failed: reset-link generation error.");
+      await audit(actorUid, targetUid, "revokeUserSessions", "denied", "Skipped: reset-link generation error.");
+      await markOp(key, "failed");
+      throw new AdminResetStageError("reset-link generation failed");
+    }
+
+    if (mode === "suspectedCompromise") {
+      // Delivery capability confirmed above, so immediate revocation is safe
+      // under the accepted-compromise model (recovery link follows).
+      try {
+        await deps.revokeRefreshTokens(targetUid);
+      } catch {
+        await audit(actorUid, targetUid, "revokeUserSessions", "denied", "Failed: session revocation error (suspected compromise).");
+        await markOp(key, "failed");
+        throw new AdminResetStageError("session revocation failed");
+      }
+      await audit(actorUid, targetUid, "revokeUserSessions", "applied", "Revoked immediately (suspected compromise).");
+      let delivered = false;
+      try {
+        ({ delivered } = await deps.delivery.deliverResetLink({ targetUid, email, link }));
+      } catch {
+        await audit(actorUid, targetUid, "deliverAdminPasswordReset", "denied", "Failed: delivery error (recovery link).");
+        await markOp(key, "failed");
+        throw new AdminResetStageError("delivery failed");
+      }
+      await audit(actorUid, targetUid, "deliverAdminPasswordReset", delivered ? "applied" : "denied", delivered ? "Recovery link delivered." : "Not delivered: provider returned no confirmation.");
+      await markOp(key, "completed");
+      return NEUTRAL_ACCEPTED;
+    }
+
+    // Routine: deliver, then revoke ONLY after confirmed delivery.
+    let delivered = false;
+    try {
+      ({ delivered } = await deps.delivery.deliverResetLink({ targetUid, email, link }));
+    } catch {
+      await audit(actorUid, targetUid, "deliverAdminPasswordReset", "denied", "Failed: delivery error.");
+      await audit(actorUid, targetUid, "revokeUserSessions", "denied", "Skipped: delivery error.");
+      await markOp(key, "failed");
+      throw new AdminResetStageError("delivery failed");
+    }
+    await audit(actorUid, targetUid, "deliverAdminPasswordReset", delivered ? "applied" : "denied", delivered ? "Reset link delivered." : "Not delivered: provider returned no confirmation.");
+    if (delivered) {
+      try {
+        await deps.revokeRefreshTokens(targetUid);
+      } catch {
+        await audit(actorUid, targetUid, "revokeUserSessions", "denied", "Failed: session revocation error after delivery.");
+        await markOp(key, "failed");
+        throw new AdminResetStageError("session revocation failed");
+      }
+      await audit(actorUid, targetUid, "revokeUserSessions", "applied", "Revoked after confirmed delivery.");
+    } else {
+      await audit(actorUid, targetUid, "revokeUserSessions", "denied", "Skipped: reset delivery not confirmed.");
+    }
+    await markOp(key, "completed");
+    return NEUTRAL_ACCEPTED;
+  } catch (err) {
+    // Best-effort: ensure the op is not left pending on an unexpected throw.
+    await markOp(key, "failed").catch(() => {});
+    throw err;
   }
-  await recordRevocation(false, "Session revocation skipped: reset delivery was not confirmed.");
-  return { status: "reset_initiated", deliveryOutcome: "not_delivered", sessionRevocationOutcome: "skipped" };
 }
 
 export interface ResetEligibleUser {
@@ -243,8 +364,8 @@ function clampLimit(limit: number | undefined): number {
 }
 
 // Admin-only sanitized directory for choosing a reset target. Returns ONLY the
-// minimal fields needed to identify a user -- never email, claims, tokens,
-// permission graphs, or the full user document.
+// minimal identity fields -- never email, claims, tokens, permission graphs, or
+// the full user document.
 export async function listResetEligibleUsers(input: ListResetEligibleUsersInput): Promise<ResetEligibleUser[]> {
   assertNonEmptyString(input.actorUid, "actorUid");
   await assertActorIsAdmin(input.actorUid);

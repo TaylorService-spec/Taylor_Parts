@@ -19,17 +19,33 @@ const REGION = "us-central1";
 
 function mapError(err: unknown): HttpsError {
   if (err instanceof HttpsError) return err;
-  // Describes only the client's own submitted input.
+  // Client's own submitted input (bad idempotencyKey/mode) -- safe to reflect.
   if (err instanceof commands.InvalidInputError) {
     return new HttpsError("invalid-argument", err.message);
   }
-  // Never reveal WHY authorization failed (internal access-model state).
+  // About the ACTOR's authorization, never the target -- reason withheld.
   if (err instanceof commands.UnauthorizedActorError) {
     return new HttpsError("permission-denied", "You are not authorized to perform this action.");
   }
-  // Protected-account messages describe only policy, no internals.
+  // The actor's own action choice (self-reset) -- not a target-eligibility leak.
   if (err instanceof commands.ProtectedAccountError) {
     return new HttpsError("failed-precondition", err.message);
+  }
+  // System capability state (not target-specific).
+  if (err instanceof commands.DeliveryUnavailableError) {
+    return new HttpsError("unavailable", "Password reset delivery is not available. Please try again later.");
+  }
+  // The caller's own idempotency key -- in progress / recently attempted.
+  if (err instanceof commands.OperationInProgressError) {
+    return new HttpsError("aborted", "A reset for this request is already in progress.");
+  }
+  if (err instanceof commands.RetryCooldownError) {
+    return new HttpsError("unavailable", "This request was attempted recently. Please try again shortly.");
+  }
+  // A genuine stage failure -- deliberately GENERIC (never the target-eligibility
+  // reason, provider error, path, link, or token; those live only in audit).
+  if (err instanceof commands.AdminResetStageError) {
+    return new HttpsError("unavailable", "The request could not be completed. Please try again.");
   }
   // Never leak an unrecognized error's message, class name, or stack.
   return new HttpsError("internal", "An unexpected error occurred. Please try again.");
@@ -58,17 +74,19 @@ function adminSdkDeps(): commands.AdminResetDeps {
 
 export const initiateAdminPasswordReset = onCall({ region: REGION }, async (request) => {
   const actorUid = requireAuthUid(request);
-  const data = (request.data ?? {}) as { targetUid?: unknown; mode?: unknown };
+  const data = (request.data ?? {}) as { targetUid?: unknown; mode?: unknown; idempotencyKey?: unknown };
   try {
     const outcome = await commands.initiateAdminPasswordReset(
       {
         actorUid,
         targetUid: typeof data.targetUid === "string" ? data.targetUid : "",
+        idempotencyKey: typeof data.idempotencyKey === "string" ? data.idempotencyKey : "",
         mode: data.mode as commands.ResetMode | undefined,
       },
       adminSdkDeps(),
     );
-    // Coarse status only -- never the reset link or token.
+    // Neutral status only -- never the reset link, token, target email, or a
+    // target-eligibility / delivery-outcome reason.
     return outcome;
   } catch (err) {
     throw mapError(err);
