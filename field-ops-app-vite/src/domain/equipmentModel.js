@@ -35,21 +35,21 @@ export function validateEquipmentModel(input) {
   if (!Number.isInteger(value.version) || value.version < 1) return { valid: false, value, reason: "version_invalid" };
   return { valid: true, value, reason: null };
 }
-export function normalizeModelAliasKey({ aliasType, manufacturerId, rawValue } = {}) {
+export function normalizeModelAliasKey(record) {
+  const { aliasType, manufacturerId, rawValue } = plain(record) ? record : {};
   const type = normalizeIdentityKey(aliasType), manufacturer = normalizeManufacturerId(manufacturerId), alias = normalizeIdentityKey(rawValue);
   return MODEL_ALIAS_TYPES.includes(type) && manufacturer && alias ? `${type}|${manufacturer}|${alias}` : "";
 }
 export function detectModelAliasConflicts(records = []) {
   if (!Array.isArray(records)) return [];
-  const owners = new Map(), conflicts = new Map();
+  const owners = new Map();
   for (const r of records) {
     const key = normalizeModelAliasKey(r), id = normalizeIdentityText(r?.equipmentModelId);
     if (!key || !id) continue;
-    const prior = owners.get(key);
-    if (prior && prior !== id) conflicts.set(key, [...new Set([prior, id])].sort());
-    else owners.set(key, id);
+    if (!owners.has(key)) owners.set(key, new Set());
+    owners.get(key).add(id);
   }
-  return [...conflicts].sort(([a],[b]) => a.localeCompare(b)).map(([aliasKey, equipmentModelIds]) => ({ aliasKey, equipmentModelIds }));
+  return [...owners].filter(([, ids]) => ids.size > 1).sort(([a],[b]) => a.localeCompare(b)).map(([aliasKey, ids]) => ({ aliasKey, equipmentModelIds: [...ids].sort() }));
 }
 export function validateSerialScheme(s) {
   if (!plain(s)) return { valid: false, reason: "not_object" };
