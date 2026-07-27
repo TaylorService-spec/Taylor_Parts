@@ -1,0 +1,32 @@
+INV-CONVERGENCE-E C1 Hosting deploy -- local preflight (credential-free)
+========================================================================
+Clean checkout of the authorized commit 3827ce370b26af7cbf66acdf391267a0afa4092c
+(field-ops-app-vite/). No production access.
+
+HEAD == 3827ce370b26af7cbf66acdf391267a0afa4092c : YES
+Clean worktree                                   : YES
+.firebaserc default project                      : taylor-parts
+firebase.json hosting.public                     : field-ops-app-vite/dist (SPA rewrite; no predeploy hook)
+
+npm ci                          -> exit 0
+npm test (full client chain)    -> exit 0   (partsCatalogView 23/23 included)
+npm run lint (oxlint)           -> exit 0   (pre-existing react-refresh warnings only)
+npm run typecheck (tsc --noEmit)-> exit 0
+npm run build:firebase (base=/) -> exit 0
+npm run verify:build-base       -> 12 passed, 0 failed
+dist/index.html                 -> references /assets/... ; 0 occurrences of /Taylor_Parts/field-ops
+
+Build fingerprint (local Windows build; INFORMATIONAL only -- Vite content hashes may
+differ across OS/EOL, so this is not a cross-machine gate):
+  dist/index.html sha256 = b896101cf80b392b3c44948f0b285d797a540fb0a428a4ffc110c5d7c10cee92
+  dist/assets/index-BJCJSmRw.js
+  dist/assets/index-CSg6YUa7.css
+
+Governed root firestore.rules Git/LF sha256 at 3827ce37 (unchanged from Stage B; C1
+touched no Rules) = cf6681c61f7c93a6b5b5385212518636b855b24a751225564429e0f8932bc381
+  -> used only for the post-deploy "Rules unchanged" assertion; NOT a Hosting artifact.
+
+Artifact is deploy-ready for Firebase Hosting. The deploy itself (firebase deploy
+--only hosting) and all live production verification require production credentials and
+are OPERATOR/Cloud-Shell actions per the handoff runbook; the Inventory session performs
+neither and holds no production credentials.
