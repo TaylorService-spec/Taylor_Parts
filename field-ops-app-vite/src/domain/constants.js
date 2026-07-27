@@ -14,6 +14,10 @@ export const TECH_STATUS = {
 export const JOBS_COLLECTION = "fieldops_jobs";
 export const TECHNICIANS_COLLECTION = "fieldops_technicians";
 export const USERS_COLLECTION = "users";
+// AUTH-PR-2: username alias mapping (trusted-writer-only; created out of
+// band, never client-written). See docs/assessments/
+// auth-modernization-architecture.md and src/domain/usernames.js.
+export const USERNAMES_COLLECTION = "usernames";
 
 // Phase 3 -- Platform Assignment Foundation (docs/specifications/
 // employee-foundation.md). employmentStatus is the authoritative

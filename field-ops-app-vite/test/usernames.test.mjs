@@ -1,0 +1,124 @@
+// AUTH-PR-2 -- username data model tests (normalization, validation,
+// collision, email-prefix suggestion, display). Pure domain logic; no I/O.
+//
+// Run: node test/usernames.test.mjs   (also `npm test`)
+import assert from "node:assert/strict";
+import {
+  normalizeUsername,
+  validateUsername,
+  deriveUsernameFromEmail,
+  isUsernameAvailable,
+  proposeAlternativeUsernames,
+  usernameForDisplay,
+  USERNAME_INVALID_REASON,
+  USERNAME_MAX_LENGTH,
+  RESERVED_USERNAMES,
+} from "../src/domain/usernames.js";
+
+let passed = 0;
+function ok(name, fn) { fn(); passed += 1; console.log("PASS -- " + name); }
+
+// -- normalizeUsername ------------------------------------------------------
+ok("normalize trims and lowercases", () => {
+  assert.strictEqual(normalizeUsername("  Jane.Smith  "), "jane.smith");
+});
+ok("normalize non-string -> empty string", () => {
+  assert.strictEqual(normalizeUsername(null), "");
+  assert.strictEqual(normalizeUsername(undefined), "");
+  assert.strictEqual(normalizeUsername(42), "");
+});
+
+// -- validateUsername -------------------------------------------------------
+ok("valid username passes", () => {
+  const r = validateUsername("jane.smith-01_ok");
+  assert.strictEqual(r.valid, true);
+  assert.strictEqual(r.normalized, "jane.smith-01_ok");
+  assert.strictEqual(r.reason, null);
+});
+ok("empty -> EMPTY", () => {
+  assert.strictEqual(validateUsername("   ").reason, USERNAME_INVALID_REASON.EMPTY);
+});
+ok("too short -> TOO_SHORT", () => {
+  assert.strictEqual(validateUsername("ab").reason, USERNAME_INVALID_REASON.TOO_SHORT);
+});
+ok("too long -> TOO_LONG", () => {
+  const long = "a".repeat(USERNAME_MAX_LENGTH + 1);
+  assert.strictEqual(validateUsername(long).reason, USERNAME_INVALID_REASON.TOO_LONG);
+});
+ok("disallowed chars -> CHARSET", () => {
+  assert.strictEqual(validateUsername("jane smith").reason, USERNAME_INVALID_REASON.CHARSET);
+  assert.strictEqual(validateUsername("jane@smith").reason, USERNAME_INVALID_REASON.CHARSET);
+  assert.strictEqual(validateUsername("jané").reason, USERNAME_INVALID_REASON.CHARSET);
+});
+ok("reserved word -> RESERVED (case-insensitive)", () => {
+  assert.strictEqual(validateUsername("Admin").reason, USERNAME_INVALID_REASON.RESERVED);
+  for (const w of RESERVED_USERNAMES) {
+    assert.strictEqual(validateUsername(w).reason, USERNAME_INVALID_REASON.RESERVED);
+  }
+});
+
+// -- deriveUsernameFromEmail ------------------------------------------------
+ok("derive from simple email prefix", () => {
+  assert.strictEqual(deriveUsernameFromEmail("jane.smith@company.com"), "jane.smith");
+});
+ok("derive maps disallowed chars, collapses, trims", () => {
+  assert.strictEqual(deriveUsernameFromEmail("Jane+Tag@x.com"), "jane.tag");
+  assert.strictEqual(deriveUsernameFromEmail(".weird..name.@x.com"), "weird.name");
+});
+ok("derive with no @ or non-string -> empty", () => {
+  assert.strictEqual(deriveUsernameFromEmail("not-an-email"), "");
+  assert.strictEqual(deriveUsernameFromEmail(null), "");
+});
+ok("derive clamps to max length and trims trailing separators", () => {
+  const email = `${"a".repeat(40)}@x.com`;
+  const derived = deriveUsernameFromEmail(email);
+  assert.ok(derived.length <= USERNAME_MAX_LENGTH);
+});
+
+// -- isUsernameAvailable ----------------------------------------------------
+ok("available when not taken and valid", () => {
+  assert.strictEqual(isUsernameAvailable("jane.smith", new Set(["bob"])), true);
+});
+ok("unavailable when taken (normalized match)", () => {
+  assert.strictEqual(isUsernameAvailable("Jane.Smith", new Set(["jane.smith"])), false);
+});
+ok("invalid candidate is never available", () => {
+  assert.strictEqual(isUsernameAvailable("ab", new Set()), false);
+  assert.strictEqual(isUsernameAvailable("admin", []), false);
+});
+ok("accepts array or Set for taken", () => {
+  assert.strictEqual(isUsernameAvailable("jane.smith", ["jane.smith"]), false);
+});
+
+// -- proposeAlternativeUsernames --------------------------------------------
+ok("proposes numeric alternates skipping taken", () => {
+  const alts = proposeAlternativeUsernames("jane.smith", new Set(["jane.smith", "jane.smith2"]));
+  assert.deepStrictEqual(alts, ["jane.smith3", "jane.smith4", "jane.smith5"]);
+});
+ok("proposals never include the original and are all available+valid", () => {
+  const taken = new Set(["alex.smith"]);
+  const alts = proposeAlternativeUsernames("alex.smith", taken, 3);
+  assert.strictEqual(alts.includes("alex.smith"), false);
+  for (const a of alts) {
+    assert.strictEqual(validateUsername(a).valid, true);
+    assert.strictEqual(taken.has(a), false);
+  }
+});
+ok("proposals respect max length", () => {
+  const base = "x".repeat(USERNAME_MAX_LENGTH);
+  const alts = proposeAlternativeUsernames(base, new Set());
+  for (const a of alts) assert.ok(a.length <= USERNAME_MAX_LENGTH);
+});
+ok("empty base -> no proposals", () => {
+  assert.deepStrictEqual(proposeAlternativeUsernames("   ", new Set()), []);
+});
+
+// -- usernameForDisplay -----------------------------------------------------
+ok("display prefers displayUsername, falls back to normalized, else null", () => {
+  assert.strictEqual(usernameForDisplay({ displayUsername: "Jane.Smith", normalizedUsername: "jane.smith" }), "Jane.Smith");
+  assert.strictEqual(usernameForDisplay({ normalizedUsername: "jane.smith" }), "jane.smith");
+  assert.strictEqual(usernameForDisplay({}), null);
+  assert.strictEqual(usernameForDisplay(null), null);
+});
+
+console.log(`\n${passed} passed`);
