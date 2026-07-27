@@ -1,0 +1,552 @@
+[
+  {
+    "persona": "admin",
+    "operation": "parts-list",
+    "status": 200,
+    "interpretation": "ALLOW",
+    "expected": [
+      200
+    ],
+    "pass": true
+  },
+  {
+    "persona": "admin",
+    "operation": "parts-single",
+    "status": 404,
+    "interpretation": "ALLOW_NOT_FOUND",
+    "expected": [
+      404
+    ],
+    "pass": true
+  },
+  {
+    "persona": "admin",
+    "operation": "parts-create",
+    "status": 403,
+    "interpretation": "DENY",
+    "expected": [
+      403
+    ],
+    "pass": true
+  },
+  {
+    "persona": "admin",
+    "operation": "parts-update",
+    "status": 403,
+    "interpretation": "DENY",
+    "expected": [
+      403
+    ],
+    "pass": true
+  },
+  {
+    "persona": "admin",
+    "operation": "parts-delete",
+    "status": 403,
+    "interpretation": "DENY",
+    "expected": [
+      403
+    ],
+    "pass": true
+  },
+  {
+    "persona": "admin",
+    "operation": "manufacturers-read",
+    "status": 403,
+    "interpretation": "DENY",
+    "expected": [
+      403
+    ],
+    "pass": true
+  },
+  {
+    "persona": "admin",
+    "operation": "manufacturers-write",
+    "status": 403,
+    "interpretation": "DENY",
+    "expected": [
+      403
+    ],
+    "pass": true
+  },
+  {
+    "persona": "admin",
+    "operation": "part-aliases-read",
+    "status": 403,
+    "interpretation": "DENY",
+    "expected": [
+      403
+    ],
+    "pass": true
+  },
+  {
+    "persona": "admin",
+    "operation": "part-aliases-write",
+    "status": 403,
+    "interpretation": "DENY",
+    "expected": [
+      403
+    ],
+    "pass": true
+  },
+  {
+    "persona": "admin",
+    "operation": "part-supplier-items-read",
+    "status": 403,
+    "interpretation": "DENY",
+    "expected": [
+      403
+    ],
+    "pass": true
+  },
+  {
+    "persona": "admin",
+    "operation": "part-supplier-items-write",
+    "status": 403,
+    "interpretation": "DENY",
+    "expected": [
+      403
+    ],
+    "pass": true
+  },
+  {
+    "persona": "dispatcher",
+    "operation": "parts-list",
+    "status": 200,
+    "interpretation": "ALLOW",
+    "expected": [
+      200
+    ],
+    "pass": true
+  },
+  {
+    "persona": "dispatcher",
+    "operation": "parts-single",
+    "status": 404,
+    "interpretation": "ALLOW_NOT_FOUND",
+    "expected": [
+      404
+    ],
+    "pass": true
+  },
+  {
+    "persona": "dispatcher",
+    "operation": "parts-create",
+    "status": 403,
+    "interpretation": "DENY",
+    "expected": [
+      403
+    ],
+    "pass": true
+  },
+  {
+    "persona": "dispatcher",
+    "operation": "parts-update",
+    "status": 403,
+    "interpretation": "DENY",
+    "expected": [
+      403
+    ],
+    "pass": true
+  },
+  {
+    "persona": "dispatcher",
+    "operation": "parts-delete",
+    "status": 403,
+    "interpretation": "DENY",
+    "expected": [
+      403
+    ],
+    "pass": true
+  },
+  {
+    "persona": "dispatcher",
+    "operation": "manufacturers-read",
+    "status": 403,
+    "interpretation": "DENY",
+    "expected": [
+      403
+    ],
+    "pass": true
+  },
+  {
+    "persona": "dispatcher",
+    "operation": "manufacturers-write",
+    "status": 403,
+    "interpretation": "DENY",
+    "expected": [
+      403
+    ],
+    "pass": true
+  },
+  {
+    "persona": "dispatcher",
+    "operation": "part-aliases-read",
+    "status": 403,
+    "interpretation": "DENY",
+    "expected": [
+      403
+    ],
+    "pass": true
+  },
+  {
+    "persona": "dispatcher",
+    "operation": "part-aliases-write",
+    "status": 403,
+    "interpretation": "DENY",
+    "expected": [
+      403
+    ],
+    "pass": true
+  },
+  {
+    "persona": "dispatcher",
+    "operation": "part-supplier-items-read",
+    "status": 403,
+    "interpretation": "DENY",
+    "expected": [
+      403
+    ],
+    "pass": true
+  },
+  {
+    "persona": "dispatcher",
+    "operation": "part-supplier-items-write",
+    "status": 403,
+    "interpretation": "DENY",
+    "expected": [
+      403
+    ],
+    "pass": true
+  },
+  {
+    "persona": "PARTS_MANAGER",
+    "operation": "parts-list",
+    "status": 200,
+    "interpretation": "ALLOW",
+    "expected": [
+      200
+    ],
+    "pass": true
+  },
+  {
+    "persona": "PARTS_MANAGER",
+    "operation": "parts-single",
+    "status": 404,
+    "interpretation": "ALLOW_NOT_FOUND",
+    "expected": [
+      404
+    ],
+    "pass": true
+  },
+  {
+    "persona": "PARTS_MANAGER",
+    "operation": "parts-create",
+    "status": 403,
+    "interpretation": "DENY",
+    "expected": [
+      403
+    ],
+    "pass": true
+  },
+  {
+    "persona": "PARTS_MANAGER",
+    "operation": "parts-update",
+    "status": 403,
+    "interpretation": "DENY",
+    "expected": [
+      403
+    ],
+    "pass": true
+  },
+  {
+    "persona": "PARTS_MANAGER",
+    "operation": "parts-delete",
+    "status": 403,
+    "interpretation": "DENY",
+    "expected": [
+      403
+    ],
+    "pass": true
+  },
+  {
+    "persona": "PARTS_MANAGER",
+    "operation": "manufacturers-read",
+    "status": 403,
+    "interpretation": "DENY",
+    "expected": [
+      403
+    ],
+    "pass": true
+  },
+  {
+    "persona": "PARTS_MANAGER",
+    "operation": "manufacturers-write",
+    "status": 403,
+    "interpretation": "DENY",
+    "expected": [
+      403
+    ],
+    "pass": true
+  },
+  {
+    "persona": "PARTS_MANAGER",
+    "operation": "part-aliases-read",
+    "status": 403,
+    "interpretation": "DENY",
+    "expected": [
+      403
+    ],
+    "pass": true
+  },
+  {
+    "persona": "PARTS_MANAGER",
+    "operation": "part-aliases-write",
+    "status": 403,
+    "interpretation": "DENY",
+    "expected": [
+      403
+    ],
+    "pass": true
+  },
+  {
+    "persona": "PARTS_MANAGER",
+    "operation": "part-supplier-items-read",
+    "status": 403,
+    "interpretation": "DENY",
+    "expected": [
+      403
+    ],
+    "pass": true
+  },
+  {
+    "persona": "PARTS_MANAGER",
+    "operation": "part-supplier-items-write",
+    "status": 403,
+    "interpretation": "DENY",
+    "expected": [
+      403
+    ],
+    "pass": true
+  },
+  {
+    "persona": "WAREHOUSE_MANAGER",
+    "operation": "parts-list",
+    "status": 200,
+    "interpretation": "ALLOW",
+    "expected": [
+      200
+    ],
+    "pass": true
+  },
+  {
+    "persona": "WAREHOUSE_MANAGER",
+    "operation": "parts-single",
+    "status": 404,
+    "interpretation": "ALLOW_NOT_FOUND",
+    "expected": [
+      404
+    ],
+    "pass": true
+  },
+  {
+    "persona": "WAREHOUSE_MANAGER",
+    "operation": "parts-create",
+    "status": 403,
+    "interpretation": "DENY",
+    "expected": [
+      403
+    ],
+    "pass": true
+  },
+  {
+    "persona": "WAREHOUSE_MANAGER",
+    "operation": "parts-update",
+    "status": 403,
+    "interpretation": "DENY",
+    "expected": [
+      403
+    ],
+    "pass": true
+  },
+  {
+    "persona": "WAREHOUSE_MANAGER",
+    "operation": "parts-delete",
+    "status": 403,
+    "interpretation": "DENY",
+    "expected": [
+      403
+    ],
+    "pass": true
+  },
+  {
+    "persona": "WAREHOUSE_MANAGER",
+    "operation": "manufacturers-read",
+    "status": 403,
+    "interpretation": "DENY",
+    "expected": [
+      403
+    ],
+    "pass": true
+  },
+  {
+    "persona": "WAREHOUSE_MANAGER",
+    "operation": "manufacturers-write",
+    "status": 403,
+    "interpretation": "DENY",
+    "expected": [
+      403
+    ],
+    "pass": true
+  },
+  {
+    "persona": "WAREHOUSE_MANAGER",
+    "operation": "part-aliases-read",
+    "status": 403,
+    "interpretation": "DENY",
+    "expected": [
+      403
+    ],
+    "pass": true
+  },
+  {
+    "persona": "WAREHOUSE_MANAGER",
+    "operation": "part-aliases-write",
+    "status": 403,
+    "interpretation": "DENY",
+    "expected": [
+      403
+    ],
+    "pass": true
+  },
+  {
+    "persona": "WAREHOUSE_MANAGER",
+    "operation": "part-supplier-items-read",
+    "status": 403,
+    "interpretation": "DENY",
+    "expected": [
+      403
+    ],
+    "pass": true
+  },
+  {
+    "persona": "WAREHOUSE_MANAGER",
+    "operation": "part-supplier-items-write",
+    "status": 403,
+    "interpretation": "DENY",
+    "expected": [
+      403
+    ],
+    "pass": true
+  },
+  {
+    "persona": "technician",
+    "operation": "parts-list",
+    "status": 403,
+    "interpretation": "DENY",
+    "expected": [
+      403
+    ],
+    "pass": true
+  },
+  {
+    "persona": "technician",
+    "operation": "parts-single",
+    "status": 403,
+    "interpretation": "DENY",
+    "expected": [
+      403
+    ],
+    "pass": true
+  },
+  {
+    "persona": "technician",
+    "operation": "parts-create",
+    "status": 403,
+    "interpretation": "DENY",
+    "expected": [
+      403
+    ],
+    "pass": true
+  },
+  {
+    "persona": "technician",
+    "operation": "parts-update",
+    "status": 403,
+    "interpretation": "DENY",
+    "expected": [
+      403
+    ],
+    "pass": true
+  },
+  {
+    "persona": "technician",
+    "operation": "parts-delete",
+    "status": 403,
+    "interpretation": "DENY",
+    "expected": [
+      403
+    ],
+    "pass": true
+  },
+  {
+    "persona": "technician",
+    "operation": "manufacturers-read",
+    "status": 403,
+    "interpretation": "DENY",
+    "expected": [
+      403
+    ],
+    "pass": true
+  },
+  {
+    "persona": "technician",
+    "operation": "manufacturers-write",
+    "status": 403,
+    "interpretation": "DENY",
+    "expected": [
+      403
+    ],
+    "pass": true
+  },
+  {
+    "persona": "technician",
+    "operation": "part-aliases-read",
+    "status": 403,
+    "interpretation": "DENY",
+    "expected": [
+      403
+    ],
+    "pass": true
+  },
+  {
+    "persona": "technician",
+    "operation": "part-aliases-write",
+    "status": 403,
+    "interpretation": "DENY",
+    "expected": [
+      403
+    ],
+    "pass": true
+  },
+  {
+    "persona": "technician",
+    "operation": "part-supplier-items-read",
+    "status": 403,
+    "interpretation": "DENY",
+    "expected": [
+      403
+    ],
+    "pass": true
+  },
+  {
+    "persona": "technician",
+    "operation": "part-supplier-items-write",
+    "status": 403,
+    "interpretation": "DENY",
+    "expected": [
+      403
+    ],
+    "pass": true
+  }
+]

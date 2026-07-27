@@ -36,6 +36,8 @@
     "test:partMasterCommands": "npm run build && node test/partMasterCommands.test.mjs",
     "test:partMasterDomain": "npm run build && node test/partMasterDomain.test.mjs",
     "test:inventoryEffectOperatorTools": "npm run build && node --test test/inventoryEffectOperatorTools.test.js",
+    "test:firestoreDeploymentVerification": "node --test test/firestoreDeploymentVerification.test.js",
+    "verify:firestore-deployment": "node scripts/verifyFirestoreDeployment.js",
     "audit:inventory-effects": "npm run build && node scripts/auditInventoryEffects.js",
     "retry:inventory-effects": "npm run build && node scripts/retryInventoryEffects.js",
     "test:workOrderEngineFunctions": "npm run build && node --test test/workOrderEngineFunctions.test.js",
