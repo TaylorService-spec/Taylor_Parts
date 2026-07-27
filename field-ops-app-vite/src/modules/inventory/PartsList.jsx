@@ -1,6 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { PARTS_CATALOG, getCatalogItem } from "../../data/partsCatalog";
+import { fetchPartMasterList } from "../../services/partMasterQueries";
+import { buildPartsCatalogRows, nameBySkuFromRows, isCatalogBlocked, partCatalogRoute } from "../../domain/partsCatalogView";
 import { useInventoryLedger } from "../../hooks/useInventoryLedger";
 import {
   useReorderRequests,
@@ -32,11 +34,20 @@ import { hasUsageHistory } from "../../domain/inventoryAnalyticsEngine";
 // to from here -- same "deprecated, not deleted" treatment as
 // domain/workOrderLifecycle.js.
 //
-// Read-only: every value below comes from PARTS_CATALOG (static
-// reference data, not Firestore) or useInventoryLedger() (the same
-// one-shot inventory_transactions read + pure analytics functions
-// Operations.jsx's Inventory Health panel already uses). No new
-// Firestore query, no new computed math.
+// Read-only. INV-CONVERGENCE-E C1 -- the Parts Catalog identity/metadata
+// source is the GOVERNED compatibility-adapter output: the live canonical
+// `parts` read (fetchPartMasterList, PR 1.9 -- the same one-shot authorized
+// read) composed with the static catalog through buildPartsWorkspace(), via
+// the pure domain/partsCatalogView.buildPartsCatalogRows(). The static
+// PARTS_CATALOG remains the compatibility INPUT to that composition (not a
+// parallel source of truth), and getCatalogItem stays as a resilient name
+// fallback for the Firestore-backed reorder queues. Canonical is authoritative;
+// a denied/unavailable/incomplete canonical read renders an explicit BLOCKED
+// state (never an empty list, never a silent static fallback). Stock position
+// still comes from useInventoryLedger() (one-shot inventory_transactions read +
+// the existing pure analytics), keyed by partId == sku, unchanged. No new
+// Firestore query surface, no new computed math. PartDetail's source is NOT
+// changed by C1.
 //
 // Epic 9 -- Platform Workspace Framework: header/toolbar, category
 // filter bar, and loading state come from shared/ui/ instead of a
@@ -276,11 +287,19 @@ export function resolveAssigneeDisplay(userId, employeeDirectory, directoryLoadi
   return employeeDirectory?.get(userId)?.displayName ?? "Unknown assignee";
 }
 
-function useCategories() {
-  return useMemo(() => {
-    const set = new Set(PARTS_CATALOG.map((part) => part.category));
-    return ["ALL", ...[...set].sort()];
-  }, []);
+// INV-CONVERGENCE-E C1 -- explicit, non-empty BLOCKED copy for the Parts Catalog
+// section when the canonical read cannot be validly composed. Never an empty
+// table, never a silent static fallback. Mirrors PartMasterList.jsx's denied/
+// unavailable wording.
+function catalogBlockedMessage(status) {
+  if (status === "BLOCKED_PERMISSION") {
+    return "You do not have access to the canonical Parts catalog. Contact an administrator if you believe this is an error.";
+  }
+  if (status === "BLOCKED_UNAVAILABLE") {
+    return "The canonical Parts catalog is currently unavailable. Try again later.";
+  }
+  // BLOCKED_INCOMPLETE_INPUT
+  return "The Parts catalog could not be verified against the canonical source, so no parts are shown (an incomplete catalog is never displayed). Try again later.";
 }
 
 export default function PartsList() {
@@ -291,6 +310,34 @@ export default function PartsList() {
     error: employeeDirectoryError,
   } = useEmployeeDirectory();
   const { healthEntries, loading } = useInventoryLedger();
+
+  // INV-CONVERGENCE-E C1 -- live canonical `parts` read (one-shot, PR 1.9's
+  // fetchPartMasterList; no new query surface). null until the first read
+  // resolves. Mapped to the canonicalRead status contract the pure
+  // buildPartsCatalogRows() consumes (OK / PERMISSION_DENIED / UNAVAILABLE).
+  const [canonicalRead, setCanonicalRead] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetchPartMasterList().then((result) => {
+      if (cancelled) return;
+      if (result.ok) setCanonicalRead({ status: "OK", rows: result.parts });
+      else setCanonicalRead({ status: result.code === "permission-denied" ? "PERMISSION_DENIED" : "UNAVAILABLE" });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const canonicalLoading = canonicalRead === null;
+  // Governed catalog composition (pure). While the read is in flight we pass a
+  // LOADING sentinel (composes to BLOCKED with rows:[]) but render the loading
+  // state, not the blocked banner (canonicalLoading gate below).
+  const catalog = useMemo(
+    () => buildPartsCatalogRows({ canonicalRead: canonicalRead ?? { status: "LOADING" }, staticCatalog: PARTS_CATALOG }),
+    [canonicalRead]
+  );
+  const catalogRows = catalog.rows;
+  const nameBySku = useMemo(() => nameBySkuFromRows(catalogRows), [catalogRows]);
+
   const { data: pendingRequests } = useReorderRequests();
   const { data: partsManagerQueue, loading: partsManagerLoading } = useReorderRequestsByStatus(
     REORDER_REQUEST_STATUS.READY_FOR_PARTS_MANAGER
@@ -381,7 +428,10 @@ export default function PartsList() {
     setHistoryLookupInput("");
   }
 
-  const categories = useCategories();
+  const categories = useMemo(() => {
+    const set = new Set(catalogRows.map((part) => part.category));
+    return ["ALL", ...[...set].sort()];
+  }, [catalogRows]);
   const [category, setCategory] = useState("ALL");
   const [page, setPage] = useState(0);
   const [queueFilter, setQueueFilter] = useState("ACTIONABLE");
@@ -425,7 +475,7 @@ export default function PartsList() {
       await requestReorderForRecommendation({ partId, recommendation, manualQty });
       setJustRequestedPartIds((prev) => new Set(prev).add(partId));
     } catch (err) {
-      const partName = getCatalogItem(partId)?.name ?? partId;
+      const partName = nameBySku.get(partId) ?? getCatalogItem(partId)?.name ?? partId;
       setReorderError(`Could not request reorder for ${partName}: ${err.message}`);
     } finally {
       setSubmittingPartId(null);
@@ -439,9 +489,9 @@ export default function PartsList() {
   }, [healthEntries]);
 
   const filteredParts = useMemo(() => {
-    if (category === "ALL") return PARTS_CATALOG;
-    return PARTS_CATALOG.filter((part) => part.category === category);
-  }, [category]);
+    if (category === "ALL") return catalogRows;
+    return catalogRows.filter((part) => part.category === category);
+  }, [category, catalogRows]);
 
   const pageCount = Math.max(1, Math.ceil(filteredParts.length / PAGE_SIZE));
   const currentPage = Math.min(page, pageCount - 1);
@@ -460,13 +510,13 @@ export default function PartsList() {
   const filterOptions = categories.map((cat) => ({
     key: cat,
     label: cat === "ALL" ? "All Categories" : cat,
-    count: cat === "ALL" ? PARTS_CATALOG.length : PARTS_CATALOG.filter((part) => part.category === cat).length,
+    count: cat === "ALL" ? catalogRows.length : catalogRows.filter((part) => part.category === cat).length,
   }));
 
   return (
     <div className="fo-panel">
       <WorkspaceHeader title="Parts">
-        <GlobalSearch providerKeys={["parts"]} context={{ parts: PARTS_CATALOG }} placeholder="Search parts..." />
+        <GlobalSearch providerKeys={["parts"]} context={{ parts: catalogRows }} placeholder="Search parts..." />
       </WorkspaceHeader>
 
       <h3>Inventory Operational Queue</h3>
@@ -510,7 +560,7 @@ export default function PartsList() {
               <tr key={request.id}>
                 <td>
                   <Link to={`/inventory/${request.partId}?requestId=${request.id}`}>
-                    {getCatalogItem(request.partId)?.name ?? request.partId}
+                    {nameBySku.get(request.partId) ?? getCatalogItem(request.partId)?.name ?? request.partId}
                   </Link>
                 </td>
                 <td>{getDisplayQty(request)}</td>
@@ -554,7 +604,7 @@ export default function PartsList() {
               <tr key={request.id}>
                 <td>
                   <Link to={`/inventory/${request.partId}?requestId=${request.id}`}>
-                    {getCatalogItem(request.partId)?.name ?? request.partId}
+                    {nameBySku.get(request.partId) ?? getCatalogItem(request.partId)?.name ?? request.partId}
                   </Link>
                 </td>
                 <td>{getDisplayQty(request)}</td>
@@ -596,7 +646,7 @@ export default function PartsList() {
               <tr key={request.id}>
                 <td>
                   <Link to={`/inventory/${request.partId}?requestId=${request.id}`}>
-                    {getCatalogItem(request.partId)?.name ?? request.partId}
+                    {nameBySku.get(request.partId) ?? getCatalogItem(request.partId)?.name ?? request.partId}
                   </Link>
                 </td>
                 <td>{getDisplayQty(request)}</td>
@@ -675,7 +725,7 @@ export default function PartsList() {
                     <tr key={request.id}>
                       <td>
                         <Link to={`/inventory/${request.partId}?requestId=${request.id}`}>
-                          {getCatalogItem(request.partId)?.name ?? request.partId}
+                          {nameBySku.get(request.partId) ?? getCatalogItem(request.partId)?.name ?? request.partId}
                         </Link>
                       </td>
                       <td>{getDisplayQty(request)}</td>
@@ -707,8 +757,19 @@ export default function PartsList() {
         )}
 
       <h3>Parts Catalog</h3>
+      {/* INV-CONVERGENCE-E C1 -- three explicit states for the governed catalog:
+          (1) canonical read in flight -> loading; (2) canonical read blocked
+          (denied/unavailable/incomplete) -> a clear BLOCKED banner, never an empty
+          table and never a silent static fallback; (3) READY -> the composed 200-row
+          catalog. Categories/counts/search/table all read the composed rows. */}
+      {canonicalLoading ? (
+        <p className="fo-muted">Loading parts catalog…</p>
+      ) : isCatalogBlocked(catalog.status) ? (
+        <p className="fo-muted">{catalogBlockedMessage(catalog.status)}</p>
+      ) : (
+      <>
       <p className="fo-muted">
-        {PARTS_CATALOG.length} parts in catalog. Stock position and reorder status are derived from the inventory
+        {catalogRows.length} parts in catalog. Stock position and reorder status are derived from the inventory
         ledger (same source as the Operations dashboard's Inventory Health panel) -- catalog data is a static
         baseline, not live stock, until a part has ledger activity.
       </p>
@@ -733,7 +794,7 @@ export default function PartsList() {
                 return (
                   <tr key={part.sku}>
                     <td>
-                      <Link to={`/inventory/${part.sku}`}>{part.name}</Link>
+                      <Link to={partCatalogRoute(part)}>{part.name}</Link>
                     </td>
                     <td className="fo-muted">{part.sku}</td>
                     <td className="fo-muted">{part.category}</td>
@@ -768,6 +829,8 @@ export default function PartsList() {
           </div>
         </>
       </LoadingEmptyState>
+      </>
+      )}
 
       <h3>History ({historyData.length})</h3>
       <p className="fo-muted">Cancelled, Voided, Received, and Rejected Reorder Requests, newest first.</p>
@@ -802,7 +865,7 @@ export default function PartsList() {
                     <>
                       Found:{" "}
                       <Link to={`/inventory/${historyLookupResult.partId}?requestId=${historyLookupResult.id}`}>
-                        {getCatalogItem(historyLookupResult.partId)?.name ?? historyLookupResult.partId}
+                        {nameBySku.get(historyLookupResult.partId) ?? getCatalogItem(historyLookupResult.partId)?.name ?? historyLookupResult.partId}
                       </Link>{" "}
                       -- {HISTORY_STATUS_LABEL[historyLookupResult.status] ?? historyLookupResult.status}
                     </>
@@ -837,7 +900,7 @@ export default function PartsList() {
                   <tr key={request.id}>
                     <td>
                       <Link to={`/inventory/${request.partId}?requestId=${request.id}`}>
-                        {getCatalogItem(request.partId)?.name ?? request.partId}
+                        {nameBySku.get(request.partId) ?? getCatalogItem(request.partId)?.name ?? request.partId}
                       </Link>
                     </td>
                     <td>{getDisplayQty(request)}</td>
