@@ -1,6 +1,6 @@
 ---
 artifact_type: architecture-and-implementation-gate
-status: Draft — Owner and Codex review required; authorizes no implementation
+status: Architecture approved by Owner; D1 only authorized; no other implementation or production authority
 date: 2026-07-27
 baseline: e53c7b0e44565789d4f1322e4b2fa4535c709e5f
 workstream: Inventory → Equipment integration
@@ -313,9 +313,9 @@ Rollback is revert-by-gate before deployment; backend rollback restores the pinn
 - Compatibility can influence purchasing or technician behavior, so unverified records must never drive operational recommendations.
 - C2 confirms Part identity/read behavior, not compatibility completeness.
 
-## 13. Owner decisions required
+## 13. Owner decisions
 
-Approve or revise:
+**Approved by Owner on 2026-07-27:**
 
 1. **D-COMPAT-1:** top-level `equipment_models`, model aliases, compatibility, and source-evidence collections as separate authorities.
 2. **D-COMPAT-2:** deterministic opaque compatibility ID from the versioned normalized uniqueness tuple.
@@ -325,10 +325,10 @@ Approve or revise:
 6. **D-COMPAT-6:** initial read personas and trusted-writer-only mutation posture.
 7. **D-COMPAT-7:** installed assets remain separate and receive `equipmentModelId` only in a later reconciled linkage gate.
 
-No provider, data source, permission grant, production import, or deployment decision is requested here.
+No provider, data source, permission grant, production import, or deployment decision was approved.
 
 ## 14. Exact next gate
 
-**D0 — Owner/Codex architecture approval of D-COMPAT-1 through D-COMPAT-7.**
+**D1 only:** repository-only pure Equipment Model types, normalization, aliases, manufacturer/model identity rules, serial-scheme contracts, validators, and deterministic/alias-conflict/no-I/O tests.
 
-If approved, begin **D1 only**: repository-only pure Equipment Model types, normalization, aliases, serial-scheme contracts, and tests. Do not begin compatibility persistence, Rules, Functions, UI, import execution, production access, Truck Inventory, or downstream consumers.
+Do not begin compatibility persistence, Firestore collections, Rules, Functions, indexes, UI, imports, production access, installed-asset linkage, Truck Inventory, or downstream consumers.
