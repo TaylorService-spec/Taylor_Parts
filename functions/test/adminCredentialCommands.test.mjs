@@ -25,6 +25,9 @@ import {
   OperationKeyConflictError,
   MalformedOperationError,
   AdminResetStageError,
+  claimStage,
+  recordStageOwned,
+  setStatusOwned,
 } from "../lib/access/adminCredentialCommands.js";
 
 admin.initializeApp({ projectId: "demo-authpr3" });
@@ -64,20 +67,29 @@ function assertNoSecrets(blob) {
 }
 
 function makeDeps(opts = {}) {
-  const { configured = true, delivered = true, email = TEST_EMAIL, generateThrows = false, deliverThrows = false, revokeThrows = false } = opts;
+  // `state` is mutable so recovery-retry tests can flip delivered/throws between
+  // calls while sharing the same call counters.
+  const state = {
+    configured: opts.configured ?? true,
+    delivered: opts.delivered ?? true,
+    email: opts.email === undefined ? TEST_EMAIL : opts.email, // preserve null (no-email case)
+    generateThrows: opts.generateThrows ?? false,
+    deliverThrows: opts.deliverThrows ?? false,
+    revokeThrows: opts.revokeThrows ?? false,
+  };
   const order = [];
   const calls = { generate: 0, deliver: 0, revoke: 0 };
   const received = { email: null, link: null, idempotencyKey: null };
   const deps = {
-    generateResetLink: async () => { calls.generate += 1; order.push("generate"); if (generateThrows) throw new Error("gen boom"); return RESET_LINK; },
-    revokeRefreshTokens: async () => { calls.revoke += 1; order.push("revoke"); if (revokeThrows) throw new Error("revoke boom"); },
-    getRecoverableEmail: async () => { if (email === "THROW") throw new Error("lookup boom"); return email; },
+    generateResetLink: async () => { calls.generate += 1; order.push("generate"); if (state.generateThrows) throw new Error("gen boom"); return RESET_LINK; },
+    revokeRefreshTokens: async () => { calls.revoke += 1; order.push("revoke"); if (state.revokeThrows) throw new Error("revoke boom"); },
+    getRecoverableEmail: async () => { if (state.email === "THROW") throw new Error("lookup boom"); return state.email; },
     delivery: {
-      isConfigured: () => configured,
-      deliverResetLink: async ({ email: e, link, idempotencyKey }) => { calls.deliver += 1; order.push("deliver"); received.email = e; received.link = link; received.idempotencyKey = idempotencyKey; if (deliverThrows) throw new Error("deliver boom"); return { delivered }; },
+      isConfigured: () => state.configured,
+      deliverResetLink: async ({ email: e, link, idempotencyKey }) => { calls.deliver += 1; order.push("deliver"); received.email = e; received.link = link; received.idempotencyKey = idempotencyKey; if (state.deliverThrows) throw new Error("deliver boom"); return { delivered: state.delivered }; },
     },
   };
-  return { deps, calls, order, received };
+  return { deps, calls, order, received, state };
 }
 
 const ADMIN = "admin-uid-1";
@@ -249,10 +261,76 @@ await okAsync("key bound to (actor,target,mode): cross-actor/target/mode collisi
   await assert.rejects(() => initiateAdminPasswordReset({ actorUid: ADMIN, targetUid: TARGET, mode: "suspectedCompromise", idempotencyKey: key }, makeDeps().deps), (e) => e instanceof OperationKeyConflictError);
 });
 await reset(); await seedRoles();
-await okAsync("malformed existing op record fails closed", async () => {
-  const key = "malformed-key-abcdef123";
-  await seedOp(key, { status: "in_progress", garbage: true });
-  await assert.rejects(() => initiateAdminPasswordReset({ actorUid: ADMIN, targetUid: TARGET, mode: "routine", idempotencyKey: key }, makeDeps().deps), (e) => e instanceof MalformedOperationError);
+await okAsync("strict schema: malformed op records fail closed (no concurrency/cooldown bypass)", async () => {
+  const base = { actorUid: ADMIN, targetUid: TARGET, mode: "routine", status: "in_progress", attempt: 1, stages: {}, createdAtMs: Date.now(), updatedAtMs: Date.now() };
+  // Firestore cannot store `undefined`/`NaN`, so "missing" fields are OMITTED and
+  // "malformed" fields use a wrong (but storable) type.
+  const mk = (mut) => { const r = { ...base, stages: { ...base.stages } }; mut(r); return r; };
+  const bad = [
+    mk((r) => { delete r.actorUid; }),            // missing required field
+    mk((r) => { delete r.updatedAtMs; }),         // missing freshness -> must NOT bypass to resume
+    mk((r) => { r.updatedAtMs = "soon"; }),       // non-finite freshness
+    mk((r) => { r.status = "bogus"; }),           // invalid status
+    mk((r) => { r.attempt = 0; }),                // non-positive attempt
+    mk((r) => { r.attempt = 1.5; }),              // non-integer attempt
+    mk((r) => { r.stages = { deliver: "nope" }; }), // invalid stage value
+    mk((r) => { r.stages = { unexpected: true }; }), // unknown stage key
+  ];
+  let i = 0;
+  for (const rec of bad) {
+    const key = `malformed-${i++}-abcdef123`;
+    await seedOp(key, rec);
+    await assert.rejects(() => initiateAdminPasswordReset({ actorUid: ADMIN, targetUid: TARGET, mode: "routine", idempotencyKey: key }, makeDeps().deps), (e) => e instanceof MalformedOperationError, `case ${i}`);
+  }
+});
+
+// -- #1 lease: attempt-bound stage/status writes; stale worker cannot overwrite
+await reset(); await seedRoles();
+await okAsync("lease: after B takeover (attempt 2), stale A (attempt 1) cannot claim/record/complete; only owner acts", async () => {
+  const key = "lease-key-abcdef123";
+  await seedOp(key, { actorUid: ADMIN, targetUid: TARGET, mode: "routine", status: "in_progress", attempt: 2, stages: {}, createdAtMs: Date.now(), updatedAtMs: Date.now() });
+  // Stale worker A (attempt 1): every lease-bound operation is refused.
+  assert.strictEqual(await claimStage(key, "deliver", 1), "superseded");
+  assert.strictEqual(await recordStageOwned(key, "deliver", "delivered", 1), false);
+  assert.strictEqual(await setStatusOwned(key, "completed", 1), false);
+  let op = await opDoc(key);
+  assert.strictEqual(op.attempt, 2);
+  assert.strictEqual(op.stages?.deliver, undefined, "stale write must not overwrite state");
+  assert.strictEqual(op.status, "in_progress");
+  // Current owner B (attempt 2): lease-bound operations succeed.
+  assert.strictEqual(await claimStage(key, "deliver", 2), "claimed");
+  assert.strictEqual(await recordStageOwned(key, "deliver", "delivered", 2), true);
+  assert.strictEqual(await setStatusOwned(key, "completed", 2), true);
+  op = await opDoc(key);
+  assert.strictEqual(op.stages.deliver, "delivered");
+  assert.strictEqual(op.status, "completed");
+});
+
+// -- #2 recovery_required is genuinely recoverable (no duplicate revocation) --
+await reset(); await seedRoles();
+await okAsync("compromise recovery: delivery FALSE then retry delivers; revoke exactly once", async () => {
+  const d = makeDeps({ delivered: false });
+  const key = "recovery-false-abcdef123";
+  const req = { actorUid: ADMIN, targetUid: TARGET, mode: "suspectedCompromise", idempotencyKey: key };
+  assert.deepStrictEqual(await initiateAdminPasswordReset(req, d.deps), { status: "accepted" });
+  assert.strictEqual((await opDoc(key)).status, "recovery_required");
+  d.state.delivered = true; // operator/user retries; delivery now succeeds
+  assert.deepStrictEqual(await initiateAdminPasswordReset(req, d.deps), { status: "accepted" });
+  assert.strictEqual((await opDoc(key)).status, "completed");
+  assert.strictEqual(d.calls.revoke, 1, "revocation must occur exactly once across recovery");
+  assert.strictEqual(d.calls.deliver, 2, "delivery retried");
+});
+await reset(); await seedRoles();
+await okAsync("compromise recovery: delivery THROW then retry delivers; revoke exactly once", async () => {
+  const d = makeDeps({ deliverThrows: true });
+  const key = "recovery-throw-abcdef123";
+  const req = { actorUid: ADMIN, targetUid: TARGET, mode: "suspectedCompromise", idempotencyKey: key };
+  assert.deepStrictEqual(await initiateAdminPasswordReset(req, d.deps), { status: "accepted" });
+  assert.strictEqual((await opDoc(key)).status, "recovery_required");
+  d.state.deliverThrows = false; d.state.delivered = true;
+  assert.deepStrictEqual(await initiateAdminPasswordReset(req, d.deps), { status: "accepted" });
+  assert.strictEqual((await opDoc(key)).status, "completed");
+  assert.strictEqual(d.calls.revoke, 1, "revocation must occur exactly once across recovery");
 });
 
 // -- #2 idempotency replay + concurrency + crash-window resume ---------------
