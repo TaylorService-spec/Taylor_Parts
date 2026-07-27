@@ -2,7 +2,11 @@
 export const MODEL_STATUSES = Object.freeze(["DRAFT", "ACTIVE", "INACTIVE", "RETIRED"]);
 export const MODEL_ALIAS_TYPES = Object.freeze(["MANUFACTURER_MODEL", "HISTORICAL_MODEL", "SOURCE_MODEL"]);
 const MODEL_FIELDS = new Set(["equipmentModelId","manufacturerId","manufacturerName","modelNumber","displayName","family","subtype","revision","status","sourceAuthority","version"]);
+const MODEL_ALIAS_FIELDS = new Set(["aliasType","manufacturerId","rawValue","equipmentModelId","aliasKey"]);
 const plain = (v) => v !== null && typeof v === "object" && !Array.isArray(v) && [Object.prototype, null].includes(Object.getPrototypeOf(v));
+// Deterministic UTF-16 code-unit ordering. Normalized identity and serial tokens are ASCII
+// contracts, so ordering must never depend on host locale (unlike String.prototype.localeCompare).
+const asciiCompare = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 export function normalizeIdentityText(v) { return typeof v === "string" ? v.normalize("NFKC").trim().replace(/\s+/g, " ") : ""; }
 export function normalizeIdentityKey(v) { return normalizeIdentityText(v).toUpperCase(); }
 export function normalizeManufacturerId(v) { return normalizeIdentityKey(v).replace(/[^A-Z0-9]+/g, "-").replace(/^-|-$/g, ""); }
@@ -40,16 +44,41 @@ export function normalizeModelAliasKey(record) {
   const type = normalizeIdentityKey(aliasType), manufacturer = normalizeManufacturerId(manufacturerId), alias = normalizeIdentityKey(rawValue);
   return MODEL_ALIAS_TYPES.includes(type) && manufacturer && alias ? `${type}|${manufacturer}|${alias}` : "";
 }
+// Strict pure contract for one model-alias record. Malformed input yields an explicit,
+// structured invalid reason — it is never silently dropped.
+export function validateEquipmentModelAlias(input) {
+  if (!plain(input)) return { valid: false, value: null, reason: "not_object" };
+  if (Object.keys(input).some((k) => !MODEL_ALIAS_FIELDS.has(k))) return { valid: false, value: null, reason: "unknown_field" };
+  const aliasType = normalizeIdentityKey(input.aliasType);
+  if (!MODEL_ALIAS_TYPES.includes(aliasType)) return { valid: false, value: null, reason: "alias_type_invalid" };
+  const manufacturerId = normalizeManufacturerId(input.manufacturerId);
+  if (!manufacturerId) return { valid: false, value: null, reason: "manufacturer_id_invalid" };
+  const aliasValue = normalizeIdentityKey(input.rawValue);
+  if (!aliasValue) return { valid: false, value: null, reason: "alias_value_invalid" };
+  const equipmentModelId = normalizeIdentityText(input.equipmentModelId);
+  if (!equipmentModelId) return { valid: false, value: null, reason: "equipment_model_id_invalid" };
+  const aliasKey = normalizeModelAliasKey({ aliasType, manufacturerId, rawValue: aliasValue });
+  if (!aliasKey) return { valid: false, value: null, reason: "alias_key_invalid" };
+  if (input.aliasKey !== undefined && normalizeIdentityText(input.aliasKey) !== aliasKey) return { valid: false, value: null, reason: "alias_key_mismatch" };
+  return { valid: true, value: { aliasType, manufacturerId, aliasValue, aliasKey, equipmentModelId }, reason: null };
+}
+// Conflict analysis is fail-visible: every malformed record is surfaced as a structured
+// invalid entry (never silently skipped), so a bad record cannot masquerade as a clean result
+// or conceal a genuine cross-owner conflict. A result is "clean" only when both arrays are empty.
 export function detectModelAliasConflicts(records = []) {
-  if (!Array.isArray(records)) return [];
-  const owners = new Map();
-  for (const r of records) {
-    const key = normalizeModelAliasKey(r), id = normalizeIdentityText(r?.equipmentModelId);
-    if (!key || !id) continue;
-    if (!owners.has(key)) owners.set(key, new Set());
-    owners.get(key).add(id);
-  }
-  return [...owners].filter(([, ids]) => ids.size > 1).sort(([a],[b]) => a.localeCompare(b)).map(([aliasKey, ids]) => ({ aliasKey, equipmentModelIds: [...ids].sort() }));
+  if (!Array.isArray(records)) return { conflicts: [], invalid: [{ index: -1, reason: "not_array" }] };
+  const owners = new Map(), invalid = [];
+  records.forEach((record, index) => {
+    const v = validateEquipmentModelAlias(record);
+    if (!v.valid) { invalid.push({ index, reason: v.reason }); return; }
+    if (!owners.has(v.value.aliasKey)) owners.set(v.value.aliasKey, new Set());
+    owners.get(v.value.aliasKey).add(v.value.equipmentModelId);
+  });
+  const conflicts = [...owners]
+    .filter(([, ids]) => ids.size > 1)
+    .sort(([a], [b]) => asciiCompare(a, b))
+    .map(([aliasKey, ids]) => ({ aliasKey, equipmentModelIds: [...ids].sort(asciiCompare) }));
+  return { conflicts, invalid };
 }
 export function validateSerialScheme(s) {
   if (!plain(s)) return { valid: false, reason: "not_object" };
@@ -71,6 +100,6 @@ export function validateSerialRange({ start = null, end = null, scheme } = {}) {
   const a = start === null ? null : normalizeSerialToken(start, scheme), b = end === null ? null : normalizeSerialToken(end, scheme);
   if ((start !== null && a === null) || (end !== null && b === null)) return { valid: false, reason: "bound_invalid" };
   if (a === null && b === null) return { valid: false, reason: "empty_range" };
-  if (a && b && a.localeCompare(b) > 0) return { valid: false, reason: "range_reversed" };
+  if (a && b && asciiCompare(a, b) > 0) return { valid: false, reason: "range_reversed" };
   return { valid: true, reason: null, value: { start: a, end: b, schemeId: normalizeIdentityKey(scheme.schemeId), normalizerVersion: scheme.normalizerVersion } };
 }
