@@ -10,15 +10,22 @@
 // REPLACEMENT CHARACTER (U+FFFD) and other disallowed decoded characters, but it CANNOT certify that
 // the original byte stream was valid UTF-8. Byte-level UTF-8 validation must occur at the later
 // governed file-reading boundary before decoding; D3 performs no file I/O.
-import { detectModelAliasConflicts, validateEquipmentModel, validateEquipmentModelAlias } from "./equipmentModel.js";
+import { detectModelAliasConflicts, isCanonicalEquipmentModelId, validateEquipmentModel, validateEquipmentModelAlias } from "./equipmentModel.js";
 import { sha256Hex, validateCompatibility, validateCompatibilitySource, analyzeCompatibilityEvidenceByRelationship } from "./equipmentCompatibility.js";
 
 const asciiCompare = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 const plain = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
-// True if the text contains any C0/C1/DEL control char other than TAB, LF, or CR (which are valid
-// CSV structure). Implemented as a code-point scan to avoid a control-character regex literal.
+const isHex64 = (v) => typeof v === "string" && /^[0-9a-f]{64}$/.test(v);           // governed SHA-256 fingerprint
+const isCompatId = (v) => typeof v === "string" && /^cmp_[0-9a-f]{64}$/.test(v);
+const isSourceId = (v) => typeof v === "string" && /^src_[0-9a-f]{64}$/.test(v);
+// True if the text contains any disallowed control char: C0 (except TAB/LF/CR), DEL (U+007F), or the
+// full C1 range (U+0080–U+009F). Normal Unicode text above U+009F is preserved.
 const hasDisallowedControl = (s) => {
-  for (let i = 0; i < s.length; i++) { const c = s.charCodeAt(i); if ((c < 9 || (c > 9 && c < 10) || (c > 10 && c < 13) || (c > 13 && c < 32) || c === 127)) return true; }
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c === 9 || c === 10 || c === 13) continue;
+    if (c < 32 || c === 127 || (c >= 128 && c <= 159)) return true;
+  }
   return false;
 };
 
@@ -43,6 +50,32 @@ export function validateLimits(limits) {
   }
   if (merged.maxErrorRefs > merged.maxRows) return { ok: false, code: "limit_maxErrorRefs_exceeds_rows" };
   return { ok: true, limits: merged };
+}
+
+// Part IDs are pre-existing stable SKU-like identifiers; treated as opaque tokens, never rewritten.
+export function isValidPartId(v) { return typeof v === "string" && /^[A-Za-z0-9._-]{1,64}$/.test(v); }
+
+// Strict snapshot-shape validator (fail-closed). Exact allowed keys; partIds an array of valid part
+// ids; serialSchemes a plain object; existingModelAliases an array; each existing-record map a plain
+// object whose KEYS are the canonical identity for that authority. Fingerprint VALUES are not checked
+// here — a malformed fingerprint is handled per-record as existing_comparison_unavailable, not a hard
+// config error. Snapshot values are never surfaced in the report.
+export function validateSnapshots(snapshots) {
+  if (!plain(snapshots)) return { ok: false, code: "snapshots_not_object" };
+  const allowed = ["partIds", "serialSchemes", "existingEquipmentModels", "existingModelAliases", "existingCompatibility", "existingSources"];
+  for (const k of Object.keys(snapshots)) if (!allowed.includes(k)) return { ok: false, code: "unknown_snapshot_key" };
+  if (snapshots.partIds !== undefined && (!Array.isArray(snapshots.partIds) || !snapshots.partIds.every(isValidPartId))) return { ok: false, code: "snapshot_partIds_invalid" };
+  if (snapshots.serialSchemes !== undefined && !plain(snapshots.serialSchemes)) return { ok: false, code: "snapshot_serialSchemes_invalid" };
+  if (snapshots.existingModelAliases !== undefined && !Array.isArray(snapshots.existingModelAliases)) return { ok: false, code: "snapshot_existingModelAliases_invalid" };
+  const mapCheck = (field, keyValid, code) => {
+    const o = snapshots[field];
+    if (o === undefined) return null;
+    return (!plain(o) || !Object.keys(o).every(keyValid)) ? code : null;
+  };
+  const bad = mapCheck("existingEquipmentModels", isCanonicalEquipmentModelId, "snapshot_existingEquipmentModels_invalid")
+    || mapCheck("existingCompatibility", isCompatId, "snapshot_existingCompatibility_invalid")
+    || mapCheck("existingSources", isSourceId, "snapshot_existingSources_invalid");
+  return bad ? { ok: false, code: bad } : { ok: true };
 }
 
 // Exact header allowlists per architecture-defined package. Unknown, missing, or duplicate headers
@@ -161,11 +194,9 @@ function assembleModel(v) {
   return { equipmentModelId: v.equipmentModelId, manufacturerId: v.manufacturerId, manufacturerName: v.manufacturerName, modelNumber: v.modelNumber, displayName: v.displayName, family: orNull(v.family), subtype: orNull(v.subtype), revision: orNull(v.revision), status: v.status, sourceAuthority: v.sourceAuthority, version: intOrRaw(v.version) };
 }
 
-// Identity analysis across BOTH in-batch and existing-authority records.
-// existing is a Map id -> fingerprint | (null/undefined = exists but comparison unavailable).
-//   fpSet has one member  → exact-equivalent everywhere → idempotent duplicate.
-//   fpSet has >1 members  → non-equivalent record sharing a deterministic id → collision.
-//   existing id present but no usable fingerprint → fail closed (comparison unavailable).
+// Identity analysis across BOTH in-batch and existing-authority records. existing is a Map
+// id -> fingerprint. An overlapping id whose existing fingerprint is not a governed lowercase 64-hex
+// SHA-256 fails closed as comparison-unavailable (never a fabricated duplicate/collision).
 function classifyIdentity(imported, existing) {
   const byId = new Map();
   for (const r of imported) { if (!byId.has(r.id)) byId.set(r.id, []); byId.get(r.id).push(r); }
@@ -174,7 +205,7 @@ function classifyIdentity(imported, existing) {
     const lines = group.map((g) => g.line).sort((a, b) => a - b);
     const hasExisting = existing.has(id);
     const existingFp = hasExisting ? existing.get(id) : undefined;
-    if (hasExisting && typeof existingFp !== "string") { unavailable.push({ id, lines }); continue; }
+    if (hasExisting && !isHex64(existingFp)) { unavailable.push({ id, lines }); continue; }
     const fpSet = new Set(group.map((g) => g.fp));
     if (hasExisting) fpSet.add(existingFp);
     if (fpSet.size > 1) collisions.push({ id, lines, existing: hasExisting });
@@ -185,16 +216,19 @@ function classifyIdentity(imported, existing) {
 }
 
 const toFpMap = (o) => { const m = new Map(); if (plain(o)) for (const [k, v] of Object.entries(o)) m.set(k, v); return m; };
+const bound = (arr, max, cmp) => { const sorted = [...arr].sort(cmp); return { items: sorted.slice(0, max), truncated: Math.max(0, sorted.length - max) }; };
 
 function emptyReport(status, extra = {}) {
   return {
     dryRun: true, applyable: false, status, counts: {},
-    errors: [], errorsTruncated: 0, unresolved: [], unresolvedTruncated: 0,
+    errors: [], unresolved: [], invalidAliases: [],
     collisions: { equipmentModels: [], modelAliasConflicts: [], compatibility: [], sources: [] },
     existingComparisonUnavailable: { equipmentModels: [], compatibility: [], sources: [] },
     duplicatesIdempotent: { equipmentModels: 0, compatibility: 0, sources: 0 },
-    conflicts: [], quarantine: { marketListings: 0, authoritative: false },
-    sensitive: { clean: true, findings: [] }, staged: null, ...extra,
+    conflicts: [], reviewReasons: [], quarantine: { marketListings: 0, authoritative: false },
+    sensitive: { clean: true, findings: [] }, staged: null,
+    truncated: { errors: 0, unresolved: 0, invalidAliases: 0, sensitive: 0, equipmentModelCollisions: 0, modelAliasConflicts: 0, compatibilityCollisions: 0, sourceCollisions: 0, unavailableEquipmentModels: 0, unavailableCompatibility: 0, unavailableSources: 0, conflicts: 0 },
+    ...extra,
   };
 }
 
@@ -203,7 +237,9 @@ function emptyReport(status, extra = {}) {
 // ---------------------------------------------------------------------------
 export function dryRunEquipmentCompatibilityImport({ packages = {}, snapshots = {}, limits = {} } = {}) {
   const limCheck = validateLimits(limits);
-  if (!limCheck.ok) return emptyReport("BLOCKED", { configError: limCheck.code }); // fail closed; no parsing/staging
+  if (!limCheck.ok) return emptyReport("BLOCKED", { configError: limCheck.code });
+  const snapCheck = validateSnapshots(snapshots);
+  if (!snapCheck.ok) return emptyReport("BLOCKED", { configError: snapCheck.code });
   const lim = limCheck.limits;
 
   const errors = [], unresolved = [], sensitive = [];
@@ -239,7 +275,8 @@ export function dryRunEquipmentCompatibilityImport({ packages = {}, snapshots = 
   const compat = process("EQUIPMENT_PART_COMPATIBILITY", IMPORT_PACKAGES.EQUIPMENT_PART_COMPATIBILITY, assembleCompatibility, (v) => validateCompatibility(v, { serialSchemes }));
   const sources = process("COMPATIBILITY_SOURCES", IMPORT_PACKAGES.COMPATIBILITY_SOURCES, assembleSource, validateCompatibilitySource);
 
-  // Market listings: parsed + scanned + counted, then QUARANTINED — never resolved into the plan.
+  // Market listings: parsed + scanned + counted, then QUARANTINED — evidence-only, requiring review.
+  // They never create models, relationships, sources, verification, or staged ids.
   let marketListings = 0;
   if (packages.MARKET_LISTINGS !== undefined) {
     scanSensitive(packages.MARKET_LISTINGS, "MARKET_LISTINGS").forEach((f) => sensitive.push(f));
@@ -248,9 +285,7 @@ export function dryRunEquipmentCompatibilityImport({ packages = {}, snapshots = 
     else { parsed.rowErrors.forEach((e) => pushErr("MARKET_LISTINGS", e.line, e.field, e.code)); marketListings = parsed.records.length; }
   }
 
-  // Reference resolution against explicit snapshots + in-batch valid records. Existence is derived
-  // from the union of existing-authority ids and in-batch ids; aliases cannot create models and
-  // sources cannot create relationships — an unresolved reference is a visible error.
+  // Reference resolution against explicit snapshots + in-batch valid records.
   const batchModelIds = new Set(models.map((m) => m.value.equipmentModelId));
   const knownModelIds = new Set([...existingModels.keys(), ...batchModelIds]);
   for (const a of aliases) if (!knownModelIds.has(a.value.equipmentModelId)) unresolved.push({ package: "EQUIPMENT_MODEL_ALIASES", line: a.line, ref: "equipmentModelId", code: "equipment_model_unresolved" });
@@ -267,25 +302,31 @@ export function dryRunEquipmentCompatibilityImport({ packages = {}, snapshots = 
   const compatIdentity = classifyIdentity(compat.map((c) => ({ line: c.line, id: c.value.compatibilityId, fp: recordFingerprint(c.value) })), existingCompat);
   const sourceIdentity = classifyIdentity(sources.map((s) => ({ line: s.line, id: s.value.sourceId, fp: recordFingerprint(s.value) })), existingSources);
 
-  // Alias ownership conflicts include existing authority aliases (detectModelAliasConflicts
-  // re-validates raw records; reconstruct the raw shape for in-batch aliases).
-  const aliasRaw = [
-    ...aliases.map((a) => ({ aliasType: a.value.aliasType, manufacturerId: a.value.manufacturerId, rawValue: a.value.aliasValue, equipmentModelId: a.value.equipmentModelId })),
-    ...existingAliases,
-  ];
-  const aliasConflicts = detectModelAliasConflicts(aliasRaw).conflicts;
+  // Alias ownership conflicts include existing authority aliases. Malformed aliases (from either the
+  // imported package or the existing snapshot) are retained as sanitized invalids — never dropped —
+  // and are blocking. Refs distinguish imported-package LINE from existing-snapshot INDEX; raw alias
+  // values are never surfaced.
+  const batchAliasRecords = aliases.map((a) => ({ aliasType: a.value.aliasType, manufacturerId: a.value.manufacturerId, rawValue: a.value.aliasValue, equipmentModelId: a.value.equipmentModelId }));
+  const aliasResult = detectModelAliasConflicts([...batchAliasRecords, ...existingAliases]);
+  const aliasConflicts = aliasResult.conflicts;
+  const invalidAliases = aliasResult.invalid.map(({ index, reason }) => (
+    index < batchAliasRecords.length ? { source: "batch", ref: aliases[index].line, reason } : { source: "existing", ref: index - batchAliasRecords.length, reason }
+  ));
 
   // Source precedence + evidence-conflict reporting (reseller/WO stay non-authoritative in D2).
   const evidence = analyzeCompatibilityEvidenceByRelationship(sources.map((s) => s.value)).relationships;
   const conflicts = evidence.filter((r) => r.recommendedStatus === "CONFLICT").map((r) => ({ compatibilityId: r.compatibilityId, strongestSupport: r.strongestSupport, strongestContradiction: r.strongestContradiction }));
 
+  // Status uses COMPLETE pre-truncation collections so display bounding can never flip the result.
   const unavailableCount = modelIdentity.unavailable.length + compatIdentity.unavailable.length + sourceIdentity.unavailable.length;
   const collisionCount = modelIdentity.collisions.length + compatIdentity.collisions.length + sourceIdentity.collisions.length + aliasConflicts.length;
-  const hasBlocking = errors.length > 0 || unresolved.length > 0 || collisionCount > 0 || unavailableCount > 0 || sensitive.length > 0;
-  const status = hasBlocking ? "BLOCKED" : conflicts.length > 0 ? "REVIEW_REQUIRED" : "READY";
+  const hasBlocking = errors.length > 0 || unresolved.length > 0 || collisionCount > 0 || unavailableCount > 0 || sensitive.length > 0 || invalidAliases.length > 0;
+  const reviewReasons = [];
+  if (conflicts.length > 0) reviewReasons.push("evidence_conflict");
+  if (marketListings > 0) reviewReasons.push("market_listings_require_review");
+  const status = hasBlocking ? "BLOCKED" : reviewReasons.length > 0 ? "REVIEW_REQUIRED" : "READY";
 
-  // No partial apply: the staged opaque-id summary is populated ONLY when the whole batch is exactly
-  // READY (never BLOCKED, never REVIEW_REQUIRED). It is never applied (D3 has no apply mode).
+  // No partial apply: the staged opaque-id summary is populated ONLY when status is exactly READY.
   const staged = status === "READY" ? {
     equipmentModelIds: [...batchModelIds].sort(asciiCompare),
     modelAliasKeys: [...new Set(aliases.map((a) => a.value.aliasKey))].sort(asciiCompare),
@@ -293,33 +334,33 @@ export function dryRunEquipmentCompatibilityImport({ packages = {}, snapshots = 
     sourceIds: [...new Set(sources.map((s) => s.value.sourceId))].sort(asciiCompare),
   } : null;
 
+  // Deterministically bound every report collection for display; status/staged already decided above.
+  const M = lim.maxErrorRefs;
   const refCmp = (a, b) => asciiCompare(a.package, b.package) || a.line - b.line || asciiCompare(a.code, b.code);
-  const boundedErrors = sanitizeRefs(errors, lim.maxErrorRefs, refCmp);
-  const boundedUnresolved = sanitizeRefs(unresolved, lim.maxErrorRefs, refCmp);
+  const idCmp = (a, b) => asciiCompare(a.id, b.id);
+  const bErrors = bound(errors, M, refCmp), bUnresolved = bound(unresolved, M, refCmp);
+  const bSensitive = bound(sensitive, M, refCmp);
+  const bModelCol = bound(modelIdentity.collisions, M, idCmp), bCompatCol = bound(compatIdentity.collisions, M, idCmp), bSourceCol = bound(sourceIdentity.collisions, M, idCmp);
+  const bAliasConf = bound(aliasConflicts, M, (a, b) => asciiCompare(a.aliasKey, b.aliasKey));
+  const bInvalidAlias = bound(invalidAliases, M, (a, b) => asciiCompare(a.source, b.source) || a.ref - b.ref || asciiCompare(a.reason, b.reason));
+  const bUnModel = bound(modelIdentity.unavailable, M, idCmp), bUnCompat = bound(compatIdentity.unavailable, M, idCmp), bUnSource = bound(sourceIdentity.unavailable, M, idCmp);
+  const bConflicts = bound(conflicts, M, (a, b) => asciiCompare(a.compatibilityId, b.compatibilityId));
 
   return {
     dryRun: true, applyable: false, status,
     counts: { ...counts, quarantinedMarketListings: marketListings },
-    errors: boundedErrors.refs, errorsTruncated: boundedErrors.truncated,
-    unresolved: boundedUnresolved.refs, unresolvedTruncated: boundedUnresolved.truncated,
-    collisions: {
-      equipmentModels: modelIdentity.collisions, modelAliasConflicts: aliasConflicts,
-      compatibility: compatIdentity.collisions, sources: sourceIdentity.collisions,
-    },
-    existingComparisonUnavailable: {
-      equipmentModels: modelIdentity.unavailable, compatibility: compatIdentity.unavailable, sources: sourceIdentity.unavailable,
-    },
-    duplicatesIdempotent: {
-      equipmentModels: modelIdentity.duplicates.length, compatibility: compatIdentity.duplicates.length, sources: sourceIdentity.duplicates.length,
-    },
-    conflicts: conflicts.sort((a, b) => asciiCompare(a.compatibilityId, b.compatibilityId)),
+    errors: bErrors.items, unresolved: bUnresolved.items, invalidAliases: bInvalidAlias.items,
+    collisions: { equipmentModels: bModelCol.items, modelAliasConflicts: bAliasConf.items, compatibility: bCompatCol.items, sources: bSourceCol.items },
+    existingComparisonUnavailable: { equipmentModels: bUnModel.items, compatibility: bUnCompat.items, sources: bUnSource.items },
+    duplicatesIdempotent: { equipmentModels: modelIdentity.duplicates.length, compatibility: compatIdentity.duplicates.length, sources: sourceIdentity.duplicates.length },
+    conflicts: bConflicts.items, reviewReasons,
     quarantine: { marketListings, authoritative: false },
-    sensitive: { clean: sensitive.length === 0, findings: sensitive.sort((a, b) => asciiCompare(a.package, b.package) || a.line - b.line || asciiCompare(a.code, b.code)) },
+    sensitive: { clean: sensitive.length === 0, findings: bSensitive.items },
     staged,
+    truncated: {
+      errors: bErrors.truncated, unresolved: bUnresolved.truncated, invalidAliases: bInvalidAlias.truncated, sensitive: bSensitive.truncated,
+      equipmentModelCollisions: bModelCol.truncated, modelAliasConflicts: bAliasConf.truncated, compatibilityCollisions: bCompatCol.truncated, sourceCollisions: bSourceCol.truncated,
+      unavailableEquipmentModels: bUnModel.truncated, unavailableCompatibility: bUnCompat.truncated, unavailableSources: bUnSource.truncated, conflicts: bConflicts.truncated,
+    },
   };
-}
-
-function sanitizeRefs(refs, max, cmp) {
-  const sorted = [...refs].sort(cmp);
-  return { refs: sorted.slice(0, max), truncated: Math.max(0, sorted.length - max) };
 }
