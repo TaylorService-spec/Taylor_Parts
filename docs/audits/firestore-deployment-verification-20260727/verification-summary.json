@@ -1,0 +1,25 @@
+{
+  "generatedAt": "2026-07-27T00:21:24.714Z",
+  "projectId": "taylor-parts",
+  "governedCommit": "804351831d2d5a90c97481a57373a5960e42ab75",
+  "governedRulesSha256": "cf6681c61f7c93a6b5b5385212518636b855b24a751225564429e0f8932bc381",
+  "liveRulesSha256": "cf6681c61f7c93a6b5b5385212518636b855b24a751225564429e0f8932bc381",
+  "identitiesPreflightedBeforeFirestore": [
+    "admin",
+    "dispatcher",
+    "PARTS_MANAGER",
+    "WAREHOUSE_MANAGER",
+    "technician"
+  ],
+  "deploymentScope": {
+    "firestoreRulesOnly": true,
+    "deploymentLogSha256": "7cf0a499d9f5b55cf107b426ebe755ad1a34e7095bc477a9da5b705fef90ce32"
+  },
+  "functionsScopeEvidence": {
+    "acceptedRetroactiveAttestation": true,
+    "attestationSha256": "6f709e56fb3767a1e747c57fe281ee1e64603dd026167814884225b7cb7fcd21"
+  },
+  "matrixAssertions": 55,
+  "matrixPassed": true,
+  "firestoreMutations": "NONE (all write probes returned 403)"
+}
