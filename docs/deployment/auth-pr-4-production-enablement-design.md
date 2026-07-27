@@ -36,19 +36,41 @@
 - Predecessors: AUTH-PR-1 (#438), AUTH-PR-2 (#442), AUTH-PR-3 (#444, `e53c7b0`, **not
   deployed / not enabled**).
 
-Enabling production execution requires **two** separate, later Owner actions, neither
-taken here: **(A)** recording the §3 authorization in [`DECISIONS.md`](../DECISIONS.md),
-and **(B)** authorizing the separate narrow code PR designed in §5. Even after both, **no
-execution happens automatically** — an operator must run the workflow, one identity at a
-time, under that recorded authorization.
+**Corrected gate sequence** (removes the future-commit circularity — the authorization
+cannot bind to an enablement head that does not yet exist):
+
+1. **Merge this corrected design package** (docs-only; enables nothing).
+2. **Build and review the separate enablement PR** (§5) **without production execution**.
+3. After review, **identify the exact reviewed implementation head** plus a **deterministic
+   SHA-256 of the governed workflow and the relevant authorization/progression code**.
+4. **Owner authorization** (§3) is granted **bound to that reviewed head and those content
+   hashes** — not to a pre-guessed commit.
+5. Merge the enablement PR with a method that **preserves the reviewed commit in ancestry**,
+   **or explicitly record the resulting merge commit** in the DECISIONS entry **before any
+   execution**.
+6. **Execution verifies both** approved ancestry/commit identity **and** the exact governed-
+   file hashes, **independently derived** before SDK init (§5.4). Any post-review change to a
+   governed file invalidates the authorization and requires re-review.
+
+Even after all of the above, **no execution happens automatically** — an operator must run
+the workflow, one identity at a time, under the recorded authorization and a valid
+progression state (§5.1).
 
 ---
 
 ## 2. Exact production sequence (one identity at a time)
 
-Strict serial order — exactly one identity per authorized invocation, each fully verified
-and fail-closed before the next begins (readiness §4; enforced by the merged workflow's
-ordered-persona guard):
+Intended strict serial order — exactly one identity per authorized invocation, each fully
+verified and fail-closed before the next begins (readiness §4):
+
+> **Accuracy note — the merged workflow does NOT yet enforce this cross-invocation order.**
+> The merged workflow (`63b47b7`) validates only that, *within a single invocation*,
+> `employeeId` matches the supplied `--position`, and that the primary-owner step carries the
+> `--breakGlassVerified` + `--confirmLowerRiskComplete` flags. Those flags are **operator
+> assertions**, not proof that personas 1–4 actually completed; separate invocations could
+> still run personas 2–4 before their predecessors, or repeat/reorder them. **Enforcing the
+> complete serial sequence across invocations is a REQUIREMENT OF THE FUTURE ENABLEMENT
+> IMPLEMENTATION (§5.1), not a property the current build already has.**
 
 ```
 1  emp-rudy-driver             (technician, no ops role)        ← lowest risk, first
@@ -69,12 +91,15 @@ ordered-persona guard):
 ## 3. Proposed DECISIONS entry (PROPOSED — PENDING — NOT recorded by this PR)
 
 > **This is proposed text only.** It is **not** appended to
-> [`docs/DECISIONS.md`](../DECISIONS.md) by this PR. It is appended **only** when the
-> Owner records genuine authorization. The authorization line is left **blank and
-> unsigned**. The next sequential number is **#52** (latest recorded entry is #51).
+> [`docs/DECISIONS.md`](../DECISIONS.md) by this PR. It is appended **only** when the Owner
+> records genuine authorization. The authorization line is left **blank and unsigned**.
+> **Number:** use **the next available append-only DECISIONS number at authorization time**
+> — as of this writing the latest recorded entry is #51, so #52 is expected to be next, but
+> if #52 is taken by then, use the actual next number. **No existing entry is renumbered or
+> edited.** The `NN` below is filled at authorization.
 
 ```markdown
-## 52. AUTH-PR-4 production recovery-email migration — Production Identity-Mutation Authorization
+## NN. AUTH-PR-4 production recovery-email migration — Production Identity-Mutation Authorization
 
 **Date:** <YYYY-MM-DD — filled by the Owner at authorization, not before>
 **Authorization status:** PENDING — NOT GRANTED until the Owner signs the line below.
@@ -84,8 +109,9 @@ ordered-persona guard):
 change** on the following production `taylor-parts` Firebase Auth accounts, **one at a
 time, in this order**: (1) `emp-rudy-driver`, (2) `emp-rudy-parts-associate`,
 (3) `emp-rudy-warehouse-manager`, (4) `emp-rudy-parts-manager`, and — **only after (1)–(4)
-verify PASS and the break-glass admin is confirmed recoverable and login-verified** —
-(5) `emp-rudy-owner`. `emp-rudy-sales-manager` and the break-glass admin are **excluded**.
+are DURABLY complete (per the integrity-checked progression record, §5.1) and the break-glass
+admin confirmation (§5.2) is valid** — (5) `emp-rudy-owner`. `emp-rudy-sales-manager` and the
+break-glass admin are **excluded**.
 
 Each account's new email is the Gmail `+alias` from the mapping the Owner supplies
 out-of-band and never commits. Each new alias is written with **`emailVerified: false`**.
@@ -97,9 +123,17 @@ Any Firebase-triggered session invalidation that results automatically from the 
 change is an acknowledged possible platform effect (observed and recorded, never an
 operator action).
 
-**Authorized commit:** `<exact commit of the enablement PR head, filled at authorization>`.
+**Bound reviewed implementation (§5.4):** this authorization is bound to the **exact reviewed
+enablement commit** `<reviewed head SHA, filled at authorization AFTER the enablement PR is
+built, reviewed, and its head is known>` **and** the recorded **SHA-256 content hashes of the
+governed files** `<hash list, filled at authorization>`. If a squash/merge produces a
+different `main` commit, the **resulting merge commit is recorded here before any execution**,
+and execution must find the reviewed commit in ancestry (or match the recorded merge commit)
+**and** independently re-derive and match the governed-file hashes. Any post-review change to a
+governed file invalidates this authorization and requires re-review.
 **Executor:** `<named operator, filled at authorization>`.
-**Break-glass confirmation:** `<recorded recoverable + login-verified before step 5>`.
+**Break-glass confirmation reference (§5.2):** `<repository-governed evidence reference,
+filled at authorization>`.
 
 **Granted:** `______________________  — <Owner>  (LEFT BLANK; unsigned until the Owner records it)`
 ```
@@ -108,30 +142,41 @@ operator action).
 
 ## 4. Mandatory controls (must remain true through enablement and execution)
 
-Every control below is **already enforced by the merged workflow** and must remain
-enforced by the enablement change (§5); the enablement PR may **only** narrow the
-production refusal, never relax any of these:
+Each control is labelled by **who enforces it**: **[merged]** = already enforced by the
+merged workflow (`63b47b7`) within a single invocation; **[§5]** = a **requirement of the
+future enablement implementation**, not yet present. The enablement PR may **only** narrow
+the production refusal and add the §5 controls; it may never relax any control below.
 
-- **One identity at a time** — exactly one persona per invocation.
-- **Fail closed between identities** — a disabled / missing / UID-mismatched / colliding
-  account **halts the entire sequence**; later personas are not attempted.
+- **One identity at a time** — exactly one persona per invocation. **[merged]**
+- **Fail closed within an invocation** — a disabled / missing / UID-mismatched / colliding
+  account **halts that invocation** (throws); it is never skipped or enabled. **[merged]**
 - **New alias always starts `emailVerified: false`** — a prior `true` is never carried to
-  the new alias.
-- **Exact UID and Employee linkage unchanged** — UID preserved; `employees/{id}.userId`
-  ⇄ `users/{uid}.employeeId` untouched; verified by post-write read-back.
+  the new alias. **[merged]**
+- **Exact UID unchanged** — UID preserved and **verified unchanged through the Auth
+  read-back** after the write. **[merged]**
+- **Employee/User linkage not mutated** — the workflow accesses **Firebase Auth only** and
+  performs **no Firestore read or write**, so `employees/{id}.userId` ⇄
+  `users/{uid}.employeeId` is left untouched. It **does not itself verify** the reciprocal
+  linkage (no Firestore read-back). **If production verification must PROVE the linkage
+  remains intact, that is a separate governed read-only pre/post linkage check using
+  existing repository-authorized verification tooling (§5.3)** — never a new write path, and
+  never exposing UIDs in committed evidence. **[merged for non-mutation; §5.3 for proof]**
 - **Exact prior address + prior `emailVerified` retained privately for rollback** — held
   only in the protected, signed rollback artifact and the out-of-band operator inputs;
-  never committed.
+  never committed. **[merged]**
 - **No reset or verification email** — the workflow never calls `sendPasswordResetEmail`
-  / `generatePasswordResetLink`.
-- **No explicit `revokeRefreshTokens` or other operator session-revocation action.**
-- **No password / role / claim / `accessVersion` / Firestore / provider change.**
-- **Lower-risk personas (1–4) must PASS before the primary owner (5).**
-- **Break-glass confirmed recoverable and login-verified before the owner step.**
-- **Never commit** private addresses, UIDs, credentials, tokens, mappings, or rollback
-  state (readiness §9/§12).
+  / `generatePasswordResetLink`. **[merged]**
+- **No explicit `revokeRefreshTokens` or other operator session-revocation action.** **[merged]**
+- **No password / role / claim / `accessVersion` / Firestore / provider change.** **[merged]**
+- **Personas 1–4 DURABLY complete before the primary owner (5)** — enforced by the
+  integrity-checked progression record; **not** by the `--position` /
+  `--confirmLowerRiskComplete` operator flags, which cannot prove predecessor completion. **[§5.1]**
+- **Break-glass bound to a separately recorded, integrity-protected confirmation** (not a
+  bare boolean flag) before the owner step. **[§5.2]**
+- **Never commit** private addresses, UIDs, credentials, tokens, mappings, rollback state,
+  or break-glass identity/credentials (readiness §9/§12). **[merged / §5]**
 - **Read-back failure never destroys recovery state** — an uncertain/attempted mutation
-  retains the signed artifact and warns the operator (PR #453 correction).
+  retains the signed artifact and warns the operator (PR #453 correction). **[merged]**
 
 ---
 
@@ -143,34 +188,93 @@ functional effect is to allow `assertExecutionAuthorization()` to permit a produ
 *unconditional* refusal with a *conditional, authorization-bound* one. It changes nothing
 else.
 
-**Design constraints for the enablement PR:**
+**Design constraints for the enablement PR.** The enablement PR must add all of §5.1–§5.4
+and satisfy §5.5–§5.6. Absent the recorded authorization and a valid progression state,
+production `--execute` / `--rollback` continue to throw exactly as today.
 
-1. **Replaces the unconditional production refusal only after a recorded Owner
-   authorization.** Absent the recorded authorization inputs, production `--execute` /
-   `--rollback` continue to throw exactly as today.
-2. **Requires all of the following, checked before any SDK write, or it fails closed:**
-   - **Exact project** — `--projectId taylor-parts` with the matching `--confirmProduction taylor-parts`.
-   - **Exact authorized commit** — the running workflow's commit must equal the
-     `Authorized commit` recorded in the DECISIONS entry (an explicit
-     `--authorizedCommit <sha>` that must match the repository HEAD the operator runs).
-   - **Exact ordered allowlist** — the existing persona-order guard (unchanged);
-     `--position` must match, primary owner still gated on `--breakGlassVerified` +
-     `--confirmLowerRiskComplete`.
-   - **Explicit execution mode** — a distinct, deliberate production-execution flag
-     (e.g. `--confirmProductionIdentityMutation <token-recorded-in-DECISIONS>`); its
-     absence keeps the refusal.
-   - **Protected mapping and state-key inputs** — `--mappingFile` and `--stateKeyFile`
-     supplied out-of-band (never committed).
-   - **Sanitized evidence output** — `--evidenceOut` produces only the sanitized,
-     salted-hash-referenced evidence (readiness §9); no address/UID/token.
-3. **Production rollback remains governed and authorization-bound** — `--rollback` against
-   production is permitted only under the same recorded authorization + signed artifact +
-   exact-commit + protected inputs; it restores the exact prior address + prior
-   `emailVerified` and remains fail-closed. It is never a general escape hatch.
-4. **No production execution occurs merely because the enablement code merges.** Merging
-   the enablement PR only makes the *conditional* path reachable; execution still requires
-   an operator to run the workflow, one identity at a time, presenting every recorded
-   input above. Merge ≠ run.
+**Required, checked before any SDK write, or it fails closed:**
+- **Exact project** — `--projectId taylor-parts` with matching `--confirmProduction taylor-parts`.
+- **Repository & code identity (§5.4)** — the workflow independently derives and verifies
+  repository identity and governed-file hashes; a user-supplied commit value is never
+  sufficient by itself.
+- **Explicit execution mode** — a distinct, deliberate production-execution flag whose
+  absence keeps the refusal.
+- **Valid progression state (§5.1)** authorizing exactly this persona as the next step.
+- **Valid break-glass confirmation (§5.2)** for the owner step.
+- **Protected mapping and state-key inputs** — `--mappingFile` / `--stateKeyFile` supplied
+  out-of-band (never committed).
+- **Sanitized evidence output** — `--evidenceOut` produces only sanitized, salted-hash-
+  referenced evidence (readiness §9); no address/UID/token.
+
+### 5.1 Protected, integrity-checked progression record (enforces cross-invocation order)
+
+The enablement implementation MUST maintain a protected, integrity-checked **progression
+record** — the authority for cross-invocation ordering that the current build lacks. It:
+
+- is **cryptographically bound** to the project, the authorization identifier, the approved
+  **workflow identity** (§5.4 hashes/commit), and the fixed migration sequence;
+- **begins with only position 1 (`emp-rudy-driver`) eligible**;
+- **advances by exactly one step only after** the current persona's write **and** read-back
+  verification both complete successfully;
+- records **sanitized** completion evidence (booleans / salted-hash refs / timestamps) with
+  **no addresses or UIDs**;
+- **permits only the next exact persona** — and **refuses** skipped, repeated, reordered,
+  conflicting, or stale execution;
+- on an **uncertain outcome** (attempted/unconfirmed mutation) **records it and does NOT
+  advance** (consistent with the PR #453 artifact-retention invariant);
+- defines how a **successful rollback** affects progression: a rolled-back persona is
+  returned to *not-complete* (or the run is suspended), and **later personas are blocked**
+  until the sequence is re-established;
+- **requires personas 1–4 to be durably complete before position 5**;
+- **cannot be bypassed** by supplying `--position` or `--confirmLowerRiskComplete` — those
+  operator flags are inputs to, never substitutes for, the progression record.
+
+### 5.2 Break-glass confirmation is a recorded, integrity-protected artifact (not a bare boolean)
+
+`--breakGlassVerified` is an **operator assertion only** and MUST NOT be described or used as
+independent proof. The owner step (position 5) MUST be bound to a **separately recorded
+break-glass confirmation** containing at least: a **confirmation timestamp**; the **named
+confirmer/executor**; the **authorization identifier**; a **sanitized result** showing
+recoverability and login verification; an **expiration or same-run validity requirement**;
+and **integrity protection or a repository-governed evidence reference**. **No break-glass
+credentials or identity details may be committed.**
+
+### 5.3 Employee/User linkage proof is a separate governed read-only check
+
+The workflow itself touches **Firebase Auth only** and does not read Firestore, so it does
+not prove the reciprocal Employee/User linkage. If production verification must prove the
+linkage remains intact, the enablement design requires a **separate, governed, read-only
+pre/post linkage check using existing repository-authorized verification tooling**. That
+check **must not create a new write path** and **must not expose UIDs in committed
+evidence** (sanitized booleans/refs only).
+
+### 5.4 Authorization is bound to reviewed code identity, independently verified (no future-commit circularity)
+
+The authorization cannot bind to "the exact enablement PR head" while that PR does not yet
+exist, and a squash/merge yields a different `main` commit. Therefore:
+
+- The workflow **independently derives** repository identity (the reviewed commit in
+  ancestry, or the recorded post-merge commit) **and** re-computes a **deterministic SHA-256
+  of the governed workflow and the relevant authorization/progression code**, and verifies
+  both **before SDK initialization**.
+- A **user-supplied `--authorizedCommit` value is never sufficient by itself**; it may be an
+  input, but the workflow's own derived identity + hashes are authoritative.
+- **Any post-review change to a governed file invalidates the authorization** and requires
+  re-review (the hash no longer matches).
+
+### 5.5 Production rollback remains governed and authorization-bound
+
+`--rollback` against production is permitted only under the same recorded authorization +
+signed artifact + §5.4 identity/hash verification + valid progression state + protected
+inputs; it restores the exact prior address + prior `emailVerified`, updates progression per
+§5.1, and remains fail-closed. It is never a general escape hatch.
+
+### 5.6 Merge ≠ run
+
+**No production execution occurs merely because the enablement code merges.** Merging only
+makes the *conditional* path reachable; execution still requires an operator to run the
+workflow, one identity at a time, presenting every recorded input and a valid progression
+state.
 
 **Explicitly out of scope for the enablement PR:** sending email; session revocation;
 password/role/claim/`accessVersion`/Firestore/provider changes; AUTH-PR-3 deployment;
@@ -184,21 +288,35 @@ The enablement PR must add tests (against the Auth emulator / non-production onl
 **before** it may merge:
 
 **Positive (emulator / non-production):**
-- With every recorded input present, a production-shaped `--execute` path is reachable
-  **only against a non-production/emulator project** in tests (production project id is
-  never targeted by CI); forward sets `emailVerified=false`, preserves UID, retains the
-  signed artifact; governed rollback restores exact prior address + `emailVerified`.
+- With every recorded input present and a valid progression state, a production-shaped
+  `--execute` path is reachable **only against a non-production/emulator project** in tests
+  (the real `taylor-parts` project id is never targeted by CI); forward sets
+  `emailVerified=false`, preserves UID, retains the signed artifact; governed rollback
+  restores exact prior address + `emailVerified` and updates progression.
+- Progression advances position 1 → 2 → 3 → 4 → 5 only, each step gated on a successful
+  write + read-back for the prior persona; personas 1–4 durably complete before 5.
 
 **Negative (must all fail closed):**
-- Missing or non-matching `--authorizedCommit` → refuse (no write).
-- Missing the explicit production-execution confirmation flag → refuse (today's behavior).
-- Wrong project / missing `--confirmProduction` → refuse.
-- Out-of-order persona / primary owner without `--breakGlassVerified` +
-  `--confirmLowerRiskComplete` → refuse.
-- Missing `--mappingFile` / `--stateKeyFile` → refuse.
-- Tampered or unbound signed rollback artifact → refuse (integrity check).
-- Read-back failure after a successful `updateUser` → uncertain outcome, artifact
-  **retained**, no artifact deletion (PR #453 invariant preserved).
+- **Skipped predecessor** — attempting a persona whose predecessor is not durably complete → refuse.
+- **Repeated predecessor** — re-running an already-complete persona → refuse (no repeat).
+- **Out-of-order invocation** — any persona other than the exact next one → refuse.
+- **Uncertain outcome does not advance** — an attempted/unconfirmed mutation records the
+  uncertain outcome, retains the signed artifact, and leaves progression un-advanced.
+- **Rollback changes/suspends progression** — after a successful rollback the persona is
+  not-complete (or the run is suspended) and later personas are blocked until re-established.
+- **Forged / tampered progression state** — integrity check fails → refuse.
+- **Stale authorization or workflow hash** — authorization identifier or governed-file
+  SHA-256 does not match the current code → refuse.
+- **User-supplied commit text disagreeing with repository-derived identity** — the
+  `--authorizedCommit` input contradicts the workflow's independently derived commit/hashes
+  → refuse (derived identity is authoritative).
+- **Missing / expired break-glass confirmation** for the owner step → refuse.
+- **Auth UID read-back vs separately governed Employee-link read verification** — the
+  workflow verifies UID unchanged via Auth read-back; a test asserts that Employee/User
+  linkage proof, where required, comes from the separate §5.3 read-only check and never from
+  a new write path or committed UID.
+- **Missing explicit production-execution flag / wrong project / missing `--confirmProduction`
+  / missing `--mappingFile` or `--stateKeyFile` / tampered-or-unbound rollback artifact** → refuse.
 - Assert that **no** test path targets the real `taylor-parts` project.
 
 These are **requirements**, not implementations. This preparation PR adds **no** enablement
@@ -210,7 +328,7 @@ code and **no** enablement tests.
 
 | ID | Decision | Status |
 |---|---|---|
-| **OD-1** | Grant the §3 production identity-mutation authorization (record #52, sign the line) | **PENDING — not granted** |
+| **OD-1** | Grant the §3 production identity-mutation authorization (record it as the next available append-only DECISIONS entry — expected #52 — and sign the line) | **PENDING — not granted** |
 | **OD-2** | Supply the base inbox + per-persona `+alias` mapping (out-of-band; never committed) | **PENDING — not requested yet** |
 | **OD-3** | Confirm break-glass admin exists, is recoverable, and login-verified before step 5 | **PENDING** |
 | **OD-4** | `emailVerified` at migration — fixed at `false` (settled); `true` only after a separate mailbox-control verification | **Default settled; verification-to-`true` deferred** |

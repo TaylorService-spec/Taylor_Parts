@@ -7,13 +7,13 @@
 - Relevant issues: #226 (AUTH-PR-3 Functions lane); C2 repository-only authorization recorded in DECISIONS #49
 
 ## Current Objective
-Coordination tracking is maintained by the Customer session. **Authentication (Customer lane):** the AUTH-PR-4 readiness (#451) and governed operator workflow (#453, `63b47b7`) are merged; the workflow is **production-disabled** and **AUTH-PR-4 production identity mutation remains NOT AUTHORIZED**. Customer is opening a repository-only production-enablement **design** PR (PROPOSED DECISIONS #52, PENDING/unsigned) that enables nothing. **Inventory/Equipment remains a separate lane** (INVENTORY.md, maintained by the Inventory session; not edited here; note main also advanced with Equipment D1/D2 #450/#454, not owned here) — C2 status recorded below unchanged. The C2 (PR #445) authorization is DECISIONS #49; PR #445 (`2d08e2e`) and PR #447 (`081df750`) merged, so no C2 authorization item remains open.
+Coordination tracking is maintained by the Customer session. **Authentication (Customer lane):** the AUTH-PR-4 readiness (#451) and governed operator workflow (#453, `63b47b7`) are merged; the workflow is **production-disabled** and **AUTH-PR-4 production identity mutation remains NOT AUTHORIZED**. Customer is opening a repository-only production-enablement **design** PR (PROPOSED DECISIONS #52 (next available at authorization), PENDING/unsigned) that enables nothing. **Inventory/Equipment remains a separate lane** (INVENTORY.md, maintained by the Inventory session; not edited here; note main also advanced with Equipment D1/D2 #450/#454, not owned here) — C2 status recorded below unchanged. The C2 (PR #445) authorization is DECISIONS #49; PR #445 (`2d08e2e`) and PR #447 (`081df750`) merged, so no C2 authorization item remains open.
 
 ## Status
 Active (maintained by the Customer session).
 
 ## Delta Since Last Handoff
-- **AUTH-PR-4 readiness (#451, `8f28d22`) and governed operator workflow (#453, `63b47b7`) merged (Customer/Auth lane; both Codex FINAL PASS).** The workflow is **production-disabled** (production `--execute`/`--rollback` throw before SDK init). **Production identity mutation / production-write enablement is NOT authorized**; **no email migration / reset or verification send / explicit `revokeRefreshTokens` / provider configuration / deployment** occurred. Enabling execution needs two later Owner actions (record DECISIONS #52 + a separate narrow enablement PR); merge ≠ run. This lane does not touch Inventory/Equipment, PR #448, or PR #450.
+- **AUTH-PR-4 readiness (#451, `8f28d22`) and governed operator workflow (#453, `63b47b7`) merged (Customer/Auth lane; both Codex FINAL PASS).** The workflow is **production-disabled** (production `--execute`/`--rollback` throw before SDK init). **Production identity mutation / production-write enablement is NOT authorized**; **no email migration / reset or verification send / explicit `revokeRefreshTokens` / provider configuration / deployment** occurred. Enabling execution needs two later Owner actions (record DECISIONS #52 (next available at authorization) + a separate narrow enablement PR); merge ≠ run. This lane does not touch Inventory/Equipment, PR #448, or PR #450.
 - PR #443 merged and closed the C1 Hosting evidence gate.
 - PR #444 (AUTH-PR-3) merged as `e53c7b0` (Customer-owned; not deployed, not enabled).
 - PR #445 (C2 PartDetail cutover, Inventory-owned) merged as `2d08e2e`; its separate repository-only authorization is recorded in DECISIONS #49.
@@ -53,7 +53,7 @@ Active (maintained by the Customer session).
 - High: concurrent sessions changing overlapping files.
 
 ## Next Action
-- **Customer/Auth lane:** return the production-enablement design PR for Codex review; then stop. The genuine next gate is the Owner's (record DECISIONS #52, supply private mapping out-of-band, confirm break-glass, name executor, authorize the separate narrow enablement PR). Do not enable production writes or begin AUTH-PR-4 execution.
+- **Customer/Auth lane:** return the production-enablement design PR for Codex review; then stop. The genuine next gate is the Owner's (record DECISIONS #52 (next available at authorization), supply private mapping out-of-band, confirm break-glass, name executor, authorize the separate narrow enablement PR). Do not enable production writes or begin AUTH-PR-4 execution.
 - **Inventory lane (separate, not owned here):** merging the sanitized C2 Hosting production evidence (draft PR #448) remains the Inventory session's action — recorded for coordination only, not acted on here.
 Authentication ownership is reconciled; no further ownership action is required.
 
