@@ -15,6 +15,7 @@
     "test:access": "npm run build && node test/permissionCatalog.test.mjs && node test/resolveEffectivePermission.test.mjs && node test/governedBusinessRoles.test.mjs && node test/shadowParityHarness.test.mjs && node test/compactClaims.test.mjs && node test/compactClaimsMirrorIntegrity.test.mjs",
     "test:audit": "npm run build && node test/auditEventWriter.test.mjs",
     "test:adminCredential": "npm run build && node test/adminCredentialCommands.test.mjs",
+    "test:adminCredentialLinkValidity": "node test/adminCredentialResetLinkValidity.test.mjs",
     "test:effectiveAccess": "npm run build && node test/effectiveAccessFeed.test.mjs",
     "test:claims": "npm run build && node test/claimsWriter.test.mjs",
     "test:trustedWriter": "npm run build && node test/trustedWriterCommands.test.mjs",

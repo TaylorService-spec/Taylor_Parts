@@ -70,12 +70,17 @@ function requireAuthUid(request: CallableRequest): string {
 // The Admin-SDK deps, wired with NOT_CONFIGURED_DELIVERY so no email is sent
 // until an Owner-approved provider (D-EMAIL-DELIVERY) is added here.
 //
-// PRODUCTION-GATE CONDITION (Codex round 5): a real ResetDelivery may only be
-// wired here after it is verified to DEDUPLICATE on the governed idempotencyKey
-// (see the ResetDelivery contract in adminCredentialCommands.ts). Delivery is
-// internally at-least-once; provider dedup is what makes user-visible delivery
-// exactly-once. A provider that cannot attest idempotency-key dedup must not be
-// wired (its isConfigured() must stay false, keeping the command fail-closed).
+// PRODUCTION-GATE CONDITIONS (Codex rounds 5-6): a real ResetDelivery may only
+// be wired here after BOTH are verified against real Firebase/provider:
+//  (a) it DEDUPLICATES on the governed idempotencyKey (delivery is internally
+//      at-least-once; provider dedup makes user-visible delivery exactly-once);
+//  (b) an earlier already-delivered reset link is NOT invalidated by a later
+//      generatePasswordResetLink() for the same user (proven on the Auth
+//      emulator -- see docs/audits/auth-pr-3-oob-validity/ -- but must be
+//      re-confirmed against real Firebase Auth at enablement).
+// A provider that cannot attest (a) must not be wired (its isConfigured() stays
+// false, keeping the command fail-closed). If (b) fails on real Firebase, link
+// generation must move inside the idempotent provider boundary.
 function adminSdkDeps(): commands.AdminResetDeps {
   return {
     generateResetLink: (email: string) => getAuth().generatePasswordResetLink(email),

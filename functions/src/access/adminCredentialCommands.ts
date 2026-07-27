@@ -78,10 +78,18 @@ export class LeaseLostError extends AdminResetStageError {}
 //    a production-gate condition: it may return true only once idempotency-key
 //    dedup is verified (D-EMAIL-DELIVERY). The command fails closed when
 //    isConfigured() is false, so no un-attested provider ever sends.
-// The extra link a stale worker may generate is harmless (a link is not a
-// message); only delivery and state-persistence need protection -- provided
-// here by provider dedup + attempt-bound writes. Session revocation is
-// idempotent (see AdminResetDeps.revokeRefreshTokens), so a repeat is safe.
+// The extra link a stale worker may generate does NOT break recovery: it is a
+// distinct OOB code AND it does NOT invalidate the earlier, already-delivered
+// link -- PROVEN against the Auth emulator by
+// functions/test/adminCredentialResetLinkValidity.test.mjs (evidence:
+// docs/audits/auth-pr-3-oob-validity/). So only DELIVERY (message) and
+// state-persistence need protection -- provided by provider send-dedup +
+// attempt-bound writes. Session revocation is idempotent (see
+// AdminResetDeps.revokeRefreshTokens), so a repeat is safe. Re-verifying this
+// OOB-validity behavior against real Firebase Auth is a production-enablement
+// condition (see the evidence doc); if a later generation ever invalidated the
+// earlier code, link generation must move inside the idempotent provider
+// boundary (one key -> one effective link + send).
 export interface ResetDelivery {
   isConfigured(): boolean;
   deliverResetLink(args: {
