@@ -3,19 +3,21 @@
 ## Baseline
 - Main commit: `081df750d89d9044f0e09bb0241796b8171ed33f`
 - Last reconciled: 2026-07-27
-- Relevant PRs: #445
-- Relevant issues: link the governing C2 issue or authorization record before continuing
+- Relevant PRs: #445 (merged `2d08e2e`), #447 (merged `081df750`), #448 (draft — C2 Hosting evidence)
+- Relevant issues: C2 repository-only authorization recorded in [`DECISIONS.md`](../DECISIONS.md) #49
 
 ## Current Objective
-Reconcile draft PR #445 and locate the separate authorization for the C2 PartDetail cutover.
+Track the INV-CONVERGENCE-E C2 (PartDetail cutover) stream. The separate C2 repository-only authorization is recorded in DECISIONS #49; PR #445 merged (`2d08e2e`) and PR #447 merged (`081df750`), the latter landing the C2 Hosting runbook/preparation. C2 has since been deployed to production; sanitized evidence is pending repository merge on draft PR #448.
 
 ## Status
-Needs reconciliation.
+Active — C2 authorized (DECISIONS #49), merged, and deployed to production; evidence pending repository merge (draft PR #448).
 
 ## Delta Since Last Handoff
 - C1 PartsList cutover and Hosting evidence are merged through PR #443.
-- Draft PR #445 now exists for C2.
-- The latest merged C1 record states C2 required a separate gate; that authorization is not established by this state file.
+- The separate C2 gate the C1 record required is satisfied: repository-only authorization is recorded in DECISIONS #49.
+- PR #445 (C2 PartDetail cutover) merged as `2d08e2e`.
+- PR #447 merged as `081df750`, landing the C2 Hosting runbook/preparation.
+- C2 has been deployed to production after the `081df750` baseline; sanitized evidence is on draft PR #448 and is pending repository merge.
 
 ## Decisions
 - [`DECISIONS.md`](../DECISIONS.md), especially Decisions #43–#46
@@ -35,9 +37,12 @@ Needs reconciliation.
 
 ### Verified
 - C1 Hosting deployment and evidence: PR #443.
+- C2 repository-only authorization: DECISIONS #49.
+- C2 PartDetail cutover merged to `main`: PR #445 (`2d08e2e`).
+- C2 Hosting runbook/preparation merged to `main`: PR #447 (`081df750`).
+- C2 production deployment: deployed and verified in production after the `081df750` baseline; sanitized evidence is pending repository merge on draft PR #448 — not yet merged truth.
 
 ### Unverified
-- C2 authorization and production behavior.
 - Any broader declaration that Parts Catalog integration repair is complete.
 
 ### Failed
@@ -52,10 +57,10 @@ Needs reconciliation.
 - High: treating access-control completion as data-model reconciliation.
 
 ## Next Action
-Locate and verify the separate C2 authorization before reviewing or continuing PR #445.
+Merge the sanitized C2 Hosting production evidence (draft PR #448) so the deployed-and-verified state becomes merged truth. Until #448 lands, do not treat the production evidence as merged.
 
 ## Stop Conditions
-- C2 authorization cannot be linked.
+- A further C2 action (evidence merge, static-catalog retirement, or any new deployment) lacks its own separately-linked authorization; DECISIONS #49 authorizes the repository-only cutover merge alone.
 - Canonical/static inputs are incomplete or diverge.
 - Proposed destructive migration, silent fallback, competing source, or reference rewrite.
 - Rules, Functions, deployment, or production mutation without its separate gate.

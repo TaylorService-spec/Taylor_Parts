@@ -3,8 +3,8 @@
 ## Baseline
 - Main commit: `081df750d89d9044f0e09bb0241796b8171ed33f`
 - Last reconciled: 2026-07-27
-- Relevant PRs: none assigned conclusively
-- Relevant issues: link when an active Customer assignment is authorized
+- Relevant PRs: #444 (AUTH-PR-3 admin-reset draft, Customer-owned)
+- Relevant issues: #226 (Functions lane governing AUTH-PR-3)
 
 ## Current Objective
 Authentication Modernization (owned here): AUTH-PR-3 admin-reset draft PR #444 is reviewed and pending merge under standing repository-only merge authority.
@@ -44,7 +44,7 @@ Active.
 - Medium: absorbing Equipment would create unclear domain ownership.
 
 ## Next Action
-Reconcile the next authorized Customer-domain assignment against current main and its governing issue or plan.
+Merge PR #444 (AUTH-PR-3 admin-reset) under standing repository-only merge authority only after PR #446 passes focused review and merges; then return the exact AUTH-PR-4 gate without beginning it.
 
 ## Stop Conditions
 - Missing authorization for a new implementation phase.
