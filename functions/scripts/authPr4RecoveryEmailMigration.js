@@ -611,6 +611,9 @@ async function main() {
         // A rollback whose success was not confirmed must also RETAIN the artifact
         // so recovery can be re-attempted -- never delete it on an uncertain rollback.
         if (retainArtifactOnError(err)) {
+          // Two-phase (C3): record a durable UNCERTAIN outcome tied to the owning
+          // attempt; progression stays blocking (never auto-reverts to eligible).
+          if (args.executeProduction) gateCtx.recordUncertain("rollback-uncertain", { personaOrder: MIGRATION_PERSONA_ORDER });
           console.error(uncertainOutcomeMessage(args.employeeId, args.capturedStateFile));
         }
         throw err;
@@ -622,15 +625,9 @@ async function main() {
       evidence.outcome = "applied";
       // Only a CONFIRMED successful rollback removes the recovery artifact.
       secureUnlink(args.capturedStateFile);
-      // A confirmed production rollback REVERSES + SUSPENDS progression, blocking
-      // later personas until the sequence is governed-reestablished (design §5.1).
-      if (args.executeProduction) {
-        productionGate.writeProgression(
-          args.progressionFile,
-          productionGate.suspendProgressionAfterRollback(gateCtx.progression, args.employeeId),
-          gateCtx.stateKey,
-        );
-      }
+      // A confirmed production rollback REVERSES + SUSPENDS progression (recorded by
+      // the owning attempt only), blocking later personas (design §5.1, C2/C3).
+      if (args.executeProduction) gateCtx.recordCompletion({ personaOrder: MIGRATION_PERSONA_ORDER });
       console.log(`ROLLBACK applied for ${args.employeeId}: restored exact prior address + prior emailVerified.`);
     } else {
       // FORWARD path (dry-run default; execute only against non-production).
@@ -675,7 +672,9 @@ async function main() {
       } catch (err) {
         if (args.execute && retainArtifactOnError(err)) {
           // Mutation was attempted -- the identity may already be changed. NEVER
-          // destroy recovery state here; tell the operator the outcome is uncertain.
+          // destroy recovery state here; record a durable UNCERTAIN outcome tied to
+          // the owning attempt so progression stays blocking (two-phase, C3).
+          if (args.executeProduction) gateCtx.recordUncertain("forward-uncertain", { personaOrder: MIGRATION_PERSONA_ORDER });
           console.error(uncertainOutcomeMessage(args.employeeId, args.capturedStateOut));
         } else if (args.execute) {
           // Proven pre-mutation failure (error before updateUser was invoked): no
@@ -694,16 +693,11 @@ async function main() {
         if (!evidence.checks.newAliasEmailVerifiedFalse) {
           throw new Error("Post-write emailVerified is not false on the new alias -- halting.");
         }
-        // Progression advances ONLY after a fully verified write + read-back (the
-        // fail-closed checks above throw before this). An uncertain outcome never
-        // reaches here, so it never advances (design §5.1).
-        if (args.executeProduction) {
-          productionGate.writeProgression(
-            args.progressionFile,
-            productionGate.advanceProgression(gateCtx.progression, args.employeeId),
-            gateCtx.stateKey,
-          );
-        }
+        // Progression advances (completion recorded by the owning attempt only)
+        // ONLY after a fully verified write + read-back (the fail-closed checks above
+        // throw before this). An uncertain outcome never reaches here, so it never
+        // advances (design §5.1, C2/C3).
+        if (args.executeProduction) gateCtx.recordCompletion({ personaOrder: MIGRATION_PERSONA_ORDER });
         console.log(
           `FORWARD executed for ${args.employeeId} (position ${position}, ${evidence.projectClass}): ` +
             "new alias set, emailVerified=false, UID unchanged. Captured-prior state written for rollback.",

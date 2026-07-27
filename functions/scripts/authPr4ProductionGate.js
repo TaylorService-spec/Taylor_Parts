@@ -1,34 +1,34 @@
-// AUTH-PR-4 -- Production-enablement authorization gate.
+// AUTH-PR-4 -- Production-enablement authorization gate (security-hardened).
 //
 // Governing design:
 //   docs/deployment/auth-pr-4-production-enablement-design.md  (merged, PR #455)
 //
-// WHAT THIS IS
-// The narrow, authorization-bound gate that the operator workflow
-// (authPr4RecoveryEmailMigration.js) consults before any PRODUCTION-shaped write
-// (`--executeProduction`). It replaces the previous *unconditional* production
-// refusal with a *conditional* one: a production write is permitted only when a
-// complete, integrity-checked authorization is presented, and it FAILS CLOSED on
-// anything missing/invalid/tampered/stale/out-of-order.
+// This gate is consulted by the operator workflow before any PRODUCTION-shaped
+// write (`--executeProduction`). It fails closed on anything missing/invalid/
+// tampered/stale/replayed/concurrent/out-of-order. It authorizes nothing by
+// itself: authority comes ONLY from a COMMITTED, git-tracked authorization
+// artifact whose status is explicitly GRANTED. The committed artifact is PENDING,
+// so production is blocked until the Owner records a real granted authorization
+// through repository governance.
 //
-// It authorizes nothing by itself and enables no execution: in production, no
-// recorded Owner authorization / manifest exists, so the gate refuses. In tests,
-// a production-shaped path is exercised only against a NON-PRODUCTION project with
-// fixture manifests -- the real `taylor-parts` project id is never targeted.
-//
-// PROPERTIES ENFORCED (design §5.1-§5.6, §5.4a):
-//   - Independent repository identity + deterministic SHA-256 of every governed
-//     file, derived before SDK init; a user-supplied commit is never sufficient.
-//   - A protected, integrity-checked PROGRESSION record enforces cross-invocation
-//     order: only the exact next persona proceeds; skipped/repeated/reordered/
-//     stale/conflicting/tampered/suspended -> refuse; advance only after a
-//     confirmed write+read-back; uncertain outcomes do not advance; a successful
-//     rollback reverses + suspends and blocks later personas; 1-4 durable before 5.
-//   - Break-glass confirmation for position 5: a separate protected artifact bound
-//     to the authorization + the exact progression state + position 5, time-valid,
-//     invalidated by any progression change (early/expired/mismatched/reused fail).
-//   - No private address/UID/token/credential/mapping/rollback-state/break-glass
-//     identity is committed; artifacts are protected operator inputs only.
+// HARDENING (Codex round 2):
+//   C1 Authorization authority is a repository-governed artifact
+//      (functions/authpr4/production-authorization.json), read from git AT the
+//      authorized commit (not an operator-authored path). Exact bytes must be
+//      present in the authorized/attested commit; SHA-256 recorded; status GRANTED;
+//      project/order/reviewedHead/governed hashes/authId/executor/execution-mode
+//      all exactly match; the operator's execution-mode confirmation must equal the
+//      repository-derived token ("nonempty" is not authorization).
+//   C2 Attempt-bound state machine: monotonic revision + previous-state-hash chain
+//      + high-water anchor (replay detection) + O_EXCL claim lock with a bounded
+//      lease (concurrency). Only the claim owner may record completion. Stale
+//      takeover is explicit and preserves prior-attempt evidence.
+//   C3 Crash-safe two-phase lifecycle: persist a CLAIMED/pending attempt before the
+//      Auth call; record a durable outcome tied to the owning attempt; on any
+//      uncertainty stay uncertain/recovery_required and block later personas; never
+//      auto-revert to eligible. Governed reconciliation is production-disabled here.
+//   C4 Strict schemas + temporal controls on every artifact.
+//   C5 Requires a clean git checkout; fails closed in non-git contexts.
 
 const fs = require("fs");
 const path = require("path");
@@ -37,499 +37,578 @@ const { execFileSync } = require("child_process");
 
 const PRODUCTION_PROJECT_ID = "taylor-parts";
 
-// The exact, deterministic governed-file set whose SHA-256 hashes the Owner
-// records at authorization and the gate independently re-derives + verifies.
-// Relative to the repository root.
 const GOVERNED_FILES = Object.freeze([
   "functions/scripts/authPr4RecoveryEmailMigration.js",
   "functions/scripts/authPr4ProductionGate.js",
 ]);
+const AUTH_ARTIFACT_PATH = "functions/authpr4/production-authorization.json";
+const AUTH_SCHEMA = "authpr4.production-authorization/v1";
 
-const AUTH_MANIFEST_VERSION = 1;
-const PROGRESSION_VERSION = 1;
+const PROGRESSION_VERSION = 2;
+const ANCHOR_VERSION = 1;
+const LOCK_VERSION = 1;
 const BREAKGLASS_VERSION = 1;
 const BREAKGLASS_POSITION = 5;
 
+const MAX_STR = 512;
+const MAX_LEASE_SEC = 3600;
+const MAX_WINDOW_SEC = 3600;
+const STATES = Object.freeze(["eligible", "claimed", "completed", "uncertain", "recovery_required", "suspended"]);
+const GENESIS_HASH = crypto.createHash("sha256").update("authpr4-genesis").digest("hex");
+
 // ---------------------------------------------------------------------------
-// Governed-file hashing + repository identity (independently derived)
+// C4 -- strict validation primitives
 // ---------------------------------------------------------------------------
 
-function sha256Hex(buf) {
-  return crypto.createHash("sha256").update(buf).digest("hex");
+const FULL_SHA_RE = /^[0-9a-f]{40}$/;
+const SHA256_RE = /^[0-9a-f]{64}$/;
+const AUTH_ID_RE = /^[A-Z0-9][A-Z0-9-]{2,63}$/;
+const UTC_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
+
+function isFullSha(s) { return typeof s === "string" && FULL_SHA_RE.test(s); }
+function isSha256(s) { return typeof s === "string" && SHA256_RE.test(s); }
+function isCanonicalAuthId(s) { return typeof s === "string" && AUTH_ID_RE.test(s); }
+function isBoundedInt(n, min, max) { return Number.isInteger(n) && n >= min && n <= max; }
+function isUtcInstant(s) {
+  return typeof s === "string" && s.length <= 40 && UTC_RE.test(s) && Number.isFinite(Date.parse(s));
+}
+function isBoundedString(s, max = MAX_STR) {
+  return typeof s === "string" && s.length > 0 && s.length <= max;
+}
+// Exact shape: object (not array/null), keys === allowed EXACTLY (no missing/extra).
+function assertExactShape(obj, allowed, label) {
+  if (!obj || typeof obj !== "object" || Array.isArray(obj)) throw new Error(`${label}: not an object.`);
+  const keys = Object.keys(obj).sort();
+  const exp = [...allowed].sort();
+  if (keys.length !== exp.length || keys.some((k, i) => k !== exp[i])) {
+    throw new Error(`${label}: schema mismatch (missing/extra/unknown fields).`);
+  }
+}
+function sha256Hex(buf) { return crypto.createHash("sha256").update(buf).digest("hex"); }
+function hmac(canonical, key) { return crypto.createHmac("sha256", key).update(canonical).digest("hex"); }
+function timingSafeHexEqual(a, b) {
+  if (!isSha256(a) && !/^[0-9a-f]+$/.test(a || "")) return false;
+  if (typeof a !== "string" || typeof b !== "string" || a.length !== b.length) return false;
+  const ab = Buffer.from(a, "hex"); const bb = Buffer.from(b, "hex");
+  return ab.length === bb.length && ab.length > 0 && crypto.timingSafeEqual(ab, bb);
 }
 
-function resolveRepoRoot(deps = {}) {
+// ---------------------------------------------------------------------------
+// C5 -- git required; fail closed in non-git contexts; clean-tree check
+// ---------------------------------------------------------------------------
+
+function git(repoRoot, argsArr, deps = {}) {
   const exec = deps.execFileSync || execFileSync;
+  return exec("git", ["-C", repoRoot, ...argsArr], { encoding: "utf8", maxBuffer: 8 * 1024 * 1024 });
+}
+function gitBytes(repoRoot, argsArr, deps = {}) {
+  const exec = deps.execFileSync || execFileSync;
+  return exec("git", ["-C", repoRoot, ...argsArr], { maxBuffer: 8 * 1024 * 1024 });
+}
+
+// Requires a real git checkout. Non-git contexts fail CLOSED (no path fallback).
+function resolveRepoRoot(deps = {}) {
   const start = deps.repoRoot || path.resolve(__dirname, "..", "..");
   try {
-    return exec("git", ["-C", start, "rev-parse", "--show-toplevel"], { encoding: "utf8" }).trim();
-  } catch {
-    // Fallback for non-git contexts: two levels up from functions/scripts.
-    return start;
+    return git(start, ["rev-parse", "--show-toplevel"], deps).trim();
+  } catch (err) {
+    throw new Error(
+      "Production authorization requires a clean git checkout; this is not a git context, so it fails closed " +
+        `(design §5.4/C5). ${err.message}`,
+    );
   }
 }
 
-// Deterministic SHA-256 of each governed file, read from disk. Missing file =>
-// fail closed (throws).
+// The governed files (and the authorization artifact) must be tracked and
+// unmodified vs HEAD -- a dirty working tree fails closed.
+function assertCleanGovernedTree(repoRoot, deps = {}) {
+  const targets = [...GOVERNED_FILES, AUTH_ARTIFACT_PATH];
+  const out = git(repoRoot, ["status", "--porcelain", "--", ...targets], deps).trim();
+  if (out) throw new Error("Refusing: governed files or the authorization artifact are modified/untracked in the working tree (not a clean checkout).");
+}
+
 function deriveGovernedFileHashes(repoRoot, deps = {}) {
   const readFileSync = deps.readFileSync || fs.readFileSync;
   const out = {};
   for (const rel of GOVERNED_FILES) {
-    const abs = path.join(repoRoot, rel);
     let bytes;
-    try {
-      bytes = readFileSync(abs);
-    } catch (err) {
-      throw new Error(`Governed file missing or unreadable: ${rel} (${err.message}).`);
-    }
+    try { bytes = readFileSync(path.join(repoRoot, rel)); }
+    catch (err) { throw new Error(`Governed file missing/unreadable: ${rel} (${err.message}).`); }
     out[rel] = sha256Hex(bytes);
   }
   return out;
 }
-
-// A single identity hash binding the entire governed set (order-independent).
 function workflowIdentityHash(governedFileHashes) {
-  const canonical = JSON.stringify(
-    Object.keys(governedFileHashes)
-      .sort()
-      .map((k) => [k, governedFileHashes[k]]),
-  );
-  return sha256Hex(canonical);
+  return sha256Hex(JSON.stringify(Object.keys(governedFileHashes).sort().map((k) => [k, governedFileHashes[k]])));
 }
 
-// recorded (from the manifest) MUST cover EXACTLY the governed set and match the
-// independently derived hashes -- no missing, extra, or mismatched entries.
-function verifyGovernedFileHashes(recorded, derived) {
-  if (!recorded || typeof recorded !== "object" || Array.isArray(recorded)) {
-    throw new Error("Authorization manifest is missing governedFileHashes.");
+// Bytes of a repository file AT a specific commit (proves tracked + present in
+// that commit; external/untracked/path-substituted files are not readable here).
+function gitFileBytesAtCommit(repoRoot, commit, relPath, deps = {}) {
+  try {
+    return gitBytes(repoRoot, ["cat-file", "-p", `${commit}:${relPath}`], deps);
+  } catch (err) {
+    throw new Error(`Authorization artifact "${relPath}" is not present in commit ${commit} (untracked/external/wrong path). ${err.message}`);
   }
-  const recordedKeys = Object.keys(recorded).sort();
-  const expectedKeys = [...GOVERNED_FILES].sort();
-  if (recordedKeys.length !== expectedKeys.length || recordedKeys.some((k, i) => k !== expectedKeys[i])) {
-    throw new Error("Authorization manifest governedFileHashes does not cover exactly the governed file set.");
-  }
-  for (const rel of GOVERNED_FILES) {
-    if (typeof recorded[rel] !== "string" || recorded[rel] !== derived[rel]) {
-      throw new Error(
-        `Governed-file hash mismatch for ${rel} -- the on-disk workflow/gate code does not match the recorded ` +
-          "reviewed hashes. Any post-review change invalidates the authorization (design §5.4).",
-      );
-    }
-  }
-  return true;
 }
 
-// Repository identity is derived by the gate (git), never taken on trust from a
-// user-supplied string. reviewedHead must be in ancestry (or equal HEAD); a
-// supplied commit that disagrees with the derived identity fails closed.
 function deriveRepositoryIdentity(repoRoot, deps = {}) {
-  const exec = deps.execFileSync || execFileSync;
-  const head = exec("git", ["-C", repoRoot, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+  const head = git(repoRoot, ["rev-parse", "HEAD"], deps).trim();
   const isAncestor = (commit) => {
-    try {
-      exec("git", ["-C", repoRoot, "merge-base", "--is-ancestor", commit, "HEAD"], { encoding: "utf8" });
-      return true;
-    } catch {
-      return false;
-    }
+    if (!isFullSha(commit)) return false;
+    try { git(repoRoot, ["merge-base", "--is-ancestor", commit, "HEAD"], deps); return true; }
+    catch { return false; }
   };
   return { head, isAncestor };
 }
-
-function verifyRepositoryIdentity({ reviewedHead, suppliedCommit, mergeCommit }, repoIdentity) {
-  if (typeof reviewedHead !== "string" || reviewedHead.length < 7) {
-    throw new Error("Authorization manifest is missing a valid reviewedHead.");
+function verifyRepositoryIdentity({ reviewedHead, authorizedCommit }, repoIdentity) {
+  if (!isFullSha(reviewedHead)) throw new Error("Authorization reviewedHead is not a canonical full commit SHA.");
+  if (!isFullSha(authorizedCommit)) throw new Error("--authorizedCommit must be a canonical full 40-hex commit SHA.");
+  if (!(repoIdentity.head === authorizedCommit || repoIdentity.isAncestor(authorizedCommit))) {
+    throw new Error("--authorizedCommit is not the current HEAD nor an ancestor of it (design §5.4a).");
   }
-  const inAncestry = repoIdentity.head === reviewedHead || repoIdentity.isAncestor(reviewedHead);
-  const mergeMatches =
-    typeof mergeCommit === "string" &&
-    (repoIdentity.head === mergeCommit || repoIdentity.isAncestor(mergeCommit));
-  if (!inAncestry && !mergeMatches) {
-    throw new Error(
-      "Reviewed enablement head is not in the repository's ancestry, and no matching merge attestation applies " +
-        "(design §5.4a). Refusing; governed-file hash equality is verified separately.",
-    );
-  }
-  // A user-supplied commit value is never sufficient by itself; if provided it
-  // must agree with the derived identity, else fail closed.
-  if (suppliedCommit && suppliedCommit !== repoIdentity.head && suppliedCommit !== reviewedHead) {
-    throw new Error(
-      "User-supplied commit disagrees with the repository-derived identity; derived identity is authoritative (design §5.4).",
-    );
+  if (!(repoIdentity.head === reviewedHead || repoIdentity.isAncestor(reviewedHead))) {
+    throw new Error("Authorization reviewedHead is not in the repository ancestry.");
   }
   return true;
 }
 
 // ---------------------------------------------------------------------------
-// HMAC-signed artifact helpers (state-key protected; never committed)
+// C1 -- repository-governed authorization artifact (read from git @ commit)
+// ---------------------------------------------------------------------------
+
+const AUTH_FIELDS = Object.freeze([
+  "schema", "authorizationId", "authorizationStatus", "projectId", "personaOrder",
+  "reviewedHead", "governedFileHashes", "executionModeToken", "executor", "breakGlassContract",
+]);
+
+function loadGovernedAuthorization({ repoRoot, authorizedCommit }, deps = {}) {
+  if (!isFullSha(authorizedCommit)) throw new Error("--authorizedCommit is required (canonical full 40-hex commit SHA).");
+  const bytes = gitFileBytesAtCommit(repoRoot, authorizedCommit, AUTH_ARTIFACT_PATH, deps);
+  const artifactSha = sha256Hex(bytes);
+  let artifact;
+  try { artifact = JSON.parse(bytes.toString("utf8")); }
+  catch (err) { throw new Error(`Authorization artifact is not valid JSON: ${err.message}`); }
+  return { artifact, artifactSha };
+}
+
+// Fails closed unless status is explicitly GRANTED and every field exactly
+// matches the target project, built-in order, reviewed hashes, and the operator's
+// execution-mode confirmation / executor value.
+function verifyGovernedAuthorization(artifact, { projectId, personaOrder, derivedHashes, repoIdentity, authorizedCommit, executionModeConfirmation, executor }) {
+  assertExactShape(artifact, AUTH_FIELDS, "authorization artifact");
+  if (artifact.schema !== AUTH_SCHEMA) throw new Error("Authorization artifact has an unexpected schema.");
+  if (artifact.authorizationStatus !== "GRANTED") {
+    throw new Error(`Authorization is not GRANTED (status="${artifact.authorizationStatus}") -- production execution fails closed.`);
+  }
+  if (!isCanonicalAuthId(artifact.authorizationId)) throw new Error("Authorization artifact authorizationId is not canonical.");
+  if (artifact.projectId !== projectId) throw new Error("Authorization artifact projectId does not match the target project.");
+  if (!Array.isArray(artifact.personaOrder) || artifact.personaOrder.length !== personaOrder.length ||
+      artifact.personaOrder.some((p, i) => p !== personaOrder[i])) {
+    throw new Error("Authorization artifact personaOrder does not match the governed sequence.");
+  }
+  verifyRepositoryIdentity({ reviewedHead: artifact.reviewedHead, authorizedCommit }, repoIdentity);
+  // Governed-file hashes: exact keys, lowercase sha256, and equal to the on-disk
+  // (reviewed) code -- any post-review change invalidates.
+  assertExactShape(artifact.governedFileHashes, GOVERNED_FILES, "governedFileHashes");
+  for (const rel of GOVERNED_FILES) {
+    if (!isSha256(artifact.governedFileHashes[rel])) throw new Error(`governedFileHashes[${rel}] is not a canonical lowercase sha256.`);
+    if (artifact.governedFileHashes[rel] !== derivedHashes[rel]) {
+      throw new Error(`Governed-file hash mismatch for ${rel} -- running code differs from the reviewed authorization (design §5.4).`);
+    }
+  }
+  // Execution-mode confirmation: must MATCH the repository-derived token; nonempty is not authorization.
+  if (!isBoundedString(artifact.executionModeToken, 128)) throw new Error("Authorization artifact executionModeToken is missing/oversized.");
+  if (executionModeConfirmation !== artifact.executionModeToken) {
+    throw new Error("--executionModeConfirmation does not match the repository-derived authorized execution-mode token.");
+  }
+  // Executor contract.
+  assertExactShape(artifact.executor, ["name"], "authorization executor");
+  if (!isBoundedString(artifact.executor.name, 128)) throw new Error("Authorization executor.name is missing/oversized.");
+  if (executor !== artifact.executor.name) throw new Error("--executor does not match the repository-governed authorized executor.");
+  // Break-glass contract.
+  assertExactShape(artifact.breakGlassContract, ["validityWindowSeconds", "requiredConfirmer"], "breakGlassContract");
+  if (!isBoundedInt(artifact.breakGlassContract.validityWindowSeconds, 1, MAX_WINDOW_SEC)) {
+    throw new Error("breakGlassContract.validityWindowSeconds is out of bounds.");
+  }
+  if (!isBoundedString(artifact.breakGlassContract.requiredConfirmer, 128)) throw new Error("breakGlassContract.requiredConfirmer is missing/oversized.");
+  return artifact;
+}
+
+// ---------------------------------------------------------------------------
+// C4 -- state-key + atomic protected writes
 // ---------------------------------------------------------------------------
 
 function loadStateKey(stateKeyFile, deps = {}) {
   const readFileSync = deps.readFileSync || fs.readFileSync;
   if (!stateKeyFile) throw new Error("A protected --stateKeyFile is required for production authorization.");
   const key = readFileSync(stateKeyFile);
-  if (key.length < 32) throw new Error("--stateKeyFile must contain at least 32 bytes of protected random key material.");
+  if (key.length < 32) throw new Error("--stateKeyFile must contain at least 32 bytes of protected key material.");
   return key;
 }
-
-function hmac(canonical, key) {
-  return crypto.createHmac("sha256", key).update(canonical).digest("hex");
-}
-
-function timingSafeHexEqual(a, b) {
-  if (typeof a !== "string" || typeof b !== "string" || a.length !== b.length) return false;
-  const ab = Buffer.from(a, "hex");
-  const bb = Buffer.from(b, "hex");
-  return ab.length === bb.length && crypto.timingSafeEqual(ab, bb);
-}
-
-// ---------------------------------------------------------------------------
-// Authorization manifest (mirrors the recorded, append-only DECISIONS entry)
-// ---------------------------------------------------------------------------
-
-const MANIFEST_FIELDS = Object.freeze([
-  "version", "authorizationId", "projectId", "personaOrder", "reviewedHead",
-  "governedFileHashes", "executionModeToken",
-]);
-
-function loadAuthorizationManifest(file, deps = {}) {
-  const readFileSync = deps.readFileSync || fs.readFileSync;
-  if (!file) throw new Error("--authorizationManifest <path> is required for a production write.");
-  let parsed;
+function atomicWrite(file, contents, deps = {}) {
+  const _fs = deps.fs || fs;
+  const tmp = `${file}.tmp-${process.pid}-${crypto.randomBytes(6).toString("hex")}`;
+  const fd = _fs.openSync(tmp, "wx", 0o600);
   try {
-    parsed = JSON.parse(readFileSync(file, "utf8"));
-  } catch (err) {
-    throw new Error(`--authorizationManifest is not valid JSON: ${err.message}`);
+    _fs.writeSync(fd, contents);
+    _fs.fsyncSync(fd);
+  } finally {
+    _fs.closeSync(fd);
   }
-  return parsed;
-}
-
-function verifyAuthorizationManifest(manifest, { projectId, personaOrder, derivedHashes, repoIdentity, suppliedCommit }) {
-  if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) {
-    throw new Error("Authorization manifest has an invalid shape.");
-  }
-  if (manifest.version !== AUTH_MANIFEST_VERSION) throw new Error("Authorization manifest version is unsupported.");
-  for (const f of MANIFEST_FIELDS) {
-    if (!(f in manifest)) throw new Error(`Authorization manifest is missing "${f}".`);
-  }
-  if (typeof manifest.authorizationId !== "string" || !manifest.authorizationId) {
-    throw new Error("Authorization manifest is missing a valid authorizationId.");
-  }
-  if (manifest.projectId !== projectId) {
-    throw new Error("Authorization manifest projectId does not match the target project (conflicting authorization).");
-  }
-  if (
-    !Array.isArray(manifest.personaOrder) ||
-    manifest.personaOrder.length !== personaOrder.length ||
-    manifest.personaOrder.some((p, i) => p !== personaOrder[i])
-  ) {
-    throw new Error("Authorization manifest personaOrder does not match the governed migration sequence.");
-  }
-  if (typeof manifest.executionModeToken !== "string" || !manifest.executionModeToken) {
-    throw new Error("Authorization manifest is missing the explicit executionModeToken.");
-  }
-  verifyGovernedFileHashes(manifest.governedFileHashes, derivedHashes);
-  verifyRepositoryIdentity(
-    { reviewedHead: manifest.reviewedHead, suppliedCommit, mergeCommit: manifest.mergeCommit },
-    repoIdentity,
-  );
-  return manifest;
+  _fs.renameSync(tmp, file);
+  try { _fs.chmodSync(file, 0o600); } catch { /* Windows ACLs operator-managed */ }
 }
 
 // ---------------------------------------------------------------------------
-// Progression record (integrity-checked cross-invocation order)
+// C2/C3 -- attempt-bound progression state machine (state + anchor + lock)
 // ---------------------------------------------------------------------------
 
 const PROGRESSION_FIELDS = Object.freeze([
   "version", "authorizationId", "projectId", "workflowIdentityHash", "personaOrder",
-  "completed", "suspended", "updatedAt",
+  "revision", "previousStateHash", "status", "completed", "attempt", "lastOutcome", "updatedAt",
 ]);
+const ATTEMPT_FIELDS = Object.freeze(["attemptId", "mode", "targetPersona", "claimedAt", "leaseExpiresAt"]);
+const OUTCOME_FIELDS = Object.freeze(["attemptId", "mode", "targetPersona", "result", "at"]);
 
-function progressionCanonical(p) {
-  return JSON.stringify(PROGRESSION_FIELDS.map((f) => [f, p[f]]));
+function progressionCanonical(p) { return JSON.stringify(PROGRESSION_FIELDS.map((f) => [f, p[f]])); }
+function signProgression(p, key) { return hmac(progressionCanonical(p), key); }
+function progressionHash(p) { return sha256Hex(progressionCanonical(p)); }
+
+function genesisState({ authorizationId, projectId, workflowIdentityHash, personaOrder }, deps = {}) {
+  const now = (deps.now ? deps.now() : new Date()).toISOString();
+  return {
+    version: PROGRESSION_VERSION, authorizationId, projectId, workflowIdentityHash, personaOrder,
+    revision: 0, previousStateHash: GENESIS_HASH, status: "eligible", completed: [],
+    attempt: null, lastOutcome: null, updatedAt: now,
+  };
 }
 
-function signProgression(payload, key) {
-  return hmac(progressionCanonical(payload), key);
+function validateStatePayload(p, expected) {
+  assertExactShape(p, [...PROGRESSION_FIELDS, "signature"], "progression");
+  if (p.version !== PROGRESSION_VERSION) throw new Error("Progression version unsupported.");
+  if (!isCanonicalAuthId(p.authorizationId)) throw new Error("Progression authorizationId not canonical.");
+  if (typeof p.projectId !== "string") throw new Error("Progression projectId invalid.");
+  if (!isSha256(p.workflowIdentityHash)) throw new Error("Progression workflowIdentityHash invalid.");
+  if (!Array.isArray(p.personaOrder)) throw new Error("Progression personaOrder invalid.");
+  if (!isBoundedInt(p.revision, 0, 1e9)) throw new Error("Progression revision out of bounds.");
+  if (!isSha256(p.previousStateHash)) throw new Error("Progression previousStateHash invalid.");
+  if (!STATES.includes(p.status)) throw new Error("Progression status invalid.");
+  if (!Array.isArray(p.completed)) throw new Error("Progression completed invalid.");
+  if (!isUtcInstant(p.updatedAt)) throw new Error("Progression updatedAt is not a valid UTC instant.");
+  if (p.attempt !== null) {
+    assertExactShape(p.attempt, ATTEMPT_FIELDS, "progression.attempt");
+    if (!isBoundedString(p.attempt.attemptId, 128) || !["forward", "rollback"].includes(p.attempt.mode) ||
+        !isBoundedString(p.attempt.targetPersona, 128) || !isUtcInstant(p.attempt.claimedAt) || !isUtcInstant(p.attempt.leaseExpiresAt)) {
+      throw new Error("Progression.attempt has invalid fields.");
+    }
+  }
+  if (p.lastOutcome !== null) {
+    assertExactShape(p.lastOutcome, OUTCOME_FIELDS, "progression.lastOutcome");
+  }
+  // Binding.
+  if (p.authorizationId !== expected.authorizationId) throw new Error("Progression bound to a different authorization (conflicting).");
+  if (p.projectId !== expected.projectId) throw new Error("Progression bound to a different project (conflicting).");
+  if (p.workflowIdentityHash !== expected.workflowIdentityHash) throw new Error("Progression bound to a different (stale) workflow identity.");
+  if (p.personaOrder.length !== expected.personaOrder.length || p.personaOrder.some((x, i) => x !== expected.personaOrder[i])) {
+    throw new Error("Progression persona order does not match the governed sequence.");
+  }
+  p.completed.forEach((id, i) => { if (id !== expected.personaOrder[i]) throw new Error("Progression completed list is not a valid in-order prefix."); });
 }
 
-// The progression's identity hash -- break-glass binds to this exact value, so
-// any progression change (advance/rollback/suspend) invalidates a confirmation.
-function progressionHash(payload) {
-  return sha256Hex(progressionCanonical(payload));
-}
-
-function writeProgression(file, payload, key, deps = {}) {
-  const writeFileSync = deps.writeFileSync || fs.writeFileSync;
-  const artifact = { ...payload, signature: signProgression(payload, key) };
-  writeFileSync(file, JSON.stringify(artifact), { mode: 0o600 });
-  return file;
-}
-
-function readAndVerifyProgression(file, key, expected, deps = {}) {
+function readState(file, key, expected, deps = {}) {
   const readFileSync = deps.readFileSync || fs.readFileSync;
   let artifact;
-  try {
-    artifact = JSON.parse(readFileSync(file, "utf8"));
-  } catch (err) {
-    throw new Error(`Progression record is missing or malformed: ${err.message}`);
-  }
-  const allowed = new Set([...PROGRESSION_FIELDS, "signature"]);
-  if (
-    !artifact || typeof artifact !== "object" || Array.isArray(artifact) ||
-    Object.keys(artifact).some((k) => !allowed.has(k)) ||
-    PROGRESSION_FIELDS.some((f) => !(f in artifact)) ||
-    artifact.version !== PROGRESSION_VERSION ||
-    typeof artifact.signature !== "string" ||
-    !Array.isArray(artifact.completed) ||
-    typeof artifact.suspended !== "boolean"
-  ) {
-    throw new Error("Progression record has an invalid or malformed schema.");
-  }
+  try { artifact = JSON.parse(readFileSync(file, "utf8")); }
+  catch (err) { throw new Error(`Progression state missing/malformed: ${err.message}`); }
+  if (!artifact || typeof artifact !== "object" || typeof artifact.signature !== "string") throw new Error("Progression state malformed.");
   const { signature, ...payload } = artifact;
-  if (!timingSafeHexEqual(signature, signProgression(payload, key))) {
-    throw new Error("Progression record failed integrity verification (tampered or wrong key).");
-  }
-  // Conflicting binding: must match this authorization / project / workflow / order.
-  if (payload.authorizationId !== expected.authorizationId) {
-    throw new Error("Progression record is bound to a different authorization (conflicting state).");
-  }
-  if (payload.projectId !== expected.projectId) {
-    throw new Error("Progression record is bound to a different project (conflicting state).");
-  }
-  if (payload.workflowIdentityHash !== expected.workflowIdentityHash) {
-    throw new Error("Progression record is bound to a different (stale) workflow identity.");
-  }
-  if (
-    payload.personaOrder.length !== expected.personaOrder.length ||
-    payload.personaOrder.some((p, i) => p !== expected.personaOrder[i])
-  ) {
-    throw new Error("Progression record persona order does not match the governed sequence.");
-  }
-  // Completed must be a valid, in-order, duplicate-free prefix of the sequence.
-  payload.completed.forEach((id, i) => {
-    if (id !== expected.personaOrder[i]) {
-      throw new Error("Progression record completed list is not a valid in-order prefix (reordered/forged).");
-    }
-  });
+  validateStatePayload({ ...payload, signature }, expected); // shape incl. signature
+  if (!timingSafeHexEqual(signature, signProgression(payload, key))) throw new Error("Progression state failed integrity verification (tampered/wrong key).");
   return payload;
 }
 
-function nextEligiblePersona(progression, personaOrder) {
-  if (progression.suspended) return null;
-  if (progression.completed.length >= personaOrder.length) return null;
-  return { employeeId: personaOrder[progression.completed.length], position: progression.completed.length + 1 };
+// Anchor: signed high-water mark -> detects restoration of an older signed state.
+const ANCHOR_FIELDS = Object.freeze(["version", "authorizationId", "highWaterRevision", "stateHash", "updatedAt"]);
+function anchorPath(stateFile) { return `${stateFile}.anchor`; }
+function anchorCanonical(a) { return JSON.stringify(ANCHOR_FIELDS.map((f) => [f, a[f]])); }
+function signAnchor(a, key) { return hmac(anchorCanonical(a), key); }
+function writeAnchor(stateFile, { authorizationId, highWaterRevision, stateHash }, key, deps = {}) {
+  const now = (deps.now ? deps.now() : new Date()).toISOString();
+  const payload = { version: ANCHOR_VERSION, authorizationId, highWaterRevision, stateHash, updatedAt: now };
+  atomicWrite(anchorPath(stateFile), JSON.stringify({ ...payload, signature: signAnchor(payload, key) }), deps);
+}
+function readAnchor(stateFile, key, deps = {}) {
+  const readFileSync = deps.readFileSync || fs.readFileSync;
+  const p = anchorPath(stateFile);
+  if (!fs.existsSync(p)) return null;
+  let art;
+  try { art = JSON.parse(readFileSync(p, "utf8")); } catch (err) { throw new Error(`Anchor malformed: ${err.message}`); }
+  assertExactShape(art, [...ANCHOR_FIELDS, "signature"], "anchor");
+  const { signature, ...payload } = art;
+  if (!isBoundedInt(payload.highWaterRevision, 0, 1e9) || !isSha256(payload.stateHash) || !isUtcInstant(payload.updatedAt)) {
+    throw new Error("Anchor has invalid fields.");
+  }
+  if (!timingSafeHexEqual(signature, signAnchor(payload, key))) throw new Error("Anchor failed integrity verification.");
+  return payload;
+}
+// Fresh state must be at the anchor's high-water revision + hash. A restored older
+// state (lower revision / different hash) fails closed.
+function verifyStateFreshness(stateFile, state, key, deps = {}) {
+  const anchor = readAnchor(stateFile, key, deps);
+  if (!anchor) {
+    if (state.revision !== 0) throw new Error("Missing anchor for a non-genesis progression state (possible replay).");
+    return;
+  }
+  if (anchor.authorizationId !== state.authorizationId) throw new Error("Anchor bound to a different authorization.");
+  if (state.revision !== anchor.highWaterRevision || progressionHash(state) !== anchor.stateHash) {
+    throw new Error("Progression state is stale/replayed: it does not match the high-water anchor. Fail closed.");
+  }
 }
 
-// Fail closed on skipped / repeated / reordered / suspended / already-complete.
-// The progression is the AUTHORITY: it supplies the next eligible persona. If the
-// operator additionally supplies --employeeId / --position, they must EXACTLY
-// match the next eligible one (they can never select a different or later persona
-// -- that is what makes --position non-bypassing).
-function assertPersonaIsNextEligible(progression, personaOrder, employeeId, position) {
-  if (progression.suspended) {
-    throw new Error("Progression is SUSPENDED (e.g. after a rollback); no persona may proceed until it is re-established.");
-  }
-  const next = nextEligiblePersona(progression, personaOrder);
-  if (!next) throw new Error("Progression is already complete; no further persona may proceed.");
-  if (employeeId !== undefined && progression.completed.includes(employeeId)) {
-    throw new Error(`Persona "${employeeId}" is already complete -- no repeat (progression enforced).`);
-  }
-  if (
-    (employeeId !== undefined && employeeId !== next.employeeId) ||
-    (position !== undefined && position !== next.position)
-  ) {
-    throw new Error(
-      `Only the exact next persona may proceed: expected ${next.employeeId} (position ${next.position}), ` +
-        `requested ${employeeId} (position ${position}). Skipped/reordered execution is refused.`,
-    );
-  }
-  // Position 5 requires positions 1-4 durably complete.
-  if (next.position === BREAKGLASS_POSITION && progression.completed.length !== BREAKGLASS_POSITION - 1) {
-    throw new Error("Positions 1-4 must be durably complete before position 5.");
-  }
-  return next;
+// Lock: exclusive O_EXCL claim with a bounded lease.
+const LOCK_FIELDS = Object.freeze(["version", "authorizationId", "attemptId", "mode", "targetPersona", "revision", "claimedAt", "leaseExpiresAt"]);
+function lockPath(stateFile) { return `${stateFile}.lock`; }
+function readLock(stateFile, deps = {}) {
+  const readFileSync = deps.readFileSync || fs.readFileSync;
+  const p = lockPath(stateFile);
+  if (!fs.existsSync(p)) return null;
+  const art = JSON.parse(readFileSync(p, "utf8"));
+  assertExactShape(art, LOCK_FIELDS, "lock");
+  return art;
 }
+function leaseExpired(lock, now) { return Date.parse(lock.leaseExpiresAt) <= now.getTime(); }
 
-function advanceProgression(progression, employeeId, deps = {}) {
+// Acquire an exclusive claim. Returns the lock. Concurrent unexpired lock -> refuse.
+// An expired lock is an explicit STALE takeover: it records the prior attempt as
+// uncertain (evidence preserved) and BLOCKS via recovery_required rather than
+// silently proceeding.
+function acquireClaim(stateFile, { authorizationId, attemptId, mode, targetPersona, revision, leaseSeconds }, deps = {}) {
+  const _fs = deps.fs || fs;
   const now = deps.now ? deps.now() : new Date();
-  return { ...progression, completed: [...progression.completed, employeeId], suspended: false, updatedAt: now.toISOString() };
+  const p = lockPath(stateFile);
+  const lock = {
+    version: LOCK_VERSION, authorizationId, attemptId, mode, targetPersona, revision,
+    claimedAt: now.toISOString(), leaseExpiresAt: new Date(now.getTime() + leaseSeconds * 1000).toISOString(),
+  };
+  try {
+    const fd = _fs.openSync(p, "wx", 0o600); // O_EXCL: fails if a claim is held
+    try { _fs.writeSync(fd, JSON.stringify(lock)); _fs.fsyncSync(fd); } finally { _fs.closeSync(fd); }
+    return { lock, tookOver: null };
+  } catch (err) {
+    if (err.code !== "EEXIST") throw err;
+    const existing = readLock(stateFile, deps);
+    if (!leaseExpired(existing, now)) {
+      throw new Error("A concurrent claim is held (unexpired lease); refusing to run two workers on the same identity.");
+    }
+    // Explicit stale takeover -- caller records prior-attempt uncertainty + recovery_required.
+    return { lock: null, tookOver: existing };
+  }
+}
+function releaseClaim(stateFile, attemptId, deps = {}) {
+  const _fs = deps.fs || fs;
+  const existing = readLock(stateFile, deps);
+  if (existing && existing.attemptId !== attemptId) {
+    throw new Error("Refusing to release a claim owned by a different attempt (stale worker).");
+  }
+  try { _fs.unlinkSync(lockPath(stateFile)); } catch { /* already gone */ }
+}
+function assertOwnsClaim(stateFile, attemptId, deps = {}) {
+  const existing = readLock(stateFile, deps);
+  if (!existing || existing.attemptId !== attemptId) {
+    throw new Error("This attempt no longer owns the claim (taken over / released); refusing to record state.");
+  }
 }
 
-// A successful rollback REVERSES the persona and SUSPENDS progression, blocking
-// later personas until it is governed-reestablished.
-function suspendProgressionAfterRollback(progression, employeeId, deps = {}) {
-  const now = deps.now ? deps.now() : new Date();
-  const completed = progression.completed.filter((id) => id !== employeeId);
-  return { ...progression, completed, suspended: true, updatedAt: now.toISOString() };
+function nextEligiblePersona(state, personaOrder) {
+  if (state.status !== "eligible") return null;
+  if (state.completed.length >= personaOrder.length) return null;
+  return { employeeId: personaOrder[state.completed.length], position: state.completed.length + 1 };
+}
+
+// Build a signed successor state (revision+1, chained) and return {payload, signed}.
+function nextState(prev, changes, key, deps = {}) {
+  const now = (deps.now ? deps.now() : new Date()).toISOString();
+  const payload = {
+    ...prev, ...changes,
+    revision: prev.revision + 1,
+    previousStateHash: progressionHash(prev),
+    updatedAt: now,
+  };
+  return { payload, signed: JSON.stringify({ ...payload, signature: signProgression(payload, key) }) };
+}
+function commitState(stateFile, prev, changes, key, deps = {}) {
+  const { payload, signed } = nextState(prev, changes, key, deps);
+  atomicWrite(stateFile, signed, deps);
+  writeAnchor(stateFile, { authorizationId: payload.authorizationId, highWaterRevision: payload.revision, stateHash: progressionHash(payload) }, key, deps);
+  return payload;
 }
 
 // ---------------------------------------------------------------------------
-// Break-glass confirmation (position 5 only)
+// Break-glass confirmation (position 5) -- strict + temporal (C4)
 // ---------------------------------------------------------------------------
 
 const BREAKGLASS_FIELDS = Object.freeze([
-  "version", "authorizationId", "progressionHash", "position", "confirmer",
-  "createdAt", "validityWindowSeconds", "sanitizedResult",
+  "version", "authorizationId", "progressionHash", "position", "confirmer", "createdAt", "validityWindowSeconds", "sanitizedResult",
 ]);
-
-function breakGlassCanonical(p) {
-  return JSON.stringify(BREAKGLASS_FIELDS.map((f) => [f, p[f]]));
-}
-
-function signBreakGlass(payload, key) {
-  return hmac(breakGlassCanonical(payload), key);
-}
-
-function readAndVerifyBreakGlass(file, key, { authorizationId, currentProgressionHash, now }, deps = {}) {
+function breakGlassCanonical(p) { return JSON.stringify(BREAKGLASS_FIELDS.map((f) => [f, p[f]])); }
+function signBreakGlass(p, key) { return hmac(breakGlassCanonical(p), key); }
+function readAndVerifyBreakGlass(file, key, { authorizationId, currentProgressionHash, requiredConfirmer, contractWindowSeconds, now }, deps = {}) {
   const readFileSync = deps.readFileSync || fs.readFileSync;
-  let artifact;
-  try {
-    artifact = JSON.parse(readFileSync(file, "utf8"));
-  } catch (err) {
-    throw new Error(`Break-glass confirmation is missing or malformed: ${err.message}`);
+  let art;
+  try { art = JSON.parse(readFileSync(file, "utf8")); } catch (err) { throw new Error(`Break-glass confirmation missing/malformed: ${err.message}`); }
+  assertExactShape(art, [...BREAKGLASS_FIELDS, "signature"], "break-glass");
+  const { signature, ...p } = art;
+  if (p.version !== BREAKGLASS_VERSION) throw new Error("Break-glass version unsupported.");
+  if (!timingSafeHexEqual(signature, signBreakGlass(p, key))) throw new Error("Break-glass confirmation failed integrity verification.");
+  if (p.position !== BREAKGLASS_POSITION) throw new Error("Break-glass confirmation not bound to position 5.");
+  if (!isCanonicalAuthId(p.authorizationId) || p.authorizationId !== authorizationId) throw new Error("Break-glass bound to a different authorization.");
+  if (!isSha256(p.progressionHash) || p.progressionHash !== currentProgressionHash) {
+    throw new Error("Break-glass not bound to the current progression state (created too early, reused after a change, or mismatched).");
   }
-  const allowed = new Set([...BREAKGLASS_FIELDS, "signature"]);
-  if (
-    !artifact || typeof artifact !== "object" || Array.isArray(artifact) ||
-    Object.keys(artifact).some((k) => !allowed.has(k)) ||
-    BREAKGLASS_FIELDS.some((f) => !(f in artifact)) ||
-    artifact.version !== BREAKGLASS_VERSION ||
-    typeof artifact.signature !== "string"
-  ) {
-    throw new Error("Break-glass confirmation has an invalid or malformed schema.");
+  if (!isBoundedString(p.confirmer, 128) || p.confirmer !== requiredConfirmer) throw new Error("Break-glass confirmer does not match the repository-governed contract.");
+  if (!isUtcInstant(p.createdAt)) throw new Error("Break-glass createdAt is not a valid UTC instant.");
+  if (!isBoundedInt(p.validityWindowSeconds, 1, MAX_WINDOW_SEC) || p.validityWindowSeconds !== contractWindowSeconds) {
+    throw new Error("Break-glass validityWindowSeconds does not match the contract / is out of bounds.");
   }
-  const { signature, ...payload } = artifact;
-  if (!timingSafeHexEqual(signature, signBreakGlass(payload, key))) {
-    throw new Error("Break-glass confirmation failed integrity verification (tampered or wrong key).");
-  }
-  if (payload.position !== BREAKGLASS_POSITION) {
-    throw new Error("Break-glass confirmation is not bound to position 5.");
-  }
-  if (payload.authorizationId !== authorizationId) {
-    throw new Error("Break-glass confirmation is bound to a different authorization.");
-  }
-  // Bound to the EXACT progression state (1-4 complete). Any change -- including a
-  // rollback, or creation before 1-4 completed -- yields a different hash => reject.
-  // This also blocks reuse after a progression change.
-  if (payload.progressionHash !== currentProgressionHash) {
-    throw new Error(
-      "Break-glass confirmation is not bound to the current progression state " +
-        "(created too early, reused after a change, or mismatched).",
-    );
-  }
-  if (typeof payload.confirmer !== "string" || !payload.confirmer) {
-    throw new Error("Break-glass confirmation is missing the named confirmer/executor.");
-  }
-  const createdMs = Date.parse(payload.createdAt);
-  if (!Number.isFinite(createdMs)) throw new Error("Break-glass confirmation has an invalid createdAt.");
-  const windowSec = payload.validityWindowSeconds;
-  if (!Number.isFinite(windowSec) || windowSec <= 0) {
-    throw new Error("Break-glass confirmation is missing a positive validityWindowSeconds.");
-  }
-  const nowMs = (now || new Date()).getTime();
-  if (nowMs < createdMs) throw new Error("Break-glass confirmation createdAt is in the future.");
-  if (nowMs - createdMs > windowSec * 1000) {
-    throw new Error("Break-glass confirmation is EXPIRED (outside its validity window).");
-  }
-  const r = payload.sanitizedResult;
-  if (!r || r.recoverable !== true || r.loginVerified !== true) {
-    throw new Error("Break-glass confirmation does not sanitize-attest recoverable + login-verified.");
-  }
-  return payload;
+  const created = Date.parse(p.createdAt); const nowMs = (now || new Date()).getTime();
+  if (nowMs < created) throw new Error("Break-glass createdAt is in the future.");
+  if (nowMs - created > p.validityWindowSeconds * 1000) throw new Error("Break-glass confirmation is EXPIRED.");
+  assertExactShape(p.sanitizedResult, ["recoverable", "loginVerified"], "break-glass sanitizedResult");
+  if (p.sanitizedResult.recoverable !== true || p.sanitizedResult.loginVerified !== true) throw new Error("Break-glass does not attest recoverable + login-verified.");
+  return p;
 }
 
 // ---------------------------------------------------------------------------
-// Master check -- called by the workflow BEFORE any SDK write when
-// --executeProduction is requested. Fails closed on anything invalid.
+// Master authorization check + claim (C1-C5). Runs BEFORE any SDK write.
+// Returns a context; the workflow drives the two-phase lifecycle with the
+// recordCompletion / recordUncertain helpers below.
 // ---------------------------------------------------------------------------
 
-// mode: "forward" | "rollback". Returns a context the caller uses to advance/
-// suspend progression after a confirmed outcome (never before).
 function assertProductionAuthorization(args, deps = {}) {
   const now = deps.now || (() => new Date());
   if (!args.projectId) throw new Error("--projectId is required.");
-
-  // Protected inputs required (never committed).
-  if (!args.mappingFile) throw new Error("--mappingFile <path> (protected, out-of-band) is required.");
-  if (!args.authorizationManifest) throw new Error("--authorizationManifest <path> is required.");
-  if (!args.progressionFile) throw new Error("--progressionFile <path> is required.");
+  if (!args.mappingFile) throw new Error("--mappingFile (protected, out-of-band) is required.");
+  if (!args.progressionFile) throw new Error("--progressionFile is required.");
+  if (!isFullSha(args.authorizedCommit || "")) throw new Error("--authorizedCommit (canonical full 40-hex SHA) is required for a production write.");
+  if (!isBoundedString(args.executionModeConfirmation || "", 128)) throw new Error("--executionModeConfirmation is required.");
+  if (!isBoundedString(args.executor || "", 128)) throw new Error("--executor is required.");
   const stateKey = loadStateKey(args.stateKeyFile, deps);
 
   const repoRoot = resolveRepoRoot(deps);
+  assertCleanGovernedTree(repoRoot, deps);
   const derivedHashes = deriveGovernedFileHashes(repoRoot, deps);
   const idHash = workflowIdentityHash(derivedHashes);
   const repoIdentity = deriveRepositoryIdentity(repoRoot, deps);
 
-  const manifest = verifyAuthorizationManifest(loadAuthorizationManifest(args.authorizationManifest, deps), {
-    projectId: args.projectId,
-    personaOrder: deps.personaOrder,
-    derivedHashes,
-    repoIdentity,
-    suppliedCommit: args.authorizedCommit,
+  const { artifact } = loadGovernedAuthorization({ repoRoot, authorizedCommit: args.authorizedCommit }, deps);
+  const authorization = verifyGovernedAuthorization(artifact, {
+    projectId: args.projectId, personaOrder: deps.personaOrder, derivedHashes, repoIdentity,
+    authorizedCommit: args.authorizedCommit, executionModeConfirmation: args.executionModeConfirmation, executor: args.executor,
   });
 
-  const progression = readAndVerifyProgression(args.progressionFile, stateKey, {
-    authorizationId: manifest.authorizationId,
-    projectId: args.projectId,
-    workflowIdentityHash: idHash,
-    personaOrder: deps.personaOrder,
-  }, deps);
+  const expected = { authorizationId: authorization.authorizationId, projectId: args.projectId, workflowIdentityHash: idHash, personaOrder: deps.personaOrder };
+  const state = readState(args.progressionFile, stateKey, expected, deps);
+  verifyStateFreshness(args.progressionFile, state, stateKey, deps);
+
+  // Blocking states never proceed (crash-safe: never auto-revert to eligible).
+  if (["claimed", "uncertain", "recovery_required"].includes(state.status)) {
+    throw new Error(`Progression is in a blocking state ("${state.status}") -- governed reconciliation required before any further production step.`);
+  }
+  if (state.status === "suspended") throw new Error("Progression is SUSPENDED (post-rollback); later personas are blocked.");
 
   const mode = args.rollback ? "rollback" : "forward";
+  const leaseSeconds = isBoundedInt(deps.leaseSeconds, 1, MAX_LEASE_SEC) ? deps.leaseSeconds : 300;
 
   if (mode === "forward") {
-    const next = assertPersonaIsNextEligible(progression, deps.personaOrder, args.employeeId, args.position);
-    if (!args.capturedStateOut) throw new Error("--capturedStateOut <path> is required for a forward production write.");
+    const next = nextEligiblePersona(state, deps.personaOrder);
+    if (!next) throw new Error("No eligible next persona (progression complete or not eligible).");
+    if (args.employeeId !== undefined && (args.employeeId !== next.employeeId || (args.position !== undefined && args.position !== next.position))) {
+      throw new Error(`Only the exact next persona may proceed: expected ${next.employeeId} (position ${next.position}).`);
+    }
+    if (next.position === BREAKGLASS_POSITION && state.completed.length !== BREAKGLASS_POSITION - 1) {
+      throw new Error("Positions 1-4 must be durably complete before position 5.");
+    }
+    if (!args.capturedStateOut) throw new Error("--capturedStateOut is required for a forward production write.");
     if (next.position === BREAKGLASS_POSITION) {
-      if (!args.breakGlassConfirmationFile) {
-        throw new Error("Position 5 requires --breakGlassConfirmationFile (created after positions 1-4, time-valid).");
-      }
+      if (!args.breakGlassConfirmationFile) throw new Error("Position 5 requires --breakGlassConfirmationFile.");
       readAndVerifyBreakGlass(args.breakGlassConfirmationFile, stateKey, {
-        authorizationId: manifest.authorizationId,
-        currentProgressionHash: progressionHash(progression),
-        now: now(),
+        authorizationId: authorization.authorizationId, currentProgressionHash: progressionHash(state),
+        requiredConfirmer: authorization.breakGlassContract.requiredConfirmer,
+        contractWindowSeconds: authorization.breakGlassContract.validityWindowSeconds, now: now(),
       }, deps);
     }
-    return { mode, manifest, progression, workflowIdentityHash: idHash, stateKey, effective: next };
+    return acquireAndClaim({ args, state, stateKey, authorization, idHash, mode, targetPersona: next.employeeId, position: next.position, leaseSeconds, deps });
   }
 
-  // rollback: the persona being rolled back must be the most recently completed.
+  // rollback of the most recently completed persona
   if (!args.capturedStateFile) throw new Error("--rollback requires --capturedStateFile.");
-  const last = progression.completed[progression.completed.length - 1];
-  if (!last || (args.employeeId && args.employeeId !== last)) {
-    throw new Error("Production rollback may only target the most recently completed persona.");
+  const last = state.completed[state.completed.length - 1];
+  if (!last) throw new Error("Nothing to roll back (no completed persona).");
+  if (args.employeeId !== undefined && args.employeeId !== last) throw new Error("Production rollback may only target the most recently completed persona.");
+  return acquireAndClaim({ args, state, stateKey, authorization, idHash, mode, targetPersona: last, position: state.completed.length, leaseSeconds, deps });
+}
+
+// Acquire the exclusive claim and persist the CLAIMED (pending) state BEFORE the
+// Auth call (C3). On a stale takeover, record recovery_required and fail closed.
+function acquireAndClaim({ args, state, stateKey, authorization, idHash, mode, targetPersona, position, leaseSeconds, deps }) {
+  const attemptId = `att-${Date.now()}-${crypto.randomBytes(6).toString("hex")}`;
+  const { lock, tookOver } = acquireClaim(args.progressionFile, {
+    authorizationId: authorization.authorizationId, attemptId, mode, targetPersona, revision: state.revision, leaseSeconds,
+  }, deps);
+  if (tookOver) {
+    // Explicit stale takeover: preserve prior-attempt evidence, block via recovery_required.
+    commitState(args.progressionFile, state, {
+      status: "recovery_required",
+      lastOutcome: { attemptId: tookOver.attemptId, mode: tookOver.mode, targetPersona: tookOver.targetPersona, result: "uncertain-stale-takeover", at: (deps.now ? deps.now() : new Date()).toISOString() },
+    }, stateKey, deps);
+    throw new Error("Stale claim taken over: prior attempt recorded uncertain; progression is now recovery_required (governed reconciliation needed).");
   }
-  return { mode, manifest, progression, workflowIdentityHash: idHash, stateKey, effective: { employeeId: last } };
+  // Persist CLAIMED (pending) before any Auth mutation.
+  const claimedState = commitState(args.progressionFile, state, {
+    status: "claimed",
+    attempt: { attemptId, mode, targetPersona, claimedAt: lock.claimedAt, leaseExpiresAt: lock.leaseExpiresAt },
+  }, stateKey, deps);
+  return {
+    mode, authorization, workflowIdentityHash: idHash, stateKey, attemptId,
+    effective: { employeeId: targetPersona, position }, claimedState,
+    progressionFile: args.progressionFile,
+    // Callbacks the workflow invokes after the Auth side effect (two-phase, C3):
+    recordCompletion(deps2 = {}) {
+      const d = { ...deps, ...deps2 };
+      assertOwnsClaim(args.progressionFile, attemptId, d);
+      const cur = readState(args.progressionFile, stateKey, { authorizationId: authorization.authorizationId, projectId: args.projectId, workflowIdentityHash: idHash, personaOrder: d.personaOrder || deps.personaOrder }, d);
+      const changes = mode === "forward"
+        ? { status: "eligible", completed: [...cur.completed, targetPersona], attempt: null, lastOutcome: { attemptId, mode, targetPersona, result: "completed", at: (d.now ? d.now() : new Date()).toISOString() } }
+        : { status: "suspended", completed: cur.completed.filter((x) => x !== targetPersona), attempt: null, lastOutcome: { attemptId, mode, targetPersona, result: "rolled-back-suspended", at: (d.now ? d.now() : new Date()).toISOString() } };
+      const done = commitState(args.progressionFile, cur, changes, stateKey, d);
+      releaseClaim(args.progressionFile, attemptId, d);
+      return done;
+    },
+    recordUncertain(result, deps2 = {}) {
+      const d = { ...deps, ...deps2 };
+      // Keep the claim (evidence); never revert to eligible. Block via uncertain/recovery_required.
+      const cur = readState(args.progressionFile, stateKey, { authorizationId: authorization.authorizationId, projectId: args.projectId, workflowIdentityHash: idHash, personaOrder: d.personaOrder || deps.personaOrder }, d);
+      return commitState(args.progressionFile, cur, {
+        status: "uncertain",
+        lastOutcome: { attemptId, mode, targetPersona, result: result || "uncertain", at: (d.now ? d.now() : new Date()).toISOString() },
+      }, stateKey, d);
+    },
+  };
 }
 
 module.exports = {
-  PRODUCTION_PROJECT_ID,
-  GOVERNED_FILES,
-  AUTH_MANIFEST_VERSION,
-  PROGRESSION_VERSION,
-  BREAKGLASS_VERSION,
-  BREAKGLASS_POSITION,
-  sha256Hex,
-  resolveRepoRoot,
-  deriveGovernedFileHashes,
-  workflowIdentityHash,
-  verifyGovernedFileHashes,
-  deriveRepositoryIdentity,
-  verifyRepositoryIdentity,
-  loadStateKey,
-  loadAuthorizationManifest,
-  verifyAuthorizationManifest,
-  progressionCanonical,
-  signProgression,
-  progressionHash,
-  writeProgression,
-  readAndVerifyProgression,
+  PRODUCTION_PROJECT_ID, GOVERNED_FILES, AUTH_ARTIFACT_PATH, AUTH_SCHEMA,
+  PROGRESSION_VERSION, ANCHOR_VERSION, LOCK_VERSION, BREAKGLASS_VERSION, BREAKGLASS_POSITION, STATES, GENESIS_HASH,
+  isFullSha, isSha256, isCanonicalAuthId, isUtcInstant, isBoundedInt, isBoundedString, assertExactShape, sha256Hex,
+  resolveRepoRoot, assertCleanGovernedTree, deriveGovernedFileHashes, workflowIdentityHash, gitFileBytesAtCommit,
+  deriveRepositoryIdentity, verifyRepositoryIdentity,
+  loadGovernedAuthorization, verifyGovernedAuthorization,
+  loadStateKey, atomicWrite,
+  progressionCanonical, signProgression, progressionHash, genesisState, readState, commitState, nextState,
+  anchorPath, signAnchor, writeAnchor, readAnchor, verifyStateFreshness,
+  lockPath, readLock, acquireClaim, releaseClaim, assertOwnsClaim, leaseExpired,
   nextEligiblePersona,
-  assertPersonaIsNextEligible,
-  advanceProgression,
-  suspendProgressionAfterRollback,
-  signBreakGlass,
-  readAndVerifyBreakGlass,
+  signBreakGlass, readAndVerifyBreakGlass,
   assertProductionAuthorization,
 };
