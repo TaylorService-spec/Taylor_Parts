@@ -1,20 +1,20 @@
 # Customer Session State
 
 ## Baseline
-- Main commit: `f97edf19a0027d8e0cc1ec591cbfc099e7a495c0`
-- Last reconciled: 2026-07-26
+- Main commit: `081df750d89d9044f0e09bb0241796b8171ed33f`
+- Last reconciled: 2026-07-27
 - Relevant PRs: none assigned conclusively
 - Relevant issues: link when an active Customer assignment is authorized
 
 ## Current Objective
-No active Customer-domain implementation assignment is recorded here.
+Authentication Modernization (owned here): AUTH-PR-3 admin-reset draft PR #444 is reviewed and pending merge under standing repository-only merge authority.
 
 ## Status
-Needs reconciliation.
+Active.
 
 ## Delta Since Last Handoff
-- The repository now has a per-workstream state proposal.
-- Authentication PR #444 is active, but its ownership between Customer and Platform has not been formally reconciled.
+- Per the Owner operating model, the Customer session owns Authentication architecture and repository implementation (and also maintains Platform and Coordination tracking; there is no independent Coordination session).
+- Authentication PR #444 (AUTH-PR-3) is a Customer-owned assignment; ownership is now reconciled — the prior Customer-vs-Platform ownership gate is closed.
 
 ## Decisions
 - [`customer-domain-foundation.md`](../architecture/customer-domain-foundation.md)
@@ -23,7 +23,7 @@ Needs reconciliation.
 ## Dependencies
 - Preserve `customerId` and `locationId` compatibility with Work Orders.
 - Equipment remains outside this workstream unless repository governance explicitly reassigns it.
-- Cross-domain authentication and access work requires Coordination ownership reconciliation.
+- Authentication architecture and repository implementation are owned here; Platform involvement is required only for separately-authorized production configuration or deployment.
 
 ## Production Evidence
 
@@ -53,6 +53,6 @@ Reconcile the next authorized Customer-domain assignment against current main an
 - Conflict with another workstream’s active PR.
 
 ## Last Updated
-- Date: 2026-07-26
-- Commit: `f97edf19a0027d8e0cc1ec591cbfc099e7a495c0`
+- Date: 2026-07-27
+- Commit: `081df750d89d9044f0e09bb0241796b8171ed33f`
 - Updated by: designated Customer session

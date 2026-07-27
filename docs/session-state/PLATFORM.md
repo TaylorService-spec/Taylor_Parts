@@ -1,26 +1,25 @@
 # Platform Session State
 
 ## Baseline
-- Main commit: `f97edf19a0027d8e0cc1ec591cbfc099e7a495c0`
-- Last reconciled: 2026-07-26
+- Main commit: `081df750d89d9044f0e09bb0241796b8171ed33f`
+- Last reconciled: 2026-07-27
 - Relevant PRs: #444
 - Relevant issues: #226
 
 ## Current Objective
-Reconcile Platform ownership and independently review AUTH-PR-3 draft PR #444.
+None active. Platform engages only for separately-authorized production configuration or deployment; Authentication architecture and repository implementation are owned by the Customer session.
 
 ## Status
-Active.
+Standby (production configuration / deployment only).
 
 ## Delta Since Last Handoff
-- AUTH-PR-2 is merged.
-- AUTH-PR-3 is implemented in draft PR #444.
+- AUTH-PR-2 is merged; AUTH-PR-3 is implemented in draft PR #444 (Customer-owned) and independently review-passed.
 - No deployment or production activation is established by the draft PR.
-- Session ownership of authentication work between Customer and Platform requires Coordination confirmation.
+- Per the Owner operating model, the Customer session owns Authentication architecture and repository implementation; Platform involvement is required only for separately-authorized production configuration or deployment. The prior ownership-confirmation gate is closed.
 
 ## Decisions
 - [`auth-modernization-architecture.md`](../assessments/auth-modernization-architecture.md)
-- [`ADR-005-enterprise-access-and-administration.md`](../architecture/ADR-005-enterprise-access-and-administration.md)
+- [`ADR-005-enterprise-authorization-migration-strategy.md`](../architecture/ADR-005-enterprise-authorization-migration-strategy.md)
 - [`DECISIONS.md`](../DECISIONS.md)
 
 ## Dependencies
@@ -48,10 +47,9 @@ Active.
 ## Risks
 - Critical: credential-reset behavior causing lockout, secret disclosure, duplicate effects, or incomplete auditing.
 - High: deploying exported Functions without a separate production gate.
-- Medium: cross-session ownership ambiguity.
 
 ## Next Action
-Complete independent repository review of exact PR #444 head and return findings to its implementation session.
+None active. Engage only when a separately-authorized production configuration or deployment gate for authentication work is opened.
 
 ## Stop Conditions
 - PR head changes during review.
@@ -60,6 +58,6 @@ Complete independent repository review of exact PR #444 head and return findings
 - Architecture change outside the approved AUTH-PR-1 boundary.
 
 ## Last Updated
-- Date: 2026-07-26
-- Commit: `f97edf19a0027d8e0cc1ec591cbfc099e7a495c0`
+- Date: 2026-07-27
+- Commit: `081df750d89d9044f0e09bb0241796b8171ed33f`
 - Updated by: designated Platform session

@@ -1,23 +1,23 @@
 # Coordination Session State
 
 ## Baseline
-- Main commit: `f97edf19a0027d8e0cc1ec591cbfc099e7a495c0`
-- Last reconciled: 2026-07-26
+- Main commit: `081df750d89d9044f0e09bb0241796b8171ed33f`
+- Last reconciled: 2026-07-27
 - Relevant PRs: #444, #445
 - Relevant issues: #226 and the governing C2 authorization record
 
 ## Current Objective
-Reconcile ownership and authorization for the two active draft PRs without changing either implementation.
+Coordination tracking is maintained by the Customer session (there is no independent Coordination session). Authentication ownership is reconciled; the remaining open item is the C2 (PR #445) authorization record, owned by the Inventory session.
 
 ## Status
-Active.
+Active (maintained by the Customer session).
 
 ## Delta Since Last Handoff
 - PR #443 merged and closed the C1 Hosting evidence gate.
-- PR #444 is the active AUTH-PR-3 draft.
-- PR #445 is the active C2 PartDetail draft.
-- C2’s required separate authorization is not linked by the latest merged C1 record.
-- Authentication work has been handled by a Customer-named session although its architecture is cross-domain Platform work.
+- PR #444 is the AUTH-PR-3 draft (Customer-owned; independently review-passed).
+- PR #445 is the active C2 PartDetail draft (Inventory-owned).
+- C2’s required separate authorization is not linked by the latest merged C1 record — still `Needs reconciliation` (Inventory lane).
+- Ownership RECONCILED per the Owner operating model: the Customer session owns Authentication architecture and repository implementation and maintains Platform and Coordination tracking; there is no independent Coordination session; Platform involvement is required only for separately-authorized production configuration or deployment.
 
 ## Decisions
 - [`AGENTS.md`](../../AGENTS.md)
@@ -27,8 +27,8 @@ Active.
 
 ## Dependencies
 - Inventory must not continue C2 until its separate authorization is verified.
-- Platform review of PR #444 must remain independent of its implementation session.
-- Customer, Inventory, and Platform sessions must not modify each other’s state files.
+- Independent review of Customer-owned PRs (e.g. #444) is provided by the external ChatGPT/Codex repository review, not by a separate Coordination session.
+- The Customer session maintains CUSTOMER, PLATFORM, and COORDINATION tracking; the Inventory session maintains INVENTORY and must not be edited by other sessions.
 
 ## Production Evidence
 
@@ -48,10 +48,9 @@ Active.
 ## Risks
 - Critical: proceeding from a stale or missing gate.
 - High: concurrent sessions changing overlapping files.
-- Medium: treating session naming as domain authority without repository confirmation.
 
 ## Next Action
-Locate the authoritative C2 approval and record the agreed ownership of authentication work before either stream advances to another gate.
+Locate the authoritative C2 (PR #445) authorization record (Inventory lane) before that stream advances to another gate. Authentication ownership is reconciled; no further ownership action is required.
 
 ## Stop Conditions
 - Authorization or ownership cannot be proven from repository or owner record.
@@ -60,6 +59,6 @@ Locate the authoritative C2 approval and record the agreed ownership of authenti
 - Production completion is claimed without linked evidence.
 
 ## Last Updated
-- Date: 2026-07-26
-- Commit: `f97edf19a0027d8e0cc1ec591cbfc099e7a495c0`
+- Date: 2026-07-27
+- Commit: `081df750d89d9044f0e09bb0241796b8171ed33f`
 - Updated by: designated Coordination session

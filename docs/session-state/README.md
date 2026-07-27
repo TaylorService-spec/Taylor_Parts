@@ -13,6 +13,7 @@ This directory extends the delta-only Session Handoff Protocol in
 - Git history is the archive. Do not create timestamped or versioned duplicates.
 - Update a state file only after a material state change.
 - Each session may read every state file but may modify only its assigned workstream file.
+- Ownership allocation (Owner operating model): the **Customer** session owns Authentication architecture and repository implementation and maintains `CUSTOMER.md`, `PLATFORM.md`, and `COORDINATION.md`. There is **no independent Coordination session**. The **Inventory** session maintains `INVENTORY.md`. **Platform** involvement is required only for separately-authorized production configuration or deployment.
 - “Not observed” does not mean “passed.”
 - A closed issue does not prove production completion.
 - Cross-stream conflicts must be recorded and escalated. Never reconcile them silently.
