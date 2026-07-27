@@ -120,7 +120,7 @@ the username exists.**
 Firebase Auth has no native username login and the client SDK's password sign-in needs the
 actual email, so the exchange must move server-side. Two viable designs:
 
-### Option A (recommended) — server-side credential verification + custom token
+### Option A — server-side credential verification (two token exchanges, explicitly modeled)
 
 1. Client sends `{ usernameOrEmail, password }` to a trusted callable
    (`authenticateWithUsername`) over TLS; App Check-eligible.
@@ -130,36 +130,64 @@ actual email, so the exchange must move server-side. Two viable designs:
    `accounts:signInWithPassword` (resolved email + supplied password). The Admin SDK has no
    password-verify API; this is the sanctioned server-side verification. Email and password
    never leave the backend.
-4. On success, Function mints a short-lived **custom token** (`createCustomToken(uid)`) and
-   returns **only** that token; client calls `signInWithCustomToken` for normal ID/refresh
-   tokens. UID, providers, and the email/password credential are unchanged — only the front
-   door differs.
+4. **That verification call itself already returns an ID token + refresh token** (the *first*
+   exchange). Because the Firebase JS client SDK cannot adopt an externally-obtained
+   idToken/refreshToken into its managed auth state, the Function **mints a custom token**
+   (`createCustomToken(localId)`) and returns **only** that; the client calls
+   `signInWithCustomToken` to establish its session (the *second* exchange). This redundancy is
+   intrinsic and is modeled below, not hidden.
 5. On any failure (unknown username, wrong password, disabled, ineligible), Function returns a
    **single identical neutral error** with no field distinguishing the cause.
 
+#### Two-exchange behavior (required modeling — review round 2)
+
+- **Disposal & non-logging of the first tokens:** the `signInWithPassword` response
+  (`idToken`, `refreshToken`) is held only in Function memory, used solely to confirm success
+  and read the returned `localId` (UID); it is **never returned, logged, persisted, or
+  transmitted**, and is discarded when the handler returns.
+- **Session & revocation semantics:** the client's session is established **only** by the
+  second exchange. The discarded first refresh token is never transmitted or stored, so it
+  grants no usable session and lapses at natural expiry. Admin `revokeRefreshTokens(uid)`
+  invalidates **all** refresh tokens issued before its timestamp — covering both — so
+  revocation semantics are unaffected by the two exchanges.
+- **Disabled-user handling:** `signInWithPassword` fails closed for disabled accounts
+  (`USER_DISABLED`); additionally the Function checks `getUser(uid).disabled` server-side
+  before minting a custom token. Disabled → neutral error, no token minted.
+- **Exact UID preservation:** the custom token is minted with the `localId` returned by the
+  verification call; `signInWithCustomToken` yields a session for that **exact** UID. No user
+  is created, no UID changes, providers and the email/password credential are untouched.
+- **Replay behavior (no "single-use" claim):** replay is bounded by TLS + App Check (once
+  enforced) + per-username/IP rate limiting with backoff; the custom token is short-lived
+  (~1 h to exchange) and scoped to the UID. The custom token is **not** asserted to be
+  single-use (Firebase does not enforce that); capture requires breaking TLS.
+- **Quotas, throttling & App Check:** each login consumes Identity Toolkit sign-in quota
+  (per-project) plus the callable's own limiter; document quota headroom and thresholds; the
+  callable is a prime App-Check target (metrics-only first, enforced later, §7).
+- **Emulator / non-production proof before implementation approval:** D-RESOLVER is **not**
+  approved until an Auth-emulator + non-production test demonstrates correct login, neutral
+  failure for unknown user, disabled-user rejection, UID identity across both exchanges, and
+  that no first-exchange token leaks into logs or responses.
+
 - **Password verification:** server-side (Identity Toolkit REST); email never client-visible.
-- **Token issuance:** custom token (≈1 h exchange window), exchanged immediately; no long-lived
-  secret returned.
-- **Replay resistance:** TLS; App Check attestation (once enforced); per-username + per-IP rate
-  limiting with backoff; the returned custom token is single-use for sign-in and short-lived.
-- **Throttling:** authoritative server-side (callable limiter + Identity Toolkit's built-in
-  abuse protection); any client delay is UX only.
-- **App Check posture:** a prime App-Check target; rollout is metrics-only (enforcement OFF)
-  first, enforced later as its own gate (§7). Until enforced, rate-limiting + neutral responses
-  carry the load.
 - **Logging:** never log password, email, or username in plaintext; log only a sanitized
-  outcome (`success`/`failed`) + correlation id. Timing is **normalized** so success and the
-  failure modes are not distinguishable by latency.
+  outcome (`success`/`failed`) + correlation id.
+- **Timing / enumeration (narrowed claim):** this design does **not** claim perfectly
+  normalized or indistinguishable timing. It requires: (a) **identical external responses**
+  (same shape, same neutral error) for known/unknown usernames and wrong-password; (b) a
+  **minimum response duration with bounded random jitter** to blunt gross timing differences;
+  (c) **rate limiting**; and (d) **non-production distribution testing** comparing response-time
+  distributions for known vs unknown usernames before implementation approval. Residual
+  micro-timing signal is accepted and mitigated by rate limiting, not claimed to be zero.
 - **Migration compatibility:** existing users unchanged (email/password credential + UID
   persist); only the sign-in entry point changes. The email-input fallback (Phase 1) may route
-  through the same callable for uniform neutrality, or use the client SDK **with Firebase
-  email-enumeration protection enabled** (below).
-- **Enumeration:** resistant **only because** every failure returns the identical neutral error
-  with normalized timing and no email is ever returned — so the claim is now truthful.
+  through the same callable, or use the client SDK **with Firebase email-enumeration protection
+  enabled** (below).
 
 *Trade-off recorded:* the password transits our Function (TLS-only, memory-only, immediately
-forwarded to Identity Toolkit, never persisted or logged). This is inherent to any
-username→email indirection with server-side verification and is an accepted, documented cost.
+forwarded to Identity Toolkit, never persisted or logged), and the design inherently performs
+two token exchanges (first discarded, second kept). Both are inherent to server-side password
+verification with a client-managed session — accepted, documented costs, subject to the
+emulator proof above.
 
 ### Option B — deterministic alias email
 
@@ -179,17 +207,27 @@ one `invalid-credential` error.
 
 ### Recommendation
 
-**Option A** as primary: it leaves existing identities untouched, gives fully neutral
-server-controlled responses, and reuses the established #226 Functions platform. Option B is
-the alternative, attractive only if the auth-email migration is being done anyway.
-**D-RESOLVER stays OPEN** for Owner + ChatGPT confirmation of Option A with this
-no-email-disclosure exchange.
+Neither option is approved yet. **Option A** leaves existing identities untouched and reuses
+the #226 Functions platform, but carries the intrinsic two-exchange behavior above and must
+pass the emulator / non-production proof before D-RESOLVER can be approved. **Option B**
+(deterministic alias) is a genuine **single** client-side exchange with no custom token and no
+discarded tokens, but requires the all-users Auth-email migration (Lane F / AUTH-PR-4) and a
+synthetic Auth `email` claim.
+
+**Fallback if Option A is not justified cleanly:** retain **Phase-1 email/password
+authentication now** and **defer username/password login** until a separately approved
+authentication-provider design exists (most plausibly Option B executed alongside the Lane F
+email migration, giving a real single exchange). Username *display*, recovery, and admin reset
+do **not** depend on username *login* and can proceed independently.
+
+**D-RESOLVER: OPEN / blocked** pending (1) selection of a single coherent exchange or the
+fully-modeled two-exchange above, and (2) emulator / non-production proof.
 
 **Baseline requirement (both options):** enable Firebase **email-enumeration protection** so
-even the email-input path returns a single neutral credential error (**D-ENUM-PROTECTION**).
-Enabling it is a production Firebase-config change → a hard stop requiring a separate Owner
-gate; documented here, not performed. No public Firestore query over `usernames` exists in
-any design.
+even the email-input path returns a single neutral credential error (**D-ENUM-PROTECTION**) —
+**approved in principle** as a separate production-config gate **after compatibility testing**;
+**no configuration change is authorized now**. No public Firestore query over `usernames`
+exists in any design.
 
 ## 4. Transitional login (phased — Owner decision D-PHASES)
 
@@ -262,43 +300,64 @@ new or parallel model:
 **creates** a link but does **not** send an email, and the link/token is a credential that must
 **never** be returned to, logged for, or displayed to the administrator.
 
-Flow:
+**Two distinct workflows (review round 2)** — "queued" is not proof of delivery, and revoking
+after a mere enqueue can lock a user out if the asynchronous send later fails. So routine reset
+and suspected-compromise are separated, with explicit revocation ordering for each:
+
+**Workflow R — routine reset (delivery-confirmed revocation, no lockout):**
 
 1. Admin selects an eligible user; the **admin-only trusted callable** (new capability in the
    #226 access-Function family) authorizes the actor server-side per §6.1.
-2. Function runs the **final-active-admin** and protected-account guards (§8).
-3. Function **generates** the reset link server-side.
-4. Function **durably enqueues** delivery to the user's **recovery email** via a trusted sender
-   (below) — so "queued" guarantees eventual send with retry.
-5. **Only then** Function **revokes the target's refresh tokens** (`revokeRefreshTokens`) —
-   revoking after delivery is in flight avoids locking out a legitimate user with no way back.
-6. Function writes the audit event via the **existing** `auditEventWriter`
-   (`recordStandaloneAuditEvent`/`stageAuditEvent`) — no new audit system.
-7. User sets their own new password via the emailed link; completion reconciled by a trusted
-   path. **Admin sees status only** — never the password, link, or token.
+2. Function runs the **final-active-admin** and protected-account guards (§8), then writes an
+   **initiation** audit event (before any side effect — see durable audit below).
+3. Function **generates** the reset link server-side and sends it to the user's **recovery
+   email** via the trusted transactional provider (below), obtaining a **delivery result**.
+4. **Revocation is gated on confirmed delivery:** only after the provider **confirms
+   acceptance/delivery** does the Function `revokeRefreshTokens(uid)`. If delivery is not
+   confirmed, **no revocation occurs** (no lockout); a neutral failure is returned and an
+   idempotent retry is offered.
+5. Function writes a **delivery-outcome** audit event and a **revocation-outcome** audit event.
+6. User sets their own new password via the emailed link. **Admin sees status only** — never
+   the password, link, or token.
 
-- **Trusted delivery mechanism (Owner decision D-EMAIL-DELIVERY):** (a) the Firebase
-  **"Trigger Email from Firestore"** extension (Function writes a `mail/{id}` doc; the extension
-  sends via configured SMTP), or (b) a **transactional email API** called from the Function.
-  Both add an external dependency + secrets + domain authentication (SPF/DKIM) with cost →
-  Owner-approved, production-config, deployment-gated (hard stop). Self-service recovery (§5
-  email path) does not need this — `sendPasswordResetEmail` sends on its own.
-- **Neutral admin-visible status:** only `initiated` / `delivery_queued` / `delivered` (if the
-  sender confirms) / `failed` — never the link, token, or full target email (masked). No
-  provider error strings; no signal about email validity beyond a generic failure.
+**Workflow C — suspected compromise (explicitly accepted immediate lockout, with recovery):**
+
+- A separate, explicitly-labeled admin action **revokes sessions immediately**
+  (`revokeRefreshTokens`) *before/independent of* reset delivery — the accepted lockout is the
+  intent. **Recovery controls are mandatory:** final-active-admin protection still applies; the
+  admin can re-issue a reset; break-glass remains available. Each step is separately audited.
+
+This satisfies the required choice: routine = **delivery-confirmed revocation**; compromise =
+**explicitly-accepted immediate-lockout with recovery** — as **separate workflows**, never
+conflated.
+
+- **Durable audit across partial failures (review round 3):** audit is **not** a single final
+  event. The existing `auditEventWriter` (`recordStandaloneAuditEvent`/`stageAuditEvent`, no new
+  system) records **separate append-only events** for: (1) **request initiation** (written
+  before side effects), (2) **delivery outcome**, and (3) **revocation outcome**. An early
+  failure is therefore always recorded even if later steps never run. Common fields:
+  `eventType`, actor uid, target uid, `requestedAt`/`completedAt`, `outcome`,
+  `deliveryOutcome`, `sessionRevocationOutcome`, sanitized failure category, correlation id,
+  environment, function/version. **Never** stores password, temp password, reset link/token,
+  ID/refresh token, raw headers, or full email body.
+- **Trusted delivery mechanism (Owner decision D-EMAIL-DELIVERY):** a **direct transactional
+  email provider** called from the Function is **preferred** — the Firebase "Trigger Email from
+  Firestore" extension is **dispreferred** because it would persist the reset **link/token in a
+  Firestore document**. Subject to Owner approval of cost, secret management, domain
+  authentication (SPF/DKIM), retry, redaction, and **delivery-evidence** (used for the
+  confirmed-delivery revocation gate above). Production-config, deployment-gated (hard stop).
+  Self-service recovery (§5 email path) does not need this — `sendPasswordResetEmail` sends on
+  its own.
+- **Neutral admin-visible status:** only coarse status (`initiated` / `sending` / `delivered` /
+  `failed`) — never the link, token, or full target email (masked). No provider error strings;
+  no signal about email validity beyond a generic failure.
 - **Idempotency:** each request carries an idempotency key (correlation id); a short-lived
   reset-request record dedupes retries (no second email, no double-revoke — same status
   returned). A per-target cooldown rate-limits repeated resets.
-- **Failure handling:** link-generation failure → generic error, **no revocation**, audit
-  `outcome=failed`. Enqueue failure → generic error, **no revocation**, audit failed. Async send
-  failure (after enqueue) → audit `deliveryOutcome=failed`, neutral "could not be delivered"
-  status, **idempotent** retry allowed. No failure path reveals whether the account/email exists.
-- **Audit fields:** `eventType=ADMIN_PASSWORD_RESET_INITIATED`, actor uid, target uid,
-  `requestedAt`, `completedAt`, `outcome`, `sessionRevocationOutcome`, `deliveryOutcome`,
-  sanitized failure category, correlation id, environment, function/version. **Never** stores
-  password, temp password, reset link/token, ID/refresh token, raw headers, or full email body.
-- **Suspected-compromise:** a separate explicit "revoke sessions now" admin action exists where
-  immediate revocation (before/independent of a reset) is the priority.
+- **Failure handling:** link-generation failure → generic error, **no revocation**, initiation
+  + failure audited. Delivery not confirmed → generic error, **no revocation**, delivery-outcome
+  audited `failed`, idempotent retry allowed. No failure path reveals whether the account/email
+  exists.
 
 **Temporary-password variant:** only if the Owner explicitly reaffirms after this security
 comparison (Owner decision D-TEMP-PW). If required, it needs its own security decision
@@ -406,12 +465,12 @@ Status reflects the Owner recommendations returned with review blockers 1–4.
 | D-PHASES | Login transition 1→2→3 (email retained for recovery/break-glass) | **APPROVED** |
 | D-DEFAULT-USERNAME | Email-prefix suggestion + collision handling; stable explicit names for test personas (e.g. `driver-admin`) | **APPROVED** |
 | D-UNIQUENESS | Global uniqueness now; tenant-ready but inert | **APPROVED** |
-| D-RESOLVER | Username/password exchange — Option A (server verify + custom token), **no email disclosed** (§3) | **OPEN** — confirm corrected exchange |
-| D-ADMIN-RESET | Reset-link + session revocation, no admin-visible temp password | **APPROVED pending** trusted delivery — now specified (§6.2) |
-| D-EMAIL-DELIVERY | Trusted admin reset-email sender: Trigger-Email extension vs transactional API (§6.2) | **OPEN** (new) — cost / secrets / domain-auth; prod gate |
+| D-RESOLVER | Username/password exchange — single coherent exchange, or the fully-modeled two-exchange (§3); no email disclosed | **OPEN / blocked** pending revision **and** emulator/non-production proof; fallback = keep Phase-1 email login, defer username login |
+| D-ADMIN-RESET | Reset-link + **delivery-confirmed** revocation (routine) vs immediate-lockout+recovery (compromise); no admin-visible temp password (§6.2) | **APPROVED pending** the two-workflow delivery/revocation + durable audit now specified (§6.2) |
+| D-EMAIL-DELIVERY | Trusted admin reset-email sender — **direct transactional provider preferred** (avoid storing reset links in Firestore) (§6.2) | **OPEN** — cost / secret-mgmt / domain-auth / retry / redaction / delivery-evidence approval; prod gate |
 | D-TEMP-PW | Admin-visible temporary password | **REJECTED for current scope**; separate security decision if later requested |
 | D-APPCHECK | Provider = reCAPTCHA Enterprise assessed first; enforcement OFF | **APPROVED** (assess-first, OFF) |
 | D-EMAIL-CHANGE | Email/username change | **OUT of scope** for AUTH-PR-2/3 |
 | D-CRED-ADMIN | Credential administration = single governed admin authority only (dispatcher denied) | **APPROVED** — semantics pinned (§6.1) |
 | D-TWO-ADMIN | ≥2 independent recoverable admins + final-admin protection | **APPROVED** |
-| D-ENUM-PROTECTION | Enable Firebase email-enumeration protection (baseline for §3/§5) | **OPEN** (new) — production-config gate |
+| D-ENUM-PROTECTION | Enable Firebase email-enumeration protection (baseline for §3/§5) | **APPROVED IN PRINCIPLE** — separate production-config gate after compatibility testing; no change authorized now |
