@@ -81,8 +81,9 @@ export { resolveEffectiveAccessCallable } from "./access/effectiveAccessFeedCall
 // Same "export is not deployment" posture as every surface above: NOT deployed
 // to the live project, NO Admin UI wired to call them, and NO email provider
 // configured (adminCredentialCallables wires NOT_CONFIGURED_DELIVERY) until a
-// SEPARATE, later Owner production authorization. As deployed today a routine
-// call would generate a reset link, send NO email, and revoke NO sessions.
+// SEPARATE, later Owner production authorization. As deployed today the command
+// FAILS CLOSED on the unconfigured delivery capability -- ZERO Auth side effects
+// (no reset-link generation, no email, no session revocation).
 export {
   initiateAdminPasswordReset,
   listResetEligibleUsers,

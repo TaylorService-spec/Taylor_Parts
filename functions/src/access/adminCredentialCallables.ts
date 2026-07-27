@@ -8,8 +8,9 @@
 // "Export is not deployment": exporting these from index.ts does NOT deploy
 // them. No Admin UI is wired to call them and no email provider is configured
 // (NOT_CONFIGURED_DELIVERY below) until a SEPARATE, later Owner production
-// authorization is issued. As deployed with NOT_CONFIGURED_DELIVERY, a routine
-// call generates a reset link, sends NO email, and performs NO revocation.
+// authorization is issued. As deployed with NOT_CONFIGURED_DELIVERY the command
+// FAILS CLOSED on the unconfigured delivery capability -- it performs ZERO Auth
+// side effects (no reset-link generation, no email, no session revocation).
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import type { CallableRequest } from "firebase-functions/v2/https";
 import { getAuth } from "firebase-admin/auth";
@@ -35,12 +36,20 @@ function mapError(err: unknown): HttpsError {
   if (err instanceof commands.DeliveryUnavailableError) {
     return new HttpsError("unavailable", "Password reset delivery is not available. Please try again later.");
   }
-  // The caller's own idempotency key -- in progress / recently attempted.
+  // The caller's own idempotency key -- in progress / recently attempted / reused
+  // for a different request.
   if (err instanceof commands.OperationInProgressError) {
     return new HttpsError("aborted", "A reset for this request is already in progress.");
   }
   if (err instanceof commands.RetryCooldownError) {
     return new HttpsError("unavailable", "This request was attempted recently. Please try again shortly.");
+  }
+  if (err instanceof commands.OperationKeyConflictError) {
+    return new HttpsError("already-exists", "This idempotency key was already used for a different request. Use a new key.");
+  }
+  // A malformed stored operation record fails closed, generically.
+  if (err instanceof commands.MalformedOperationError) {
+    return new HttpsError("failed-precondition", "The request could not be processed. Please try again with a new idempotency key.");
   }
   // A genuine stage failure -- deliberately GENERIC (never the target-eligibility
   // reason, provider error, path, link, or token; those live only in audit).
