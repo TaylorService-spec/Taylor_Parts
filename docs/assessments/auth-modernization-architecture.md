@@ -443,10 +443,6 @@ revocation, final-admin guard, append-only audit, App Check OFF-first, no secret
   **does not depend on the deferred login resolver**; **no production deploy** until separately
   authorized; **no email provider selected/configured** (D-EMAIL-DELIVERY is an
   implementation-time Owner decision).
-- **AUTH-PR-3:** `ROLES.ADMIN`-only reset Function + sanitized directory callable + session
-  revocation + final-admin/protected-account safeguards + reset-link model + existing
-  audit-writer integration + tests + clean-checkout evidence; **no production deploy** until
-  separately authorized.
 - **AUTH-PR-4:** test-user recovery-email migration (sanitized persona inventory, Gmail
   +alias readiness, operator procedure, rollback) — execution only after a separate
   production identity-mutation approval; one user at a time; primary admin last; break-glass
@@ -472,7 +468,7 @@ Status reflects the Owner recommendations returned with review blockers 1–4.
 | D-DEFAULT-USERNAME | Email-prefix suggestion + collision handling; stable explicit names for test personas (e.g. `driver-admin`) | **APPROVED** |
 | D-UNIQUENESS | Global uniqueness now; tenant-ready but inert | **APPROVED** |
 | D-RESOLVER | Username/password **login** exchange (§3) | **DEFERRED** (Owner direction) — not approved, not built/tested in AUTH-PR-2/3; Phase-1 email login retained; revisit with a separately-approved auth-provider design (likely Option B + Lane F) |
-| D-ADMIN-RESET | Reset-link + **delivery-confirmed** revocation (routine) vs immediate-lockout+recovery (compromise); no admin-visible temp password (§6.2) | **APPROVED pending** the two-workflow delivery/revocation + durable audit now specified (§6.2) |
+| D-ADMIN-RESET | Reset-link + **delivery-confirmed** revocation (routine) vs immediate-lockout+recovery (compromise); no admin-visible temp password (§6.2) | **APPROVED** — two-workflow delivery/revocation + durable initiation/delivery/revocation audit specified (§6.2) |
 | D-EMAIL-DELIVERY | Trusted admin reset-email sender — **direct transactional provider preferred** (avoid storing reset links in Firestore) (§6.2) | **OPEN — implementation-time Owner decision.** Provider involves cost/secrets/domain config; **do not select or configure now.** Approve at AUTH-PR-3 implementation with delivery-evidence for the confirmed-delivery revocation gate |
 | D-TEMP-PW | Admin-visible temporary password | **REJECTED for current scope**; separate security decision if later requested |
 | D-APPCHECK | Provider = reCAPTCHA Enterprise assessed first; enforcement OFF | **APPROVED** (assess-first, OFF) |
