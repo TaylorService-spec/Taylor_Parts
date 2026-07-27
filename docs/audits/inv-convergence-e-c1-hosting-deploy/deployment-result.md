@@ -4,8 +4,10 @@ Executed by the operator in authenticated Cloud Shell per
 `docs/operations/inv-convergence-e-c1-hosting-deploy-handoff.md` (runbook head
 `2f9d17c`; final review PASS). The Inventory session performed no production action
 and holds no production credentials; the values below are the operator's **sanitized**
-report, transcribed into governed evidence. The immutable operator archive is pointed
-to by hash in `operator-evidence-pointer.txt`.
+report, transcribed into governed evidence. The operator-created Cloud Shell archive is
+referenced by SHA-256 in `operator-evidence-pointer.txt` — it is NOT downloaded, NOT
+committed, and NOT immutable (mutable Cloud Shell storage; retention is a known
+limitation); the committed sanitized transcription here is the evidence for review.
 
 ## Deployment — SUCCESS
 - Firebase project: `taylor-parts`
