@@ -64,11 +64,12 @@ configuration change, identity mutation, or App Check enforcement.**
 
 ## 2. Username architecture and data model
 
-**Principle:** Firebase Auth still authenticates by email/password. Username is resolved to
-an internal auth email server-side, then normal `signInWithEmailAndPassword` runs. UID is
-never recreated.
-
-Resolution path: `username → trusted resolver → auth email → signInWithEmailAndPassword`.
+**Principle:** Firebase Auth still authenticates by email/password. UID is never recreated.
+Username is an application login alias, and the eventual login-time resolution is
+`username → trusted resolver → auth email → sign-in`. **Note (Owner direction):** that
+login-time resolution is **DEFERRED** (D-RESOLVER, §3/§4) and is **not built in AUTH-PR-2/3**.
+This section defines the username **data model** only — display, normalization, uniqueness, and
+a **recovery-ready** mapping — which may proceed without the deferred login resolver.
 
 **Proposed collection `usernames/{normalizedUsername}`** (trusted-writer-only; clients never
 write it):
@@ -205,58 +206,54 @@ one `invalid-credential` error.
   readers must be audited). It also forces custom reset-email delivery for everyone (§6.2),
   since Firebase's built-in reset email would target the alias domain.
 
-### Recommendation
+### Recommendation & decision — DEFERRED (Owner direction)
 
-Neither option is approved yet. **Option A** leaves existing identities untouched and reuses
-the #226 Functions platform, but carries the intrinsic two-exchange behavior above and must
-pass the emulator / non-production proof before D-RESOLVER can be approved. **Option B**
-(deterministic alias) is a genuine **single** client-side exchange with no custom token and no
-discarded tokens, but requires the all-users Auth-email migration (Lane F / AUTH-PR-4) and a
-synthetic Auth `email` claim.
+Server-side password verification (Option A) inherently costs two token exchanges; the
+genuinely clean single exchange (Option B, deterministic alias) becomes available only once the
+Lane F auth-email migration runs. **Owner direction: adopt the documented fallback.**
 
-**Fallback if Option A is not justified cleanly:** retain **Phase-1 email/password
-authentication now** and **defer username/password login** until a separately approved
-authentication-provider design exists (most plausibly Option B executed alongside the Lane F
-email migration, giving a real single exchange). Username *display*, recovery, and admin reset
-do **not** depend on username *login* and can proceed independently.
+- **D-RESOLVER is DEFERRED** (not approved). Username/password **login** is deferred until a
+  separately approved authentication-provider design exists (most plausibly Option B alongside
+  the Lane F migration, giving a real single exchange).
+- **Phase-1 email/password login is retained** as the live authentication path.
+- **The two-exchange resolver is NOT built or tested in AUTH-PR-2/3.** Options A and B above are
+  retained as recorded design context for the eventual, separately-approved login design.
+- Username **display, normalization, uniqueness, and recovery-ready data modeling** may proceed
+  **only where they do not depend on username login** (the §2 mapping is data-model only; no
+  login resolver is built).
 
-**D-RESOLVER: OPEN / blocked** pending (1) selection of a single coherent exchange or the
-fully-modeled two-exchange above, and (2) emulator / non-production proof.
+**Baseline note (for the eventual login design and the email-input recovery path):** Firebase
+**email-enumeration protection** is **approved in principle** as a separate production-config
+gate **after compatibility testing**; **no configuration change is authorized now**. No public
+Firestore query over `usernames` exists in any design.
 
-**Baseline requirement (both options):** enable Firebase **email-enumeration protection** so
-even the email-input path returns a single neutral credential error (**D-ENUM-PROTECTION**) —
-**approved in principle** as a separate production-config gate **after compatibility testing**;
-**no configuration change is authorized now**. No public Firestore query over `usernames`
-exists in any design.
+## 4. Transitional login (phased — D-PHASES approved; username login DEFERRED)
 
-## 4. Transitional login (phased — Owner decision D-PHASES)
+- **Phase 1 (current, retained):** existing **email/password** login is the live authentication
+  path (`Login.jsx` authentication unchanged). Per Owner direction (D-RESOLVER DEFERRED), the
+  "Username or email" field and any username→login resolution are **deferred** — **not built in
+  AUTH-PR-2/3**. Owner/dev access preserved.
+- **Phase 2 (deferred, gated on D-RESOLVER):** username becomes a visible login path via the
+  separately-approved authentication-provider design; email login remains a controlled fallback.
+- **Phase 3 (deferred):** email login hidden from normal UX but **retained** as the underlying
+  Firebase credential + recovery destination + break-glass path.
 
-- **Phase 1 (additive):** field labeled **"Username or email"** + password. If input is a
-  valid email form → existing email login path (unchanged). Else → trusted username
-  resolution. Existing email/password login and Owner/dev access preserved.
-- **Phase 2:** username becomes the normal visible path; email login remains a controlled
-  fallback; forgot-password accepts username and (transitionally) email.
-- **Phase 3:** email login hidden from normal UX but **retained** as the underlying Firebase
-  credential + recovery destination + break-glass path.
+**Email login is never removed in this workstream's early phases.** Removal (Phase 3) is a
+separate, later, Owner-gated step requiring production evidence that username login + recovery +
+admin reset + break-glass all work.
 
-**Do not remove email login in the first implementation.** Removal (Phase 3) is a separate,
-later, Owner-gated step requiring production evidence that username login + recovery + admin
-reset + break-glass all work.
+## 5. Self-service recovery
 
-## 5. Self-service recovery (AUTH-PR-2 scope)
-
-- "Forgot password?" on `Login.jsx`. Two paths, both returning the **identical** neutral
-  confirmation, neither exposing the internal email (consistent with §3):
-  - **Email input:** client SDK `sendPasswordResetEmail(email)` — Firebase sends; neutral when
-    email-enumeration protection is on (D-ENUM-PROTECTION). No Function needed; not
-    Blaze-dependent.
-  - **Username input:** a trusted callable resolves username → email **server-side** and
-    triggers the send (Identity Toolkit `sendOobCode`, or `generatePasswordResetLink` + the
-    §6.2 trusted sender); the client **never** receives the email. Uses a Function, consistent
-    with §3's server-mediated exchange.
+- "Forgot password?" on `Login.jsx`. **In AUTH-PR-2 scope now — email-input only:** client SDK
+  `sendPasswordResetEmail(email)` — Firebase sends; neutral when email-enumeration protection is
+  on (D-ENUM-PROTECTION, approved in principle). **No Function, no resolver, not Blaze-dependent.**
+- **Username-input recovery is DEFERRED** with username login (D-RESOLVER): it requires the same
+  server-side username→email resolution, so it is **not built in AUTH-PR-2/3**. The `usernames`
+  mapping (§2) is modeled **recovery-ready** so this path can be added later without a schema
+  change.
 - **Approved neutral copy:** "Check your email — if the account is eligible for password
-  recovery, we'll send instructions to the registered email address." Never reveals whether
-  username/email exists.
+  recovery, we'll send instructions to the registered email address." Never reveals whether the
+  email exists.
 - UX: placement near password/Sign-In; mobile + keyboard accessible; ~30–60s resend delay
   (UX only); no raw Firebase errors; no email/username in URLs, analytics, or logs; no reset
   links/tokens logged.
@@ -434,9 +431,18 @@ revocation, final-admin guard, append-only audit, App Check OFF-first, no secret
 ## 11. Implementation plan & PR boundaries
 
 - **AUTH-PR-1 (this):** architecture decision package (docs only). STOP for review.
-- **AUTH-PR-2:** username mapping + trusted resolver + username-or-email login UI +
-  forgot-password flow + tests + emulator evidence; email fallback retained; **no production
-  cutover**; App Check only if enforcement OFF and pre-approved in this architecture.
+- **AUTH-PR-2 (scope adjusted — D-RESOLVER DEFERRED):** `usernames` mapping + username
+  **display** + normalization/uniqueness/collision handling + **email-input** forgot-password
+  flow + tests + emulator evidence. **Explicitly OUT:** username/password **login**, the
+  two-exchange login resolver, the "Username or email" login field, and username-**input**
+  recovery — all deferred with D-RESOLVER. Existing email login unchanged; no production cutover.
+- **AUTH-PR-3:** `ROLES.ADMIN`-only reset Function + sanitized directory callable +
+  delivery-confirmed session revocation (routine) / immediate-lockout+recovery (compromise) +
+  final-admin/protected-account safeguards + reset-link model + existing audit-writer
+  integration (durable initiation/delivery/revocation events) + tests + clean-checkout evidence;
+  **does not depend on the deferred login resolver**; **no production deploy** until separately
+  authorized; **no email provider selected/configured** (D-EMAIL-DELIVERY is an
+  implementation-time Owner decision).
 - **AUTH-PR-3:** `ROLES.ADMIN`-only reset Function + sanitized directory callable + session
   revocation + final-admin/protected-account safeguards + reset-link model + existing
   audit-writer integration + tests + clean-checkout evidence; **no production deploy** until
@@ -465,9 +471,9 @@ Status reflects the Owner recommendations returned with review blockers 1–4.
 | D-PHASES | Login transition 1→2→3 (email retained for recovery/break-glass) | **APPROVED** |
 | D-DEFAULT-USERNAME | Email-prefix suggestion + collision handling; stable explicit names for test personas (e.g. `driver-admin`) | **APPROVED** |
 | D-UNIQUENESS | Global uniqueness now; tenant-ready but inert | **APPROVED** |
-| D-RESOLVER | Username/password exchange — single coherent exchange, or the fully-modeled two-exchange (§3); no email disclosed | **OPEN / blocked** pending revision **and** emulator/non-production proof; fallback = keep Phase-1 email login, defer username login |
+| D-RESOLVER | Username/password **login** exchange (§3) | **DEFERRED** (Owner direction) — not approved, not built/tested in AUTH-PR-2/3; Phase-1 email login retained; revisit with a separately-approved auth-provider design (likely Option B + Lane F) |
 | D-ADMIN-RESET | Reset-link + **delivery-confirmed** revocation (routine) vs immediate-lockout+recovery (compromise); no admin-visible temp password (§6.2) | **APPROVED pending** the two-workflow delivery/revocation + durable audit now specified (§6.2) |
-| D-EMAIL-DELIVERY | Trusted admin reset-email sender — **direct transactional provider preferred** (avoid storing reset links in Firestore) (§6.2) | **OPEN** — cost / secret-mgmt / domain-auth / retry / redaction / delivery-evidence approval; prod gate |
+| D-EMAIL-DELIVERY | Trusted admin reset-email sender — **direct transactional provider preferred** (avoid storing reset links in Firestore) (§6.2) | **OPEN — implementation-time Owner decision.** Provider involves cost/secrets/domain config; **do not select or configure now.** Approve at AUTH-PR-3 implementation with delivery-evidence for the confirmed-delivery revocation gate |
 | D-TEMP-PW | Admin-visible temporary password | **REJECTED for current scope**; separate security decision if later requested |
 | D-APPCHECK | Provider = reCAPTCHA Enterprise assessed first; enforcement OFF | **APPROVED** (assess-first, OFF) |
 | D-EMAIL-CHANGE | Email/username change | **OUT of scope** for AUTH-PR-2/3 |
