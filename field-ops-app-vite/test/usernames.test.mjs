@@ -188,13 +188,50 @@ ok("mapping: history must be normalized, valid, and non-reusing (no current name
   delete noHistory.previousUsernames;
   assert.strictEqual(validateUsernameMapping(noHistory).valid, true);
 });
-ok("mapping: missing provenance -> MISSING_PROVENANCE", () => {
-  for (const field of ["createdAt", "createdBy", "updatedAt", "updatedBy"]) {
+ok("mapping: missing createdBy/updatedBy -> MISSING_PROVENANCE", () => {
+  for (const field of ["createdBy", "updatedBy"]) {
     const rec = validMapping();
     delete rec[field];
-    const r = validateUsernameMapping(rec);
-    assert.ok(r.reasons.includes(MAPPING_INVALID_REASON.MISSING_PROVENANCE), `missing ${field}`);
+    assert.ok(validateUsernameMapping(rec).reasons.includes(MAPPING_INVALID_REASON.MISSING_PROVENANCE), `missing ${field}`);
   }
+});
+ok("mapping: missing/invalid createdAt/updatedAt -> PROVENANCE_TIMESTAMP_INVALID", () => {
+  for (const field of ["createdAt", "updatedAt"]) {
+    const rec = validMapping();
+    delete rec[field];
+    assert.ok(validateUsernameMapping(rec).reasons.includes(MAPPING_INVALID_REASON.PROVENANCE_TIMESTAMP_INVALID), `missing ${field}`);
+  }
+});
+ok("mapping: only the approved timestamp representation is accepted", () => {
+  for (const t of ["2026-01-01T00:00:00Z", 0, -5, 1.5, new Date(), "1730000000000"]) {
+    const r = validateUsernameMapping(validMapping({ createdAt: t }));
+    assert.ok(r.reasons.includes(MAPPING_INVALID_REASON.PROVENANCE_TIMESTAMP_INVALID), `createdAt=${String(t)}`);
+  }
+  // epoch-millis integer (domain convention) and Firestore Timestamp shapes pass
+  assert.strictEqual(validateUsernameMapping(validMapping({ createdAt: 1730000000001 })).valid, true);
+  assert.strictEqual(validateUsernameMapping(validMapping({
+    createdAt: { seconds: 1730000000, nanoseconds: 0 },
+    updatedAt: { seconds: 1730000000, nanoseconds: 0 },
+  })).valid, true);
+  assert.strictEqual(validateUsernameMapping(validMapping({
+    createdAt: { toMillis: () => 1730000000000 },
+    updatedAt: { toMillis: () => 1730000000000 },
+  })).valid, true);
+});
+ok("mapping: unknown / sensitive fields are rejected (exact allowed-field set)", () => {
+  for (const extra of [
+    { email: "x@y.com" }, { password: "hunter2" }, { passwordHash: "..." },
+    { role: "admin" }, { claims: { admin: true } }, { operationalRoles: [] },
+    { profile: { ssn: "..." } }, { token: "..." }, { foo: 1 },
+  ]) {
+    const r = validateUsernameMapping(validMapping(extra));
+    assert.strictEqual(r.valid, false, Object.keys(extra)[0]);
+    assert.ok(r.reasons.includes(MAPPING_INVALID_REASON.UNKNOWN_FIELD), Object.keys(extra)[0]);
+  }
+});
+ok("mapping: previousUsernames must be unique (no duplicates)", () => {
+  assert.ok(validateUsernameMapping(validMapping({ previousUsernames: ["jane.smyth", "jane.smyth"] }))
+    .reasons.includes(MAPPING_INVALID_REASON.HISTORY_INVALID));
 });
 ok("mapping: displayUsername must normalize to the key", () => {
   assert.ok(validateUsernameMapping(validMapping({ displayUsername: "bob" }))

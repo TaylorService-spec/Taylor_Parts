@@ -12,6 +12,7 @@ import {
   RESEND_COOLDOWN_SECONDS,
   prepareRecoverySubmit,
   performRecovery,
+  attemptRecovery,
   nextCooldownUntil,
   cooldownRemainingSeconds,
   canResend,
@@ -102,6 +103,41 @@ ok("cooldown derived from absolute timestamp is not reset by re-deriving", () =>
   const until = nextCooldownUntil(50000);
   assert.ok(cooldownRemainingSeconds(until, 60000) > 0);
   assert.ok(cooldownRemainingSeconds(until, 60000) >= cooldownRemainingSeconds(until, 70000));
+});
+
+// -- attemptRecovery: single choke point closes the mode-toggle bypass --------
+await okAsync("attemptRecovery reproduces bypass sequence: 2nd immediate send is BLOCKED", async () => {
+  // sign-in -> recovery -> send -> sign-in -> recovery -> immediate submit.
+  let calls = 0;
+  const send = async () => { calls += 1; };
+  const t0 = 1_000_000;
+  // First send (no cooldown yet).
+  const first = await attemptRecovery(send, "jane@example.com", { cooldownUntil: 0, nowMs: t0 });
+  assert.strictEqual(first.blocked, false);
+  assert.strictEqual(calls, 1);
+  const cooldownUntil = first.cooldownUntil;
+  // Reopen recovery and submit the (would-be fresh) form immediately -- still
+  // within cooldown. The sender MUST NOT be invoked again.
+  const second = await attemptRecovery(send, "jane@example.com", { cooldownUntil, nowMs: t0 + 1000 });
+  assert.strictEqual(second.blocked, true);
+  assert.strictEqual(calls, 1, "reset sender must not be invoked during cooldown");
+});
+await okAsync("attemptRecovery allows sending again after cooldown expiry", async () => {
+  let calls = 0;
+  const send = async () => { calls += 1; };
+  const t0 = 1_000_000;
+  const first = await attemptRecovery(send, "jane@example.com", { cooldownUntil: 0, nowMs: t0 });
+  const cooldownUntil = first.cooldownUntil;
+  const third = await attemptRecovery(send, "jane@example.com", { cooldownUntil, nowMs: cooldownUntil + 1 });
+  assert.strictEqual(third.blocked, false);
+  assert.strictEqual(calls, 2, "sending becomes available after expiry");
+});
+await okAsync("attemptRecovery is blocked while a send is in flight", async () => {
+  let calls = 0;
+  const send = async () => { calls += 1; };
+  const r = await attemptRecovery(send, "jane@example.com", { cooldownUntil: 0, nowMs: 1, submitting: true });
+  assert.strictEqual(r.blocked, true);
+  assert.strictEqual(calls, 0);
 });
 
 console.log(`\n${passed} passed`);

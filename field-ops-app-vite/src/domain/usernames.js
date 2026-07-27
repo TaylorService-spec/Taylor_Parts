@@ -146,6 +146,7 @@ export function usernameForDisplay(mapping) {
 
 export const MAPPING_INVALID_REASON = Object.freeze({
   NOT_OBJECT: "not_object",
+  UNKNOWN_FIELD: "unknown_field",
   USERNAME_INVALID: "username_invalid",
   KEY_MISMATCH: "key_mismatch",
   DISPLAY_MISMATCH: "display_mismatch",
@@ -153,13 +154,46 @@ export const MAPPING_INVALID_REASON = Object.freeze({
   TENANT_INVALID: "tenant_invalid",
   ACTIVE_INVALID: "active_invalid",
   MISSING_PROVENANCE: "missing_provenance",
+  PROVENANCE_TIMESTAMP_INVALID: "provenance_timestamp_invalid",
   VERSION_INVALID: "version_invalid",
   HISTORY_INVALID: "history_invalid",
   MISSING_AUDIT_CORRELATION: "missing_audit_correlation",
 });
 
+// The EXACT set of fields a mapping record may contain. Anything else -- email,
+// password, role/claims, raw profile data, etc. -- is rejected so the mapping
+// cannot silently accumulate unapproved or sensitive fields.
+export const MAPPING_ALLOWED_FIELDS = Object.freeze([
+  "normalizedUsername",
+  "displayUsername",
+  "uid",
+  "tenantId",
+  "active",
+  "createdAt",
+  "createdBy",
+  "updatedAt",
+  "updatedBy",
+  "version",
+  "previousUsernames",
+  "auditCorrelationId",
+]);
+
 function isNonEmptyString(v) {
   return typeof v === "string" && v.trim().length > 0;
+}
+
+// Repository-approved timestamp representation: an epoch-millis positive integer
+// (the domain-layer convention, e.g. `Date.now()` used across accounts/contacts/
+// locations/reports), OR a Firestore Timestamp (a server trusted-writer value:
+// has a toMillis() method, or integer seconds+nanoseconds). Strings, Dates,
+// floats, zero, and negatives are rejected.
+function isApprovedTimestamp(v) {
+  if (typeof v === "number") return Number.isInteger(v) && v > 0;
+  if (v && typeof v === "object") {
+    if (typeof v.toMillis === "function") return true;
+    if (Number.isInteger(v.seconds) && Number.isInteger(v.nanoseconds)) return true;
+  }
+  return false;
 }
 
 // Validate a mapping record against the §2 contract. When `expectedKey` is
@@ -172,6 +206,16 @@ export function validateUsernameMapping(record, expectedKey) {
     return { valid: false, reasons: [MAPPING_INVALID_REASON.NOT_OBJECT] };
   }
   const reasons = [];
+
+  // Exact allowed-field enforcement: reject any field outside the approved set
+  // so the mapping cannot silently accumulate unapproved or sensitive fields
+  // (email, password/credentials, role/claims, raw profile records, etc.).
+  for (const key of Object.keys(record)) {
+    if (!MAPPING_ALLOWED_FIELDS.includes(key)) {
+      reasons.push(MAPPING_INVALID_REASON.UNKNOWN_FIELD);
+      break;
+    }
+  }
 
   const usernameCheck = validateUsername(record.normalizedUsername);
   if (!usernameCheck.valid) {
@@ -206,9 +250,11 @@ export function validateUsernameMapping(record, expectedKey) {
     reasons.push(MAPPING_INVALID_REASON.ACTIVE_INVALID);
   }
 
-  if (!record.createdAt || !isNonEmptyString(record.createdBy)
-      || !record.updatedAt || !isNonEmptyString(record.updatedBy)) {
+  if (!isNonEmptyString(record.createdBy) || !isNonEmptyString(record.updatedBy)) {
     reasons.push(MAPPING_INVALID_REASON.MISSING_PROVENANCE);
+  }
+  if (!isApprovedTimestamp(record.createdAt) || !isApprovedTimestamp(record.updatedAt)) {
+    reasons.push(MAPPING_INVALID_REASON.PROVENANCE_TIMESTAMP_INVALID);
   }
 
   if (!Number.isInteger(record.version) || record.version < 1) {
@@ -220,9 +266,14 @@ export function validateUsernameMapping(record, expectedKey) {
   // (non-reuse: a name cannot be listed as its own predecessor).
   if (record.previousUsernames !== undefined) {
     const history = record.previousUsernames;
-    const historyValid = Array.isArray(history)
-      && history.every((h) => validateUsername(h).valid && h === normalizeUsername(h))
-      && !history.includes(record.normalizedUsername);
+    const seen = new Set();
+    const historyValid = Array.isArray(history) && history.every((h) => {
+      if (!(validateUsername(h).valid && h === normalizeUsername(h))) return false;
+      if (h === record.normalizedUsername) return false; // non-reuse: not the current name
+      if (seen.has(h)) return false;                     // uniqueness: no duplicate entries
+      seen.add(h);
+      return true;
+    });
     if (!historyValid) reasons.push(MAPPING_INVALID_REASON.HISTORY_INVALID);
   }
 

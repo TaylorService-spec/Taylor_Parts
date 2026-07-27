@@ -3,8 +3,7 @@ import { useAuth } from "./AuthContext";
 import {
   RECOVERY_NEUTRAL_MESSAGE,
   prepareRecoverySubmit,
-  performRecovery,
-  nextCooldownUntil,
+  attemptRecovery,
   cooldownRemainingSeconds,
   canResend,
 } from "../domain/passwordRecovery";
@@ -61,12 +60,20 @@ export default function Login() {
     }
   };
 
+  // Single reset path -- attemptRecovery enforces the cooldown regardless of
+  // whether this was reached from the initial form or the Resend button, so the
+  // mode-toggle bypass cannot send a second reset during an active cooldown.
   const runReset = async (value) => {
     setRecoverSubmitting(true);
-    const result = await performRecovery(resetPassword, value);
+    const outcome = await attemptRecovery(resetPassword, value, {
+      cooldownUntil,
+      nowMs: Date.now(),
+    });
     setRecoverSubmitting(false);
-    setRecoverSent(result.sent);
-    setCooldownUntil(nextCooldownUntil(Date.now()));
+    // Whether it sent or was blocked by the cooldown, show the neutral
+    // confirmation/cooldown view -- never a fresh submittable form.
+    setRecoverSent(true);
+    if (!outcome.blocked) setCooldownUntil(outcome.cooldownUntil);
   };
 
   const handleRecover = (e) => {
@@ -83,8 +90,11 @@ export default function Login() {
   const goToRecover = () => {
     setError(null);
     setRecoverError(null);
-    setRecoverSent(false);
     setRecoverEmail(email);
+    // If a cooldown is still active, reopen straight into the confirmation/
+    // cooldown view -- NOT the fresh form -- so the cooldown cannot be bypassed
+    // by leaving and re-entering recovery.
+    setRecoverSent(cooldownRemainingSeconds(cooldownUntil, Date.now()) > 0);
     setMode("recover");
   };
 

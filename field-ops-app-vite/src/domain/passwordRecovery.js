@@ -67,3 +67,20 @@ export function cooldownRemainingSeconds(cooldownUntilMs, nowMs) {
 export function canResend(cooldownRemaining, submitting) {
   return cooldownRemaining <= 0 && !submitting;
 }
+
+// The SINGLE choke point for sending a reset. Enforces the cooldown regardless
+// of which UI path calls it (initial form submit OR the Resend button), closing
+// the mode-toggle bypass where reopening the recovery view showed a fresh,
+// submittable form that ignored an active cooldown. When a cooldown is active
+// (or a send is in flight) the sender is NOT invoked and { blocked:true } is
+// returned; otherwise it sends and returns the neutral result plus the new
+// cooldown end-timestamp.
+export async function attemptRecovery(sendReset, value, options = {}) {
+  const { cooldownUntil = 0, nowMs = Date.now(), submitting = false } = options;
+  const remaining = cooldownRemainingSeconds(cooldownUntil, nowMs);
+  if (!canResend(remaining, submitting)) {
+    return { sent: false, blocked: true, cooldownRemaining: remaining, cooldownUntil };
+  }
+  const result = await performRecovery(sendReset, value);
+  return { ...result, blocked: false, cooldownUntil: nextCooldownUntil(nowMs) };
+}
