@@ -104,7 +104,16 @@ curl -fsS -H "Authorization: Bearer $TOKEN" \
   "https://firebasehosting.googleapis.com/v1beta1/sites/$SITE/releases?pageSize=10" \
   > "$RAW"
 RAW="$RAW" python3 - <<'PY'
-import json, os
+import json, os, re
+VER_RE = re.compile(r"^sites/taylor-parts/versions/[A-Za-z0-9][A-Za-z0-9._-]*$")
+REL_RE = re.compile(r"^sites/taylor-parts/releases/[A-Za-z0-9][A-Za-z0-9._-]*$")
+TS_RE  = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$")
+TYPES  = {"DEPLOY", "ROLLBACK", "SITE_DISABLE"}
+def validate_release(rec, label):
+    vn = rec.get("version_name"); assert isinstance(vn, str) and VER_RE.match(vn), f"{label} version_name malformed/incomplete/wrong-project: {vn!r}"
+    rn = rec.get("release_name"); assert isinstance(rn, str) and REL_RE.match(rn), f"{label} release_name malformed: {rn!r}"
+    rt = rec.get("release_type"); assert isinstance(rt, str) and rt in TYPES, f"{label} release_type unsupported/empty: {rt!r}"
+    tt = rec.get("release_time"); assert isinstance(tt, str) and TS_RE.match(tt), f"{label} release_time invalid/empty: {tt!r}"
 d = json.load(open(os.environ["RAW"]))
 r = d.get("releases") or []
 cur = r[0] if r else {}
@@ -114,17 +123,22 @@ rec = {
     "release_type": cur.get("type"),
     "release_time": cur.get("releaseTime"),
 }
-assert isinstance(rec["version_name"], str) and rec["version_name"].startswith("sites/"), "predeploy version_name is not a concrete version resource"
+validate_release(rec, "predeploy")
 open("c1-evidence/predeploy-release-pin.json", "w").write(json.dumps(rec, indent=2))
 print("CURRENT_VERSION_NAME", rec["version_name"])
 print("CURRENT_RELEASE_TYPE", rec["release_type"])
 print("CURRENT_RELEASE_TIME", rec["release_time"])
+print("PREDEPLOY-RELEASE-FIELDS-VALID")
 PY
 ```
-**Expected:** `c1-evidence/predeploy-release-pin.json` contains only the four normalized
-fields; `CURRENT_VERSION_NAME` is a concrete version resource name like
-`sites/taylor-parts/versions/<VERSION_ID>`. **Record that exact `<VERSION_ID>` — the
-pinned rollback target** (do NOT rely on "immediately previous" without pinning its ID).
+**Expected:** `PREDEPLOY-RELEASE-FIELDS-VALID` prints and `c1-evidence/predeploy-release-pin.json`
+contains the four normalized fields, each strictly validated (script exits nonzero
+otherwise): `release_name` matches `^sites/taylor-parts/releases/<non-empty-id>$`;
+`version_name` matches `^sites/taylor-parts/versions/<non-empty-id>$` (exact project +
+non-empty version id — null/empty/wrong-project/incomplete all fail closed);
+`release_type` ∈ {DEPLOY, ROLLBACK, SITE_DISABLE}; `release_time` is a valid RFC3339
+timestamp. **Record that exact `<VERSION_ID>` — the pinned rollback target** (do NOT rely
+on "immediately previous" without pinning its ID).
 If no prior version exists, **STOP** (no rollback target). The raw REST response is
 deleted (never committed). (Console alternative: Hosting → Release History → note the
 exact current version.) **PAUSE.**
@@ -200,7 +214,16 @@ echo "AUTHORIZED_COMMIT=3827ce370b26af7cbf66acdf391267a0afa4092c" > c1-evidence/
 echo "BUILD_COMMAND=npm run build:firebase (vite build --base=/)" >> c1-evidence/release-correspondence.txt
 curl -fsS -H "Authorization: Bearer $TOKEN" "https://firebasehosting.googleapis.com/v1beta1/sites/$SITE/releases?pageSize=5" > "$PRAW"
 PRAW="$PRAW" python3 - <<'PY'
-import json, os
+import json, os, re
+VER_RE = re.compile(r"^sites/taylor-parts/versions/[A-Za-z0-9][A-Za-z0-9._-]*$")
+REL_RE = re.compile(r"^sites/taylor-parts/releases/[A-Za-z0-9][A-Za-z0-9._-]*$")
+TS_RE  = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$")
+TYPES  = {"DEPLOY", "ROLLBACK", "SITE_DISABLE"}
+def validate_release(rec, label):
+    vn = rec.get("version_name"); assert isinstance(vn, str) and VER_RE.match(vn), f"{label} version_name malformed/incomplete/wrong-project: {vn!r}"
+    rn = rec.get("release_name"); assert isinstance(rn, str) and REL_RE.match(rn), f"{label} release_name malformed: {rn!r}"
+    rt = rec.get("release_type"); assert isinstance(rt, str) and rt in TYPES, f"{label} release_type unsupported/empty: {rt!r}"
+    tt = rec.get("release_time"); assert isinstance(tt, str) and TS_RE.match(tt), f"{label} release_time invalid/empty: {tt!r}"
 d = json.load(open(os.environ["PRAW"]))
 r = (d.get("releases") or [{}])[0]
 rec = {
@@ -209,14 +232,16 @@ rec = {
     "release_type": r.get("type"),
     "release_time": r.get("releaseTime"),
 }
+validate_release(rec, "postdeploy")
 pre = json.load(open("c1-evidence/predeploy-release-pin.json"))
-assert isinstance(rec["version_name"], str) and rec["version_name"].startswith("sites/"), "postdeploy version_name is not a concrete version resource"
+validate_release(pre, "predeploy(reloaded)")
 assert rec["version_name"] != pre["version_name"], "postdeploy version equals the pinned predeploy version -- no new release occurred"
 open("c1-evidence/postdeploy-release-pin.json", "w").write(json.dumps(rec, indent=2))
 with open("c1-evidence/release-correspondence.txt", "a") as f:
     for k, v in rec.items():
         f.write(f"POSTDEPLOY_{k.upper()}={v}\n")
 print("POSTDEPLOY_VERSION_NAME", rec["version_name"])
+print("POSTDEPLOY-RELEASE-FIELDS-VALID")
 print("NEW-RELEASE-CONFIRMED")
 PY
 # identity encoding only (no --compressed) so live bytes == deployed file bytes

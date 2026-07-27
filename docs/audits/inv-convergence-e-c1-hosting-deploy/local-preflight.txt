@@ -30,3 +30,18 @@ Artifact is deploy-ready for Firebase Hosting. The deploy itself (firebase deplo
 --only hosting) and all live production verification require production credentials and
 are OPERATOR/Cloud-Shell actions per the handoff runbook; the Inventory session performs
 neither and holds no production credentials.
+
+Release-field validator negative-fixture dry run (credential-free, review round 4)
+==================================================================================
+The runbook's normalized-release validator (embedded identically in Step 3 predeploy
+and Step 6 postdeploy) validates all four fields:
+  release_name  ~ ^sites/taylor-parts/releases/<non-empty-id>$
+  version_name  ~ ^sites/taylor-parts/versions/<non-empty-id>$   (exact project + id)
+  release_type  in {DEPLOY, ROLLBACK, SITE_DISABLE}
+  release_time  ~ RFC3339 timestamp
+Positive fixture: PASS. Negative fixtures (all fail closed, script exits nonzero):
+  null-version, empty-version-id, wrong-project, malformed-version,
+  null-release-name, wrong-project-release, empty-type, unspecified-type,
+  null-time, malformed-time  => 10/10 fail-closed.
+Also: bash -n on all 9 runbook blocks = ALL VALID; py_compile on both python
+heredocs = ALL VALID.
