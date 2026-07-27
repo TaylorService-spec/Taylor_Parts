@@ -14,8 +14,14 @@ import { detectModelAliasConflicts, isCanonicalEquipmentModelId, validateEquipme
 import { sha256Hex, validateCompatibility, validateCompatibilitySource, analyzeCompatibilityEvidenceByRelationship } from "./equipmentCompatibility.js";
 
 const asciiCompare = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
-const plain = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+// Strict plain-object test: rejects arrays, Dates, class instances, Maps, and any prototype other
+// than Object.prototype or null, so governed snapshot maps and configs cannot smuggle exotic shapes.
+const plain = (v) => v !== null && typeof v === "object" && [Object.prototype, null].includes(Object.getPrototypeOf(v));
 const isHex64 = (v) => typeof v === "string" && /^[0-9a-f]{64}$/.test(v);           // governed SHA-256 fingerprint
+// Documented sentinel a caller sets as an existing-record snapshot value when it intentionally has
+// no fingerprint (ID-only). It is modeled — never implicit null — and always yields a blocking
+// existing_comparison_unavailable entry, even when no imported record overlaps that id.
+export const EXISTING_COMPARISON_UNAVAILABLE = "existing_comparison_unavailable";
 const isCompatId = (v) => typeof v === "string" && /^cmp_[0-9a-f]{64}$/.test(v);
 const isSourceId = (v) => typeof v === "string" && /^src_[0-9a-f]{64}$/.test(v);
 // True if the text contains any disallowed control char: C0 (except TAB/LF/CR), DEL (U+007F), or the
@@ -67,10 +73,16 @@ export function validateSnapshots(snapshots) {
   if (snapshots.partIds !== undefined && (!Array.isArray(snapshots.partIds) || !snapshots.partIds.every(isValidPartId))) return { ok: false, code: "snapshot_partIds_invalid" };
   if (snapshots.serialSchemes !== undefined && !plain(snapshots.serialSchemes)) return { ok: false, code: "snapshot_serialSchemes_invalid" };
   if (snapshots.existingModelAliases !== undefined && !Array.isArray(snapshots.existingModelAliases)) return { ok: false, code: "snapshot_existingModelAliases_invalid" };
+  // Every existing-record map is validated as a WHOLE: plain object, canonical keys, and every value
+  // either a governed lowercase 64-hex fingerprint or the explicit unavailable sentinel. Malformed,
+  // uppercase, short, empty, non-string, array, object, or implicit-null values fail closed here —
+  // they are never silently ignored or later mistaken for a collision. Snapshot values are not echoed.
   const mapCheck = (field, keyValid, code) => {
     const o = snapshots[field];
     if (o === undefined) return null;
-    return (!plain(o) || !Object.keys(o).every(keyValid)) ? code : null;
+    if (!plain(o)) return code;
+    for (const [k, v] of Object.entries(o)) if (!keyValid(k) || !(isHex64(v) || v === EXISTING_COMPARISON_UNAVAILABLE)) return code;
+    return null;
   };
   const bad = mapCheck("existingEquipmentModels", isCanonicalEquipmentModelId, "snapshot_existingEquipmentModels_invalid")
     || mapCheck("existingCompatibility", isCompatId, "snapshot_existingCompatibility_invalid")
@@ -215,8 +227,29 @@ function classifyIdentity(imported, existing) {
   return { collisions: collisions.sort(s), duplicates: duplicates.sort(s), unavailable: unavailable.sort(s) };
 }
 
+// Full per-entity analysis. validateSnapshots guarantees every existing value is a 64-hex
+// fingerprint or the explicit unavailable sentinel. Sentinel ids are ALWAYS surfaced as
+// comparison-unavailable (with any overlapping import lines) and are excluded from equivalence
+// comparison; the remaining fingerprinted records drive collision/duplicate detection.
+function analyzeEntity(imported, existingMap) {
+  const sentinelIds = new Set(), available = new Map();
+  for (const [id, v] of existingMap) { if (v === EXISTING_COMPARISON_UNAVAILABLE) sentinelIds.add(id); else available.set(id, v); }
+  const linesById = new Map();
+  for (const r of imported) { if (!linesById.has(r.id)) linesById.set(r.id, []); linesById.get(r.id).push(r.line); }
+  const { collisions, duplicates } = classifyIdentity(imported.filter((r) => !sentinelIds.has(r.id)), available);
+  const unavailable = [...sentinelIds].sort(asciiCompare).map((id) => ({ id, lines: (linesById.get(id) || []).slice().sort((a, b) => a - b) }));
+  return { collisions, duplicates, unavailable };
+}
+
 const toFpMap = (o) => { const m = new Map(); if (plain(o)) for (const [k, v] of Object.entries(o)) m.set(k, v); return m; };
 const bound = (arr, max, cmp) => { const sorted = [...arr].sort(cmp); return { items: sorted.slice(0, max), truncated: Math.max(0, sorted.length - max) }; };
+// Bound a nested `lines` array inside a report entry (deterministic ascending), exposing the full
+// pre-truncation count and the nested truncation count; never retains anything but line numbers.
+const boundLinesEntry = (e, max) => { const b = bound(e.lines, max, (a, z) => a - z); return { ...e, lines: b.items, lineCount: e.lines.length, linesTruncated: b.truncated }; };
+// Bound the nested owner/member list of an alias conflict (canonical opaque model ids only).
+const boundAliasConflict = (c, max) => { const b = bound(c.equipmentModelIds, max, asciiCompare); return { aliasKey: c.aliasKey, equipmentModelIds: b.items, ownerCount: c.equipmentModelIds.length, ownersTruncated: b.truncated }; };
+// Bound a top-level array AND map each surviving entry through a nested bounder.
+const boundEntries = (arr, max, cmp, nest) => { const b = bound(arr, max, cmp); return { items: b.items.map((e) => nest(e, max)), truncated: b.truncated }; };
 
 function emptyReport(status, extra = {}) {
   return {
@@ -298,9 +331,9 @@ export function dryRunEquipmentCompatibilityImport({ packages = {}, snapshots = 
   for (const s of sources) if (!knownCompatIds.has(s.value.compatibilityId)) unresolved.push({ package: "COMPATIBILITY_SOURCES", line: s.line, ref: "compatibilityId", code: "compatibility_unresolved" });
 
   // Identity analysis vs BOTH in-batch and existing authority (equivalence-aware, fail-closed).
-  const modelIdentity = classifyIdentity(models.map((m) => ({ line: m.line, id: m.value.equipmentModelId, fp: recordFingerprint(m.value) })), existingModels);
-  const compatIdentity = classifyIdentity(compat.map((c) => ({ line: c.line, id: c.value.compatibilityId, fp: recordFingerprint(c.value) })), existingCompat);
-  const sourceIdentity = classifyIdentity(sources.map((s) => ({ line: s.line, id: s.value.sourceId, fp: recordFingerprint(s.value) })), existingSources);
+  const modelIdentity = analyzeEntity(models.map((m) => ({ line: m.line, id: m.value.equipmentModelId, fp: recordFingerprint(m.value) })), existingModels);
+  const compatIdentity = analyzeEntity(compat.map((c) => ({ line: c.line, id: c.value.compatibilityId, fp: recordFingerprint(c.value) })), existingCompat);
+  const sourceIdentity = analyzeEntity(sources.map((s) => ({ line: s.line, id: s.value.sourceId, fp: recordFingerprint(s.value) })), existingSources);
 
   // Alias ownership conflicts include existing authority aliases. Malformed aliases (from either the
   // imported package or the existing snapshot) are retained as sanitized invalids — never dropped —
@@ -340,10 +373,10 @@ export function dryRunEquipmentCompatibilityImport({ packages = {}, snapshots = 
   const idCmp = (a, b) => asciiCompare(a.id, b.id);
   const bErrors = bound(errors, M, refCmp), bUnresolved = bound(unresolved, M, refCmp);
   const bSensitive = bound(sensitive, M, refCmp);
-  const bModelCol = bound(modelIdentity.collisions, M, idCmp), bCompatCol = bound(compatIdentity.collisions, M, idCmp), bSourceCol = bound(sourceIdentity.collisions, M, idCmp);
-  const bAliasConf = bound(aliasConflicts, M, (a, b) => asciiCompare(a.aliasKey, b.aliasKey));
+  const bModelCol = boundEntries(modelIdentity.collisions, M, idCmp, boundLinesEntry), bCompatCol = boundEntries(compatIdentity.collisions, M, idCmp, boundLinesEntry), bSourceCol = boundEntries(sourceIdentity.collisions, M, idCmp, boundLinesEntry);
+  const bAliasConf = boundEntries(aliasConflicts, M, (a, b) => asciiCompare(a.aliasKey, b.aliasKey), boundAliasConflict);
   const bInvalidAlias = bound(invalidAliases, M, (a, b) => asciiCompare(a.source, b.source) || a.ref - b.ref || asciiCompare(a.reason, b.reason));
-  const bUnModel = bound(modelIdentity.unavailable, M, idCmp), bUnCompat = bound(compatIdentity.unavailable, M, idCmp), bUnSource = bound(sourceIdentity.unavailable, M, idCmp);
+  const bUnModel = boundEntries(modelIdentity.unavailable, M, idCmp, boundLinesEntry), bUnCompat = boundEntries(compatIdentity.unavailable, M, idCmp, boundLinesEntry), bUnSource = boundEntries(sourceIdentity.unavailable, M, idCmp, boundLinesEntry);
   const bConflicts = bound(conflicts, M, (a, b) => asciiCompare(a.compatibilityId, b.compatibilityId));
 
   return {
