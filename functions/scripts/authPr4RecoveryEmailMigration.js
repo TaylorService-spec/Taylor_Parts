@@ -46,9 +46,9 @@
 //     verified status on another address.
 //   - SANITIZED EVIDENCE: evidence records booleans / patterns only -- never a
 //     real address, UID, or the address-linked prior emailVerified value.
-//   - SECRET CLEANUP: any temporary working file this workflow creates (the
-//     captured-prior state used for rollback) is written under the OS temp dir
-//     and unlinked in a finally block and on interruption.
+//   - SECRET LIFECYCLE: dry runs create no rollback artifact; failed writes clean
+//     it; successful writes retain a signed, protected artifact until rollback or
+//     operator-confirmed closure; successful rollback removes it.
 //   - EMULATOR / NON-PRODUCTION ONLY for testing: see
 //     functions/test/authPr4RecoveryEmailMigration.test.mjs.
 //
@@ -72,7 +72,6 @@
 const { initializeApp } = require("firebase-admin/app");
 const { getAuth } = require("firebase-admin/auth");
 const fs = require("fs");
-const os = require("os");
 const path = require("path");
 const crypto = require("crypto");
 
@@ -131,8 +130,14 @@ function parseArgs(argv) {
         args.mappingFile = argv[++i];
         break;
       case "--capturedStateFile":
-        // Rollback input: the protected temp file written by the forward run.
+        // Rollback input: the protected, signed artifact written by the forward run.
         args.capturedStateFile = argv[++i];
+        break;
+      case "--capturedStateOut":
+        args.capturedStateOut = argv[++i];
+        break;
+      case "--stateKeyFile":
+        args.stateKeyFile = argv[++i];
         break;
       case "--evidenceOut":
         args.evidenceOut = argv[++i];
@@ -254,12 +259,12 @@ function loadMappingEntry(mappingFile, employeeId) {
 // A non-identifying reference for an address -- used ONLY for evidence and
 // operator display. Never emits the address itself. A short salted hash lets an
 // operator correlate "same address" across a run without exposing it.
-function addressRef(address) {
+function addressRef(address, runSalt) {
   if (typeof address !== "string" || address.length === 0) return "(none)";
-  const local = address.split("@")[0] || "";
-  const alias = local.includes("+") ? local.split("+").slice(1).join("+") : null;
-  const digest = crypto.createHash("sha256").update(address).digest("hex").slice(0, 8);
-  return alias ? `+${alias}#${digest}` : `#${digest}`;
+  if (!Buffer.isBuffer(runSalt) || runSalt.length < 32) {
+    throw new Error("A cryptographically random per-run evidence salt is required.");
+  }
+  return `ref:${crypto.createHmac("sha256", runSalt).update(address).digest("hex").slice(0, 16)}`;
 }
 
 // FORWARD plan: new alias, emailVerified ALWAYS false (readiness §3). The
@@ -318,14 +323,69 @@ function sanitizeEvidence(record) {
   };
 }
 
-// SECRET CLEANUP helper: write captured-prior state to a protected temp file
-// (owner-read-only) so a subsequent --rollback run can restore exactly; the
-// caller is responsible for unlinking it (main does, in finally / on signal).
-function writeCapturedState(employeeId, captured) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-"));
-  const file = path.join(dir, `${employeeId}.captured.json`);
-  fs.writeFileSync(file, JSON.stringify({ employeeId, ...captured }), { mode: 0o600 });
+const CAPTURE_VERSION = 1;
+const CAPTURE_FIELDS = Object.freeze([
+  "version", "projectId", "employeeId", "position", "uid", "priorAddress",
+  "priorEmailVerified", "newAlias", "createdAt",
+]);
+
+function loadStateKey(stateKeyFile) {
+  if (!stateKeyFile) throw new Error("--stateKeyFile <path> is required for execute and rollback.");
+  const key = fs.readFileSync(stateKeyFile);
+  if (key.length < 32) throw new Error("--stateKeyFile must contain at least 32 bytes of protected random key material.");
+  return key;
+}
+
+function canonicalCapture(payload) {
+  return JSON.stringify(Object.fromEntries(CAPTURE_FIELDS.map((field) => [field, payload[field]])));
+}
+
+function signCapture(payload, key) {
+  return crypto.createHmac("sha256", key).update(canonicalCapture(payload)).digest("hex");
+}
+
+function writeCapturedState(file, payload, key) {
+  if (!file) throw new Error("--capturedStateOut <path> is required for execute.");
+  if (fs.existsSync(file)) throw new Error("--capturedStateOut already exists; refusing to overwrite rollback state.");
+  const artifact = { ...payload, signature: signCapture(payload, key) };
+  const temp = `${file}.tmp-${process.pid}-${crypto.randomBytes(6).toString("hex")}`;
+  try {
+    fs.writeFileSync(temp, JSON.stringify(artifact), { mode: 0o600, flag: "wx" });
+    fs.renameSync(temp, file);
+    try { fs.chmodSync(file, 0o600); } catch { /* Windows ACLs are operator-managed. */ }
+  } finally {
+    if (fs.existsSync(temp)) fs.unlinkSync(temp);
+  }
   return file;
+}
+
+function readAndVerifyCapturedState(file, key, expected) {
+  const artifact = JSON.parse(fs.readFileSync(file, "utf8"));
+  const allowed = new Set([...CAPTURE_FIELDS, "signature"]);
+  if (!artifact || typeof artifact !== "object" || Array.isArray(artifact) ||
+      Object.keys(artifact).some((field) => !allowed.has(field)) ||
+      CAPTURE_FIELDS.some((field) => !(field in artifact)) ||
+      artifact.version !== CAPTURE_VERSION ||
+      typeof artifact.signature !== "string") {
+    throw new Error("Captured rollback state has an invalid schema.");
+  }
+  const expectedSignature = signCapture(artifact, key);
+  const supplied = Buffer.from(artifact.signature, "hex");
+  const calculated = Buffer.from(expectedSignature, "hex");
+  if (supplied.length !== calculated.length || !crypto.timingSafeEqual(supplied, calculated)) {
+    throw new Error("Captured rollback state failed integrity verification.");
+  }
+  for (const field of ["projectId", "employeeId", "position", "uid", "newAlias"]) {
+    if (artifact[field] !== expected[field]) {
+      throw new Error(`Captured rollback state does not match the governed ${field}.`);
+    }
+  }
+  if (typeof artifact.priorAddress !== "string" || !artifact.priorAddress ||
+      typeof artifact.priorEmailVerified !== "boolean" ||
+      typeof artifact.createdAt !== "string" || !Number.isFinite(Date.parse(artifact.createdAt))) {
+    throw new Error("Captured rollback state contains invalid values.");
+  }
+  return artifact;
 }
 
 function secureUnlink(file) {
@@ -419,13 +479,7 @@ async function main() {
     projectClass: projectClass(projectId),
     checks: {},
   };
-  let capturedStateFile;
-
-  const cleanup = () => secureUnlink(capturedStateFile);
-  process.once("SIGINT", () => {
-    cleanup();
-    process.exit(130);
-  });
+  const runSalt = crypto.randomBytes(32);
 
   try {
     if (args.rollback) {
@@ -433,7 +487,19 @@ async function main() {
       if (!args.capturedStateFile) {
         throw new Error("--rollback requires --capturedStateFile <path> (protected temp file from the forward run).");
       }
-      const captured = JSON.parse(fs.readFileSync(args.capturedStateFile, "utf8"));
+      const mapping = loadMappingEntry(args.mappingFile, args.employeeId);
+      const stateKey = loadStateKey(args.stateKeyFile);
+      const captured = readAndVerifyCapturedState(args.capturedStateFile, stateKey, {
+        projectId,
+        employeeId: args.employeeId,
+        position,
+        uid: mapping.uid,
+        newAlias: mapping.newAlias,
+      });
+      const current = await auth.getUser(captured.uid);
+      if (current.disabled || current.email !== captured.newAlias) {
+        throw new Error("Rollback halted: current account state does not match the governed migrated alias.");
+      }
       // Rollback preflight: the exact prior address must still be unclaimed.
       let priorUnclaimed = true;
       try {
@@ -457,10 +523,11 @@ async function main() {
       });
       const result = await applyPlan(auth, plan, { execute: true });
       evidence.mode = "rollback";
-      evidence.priorAddressRef = addressRef(captured.priorAddress);
-      evidence.newAliasRef = addressRef(result.readback?.email);
+      evidence.priorAddressRef = addressRef(captured.priorAddress, runSalt);
+      evidence.newAliasRef = addressRef(captured.newAlias, runSalt);
       evidence.checks.uidUnchanged = result.readback?.uid === captured.uid;
       evidence.outcome = "applied";
+      secureUnlink(args.capturedStateFile);
       console.log(`ROLLBACK applied for ${args.employeeId}: restored exact prior address + prior emailVerified.`);
     } else {
       // FORWARD path (dry-run default; execute only against non-production).
@@ -471,8 +538,8 @@ async function main() {
       const pre = await preflight(auth, { employeeId: args.employeeId, uid: mappedUid, newAlias });
       evidence.checks.accountEnabled = pre.accountEnabled;
       evidence.checks.priorAddressUnclaimed = true; // n/a on forward; alias-collision handled in preflight
-      evidence.newAliasRef = addressRef(newAlias);
-      evidence.priorAddressRef = addressRef(pre.priorAddress);
+      evidence.newAliasRef = addressRef(newAlias, runSalt);
+      evidence.priorAddressRef = addressRef(pre.priorAddress, runSalt);
 
       const plan = buildForwardPlan({
         employeeId: args.employeeId,
@@ -482,14 +549,30 @@ async function main() {
         newAlias,
       });
 
-      // Persist captured-prior state for an exact rollback, protected + temp.
-      capturedStateFile = writeCapturedState(args.employeeId, {
-        uid: pre.uid,
-        priorAddress: pre.priorAddress,
-        priorEmailVerified: pre.priorEmailVerified,
-      });
-
-      const result = await applyPlan(auth, plan, { execute: args.execute });
+      // Write the signed rollback artifact BEFORE the Auth mutation so a crash after
+      // updateUser cannot strand the identity without exact recovery state. Remove it
+      // if the write itself fails; retain it after success until rollback/closure.
+      if (args.execute) {
+        const stateKey = loadStateKey(args.stateKeyFile);
+        writeCapturedState(args.capturedStateOut, {
+          version: CAPTURE_VERSION,
+          projectId,
+          employeeId: args.employeeId,
+          position,
+          uid: pre.uid,
+          priorAddress: pre.priorAddress,
+          priorEmailVerified: pre.priorEmailVerified,
+          newAlias,
+          createdAt: new Date().toISOString(),
+        }, stateKey);
+      }
+      let result;
+      try {
+        result = await applyPlan(auth, plan, { execute: args.execute });
+      } catch (err) {
+        if (args.execute) secureUnlink(args.capturedStateOut);
+        throw err;
+      }
       evidence.mode = args.execute ? "execute" : "dry-run";
       if (result.applied) {
         evidence.checks.uidUnchanged = result.readback.uid === pre.uid;
@@ -519,11 +602,7 @@ async function main() {
     }
     console.log(JSON.stringify(sanitized, null, 2));
   } finally {
-    // On a successful forward EXECUTE the operator may want the captured file
-    // for a later rollback; but this build is emulator/test-only, so we always
-    // clean up secrets here. (A production-enable PR would hand the protected
-    // file to the operator instead, out-of-band.)
-    cleanup();
+    runSalt.fill(0);
   }
 }
 
@@ -545,6 +624,8 @@ module.exports = {
   buildRollbackPlan,
   sanitizeEvidence,
   writeCapturedState,
+  readAndVerifyCapturedState,
+  loadStateKey,
   secureUnlink,
   preflight,
   applyPlan,

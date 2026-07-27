@@ -25,6 +25,8 @@ import assert from "node:assert/strict";
 import os from "node:os";
 import fs from "node:fs";
 import path from "node:path";
+import crypto from "node:crypto";
+import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
@@ -160,9 +162,12 @@ ok("buildRollbackPlan halts when captured prior state is missing/invalid", () =>
 });
 
 ok("addressRef never returns the raw address", () => {
-  const ref = wf.addressRef("base+driver@gmail.com");
+  const salt = crypto.randomBytes(32);
+  const ref = wf.addressRef("base+driver@gmail.com", salt);
   assert.ok(!ref.includes("@"));
   assert.ok(!ref.includes("base"));
+  assert.ok(!ref.includes("driver"));
+  assert.notEqual(ref, wf.addressRef("base+driver@gmail.com", crypto.randomBytes(32)));
   assert.equal(wf.addressRef(""), "(none)");
 });
 
@@ -172,8 +177,8 @@ ok("sanitizeEvidence emits booleans/patterns only -- no real address, UID, or ad
     position: 1,
     mode: "execute",
     projectClass: "non-production",
-    newAliasRef: wf.addressRef("base+driver@gmail.com"),
-    priorAddressRef: wf.addressRef("old@example.com"),
+    newAliasRef: wf.addressRef("base+driver@gmail.com", crypto.randomBytes(32)),
+    priorAddressRef: wf.addressRef("old@example.com", crypto.randomBytes(32)),
     checks: { uidUnchanged: true, newAliasEmailVerifiedFalse: true, priorAddressUnclaimed: true, accountEnabled: true },
     outcome: "applied",
   });
@@ -197,18 +202,37 @@ ok("loadMappingEntry reads a protected out-of-band mapping and rejects missing e
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-ok("writeCapturedState writes an owner-only temp file and secureUnlink removes it", () => {
-  const file = wf.writeCapturedState("emp-rudy-driver", {
+ok("signed captured state is bound, tamper-evident, owner-only, and removable", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-test-"));
+  const file = path.join(dir, "captured.json");
+  const key = crypto.randomBytes(32);
+  const payload = {
+    version: 1,
+    projectId: "demo-authpr4",
+    employeeId: "emp-rudy-driver",
+    position: 1,
     uid: "u1",
     priorAddress: "old@example.com",
     priorEmailVerified: true,
-  });
+    newAlias: "base+driver@gmail.com",
+    createdAt: new Date().toISOString(),
+  };
+  wf.writeCapturedState(file, payload, key);
   assert.ok(fs.existsSync(file));
+  assert.equal(wf.readAndVerifyCapturedState(file, key, payload).uid, "u1");
+  throws(
+    () => wf.readAndVerifyCapturedState(file, key, { ...payload, employeeId: "emp-rudy-owner" }),
+    /does not match the governed employeeId/,
+  );
+  const tampered = JSON.parse(fs.readFileSync(file, "utf8"));
+  tampered.priorAddress = "attacker@example.com";
+  fs.writeFileSync(file, JSON.stringify(tampered));
+  throws(() => wf.readAndVerifyCapturedState(file, key, payload), /integrity verification/);
   const mode = fs.statSync(file).mode & 0o777;
-  // 0o600 on POSIX; Windows reports differently, so only assert group/other are not readable on POSIX.
   if (process.platform !== "win32") assert.equal(mode, 0o600);
   wf.secureUnlink(file);
   assert.ok(!fs.existsSync(file));
+  fs.rmSync(dir, { recursive: true, force: true });
 });
 
 // ----------------------------------------------------------------------------
@@ -283,6 +307,52 @@ await okAsync("exact ROLLBACK restores the exact prior address AND the prior ema
   assert.equal(res.readback.uid, user.uid);
   assert.equal(res.readback.email, priorAddress); // exact prior address
   assert.equal(res.readback.emailVerified, true); // exact prior boolean, not coerced false
+});
+
+await okAsync("real CLI retains bound rollback state, rejects tampering, then restores and cleans it", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-cli-"));
+  const mappingFile = path.join(dir, "mapping.json");
+  const keyFile = path.join(dir, "state.key");
+  const stateFile = path.join(dir, "rollback.json");
+  const priorAddress = `cli_prior_${uniq()}@example.com`;
+  const newAlias = `base+cli_${uniq()}@gmail.com`;
+  const user = await auth.createUser({ email: priorAddress, emailVerified: true, password: "Passw0rd!23" });
+  fs.writeFileSync(mappingFile, JSON.stringify({ "emp-rudy-driver": { uid: user.uid, newAlias } }), { mode: 0o600 });
+  fs.writeFileSync(keyFile, crypto.randomBytes(48), { mode: 0o600 });
+  const script = path.resolve("scripts/authPr4RecoveryEmailMigration.js");
+  const common = ["--projectId", "demo-authpr4", "--employeeId", "emp-rudy-driver", "--position", "1",
+    "--mappingFile", mappingFile, "--stateKeyFile", keyFile];
+  const run = (extra) => spawnSync(process.execPath, [script, ...common, ...extra], {
+    cwd: path.resolve("."),
+    env: process.env,
+    encoding: "utf8",
+  });
+  const forward = run(["--execute", "--capturedStateOut", stateFile]);
+  assert.equal(forward.status, 0, forward.stderr);
+  assert.ok(fs.existsSync(stateFile), "successful CLI execute must retain rollback state");
+  let after = await auth.getUser(user.uid);
+  assert.equal(after.email, newAlias);
+  assert.equal(after.emailVerified, false);
+
+  const artifact = JSON.parse(fs.readFileSync(stateFile, "utf8"));
+  artifact.employeeId = "emp-rudy-owner";
+  fs.writeFileSync(stateFile, JSON.stringify(artifact));
+  const rejected = run(["--rollback", "--capturedStateFile", stateFile]);
+  assert.notEqual(rejected.status, 0);
+  assert.match(rejected.stderr, /integrity verification|does not match/);
+  after = await auth.getUser(user.uid);
+  assert.equal(after.email, newAlias, "rejected state must cause no Auth mutation");
+
+  // Restore the original signed artifact and complete the governed rollback.
+  fs.writeFileSync(stateFile, JSON.stringify({ ...artifact, employeeId: "emp-rudy-driver" }));
+  // The signature was over the original employeeId, so this restores the original bytes semantically.
+  const rollback = run(["--rollback", "--capturedStateFile", stateFile]);
+  assert.equal(rollback.status, 0, rollback.stderr);
+  assert.ok(!fs.existsSync(stateFile), "successful rollback must clean captured state");
+  after = await auth.getUser(user.uid);
+  assert.equal(after.email, priorAddress);
+  assert.equal(after.emailVerified, true);
+  fs.rmSync(dir, { recursive: true, force: true });
 });
 
 await okAsync("preflight HALTS (fail closed) for a DISABLED account", async () => {

@@ -29,12 +29,12 @@ passwords, or UIDs.
 | Exact project guard | `--projectId` required; `taylor-parts` additionally requires matching `--confirmProduction taylor-parts`. |
 | Production-write block | `--execute`/`--rollback` against `taylor-parts` **throws** — this build is dry-run-only against production, execute-only against non-production. |
 | Ordered-persona guard | Target must equal the persona at `--position` in the fixed order; excluded personas (`emp-rudy-sales-manager`, break-glass) rejected; `emp-rudy-owner` (last) requires `--breakGlassVerified` + `--confirmLowerRiskComplete`. |
-| Protected out-of-band input | Persona→`{uid,newAlias}` read from `--mappingFile` (Owner-supplied, never committed). |
+| Protected out-of-band input | Persona→`{uid,newAlias}` is read from `--mappingFile`; rollback-state integrity uses a separate protected `--stateKeyFile` containing at least 32 random bytes. Neither is committed. |
 | One at a time | Exactly one persona per invocation. |
 | Fail closed | Disabled / missing / UID-mismatch / alias-collision → **halt** (never skip, never enable). |
-| Exact rollback | Preflight captures the exact prior address + prior `emailVerified`; forward always writes `emailVerified=false`; rollback restores the captured exact address + boolean; a prior `true` is never applied to the new alias; if the exact prior address is no longer unclaimed, rollback halts. |
-| Sanitized evidence | Booleans / patterns / salted-hash refs only — never a real address, UID, or address-linked prior-verified value. |
-| Secret cleanup | The captured-prior temp file (for rollback) is written under the OS temp dir (`0600`) and unlinked in `finally` and on `SIGINT`. |
+| Exact rollback | Before mutation, the workflow writes a strict, signed `0600` rollback artifact to the explicitly supplied `--capturedStateOut`. It binds project, persona, position, UID, and migrated alias; rollback revalidates the signature, mapping, current alias, account state, and prior-address availability before restoring the exact prior address + boolean. |
+| Sanitized evidence | Booleans / patterns / per-run random-salted opaque references only — never an address, alias tag, UID, or address-linked prior-verified value. The salt is not persisted. |
+| Secret lifecycle | Dry runs create no rollback state. Failed pre-write/write attempts remove it. A successful mutation retains the protected artifact for recovery; successful rollback deletes it. The operator deletes it after the separately reviewed verification/rollback window closes. |
 
 Migration order (readiness §4): `emp-rudy-driver` (1) → `emp-rudy-parts-associate`
 (2) → `emp-rudy-warehouse-manager` (3) → `emp-rudy-parts-manager` (4) →
@@ -64,8 +64,11 @@ FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 \
   --mappingFile /secure/out-of-band/mapping.json
 ```
 
-`--execute` performs the write **only** against a non-production project. There is
-no runnable production path in this build.
+`--execute` additionally requires `--stateKeyFile /secure/key` and
+`--capturedStateOut /secure/driver.rollback.json`. Rollback requires the same
+mapping and key files plus `--capturedStateFile /secure/driver.rollback.json`.
+It performs writes **only** against a non-production project. There is no runnable
+production path in this build.
 
 ## Not authorized by this build
 
