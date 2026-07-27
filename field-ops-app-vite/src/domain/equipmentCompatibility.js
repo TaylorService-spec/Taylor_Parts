@@ -31,9 +31,13 @@ export const AUTHORITATIVE_AUTHORITIES = Object.freeze(["MANUFACTURER", "SERVICE
 
 const TUPLE_VERSION = 1; // versioned normalized uniqueness tuple (architecture §5 / D-COMPAT-2)
 
-const COMPAT_FIELDS = new Set(["equipmentModelId", "partId", "compatibilityType", "assembly", "installationPosition", "quantityRequired", "applicability", "effectiveFrom", "effectiveTo", "sourceSummary", "confidenceLevel", "verificationStatus", "notes", "version"]);
+// `compatibilityId` and `uniquenessKey` are OPTIONAL stored identity fields: when present they must
+// agree exactly with the values derived from the record's identity tuple (never trusted blindly).
+const COMPAT_FIELDS = new Set(["equipmentModelId", "partId", "compatibilityType", "assembly", "installationPosition", "quantityRequired", "applicability", "effectiveFrom", "effectiveTo", "sourceSummary", "confidenceLevel", "verificationStatus", "notes", "version", "compatibilityId", "uniquenessKey"]);
 const APPLICABILITY_FIELDS = new Set(["kind", "serialScheme", "serialRangeStart", "serialRangeEnd", "modelRevision"]);
-const SOURCE_FIELDS = new Set(["compatibilityId", "authorityType", "sourceReference", "sourceVersion", "observedClaim", "contentFingerprint", "notes"]);
+// `capturedAt`/`capturedBy` are mandatory immutable capture provenance; `sourceId` is an optional
+// stored identity that must agree exactly with the derived value when present.
+const SOURCE_FIELDS = new Set(["sourceId", "compatibilityId", "authorityType", "sourceReference", "sourceVersion", "observedClaim", "contentFingerprint", "capturedAt", "capturedBy", "notes"]);
 
 const plain = (v) => v !== null && typeof v === "object" && !Array.isArray(v) && [Object.prototype, null].includes(Object.getPrototypeOf(v));
 // Deterministic UTF-16 code-unit ordering (never locale-sensitive), matching the D1 contract.
@@ -50,6 +54,13 @@ export function isIsoDate(v) {
   if (m < 1 || m > 12 || d < 1) return false;
   const leap = (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
   return d <= [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][m - 1];
+}
+// ISO-8601 UTC instant (YYYY-MM-DDThh:mm:ss[.mmm]Z) — a deterministic, repository-appropriate
+// representation of capture time, validated purely with no Date-"now" dependency.
+export function isIsoDateTime(v) {
+  if (typeof v !== "string") return false;
+  const m = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?Z$/.exec(v);
+  return !!m && isIsoDate(m[1]) && +m[2] < 24 && +m[3] < 60 && +m[4] < 60;
 }
 
 // ---------------------------------------------------------------------------
@@ -180,8 +191,13 @@ export function validateCompatibility(input, { serialSchemes = {} } = {}) {
     assembly: nullableText(input.assembly), installationPosition: nullableText(input.installationPosition), applicability: app.value,
   };
   const uniquenessKey = buildCompatibilityUniquenessKey(tuple);
+  const compatibilityId = buildCompatibilityId(uniquenessKey);
+  // Optional stored identity must agree exactly with the derived values (malformed or mismatched
+  // stored identity is rejected, never accepted or silently corrected).
+  if (input.uniquenessKey !== undefined && input.uniquenessKey !== uniquenessKey) return { valid: false, value: null, reason: "uniqueness_key_mismatch" };
+  if (input.compatibilityId !== undefined && input.compatibilityId !== compatibilityId) return { valid: false, value: null, reason: "compatibility_id_mismatch" };
   const value = {
-    ...tuple, compatibilityId: buildCompatibilityId(uniquenessKey), uniquenessKey,
+    ...tuple, compatibilityId, uniquenessKey,
     quantityRequired, effectiveFrom, effectiveTo, sourceSummary: nullableText(input.sourceSummary),
     confidenceLevel, verificationStatus, notes: nullableText(input.notes), version: input.version,
   };
@@ -225,40 +241,100 @@ export function validateCompatibilitySource(input) {
   const observedClaim = normalizeIdentityKey(input.observedClaim);
   if (!OBSERVED_CLAIMS.includes(observedClaim)) return { valid: false, value: null, reason: "observed_claim_invalid" };
   if (typeof input.contentFingerprint !== "string" || !/^[0-9a-f]{64}$/.test(input.contentFingerprint)) return { valid: false, value: null, reason: "content_fingerprint_invalid" };
-  const value = { compatibilityId: input.compatibilityId, authorityType, sourceReference, sourceVersion: nullableText(input.sourceVersion), observedClaim, contentFingerprint: input.contentFingerprint, notes: nullableText(input.notes) };
-  value.sourceId = `src_${sha256Hex(JSON.stringify([value.compatibilityId, value.authorityType, value.sourceReference, value.sourceVersion, value.contentFingerprint]))}`;
+  // Mandatory immutable capture provenance.
+  if (!isIsoDateTime(input.capturedAt)) return { valid: false, value: null, reason: "captured_at_invalid" };
+  const capturedBy = normalizeIdentityText(input.capturedBy);
+  if (!capturedBy) return { valid: false, value: null, reason: "captured_by_invalid" };
+  const value = { compatibilityId: input.compatibilityId, authorityType, sourceReference, sourceVersion: nullableText(input.sourceVersion), observedClaim, contentFingerprint: input.contentFingerprint, capturedAt: input.capturedAt, capturedBy, notes: nullableText(input.notes) };
+  // sourceId identifies WHICH source document for WHICH relationship — deliberately independent of
+  // the mutable-by-mistake claim/capture fields, so a changed observedClaim keeps the same identity
+  // and is caught as a collision rather than masquerading as a fresh source (see collision analysis).
+  const sourceId = `src_${sha256Hex(JSON.stringify([value.compatibilityId, value.authorityType, value.sourceReference, value.sourceVersion, value.contentFingerprint]))}`;
+  if (input.sourceId !== undefined && input.sourceId !== sourceId) return { valid: false, value: null, reason: "source_id_mismatch" };
+  value.sourceId = sourceId;
   return { valid: true, value, reason: null };
 }
 
-// Source precedence + conflict analysis (architecture §4.3, §5 / D-COMPAT-4). Contradicting
-// evidence ALWAYS yields a visible CONFLICT and is never silently merged, discarded, or
-// auto-verified — precedence only annotates which authority is strongest on each side. The result
-// is a recommendation for a human decision; it never mutates a relationship's verificationStatus.
-export function analyzeCompatibilityEvidence(records = []) {
-  if (!Array.isArray(records)) return { recommendedStatus: "NO_EVIDENCE", hasConflict: false, supporting: [], contradicting: [], inconclusive: [], strongestSupport: null, strongestContradiction: null, authoritativeSupport: false, invalid: [{ index: -1, reason: "not_array" }] };
-  const invalid = [], supporting = [], contradicting = [], inconclusive = [];
+// Identity-level evidence collision refusal (architecture §4.3, §5). Same sourceId + fully-equivalent
+// immutable content = idempotent duplicate. Same sourceId + non-equivalent content (e.g. a changed
+// observedClaim or capture provenance) = collision — a changed claim can never masquerade as a replay.
+export function detectCompatibilitySourceCollisions(records = []) {
+  if (!Array.isArray(records)) return { collisions: [], duplicates: [], invalid: [{ index: -1, reason: "not_array" }] };
+  const byId = new Map(), invalid = [];
   records.forEach((record, index) => {
     const v = validateCompatibilitySource(record);
     if (!v.valid) { invalid.push({ index, reason: v.reason }); return; }
-    ({ SUPPORTS: supporting, CONTRADICTS: contradicting, INCONCLUSIVE: inconclusive }[v.value.observedClaim]).push(v.value);
+    if (!byId.has(v.value.sourceId)) byId.set(v.value.sourceId, []);
+    byId.get(v.value.sourceId).push({ index, value: v.value });
   });
-  const rank = (e) => AUTHORITY_RANK[e.authorityType];
-  const order = (list) => [...list].sort((a, b) => (rank(b) - rank(a)) || asciiCompare(a.sourceId, b.sourceId));
-  const sortedSupport = order(supporting), sortedContra = order(contradicting);
-  const strongestSupport = sortedSupport[0]?.authorityType ?? null;
-  const strongestContradiction = sortedContra[0]?.authorityType ?? null;
-  const hasConflict = sortedSupport.length > 0 && sortedContra.length > 0;
-  const authoritativeSupport = sortedSupport.some((e) => AUTHORITATIVE_AUTHORITIES.includes(e.authorityType));
+  const collisions = [], duplicates = [];
+  for (const [sourceId, group] of byId) {
+    if (group.length < 2) continue;
+    const canonical = JSON.stringify(group[0].value);
+    (group.every((g) => JSON.stringify(g.value) === canonical) ? duplicates : collisions)
+      .push({ sourceId, indexes: group.map((g) => g.index).sort((a, b) => a - b) });
+  }
+  const byKey = (x) => x.sourceId;
+  return { collisions: collisions.sort((a, b) => asciiCompare(byKey(a), byKey(b))), duplicates: duplicates.sort((a, b) => asciiCompare(byKey(a), byKey(b))), invalid };
+}
+
+// Precedence + conflict for the evidence of ONE relationship (pre-validated values). Contradicting
+// evidence ALWAYS yields a visible CONFLICT and is never silently merged, discarded, or auto-verified
+// — precedence only annotates which authority is strongest per side; the result never mutates a
+// relationship's verificationStatus.
+function analyzeValidatedEvidence(values, compatibilityId) {
+  const supporting = [], contradicting = [], inconclusive = [];
+  for (const v of values) ({ SUPPORTS: supporting, CONTRADICTS: contradicting, INCONCLUSIVE: inconclusive }[v.observedClaim]).push(v);
+  const order = (list) => [...list].sort((a, b) => (AUTHORITY_RANK[b.authorityType] - AUTHORITY_RANK[a.authorityType]) || asciiCompare(a.sourceId, b.sourceId));
+  const s = order(supporting), c = order(contradicting);
+  const hasConflict = s.length > 0 && c.length > 0;
+  const authoritativeSupport = s.some((e) => AUTHORITATIVE_AUTHORITIES.includes(e.authorityType));
   let recommendedStatus;
   if (hasConflict) recommendedStatus = "CONFLICT";
-  else if (sortedSupport.length > 0) recommendedStatus = authoritativeSupport ? "SUPPORTS_AUTHORITATIVE" : "SUPPORTS_EVIDENCE_ONLY";
-  else if (sortedContra.length > 0) recommendedStatus = "CONTRADICTED";
+  else if (s.length > 0) recommendedStatus = authoritativeSupport ? "SUPPORTS_AUTHORITATIVE" : "SUPPORTS_EVIDENCE_ONLY";
+  else if (c.length > 0) recommendedStatus = "CONTRADICTED";
   else if (inconclusive.length > 0) recommendedStatus = "INCONCLUSIVE";
   else recommendedStatus = "NO_EVIDENCE";
-  return {
-    recommendedStatus, hasConflict, authoritativeSupport,
-    supporting: sortedSupport, contradicting: sortedContra, inconclusive,
-    strongestSupport, strongestContradiction,
-    invalid: invalid.sort((a, b) => a.index - b.index),
-  };
+  return { compatibilityId: compatibilityId ?? null, recommendedStatus, hasConflict, authoritativeSupport, supporting: s, contradicting: c, inconclusive, strongestSupport: s[0]?.authorityType ?? null, strongestContradiction: c[0]?.authorityType ?? null, mixedRelationships: false };
+}
+
+// Relationship-ISOLATED evidence analysis. Evidence from different compatibility IDs is never
+// combined, so support for relationship A plus contradiction for relationship B can never fabricate
+// a conflict. Pass expectedCompatibilityId to analyze exactly one relationship (foreign evidence is
+// surfaced as compatibility_id_mismatch); without it, mixed input fails visibly as MIXED_RELATIONSHIPS.
+export function analyzeCompatibilityEvidence(records = [], { expectedCompatibilityId = null } = {}) {
+  if (!Array.isArray(records)) return { ...analyzeValidatedEvidence([], expectedCompatibilityId), invalid: [{ index: -1, reason: "not_array" }] };
+  const invalid = [], valid = [];
+  records.forEach((record, index) => {
+    const v = validateCompatibilitySource(record);
+    if (!v.valid) { invalid.push({ index, reason: v.reason }); return; }
+    valid.push({ index, value: v.value });
+  });
+  const bySortedIndex = (a, b) => a.index - b.index;
+  let target = expectedCompatibilityId;
+  if (target == null) {
+    const distinct = [...new Set(valid.map((v) => v.value.compatibilityId))];
+    if (distinct.length > 1) return { ...analyzeValidatedEvidence([], null), mixedRelationships: true, recommendedStatus: "MIXED_RELATIONSHIPS", compatibilityIds: distinct.sort(asciiCompare), invalid: invalid.sort(bySortedIndex) };
+    target = distinct[0] ?? null;
+  }
+  const matched = [];
+  for (const v of valid) {
+    if (target != null && v.value.compatibilityId !== target) invalid.push({ index: v.index, reason: "compatibility_id_mismatch" });
+    else matched.push(v.value);
+  }
+  return { ...analyzeValidatedEvidence(matched, target), invalid: invalid.sort(bySortedIndex) };
+}
+
+// Group mixed evidence by relationship and analyze each independently (deterministic order).
+export function analyzeCompatibilityEvidenceByRelationship(records = []) {
+  if (!Array.isArray(records)) return { relationships: [], invalid: [{ index: -1, reason: "not_array" }] };
+  const invalid = [], groups = new Map();
+  records.forEach((record, index) => {
+    const v = validateCompatibilitySource(record);
+    if (!v.valid) { invalid.push({ index, reason: v.reason }); return; }
+    if (!groups.has(v.value.compatibilityId)) groups.set(v.value.compatibilityId, []);
+    groups.get(v.value.compatibilityId).push(v.value);
+  });
+  const relationships = [...groups].sort(([a], [b]) => asciiCompare(a, b)).map(([compatibilityId, list]) => analyzeValidatedEvidence(list, compatibilityId));
+  return { relationships, invalid: invalid.sort((a, b) => a.index - b.index) };
 }
