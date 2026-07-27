@@ -43,6 +43,13 @@ function gitShow(commit, file) {
 
 function gcloudAccessToken() {
   const executable = process.env.GCLOUD_BIN || (process.platform === "win32" ? "gcloud.cmd" : "gcloud");
+  if (process.platform === "win32" && executable.toLowerCase().endsWith(".ps1")) {
+    return execFileSync(
+      "powershell.exe",
+      ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", executable, "auth", "print-access-token"],
+      { encoding: "utf8" }
+    ).trim();
+  }
   return execFileSync(executable, ["auth", "print-access-token"], { encoding: "utf8" }).trim();
 }
 
