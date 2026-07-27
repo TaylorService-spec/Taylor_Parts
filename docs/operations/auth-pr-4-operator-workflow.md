@@ -1,11 +1,40 @@
 # AUTH-PR-4 — Governed operator workflow (build/test gate)
 
-> **STATUS: repository build + emulator/non-production test ONLY.** This workflow
-> **cannot** mutate production identities: a write against the `taylor-parts`
-> project is refused by the script itself. Production execution is a **separate,
-> not-yet-granted** Owner Production Identity-Mutation Authorization gate — see
-> [`docs/deployment/auth-pr-4-readiness-authorization-package.md`](../deployment/auth-pr-4-readiness-authorization-package.md)
-> §11/§12. This document authorizes no production action.
+> **STATUS: repository build + emulator/non-production test ONLY.** Plain
+> `--execute` / `--rollback` against `taylor-parts` are **unconditionally refused**
+> by the script. The **production-enablement** path (`--executeProduction`, the
+> [`authPr4ProductionGate`](../../functions/scripts/authPr4ProductionGate.js)) is
+> **conditional and fails closed**: it permits a production write only under a
+> complete, valid, **recorded Owner authorization** — which **does not exist**, so
+> production stays blocked. Recording that authorization + naming an executor +
+> supplying private operational inputs is a **separate, not-yet-granted** Owner gate
+> (see [`docs/deployment/auth-pr-4-production-enablement-design.md`](../deployment/auth-pr-4-production-enablement-design.md)).
+> This document authorizes no production action.
+
+## Production-enablement path (`--executeProduction`) — design §5
+
+A production-project write is permitted **only** through `--executeProduction`,
+which routes the run through the [`authPr4ProductionGate`](../../functions/scripts/authPr4ProductionGate.js).
+Before any SDK init, the gate independently verifies, and **fails closed** on any of:
+
+- **repository identity + governed-file SHA-256 hashes** (of the workflow + gate),
+  independently derived — a user-supplied `--authorizedCommit` is never sufficient;
+- a valid **`--authorizationManifest`** (project, exact ordered persona allowlist,
+  executionModeToken, reviewed head + governed-file hashes) — an append-only,
+  recorded Owner authorization;
+- a signed **`--progressionFile`** record enforcing cross-invocation order: only the
+  exact next persona proceeds; advance only after a confirmed write + read-back;
+  skipped/repeated/reordered/stale/conflicting/tampered/suspended → refuse;
+  1–4 durable before 5; an uncertain outcome does not advance; a successful rollback
+  reverses + **suspends** and blocks later personas;
+- for **position 5**, a signed **`--breakGlassConfirmationFile`** created after 1–4
+  complete, time-valid, and bound to the exact progression state (early/expired/
+  mismatched/reused → refuse).
+
+`--executeProduction` against the **production project** stays blocked absent a real
+recorded authorization; against a **non-production/emulator** project it is the
+"production-shaped" path exercised by tests. No CI/emulator test targets the real
+`taylor-parts` project.
 
 ## What it is
 
@@ -27,7 +56,7 @@ passwords, or UIDs.
 |---|---|
 | Dry-run default | No write unless `--execute` (forward) or `--rollback` is passed. |
 | Exact project guard | `--projectId` required; `taylor-parts` additionally requires matching `--confirmProduction taylor-parts`. |
-| Production-write block | `--execute`/`--rollback` against `taylor-parts` **throws** — this build is dry-run-only against production, execute-only against non-production. |
+| Production-write block | Plain `--execute`/`--rollback` against `taylor-parts` **throws** (dry-run-only against production, execute-only against non-production). A production write is possible **only** via `--executeProduction` + the fail-closed `authPr4ProductionGate` (design §5, section above), which stays blocked absent a recorded Owner authorization. |
 | Ordered-persona guard | Target must equal the persona at `--position` in the fixed order; excluded personas (`emp-rudy-sales-manager`, break-glass) rejected; `emp-rudy-owner` (last) requires `--breakGlassVerified` + `--confirmLowerRiskComplete`. |
 | Protected out-of-band input | Persona→`{uid,newAlias}` is read from `--mappingFile`; rollback-state integrity uses a separate protected `--stateKeyFile` containing at least 32 random bytes. Neither is committed. |
 | One at a time | Exactly one persona per invocation. |

@@ -77,6 +77,7 @@ const { getAuth } = require("firebase-admin/auth");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const productionGate = require("./authPr4ProductionGate.js");
 
 const PRODUCTION_PROJECT_ID = "taylor-parts";
 
@@ -108,8 +109,28 @@ function parseArgs(argv) {
       case "--execute":
         args.execute = true;
         break;
+      case "--executeProduction":
+        // The explicit, deliberate production-execution flag. It routes the run
+        // through the full authorization gate (authPr4ProductionGate); without a
+        // complete valid authorization the gate fails closed.
+        args.executeProduction = true;
+        break;
       case "--rollback":
         args.rollback = true;
+        break;
+      case "--authorizationManifest":
+        args.authorizationManifest = argv[++i];
+        break;
+      case "--progressionFile":
+        args.progressionFile = argv[++i];
+        break;
+      case "--breakGlassConfirmationFile":
+        args.breakGlassConfirmationFile = argv[++i];
+        break;
+      case "--authorizedCommit":
+        // An OPTIONAL operator input; never sufficient by itself -- the gate
+        // independently derives repository identity and treats it as authoritative.
+        args.authorizedCommit = argv[++i];
         break;
       case "--breakGlassVerified":
         args.breakGlassVerified = true;
@@ -172,21 +193,25 @@ function assertProjectTarget(args) {
   return args.projectId;
 }
 
-// PRODUCTION-EXECUTION BLOCK -- this build/test gate does not authorize any
-// production identity mutation. A write against the production project is
-// refused here regardless of other flags; enabling it is a separate PR under a
-// separate Owner Production Identity-Mutation Authorization (readiness §11).
+// PRODUCTION-EXECUTION AUTHORIZATION -- a production-project write is permitted
+// ONLY through the explicit --executeProduction flag, which routes the run
+// through the full authorization gate (assertProductionAuthorization, called in
+// main() before any SDK init). Plain --execute / --rollback against the
+// production project remain UNCONDITIONALLY refused here. The gate itself fails
+// closed unless a complete, valid, recorded Owner authorization is presented, so
+// production stays effectively blocked until that authorization exists.
 function assertExecutionAuthorization(args) {
-  const wantsWrite = Boolean(args.execute || args.rollback);
-  if (wantsWrite && args.projectId === PRODUCTION_PROJECT_ID) {
+  const wantsSimpleWrite = Boolean(args.execute || args.rollback);
+  const wantsProductionGatedWrite = Boolean(args.executeProduction);
+  if (args.projectId === PRODUCTION_PROJECT_ID && wantsSimpleWrite && !wantsProductionGatedWrite) {
     throw new Error(
-      "Refusing to write against the production project. This build authorizes DRY-RUN only " +
-        "against production and EXECUTE only against non-production (emulator/fixture) projects. " +
-        "Production identity mutation is a separate, not-yet-granted gate " +
-        "(docs/deployment/auth-pr-4-readiness-authorization-package.md §11/§12).",
+      "Refusing to write against the production project. Plain --execute / --rollback are DRY-RUN only " +
+        "against production and EXECUTE only against non-production (emulator/fixture) projects. A production " +
+        "identity mutation requires --executeProduction under a complete, valid recorded Owner authorization " +
+        "(docs/deployment/auth-pr-4-production-enablement-design.md §5; authPr4ProductionGate).",
     );
   }
-  return wantsWrite ? "write" : "dry-run";
+  return wantsSimpleWrite || wantsProductionGatedWrite ? "write" : "dry-run";
 }
 
 // EXACT ORDERED-PERSONA GUARD (readiness §4).
@@ -508,7 +533,25 @@ async function main() {
   // invocation must fail before any Firebase SDK call.
   const projectId = assertProjectTarget(args);
   assertExecutionAuthorization(args);
-  const position = assertPersonaOrder(args);
+
+  // Production-gated path: the full authorization gate runs BEFORE SDK init and
+  // fails closed on anything invalid. It independently verifies repository
+  // identity + governed-file hashes, the integrity-checked progression record
+  // (only the exact next persona proceeds), and -- for position 5 -- a time-valid
+  // break-glass confirmation. The effective persona comes from the progression,
+  // so --position / --confirmLowerRiskComplete cannot bypass ordering.
+  let gateCtx = null;
+  let position;
+  if (args.executeProduction) {
+    gateCtx = productionGate.assertProductionAuthorization(args, {
+      personaOrder: MIGRATION_PERSONA_ORDER,
+    });
+    args.employeeId = gateCtx.effective.employeeId;
+    position = MIGRATION_PERSONA_ORDER.indexOf(args.employeeId) + 1;
+    if (!args.rollback) args.execute = true; // a production forward write
+  } else {
+    position = assertPersonaOrder(args);
+  }
 
   initializeApp({ projectId });
   const auth = getAuth();
@@ -579,6 +622,15 @@ async function main() {
       evidence.outcome = "applied";
       // Only a CONFIRMED successful rollback removes the recovery artifact.
       secureUnlink(args.capturedStateFile);
+      // A confirmed production rollback REVERSES + SUSPENDS progression, blocking
+      // later personas until the sequence is governed-reestablished (design §5.1).
+      if (args.executeProduction) {
+        productionGate.writeProgression(
+          args.progressionFile,
+          productionGate.suspendProgressionAfterRollback(gateCtx.progression, args.employeeId),
+          gateCtx.stateKey,
+        );
+      }
       console.log(`ROLLBACK applied for ${args.employeeId}: restored exact prior address + prior emailVerified.`);
     } else {
       // FORWARD path (dry-run default; execute only against non-production).
@@ -641,6 +693,16 @@ async function main() {
         if (!evidence.checks.uidUnchanged) throw new Error("Post-write UID changed -- halting.");
         if (!evidence.checks.newAliasEmailVerifiedFalse) {
           throw new Error("Post-write emailVerified is not false on the new alias -- halting.");
+        }
+        // Progression advances ONLY after a fully verified write + read-back (the
+        // fail-closed checks above throw before this). An uncertain outcome never
+        // reaches here, so it never advances (design §5.1).
+        if (args.executeProduction) {
+          productionGate.writeProgression(
+            args.progressionFile,
+            productionGate.advanceProgression(gateCtx.progression, args.employeeId),
+            gateCtx.stateKey,
+          );
         }
         console.log(
           `FORWARD executed for ${args.employeeId} (position ${position}, ${evidence.projectClass}): ` +
