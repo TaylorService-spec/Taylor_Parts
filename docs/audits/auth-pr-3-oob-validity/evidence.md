@@ -24,10 +24,19 @@ A_VALID:  true PASSWORD_RESET   # later code valid too
 ```
 
 - Each `generatePasswordResetLink` call yields a **distinct** OOB code.
-- The **earlier** code remains **valid** after a later generation (verify-only
-  succeeds) and can **complete** a password reset (fully usable, not merely
-  verifiable).
-- The later code is also valid; the two coexist.
+- The **earlier** code remains **outstanding** in the project-scoped emulator
+  `oobCodes` list after the later generation — i.e. it was NOT invalidated or
+  removed by generating a later one.
+- The later code is outstanding too; the two coexist.
+
+The regression test asserts non-invalidation via the project-scoped
+`/emulator/v1/projects/{project}/oobCodes` list (no ambiguous API key, robust
+across firebase-tools versions). Full end-to-end code CONSUMPTION is not asserted
+in CI — the emulator's raw `identitytoolkit` `resetPassword` routing is
+API-key/project-fragile across emulator versions (it returns 400 for a
+real-named project with a placeholder key), which would test the emulator rather
+than our contract. End-to-end consumption is covered by the production-enablement
+re-verification below.
 
 **Conclusion:** generating a later link does NOT invalidate the earlier
 already-delivered link. Combined with mandatory provider send-dedup on the
