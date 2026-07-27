@@ -43,14 +43,21 @@ cannot bind to an enablement head that does not yet exist):
 2. **Build and review the separate enablement PR** (§5) **without production execution**.
 3. After review, **identify the exact reviewed implementation head** plus a **deterministic
    SHA-256 of the governed workflow and the relevant authorization/progression code**.
-4. **Owner authorization** (§3) is granted **bound to that reviewed head and those content
-   hashes** — not to a pre-guessed commit.
-5. Merge the enablement PR with a method that **preserves the reviewed commit in ancestry**,
-   **or explicitly record the resulting merge commit** in the DECISIONS entry **before any
-   execution**.
+4. **Owner authorization** (§3) is appended as a **new append-only DECISIONS entry** that
+   records the **exact reviewed enablement head and the governed-file hashes**. Once
+   appended, that entry is **never edited** (append-only history).
+5. Merge the enablement PR **preferably with a method that preserves the reviewed head in
+   ancestry**. If the resulting merge commit must also be recorded, add a **separate,
+   new append-only execution-readiness / merge-attestation entry** that references the
+   original authorization — **the original decision is not modified** (§5.4a). The
+   attestation records the resulting merge commit, confirms the reviewed head is in
+   ancestry where applicable, repeats or references the governed-file hashes, and states
+   that execution remains separately operator-triggered. **If a squash merge prevents
+   ancestry preservation, the attestation must prove the merged governed-file hashes
+   exactly match the reviewed hashes.**
 6. **Execution verifies both** approved ancestry/commit identity **and** the exact governed-
-   file hashes, **independently derived** before SDK init (§5.4). Any post-review change to a
-   governed file invalidates the authorization and requires re-review.
+   file hashes, **independently derived** before SDK init (§5.4). **Any mismatch requires
+   re-review and a new authorization — history is never amended to make it match.**
 
 Even after all of the above, **no execution happens automatically** — an operator must run
 the workflow, one identity at a time, under the recorded authorization and a valid
@@ -124,16 +131,22 @@ change is an acknowledged possible platform effect (observed and recorded, never
 operator action).
 
 **Bound reviewed implementation (§5.4):** this authorization is bound to the **exact reviewed
-enablement commit** `<reviewed head SHA, filled at authorization AFTER the enablement PR is
+enablement head** `<reviewed head SHA, filled at authorization AFTER the enablement PR is
 built, reviewed, and its head is known>` **and** the recorded **SHA-256 content hashes of the
-governed files** `<hash list, filled at authorization>`. If a squash/merge produces a
-different `main` commit, the **resulting merge commit is recorded here before any execution**,
-and execution must find the reviewed commit in ancestry (or match the recorded merge commit)
-**and** independently re-derive and match the governed-file hashes. Any post-review change to a
-governed file invalidates this authorization and requires re-review.
+governed files** `<hash list, filled at authorization>`. **This entry is append-only and is
+never edited after it is recorded.** If a squash/merge produces a different `main` commit,
+that fact is captured in a **separate, new append-only execution-readiness / merge-attestation
+entry** (§5.4a) — **not** by editing this entry. Execution must independently re-derive and
+match the governed-file hashes and either find the reviewed head in ancestry or match the
+merge commit recorded in that later attestation. Any post-review change to a governed file, or
+any hash mismatch, invalidates this authorization and requires re-review + a new
+authorization — history is never amended to match.
 **Executor:** `<named operator, filled at authorization>`.
-**Break-glass confirmation reference (§5.2):** `<repository-governed evidence reference,
-filled at authorization>`.
+**Break-glass requirement (§5.2):** a valid authorization-bound break-glass confirmation must
+be produced **after** positions 1–4 complete and **immediately before** position 5; the actual
+confirmation is recorded **separately** (a protected, integrity-checked execution artifact,
+plus a sanitized append-only evidence/attestation reference where repository evidence is
+required) and is **not present at initial authorization**.
 
 **Granted:** `______________________  — <Owner>  (LEFT BLANK; unsigned until the Owner records it)`
 ```
@@ -229,15 +242,25 @@ record** — the authority for cross-invocation ordering that the current build 
 - **cannot be bypassed** by supplying `--position` or `--confirmLowerRiskComplete` — those
   operator flags are inputs to, never substitutes for, the progression record.
 
-### 5.2 Break-glass confirmation is a recorded, integrity-protected artifact (not a bare boolean)
+### 5.2 Break-glass confirmation — recorded, integrity-protected, produced immediately before position 5
 
 `--breakGlassVerified` is an **operator assertion only** and MUST NOT be described or used as
-independent proof. The owner step (position 5) MUST be bound to a **separately recorded
-break-glass confirmation** containing at least: a **confirmation timestamp**; the **named
-confirmer/executor**; the **authorization identifier**; a **sanitized result** showing
-recoverability and login verification; an **expiration or same-run validity requirement**;
-and **integrity protection or a repository-governed evidence reference**. **No break-glass
-credentials or identity details may be committed.**
+independent proof. Confirmation is **two-staged in time** so it cannot be a stale check made
+at initial authorization:
+
+- **At initial Owner authorization (§3):** only the **requirement and the approved
+  confirmation contract** are recorded — **not** a completed break-glass check.
+- **At execution, after personas 1–4 pass and immediately before position 5:** the operator
+  produces the **actual** break-glass confirmation as a **separate protected, integrity-checked
+  execution artifact** (and, where repository evidence is required, a **sanitized append-only
+  evidence/attestation reference**). It MUST be **bound to** the authorization identifier, the
+  progression record, **position 5**, the named confirmer/executor, a **timestamp**, and a
+  **validity window**, and contain a sanitized result showing recoverability + login
+  verification.
+- **Position 5 fails closed** if the confirmation is **missing, expired, mismatched (bound to
+  another authorization/progression record), or was created before the required 1–4
+  completion state**, or is **reused after a rollback or progression-state change**.
+- **No break-glass credentials, email, UID, or identifying details may be committed.**
 
 ### 5.3 Employee/User linkage proof is a separate governed read-only check
 
@@ -261,6 +284,24 @@ exist, and a squash/merge yields a different `main` commit. Therefore:
   input, but the workflow's own derived identity + hashes are authoritative.
 - **Any post-review change to a governed file invalidates the authorization** and requires
   re-review (the hash no longer matches).
+
+### 5.4a Append-only merge attestation (never edit the original authorization)
+
+The original Owner authorization entry (§3) is **append-only and never edited** after it is
+recorded. When the enablement PR is merged and the reviewed head must be reconciled with the
+resulting `main` commit, a **separate, new append-only execution-readiness / merge-attestation
+DECISIONS entry** is added that references the original authorization by number. That
+attestation:
+
+- records the **resulting merge commit**;
+- **confirms the reviewed head is in ancestry** where applicable;
+- **repeats or references the recorded governed-file SHA-256 hashes**;
+- states that **execution remains separately operator-triggered** (merge ≠ run);
+- **if a squash merge prevents ancestry preservation, proves the merged governed-file hashes
+  exactly match the reviewed hashes** (hash equality stands in for ancestry).
+
+**Any mismatch requires re-review and a new authorization; history is never amended to make it
+match.** The original authorization is not modified by this attestation.
 
 ### 5.5 Production rollback remains governed and authorization-bound
 
@@ -310,7 +351,15 @@ The enablement PR must add tests (against the Auth emulator / non-production onl
 - **User-supplied commit text disagreeing with repository-derived identity** — the
   `--authorizedCommit` input contradicts the workflow's independently derived commit/hashes
   → refuse (derived identity is authoritative).
-- **Missing / expired break-glass confirmation** for the owner step → refuse.
+- **Break-glass confirmation timing / binding (all refuse position 5):** confirmation
+  **created before positions 1–4 completed**; confirmation **outside its validity window**
+  (expired); confirmation **bound to another authorization or progression record**; **reuse of
+  a confirmation after a rollback or progression-state change**; confirmation missing.
+- **Append-only history / merge attestation:** execution refuses if the reviewed head is not
+  in ancestry **and** no merge-attestation entry recording a hash-matching merge commit
+  exists; a squash-merged commit whose governed-file hashes do **not** equal the reviewed
+  hashes → refuse; verify the original authorization entry is **unmodified** (attestation is a
+  separate append-only entry, never an edit of the original).
 - **Auth UID read-back vs separately governed Employee-link read verification** — the
   workflow verifies UID unchanged via Auth read-back; a test asserts that Employee/User
   linkage proof, where required, comes from the separate §5.3 read-only check and never from
