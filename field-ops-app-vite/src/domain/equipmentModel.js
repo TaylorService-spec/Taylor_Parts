@@ -15,6 +15,17 @@ export function buildEquipmentModelId(manufacturerId, modelNumber) {
   const m = normalizeManufacturerId(manufacturerId), n = normalizeModelNumber(modelNumber).replace(/[^A-Z0-9]+/g, "-").replace(/^-|-$/g, "");
   return m && n ? `${m}--${n}` : "";
 }
+// Canonical Equipment Model ID contract, shared by validateEquipmentModel and
+// validateEquipmentModelAlias. A value is canonical only when it is already the exact,
+// deterministic `manufacturer--model` string buildEquipmentModelId() would produce — split on
+// the single "--" separator and round-trip through the builder. This rejects lowercase,
+// surrounding/embedded whitespace, Unicode/non-ASCII, missing manufacturer/model segments,
+// and repeated/empty separators, and never silently normalizes a malformed id into validity.
+export function isCanonicalEquipmentModelId(v) {
+  if (typeof v !== "string") return false;
+  const parts = v.split("--");
+  return parts.length === 2 && buildEquipmentModelId(parts[0], parts[1]) === v;
+}
 export function normalizeEquipmentModel(input) {
   if (!plain(input)) return null;
   const manufacturerId = normalizeManufacturerId(input.manufacturerId);
@@ -31,7 +42,12 @@ export function validateEquipmentModel(input) {
   if (!plain(input)) return { valid: false, value: null, reason: "not_object" };
   if (Object.keys(input).some((k) => !MODEL_FIELDS.has(k))) return { valid: false, value: null, reason: "unknown_field" };
   const value = normalizeEquipmentModel(input);
-  if (!value.equipmentModelId || value.equipmentModelId !== buildEquipmentModelId(value.manufacturerId, value.modelNumber)) return { valid: false, value, reason: "id_invalid" };
+  // Check the RAW stored id (derive it only when absent) — never the whitespace-normalized copy —
+  // so a noncanonical stored id cannot be silently normalized into validity.
+  const expectedId = buildEquipmentModelId(value.manufacturerId, value.modelNumber);
+  const rawId = input.equipmentModelId === undefined ? expectedId : input.equipmentModelId;
+  if (!isCanonicalEquipmentModelId(rawId) || rawId !== expectedId) return { valid: false, value, reason: "id_invalid" };
+  value.equipmentModelId = rawId;
   for (const [field, reason] of [["manufacturerId","manufacturer_id_invalid"],["manufacturerName","manufacturer_name_invalid"],["modelNumber","model_number_invalid"],["displayName","display_name_invalid"],["sourceAuthority","source_authority_invalid"]]) {
     if (!value[field]) return { valid: false, value, reason };
   }
@@ -55,8 +71,8 @@ export function validateEquipmentModelAlias(input) {
   if (!manufacturerId) return { valid: false, value: null, reason: "manufacturer_id_invalid" };
   const aliasValue = normalizeIdentityKey(input.rawValue);
   if (!aliasValue) return { valid: false, value: null, reason: "alias_value_invalid" };
-  const equipmentModelId = normalizeIdentityText(input.equipmentModelId);
-  if (!equipmentModelId) return { valid: false, value: null, reason: "equipment_model_id_invalid" };
+  const equipmentModelId = input.equipmentModelId;
+  if (!isCanonicalEquipmentModelId(equipmentModelId)) return { valid: false, value: null, reason: "equipment_model_id_invalid" };
   const aliasKey = normalizeModelAliasKey({ aliasType, manufacturerId, rawValue: aliasValue });
   if (!aliasKey) return { valid: false, value: null, reason: "alias_key_invalid" };
   if (input.aliasKey !== undefined && normalizeIdentityText(input.aliasKey) !== aliasKey) return { valid: false, value: null, reason: "alias_key_mismatch" };
