@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { AUTHORITATIVE_AUTHORITIES, REJECTED_COMPATIBILITY_TYPES, analyzeCompatibilityEvidence, analyzeCompatibilityEvidenceByRelationship, buildCompatibilityId, detectCompatibilityCollisions, detectCompatibilitySourceCollisions, sha256Hex, validateApplicability, validateCompatibility, validateCompatibilitySource } from "../src/domain/equipmentCompatibility.js";
+const nodeSha256Utf8=(s)=>createHash("sha256").update(Buffer.from(s,"utf8")).digest("hex");
 let passed=0; const ok=(n,f)=>{f();passed++;console.log(`PASS -- ${n}`);};
 const EMID="TAYLOR--C713", EMID2="TAYLOR--C825", PART="TST-1001";
 const scheme={schemeId:"TAYLOR-ALPHA",manufacturerId:"Taylor",normalizerVersion:1,tokenPattern:"^[A-Z0-9-]+$",ordering:"LEXICOGRAPHIC"};
@@ -16,6 +18,8 @@ const SID=validateCompatibilitySource(src()).value.sourceId;
 
 // ---- deterministic opaque IDs (§5 / D-COMPAT-2) ----
 ok("sha256 known-answer",()=>{assert.equal(sha256Hex(""),"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");assert.equal(sha256Hex("abc"),"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");});
+ok("sha256 matches standard UTF-8 incl. lone/malformed surrogates (browser/Node parity)",()=>{const cases={ascii:"abc",bmp:"café ünïcödé",supplementary:"grill😀ok",loneHigh:"a\uD83Db",loneLow:"a\uDE00b",mixedMalformed:"x\uD83D\uD83Dy\uDE00\uDC00z"};for(const[name,s]of Object.entries(cases))assert.equal(sha256Hex(s),nodeSha256Utf8(s),`utf8 mismatch: ${name}`);assert.equal(sha256Hex("a\uD83Db"),sha256Hex("a�b"));assert.equal(sha256Hex("a\uDE00b"),sha256Hex("a�b"));});
+ok("compatibility id stable for canonical repository data",()=>assert.equal(validateCompatibility(base(),{serialSchemes:schemes}).value.compatibilityId,"cmp_3d758a636765061e05842659c64bed910955c47e047851dc693d4aba19d4b252"));
 ok("compatibility id is deterministic + opaque",()=>{const a=vc(),b=vc();assert.equal(a.valid,true);assert.match(a.value.compatibilityId,/^cmp_[0-9a-f]{64}$/);assert.equal(a.value.compatibilityId,b.value.compatibilityId);});
 ok("uniquenessKey is the versioned unhashed tuple",()=>{const t=JSON.parse(UK);assert.equal(t[0],1);assert.equal(t[1],EMID);assert.equal(t[2],PART);assert.equal(buildCompatibilityId(UK),CID);});
 ok("identity tuple determines id; non-identity fields do not",()=>{const idOf=(o)=>vc(o).value.compatibilityId;assert.equal(idOf({confidenceLevel:"LOW",notes:"x",quantityRequired:9,sourceSummary:"s"}),idOf({}));assert.notEqual(idOf({compatibilityType:"CONSUMABLE"}),idOf({}));assert.notEqual(idOf({assembly:"Motor"}),idOf({}));assert.notEqual(idOf({partId:"TST-2002"}),idOf({}));assert.notEqual(idOf({equipmentModelId:EMID2}),idOf({}));});

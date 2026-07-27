@@ -77,19 +77,12 @@ const K = [
   0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
 ];
 const rotr = (x, n) => ((x >>> n) | (x << (32 - n))) >>> 0;
-function utf8Bytes(str) {
-  const out = [];
-  for (let i = 0; i < str.length; i++) {
-    let c = str.charCodeAt(i);
-    if (c < 0x80) out.push(c);
-    else if (c < 0x800) out.push(0xc0 | (c >> 6), 0x80 | (c & 0x3f));
-    else if (c >= 0xd800 && c <= 0xdbff) {
-      const cp = 0x10000 + ((c - 0xd800) << 10) + (str.charCodeAt(++i) - 0xdc00);
-      out.push(0xf0 | (cp >> 18), 0x80 | ((cp >> 12) & 0x3f), 0x80 | ((cp >> 6) & 0x3f), 0x80 | (cp & 0x3f));
-    } else out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 0x3f), 0x80 | (c & 0x3f));
-  }
-  return out;
-}
+// Standard UTF-8 encoding via the WHATWG TextEncoder (a global in both browsers and Node — not a
+// Node-only or crypto dependency). It deterministically replaces any lone/ill-formed UTF-16
+// surrogate with U+FFFD, matching Node's and browsers' native string→UTF-8 conversion, so the
+// deterministic opaque IDs are identical across environments. Well-formed input (ASCII, BMP, valid
+// surrogate pairs) encodes byte-for-byte as before, so existing compatibility IDs are unchanged.
+const utf8Bytes = (str) => Array.from(new TextEncoder().encode(str));
 export function sha256Hex(str) {
   const bytes = utf8Bytes(str), bitLen = bytes.length * 8;
   bytes.push(0x80);
