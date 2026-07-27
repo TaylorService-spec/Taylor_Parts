@@ -1,0 +1,10 @@
+Operator evidence archive (authoritative, immutable) -- pointer only
+====================================================================
+The operator packaged the full sanitized evidence bundle in authenticated Cloud Shell.
+Its bytes were not downloaded locally (browser download not captured); the Inventory
+session has no Cloud Shell access. This repository commits the sanitized transcription
+of the operator's report (deployment-result.md, production-persona-matrix.md); the
+authoritative archive is identified by hash below and remains available for retrieval.
+
+Archive path (Cloud Shell): ~/taylor-c1-3827ce3/inv-convergence-e-c1-hosting-deploy-evidence.tgz
+Archive SHA-256: c339d54b0df04948c0d9d904f81f7ef4f91082637b9d96413cd5ae63fa557f0e
