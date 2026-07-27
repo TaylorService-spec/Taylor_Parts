@@ -1,10 +1,11 @@
 # INV-CONVERGENCE-E C2 — Owner Authorization Package (PartDetail cutover)
 
-> **STATUS: PENDING — NOT AUTHORIZED. DO NOT MERGE PR #445 ON THE STRENGTH OF THIS
-> DOCUMENT.** This package is *prepared for* Owner review. It records no
-> authorization. §6 is deliberately unsigned; only the Owner may complete it, and
-> the merge gate stays closed until §6 is filled in and a DECISIONS entry is
-> appended. No AI session may self-certify the authorization this package requests.
+> **STATUS: AUTHORIZED — repository merge only (Owner, 2026-07-27).** The Owner
+> authorization is recorded verbatim in §6 and in the append-only
+> [`docs/DECISIONS.md` entry #49](../DECISIONS.md). **This authorizes NO deployment
+> and NO production change**; the C2 Hosting deployment remains a separate gate.
+> The merge is additionally **subject to Codex final drift/merge review** and does
+> not proceed on this document alone.
 
 | | |
 |---|---|
@@ -15,7 +16,8 @@
 | Base | `origin/main` @ `f97edf19a0027d8e0cc1ec591cbfc099e7a495c0` |
 | Prepared | 2026-07-27 |
 | Prepared by | INVENTORY workstream, this session |
-| Authorization requested for | **Repository merge only.** Not deployment. |
+| Authorization granted for | **Repository merge only.** Not deployment. |
+| Authorized head | `abfb1a4718bba4e0be95f8b3449d6723a6c8da00` (Owner, 2026-07-27 — see §6) |
 
 ---
 
@@ -80,9 +82,11 @@ C1 precedent placed that requirement at the **deploy** gate, not the merge — C
 merged record states a fresh live parity re-run "belongs to the future C1 DEPLOY
 gate." This package follows that precedent and asks for **merge only**, leaving the
 live-parity-immediately-before re-run as a condition of the future C2 deploy gate.
-*If the Owner or Codex reads #46 as attaching that requirement to the merge instead,
-this package should be rejected and a live C2 parity run performed first.* Flagged
-deliberately rather than resolved unilaterally.
+
+> **RESOLVED (Owner, 2026-07-27, §6):** fresh live parity belongs to the separate C2
+> Hosting deployment gate, following the C1 precedent, and is **not** required
+> before this repository-only merge. This was flagged rather than resolved
+> unilaterally, and the Owner has now decided it.
 
 ## 5. Verification state at the authorized head
 
@@ -111,29 +115,49 @@ immediately before preparing this package (no drift: local head == `origin` head
   entire write surface) when canonical verification is denied, unavailable, or
   incomplete.
 
-## 6. Owner authorization — TO BE COMPLETED BY THE OWNER
+## 6. Owner authorization — GRANTED
 
-> This section is intentionally blank. It is not filled in by any AI session.
+**Granted by:** Owner (Rudy DiGiorgio) · **Date:** 2026-07-27 ·
+**Authorized head:** `abfb1a4718bba4e0be95f8b3449d6723a6c8da00`
 
-```
-I authorize the INV-CONVERGENCE-E C2 PartDetail cutover to be MERGED into main
-as a repository-only change, at PR #445, exact head
-53ec60020e98c8e8d8a79ee236ae835f56416442.
+Verbatim:
 
-I ratify design decisions D-C2-1 (canonical unit token) and D-C2-2 (fail-closed
-full-page block).
+> I authorize the INV-CONVERGENCE-E C2 PartDetail cutover to be merged into main as
+> a repository-only change through PR #445 at current head
+> `abfb1a4718bba4e0be95f8b3449d6723a6c8da00`.
+>
+> I ratify:
+>
+> - D-C2-1: canonical normalized unit tokens.
+> - D-C2-2: fail-closed full-page blocking when canonical verification is denied,
+>   unavailable, or incomplete.
+>
+> The docs-only delta after the Codex-reviewed code head is accepted, subject to
+> Codex final drift review.
+>
+> Fresh live parity belongs to the separate C2 Hosting deployment gate, following
+> the C1 precedent. It is not required before this repository-only merge.
+>
+> This authorization permits repository merge only. It does not authorize
+> deployment, Firebase changes, Firestore or Auth mutation, identity/role/claim
+> changes, Parts data migration, or any other production change.
 
-I understand this authorizes NO deployment and NO production, data, Rules,
-Functions, Auth, or identity change, and that the C2 Hosting deployment remains a
-separate gate requiring its own authorization.
+**Head authorized vs. head reviewed.** The Owner authorized `abfb1a4…`, which is
+**code-identical** to the Codex-reviewed head `53ec600…`; the delta between them is
+one documentation file (+168 lines — this package in its PENDING form), with zero
+code, test, or configuration change. Recording this authorization necessarily
+advances the head again; that further delta is likewise documentation-only
+(this §6 update plus `DECISIONS.md` #49) and is disclosed to Codex for the final
+drift review the Owner made this authorization subject to.
 
-Owner: ______________________    Date: ______________
-```
+**Live-parity timing — resolved by the Owner.** The ambiguity flagged in §4 is
+settled: fresh live parity attaches to the **C2 Hosting deployment gate**, per the
+C1 precedent, and is **not** required before this repository-only merge.
 
-**On completion:** this file's status header is updated to AUTHORIZED with the
-Owner's verbatim statement and date, an append-only entry is added to
-`docs/DECISIONS.md` recording the C2 authorization against this head, and PR #445
-returns to Codex for **final drift/merge review** before any merge occurs.
+**Recorded in:** `docs/DECISIONS.md` entry **#49** (append-only; #46 not edited).
+
+**Remaining condition before merge:** Codex **final drift/merge review**. The merge
+does not proceed on this authorization alone.
 
 ## 7. Prior authorization on record — scope and limits
 
@@ -151,7 +175,8 @@ bound to head `53ec600…`; it is not recorded in the repository; and it does no
 itself satisfy the separately-gated C2 cutover authorization that DECISIONS #46
 requires. Codex having now returned CODE PASS discharges the "not without Codex
 review" condition, but **does not** supply the #46 authorization. That is precisely
-the gap §6 exists to close.
+the gap §6 exists to close — and §6 now closes it with a head-bound Owner
+authorization recorded in `DECISIONS.md` #49.
 
 ## 8. Rollback
 
