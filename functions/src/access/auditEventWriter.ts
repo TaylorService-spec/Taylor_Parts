@@ -104,6 +104,11 @@ const AUDIT_ACTIONS: readonly AuditAction[] = [
   // Legacy Compatibility-Admin Bootstrap -- one-time audited migration of a
   // legacy users.role=admin principal into the governed roleAssignment model.
   "bootstrapCompatibilityAdmin",
+  // AUTH-PR-3 -- admin-initiated password recovery (durable initiation/
+  // delivery/revocation events). Mirrors the types/access.ts AuditAction union.
+  "initiateAdminPasswordReset",
+  "deliverAdminPasswordReset",
+  "revokeUserSessions",
 ];
 
 // Issue #325 / ADR-007 D-AUDIT -- the subset of AUDIT_ACTIONS this

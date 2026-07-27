@@ -75,3 +75,16 @@ export {
 // audit (unlike the mutating commands above or the row-reading report
 // execution service).
 export { resolveEffectiveAccessCallable } from "./access/effectiveAccessFeedCallable";
+
+// --- AUTH-PR-3 surface: admin-initiated password reset (Authentication
+// Modernization; extends Issue #226) ---
+// Same "export is not deployment" posture as every surface above: NOT deployed
+// to the live project, NO Admin UI wired to call them, and NO email provider
+// configured (adminCredentialCallables wires NOT_CONFIGURED_DELIVERY) until a
+// SEPARATE, later Owner production authorization. As deployed today the command
+// FAILS CLOSED on the unconfigured delivery capability -- ZERO Auth side effects
+// (no reset-link generation, no email, no session revocation).
+export {
+  initiateAdminPasswordReset,
+  listResetEligibleUsers,
+} from "./access/adminCredentialCallables";
