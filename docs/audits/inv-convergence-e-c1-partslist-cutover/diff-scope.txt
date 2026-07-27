@@ -1,0 +1,15 @@
+ field-ops-app-vite/package.json                    |   2 +-
+ .../src/modules/inventory/PartsList.jsx            | 113 ++++++++++++++++-----
+ 2 files changed, 89 insertions(+), 26 deletions(-)
+
+Changed files (exactly 4; frontend-only):
+  M field-ops-app-vite/package.json                         (register the new test in the chain)
+  M field-ops-app-vite/src/modules/inventory/PartsList.jsx  (source cutover + BLOCKED states + name fallback)
+  A field-ops-app-vite/src/domain/partsCatalogView.js       (NEW pure composition; the governed catalog source)
+  A field-ops-app-vite/test/partsCatalogView.test.mjs       (NEW offline suite, 19 assertions)
+
+ZERO changes to: firestore.rules, functions/**, firestore.indexes, firebase.json,
+  PartDetail.jsx, App.jsx routes, useInventoryLedger.js, searchProviders.js,
+  GlobalSearch.jsx, partsCompatibilityAdapter.js, partsShadowParity*.js,
+  partMasterQueries.js, partMasterView.js, src/data/partsCatalog.ts (the static
+  catalog and the Functions mirror are untouched -- no removal, no restructure).

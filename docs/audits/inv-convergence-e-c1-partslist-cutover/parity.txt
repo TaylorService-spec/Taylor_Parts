@@ -1,0 +1,20 @@
+INV-CONVERGENCE-E C1 -- deterministic parity (offline) + live-parity provenance
+===============================================================================
+Deterministic parity (this PR, reproducible offline against committed evidence):
+  Fixtures: static catalog (200, parsed from src/data/partsCatalog.ts) + the
+  committed production zero-write read-back (190 canonical, from
+  docs/audits/inv1-phase1/create-execution-20260724/postwrite-analyzer/row-results.json).
+  buildPartsWorkspace(canonical, static):
+    staticCount = 200, canonicalMatch = 190, staticOnlyExcluded = 10
+    NAME_DIVERGENCE = 0, UNIT_DIVERGENCE = 0, partId == sku for all 190
+    STATIC_WITHOUT_CANONICAL_UNAPPROVED = 0, CANONICAL_WITHOUT_STATIC = 0
+  buildPartsCatalogRows(OK, static) -> status READY, 200 rows, fullyAccounted = true.
+  => 200 records fully accounted; identity/name/category preserved; no drop/dup.
+
+Authoritative LIVE parity provenance:
+  The live pre-cutover current-vs-shadow parity gate (Decision #46) already PASSED in
+  production on deployed build 73d9e1b (190 canonical matches / 10 governed static-only
+  exclusions / 0 divergences), evidence at docs/audits/inv-convergence-e-stage-a/.
+  A fresh LIVE parity re-run against the deployed build is an operator/production step
+  performed at the eventual C1 DEPLOY gate (this C1 unit is a repository-only draft; it
+  performs no deployment and holds no production credentials).

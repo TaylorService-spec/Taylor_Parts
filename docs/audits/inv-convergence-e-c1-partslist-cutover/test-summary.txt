@@ -1,0 +1,36 @@
+INV-CONVERGENCE-E C1 -- PartsList cutover: test + build evidence
+================================================================
+All commands run in field-ops-app-vite/ from the C1 worktree at baseline
+origin/main 3020213e. Offline/emulator-free; no production access.
+
+1. New pure-module suite -- node test/partsCatalogView.test.mjs
+   -> 19 passed, 0 failed   (exit 0)
+   Proves: READY shows all 200 (190 CANONICAL_MATCH + 10 STATIC_ONLY_EXCLUDED);
+   the ten exclusions are exactly the approved set; stable unique sku IDs; every
+   row -> /inventory/<sku>; no duplicates; no dropped Parts; canonical-preferred
+   name/category + static warehouseQty baseline; BLOCKED_PERMISSION /
+   BLOCKED_UNAVAILABLE / BLOCKED_INCOMPLETE_INPUT (incl. "omitted Part" and
+   empty-static) with rows:[] (never empty-as-success, never silent static
+   fallback); purity + no input mutation.
+
+2. Full client test chain -- npm test  -> exit 0 (every suite passed)
+   Includes the parts/adapter/parity/search/nav/routing regressions:
+   - partMasterView.test.mjs .................. pass
+   - partsCompatibilityAdapter.test.mjs ....... pass (200 static / 190 canonical-match
+       / 10 static-only; 0 name divergence; 0 normalized-unit divergence; partId==sku)
+   - partsShadowParity.test.mjs ............... pass (deterministic current-vs-shadow
+       parity; sanitized {key,kind} divergences)
+   - partsShadowParityCapture/View/ReadOnce/RunId.test.mjs ... pass
+   - partsCatalogView.test.mjs ................ 19 passed, 0 failed
+   - customerSearch / serviceNav / routerBasename / appHeaderBase / ... all pass
+
+3. Lint -- npx oxlint src/modules/inventory/PartsList.jsx src/domain/partsCatalogView.js
+   -> exit 0 (only the pre-existing react-refresh "only-export-components" warnings
+      for the named exports formatAssignmentAge/resolveAssigneeDisplay, which are
+      also imported by PartsManagerHome.jsx and are intentionally preserved).
+
+4. Build -- npm run build  -> built in ~0.5s, exit 0 (pre-existing chunk-size
+   advisory only).
+
+5. Build-base host-path guard -- npm run verify:build-base
+   -> verifyBuildBase: 12 passed, 0 failed (exit 0).
