@@ -95,15 +95,17 @@ approved fields are normalized into evidence, and the raw response is deleted.
 
 ```bash
 set -euo pipefail
+RAW=$(mktemp)
+trap 'rm -f "$RAW"' EXIT
 mkdir -p c1-evidence
 SITE=taylor-parts
 TOKEN=$(gcloud auth print-access-token)
-curl -s -H "Authorization: Bearer $TOKEN" \
+curl -fsS -H "Authorization: Bearer $TOKEN" \
   "https://firebasehosting.googleapis.com/v1beta1/sites/$SITE/releases?pageSize=10" \
-  > /tmp/hosting-releases-raw.json
-python3 - <<'PY'
-import json
-d = json.load(open("/tmp/hosting-releases-raw.json"))
+  > "$RAW"
+RAW="$RAW" python3 - <<'PY'
+import json, os
+d = json.load(open(os.environ["RAW"]))
 r = d.get("releases") or []
 cur = r[0] if r else {}
 rec = {
@@ -112,12 +114,12 @@ rec = {
     "release_type": cur.get("type"),
     "release_time": cur.get("releaseTime"),
 }
+assert isinstance(rec["version_name"], str) and rec["version_name"].startswith("sites/"), "predeploy version_name is not a concrete version resource"
 open("c1-evidence/predeploy-release-pin.json", "w").write(json.dumps(rec, indent=2))
 print("CURRENT_VERSION_NAME", rec["version_name"])
 print("CURRENT_RELEASE_TYPE", rec["release_type"])
 print("CURRENT_RELEASE_TIME", rec["release_time"])
 PY
-rm -f /tmp/hosting-releases-raw.json
 ```
 **Expected:** `c1-evidence/predeploy-release-pin.json` contains only the four normalized
 fields; `CURRENT_VERSION_NAME` is a concrete version resource name like
@@ -142,14 +144,15 @@ Functions payload (contains service-account emails) is deleted, never committed.
 
 ```bash
 set -euo pipefail
+FRAW=$(mktemp)
+trap 'rm -f "$FRAW"' EXIT
 TOKEN=$(gcloud auth print-access-token)
-REL=$(curl -s -H "Authorization: Bearer $TOKEN" "https://firebaserules.googleapis.com/v1/projects/taylor-parts/releases" | python3 -c "import sys,json;rs=json.load(sys.stdin)['releases'];print([r['rulesetName'] for r in rs if r['name'].endswith('cloud.firestore')][0])")
-curl -s -H "Authorization: Bearer $TOKEN" "https://firebaserules.googleapis.com/v1/$REL" | python3 -c "import sys,json;sys.stdout.write(json.load(sys.stdin)['source']['files'][0]['content'])" > c1-evidence/predeploy-live-firestore.rules
+REL=$(curl -fsS -H "Authorization: Bearer $TOKEN" "https://firebaserules.googleapis.com/v1/projects/taylor-parts/releases" | python3 -c "import sys,json;rs=json.load(sys.stdin)['releases'];print([r['rulesetName'] for r in rs if r['name'].endswith('cloud.firestore')][0])")
+curl -fsS -H "Authorization: Bearer $TOKEN" "https://firebaserules.googleapis.com/v1/$REL" | python3 -c "import sys,json;sys.stdout.write(json.load(sys.stdin)['source']['files'][0]['content'])" > c1-evidence/predeploy-live-firestore.rules
 echo "predeploy live Rules EXTRACTED-SOURCE sha256:"
 sha256sum c1-evidence/predeploy-live-firestore.rules
-curl -s -H "Authorization: Bearer $TOKEN" "https://cloudfunctions.googleapis.com/v2/projects/taylor-parts/locations/-/functions" > /tmp/functions-raw.json
-node -e 'const s=require("./functions/scripts/firestoreDeploymentVerificationShared.js");const fs=require("fs");const norm=s.normalizeFunctionsInventory(JSON.parse(fs.readFileSync("/tmp/functions-raw.json","utf8")));const j=JSON.stringify(norm,null,2);fs.writeFileSync("c1-evidence/predeploy-functions-inventory.normalized.json",j);console.log("predeploy functions NORMALIZED sha256:",s.sha256(j));'
-rm -f /tmp/functions-raw.json
+curl -fsS -H "Authorization: Bearer $TOKEN" "https://cloudfunctions.googleapis.com/v2/projects/taylor-parts/locations/-/functions" > "$FRAW"
+FRAW="$FRAW" node -e 'const s=require("./functions/scripts/firestoreDeploymentVerificationShared.js");const fs=require("fs");const norm=s.normalizeFunctionsInventory(JSON.parse(fs.readFileSync(process.env.FRAW,"utf8")));const j=JSON.stringify(norm,null,2);fs.writeFileSync("c1-evidence/predeploy-functions-inventory.normalized.json",j);console.log("predeploy functions NORMALIZED sha256:",s.sha256(j));'
 ```
 **Expected:** the live Rules extracted-source sha256 (should equal the governed
 `cf6681c6…2bc381` from Stage B — records the pre-deploy Rules state), and
@@ -162,8 +165,11 @@ raw Functions payload is deleted (never committed). **PAUSE.**
 ## Step 5 — Deploy ONLY Hosting
 
 ```bash
+set -euo pipefail
 firebase deploy --only hosting --project taylor-parts 2>&1 | tee c1-evidence/deploy-output.txt
 ```
+(`set -euo pipefail` + `pipefail` means a nonzero `firebase deploy` exit fails the block
+even through the `tee` pipe.)
 **Expected:** `hosting: ... file upload complete`, `hosting: release complete`,
 `Deploy complete!` — **nothing** about firestore/functions/indexes. If the output
 mentions any non-Hosting target, STOP → the deploy scope was wrong. **PAUSE.**
@@ -183,16 +189,19 @@ free SPA shell) is retained.
 
 ```bash
 set -euo pipefail
+PRAW=$(mktemp)
+ASSETTMP=$(mktemp)
+trap 'rm -f "$PRAW" "$ASSETTMP"' EXIT
 SITE=taylor-parts
 SITE_URL="https://taylor-parts.web.app"
 TOKEN=$(gcloud auth print-access-token)
 ( cd field-ops-app-vite/dist && find . -type f | sort | while read -r f; do echo "$(sha256sum "$f" | cut -d' ' -f1)  ${f#./}"; done ) > c1-evidence/local-dist-manifest.sha256
 echo "AUTHORIZED_COMMIT=3827ce370b26af7cbf66acdf391267a0afa4092c" > c1-evidence/release-correspondence.txt
 echo "BUILD_COMMAND=npm run build:firebase (vite build --base=/)" >> c1-evidence/release-correspondence.txt
-curl -s -H "Authorization: Bearer $TOKEN" "https://firebasehosting.googleapis.com/v1beta1/sites/$SITE/releases?pageSize=5" > /tmp/postdeploy-releases-raw.json
-python3 - <<'PY'
-import json
-d = json.load(open("/tmp/postdeploy-releases-raw.json"))
+curl -fsS -H "Authorization: Bearer $TOKEN" "https://firebasehosting.googleapis.com/v1beta1/sites/$SITE/releases?pageSize=5" > "$PRAW"
+PRAW="$PRAW" python3 - <<'PY'
+import json, os
+d = json.load(open(os.environ["PRAW"]))
 r = (d.get("releases") or [{}])[0]
 rec = {
     "release_name": r.get("name"),
@@ -200,42 +209,55 @@ rec = {
     "release_type": r.get("type"),
     "release_time": r.get("releaseTime"),
 }
+pre = json.load(open("c1-evidence/predeploy-release-pin.json"))
+assert isinstance(rec["version_name"], str) and rec["version_name"].startswith("sites/"), "postdeploy version_name is not a concrete version resource"
+assert rec["version_name"] != pre["version_name"], "postdeploy version equals the pinned predeploy version -- no new release occurred"
 open("c1-evidence/postdeploy-release-pin.json", "w").write(json.dumps(rec, indent=2))
 with open("c1-evidence/release-correspondence.txt", "a") as f:
     for k, v in rec.items():
         f.write(f"POSTDEPLOY_{k.upper()}={v}\n")
 print("POSTDEPLOY_VERSION_NAME", rec["version_name"])
+print("NEW-RELEASE-CONFIRMED")
 PY
-rm -f /tmp/postdeploy-releases-raw.json
-curl -s "$SITE_URL/index.html" > c1-evidence/postdeploy-live-index.html
+# identity encoding only (no --compressed) so live bytes == deployed file bytes
+curl -fsS "$SITE_URL/index.html" > c1-evidence/postdeploy-live-index.html
 HP=$(grep -c "/Taylor_Parts/field-ops" c1-evidence/postdeploy-live-index.html || true)
 echo "live host-path occurrences: $HP"
-[ "$HP" = "0" ] && echo LIVE-HOST-PATH-ZERO
+[ "$HP" = "0" ] || { echo "FAIL: live host-path present"; exit 1; }
+echo LIVE-HOST-PATH-ZERO
 ASSET=$(grep -oE "/assets/[^\"]+\.js" c1-evidence/postdeploy-live-index.html | head -1)
+[ -n "$ASSET" ] || { echo "FAIL: no JS asset path found in live index.html"; exit 1; }
 echo "live JS asset: $ASSET"
-CT=$(curl -s -o /tmp/live-asset.js -w '%{content_type}' "$SITE_URL$ASSET")
-BYTES=$(wc -c < /tmp/live-asset.js)
-HASH=$(sha256sum /tmp/live-asset.js | cut -d' ' -f1)
-rm -f /tmp/live-asset.js
-printf 'LIVE_ASSET_PATH=%s\nLIVE_ASSET_CONTENT_TYPE=%s\nLIVE_ASSET_BYTES=%s\nLIVE_ASSET_SHA256=%s\n' "$ASSET" "$CT" "$BYTES" "$HASH" >> c1-evidence/release-correspondence.txt
-echo "live asset: $ASSET  ct=$CT  bytes=$BYTES  sha256=$HASH"
+CT=$(curl -fsS -o "$ASSETTMP" -w '%{content_type}' "$SITE_URL$ASSET")
+case "$CT" in *javascript*) : ;; *) echo "FAIL: live asset content-type not JavaScript: $CT"; exit 1;; esac
+BYTES=$(wc -c < "$ASSETTMP")
+HASH=$(sha256sum "$ASSETTMP" | cut -d' ' -f1)
+MANIFEST_HASH=$(awk -v p="assets/${ASSET#/assets/}" '$2==p{print $1}' c1-evidence/local-dist-manifest.sha256)
+[ -n "$MANIFEST_HASH" ] || { echo "FAIL: live asset path $ASSET not in the Cloud Shell build manifest"; exit 1; }
+[ "$HASH" = "$MANIFEST_HASH" ] || { echo "FAIL: live asset sha256 != deployed-build manifest hash (live=$HASH manifest=$MANIFEST_HASH)"; exit 1; }
+echo LIVE-ASSET-EQUALS-BUILD-MANIFEST
+printf 'LIVE_ASSET_PATH=%s\nLIVE_ASSET_CONTENT_TYPE=%s\nLIVE_ASSET_BYTES=%s\nLIVE_ASSET_SHA256=%s\nMANIFEST_MATCH=EXACT\n' "$ASSET" "$CT" "$BYTES" "$HASH" >> c1-evidence/release-correspondence.txt
+echo "live asset: $ASSET  ct=$CT  bytes=$BYTES  sha256=$HASH  (== build manifest)"
 ```
-**Expected & correspondence assertions (recorded in `release-correspondence.txt`; only
-the sanitized `release-correspondence.txt`, `*-release-pin.json`, `local-dist-manifest.sha256`,
-and `postdeploy-live-index.html` are committed — no raw release JSON, no bundle bytes):**
+The script above enforces these as **hard assertions** (any failure exits nonzero under
+`set -euo pipefail` → STOP → ROLLBACK). Committed evidence is only the sanitized
+`release-correspondence.txt`, `*-release-pin.json`, `local-dist-manifest.sha256`, and
+`postdeploy-live-index.html` — no raw release JSON, no bundle bytes.
 - `AUTHORIZED_COMMIT` = `3827ce37…`; `BUILD_COMMAND` = `build:firebase`.
-- A **new** `POSTDEPLOY_VERSION_NAME` / `POSTDEPLOY_RELEASE_TIME` distinct from the
-  Step 3 pinned predeploy version (proves a release occurred).
-- `LIVE-HOST-PATH-ZERO`; live `index.html` references `/assets/...`; the live `.js`
-  `LIVE_ASSET_CONTENT_TYPE` is a JavaScript type (not `text/html`).
-- The `LIVE_ASSET_PATH` filename appears in `local-dist-manifest.sha256` (built from the
-  authorized commit in the operator's Cloud Shell). Where CDN caching/content-encoding
-  does not alter transferred bytes, `LIVE_ASSET_SHA256` equals that file's local manifest
-  hash. **Any hash difference must be explained in writing** (gzip/br transfer-encoding,
-  or a Windows-vs-Linux CRLF source delta — the operator's Linux Cloud Shell dist
-  manifest is authoritative; the Windows preflight manifest is informational only).
-- If no new release appeared, or the live bundle does not correspond to the
-  authorized-commit build, **STOP → ROLLBACK (Step 3 pinned version).** **PAUSE.**
+- **`NEW-RELEASE-CONFIRMED`** — `POSTDEPLOY_VERSION_NAME` is a concrete `sites/.../versions/<ID>`
+  and **differs** from the Step 3 pinned predeploy version (asserted in-script).
+- **`LIVE-HOST-PATH-ZERO`** — live `index.html` has zero GitHub-Pages host paths and
+  references `/assets/...` (asserted; a nonzero count exits nonzero).
+- A live JS asset path was found (asserted non-empty) and its `LIVE_ASSET_CONTENT_TYPE`
+  is a JavaScript type, not `text/html` (asserted via a `case` guard).
+- **`LIVE-ASSET-EQUALS-BUILD-MANIFEST`** — the live asset path exists in the authoritative
+  Cloud Shell `local-dist-manifest.sha256` **and** its live SHA-256 **exactly equals** the
+  deployed-build manifest hash for that path (asserted). The live bytes are fetched with
+  identity encoding (no `--compressed`), so they are the deployed file bytes. **A mismatch
+  is a hard STOP → ROLLBACK — no OS/encoding explanation is permitted** between the Cloud
+  Shell-built artifact and the live bytes (the operator builds and deploys on the same
+  Linux Cloud Shell, so the deployed bytes must equal the manifest exactly).
+- Any assertion failure → **STOP → ROLLBACK (Step 3 pinned version).** **PAUSE.**
 
 ## Step 7 — Governed read-only production verification (C1 experience)
 
@@ -296,14 +318,15 @@ repair identities/roles/data/Rules/Functions/config — Hosting version-clone ro
 
 ```bash
 set -euo pipefail
+FRAW=$(mktemp)
+trap 'rm -f "$FRAW"' EXIT
 TOKEN=$(gcloud auth print-access-token)
-REL=$(curl -s -H "Authorization: Bearer $TOKEN" "https://firebaserules.googleapis.com/v1/projects/taylor-parts/releases" | python3 -c "import sys,json;rs=json.load(sys.stdin)['releases'];print([r['rulesetName'] for r in rs if r['name'].endswith('cloud.firestore')][0])")
-curl -s -H "Authorization: Bearer $TOKEN" "https://firebaserules.googleapis.com/v1/$REL" | python3 -c "import sys,json;sys.stdout.write(json.load(sys.stdin)['source']['files'][0]['content'])" > c1-evidence/postdeploy-live-firestore.rules
+REL=$(curl -fsS -H "Authorization: Bearer $TOKEN" "https://firebaserules.googleapis.com/v1/projects/taylor-parts/releases" | python3 -c "import sys,json;rs=json.load(sys.stdin)['releases'];print([r['rulesetName'] for r in rs if r['name'].endswith('cloud.firestore')][0])")
+curl -fsS -H "Authorization: Bearer $TOKEN" "https://firebaserules.googleapis.com/v1/$REL" | python3 -c "import sys,json;sys.stdout.write(json.load(sys.stdin)['source']['files'][0]['content'])" > c1-evidence/postdeploy-live-firestore.rules
 diff c1-evidence/predeploy-live-firestore.rules c1-evidence/postdeploy-live-firestore.rules
 echo RULES-UNCHANGED
-curl -s -H "Authorization: Bearer $TOKEN" "https://cloudfunctions.googleapis.com/v2/projects/taylor-parts/locations/-/functions" > /tmp/functions-raw.json
-node -e 'const s=require("./functions/scripts/firestoreDeploymentVerificationShared.js");const fs=require("fs");const norm=s.normalizeFunctionsInventory(JSON.parse(fs.readFileSync("/tmp/functions-raw.json","utf8")));const j=JSON.stringify(norm,null,2);fs.writeFileSync("c1-evidence/postdeploy-functions-inventory.normalized.json",j);console.log("postdeploy functions NORMALIZED sha256:",s.sha256(j));'
-rm -f /tmp/functions-raw.json
+curl -fsS -H "Authorization: Bearer $TOKEN" "https://cloudfunctions.googleapis.com/v2/projects/taylor-parts/locations/-/functions" > "$FRAW"
+FRAW="$FRAW" node -e 'const s=require("./functions/scripts/firestoreDeploymentVerificationShared.js");const fs=require("fs");const norm=s.normalizeFunctionsInventory(JSON.parse(fs.readFileSync(process.env.FRAW,"utf8")));const j=JSON.stringify(norm,null,2);fs.writeFileSync("c1-evidence/postdeploy-functions-inventory.normalized.json",j);console.log("postdeploy functions NORMALIZED sha256:",s.sha256(j));'
 diff c1-evidence/predeploy-functions-inventory.normalized.json c1-evidence/postdeploy-functions-inventory.normalized.json
 echo FUNCTIONS-NORMALIZED-IDENTICAL
 echo FUNCTIONS-UNCHANGED
@@ -335,8 +358,9 @@ cd c1-evidence
 FORBIDDEN=$(ls | grep -E "raw|-asset\.js$|\.tgz$|token" || true)
 if [ -n "$FORBIDDEN" ]; then echo "FORBIDDEN-ARTIFACT-PRESENT: $FORBIDDEN"; exit 1; fi
 echo "NO-RAW-OR-BUNDLE-ARTIFACTS"
-node -e 'const s=require("../functions/scripts/firestoreDeploymentVerificationShared.js");const fs=require("fs");let bad=[];for(const f of fs.readdirSync(".")){if(!fs.statSync(f).isFile())continue;const t=fs.readFileSync(f,"utf8");try{s.assertEvidenceSecretFree(t);}catch(e){bad.push(f);}}if(bad.length){console.log("SENSITIVE-FOUND -- REDACT:",bad.join(", "));process.exit(1);}console.log("SENSITIVE-SCAN-CLEAN");'
-sha256sum * > SHA256SUMS.txt
+node -e 'const s=require("../functions/scripts/firestoreDeploymentVerificationShared.js");const fs=require("fs");let bad=[];for(const f of fs.readdirSync(".")){if(f==="SHA256SUMS.txt"||!fs.statSync(f).isFile())continue;const t=fs.readFileSync(f,"utf8");try{s.assertEvidenceSecretFree(t);}catch(e){bad.push(f);}}if(bad.length){console.log("SENSITIVE-FOUND -- REDACT:",bad.join(", "));process.exit(1);}console.log("SENSITIVE-SCAN-CLEAN");'
+rm -f SHA256SUMS.txt
+find . -maxdepth 1 -type f ! -name SHA256SUMS.txt -printf '%P\n' | sort | xargs -r sha256sum > SHA256SUMS.txt
 sha256sum -c SHA256SUMS.txt
 cd ..
 tar czf inv-convergence-e-c1-hosting-deploy-evidence.tgz c1-evidence
