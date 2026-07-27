@@ -70,23 +70,35 @@ so the operator must clone a commit that **contains the tool**. Therefore:
 > Owner in the separate deployment authorization. Write it into every command below in
 > place of `<AUTHORIZED_COMMIT>`.
 
-**This does not change what ships.** Verified empirically by the Inventory session: a
-`build:firebase` from `2d08e2e` and a `build:firebase` from this prep branch produce a
-**byte-identical** `dist/` — same five files, same SHA-256 for each:
+**The application code that ships is unchanged** — the prep PR adds only `scripts/`,
+`test/`, and `docs/`, none imported by `src/` or part of the Vite bundle graph.
 
-| file | sha256 |
-|---|---|
-| `assets/index-DadxuIqI.js` | `02a667c4df2a9fdc77bc37ce35c405be43feeb3461f5097ce5342032be557722` |
-| `assets/index-CSg6YUa7.css` | `3417e1faa227f9c2aa8757f2c5489cece2f36500c1cbc3d0e2b25c8567b029b5` |
-| `index.html` | `bdc62e06d7a48149d3f077041f5db3a8a02e7879611b11d259b1e9aab12c7ac8` |
-| `404.html` | `0ae843d4180e83a5a5e99064e0f50693ac3a0a1c0d2a9bd7c63cefa67d545cc4` |
-| `favicon.svg` | `61bc9a161de58248288e6905425d7180f0624c2865007b97d763fdac12043a66` |
+**⚠ But the bundle hash IS commit-dependent, by design — do not expect a fixed hash.**
+`vite.config.js` injects `__APP_COMMIT__` from `git rev-parse --short HEAD` (the Stage A
+build identifier). Every distinct commit therefore yields a distinct asset filename and
+hash. Measured by the Inventory session:
 
-The prep PR adds only `scripts/`, `test/`, and `docs/` — none imported by `src/`. So the
-deployed artifact is exactly the reviewed C2 frontend. **These hashes are from a Windows
-build and are corroborating, not authoritative** — the Step 6 correspondence check binds
-the live bytes to the operator's own Cloud Shell build manifest, which is the governing
-comparison (Vite content hashes can differ across OS/EOL).
+| build at HEAD | asset | sha256 |
+|---|---|---|
+| `2d08e2e` | `index-DadxuIqI.js` | `02a667c4…557722` |
+| `87d489c` (prep) | `index-tezVCxVH.js` | `42d68558…d8757` |
+
+The injected short SHA occurs **exactly once**; substituting it (`87d489c` → `2d08e2e`)
+reproduces the `2d08e2e` hash **exactly**. So the two bundles differ **only** in that one
+build-identifier string — the code is identical.
+
+**Consequences for this runbook:**
+
+1. The operator's build at `<AUTHORIZED_COMMIT>` will produce a **different** asset
+   filename and hash from both rows above. **That is expected, not a defect.**
+2. **No fixed asset hash is pre-registered as the expected deployed artifact.** Step 7 is
+   the governing check: it compares the live bytes to the operator's **own** Cloud Shell
+   build manifest, so it is unaffected by the build id (both sides come from one build).
+3. Useful cross-check: the deployed bundle should contain the **short SHA of
+   `<AUTHORIZED_COMMIT>`**, confirming the artifact came from the authorized commit.
+
+These hashes are Windows-built and **corroborating, not authoritative** (Vite hashes can
+also differ across OS/EOL). Only Step 7's manifest equality governs.
 
 ## 1. Hard boundaries
 
@@ -259,10 +271,24 @@ each of these is proven by `test/c2LiveParity.test.mjs` (15/15):
 | denied canonical read | `BLOCKED_PERMISSION` | **STOP** |
 | unavailable / read error | `BLOCKED_UNAVAILABLE` | **STOP** |
 | paginated (truncated) capture | `BLOCKED_INCOMPLETE_INPUT` | **STOP** |
-| malformed JSON / unexpected shape | `BLOCKED_INCOMPLETE_INPUT` | **STOP** |
+| malformed **payload** — invalid JSON, or an unexpected top-level shape | `BLOCKED_INCOMPLETE_INPUT` | **STOP** |
+| malformed **individual canonical record** — *any one* `parts` document that fails the governed `toPartListView` validation (missing `internalPartNumber`, `partId` != document id, unknown `status` / `stockingUnit` / `controlType` / `stockingClass`, etc.) | `BLOCKED_INCOMPLETE_INPUT` | **STOP** |
 | **empty** canonical result | `BLOCKED_INCOMPLETE_INPUT` (never "success") | **STOP** |
 | a Part omitted or duplicated | `BLOCKED_*` | **STOP** |
 | canonical unit/identity divergence | `FAIL_PARITY` | **STOP** |
+
+**"Malformed" covers both levels — payload *and* record.** This distinction is
+load-bearing: the governed mapper diverts a structurally invalid document out of the
+composed set, so a capture holding all 190 expected valid records **plus** one corrupt
+document would otherwise still compose 190 + 10 = 200 with zero divergences. That is
+exactly the case the checker now blocks: **any** nonzero invalid-record count is
+`BLOCKED_INCOMPLETE_INPUT` before any comparison happens. A partially readable canonical
+collection is incomplete input and is **never** compared or deployed over.
+
+Only the invalid **count** is written to evidence (`counts.canonicalInvalid`) — no
+document id, field, or body from a malformed record is recorded, since its contents are
+unvalidated. Inspect the offending records in your own local capture, which is never
+committed.
 
 A `BLOCKED_*` is **never** reported as an empty catalog, "190 missing", or a parity
 failure. Nothing has been deployed at this point, so a STOP here needs **no rollback** —

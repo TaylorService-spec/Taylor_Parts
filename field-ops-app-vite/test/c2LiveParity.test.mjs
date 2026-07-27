@@ -148,6 +148,75 @@ check("omitting a single canonical Part BLOCKS the deploy (no silent partial cut
   assert.notEqual(resultJson.status, "PASS");
 });
 
+// ---- P1 regression (PR #447 Codex review): a malformed canonical RECORD -----
+// Without this gate, 190 valid records + 1 corrupt document still composed
+// 190 + 10 = 200 with zero divergences and returned PASS while merely *reporting*
+// canonicalInvalid: 1 -- i.e. it would have deployed over an unreadable canonical record.
+check("190 valid + 1 MALFORMED canonical record -> BLOCKED_INCOMPLETE_INPUT, exit nonzero", () => {
+  const malformed = {
+    name: "projects/taylor-parts/databases/(default)/documents/parts/TST-BROKEN",
+    fields: {
+      partId: { stringValue: "TST-BROKEN" },
+      // internalPartNumber missing, status not a PART_STATUS, stockingUnit not a UNIT_CODE
+      name: { stringValue: "Structurally invalid record" },
+      status: { stringValue: "NOT_A_REAL_STATUS" },
+      stockingUnit: { stringValue: "furlong" },
+      controlType: { stringValue: "STANDARD" },
+      stockingClass: { stringValue: "STOCKED" },
+    },
+  };
+  const { code, resultJson } = run(write({ documents: [...DOCS, malformed] }));
+  assert.equal(code, 1, "a malformed canonical record must stop the deploy");
+  assert.equal(resultJson.status, "BLOCKED_INCOMPLETE_INPUT");
+  assert.match(resultJson.reason, /malformed Part record/i);
+  assert.equal(resultJson.counts.canonicalInvalid, 1);
+  assert.equal(resultJson.counts.canonicalValid, 190, "the 190 valid records are still counted");
+  assert.notEqual(resultJson.status, "PASS");
+});
+
+check("malformed-record evidence is sanitized -- count only, no document contents", () => {
+  const malformed = {
+    name: "projects/taylor-parts/databases/(default)/documents/parts/TST-SECRETish",
+    fields: {
+      partId: { stringValue: "TST-SECRETish" },
+      name: { stringValue: "UNIQUE-MARKER-SHOULD-NOT-APPEAR-IN-EVIDENCE" },
+      status: { stringValue: "BOGUS" },
+      stockingUnit: { stringValue: "bogus" },
+    },
+  };
+  const { resultJson } = run(write({ documents: [...DOCS, malformed] }));
+  const serialized = JSON.stringify(resultJson);
+  assert.ok(!serialized.includes("UNIQUE-MARKER-SHOULD-NOT-APPEAR-IN-EVIDENCE"),
+    "raw document field values must never enter the evidence");
+  assert.ok(!serialized.includes("TST-SECRETish"),
+    "the malformed record's document id must not be echoed into the evidence");
+  assert.equal(resultJson.counts.canonicalInvalid, 1, "only the count is recorded");
+});
+
+check("multiple malformed records are all counted and still BLOCK", () => {
+  const bad = (id) => ({
+    name: `projects/taylor-parts/databases/(default)/documents/parts/${id}`,
+    fields: { partId: { stringValue: id }, name: { stringValue: id }, status: { stringValue: "X" }, stockingUnit: { stringValue: "x" } },
+  });
+  const { code, resultJson } = run(write({ documents: [...DOCS, bad("B1"), bad("B2"), bad("B3")] }));
+  assert.equal(code, 1);
+  assert.equal(resultJson.status, "BLOCKED_INCOMPLETE_INPUT");
+  assert.equal(resultJson.counts.canonicalInvalid, 3);
+});
+
+check("a malformed record BLOCKS even when the 200-record composition would otherwise be complete", () => {
+  // the decisive property: full expected composition + one corrupt record must NOT pass
+  const malformed = {
+    name: "projects/taylor-parts/databases/(default)/documents/parts/TST-EXTRA-BROKEN",
+    fields: { partId: { stringValue: "TST-EXTRA-BROKEN" }, name: { stringValue: "x" }, status: { stringValue: "?" }, stockingUnit: { stringValue: "?" } },
+  };
+  const clean = run(write({ documents: DOCS }));
+  assert.equal(clean.resultJson.status, "PASS", "control: the same 190 pass without the corrupt record");
+  const dirty = run(write({ documents: [...DOCS, malformed] }));
+  assert.notEqual(dirty.resultJson.status, "PASS", "adding one corrupt record must flip PASS -> BLOCKED");
+  assert.equal(dirty.resultJson.status, "BLOCKED_INCOMPLETE_INPUT");
+});
+
 check("a duplicated canonical Part BLOCKS (ambiguous identity never deploys)", () => {
   const { code, resultJson } = run(write({ documents: [...DOCS, DOCS[0]] }));
   assert.equal(code, 1);

@@ -108,6 +108,26 @@ const docs = documents.map((d) => ({
 }));
 
 const listView = toPartListView(docs);
+
+// A malformed canonical RECORD is incomplete input, not a parity result.
+//
+// toPartListView() diverts any structurally invalid document into `invalid` and returns
+// only the well-formed ones in `parts`. Without this gate, a capture holding all 190
+// expected valid records PLUS a corrupt canonical document would still compose
+// 190 + 10 = 200 with zero divergences and report PASS -- silently deploying while a
+// real canonical record was unreadable. Incomplete input must BLOCK, never compare.
+//
+// Sanitization: only the COUNT is recorded. No document id, field, or body from the
+// malformed record enters the evidence (its contents are unvalidated and may be
+// arbitrary). The operator can inspect the offending records in their own local
+// capture, which is never committed.
+const canonicalInvalidCount = Array.isArray(listView.invalid) ? listView.invalid.length : 0;
+if (canonicalInvalidCount > 0) {
+  fail("BLOCKED_INCOMPLETE_INPUT",
+    `canonical capture contains ${canonicalInvalidCount} malformed Part record(s) -- incomplete input is never compared`,
+    { runId, payloadSha256, staticCatalogSha256: null, counts: { canonicalDocuments: docs.length, canonicalValid: listView.parts.length, canonicalInvalid: canonicalInvalidCount } });
+}
+
 const canonicalRead = { status: "OK", rows: listView.parts };
 
 // ---- 3. Static compatibility catalog (in-repo, the composition INPUT) -------
@@ -198,7 +218,7 @@ const result = {
   counts: {
     canonicalDocuments: docs.length,
     canonicalValid: listView.parts.length,
-    canonicalInvalid: Array.isArray(listView.invalid) ? listView.invalid.length : 0,
+    canonicalInvalid: canonicalInvalidCount, // always 0 here -- a nonzero count BLOCKED above
     staticCatalog: STATIC.length,
     listRows: list.rows.length,
     canonicalMatch: list.meta.canonicalMatch,

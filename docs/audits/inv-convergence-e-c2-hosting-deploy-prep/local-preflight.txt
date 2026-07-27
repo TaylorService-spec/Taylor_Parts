@@ -4,10 +4,10 @@ merged C2 source commit: 2d08e2e495448e6f0bb523a58675c195a805c13e
 node: v22.19.0
 
 == full client test chain ==
-npm test exit: 0 (168 assertions ok)
+npm test exit: 0 (172 assertions ok)
 15 passed, 0 failed
 34 passed, 0 failed
-  c2LiveParity.test.mjs      15/15
+  c2LiveParity.test.mjs      19/19  (incl. the PR #447 P1 malformed-record regression)
   partDetailView.test.mjs    34/34
   partsCatalogView.test.mjs  23/23
 
@@ -30,5 +30,6 @@ paginated/truncated capture       -> exit 1, BLOCKED_INCOMPLETE_INPUT
 malformed JSON / unexpected shape -> exit 1, BLOCKED_INCOMPLETE_INPUT
 EMPTY canonical result            -> exit 1, BLOCKED_INCOMPLETE_INPUT (never reported as success)
 one Part omitted / duplicated     -> exit 1, BLOCKED_*
+malformed individual RECORD       -> exit 1, BLOCKED_INCOMPLETE_INPUT  (P1 fix: 190 valid + 1 corrupt no longer PASSes)
 canonical unit divergence         -> exit 1, FAIL_PARITY (UNIT_DIVERGENCE)
 determinism                       -> same capture yields same runId and identical result

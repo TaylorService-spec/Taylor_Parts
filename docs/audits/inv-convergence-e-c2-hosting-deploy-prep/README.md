@@ -50,7 +50,7 @@ environment immediately before `firebase deploy`, and a non-`PASS` **blocks the 
 
 ### Fail-closed behavior — proven, not asserted
 
-`field-ops-app-vite/test/c2LiveParity.test.mjs` (**15/15**, offline) proves every path:
+`field-ops-app-vite/test/c2LiveParity.test.mjs` (**19/19**, offline) proves every path:
 
 | Live condition | Result | Exit | Deploy |
 |---|---|---|---|
@@ -58,10 +58,21 @@ environment immediately before `firebase deploy`, and a non-`PASS` **blocks the 
 | denied canonical read | `BLOCKED_PERMISSION` | 1 | **STOP** |
 | unavailable / read error | `BLOCKED_UNAVAILABLE` | 1 | **STOP** |
 | paginated (truncated) capture | `BLOCKED_INCOMPLETE_INPUT` | 1 | **STOP** |
-| malformed JSON / unexpected shape | `BLOCKED_INCOMPLETE_INPUT` | 1 | **STOP** |
+| malformed **payload** (invalid JSON / unexpected shape) | `BLOCKED_INCOMPLETE_INPUT` | 1 | **STOP** |
+| malformed **individual canonical record** (any document failing governed `toPartListView` validation) | `BLOCKED_INCOMPLETE_INPUT` | 1 | **STOP** |
 | **empty** canonical result | `BLOCKED_INCOMPLETE_INPUT` — never "success" | 1 | **STOP** |
 | Part omitted or duplicated | `BLOCKED_*` | 1 | **STOP** |
 | canonical unit divergence | `FAIL_PARITY` | 1 | **STOP** |
+
+> **P1 corrected after Codex review of PR #447 (head `87d489c`).** The verifier previously
+> *recorded* `canonicalInvalid` without blocking on it, so a capture with all 190 expected
+> valid records **plus one corrupt document** still composed 190 + 10 = 200 with zero
+> divergences and returned `PASS`. Any nonzero invalid-record count is now
+> `BLOCKED_INCOMPLETE_INPUT` **before** any comparison. Regression-tested with a
+> 190-valid + 1-malformed capture (exit 1, `BLOCKED_INCOMPLETE_INPUT`,
+> `canonicalInvalid: 1`), plus a control proving the same 190 pass without the corrupt
+> record, a multi-malformed case, and a sanitization assertion that no document id or
+> field value from a malformed record reaches the evidence — **count only**.
 
 A `BLOCKED_*` is never reported as an empty catalog, "190 missing", or a parity failure.
 Every non-PASS still writes its evidence file **and** exits nonzero, so the runbook's
@@ -93,8 +104,8 @@ Full results in `local-preflight.txt`:
 
 | Gate | Result |
 |---|---|
-| Full client chain (`npm test`) | **exit 0**, 168 assertions |
-| `test/c2LiveParity.test.mjs` | **15/15** |
+| Full client chain (`npm test`) | **exit 0**, 172 assertions |
+| `test/c2LiveParity.test.mjs` | **19/19** (incl. the P1 malformed-record regression) |
 | `test/partDetailView.test.mjs` | **34/34** |
 | `test/partsCatalogView.test.mjs` | **23/23** |
 | `npm run lint` | exit 0 — pre-existing warnings only, **zero** findings in new files |
@@ -110,10 +121,18 @@ The C2 code merged at `2d08e2e`, but the parity tool ships in this preparation P
 operator must clone a commit containing it. `AUTHORIZED_COMMIT` is therefore **the merge
 commit of this preparation PR**, to be pinned in the deployment authorization.
 
-**This does not change what ships:** builds from `2d08e2e` and from this branch produce a
-**byte-identical** `dist/` (verified; see `bundle-correspondence.txt`). Those Windows-built
-hashes are corroborating only — Step 7's Cloud Shell manifest equality is the governing
-check.
+**The shipped application code is unchanged** — the PR adds only `scripts/`, `test/`, and
+`docs/`, none imported by `src/`.
+
+**Corrected finding:** an earlier version of this package claimed the two builds are
+*byte-identical*. That measurement was real but misattributed — the prep changes were
+still uncommitted, so the worktree HEAD was itself `2d08e2e`. In fact `vite.config.js`
+injects `__APP_COMMIT__` from the git short SHA, so **the bundle hash is commit-dependent
+by design**. Measured: the injected SHA occurs exactly once, and substituting it
+reproduces the `2d08e2e` hash exactly — the bundles differ **only** by that one build-id
+string. Consequently **no fixed asset hash is pre-registered** as the expected deployed
+artifact; Step 7's comparison against the operator's own Cloud Shell manifest is the
+governing check, and is unaffected by the build id. See `bundle-correspondence.txt`.
 
 ## Limitations (stated plainly)
 

@@ -1,46 +1,70 @@
 INV-CONVERGENCE-E C2 Hosting gate -- BUILD/COMMIT CORRESPONDENCE (preparation)
 prepared: 2026-07-27 by the Inventory session (credential-free, no production access)
+CORRECTED: 2026-07-27 -- see "CORRECTION" below.
 
 PURPOSE
-  Resolve which commit the operator deploys, and prove that choice does not change
-  what ships. The C2 application code merged at 2d08e2e; the Step 5 fresh-live-parity
-  tool and this runbook are added by the preparation PR, so the operator must clone a
-  commit that CONTAINS the tool.
+  Resolve which commit the operator deploys, and state precisely how that choice
+  affects the shipped bundle. The C2 application code merged at 2d08e2e; the Step 5
+  fresh-live-parity tool and the runbook are added by the preparation PR, so the
+  operator must clone a commit that CONTAINS the tool.
 
 RESOLUTION
   AUTHORIZED_COMMIT = the merge commit of the C2 Hosting preparation PR,
   to be pinned by the Owner in the separate deployment authorization.
   MERGED_C2_SOURCE_COMMIT = 2d08e2e495448e6f0bb523a58675c195a805c13e
 
-EMPIRICAL EQUIVALENCE (performed by the Inventory session)
-  Two independent `npm run build:firebase` runs -- one from a clean worktree at
-  2d08e2e, one from the preparation branch -- produced a BYTE-IDENTICAL dist/:
+CORRECTION (self-reported; the first version of this file was wrong)
+  The first version claimed builds from 2d08e2e and from the preparation branch are
+  "byte-identical". That measurement was real but MISATTRIBUTED: at the time it was
+  taken, the preparation branch's changes were still UNCOMMITTED, so the worktree HEAD
+  was itself 2d08e2e. Once the preparation work was committed, the bundle changed.
 
-    0ae843d4180e83a5a5e99064e0f50693ac3a0a1c0d2a9bd7c63cefa67d545cc4  404.html
-    3417e1faa227f9c2aa8757f2c5489cece2f36500c1cbc3d0e2b25c8567b029b5  assets/index-CSg6YUa7.css
-    02a667c4df2a9fdc77bc37ce35c405be43feeb3461f5097ce5342032be557722  assets/index-DadxuIqI.js
-    61bc9a161de58248288e6905425d7180f0624c2865007b97d763fdac12043a66  favicon.svg
-    bdc62e06d7a48149d3f077041f5db3a8a02e7879611b11d259b1e9aab12c7ac8  index.html
+  ROOT CAUSE -- the build is COMMIT-DEPENDENT BY DESIGN. vite.config.js injects
+    __APP_COMMIT__ = JSON.stringify(execSync('git rev-parse --short HEAD'))
+  (added by INV-CONVERGENCE-E Stage A as the deterministic build identifier; it falls
+  back to "unknown", which the shadow-parity core treats as BLOCKED_INCOMPLETE_INPUT
+  rather than a false PASS). So EVERY distinct commit produces a distinct bundle hash.
+  That is intended: the deployed build id must identify the deployed commit.
 
-  diff of the two manifests: IDENTICAL (zero differing lines).
+MEASURED RELATIONSHIP (exact, reproducible)
+  Build at HEAD = 2d08e2e (short "2d08e2e"):
+    assets/index-DadxuIqI.js  sha256 02a667c4df2a9fdc77bc37ce35c405be43feeb3461f5097ce5342032be557722
+  Build at HEAD = 87d489c (preparation branch, short "87d489c"):
+    assets/index-tezVCxVH.js  sha256 42d6855889be09dfb84e8b39f58e7770a4647b77c53ce608872e17a3cacd8757
 
-WHY
-  The preparation PR adds only scripts/, test/, and docs/ paths. None of them is
-  imported by src/, so none participates in the Vite bundle graph. The deployed
-  artifact is therefore exactly the reviewed and merged C2 frontend.
+  The injected short SHA occurs EXACTLY ONCE in the bundle. Substituting that single
+  occurrence ("87d489c" -> "2d08e2e") in the preparation build reproduces the 2d08e2e
+  build hash EXACTLY:
+    sed 's/87d489c/2d08e2e/g' index-tezVCxVH.js  ->  sha256 02a667c4...557722   (equal)
 
-AUTHORITY LIMIT OF THESE HASHES  (important)
-  These were produced on Windows and are CORROBORATING, NOT AUTHORITATIVE. Vite
-  content hashes can differ across OS/EOL. The governing comparison is runbook Step 7,
-  which binds the LIVE asset bytes to the operator's own Cloud Shell build manifest
-  (local-dist-manifest.sha256) with an exact-equality assertion and a hard STOP on
-  mismatch. Do not substitute the hashes above for that check.
+  CONCLUSION: the two bundles differ ONLY in the one-occurrence build-identifier
+  string. The application code is identical -- the preparation PR adds only scripts/,
+  test/, and docs/ paths, none of which is imported by src/ or participates in the
+  Vite bundle graph.
+
+CONSEQUENCES FOR THE RUNBOOK
+  1. The operator's build at AUTHORIZED_COMMIT will produce a DIFFERENT asset filename
+     and hash from both values above. That is EXPECTED, not a defect.
+  2. No fixed asset hash may be pre-registered in this package as the expected
+     deployed artifact. Step 7 is the governing check: it binds the LIVE bytes to the
+     operator's OWN Cloud Shell build manifest (local-dist-manifest.sha256) with an
+     exact-equality assertion and a hard STOP on mismatch. That check is unaffected by
+     the build id, because both sides of the comparison come from the same build.
+  3. Cross-checking the deployed build id: the deployed bundle should contain the
+     short SHA of AUTHORIZED_COMMIT. This is a useful confirmation that the deployed
+     artifact came from the authorized commit.
+
+AUTHORITY LIMIT OF THESE HASHES (unchanged)
+  All hashes above were produced on Windows and are CORROBORATING, NOT AUTHORITATIVE.
+  Vite content hashes can additionally differ across OS/EOL. Only the Step 7 Cloud
+  Shell manifest equality governs.
 
 DELTA VS THE C1 DEPLOYED BUNDLE
   C1 live asset (per the C1 Hosting evidence): /assets/index-BJCJSmRw.js
-  C2 expected asset name differs (PartDetail changed) -- a differing asset name is
-  EXPECTED at this gate and is not, by itself, evidence of correctness. Correctness
-  comes from the Step 7 manifest equality plus the Step 8 browser observations.
+  The C2 asset name and hash differ (PartDetail changed, and the build id differs).
+  A differing asset name is EXPECTED at this gate and is not, by itself, evidence of
+  correctness. Correctness comes from Step 7 manifest equality plus Step 8 browser
+  observation.
 
 GOVERNED RULES (must be unchanged by a Hosting deploy)
   firestore.rules Git/LF sha256 @ 2d08e2e =
