@@ -1,12 +1,17 @@
 // D3 pure import DRY-RUN tooling for governed Equipment Model + Part–Equipment Compatibility
 // ingest (architecture §9–§11). There is NO apply/execute mode. This module never initializes any
 // Firebase Admin/client SDK and performs no Firestore, Auth, network, deployment, or production
-// access. Callers pass already-decoded file CONTENTS as strings (input files stay read-only) plus
-// EXPLICIT authority snapshots; the module only analyzes and returns a sanitized, zero-write plan.
-// All normalization/validation is delegated to the merged D1 (Equipment Model) and D2
-// (Compatibility) contracts — no competing implementation, no invented data.
+// access, and no file I/O. Callers pass already-DECODED JavaScript strings (input files stay
+// read-only) plus EXPLICIT authority snapshots; the module only analyzes and returns a sanitized,
+// zero-write plan. All normalization/validation is delegated to the merged D1 (Equipment Model) and
+// D2 (Compatibility) contracts — no competing implementation, no invented data.
+//
+// UTF-8 scope: because the input is an already-decoded string, this parser rejects the Unicode
+// REPLACEMENT CHARACTER (U+FFFD) and other disallowed decoded characters, but it CANNOT certify that
+// the original byte stream was valid UTF-8. Byte-level UTF-8 validation must occur at the later
+// governed file-reading boundary before decoding; D3 performs no file I/O.
 import { detectModelAliasConflicts, validateEquipmentModel, validateEquipmentModelAlias } from "./equipmentModel.js";
-import { analyzeCompatibilityEvidenceByRelationship, detectCompatibilityCollisions, detectCompatibilitySourceCollisions, validateCompatibility, validateCompatibilitySource } from "./equipmentCompatibility.js";
+import { sha256Hex, validateCompatibility, validateCompatibilitySource, analyzeCompatibilityEvidenceByRelationship } from "./equipmentCompatibility.js";
 
 const asciiCompare = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 const plain = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
@@ -18,6 +23,27 @@ const hasDisallowedControl = (s) => {
 };
 
 export const DEFAULT_LIMITS = Object.freeze({ maxFileChars: 1_000_000, maxRows: 10_000, maxFieldChars: 2_048, maxErrorRefs: 200 });
+// Governed hard maxima; a caller-supplied limit above these is rejected fail-closed.
+export const LIMIT_MAXIMA = Object.freeze({ maxFileChars: 20_000_000, maxRows: 200_000, maxFieldChars: 65_536, maxErrorRefs: 50_000 });
+
+// Strict limits validator (fail-closed). Exact allowed keys only; each provided value must be a
+// finite positive safe integer within its governed maximum; maxErrorRefs may not exceed maxRows.
+export function validateLimits(limits) {
+  if (limits === undefined) return { ok: true, limits: { ...DEFAULT_LIMITS } };
+  if (!plain(limits)) return { ok: false, code: "limits_not_object" };
+  const allowed = Object.keys(DEFAULT_LIMITS);
+  for (const k of Object.keys(limits)) if (!allowed.includes(k)) return { ok: false, code: "unknown_limit_key" };
+  const merged = { ...DEFAULT_LIMITS };
+  for (const k of allowed) {
+    if (limits[k] === undefined) continue;
+    const v = limits[k];
+    if (typeof v !== "number" || !Number.isSafeInteger(v) || v <= 0) return { ok: false, code: `limit_${k}_invalid` };
+    if (v > LIMIT_MAXIMA[k]) return { ok: false, code: `limit_${k}_exceeds_maximum` };
+    merged[k] = v;
+  }
+  if (merged.maxErrorRefs > merged.maxRows) return { ok: false, code: "limit_maxErrorRefs_exceeds_rows" };
+  return { ok: true, limits: merged };
+}
 
 // Exact header allowlists per architecture-defined package. Unknown, missing, or duplicate headers
 // are rejected. Market listings are EVIDENCE-ONLY QUARANTINE and never produce authoritative output.
@@ -29,13 +55,20 @@ export const IMPORT_PACKAGES = Object.freeze({
   MARKET_LISTINGS: ["listingId", "marketplace", "claimedManufacturer", "claimedModel", "claimedPartRef", "listingUrl", "capturedAt"],
 });
 
+// Deterministic equivalence fingerprint of a validated record's normalized value. Callers build the
+// existing-authority snapshots with the SAME function so imported vs existing records can be compared
+// for exact equivalence without the caller shipping raw content into the report.
+export function recordFingerprint(value) { return sha256Hex(JSON.stringify(value)); }
+
 // ---------------------------------------------------------------------------
 // Sensitive-data scan (never reproduces the matched value — line + code only).
 // Legitimate 64-hex content fingerprints are NOT flagged; credentials/PII are.
 // ---------------------------------------------------------------------------
 const SENSITIVE_PATTERNS = [
   ["email", /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/],
-  ["phone", /(?:\+?\d[\d ().-]{8,}\d)/],
+  // Separated 3-3-4 grouping (optional country code / parens). Deliberately requires the two
+  // separators so ISO dates/timestamps (4-2-2, colon-delimited) and hex fingerprints never match.
+  ["phone", /(?:\+\d{1,3}[ .-]?)?\(?\d{3}\)?[ .-]\d{3}[ .-]\d{4}(?!\d)/],
   ["credential_keyword", /\b(?:password|passwd|secret|api[_-]?key|access[_-]?token|client[_-]?secret|bearer)\b/i],
   ["private_key", /-----BEGIN [A-Z ]*PRIVATE KEY-----/],
   ["google_api_key", /\bAIza[0-9A-Za-z_-]{20,}\b/],
@@ -51,7 +84,7 @@ export function scanSensitive(text, packageName = "") {
 }
 
 // ---------------------------------------------------------------------------
-// Strict CSV parsing (bounds + normalized line endings + UTF-8 sanity).
+// Strict CSV parsing (bounds + normalized line endings + decoded-char sanity).
 // ---------------------------------------------------------------------------
 function splitCsvLine(line, maxFieldChars) {
   const fields = []; let cur = "", inQ = false;
@@ -71,10 +104,12 @@ function splitCsvLine(line, maxFieldChars) {
 }
 
 // Returns { headerError } OR { header, records:[{line, values}], rowErrors:[{line, field, code}] }.
+// `decoded_replacement_char` means a U+FFFD was present in the ALREADY-DECODED string — this is not a
+// byte-level UTF-8 certification (see the module header note).
 export function parseCsv(text, header, limits = DEFAULT_LIMITS) {
   if (typeof text !== "string") return { headerError: "not_a_string" };
   if (text.length > limits.maxFileChars) return { headerError: "file_too_large" };
-  if (text.includes("�")) return { headerError: "invalid_utf8" };
+  if (text.includes("�")) return { headerError: "decoded_replacement_char" };
   if (text.charCodeAt(0) === 0xfeff) return { headerError: "bom_not_allowed" };
   if (hasDisallowedControl(text)) return { headerError: "control_characters" };
   const normalized = text.replace(/\r\n/g, "\n");
@@ -126,21 +161,62 @@ function assembleModel(v) {
   return { equipmentModelId: v.equipmentModelId, manufacturerId: v.manufacturerId, manufacturerName: v.manufacturerName, modelNumber: v.modelNumber, displayName: v.displayName, family: orNull(v.family), subtype: orNull(v.subtype), revision: orNull(v.revision), status: v.status, sourceAuthority: v.sourceAuthority, version: intOrRaw(v.version) };
 }
 
+// Identity analysis across BOTH in-batch and existing-authority records.
+// existing is a Map id -> fingerprint | (null/undefined = exists but comparison unavailable).
+//   fpSet has one member  → exact-equivalent everywhere → idempotent duplicate.
+//   fpSet has >1 members  → non-equivalent record sharing a deterministic id → collision.
+//   existing id present but no usable fingerprint → fail closed (comparison unavailable).
+function classifyIdentity(imported, existing) {
+  const byId = new Map();
+  for (const r of imported) { if (!byId.has(r.id)) byId.set(r.id, []); byId.get(r.id).push(r); }
+  const collisions = [], duplicates = [], unavailable = [];
+  for (const [id, group] of byId) {
+    const lines = group.map((g) => g.line).sort((a, b) => a - b);
+    const hasExisting = existing.has(id);
+    const existingFp = hasExisting ? existing.get(id) : undefined;
+    if (hasExisting && typeof existingFp !== "string") { unavailable.push({ id, lines }); continue; }
+    const fpSet = new Set(group.map((g) => g.fp));
+    if (hasExisting) fpSet.add(existingFp);
+    if (fpSet.size > 1) collisions.push({ id, lines, existing: hasExisting });
+    else if (group.length >= 2 || hasExisting) duplicates.push({ id, lines, existing: hasExisting });
+  }
+  const s = (a, b) => asciiCompare(a.id, b.id);
+  return { collisions: collisions.sort(s), duplicates: duplicates.sort(s), unavailable: unavailable.sort(s) };
+}
+
+const toFpMap = (o) => { const m = new Map(); if (plain(o)) for (const [k, v] of Object.entries(o)) m.set(k, v); return m; };
+
+function emptyReport(status, extra = {}) {
+  return {
+    dryRun: true, applyable: false, status, counts: {},
+    errors: [], errorsTruncated: 0, unresolved: [], unresolvedTruncated: 0,
+    collisions: { equipmentModels: [], modelAliasConflicts: [], compatibility: [], sources: [] },
+    existingComparisonUnavailable: { equipmentModels: [], compatibility: [], sources: [] },
+    duplicatesIdempotent: { equipmentModels: 0, compatibility: 0, sources: 0 },
+    conflicts: [], quarantine: { marketListings: 0, authoritative: false },
+    sensitive: { clean: true, findings: [] }, staged: null, ...extra,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Dry-run planner. Returns a sanitized, deterministic, zero-write report.
 // ---------------------------------------------------------------------------
 export function dryRunEquipmentCompatibilityImport({ packages = {}, snapshots = {}, limits = {} } = {}) {
-  const lim = { ...DEFAULT_LIMITS, ...limits };
+  const limCheck = validateLimits(limits);
+  if (!limCheck.ok) return emptyReport("BLOCKED", { configError: limCheck.code }); // fail closed; no parsing/staging
+  const lim = limCheck.limits;
+
   const errors = [], unresolved = [], sensitive = [];
   const partIds = new Set(Array.isArray(snapshots.partIds) ? snapshots.partIds : []);
-  const snapModelIds = new Set(Array.isArray(snapshots.equipmentModelIds) ? snapshots.equipmentModelIds : []);
-  const existingCompatibilityIds = new Set(Array.isArray(snapshots.existingCompatibilityIds) ? snapshots.existingCompatibilityIds : []);
   const serialSchemes = plain(snapshots.serialSchemes) ? snapshots.serialSchemes : {};
+  const existingModels = toFpMap(snapshots.existingEquipmentModels);
+  const existingCompat = toFpMap(snapshots.existingCompatibility);
+  const existingSources = toFpMap(snapshots.existingSources);
+  const existingAliases = Array.isArray(snapshots.existingModelAliases) ? snapshots.existingModelAliases : [];
 
   const pushErr = (pkg, line, field, code) => errors.push({ package: pkg, line, field, code });
   const counts = {};
 
-  // Generic package parse + per-row validation. Returns validated records with their line numbers.
   const process = (pkg, header, assemble, validate) => {
     const text = packages[pkg];
     if (text === undefined) return [];
@@ -163,8 +239,7 @@ export function dryRunEquipmentCompatibilityImport({ packages = {}, snapshots = 
   const compat = process("EQUIPMENT_PART_COMPATIBILITY", IMPORT_PACKAGES.EQUIPMENT_PART_COMPATIBILITY, assembleCompatibility, (v) => validateCompatibility(v, { serialSchemes }));
   const sources = process("COMPATIBILITY_SOURCES", IMPORT_PACKAGES.COMPATIBILITY_SOURCES, assembleSource, validateCompatibilitySource);
 
-  // Market listings: parsed + scanned + counted, then QUARANTINED. They can never create or activate
-  // a model or establish verified compatibility, so they are never resolved into the plan.
+  // Market listings: parsed + scanned + counted, then QUARANTINED — never resolved into the plan.
   let marketListings = 0;
   if (packages.MARKET_LISTINGS !== undefined) {
     scanSensitive(packages.MARKET_LISTINGS, "MARKET_LISTINGS").forEach((f) => sensitive.push(f));
@@ -173,47 +248,54 @@ export function dryRunEquipmentCompatibilityImport({ packages = {}, snapshots = 
     else { parsed.rowErrors.forEach((e) => pushErr("MARKET_LISTINGS", e.line, e.field, e.code)); marketListings = parsed.records.length; }
   }
 
-  // Reference resolution against explicit snapshots + in-batch valid models/compatibility.
-  // Aliases cannot create models; sources cannot create relationships — an unresolved reference is a
-  // visible error, never an invented identity.
+  // Reference resolution against explicit snapshots + in-batch valid records. Existence is derived
+  // from the union of existing-authority ids and in-batch ids; aliases cannot create models and
+  // sources cannot create relationships — an unresolved reference is a visible error.
   const batchModelIds = new Set(models.map((m) => m.value.equipmentModelId));
-  const knownModelIds = new Set([...snapModelIds, ...batchModelIds]);
+  const knownModelIds = new Set([...existingModels.keys(), ...batchModelIds]);
   for (const a of aliases) if (!knownModelIds.has(a.value.equipmentModelId)) unresolved.push({ package: "EQUIPMENT_MODEL_ALIASES", line: a.line, ref: "equipmentModelId", code: "equipment_model_unresolved" });
   for (const c of compat) {
     if (!knownModelIds.has(c.value.equipmentModelId)) unresolved.push({ package: "EQUIPMENT_PART_COMPATIBILITY", line: c.line, ref: "equipmentModelId", code: "equipment_model_unresolved" });
     if (!partIds.has(c.value.partId)) unresolved.push({ package: "EQUIPMENT_PART_COMPATIBILITY", line: c.line, ref: "partId", code: "part_unresolved" });
   }
   const batchCompatIds = new Set(compat.map((c) => c.value.compatibilityId));
-  const knownCompatIds = new Set([...existingCompatibilityIds, ...batchCompatIds]);
+  const knownCompatIds = new Set([...existingCompat.keys(), ...batchCompatIds]);
   for (const s of sources) if (!knownCompatIds.has(s.value.compatibilityId)) unresolved.push({ package: "COMPATIBILITY_SOURCES", line: s.line, ref: "compatibilityId", code: "compatibility_unresolved" });
 
-  // Duplicate / collision / alias-conflict analysis (deterministic, via D1/D2 contracts).
-  const modelDup = detectModelDuplicates(models);
-  // detectModelAliasConflicts re-validates raw alias records, so reconstruct the raw shape
-  // (rawValue) from the normalized D1 value rather than passing the validated value object.
-  const aliasConflicts = detectModelAliasConflicts(aliases.map((a) => ({ aliasType: a.value.aliasType, manufacturerId: a.value.manufacturerId, rawValue: a.value.aliasValue, equipmentModelId: a.value.equipmentModelId }))).conflicts;
-  const compatCollisions = detectCompatibilityCollisions(compat.map((c) => c.value), { serialSchemes });
-  const sourceCollisions = detectCompatibilitySourceCollisions(sources.map((s) => s.value));
+  // Identity analysis vs BOTH in-batch and existing authority (equivalence-aware, fail-closed).
+  const modelIdentity = classifyIdentity(models.map((m) => ({ line: m.line, id: m.value.equipmentModelId, fp: recordFingerprint(m.value) })), existingModels);
+  const compatIdentity = classifyIdentity(compat.map((c) => ({ line: c.line, id: c.value.compatibilityId, fp: recordFingerprint(c.value) })), existingCompat);
+  const sourceIdentity = classifyIdentity(sources.map((s) => ({ line: s.line, id: s.value.sourceId, fp: recordFingerprint(s.value) })), existingSources);
+
+  // Alias ownership conflicts include existing authority aliases (detectModelAliasConflicts
+  // re-validates raw records; reconstruct the raw shape for in-batch aliases).
+  const aliasRaw = [
+    ...aliases.map((a) => ({ aliasType: a.value.aliasType, manufacturerId: a.value.manufacturerId, rawValue: a.value.aliasValue, equipmentModelId: a.value.equipmentModelId })),
+    ...existingAliases,
+  ];
+  const aliasConflicts = detectModelAliasConflicts(aliasRaw).conflicts;
 
   // Source precedence + evidence-conflict reporting (reseller/WO stay non-authoritative in D2).
   const evidence = analyzeCompatibilityEvidenceByRelationship(sources.map((s) => s.value)).relationships;
   const conflicts = evidence.filter((r) => r.recommendedStatus === "CONFLICT").map((r) => ({ compatibilityId: r.compatibilityId, strongestSupport: r.strongestSupport, strongestContradiction: r.strongestContradiction }));
 
-  const hasBlocking = errors.length > 0 || unresolved.length > 0 || modelDup.collisions.length > 0 ||
-    aliasConflicts.length > 0 || compatCollisions.collisions.length > 0 || sourceCollisions.collisions.length > 0;
+  const unavailableCount = modelIdentity.unavailable.length + compatIdentity.unavailable.length + sourceIdentity.unavailable.length;
+  const collisionCount = modelIdentity.collisions.length + compatIdentity.collisions.length + sourceIdentity.collisions.length + aliasConflicts.length;
+  const hasBlocking = errors.length > 0 || unresolved.length > 0 || collisionCount > 0 || unavailableCount > 0 || sensitive.length > 0;
   const status = hasBlocking ? "BLOCKED" : conflicts.length > 0 ? "REVIEW_REQUIRED" : "READY";
 
-  // No partial apply: staged identity summary is populated ONLY when nothing blocks the whole batch.
-  // Even then it is never applied (D3 has no apply mode) — it is an opaque-id summary for review.
-  const staged = hasBlocking ? null : {
+  // No partial apply: the staged opaque-id summary is populated ONLY when the whole batch is exactly
+  // READY (never BLOCKED, never REVIEW_REQUIRED). It is never applied (D3 has no apply mode).
+  const staged = status === "READY" ? {
     equipmentModelIds: [...batchModelIds].sort(asciiCompare),
     modelAliasKeys: [...new Set(aliases.map((a) => a.value.aliasKey))].sort(asciiCompare),
     compatibilityIds: [...batchCompatIds].sort(asciiCompare),
     sourceIds: [...new Set(sources.map((s) => s.value.sourceId))].sort(asciiCompare),
-  };
+  } : null;
 
-  const boundedErrors = sanitizeRefs(errors, lim.maxErrorRefs, (a, b) => asciiCompare(a.package, b.package) || a.line - b.line || asciiCompare(a.code, b.code));
-  const boundedUnresolved = sanitizeRefs(unresolved, lim.maxErrorRefs, (a, b) => asciiCompare(a.package, b.package) || a.line - b.line || asciiCompare(a.code, b.code));
+  const refCmp = (a, b) => asciiCompare(a.package, b.package) || a.line - b.line || asciiCompare(a.code, b.code);
+  const boundedErrors = sanitizeRefs(errors, lim.maxErrorRefs, refCmp);
+  const boundedUnresolved = sanitizeRefs(unresolved, lim.maxErrorRefs, refCmp);
 
   return {
     dryRun: true, applyable: false, status,
@@ -221,33 +303,20 @@ export function dryRunEquipmentCompatibilityImport({ packages = {}, snapshots = 
     errors: boundedErrors.refs, errorsTruncated: boundedErrors.truncated,
     unresolved: boundedUnresolved.refs, unresolvedTruncated: boundedUnresolved.truncated,
     collisions: {
-      equipmentModels: modelDup.collisions.map((x) => ({ equipmentModelId: x.equipmentModelId, lines: x.lines })).sort((a, b) => asciiCompare(a.equipmentModelId, b.equipmentModelId)),
-      modelAliasConflicts: aliasConflicts,
-      compatibility: compatCollisions.collisions,
-      sources: sourceCollisions.collisions,
+      equipmentModels: modelIdentity.collisions, modelAliasConflicts: aliasConflicts,
+      compatibility: compatIdentity.collisions, sources: sourceIdentity.collisions,
+    },
+    existingComparisonUnavailable: {
+      equipmentModels: modelIdentity.unavailable, compatibility: compatIdentity.unavailable, sources: sourceIdentity.unavailable,
     },
     duplicatesIdempotent: {
-      equipmentModels: modelDup.duplicates.length, compatibility: compatCollisions.duplicates.length, sources: sourceCollisions.duplicates.length,
+      equipmentModels: modelIdentity.duplicates.length, compatibility: compatIdentity.duplicates.length, sources: sourceIdentity.duplicates.length,
     },
     conflicts: conflicts.sort((a, b) => asciiCompare(a.compatibilityId, b.compatibilityId)),
     quarantine: { marketListings, authoritative: false },
     sensitive: { clean: sensitive.length === 0, findings: sensitive.sort((a, b) => asciiCompare(a.package, b.package) || a.line - b.line || asciiCompare(a.code, b.code)) },
     staged,
   };
-}
-
-// Group valid models by id; identical repeats are idempotent duplicates, differing content is a collision.
-function detectModelDuplicates(models) {
-  const byId = new Map();
-  for (const m of models) { if (!byId.has(m.value.equipmentModelId)) byId.set(m.value.equipmentModelId, []); byId.get(m.value.equipmentModelId).push(m); }
-  const collisions = [], duplicates = [];
-  for (const [equipmentModelId, group] of byId) {
-    if (group.length < 2) continue;
-    const canonical = JSON.stringify(group[0].value);
-    const lines = group.map((g) => g.line).sort((a, b) => a - b);
-    (group.every((g) => JSON.stringify(g.value) === canonical) ? duplicates : collisions).push({ equipmentModelId, lines });
-  }
-  return { collisions, duplicates };
 }
 
 function sanitizeRefs(refs, max, cmp) {
