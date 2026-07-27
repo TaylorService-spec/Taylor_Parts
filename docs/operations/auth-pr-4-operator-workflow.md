@@ -15,24 +15,40 @@
 
 A production-project write is permitted **only** through `--executeProduction`,
 which routes the run through the [`authPr4ProductionGate`](../../functions/scripts/authPr4ProductionGate.js).
-Before any SDK init, the gate independently verifies, and **fails closed** on any of:
+It **requires a clean git checkout** and **fails closed in non-git contexts**. Before
+any SDK init, the gate independently verifies, and **fails closed** on any of:
 
-- **repository identity + governed-file SHA-256 hashes** (of the workflow + gate),
-  independently derived — a user-supplied `--authorizedCommit` is never sufficient;
-- a valid **`--authorizationManifest`** (project, exact ordered persona allowlist,
-  executionModeToken, reviewed head + governed-file hashes) — an append-only,
-  recorded Owner authorization;
-- a signed **`--progressionFile`** record enforcing cross-invocation order: only the
-  exact next persona proceeds; advance only after a confirmed write + read-back;
-  skipped/repeated/reordered/stale/conflicting/tampered/suspended → refuse;
-  1–4 durable before 5; an uncertain outcome does not advance; a successful rollback
-  reverses + **suspends** and blocks later personas;
-- for **position 5**, a signed **`--breakGlassConfirmationFile`** created after 1–4
-  complete, time-valid, and bound to the exact progression state (early/expired/
-  mismatched/reused → refuse).
+- **Repository-governed authorization artifact** — authority comes from the committed,
+  git-tracked [`functions/authpr4/production-authorization.json`](../../functions/authpr4/production-authorization.json),
+  read **from git at `--authorizedCommit`** (never an operator-authored path). Its
+  status must be **`GRANTED`** (the committed artifact is **`PENDING`**, so production
+  is blocked); strict schema (no unknown fields); project, exact ordered persona
+  allowlist, reviewed head, and **blob-based** governed-file SHA-256 hashes must match;
+  the operator's `--executionModeConfirmation` and `--executor` must equal the
+  repository-recorded values ("nonempty" is not authorization). A modified/untracked/
+  external/PENDING artifact, wrong path, unknown field, or hash drift → refuse.
+- **Governed-file identity** — deterministic blob-based SHA-256 of the workflow + gate at
+  the authorized commit must equal HEAD's (no post-review drift) and the working tree
+  must be clean; a user-supplied `--authorizedCommit` is never sufficient by itself.
+- **Attempt-bound progression state machine** (`--progressionFile`, signed): monotonic
+  revision + previous-state-hash chain + a signed high-water **anchor** (detects
+  restoration of an older signed state → refuse) + an **exclusive O_EXCL claim lock**
+  with a bounded lease (concurrent claims refused; stale takeover is explicit and
+  preserves prior-attempt evidence, moving to `recovery_required`). Only the exact next
+  persona proceeds; **completion is recorded only by the owning attempt**; 1–4 durable
+  before 5.
+- **Crash-safe two-phase lifecycle** — a `claimed`/pending attempt is persisted **before**
+  the Auth call; a durable outcome is recorded after; any uncertainty (write/read-back
+  failure, or a completion-persistence failure) leaves `claimed`/`uncertain`/
+  `recovery_required` — **blocking all later personas, never auto-reverting to eligible**
+  — and retains the exact rollback artifact. Governed reconciliation is
+  **production-disabled** in this PR.
+- **Break-glass** (position 5): a signed `--breakGlassConfirmationFile` created after 1–4
+  complete, **time-valid**, and bound to the exact progression state + the authorization
+  contract's `requiredConfirmer` (early/expired/mismatched/reused/wrong-confirmer → refuse).
 
 `--executeProduction` against the **production project** stays blocked absent a real
-recorded authorization; against a **non-production/emulator** project it is the
+`GRANTED` authorization; against a **non-production/emulator** project it is the
 "production-shaped" path exercised by tests. No CI/emulator test targets the real
 `taylor-parts` project.
 

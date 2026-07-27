@@ -44,16 +44,16 @@ function buildGrantedRepo(projectId, mutateArtifact) {
   execFileSync("git", ["-C", root, "init", "-q"]);
   execFileSync("git", ["-C", root, "config", "user.email", "t@example.com"]);
   execFileSync("git", ["-C", root, "config", "user.name", "t"]);
-  const hashes = {};
   for (const rel of gate.GOVERNED_FILES) {
     const bytes = fs.readFileSync(path.join(REAL_ROOT, rel));
     fs.mkdirSync(path.join(root, path.dirname(rel)), { recursive: true });
     fs.writeFileSync(path.join(root, rel), bytes);
-    hashes[rel] = gate.sha256Hex(bytes);
   }
   execFileSync("git", ["-C", root, "add", "-A"]);
   execFileSync("git", ["-C", root, "commit", "-q", "-m", "governed files"]);
   const reviewedHead = execFileSync("git", ["-C", root, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+  // Record BLOB-based hashes (deterministic, EOL-independent), matching what the gate derives.
+  const hashes = gate.governedHashesAtCommit(root, reviewedHead);
   let artifact = {
     schema: gate.AUTH_SCHEMA, authorizationId: "AUTHPR4-PROD-TEST", authorizationStatus: "GRANTED",
     projectId, personaOrder: ORDER, reviewedHead, governedFileHashes: hashes,
@@ -114,7 +114,7 @@ ok("REAL repo authorization artifact is PENDING -> refused (fail closed)", () =>
 
 ok("GRANTED temp-repo artifact verifies; wrong token / wrong executor / unknown field / hash drift all refuse", () => {
   const g = buildGrantedRepo("demo-authpr4");
-  const derived = gate.deriveGovernedFileHashes(g.root);
+  const derived = gate.governedHashesAtCommit(g.root, g.authorizedCommit);
   const repoIdentity = gate.deriveRepositoryIdentity(g.root);
   const { artifact } = gate.loadGovernedAuthorization({ repoRoot: g.root, authorizedCommit: g.authorizedCommit });
   const base = { projectId: "demo-authpr4", personaOrder: ORDER, derivedHashes: derived, repoIdentity, authorizedCommit: g.authorizedCommit, executionModeConfirmation: g.executionModeToken, executor: g.executor };
@@ -128,13 +128,13 @@ ok("GRANTED temp-repo artifact verifies; wrong token / wrong executor / unknown 
 
 ok("unknown field / PENDING status in the committed artifact are refused", () => {
   const gUnknown = buildGrantedRepo("demo-authpr4", (a) => ({ ...a, evil: 1 }));
-  const dU = gate.deriveGovernedFileHashes(gUnknown.root);
+  const dU = gate.governedHashesAtCommit(gUnknown.root, gUnknown.authorizedCommit);
   throws(() => gate.verifyGovernedAuthorization(gate.loadGovernedAuthorization({ repoRoot: gUnknown.root, authorizedCommit: gUnknown.authorizedCommit }).artifact,
     { projectId: "demo-authpr4", personaOrder: ORDER, derivedHashes: dU, repoIdentity: gate.deriveRepositoryIdentity(gUnknown.root), authorizedCommit: gUnknown.authorizedCommit, executionModeConfirmation: "EMT-TOKEN", executor: "named-exec" }),
     /schema mismatch/);
   fs.rmSync(gUnknown.root, { recursive: true, force: true });
   const gPending = buildGrantedRepo("demo-authpr4", (a) => ({ ...a, authorizationStatus: "PENDING" }));
-  const dP = gate.deriveGovernedFileHashes(gPending.root);
+  const dP = gate.governedHashesAtCommit(gPending.root, gPending.authorizedCommit);
   throws(() => gate.verifyGovernedAuthorization(gate.loadGovernedAuthorization({ repoRoot: gPending.root, authorizedCommit: gPending.authorizedCommit }).artifact,
     { projectId: "demo-authpr4", personaOrder: ORDER, derivedHashes: dP, repoIdentity: gate.deriveRepositoryIdentity(gPending.root), authorizedCommit: gPending.authorizedCommit, executionModeConfirmation: "EMT-TOKEN", executor: "named-exec" }),
     /not GRANTED/);
@@ -151,7 +151,7 @@ ok("modified tracked artifact (dirty working tree) fails the clean-checkout guar
 
 ok("wrong/absent authorized commit or untracked artifact path is not readable from git", () => {
   const g = buildGrantedRepo("demo-authpr4");
-  throws(() => gate.loadGovernedAuthorization({ repoRoot: g.root, authorizedCommit: "0".repeat(40) }), /not present in commit/);
+  throws(() => gate.loadGovernedAuthorization({ repoRoot: g.root, authorizedCommit: "0".repeat(40) }), /not present\/tracked in commit/);
   fs.rmSync(g.root, { recursive: true, force: true });
 });
 
@@ -308,7 +308,7 @@ await okAsync("GRANTED production-shaped path advances the full sequence 1..5 (b
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-run-"));
   const keyFile = path.join(dir, "k"); const key = crypto.randomBytes(48); fs.writeFileSync(keyFile, key, { mode: 0o600 });
   const stateFile = path.join(dir, "state.json"); const mappingFile = path.join(dir, "map.json");
-  const idHash = gate.workflowIdentityHash(gate.deriveGovernedFileHashes(g.root));
+  const idHash = gate.workflowIdentityHash(gate.governedHashesAtCommit(g.root, g.authorizedCommit));
   writeGenesis(stateFile, key, { authorizationId: "AUTHPR4-PROD-TEST", projectId: PROJECT, idHash });
   const seeded = {};
   for (const id of ORDER) seeded[id] = await seed(mappingFile, id);
@@ -336,7 +336,7 @@ await okAsync("FAULT: read-back failure after updateUser -> UNCERTAIN, no advanc
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-fault-"));
   const keyFile = path.join(dir, "k"); const key = crypto.randomBytes(48); fs.writeFileSync(keyFile, key, { mode: 0o600 });
   const stateFile = path.join(dir, "state.json"); const mappingFile = path.join(dir, "map.json");
-  const idHash = gate.workflowIdentityHash(gate.deriveGovernedFileHashes(g.root));
+  const idHash = gate.workflowIdentityHash(gate.governedHashesAtCommit(g.root, g.authorizedCommit));
   writeGenesis(stateFile, key, { authorizationId: "AUTHPR4-PROD-TEST", projectId: PROJECT, idHash });
   const drv = await seed(mappingFile, "emp-rudy-driver");
   let failNext = false;
@@ -349,6 +349,58 @@ await okAsync("FAULT: read-back failure after updateUser -> UNCERTAIN, no advanc
   assert.ok(fs.existsSync(path.join(dir, "emp-rudy-driver.rollback.json")), "rollback artifact retained");
   // Later attempts are blocked (uncertain is a blocking state).
   await assert.rejects(() => runProductionForward({ g, key, keyFile, stateFile, mappingFile, employeeId: "emp-rudy-driver" }), /blocking state/);
+  fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
+});
+
+await okAsync("FAULT: completion-persistence failure leaves progression CLAIMED (blocking); later attempts refused", async () => {
+  const g = buildGrantedRepo(PROJECT);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-cfault-"));
+  const keyFile = path.join(dir, "k"); const key = crypto.randomBytes(48); fs.writeFileSync(keyFile, key, { mode: 0o600 });
+  const stateFile = path.join(dir, "state.json"); const mappingFile = path.join(dir, "map.json");
+  const idHash = gate.workflowIdentityHash(gate.governedHashesAtCommit(g.root, g.authorizedCommit));
+  writeGenesis(stateFile, key, { authorizationId: "AUTHPR4-PROD-TEST", projectId: PROJECT, idHash });
+  const drv = await seed(mappingFile, "emp-rudy-driver");
+  const capturedOut = path.join(dir, "emp-rudy-driver.rollback.json");
+  const ctx = gate.assertProductionAuthorization(
+    { projectId: PROJECT, executeProduction: true, mappingFile, progressionFile: stateFile, stateKeyFile: keyFile, authorizedCommit: g.authorizedCommit, executionModeConfirmation: g.executionModeToken, executor: g.executor, capturedStateOut: capturedOut },
+    { repoRoot: g.root, personaOrder: ORDER });
+  const pre = await wf.preflight(auth, { employeeId: "emp-rudy-driver", uid: drv.uid, newAlias: drv.newAlias });
+  wf.writeCapturedState(capturedOut, { version: 1, projectId: PROJECT, employeeId: "emp-rudy-driver", position: 1, uid: pre.uid, priorAddress: pre.priorAddress, priorEmailVerified: true, newAlias: drv.newAlias, createdAt: new Date().toISOString() }, key);
+  await wf.applyPlan(auth, wf.buildForwardPlan({ employeeId: "emp-rudy-driver", uid: pre.uid, priorAddress: pre.priorAddress, priorEmailVerified: true, newAlias: drv.newAlias }), { execute: true });
+  assert.equal((await auth.getUser(drv.uid)).email, drv.newAlias, "forward mutation landed");
+  // Completion persistence FAILS (disk error) -> recordCompletion throws; state stays CLAIMED.
+  const failingFs = { ...fs, openSync: () => { const e = new Error("injected disk failure"); throw e; } };
+  assert.throws(() => ctx.recordCompletion({ personaOrder: ORDER, fs: failingFs }), /injected disk failure/);
+  const st = gate.readState(stateFile, key, { authorizationId: "AUTHPR4-PROD-TEST", projectId: PROJECT, workflowIdentityHash: idHash, personaOrder: ORDER });
+  assert.equal(st.status, "claimed", "progression remains CLAIMED (never auto-reverts to eligible)");
+  assert.deepEqual(st.completed, []);
+  // A later run is blocked (claimed is a blocking state) -- governed reconciliation required.
+  await assert.rejects(() => runProductionForward({ g, key, keyFile, stateFile, mappingFile, employeeId: "emp-rudy-driver" }), /blocking state/);
+  fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
+});
+
+await okAsync("GRANTED rollback of the most recent persona SUSPENDS progression + restores exact prior; later blocked", async () => {
+  const g = buildGrantedRepo(PROJECT);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-rb-"));
+  const keyFile = path.join(dir, "k"); const key = crypto.randomBytes(48); fs.writeFileSync(keyFile, key, { mode: 0o600 });
+  const stateFile = path.join(dir, "state.json"); const mappingFile = path.join(dir, "map.json");
+  const idHash = gate.workflowIdentityHash(gate.governedHashesAtCommit(g.root, g.authorizedCommit));
+  writeGenesis(stateFile, key, { authorizationId: "AUTHPR4-PROD-TEST", projectId: PROJECT, idHash });
+  const drv = await seed(mappingFile, "emp-rudy-driver");
+  const fwd = await runProductionForward({ g, key, keyFile, stateFile, mappingFile, employeeId: "emp-rudy-driver" });
+  // Now roll back driver via the gate.
+  const rbCtx = gate.assertProductionAuthorization(
+    { projectId: PROJECT, executeProduction: true, rollback: true, mappingFile, progressionFile: stateFile, stateKeyFile: keyFile, authorizedCommit: g.authorizedCommit, executionModeConfirmation: g.executionModeToken, executor: g.executor, capturedStateFile: fwd.capturedOut, employeeId: "emp-rudy-driver" },
+    { repoRoot: g.root, personaOrder: ORDER });
+  const captured = JSON.parse(fs.readFileSync(fwd.capturedOut, "utf8"));
+  await wf.applyPlan(auth, wf.buildRollbackPlan({ employeeId: "emp-rudy-driver", uid: captured.uid, priorAddress: captured.priorAddress, priorEmailVerified: captured.priorEmailVerified }), { execute: true });
+  rbCtx.recordCompletion({ personaOrder: ORDER });
+  const restored = await auth.getUser(drv.uid);
+  assert.equal(restored.email, drv.prior, "exact prior address restored");
+  assert.equal(restored.emailVerified, true, "exact prior emailVerified restored");
+  const st = gate.readState(stateFile, key, { authorizationId: "AUTHPR4-PROD-TEST", projectId: PROJECT, workflowIdentityHash: idHash, personaOrder: ORDER });
+  assert.equal(st.status, "suspended");
+  assert.deepEqual(st.completed, []);
   fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
 });
 

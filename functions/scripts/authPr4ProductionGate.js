@@ -127,6 +127,7 @@ function assertCleanGovernedTree(repoRoot, deps = {}) {
   if (out) throw new Error("Refusing: governed files or the authorization artifact are modified/untracked in the working tree (not a clean checkout).");
 }
 
+// On-disk hashing (retained for callers that want the working-tree bytes).
 function deriveGovernedFileHashes(repoRoot, deps = {}) {
   const readFileSync = deps.readFileSync || fs.readFileSync;
   const out = {};
@@ -135,6 +136,17 @@ function deriveGovernedFileHashes(repoRoot, deps = {}) {
     try { bytes = readFileSync(path.join(repoRoot, rel)); }
     catch (err) { throw new Error(`Governed file missing/unreadable: ${rel} (${err.message}).`); }
     out[rel] = sha256Hex(bytes);
+  }
+  return out;
+}
+
+// Blob-based governed-file hashes at a specific commit -- DETERMINISTIC across
+// platforms/EOL settings (the git blob is normalized content, unlike a Windows
+// CRLF working copy). This is the authoritative source for authorization hashes.
+function governedHashesAtCommit(repoRoot, commit, deps = {}) {
+  const out = {};
+  for (const rel of GOVERNED_FILES) {
+    out[rel] = sha256Hex(gitFileBytesAtCommit(repoRoot, commit, rel, deps));
   }
   return out;
 }
@@ -148,7 +160,7 @@ function gitFileBytesAtCommit(repoRoot, commit, relPath, deps = {}) {
   try {
     return gitBytes(repoRoot, ["cat-file", "-p", `${commit}:${relPath}`], deps);
   } catch (err) {
-    throw new Error(`Authorization artifact "${relPath}" is not present in commit ${commit} (untracked/external/wrong path). ${err.message}`);
+    throw new Error(`"${relPath}" is not present/tracked in commit ${commit} (untracked/external/wrong path). ${err.message}`);
   }
 }
 
@@ -497,13 +509,24 @@ function assertProductionAuthorization(args, deps = {}) {
 
   const repoRoot = resolveRepoRoot(deps);
   assertCleanGovernedTree(repoRoot, deps);
-  const derivedHashes = deriveGovernedFileHashes(repoRoot, deps);
-  const idHash = workflowIdentityHash(derivedHashes);
   const repoIdentity = deriveRepositoryIdentity(repoRoot, deps);
+
+  // Governed-file hashes are BLOB-based and deterministic. The reviewed hashes
+  // (at the authorized commit) must equal HEAD's (no post-review drift between the
+  // authorized commit and the running checkout); assertCleanGovernedTree ensures
+  // the working tree equals HEAD.
+  const reviewedHashes = governedHashesAtCommit(repoRoot, args.authorizedCommit, deps);
+  const headHashes = governedHashesAtCommit(repoRoot, repoIdentity.head, deps);
+  for (const rel of GOVERNED_FILES) {
+    if (reviewedHashes[rel] !== headHashes[rel]) {
+      throw new Error(`Governed file ${rel} changed between the authorized commit and HEAD -- authorization invalid (design §5.4).`);
+    }
+  }
+  const idHash = workflowIdentityHash(reviewedHashes);
 
   const { artifact } = loadGovernedAuthorization({ repoRoot, authorizedCommit: args.authorizedCommit }, deps);
   const authorization = verifyGovernedAuthorization(artifact, {
-    projectId: args.projectId, personaOrder: deps.personaOrder, derivedHashes, repoIdentity,
+    projectId: args.projectId, personaOrder: deps.personaOrder, derivedHashes: reviewedHashes, repoIdentity,
     authorizedCommit: args.authorizedCommit, executionModeConfirmation: args.executionModeConfirmation, executor: args.executor,
   });
 
@@ -601,7 +624,7 @@ module.exports = {
   PRODUCTION_PROJECT_ID, GOVERNED_FILES, AUTH_ARTIFACT_PATH, AUTH_SCHEMA,
   PROGRESSION_VERSION, ANCHOR_VERSION, LOCK_VERSION, BREAKGLASS_VERSION, BREAKGLASS_POSITION, STATES, GENESIS_HASH,
   isFullSha, isSha256, isCanonicalAuthId, isUtcInstant, isBoundedInt, isBoundedString, assertExactShape, sha256Hex,
-  resolveRepoRoot, assertCleanGovernedTree, deriveGovernedFileHashes, workflowIdentityHash, gitFileBytesAtCommit,
+  resolveRepoRoot, assertCleanGovernedTree, deriveGovernedFileHashes, governedHashesAtCommit, workflowIdentityHash, gitFileBytesAtCommit,
   deriveRepositoryIdentity, verifyRepositoryIdentity,
   loadGovernedAuthorization, verifyGovernedAuthorization,
   loadStateKey, atomicWrite,

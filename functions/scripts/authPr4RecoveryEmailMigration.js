@@ -118,9 +118,6 @@ function parseArgs(argv) {
       case "--rollback":
         args.rollback = true;
         break;
-      case "--authorizationManifest":
-        args.authorizationManifest = argv[++i];
-        break;
       case "--progressionFile":
         args.progressionFile = argv[++i];
         break;
@@ -128,9 +125,18 @@ function parseArgs(argv) {
         args.breakGlassConfirmationFile = argv[++i];
         break;
       case "--authorizedCommit":
-        // An OPTIONAL operator input; never sufficient by itself -- the gate
-        // independently derives repository identity and treats it as authoritative.
+        // The commit the operator claims to run; the gate independently derives
+        // repository identity + governed-file hashes and treats them as authoritative
+        // (this value is never sufficient by itself).
         args.authorizedCommit = argv[++i];
+        break;
+      case "--executionModeConfirmation":
+        // Must equal the repository-governed authorized execution-mode token.
+        args.executionModeConfirmation = argv[++i];
+        break;
+      case "--executor":
+        // Must equal the repository-governed authorized executor name.
+        args.executor = argv[++i];
         break;
       case "--breakGlassVerified":
         args.breakGlassVerified = true;
