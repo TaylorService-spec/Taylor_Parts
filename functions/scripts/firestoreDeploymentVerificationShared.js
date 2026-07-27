@@ -14,16 +14,16 @@ const REQUIRED_PERSONAS = Object.freeze([
 
 const OPERATIONS = Object.freeze([
   { id: "parts-list", method: "GET", target: "parts", expected: { allow: [200], deny: [403] } },
-  { id: "parts-single", method: "GET", target: "parts/__governed_missing_probe__", expected: { allow: [404], deny: [403] } },
-  { id: "parts-create", method: "POST", target: "parts?documentId=__governed_denied_probe__", body: { fields: { probe: { booleanValue: true } } }, expected: { all: [403] } },
-  { id: "parts-update", method: "PATCH", target: "parts/__governed_denied_probe__?updateMask.fieldPaths=probe", body: { fields: { probe: { booleanValue: true } } }, expected: { all: [403] } },
-  { id: "parts-delete", method: "DELETE", target: "parts/__governed_denied_probe__", expected: { all: [403] } },
+  { id: "parts-single", method: "GET", target: "parts/governed-missing-probe", expected: { allow: [404], deny: [403] } },
+  { id: "parts-create", method: "POST", target: "parts?documentId=governed-denied-probe", body: { fields: { probe: { booleanValue: true } } }, expected: { all: [403] } },
+  { id: "parts-update", method: "PATCH", target: "parts/governed-denied-probe?updateMask.fieldPaths=probe", body: { fields: { probe: { booleanValue: true } } }, expected: { all: [403] } },
+  { id: "parts-delete", method: "DELETE", target: "parts/governed-denied-probe", expected: { all: [403] } },
   { id: "manufacturers-read", method: "GET", target: "manufacturers", expected: { all: [403] } },
-  { id: "manufacturers-write", method: "POST", target: "manufacturers?documentId=__governed_denied_probe__", body: { fields: { probe: { booleanValue: true } } }, expected: { all: [403] } },
+  { id: "manufacturers-write", method: "POST", target: "manufacturers?documentId=governed-denied-probe", body: { fields: { probe: { booleanValue: true } } }, expected: { all: [403] } },
   { id: "part-aliases-read", method: "GET", target: "part_aliases", expected: { all: [403] } },
-  { id: "part-aliases-write", method: "POST", target: "part_aliases?documentId=__governed_denied_probe__", body: { fields: { probe: { booleanValue: true } } }, expected: { all: [403] } },
+  { id: "part-aliases-write", method: "POST", target: "part_aliases?documentId=governed-denied-probe", body: { fields: { probe: { booleanValue: true } } }, expected: { all: [403] } },
   { id: "part-supplier-items-read", method: "GET", target: "part_supplier_items", expected: { all: [403] } },
-  { id: "part-supplier-items-write", method: "POST", target: "part_supplier_items?documentId=__governed_denied_probe__", body: { fields: { probe: { booleanValue: true } } }, expected: { all: [403] } },
+  { id: "part-supplier-items-write", method: "POST", target: "part_supplier_items?documentId=governed-denied-probe", body: { fields: { probe: { booleanValue: true } } }, expected: { all: [403] } },
 ]);
 
 const ALLOW_PARTS_READ = new Set(["admin", "dispatcher", "PARTS_MANAGER", "WAREHOUSE_MANAGER"]);
