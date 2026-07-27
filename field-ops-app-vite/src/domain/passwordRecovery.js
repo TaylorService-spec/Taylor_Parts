@@ -84,3 +84,36 @@ export async function attemptRecovery(sendReset, value, options = {}) {
   const result = await performRecovery(sendReset, value);
   return { ...result, blocked: false, cooldownUntil: nextCooldownUntil(nowMs) };
 }
+
+// Stateful recovery controller owning a SYNCHRONOUS in-flight lock plus the
+// cooldown end-timestamp. The UI holds ONE instance (in a ref) and routes every
+// reset path (initial submit AND resend) through submit(), so overlapping
+// attempts cannot start a second send or a second timer -- even before the
+// awaited sender resolves and before React state (recoverSubmitting/cooldown)
+// updates. `now` is injectable for testing.
+//
+// submit() resolves to:
+//   { skipped: "in_flight" }                 -- a send is already running
+//   { sent:false, blocked:true, ... }        -- within cooldown
+//   { sent:true, message, cooldownUntil }     -- a completed send (neutral)
+export function createRecoveryController(sendReset, options = {}) {
+  const now = typeof options.now === "function" ? options.now : () => Date.now();
+  let inFlight = false;      // synchronous lock -- set before any await
+  let cooldownUntil = 0;
+
+  return {
+    async submit(value) {
+      if (inFlight) return { skipped: "in_flight" };
+      inFlight = true; // acquire synchronously, before awaiting the sender
+      try {
+        const outcome = await attemptRecovery(sendReset, value, { cooldownUntil, nowMs: now() });
+        if (!outcome.blocked) cooldownUntil = outcome.cooldownUntil;
+        return outcome;
+      } finally {
+        inFlight = false; // always release
+      }
+    },
+    isInFlight() { return inFlight; },
+    getCooldownUntil() { return cooldownUntil; },
+  };
+}

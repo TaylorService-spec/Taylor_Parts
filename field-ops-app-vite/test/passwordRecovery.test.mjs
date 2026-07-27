@@ -13,6 +13,7 @@ import {
   prepareRecoverySubmit,
   performRecovery,
   attemptRecovery,
+  createRecoveryController,
   nextCooldownUntil,
   cooldownRemainingSeconds,
   canResend,
@@ -138,6 +139,64 @@ await okAsync("attemptRecovery is blocked while a send is in flight", async () =
   const r = await attemptRecovery(send, "jane@example.com", { cooldownUntil: 0, nowMs: 1, submitting: true });
   assert.strictEqual(r.blocked, true);
   assert.strictEqual(calls, 0);
+});
+
+// -- createRecoveryController: synchronous in-flight lock (UI-facing) ---------
+await okAsync("controller: overlapping submit during a PENDING send is ignored; sender called once; lock releases; cooldown then blocks; expiry re-allows", async () => {
+  let calls = 0;
+  let resolveFirst;
+  // First send is a controllable PENDING promise; later sends resolve at once.
+  const send = () => {
+    calls += 1;
+    if (calls === 1) return new Promise((res) => { resolveFirst = res; });
+    return Promise.resolve();
+  };
+  let t = 1_000_000;
+  const ctrl = createRecoveryController(send, { now: () => t });
+
+  // 1) start the first reset (sender pending, not resolved)
+  const p1 = ctrl.submit("jane@example.com");
+  assert.strictEqual(ctrl.isInFlight(), true, "lock held while send pending");
+
+  // 2) attempt another reset before the first resolves
+  const r2 = await ctrl.submit("jane@example.com");
+  // 3) sender was called exactly once
+  assert.strictEqual(r2.skipped, "in_flight");
+  assert.strictEqual(calls, 1, "sender must be called exactly once during overlap");
+
+  // 4) resolve the first request
+  resolveFirst();
+  const r1 = await p1;
+  assert.strictEqual(r1.sent, true);
+  // 5) lock releases correctly
+  assert.strictEqual(ctrl.isInFlight(), false, "lock released after completion");
+
+  // 6) cooldown still prevents another attempt until expiry
+  const r3 = await ctrl.submit("jane@example.com");
+  assert.strictEqual(r3.blocked, true);
+  assert.strictEqual(calls, 1, "cooldown blocks a further send");
+  t = ctrl.getCooldownUntil() + 1; // advance past expiry
+  const r4 = await ctrl.submit("jane@example.com");
+  assert.notStrictEqual(r4.blocked, true);
+  assert.strictEqual(calls, 2, "sending available again after expiry");
+});
+
+await okAsync("controller: lock releases after a sender REJECTION (finally)", async () => {
+  let calls = 0;
+  let rejectSend;
+  const send = () => { calls += 1; return new Promise((_, rej) => { rejectSend = rej; }); };
+  let t = 2_000_000;
+  const ctrl = createRecoveryController(send, { now: () => t });
+  const p1 = ctrl.submit("a@b.com");
+  assert.strictEqual(ctrl.isInFlight(), true);
+  rejectSend(new Error("auth/network-request-failed raw detail"));
+  const r1 = await p1; // performRecovery swallows -> neutral, still counts as sent
+  assert.strictEqual(r1.sent, true);
+  assert.strictEqual(ctrl.isInFlight(), false, "lock released even after rejection");
+  // a failed send still starts the cooldown, so an immediate retry is blocked
+  const r2 = await ctrl.submit("a@b.com");
+  assert.strictEqual(r2.blocked, true);
+  assert.strictEqual(calls, 1);
 });
 
 console.log(`\n${passed} passed`);

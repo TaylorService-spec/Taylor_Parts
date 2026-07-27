@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "./AuthContext";
 import {
   RECOVERY_NEUTRAL_MESSAGE,
   prepareRecoverySubmit,
-  attemptRecovery,
+  createRecoveryController,
   cooldownRemainingSeconds,
   canResend,
 } from "../domain/passwordRecovery";
@@ -35,6 +35,15 @@ export default function Login() {
   const [cooldownUntil, setCooldownUntil] = useState(0);
   const [now, setNow] = useState(() => Date.now());
 
+  // ONE recovery controller instance for this component. It owns the
+  // synchronous in-flight lock + cooldown that both reset paths share, so
+  // overlapping attempts cannot start a second send/timer even before React
+  // state updates. recoverSubmitting below is for rendering only.
+  const controllerRef = useRef(null);
+  if (controllerRef.current === null) {
+    controllerRef.current = createRecoveryController(resetPassword);
+  }
+
   useEffect(() => {
     if (cooldownUntil <= Date.now()) return undefined;
     const id = setInterval(() => {
@@ -60,20 +69,24 @@ export default function Login() {
     }
   };
 
-  // Single reset path -- attemptRecovery enforces the cooldown regardless of
-  // whether this was reached from the initial form or the Resend button, so the
-  // mode-toggle bypass cannot send a second reset during an active cooldown.
+  // Single reset path for BOTH the initial form and the Resend button. The
+  // controller's synchronous in-flight lock authoritatively guarantees exactly
+  // one send at a time and one timer; it also enforces the cooldown, so the
+  // mode-toggle bypass cannot send a second reset. The isInFlight() short-
+  // circuit just avoids flipping render state for an ignored overlapping click.
   const runReset = async (value) => {
+    const controller = controllerRef.current;
+    if (controller.isInFlight()) return;
     setRecoverSubmitting(true);
-    const outcome = await attemptRecovery(resetPassword, value, {
-      cooldownUntil,
-      nowMs: Date.now(),
-    });
-    setRecoverSubmitting(false);
-    // Whether it sent or was blocked by the cooldown, show the neutral
-    // confirmation/cooldown view -- never a fresh submittable form.
-    setRecoverSent(true);
-    if (!outcome.blocked) setCooldownUntil(outcome.cooldownUntil);
+    try {
+      const outcome = await controller.submit(value);
+      if (outcome.skipped) return; // overlapping attempt ignored by the lock
+      // Sent or cooldown-blocked: show the neutral confirmation/cooldown view.
+      setRecoverSent(true);
+      if (!outcome.blocked) setCooldownUntil(controller.getCooldownUntil());
+    } finally {
+      setRecoverSubmitting(false);
+    }
   };
 
   const handleRecover = (e) => {
