@@ -1,0 +1,82 @@
+{
+  "gate": "C2_RENDERED_PERSONA_MATRIX",
+  "status": "PASS",
+  "results": [
+    {
+      "persona": "Admin",
+      "status": "PASS",
+      "canonicalRead": "ALLOW_200_COUNT_190",
+      "observedUnits": [
+        {
+          "sku": "TST-1001",
+          "unit": "EACH"
+        },
+        {
+          "sku": "TST-1002",
+          "unit": "KIT"
+        }
+      ],
+      "staticOnlySku": "TST-1047",
+      "routing": "PASS"
+    },
+    {
+      "persona": "Dispatcher",
+      "status": "PASS",
+      "canonicalRead": "ALLOW_200_COUNT_190",
+      "observedUnits": [
+        {
+          "sku": "TST-1001",
+          "unit": "EACH"
+        },
+        {
+          "sku": "TST-1002",
+          "unit": "KIT"
+        }
+      ],
+      "staticOnlySku": "TST-1047",
+      "routing": "PASS"
+    },
+    {
+      "persona": "PARTS_MANAGER",
+      "status": "PASS",
+      "canonicalRead": "ALLOW_200_COUNT_190",
+      "observedUnits": [
+        {
+          "sku": "TST-1001",
+          "unit": "EACH"
+        },
+        {
+          "sku": "TST-1002",
+          "unit": "KIT"
+        }
+      ],
+      "staticOnlySku": "TST-1047",
+      "routing": "PASS"
+    },
+    {
+      "persona": "WAREHOUSE_MANAGER",
+      "status": "PASS",
+      "canonicalRead": "ALLOW_200_COUNT_190",
+      "observedUnits": [
+        {
+          "sku": "TST-1001",
+          "unit": "EACH"
+        },
+        {
+          "sku": "TST-1002",
+          "unit": "KIT"
+        }
+      ],
+      "staticOnlySku": "TST-1047",
+      "routing": "PASS"
+    },
+    {
+      "persona": "Technician",
+      "status": "PASS",
+      "canonicalRead": "DENY_403_COUNT_0",
+      "outcome": "WORKSPACE_DENIED",
+      "staticAsSuccess": false,
+      "writeSurface": false
+    }
+  ]
+}

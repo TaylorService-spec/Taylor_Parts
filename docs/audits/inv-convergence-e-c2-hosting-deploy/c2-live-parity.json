@@ -1,0 +1,32 @@
+{
+  "gate": "INV-CONVERGENCE-E C2 Hosting deployment -- fresh live pre-deploy parity",
+  "status": "PASS",
+  "runId": "c2-live-e764fbd9f21e4cd0",
+  "capture": {
+    "payloadSha256": "e764fbd9f21e4cd0d6e4d6cd74888680f16f2518dd2a11534f61e321b4af1eff",
+    "captureStart": "2026-07-27T07:06:03Z",
+    "captureEnd": "2026-07-27T07:06:04Z",
+    "staticCatalogSha256": "24412a3aac5c28fd2ab805f43dee0f97ad36a2eb21ab191a6a3fda7fcf73d78f"
+  },
+  "counts": {
+    "canonicalDocuments": 190,
+    "canonicalValid": 190,
+    "canonicalInvalid": 0,
+    "staticCatalog": 200,
+    "listRows": 200,
+    "canonicalMatch": 190,
+    "staticOnlyExcluded": 10,
+    "detailReady": 200
+  },
+  "listMeta": {
+    "staticCount": 200,
+    "canonicalCount": 190,
+    "canonicalMatch": 190,
+    "staticOnlyExcluded": 10,
+    "nameDivergenceCount": 0,
+    "unitDivergenceCount": 0,
+    "fullyAccounted": true
+  },
+  "exclusionSetMatchesApproved": true,
+  "divergences": []
+}
