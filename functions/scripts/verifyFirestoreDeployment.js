@@ -42,7 +42,8 @@ function gitShow(commit, file) {
 }
 
 function gcloudAccessToken() {
-  return execFileSync("gcloud", ["auth", "print-access-token"], { encoding: "utf8" }).trim();
+  const executable = process.env.GCLOUD_BIN || (process.platform === "win32" ? "gcloud.cmd" : "gcloud");
+  return execFileSync(executable, ["auth", "print-access-token"], { encoding: "utf8" }).trim();
 }
 
 async function jsonFetch(url, init = {}) {
