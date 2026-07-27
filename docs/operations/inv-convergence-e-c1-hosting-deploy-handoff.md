@@ -89,22 +89,43 @@ documented CLI commands — do not use them. Capture releases via the Firebase H
 **REST** `sites.releases.list` endpoint (or the authenticated Firebase console Release
 History) and **pin the exact predeploy version ID**.
 
+Sequential script (no comments inside `&&` chains; `set -euo pipefail`). The raw REST
+response may carry operator identity/email metadata, so it is fetched to `/tmp`, only
+approved fields are normalized into evidence, and the raw response is deleted.
+
 ```bash
-mkdir -p c1-evidence \
- && SITE=taylor-parts \
- && TOKEN=$(gcloud auth print-access-token) \
- # REST: sites.releases.list -> record the CURRENT live release + its version name/id
- && curl -s -H "Authorization: Bearer $TOKEN" \
-      "https://firebasehosting.googleapis.com/v1beta1/sites/$SITE/releases?pageSize=10" \
-      > c1-evidence/predeploy-hosting-releases.json \
- && python3 -c "import json;d=json.load(open('c1-evidence/predeploy-hosting-releases.json'));r=d.get('releases',[]);cur=r[0] if r else None;print('CURRENT_RELEASE_NAME',(cur or {}).get('name'));print('CURRENT_VERSION_NAME',((cur or {}).get('version') or {}).get('name'));print('RELEASE_TIME',(cur or {}).get('releaseTime'))" | tee c1-evidence/predeploy-release-pin.txt
+set -euo pipefail
+mkdir -p c1-evidence
+SITE=taylor-parts
+TOKEN=$(gcloud auth print-access-token)
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "https://firebasehosting.googleapis.com/v1beta1/sites/$SITE/releases?pageSize=10" \
+  > /tmp/hosting-releases-raw.json
+python3 - <<'PY'
+import json
+d = json.load(open("/tmp/hosting-releases-raw.json"))
+r = d.get("releases") or []
+cur = r[0] if r else {}
+rec = {
+    "release_name": cur.get("name"),
+    "version_name": (cur.get("version") or {}).get("name"),
+    "release_type": cur.get("type"),
+    "release_time": cur.get("releaseTime"),
+}
+open("c1-evidence/predeploy-release-pin.json", "w").write(json.dumps(rec, indent=2))
+print("CURRENT_VERSION_NAME", rec["version_name"])
+print("CURRENT_RELEASE_TYPE", rec["release_type"])
+print("CURRENT_RELEASE_TIME", rec["release_time"])
+PY
+rm -f /tmp/hosting-releases-raw.json
 ```
-**Expected:** `predeploy-hosting-releases.json` captured; `CURRENT_VERSION_NAME` is a
-concrete version resource name like `sites/taylor-parts/versions/<VERSION_ID>`. **Record
-that exact `<VERSION_ID>` — it is the pinned rollback target** (do NOT rely on
-"immediately previous" without pinning its ID). If no prior version exists, **STOP** (no
-rollback target). (Console alternative: Hosting → Release History → note the exact
-current version, which becomes the pinned rollback target.) **PAUSE.**
+**Expected:** `c1-evidence/predeploy-release-pin.json` contains only the four normalized
+fields; `CURRENT_VERSION_NAME` is a concrete version resource name like
+`sites/taylor-parts/versions/<VERSION_ID>`. **Record that exact `<VERSION_ID>` — the
+pinned rollback target** (do NOT rely on "immediately previous" without pinning its ID).
+If no prior version exists, **STOP** (no rollback target). The raw REST response is
+deleted (never committed). (Console alternative: Hosting → Release History → note the
+exact current version.) **PAUSE.**
 
 **Pinned rollback procedure (one verified method, only on a Step 6/7/8 stop condition):**
 - **Console:** Release History → select the pinned prior version → **Roll back**; or
@@ -115,27 +136,28 @@ current version, which becomes the pinned rollback target.) **PAUSE.**
 
 ## Step 4 — Capture predeploy Rules + Functions inventories (unchanged-assertion baseline)
 
+Sequential script. Rules extracted-source captured to evidence; Functions captured raw
+to `/tmp` then reduced to the governed normalized (email-hashed) inventory — the raw
+Functions payload (contains service-account emails) is deleted, never committed.
+
 ```bash
-TOKEN=$(gcloud auth print-access-token) \
- && REL=$(curl -s -H "Authorization: Bearer $TOKEN" "https://firebaserules.googleapis.com/v1/projects/taylor-parts/releases" | python3 -c "import sys,json;rs=json.load(sys.stdin)['releases'];print([r['rulesetName'] for r in rs if r['name'].endswith('cloud.firestore')][0])") \
- && curl -s -H "Authorization: Bearer $TOKEN" "https://firebaserules.googleapis.com/v1/$REL" | python3 -c "import sys,json;sys.stdout.write(json.load(sys.stdin)['source']['files'][0]['content'])" > c1-evidence/predeploy-live-firestore.rules \
- && echo -n "predeploy live Rules EXTRACTED-SOURCE sha256: " && sha256sum c1-evidence/predeploy-live-firestore.rules \
- # Functions: reuse the GOVERNED normalized-inventory tooling (identity/generation/
- # region/runtime/service/trigger, service-account email hashed) -> hash the normalized
- # form. The RAW payload (contains service-account emails) is NOT committed.
- && curl -s -H "Authorization: Bearer $TOKEN" "https://cloudfunctions.googleapis.com/v2/projects/taylor-parts/locations/-/functions" > /tmp/predeploy-functions-raw.json \
- && node -e 'const s=require("./functions/scripts/firestoreDeploymentVerificationShared.js");const fs=require("fs");const norm=s.normalizeFunctionsInventory(JSON.parse(fs.readFileSync("/tmp/predeploy-functions-raw.json","utf8")));const j=JSON.stringify(norm,null,2);fs.writeFileSync("c1-evidence/predeploy-functions-inventory.normalized.json",j);console.log("predeploy functions NORMALIZED sha256:",s.sha256(j));' | tee c1-evidence/predeploy-functions-normalized.sha256 \
- && rm -f /tmp/predeploy-functions-raw.json
+set -euo pipefail
+TOKEN=$(gcloud auth print-access-token)
+REL=$(curl -s -H "Authorization: Bearer $TOKEN" "https://firebaserules.googleapis.com/v1/projects/taylor-parts/releases" | python3 -c "import sys,json;rs=json.load(sys.stdin)['releases'];print([r['rulesetName'] for r in rs if r['name'].endswith('cloud.firestore')][0])")
+curl -s -H "Authorization: Bearer $TOKEN" "https://firebaserules.googleapis.com/v1/$REL" | python3 -c "import sys,json;sys.stdout.write(json.load(sys.stdin)['source']['files'][0]['content'])" > c1-evidence/predeploy-live-firestore.rules
+echo "predeploy live Rules EXTRACTED-SOURCE sha256:"
+sha256sum c1-evidence/predeploy-live-firestore.rules
+curl -s -H "Authorization: Bearer $TOKEN" "https://cloudfunctions.googleapis.com/v2/projects/taylor-parts/locations/-/functions" > /tmp/functions-raw.json
+node -e 'const s=require("./functions/scripts/firestoreDeploymentVerificationShared.js");const fs=require("fs");const norm=s.normalizeFunctionsInventory(JSON.parse(fs.readFileSync("/tmp/functions-raw.json","utf8")));const j=JSON.stringify(norm,null,2);fs.writeFileSync("c1-evidence/predeploy-functions-inventory.normalized.json",j);console.log("predeploy functions NORMALIZED sha256:",s.sha256(j));'
+rm -f /tmp/functions-raw.json
 ```
 **Expected:** the live Rules extracted-source sha256 (should equal the governed
-`cf6681c6…2bc381` from Stage B — records the pre-deploy Rules state), and a
-`predeploy-functions-inventory.normalized.json` + its sha256. The normalized inventory
-(via the governed `normalizeFunctionsInventory`) is deterministic and includes each
-function's name, environment, state, updateTime, build (entryPoint/runtime), a HASHED
-service-account identity, and event-trigger (type/region) — sorted by name. These are
-the baselines Step 8 asserts unchanged. The raw Functions payload is deleted (it
-contains service-account emails; only the normalized, email-hashed form is kept).
-**PAUSE.**
+`cf6681c6…2bc381` from Stage B — records the pre-deploy Rules state), and
+`c1-evidence/predeploy-functions-inventory.normalized.json` + its sha256. The normalized
+inventory (via the governed `normalizeFunctionsInventory`) is deterministic — name,
+environment, state, updateTime, build (entryPoint/runtime), a HASHED service-account
+identity, and event-trigger (type/region), sorted by name. Baselines for Step 8. The
+raw Functions payload is deleted (never committed). **PAUSE.**
 
 ## Step 5 — Deploy ONLY Hosting
 
@@ -153,40 +175,67 @@ release to the authorized C1 build. Record the full correspondence chain: source
 commit → clean build command → deterministic local artifact manifest → deploy
 output/version ID → live asset names/hashes.
 
+Sequential script. The postdeploy release JSON is fetched to `/tmp` and reduced to
+approved fields (may carry operator identity). The live JS bundle (may contain the
+Firebase web API key) is fetched to `/tmp`, reduced to path/content-type/byte-count/
+sha256, and its bytes deleted — the bundle is never committed. `index.html` (config-
+free SPA shell) is retained.
+
 ```bash
-SITE=taylor-parts && SITE_URL="https://taylor-parts.web.app" \
- && TOKEN=$(gcloud auth print-access-token) \
- # (a) deterministic LOCAL artifact manifest from the just-built dist (the operator's
- #     Cloud Shell/Linux build of the authorized commit via build:firebase):
- && ( cd field-ops-app-vite && (cd dist && find . -type f | sort | while read f; do echo "$(sha256sum "$f" | cut -d' ' -f1)  ${f#./}"; done) ) > c1-evidence/local-dist-manifest.sha256 \
- && echo "AUTHORIZED_COMMIT=3827ce370b26af7cbf66acdf391267a0afa4092c" | tee c1-evidence/release-correspondence.txt \
- && echo "BUILD_COMMAND=npm run build:firebase (vite build --base=/)" | tee -a c1-evidence/release-correspondence.txt \
- # (b) REST sites.releases.list -> the NEW current release + version id (post-deploy):
- && curl -s -H "Authorization: Bearer $TOKEN" "https://firebasehosting.googleapis.com/v1beta1/sites/$SITE/releases?pageSize=5" > c1-evidence/postdeploy-hosting-releases.json \
- && python3 -c "import json;d=json.load(open('c1-evidence/postdeploy-hosting-releases.json'));r=(d.get('releases') or [{}])[0];print('POSTDEPLOY_RELEASE_NAME',r.get('name'));print('POSTDEPLOY_VERSION_NAME',(r.get('version') or {}).get('name'));print('POSTDEPLOY_RELEASE_TIME',r.get('releaseTime'))" | tee -a c1-evidence/release-correspondence.txt \
- # (c) live index.html + asset resolution + live asset hash (caching/encoding permitting):
- && curl -s "$SITE_URL/index.html" > c1-evidence/postdeploy-live-index.html \
- && HP=$(grep -c "/Taylor_Parts/field-ops" c1-evidence/postdeploy-live-index.html || true) && echo "live host-path occurrences: $HP" && [ "$HP" = "0" ] && echo LIVE-HOST-PATH-ZERO \
- && ASSET=$(grep -oE "/assets/[^\"]+\.js" c1-evidence/postdeploy-live-index.html | head -1) && echo "live JS asset: $ASSET" \
- && echo "content-type: $(curl -s -o c1-evidence/postdeploy-live-asset.js -w '%{content_type}' "$SITE_URL$ASSET")" \
- && echo "live asset sha256: $(sha256sum c1-evidence/postdeploy-live-asset.js | cut -d' ' -f1)" | tee -a c1-evidence/release-correspondence.txt
+set -euo pipefail
+SITE=taylor-parts
+SITE_URL="https://taylor-parts.web.app"
+TOKEN=$(gcloud auth print-access-token)
+( cd field-ops-app-vite/dist && find . -type f | sort | while read -r f; do echo "$(sha256sum "$f" | cut -d' ' -f1)  ${f#./}"; done ) > c1-evidence/local-dist-manifest.sha256
+echo "AUTHORIZED_COMMIT=3827ce370b26af7cbf66acdf391267a0afa4092c" > c1-evidence/release-correspondence.txt
+echo "BUILD_COMMAND=npm run build:firebase (vite build --base=/)" >> c1-evidence/release-correspondence.txt
+curl -s -H "Authorization: Bearer $TOKEN" "https://firebasehosting.googleapis.com/v1beta1/sites/$SITE/releases?pageSize=5" > /tmp/postdeploy-releases-raw.json
+python3 - <<'PY'
+import json
+d = json.load(open("/tmp/postdeploy-releases-raw.json"))
+r = (d.get("releases") or [{}])[0]
+rec = {
+    "release_name": r.get("name"),
+    "version_name": (r.get("version") or {}).get("name"),
+    "release_type": r.get("type"),
+    "release_time": r.get("releaseTime"),
+}
+open("c1-evidence/postdeploy-release-pin.json", "w").write(json.dumps(rec, indent=2))
+with open("c1-evidence/release-correspondence.txt", "a") as f:
+    for k, v in rec.items():
+        f.write(f"POSTDEPLOY_{k.upper()}={v}\n")
+print("POSTDEPLOY_VERSION_NAME", rec["version_name"])
+PY
+rm -f /tmp/postdeploy-releases-raw.json
+curl -s "$SITE_URL/index.html" > c1-evidence/postdeploy-live-index.html
+HP=$(grep -c "/Taylor_Parts/field-ops" c1-evidence/postdeploy-live-index.html || true)
+echo "live host-path occurrences: $HP"
+[ "$HP" = "0" ] && echo LIVE-HOST-PATH-ZERO
+ASSET=$(grep -oE "/assets/[^\"]+\.js" c1-evidence/postdeploy-live-index.html | head -1)
+echo "live JS asset: $ASSET"
+CT=$(curl -s -o /tmp/live-asset.js -w '%{content_type}' "$SITE_URL$ASSET")
+BYTES=$(wc -c < /tmp/live-asset.js)
+HASH=$(sha256sum /tmp/live-asset.js | cut -d' ' -f1)
+rm -f /tmp/live-asset.js
+printf 'LIVE_ASSET_PATH=%s\nLIVE_ASSET_CONTENT_TYPE=%s\nLIVE_ASSET_BYTES=%s\nLIVE_ASSET_SHA256=%s\n' "$ASSET" "$CT" "$BYTES" "$HASH" >> c1-evidence/release-correspondence.txt
+echo "live asset: $ASSET  ct=$CT  bytes=$BYTES  sha256=$HASH"
 ```
-**Expected & correspondence assertions (record all in `release-correspondence.txt`):**
+**Expected & correspondence assertions (recorded in `release-correspondence.txt`; only
+the sanitized `release-correspondence.txt`, `*-release-pin.json`, `local-dist-manifest.sha256`,
+and `postdeploy-live-index.html` are committed — no raw release JSON, no bundle bytes):**
 - `AUTHORIZED_COMMIT` = `3827ce37…`; `BUILD_COMMAND` = `build:firebase`.
 - A **new** `POSTDEPLOY_VERSION_NAME` / `POSTDEPLOY_RELEASE_TIME` distinct from the
   Step 3 pinned predeploy version (proves a release occurred).
-- `LIVE-HOST-PATH-ZERO`; live `index.html` references `/assets/...`; the referenced
-  `.js` serves a JavaScript content-type (not `text/html`).
-- The live JS asset filename appears in the **local dist manifest**
-  (`local-dist-manifest.sha256`) built from the authorized commit; where CDN
-  caching/content-encoding does not alter bytes, the live asset sha256 equals the
-  local manifest entry. **Any OS/encoding-dependent hash difference must be explained
-  in writing** (e.g. gzip/br transfer-encoding, or a Windows-vs-Linux CRLF source
-  delta — note that the operator's build is Linux Cloud Shell, so the deployed bytes
-  are the Linux build, and the local Windows preflight manifest is informational only;
-  the operator's own Cloud Shell dist manifest is the authoritative local reference).
-- If a new release did not appear, or the live bundle does not correspond to the
-  authorized-commit build, **STOP → ROLLBACK.** **PAUSE.**
+- `LIVE-HOST-PATH-ZERO`; live `index.html` references `/assets/...`; the live `.js`
+  `LIVE_ASSET_CONTENT_TYPE` is a JavaScript type (not `text/html`).
+- The `LIVE_ASSET_PATH` filename appears in `local-dist-manifest.sha256` (built from the
+  authorized commit in the operator's Cloud Shell). Where CDN caching/content-encoding
+  does not alter transferred bytes, `LIVE_ASSET_SHA256` equals that file's local manifest
+  hash. **Any hash difference must be explained in writing** (gzip/br transfer-encoding,
+  or a Windows-vs-Linux CRLF source delta — the operator's Linux Cloud Shell dist
+  manifest is authoritative; the Windows preflight manifest is informational only).
+- If no new release appeared, or the live bundle does not correspond to the
+  authorized-commit build, **STOP → ROLLBACK (Step 3 pinned version).** **PAUSE.**
 
 ## Step 7 — Governed read-only production verification (C1 experience)
 
@@ -212,9 +261,16 @@ For each authorized Parts persona (admin, dispatcher, PARTS_MANAGER, WAREHOUSE_M
 - Category filter, counts, and Global Search over parts work (search → route → detail).
 - **No write** is issued; no Reorder Request is created.
 
-Fail-closed (observable): a principal **without** canonical `parts` read access (e.g. a
-technician with no permitted operational role) sees the **BLOCKED banner** for the Parts
-Catalog — **not** an empty list and **not** static rows shown as if canonical.
+Fail-closed (observable) — a principal **without** canonical `parts` read access (e.g. a
+technician with no permitted operational role). **Either outcome is valid fail-closed
+behavior; accept whichever the app produces:**
+- (i) the application denies the Inventory workspace/route entirely (nav/access control),
+  exposing **no** Parts data; **or**
+- (ii) direct workspace access reaches PartsList and shows the **BLOCKED catalog banner**.
+
+In **both** cases prove: the canonical `parts` read is denied; **no static catalog is
+presented as successful canonical data**; and **no write occurs**. Do **not** require a
+BLOCKED banner when the app correctly denies the whole workspace.
 
 ### 7b. Governed composition evidence (proves the invisible 190+10 classification)
 The **190 canonical matches + 10 approved STATIC_ONLY_EXCLUDED** classification is an
@@ -225,29 +281,32 @@ static-only / 0 divergence), plus the Decision #46 live shadow-parity. Cite thes
 composition evidence; do **not** claim the browser directly proves the classification.
 
 Record **sanitized PASS/FAIL per persona/assertion only** (labels, PASS/FAIL, the 200
-total, the two spot-check SKUs present, route→PartDetail stable, BLOCKED for the
-unauthorized persona). **Never** UID/email/reset link/JWT/raw records/PII screenshots.
+total, the two spot-check SKUs present, route→PartDetail stable, and the unauthorized
+persona's fail-closed outcome — workspace-denied OR BLOCKED). **Never** UID/email/reset
+link/JWT/raw records/PII screenshots.
 
 **STOP → ROLLBACK (Step 3 pinned-version procedure)** on any: authorized persona does
 NOT get the C1 PartsList; total != 200; a known exclusion SKU is missing/hidden; a route
-is unstable or lands off PartDetail; the unauthorized persona sees static-as-success or
-an empty list instead of BLOCKED; PartDetail changed; or any write/Auth mutation would be
-required. Preserve all evidence on failure; do NOT repair identities/roles/data/Rules/
-Functions/config — Hosting version-clone rollback only.
+is unstable or lands off PartDetail; the unauthorized persona sees **static-as-success or
+an empty list** (instead of workspace-denied OR the BLOCKED banner); PartDetail changed;
+or any write/Auth mutation would be required. Preserve all evidence on failure; do NOT
+repair identities/roles/data/Rules/Functions/config — Hosting version-clone rollback only.
 
 ## Step 8 — Confirm Rules / Functions / indexes / data unchanged
 
 ```bash
-TOKEN=$(gcloud auth print-access-token) \
- && REL=$(curl -s -H "Authorization: Bearer $TOKEN" "https://firebaserules.googleapis.com/v1/projects/taylor-parts/releases" | python3 -c "import sys,json;rs=json.load(sys.stdin)['releases'];print([r['rulesetName'] for r in rs if r['name'].endswith('cloud.firestore')][0])") \
- && curl -s -H "Authorization: Bearer $TOKEN" "https://firebaserules.googleapis.com/v1/$REL" | python3 -c "import sys,json;sys.stdout.write(json.load(sys.stdin)['source']['files'][0]['content'])" > c1-evidence/postdeploy-live-firestore.rules \
- && diff c1-evidence/predeploy-live-firestore.rules c1-evidence/postdeploy-live-firestore.rules && echo RULES-UNCHANGED \
- # Functions: normalized-inventory hash compare (same governed tooling as Step 4):
- && curl -s -H "Authorization: Bearer $TOKEN" "https://cloudfunctions.googleapis.com/v2/projects/taylor-parts/locations/-/functions" > /tmp/postdeploy-functions-raw.json \
- && node -e 'const s=require("./functions/scripts/firestoreDeploymentVerificationShared.js");const fs=require("fs");const norm=s.normalizeFunctionsInventory(JSON.parse(fs.readFileSync("/tmp/postdeploy-functions-raw.json","utf8")));const j=JSON.stringify(norm,null,2);fs.writeFileSync("c1-evidence/postdeploy-functions-inventory.normalized.json",j);console.log("postdeploy functions NORMALIZED sha256:",s.sha256(j));' | tee c1-evidence/postdeploy-functions-normalized.sha256 \
- && rm -f /tmp/postdeploy-functions-raw.json \
- && diff c1-evidence/predeploy-functions-inventory.normalized.json c1-evidence/postdeploy-functions-inventory.normalized.json && echo FUNCTIONS-NORMALIZED-IDENTICAL \
- && test "$(cut -d: -f2 c1-evidence/predeploy-functions-normalized.sha256 | tr -d ' ')" = "$(cut -d: -f2 c1-evidence/postdeploy-functions-normalized.sha256 | tr -d ' ')" && echo FUNCTIONS-UNCHANGED
+set -euo pipefail
+TOKEN=$(gcloud auth print-access-token)
+REL=$(curl -s -H "Authorization: Bearer $TOKEN" "https://firebaserules.googleapis.com/v1/projects/taylor-parts/releases" | python3 -c "import sys,json;rs=json.load(sys.stdin)['releases'];print([r['rulesetName'] for r in rs if r['name'].endswith('cloud.firestore')][0])")
+curl -s -H "Authorization: Bearer $TOKEN" "https://firebaserules.googleapis.com/v1/$REL" | python3 -c "import sys,json;sys.stdout.write(json.load(sys.stdin)['source']['files'][0]['content'])" > c1-evidence/postdeploy-live-firestore.rules
+diff c1-evidence/predeploy-live-firestore.rules c1-evidence/postdeploy-live-firestore.rules
+echo RULES-UNCHANGED
+curl -s -H "Authorization: Bearer $TOKEN" "https://cloudfunctions.googleapis.com/v2/projects/taylor-parts/locations/-/functions" > /tmp/functions-raw.json
+node -e 'const s=require("./functions/scripts/firestoreDeploymentVerificationShared.js");const fs=require("fs");const norm=s.normalizeFunctionsInventory(JSON.parse(fs.readFileSync("/tmp/functions-raw.json","utf8")));const j=JSON.stringify(norm,null,2);fs.writeFileSync("c1-evidence/postdeploy-functions-inventory.normalized.json",j);console.log("postdeploy functions NORMALIZED sha256:",s.sha256(j));'
+rm -f /tmp/functions-raw.json
+diff c1-evidence/predeploy-functions-inventory.normalized.json c1-evidence/postdeploy-functions-inventory.normalized.json
+echo FUNCTIONS-NORMALIZED-IDENTICAL
+echo FUNCTIONS-UNCHANGED
 ```
 **Expected:** `RULES-UNCHANGED`, `FUNCTIONS-NORMALIZED-IDENTICAL`, and
 `FUNCTIONS-UNCHANGED` — the pre/post **normalized** Functions inventories (identity,
@@ -266,12 +325,22 @@ credential/identity STRUCTURES (`AIza…` API keys, JWT `eyJ….ey….` patterns
 `token` (legitimate Rules source contains token-related identifiers, which would false-
 positive). Do not reintroduce a generic-keyword grep.
 
+Sequential script: first assert no raw/forbidden artifact remains (raw REST/Functions
+payloads, live bundle, access tokens), then run the governed structured scanner over the
+normalized text/JSON evidence, then regenerate checksums and package.
+
 ```bash
-cd c1-evidence \
- && sha256sum * > SHA256SUMS.txt \
- # governed structured scan over every evidence file (no false-positive keywords):
- && node -e 'const s=require("../functions/scripts/firestoreDeploymentVerificationShared.js");const fs=require("fs");let bad=[];for(const f of fs.readdirSync(".")){const t=fs.readFileSync(f,"utf8");try{s.assertEvidenceSecretFree(t);}catch(e){bad.push(f);}}if(bad.length){console.log("SENSITIVE-FOUND -- REDACT:",bad.join(", "));process.exit(1);}console.log("SENSITIVE-SCAN-CLEAN");' \
- && cd .. && tar czf inv-convergence-e-c1-hosting-deploy-evidence.tgz c1-evidence && sha256sum inv-convergence-e-c1-hosting-deploy-evidence.tgz
+set -euo pipefail
+cd c1-evidence
+FORBIDDEN=$(ls | grep -E "raw|-asset\.js$|\.tgz$|token" || true)
+if [ -n "$FORBIDDEN" ]; then echo "FORBIDDEN-ARTIFACT-PRESENT: $FORBIDDEN"; exit 1; fi
+echo "NO-RAW-OR-BUNDLE-ARTIFACTS"
+node -e 'const s=require("../functions/scripts/firestoreDeploymentVerificationShared.js");const fs=require("fs");let bad=[];for(const f of fs.readdirSync(".")){if(!fs.statSync(f).isFile())continue;const t=fs.readFileSync(f,"utf8");try{s.assertEvidenceSecretFree(t);}catch(e){bad.push(f);}}if(bad.length){console.log("SENSITIVE-FOUND -- REDACT:",bad.join(", "));process.exit(1);}console.log("SENSITIVE-SCAN-CLEAN");'
+sha256sum * > SHA256SUMS.txt
+sha256sum -c SHA256SUMS.txt
+cd ..
+tar czf inv-convergence-e-c1-hosting-deploy-evidence.tgz c1-evidence
+sha256sum inv-convergence-e-c1-hosting-deploy-evidence.tgz
 ```
 Note: the governed `SECRET_PATTERN` matches the literal substring `email`; the
 normalized Functions inventory deliberately **hashes** service-account emails
