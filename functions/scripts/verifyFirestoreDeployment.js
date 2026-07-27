@@ -92,13 +92,13 @@ async function authenticatePersona(apiKey, persona) {
 
 async function fetchLiveRules(projectId, accessToken) {
   const releases = await jsonFetch(`https://firebaserules.googleapis.com/v1/projects/${projectId}/releases`, {
-    headers: { authorization: `Bearer ${accessToken}` },
+    headers: { authorization: `Bearer ${accessToken}`, "x-goog-user-project": projectId },
   });
   if (!releases.response.ok) throw new VerificationError(`Rules release lookup failed (${releases.response.status}).`);
   const release = (releases.json.releases || []).find((item) => String(item.name || "").endsWith("cloud.firestore"));
   if (!release) throw new VerificationError("Firestore Rules release was not found.");
   const ruleset = await jsonFetch(`https://firebaserules.googleapis.com/v1/${release.rulesetName}`, {
-    headers: { authorization: `Bearer ${accessToken}` },
+    headers: { authorization: `Bearer ${accessToken}`, "x-goog-user-project": projectId },
   });
   if (!ruleset.response.ok) throw new VerificationError(`Ruleset lookup failed (${ruleset.response.status}).`);
   return ruleset.json;
@@ -106,7 +106,7 @@ async function fetchLiveRules(projectId, accessToken) {
 
 async function fetchFunctions(projectId, accessToken) {
   const result = await jsonFetch(`https://cloudfunctions.googleapis.com/v2/projects/${projectId}/locations/-/functions`, {
-    headers: { authorization: `Bearer ${accessToken}` },
+    headers: { authorization: `Bearer ${accessToken}`, "x-goog-user-project": projectId },
   });
   if (!result.response.ok) throw new VerificationError(`Functions inventory lookup failed (${result.response.status}).`);
   return normalizeFunctionsInventory(result.json);
