@@ -2,9 +2,9 @@
 
 > **STATUS: DRAFT READINESS PACKAGE — repository-only. NOT AUTHORIZED TO EXECUTE.**
 > This document prepares, and STOPS at, the gate. It authorizes **no** production
-> identity mutation, **no** Auth-email change, **no** reset-email send, **no** session
-> revocation, **no** email-provider configuration, and **no** AUTH-PR-3 Functions
-> deployment. Every operation in §5–§9 is presented for Owner review and is **not to be
+> identity mutation, **no** Auth-email change, **no** reset-email send, **no**
+> operator-initiated session revocation, **no** email-provider configuration, and **no**
+> AUTH-PR-3 Functions deployment. Every operation in §5–§9 is presented for Owner review and is **not to be
 > executed by an AI session under this package alone** — execution requires a separate,
 > explicit **Production Identity-Mutation Authorization** (verbatim template in §11),
 > recorded in [`docs/DECISIONS.md`](../DECISIONS.md), exactly as the persona-provisioning
@@ -192,13 +192,16 @@ UID. Its boundaries, stated so the Owner authorizes exactly this and no more:
   now works* to the new alias is a **separate, later, explicitly-authorized** test — never
   bundled into the email-change step (§13, OD-5).
 - **Session impact is NOT guaranteed to be nil — do not promise continuity.** The workflow
-  **does not explicitly call `revokeRefreshTokens`**, and this package **must not** revoke
-  production sessions (hard stop). However, **Firebase documents that refresh tokens can be
-  invalidated after a major account change such as an email update** — so refresh-token /
-  session continuity **may not** survive the change even though we never revoke. This
-  package therefore makes **no** claim that existing sessions necessarily continue, and
-  "no session revoked" is **not** a guarantee of session continuity — it only states that
-  *this workflow* issued no revoke call.
+  makes **no explicit `revokeRefreshTokens` call** and performs **no separate
+  operator-initiated session-revocation action** (both are hard stops). **Separately**, and
+  not as an operator action, **Firebase may itself invalidate refresh-token / session
+  continuity automatically after the authorized email update** (a documented platform effect
+  of a major account change). That platform-triggered invalidation is an **acknowledged
+  possible effect of the authorized email change**, not an additional authorized operation —
+  so session continuity **may not** survive the change even though the operator never revokes.
+  This package therefore makes **no** claim that existing sessions necessarily continue;
+  "no operator revocation" is **not** a guarantee of session continuity — it states only
+  that neither `revokeRefreshTokens` nor any other operator revocation action was performed.
   - **Required observation before continuing:** on the **lowest-risk persona
     (`emp-rudy-driver`, Step 1)**, test and **record the observed sign-in / session
     behavior** after the email change (does the existing session persist? does a fresh
@@ -221,15 +224,16 @@ UID. Its boundaries, stated so the Owner authorizes exactly this and no more:
 1. Confirm the target `employeeId` is exactly one of Steps 1–5 in the authorized order, and that the previous step (if any) is recorded PASS.
 2. Read-only confirm the target account exists, is **enabled** (not disabled — §7), and its current UID matches the intended persona (Owner cross-checks against the private #11 mapping).
 3. Confirm the intended new `+alias` is **unused** by any other Auth account (collision check — §7).
-4. For **Step 5 only**: re-verify break-glass admin login and confirm ≥2 recoverable admins will remain after the change (final-active-admin guard, §8).
+4. **Capture, into protected temporary operator input only, the account's exact prior address and its exact prior `emailVerified` boolean** — the inputs required for an *exact* rollback (§8). Never committed, never in identity-linked evidence (§9).
+5. For **Step 5 only**: re-verify break-glass admin login and confirm ≥2 recoverable admins will remain after the change (final-active-admin guard, §8).
 
-The single write sets the new email **with `emailVerified: false`** (§3); it sends no email
-and issues no revoke call.
+The single write sets the new alias email **with `emailVerified: false`** (§3), regardless of
+the prior address's captured value; it sends no email and makes no operator revocation call.
 
 **Per-step verification (read-only, after the single write):**
 - Read back the account: new email is set; `emailVerified == false`; **UID unchanged**; password credential intact (a fresh sign-in with the same password still succeeds).
 - Read back Firestore: `employees/{id}.userId` and `users/{uid}.employeeId` still cross-reference correctly; `securityRole` / `operationalRoles` / `accessVersion` unchanged.
-- Confirm **this workflow issued no reset-email send and no `revokeRefreshTokens` call.** Separately, **observe and record** the session/sign-in behavior (§5) — refresh-token continuity is **not** promised and is a recorded observation, not a pass criterion of "we revoked nothing".
+- Confirm **this workflow issued no reset-email send, no `revokeRefreshTokens` call, and no other operator-initiated session revocation.** Separately, **observe and record** the session/sign-in behavior (§5) — any Firebase-triggered invalidation is an acknowledged platform effect, not an operator action; refresh-token continuity is **not** promised and is a recorded observation, not a pass criterion.
 - Record a sanitized PASS/FAIL (§10) before the next step.
 
 **Stop conditions (halt the ENTIRE sequence, do not improvise, do not skip and continue):**
@@ -238,7 +242,7 @@ and issues no revoke call.
 - **Session-impact mismatch** — observed sign-in/session behavior diverges from the recorded Step-1 baseline (§5).
 - Step 5 preflight cannot confirm a second recoverable admin.
 - Any ambiguity about which real address maps to which persona (Owner resolves out-of-band; never guess).
-- Any signal that an email was sent or a session revoked unexpectedly.
+- Any signal that an email was sent, or that an **operator-initiated** session revocation occurred, unexpectedly. (A *Firebase-triggered* invalidation is expected-possible per §5 and is observed/recorded, not itself a stop condition.)
 
 ---
 
@@ -273,18 +277,23 @@ Because each step is a single attribute change on one UID, rollback is per-ident
 immediate:
 
 - **Rollback trigger:** any failed post-write verification (§6) for that identity.
-- **Rollback action:** restore that account's **previous** recovery/auth email via the same
-  Admin-SDK path — one UID, one attribute, reversed. The restored address is set with
-  **`emailVerified: false`** (the same safe default as the forward migration, §3); a prior
-  `true` is **not** re-asserted.
-- **Rollback preflight (required):** before writing the restore, **confirm the prior address
-  is still unclaimed** by any other Auth account. If the prior address has since been bound
-  elsewhere (collision), rollback **halts** and returns to the Owner — it never overwrites,
-  merges, or reassigns a UID to force the restore.
-- **Where the mapping lives:** the private prior→new address mapping exists **only in
-  protected, temporary operator input** supplied out-of-band by the Owner (never in Git,
-  never in the repository, never in a committed log). It is the operator's transient input
-  for the run, not durable state.
+- **Exact rollback contract (`emailVerified`):** rollback restores the account's **exact
+  prior recovery/auth address** *and* the **exact prior `emailVerified` boolean captured at
+  preflight** (§6 step 4) — an *exact* reversal, not a coerced `false`. Because the address
+  being restored is the *same* address that carried that captured value, restoring a prior
+  `true` re-asserts verification only of an address that was genuinely verified. The
+  forward-migration rule is unchanged and separate: the **new alias** is **always** written
+  `emailVerified: false`, and a prior `true` is **never** applied to the new alias.
+- **Rollback preflight (required):** before writing the restore, **confirm the exact prior
+  address is still unclaimed** by any other Auth account. If it has since been bound
+  elsewhere (collision) — or otherwise cannot be exactly restored — rollback **halts** and
+  returns to the Owner; it never overwrites/merges/reassigns a UID to force the restore, and
+  it **never re-asserts verified status on any other address**.
+- **Where the mapping lives:** the private prior→new address mapping **and the captured
+  prior `emailVerified` boolean** exist **only in protected, temporary operator input**
+  supplied out-of-band by the Owner (never in Git, never in the repository, never in a
+  committed log). They are the operator's transient input for the run, not durable state,
+  and never appear in identity-linked evidence (§9).
 - **Secret cleanup:** on completion or interruption, temporary mappings, operator input
   files, and any run logs that could contain a real address are **securely cleaned**; only
   sanitized evidence (§9) survives.
@@ -309,16 +318,18 @@ immediate:
 Follows the [DECISIONS #11](../DECISIONS.md) precedent exactly:
 
 - **Recorded (safe):** per-step PASS/FAIL, the `employeeId`, the *pattern* used
-  (`<owner-inbox>+<persona-tag>`), `emailVerified == false` confirmation, UID-unchanged
-  confirmation (as a boolean, **not** the UID), "no reset email sent by this workflow", "no
-  `revokeRefreshTokens` call by this workflow", the **observed** session/sign-in behavior
-  after the change (the Step-1 baseline and each later step, §5 — recorded as observation,
-  not as a continuity guarantee), and the append-only [DECISIONS](../DECISIONS.md) entry that
-  will record completion.
-- **NEVER recorded / committed:** real base inbox, real `+alias` addresses, UIDs, passwords,
-  reset links, OOB codes, ID/refresh tokens, or any account-identifying value (§12 hard
-  stop). If a debugging need arises, the Owner supplies the mapping out-of-band, exactly as
-  #11 prescribes.
+  (`<owner-inbox>+<persona-tag>`), new-alias `emailVerified == false` confirmation,
+  UID-unchanged confirmation (as a boolean, **not** the UID), "no reset email sent by this
+  workflow", "no operator-initiated session revocation (no `revokeRefreshTokens` call) by
+  this workflow", the **observed** session/sign-in behavior after the change (the Step-1
+  baseline and each later step, §5 — recorded as observation, including any Firebase-triggered
+  invalidation, not as a continuity guarantee), and the append-only [DECISIONS](../DECISIONS.md)
+  entry that will record completion.
+- **NEVER recorded / committed:** real base inbox, real `+alias` addresses, the captured
+  prior address, the captured prior `emailVerified` boolean (it is address-linked, so it is
+  identity-linked), UIDs, passwords, reset links, OOB codes, ID/refresh tokens, or any
+  account-identifying value (§12 hard stop). If a debugging need arises, the Owner supplies
+  the mapping out-of-band, exactly as #11 prescribes.
 - Evidence lives under `docs/audits/auth-pr-4/` when the executed run is recorded — created
   **only** at/after authorized execution, never pre-populated with real data.
 
@@ -359,19 +370,25 @@ precedent. Bracketed values are supplied by the Owner and stay **out of Git**.
 > are **excluded**.
 >
 > Scope of each change is limited to the recovery/auth **email**, and each account's new
-> email is written with **`emailVerified: false`** (OD-4 safe default — AUTH-PR-4 sends no
-> verification email and does not prove control of the alias; a prior `true` is **not**
-> carried over to the new address). This authorization does **NOT** permit: sending any
-> reset email, revoking any session, changing any password/UID/role/claim/`accessVersion`/
-> Employee-link, deploying any Function, configuring any email provider, or changing any
-> Firebase Auth project setting. Execution runs through the **separately reviewed governed
-> operator workflow** (§4 Execution model) — dry-run default, project guard, ordered
-> allowlist, preflight, one-at-a-time, `emailVerified: false`, read-back verify, rollback,
-> sanitized evidence, secret cleanup, fail-closed; the private alias mapping is supplied
-> out-of-band and never committed. Results are reported back for the append-only
-> [DECISIONS](../DECISIONS.md) record. A failed verification, a disabled/missing/mismatched/
-> colliding account, or a session-impact mismatch triggers the §8 rollback for the affected
-> identity and **halts the entire sequence**.
+> alias email is written with **`emailVerified: false`** (OD-4 safe default — AUTH-PR-4 sends
+> no verification email and does not prove control of the alias; a prior `true` is **never**
+> carried over to the new address). This authorization does **NOT** permit: sending any reset
+> email; making any **explicit `revokeRefreshTokens` call** or any other **operator-initiated
+> session-revocation** action; changing any password/UID/role/claim/`accessVersion`/
+> Employee-link; deploying any Function; configuring any email provider; or changing any
+> Firebase Auth project setting. **Any refresh-token / session invalidation that Firebase
+> itself triggers automatically as a platform effect of the authorized email update is an
+> acknowledged possible consequence of that update — not a separate authorized operator
+> action** — and is observed and recorded (§5), never guaranteed either way. Execution runs
+> through the **separately reviewed governed operator workflow** (§4 Execution model) —
+> dry-run default, project guard, ordered allowlist, preflight (including capture of the
+> exact prior address + prior `emailVerified` for exact rollback), one-at-a-time,
+> new-alias `emailVerified: false`, read-back verify, exact rollback, sanitized evidence,
+> secret cleanup, fail-closed; the private alias mapping is supplied out-of-band and never
+> committed. Results are reported back for the append-only [DECISIONS](../DECISIONS.md)
+> record. A failed verification, a disabled/missing/mismatched/colliding account, or a
+> session-impact mismatch triggers the §8 exact rollback for the affected identity and
+> **halts the entire sequence**.
 >
 > Granted: `<date>` — `<Owner>`.
 
@@ -380,11 +397,16 @@ precedent. Bracketed values are supplied by the Owner and stay **out of Git**.
 ## 12. Production hard stops (restating architecture §12 for this gate)
 
 Explicit, separate authorization is required — and is **NOT** given by this document — before:
-changing any production Auth email; sending any test-user production reset email; revoking
-any production session; enabling email-enumeration protection; selecting/configuring an
+changing any production Auth email; sending any test-user production reset email; performing
+any **operator-initiated** session revocation (an explicit `revokeRefreshTokens` call or any
+equivalent action); enabling email-enumeration protection; selecting/configuring an
 email-delivery provider; deploying/modifying any Function; or any action that could remove
-Owner or break-glass access. **No real email, UID, token, password, reset link, or OOB code
-may be committed to the repository under any circumstance.**
+Owner or break-glass access. (A **Firebase-triggered** refresh-token invalidation that occurs
+automatically as a platform effect of the authorized email update is **not** an operator
+action and is **not** a separate hard stop — it is an acknowledged possible consequence of
+the email change, observed and recorded per §5.) **No real email, UID, token, password, reset
+link, OOB code, or captured prior-`emailVerified` value may be committed to the repository
+under any circumstance.**
 
 ---
 
@@ -405,9 +427,12 @@ may be committed to the repository under any circumstance.**
 ## 14. Confirmation
 
 **No production action has occurred in preparing this package.** In preparing it: no Auth
-email was changed; no reset email was sent; no session was revoked; no email provider was
-configured; no Function was deployed; no identity, role, claim, `accessVersion`, or Firestore
-data was mutated; and no real email, UID, token, password, or credential was read, exposed,
-or committed. This is a repository-only readiness document that STOPS at the gate and is
-returned for Codex review. It makes **no** promise about session continuity under the future
-migration (§5) — that is observed and recorded, never guaranteed.
+email was changed; no reset email was sent; no session was revoked (no operator revocation
+and — since no email was changed — no Firebase-triggered invalidation either); no email
+provider was configured; no Function was deployed; no identity, role, claim, `accessVersion`,
+or Firestore data was mutated; and no real email, UID, token, password, credential, or
+captured prior-`emailVerified` value was read, exposed, or committed. This is a
+repository-only readiness document that STOPS at the gate and is returned for Codex review.
+It makes **no** promise about session continuity under the future migration (§5): the
+operator performs no revocation, any Firebase-triggered invalidation is an acknowledged
+possible platform effect, and the outcome is observed and recorded, never guaranteed.
