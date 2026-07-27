@@ -127,7 +127,108 @@ export function proposeAlternativeUsernames(desired, taken, limit = 3) {
 // Display helper: the human-facing username for a mapping record, or null
 // when none is present. Prefers displayUsername (as chosen), falls back to
 // the normalized key. Never invents a value.
+//
+// SCOPE: a PURE helper for a FUTURE display surface. AUTH-PR-2 wires no
+// application display and adds NO mapping read to feed it -- reading the
+// trusted-writer-only mapping is a separate, later concern (and would need
+// its own Rules decision, §10). This helper exists so that surface can format
+// a value it already holds, without re-implementing the fallback rule.
 export function usernameForDisplay(mapping) {
   if (!mapping) return null;
   return mapping.displayUsername ?? mapping.normalizedUsername ?? null;
+}
+
+// -- Recovery-ready mapping contract (architecture §2) ----------------------
+// Pure validator for a `usernames/{normalizedUsername}` mapping RECORD. Models
+// the trusted-writer-only mapping so future writer/reader code has one
+// authoritative shape to check against. Performs NO I/O and creates NO
+// mapping -- callers pass a candidate record (and its intended document key).
+
+export const MAPPING_INVALID_REASON = Object.freeze({
+  NOT_OBJECT: "not_object",
+  USERNAME_INVALID: "username_invalid",
+  KEY_MISMATCH: "key_mismatch",
+  DISPLAY_MISMATCH: "display_mismatch",
+  MISSING_UID: "missing_uid",
+  TENANT_INVALID: "tenant_invalid",
+  ACTIVE_INVALID: "active_invalid",
+  MISSING_PROVENANCE: "missing_provenance",
+  VERSION_INVALID: "version_invalid",
+  HISTORY_INVALID: "history_invalid",
+  MISSING_AUDIT_CORRELATION: "missing_audit_correlation",
+});
+
+function isNonEmptyString(v) {
+  return typeof v === "string" && v.trim().length > 0;
+}
+
+// Validate a mapping record against the §2 contract. When `expectedKey` is
+// supplied, the record's normalizedUsername must equal it (document-key
+// agreement). Returns { valid, reasons } -- reasons is an array of
+// MAPPING_INVALID_REASON values (empty when valid). An `active: false`
+// record is a VALID, modeled state (inactive is not a validation error).
+export function validateUsernameMapping(record, expectedKey) {
+  if (!record || typeof record !== "object") {
+    return { valid: false, reasons: [MAPPING_INVALID_REASON.NOT_OBJECT] };
+  }
+  const reasons = [];
+
+  const usernameCheck = validateUsername(record.normalizedUsername);
+  if (!usernameCheck.valid) {
+    reasons.push(MAPPING_INVALID_REASON.USERNAME_INVALID);
+  } else if (record.normalizedUsername !== usernameCheck.normalized) {
+    // normalizedUsername must already be in canonical (normalized) form.
+    reasons.push(MAPPING_INVALID_REASON.USERNAME_INVALID);
+  }
+
+  if (expectedKey !== undefined && record.normalizedUsername !== expectedKey) {
+    reasons.push(MAPPING_INVALID_REASON.KEY_MISMATCH);
+  }
+
+  // displayUsername must be present and normalize to the same identity.
+  if (!isNonEmptyString(record.displayUsername)
+      || normalizeUsername(record.displayUsername) !== record.normalizedUsername) {
+    reasons.push(MAPPING_INVALID_REASON.DISPLAY_MISMATCH);
+  }
+
+  if (!isNonEmptyString(record.uid)) {
+    reasons.push(MAPPING_INVALID_REASON.MISSING_UID);
+  }
+
+  // tenantId is an inert placeholder: must be present as either null or a
+  // non-empty string (never undefined -- the field must exist for tenant
+  // readiness), and tenant BEHAVIOR is out of scope until Issue #140.
+  if (!(record.tenantId === null || isNonEmptyString(record.tenantId))) {
+    reasons.push(MAPPING_INVALID_REASON.TENANT_INVALID);
+  }
+
+  if (typeof record.active !== "boolean") {
+    reasons.push(MAPPING_INVALID_REASON.ACTIVE_INVALID);
+  }
+
+  if (!record.createdAt || !isNonEmptyString(record.createdBy)
+      || !record.updatedAt || !isNonEmptyString(record.updatedBy)) {
+    reasons.push(MAPPING_INVALID_REASON.MISSING_PROVENANCE);
+  }
+
+  if (!Number.isInteger(record.version) || record.version < 1) {
+    reasons.push(MAPPING_INVALID_REASON.VERSION_INVALID);
+  }
+
+  // previousUsernames is optional; when present it must be an array of valid
+  // normalized usernames, and MUST NOT contain the current normalizedUsername
+  // (non-reuse: a name cannot be listed as its own predecessor).
+  if (record.previousUsernames !== undefined) {
+    const history = record.previousUsernames;
+    const historyValid = Array.isArray(history)
+      && history.every((h) => validateUsername(h).valid && h === normalizeUsername(h))
+      && !history.includes(record.normalizedUsername);
+    if (!historyValid) reasons.push(MAPPING_INVALID_REASON.HISTORY_INVALID);
+  }
+
+  if (!isNonEmptyString(record.auditCorrelationId)) {
+    reasons.push(MAPPING_INVALID_REASON.MISSING_AUDIT_CORRELATION);
+  }
+
+  return { valid: reasons.length === 0, reasons };
 }

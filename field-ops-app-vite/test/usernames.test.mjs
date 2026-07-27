@@ -10,6 +10,8 @@ import {
   isUsernameAvailable,
   proposeAlternativeUsernames,
   usernameForDisplay,
+  validateUsernameMapping,
+  MAPPING_INVALID_REASON,
   USERNAME_INVALID_REASON,
   USERNAME_MAX_LENGTH,
   RESERVED_USERNAMES,
@@ -119,6 +121,108 @@ ok("display prefers displayUsername, falls back to normalized, else null", () =>
   assert.strictEqual(usernameForDisplay({ normalizedUsername: "jane.smith" }), "jane.smith");
   assert.strictEqual(usernameForDisplay({}), null);
   assert.strictEqual(usernameForDisplay(null), null);
+});
+
+// -- validateUsernameMapping (recovery-ready mapping contract, §2) -----------
+function validMapping(overrides = {}) {
+  return {
+    normalizedUsername: "jane.smith",
+    displayUsername: "Jane.Smith",
+    uid: "aZ3kP9qXfL2mN7bV0cR5tY8wD1eH",
+    tenantId: null,
+    active: true,
+    createdAt: 1730000000000,
+    createdBy: "admin-uid-1",
+    updatedAt: 1730000000000,
+    updatedBy: "admin-uid-1",
+    version: 1,
+    previousUsernames: ["jane.smyth"],
+    auditCorrelationId: "corr-abc-123",
+    ...overrides,
+  };
+}
+
+ok("mapping: well-formed record is valid", () => {
+  const r = validateUsernameMapping(validMapping());
+  assert.strictEqual(r.valid, true);
+  assert.deepStrictEqual(r.reasons, []);
+});
+ok("mapping: document-key agreement enforced", () => {
+  assert.strictEqual(validateUsernameMapping(validMapping(), "jane.smith").valid, true);
+  const bad = validateUsernameMapping(validMapping(), "someone.else");
+  assert.strictEqual(bad.valid, false);
+  assert.ok(bad.reasons.includes(MAPPING_INVALID_REASON.KEY_MISMATCH));
+});
+ok("mapping: non-object -> NOT_OBJECT", () => {
+  for (const v of [null, undefined, "x", 42]) {
+    const r = validateUsernameMapping(v);
+    assert.strictEqual(r.valid, false);
+    assert.deepStrictEqual(r.reasons, [MAPPING_INVALID_REASON.NOT_OBJECT]);
+  }
+});
+ok("mapping: inactive is a VALID modeled state", () => {
+  assert.strictEqual(validateUsernameMapping(validMapping({ active: false })).valid, true);
+});
+ok("mapping: active must be boolean", () => {
+  const r = validateUsernameMapping(validMapping({ active: "yes" }));
+  assert.ok(r.reasons.includes(MAPPING_INVALID_REASON.ACTIVE_INVALID));
+});
+ok("mapping: version must be a positive integer", () => {
+  for (const v of [0, -1, 1.5, "1", undefined]) {
+    const r = validateUsernameMapping(validMapping({ version: v }));
+    assert.ok(r.reasons.includes(MAPPING_INVALID_REASON.VERSION_INVALID), `version=${String(v)}`);
+  }
+});
+ok("mapping: history must be normalized, valid, and non-reusing (no current name)", () => {
+  // current name appears in history -> non-reuse violation
+  const reuse = validateUsernameMapping(validMapping({ previousUsernames: ["jane.smith"] }));
+  assert.ok(reuse.reasons.includes(MAPPING_INVALID_REASON.HISTORY_INVALID));
+  // non-array history
+  assert.ok(validateUsernameMapping(validMapping({ previousUsernames: "jane.smyth" }))
+    .reasons.includes(MAPPING_INVALID_REASON.HISTORY_INVALID));
+  // invalid/non-normalized entry
+  assert.ok(validateUsernameMapping(validMapping({ previousUsernames: ["Jane.Smyth"] }))
+    .reasons.includes(MAPPING_INVALID_REASON.HISTORY_INVALID));
+  // omitted history is allowed (optional)
+  const noHistory = validMapping();
+  delete noHistory.previousUsernames;
+  assert.strictEqual(validateUsernameMapping(noHistory).valid, true);
+});
+ok("mapping: missing provenance -> MISSING_PROVENANCE", () => {
+  for (const field of ["createdAt", "createdBy", "updatedAt", "updatedBy"]) {
+    const rec = validMapping();
+    delete rec[field];
+    const r = validateUsernameMapping(rec);
+    assert.ok(r.reasons.includes(MAPPING_INVALID_REASON.MISSING_PROVENANCE), `missing ${field}`);
+  }
+});
+ok("mapping: displayUsername must normalize to the key", () => {
+  assert.ok(validateUsernameMapping(validMapping({ displayUsername: "bob" }))
+    .reasons.includes(MAPPING_INVALID_REASON.DISPLAY_MISMATCH));
+  assert.ok(validateUsernameMapping(validMapping({ displayUsername: "" }))
+    .reasons.includes(MAPPING_INVALID_REASON.DISPLAY_MISMATCH));
+});
+ok("mapping: uid required", () => {
+  assert.ok(validateUsernameMapping(validMapping({ uid: "" }))
+    .reasons.includes(MAPPING_INVALID_REASON.MISSING_UID));
+});
+ok("mapping: tenantId must be null or non-empty string (present placeholder)", () => {
+  assert.strictEqual(validateUsernameMapping(validMapping({ tenantId: "acme" })).valid, true);
+  assert.strictEqual(validateUsernameMapping(validMapping({ tenantId: null })).valid, true);
+  const bad = validMapping();
+  delete bad.tenantId;
+  assert.ok(validateUsernameMapping(bad).reasons.includes(MAPPING_INVALID_REASON.TENANT_INVALID));
+});
+ok("mapping: auditCorrelationId required", () => {
+  const rec = validMapping();
+  delete rec.auditCorrelationId;
+  assert.ok(validateUsernameMapping(rec).reasons.includes(MAPPING_INVALID_REASON.MISSING_AUDIT_CORRELATION));
+});
+ok("mapping: normalizedUsername must be canonical + valid", () => {
+  assert.ok(validateUsernameMapping(validMapping({ normalizedUsername: "Jane.Smith", displayUsername: "Jane.Smith" }))
+    .reasons.includes(MAPPING_INVALID_REASON.USERNAME_INVALID));
+  assert.ok(validateUsernameMapping(validMapping({ normalizedUsername: "ad", displayUsername: "ad" }))
+    .reasons.includes(MAPPING_INVALID_REASON.USERNAME_INVALID));
 });
 
 console.log(`\n${passed} passed`);

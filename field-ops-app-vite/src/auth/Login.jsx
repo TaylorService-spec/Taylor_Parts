@@ -1,26 +1,19 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "./AuthContext";
+import {
+  RECOVERY_NEUTRAL_MESSAGE,
+  prepareRecoverySubmit,
+  performRecovery,
+  nextCooldownUntil,
+  cooldownRemainingSeconds,
+  canResend,
+} from "../domain/passwordRecovery";
 
 // AUTH-PR-2 self-service recovery -- EMAIL INPUT ONLY. Username-input recovery
 // and username login are DEFERRED (D-RESOLVER); this screen keeps the existing
 // email/password sign-in unchanged and adds a "Forgot password?" flow that
-// calls Firebase's client-side sendPasswordResetEmail (no Function, no
-// resolver, not Blaze-dependent). See docs/assessments/
-// auth-modernization-architecture.md §5.
-
-// Neutral confirmation shown regardless of outcome -- must never reveal
-// whether the address is registered (enumeration protection).
-const RECOVERY_NEUTRAL_MESSAGE =
-  "Check your email — if the account is eligible for password recovery, " +
-  "we'll send instructions to the registered email address.";
-// Client-side resend delay is UX protection only; Firebase server-side
-// throttling remains the authoritative control.
-const RESEND_COOLDOWN_SECONDS = 45;
-
-// Minimal client-side FORMAT check only (not an existence check).
-function looksLikeEmail(value) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
-}
+// calls Firebase's client-side reset (no Function, no resolver). Pure recovery
+// behavior lives in ../domain/passwordRecovery.js and is unit-tested there.
 
 export default function Login() {
   const { login, resetPassword } = useAuth();
@@ -37,7 +30,23 @@ export default function Login() {
   const [recoverError, setRecoverError] = useState(null);
   const [recoverSent, setRecoverSent] = useState(false);
   const [recoverSubmitting, setRecoverSubmitting] = useState(false);
-  const [cooldown, setCooldown] = useState(0);
+  // Cooldown as an absolute end-timestamp so it survives switching to sign-in
+  // and back (state is not reset by mode toggles) and cannot be bypassed by
+  // toggling modes. `now` ticks only while a cooldown is active.
+  const [cooldownUntil, setCooldownUntil] = useState(0);
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (cooldownUntil <= Date.now()) return undefined;
+    const id = setInterval(() => {
+      const t = Date.now();
+      setNow(t);
+      if (t >= cooldownUntil) clearInterval(id); // self-stop at expiry
+    }, 250);
+    return () => clearInterval(id); // one timer per cooldown; cleaned on unmount
+  }, [cooldownUntil]);
+
+  const cooldownRemaining = cooldownRemainingSeconds(cooldownUntil, now);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -52,42 +61,23 @@ export default function Login() {
     }
   };
 
-  const startCooldown = () => {
-    setCooldown(RESEND_COOLDOWN_SECONDS);
-    const id = setInterval(() => {
-      setCooldown((c) => {
-        if (c <= 1) {
-          clearInterval(id);
-          return 0;
-        }
-        return c - 1;
-      });
-    }, 1000);
-  };
-
-  const sendReset = async (value) => {
+  const runReset = async (value) => {
     setRecoverSubmitting(true);
-    try {
-      await resetPassword(value);
-    } catch {
-      // Deliberately swallowed: the confirmation below is identical whether or
-      // not the address exists, so a failure must not change what the user sees.
-    } finally {
-      setRecoverSubmitting(false);
-      setRecoverSent(true);
-      startCooldown();
-    }
+    const result = await performRecovery(resetPassword, value);
+    setRecoverSubmitting(false);
+    setRecoverSent(result.sent);
+    setCooldownUntil(nextCooldownUntil(Date.now()));
   };
 
   const handleRecover = (e) => {
     e.preventDefault();
     setRecoverError(null);
-    const value = recoverEmail.trim();
-    if (!looksLikeEmail(value)) {
-      setRecoverError("Enter a valid email address.");
+    const prep = prepareRecoverySubmit(recoverEmail);
+    if (!prep.ok) {
+      setRecoverError(prep.error);
       return;
     }
-    sendReset(value);
+    runReset(prep.value);
   };
 
   const goToRecover = () => {
@@ -105,6 +95,7 @@ export default function Login() {
   };
 
   if (mode === "recover") {
+    const resendAllowed = canResend(cooldownRemaining, recoverSubmitting);
     return (
       <div className="fo-panel">
         <h2>Reset password</h2>
@@ -114,10 +105,10 @@ export default function Login() {
             <button
               type="button"
               className="fo-link-btn"
-              disabled={cooldown > 0 || recoverSubmitting}
-              onClick={() => sendReset(recoverEmail.trim())}
+              disabled={!resendAllowed}
+              onClick={() => runReset(recoverEmail.trim())}
             >
-              {cooldown > 0 ? `Resend available in ${cooldown}s` : "Resend email"}
+              {cooldownRemaining > 0 ? `Resend available in ${cooldownRemaining}s` : "Resend email"}
             </button>
             <br />
             <button type="button" className="fo-link-btn" onClick={backToSignIn}>
