@@ -17,7 +17,7 @@
 // exactly as §3 requires.
 import type { DocumentReference, Firestore, Transaction } from "firebase-admin/firestore";
 import { Timestamp } from "firebase-admin/firestore";
-import { buildCommandFingerprint } from "./commandFingerprint";
+import { prepareCommand, type PreparedCommand } from "./commandFingerprint";
 import { analyzeCompatibilityEvidence } from "./domain/compatibility";
 import {
   AlreadyExistsError, IdempotencyConflictError, InvalidInputError, NotFoundError,
@@ -261,7 +261,7 @@ const safeActorUid = (v: unknown): string =>
 // Everything that must be settled BEFORE an operation record may exist. A failure here is a terminal
 // `denied` audit with NO operation record, per §9.8.
 async function acceptForExecution(envelope: CommandEnvelope, deps: EquipmentCommandDeps): Promise<{
-  action: OperationAction; targetType: OperationTargetType; targetId: string; commandFingerprint: string; expectedVersion: number | null; actorUid: string;
+  prepared: PreparedCommand; expectedVersion: number | null; actorUid: string;
 }> {
   const { actorUid, action, idempotencyKey, payload } = envelope;
   if (typeof actorUid !== "string" || actorUid.length === 0 || actorUid.length > 128) {
@@ -300,10 +300,13 @@ async function acceptForExecution(envelope: CommandEnvelope, deps: EquipmentComm
   const governedAction = action as OperationAction;
   const targetType = ACTION_TARGET_TYPES[governedAction];
   const targetId = commandTargetId(governedAction, payload);
-  const commandFingerprint = buildCommandFingerprint({
+  // ONE preparation. From here on the caller's payload and the caller's serialSchemes registry are
+  // never read again -- the prepared value is what gets fingerprinted AND what gets written, so they
+  // cannot diverge no matter what the caller mutates afterwards.
+  const prepared = prepareCommand({
     action: governedAction, targetType, targetId, payload, serialSchemes: deps.serialSchemes,
   });
-  return { action: governedAction, targetType, targetId, commandFingerprint, expectedVersion, actorUid };
+  return { prepared, expectedVersion, actorUid };
 }
 
 // The identity the command is filed under, read from the payload's own governed identity field. The
@@ -355,7 +358,9 @@ export async function runEquipmentCompatibilityCommand(
     throw error;
   }
 
-  const { action, targetType, targetId, commandFingerprint, expectedVersion, actorUid } = accepted;
+  const { prepared, expectedVersion, actorUid } = accepted;
+  const { action, targetId, fingerprint: commandFingerprint } = prepared;
+  const targetType = prepared.targetType as OperationTargetType;
   const idempotencyKey = envelope.idempotencyKey as string;
   const operations = buildFirestoreOperationRepository(db);
 
@@ -402,7 +407,7 @@ export async function runEquipmentCompatibilityCommand(
     let mutation;
     let denial: DenialReason | null = null;
     try {
-      mutation = await planMutation(txn, { action, targetId, payload: envelope!.payload, expectedVersion, actorUid, now }, deps);
+      mutation = await planMutation(txn, { prepared, expectedVersion, actorUid, now }, deps);
     } catch (error) {
       if (
         error instanceof VersionConflictError || error instanceof ReferentialIntegrityError ||
@@ -466,15 +471,19 @@ interface PlannedMutation {
 
 async function planMutation(
   txn: Transaction,
-  cmd: { action: OperationAction; targetId: string; payload: unknown; expectedVersion: number | null; actorUid: string; now: () => Timestamp },
+  cmd: { prepared: PreparedCommand; expectedVersion: number | null; actorUid: string; now: () => Timestamp },
   deps: EquipmentCommandDeps
 ): Promise<PlannedMutation> {
-  const { db, serialSchemes } = deps;
+  const { db } = deps;
+  // The DETACHED registry captured during acceptance, never deps.serialSchemes, which the caller may
+  // have mutated since.
+  const serialSchemes = cmd.prepared.serialSchemes;
   const models = buildFirestoreEquipmentModelRepository(db);
   const aliases = buildFirestoreEquipmentModelAliasRepository(db);
   const compatibility = buildFirestoreCompatibilityRepository(db, { serialSchemes });
   const sources = buildFirestoreCompatibilitySourceRepository(db);
-  const payload = cmd.payload as Record<string, unknown>;
+  // The prepared, deep-frozen governed value -- the exact thing that was fingerprinted.
+  const payload = cmd.prepared.value as Record<string, unknown>;
   const stamp = cmd.now();
 
   // Expected-version check against the record's OWN version (D2/D1), inside this transaction.
@@ -497,9 +506,9 @@ async function planMutation(
     updatedBy: cmd.actorUid,
   });
 
-  switch (cmd.action) {
+  switch (cmd.prepared.action) {
     case "importEquipmentModel": {
-      const existing = await models.getById(txn, cmd.targetId);
+      const existing = await models.getById(txn, cmd.prepared.targetId);
       checkVersion(existing?.model.version ?? null);
       const stored = { model: payload, ...meta(existing) };
       return {
@@ -511,10 +520,10 @@ async function planMutation(
       // REFERENTIAL INTEGRITY: an alias may never create or imply a model.
       const model = await models.getById(txn, String(payload.equipmentModelId));
       if (model === null) throw new ReferentialIntegrityError(`equipment model ${String(payload.equipmentModelId)} does not exist`);
-      const existing = await aliases.getByAliasKey(txn, cmd.targetId);
+      const existing = await aliases.getByAliasKey(txn, cmd.prepared.targetId);
       // Aliases carry no version; a conflicting owner fails closed for review (D1 conflict contract).
       if (existing !== null && existing.alias.equipmentModelId !== payload.equipmentModelId) {
-        throw new ReferentialIntegrityError(`alias ${cmd.targetId} already resolves to ${existing.alias.equipmentModelId}`);
+        throw new ReferentialIntegrityError(`alias ${cmd.prepared.targetId} already resolves to ${existing.alias.equipmentModelId}`);
       }
       const stored = { alias: payload, ...meta(existing) };
       return {
@@ -526,10 +535,10 @@ async function planMutation(
     case "correctCompatibility": {
       const model = await models.getById(txn, String(payload.equipmentModelId));
       if (model === null) throw new ReferentialIntegrityError(`equipment model ${String(payload.equipmentModelId)} does not exist`);
-      const existing = await compatibility.getById(txn, cmd.targetId);
+      const existing = await compatibility.getById(txn, cmd.prepared.targetId);
       checkVersion(existing?.compatibility.version ?? null);
-      if (cmd.action === "correctCompatibility" && existing === null) {
-        throw new NotFoundError(`compatibility ${cmd.targetId} does not exist to correct`);
+      if (cmd.prepared.action === "correctCompatibility" && existing === null) {
+        throw new NotFoundError(`compatibility ${cmd.prepared.targetId} does not exist to correct`);
       }
       const stored = { compatibility: payload, ...meta(existing) };
       return {
@@ -543,8 +552,8 @@ async function planMutation(
       if (relationship === null) {
         throw new ReferentialIntegrityError(`compatibility ${String(payload.compatibilityId)} does not exist`);
       }
-      const existing = await sources.getById(txn, cmd.targetId);
-      if (existing !== null) throw new AlreadyExistsError(`source ${cmd.targetId} already exists and evidence is immutable`);
+      const existing = await sources.getById(txn, cmd.prepared.targetId);
+      if (existing !== null) throw new AlreadyExistsError(`source ${cmd.prepared.targetId} already exists and evidence is immutable`);
       const stored = { source: payload, ...meta(null) };
       // CONFLICT SURFACING (design §8/§9), delegated to the GOVERNED D2 analyzer.
       //
@@ -584,8 +593,8 @@ async function planMutation(
       };
     }
     case "verifyCompatibility": {
-      const existing = await compatibility.getById(txn, cmd.targetId);
-      if (existing === null) throw new NotFoundError(`compatibility ${cmd.targetId} does not exist to verify`);
+      const existing = await compatibility.getById(txn, cmd.prepared.targetId);
+      if (existing === null) throw new NotFoundError(`compatibility ${cmd.prepared.targetId} does not exist to verify`);
       checkVersion(existing.compatibility.version);
       const nextVersion = existing.compatibility.version + 1;
       const updated = { ...existing.compatibility, verificationStatus: payload.verificationStatus, version: nextVersion };
@@ -593,6 +602,6 @@ async function planMutation(
       return { resultVersion: nextVersion, stage: (t) => compatibility.stageUpdate(t, stored) };
     }
     default:
-      throw new MalformedStoredRecordError(`no mutation plan for ${String(cmd.action)}`);
+      throw new MalformedStoredRecordError(`no mutation plan for ${String(cmd.prepared.action)}`);
   }
 }

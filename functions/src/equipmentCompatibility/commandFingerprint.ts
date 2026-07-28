@@ -300,7 +300,7 @@ function detachedSerialSchemes(record: Record<string, unknown>, serialSchemes: u
 // has no command identity at all, and fingerprinting one would let an invalid command occupy an
 // idempotency key. The VALIDATED value is what gets serialized, which also gives the normalization
 // rule below its meaning.
-function validatedCommand(action: OperationAction, payload: unknown, serialSchemes: unknown): { value: any; identity: string } {
+function validatedCommand(action: OperationAction, payload: unknown, detachedSchemes: Record<string, unknown>): { value: any; identity: string } {
   // STRICT BOUNDARY FIRST — before any validator call and before any adapter reconstruction, because
   // an adapter that copies selected properties would drop an unknown field before the domain contract
   // could object to it.
@@ -326,7 +326,7 @@ function validatedCommand(action: OperationAction, payload: unknown, serialSchem
     case "importCompatibility":
     case "correctCompatibility": {
       // D2 only ever sees the detached, own-property-validated registry.
-      const v = validateCompatibility(record, { serialSchemes: detachedSerialSchemes(record, serialSchemes) });
+      const v = validateCompatibility(record, { serialSchemes: detachedSchemes });
       if (!v.valid) fail(v.reason);
       return { value: v.value, identity: v.value.compatibilityId };
     }
@@ -354,6 +354,36 @@ function validatedCommand(action: OperationAction, payload: unknown, serialSchem
   }
 }
 
+// A PREPARED COMMAND: the single governed value that validation, fingerprinting and persistence all
+// use. Returned as one object so there is no window in which the caller's payload can change between
+// being fingerprinted and being written -- the caller's object is never consulted again.
+export interface PreparedCommand {
+  readonly action: OperationAction;
+  readonly targetType: string;
+  readonly targetId: string;
+  // The NORMALIZED governed value from the applicable D1/D2 validator, deep-frozen and detached from
+  // the caller (the validators already build fresh objects; this makes that guarantee explicit and
+  // enforced rather than incidental).
+  readonly value: Record<string, unknown>;
+  // The detached null-prototype registry that was ACTUALLY used to validate this command. Persistence
+  // must re-validate against exactly this, never against a caller-held registry that may have changed.
+  readonly serialSchemes: Record<string, unknown>;
+  readonly fingerprint: string;
+}
+
+// Deep-freeze a governed value. The declared field types are primitives, null and plain nested objects,
+// so anything else is not a governed value and is refused rather than silently frozen.
+function deepFreezeGovernedValue(path: string, value: unknown): unknown {
+  if (value === null) return value;
+  const kind = typeof value;
+  if (kind === "boolean" || kind === "number" || kind === "string") return value;
+  if (!isPlainObject(value)) throw new FingerprintContractError(`prepared value ${path} has unsupported type`);
+  for (const key of Object.getOwnPropertyNames(value)) {
+    deepFreezeGovernedValue(`${path}.${key}`, value[key]);
+  }
+  return Object.freeze(value);
+}
+
 // action + target opaque id + tuple hash (design §2). The payload is hashed first so the fingerprint
 // stays bounded regardless of payload size, and the outer hash binds it to the action and target.
 //
@@ -376,6 +406,18 @@ export function buildCommandFingerprint(input: {
   payload: unknown;
   serialSchemes?: Record<string, unknown>;
 }): string {
+  return prepareCommand(input).fingerprint;
+}
+
+// The one entry point that turns caller input into a governed command. Everything downstream — the
+// operation record's fingerprint AND the record actually persisted — comes from the result.
+export function prepareCommand(input: {
+  action: OperationAction;
+  targetType: string;
+  targetId: string;
+  payload: unknown;
+  serialSchemes?: unknown;
+}): PreparedCommand {
   const { action, targetType, targetId, payload, serialSchemes } = input ?? ({} as any);
   if (!(OPERATION_ACTIONS as readonly string[]).includes(action)) {
     throw new FingerprintContractError(`unknown action ${String(action)}`);
@@ -385,16 +427,21 @@ export function buildCommandFingerprint(input: {
     throw new FingerprintContractError(`action ${action} targets ${expectedTargetType}, not ${String(targetType)}`);
   }
   if (typeof targetId !== "string" || targetId.length === 0) throw new FingerprintContractError("targetId is required");
-  const { value, identity } = validatedCommand(action, payload, serialSchemes);
+  // The registry is detached ONCE here; both validation and the returned PreparedCommand use that same
+  // detached copy, so a later mutation of the caller's registry cannot change what persistence sees.
+  const detachedSchemes = detachedSerialSchemes(assertCommandPayloadSchema(action, payload), serialSchemes);
+  const { value, identity } = validatedCommand(action, payload, detachedSchemes);
   if (targetId !== identity) {
     throw new FingerprintContractError(`targetId ${targetId} does not match the payload identity ${identity}`);
   }
   const tupleHash = sha256Hex(canonicalCommandPayload(action, value));
-  return sha256Hex([
+  const fingerprint = sha256Hex([
     `v:${COMMAND_FINGERPRINT_VERSION}:`,
     encodeValue("action", action),
     encodeValue("targetType", targetType),
     encodeValue("targetId", targetId),
     encodeValue("tupleHash", tupleHash),
   ].join(""));
+  deepFreezeGovernedValue("value", value);
+  return Object.freeze({ action, targetType, targetId, value, serialSchemes: Object.freeze(detachedSchemes), fingerprint });
 }
