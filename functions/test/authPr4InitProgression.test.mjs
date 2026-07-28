@@ -17,14 +17,18 @@ const gate = require("../scripts/authPr4ProductionGate.js");
 const init = require("../scripts/authPr4InitProgression.js");
 
 const ORDER = init.MIGRATION_PERSONA_ORDER;
+const PROD = init.PRODUCTION_PROJECT_ID; // "taylor-parts"
 const REAL_ROOT = gate.resolveRepoRoot();
+const SCRIPT = path.join(REAL_ROOT, "functions/scripts/authPr4InitProgression.js");
 let passed = 0;
 function ok(name, fn) { fn(); passed += 1; console.log("PASS -- " + name); }
 function throws(fn, re) { assert.throws(fn, re); }
+function tmp() { return fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-init-")); }
 
 // Throwaway git repo with a GRANTED authorization + copies of ALL governed files
-// (now 3, including the initializer). mutateArtifact(a) tweaks it for negatives.
-function buildGrantedRepo(projectId, mutateArtifact) {
+// (now 3, including the initializer). Uses the PRODUCTION projectId so the
+// production-only guard is satisfied. mutateArtifact(a) tweaks it for negatives.
+function buildGrantedRepo(projectId = PROD, mutateArtifact) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-init-repo-"));
   execFileSync("git", ["-C", root, "init", "-q"]);
   execFileSync("git", ["-C", root, "config", "user.email", "t@example.com"]);
@@ -56,9 +60,18 @@ function baseArgs(g, dir, over = {}) {
   const keyFile = path.join(dir, "state.key");
   if (!fs.existsSync(keyFile)) fs.writeFileSync(keyFile, crypto.randomBytes(48), { mode: 0o600 });
   return {
-    projectId: "demo-authpr4", authorizedCommit: g.authorizedCommit,
+    projectId: PROD, confirmProduction: PROD, authorizedCommit: g.authorizedCommit,
     executionModeConfirmation: g.executionModeToken, executor: g.executor,
     stateKeyFile: keyFile, progressionOut: path.join(dir, "progression.json"), ...over,
+  };
+}
+
+// fs proxy that fails exactly one op on paths matching `matchFn`; everything else is real.
+function failingFsOn(matchFn, opName) {
+  return {
+    ...fs,
+    openSync: (p, ...r) => { if (opName === "openSync" && typeof p === "string" && matchFn(p)) throw new Error("injected openSync failure"); return fs.openSync(p, ...r); },
+    unlinkSync: (p, ...r) => { if (opName === "unlinkSync" && typeof p === "string" && matchFn(p)) throw new Error("injected unlinkSync failure"); return fs.unlinkSync(p, ...r); },
   };
 }
 
@@ -68,8 +81,8 @@ ok("GOVERNED_FILES now includes the initializer (bound)", () => {
 });
 
 ok("SUCCESS: creates a canonical revision-0 eligible/position-1 genesis + anchor, verified through the gate", () => {
-  const g = buildGrantedRepo("demo-authpr4");
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-init-"));
+  const g = buildGrantedRepo();
+  const dir = tmp();
   const args = baseArgs(g, dir);
   const res = init.initGenesis(args, { repoRoot: g.root, personaOrder: ORDER });
   assert.equal(res.ok, true);
@@ -78,26 +91,45 @@ ok("SUCCESS: creates a canonical revision-0 eligible/position-1 genesis + anchor
   assert.equal(res.completedCount, 0);
   assert.equal(res.nextPersona, "emp-rudy-driver");
   assert.equal(res.nextPosition, 1);
+  assert.equal(res.markerCleared, true);
   assert.ok(fs.existsSync(args.progressionOut) && fs.existsSync(gate.anchorPath(args.progressionOut)));
+  assert.ok(!fs.existsSync(gate.initMarkerPath(args.progressionOut)), "marker removed on success");
   // Independently re-verify through the gate with the same key.
   const key = fs.readFileSync(args.stateKeyFile);
-  const st = gate.readState(args.progressionOut, key, { authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", workflowIdentityHash: gate.workflowIdentityHash(gate.governedHashesAtCommit(g.root, g.authorizedCommit)), personaOrder: ORDER });
+  const st = gate.readState(args.progressionOut, key, { authorizationId: "AUTHPR4-PROD-TEST", projectId: PROD, workflowIdentityHash: gate.workflowIdentityHash(gate.governedHashesAtCommit(g.root, g.authorizedCommit)), personaOrder: ORDER });
   gate.verifyStateFreshness(args.progressionOut, st, key);
   assert.equal(st.status, "eligible"); assert.equal(st.revision, 0);
+  // The gate proceeds (no marker present).
+  gate.assertNoInitMarker(args.progressionOut);
   // Protected perms on POSIX.
   if (process.platform !== "win32") assert.equal(fs.statSync(args.progressionOut).mode & 0o777, 0o600);
   fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
 });
 
-ok("OVERWRITE REFUSAL: refuses if progression / anchor / lock / txn already exists", () => {
-  const g = buildGrantedRepo("demo-authpr4");
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-init-"));
+ok("PRODUCTION GUARD: refuses non-production projectId / missing / mismatched confirmProduction BEFORE any artifact", () => {
+  const g = buildGrantedRepo();
+  const dir = tmp();
+  throws(() => init.initGenesis(baseArgs(g, dir, { projectId: "demo-authpr4", progressionOut: path.join(dir, "a.json") }), { repoRoot: g.root, personaOrder: ORDER }), /requires --projectId taylor-parts/);
+  throws(() => init.initGenesis(baseArgs(g, dir, { confirmProduction: undefined, progressionOut: path.join(dir, "b.json") }), { repoRoot: g.root, personaOrder: ORDER }), /matching --confirmProduction taylor-parts/);
+  throws(() => init.initGenesis(baseArgs(g, dir, { confirmProduction: "nope", progressionOut: path.join(dir, "c.json") }), { repoRoot: g.root, personaOrder: ORDER }), /matching --confirmProduction taylor-parts/);
+  // No artifact of any kind was created on a guard refusal.
+  for (const f of ["a.json", "b.json", "c.json"]) {
+    assert.ok(!fs.existsSync(path.join(dir, f)), "no state");
+    assert.ok(!fs.existsSync(gate.anchorPath(path.join(dir, f))), "no anchor");
+    assert.ok(!fs.existsSync(gate.initMarkerPath(path.join(dir, f))), "no marker");
+  }
+  fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
+});
+
+ok("OVERWRITE REFUSAL: refuses if progression / anchor / lock / txn / init marker already exists", () => {
+  const g = buildGrantedRepo();
+  const dir = tmp();
   const args = baseArgs(g, dir);
   init.initGenesis(args, { repoRoot: g.root, personaOrder: ORDER }); // first: OK
   throws(() => init.initGenesis(args, { repoRoot: g.root, personaOrder: ORDER }), /Refusing to overwrite/); // second: refuse (state exists)
-  // A stray lock/txn/anchor also blocks a fresh init.
-  for (const stray of [gate.lockPath, gate.txnPath, gate.anchorPath]) {
-    const d2 = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-init-"));
+  // A stray lock/txn/anchor/init marker also blocks a fresh init.
+  for (const stray of [gate.lockPath, gate.txnPath, gate.anchorPath, gate.initMarkerPath]) {
+    const d2 = tmp();
     const a2 = baseArgs(g, d2);
     fs.writeFileSync(stray(a2.progressionOut), "{}");
     throws(() => init.initGenesis(a2, { repoRoot: g.root, personaOrder: ORDER }), /Refusing to overwrite/);
@@ -107,65 +139,105 @@ ok("OVERWRITE REFUSAL: refuses if progression / anchor / lock / txn already exis
 });
 
 ok("WRONG KEY: a genesis signed with one key does not verify under another; short key refused", () => {
-  const g = buildGrantedRepo("demo-authpr4");
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-init-"));
+  const g = buildGrantedRepo();
+  const dir = tmp();
   const args = baseArgs(g, dir);
   init.initGenesis(args, { repoRoot: g.root, personaOrder: ORDER });
-  const expected = { authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", workflowIdentityHash: gate.workflowIdentityHash(gate.governedHashesAtCommit(g.root, g.authorizedCommit)), personaOrder: ORDER };
+  const expected = { authorizationId: "AUTHPR4-PROD-TEST", projectId: PROD, workflowIdentityHash: gate.workflowIdentityHash(gate.governedHashesAtCommit(g.root, g.authorizedCommit)), personaOrder: ORDER };
   throws(() => gate.readState(args.progressionOut, crypto.randomBytes(48), expected), /integrity verification/);
-  // Short/too-weak key file is refused at load.
-  const d2 = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-init-"));
+  // Short/too-weak key file is refused at load (marker cleaned? no -- guard/load is before marker).
+  const d2 = tmp();
   const shortKey = path.join(d2, "k"); fs.writeFileSync(shortKey, crypto.randomBytes(16));
-  throws(() => init.initGenesis(baseArgs(g, d2, { stateKeyFile: shortKey, progressionOut: path.join(d2, "p.json") }), { repoRoot: g.root, personaOrder: ORDER }), /at least 32 bytes/);
+  const a2 = baseArgs(g, d2, { stateKeyFile: shortKey, progressionOut: path.join(d2, "p.json") });
+  throws(() => init.initGenesis(a2, { repoRoot: g.root, personaOrder: ORDER }), /at least 32 bytes/);
+  assert.ok(!fs.existsSync(a2.progressionOut) && !fs.existsSync(gate.initMarkerPath(a2.progressionOut)), "nothing created before key load");
   fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(d2, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
 });
 
-ok("STALE / MISMATCHED BINDING: wrong token, wrong executor, or tampered governed hashes are refused (no state created)", () => {
-  const g = buildGrantedRepo("demo-authpr4");
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-init-"));
+ok("STALE / MISMATCHED BINDING: wrong token, wrong executor, or tampered governed hashes refused (nothing created)", () => {
+  const g = buildGrantedRepo();
+  const dir = tmp();
   throws(() => init.initGenesis(baseArgs(g, dir, { executionModeConfirmation: "WRONG", progressionOut: path.join(dir, "a.json") }), { repoRoot: g.root, personaOrder: ORDER }), /execution-mode token/);
   throws(() => init.initGenesis(baseArgs(g, dir, { executor: "someone", progressionOut: path.join(dir, "b.json") }), { repoRoot: g.root, personaOrder: ORDER }), /authorized executor/);
   // Tampered governed hashes in the artifact (stale binding).
-  const gBad = buildGrantedRepo("demo-authpr4", (a) => { a.governedFileHashes[gate.GOVERNED_FILES[0]] = "0".repeat(64); return a; });
-  const d2 = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-init-"));
+  const gBad = buildGrantedRepo(PROD, (a) => { a.governedFileHashes[gate.GOVERNED_FILES[0]] = "0".repeat(64); return a; });
+  const d2 = tmp();
   throws(() => init.initGenesis(baseArgs(gBad, d2), { repoRoot: gBad.root, personaOrder: ORDER }), /hash mismatch/);
-  assert.ok(!fs.existsSync(path.join(d2, "progression.json")), "no state created on refusal");
+  for (const p of [path.join(dir, "a.json"), path.join(dir, "b.json"), path.join(d2, "progression.json")]) {
+    assert.ok(!fs.existsSync(p) && !fs.existsSync(gate.initMarkerPath(p)), "no state/marker created on refusal");
+  }
   fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(d2, { recursive: true, force: true });
   fs.rmSync(g.root, { recursive: true, force: true }); fs.rmSync(gBad.root, { recursive: true, force: true });
 });
 
-ok("MALFORMED ARTIFACT: PENDING status / unknown field refused (no state created)", () => {
-  const gP = buildGrantedRepo("demo-authpr4", (a) => ({ ...a, authorizationStatus: "PENDING" }));
-  const gU = buildGrantedRepo("demo-authpr4", (a) => ({ ...a, evil: 1 }));
+ok("MALFORMED ARTIFACT: PENDING status / unknown field refused (nothing created)", () => {
+  const gP = buildGrantedRepo(PROD, (a) => ({ ...a, authorizationStatus: "PENDING" }));
+  const gU = buildGrantedRepo(PROD, (a) => ({ ...a, evil: 1 }));
   for (const g of [gP, gU]) {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-init-"));
-    throws(() => init.initGenesis(baseArgs(g, dir), { repoRoot: g.root, personaOrder: ORDER }), /not GRANTED|schema mismatch/);
-    assert.ok(!fs.existsSync(path.join(dir, "progression.json")));
+    const dir = tmp();
+    const args = baseArgs(g, dir);
+    throws(() => init.initGenesis(args, { repoRoot: g.root, personaOrder: ORDER }), /not GRANTED|schema mismatch/);
+    assert.ok(!fs.existsSync(args.progressionOut) && !fs.existsSync(gate.initMarkerPath(args.progressionOut)));
     fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
   }
 });
 
-ok("PARTIAL-WRITE RECOVERY: if the anchor create fails after the state create, the partial state is removed", () => {
-  const g = buildGrantedRepo("demo-authpr4");
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-init-"));
+ok("CRASH SAFETY: a crash at ANY boundary leaves the init marker (never auto-deleted); the gate then refuses", () => {
+  const g = buildGrantedRepo();
+
+  // (a) crash creating the STATE (marker already published): marker remains, no state/anchor.
+  {
+    const dir = tmp();
+    const args = baseArgs(g, dir);
+    const dfs = failingFsOn((p) => p === args.progressionOut, "openSync");
+    throws(() => init.initGenesis(args, { repoRoot: g.root, personaOrder: ORDER, fs: dfs }), /Failed to create a protected artifact/);
+    assert.ok(fs.existsSync(gate.initMarkerPath(args.progressionOut)), "marker left in place (not auto-deleted)");
+    assert.ok(!fs.existsSync(args.progressionOut), "no state");
+    assert.ok(!fs.existsSync(gate.anchorPath(args.progressionOut)), "no anchor");
+    throws(() => gate.assertNoInitMarker(args.progressionOut), /initialization marker is present/i);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+  // (b) crash creating the ANCHOR (marker + partial state present): both retained, NOT auto-deleted.
+  {
+    const dir = tmp();
+    const args = baseArgs(g, dir);
+    const dfs = failingFsOn((p) => p === gate.anchorPath(args.progressionOut), "openSync");
+    throws(() => init.initGenesis(args, { repoRoot: g.root, personaOrder: ORDER, fs: dfs }), /Failed to create a protected artifact/);
+    assert.ok(fs.existsSync(gate.initMarkerPath(args.progressionOut)), "marker retained");
+    assert.ok(fs.existsSync(args.progressionOut), "partial state retained, NOT auto-deleted");
+    assert.ok(!fs.existsSync(gate.anchorPath(args.progressionOut)), "no anchor");
+    throws(() => gate.assertNoInitMarker(args.progressionOut), /initialization marker is present/i);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+  // (c) crash REMOVING the marker (state + anchor both verified): all three retained, gate blocks.
+  {
+    const dir = tmp();
+    const args = baseArgs(g, dir);
+    const dfs = failingFsOn((p) => p === gate.initMarkerPath(args.progressionOut), "unlinkSync");
+    throws(() => init.initGenesis(args, { repoRoot: g.root, personaOrder: ORDER, fs: dfs }), /finalise initialization/i);
+    assert.ok(fs.existsSync(gate.initMarkerPath(args.progressionOut)), "marker retained on removal crash");
+    assert.ok(fs.existsSync(args.progressionOut) && fs.existsSync(gate.anchorPath(args.progressionOut)), "state + anchor present");
+    throws(() => gate.assertNoInitMarker(args.progressionOut), /initialization marker is present/i);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+  fs.rmSync(g.root, { recursive: true, force: true });
+});
+
+ok("FOREIGN MARKER: a marker owned by another attempt is never removed (governed reconciliation)", () => {
+  // Directly exercise the owner-bound removal contract: initGenesis refuses to start
+  // when a marker already exists (overwrite refusal), so a foreign marker always blocks.
+  const g = buildGrantedRepo();
+  const dir = tmp();
   const args = baseArgs(g, dir);
-  // Inject an fs whose openSync fails ONLY for the anchor path (the second create).
-  let opened = 0;
-  const realOpen = fs.openSync;
-  const failingFs = { ...fs, existsSync: fs.existsSync, openSync: (p, ...rest) => {
-    if (typeof p === "string" && p.endsWith(".anchor")) { const e = new Error("injected anchor failure"); throw e; }
-    opened += 1; return realOpen(p, ...rest);
-  } };
-  throws(() => init.initGenesis(args, { repoRoot: g.root, personaOrder: ORDER, fs: failingFs }), /injected anchor failure/);
-  assert.ok(!fs.existsSync(args.progressionOut), "partial state removed after anchor-create failure");
-  assert.ok(!fs.existsSync(gate.anchorPath(args.progressionOut)));
-  assert.ok(opened >= 1);
+  fs.writeFileSync(gate.initMarkerPath(args.progressionOut), JSON.stringify({ version: gate.INIT_MARKER_VERSION, token: "someone-else", at: new Date().toISOString() }));
+  throws(() => init.initGenesis(args, { repoRoot: g.root, personaOrder: ORDER }), /Refusing to overwrite/);
+  assert.ok(fs.existsSync(gate.initMarkerPath(args.progressionOut)), "foreign marker untouched");
   fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
 });
 
-ok("SECRET OUTPUT: the sanitized result exposes no key, signature, or raw state", () => {
-  const g = buildGrantedRepo("demo-authpr4");
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-init-"));
+ok("SECRET OUTPUT (in-process): the sanitized result exposes no key, signature, or raw state", () => {
+  const g = buildGrantedRepo();
+  const dir = tmp();
   const res = init.initGenesis(baseArgs(g, dir), { repoRoot: g.root, personaOrder: ORDER });
   const blob = JSON.stringify(res);
   assert.ok(!/signature|stateKey|priorAddress|privateKey/i.test(blob), "no secret fields in result");
@@ -173,8 +245,51 @@ ok("SECRET OUTPUT: the sanitized result exposes no key, signature, or raw state"
   fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
 });
 
+ok("SECRET OUTPUT (CLI): stdout/stderr carry no state key, execution token, or protected paths", () => {
+  const g = buildGrantedRepo();
+  // Run the temp repo's OWN committed copy of the initializer, so resolveRepoRoot
+  // (which derives from __dirname) targets the temp repo, not this worktree.
+  const scriptInRepo = path.join(g.root, "functions/scripts/authPr4InitProgression.js");
+  // Keep key + outputs OUTSIDE the repo tree (so the governed tree stays clean).
+  const io = tmp();
+  const keyFile = path.join(io, "state.key");
+  fs.writeFileSync(keyFile, crypto.randomBytes(48), { mode: 0o600 });
+  const progOut = path.join(io, "progression.json");
+  const cli = (over) => execFileSync("node", [scriptInRepo,
+    "--projectId", PROD, "--confirmProduction", PROD,
+    "--authorizedCommit", g.authorizedCommit, "--executionModeConfirmation", over.token ?? g.executionModeToken,
+    "--executor", g.executor, "--stateKeyFile", over.keyFile ?? keyFile, "--progressionOut", over.progOut ?? progOut,
+  ], { cwd: g.root, encoding: "utf8" });
+
+  // SUCCESS run.
+  const stdout = cli({});
+  assert.match(stdout, /GENESIS initialised/);
+  assert.ok(!stdout.includes(g.executionModeToken), "execution token absent from stdout");
+  assert.ok(!stdout.includes(keyFile) && !stdout.includes(progOut) && !stdout.includes(io), "no protected paths in stdout");
+  assert.ok(!stdout.includes(fs.readFileSync(keyFile).toString("hex").slice(0, 16)), "no key bytes in stdout");
+  assert.ok(fs.existsSync(progOut) && !fs.existsSync(gate.initMarkerPath(progOut)), "state created, marker cleared");
+
+  // FAILURE run whose RAW error would embed a protected path (missing state-key file).
+  const io2 = tmp();
+  const missingKey = path.join(io2, "does-not-exist.key");
+  const progOut2 = path.join(io2, "p.json");
+  let combined = "";
+  try { cli({ keyFile: missingKey, progOut: progOut2 }); assert.fail("should have failed"); }
+  catch (e) { combined = String(e.stdout || "") + String(e.stderr || ""); }
+  assert.match(combined, /Failed:/);
+  assert.ok(!combined.includes(io2) && !combined.includes(missingKey), "protected path sanitized from stderr");
+
+  fs.rmSync(io, { recursive: true, force: true }); fs.rmSync(io2, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
+});
+
+ok("SANITIZER: strips Windows + POSIX absolute paths and echoed secrets", () => {
+  assert.equal(init.sanitizeForOutput("open 'C:\\secure\\state.key' failed"), "open '<path>' failed");
+  assert.equal(init.sanitizeForOutput("ENOENT /secure/vault/progression.json"), "ENOENT <path>");
+  assert.equal(init.sanitizeForOutput("token EMT-XYZ leaked", ["EMT-XYZ"]), "token <redacted> leaked");
+});
+
 ok("CREDENTIAL-FREE: the initializer performs no Firebase initialization", () => {
-  const src = fs.readFileSync(path.join(REAL_ROOT, "functions/scripts/authPr4InitProgression.js"), "utf8");
+  const src = fs.readFileSync(SCRIPT, "utf8");
   assert.doesNotMatch(src, /initializeApp|getAuth|firebase-admin/);
 });
 

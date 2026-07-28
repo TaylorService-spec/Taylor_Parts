@@ -510,6 +510,22 @@ const TXN_MUTEX_FIELDS = Object.freeze(["version", "token", "at"]);
 const TXN_TOKEN_RE = /^[0-9a-f]{32}$/;
 function txnPath(stateFile) { return `${stateFile}.txn`; }
 
+// INITIALIZATION MARKER -- an owner-token-bound `.init` file the genesis initializer
+// publishes BEFORE either the state or anchor and removes ONLY after both are fsynced
+// and independently verified. A present marker means genesis initialization is
+// incomplete or was interrupted (crash-left): the gate refuses ALL production steps
+// while it is present (before any claim or Auth access). It is NEVER auto-broken --
+// a leftover marker is a governed reconciliation condition.
+const INIT_MARKER_VERSION = 1;
+const INIT_MARKER_FIELDS = Object.freeze(["version", "token", "at"]);
+function initMarkerPath(stateFile) { return `${stateFile}.init`; }
+function assertNoInitMarker(stateFile, deps = {}) {
+  const _fs = deps.fs || fs;
+  if (_fs.existsSync(initMarkerPath(stateFile))) {
+    throw new Error("An initialization marker is present: genesis initialization is incomplete or was interrupted (crash-left). Governed reconciliation is required before any production step.");
+  }
+}
+
 // Verify the on-disk transition mutex is present, well-formed, and owned by the
 // caller-provided token (safe comparison). Mutex existence alone is NOT authority.
 function assertMutexOwner(stateFile, ownerToken, deps = {}) {
@@ -661,6 +677,10 @@ function assertProductionAuthorization(args, deps = {}) {
     projectId: args.projectId, personaOrder: deps.personaOrder, derivedHashes: reviewedHashes, repoIdentity,
     authorizedCommit: args.authorizedCommit, executionModeConfirmation: args.executionModeConfirmation, executor: args.executor,
   });
+
+  // An incomplete/crash-left genesis initialization (marker present) blocks every
+  // production step BEFORE any progression read, claim, or Auth access.
+  assertNoInitMarker(args.progressionFile, deps);
 
   const expected = { authorizationId: authorization.authorizationId, projectId: args.projectId, workflowIdentityHash: idHash, personaOrder: deps.personaOrder };
   const state = readState(args.progressionFile, stateKey, expected, deps);
@@ -835,6 +855,7 @@ module.exports = {
   anchorPath, signAnchor, writeAnchor, readAnchor, verifyStateFreshness,
   lockPath, readLock, acquireClaim, releaseClaim, assertOwnsClaim, assertLiveOwnership, leaseExpired,
   txnPath, withTransition, assertMutexOwner,
+  INIT_MARKER_VERSION, INIT_MARKER_FIELDS, initMarkerPath, assertNoInitMarker,
   nextEligiblePersona,
   signBreakGlass, readAndVerifyBreakGlass,
   assertProductionAuthorization,

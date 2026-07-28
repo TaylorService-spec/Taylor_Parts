@@ -369,6 +369,25 @@ ok("INTERLEAVING: A claims, lease expires, B records recovery_required; A's late
   fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
 });
 
+ok("INIT MARKER: assertProductionAuthorization refuses while a genesis init marker is present (crash-left initialization)", () => {
+  const g = buildGrantedRepo("demo-authpr4");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-mark-"));
+  const keyFile = path.join(dir, "k"); const key = crypto.randomBytes(48); fs.writeFileSync(keyFile, key, { mode: 0o600 });
+  const stateFile = path.join(dir, "state.json"); const mappingFile = path.join(dir, "map.json");
+  fs.writeFileSync(mappingFile, JSON.stringify({ "emp-rudy-driver": { uid: "u1", newAlias: "base+driver@gmail.com" } }));
+  const idHash = gate.workflowIdentityHash(gate.governedHashesAtCommit(g.root, g.authorizedCommit));
+  writeGenesis(stateFile, key, { authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", idHash });
+  const baseArgs = { projectId: "demo-authpr4", executeProduction: true, mappingFile, progressionFile: stateFile, stateKeyFile: keyFile, authorizedCommit: g.authorizedCommit, executionModeConfirmation: g.executionModeToken, executor: g.executor, capturedStateOut: path.join(dir, "c.json") };
+  // A valid genesis alone proceeds to claim; but a present init marker blocks first.
+  fs.writeFileSync(gate.initMarkerPath(stateFile), JSON.stringify({ version: gate.INIT_MARKER_VERSION, token: "t", at: new Date().toISOString() }));
+  throws(() => gate.assertProductionAuthorization(baseArgs, { repoRoot: g.root, personaOrder: ORDER, now: () => new Date(), leaseSeconds: 1 }), /initialization marker is present/i);
+  // Removing the marker lets the same call proceed to a claim (proves the marker was the blocker).
+  fs.unlinkSync(gate.initMarkerPath(stateFile));
+  const ctx = gate.assertProductionAuthorization(baseArgs, { repoRoot: g.root, personaOrder: ORDER, now: () => new Date(), leaseSeconds: 1 });
+  assert.equal(ctx.effective.employeeId, "emp-rudy-driver");
+  fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
+});
+
 ok("TRANSITION MUTEX (TOCTOU): a held .txn fails closed (no auto-break); after release the loser re-reads terminal state and does not overwrite", () => {
   const key = KEY(); const idHash = "ab".repeat(32);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-txn-"));

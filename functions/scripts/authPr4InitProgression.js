@@ -12,34 +12,32 @@
 //
 // This file is part of the gate's GOVERNED_FILES set: it creates production
 // execution-control state, so the Owner's authorization is bound to its exact
-// reviewed hash (a tampered initializer would change the hash and fail the gate's
-// governed-file binding, and its genesis would fail the gate's read-back).
+// reviewed hash.
 //
 // SAFETY POSTURE
-//   - CREATE, never overwrite: refuses if the progression file, its anchor, its
-//     lock, or its transition mutex already exists (create-only `wx`).
-//   - Loads the state key WITHOUT printing it; emits no key or private state.
+//   - Production-only guard: requires --projectId taylor-parts AND matching
+//     --confirmProduction taylor-parts before loading the key or creating anything.
+//   - CRASH-SAFE INITIALIZATION TRANSACTION: an owner-token `.init` MARKER is
+//     published (create-only, fsync) BEFORE either the state or the anchor, and is
+//     removed ONLY after both are fsynced and independently verified through the
+//     gate. A crash at ANY boundary leaves the marker (and any partial artifact) on
+//     disk; the production gate refuses every step while a marker is present. The
+//     marker is NEVER auto-broken -- a leftover is a governed reconciliation
+//     condition (§ runbook). On any error, this command leaves the marker/partials
+//     in place (it does not auto-delete an ambiguous initialization).
+//   - CREATE, never overwrite: refuses if the progression / anchor / lock / txn /
+//     init marker already exists.
+//   - Loads the state key WITHOUT printing it; emits NO key, token, or protected
+//     filesystem path on stdout/stderr (sanitized output only).
 //   - Reads the GRANTED authorization + governed-file hashes FROM the exact
-//     --authorizedCommit (git blob), verifies them through the same gate helpers,
-//     and requires no drift between the authorized commit and HEAD.
-//   - Binds the genesis to the exact authorizationId, projectId, persona order, and
-//     workflow identity hash.
-//   - Writes signed state + matching anchor atomically, protected (0600).
-//   - Reads back and verifies BOTH artifacts through the production gate.
-//   - Credential-free: NO Firebase initialization, NO network access. Only git,
-//     filesystem, and crypto.
-//   - Sanitized output only (booleans / counts / a workflow-identity ref).
-//
-// Usage (credentialed operator environment not required -- this is repo-only):
-//   node scripts/authPr4InitProgression.js \
-//     --projectId taylor-parts --confirmProduction taylor-parts \
-//     --authorizedCommit <merged authorization head> \
-//     --executionModeConfirmation <token> --executor <name> \
-//     --stateKeyFile /secure/state.key --progressionOut /secure/progression.json
+//     --authorizedCommit, verifies through the gate, requires no drift vs HEAD and a
+//     clean checkout.
+//   - Credential-free: NO Firebase initialization, NO network access.
 
 const fs = require("fs");
 const gate = require("./authPr4ProductionGate.js");
 
+const PRODUCTION_PROJECT_ID = "taylor-parts";
 const MIGRATION_PERSONA_ORDER = Object.freeze([
   "emp-rudy-driver",
   "emp-rudy-parts-associate",
@@ -66,13 +64,21 @@ function parseArgs(argv) {
   return args;
 }
 
-// Create-only write (fails closed if the path already exists), fsync, 0600.
+// Create-only write (O_EXCL), fsync, 0600. Errors are SANITIZED (no path leak).
 function createOnly(file, contents, deps = {}) {
   const _fs = deps.fs || fs;
-  const fd = _fs.openSync(file, "wx", 0o600); // O_EXCL: EEXIST if present
+  let fd;
+  try {
+    fd = _fs.openSync(file, "wx", 0o600);
+  } catch (err) {
+    if (err && err.code === "EEXIST") throw new Error("Refusing to overwrite an existing protected artifact (governed reconciliation required).");
+    throw new Error("Failed to create a protected artifact (I/O error).");
+  }
   try { _fs.writeSync(fd, contents); _fs.fsyncSync(fd); } finally { _fs.closeSync(fd); }
   try { _fs.chmodSync(file, 0o600); } catch { /* Windows ACLs operator-managed */ }
 }
+
+const crypto = require("crypto");
 
 // Pure, testable core. deps allows injecting fs / now / repoRoot / execFileSync.
 function initGenesis(args, deps = {}) {
@@ -80,22 +86,24 @@ function initGenesis(args, deps = {}) {
   const now = deps.now || (() => new Date());
   const personaOrder = deps.personaOrder || MIGRATION_PERSONA_ORDER;
 
-  // Required, well-formed inputs (fail closed before touching state).
-  if (!args.projectId) throw new Error("--projectId is required.");
+  // Production-only guard -- before the state key or any artifact.
+  if (args.projectId !== PRODUCTION_PROJECT_ID) throw new Error(`This production initializer requires --projectId ${PRODUCTION_PROJECT_ID}.`);
+  if (args.confirmProduction !== PRODUCTION_PROJECT_ID) throw new Error(`Production initialization requires an explicit matching --confirmProduction ${PRODUCTION_PROJECT_ID}.`);
   if (!gate.isFullSha(args.authorizedCommit || "")) throw new Error("--authorizedCommit (canonical full 40-hex SHA) is required.");
   if (!gate.isBoundedString(args.executionModeConfirmation || "", 128)) throw new Error("--executionModeConfirmation is required.");
   if (!gate.isBoundedString(args.executor || "", 128)) throw new Error("--executor is required.");
   if (!args.progressionOut) throw new Error("--progressionOut <path> is required.");
 
-  const stateKey = gate.loadStateKey(args.stateKeyFile, deps); // never printed
-
-  // CREATE, never overwrite: none of the four runtime artifacts may pre-exist.
+  const marker = gate.initMarkerPath(args.progressionOut);
   const anchor = gate.anchorPath(args.progressionOut);
   const lock = gate.lockPath(args.progressionOut);
   const txn = gate.txnPath(args.progressionOut);
-  for (const p of [args.progressionOut, anchor, lock, txn]) {
-    if (_fs.existsSync(p)) throw new Error(`Refusing to overwrite existing progression/anchor/lock/txn file: ${p}. Genesis creates only.`);
+  // CREATE, never overwrite: none of the five runtime artifacts may pre-exist.
+  for (const p of [args.progressionOut, anchor, lock, txn, marker]) {
+    if (_fs.existsSync(p)) throw new Error("Refusing to overwrite an existing progression/anchor/lock/txn/init artifact. Genesis creates only; a present init marker requires governed reconciliation.");
   }
+
+  const stateKey = gate.loadStateKey(args.stateKeyFile, deps); // never printed
 
   // Repository authority: clean checkout, governed hashes at the authorized commit,
   // no drift vs HEAD, and the GRANTED authorization verified through the gate.
@@ -105,9 +113,7 @@ function initGenesis(args, deps = {}) {
   const reviewedHashes = gate.governedHashesAtCommit(repoRoot, args.authorizedCommit, deps);
   const headHashes = gate.governedHashesAtCommit(repoRoot, repoIdentity.head, deps);
   for (const rel of gate.GOVERNED_FILES) {
-    if (reviewedHashes[rel] !== headHashes[rel]) {
-      throw new Error(`Governed file ${rel} changed between the authorized commit and HEAD -- authorization invalid.`);
-    }
+    if (reviewedHashes[rel] !== headHashes[rel]) throw new Error(`Governed file ${rel} changed between the authorized commit and HEAD -- authorization invalid.`);
   }
   const idHash = gate.workflowIdentityHash(reviewedHashes);
   const { artifact } = gate.loadGovernedAuthorization({ repoRoot, authorizedCommit: args.authorizedCommit }, deps);
@@ -117,26 +123,22 @@ function initGenesis(args, deps = {}) {
   });
 
   // Canonical revision-0 eligible genesis for position 1.
-  const genesis = gate.genesisState({
-    authorizationId: authorization.authorizationId, projectId: args.projectId,
-    workflowIdentityHash: idHash, personaOrder,
-  }, { now });
-
-  // Atomically create signed state + matching anchor (create-only, protected).
+  const genesis = gate.genesisState({ authorizationId: authorization.authorizationId, projectId: args.projectId, workflowIdentityHash: idHash, personaOrder }, { now });
   const signedState = JSON.stringify({ ...genesis, signature: gate.signProgression(genesis, stateKey) });
   const anchorPayload = { version: gate.ANCHOR_VERSION, authorizationId: authorization.authorizationId, highWaterRevision: genesis.revision, stateHash: gate.progressionHash(genesis), updatedAt: now().toISOString() };
   const signedAnchor = JSON.stringify({ ...anchorPayload, signature: gate.signAnchor(anchorPayload, stateKey) });
-  createOnly(args.progressionOut, signedState, deps);
-  try {
-    createOnly(anchor, signedAnchor, deps);
-  } catch (err) {
-    // Anchor create failed after the state was created: remove the partial state so
-    // the operator re-runs cleanly (no half-initialised, unverifiable state remains).
-    try { _fs.unlinkSync(args.progressionOut); } catch { /* best effort */ }
-    throw err;
-  }
 
-  // Read back + verify BOTH artifacts through the production gate.
+  // --- CRASH-SAFE INITIALIZATION TRANSACTION ---
+  // 1. Publish the owner-token marker FIRST. A crash after this (before/after state,
+  //    before anchor, or before marker removal) leaves the marker -> the gate blocks.
+  //    On ANY error below we do NOT delete the marker or partials (never auto-delete
+  //    an ambiguous initialization); the operator runs governed reconciliation.
+  const markerToken = crypto.randomBytes(16).toString("hex");
+  createOnly(marker, JSON.stringify({ version: gate.INIT_MARKER_VERSION, token: markerToken, at: now().toISOString() }), deps);
+  // 2. Publish state, then anchor (each create-only + fsynced).
+  createOnly(args.progressionOut, signedState, deps);
+  createOnly(anchor, signedAnchor, deps);
+  // 3. Independently verify BOTH through the gate before removing the marker.
   const expected = { authorizationId: authorization.authorizationId, projectId: args.projectId, workflowIdentityHash: idHash, personaOrder };
   const readBack = gate.readState(args.progressionOut, stateKey, expected, deps);
   gate.verifyStateFreshness(args.progressionOut, readBack, stateKey, deps);
@@ -145,8 +147,18 @@ function initGenesis(args, deps = {}) {
       readBack.attempt !== null || !next || next.position !== 1 || next.employeeId !== personaOrder[0]) {
     throw new Error("Post-write verification failed: the genesis is not a canonical revision-0 eligible position-1 state.");
   }
+  // 4. Remove the marker ONLY after both artifacts are verified, and ONLY if it still
+  //    carries OUR token (owner-bound; never delete a foreign marker).
+  try {
+    const held = JSON.parse(_fs.readFileSync(marker, "utf8"));
+    if (held && held.token === markerToken) _fs.unlinkSync(marker);
+    else throw new Error("Initialization marker is owned by another attempt; leaving it for governed reconciliation.");
+  } catch (err) {
+    if (/another attempt/.test(err.message)) throw err;
+    throw new Error("Failed to finalise initialization (marker); governed reconciliation required.");
+  }
 
-  // Sanitized result -- no key, no signature, no raw state.
+  // Sanitized result -- no key, no signature, no raw state, no protected path.
   return {
     ok: true,
     authorizationId: authorization.authorizationId,
@@ -159,18 +171,32 @@ function initGenesis(args, deps = {}) {
     nextPosition: next.position,
     stateCreated: true,
     anchorCreated: true,
+    markerCleared: true,
   };
+}
+
+// Strip protected filesystem paths and echoed secrets from operator-facing output.
+function sanitizeForOutput(msg, secrets = []) {
+  let s = String(msg);
+  s = s.replace(/[A-Za-z]:\\[^\s'"]+/g, "<path>");            // Windows absolute paths
+  s = s.replace(/(?:\/[^\s'":]+){2,}/g, "<path>");             // POSIX multi-segment paths
+  for (const sec of secrets) if (sec && s.includes(sec)) s = s.split(sec).join("<redacted>");
+  return s;
 }
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const result = initGenesis(args);
-  console.log("GENESIS initialised:", `${args.progressionOut} (eligible, revision 0, next=${result.nextPersona} position ${result.nextPosition}).`);
-  console.log(JSON.stringify(result, null, 2));
+  try {
+    const result = initGenesis(args);
+    // No protected path is printed -- only the sanitized result (no path fields).
+    console.log(`GENESIS initialised (eligible, revision 0, next=${result.nextPersona} position ${result.nextPosition}).`);
+    console.log(JSON.stringify(result, null, 2));
+  } catch (err) {
+    console.error("Failed:", sanitizeForOutput(err.message, [args.executionModeConfirmation]));
+    process.exitCode = 1;
+  }
 }
 
-if (require.main === module) {
-  main().catch((err) => { console.error("Failed:", err.message); process.exitCode = 1; });
-}
+if (require.main === module) { main(); }
 
-module.exports = { parseArgs, createOnly, initGenesis, MIGRATION_PERSONA_ORDER };
+module.exports = { parseArgs, createOnly, initGenesis, sanitizeForOutput, PRODUCTION_PROJECT_ID, MIGRATION_PERSONA_ORDER };

@@ -126,12 +126,46 @@ email-provider configuration · enumeration-protection changes · Auth project-s
 changes · Firestore mutation · role/claim/permission/`accessVersion` changes ·
 Customer/Equipment combined release · Inventory / Equipment / Truck-Inventory work.
 
+## 5a. Genesis reconciliation (crash-left init marker)
+
+The initializer publishes an owner-token `<progression>.init` **marker** before it
+writes the signed state or anchor, and removes it only after **both** are fsynced and
+independently verified through the gate. If initialization crashes at any boundary, the
+marker (and any partial artifact) is left on disk; the production gate refuses **every**
+step while a marker is present (`assertNoInitMarker`). The initializer **never**
+auto-deletes an ambiguous or foreign marker. To reconcile:
+
+1. **Do not run any migration step** and do not re-run the initializer over the same
+   `--progressionOut` (it refuses to overwrite).
+2. Inspect out-of-band whether the signed state **and** anchor exist and verify under the
+   protected state key (use the gate's read path, never edit by hand).
+3. If neither verifies as a canonical revision-0 eligible/position-1 genesis, delete the
+   partial state/anchor **and** the marker out-of-band, then re-run the initializer to a
+   clean path.
+4. If both verify, the genesis is sound; the only residue is the marker — remove the
+   marker out-of-band after confirming ownership, then proceed.
+5. Record a sanitized reconciliation note (booleans/refs only) — no key, path, or
+   identity value.
+
 ## 7. Confirmation (this PR)
 
 No production action occurred in preparing this PR: no Auth mutation, no email, no
 session revocation, no deployment, no provider config, no private mapping/state-key
-requested or committed. The governed workflow implementation files are **unchanged**.
-This PR **fully populates the previously PENDING placeholder authorization artifact and
-changes its status to GRANTED** (`authorizationId`, `reviewedHead`, both governed-file
-hashes, `executionModeToken`, `executor.name`, and `requiredConfirmer` populated from
-their placeholders). Draft — returned for Codex review; not merged; execution not begun.
+requested or committed, **no re-grant of the authorization artifact**.
+
+**What this PR changes vs. what PR #460 did.** The `PENDING → GRANTED` transition of
+[`production-authorization.json`](../../functions/authpr4/production-authorization.json)
+was performed **historically by PR #460** (merged `70c3989`, [`DECISIONS.md` #52](../DECISIONS.md)),
+which populated the placeholder and bound it to the **two**-file governed set at
+`reviewedHead c2604df`. **This PR (the genesis-initializer correction)** does something
+different: it adds the governed, credential-free initializer
+[`functions/scripts/authPr4InitProgression.js`](../../functions/scripts/authPr4InitProgression.js)
+and **expands the gate's `GOVERNED_FILES` to three files**. That expansion **invalidates
+the existing two-file authorization (fails closed)** — `governedFileHashes` no longer
+covers the governed set. This PR **leaves `production-authorization.json` unchanged**
+(now stale) and **does NOT re-grant**. Production execution stays blocked until a
+**separate** Owner authorization PR re-binds the artifact to this correction's merged head
+and the **three**-file `governedFileHashes` (see the ⚠ re-authorization note at the top and
+§1). The §1 table and §1 change-scope note describe the historical two-file binding and are
+superseded by that forthcoming re-grant. Draft — returned for Codex review; not merged;
+genesis not created; execution not begun.
