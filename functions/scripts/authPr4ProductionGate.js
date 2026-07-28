@@ -40,6 +40,7 @@ const PRODUCTION_PROJECT_ID = "taylor-parts";
 const GOVERNED_FILES = Object.freeze([
   "functions/scripts/authPr4RecoveryEmailMigration.js",
   "functions/scripts/authPr4ProductionGate.js",
+  "functions/scripts/authPr4InitProgression.js",
 ]);
 const AUTH_ARTIFACT_PATH = "functions/authpr4/production-authorization.json";
 const AUTH_SCHEMA = "authpr4.production-authorization/v1";

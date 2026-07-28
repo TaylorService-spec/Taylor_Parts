@@ -1,10 +1,19 @@
 # AUTH-PR-4 — Production Identity-Mutation Authorization (GRANTED) & Execution Package
 
-> **STATUS: GRANTED by the Owner (2026-07-27).** Recorded append-only in
-> [`docs/DECISIONS.md` #52](../DECISIONS.md) and enabled in
+> **STATUS: GRANTED by the Owner (2026-07-27)** — but see the re-authorization note.
+> Recorded append-only in [`docs/DECISIONS.md` #52](../DECISIONS.md) and enabled in
 > [`functions/authpr4/production-authorization.json`](../../functions/authpr4/production-authorization.json)
-> (`PENDING → GRANTED`). **Merging this PR does NOT execute the migration.** Execution
-> is a separate, controlled step (see §5). Subject to Codex review before merge.
+> (`PENDING → GRANTED`). **Merging does NOT execute the migration.** Execution is a
+> separate, controlled step (see §5). Subject to Codex review before merge.
+>
+> **⚠ RE-AUTHORIZATION REQUIRED (governed-set expansion).** The genesis initializer
+> (`functions/scripts/authPr4InitProgression.js`) was added to the gate's
+> `GOVERNED_FILES` binding (Owner-decided). The governed set is now **three** files,
+> so the authorization artifact recorded here — bound to the **two**-file set at
+> `reviewedHead c2604df` — **no longer verifies (fails closed)**. Production execution
+> is blocked until a **new** Owner authorization PR re-binds the artifact to this
+> correction's merged head + the **three**-file `governedFileHashes`. The §1 table
+> below still shows the prior two-file binding; it is superseded by that re-grant.
 
 | | |
 |---|---|
@@ -87,7 +96,21 @@ review and merges. In order:
 1. Obtain the **private alias mapping** and **protected state key** out-of-band
    (never committed).
 2. Confirm the **named executor** (`--executor` = the recorded contract value).
-3. Initialise the signed genesis **progression state** (out-of-band, one-time).
+3. Initialise the signed genesis **progression state** (out-of-band, one-time) with the
+   governed, credential-free initializer
+   [`functions/scripts/authPr4InitProgression.js`](../../functions/scripts/authPr4InitProgression.js)
+   — it refuses to overwrite, reads the GRANTED authorization + governed hashes at the
+   authorized commit, creates the revision-0 eligible/position-1 signed state + anchor
+   atomically (`0600`), and verifies both through the gate. **This file is part of the
+   governed-file hash binding** (adding it required a re-bound authorization — see §1):
+
+   ```bash
+   node functions/scripts/authPr4InitProgression.js \
+     --projectId taylor-parts --confirmProduction taylor-parts \
+     --authorizedCommit <merged authorization head> \
+     --executionModeConfirmation <token> --executor rudy-digiorgio \
+     --stateKeyFile /secure/state.key --progressionOut /secure/progression.json
+   ```
 4. For each persona 1→5, run the workflow **once** with `--executeProduction`,
    `--authorizedCommit <merged authorization head>`, `--executionModeConfirmation
    <token>`, `--executor <name>`, `--mappingFile`, `--stateKeyFile`,
