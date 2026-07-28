@@ -506,7 +506,26 @@ function assertLiveOwnership(stateFile, key, ctx, deps = {}) {
 // different owner's mutex.
 const TXN_MUTEX_VERSION = 1;
 const TXN_MUTEX_FIELDS = Object.freeze(["version", "token", "at"]);
+const TXN_TOKEN_RE = /^[0-9a-f]{32}$/;
 function txnPath(stateFile) { return `${stateFile}.txn`; }
+
+// Verify the on-disk transition mutex is present, well-formed, and owned by the
+// caller-provided token (safe comparison). Mutex existence alone is NOT authority.
+function assertMutexOwner(stateFile, ownerToken, deps = {}) {
+  const _fs = deps.fs || fs;
+  let raw;
+  try { raw = _fs.readFileSync(txnPath(stateFile), "utf8"); }
+  catch { throw new Error("commitState() requires a held transition mutex (absent/unreadable)."); }
+  let m;
+  try { m = JSON.parse(raw); } catch { throw new Error("Transition mutex is malformed (unparseable)."); }
+  assertExactShape(m, TXN_MUTEX_FIELDS, "transition mutex");
+  if (m.version !== TXN_MUTEX_VERSION) throw new Error("Transition mutex version unsupported.");
+  if (typeof m.token !== "string" || !TXN_TOKEN_RE.test(m.token)) throw new Error("Transition mutex token is not canonical.");
+  if (!isUtcInstant(m.at)) throw new Error("Transition mutex timestamp is not a valid UTC instant.");
+  if (typeof ownerToken !== "string" || !TXN_TOKEN_RE.test(ownerToken) || !timingSafeHexEqual(m.token, ownerToken)) {
+    throw new Error("commitState() token does not match the held transition-mutex owner (foreign/absent mutex).");
+  }
+}
 function withTransition(stateFile, deps, fn) {
   const _fs = deps.fs || fs;
   const now = deps.now ? deps.now() : new Date();
@@ -523,7 +542,9 @@ function withTransition(stateFile, deps, fn) {
   }
   try { _fs.writeSync(fd, JSON.stringify({ version: TXN_MUTEX_VERSION, token, at: now.toISOString() })); _fs.fsyncSync(fd); } finally { _fs.closeSync(fd); }
   try {
-    return fn();
+    // The callback receives the owner token; every commitState() it performs must
+    // present it, so "file exists" alone is never sufficient authority.
+    return fn(token);
   } finally {
     // Owner-bound cleanup: remove ONLY a mutex that still carries our token.
     try {
@@ -555,11 +576,11 @@ function nextState(prev, changes, key, deps = {}) {
 // therefore refuses unless the transition mutex is currently held -- so a newly
 // introduced unprotected commitState() call fails closed at runtime (caught by
 // tests). Genesis creation is separate (it does not call commitState).
-function commitState(stateFile, prev, changes, key, deps = {}) {
-  const _fs = deps.fs || fs;
-  if (!_fs.existsSync(txnPath(stateFile))) {
-    throw new Error("commitState() called outside a transition mutex -- all runtime progression transitions must run inside withTransition().");
-  }
+function commitState(stateFile, prev, changes, key, deps = {}, ownerToken) {
+  // Token-bound: the caller must present the owner token issued by withTransition()
+  // and matching the on-disk mutex. Mere existence is never sufficient authority --
+  // a foreign-owned or malformed mutex fails closed.
+  assertMutexOwner(stateFile, ownerToken, deps);
   const { payload, signed } = nextState(prev, changes, key, deps);
   atomicWrite(stateFile, signed, deps);
   writeAnchor(stateFile, { authorizationId: payload.authorizationId, highWaterRevision: payload.revision, stateHash: progressionHash(payload) }, key, deps);
@@ -661,7 +682,7 @@ function assertProductionAuthorization(args, deps = {}) {
     // The takeover uses the SAME serialized transition path; re-read + revalidate
     // under the mutex so two concurrent takeovers cannot race the state/anchor
     // writes (the loser sees a non-claimed state and does not double-write).
-    withTransition(args.progressionFile, deps, () => {
+    withTransition(args.progressionFile, deps, (txnToken) => {
       const cur = readState(args.progressionFile, stateKey, expected, deps);
       verifyStateFreshness(args.progressionFile, cur, stateKey, deps);
       if (cur.status !== "claimed") throw new Error(`Progression already transitioned to "${cur.status}"; no double-takeover.`);
@@ -673,7 +694,7 @@ function assertProductionAuthorization(args, deps = {}) {
       commitState(args.progressionFile, cur, {
         status: "recovery_required", attempt: null,
         lastOutcome: { attemptId: prior.attemptId, mode: prior.mode, targetPersona: prior.targetPersona, result: "uncertain-stale-takeover", at: now().toISOString() },
-      }, stateKey, deps);
+      }, stateKey, deps, txnToken);
     });
     throw new Error("Stale claim taken over: prior attempt recorded recovery_required (governed reconciliation needed).");
   }
@@ -726,7 +747,7 @@ function acquireAndClaim({ args, state, stateKey, authorization, idHash, mode, t
     // worker re-reads a non-eligible state and refuses without writing.
     const now = deps.now ? deps.now() : new Date();
     const expectedBinding = { authorizationId: authorization.authorizationId, projectId: args.projectId, workflowIdentityHash: idHash, personaOrder: deps.personaOrder };
-    withTransition(args.progressionFile, deps, () => {
+    withTransition(args.progressionFile, deps, (txnToken) => {
       const cur = readState(args.progressionFile, stateKey, expectedBinding, deps);
       verifyStateFreshness(args.progressionFile, cur, stateKey, deps);
       if (cur.status !== "eligible") throw new Error(`Progression already transitioned to "${cur.status}"; no double recovery write.`);
@@ -737,13 +758,13 @@ function acquireAndClaim({ args, state, stateKey, authorization, idHash, mode, t
       commitState(args.progressionFile, cur, {
         status: "recovery_required", attempt: null,
         lastOutcome: { attemptId: lk.attemptId, mode: lk.mode, targetPersona: lk.targetPersona, result: "uncertain-orphaned-lock", at: now.toISOString() },
-      }, stateKey, deps);
+      }, stateKey, deps, txnToken);
     });
     throw new Error("Orphaned stale claim lock: progression recorded recovery_required (governed reconciliation needed).");
   }
   // Persist CLAIMED (pending) before any Auth mutation, inside the transition mutex
   // (re-read + re-validate "eligible" + freshness under the mutex).
-  const claimedState = withTransition(args.progressionFile, deps, () => {
+  const claimedState = withTransition(args.progressionFile, deps, (txnToken) => {
     const cur = readState(args.progressionFile, stateKey, {
       authorizationId: authorization.authorizationId, projectId: args.projectId, workflowIdentityHash: idHash, personaOrder: deps.personaOrder,
     }, deps);
@@ -752,7 +773,7 @@ function acquireAndClaim({ args, state, stateKey, authorization, idHash, mode, t
     return commitState(args.progressionFile, cur, {
       status: "claimed",
       attempt: { attemptId, mode, targetPersona, claimedAt: lock.claimedAt, leaseExpiresAt: lock.leaseExpiresAt },
-    }, stateKey, deps);
+    }, stateKey, deps, txnToken);
   });
   const expected = { authorizationId: authorization.authorizationId, projectId: args.projectId, workflowIdentityHash: idHash, personaOrder: deps.personaOrder };
   // Context checked live before EVERY outcome write (defeats stale/superseded workers).
@@ -774,12 +795,12 @@ function acquireAndClaim({ args, state, stateKey, authorization, idHash, mode, t
       const own = { ...ownership, expected: { ...expected, personaOrder: d.personaOrder || deps.personaOrder } };
       // Ownership re-check AND commit happen INSIDE the transition mutex -- no
       // TOCTOU window in which a takeover could interleave.
-      return withTransition(args.progressionFile, d, () => {
+      return withTransition(args.progressionFile, d, (txnToken) => {
         const cur = assertLiveOwnership(args.progressionFile, stateKey, own, d);
         const changes = mode === "forward"
           ? { status: "eligible", completed: [...cur.completed, targetPersona], attempt: null, lastOutcome: { attemptId, mode, targetPersona, result: "completed", at: (d.now ? d.now() : new Date()).toISOString() } }
           : { status: "suspended", completed: cur.completed.filter((x) => x !== targetPersona), attempt: null, lastOutcome: { attemptId, mode, targetPersona, result: "rolled-back-suspended", at: (d.now ? d.now() : new Date()).toISOString() } };
-        const done = commitState(args.progressionFile, cur, changes, stateKey, d);
+        const done = commitState(args.progressionFile, cur, changes, stateKey, d, txnToken);
         releaseClaim(args.progressionFile, attemptId, d);
         return done;
       });
@@ -790,12 +811,12 @@ function acquireAndClaim({ args, state, stateKey, authorization, idHash, mode, t
       // Live-ownership + commit under the mutex: a superseded worker must not
       // overwrite a recovery_required/terminal state (keeps takeover evidence
       // intact). Never reverts to eligible.
-      return withTransition(args.progressionFile, d, () => {
+      return withTransition(args.progressionFile, d, (txnToken) => {
         const cur = assertLiveOwnership(args.progressionFile, stateKey, own, d);
         return commitState(args.progressionFile, cur, {
           status: "uncertain",
           lastOutcome: { attemptId, mode, targetPersona, result: result || "uncertain", at: (d.now ? d.now() : new Date()).toISOString() },
-        }, stateKey, d);
+        }, stateKey, d, txnToken);
       });
     },
   };
@@ -812,7 +833,7 @@ module.exports = {
   progressionCanonical, signProgression, progressionHash, genesisState, readState, commitState, nextState,
   anchorPath, signAnchor, writeAnchor, readAnchor, verifyStateFreshness,
   lockPath, readLock, acquireClaim, releaseClaim, assertOwnsClaim, assertLiveOwnership, leaseExpired,
-  txnPath, withTransition,
+  txnPath, withTransition, assertMutexOwner,
   nextEligiblePersona,
   signBreakGlass, readAndVerifyBreakGlass,
   assertProductionAuthorization,
