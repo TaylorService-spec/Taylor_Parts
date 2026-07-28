@@ -45,6 +45,34 @@ parity("validateEquipmentModel", SM.validateEquipmentModel, CM.validateEquipment
 // validateEquipmentModelAlias — success + every reason + stored aliasKey agreement
 const A = (o) => ({ aliasType: "SOURCE_MODEL", manufacturerId: "Taylor", rawValue: "C-713", equipmentModelId: "TAYLOR--C713", ...o });
 const aliases = [A({ rawValue: " c-713 " }), A({ note: "x" }), A({ aliasType: "NOPE" }), A({ manufacturerId: "  " }), A({ rawValue: "   " }), A({ equipmentModelId: "A" }), A({ aliasKey: "SOURCE_MODEL|TAYLOR|C-713" }), A({ aliasKey: "WRONG" }), null, [], 7, {}];
+// isCanonicalModelAliasKey -- the authoritative stored-aliasKey predicate. Corpus spans canonical keys
+// for every alias type, an alias value legitimately containing "|", segment-count and empty-segment
+// failures, casing/whitespace/normalization disagreements, noncanonical + wrong manufacturers, control
+// characters (C0/C1/DEL/zero-width/bidi/line-separator/BOM), non-NFKC and non-NFC forms, the length
+// bound, and non-string inputs.
+const aliasKeys = [
+  "SOURCE_MODEL|TAYLOR|C-713", "MANUFACTURER_MODEL|TAYLOR|C713", "HISTORICAL_MODEL|TAYLOR-CO|C-713 REV A", "SOURCE_MODEL|TAYLOR|C-713|ALT",
+  "SOURCE_MODEL|TAYLOR", "SOURCE_MODEL", "|TAYLOR|C-713", "SOURCE_MODEL||C-713", "SOURCE_MODEL|TAYLOR|",
+  "NOPE|TAYLOR|C-713", "source_model|TAYLOR|C-713", "SOURCE_MODEL|taylor|C-713", "SOURCE_MODEL|TAYLOR CO|C-713",
+  "SOURCE_MODEL|-TAYLOR-|C-713", "SOURCE_MODEL|TAYLOR|c-713", "SOURCE_MODEL|TAYLOR| C-713", "SOURCE_MODEL|TAYLOR|C-713 ",
+  "SOURCE_MODEL|TAYLOR|C  713", "SOURCE_MODEL|HOSHIZAKI|C-713",
+  "SOURCE_MODEL|TAYLOR|C-713\u0000", "SOURCE_MODEL|TAYLOR|C-713\u001F", "SOURCE_MODEL|TAYLOR|C-713\u007F", "SOURCE_MODEL|TAYLOR|C-713\u0085",
+  "SOURCE_MODEL|TAYLOR|C-713\u200B", "SOURCE_MODEL|TAYLOR|C-713\u202E", "SOURCE_MODEL|TAYLOR|C-713\u2028", "SOURCE_MODEL|TAYLOR|C-713\uFEFF",
+  "SOURCE_MODEL|TAYLOR|\uFF43-713", "SOURCE_MODEL|TAYLOR|CAFE\u0301", "SOURCE_MODEL|TAYLOR|" + "A".repeat(600),
+  "", 42, null, undefined, {}, [],
+];
+parity("isCanonicalModelAliasKey", SM.isCanonicalModelAliasKey, CM.isCanonicalModelAliasKey, aliasKeys.map((v) => [v]));
+// Agreement between the derivation and the predicate: whatever normalizeModelAliasKey PRODUCES is
+// canonical, in both ports.
+ok("normalizeModelAliasKey output is canonical in both ports", () => {
+  for (const r of [{ aliasType: "source_model", manufacturerId: " taylor co ", rawValue: " c-713 " }, { aliasType: "HISTORICAL_MODEL", manufacturerId: "Taylor", rawValue: "C  713" }, { aliasType: "MANUFACTURER_MODEL", manufacturerId: "Taylor", rawValue: "C-713|ALT" }]) {
+    const sk = SM.normalizeModelAliasKey(r), ck = CM.normalizeModelAliasKey(r);
+    assert.equal(sk, ck);
+    assert.equal(SM.isCanonicalModelAliasKey(sk), true, sk);
+    assert.equal(CM.isCanonicalModelAliasKey(ck), true, ck);
+  }
+});
+
 parity("validateEquipmentModelAlias", SM.validateEquipmentModelAlias, CM.validateEquipmentModelAlias, aliases.map((a) => [a]));
 
 // detectModelAliasConflicts — clean, 2-owner, 3+ owner (deterministic ordering), malformed, non-array
@@ -133,4 +161,18 @@ parity("analyzeCompatibilityEvidenceByRelationship", SC.analyzeCompatibilityEvid
   ["x"],
 ]);
 
+// isCanonicalCompatibilityId / isCanonicalCompatibilitySourceId -- the authoritative opaque-ID shape
+// predicates consumed by D4 operation target-id validation.
+const opaqueIds = [CID, SID, "cmp_" + "a".repeat(64), "src_" + "a".repeat(64), "cmp_" + "A".repeat(64), "cmp_" + "a".repeat(63), "cmp_" + "a".repeat(65), "cmp_", "src_bad", "cmp_" + "g".repeat(64), " cmp_" + "a".repeat(64), "", 42, null, undefined, {}, []];
+parity("isCanonicalCompatibilityId", SC.isCanonicalCompatibilityId, CC.isCanonicalCompatibilityId, opaqueIds.map((v) => [v]));
+parity("isCanonicalCompatibilitySourceId", SC.isCanonicalCompatibilitySourceId, CC.isCanonicalCompatibilitySourceId, opaqueIds.map((v) => [v]));
+ok("buildCompatibilityId output is canonical in both ports", () => {
+  for (const k of ["[1,\"TAYLOR--C713\"]", "", "unicode-é-key"]) {
+    assert.equal(SC.buildCompatibilityId(k), CC.buildCompatibilityId(k));
+    assert.equal(SC.isCanonicalCompatibilityId(SC.buildCompatibilityId(k)), true);
+    assert.equal(CC.isCanonicalCompatibilityId(CC.buildCompatibilityId(k)), true);
+  }
+  assert.equal(SC.isCanonicalCompatibilitySourceId(SID), true);
+  assert.equal(CC.isCanonicalCompatibilitySourceId(SID), true);
+});
 console.log(`\n${passed} parity checks passed`);

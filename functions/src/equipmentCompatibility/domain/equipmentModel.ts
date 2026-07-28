@@ -55,6 +55,25 @@ export function normalizeModelAliasKey(record: any): string {
   const type = normalizeIdentityKey(aliasType), manufacturer = normalizeManufacturerId(manufacturerId), alias = normalizeIdentityKey(rawValue);
   return MODEL_ALIAS_TYPES.includes(type) && manufacturer && alias ? `${type}|${manufacturer}|${alias}` : "";
 }
+// Control (Cc: NUL, C0/C1, DEL), format (Cf: zero-width, bidi overrides, soft hyphen, BOM) and
+// line/paragraph separators (Zl/Zp). NFKC preserves all of these and normalizeIdentityKey does not
+// strip them, so a canonical stored key must reject them outright.
+const ALIAS_KEY_FORBIDDEN = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
+const ALIAS_KEY_MAX = 512;
+// Is `v` EXACTLY the alias key normalizeModelAliasKey derives from its own three segments? This is the
+// single authoritative predicate for a stored/persisted aliasKey (the D1 analogue of
+// isCanonicalEquipmentModelId). Round-tripping proves NFKC-stability, uppercasing, whitespace
+// collapsing, a known aliasType, and a canonical manufacturerId in one check. Alias VALUES may legally
+// contain "|" (aliasType and manufacturerId provably cannot), so the key is split on its FIRST TWO
+// separators only.
+export function isCanonicalModelAliasKey(v: any): boolean {
+  if (typeof v !== "string" || v.length === 0 || v.length > ALIAS_KEY_MAX || ALIAS_KEY_FORBIDDEN.test(v)) return false;
+  const i = v.indexOf("|");
+  if (i < 0) return false;
+  const j = v.indexOf("|", i + 1);
+  if (j < 0) return false;
+  return normalizeModelAliasKey({ aliasType: v.slice(0, i), manufacturerId: v.slice(i + 1, j), rawValue: v.slice(j + 1) }) === v;
+}
 export function validateEquipmentModelAlias(input: any): any {
   if (!plain(input)) return { valid: false, value: null, reason: "not_object" };
   if (Object.keys(input).some((k) => !MODEL_ALIAS_FIELDS.has(k))) return { valid: false, value: null, reason: "unknown_field" };

@@ -153,6 +153,10 @@ export function buildCompatibilityUniquenessKey(t) {
 }
 // Deterministic opaque compatibility ID: SHA-256 of the versioned uniqueness tuple (D-COMPAT-2).
 export function buildCompatibilityId(uniquenessKey) { return `cmp_${sha256Hex(uniquenessKey)}`; }
+// Authoritative shape predicates for the two opaque D2 identities. Any consumer that must recognise a
+// stored/persisted compatibility or source ID uses these — never a private re-statement of the format.
+export function isCanonicalCompatibilityId(v) { return typeof v === "string" && /^cmp_[0-9a-f]{64}$/.test(v); }
+export function isCanonicalCompatibilitySourceId(v) { return typeof v === "string" && /^src_[0-9a-f]{64}$/.test(v); }
 
 // ---------------------------------------------------------------------------
 // Compatibility relationship contract (architecture §4.2)
@@ -226,7 +230,7 @@ export function detectCompatibilityCollisions(records = [], opts = {}) {
 export function validateCompatibilitySource(input) {
   if (!plain(input)) return { valid: false, value: null, reason: "not_object" };
   if (Object.keys(input).some((k) => !SOURCE_FIELDS.has(k))) return { valid: false, value: null, reason: "unknown_field" };
-  if (typeof input.compatibilityId !== "string" || !/^cmp_[0-9a-f]{64}$/.test(input.compatibilityId)) return { valid: false, value: null, reason: "compatibility_id_invalid" };
+  if (!isCanonicalCompatibilityId(input.compatibilityId)) return { valid: false, value: null, reason: "compatibility_id_invalid" };
   const authorityType = normalizeIdentityKey(input.authorityType);
   if (!AUTHORITY_TYPES.includes(authorityType)) return { valid: false, value: null, reason: "authority_type_invalid" };
   const sourceReference = normalizeIdentityText(input.sourceReference);

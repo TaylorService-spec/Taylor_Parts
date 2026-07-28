@@ -112,6 +112,10 @@ export function buildCompatibilityUniquenessKey(t: any): string {
   return JSON.stringify([TUPLE_VERSION, t.equipmentModelId, t.partId, t.compatibilityType, t.assembly ?? null, t.installationPosition ?? null, applicabilityTuple(t.applicability)]);
 }
 export function buildCompatibilityId(uniquenessKey: string): string { return `cmp_${sha256Hex(uniquenessKey)}`; }
+// Authoritative shape predicates for the two opaque D2 identities. Any consumer that must recognise a
+// stored/persisted compatibility or source ID uses these — never a private re-statement of the format.
+export function isCanonicalCompatibilityId(v: any): boolean { return typeof v === "string" && /^cmp_[0-9a-f]{64}$/.test(v); }
+export function isCanonicalCompatibilitySourceId(v: any): boolean { return typeof v === "string" && /^src_[0-9a-f]{64}$/.test(v); }
 
 export function validateCompatibility(input: any, { serialSchemes = {} }: any = {}): any {
   if (!plain(input)) return { valid: false, value: null, reason: "not_object" };
@@ -173,7 +177,7 @@ export function detectCompatibilityCollisions(records: any = [], opts: any = {})
 export function validateCompatibilitySource(input: any): any {
   if (!plain(input)) return { valid: false, value: null, reason: "not_object" };
   if (Object.keys(input).some((k) => !SOURCE_FIELDS.has(k))) return { valid: false, value: null, reason: "unknown_field" };
-  if (typeof input.compatibilityId !== "string" || !/^cmp_[0-9a-f]{64}$/.test(input.compatibilityId)) return { valid: false, value: null, reason: "compatibility_id_invalid" };
+  if (!isCanonicalCompatibilityId(input.compatibilityId)) return { valid: false, value: null, reason: "compatibility_id_invalid" };
   const authorityType = normalizeIdentityKey(input.authorityType);
   if (!AUTHORITY_TYPES.includes(authorityType)) return { valid: false, value: null, reason: "authority_type_invalid" };
   const sourceReference = normalizeIdentityText(input.sourceReference);
