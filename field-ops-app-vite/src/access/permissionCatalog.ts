@@ -609,6 +609,49 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     resource: "audit.event",
     action: "read",
   }),
+  // D4 -- Part-Equipment Compatibility trusted persistence (design package
+  // docs/implementation-plans/equipment-compatibility-d4-trusted-persistence.md sec5).
+  // REGISTERED BUT NOT GRANTABLE: every entry is `active: false`, so
+  // resolveEffectivePermission() denies unconditionally ahead of any Role
+  // check. D4 creates no Role, no grant and no client Rules path -- the
+  // five governed collections are client-closed (sec7). Activation is a
+  // later, separately authorized decision; declaring an id here changes
+  // no runtime authorization behavior.
+  Object.freeze({
+    id: "equipment.compatibility.view",
+    description: "Read Part-Equipment compatibility relationships (future read service; no client read exists in D4).",
+    resource: "equipment.compatibility",
+    action: "view",
+    active: false,
+  }),
+  Object.freeze({
+    id: "equipment.compatibility.import",
+    description: "Import Part-Equipment compatibility relationships and evidence (trusted Equipment command service).",
+    resource: "equipment.compatibility",
+    action: "import",
+    active: false,
+  }),
+  Object.freeze({
+    id: "equipment.compatibility.verify",
+    description: "Change the verification status of a Part-Equipment compatibility relationship (trusted Equipment command service).",
+    resource: "equipment.compatibility",
+    action: "verify",
+    active: false,
+  }),
+  Object.freeze({
+    id: "equipment.compatibility.correct",
+    description: "Correct a governed Part-Equipment compatibility relationship (trusted Equipment command service).",
+    resource: "equipment.compatibility",
+    action: "correct",
+    active: false,
+  }),
+  Object.freeze({
+    id: "equipment.model.manage",
+    description: "Create and edit canonical Equipment Model records and their aliases (trusted Equipment command service).",
+    resource: "equipment.model",
+    action: "manage",
+    active: false,
+  }),
 ]) as readonly Permission[];
 
 export function isValidPermissionId(id: string): boolean {

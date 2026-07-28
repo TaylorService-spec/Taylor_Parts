@@ -213,6 +213,15 @@ export type AuditAction =
   | "createPartSupplierItem"
   | "updatePartSupplierItem"
   | "changePartSupplierItemStatus"
+  // D4 -- Part-Equipment Compatibility trusted persistence. Five lifecycle actions
+  // extending this SAME immutable Audit Event path, not a parallel audit system:
+  // a durable initiation, the terminal command outcome, and the three specialized
+  // governed events (verification change, correction, conflict surfacing).
+  | "initiateEquipmentCompatibilityCommand"
+  | "equipmentCompatibilityCommand"
+  | "equipmentCompatibilityVerification"
+  | "equipmentCompatibilityCorrection"
+  | "equipmentCompatibilityConflict"
   | "setPreferredSupplier"
   // Legacy Compatibility-Admin Bootstrap -- one-time, audited migration of an
   // existing legacy `users/{uid}.role === "admin"` principal into the governed
