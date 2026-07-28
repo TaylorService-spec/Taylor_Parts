@@ -1,15 +1,19 @@
 # AUTH-PR-4 — Governed operator workflow (build/test gate)
 
-> **STATUS: repository build + emulator/non-production test ONLY.** Plain
-> `--execute` / `--rollback` against `taylor-parts` are **unconditionally refused**
-> by the script. The **production-enablement** path (`--executeProduction`, the
-> [`authPr4ProductionGate`](../../functions/scripts/authPr4ProductionGate.js)) is
-> **conditional and fails closed**: it permits a production write only under a
-> complete, valid, **recorded Owner authorization** — which **does not exist**, so
-> production stays blocked. Recording that authorization + naming an executor +
-> supplying private operational inputs is a **separate, not-yet-granted** Owner gate
-> (see [`docs/deployment/auth-pr-4-production-enablement-design.md`](../deployment/auth-pr-4-production-enablement-design.md)).
-> This document authorizes no production action.
+> **STATUS (2026-07-28): authorization GRANTED, but AUTH-PR-4 has NOT executed and remains
+> operationally blocked.** Plain `--execute` / `--rollback` against `taylor-parts` are
+> **unconditionally refused** by the script. The **production-enablement** path
+> (`--executeProduction`, the [`authPr4ProductionGate`](../../functions/scripts/authPr4ProductionGate.js))
+> is **conditional and fails closed**. The recorded Owner authorization now **exists and is
+> GRANTED**: [`functions/authpr4/production-authorization.json`](../../functions/authpr4/production-authorization.json)
+> is `GRANTED` and its **three-file governed binding verifies** (DECISIONS #52 + #53, `reviewedHead
+> dba0e33`; security suites CI-enforced). **Even so, nothing runs:** no genesis/progression state,
+> protected state key, or private operational inputs (alias mapping) exist, so a production
+> `--executeProduction` run still **fails closed** at the progression/genesis boundary before any SDK
+> init. Execution remains blocked until the **separate, not-yet-granted Gate A** (protected genesis
+> preparation) **and Gate B** (one-persona-at-a-time execution) Owner authorizations are given **and**
+> the protected inputs are supplied out-of-band. **Merge/GRANTED status does not itself execute
+> anything.** This document authorizes no production action.
 
 ## Production-enablement path (`--executeProduction`) — design §5
 
@@ -21,12 +25,14 @@ any SDK init, the gate independently verifies, and **fails closed** on any of:
 - **Repository-governed authorization artifact** — authority comes from the committed,
   git-tracked [`functions/authpr4/production-authorization.json`](../../functions/authpr4/production-authorization.json),
   read **from git at `--authorizedCommit`** (never an operator-authored path). Its
-  status must be **`GRANTED`** (the committed artifact is **`PENDING`**, so production
-  is blocked); strict schema (no unknown fields); project, exact ordered persona
-  allowlist, reviewed head, and **blob-based** governed-file SHA-256 hashes must match;
-  the operator's `--executionModeConfirmation` and `--executor` must equal the
-  repository-recorded values ("nonempty" is not authorization). A modified/untracked/
-  external/PENDING artifact, wrong path, unknown field, or hash drift → refuse.
+  status must be **`GRANTED`** (the committed artifact **is now `GRANTED`** and its
+  three-file governed binding verifies at `reviewedHead dba0e33`); strict schema (no unknown
+  fields); project, exact ordered persona allowlist, reviewed head, and **blob-based**
+  governed-file SHA-256 hashes must match; the operator's `--executionModeConfirmation` and
+  `--executor` must equal the repository-recorded values ("nonempty" is not authorization). A
+  modified/untracked/external/PENDING/stale-hash artifact, wrong path, unknown field, or hash
+  drift → refuse. (A `GRANTED` artifact is necessary but **not** sufficient to run: the
+  progression/genesis, break-glass, and private-input gates below still apply.)
 - **Governed-file identity** — deterministic blob-based SHA-256 of the workflow + gate at
   the authorized commit must equal HEAD's (no post-review drift) and the working tree
   must be clean; a user-supplied `--authorizedCommit` is never sufficient by itself.
@@ -47,10 +53,12 @@ any SDK init, the gate independently verifies, and **fails closed** on any of:
   complete, **time-valid**, and bound to the exact progression state + the authorization
   contract's `requiredConfirmer` (early/expired/mismatched/reused/wrong-confirmer → refuse).
 
-`--executeProduction` against the **production project** stays blocked absent a real
-`GRANTED` authorization; against a **non-production/emulator** project it is the
-"production-shaped" path exercised by tests. No CI/emulator test targets the real
-`taylor-parts` project.
+`--executeProduction` against the **production project** now passes the `GRANTED`
+authorization gate but still **fails closed** with no genesis/progression state, protected
+state key, or private inputs present — so no production write occurs until the separate Gate A
++ Gate B authorizations and protected inputs are supplied. Against a **non-production/emulator**
+project it is the "production-shaped" path exercised by tests. No CI/emulator test targets the
+real `taylor-parts` project.
 
 ## What it is
 
@@ -72,7 +80,7 @@ passwords, or UIDs.
 |---|---|
 | Dry-run default | No write unless `--execute` (forward) or `--rollback` is passed. |
 | Exact project guard | `--projectId` required; `taylor-parts` additionally requires matching `--confirmProduction taylor-parts`. |
-| Production-write block | Plain `--execute`/`--rollback` against `taylor-parts` **throws** (dry-run-only against production, execute-only against non-production). A production write is possible **only** via `--executeProduction` + the fail-closed `authPr4ProductionGate` (design §5, section above), which stays blocked absent a recorded Owner authorization. |
+| Production-write block | Plain `--execute`/`--rollback` against `taylor-parts` **throws** (dry-run-only against production, execute-only against non-production). A production write is possible **only** via `--executeProduction` + the fail-closed `authPr4ProductionGate` (design §5, section above). The recorded authorization is now `GRANTED` and verifies, but the gate still fails closed without a genesis/progression state and the protected private inputs, so no production write runs until the separate Gate A + Gate B authorizations and inputs are supplied. |
 | Ordered-persona guard | Target must equal the persona at `--position` in the fixed order; excluded personas (`emp-rudy-sales-manager`, break-glass) rejected; `emp-rudy-owner` (last) requires `--breakGlassVerified` + `--confirmLowerRiskComplete`. |
 | Protected out-of-band input | Persona→`{uid,newAlias}` is read from `--mappingFile`; rollback-state integrity uses a separate protected `--stateKeyFile` containing at least 32 random bytes. Neither is committed. |
 | One at a time | Exactly one persona per invocation. |
@@ -112,13 +120,17 @@ FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 \
 `--execute` additionally requires `--stateKeyFile /secure/key` and
 `--capturedStateOut /secure/driver.rollback.json`. Rollback requires the same
 mapping and key files plus `--capturedStateFile /secure/driver.rollback.json`.
-It performs writes **only** against a non-production project. There is no runnable
-production path in this build.
+These examples perform writes **only** against a non-production project. A production
+`--executeProduction` path now exists and passes the `GRANTED` authorization gate, but it
+still **fails closed** and performs no write without a genesis/progression state and the
+protected private inputs — none of which exist in the repository.
 
-## Not authorized by this build
+## Not authorized without the separate execution gates
 
-Production execution · Firebase Auth email/identity mutation · reset/verification
-email delivery · explicit session revocation · AUTH-PR-3 deployment · email-provider
-configuration · Firestore/role/claim/`accessVersion` mutation · use or commitment of
-real emails, UIDs, tokens, passwords, or credentials. Enabling production execution
-is a separate PR under a separate Owner authorization (readiness §11).
+The following do not occur from the repository/merged state alone and each require the
+separate, not-yet-granted Owner **Gate A** (protected genesis preparation) and **Gate B**
+(one-persona-at-a-time execution) plus protected out-of-band inputs: production execution ·
+Firebase Auth email/identity mutation · reset/verification email delivery · explicit session
+revocation · AUTH-PR-3 deployment · email-provider configuration · Firestore/role/claim/
+`accessVersion` mutation · use or commitment of real emails, UIDs, tokens, passwords, or
+credentials. The GRANTED authorization + merged code do **not** by themselves execute anything.
