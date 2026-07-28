@@ -2,11 +2,14 @@
 // (functions/scripts/authPr4ProductionGate.js).
 //
 // The authorization AUTHORITY is a COMMITTED, git-tracked artifact read from git
-// at the authorized commit. The real committed artifact is PENDING, so the real
-// repo always refuses (a negative test). The GRANTED path is exercised via a
-// throwaway temporary git repo containing a GRANTED fixture + copies of the
-// governed files (so on-disk hashes match). The real `taylor-parts` project is
-// never targeted; every emulator init uses a demo-* project.
+// at the authorized commit. As of the AUTH-PR-4 Production Identity-Mutation
+// Authorization (DECISIONS #52) the committed artifact is GRANTED; a test verifies
+// it is well-formed and binds to the reviewed governed-file hashes + ancestry, while
+// gated production execution against `taylor-parts` still fails closed BEFORE any SDK
+// init when inputs are incomplete/incorrect. Additional GRANTED-path behaviour is
+// exercised via throwaway temporary git repos (demo-* projects). The real
+// `taylor-parts` project is NEVER targeted by any SDK call; every emulator init uses
+// a demo-* project.
 //
 // Run (pure):     node test/authPr4ProductionGate.test.mjs
 // Run (emulator): firebase emulators:exec --only auth --project demo-authpr4 \
@@ -106,16 +109,17 @@ ok("strict validators reject non-canonical values", () => {
 // 2. C1 -- repository-governed authorization artifact
 // ---------------------------------------------------------------------------
 
-ok("REAL repo authorization artifact is PENDING -> refused (fail closed)", () => {
-  const head = gate.deriveRepositoryIdentity(REAL_ROOT).head;
-  const { artifact } = gate.loadGovernedAuthorization({ repoRoot: REAL_ROOT, authorizedCommit: head });
-  assert.equal(artifact.authorizationStatus, "PENDING");
-  const derived = gate.deriveGovernedFileHashes(REAL_ROOT);
-  throws(() => gate.verifyGovernedAuthorization(artifact, {
-    projectId: "taylor-parts", personaOrder: ORDER, derivedHashes: derived,
-    repoIdentity: gate.deriveRepositoryIdentity(REAL_ROOT), authorizedCommit: head,
-    executionModeConfirmation: "x", executor: "x",
-  }), /not GRANTED/);
+ok("REAL repo authorization artifact is GRANTED and well-formed (verifies against blob hashes + ancestry; wrong token/executor still refuse)", () => {
+  const { artifact } = gate.loadGovernedAuthorization({ repoRoot: REAL_ROOT, authorizedCommit: gate.deriveRepositoryIdentity(REAL_ROOT).head });
+  assert.equal(artifact.authorizationStatus, "GRANTED");
+  const reviewed = gate.governedHashesAtCommit(REAL_ROOT, artifact.reviewedHead); // blob-based (deterministic)
+  const repoIdentity = gate.deriveRepositoryIdentity(REAL_ROOT);
+  const base = { projectId: "taylor-parts", personaOrder: ORDER, derivedHashes: reviewed, repoIdentity, authorizedCommit: artifact.reviewedHead, executionModeConfirmation: artifact.executionModeToken, executor: artifact.executor.name };
+  const okd = gate.verifyGovernedAuthorization(artifact, base);
+  assert.equal(okd.authorizationId, "AUTHPR4-PROD-MIGRATION-001");
+  // The token/executor contract is still enforced against the committed GRANTED artifact.
+  throws(() => gate.verifyGovernedAuthorization(artifact, { ...base, executionModeConfirmation: "WRONG" }), /execution-mode token/);
+  throws(() => gate.verifyGovernedAuthorization(artifact, { ...base, executor: "someone-else" }), /authorized executor/);
 });
 
 ok("GRANTED temp-repo artifact verifies; wrong token / wrong executor / unknown field / hash drift all refuse", () => {
@@ -683,7 +687,10 @@ await okAsync("plain --execute / --rollback vs taylor-parts still refuse (never 
   }
 });
 
-await okAsync("gated --executeProduction vs taylor-parts refuses fail-closed (committed authorization is PENDING)", async () => {
+await okAsync("gated --executeProduction vs taylor-parts with INCOMPLETE inputs fails closed BEFORE any SDK init (wrong token / no progression)", async () => {
+  // Even with the committed authorization GRANTED, incomplete/incorrect inputs refuse
+  // BEFORE initializeApp -- so no real taylor-parts Auth call is ever made. Here the
+  // execution-mode confirmation is wrong ("x") and no progression state exists.
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-prodrefuse-"));
   const keyFile = path.join(dir, "k"); fs.writeFileSync(keyFile, crypto.randomBytes(48));
   const head = gate.deriveRepositoryIdentity(REAL_ROOT).head;
@@ -692,9 +699,10 @@ await okAsync("gated --executeProduction vs taylor-parts refuses fail-closed (co
     "--progressionFile", path.join(dir, "s.json"), "--stateKeyFile", keyFile, "--mappingFile", path.join(dir, "m.json"), "--capturedStateOut", path.join(dir, "o.json")],
     { cwd: path.resolve("."), env: process.env, encoding: "utf8" });
   assert.notEqual(r.status, 0, "must refuse");
-  // Fail-closed reason: committed artifact is PENDING ("not GRANTED"); or, in a
-  // dirty dev working tree, the clean-checkout guard; or a missing progression.
-  assert.match(r.stderr, /not GRANTED|clean checkout|Progression state missing/);
+  // Fail-closed BEFORE SDK init: wrong execution-mode token / clean-checkout guard /
+  // missing progression / executor mismatch -- never reaches a production Auth call.
+  assert.match(r.stderr, /execution-mode token|does not match|clean checkout|Progression state missing|authorized executor/);
+  assert.doesNotMatch(r.stderr, /FORWARD executed|updateUser/);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
