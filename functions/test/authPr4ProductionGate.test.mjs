@@ -124,7 +124,7 @@ ok("REAL repo committed authorization is now STALE under the expanded 3-file gov
   throws(() => gate.verifyGovernedAuthorization(artifact, {
     projectId: "taylor-parts", personaOrder: ORDER, derivedHashes: hashesAtHead, repoIdentity,
     authorizedCommit: head, executionModeConfirmation: artifact.executionModeToken, executor: artifact.executor.name,
-  }), /governedFileHashes does not cover exactly the governed file set/);
+  }), /governedFileHashes: schema mismatch/);
 });
 
 ok("substitution defence: at reviewedHead c2604df the committed artifact is PENDING and refuses (status checked before hashes)", () => {
@@ -725,7 +725,7 @@ await okAsync("gated --executeProduction vs taylor-parts fails closed: committed
     "--executionModeConfirmation", GRANTED.executionModeToken, "--executor", GRANTED.executor.name],
     { cwd: path.resolve("."), env: process.env, encoding: "utf8" });
   assert.notEqual(r.status, 0, "must refuse");
-  assert.match(r.stderr, /governedFileHashes does not cover exactly the governed file set/);
+  assert.match(r.stderr, /governedFileHashes: schema mismatch/);
   assert.doesNotMatch(r.stderr, /FORWARD executed|updateUser/);
   fs.rmSync(dir, { recursive: true, force: true });
 });
