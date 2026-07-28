@@ -1,10 +1,19 @@
 # AUTH-PR-4 — Production Identity-Mutation Authorization (GRANTED) & Execution Package
 
-> **STATUS: GRANTED by the Owner (2026-07-27).** Recorded append-only in
-> [`docs/DECISIONS.md` #52](../DECISIONS.md) and enabled in
+> **STATUS: GRANTED by the Owner (2026-07-27)** — but see the re-authorization note.
+> Recorded append-only in [`docs/DECISIONS.md` #52](../DECISIONS.md) and enabled in
 > [`functions/authpr4/production-authorization.json`](../../functions/authpr4/production-authorization.json)
-> (`PENDING → GRANTED`). **Merging this PR does NOT execute the migration.** Execution
-> is a separate, controlled step (see §5). Subject to Codex review before merge.
+> (`PENDING → GRANTED`). **Merging does NOT execute the migration.** Execution is a
+> separate, controlled step (see §5). Subject to Codex review before merge.
+>
+> **⚠ RE-AUTHORIZATION REQUIRED (governed-set expansion).** The genesis initializer
+> (`functions/scripts/authPr4InitProgression.js`) was added to the gate's
+> `GOVERNED_FILES` binding (Owner-decided). The governed set is now **three** files,
+> so the authorization artifact recorded here — bound to the **two**-file set at
+> `reviewedHead c2604df` — **no longer verifies (fails closed)**. Production execution
+> is blocked until a **new** Owner authorization PR re-binds the artifact to this
+> correction's merged head + the **three**-file `governedFileHashes`. The §1 table
+> below still shows the prior two-file binding; it is superseded by that re-grant.
 
 | | |
 |---|---|
@@ -87,7 +96,21 @@ review and merges. In order:
 1. Obtain the **private alias mapping** and **protected state key** out-of-band
    (never committed).
 2. Confirm the **named executor** (`--executor` = the recorded contract value).
-3. Initialise the signed genesis **progression state** (out-of-band, one-time).
+3. Initialise the signed genesis **progression state** (out-of-band, one-time) with the
+   governed, credential-free initializer
+   [`functions/scripts/authPr4InitProgression.js`](../../functions/scripts/authPr4InitProgression.js)
+   — it refuses to overwrite, reads the GRANTED authorization + governed hashes at the
+   authorized commit, creates the revision-0 eligible/position-1 signed state + anchor
+   atomically (`0600`), and verifies both through the gate. **This file is part of the
+   governed-file hash binding** (adding it required a re-bound authorization — see §1):
+
+   ```bash
+   node functions/scripts/authPr4InitProgression.js \
+     --projectId taylor-parts --confirmProduction taylor-parts \
+     --authorizedCommit <merged authorization head> \
+     --executionModeConfirmation <token> --executor rudy-digiorgio \
+     --stateKeyFile /secure/state.key --progressionOut /secure/progression.json
+   ```
 4. For each persona 1→5, run the workflow **once** with `--executeProduction`,
    `--authorizedCommit <merged authorization head>`, `--executionModeConfirmation
    <token>`, `--executor <name>`, `--mappingFile`, `--stateKeyFile`,
@@ -103,12 +126,204 @@ email-provider configuration · enumeration-protection changes · Auth project-s
 changes · Firestore mutation · role/claim/permission/`accessVersion` changes ·
 Customer/Equipment combined release · Inventory / Equipment / Truck-Inventory work.
 
+## 5a. Genesis reconciliation — governed state machine
+
+The initializer publishes an owner-token `<progression>.init` **marker** before it
+writes the signed state or anchor, and removes it only after **both** are fsynced and
+independently verified through the gate. If initialization crashes at any boundary, the
+marker (and any partial artifact) is left on disk; the production gate refuses **every**
+step while a marker is present (`assertNoInitMarker`). The initializer **never**
+auto-deletes an ambiguous or foreign marker, and never auto-reconciles during normal
+initialization or execution. Reconciliation is a **separate, Owner-directed** step run
+through the **same governed, credential-free command** — no ad-hoc `node -e` or manual
+file deletion against production execution-control state.
+
+### State machine
+
+Artifacts (all beside `<progression>`): the signed `state` + `anchor`; the init `marker`;
+the reconciliation `reconcile` mutex; the **fencing-generation ledger** `gen.<N>`. Runtime
+`lock`/`txn` are never created by initialization and are always foreign here.
+
+**The generation ledger is owned and validated by the gate** (`gate.readGenerationLedger`,
+the single authority). It is an append-only, **hash-chained**, **contiguous** set of claim
+files `gen.<1..K>`; the current generation is `K` (`0` if none). Authority is never a
+filename: each claim's **content** is canonically validated (exact fields; embedded
+`generation` must equal the filename; canonical `version`/`owner`/UTC `at`), the set must be
+contiguous from `1`, and each claim must chain to the previous claim's content digest
+(root-anchored at `N=1`). Any malformed, foreign, non-contiguous, reordered, reused, or
+chain-broken ledger **fails closed**; so does any **inability to inspect** the ledger
+directory (`EACCES`/`EPERM`/`EIO`/etc.) — only an **absent** containing directory (`ENOENT`,
+a legitimate clean start) reads as generation `0`. `assertProductionAuthorization` runs this
+same validation before any progression claim / Auth access, so a poisoned or unreadable
+ledger blocks production, not just reconciliation. Advancing `K→K+1` is a single-winner O_EXCL claim
+whose **staging temp lives outside the ledger namespace** (`<progression>.genstage-*`, never
+matching `.gen.<N>`), so an in-progress or crash-left publication is never scanned as a
+claim. *Residual (documented, out of the governed threat model):* an out-of-band **deletion
+of the highest claim** regresses the visible ledger — but the ledger lives in the same
+protected directory as the state key (deleting it is a key-level compromise), no governed
+command ever deletes a claim, and any in-flight worker whose recorded generation exceeds the
+current ledger fails closed at its next revalidation.
+
+| State | On-disk condition | Gate | Legal transitions |
+|---|---|---|---|
+| `CLEAN` | no marker, no reconcile mutex | allowed | `initialize` → `INITIALIZED`/`INIT_INTERRUPTED` |
+| `INITIALIZED` | canonical genesis `state`+`anchor`, no marker | allowed (proceed to execution) | — |
+| `INIT_INTERRUPTED` | marker present (± partial state/anchor) | **blocked** | `inspect` (read-only) → `cleanup`/`recover` |
+| `RECONCILING` | reconcile mutex present | **blocked** | `cleanup` (owner) or `recover` (stranded) |
+| `BLOCKED` | malformed/foreign/anomalous artifact, `lock`/`txn`, invalid genesis, ledger anomaly | **blocked** | Owner escalation only — no automated transition |
+
+**Ownership of destructive transitions (exactly one owner each):**
+- **cleanup** acquires the reconcile mutex by **atomic exclusive publication** (write full
+  content to a temp file, `fsync`, hard-link into place — EEXIST ⇒ someone else holds it,
+  refuse). The published mutex is complete-or-absent, so an in-progress publication can never
+  be read as crash residue. The cleanup operates *at* the current generation.
+- **recovery** acquires authority by a **single-winner compare-and-swap** on the generation
+  ledger: O_EXCL create of `gen.<current+1>`. Exactly one racer wins; a delayed recovery
+  bound to an older generation cannot leapfrog or reuse a newer one (the claim already
+  exists ⇒ EEXIST ⇒ refuse). Ownership is never a bare pathname check-then-delete.
+
+**Step 1 — inspect (read-only).** Classifies the marker + residue and returns a
+sanitized report (booleans/refs + a content **fingerprint**); prints no key, token, or path:
+
+```bash
+node functions/scripts/authPr4InitProgression.js --mode reconcile-inspect \
+  --projectId taylor-parts --confirmProduction taylor-parts \
+  --authorizedCommit <merged authorization head> \
+  --executionModeConfirmation <token> --executor rudy-digiorgio \
+  --stateKeyFile /secure/state.key --progressionOut /secure/progression.json
+```
+
+The marker is validated by the gate's **single canonical validator** — a marker the
+governed initializer could not have produced (wrong/extra fields, bad version, non-UTC
+timestamp, or a token that is not exactly 32 lowercase hex) is untrusted → `blocked`.
+
+The report's `recommendation` is one of:
+- **`marker-only`** — the signed state **and** anchor verify as a canonical revision-0
+  eligible/position-1 genesis; only the stray marker must be removed.
+- **`clean-reset`** — the state is absent or a clearly-incomplete partial (or a valid
+  genesis with no committed anchor); the marker/state/anchor set is safe to remove and re-init.
+- **`blocked`** — indeterminate/untrusted: wrong key, foreign/malformed marker, a valid
+  **non-genesis** progression, a bad anchor, **or the presence of a runtime claim `lock`
+  or transition `txn`** (the genesis initializer never creates those, so their presence is
+  foreign/concurrent). **No automatic cleanup** — escalate to the Owner; delete nothing.
+  A `clean-reset` **never** targets `lock`/`txn`.
+
+**Step 2 — cleanup (Owner-confirmed, fingerprint-bound, confined, fenced).** It reads the
+current generation from the ledger, then **atomically publishes** the reconciliation mutex
+(recording that generation). It re-inspects **under the mutex**, requires the exact step-1
+fingerprint (refuses if the set changed), `--action` equal to the inspected recommendation,
+and the confirmation token. It deletes **only** the genesis-creatable artifacts
+(`marker`/`state`/`anchor`), and **before every deletion and before finalization it
+revalidates both that it still owns the mutex token AND that the generation has not
+advanced**, plus re-verifies each file's current digest against the inspected digest
+**immediately before unlink**. On any deletion-phase failure (fenced, digest change, unlink
+failure, partial cleanup) it **fails closed**: the reconciliation mutex is **retained** (the
+gate refuses every production step, `assertNoReconcileMutex`) and the stranded mutex is
+resolved only by the governed **step 3** recovery — never by hand. The mutex is removed on
+the happy path only after a final ownership+generation revalidation and only while it still
+carries the owner token. A pre-existing mutex refuses a second concurrent cleanup. (A
+validation-only refusal — wrong `--action`, stale fingerprint, `blocked` — releases the
+mutex so the operator can re-inspect and retry.) It refuses any `blocked` classification:
+
+```bash
+node functions/scripts/authPr4InitProgression.js --mode reconcile-cleanup \
+  --projectId taylor-parts --confirmProduction taylor-parts \
+  --authorizedCommit <merged authorization head> \
+  --executionModeConfirmation <token> --executor rudy-digiorgio \
+  --stateKeyFile /secure/state.key --progressionOut /secure/progression.json \
+  --fingerprint <fingerprint from step 1> \
+  --action <marker-only|clean-reset> --confirmReconciliation reconcile-genesis
+```
+
+A `clean-reset` deletes in the order **state → anchor → marker** (the marker is removed
+**last**): as long as any genesis residue exists, the "reconciliation needed" signal
+survives, so a partial `clean-reset` is **self-healing** — re-running step 1 + step 2
+finishes it. After a completed `clean-reset`, re-run the genesis initializer (§5.3) to a
+clean state.
+
+> **Destructive-boundary guarantee (exactly what is implemented).** The ownership/generation
+> revalidation and the target unlink are separate syscalls, so they cannot be made a single
+> atomic operation with plain-filesystem primitives. The **hard** guarantee is the **per-target
+> digest binding**: immediately before each unlink the cleanup re-hashes the target and refuses
+> unless it is **byte-identical** to what step 1 inspected — so a superseded cleanup can, in the
+> sub-operation window after its generation check, delete **only the exact artifact it already
+> inspected, never a newer or replacement artifact** (a replacement has a different digest and
+> aborts the cleanup). Generation fencing is **defense in depth** that stops a superseded
+> cleanup at its *next* checkpoint; it is **not** claimed to make every in-flight unlink
+> impossible. The **primary operational exclusion** — that a prior cleanup is not running at
+> all — is the Owner-stopped attestation required by step 3, not the fencing.
+
+**Step 3 — recover a stranded reconciliation mutex (only if a cleanup crashed).** If a
+cleanup process was killed (or aborted on a partial cleanup / unlink failure), the
+reconciliation mutex is retained and the gate blocks — and every step-2 cleanup then
+refuses ("a reconciliation mutex is already present"). This is the **only** governed way to
+clear it.
+
+Recovery does **not** infer that the prior cleanup is dead. **Elapsed time is not proof**
+(a paused process, machine suspension, debugger stop, or blocked filesystem can keep a
+cleanup live for arbitrarily long), and a **malformed mutex is not proof** either (it may be
+foreign, corrupt, or a version skew). Recovery therefore requires **both**:
+
+- an explicit governed attestation that the prior cleanup process/host has stopped —
+  `--confirmOwnerStopped prior-cleanup-stopped` — which is a **human/operator judgement**
+  the Owner is accountable for; **and**
+- **fencing + single-winner acquisition**, not inference. Recovery acquires authority by a
+  compare-and-swap advance of the generation ledger (O_EXCL `gen.<current+1>`): exactly one
+  recovery wins; a delayed recovery bound to an older generation refuses (the newer claim
+  already exists). Holding the new generation, it **re-binds to the exact inspected mutex**
+  (re-reads the fingerprint and requires the mutex's content digest to be unchanged) and only
+  then removes **that** mutex — never a mutex it did not inspect. A new cleanup cannot begin
+  during this critical section: the mutex recovery is about to remove is still present, so a
+  cleanup's exclusive publish fails closed. Because a live cleanup revalidates the generation
+  before every deletion and finalization (step 2), the advanced generation **supersedes** it
+  at its next checkpoint (see the destructive-boundary guarantee above for the exact, honest
+  scope). All genesis residue is left intact for a subsequent normal step 1 + step 2. Recovery
+  also requires the prior inspect fingerprint (refuses if artifacts changed) and the
+  `recover-mutex` confirmation. If a recovery itself crashes after the CAS but before removing
+  the mutex, the gate stays blocked (mutex present) and the next attested recovery completes
+  it — recovery is itself crash-recoverable:
+
+```bash
+node functions/scripts/authPr4InitProgression.js --mode reconcile-recover \
+  --projectId taylor-parts --confirmProduction taylor-parts \
+  --authorizedCommit <merged authorization head> \
+  --executionModeConfirmation <token> --executor rudy-digiorgio \
+  --stateKeyFile /secure/state.key --progressionOut /secure/progression.json \
+  --fingerprint <fingerprint from step 1> \
+  --confirmReconciliation recover-mutex --confirmOwnerStopped prior-cleanup-stopped
+```
+
+**Governed evidence for `--confirmOwnerStopped`:** before attesting, confirm out-of-band
+that the prior cleanup process is no longer running and its host/session is stopped (e.g.
+the terminal/session was terminated, the host was powered off, or process-manager evidence
+shows the PID is gone). The fencing generation is the technical safety net if that judgement
+is ever wrong; the attestation is the accountable human gate. Any unknown host, unverifiable
+owner, malformed publication, clock/fence anomaly, or concurrent change **blocks** — it is
+never read as owner death.
+
+The recover report's `residualRecommendation` tells you the next governed step (usually
+re-run step 1 + step 2). Record a sanitized reconciliation note (booleans/refs/fingerprint/
+generation only) — no key, path, token, or identity value.
+
 ## 7. Confirmation (this PR)
 
 No production action occurred in preparing this PR: no Auth mutation, no email, no
 session revocation, no deployment, no provider config, no private mapping/state-key
-requested or committed. The governed workflow implementation files are **unchanged**.
-This PR **fully populates the previously PENDING placeholder authorization artifact and
-changes its status to GRANTED** (`authorizationId`, `reviewedHead`, both governed-file
-hashes, `executionModeToken`, `executor.name`, and `requiredConfirmer` populated from
-their placeholders). Draft — returned for Codex review; not merged; execution not begun.
+requested or committed, **no re-grant of the authorization artifact**.
+
+**What this PR changes vs. what PR #460 did.** The `PENDING → GRANTED` transition of
+[`production-authorization.json`](../../functions/authpr4/production-authorization.json)
+was performed **historically by PR #460** (merged `70c3989`, [`DECISIONS.md` #52](../DECISIONS.md)),
+which populated the placeholder and bound it to the **two**-file governed set at
+`reviewedHead c2604df`. **This PR (the genesis-initializer correction)** does something
+different: it adds the governed, credential-free initializer
+[`functions/scripts/authPr4InitProgression.js`](../../functions/scripts/authPr4InitProgression.js)
+and **expands the gate's `GOVERNED_FILES` to three files**. That expansion **invalidates
+the existing two-file authorization (fails closed)** — `governedFileHashes` no longer
+covers the governed set. This PR **leaves `production-authorization.json` unchanged**
+(now stale) and **does NOT re-grant**. Production execution stays blocked until a
+**separate** Owner authorization PR re-binds the artifact to this correction's merged head
+and the **three**-file `governedFileHashes` (see the ⚠ re-authorization note at the top and
+§1). The §1 table and §1 change-scope note describe the historical two-file binding and are
+superseded by that forthcoming re-grant. Draft — returned for Codex review; not merged;
+genesis not created; execution not begun.

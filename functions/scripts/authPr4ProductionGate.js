@@ -40,6 +40,7 @@ const PRODUCTION_PROJECT_ID = "taylor-parts";
 const GOVERNED_FILES = Object.freeze([
   "functions/scripts/authPr4RecoveryEmailMigration.js",
   "functions/scripts/authPr4ProductionGate.js",
+  "functions/scripts/authPr4InitProgression.js",
 ]);
 const AUTH_ARTIFACT_PATH = "functions/authpr4/production-authorization.json";
 const AUTH_SCHEMA = "authpr4.production-authorization/v1";
@@ -509,6 +510,137 @@ const TXN_MUTEX_FIELDS = Object.freeze(["version", "token", "at"]);
 const TXN_TOKEN_RE = /^[0-9a-f]{32}$/;
 function txnPath(stateFile) { return `${stateFile}.txn`; }
 
+// INITIALIZATION MARKER -- an owner-token-bound `.init` file the genesis initializer
+// publishes BEFORE either the state or anchor and removes ONLY after both are fsynced
+// and independently verified. A present marker means genesis initialization is
+// incomplete or was interrupted (crash-left): the gate refuses ALL production steps
+// while it is present (before any claim or Auth access). It is NEVER auto-broken --
+// a leftover marker is a governed reconciliation condition.
+const INIT_MARKER_VERSION = 1;
+const INIT_MARKER_FIELDS = Object.freeze(["version", "token", "at"]);
+const INIT_TOKEN_RE = /^[0-9a-f]{32}$/; // exactly what crypto.randomBytes(16).toString("hex") emits
+function initMarkerPath(stateFile) { return `${stateFile}.init`; }
+
+// THE canonical init-marker validator -- the single source of truth for what a marker the
+// governed initializer could have produced looks like. Used both when the initializer
+// finalizes (removes its own marker) and during reconciliation classification. Any marker
+// not producible by the governed initializer (wrong/extra fields, bad version, non-UTC
+// timestamp, or a token that is not exactly 32 lowercase hex) is INVALID (untrusted).
+function isValidInitMarker(m) {
+  if (!m || typeof m !== "object" || Array.isArray(m)) return false;
+  const keys = Object.keys(m).sort();
+  const exp = [...INIT_MARKER_FIELDS].sort();
+  if (keys.length !== exp.length || keys.some((k, i) => k !== exp[i])) return false;
+  return m.version === INIT_MARKER_VERSION && isUtcInstant(m.at) && typeof m.token === "string" && INIT_TOKEN_RE.test(m.token);
+}
+function readInitMarker(stateFile, deps = {}) {
+  const _fs = deps.fs || fs;
+  const p = initMarkerPath(stateFile);
+  if (!_fs.existsSync(p)) return { present: false, valid: false, marker: null };
+  let m = null, valid = false;
+  try { m = JSON.parse(_fs.readFileSync(p, "utf8")); valid = isValidInitMarker(m); } catch { valid = false; }
+  return { present: true, valid, marker: valid ? m : null };
+}
+function assertNoInitMarker(stateFile, deps = {}) {
+  const _fs = deps.fs || fs;
+  if (_fs.existsSync(initMarkerPath(stateFile))) {
+    throw new Error("An initialization marker is present: genesis initialization is incomplete or was interrupted (crash-left). Governed reconciliation is required before any production step.");
+  }
+}
+
+// RECONCILIATION MUTEX -- an owner-token-bound `.reconcile` file the reconcile-cleanup
+// command publishes BEFORE its authoritative re-inspection and removes ONLY after
+// verified success. Its presence means a cleanup is in progress or was interrupted
+// (crash-left / partial): the gate refuses ALL production steps while it is present, and a
+// second cleanup cannot start. It is NEVER auto-broken.
+const RECONCILE_MUTEX_VERSION = 1;
+const RECONCILE_MUTEX_FIELDS = Object.freeze(["version", "token", "generation", "at"]);
+function reconcilePath(stateFile) { return `${stateFile}.reconcile`; }
+// Canonical reconciliation-mutex validator (32-hex token; carries the fencing generation
+// it operates under). A mutex failing this is malformed/foreign residue -- but a malformed
+// mutex is NOT proof of an inactive owner (it may be foreign, corrupt, or from an
+// incompatible version), so recovery still requires the governed owner-stopped attestation
+// and fences via the persistent generation rather than auto-clearing.
+function isValidReconcileMutex(m) {
+  if (!m || typeof m !== "object" || Array.isArray(m)) return false;
+  const keys = Object.keys(m).sort();
+  const exp = [...RECONCILE_MUTEX_FIELDS].sort();
+  if (keys.length !== exp.length || keys.some((k, i) => k !== exp[i])) return false;
+  return m.version === RECONCILE_MUTEX_VERSION && isUtcInstant(m.at) && typeof m.token === "string" && INIT_TOKEN_RE.test(m.token) &&
+    Number.isInteger(m.generation) && m.generation >= 0 && m.generation <= 1e9;
+}
+function assertNoReconcileMutex(stateFile, deps = {}) {
+  const _fs = deps.fs || fs;
+  if (_fs.existsSync(reconcilePath(stateFile))) {
+    throw new Error("A reconciliation mutex is present: a governed reconciliation is in progress or was interrupted (crash-left). It must be resolved before any production step.");
+  }
+}
+
+// FENCING-GENERATION LEDGER -- the single, gate-owned authority for the reconciliation
+// fencing generation. It is an APPEND-ONLY, HASH-CHAINED, CONTIGUOUS ledger of claim files
+// `<stateFile>.gen.<N>` (N = 1..K). Authority never comes from a filename alone: every
+// claim's CONTENT is canonically validated, its embedded generation must equal its filename,
+// the set must be contiguous from 1, and each claim must chain to the previous claim's
+// content digest (root-anchored at N=1). Any missing, malformed, foreign, reordered, reused
+// or chain-broken claim FAILS CLOSED. Advancing G->G+1 is a single-winner O_EXCL create of
+// `.gen.<G+1>` (see the initializer's claimGeneration); staging temp files live OUTSIDE this
+// namespace (`<stateFile>.genstage-*`) so an in-progress publication is never mistaken for a
+// claim. Residual: out-of-band DELETION of the highest claim regresses the visible ledger --
+// that is out of the governed threat model (the ledger lives in the same protected directory
+// as the state key; no governed command ever deletes a claim), and an in-flight worker whose
+// recorded generation exceeds the current ledger fails closed at its next revalidation.
+const GEN_LEDGER_VERSION = 1;
+const GEN_CLAIM_FIELDS = Object.freeze(["version", "generation", "previousDigest", "owner", "at"]);
+const GEN_CHAIN_ROOT = sha256Hex("AUTHPR4-GEN-LEDGER-CHAIN-ROOT/v1");
+function genClaimPath(stateFile, n) { return `${stateFile}.gen.${n}`; }
+function genLedgerPrefix(stateFile) { return `${path.basename(stateFile)}.gen.`; }
+function canonicalGenClaim(c) { return JSON.stringify(GEN_CLAIM_FIELDS.map((f) => [f, c[f]])); }
+function genClaimDigest(c) { return sha256Hex(Buffer.from(canonicalGenClaim(c), "utf8")); }
+function isValidGenClaim(c, n) {
+  if (!c || typeof c !== "object" || Array.isArray(c)) return false;
+  const keys = Object.keys(c).sort();
+  if (keys.length !== GEN_CLAIM_FIELDS.length || keys.some((k, i) => k !== [...GEN_CLAIM_FIELDS].sort()[i])) return false;
+  return c.version === GEN_LEDGER_VERSION && c.generation === n && isSha256(c.previousDigest) &&
+    isBoundedString(c.owner, 128) && isUtcInstant(c.at);
+}
+// Validate the whole ledger and return the current generation (0 if none). Throws (fails
+// closed) on ANY anomaly. This is the ONLY place generation authority is derived.
+function readGenerationLedger(stateFile, deps = {}) {
+  const _fs = deps.fs || fs;
+  const dir = path.dirname(stateFile);
+  const prefix = genLedgerPrefix(stateFile);
+  let names;
+  try { names = _fs.readdirSync(dir); }
+  catch (err) {
+    // ONLY an absent containing directory is a legitimate no-ledger (clean-start) condition.
+    // EACCES / EPERM / EIO / any other inability-to-inspect must FAIL CLOSED, never fail open
+    // as an empty ledger. The message carries no protected path.
+    if (err && err.code === "ENOENT") return 0;
+    throw new Error("Generation ledger directory could not be read -- fail closed (governed reconciliation anomaly; escalate to the Owner).");
+  }
+  const claims = new Map();
+  for (const name of names) {
+    if (!name.startsWith(prefix)) continue; // staging temps (`.genstage-*`) never match `.gen.`
+    const suffix = name.slice(prefix.length);
+    if (!/^[1-9][0-9]{0,8}$/.test(suffix)) throw new Error("Generation ledger has a malformed claim name -- fail closed (governed reconciliation anomaly; escalate to the Owner).");
+    claims.set(Number(suffix), path.join(dir, name));
+  }
+  if (claims.size === 0) return 0;
+  const K = Math.max(...claims.keys());
+  let prevDigest = GEN_CHAIN_ROOT;
+  for (let n = 1; n <= K; n += 1) {
+    const p = claims.get(n);
+    if (!p) throw new Error(`Generation ledger is not contiguous (missing generation ${n}) -- fail closed.`);
+    let parsed;
+    try { parsed = JSON.parse(_fs.readFileSync(p, "utf8")); }
+    catch { throw new Error(`Generation-ledger claim ${n} is malformed -- fail closed.`); }
+    if (!isValidGenClaim(parsed, n)) throw new Error(`Generation-ledger claim ${n} has invalid content -- fail closed.`);
+    if (parsed.previousDigest !== prevDigest) throw new Error(`Generation-ledger claim ${n} breaks the hash chain -- fail closed.`);
+    prevDigest = genClaimDigest(parsed);
+  }
+  return K;
+}
+
 // Verify the on-disk transition mutex is present, well-formed, and owned by the
 // caller-provided token (safe comparison). Mutex existence alone is NOT authority.
 function assertMutexOwner(stateFile, ownerToken, deps = {}) {
@@ -660,6 +792,15 @@ function assertProductionAuthorization(args, deps = {}) {
     projectId: args.projectId, personaOrder: deps.personaOrder, derivedHashes: reviewedHashes, repoIdentity,
     authorizedCommit: args.authorizedCommit, executionModeConfirmation: args.executionModeConfirmation, executor: args.executor,
   });
+
+  // An incomplete/crash-left genesis initialization (init marker) OR an in-progress /
+  // interrupted governed reconciliation (reconcile mutex) blocks every production step
+  // BEFORE any progression read, claim, or Auth access. The fencing-generation ledger is
+  // also validated here (single authority): any malformed / non-contiguous / chain-broken
+  // ledger fails closed before Auth access.
+  assertNoInitMarker(args.progressionFile, deps);
+  assertNoReconcileMutex(args.progressionFile, deps);
+  readGenerationLedger(args.progressionFile, deps); // throws (fail-closed) on any ledger anomaly
 
   const expected = { authorizationId: authorization.authorizationId, projectId: args.projectId, workflowIdentityHash: idHash, personaOrder: deps.personaOrder };
   const state = readState(args.progressionFile, stateKey, expected, deps);
@@ -834,6 +975,9 @@ module.exports = {
   anchorPath, signAnchor, writeAnchor, readAnchor, verifyStateFreshness,
   lockPath, readLock, acquireClaim, releaseClaim, assertOwnsClaim, assertLiveOwnership, leaseExpired,
   txnPath, withTransition, assertMutexOwner,
+  INIT_MARKER_VERSION, INIT_MARKER_FIELDS, INIT_TOKEN_RE, initMarkerPath, isValidInitMarker, readInitMarker, assertNoInitMarker,
+  RECONCILE_MUTEX_VERSION, RECONCILE_MUTEX_FIELDS, reconcilePath, isValidReconcileMutex, assertNoReconcileMutex,
+  GEN_LEDGER_VERSION, GEN_CLAIM_FIELDS, GEN_CHAIN_ROOT, genClaimPath, genLedgerPrefix, canonicalGenClaim, genClaimDigest, isValidGenClaim, readGenerationLedger,
   nextEligiblePersona,
   signBreakGlass, readAndVerifyBreakGlass,
   assertProductionAuthorization,
