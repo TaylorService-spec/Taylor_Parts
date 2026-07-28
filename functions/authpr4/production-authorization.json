@@ -10,10 +10,11 @@
     "emp-rudy-parts-manager",
     "emp-rudy-owner"
   ],
-  "reviewedHead": "c2604dff3fcbcd3f9442648484e6d407b67444ef",
+  "reviewedHead": "dba0e33bd5f009c4374b8985af3a101d0d1e7777",
   "governedFileHashes": {
     "functions/scripts/authPr4RecoveryEmailMigration.js": "779410d65c55847ce6af27183c6d045118fe59dca46d1bb4cb9c92fec0b37ffd",
-    "functions/scripts/authPr4ProductionGate.js": "0609613c3d96f621db31a47307c6e48d47ead1205ea3617df6c1862ec4b0b8af"
+    "functions/scripts/authPr4ProductionGate.js": "ec140a0ad21bf982cbbffabd5824a7692f6e1ef8fd7dc6326ff1bc9ef7df81f0",
+    "functions/scripts/authPr4InitProgression.js": "4b77b77879dcd7c637d2572a931940e51182fcc13b01d607c411d4a6dba425c3"
   },
   "executionModeToken": "emt-aeb8cf444375d24a6f5cd5a50564b4e38453984a73263ed2",
   "executor": {

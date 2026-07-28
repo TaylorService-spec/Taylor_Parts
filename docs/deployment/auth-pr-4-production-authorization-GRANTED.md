@@ -1,24 +1,33 @@
 # AUTH-PR-4 — Production Identity-Mutation Authorization (GRANTED) & Execution Package
 
-> **STATUS: GRANTED by the Owner (2026-07-27)** — but see the re-authorization note.
-> Recorded append-only in [`docs/DECISIONS.md` #52](../DECISIONS.md) and enabled in
+> **STATUS: GRANTED (governed decision from #52) — three-file re-binding PROPOSED in this
+> DRAFT PR (2026-07-28), not yet finalized.** The governed decision (identities, order,
+> exclusions, required behaviour) is recorded append-only in
+> [`docs/DECISIONS.md` #52](../DECISIONS.md); the **three-file re-binding** is recorded in
+> [`#53`](../DECISIONS.md) and applied to
 > [`functions/authpr4/production-authorization.json`](../../functions/authpr4/production-authorization.json)
-> (`PENDING → GRANTED`). **Merging does NOT execute the migration.** Execution is a
-> separate, controlled step (see §5). Subject to Codex review before merge.
+> in this PR. **Merging does NOT execute the migration.** Execution is a separate, controlled
+> step (see §5). This re-authorization PR is DRAFT, subject to independent Codex review before
+> any merge. Its CI-enforcement prerequisite is **now satisfied** — see the governance note below.
 >
-> **⚠ RE-AUTHORIZATION REQUIRED (governed-set expansion).** The genesis initializer
-> (`functions/scripts/authPr4InitProgression.js`) was added to the gate's
-> `GOVERNED_FILES` binding (Owner-decided). The governed set is now **three** files,
-> so the authorization artifact recorded here — bound to the **two**-file set at
-> `reviewedHead c2604df` — **no longer verifies (fails closed)**. Production execution
-> is blocked until a **new** Owner authorization PR re-binds the artifact to this
-> correction's merged head + the **three**-file `governedFileHashes`. The §1 table
-> below still shows the prior two-file binding; it is superseded by that re-grant.
+> **RE-BINDING PROPOSED (governed-set expansion).** PR #461 (merged `dba0e33`) added the
+> genesis initializer (`functions/scripts/authPr4InitProgression.js`) to the gate's
+> `GOVERNED_FILES` and changed `authPr4ProductionGate.js`, so the prior **two**-file binding
+> at `reviewedHead c2604df` no longer verified (failed closed). This PR re-binds the
+> authorization artifact to the **three**-file governed set at `reviewedHead dba0e33`, with
+> all three governed blob hashes recomputed from that reviewed commit. The §1 table below
+> reflects the new three-file binding. **Governance history:** PR #461 did **not** receive an
+> unconditional Codex PASS — its **post-merge Codex review returned CHANGES REQUIRED** because
+> the AUTH-PR-4 security suites (`test:authPr4Init` / `test:authPr4Gate` / `test:authPr4Migration`,
+> with Auth-emulator coverage) were **not CI-enforced**. That gap was **subsequently corrected by
+> PR #463** (merged `9b912d7`), which runs those suites in CI (`.github/workflows/authpr4-security-tests.yml`,
+> gate/migration Auth-emulator layers on `demo-authpr4`).
 
 | | |
 |---|---|
 | Gate | AUTH-PR-4 **production** recovery-email migration |
-| Baseline / reviewed head | `c2604dff3fcbcd3f9442648484e6d407b67444ef` (merged enablement gate, PR #457) |
+| Baseline / reviewed head | `dba0e33bd5f009c4374b8985af3a101d0d1e7777` (merge of PR #461 — governed genesis initializer + expanded 3-file `GOVERNED_FILES`) |
+| Governing decision / re-binding | [`DECISIONS.md` #52 (GRANT)](../DECISIONS.md) · [#53 (three-file re-binding)](../DECISIONS.md) |
 | Governing design | [`auth-pr-4-production-enablement-design.md`](./auth-pr-4-production-enablement-design.md), [`auth-pr-4-readiness-authorization-package.md`](./auth-pr-4-readiness-authorization-package.md), [`auth-pr-4-operator-workflow.md`](../operations/auth-pr-4-operator-workflow.md) |
 | Firebase project | `taylor-parts` |
 | Prepared by | Customer / Authentication execution session |
@@ -30,21 +39,22 @@
 | Field | Value |
 |---|---|
 | `authorizationId` | `AUTHPR4-PROD-MIGRATION-001` |
-| `authorizationStatus` | **GRANTED** (the previously PENDING placeholder artifact is fully populated and its status set to GRANTED; see the change-scope note below) |
+| `authorizationStatus` | **GRANTED** (carried forward from #52; re-bound to the three-file governed set — see the change-scope note below) |
 | `projectId` | `taylor-parts` |
-| `reviewedHead` | `c2604dff3fcbcd3f9442648484e6d407b67444ef` |
-| `governedFileHashes` (blob SHA-256) | `authPr4RecoveryEmailMigration.js` = `779410d6…0b37ffd`; `authPr4ProductionGate.js` = `0609613c…c4b0b8af` |
-| `executionModeToken` | high-entropy `emt-…` (committed; a repository-derived contract value, not a secret — the real controls are GRANTED status + production credentials + private inputs) |
+| `reviewedHead` | `dba0e33bd5f009c4374b8985af3a101d0d1e7777` |
+| `governedFileHashes` (blob SHA-256) | `authPr4RecoveryEmailMigration.js` = `779410d6…0b37ffd` (unchanged); `authPr4ProductionGate.js` = `ec140a0a…7df81f0` (changed by PR #461); `authPr4InitProgression.js` = `4b77b778…dba425c3` (new governed file) |
+| `executionModeToken` | high-entropy `emt-…` (committed, **preserved from #52**; a repository-derived contract value, not a secret — the real controls are GRANTED status + production credentials + private inputs) |
 | `executor.name` | `rudy-digiorgio` — the operator's `--executor` must match (**Owner-confirmed**, 2026-07-27) |
 | `breakGlassContract` | `{ validityWindowSeconds: 600, requiredConfirmer: "rudy-digiorgio" }` (**Owner-confirmed**, 2026-07-27) |
 
-**Change scope of this authorization PR:** the two governed workflow **implementation**
-files (`authPr4RecoveryEmailMigration.js`, `authPr4ProductionGate.js`) are **unchanged**
-— the authorization binds to their exact reviewed blob-SHA-256 hashes, so no workflow-code
-re-review is needed. The previously **PENDING placeholder** artifact is **fully populated
-and its status changed to GRANTED** (`authorizationId`, `reviewedHead`, both governed-file
-hashes, `executionModeToken`, `executor.name`, and `requiredConfirmer` populated from their
-placeholders). Any change to the governed implementation files invalidates the binding
+**Change scope of this re-authorization PR:** the **three** governed workflow files
+(`authPr4RecoveryEmailMigration.js`, `authPr4ProductionGate.js`, `authPr4InitProgression.js`)
+are **unchanged** by this PR — they are already merged on `main` (PR #461, reviewed at
+`bf393ba`, merged `dba0e33`). This PR changes **only** the authorization artifact (rebinding
+`reviewedHead` to `dba0e33` and replacing `governedFileHashes` with the three governed blob
+hashes recomputed from that commit), plus this runbook, `DECISIONS.md` #53, and a gate test.
+The governed decision of #52 (identities, order, exclusions, required behaviour) is unchanged.
+Any change to any of the three governed implementation files invalidates the binding
 (different hashes) and requires a new Codex review + a re-bound authorization.
 
 > **Named executor / confirmer (Owner-confirmed):** `executor.name = rudy-digiorgio` and
@@ -305,25 +315,38 @@ The recover report's `residualRecommendation` tells you the next governed step (
 re-run step 1 + step 2). Record a sanitized reconciliation note (booleans/refs/fingerprint/
 generation only) — no key, path, token, or identity value.
 
-## 7. Confirmation (this PR)
+## 7. Confirmation (this PR — three-file re-authorization)
 
-No production action occurred in preparing this PR: no Auth mutation, no email, no
-session revocation, no deployment, no provider config, no private mapping/state-key
-requested or committed, **no re-grant of the authorization artifact**.
+No production action occurred in preparing this PR: no Auth mutation, no email, no session
+revocation, no deployment, no provider config, no private mapping/state-key/genesis requested
+or committed, no dry-run.
 
-**What this PR changes vs. what PR #460 did.** The `PENDING → GRANTED` transition of
-[`production-authorization.json`](../../functions/authpr4/production-authorization.json)
-was performed **historically by PR #460** (merged `70c3989`, [`DECISIONS.md` #52](../DECISIONS.md)),
-which populated the placeholder and bound it to the **two**-file governed set at
-`reviewedHead c2604df`. **This PR (the genesis-initializer correction)** does something
-different: it adds the governed, credential-free initializer
-[`functions/scripts/authPr4InitProgression.js`](../../functions/scripts/authPr4InitProgression.js)
-and **expands the gate's `GOVERNED_FILES` to three files**. That expansion **invalidates
-the existing two-file authorization (fails closed)** — `governedFileHashes` no longer
-covers the governed set. This PR **leaves `production-authorization.json` unchanged**
-(now stale) and **does NOT re-grant**. Production execution stays blocked until a
-**separate** Owner authorization PR re-binds the artifact to this correction's merged head
-and the **three**-file `governedFileHashes` (see the ⚠ re-authorization note at the top and
-§1). The §1 table and §1 change-scope note describe the historical two-file binding and are
-superseded by that forthcoming re-grant. Draft — returned for Codex review; not merged;
-genesis not created; execution not begun.
+**Lineage.** The `PENDING → GRANTED` transition of
+[`production-authorization.json`](../../functions/authpr4/production-authorization.json) was
+performed historically by PR #460 (merged `70c3989`, [`DECISIONS.md` #52](../DECISIONS.md)),
+bound to the **two**-file governed set at `reviewedHead c2604df`. PR #461 (Codex-reviewed at
+`bf393ba`, merged `dba0e33`) then added the governed genesis initializer
+(`functions/scripts/authPr4InitProgression.js`) and changed `authPr4ProductionGate.js`,
+**expanding `GOVERNED_FILES` to three files** — which invalidated the two-file binding
+(fails closed), and PR #461 itself left the artifact unchanged/stale by design. **Governance
+history:** PR #461 did **not** receive an unconditional Codex PASS — its **post-merge Codex
+review returned CHANGES REQUIRED** because the AUTH-PR-4 security suites (`test:authPr4Init` /
+`test:authPr4Gate` / `test:authPr4Migration`, with Auth-emulator coverage) were **not
+CI-enforced**. That gap was **subsequently corrected by PR #463** (merged `9b912d7`), which runs
+those suites in CI.
+
+**What this PR does.** It is the Owner-authorized ([`DECISIONS.md` #53](../DECISIONS.md))
+**repository-only three-file re-authorization**: it rebinds the artifact's `reviewedHead` to
+`dba0e33` and replaces `governedFileHashes` with the **three** governed blob hashes recomputed
+from that commit, preserving `authorizationId`, `authorizationStatus: GRANTED`, `projectId`,
+`personaOrder`, `executor.name`, `breakGlassContract`, and `executionModeToken` from #52. The
+three governed implementation files are **unchanged** by this PR (already merged via #461); the
+only changes are the authorization artifact, this runbook, `DECISIONS.md` #53, and a gate test
+proving the artifact verifies against the exact 3-file binding and fails closed for a missing,
+substituted, stale, or drifted governed file.
+
+**Merging this PR does not execute the migration** and deploys nothing; execution remains the
+separate, later gate defined by #52 and §5. Draft — returned for independent Codex review; not
+merged; genesis not created; execution not begun. Preparing this PR does **not** authorize
+merging it, creating the state key or genesis, requesting private inputs, or any production/Auth
+action.

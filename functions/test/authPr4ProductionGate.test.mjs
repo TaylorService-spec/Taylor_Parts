@@ -109,22 +109,30 @@ ok("strict validators reject non-canonical values", () => {
 // 2. C1 -- repository-governed authorization artifact
 // ---------------------------------------------------------------------------
 
-ok("REAL repo committed authorization is now STALE under the expanded 3-file governed set (re-authorization required; fail closed)", () => {
-  // Adding authPr4InitProgression.js to GOVERNED_FILES (Owner-decided) means the
-  // committed GRANTED authorization (bound to the OLD 2-file set at reviewedHead
-  // c2604df) no longer covers the governed set -> it fails closed. A NEW authorization
-  // bound to this correction's merged head + the 3-file hashes is required.
+ok("REAL repo committed authorization VERIFIES against the exact 3-file governed binding at HEAD; fails closed for missing / substituted / stale / drifted files", () => {
+  // The three-file re-authorization (rebinding the artifact to reviewedHead dba0e33 + the
+  // three governed blob hashes) is now committed: the artifact verifies against the exact
+  // 3-file set at HEAD, and any deviation from that exact binding fails closed.
   assert.equal(gate.GOVERNED_FILES.length, 3);
   const repoIdentity = gate.deriveRepositoryIdentity(REAL_ROOT);
   const head = repoIdentity.head;
   const { artifact } = gate.loadGovernedAuthorization({ repoRoot: REAL_ROOT, authorizedCommit: head });
   assert.equal(artifact.authorizationStatus, "GRANTED");
-  assert.equal(Object.keys(artifact.governedFileHashes).length, 2, "committed artifact still records the OLD 2-file hash set");
-  const hashesAtHead = gate.governedHashesAtCommit(REAL_ROOT, head); // 3 files at HEAD (initializer now exists)
-  throws(() => gate.verifyGovernedAuthorization(artifact, {
-    projectId: "taylor-parts", personaOrder: ORDER, derivedHashes: hashesAtHead, repoIdentity,
-    authorizedCommit: head, executionModeConfirmation: artifact.executionModeToken, executor: artifact.executor.name,
-  }), /governedFileHashes: schema mismatch/);
+  assert.equal(Object.keys(artifact.governedFileHashes).length, 3, "committed artifact records the 3-file governed set");
+  for (const rel of gate.GOVERNED_FILES) assert.ok(rel in artifact.governedFileHashes, `binds ${rel}`);
+  const derived = gate.governedHashesAtCommit(REAL_ROOT, head);
+  const base = { projectId: "taylor-parts", personaOrder: ORDER, derivedHashes: derived, repoIdentity, authorizedCommit: head, executionModeConfirmation: artifact.executionModeToken, executor: artifact.executor.name };
+  // (a) verifies against the exact reviewed 3-file binding.
+  assert.equal(gate.verifyGovernedAuthorization(artifact, base).authorizationStatus, "GRANTED");
+  // (b) MISSING governed file (a 2-file subset) -> schema mismatch (fails closed).
+  const { [gate.GOVERNED_FILES[2]]: _dropped, ...twoFileSubset } = artifact.governedFileHashes;
+  throws(() => gate.verifyGovernedAuthorization({ ...artifact, governedFileHashes: twoFileSubset }, base), /governedFileHashes: schema mismatch/);
+  // (c) SUBSTITUTED / DRIFTED file (running code differs from the reviewed hash) -> hash mismatch.
+  throws(() => gate.verifyGovernedAuthorization(artifact, { ...base, derivedHashes: { ...derived, [gate.GOVERNED_FILES[2]]: "f".repeat(64) } }), /hash mismatch/);
+  // (d) STALE binding (artifact carries an outdated hash for a governed file) -> hash mismatch.
+  throws(() => gate.verifyGovernedAuthorization({ ...artifact, governedFileHashes: { ...artifact.governedFileHashes, [gate.GOVERNED_FILES[1]]: "0".repeat(64) } }, base), /hash mismatch/);
+  // The exact reviewed head is bound.
+  assert.equal(artifact.reviewedHead, "dba0e33bd5f009c4374b8985af3a101d0d1e7777");
 });
 
 ok("substitution defence: at reviewedHead c2604df the committed artifact is PENDING and refuses (status checked before hashes)", () => {
@@ -779,16 +787,17 @@ await okAsync("plain --execute / --rollback vs taylor-parts still refuse (never 
   }
 });
 
-// Gated production refusal against taylor-parts at the exact PR HEAD. The committed
-// authorization is now STALE (2-file hashes) under the expanded 3-file governed set,
-// so a --executeProduction run against taylor-parts fails closed at the governed-file-
-// set boundary BEFORE any SDK init -- no production Auth call is made. (Per-boundary
-// token/executor specificity is covered against a FRESH 3-file granted temp repo in
-// the pure layer; the CLI here targets the real, now-invalidated committed artifact.)
+// Gated production refusal against taylor-parts at the exact PR HEAD. With the three-file
+// re-authorization committed, the authorization now VERIFIES (governed-hash boundary passes),
+// so a --executeProduction run against taylor-parts fails closed at the NEXT governed boundary
+// -- there is no genesis progression state on disk -- and it does so BEFORE any Firebase SDK
+// init, so no production Auth call is ever made. (This proves the authorization no longer fails
+// at the schema-mismatch boundary AND that a bare production execute still fails closed and
+// mutates nothing without a genuine, out-of-band genesis + private inputs.)
 const GRANTED = JSON.parse(fs.readFileSync(path.join(REAL_ROOT, gate.AUTH_ARTIFACT_PATH), "utf8"));
 const HEAD = gate.deriveRepositoryIdentity(REAL_ROOT).head;
 
-await okAsync("gated --executeProduction vs taylor-parts fails closed: committed authorization is STALE under the expanded governed set (re-authorization required), before SDK", async () => {
+await okAsync("gated --executeProduction vs taylor-parts fails closed at the governed genesis boundary (no progression state), before any SDK init", async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-prodrefuse-"));
   const keyFile = path.join(dir, "k"); fs.writeFileSync(keyFile, crypto.randomBytes(48));
   const r = spawnSync(process.execPath, [SCRIPT, "--projectId", "taylor-parts", "--confirmProduction", "taylor-parts", "--executeProduction",
@@ -797,7 +806,10 @@ await okAsync("gated --executeProduction vs taylor-parts fails closed: committed
     "--executionModeConfirmation", GRANTED.executionModeToken, "--executor", GRANTED.executor.name],
     { cwd: path.resolve("."), env: process.env, encoding: "utf8" });
   assert.notEqual(r.status, 0, "must refuse");
-  assert.match(r.stderr, /governedFileHashes: schema mismatch/);
+  // The re-bound artifact verifies, so it is NOT a schema-mismatch failure any more; it fails
+  // closed at the missing-genesis-progression boundary, before SDK init / any Auth mutation.
+  assert.doesNotMatch(r.stderr, /governedFileHashes: schema mismatch/);
+  assert.match(r.stderr, /Progression state missing\/malformed/);
   assert.doesNotMatch(r.stderr, /FORWARD executed|updateUser/);
   fs.rmSync(dir, { recursive: true, force: true });
 });
