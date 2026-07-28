@@ -79,31 +79,57 @@ const MAX_VERSION = Number.MAX_SAFE_INTEGER;
 const isBoundedString = (v: any, max: number): v is string => typeof v === "string" && v.length > 0 && v.length <= max;
 const isNonNegInt = (v: any): v is number => typeof v === "number" && Number.isSafeInteger(v) && v >= 0 && v <= MAX_VERSION;
 
-// Authentic Firestore Timestamp reader. Firestore data is untrusted, and a duck-typed impostor
-// ({ toMillis: () => 1000 }) must NOT pass as a persisted Timestamp — nor must a stateful impostor whose
-// toMillis() returns a finite value once and NaN on the next call. So this NEVER calls toMillis():
-//   1. the value must be an EXACT Admin SDK Timestamp — Object.getPrototypeOf(v) === Timestamp.prototype,
-//      which rejects plain duck-types AND subclass/prototype impostors that could override behaviour;
-//   2. the millisecond value is DERIVED from the authentic seconds/nanoseconds fields, each range-checked,
-//      so the result is a pure function of the stored data and cannot vary between reads.
-// Property access is still guarded because a hostile object can define throwing getters. Returns null
-// (→ invalid) instead of throwing, keeping timestamp validation total and fail-closed.
-export function timestampMillis(v: any): number | null {
+export interface TimestampParts {
+  seconds: number;
+  nanoseconds: number;
+}
+
+// STRICTLY VALIDATED Firestore Timestamp REPRESENTATION. This is deliberately not called an
+// authenticity or provenance proof: an object carrying Timestamp.prototype and genuine backing fields is
+// indistinguishable from one the SDK constructed, and we do not claim otherwise. What it does guarantee
+// is that the value has the exact shape the Admin SDK produces for a snapshot field, with in-range
+// integer components:
+//   1. prototype is exactly Timestamp.prototype — rejects duck-types ({ toMillis: () => 1000 }) and
+//      subclasses, which could override behaviour;
+//   2. own property names are EXACTLY the SDK's two backing fields, _seconds and _nanoseconds. This is
+//      what rejects an Object.create(Timestamp.prototype) forgery with injected PUBLIC seconds /
+//      nanoseconds: on a real Timestamp those are PROTOTYPE GETTERS and are never own properties;
+//   3. the public getters agree with the backing fields, so shadowing or redefinition diverges;
+//   4. components are safe integers with nanoseconds in [0, 999999999].
+// toMillis() is never called, so a stateful impostor cannot return a finite value on one read and NaN on
+// the next. Property access is guarded because a hostile object can define throwing getters; the reader
+// returns null (→ invalid) instead of throwing, keeping timestamp validation total and fail-closed.
+export function readTimestamp(v: any): TimestampParts | null {
   if (v === null || typeof v !== "object") return null;
   if (Object.getPrototypeOf(v) !== Timestamp.prototype) return null;
-  let seconds: any, nanoseconds: any;
+  let seconds: any, nanoseconds: any, publicSeconds: any, publicNanoseconds: any;
   try {
-    seconds = (v as Timestamp).seconds;
-    nanoseconds = (v as Timestamp).nanoseconds;
+    const own = Object.getOwnPropertyNames(v);
+    if (own.length !== 2 || !own.includes("_seconds") || !own.includes("_nanoseconds")) return null;
+    if (Object.getOwnPropertySymbols(v).length !== 0) return null;
+    seconds = (v as any)._seconds;
+    nanoseconds = (v as any)._nanoseconds;
+    publicSeconds = (v as any).seconds;
+    publicNanoseconds = (v as any).nanoseconds;
   } catch {
     return null;
   }
   if (!Number.isSafeInteger(seconds)) return null;
   if (!Number.isSafeInteger(nanoseconds) || nanoseconds < 0 || nanoseconds > 999_999_999) return null;
-  const ms = seconds * 1000 + Math.floor(nanoseconds / 1_000_000);
-  return Number.isSafeInteger(ms) ? ms : null;
+  if (publicSeconds !== seconds || publicNanoseconds !== nanoseconds) return null;
+  return { seconds, nanoseconds };
 }
-const isTimestamp = (v: any): boolean => timestampMillis(v) !== null;
+
+// EXACT ordering on the (seconds, nanoseconds) tuple. Millisecond conversion is never used for ordering
+// or equality: seconds*1000 + floor(ns/1e6) collapses sub-millisecond differences, so a terminalAt one
+// nanosecond BEFORE initiatedAt would compare equal and validate.
+export function compareTimestamps(a: TimestampParts, b: TimestampParts): number {
+  if (a.seconds !== b.seconds) return a.seconds < b.seconds ? -1 : 1;
+  if (a.nanoseconds !== b.nanoseconds) return a.nanoseconds < b.nanoseconds ? -1 : 1;
+  return 0;
+}
+
+const isTimestamp = (v: any): boolean => readTimestamp(v) !== null;
 
 // Canonical target-id shape appropriate to the authority — DELEGATED to the D1/D2 contracts. The alias
 // key in particular is validated by D1's canonical-alias-key predicate (round-trip agreement, no control
@@ -148,23 +174,23 @@ function validateOperationRecordUnsafe(data: any): { valid: boolean; reason: str
   if (typeof data.commandFingerprint !== "string" || !HEX64.test(data.commandFingerprint)) return { valid: false, reason: "command_fingerprint_invalid" };
   if (!(data.expectedVersion === null || isNonNegInt(data.expectedVersion))) return { valid: false, reason: "expected_version_invalid" };
   if (!(OPERATION_STATES as readonly string[]).includes(data.status)) return { valid: false, reason: "status_invalid" };
-  // Each timestamp is read and validated EXACTLY ONCE, and the validated millisecond value is reused for
-  // the ordering check below — a record is never re-read, so no value can differ between inspections.
-  const initiatedMs = timestampMillis(data.initiatedAt);
-  if (initiatedMs === null) return { valid: false, reason: "initiated_at_invalid" };
-  const terminalMs = timestampMillis(data.terminalAt);
+  // Each timestamp is read and validated EXACTLY ONCE, and the validated tuple is reused for the
+  // ordering check below — a record is never re-read, so no value can differ between inspections.
+  const initiatedAt = readTimestamp(data.initiatedAt);
+  if (initiatedAt === null) return { valid: false, reason: "initiated_at_invalid" };
+  const terminalAt = readTimestamp(data.terminalAt);
   // status/field invariants (internal consistency).
   if (data.status === "initiated") {
     if (data.resultVersion !== null) return { valid: false, reason: "result_version_must_be_null" };
     if (data.terminalAt !== null) return { valid: false, reason: "terminal_at_must_be_null" };
   } else if (data.status === "denied") {
     if (data.resultVersion !== null) return { valid: false, reason: "result_version_must_be_null" };
-    if (terminalMs === null) return { valid: false, reason: "terminal_at_invalid" };
+    if (terminalAt === null) return { valid: false, reason: "terminal_at_invalid" };
   } else { // applied
     if (!isNonNegInt(data.resultVersion)) return { valid: false, reason: "result_version_invalid" };
-    if (terminalMs === null) return { valid: false, reason: "terminal_at_invalid" };
+    if (terminalAt === null) return { valid: false, reason: "terminal_at_invalid" };
   }
-  if (terminalMs !== null && terminalMs < initiatedMs) return { valid: false, reason: "terminal_before_initiated" };
+  if (terminalAt !== null && compareTimestamps(terminalAt, initiatedAt) < 0) return { valid: false, reason: "terminal_before_initiated" };
   return { valid: true, reason: null };
 }
 
@@ -200,8 +226,12 @@ export function assertOperationRecordTransition(prev: OperationRecord | null, ne
   if (prev.idempotencyKey !== next.idempotencyKey || pb.actorUid !== nb.actorUid || pb.action !== nb.action || pb.targetType !== nb.targetType || pb.targetId !== nb.targetId || pb.expectedVersion !== nb.expectedVersion || pb.commandFingerprint !== nb.commandFingerprint) {
     throw new IllegalOperationTransitionError("immutable operation binding changed across transition");
   }
-  // Both records already validated, so both initiatedAt values are real, finite Timestamps.
-  if (timestampMillis(prev.initiatedAt) !== timestampMillis(next.initiatedAt)) throw new IllegalOperationTransitionError("initiatedAt changed across transition");
+  // Both records are already validated, so both initiatedAt values read cleanly. Compared as EXACT
+  // (seconds, nanoseconds) tuples — a one-nanosecond rewrite of initiatedAt is a binding change.
+  const prevInitiated = readTimestamp(prev.initiatedAt), nextInitiated = readTimestamp(next.initiatedAt);
+  if (prevInitiated === null || nextInitiated === null || compareTimestamps(prevInitiated, nextInitiated) !== 0) {
+    throw new IllegalOperationTransitionError("initiatedAt changed across transition");
+  }
   // Successor terminal-field invariants are already enforced by validateOperationRecord(next):
   //   initiated→applied requires a non-negative resultVersion + terminalAt; initiated→denied requires
   //   resultVersion=null + terminalAt; terminalAt >= initiatedAt.

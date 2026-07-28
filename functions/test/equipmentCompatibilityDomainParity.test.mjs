@@ -175,6 +175,44 @@ ok("buildCompatibilityId output is canonical in both ports", () => {
   assert.equal(SC.isCanonicalCompatibilitySourceId(SID), true);
   assert.equal(CC.isCanonicalCompatibilitySourceId(SID), true);
 });
+// ---- model-ID persistence safety (B.2 precondition) ----
+// The equipment model id is used DIRECTLY as one Firestore document-ID segment, so the byte bound is
+// part of the identity contract -- the repository adapter must never depend on Firestore throwing after
+// the operation validator has already accepted the id.
+ok("FIRESTORE_DOC_ID_MAX_BYTES agrees across ports and governs both identities", () => {
+  assert.equal(SM.FIRESTORE_DOC_ID_MAX_BYTES, CM.FIRESTORE_DOC_ID_MAX_BYTES);
+  assert.equal(SM.FIRESTORE_DOC_ID_MAX_BYTES, 1500);
+  assert.equal(SM.MODEL_ALIAS_DOC_ID_MAX_BYTES, SM.FIRESTORE_DOC_ID_MAX_BYTES);
+});
+const modelIdBoundary = (() => {
+  // "TAYLOR--" is 8 bytes; pad the model-number half to land exactly on / just over the bound.
+  const at = "TAYLOR--" + "A".repeat(1500 - 8);
+  const over = "TAYLOR--" + "A".repeat(1500 - 8 + 1);
+  return [at, over];
+})();
+parity("isCanonicalEquipmentModelId byte boundary", SM.isCanonicalEquipmentModelId, CM.isCanonicalEquipmentModelId, modelIdBoundary.map((v) => [v]));
+ok("model ids are bounded in UTF-8 bytes and need no doc-id encoding", () => {
+  const utf8 = (x) => new TextEncoder().encode(x).length;
+  const [at, over] = modelIdBoundary;
+  assert.equal(utf8(at), 1500);
+  assert.equal(SM.isCanonicalEquipmentModelId(at), true, "exactly at the bound is canonical");
+  assert.equal(utf8(over), 1501);
+  assert.equal(SM.isCanonicalEquipmentModelId(over), false, "one byte over is refused");
+  assert.equal(CM.isCanonicalEquipmentModelId(over), false);
+  // The canonical charset excludes the two characters a doc-id segment cannot carry, so a canonical
+  // model id is already directly usable as a document ID.
+  for (const id of ["TAYLOR--C713", at, "TAYLOR-CO--C-713-REV-A"]) {
+    if (!SM.isCanonicalEquipmentModelId(id)) continue;
+    assert.equal(id.includes("/"), false, `no path separator in ${id.slice(0, 24)}`);
+    assert.equal(id.includes("%"), false, `no percent in ${id.slice(0, 24)}`);
+    assert.ok(utf8(id) <= SM.FIRESTORE_DOC_ID_MAX_BYTES);
+  }
+  // A model whose derived id would exceed the bound fails validation rather than reaching persistence.
+  const longModel = { manufacturerId: "TAYLOR", modelNumber: "A".repeat(1600), manufacturerName: "Taylor", displayName: "x", status: "ACTIVE", sourceAuthority: "manufacturer", version: 1 };
+  assert.equal(SM.validateEquipmentModel(longModel).valid, false);
+  assert.equal(J(SM.validateEquipmentModel(longModel)), J(CM.validateEquipmentModel(longModel)));
+});
+
 // ---- alias identity contract: normalize / validate / canonical-predicate / doc-id agreement ----
 // Governed by the Owner decision recorded for D4 Stage B.1: the alias key is a PURE IDENTITY string that
 // may contain "/", made storage-safe by percent-encoding at the persistence boundary (the ADR-008 /

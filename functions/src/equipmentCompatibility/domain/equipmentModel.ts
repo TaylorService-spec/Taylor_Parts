@@ -18,8 +18,17 @@ export function buildEquipmentModelId(manufacturerId: any, modelNumber: any): st
   const m = normalizeManufacturerId(manufacturerId), n = normalizeModelNumber(modelNumber).replace(/[^A-Z0-9]+/g, "-").replace(/^-|-$/g, "");
   return m && n ? `${m}--${n}` : "";
 }
+// Firestore's hard document-ID limit, in UTF-8 BYTES. Every identity this module mints is used directly
+// (or after doc-id encoding) as ONE Firestore document-ID segment, so the bound belongs to the identity
+// contract -- a repository adapter must never rely on Firestore throwing after the operation validator
+// has already accepted an ID.
+export const FIRESTORE_DOC_ID_MAX_BYTES = 1500;
+const utf8ByteLength = (s: any): number => new TextEncoder().encode(s).length;
 export function isCanonicalEquipmentModelId(v: any): boolean {
   if (typeof v !== "string") return false;
+  // Persistence-safety is part of the identity contract: the id is used as ONE document-ID segment.
+  // The charset below already excludes "/" and "%", so no encoding is needed -- only the byte bound.
+  if (utf8ByteLength(v) > FIRESTORE_DOC_ID_MAX_BYTES) return false;
   const parts = v.split("--");
   return parts.length === 2 && buildEquipmentModelId(parts[0], parts[1]) === v;
 }
@@ -63,10 +72,9 @@ const ALIAS_KEY_FORBIDDEN = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
 // (functions/src/partMaster/normalization.ts MAX_IDENTIFIER_LENGTH). Applied to the NORMALIZED value,
 // which is what the key actually carries -- NFKC can change length, so the raw input is not the bound.
 export const MODEL_ALIAS_VALUE_MAX = 120;
-// Firestore's hard document-ID limit in UTF-8 BYTES, applied to the ENCODED doc id (not to UTF-16 code
-// units, which undercount multibyte alias values).
-export const MODEL_ALIAS_DOC_ID_MAX_BYTES = 1500;
-const utf8ByteLength = (s: any): number => new TextEncoder().encode(s).length;
+// The alias doc-id bound IS the Firestore limit -- named separately because the alias key is
+// encoded before it becomes a doc id, so the bound applies to the ENCODED form.
+export const MODEL_ALIAS_DOC_ID_MAX_BYTES = FIRESTORE_DOC_ID_MAX_BYTES;
 // Storage-safe deterministic document id for an alias key, following the governed Part Master precedent
 // (ADR-008 / Decision #40, functions/src/partMaster/partAliasRepository.ts encodeAliasDocId): the alias
 // key stays a PURE IDENTITY string that may legitimately contain "/" (model numbers such as "C/713"),

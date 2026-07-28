@@ -4,7 +4,7 @@
 // initializeApp / emulator needed for the Timestamp value class).
 import assert from "node:assert/strict";
 import { Timestamp } from "firebase-admin/firestore";
-import { OPERATION_STATES, OPERATION_ACTIONS, OPERATION_TARGET_TYPES, ACTION_TARGET_TYPES, isAllowedActionTarget, isAllowedOperationTransition, assertOperationTransition, assertOperationRecordTransition, validateOperationRecord, isSameOperationCommand, isValidOperationTargetId, timestampMillis } from "../lib/equipmentCompatibility/operations.js";
+import { OPERATION_STATES, OPERATION_ACTIONS, OPERATION_TARGET_TYPES, ACTION_TARGET_TYPES, isAllowedActionTarget, isAllowedOperationTransition, assertOperationTransition, assertOperationRecordTransition, validateOperationRecord, isSameOperationCommand, isValidOperationTargetId, readTimestamp, compareTimestamps } from "../lib/equipmentCompatibility/operations.js";
 import { IllegalOperationTransitionError } from "../lib/equipmentCompatibility/errors.js";
 import { isCanonicalModelAliasKey, normalizeModelAliasKey } from "../lib/equipmentCompatibility/domain/equipmentModel.js";
 let passed = 0; const ok = (n, f) => { f(); passed++; console.log(`PASS -- ${n}`); };
@@ -176,43 +176,79 @@ ok("alias-key target ids are held to the D1 canonical-alias-key contract", () =>
 });
 
 // ---- total, fail-closed timestamp validation ----
-ok("timestampMillis accepts ONLY an authentic Firestore Timestamp, never a duck-typed impostor", () => {
-  // Real Admin SDK Timestamps, including epoch zero and sub-millisecond precision.
-  assert.equal(timestampMillis(T0), 1000);
-  assert.equal(timestampMillis(Timestamp.fromMillis(0)), 0);
-  assert.equal(timestampMillis(new Timestamp(1, 999999999)), 1999);
-  // Duck-typed impostor whose toMillis() returns a FINITE number is NOT a Timestamp.
-  assert.equal(timestampMillis({ toMillis: () => 1000 }), null);
-  // Stateful impostor: finite on the first call, NaN on the next. Rejected outright, and because the
-  // millis are DERIVED from seconds/nanoseconds rather than read from a method, no value can drift.
+ok("readTimestamp accepts ONLY a strictly valid Timestamp representation", () => {
+  // Real Admin SDK Timestamps, including epoch zero and maximum nanoseconds.
+  assert.deepEqual(readTimestamp(T0), { seconds: 1, nanoseconds: 0 });
+  assert.deepEqual(readTimestamp(Timestamp.fromMillis(0)), { seconds: 0, nanoseconds: 0 });
+  assert.deepEqual(readTimestamp(new Timestamp(1, 999999999)), { seconds: 1, nanoseconds: 999999999 });
+  // Duck-typed impostor whose toMillis() returns a FINITE number is not a Timestamp.
+  assert.equal(readTimestamp({ toMillis: () => 1000 }), null);
+  // Stateful impostor: toMillis() is never called, so it cannot drift between reads.
   let n = 0;
-  assert.equal(timestampMillis({ toMillis: () => (n++ ? NaN : 1000) }), null);
-  // Prototype/subclass impostors: a subclass could override behaviour, so only the exact class passes.
+  assert.equal(readTimestamp({ toMillis: () => (n++ ? NaN : 1000) }), null);
+  // Subclass impostor.
   class SubTimestamp extends Timestamp {}
-  assert.equal(timestampMillis(new SubTimestamp(1, 0)), null);
-  assert.equal(timestampMillis(Object.create(Timestamp.prototype)), null); // right proto, no real fields
-  const spoofed = { seconds: 1, nanoseconds: 0 };
-  Object.setPrototypeOf(spoofed, Timestamp.prototype);
-  assert.equal(timestampMillis(spoofed), 1000); // exact proto + authentic fields is by definition a Timestamp
+  assert.equal(readTimestamp(new SubTimestamp(1, 0)), null);
+  // FORGED exact-prototype object with injected PUBLIC seconds/nanoseconds -- the case the previous
+  // implementation accepted. On a real Timestamp these are prototype getters, never own properties.
+  const forged = Object.create(Timestamp.prototype);
+  Object.defineProperties(forged, { seconds: { value: 1 }, nanoseconds: { value: 0 } });
+  assert.equal(readTimestamp(forged), null, "Object.create forgery with public fields must be rejected");
+  assert.equal(readTimestamp(Object.create(Timestamp.prototype)), null); // bare prototype, no fields
+  // Forgery that also injects the backing fields but keeps the public ones shadowed inconsistently.
+  const shadowed = Object.create(Timestamp.prototype);
+  Object.defineProperties(shadowed, { _seconds: { value: 1, enumerable: true }, _nanoseconds: { value: 0, enumerable: true }, seconds: { value: 99, enumerable: true } });
+  assert.equal(readTimestamp(shadowed), null, "extra own property must be rejected");
   // Throwing call and throwing getters never escape.
-  assert.equal(timestampMillis({ toMillis() { throw new Error("boom"); } }), null);
-  const throwingGetter = {};
-  Object.setPrototypeOf(throwingGetter, Timestamp.prototype);
-  Object.defineProperty(throwingGetter, "seconds", { get() { throw new Error("boom"); } });
-  assert.doesNotThrow(() => timestampMillis(throwingGetter));
-  assert.equal(timestampMillis(throwingGetter), null);
-  // Out-of-range / non-integer internal fields.
-  for (const f of [{ seconds: 1.5, nanoseconds: 0 }, { seconds: 1, nanoseconds: -1 }, { seconds: 1, nanoseconds: 1e9 }, { seconds: NaN, nanoseconds: 0 }, { seconds: Infinity, nanoseconds: 0 }, { seconds: 1, nanoseconds: NaN }]) {
-    Object.setPrototypeOf(f, Timestamp.prototype);
-    assert.equal(timestampMillis(f), null, JSON.stringify(f));
+  assert.equal(readTimestamp({ toMillis() { throw new Error("boom"); } }), null);
+  const throwingGetter = Object.create(Timestamp.prototype);
+  Object.defineProperty(throwingGetter, "_seconds", { enumerable: true, get() { throw new Error("boom"); } });
+  Object.defineProperty(throwingGetter, "_nanoseconds", { enumerable: true, value: 0 });
+  assert.doesNotThrow(() => readTimestamp(throwingGetter));
+  assert.equal(readTimestamp(throwingGetter), null);
+  // Out-of-range / non-integer components on an otherwise well-shaped object.
+  for (const [sec, ns] of [[1.5, 0], [1, -1], [1, 1e9], [NaN, 0], [Infinity, 0], [1, NaN], [1, 1.5]]) {
+    const f = Object.create(Timestamp.prototype);
+    Object.defineProperties(f, { _seconds: { value: sec, enumerable: true }, _nanoseconds: { value: ns, enumerable: true } });
+    assert.equal(readTimestamp(f), null, `components ${sec}/${ns}`);
   }
-  for (const v of [{}, null, undefined, 1000, "1000", [], { seconds: 1, nanoseconds: 0 }]) assert.equal(timestampMillis(v), null);
+  for (const v of [{}, null, undefined, 1000, "1000", [], { seconds: 1, nanoseconds: 0 }, { _seconds: 1, _nanoseconds: 0 }]) assert.equal(readTimestamp(v), null);
+});
+ok("compareTimestamps orders by the EXACT (seconds, nanoseconds) tuple, not milliseconds", () => {
+  const T = (s, n) => readTimestamp(new Timestamp(s, n));
+  assert.equal(compareTimestamps(T(1, 999000000), T(1, 999999999)), -1); // same millisecond, ns apart
+  assert.equal(compareTimestamps(T(1, 999999999), T(1, 999000000)), 1);
+  assert.equal(compareTimestamps(T(1, 5), T(1, 5)), 0);
+  assert.equal(compareTimestamps(T(1, 999999999), T(2, 0)), -1);
+  assert.equal(compareTimestamps(T(0, 0), T(0, 1)), -1);
+});
+ok("sub-millisecond ordering is enforced on terminalAt (ms conversion would collapse it)", () => {
+  const NS_HI = new Timestamp(1, 999999999), NS_LO = new Timestamp(1, 999000000);
+  // Both are 1999ms; the old millisecond comparison called them equal and let this record validate.
+  assert.equal(Math.floor(NS_HI.toMillis()), Math.floor(NS_LO.toMillis()), "precondition: identical in ms");
+  const r = validateOperationRecord({ ...applied, initiatedAt: NS_HI, terminalAt: NS_LO });
+  assert.equal(r.valid, false, "terminal one nanosecond earlier must be rejected");
+  assert.equal(r.reason, "terminal_before_initiated");
+  // Equal to the nanosecond is accepted.
+  assert.equal(validateOperationRecord({ ...applied, initiatedAt: NS_HI, terminalAt: new Timestamp(1, 999999999) }).valid, true);
+  // Later by one nanosecond is accepted.
+  assert.equal(validateOperationRecord({ ...applied, initiatedAt: NS_LO, terminalAt: new Timestamp(1, 999000001) }).valid, true);
+});
+ok("initiatedAt changed by ONE NANOSECOND across a transition is rejected", () => {
+  const base = { ...initiated, initiatedAt: new Timestamp(1, 500000000) };
+  const same = { ...applied, initiatedAt: new Timestamp(1, 500000000), terminalAt: new Timestamp(2, 0) };
+  const drifted = { ...applied, initiatedAt: new Timestamp(1, 500000001), terminalAt: new Timestamp(2, 0) };
+  assert.equal(validateOperationRecord(drifted).valid, true, "successor is independently valid");
+  assert.doesNotThrow(() => assertOperationRecordTransition(base, same));
+  assert.throws(() => assertOperationRecordTransition(base, drifted), IllegalOperationTransitionError);
 });
 ok("validateOperationRecord NEVER throws on crafted timestamp-like data — it returns invalid", () => {
   const thrower = { toMillis() { throw new Error("boom"); } };
   const throwingGetter = { get toMillis() { throw new Error("boom"); } };
   class SubTs extends Timestamp {}
-  const crafted = [{ toMillis: () => 1000 }, new SubTs(1, 0), thrower, throwingGetter, { toMillis: () => NaN }, { toMillis: () => Infinity }, { toMillis: 1000 }, { seconds: 1, nanoseconds: 0 }, "1970-01-01T00:00:00Z", 1000, {}];
+  const forgedTs = Object.create(Timestamp.prototype);
+  Object.defineProperties(forgedTs, { seconds: { value: 1 }, nanoseconds: { value: 0 } });
+  const crafted = [{ toMillis: () => 1000 }, new SubTs(1, 0), forgedTs, thrower, throwingGetter, { toMillis: () => NaN }, { toMillis: () => Infinity }, { toMillis: 1000 }, { seconds: 1, nanoseconds: 0 }, "1970-01-01T00:00:00Z", 1000, {}];
   for (const ts of crafted) {
     let r;
     assert.doesNotThrow(() => { r = validateOperationRecord({ ...initiated, initiatedAt: ts }); }, `initiatedAt ${String(ts)}`);
