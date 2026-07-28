@@ -555,21 +555,27 @@ ok("DUAL TAKEOVER: two stale-takeover workers serialize; the second sees recover
 // 5. Break-glass strict (C4)
 // ---------------------------------------------------------------------------
 
-ok("break-glass strict: valid passes; wrong confirmer / window / unknown field / expired refuse", () => {
+ok("break-glass strict: valid passes; wrong confirmer / window / future / expired / unknown field refuse", () => {
   const key = KEY();
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-bg-"));
   const f = path.join(dir, "bg.json");
   const progHash = "f".repeat(64);
+  // ONE fixed instant for BOTH ctx.now and the valid fixture's createdAt -- otherwise a
+  // millisecond boundary between capturing `now` and creating `createdAt` can make the valid
+  // fixture read as "createdAt is in the future" (a timing flake).
+  const T0 = new Date();
   const mk = (over = {}) => {
-    const p = { version: gate.BREAKGLASS_VERSION, authorizationId: "AUTHPR4-PROD-TEST", progressionHash: progHash, position: 5, confirmer: "named-confirmer", createdAt: new Date().toISOString(), validityWindowSeconds: 600, sanitizedResult: { recoverable: true, loginVerified: true }, ...over };
+    const p = { version: gate.BREAKGLASS_VERSION, authorizationId: "AUTHPR4-PROD-TEST", progressionHash: progHash, position: 5, confirmer: "named-confirmer", createdAt: T0.toISOString(), validityWindowSeconds: 600, sanitizedResult: { recoverable: true, loginVerified: true }, ...over };
     fs.writeFileSync(f, JSON.stringify({ ...p, signature: gate.signBreakGlass(p, key) }));
   };
-  const ctx = { authorizationId: "AUTHPR4-PROD-TEST", currentProgressionHash: progHash, requiredConfirmer: "named-confirmer", contractWindowSeconds: 600, now: new Date() };
+  const ctx = { authorizationId: "AUTHPR4-PROD-TEST", currentProgressionHash: progHash, requiredConfirmer: "named-confirmer", contractWindowSeconds: 600, now: T0 };
   mk(); assert.equal(gate.readAndVerifyBreakGlass(f, key, ctx).position, 5);
   mk({ confirmer: "intruder" }); throws(() => gate.readAndVerifyBreakGlass(f, key, ctx), /confirmer does not match/);
   mk({ validityWindowSeconds: 30 }); throws(() => gate.readAndVerifyBreakGlass(f, key, ctx), /validityWindowSeconds/);
-  mk({ createdAt: new Date(Date.now() - 601000).toISOString() }); throws(() => gate.readAndVerifyBreakGlass(f, key, ctx), /EXPIRED/);
-  const p = { version: 1, authorizationId: "AUTHPR4-PROD-TEST", progressionHash: progHash, position: 5, confirmer: "named-confirmer", createdAt: new Date().toISOString(), validityWindowSeconds: 600, sanitizedResult: { recoverable: true, loginVerified: true }, evil: 1 };
+  // Explicit future-timestamp negative case (createdAt strictly after now).
+  mk({ createdAt: new Date(T0.getTime() + 60000).toISOString() }); throws(() => gate.readAndVerifyBreakGlass(f, key, ctx), /in the future/);
+  mk({ createdAt: new Date(T0.getTime() - 601000).toISOString() }); throws(() => gate.readAndVerifyBreakGlass(f, key, ctx), /EXPIRED/);
+  const p = { version: 1, authorizationId: "AUTHPR4-PROD-TEST", progressionHash: progHash, position: 5, confirmer: "named-confirmer", createdAt: T0.toISOString(), validityWindowSeconds: 600, sanitizedResult: { recoverable: true, loginVerified: true }, evil: 1 };
   fs.writeFileSync(f, JSON.stringify({ ...p, signature: gate.signBreakGlass(p, key) }));
   throws(() => gate.readAndVerifyBreakGlass(f, key, ctx), /schema mismatch/);
   fs.rmSync(dir, { recursive: true, force: true });

@@ -1,0 +1,90 @@
+name: AUTH-PR-4 Security Suites
+
+# CI enforcement for the governed AUTH-PR-4 production-migration security suites: the
+# genesis initializer, the production gate (repository-governed authorization + crash-safe
+# progression + fencing-generation ledger + break-glass), and the recovery-email migration
+# workflow. The initializer suite is credential-free (no emulator). The gate and migration
+# suites also carry Auth-emulator integration coverage, run here against the Firebase Auth
+# emulator on the DEMO project `demo-authpr4` only -- offline, no production access, no
+# credentials, no repository secrets. The tests themselves assert the project is NOT the
+# production project.
+
+on:
+  pull_request:
+    paths:
+      - "functions/scripts/authPr4RecoveryEmailMigration.js"
+      - "functions/scripts/authPr4ProductionGate.js"
+      - "functions/scripts/authPr4InitProgression.js"
+      - "functions/authpr4/production-authorization.json"
+      - "functions/test/authPr4InitProgression.test.mjs"
+      - "functions/test/authPr4ProductionGate.test.mjs"
+      - "functions/test/authPr4RecoveryEmailMigration.test.mjs"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - "firebase.json"
+      - ".github/workflows/authpr4-security-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/scripts/authPr4RecoveryEmailMigration.js"
+      - "functions/scripts/authPr4ProductionGate.js"
+      - "functions/scripts/authPr4InitProgression.js"
+      - "functions/authpr4/production-authorization.json"
+      - "functions/test/authPr4InitProgression.test.mjs"
+      - "functions/test/authPr4ProductionGate.test.mjs"
+      - "functions/test/authPr4RecoveryEmailMigration.test.mjs"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - "firebase.json"
+      - ".github/workflows/authpr4-security-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  authpr4-security-tests:
+    name: AUTH-PR-4 security suites (initializer + gate + migration; Auth emulator demo-authpr4)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history: the gate tests verify repository identity + governed-file blob
+          # hashes at historical commits (e.g. reviewedHead ancestry), which a shallow
+          # (depth-1) clone cannot resolve.
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+
+      - name: Initializer suite (credential-free, no emulator)
+        run: npm run test:authPr4Init
+        working-directory: functions
+
+      - name: Gate + migration suites under the Auth emulator (demo project only)
+        run: |
+          node node_modules/firebase-tools/lib/bin/firebase.js emulators:exec \
+            --only auth --project demo-authpr4 --config ../firebase.json \
+            'npm run test:authPr4Gate && npm run test:authPr4Migration'
+        working-directory: functions
+
+      - name: Upload emulator debug logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: authpr4-auth-emulator-logs
+          path: |
+            functions/firebase-debug.log
+            functions/ui-debug.log
+            functions/*-debug.log
+          if-no-files-found: ignore
+          retention-days: 7
