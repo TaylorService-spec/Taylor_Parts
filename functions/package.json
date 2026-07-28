@@ -17,6 +17,7 @@
     "test:adminCredential": "npm run build && node test/adminCredentialCommands.test.mjs",
     "test:adminCredentialLinkValidity": "node test/adminCredentialResetLinkValidity.test.mjs",
     "test:authPr4Migration": "node test/authPr4RecoveryEmailMigration.test.mjs",
+    "test:authPr4Gate": "node test/authPr4ProductionGate.test.mjs",
     "test:effectiveAccess": "npm run build && node test/effectiveAccessFeed.test.mjs",
     "test:claims": "npm run build && node test/claimsWriter.test.mjs",
     "test:trustedWriter": "npm run build && node test/trustedWriterCommands.test.mjs",

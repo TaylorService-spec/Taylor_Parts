@@ -77,6 +77,7 @@ const { getAuth } = require("firebase-admin/auth");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const productionGate = require("./authPr4ProductionGate.js");
 
 const PRODUCTION_PROJECT_ID = "taylor-parts";
 
@@ -108,8 +109,34 @@ function parseArgs(argv) {
       case "--execute":
         args.execute = true;
         break;
+      case "--executeProduction":
+        // The explicit, deliberate production-execution flag. It routes the run
+        // through the full authorization gate (authPr4ProductionGate); without a
+        // complete valid authorization the gate fails closed.
+        args.executeProduction = true;
+        break;
       case "--rollback":
         args.rollback = true;
+        break;
+      case "--progressionFile":
+        args.progressionFile = argv[++i];
+        break;
+      case "--breakGlassConfirmationFile":
+        args.breakGlassConfirmationFile = argv[++i];
+        break;
+      case "--authorizedCommit":
+        // The commit the operator claims to run; the gate independently derives
+        // repository identity + governed-file hashes and treats them as authoritative
+        // (this value is never sufficient by itself).
+        args.authorizedCommit = argv[++i];
+        break;
+      case "--executionModeConfirmation":
+        // Must equal the repository-governed authorized execution-mode token.
+        args.executionModeConfirmation = argv[++i];
+        break;
+      case "--executor":
+        // Must equal the repository-governed authorized executor name.
+        args.executor = argv[++i];
         break;
       case "--breakGlassVerified":
         args.breakGlassVerified = true;
@@ -172,21 +199,25 @@ function assertProjectTarget(args) {
   return args.projectId;
 }
 
-// PRODUCTION-EXECUTION BLOCK -- this build/test gate does not authorize any
-// production identity mutation. A write against the production project is
-// refused here regardless of other flags; enabling it is a separate PR under a
-// separate Owner Production Identity-Mutation Authorization (readiness §11).
+// PRODUCTION-EXECUTION AUTHORIZATION -- a production-project write is permitted
+// ONLY through the explicit --executeProduction flag, which routes the run
+// through the full authorization gate (assertProductionAuthorization, called in
+// main() before any SDK init). Plain --execute / --rollback against the
+// production project remain UNCONDITIONALLY refused here. The gate itself fails
+// closed unless a complete, valid, recorded Owner authorization is presented, so
+// production stays effectively blocked until that authorization exists.
 function assertExecutionAuthorization(args) {
-  const wantsWrite = Boolean(args.execute || args.rollback);
-  if (wantsWrite && args.projectId === PRODUCTION_PROJECT_ID) {
+  const wantsSimpleWrite = Boolean(args.execute || args.rollback);
+  const wantsProductionGatedWrite = Boolean(args.executeProduction);
+  if (args.projectId === PRODUCTION_PROJECT_ID && wantsSimpleWrite && !wantsProductionGatedWrite) {
     throw new Error(
-      "Refusing to write against the production project. This build authorizes DRY-RUN only " +
-        "against production and EXECUTE only against non-production (emulator/fixture) projects. " +
-        "Production identity mutation is a separate, not-yet-granted gate " +
-        "(docs/deployment/auth-pr-4-readiness-authorization-package.md §11/§12).",
+      "Refusing to write against the production project. Plain --execute / --rollback are DRY-RUN only " +
+        "against production and EXECUTE only against non-production (emulator/fixture) projects. A production " +
+        "identity mutation requires --executeProduction under a complete, valid recorded Owner authorization " +
+        "(docs/deployment/auth-pr-4-production-enablement-design.md §5; authPr4ProductionGate).",
     );
   }
-  return wantsWrite ? "write" : "dry-run";
+  return wantsSimpleWrite || wantsProductionGatedWrite ? "write" : "dry-run";
 }
 
 // EXACT ORDERED-PERSONA GUARD (readiness §4).
@@ -508,7 +539,25 @@ async function main() {
   // invocation must fail before any Firebase SDK call.
   const projectId = assertProjectTarget(args);
   assertExecutionAuthorization(args);
-  const position = assertPersonaOrder(args);
+
+  // Production-gated path: the full authorization gate runs BEFORE SDK init and
+  // fails closed on anything invalid. It independently verifies repository
+  // identity + governed-file hashes, the integrity-checked progression record
+  // (only the exact next persona proceeds), and -- for position 5 -- a time-valid
+  // break-glass confirmation. The effective persona comes from the progression,
+  // so --position / --confirmLowerRiskComplete cannot bypass ordering.
+  let gateCtx = null;
+  let position;
+  if (args.executeProduction) {
+    gateCtx = productionGate.assertProductionAuthorization(args, {
+      personaOrder: MIGRATION_PERSONA_ORDER,
+    });
+    args.employeeId = gateCtx.effective.employeeId;
+    position = MIGRATION_PERSONA_ORDER.indexOf(args.employeeId) + 1;
+    if (!args.rollback) args.execute = true; // a production forward write
+  } else {
+    position = assertPersonaOrder(args);
+  }
 
   initializeApp({ projectId });
   const auth = getAuth();
@@ -568,6 +617,9 @@ async function main() {
         // A rollback whose success was not confirmed must also RETAIN the artifact
         // so recovery can be re-attempted -- never delete it on an uncertain rollback.
         if (retainArtifactOnError(err)) {
+          // Two-phase (C3): record a durable UNCERTAIN outcome tied to the owning
+          // attempt; progression stays blocking (never auto-reverts to eligible).
+          if (args.executeProduction) gateCtx.recordUncertain("rollback-uncertain", { personaOrder: MIGRATION_PERSONA_ORDER });
           console.error(uncertainOutcomeMessage(args.employeeId, args.capturedStateFile));
         }
         throw err;
@@ -575,9 +627,26 @@ async function main() {
       evidence.mode = "rollback";
       evidence.priorAddressRef = addressRef(captured.priorAddress, runSalt);
       evidence.newAliasRef = addressRef(captured.newAlias, runSalt);
-      evidence.checks.uidUnchanged = result.readback?.uid === captured.uid;
+      evidence.checks.uidUnchanged = result.readback.uid === captured.uid;
       evidence.outcome = "applied";
-      // Only a CONFIRMED successful rollback removes the recovery artifact.
+      // Fail-closed rollback read-back verification: exact prior address, exact prior
+      // emailVerified, unchanged UID -- BEFORE any progression update or deletion.
+      if (result.readback.uid !== captured.uid) throw new Error("Rollback read-back UID changed -- halting.");
+      if (result.readback.email !== captured.priorAddress) throw new Error("Rollback did not restore the exact prior address -- halting.");
+      if (result.readback.emailVerified !== captured.priorEmailVerified) throw new Error("Rollback did not restore the exact prior emailVerified -- halting.");
+      // Order (C3, round 4): durably record the SUSPENDED progression + anchor FIRST;
+      // only THEN delete the recovery artifact. If progression persistence fails,
+      // RETAIN the artifact, warn, leave progression blocking, and never report
+      // rollback closure as complete.
+      if (args.executeProduction) {
+        try {
+          gateCtx.recordCompletion({ personaOrder: MIGRATION_PERSONA_ORDER });
+        } catch (err) {
+          console.error(uncertainOutcomeMessage(args.employeeId, args.capturedStateFile));
+          throw err;
+        }
+      }
+      // Only a CONFIRMED successful rollback WITH durable progression removes the artifact.
       secureUnlink(args.capturedStateFile);
       console.log(`ROLLBACK applied for ${args.employeeId}: restored exact prior address + prior emailVerified.`);
     } else {
@@ -623,7 +692,9 @@ async function main() {
       } catch (err) {
         if (args.execute && retainArtifactOnError(err)) {
           // Mutation was attempted -- the identity may already be changed. NEVER
-          // destroy recovery state here; tell the operator the outcome is uncertain.
+          // destroy recovery state here; record a durable UNCERTAIN outcome tied to
+          // the owning attempt so progression stays blocking (two-phase, C3).
+          if (args.executeProduction) gateCtx.recordUncertain("forward-uncertain", { personaOrder: MIGRATION_PERSONA_ORDER });
           console.error(uncertainOutcomeMessage(args.employeeId, args.capturedStateOut));
         } else if (args.execute) {
           // Proven pre-mutation failure (error before updateUser was invoked): no
@@ -642,6 +713,11 @@ async function main() {
         if (!evidence.checks.newAliasEmailVerifiedFalse) {
           throw new Error("Post-write emailVerified is not false on the new alias -- halting.");
         }
+        // Progression advances (completion recorded by the owning attempt only)
+        // ONLY after a fully verified write + read-back (the fail-closed checks above
+        // throw before this). An uncertain outcome never reaches here, so it never
+        // advances (design §5.1, C2/C3).
+        if (args.executeProduction) gateCtx.recordCompletion({ personaOrder: MIGRATION_PERSONA_ORDER });
         console.log(
           `FORWARD executed for ${args.employeeId} (position ${position}, ${evidence.projectClass}): ` +
             "new alias set, emailVerified=false, UID unchanged. Captured-prior state written for rollback.",

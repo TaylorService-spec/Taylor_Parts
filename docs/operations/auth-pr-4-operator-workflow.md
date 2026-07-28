@@ -1,11 +1,56 @@
 # AUTH-PR-4 — Governed operator workflow (build/test gate)
 
-> **STATUS: repository build + emulator/non-production test ONLY.** This workflow
-> **cannot** mutate production identities: a write against the `taylor-parts`
-> project is refused by the script itself. Production execution is a **separate,
-> not-yet-granted** Owner Production Identity-Mutation Authorization gate — see
-> [`docs/deployment/auth-pr-4-readiness-authorization-package.md`](../deployment/auth-pr-4-readiness-authorization-package.md)
-> §11/§12. This document authorizes no production action.
+> **STATUS: repository build + emulator/non-production test ONLY.** Plain
+> `--execute` / `--rollback` against `taylor-parts` are **unconditionally refused**
+> by the script. The **production-enablement** path (`--executeProduction`, the
+> [`authPr4ProductionGate`](../../functions/scripts/authPr4ProductionGate.js)) is
+> **conditional and fails closed**: it permits a production write only under a
+> complete, valid, **recorded Owner authorization** — which **does not exist**, so
+> production stays blocked. Recording that authorization + naming an executor +
+> supplying private operational inputs is a **separate, not-yet-granted** Owner gate
+> (see [`docs/deployment/auth-pr-4-production-enablement-design.md`](../deployment/auth-pr-4-production-enablement-design.md)).
+> This document authorizes no production action.
+
+## Production-enablement path (`--executeProduction`) — design §5
+
+A production-project write is permitted **only** through `--executeProduction`,
+which routes the run through the [`authPr4ProductionGate`](../../functions/scripts/authPr4ProductionGate.js).
+It **requires a clean git checkout** and **fails closed in non-git contexts**. Before
+any SDK init, the gate independently verifies, and **fails closed** on any of:
+
+- **Repository-governed authorization artifact** — authority comes from the committed,
+  git-tracked [`functions/authpr4/production-authorization.json`](../../functions/authpr4/production-authorization.json),
+  read **from git at `--authorizedCommit`** (never an operator-authored path). Its
+  status must be **`GRANTED`** (the committed artifact is **`PENDING`**, so production
+  is blocked); strict schema (no unknown fields); project, exact ordered persona
+  allowlist, reviewed head, and **blob-based** governed-file SHA-256 hashes must match;
+  the operator's `--executionModeConfirmation` and `--executor` must equal the
+  repository-recorded values ("nonempty" is not authorization). A modified/untracked/
+  external/PENDING artifact, wrong path, unknown field, or hash drift → refuse.
+- **Governed-file identity** — deterministic blob-based SHA-256 of the workflow + gate at
+  the authorized commit must equal HEAD's (no post-review drift) and the working tree
+  must be clean; a user-supplied `--authorizedCommit` is never sufficient by itself.
+- **Attempt-bound progression state machine** (`--progressionFile`, signed): monotonic
+  revision + previous-state-hash chain + a signed high-water **anchor** (detects
+  restoration of an older signed state → refuse) + an **exclusive O_EXCL claim lock**
+  with a bounded lease (concurrent claims refused; stale takeover is explicit and
+  preserves prior-attempt evidence, moving to `recovery_required`). Only the exact next
+  persona proceeds; **completion is recorded only by the owning attempt**; 1–4 durable
+  before 5.
+- **Crash-safe two-phase lifecycle** — a `claimed`/pending attempt is persisted **before**
+  the Auth call; a durable outcome is recorded after; any uncertainty (write/read-back
+  failure, or a completion-persistence failure) leaves `claimed`/`uncertain`/
+  `recovery_required` — **blocking all later personas, never auto-reverting to eligible**
+  — and retains the exact rollback artifact. Governed reconciliation is
+  **production-disabled** in this PR.
+- **Break-glass** (position 5): a signed `--breakGlassConfirmationFile` created after 1–4
+  complete, **time-valid**, and bound to the exact progression state + the authorization
+  contract's `requiredConfirmer` (early/expired/mismatched/reused/wrong-confirmer → refuse).
+
+`--executeProduction` against the **production project** stays blocked absent a real
+`GRANTED` authorization; against a **non-production/emulator** project it is the
+"production-shaped" path exercised by tests. No CI/emulator test targets the real
+`taylor-parts` project.
 
 ## What it is
 
@@ -27,7 +72,7 @@ passwords, or UIDs.
 |---|---|
 | Dry-run default | No write unless `--execute` (forward) or `--rollback` is passed. |
 | Exact project guard | `--projectId` required; `taylor-parts` additionally requires matching `--confirmProduction taylor-parts`. |
-| Production-write block | `--execute`/`--rollback` against `taylor-parts` **throws** — this build is dry-run-only against production, execute-only against non-production. |
+| Production-write block | Plain `--execute`/`--rollback` against `taylor-parts` **throws** (dry-run-only against production, execute-only against non-production). A production write is possible **only** via `--executeProduction` + the fail-closed `authPr4ProductionGate` (design §5, section above), which stays blocked absent a recorded Owner authorization. |
 | Ordered-persona guard | Target must equal the persona at `--position` in the fixed order; excluded personas (`emp-rudy-sales-manager`, break-glass) rejected; `emp-rudy-owner` (last) requires `--breakGlassVerified` + `--confirmLowerRiskComplete`. |
 | Protected out-of-band input | Persona→`{uid,newAlias}` is read from `--mappingFile`; rollback-state integrity uses a separate protected `--stateKeyFile` containing at least 32 random bytes. Neither is committed. |
 | One at a time | Exactly one persona per invocation. |

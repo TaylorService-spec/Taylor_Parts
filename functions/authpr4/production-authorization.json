@@ -1,0 +1,26 @@
+{
+  "schema": "authpr4.production-authorization/v1",
+  "authorizationId": "AUTHPR4-PROD-0001",
+  "authorizationStatus": "PENDING",
+  "projectId": "taylor-parts",
+  "personaOrder": [
+    "emp-rudy-driver",
+    "emp-rudy-parts-associate",
+    "emp-rudy-warehouse-manager",
+    "emp-rudy-parts-manager",
+    "emp-rudy-owner"
+  ],
+  "reviewedHead": "0000000000000000000000000000000000000000",
+  "governedFileHashes": {
+    "functions/scripts/authPr4RecoveryEmailMigration.js": "0000000000000000000000000000000000000000000000000000000000000000",
+    "functions/scripts/authPr4ProductionGate.js": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "executionModeToken": "UNSET-PENDING-AUTHORIZATION",
+  "executor": {
+    "name": "UNSET"
+  },
+  "breakGlassContract": {
+    "validityWindowSeconds": 600,
+    "requiredConfirmer": "UNSET"
+  }
+}
