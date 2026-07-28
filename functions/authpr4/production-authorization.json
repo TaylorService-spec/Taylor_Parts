@@ -17,10 +17,10 @@
   },
   "executionModeToken": "emt-aeb8cf444375d24a6f5cd5a50564b4e38453984a73263ed2",
   "executor": {
-    "name": "authorized-production-operator"
+    "name": "rudy-digiorgio"
   },
   "breakGlassContract": {
     "validityWindowSeconds": 600,
-    "requiredConfirmer": "authorized-breakglass-confirmer"
+    "requiredConfirmer": "rudy-digiorgio"
   }
 }

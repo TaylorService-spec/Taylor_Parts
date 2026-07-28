@@ -21,22 +21,27 @@
 | Field | Value |
 |---|---|
 | `authorizationId` | `AUTHPR4-PROD-MIGRATION-001` |
-| `authorizationStatus` | **GRANTED** (only change vs the prior PENDING artifact) |
+| `authorizationStatus` | **GRANTED** (the previously PENDING placeholder artifact is fully populated and its status set to GRANTED; see the change-scope note below) |
 | `projectId` | `taylor-parts` |
 | `reviewedHead` | `c2604dff3fcbcd3f9442648484e6d407b67444ef` |
 | `governedFileHashes` (blob SHA-256) | `authPr4RecoveryEmailMigration.js` = `779410d6…0b37ffd`; `authPr4ProductionGate.js` = `0609613c…c4b0b8af` |
 | `executionModeToken` | high-entropy `emt-…` (committed; a repository-derived contract value, not a secret — the real controls are GRANTED status + production credentials + private inputs) |
-| `executor.name` | `authorized-production-operator` — the operator's `--executor` must match |
-| `breakGlassContract` | `{ validityWindowSeconds: 600, requiredConfirmer: "authorized-breakglass-confirmer" }` |
+| `executor.name` | `rudy-digiorgio` — the operator's `--executor` must match (**Owner-confirmed**, 2026-07-27) |
+| `breakGlassContract` | `{ validityWindowSeconds: 600, requiredConfirmer: "rudy-digiorgio" }` (**Owner-confirmed**, 2026-07-27) |
 
-**The two governed workflow implementation files are unchanged by this authorization.**
-Any change to them invalidates this binding (different hashes) and requires a new
-Codex review + a re-bound authorization.
+**Change scope of this authorization PR:** the two governed workflow **implementation**
+files (`authPr4RecoveryEmailMigration.js`, `authPr4ProductionGate.js`) are **unchanged**
+— the authorization binds to their exact reviewed blob-SHA-256 hashes, so no workflow-code
+re-review is needed. The previously **PENDING placeholder** artifact is **fully populated
+and its status changed to GRANTED** (`authorizationId`, `reviewedHead`, both governed-file
+hashes, `executionModeToken`, `executor.name`, and `requiredConfirmer` populated from their
+placeholders). Any change to the governed implementation files invalidates the binding
+(different hashes) and requires a new Codex review + a re-bound authorization.
 
-> **Owner-confirmable contract labels:** `executor.name` and
-> `breakGlassContract.requiredConfirmer` are role-label contracts (no PII). The Owner
-> confirms the actual person fulfilling each role at execution time; adjust these two
-> labels in review if a different contract value is intended.
+> **Named executor / confirmer (Owner-confirmed):** `executor.name = rudy-digiorgio` and
+> `requiredConfirmer = rudy-digiorgio` were explicitly confirmed by the Owner on
+> 2026-07-27. The operator's `--executor` and the break-glass confirmation's `confirmer`
+> must equal these exact values.
 
 ## 2. Exact migration order (one identity at a time)
 
