@@ -109,34 +109,34 @@ ok("strict validators reject non-canonical values", () => {
 // 2. C1 -- repository-governed authorization artifact
 // ---------------------------------------------------------------------------
 
-ok("REAL repo GRANTED artifact verifies coherently at PR HEAD; reviewedHead independently checked in ancestry with matching hashes", () => {
+ok("REAL repo committed authorization is now STALE under the expanded 3-file governed set (re-authorization required; fail closed)", () => {
+  // Adding authPr4InitProgression.js to GOVERNED_FILES (Owner-decided) means the
+  // committed GRANTED authorization (bound to the OLD 2-file set at reviewedHead
+  // c2604df) no longer covers the governed set -> it fails closed. A NEW authorization
+  // bound to this correction's merged head + the 3-file hashes is required.
+  assert.equal(gate.GOVERNED_FILES.length, 3);
   const repoIdentity = gate.deriveRepositoryIdentity(REAL_ROOT);
   const head = repoIdentity.head;
-  // ONE coherent commit (PR HEAD): load the artifact AND derive governed hashes from HEAD,
-  // exactly as production execution loads both from the same --authorizedCommit.
   const { artifact } = gate.loadGovernedAuthorization({ repoRoot: REAL_ROOT, authorizedCommit: head });
   assert.equal(artifact.authorizationStatus, "GRANTED");
-  const hashesAtHead = gate.governedHashesAtCommit(REAL_ROOT, head);
-  const base = { projectId: "taylor-parts", personaOrder: ORDER, derivedHashes: hashesAtHead, repoIdentity, authorizedCommit: head, executionModeConfirmation: artifact.executionModeToken, executor: artifact.executor.name };
-  const okd = gate.verifyGovernedAuthorization(artifact, base);
-  assert.equal(okd.authorizationId, "AUTHPR4-PROD-MIGRATION-001");
-  // Independently: reviewedHead is in ancestry and the recorded hashes match its blobs.
-  assert.ok(head === artifact.reviewedHead || repoIdentity.isAncestor(artifact.reviewedHead), "reviewedHead in ancestry");
-  const hashesAtReviewed = gate.governedHashesAtCommit(REAL_ROOT, artifact.reviewedHead);
-  for (const f of gate.GOVERNED_FILES) assert.equal(artifact.governedFileHashes[f], hashesAtReviewed[f]);
-  // Token/executor contract enforced.
-  throws(() => gate.verifyGovernedAuthorization(artifact, { ...base, executionModeConfirmation: "WRONG" }), /execution-mode token/);
-  throws(() => gate.verifyGovernedAuthorization(artifact, { ...base, executor: "someone-else" }), /authorized executor/);
+  assert.equal(Object.keys(artifact.governedFileHashes).length, 2, "committed artifact still records the OLD 2-file hash set");
+  const hashesAtHead = gate.governedHashesAtCommit(REAL_ROOT, head); // 3 files at HEAD (initializer now exists)
+  throws(() => gate.verifyGovernedAuthorization(artifact, {
+    projectId: "taylor-parts", personaOrder: ORDER, derivedHashes: hashesAtHead, repoIdentity,
+    authorizedCommit: head, executionModeConfirmation: artifact.executionModeToken, executor: artifact.executor.name,
+  }), /governedFileHashes: schema mismatch/);
 });
 
-ok("substitution defence: loading at reviewedHead (c2604df) obtains PENDING; a GRANTED in-memory artifact cannot be passed off as that commit's", () => {
+ok("substitution defence: at reviewedHead c2604df the committed artifact is PENDING and refuses (status checked before hashes)", () => {
   const REVIEWED = "c2604dff3fcbcd3f9442648484e6d407b67444ef";
-  // The committed blob AT c2604df is PENDING (the git-read authority, not any in-memory object).
   const { artifact: atReviewed } = gate.loadGovernedAuthorization({ repoRoot: REAL_ROOT, authorizedCommit: REVIEWED });
   assert.equal(atReviewed.authorizationStatus, "PENDING");
-  const hashesAtReviewed = gate.governedHashesAtCommit(REAL_ROOT, REVIEWED);
+  // verifyGovernedAuthorization checks GRANTED status BEFORE hashes, so it refuses
+  // "not GRANTED" regardless of the governed-set size (the initializer isn't present
+  // at c2604df, so we do not derive hashes there).
   throws(() => gate.verifyGovernedAuthorization(atReviewed, {
-    projectId: "taylor-parts", personaOrder: ORDER, derivedHashes: hashesAtReviewed,
+    projectId: "taylor-parts", personaOrder: ORDER,
+    derivedHashes: Object.fromEntries(gate.GOVERNED_FILES.map((f) => [f, "0".repeat(64)])),
     repoIdentity: gate.deriveRepositoryIdentity(REAL_ROOT), authorizedCommit: REVIEWED,
     executionModeConfirmation: "anything", executor: "anything",
   }), /not GRANTED/);
@@ -366,6 +366,72 @@ ok("INTERLEAVING: A claims, lease expires, B records recovery_required; A's late
   st = gate.readState(stateFile, key, { authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", workflowIdentityHash: idHash, personaOrder: ORDER });
   assert.equal(st.status, "recovery_required", "B's recovery_required + evidence remain intact");
   assert.equal(st.lastOutcome.result, "uncertain-stale-takeover");
+  fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
+});
+
+ok("INIT MARKER: assertProductionAuthorization refuses while a genesis init marker is present (crash-left initialization)", () => {
+  const g = buildGrantedRepo("demo-authpr4");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-mark-"));
+  const keyFile = path.join(dir, "k"); const key = crypto.randomBytes(48); fs.writeFileSync(keyFile, key, { mode: 0o600 });
+  const stateFile = path.join(dir, "state.json"); const mappingFile = path.join(dir, "map.json");
+  fs.writeFileSync(mappingFile, JSON.stringify({ "emp-rudy-driver": { uid: "u1", newAlias: "base+driver@gmail.com" } }));
+  const idHash = gate.workflowIdentityHash(gate.governedHashesAtCommit(g.root, g.authorizedCommit));
+  writeGenesis(stateFile, key, { authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", idHash });
+  const baseArgs = { projectId: "demo-authpr4", executeProduction: true, mappingFile, progressionFile: stateFile, stateKeyFile: keyFile, authorizedCommit: g.authorizedCommit, executionModeConfirmation: g.executionModeToken, executor: g.executor, capturedStateOut: path.join(dir, "c.json") };
+  // A valid genesis alone proceeds to claim; but a present init marker blocks first.
+  fs.writeFileSync(gate.initMarkerPath(stateFile), JSON.stringify({ version: gate.INIT_MARKER_VERSION, token: "t", at: new Date().toISOString() }));
+  throws(() => gate.assertProductionAuthorization(baseArgs, { repoRoot: g.root, personaOrder: ORDER, now: () => new Date(), leaseSeconds: 1 }), /initialization marker is present/i);
+  // Removing the marker lets the same call proceed to a claim (proves the marker was the blocker).
+  fs.unlinkSync(gate.initMarkerPath(stateFile));
+  const ctx = gate.assertProductionAuthorization(baseArgs, { repoRoot: g.root, personaOrder: ORDER, now: () => new Date(), leaseSeconds: 1 });
+  assert.equal(ctx.effective.employeeId, "emp-rudy-driver");
+  fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
+});
+
+ok("RECONCILE MUTEX: assertProductionAuthorization refuses while a reconciliation mutex is present (in-progress/interrupted cleanup)", () => {
+  const g = buildGrantedRepo("demo-authpr4");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-recon-"));
+  const keyFile = path.join(dir, "k"); const key = crypto.randomBytes(48); fs.writeFileSync(keyFile, key, { mode: 0o600 });
+  const stateFile = path.join(dir, "state.json"); const mappingFile = path.join(dir, "map.json");
+  fs.writeFileSync(mappingFile, JSON.stringify({ "emp-rudy-driver": { uid: "u1", newAlias: "base+driver@gmail.com" } }));
+  const idHash = gate.workflowIdentityHash(gate.governedHashesAtCommit(g.root, g.authorizedCommit));
+  writeGenesis(stateFile, key, { authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", idHash });
+  const baseArgs = { projectId: "demo-authpr4", executeProduction: true, mappingFile, progressionFile: stateFile, stateKeyFile: keyFile, authorizedCommit: g.authorizedCommit, executionModeConfirmation: g.executionModeToken, executor: g.executor, capturedStateOut: path.join(dir, "c.json") };
+  fs.writeFileSync(gate.reconcilePath(stateFile), JSON.stringify({ version: gate.RECONCILE_MUTEX_VERSION, token: "ab".repeat(16), at: new Date().toISOString() }));
+  throws(() => gate.assertProductionAuthorization(baseArgs, { repoRoot: g.root, personaOrder: ORDER, now: () => new Date(), leaseSeconds: 1 }), /reconciliation mutex is present/i);
+  // Removing it lets the same call proceed to a claim.
+  fs.unlinkSync(gate.reconcilePath(stateFile));
+  const ctx = gate.assertProductionAuthorization(baseArgs, { repoRoot: g.root, personaOrder: ORDER, now: () => new Date(), leaseSeconds: 1 });
+  assert.equal(ctx.effective.employeeId, "emp-rudy-driver");
+  fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
+});
+
+ok("GENERATION LEDGER: assertProductionAuthorization validates the ledger (single authority) and refuses any anomaly; a valid contiguous chain is accepted", () => {
+  const g = buildGrantedRepo("demo-authpr4");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-ledger-"));
+  const keyFile = path.join(dir, "k"); const key = crypto.randomBytes(48); fs.writeFileSync(keyFile, key, { mode: 0o600 });
+  const stateFile = path.join(dir, "state.json"); const mappingFile = path.join(dir, "map.json");
+  fs.writeFileSync(mappingFile, JSON.stringify({ "emp-rudy-driver": { uid: "u1", newAlias: "base+driver@gmail.com" } }));
+  const idHash = gate.workflowIdentityHash(gate.governedHashesAtCommit(g.root, g.authorizedCommit));
+  writeGenesis(stateFile, key, { authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", idHash });
+  const baseArgs = { projectId: "demo-authpr4", executeProduction: true, mappingFile, progressionFile: stateFile, stateKeyFile: keyFile, authorizedCommit: g.authorizedCommit, executionModeConfirmation: g.executionModeToken, executor: g.executor, capturedStateOut: path.join(dir, "c.json") };
+  const run = () => gate.assertProductionAuthorization(baseArgs, { repoRoot: g.root, personaOrder: ORDER, now: () => new Date(), leaseSeconds: 1 });
+  const rootDigest = gate.GEN_CHAIN_ROOT;
+
+  // A ledger anomaly is validated + refused BEFORE any progression claim/Auth (so no lock is
+  // taken -- these refusals leave the state reusable).
+  // (a) malformed claim content under a valid filename -> refuse.
+  fs.writeFileSync(gate.genClaimPath(stateFile, 1), "{ not a claim");
+  throws(() => run(), /claim 1 is malformed|invalid content/i);
+  // (b) non-contiguous ledger -> refuse.
+  fs.writeFileSync(gate.genClaimPath(stateFile, 1), JSON.stringify({ version: gate.GEN_LEDGER_VERSION, generation: 1, previousDigest: rootDigest, owner: "o", at: new Date().toISOString() }));
+  fs.writeFileSync(gate.genClaimPath(stateFile, 3), JSON.stringify({ version: gate.GEN_LEDGER_VERSION, generation: 3, previousDigest: rootDigest, owner: "o", at: new Date().toISOString() }));
+  throws(() => run(), /contiguous \(missing generation 2\)/);
+  fs.unlinkSync(gate.genClaimPath(stateFile, 3));
+
+  // (c) a valid contiguous chain (gen 1) is accepted and the gate proceeds to a claim.
+  assert.equal(gate.readGenerationLedger(stateFile), 1, "valid single-claim ledger reads generation 1");
+  const ctx = run(); assert.equal(ctx.effective.employeeId, "emp-rudy-driver");
   fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
 });
 
@@ -707,45 +773,27 @@ await okAsync("plain --execute / --rollback vs taylor-parts still refuse (never 
   }
 });
 
-// Gated production refusal against taylor-parts, at the exact PR HEAD (clean tree),
-// with the committed GRANTED artifact. Each case refuses at a SPECIFIC boundary
-// BEFORE any SDK init -- proven per-reason (no "any of these" catch-all), and no
-// production Auth call is ever made. Values come from the committed artifact.
+// Gated production refusal against taylor-parts at the exact PR HEAD. The committed
+// authorization is now STALE (2-file hashes) under the expanded 3-file governed set,
+// so a --executeProduction run against taylor-parts fails closed at the governed-file-
+// set boundary BEFORE any SDK init -- no production Auth call is made. (Per-boundary
+// token/executor specificity is covered against a FRESH 3-file granted temp repo in
+// the pure layer; the CLI here targets the real, now-invalidated committed artifact.)
 const GRANTED = JSON.parse(fs.readFileSync(path.join(REAL_ROOT, gate.AUTH_ARTIFACT_PATH), "utf8"));
 const HEAD = gate.deriveRepositoryIdentity(REAL_ROOT).head;
-function runProd(extra) {
+
+await okAsync("gated --executeProduction vs taylor-parts fails closed: committed authorization is STALE under the expanded governed set (re-authorization required), before SDK", async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-prodrefuse-"));
   const keyFile = path.join(dir, "k"); fs.writeFileSync(keyFile, crypto.randomBytes(48));
   const r = spawnSync(process.execPath, [SCRIPT, "--projectId", "taylor-parts", "--confirmProduction", "taylor-parts", "--executeProduction",
     "--authorizedCommit", HEAD, "--stateKeyFile", keyFile, "--capturedStateOut", path.join(dir, "o.json"),
-    "--progressionFile", extra.progressionFile || path.join(dir, "s.json"), "--mappingFile", path.join(dir, "m.json"),
-    "--executionModeConfirmation", extra.token, "--executor", extra.executor],
+    "--progressionFile", path.join(dir, "s.json"), "--mappingFile", path.join(dir, "m.json"),
+    "--executionModeConfirmation", GRANTED.executionModeToken, "--executor", GRANTED.executor.name],
     { cwd: path.resolve("."), env: process.env, encoding: "utf8" });
+  assert.notEqual(r.status, 0, "must refuse");
+  assert.match(r.stderr, /governedFileHashes: schema mismatch/);
+  assert.doesNotMatch(r.stderr, /FORWARD executed|updateUser/);
   fs.rmSync(dir, { recursive: true, force: true });
-  return r;
-}
-
-await okAsync("gated production: WRONG execution-mode token refuses at the token boundary, before SDK", async () => {
-  const r = runProd({ token: "wrong-token", executor: GRANTED.executor.name });
-  assert.notEqual(r.status, 0);
-  assert.match(r.stderr, /execution-mode token/);
-  assert.doesNotMatch(r.stderr, /FORWARD executed|updateUser/);
-});
-
-await okAsync("gated production: EXECUTOR mismatch refuses at the executor boundary, before SDK", async () => {
-  const r = runProd({ token: GRANTED.executionModeToken, executor: "not-the-executor" });
-  assert.notEqual(r.status, 0);
-  assert.match(r.stderr, /authorized executor/);
-  assert.doesNotMatch(r.stderr, /FORWARD executed|updateUser/);
-});
-
-await okAsync("gated production: correct authorization but MISSING progression refuses at the progression boundary, before SDK", async () => {
-  // Correct token + executor + clean HEAD => authorization verifies; the only missing
-  // piece is the progression state, so it halts at readState BEFORE initializeApp.
-  const r = runProd({ token: GRANTED.executionModeToken, executor: GRANTED.executor.name });
-  assert.notEqual(r.status, 0);
-  assert.match(r.stderr, /Progression state (missing|malformed)/);
-  assert.doesNotMatch(r.stderr, /FORWARD executed|updateUser/);
 });
 
 console.log(`\n${passed} passed (pure-helper + Auth-emulator layers)`);
