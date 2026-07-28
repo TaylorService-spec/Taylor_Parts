@@ -125,12 +125,35 @@ These examples perform writes **only** against a non-production project. A produ
 still **fails closed** and performs no write without a genesis/progression state and the
 protected private inputs — none of which exist in the repository.
 
-## Not authorized without the separate execution gates
+## Authorization boundaries of the execution gates
 
-The following do not occur from the repository/merged state alone and each require the
-separate, not-yet-granted Owner **Gate A** (protected genesis preparation) and **Gate B**
-(one-persona-at-a-time execution) plus protected out-of-band inputs: production execution ·
-Firebase Auth email/identity mutation · reset/verification email delivery · explicit session
-revocation · AUTH-PR-3 deployment · email-provider configuration · Firestore/role/claim/
-`accessVersion` mutation · use or commitment of real emails, UIDs, tokens, passwords, or
-credentials. The GRANTED authorization + merged code do **not** by themselves execute anything.
+The GRANTED authorization + merged code do **not** by themselves execute anything. Two
+separate, not-yet-granted Owner gates (**Gate A** — protected genesis preparation; **Gate B** —
+one-persona-at-a-time execution), each narrowly scoped, gate what follows.
+
+**1. Authorized only if Gate A and the narrowly scoped Gate B are later granted (and the
+protected out-of-band inputs are supplied):**
+- protected state-key / genesis-progression creation under **Gate A**;
+- out-of-band **use** of the protected private alias/UID input under **Gate B** (see the
+  use-vs-commitment note below);
+- the single authorized persona's Firebase Auth **recovery/auth-email mutation** (that persona only);
+- `emailVerified=false` on the new alias;
+- **UID read-back verification** (the Auth UID must be unchanged);
+- sanitized evidence emission and governed rollback handling.
+
+**2. NOT authorized by Gate A or Gate B — each requires separate later authority, or remains
+prohibited:**
+- any reset or verification email delivery;
+- explicit `revokeRefreshTokens` / operator-initiated session revocation (an *automatic*
+  Firebase session effect from the email change is an observed platform effect, never an
+  operator action);
+- AUTH-PR-3 deployment;
+- email-provider or Auth-project configuration / project-setting change;
+- Firestore / Employee↔User-link / role / claim / `accessVersion` mutation;
+- **committing** private emails, UIDs, alias mappings, state keys, credentials, or rollback
+  data to the repository.
+
+**Use vs. commitment:** a later Gate B permits the operator to **use** the private base inbox,
+persona alias mapping, and UIDs **out-of-band** (never printed, never committed). It never
+permits **committing** those values — or any key, credential, or rollback artifact — into the
+repository. That prohibition is absolute and independent of any gate.
