@@ -352,11 +352,89 @@ ok("malformed and empty target ids are refused", () => {
 });
 
 // ---- FAIL CLOSED ----
-ok("an undeclared field is REJECTED, never silently excluded from the identity", () => {
-  assert.throws(() => fp("importEquipmentModel", { ...model(), futureField: "x" }), FingerprintContractError);
-  const nestedExtra = structuredClone(compat); nestedExtra.applicability.futureField = "x";
-  assert.throws(() => fp("importCompatibility", nestedExtra), FingerprintContractError);
+ok("an undeclared OWN field is rejected for EVERY action, including adapter-mapped ones", () => {
+  // The alias path reconstructs a validator input (aliasValue -> rawValue). If the schema gate ran
+  // after that reconstruction, an unknown field would be dropped before D1 could object to it.
+  for (const action of OPERATION_ACTIONS) {
+    assert.throws(() => fp(action, { ...BASE[action], futureField: "IGNORED" }), FingerprintContractError, action);
+  }
   assert.throws(() => canonicalCommandPayload("importEquipmentModel", { ...model(), futureField: "x" }), FingerprintContractError);
+  // The alias adapter's accepted shape is the GOVERNED one: aliasValue, never the validator's rawValue.
+  assert.throws(() => fp("importEquipmentModelAlias", { ...aliasOf(), rawValue: "C-713" }), FingerprintContractError);
+});
+ok("an undeclared NESTED field is rejected for both compatibility actions", () => {
+  for (const action of ["importCompatibility", "correctCompatibility"]) {
+    const payload = structuredClone(BASE[action]);
+    payload.applicability.futureField = "x";
+    assert.throws(() => fp(action, payload), FingerprintContractError, action);
+    const deeper = structuredClone(BASE[action]);
+    deeper.applicability.nested = { a: 1 };
+    assert.throws(() => fp(action, deeper), FingerprintContractError, `${action} deep`);
+  }
+});
+ok("a PROTOTYPE-ONLY top-level field is rejected for every full-record family", () => {
+  // Optional governed fields are the dangerous ones: D1/D2 read them with plain property access, so an
+  // inherited value would be treated as real while their own-key unknown-field checks never see it.
+  const cases = [
+    ["importEquipmentModel", model(), "family"],
+    ["importEquipmentModel", model(), "subtype"],
+    ["importEquipmentModel", model(), "revision"],
+    ["importCompatibility", compat, "assembly"],
+    ["importCompatibility", compat, "notes"],
+    ["correctCompatibility", compat, "sourceSummary"],
+    ["importCompatibilitySource", sourceOf(), "sourceVersion"],
+    ["importCompatibilitySource", sourceOf(), "notes"],
+  ];
+  for (const [action, base, field] of cases) {
+    const payload = structuredClone(base);
+    delete payload[field];
+    Object.prototype[field] = "INJECTED"; // eslint-disable-line no-extend-native
+    try {
+      assert.throws(() => fp(action, payload), FingerprintContractError, `${action}.${field}`);
+    } finally {
+      delete Object.prototype[field];
+    }
+  }
+});
+ok("a PROTOTYPE-ONLY applicability child is rejected, and cannot forge a real command identity", () => {
+  const revision = compatOf({ applicability: { kind: "MODEL_REVISION", serialScheme: null, serialRangeStart: null, serialRangeEnd: null, modelRevision: "REV-A" } });
+  const ranged = compatOf({ applicability: { kind: "SERIAL_RANGE", serialScheme: "TAYLOR-ALPHA", serialRangeStart: "A100", serialRangeEnd: "A200", modelRevision: null } });
+  const cases = [
+    [revision, "modelRevision", "REV-A"],
+    [ranged, "serialScheme", "TAYLOR-ALPHA"],
+    [ranged, "serialRangeStart", "A100"],
+    [ranged, "serialRangeEnd", "A200"],
+  ];
+  for (const [base, child, injected] of cases) {
+    for (const action of ["importCompatibility", "correctCompatibility"]) {
+      const payload = structuredClone(base);
+      delete payload.applicability[child];
+      Object.prototype[child] = injected; // eslint-disable-line no-extend-native
+      try {
+        assert.throws(
+          () => buildCommandFingerprint({ action, targetType: ACTION_TARGET_TYPES[action], targetId: base.compatibilityId, payload, serialSchemes: SCHEMES }),
+          FingerprintContractError,
+          `${action} applicability.${child}`
+        );
+      } finally {
+        delete Object.prototype[child];
+      }
+    }
+  }
+});
+ok("null-prototype payloads and nested maps with valid own fields are accepted", () => {
+  const detach = (o) => {
+    const out = Object.create(null);
+    for (const [k, v] of Object.entries(o)) out[k] = (v !== null && typeof v === "object") ? detach(v) : v;
+    return out;
+  };
+  for (const action of OPERATION_ACTIONS) {
+    assert.equal(fp(action, detach(BASE[action])), fp(action, BASE[action]), `${action} null-prototype payload`);
+  }
+  // A null-prototype nested map cannot inherit anything, so it is accepted on its own merits.
+  const mixed = structuredClone(compat);
+  mixed.applicability = detach(compat.applicability);
+  assert.equal(fp("importCompatibility", mixed), fp("importCompatibility", compat));
 });
 ok("a missing REQUIRED governed field is rejected rather than treated as null", () => {
   // One non-derivable required field per action family.

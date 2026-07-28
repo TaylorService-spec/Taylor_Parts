@@ -173,68 +173,122 @@ export function canonicalCommandPayload(action: OperationAction, payload: unknow
   return parts.join("");
 }
 
+const hasOwn = (o: object, k: string): boolean => Object.prototype.hasOwnProperty.call(o, k);
+
+// Split the declared paths into the top-level field set and, per nested governed object, its allowed
+// child set. This is the whole schema — there is no other place a field can be declared.
+function declaredSchema(action: OperationAction): { topLevel: Set<string>; nested: Map<string, Set<string>> } {
+  const fields = hasOwn(COMMAND_FINGERPRINT_FIELDS, action) ? COMMAND_FINGERPRINT_FIELDS[action] : undefined;
+  if (fields === undefined) throw new FingerprintContractError(`unknown action ${String(action)}`);
+  const topLevel = new Set<string>();
+  const nested = new Map<string, Set<string>>();
+  for (const path of fields) {
+    const dot = path.indexOf(".");
+    if (dot < 0) {
+      topLevel.add(path);
+      continue;
+    }
+    const root = path.slice(0, dot);
+    topLevel.add(root);
+    if (!nested.has(root)) nested.set(root, new Set());
+    nested.get(root)!.add(path.slice(dot + 1));
+  }
+  return { topLevel, nested };
+}
+
+// The strict own-property schema gate, applied to the ORIGINAL action-specific payload.
+//
+// It runs BEFORE any D1/D2 validator and before any adapter reconstruction. That ordering is the whole
+// point: the alias path has to hand D1 a `rawValue` where the governed value carries `aliasValue`, and
+// a reconstruction that copies named properties would silently drop an unknown field — the field would
+// then leave the command identity without anyone rejecting it.
+//
+// Three distinct states per declared path, deliberately not collapsed:
+//   OWN           — present and honest; the domain contract validates it;
+//   ABSENT        — allowed here; the domain contract decides whether it is derivable (D1 rebuilds
+//                   equipmentModelId from manufacturerId + modelNumber, for example);
+//   PROTOTYPE-ONLY — always rejected. The D1/D2 validators read fields with plain property access, so
+//                   an inherited value would be read as real while their own-key unknown-field checks
+//                   never see it. Checked at EVERY level, not just the root: an inherited
+//                   applicability.modelRevision is exactly as dangerous as an inherited top-level one.
+function assertCommandPayloadSchema(action: OperationAction, payload: unknown): Record<string, unknown> {
+  if (!isPlainObject(payload)) throw new FingerprintContractError("command payload must be a plain object");
+  const { topLevel, nested } = declaredSchema(action);
+  for (const key of Object.keys(payload)) {
+    if (!topLevel.has(key)) throw new FingerprintContractError(`unexpected field ${key} for action ${action}`);
+  }
+  for (const key of topLevel) {
+    if (key in payload && !hasOwn(payload, key)) {
+      throw new FingerprintContractError(`field ${key} is inherited, not an own property of the command payload`);
+    }
+  }
+  for (const [root, children] of nested) {
+    if (!hasOwn(payload, root)) continue; // genuinely absent — the domain contract decides
+    const value = payload[root];
+    if (!isPlainObject(value)) throw new FingerprintContractError(`field ${root} must be a plain object`);
+    for (const key of Object.keys(value)) {
+      if (!children.has(key)) throw new FingerprintContractError(`unexpected field ${root}.${key} for action ${action}`);
+    }
+    for (const key of children) {
+      if (key in value && !hasOwn(value, key)) {
+        throw new FingerprintContractError(`field ${root}.${key} is inherited, not an own property of the command payload`);
+      }
+    }
+  }
+  return payload;
+}
+
 // Run the payload through its applicable D1/D2 validator and report the identity it must be filed
 // under. Only a NORMALIZED GOVERNED command gets a fingerprint: a payload the domain contract refuses
 // has no command identity at all, and fingerprinting one would let an invalid command occupy an
 // idempotency key. The VALIDATED value is what gets serialized, which also gives the normalization
 // rule below its meaning.
 function validatedCommand(action: OperationAction, payload: unknown, serialSchemes: Record<string, unknown>): { value: any; identity: string } {
-  if (!isPlainObject(payload)) throw new FingerprintContractError("command payload must be a plain object");
+  // STRICT BOUNDARY FIRST — before any validator call and before any adapter reconstruction, because
+  // an adapter that copies selected properties would drop an unknown field before the domain contract
+  // could object to it.
+  const record = assertCommandPayloadSchema(action, payload);
   const fail = (reason: string): never => {
     throw new FingerprintContractError(`invalid ${action} payload: ${reason}`);
   };
-  // The D1/D2 validators read fields with plain property access, which walks the prototype chain, while
-  // their unknown-field checks use own keys. A polluted Object.prototype could therefore inject a value
-  // for an optional governed field and change a command's identity without that field ever appearing on
-  // the payload. Refuse any declared field that is reachable ONLY through the prototype. A field that is
-  // simply absent is still allowed here — the domain contract decides whether it is derivable.
-  const declared = Object.prototype.hasOwnProperty.call(COMMAND_FINGERPRINT_FIELDS, action)
-    ? COMMAND_FINGERPRINT_FIELDS[action]
-    : [];
-  for (const path of declared) {
-    const root = path.includes(".") ? path.slice(0, path.indexOf(".")) : path;
-    if (root in payload && !Object.prototype.hasOwnProperty.call(payload, root)) {
-      throw new FingerprintContractError(`field ${root} is inherited, not an own property of the command payload`);
-    }
-  }
   switch (action) {
     case "importEquipmentModel": {
-      const v = validateEquipmentModel(payload);
+      const v = validateEquipmentModel(record);
       if (!v.valid) fail(v.reason);
       return { value: v.value, identity: v.value.equipmentModelId };
     }
     case "importEquipmentModelAlias": {
       // The governed VALUE carries `aliasValue`; the D1 validator takes it as `rawValue`.
       const v = validateEquipmentModelAlias({
-        aliasType: payload.aliasType, manufacturerId: payload.manufacturerId, rawValue: payload.aliasValue,
-        equipmentModelId: payload.equipmentModelId, aliasKey: payload.aliasKey,
+        aliasType: record.aliasType, manufacturerId: record.manufacturerId, rawValue: record.aliasValue,
+        equipmentModelId: record.equipmentModelId, aliasKey: record.aliasKey,
       });
       if (!v.valid) fail(v.reason);
       return { value: v.value, identity: v.value.aliasKey };
     }
     case "importCompatibility":
     case "correctCompatibility": {
-      const v = validateCompatibility(payload, { serialSchemes });
+      const v = validateCompatibility(record, { serialSchemes });
       if (!v.valid) fail(v.reason);
       return { value: v.value, identity: v.value.compatibilityId };
     }
     case "importCompatibilitySource": {
-      const v = validateCompatibilitySource(payload);
+      const v = validateCompatibilitySource(record);
       if (!v.valid) fail(v.reason);
       return { value: v.value, identity: v.value.sourceId };
     }
     case "verifyCompatibility": {
       // An explicit command shape, not a domain record: strictly validated here.
-      const keys = Object.keys(payload);
+      const keys = Object.keys(record);
       if (keys.length !== 2 || !keys.includes("compatibilityId") || !keys.includes("verificationStatus")) {
         fail("expected exactly { compatibilityId, verificationStatus }");
       }
-      if (!isCanonicalCompatibilityId(payload.compatibilityId)) fail("compatibility_id_invalid");
-      const verificationStatus = normalizeIdentityKey(payload.verificationStatus);
+      if (!isCanonicalCompatibilityId(record.compatibilityId)) fail("compatibility_id_invalid");
+      const verificationStatus = normalizeIdentityKey(record.verificationStatus);
       if (!VERIFICATION_STATES.includes(verificationStatus)) fail("verification_status_invalid");
       return {
-        value: { compatibilityId: payload.compatibilityId, verificationStatus },
-        identity: payload.compatibilityId as string,
+        value: { compatibilityId: record.compatibilityId, verificationStatus },
+        identity: record.compatibilityId as string,
       };
     }
     default:
