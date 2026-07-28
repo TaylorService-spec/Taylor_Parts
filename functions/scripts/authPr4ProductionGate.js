@@ -314,9 +314,18 @@ function validateStatePayload(p, expected) {
         !isBoundedString(p.attempt.targetPersona, 128) || !isUtcInstant(p.attempt.claimedAt) || !isUtcInstant(p.attempt.leaseExpiresAt)) {
       throw new Error("Progression.attempt has invalid fields.");
     }
+    // Attempt lease expiry must be strictly later than claim time.
+    if (Date.parse(p.attempt.leaseExpiresAt) <= Date.parse(p.attempt.claimedAt)) {
+      throw new Error("Progression.attempt leaseExpiresAt is not later than claimedAt.");
+    }
   }
   if (p.lastOutcome !== null) {
     assertExactShape(p.lastOutcome, OUTCOME_FIELDS, "progression.lastOutcome");
+    if (!isBoundedString(p.lastOutcome.attemptId, 128) || !["forward", "rollback"].includes(p.lastOutcome.mode) ||
+        !isBoundedString(p.lastOutcome.targetPersona, 128) || !isBoundedString(p.lastOutcome.result, 128) ||
+        !isUtcInstant(p.lastOutcome.at)) {
+      throw new Error("Progression.lastOutcome has invalid/bounded/UTC fields.");
+    }
   }
   // Binding.
   if (p.authorizationId !== expected.authorizationId) throw new Error("Progression bound to a different authorization (conflicting).");
@@ -325,13 +334,24 @@ function validateStatePayload(p, expected) {
   if (p.personaOrder.length !== expected.personaOrder.length || p.personaOrder.some((x, i) => x !== expected.personaOrder[i])) {
     throw new Error("Progression persona order does not match the governed sequence.");
   }
-  p.completed.forEach((id, i) => { if (id !== expected.personaOrder[i]) throw new Error("Progression completed list is not a valid in-order prefix."); });
+  // completed must be a valid, in-order, duplicate-free prefix of the sequence.
+  if (p.completed.length > expected.personaOrder.length) throw new Error("Progression completed longer than the sequence.");
+  p.completed.forEach((id, i) => { if (id !== expected.personaOrder[i]) throw new Error("Progression completed list is not a valid in-order prefix (dup/out-of-order)."); });
+  // Status invariants (reject impossible combinations even with a valid HMAC).
+  if (p.status === "eligible" && p.attempt !== null) throw new Error("Invariant: eligible state must have attempt=null.");
+  if (p.status === "claimed" && p.attempt === null) throw new Error("Invariant: claimed state must have an attempt.");
+  if ((p.status === "uncertain" || p.status === "recovery_required") && p.lastOutcome === null) {
+    throw new Error("Invariant: uncertain/recovery_required must preserve the affected attempt in lastOutcome.");
+  }
+  if (p.status === "suspended" && (p.lastOutcome === null || p.lastOutcome.mode !== "rollback")) {
+    throw new Error("Invariant: suspended must represent a governed rollback outcome.");
+  }
 }
 
 function readState(file, key, expected, deps = {}) {
-  const readFileSync = deps.readFileSync || fs.readFileSync;
+  const _fs = deps.fs || fs;
   let artifact;
-  try { artifact = JSON.parse(readFileSync(file, "utf8")); }
+  try { artifact = JSON.parse(_fs.readFileSync(file, "utf8")); }
   catch (err) { throw new Error(`Progression state missing/malformed: ${err.message}`); }
   if (!artifact || typeof artifact !== "object" || typeof artifact.signature !== "string") throw new Error("Progression state malformed.");
   const { signature, ...payload } = artifact;
@@ -351,11 +371,11 @@ function writeAnchor(stateFile, { authorizationId, highWaterRevision, stateHash 
   atomicWrite(anchorPath(stateFile), JSON.stringify({ ...payload, signature: signAnchor(payload, key) }), deps);
 }
 function readAnchor(stateFile, key, deps = {}) {
-  const readFileSync = deps.readFileSync || fs.readFileSync;
+  const _fs = deps.fs || fs;
   const p = anchorPath(stateFile);
-  if (!fs.existsSync(p)) return null;
+  if (!_fs.existsSync(p)) return null;
   let art;
-  try { art = JSON.parse(readFileSync(p, "utf8")); } catch (err) { throw new Error(`Anchor malformed: ${err.message}`); }
+  try { art = JSON.parse(_fs.readFileSync(p, "utf8")); } catch (err) { throw new Error(`Anchor malformed: ${err.message}`); }
   assertExactShape(art, [...ANCHOR_FIELDS, "signature"], "anchor");
   const { signature, ...payload } = art;
   if (!isBoundedInt(payload.highWaterRevision, 0, 1e9) || !isSha256(payload.stateHash) || !isUtcInstant(payload.updatedAt)) {
@@ -381,12 +401,25 @@ function verifyStateFreshness(stateFile, state, key, deps = {}) {
 // Lock: exclusive O_EXCL claim with a bounded lease.
 const LOCK_FIELDS = Object.freeze(["version", "authorizationId", "attemptId", "mode", "targetPersona", "revision", "claimedAt", "leaseExpiresAt"]);
 function lockPath(stateFile) { return `${stateFile}.lock`; }
+// Strict lock validation: rejects malformed values (not only unknown/missing
+// fields). Uses the injected fs consistently.
 function readLock(stateFile, deps = {}) {
-  const readFileSync = deps.readFileSync || fs.readFileSync;
+  const _fs = deps.fs || fs;
   const p = lockPath(stateFile);
-  if (!fs.existsSync(p)) return null;
-  const art = JSON.parse(readFileSync(p, "utf8"));
+  if (!_fs.existsSync(p)) return null;
+  let art;
+  try { art = JSON.parse(_fs.readFileSync(p, "utf8")); } catch (err) { throw new Error(`Lock malformed: ${err.message}`); }
   assertExactShape(art, LOCK_FIELDS, "lock");
+  if (art.version !== LOCK_VERSION) throw new Error("Lock version unsupported.");
+  if (!isCanonicalAuthId(art.authorizationId)) throw new Error("Lock authorizationId not canonical.");
+  if (!isBoundedString(art.attemptId, 128)) throw new Error("Lock attemptId invalid.");
+  if (!["forward", "rollback"].includes(art.mode)) throw new Error("Lock mode invalid.");
+  if (!isBoundedString(art.targetPersona, 128)) throw new Error("Lock targetPersona invalid.");
+  if (!isBoundedInt(art.revision, 0, 1e9)) throw new Error("Lock revision out of bounds.");
+  if (!isUtcInstant(art.claimedAt) || !isUtcInstant(art.leaseExpiresAt)) throw new Error("Lock timestamps are not valid UTC instants.");
+  const claimed = Date.parse(art.claimedAt); const lease = Date.parse(art.leaseExpiresAt);
+  if (!(lease > claimed)) throw new Error("Lock leaseExpiresAt is not strictly later than claimedAt.");
+  if (lease - claimed > MAX_LEASE_SEC * 1000) throw new Error("Lock lease duration exceeds the bound.");
   return art;
 }
 function leaseExpired(lock, now) { return Date.parse(lock.leaseExpiresAt) <= now.getTime(); }
@@ -430,6 +463,32 @@ function assertOwnsClaim(stateFile, attemptId, deps = {}) {
   if (!existing || existing.attemptId !== attemptId) {
     throw new Error("This attempt no longer owns the claim (taken over / released); refusing to record state.");
   }
+}
+
+// LIVE ATTEMPT OWNERSHIP -- verified immediately before every outcome write. A
+// stale/expired/superseded worker must never modify progression state. Returns the
+// re-read current CLAIMED state to use as the commit predecessor.
+function assertLiveOwnership(stateFile, key, ctx, deps = {}) {
+  const now = deps.now ? deps.now() : new Date();
+  const lock = readLock(stateFile, deps); // strict-validated (throws on malformed)
+  if (!lock) throw new Error("No claim lock present; refusing to record outcome (stale/released).");
+  if (lock.version !== LOCK_VERSION) throw new Error("Lock version unsupported.");
+  if (lock.authorizationId !== ctx.authorizationId) throw new Error("Lock authorization mismatch.");
+  if (lock.attemptId !== ctx.attemptId) throw new Error("Lock is owned by a different attempt (superseded/stale).");
+  if (lock.mode !== ctx.mode || lock.targetPersona !== ctx.targetPersona) throw new Error("Lock mode/target mismatch.");
+  if (lock.revision !== ctx.predecessorRevision) throw new Error("Lock predecessor revision mismatch.");
+  if (leaseExpired(lock, now)) throw new Error("Claim lease has EXPIRED; refusing to record outcome.");
+  const cur = readState(stateFile, key, ctx.expected, deps);
+  verifyStateFreshness(stateFile, cur, key, deps); // high-water anchor
+  if (cur.status !== "claimed") throw new Error(`Progression is no longer "claimed" (status="${cur.status}"); refusing outcome (superseded/recovered).`);
+  if (cur.revision !== ctx.claimedRevision) throw new Error("Progression revision changed since the claim; refusing outcome.");
+  if (progressionHash(cur) !== ctx.claimedHash) throw new Error("Progression state hash changed since the claim; refusing outcome.");
+  const a = cur.attempt;
+  if (!a || a.attemptId !== ctx.attemptId || a.mode !== ctx.mode || a.targetPersona !== ctx.targetPersona ||
+      a.claimedAt !== lock.claimedAt || a.leaseExpiresAt !== lock.leaseExpiresAt) {
+    throw new Error("Progression.attempt does not exactly match the live lock and caller; refusing outcome.");
+  }
+  return cur;
 }
 
 function nextEligiblePersona(state, personaOrder) {
@@ -535,10 +594,28 @@ function assertProductionAuthorization(args, deps = {}) {
   verifyStateFreshness(args.progressionFile, state, stateKey, deps);
 
   // Blocking states never proceed (crash-safe: never auto-revert to eligible).
-  if (["claimed", "uncertain", "recovery_required"].includes(state.status)) {
+  if (["uncertain", "recovery_required"].includes(state.status)) {
     throw new Error(`Progression is in a blocking state ("${state.status}") -- governed reconciliation required before any further production step.`);
   }
   if (state.status === "suspended") throw new Error("Progression is SUSPENDED (post-rollback); later personas are blocked.");
+  if (state.status === "claimed") {
+    // A prior attempt is mid-flight. A LIVE lease => concurrent worker => refuse.
+    // An EXPIRED lease => the prior worker likely crashed mid-attempt (Auth outcome
+    // unknown): perform an EXPLICIT takeover into recovery_required, preserving the
+    // prior attempt's evidence, and STOP. It never auto-proceeds to a fresh mutation.
+    const lock = readLock(args.progressionFile, deps);
+    if (lock && !leaseExpired(lock, now())) {
+      throw new Error("A concurrent claim is held (unexpired lease); refusing to run two workers on the same identity.");
+    }
+    const prior = state.attempt || (lock
+      ? { attemptId: lock.attemptId, mode: lock.mode, targetPersona: lock.targetPersona }
+      : { attemptId: "unknown", mode: "forward", targetPersona: state.personaOrder[state.completed.length] || state.personaOrder[0] });
+    commitState(args.progressionFile, state, {
+      status: "recovery_required", attempt: null,
+      lastOutcome: { attemptId: prior.attemptId, mode: prior.mode, targetPersona: prior.targetPersona, result: "uncertain-stale-takeover", at: now().toISOString() },
+    }, stateKey, deps);
+    throw new Error("Stale claim taken over: prior attempt recorded recovery_required (governed reconciliation needed).");
+  }
 
   const mode = args.rollback ? "rollback" : "forward";
   const leaseSeconds = isBoundedInt(deps.leaseSeconds, 1, MAX_LEASE_SEC) ? deps.leaseSeconds : 300;
@@ -592,15 +669,24 @@ function acquireAndClaim({ args, state, stateKey, authorization, idHash, mode, t
     status: "claimed",
     attempt: { attemptId, mode, targetPersona, claimedAt: lock.claimedAt, leaseExpiresAt: lock.leaseExpiresAt },
   }, stateKey, deps);
+  const expected = { authorizationId: authorization.authorizationId, projectId: args.projectId, workflowIdentityHash: idHash, personaOrder: deps.personaOrder };
+  // Context checked live before EVERY outcome write (defeats stale/superseded workers).
+  const ownership = {
+    authorizationId: authorization.authorizationId, attemptId, mode, targetPersona,
+    predecessorRevision: state.revision, claimedRevision: claimedState.revision,
+    claimedHash: progressionHash(claimedState), expected,
+  };
   return {
     mode, authorization, workflowIdentityHash: idHash, stateKey, attemptId,
     effective: { employeeId: targetPersona, position }, claimedState,
     progressionFile: args.progressionFile,
-    // Callbacks the workflow invokes after the Auth side effect (two-phase, C3):
+    // Callbacks the workflow invokes after the Auth side effect (two-phase, C3).
+    // assertLiveOwnership re-verifies lock+lease+exact-claimed-state immediately
+    // before committing -- a stale/expired/superseded worker is refused and can
+    // never mutate completed/uncertain/recovery_required/suspended state.
     recordCompletion(deps2 = {}) {
       const d = { ...deps, ...deps2 };
-      assertOwnsClaim(args.progressionFile, attemptId, d);
-      const cur = readState(args.progressionFile, stateKey, { authorizationId: authorization.authorizationId, projectId: args.projectId, workflowIdentityHash: idHash, personaOrder: d.personaOrder || deps.personaOrder }, d);
+      const cur = assertLiveOwnership(args.progressionFile, stateKey, { ...ownership, expected: { ...expected, personaOrder: d.personaOrder || deps.personaOrder } }, d);
       const changes = mode === "forward"
         ? { status: "eligible", completed: [...cur.completed, targetPersona], attempt: null, lastOutcome: { attemptId, mode, targetPersona, result: "completed", at: (d.now ? d.now() : new Date()).toISOString() } }
         : { status: "suspended", completed: cur.completed.filter((x) => x !== targetPersona), attempt: null, lastOutcome: { attemptId, mode, targetPersona, result: "rolled-back-suspended", at: (d.now ? d.now() : new Date()).toISOString() } };
@@ -610,8 +696,10 @@ function acquireAndClaim({ args, state, stateKey, authorization, idHash, mode, t
     },
     recordUncertain(result, deps2 = {}) {
       const d = { ...deps, ...deps2 };
-      // Keep the claim (evidence); never revert to eligible. Block via uncertain/recovery_required.
-      const cur = readState(args.progressionFile, stateKey, { authorizationId: authorization.authorizationId, projectId: args.projectId, workflowIdentityHash: idHash, personaOrder: d.personaOrder || deps.personaOrder }, d);
+      // Live-ownership required even to record uncertainty: a superseded worker
+      // must not overwrite a recovery_required/terminal state (keeps takeover
+      // evidence intact). Never reverts to eligible.
+      const cur = assertLiveOwnership(args.progressionFile, stateKey, { ...ownership, expected: { ...expected, personaOrder: d.personaOrder || deps.personaOrder } }, d);
       return commitState(args.progressionFile, cur, {
         status: "uncertain",
         lastOutcome: { attemptId, mode, targetPersona, result: result || "uncertain", at: (d.now ? d.now() : new Date()).toISOString() },
@@ -630,7 +718,7 @@ module.exports = {
   loadStateKey, atomicWrite,
   progressionCanonical, signProgression, progressionHash, genesisState, readState, commitState, nextState,
   anchorPath, signAnchor, writeAnchor, readAnchor, verifyStateFreshness,
-  lockPath, readLock, acquireClaim, releaseClaim, assertOwnsClaim, leaseExpired,
+  lockPath, readLock, acquireClaim, releaseClaim, assertOwnsClaim, assertLiveOwnership, leaseExpired,
   nextEligiblePersona,
   signBreakGlass, readAndVerifyBreakGlass,
   assertProductionAuthorization,

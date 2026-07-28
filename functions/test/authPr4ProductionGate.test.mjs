@@ -227,6 +227,118 @@ ok("stale takeover: an expired claim is taken over (not silently reused)", () =>
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+// Build a claimed state + matching lock for live-ownership tests.
+function makeClaimed(dir, key, { authorizationId = "AUTHPR4-PROD-TEST", projectId = "demo-authpr4", idHash, attemptId = "att-A", mode = "forward", targetPersona = "emp-rudy-driver", leaseSeconds = 300, now = new Date() } = {}) {
+  const stateFile = path.join(dir, "state.json");
+  const g0 = writeGenesis(stateFile, key, { authorizationId, projectId, idHash });
+  const claimedAt = now.toISOString();
+  const leaseExpiresAt = new Date(now.getTime() + leaseSeconds * 1000).toISOString();
+  const claimed = gate.commitState(stateFile, g0, { status: "claimed", attempt: { attemptId, mode, targetPersona, claimedAt, leaseExpiresAt } }, key);
+  fs.writeFileSync(gate.lockPath(stateFile), JSON.stringify({ version: gate.LOCK_VERSION, authorizationId, attemptId, mode, targetPersona, revision: 0, claimedAt, leaseExpiresAt }), { mode: 0o600 });
+  const expected = { authorizationId, projectId, workflowIdentityHash: idHash, personaOrder: ORDER };
+  const ownership = { authorizationId, attemptId, mode, targetPersona, predecessorRevision: 0, claimedRevision: claimed.revision, claimedHash: gate.progressionHash(claimed), expected };
+  return { stateFile, claimed, ownership, claimedAt, leaseExpiresAt };
+}
+
+ok("live-ownership: completion/uncertain AFTER lease expiry are refused", () => {
+  const key = KEY(); const idHash = "a".repeat(64);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-lease-"));
+  const past = new Date(Date.now() - 10000);
+  const { stateFile, ownership } = makeClaimed(dir, key, { idHash, leaseSeconds: 1, now: past }); // already-expired lease
+  throws(() => gate.assertLiveOwnership(stateFile, key, ownership), /lease has EXPIRED/i);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+ok("live-ownership: non-owner attemptId / mismatched mode/target/revision are refused", () => {
+  const key = KEY(); const idHash = "b".repeat(64);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-own-"));
+  const { stateFile, ownership } = makeClaimed(dir, key, { idHash });
+  gate.assertLiveOwnership(stateFile, key, ownership); // owner OK
+  throws(() => gate.assertLiveOwnership(stateFile, key, { ...ownership, attemptId: "att-INTRUDER" }), /different attempt/);
+  throws(() => gate.assertLiveOwnership(stateFile, key, { ...ownership, mode: "rollback" }), /mode\/target mismatch/);
+  throws(() => gate.assertLiveOwnership(stateFile, key, { ...ownership, targetPersona: "emp-rudy-owner" }), /mode\/target mismatch/);
+  throws(() => gate.assertLiveOwnership(stateFile, key, { ...ownership, predecessorRevision: 99 }), /predecessor revision mismatch/);
+  throws(() => gate.assertLiveOwnership(stateFile, key, { ...ownership, claimedRevision: 99 }), /revision changed/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+ok("live-ownership: superseded worker cannot overwrite a recovery_required / non-claimed state", () => {
+  const key = KEY(); const idHash = "c".repeat(64);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-super-"));
+  const { stateFile, claimed, ownership } = makeClaimed(dir, key, { idHash });
+  // Simulate B's takeover: commit recovery_required (revision advances, anchor bumps).
+  gate.commitState(stateFile, claimed, { status: "recovery_required", attempt: null, lastOutcome: { attemptId: "att-A", mode: "forward", targetPersona: "emp-rudy-driver", result: "uncertain-stale-takeover", at: new Date().toISOString() } }, key);
+  // A's stale lock (att-A) is still on disk, but the state is no longer claimed.
+  throws(() => gate.assertLiveOwnership(stateFile, key, ownership), /no longer "claimed"|revision changed/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+ok("strict readLock: malformed lock values fail closed", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-mlock-"));
+  const f = path.join(dir, "state.json");
+  const good = { version: gate.LOCK_VERSION, authorizationId: "AUTHPR4-PROD-TEST", attemptId: "att-A", mode: "forward", targetPersona: "emp-rudy-driver", revision: 0, claimedAt: new Date().toISOString(), leaseExpiresAt: new Date(Date.now() + 60000).toISOString() };
+  const write = (o) => fs.writeFileSync(gate.lockPath(f), JSON.stringify(o));
+  write(good); assert.equal(gate.readLock(f).attemptId, "att-A");
+  write({ ...good, mode: "sideways" }); throws(() => gate.readLock(f), /mode invalid/);
+  write({ ...good, revision: -1 }); throws(() => gate.readLock(f), /revision out of bounds/);
+  write({ ...good, authorizationId: "lower" }); throws(() => gate.readLock(f), /authorizationId not canonical/);
+  write({ ...good, claimedAt: "not-a-date" }); throws(() => gate.readLock(f), /valid UTC/);
+  write({ ...good, leaseExpiresAt: good.claimedAt }); throws(() => gate.readLock(f), /strictly later/);
+  write({ ...good, extra: 1 }); throws(() => gate.readLock(f), /schema mismatch/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+ok("state invariants: impossible signed status/attempt combinations fail closed", () => {
+  const key = KEY(); const idHash = "d".repeat(64);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-inv-"));
+  const f = path.join(dir, "state.json");
+  const base = gate.genesisState({ authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", workflowIdentityHash: idHash, personaOrder: ORDER });
+  const expected = { authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", workflowIdentityHash: idHash, personaOrder: ORDER };
+  const writeSigned = (p) => fs.writeFileSync(f, JSON.stringify({ ...p, signature: gate.signProgression(p, key) }));
+  const att = { attemptId: "att-A", mode: "forward", targetPersona: "emp-rudy-driver", claimedAt: new Date().toISOString(), leaseExpiresAt: new Date(Date.now() + 60000).toISOString() };
+  // eligible must have attempt=null
+  writeSigned({ ...base, status: "eligible", attempt: att, revision: 1, previousStateHash: gate.progressionHash(base) });
+  throws(() => gate.readState(f, key, expected), /eligible state must have attempt=null/);
+  // claimed must have an attempt
+  writeSigned({ ...base, status: "claimed", attempt: null, revision: 1, previousStateHash: gate.progressionHash(base) });
+  throws(() => gate.readState(f, key, expected), /claimed state must have an attempt/);
+  // suspended must be a rollback outcome
+  writeSigned({ ...base, status: "suspended", attempt: null, lastOutcome: { attemptId: "att-A", mode: "forward", targetPersona: "emp-rudy-driver", result: "completed", at: new Date().toISOString() }, revision: 1, previousStateHash: gate.progressionHash(base) });
+  throws(() => gate.readState(f, key, expected), /suspended must represent a governed rollback/);
+  // uncertain must preserve affected attempt in lastOutcome
+  writeSigned({ ...base, status: "uncertain", attempt: att, lastOutcome: null, revision: 1, previousStateHash: gate.progressionHash(base) });
+  throws(() => gate.readState(f, key, expected), /must preserve the affected attempt/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+ok("INTERLEAVING: A claims, lease expires, B records recovery_required; A's later completion AND uncertain both refused; recovery_required intact", () => {
+  const g = buildGrantedRepo("demo-authpr4");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-inter-"));
+  const keyFile = path.join(dir, "k"); const key = crypto.randomBytes(48); fs.writeFileSync(keyFile, key, { mode: 0o600 });
+  const stateFile = path.join(dir, "state.json"); const mappingFile = path.join(dir, "map.json");
+  fs.writeFileSync(mappingFile, JSON.stringify({ "emp-rudy-driver": { uid: "u1", newAlias: "base+driver@gmail.com" } }));
+  const idHash = gate.workflowIdentityHash(gate.governedHashesAtCommit(g.root, g.authorizedCommit));
+  writeGenesis(stateFile, key, { authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", idHash });
+  const T0 = new Date();
+  const baseArgs = { projectId: "demo-authpr4", executeProduction: true, mappingFile, progressionFile: stateFile, stateKeyFile: keyFile, authorizedCommit: g.authorizedCommit, executionModeConfirmation: g.executionModeToken, executor: g.executor, capturedStateOut: path.join(dir, "c.json") };
+  // A claims with a 1s lease at T0.
+  const ctxA = gate.assertProductionAuthorization(baseArgs, { repoRoot: g.root, personaOrder: ORDER, now: () => T0, leaseSeconds: 1 });
+  assert.equal(ctxA.effective.employeeId, "emp-rudy-driver");
+  // 10s later B runs -> A's lease expired -> B takes over into recovery_required (throws).
+  const tLater = () => new Date(T0.getTime() + 10000);
+  throws(() => gate.assertProductionAuthorization(baseArgs, { repoRoot: g.root, personaOrder: ORDER, now: tLater, leaseSeconds: 300 }), /Stale claim taken over|recovery_required/);
+  let st = gate.readState(stateFile, key, { authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", workflowIdentityHash: idHash, personaOrder: ORDER });
+  assert.equal(st.status, "recovery_required");
+  assert.equal(st.lastOutcome.result, "uncertain-stale-takeover");
+  // A resumes: BOTH completion and uncertain are refused (lease expired / state changed).
+  throws(() => ctxA.recordCompletion({ personaOrder: ORDER, now: tLater }), /EXPIRED|no longer "claimed"|revision changed/);
+  throws(() => ctxA.recordUncertain("late", { personaOrder: ORDER, now: tLater }), /EXPIRED|no longer "claimed"|revision changed/);
+  st = gate.readState(stateFile, key, { authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", workflowIdentityHash: idHash, personaOrder: ORDER });
+  assert.equal(st.status, "recovery_required", "B's recovery_required + evidence remain intact");
+  assert.equal(st.lastOutcome.result, "uncertain-stale-takeover");
+  fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
+});
+
 // ---------------------------------------------------------------------------
 // 5. Break-glass strict (C4)
 // ---------------------------------------------------------------------------
@@ -374,8 +486,9 @@ await okAsync("FAULT: completion-persistence failure leaves progression CLAIMED 
   const st = gate.readState(stateFile, key, { authorizationId: "AUTHPR4-PROD-TEST", projectId: PROJECT, workflowIdentityHash: idHash, personaOrder: ORDER });
   assert.equal(st.status, "claimed", "progression remains CLAIMED (never auto-reverts to eligible)");
   assert.deepEqual(st.completed, []);
-  // A later run is blocked (claimed is a blocking state) -- governed reconciliation required.
-  await assert.rejects(() => runProductionForward({ g, key, keyFile, stateFile, mappingFile, employeeId: "emp-rudy-driver" }), /blocking state/);
+  // A later run is blocked: the claim lock is still held with a live lease (the
+  // failed completion never released it), so a fresh worker is refused.
+  await assert.rejects(() => runProductionForward({ g, key, keyFile, stateFile, mappingFile, employeeId: "emp-rudy-driver" }), /concurrent claim is held|blocking state/);
   fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
 });
 
