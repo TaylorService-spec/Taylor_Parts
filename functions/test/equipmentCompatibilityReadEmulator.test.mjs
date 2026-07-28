@@ -88,6 +88,30 @@ async function seedManyBatched(docs) {
 const compatDoc = (c) => ({ coll: EQUIPMENT_PART_COMPATIBILITY_COLLECTION, id: c.compatibilityId, data: CR.compatibilityToFirestore({ compatibility: c, ...META }, { serialSchemes: {} }) });
 const sourceDoc = (s) => ({ coll: EQUIPMENT_COMPATIBILITY_SOURCES_COLLECTION, id: s.sourceId, data: CR.sourceToFirestore({ source: s, ...META }) });
 
+// A Firestore wrapper that counts documents actually returned by EVIDENCE-collection queries, so a test
+// can prove the hard read-work budget is never exceeded. Only the sources collection's query chain is
+// instrumented; models/relationship access pass through unchanged.
+function countingDb(realDb) {
+  const state = { evidenceReads: 0 };
+  const wrapQuery = (q) => new Proxy(q, {
+    get(target, prop) {
+      if (prop === "get") return async (...a) => { const snap = await target.get(...a); state.evidenceReads += snap.size; return snap; };
+      const v = target[prop];
+      if (typeof v === "function") return (...a) => { const r = v.apply(target, a); return (r && typeof r.get === "function") ? wrapQuery(r) : r; };
+      return v;
+    },
+  });
+  return new Proxy(realDb, {
+    get(target, prop) {
+      if (prop === "collection") return (name) => (name === EQUIPMENT_COMPATIBILITY_SOURCES_COLLECTION ? wrapQuery(target.collection(name)) : target.collection(name));
+      if (prop === "__evidenceReads") return () => state.evidenceReads;
+      const v = target[prop];
+      return typeof v === "function" ? v.bind(target) : v;
+    },
+  });
+}
+const byId = (a, b) => (a.compatibilityId < b.compatibilityId ? -1 : a.compatibilityId > b.compatibilityId ? 1 : 0);
+
 // ===========================================================================
 // A. AUTHORIZATION MATRIX (injected resolver fixture; no activation)
 // ===========================================================================
@@ -198,23 +222,37 @@ await ok("evidence overflow (> MAX_EVIDENCE_PER_RELATIONSHIP) => INCOMPLETE + op
   assert.equal(r.pageDisposition, "DEGRADED");
   assert.equal(r.windowCounts.evidenceIncomplete, 1);
 });
-await ok("per-request evidence read-work budget forces later relationships INCOMPLETE (budget, not overflow)", async () => {
+await ok("HARD budget: actual evidence reads never exceed 100; short result establishes completeness; budget-truncation stays INCOMPLETE/non-operational and cannot upgrade the page", async () => {
+  // This is the exact P1 regression: heterogeneous evidence counts that leave 1..20 reads before a later
+  // relationship. Processing order is documentId() (compatibilityId) ascending; we assign counts by that
+  // order so the scenario is deterministic. Counts (in order): [20,20,20,20,15,20] => cumulative capped
+  // reads 20,40,60,80,95,100 — the 5th relationship (15 sources, 20 remaining) reads SHORT of its cap and
+  // is complete/OK; the 6th (20 sources, only 5 remaining) is budget-truncated => INCOMPLETE.
+  assert.equal(RS.MAX_EVIDENCE_PER_RELATIONSHIP, 20);
+  assert.equal(RS.MAX_EVIDENCE_READS_PER_REQUEST, 100);
   await clearAll(); await seedModel();
-  // Each relationship holds exactly MAX_EVIDENCE_PER_RELATIONSHIP sources (no overflow), so any INCOMPLETE
-  // is caused by the request budget. ceil(BUDGET / MAX) relationships spend the budget; the next is starved.
-  const per = RS.MAX_EVIDENCE_PER_RELATIONSHIP;
-  const rels = Math.floor(RS.MAX_EVIDENCE_READS_PER_REQUEST / per) + 2;
-  const compats = Array.from({ length: rels }, (_, i) => compatOf({ assembly: `BUD-${String(i).padStart(2, "0")}` }));
+  const ordered = Array.from({ length: 6 }, (_, i) => compatOf({ assembly: `HB-${i}` })).sort(byId);
+  const counts = [20, 20, 20, 20, 15, 20];
   const docs = [];
-  for (const c of compats) { docs.push(compatDoc(c)); for (let j = 0; j < per; j++) docs.push(sourceDoc(sourceOf(c.compatibilityId, hex(j + 1)))); }
+  ordered.forEach((c, pos) => { docs.push(compatDoc(c)); for (let j = 0; j < counts[pos]; j++) docs.push(sourceDoc(sourceOf(c.compatibilityId, hex((pos + 1) * 1000 + j)))); });
   await seedManyBatched(docs);
-  const r = await RS.readCompatibilityForPart(GRANT, { actorUid: "a", partId: PART_ID, limit: rels });
-  const okCount = r.items.filter((i) => i.evidence.status === "OK").length;
-  const incompleteCount = r.items.filter((i) => i.evidence.status === "INCOMPLETE").length;
-  assert.ok(incompleteCount >= 1, "at least one relationship is starved by the budget");
-  assert.ok(okCount >= 1 && okCount <= Math.ceil(RS.MAX_EVIDENCE_READS_PER_REQUEST / per), "only budget-many relationships read their evidence fully");
-  assert.equal(r.items.filter((i) => i.evidence.status === "INCOMPLETE").every((i) => i.operational === false), true);
+  const cdb = countingDb(db);
+  const r = await RS.readCompatibilityForPart({ db: cdb, resolvePermission: () => true, serialSchemes: {} }, { actorUid: "a", partId: PART_ID, limit: 6 });
+  assert.equal(r.items.length, 6);
+  // (1) actual evidence reads never exceed the governed budget — the core P1 proof.
+  assert.ok(cdb.__evidenceReads() <= RS.MAX_EVIDENCE_READS_PER_REQUEST, `evidence reads ${cdb.__evidenceReads()} must be <= ${RS.MAX_EVIDENCE_READS_PER_REQUEST}`);
+  assert.equal(cdb.__evidenceReads(), 100, "reads exactly up to the budget, never past it");
+  // (2) short result below the capped limit establishes completeness (position 4: 15 sources, 20 remaining).
+  assert.equal(r.items[4].evidence.status, "OK");
+  assert.equal(r.items[4].evidence.windowComplete, true);
+  assert.equal(r.items[4].operational, true);
+  // (3) budget-limited truncation is INCOMPLETE + non-operational (position 5: 20 sources, only 5 remaining).
+  assert.equal(r.items[5].evidence.status, "INCOMPLETE");
+  assert.equal(r.items[5].evidence.windowComplete, false);
+  assert.equal(r.items[5].operational, false);
+  // (4) truncation cannot upgrade the page to AVAILABLE.
   assert.equal(r.pageDisposition, "DEGRADED");
+  assert.ok(r.windowCounts.evidenceIncomplete >= 1);
 });
 
 // ===========================================================================

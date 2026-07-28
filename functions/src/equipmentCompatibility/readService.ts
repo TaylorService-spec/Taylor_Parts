@@ -174,15 +174,26 @@ async function readEvidenceSummary(deps: ReadServiceDeps, compatibilityId: strin
 
   if (budget.remaining <= 0) return incomplete(0, 0, 0, null); // request read-work budget exhausted
 
+  // HARD budget: never request more than the request budget still allows. `cap` is at most the
+  // per-relationship window+1 probe, and at most the remaining budget — so `snap.size <= cap <=
+  // budget.remaining` and the running total of actual evidence reads can never exceed
+  // MAX_EVIDENCE_READS_PER_REQUEST, nor can `budget.remaining` go negative.
+  const cap = Math.min(MAX_EVIDENCE_PER_RELATIONSHIP + 1, budget.remaining);
   const snap = await deps.db
     .collection(EQUIPMENT_COMPATIBILITY_SOURCES_COLLECTION)
     .where("compatibilityId", "==", compatibilityId)
     .orderBy(FieldPath.documentId())
-    .limit(MAX_EVIDENCE_PER_RELATIONSHIP + 1)
+    .limit(cap)
     .get();
   budget.remaining -= snap.size;
 
+  // Two DISTINCT reasons completeness cannot be established, both => INCOMPLETE:
+  //  - relationship OVERFLOW: a full window was allowed (cap === window+1) yet the +1 probe still returned;
+  //  - BUDGET-limited truncation: the budget capped us at/under the window and we filled that cap, so more
+  //    evidence MAY exist that we are not permitted to read.
+  // A short result strictly below `cap` proves we read the whole set => completeness established (OK).
   const overflow = snap.size > MAX_EVIDENCE_PER_RELATIONSHIP;
+  const budgetTruncated = cap <= MAX_EVIDENCE_PER_RELATIONSHIP && snap.size === cap;
   const docs = snap.docs.slice(0, MAX_EVIDENCE_PER_RELATIONSHIP);
   let supports = 0, contradicts = 0, malformed = false;
   let strongest: string | null = null, strongestRank = -1;
@@ -206,7 +217,7 @@ async function readEvidenceSummary(deps: ReadServiceDeps, compatibilityId: strin
     }
   }
   if (malformed) return { status: "UNAVAILABLE", windowComplete: false, strongestSupportingAuthority: strongest, boundedSupportsCount: supports, boundedContradictsCount: contradicts, windowSize: docs.length };
-  if (overflow) return incomplete(docs.length, supports, contradicts, strongest);
+  if (overflow || budgetTruncated) return incomplete(docs.length, supports, contradicts, strongest);
   return { status: "OK", windowComplete: true, strongestSupportingAuthority: strongest, boundedSupportsCount: supports, boundedContradictsCount: contradicts, windowSize: docs.length };
 }
 
@@ -220,9 +231,10 @@ interface RelationshipReadArgs {
 }
 
 async function runRelationshipRead(deps: ReadServiceDeps, args: RelationshipReadArgs): Promise<CompatibilityReadResponse> {
-  if (!(await isGranted(deps, args.actorUid))) return denied();
-
-  // Malformed-request validation (InvalidInputError => invalid-argument at the callable), BEFORE any read.
+  // Malformed-request validation FIRST — purely SYNTACTIC on caller-supplied input (key format, limit,
+  // cursor shape). It reads no data, so it leaks nothing to an unauthorized caller, and it lets a
+  // malformed request surface as invalid-argument rather than being masked by DENIED. A WELL-FORMED
+  // request from an unauthorized caller still returns DENIED below (no data revealed).
   if (args.keyField === "partId") {
     if (!isValidPartId(args.key)) throw new InvalidInputError("partId is malformed");
   } else if (!isCanonicalEquipmentModelId(args.key)) {
@@ -230,6 +242,8 @@ async function runRelationshipRead(deps: ReadServiceDeps, args: RelationshipRead
   }
   const pageLimit = clampLimit(args.limit);
   const afterId = args.cursor !== undefined ? decodeCursor(args.cursor, { dir: args.dir, key: args.key }).afterId : undefined;
+
+  if (!(await isGranted(deps, args.actorUid))) return denied();
 
   try {
     let query = deps.db
@@ -318,8 +332,8 @@ export function readCompatibilityForModel(deps: ReadServiceDeps, input: { actorU
 
 // Point read of a single Equipment Model's display summary.
 export async function readModelSummary(deps: ReadServiceDeps, input: { actorUid: string; equipmentModelId: string }): Promise<ModelSummaryResponse> {
+  if (!isCanonicalEquipmentModelId(input.equipmentModelId)) throw new InvalidInputError("equipmentModelId is malformed"); // syntactic, pre-auth
   if (!(await isGranted(deps, input.actorUid))) return { disposition: "DENIED", model: null };
-  if (!isCanonicalEquipmentModelId(input.equipmentModelId)) throw new InvalidInputError("equipmentModelId is malformed");
   try {
     const snap = await deps.db.collection(EQUIPMENT_MODELS_COLLECTION).doc(input.equipmentModelId).get();
     if (!snap.exists) return { disposition: "EMPTY", model: null };
