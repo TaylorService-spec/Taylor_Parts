@@ -121,11 +121,18 @@ const isPlainObject = (v: unknown): v is Record<string, unknown> =>
 // objects the field lists reference. Anything deeper is not part of any contract and is rejected.
 function ownPaths(payload: Record<string, unknown>, nested: ReadonlySet<string>): string[] {
   const paths: string[] = [];
-  for (const key of Object.keys(payload)) {
+  if (Object.getOwnPropertySymbols(payload).length > 0) {
+    throw new FingerprintContractError("command payload carries own symbol keys, which are not governed fields");
+  }
+  // getOwnPropertyNames, not Object.keys: a non-enumerable own key is still an own key.
+  for (const key of Object.getOwnPropertyNames(payload)) {
     const value = payload[key];
     if (nested.has(key)) {
       if (!isPlainObject(value)) throw new FingerprintContractError(`field ${key} must be a plain object`);
-      for (const child of Object.keys(value)) paths.push(`${key}.${child}`);
+      if (Object.getOwnPropertySymbols(value).length > 0) {
+        throw new FingerprintContractError(`field ${key} carries own symbol keys`);
+      }
+      for (const child of Object.getOwnPropertyNames(value)) paths.push(`${key}.${child}`);
       continue;
     }
     paths.push(key);
@@ -211,31 +218,81 @@ function declaredSchema(action: OperationAction): { topLevel: Set<string>; neste
 //                   an inherited value would be read as real while their own-key unknown-field checks
 //                   never see it. Checked at EVERY level, not just the root: an inherited
 //                   applicability.modelRevision is exactly as dangerous as an inherited top-level one.
+// Check ONE governed data map: every own string key must be declared, no own symbols, and every own
+// property must be a plain data property. Object.keys() is deliberately not used — it sees only
+// ENUMERABLE string keys, so a non-enumerable `hiddenFuture` or an own Symbol would slip past an
+// "unknown field" check that claims to be exhaustive.
+//
+// Accessors are REJECTED rather than snapshotted. A governed command payload is data, not behaviour:
+// a getter could return one value to the validator and another to the serializer, so the command that
+// was authorized would not be the command that was fingerprinted. Descriptors are inspected, never
+// invoked, so a throwing getter is refused without ever running.
+function assertGovernedMap(label: string, value: unknown, declared: ReadonlySet<string>): Record<string, unknown> {
+  if (!isPlainObject(value)) throw new FingerprintContractError(`${label} must be a plain object`);
+  if (Object.getOwnPropertySymbols(value).length > 0) {
+    throw new FingerprintContractError(`${label} carries own symbol keys, which are not governed fields`);
+  }
+  for (const key of Object.getOwnPropertyNames(value)) {
+    if (!declared.has(key)) throw new FingerprintContractError(`unexpected field ${label === "command payload" ? key : `${label}.${key}`}`);
+    const descriptor = Object.getOwnPropertyDescriptor(value, key)!;
+    if (typeof descriptor.get === "function" || typeof descriptor.set === "function") {
+      throw new FingerprintContractError(`field ${key} on ${label} is an accessor; governed command fields must be plain data`);
+    }
+  }
+  for (const key of declared) {
+    if (key in value && !hasOwn(value, key)) {
+      throw new FingerprintContractError(`field ${key} on ${label} is inherited, not an own property`);
+    }
+  }
+  return value;
+}
+
 function assertCommandPayloadSchema(action: OperationAction, payload: unknown): Record<string, unknown> {
-  if (!isPlainObject(payload)) throw new FingerprintContractError("command payload must be a plain object");
   const { topLevel, nested } = declaredSchema(action);
-  for (const key of Object.keys(payload)) {
-    if (!topLevel.has(key)) throw new FingerprintContractError(`unexpected field ${key} for action ${action}`);
-  }
-  for (const key of topLevel) {
-    if (key in payload && !hasOwn(payload, key)) {
-      throw new FingerprintContractError(`field ${key} is inherited, not an own property of the command payload`);
-    }
-  }
+  const record = assertGovernedMap("command payload", payload, topLevel);
   for (const [root, children] of nested) {
-    if (!hasOwn(payload, root)) continue; // genuinely absent — the domain contract decides
-    const value = payload[root];
-    if (!isPlainObject(value)) throw new FingerprintContractError(`field ${root} must be a plain object`);
-    for (const key of Object.keys(value)) {
-      if (!children.has(key)) throw new FingerprintContractError(`unexpected field ${root}.${key} for action ${action}`);
-    }
-    for (const key of children) {
-      if (key in value && !hasOwn(value, key)) {
-        throw new FingerprintContractError(`field ${root}.${key} is inherited, not an own property of the command payload`);
-      }
-    }
+    if (!hasOwn(record, root)) continue; // genuinely absent — the domain contract decides
+    assertGovernedMap(root, record[root], children);
   }
-  return payload;
+  return record;
+}
+
+// ---------------------------------------------------------------------------
+// The serial-scheme registry is an untrusted governed DEPENDENCY, not payload
+// ---------------------------------------------------------------------------
+// D2 resolves a scheme with ordinary property access, so an inherited registry entry would authorize
+// and fingerprint a SERIAL_RANGE command that the caller's own registry never contained. The registry
+// is therefore held to the same boundary as the payload, and D2 is handed a DETACHED null-prototype
+// map carrying only the one validated scheme the command actually asked for — nothing else is reachable.
+const SERIAL_SCHEME_FIELDS: ReadonlySet<string> = new Set(["schemeId", "manufacturerId", "normalizerVersion", "tokenPattern", "ordering"]);
+
+function detachedSerialSchemes(record: Record<string, unknown>, serialSchemes: unknown): Record<string, unknown> {
+  const detached: Record<string, unknown> = Object.create(null);
+  if (serialSchemes === undefined || serialSchemes === null) return detached;
+  if (!isPlainObject(serialSchemes)) throw new FingerprintContractError("serialSchemes must be a plain object");
+  if (Object.getOwnPropertySymbols(serialSchemes).length > 0) {
+    throw new FingerprintContractError("serialSchemes carries own symbol keys");
+  }
+  const applicability = record.applicability;
+  if (!isPlainObject(applicability)) return detached; // the domain contract will reject the shape
+  const requested = normalizeIdentityKey(applicability.serialScheme);
+  if (!requested) return detached; // no scheme requested; D2 decides whether that is legal
+  if (requested in serialSchemes && !hasOwn(serialSchemes, requested)) {
+    throw new FingerprintContractError(`serial scheme ${requested} is inherited, not an own registry entry`);
+  }
+  if (!hasOwn(serialSchemes, requested)) return detached; // genuinely absent → D2 reports it unresolved
+  const descriptor = Object.getOwnPropertyDescriptor(serialSchemes, requested)!;
+  if (typeof descriptor.get === "function" || typeof descriptor.set === "function") {
+    throw new FingerprintContractError(`serial scheme ${requested} is an accessor; the registry must be plain data`);
+  }
+  const scheme = assertGovernedMap(`serial scheme ${requested}`, serialSchemes[requested], SERIAL_SCHEME_FIELDS);
+  const copy: Record<string, unknown> = Object.create(null);
+  for (const key of SERIAL_SCHEME_FIELDS) {
+    if (!hasOwn(scheme, key)) throw new FingerprintContractError(`serial scheme ${requested} is missing ${key}`);
+    copy[key] = scheme[key];
+  }
+  detached[requested] = copy;
+  return detached;
 }
 
 // Run the payload through its applicable D1/D2 validator and report the identity it must be filed
@@ -243,7 +300,7 @@ function assertCommandPayloadSchema(action: OperationAction, payload: unknown): 
 // has no command identity at all, and fingerprinting one would let an invalid command occupy an
 // idempotency key. The VALIDATED value is what gets serialized, which also gives the normalization
 // rule below its meaning.
-function validatedCommand(action: OperationAction, payload: unknown, serialSchemes: Record<string, unknown>): { value: any; identity: string } {
+function validatedCommand(action: OperationAction, payload: unknown, serialSchemes: unknown): { value: any; identity: string } {
   // STRICT BOUNDARY FIRST — before any validator call and before any adapter reconstruction, because
   // an adapter that copies selected properties would drop an unknown field before the domain contract
   // could object to it.
@@ -268,7 +325,8 @@ function validatedCommand(action: OperationAction, payload: unknown, serialSchem
     }
     case "importCompatibility":
     case "correctCompatibility": {
-      const v = validateCompatibility(record, { serialSchemes });
+      // D2 only ever sees the detached, own-property-validated registry.
+      const v = validateCompatibility(record, { serialSchemes: detachedSerialSchemes(record, serialSchemes) });
       if (!v.valid) fail(v.reason);
       return { value: v.value, identity: v.value.compatibilityId };
     }
@@ -279,7 +337,7 @@ function validatedCommand(action: OperationAction, payload: unknown, serialSchem
     }
     case "verifyCompatibility": {
       // An explicit command shape, not a domain record: strictly validated here.
-      const keys = Object.keys(record);
+      const keys = Object.getOwnPropertyNames(record);
       if (keys.length !== 2 || !keys.includes("compatibilityId") || !keys.includes("verificationStatus")) {
         fail("expected exactly { compatibilityId, verificationStatus }");
       }
@@ -327,7 +385,7 @@ export function buildCommandFingerprint(input: {
     throw new FingerprintContractError(`action ${action} targets ${expectedTargetType}, not ${String(targetType)}`);
   }
   if (typeof targetId !== "string" || targetId.length === 0) throw new FingerprintContractError("targetId is required");
-  const { value, identity } = validatedCommand(action, payload, serialSchemes ?? {});
+  const { value, identity } = validatedCommand(action, payload, serialSchemes);
   if (targetId !== identity) {
     throw new FingerprintContractError(`targetId ${targetId} does not match the payload identity ${identity}`);
   }

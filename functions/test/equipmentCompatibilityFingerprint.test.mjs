@@ -422,6 +422,107 @@ ok("a PROTOTYPE-ONLY applicability child is rejected, and cannot forge a real co
     }
   }
 });
+ok("non-enumerable unknown own keys and own symbols are rejected at BOTH levels", () => {
+  // Object.keys() sees only enumerable string keys, so an exhaustive-sounding "unknown field" check
+  // built on it is not exhaustive at all.
+  for (const action of OPERATION_ACTIONS) {
+    const hidden = structuredClone(BASE[action]);
+    Object.defineProperty(hidden, "hiddenFuture", { value: "x", enumerable: false, configurable: true });
+    assert.throws(() => fp(action, hidden), FingerprintContractError, `${action} non-enumerable`);
+    const symbolled = structuredClone(BASE[action]);
+    symbolled[Symbol("future")] = "y";
+    assert.throws(() => fp(action, symbolled), FingerprintContractError, `${action} own symbol`);
+  }
+  for (const action of ["importCompatibility", "correctCompatibility"]) {
+    const hidden = structuredClone(BASE[action]);
+    Object.defineProperty(hidden.applicability, "hiddenFuture", { value: "x", enumerable: false, configurable: true });
+    assert.throws(() => fp(action, hidden), FingerprintContractError, `${action} nested non-enumerable`);
+    const symbolled = structuredClone(BASE[action]);
+    symbolled.applicability[Symbol("future")] = "y";
+    assert.throws(() => fp(action, symbolled), FingerprintContractError, `${action} nested own symbol`);
+  }
+});
+ok("accessor descriptors are rejected, never invoked, at BOTH levels", () => {
+  // A getter could hand the validator one value and the serializer another, so the authorized command
+  // would not be the fingerprinted one. Descriptors are inspected, so a throwing getter never runs.
+  const mkThrowing = (target, key) => {
+    Object.defineProperty(target, key, { get() { throw new Error("getter ran"); }, enumerable: true, configurable: true });
+    return target;
+  };
+  let flip = 0;
+  const stateful = structuredClone(model());
+  delete stateful.family;
+  Object.defineProperty(stateful, "family", { get() { return (flip++ % 2) ? "A" : "B"; }, enumerable: true, configurable: true });
+  // Called directly, so nothing but the code under test can touch the payload.
+  assert.throws(() => buildCommandFingerprint({ action: "importEquipmentModel", targetType: "equipment_models", targetId: MODEL_ID, payload: stateful }), FingerprintContractError, "stateful getter");
+  assert.equal(flip, 0, "the getter must never be invoked");
+  const throwingRoot = structuredClone(model());
+  delete throwingRoot.family;
+  assert.throws(() => buildCommandFingerprint({ action: "importEquipmentModel", targetType: "equipment_models", targetId: MODEL_ID, payload: mkThrowing(throwingRoot, "family") }), FingerprintContractError, "throwing root getter");
+  const throwingNested = structuredClone(compat);
+  delete throwingNested.applicability.modelRevision;
+  mkThrowing(throwingNested.applicability, "modelRevision");
+  assert.throws(() => buildCommandFingerprint({ action: "importCompatibility", targetType: "equipment_part_compatibility", targetId: compat.compatibilityId, payload: throwingNested, serialSchemes: SCHEMES }), FingerprintContractError, "throwing nested getter");
+});
+
+// ---- the serial-scheme registry is an untrusted governed DEPENDENCY ----
+const RANGED = compatOf({ applicability: { kind: "SERIAL_RANGE", serialScheme: "TAYLOR-ALPHA", serialRangeStart: "A100", serialRangeEnd: "A200", modelRevision: null } });
+const withRegistry = (serialSchemes) => buildCommandFingerprint({
+  action: "importCompatibility", targetType: "equipment_part_compatibility",
+  targetId: RANGED.compatibilityId, payload: RANGED, serialSchemes,
+});
+ok("an INHERITED registry entry cannot authorize a SERIAL_RANGE command", () => {
+  const empty = {};
+  Object.prototype["TAYLOR-ALPHA"] = SCHEME; // eslint-disable-line no-extend-native
+  try {
+    assert.equal(Object.getOwnPropertyNames(empty).length, 0, "precondition: the registry owns nothing");
+    assert.throws(() => withRegistry(empty), FingerprintContractError, "Object.prototype injection");
+  } finally {
+    delete Object.prototype["TAYLOR-ALPHA"];
+  }
+  // A custom prototype carrying the scheme is equally refused.
+  const custom = Object.create({ "TAYLOR-ALPHA": SCHEME });
+  assert.throws(() => withRegistry(custom), FingerprintContractError, "custom-prototype registry");
+});
+ok("registry entries are strictly schema-checked before D2 reads them", () => {
+  assert.throws(() => withRegistry({ "TAYLOR-ALPHA": { ...SCHEME, futureField: "x" } }), FingerprintContractError, "unknown scheme field");
+  const { ordering, ...missing } = SCHEME;
+  assert.throws(() => withRegistry({ "TAYLOR-ALPHA": missing }), FingerprintContractError, "missing scheme field");
+  const inheritedField = Object.create({ ordering: "LEXICOGRAPHIC" });
+  Object.assign(inheritedField, { schemeId: "TAYLOR-ALPHA", manufacturerId: "Taylor", normalizerVersion: 1, tokenPattern: "^[A-Z0-9-]+$" });
+  assert.throws(() => withRegistry({ "TAYLOR-ALPHA": inheritedField }), FingerprintContractError, "inherited scheme field");
+  const symbolled = { ...SCHEME }; symbolled[Symbol("x")] = 1;
+  assert.throws(() => withRegistry({ "TAYLOR-ALPHA": symbolled }), FingerprintContractError, "symbol in scheme");
+  const hiddenField = { ...SCHEME };
+  Object.defineProperty(hiddenField, "hidden", { value: 1, enumerable: false, configurable: true });
+  assert.throws(() => withRegistry({ "TAYLOR-ALPHA": hiddenField }), FingerprintContractError, "non-enumerable scheme field");
+  const accessorScheme = { ...SCHEME };
+  Object.defineProperty(accessorScheme, "ordering", { get() { return "LEXICOGRAPHIC"; }, enumerable: true, configurable: true });
+  assert.throws(() => withRegistry({ "TAYLOR-ALPHA": accessorScheme }), FingerprintContractError, "accessor scheme field");
+  const registrySymbol = { "TAYLOR-ALPHA": SCHEME }; registrySymbol[Symbol("x")] = 1;
+  assert.throws(() => withRegistry(registrySymbol), FingerprintContractError, "symbol in registry");
+  const accessorEntry = {};
+  Object.defineProperty(accessorEntry, "TAYLOR-ALPHA", { get() { return SCHEME; }, enumerable: true, configurable: true });
+  assert.throws(() => withRegistry(accessorEntry), FingerprintContractError, "accessor registry entry");
+  for (const bad of [42, "x", [], new Date(0)]) {
+    assert.throws(() => withRegistry(bad), FingerprintContractError, `malformed registry ${String(bad)}`);
+    assert.throws(() => withRegistry({ "TAYLOR-ALPHA": bad }), FingerprintContractError, `malformed scheme ${String(bad)}`);
+  }
+});
+ok("an OWN valid scheme is accepted, and a null-prototype registry agrees", () => {
+  const ordinary = withRegistry({ "TAYLOR-ALPHA": SCHEME });
+  assert.match(ordinary, HEX64);
+  const nullRegistry = Object.create(null);
+  nullRegistry["TAYLOR-ALPHA"] = SCHEME;
+  assert.equal(withRegistry(nullRegistry), ordinary, "null-prototype registry produces the same identity");
+  const nullScheme = Object.assign(Object.create(null), SCHEME);
+  assert.equal(withRegistry({ "TAYLOR-ALPHA": nullScheme }), ordinary, "null-prototype scheme too");
+  // Extra unrelated entries are simply unreachable -- only the requested scheme is handed to D2.
+  assert.equal(withRegistry({ "TAYLOR-ALPHA": SCHEME, "OTHER": { ...SCHEME, schemeId: "OTHER" } }), ordinary);
+  // A registry missing the requested scheme is unresolved, not injectable.
+  assert.throws(() => withRegistry({ "OTHER": { ...SCHEME, schemeId: "OTHER" } }), FingerprintContractError);
+  assert.throws(() => withRegistry(undefined), FingerprintContractError);
+});
 ok("null-prototype payloads and nested maps with valid own fields are accepted", () => {
   const detach = (o) => {
     const out = Object.create(null);
