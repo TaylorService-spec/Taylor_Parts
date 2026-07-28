@@ -1,20 +1,26 @@
 # AUTH-PR-4 — Production Identity-Mutation Authorization (GRANTED) & Execution Package
 
-> **STATUS: GRANTED by the Owner — re-bound to the three-file governed set (2026-07-28).**
-> The governed decision (identities, order, exclusions, required behaviour) is recorded
-> append-only in [`docs/DECISIONS.md` #52](../DECISIONS.md); the **three-file re-binding**
-> is recorded in [`#53`](../DECISIONS.md) and enabled in
-> [`functions/authpr4/production-authorization.json`](../../functions/authpr4/production-authorization.json).
-> **Merging does NOT execute the migration.** Execution is a separate, controlled step
-> (see §5). This re-authorization PR is DRAFT, subject to Codex review before any merge.
+> **STATUS: GRANTED (governed decision from #52) — three-file re-binding PROPOSED in this
+> DRAFT PR (2026-07-28), not yet finalized.** The governed decision (identities, order,
+> exclusions, required behaviour) is recorded append-only in
+> [`docs/DECISIONS.md` #52](../DECISIONS.md); the **three-file re-binding** is recorded in
+> [`#53`](../DECISIONS.md) and applied to
+> [`functions/authpr4/production-authorization.json`](../../functions/authpr4/production-authorization.json)
+> in this PR. **Merging does NOT execute the migration.** Execution is a separate, controlled
+> step (see §5). This re-authorization PR is DRAFT, subject to independent Codex review before
+> any merge — and is **gated on a separate CI-enforcement PR** landing first (which must run
+> the AUTH-PR-4 security suites in CI; see the governance note below).
 >
-> **✅ RE-AUTHORIZATION APPLIED (governed-set expansion).** PR #461 (merged `dba0e33`) added
-> the genesis initializer (`functions/scripts/authPr4InitProgression.js`) to the gate's
+> **RE-BINDING PROPOSED (governed-set expansion).** PR #461 (merged `dba0e33`) added the
+> genesis initializer (`functions/scripts/authPr4InitProgression.js`) to the gate's
 > `GOVERNED_FILES` and changed `authPr4ProductionGate.js`, so the prior **two**-file binding
 > at `reviewedHead c2604df` no longer verified (failed closed). This PR re-binds the
 > authorization artifact to the **three**-file governed set at `reviewedHead dba0e33`, with
 > all three governed blob hashes recomputed from that reviewed commit. The §1 table below
-> reflects the new three-file binding.
+> reflects the new three-file binding. **Prerequisite:** PR #461's AUTH-PR-4 security suites
+> (`test:authPr4Init` / `test:authPr4Gate` / `test:authPr4Migration`, with Auth-emulator
+> coverage) are verified locally but are **not yet CI-enforced**; a separate CI-enforcement PR
+> must run them in CI and merge before this re-authorization is finalized.
 
 | | |
 |---|---|
@@ -317,11 +323,15 @@ or committed, no dry-run.
 **Lineage.** The `PENDING → GRANTED` transition of
 [`production-authorization.json`](../../functions/authpr4/production-authorization.json) was
 performed historically by PR #460 (merged `70c3989`, [`DECISIONS.md` #52](../DECISIONS.md)),
-bound to the **two**-file governed set at `reviewedHead c2604df`. PR #461 (Codex PASS at
+bound to the **two**-file governed set at `reviewedHead c2604df`. PR #461 (Codex-reviewed at
 `bf393ba`, merged `dba0e33`) then added the governed genesis initializer
 (`functions/scripts/authPr4InitProgression.js`) and changed `authPr4ProductionGate.js`,
 **expanding `GOVERNED_FILES` to three files** — which invalidated the two-file binding
-(fails closed), and PR #461 itself left the artifact unchanged/stale by design.
+(fails closed), and PR #461 itself left the artifact unchanged/stale by design. **Governance
+note:** PR #461's review was **not** a clean unconditional pass — its AUTH-PR-4 security suites
+are verified locally but are **not yet CI-enforced**; a separate CI-enforcement PR must run
+`test:authPr4Init` / `test:authPr4Gate` / `test:authPr4Migration` (with Auth-emulator coverage)
+in CI and merge before this re-authorization is finalized.
 
 **What this PR does.** It is the Owner-authorized ([`DECISIONS.md` #53](../DECISIONS.md))
 **repository-only three-file re-authorization**: it rebinds the artifact's `reviewedHead` to
