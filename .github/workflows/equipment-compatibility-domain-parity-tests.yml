@@ -12,6 +12,7 @@ on:
       - "field-ops-app-vite/src/domain/equipmentModel.js"
       - "field-ops-app-vite/src/domain/equipmentCompatibility.js"
       - "functions/test/equipmentCompatibilityDomainParity.test.mjs"
+      - "functions/test/equipmentCompatibilityOperations.test.mjs"
       - "functions/package.json"
       - "functions/package-lock.json"
       - ".github/workflows/equipment-compatibility-domain-parity-tests.yml"
@@ -22,6 +23,7 @@ on:
       - "field-ops-app-vite/src/domain/equipmentModel.js"
       - "field-ops-app-vite/src/domain/equipmentCompatibility.js"
       - "functions/test/equipmentCompatibilityDomainParity.test.mjs"
+      - "functions/test/equipmentCompatibilityOperations.test.mjs"
       - "functions/package.json"
       - "functions/package-lock.json"
       - ".github/workflows/equipment-compatibility-domain-parity-tests.yml"
@@ -50,5 +52,5 @@ jobs:
         working-directory: functions
 
       - name: Domain parity (build + run)
-        run: npm run test:equipmentCompatibilityParity
+        run: npm run test:equipmentCompatibilityUnit
         working-directory: functions
