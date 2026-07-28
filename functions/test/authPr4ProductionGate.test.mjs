@@ -787,16 +787,17 @@ await okAsync("plain --execute / --rollback vs taylor-parts still refuse (never 
   }
 });
 
-// Gated production refusal against taylor-parts at the exact PR HEAD. The committed
-// authorization is now STALE (2-file hashes) under the expanded 3-file governed set,
-// so a --executeProduction run against taylor-parts fails closed at the governed-file-
-// set boundary BEFORE any SDK init -- no production Auth call is made. (Per-boundary
-// token/executor specificity is covered against a FRESH 3-file granted temp repo in
-// the pure layer; the CLI here targets the real, now-invalidated committed artifact.)
+// Gated production refusal against taylor-parts at the exact PR HEAD. With the three-file
+// re-authorization committed, the authorization now VERIFIES (governed-hash boundary passes),
+// so a --executeProduction run against taylor-parts fails closed at the NEXT governed boundary
+// -- there is no genesis progression state on disk -- and it does so BEFORE any Firebase SDK
+// init, so no production Auth call is ever made. (This proves the authorization no longer fails
+// at the schema-mismatch boundary AND that a bare production execute still fails closed and
+// mutates nothing without a genuine, out-of-band genesis + private inputs.)
 const GRANTED = JSON.parse(fs.readFileSync(path.join(REAL_ROOT, gate.AUTH_ARTIFACT_PATH), "utf8"));
 const HEAD = gate.deriveRepositoryIdentity(REAL_ROOT).head;
 
-await okAsync("gated --executeProduction vs taylor-parts fails closed: committed authorization is STALE under the expanded governed set (re-authorization required), before SDK", async () => {
+await okAsync("gated --executeProduction vs taylor-parts fails closed at the governed genesis boundary (no progression state), before any SDK init", async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-prodrefuse-"));
   const keyFile = path.join(dir, "k"); fs.writeFileSync(keyFile, crypto.randomBytes(48));
   const r = spawnSync(process.execPath, [SCRIPT, "--projectId", "taylor-parts", "--confirmProduction", "taylor-parts", "--executeProduction",
@@ -805,7 +806,10 @@ await okAsync("gated --executeProduction vs taylor-parts fails closed: committed
     "--executionModeConfirmation", GRANTED.executionModeToken, "--executor", GRANTED.executor.name],
     { cwd: path.resolve("."), env: process.env, encoding: "utf8" });
   assert.notEqual(r.status, 0, "must refuse");
-  assert.match(r.stderr, /governedFileHashes: schema mismatch/);
+  // The re-bound artifact verifies, so it is NOT a schema-mismatch failure any more; it fails
+  // closed at the missing-genesis-progression boundary, before SDK init / any Auth mutation.
+  assert.doesNotMatch(r.stderr, /governedFileHashes: schema mismatch/);
+  assert.match(r.stderr, /Progression state missing\/malformed/);
   assert.doesNotMatch(r.stderr, /FORWARD executed|updateUser/);
   fs.rmSync(dir, { recursive: true, force: true });
 });
