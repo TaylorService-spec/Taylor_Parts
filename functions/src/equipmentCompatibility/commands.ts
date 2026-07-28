@@ -15,12 +15,12 @@
 // A rejection that happens BEFORE the command is accepted for execution (unknown actor, missing
 // capability, malformed input) writes NO operation record at all — only a terminal `denied` audit —
 // exactly as §3 requires.
-import type { Firestore, Transaction } from "firebase-admin/firestore";
+import type { DocumentReference, Firestore, Transaction } from "firebase-admin/firestore";
 import { Timestamp } from "firebase-admin/firestore";
 import { buildCommandFingerprint } from "./commandFingerprint";
 import {
-  IdempotencyConflictError, InvalidInputError, NotFoundError, ReferentialIntegrityError,
-  UnauthorizedActorError, VersionConflictError,
+  AlreadyExistsError, IdempotencyConflictError, InvalidInputError, NotFoundError,
+  ReferentialIntegrityError, UnauthorizedActorError, VersionConflictError,
 } from "./errors";
 import { ACTION_TARGET_TYPES, type OperationAction, type OperationRecord, type OperationTargetType } from "./operations";
 import {
@@ -43,31 +43,127 @@ export const COMMAND_CAPABILITIES: Readonly<Record<OperationAction, string>> = O
   correctCompatibility: "equipment.compatibility.correct",
 });
 
-// The audit action pair for each lifecycle event (design §3). The real AuditAction registry entries
-// land in Stage D, so the orchestrator stages through an injected writer and never claims an action the
-// shared writer does not yet support.
-export const INITIATION_AUDIT_ACTION = "initiateEquipmentCompatibilityCommand";
-export const TERMINAL_AUDIT_ACTION = "equipmentCompatibilityCommand";
+// Every lifecycle audit action (design §3). The AuditAction REGISTRY entries land in Stage D; the seam
+// below must nevertheless represent all of them, so C.2 cannot quietly omit a governed event.
+export const EQUIPMENT_AUDIT_ACTIONS = Object.freeze([
+  "initiateEquipmentCompatibilityCommand",  // TX1: initiation was durably recorded
+  "equipmentCompatibilityCommand",          // TX2: the terminal outcome
+  "equipmentCompatibilityVerification",     // staged with a verificationStatus transition
+  "equipmentCompatibilityCorrection",       // staged with a governed correction
+  "equipmentCompatibilityConflict",         // staged when contradicting evidence forces CONFLICT
+] as const);
+export type EquipmentAuditAction = (typeof EQUIPMENT_AUDIT_ACTIONS)[number];
+export const INITIATION_AUDIT_ACTION: EquipmentAuditAction = "initiateEquipmentCompatibilityCommand";
+export const TERMINAL_AUDIT_ACTION: EquipmentAuditAction = "equipmentCompatibilityCommand";
+
+// STABLE SANITIZED DENIAL REASONS. An audit summary is composed only from these codes and the action
+// name — never from an exception message, a resolver's text, a client-supplied value, or a raw payload.
+// A denial therefore cannot smuggle attacker-controlled text (or a secret) into an append-only record,
+// and the reasons stay stable enough to alert on.
+export const DENIAL_REASONS = Object.freeze({
+  UNAUTHORIZED: "unauthorized",
+  INVALID_INPUT: "invalid_input",
+  IDEMPOTENCY_CONFLICT: "idempotency_conflict",
+  VERSION_CONFLICT: "version_conflict",
+  REFERENTIAL_INTEGRITY: "referential_integrity",
+  NOT_FOUND: "not_found",
+  ALREADY_EXISTS: "already_exists",
+  INTERNAL_ERROR: "internal_error",
+});
+export type DenialReason = (typeof DENIAL_REASONS)[keyof typeof DENIAL_REASONS];
+const DENIAL_REASON_VALUES: ReadonlySet<string> = new Set(Object.values(DENIAL_REASONS));
+
+// Mirrors the shared writer's structural guard (auditEventWriter.ts). The real guarantee is that a
+// summary is BUILT from an allowlist rather than interpolated, so this is defence in depth against a
+// future edit that forgets that.
+const SECRET_LIKE_PATTERN =
+  /\b(bearer\s+[a-z0-9._-]{10,}|eyj[a-z0-9_-]{10,}\.[a-z0-9_-]{10,}|sk_[a-z0-9]{16,}|password\s*[:=]\s*\S+)/i;
+// Only these actions target a record that carries a governed `version` (D1 model, D2 relationship).
+const VERSIONED_ACTIONS: ReadonlySet<string> = new Set(["importEquipmentModel", "importCompatibility", "correctCompatibility", "verifyCompatibility"]);
+const MAX_SUMMARY = 500;
+const MAX_ACTOR_UID = 128;
+const MAX_TARGET_ID = 1500;
+const UNSAFE_TEXT = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
+const UNKNOWN = "unknown";
 
 export interface EquipmentAuditEvent {
   actorUid: string;
-  action: typeof INITIATION_AUDIT_ACTION | typeof TERMINAL_AUDIT_ACTION;
+  action: EquipmentAuditAction;
   targetType: string;
   targetId: string;
   outcome: "applied" | "denied";
   summary: string;
 }
 
+export class EquipmentAuditValidationError extends Error {}
+
+// Validate the assembled event before it can be staged. Bounded actor/target/summary, an action from
+// the allowlist, a governed outcome, no control characters, no secret-shaped text.
+function assertAuditEvent(event: EquipmentAuditEvent): EquipmentAuditEvent {
+  const bounded = (v: unknown, max: number): v is string =>
+    typeof v === "string" && v.length > 0 && v.length <= max && !UNSAFE_TEXT.test(v);
+  if (!bounded(event.actorUid, MAX_ACTOR_UID)) throw new EquipmentAuditValidationError("audit actorUid is invalid");
+  if (!(EQUIPMENT_AUDIT_ACTIONS as readonly string[]).includes(event.action)) {
+    throw new EquipmentAuditValidationError("audit action is not a governed equipment action");
+  }
+  if (!bounded(event.targetType, 128)) throw new EquipmentAuditValidationError("audit targetType is invalid");
+  if (!bounded(event.targetId, MAX_TARGET_ID)) throw new EquipmentAuditValidationError("audit targetId is invalid");
+  if (event.outcome !== "applied" && event.outcome !== "denied") {
+    throw new EquipmentAuditValidationError("audit outcome must be applied or denied");
+  }
+  if (!bounded(event.summary, MAX_SUMMARY)) throw new EquipmentAuditValidationError("audit summary is invalid");
+  if (SECRET_LIKE_PATTERN.test(event.summary)) {
+    throw new EquipmentAuditValidationError("audit summary appears to contain a secret -- refusing to persist");
+  }
+  return event;
+}
+
+// Summaries are COMPOSED from allowlisted tokens, never interpolated from untrusted input.
+const appliedSummary = (action: string, note: string): string => `${action} applied: ${note}`.slice(0, MAX_SUMMARY);
+const deniedSummary = (action: string, reason: DenialReason): string =>
+  `${action} denied: ${DENIAL_REASON_VALUES.has(reason) ? reason : DENIAL_REASONS.INTERNAL_ERROR}`;
+
+// Map a typed error to a STABLE reason code. The message itself is never persisted.
+function denialReasonFor(error: unknown): DenialReason {
+  if (error instanceof UnauthorizedActorError) return DENIAL_REASONS.UNAUTHORIZED;
+  if (error instanceof IdempotencyConflictError) return DENIAL_REASONS.IDEMPOTENCY_CONFLICT;
+  if (error instanceof VersionConflictError) return DENIAL_REASONS.VERSION_CONFLICT;
+  if (error instanceof ReferentialIntegrityError) return DENIAL_REASONS.REFERENTIAL_INTEGRITY;
+  if (error instanceof NotFoundError) return DENIAL_REASONS.NOT_FOUND;
+  if (error instanceof AlreadyExistsError) return DENIAL_REASONS.ALREADY_EXISTS;
+  if (error instanceof InvalidInputError) return DENIAL_REASONS.INVALID_INPUT;
+  return DENIAL_REASONS.INTERNAL_ERROR;
+}
+
+// An action name is only ever echoed into an audit if it is one of ours.
+const safeActionName = (action: unknown): string =>
+  typeof action === "string" && Object.prototype.hasOwnProperty.call(COMMAND_CAPABILITIES, action) ? action : UNKNOWN;
+
 export interface EquipmentCommandDeps {
   db: Firestore;
   // The #226 effective-permission resolver, injected. D4 creates no role or grant; emulator tests supply
   // a fixture. A resolver that throws is treated as a denial, never as an approval.
   resolvePermission: (input: { actorUid: string; capabilityId: string }) => boolean | Promise<boolean>;
-  // Staged with the transaction that owns the governed write, so an audit event commits or aborts WITH
-  // it and never independently.
-  stageAudit: (txn: Transaction, event: EquipmentAuditEvent) => void;
+  // Mints a FRESH auditEvents document reference. The orchestrator stages the write itself with
+  // txn.create(), so audit persistence is CREATE-ONLY and commits or aborts WITH its transaction --
+  // there is no path here that updates or deletes an existing audit event.
+  newAuditRef: () => DocumentReference;
   now: () => Timestamp;
   serialSchemes?: Record<string, unknown>;
+}
+
+// Exported so the audit safety contract can be exercised directly by tests.
+export function stageEquipmentAuditEvent(txn: Transaction, deps: EquipmentCommandDeps, event: EquipmentAuditEvent, at: Timestamp): void {
+  const validated = assertAuditEvent(event);
+  txn.create(deps.newAuditRef(), {
+    actorUid: validated.actorUid,
+    action: validated.action,
+    targetType: validated.targetType,
+    targetId: validated.targetId,
+    outcome: validated.outcome,
+    summary: validated.summary,
+    at,
+  });
 }
 
 export interface EquipmentCommandInput {
@@ -81,13 +177,16 @@ export interface EquipmentCommandInput {
   expectedVersion?: number | null;
 }
 
+// The SPECIALIZED terminal event a command family also emits, staged atomically with its governed
+// record transition (§3a). The generic terminal `equipmentCompatibilityCommand` is always written too.
+const SPECIALIZED_TERMINAL_AUDIT: Readonly<Record<string, EquipmentAuditAction>> = Object.freeze({
+  verifyCompatibility: "equipmentCompatibilityVerification",
+  correctCompatibility: "equipmentCompatibilityCorrection",
+});
+
 export type CommandOutcome =
   | { status: "applied"; targetId: string; resultVersion: number; replayed: boolean }
   | { status: "denied"; targetId: string; reason: string; replayed: boolean };
-
-const MAX_SUMMARY = 500;
-const summarize = (action: string, targetId: string, note: string): string =>
-  `${action} ${targetId}: ${note}`.slice(0, MAX_SUMMARY);
 
 // ---------------------------------------------------------------------------
 // Pre-acceptance gate
@@ -109,6 +208,12 @@ async function acceptForExecution(input: EquipmentCommandInput, deps: EquipmentC
   const expectedVersion = input.expectedVersion ?? null;
   if (expectedVersion !== null && (!Number.isSafeInteger(expectedVersion) || expectedVersion < 0)) {
     throw new InvalidInputError("expectedVersion must be a non-negative integer or null");
+  }
+  // Aliases and evidence carry NO version by governed contract, so an expectedVersion on them cannot be
+  // enforced. Accepting it and silently ignoring it would give a caller a false concurrency guarantee,
+  // so it is refused outright rather than dropped.
+  if (expectedVersion !== null && !VERSIONED_ACTIONS.has(action)) {
+    throw new InvalidInputError(`action ${action} targets a non-versioned record; expectedVersion must be null`);
   }
 
   // Capability resolution BEFORE any read or write. A throwing resolver denies.
@@ -160,17 +265,21 @@ export async function runEquipmentCompatibilityCommand(
   try {
     accepted = await acceptForExecution(input, deps);
   } catch (error) {
-    // Pre-acceptance denial: terminal audit only, NO operation record.
-    const reason = error instanceof Error ? error.message : "rejected";
-    const targetType = Object.prototype.hasOwnProperty.call(ACTION_TARGET_TYPES, (input as any)?.action)
-      ? ACTION_TARGET_TYPES[(input as any).action as OperationAction]
-      : "unknown";
+    // Pre-acceptance denial: terminal audit only, NO operation record. NOTHING attacker-controlled
+    // reaches the record -- the action is echoed only if it is one of ours, the reason is a stable code,
+    // and an unbounded or control-bearing actorUid degrades to "unknown" rather than being persisted.
+    const safeAction = safeActionName((input as any)?.action);
+    const targetType = safeAction === UNKNOWN ? UNKNOWN : ACTION_TARGET_TYPES[safeAction as OperationAction];
+    const rawActor = (input as any)?.actorUid;
+    const actorUid = typeof rawActor === "string" && rawActor.length > 0 && rawActor.length <= MAX_ACTOR_UID && !UNSAFE_TEXT.test(rawActor)
+      ? rawActor
+      : UNKNOWN;
+    const at = now();
     await db.runTransaction(async (txn) => {
-      deps.stageAudit(txn, {
-        actorUid: typeof (input as any)?.actorUid === "string" ? (input as any).actorUid : "unknown",
-        action: TERMINAL_AUDIT_ACTION, targetType, targetId: "unknown", outcome: "denied",
-        summary: summarize(String((input as any)?.action ?? "unknown"), "unknown", reason),
-      });
+      stageEquipmentAuditEvent(txn, deps, {
+        actorUid, action: TERMINAL_AUDIT_ACTION, targetType, targetId: UNKNOWN, outcome: "denied",
+        summary: deniedSummary(safeAction, denialReasonFor(error)),
+      }, at);
     });
     throw error;
   }
@@ -196,15 +305,16 @@ export async function runEquipmentCompatibilityCommand(
       // Crash after TX1: resume this initiation rather than creating a second one.
       return { resume: true, replayed: true, record: existing };
     }
+    const initiatedAt = now();
     const record: OperationRecord = {
       idempotencyKey, actorUid, action, targetType, targetId, commandFingerprint,
-      expectedVersion, resultVersion: null, status: "initiated", initiatedAt: now(), terminalAt: null,
+      expectedVersion, resultVersion: null, status: "initiated", initiatedAt, terminalAt: null,
     };
     operations.stageInitiate(txn, record);
-    deps.stageAudit(txn, {
+    stageEquipmentAuditEvent(txn, deps, {
       actorUid, action: INITIATION_AUDIT_ACTION, targetType, targetId, outcome: "applied",
-      summary: summarize(action, targetId, "initiation recorded"),
-    });
+      summary: appliedSummary(action, "initiation recorded"),
+    }, initiatedAt);
     return { resume: true, replayed: false, record };
   });
 
@@ -219,32 +329,53 @@ export async function runEquipmentCompatibilityCommand(
   return db.runTransaction(async (txn) => {
     // ALL READS FIRST — Firestore requires it, and the terminal authorization needs its own read.
     let mutation;
-    let denial: string | null = null;
+    let denial: DenialReason | null = null;
     try {
       mutation = await planMutation(txn, { action, targetId, payload: input.payload, expectedVersion, actorUid, now }, deps);
     } catch (error) {
-      if (error instanceof VersionConflictError || error instanceof ReferentialIntegrityError || error instanceof NotFoundError) {
-        denial = error.message; // a governed denial: recorded as a terminal `denied`, not a crash
+      if (
+        error instanceof VersionConflictError || error instanceof ReferentialIntegrityError ||
+        error instanceof NotFoundError || error instanceof AlreadyExistsError
+      ) {
+        // A governed denial: a terminal `denied` outcome, recorded as a STABLE CODE. The underlying
+        // message is never persisted -- it is returned to the caller only.
+        denial = denialReasonFor(error);
       } else {
         throw error;
       }
     }
+    const terminalAt = now();
     const terminalRecord: OperationRecord = {
       ...initiation.record,
       status: denial === null ? "applied" : "denied",
       resultVersion: denial === null ? mutation!.resultVersion : null,
-      terminalAt: now(),
+      terminalAt,
     };
     const authorization = await operations.prepareTerminal(txn, terminalRecord);
 
     // WRITES second.
     if (denial === null) mutation!.stage(txn);
     operations.stageTerminal(txn, authorization);
-    deps.stageAudit(txn, {
-      actorUid, action: TERMINAL_AUDIT_ACTION, targetType, targetId,
-      outcome: denial === null ? "applied" : "denied",
-      summary: summarize(action, targetId, denial ?? `applied at version ${mutation!.resultVersion}`),
-    });
+    const outcome = denial === null ? ("applied" as const) : ("denied" as const);
+    stageEquipmentAuditEvent(txn, deps, {
+      actorUid, action: TERMINAL_AUDIT_ACTION, targetType, targetId, outcome,
+      summary: denial === null ? appliedSummary(action, `version ${mutation!.resultVersion}`) : deniedSummary(action, denial),
+    }, terminalAt);
+    // The specialized lifecycle event for this command family, staged atomically with the same
+    // transition (§3a). It is ADDITIONAL to the terminal command event, not a replacement.
+    const specialized = SPECIALIZED_TERMINAL_AUDIT[action];
+    if (specialized !== undefined) {
+      stageEquipmentAuditEvent(txn, deps, {
+        actorUid, action: specialized, targetType, targetId, outcome,
+        summary: denial === null ? appliedSummary(action, `version ${mutation!.resultVersion}`) : deniedSummary(action, denial),
+      }, terminalAt);
+    }
+    // Conflict surfacing carries its own append-only event.
+    if (denial === null) {
+      for (const extra of mutation!.extraAudits ?? []) {
+        stageEquipmentAuditEvent(txn, deps, { actorUid, targetType: extra.targetType, targetId: extra.targetId, action: extra.action, outcome: "applied", summary: extra.summary }, terminalAt);
+      }
+    }
     return denial === null
       ? { status: "applied" as const, targetId, resultVersion: mutation!.resultVersion, replayed: initiation.replayed }
       : { status: "denied" as const, targetId, reason: denial, replayed: initiation.replayed };
@@ -257,6 +388,9 @@ export async function runEquipmentCompatibilityCommand(
 interface PlannedMutation {
   resultVersion: number;
   stage: (txn: Transaction) => void;
+  // Additional governed lifecycle events this mutation surfaces (currently: a conflict), staged
+  // atomically with it.
+  extraAudits?: Array<{ action: EquipmentAuditAction; targetType: string; targetId: string; summary: string }>;
 }
 
 async function planMutation(
@@ -339,9 +473,28 @@ async function planMutation(
         throw new ReferentialIntegrityError(`compatibility ${String(payload.compatibilityId)} does not exist`);
       }
       const existing = await sources.getById(txn, cmd.targetId);
-      if (existing !== null) throw new ReferentialIntegrityError(`source ${cmd.targetId} already exists and evidence is immutable`);
+      if (existing !== null) throw new AlreadyExistsError(`source ${cmd.targetId} already exists and evidence is immutable`);
       const stored = { source: payload, ...meta(null) };
-      return { resultVersion: 1, stage: (t) => sources.stageCreate(t, stored) };
+      // CONFLICT SURFACING (design §8/§9): contradicting evidence forces the relationship to CONFLICT
+      // and emits its own append-only event. Supporting evidence NEVER auto-verifies -- a verification
+      // is its own governed command, so `SUPPORTS` changes no status here.
+      const contradicts = payload.observedClaim === "CONTRADICTS";
+      const current = relationship.compatibility.verificationStatus;
+      if (!contradicts || current === "CONFLICT") {
+        return { resultVersion: 1, stage: (t) => sources.stageCreate(t, stored) };
+      }
+      const conflicted = { ...relationship.compatibility, verificationStatus: "CONFLICT", version: relationship.compatibility.version + 1 };
+      const conflictedStored = { compatibility: conflicted, ...meta(relationship) };
+      return {
+        resultVersion: 1,
+        stage: (t) => { sources.stageCreate(t, stored); compatibility.stageUpdate(t, conflictedStored); },
+        extraAudits: [{
+          action: "equipmentCompatibilityConflict",
+          targetType: "equipment_part_compatibility",
+          targetId: relationship.compatibility.compatibilityId,
+          summary: appliedSummary("importCompatibilitySource", "contradicting evidence forced CONFLICT"),
+        }],
+      };
     }
     case "verifyCompatibility": {
       const existing = await compatibility.getById(txn, cmd.targetId);
