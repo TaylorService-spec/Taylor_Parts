@@ -151,9 +151,11 @@ filename: each claim's **content** is canonically validated (exact fields; embed
 `generation` must equal the filename; canonical `version`/`owner`/UTC `at`), the set must be
 contiguous from `1`, and each claim must chain to the previous claim's content digest
 (root-anchored at `N=1`). Any malformed, foreign, non-contiguous, reordered, reused, or
-chain-broken ledger **fails closed** — and `assertProductionAuthorization` runs this same
-validation before any progression claim / Auth access, so a poisoned ledger blocks
-production, not just reconciliation. Advancing `K→K+1` is a single-winner O_EXCL claim
+chain-broken ledger **fails closed**; so does any **inability to inspect** the ledger
+directory (`EACCES`/`EPERM`/`EIO`/etc.) — only an **absent** containing directory (`ENOENT`,
+a legitimate clean start) reads as generation `0`. `assertProductionAuthorization` runs this
+same validation before any progression claim / Auth access, so a poisoned or unreadable
+ledger blocks production, not just reconciliation. Advancing `K→K+1` is a single-winner O_EXCL claim
 whose **staging temp lives outside the ledger namespace** (`<progression>.genstage-*`, never
 matching `.gen.<N>`), so an in-progress or crash-left publication is never scanned as a
 claim. *Residual (documented, out of the governed threat model):* an out-of-band **deletion

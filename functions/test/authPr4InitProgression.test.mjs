@@ -963,6 +963,37 @@ ok("LEDGER: crash after staging but before link leaves an inert temp; the genera
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+ok("LEDGER: directory-read failures FAIL CLOSED -- only ENOENT (absent dir) is a clean-start zero", () => {
+  const dir = tmp(); const prog = path.join(dir, "progression.json");
+  // (a) legitimate empty existing directory -> generation 0.
+  assert.equal(gate.readGenerationLedger(prog), 0, "empty existing dir -> 0");
+  // (b) accepted clean-start: containing directory absent (ENOENT) -> 0.
+  const goneProg = path.join(dir, "no-such-subdir", "progression.json");
+  assert.equal(gate.readGenerationLedger(goneProg), 0, "absent dir (ENOENT) -> 0");
+  // (c) EACCES / EPERM / generic I/O readdir failures -> throw (never fail open as 0).
+  const err = (code) => { const e = new Error(code); e.code = code; return e; };
+  for (const code of ["EACCES", "EPERM", "EIO", "SOMETHINGELSE"]) {
+    const dfs = { ...fs, readdirSync: () => { throw err(code); } };
+    throws(() => gate.readGenerationLedger("D:/protected/secure/progression.json", { fs: dfs }), /ledger directory could not be read/);
+    // The sanitized error must not leak the protected path.
+    let msg = ""; try { gate.readGenerationLedger("D:/protected/secure/progression.json", { fs: dfs }); } catch (e) { msg = e.message; }
+    assert.ok(!msg.includes("protected") && !msg.includes("secure") && !msg.includes(code), `no protected path/code in error for ${code}`);
+  }
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+ok("LEDGER: a directory-read failure blocks assertProductionAuthorization BEFORE any progression claim / Auth access", () => {
+  const g = buildGrantedRepo(); const s = setup(g);
+  const gen = writeGenesisState(s.progOut, s.key, s.expected); writeAnchorFor(s.progOut, s.key, gen, s.expected);
+  // A gate call that would otherwise proceed; inject an EACCES on the ledger directory read.
+  const dfs = { ...fs, readdirSync: (p, ...r) => { if (typeof p === "string" && p === path.dirname(s.progOut)) { const e = new Error("EACCES"); e.code = "EACCES"; throw e; } return fs.readdirSync(p, ...r); } };
+  const args = { projectId: PROD, executeProduction: true, mappingFile: path.join(s.dir, "map.json"), progressionFile: s.progOut, stateKeyFile: s.keyFile, authorizedCommit: g.authorizedCommit, executionModeConfirmation: g.executionModeToken, executor: g.executor, capturedStateOut: path.join(s.dir, "c.json") };
+  fs.writeFileSync(args.mappingFile, JSON.stringify({ "emp-rudy-driver": { uid: "u1", newAlias: "base+driver@gmail.com" } }));
+  throws(() => gate.assertProductionAuthorization(args, { repoRoot: g.root, personaOrder: ORDER, now: () => new Date(), leaseSeconds: 1, fs: dfs }), /ledger directory could not be read/);
+  assert.ok(!fs.existsSync(gate.lockPath(s.progOut)), "no progression claim was taken");
+  fs.rmSync(s.dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
+});
+
 ok("LEDGER REGRESSION: an in-flight cleanup whose recorded generation exceeds the current ledger fails closed", () => {
   const g = buildGrantedRepo(); const s = setup(g);
   init.claimGeneration(s.progOut, 1, "o"); // ledger at generation 1

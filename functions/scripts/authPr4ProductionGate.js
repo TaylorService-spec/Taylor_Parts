@@ -610,7 +610,14 @@ function readGenerationLedger(stateFile, deps = {}) {
   const dir = path.dirname(stateFile);
   const prefix = genLedgerPrefix(stateFile);
   let names;
-  try { names = _fs.readdirSync(dir); } catch { return 0; }
+  try { names = _fs.readdirSync(dir); }
+  catch (err) {
+    // ONLY an absent containing directory is a legitimate no-ledger (clean-start) condition.
+    // EACCES / EPERM / EIO / any other inability-to-inspect must FAIL CLOSED, never fail open
+    // as an empty ledger. The message carries no protected path.
+    if (err && err.code === "ENOENT") return 0;
+    throw new Error("Generation ledger directory could not be read -- fail closed (governed reconciliation anomaly; escalate to the Owner).");
+  }
   const claims = new Map();
   for (const name of names) {
     if (!name.startsWith(prefix)) continue; // staging temps (`.genstage-*`) never match `.gen.`
