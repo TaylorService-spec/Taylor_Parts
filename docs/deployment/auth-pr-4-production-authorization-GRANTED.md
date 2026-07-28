@@ -126,7 +126,7 @@ email-provider configuration · enumeration-protection changes · Auth project-s
 changes · Firestore mutation · role/claim/permission/`accessVersion` changes ·
 Customer/Equipment combined release · Inventory / Equipment / Truck-Inventory work.
 
-## 5a. Genesis reconciliation (crash-left init marker) — governed commands
+## 5a. Genesis reconciliation — governed state machine
 
 The initializer publishes an owner-token `<progression>.init` **marker** before it
 writes the signed state or anchor, and removes it only after **both** are fsynced and
@@ -137,6 +137,31 @@ auto-deletes an ambiguous or foreign marker, and never auto-reconciles during no
 initialization or execution. Reconciliation is a **separate, Owner-directed** step run
 through the **same governed, credential-free command** — no ad-hoc `node -e` or manual
 file deletion against production execution-control state.
+
+### State machine
+
+Artifacts (all beside `<progression>`): the signed `state` + `anchor`; the init `marker`;
+the reconciliation `reconcile` mutex; the append-only **generation ledger** `gen.<N>`
+(immutable O_EXCL claim files — the current generation is the highest `N` present, `0` if
+none). Runtime `lock`/`txn` are never created by initialization and are always foreign here.
+
+| State | On-disk condition | Gate | Legal transitions |
+|---|---|---|---|
+| `CLEAN` | no marker, no reconcile mutex | allowed | `initialize` → `INITIALIZED`/`INIT_INTERRUPTED` |
+| `INITIALIZED` | canonical genesis `state`+`anchor`, no marker | allowed (proceed to execution) | — |
+| `INIT_INTERRUPTED` | marker present (± partial state/anchor) | **blocked** | `inspect` (read-only) → `cleanup`/`recover` |
+| `RECONCILING` | reconcile mutex present | **blocked** | `cleanup` (owner) or `recover` (stranded) |
+| `BLOCKED` | malformed/foreign/anomalous artifact, `lock`/`txn`, invalid genesis, ledger anomaly | **blocked** | Owner escalation only — no automated transition |
+
+**Ownership of destructive transitions (exactly one owner each):**
+- **cleanup** acquires the reconcile mutex by **atomic exclusive publication** (write full
+  content to a temp file, `fsync`, hard-link into place — EEXIST ⇒ someone else holds it,
+  refuse). The published mutex is complete-or-absent, so an in-progress publication can never
+  be read as crash residue. The cleanup operates *at* the current generation.
+- **recovery** acquires authority by a **single-winner compare-and-swap** on the generation
+  ledger: O_EXCL create of `gen.<current+1>`. Exactly one racer wins; a delayed recovery
+  bound to an older generation cannot leapfrog or reuse a newer one (the claim already
+  exists ⇒ EEXIST ⇒ refuse). Ownership is never a bare pathname check-then-delete.
 
 **Step 1 — inspect (read-only).** Classifies the marker + residue and returns a
 sanitized report (booleans/refs + a content **fingerprint**); prints no key, token, or path:
@@ -164,28 +189,22 @@ The report's `recommendation` is one of:
   foreign/concurrent). **No automatic cleanup** — escalate to the Owner; delete nothing.
   A `clean-reset` **never** targets `lock`/`txn`.
 
-**Step 2 — cleanup (Owner-confirmed, fingerprint-bound, confined, fenced).** It first reads
-the persistent **fencing generation** (`<progression>.fence`, a monotonic counter that
-survives cleanups), then **atomically publishes** an owner-token reconciliation mutex
-(`<progression>.reconcile`) recording that generation. Atomic publication means the mutex
-appears with its complete canonical content in one step (hard-link from a fully-written temp
-file) — a concurrent reader can **never** observe an empty/truncated in-progress mutex and
-mistake it for crash residue. It re-inspects **under the mutex**, requires the exact step-1
+**Step 2 — cleanup (Owner-confirmed, fingerprint-bound, confined, fenced).** It reads the
+current generation from the ledger, then **atomically publishes** the reconciliation mutex
+(recording that generation). It re-inspects **under the mutex**, requires the exact step-1
 fingerprint (refuses if the set changed), `--action` equal to the inspected recommendation,
 and the confirmation token. It deletes **only** the genesis-creatable artifacts
 (`marker`/`state`/`anchor`), and **before every deletion and before finalization it
-revalidates both that it still owns the mutex token AND that the fencing generation has not
-advanced** — plus re-verifies each file's current digest against the inspected digest. If a
-recovery has advanced the generation (see step 3), a still-live cleanup is **fenced**: it
-aborts without any further deletion. On any deletion-phase failure (fenced, digest change,
-unlink failure, partial cleanup) it **fails closed**: the reconciliation mutex is
-**retained** (the gate refuses every production step, `assertNoReconcileMutex`) and the
-stranded mutex is resolved only by the governed **step 3** recovery — never by hand. The
-mutex is removed on the happy path only after a final ownership+fence revalidation and only
-while it still carries the owner token. A pre-existing mutex refuses a second concurrent
-cleanup. (A validation-only refusal — wrong `--action`, stale fingerprint, `blocked` —
-releases the mutex so the operator can re-inspect and retry.) It refuses any `blocked`
-classification:
+revalidates both that it still owns the mutex token AND that the generation has not
+advanced**, plus re-verifies each file's current digest against the inspected digest
+**immediately before unlink**. On any deletion-phase failure (fenced, digest change, unlink
+failure, partial cleanup) it **fails closed**: the reconciliation mutex is **retained** (the
+gate refuses every production step, `assertNoReconcileMutex`) and the stranded mutex is
+resolved only by the governed **step 3** recovery — never by hand. The mutex is removed on
+the happy path only after a final ownership+generation revalidation and only while it still
+carries the owner token. A pre-existing mutex refuses a second concurrent cleanup. (A
+validation-only refusal — wrong `--action`, stale fingerprint, `blocked` — releases the
+mutex so the operator can re-inspect and retry.) It refuses any `blocked` classification:
 
 ```bash
 node functions/scripts/authPr4InitProgression.js --mode reconcile-cleanup \
@@ -203,6 +222,18 @@ survives, so a partial `clean-reset` is **self-healing** — re-running step 1 +
 finishes it. After a completed `clean-reset`, re-run the genesis initializer (§5.3) to a
 clean state.
 
+> **Destructive-boundary guarantee (exactly what is implemented).** The ownership/generation
+> revalidation and the target unlink are separate syscalls, so they cannot be made a single
+> atomic operation with plain-filesystem primitives. The **hard** guarantee is the **per-target
+> digest binding**: immediately before each unlink the cleanup re-hashes the target and refuses
+> unless it is **byte-identical** to what step 1 inspected — so a superseded cleanup can, in the
+> sub-operation window after its generation check, delete **only the exact artifact it already
+> inspected, never a newer or replacement artifact** (a replacement has a different digest and
+> aborts the cleanup). Generation fencing is **defense in depth** that stops a superseded
+> cleanup at its *next* checkpoint; it is **not** claimed to make every in-flight unlink
+> impossible. The **primary operational exclusion** — that a prior cleanup is not running at
+> all — is the Owner-stopped attestation required by step 3, not the fencing.
+
 **Step 3 — recover a stranded reconciliation mutex (only if a cleanup crashed).** If a
 cleanup process was killed (or aborted on a partial cleanup / unlink failure), the
 reconciliation mutex is retained and the gate blocks — and every step-2 cleanup then
@@ -217,15 +248,21 @@ foreign, corrupt, or a version skew). Recovery therefore requires **both**:
 - an explicit governed attestation that the prior cleanup process/host has stopped —
   `--confirmOwnerStopped prior-cleanup-stopped` — which is a **human/operator judgement**
   the Owner is accountable for; **and**
-- **fencing**, not inference: recovery **advances the persistent fencing generation**
-  before clearing the mutex. Because a live cleanup revalidates the generation before every
-  deletion and before finalization (step 2), an advanced generation **supersedes** it — even
-  a still-live prior cleanup can no longer delete `marker`/`state`/`anchor` or remove the
-  mutex; it aborts fail-closed. Recovery then clears **only** the mutex (the mutex is the
-  recovery serialization point: exactly the recovery whose unlink succeeds obtains
-  authority; a concurrent one finds it already gone). All genesis residue is left intact for
-  a subsequent normal step 1 + step 2. It also requires the prior inspect fingerprint
-  (refuses if artifacts changed) and the `recover-mutex` confirmation:
+- **fencing + single-winner acquisition**, not inference. Recovery acquires authority by a
+  compare-and-swap advance of the generation ledger (O_EXCL `gen.<current+1>`): exactly one
+  recovery wins; a delayed recovery bound to an older generation refuses (the newer claim
+  already exists). Holding the new generation, it **re-binds to the exact inspected mutex**
+  (re-reads the fingerprint and requires the mutex's content digest to be unchanged) and only
+  then removes **that** mutex — never a mutex it did not inspect. A new cleanup cannot begin
+  during this critical section: the mutex recovery is about to remove is still present, so a
+  cleanup's exclusive publish fails closed. Because a live cleanup revalidates the generation
+  before every deletion and finalization (step 2), the advanced generation **supersedes** it
+  at its next checkpoint (see the destructive-boundary guarantee above for the exact, honest
+  scope). All genesis residue is left intact for a subsequent normal step 1 + step 2. Recovery
+  also requires the prior inspect fingerprint (refuses if artifacts changed) and the
+  `recover-mutex` confirmation. If a recovery itself crashes after the CAS but before removing
+  the mutex, the gate stays blocked (mutex present) and the next attested recovery completes
+  it — recovery is itself crash-recoverable:
 
 ```bash
 node functions/scripts/authPr4InitProgression.js --mode reconcile-recover \

@@ -35,6 +35,7 @@
 // initialization -- crash residue is resolved only by the Owner-directed reconcile modes.
 
 const fs = require("fs");
+const path = require("path");
 const crypto = require("crypto");
 const gate = require("./authPr4ProductionGate.js");
 
@@ -48,7 +49,6 @@ const RECOVER_CONFIRM = "recover-mutex";
 // destructive work.
 const OWNER_STOPPED_CONFIRM = "prior-cleanup-stopped";
 const FENCE_VERSION = 1;
-const FENCE_FIELDS = Object.freeze(["version", "generation", "at"]);
 const MIGRATION_PERSONA_ORDER = Object.freeze([
   "emp-rudy-driver",
   "emp-rudy-parts-associate",
@@ -110,35 +110,40 @@ function readReconcileMutex(progressionOut, deps = {}) {
   return { present: true, valid, mutex: valid ? m : null };
 }
 
-// ---- Fencing generation (persistent, monotonic) ---------------------------------------
-// A durable counter beside the progression. A cleanup records the generation it operates
-// under; recovery ADVANCES it. A cleanup revalidates the generation before every deletion
-// and before finalization, so an advance fences (supersedes) any still-live prior cleanup.
-// The fence is NOT part of artifactRoles (it must survive clean-reset) and never blocks the
-// gate on its own; it is the anti-resume fence, not a lock.
-function fencePath(progressionOut) { return `${progressionOut}.fence`; }
-function readFenceGeneration(progressionOut, deps = {}) {
+// ---- Fencing generation: an APPEND-ONLY, CAS ledger of O_EXCL claim files --------------
+// The fencing generation is NOT a mutable counter (an unconditional rewrite is not a
+// compare-and-swap). It is the set of immutable claim files `<progression>.gen.<N>`; the
+// CURRENT generation is the highest N present (0 if none). Advancing from G to G+1 is a
+// single-winner O_EXCL create of `<progression>.gen.<G+1>` -- exactly one racer wins, and a
+// delayed worker bound to an old G cannot reuse or overwrite a newer generation (the claim
+// already exists -> EEXIST). Claim files are permanent (the generation ledger) and are NOT
+// part of artifactRoles, so clean-reset never removes them. They never block the gate.
+function genClaimPath(progressionOut, n) { return `${progressionOut}.gen.${n}`; }
+function genClaimPrefix(progressionOut) { return `${path.basename(progressionOut)}.gen.`; }
+// Highest claimed generation (0 baseline). Fails closed on any malformed claim-file name.
+function currentGeneration(progressionOut, deps = {}) {
   const _fs = deps.fs || fs;
-  const p = fencePath(progressionOut);
-  if (!_fs.existsSync(p)) return 0; // no advance has ever occurred
-  let f;
-  try { f = JSON.parse(_fs.readFileSync(p, "utf8")); } catch { throw new Error("Fence is malformed -- refusing (governed reconciliation anomaly; escalate to the Owner)."); }
-  const keys = f && typeof f === "object" && !Array.isArray(f) ? Object.keys(f).sort() : null;
-  if (!keys || keys.join(",") !== [...FENCE_FIELDS].sort().join(",") || f.version !== FENCE_VERSION ||
-      !Number.isInteger(f.generation) || f.generation < 0 || f.generation > 1e9 || typeof f.at !== "string" || !gate.isUtcInstant(f.at)) {
-    throw new Error("Fence is malformed -- refusing (governed reconciliation anomaly; escalate to the Owner).");
+  const dir = path.dirname(progressionOut);
+  const prefix = genClaimPrefix(progressionOut);
+  let names;
+  try { names = _fs.readdirSync(dir); } catch { return 0; }
+  let max = 0;
+  for (const name of names) {
+    if (!name.startsWith(prefix)) continue;
+    const suffix = name.slice(prefix.length);
+    if (!/^[1-9][0-9]{0,8}$/.test(suffix)) throw new Error("Fencing-generation ledger has a malformed claim -- refusing (governed reconciliation anomaly; escalate to the Owner).");
+    const n = Number(suffix);
+    if (n > max) max = n;
   }
-  return f.generation;
+  return max;
 }
-function writeFenceGeneration(progressionOut, generation, deps = {}) {
+// Single-winner compare-and-swap advance G -> G+1. Returns the owner token on success;
+// throws a sentinel EEXIST Error if another worker already claimed generation G+1.
+function claimGeneration(progressionOut, next, owner, deps = {}) {
   const _fs = deps.fs || fs;
   const now = deps.now || (() => new Date());
-  const p = fencePath(progressionOut);
-  const tmp = `${p}.tmp-${crypto.randomBytes(6).toString("hex")}`;
-  const fd = _fs.openSync(tmp, "wx", 0o600);
-  try { _fs.writeSync(fd, JSON.stringify({ version: FENCE_VERSION, generation, at: now().toISOString() })); _fs.fsyncSync(fd); } finally { _fs.closeSync(fd); }
-  _fs.renameSync(tmp, p); // atomic replace -- the fence is a persistent counter, not exclusive
-  try { _fs.chmodSync(p, 0o600); } catch { /* Windows ACLs */ }
+  atomicExclusiveCreate(genClaimPath(progressionOut, next), JSON.stringify({ version: FENCE_VERSION, generation: next, owner, at: now().toISOString() }), deps);
+  return owner;
 }
 
 // Atomic EXCLUSIVE publication: write the FULL content to a temp file (fsync), then hard-
@@ -320,10 +325,11 @@ function reconcileInspect(args, deps = {}) {
   const lockPresent = _fs.existsSync(roles.lock);
   const txnPresent = _fs.existsSync(roles.txn);
   const reconcileMutex = readReconcileMutex(args.progressionOut, deps);
+  const generation = currentGeneration(args.progressionOut, deps); // fail-closed on a malformed ledger
 
   if (!markerPresent) {
     const fp0 = fingerprintArtifacts(args.progressionOut, deps);
-    return { ok: true, mode: "reconcile-inspect", markerPresent: false, lockPresent, txnPresent, reconcileMutexPresent: reconcileMutex.present, reconcileMutexValid: reconcileMutex.valid, reconciliationNeeded: false, recommendation: "none", fingerprint: fp0.fingerprint, artifactsPresent: fp0.present, workflowIdentityRef: idRef };
+    return { ok: true, mode: "reconcile-inspect", markerPresent: false, lockPresent, txnPresent, reconcileMutexPresent: reconcileMutex.present, reconcileMutexValid: reconcileMutex.valid, generation, reconciliationNeeded: false, recommendation: "none", fingerprint: fp0.fingerprint, artifactsPresent: fp0.present, workflowIdentityRef: idRef };
   }
 
   // Marker validity via THE canonical gate validator (a token/shape the governed
@@ -355,7 +361,7 @@ function reconcileInspect(args, deps = {}) {
     ok: true, mode: "reconcile-inspect",
     markerPresent: true, markerValid, statePresent: stateClass !== "absent", stateClass,
     stateCanonicalGenesis: canonicalGenesis, anchorPresent, anchorConsistent,
-    lockPresent, txnPresent, reconcileMutexPresent: reconcileMutex.present, reconcileMutexValid: reconcileMutex.valid,
+    lockPresent, txnPresent, reconcileMutexPresent: reconcileMutex.present, reconcileMutexValid: reconcileMutex.valid, generation,
     reconciliationNeeded: true, recommendation,
     fingerprint: fp.fingerprint, artifactsPresent: fp.present, workflowIdentityRef: idRef,
   };
@@ -383,7 +389,7 @@ function reconcileCleanup(args, deps = {}) {
   const reconFile = gate.reconcilePath(args.progressionOut);
 
   // The fencing generation this cleanup operates under (read BEFORE claiming the mutex).
-  const myGen = readFenceGeneration(args.progressionOut, deps);
+  const myGen = currentGeneration(args.progressionOut, deps);
 
   // 1. EXCLUSIVE reconciliation mutex, published ATOMICALLY (full content appears in one
   //    step -- no truncated in-progress window) BEFORE the authoritative re-inspection. A
@@ -399,10 +405,15 @@ function reconcileCleanup(args, deps = {}) {
     try { const h = JSON.parse(_fs.readFileSync(reconFile, "utf8")); if (h && h.token === reconToken) _fs.unlinkSync(reconFile); } catch { /* leave it */ }
   };
   // FENCING revalidation -- called before EVERY target deletion and before finalization.
-  // If the fence generation advanced (recovery superseded us) or the mutex is gone/not ours,
-  // this cleanup has been fenced out and must abort without any further destructive action.
+  // If the fencing generation advanced (a recovery superseded us) or the mutex is gone/not
+  // ours, this cleanup has been fenced out and must abort without any further destructive
+  // action. Note: this is a check-then-act on separate syscalls, so it bounds -- but cannot
+  // make atomic -- the check-to-unlink window. Per-target DIGEST binding (below) is what
+  // guarantees a superseded cleanup can only ever delete an artifact byte-identical to the
+  // one it inspected (never a newer/replacement artifact); the Owner-stopped attestation is
+  // the primary operational exclusion, and generation fencing is defense in depth.
   const assertStillOwner = () => {
-    if (readFenceGeneration(args.progressionOut, deps) !== myGen) throw new Error("This cleanup has been fenced by a newer reconciliation generation -- aborting (superseded).");
+    if (currentGeneration(args.progressionOut, deps) !== myGen) throw new Error("This cleanup has been fenced by a newer reconciliation generation -- aborting (superseded).");
     let cur = null;
     try { cur = JSON.parse(_fs.readFileSync(reconFile, "utf8")); } catch { cur = null; }
     if (!cur || cur.token !== reconToken) throw new Error("This cleanup no longer owns the reconciliation mutex -- aborting (superseded/fenced).");
@@ -441,6 +452,7 @@ function reconcileCleanup(args, deps = {}) {
       const p = roles[role];
       if (deps.beforeTargetRecheck) deps.beforeTargetRecheck(role, p); // test seam: simulate concurrent replacement / recovery
       assertStillOwner(); // FENCING: abort if superseded before touching this target
+      if (deps.afterOwnerCheck) deps.afterOwnerCheck(role, p); // test seam: supersession racing AFTER the check, before the digest recheck
       if (!_fs.existsSync(p)) { if (snapshot[role] !== null) throw new Error(`Target ${role} disappeared during cleanup -- aborting (fail-closed).`); continue; }
       const current = crypto.createHash("sha256").update(_fs.readFileSync(p)).digest("hex");
       if (current !== snapshot[role]) throw new Error(`Target ${role} changed between inspection and deletion -- aborting without deleting it (fail-closed).`);
@@ -497,28 +509,39 @@ function reconcileRecover(args, deps = {}) {
   const reconFile = gate.reconcilePath(args.progressionOut);
   if (!_fs.existsSync(reconFile)) throw new Error("No reconciliation mutex present; nothing to recover.");
 
-  const held = readReconcileMutex(args.progressionOut, deps); // reported, but NOT a recovery gate
+  // Bind recovery to the EXACT mutex it inspects: capture its content digest now. (The mutex
+  // may be valid or malformed; a malformed mutex is NOT proof of an inactive owner -- the
+  // Owner-stopped attestation is required regardless.)
+  const digestOf = (p) => crypto.createHash("sha256").update(_fs.readFileSync(p)).digest("hex");
+  const boundMutexDigest = digestOf(reconFile);
+  const held = readReconcileMutex(args.progressionOut, deps); // reported only
 
-  // Snapshot binding: the artifact set must be byte-identical to the operator's inspection.
+  // Revalidate the exact inspected artifact fingerprint IMMEDIATELY before the first
+  // state-changing operation.
   const fp = fingerprintArtifacts(args.progressionOut, deps);
   if (fp.fingerprint !== args.fingerprint) throw new Error("Artifacts changed since inspection (fingerprint mismatch) -- refusing to recover.");
 
-  // FENCE: advance the persistent generation FIRST, so any still-live prior cleanup (which
-  // revalidates its generation before every deletion and before finalization) is superseded
-  // and can no longer delete marker/state/anchor. Monotonic: refuse if a concurrent recovery
-  // already advanced it beyond what we read (that recovery is the authority).
-  const fromGen = readFenceGeneration(args.progressionOut, deps);
-  writeFenceGeneration(args.progressionOut, fromGen + 1, deps);
-  if (readFenceGeneration(args.progressionOut, deps) < fromGen + 1) throw new Error("Fence advance did not take effect -- refusing (governed anomaly).");
-
-  // Then clear ONLY the mutex. The mutex is the recovery serialization point: exactly the
-  // recovery whose unlink succeeds obtains authority; a concurrent recovery that finds it
-  // already gone reports it did not win.
-  try { _fs.unlinkSync(reconFile); }
+  // ACQUIRE via a single-winner CAS on the fencing generation. Advancing from the generation
+  // we OBSERVED (fromGen) to fromGen+1 is an O_EXCL claim: exactly one recovery wins. A
+  // delayed recovery bound to an old generation cannot leapfrog (the newer claim already
+  // exists -> EEXIST -> refuse). New cleanups cannot start meanwhile: the reconciliation
+  // mutex we are about to remove is still present, so their exclusive publish fails closed.
+  const fromGen = currentGeneration(args.progressionOut, deps);
+  if (deps.beforeGenerationClaim) deps.beforeGenerationClaim(); // test seam: simulate a concurrent recovery/cleanup between read and CAS
+  try { claimGeneration(args.progressionOut, fromGen + 1, `recover-${crypto.randomBytes(8).toString("hex")}`, deps); }
   catch (err) {
-    if (err && err.code === "ENOENT") throw new Error("Another recovery already cleared the reconciliation mutex -- nothing further to recover.");
+    if (err && err.code === "EEXIST") throw new Error("The fencing generation was already advanced by another recovery -- this attempt did not obtain authority (refusing).");
     throw err;
   }
+
+  // Holding generation fromGen+1, re-bind to the EXACT inspected mutex immediately before the
+  // destructive step. If the mutex disappeared or was replaced (different bytes), fail closed
+  // WITHOUT removing it -- the advanced generation already fences any live prior cleanup, and
+  // the gate stays blocked by whatever mutex is present.
+  if (deps.beforeRecoveryUnlink) deps.beforeRecoveryUnlink(); // test seam
+  if (!_fs.existsSync(reconFile)) throw new Error("The reconciliation mutex disappeared during recovery -- refusing (fail-closed; the advanced generation still fences).");
+  if (digestOf(reconFile) !== boundMutexDigest) throw new Error("The reconciliation mutex was replaced during recovery -- refusing to remove a mutex other than the one inspected (fail-closed).");
+  _fs.unlinkSync(reconFile);
 
   // Re-classify the remaining residue so the operator knows the next governed step.
   const after = reconcileInspect(args, deps);
@@ -552,7 +575,7 @@ function sanitizeForOutput(msg, protectedValues = []) {
 
 function protectedPathValues(args) {
   const vals = [args.executionModeConfirmation, args.stateKeyFile];
-  if (args.progressionOut) { const r = artifactRoles(args.progressionOut); vals.push(r.state, r.anchor, r.marker, r.lock, r.txn, gate.reconcilePath(args.progressionOut), fencePath(args.progressionOut)); }
+  if (args.progressionOut) { const r = artifactRoles(args.progressionOut); vals.push(r.state, r.anchor, r.marker, r.lock, r.txn, gate.reconcilePath(args.progressionOut)); }
   return vals.filter(Boolean);
 }
 
@@ -579,6 +602,6 @@ if (require.main === module) { main(); }
 module.exports = {
   parseArgs, createOnly, atomicExclusiveCreate, initGenesis, reconcileInspect, reconcileCleanup, reconcileRecover,
   sanitizeForOutput, artifactRoles, fingerprintArtifacts, perRoleDigests, readReconcileMutex,
-  fencePath, readFenceGeneration, writeFenceGeneration, assertProductionArgs,
+  genClaimPath, currentGeneration, claimGeneration, assertProductionArgs,
   PRODUCTION_PROJECT_ID, RECONCILE_CONFIRM, RECOVER_CONFIRM, OWNER_STOPPED_CONFIRM, MIGRATION_PERSONA_ORDER,
 };
