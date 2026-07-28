@@ -194,11 +194,13 @@ exported** from `index.ts` in D5.
 
 ### 3.2 Sanitized response schema and bounded pagination
 **Recommendation.** Responses carry **opaque ids + display-safe fields only** (§4). Pagination is a
-caller `limit` clamped to `[1, MAX_PAGE]` (proposed `MAX_PAGE = 50`, `DEFAULT_PAGE = 25`) with a **stable
-opaque cursor** over a **database-level deterministic order** — `orderBy(FieldPath.documentId())` — so
-traversal is complete and gap-free across pages. Sorting only an already-fetched page is **rejected**
-(it cannot guarantee stable, complete traversal). The exact query, order, cursor binding/validation, and
-index determination are the §5 contract, and are **proven executably** (§7), not asserted.
+caller `limit` clamped to `[1, MAX_PAGE]` (proposed `MAX_PAGE = 50`, `DEFAULT_PAGE = 25`) with a
+**transparent, untrusted navigation cursor** (posture B, §5.3) over a **database-level deterministic
+order** — `orderBy(FieldPath.documentId())` — so traversal is complete and gap-free **for an unchanged
+dataset** (no snapshot isolation across pages, §5.2). Sorting only an already-fetched page is **rejected**
+(it cannot guarantee stable, complete traversal). Every response field is **window-scoped** (§4/§6): it
+describes the returned page, not the whole collection. The exact query, order, cursor validation/trust
+posture, and index determination are the §5 contract, **proven executably** (§7), not asserted.
 
 ### 3.3 Which relationship / evidence fields are safe for each caller
 **Recommendation (allowlist, §4).** **Exposed:** model identity display (manufacturer/model/family/
@@ -248,17 +250,17 @@ deferred until a measured scale/query need exists; when introduced they must car
 (architecture §3). *(See OD-2.)*
 
 ### 3.8 Fail-closed behavior for malformed / unavailable / incomplete / conflicting data
-**Recommendation — fail-closed at the RESPONSE level, not merely per-item (§6).** Encountering **any**
-malformed relationship in the authoritative query, or **any** item whose evidence is incomplete/
-unavailable, makes the whole response `DEGRADED` — an explicit state **distinct** from `AVAILABLE`,
-`EMPTY`, `DENIED`, and `UNAVAILABLE`. A malformed doc is omitted from `items` **and** counted, but its
-presence forbids an `AVAILABLE` verdict; a page of only-rejected records is `AVAILABLE` with zero
+**Recommendation — fail-closed at the PAGE/WINDOW level, not merely per-item (§6).** Encountering **any**
+malformed relationship *in this window*, or **any** item whose evidence is incomplete/unavailable, makes
+**this page's `pageDisposition`** `DEGRADED` — an explicit state **distinct** from `AVAILABLE`, `EMPTY`,
+`DENIED`, and `UNAVAILABLE`. A malformed doc is omitted from `items` **and** counted, but its presence
+forbids an `AVAILABLE` verdict *for that page*; a page of only-rejected records is `AVAILABLE` with zero
 operational items (never `EMPTY`); a page of only-malformed records is `DEGRADED` (never `EMPTY`); a
 backend error is `UNAVAILABLE`; a denied caller is `DENIED`. A malformed **or missing** model authority
 yields an item with `model:null` and `operational:false`; malformed or incomplete **evidence** forces
-that item `operational:false`. Pagination/truncation can **never** convert a degraded/incomplete
-response into `AVAILABLE`. Scoped to the compatibility response only (§2 exclusion) — it never blocks
-Part identity/stock/reorder/Inventory.
+that item `operational:false`. Pagination/truncation can **never** convert a degraded/incomplete page
+into `AVAILABLE`, and an `AVAILABLE` page proves nothing about later pages (§6 whole-query rule). Scoped
+to the compatibility response only (§2 exclusion) — it never blocks Part identity/stock/reorder/Inventory.
 
 ### 3.9 Audit requirements for reads
 **Recommendation.** **No per-read audit event.** The shared `auditEventWriter` is create-only for
@@ -319,13 +321,19 @@ type CompatibilityReadItem = {
 };
 
 type CompatibilityReadResponse = {
-  // DEGRADED = the authoritative query ran but >=1 relationship was malformed/omitted OR >=1 item's
-  // evidence was INCOMPLETE/UNAVAILABLE. Distinct from AVAILABLE (clean+complete), EMPTY (zero docs),
-  // UNAVAILABLE (backend error), DENIED (unauthorized). Pagination/truncation NEVER upgrades to AVAILABLE.
-  disposition: "AVAILABLE" | "DEGRADED" | "EMPTY" | "UNAVAILABLE" | "DENIED";
+  // WINDOW-SCOPED: pageDisposition describes ONLY this returned authoritative window (this page), NEVER
+  // the whole matching collection. AVAILABLE = THIS window was clean + complete (no malformed relationship,
+  // no INCOMPLETE/UNAVAILABLE evidence); DEGRADED = this window had >=1 malformed/omitted relationship OR
+  // >=1 item with INCOMPLETE/UNAVAILABLE evidence; EMPTY = this query returned zero docs; UNAVAILABLE =
+  // backend error; DENIED = unauthorized. Pagination/truncation NEVER upgrades a DEGRADED window to
+  // AVAILABLE, and an AVAILABLE window asserts NOTHING about later pages (§6 whole-query rule).
+  pageDisposition: "AVAILABLE" | "DEGRADED" | "EMPTY" | "UNAVAILABLE" | "DENIED";
   items: CompatibilityReadItem[];          // [] when EMPTY/UNAVAILABLE/DENIED (may be [] for malformed-only => DEGRADED)
-  nextCursor: string | null;               // opaque, (dir,key)-bound (§5.3); null => last page
-  counts: { returned: number; operational: number; excludedRejected: number; malformedOmitted: number; evidenceIncomplete: number };
+  // null => last page (whole-query traversal complete). Non-null => MORE pages exist, so whole-query
+  // cleanliness/completeness is UNKNOWN from this response alone (§6). Untrusted navigation cursor (§5.3).
+  nextCursor: string | null;
+  // PAGE/WINDOW counts ONLY — over the records inspected in THIS page, never global aggregates.
+  windowCounts: { returned: number; operational: number; excludedRejected: number; malformedOmitted: number; evidenceIncomplete: number };
 };
 ```
 
@@ -357,29 +365,49 @@ the probe row is dropped from `items`.
 
 ### 5.2 Ordering — why `documentId()`
 
-`orderBy(FieldPath.documentId())` gives a **total, database-level deterministic order** over the whole
-result set, so `startAfter` traversal is **stable, complete, and gap-free** across pages. The doc id of
-`equipment_part_compatibility` **is** the canonical `compatibilityId` (D2 opaque hash), so this orders
+`orderBy(FieldPath.documentId())` gives a **total, database-level deterministic order** over the result
+set, so `startAfter` traversal is **stable, complete, and gap-free for an UNCHANGED dataset**. The doc id
+of `equipment_part_compatibility` **is** the canonical `compatibilityId` (D2 opaque hash), so this orders
 by identity without ordering on any mutable field. **Sorting only a fetched page is rejected** — it
 cannot guarantee stable/complete traversal (this review's requirement).
 
-### 5.3 Cursor payload, direction/identity binding, and tamper refusal
+**No snapshot isolation is promised.** Firestore cursor pagination is **not** a point-in-time snapshot:
+concurrent trusted mutations (the D4 orchestrator) between page reads can cause a record to be seen twice
+or missed across a page boundary. D5 does **not** claim snapshot isolation Firestore does not provide; a
+caller needing a point-in-time-consistent whole-query view must add a separate snapshot/version contract
+(**not in D5**). The stability guarantee above is therefore explicitly scoped to an unchanged dataset.
 
-The cursor is an **opaque** base64url encoding of a strict record:
+### 5.3 Cursor payload, validation, and trust posture — UNTRUSTED navigation cursor (posture B)
+
+The cursor is a **transparent, UNTRUSTED navigation token** — a base64url encoding of a strict record:
 
 ```ts
 { v: CURSOR_SCHEMA_VERSION, dir: "forward" | "reverse", key: string /* partId | equipmentModelId */, afterId: string /* compatibilityId */ }
 ```
 
-- **Bound to BOTH direction and query identity:** a cursor minted for one `(dir, key)` is **refused**
-  against any other — a forward-Part cursor cannot be replayed on a reverse-Model read or on a different
-  Part/Model (`invalid-argument`).
-- **Validation / tamper refusal:** decode → require a known `v`; `dir` ∈ enum; `key` **strictly equals**
-  the current request's canonical key; `afterId` matches the canonical `compatibilityId` shape. Any
-  decode failure, unknown/extra field, or mismatch **fails closed** (`invalid-argument`) and is **never**
-  silently treated as "start from the beginning." (No cryptographic signature is claimed; integrity comes
-  from strict shape + the `(dir, key)`-to-request binding, so a tampered cursor cannot broaden, skip, or
-  cross-bind a read.)
+**Trust posture (explicit):** this cursor is a **position hint — NOT an authorization boundary and NOT
+tamper-evident.** D5 does **not** sign it. Because the read is re-executed as `where(<key>,==,X)` and
+**every returned record is independently authorization-checked and provably belongs to that bound query**
+(§5.1, §7), a caller who edits `afterId` can only **reposition within the same authorized result set**
+for the same `(dir, key)`: they cannot broaden the query, cross-bind to another Part/Model/direction, or
+read a record they are not already authorized to read. The only effect of an edited `afterId` is
+**skipping forward within the caller's own authorized set** — a completeness/UX effect, **never** an
+authorization escape.
+
+**Validation (shape + request consistency; fail-closed on *malformed input*, NOT an integrity check):**
+- decode → require a known `v`; `dir` ∈ enum; `afterId` matches the canonical `compatibilityId` shape;
+- `key` **must equal the current request's canonical key** — a cursor whose `key`/`dir` does not match
+  the request is a **malformed request** (`invalid-argument`), so a forward-Part cursor cannot be
+  *submitted* on a reverse-Model or different-Part request;
+- any decode failure, unknown/extra field, bad `v`, non-canonical `afterId`, or request-key mismatch
+  **fails closed** (`invalid-argument`) — never silently "start from the beginning."
+
+**No tamper refusal is claimed:** a structurally valid `afterId` for the correct `(dir, key)` is
+**accepted as a reposition**. If gap-free *governed* traversal ever becomes a security/integrity
+requirement, **posture A** (a server-held-HMAC-signed cursor: canonical payload + version + `dir` + `key`
++ `afterId` + optional expiry, timing-safe verification, invalid signature/shape/version/binding →
+`invalid-argument`, no key material exposed) is the documented upgrade — **deferred**, since D5 needs only
+authorized-set navigation, not an integrity boundary.
 
 ### 5.4 Index determination — documented rule + executable proof, not pre-authorization
 
@@ -436,32 +464,43 @@ by §7, not asserted here, and any required index is repo-only + undeployed unti
 
 ---
 
-## 6. Fail-closed disposition contract (scoped to the compatibility surface only)
+## 6. Fail-closed disposition contract — PAGE/WINDOW scoped (compatibility surface only)
 
-**Response-level disposition (mutually exclusive, fail-closed):**
+**`pageDisposition` describes ONLY the returned authoritative window (this page), never the whole
+matching collection (mutually exclusive, fail-closed):**
 
-- `AVAILABLE` — the authoritative query ran, **every** encountered relationship was well-formed, **no**
-  item's evidence was incomplete/unavailable, and ≥1 item is returned. (Items may still be
-  non-operational for governance reasons — see below — but nothing was malformed or unread.)
-- `DEGRADED` — the query ran but **≥1 relationship was malformed/omitted** OR **≥1 item's evidence was
-  `INCOMPLETE`/`UNAVAILABLE`**. Partial data may be returned; the response is explicitly **not** a clean,
-  complete read. **Pagination/truncation can never upgrade `DEGRADED` to `AVAILABLE`.**
-- `EMPTY` — the authoritative query ran and returned **zero documents**. A page with only-rejected or
-  only-malformed records is **never** `EMPTY` (only-rejected ⇒ `AVAILABLE` with zero operational items +
+- `AVAILABLE` — the query ran, **every** relationship *in this window* was well-formed, **no** item's
+  evidence was incomplete/unavailable, and ≥1 item is returned. (Items may still be non-operational for
+  governance reasons — below — but nothing in this window was malformed or unread.) **This asserts
+  nothing about later pages.**
+- `DEGRADED` — the query ran but **≥1 relationship in this window was malformed/omitted** OR **≥1 item's
+  evidence was `INCOMPLETE`/`UNAVAILABLE`**. Partial data may be returned; this window is explicitly
+  **not** a clean, complete read. **Pagination/truncation can never upgrade `DEGRADED` to `AVAILABLE`.**
+- `EMPTY` — the query ran and returned **zero documents**. A page of only-rejected or only-malformed
+  records is **never** `EMPTY` (only-rejected ⇒ `AVAILABLE` with zero operational items +
   `excludedRejected > 0`; only-malformed ⇒ `DEGRADED`).
 - `UNAVAILABLE` — a backend/read error; rendered **distinctly** from `EMPTY`.
 - `DENIED` — the caller lacks the (future-activated) read capability.
 
-**Per-item accounting (never silent):** `malformedOmitted` (failed `fromFirestore` re-validation —
-omitted from `items`, counted, and forces the response to `DEGRADED`); `excludedRejected`
+**Per-item accounting (never silent), over THIS window:** `malformedOmitted` (failed `fromFirestore`
+re-validation — omitted from `items`, counted, and forces this page to `DEGRADED`); `excludedRejected`
 (`verificationStatus === "REJECTED"` — excluded from `items`, counted, **never** shown as "none");
-`evidenceIncomplete` (an item whose `evidence.status ≠ "OK"`).
+`evidenceIncomplete` (an item whose `evidence.status ≠ "OK"`). All counts are **window counts**, never
+global aggregates — D5 exposes no aggregate authority.
 
 **`operational: false` is mandatory whenever ANY of:** `verificationStatus ≠ "VERIFIED"` (i.e.
 `CONFLICT`, `IN_REVIEW`, `UNVERIFIED`, `REJECTED`); `applicability.kind === "UNRESOLVED"`; `model`
-missing/malformed (`model: null`); the relationship doc is malformed (it is omitted entirely and forces
+missing/malformed (`model: null`); the relationship doc is malformed (omitted entirely and forces
 `DEGRADED`); evidence `INCOMPLETE`; or evidence `UNAVAILABLE`. `operational: true` requires the full
 positive conjunction in §4 and a complete evidence window.
+
+**Whole-query completeness — only knowable at end of traversal.** A caller may conclude the **entire
+matching set** is clean/complete **only after** paginating to `nextCursor === null` **with every
+traversed page's `pageDisposition ∈ {AVAILABLE, EMPTY}`**. While `nextCursor !== null`, whole-query
+cleanliness/completeness is **UNKNOWN**: a clean early page **never** implies a clean later page, and
+later-page degradation is **never** retroactively representable as "known" on an earlier page. The
+service returns no global "clean" flag; that conclusion is the caller's, permitted only under the above
+condition — and, per §5.2, only for an unchanged dataset (no snapshot isolation across pages).
 
 **Invariant:** none of these states may block or degrade Part identity, stock, reorder, or any existing
 Inventory workflow. The disposition is confined to the compatibility response object (§2 exclusion).
@@ -489,11 +528,22 @@ paths via an **injected `resolveEffectivePermission` fixture** (no real role or 
   posture is updated (repo-only, undeployed until D10). *(Honest caveat, §5.4: the emulator does not
   enforce composite-index needs the way production does; the requirement is settled by the documented
   rule + this shape proof, not asserted.)*
-- **Pagination integrity** — `limit` clamped to `[1, MAX_PAGE]`; deterministic `documentId()` order;
-  complete, gap-free, non-overlapping traversal across pages over a seeded set spanning multiple pages;
-  the `+1` probe drives `nextCursor`; a **cursor bound to `(dir, key)`** is **refused** when replayed on a
-  different direction, a different Part/Model, a tampered `afterId`, or an unknown schema version
-  (`invalid-argument`, never "from the start").
+- **Pagination integrity (unchanged dataset)** — `limit` clamped to `[1, MAX_PAGE]`; deterministic
+  `documentId()` order; complete, gap-free, non-overlapping traversal across a seeded set spanning
+  multiple pages **while the dataset is unchanged**; the `+1` probe drives `nextCursor`. *(No snapshot-
+  isolation claim is tested; §5.2 states concurrent mutation may double/miss across a page boundary.)*
+- **Cursor validation + trust posture (posture B, §5.3)** — a cursor whose `key`/`dir` does not match the
+  request, a non-canonical `afterId`, an unknown schema version, or an unknown/extra field is **refused**
+  (`invalid-argument`, never "from the start"); a **structurally valid `afterId` for the correct
+  `(dir,key)` is ACCEPTED as a reposition** (no tamper-refusal claimed); **every** record on a
+  repositioned page still passes the belongs-to-query authorization/ownership check — a reposition can
+  skip within the caller's own authorized set but can never broaden, cross-bind, or surface an
+  unauthorized record.
+- **Whole-query completeness is never prematurely concluded** — a clean first page (`AVAILABLE`,
+  `nextCursor != null`) followed by a malformed / rejected / degraded second page proves the service
+  never represents global cleanliness from an early page; a whole-query "clean" conclusion is reachable
+  only when traversal hits `nextCursor === null` with **every** page `∈ {AVAILABLE, EMPTY}`; window
+  counts are never presented as global aggregates.
 - **Evidence bounds cannot be bypassed** — per-relationship overflow (> `MAX_EVIDENCE_PER_RELATIONSHIP`)
   ⇒ `evidence.status = "INCOMPLETE"` + `operational:false`; request read-work budget
   (`MAX_EVIDENCE_READS_PER_REQUEST`) exhaustion ⇒ later relationships `INCOMPLETE`; a seeded relationship
@@ -553,11 +603,13 @@ or `docs/architecture/SYSTEM_AUTHORITIES.md`.*
 **Proposed DECISIONS entry (draft):**
 > **## NN. Equipment–Part Compatibility D5 read service — authorized (repository/emulator only)**
 > **Decision:** APPROVE the D5 boundary: a governed, server-only, emulator-only read service exposing
-> bounded forward/reverse compatibility reads (deterministic `documentId()` order + `(dir,key)`-bound
-> cursor) + a sanitized, response-level fail-closed read model with a bounded evidence window; no
-> persistence mutation, no projections, no capability activation or grant, no callable export, no
-> Rules/index/Functions deployment, no UI. The composite-index outcome is **determined by the executed
-> query + §7 proof** (expected: none; any required index is repository-only and undeployed until D10).
+> bounded forward/reverse compatibility reads (deterministic `documentId()` order + an untrusted
+> navigation cursor that is not an authorization boundary) + a sanitized, **page/window-scoped**
+> fail-closed read model with a bounded evidence window; no persistence mutation, no projections, no
+> capability activation or grant, no callable export, no Rules/index/Functions deployment, no UI. The
+> composite-index outcome is **determined by the executed query + §7 proof** (expected: none; any
+> required index is repository-only and undeployed until D10). D5 promises no snapshot isolation and no
+> global aggregate; whole-query cleanliness is knowable only at end of traversal.
 > `equipment.compatibility.view` stays `active:false`; activation + persona grants remain the separate
 > #226 gate. Owner decisions OD-1..OD-6 as recorded.
 > **Not authorized:** #226 activation; D6 UI; D7 installed-asset linkage; D10 deployment; D11 import;
