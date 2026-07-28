@@ -414,6 +414,67 @@ await ok("mutating the caller's successor object after preparation cannot change
   assert.equal(written.actorUid, "actor-1");
   assert.equal(db.__raw(EQUIPMENT_COMPATIBILITY_OPERATIONS_COLLECTION, "key-ijklmnop"), undefined);
 });
+await ok("caller-retained Timestamps cannot change the authorized record after preparation", async () => {
+  const db = fakeDb();
+  const repo = O.buildFirestoreOperationRepository(db);
+  // Sub-millisecond components throughout, so a millisecond round trip in the detachment would show up.
+  const initiatedAt = new Timestamp(1, 111111111);
+  const terminalAt = new Timestamp(2, 222222222);
+  const storedInitiated = { ...opInitiated, initiatedAt };
+  db.__seed(EQUIPMENT_COMPATIBILITY_OPERATIONS_COLLECTION, opInitiated.idempotencyKey, O.operationToFirestore(storedInitiated));
+  const { writes } = await db.runTransaction(async (txn) => {
+    const auth = await repo.prepareTerminal(txn, { ...opApplied, initiatedAt, terminalAt });
+    // The caller still holds both Timestamp objects. Mutate BOTH components of BOTH of them.
+    initiatedAt._seconds = 50; initiatedAt._nanoseconds = 5;
+    terminalAt._seconds = 60; terminalAt._nanoseconds = 6;
+    repo.stageTerminal(txn, auth);
+  });
+  assert.equal(writes.length, 1);
+  const written = db.__raw(EQUIPMENT_COMPATIBILITY_OPERATIONS_COLLECTION, opInitiated.idempotencyKey);
+  assert.equal(written.initiatedAt.seconds, 1, "initiatedAt is the authorized value, not the mutated one");
+  assert.equal(written.initiatedAt.nanoseconds, 111111111, "nanoseconds survive detachment exactly");
+  assert.equal(written.terminalAt.seconds, 2, "terminalAt is the authorized value, not the mutated one");
+  assert.equal(written.terminalAt.nanoseconds, 222222222);
+  // The persisted Timestamps must be FRESH objects, not the caller's (now mutated) ones.
+  assert.notEqual(written.initiatedAt, initiatedAt);
+  assert.notEqual(written.terminalAt, terminalAt);
+  assert.equal(written.status, "applied");
+});
+await ok("detachment preserves nanosecond precision at the boundaries", async () => {
+  const db = fakeDb();
+  const repo = O.buildFirestoreOperationRepository(db);
+  for (const [sec, nanos] of [[1, 0], [1, 1], [1, 999999999], [0, 999999999]]) {
+    const initiatedAt = new Timestamp(sec, nanos);
+    const terminalAt = new Timestamp(sec + 1, nanos);
+    db.__seed(EQUIPMENT_COMPATIBILITY_OPERATIONS_COLLECTION, opInitiated.idempotencyKey, O.operationToFirestore({ ...opInitiated, initiatedAt }));
+    await db.runTransaction(async (txn) => {
+      repo.stageTerminal(txn, await repo.prepareTerminal(txn, { ...opApplied, initiatedAt, terminalAt }));
+    });
+    const written = db.__raw(EQUIPMENT_COMPATIBILITY_OPERATIONS_COLLECTION, opInitiated.idempotencyKey);
+    assert.equal(written.initiatedAt.nanoseconds, nanos, `initiatedAt ${sec}.${nanos}`);
+    assert.equal(written.terminalAt.nanoseconds, nanos, `terminalAt ${sec + 1}.${nanos}`);
+    db.__committed.clear();
+  }
+});
+await ok("a token from ANOTHER repository instance is refused and stages no write", async () => {
+  const db = fakeDb();
+  const repoA = O.buildFirestoreOperationRepository(db);
+  const repoB = O.buildFirestoreOperationRepository(db);
+  db.__seed(EQUIPMENT_COMPATIBILITY_OPERATIONS_COLLECTION, opInitiated.idempotencyKey, O.operationToFirestore(opInitiated));
+  await db.runTransaction(async (txn) => {
+    const authA = await repoA.prepareTerminal(txn, opApplied);
+    // Same transaction, genuine unused token -- but issued by a DIFFERENT adapter instance.
+    assert.throws(() => repoB.stageTerminal(txn, authA), IllegalOperationTransitionError);
+    assert.equal(txn.__queued.length, 0, "repository B staged nothing");
+    // B never held the entry, so it consumed nothing: A's own token is still usable.
+    repoA.stageTerminal(txn, authA);
+    assert.equal(txn.__queued.length, 1);
+    // ...and first-attempt consumption still applies to the issuing repository.
+    assert.throws(() => repoA.stageTerminal(txn, authA), IllegalOperationTransitionError);
+    assert.equal(txn.__queued.length, 1);
+  });
+  assert.equal(db.__raw(EQUIPMENT_COMPATIBILITY_OPERATIONS_COLLECTION, opInitiated.idempotencyKey).status, "applied");
+});
 await ok("an authorization is bound to its issuing transaction", async () => {
   const db = fakeDb();
   const repo = O.buildFirestoreOperationRepository(db);

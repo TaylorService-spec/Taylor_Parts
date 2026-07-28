@@ -15,12 +15,14 @@
 // A stored record that fails validation is MalformedStoredRecordError — it is NEVER reported as absent,
 // which would let a replay re-execute an already-terminal command.
 import type { Firestore, Transaction } from "firebase-admin/firestore";
+import { Timestamp } from "firebase-admin/firestore";
 import { IllegalOperationTransitionError, OperationNotInitiatedError } from "./errors";
 import {
   assertOperationRecordTransition,
   validateOperationRecord,
   type OperationRecord,
 } from "./operations";
+import { readTimestamp } from "./timestamps";
 import {
   EQUIPMENT_COMPATIBILITY_OPERATIONS_COLLECTION,
   MalformedStoredRecordError,
@@ -74,13 +76,16 @@ export function operationFromFirestore(docId: string, data: Record<string, unkno
 // The token is an EMPTY frozen object. It carries no data at all, so there is nothing on it for a caller
 // to mutate — an earlier design exposed `stored`/`next` as ordinary properties, and because TypeScript's
 // `readonly` has no runtime effect, replacing BOTH coherently let a caller stage a write for an
-// operation that was never read. All authority now lives in this module-private WeakMap, which the
-// caller cannot reach, enumerate or forge.
+// operation that was never read. All authority now lives in a REPOSITORY-INSTANCE-PRIVATE WeakMap
+// (created inside buildFirestoreOperationRepository), which the caller cannot reach, enumerate or forge,
+// and which one adapter instance will not honour on behalf of another.
 //
 // The entry also binds the authorization to its issuing Transaction and to a single use:
 //   - a token used with a DIFFERENT Transaction is refused, so it cannot escape the read-set that gives
 //     Firestore its conflict protection (a retried transaction is a new Transaction and must re-prepare);
-//   - a token is consumed on its first staging ATTEMPT, so it cannot be replayed.
+//   - a token is consumed on its first staging ATTEMPT, so it cannot be replayed;
+//   - the records it authorizes are DETACHED snapshots (see detachOperationRecord), so no reference the
+//     caller still holds can change what is written after preparation.
 declare const TERMINAL_AUTHORIZATION_BRAND: unique symbol;
 export interface TerminalAuthorization {
   readonly [TERMINAL_AUTHORIZATION_BRAND]: true;
@@ -92,7 +97,33 @@ interface AuthorizationEntry {
   readonly next: OperationRecord;
   used: boolean;
 }
-const AUTHORIZATIONS = new WeakMap<object, AuthorizationEntry>();
+
+// A DETACHED canonical snapshot. A spread copy is not enough: OperationRecord carries Firestore
+// Timestamp objects, and spreading copies their REFERENCES, so a caller retaining `terminalAt` could
+// still mutate `_seconds` after preparation and change what gets persisted — and the transition
+// assertion would not catch it, because the mutated Timestamp can stay structurally valid and correctly
+// ordered. Every governed primitive is copied explicitly and each Timestamp is REBUILT from its
+// validated exact (seconds, nanoseconds) into a fresh object, so no caller reference survives.
+// Nanoseconds are carried through unchanged — the rebuild must not become a millisecond round trip.
+function detachOperationRecord(record: OperationRecord, what: string): OperationRecord {
+  const initiatedAt = readTimestamp(record.initiatedAt);
+  if (initiatedAt === null) throw new MalformedStoredRecordError(`${what} has an invalid initiatedAt`);
+  const terminalAt = record.terminalAt === null ? null : readTimestamp(record.terminalAt);
+  if (record.terminalAt !== null && terminalAt === null) throw new MalformedStoredRecordError(`${what} has an invalid terminalAt`);
+  return Object.freeze({
+    idempotencyKey: record.idempotencyKey,
+    actorUid: record.actorUid,
+    action: record.action,
+    targetType: record.targetType,
+    targetId: record.targetId,
+    commandFingerprint: record.commandFingerprint,
+    expectedVersion: record.expectedVersion,
+    resultVersion: record.resultVersion,
+    status: record.status,
+    initiatedAt: new Timestamp(initiatedAt.seconds, initiatedAt.nanoseconds),
+    terminalAt: terminalAt === null ? null : new Timestamp(terminalAt.seconds, terminalAt.nanoseconds),
+  }) as OperationRecord;
+}
 
 export interface OperationRepository {
   // Returns null ONLY when the document genuinely does not exist. A malformed record throws.
@@ -111,6 +142,10 @@ export interface OperationRepository {
 }
 
 export function buildFirestoreOperationRepository(db: Firestore): OperationRepository {
+  // PER-INSTANCE authority. A module-global map would let one repository instance honour a token issued
+  // by another whenever the same transaction object was passed, so the authorization is scoped to the
+  // adapter that actually performed the read, not merely to this module.
+  const authorizations = new WeakMap<object, AuthorizationEntry>();
   const ref = (idempotencyKey: string) => db.collection(EQUIPMENT_COMPATIBILITY_OPERATIONS_COLLECTION).doc(idempotencyKey);
   const read = async (txn: Transaction | null, idempotencyKey: string): Promise<OperationRecord | null> => {
     const doc = await readDoc(db, txn, EQUIPMENT_COMPATIBILITY_OPERATIONS_COLLECTION, idempotencyKey);
@@ -132,18 +167,20 @@ export function buildFirestoreOperationRepository(db: Firestore): OperationRepos
       if (stored === null) {
         throw new OperationNotInitiatedError(`operation ${next.idempotencyKey} has no stored initiation to terminate`);
       }
+      // Detach BOTH records before asserting, so the transition that is validated is exactly the one
+      // that will be written — nothing the caller still holds a reference to.
+      const detachedStored = detachOperationRecord(stored, "stored operation record");
+      const detachedNext = detachOperationRecord(next, "successor operation record");
       // The STORED record is the predecessor — never a caller-supplied one. This is what makes a
       // terminal rewrite unreachable: a stored `applied`/`denied` predecessor fails the guard here.
-      assertOperationRecordTransition(stored, next);
-      // The successor is captured PRIVATELY here. A later mutation of the caller's own `next` object
-      // cannot change what gets written, because the write below never reads from the caller again.
+      assertOperationRecordTransition(detachedStored, detachedNext);
       const token = Object.freeze({}) as unknown as TerminalAuthorization;
-      AUTHORIZATIONS.set(token, { transaction: txn, stored, next: { ...next }, used: false });
+      authorizations.set(token, { transaction: txn, stored: detachedStored, next: detachedNext, used: false });
       return token;
     },
     stageTerminal(txn, authorization) {
       const entry = authorization !== null && typeof authorization === "object"
-        ? AUTHORIZATIONS.get(authorization as object)
+        ? authorizations.get(authorization as object)
         : undefined;
       if (entry === undefined) {
         throw new IllegalOperationTransitionError("terminal transition requires an authorization issued by prepareTerminal");
