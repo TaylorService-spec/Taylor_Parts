@@ -8,7 +8,7 @@ name: Equipment Compatibility Domain Parity Tests
 on:
   pull_request:
     paths:
-      - "functions/src/equipmentCompatibility/domain/**"
+      - "functions/src/equipmentCompatibility/**"
       - "field-ops-app-vite/src/domain/equipmentModel.js"
       - "field-ops-app-vite/src/domain/equipmentCompatibility.js"
       - "functions/test/equipmentCompatibilityDomainParity.test.mjs"
@@ -19,7 +19,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "functions/src/equipmentCompatibility/domain/**"
+      - "functions/src/equipmentCompatibility/**"
       - "field-ops-app-vite/src/domain/equipmentModel.js"
       - "field-ops-app-vite/src/domain/equipmentCompatibility.js"
       - "functions/test/equipmentCompatibilityDomainParity.test.mjs"
