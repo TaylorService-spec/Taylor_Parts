@@ -86,6 +86,12 @@ check("A3: every Permission id is granted by at least one compatibility Role (di
     // ungranted by design -- the trusted Part Master service denies for
     // every real principal until a Role grants these under its own gate.
     ...PERMISSION_CATALOG.filter((p) => p.id.startsWith("inventory.catalog.")).map((p) => p.id),
+    // D4 Part-Equipment Compatibility: registered-but-NOT-GRANTABLE by design. These go further than
+    // the INV-1 precedent above -- every equipment.* entry is `active: false`, so
+    // resolveEffectivePermission denies unconditionally ahead of any Role check. Granting them to a
+    // compatibility Role here would be doubly premature: no Role should hold them, and the inactive
+    // flag would deny anyway. Activation and grants are later, separately authorized decisions.
+    ...PERMISSION_CATALOG.filter((p) => p.id.startsWith("equipment.")).map((p) => p.id),
   ]);
   const grantedIds = new Set([
     ...ADMIN_ROLE.permissions,

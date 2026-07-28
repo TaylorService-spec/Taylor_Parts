@@ -1632,5 +1632,43 @@ service cloud.firestore {
     match /auditEvents/{eventId} {
       allow read, write: if false;
     }
+
+    // ---------------------------------------------------------------------
+    // D4 -- Part-Equipment Compatibility: CLIENT-CLOSED (proposal, not deployed)
+    // ---------------------------------------------------------------------
+    // Every one of the five governed collections denies ALL direct client reads
+    // and writes, for every principal -- signed out, technician, dispatcher,
+    // admin and operational-role holders alike. This is not an oversight: Rules
+    // cannot invoke the server-side Issue #226 effective-permission resolver, so
+    // D4 does not attempt a governed client read at all. Reads arrive with the
+    // D5 read service; every write goes through the trusted Equipment command
+    // orchestrator, which runs with Admin SDK privileges and is therefore not
+    // subject to these rules.
+    //
+    // The equipment.* capabilities registered alongside this block are all
+    // `active: false`, so no principal can be granted them either -- the closure
+    // here and the inactive catalog entries fail closed independently.
+    //
+    // Deployment is the separate D10 gate and requires its own production
+    // authorization; merging this block changes nothing in production.
+    match /equipment_models/{equipmentModelId} {
+      allow read, write: if false;
+    }
+
+    match /equipment_model_aliases/{aliasDocId} {
+      allow read, write: if false;
+    }
+
+    match /equipment_part_compatibility/{compatibilityId} {
+      allow read, write: if false;
+    }
+
+    match /equipment_compatibility_sources/{sourceId} {
+      allow read, write: if false;
+    }
+
+    match /equipment_compatibility_operations/{idempotencyKey} {
+      allow read, write: if false;
+    }
   }
 }

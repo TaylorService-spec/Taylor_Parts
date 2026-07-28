@@ -1,0 +1,76 @@
+name: Equipment Compatibility Domain Parity Tests
+
+# D4 (Part–Equipment Compatibility trusted persistence) enforcement: the functions/ server domain
+# port must stay in behavioral parity with the client D1/D2 contracts. Pure-logic — no emulator, no
+# deployment, no production access, no repository secrets. Runs the fixture-based parity corpus against
+# the compiled functions/lib output; drift between the server port and the client source fails CI.
+
+on:
+  pull_request:
+    paths:
+      - "functions/src/equipmentCompatibility/**"
+      - "field-ops-app-vite/src/domain/equipmentModel.js"
+      - "field-ops-app-vite/src/domain/equipmentCompatibility.js"
+      - "functions/test/equipmentCompatibilityDomainParity.test.mjs"
+      - "functions/test/equipmentCompatibilityOperations.test.mjs"
+      - "functions/test/equipmentCompatibilityRepositories.test.mjs"
+      - "functions/test/equipmentCompatibilityFingerprint.test.mjs"
+      - "functions/test/equipmentCompatibilityCommands.test.mjs"
+      - "functions/test/equipmentCompatibilityRegistry.test.mjs"
+      - "functions/src/access/permissionCatalog.ts"
+      - "field-ops-app-vite/src/access/permissionCatalog.ts"
+      - "functions/src/access/auditEventWriter.ts"
+      - "functions/src/types/access.ts"
+      - "firestore.rules"
+      - "field-ops-app-vite/firestore.rules"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - ".github/workflows/equipment-compatibility-domain-parity-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/src/equipmentCompatibility/**"
+      - "field-ops-app-vite/src/domain/equipmentModel.js"
+      - "field-ops-app-vite/src/domain/equipmentCompatibility.js"
+      - "functions/test/equipmentCompatibilityDomainParity.test.mjs"
+      - "functions/test/equipmentCompatibilityOperations.test.mjs"
+      - "functions/test/equipmentCompatibilityRepositories.test.mjs"
+      - "functions/test/equipmentCompatibilityFingerprint.test.mjs"
+      - "functions/test/equipmentCompatibilityCommands.test.mjs"
+      - "functions/test/equipmentCompatibilityRegistry.test.mjs"
+      - "functions/src/access/permissionCatalog.ts"
+      - "field-ops-app-vite/src/access/permissionCatalog.ts"
+      - "functions/src/access/auditEventWriter.ts"
+      - "functions/src/types/access.ts"
+      - "firestore.rules"
+      - "field-ops-app-vite/firestore.rules"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - ".github/workflows/equipment-compatibility-domain-parity-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  equipment-compatibility-domain-parity:
+    name: Equipment compatibility domain parity
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+
+      - name: Domain parity (build + run)
+        run: npm run test:equipmentCompatibilityUnit
+        working-directory: functions

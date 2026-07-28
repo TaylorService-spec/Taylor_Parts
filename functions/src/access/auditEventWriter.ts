@@ -109,6 +109,12 @@ const AUDIT_ACTIONS: readonly AuditAction[] = [
   "initiateAdminPasswordReset",
   "deliverAdminPasswordReset",
   "revokeUserSessions",
+  // D4 -- Part-Equipment Compatibility trusted persistence (five lifecycle actions).
+  "initiateEquipmentCompatibilityCommand",
+  "equipmentCompatibilityCommand",
+  "equipmentCompatibilityVerification",
+  "equipmentCompatibilityCorrection",
+  "equipmentCompatibilityConflict",
 ];
 
 // Issue #325 / ADR-007 D-AUDIT -- the subset of AUDIT_ACTIONS this

@@ -187,10 +187,24 @@ check("exactly 3 wave-1 report.* ids are inactive; every other wave-1 id is acti
   }
 });
 
-check("no non-report catalog entry declares `active` (this addition is additive-only for every pre-existing id)", () => {
+// The invariant this protects is that introducing `active` did not change behavior for any
+// PRE-EXISTING id -- an id that resolved before must resolve the same way now. A NEWLY REGISTERED id
+// declaring `active: false` cannot change any pre-existing behavior, because nothing resolved it
+// before it existed. D4 registers the five `equipment.*` capabilities exactly that way
+// (registered-but-not-grantable), so they are allowed to declare it and are separately asserted to
+// declare `active: false` and nothing else in functions/test/equipmentCompatibilityRegistry.test.mjs.
+const ACTIVE_DECLARING_PREFIXES = ["report.", "equipment."];
+check("no other catalog entry declares `active` (this addition is additive-only for every pre-existing id)", () => {
   for (const permission of PERMISSION_CATALOG) {
-    if (permission.id.startsWith("report.")) continue;
+    if (ACTIVE_DECLARING_PREFIXES.some((prefix) => permission.id.startsWith(prefix))) continue;
     assert.equal("active" in permission, false, `"${permission.id}" must not declare active -- would be a behavior change`);
+  }
+});
+check("every equipment.* entry is registered-but-not-grantable (active: false, never true)", () => {
+  const equipment = PERMISSION_CATALOG.filter((p) => p.id.startsWith("equipment."));
+  assert.equal(equipment.length, 5, "D4 registers exactly five equipment capabilities");
+  for (const permission of equipment) {
+    assert.equal(permission.active, false, `"${permission.id}" must be inactive`);
   }
 });
 

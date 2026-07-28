@@ -1,33 +1,30 @@
-// D1 pure Equipment Model contracts. No Firebase, I/O, or installed-asset linkage.
+// D4 server MIRROR of the merged D1 pure Equipment Model contracts
+// (field-ops-app-vite/src/domain/equipmentModel.js). Behavioral parity with the client source is
+// enforced by functions/test/equipmentCompatibilityDomainParity.test.mjs. Pure: no Firebase, I/O, or
+// installed-asset linkage. Do NOT edit one copy without the other; parity test will fail on drift.
 export const MODEL_STATUSES = Object.freeze(["DRAFT", "ACTIVE", "INACTIVE", "RETIRED"]);
 export const MODEL_ALIAS_TYPES = Object.freeze(["MANUFACTURER_MODEL", "HISTORICAL_MODEL", "SOURCE_MODEL"]);
-const MODEL_FIELDS = new Set(["equipmentModelId","manufacturerId","manufacturerName","modelNumber","displayName","family","subtype","revision","status","sourceAuthority","version"]);
-const MODEL_ALIAS_FIELDS = new Set(["aliasType","manufacturerId","rawValue","equipmentModelId","aliasKey"]);
-const plain = (v) => v !== null && typeof v === "object" && !Array.isArray(v) && [Object.prototype, null].includes(Object.getPrototypeOf(v));
+const MODEL_FIELDS = new Set(["equipmentModelId", "manufacturerId", "manufacturerName", "modelNumber", "displayName", "family", "subtype", "revision", "status", "sourceAuthority", "version"]);
+const MODEL_ALIAS_FIELDS = new Set(["aliasType", "manufacturerId", "rawValue", "equipmentModelId", "aliasKey"]);
+const plain = (v: any): boolean => v !== null && typeof v === "object" && !Array.isArray(v) && [Object.prototype, null].includes(Object.getPrototypeOf(v));
 // Deterministic UTF-16 code-unit ordering. Normalized identity and serial tokens are ASCII
 // contracts, so ordering must never depend on host locale (unlike String.prototype.localeCompare).
-const asciiCompare = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
-export function normalizeIdentityText(v) { return typeof v === "string" ? v.normalize("NFKC").trim().replace(/\s+/g, " ") : ""; }
-export function normalizeIdentityKey(v) { return normalizeIdentityText(v).toUpperCase(); }
-export function normalizeManufacturerId(v) { return normalizeIdentityKey(v).replace(/[^A-Z0-9]+/g, "-").replace(/^-|-$/g, ""); }
-export function normalizeModelNumber(v) { return normalizeIdentityKey(v); }
-export function buildEquipmentModelId(manufacturerId, modelNumber) {
+const asciiCompare = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+export function normalizeIdentityText(v: any): string { return typeof v === "string" ? v.normalize("NFKC").trim().replace(/\s+/g, " ") : ""; }
+export function normalizeIdentityKey(v: any): string { return normalizeIdentityText(v).toUpperCase(); }
+export function normalizeManufacturerId(v: any): string { return normalizeIdentityKey(v).replace(/[^A-Z0-9]+/g, "-").replace(/^-|-$/g, ""); }
+export function normalizeModelNumber(v: any): string { return normalizeIdentityKey(v); }
+export function buildEquipmentModelId(manufacturerId: any, modelNumber: any): string {
   const m = normalizeManufacturerId(manufacturerId), n = normalizeModelNumber(modelNumber).replace(/[^A-Z0-9]+/g, "-").replace(/^-|-$/g, "");
   return m && n ? `${m}--${n}` : "";
 }
-// Canonical Equipment Model ID contract, shared by validateEquipmentModel and
-// validateEquipmentModelAlias. A value is canonical only when it is already the exact,
-// deterministic `manufacturer--model` string buildEquipmentModelId() would produce — split on
-// the single "--" separator and round-trip through the builder. This rejects lowercase,
-// surrounding/embedded whitespace, Unicode/non-ASCII, missing manufacturer/model segments,
-// and repeated/empty separators, and never silently normalizes a malformed id into validity.
 // Firestore's hard document-ID limit, in UTF-8 BYTES. Every identity this module mints is used directly
 // (or after doc-id encoding) as ONE Firestore document-ID segment, so the bound belongs to the identity
 // contract -- a repository adapter must never rely on Firestore throwing after the operation validator
 // has already accepted an ID.
 export const FIRESTORE_DOC_ID_MAX_BYTES = 1500;
-const utf8ByteLength = (s) => new TextEncoder().encode(s).length;
-export function isCanonicalEquipmentModelId(v) {
+const utf8ByteLength = (s: any): number => new TextEncoder().encode(s).length;
+export function isCanonicalEquipmentModelId(v: any): boolean {
   if (typeof v !== "string") return false;
   // Persistence-safety is part of the identity contract: the id is used as ONE document-ID segment.
   // The charset below already excludes "/" and "%", so no encoding is needed -- only the byte bound.
@@ -35,7 +32,7 @@ export function isCanonicalEquipmentModelId(v) {
   const parts = v.split("--");
   return parts.length === 2 && buildEquipmentModelId(parts[0], parts[1]) === v;
 }
-export function normalizeEquipmentModel(input) {
+export function normalizeEquipmentModel(input: any): any {
   if (!plain(input)) return null;
   const manufacturerId = normalizeManufacturerId(input.manufacturerId);
   const modelNumber = normalizeModelNumber(input.modelNumber);
@@ -47,24 +44,22 @@ export function normalizeEquipmentModel(input) {
     status: normalizeIdentityKey(input.status), sourceAuthority: normalizeIdentityText(input.sourceAuthority), version: input.version,
   };
 }
-export function validateEquipmentModel(input) {
+export function validateEquipmentModel(input: any): any {
   if (!plain(input)) return { valid: false, value: null, reason: "not_object" };
   if (Object.keys(input).some((k) => !MODEL_FIELDS.has(k))) return { valid: false, value: null, reason: "unknown_field" };
   const value = normalizeEquipmentModel(input);
-  // Check the RAW stored id (derive it only when absent) — never the whitespace-normalized copy —
-  // so a noncanonical stored id cannot be silently normalized into validity.
   const expectedId = buildEquipmentModelId(value.manufacturerId, value.modelNumber);
   const rawId = input.equipmentModelId === undefined ? expectedId : input.equipmentModelId;
   if (!isCanonicalEquipmentModelId(rawId) || rawId !== expectedId) return { valid: false, value, reason: "id_invalid" };
   value.equipmentModelId = rawId;
-  for (const [field, reason] of [["manufacturerId","manufacturer_id_invalid"],["manufacturerName","manufacturer_name_invalid"],["modelNumber","model_number_invalid"],["displayName","display_name_invalid"],["sourceAuthority","source_authority_invalid"]]) {
+  for (const [field, reason] of [["manufacturerId", "manufacturer_id_invalid"], ["manufacturerName", "manufacturer_name_invalid"], ["modelNumber", "model_number_invalid"], ["displayName", "display_name_invalid"], ["sourceAuthority", "source_authority_invalid"]]) {
     if (!value[field]) return { valid: false, value, reason };
   }
   if (!MODEL_STATUSES.includes(value.status)) return { valid: false, value, reason: "status_invalid" };
   if (!Number.isInteger(value.version) || value.version < 1) return { valid: false, value, reason: "version_invalid" };
   return { valid: true, value, reason: null };
 }
-export function normalizeModelAliasKey(record) {
+export function normalizeModelAliasKey(record: any): string {
   const { aliasType, manufacturerId, rawValue } = plain(record) ? record : {};
   const type = normalizeIdentityKey(aliasType), manufacturer = normalizeManufacturerId(manufacturerId), alias = normalizeIdentityKey(rawValue);
   return MODEL_ALIAS_TYPES.includes(type) && manufacturer && alias ? `${type}|${manufacturer}|${alias}` : "";
@@ -85,7 +80,7 @@ export const MODEL_ALIAS_DOC_ID_MAX_BYTES = FIRESTORE_DOC_ID_MAX_BYTES;
 // key stays a PURE IDENTITY string that may legitimately contain "/" (model numbers such as "C/713"),
 // and the two characters a Firestore doc-id segment cannot carry are percent-encoded here -- "%" FIRST,
 // then "/", so the encoding is unambiguous and reversible. Persistence uses this; identity does not.
-export function encodeModelAliasDocId(aliasKey) {
+export function encodeModelAliasDocId(aliasKey: any): string {
   return typeof aliasKey === "string" ? aliasKey.replace(/%/g, "%25").replace(/\//g, "%2F") : "";
 }
 // Is `v` EXACTLY the alias key normalizeModelAliasKey derives from its own three segments? This is the
@@ -94,7 +89,7 @@ export function encodeModelAliasDocId(aliasKey) {
 // collapsing, a known aliasType, and a canonical manufacturerId in one check. Alias VALUES may legally
 // contain "|" (aliasType and manufacturerId provably cannot), so the key is split on its FIRST TWO
 // separators only.
-export function isCanonicalModelAliasKey(v) {
+export function isCanonicalModelAliasKey(v: any): boolean {
   if (typeof v !== "string" || v.length === 0 || ALIAS_KEY_FORBIDDEN.test(v)) return false;
   const i = v.indexOf("|");
   if (i < 0) return false;
@@ -104,9 +99,7 @@ export function isCanonicalModelAliasKey(v) {
   if (utf8ByteLength(encodeModelAliasDocId(v)) > MODEL_ALIAS_DOC_ID_MAX_BYTES) return false;      // persistence-safe
   return normalizeModelAliasKey({ aliasType: v.slice(0, i), manufacturerId: v.slice(i + 1, j), rawValue: v.slice(j + 1) }) === v;
 }
-// Strict pure contract for one model-alias record. Malformed input yields an explicit,
-// structured invalid reason — it is never silently dropped.
-export function validateEquipmentModelAlias(input) {
+export function validateEquipmentModelAlias(input: any): any {
   if (!plain(input)) return { valid: false, value: null, reason: "not_object" };
   if (Object.keys(input).some((k) => !MODEL_ALIAS_FIELDS.has(k))) return { valid: false, value: null, reason: "unknown_field" };
   const aliasType = normalizeIdentityKey(input.aliasType);
@@ -126,17 +119,14 @@ export function validateEquipmentModelAlias(input) {
   if (input.aliasKey !== undefined && normalizeIdentityText(input.aliasKey) !== aliasKey) return { valid: false, value: null, reason: "alias_key_mismatch" };
   return { valid: true, value: { aliasType, manufacturerId, aliasValue, aliasKey, equipmentModelId }, reason: null };
 }
-// Conflict analysis is fail-visible: every malformed record is surfaced as a structured
-// invalid entry (never silently skipped), so a bad record cannot masquerade as a clean result
-// or conceal a genuine cross-owner conflict. A result is "clean" only when both arrays are empty.
-export function detectModelAliasConflicts(records = []) {
+export function detectModelAliasConflicts(records: any = []): any {
   if (!Array.isArray(records)) return { conflicts: [], invalid: [{ index: -1, reason: "not_array" }] };
-  const owners = new Map(), invalid = [];
-  records.forEach((record, index) => {
+  const owners = new Map<string, Set<string>>(), invalid: any[] = [];
+  records.forEach((record: any, index: number) => {
     const v = validateEquipmentModelAlias(record);
     if (!v.valid) { invalid.push({ index, reason: v.reason }); return; }
     if (!owners.has(v.value.aliasKey)) owners.set(v.value.aliasKey, new Set());
-    owners.get(v.value.aliasKey).add(v.value.equipmentModelId);
+    owners.get(v.value.aliasKey)!.add(v.value.equipmentModelId);
   });
   const conflicts = [...owners]
     .filter(([, ids]) => ids.size > 1)
@@ -144,9 +134,9 @@ export function detectModelAliasConflicts(records = []) {
     .map(([aliasKey, ids]) => ({ aliasKey, equipmentModelIds: [...ids].sort(asciiCompare) }));
   return { conflicts, invalid };
 }
-export function validateSerialScheme(s) {
+export function validateSerialScheme(s: any): any {
   if (!plain(s)) return { valid: false, reason: "not_object" };
-  if (Object.keys(s).some((k) => !["schemeId","manufacturerId","normalizerVersion","tokenPattern","ordering"].includes(k))) return { valid: false, reason: "unknown_field" };
+  if (Object.keys(s).some((k) => !["schemeId", "manufacturerId", "normalizerVersion", "tokenPattern", "ordering"].includes(k))) return { valid: false, reason: "unknown_field" };
   const schemeId = normalizeIdentityKey(s.schemeId), manufacturerId = normalizeManufacturerId(s.manufacturerId);
   if (!/^[A-Z0-9][A-Z0-9._-]{0,63}$/.test(schemeId)) return { valid: false, reason: "scheme_id_invalid" };
   if (!manufacturerId || !Number.isInteger(s.normalizerVersion) || s.normalizerVersion < 1) return { valid: false, reason: "scheme_metadata_invalid" };
@@ -154,13 +144,13 @@ export function validateSerialScheme(s) {
   try { if (typeof s.tokenPattern !== "string" || !s.tokenPattern || !new RegExp(s.tokenPattern)) throw new Error(); } catch { return { valid: false, reason: "token_pattern_invalid" }; }
   return { valid: true, reason: null, value: { schemeId, manufacturerId, normalizerVersion: s.normalizerVersion, tokenPattern: s.tokenPattern, ordering: s.ordering } };
 }
-export function normalizeSerialToken(raw, scheme) {
+export function normalizeSerialToken(raw: any, scheme: any): string | null {
   const s = validateSerialScheme(scheme);
   if (!s.valid || typeof raw !== "string") return null;
   const token = normalizeIdentityKey(raw).replace(/\s+/g, "");
   return new RegExp(s.value.tokenPattern).test(token) ? token : null;
 }
-export function validateSerialRange({ start = null, end = null, scheme } = {}) {
+export function validateSerialRange({ start = null, end = null, scheme }: any = {}): any {
   const a = start === null ? null : normalizeSerialToken(start, scheme), b = end === null ? null : normalizeSerialToken(end, scheme);
   if ((start !== null && a === null) || (end !== null && b === null)) return { valid: false, reason: "bound_invalid" };
   if (a === null && b === null) return { valid: false, reason: "empty_range" };
