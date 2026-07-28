@@ -38,8 +38,19 @@ function fakeDb() {
     return { __c: c, __d: d, async get() { return snapOf(c, d); } };
   };
   let transactions = 0;
+  // The ONE bounded query D4 uses: single-field equality. Modelled faithfully -- it reads COMMITTED
+  // state only, exactly like a transactional get.
+  const query = (c, field, value) => ({
+    __query: true, __c: c, __field: field, __value: value,
+    async get() { return runQuery(c, field, value); },
+  });
+  const runQuery = (c, field, value) => ({
+    docs: [...committed.entries()]
+      .filter(([k, v]) => k.startsWith(`${c}/`) && v && v[field] === value)
+      .map(([k, v]) => ({ id: k.slice(c.length + 1), data: () => v })),
+  });
   return {
-    collection: (c) => ({ doc: (d) => docRef(c, d) }),
+    collection: (c) => ({ doc: (d) => docRef(c, d), where: (f, op, v) => { if (op !== "==") throw new Error(`unsupported op ${op}`); return query(c, f, v); } }),
     __committed: committed,
     __seed: (c, d, data) => committed.set(key(c, d), data),
     __raw: (c, d) => committed.get(key(c, d)),
@@ -50,7 +61,7 @@ function fakeDb() {
       const txn = {
         async get(ref) {
           if (queued.length > 0) throw new ReadAfterWriteError("all reads must precede all writes");
-          return snapOf(ref.__c, ref.__d);
+          return ref.__query ? runQuery(ref.__c, ref.__field, ref.__value) : snapOf(ref.__c, ref.__d);
         },
         create(ref, data) { queued.push({ op: "create", c: ref.__c, d: ref.__d, data }); },
         set(ref, data) { queued.push({ op: "set", c: ref.__c, d: ref.__d, data }); },
@@ -470,33 +481,182 @@ await ok("verification and correction each emit their SPECIALIZED event alongsid
     C.INITIATION_AUDIT_ACTION, C.TERMINAL_AUDIT_ACTION, "equipmentCompatibilityCorrection",
   ]);
 });
-await ok("contradicting evidence forces CONFLICT with its own event, and never auto-verifies", async () => {
+// ---- conflict surfacing is decided by the GOVERNED D2 analyzer, not by the incoming record ----
+const importSource = async (db, source, key) => {
+  const { deps } = makeDeps(db);
+  const mark = auditMark(db);
+  const result = await C.runEquipmentCompatibilityCommand({
+    actorUid: "actor-1", action: "importCompatibilitySource", idempotencyKey: key, payload: source,
+  }, deps);
+  return { result, events: auditsSince(db, mark) };
+};
+const statusOf = (db, compat) => db.__raw(EQUIPMENT_PART_COMPATIBILITY_COLLECTION, compat.compatibilityId).verificationStatus;
+const freshWithCompat = (verificationStatus = "UNVERIFIED") => {
   const db = fakeDb();
   seedModel(db);
-  const compat = compatOf({ verificationStatus: "VERIFIED" });
+  const compat = compatOf({ verificationStatus });
   seedCompat(db, compat);
-  // SUPPORTING evidence changes no status -- verification is its own governed command.
+  return { db, compat };
+};
+const claim = (compat, observedClaim, fp) => sourceOf(compat.compatibilityId, { observedClaim, contentFingerprint: fp.repeat(64) });
+
+await ok("CONTRADICTS as the first and only evidence is NOT a conflict", async () => {
+  const { db, compat } = freshWithCompat();
+  const { result, events } = await importSource(db, claim(compat, "CONTRADICTS", "a"), "key-only-contradicts");
+  assert.equal(result.status, "applied");
+  assert.equal(statusOf(db, compat), "UNVERIFIED", "no support-vs-contradiction, so no CONFLICT");
+  assert.equal(events.some((e) => e.action === "equipmentCompatibilityConflict"), false);
+});
+await ok("SUPPORTS then CONTRADICTS is a conflict", async () => {
+  const { db, compat } = freshWithCompat();
+  await importSource(db, claim(compat, "SUPPORTS", "a"), "key-s-then-c-1");
+  assert.equal(statusOf(db, compat), "UNVERIFIED", "supporting evidence never auto-verifies");
+  const { events } = await importSource(db, claim(compat, "CONTRADICTS", "b"), "key-s-then-c-2");
+  assert.equal(statusOf(db, compat), "CONFLICT");
+  assert.equal(events.filter((e) => e.action === "equipmentCompatibilityConflict").length, 1);
+});
+await ok("CONTRADICTS then SUPPORTS reaches the SAME conflict result (order-independent)", async () => {
+  const { db, compat } = freshWithCompat();
+  await importSource(db, claim(compat, "CONTRADICTS", "a"), "key-c-then-s-1");
+  assert.equal(statusOf(db, compat), "UNVERIFIED", "still only one side of the evidence");
+  const { events } = await importSource(db, claim(compat, "SUPPORTS", "b"), "key-c-then-s-2");
+  assert.equal(statusOf(db, compat), "CONFLICT", "the SUPPORTS arrival is what completes the conflict");
+  assert.equal(events.filter((e) => e.action === "equipmentCompatibilityConflict").length, 1);
+});
+await ok("INCONCLUSIVE evidence never creates a conflict, in any combination", async () => {
+  const { db, compat } = freshWithCompat();
+  await importSource(db, claim(compat, "INCONCLUSIVE", "a"), "key-inc-1");
+  assert.equal(statusOf(db, compat), "UNVERIFIED");
+  await importSource(db, claim(compat, "INCONCLUSIVE", "b"), "key-inc-2");
+  assert.equal(statusOf(db, compat), "UNVERIFIED");
+  const { events } = await importSource(db, claim(compat, "SUPPORTS", "c"), "key-inc-3");
+  assert.equal(statusOf(db, compat), "UNVERIFIED", "support + inconclusive is not a conflict");
+  assert.equal(events.some((e) => e.action === "equipmentCompatibilityConflict"), false);
+});
+await ok("multiple supporting and contradicting sources still resolve to one conflict transition", async () => {
+  const { db, compat } = freshWithCompat();
+  await importSource(db, claim(compat, "SUPPORTS", "a"), "key-multi-1");
+  await importSource(db, claim(compat, "SUPPORTS", "b"), "key-multi-2");
+  const first = await importSource(db, claim(compat, "CONTRADICTS", "c"), "key-multi-3");
+  assert.equal(statusOf(db, compat), "CONFLICT");
+  assert.equal(first.events.filter((e) => e.action === "equipmentCompatibilityConflict").length, 1);
+  const versionAfterFirst = db.__raw(EQUIPMENT_PART_COMPATIBILITY_COLLECTION, compat.compatibilityId).version;
+  // Already CONFLICT: further contradicting evidence is recorded, but there is no second transition.
+  const second = await importSource(db, claim(compat, "CONTRADICTS", "d"), "key-multi-4");
+  assert.equal(second.result.status, "applied");
+  assert.equal(second.events.some((e) => e.action === "equipmentCompatibilityConflict"), false, "no duplicate event");
+  assert.equal(db.__raw(EQUIPMENT_PART_COMPATIBILITY_COLLECTION, compat.compatibilityId).version, versionAfterFirst, "no duplicate transition");
+});
+await ok("malformed stored evidence fails closed: no source, no mutation, no audit committed", async () => {
+  const { db, compat } = freshWithCompat();
+  await importSource(db, claim(compat, "SUPPORTS", "a"), "key-mal-1");
+  // Corrupt a stored evidence document that the analysis must read.
+  const badId = [...db.__committed.keys()].find((k) => k.startsWith(`${EQUIPMENT_COMPATIBILITY_SOURCES_COLLECTION}/`)).split("/")[1];
+  db.__seed(EQUIPMENT_COMPATIBILITY_SOURCES_COLLECTION, badId, { ...db.__raw(EQUIPMENT_COMPATIBILITY_SOURCES_COLLECTION, badId), observedClaim: "MAYBE" });
+  const incoming = claim(compat, "CONTRADICTS", "b");
   const { deps } = makeDeps(db);
-  let mark = auditMark(db);
-  const supporting = sourceOf(compat.compatibilityId);
-  await C.runEquipmentCompatibilityCommand({ actorUid: "actor-1", action: "importCompatibilitySource", idempotencyKey: "key-src-supports", payload: supporting }, deps);
-  assert.equal(db.__raw(EQUIPMENT_PART_COMPATIBILITY_COLLECTION, compat.compatibilityId).verificationStatus, "VERIFIED", "unchanged");
-  assert.equal(auditsSince(db, mark).some((a) => a.action === "equipmentCompatibilityConflict"), false);
-  // CONTRADICTING evidence forces CONFLICT and emits the conflict event, atomically.
+  const mark = auditMark(db);
+  const statusBefore = statusOf(db, compat);
+  await assert.rejects(
+    () => C.runEquipmentCompatibilityCommand({ actorUid: "actor-1", action: "importCompatibilitySource", idempotencyKey: "key-mal-2", payload: incoming }, deps),
+    (e) => e.constructor.name === "MalformedStoredRecordError",
+    "malformed stored evidence must fail closed"
+  );
+  assert.equal(db.__raw(EQUIPMENT_COMPATIBILITY_SOURCES_COLLECTION, incoming.sourceId), undefined, "no new evidence");
+  assert.equal(statusOf(db, compat), statusBefore, "no relationship mutation");
+  assert.deepEqual(auditsSince(db, mark).map((a) => a.action), [C.INITIATION_AUDIT_ACTION], "TX2 committed nothing");
+  assert.equal(db.__raw(EQUIPMENT_COMPATIBILITY_OPERATIONS_COLLECTION, "key-mal-2").status, "initiated", "resumable, not terminal");
+});
+await ok("a rolled-back TX2 with the evidence query commits neither evidence nor conflict", async () => {
+  const { db, compat } = freshWithCompat();
+  await importSource(db, claim(compat, "SUPPORTS", "a"), "key-roll-1");
+  const incoming = claim(compat, "CONTRADICTS", "b");
+  const { deps } = makeDeps(db);
+  const mark = auditMark(db);
+  const original = db.runTransaction.bind(db);
+  let calls = 0;
+  db.runTransaction = async (fn) => original(async (txn) => {
+    const r = await fn(txn);
+    if ((calls += 1) === 2) throw new Error("TX2 rolled back");
+    return r;
+  });
+  await assert.rejects(
+    () => C.runEquipmentCompatibilityCommand({ actorUid: "actor-1", action: "importCompatibilitySource", idempotencyKey: "key-roll-2", payload: incoming }, deps),
+    /TX2 rolled back/
+  );
+  db.runTransaction = original;
+  assert.equal(db.__raw(EQUIPMENT_COMPATIBILITY_SOURCES_COLLECTION, incoming.sourceId), undefined);
+  assert.equal(statusOf(db, compat), "UNVERIFIED");
+  assert.deepEqual(auditsSince(db, mark).map((a) => a.action), [C.INITIATION_AUDIT_ACTION]);
+  // The retry RESUMES and now applies the conflict exactly once.
   const { deps: d2 } = makeDeps(db);
-  mark = auditMark(db);
-  const contradicting = sourceOf(compat.compatibilityId, { observedClaim: "CONTRADICTS", contentFingerprint: "c".repeat(64) });
-  const applied = await C.runEquipmentCompatibilityCommand({ actorUid: "actor-1", action: "importCompatibilitySource", idempotencyKey: "key-src-contradicts", payload: contradicting }, d2);
-  assert.equal(applied.status, "applied");
-  const stored = db.__raw(EQUIPMENT_PART_COMPATIBILITY_COLLECTION, compat.compatibilityId);
-  assert.equal(stored.verificationStatus, "CONFLICT", "never auto-verified, surfaced as CONFLICT");
-  assert.equal(stored.version, compat.version + 1);
-  const events = auditsSince(db, mark);
-  assert.deepEqual(events.map((a) => a.action), [
-    C.INITIATION_AUDIT_ACTION, C.TERMINAL_AUDIT_ACTION, "equipmentCompatibilityConflict",
-  ]);
-  assert.equal(events.at(-1).targetId, compat.compatibilityId);
-  assert.equal(db.__raw(EQUIPMENT_COMPATIBILITY_SOURCES_COLLECTION, contradicting.sourceId).observedClaim, "CONTRADICTS");
+  const retry = await C.runEquipmentCompatibilityCommand({ actorUid: "actor-1", action: "importCompatibilitySource", idempotencyKey: "key-roll-2", payload: incoming }, d2);
+  assert.equal(retry.status, "applied");
+  assert.equal(statusOf(db, compat), "CONFLICT");
+});
+await ok("the evidence query is bounded to its own relationship", async () => {
+  const { db, compat } = freshWithCompat();
+  const other = compatOf({ partId: "TST-2002" });
+  seedCompat(db, other);
+  await importSource(db, claim(other, "SUPPORTS", "a"), "key-other-1");
+  // Supporting evidence on a DIFFERENT relationship must not complete a conflict here.
+  const { events } = await importSource(db, claim(compat, "CONTRADICTS", "b"), "key-bounded-1");
+  assert.equal(statusOf(db, compat), "UNVERIFIED");
+  assert.equal(statusOf(db, other), "UNVERIFIED");
+  assert.equal(events.some((e) => e.action === "equipmentCompatibilityConflict"), false);
+});
+
+// ---- hostile command envelopes ----
+await ok("a throwing accessor or Proxy trap cannot escape the governed denial path", async () => {
+  const throwingGetter = (field) => {
+    const o = { actorUid: "actor-1", action: "importEquipmentModel", idempotencyKey: "key-hostile", payload: model() };
+    delete o[field];
+    Object.defineProperty(o, field, { get() { throw new Error(`${field} getter ran`); }, enumerable: true, configurable: true });
+    return o;
+  };
+  const hostiles = [
+    ["throwing actorUid getter", throwingGetter("actorUid")],
+    ["throwing action getter", throwingGetter("action")],
+    ["throwing idempotencyKey getter", throwingGetter("idempotencyKey")],
+    ["throwing payload getter", throwingGetter("payload")],
+    ["throwing expectedVersion getter", throwingGetter("expectedVersion")],
+    ["throwing getPrototypeOf trap", new Proxy({}, { getPrototypeOf() { throw new Error("proto trap"); } })],
+    ["throwing ownKeys trap", new Proxy({}, { ownKeys() { throw new Error("ownKeys trap"); } })],
+    ["throwing get trap", new Proxy({ actorUid: "a", action: "importEquipmentModel", idempotencyKey: "key-hostile", payload: {} }, { get() { throw new Error("get trap"); } })],
+    ["throwing getOwnPropertyDescriptor trap", new Proxy({ actorUid: "a" }, { getOwnPropertyDescriptor() { throw new Error("descriptor trap"); } })],
+    ["action with throwing toString", { actorUid: "actor-1", action: { toString() { throw new Error("toString ran"); } }, idempotencyKey: "key-hostile", payload: model() }],
+    ["inherited actorUid", Object.assign(Object.create({ actorUid: "inherited" }), { action: "importEquipmentModel", idempotencyKey: "key-hostile", payload: model() })],
+    ["unknown own field", { actorUid: "actor-1", action: "importEquipmentModel", idempotencyKey: "key-hostile", payload: model(), extra: 1 }],
+    ["own symbol", Object.assign({ actorUid: "actor-1", action: "importEquipmentModel", idempotencyKey: "key-hostile", payload: model() }, { [Symbol("s")]: 1 })],
+    ["array envelope", []],
+    ["null envelope", null],
+  ];
+  for (const [label, hostile] of hostiles) {
+    const db = fakeDb();
+    const { deps } = makeDeps(db);
+    const mark = auditMark(db);
+    let thrown = null;
+    // TOTAL: the call rejects with a governed error -- never with the hostile object's own exception.
+    await assert.rejects(() => C.runEquipmentCompatibilityCommand(hostile, deps), (e) => { thrown = e; return true; }, label);
+    assert.ok(thrown instanceof E.InvalidInputError, `${label}: governed error, got ${thrown && thrown.message}`);
+    // The governed sanitized denial event was still written.
+    const events = auditsSince(db, mark);
+    assert.deepEqual(events.map((a) => [a.action, a.outcome]), [[C.TERMINAL_AUDIT_ACTION, "denied"]], label);
+    assert.match(events[0].summary, /denied: invalid_input$/, label);
+    assert.equal(events[0].actorUid.length > 0, true, label);
+    // Nothing governed was created.
+    assert.equal(db.__raw(EQUIPMENT_COMPATIBILITY_OPERATIONS_COLLECTION, "key-hostile"), undefined, label);
+    assert.equal(db.__raw(EQUIPMENT_MODELS_COLLECTION, MODEL_ID), undefined, label);
+  }
+});
+await ok("a hostile envelope field is read at most once", async () => {
+  let reads = 0;
+  const counting = { action: "importEquipmentModel", idempotencyKey: "key-countread", payload: model() };
+  Object.defineProperty(counting, "actorUid", { get() { reads += 1; return "actor-1"; }, enumerable: true, configurable: true });
+  const db = fakeDb();
+  const { deps } = makeDeps(db);
+  await assert.rejects(() => C.runEquipmentCompatibilityCommand(counting, deps), E.InvalidInputError, "accessors are refused outright");
+  assert.equal(reads, 0, "an accessor must never be invoked, not even once");
 });
 await ok("expectedVersion is REFUSED for non-versioned alias and source actions", async () => {
   const db = fakeDb();

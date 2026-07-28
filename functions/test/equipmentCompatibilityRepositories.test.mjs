@@ -47,8 +47,17 @@ function fakeDb() {
     if (d.includes("/")) throw new Error(`doc id crosses a path segment: ${d}`);
     return { __c: c, __d: d, async get() { return snapOf(c, d); } };
   };
+  const runQuery = (c, field, value) => ({
+    docs: [...committed.entries()]
+      .filter(([k, v]) => k.startsWith(`${c}/`) && v && v[field] === value)
+      .map(([k, v]) => ({ id: k.slice(c.length + 1), data: () => v })),
+  });
+  const query = (c, field, value) => ({
+    __query: true, __c: c, __field: field, __value: value,
+    async get() { return runQuery(c, field, value); },
+  });
   const db = {
-    collection: (c) => ({ doc: (d) => docRef(c, d) }),
+    collection: (c) => ({ doc: (d) => docRef(c, d), where: (f, op, v) => { if (op !== "==") throw new Error(`unsupported op ${op}`); return query(c, f, v); } }),
     __committed: committed,
     __seed: (c, d, data) => committed.set(key(c, d), data),
     __raw: (c, d) => committed.get(key(c, d)),
@@ -58,7 +67,7 @@ function fakeDb() {
       const txn = {
         async get(ref) {
           if (queued.length > 0) throw new ReadAfterWriteError("Firestore transactions require all reads before any write");
-          return snapOf(ref.__c, ref.__d);
+          return ref.__query ? runQuery(ref.__c, ref.__field, ref.__value) : snapOf(ref.__c, ref.__d);
         },
         create(ref, data) { queued.push({ op: "create", c: ref.__c, d: ref.__d, data }); },
         set(ref, data) { queued.push({ op: "set", c: ref.__c, d: ref.__d, data }); },
@@ -296,8 +305,10 @@ await ok("an unresolved serial scheme makes a SERIAL_RANGE record malformed, not
 await ok("evidence is create-only: no update method exists and a re-create fails at commit", async () => {
   const db = fakeDb();
   const repo = C.buildFirestoreCompatibilitySourceRepository(db);
-  assert.deepEqual(Object.keys(repo).sort(), ["getById", "stageCreate"]);
+  // Reads only: getById plus the ONE bounded evidence query. No update, no delete.
+  assert.deepEqual(Object.keys(repo).sort(), ["getById", "listByCompatibilityId", "stageCreate"]);
   assert.equal(repo.stageUpdate, undefined, "an update surface must not exist for immutable evidence");
+  assert.equal(repo.delete, undefined);
   const { writes } = await db.runTransaction(async (txn) => { repo.stageCreate(txn, { source, ...meta }); });
   assert.equal(writes[0].op, "create");
   await db.runTransaction(async (txn) => {
@@ -309,6 +320,35 @@ await ok("evidence is create-only: no update method exists and a re-create fails
   await db.runTransaction(async (txn) => {
     assert.equal((await repo.getById(txn, source.sourceId)).source.observedClaim, "SUPPORTS", "evidence unchanged");
   });
+});
+await ok("listByCompatibilityId returns the bounded, validated evidence set", async () => {
+  const db = fakeDb();
+  const repo = C.buildFirestoreCompatibilitySourceRepository(db);
+  assert.deepEqual(Object.keys(repo).sort(), ["getById", "listByCompatibilityId", "stageCreate"]);
+  const otherCompat = D2.validateCompatibility({ ...compatInput, partId: "TST-2002" }).value;
+  const s1 = source;
+  const s2 = D2.validateCompatibilitySource({ compatibilityId: compat.compatibilityId, authorityType: "RESELLER", sourceReference: "Bulletin 44", sourceVersion: null, observedClaim: "CONTRADICTS", contentFingerprint: "b".repeat(64), capturedAt: "2026-07-27T07:06:24Z", capturedBy: "admin-uid-1", notes: null }).value;
+  const foreign = D2.validateCompatibilitySource({ compatibilityId: otherCompat.compatibilityId, authorityType: "MANUFACTURER", sourceReference: "Other", sourceVersion: null, observedClaim: "SUPPORTS", contentFingerprint: "c".repeat(64), capturedAt: "2026-07-27T07:06:24Z", capturedBy: "admin-uid-1", notes: null }).value;
+  await db.runTransaction(async (txn) => {
+    for (const src of [s1, s2, foreign]) repo.stageCreate(txn, { source: src, ...meta });
+  });
+  await db.runTransaction(async (txn) => {
+    const found = await repo.listByCompatibilityId(txn, compat.compatibilityId);
+    assert.deepEqual(found.map((f) => f.source.sourceId).sort(), [s1.sourceId, s2.sourceId].sort(), "only this relationship's evidence");
+    for (const f of found) assert.equal(f.source.compatibilityId, compat.compatibilityId);
+    assert.deepEqual(await repo.listByCompatibilityId(txn, "cmp_" + "9".repeat(64)), [], "an unknown relationship has no evidence");
+  });
+  // Works outside a transaction too.
+  assert.equal((await repo.listByCompatibilityId(null, compat.compatibilityId)).length, 2);
+});
+await ok("the evidence query fails closed on a malformed stored record or a noncanonical id", async () => {
+  const db = fakeDb();
+  const repo = C.buildFirestoreCompatibilitySourceRepository(db);
+  await db.runTransaction(async (txn) => { repo.stageCreate(txn, { source, ...meta }); });
+  await assert.rejects(() => db.runTransaction((txn) => repo.listByCompatibilityId(txn, "not-canonical")), MalformedStoredRecordError);
+  // A stored record that no longer validates must not be silently dropped from the set.
+  db.__seed(EQUIPMENT_COMPATIBILITY_SOURCES_COLLECTION, source.sourceId, { ...C.sourceToFirestore({ source, ...meta }), observedClaim: "MAYBE" });
+  await assert.rejects(() => db.runTransaction((txn) => repo.listByCompatibilityId(txn, compat.compatibilityId)), MalformedStoredRecordError);
 });
 await ok("an edited claim is a D2 collision; an edited identity field is malformed", async () => {
   const db = fakeDb();

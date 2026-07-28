@@ -18,6 +18,7 @@
 import type { DocumentReference, Firestore, Transaction } from "firebase-admin/firestore";
 import { Timestamp } from "firebase-admin/firestore";
 import { buildCommandFingerprint } from "./commandFingerprint";
+import { analyzeCompatibilityEvidence } from "./domain/compatibility";
 import {
   AlreadyExistsError, IdempotencyConflictError, InvalidInputError, NotFoundError,
   ReferentialIntegrityError, UnauthorizedActorError, VersionConflictError,
@@ -189,52 +190,120 @@ export type CommandOutcome =
   | { status: "denied"; targetId: string; reason: string; replayed: boolean };
 
 // ---------------------------------------------------------------------------
+// Command envelope snapshot -- the FIRST thing that touches caller input
+// ---------------------------------------------------------------------------
+// The envelope is read EXACTLY ONCE into a detached, prototype-free object, and every later step
+// (including the denial-audit path) uses only that snapshot. Reading the caller's object a second time
+// while building its own denial audit is what let a throwing getter escape the governed denial path
+// entirely; a hostile input must produce a sanitized denied audit, not an exception from the handler.
+const ENVELOPE_FIELDS: ReadonlySet<string> = new Set(["actorUid", "action", "idempotencyKey", "payload", "expectedVersion"]);
+
+interface CommandEnvelope {
+  actorUid: unknown;
+  action: unknown;
+  idempotencyKey: unknown;
+  payload: unknown;
+  expectedVersion: unknown;
+}
+
+// TOTAL: a hostile Proxy trap or getter that throws is a MALFORMED ENVELOPE, not an internal fault and
+// not the caller's exception to propagate. Its message never escapes -- it could carry attacker-chosen
+// text into a caller's logs -- so every failure surfaces as the same governed InvalidInputError.
+function snapshotCommandEnvelope(input: unknown): CommandEnvelope {
+  try {
+    return readCommandEnvelope(input);
+  } catch (error) {
+    if (error instanceof InvalidInputError) throw error;
+    throw new InvalidInputError("command input could not be read safely");
+  }
+}
+
+function readCommandEnvelope(input: unknown): CommandEnvelope {
+  if (input === null || typeof input !== "object" || Array.isArray(input)) {
+    throw new InvalidInputError("command input must be an object");
+  }
+  // getPrototypeOf / getOwnPropertyNames / getOwnPropertySymbols can all be trapped by a Proxy; the
+  // caller of this function keeps it inside a try, so a throwing trap becomes a governed denial.
+  const proto = Object.getPrototypeOf(input);
+  if (proto !== Object.prototype && proto !== null) throw new InvalidInputError("command input must be a plain object");
+  if (Object.getOwnPropertySymbols(input).length > 0) throw new InvalidInputError("command input carries own symbol keys");
+  for (const key of Object.getOwnPropertyNames(input)) {
+    if (!ENVELOPE_FIELDS.has(key)) throw new InvalidInputError(`unexpected command field ${key}`);
+    const descriptor = Object.getOwnPropertyDescriptor(input, key)!;
+    // Accessors are refused, never invoked: a getter could return one value to validation and another
+    // to execution, and a throwing one must not run at all.
+    if (typeof descriptor.get === "function" || typeof descriptor.set === "function") {
+      throw new InvalidInputError(`command field ${key} must be a plain data property`);
+    }
+  }
+  for (const key of ENVELOPE_FIELDS) {
+    if (key in input && !Object.prototype.hasOwnProperty.call(input, key)) {
+      throw new InvalidInputError(`command field ${key} is inherited, not an own property`);
+    }
+  }
+  const record = input as Record<string, unknown>;
+  return Object.freeze({
+    actorUid: record.actorUid,
+    action: record.action,
+    idempotencyKey: record.idempotencyKey,
+    payload: record.payload,
+    expectedVersion: record.expectedVersion,
+  });
+}
+
+// Bounded, control-free actor or "unknown". Never converts a non-string.
+const safeActorUid = (v: unknown): string =>
+  typeof v === "string" && v.length > 0 && v.length <= MAX_ACTOR_UID && !UNSAFE_TEXT.test(v) ? v : UNKNOWN;
+
+// ---------------------------------------------------------------------------
 // Pre-acceptance gate
 // ---------------------------------------------------------------------------
 // Everything that must be settled BEFORE an operation record may exist. A failure here is a terminal
 // `denied` audit with NO operation record, per §9.8.
-async function acceptForExecution(input: EquipmentCommandInput, deps: EquipmentCommandDeps): Promise<{
-  action: OperationAction; targetType: OperationTargetType; targetId: string; commandFingerprint: string; expectedVersion: number | null;
+async function acceptForExecution(envelope: CommandEnvelope, deps: EquipmentCommandDeps): Promise<{
+  action: OperationAction; targetType: OperationTargetType; targetId: string; commandFingerprint: string; expectedVersion: number | null; actorUid: string;
 }> {
-  if (input === null || typeof input !== "object") throw new InvalidInputError("command input must be an object");
-  const { actorUid, action, idempotencyKey, payload } = input;
+  const { actorUid, action, idempotencyKey, payload } = envelope;
   if (typeof actorUid !== "string" || actorUid.length === 0 || actorUid.length > 128) {
     throw new InvalidInputError("actorUid is required and is server-derived");
   }
-  if (!Object.prototype.hasOwnProperty.call(COMMAND_CAPABILITIES, action)) {
-    throw new InvalidInputError(`unknown command action ${String(action)}`);
+  if (typeof action !== "string" || !Object.prototype.hasOwnProperty.call(COMMAND_CAPABILITIES, action)) {
+    throw new InvalidInputError("unknown command action");
   }
-  if (!/^[A-Za-z0-9_-]{8,200}$/.test(idempotencyKey)) throw new InvalidInputError("idempotencyKey is malformed");
-  const expectedVersion = input.expectedVersion ?? null;
+  if (typeof idempotencyKey !== "string" || !/^[A-Za-z0-9_-]{8,200}$/.test(idempotencyKey)) {
+    throw new InvalidInputError("idempotencyKey is malformed");
+  }
+  const expectedVersion = (envelope.expectedVersion ?? null) as number | null;
   if (expectedVersion !== null && (!Number.isSafeInteger(expectedVersion) || expectedVersion < 0)) {
     throw new InvalidInputError("expectedVersion must be a non-negative integer or null");
   }
   // Aliases and evidence carry NO version by governed contract, so an expectedVersion on them cannot be
   // enforced. Accepting it and silently ignoring it would give a caller a false concurrency guarantee,
   // so it is refused outright rather than dropped.
-  if (expectedVersion !== null && !VERSIONED_ACTIONS.has(action)) {
+  if (expectedVersion !== null && !VERSIONED_ACTIONS.has(action as string)) {
     throw new InvalidInputError(`action ${action} targets a non-versioned record; expectedVersion must be null`);
   }
 
   // Capability resolution BEFORE any read or write. A throwing resolver denies.
   let granted = false;
   try {
-    granted = await deps.resolvePermission({ actorUid, capabilityId: COMMAND_CAPABILITIES[action] });
+    granted = await deps.resolvePermission({ actorUid, capabilityId: COMMAND_CAPABILITIES[action as OperationAction] });
   } catch {
     granted = false;
   }
   if (granted !== true) {
-    throw new UnauthorizedActorError(`actor is not authorized for "${COMMAND_CAPABILITIES[action]}"`);
+    throw new UnauthorizedActorError(`actor is not authorized for "${COMMAND_CAPABILITIES[action as OperationAction]}"`);
   }
 
   // The fingerprint contract (C.1) also enforces payload validity and action/target/identity coherence,
   // so a malformed command cannot reach the operation ledger.
-  const targetType = ACTION_TARGET_TYPES[action];
-  const targetId = commandTargetId(action, payload);
+  const governedAction = action as OperationAction;
+  const targetType = ACTION_TARGET_TYPES[governedAction];
+  const targetId = commandTargetId(governedAction, payload);
   const commandFingerprint = buildCommandFingerprint({
-    action, targetType, targetId, payload, serialSchemes: deps.serialSchemes,
+    action: governedAction, targetType, targetId, payload, serialSchemes: deps.serialSchemes,
   });
-  return { action, targetType, targetId, commandFingerprint, expectedVersion };
+  return { action: governedAction, targetType, targetId, commandFingerprint, expectedVersion, actorUid };
 }
 
 // The identity the command is filed under, read from the payload's own governed identity field. The
@@ -261,19 +330,21 @@ export async function runEquipmentCompatibilityCommand(
   deps: EquipmentCommandDeps
 ): Promise<CommandOutcome> {
   const { db, now } = deps;
+  // The caller's object is touched ONCE, here. Everything after this -- including the denial audit --
+  // reads only the detached snapshot, so a hostile getter or Proxy trap cannot fire twice or escape
+  // from the handler that is supposed to record its denial.
+  let envelope: CommandEnvelope | null = null;
   let accepted;
   try {
-    accepted = await acceptForExecution(input, deps);
+    envelope = snapshotCommandEnvelope(input);
+    accepted = await acceptForExecution(envelope, deps);
   } catch (error) {
-    // Pre-acceptance denial: terminal audit only, NO operation record. NOTHING attacker-controlled
-    // reaches the record -- the action is echoed only if it is one of ours, the reason is a stable code,
-    // and an unbounded or control-bearing actorUid degrades to "unknown" rather than being persisted.
-    const safeAction = safeActionName((input as any)?.action);
+    // Pre-acceptance denial: terminal audit only, NO operation record. If the snapshot itself failed,
+    // there is nothing safe to report and every field degrades to "unknown" -- the input is never
+    // re-read to find out more.
+    const safeAction = envelope === null ? UNKNOWN : safeActionName(envelope.action);
     const targetType = safeAction === UNKNOWN ? UNKNOWN : ACTION_TARGET_TYPES[safeAction as OperationAction];
-    const rawActor = (input as any)?.actorUid;
-    const actorUid = typeof rawActor === "string" && rawActor.length > 0 && rawActor.length <= MAX_ACTOR_UID && !UNSAFE_TEXT.test(rawActor)
-      ? rawActor
-      : UNKNOWN;
+    const actorUid = envelope === null ? UNKNOWN : safeActorUid(envelope.actorUid);
     const at = now();
     await db.runTransaction(async (txn) => {
       stageEquipmentAuditEvent(txn, deps, {
@@ -284,8 +355,8 @@ export async function runEquipmentCompatibilityCommand(
     throw error;
   }
 
-  const { action, targetType, targetId, commandFingerprint, expectedVersion } = accepted;
-  const { actorUid, idempotencyKey } = input;
+  const { action, targetType, targetId, commandFingerprint, expectedVersion, actorUid } = accepted;
+  const idempotencyKey = envelope.idempotencyKey as string;
   const operations = buildFirestoreOperationRepository(db);
 
   // ---- TX1: durable initiation, or an idempotent replay decision ----
@@ -331,7 +402,7 @@ export async function runEquipmentCompatibilityCommand(
     let mutation;
     let denial: DenialReason | null = null;
     try {
-      mutation = await planMutation(txn, { action, targetId, payload: input.payload, expectedVersion, actorUid, now }, deps);
+      mutation = await planMutation(txn, { action, targetId, payload: envelope!.payload, expectedVersion, actorUid, now }, deps);
     } catch (error) {
       if (
         error instanceof VersionConflictError || error instanceof ReferentialIntegrityError ||
@@ -475,12 +546,28 @@ async function planMutation(
       const existing = await sources.getById(txn, cmd.targetId);
       if (existing !== null) throw new AlreadyExistsError(`source ${cmd.targetId} already exists and evidence is immutable`);
       const stored = { source: payload, ...meta(null) };
-      // CONFLICT SURFACING (design §8/§9): contradicting evidence forces the relationship to CONFLICT
-      // and emits its own append-only event. Supporting evidence NEVER auto-verifies -- a verification
-      // is its own governed command, so `SUPPORTS` changes no status here.
-      const contradicts = payload.observedClaim === "CONTRADICTS";
+      // CONFLICT SURFACING (design §8/§9), delegated to the GOVERNED D2 analyzer.
+      //
+      // Conflict is a property of the COMPLETE evidence set -- supporting AND contradicting -- not of
+      // the incoming record. Judging it from `observedClaim === "CONTRADICTS"` alone is wrong in both
+      // directions: the first and only CONTRADICTS is merely CONTRADICTED, not a conflict, and a
+      // SUPPORTS arriving after an existing CONTRADICTS IS one. The relationship's own VERIFIED status
+      // is not a CompatibilitySource and cannot stand in for supporting evidence.
+      //
+      // So the full evidence set is read in THIS transaction, the proposed record is included, and
+      // analyzeCompatibilityEvidence decides. The outcome is therefore independent of insertion order.
+      const existingEvidence = await sources.listByCompatibilityId(txn, String(payload.compatibilityId));
+      const evidenceSet = [...existingEvidence.map((e) => e.source), payload];
+      const analysis = analyzeCompatibilityEvidence(evidenceSet, { expectedCompatibilityId: String(payload.compatibilityId) });
+      // Fail closed: the repository already validated every stored record, so anything the analyzer
+      // still calls invalid means the evidence set cannot be trusted to decide a conflict.
+      if (analysis.invalid.length > 0) {
+        throw new ReferentialIntegrityError(`evidence set for ${String(payload.compatibilityId)} contains ${analysis.invalid.length} unusable record(s)`);
+      }
       const current = relationship.compatibility.verificationStatus;
-      if (!contradicts || current === "CONFLICT") {
+      // Already CONFLICT: the evidence is recorded, but there is no transition to repeat and no second
+      // conflict event to emit.
+      if (!analysis.hasConflict || current === "CONFLICT") {
         return { resultVersion: 1, stage: (t) => sources.stageCreate(t, stored) };
       }
       const conflicted = { ...relationship.compatibility, verificationStatus: "CONFLICT", version: relationship.compatibility.version + 1 };
@@ -492,7 +579,7 @@ async function planMutation(
           action: "equipmentCompatibilityConflict",
           targetType: "equipment_part_compatibility",
           targetId: relationship.compatibility.compatibilityId,
-          summary: appliedSummary("importCompatibilitySource", "contradicting evidence forced CONFLICT"),
+          summary: appliedSummary("importCompatibilitySource", "governed evidence analysis surfaced CONFLICT"),
         }],
       };
     }

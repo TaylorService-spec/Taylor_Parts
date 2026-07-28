@@ -19,6 +19,7 @@ import {
   metaToFirestore,
   readDoc,
   readMeta,
+  requireData,
   type StoredMeta,
 } from "./repository";
 
@@ -158,6 +159,13 @@ export interface CompatibilityRepository {
 // an update method is the enforcement, not a convention.
 export interface CompatibilitySourceRepository {
   getById(txn: Transaction | null, sourceId: string): Promise<StoredCompatibilitySource | null>;
+  // The ONE bounded query D4 needs: the governed evidence set for a single relationship. Conflict is
+  // defined by D2 over the COMPLETE evidence set (supporting AND contradicting), which point access
+  // alone cannot answer. A single-field equality query needs only Firestore's automatic single-field
+  // index — no compound index is introduced, and D5 still owns projections and their query shapes.
+  // Every returned document goes through the D2 validator, so malformed stored evidence fails closed
+  // rather than silently skewing a conflict decision.
+  listByCompatibilityId(txn: Transaction | null, compatibilityId: string): Promise<StoredCompatibilitySource[]>;
   stageCreate(txn: Transaction, stored: StoredCompatibilitySource): void;
 }
 
@@ -196,6 +204,21 @@ export function buildFirestoreCompatibilitySourceRepository(db: Firestore): Comp
     async getById(txn, sourceId) {
       const doc = await readDoc(db, txn, EQUIPMENT_COMPATIBILITY_SOURCES_COLLECTION, sourceId);
       return doc === null ? null : sourceFromFirestore(doc.id, doc.data);
+    },
+    async listByCompatibilityId(txn, compatibilityId) {
+      if (!isCanonicalCompatibilityId(compatibilityId)) {
+        throw new MalformedStoredRecordError(`cannot list evidence for noncanonical compatibilityId ${String(compatibilityId)}`);
+      }
+      const query = db.collection(EQUIPMENT_COMPATIBILITY_SOURCES_COLLECTION).where("compatibilityId", "==", compatibilityId);
+      const snap = txn ? await txn.get(query) : await query.get();
+      return snap.docs.map((d: any) => {
+        const stored = sourceFromFirestore(d.id, requireData(d.id, d.data()));
+        // Defence in depth: a document returned by the query must actually belong to this relationship.
+        if (stored.source.compatibilityId !== compatibilityId) {
+          throw new MalformedStoredRecordError(`evidence ${d.id} does not belong to ${compatibilityId}`);
+        }
+        return stored;
+      });
     },
     // create() only — a second write to the same sourceId FAILS rather than overwriting evidence.
     stageCreate(txn, stored) {
