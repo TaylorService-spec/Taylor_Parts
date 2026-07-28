@@ -14,6 +14,7 @@
     "test:runner": "node test/rulesRegressionRunner.test.mjs",
     "test:access": "npm run build && node test/permissionCatalog.test.mjs && node test/resolveEffectivePermission.test.mjs && node test/governedBusinessRoles.test.mjs && node test/shadowParityHarness.test.mjs && node test/compactClaims.test.mjs && node test/compactClaimsMirrorIntegrity.test.mjs",
     "test:audit": "npm run build && node test/auditEventWriter.test.mjs",
+    "test:equipmentCompatibilityParity": "npm run build && node test/equipmentCompatibilityDomainParity.test.mjs",
     "test:adminCredential": "npm run build && node test/adminCredentialCommands.test.mjs",
     "test:adminCredentialLinkValidity": "node test/adminCredentialResetLinkValidity.test.mjs",
     "test:authPr4Migration": "node test/authPr4RecoveryEmailMigration.test.mjs",
