@@ -49,6 +49,11 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history: the gate tests verify repository identity + governed-file blob
+          # hashes at historical commits (e.g. reviewedHead ancestry), which a shallow
+          # (depth-1) clone cannot resolve.
+          fetch-depth: 0
 
       - name: Set up Node
         uses: actions/setup-node@v4
