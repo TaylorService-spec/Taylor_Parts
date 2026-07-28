@@ -98,10 +98,11 @@ function writeAnchorFor(progOut, key, genesis, expected) {
 function writeMarker(progOut, tok = crypto.randomBytes(16).toString("hex")) {
   fs.writeFileSync(gate.initMarkerPath(progOut), JSON.stringify({ version: gate.INIT_MARKER_VERSION, token: tok, at: new Date().toISOString() }));
 }
-// A VALID canonical reconciliation mutex (simulating a crash-left one).
-function writeReconcileMutex(progOut, at = new Date().toISOString(), tok = crypto.randomBytes(16).toString("hex")) {
-  fs.writeFileSync(gate.reconcilePath(progOut), JSON.stringify({ version: gate.RECONCILE_MUTEX_VERSION, token: tok, at }));
+// A VALID canonical reconciliation mutex (simulating a crash-left one) at a given fence generation.
+function writeReconcileMutex(progOut, { at = new Date().toISOString(), tok = crypto.randomBytes(16).toString("hex"), generation = 0 } = {}) {
+  fs.writeFileSync(gate.reconcilePath(progOut), JSON.stringify({ version: gate.RECONCILE_MUTEX_VERSION, token: tok, generation, at }));
 }
+const OWNER_STOPPED = "prior-cleanup-stopped";
 const RDEPS = (g) => ({ repoRoot: g.root, personaOrder: ORDER });
 const CONFIRM = init.RECONCILE_CONFIRM;
 
@@ -550,86 +551,166 @@ ok("RECONCILE TOCTOU: an unlink failure aborts mid-cleanup; mutex retained (fail
   fs.rmSync(s.dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
 });
 
-ok("RECONCILE TOCTOU: a foreign reconciliation mutex at finalization is NOT removed (owner-bound)", () => {
+ok("RECONCILE TOCTOU: a foreign-token reconciliation mutex is detected at the ownership recheck -> nothing deleted, mutex left", () => {
   const g = buildGrantedRepo(); const s = setup(g); writeMarker(s.progOut);
   const rep = init.reconcileInspect(s.rargs(), RDEPS(g));
-  // fs whose reconcile-mutex read at finalization returns a FOREIGN token (simulated takeover),
-  // while all other reads/writes are real. Deletions still occur; finalization must refuse.
+  // fs whose reconcile-mutex reads return a FOREIGN token (simulated takeover) while all
+  // other reads/writes are real. The per-step ownership recheck catches it before deleting.
   const reconFile = gate.reconcilePath(s.progOut);
-  const dfs = { ...fs, readFileSync: (p, ...r) => (typeof p === "string" && p === reconFile ? JSON.stringify({ version: gate.RECONCILE_MUTEX_VERSION, token: "ff".repeat(16), at: new Date().toISOString() }) : fs.readFileSync(p, ...r)) };
-  throws(() => init.reconcileCleanup(s.rargs({ fingerprint: rep.fingerprint, action: "clean-reset", confirmReconciliation: CONFIRM }), { ...RDEPS(g), fs: dfs }), /owned by another attempt at finalization/);
+  const dfs = { ...fs, readFileSync: (p, ...r) => (typeof p === "string" && p === reconFile ? JSON.stringify({ version: gate.RECONCILE_MUTEX_VERSION, token: "ff".repeat(16), generation: 0, at: new Date().toISOString() }) : fs.readFileSync(p, ...r)) };
+  throws(() => init.reconcileCleanup(s.rargs({ fingerprint: rep.fingerprint, action: "clean-reset", confirmReconciliation: CONFIRM }), { ...RDEPS(g), fs: dfs }), /no longer owns the reconciliation mutex/);
+  assert.ok(fs.existsSync(gate.initMarkerPath(s.progOut)), "nothing deleted (fenced at the ownership recheck)");
   assert.ok(fs.existsSync(reconFile), "foreign-owned mutex left in place");
   fs.rmSync(s.dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
 });
 
-ok("RECOVER: a crash-left reconciliation mutex is cleared by the governed recover mode; residue preserved", () => {
+ok("ATOMIC PUBLICATION: exclusive create writes complete content in one step and fails closed (EEXIST) on conflict", () => {
+  const dir = tmp();
+  const p = path.join(dir, "art");
+  init.atomicExclusiveCreate(p, "COMPLETE-CANONICAL-CONTENT", {});
+  assert.equal(fs.readFileSync(p, "utf8"), "COMPLETE-CANONICAL-CONTENT"); // never a truncated in-progress view
+  // No leftover temp files (the in-progress publication is never visible under the final name).
+  assert.deepEqual(fs.readdirSync(dir).filter((f) => f !== "art"), []);
+  let code = null; try { init.atomicExclusiveCreate(p, "X", {}); } catch (e) { code = e.code; }
+  assert.equal(code, "EEXIST", "second exclusive create fails closed");
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+ok("RECOVER: Owner-stopped attestation clears a crash-left mutex, advances the fence, preserves residue", () => {
   const g = buildGrantedRepo(); const s = setup(g);
   const gen = writeGenesisState(s.progOut, s.key, s.expected); writeAnchorFor(s.progOut, s.key, gen, s.expected);
   writeMarker(s.progOut);          // sound genesis + residue marker
-  writeReconcileMutex(s.progOut);  // crash-left mutex (valid, fresh)
+  writeReconcileMutex(s.progOut);  // crash-left mutex (generation 0)
   throws(() => gate.assertNoReconcileMutex(s.progOut), /reconciliation mutex is present/i); // gate blocked
   const rep = init.reconcileInspect(s.rargs(), RDEPS(g));
   assert.equal(rep.reconcileMutexPresent, true);
   assert.equal(rep.reconcileMutexValid, true);
-  // A fresh VALID mutex may be a live cleanup -> recovery refuses.
-  throws(() => init.reconcileRecover(s.rargs({ fingerprint: rep.fingerprint, confirmReconciliation: init.RECOVER_CONFIRM }), RDEPS(g)), /too recent to recover/);
-  // Once the staleness threshold is met, recovery clears ONLY the mutex.
-  const res = init.reconcileRecover(s.rargs({ fingerprint: rep.fingerprint, confirmReconciliation: init.RECOVER_CONFIRM }), { ...RDEPS(g), recoveryMinAgeSeconds: 0 });
+  const res = init.reconcileRecover(s.rargs({ fingerprint: rep.fingerprint, confirmReconciliation: init.RECOVER_CONFIRM, confirmOwnerStopped: OWNER_STOPPED }), RDEPS(g));
   assert.equal(res.mutexCleared, true);
-  assert.equal(res.mutexWasValid, true);
+  assert.equal(res.fencedFromGeneration, 0);
+  assert.equal(res.fencedToGeneration, 1);
   assert.equal(res.residualRecommendation, "marker-only");
   assert.ok(!fs.existsSync(gate.reconcilePath(s.progOut)), "mutex cleared");
+  assert.equal(init.readFenceGeneration(s.progOut), 1, "fence advanced (persistent)");
   assert.ok(fs.existsSync(s.progOut) && fs.existsSync(gate.anchorPath(s.progOut)) && fs.existsSync(gate.initMarkerPath(s.progOut)), "residue preserved");
   gate.assertNoReconcileMutex(s.progOut); // no longer blocked by the mutex
   fs.rmSync(s.dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
 });
 
-ok("RECOVER: a MALFORMED reconciliation mutex is recoverable immediately (no staleness gate)", () => {
-  const g = buildGrantedRepo(); const s = setup(g);
-  writeMarker(s.progOut);
-  fs.writeFileSync(gate.reconcilePath(s.progOut), JSON.stringify({ version: 9, junk: true })); // malformed
+ok("RECOVER: ELAPSED AGE ALONE never authorizes -- without the Owner-stopped attestation, even an ancient mutex refuses", () => {
+  const g = buildGrantedRepo(); const s = setup(g); writeMarker(s.progOut);
+  // A mutex with a very old timestamp -- age is NOT proof the owner is dead.
+  writeReconcileMutex(s.progOut, { at: new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString() });
+  const rep = init.reconcileInspect(s.rargs(), RDEPS(g));
+  throws(() => init.reconcileRecover(s.rargs({ fingerprint: rep.fingerprint, confirmReconciliation: init.RECOVER_CONFIRM }), RDEPS(g)), /--confirmOwnerStopped prior-cleanup-stopped/);
+  assert.ok(fs.existsSync(gate.reconcilePath(s.progOut)), "mutex retained without attestation");
+  assert.equal(init.readFenceGeneration(s.progOut), 0, "fence NOT advanced on refusal");
+  fs.rmSync(s.dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
+});
+
+ok("RECOVER: a MALFORMED mutex is NOT auto-recovered -- it still requires the Owner-stopped attestation", () => {
+  const g = buildGrantedRepo(); const s = setup(g); writeMarker(s.progOut);
+  fs.writeFileSync(gate.reconcilePath(s.progOut), JSON.stringify({ version: 9, junk: true })); // malformed / foreign
   const rep = init.reconcileInspect(s.rargs(), RDEPS(g));
   assert.equal(rep.reconcileMutexValid, false);
-  const res = init.reconcileRecover(s.rargs({ fingerprint: rep.fingerprint, confirmReconciliation: init.RECOVER_CONFIRM }), RDEPS(g)); // default min-age, but malformed -> no age gate
+  // Malformed is NOT proof of an inactive owner: without attestation, refuse.
+  throws(() => init.reconcileRecover(s.rargs({ fingerprint: rep.fingerprint, confirmReconciliation: init.RECOVER_CONFIRM }), RDEPS(g)), /--confirmOwnerStopped/);
+  assert.ok(fs.existsSync(gate.reconcilePath(s.progOut)), "malformed mutex retained without attestation");
+  // With the governed owner-death attestation, recovery proceeds (and still fences).
+  const res = init.reconcileRecover(s.rargs({ fingerprint: rep.fingerprint, confirmReconciliation: init.RECOVER_CONFIRM, confirmOwnerStopped: OWNER_STOPPED }), RDEPS(g));
   assert.equal(res.mutexWasValid, false);
-  assert.ok(!fs.existsSync(gate.reconcilePath(s.progOut)), "malformed mutex cleared");
+  assert.equal(res.fencedToGeneration, 1);
+  assert.ok(!fs.existsSync(gate.reconcilePath(s.progOut)), "malformed mutex cleared under attestation");
   fs.rmSync(s.dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
 });
 
-ok("RECOVER: requires the recover confirmation token, a real fingerprint, and a present mutex", () => {
+ok("RECOVER: requires recover confirmation, Owner-stopped attestation, a real fingerprint, and a present mutex", () => {
   const g = buildGrantedRepo(); const s = setup(g); writeMarker(s.progOut); writeReconcileMutex(s.progOut);
   const rep = init.reconcileInspect(s.rargs(), RDEPS(g));
-  throws(() => init.reconcileRecover(s.rargs({ fingerprint: rep.fingerprint, confirmReconciliation: "reconcile-genesis" }), { ...RDEPS(g), recoveryMinAgeSeconds: 0 }), /--confirmReconciliation recover-mutex/);
-  throws(() => init.reconcileRecover(s.rargs({ confirmReconciliation: init.RECOVER_CONFIRM }), { ...RDEPS(g), recoveryMinAgeSeconds: 0 }), /--fingerprint/);
+  throws(() => init.reconcileRecover(s.rargs({ fingerprint: rep.fingerprint, confirmReconciliation: "reconcile-genesis", confirmOwnerStopped: OWNER_STOPPED }), RDEPS(g)), /--confirmReconciliation recover-mutex/);
+  throws(() => init.reconcileRecover(s.rargs({ confirmReconciliation: init.RECOVER_CONFIRM, confirmOwnerStopped: OWNER_STOPPED }), RDEPS(g)), /--fingerprint/);
   assert.ok(fs.existsSync(gate.reconcilePath(s.progOut)), "mutex untouched on invalid recover args");
   fs.unlinkSync(gate.reconcilePath(s.progOut));
-  throws(() => init.reconcileRecover(s.rargs({ fingerprint: rep.fingerprint, confirmReconciliation: init.RECOVER_CONFIRM }), { ...RDEPS(g), recoveryMinAgeSeconds: 0 }), /nothing to recover/);
+  throws(() => init.reconcileRecover(s.rargs({ fingerprint: rep.fingerprint, confirmReconciliation: init.RECOVER_CONFIRM, confirmOwnerStopped: OWNER_STOPPED }), RDEPS(g)), /nothing to recover/);
   fs.rmSync(s.dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
 });
 
-ok("RECOVER: fingerprint mismatch (artifacts changed since inspection) refuses; mutex retained", () => {
+ok("RECOVER: fingerprint mismatch refuses BEFORE advancing the fence; mutex retained", () => {
   const g = buildGrantedRepo(); const s = setup(g); writeMarker(s.progOut); writeReconcileMutex(s.progOut);
   const rep = init.reconcileInspect(s.rargs(), RDEPS(g));
   writeMarker(s.progOut, crypto.randomBytes(16).toString("hex")); // change a governed artifact after inspection
-  throws(() => init.reconcileRecover(s.rargs({ fingerprint: rep.fingerprint, confirmReconciliation: init.RECOVER_CONFIRM }), { ...RDEPS(g), recoveryMinAgeSeconds: 0 }), /fingerprint mismatch/);
+  throws(() => init.reconcileRecover(s.rargs({ fingerprint: rep.fingerprint, confirmReconciliation: init.RECOVER_CONFIRM, confirmOwnerStopped: OWNER_STOPPED }), RDEPS(g)), /fingerprint mismatch/);
   assert.ok(fs.existsSync(gate.reconcilePath(s.progOut)), "mutex retained on mismatch");
+  assert.equal(init.readFenceGeneration(s.progOut), 0, "fence NOT advanced on refusal");
   fs.rmSync(s.dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
 });
 
-ok("RECOVER staleness by age: a fresh valid mutex refuses under default; an aged mutex recovers", () => {
-  const g = buildGrantedRepo(); const s = setup(g); writeMarker(s.progOut);
-  const at = new Date().toISOString(); writeReconcileMutex(s.progOut, at);
+ok("RECOVER: two recovery attempts SERIALIZE -- only the one that clears the mutex obtains authority", () => {
+  const g = buildGrantedRepo(); const s = setup(g); writeMarker(s.progOut); writeReconcileMutex(s.progOut);
   const rep = init.reconcileInspect(s.rargs(), RDEPS(g));
-  // Default min-age with a fresh mutex -> refuse.
-  throws(() => init.reconcileRecover(s.rargs({ fingerprint: rep.fingerprint, confirmReconciliation: init.RECOVER_CONFIRM }), RDEPS(g)), /too recent to recover/);
-  // Advance the clock past the default threshold (deps.now) -> recover.
-  const future = () => new Date(Date.parse(at) + (init.RECOVERY_MIN_AGE_SECONDS + 60) * 1000);
-  const res = init.reconcileRecover(s.rargs({ fingerprint: rep.fingerprint, confirmReconciliation: init.RECOVER_CONFIRM }), { ...RDEPS(g), now: future });
-  assert.equal(res.mutexCleared, true);
+  const first = init.reconcileRecover(s.rargs({ fingerprint: rep.fingerprint, confirmReconciliation: init.RECOVER_CONFIRM, confirmOwnerStopped: OWNER_STOPPED }), RDEPS(g));
+  assert.equal(first.mutexCleared, true);
+  // The second attempt finds the mutex already gone -> it did not obtain authority.
+  throws(() => init.reconcileRecover(s.rargs({ fingerprint: rep.fingerprint, confirmReconciliation: init.RECOVER_CONFIRM, confirmOwnerStopped: OWNER_STOPPED }), RDEPS(g)), /nothing to recover/);
   fs.rmSync(s.dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
 });
 
-ok("RECOVER end-to-end: a partial cleanup strands a mutex; recover clears it; a normal cleanup then completes (marker-last self-heal)", () => {
+// ---- FENCING: a superseded (but still-live) cleanup cannot resume destructive work ----
+
+function runFencedCleanup(g, s, { residue, hookRole, atFinalize } = {}) {
+  // Build residue, run inspect, then run a cleanup whose test seam advances the fence
+  // mid-flight (simulating a concurrent recovery). The cleanup must abort (fenced).
+  const rep = init.reconcileInspect(s.rargs(), RDEPS(g));
+  const advanceFence = () => init.writeFenceGeneration(s.progOut, init.readFenceGeneration(s.progOut) + 1);
+  const deps = { ...RDEPS(g) };
+  if (hookRole) deps.beforeTargetRecheck = (role) => { if (role === hookRole) advanceFence(); };
+  if (atFinalize) deps.beforeFinalize = advanceFence;
+  const action = rep.recommendation;
+  throws(() => init.reconcileCleanup(s.rargs({ fingerprint: rep.fingerprint, action, confirmReconciliation: CONFIRM }), deps), /fenced by a newer reconciliation generation/);
+  return rep;
+}
+
+ok("FENCING: a live cleanup superseded BEFORE its first deletion deletes nothing (fenced)", () => {
+  const g = buildGrantedRepo(); const s = setup(g); writeMarker(s.progOut); // marker-only residue, clean-reset
+  const before = init.perRoleDigests(s.progOut, RDEPS(g));
+  runFencedCleanup(g, s, { hookRole: "marker" }); // fence advances right before the (only) deletion
+  assert.deepEqual(init.perRoleDigests(s.progOut, RDEPS(g)), before, "nothing deleted after being fenced");
+  assert.ok(fs.existsSync(gate.reconcilePath(s.progOut)), "mutex retained (fail-closed)");
+  throws(() => gate.assertNoReconcileMutex(s.progOut), /reconciliation mutex is present/i); // gate stays blocked
+  fs.rmSync(s.dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
+});
+
+ok("FENCING: a live cleanup superseded BETWEEN deletions stops immediately (no further deletion)", () => {
+  const g = buildGrantedRepo(); const s = setup(g);
+  fs.writeFileSync(s.progOut, '{"version":1,'); // partial state -> clean-reset order [state, marker]
+  writeMarker(s.progOut);
+  runFencedCleanup(g, s, { hookRole: "marker" }); // state deleted, fence advances before the marker deletion
+  assert.ok(!fs.existsSync(s.progOut), "first target (state) deleted");
+  assert.ok(fs.existsSync(gate.initMarkerPath(s.progOut)), "marker NOT deleted after being fenced");
+  assert.ok(fs.existsSync(gate.reconcilePath(s.progOut)), "mutex retained (fail-closed)");
+  fs.rmSync(s.dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
+});
+
+ok("FENCING: a live cleanup superseded at FINALIZATION does not remove the mutex (recovery owns supersession)", () => {
+  const g = buildGrantedRepo(); const s = setup(g); writeMarker(s.progOut); // marker-only residue
+  runFencedCleanup(g, s, { atFinalize: true }); // deletions happen, then fence advances before finalization
+  assert.ok(!fs.existsSync(gate.initMarkerPath(s.progOut)), "marker was deleted before the fence advanced");
+  assert.ok(fs.existsSync(gate.reconcilePath(s.progOut)), "mutex NOT removed by the superseded cleanup");
+  throws(() => gate.assertNoReconcileMutex(s.progOut), /reconciliation mutex is present/i); // gate stays blocked
+  fs.rmSync(s.dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
+});
+
+ok("FENCING: a malformed/anomalous fence blocks a cleanup (clock/anomaly -> fail closed, not proceed)", () => {
+  const g = buildGrantedRepo(); const s = setup(g); writeMarker(s.progOut);
+  const rep = init.reconcileInspect(s.rargs(), RDEPS(g));
+  // Corrupt the fence just before cleanup would revalidate it.
+  const deps = { ...RDEPS(g), beforeTargetRecheck: () => fs.writeFileSync(init.fencePath(s.progOut), "{ not json") };
+  throws(() => init.reconcileCleanup(s.rargs({ fingerprint: rep.fingerprint, action: "clean-reset", confirmReconciliation: CONFIRM }), deps), /Fence is malformed/);
+  assert.ok(fs.existsSync(gate.initMarkerPath(s.progOut)), "nothing deleted under a fence anomaly");
+  fs.rmSync(s.dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
+});
+
+ok("RECOVER end-to-end: partial cleanup strands a mutex; attested recovery fences + clears; normal cleanup then completes (marker-last self-heal)", () => {
   const g = buildGrantedRepo(); const s = setup(g);
   fs.writeFileSync(s.progOut, '{"version":1,'); // partial state -> clean-reset (state, then marker LAST)
   writeMarker(s.progOut);
@@ -639,13 +720,13 @@ ok("RECOVER end-to-end: a partial cleanup strands a mutex; recover clears it; a 
   throws(() => init.reconcileCleanup(s.rargs({ fingerprint: rep0.fingerprint, action: "clean-reset", confirmReconciliation: CONFIRM }), { ...RDEPS(g), fs: dfs }), /injected unlink failure/);
   assert.ok(!fs.existsSync(s.progOut) && fs.existsSync(markerPath) && fs.existsSync(gate.reconcilePath(s.progOut)), "partial: state gone; marker + mutex retained");
   throws(() => gate.assertNoReconcileMutex(s.progOut), /reconciliation mutex is present/i); // gate blocked
-  // Recover clears the mutex; the surviving marker keeps the residue reconcilable.
+  // Attested recovery advances the fence + clears the mutex; the surviving marker keeps the residue reconcilable.
   const insp = init.reconcileInspect(s.rargs(), RDEPS(g));
-  const rec = init.reconcileRecover(s.rargs({ fingerprint: insp.fingerprint, confirmReconciliation: init.RECOVER_CONFIRM }), { ...RDEPS(g), recoveryMinAgeSeconds: 0 });
+  const rec = init.reconcileRecover(s.rargs({ fingerprint: insp.fingerprint, confirmReconciliation: init.RECOVER_CONFIRM, confirmOwnerStopped: OWNER_STOPPED }), RDEPS(g));
   assert.equal(rec.mutexCleared, true);
-  assert.equal(rec.residualReconciliationNeeded, true);
   assert.equal(rec.residualRecommendation, "clean-reset");
-  // A normal re-run now completes.
+  assert.equal(init.readFenceGeneration(s.progOut), 1, "fence advanced by recovery");
+  // A normal re-run now completes (its mutex records generation 1; it is not fenced).
   const rep1 = init.reconcileInspect(s.rargs(), RDEPS(g));
   const res = init.reconcileCleanup(s.rargs({ fingerprint: rep1.fingerprint, action: "clean-reset", confirmReconciliation: CONFIRM }), RDEPS(g));
   assert.deepEqual(res.removedRoles, ["marker"]);

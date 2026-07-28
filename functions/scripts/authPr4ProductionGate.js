@@ -554,17 +554,20 @@ function assertNoInitMarker(stateFile, deps = {}) {
 // (crash-left / partial): the gate refuses ALL production steps while it is present, and a
 // second cleanup cannot start. It is NEVER auto-broken.
 const RECONCILE_MUTEX_VERSION = 1;
-const RECONCILE_MUTEX_FIELDS = Object.freeze(["version", "token", "at"]);
+const RECONCILE_MUTEX_FIELDS = Object.freeze(["version", "token", "generation", "at"]);
 function reconcilePath(stateFile) { return `${stateFile}.reconcile`; }
-// Canonical reconciliation-mutex validator (same token shape as the init marker: exactly
-// 32 lowercase hex). A mutex that fails this is malformed/foreign residue (never a live
-// governed cleanup, which always writes a canonical mutex) and is recoverable immediately.
+// Canonical reconciliation-mutex validator (32-hex token; carries the fencing generation
+// it operates under). A mutex failing this is malformed/foreign residue -- but a malformed
+// mutex is NOT proof of an inactive owner (it may be foreign, corrupt, or from an
+// incompatible version), so recovery still requires the governed owner-stopped attestation
+// and fences via the persistent generation rather than auto-clearing.
 function isValidReconcileMutex(m) {
   if (!m || typeof m !== "object" || Array.isArray(m)) return false;
   const keys = Object.keys(m).sort();
   const exp = [...RECONCILE_MUTEX_FIELDS].sort();
   if (keys.length !== exp.length || keys.some((k, i) => k !== exp[i])) return false;
-  return m.version === RECONCILE_MUTEX_VERSION && isUtcInstant(m.at) && typeof m.token === "string" && INIT_TOKEN_RE.test(m.token);
+  return m.version === RECONCILE_MUTEX_VERSION && isUtcInstant(m.at) && typeof m.token === "string" && INIT_TOKEN_RE.test(m.token) &&
+    Number.isInteger(m.generation) && m.generation >= 0 && m.generation <= 1e9;
 }
 function assertNoReconcileMutex(stateFile, deps = {}) {
   const _fs = deps.fs || fs;

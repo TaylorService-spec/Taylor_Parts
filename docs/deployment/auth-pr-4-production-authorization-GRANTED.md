@@ -164,21 +164,28 @@ The report's `recommendation` is one of:
   foreign/concurrent). **No automatic cleanup** — escalate to the Owner; delete nothing.
   A `clean-reset` **never** targets `lock`/`txn`.
 
-**Step 2 — cleanup (Owner-confirmed, fingerprint-bound, confined, race-safe).** It first
-publishes an **owner-token reconciliation mutex** (`<progression>.reconcile`, create-only),
-then re-inspects **under that mutex**. It requires the exact step-1 fingerprint (refuses if
-the set changed since inspection), `--action` equal to the inspected recommendation, and
-the confirmation token. It deletes **only** the genesis-creatable artifacts
-(`marker`/`state`/`anchor`), and **before each deletion re-verifies that file's current
-digest still equals the inspected digest** — a file replaced under it aborts without
-deleting that target. On any deletion-phase failure (digest change, unlink failure,
-partial cleanup) it **fails closed**: the reconciliation mutex is **retained** (the gate
-then refuses every production step, `assertNoReconcileMutex`), and the stranded mutex is
-resolved by the governed **step 3** recovery below — never by hand. The mutex is removed on
-the happy path only after fully-verified success and only while it still carries the owner
-token. A pre-existing mutex refuses a second, concurrent cleanup. (A validation-only refusal
-— wrong `--action`, stale fingerprint, `blocked` — releases the mutex so the operator can
-re-inspect and retry.) It refuses any `blocked` classification:
+**Step 2 — cleanup (Owner-confirmed, fingerprint-bound, confined, fenced).** It first reads
+the persistent **fencing generation** (`<progression>.fence`, a monotonic counter that
+survives cleanups), then **atomically publishes** an owner-token reconciliation mutex
+(`<progression>.reconcile`) recording that generation. Atomic publication means the mutex
+appears with its complete canonical content in one step (hard-link from a fully-written temp
+file) — a concurrent reader can **never** observe an empty/truncated in-progress mutex and
+mistake it for crash residue. It re-inspects **under the mutex**, requires the exact step-1
+fingerprint (refuses if the set changed), `--action` equal to the inspected recommendation,
+and the confirmation token. It deletes **only** the genesis-creatable artifacts
+(`marker`/`state`/`anchor`), and **before every deletion and before finalization it
+revalidates both that it still owns the mutex token AND that the fencing generation has not
+advanced** — plus re-verifies each file's current digest against the inspected digest. If a
+recovery has advanced the generation (see step 3), a still-live cleanup is **fenced**: it
+aborts without any further deletion. On any deletion-phase failure (fenced, digest change,
+unlink failure, partial cleanup) it **fails closed**: the reconciliation mutex is
+**retained** (the gate refuses every production step, `assertNoReconcileMutex`) and the
+stranded mutex is resolved only by the governed **step 3** recovery — never by hand. The
+mutex is removed on the happy path only after a final ownership+fence revalidation and only
+while it still carries the owner token. A pre-existing mutex refuses a second concurrent
+cleanup. (A validation-only refusal — wrong `--action`, stale fingerprint, `blocked` —
+releases the mutex so the operator can re-inspect and retry.) It refuses any `blocked`
+classification:
 
 ```bash
 node functions/scripts/authPr4InitProgression.js --mode reconcile-cleanup \
@@ -199,12 +206,26 @@ clean state.
 **Step 3 — recover a stranded reconciliation mutex (only if a cleanup crashed).** If a
 cleanup process was killed (or aborted on a partial cleanup / unlink failure), the
 reconciliation mutex is retained and the gate blocks — and every step-2 cleanup then
-refuses ("a reconciliation mutex is already present"). This is the **only** governed way
-to clear it. It requires a prior inspect (step 1) and its fingerprint, an explicit recovery
-confirmation, and — for a **valid** mutex — that the mutex has aged past the safety window
-(so a still-live cleanup can never be recovered; a **malformed** mutex is recoverable
-immediately). It clears **only** the mutex; all genesis residue is left intact for a
-subsequent normal step 1 + step 2:
+refuses ("a reconciliation mutex is already present"). This is the **only** governed way to
+clear it.
+
+Recovery does **not** infer that the prior cleanup is dead. **Elapsed time is not proof**
+(a paused process, machine suspension, debugger stop, or blocked filesystem can keep a
+cleanup live for arbitrarily long), and a **malformed mutex is not proof** either (it may be
+foreign, corrupt, or a version skew). Recovery therefore requires **both**:
+
+- an explicit governed attestation that the prior cleanup process/host has stopped —
+  `--confirmOwnerStopped prior-cleanup-stopped` — which is a **human/operator judgement**
+  the Owner is accountable for; **and**
+- **fencing**, not inference: recovery **advances the persistent fencing generation**
+  before clearing the mutex. Because a live cleanup revalidates the generation before every
+  deletion and before finalization (step 2), an advanced generation **supersedes** it — even
+  a still-live prior cleanup can no longer delete `marker`/`state`/`anchor` or remove the
+  mutex; it aborts fail-closed. Recovery then clears **only** the mutex (the mutex is the
+  recovery serialization point: exactly the recovery whose unlink succeeds obtains
+  authority; a concurrent one finds it already gone). All genesis residue is left intact for
+  a subsequent normal step 1 + step 2. It also requires the prior inspect fingerprint
+  (refuses if artifacts changed) and the `recover-mutex` confirmation:
 
 ```bash
 node functions/scripts/authPr4InitProgression.js --mode reconcile-recover \
@@ -212,12 +233,21 @@ node functions/scripts/authPr4InitProgression.js --mode reconcile-recover \
   --authorizedCommit <merged authorization head> \
   --executionModeConfirmation <token> --executor rudy-digiorgio \
   --stateKeyFile /secure/state.key --progressionOut /secure/progression.json \
-  --fingerprint <fingerprint from step 1> --confirmReconciliation recover-mutex
+  --fingerprint <fingerprint from step 1> \
+  --confirmReconciliation recover-mutex --confirmOwnerStopped prior-cleanup-stopped
 ```
 
+**Governed evidence for `--confirmOwnerStopped`:** before attesting, confirm out-of-band
+that the prior cleanup process is no longer running and its host/session is stopped (e.g.
+the terminal/session was terminated, the host was powered off, or process-manager evidence
+shows the PID is gone). The fencing generation is the technical safety net if that judgement
+is ever wrong; the attestation is the accountable human gate. Any unknown host, unverifiable
+owner, malformed publication, clock/fence anomaly, or concurrent change **blocks** — it is
+never read as owner death.
+
 The recover report's `residualRecommendation` tells you the next governed step (usually
-re-run step 1 + step 2). Record a sanitized reconciliation note (booleans/refs/fingerprint
-only) — no key, path, token, or identity value.
+re-run step 1 + step 2). Record a sanitized reconciliation note (booleans/refs/fingerprint/
+generation only) — no key, path, token, or identity value.
 
 ## 7. Confirmation (this PR)
 
