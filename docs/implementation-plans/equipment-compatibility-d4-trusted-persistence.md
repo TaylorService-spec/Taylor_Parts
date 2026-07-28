@@ -68,7 +68,7 @@ server-only) that **reuses the proven patterns** without the identity side effec
 | effective-permission resolution | `resolveEffectivePermission.ts` (pure, fail-closed) | same resolver; **no accessVersion mutation** |
 | durable idempotency | audit-doc-id existence as "alreadyApplied" | a **separate operation record** keyed by `idempotencyKey` (§2) |
 | expected-version handling | `runAccessMutationCommand` read-increment-in-txn | applied to the **compatibility record's own `version`** (D2), never `accessVersion` |
-| transaction boundaries | write + audit in one `db.runTransaction` | same atomic boundary (record + operation + audit) |
+| transaction boundaries | write + audit in one `db.runTransaction` | **two** atomic transactions: TX1 initiation, TX2 mutation + terminal (§3a) |
 | sanitized audit | `auditEventWriter.ts` | same writer (§2–§3) |
 | safe callable errors | `mapCommandError` → `HttpsError` | same typed-error → safe-`HttpsError` mapping |
 
@@ -78,53 +78,82 @@ changing **no** `accessVersion` and **no** Auth claim.
 
 ---
 
-## 2. Reused audit sink + a separate append-only operation record
+## 2. Reused audit sink + a separate operation STATE MACHINE
 
-- **Audit writer (reused unchanged):** `functions/src/access/auditEventWriter.ts` → collection
-  `auditEvents`. `stageAuditEvent` / `stageAuditEventWithId` stage a create onto the **same
-  transaction** as the business mutation (atomic); **no update/delete** by design (append-only). The
-  event schema is `{ at, actorUid, action, targetType, targetId, outcome: "applied" | "denied",
-  summary, scope?, approverUid?, … }`, with `action` enforced against the strict `AUDIT_ACTIONS`
-  registry and `summary` guarded by `SECRET_LIKE_PATTERN` + `MAX_SUMMARY_LENGTH = 500` and **no
-  free-form `details`/`notes` map**.
-- **The writer's `outcome` field supports only `applied` or `denied`** and therefore cannot itself
-  represent a durable *initiation* event; the writer also does not accept `idempotencyKey`,
-  `expectedVersion`, or `resultVersion` fields.
+- **Audit writer (reused unchanged; genuinely append-only):** `functions/src/access/auditEventWriter.ts`
+  → collection `auditEvents`. `stageAuditEvent` / `stageAuditEventWithId` stage a **create only**; **no
+  update/delete** exists by design. The event schema is `{ at, actorUid, action, targetType, targetId,
+  outcome: "applied" | "denied", summary, scope?, approverUid?, … }`, with `action` enforced against the
+  strict `AUDIT_ACTIONS` registry and `summary` guarded by `SECRET_LIKE_PATTERN` +
+  `MAX_SUMMARY_LENGTH = 500` and **no free-form `details`/`notes` map**. Every lifecycle event (§3) is a
+  distinct create; audit history is never mutated.
+- **The writer's `outcome` field supports only `applied` or `denied`** and cannot represent a durable
+  *initiation* event; the writer also does not accept `idempotencyKey`, `expectedVersion`, or
+  `resultVersion` fields.
 
-**Chosen governed approach for command/version state — approach (b): a separate operation record.**
-D4 adds a governed, **client-closed, append-only** operation ledger (proposed collection
-`equipment_compatibility_operations`) that holds command/version state — `idempotencyKey` (the doc id),
-`actorUid`, a bounded command fingerprint (action + target opaque id + tuple hash), `expectedVersion`,
-`resultVersion`, lifecycle `status` (`initiated` → `applied` | `denied`), and timestamps. This keeps
-the shared `auditEventWriter.ts` **schema unchanged** (no unsupported fields are claimed to exist on
-it) and stores idempotency + expected/result version durably in the operation record, while audit
-events carry only approved bounded facts. Raw evidence, serial lists, source contents, credentials, and
-unbounded notes remain **prohibited** from both the operation record and the audit events.
+**Chosen governed approach for command/version state — approach (b): a separate operation state
+machine (NOT called append-only).** D4 adds a governed, **client-closed operation state machine**
+(proposed collection `equipment_compatibility_operations`), keyed by `idempotencyKey` (the doc id), with
+**strictly validated transitions**:
+
+- `absent → initiated`
+- `initiated → applied`
+- `initiated → denied`
+
+Each record binds the `idempotencyKey`, `actorUid`, a bounded command fingerprint (action + target
+opaque id + tuple hash), the `target` (opaque id), `expectedVersion`, `resultVersion` (set on the
+terminal transition), and bounded timestamps. **Prohibited** by the command orchestrator's validated
+transition guard: deletion, arbitrary updates, terminal-state rewrites, fingerprint/key changes, and any
+`applied ↔ denied` transition. **Exact replay reads the terminal record without mutating it.** This is a
+*state machine with a one-way terminal transition*, not an append-only log — the honest description.
+
+This keeps the shared `auditEventWriter.ts` **schema unchanged** (no unsupported fields are claimed to
+exist on it) and stores idempotency + expected/result version durably in the operation state machine,
+while append-only audit events carry only approved bounded facts. Raw evidence, serial lists, source
+contents, credentials, and unbounded notes remain **prohibited** from both the operation record and the
+audit events.
 
 ---
 
-## 3. Audit lifecycle — five SEPARATE append-only events, each at its boundary
+## 3. Audit lifecycle — distinct append-only `auditEvents` records + accurate transaction boundaries
 
-Each event is a distinct, durably-written, append-only record at the appropriate boundary — initiation
-and final outcome are **never** one event:
+Command **initiation** and the **terminal outcome** are two separate append-only `auditEvents`
+documents, written in two separate transactions (§3a). Each proposed `AUDIT_ACTIONS` entry:
 
-| Lifecycle event | Where durably written | New `AUDIT_ACTIONS` entry (proposed) | `outcome` |
+| Lifecycle event | Append-only `auditEvents` write | New `AUDIT_ACTIONS` entry (proposed) | `outcome` |
 |---|---|---|---|
-| **command initiation** | operation record created with `status:initiated` (append-only) at command entry, **before** the mutation attempt | *(operation ledger; not an `auditEvents` action)* | n/a |
-| **applied / denied outcome** | one `auditEvents` write at the commit / deny boundary | `equipmentCompatibilityCommand` | `applied` \| `denied` |
-| **surfaced conflict** | one `auditEvents` write when a relationship enters/holds `CONFLICT` | `equipmentCompatibilityConflict` | `applied` |
-| **verification change** | one `auditEvents` write on a `verificationStatus` transition | `equipmentCompatibilityVerification` | `applied` \| `denied` |
-| **correction** | one `auditEvents` write on a governed correction | `equipmentCompatibilityCorrection` | `applied` \| `denied` |
+| **command initiation** | written when the operation is **accepted for execution** (post-auth/pre-mutation), in the same transaction as the `absent → initiated` state | `initiateEquipmentCompatibilityCommand` | `applied` ("initiation was durably recorded") |
+| **applied / denied outcome** | written at the terminal boundary (commit or deny) | `equipmentCompatibilityCommand` | `applied` \| `denied` |
+| **surfaced conflict** | written when a relationship enters/holds `CONFLICT` | `equipmentCompatibilityConflict` | `applied` |
+| **verification change** | written on a `verificationStatus` transition | `equipmentCompatibilityVerification` | `applied` \| `denied` |
+| **correction** | written on a governed correction | `equipmentCompatibilityCorrection` | `applied` \| `denied` |
 
-The operation record's terminal `status` (`applied`/`denied`) and the `auditEvents` outcome event are
-written in the **same transaction** as the record mutation, so initiation is durable independently of
-the terminal outcome. **No `rebuildCompatibilityProjection` action exists in D4** — projection audit
-actions are deferred with the projection work (§7).
+Accurate use of the existing `outcome` values: the **initiation** action uses `outcome: applied` to
+mean "initiation was durably recorded"; an authorization/input rejection that happens **before** an
+operation is accepted for execution produces **no** `initiated` state and is recorded as the **terminal**
+`equipmentCompatibilityCommand` action with `outcome: denied`. **No `rebuildCompatibilityProjection`
+action exists in D4** — projection audit actions are deferred with the projection work (§7).
+
+### 3a. Transaction boundaries (two transactions, not one)
+
+- **TX1 — initiation (before mutation):** transition the operation state machine `absent → initiated`
+  **and** write the `initiateEquipmentCompatibilityCommand` audit event, atomically. Idempotency is
+  checked here: if the operation doc already exists, its terminal record is read (no mutation) and the
+  command is a no-op replay; a key reused with a different command fingerprint fails closed.
+- **TX2 — business mutation + terminal (separate transaction):** perform the governed record mutation,
+  transition the operation `initiated → applied` (or `→ denied`), and write the terminal
+  `equipmentCompatibilityCommand` audit event — **all atomically in one transaction**.
+- **Conflict / verification-change / correction** audit events are each staged **atomically with the
+  corresponding governed record transition** (their own TX2-equivalent).
+
+Initiation state and its audit are therefore durable **before** any mutation; the terminal transition
+cannot occur without a prior `initiated` operation. This document does **not** claim every lifecycle
+event occurs in the same transaction as the business mutation.
 
 **Sanitized payload contract (mandatory):** `targetType` ∈ the four authorities; `targetId` is the
 **opaque id only** (`equipmentModelId` canonical / `compatibilityId` = `cmp_…` / `sourceId` = `src_…`);
 `summary` is a bounded, secret-scanned reason phrase (≤500). Command/version/idempotency state lives in
-the operation record, not the audit event. **Never** raw source contents, serial values/lists,
+the operation state machine, not the audit event. **Never** raw source contents, serial values/lists,
 credentials, private identifiers, or unbounded notes.
 
 ---
@@ -187,18 +216,23 @@ Implemented against the **Firestore emulator only**, in reviewable repository ar
    `buildCompatibilityUniquenessKey`, `recordFingerprint`). No re-implemented identity.
 2. **Trusted commands** (separate Equipment orchestrator, §1): import/upsert models, aliases,
    relationships, evidence; verify; correct. **No projection-rebuild command in D4** (§7).
-3. **Idempotency** — deterministic `idempotencyKey` = the operation-record doc id; existence = a no-op
-   "already applied"; a reused key with a different command fingerprint fails closed; a `denied`
-   operation never becomes `applied`. Exact-equivalent replay = no-op success; non-equivalent = fail
-   closed (D2/D3 collision contract, now transactional).
+3. **Idempotency** — deterministic `idempotencyKey` = the operation state-machine doc id (§2). On
+   replay the existing operation record's terminal state is **read, not mutated**: an `applied`
+   operation returns "already applied"; a reused key with a different command fingerprint fails closed;
+   a `denied` operation never becomes `applied` (no `applied ↔ denied` transition). Exact-equivalent
+   replay = no-op success; non-equivalent = fail closed (D2/D3 collision contract, now transactional).
 4. **Expected-version handling** — optimistic concurrency on the **compatibility record's own `version`**
    (D2): read-check-increment inside the transaction; mismatch fails closed. Never `accessVersion`.
 5. **Referential-integrity checks** — every `partId` / `equipmentModelId` / `compatibilityId` resolves
    against the authoritative collections **in-transaction**; aliases cannot create models; sources
    cannot create relationships; unresolved → deny (D3 resolution contract, at write time).
-6. **Append-only audit + operation record** — every command writes the §3 events in the same transaction.
+6. **Two-transaction lifecycle** — TX1 records durable initiation (operation `absent → initiated` +
+   initiation audit) **before** mutation; TX2 performs the record mutation + terminal operation
+   transition (`initiated → applied`/`denied`) + terminal audit **atomically** (§3a). Conflict/
+   verification/correction audits stage atomically with their governed record transition. Audit events
+   are genuinely append-only; the operation record is a strict state machine (no delete/rewrite).
 7. **Rules proposal (client-closed) + NO compound indexes** — a proposed `firestore.rules` block that
-   **denies all direct client reads and writes** to the four authorities and the operation ledger (§7).
+   **denies all direct client reads and writes** to the four authorities and the operation state machine (§7).
    **No compound indexes are proposed or required for D4**: the trusted commands use point access by
    document id; derived projections and the compound indexes their query shapes need are **deferred to
    D5** (§7).
@@ -214,13 +248,13 @@ downstream consumer.
 
 Firestore Rules **cannot invoke** the server-side #226 effective-permission resolver, so D4 does not
 attempt governed client reads. The D4 Rules proposal **denies all direct client reads and writes** to
-all four authorities and the operation ledger:
+all four authorities and the operation state machine:
 
 - `equipment_models`
 - `equipment_model_aliases`
 - `equipment_part_compatibility`
 - `equipment_compatibility_sources`
-- `equipment_compatibility_operations` (operation ledger)
+- `equipment_compatibility_operations` (operation state machine)
 
 i.e. `allow read, write: if false;` for each — matching the on-main precedent for `roleAssignments` /
 `auditEvents` (`allow read, write: if false;`) and the Work-Order collection ("all writes go through
@@ -245,7 +279,9 @@ Schemas are the architecture §4 document contracts (unchanged; D4 persists, doe
   normalized uniqueness tuple, D2), `uniquenessKey`, relationship fields, `applicability`,
   `verificationStatus`, `version`, audit stamps.
 - **`equipment_compatibility_sources`** — immutable evidence; independent `sourceId`; multiple per relationship.
-- **`equipment_compatibility_operations`** — append-only command/idempotency/version ledger (§2), client-closed.
+- **`equipment_compatibility_operations`** — durable, client-closed command/idempotency/version **state
+  machine** (§2): strict transitions `absent → initiated → applied|denied`; deletion, arbitrary updates,
+  terminal rewrites, fingerprint changes, and `applied ↔ denied` all prohibited. Not append-only.
 
 **Versioning:** each record carries a monotonic integer `version` (D2); mutations use expected-version
 optimistic concurrency (§6.4). The uniqueness tuple is itself versioned (`TUPLE_VERSION`, D2).
@@ -268,20 +304,37 @@ designs the commands idempotent + transactional so a D11 batch can be replayed/r
 
 ## 9. Emulator verification plan (D4)
 
-All D4 verification runs against the **Firestore emulator** with **zero production access**:
+All D4 verification runs against the **Firestore emulator** with **zero production access**, authorizing
+paths via an **injected permission-resolution fixture** (§5) — no real role or grant is created.
 
 - **Rules tests** (emulator): direct client **reads and writes** to all four authorities and the
-  operation ledger are **denied** for every principal (signed-out / technician / admin / dispatcher /
-  operational-role holders alike) — D4 exposes no governed client read.
-- **Trusted-command tests** (emulator; mirroring the emulator pattern of
-  `functions/test/accessCommandCallables.test.js`), authorizing paths via an **injected permission-
-  resolution fixture** (§5): per-capability permission enforcement; separate durable **initiation** vs
-  terminal **outcome** events (§3); idempotent replay (equivalent = no-op, non-equivalent = fail closed,
-  denied-operation-stays-denied); expected-version concurrency on the record `version` (mismatch
-  denied); referential integrity (unresolved ref denied); conflict surfacing (contradiction →
-  `CONFLICT`, never auto-verify) with its own audit event; append-only immutability of evidence and of
-  the operation ledger; and **sanitized / secret-free audit output** (`SECRET_LIKE_PATTERN`, ≤500,
-  opaque ids only).
+  operation state machine are **denied** for every principal (signed-out / technician / admin /
+  dispatcher / operational-role holders alike) — D4 exposes no governed client read.
+- **Lifecycle / state-machine tests** (emulator) proving:
+  1. **initiation is durable before mutation** — after TX1, the operation is `initiated` and the
+     `initiateEquipmentCompatibilityCommand` audit event exists, with no record mutation yet;
+  2. **terminal requires initiation** — a terminal transition cannot occur without a prior `initiated`
+     operation (fail closed);
+  3. **terminal records cannot be rewritten** — no `applied → *` or `denied → *` transition, no
+     terminal-state overwrite;
+  4. **fingerprint/key reuse with different command data fails closed** — same `idempotencyKey`,
+     different command fingerprint → denied, no state change;
+  5. **initiation and terminal audit events are distinct append-only documents** (two `auditEvents`
+     rows: `initiateEquipmentCompatibilityCommand` then `equipmentCompatibilityCommand`);
+  6. **crash after initiation resumes safely** — a retry after TX1 but before TX2 completes the command
+     (reuses the `initiated` operation; no duplicate initiation);
+  7. **crash after the mutation transaction replays as already-applied** — a retry after TX2 reads the
+     `applied` terminal record without mutating and returns already-applied;
+  8. **unauthorized / pre-validation denial produces no `initiated` state** — a rejection before
+     acceptance-for-execution writes only a terminal `equipmentCompatibilityCommand` `denied` audit and
+     creates no operation record;
+  9. **no operation-ledger delete or arbitrary-update path exists** — the orchestrator exposes only the
+     validated transitions; deletion / arbitrary update are unreachable.
+- **Additional trusted-command tests:** per-capability permission enforcement; expected-version
+  concurrency on the record `version` (mismatch denied); referential integrity (unresolved ref denied);
+  conflict surfacing (contradiction → `CONFLICT`, never auto-verify) with its own append-only audit
+  event; append-only immutability of the `auditEvents` history and of the immutable evidence records;
+  and **sanitized / secret-free audit output** (`SECRET_LIKE_PATTERN`, ≤500, opaque ids only).
 - **No production writes; proposal-before-deploy.** The client-closed Rules proposal is reviewed as a
   repository artifact; **no compound index is proposed** (deferred to D5). Production deployment is the
   separate **D10** gate, which **requires its own repository-defined production deployment and
@@ -298,11 +351,13 @@ After reconciliation, this package **recommends** the safe defaults below; nothi
 proposed:
 
 - Separate Equipment command orchestrator (no `accessVersion`/claims mutation) — §1.
-- Reuse the audit writer unchanged; add a separate append-only operation record; five distinct
-  lifecycle events; no projection audit action — §2–§3.
+- Reuse the audit writer unchanged (genuinely append-only) + a distinct initiation `AUDIT_ACTIONS`
+  entry; a separate operation **state machine** (strict `absent → initiated → applied|denied`, no
+  delete/rewrite) for idempotency/version; a **two-transaction** lifecycle (TX1 initiation, TX2 mutation
+  + terminal); no projection audit action — §2–§3.
 - Register the five capabilities `active:false` only (or defer catalog entry to #226); **no activation,
   no role grants, no new roles**; technician denied; positive tests via an injected fixture — §4–§5.
-- Client-closed Rules for all four authorities + the operation ledger; **no compound indexes**;
+- Client-closed Rules for all four authorities + the operation state machine; **no compound indexes**;
   projections + indexes deferred to D5 — §6–§7.
 - D10 (production deployment) and D11 (production import) remain separate gates, each with its own
   repository-defined authorization — §0.
