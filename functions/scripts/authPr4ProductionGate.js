@@ -495,29 +495,42 @@ function assertLiveOwnership(stateFile, key, ctx, deps = {}) {
 // SERIALIZES every progression state mutation, closing the TOCTOU window between
 // an ownership/freshness re-check and the commit. The re-read + revalidate + commit
 // of state and the high-water anchor all happen while holding it. It is purely
-// local and MUST NOT be held across any Auth/network side effect. A crashed holder
-// is broken past a short TTL.
-const TXN_STALE_MS = 30000;
+// local and MUST NOT be held across any Auth/network side effect.
+//
+// FAIL-CLOSED OWNERSHIP (round 5): the mutex is NEVER auto-broken. A held `.txn`
+// causes a fail-closed refusal -- a leftover mutex from a crashed step is a governed
+// reconciliation condition requiring inspected cleanup, not an automatic takeover
+// (which could let a third writer in). Cleanup is OWNER-BOUND: each holder writes a
+// cryptographically random token and, in finally, removes the mutex ONLY if the
+// on-disk token still equals its own -- so a former holder can never delete a
+// different owner's mutex.
+const TXN_MUTEX_VERSION = 1;
+const TXN_MUTEX_FIELDS = Object.freeze(["version", "token", "at"]);
 function txnPath(stateFile) { return `${stateFile}.txn`; }
 function withTransition(stateFile, deps, fn) {
   const _fs = deps.fs || fs;
   const now = deps.now ? deps.now() : new Date();
   const p = txnPath(stateFile);
-  let acquired = false;
-  for (let i = 0; i < 2 && !acquired; i += 1) {
-    try {
-      const fd = _fs.openSync(p, "wx", 0o600);
-      try { _fs.writeSync(fd, JSON.stringify({ at: now.toISOString(), pid: process.pid })); _fs.fsyncSync(fd); } finally { _fs.closeSync(fd); }
-      acquired = true;
-    } catch (err) {
-      if (err.code !== "EEXIST") throw err;
-      let held; try { held = JSON.parse(_fs.readFileSync(p, "utf8")); } catch { held = null; }
-      const heldAt = held && Date.parse(held.at);
-      if (Number.isFinite(heldAt) && now.getTime() - heldAt > TXN_STALE_MS) { try { _fs.unlinkSync(p); } catch { /* raced */ } continue; }
-      throw new Error("State-transition mutex is held (contended); retry the governed step.");
+  const token = crypto.randomBytes(16).toString("hex");
+  let fd;
+  try {
+    fd = _fs.openSync(p, "wx", 0o600); // O_EXCL: fail closed if held (never auto-break)
+  } catch (err) {
+    if (err.code === "EEXIST") {
+      throw new Error("State-transition mutex is held: a prior step is in progress or left a leftover mutex; governed reconciliation / inspected cleanup is required before another production step.");
     }
+    throw err;
   }
-  try { return fn(); } finally { try { _fs.unlinkSync(p); } catch { /* already gone */ } }
+  try { _fs.writeSync(fd, JSON.stringify({ version: TXN_MUTEX_VERSION, token, at: now.toISOString() })); _fs.fsyncSync(fd); } finally { _fs.closeSync(fd); }
+  try {
+    return fn();
+  } finally {
+    // Owner-bound cleanup: remove ONLY a mutex that still carries our token.
+    try {
+      const held = JSON.parse(_fs.readFileSync(p, "utf8"));
+      if (held && typeof held === "object" && held.token === token) _fs.unlinkSync(p);
+    } catch { /* gone/unreadable/foreign -> leave for governed reconciliation */ }
+  }
 }
 
 function nextEligiblePersona(state, personaOrder) {
@@ -537,7 +550,16 @@ function nextState(prev, changes, key, deps = {}) {
   };
   return { payload, signed: JSON.stringify({ ...payload, signature: signProgression(payload, key) }) };
 }
+// ARCHITECTURAL GUARD (round 5): every RUNTIME progression transition must run
+// inside withTransition() (which creates the `.txn` mutex first). commitState
+// therefore refuses unless the transition mutex is currently held -- so a newly
+// introduced unprotected commitState() call fails closed at runtime (caught by
+// tests). Genesis creation is separate (it does not call commitState).
 function commitState(stateFile, prev, changes, key, deps = {}) {
+  const _fs = deps.fs || fs;
+  if (!_fs.existsSync(txnPath(stateFile))) {
+    throw new Error("commitState() called outside a transition mutex -- all runtime progression transitions must run inside withTransition().");
+  }
   const { payload, signed } = nextState(prev, changes, key, deps);
   atomicWrite(stateFile, signed, deps);
   writeAnchor(stateFile, { authorizationId: payload.authorizationId, highWaterRevision: payload.revision, stateHash: progressionHash(payload) }, key, deps);
@@ -696,12 +718,28 @@ function acquireAndClaim({ args, state, stateKey, authorization, idHash, mode, t
     authorizationId: authorization.authorizationId, attemptId, mode, targetPersona, revision: state.revision, leaseSeconds,
   }, deps);
   if (tookOver) {
-    // Explicit stale takeover: preserve prior-attempt evidence, block via recovery_required.
-    commitState(args.progressionFile, state, {
-      status: "recovery_required",
-      lastOutcome: { attemptId: tookOver.attemptId, mode: tookOver.mode, targetPersona: tookOver.targetPersona, result: "uncertain-stale-takeover", at: (deps.now ? deps.now() : new Date()).toISOString() },
-    }, stateKey, deps);
-    throw new Error("Stale claim taken over: prior attempt recorded uncertain; progression is now recovery_required (governed reconciliation needed).");
+    // ORPHANED claim lock (a prior worker created the lock then crashed before
+    // persisting "claimed", so state is still eligible). Route the recovery_required
+    // transition through the SAME serialized mutex path: re-read + revalidate state,
+    // anchor, and the stale lock under the mutex, confirm it is expired and bound to
+    // the expected authorization context, commit recovery_required ONCE. A second
+    // worker re-reads a non-eligible state and refuses without writing.
+    const now = deps.now ? deps.now() : new Date();
+    const expectedBinding = { authorizationId: authorization.authorizationId, projectId: args.projectId, workflowIdentityHash: idHash, personaOrder: deps.personaOrder };
+    withTransition(args.progressionFile, deps, () => {
+      const cur = readState(args.progressionFile, stateKey, expectedBinding, deps);
+      verifyStateFreshness(args.progressionFile, cur, stateKey, deps);
+      if (cur.status !== "eligible") throw new Error(`Progression already transitioned to "${cur.status}"; no double recovery write.`);
+      const lk = readLock(args.progressionFile, deps);
+      if (!lk) throw new Error("Orphaned lock disappeared; re-run the governed step.");
+      if (!leaseExpired(lk, now)) throw new Error("A concurrent claim is held (unexpired lease); refusing.");
+      if (lk.authorizationId !== authorization.authorizationId) throw new Error("Orphaned lock is bound to a different authorization.");
+      commitState(args.progressionFile, cur, {
+        status: "recovery_required", attempt: null,
+        lastOutcome: { attemptId: lk.attemptId, mode: lk.mode, targetPersona: lk.targetPersona, result: "uncertain-orphaned-lock", at: now.toISOString() },
+      }, stateKey, deps);
+    });
+    throw new Error("Orphaned stale claim lock: progression recorded recovery_required (governed reconciliation needed).");
   }
   // Persist CLAIMED (pending) before any Auth mutation, inside the transition mutex
   // (re-read + re-validate "eligible" + freshness under the mutex).

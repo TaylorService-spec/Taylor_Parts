@@ -37,6 +37,12 @@ function throws(fn, re) { assert.throws(fn, re); }
 const REAL_ROOT = gate.resolveRepoRoot();
 const KEY = () => crypto.randomBytes(48);
 
+// Commit a state transition under the transition mutex (mirrors runtime usage;
+// commitState refuses outside withTransition per the round-5 architectural guard).
+function txnCommit(stateFile, prev, changes, key) {
+  return gate.withTransition(stateFile, {}, () => gate.commitState(stateFile, prev, changes, key));
+}
+
 // Build a throwaway git repo with a GRANTED authorization + governed-file copies.
 // mutateArtifact(a) can tweak the artifact for negative cases.
 function buildGrantedRepo(projectId, mutateArtifact) {
@@ -191,7 +197,7 @@ ok("anchor detects restoration of an older signed state (replay) and fails close
   const g = writeGenesis(f, key, { authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", idHash });
   const oldBytes = fs.readFileSync(f); // snapshot of revision-0 state
   // Advance to revision 1 (updates anchor to high-water 1).
-  gate.commitState(f, g, { status: "claimed", attempt: { attemptId: "att-x", mode: "forward", targetPersona: "emp-rudy-driver", claimedAt: new Date().toISOString(), leaseExpiresAt: new Date(Date.now() + 60000).toISOString() } }, key);
+  txnCommit(f, g, { status: "claimed", attempt: { attemptId: "att-x", mode: "forward", targetPersona: "emp-rudy-driver", claimedAt: new Date().toISOString(), leaseExpiresAt: new Date(Date.now() + 60000).toISOString() } }, key);
   // Restore the OLD revision-0 state file (still correctly signed).
   fs.writeFileSync(f, oldBytes);
   const restored = gate.readState(f, key, { authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", workflowIdentityHash: idHash, personaOrder: ORDER });
@@ -233,7 +239,7 @@ function makeClaimed(dir, key, { authorizationId = "AUTHPR4-PROD-TEST", projectI
   const g0 = writeGenesis(stateFile, key, { authorizationId, projectId, idHash });
   const claimedAt = now.toISOString();
   const leaseExpiresAt = new Date(now.getTime() + leaseSeconds * 1000).toISOString();
-  const claimed = gate.commitState(stateFile, g0, { status: "claimed", attempt: { attemptId, mode, targetPersona, claimedAt, leaseExpiresAt } }, key);
+  const claimed = txnCommit(stateFile, g0, { status: "claimed", attempt: { attemptId, mode, targetPersona, claimedAt, leaseExpiresAt } }, key);
   fs.writeFileSync(gate.lockPath(stateFile), JSON.stringify({ version: gate.LOCK_VERSION, authorizationId, attemptId, mode, targetPersona, revision: 0, claimedAt, leaseExpiresAt }), { mode: 0o600 });
   const expected = { authorizationId, projectId, workflowIdentityHash: idHash, personaOrder: ORDER };
   const ownership = { authorizationId, attemptId, mode, targetPersona, predecessorRevision: 0, claimedRevision: claimed.revision, claimedHash: gate.progressionHash(claimed), expected };
@@ -267,7 +273,7 @@ ok("live-ownership: superseded worker cannot overwrite a recovery_required / non
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-super-"));
   const { stateFile, claimed, ownership } = makeClaimed(dir, key, { idHash });
   // Simulate B's takeover: commit recovery_required (revision advances, anchor bumps).
-  gate.commitState(stateFile, claimed, { status: "recovery_required", attempt: null, lastOutcome: { attemptId: "att-A", mode: "forward", targetPersona: "emp-rudy-driver", result: "uncertain-stale-takeover", at: new Date().toISOString() } }, key);
+  txnCommit(stateFile, claimed, { status: "recovery_required", attempt: null, lastOutcome: { attemptId: "att-A", mode: "forward", targetPersona: "emp-rudy-driver", result: "uncertain-stale-takeover", at: new Date().toISOString() } }, key);
   // A's stale lock (att-A) is still on disk, but the state is no longer claimed.
   throws(() => gate.assertLiveOwnership(stateFile, key, ownership), /no longer "claimed"|revision changed/);
   fs.rmSync(dir, { recursive: true, force: true });
@@ -339,23 +345,84 @@ ok("INTERLEAVING: A claims, lease expires, B records recovery_required; A's late
   fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
 });
 
-ok("TRANSITION MUTEX (TOCTOU): a held .txn serializes transitions; loser re-reads terminal state and does not overwrite", () => {
+ok("TRANSITION MUTEX (TOCTOU): a held .txn fails closed (no auto-break); after release the loser re-reads terminal state and does not overwrite", () => {
   const key = KEY(); const idHash = "ab".repeat(32);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-txn-"));
   const { stateFile, claimed, ownership } = makeClaimed(dir, key, { idHash });
-  // Simulate worker A holding the transition mutex (paused before its commit).
-  fs.writeFileSync(gate.txnPath(stateFile), JSON.stringify({ at: new Date().toISOString(), pid: 1 }));
-  // Worker B's outcome write must fail to acquire the mutex (contended) -> no write.
-  const ctxB = { recordCompletion: () => gate.withTransition(stateFile, { now: () => new Date() }, () => { throw new Error("should not run"); }) };
-  throws(() => ctxB.recordCompletion(), /mutex is held \(contended\)/);
-  // A now finishes: transition state to recovery_required, then release the mutex.
+  // Simulate a live mutex holder (A). A held .txn is NEVER auto-broken -> fail closed.
+  fs.writeFileSync(gate.txnPath(stateFile), JSON.stringify({ version: 1, token: "A".repeat(32), at: new Date().toISOString() }));
+  throws(() => gate.withTransition(stateFile, { now: () => new Date() }, () => { throw new Error("should not run"); }), /mutex is held/);
+  // A finishes: commit recovery_required (its .txn satisfies the commitState guard) and remove its own mutex.
   gate.commitState(stateFile, claimed, { status: "recovery_required", attempt: null, lastOutcome: { attemptId: "att-A", mode: "forward", targetPersona: "emp-rudy-driver", result: "uncertain-stale-takeover", at: new Date().toISOString() } }, key);
   fs.unlinkSync(gate.txnPath(stateFile));
-  // B retries under the (now free) mutex: assertLiveOwnership sees a non-claimed
-  // terminal state and refuses -> B does NOT overwrite recovery_required.
+  // B now enters under a free mutex: assertLiveOwnership sees a non-claimed terminal
+  // state and refuses -> B does NOT overwrite recovery_required.
   throws(() => gate.withTransition(stateFile, { now: () => new Date() }, () => gate.assertLiveOwnership(stateFile, key, ownership, {})), /no longer "claimed"|revision changed/);
   const st = gate.readState(stateFile, key, { authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", workflowIdentityHash: idHash, personaOrder: ORDER });
   assert.equal(st.status, "recovery_required");
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+ok("ARCHITECTURAL GUARD: commitState() refuses outside a transition mutex (unprotected runtime transition fails closed)", () => {
+  const key = KEY(); const idHash = "aa".repeat(32);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-guard-"));
+  const f = path.join(dir, "state.json");
+  const g0 = writeGenesis(f, key, { authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", idHash });
+  // No .txn present -> a direct commitState must fail closed.
+  throws(() => gate.commitState(f, g0, { status: "claimed", attempt: { attemptId: "att-A", mode: "forward", targetPersona: "emp-rudy-driver", claimedAt: new Date().toISOString(), leaseExpiresAt: new Date(Date.now() + 60000).toISOString() } }, key), /outside a transition mutex/);
+  // The same commit succeeds under withTransition.
+  const done = txnCommit(f, g0, { status: "claimed", attempt: { attemptId: "att-A", mode: "forward", targetPersona: "emp-rudy-driver", claimedAt: new Date().toISOString(), leaseExpiresAt: new Date(Date.now() + 60000).toISOString() } }, key);
+  assert.equal(done.status, "claimed");
+  // Source-level assertion: commitState carries the mutex guard.
+  const src = fs.readFileSync(path.join(REAL_ROOT, "functions/scripts/authPr4ProductionGate.js"), "utf8");
+  assert.match(src, /function commitState[\s\S]{0,240}outside a transition mutex/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+ok("MUTEX OWNERSHIP (A/B/C): held mutex excludes others; owner-bound cleanup cannot delete a foreign owner's mutex", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-abc-"));
+  const f = path.join(dir, "state.json");
+  // A enters and, inside its critical section, a DIFFERENT owner (B) replaces the
+  // mutex token. A's owner-bound finally must NOT delete B's mutex.
+  gate.withTransition(f, {}, () => {
+    fs.writeFileSync(gate.txnPath(f), JSON.stringify({ version: 1, token: "B-owner-token", at: new Date().toISOString() }));
+  });
+  assert.ok(fs.existsSync(gate.txnPath(f)), "A's cleanup must not delete B's (foreign-token) mutex");
+  // C is excluded while B's mutex is present.
+  throws(() => gate.withTransition(f, {}, () => {}), /mutex is held/);
+  // Once B releases, C may enter.
+  fs.unlinkSync(gate.txnPath(f));
+  let cRan = false;
+  gate.withTransition(f, {}, () => { cRan = true; });
+  assert.equal(cRan, true);
+  assert.ok(!fs.existsSync(gate.txnPath(f)), "C's owner-bound cleanup removed its own mutex");
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+ok("ORPHANED LOCK: state eligible + expired orphan lock; two workers -> exactly ONE recovery_required, consistent anchor, neither proceeds to Auth", () => {
+  const key = KEY(); const idHash = "abcd".repeat(16);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-orphan-"));
+  const f = path.join(dir, "state.json");
+  writeGenesis(f, key, { authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", idHash });
+  // An orphaned, already-expired claim lock (a prior worker crashed before "claimed").
+  const past = new Date(Date.now() - 10000).toISOString();
+  fs.writeFileSync(gate.lockPath(f), JSON.stringify({ version: gate.LOCK_VERSION, authorizationId: "AUTHPR4-PROD-TEST", attemptId: "att-orphan", mode: "forward", targetPersona: "emp-rudy-driver", revision: 0, claimedAt: new Date(Date.now() - 11000).toISOString(), leaseExpiresAt: past }));
+  const expected = { authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", workflowIdentityHash: idHash, personaOrder: ORDER };
+  // Emulate acquireAndClaim's orphaned-lock recovery path (serialized) twice.
+  const takeover = () => gate.withTransition(f, {}, () => {
+    const cur = gate.readState(f, key, expected);
+    gate.verifyStateFreshness(f, cur, key);
+    if (cur.status !== "eligible") throw new Error(`already transitioned to "${cur.status}"`);
+    const lk = gate.readLock(f);
+    if (!gate.leaseExpired(lk, new Date())) throw new Error("unexpired");
+    gate.commitState(f, cur, { status: "recovery_required", attempt: null, lastOutcome: { attemptId: lk.attemptId, mode: lk.mode, targetPersona: lk.targetPersona, result: "uncertain-orphaned-lock", at: new Date().toISOString() } }, key);
+  });
+  takeover(); // worker 1 -> recovery_required
+  throws(() => takeover(), /already transitioned/); // worker 2 -> refuses, no double write
+  const st = gate.readState(f, key, expected);
+  assert.equal(st.status, "recovery_required");
+  assert.equal(st.revision, 1, "exactly one transition (genesis 0 -> 1)");
+  gate.verifyStateFreshness(f, st, key); // anchor consistent
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
