@@ -8,8 +8,7 @@
 > [`functions/authpr4/production-authorization.json`](../../functions/authpr4/production-authorization.json)
 > in this PR. **Merging does NOT execute the migration.** Execution is a separate, controlled
 > step (see §5). This re-authorization PR is DRAFT, subject to independent Codex review before
-> any merge — and is **gated on a separate CI-enforcement PR** landing first (which must run
-> the AUTH-PR-4 security suites in CI; see the governance note below).
+> any merge. Its CI-enforcement prerequisite is **now satisfied** — see the governance note below.
 >
 > **RE-BINDING PROPOSED (governed-set expansion).** PR #461 (merged `dba0e33`) added the
 > genesis initializer (`functions/scripts/authPr4InitProgression.js`) to the gate's
@@ -17,10 +16,12 @@
 > at `reviewedHead c2604df` no longer verified (failed closed). This PR re-binds the
 > authorization artifact to the **three**-file governed set at `reviewedHead dba0e33`, with
 > all three governed blob hashes recomputed from that reviewed commit. The §1 table below
-> reflects the new three-file binding. **Prerequisite:** PR #461's AUTH-PR-4 security suites
-> (`test:authPr4Init` / `test:authPr4Gate` / `test:authPr4Migration`, with Auth-emulator
-> coverage) are verified locally but are **not yet CI-enforced**; a separate CI-enforcement PR
-> must run them in CI and merge before this re-authorization is finalized.
+> reflects the new three-file binding. **Governance history:** PR #461 did **not** receive an
+> unconditional Codex PASS — its **post-merge Codex review returned CHANGES REQUIRED** because
+> the AUTH-PR-4 security suites (`test:authPr4Init` / `test:authPr4Gate` / `test:authPr4Migration`,
+> with Auth-emulator coverage) were **not CI-enforced**. That gap was **subsequently corrected by
+> PR #463** (merged `9b912d7`), which runs those suites in CI (`.github/workflows/authpr4-security-tests.yml`,
+> gate/migration Auth-emulator layers on `demo-authpr4`).
 
 | | |
 |---|---|
@@ -328,10 +329,11 @@ bound to the **two**-file governed set at `reviewedHead c2604df`. PR #461 (Codex
 (`functions/scripts/authPr4InitProgression.js`) and changed `authPr4ProductionGate.js`,
 **expanding `GOVERNED_FILES` to three files** — which invalidated the two-file binding
 (fails closed), and PR #461 itself left the artifact unchanged/stale by design. **Governance
-note:** PR #461's review was **not** a clean unconditional pass — its AUTH-PR-4 security suites
-are verified locally but are **not yet CI-enforced**; a separate CI-enforcement PR must run
-`test:authPr4Init` / `test:authPr4Gate` / `test:authPr4Migration` (with Auth-emulator coverage)
-in CI and merge before this re-authorization is finalized.
+history:** PR #461 did **not** receive an unconditional Codex PASS — its **post-merge Codex
+review returned CHANGES REQUIRED** because the AUTH-PR-4 security suites (`test:authPr4Init` /
+`test:authPr4Gate` / `test:authPr4Migration`, with Auth-emulator coverage) were **not
+CI-enforced**. That gap was **subsequently corrected by PR #463** (merged `9b912d7`), which runs
+those suites in CI.
 
 **What this PR does.** It is the Owner-authorized ([`DECISIONS.md` #53](../DECISIONS.md))
 **repository-only three-file re-authorization**: it rebinds the artifact's `reviewedHead` to
