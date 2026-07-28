@@ -262,24 +262,66 @@ await ok("expected-version concurrency is enforced on the record's own version, 
   assert.equal((await raw(EQUIPMENT_MODELS_COLLECTION, MODEL_ID)).version, 2);
 });
 
-await ok("referential integrity: alias / compatibility / evidence each require their model, live", async () => {
+// A referential-integrity failure is a GOVERNED denial decided inside TX2 (it must read the store to
+// know the referent is absent), so it leaves a durable terminal `denied` operation record and a paired
+// [initiation applied, terminal denied] audit -- never a half-written referent. This helper asserts all
+// of that AT ONCE: the denial, the STABLE sanitized reason, the absent referent, and the atomic audit.
+async function assertRefIntegrityDeniedAndAtomic({ action, key, payload, collection, docId }) {
+  const { deps, auditIds } = makeDeps();
+  const denied = await C.runEquipmentCompatibilityCommand({ actorUid: "actor-1", action, idempotencyKey: key, payload }, deps);
+  assert.equal(denied.status, "denied", `${key}: must be denied`);
+  assert.equal(denied.reason, C.DENIAL_REASONS.REFERENTIAL_INTEGRITY, `${key}: reason is REFERENTIAL_INTEGRITY`);
+  assert.equal(await raw(collection, docId), undefined, `${key}: NO ${collection} document was committed`);
+  const op = await raw(EQUIPMENT_COMPATIBILITY_OPERATIONS_COLLECTION, key);
+  assert.equal(op.status, "denied", `${key}: the operation record is terminal denied, not left initiated`);
+  const events = await auditsOf(auditIds);
+  assert.deepEqual(events.map((a) => [a.action, a.outcome]), [
+    [C.INITIATION_AUDIT_ACTION, "applied"], [C.TERMINAL_AUDIT_ACTION, "denied"],
+  ], `${key}: initiation applied + terminal denied, staged atomically`);
+  const terminal = events[1];
+  assert.equal(terminal.summary, `${action} denied: ${C.DENIAL_REASONS.REFERENTIAL_INTEGRITY}`, `${key}: stable sanitized reason, no raw text`);
+  assert.ok(terminal.summary.length <= 500, `${key}: summary is bounded`);
+}
+
+await ok("referential integrity, live: alias / compatibility / evidence each REQUIRE their authority, and each denial is atomic + sanitized", async () => {
   await clearAll();
   const alias = aliasOf();
-  const { deps } = makeDeps();
-  const noModel = await C.runEquipmentCompatibilityCommand({ actorUid: "actor-1", action: "importEquipmentModelAlias", idempotencyKey: "key-alias-noref", payload: alias }, deps);
-  assert.equal(noModel.status, "denied");
-  assert.equal(noModel.reason, C.DENIAL_REASONS.REFERENTIAL_INTEGRITY);
-  assert.equal(await raw(EQUIPMENT_MODEL_ALIASES_COLLECTION, alias.aliasKey), undefined, "no alias created without a model");
-  await seedModel();
-  const { deps: d2 } = makeDeps();
-  const withModel = await C.runEquipmentCompatibilityCommand({ actorUid: "actor-1", action: "importEquipmentModelAlias", idempotencyKey: "key-alias-ok", payload: alias }, d2);
-  assert.equal(withModel.status, "applied");
-  assert.equal((await raw(EQUIPMENT_MODEL_ALIASES_COLLECTION, alias.aliasKey)).equipmentModelId, MODEL_ID);
-  // A compatibility relationship also requires the model.
   const compat = compatOf();
-  const { deps: d3 } = makeDeps();
-  const cmp = await C.runEquipmentCompatibilityCommand({ actorUid: "actor-1", action: "importCompatibility", idempotencyKey: "key-cmp-ok", payload: compat }, d3);
-  assert.equal(cmp.status, "applied");
+  const source = sourceOf(compat.compatibilityId);
+
+  // --- NEGATIVES: with NO model present, neither an alias nor a compatibility relationship may exist. ---
+  await assertRefIntegrityDeniedAndAtomic({
+    action: "importEquipmentModelAlias", key: "key-alias-noref", payload: alias,
+    collection: EQUIPMENT_MODEL_ALIASES_COLLECTION, docId: alias.aliasKey,
+  });
+  await assertRefIntegrityDeniedAndAtomic({
+    action: "importCompatibility", key: "key-cmp-noref", payload: compat,
+    collection: EQUIPMENT_PART_COMPATIBILITY_COLLECTION, docId: compat.compatibilityId,
+  });
+
+  // Seed ONLY the model. Evidence still has no compatibility relationship to cite.
+  await seedModel();
+  await assertRefIntegrityDeniedAndAtomic({
+    action: "importCompatibilitySource", key: "key-src-noref", payload: source,
+    collection: EQUIPMENT_COMPATIBILITY_SOURCES_COLLECTION, docId: source.sourceId,
+  });
+
+  // --- POSITIVES: each command applies once its required authority exists. ---
+  // Alias applies now that the model is present.
+  const { deps: dA } = makeDeps();
+  const aliasOk = await C.runEquipmentCompatibilityCommand({ actorUid: "actor-1", action: "importEquipmentModelAlias", idempotencyKey: "key-alias-ok", payload: alias }, dA);
+  assert.equal(aliasOk.status, "applied");
+  assert.equal((await raw(EQUIPMENT_MODEL_ALIASES_COLLECTION, alias.aliasKey)).equipmentModelId, MODEL_ID);
+  // Compatibility applies (model present), which CREATES the relationship the evidence needs.
+  const { deps: dC } = makeDeps();
+  const cmpOk = await C.runEquipmentCompatibilityCommand({ actorUid: "actor-1", action: "importCompatibility", idempotencyKey: "key-cmp-ok", payload: compat }, dC);
+  assert.equal(cmpOk.status, "applied");
+  assert.equal((await raw(EQUIPMENT_PART_COMPATIBILITY_COLLECTION, compat.compatibilityId)).equipmentModelId, MODEL_ID);
+  // Evidence applies now that the compatibility relationship it cites exists.
+  const { deps: dS } = makeDeps();
+  const srcOk = await C.runEquipmentCompatibilityCommand({ actorUid: "actor-1", action: "importCompatibilitySource", idempotencyKey: "key-src-ok", payload: source }, dS);
+  assert.equal(srcOk.status, "applied");
+  assert.equal((await raw(EQUIPMENT_COMPATIBILITY_SOURCES_COLLECTION, source.sourceId)).compatibilityId, compat.compatibilityId);
 });
 
 await ok("verification bumps the version and emits its specialized audit alongside the terminal one", async () => {
