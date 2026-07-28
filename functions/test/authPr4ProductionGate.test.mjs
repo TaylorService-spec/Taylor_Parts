@@ -339,6 +339,50 @@ ok("INTERLEAVING: A claims, lease expires, B records recovery_required; A's late
   fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
 });
 
+ok("TRANSITION MUTEX (TOCTOU): a held .txn serializes transitions; loser re-reads terminal state and does not overwrite", () => {
+  const key = KEY(); const idHash = "ab".repeat(32);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-txn-"));
+  const { stateFile, claimed, ownership } = makeClaimed(dir, key, { idHash });
+  // Simulate worker A holding the transition mutex (paused before its commit).
+  fs.writeFileSync(gate.txnPath(stateFile), JSON.stringify({ at: new Date().toISOString(), pid: 1 }));
+  // Worker B's outcome write must fail to acquire the mutex (contended) -> no write.
+  const ctxB = { recordCompletion: () => gate.withTransition(stateFile, { now: () => new Date() }, () => { throw new Error("should not run"); }) };
+  throws(() => ctxB.recordCompletion(), /mutex is held \(contended\)/);
+  // A now finishes: transition state to recovery_required, then release the mutex.
+  gate.commitState(stateFile, claimed, { status: "recovery_required", attempt: null, lastOutcome: { attemptId: "att-A", mode: "forward", targetPersona: "emp-rudy-driver", result: "uncertain-stale-takeover", at: new Date().toISOString() } }, key);
+  fs.unlinkSync(gate.txnPath(stateFile));
+  // B retries under the (now free) mutex: assertLiveOwnership sees a non-claimed
+  // terminal state and refuses -> B does NOT overwrite recovery_required.
+  throws(() => gate.withTransition(stateFile, { now: () => new Date() }, () => gate.assertLiveOwnership(stateFile, key, ownership, {})), /no longer "claimed"|revision changed/);
+  const st = gate.readState(stateFile, key, { authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", workflowIdentityHash: idHash, personaOrder: ORDER });
+  assert.equal(st.status, "recovery_required");
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+ok("DUAL TAKEOVER: two stale-takeover workers serialize; the second sees recovery_required and does not double-write", () => {
+  const g = buildGrantedRepo("demo-authpr4");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-dual-"));
+  const keyFile = path.join(dir, "k"); const key = crypto.randomBytes(48); fs.writeFileSync(keyFile, key, { mode: 0o600 });
+  const stateFile = path.join(dir, "state.json"); const mappingFile = path.join(dir, "map.json");
+  fs.writeFileSync(mappingFile, JSON.stringify({ "emp-rudy-driver": { uid: "u1", newAlias: "base+d@gmail.com" } }));
+  const idHash = gate.workflowIdentityHash(gate.governedHashesAtCommit(g.root, g.authorizedCommit));
+  writeGenesis(stateFile, key, { authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", idHash });
+  const T0 = new Date();
+  const argsA = { projectId: "demo-authpr4", executeProduction: true, mappingFile, progressionFile: stateFile, stateKeyFile: keyFile, authorizedCommit: g.authorizedCommit, executionModeConfirmation: g.executionModeToken, executor: g.executor, capturedStateOut: path.join(dir, "c.json") };
+  gate.assertProductionAuthorization(argsA, { repoRoot: g.root, personaOrder: ORDER, now: () => T0, leaseSeconds: 1 }); // A claims
+  const tLater = () => new Date(T0.getTime() + 10000);
+  // Two takeover workers B and C run after A's lease expires. Each throws (takeover),
+  // but the state is written exactly once and remains recovery_required.
+  throws(() => gate.assertProductionAuthorization(argsA, { repoRoot: g.root, personaOrder: ORDER, now: tLater, leaseSeconds: 300 }), /Stale claim taken over|recovery_required/);
+  throws(() => gate.assertProductionAuthorization(argsA, { repoRoot: g.root, personaOrder: ORDER, now: tLater, leaseSeconds: 300 }), /blocking state|already transitioned|recovery_required/);
+  const st = gate.readState(stateFile, key, { authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", workflowIdentityHash: idHash, personaOrder: ORDER });
+  assert.equal(st.status, "recovery_required");
+  assert.equal(st.lastOutcome.result, "uncertain-stale-takeover");
+  // Anchor is consistent with the single committed terminal state.
+  gate.verifyStateFreshness(stateFile, st, key);
+  fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
+});
+
 // ---------------------------------------------------------------------------
 // 5. Break-glass strict (C4)
 // ---------------------------------------------------------------------------
@@ -514,6 +558,36 @@ await okAsync("GRANTED rollback of the most recent persona SUSPENDS progression 
   const st = gate.readState(stateFile, key, { authorizationId: "AUTHPR4-PROD-TEST", projectId: PROJECT, workflowIdentityHash: idHash, personaOrder: ORDER });
   assert.equal(st.status, "suspended");
   assert.deepEqual(st.completed, []);
+  fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
+});
+
+await okAsync("FAULT: rollback Auth succeeds but progression persistence fails -> artifact RETAINED, not suspended, later blocked", async () => {
+  const g = buildGrantedRepo(PROJECT);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-rbfault-"));
+  const keyFile = path.join(dir, "k"); const key = crypto.randomBytes(48); fs.writeFileSync(keyFile, key, { mode: 0o600 });
+  const stateFile = path.join(dir, "state.json"); const mappingFile = path.join(dir, "map.json");
+  const idHash = gate.workflowIdentityHash(gate.governedHashesAtCommit(g.root, g.authorizedCommit));
+  writeGenesis(stateFile, key, { authorizationId: "AUTHPR4-PROD-TEST", projectId: PROJECT, idHash });
+  const drv = await seed(mappingFile, "emp-rudy-driver");
+  const fwd = await runProductionForward({ g, key, keyFile, stateFile, mappingFile, employeeId: "emp-rudy-driver" });
+  // Roll back: gate claims (state -> claimed), Auth rollback succeeds, then progression
+  // persistence FAILS (injected disk error) -> recordCompletion throws.
+  const rbCtx = gate.assertProductionAuthorization(
+    { projectId: PROJECT, executeProduction: true, rollback: true, mappingFile, progressionFile: stateFile, stateKeyFile: keyFile, authorizedCommit: g.authorizedCommit, executionModeConfirmation: g.executionModeToken, executor: g.executor, capturedStateFile: fwd.capturedOut, employeeId: "emp-rudy-driver" },
+    { repoRoot: g.root, personaOrder: ORDER });
+  const captured = JSON.parse(fs.readFileSync(fwd.capturedOut, "utf8"));
+  await wf.applyPlan(auth, wf.buildRollbackPlan({ employeeId: "emp-rudy-driver", uid: captured.uid, priorAddress: captured.priorAddress, priorEmailVerified: captured.priorEmailVerified }), { execute: true });
+  assert.equal((await auth.getUser(drv.uid)).email, drv.prior, "Auth rollback succeeded (prior restored)");
+  const failingFs = { ...fs, openSync: () => { throw new Error("injected disk failure"); } };
+  assert.throws(() => rbCtx.recordCompletion({ personaOrder: ORDER, fs: failingFs }), /injected disk failure/);
+  // Progression did NOT become suspended (still claimed); rollback artifact retained;
+  // the operator would NOT delete it (main rethrows before secureUnlink).
+  const st = gate.readState(stateFile, key, { authorizationId: "AUTHPR4-PROD-TEST", projectId: PROJECT, workflowIdentityHash: idHash, personaOrder: ORDER });
+  assert.notEqual(st.status, "suspended");
+  assert.equal(st.status, "claimed");
+  assert.ok(fs.existsSync(fwd.capturedOut), "rollback artifact retained for governed reconciliation");
+  // Later personas blocked (claim lock still held / not suspended).
+  await assert.rejects(() => runProductionForward({ g, key, keyFile, stateFile, mappingFile, employeeId: "emp-rudy-parts-associate" }), /concurrent claim is held|blocking state|exact next persona/);
   fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
 });
 

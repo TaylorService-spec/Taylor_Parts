@@ -627,13 +627,27 @@ async function main() {
       evidence.mode = "rollback";
       evidence.priorAddressRef = addressRef(captured.priorAddress, runSalt);
       evidence.newAliasRef = addressRef(captured.newAlias, runSalt);
-      evidence.checks.uidUnchanged = result.readback?.uid === captured.uid;
+      evidence.checks.uidUnchanged = result.readback.uid === captured.uid;
       evidence.outcome = "applied";
-      // Only a CONFIRMED successful rollback removes the recovery artifact.
+      // Fail-closed rollback read-back verification: exact prior address, exact prior
+      // emailVerified, unchanged UID -- BEFORE any progression update or deletion.
+      if (result.readback.uid !== captured.uid) throw new Error("Rollback read-back UID changed -- halting.");
+      if (result.readback.email !== captured.priorAddress) throw new Error("Rollback did not restore the exact prior address -- halting.");
+      if (result.readback.emailVerified !== captured.priorEmailVerified) throw new Error("Rollback did not restore the exact prior emailVerified -- halting.");
+      // Order (C3, round 4): durably record the SUSPENDED progression + anchor FIRST;
+      // only THEN delete the recovery artifact. If progression persistence fails,
+      // RETAIN the artifact, warn, leave progression blocking, and never report
+      // rollback closure as complete.
+      if (args.executeProduction) {
+        try {
+          gateCtx.recordCompletion({ personaOrder: MIGRATION_PERSONA_ORDER });
+        } catch (err) {
+          console.error(uncertainOutcomeMessage(args.employeeId, args.capturedStateFile));
+          throw err;
+        }
+      }
+      // Only a CONFIRMED successful rollback WITH durable progression removes the artifact.
       secureUnlink(args.capturedStateFile);
-      // A confirmed production rollback REVERSES + SUSPENDS progression (recorded by
-      // the owning attempt only), blocking later personas (design §5.1, C2/C3).
-      if (args.executeProduction) gateCtx.recordCompletion({ personaOrder: MIGRATION_PERSONA_ORDER });
       console.log(`ROLLBACK applied for ${args.employeeId}: restored exact prior address + prior emailVerified.`);
     } else {
       // FORWARD path (dry-run default; execute only against non-production).
