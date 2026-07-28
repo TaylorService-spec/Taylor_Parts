@@ -284,28 +284,33 @@ async function acceptForExecution(envelope: CommandEnvelope, deps: EquipmentComm
     throw new InvalidInputError(`action ${action} targets a non-versioned record; expectedVersion must be null`);
   }
 
-  // Capability resolution BEFORE any read or write. A throwing resolver denies.
+  // PREPARE FIRST -- before the first asynchronous yield.
+  //
+  // Preparation is pure: it performs no repository read or write and activates no capability, so doing
+  // it first costs nothing and closes the last time-of-check window. If the capability were resolved
+  // first, the caller could mutate its retained payload or serialSchemes registry while that promise was
+  // pending, and the MUTATED command would be the one prepared, fingerprinted and persisted. After this
+  // line the submitted command has exactly one governed interpretation and neither the caller's payload
+  // nor deps.serialSchemes is ever read again.
+  const governedAction = action as OperationAction;
+  const targetType = ACTION_TARGET_TYPES[governedAction];
+  const targetId = commandTargetId(governedAction, payload);
+  const prepared = prepareCommand({
+    action: governedAction, targetType, targetId, payload, serialSchemes: deps.serialSchemes,
+  });
+
+  // Capability resolution happens on the ALREADY-SNAPSHOTTED actor and action, and still before any
+  // repository read or write. A throwing resolver denies.
   let granted = false;
   try {
-    granted = await deps.resolvePermission({ actorUid, capabilityId: COMMAND_CAPABILITIES[action as OperationAction] });
+    granted = await deps.resolvePermission({ actorUid, capabilityId: COMMAND_CAPABILITIES[governedAction] });
   } catch {
     granted = false;
   }
   if (granted !== true) {
-    throw new UnauthorizedActorError(`actor is not authorized for "${COMMAND_CAPABILITIES[action as OperationAction]}"`);
+    throw new UnauthorizedActorError(`actor is not authorized for "${COMMAND_CAPABILITIES[governedAction]}"`);
   }
 
-  // The fingerprint contract (C.1) also enforces payload validity and action/target/identity coherence,
-  // so a malformed command cannot reach the operation ledger.
-  const governedAction = action as OperationAction;
-  const targetType = ACTION_TARGET_TYPES[governedAction];
-  const targetId = commandTargetId(governedAction, payload);
-  // ONE preparation. From here on the caller's payload and the caller's serialSchemes registry are
-  // never read again -- the prepared value is what gets fingerprinted AND what gets written, so they
-  // cannot diverge no matter what the caller mutates afterwards.
-  const prepared = prepareCommand({
-    action: governedAction, targetType, targetId, payload, serialSchemes: deps.serialSchemes,
-  });
   return { prepared, expectedVersion, actorUid };
 }
 

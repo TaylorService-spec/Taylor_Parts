@@ -665,6 +665,7 @@ await ok("a hostile envelope field is read at most once", async () => {
 // must not be able to change what is written, at ANY window -- while resolvePermission is pending,
 // between fingerprinting and TX1, between TX1 and TX2, or between transaction retries.
 const FP = await import("../lib/equipmentCompatibility/commandFingerprint.js");
+const deferred = () => { let resolve; const promise = new Promise((r) => { resolve = r; }); return { promise, resolve }; };
 const { ACTION_TARGET_TYPES } = await import("../lib/equipmentCompatibility/operations.js");
 
 // Mutate at a chosen boundary and assert the stored document still matches the ORIGINAL command.
@@ -681,7 +682,14 @@ async function assertMutationCannotLand({ action, payload, expectedVersion = nul
 
   const { deps } = makeDeps(db);
   deps.serialSchemes = registry;
-  if (when === "resolvePermission") deps.resolvePermission = async () => { fire(); return true; };
+  // The pending-permission window is driven by a CONTROLLABLE deferred, so the mutation provably lands
+  // while resolvePermission is still unresolved -- not merely "somewhere inside an async function".
+  let entered = null, gate = null;
+  if (when === "resolvePermission") {
+    entered = deferred();
+    gate = deferred();
+    deps.resolvePermission = () => { entered.resolve(); return gate.promise.then(() => true); };
+  }
 
   const originalRunTransaction = db.runTransaction.bind(db);
   let txCount = 0;
@@ -699,18 +707,23 @@ async function assertMutationCannotLand({ action, payload, expectedVersion = nul
     };
   }
 
-  if (when === "beforeCall") fire();
-  const result = await C.runEquipmentCompatibilityCommand({ actorUid: "actor-1", action, idempotencyKey: key, payload, expectedVersion }, deps);
+  const running = C.runEquipmentCompatibilityCommand({ actorUid: "actor-1", action, idempotencyKey: key, payload, expectedVersion }, deps);
+  if (when === "resolvePermission") {
+    await entered.promise;   // resolvePermission has been entered and is still pending
+    fire();                  // the caller mutates its retained payload and registry NOW
+    gate.resolve();          // only then does the capability resolve
+  }
+  const result = await running;
   db.runTransaction = originalRunTransaction;
   assert.equal(result.status, "applied", `${key}: command applied`);
 
   const stored = db.__raw(collection, docId);
   assert.ok(stored, `${key}: the ORIGINAL target document was written`);
   const op = db.__raw(EQUIPMENT_COMPATIBILITY_OPERATIONS_COLLECTION, key);
-  if (when !== "resolvePermission" && when !== "beforeCall") {
-    // Mutation happened after acceptance: the ORIGINAL command must be what was fingerprinted AND stored.
-    assert.equal(op.commandFingerprint, expectedFingerprint, `${key}: fingerprint is the original command`);
-  }
+  // NO EXEMPTIONS: whichever window the mutation used, the ORIGINAL submitted command is what must have
+  // been fingerprinted and stored.
+  assert.equal(op.commandFingerprint, expectedFingerprint, `${key}: fingerprint is the original command`);
+  assert.equal(mutated, true, `${key}: the mutation actually fired`);
   // Whatever was fingerprinted, the persisted record must reproduce that exact fingerprint.
   const rebuilt = FP.buildCommandFingerprint({
     action, targetType: ACTION_TARGET_TYPES[action], targetId: docId,
@@ -733,7 +746,7 @@ function rebuildGovernedValue(action, stored) {
 }
 
 await ok("a payload mutated AFTER acceptance cannot reach storage, at every window", async () => {
-  const windows = ["betweenTransactions", "betweenRetries"];
+  const windows = ["resolvePermission", "betweenTransactions", "betweenRetries"];
   const cases = [
     ["model top-level primitive", "importEquipmentModel", () => model(), EQUIPMENT_MODELS_COLLECTION, MODEL_ID, null, null, (p) => { p.displayName = "MUTATED"; }],
     ["model version", "importEquipmentModel", () => model(), EQUIPMENT_MODELS_COLLECTION, MODEL_ID, null, null, (p) => { p.version = 99; }],
@@ -756,7 +769,7 @@ await ok("a payload mutated AFTER acceptance cannot reach storage, at every wind
 await ok("nested applicability, evidence and verification payload mutations cannot reach storage", async () => {
   const seedBoth = (db) => { seedModel(db); };
   // Nested applicability on a compatibility import.
-  for (const when of ["betweenTransactions", "betweenRetries"]) {
+  for (const when of ["resolvePermission", "betweenTransactions", "betweenRetries"]) {
     const payload = compatOf({ applicability: { kind: "MODEL_REVISION", serialScheme: null, serialRangeStart: null, serialRangeEnd: null, modelRevision: "REV-A" } });
     const { stored } = await assertMutationCannotLand({
       action: "importCompatibility", payload, collection: EQUIPMENT_PART_COMPATIBILITY_COLLECTION,
@@ -768,7 +781,7 @@ await ok("nested applicability, evidence and verification payload mutations cann
     assert.equal(stored.partId, "TST-1001");
   }
   // observedClaim / contentFingerprint on evidence.
-  for (const when of ["betweenTransactions", "betweenRetries"]) {
+  for (const when of ["resolvePermission", "betweenTransactions", "betweenRetries"]) {
     const compat = compatOf();
     const payload = sourceOf(compat.compatibilityId);
     const { stored } = await assertMutationCannotLand({
@@ -781,7 +794,7 @@ await ok("nested applicability, evidence and verification payload mutations cann
     assert.equal(stored.contentFingerprint, "a".repeat(64));
   }
   // alias ownership field.
-  for (const when of ["betweenTransactions", "betweenRetries"]) {
+  for (const when of ["resolvePermission", "betweenTransactions", "betweenRetries"]) {
     const payload = aliasOf();
     const { stored } = await assertMutationCannotLand({
       action: "importEquipmentModelAlias", payload, collection: EQUIPMENT_MODEL_ALIASES_COLLECTION,
@@ -792,7 +805,7 @@ await ok("nested applicability, evidence and verification payload mutations cann
   }
 });
 await ok("a verificationStatus mutated after acceptance cannot reach storage", async () => {
-  for (const when of ["betweenTransactions", "betweenRetries"]) {
+  for (const when of ["resolvePermission", "betweenTransactions", "betweenRetries"]) {
     const db = fakeDb();
     seedModel(db);
     const compat = compatOf();
@@ -802,7 +815,11 @@ await ok("a verificationStatus mutated after acceptance cannot reach storage", a
     const originalRun = db.runTransaction.bind(db);
     let n = 0, fired = false;
     const fire = () => { if (!fired) { payload.verificationStatus = "REJECTED"; fired = true; } };
-    if (when === "betweenTransactions") {
+    let entered = null, gate = null;
+    if (when === "resolvePermission") {
+      entered = deferred(); gate = deferred();
+      deps.resolvePermission = () => { entered.resolve(); return gate.promise.then(() => true); };
+    } else if (when === "betweenTransactions") {
       db.runTransaction = async (fn) => { const r = await originalRun(fn); if ((n += 1) === 1) fire(); return r; };
     } else {
       db.runTransaction = async (fn) => {
@@ -811,16 +828,19 @@ await ok("a verificationStatus mutated after acceptance cannot reach storage", a
         return originalRun(fn);
       };
     }
-    const result = await C.runEquipmentCompatibilityCommand({
+    const running = C.runEquipmentCompatibilityCommand({
       actorUid: "actor-1", action: "verifyCompatibility", idempotencyKey: `key-toctou-verify-${when}`, payload, expectedVersion: 1,
     }, deps);
+    if (when === "resolvePermission") { await entered.promise; fire(); gate.resolve(); }
+    const result = await running;
     db.runTransaction = originalRun;
     assert.equal(result.status, "applied");
+    assert.equal(fired, true, "the mutation actually fired");
     assert.equal(db.__raw(EQUIPMENT_PART_COMPATIBILITY_COLLECTION, compat.compatibilityId).verificationStatus, "VERIFIED", `${when}: the prepared status is what was written`);
   }
 });
 await ok("a serialSchemes registry mutated after acceptance cannot change persistence", async () => {
-  for (const when of ["betweenTransactions", "betweenRetries"]) {
+  for (const when of ["resolvePermission", "betweenTransactions", "betweenRetries"]) {
     const db = fakeDb();
     seedModel(db);
     const registry = structuredClone(SCHEMES);
@@ -837,7 +857,11 @@ await ok("a serialSchemes registry mutated after acceptance cannot change persis
       delete registry["TAYLOR-ALPHA"];
       fired = true;
     };
-    if (when === "betweenTransactions") {
+    let entered = null, gate = null;
+    if (when === "resolvePermission") {
+      entered = deferred(); gate = deferred();
+      deps.resolvePermission = () => { entered.resolve(); return gate.promise.then(() => true); };
+    } else if (when === "betweenTransactions") {
       db.runTransaction = async (fn) => { const r = await originalRun(fn); if ((n += 1) === 1) fire(); return r; };
     } else {
       db.runTransaction = async (fn) => {
@@ -846,10 +870,13 @@ await ok("a serialSchemes registry mutated after acceptance cannot change persis
         return originalRun(fn);
       };
     }
-    const result = await C.runEquipmentCompatibilityCommand({
+    const running = C.runEquipmentCompatibilityCommand({
       actorUid: "actor-1", action: "importCompatibility", idempotencyKey: `key-toctou-scheme-${when}`, payload,
     }, deps);
+    if (when === "resolvePermission") { await entered.promise; fire(); gate.resolve(); }
+    const result = await running;
     db.runTransaction = originalRun;
+    assert.equal(fired, true, "the mutation actually fired");
     assert.equal(result.status, "applied", `${when}: the detached registry kept the command valid`);
     const stored = db.__raw(EQUIPMENT_PART_COMPATIBILITY_COLLECTION, payload.compatibilityId);
     assert.equal(stored.applicability.serialScheme, "TAYLOR-ALPHA");
@@ -901,6 +928,51 @@ await ok("the prepared command value is deep-frozen", async () => {
   assert.throws(() => { prepared.value.applicability.kind = "X"; }, TypeError);
 });
 
+await ok("the detached serial-scheme dependency is DEEP-frozen", async () => {
+  const ranged = compatOf({ applicability: { kind: "SERIAL_RANGE", serialScheme: "TAYLOR-ALPHA", serialRangeStart: "A100", serialRangeEnd: "A200", modelRevision: null } });
+  const prepared = FP.prepareCommand({
+    action: "importCompatibility", targetType: "equipment_part_compatibility",
+    targetId: ranged.compatibilityId, payload: ranged, serialSchemes: structuredClone(SCHEMES),
+  });
+  assert.equal(Object.isFrozen(prepared.serialSchemes), true, "the registry map is frozen");
+  const scheme = prepared.serialSchemes["TAYLOR-ALPHA"];
+  assert.ok(scheme, "the selected scheme is carried on the prepared command");
+  assert.equal(Object.isFrozen(scheme), true, "the SELECTED SCHEME OBJECT is frozen too");
+  for (const field of ["schemeId", "manufacturerId", "normalizerVersion", "tokenPattern", "ordering"]) {
+    assert.throws(() => { scheme[field] = "MUTATED"; }, TypeError, `scheme.${field} must be immutable`);
+    assert.throws(() => { delete scheme[field]; }, TypeError, `scheme.${field} must not be deletable`);
+  }
+  assert.throws(() => { prepared.serialSchemes["OTHER"] = {}; }, TypeError, "no entry can be added");
+});
+await ok("a command mutated while permission is pending still replays as the ORIGINAL command", async () => {
+  const db = fakeDb();
+  const payload = model();
+  const registry = structuredClone(SCHEMES);
+  const { deps } = makeDeps(db);
+  deps.serialSchemes = registry;
+  const entered = deferred(), gate = deferred();
+  deps.resolvePermission = () => { entered.resolve(); return gate.promise.then(() => true); };
+  const running = C.runEquipmentCompatibilityCommand({ actorUid: "actor-1", action: "importEquipmentModel", idempotencyKey: "key-pending-replay", payload }, deps);
+  await entered.promise;
+  payload.displayName = "MUTATED";
+  payload.version = 42;
+  gate.resolve();
+  assert.equal((await running).status, "applied");
+  assert.equal(db.__raw(EQUIPMENT_MODELS_COLLECTION, MODEL_ID).displayName, "Taylor C713");
+  // Exact replay of the ORIGINAL command is a no-op.
+  const { deps: d2 } = makeDeps(db);
+  const mark = auditMark(db);
+  const replay = await C.runEquipmentCompatibilityCommand({ actorUid: "actor-1", action: "importEquipmentModel", idempotencyKey: "key-pending-replay", payload: model() }, d2);
+  assert.deepEqual(replay, { status: "applied", targetId: MODEL_ID, resultVersion: 1, replayed: true });
+  assert.deepEqual(auditsSince(db, mark), [], "replay writes no audit");
+  // Replaying the key with the MUTATED command conflicts rather than overwriting.
+  const { deps: d3 } = makeDeps(db);
+  await assert.rejects(
+    () => C.runEquipmentCompatibilityCommand({ actorUid: "actor-1", action: "importEquipmentModel", idempotencyKey: "key-pending-replay", payload: model({ displayName: "MUTATED", version: 42 }) }, d3),
+    E.IdempotencyConflictError
+  );
+  assert.equal(db.__raw(EQUIPMENT_MODELS_COLLECTION, MODEL_ID).displayName, "Taylor C713");
+});
 await ok("expectedVersion is REFUSED for non-versioned alias and source actions", async () => {
   const db = fakeDb();
   seedModel(db);

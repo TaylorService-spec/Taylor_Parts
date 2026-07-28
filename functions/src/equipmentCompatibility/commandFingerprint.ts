@@ -289,9 +289,16 @@ function detachedSerialSchemes(record: Record<string, unknown>, serialSchemes: u
   const copy: Record<string, unknown> = Object.create(null);
   for (const key of SERIAL_SCHEME_FIELDS) {
     if (!hasOwn(scheme, key)) throw new FingerprintContractError(`serial scheme ${requested} is missing ${key}`);
-    copy[key] = scheme[key];
+    const value = scheme[key];
+    // Scheme fields are primitives by contract; anything else would be a mutable dependency in disguise.
+    if (value !== null && typeof value === "object") {
+      throw new FingerprintContractError(`serial scheme ${requested}.${key} must be a primitive`);
+    }
+    copy[key] = value;
   }
-  detached[requested] = copy;
+  // DEEP-frozen: the exported PreparedCommand must not hand back a mutable validation dependency, so the
+  // selected scheme object is frozen as well as the map that holds it.
+  detached[requested] = Object.freeze(copy);
   return detached;
 }
 
