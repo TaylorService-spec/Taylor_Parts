@@ -173,12 +173,12 @@ the confirmation token. It deletes **only** the genesis-creatable artifacts
 digest still equals the inspected digest** — a file replaced under it aborts without
 deleting that target. On any deletion-phase failure (digest change, unlink failure,
 partial cleanup) it **fails closed**: the reconciliation mutex is **retained** (the gate
-then refuses every production step, `assertNoReconcileMutex`) and a fresh governed
-inspection is required. The mutex is removed only after fully-verified success and only
-while it still carries the owner token. A pre-existing mutex refuses a second, concurrent
-cleanup. (A validation-only refusal — wrong `--action`, stale fingerprint, `blocked` —
-releases the mutex so the operator can re-inspect and retry.) It refuses any `blocked`
-classification:
+then refuses every production step, `assertNoReconcileMutex`), and the stranded mutex is
+resolved by the governed **step 3** recovery below — never by hand. The mutex is removed on
+the happy path only after fully-verified success and only while it still carries the owner
+token. A pre-existing mutex refuses a second, concurrent cleanup. (A validation-only refusal
+— wrong `--action`, stale fingerprint, `blocked` — releases the mutex so the operator can
+re-inspect and retry.) It refuses any `blocked` classification:
 
 ```bash
 node functions/scripts/authPr4InitProgression.js --mode reconcile-cleanup \
@@ -190,9 +190,34 @@ node functions/scripts/authPr4InitProgression.js --mode reconcile-cleanup \
   --action <marker-only|clean-reset> --confirmReconciliation reconcile-genesis
 ```
 
-After a `clean-reset`, re-run the genesis initializer (§5.3) to a clean state. Record a
-sanitized reconciliation note (booleans/refs/fingerprint only) — no key, path, token, or
-identity value.
+A `clean-reset` deletes in the order **state → anchor → marker** (the marker is removed
+**last**): as long as any genesis residue exists, the "reconciliation needed" signal
+survives, so a partial `clean-reset` is **self-healing** — re-running step 1 + step 2
+finishes it. After a completed `clean-reset`, re-run the genesis initializer (§5.3) to a
+clean state.
+
+**Step 3 — recover a stranded reconciliation mutex (only if a cleanup crashed).** If a
+cleanup process was killed (or aborted on a partial cleanup / unlink failure), the
+reconciliation mutex is retained and the gate blocks — and every step-2 cleanup then
+refuses ("a reconciliation mutex is already present"). This is the **only** governed way
+to clear it. It requires a prior inspect (step 1) and its fingerprint, an explicit recovery
+confirmation, and — for a **valid** mutex — that the mutex has aged past the safety window
+(so a still-live cleanup can never be recovered; a **malformed** mutex is recoverable
+immediately). It clears **only** the mutex; all genesis residue is left intact for a
+subsequent normal step 1 + step 2:
+
+```bash
+node functions/scripts/authPr4InitProgression.js --mode reconcile-recover \
+  --projectId taylor-parts --confirmProduction taylor-parts \
+  --authorizedCommit <merged authorization head> \
+  --executionModeConfirmation <token> --executor rudy-digiorgio \
+  --stateKeyFile /secure/state.key --progressionOut /secure/progression.json \
+  --fingerprint <fingerprint from step 1> --confirmReconciliation recover-mutex
+```
+
+The recover report's `residualRecommendation` tells you the next governed step (usually
+re-run step 1 + step 2). Record a sanitized reconciliation note (booleans/refs/fingerprint
+only) — no key, path, token, or identity value.
 
 ## 7. Confirmation (this PR)
 

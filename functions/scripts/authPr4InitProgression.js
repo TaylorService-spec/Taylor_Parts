@@ -40,6 +40,10 @@ const gate = require("./authPr4ProductionGate.js");
 
 const PRODUCTION_PROJECT_ID = "taylor-parts";
 const RECONCILE_CONFIRM = "reconcile-genesis";
+const RECOVER_CONFIRM = "recover-mutex";
+// A VALID reconciliation mutex younger than this may be a live cleanup; recovery refuses
+// it (a malformed mutex is recoverable immediately). Overridable via deps for tests.
+const RECOVERY_MIN_AGE_SECONDS = 300;
 const MIGRATION_PERSONA_ORDER = Object.freeze([
   "emp-rudy-driver",
   "emp-rudy-parts-associate",
@@ -90,6 +94,16 @@ function artifactRoles(progressionOut) {
     txn: gate.txnPath(progressionOut),
   };
 }
+// Read + canonically validate the reconciliation mutex (present/valid/parsed).
+function readReconcileMutex(progressionOut, deps = {}) {
+  const _fs = deps.fs || fs;
+  const p = gate.reconcilePath(progressionOut);
+  if (!_fs.existsSync(p)) return { present: false, valid: false, mutex: null };
+  let m = null, valid = false;
+  try { m = JSON.parse(_fs.readFileSync(p, "utf8")); valid = gate.isValidReconcileMutex(m); } catch { valid = false; }
+  return { present: true, valid, mutex: valid ? m : null };
+}
+
 // Per-role content digests over the confined artifact set (digest hex or null-if-absent).
 function perRoleDigests(progressionOut, deps = {}) {
   const _fs = deps.fs || fs;
@@ -247,11 +261,11 @@ function reconcileInspect(args, deps = {}) {
   const markerPresent = _fs.existsSync(roles.marker);
   const lockPresent = _fs.existsSync(roles.lock);
   const txnPresent = _fs.existsSync(roles.txn);
-  const reconcileMutexPresent = _fs.existsSync(gate.reconcilePath(args.progressionOut));
+  const reconcileMutex = readReconcileMutex(args.progressionOut, deps);
 
   if (!markerPresent) {
     const fp0 = fingerprintArtifacts(args.progressionOut, deps);
-    return { ok: true, mode: "reconcile-inspect", markerPresent: false, lockPresent, txnPresent, reconcileMutexPresent, reconciliationNeeded: false, recommendation: "none", fingerprint: fp0.fingerprint, artifactsPresent: fp0.present, workflowIdentityRef: idRef };
+    return { ok: true, mode: "reconcile-inspect", markerPresent: false, lockPresent, txnPresent, reconcileMutexPresent: reconcileMutex.present, reconcileMutexValid: reconcileMutex.valid, reconciliationNeeded: false, recommendation: "none", fingerprint: fp0.fingerprint, artifactsPresent: fp0.present, workflowIdentityRef: idRef };
   }
 
   // Marker validity via THE canonical gate validator (a token/shape the governed
@@ -283,7 +297,7 @@ function reconcileInspect(args, deps = {}) {
     ok: true, mode: "reconcile-inspect",
     markerPresent: true, markerValid, statePresent: stateClass !== "absent", stateClass,
     stateCanonicalGenesis: canonicalGenesis, anchorPresent, anchorConsistent,
-    lockPresent, txnPresent, reconcileMutexPresent,
+    lockPresent, txnPresent, reconcileMutexPresent: reconcileMutex.present, reconcileMutexValid: reconcileMutex.valid,
     reconciliationNeeded: true, recommendation,
     fingerprint: fp.fingerprint, artifactsPresent: fp.present, workflowIdentityRef: idRef,
   };
@@ -292,10 +306,12 @@ function reconcileInspect(args, deps = {}) {
 // ---------------------------------------------------------------------------
 // MODE: reconcile-cleanup  (Owner-confirmed, fingerprint-bound, confined)
 // ---------------------------------------------------------------------------
-// Clean-reset targets are STRICTLY the artifacts the genesis initializer can create --
-// the marker, the progression state, and the anchor. A runtime claim lock or transition
-// mutex is NEVER a genesis clean-reset target (and its presence already forces "blocked").
-const CLEAN_RESET_ROLES = Object.freeze(["marker", "state", "anchor"]);
+// Clean-reset targets are STRICTLY the artifacts the genesis initializer can create -- the
+// progression state, the anchor, and the marker. A runtime claim lock or transition mutex
+// is NEVER a genesis clean-reset target (its presence already forces "blocked"). The MARKER
+// is deleted LAST: as long as any genesis residue exists, the "reconciliation needed"
+// signal (the marker) survives, so a partial clean-reset is self-healing on a normal re-run.
+const CLEAN_RESET_ROLES = Object.freeze(["state", "anchor", "marker"]);
 
 function reconcileCleanup(args, deps = {}) {
   assertProductionArgs(args);
@@ -380,6 +396,53 @@ function reconcileCleanup(args, deps = {}) {
 }
 
 // ---------------------------------------------------------------------------
+// MODE: reconcile-recover  (governed recovery of a CRASH-LEFT reconciliation mutex)
+// ---------------------------------------------------------------------------
+// A reconciliation mutex retained by a crashed/partial/aborted cleanup would otherwise
+// strand production forever (every reconcile-cleanup refuses while it exists). This is the
+// ONLY governed way to clear it -- Owner-confirmed, fingerprint-bound, and staleness-gated
+// so it can never clear a still-live cleanup's mutex. It clears ONLY the mutex; all genesis
+// residue is left intact for a subsequent normal reconcile-inspect + reconcile-cleanup.
+function reconcileRecover(args, deps = {}) {
+  assertProductionArgs(args);
+  if (args.confirmReconciliation !== RECOVER_CONFIRM) throw new Error(`Reconciliation-mutex recovery requires an explicit --confirmReconciliation ${RECOVER_CONFIRM}.`);
+  if (!args.fingerprint || !gate.isSha256(args.fingerprint)) throw new Error("--fingerprint (from a prior reconcile-inspect) is required.");
+
+  const { idHash } = loadProductionAuthority(args, deps); // governed authority verification
+  const _fs = deps.fs || fs;
+  const now = deps.now || (() => new Date());
+  const reconFile = gate.reconcilePath(args.progressionOut);
+  if (!_fs.existsSync(reconFile)) throw new Error("No reconciliation mutex present; nothing to recover.");
+
+  const held = readReconcileMutex(args.progressionOut, deps);
+
+  // Snapshot binding: the artifact set must be byte-identical to the operator's inspection.
+  const fp = fingerprintArtifacts(args.progressionOut, deps);
+  if (fp.fingerprint !== args.fingerprint) throw new Error("Artifacts changed since inspection (fingerprint mismatch) -- refusing to recover.");
+
+  // Staleness gate: a VALID mutex younger than the minimum age may belong to a live cleanup
+  // -- refuse. A malformed/foreign mutex (never produced by a live governed cleanup) is
+  // recoverable immediately.
+  const minAge = Number.isFinite(deps.recoveryMinAgeSeconds) ? deps.recoveryMinAgeSeconds : RECOVERY_MIN_AGE_SECONDS;
+  if (held.valid) {
+    const ageSec = (now().getTime() - Date.parse(held.mutex.at)) / 1000;
+    if (!(ageSec >= minAge)) throw new Error(`The reconciliation mutex is too recent to recover (younger than ${minAge}s) -- it may be a live cleanup. Retry once it has aged out or completed.`);
+  }
+
+  // Clear ONLY the mutex (never touch marker/state/anchor/lock/txn).
+  _fs.unlinkSync(reconFile);
+
+  // Re-classify the remaining residue so the operator knows the next governed step.
+  const after = reconcileInspect(args, deps);
+  return {
+    ok: true, mode: "reconcile-recover",
+    mutexWasValid: held.valid, mutexCleared: true,
+    residualReconciliationNeeded: after.reconciliationNeeded, residualRecommendation: after.recommendation,
+    fingerprint: args.fingerprint, workflowIdentityRef: `ref:${idHash.slice(0, 16)}`,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Output sanitizer -- strips exact known protected values (spaces included) then any
 // remaining quoted/absolute path patterns.
 // ---------------------------------------------------------------------------
@@ -413,6 +476,7 @@ async function main() {
     let result, headline;
     if (args.mode === "reconcile-inspect") { result = reconcileInspect(args); headline = `RECONCILE-INSPECT: needed=${result.reconciliationNeeded} recommendation=${result.recommendation}`; }
     else if (args.mode === "reconcile-cleanup") { result = reconcileCleanup(args); headline = `RECONCILE-CLEANUP: action=${result.action} removed=[${result.removedRoles.join(",")}]`; }
+    else if (args.mode === "reconcile-recover") { result = reconcileRecover(args); headline = `RECONCILE-RECOVER: mutexCleared=${result.mutexCleared} residual=${result.residualRecommendation}`; }
     else { result = initGenesis(args); headline = `GENESIS initialised (eligible, revision 0, next=${result.nextPersona} position ${result.nextPosition}).`; }
     emit(headline);
     emit(result);
@@ -425,7 +489,7 @@ async function main() {
 if (require.main === module) { main(); }
 
 module.exports = {
-  parseArgs, createOnly, initGenesis, reconcileInspect, reconcileCleanup,
-  sanitizeForOutput, artifactRoles, fingerprintArtifacts, perRoleDigests, assertProductionArgs,
-  PRODUCTION_PROJECT_ID, RECONCILE_CONFIRM, MIGRATION_PERSONA_ORDER,
+  parseArgs, createOnly, initGenesis, reconcileInspect, reconcileCleanup, reconcileRecover,
+  sanitizeForOutput, artifactRoles, fingerprintArtifacts, perRoleDigests, readReconcileMutex, assertProductionArgs,
+  PRODUCTION_PROJECT_ID, RECONCILE_CONFIRM, RECOVER_CONFIRM, RECOVERY_MIN_AGE_SECONDS, MIGRATION_PERSONA_ORDER,
 };

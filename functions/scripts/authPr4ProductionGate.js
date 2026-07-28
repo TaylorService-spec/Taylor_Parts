@@ -556,6 +556,16 @@ function assertNoInitMarker(stateFile, deps = {}) {
 const RECONCILE_MUTEX_VERSION = 1;
 const RECONCILE_MUTEX_FIELDS = Object.freeze(["version", "token", "at"]);
 function reconcilePath(stateFile) { return `${stateFile}.reconcile`; }
+// Canonical reconciliation-mutex validator (same token shape as the init marker: exactly
+// 32 lowercase hex). A mutex that fails this is malformed/foreign residue (never a live
+// governed cleanup, which always writes a canonical mutex) and is recoverable immediately.
+function isValidReconcileMutex(m) {
+  if (!m || typeof m !== "object" || Array.isArray(m)) return false;
+  const keys = Object.keys(m).sort();
+  const exp = [...RECONCILE_MUTEX_FIELDS].sort();
+  if (keys.length !== exp.length || keys.some((k, i) => k !== exp[i])) return false;
+  return m.version === RECONCILE_MUTEX_VERSION && isUtcInstant(m.at) && typeof m.token === "string" && INIT_TOKEN_RE.test(m.token);
+}
 function assertNoReconcileMutex(stateFile, deps = {}) {
   const _fs = deps.fs || fs;
   if (_fs.existsSync(reconcilePath(stateFile))) {
@@ -895,7 +905,7 @@ module.exports = {
   lockPath, readLock, acquireClaim, releaseClaim, assertOwnsClaim, assertLiveOwnership, leaseExpired,
   txnPath, withTransition, assertMutexOwner,
   INIT_MARKER_VERSION, INIT_MARKER_FIELDS, INIT_TOKEN_RE, initMarkerPath, isValidInitMarker, readInitMarker, assertNoInitMarker,
-  RECONCILE_MUTEX_VERSION, RECONCILE_MUTEX_FIELDS, reconcilePath, assertNoReconcileMutex,
+  RECONCILE_MUTEX_VERSION, RECONCILE_MUTEX_FIELDS, reconcilePath, isValidReconcileMutex, assertNoReconcileMutex,
   nextEligiblePersona,
   signBreakGlass, readAndVerifyBreakGlass,
   assertProductionAuthorization,
