@@ -175,4 +175,87 @@ ok("buildCompatibilityId output is canonical in both ports", () => {
   assert.equal(SC.isCanonicalCompatibilitySourceId(SID), true);
   assert.equal(CC.isCanonicalCompatibilitySourceId(SID), true);
 });
+// ---- alias identity contract: normalize / validate / canonical-predicate / doc-id agreement ----
+// Governed by the Owner decision recorded for D4 Stage B.1: the alias key is a PURE IDENTITY string that
+// may contain "/", made storage-safe by percent-encoding at the persistence boundary (the ADR-008 /
+// Decision #40 Part Master precedent); the alias VALUE is bounded at MODEL_ALIAS_VALUE_MAX (120, the
+// Part Master identifier authority) and the ENCODED doc id at MODEL_ALIAS_DOC_ID_MAX_BYTES (1500 UTF-8
+// bytes, Firestore's hard document-ID limit).
+ok("alias bounds + doc-id encoder agree across ports", () => {
+  assert.equal(SM.MODEL_ALIAS_VALUE_MAX, CM.MODEL_ALIAS_VALUE_MAX);
+  assert.equal(SM.MODEL_ALIAS_VALUE_MAX, 120);
+  assert.equal(SM.MODEL_ALIAS_DOC_ID_MAX_BYTES, CM.MODEL_ALIAS_DOC_ID_MAX_BYTES);
+  assert.equal(SM.MODEL_ALIAS_DOC_ID_MAX_BYTES, 1500);
+});
+parity("encodeModelAliasDocId", SM.encodeModelAliasDocId, CM.encodeModelAliasDocId, [
+  "SOURCE_MODEL|TAYLOR|C-713", "SOURCE_MODEL|TAYLOR|C/713", "SOURCE_MODEL|TAYLOR|100%", "SOURCE_MODEL|TAYLOR|A/B%C",
+  "SOURCE_MODEL|TAYLOR|%2F", "", 42, null, undefined, {},
+].map((v) => [v]));
+ok("doc-id encoding is slash-safe, %-unambiguous and reversible", () => {
+  // "/" is legal in the IDENTITY key but never survives into a doc-id segment.
+  assert.equal(SM.isCanonicalModelAliasKey("SOURCE_MODEL|TAYLOR|C/713"), true);
+  assert.equal(SM.encodeModelAliasDocId("SOURCE_MODEL|TAYLOR|C/713").includes("/"), false);
+  // "%" is encoded FIRST, so a literal "%2F" and an encoded "/" stay distinguishable.
+  assert.notEqual(SM.encodeModelAliasDocId("SOURCE_MODEL|TAYLOR|%2F"), SM.encodeModelAliasDocId("SOURCE_MODEL|TAYLOR|/"));
+  const decode = (d) => d.replace(/%2F/g, "/").replace(/%25/g, "%");
+  for (const k of ["SOURCE_MODEL|TAYLOR|C/713", "SOURCE_MODEL|TAYLOR|100%", "SOURCE_MODEL|TAYLOR|%2F", "SOURCE_MODEL|TAYLOR|A/B%C"]) {
+    assert.equal(decode(SM.encodeModelAliasDocId(k)), k, `reversible ${k}`);
+  }
+});
+// The contract Codex required: a successful validator result can NEVER carry an identity the canonical
+// predicate refuses, and that identity is always persistence-safe.
+const ALIAS_RAWS = [
+  "C-713", " c-713 ", "C/713", "100%", "A/B%C", "C-713|ALT", "\u00e9CLAIR", "\uFF23\uFF2F\uFF2D\uFF30",
+  "C-713\u0000", "C-713\u200B", "C-713\u2028", "C-713\u2029", "C-713\u007F", "C-713\u00AD",
+  "A".repeat(120), "A".repeat(121), "\u{1F600}".repeat(500), "\u{1F600}".repeat(60),
+  "\u00c9".repeat(120), "\u00c9".repeat(121), "C  713", "", "   ", 42, null,
+];
+ok("EVERY successful validateEquipmentModelAlias output is canonical AND persistence-safe, both ports", () => {
+  const utf8 = (x) => new TextEncoder().encode(x).length;
+  let accepted = 0;
+  for (const rawValue of ALIAS_RAWS) {
+    const input = { aliasType: "SOURCE_MODEL", manufacturerId: "Taylor", rawValue, equipmentModelId: "TAYLOR--C713" };
+    const sv = SM.validateEquipmentModelAlias(input), cv = CM.validateEquipmentModelAlias(input);
+    assert.equal(J(sv), J(cv), `port divergence @ ${J(rawValue)}`);
+    if (!sv.valid) continue;
+    accepted++;
+    assert.equal(SM.isCanonicalModelAliasKey(sv.value.aliasKey), true, `server canonical @ ${J(rawValue)}`);
+    assert.equal(CM.isCanonicalModelAliasKey(cv.value.aliasKey), true, `client canonical @ ${J(rawValue)}`);
+    const docId = SM.encodeModelAliasDocId(sv.value.aliasKey);
+    assert.equal(docId, CM.encodeModelAliasDocId(cv.value.aliasKey));
+    assert.equal(docId.includes("/"), false, `doc id has no path separator @ ${J(rawValue)}`);
+    assert.ok(utf8(docId) <= SM.MODEL_ALIAS_DOC_ID_MAX_BYTES, `doc id byte bound @ ${J(rawValue)}`);
+    assert.ok(sv.value.aliasValue.length <= SM.MODEL_ALIAS_VALUE_MAX, `value bound @ ${J(rawValue)}`);
+  }
+  assert.ok(accepted >= 8, `corpus must exercise accepted cases, got ${accepted}`);
+});
+ok("multibyte + control boundary cases the old 512-code-unit rule let through", () => {
+  const A = (rawValue) => SM.validateEquipmentModelAlias({ aliasType: "SOURCE_MODEL", manufacturerId: "Taylor", rawValue, equipmentModelId: "TAYLOR--C713" });
+  assert.equal(A("A".repeat(120)).valid, true);                    // exactly at the value bound
+  assert.equal(A("A".repeat(121)).reason, "alias_value_too_long"); // one over
+  assert.equal(A("\u00c9".repeat(120)).valid, true);               // 120 chars / 240 UTF-8 bytes
+  assert.equal(A("\u00c9".repeat(121)).reason, "alias_value_too_long");
+  // 500 emoji: 1000 UTF-16 code units, 2000 UTF-8 bytes. Previously VALID with a 2020-byte key the
+  // canonical predicate rejected; now refused before an identity is ever minted.
+  assert.equal(A("\u{1F600}".repeat(500)).reason, "alias_value_too_long");
+  assert.equal(A("\u{1F600}".repeat(60)).valid, true);             // 120 code units, within bound
+  // rawValue carrying Cc/Cf/Zl/Zp with aliasKey OMITTED splits into exactly two outcomes, and NEITHER
+  // can mint a noncanonical identity:
+  //   (a) the character SURVIVES normalization -> the derived key is refused outright;
+  //   (b) the character is whitespace to normalizeIdentityText (LS/PS/BOM) -> it is stripped, and the
+  //       derived key is the clean canonical one.
+  for (const [c, name] of [["\u0000", "NUL"], ["\u007F", "DEL"], ["\u200B", "ZWSP"], ["\u00AD", "SOFT HYPHEN"], ["\u202E", "BIDI OVERRIDE"]]) {
+    const r = A("C-713" + c);
+    assert.equal(r.valid, false, name);
+    assert.equal(r.reason, "alias_key_not_canonical", name);
+    assert.equal(CM.validateEquipmentModelAlias({ aliasType: "SOURCE_MODEL", manufacturerId: "Taylor", rawValue: "C-713" + c, equipmentModelId: "TAYLOR--C713" }).reason, "alias_key_not_canonical", `client ${name}`);
+  }
+  for (const [c, name] of [["\u2028", "LINE SEPARATOR"], ["\u2029", "PARAGRAPH SEPARATOR"], ["\uFEFF", "BOM"]]) {
+    const r = A("C-713" + c);
+    assert.equal(r.valid, true, name);
+    assert.equal(r.value.aliasKey, "SOURCE_MODEL|TAYLOR|C-713", `${name} is stripped, not carried`);
+    assert.equal(SM.isCanonicalModelAliasKey(r.value.aliasKey), true, name);
+  }
+});
+
 console.log(`\n${passed} parity checks passed`);

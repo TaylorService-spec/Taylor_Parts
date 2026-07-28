@@ -9,6 +9,7 @@
 // Target identity is NEVER re-stated here: every target-ID shape is decided by the authoritative D1/D2
 // contracts (server mirrors of the merged client domain modules), so operations.ts cannot drift into a
 // third interpretation of what a canonical Equipment Model / alias key / compatibility / source ID is.
+import { Timestamp } from "firebase-admin/firestore";
 import { IllegalOperationTransitionError } from "./errors";
 import { isCanonicalEquipmentModelId, isCanonicalModelAliasKey } from "./domain/equipmentModel";
 import { isCanonicalCompatibilityId, isCanonicalCompatibilitySourceId } from "./domain/compatibility";
@@ -78,19 +79,29 @@ const MAX_VERSION = Number.MAX_SAFE_INTEGER;
 const isBoundedString = (v: any, max: number): v is string => typeof v === "string" && v.length > 0 && v.length <= max;
 const isNonNegInt = (v: any): v is number => typeof v === "number" && Number.isSafeInteger(v) && v >= 0 && v <= MAX_VERSION;
 
-// Safe Timestamp reader. Firestore data is untrusted: `toMillis` may be absent, may not be callable,
-// may THROW, or may return NaN/Infinity/a non-number. Any of those yields null (→ invalid) rather than
-// escaping as an exception, so timestamp validation is total and fail-closed.
+// Authentic Firestore Timestamp reader. Firestore data is untrusted, and a duck-typed impostor
+// ({ toMillis: () => 1000 }) must NOT pass as a persisted Timestamp — nor must a stateful impostor whose
+// toMillis() returns a finite value once and NaN on the next call. So this NEVER calls toMillis():
+//   1. the value must be an EXACT Admin SDK Timestamp — Object.getPrototypeOf(v) === Timestamp.prototype,
+//      which rejects plain duck-types AND subclass/prototype impostors that could override behaviour;
+//   2. the millisecond value is DERIVED from the authentic seconds/nanoseconds fields, each range-checked,
+//      so the result is a pure function of the stored data and cannot vary between reads.
+// Property access is still guarded because a hostile object can define throwing getters. Returns null
+// (→ invalid) instead of throwing, keeping timestamp validation total and fail-closed.
 export function timestampMillis(v: any): number | null {
-  if (v === null || (typeof v !== "object" && typeof v !== "function")) return null;
-  let ms: any;
+  if (v === null || typeof v !== "object") return null;
+  if (Object.getPrototypeOf(v) !== Timestamp.prototype) return null;
+  let seconds: any, nanoseconds: any;
   try {
-    if (typeof (v as any).toMillis !== "function") return null;
-    ms = (v as any).toMillis();
+    seconds = (v as Timestamp).seconds;
+    nanoseconds = (v as Timestamp).nanoseconds;
   } catch {
     return null;
   }
-  return typeof ms === "number" && Number.isFinite(ms) ? ms : null;
+  if (!Number.isSafeInteger(seconds)) return null;
+  if (!Number.isSafeInteger(nanoseconds) || nanoseconds < 0 || nanoseconds > 999_999_999) return null;
+  const ms = seconds * 1000 + Math.floor(nanoseconds / 1_000_000);
+  return Number.isSafeInteger(ms) ? ms : null;
 }
 const isTimestamp = (v: any): boolean => timestampMillis(v) !== null;
 
@@ -124,7 +135,9 @@ function validateOperationRecordUnsafe(data: any): { valid: boolean; reason: str
   if (data === null || typeof data !== "object" || Array.isArray(data) || ![Object.prototype, null].includes(Object.getPrototypeOf(data))) return { valid: false, reason: "not_object" };
   const keys = Object.keys(data);
   if (keys.some((k) => !OPERATION_RECORD_FIELDS.has(k))) return { valid: false, reason: "unknown_field" };
-  for (const k of OPERATION_RECORD_FIELDS) if (!(k in data)) return { valid: false, reason: `missing_field:${k}` };
+  // OWN properties only. `k in data` would let a polluted Object.prototype.actorUid satisfy a governed
+  // field that the record does not actually carry, so an inherited field can never complete the schema.
+  for (const k of OPERATION_RECORD_FIELDS) if (!Object.prototype.hasOwnProperty.call(data, k)) return { valid: false, reason: `missing_field:${k}` };
   if (!IDEMPOTENCY_KEY_PATTERN.test(data.idempotencyKey)) return { valid: false, reason: "idempotency_key_invalid" };
   if (!isBoundedString(data.actorUid, 128)) return { valid: false, reason: "actor_uid_invalid" };
   if (!(OPERATION_ACTIONS as readonly string[]).includes(data.action)) return { valid: false, reason: "action_invalid" };
@@ -135,20 +148,23 @@ function validateOperationRecordUnsafe(data: any): { valid: boolean; reason: str
   if (typeof data.commandFingerprint !== "string" || !HEX64.test(data.commandFingerprint)) return { valid: false, reason: "command_fingerprint_invalid" };
   if (!(data.expectedVersion === null || isNonNegInt(data.expectedVersion))) return { valid: false, reason: "expected_version_invalid" };
   if (!(OPERATION_STATES as readonly string[]).includes(data.status)) return { valid: false, reason: "status_invalid" };
-  if (!isTimestamp(data.initiatedAt)) return { valid: false, reason: "initiated_at_invalid" };
+  // Each timestamp is read and validated EXACTLY ONCE, and the validated millisecond value is reused for
+  // the ordering check below — a record is never re-read, so no value can differ between inspections.
+  const initiatedMs = timestampMillis(data.initiatedAt);
+  if (initiatedMs === null) return { valid: false, reason: "initiated_at_invalid" };
+  const terminalMs = timestampMillis(data.terminalAt);
   // status/field invariants (internal consistency).
   if (data.status === "initiated") {
     if (data.resultVersion !== null) return { valid: false, reason: "result_version_must_be_null" };
     if (data.terminalAt !== null) return { valid: false, reason: "terminal_at_must_be_null" };
   } else if (data.status === "denied") {
     if (data.resultVersion !== null) return { valid: false, reason: "result_version_must_be_null" };
-    if (!isTimestamp(data.terminalAt)) return { valid: false, reason: "terminal_at_invalid" };
+    if (terminalMs === null) return { valid: false, reason: "terminal_at_invalid" };
   } else { // applied
     if (!isNonNegInt(data.resultVersion)) return { valid: false, reason: "result_version_invalid" };
-    if (!isTimestamp(data.terminalAt)) return { valid: false, reason: "terminal_at_invalid" };
+    if (terminalMs === null) return { valid: false, reason: "terminal_at_invalid" };
   }
-  const terminalMs = timestampMillis(data.terminalAt), initiatedMs = timestampMillis(data.initiatedAt);
-  if (terminalMs !== null && initiatedMs !== null && terminalMs < initiatedMs) return { valid: false, reason: "terminal_before_initiated" };
+  if (terminalMs !== null && terminalMs < initiatedMs) return { valid: false, reason: "terminal_before_initiated" };
   return { valid: true, reason: null };
 }
 

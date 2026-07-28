@@ -176,19 +176,43 @@ ok("alias-key target ids are held to the D1 canonical-alias-key contract", () =>
 });
 
 // ---- total, fail-closed timestamp validation ----
-ok("timestampMillis is total: throwing/NaN/Infinity/malformed all yield null, real Timestamps a number", () => {
-  const thrower = { toMillis() { throw new Error("boom"); } };
-  const throwingGetter = { get toMillis() { throw new Error("boom"); } };
-  for (const v of [thrower, throwingGetter, { toMillis: () => NaN }, { toMillis: () => Infinity }, { toMillis: () => -Infinity }, { toMillis: () => "1000" }, { toMillis: 1000 }, { seconds: 1, nanoseconds: 0 }, {}, null, undefined, 1000, "1000", []]) {
-    assert.equal(timestampMillis(v), null, JSON.stringify(String(v)));
-  }
+ok("timestampMillis accepts ONLY an authentic Firestore Timestamp, never a duck-typed impostor", () => {
+  // Real Admin SDK Timestamps, including epoch zero and sub-millisecond precision.
   assert.equal(timestampMillis(T0), 1000);
   assert.equal(timestampMillis(Timestamp.fromMillis(0)), 0);
+  assert.equal(timestampMillis(new Timestamp(1, 999999999)), 1999);
+  // Duck-typed impostor whose toMillis() returns a FINITE number is NOT a Timestamp.
+  assert.equal(timestampMillis({ toMillis: () => 1000 }), null);
+  // Stateful impostor: finite on the first call, NaN on the next. Rejected outright, and because the
+  // millis are DERIVED from seconds/nanoseconds rather than read from a method, no value can drift.
+  let n = 0;
+  assert.equal(timestampMillis({ toMillis: () => (n++ ? NaN : 1000) }), null);
+  // Prototype/subclass impostors: a subclass could override behaviour, so only the exact class passes.
+  class SubTimestamp extends Timestamp {}
+  assert.equal(timestampMillis(new SubTimestamp(1, 0)), null);
+  assert.equal(timestampMillis(Object.create(Timestamp.prototype)), null); // right proto, no real fields
+  const spoofed = { seconds: 1, nanoseconds: 0 };
+  Object.setPrototypeOf(spoofed, Timestamp.prototype);
+  assert.equal(timestampMillis(spoofed), 1000); // exact proto + authentic fields is by definition a Timestamp
+  // Throwing call and throwing getters never escape.
+  assert.equal(timestampMillis({ toMillis() { throw new Error("boom"); } }), null);
+  const throwingGetter = {};
+  Object.setPrototypeOf(throwingGetter, Timestamp.prototype);
+  Object.defineProperty(throwingGetter, "seconds", { get() { throw new Error("boom"); } });
+  assert.doesNotThrow(() => timestampMillis(throwingGetter));
+  assert.equal(timestampMillis(throwingGetter), null);
+  // Out-of-range / non-integer internal fields.
+  for (const f of [{ seconds: 1.5, nanoseconds: 0 }, { seconds: 1, nanoseconds: -1 }, { seconds: 1, nanoseconds: 1e9 }, { seconds: NaN, nanoseconds: 0 }, { seconds: Infinity, nanoseconds: 0 }, { seconds: 1, nanoseconds: NaN }]) {
+    Object.setPrototypeOf(f, Timestamp.prototype);
+    assert.equal(timestampMillis(f), null, JSON.stringify(f));
+  }
+  for (const v of [{}, null, undefined, 1000, "1000", [], { seconds: 1, nanoseconds: 0 }]) assert.equal(timestampMillis(v), null);
 });
 ok("validateOperationRecord NEVER throws on crafted timestamp-like data — it returns invalid", () => {
   const thrower = { toMillis() { throw new Error("boom"); } };
   const throwingGetter = { get toMillis() { throw new Error("boom"); } };
-  const crafted = [thrower, throwingGetter, { toMillis: () => NaN }, { toMillis: () => Infinity }, { toMillis: 1000 }, { seconds: 1, nanoseconds: 0 }, "1970-01-01T00:00:00Z", 1000, {}];
+  class SubTs extends Timestamp {}
+  const crafted = [{ toMillis: () => 1000 }, new SubTs(1, 0), thrower, throwingGetter, { toMillis: () => NaN }, { toMillis: () => Infinity }, { toMillis: 1000 }, { seconds: 1, nanoseconds: 0 }, "1970-01-01T00:00:00Z", 1000, {}];
   for (const ts of crafted) {
     let r;
     assert.doesNotThrow(() => { r = validateOperationRecord({ ...initiated, initiatedAt: ts }); }, `initiatedAt ${String(ts)}`);
@@ -256,5 +280,35 @@ ok("malformed predecessor and malformed successor both fail closed", () => {
   assert.throws(() => assertOperationRecordTransition({ ...initiated, status: "bogus" }, applied), IllegalOperationTransitionError); // malformed prev
   assert.throws(() => assertOperationRecordTransition(initiated, { ...applied, commandFingerprint: "short" }), IllegalOperationTransitionError); // malformed next
 });
+
+// ---- prototype pollution ----
+ok("an INHERITED governed field cannot satisfy the schema (prototype pollution fails closed)", () => {
+  const { actorUid, ...noActor } = initiated;
+  assert.equal(validateOperationRecord(noActor).reason, "missing_field:actorUid");
+  Object.prototype.actorUid = "attacker-uid"; // eslint-disable-line no-extend-native
+  try {
+    // `k in data` would see the inherited value here; own-property checking must not.
+    assert.equal("actorUid" in noActor, true, "precondition: the field IS reachable via the prototype");
+    assert.equal(Object.prototype.hasOwnProperty.call(noActor, "actorUid"), false);
+    const r = validateOperationRecord(noActor);
+    assert.equal(r.valid, false, "inherited actorUid must NOT satisfy the schema");
+    assert.equal(r.reason, "missing_field:actorUid");
+  } finally {
+    delete Object.prototype.actorUid;
+  }
+  // Every governed field, one at a time, via the prototype.
+  for (const f of ["idempotencyKey", "action", "targetType", "targetId", "commandFingerprint", "expectedVersion", "resultVersion", "status", "initiatedAt", "terminalAt"]) {
+    const { [f]: _dropped, ...without } = initiated;
+    Object.prototype[f] = initiated[f]; // eslint-disable-line no-extend-native
+    try {
+      assert.equal(validateOperationRecord(without).reason, `missing_field:${f}`, `inherited ${f}`);
+    } finally {
+      delete Object.prototype[f];
+    }
+  }
+  // A record carrying all fields as OWN properties still validates (no false rejection).
+  assert.equal(validateOperationRecord({ ...initiated }).valid, true);
+});
+
 
 console.log(`\n${passed} operation-state-machine checks passed`);

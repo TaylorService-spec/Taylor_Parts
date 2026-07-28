@@ -59,7 +59,22 @@ export function normalizeModelAliasKey(record: any): string {
 // line/paragraph separators (Zl/Zp). NFKC preserves all of these and normalizeIdentityKey does not
 // strip them, so a canonical stored key must reject them outright.
 const ALIAS_KEY_FORBIDDEN = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
-const ALIAS_KEY_MAX = 512;
+// Governed bound on the alias VALUE segment, matching the Part Master identifier authority
+// (functions/src/partMaster/normalization.ts MAX_IDENTIFIER_LENGTH). Applied to the NORMALIZED value,
+// which is what the key actually carries -- NFKC can change length, so the raw input is not the bound.
+export const MODEL_ALIAS_VALUE_MAX = 120;
+// Firestore's hard document-ID limit in UTF-8 BYTES, applied to the ENCODED doc id (not to UTF-16 code
+// units, which undercount multibyte alias values).
+export const MODEL_ALIAS_DOC_ID_MAX_BYTES = 1500;
+const utf8ByteLength = (s: any): number => new TextEncoder().encode(s).length;
+// Storage-safe deterministic document id for an alias key, following the governed Part Master precedent
+// (ADR-008 / Decision #40, functions/src/partMaster/partAliasRepository.ts encodeAliasDocId): the alias
+// key stays a PURE IDENTITY string that may legitimately contain "/" (model numbers such as "C/713"),
+// and the two characters a Firestore doc-id segment cannot carry are percent-encoded here -- "%" FIRST,
+// then "/", so the encoding is unambiguous and reversible. Persistence uses this; identity does not.
+export function encodeModelAliasDocId(aliasKey: any): string {
+  return typeof aliasKey === "string" ? aliasKey.replace(/%/g, "%25").replace(/\//g, "%2F") : "";
+}
 // Is `v` EXACTLY the alias key normalizeModelAliasKey derives from its own three segments? This is the
 // single authoritative predicate for a stored/persisted aliasKey (the D1 analogue of
 // isCanonicalEquipmentModelId). Round-tripping proves NFKC-stability, uppercasing, whitespace
@@ -67,11 +82,13 @@ const ALIAS_KEY_MAX = 512;
 // contain "|" (aliasType and manufacturerId provably cannot), so the key is split on its FIRST TWO
 // separators only.
 export function isCanonicalModelAliasKey(v: any): boolean {
-  if (typeof v !== "string" || v.length === 0 || v.length > ALIAS_KEY_MAX || ALIAS_KEY_FORBIDDEN.test(v)) return false;
+  if (typeof v !== "string" || v.length === 0 || ALIAS_KEY_FORBIDDEN.test(v)) return false;
   const i = v.indexOf("|");
   if (i < 0) return false;
   const j = v.indexOf("|", i + 1);
   if (j < 0) return false;
+  if (v.length - (j + 1) > MODEL_ALIAS_VALUE_MAX) return false;                                   // alias value segment bound
+  if (utf8ByteLength(encodeModelAliasDocId(v)) > MODEL_ALIAS_DOC_ID_MAX_BYTES) return false;      // persistence-safe
   return normalizeModelAliasKey({ aliasType: v.slice(0, i), manufacturerId: v.slice(i + 1, j), rawValue: v.slice(j + 1) }) === v;
 }
 export function validateEquipmentModelAlias(input: any): any {
@@ -83,10 +100,14 @@ export function validateEquipmentModelAlias(input: any): any {
   if (!manufacturerId) return { valid: false, value: null, reason: "manufacturer_id_invalid" };
   const aliasValue = normalizeIdentityKey(input.rawValue);
   if (!aliasValue) return { valid: false, value: null, reason: "alias_value_invalid" };
+  if (aliasValue.length > MODEL_ALIAS_VALUE_MAX) return { valid: false, value: null, reason: "alias_value_too_long" };
   const equipmentModelId = input.equipmentModelId;
   if (!isCanonicalEquipmentModelId(equipmentModelId)) return { valid: false, value: null, reason: "equipment_model_id_invalid" };
   const aliasKey = normalizeModelAliasKey({ aliasType, manufacturerId, rawValue: aliasValue });
   if (!aliasKey) return { valid: false, value: null, reason: "alias_key_invalid" };
+  // GUARANTEE: every successful result carries an aliasKey the canonical predicate accepts, so the
+  // validator can never mint an identity the D4 operation contract would refuse.
+  if (!isCanonicalModelAliasKey(aliasKey)) return { valid: false, value: null, reason: "alias_key_not_canonical" };
   if (input.aliasKey !== undefined && normalizeIdentityText(input.aliasKey) !== aliasKey) return { valid: false, value: null, reason: "alias_key_mismatch" };
   return { valid: true, value: { aliasType, manufacturerId, aliasValue, aliasKey, equipmentModelId }, reason: null };
 }
