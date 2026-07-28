@@ -1,19 +1,19 @@
 # Coordination Session State
 
 ## Baseline
-- Main commit: `63b47b7d362d1da6e09041879b77eab676c07a61`
-- Last reconciled: 2026-07-27
-- Relevant PRs: AUTH-PR-4 readiness #451 (`8f28d22`) + operator workflow #453 (`63b47b7`) merged; #444, #445
+- Main commit: `602ed1f9e3e3c0cceb6025cc547b91972630f747`
+- Last reconciled: 2026-07-28
+- Relevant PRs: AUTH-PR-4 chain merged (readiness #451, workflow #453, enablement #457, GRANT #460, initializer/3-file #461 `dba0e33`, CI enforcement #463 `9b912d7`, re-authorization #462 `602ed1f`); #444, #445
 - Relevant issues: #226 (AUTH-PR-3 Functions lane); C2 repository-only authorization recorded in DECISIONS #49
 
 ## Current Objective
-Coordination tracking is maintained by the Customer session. **Authentication (Customer lane):** the AUTH-PR-4 readiness (#451) and governed operator workflow (#453, `63b47b7`) are merged; the workflow is **production-disabled** and **AUTH-PR-4 production identity mutation remains NOT AUTHORIZED**. Customer is opening a repository-only production-enablement **design** PR (PROPOSED DECISIONS #52 (next available at authorization), PENDING/unsigned) that enables nothing. **Inventory/Equipment remains a separate lane** (INVENTORY.md, maintained by the Inventory session; not edited here; note main also advanced with Equipment D1/D2 #450/#454, not owned here) — C2 status recorded below unchanged. The C2 (PR #445) authorization is DECISIONS #49; PR #445 (`2d08e2e`) and PR #447 (`081df750`) merged, so no C2 authorization item remains open.
+Coordination tracking is maintained by the Customer session. **Authentication (Customer lane):** the AUTH-PR-4 governed workflow, production gate, genesis initializer, and CI-enforced security suites are merged, and the **production authorization is GRANTED** (DECISIONS #52) and **re-bound to the three-file governed set** (DECISIONS #53, PR #462 `602ed1f`) — the committed artifact **verifies**. **AUTH-PR-4 has NOT been executed** (no state key, genesis, private mapping, or credentials; no production mutation). The genuine next steps are two separate, not-yet-granted Owner gates — Gate A (protected genesis preparation) then Gate B (one-persona-at-a-time execution, position 1 first). **Inventory/Equipment remains a separate lane** (INVENTORY.md, maintained by the Inventory session; not edited here; note main also advanced with Equipment D1/D2 #450/#454 and further Equipment compatibility work at `24573ae`, not owned here) — C2 status recorded below unchanged. The C2 (PR #445) authorization is DECISIONS #49; PR #445 (`2d08e2e`) and PR #447 (`081df750`) merged, so no C2 authorization item remains open.
 
 ## Status
 Active (maintained by the Customer session).
 
 ## Delta Since Last Handoff
-- **AUTH-PR-4 readiness (#451, `8f28d22`) and governed operator workflow (#453, `63b47b7`) merged (Customer/Auth lane; both Codex FINAL PASS).** The workflow is **production-disabled** (production `--execute`/`--rollback` throw before SDK init). **Production identity mutation / production-write enablement is NOT authorized**; **no email migration / reset or verification send / explicit `revokeRefreshTokens` / provider configuration / deployment** occurred. Enabling execution needs two later Owner actions (record DECISIONS #52 (next available at authorization) + a separate narrow enablement PR); merge ≠ run. This lane does not touch Inventory/Equipment, PR #448, or PR #450.
+- **AUTH-PR-4 authorization is now GRANTED and re-bound to the three-file governed set (Customer/Auth lane).** The full chain merged: readiness #451, workflow #453, enablement #457, GRANT #460 (DECISIONS #52), genesis initializer + 3-file `GOVERNED_FILES` #461 (`dba0e33`), CI enforcement #463 (`9b912d7`), and three-file re-authorization #462 (`602ed1f`, DECISIONS #53). The committed artifact **verifies** (GRANTED, 3 files); AUTH-PR-4 CI is green on `main` (initializer 63, gate 34, migration 30). **Governance accuracy:** PR #461 did **not** get an unconditional Codex PASS — its post-merge review returned CHANGES REQUIRED (security suites not CI-enforced), corrected by #463. **Nothing has executed:** no state key, genesis, private mapping, credentials, dry-run, email migration/reset/verification send, `revokeRefreshTokens`, provider config, or deployment; merge ≠ run. The next steps are two separate, not-yet-granted Owner gates (Gate A genesis prep, then Gate B one-at-a-time execution). This lane does not touch Inventory/Equipment, PR #448, or PR #450.
 - PR #443 merged and closed the C1 Hosting evidence gate.
 - PR #444 (AUTH-PR-3) merged as `e53c7b0` (Customer-owned; not deployed, not enabled).
 - PR #445 (C2 PartDetail cutover, Inventory-owned) merged as `2d08e2e`; its separate repository-only authorization is recorded in DECISIONS #49.
@@ -53,7 +53,7 @@ Active (maintained by the Customer session).
 - High: concurrent sessions changing overlapping files.
 
 ## Next Action
-- **Customer/Auth lane:** return the production-enablement design PR for Codex review; then stop. The genuine next gate is the Owner's (record DECISIONS #52 (next available at authorization), supply private mapping out-of-band, confirm break-glass, name executor, authorize the separate narrow enablement PR). Do not enable production writes or begin AUTH-PR-4 execution.
+- **Customer/Auth lane:** execution-readiness reconciliation complete; the re-authorization is live and verifying. **Stop.** The genuine next gate is the Owner's, in two separate steps: **Gate A** (named operator creates protected state-key material out-of-band + runs the credential-free genesis initializer, no SDK/network, sanitized evidence only) then **Gate B** (obtain private mapping out-of-band, confirm named executor, execute one persona at a time — position 1 only first, stop for evidence before position 2; position 5 needs fresh break-glass). Do not create a state key/genesis, request private mappings/credentials, run any initializer/dry-run/rollback/migration command, or perform any production/Auth mutation until the Owner grants Gate A, then Gate B position 1.
 - **Inventory lane (separate, not owned here):** merging the sanitized C2 Hosting production evidence (draft PR #448) remains the Inventory session's action — recorded for coordination only, not acted on here.
 Authentication ownership is reconciled; no further ownership action is required.
 
@@ -64,6 +64,6 @@ Authentication ownership is reconciled; no further ownership action is required.
 - Production completion is claimed without linked evidence.
 
 ## Last Updated
-- Date: 2026-07-27
-- Commit: `63b47b7d362d1da6e09041879b77eab676c07a61`
+- Date: 2026-07-28
+- Commit: `602ed1f9e3e3c0cceb6025cc547b91972630f747`
 - Updated by: Customer session
