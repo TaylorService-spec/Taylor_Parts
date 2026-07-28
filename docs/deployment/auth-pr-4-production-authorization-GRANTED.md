@@ -126,26 +126,57 @@ email-provider configuration · enumeration-protection changes · Auth project-s
 changes · Firestore mutation · role/claim/permission/`accessVersion` changes ·
 Customer/Equipment combined release · Inventory / Equipment / Truck-Inventory work.
 
-## 5a. Genesis reconciliation (crash-left init marker)
+## 5a. Genesis reconciliation (crash-left init marker) — governed commands
 
 The initializer publishes an owner-token `<progression>.init` **marker** before it
 writes the signed state or anchor, and removes it only after **both** are fsynced and
 independently verified through the gate. If initialization crashes at any boundary, the
 marker (and any partial artifact) is left on disk; the production gate refuses **every**
 step while a marker is present (`assertNoInitMarker`). The initializer **never**
-auto-deletes an ambiguous or foreign marker. To reconcile:
+auto-deletes an ambiguous or foreign marker, and never auto-reconciles during normal
+initialization or execution. Reconciliation is a **separate, Owner-directed** step run
+through the **same governed, credential-free command** — no ad-hoc `node -e` or manual
+file deletion against production execution-control state.
 
-1. **Do not run any migration step** and do not re-run the initializer over the same
-   `--progressionOut` (it refuses to overwrite).
-2. Inspect out-of-band whether the signed state **and** anchor exist and verify under the
-   protected state key (use the gate's read path, never edit by hand).
-3. If neither verifies as a canonical revision-0 eligible/position-1 genesis, delete the
-   partial state/anchor **and** the marker out-of-band, then re-run the initializer to a
-   clean path.
-4. If both verify, the genesis is sound; the only residue is the marker — remove the
-   marker out-of-band after confirming ownership, then proceed.
-5. Record a sanitized reconciliation note (booleans/refs only) — no key, path, or
-   identity value.
+**Step 1 — inspect (read-only).** Classifies the marker + residue and returns a
+sanitized report (booleans/refs + a content **fingerprint**); prints no key, token, or path:
+
+```bash
+node functions/scripts/authPr4InitProgression.js --mode reconcile-inspect \
+  --projectId taylor-parts --confirmProduction taylor-parts \
+  --authorizedCommit <merged authorization head> \
+  --executionModeConfirmation <token> --executor rudy-digiorgio \
+  --stateKeyFile /secure/state.key --progressionOut /secure/progression.json
+```
+
+The report's `recommendation` is one of:
+- **`marker-only`** — the signed state **and** anchor verify as a canonical revision-0
+  eligible/position-1 genesis; only the stray marker must be removed.
+- **`clean-reset`** — the state is absent or a clearly-incomplete partial (or a valid
+  genesis with no committed anchor); the whole residue set is safe to remove and re-init.
+- **`blocked`** — indeterminate/untrusted (wrong key, foreign/tampered marker, a valid
+  **non-genesis** progression, or a bad anchor). **No automatic cleanup** — escalate to
+  the Owner; do not delete anything.
+
+**Step 2 — cleanup (Owner-confirmed, fingerprint-bound, confined).** Runs only after an
+inspect, re-verifies, requires the exact fingerprint from step 1 (refuses if the artifact
+set changed since inspection), requires `--action` to equal the inspected recommendation,
+requires the explicit confirmation token, and deletes **only** the exact derived artifact
+paths (`state`/`anchor`/`marker`/`lock`/`txn`). It refuses any `blocked` classification:
+
+```bash
+node functions/scripts/authPr4InitProgression.js --mode reconcile-cleanup \
+  --projectId taylor-parts --confirmProduction taylor-parts \
+  --authorizedCommit <merged authorization head> \
+  --executionModeConfirmation <token> --executor rudy-digiorgio \
+  --stateKeyFile /secure/state.key --progressionOut /secure/progression.json \
+  --fingerprint <fingerprint from step 1> \
+  --action <marker-only|clean-reset> --confirmReconciliation reconcile-genesis
+```
+
+After a `clean-reset`, re-run the genesis initializer (§5.3) to a clean state. Record a
+sanitized reconciliation note (booleans/refs/fingerprint only) — no key, path, token, or
+identity value.
 
 ## 7. Confirmation (this PR)
 

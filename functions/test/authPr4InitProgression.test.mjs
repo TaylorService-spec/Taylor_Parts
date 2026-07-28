@@ -75,6 +75,31 @@ function failingFsOn(matchFn, opName) {
   };
 }
 
+// Reconciliation setup: a dir + key + the binding this repo's authorization expects.
+function setup(g) {
+  const dir = tmp();
+  const keyFile = path.join(dir, "state.key");
+  const key = crypto.randomBytes(48); fs.writeFileSync(keyFile, key, { mode: 0o600 });
+  const progOut = path.join(dir, "progression.json");
+  const idHash = gate.workflowIdentityHash(gate.governedHashesAtCommit(g.root, g.authorizedCommit));
+  const expected = { authorizationId: "AUTHPR4-PROD-TEST", projectId: PROD, workflowIdentityHash: idHash, personaOrder: ORDER };
+  const rargs = (over = {}) => ({ projectId: PROD, confirmProduction: PROD, authorizedCommit: g.authorizedCommit, executionModeConfirmation: g.executionModeToken, executor: g.executor, stateKeyFile: keyFile, progressionOut: progOut, ...over });
+  return { dir, key, keyFile, progOut, idHash, expected, rargs };
+}
+function writeGenesisState(progOut, key, expected) {
+  const genesis = gate.genesisState({ authorizationId: expected.authorizationId, projectId: expected.projectId, workflowIdentityHash: expected.workflowIdentityHash, personaOrder: expected.personaOrder });
+  fs.writeFileSync(progOut, JSON.stringify({ ...genesis, signature: gate.signProgression(genesis, key) }), { mode: 0o600 });
+  return genesis;
+}
+function writeAnchorFor(progOut, key, genesis, expected) {
+  gate.writeAnchor(progOut, { authorizationId: expected.authorizationId, highWaterRevision: genesis.revision, stateHash: gate.progressionHash(genesis) }, key);
+}
+function writeMarker(progOut, tok = "tok" + crypto.randomBytes(8).toString("hex")) {
+  fs.writeFileSync(gate.initMarkerPath(progOut), JSON.stringify({ version: gate.INIT_MARKER_VERSION, token: tok, at: new Date().toISOString() }));
+}
+const RDEPS = (g) => ({ repoRoot: g.root, personaOrder: ORDER });
+const CONFIRM = init.RECONCILE_CONFIRM;
+
 ok("GOVERNED_FILES now includes the initializer (bound)", () => {
   assert.ok(gate.GOVERNED_FILES.includes("functions/scripts/authPr4InitProgression.js"));
   assert.equal(gate.GOVERNED_FILES.length, 3);
@@ -282,10 +307,190 @@ ok("SECRET OUTPUT (CLI): stdout/stderr carry no state key, execution token, or p
   fs.rmSync(io, { recursive: true, force: true }); fs.rmSync(io2, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
 });
 
-ok("SANITIZER: strips Windows + POSIX absolute paths and echoed secrets", () => {
+ok("SANITIZER: strips Windows + POSIX absolute paths, SPACED paths, and echoed secrets", () => {
   assert.equal(init.sanitizeForOutput("open 'C:\\secure\\state.key' failed"), "open '<path>' failed");
   assert.equal(init.sanitizeForOutput("ENOENT /secure/vault/progression.json"), "ENOENT <path>");
   assert.equal(init.sanitizeForOutput("token EMT-XYZ leaked", ["EMT-XYZ"]), "token <redacted> leaked");
+  // Codex reproduction: paths WITH SPACES must be fully redacted, not partially.
+  // (a) exact known value -> whole path redacted regardless of spaces.
+  assert.equal(init.sanitizeForOutput("open C:\\Secure Folder\\state.key now", ["C:\\Secure Folder\\state.key"]), "open <redacted> now");
+  assert.equal(init.sanitizeForOutput("ENOENT /secure/vault folder/state.key", ["/secure/vault folder/state.key"]), "ENOENT <redacted>");
+  // (b) quoted spaced path (as Node's fs errors emit) -> quote-aware generic redaction.
+  assert.equal(init.sanitizeForOutput("open 'C:\\Secure Folder\\state.key' failed"), "open '<path>' failed");
+  assert.equal(init.sanitizeForOutput("open '/secure/vault folder/state.key' failed"), "open '<path>' failed");
+  // No leftover distinctive segment.
+  const red = init.sanitizeForOutput("open 'C:\\Secure Folder\\state.key' x", ["C:\\Secure Folder\\state.key"]);
+  assert.ok(!/Secure Folder|state\.key/.test(red), "no distinctive segment survives");
+});
+
+// ---------------------------------------------------------------------------
+// RECONCILE modes (crash-residue inspection + Owner-confirmed confined cleanup)
+// ---------------------------------------------------------------------------
+
+ok("RECONCILE guard: production-only + reconcile modes are credential-free", () => {
+  const g = buildGrantedRepo(); const s = setup(g); writeMarker(s.progOut);
+  throws(() => init.reconcileInspect(s.rargs({ projectId: "demo-authpr4" }), RDEPS(g)), /requires --projectId taylor-parts/);
+  throws(() => init.reconcileCleanup(s.rargs({ confirmProduction: "x", fingerprint: "a".repeat(64), action: "clean-reset", confirmReconciliation: CONFIRM }), RDEPS(g)), /matching --confirmProduction taylor-parts/);
+  const src = fs.readFileSync(SCRIPT, "utf8");
+  assert.doesNotMatch(src, /initializeApp|getAuth|firebase-admin/);
+  fs.rmSync(s.dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
+});
+
+ok("RECONCILE: sound genesis + residue marker -> inspect=marker-only; cleanup removes ONLY the marker", () => {
+  const g = buildGrantedRepo(); const s = setup(g);
+  const gen = writeGenesisState(s.progOut, s.key, s.expected);
+  writeAnchorFor(s.progOut, s.key, gen, s.expected);
+  writeMarker(s.progOut);
+  const rep = init.reconcileInspect(s.rargs(), RDEPS(g));
+  assert.equal(rep.recommendation, "marker-only");
+  assert.equal(rep.markerValid, true);
+  assert.equal(rep.stateCanonicalGenesis, true);
+  assert.equal(rep.anchorConsistent, true);
+  assert.match(rep.fingerprint, /^[0-9a-f]{64}$/);
+  assert.match(rep.workflowIdentityRef, /^ref:[0-9a-f]{16}$/);
+  // A mismatched action is refused.
+  throws(() => init.reconcileCleanup(s.rargs({ fingerprint: rep.fingerprint, action: "clean-reset", confirmReconciliation: CONFIRM }), RDEPS(g)), /does not match the inspected recommendation/);
+  const res = init.reconcileCleanup(s.rargs({ fingerprint: rep.fingerprint, action: "marker-only", confirmReconciliation: CONFIRM }), RDEPS(g));
+  assert.deepEqual(res.removedRoles, ["marker"]);
+  assert.ok(!fs.existsSync(gate.initMarkerPath(s.progOut)), "marker removed");
+  assert.ok(fs.existsSync(s.progOut) && fs.existsSync(gate.anchorPath(s.progOut)), "sound genesis + anchor survive");
+  fs.rmSync(s.dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
+});
+
+ok("RECONCILE: marker only (no state) -> clean-reset removes the marker; nothing remains", () => {
+  const g = buildGrantedRepo(); const s = setup(g); writeMarker(s.progOut);
+  const rep = init.reconcileInspect(s.rargs(), RDEPS(g));
+  assert.equal(rep.stateClass, "absent");
+  assert.equal(rep.recommendation, "clean-reset");
+  const res = init.reconcileCleanup(s.rargs({ fingerprint: rep.fingerprint, action: "clean-reset", confirmReconciliation: CONFIRM }), RDEPS(g));
+  assert.deepEqual(res.removedRoles, ["marker"]);
+  assert.equal(res.artifactsRemaining.length, 0);
+  assert.ok(!fs.existsSync(gate.initMarkerPath(s.progOut)));
+  fs.rmSync(s.dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
+});
+
+ok("RECONCILE: marker + truncated partial state -> clean-reset removes marker + state", () => {
+  const g = buildGrantedRepo(); const s = setup(g);
+  fs.writeFileSync(s.progOut, '{"version":1,"authorizationId"'); // truncated JSON
+  writeMarker(s.progOut);
+  const rep = init.reconcileInspect(s.rargs(), RDEPS(g));
+  assert.equal(rep.stateClass, "partial");
+  assert.equal(rep.recommendation, "clean-reset");
+  const res = init.reconcileCleanup(s.rargs({ fingerprint: rep.fingerprint, action: "clean-reset", confirmReconciliation: CONFIRM }), RDEPS(g));
+  assert.ok(res.removedRoles.includes("marker") && res.removedRoles.includes("state"));
+  assert.ok(!fs.existsSync(s.progOut) && !fs.existsSync(gate.initMarkerPath(s.progOut)));
+  fs.rmSync(s.dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
+});
+
+ok("RECONCILE: marker + canonical genesis state but MISSING anchor -> clean-reset (incomplete init)", () => {
+  const g = buildGrantedRepo(); const s = setup(g);
+  writeGenesisState(s.progOut, s.key, s.expected); // no anchor written
+  writeMarker(s.progOut);
+  const rep = init.reconcileInspect(s.rargs(), RDEPS(g));
+  assert.equal(rep.stateCanonicalGenesis, true);
+  assert.equal(rep.anchorPresent, false);
+  assert.equal(rep.recommendation, "clean-reset");
+  fs.rmSync(s.dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
+});
+
+ok("RECONCILE: marker + genesis state + INVALID anchor -> blocked; cleanup refused", () => {
+  const g = buildGrantedRepo(); const s = setup(g);
+  const gen = writeGenesisState(s.progOut, s.key, s.expected);
+  fs.writeFileSync(gate.anchorPath(s.progOut), JSON.stringify({ version: gate.ANCHOR_VERSION, authorizationId: s.expected.authorizationId, highWaterRevision: 0, stateHash: gate.progressionHash(gen), updatedAt: new Date().toISOString(), signature: "deadbeef" }));
+  writeMarker(s.progOut);
+  const rep = init.reconcileInspect(s.rargs(), RDEPS(g));
+  assert.equal(rep.anchorPresent, true);
+  assert.equal(rep.anchorConsistent, false);
+  assert.equal(rep.recommendation, "blocked");
+  throws(() => init.reconcileCleanup(s.rargs({ fingerprint: rep.fingerprint, action: "clean-reset", confirmReconciliation: CONFIRM }), RDEPS(g)), /BLOCKED/);
+  assert.ok(fs.existsSync(gate.initMarkerPath(s.progOut)), "blocked residue untouched");
+  fs.rmSync(s.dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
+});
+
+ok("RECONCILE: WRONG state key -> indeterminate -> blocked (never auto-deletes a possibly-real state)", () => {
+  const g = buildGrantedRepo(); const s = setup(g);
+  const gen = writeGenesisState(s.progOut, s.key, s.expected);
+  writeAnchorFor(s.progOut, s.key, gen, s.expected);
+  writeMarker(s.progOut);
+  const wrongKeyFile = path.join(s.dir, "wrong.key"); fs.writeFileSync(wrongKeyFile, crypto.randomBytes(48));
+  const rep = init.reconcileInspect(s.rargs({ stateKeyFile: wrongKeyFile }), RDEPS(g));
+  assert.equal(rep.stateClass, "indeterminate");
+  assert.equal(rep.recommendation, "blocked");
+  throws(() => init.reconcileCleanup(s.rargs({ stateKeyFile: wrongKeyFile, fingerprint: rep.fingerprint, action: "clean-reset", confirmReconciliation: CONFIRM }), RDEPS(g)), /BLOCKED/);
+  fs.rmSync(s.dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
+});
+
+ok("RECONCILE: malformed (foreign-shaped) marker -> blocked", () => {
+  const g = buildGrantedRepo(); const s = setup(g);
+  const gen = writeGenesisState(s.progOut, s.key, s.expected); writeAnchorFor(s.progOut, s.key, gen, s.expected);
+  fs.writeFileSync(gate.initMarkerPath(s.progOut), JSON.stringify({ version: 99, foreign: true }));
+  const rep = init.reconcileInspect(s.rargs(), RDEPS(g));
+  assert.equal(rep.markerValid, false);
+  assert.equal(rep.recommendation, "blocked");
+  fs.rmSync(s.dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
+});
+
+ok("RECONCILE: artifact change between inspect and cleanup -> fingerprint mismatch, cleanup refused", () => {
+  const g = buildGrantedRepo(); const s = setup(g); writeMarker(s.progOut);
+  const rep = init.reconcileInspect(s.rargs(), RDEPS(g));
+  fs.writeFileSync(gate.lockPath(s.progOut), "{}"); // mutate the set AFTER inspection
+  throws(() => init.reconcileCleanup(s.rargs({ fingerprint: rep.fingerprint, action: "clean-reset", confirmReconciliation: CONFIRM }), RDEPS(g)), /fingerprint mismatch/);
+  assert.ok(fs.existsSync(gate.initMarkerPath(s.progOut)), "marker untouched on refusal");
+  fs.rmSync(s.dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
+});
+
+ok("RECONCILE: cleanup requires confirmation, a real fingerprint, and a valid action (nothing removed otherwise)", () => {
+  const g = buildGrantedRepo(); const s = setup(g); writeMarker(s.progOut);
+  const rep = init.reconcileInspect(s.rargs(), RDEPS(g));
+  throws(() => init.reconcileCleanup(s.rargs({ fingerprint: rep.fingerprint, action: "clean-reset" }), RDEPS(g)), /--confirmReconciliation reconcile-genesis/);
+  throws(() => init.reconcileCleanup(s.rargs({ action: "clean-reset", confirmReconciliation: CONFIRM }), RDEPS(g)), /--fingerprint/);
+  throws(() => init.reconcileCleanup(s.rargs({ fingerprint: rep.fingerprint, action: "bogus", confirmReconciliation: CONFIRM }), RDEPS(g)), /--action must be/);
+  assert.ok(fs.existsSync(gate.initMarkerPath(s.progOut)), "nothing removed on invalid cleanup args");
+  fs.rmSync(s.dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
+});
+
+ok("RECONCILE: cleanup confinement -> only derived artifact paths are removed; sibling files untouched", () => {
+  const g = buildGrantedRepo(); const s = setup(g); writeMarker(s.progOut);
+  const sibling = path.join(s.dir, "UNRELATED.txt"); fs.writeFileSync(sibling, "keep me");
+  const rep = init.reconcileInspect(s.rargs(), RDEPS(g));
+  init.reconcileCleanup(s.rargs({ fingerprint: rep.fingerprint, action: "clean-reset", confirmReconciliation: CONFIRM }), RDEPS(g));
+  assert.ok(fs.existsSync(sibling) && fs.readFileSync(sibling, "utf8") === "keep me", "sibling file untouched");
+  fs.rmSync(s.dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
+});
+
+ok("RECONCILE: no marker present -> reconciliationNeeded=false; cleanup refuses (nothing to reconcile)", () => {
+  const g = buildGrantedRepo(); const s = setup(g);
+  const gen = writeGenesisState(s.progOut, s.key, s.expected); writeAnchorFor(s.progOut, s.key, gen, s.expected);
+  const rep = init.reconcileInspect(s.rargs(), RDEPS(g));
+  assert.equal(rep.reconciliationNeeded, false);
+  assert.equal(rep.recommendation, "none");
+  throws(() => init.reconcileCleanup(s.rargs({ fingerprint: rep.fingerprint, action: "clean-reset", confirmReconciliation: CONFIRM }), RDEPS(g)), /nothing to reconcile/);
+  fs.rmSync(s.dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
+});
+
+ok("SECRET OUTPUT (CLI, SPACED PATHS): protected paths containing spaces are fully redacted", () => {
+  const g = buildGrantedRepo();
+  const scriptInRepo = path.join(g.root, "functions/scripts/authPr4InitProgression.js");
+  const io = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4 space-"));
+  const spaced = path.join(io, "Secure Folder"); fs.mkdirSync(spaced);
+  const keyFile = path.join(spaced, "state key.key"); fs.writeFileSync(keyFile, crypto.randomBytes(48), { mode: 0o600 });
+  const progOut = path.join(spaced, "progression file.json");
+  const args = (over) => [scriptInRepo, "--projectId", PROD, "--confirmProduction", PROD, "--authorizedCommit", g.authorizedCommit, "--executionModeConfirmation", g.executionModeToken, "--executor", g.executor, "--stateKeyFile", over.keyFile ?? keyFile, "--progressionOut", over.progOut ?? progOut];
+  const segs = (extra) => ["Secure Folder", "state key.key", "progression file.json", keyFile, progOut, io, ...extra];
+  // SUCCESS with spaced paths.
+  const stdout = execFileSync("node", args({}), { cwd: g.root, encoding: "utf8" });
+  assert.match(stdout, /GENESIS initialised/);
+  for (const seg of segs([])) assert.ok(!stdout.includes(seg), `stdout leaks "${seg}"`);
+  // FAILURE whose raw error embeds a spaced protected path (missing key in a spaced dir).
+  const io2 = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4 space2-"));
+  const badKey = path.join(io2, "No Such Folder", "missing key.key"); // dir intentionally absent
+  const prog2 = path.join(io2, "p file.json");
+  let combined = "";
+  try { execFileSync("node", args({ keyFile: badKey, progOut: prog2 }), { cwd: g.root, encoding: "utf8" }); assert.fail("should have failed"); }
+  catch (e) { combined = String(e.stdout || "") + String(e.stderr || ""); }
+  assert.match(combined, /Failed:/);
+  for (const seg of ["No Such Folder", "missing key.key", "p file.json", badKey, prog2, io2]) assert.ok(!combined.includes(seg), `stderr leaks "${seg}"`);
+  fs.rmSync(io, { recursive: true, force: true }); fs.rmSync(io2, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
 });
 
 ok("CREDENTIAL-FREE: the initializer performs no Firebase initialization", () => {
