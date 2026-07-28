@@ -6,9 +6,10 @@
 //   - stageInitiate uses txn.create(), so `absent → initiated` genuinely requires absence. A concurrent
 //     initiation loses the create and the transaction fails, rather than silently overwriting.
 //   - the terminal transition is TWO-PHASE: prepareTerminal READS the stored record inside the same
-//     transaction and asserts stored → next; stageTerminal writes only what prepareTerminal authorized.
-//     The persistence authority is the stored document, never a caller-supplied predecessor, so a
-//     fabricated or stale `initiated` argument cannot overwrite a stored terminal record.
+//     transaction and asserts stored → next; stageTerminal writes only what prepareTerminal captured
+//     PRIVATELY. The persistence authority is the stored document, never a caller-supplied predecessor
+//     and never a value read back off the token, so a fabricated, mutated or stale argument cannot
+//     overwrite a stored terminal record or retarget the write to a different operation.
 //   - there is NO delete and NO general update method. Terminal rewrites, fingerprint/key changes and
 //     applied ↔ denied are unreachable from this surface, not merely discouraged.
 // A stored record that fails validation is MalformedStoredRecordError — it is NEVER reported as absent,
@@ -68,16 +69,30 @@ export function operationFromFirestore(docId: string, data: Record<string, unkno
   return record as OperationRecord;
 }
 
-// Unforgeable proof that the STORED predecessor was read and validated inside this transaction. The
-// brand is a module-private symbol, so a caller cannot fabricate one and cannot substitute its own idea
-// of the predecessor — the persistence authority is always the document, never the argument.
-const TERMINAL_AUTHORIZATION = Symbol("d4.operation.terminalAuthorization");
-
+// Proof that the STORED predecessor was read and validated inside THIS transaction.
+//
+// The token is an EMPTY frozen object. It carries no data at all, so there is nothing on it for a caller
+// to mutate — an earlier design exposed `stored`/`next` as ordinary properties, and because TypeScript's
+// `readonly` has no runtime effect, replacing BOTH coherently let a caller stage a write for an
+// operation that was never read. All authority now lives in this module-private WeakMap, which the
+// caller cannot reach, enumerate or forge.
+//
+// The entry also binds the authorization to its issuing Transaction and to a single use:
+//   - a token used with a DIFFERENT Transaction is refused, so it cannot escape the read-set that gives
+//     Firestore its conflict protection (a retried transaction is a new Transaction and must re-prepare);
+//   - a token is consumed on its first staging ATTEMPT, so it cannot be replayed.
+declare const TERMINAL_AUTHORIZATION_BRAND: unique symbol;
 export interface TerminalAuthorization {
-  readonly [TERMINAL_AUTHORIZATION]: true;
+  readonly [TERMINAL_AUTHORIZATION_BRAND]: true;
+}
+
+interface AuthorizationEntry {
+  readonly transaction: Transaction;
   readonly stored: OperationRecord;
   readonly next: OperationRecord;
+  used: boolean;
 }
+const AUTHORIZATIONS = new WeakMap<object, AuthorizationEntry>();
 
 export interface OperationRepository {
   // Returns null ONLY when the document genuinely does not exist. A malformed record throws.
@@ -87,9 +102,11 @@ export interface OperationRepository {
   // Phase 1 of the terminal transition: READ the stored predecessor in this transaction and assert
   // stored → next. Throws OperationNotInitiatedError if absent, MalformedStoredRecordError if the stored
   // record is malformed, and IllegalOperationTransitionError if the stored predecessor is already
-  // terminal or the binding changed.
+  // terminal or the binding changed. Returns an opaque, single-use, transaction-bound token; callers
+  // that also need the stored record itself read it with getByIdempotencyKey.
   prepareTerminal(txn: Transaction, next: OperationRecord): Promise<TerminalAuthorization>;
-  // Phase 2: write the authorized successor. Only accepts an authorization produced by phase 1.
+  // Phase 2: write the successor captured by phase 1. Requires the SAME Transaction instance, and
+  // consumes the token so it cannot be reused.
   stageTerminal(txn: Transaction, authorization: TerminalAuthorization): void;
 }
 
@@ -118,17 +135,32 @@ export function buildFirestoreOperationRepository(db: Firestore): OperationRepos
       // The STORED record is the predecessor — never a caller-supplied one. This is what makes a
       // terminal rewrite unreachable: a stored `applied`/`denied` predecessor fails the guard here.
       assertOperationRecordTransition(stored, next);
-      return { [TERMINAL_AUTHORIZATION]: true, stored, next };
+      // The successor is captured PRIVATELY here. A later mutation of the caller's own `next` object
+      // cannot change what gets written, because the write below never reads from the caller again.
+      const token = Object.freeze({}) as unknown as TerminalAuthorization;
+      AUTHORIZATIONS.set(token, { transaction: txn, stored, next: { ...next }, used: false });
+      return token;
     },
     stageTerminal(txn, authorization) {
-      if (authorization === null || typeof authorization !== "object" || (authorization as any)[TERMINAL_AUTHORIZATION] !== true) {
-        throw new IllegalOperationTransitionError("terminal transition requires an authorization from prepareTerminal");
+      const entry = authorization !== null && typeof authorization === "object"
+        ? AUTHORIZATIONS.get(authorization as object)
+        : undefined;
+      if (entry === undefined) {
+        throw new IllegalOperationTransitionError("terminal transition requires an authorization issued by prepareTerminal");
       }
-      const { stored, next } = authorization;
-      // Re-assert against the record that was actually read, so an authorization cannot be mutated
-      // between the two phases.
-      assertOperationRecordTransition(stored, next);
-      txn.set(ref(next.idempotencyKey), operationToFirestore(next));
+      if (entry.used) {
+        throw new IllegalOperationTransitionError("terminal authorization has already been used");
+      }
+      // Consumed on the FIRST staging attempt of any kind, BEFORE the remaining checks. A token whose
+      // use was rejected — including a wrong-transaction attempt — is spent and cannot be retried; the
+      // caller must re-prepare against current stored state.
+      entry.used = true;
+      if (entry.transaction !== txn) {
+        throw new IllegalOperationTransitionError("terminal authorization belongs to a different transaction");
+      }
+      // Re-assert using only the privately captured records.
+      assertOperationRecordTransition(entry.stored, entry.next);
+      txn.set(ref(entry.next.idempotencyKey), operationToFirestore(entry.next));
     },
   };
 }

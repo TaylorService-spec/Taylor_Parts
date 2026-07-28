@@ -336,7 +336,8 @@ await ok("two-transaction lifecycle: TX1 commits initiation, TX2 reads it and tr
   // TX2 -- read the COMMITTED predecessor, then transition. Reads precede writes, as the SDK requires.
   const tx2 = await db.runTransaction(async (txn) => {
     const auth = await repo.prepareTerminal(txn, opApplied);
-    assert.equal(auth.stored.status, "initiated");
+    assert.deepEqual(Object.keys(auth), [], "the token is opaque: it carries no mutable authority");
+    assert.equal(Object.isFrozen(auth), true);
     repo.stageTerminal(txn, auth);
   });
   assert.deepEqual(tx2.writes.map((w) => w.op), ["set"]);
@@ -364,13 +365,105 @@ await ok("stageTerminal refuses anything that is not an authorization from prepa
   const repo = O.buildFirestoreOperationRepository(db);
   db.__seed(EQUIPMENT_COMPATIBILITY_OPERATIONS_COLLECTION, opInitiated.idempotencyKey, O.operationToFirestore(opApplied));
   await db.runTransaction(async (txn) => {
-    // A hand-built object claiming an `initiated` predecessor is not an authorization.
-    for (const forged of [{ stored: opInitiated, next: opDenied }, null, undefined, {}, "auth", { stored: opInitiated, next: opDenied, [Symbol("d4.operation.terminalAuthorization")]: true }]) {
+    for (const forged of [{ stored: opInitiated, next: opDenied }, null, undefined, {}, "auth", 42, Object.freeze({})]) {
       assert.throws(() => repo.stageTerminal(txn, forged), IllegalOperationTransitionError);
     }
     assert.equal(txn.__queued.length, 0, "no forged attempt staged a write");
   });
   assert.deepEqual(db.__raw(EQUIPMENT_COMPATIBILITY_OPERATIONS_COLLECTION, opInitiated.idempotencyKey), O.operationToFirestore(opApplied));
+});
+await ok("a COHERENTLY mutated token cannot retarget the write to an operation that was never read", async () => {
+  // Both operations exist and are `initiated`, so a substituted A->A / B->B transition would itself be
+  // legal -- the only thing that can stop it is binding the write to what was actually READ.
+  const other = { ...opInitiated, idempotencyKey: "key-ijklmnop" };
+  const otherApplied = { ...other, status: "applied", resultVersion: 1, terminalAt: T1 };
+  const db = fakeDb();
+  const repo = O.buildFirestoreOperationRepository(db);
+  db.__seed(EQUIPMENT_COMPATIBILITY_OPERATIONS_COLLECTION, opInitiated.idempotencyKey, O.operationToFirestore(opInitiated));
+  db.__seed(EQUIPMENT_COMPATIBILITY_OPERATIONS_COLLECTION, other.idempotencyKey, O.operationToFirestore(other));
+  const { writes } = await db.runTransaction(async (txn) => {
+    const auth = await repo.prepareTerminal(txn, opApplied); // reads A
+    // Attempt the exact bypass: replace BOTH sides coherently with a valid B transition. The token is
+    // frozen AND carries no authority, so every route is either a throw or a no-op.
+    assert.throws(() => { auth.stored = other; }, TypeError, "frozen token rejects assignment");
+    assert.throws(() => { auth.next = otherApplied; }, TypeError);
+    assert.throws(() => Object.defineProperty(auth, "stored", { value: other, configurable: true }), TypeError);
+    // Even a lookalike carrying the substituted records is not the WeakMap key, so it authorizes nothing.
+    assert.throws(() => repo.stageTerminal(txn, { stored: other, next: otherApplied }), IllegalOperationTransitionError);
+    repo.stageTerminal(txn, auth);
+  });
+  assert.deepEqual(writes.map((w) => w.path), [`${EQUIPMENT_COMPATIBILITY_OPERATIONS_COLLECTION}/${opInitiated.idempotencyKey}`],
+    "the write targets the operation that was READ, not the substituted one");
+  assert.deepEqual(db.__raw(EQUIPMENT_COMPATIBILITY_OPERATIONS_COLLECTION, other.idempotencyKey), O.operationToFirestore(other),
+    "operation B was never written");
+});
+await ok("mutating the caller's successor object after preparation cannot change what is written", async () => {
+  const db = fakeDb();
+  const repo = O.buildFirestoreOperationRepository(db);
+  db.__seed(EQUIPMENT_COMPATIBILITY_OPERATIONS_COLLECTION, opInitiated.idempotencyKey, O.operationToFirestore(opInitiated));
+  const mutable = { ...opApplied };
+  await db.runTransaction(async (txn) => {
+    const auth = await repo.prepareTerminal(txn, mutable);
+    mutable.resultVersion = 99;
+    mutable.idempotencyKey = "key-ijklmnop";
+    mutable.actorUid = "actor-2";
+    repo.stageTerminal(txn, auth);
+  });
+  const written = db.__raw(EQUIPMENT_COMPATIBILITY_OPERATIONS_COLLECTION, opInitiated.idempotencyKey);
+  assert.equal(written.resultVersion, 1, "the successor captured at preparation is what was written");
+  assert.equal(written.actorUid, "actor-1");
+  assert.equal(db.__raw(EQUIPMENT_COMPATIBILITY_OPERATIONS_COLLECTION, "key-ijklmnop"), undefined);
+});
+await ok("an authorization is bound to its issuing transaction", async () => {
+  const db = fakeDb();
+  const repo = O.buildFirestoreOperationRepository(db);
+  db.__seed(EQUIPMENT_COMPATIBILITY_OPERATIONS_COLLECTION, opInitiated.idempotencyKey, O.operationToFirestore(opInitiated));
+  let escaped;
+  await db.runTransaction(async (txn) => { escaped = await repo.prepareTerminal(txn, opApplied); });
+  // A different transaction has a different read set, so Firestore's conflict protection would not
+  // apply -- the token must not be usable there.
+  await db.runTransaction(async (txn) => {
+    assert.throws(() => repo.stageTerminal(txn, escaped), IllegalOperationTransitionError);
+    assert.equal(txn.__queued.length, 0);
+  });
+  assert.deepEqual(db.__raw(EQUIPMENT_COMPATIBILITY_OPERATIONS_COLLECTION, opInitiated.idempotencyKey), O.operationToFirestore(opInitiated),
+    "the stored record is untouched by the cross-transaction attempt");
+});
+await ok("an authorization is single-use and is consumed even by a rejected attempt", async () => {
+  const db = fakeDb();
+  const repo = O.buildFirestoreOperationRepository(db);
+  db.__seed(EQUIPMENT_COMPATIBILITY_OPERATIONS_COLLECTION, opInitiated.idempotencyKey, O.operationToFirestore(opInitiated));
+  await db.runTransaction(async (txn) => {
+    const auth = await repo.prepareTerminal(txn, opApplied);
+    repo.stageTerminal(txn, auth);
+    assert.throws(() => repo.stageTerminal(txn, auth), IllegalOperationTransitionError, "reuse in the same transaction");
+    assert.equal(txn.__queued.length, 1, "no second write was staged");
+  });
+  // A token whose first use was REJECTED is also spent, so it cannot be retried.
+  const db2 = fakeDb();
+  const repo2 = O.buildFirestoreOperationRepository(db2);
+  db2.__seed(EQUIPMENT_COMPATIBILITY_OPERATIONS_COLLECTION, opInitiated.idempotencyKey, O.operationToFirestore(opInitiated));
+  let spent;
+  await db2.runTransaction(async (txn) => {
+    spent = await repo2.prepareTerminal(txn, opApplied);
+    assert.throws(() => repo2.stageTerminal({ ...txn }, spent), IllegalOperationTransitionError); // wrong txn
+    assert.throws(() => repo2.stageTerminal(txn, spent), IllegalOperationTransitionError, "already consumed");
+    assert.equal(txn.__queued.length, 0);
+  });
+});
+await ok("a retried transaction must obtain a fresh authorization", async () => {
+  // Each runTransaction gets a distinct Transaction instance, which is exactly how a retry appears.
+  const db = fakeDb();
+  const repo = O.buildFirestoreOperationRepository(db);
+  db.__seed(EQUIPMENT_COMPATIBILITY_OPERATIONS_COLLECTION, opInitiated.idempotencyKey, O.operationToFirestore(opInitiated));
+  let stale;
+  await db.runTransaction(async (txn) => { stale = await repo.prepareTerminal(txn, opApplied); });
+  await db.runTransaction(async (txn) => {
+    assert.throws(() => repo.stageTerminal(txn, stale), IllegalOperationTransitionError);
+    const fresh = await repo.prepareTerminal(txn, opApplied); // re-prepared against current stored state
+    repo.stageTerminal(txn, fresh);
+  });
+  assert.equal(db.__raw(EQUIPMENT_COMPATIBILITY_OPERATIONS_COLLECTION, opInitiated.idempotencyKey).status, "applied");
 });
 await ok("prepareTerminal rejects absent, malformed and invalid-successor cases", async () => {
   const db = fakeDb();
