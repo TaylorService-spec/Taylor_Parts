@@ -177,7 +177,10 @@ export function buildFirestoreCompatibilityRepository(db: Firestore, deps: Compa
       txn.create(ref(idOf(stored)), compatibilityToFirestore(stored, deps));
     },
     stageUpdate(txn, stored) {
-      txn.set(ref(idOf(stored)), compatibilityToFirestore(stored, deps));
+    // update() REQUIRES the document to exist -- "update" must never quietly become a create and
+    // bypass the separate stageCreate surface. Every field the record owns is written, so this is a
+    // full overwrite of the governed field set, not a partial merge.
+      txn.update(ref(idOf(stored)), compatibilityToFirestore(stored, deps));
     },
   };
 }

@@ -13,6 +13,7 @@
 // Emulator-only, server-only. All five collections are client-closed by the Stage D Rules proposal.
 import type { Firestore, Transaction } from "firebase-admin/firestore";
 import { Timestamp } from "firebase-admin/firestore";
+import { compareTimestamps, readTimestamp } from "./timestamps";
 
 export const EQUIPMENT_MODELS_COLLECTION = "equipment_models";
 export const EQUIPMENT_MODEL_ALIASES_COLLECTION = "equipment_model_aliases";
@@ -34,33 +35,47 @@ export class MalformedStoredRecordError extends Error {}
 const MAX_ACTOR_UID = 128;
 
 // Audit stamps are REPOSITORY authority — never client- or caller-supplied through the domain record.
+// Timestamps are carried as Firestore Timestamps, NOT Date: a Date round-trip truncates to whole
+// milliseconds, which would silently rewrite stored nanoseconds on every update.
 export interface StoredMeta {
-  readonly createdAt: Date;
+  readonly createdAt: Timestamp;
   readonly createdBy: string;
-  readonly updatedAt: Date;
+  readonly updatedAt: Timestamp;
   readonly updatedBy: string;
 }
 
 const isActorUid = (v: unknown): v is string => typeof v === "string" && v.length > 0 && v.length <= MAX_ACTOR_UID;
 
 export function metaToFirestore(meta: StoredMeta): Record<string, unknown> {
+  const created = readTimestamp(meta.createdAt), updated = readTimestamp(meta.updatedAt);
+  if (created === null || updated === null || !isActorUid(meta.createdBy) || !isActorUid(meta.updatedBy)) {
+    throw new MalformedStoredRecordError("refusing to persist malformed audit metadata");
+  }
+  if (compareTimestamps(updated, created) < 0) {
+    throw new MalformedStoredRecordError("refusing to persist a record updated before it was created");
+  }
   return {
-    createdAt: Timestamp.fromDate(meta.createdAt),
+    createdAt: meta.createdAt,
     createdBy: meta.createdBy,
-    updatedAt: Timestamp.fromDate(meta.updatedAt),
+    updatedAt: meta.updatedAt,
     updatedBy: meta.updatedBy,
   };
 }
 
+// Audit ordering uses the GOVERNED Timestamp contract (timestamps.ts) — the same exact
+// (seconds, nanoseconds) comparison the operation state machine uses. Millisecond conversion is never
+// used here: it would collapse sub-millisecond differences and accept an updatedAt that is genuinely
+// earlier than createdAt.
 export function readMeta(docId: string, data: Record<string, unknown>): StoredMeta {
   const { createdAt, createdBy, updatedAt, updatedBy } = data;
-  if (!(createdAt instanceof Timestamp) || !(updatedAt instanceof Timestamp) || !isActorUid(createdBy) || !isActorUid(updatedBy)) {
+  const created = readTimestamp(createdAt), updated = readTimestamp(updatedAt);
+  if (created === null || updated === null || !isActorUid(createdBy) || !isActorUid(updatedBy)) {
     throw new MalformedStoredRecordError(`stored record ${docId} has malformed audit metadata`);
   }
-  if (updatedAt.toMillis() < createdAt.toMillis()) {
+  if (compareTimestamps(updated, created) < 0) {
     throw new MalformedStoredRecordError(`stored record ${docId} was updated before it was created`);
   }
-  return { createdAt: createdAt.toDate(), createdBy, updatedAt: updatedAt.toDate(), updatedBy };
+  return { createdAt: createdAt as Timestamp, createdBy, updatedAt: updatedAt as Timestamp, updatedBy };
 }
 
 // A stored document must be a plain data map. Firestore never returns anything else, so an exotic shape
