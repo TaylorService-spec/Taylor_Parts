@@ -2,11 +2,14 @@
 // (functions/scripts/authPr4ProductionGate.js).
 //
 // The authorization AUTHORITY is a COMMITTED, git-tracked artifact read from git
-// at the authorized commit. The real committed artifact is PENDING, so the real
-// repo always refuses (a negative test). The GRANTED path is exercised via a
-// throwaway temporary git repo containing a GRANTED fixture + copies of the
-// governed files (so on-disk hashes match). The real `taylor-parts` project is
-// never targeted; every emulator init uses a demo-* project.
+// at the authorized commit. As of the AUTH-PR-4 Production Identity-Mutation
+// Authorization (DECISIONS #52) the committed artifact is GRANTED; a test verifies
+// it is well-formed and binds to the reviewed governed-file hashes + ancestry, while
+// gated production execution against `taylor-parts` still fails closed BEFORE any SDK
+// init when inputs are incomplete/incorrect. Additional GRANTED-path behaviour is
+// exercised via throwaway temporary git repos (demo-* projects). The real
+// `taylor-parts` project is NEVER targeted by any SDK call; every emulator init uses
+// a demo-* project.
 //
 // Run (pure):     node test/authPr4ProductionGate.test.mjs
 // Run (emulator): firebase emulators:exec --only auth --project demo-authpr4 \
@@ -106,15 +109,36 @@ ok("strict validators reject non-canonical values", () => {
 // 2. C1 -- repository-governed authorization artifact
 // ---------------------------------------------------------------------------
 
-ok("REAL repo authorization artifact is PENDING -> refused (fail closed)", () => {
-  const head = gate.deriveRepositoryIdentity(REAL_ROOT).head;
+ok("REAL repo GRANTED artifact verifies coherently at PR HEAD; reviewedHead independently checked in ancestry with matching hashes", () => {
+  const repoIdentity = gate.deriveRepositoryIdentity(REAL_ROOT);
+  const head = repoIdentity.head;
+  // ONE coherent commit (PR HEAD): load the artifact AND derive governed hashes from HEAD,
+  // exactly as production execution loads both from the same --authorizedCommit.
   const { artifact } = gate.loadGovernedAuthorization({ repoRoot: REAL_ROOT, authorizedCommit: head });
-  assert.equal(artifact.authorizationStatus, "PENDING");
-  const derived = gate.deriveGovernedFileHashes(REAL_ROOT);
-  throws(() => gate.verifyGovernedAuthorization(artifact, {
-    projectId: "taylor-parts", personaOrder: ORDER, derivedHashes: derived,
-    repoIdentity: gate.deriveRepositoryIdentity(REAL_ROOT), authorizedCommit: head,
-    executionModeConfirmation: "x", executor: "x",
+  assert.equal(artifact.authorizationStatus, "GRANTED");
+  const hashesAtHead = gate.governedHashesAtCommit(REAL_ROOT, head);
+  const base = { projectId: "taylor-parts", personaOrder: ORDER, derivedHashes: hashesAtHead, repoIdentity, authorizedCommit: head, executionModeConfirmation: artifact.executionModeToken, executor: artifact.executor.name };
+  const okd = gate.verifyGovernedAuthorization(artifact, base);
+  assert.equal(okd.authorizationId, "AUTHPR4-PROD-MIGRATION-001");
+  // Independently: reviewedHead is in ancestry and the recorded hashes match its blobs.
+  assert.ok(head === artifact.reviewedHead || repoIdentity.isAncestor(artifact.reviewedHead), "reviewedHead in ancestry");
+  const hashesAtReviewed = gate.governedHashesAtCommit(REAL_ROOT, artifact.reviewedHead);
+  for (const f of gate.GOVERNED_FILES) assert.equal(artifact.governedFileHashes[f], hashesAtReviewed[f]);
+  // Token/executor contract enforced.
+  throws(() => gate.verifyGovernedAuthorization(artifact, { ...base, executionModeConfirmation: "WRONG" }), /execution-mode token/);
+  throws(() => gate.verifyGovernedAuthorization(artifact, { ...base, executor: "someone-else" }), /authorized executor/);
+});
+
+ok("substitution defence: loading at reviewedHead (c2604df) obtains PENDING; a GRANTED in-memory artifact cannot be passed off as that commit's", () => {
+  const REVIEWED = "c2604dff3fcbcd3f9442648484e6d407b67444ef";
+  // The committed blob AT c2604df is PENDING (the git-read authority, not any in-memory object).
+  const { artifact: atReviewed } = gate.loadGovernedAuthorization({ repoRoot: REAL_ROOT, authorizedCommit: REVIEWED });
+  assert.equal(atReviewed.authorizationStatus, "PENDING");
+  const hashesAtReviewed = gate.governedHashesAtCommit(REAL_ROOT, REVIEWED);
+  throws(() => gate.verifyGovernedAuthorization(atReviewed, {
+    projectId: "taylor-parts", personaOrder: ORDER, derivedHashes: hashesAtReviewed,
+    repoIdentity: gate.deriveRepositoryIdentity(REAL_ROOT), authorizedCommit: REVIEWED,
+    executionModeConfirmation: "anything", executor: "anything",
   }), /not GRANTED/);
 });
 
@@ -683,19 +707,45 @@ await okAsync("plain --execute / --rollback vs taylor-parts still refuse (never 
   }
 });
 
-await okAsync("gated --executeProduction vs taylor-parts refuses fail-closed (committed authorization is PENDING)", async () => {
+// Gated production refusal against taylor-parts, at the exact PR HEAD (clean tree),
+// with the committed GRANTED artifact. Each case refuses at a SPECIFIC boundary
+// BEFORE any SDK init -- proven per-reason (no "any of these" catch-all), and no
+// production Auth call is ever made. Values come from the committed artifact.
+const GRANTED = JSON.parse(fs.readFileSync(path.join(REAL_ROOT, gate.AUTH_ARTIFACT_PATH), "utf8"));
+const HEAD = gate.deriveRepositoryIdentity(REAL_ROOT).head;
+function runProd(extra) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-prodrefuse-"));
   const keyFile = path.join(dir, "k"); fs.writeFileSync(keyFile, crypto.randomBytes(48));
-  const head = gate.deriveRepositoryIdentity(REAL_ROOT).head;
   const r = spawnSync(process.execPath, [SCRIPT, "--projectId", "taylor-parts", "--confirmProduction", "taylor-parts", "--executeProduction",
-    "--authorizedCommit", head, "--executionModeConfirmation", "x", "--executor", "x",
-    "--progressionFile", path.join(dir, "s.json"), "--stateKeyFile", keyFile, "--mappingFile", path.join(dir, "m.json"), "--capturedStateOut", path.join(dir, "o.json")],
+    "--authorizedCommit", HEAD, "--stateKeyFile", keyFile, "--capturedStateOut", path.join(dir, "o.json"),
+    "--progressionFile", extra.progressionFile || path.join(dir, "s.json"), "--mappingFile", path.join(dir, "m.json"),
+    "--executionModeConfirmation", extra.token, "--executor", extra.executor],
     { cwd: path.resolve("."), env: process.env, encoding: "utf8" });
-  assert.notEqual(r.status, 0, "must refuse");
-  // Fail-closed reason: committed artifact is PENDING ("not GRANTED"); or, in a
-  // dirty dev working tree, the clean-checkout guard; or a missing progression.
-  assert.match(r.stderr, /not GRANTED|clean checkout|Progression state missing/);
   fs.rmSync(dir, { recursive: true, force: true });
+  return r;
+}
+
+await okAsync("gated production: WRONG execution-mode token refuses at the token boundary, before SDK", async () => {
+  const r = runProd({ token: "wrong-token", executor: GRANTED.executor.name });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /execution-mode token/);
+  assert.doesNotMatch(r.stderr, /FORWARD executed|updateUser/);
+});
+
+await okAsync("gated production: EXECUTOR mismatch refuses at the executor boundary, before SDK", async () => {
+  const r = runProd({ token: GRANTED.executionModeToken, executor: "not-the-executor" });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /authorized executor/);
+  assert.doesNotMatch(r.stderr, /FORWARD executed|updateUser/);
+});
+
+await okAsync("gated production: correct authorization but MISSING progression refuses at the progression boundary, before SDK", async () => {
+  // Correct token + executor + clean HEAD => authorization verifies; the only missing
+  // piece is the progression state, so it halts at readState BEFORE initializeApp.
+  const r = runProd({ token: GRANTED.executionModeToken, executor: GRANTED.executor.name });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /Progression state (missing|malformed)/);
+  assert.doesNotMatch(r.stderr, /FORWARD executed|updateUser/);
 });
 
 console.log(`\n${passed} passed (pure-helper + Auth-emulator layers)`);
