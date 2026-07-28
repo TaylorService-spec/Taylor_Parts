@@ -107,6 +107,8 @@ Customer/Equipment combined release · Inventory / Equipment / Truck-Inventory w
 
 No production action occurred in preparing this PR: no Auth mutation, no email, no
 session revocation, no deployment, no provider config, no private mapping/state-key
-requested or committed. The only enablement change is `PENDING → GRANTED` in the
-authorization artifact; the two governed workflow implementation files are unchanged.
-Draft — returned for Codex review; not merged; execution not begun.
+requested or committed. The governed workflow implementation files are **unchanged**.
+This PR **fully populates the previously PENDING placeholder authorization artifact and
+changes its status to GRANTED** (`authorizationId`, `reviewedHead`, both governed-file
+hashes, `executionModeToken`, `executor.name`, and `requiredConfirmer` populated from
+their placeholders). Draft — returned for Codex review; not merged; execution not begun.
