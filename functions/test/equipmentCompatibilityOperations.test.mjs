@@ -4,7 +4,7 @@
 // initializeApp / emulator needed for the Timestamp value class).
 import assert from "node:assert/strict";
 import { Timestamp } from "firebase-admin/firestore";
-import { OPERATION_STATES, OPERATION_ACTIONS, OPERATION_TARGET_TYPES, ACTION_TARGET_TYPES, isAllowedActionTarget, isAllowedOperationTransition, assertOperationTransition, assertOperationRecordTransition, validateOperationRecord, isSameOperationCommand, isValidOperationTargetId, readTimestamp, compareTimestamps } from "../lib/equipmentCompatibility/operations.js";
+import { OPERATION_STATES, OPERATION_ACTIONS, OPERATION_TARGET_TYPES, ACTION_TARGET_TYPES, isAllowedActionTarget, isAllowedOperationTransition, assertOperationTransition, assertOperationRecordTransition, validateOperationRecord, isSameOperationCommand, isValidOperationTargetId, readTimestamp, compareTimestamps, TIMESTAMP_MIN_SECONDS, TIMESTAMP_MAX_SECONDS } from "../lib/equipmentCompatibility/operations.js";
 import { IllegalOperationTransitionError } from "../lib/equipmentCompatibility/errors.js";
 import { isCanonicalModelAliasKey, normalizeModelAliasKey } from "../lib/equipmentCompatibility/domain/equipmentModel.js";
 let passed = 0; const ok = (n, f) => { f(); passed++; console.log(`PASS -- ${n}`); };
@@ -213,6 +213,51 @@ ok("readTimestamp accepts ONLY a strictly valid Timestamp representation", () =>
     assert.equal(readTimestamp(f), null, `components ${sec}/${ns}`);
   }
   for (const v of [{}, null, undefined, 1000, "1000", [], { seconds: 1, nanoseconds: 0 }, { _seconds: 1, _nanoseconds: 0 }]) assert.equal(readTimestamp(v), null);
+});
+ok("readTimestamp enforces Firestore's representable seconds range at both endpoints", () => {
+  assert.equal(TIMESTAMP_MIN_SECONDS, -62135596800); // 0001-01-01T00:00:00Z
+  assert.equal(TIMESTAMP_MAX_SECONDS, 253402300799); // 9999-12-31T23:59:59Z
+  const ts = (seconds, nanoseconds) => {
+    const f = Object.create(Timestamp.prototype);
+    Object.defineProperties(f, { _seconds: { value: seconds, enumerable: true }, _nanoseconds: { value: nanoseconds, enumerable: true } });
+    return f;
+  };
+  // Both exact endpoints are accepted, including maximum nanoseconds at the upper endpoint.
+  assert.deepEqual(readTimestamp(ts(TIMESTAMP_MIN_SECONDS, 0)), { seconds: TIMESTAMP_MIN_SECONDS, nanoseconds: 0 });
+  assert.deepEqual(readTimestamp(ts(TIMESTAMP_MAX_SECONDS, 999999999)), { seconds: TIMESTAMP_MAX_SECONDS, nanoseconds: 999999999 });
+  // One second outside either endpoint is not a representable Firestore Timestamp.
+  assert.equal(readTimestamp(ts(TIMESTAMP_MIN_SECONDS - 1, 0)), null, "one below minimum");
+  assert.equal(readTimestamp(ts(TIMESTAMP_MAX_SECONDS + 1, 0)), null, "one above maximum");
+  // Nanoseconds remain bounded independently of the seconds range.
+  assert.equal(readTimestamp(ts(TIMESTAMP_MAX_SECONDS, 1000000000)), null);
+  assert.equal(readTimestamp(ts(TIMESTAMP_MIN_SECONDS, -1)), null);
+  // ...and the record validator agrees at the boundary, in both timestamp fields.
+  assert.equal(validateOperationRecord({ ...initiated, initiatedAt: ts(TIMESTAMP_MIN_SECONDS, 0) }).valid, true);
+  assert.equal(validateOperationRecord({ ...initiated, initiatedAt: ts(TIMESTAMP_MIN_SECONDS - 1, 0) }).reason, "initiated_at_invalid");
+  assert.equal(validateOperationRecord({ ...initiated, initiatedAt: ts(TIMESTAMP_MAX_SECONDS + 1, 0) }).reason, "initiated_at_invalid");
+  assert.equal(validateOperationRecord({ ...applied, initiatedAt: ts(TIMESTAMP_MAX_SECONDS, 0), terminalAt: ts(TIMESTAMP_MAX_SECONDS, 1) }).valid, true);
+  assert.equal(validateOperationRecord({ ...applied, terminalAt: ts(TIMESTAMP_MAX_SECONDS + 1, 0) }).reason, "terminal_at_invalid");
+  assert.equal(validateOperationRecord({ ...applied, terminalAt: ts(TIMESTAMP_MIN_SECONDS - 1, 0) }).reason, "terminal_at_invalid");
+});
+ok("readTimestamp is total on its own: a hostile Proxy cannot make it throw", () => {
+  // readTimestamp is exported, so it must be total independently of validateOperationRecord's wrapper.
+  const traps = [
+    ["getPrototypeOf", new Proxy({}, { getPrototypeOf() { throw new Error("boom"); } })],
+    ["ownKeys", new Proxy(Object.create(Timestamp.prototype), { ownKeys() { throw new Error("boom"); } })],
+    ["get", new Proxy(Object.create(Timestamp.prototype), { get() { throw new Error("boom"); } })],
+    ["getOwnPropertyDescriptor", new Proxy(Object.create(Timestamp.prototype), { getOwnPropertyDescriptor() { throw new Error("boom"); } })],
+  ];
+  for (const [name, p] of traps) {
+    assert.doesNotThrow(() => readTimestamp(p), `throwing ${name} trap must not escape`);
+    assert.equal(readTimestamp(p), null, name);
+  }
+  // Defense in depth: the record validator still returns a structured result for the same proxies.
+  for (const [name, p] of traps) {
+    let r;
+    assert.doesNotThrow(() => { r = validateOperationRecord({ ...initiated, initiatedAt: p }); }, name);
+    assert.equal(r.valid, false, name);
+    assert.equal(r.reason, "initiated_at_invalid", name);
+  }
 });
 ok("compareTimestamps orders by the EXACT (seconds, nanoseconds) tuple, not milliseconds", () => {
   const T = (s, n) => readTimestamp(new Timestamp(s, n));
