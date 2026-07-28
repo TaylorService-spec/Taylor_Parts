@@ -1,20 +1,20 @@
 # Platform Session State
 
 ## Baseline
-- Main commit: `63b47b7d362d1da6e09041879b77eab676c07a61`
-- Last reconciled: 2026-07-27
-- Relevant PRs: AUTH-PR-4 readiness #451 (`8f28d22`) + operator workflow #453 (`63b47b7`) merged; #444 (AUTH-PR-3, `e53c7b0`, not deployed)
+- Main commit: `602ed1f9e3e3c0cceb6025cc547b91972630f747`
+- Last reconciled: 2026-07-28
+- Relevant PRs: AUTH-PR-4 chain merged — readiness #451, operator workflow #453, enablement #457, GRANT #460 (DECISIONS #52), initializer + 3-file set #461 (`dba0e33`), CI enforcement #463 (`9b912d7`), three-file re-authorization #462 (`602ed1f`, DECISIONS #53); #444 (AUTH-PR-3, `e53c7b0`, not deployed)
 - Relevant issues: #226
 
 ## Current Objective
-None active. Platform is on **standby** for the future, separately-authorized authentication gate: the **AUTH-PR-4 production-enablement** step (recorded Owner authorization + a narrow authorization-bound code change), plus any AUTH-PR-3 deployment / email-provider configuration. The governed operator workflow (#453) is merged but **production-disabled**; enabling production writes is not authorized. Authentication architecture and repository implementation are owned by the Customer session.
+None active. Platform is on **standby** for the future, separately-authorized AUTH-PR-4 **execution** gates — **Gate A** (protected genesis preparation, run by the named operator out-of-band; no Firebase SDK/network) and **Gate B** (one-persona-at-a-time production migration execution) — plus any AUTH-PR-3 deployment / email-provider configuration. The AUTH-PR-4 authorization is now **GRANTED** and re-bound to the three-file governed set (DECISIONS #52 + #53); the committed artifact **verifies** and the security suites are CI-enforced on `main`. **Nothing has executed** (no state key, genesis, private mapping, credentials, or Auth mutation), and neither Gate A nor Gate B is authorized. Authentication architecture and repository implementation are owned by the Customer session.
 
 ## Status
 Standby (production configuration / deployment only).
 
 ## Delta Since Last Handoff
-- AUTH-PR-2 and AUTH-PR-3 (#444, `e53c7b0`) are merged; AUTH-PR-3 is **not deployed and not enabled**. The **AUTH-PR-4 readiness package** (PR #451) is now merged at `8f28d22` — see [`docs/deployment/auth-pr-4-readiness-authorization-package.md`](../deployment/auth-pr-4-readiness-authorization-package.md).
-- The **governed operator workflow is now built and merged** (#453, `63b47b7`), but is **production-disabled** and establishes **no** deployment or production activation. **Production identity mutation / production-write enablement is not authorized**; **no email migration, reset/verification send, explicit `revokeRefreshTokens`/operator session revocation, provider configuration, or deployment** occurred. Customer is preparing a repository-only **production-enablement design** PR (PROPOSED DECISIONS #52 (next available at authorization), PENDING/unsigned) — it enables nothing. A **Firebase-triggered** session invalidation is only a documented possible future platform effect; none occurred, because no email was changed.
+- AUTH-PR-2 and AUTH-PR-3 (#444, `e53c7b0`) are merged; AUTH-PR-3 is **not deployed and not enabled**.
+- The **AUTH-PR-4 production authorization is now GRANTED and re-bound to the three-file governed set** (DECISIONS #52 grant via #460; three-file re-binding #53 via #462, `602ed1f`). The governed workflow + production gate + genesis initializer are merged (#453/#457/#461, `dba0e33`), and their security suites are **CI-enforced** on `main` (#463, `9b912d7`) with the gate/migration Auth-emulator layers on `demo-authpr4`. The committed artifact **verifies** (GRANTED, 3 files). Still, **no deployment or production activation** has occurred: **no email migration, reset/verification send, explicit `revokeRefreshTokens`/operator session revocation, provider configuration, deployment, state key, genesis, private mapping, or credential** — merging changed nothing in production. A **Firebase-triggered** session invalidation is only a documented possible future platform effect; none occurred, because no email was changed. The next AUTH-PR-4 steps are Gate A (genesis prep) then Gate B (one-at-a-time execution); neither is authorized.
 - Per the Owner operating model, the Customer session owns Authentication architecture and repository implementation; Platform involvement is required only for separately-authorized production configuration or deployment. The prior ownership-confirmation gate is closed.
 
 ## Decisions
@@ -49,7 +49,7 @@ Standby (production configuration / deployment only).
 - High: deploying exported Functions without a separate production gate.
 
 ## Next Action
-None active. Engage only when the Owner opens the separately-authorized AUTH-PR-4 production-enablement gate (recorded authorization + narrow code change), or a later AUTH-PR-3 deployment / email-provider configuration gate. Until then, no Platform production action.
+None active. Engage only when the Owner opens a separately-authorized AUTH-PR-4 **execution** gate (Gate A genesis preparation, then Gate B one-persona-at-a-time execution), or a later AUTH-PR-3 deployment / email-provider configuration gate. Until then, no Platform production action.
 
 ## Stop Conditions
 - PR head changes during review.
@@ -58,6 +58,6 @@ None active. Engage only when the Owner opens the separately-authorized AUTH-PR-
 - Architecture change outside the approved AUTH-PR-1 boundary.
 
 ## Last Updated
-- Date: 2026-07-27
-- Commit: `63b47b7d362d1da6e09041879b77eab676c07a61`
+- Date: 2026-07-28
+- Commit: `602ed1f9e3e3c0cceb6025cc547b91972630f747`
 - Updated by: Customer session (maintains Platform tracking)
