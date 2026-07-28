@@ -388,6 +388,24 @@ ok("INIT MARKER: assertProductionAuthorization refuses while a genesis init mark
   fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
 });
 
+ok("RECONCILE MUTEX: assertProductionAuthorization refuses while a reconciliation mutex is present (in-progress/interrupted cleanup)", () => {
+  const g = buildGrantedRepo("demo-authpr4");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-recon-"));
+  const keyFile = path.join(dir, "k"); const key = crypto.randomBytes(48); fs.writeFileSync(keyFile, key, { mode: 0o600 });
+  const stateFile = path.join(dir, "state.json"); const mappingFile = path.join(dir, "map.json");
+  fs.writeFileSync(mappingFile, JSON.stringify({ "emp-rudy-driver": { uid: "u1", newAlias: "base+driver@gmail.com" } }));
+  const idHash = gate.workflowIdentityHash(gate.governedHashesAtCommit(g.root, g.authorizedCommit));
+  writeGenesis(stateFile, key, { authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", idHash });
+  const baseArgs = { projectId: "demo-authpr4", executeProduction: true, mappingFile, progressionFile: stateFile, stateKeyFile: keyFile, authorizedCommit: g.authorizedCommit, executionModeConfirmation: g.executionModeToken, executor: g.executor, capturedStateOut: path.join(dir, "c.json") };
+  fs.writeFileSync(gate.reconcilePath(stateFile), JSON.stringify({ version: gate.RECONCILE_MUTEX_VERSION, token: "ab".repeat(16), at: new Date().toISOString() }));
+  throws(() => gate.assertProductionAuthorization(baseArgs, { repoRoot: g.root, personaOrder: ORDER, now: () => new Date(), leaseSeconds: 1 }), /reconciliation mutex is present/i);
+  // Removing it lets the same call proceed to a claim.
+  fs.unlinkSync(gate.reconcilePath(stateFile));
+  const ctx = gate.assertProductionAuthorization(baseArgs, { repoRoot: g.root, personaOrder: ORDER, now: () => new Date(), leaseSeconds: 1 });
+  assert.equal(ctx.effective.employeeId, "emp-rudy-driver");
+  fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
+});
+
 ok("TRANSITION MUTEX (TOCTOU): a held .txn fails closed (no auto-break); after release the loser re-reads terminal state and does not overwrite", () => {
   const key = KEY(); const idHash = "ab".repeat(32);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-txn-"));

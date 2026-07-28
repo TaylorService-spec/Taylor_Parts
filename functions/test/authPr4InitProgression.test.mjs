@@ -94,7 +94,8 @@ function writeGenesisState(progOut, key, expected) {
 function writeAnchorFor(progOut, key, genesis, expected) {
   gate.writeAnchor(progOut, { authorizationId: expected.authorizationId, highWaterRevision: genesis.revision, stateHash: gate.progressionHash(genesis) }, key);
 }
-function writeMarker(progOut, tok = "tok" + crypto.randomBytes(8).toString("hex")) {
+// Default: a VALID canonical marker (token exactly 32 lowercase hex, as the initializer emits).
+function writeMarker(progOut, tok = crypto.randomBytes(16).toString("hex")) {
   fs.writeFileSync(gate.initMarkerPath(progOut), JSON.stringify({ version: gate.INIT_MARKER_VERSION, token: tok, at: new Date().toISOString() }));
 }
 const RDEPS = (g) => ({ repoRoot: g.root, personaOrder: ORDER });
@@ -430,12 +431,128 @@ ok("RECONCILE: malformed (foreign-shaped) marker -> blocked", () => {
   fs.rmSync(s.dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
 });
 
-ok("RECONCILE: artifact change between inspect and cleanup -> fingerprint mismatch, cleanup refused", () => {
+ok("RECONCILE: artifact change between inspect and cleanup -> fingerprint mismatch; mutex released (retryable)", () => {
   const g = buildGrantedRepo(); const s = setup(g); writeMarker(s.progOut);
   const rep = init.reconcileInspect(s.rargs(), RDEPS(g));
-  fs.writeFileSync(gate.lockPath(s.progOut), "{}"); // mutate the set AFTER inspection
+  writeMarker(s.progOut); // rewrite the marker (valid, different token) AFTER inspection -> fingerprint changes, stays clean-reset
   throws(() => init.reconcileCleanup(s.rargs({ fingerprint: rep.fingerprint, action: "clean-reset", confirmReconciliation: CONFIRM }), RDEPS(g)), /fingerprint mismatch/);
   assert.ok(fs.existsSync(gate.initMarkerPath(s.progOut)), "marker untouched on refusal");
+  // A validation refusal releases the mutex (no filesystem mutation) so the operator can retry.
+  assert.ok(!fs.existsSync(gate.reconcilePath(s.progOut)), "reconciliation mutex released on validation refusal");
+  const rep2 = init.reconcileInspect(s.rargs(), RDEPS(g));
+  const res = init.reconcileCleanup(s.rargs({ fingerprint: rep2.fingerprint, action: "clean-reset", confirmReconciliation: CONFIRM }), RDEPS(g));
+  assert.deepEqual(res.removedRoles, ["marker"]);
+  fs.rmSync(s.dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
+});
+
+ok("MARKER VALIDATION: only a 32-hex-token canonical marker is valid; every non-producible marker -> blocked", () => {
+  const g = buildGrantedRepo();
+  const at = new Date().toISOString(); const V = gate.INIT_MARKER_VERSION;
+  const bad = [
+    { version: V, token: "", at },                                  // empty
+    { version: V, token: "abcd", at },                              // short
+    { version: V, token: "a".repeat(64), at },                     // long
+    { version: V, token: "A".repeat(32), at },                     // uppercase
+    { version: V, token: "g".repeat(32), at },                     // non-hex
+    { version: V, token: crypto.randomBytes(16).toString("hex") }, // missing 'at'
+    { version: V, token: crypto.randomBytes(16).toString("hex"), at, extra: 1 }, // extra field
+    { version: 2, token: crypto.randomBytes(16).toString("hex"), at }, // wrong version
+    { version: V, token: crypto.randomBytes(16).toString("hex"), at: "not-a-date" }, // bad timestamp
+  ];
+  for (const m of bad) {
+    const s = setup(g);
+    const gen = writeGenesisState(s.progOut, s.key, s.expected); writeAnchorFor(s.progOut, s.key, gen, s.expected);
+    fs.writeFileSync(gate.initMarkerPath(s.progOut), JSON.stringify(m));
+    const rep = init.reconcileInspect(s.rargs(), RDEPS(g));
+    assert.equal(rep.markerValid, false, `marker ${JSON.stringify(m)} should be invalid`);
+    assert.equal(rep.recommendation, "blocked");
+    // The same canonical validator the gate exports agrees.
+    assert.equal(gate.isValidInitMarker(m), false);
+    fs.rmSync(s.dir, { recursive: true, force: true });
+  }
+  // A valid 32-hex marker over a sound genesis is marker-only (control).
+  assert.equal(gate.isValidInitMarker({ version: V, token: crypto.randomBytes(16).toString("hex"), at }), true);
+  fs.rmSync(g.root, { recursive: true, force: true });
+});
+
+for (const kind of ["lock", "txn", "both"]) {
+  ok(`RECONCILE: marker + ${kind} (foreign runtime artifact) -> blocked; cleanup refused, all bytes intact`, () => {
+    const g = buildGrantedRepo(); const s = setup(g); writeMarker(s.progOut);
+    if (kind === "lock" || kind === "both") fs.writeFileSync(gate.lockPath(s.progOut), "LOCK");
+    if (kind === "txn" || kind === "both") fs.writeFileSync(gate.txnPath(s.progOut), "TXN");
+    const before = init.perRoleDigests(s.progOut, RDEPS(g));
+    const rep = init.reconcileInspect(s.rargs(), RDEPS(g));
+    assert.equal(rep.lockPresent, kind === "lock" || kind === "both");
+    assert.equal(rep.txnPresent, kind === "txn" || kind === "both");
+    assert.equal(rep.recommendation, "blocked");
+    throws(() => init.reconcileCleanup(s.rargs({ fingerprint: rep.fingerprint, action: "clean-reset", confirmReconciliation: CONFIRM }), RDEPS(g)), /BLOCKED/);
+    // Every artifact is byte-identical; the reconciliation mutex was released (validation refusal).
+    assert.deepEqual(init.perRoleDigests(s.progOut, RDEPS(g)), before, "no artifact mutated");
+    assert.ok(!fs.existsSync(gate.reconcilePath(s.progOut)), "mutex released on blocked refusal");
+    fs.rmSync(s.dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
+  });
+}
+
+ok("RECONCILE TOCTOU: replacement BEFORE the first deletion -> per-file digest recheck aborts; nothing deleted; mutex retained (blocking)", () => {
+  const g = buildGrantedRepo(); const s = setup(g); writeMarker(s.progOut);
+  const rep = init.reconcileInspect(s.rargs(), RDEPS(g));
+  // Replace the marker's bytes at the recheck boundary for the FIRST target (marker).
+  const hook = (role) => { if (role === "marker") writeMarker(s.progOut, crypto.randomBytes(16).toString("hex")); };
+  throws(() => init.reconcileCleanup(s.rargs({ fingerprint: rep.fingerprint, action: "clean-reset", confirmReconciliation: CONFIRM }), { ...RDEPS(g), beforeTargetRecheck: hook }), /changed between inspection and deletion/);
+  assert.ok(fs.existsSync(gate.initMarkerPath(s.progOut)), "marker NOT deleted (recheck caught the change)");
+  assert.ok(fs.existsSync(gate.reconcilePath(s.progOut)), "mutex RETAINED (fail-closed, blocking)");
+  // The gate now blocks on the retained reconciliation mutex.
+  throws(() => gate.assertNoReconcileMutex(s.progOut), /reconciliation mutex is present/i);
+  fs.rmSync(s.dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
+});
+
+ok("RECONCILE TOCTOU: replacement BETWEEN deletions -> first target gone, second aborts; mutex retained (partial, blocking)", () => {
+  const g = buildGrantedRepo(); const s = setup(g);
+  fs.writeFileSync(s.progOut, '{"version":1,'); // truncated partial state -> clean-reset targets marker+state
+  writeMarker(s.progOut);
+  const rep = init.reconcileInspect(s.rargs(), RDEPS(g));
+  assert.equal(rep.recommendation, "clean-reset");
+  // After marker (first) is deleted, replace the state's bytes just before its recheck.
+  const hook = (role) => { if (role === "state") fs.writeFileSync(s.progOut, '{"version":1,"x":2'); };
+  throws(() => init.reconcileCleanup(s.rargs({ fingerprint: rep.fingerprint, action: "clean-reset", confirmReconciliation: CONFIRM }), { ...RDEPS(g), beforeTargetRecheck: hook }), /changed between inspection and deletion/);
+  assert.ok(!fs.existsSync(gate.initMarkerPath(s.progOut)), "first target (marker) was deleted");
+  assert.ok(fs.existsSync(s.progOut), "second target (state) NOT deleted (recheck caught the change)");
+  assert.ok(fs.existsSync(gate.reconcilePath(s.progOut)), "mutex RETAINED after partial cleanup (blocking)");
+  fs.rmSync(s.dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
+});
+
+ok("RECONCILE TOCTOU: concurrent cleanup -> a pre-existing reconciliation mutex refuses the second attempt", () => {
+  const g = buildGrantedRepo(); const s = setup(g); writeMarker(s.progOut);
+  const rep = init.reconcileInspect(s.rargs(), RDEPS(g));
+  fs.writeFileSync(gate.reconcilePath(s.progOut), JSON.stringify({ version: gate.RECONCILE_MUTEX_VERSION, token: "aa".repeat(16), at: new Date().toISOString() }));
+  throws(() => init.reconcileCleanup(s.rargs({ fingerprint: rep.fingerprint, action: "clean-reset", confirmReconciliation: CONFIRM }), RDEPS(g)), /reconciliation mutex is already present/);
+  assert.ok(fs.existsSync(gate.initMarkerPath(s.progOut)), "residue untouched");
+  fs.rmSync(s.dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
+});
+
+ok("RECONCILE TOCTOU: an unlink failure aborts mid-cleanup; mutex retained (fail-closed)", () => {
+  const g = buildGrantedRepo(); const s = setup(g);
+  fs.writeFileSync(s.progOut, '{"version":1,'); // partial state -> clean-reset marker+state
+  writeMarker(s.progOut);
+  const rep = init.reconcileInspect(s.rargs(), RDEPS(g));
+  // fs whose unlinkSync fails for the STATE path (second target) only.
+  const dfs = { ...fs, unlinkSync: (p, ...r) => { if (typeof p === "string" && p === s.progOut) throw new Error("injected unlink failure"); return fs.unlinkSync(p, ...r); } };
+  throws(() => init.reconcileCleanup(s.rargs({ fingerprint: rep.fingerprint, action: "clean-reset", confirmReconciliation: CONFIRM }), { ...RDEPS(g), fs: dfs }), /injected unlink failure/);
+  assert.ok(!fs.existsSync(gate.initMarkerPath(s.progOut)), "first target removed");
+  assert.ok(fs.existsSync(s.progOut), "state not removed (unlink failed)");
+  assert.ok(fs.existsSync(gate.reconcilePath(s.progOut)), "mutex RETAINED (fail-closed)");
+  fs.rmSync(s.dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
+});
+
+ok("RECONCILE TOCTOU: a foreign reconciliation mutex at finalization is NOT removed (owner-bound)", () => {
+  const g = buildGrantedRepo(); const s = setup(g); writeMarker(s.progOut);
+  const rep = init.reconcileInspect(s.rargs(), RDEPS(g));
+  // fs whose reconcile-mutex read at finalization returns a FOREIGN token (simulated takeover),
+  // while all other reads/writes are real. Deletions still occur; finalization must refuse.
+  const reconFile = gate.reconcilePath(s.progOut);
+  const dfs = { ...fs, readFileSync: (p, ...r) => (typeof p === "string" && p === reconFile ? JSON.stringify({ version: gate.RECONCILE_MUTEX_VERSION, token: "ff".repeat(16), at: new Date().toISOString() }) : fs.readFileSync(p, ...r)) };
+  throws(() => init.reconcileCleanup(s.rargs({ fingerprint: rep.fingerprint, action: "clean-reset", confirmReconciliation: CONFIRM }), { ...RDEPS(g), fs: dfs }), /owned by another attempt at finalization/);
+  assert.ok(fs.existsSync(reconFile), "foreign-owned mutex left in place");
   fs.rmSync(s.dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
 });
 

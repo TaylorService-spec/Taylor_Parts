@@ -149,20 +149,36 @@ node functions/scripts/authPr4InitProgression.js --mode reconcile-inspect \
   --stateKeyFile /secure/state.key --progressionOut /secure/progression.json
 ```
 
+The marker is validated by the gate's **single canonical validator** — a marker the
+governed initializer could not have produced (wrong/extra fields, bad version, non-UTC
+timestamp, or a token that is not exactly 32 lowercase hex) is untrusted → `blocked`.
+
 The report's `recommendation` is one of:
 - **`marker-only`** — the signed state **and** anchor verify as a canonical revision-0
   eligible/position-1 genesis; only the stray marker must be removed.
 - **`clean-reset`** — the state is absent or a clearly-incomplete partial (or a valid
-  genesis with no committed anchor); the whole residue set is safe to remove and re-init.
-- **`blocked`** — indeterminate/untrusted (wrong key, foreign/tampered marker, a valid
-  **non-genesis** progression, or a bad anchor). **No automatic cleanup** — escalate to
-  the Owner; do not delete anything.
+  genesis with no committed anchor); the marker/state/anchor set is safe to remove and re-init.
+- **`blocked`** — indeterminate/untrusted: wrong key, foreign/malformed marker, a valid
+  **non-genesis** progression, a bad anchor, **or the presence of a runtime claim `lock`
+  or transition `txn`** (the genesis initializer never creates those, so their presence is
+  foreign/concurrent). **No automatic cleanup** — escalate to the Owner; delete nothing.
+  A `clean-reset` **never** targets `lock`/`txn`.
 
-**Step 2 — cleanup (Owner-confirmed, fingerprint-bound, confined).** Runs only after an
-inspect, re-verifies, requires the exact fingerprint from step 1 (refuses if the artifact
-set changed since inspection), requires `--action` to equal the inspected recommendation,
-requires the explicit confirmation token, and deletes **only** the exact derived artifact
-paths (`state`/`anchor`/`marker`/`lock`/`txn`). It refuses any `blocked` classification:
+**Step 2 — cleanup (Owner-confirmed, fingerprint-bound, confined, race-safe).** It first
+publishes an **owner-token reconciliation mutex** (`<progression>.reconcile`, create-only),
+then re-inspects **under that mutex**. It requires the exact step-1 fingerprint (refuses if
+the set changed since inspection), `--action` equal to the inspected recommendation, and
+the confirmation token. It deletes **only** the genesis-creatable artifacts
+(`marker`/`state`/`anchor`), and **before each deletion re-verifies that file's current
+digest still equals the inspected digest** — a file replaced under it aborts without
+deleting that target. On any deletion-phase failure (digest change, unlink failure,
+partial cleanup) it **fails closed**: the reconciliation mutex is **retained** (the gate
+then refuses every production step, `assertNoReconcileMutex`) and a fresh governed
+inspection is required. The mutex is removed only after fully-verified success and only
+while it still carries the owner token. A pre-existing mutex refuses a second, concurrent
+cleanup. (A validation-only refusal — wrong `--action`, stale fingerprint, `blocked` —
+releases the mutex so the operator can re-inspect and retry.) It refuses any `blocked`
+classification:
 
 ```bash
 node functions/scripts/authPr4InitProgression.js --mode reconcile-cleanup \

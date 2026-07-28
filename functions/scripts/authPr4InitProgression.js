@@ -90,19 +90,25 @@ function artifactRoles(progressionOut) {
     txn: gate.txnPath(progressionOut),
   };
 }
-function roleOf(roles, p) { return Object.keys(roles).find((k) => roles[k] === p); }
+// Per-role content digests over the confined artifact set (digest hex or null-if-absent).
+function perRoleDigests(progressionOut, deps = {}) {
+  const _fs = deps.fs || fs;
+  const roles = artifactRoles(progressionOut);
+  const out = {};
+  for (const role of Object.keys(roles).sort()) {
+    const p = roles[role];
+    out[role] = _fs.existsSync(p) ? crypto.createHash("sha256").update(_fs.readFileSync(p)).digest("hex") : null;
+  }
+  return out;
+}
 
 // Content fingerprint over the confined artifact set (digests only -- reveals no path or
 // content). Binds a reconcile-inspect snapshot so cleanup can detect any change.
 function fingerprintArtifacts(progressionOut, deps = {}) {
-  const _fs = deps.fs || fs;
-  const roles = artifactRoles(progressionOut);
-  const parts = Object.keys(roles).sort().map((role) => {
-    const p = roles[role];
-    if (!_fs.existsSync(p)) return [role, null];
-    return [role, crypto.createHash("sha256").update(_fs.readFileSync(p)).digest("hex")];
-  });
+  const digests = perRoleDigests(progressionOut, deps);
+  const parts = Object.keys(digests).sort().map((role) => [role, digests[role]]);
   return {
+    digests,
     fingerprint: crypto.createHash("sha256").update(JSON.stringify(parts)).digest("hex"),
     present: parts.filter(([, h]) => h).map(([r]) => r),
   };
@@ -186,11 +192,12 @@ function initGenesis(args, deps = {}) {
       readBack.attempt !== null || !next || next.position !== 1 || next.employeeId !== personaOrder[0]) {
     throw new Error("Post-write verification failed: the genesis is not a canonical revision-0 eligible position-1 state.");
   }
-  // 4. Remove the marker ONLY after both artifacts verify, and ONLY if it still carries OUR
-  //    token (owner-bound; never delete a foreign marker).
+  // 4. Remove the marker ONLY after both artifacts verify, and ONLY if it is a valid
+  //    canonical marker (gate validator) that still carries OUR token (owner-bound; never
+  //    delete a foreign / malformed marker).
   try {
-    const held = JSON.parse(_fs.readFileSync(roles.marker, "utf8"));
-    if (held && held.token === markerToken) _fs.unlinkSync(roles.marker);
+    const held = gate.readInitMarker(roles.state, deps);
+    if (held.present && held.valid && held.marker.token === markerToken) _fs.unlinkSync(roles.marker);
     else throw new Error("Initialization marker is owned by another attempt; leaving it for governed reconciliation.");
   } catch (err) {
     if (/another attempt/.test(err.message)) throw err;
@@ -235,21 +242,21 @@ function reconcileInspect(args, deps = {}) {
   const { stateKey, expected, idHash } = loadProductionAuthority(args, deps);
   const _fs = deps.fs || fs;
   const roles = artifactRoles(args.progressionOut);
+  const idRef = `ref:${idHash.slice(0, 16)}`;
 
   const markerPresent = _fs.existsSync(roles.marker);
-  const idRef = `ref:${idHash.slice(0, 16)}`;
+  const lockPresent = _fs.existsSync(roles.lock);
+  const txnPresent = _fs.existsSync(roles.txn);
+  const reconcileMutexPresent = _fs.existsSync(gate.reconcilePath(args.progressionOut));
+
   if (!markerPresent) {
     const fp0 = fingerprintArtifacts(args.progressionOut, deps);
-    return { ok: true, mode: "reconcile-inspect", markerPresent: false, reconciliationNeeded: false, recommendation: "none", fingerprint: fp0.fingerprint, artifactsPresent: fp0.present, workflowIdentityRef: idRef };
+    return { ok: true, mode: "reconcile-inspect", markerPresent: false, lockPresent, txnPresent, reconcileMutexPresent, reconciliationNeeded: false, recommendation: "none", fingerprint: fp0.fingerprint, artifactsPresent: fp0.present, workflowIdentityRef: idRef };
   }
 
-  // Marker schema (a malformed / foreign-shaped marker is untrusted).
-  let markerValid = false;
-  try {
-    const m = JSON.parse(_fs.readFileSync(roles.marker, "utf8"));
-    markerValid = !!m && m.version === gate.INIT_MARKER_VERSION && typeof m.token === "string" && m.token.length > 0 &&
-      typeof m.at === "string" && gate.isUtcInstant(m.at) && Object.keys(m).sort().join(",") === [...gate.INIT_MARKER_FIELDS].sort().join(",");
-  } catch { markerValid = false; }
+  // Marker validity via THE canonical gate validator (a token/shape the governed
+  // initializer could not have produced is untrusted).
+  const markerValid = gate.readInitMarker(roles.state, deps).valid;
 
   const { stateClass, canonicalGenesis } = classifyState(args.progressionOut, stateKey, expected, deps);
   const anchorPresent = _fs.existsSync(roles.anchor);
@@ -259,9 +266,12 @@ function reconcileInspect(args, deps = {}) {
     catch { anchorConsistent = false; }
   }
 
-  // Decision table (fail-closed toward "blocked").
+  // Decision table (fail-closed toward "blocked"). The genesis initializer NEVER creates a
+  // runtime claim lock or transition mutex -- their presence during genesis reconciliation
+  // is foreign/concurrent/indeterminate, so any lock or txn forces "blocked".
   let recommendation;
   if (!markerValid) recommendation = "blocked";                                   // untrusted marker
+  else if (lockPresent || txnPresent) recommendation = "blocked";                 // foreign runtime artifacts
   else if (stateClass === "absent" || stateClass === "partial") recommendation = "clean-reset";
   else if (stateClass === "indeterminate" || stateClass === "valid-noncanonical") recommendation = "blocked";
   else if (canonicalGenesis && anchorPresent && anchorConsistent) recommendation = "marker-only";
@@ -273,6 +283,7 @@ function reconcileInspect(args, deps = {}) {
     ok: true, mode: "reconcile-inspect",
     markerPresent: true, markerValid, statePresent: stateClass !== "absent", stateClass,
     stateCanonicalGenesis: canonicalGenesis, anchorPresent, anchorConsistent,
+    lockPresent, txnPresent, reconcileMutexPresent,
     reconciliationNeeded: true, recommendation,
     fingerprint: fp.fingerprint, artifactsPresent: fp.present, workflowIdentityRef: idRef,
   };
@@ -281,39 +292,91 @@ function reconcileInspect(args, deps = {}) {
 // ---------------------------------------------------------------------------
 // MODE: reconcile-cleanup  (Owner-confirmed, fingerprint-bound, confined)
 // ---------------------------------------------------------------------------
+// Clean-reset targets are STRICTLY the artifacts the genesis initializer can create --
+// the marker, the progression state, and the anchor. A runtime claim lock or transition
+// mutex is NEVER a genesis clean-reset target (and its presence already forces "blocked").
+const CLEAN_RESET_ROLES = Object.freeze(["marker", "state", "anchor"]);
+
 function reconcileCleanup(args, deps = {}) {
   assertProductionArgs(args);
   if (args.confirmReconciliation !== RECONCILE_CONFIRM) throw new Error(`Reconciliation cleanup requires an explicit --confirmReconciliation ${RECONCILE_CONFIRM}.`);
   if (!args.fingerprint || !gate.isSha256(args.fingerprint)) throw new Error("--fingerprint (from a prior reconcile-inspect) is required.");
   if (!["clean-reset", "marker-only"].includes(args.action || "")) throw new Error("--action must be clean-reset or marker-only.");
 
-  // Re-inspect NOW (fail-closed): recompute recommendation + the current fingerprint.
-  const report = reconcileInspect(args, deps);
-  if (!report.reconciliationNeeded) throw new Error("No init marker present; nothing to reconcile (refusing).");
-  // Snapshot binding: the artifact set must be byte-identical to what was inspected.
-  if (report.fingerprint !== args.fingerprint) throw new Error("Artifacts changed since inspection (fingerprint mismatch) -- refusing to reconcile.");
-  // The requested action must equal the inspection's recommendation (no operator override,
-  // and a "blocked" state can never be cleaned up here).
-  if (report.recommendation === "blocked") throw new Error("Inspection classified this residue as BLOCKED (untrusted/indeterminate) -- automatic cleanup refused; escalate to the Owner.");
-  if (args.action !== report.recommendation) throw new Error(`Requested --action ${args.action} does not match the inspected recommendation ${report.recommendation} -- refusing.`);
-
   const _fs = deps.fs || fs;
+  const now = deps.now || (() => new Date());
   const roles = artifactRoles(args.progressionOut);
-  // Confinement: ONLY the exact derived artifact paths are eligible for deletion.
-  const targets = args.action === "marker-only" ? [roles.marker] : [roles.marker, roles.state, roles.anchor, roles.lock, roles.txn];
-  const removed = [];
-  for (const p of targets) { if (_fs.existsSync(p)) { _fs.unlinkSync(p); removed.push(roleOf(roles, p)); } }
+  const reconFile = gate.reconcilePath(args.progressionOut);
 
-  const after = fingerprintArtifacts(args.progressionOut, deps);
-  if (args.action === "marker-only" && after.present.includes("marker")) throw new Error("Marker still present after marker-only cleanup.");
-  if (args.action === "clean-reset" && after.present.length !== 0) throw new Error("Residual artifacts remain after clean-reset.");
-
-  return {
-    ok: true, mode: "reconcile-cleanup", action: args.action,
-    removedRoles: removed.sort(), markerPresent: _fs.existsSync(roles.marker),
-    fingerprintBefore: args.fingerprint, fingerprintAfter: after.fingerprint,
-    artifactsRemaining: after.present, workflowIdentityRef: report.workflowIdentityRef,
+  // 1. EXCLUSIVE reconciliation mutex, created BEFORE the authoritative re-inspection.
+  //    A pre-existing mutex means a concurrent cleanup, or a crash-left / interrupted one:
+  //    refuse (never auto-broken). createOnly is O_EXCL, so a race resolves to one winner.
+  if (_fs.existsSync(reconFile)) throw new Error("A reconciliation mutex is already present (another reconciliation is in progress or was interrupted) -- refusing.");
+  const reconToken = crypto.randomBytes(16).toString("hex");
+  createOnly(reconFile, JSON.stringify({ version: gate.RECONCILE_MUTEX_VERSION, token: reconToken, at: now().toISOString() }), deps);
+  const releaseOwnMutex = () => {
+    try { const h = JSON.parse(_fs.readFileSync(reconFile, "utf8")); if (h && h.token === reconToken) _fs.unlinkSync(reconFile); } catch { /* leave it */ }
   };
+
+  // PHASE A -- validation under the mutex. No filesystem mutation yet, so on ANY validation
+  // refusal we RELEASE our own mutex and surface the refusal (the operator can re-inspect
+  // and retry; a mere "wrong --action" must not brick reconciliation).
+  let report, snapshot, targetRoles;
+  try {
+    // 2. Authoritative re-inspection WHILE holding the mutex.
+    report = reconcileInspect(args, deps);
+    if (!report.reconciliationNeeded) throw new Error("No init marker present; nothing to reconcile (refusing).");
+    if (report.recommendation === "blocked") throw new Error("Inspection classified this residue as BLOCKED (untrusted/indeterminate/foreign lock or txn) -- automatic cleanup refused; escalate to the Owner.");
+    if (args.action !== report.recommendation) throw new Error(`Requested --action ${args.action} does not match the inspected recommendation ${report.recommendation} -- refusing.`);
+    // Snapshot binding: the artifact set must be byte-identical to the operator's inspection.
+    if (report.fingerprint !== args.fingerprint) throw new Error("Artifacts changed since inspection (fingerprint mismatch) -- refusing to reconcile.");
+    // 3. Authoritative per-role digest snapshot taken under the mutex.
+    snapshot = perRoleDigests(args.progressionOut, deps);
+    targetRoles = args.action === "marker-only" ? ["marker"] : CLEAN_RESET_ROLES;
+  } catch (err) {
+    releaseOwnMutex();
+    throw err;
+  }
+
+  // PHASE B -- deletions + finalization. From here a concurrent modification is possible,
+  // so on ANY failure we FAIL CLOSED: leave the reconciliation mutex (and any residue) in
+  // place -- the gate blocks (assertNoReconcileMutex) and a fresh governed inspection is
+  // required. We remove the mutex ONLY on fully-verified success with our own token.
+  try {
+    // 4. Delete each target, re-verifying its CURRENT digest equals the snapshot digest
+    //    IMMEDIATELY before unlink. A changed/replaced file aborts WITHOUT deleting it; an
+    //    unlink failure aborts too. Either way the mutex is retained (fail-closed).
+    const removed = [];
+    for (const role of targetRoles) {
+      const p = roles[role];
+      if (deps.beforeTargetRecheck) deps.beforeTargetRecheck(role, p); // test seam: simulate concurrent replacement
+      if (!_fs.existsSync(p)) { if (snapshot[role] !== null) throw new Error(`Target ${role} disappeared during cleanup -- aborting (fail-closed).`); continue; }
+      const current = crypto.createHash("sha256").update(_fs.readFileSync(p)).digest("hex");
+      if (current !== snapshot[role]) throw new Error(`Target ${role} changed between inspection and deletion -- aborting without deleting it (fail-closed).`);
+      _fs.unlinkSync(p); // if this throws, we abort with the mutex retained
+      removed.push(role);
+    }
+
+    // 5. Post-cleanup verification.
+    if (targetRoles.includes("marker") && _fs.existsSync(roles.marker)) throw new Error("Marker still present after cleanup (fail-closed).");
+    if (args.action === "clean-reset") { for (const role of CLEAN_RESET_ROLES) if (_fs.existsSync(roles[role])) throw new Error("Residual genesis artifact remains after clean-reset (fail-closed)."); }
+    const after = fingerprintArtifacts(args.progressionOut, deps);
+
+    // 6. Remove the reconciliation mutex ONLY now, and ONLY if it still carries OUR token.
+    let held;
+    try { held = JSON.parse(_fs.readFileSync(reconFile, "utf8")); } catch { held = null; }
+    if (!held || held.token !== reconToken) throw new Error("Reconciliation mutex is owned by another attempt at finalization -- leaving it in place (fail-closed).");
+    _fs.unlinkSync(reconFile);
+
+    return {
+      ok: true, mode: "reconcile-cleanup", action: args.action,
+      removedRoles: removed.slice().sort(), reconciliationMutexCleared: true,
+      fingerprintBefore: args.fingerprint, fingerprintAfter: after.fingerprint,
+      artifactsRemaining: after.present, workflowIdentityRef: report.workflowIdentityRef,
+    };
+  } catch (err) {
+    throw err; // fail closed: reconciliation mutex + residue retained (blocking)
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -338,7 +401,7 @@ function sanitizeForOutput(msg, protectedValues = []) {
 
 function protectedPathValues(args) {
   const vals = [args.executionModeConfirmation, args.stateKeyFile];
-  if (args.progressionOut) { const r = artifactRoles(args.progressionOut); vals.push(r.state, r.anchor, r.marker, r.lock, r.txn); }
+  if (args.progressionOut) { const r = artifactRoles(args.progressionOut); vals.push(r.state, r.anchor, r.marker, r.lock, r.txn, gate.reconcilePath(args.progressionOut)); }
   return vals.filter(Boolean);
 }
 
@@ -363,6 +426,6 @@ if (require.main === module) { main(); }
 
 module.exports = {
   parseArgs, createOnly, initGenesis, reconcileInspect, reconcileCleanup,
-  sanitizeForOutput, artifactRoles, fingerprintArtifacts, assertProductionArgs,
+  sanitizeForOutput, artifactRoles, fingerprintArtifacts, perRoleDigests, assertProductionArgs,
   PRODUCTION_PROJECT_ID, RECONCILE_CONFIRM, MIGRATION_PERSONA_ORDER,
 };

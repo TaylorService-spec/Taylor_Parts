@@ -518,11 +518,48 @@ function txnPath(stateFile) { return `${stateFile}.txn`; }
 // a leftover marker is a governed reconciliation condition.
 const INIT_MARKER_VERSION = 1;
 const INIT_MARKER_FIELDS = Object.freeze(["version", "token", "at"]);
+const INIT_TOKEN_RE = /^[0-9a-f]{32}$/; // exactly what crypto.randomBytes(16).toString("hex") emits
 function initMarkerPath(stateFile) { return `${stateFile}.init`; }
+
+// THE canonical init-marker validator -- the single source of truth for what a marker the
+// governed initializer could have produced looks like. Used both when the initializer
+// finalizes (removes its own marker) and during reconciliation classification. Any marker
+// not producible by the governed initializer (wrong/extra fields, bad version, non-UTC
+// timestamp, or a token that is not exactly 32 lowercase hex) is INVALID (untrusted).
+function isValidInitMarker(m) {
+  if (!m || typeof m !== "object" || Array.isArray(m)) return false;
+  const keys = Object.keys(m).sort();
+  const exp = [...INIT_MARKER_FIELDS].sort();
+  if (keys.length !== exp.length || keys.some((k, i) => k !== exp[i])) return false;
+  return m.version === INIT_MARKER_VERSION && isUtcInstant(m.at) && typeof m.token === "string" && INIT_TOKEN_RE.test(m.token);
+}
+function readInitMarker(stateFile, deps = {}) {
+  const _fs = deps.fs || fs;
+  const p = initMarkerPath(stateFile);
+  if (!_fs.existsSync(p)) return { present: false, valid: false, marker: null };
+  let m = null, valid = false;
+  try { m = JSON.parse(_fs.readFileSync(p, "utf8")); valid = isValidInitMarker(m); } catch { valid = false; }
+  return { present: true, valid, marker: valid ? m : null };
+}
 function assertNoInitMarker(stateFile, deps = {}) {
   const _fs = deps.fs || fs;
   if (_fs.existsSync(initMarkerPath(stateFile))) {
     throw new Error("An initialization marker is present: genesis initialization is incomplete or was interrupted (crash-left). Governed reconciliation is required before any production step.");
+  }
+}
+
+// RECONCILIATION MUTEX -- an owner-token-bound `.reconcile` file the reconcile-cleanup
+// command publishes BEFORE its authoritative re-inspection and removes ONLY after
+// verified success. Its presence means a cleanup is in progress or was interrupted
+// (crash-left / partial): the gate refuses ALL production steps while it is present, and a
+// second cleanup cannot start. It is NEVER auto-broken.
+const RECONCILE_MUTEX_VERSION = 1;
+const RECONCILE_MUTEX_FIELDS = Object.freeze(["version", "token", "at"]);
+function reconcilePath(stateFile) { return `${stateFile}.reconcile`; }
+function assertNoReconcileMutex(stateFile, deps = {}) {
+  const _fs = deps.fs || fs;
+  if (_fs.existsSync(reconcilePath(stateFile))) {
+    throw new Error("A reconciliation mutex is present: a governed reconciliation is in progress or was interrupted (crash-left). It must be resolved before any production step.");
   }
 }
 
@@ -678,9 +715,11 @@ function assertProductionAuthorization(args, deps = {}) {
     authorizedCommit: args.authorizedCommit, executionModeConfirmation: args.executionModeConfirmation, executor: args.executor,
   });
 
-  // An incomplete/crash-left genesis initialization (marker present) blocks every
-  // production step BEFORE any progression read, claim, or Auth access.
+  // An incomplete/crash-left genesis initialization (init marker) OR an in-progress /
+  // interrupted governed reconciliation (reconcile mutex) blocks every production step
+  // BEFORE any progression read, claim, or Auth access.
   assertNoInitMarker(args.progressionFile, deps);
+  assertNoReconcileMutex(args.progressionFile, deps);
 
   const expected = { authorizationId: authorization.authorizationId, projectId: args.projectId, workflowIdentityHash: idHash, personaOrder: deps.personaOrder };
   const state = readState(args.progressionFile, stateKey, expected, deps);
@@ -855,7 +894,8 @@ module.exports = {
   anchorPath, signAnchor, writeAnchor, readAnchor, verifyStateFreshness,
   lockPath, readLock, acquireClaim, releaseClaim, assertOwnsClaim, assertLiveOwnership, leaseExpired,
   txnPath, withTransition, assertMutexOwner,
-  INIT_MARKER_VERSION, INIT_MARKER_FIELDS, initMarkerPath, assertNoInitMarker,
+  INIT_MARKER_VERSION, INIT_MARKER_FIELDS, INIT_TOKEN_RE, initMarkerPath, isValidInitMarker, readInitMarker, assertNoInitMarker,
+  RECONCILE_MUTEX_VERSION, RECONCILE_MUTEX_FIELDS, reconcilePath, assertNoReconcileMutex,
   nextEligiblePersona,
   signBreakGlass, readAndVerifyBreakGlass,
   assertProductionAuthorization,
