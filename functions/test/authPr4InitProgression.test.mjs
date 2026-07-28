@@ -881,6 +881,100 @@ ok("SECRET OUTPUT (CLI, SPACED PATHS): protected paths containing spaces are ful
   fs.rmSync(io, { recursive: true, force: true }); fs.rmSync(io2, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
 });
 
+// ---- GENERATION LEDGER (gate-owned authority: content + contiguity + hash chain) --------
+
+function claimObj(n, previousDigest, over = {}) {
+  return { version: gate.GEN_LEDGER_VERSION, generation: n, previousDigest, owner: "recover-x", at: new Date().toISOString(), ...over };
+}
+function writeClaim(prog, n, obj) { fs.writeFileSync(gate.genClaimPath(prog, n), typeof obj === "string" ? obj : JSON.stringify(obj)); }
+
+ok("LEDGER: a valid contiguous hash-chained ledger is accepted; currentGeneration = highest (initializer + gate agree)", () => {
+  const dir = tmp(); const prog = path.join(dir, "progression.json");
+  init.claimGeneration(prog, 1, "recover-a");
+  init.claimGeneration(prog, 2, "recover-b");
+  init.claimGeneration(prog, 3, "recover-c");
+  assert.equal(gate.readGenerationLedger(prog), 3);
+  assert.equal(init.currentGeneration(prog), 3);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+ok("LEDGER: authority is CONTENT, not filename -- empty / malformed / wrong-version / gen-mismatch / bad-owner / bad-at / extra / missing all fail closed", () => {
+  const bad = [
+    "",                                                                    // empty bytes
+    "{ not json",                                                          // malformed JSON
+    JSON.stringify(claimObj(1, gate.GEN_CHAIN_ROOT, { version: 2 })),      // wrong version
+    JSON.stringify(claimObj(1, gate.GEN_CHAIN_ROOT, { generation: 2 })),   // embedded gen != filename
+    JSON.stringify(claimObj(1, "not-a-sha256")),                           // invalid previousDigest
+    JSON.stringify(claimObj(1, gate.GEN_CHAIN_ROOT, { owner: "x".repeat(200) })), // owner too long
+    JSON.stringify(claimObj(1, gate.GEN_CHAIN_ROOT, { at: "not-a-date" })),// invalid timestamp
+    JSON.stringify(claimObj(1, gate.GEN_CHAIN_ROOT, { extra: 1 })),        // extra field
+    JSON.stringify({ version: 1, generation: 1, previousDigest: gate.GEN_CHAIN_ROOT, at: new Date().toISOString() }), // missing owner
+  ];
+  for (const c of bad) {
+    const dir = tmp(); const prog = path.join(dir, "progression.json");
+    writeClaim(prog, 1, c);
+    throws(() => gate.readGenerationLedger(prog), /malformed|invalid content|breaks the hash chain/i);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+ok("LEDGER: a malformed CLAIM NAME (non-integer suffix) fails closed", () => {
+  const dir = tmp(); const prog = path.join(dir, "progression.json");
+  fs.writeFileSync(`${prog}.gen.NOTANINT`, "{}");
+  throws(() => gate.readGenerationLedger(prog), /malformed claim name/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+ok("LEDGER: gaps / missing-middle / foreign-high-number / chain-break / middle-recreation all fail closed", () => {
+  // gen.2 without gen.1
+  { const dir = tmp(); const prog = path.join(dir, "p.json"); writeClaim(prog, 2, claimObj(2, gate.GEN_CHAIN_ROOT)); throws(() => gate.readGenerationLedger(prog), /contiguous \(missing generation 1\)/); fs.rmSync(dir, { recursive: true, force: true }); }
+  // missing middle: gen.1 + gen.3 (no gen.2)
+  { const dir = tmp(); const prog = path.join(dir, "p.json"); init.claimGeneration(prog, 1, "o"); writeClaim(prog, 3, claimObj(3, gate.GEN_CHAIN_ROOT)); throws(() => gate.readGenerationLedger(prog), /contiguous \(missing generation 2\)/); fs.rmSync(dir, { recursive: true, force: true }); }
+  // foreign high-number claim jumps the ledger (valid 1..2, foreign gen.9)
+  { const dir = tmp(); const prog = path.join(dir, "p.json"); init.claimGeneration(prog, 1, "o"); init.claimGeneration(prog, 2, "o"); writeClaim(prog, 9, claimObj(9, gate.GEN_CHAIN_ROOT)); throws(() => gate.readGenerationLedger(prog), /contiguous \(missing generation 3\)/); fs.rmSync(dir, { recursive: true, force: true }); }
+  // chain break: gen.2.previousDigest does not match gen.1's content digest
+  { const dir = tmp(); const prog = path.join(dir, "p.json"); init.claimGeneration(prog, 1, "o"); writeClaim(prog, 2, claimObj(2, gate.GEN_CHAIN_ROOT)); throws(() => gate.readGenerationLedger(prog), /claim 2 breaks the hash chain/); fs.rmSync(dir, { recursive: true, force: true }); }
+  // recreation of a consumed MIDDLE generation with different content breaks the successor's chain
+  { const dir = tmp(); const prog = path.join(dir, "p.json"); init.claimGeneration(prog, 1, "o"); init.claimGeneration(prog, 2, "o");
+    fs.unlinkSync(gate.genClaimPath(prog, 1)); writeClaim(prog, 1, claimObj(1, gate.GEN_CHAIN_ROOT, { owner: "different" })); // recreate gen.1 with different content
+    throws(() => gate.readGenerationLedger(prog), /claim 2 breaks the hash chain/); fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+ok("LEDGER: staging temp files are OUTSIDE the ledger namespace and never poison the scan (in-progress / crash-left publication)", () => {
+  const dir = tmp(); const prog = path.join(dir, "progression.json");
+  init.claimGeneration(prog, 1, "o");
+  fs.writeFileSync(`${prog}.genstage-abc123`, "partial in-progress bytes");       // crash-left staging temp (outside `.gen.` namespace)
+  assert.ok(!`${path.basename(prog)}.genstage-abc123`.startsWith(`${path.basename(prog)}.gen.`), "staging name is outside the ledger namespace");
+  assert.equal(gate.readGenerationLedger(prog), 1, "staging temp ignored; ledger still valid");
+  // A subsequent real claim still publishes and validates.
+  init.claimGeneration(prog, 2, "o");
+  assert.equal(gate.readGenerationLedger(prog), 2);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+ok("LEDGER: crash after staging but before link leaves an inert temp; the generation is unclaimed and re-claimable", () => {
+  const dir = tmp(); const prog = path.join(dir, "progression.json");
+  // fs whose linkSync throws (simulate crash between stage-write and link) for the gen.1 target.
+  const dfs = { ...fs, linkSync: (a, b, ...r) => { if (typeof b === "string" && b === gate.genClaimPath(prog, 1)) throw new Error("injected link crash"); return fs.linkSync(a, b, ...r); } };
+  throws(() => init.claimGeneration(prog, 1, "o", { fs: dfs }), /Failed to publish a generation claim|injected link crash/);
+  assert.equal(gate.readGenerationLedger(prog), 0, "generation 1 was never claimed");
+  init.claimGeneration(prog, 1, "o"); // re-claimable
+  assert.equal(gate.readGenerationLedger(prog), 1);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+ok("LEDGER REGRESSION: an in-flight cleanup whose recorded generation exceeds the current ledger fails closed", () => {
+  const g = buildGrantedRepo(); const s = setup(g);
+  init.claimGeneration(s.progOut, 1, "o"); // ledger at generation 1
+  writeMarker(s.progOut);
+  const rep = init.reconcileInspect(s.rargs(), RDEPS(g));
+  // The cleanup starts at myGen=1; a regression (top claim deleted) drops the ledger to 0.
+  const deps = { ...RDEPS(g), beforeTargetRecheck: () => fs.unlinkSync(gate.genClaimPath(s.progOut, 1)) };
+  throws(() => init.reconcileCleanup(s.rargs({ fingerprint: rep.fingerprint, action: "clean-reset", confirmReconciliation: CONFIRM }), deps), /fenced by a newer reconciliation generation/);
+  assert.ok(fs.existsSync(gate.initMarkerPath(s.progOut)), "nothing deleted under a ledger regression");
+  fs.rmSync(s.dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
+});
+
 ok("CREDENTIAL-FREE: the initializer performs no Firebase initialization", () => {
   const src = fs.readFileSync(SCRIPT, "utf8");
   assert.doesNotMatch(src, /initializeApp|getAuth|firebase-admin/);

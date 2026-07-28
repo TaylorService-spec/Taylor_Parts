@@ -406,6 +406,35 @@ ok("RECONCILE MUTEX: assertProductionAuthorization refuses while a reconciliatio
   fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
 });
 
+ok("GENERATION LEDGER: assertProductionAuthorization validates the ledger (single authority) and refuses any anomaly; a valid contiguous chain is accepted", () => {
+  const g = buildGrantedRepo("demo-authpr4");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-ledger-"));
+  const keyFile = path.join(dir, "k"); const key = crypto.randomBytes(48); fs.writeFileSync(keyFile, key, { mode: 0o600 });
+  const stateFile = path.join(dir, "state.json"); const mappingFile = path.join(dir, "map.json");
+  fs.writeFileSync(mappingFile, JSON.stringify({ "emp-rudy-driver": { uid: "u1", newAlias: "base+driver@gmail.com" } }));
+  const idHash = gate.workflowIdentityHash(gate.governedHashesAtCommit(g.root, g.authorizedCommit));
+  writeGenesis(stateFile, key, { authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", idHash });
+  const baseArgs = { projectId: "demo-authpr4", executeProduction: true, mappingFile, progressionFile: stateFile, stateKeyFile: keyFile, authorizedCommit: g.authorizedCommit, executionModeConfirmation: g.executionModeToken, executor: g.executor, capturedStateOut: path.join(dir, "c.json") };
+  const run = () => gate.assertProductionAuthorization(baseArgs, { repoRoot: g.root, personaOrder: ORDER, now: () => new Date(), leaseSeconds: 1 });
+  const rootDigest = gate.GEN_CHAIN_ROOT;
+
+  // A ledger anomaly is validated + refused BEFORE any progression claim/Auth (so no lock is
+  // taken -- these refusals leave the state reusable).
+  // (a) malformed claim content under a valid filename -> refuse.
+  fs.writeFileSync(gate.genClaimPath(stateFile, 1), "{ not a claim");
+  throws(() => run(), /claim 1 is malformed|invalid content/i);
+  // (b) non-contiguous ledger -> refuse.
+  fs.writeFileSync(gate.genClaimPath(stateFile, 1), JSON.stringify({ version: gate.GEN_LEDGER_VERSION, generation: 1, previousDigest: rootDigest, owner: "o", at: new Date().toISOString() }));
+  fs.writeFileSync(gate.genClaimPath(stateFile, 3), JSON.stringify({ version: gate.GEN_LEDGER_VERSION, generation: 3, previousDigest: rootDigest, owner: "o", at: new Date().toISOString() }));
+  throws(() => run(), /contiguous \(missing generation 2\)/);
+  fs.unlinkSync(gate.genClaimPath(stateFile, 3));
+
+  // (c) a valid contiguous chain (gen 1) is accepted and the gate proceeds to a claim.
+  assert.equal(gate.readGenerationLedger(stateFile), 1, "valid single-claim ledger reads generation 1");
+  const ctx = run(); assert.equal(ctx.effective.employeeId, "emp-rudy-driver");
+  fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
+});
+
 ok("TRANSITION MUTEX (TOCTOU): a held .txn fails closed (no auto-break); after release the loser re-reads terminal state and does not overwrite", () => {
   const key = KEY(); const idHash = "ab".repeat(32);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-txn-"));

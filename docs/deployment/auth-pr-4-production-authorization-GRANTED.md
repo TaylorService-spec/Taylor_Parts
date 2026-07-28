@@ -141,9 +141,26 @@ file deletion against production execution-control state.
 ### State machine
 
 Artifacts (all beside `<progression>`): the signed `state` + `anchor`; the init `marker`;
-the reconciliation `reconcile` mutex; the append-only **generation ledger** `gen.<N>`
-(immutable O_EXCL claim files — the current generation is the highest `N` present, `0` if
-none). Runtime `lock`/`txn` are never created by initialization and are always foreign here.
+the reconciliation `reconcile` mutex; the **fencing-generation ledger** `gen.<N>`. Runtime
+`lock`/`txn` are never created by initialization and are always foreign here.
+
+**The generation ledger is owned and validated by the gate** (`gate.readGenerationLedger`,
+the single authority). It is an append-only, **hash-chained**, **contiguous** set of claim
+files `gen.<1..K>`; the current generation is `K` (`0` if none). Authority is never a
+filename: each claim's **content** is canonically validated (exact fields; embedded
+`generation` must equal the filename; canonical `version`/`owner`/UTC `at`), the set must be
+contiguous from `1`, and each claim must chain to the previous claim's content digest
+(root-anchored at `N=1`). Any malformed, foreign, non-contiguous, reordered, reused, or
+chain-broken ledger **fails closed** — and `assertProductionAuthorization` runs this same
+validation before any progression claim / Auth access, so a poisoned ledger blocks
+production, not just reconciliation. Advancing `K→K+1` is a single-winner O_EXCL claim
+whose **staging temp lives outside the ledger namespace** (`<progression>.genstage-*`, never
+matching `.gen.<N>`), so an in-progress or crash-left publication is never scanned as a
+claim. *Residual (documented, out of the governed threat model):* an out-of-band **deletion
+of the highest claim** regresses the visible ledger — but the ledger lives in the same
+protected directory as the state key (deleting it is a key-level compromise), no governed
+command ever deletes a claim, and any in-flight worker whose recorded generation exceeds the
+current ledger fails closed at its next revalidation.
 
 | State | On-disk condition | Gate | Legal transitions |
 |---|---|---|---|

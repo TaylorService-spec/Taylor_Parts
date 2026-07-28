@@ -110,39 +110,42 @@ function readReconcileMutex(progressionOut, deps = {}) {
   return { present: true, valid, mutex: valid ? m : null };
 }
 
-// ---- Fencing generation: an APPEND-ONLY, CAS ledger of O_EXCL claim files --------------
-// The fencing generation is NOT a mutable counter (an unconditional rewrite is not a
-// compare-and-swap). It is the set of immutable claim files `<progression>.gen.<N>`; the
-// CURRENT generation is the highest N present (0 if none). Advancing from G to G+1 is a
-// single-winner O_EXCL create of `<progression>.gen.<G+1>` -- exactly one racer wins, and a
-// delayed worker bound to an old G cannot reuse or overwrite a newer generation (the claim
-// already exists -> EEXIST). Claim files are permanent (the generation ledger) and are NOT
-// part of artifactRoles, so clean-reset never removes them. They never block the gate.
-function genClaimPath(progressionOut, n) { return `${progressionOut}.gen.${n}`; }
-function genClaimPrefix(progressionOut) { return `${path.basename(progressionOut)}.gen.`; }
-// Highest claimed generation (0 baseline). Fails closed on any malformed claim-file name.
-function currentGeneration(progressionOut, deps = {}) {
-  const _fs = deps.fs || fs;
-  const dir = path.dirname(progressionOut);
-  const prefix = genClaimPrefix(progressionOut);
-  let names;
-  try { names = _fs.readdirSync(dir); } catch { return 0; }
-  let max = 0;
-  for (const name of names) {
-    if (!name.startsWith(prefix)) continue;
-    const suffix = name.slice(prefix.length);
-    if (!/^[1-9][0-9]{0,8}$/.test(suffix)) throw new Error("Fencing-generation ledger has a malformed claim -- refusing (governed reconciliation anomaly; escalate to the Owner).");
-    const n = Number(suffix);
-    if (n > max) max = n;
-  }
-  return max;
-}
-// Single-winner compare-and-swap advance G -> G+1. Returns the owner token on success;
-// throws a sentinel EEXIST Error if another worker already claimed generation G+1.
+// ---- Fencing generation ledger -------------------------------------------------------
+// The ledger is OWNED and VALIDATED by the gate (gate.readGenerationLedger) -- the single
+// authority for the current generation. It is an append-only, hash-chained, contiguous set
+// of claim files `<progression>.gen.<N>`; the gate rejects any malformed/non-contiguous/
+// chain-broken ledger. The initializer only READS (via the gate) and WRITES new claims.
+function currentGeneration(progressionOut, deps = {}) { return gate.readGenerationLedger(progressionOut, deps); }
+// Single-winner, HASH-CHAINED advance G -> G+1. The new claim binds to the previous claim's
+// content digest (root-anchored at generation 1). It is staged OUTSIDE the ledger namespace
+// (`<progression>.genstage-*`, never matching `.gen.<N>`) and hard-linked into place, so a
+// ledger scan can never see an in-progress publication, and a crash leaves at most an inert
+// staging file. EEXIST on the link => another worker already claimed this generation.
 function claimGeneration(progressionOut, next, owner, deps = {}) {
   const _fs = deps.fs || fs;
   const now = deps.now || (() => new Date());
-  atomicExclusiveCreate(genClaimPath(progressionOut, next), JSON.stringify({ version: FENCE_VERSION, generation: next, owner, at: now().toISOString() }), deps);
+  let previousDigest = gate.GEN_CHAIN_ROOT;
+  if (next > 1) {
+    let prev;
+    try { prev = JSON.parse(_fs.readFileSync(gate.genClaimPath(progressionOut, next - 1), "utf8")); }
+    catch { throw new Error(`Cannot chain generation ${next}: predecessor claim is missing/unreadable -- fail closed.`); }
+    if (!gate.isValidGenClaim(prev, next - 1)) throw new Error(`Cannot chain generation ${next}: predecessor claim is invalid -- fail closed.`);
+    previousDigest = gate.genClaimDigest(prev);
+  }
+  const claim = { version: gate.GEN_LEDGER_VERSION, generation: next, previousDigest, owner: String(owner).slice(0, 128), at: now().toISOString() };
+  const stage = `${progressionOut}.genstage-${crypto.randomBytes(8).toString("hex")}`;
+  const final = gate.genClaimPath(progressionOut, next);
+  let fd;
+  try { fd = _fs.openSync(stage, "wx", 0o600); } catch { throw new Error("Failed to stage a generation claim (I/O error)."); }
+  try { _fs.writeSync(fd, JSON.stringify(claim)); _fs.fsyncSync(fd); } finally { _fs.closeSync(fd); }
+  try { _fs.linkSync(stage, final); }
+  catch (err) {
+    try { _fs.unlinkSync(stage); } catch { /* best effort */ }
+    if (err && err.code === "EEXIST") { const e = new Error("generation already claimed"); e.code = "EEXIST"; throw e; }
+    throw new Error("Failed to publish a generation claim (I/O error).");
+  }
+  try { _fs.unlinkSync(stage); } catch { /* the linked claim remains */ }
+  try { _fs.chmodSync(final, 0o600); } catch { /* Windows ACLs */ }
   return owner;
 }
 
@@ -491,9 +494,14 @@ function reconcileCleanup(args, deps = {}) {
 // ---------------------------------------------------------------------------
 // A reconciliation mutex retained by a crashed/partial/aborted cleanup would otherwise
 // strand production forever (every reconcile-cleanup refuses while it exists). This is the
-// ONLY governed way to clear it -- Owner-confirmed, fingerprint-bound, and staleness-gated
-// so it can never clear a still-live cleanup's mutex. It clears ONLY the mutex; all genesis
-// residue is left intact for a subsequent normal reconcile-inspect + reconcile-cleanup.
+// ONLY governed way to clear it. Authority does NOT come from elapsed time or malformed
+// content (neither proves the owner is dead): recovery requires the explicit Owner-stopped
+// attestation (primary operational exclusion), is fingerprint-bound, acquires a single-winner
+// generation advance (CAS), and is bound to the EXACT inspected mutex (content digest) so it
+// never removes a replacement. Generation fencing supersedes a still-live prior cleanup at its
+// next revalidation (defense in depth -- see the destructive-boundary note in the runbook; it
+// is not claimed to make every in-flight unlink impossible). It clears ONLY the mutex; all
+// genesis residue is left intact for a subsequent normal reconcile-inspect + reconcile-cleanup.
 function reconcileRecover(args, deps = {}) {
   assertProductionArgs(args);
   if (args.confirmReconciliation !== RECOVER_CONFIRM) throw new Error(`Reconciliation-mutex recovery requires an explicit --confirmReconciliation ${RECOVER_CONFIRM}.`);
@@ -602,6 +610,6 @@ if (require.main === module) { main(); }
 module.exports = {
   parseArgs, createOnly, atomicExclusiveCreate, initGenesis, reconcileInspect, reconcileCleanup, reconcileRecover,
   sanitizeForOutput, artifactRoles, fingerprintArtifacts, perRoleDigests, readReconcileMutex,
-  genClaimPath, currentGeneration, claimGeneration, assertProductionArgs,
+  currentGeneration, claimGeneration, assertProductionArgs,
   PRODUCTION_PROJECT_ID, RECONCILE_CONFIRM, RECOVER_CONFIRM, OWNER_STOPPED_CONFIRM, MIGRATION_PERSONA_ORDER,
 };
