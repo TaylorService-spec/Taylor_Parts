@@ -1,0 +1,87 @@
+name: Equipment Compatibility Emulator Tests
+
+# D4 Stage E (Part–Equipment Compatibility trusted persistence) EMULATOR verification: the trusted
+# command orchestrator's full two-transaction lifecycle against a REAL Firestore (real preconditions,
+# real multi-client contention) PLUS proof that the client-closed firestore.rules are ENFORCED, not
+# merely declared. Runs against freshly started Firestore + Auth emulators (Firestore for the governed
+# collections + audit events; Auth to mint the ID tokens the Rules-enforcement checks use as a client).
+# Emulator-only, project "taylor-parts", loopback host — no production access, no credentials, no
+# repository secrets. NOT a production activation workflow: the governed equipment.* capabilities remain
+# active:false and nothing here exports a callable or deploys anything; deployment is the separate D10 gate.
+
+on:
+  pull_request:
+    paths:
+      - "functions/src/equipmentCompatibility/**"
+      - "functions/src/access/permissionCatalog.ts"
+      - "functions/src/access/auditEventWriter.ts"
+      - "functions/src/types/access.ts"
+      - "functions/test/equipmentCompatibilityEmulator.test.mjs"
+      - "firestore.rules"
+      - "field-ops-app-vite/firestore.rules"
+      - "firebase.json"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - ".github/workflows/equipment-compatibility-emulator-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/src/equipmentCompatibility/**"
+      - "functions/src/access/permissionCatalog.ts"
+      - "functions/src/access/auditEventWriter.ts"
+      - "functions/src/types/access.ts"
+      - "functions/test/equipmentCompatibilityEmulator.test.mjs"
+      - "firestore.rules"
+      - "field-ops-app-vite/firestore.rules"
+      - "firebase.json"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - ".github/workflows/equipment-compatibility-emulator-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  equipment-compatibility-emulator:
+    name: Equipment compatibility emulator tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+
+      - name: Start Firestore + Auth emulators (background)
+        run: |
+          nohup node node_modules/firebase-tools/lib/bin/firebase.js emulators:start --only firestore,auth --project taylor-parts --config ../firebase.json > /tmp/equipment-emulator.log 2>&1 &
+          for i in $(seq 1 60); do
+            if grep -q "All emulators ready" /tmp/equipment-emulator.log 2>/dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "Emulators did not become ready in time"
+          cat /tmp/equipment-emulator.log
+          exit 1
+        working-directory: functions
+
+      - name: Equipment compatibility emulator tests (build + run)
+        run: npm run test:equipmentCompatibilityEmulator
+        working-directory: functions
+
+      - name: Upload emulator debug logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: equipment-compatibility-emulator-logs
+          path: /tmp/equipment-emulator.log
+          if-no-files-found: ignore
+          retention-days: 7
