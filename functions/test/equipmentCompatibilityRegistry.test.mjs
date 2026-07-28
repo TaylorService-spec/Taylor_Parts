@@ -6,14 +6,23 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import admin from "firebase-admin";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..", "..");
 const read = (p) => readFileSync(join(repoRoot, p), "utf8");
 
+// The audit-writer behavioural check below exercises the REAL exported writer, which mints an auto-id
+// via getFirestore() before staging. That needs an initialized app but NEVER a live backend: the test
+// passes a fake writer and never commits, so no document is read or written anywhere. The emulator host
+// is set defensively so an accidental commit would fail loudly against localhost rather than reach prod.
+process.env.FIRESTORE_EMULATOR_HOST ??= "127.0.0.1:8080";
+if (admin.apps.length === 0) admin.initializeApp({ projectId: "demo-equipment-registry-test" });
+
 const catalog = await import("../lib/access/permissionCatalog.js");
 const { COMMAND_CAPABILITIES, EQUIPMENT_AUDIT_ACTIONS } = await import("../lib/equipmentCompatibility/commands.js");
 const { EQUIPMENT_COMPATIBILITY_COLLECTIONS } = await import("../lib/equipmentCompatibility/repository.js");
+const { stageAuditEvent, AuditEventValidationError } = await import("../lib/access/auditEventWriter.js");
 
 let passed = 0;
 const ok = (n, f) => { f(); passed++; console.log(`PASS -- ${n}`); };
@@ -88,48 +97,99 @@ ok("all five equipment AuditActions are registered in the shared writer allowlis
   }
   assert.equal(EQUIPMENT_AUDIT_ACTIONS.length, 5);
 });
-ok("the shared audit writer now ACCEPTS every equipment action and still rejects a foreign one", async () => {
-  // Exercises the real validator through its exported surface, so registration is proven behaviourally
-  // rather than by string match alone.
-  const { buildAuditEventDocForTest } = await import("../lib/access/auditEventWriter.js").then((m) => ({
-    buildAuditEventDocForTest: m.buildAuditEventDoc ?? null,
-  }));
-  if (buildAuditEventDocForTest === null) {
-    // The writer does not export its builder; the allowlist assertion above is the available evidence.
-    return;
-  }
+ok("the shared audit writer ACCEPTS every equipment action -- staged with that exact action -- via its real exported surface", () => {
+  // Exercises the REAL exported writer (stageAuditEvent), not the non-exported builder. A fake writer
+  // captures the staged document so we prove, behaviourally, that (a) each equipment action passes the
+  // writer's own allowlist validation and (b) the value that lands in the staged doc IS that action.
+  // If any equipment action were removed from AUDIT_ACTIONS in auditEventWriter.ts, assertValid would
+  // throw here and this test would FAIL -- string-match evidence alone can no longer paper over a gap.
+  assert.equal(EQUIPMENT_AUDIT_ACTIONS.length, 5, "exactly five equipment actions must be exercised");
   for (const action of EQUIPMENT_AUDIT_ACTIONS) {
-    assert.doesNotThrow(() => buildAuditEventDocForTest({
+    let staged = null;
+    const captureWriter = { set(ref, data) { staged = { id: ref.id, data }; } };
+    const returnedId = stageAuditEvent(captureWriter, {
       actorUid: "actor-1", action, targetType: "equipment_models", targetId: "TAYLOR--C713",
       outcome: "applied", summary: "registration check",
-    }), action);
+    });
+    assert.ok(staged, `${action} must stage exactly one document`);
+    assert.equal(staged.data.action, action, `${action} must be staged with its own action value`);
+    assert.equal(staged.data.actorUid, "actor-1", `${action} must preserve the actor`);
+    assert.equal(staged.data.outcome, "applied", `${action} must preserve the outcome`);
+    assert.equal(staged.id, returnedId, `${action}: staged ref id must equal the returned id`);
   }
+});
+ok("the shared audit writer REJECTS a foreign action BEFORE any document is staged", () => {
+  // assertValid runs before the writer is ever touched, so a non-allow-listed action must throw and the
+  // fake writer's set() must never fire -- no half-written audit trail for an unrecognised action.
+  let touched = false;
+  const spyWriter = { set() { touched = true; } };
+  assert.throws(
+    () => stageAuditEvent(spyWriter, {
+      actorUid: "actor-1", action: "definitelyNotAnEquipmentAuditAction", targetType: "equipment_models",
+      targetId: "TAYLOR--C713", outcome: "applied", summary: "should be rejected",
+    }),
+    AuditEventValidationError,
+    "a foreign action must be rejected by the writer's allowlist",
+  );
+  assert.equal(touched, false, "no document may be staged for a rejected action");
 });
 
-// ---- client-closed Rules proposal ----
-ok("all five governed collections are client-closed in firestore.rules", () => {
-  const rules = read("firestore.rules");
+// ---- client-closed Rules proposal (BOTH governed mirrors) ----
+// The repo carries TWO Rules files -- the root firestore.rules (the deployed artifact) and the client
+// mirror field-ops-app-vite/firestore.rules. Enforcing the D4 closure on only one leaves the other free
+// to drift open. Every check below therefore runs against BOTH, and a byte-equality gate + negative
+// control prove the two mirrors' governed blocks are and stay identical.
+const RULES_MIRRORS = ["firestore.rules", "field-ops-app-vite/firestore.rules"];
+
+// Extract the labelled D4 block: from its banner comment through the closing brace of the last governed
+// collection (equipment_compatibility_operations). Scoped so the comparison ignores unrelated Rules.
+const extractRulesBlock = (source) => {
+  const start = source.indexOf("    // D4 -- Part-Equipment Compatibility: CLIENT-CLOSED");
+  assert.notEqual(start, -1, "the labelled D4 block must be present");
+  const lastMatch = source.indexOf("match /equipment_compatibility_operations/", start);
+  assert.notEqual(lastMatch, -1, "the operations collection must be present in the D4 block");
+  const close = source.indexOf("\n    }", lastMatch);
+  assert.notEqual(close, -1, "the operations collection must close");
+  return source.slice(start, close + "\n    }".length);
+};
+
+ok("the D4 Rules block is BYTE-IDENTICAL across both governed mirrors", () => {
+  const server = extractRulesBlock(read("firestore.rules"));
+  const client = extractRulesBlock(read("field-ops-app-vite/firestore.rules"));
+  assert.equal(server, client, "the D4 equipment Rules block must match byte for byte across both mirrors");
   for (const collection of EQUIPMENT_COMPATIBILITY_COLLECTIONS) {
-    const match = new RegExp(`match /${collection}/\\{[A-Za-z]+\\} \\{\\s*allow read, write: if false;\\s*\\}`);
-    assert.match(rules, match, `${collection} must deny all client reads and writes`);
+    assert.ok(server.includes(`match /${collection}/`), `${collection} must appear in the mirrored block`);
   }
+  // Negative/regression control: mutating ONE mirror's block (here: flipping a single denial open) must
+  // make the byte comparison fail. This proves the equality gate actually discriminates rather than
+  // being a trivially-true comparison that would pass even if a real mirror silently drifted open.
+  const drifted = server.replace("allow read, write: if false;", "allow read, write: if true;");
+  assert.notEqual(drifted, server, "the simulated drift must actually change the block");
+  assert.notEqual(drifted, client, "a drifted mirror block must NOT compare equal -- the gate must catch it");
 });
-ok("the equipment Rules block grants no conditional client access at all", () => {
-  const rules = read("firestore.rules");
-  const start = rules.indexOf("// D4 -- Part-Equipment Compatibility: CLIENT-CLOSED");
-  assert.notEqual(start, -1, "the D4 block must be present and labelled");
-  const block = rules.slice(start);
-  // Nothing in this block may allow anything on any condition.
-  const allows = block.match(/allow [^;]+;/g) || [];
-  assert.equal(allows.length, EQUIPMENT_COMPATIBILITY_COLLECTIONS.length, "one allow per collection");
-  for (const allow of allows) {
-    assert.equal(allow, "allow read, write: if false;", "every allow must be an unconditional denial");
-  }
-  // No role, claim or resolver reference can creep into a client-closed block.
-  for (const forbidden of ["request.auth", "isSignedIn", "hasPermission", "get(", "exists("]) {
-    assert.equal(block.includes(forbidden), false, `the D4 block must not reference ${forbidden}`);
-  }
-});
+
+for (const file of RULES_MIRRORS) {
+  ok(`all five governed collections are client-closed in ${file}`, () => {
+    const rules = read(file);
+    for (const collection of EQUIPMENT_COMPATIBILITY_COLLECTIONS) {
+      const match = new RegExp(`match /${collection}/\\{[A-Za-z]+\\} \\{\\s*allow read, write: if false;\\s*\\}`);
+      assert.match(rules, match, `${collection} must deny all client reads and writes in ${file}`);
+    }
+  });
+  ok(`the equipment Rules block grants no conditional client access at all in ${file}`, () => {
+    const block = extractRulesBlock(read(file));
+    // Nothing in this block may allow anything on any condition.
+    const allows = block.match(/allow [^;]+;/g) || [];
+    assert.equal(allows.length, EQUIPMENT_COMPATIBILITY_COLLECTIONS.length, `one allow per collection in ${file}`);
+    for (const allow of allows) {
+      assert.equal(allow, "allow read, write: if false;", `every allow must be an unconditional denial in ${file}`);
+    }
+    // No role, claim or resolver reference can creep into a client-closed block.
+    for (const forbidden of ["request.auth", "isSignedIn", "hasPermission", "get(", "exists("]) {
+      assert.equal(block.includes(forbidden), false, `the D4 block must not reference ${forbidden} in ${file}`);
+    }
+  });
+}
 ok("D4 declares no compound index for the governed collections", () => {
   // The single bounded evidence query uses single-field equality, which Firestore indexes
   // automatically. Projections and their query shapes are deferred to D5.
