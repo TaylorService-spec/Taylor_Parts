@@ -92,6 +92,11 @@ check("A3: every Permission id is granted by at least one compatibility Role (di
     // compatibility Role here would be doubly premature: no Role should hold them, and the inactive
     // flag would deny anyway. Activation and grants are later, separately authorized decisions.
     ...PERMISSION_CATALOG.filter((p) => p.id.startsWith("equipment.")).map((p) => p.id),
+    // AUTH-PR-3.5 (DECISIONS #56): admin.credentialReset.initiate is registered
+    // `active: false` and granted to NO Role -- activation and any grant are a
+    // later, separately-authorized production/security gate (same posture as the
+    // equipment.* inactive capabilities above).
+    "admin.credentialReset.initiate",
   ]);
   const grantedIds = new Set([
     ...ADMIN_ROLE.permissions,
