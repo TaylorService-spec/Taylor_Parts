@@ -105,9 +105,15 @@ signed rollback artifact is required per identity; the exact prior address + `em
 restored; the artifact is deleted only after a confirmed mutation **and** durable progression;
 uncertain outcomes retain the artifact and fail closed. See
 [`auth-pr-4-rollback-continuation-design.md`](../deployment/auth-pr-4-rollback-continuation-design.md).
-**Governance:** this changes governed files, so the committed authorization binding fails closed
-at the governed-hash boundary until a **separate Owner re-authorization** re-binds it (repo +
-emulator only; no production execution).
+
+**Governance / enablement (three separately-authorized steps).** Changing governed files invalidates
+the committed authorization binding **and** moves the workflow identity the existing signed
+progression is bound to. Re-binding `production-authorization.json` **alone is not sufficient**: the
+existing suspended state fails closed with *"bound to a different (stale) workflow identity"* until a
+one-time governed **workflow-identity transition** (`authPr4InitProgression.js --mode
+identity-transition`, credential-free, no SDK/network) re-signs it to the new identity. Full unwind =
+**re-authorization → identity transition → continuation**, each separately authorized. This PR is
+repo + emulator only and performs/authorizes none of them.
 
 ## Running the tests
 

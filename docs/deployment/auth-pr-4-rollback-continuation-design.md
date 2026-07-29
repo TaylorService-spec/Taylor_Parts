@@ -45,6 +45,39 @@ Reverse order is **structural**, not a parameter: the rollback target is always
 `--employeeId`, if supplied, must equal it. Removing the last element keeps `completed` a valid
 in-order prefix, so successive continuation steps walk positions 4 → 3 → 2 → 1.
 
+## 2a. Workflow-identity transition — the existing progression must cross the governed-file change
+
+`workflowIdentityHash` is a hash of the governed-file hashes, and the signed progression + anchor
+are **bound** to it. Because this PR changes governed files, the existing production suspended
+state (signed under the **old** identity) would fail closed after any authorization rebind with
+*"Progression bound to a different (stale) workflow identity."* **Re-binding
+`production-authorization.json` alone is therefore NOT sufficient** to resume the existing state.
+
+A one-time, governed, credential-free, crash-safe **workflow-identity transition** re-signs the
+**existing** progression + high-water anchor from the OLD identity to the NEW one:
+`authPr4InitProgression.js --mode identity-transition`, bound to **both** the exact
+`--oldAuthorizedCommit` (old identity) and `--authorizedCommit` (new GRANTED authorization). It
+preserves the state key, `status`, `completed` prefix, and last outcome; bumps the revision
+(chained + re-anchored) so older signed states fail closed on **both** the identity binding and
+the high-water anchor; and **leaves all retained rollback artifacts untouched** (they are not
+identity-bound). It performs **no** Firebase init and **no** network/production access, and fails
+closed on stale/forged/mismatched state, anchor mismatch, an init-marker / claim-lock / txn /
+reconcile-mutex, a ledger anomaly, a blocking/terminal/in-flight status, or an identical
+old/new identity.
+
+```bash
+node functions/scripts/authPr4InitProgression.js --mode identity-transition \
+  --projectId taylor-parts --confirmProduction taylor-parts \
+  --authorizedCommit <re-authorized head> --oldAuthorizedCommit <pre-change reviewed head> \
+  --executionModeConfirmation <token> --executor <name> \
+  --stateKeyFile <protected key> --progressionOut <protected progression> \
+  --confirmIdentityTransition transition-workflow-identity
+```
+
+**Ordered enablement:** (1) merge the separate re-authorization (rebind the artifact to the new
+governed hashes), (2) run the identity transition once, (3) run the continuation below. All three
+are separately authorized; none is performed or authorized by this PR.
+
 ## 3. Command (one identity per invocation)
 
 Run once per remaining identity, most-recently-completed first (the gate enforces the target):
@@ -85,13 +118,20 @@ node functions/scripts/authPr4RecoveryEmailMigration.js \
 
 ## 5. Governance impact — re-authorization required (fail-closed until then)
 
-Changing two governed files invalidates the committed **three-file GRANTED binding** (pinned to
-the pre-continuation hashes at `reviewedHead dba0e33`): `assertProductionAuthorization` now
-**fails closed at the governed-hash boundary** for any `--executeProduction` run, **before any
-SDK init**. This is the intended fail-closed behavior and mirrors the `#461 → #462` sequence
-(governed-set change → separate re-authorization). This PR **does not** touch
+Changing governed files invalidates the committed **three-file GRANTED binding** (pinned to the
+pre-continuation hashes at `reviewedHead dba0e33`): `assertProductionAuthorization` now **fails
+closed at the governed-hash boundary** for any `--executeProduction` run, **before any SDK init**.
+This is the intended fail-closed behavior and mirrors the `#461 → #462` sequence (governed-set
+change → separate re-authorization). This PR **does not** touch
 `functions/authpr4/production-authorization.json`; re-binding it to the new governed hashes is a
 **separate Owner re-authorization** and is **out of scope** here.
+
+**Re-binding the artifact alone is not sufficient.** The governed-file change also moves the
+**workflow identity** to which the existing signed progression is bound, so even after a rebind
+the current suspended state fails closed with *"bound to a different (stale) workflow identity"*
+until the **workflow-identity transition** (§2a) re-signs it. Full enablement of the unwind is
+therefore three separately-authorized steps: **re-authorization → identity transition →
+continuation**.
 
 ## 6. Tests
 
@@ -101,8 +141,15 @@ SDK init**. This is the intended fail-closed behavior and mirrors the `#461 → 
   continuation concurrency (exactly one claims).
 - **Pure (CLI):** `parseArgs` recognizes `--rollbackContinuation`; it does not relax the
   production-write block on its own.
+- **Pure (identity transition):** re-signs a suspended state old-identity → new-identity,
+  preserving `status`/`completed`/last-outcome and bumping revision; re-run fails closed
+  (idempotence); refuses missing confirm, identical old/new identity, a present init-marker, and
+  a present claim lock.
 - **Auth emulator (end-to-end):** forward 1→5, owner rollback → `suspended`, then continuation
   4 → 3 → 2 → 1 → terminal `rolled_back`; each step restores the exact prior address +
   `emailVerified` and deletes the rollback artifact only after durable progression.
+- **Auth emulator (regression — Codex P1):** a signed **PRE-change** suspended state under the OLD
+  identity is proven to fail closed on resume, then the governed identity transition re-binds it,
+  and the continuation completes 4 → 3 → 2 → 1 to terminal `rolled_back`.
 - **Updated:** the two REAL-repo binding tests now assert the correct fail-closed-until-re-authorized
   behavior; the single-persona rollback test now reaches terminal `rolled_back` (empty completed).
