@@ -582,13 +582,29 @@ function reconcileRecover(args, deps = {}) {
 // initialization and NO network/production access, and fails closed on stale/forged/mismatched
 // state, anchor mismatch, an init marker / claim lock / transition or reconciliation mutex, a
 // ledger anomaly, a blocking/terminal/in-flight status, or an identical old/new identity.
-function identityTransition(args, deps = {}) {
+// --- Identity-transition intent journal (signed with the state key) -------------------------
+// The intent is the SINGLE crash-safe journal for the two-file (state + anchor) replacement. It
+// is published atomically-and-exclusively BEFORE either file is touched, carries the exact
+// predecessor digests + the exact authorized TARGET bytes (so recovery is a deterministic
+// roll-forward, never a re-derivation or a blind rewrite), and is removed ONLY after state and
+// anchor verify together under the new identity.
+const IDTXN_VERSION = 1;
+const IDTXN_FIELDS = Object.freeze([
+  "version", "authorizationId", "oldWorkflowIdentityHash", "newWorkflowIdentityHash",
+  "predecessorRevision", "predecessorStateHash", "predecessorStateDigest", "predecessorAnchorDigest",
+  "targetStateDigest", "targetAnchorDigest", "targetState", "targetAnchor", "at",
+]);
+function canonicalIdtxn(p) { return JSON.stringify(IDTXN_FIELDS.map((f) => [f, p[f]])); }
+function signIdtxn(p, key) { return crypto.createHmac("sha256", key).update(canonicalIdtxn(p)).digest("hex"); }
+function sha256Of(s) { return crypto.createHash("sha256").update(s).digest("hex"); }
+function fileDigest(p, deps = {}) { const _fs = deps.fs || fs; return _fs.existsSync(p) ? crypto.createHash("sha256").update(_fs.readFileSync(p)).digest("hex") : null; }
+
+// Shared preflight for both identity-transition modes: verify the NEW governed authorization
+// (GRANTED at --authorizedCommit) + derive NEW identity, derive OLD identity from
+// --oldAuthorizedCommit (ancestor), and reject a crash-left init-marker / reconcile-mutex /
+// claim-lock / txn-mutex or a ledger anomaly. Credential-free; no Firebase init, no network.
+function identityTransitionPreflight(args, deps = {}) {
   const _fs = deps.fs || fs;
-  // Production guard: an explicit matching --confirmProduction (deliberate), plus the standard
-  // authorized-commit / token / executor / target args. Real-production gating comes from the
-  // GRANTED artifact's projectId binding (verified in loadProductionAuthority below), exactly
-  // like the gate -- so in production the taylor-parts GRANTED artifact is still required, while
-  // a demo project is usable under the emulator for tests.
   if (!args.projectId) throw new Error("--projectId is required.");
   if (args.confirmProduction !== args.projectId) throw new Error("This production command requires an explicit matching --confirmProduction <projectId>.");
   if (!gate.isFullSha(args.authorizedCommit || "")) throw new Error("--authorizedCommit (canonical full 40-hex SHA) is required.");
@@ -597,59 +613,155 @@ function identityTransition(args, deps = {}) {
   if (!args.progressionOut) throw new Error("--progressionOut <path> is required.");
   if (!gate.isFullSha(args.oldAuthorizedCommit || "")) throw new Error("--oldAuthorizedCommit (canonical full 40-hex SHA of the pre-change reviewed commit) is required.");
   if (args.confirmIdentityTransition !== IDENTITY_TRANSITION_CONFIRM) throw new Error(`Identity transition requires an explicit --confirmIdentityTransition ${IDENTITY_TRANSITION_CONFIRM}.`);
-
   const personaOrder = deps.personaOrder || MIGRATION_PERSONA_ORDER;
-  // Verify the NEW governed authorization (GRANTED at --authorizedCommit) + derive the NEW identity.
   const { stateKey, repoRoot, idHash: newIdHash, authorization, expected } = loadProductionAuthority(args, deps);
-
-  // Derive the OLD identity from the pre-change reviewed commit (must be in the repo ancestry).
   const repoIdentity = gate.deriveRepositoryIdentity(repoRoot, deps);
   if (!(repoIdentity.head === args.oldAuthorizedCommit || repoIdentity.isAncestor(args.oldAuthorizedCommit))) {
     throw new Error("--oldAuthorizedCommit is not the current HEAD nor an ancestor of it.");
   }
   const oldIdHash = gate.workflowIdentityHash(gate.governedHashesAtCommit(repoRoot, args.oldAuthorizedCommit, deps));
   if (oldIdHash === newIdHash) throw new Error("Old and new workflow identities are identical -- nothing to transition (check --oldAuthorizedCommit / --authorizedCommit).");
-
-  // No crash-left / in-flight / interrupted operation may be present.
   gate.assertNoInitMarker(args.progressionOut, deps);
   gate.assertNoReconcileMutex(args.progressionOut, deps);
-  gate.readGenerationLedger(args.progressionOut, deps); // throws (fail closed) on any ledger anomaly
+  gate.readGenerationLedger(args.progressionOut, deps); // fail closed on any ledger anomaly
   const roles = artifactRoles(args.progressionOut);
   if (_fs.existsSync(roles.lock)) throw new Error("A claim lock is present (an attempt is in flight or crashed); refusing identity transition -- governed reconciliation first.");
   if (_fs.existsSync(gate.txnPath(args.progressionOut))) throw new Error("A transition mutex is present (interrupted step); refusing identity transition -- governed reconciliation first.");
-
   const expectedOld = { authorizationId: authorization.authorizationId, projectId: args.projectId, workflowIdentityHash: oldIdHash, personaOrder };
+  return { stateKey, newIdHash, oldIdHash, authorization, expected, expectedOld, roles };
+}
 
-  const out = gate.withTransition(args.progressionOut, deps, (token) => {
-    // Read + verify the EXISTING state under the OLD identity (signature + strict binding + freshness).
-    const cur = gate.readState(args.progressionOut, stateKey, expectedOld, deps);
-    gate.verifyStateFreshness(args.progressionOut, cur, stateKey, deps);
-    // Only a stable, resumable, non-blocking, non-terminal state may be transitioned.
-    if (!["eligible", "suspended"].includes(cur.status)) {
-      throw new Error(`Refusing identity transition: status "${cur.status}" is not a stable resumable state (claimed/uncertain/recovery_required require reconciliation; rolled_back is terminal).`);
-    }
-    if (cur.attempt !== null) throw new Error("Refusing identity transition: an attempt is present on the state (in-flight/interrupted).");
-    // Re-sign under the NEW identity: monotonic revision + chained previousStateHash + re-anchored.
-    gate.commitState(args.progressionOut, cur, { workflowIdentityHash: newIdHash }, stateKey, deps, token);
-    // Read-back verification under the NEW identity, everything else preserved.
-    const back = gate.readState(args.progressionOut, stateKey, expected, deps);
-    gate.verifyStateFreshness(args.progressionOut, back, stateKey, deps);
-    if (back.workflowIdentityHash !== newIdHash) throw new Error("Post-transition read-back workflow identity mismatch -- fail closed.");
-    if (back.status !== cur.status) throw new Error("Post-transition status changed -- fail closed.");
-    if (back.completed.length !== cur.completed.length || back.completed.some((x, i) => x !== cur.completed[i])) throw new Error("Post-transition completed prefix changed -- fail closed.");
-    if (back.revision !== cur.revision + 1) throw new Error("Post-transition revision did not advance by exactly one -- fail closed.");
-    return { before: cur, after: back };
-  });
+// Read + verify the signed intent journal, bound to the derived identities + authorization.
+function readIdentityIntent(progressionOut, stateKey, { authorization, oldIdHash, newIdHash }, deps = {}) {
+  const _fs = deps.fs || fs;
+  let art;
+  try { art = JSON.parse(_fs.readFileSync(gate.idtxnPath(progressionOut), "utf8")); }
+  catch (err) { throw new Error(`Identity-transition intent missing/malformed: ${err.message}`); }
+  if (!art || typeof art !== "object" || typeof art.signature !== "string") throw new Error("Identity-transition intent malformed.");
+  const { signature, ...payload } = art;
+  gate.assertExactShape({ ...payload, signature }, [...IDTXN_FIELDS, "signature"], "identity-transition intent");
+  if (payload.version !== IDTXN_VERSION) throw new Error("Identity-transition intent version unsupported.");
+  const expectSig = signIdtxn(payload, stateKey);
+  const a = Buffer.from(signature, "hex"); const b = Buffer.from(expectSig, "hex");
+  if (a.length !== b.length || a.length === 0 || !crypto.timingSafeEqual(a, b)) throw new Error("Identity-transition intent failed integrity verification (tampered/wrong key).");
+  if (payload.authorizationId !== authorization.authorizationId) throw new Error("Identity-transition intent bound to a different authorization.");
+  if (payload.oldWorkflowIdentityHash !== oldIdHash || payload.newWorkflowIdentityHash !== newIdHash) throw new Error("Identity-transition intent identities do not match the derived old/new identities.");
+  for (const d of [payload.predecessorStateDigest, payload.predecessorAnchorDigest, payload.targetStateDigest, payload.targetAnchorDigest]) {
+    if (!gate.isSha256(d)) throw new Error("Identity-transition intent digests are not canonical.");
+  }
+  if (sha256Of(payload.targetState) !== payload.targetStateDigest) throw new Error("Identity-transition intent targetState does not match its digest.");
+  if (sha256Of(payload.targetAnchor) !== payload.targetAnchorDigest) throw new Error("Identity-transition intent targetAnchor does not match its digest.");
+  return payload;
+}
+
+// Classify the on-disk state/anchor against the intent and DETERMINISTICALLY roll forward to the
+// exact authorized target. It writes ONLY an artifact still byte-identical to the recorded
+// predecessor (never a foreign/substituted one), verifies state+anchor together under the new
+// identity, then removes the intent. Shared by the forward path and the recovery mode (idempotent).
+function classifyAndFinishTransition(progressionOut, stateKey, expected, intent, deps = {}) {
+  const _fs = deps.fs || fs;
+  const roles = artifactRoles(progressionOut);
+  const anchorP = gate.anchorPath(progressionOut);
+  const sd = fileDigest(roles.state, deps);
+  const ad = fileDigest(anchorP, deps);
+  if (!sd || !ad) throw new Error("Identity-transition recovery: state or anchor is absent -- BLOCKED (escalate to the Owner).");
+  const stateIs = sd === intent.targetStateDigest ? "target" : sd === intent.predecessorStateDigest ? "predecessor" : "foreign";
+  const anchorIs = ad === intent.targetAnchorDigest ? "target" : ad === intent.predecessorAnchorDigest ? "predecessor" : "foreign";
+  if (stateIs === "foreign" || anchorIs === "foreign") throw new Error("Identity-transition recovery: state/anchor is neither the exact predecessor nor the authorized target (substituted/foreign/conflicting) -- BLOCKED, escalate to the Owner.");
+  if (stateIs === "predecessor" && anchorIs === "target") throw new Error("Identity-transition recovery: anchor advanced ahead of state (impossible ordering) -- BLOCKED, escalate to the Owner.");
+  if (stateIs === "predecessor") gate.atomicWrite(roles.state, intent.targetState, deps);   // BOUNDARY: state replacement
+  if (anchorIs === "predecessor") gate.atomicWrite(anchorP, intent.targetAnchor, deps);      // BOUNDARY: anchor replacement
+  const back = gate.readState(roles.state, stateKey, expected, deps);
+  gate.verifyStateFreshness(roles.state, back, stateKey, deps);
+  if (fileDigest(roles.state, deps) !== intent.targetStateDigest) throw new Error("Post-transition state digest mismatch -- fail closed.");
+  if (fileDigest(anchorP, deps) !== intent.targetAnchorDigest) throw new Error("Post-transition anchor digest mismatch -- fail closed.");
+  if (back.workflowIdentityHash !== intent.newWorkflowIdentityHash) throw new Error("Post-transition workflow identity mismatch -- fail closed.");
+  if (back.revision !== intent.predecessorRevision + 1) throw new Error("Post-transition revision mismatch -- fail closed.");
+  _fs.unlinkSync(gate.idtxnPath(progressionOut)); // BOUNDARY: intent cleanup (only after both verify)
+  return { back, stateIs, anchorIs };
+}
+
+function identityTransition(args, deps = {}) {
+  const _fs = deps.fs || fs;
+  const { stateKey, newIdHash, oldIdHash, authorization, expected, expectedOld, roles } = identityTransitionPreflight(args, deps);
+  const progressionOut = args.progressionOut;
+  const anchorP = gate.anchorPath(progressionOut);
+  const idtxnP = gate.idtxnPath(progressionOut);
+  if (_fs.existsSync(idtxnP)) throw new Error("An identity-transition intent is already present (a prior transition is in progress or was interrupted) -- run --mode identity-transition-recover.");
+
+  // Read + verify the EXISTING state under the OLD identity (signature + strict binding + freshness).
+  const cur = gate.readState(progressionOut, stateKey, expectedOld, deps);
+  gate.verifyStateFreshness(progressionOut, cur, stateKey, deps);
+  if (!["eligible", "suspended"].includes(cur.status)) throw new Error(`Refusing identity transition: status "${cur.status}" is not a stable resumable state (claimed/uncertain/recovery_required require reconciliation; rolled_back is terminal).`);
+  if (cur.attempt !== null) throw new Error("Refusing identity transition: an attempt is present on the state (in-flight/interrupted).");
+
+  // Deterministic TARGET (fixed `at`) so a recovery installs byte-identical artifacts.
+  const at = (deps.now ? deps.now() : new Date()).toISOString();
+  const targetPayload = { ...cur, workflowIdentityHash: newIdHash, revision: cur.revision + 1, previousStateHash: gate.progressionHash(cur), updatedAt: at };
+  const targetState = JSON.stringify({ ...targetPayload, signature: gate.signProgression(targetPayload, stateKey) });
+  const targetAnchorPayload = { version: gate.ANCHOR_VERSION, authorizationId: cur.authorizationId, highWaterRevision: targetPayload.revision, stateHash: gate.progressionHash(targetPayload), updatedAt: at };
+  const targetAnchor = JSON.stringify({ ...targetAnchorPayload, signature: gate.signAnchor(targetAnchorPayload, stateKey) });
+
+  const predStateDigest = fileDigest(roles.state, deps);
+  const predAnchorDigest = fileDigest(anchorP, deps);
+  const intent = {
+    version: IDTXN_VERSION, authorizationId: cur.authorizationId,
+    oldWorkflowIdentityHash: oldIdHash, newWorkflowIdentityHash: newIdHash,
+    predecessorRevision: cur.revision, predecessorStateHash: gate.progressionHash(cur),
+    predecessorStateDigest: predStateDigest, predecessorAnchorDigest: predAnchorDigest,
+    targetStateDigest: sha256Of(targetState), targetAnchorDigest: sha256Of(targetAnchor),
+    targetState, targetAnchor, at,
+  };
+
+  // BOUNDARY 1 -- publish the intent journal ATOMICALLY + EXCLUSIVELY (full-or-absent; EEXIST =>
+  // a concurrent transition already owns it). This is the crash marker AND the recovery journal.
+  try {
+    atomicExclusiveCreate(idtxnP, JSON.stringify({ ...intent, signature: signIdtxn(intent, stateKey) }), deps);
+  } catch (err) {
+    if (err && err.code === "EEXIST") throw new Error("An identity-transition intent is already present (a concurrent transition) -- refusing.");
+    throw err;
+  }
+  // Close the claim race: re-confirm the state is STILL the exact predecessor and no claim/txn
+  // appeared while the intent was being published. If a continuation intervened, abort WITHOUT
+  // touching state/anchor and remove the just-published intent (nothing was committed yet).
+  if (fileDigest(roles.state, deps) !== predStateDigest || _fs.existsSync(roles.lock) || _fs.existsSync(gate.txnPath(progressionOut))) {
+    try { _fs.unlinkSync(idtxnP); } catch { /* leave for recovery */ }
+    throw new Error("A concurrent state change / claim appeared during identity-transition setup -- aborted without modifying state/anchor.");
+  }
+
+  // BOUNDARIES 2-4 -- write state, write anchor, verify together, remove intent (idempotent path
+  // shared with recovery). A crash at any boundary leaves the intent for identity-transition-recover.
+  const { back } = classifyAndFinishTransition(progressionOut, stateKey, expected, intent, deps);
 
   return {
     ok: true, mode: "identity-transition",
     authorizationId: authorization.authorizationId, projectId: args.projectId,
-    oldWorkflowIdentityRef: `ref:${oldIdHash.slice(0, 16)}`,
-    newWorkflowIdentityRef: `ref:${newIdHash.slice(0, 16)}`,
-    revisionBefore: out.before.revision, revisionAfter: out.after.revision,
-    status: out.after.status, completedCount: out.after.completed.length,
-    lastOutcomeResult: out.after.lastOutcome ? out.after.lastOutcome.result : null,
+    oldWorkflowIdentityRef: `ref:${oldIdHash.slice(0, 16)}`, newWorkflowIdentityRef: `ref:${newIdHash.slice(0, 16)}`,
+    revisionBefore: cur.revision, revisionAfter: back.revision,
+    status: back.status, completedCount: back.completed.length,
+    lastOutcomeResult: back.lastOutcome ? back.lastOutcome.result : null,
     transitioned: true,
+  };
+}
+
+// MODE: identity-transition-recover -- deterministically COMPLETE a crash-interrupted identity
+// transition from its signed intent journal. It never infers success from elapsed time, and never
+// blindly rewrites: it installs only an artifact byte-identical to the recorded predecessor, and
+// BLOCKS (escalates) on any substituted/foreign/conflicting artifact.
+function identityTransitionRecover(args, deps = {}) {
+  const _fs = deps.fs || fs;
+  const { stateKey, newIdHash, oldIdHash, authorization, expected } = identityTransitionPreflight(args, deps);
+  const progressionOut = args.progressionOut;
+  if (!_fs.existsSync(gate.idtxnPath(progressionOut))) throw new Error("No identity-transition intent is present -- nothing to recover.");
+  const intent = readIdentityIntent(progressionOut, stateKey, { authorization, oldIdHash, newIdHash }, deps);
+  const { back, stateIs, anchorIs } = classifyAndFinishTransition(progressionOut, stateKey, expected, intent, deps);
+  return {
+    ok: true, mode: "identity-transition-recover",
+    authorizationId: authorization.authorizationId, projectId: args.projectId,
+    oldWorkflowIdentityRef: `ref:${oldIdHash.slice(0, 16)}`, newWorkflowIdentityRef: `ref:${newIdHash.slice(0, 16)}`,
+    recoveredFromState: stateIs, recoveredFromAnchor: anchorIs,
+    revisionAfter: back.revision, status: back.status, completedCount: back.completed.length,
+    intentCleared: true, transitioned: true,
   };
 }
 
@@ -675,7 +787,7 @@ function sanitizeForOutput(msg, protectedValues = []) {
 
 function protectedPathValues(args) {
   const vals = [args.executionModeConfirmation, args.stateKeyFile];
-  if (args.progressionOut) { const r = artifactRoles(args.progressionOut); vals.push(r.state, r.anchor, r.marker, r.lock, r.txn, gate.reconcilePath(args.progressionOut)); }
+  if (args.progressionOut) { const r = artifactRoles(args.progressionOut); vals.push(r.state, r.anchor, r.marker, r.lock, r.txn, gate.reconcilePath(args.progressionOut), gate.idtxnPath(args.progressionOut)); }
   return vals.filter(Boolean);
 }
 
@@ -689,6 +801,7 @@ async function main() {
     else if (args.mode === "reconcile-cleanup") { result = reconcileCleanup(args); headline = `RECONCILE-CLEANUP: action=${result.action} removed=[${result.removedRoles.join(",")}]`; }
     else if (args.mode === "reconcile-recover") { result = reconcileRecover(args); headline = `RECONCILE-RECOVER: mutexCleared=${result.mutexCleared} residual=${result.residualRecommendation}`; }
     else if (args.mode === "identity-transition") { result = identityTransition(args); headline = `IDENTITY-TRANSITION: ${result.oldWorkflowIdentityRef} -> ${result.newWorkflowIdentityRef} (status=${result.status}, completed=${result.completedCount}, rev ${result.revisionBefore}->${result.revisionAfter}).`; }
+    else if (args.mode === "identity-transition-recover") { result = identityTransitionRecover(args); headline = `IDENTITY-TRANSITION-RECOVER: completed (from state=${result.recoveredFromState}/anchor=${result.recoveredFromAnchor} -> ${result.newWorkflowIdentityRef}, status=${result.status}, rev ${result.revisionAfter}).`; }
     else { result = initGenesis(args); headline = `GENESIS initialised (eligible, revision 0, next=${result.nextPersona} position ${result.nextPosition}).`; }
     emit(headline);
     emit(result);
@@ -702,8 +815,8 @@ if (require.main === module) { main(); }
 
 module.exports = {
   parseArgs, createOnly, atomicExclusiveCreate, initGenesis, reconcileInspect, reconcileCleanup, reconcileRecover,
-  identityTransition,
+  identityTransition, identityTransitionRecover, readIdentityIntent, signIdtxn, classifyAndFinishTransition,
   sanitizeForOutput, artifactRoles, fingerprintArtifacts, perRoleDigests, readReconcileMutex,
   currentGeneration, claimGeneration, assertProductionArgs,
-  PRODUCTION_PROJECT_ID, RECONCILE_CONFIRM, RECOVER_CONFIRM, OWNER_STOPPED_CONFIRM, IDENTITY_TRANSITION_CONFIRM, MIGRATION_PERSONA_ORDER,
+  PRODUCTION_PROJECT_ID, RECONCILE_CONFIRM, RECOVER_CONFIRM, OWNER_STOPPED_CONFIRM, IDENTITY_TRANSITION_CONFIRM, IDTXN_VERSION, MIGRATION_PERSONA_ORDER,
 };

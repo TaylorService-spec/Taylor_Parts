@@ -119,6 +119,11 @@ function buildTransitionRepo(projectId) {
   return { root, oldAuthorizedCommit, authorizedCommit, reviewedHead, oldIdHash, newIdHash, executionModeToken: "EMT-TOKEN", executor: "named-exec", requiredConfirmer: "named-confirmer", windowSeconds: 600 };
 }
 
+// fs wrappers that inject a crash at a specific write boundary (matched by destination path).
+const crashOnRename = (target) => ({ ...fs, renameSync: (a, b) => { if (b === target) throw new Error("injected crash (rename)"); return fs.renameSync(a, b); } });
+const crashOnLink = (target) => ({ ...fs, linkSync: (a, b) => { if (b === target) throw new Error("injected crash (link)"); return fs.linkSync(a, b); } });
+const crashOnUnlink = (target) => ({ ...fs, unlinkSync: (a) => { if (a === target) throw new Error("injected crash (unlink)"); return fs.unlinkSync(a); } });
+
 function writeGenesis(stateFile, key, { authorizationId, projectId, idHash, completed = [], status = "eligible" }) {
   let s = gate.genesisState({ authorizationId, projectId, workflowIdentityHash: idHash, personaOrder: ORDER });
   s = { ...s, completed, status };
@@ -656,6 +661,86 @@ ok("IDENTITY TRANSITION (pure): fails closed on missing confirm, identical old/n
   fs.unlinkSync(gate.lockPath(stateFile));
   // Guards removed -> the transition now succeeds (proves the guards above were the blockers).
   assert.equal(initProg.identityTransition(baseArgs, deps).transitioned, true);
+  fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
+});
+
+ok("IDENTITY TRANSITION crash-safety: fault injection at every write boundary (intent / state / anchor / cleanup) is recoverable via identity-transition-recover; state+anchor end consistent under the new identity", () => {
+  const g = buildTransitionRepo("demo-authpr4");
+  const expectedNew = { authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", workflowIdentityHash: g.newIdHash, personaOrder: ORDER };
+  const expectedOld = { ...expectedNew, workflowIdentityHash: g.oldIdHash };
+  const deps = { repoRoot: g.root, personaOrder: ORDER };
+  const mk = () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-idt-crash-"));
+    const keyFile = path.join(dir, "k"); const key = crypto.randomBytes(48); fs.writeFileSync(keyFile, key, { mode: 0o600 });
+    const stateFile = path.join(dir, "state.json");
+    writeSuspended(stateFile, key, { authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", idHash: g.oldIdHash, completed: ORDER.slice(0, 4), revision: 12 });
+    return { dir, keyFile, key, stateFile, tArgs: { projectId: "demo-authpr4", confirmProduction: "demo-authpr4", authorizedCommit: g.authorizedCommit, oldAuthorizedCommit: g.oldAuthorizedCommit, executionModeConfirmation: g.executionModeToken, executor: g.executor, stateKeyFile: keyFile, progressionOut: stateFile, confirmIdentityTransition: "transition-workflow-identity" } };
+  };
+  const isNew = (stateFile, key) => { const st = gate.readState(stateFile, key, expectedNew); gate.verifyStateFreshness(stateFile, st, key); return st.workflowIdentityHash === g.newIdHash && st.status === "suspended" && st.completed.length === 4; };
+
+  // BOUNDARY 1 -- intent creation crash: no intent, state/anchor UNTOUCHED (still resumable), re-run works.
+  { const t = mk();
+    throws(() => initProg.identityTransition(t.tArgs, { ...deps, fs: crashOnLink(gate.idtxnPath(t.stateFile)) }), /injected crash|Failed to publish/);
+    assert.ok(!fs.existsSync(gate.idtxnPath(t.stateFile)), "B1: no intent left");
+    assert.equal(gate.readState(t.stateFile, t.key, expectedOld).workflowIdentityHash, g.oldIdHash, "B1: old state intact");
+    assert.equal(initProg.identityTransition(t.tArgs, deps).transitioned, true);
+    assert.ok(isNew(t.stateFile, t.key), "B1: re-run completed");
+    fs.rmSync(t.dir, { recursive: true, force: true }); }
+
+  // BOUNDARY 2 -- state-write crash: intent + OLD state + OLD anchor; recover rolls both forward.
+  { const t = mk();
+    throws(() => initProg.identityTransition(t.tArgs, { ...deps, fs: crashOnRename(t.stateFile) }), /injected crash/);
+    assert.ok(fs.existsSync(gate.idtxnPath(t.stateFile)), "B2: intent retained");
+    const rec = initProg.identityTransitionRecover(t.tArgs, deps);
+    assert.equal(rec.recoveredFromState, "predecessor");
+    assert.equal(rec.recoveredFromAnchor, "predecessor");
+    assert.ok(!fs.existsSync(gate.idtxnPath(t.stateFile)), "B2: intent cleared");
+    assert.ok(isNew(t.stateFile, t.key), "B2: recovered to new identity, anchor consistent");
+    fs.rmSync(t.dir, { recursive: true, force: true }); }
+
+  // BOUNDARY 3 -- anchor-write crash (Codex's exact scenario): intent + NEW state + OLD anchor; recover finishes.
+  { const t = mk();
+    throws(() => initProg.identityTransition(t.tArgs, { ...deps, fs: crashOnRename(gate.anchorPath(t.stateFile)) }), /injected crash/);
+    assert.ok(fs.existsSync(gate.idtxnPath(t.stateFile)), "B3: intent retained");
+    // Before recovery the new state fails anchor freshness (the exact defect Codex flagged).
+    throws(() => gate.verifyStateFreshness(t.stateFile, gate.readState(t.stateFile, t.key, expectedNew), t.key), /stale\/replayed|does not match the high-water anchor/);
+    const rec = initProg.identityTransitionRecover(t.tArgs, deps);
+    assert.equal(rec.recoveredFromState, "target");
+    assert.equal(rec.recoveredFromAnchor, "predecessor");
+    assert.ok(isNew(t.stateFile, t.key), "B3: recovered; state+anchor now consistent under new identity");
+    fs.rmSync(t.dir, { recursive: true, force: true }); }
+
+  // BOUNDARY 4 -- intent-cleanup crash: state+anchor NEW, intent remains; recover removes it (idempotent).
+  { const t = mk();
+    throws(() => initProg.identityTransition(t.tArgs, { ...deps, fs: crashOnUnlink(gate.idtxnPath(t.stateFile)) }), /injected crash/);
+    assert.ok(fs.existsSync(gate.idtxnPath(t.stateFile)), "B4: intent retained");
+    const rec = initProg.identityTransitionRecover(t.tArgs, deps);
+    assert.equal(rec.recoveredFromState, "target");
+    assert.equal(rec.recoveredFromAnchor, "target");
+    assert.ok(!fs.existsSync(gate.idtxnPath(t.stateFile)), "B4: intent cleared");
+    assert.ok(isNew(t.stateFile, t.key), "B4: state+anchor consistent under new identity");
+    fs.rmSync(t.dir, { recursive: true, force: true }); }
+
+  fs.rmSync(g.root, { recursive: true, force: true });
+});
+
+ok("IDENTITY TRANSITION recover: refuses with no intent; BLOCKS (retains intent) on a substituted/foreign artifact -- never blindly rewrites", () => {
+  const g = buildTransitionRepo("demo-authpr4");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-idt-blk-"));
+  const keyFile = path.join(dir, "k"); const key = crypto.randomBytes(48); fs.writeFileSync(keyFile, key, { mode: 0o600 });
+  const stateFile = path.join(dir, "state.json");
+  writeSuspended(stateFile, key, { authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", idHash: g.oldIdHash, completed: ORDER.slice(0, 4), revision: 12 });
+  const tArgs = { projectId: "demo-authpr4", confirmProduction: "demo-authpr4", authorizedCommit: g.authorizedCommit, oldAuthorizedCommit: g.oldAuthorizedCommit, executionModeConfirmation: g.executionModeToken, executor: g.executor, stateKeyFile: keyFile, progressionOut: stateFile, confirmIdentityTransition: "transition-workflow-identity" };
+  const deps = { repoRoot: g.root, personaOrder: ORDER };
+  // No intent -> refuse.
+  throws(() => initProg.identityTransitionRecover(tArgs, deps), /No identity-transition intent is present/);
+  // Crash at the state write to leave an intent + predecessor state/anchor.
+  throws(() => initProg.identityTransition(tArgs, { ...deps, fs: crashOnRename(stateFile) }), /injected crash/);
+  assert.ok(fs.existsSync(gate.idtxnPath(stateFile)));
+  // Substitute the state with a foreign artifact -> recover must BLOCK (never roll a foreign file forward).
+  fs.writeFileSync(stateFile, JSON.stringify({ foreign: true }));
+  throws(() => initProg.identityTransitionRecover(tArgs, deps), /neither the exact predecessor nor the authorized target|BLOCKED/);
+  assert.ok(fs.existsSync(gate.idtxnPath(stateFile)), "intent retained on BLOCKED (Owner escalation)");
   fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
 });
 

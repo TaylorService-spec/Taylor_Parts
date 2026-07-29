@@ -590,6 +590,20 @@ function assertNoReconcileMutex(stateFile, deps = {}) {
   }
 }
 
+// IDENTITY-TRANSITION INTENT -- a signed `.idtxn` journal the governed workflow-identity
+// transition (authPr4InitProgression.js --mode identity-transition) publishes BEFORE it replaces
+// the progression state or high-water anchor, and removes ONLY after both verify together under
+// the NEW identity. Its presence means an identity transition is in progress or was interrupted
+// (crash-left): the gate refuses ALL production steps while it is present. It is resolved only by
+// the governed identity-transition recovery (deterministic roll-forward), never auto-broken.
+function idtxnPath(stateFile) { return `${stateFile}.idtxn`; }
+function assertNoIdentityTransactionIntent(stateFile, deps = {}) {
+  const _fs = deps.fs || fs;
+  if (_fs.existsSync(idtxnPath(stateFile))) {
+    throw new Error("An identity-transition intent is present: a governed workflow-identity transition is in progress or was interrupted (crash-left). Resolve it with identity-transition-recover before any production step.");
+  }
+}
+
 // FENCING-GENERATION LEDGER -- the single, gate-owned authority for the reconciliation
 // fencing generation. It is an APPEND-ONLY, HASH-CHAINED, CONTIGUOUS ledger of claim files
 // `<stateFile>.gen.<N>` (N = 1..K). Authority never comes from a filename alone: every
@@ -814,6 +828,7 @@ function assertProductionAuthorization(args, deps = {}) {
   // ledger fails closed before Auth access.
   assertNoInitMarker(args.progressionFile, deps);
   assertNoReconcileMutex(args.progressionFile, deps);
+  assertNoIdentityTransactionIntent(args.progressionFile, deps); // crash-left identity transition blocks
   readGenerationLedger(args.progressionFile, deps); // throws (fail-closed) on any ledger anomaly
 
   const expected = { authorizationId: authorization.authorizationId, projectId: args.projectId, workflowIdentityHash: idHash, personaOrder: deps.personaOrder };
@@ -1016,6 +1031,7 @@ module.exports = {
   txnPath, withTransition, assertMutexOwner,
   INIT_MARKER_VERSION, INIT_MARKER_FIELDS, INIT_TOKEN_RE, initMarkerPath, isValidInitMarker, readInitMarker, assertNoInitMarker,
   RECONCILE_MUTEX_VERSION, RECONCILE_MUTEX_FIELDS, reconcilePath, isValidReconcileMutex, assertNoReconcileMutex,
+  idtxnPath, assertNoIdentityTransactionIntent,
   GEN_LEDGER_VERSION, GEN_CLAIM_FIELDS, GEN_CHAIN_ROOT, genClaimPath, genLedgerPrefix, canonicalGenClaim, genClaimDigest, isValidGenClaim, readGenerationLedger,
   nextEligiblePersona,
   signBreakGlass, readAndVerifyBreakGlass,
