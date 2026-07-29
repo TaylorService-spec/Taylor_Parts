@@ -42,6 +42,9 @@ const gate = require("./authPr4ProductionGate.js");
 const PRODUCTION_PROJECT_ID = "taylor-parts";
 const RECONCILE_CONFIRM = "reconcile-genesis";
 const RECOVER_CONFIRM = "recover-mutex";
+// Explicit opt-in for the governed workflow-identity transition (re-sign an existing
+// progression + anchor when a governed-file change moved the workflow identity).
+const IDENTITY_TRANSITION_CONFIRM = "transition-workflow-identity";
 // Recovery never INFERS that a prior cleanup is dead (elapsed time and malformed content
 // are not proof). It requires an explicit governed attestation that the prior cleanup
 // process/operator environment has stopped, AND it fences via a persistent monotonic
@@ -74,6 +77,8 @@ function parseArgs(argv) {
       case "--action": args.action = argv[++i]; break;
       case "--confirmReconciliation": args.confirmReconciliation = argv[++i]; break;
       case "--confirmOwnerStopped": args.confirmOwnerStopped = argv[++i]; break;
+      case "--oldAuthorizedCommit": args.oldAuthorizedCommit = argv[++i]; break;
+      case "--confirmIdentityTransition": args.confirmIdentityTransition = argv[++i]; break;
       default: throw new Error(`Unknown argument: ${t}`);
     }
   }
@@ -562,6 +567,83 @@ function reconcileRecover(args, deps = {}) {
 }
 
 // ---------------------------------------------------------------------------
+// MODE: identity-transition  (governed workflow-identity re-binding of an EXISTING state)
+// ---------------------------------------------------------------------------
+// A governed-file change moves the workflow identity (workflowIdentityHash = a hash of the
+// governed-file hashes). The existing signed progression + high-water anchor are pinned to the
+// OLD identity, so after an authorization-artifact rebind the gate would fail closed
+// ("Progression bound to a different (stale) workflow identity"). This one-time, reviewed,
+// credential-free, crash-safe step re-signs the EXISTING state (and re-anchors it) from the OLD
+// identity to the NEW one, bound to BOTH the exact old reviewed commit and the exact new
+// authorized commit. It PRESERVES the state key, status, completed prefix, last outcome, and all
+// retained rollback artifacts (which are NOT bound to the workflow identity); it bumps the
+// revision monotonically (chained previousStateHash + re-anchored) so an older signed state
+// fails closed on both the identity binding and the high-water anchor. It performs NO Firebase
+// initialization and NO network/production access, and fails closed on stale/forged/mismatched
+// state, anchor mismatch, an init marker / claim lock / transition or reconciliation mutex, a
+// ledger anomaly, a blocking/terminal/in-flight status, or an identical old/new identity.
+function identityTransition(args, deps = {}) {
+  const _fs = deps.fs || fs;
+  assertProductionArgs(args); // projectId/confirmProduction/authorizedCommit/token/executor/progressionOut
+  if (!gate.isFullSha(args.oldAuthorizedCommit || "")) throw new Error("--oldAuthorizedCommit (canonical full 40-hex SHA of the pre-change reviewed commit) is required.");
+  if (args.confirmIdentityTransition !== IDENTITY_TRANSITION_CONFIRM) throw new Error(`Identity transition requires an explicit --confirmIdentityTransition ${IDENTITY_TRANSITION_CONFIRM}.`);
+
+  const personaOrder = deps.personaOrder || MIGRATION_PERSONA_ORDER;
+  // Verify the NEW governed authorization (GRANTED at --authorizedCommit) + derive the NEW identity.
+  const { stateKey, repoRoot, idHash: newIdHash, authorization, expected } = loadProductionAuthority(args, deps);
+
+  // Derive the OLD identity from the pre-change reviewed commit (must be in the repo ancestry).
+  const repoIdentity = gate.deriveRepositoryIdentity(repoRoot, deps);
+  if (!(repoIdentity.head === args.oldAuthorizedCommit || repoIdentity.isAncestor(args.oldAuthorizedCommit))) {
+    throw new Error("--oldAuthorizedCommit is not the current HEAD nor an ancestor of it.");
+  }
+  const oldIdHash = gate.workflowIdentityHash(gate.governedHashesAtCommit(repoRoot, args.oldAuthorizedCommit, deps));
+  if (oldIdHash === newIdHash) throw new Error("Old and new workflow identities are identical -- nothing to transition (check --oldAuthorizedCommit / --authorizedCommit).");
+
+  // No crash-left / in-flight / interrupted operation may be present.
+  gate.assertNoInitMarker(args.progressionOut, deps);
+  gate.assertNoReconcileMutex(args.progressionOut, deps);
+  gate.readGenerationLedger(args.progressionOut, deps); // throws (fail closed) on any ledger anomaly
+  const roles = artifactRoles(args.progressionOut);
+  if (_fs.existsSync(roles.lock)) throw new Error("A claim lock is present (an attempt is in flight or crashed); refusing identity transition -- governed reconciliation first.");
+  if (_fs.existsSync(gate.txnPath(args.progressionOut))) throw new Error("A transition mutex is present (interrupted step); refusing identity transition -- governed reconciliation first.");
+
+  const expectedOld = { authorizationId: authorization.authorizationId, projectId: args.projectId, workflowIdentityHash: oldIdHash, personaOrder };
+
+  const out = gate.withTransition(args.progressionOut, deps, (token) => {
+    // Read + verify the EXISTING state under the OLD identity (signature + strict binding + freshness).
+    const cur = gate.readState(args.progressionOut, stateKey, expectedOld, deps);
+    gate.verifyStateFreshness(args.progressionOut, cur, stateKey, deps);
+    // Only a stable, resumable, non-blocking, non-terminal state may be transitioned.
+    if (!["eligible", "suspended"].includes(cur.status)) {
+      throw new Error(`Refusing identity transition: status "${cur.status}" is not a stable resumable state (claimed/uncertain/recovery_required require reconciliation; rolled_back is terminal).`);
+    }
+    if (cur.attempt !== null) throw new Error("Refusing identity transition: an attempt is present on the state (in-flight/interrupted).");
+    // Re-sign under the NEW identity: monotonic revision + chained previousStateHash + re-anchored.
+    gate.commitState(args.progressionOut, cur, { workflowIdentityHash: newIdHash }, stateKey, deps, token);
+    // Read-back verification under the NEW identity, everything else preserved.
+    const back = gate.readState(args.progressionOut, stateKey, expected, deps);
+    gate.verifyStateFreshness(args.progressionOut, back, stateKey, deps);
+    if (back.workflowIdentityHash !== newIdHash) throw new Error("Post-transition read-back workflow identity mismatch -- fail closed.");
+    if (back.status !== cur.status) throw new Error("Post-transition status changed -- fail closed.");
+    if (back.completed.length !== cur.completed.length || back.completed.some((x, i) => x !== cur.completed[i])) throw new Error("Post-transition completed prefix changed -- fail closed.");
+    if (back.revision !== cur.revision + 1) throw new Error("Post-transition revision did not advance by exactly one -- fail closed.");
+    return { before: cur, after: back };
+  });
+
+  return {
+    ok: true, mode: "identity-transition",
+    authorizationId: authorization.authorizationId, projectId: args.projectId,
+    oldWorkflowIdentityRef: `ref:${oldIdHash.slice(0, 16)}`,
+    newWorkflowIdentityRef: `ref:${newIdHash.slice(0, 16)}`,
+    revisionBefore: out.before.revision, revisionAfter: out.after.revision,
+    status: out.after.status, completedCount: out.after.completed.length,
+    lastOutcomeResult: out.after.lastOutcome ? out.after.lastOutcome.result : null,
+    transitioned: true,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Output sanitizer -- strips exact known protected values (spaces included) then any
 // remaining quoted/absolute path patterns.
 // ---------------------------------------------------------------------------
@@ -596,6 +678,7 @@ async function main() {
     if (args.mode === "reconcile-inspect") { result = reconcileInspect(args); headline = `RECONCILE-INSPECT: needed=${result.reconciliationNeeded} recommendation=${result.recommendation}`; }
     else if (args.mode === "reconcile-cleanup") { result = reconcileCleanup(args); headline = `RECONCILE-CLEANUP: action=${result.action} removed=[${result.removedRoles.join(",")}]`; }
     else if (args.mode === "reconcile-recover") { result = reconcileRecover(args); headline = `RECONCILE-RECOVER: mutexCleared=${result.mutexCleared} residual=${result.residualRecommendation}`; }
+    else if (args.mode === "identity-transition") { result = identityTransition(args); headline = `IDENTITY-TRANSITION: ${result.oldWorkflowIdentityRef} -> ${result.newWorkflowIdentityRef} (status=${result.status}, completed=${result.completedCount}, rev ${result.revisionBefore}->${result.revisionAfter}).`; }
     else { result = initGenesis(args); headline = `GENESIS initialised (eligible, revision 0, next=${result.nextPersona} position ${result.nextPosition}).`; }
     emit(headline);
     emit(result);
@@ -609,7 +692,8 @@ if (require.main === module) { main(); }
 
 module.exports = {
   parseArgs, createOnly, atomicExclusiveCreate, initGenesis, reconcileInspect, reconcileCleanup, reconcileRecover,
+  identityTransition,
   sanitizeForOutput, artifactRoles, fingerprintArtifacts, perRoleDigests, readReconcileMutex,
   currentGeneration, claimGeneration, assertProductionArgs,
-  PRODUCTION_PROJECT_ID, RECONCILE_CONFIRM, RECOVER_CONFIRM, OWNER_STOPPED_CONFIRM, MIGRATION_PERSONA_ORDER,
+  PRODUCTION_PROJECT_ID, RECONCILE_CONFIRM, RECOVER_CONFIRM, OWNER_STOPPED_CONFIRM, IDENTITY_TRANSITION_CONFIRM, MIGRATION_PERSONA_ORDER,
 };
