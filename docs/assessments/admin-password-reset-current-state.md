@@ -300,24 +300,37 @@ unavailable/uncertain outcome surface.
 
 ---
 
-## 10. Owner decisions genuinely required (none assumed here)
+## 10. Owner decisions — RESOLVED ([`DECISIONS.md`](../DECISIONS.md) #56)
 
-- **D-DELIVERY-NATIVE (PENDING):** approve a Firebase-native server send (`sendOobCode`, no external
-  provider) with truthful "accepted"-only semantics — **or** direct that admin reset ships UI-only
-  and production reset stays blocked. (Reopening an external provider requires reversing #54.)
-- **D-ROUTINE-REVOKE (PENDING):** should **routine** admin reset revoke sessions at all? Handoff §11
-  favors no; the merged command revokes after confirmed delivery.
-- **D-RESET-PERMISSION (PENDING):** approve the permission ID `admin.credentialReset.initiate`
-  (registered **inactive**, no grant) and the roles that will eventually receive it (Owner + admin;
-  dispatcher/parts-manager/warehouse-manager/technician/sales-manager **denied**; self-reset denied).
-- **Guard gap (for AUTH-PR-3.5):** confirm the disabled/break-glass/missing-link/final-active-admin
-  guards must be added to the command before any production enablement.
+All four are now **decided** by the Owner + ChatGPT approval of AUTH-UI-1 (DECISIONS #56):
+
+- **D-DELIVERY-NATIVE — APPROVED.** Firebase-native server-side send (no external provider);
+  Firebase response treated **only as `REQUEST_ACCEPTED`** (never delivered/opened/consumed); no
+  link/action-code/email/response-body/internal-error exposure. Production stays blocked until
+  AUTH-PR-3.5 is tested and separately authorized; real-Firebase link consumability remains
+  AUTH-PROD-1. If the native path can't meet the security/audit contract, **stop and report — do not
+  add a provider.**
+- **D-ROUTINE-REVOKE — NO.** Routine admin reset **must not** revoke sessions/refresh tokens.
+  Revocation is a **separate** suspected-compromise workflow (explicit operator choice, own governed
+  permission/action, separate confirmation/audit/authorization). The merged command's routine
+  post-delivery revocation is therefore **removed** in AUTH-PR-3.5.
+- **D-RESET-PERMISSION — APPROVED.** `admin.credentialReset.initiate`, registered **inactive**, no
+  grant, server-side resolution only. Intended future eligible: Owner, governed admin. Denied:
+  dispatcher, parts manager, warehouse manager, technician, sales manager, unauthenticated, inactive
+  user, self-target, break-glass, protected final recoverable admin, disabled target, missing
+  Employee linkage, missing Auth linkage. Activation/grant needs a later production/security gate.
+- **Guard gap — CONFIRMED.** disabled / break-glass / missing-or-non-reciprocal Employee↔Auth
+  linkage / final-active-recoverable-admin guards must be added and tested in AUTH-PR-3.5 before any
+  enablement. The UI is not a security boundary.
 
 ---
 
 ## 11. Blockers and risks
 
-- **BLOCKER (production #5):** no Owner-approved delivery path without an external provider (§7).
+- **BLOCKER (production #5) — delivery posture now DECIDED (D-DELIVERY-NATIVE, #56):** the path is a
+  Firebase-native server send with `REQUEST_ACCEPTED`-only semantics. Production remains blocked
+  until AUTH-PR-3.5 implements it (with the guards) and AUTH-PROD-1/2/3 are separately authorized —
+  but the delivery *decision* is no longer open.
 - **Risk — guard gap:** the merged command lacks disabled/break-glass/missing-link/final-active-admin
   guards; production enablement without them could lock out or wrongly target protected identities.
   The **UI cannot compensate**; this must be closed in AUTH-PR-3.5, not AUTH-UI-3.
@@ -333,7 +346,8 @@ unavailable/uncertain outcome surface.
 
 **AUTH-UI-2** (pure UI/domain state: view-model, eligibility/display mapping, action-state machine,
 sanitized result mapping, duplicate-submit protection, unit tests — **no callable wiring, no
-deployment**) — *proceed under the continuous-execution authority ([`DECISIONS.md`](../DECISIONS.md)
-#55) once this Gate A design is Owner/ChatGPT-approved.* AUTH-UI-2/3 do **not** depend on the
-delivery decision; the production gates (AUTH-PR-3.5, AUTH-PROD-1..4) do and remain hard-stopped on
-the Owner decisions in §10.
+deployment**) — **now authorized** to proceed under the continuous-execution authority
+([`DECISIONS.md`](../DECISIONS.md) #55), Gate A having been Owner/ChatGPT-approved (#56). Then
+**AUTH-UI-3** (AdminUsers integration), then **AUTH-PR-3.5** (backend correction, repository/emulator
+only). The production gates (AUTH-PROD-1..4) remain hard-stopped and require separate production
+authorizations; the delivery decision itself is resolved (D-DELIVERY-NATIVE, §10).

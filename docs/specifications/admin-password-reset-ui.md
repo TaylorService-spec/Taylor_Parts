@@ -4,8 +4,8 @@
 - **Companion docs:** current-state [`assessments/admin-password-reset-current-state.md`](../assessments/admin-password-reset-current-state.md);
   plan [`implementation-plans/admin-password-reset-ui.md`](../implementation-plans/admin-password-reset-ui.md).
 - **Governing architecture:** AUTH-PR-1 [`assessments/auth-modernization-architecture.md`](../assessments/auth-modernization-architecture.md) §6/§8; ADR-005.
-- **Owner fixed inputs:** deferral [`DECISIONS.md`](../DECISIONS.md) #54; continuous-execution authority #55.
-- **Status:** PROPOSED — pending Owner + ChatGPT/Codex review. Nothing here authorizes runtime code, deployment, or a permission grant.
+- **Owner fixed inputs:** deferral [`DECISIONS.md`](../DECISIONS.md) #54; continuous-execution authority #55; **AUTH-UI-1 decisions APPROVED #56** (D-DELIVERY-NATIVE, D-ROUTINE-REVOKE=NO, D-RESET-PERMISSION inactive, guard gap confirmed).
+- **Status:** APPROVED (#56) — design accepted; realized by AUTH-UI-2/3 (repository/emulator only). Nothing here authorizes deployment, permission activation, or a role grant.
 
 The UI lives **inside the existing Issue #226 Admin portal** (`AdminUsers`) and must not become a
 competing user-management app.
@@ -58,9 +58,10 @@ no tokens.
 - **Server-side only.** Authorization is resolved by the backend (`assertActorIsAdmin` today →
   Issue #226 effective-access resolver later). The UI **never** authorizes on a raw client role
   string; nav/button visibility is **not** authorization.
-- **New permission (PROPOSED, register INACTIVE):** `admin.credentialReset.initiate` — dotted-domain
+- **New permission (APPROVED #56, register INACTIVE):** `admin.credentialReset.initiate` — dotted-domain
   convention matching `admin.userStatus.write` / `admin.roleAssignment.write`. Mirror parity where the
-  catalog requires it. **No role grant** until separately approved (D-RESET-PERMISSION, Owner).
+  catalog requires it. **No role grant, no activation** until a separate production/security gate
+  (D-RESET-PERMISSION).
 - **Eligible actors (once granted):** Owner, admin. **Denied:** dispatcher, parts manager, warehouse
   manager, technician, sales manager. **Self-reset denied** (use self-service).
 - Until the permission engine is live, the resolver's concrete check remains
@@ -132,16 +133,16 @@ intent and reused on retry so a repeat is an idempotent replay, not a second res
 
 ## 8. Mode selection
 
-- **Routine** (default): deliver a reset link; revocation posture per **D-ROUTINE-REVOKE** (Owner —
-  the assessment recommends *no* forced routine revocation; the merged command currently revokes after
-  confirmed delivery). The UI labels routine as "sends a reset link; the user keeps their session
-  unless sign-out is separately required" **only** once D-ROUTINE-REVOKE is decided; until then it
-  states the merged behavior truthfully.
-- **Suspected compromise**: separately labeled, explicit. Copy states sessions are **revoked
-  immediately** (accepted lockout) and a reset link is sent; recovery remains available. Requires an
-  extra confirmation acknowledging the lockout.
+- **Routine** (default): send a native reset request; **no session/refresh-token revocation**
+  (D-ROUTINE-REVOKE = **NO**, #56). Copy: "sends a password-reset email request; the user keeps their
+  session." The reachable success state is **request-accepted**, never "delivered".
+- **Suspected compromise**: a **separate governed action** (its own permission/action, confirmation,
+  audit, and — for production — its own authorization), not a mere toggle on routine reset. Copy
+  states sessions are **revoked** (accepted lockout) and a reset request is sent; recovery remains
+  available; requires an extra confirmation acknowledging the lockout. *Its production revocation
+  path is out of scope for AUTH-UI-2/3 and AUTH-PR-3.5's routine path.*
 
-Session revocation is **not** bundled into routine reset by default — it is mode-driven (handoff §11).
+Session revocation is **never** bundled into routine reset (D-ROUTINE-REVOKE = NO, #56).
 
 ---
 
@@ -162,8 +163,10 @@ reality:
 - If the backend delivery capability is **not configured** (current state), the primary outcome is
   **configuration-unavailable** — the admin is told the reset service is not available and to use an
   approved alternative (e.g., directing the user to self-service recovery).
-- If/when **D-DELIVERY-NATIVE** is approved and AUTH-PR-3.5 wires Firebase-native server send, the
-  reachable success state is **delivery-initiated** ("accepted"), never **delivery-confirmed**.
+- **D-DELIVERY-NATIVE is APPROVED (#56):** AUTH-PR-3.5 wires a Firebase-native server send, so the
+  reachable success state is **request-accepted** (`REQUEST_ACCEPTED`), **never** delivery-confirmed.
+  Until AUTH-PR-3.5 is deployed (a separate production gate), the live UI still renders
+  configuration-/service-unavailable.
 
 The UI ships and is truthful in **both** worlds; it does not assume delivery exists.
 

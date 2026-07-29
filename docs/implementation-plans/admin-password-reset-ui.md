@@ -3,8 +3,8 @@
 - **Baseline `origin/main`:** `bc0fda57c9b35a967cef75b3df747a6fac91ec15`.
 - **Companion docs:** [`assessments/admin-password-reset-current-state.md`](../assessments/admin-password-reset-current-state.md),
   [`specifications/admin-password-reset-ui.md`](../specifications/admin-password-reset-ui.md).
-- **Owner fixed inputs:** [`DECISIONS.md`](../DECISIONS.md) #54 (deferral), #55 (continuous-execution authority).
-- **Status:** PROPOSED — pending Owner + ChatGPT/Codex review. No runtime code is authorized by this plan.
+- **Owner fixed inputs:** [`DECISIONS.md`](../DECISIONS.md) #54 (deferral), #55 (continuous-execution authority), **#56 (AUTH-UI-1 APPROVED: D-DELIVERY-NATIVE, D-ROUTINE-REVOKE=NO, D-RESET-PERMISSION inactive, guard gap confirmed)**.
+- **Status:** APPROVED (#56). AUTH-UI-2/3 and AUTH-PR-3.5 are authorized as **repository/emulator-only** phases under #55. Deployment and permission activation remain separate production gates.
 
 Each gate is a **small, separately reviewed PR**, draft first, rebased on current `origin/main`, with
 every changed file listed, runtime files separated from docs/evidence, tests + exact results,
@@ -19,7 +19,7 @@ rollback, and explicit non-authorizations. **Merge ≠ deployment.**
 | **AUTH-UI-1** (this PR) | docs-only | — | — (reviewed here) |
 | **AUTH-UI-2** | runtime (pure domain/UI state) | UI-1 approved | none new (UI-1 approval) |
 | **AUTH-UI-3** | runtime (Admin portal integration) | UI-2 | none new (UI-1 approval) |
-| **AUTH-PR-3.5** | runtime (backend delivery revision + guards) | UI-1 | **D-DELIVERY-NATIVE, D-ROUTINE-REVOKE, D-RESET-PERMISSION, guard-gap** |
+| **AUTH-PR-3.5** | runtime (backend delivery revision + guards), repo/emulator only | UI-1 | **decided #56** — repo/emulator work authorized; deployment/activation separate |
 | **AUTH-PROD-1** | prod verification (read-only/bounded) | 3.5 | separate production authorization |
 | **AUTH-PROD-2** | deployment preparation (docs) | PROD-1 | — (proposal) |
 | **AUTH-PROD-3** | production deployment + verification | PROD-2 | separate production authorization |
@@ -75,26 +75,36 @@ tests).
 
 ---
 
-## AUTH-PR-3.5 — backend delivery revision + missing guards (runtime, repository-only)
+## AUTH-PR-3.5 — backend delivery revision + missing guards (runtime, repository/emulator only)
 
-**Only if the Owner approves D-DELIVERY-NATIVE** (Firebase-native server send, no external provider).
-**Blocked otherwise** — in which case admin reset ships UI-only and production reset stays blocked.
+**Authorized (#56)** as a repository/emulator-only phase — D-DELIVERY-NATIVE approved, no external
+provider. **Do not target the real production project.**
 
 **Files (planned):**
 - `functions/src/access/adminCredentialCommands.ts` / `adminCredentialCallables.ts` — a Firebase-native
   `ResetDelivery` implementation that calls the Auth REST `accounts:sendOobCode`
   (`requestType=PASSWORD_RESET`) server-side, inside an idempotent boundary (one idempotency key → one
-  effective send); truthful **"accepted"-only** result (never "delivered"). If real-Firebase
-  consumability (AUTH-PROD-1) fails, move link generation inside the send boundary.
-- Add the **missing guards**: disabled-user, break-glass exclusion, missing-Employee-link,
-  **final-active-admin** protection — enforced in the command (the UI cannot).
-- Implement **D-ROUTINE-REVOKE**: make routine reset revocation-free if the Owner so decides.
-- Register the **inactive** permission `admin.credentialReset.initiate` (no grant); wire the resolver
-  seam so the #226 swap is 1:1.
-- Tests: emulator coverage for every guard, native-send "accepted" semantics, idempotent replay, and
-  fail-closed when the native path is unavailable.
+  effective send); truthful **`REQUEST_ACCEPTED`-only** result (never "delivered"). If real-Firebase
+  consumability (AUTH-PROD-1) later fails, move link generation inside the send boundary.
+- **Remove routine session revocation** (D-ROUTINE-REVOKE = NO): routine reset performs **no**
+  `revokeRefreshTokens`. Immediate revocation moves to the separate suspected-compromise governed
+  action (its own permission/confirmation/audit/authorization — not shipped by this gate's routine path).
+- Add the **missing guards** (enforced in the command; the UI cannot): disabled-target denial,
+  break-glass exclusion, missing/non-reciprocal Employee↔Auth linkage denial, **final-active-recoverable-
+  admin** protection, self-target denial.
+- Register the **inactive** permission `admin.credentialReset.initiate` (no grant, no activation); wire
+  the resolver seam so the #226 swap is 1:1.
+- Server-derived actor; strict request schema (unknown-field rejection); idempotency; append-only
+  sanitized audit; **no** UID/email/role/claim/operationalRoles/accessVersion/Employee-link/
+  employmentStatus/password mutation; never expose reset links or action codes.
+- Tests: authorized Owner/admin fixture; inactive-permission denial; every denied persona; self-target;
+  disabled target; break-glass target; missing Employee; missing Auth account; non-reciprocal linkage;
+  final recoverable admin; duplicate/idempotent replay; native-send accepted; native-send failure;
+  uncertain outcome; **no routine token revocation**; no identity/access mutation; safe audit output;
+  no secret/reset-link exposure. Emulator + repository fixtures only.
 
-**Non-authorizations:** no deployment; no provider; no permission activation; no role grant.
+**Non-authorizations:** no deployment; no provider; no permission activation; no role grant; no real
+production project target.
 
 ---
 
@@ -141,10 +151,10 @@ tests).
 
 ## Continuous-execution boundary (this workstream)
 
-Under [`DECISIONS.md`](../DECISIONS.md) #55, once AUTH-UI-1's architecture/scope/security/data-
-authority/production-boundaries are Owner + ChatGPT approved, Claude may proceed continuously through
-the **reversible repository** gates — AUTH-UI-2, AUTH-UI-3, and (if D-DELIVERY-NATIVE is approved)
-AUTH-PR-3.5 — including in-scope corrections, rebases, marking ready, merging approved repository-only
+Under [`DECISIONS.md`](../DECISIONS.md) #55, with AUTH-UI-1 now Owner + ChatGPT approved (#56), Claude
+proceeds continuously through the **reversible repository** gates — AUTH-UI-2, AUTH-UI-3, and
+AUTH-PR-3.5 (all repository/emulator only) — including in-scope corrections, rebases, marking ready,
+merging approved repository-only
 PRs, deleting merged branches, and starting the next approved reversible phase. **Hard stops** remain:
 any deployment (Functions/Rules/Hosting/index), any Firebase Auth/project mutation, any production
 user/data/reset/revocation/email/recovery-email/session action, any role/claim/accessVersion/
@@ -156,7 +166,8 @@ authorizations.
 
 ## Risks & blockers (see assessment §11)
 
-- **BLOCKER:** production admin reset (#5) is blocked until D-DELIVERY-NATIVE is decided.
+- **Production admin reset (#5):** delivery decided (D-DELIVERY-NATIVE native send, #56); still gated
+  on AUTH-PR-3.5 implementation + separate AUTH-PROD-1/2/3 authorizations before any production use.
 - **Guard gap:** merged command lacks disabled/break-glass/missing-link/final-active-admin guards →
   AUTH-PR-3.5, before any enablement.
 - **Link consumability** unverified on real Firebase → AUTH-PROD-1.
