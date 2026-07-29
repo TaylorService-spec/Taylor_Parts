@@ -53,8 +53,8 @@ state (signed under the **old** identity) would fail closed after any authorizat
 *"Progression bound to a different (stale) workflow identity."* **Re-binding
 `production-authorization.json` alone is therefore NOT sufficient** to resume the existing state.
 
-A one-time, governed, credential-free, crash-safe **workflow-identity transition** re-signs the
-**existing** progression + high-water anchor from the OLD identity to the NEW one:
+A one-time, governed, credential-free, **journaled crash-safe** **workflow-identity transition**
+re-signs the **existing** progression + high-water anchor from the OLD identity to the NEW one:
 `authPr4InitProgression.js --mode identity-transition`, bound to **both** the exact
 `--oldAuthorizedCommit` (old identity) and `--authorizedCommit` (new GRANTED authorization). It
 preserves the state key, `status`, `completed` prefix, and last outcome; bumps the revision
@@ -65,8 +65,36 @@ closed on stale/forged/mismatched state, anchor mismatch, an init-marker / claim
 reconcile-mutex, a ledger anomaly, a blocking/terminal/in-flight status, or an identical
 old/new identity.
 
+**Crash-safety across the two-file (state + anchor) replacement.** The state and anchor are two
+independent files, so the transition is **journaled**. Before touching either, it publishes a
+**signed intent** (`<progression>.idtxn`, atomic + exclusive, full-or-absent) carrying the
+`authorizationId`, old/new identities, predecessor revision/hash, **predecessor state+anchor
+digests**, the transition generation, and the **exact authorized target bytes + digests**. It then
+writes the state, writes the anchor, verifies both **together** under the new identity, and removes
+the intent **last**. While the intent is present the gate refuses every production step
+(`assertNoIdentityTransactionIntent`). A crash at any boundary (intent, state, anchor, cleanup)
+leaves the intent, and the governed **`--mode identity-transition-recover`** completes it
+deterministically: it verifies the signed intent, classifies each on-disk artifact by digest
+(`predecessor` | `target` | `foreign`), **rolls forward only an artifact byte-identical to the
+recorded predecessor** (never a foreign/substituted one, never inferring from elapsed time),
+verifies state + anchor together under the new identity, and only then removes the intent. Any
+substituted/foreign/conflicting artifact **blocks** (intent retained) for Owner escalation.
+Recovery is idempotent and itself crash-recoverable.
+
 ```bash
 node functions/scripts/authPr4InitProgression.js --mode identity-transition \
+  --projectId taylor-parts --confirmProduction taylor-parts \
+  --authorizedCommit <re-authorized head> --oldAuthorizedCommit <pre-change reviewed head> \
+  --executionModeConfirmation <token> --executor <name> \
+  --stateKeyFile <protected key> --progressionOut <protected progression> \
+  --confirmIdentityTransition transition-workflow-identity
+```
+
+If a transition is interrupted (crash / power loss), complete it with the recovery mode (same
+inputs, `--mode identity-transition-recover`) before running the continuation:
+
+```bash
+node functions/scripts/authPr4InitProgression.js --mode identity-transition-recover \
   --projectId taylor-parts --confirmProduction taylor-parts \
   --authorizedCommit <re-authorized head> --oldAuthorizedCommit <pre-change reviewed head> \
   --executionModeConfirmation <token> --executor <name> \
@@ -145,6 +173,11 @@ continuation**.
   preserving `status`/`completed`/last-outcome and bumping revision; re-run fails closed
   (idempotence); refuses missing confirm, identical old/new identity, a present init-marker, and
   a present claim lock.
+- **Pure (identity-transition crash-safety):** fault injection at **every** write boundary
+  (intent create / state write / anchor write / intent cleanup) is recovered via
+  `--mode identity-transition-recover` to a consistent new-identity state+anchor — including the
+  exact new-state/old-anchor case (shown to fail anchor freshness before recovery); recovery
+  refuses with no intent and **blocks** (retains the intent) on a substituted/foreign artifact.
 - **Auth emulator (end-to-end):** forward 1→5, owner rollback → `suspended`, then continuation
   4 → 3 → 2 → 1 → terminal `rolled_back`; each step restores the exact prior address +
   `emailVerified` and deletes the rollback artifact only after durable progression.

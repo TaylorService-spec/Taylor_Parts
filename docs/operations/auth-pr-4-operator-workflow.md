@@ -111,7 +111,11 @@ the committed authorization binding **and** moves the workflow identity the exis
 progression is bound to. Re-binding `production-authorization.json` **alone is not sufficient**: the
 existing suspended state fails closed with *"bound to a different (stale) workflow identity"* until a
 one-time governed **workflow-identity transition** (`authPr4InitProgression.js --mode
-identity-transition`, credential-free, no SDK/network) re-signs it to the new identity. Full unwind =
+identity-transition`, credential-free, no SDK/network) re-signs it to the new identity. The
+transition is **journaled and crash-safe**: it publishes a signed `.idtxn` intent before touching
+state/anchor and removes it only after both verify under the new identity; an interrupted transition
+is completed deterministically by `--mode identity-transition-recover` (rolls forward from the intent;
+blocks on any substituted/foreign artifact). Full unwind =
 **re-authorization → identity transition → continuation**, each separately authorized. This PR is
 repo + emulator only and performs/authorizes none of them.
 
