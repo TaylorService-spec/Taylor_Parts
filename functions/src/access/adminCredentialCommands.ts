@@ -52,7 +52,6 @@ import type { AuditAction, AuditOutcome, Scope } from "../types/access";
 
 const USERS_COLLECTION = "users";
 const RESET_OPS_COLLECTION = "admin_credential_reset_ops";
-const ADMIN_ROLE = "admin";
 const GLOBAL_SCOPE: Scope = { type: "global" };
 const TARGET_TYPE = "user";
 const MAX_LIST_LIMIT = 100;
@@ -170,7 +169,62 @@ export function evaluateTargetEligibility(
   return { category: "eligible", disposition: "eligible" };
 }
 
-export interface AdminResetDeps {
+// -- Actor authorization (PRE-2, corrected) ----------------------------------
+//
+// AUTH-PR-3.5 authorized the actor by stored role ALONE. PRE-2 makes admin
+// password-reset authorization FAIL CLOSED unless the authenticated actor is a
+// governed admin with an ACTIVE, non-disabled account and a valid RECIPROCAL
+// Employee<->Auth linkage. Facts are resolved server-side from the authenticated
+// context (Auth + Firestore) behind an injected dep -- the actor uid always comes
+// from the authenticated callable context, never from client data, and no
+// client-supplied role/status/capability value is ever consulted.
+//
+// Schema reconciliation: account/employment "active" state is represented solely
+// by the Firebase Auth enabled/disabled flag (`setUserStatus` toggles only
+// `getAuth().updateUser({ disabled })`; there is no separate Firestore
+// employment-status field). "Active employment/account" and "not disabled" both
+// reduce to `authExists && !disabled`. If a distinct governed employment-status
+// field is later introduced, extend `ActorAuthorizationFacts` + the evaluator.
+export interface ActorAuthorizationFacts {
+  authExists: boolean; // a Firebase Auth user exists for the actor uid
+  disabled: boolean; // Auth user is disabled (inactive account)
+  isAdmin: boolean; // governed admin role: users/{actorUid}.role === "admin"
+  hasEmployeeLink: boolean; // users/{actorUid}.employeeId present
+  employeeLinkReciprocal: boolean; // employees/{employeeId} links back to actorUid
+}
+
+export type ActorAuthorizationCategory =
+  | "authorized"
+  | "no-auth-account"
+  | "disabled-actor"
+  | "not-admin"
+  | "missing-or-nonreciprocal-employee-link";
+
+export interface ActorAuthorizationVerdict {
+  authorized: boolean;
+  category: ActorAuthorizationCategory;
+}
+
+// PURE. Fail-closed order: a missing Auth account, a disabled account, a
+// non-admin role, or a missing/non-reciprocal Employee<->Auth link each deny.
+// Only a governed admin with an active, reciprocally-linked identity is authorized.
+export function evaluateActorAuthorization(facts: ActorAuthorizationFacts): ActorAuthorizationVerdict {
+  if (!facts.authExists) return { authorized: false, category: "no-auth-account" };
+  if (facts.disabled) return { authorized: false, category: "disabled-actor" };
+  if (!facts.isAdmin) return { authorized: false, category: "not-admin" };
+  if (!facts.hasEmployeeLink || !facts.employeeLinkReciprocal) {
+    return { authorized: false, category: "missing-or-nonreciprocal-employee-link" };
+  }
+  return { authorized: true, category: "authorized" };
+}
+
+export interface ActorAuthorizationDeps {
+  // Resolve the actor authorization facts (Auth + Firestore) from the
+  // authenticated context. Throwing FAILS CLOSED (treated as unauthorized).
+  resolveActorFacts(actorUid: string): Promise<ActorAuthorizationFacts>;
+}
+
+export interface AdminResetDeps extends ActorAuthorizationDeps {
   // Resolve the guard facts for the target (Auth + Firestore). Throwing is a
   // stage error (audited), not a silent pass.
   resolveTargetFacts(targetUid: string): Promise<TargetFacts>;
@@ -213,17 +267,24 @@ function opRef(key: string) {
   return db().collection(RESET_OPS_COLLECTION).doc(key);
 }
 
-async function readUserRole(uid: string): Promise<string | null> {
-  const snap = await db().collection(USERS_COLLECTION).doc(uid).get();
-  if (!snap.exists) return null;
-  const data = snap.data() as { role?: unknown } | undefined;
-  return typeof data?.role === "string" ? data.role : null;
-}
-async function assertActorIsAdmin(actorUid: string): Promise<void> {
-  const role = await readUserRole(actorUid);
-  if (role !== ADMIN_ROLE) {
-    throw new UnauthorizedActorError("actor is not authorized for credential administration");
+// Fail-closed actor authorization (PRE-2). Any lookup error is treated as
+// unauthorized (never a silent pass). The sanitized public error never reveals
+// which condition failed; the category is recorded only in the server-side audit.
+async function assertActorAuthorized(
+  actorUid: string,
+  deps: ActorAuthorizationDeps,
+): Promise<ActorAuthorizationCategory> {
+  let facts: ActorAuthorizationFacts;
+  try {
+    facts = await deps.resolveActorFacts(actorUid);
+  } catch {
+    throw new UnauthorizedActorError("actor authorization lookup failed");
   }
+  const verdict = evaluateActorAuthorization(facts);
+  if (!verdict.authorized) {
+    throw new UnauthorizedActorError(`actor is not authorized (${verdict.category})`);
+  }
+  return verdict.category;
 }
 
 async function audit(actorUid: string, targetUid: string, action: AuditAction, outcome: AuditOutcome, summary: string): Promise<void> {
@@ -351,7 +412,7 @@ export async function initiateAdminPasswordReset(input: InitiateAdminPasswordRes
 
   // --- Pre-claim denials (no op record for these) ---------------------------
   try {
-    await assertActorIsAdmin(actorUid);
+    await assertActorAuthorized(actorUid, deps);
   } catch (err) {
     await audit(actorUid, targetUid, "initiateAdminPasswordReset", "denied", `Denied: actor not authorized (mode ${mode}).`);
     throw err;
@@ -462,9 +523,12 @@ function clampLimit(limit: number | undefined): number {
   }
   return limit;
 }
-export async function listResetEligibleUsers(input: ListResetEligibleUsersInput): Promise<ResetEligibleUser[]> {
+export async function listResetEligibleUsers(
+  input: ListResetEligibleUsersInput,
+  deps: ActorAuthorizationDeps,
+): Promise<ResetEligibleUser[]> {
   assertNonEmptyString(input.actorUid, "actorUid");
-  await assertActorIsAdmin(input.actorUid);
+  await assertActorAuthorized(input.actorUid, deps);
   const limit = clampLimit(input.limit);
   const snap = await db().collection(USERS_COLLECTION).limit(limit).get();
   return snap.docs.map((doc) => {

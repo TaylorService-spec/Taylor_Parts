@@ -8,7 +8,10 @@
 // Prerequisite: npm run build (compiles to functions/lib). Then:
 //   node functions/test/adminCredentialEligibility.test.mjs
 import assert from "node:assert/strict";
-import { evaluateTargetEligibility } from "../lib/access/adminCredentialCommands.js";
+import {
+  evaluateTargetEligibility,
+  evaluateActorAuthorization,
+} from "../lib/access/adminCredentialCommands.js";
 
 let passed = 0;
 function ok(name, fn) { fn(); passed += 1; console.log("PASS -- " + name); }
@@ -89,6 +92,62 @@ ok("broken linkage outranks final-admin/disabled (cannot trust identity)", () =>
     "t",
   );
   assert.strictEqual(v.category, "missing-or-nonreciprocal-employee-link");
+});
+
+// -- PRE-2: pure evaluateActorAuthorization (fail-closed actor gate) ----------
+// A governed admin with an active, non-disabled, reciprocally-linked account is
+// authorized; every other case denies. account/employment "active" == Auth
+// enabled (no separate employment-status field in the current schema).
+const AUTHZ_ACTOR = Object.freeze({
+  authExists: true,
+  disabled: false,
+  isAdmin: true,
+  hasEmployeeLink: true,
+  employeeLinkReciprocal: true,
+});
+const actor = (over = {}) => ({ ...AUTHZ_ACTOR, ...over });
+
+ok("actor: active linked admin -> authorized", () => {
+  assert.deepStrictEqual(evaluateActorAuthorization(actor()), {
+    authorized: true,
+    category: "authorized",
+  });
+});
+ok("actor: no Auth account (unauthenticated/no-account) -> denied", () => {
+  assert.deepStrictEqual(evaluateActorAuthorization(actor({ authExists: false })), {
+    authorized: false,
+    category: "no-auth-account",
+  });
+});
+ok("actor: disabled/inactive account -> denied", () => {
+  assert.deepStrictEqual(evaluateActorAuthorization(actor({ disabled: true })), {
+    authorized: false,
+    category: "disabled-actor",
+  });
+});
+ok("actor: non-admin role -> denied", () => {
+  assert.deepStrictEqual(evaluateActorAuthorization(actor({ isAdmin: false })), {
+    authorized: false,
+    category: "not-admin",
+  });
+});
+ok("actor: missing employee link -> denied", () => {
+  assert.strictEqual(
+    evaluateActorAuthorization(actor({ hasEmployeeLink: false })).category,
+    "missing-or-nonreciprocal-employee-link",
+  );
+});
+ok("actor: non-reciprocal (malformed) link -> denied", () => {
+  assert.strictEqual(
+    evaluateActorAuthorization(actor({ employeeLinkReciprocal: false })).category,
+    "missing-or-nonreciprocal-employee-link",
+  );
+});
+ok("actor: no-account outranks disabled/non-admin (fail-closed order)", () => {
+  assert.strictEqual(
+    evaluateActorAuthorization(actor({ authExists: false, disabled: true, isAdmin: false })).category,
+    "no-auth-account",
+  );
 });
 
 console.log(`\n${passed} passed`);

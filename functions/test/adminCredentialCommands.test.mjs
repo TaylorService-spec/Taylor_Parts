@@ -20,6 +20,7 @@ import {
   initiateAdminPasswordReset,
   listResetEligibleUsers,
   evaluateTargetEligibility,
+  evaluateActorAuthorization,
   NOT_CONFIGURED_NATIVE_SEND,
   UnauthorizedActorError,
   ProtectedAccountError,
@@ -52,13 +53,24 @@ const ELIGIBLE_FACTS = Object.freeze({
 });
 const facts = (over = {}) => ({ ...ELIGIBLE_FACTS, ...over });
 
+// PRE-2: default authorized actor facts (governed admin, active/non-disabled
+// account, reciprocal Employee<->Auth link). Each denial case overrides one fact.
+const AUTHORIZED_ACTOR = Object.freeze({
+  authExists: true,
+  disabled: false,
+  isAdmin: true,
+  hasEmployeeLink: true,
+  employeeLinkReciprocal: true,
+});
+const actorFacts = (over = {}) => ({ ...AUTHORIZED_ACTOR, ...over });
+
 let counter = 0;
 function freshKey(prefix = "aprkey") {
   counter += 1;
   return `${prefix}.${Date.now().toString(36)}.${counter}0000`;
 }
 
-function makeDeps({ target = facts(), configured = true, send } = {}) {
+function makeDeps({ target = facts(), actor = actorFacts(), configured = true, send } = {}) {
   const sends = [];
   const nativeSend = {
     isConfigured: () => configured,
@@ -72,7 +84,11 @@ function makeDeps({ target = facts(), configured = true, send } = {}) {
     if (target === "throw") throw new Error("facts lookup boom");
     return target;
   };
-  return { deps: { resolveTargetFacts, nativeSend }, sends };
+  const resolveActorFacts = async () => {
+    if (actor === "throw") throw new Error("actor facts lookup boom");
+    return actor;
+  };
+  return { deps: { resolveActorFacts, resolveTargetFacts, nativeSend }, sends };
 }
 
 async function seedUser(uid, role) {
@@ -113,10 +129,53 @@ async function main() {
     ),
   );
 
-  // -- authorization ---------------------------------------------------------
-  await expectThrows("non-admin actor -> UnauthorizedActorError", UnauthorizedActorError, () =>
-    initiateAdminPasswordReset({ actorUid: TECH, targetUid: TARGET, idempotencyKey: freshKey() }, makeDeps().deps),
+  // -- actor authorization (PRE-2): fail closed unless active linked admin ----
+  await expectThrows("blank actorUid -> InvalidInputError (unauthenticated boundary)", InvalidInputError, () =>
+    initiateAdminPasswordReset({ actorUid: "", targetUid: TARGET, idempotencyKey: freshKey() }, makeDeps().deps),
   );
+  await expectThrows("non-admin actor -> UnauthorizedActorError", UnauthorizedActorError, () =>
+    initiateAdminPasswordReset(
+      { actorUid: TECH, targetUid: TARGET, idempotencyKey: freshKey() },
+      makeDeps({ actor: actorFacts({ isAdmin: false }) }).deps,
+    ),
+  );
+  await expectThrows("inactive/disabled admin actor -> UnauthorizedActorError", UnauthorizedActorError, () =>
+    initiateAdminPasswordReset(
+      { actorUid: ADMIN, targetUid: TARGET, idempotencyKey: freshKey() },
+      makeDeps({ actor: actorFacts({ disabled: true }) }).deps,
+    ),
+  );
+  await expectThrows("actor with no Auth account -> UnauthorizedActorError", UnauthorizedActorError, () =>
+    initiateAdminPasswordReset(
+      { actorUid: ADMIN, targetUid: TARGET, idempotencyKey: freshKey() },
+      makeDeps({ actor: actorFacts({ authExists: false }) }).deps,
+    ),
+  );
+  await expectThrows("actor missing employee link -> UnauthorizedActorError", UnauthorizedActorError, () =>
+    initiateAdminPasswordReset(
+      { actorUid: ADMIN, targetUid: TARGET, idempotencyKey: freshKey() },
+      makeDeps({ actor: actorFacts({ hasEmployeeLink: false }) }).deps,
+    ),
+  );
+  await expectThrows("actor non-reciprocal (malformed) link -> UnauthorizedActorError", UnauthorizedActorError, () =>
+    initiateAdminPasswordReset(
+      { actorUid: ADMIN, targetUid: TARGET, idempotencyKey: freshKey() },
+      makeDeps({ actor: actorFacts({ employeeLinkReciprocal: false }) }).deps,
+    ),
+  );
+  await expectThrows("actor-facts lookup throws -> UnauthorizedActorError (fail closed)", UnauthorizedActorError, () =>
+    initiateAdminPasswordReset(
+      { actorUid: ADMIN, targetUid: TARGET, idempotencyKey: freshKey() },
+      makeDeps({ actor: "throw" }).deps,
+    ),
+  );
+  await okAsync("active linked admin actor is authorized (reaches send)", async () => {
+    const key = freshKey();
+    const { deps, sends } = makeDeps();
+    const out = await initiateAdminPasswordReset({ actorUid: ADMIN, targetUid: TARGET, idempotencyKey: key }, deps);
+    assert.deepStrictEqual(out, { status: "accepted" });
+    assert.strictEqual(sends.length, 1, "authorized actor + eligible target sends once");
+  });
   await expectThrows("self-target -> ProtectedAccountError", ProtectedAccountError, () =>
     initiateAdminPasswordReset({ actorUid: ADMIN, targetUid: ADMIN, idempotencyKey: freshKey() }, makeDeps().deps),
   );
@@ -249,13 +308,21 @@ async function main() {
     assert.strictEqual(evaluateTargetEligibility(facts(), "a", "b").disposition, "eligible");
     assert.strictEqual(evaluateTargetEligibility(facts(), "a", "a").category, "self-target");
   });
+  await okAsync("evaluateActorAuthorization is exported and pure", async () => {
+    assert.strictEqual(evaluateActorAuthorization(actorFacts()).authorized, true);
+    assert.strictEqual(evaluateActorAuthorization(actorFacts({ disabled: true })).category, "disabled-actor");
+    assert.strictEqual(evaluateActorAuthorization(actorFacts({ isAdmin: false })).category, "not-admin");
+  });
 
-  // -- listResetEligibleUsers authorization ---------------------------------
+  // -- listResetEligibleUsers authorization (same PRE-2 actor gate) ----------
   await expectThrows("list: non-admin -> UnauthorizedActorError", UnauthorizedActorError, () =>
-    listResetEligibleUsers({ actorUid: TECH }),
+    listResetEligibleUsers({ actorUid: TECH }, makeDeps({ actor: actorFacts({ isAdmin: false }) }).deps),
   );
-  await okAsync("list: admin gets sanitized rows", async () => {
-    const rows = await listResetEligibleUsers({ actorUid: ADMIN, limit: 10 });
+  await expectThrows("list: disabled admin -> UnauthorizedActorError", UnauthorizedActorError, () =>
+    listResetEligibleUsers({ actorUid: ADMIN }, makeDeps({ actor: actorFacts({ disabled: true }) }).deps),
+  );
+  await okAsync("list: active linked admin gets sanitized rows", async () => {
+    const rows = await listResetEligibleUsers({ actorUid: ADMIN, limit: 10 }, makeDeps().deps);
     assert.ok(Array.isArray(rows));
     for (const r of rows) {
       assert.ok(!("email" in r) && !("password" in r));
