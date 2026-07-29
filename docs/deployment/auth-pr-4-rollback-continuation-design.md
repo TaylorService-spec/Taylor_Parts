@@ -81,6 +81,13 @@ verifies state + anchor together under the new identity, and only then removes t
 substituted/foreign/conflicting artifact **blocks** (intent retained) for Owner escalation.
 Recovery is idempotent and itself crash-recoverable.
 
+The intent is also **fence-bound**: it records the exact fencing **generation** and **ledger-head
+digest** observed when it was published, and both the forward path and recovery revalidate them
+after publication and immediately before each state/anchor replacement and the final cleanup. If a
+governed reconciliation advances the generation, a stale intent (even with its matching predecessor
+artifacts still on disk) is **superseded and blocked** — it can never be replayed to resurrect a
+transition the newer generation has fenced out.
+
 ```bash
 node functions/scripts/authPr4InitProgression.js --mode identity-transition \
   --projectId taylor-parts --confirmProduction taylor-parts \
@@ -178,6 +185,10 @@ continuation**.
   `--mode identity-transition-recover` to a consistent new-identity state+anchor — including the
   exact new-state/old-anchor case (shown to fail anchor freshness before recovery); recovery
   refuses with no intent and **blocks** (retains the intent) on a substituted/foreign artifact.
+- **Pure (generation fence):** same-generation transition + recovery succeed; a generation advance
+  after intent creation blocks recovery and retains the intent (a stale journal + matching
+  predecessors cannot bypass the newer fence); a generation change between classification and
+  replacement fails closed before any write.
 - **Auth emulator (end-to-end):** forward 1→5, owner rollback → `suspended`, then continuation
   4 → 3 → 2 → 1 → terminal `rolled_back`; each step restores the exact prior address +
   `emailVerified` and deletes the rollback artifact only after durable progression.
