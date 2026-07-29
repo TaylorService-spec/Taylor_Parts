@@ -669,6 +669,22 @@ function readGenerationLedger(stateFile, deps = {}) {
   return K;
 }
 
+// The current fencing generation AND a digest binding the exact ledger HEAD (the content digest
+// of the gen.<K> claim, or the chain root at generation 0). A journaled operation captures this
+// to fence itself to the exact ledger state it observed: a later governed reconciliation advance
+// changes the head, so a stale intent/recovery is superseded (fail closed) even if its matching
+// predecessor/target artifacts are still on disk. readGenerationLedger validates the whole chain.
+function generationLedgerHead(stateFile, deps = {}) {
+  const _fs = deps.fs || fs;
+  const generation = readGenerationLedger(stateFile, deps); // validates chain; throws on anomaly
+  if (generation === 0) return { generation, headDigest: GEN_CHAIN_ROOT };
+  let claim;
+  try { claim = JSON.parse(_fs.readFileSync(genClaimPath(stateFile, generation), "utf8")); }
+  catch { throw new Error("Generation-ledger head claim is unreadable -- fail closed."); }
+  if (!isValidGenClaim(claim, generation)) throw new Error("Generation-ledger head claim is invalid -- fail closed.");
+  return { generation, headDigest: genClaimDigest(claim) };
+}
+
 // Verify the on-disk transition mutex is present, well-formed, and owned by the
 // caller-provided token (safe comparison). Mutex existence alone is NOT authority.
 function assertMutexOwner(stateFile, ownerToken, deps = {}) {
@@ -1032,7 +1048,7 @@ module.exports = {
   INIT_MARKER_VERSION, INIT_MARKER_FIELDS, INIT_TOKEN_RE, initMarkerPath, isValidInitMarker, readInitMarker, assertNoInitMarker,
   RECONCILE_MUTEX_VERSION, RECONCILE_MUTEX_FIELDS, reconcilePath, isValidReconcileMutex, assertNoReconcileMutex,
   idtxnPath, assertNoIdentityTransactionIntent,
-  GEN_LEDGER_VERSION, GEN_CLAIM_FIELDS, GEN_CHAIN_ROOT, genClaimPath, genLedgerPrefix, canonicalGenClaim, genClaimDigest, isValidGenClaim, readGenerationLedger,
+  GEN_LEDGER_VERSION, GEN_CLAIM_FIELDS, GEN_CHAIN_ROOT, genClaimPath, genLedgerPrefix, canonicalGenClaim, genClaimDigest, isValidGenClaim, readGenerationLedger, generationLedgerHead,
   nextEligiblePersona,
   signBreakGlass, readAndVerifyBreakGlass,
   assertProductionAuthorization,

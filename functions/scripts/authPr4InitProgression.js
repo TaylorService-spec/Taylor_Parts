@@ -592,7 +592,8 @@ const IDTXN_VERSION = 1;
 const IDTXN_FIELDS = Object.freeze([
   "version", "authorizationId", "oldWorkflowIdentityHash", "newWorkflowIdentityHash",
   "predecessorRevision", "predecessorStateHash", "predecessorStateDigest", "predecessorAnchorDigest",
-  "targetStateDigest", "targetAnchorDigest", "targetState", "targetAnchor", "at",
+  "targetStateDigest", "targetAnchorDigest", "targetState", "targetAnchor",
+  "generation", "ledgerHeadDigest", "at",
 ]);
 function canonicalIdtxn(p) { return JSON.stringify(IDTXN_FIELDS.map((f) => [f, p[f]])); }
 function signIdtxn(p, key) { return crypto.createHmac("sha256", key).update(canonicalIdtxn(p)).digest("hex"); }
@@ -623,12 +624,24 @@ function identityTransitionPreflight(args, deps = {}) {
   if (oldIdHash === newIdHash) throw new Error("Old and new workflow identities are identical -- nothing to transition (check --oldAuthorizedCommit / --authorizedCommit).");
   gate.assertNoInitMarker(args.progressionOut, deps);
   gate.assertNoReconcileMutex(args.progressionOut, deps);
-  gate.readGenerationLedger(args.progressionOut, deps); // fail closed on any ledger anomaly
+  const ledgerHead = gate.generationLedgerHead(args.progressionOut, deps); // validates ledger + captures fence
   const roles = artifactRoles(args.progressionOut);
   if (_fs.existsSync(roles.lock)) throw new Error("A claim lock is present (an attempt is in flight or crashed); refusing identity transition -- governed reconciliation first.");
   if (_fs.existsSync(gate.txnPath(args.progressionOut))) throw new Error("A transition mutex is present (interrupted step); refusing identity transition -- governed reconciliation first.");
   const expectedOld = { authorizationId: authorization.authorizationId, projectId: args.projectId, workflowIdentityHash: oldIdHash, personaOrder };
-  return { stateKey, newIdHash, oldIdHash, authorization, expected, expectedOld, roles };
+  return { stateKey, newIdHash, oldIdHash, authorization, expected, expectedOld, roles, ledgerHead };
+}
+
+// Fence check: the CURRENT ledger head must exactly match the generation + head digest the intent
+// was signed under. A governed reconciliation advance (new generation) supersedes a stale intent
+// or recovery -- fail closed WITHOUT touching state/anchor and WITHOUT removing the intent, so the
+// intent is retained for Owner escalation. Called after intent publication and immediately before
+// each state-changing replacement and the final intent cleanup.
+function assertIdentityFence(progressionOut, intent, deps = {}) {
+  const head = gate.generationLedgerHead(progressionOut, deps);
+  if (head.generation !== intent.generation || head.headDigest !== intent.ledgerHeadDigest) {
+    throw new Error("Identity transition: the fencing generation / ledger head advanced since the intent was published -- BLOCKED (superseded by a newer generation); intent retained for Owner escalation.");
+  }
 }
 
 // Read + verify the signed intent journal, bound to the derived identities + authorization.
@@ -646,9 +659,10 @@ function readIdentityIntent(progressionOut, stateKey, { authorization, oldIdHash
   if (a.length !== b.length || a.length === 0 || !crypto.timingSafeEqual(a, b)) throw new Error("Identity-transition intent failed integrity verification (tampered/wrong key).");
   if (payload.authorizationId !== authorization.authorizationId) throw new Error("Identity-transition intent bound to a different authorization.");
   if (payload.oldWorkflowIdentityHash !== oldIdHash || payload.newWorkflowIdentityHash !== newIdHash) throw new Error("Identity-transition intent identities do not match the derived old/new identities.");
-  for (const d of [payload.predecessorStateDigest, payload.predecessorAnchorDigest, payload.targetStateDigest, payload.targetAnchorDigest]) {
+  for (const d of [payload.predecessorStateDigest, payload.predecessorAnchorDigest, payload.targetStateDigest, payload.targetAnchorDigest, payload.ledgerHeadDigest]) {
     if (!gate.isSha256(d)) throw new Error("Identity-transition intent digests are not canonical.");
   }
+  if (!Number.isInteger(payload.generation) || payload.generation < 0 || payload.generation > 1e9) throw new Error("Identity-transition intent generation is not a canonical fencing generation.");
   if (sha256Of(payload.targetState) !== payload.targetStateDigest) throw new Error("Identity-transition intent targetState does not match its digest.");
   if (sha256Of(payload.targetAnchor) !== payload.targetAnchorDigest) throw new Error("Identity-transition intent targetAnchor does not match its digest.");
   return payload;
@@ -669,21 +683,31 @@ function classifyAndFinishTransition(progressionOut, stateKey, expected, intent,
   const anchorIs = ad === intent.targetAnchorDigest ? "target" : ad === intent.predecessorAnchorDigest ? "predecessor" : "foreign";
   if (stateIs === "foreign" || anchorIs === "foreign") throw new Error("Identity-transition recovery: state/anchor is neither the exact predecessor nor the authorized target (substituted/foreign/conflicting) -- BLOCKED, escalate to the Owner.");
   if (stateIs === "predecessor" && anchorIs === "target") throw new Error("Identity-transition recovery: anchor advanced ahead of state (impossible ordering) -- BLOCKED, escalate to the Owner.");
-  if (stateIs === "predecessor") gate.atomicWrite(roles.state, intent.targetState, deps);   // BOUNDARY: state replacement
-  if (anchorIs === "predecessor") gate.atomicWrite(anchorP, intent.targetAnchor, deps);      // BOUNDARY: anchor replacement
+  assertIdentityFence(progressionOut, intent, deps); // fence before any replacement
+  if (stateIs === "predecessor") {
+    if (deps.beforeStateReplace) deps.beforeStateReplace(); // test seam (generation change mid-flight)
+    assertIdentityFence(progressionOut, intent, deps);      // immediately before the state replacement
+    gate.atomicWrite(roles.state, intent.targetState, deps);
+  }
+  if (anchorIs === "predecessor") {
+    if (deps.beforeAnchorReplace) deps.beforeAnchorReplace(); // test seam
+    assertIdentityFence(progressionOut, intent, deps);        // immediately before the anchor replacement
+    gate.atomicWrite(anchorP, intent.targetAnchor, deps);
+  }
   const back = gate.readState(roles.state, stateKey, expected, deps);
   gate.verifyStateFreshness(roles.state, back, stateKey, deps);
   if (fileDigest(roles.state, deps) !== intent.targetStateDigest) throw new Error("Post-transition state digest mismatch -- fail closed.");
   if (fileDigest(anchorP, deps) !== intent.targetAnchorDigest) throw new Error("Post-transition anchor digest mismatch -- fail closed.");
   if (back.workflowIdentityHash !== intent.newWorkflowIdentityHash) throw new Error("Post-transition workflow identity mismatch -- fail closed.");
   if (back.revision !== intent.predecessorRevision + 1) throw new Error("Post-transition revision mismatch -- fail closed.");
-  _fs.unlinkSync(gate.idtxnPath(progressionOut)); // BOUNDARY: intent cleanup (only after both verify)
+  assertIdentityFence(progressionOut, intent, deps); // immediately before intent cleanup
+  _fs.unlinkSync(gate.idtxnPath(progressionOut)); // BOUNDARY: intent cleanup (only after both verify + fence)
   return { back, stateIs, anchorIs };
 }
 
 function identityTransition(args, deps = {}) {
   const _fs = deps.fs || fs;
-  const { stateKey, newIdHash, oldIdHash, authorization, expected, expectedOld, roles } = identityTransitionPreflight(args, deps);
+  const { stateKey, newIdHash, oldIdHash, authorization, expected, expectedOld, roles, ledgerHead } = identityTransitionPreflight(args, deps);
   const progressionOut = args.progressionOut;
   const anchorP = gate.anchorPath(progressionOut);
   const idtxnP = gate.idtxnPath(progressionOut);
@@ -710,7 +734,8 @@ function identityTransition(args, deps = {}) {
     predecessorRevision: cur.revision, predecessorStateHash: gate.progressionHash(cur),
     predecessorStateDigest: predStateDigest, predecessorAnchorDigest: predAnchorDigest,
     targetStateDigest: sha256Of(targetState), targetAnchorDigest: sha256Of(targetAnchor),
-    targetState, targetAnchor, at,
+    targetState, targetAnchor,
+    generation: ledgerHead.generation, ledgerHeadDigest: ledgerHead.headDigest, at,
   };
 
   // BOUNDARY 1 -- publish the intent journal ATOMICALLY + EXCLUSIVELY (full-or-absent; EEXIST =>
@@ -728,6 +753,9 @@ function identityTransition(args, deps = {}) {
     try { _fs.unlinkSync(idtxnP); } catch { /* leave for recovery */ }
     throw new Error("A concurrent state change / claim appeared during identity-transition setup -- aborted without modifying state/anchor.");
   }
+  // Revalidate the fence AFTER publication: if the generation advanced between capture and publish,
+  // fail closed. (classifyAndFinishTransition also re-checks before each write and before cleanup.)
+  assertIdentityFence(progressionOut, intent, deps);
 
   // BOUNDARIES 2-4 -- write state, write anchor, verify together, remove intent (idempotent path
   // shared with recovery). A crash at any boundary leaves the intent for identity-transition-recover.

@@ -744,6 +744,48 @@ ok("IDENTITY TRANSITION recover: refuses with no intent; BLOCKS (retains intent)
   fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
 });
 
+ok("IDENTITY TRANSITION generation fence: same-gen recovery succeeds; a generation advance after the intent BLOCKS recovery (stale journal + matching predecessors cannot bypass); a mid-flight advance fails closed before the write", () => {
+  const g = buildTransitionRepo("demo-authpr4");
+  const expectedNew = { authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", workflowIdentityHash: g.newIdHash, personaOrder: ORDER };
+  const expectedOld = { ...expectedNew, workflowIdentityHash: g.oldIdHash };
+  const deps = { repoRoot: g.root, personaOrder: ORDER };
+  const mk = () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-idt-gen-"));
+    const keyFile = path.join(dir, "k"); const key = crypto.randomBytes(48); fs.writeFileSync(keyFile, key, { mode: 0o600 });
+    const stateFile = path.join(dir, "state.json");
+    writeSuspended(stateFile, key, { authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", idHash: g.oldIdHash, completed: ORDER.slice(0, 4), revision: 12 });
+    return { dir, keyFile, key, stateFile, tArgs: { projectId: "demo-authpr4", confirmProduction: "demo-authpr4", authorizedCommit: g.authorizedCommit, oldAuthorizedCommit: g.oldAuthorizedCommit, executionModeConfirmation: g.executionModeToken, executor: g.executor, stateKeyFile: keyFile, progressionOut: stateFile, confirmIdentityTransition: "transition-workflow-identity" } };
+  };
+
+  // (a) SAME generation: crash at state write, recover at the SAME generation -> succeeds.
+  { const t = mk();
+    throws(() => initProg.identityTransition(t.tArgs, { ...deps, fs: crashOnRename(t.stateFile) }), /injected crash/);
+    assert.equal(initProg.identityTransitionRecover(t.tArgs, deps).transitioned, true);
+    assert.equal(gate.readState(t.stateFile, t.key, expectedNew).workflowIdentityHash, g.newIdHash);
+    fs.rmSync(t.dir, { recursive: true, force: true }); }
+
+  // (b) GENERATION ADVANCE after the intent -> recovery BLOCKS + RETAINS the intent. A stale signed
+  //     journal with matching predecessor artifacts on disk cannot bypass the newer fence.
+  { const t = mk();
+    throws(() => initProg.identityTransition(t.tArgs, { ...deps, fs: crashOnRename(t.stateFile) }), /injected crash/);
+    assert.ok(fs.existsSync(gate.idtxnPath(t.stateFile)), "intent present at generation 0");
+    initProg.claimGeneration(t.stateFile, 1, "governed-reconciliation", {}); // advance the fence 0 -> 1
+    throws(() => initProg.identityTransitionRecover(t.tArgs, deps), /fencing generation \/ ledger head advanced|superseded/);
+    assert.ok(fs.existsSync(gate.idtxnPath(t.stateFile)), "intent RETAINED on BLOCKED");
+    assert.equal(gate.readState(t.stateFile, t.key, expectedOld).workflowIdentityHash, g.oldIdHash, "state not resurrected under the new identity");
+    fs.rmSync(t.dir, { recursive: true, force: true }); }
+
+  // (c) GENERATION CHANGE between classification and the state replacement -> fail closed (no write).
+  { const t = mk();
+    const advanced = { done: false };
+    throws(() => initProg.identityTransition(t.tArgs, { ...deps, beforeStateReplace: () => { if (!advanced.done) { advanced.done = true; initProg.claimGeneration(t.stateFile, 1, "governed-reconciliation", {}); } } }), /fencing generation \/ ledger head advanced|superseded/);
+    assert.equal(gate.readState(t.stateFile, t.key, expectedOld).workflowIdentityHash, g.oldIdHash, "state unchanged (fenced before replacement)");
+    assert.ok(fs.existsSync(gate.idtxnPath(t.stateFile)), "intent retained (superseded)");
+    fs.rmSync(t.dir, { recursive: true, force: true }); }
+
+  fs.rmSync(g.root, { recursive: true, force: true });
+});
+
 ok("TRANSITION MUTEX (TOCTOU): a held .txn fails closed (no auto-break); after release the loser re-reads terminal state and does not overwrite", () => {
   const key = KEY(); const idHash = "ab".repeat(32);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-txn-"));
