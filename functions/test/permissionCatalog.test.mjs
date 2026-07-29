@@ -193,7 +193,10 @@ check("exactly 3 wave-1 report.* ids are inactive; every other wave-1 id is acti
 // before it existed. D4 registers the five `equipment.*` capabilities exactly that way
 // (registered-but-not-grantable), so they are allowed to declare it and are separately asserted to
 // declare `active: false` and nothing else in functions/test/equipmentCompatibilityRegistry.test.mjs.
-const ACTIVE_DECLARING_PREFIXES = ["report.", "equipment."];
+// AUTH-PR-3.5 (DECISIONS #56): admin.credentialReset.initiate is registered
+// `active: false` (inactive pending a separate production/security gate), the
+// same additive posture as the report.*/equipment.* inactive capabilities.
+const ACTIVE_DECLARING_PREFIXES = ["report.", "equipment.", "admin.credentialReset."];
 check("no other catalog entry declares `active` (this addition is additive-only for every pre-existing id)", () => {
   for (const permission of PERMISSION_CATALOG) {
     if (ACTIVE_DECLARING_PREFIXES.some((prefix) => permission.id.startsWith(prefix))) continue;

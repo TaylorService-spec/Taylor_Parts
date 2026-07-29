@@ -603,6 +603,22 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     resource: "admin.accessRequest",
     action: "decide",
   }),
+  // AUTH-PR-3.5 (Authentication Modernization; DECISIONS #56 D-RESET-PERMISSION).
+  // Admin-initiated password reset for another eligible user. Registered
+  // INACTIVE (`active: false` = hard, unconditional DENY through
+  // resolveEffectivePermission regardless of any Role grant) -- activation and
+  // any Role grant are a separate, later production/security gate. The merged
+  // command authorizes via the compatibility admin authority
+  // (`users/{uid}.role === "admin"`, encapsulated for a 1:1 resolver swap per
+  // auth-modernization-architecture.md §6.1); this catalog entry is the declared
+  // future governed contract, not a runtime activation.
+  Object.freeze({
+    id: "admin.credentialReset.initiate",
+    description: "Initiate an admin-initiated password reset for another eligible user (inactive pending a separate production/security gate).",
+    resource: "admin.credentialReset",
+    action: "initiate",
+    active: false,
+  }),
   Object.freeze({
     id: "audit.event.read",
     description: "Read the immutable Audit Event history.",

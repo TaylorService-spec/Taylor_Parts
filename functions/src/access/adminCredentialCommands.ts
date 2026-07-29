@@ -1,34 +1,51 @@
-// AUTH-PR-3 (Authentication Modernization) -- admin-initiated password reset.
+// AUTH-PR-3.5 (Authentication Modernization) -- admin-initiated password reset,
+// corrected per the Owner + ChatGPT decisions in docs/DECISIONS.md #56.
+//
 // Trusted command module (Admin SDK; bypasses Firestore Rules) that lets a
-// governed ADMIN initiate a secure password reset for ANOTHER user. Extends the
-// Issue #226 enterprise-access lane; reuses the immutable Audit Event writer.
+// governed ADMIN initiate a ROUTINE password reset for ANOTHER eligible user.
+// Extends the Issue #226 enterprise-access lane; reuses the immutable Audit
+// Event writer. Repository/emulator-only: no deployment; NOT wired to the real
+// production project.
 //
-// SECURITY MODEL (docs/assessments/auth-modernization-architecture.md §6 +
-// Codex rounds 2-4):
-//  - Authorization = the SINGLE governed admin authority (server-side
-//    users/{actorUid}.role === "admin", encapsulated for a later #226 resolver
-//    swap; dispatcher/operational never qualify). actorUid comes from the
-//    callable's authenticated server context only.
-//  - No admin-visible temp password; the user sets their own via a reset link
-//    the admin never sees. Link/token/email are NEVER returned or audited.
-//  - FAIL CLOSED on delivery capability: an unconfigured delivery performs ZERO
-//    Auth side effects in EITHER mode.
-//  - Delivery seam receives the server-resolved recovery email AND the governed
-//    idempotency key (for provider-side dedup).
-//  - Every RUN terminal path emits all three durable outcomes (initiation,
-//    delivery, revocation), each audit awaited before the next side effect.
-//  - IDEMPOTENCY + CRASH SAFETY: a caller key claims a durable op record BOUND
-//    to (actorUid, targetUid, mode) with a STRICTLY validated schema. A
-//    resumable stage machine records only SUCCESSFUL stages (deliver="delivered",
-//    revoke="done"); an unsuccessful delivery is left unrecorded so a later
-//    attempt RETRIES it without repeating a completed revocation. Every stage
-//    completion and terminal status write is ATTEMPT-BOUND (lease): a stale
-//    worker cannot record a stage or set terminal status after takeover.
-//  - RECOVERY: suspected-compromise delivery failure after a successful revoke
-//    persists `recovery_required` (retryable; re-delivers without re-revoking),
-//    never silently completed. NEUTRAL caller output throughout.
+// WHAT CHANGED FROM AUTH-PR-3 (#56):
+//  - D-DELIVERY-NATIVE: delivery is a FIREBASE-NATIVE server send whose only
+//    truthful signal is REQUEST_ACCEPTED. There is NO reset-link generation
+//    here and NO "delivered" claim -- the seam reports `accepted` (Firebase
+//    accepted the send request), never delivery/opening/consumption. No
+//    external transactional email provider (indefinitely deferred, #54).
+//  - D-ROUTINE-REVOKE = NO: routine reset performs NO session/refresh-token
+//    revocation. There is no revoke stage and no `revokeRefreshTokens` dep.
+//    Immediate revocation (suspected-compromise) is a SEPARATE governed action
+//    with its own permission/confirmation/audit -- deliberately NOT in this
+//    command. `mode` must be "routine"; "suspectedCompromise" is rejected.
+//  - GUARD GAP CLOSED: the command now enforces (via a PURE, exported evaluator
+//    `evaluateTargetEligibility`) the missing guards -- disabled target,
+//    break-glass exclusion, missing/non-reciprocal Employee<->Auth linkage,
+//    final-active-recoverable-admin protection, and self-target -- BEFORE any
+//    side effect. The UI is not a security boundary; these live here.
+//  - PERMISSION: authorizes via the single governed admin authority
+//    (server-side `users/{actorUid}.role === "admin"`), encapsulated for the
+//    Issue #226 resolver swap (auth-modernization-architecture.md §6.1). The
+//    catalog id `admin.credentialReset.initiate` is registered INACTIVE
+//    (permissionCatalog.ts, `active:false`) as the declared future contract; it
+//    is not activated or granted here.
 //
-// Repository-only: no deployment; tests run only against the emulator.
+// PRESERVED FROM AUTH-PR-3:
+//  - actorUid comes from the authenticated callable context only, never client
+//    data. Neutral, sanitized caller output; the target email, any code/token,
+//    provider body, and target-eligibility reason are NEVER returned; only
+//    sanitized categories are audited.
+//  - FAIL CLOSED on send capability: an unconfigured native send performs ZERO
+//    Auth side effects.
+//  - Every terminal path emits durable audit (initiation + send outcome), each
+//    awaited before the next side effect.
+//  - IDEMPOTENCY + CRASH SAFETY for the ELIGIBLE send path: a caller key claims
+//    a durable op record BOUND to (actorUid, targetUid, mode) with a STRICTLY
+//    validated schema; a resumable, attempt-bound (lease) single "send" stage
+//    records only a SUCCESSFUL send; a stale worker's writes are refused.
+//
+// Repository-only: no deployment; tests run against the emulator with injected
+// Admin-SDK deps + the pure evaluator's own node tests.
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { recordStandaloneAuditEvent } from "./auditEventWriter";
 import type { AuditAction, AuditOutcome, Scope } from "../types/access";
@@ -44,14 +61,16 @@ const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9._:-]{8,200}$/;
 const STALE_PENDING_MS = 5 * 60 * 1000;
 const RETRY_COOLDOWN_MS = 30 * 1000;
 
-const RESET_MODES = ["routine", "suspectedCompromise"] as const;
+// D-ROUTINE-REVOKE = NO: only "routine" is supported here. "suspectedCompromise"
+// (immediate revocation) is a separate governed action, not this command.
+const RESET_MODES = ["routine"] as const;
 export type ResetMode = (typeof RESET_MODES)[number];
-const OP_STATUSES = ["in_progress", "completed", "failed", "recovery_required"] as const;
+const OP_STATUSES = ["in_progress", "completed", "failed"] as const;
 type OpStatus = (typeof OP_STATUSES)[number];
-type DeliverRuntime = "delivered" | "not_delivered";
-// Only SUCCESSFUL stages are persisted -- an unsuccessful delivery is left
-// unrecorded so it can be retried; a persisted stage is therefore terminal-done.
-interface OpStages { deliver?: "delivered"; revoke?: "done" }
+type SendRuntime = "accepted" | "not_accepted";
+// Only a SUCCESSFUL send is persisted -- an unaccepted send is left unrecorded
+// so a later attempt RETRIES it. A persisted stage is therefore terminal-done.
+interface OpStages { send?: "sent" }
 
 export class UnauthorizedActorError extends Error {}
 export class InvalidInputError extends Error {}
@@ -65,67 +84,98 @@ export class AdminResetStageError extends Error {}
 // Raised when a lease-bound write is refused because a newer attempt owns the op.
 export class LeaseLostError extends AdminResetStageError {}
 
-// SAFETY CONTRACT (Codex round 5) -- delivery is internally AT-LEAST-ONCE:
-// after a >5min stale takeover, a worker that had already claimed the deliver
-// stage may still generate an extra reset link and call deliverResetLink() a
-// second time before its lease-bound state write is refused. Exactly-once
-// USER-VISIBLE delivery therefore depends on MANDATORY provider-side
-// deduplication keyed on `idempotencyKey`:
-//  - `deliverResetLink` MUST be idempotent on `idempotencyKey` -- a repeat call
-//    with the same key MUST NOT send a second message (return the prior result).
-//  - `isConfigured()` returning true is the provider's ATTESTATION that it both
-//    can send AND deduplicates on `idempotencyKey`. Wiring any real provider is
-//    a production-gate condition: it may return true only once idempotency-key
-//    dedup is verified (D-EMAIL-DELIVERY). The command fails closed when
-//    isConfigured() is false, so no un-attested provider ever sends.
-// A stale worker that resumes after takeover may generate an EXTRA reset link
-// (delivery is internally at-least-once). Handling of that extra link:
-//  - It is a distinct OOB code. The Auth-emulator observation
-//    (functions/test/adminCredentialResetLinkValidity.test.mjs; evidence:
-//    docs/audits/auth-pr-3-oob-validity/) shows the earlier code is NOT REMOVED
-//    from the emulator's outstanding oobCodes list by a later generation (list
-//    persistence). This is NOT proof of end-to-end consumability, and is
-//    emulator behavior, not a real-Firebase guarantee.
-//  - Whether an earlier already-delivered link REMAINS CONSUMABLE after a later
-//    generation is therefore a PRODUCTION-ENABLEMENT condition to verify against
-//    real Firebase Auth (see the evidence doc). If it does not hold, link
-//    generation must move INSIDE the idempotent provider boundary (one key ->
-//    one effective link + send).
-//  - DELIVERY (the message) is protected by provider send-dedup on
-//    idempotencyKey; STATE by attempt-bound writes; session revocation is
-//    idempotent (a repeat is a no-op).
-export interface ResetDelivery {
+// -- Firebase-native send seam (D-DELIVERY-NATIVE) ---------------------------
+// The ONLY truthful signal is `accepted` (Firebase accepted the reset-email
+// request), NEVER "delivered". A configured sender MUST be idempotent on
+// `idempotencyKey` (native send is internally at-least-once after a stale-worker
+// takeover): a repeat call with the same key MUST NOT enqueue a second email.
+// `isConfigured()` true is the sender's attestation that it can send natively
+// AND deduplicates on `idempotencyKey`; the command fails closed when it is
+// false, so no un-attested sender ever runs. No reset link is generated here.
+export interface NativeResetSender {
   isConfigured(): boolean;
-  deliverResetLink(args: {
-    targetUid: string;
-    email: string;
-    link: string;
-    idempotencyKey: string;
-  }): Promise<{ delivered: boolean }>;
+  // Resolves { accepted: true } when Firebase accepted the send request. Any
+  // provider body / code / link stays inside this boundary and is never
+  // returned to the command.
+  sendReset(args: { targetUid: string; email: string; idempotencyKey: string }): Promise<{ accepted: boolean }>;
 }
 
-export const NOT_CONFIGURED_DELIVERY: ResetDelivery = {
+// Fail-closed default: reports not-configured and performs no send. This is the
+// production posture until an Owner-authorized native sender is wired at the
+// AUTH-PROD enablement gate (never an external provider -- #54).
+export const NOT_CONFIGURED_NATIVE_SEND: NativeResetSender = {
   isConfigured() {
     return false;
   },
-  async deliverResetLink() {
-    return { delivered: false };
+  async sendReset() {
+    return { accepted: false };
   },
 };
 
+// -- Target eligibility facts + PURE evaluator (guard gap, #56) ---------------
+
+// The raw facts the guards need, resolved server-side (Auth + Firestore) by the
+// injected `resolveTargetFacts`. Sourcing them behind a dep keeps the guard
+// logic pure and node-testable and lets AUTH-PROD verify the exact fact sources.
+export interface TargetFacts {
+  authExists: boolean; // a Firebase Auth user exists for the uid
+  disabled: boolean; // Auth user is disabled
+  email: string | null; // recoverable email (Auth), or null
+  hasEmployeeLink: boolean; // users/{uid}.employeeId present
+  employeeLinkReciprocal: boolean; // employees/{employeeId} links back to uid
+  isBreakGlass: boolean; // designated break-glass identity
+  isFinalActiveAdmin: boolean; // resetting risks the last recoverable admin
+}
+
+export type EligibilityCategory =
+  | "eligible"
+  | "self-target"
+  | "protected-final-admin"
+  | "no-auth-account"
+  | "missing-or-nonreciprocal-employee-link"
+  | "disabled-target"
+  | "break-glass-target"
+  | "no-recoverable-email";
+
+// "protected" -> a VISIBLE refusal (the actor may know; not an enumeration
+// leak): self-target and final-active-admin. "neutral-ineligible" -> a NEUTRAL
+// accepted response to the caller with a server-side denied audit (no
+// enumeration of disabled/break-glass/linkage/email state). "eligible" ->
+// proceed to send.
+export type EligibilityDisposition = "eligible" | "protected" | "neutral-ineligible";
+
+export interface EligibilityVerdict {
+  category: EligibilityCategory;
+  disposition: EligibilityDisposition;
+}
+
+// PURE. Order matters: self and final-admin are the visible "protected"
+// refusals; the rest are neutral to avoid enumeration. A missing Auth account
+// or broken linkage is neutral-ineligible (never silently created/linked); a
+// disabled target is neutral-ineligible and is NEVER silently enabled.
+export function evaluateTargetEligibility(
+  facts: TargetFacts,
+  actorUid: string,
+  targetUid: string,
+): EligibilityVerdict {
+  if (actorUid === targetUid) return { category: "self-target", disposition: "protected" };
+  if (!facts.authExists) return { category: "no-auth-account", disposition: "neutral-ineligible" };
+  if (!facts.hasEmployeeLink || !facts.employeeLinkReciprocal) {
+    return { category: "missing-or-nonreciprocal-employee-link", disposition: "neutral-ineligible" };
+  }
+  if (facts.isFinalActiveAdmin) return { category: "protected-final-admin", disposition: "protected" };
+  if (facts.disabled) return { category: "disabled-target", disposition: "neutral-ineligible" };
+  if (facts.isBreakGlass) return { category: "break-glass-target", disposition: "neutral-ineligible" };
+  if (!facts.email) return { category: "no-recoverable-email", disposition: "neutral-ineligible" };
+  return { category: "eligible", disposition: "eligible" };
+}
+
 export interface AdminResetDeps {
-  // Generating a link is non-destructive (no message is sent by generation). A
-  // stale worker may regenerate an EXTRA link after takeover; whether that
-  // affects the earlier already-delivered link is a production-enablement
-  // verification against real Firebase Auth (see adminCredentialResetLinkValidity
-  // + docs/audits/auth-pr-3-oob-validity/), not assumed here.
-  generateResetLink(email: string): Promise<string>;
-  // MUST be idempotent: revoking already-revoked refresh tokens is a safe no-op
-  // (Firebase's revocation is a timestamp bump). The safety contract relies on
-  // this so a stale-worker or resume repeat of revocation cannot cause harm.
-  revokeRefreshTokens(uid: string): Promise<void>;
-  getRecoverableEmail(uid: string): Promise<string | null>;
-  delivery: ResetDelivery;
+  // Resolve the guard facts for the target (Auth + Firestore). Throwing is a
+  // stage error (audited), not a silent pass.
+  resolveTargetFacts(targetUid: string): Promise<TargetFacts>;
+  // Firebase-native send seam (fail-closed by default).
+  nativeSend: NativeResetSender;
 }
 
 export interface InitiateAdminPasswordResetInput {
@@ -179,18 +229,13 @@ async function assertActorIsAdmin(actorUid: string): Promise<void> {
 async function audit(actorUid: string, targetUid: string, action: AuditAction, outcome: AuditOutcome, summary: string): Promise<void> {
   await recordStandaloneAuditEvent({ actorUid, action, targetType: TARGET_TYPE, targetId: targetUid, outcome, summary, scope: GLOBAL_SCOPE });
 }
-async function emitOutcomes(actorUid: string, targetUid: string, deliver: { outcome: AuditOutcome; summary: string }, revoke: { outcome: AuditOutcome; summary: string }): Promise<void> {
-  await audit(actorUid, targetUid, "deliverAdminPasswordReset", deliver.outcome, deliver.summary);
-  await audit(actorUid, targetUid, "revokeUserSessions", revoke.outcome, revoke.summary);
-}
 
 function isFiniteNumber(v: unknown): v is number {
   return typeof v === "number" && Number.isFinite(v);
 }
 
 // STRICT operation-record schema validation. Any missing/malformed field --
-// including the freshness fields used by concurrency/cooldown -- fails closed
-// (a malformed record can never bypass the in-progress/cooldown checks).
+// including the freshness fields used by concurrency/cooldown -- fails closed.
 function isValidOpRecord(d: unknown): d is OpRecord {
   if (!d || typeof d !== "object" || Array.isArray(d)) return false;
   const r = d as Record<string, unknown>;
@@ -203,9 +248,8 @@ function isValidOpRecord(d: unknown): d is OpRecord {
   if (r.stages !== undefined) {
     if (typeof r.stages !== "object" || r.stages === null || Array.isArray(r.stages)) return false;
     const st = r.stages as Record<string, unknown>;
-    if (st.deliver !== undefined && st.deliver !== "delivered") return false;
-    if (st.revoke !== undefined && st.revoke !== "done") return false;
-    for (const k of Object.keys(st)) if (k !== "deliver" && k !== "revoke") return false;
+    if (st.send !== undefined && st.send !== "sent") return false;
+    for (const k of Object.keys(st)) if (k !== "send") return false;
   }
   return true;
 }
@@ -237,7 +281,7 @@ async function claimOrResume(key: string, actorUid: string, targetUid: string, m
       if (d.status === "failed" && now - d.updatedAtMs < RETRY_COOLDOWN_MS) {
         throw new RetryCooldownError("this reset was recently attempted; retry shortly");
       }
-      // Stale in_progress, past-cooldown failed, or recovery_required -> resume.
+      // Stale in_progress or past-cooldown failed -> resume.
       const attempt = d.attempt + 1;
       tx.update(ref, { status: "in_progress", attempt, updatedAtMs: now });
       return { action: "run", attempt, stages };
@@ -252,10 +296,9 @@ async function claimOrResume(key: string, actorUid: string, targetUid: string, m
 
 // -- Attempt-bound (lease) operations. Exported for controlled lease tests. ---
 
-// Claim a stage for `attempt` ONLY if not already recorded done and this attempt
-// still owns the op. A stale worker (attempt mismatch) gets "superseded" and
-// must NOT perform the side effect.
-export async function claimStage(key: string, stage: "deliver" | "revoke", attempt: number): Promise<"already_done" | "claimed" | "superseded"> {
+// Claim the send stage for `attempt` ONLY if not already recorded done and this
+// attempt still owns the op. A stale worker (attempt mismatch) gets "superseded".
+export async function claimStage(key: string, stage: "send", attempt: number): Promise<"already_done" | "claimed" | "superseded"> {
   return db().runTransaction(async (tx) => {
     const snap = await tx.get(opRef(key));
     if (!snap.exists) return "superseded";
@@ -268,9 +311,8 @@ export async function claimStage(key: string, stage: "deliver" | "revoke", attem
   });
 }
 
-// Record a stage completion ONLY if this attempt still owns the op. Returns
-// false (refused) for a stale worker -- its write can never overwrite state.
-export async function recordStageOwned(key: string, stage: "deliver" | "revoke", value: "delivered" | "done", attempt: number): Promise<boolean> {
+// Record the send stage completion ONLY if this attempt still owns the op.
+export async function recordStageOwned(key: string, stage: "send", value: "sent", attempt: number): Promise<boolean> {
   return db().runTransaction(async (tx) => {
     const snap = await tx.get(opRef(key));
     if (!snap.exists) return false;
@@ -302,10 +344,12 @@ export async function initiateAdminPasswordReset(input: InitiateAdminPasswordRes
   }
   const mode: ResetMode = input.mode ?? "routine";
   if (!(RESET_MODES as readonly string[]).includes(mode)) {
-    throw new InvalidInputError("mode must be 'routine' or 'suspectedCompromise'");
+    // suspectedCompromise (immediate revocation) is a separate governed action.
+    throw new InvalidInputError("mode must be 'routine'; suspected-compromise reset is a separate governed action");
   }
   const { actorUid, targetUid, idempotencyKey: key } = input;
 
+  // --- Pre-claim denials (no op record for these) ---------------------------
   try {
     await assertActorIsAdmin(actorUid);
   } catch (err) {
@@ -316,18 +360,40 @@ export async function initiateAdminPasswordReset(input: InitiateAdminPasswordRes
     await audit(actorUid, targetUid, "initiateAdminPasswordReset", "denied", "Denied: self-reset via admin tool is not permitted.");
     throw new ProtectedAccountError("Use self-service password recovery to reset your own password.");
   }
-  if (!deps.delivery.isConfigured()) {
-    await audit(actorUid, targetUid, "deliverAdminPasswordReset", "denied", "Denied: delivery capability not configured; no Auth side effect performed.");
-    throw new DeliveryUnavailableError("Password reset delivery is not configured.");
+  if (!deps.nativeSend.isConfigured()) {
+    await audit(actorUid, targetUid, "deliverAdminPasswordReset", "denied", "Denied: native reset send not configured; no Auth side effect performed.");
+    throw new DeliveryUnavailableError("Password reset send is not configured.");
   }
 
+  // --- Eligibility guards (require facts; still pre-claim) -------------------
+  let facts: TargetFacts;
+  try {
+    facts = await deps.resolveTargetFacts(targetUid);
+  } catch {
+    await audit(actorUid, targetUid, "initiateAdminPasswordReset", "denied", "Denied: target eligibility lookup error.");
+    throw new AdminResetStageError("target eligibility lookup failed");
+  }
+  const verdict = evaluateTargetEligibility(facts, actorUid, targetUid);
+  if (verdict.disposition === "protected") {
+    // Visible refusal (self already handled above; here: final-active-admin).
+    await audit(actorUid, targetUid, "initiateAdminPasswordReset", "denied", `Denied: protected target (${verdict.category}).`);
+    throw new ProtectedAccountError("This account is protected and cannot be reset from the admin tool.");
+  }
+  if (verdict.disposition === "neutral-ineligible") {
+    // NEUTRAL to the caller (no enumeration); denied audit records the category.
+    await audit(actorUid, targetUid, "initiateAdminPasswordReset", "applied", `Initiated (mode ${mode}).`);
+    await audit(actorUid, targetUid, "deliverAdminPasswordReset", "denied", `Not sent: target ineligible (${verdict.category}).`);
+    return NEUTRAL_ACCEPTED;
+  }
+
+  // --- Eligible: idempotent, lease-bound native send ------------------------
   const claim = await claimOrResume(key, actorUid, targetUid, mode);
   if (claim.action === "replay") return NEUTRAL_ACCEPTED;
   const { attempt, stages } = claim;
+  const email = facts.email as string; // eligible => non-null
 
-  // Lease-bound writers that bail if a newer attempt has taken over.
-  const recordStage = async (stage: "deliver" | "revoke", value: "delivered" | "done") => {
-    if (!(await recordStageOwned(key, stage, value, attempt))) throw new LeaseLostError("superseded by a newer attempt");
+  const recordStage = async () => {
+    if (!(await recordStageOwned(key, "send", "sent", attempt))) throw new LeaseLostError("superseded by a newer attempt");
   };
   const setStatus = async (status: OpStatus) => {
     if (!(await setStatusOwned(key, status, attempt))) throw new LeaseLostError("superseded by a newer attempt");
@@ -336,98 +402,39 @@ export async function initiateAdminPasswordReset(input: InitiateAdminPasswordRes
   try {
     await audit(actorUid, targetUid, "initiateAdminPasswordReset", "applied", `Initiated (mode ${mode}, attempt ${attempt}).`);
 
-    let email: string | null;
-    try {
-      email = await deps.getRecoverableEmail(targetUid);
-    } catch {
-      await emitOutcomes(actorUid, targetUid, { outcome: "denied", summary: "Failed: identity lookup error." }, { outcome: "denied", summary: "Skipped: identity lookup error." });
-      await setStatus("failed");
-      throw new AdminResetStageError("identity lookup failed");
+    if (stages.send === "sent") {
+      // Already sent on a prior attempt -- neutral, no second send.
+      await setStatus("completed");
+      return NEUTRAL_ACCEPTED;
     }
-    if (!email) {
-      await emitOutcomes(actorUid, targetUid, { outcome: "denied", summary: "Not delivered: target has no recoverable email." }, { outcome: "denied", summary: "Skipped: target ineligible." });
+    const claimed = await claimStage(key, "send", attempt);
+    if (claimed === "superseded") throw new LeaseLostError("superseded by a newer attempt");
+    if (claimed === "already_done") {
       await setStatus("completed");
       return NEUTRAL_ACCEPTED;
     }
 
-    // Deliver stage: generate + deliver; persists ONLY on success (so a failure
-    // is retryable on a later attempt).
-    const runDeliver = async (): Promise<DeliverRuntime> => {
-      if (stages.deliver === "delivered") return "delivered";
-      const claimed = await claimStage(key, "deliver", attempt);
-      if (claimed === "superseded") throw new LeaseLostError("superseded by a newer attempt");
-      if (claimed === "already_done") return "delivered";
-      const link = await deps.generateResetLink(email as string);
-      const { delivered } = await deps.delivery.deliverResetLink({ targetUid, email: email as string, link, idempotencyKey: key });
-      if (delivered) await recordStage("deliver", "delivered");
-      return delivered ? "delivered" : "not_delivered";
-    };
-    // Revoke stage: idempotent; persists "done" on success only.
-    const runRevoke = async (): Promise<void> => {
-      if (stages.revoke === "done") return;
-      const claimed = await claimStage(key, "revoke", attempt);
-      if (claimed === "superseded") throw new LeaseLostError("superseded by a newer attempt");
-      if (claimed === "already_done") return;
-      await deps.revokeRefreshTokens(targetUid);
-      await recordStage("revoke", "done");
-    };
-
-    if (mode === "suspectedCompromise") {
-      try {
-        await runRevoke();
-      } catch (e) {
-        if (e instanceof LeaseLostError) throw e;
-        await emitOutcomes(actorUid, targetUid, { outcome: "denied", summary: "Skipped: session revocation failed (suspected compromise)." }, { outcome: "denied", summary: "Failed: session revocation error (suspected compromise)." });
-        await setStatus("failed");
-        throw new AdminResetStageError("session revocation failed");
-      }
-      // Revocation done -> any delivery failure is RECOVERY REQUIRED (retryable;
-      // a later attempt re-delivers without re-revoking).
-      let deliverResult: DeliverRuntime;
-      try {
-        deliverResult = await runDeliver();
-      } catch (e) {
-        if (e instanceof LeaseLostError) throw e;
-        await emitOutcomes(actorUid, targetUid, { outcome: "denied", summary: "Failed: recovery-link delivery error after revocation -- RECOVERY REQUIRED." }, { outcome: "applied", summary: "Revoked immediately (suspected compromise)." });
-        await setStatus("recovery_required");
-        return NEUTRAL_ACCEPTED;
-      }
-      if (deliverResult === "delivered") {
-        await emitOutcomes(actorUid, targetUid, { outcome: "applied", summary: "Recovery link delivered." }, { outcome: "applied", summary: "Revoked immediately (suspected compromise)." });
-        await setStatus("completed");
-        return NEUTRAL_ACCEPTED;
-      }
-      await emitOutcomes(actorUid, targetUid, { outcome: "denied", summary: "Not delivered after revocation -- RECOVERY REQUIRED." }, { outcome: "applied", summary: "Revoked immediately (suspected compromise)." });
-      await setStatus("recovery_required");
-      return NEUTRAL_ACCEPTED;
-    }
-
-    // Routine: deliver first; revoke ONLY after confirmed delivery.
-    let deliverResult: DeliverRuntime;
+    let accepted: SendRuntime;
     try {
-      deliverResult = await runDeliver();
+      const res = await deps.nativeSend.sendReset({ targetUid, email, idempotencyKey: key });
+      accepted = res.accepted ? "accepted" : "not_accepted";
     } catch (e) {
       if (e instanceof LeaseLostError) throw e;
-      await emitOutcomes(actorUid, targetUid, { outcome: "denied", summary: "Failed: reset-link generation or delivery error." }, { outcome: "denied", summary: "Skipped: reset delivery not completed." });
+      await audit(actorUid, targetUid, "deliverAdminPasswordReset", "denied", "Failed: native reset send error.");
       await setStatus("failed");
-      throw new AdminResetStageError("delivery failed");
+      throw new AdminResetStageError("native reset send failed");
     }
-    if (deliverResult !== "delivered") {
-      // Not delivered: no revocation; retryable (status failed).
-      await emitOutcomes(actorUid, targetUid, { outcome: "denied", summary: "Not delivered: provider returned no confirmation." }, { outcome: "denied", summary: "Skipped: reset delivery not confirmed." });
-      await setStatus("failed");
+
+    if (accepted === "accepted") {
+      await recordStage();
+      // TRUTHFUL: "request accepted", never "delivered".
+      await audit(actorUid, targetUid, "deliverAdminPasswordReset", "applied", "Reset email requested (accepted by Firebase native send).");
+      await setStatus("completed");
       return NEUTRAL_ACCEPTED;
     }
-    try {
-      await runRevoke();
-    } catch (e) {
-      if (e instanceof LeaseLostError) throw e;
-      await emitOutcomes(actorUid, targetUid, { outcome: "applied", summary: "Reset link delivered." }, { outcome: "denied", summary: "Failed: session revocation error after delivery." });
-      await setStatus("failed");
-      throw new AdminResetStageError("session revocation failed");
-    }
-    await emitOutcomes(actorUid, targetUid, { outcome: "applied", summary: "Reset link delivered." }, { outcome: "applied", summary: "Revoked after confirmed delivery." });
-    await setStatus("completed");
+    // Not accepted -> retryable (status failed), no stage persisted.
+    await audit(actorUid, targetUid, "deliverAdminPasswordReset", "denied", "Not sent: native send did not accept the request.");
+    await setStatus("failed");
     return NEUTRAL_ACCEPTED;
   } catch (err) {
     // A lost-lease bail must NOT overwrite the winner's state.

@@ -6,14 +6,15 @@
 // internal paths or reasons; (3) requiring request.auth.
 //
 // "Export is not deployment": exporting these from index.ts does NOT deploy
-// them. No Admin UI is wired to call them and no email provider is configured
-// (NOT_CONFIGURED_DELIVERY below) until a SEPARATE, later Owner production
-// authorization is issued. As deployed with NOT_CONFIGURED_DELIVERY the command
-// FAILS CLOSED on the unconfigured delivery capability -- it performs ZERO Auth
-// side effects (no reset-link generation, no email, no session revocation).
+// them. The AUTH-UI-3 Admin surface calls them only against the emulator; no
+// native sender is configured (NOT_CONFIGURED_NATIVE_SEND below) until a
+// SEPARATE, later Owner production authorization is issued. As wired the command
+// FAILS CLOSED on the unconfigured send capability -- it performs ZERO Auth side
+// effects (no send, no reset-link generation, no session revocation).
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import type { CallableRequest } from "firebase-functions/v2/https";
 import { getAuth } from "firebase-admin/auth";
+import { getFirestore } from "firebase-admin/firestore";
 import * as commands from "./adminCredentialCommands";
 
 const REGION = "us-central1";
@@ -67,30 +68,75 @@ function requireAuthUid(request: CallableRequest): string {
   return request.auth.uid;
 }
 
-// The Admin-SDK deps, wired with NOT_CONFIGURED_DELIVERY so no email is sent
-// until an Owner-approved provider (D-EMAIL-DELIVERY) is added here.
-//
-// PRODUCTION-GATE CONDITIONS (Codex rounds 5-6): a real ResetDelivery may only
-// be wired here after BOTH are verified against real Firebase/provider:
-//  (a) it DEDUPLICATES on the governed idempotencyKey (delivery is internally
-//      at-least-once; provider dedup makes user-visible delivery exactly-once);
-//  (b) an earlier already-delivered reset link REMAINS CONSUMABLE after a later
-//      generatePasswordResetLink() for the same user. The Auth emulator only
-//      shows list persistence (the earlier code is not removed) -- see
-//      docs/audits/auth-pr-3-oob-validity/ -- which is NOT end-to-end proof and
-//      MUST be verified end-to-end against real Firebase Auth at enablement.
-// A provider that cannot attest (a) must not be wired (its isConfigured() stays
-// false, keeping the command fail-closed). If (b) fails on real Firebase, link
-// generation must move inside the idempotent provider boundary.
+// Resolve the guard facts for a target from Auth + Firestore (AUTH-PR-3.5).
+// Conservative/fail-safe: if a fact cannot be determined it defaults to the
+// SAFE side (e.g. final-active-admin protection defaults to protect). The exact
+// production fact sources (employees reciprocal-link field, break-glass marker,
+// active-admin authority) are VERIFIED at the AUTH-PROD-1 gate against the real
+// project -- this adapter is emulator/repository-only and NOT deployed/enabled.
+async function resolveTargetFacts(targetUid: string): Promise<commands.TargetFacts> {
+  const authUser = await getAuth().getUser(targetUid).catch(() => null);
+  const authExists = authUser !== null;
+  const disabled = authUser?.disabled === true;
+  const email = authUser?.email ?? null;
+
+  const db = getFirestore();
+  const userSnap = await db.collection("users").doc(targetUid).get();
+  const userData = userSnap.exists ? (userSnap.data() as Record<string, unknown>) : undefined;
+  const employeeId =
+    typeof userData?.employeeId === "string" && (userData.employeeId as string).length > 0
+      ? (userData.employeeId as string)
+      : null;
+  const hasEmployeeLink = employeeId !== null;
+  const isBreakGlass = userData?.breakGlass === true || userData?.isBreakGlass === true;
+
+  // Reciprocal Employee<->Auth linkage: employees/{employeeId} must link back to
+  // this uid. Accept any of the observed back-link field names.
+  let employeeLinkReciprocal = false;
+  if (employeeId) {
+    const empSnap = await db.collection("employees").doc(employeeId).get();
+    const empData = empSnap.exists ? (empSnap.data() as Record<string, unknown>) : undefined;
+    employeeLinkReciprocal =
+      empData?.userId === targetUid || empData?.authUid === targetUid || empData?.uid === targetUid;
+  }
+
+  // Final-active-recoverable-admin protection. If the target is an admin and no
+  // OTHER active admin roleAssignment exists, protect. Fail-safe: if the query
+  // cannot run, treat an admin target as final (protect).
+  const targetIsAdmin = userData?.role === "admin";
+  let isFinalActiveAdmin = false;
+  if (targetIsAdmin) {
+    const activeAdmins = await db
+      .collection("roleAssignments")
+      .where("roleId", "==", "admin")
+      .where("status", "==", "active")
+      .get()
+      .catch(() => null);
+    if (activeAdmins) {
+      const others = activeAdmins.docs.filter(
+        (d) => (d.data() as { principalUid?: unknown }).principalUid !== targetUid,
+      );
+      isFinalActiveAdmin = others.length === 0;
+    } else {
+      isFinalActiveAdmin = true;
+    }
+  }
+
+  return { authExists, disabled, email, hasEmployeeLink, employeeLinkReciprocal, isBreakGlass, isFinalActiveAdmin };
+}
+
+// The Admin-SDK deps, wired with NOT_CONFIGURED_NATIVE_SEND so NO email is sent
+// until an Owner-authorized Firebase-native sender is wired at the AUTH-PROD
+// enablement gate (D-DELIVERY-NATIVE, DECISIONS #56 -- NEVER an external
+// provider, #54). As wired, the command FAILS CLOSED on the send-capability
+// check and performs ZERO Auth side effects (no send, no revocation, and no
+// reset-link generation at all -- link generation was removed for the native
+// path). Real-Firebase earlier-link consumability + native-send behavior are the
+// separate AUTH-PROD-1 verification.
 function adminSdkDeps(): commands.AdminResetDeps {
   return {
-    generateResetLink: (email: string) => getAuth().generatePasswordResetLink(email),
-    revokeRefreshTokens: (uid: string) => getAuth().revokeRefreshTokens(uid),
-    getRecoverableEmail: async (uid: string) => {
-      const user = await getAuth().getUser(uid).catch(() => null);
-      return user?.email ?? null;
-    },
-    delivery: commands.NOT_CONFIGURED_DELIVERY,
+    resolveTargetFacts,
+    nativeSend: commands.NOT_CONFIGURED_NATIVE_SEND,
   };
 }
 
