@@ -1,0 +1,170 @@
+[
+  {
+    "name": "projects/taylor-parts/locations/us-central1/functions/completeAssignedJob",
+    "environment": "GEN_2",
+    "state": "ACTIVE",
+    "updateTime": "2026-07-23T01:36:51.512055284Z",
+    "build": {
+      "entryPoint": "completeAssignedJob",
+      "runtime": "nodejs20"
+    },
+    "service": {
+      "serviceAccountIdentityHash": "5e3ac55541731c42b34540d3bac883ac6fc6a08b388d1b6b41bff3e14aabc6d6"
+    },
+    "eventTrigger": {}
+  },
+  {
+    "name": "projects/taylor-parts/locations/us-central1/functions/createSavedDefinitionCallable",
+    "environment": "GEN_2",
+    "state": "ACTIVE",
+    "updateTime": "2026-07-21T05:07:32.210468679Z",
+    "build": {
+      "entryPoint": "createSavedDefinitionCallable",
+      "runtime": "nodejs20"
+    },
+    "service": {
+      "serviceAccountIdentityHash": "5e3ac55541731c42b34540d3bac883ac6fc6a08b388d1b6b41bff3e14aabc6d6"
+    },
+    "eventTrigger": {}
+  },
+  {
+    "name": "projects/taylor-parts/locations/us-central1/functions/createWorkOrder",
+    "environment": "GEN_2",
+    "state": "ACTIVE",
+    "updateTime": "2026-07-21T05:07:32.525249498Z",
+    "build": {
+      "entryPoint": "createWorkOrder",
+      "runtime": "nodejs20"
+    },
+    "service": {
+      "serviceAccountIdentityHash": "5e3ac55541731c42b34540d3bac883ac6fc6a08b388d1b6b41bff3e14aabc6d6"
+    },
+    "eventTrigger": {}
+  },
+  {
+    "name": "projects/taylor-parts/locations/us-central1/functions/deleteSavedDefinitionCallable",
+    "environment": "GEN_2",
+    "state": "ACTIVE",
+    "updateTime": "2026-07-21T05:07:32.426773981Z",
+    "build": {
+      "entryPoint": "deleteSavedDefinitionCallable",
+      "runtime": "nodejs20"
+    },
+    "service": {
+      "serviceAccountIdentityHash": "5e3ac55541731c42b34540d3bac883ac6fc6a08b388d1b6b41bff3e14aabc6d6"
+    },
+    "eventTrigger": {}
+  },
+  {
+    "name": "projects/taylor-parts/locations/us-central1/functions/duplicateSavedDefinitionCallable",
+    "environment": "GEN_2",
+    "state": "ACTIVE",
+    "updateTime": "2026-07-21T05:07:32.944608896Z",
+    "build": {
+      "entryPoint": "duplicateSavedDefinitionCallable",
+      "runtime": "nodejs20"
+    },
+    "service": {
+      "serviceAccountIdentityHash": "5e3ac55541731c42b34540d3bac883ac6fc6a08b388d1b6b41bff3e14aabc6d6"
+    },
+    "eventTrigger": {}
+  },
+  {
+    "name": "projects/taylor-parts/locations/us-central1/functions/getSavedDefinitionCallable",
+    "environment": "GEN_2",
+    "state": "ACTIVE",
+    "updateTime": "2026-07-21T05:07:33.298543910Z",
+    "build": {
+      "entryPoint": "getSavedDefinitionCallable",
+      "runtime": "nodejs20"
+    },
+    "service": {
+      "serviceAccountIdentityHash": "5e3ac55541731c42b34540d3bac883ac6fc6a08b388d1b6b41bff3e14aabc6d6"
+    },
+    "eventTrigger": {}
+  },
+  {
+    "name": "projects/taylor-parts/locations/us-central1/functions/listSavedDefinitionsCallable",
+    "environment": "GEN_2",
+    "state": "ACTIVE",
+    "updateTime": "2026-07-21T05:07:33.126818632Z",
+    "build": {
+      "entryPoint": "listSavedDefinitionsCallable",
+      "runtime": "nodejs20"
+    },
+    "service": {
+      "serviceAccountIdentityHash": "5e3ac55541731c42b34540d3bac883ac6fc6a08b388d1b6b41bff3e14aabc6d6"
+    },
+    "eventTrigger": {}
+  },
+  {
+    "name": "projects/taylor-parts/locations/us-central1/functions/renameSavedDefinitionCallable",
+    "environment": "GEN_2",
+    "state": "ACTIVE",
+    "updateTime": "2026-07-21T05:07:33.054432076Z",
+    "build": {
+      "entryPoint": "renameSavedDefinitionCallable",
+      "runtime": "nodejs20"
+    },
+    "service": {
+      "serviceAccountIdentityHash": "5e3ac55541731c42b34540d3bac883ac6fc6a08b388d1b6b41bff3e14aabc6d6"
+    },
+    "eventTrigger": {}
+  },
+  {
+    "name": "projects/taylor-parts/locations/us-central1/functions/resolveEffectiveAccessCallable",
+    "environment": "GEN_2",
+    "state": "ACTIVE",
+    "updateTime": "2026-07-21T05:07:32.981048373Z",
+    "build": {
+      "entryPoint": "resolveEffectiveAccessCallable",
+      "runtime": "nodejs20"
+    },
+    "service": {
+      "serviceAccountIdentityHash": "5e3ac55541731c42b34540d3bac883ac6fc6a08b388d1b6b41bff3e14aabc6d6"
+    },
+    "eventTrigger": {}
+  },
+  {
+    "name": "projects/taylor-parts/locations/us-central1/functions/runReportDefinitionCallable",
+    "environment": "GEN_2",
+    "state": "ACTIVE",
+    "updateTime": "2026-07-21T05:07:33.817263116Z",
+    "build": {
+      "entryPoint": "runReportDefinitionCallable",
+      "runtime": "nodejs20"
+    },
+    "service": {
+      "serviceAccountIdentityHash": "5e3ac55541731c42b34540d3bac883ac6fc6a08b388d1b6b41bff3e14aabc6d6"
+    },
+    "eventTrigger": {}
+  },
+  {
+    "name": "projects/taylor-parts/locations/us-central1/functions/transitionWorkOrder",
+    "environment": "GEN_2",
+    "state": "ACTIVE",
+    "updateTime": "2026-07-21T05:07:31.725968383Z",
+    "build": {
+      "entryPoint": "transitionWorkOrder",
+      "runtime": "nodejs20"
+    },
+    "service": {
+      "serviceAccountIdentityHash": "5e3ac55541731c42b34540d3bac883ac6fc6a08b388d1b6b41bff3e14aabc6d6"
+    },
+    "eventTrigger": {}
+  },
+  {
+    "name": "projects/taylor-parts/locations/us-central1/functions/updateWorkOrderExecutionData",
+    "environment": "GEN_2",
+    "state": "ACTIVE",
+    "updateTime": "2026-07-21T05:07:33.749950733Z",
+    "build": {
+      "entryPoint": "updateWorkOrderExecutionData",
+      "runtime": "nodejs20"
+    },
+    "service": {
+      "serviceAccountIdentityHash": "5e3ac55541731c42b34540d3bac883ac6fc6a08b388d1b6b41bff3e14aabc6d6"
+    },
+    "eventTrigger": {}
+  }
+]

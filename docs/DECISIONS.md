@@ -598,6 +598,17 @@ Every linked-persona command carried `--requireExistingAuthUser` (PR #114) — n
 **Not done:** no merge performed at the time of this entry, no deployment, no Rules/Functions/index/data change, no identity or production mutation, no live parity re-run (deferred to the deploy gate per the Owner decision above).
 **Alternatives rejected:** treating the earlier "begin repository-only C2 cutover from current origin/main" authorization as sufficient (it authorized *beginning* the work, predated PR #445, was not bound to a head, and expressly withheld merge pending Codex review -- it did not satisfy #46); allowing an AI session to self-certify the authorization (authority action, and it would manufacture the exact record #46 exists to require); editing #46 in place to add C2 authority (append-only log); requiring a live parity run before the repository-only merge (Owner-decided against, per the C1 precedent); merging immediately on Owner authorization without returning to Codex (the authorization is expressly subject to final drift review).
 
+## 50. INV-CONVERGENCE-E C2 Hosting deployment and production verification SATISFIED
+
+**Date:** 2026-07-27
+**Authorized artifact:** `081df750d89d9044f0e09bb0241796b8171ed33f` (PR #447 merge), project `taylor-parts`, Hosting scope only.
+**Decision:** **SATISFIED — DEPLOYED + VERIFIED + GREEN.** The operator deployed the authorized C2 build through Firebase Hosting. The pinned predeploy version was `sites/taylor-parts/versions/0bd9029d010914b7`; the new release is `sites/taylor-parts/versions/1ef5d23b1c0b9466`. Live asset `/assets/index-Bpj7e20-.js` matched the authoritative Cloud Shell build manifest exactly (`sha256 756693f2779e34a5fefb03d1c4450d32e39aa6d2c1c6154a06cfda553eb11ff5`).
+**Fresh live parity:** PASS immediately before deployment — 190 valid canonical Parts, 0 invalid canonical records, 200 static records, 190 canonical matches, 10 approved `STATIC_ONLY_EXCLUDED`, 200 detail-ready records, and zero name or unit divergence.
+**Production persona verification:** admin, dispatcher, `PARTS_MANAGER`, and `WAREHOUSE_MANAGER` each received canonical Parts `200` with exactly 190 records and rendered governed PartDetail checks passed (`TST-1001` → `EACH`, `TST-1002` → `KIT`, approved static-only `TST-1047` reachable). Technician received canonical Parts `403`, zero records, and the Inventory workspace/route failed closed with no static-as-success and no write surface.
+**Scope integrity:** governed Rules sha256 remained `cf6681c61f7c93a6b5b5385212518636b855b24a751225564429e0f8932bc381` pre/post; normalized Functions inventory sha256 remained `011020f83d188ff578ed1fdeba40d48f2075be929ab0b28e3975221363820fab` pre/post. No Rules, Functions, indexes, Firebase configuration, Auth, identity, role, claim, session, Firestore data, or Parts data mutation occurred.
+**Evidence:** sanitized repository evidence under `docs/audits/inv-convergence-e-c2-hosting-deploy/`; operator archive sha256 `fa3764768e7476250127b0ee5c485da97a4e6360567214f43b3da4d25376d954`.
+**Effect:** closes the C2 Hosting production gate. Truck Inventory's stated prerequisite is now satisfied, but Truck Inventory remains a separate workstream and authorization. This decision does not authorize a combined Inventory + Customer release or any Customer/Auth deployment.
+
 ## 51. Governed Part–Equipment compatibility architecture APPROVED; D1 only authorized
 
 **Date:** 2026-07-27
