@@ -142,23 +142,40 @@ async function resolveActorFacts(actorUid: string): Promise<commands.ActorAuthor
   const userSnap = await db.collection("users").doc(actorUid).get();
   const userData = userSnap.exists ? (userSnap.data() as Record<string, unknown>) : undefined;
   const isAdmin = userData?.role === "admin";
-  const employeeId =
-    typeof userData?.employeeId === "string" && (userData.employeeId as string).length > 0
-      ? (userData.employeeId as string)
-      : null;
-  const hasEmployeeLink = employeeId !== null;
+  const userEmployeeId = userData?.employeeId;
 
-  // Reciprocal Employee<->Auth linkage: employees/{employeeId} must link back to
-  // this actor uid. Accept any of the observed back-link field names.
-  let employeeLinkReciprocal = false;
+  // Read the EXACT reciprocally-linked Employee document (governed userId back-link
+  // only) and its authoritative employmentStatus. The pure resolver enforces the
+  // exact-userId contract and only trusts employmentStatus when the link is reciprocal.
+  const employeeId =
+    typeof userEmployeeId === "string" && userEmployeeId.length > 0 ? userEmployeeId : null;
+  let employeeExists = false;
+  let employeeUserId: unknown = undefined;
+  let employeeEmploymentStatus: unknown = undefined;
   if (employeeId) {
     const empSnap = await db.collection("employees").doc(employeeId).get();
+    employeeExists = empSnap.exists;
     const empData = empSnap.exists ? (empSnap.data() as Record<string, unknown>) : undefined;
-    employeeLinkReciprocal =
-      empData?.userId === actorUid || empData?.authUid === actorUid || empData?.uid === actorUid;
+    employeeUserId = empData?.userId;
+    employeeEmploymentStatus = empData?.employmentStatus;
   }
 
-  return { authExists, disabled, isAdmin, hasEmployeeLink, employeeLinkReciprocal };
+  const link = commands.resolveEmployeeLinkFacts({
+    userEmployeeId,
+    employeeExists,
+    employeeUserId,
+    employeeEmploymentStatus,
+    uid: actorUid,
+  });
+
+  return {
+    authExists,
+    disabled,
+    isAdmin,
+    hasEmployeeLink: link.hasEmployeeLink,
+    employeeLinkReciprocal: link.employeeLinkReciprocal,
+    employmentStatus: link.employmentStatus,
+  };
 }
 
 // The Admin-SDK deps, wired with NOT_CONFIGURED_NATIVE_SEND so NO email is sent

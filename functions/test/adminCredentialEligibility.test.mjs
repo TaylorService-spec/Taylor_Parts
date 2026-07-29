@@ -11,6 +11,7 @@ import assert from "node:assert/strict";
 import {
   evaluateTargetEligibility,
   evaluateActorAuthorization,
+  resolveEmployeeLinkFacts,
 } from "../lib/access/adminCredentialCommands.js";
 
 let passed = 0;
@@ -104,10 +105,11 @@ const AUTHZ_ACTOR = Object.freeze({
   isAdmin: true,
   hasEmployeeLink: true,
   employeeLinkReciprocal: true,
+  employmentStatus: "ACTIVE",
 });
 const actor = (over = {}) => ({ ...AUTHZ_ACTOR, ...over });
 
-ok("actor: active linked admin -> authorized", () => {
+ok("actor: active linked admin (employmentStatus ACTIVE + enabled) -> authorized", () => {
   assert.deepStrictEqual(evaluateActorAuthorization(actor()), {
     authorized: true,
     category: "authorized",
@@ -148,6 +150,83 @@ ok("actor: no-account outranks disabled/non-admin (fail-closed order)", () => {
     evaluateActorAuthorization(actor({ authExists: false, disabled: true, isAdmin: false })).category,
     "no-auth-account",
   );
+});
+
+// -- PRE-2 P1a: employmentStatus is the authoritative lifecycle gate ----------
+for (const bad of ["INACTIVE", "TERMINATED", "ON_LEAVE", "RETIRED", "CONTRACTOR", "active", "", null, undefined]) {
+  ok(`actor: employmentStatus=${JSON.stringify(bad)} -> denied (inactive-employment)`, () => {
+    assert.strictEqual(
+      evaluateActorAuthorization(actor({ employmentStatus: bad })).category,
+      "inactive-employment",
+    );
+  });
+}
+ok("actor: enabled + ACTIVE employment -> authorized (both gates pass)", () => {
+  assert.strictEqual(evaluateActorAuthorization(actor({ disabled: false, employmentStatus: "ACTIVE" })).authorized, true);
+});
+ok("actor: Auth enabled but employment INACTIVE -> denied", () => {
+  assert.strictEqual(
+    evaluateActorAuthorization(actor({ disabled: false, employmentStatus: "INACTIVE" })).category,
+    "inactive-employment",
+  );
+});
+ok("actor: employment ACTIVE but Auth disabled -> denied (disabled-actor)", () => {
+  assert.strictEqual(
+    evaluateActorAuthorization(actor({ disabled: true, employmentStatus: "ACTIVE" })).category,
+    "disabled-actor",
+  );
+});
+ok("actor: link check precedes employment (non-reciprocal + ACTIVE -> link denial)", () => {
+  assert.strictEqual(
+    evaluateActorAuthorization(actor({ employeeLinkReciprocal: false, employmentStatus: "ACTIVE" })).category,
+    "missing-or-nonreciprocal-employee-link",
+  );
+});
+
+// -- PRE-2 P1b: reciprocal link uses the GOVERNED userId field ONLY -----------
+const linkInput = (over = {}) => ({
+  userEmployeeId: "emp-1",
+  employeeExists: true,
+  employeeUserId: "uid-1",
+  employeeEmploymentStatus: "ACTIVE",
+  uid: "uid-1",
+  ...over,
+});
+
+ok("link: exact userId match -> reciprocal, employmentStatus trusted", () => {
+  assert.deepStrictEqual(resolveEmployeeLinkFacts(linkInput()), {
+    hasEmployeeLink: true,
+    employeeLinkReciprocal: true,
+    employmentStatus: "ACTIVE",
+  });
+});
+ok("link: missing userId denies even if an alias would have matched", () => {
+  // authUid/uid aliases are NOT consulted; only userId counts.
+  const v = resolveEmployeeLinkFacts(linkInput({ employeeUserId: undefined, authUid: "uid-1", uid: "uid-1" }));
+  assert.strictEqual(v.employeeLinkReciprocal, false);
+  assert.strictEqual(v.employmentStatus, null, "employmentStatus not trusted without reciprocal link");
+});
+ok("link: mismatched userId denies even if an alias matches", () => {
+  const v = resolveEmployeeLinkFacts(linkInput({ employeeUserId: "someone-else", uid: "uid-1", authUid: "uid-1" }));
+  assert.strictEqual(v.employeeLinkReciprocal, false);
+});
+ok("link: conflicting userId (points to another user) never authorizes", () => {
+  const v = resolveEmployeeLinkFacts(linkInput({ employeeUserId: "uid-2", uid: "uid-1" }));
+  assert.strictEqual(v.employeeLinkReciprocal, false);
+  assert.strictEqual(v.employmentStatus, null);
+});
+ok("link: no employeeId on user doc -> no link", () => {
+  const v = resolveEmployeeLinkFacts(linkInput({ userEmployeeId: null }));
+  assert.deepStrictEqual(v, { hasEmployeeLink: false, employeeLinkReciprocal: false, employmentStatus: null });
+});
+ok("link: employee doc missing -> not reciprocal", () => {
+  const v = resolveEmployeeLinkFacts(linkInput({ employeeExists: false, employeeUserId: undefined }));
+  assert.strictEqual(v.employeeLinkReciprocal, false);
+});
+ok("link: reciprocal but malformed (non-string) employmentStatus -> null (deny)", () => {
+  const v = resolveEmployeeLinkFacts(linkInput({ employeeEmploymentStatus: { weird: true } }));
+  assert.strictEqual(v.employeeLinkReciprocal, true);
+  assert.strictEqual(v.employmentStatus, null);
 });
 
 console.log(`\n${passed} passed`);

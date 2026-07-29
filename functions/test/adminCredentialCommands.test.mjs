@@ -61,6 +61,7 @@ const AUTHORIZED_ACTOR = Object.freeze({
   isAdmin: true,
   hasEmployeeLink: true,
   employeeLinkReciprocal: true,
+  employmentStatus: "ACTIVE",
 });
 const actorFacts = (over = {}) => ({ ...AUTHORIZED_ACTOR, ...over });
 
@@ -161,6 +162,26 @@ async function main() {
     initiateAdminPasswordReset(
       { actorUid: ADMIN, targetUid: TARGET, idempotencyKey: freshKey() },
       makeDeps({ actor: actorFacts({ employeeLinkReciprocal: false }) }).deps,
+    ),
+  );
+  for (const bad of ["INACTIVE", "TERMINATED", "ON_LEAVE", null]) {
+    await expectThrows(`actor employmentStatus=${JSON.stringify(bad)} -> UnauthorizedActorError`, UnauthorizedActorError, () =>
+      initiateAdminPasswordReset(
+        { actorUid: ADMIN, targetUid: TARGET, idempotencyKey: freshKey() },
+        makeDeps({ actor: actorFacts({ employmentStatus: bad }) }).deps,
+      ),
+    );
+  }
+  await expectThrows("actor Auth enabled but employment INACTIVE -> UnauthorizedActorError", UnauthorizedActorError, () =>
+    initiateAdminPasswordReset(
+      { actorUid: ADMIN, targetUid: TARGET, idempotencyKey: freshKey() },
+      makeDeps({ actor: actorFacts({ disabled: false, employmentStatus: "INACTIVE" }) }).deps,
+    ),
+  );
+  await expectThrows("actor employment ACTIVE but Auth disabled -> UnauthorizedActorError", UnauthorizedActorError, () =>
+    initiateAdminPasswordReset(
+      { actorUid: ADMIN, targetUid: TARGET, idempotencyKey: freshKey() },
+      makeDeps({ actor: actorFacts({ disabled: true, employmentStatus: "ACTIVE" }) }).deps,
     ),
   );
   await expectThrows("actor-facts lookup throws -> UnauthorizedActorError (fail closed)", UnauthorizedActorError, () =>
@@ -312,6 +333,7 @@ async function main() {
     assert.strictEqual(evaluateActorAuthorization(actorFacts()).authorized, true);
     assert.strictEqual(evaluateActorAuthorization(actorFacts({ disabled: true })).category, "disabled-actor");
     assert.strictEqual(evaluateActorAuthorization(actorFacts({ isAdmin: false })).category, "not-admin");
+    assert.strictEqual(evaluateActorAuthorization(actorFacts({ employmentStatus: "INACTIVE" })).category, "inactive-employment");
   });
 
   // -- listResetEligibleUsers authorization (same PRE-2 actor gate) ----------
@@ -320,6 +342,9 @@ async function main() {
   );
   await expectThrows("list: disabled admin -> UnauthorizedActorError", UnauthorizedActorError, () =>
     listResetEligibleUsers({ actorUid: ADMIN }, makeDeps({ actor: actorFacts({ disabled: true }) }).deps),
+  );
+  await expectThrows("list: inactive-employment admin -> UnauthorizedActorError", UnauthorizedActorError, () =>
+    listResetEligibleUsers({ actorUid: ADMIN }, makeDeps({ actor: actorFacts({ employmentStatus: "TERMINATED" }) }).deps),
   );
   await okAsync("list: active linked admin gets sanitized rows", async () => {
     const rows = await listResetEligibleUsers({ actorUid: ADMIN, limit: 10 }, makeDeps().deps);
