@@ -1,13 +1,16 @@
 # Coordination Session State
 
 ## Baseline
-- Main commit: `602ed1f9e3e3c0cceb6025cc547b91972630f747`
+- Main commit: `bc0fda57c9b35a967cef75b3df747a6fac91ec15` (was `602ed1f`; advanced by #466/#467, repo/emulator-only)
 - Last reconciled: 2026-07-28
 - Relevant PRs: AUTH-PR-4 chain merged (readiness #451, workflow #453, enablement #457, GRANT #460, initializer/3-file #461 `dba0e33`, CI enforcement #463 `9b912d7`, re-authorization #462 `602ed1f`); #444, #445
 - Relevant issues: #226 (AUTH-PR-3 Functions lane); C2 repository-only authorization recorded in DECISIONS #49
 
 ## Current Objective
 Coordination tracking is maintained by the Customer session. **Authentication (Customer lane):** the AUTH-PR-4 governed workflow, production gate, genesis initializer, and CI-enforced security suites are merged, and the **production authorization is GRANTED** (DECISIONS #52) and **re-bound to the three-file governed set** (DECISIONS #53, PR #462 `602ed1f`) — the committed artifact **verifies**. **AUTH-PR-4 has NOT been executed** (no state key, genesis, private mapping, or credentials; no production mutation). The genuine next steps are two separate, not-yet-granted Owner gates — Gate A (protected genesis preparation) then Gate B (one-persona-at-a-time execution, position 1 first). **Inventory/Equipment remains a separate lane** (INVENTORY.md, maintained by the Inventory session; not edited here; note main also advanced with Equipment D1/D2 #450/#454 and further Equipment compatibility work at `24573ae`, not owned here) — C2 status recorded below unchanged. The C2 (PR #445) authorization is DECISIONS #49; PR #445 (`2d08e2e`) and PR #447 (`081df750`) merged, so no C2 authorization item remains open.
+
+## Admin Password-Reset Lane (Customer-owned; separate from AUTH-PR-4 and from Inventory/Equipment)
+The Customer/Auth session owns a **new active lane**: the admin password-reset roadmap (items #4 Admin reset UI + #5 production admin reset). Current gate: **AUTH-UI-1** (docs-only reconciliation + design), PENDING Owner + ChatGPT/Codex review. Owner deferrals (DECISIONS #54) and continuous-execution authority (#55) are recorded. **Collision-awareness:** (a) AUTH-UI-3 will edit `field-ops-app-vite/src/modules/administration/AdminUsers.jsx` — any other #226 Admin-portal work must coordinate. (b) This lane is **separate from AUTH-PR-4** (which is operationally active, repo/emulator-only, GRANTED-but-not-executed) — no shared governed files, state, tokens, or operator state, and **no combined release**. (c) Inventory/Equipment remains a separate lane (INVENTORY.md, not edited here). **No combined Customer and Inventory production release is authorized.**
 
 ## Status
 Active (maintained by the Customer session).
@@ -65,5 +68,5 @@ Authentication ownership is reconciled; no further ownership action is required.
 
 ## Last Updated
 - Date: 2026-07-28
-- Commit: `602ed1f9e3e3c0cceb6025cc547b91972630f747`
-- Updated by: Customer session
+- Commit: `bc0fda57c9b35a967cef75b3df747a6fac91ec15`
+- Updated by: Customer session — AUTH-UI-1

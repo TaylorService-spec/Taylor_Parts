@@ -1,13 +1,18 @@
 # Customer Session State
 
 ## Baseline
-- Main commit: `602ed1f9e3e3c0cceb6025cc547b91972630f747`
+- Main commit: `bc0fda57c9b35a967cef75b3df747a6fac91ec15` (was `602ed1f`; advanced by Equipment D5 #466 and AUTH-PR-4 rollback-continuation #467, both repo/emulator-only, neither owned by the admin-reset roadmap)
 - Last reconciled: 2026-07-28
-- Relevant PRs (AUTH-PR-4 chain, all **MERGED**): readiness #451 (`8f28d22`), operator workflow #453 (`63b47b7`), production-enablement #457, GRANT #460 (DECISIONS #52), genesis initializer + 3-file governed set #461 (`dba0e33`), CI enforcement #463 (`9b912d7`), three-file re-authorization #462 (`602ed1f`, DECISIONS #53). Predecessor AUTH-PR-3 #444 (`e53c7b0`, not deployed/enabled).
-- Relevant issues: #226 (Functions lane governing AUTH-PR-3)
+- Relevant PRs (AUTH-PR-4 chain, all **MERGED**): readiness #451 (`8f28d22`), operator workflow #453 (`63b47b7`), production-enablement #457, GRANT #460 (DECISIONS #52), genesis initializer + 3-file governed set #461 (`dba0e33`), CI enforcement #463 (`9b912d7`), three-file re-authorization #462 (`602ed1f`, DECISIONS #53), session-state reconcile #464, reverse-order rollback-continuation #467. Predecessor AUTH-PR-3 #444 (`e53c7b0`, not deployed/enabled).
+- Admin password-reset roadmap PR: **AUTH-UI-1** (this gate, docs-only) — DECISIONS #54 (deferrals), #55 (continuous-execution authority).
+- Relevant issues: #226 (Functions lane governing AUTH-PR-3 + Admin portal `AdminUsers`)
 
 ## Current Objective
-Authentication Modernization (owned here): the AUTH-PR-4 governed workflow, production gate, genesis initializer, and their CI-enforced security suites are all merged, and the **production identity-mutation authorization is GRANTED** (DECISIONS #52) and **re-bound to the three-file governed set** (DECISIONS #53) — the committed `functions/authpr4/production-authorization.json` **verifies** against `reviewedHead dba0e33` at the current head. **AUTH-PR-4 has NOT been executed:** no state key, genesis progression, private alias mapping, or credentials have been created or requested, and no production Auth mutation has occurred. Current work: repository/read-only **execution-readiness reconciliation** only. The genuine next steps are two separate, not-yet-granted Owner gates — **Gate A** (protected genesis preparation: out-of-band state key + the credential-free genesis initializer producing a canonical revision-0/position-1 signed progression) and **Gate B** (one-persona-at-a-time production migration execution, position 1 first). Neither is authorized.
+Two concurrent Customer/Auth lanes, both owned here and both repository-only:
+
+**(A) Admin password-reset roadmap (NEW active focus — roadmap items #4 Admin reset UI + #5 production admin password reset).** Gate **AUTH-UI-1** (docs-only reconciliation + design) delivered: `docs/assessments/admin-password-reset-current-state.md`, `docs/specifications/admin-password-reset-ui.md`, `docs/implementation-plans/admin-password-reset-ui.md`. **Owner deferrals ratified (DECISIONS #54):** username login, username-input recovery, and external email provider are **indefinitely deferred** — do not build or reopen. **Central blocker:** AUTH-PR-1 §6.2's external-provider delivery design is superseded by #54, so the merged AUTH-PR-3 backend (PR #444) is **fail-closed with no delivery path** — production admin reset (#5) is **BLOCKED** pending Owner decision **D-DELIVERY-NATIVE** (a Firebase-native server send with truthful "accepted"-only semantics) or a UI-only direction. The **Admin reset UI (#4) is not blocked** (ships truthfully with unavailable/uncertain states). Continuous-execution authority for reversible repository gates is DECISIONS #55. AUTH-UI-1 is PENDING Owner + ChatGPT/Codex review.
+
+**(B) AUTH-PR-4 (recovery-email migration) — separate, operationally active, NOT executed.** The governed workflow, production gate, genesis initializer, and CI-enforced security suites are merged; the **production identity-mutation authorization is GRANTED** (DECISIONS #52) and **re-bound to the three-file governed set** (DECISIONS #53) — the committed `functions/authpr4/production-authorization.json` **verifies** against `reviewedHead dba0e33`. Reverse-order rollback-continuation + workflow-identity transition landed via #467 (repo/emulator only). **AUTH-PR-4 has NOT been executed:** no state key, genesis progression, private alias mapping, or credentials created/requested; no production Auth mutation. Next steps remain two separate, not-yet-granted Owner gates — **Gate A** (protected genesis preparation) and **Gate B** (one-persona-at-a-time execution, position 1 first). **The admin-reset roadmap must not touch AUTH-PR-4 governed files, state, mappings, tokens, or operator state, and must never combine releases with it.**
 
 ## Status
 Active.
@@ -46,7 +51,9 @@ Active.
 - Medium: absorbing Equipment would create unclear domain ownership.
 
 ## Next Action
-Execution-readiness reconciliation is complete; the re-authorization is live and verifying. **Stop** — the genuine next gate is the Owner's, and it is two separate, not-yet-granted decisions:
+**(A) Admin password-reset roadmap:** AUTH-UI-1 (docs-only) is prepared as a DRAFT PR and is **PENDING Owner + ChatGPT/Codex review**. On approval, the continuous-execution authority (DECISIONS #55) permits proceeding to **AUTH-UI-2** (pure UI/domain state — view-model + action-state machine + unit tests, no callable wiring, no deployment) and then **AUTH-UI-3** (Admin portal `AdminUsers` integration, emulator/mock only). **AUTH-PR-3.5** (backend delivery revision + missing guards) and all **AUTH-PROD-1..4** gates are **hard-stopped** pending the Owner decisions D-DELIVERY-NATIVE, D-ROUTINE-REVOKE, D-RESET-PERMISSION and their separate production authorizations. **Production admin reset (#5) is BLOCKED** until D-DELIVERY-NATIVE is decided; do not introduce an external provider (#54).
+
+**(B) AUTH-PR-4:** unchanged — **Stop.** The genuine next gate is the Owner's, in two separate, not-yet-granted decisions:
 - **Gate A — protected genesis preparation:** named operator creates protected state-key material out-of-band and runs the credential-free genesis initializer (`authPr4InitProgression.js`, no Firebase SDK/network, no private mapping) to produce the canonical revision-0/position-1 signed progression + anchor; returns sanitized evidence only.
 - **Gate B — production migration execution:** only after Gate A passes; obtain the private base inbox + persona alias mapping out-of-band; confirm the named executor matches the artifact; execute **one persona at a time** in order — **position 1 only first**, stop and return sanitized evidence before position 2; positions 2–4 each need prior PASS; position 5 additionally needs fresh break-glass; any failure/uncertainty/collision/disabled/missing/UID-mismatch/integrity/read-back-mismatch **halts the entire sequence**.
 **Do not create a state key or genesis, request private mappings/credentials, run any initializer/dry-run/rollback/migration command, or perform any production/Auth mutation until the Owner explicitly grants Gate A, then Gate B position 1.**
@@ -56,8 +63,9 @@ Execution-readiness reconciliation is complete; the re-authorization is live and
 - Proposed destructive migration without approved reconciliation and rollback.
 - Any change that absorbs Equipment or breaks existing customer/location references.
 - Conflict with another workstream’s active PR.
+- **Admin-reset roadmap:** any hard stop in DECISIONS #55 (deployment, Firebase Auth/project mutation, production reset/revocation/email, role/claim/accessVersion mutation, source cutover, removing a recovery fallback, or leaving zero recoverable admins); reopening a #54 deferral; introducing an external email provider; or touching AUTH-PR-4 governed state.
 
 ## Last Updated
 - Date: 2026-07-28
-- Commit: `602ed1f9e3e3c0cceb6025cc547b91972630f747`
-- Updated by: designated Customer session
+- Commit: `bc0fda57c9b35a967cef75b3df747a6fac91ec15`
+- Updated by: designated Customer session (AUTH-UI-1)

@@ -1,13 +1,16 @@
 # Platform Session State
 
 ## Baseline
-- Main commit: `602ed1f9e3e3c0cceb6025cc547b91972630f747`
+- Main commit: `bc0fda57c9b35a967cef75b3df747a6fac91ec15` (was `602ed1f`; advanced by #466/#467, repo/emulator-only)
 - Last reconciled: 2026-07-28
 - Relevant PRs: AUTH-PR-4 chain merged — readiness #451, operator workflow #453, enablement #457, GRANT #460 (DECISIONS #52), initializer + 3-file set #461 (`dba0e33`), CI enforcement #463 (`9b912d7`), three-file re-authorization #462 (`602ed1f`, DECISIONS #53); #444 (AUTH-PR-3, `e53c7b0`, not deployed)
 - Relevant issues: #226
 
 ## Current Objective
 None active. Platform is on **standby** for the future, separately-authorized AUTH-PR-4 **execution** gates — **Gate A** (protected genesis preparation, run by the named operator out-of-band; no Firebase SDK/network) and **Gate B** (one-persona-at-a-time production migration execution) — plus any AUTH-PR-3 deployment / email-provider configuration. The AUTH-PR-4 authorization is now **GRANTED** and re-bound to the three-file governed set (DECISIONS #52 + #53); the committed artifact **verifies** and the security suites are CI-enforced on `main`. **Nothing has executed** (no state key, genesis, private mapping, credentials, or Auth mutation), and neither Gate A nor Gate B is authorized. Authentication architecture and repository implementation are owned by the Customer session.
+
+## Admin Password-Reset Production Boundary (roadmap items #4/#5)
+Platform remains on **standby** for admin password reset. **No Platform action is required or authorized now.** Whether production admin reset can proceed **without** an external email provider is an **open Owner decision (D-DELIVERY-NATIVE, PENDING)** — external providers are **indefinitely deferred** (DECISIONS #54), so the merged AUTH-PR-3 backend is fail-closed with no delivery path and **production admin reset (#5) is BLOCKED**. No Functions/config deployment is pending or authorized for admin reset; **no production authorization exists** for it; **no production execution has occurred.** When a production gate opens it must deploy **only** `initiateAdminPasswordReset` + `listResetEligibleUsers` — never bundled with AUTH-PR-4 or Inventory/Equipment — and must satisfy the DECISIONS #55 hard stops and gate-specification requirements. Do not introduce an external provider (#54).
 
 ## Status
 Standby (production configuration / deployment only).
@@ -59,5 +62,5 @@ None active. Engage only when the Owner opens a separately-authorized AUTH-PR-4 
 
 ## Last Updated
 - Date: 2026-07-28
-- Commit: `602ed1f9e3e3c0cceb6025cc547b91972630f747`
-- Updated by: Customer session (maintains Platform tracking)
+- Commit: `bc0fda57c9b35a967cef75b3df747a6fac91ec15`
+- Updated by: Customer session (maintains Platform tracking) — AUTH-UI-1
