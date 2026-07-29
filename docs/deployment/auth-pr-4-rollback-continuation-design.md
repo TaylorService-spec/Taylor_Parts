@@ -219,10 +219,12 @@ continuation**.
 - **Pure (generation fence):** same-generation transition + recovery succeed; an out-of-band
   ledger-head advance versus the signed intent blocks recovery and retains the intent (a stale
   journal + matching predecessors cannot bypass the newer fence).
-- **Pure (mutual exclusion):** while an intent is held, `claimGeneration()` is refused; an
-  advancement attempt in every check→write window (state / anchor / verify→cleanup) is refused and
-  the transition completes; a pre-publish advance wins and the transition mutates nothing (intent
-  withdrawn, no residue).
+- **Pure (mutual exclusion):** while the transition **holds the shared `.fencelock`**, a
+  `generation-advance` fence-lock acquisition is refused (`EEXIST`) in **every** window —
+  pre-publish, state check→write, anchor check→write, and verify→cleanup — and the transition
+  completes (intent cleaned up, lock released). The transition owns the shared lock from before
+  intent publication through cleanup, so a concurrent generation advance never wins any of those
+  windows.
 - **Pure (shared fence lock / reverse race):** the generation worker and the identity transition
   acquire ONE lock atomically — exactly one wins and the loser publishes/mutates nothing (both
   directions); a crash-left lock blocks a new transition and is cleared only by governed
