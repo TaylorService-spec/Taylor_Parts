@@ -133,7 +133,7 @@ async function resolveTargetFacts(targetUid: string): Promise<commands.TargetFac
 // account state, employees reciprocal-link field, governed admin authority) are
 // VERIFIED at the AUTH-PROD-1 gate against the real project -- this adapter is
 // emulator/repository-only and NOT deployed/enabled.
-async function resolveActorFacts(actorUid: string): Promise<commands.ActorAuthorizationFacts> {
+export async function resolveActorFacts(actorUid: string): Promise<commands.ActorAuthorizationFacts> {
   const authUser = await getAuth().getUser(actorUid).catch(() => null);
   const authExists = authUser !== null;
   const disabled = authUser?.disabled === true;
@@ -186,9 +186,16 @@ async function resolveActorFacts(actorUid: string): Promise<commands.ActorAuthor
 // reset-link generation at all -- link generation was removed for the native
 // path). Real-Firebase earlier-link consumability + native-send behavior are the
 // separate AUTH-PROD-1 verification.
+// Single source of the actor-authorization gate for BOTH callables: the deployed
+// production adapter `resolveActorFacts`. Exported so the Auth+Firestore emulator
+// suite exercises the exact function the callables wire (no divergent test path).
+export function actorAuthorizationDeps(): commands.ActorAuthorizationDeps {
+  return { resolveActorFacts };
+}
+
 function adminSdkDeps(): commands.AdminResetDeps {
   return {
-    resolveActorFacts,
+    ...actorAuthorizationDeps(),
     resolveTargetFacts,
     nativeSend: commands.NOT_CONFIGURED_NATIVE_SEND,
   };
@@ -224,7 +231,7 @@ export const listResetEligibleUsers = onCall({ region: REGION }, async (request)
         actorUid,
         limit: typeof data.limit === "number" ? data.limit : undefined,
       },
-      { resolveActorFacts },
+      actorAuthorizationDeps(),
     );
     return { users };
   } catch (err) {
