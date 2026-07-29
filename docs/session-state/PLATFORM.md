@@ -39,7 +39,7 @@ Standby (production configuration / deployment only).
 
 ### Unverified
 - Deployed behavior of AUTH-PR-3.
-- Delivery-provider integration.
+- Firebase-native reset-delivery behavior in the production project.
 - Production enumeration-protection compatibility.
 
 ### Failed
