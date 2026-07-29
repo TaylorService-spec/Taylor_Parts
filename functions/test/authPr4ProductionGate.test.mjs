@@ -26,6 +26,7 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const gate = require("../scripts/authPr4ProductionGate.js");
 const wf = require("../scripts/authPr4RecoveryEmailMigration.js");
+const initProg = require("../scripts/authPr4InitProgression.js");
 
 const ORDER = [
   "emp-rudy-driver", "emp-rudy-parts-associate", "emp-rudy-warehouse-manager",
@@ -78,6 +79,51 @@ function buildGrantedRepo(projectId, mutateArtifact) {
   return { root, authorizedCommit, reviewedHead, executionModeToken: "EMT-TOKEN", executor: "named-exec", requiredConfirmer: "named-confirmer", windowSeconds: 600, hashes };
 }
 
+// A repo that models a governed-file CHANGE: an "old" commit whose governed files hash to a
+// DIFFERENT workflow identity, then the current (real) governed files + a GRANTED artifact bound
+// to the new hashes. Used to exercise the workflow-identity transition (old identity -> new).
+function buildTransitionRepo(projectId) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-trepo-"));
+  execFileSync("git", ["-C", root, "init", "-q"]);
+  execFileSync("git", ["-C", root, "config", "user.email", "t@example.com"]);
+  execFileSync("git", ["-C", root, "config", "user.name", "t"]);
+  // OLD commit: governed files with modified content (a benign prefix) -> different identity.
+  for (const rel of gate.GOVERNED_FILES) {
+    const bytes = fs.readFileSync(path.join(REAL_ROOT, rel));
+    fs.mkdirSync(path.join(root, path.dirname(rel)), { recursive: true });
+    fs.writeFileSync(path.join(root, rel), Buffer.concat([Buffer.from("// pre-change governed content\n"), bytes]));
+  }
+  execFileSync("git", ["-C", root, "add", "-A"]);
+  execFileSync("git", ["-C", root, "commit", "-q", "-m", "old governed files"]);
+  const oldAuthorizedCommit = execFileSync("git", ["-C", root, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+  const oldIdHash = gate.workflowIdentityHash(gate.governedHashesAtCommit(root, oldAuthorizedCommit));
+  // NEW commit: the real (current) governed files -> the new identity.
+  for (const rel of gate.GOVERNED_FILES) fs.writeFileSync(path.join(root, rel), fs.readFileSync(path.join(REAL_ROOT, rel)));
+  execFileSync("git", ["-C", root, "add", "-A"]);
+  execFileSync("git", ["-C", root, "commit", "-q", "-m", "governed files (new)"]);
+  const reviewedHead = execFileSync("git", ["-C", root, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+  const hashes = gate.governedHashesAtCommit(root, reviewedHead);
+  const newIdHash = gate.workflowIdentityHash(hashes);
+  const artifact = {
+    schema: gate.AUTH_SCHEMA, authorizationId: "AUTHPR4-PROD-TEST", authorizationStatus: "GRANTED",
+    projectId, personaOrder: ORDER, reviewedHead, governedFileHashes: hashes,
+    executionModeToken: "EMT-TOKEN", executor: { name: "named-exec" },
+    breakGlassContract: { validityWindowSeconds: 600, requiredConfirmer: "named-confirmer" },
+  };
+  fs.mkdirSync(path.join(root, "functions", "authpr4"), { recursive: true });
+  fs.writeFileSync(path.join(root, gate.AUTH_ARTIFACT_PATH), JSON.stringify(artifact, null, 2));
+  execFileSync("git", ["-C", root, "add", "-A"]);
+  execFileSync("git", ["-C", root, "commit", "-q", "-m", "authorization"]);
+  const authorizedCommit = execFileSync("git", ["-C", root, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+  assert.notEqual(oldIdHash, newIdHash, "buildTransitionRepo must produce distinct old/new identities");
+  return { root, oldAuthorizedCommit, authorizedCommit, reviewedHead, oldIdHash, newIdHash, executionModeToken: "EMT-TOKEN", executor: "named-exec", requiredConfirmer: "named-confirmer", windowSeconds: 600 };
+}
+
+// fs wrappers that inject a crash at a specific write boundary (matched by destination path).
+const crashOnRename = (target) => ({ ...fs, renameSync: (a, b) => { if (b === target) throw new Error("injected crash (rename)"); return fs.renameSync(a, b); } });
+const crashOnLink = (target) => ({ ...fs, linkSync: (a, b) => { if (b === target) throw new Error("injected crash (link)"); return fs.linkSync(a, b); } });
+const crashOnUnlink = (target) => ({ ...fs, unlinkSync: (a) => { if (a === target) throw new Error("injected crash (unlink)"); return fs.unlinkSync(a); } });
+
 function writeGenesis(stateFile, key, { authorizationId, projectId, idHash, completed = [], status = "eligible" }) {
   let s = gate.genesisState({ authorizationId, projectId, workflowIdentityHash: idHash, personaOrder: ORDER });
   s = { ...s, completed, status };
@@ -109,21 +155,26 @@ ok("strict validators reject non-canonical values", () => {
 // 2. C1 -- repository-governed authorization artifact
 // ---------------------------------------------------------------------------
 
-ok("REAL repo committed authorization VERIFIES against the exact 3-file governed binding at HEAD; fails closed for missing / substituted / stale / drifted files", () => {
-  // The three-file re-authorization (rebinding the artifact to reviewedHead dba0e33 + the
-  // three governed blob hashes) is now committed: the artifact verifies against the exact
-  // 3-file set at HEAD, and any deviation from that exact binding fails closed.
+ok("REAL repo: this PR CHANGES governed files, so the committed 3-file binding NO LONGER verifies at HEAD (fails closed, hash mismatch) until a separate re-authorization; the exact fail-closed cases still hold", () => {
+  // The reverse-order rollback-continuation modifies two governed files
+  // (authPr4ProductionGate.js + authPr4RecoveryEmailMigration.js). Per the governance model,
+  // changing governed code invalidates the committed GRANTED binding (pinned to the
+  // pre-continuation hashes at reviewedHead dba0e33): verifying it against HEAD now fails
+  // closed at the governed-hash boundary. Re-binding the artifact to the new hashes is a
+  // SEPARATE Owner re-authorization (mirrors #461 -> #462); this repo+emulator PR does not
+  // touch production-authorization.json and authorizes no production execution.
   assert.equal(gate.GOVERNED_FILES.length, 3);
   const repoIdentity = gate.deriveRepositoryIdentity(REAL_ROOT);
   const head = repoIdentity.head;
   const { artifact } = gate.loadGovernedAuthorization({ repoRoot: REAL_ROOT, authorizedCommit: head });
-  assert.equal(artifact.authorizationStatus, "GRANTED");
-  assert.equal(Object.keys(artifact.governedFileHashes).length, 3, "committed artifact records the 3-file governed set");
+  assert.equal(artifact.authorizationStatus, "GRANTED", "the committed artifact JSON is still GRANTED (unchanged by this PR)");
+  assert.equal(Object.keys(artifact.governedFileHashes).length, 3, "still records the 3-file governed set");
   for (const rel of gate.GOVERNED_FILES) assert.ok(rel in artifact.governedFileHashes, `binds ${rel}`);
   const derived = gate.governedHashesAtCommit(REAL_ROOT, head);
   const base = { projectId: "taylor-parts", personaOrder: ORDER, derivedHashes: derived, repoIdentity, authorizedCommit: head, executionModeConfirmation: artifact.executionModeToken, executor: artifact.executor.name };
-  // (a) verifies against the exact reviewed 3-file binding.
-  assert.equal(gate.verifyGovernedAuthorization(artifact, base).authorizationStatus, "GRANTED");
+  // (a) POST-CHANGE: the committed binding no longer matches the (now changed) governed code
+  //     at HEAD -> fails closed with a governed-hash mismatch (re-authorization required).
+  throws(() => gate.verifyGovernedAuthorization(artifact, base), /hash mismatch/);
   // (b) MISSING governed file (a 2-file subset) -> schema mismatch (fails closed).
   const { [gate.GOVERNED_FILES[2]]: _dropped, ...twoFileSubset } = artifact.governedFileHashes;
   throws(() => gate.verifyGovernedAuthorization({ ...artifact, governedFileHashes: twoFileSubset }, base), /governedFileHashes: schema mismatch/);
@@ -443,6 +494,376 @@ ok("GENERATION LEDGER: assertProductionAuthorization validates the ledger (singl
   fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
 });
 
+// ---------------------------------------------------------------------------
+// REVERSE-ORDER ROLLBACK-CONTINUATION (resume from suspended -> terminal rolled_back)
+// ---------------------------------------------------------------------------
+
+// A signed SUSPENDED progression (a governed rollback outcome) with `completed` still
+// migrated, plus its matching high-water anchor -- the state a continuation resumes from.
+function writeSuspended(stateFile, key, { authorizationId, projectId, idHash, completed, revision = 6 }) {
+  const base = gate.genesisState({ authorizationId, projectId, workflowIdentityHash: idHash, personaOrder: ORDER });
+  const s = { ...base, revision, previousStateHash: gate.GENESIS_HASH, status: "suspended", completed,
+    attempt: null, lastOutcome: { attemptId: "att-prior", mode: "rollback", targetPersona: "emp-rudy-owner", result: "rolled-back-suspended", at: new Date().toISOString() } };
+  fs.writeFileSync(stateFile, JSON.stringify({ ...s, signature: gate.signProgression(s, key) }), { mode: 0o600 });
+  gate.writeAnchor(stateFile, { authorizationId, highWaterRevision: revision, stateHash: gate.progressionHash(s) }, key);
+  return s;
+}
+
+ok("CONTINUATION invariants: suspended requires remaining identities; rolled_back is terminal (completed=[] + rollback outcome)", () => {
+  const key = KEY(); const idHash = "cd".repeat(32);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-cont-inv-"));
+  const f = path.join(dir, "state.json");
+  const expected = { authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", workflowIdentityHash: idHash, personaOrder: ORDER };
+  const base = gate.genesisState({ authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", workflowIdentityHash: idHash, personaOrder: ORDER });
+  const writeSigned = (p) => { fs.writeFileSync(f, JSON.stringify({ ...p, signature: gate.signProgression(p, key) })); gate.writeAnchor(f, { authorizationId: p.authorizationId, highWaterRevision: p.revision, stateHash: gate.progressionHash(p) }, key); };
+  const roll = (t, r) => ({ attemptId: "a", mode: "rollback", targetPersona: t, result: r, at: new Date().toISOString() });
+  // suspended with EMPTY completed -> rejected (empty completed is terminal rolled_back).
+  writeSigned({ ...base, revision: 1, status: "suspended", completed: [], attempt: null, lastOutcome: roll("emp-rudy-driver", "rolled-back-suspended") });
+  throws(() => gate.readState(f, key, expected), /suspended must have at least one remaining/);
+  // rolled_back with NON-EMPTY completed -> rejected.
+  writeSigned({ ...base, revision: 1, status: "rolled_back", completed: ["emp-rudy-driver"], attempt: null, lastOutcome: roll("emp-rudy-driver", "rolled-back-terminal") });
+  throws(() => gate.readState(f, key, expected), /rolled_back is terminal/);
+  // rolled_back with a FORWARD outcome -> rejected.
+  writeSigned({ ...base, revision: 1, status: "rolled_back", completed: [], attempt: null, lastOutcome: { attemptId: "a", mode: "forward", targetPersona: "emp-rudy-driver", result: "completed", at: new Date().toISOString() } });
+  throws(() => gate.readState(f, key, expected), /rolled_back is terminal/);
+  // rolled_back with completed=[] + a rollback outcome -> VALID.
+  writeSigned({ ...base, revision: 1, status: "rolled_back", completed: [], attempt: null, lastOutcome: roll("emp-rudy-driver", "rolled-back-terminal") });
+  assert.equal(gate.readState(f, key, expected).status, "rolled_back");
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+ok("CONTINUATION gate: suspended blocks forward + bare --rollback; --rollback --rollbackContinuation resumes REVERSE order and stays suspended while identities remain", () => {
+  const g = buildGrantedRepo("demo-authpr4");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-cont-"));
+  const keyFile = path.join(dir, "k"); const key = crypto.randomBytes(48); fs.writeFileSync(keyFile, key, { mode: 0o600 });
+  const stateFile = path.join(dir, "state.json"); const mappingFile = path.join(dir, "map.json");
+  fs.writeFileSync(mappingFile, JSON.stringify(Object.fromEntries(ORDER.map((id) => [id, { uid: `u-${id}`, newAlias: `base+${id}@gmail.com` }]))));
+  const idHash = gate.workflowIdentityHash(gate.governedHashesAtCommit(g.root, g.authorizedCommit));
+  const expected = { authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", workflowIdentityHash: idHash, personaOrder: ORDER };
+  // Suspended after the position-5 (owner) rollback: positions 1-4 remain migrated.
+  writeSuspended(stateFile, key, { authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", idHash, completed: ORDER.slice(0, 4) });
+  const args = (extra) => ({ projectId: "demo-authpr4", executeProduction: true, mappingFile, progressionFile: stateFile, stateKeyFile: keyFile, authorizedCommit: g.authorizedCommit, executionModeConfirmation: g.executionModeToken, executor: g.executor, capturedStateFile: path.join(dir, "cap.json"), capturedStateOut: path.join(dir, "cap.json"), ...extra });
+  const deps = { repoRoot: g.root, personaOrder: ORDER, now: () => new Date(), leaseSeconds: 300 };
+  // (a) FORWARD from suspended -> blocked.
+  throws(() => gate.assertProductionAuthorization(args({}), deps), /SUSPENDED.*forward steps are blocked/i);
+  // (b) BARE --rollback (no continuation) from suspended -> blocked, told to add the flag.
+  throws(() => gate.assertProductionAuthorization(args({ rollback: true }), deps), /requires --rollback --rollbackContinuation/);
+  // (c) --rollback --rollbackContinuation -> resumes, targeting the LAST completed (reverse order).
+  const ctx = gate.assertProductionAuthorization(args({ rollback: true, rollbackContinuation: true }), deps);
+  assert.equal(ctx.mode, "rollback");
+  assert.equal(ctx.effective.employeeId, "emp-rudy-parts-manager", "reverse order rolls back position 4 first");
+  assert.equal(ctx.effective.position, 4);
+  assert.equal(gate.readState(stateFile, key, expected).status, "claimed", "claimed from the suspended predecessor");
+  // recordCompletion -> back to suspended with positions 1-3 remaining (still not terminal).
+  ctx.recordCompletion({ personaOrder: ORDER });
+  const st = gate.readState(stateFile, key, expected);
+  assert.equal(st.status, "suspended");
+  assert.deepEqual(st.completed, ORDER.slice(0, 3));
+  assert.equal(st.lastOutcome.result, "rolled-back-suspended");
+  assert.equal(st.lastOutcome.targetPersona, "emp-rudy-parts-manager");
+  fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
+});
+
+ok("CONTINUATION terminal: rolling back the LAST remaining identity reaches terminal rolled_back, which blocks every further step", () => {
+  const g = buildGrantedRepo("demo-authpr4");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-cont-term-"));
+  const keyFile = path.join(dir, "k"); const key = crypto.randomBytes(48); fs.writeFileSync(keyFile, key, { mode: 0o600 });
+  const stateFile = path.join(dir, "state.json"); const mappingFile = path.join(dir, "map.json");
+  fs.writeFileSync(mappingFile, JSON.stringify({ "emp-rudy-driver": { uid: "u1", newAlias: "base+driver@gmail.com" } }));
+  const idHash = gate.workflowIdentityHash(gate.governedHashesAtCommit(g.root, g.authorizedCommit));
+  const expected = { authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", workflowIdentityHash: idHash, personaOrder: ORDER };
+  // Only position 1 remains migrated.
+  writeSuspended(stateFile, key, { authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", idHash, completed: ["emp-rudy-driver"] });
+  const args = (extra) => ({ projectId: "demo-authpr4", executeProduction: true, mappingFile, progressionFile: stateFile, stateKeyFile: keyFile, authorizedCommit: g.authorizedCommit, executionModeConfirmation: g.executionModeToken, executor: g.executor, capturedStateFile: path.join(dir, "cap.json"), ...extra });
+  const deps = { repoRoot: g.root, personaOrder: ORDER, now: () => new Date(), leaseSeconds: 300 };
+  const ctx = gate.assertProductionAuthorization(args({ rollback: true, rollbackContinuation: true }), deps);
+  assert.equal(ctx.effective.employeeId, "emp-rudy-driver");
+  assert.equal(ctx.effective.position, 1);
+  ctx.recordCompletion({ personaOrder: ORDER });
+  const st = gate.readState(stateFile, key, expected);
+  assert.equal(st.status, "rolled_back", "terminal after the last remaining identity");
+  assert.deepEqual(st.completed, []);
+  assert.equal(st.lastOutcome.result, "rolled-back-terminal");
+  // Terminal blocks EVERYTHING (further continuation and any forward).
+  throws(() => gate.assertProductionAuthorization(args({ rollback: true, rollbackContinuation: true }), deps), /ROLLED_BACK \(terminal\)/);
+  throws(() => gate.assertProductionAuthorization(args({}), deps), /ROLLED_BACK \(terminal\)/);
+  fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
+});
+
+ok("CONTINUATION concurrency: two continuation workers on the same suspended state -> exactly one claims; the second is refused (one identity at a time)", () => {
+  const g = buildGrantedRepo("demo-authpr4");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-cont-conc-"));
+  const keyFile = path.join(dir, "k"); const key = crypto.randomBytes(48); fs.writeFileSync(keyFile, key, { mode: 0o600 });
+  const stateFile = path.join(dir, "state.json"); const mappingFile = path.join(dir, "map.json");
+  fs.writeFileSync(mappingFile, JSON.stringify(Object.fromEntries(ORDER.map((id) => [id, { uid: `u-${id}`, newAlias: `base+${id}@gmail.com` }]))));
+  const idHash = gate.workflowIdentityHash(gate.governedHashesAtCommit(g.root, g.authorizedCommit));
+  writeSuspended(stateFile, key, { authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", idHash, completed: ORDER.slice(0, 4) });
+  const args = { projectId: "demo-authpr4", executeProduction: true, rollback: true, rollbackContinuation: true, mappingFile, progressionFile: stateFile, stateKeyFile: keyFile, authorizedCommit: g.authorizedCommit, executionModeConfirmation: g.executionModeToken, executor: g.executor, capturedStateFile: path.join(dir, "cap.json") };
+  const deps = { repoRoot: g.root, personaOrder: ORDER, now: () => new Date(), leaseSeconds: 300 };
+  const first = gate.assertProductionAuthorization(args, deps); // claims (live lease held)
+  assert.equal(first.effective.employeeId, "emp-rudy-parts-manager");
+  // Second worker while the first holds an unexpired claim -> refused.
+  throws(() => gate.assertProductionAuthorization(args, deps), /concurrent claim is held|no longer|claimed/i);
+  fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
+});
+
+// ---------------------------------------------------------------------------
+// WORKFLOW-IDENTITY TRANSITION (governed re-binding of an EXISTING progression)
+// A governed-file change moves the workflow identity; the existing signed state is pinned to
+// the OLD identity and would fail closed after a rebind. authPr4InitProgression.js
+// --mode identity-transition re-signs it to the NEW identity, credential-free + crash-safe.
+// ---------------------------------------------------------------------------
+
+ok("IDENTITY TRANSITION (pure): re-signs a suspended state old-identity -> new-identity, preserving status/completed/last-outcome, bumping revision; re-run fails closed", () => {
+  const g = buildTransitionRepo("demo-authpr4");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-idt-"));
+  const keyFile = path.join(dir, "k"); const key = crypto.randomBytes(48); fs.writeFileSync(keyFile, key, { mode: 0o600 });
+  const stateFile = path.join(dir, "state.json");
+  const before = writeSuspended(stateFile, key, { authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", idHash: g.oldIdHash, completed: ORDER.slice(0, 4), revision: 12 });
+  assert.equal(before.workflowIdentityHash, g.oldIdHash);
+  // Before the transition, the state cannot be read under the NEW identity (Codex P1).
+  throws(() => gate.readState(stateFile, key, { authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", workflowIdentityHash: g.newIdHash, personaOrder: ORDER }), /different \(stale\) workflow identity/);
+  const tArgs = { projectId: "demo-authpr4", confirmProduction: "demo-authpr4", authorizedCommit: g.authorizedCommit, oldAuthorizedCommit: g.oldAuthorizedCommit, executionModeConfirmation: g.executionModeToken, executor: g.executor, stateKeyFile: keyFile, progressionOut: stateFile, confirmIdentityTransition: "transition-workflow-identity" };
+  const res = initProg.identityTransition(tArgs, { repoRoot: g.root, personaOrder: ORDER });
+  assert.equal(res.status, "suspended");
+  assert.equal(res.completedCount, 4);
+  assert.equal(res.revisionBefore, 12);
+  assert.equal(res.revisionAfter, 13);
+  const st = gate.readState(stateFile, key, { authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", workflowIdentityHash: g.newIdHash, personaOrder: ORDER });
+  assert.equal(st.workflowIdentityHash, g.newIdHash);
+  assert.equal(st.status, "suspended");
+  assert.deepEqual(st.completed, ORDER.slice(0, 4));
+  assert.equal(st.lastOutcome.mode, "rollback");
+  // Idempotence guard: re-running now fails closed (state is under the NEW identity; old read fails).
+  throws(() => initProg.identityTransition(tArgs, { repoRoot: g.root, personaOrder: ORDER }), /different \(stale\) workflow identity/);
+  fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
+});
+
+ok("IDENTITY TRANSITION (pure): fails closed on missing confirm, identical old/new identity, present init marker, and present claim lock", () => {
+  const g = buildTransitionRepo("demo-authpr4");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-idt2-"));
+  const keyFile = path.join(dir, "k"); const key = crypto.randomBytes(48); fs.writeFileSync(keyFile, key, { mode: 0o600 });
+  const stateFile = path.join(dir, "state.json");
+  writeSuspended(stateFile, key, { authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", idHash: g.oldIdHash, completed: ORDER.slice(0, 4), revision: 12 });
+  const baseArgs = { projectId: "demo-authpr4", confirmProduction: "demo-authpr4", authorizedCommit: g.authorizedCommit, oldAuthorizedCommit: g.oldAuthorizedCommit, executionModeConfirmation: g.executionModeToken, executor: g.executor, stateKeyFile: keyFile, progressionOut: stateFile, confirmIdentityTransition: "transition-workflow-identity" };
+  const deps = { repoRoot: g.root, personaOrder: ORDER };
+  // (a) missing confirm flag.
+  throws(() => initProg.identityTransition({ ...baseArgs, confirmIdentityTransition: undefined }, deps), /requires an explicit --confirmIdentityTransition/);
+  // (b) identical old/new identity (oldAuthorizedCommit points at the new governed files).
+  throws(() => initProg.identityTransition({ ...baseArgs, oldAuthorizedCommit: g.reviewedHead }, deps), /identical -- nothing to transition/);
+  // (c) an init marker present -> refuse.
+  fs.writeFileSync(gate.initMarkerPath(stateFile), JSON.stringify({ version: gate.INIT_MARKER_VERSION, token: "ab".repeat(16), at: new Date().toISOString() }));
+  throws(() => initProg.identityTransition(baseArgs, deps), /initialization marker is present/i);
+  fs.unlinkSync(gate.initMarkerPath(stateFile));
+  // (d) a claim lock present -> refuse.
+  fs.writeFileSync(gate.lockPath(stateFile), JSON.stringify({ version: gate.LOCK_VERSION, authorizationId: "AUTHPR4-PROD-TEST", attemptId: "att-x", mode: "rollback", targetPersona: "emp-rudy-parts-manager", revision: 12, claimedAt: new Date().toISOString(), leaseExpiresAt: new Date(Date.now() + 60000).toISOString() }));
+  throws(() => initProg.identityTransition(baseArgs, deps), /claim lock is present/);
+  fs.unlinkSync(gate.lockPath(stateFile));
+  // Guards removed -> the transition now succeeds (proves the guards above were the blockers).
+  assert.equal(initProg.identityTransition(baseArgs, deps).transitioned, true);
+  fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
+});
+
+ok("IDENTITY TRANSITION crash-safety: fault injection at every write boundary (intent / state / anchor / cleanup) is recoverable via identity-transition-recover; state+anchor end consistent under the new identity", () => {
+  const g = buildTransitionRepo("demo-authpr4");
+  const expectedNew = { authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", workflowIdentityHash: g.newIdHash, personaOrder: ORDER };
+  const expectedOld = { ...expectedNew, workflowIdentityHash: g.oldIdHash };
+  const deps = { repoRoot: g.root, personaOrder: ORDER };
+  const mk = () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-idt-crash-"));
+    const keyFile = path.join(dir, "k"); const key = crypto.randomBytes(48); fs.writeFileSync(keyFile, key, { mode: 0o600 });
+    const stateFile = path.join(dir, "state.json");
+    writeSuspended(stateFile, key, { authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", idHash: g.oldIdHash, completed: ORDER.slice(0, 4), revision: 12 });
+    return { dir, keyFile, key, stateFile, tArgs: { projectId: "demo-authpr4", confirmProduction: "demo-authpr4", authorizedCommit: g.authorizedCommit, oldAuthorizedCommit: g.oldAuthorizedCommit, executionModeConfirmation: g.executionModeToken, executor: g.executor, stateKeyFile: keyFile, progressionOut: stateFile, confirmIdentityTransition: "transition-workflow-identity" } };
+  };
+  const isNew = (stateFile, key) => { const st = gate.readState(stateFile, key, expectedNew); gate.verifyStateFreshness(stateFile, st, key); return st.workflowIdentityHash === g.newIdHash && st.status === "suspended" && st.completed.length === 4; };
+
+  // BOUNDARY 1 -- intent creation crash: no intent, state/anchor UNTOUCHED (still resumable), re-run works.
+  { const t = mk();
+    throws(() => initProg.identityTransition(t.tArgs, { ...deps, fs: crashOnLink(gate.idtxnPath(t.stateFile)) }), /injected crash|Failed to publish/);
+    assert.ok(!fs.existsSync(gate.idtxnPath(t.stateFile)), "B1: no intent left");
+    assert.equal(gate.readState(t.stateFile, t.key, expectedOld).workflowIdentityHash, g.oldIdHash, "B1: old state intact");
+    assert.equal(initProg.identityTransition(t.tArgs, deps).transitioned, true);
+    assert.ok(isNew(t.stateFile, t.key), "B1: re-run completed");
+    fs.rmSync(t.dir, { recursive: true, force: true }); }
+
+  // BOUNDARY 2 -- state-write crash: intent + OLD state + OLD anchor; recover rolls both forward.
+  { const t = mk();
+    throws(() => initProg.identityTransition(t.tArgs, { ...deps, fs: crashOnRename(t.stateFile) }), /injected crash/);
+    assert.ok(fs.existsSync(gate.idtxnPath(t.stateFile)), "B2: intent retained");
+    const rec = initProg.identityTransitionRecover(t.tArgs, deps);
+    assert.equal(rec.recoveredFromState, "predecessor");
+    assert.equal(rec.recoveredFromAnchor, "predecessor");
+    assert.ok(!fs.existsSync(gate.idtxnPath(t.stateFile)), "B2: intent cleared");
+    assert.ok(isNew(t.stateFile, t.key), "B2: recovered to new identity, anchor consistent");
+    fs.rmSync(t.dir, { recursive: true, force: true }); }
+
+  // BOUNDARY 3 -- anchor-write crash (Codex's exact scenario): intent + NEW state + OLD anchor; recover finishes.
+  { const t = mk();
+    throws(() => initProg.identityTransition(t.tArgs, { ...deps, fs: crashOnRename(gate.anchorPath(t.stateFile)) }), /injected crash/);
+    assert.ok(fs.existsSync(gate.idtxnPath(t.stateFile)), "B3: intent retained");
+    // Before recovery the new state fails anchor freshness (the exact defect Codex flagged).
+    throws(() => gate.verifyStateFreshness(t.stateFile, gate.readState(t.stateFile, t.key, expectedNew), t.key), /stale\/replayed|does not match the high-water anchor/);
+    const rec = initProg.identityTransitionRecover(t.tArgs, deps);
+    assert.equal(rec.recoveredFromState, "target");
+    assert.equal(rec.recoveredFromAnchor, "predecessor");
+    assert.ok(isNew(t.stateFile, t.key), "B3: recovered; state+anchor now consistent under new identity");
+    fs.rmSync(t.dir, { recursive: true, force: true }); }
+
+  // BOUNDARY 4 -- intent-cleanup crash: state+anchor NEW, intent remains; recover removes it (idempotent).
+  { const t = mk();
+    throws(() => initProg.identityTransition(t.tArgs, { ...deps, fs: crashOnUnlink(gate.idtxnPath(t.stateFile)) }), /injected crash/);
+    assert.ok(fs.existsSync(gate.idtxnPath(t.stateFile)), "B4: intent retained");
+    const rec = initProg.identityTransitionRecover(t.tArgs, deps);
+    assert.equal(rec.recoveredFromState, "target");
+    assert.equal(rec.recoveredFromAnchor, "target");
+    assert.ok(!fs.existsSync(gate.idtxnPath(t.stateFile)), "B4: intent cleared");
+    assert.ok(isNew(t.stateFile, t.key), "B4: state+anchor consistent under new identity");
+    fs.rmSync(t.dir, { recursive: true, force: true }); }
+
+  fs.rmSync(g.root, { recursive: true, force: true });
+});
+
+ok("IDENTITY TRANSITION recover: refuses with no intent; BLOCKS (retains intent) on a substituted/foreign artifact -- never blindly rewrites", () => {
+  const g = buildTransitionRepo("demo-authpr4");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-idt-blk-"));
+  const keyFile = path.join(dir, "k"); const key = crypto.randomBytes(48); fs.writeFileSync(keyFile, key, { mode: 0o600 });
+  const stateFile = path.join(dir, "state.json");
+  writeSuspended(stateFile, key, { authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", idHash: g.oldIdHash, completed: ORDER.slice(0, 4), revision: 12 });
+  const tArgs = { projectId: "demo-authpr4", confirmProduction: "demo-authpr4", authorizedCommit: g.authorizedCommit, oldAuthorizedCommit: g.oldAuthorizedCommit, executionModeConfirmation: g.executionModeToken, executor: g.executor, stateKeyFile: keyFile, progressionOut: stateFile, confirmIdentityTransition: "transition-workflow-identity" };
+  const deps = { repoRoot: g.root, personaOrder: ORDER };
+  // No intent -> refuse.
+  throws(() => initProg.identityTransitionRecover(tArgs, deps), /No identity-transition intent is present/);
+  // Crash at the state write to leave an intent + predecessor state/anchor.
+  throws(() => initProg.identityTransition(tArgs, { ...deps, fs: crashOnRename(stateFile) }), /injected crash/);
+  assert.ok(fs.existsSync(gate.idtxnPath(stateFile)));
+  // Substitute the state with a foreign artifact -> recover must BLOCK (never roll a foreign file forward).
+  fs.writeFileSync(stateFile, JSON.stringify({ foreign: true }));
+  throws(() => initProg.identityTransitionRecover(tArgs, deps), /neither the exact predecessor nor the authorized target|BLOCKED/);
+  assert.ok(fs.existsSync(gate.idtxnPath(stateFile)), "intent retained on BLOCKED (Owner escalation)");
+  fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
+});
+
+ok("IDENTITY TRANSITION generation fence: same-gen recovery succeeds; an out-of-band ledger-head advance vs the signed intent BLOCKS recovery and retains the intent (stale journal + matching predecessors cannot bypass)", () => {
+  const g = buildTransitionRepo("demo-authpr4");
+  const expectedNew = { authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", workflowIdentityHash: g.newIdHash, personaOrder: ORDER };
+  const expectedOld = { ...expectedNew, workflowIdentityHash: g.oldIdHash };
+  const deps = { repoRoot: g.root, personaOrder: ORDER };
+  const mk = () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-idt-gen-"));
+    const keyFile = path.join(dir, "k"); const key = crypto.randomBytes(48); fs.writeFileSync(keyFile, key, { mode: 0o600 });
+    const stateFile = path.join(dir, "state.json");
+    writeSuspended(stateFile, key, { authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", idHash: g.oldIdHash, completed: ORDER.slice(0, 4), revision: 12 });
+    return { dir, keyFile, key, stateFile, tArgs: { projectId: "demo-authpr4", confirmProduction: "demo-authpr4", authorizedCommit: g.authorizedCommit, oldAuthorizedCommit: g.oldAuthorizedCommit, executionModeConfirmation: g.executionModeToken, executor: g.executor, stateKeyFile: keyFile, progressionOut: stateFile, confirmIdentityTransition: "transition-workflow-identity" } };
+  };
+
+  // (a) SAME generation: crash at state write, recover at the SAME generation -> succeeds.
+  { const t = mk();
+    throws(() => initProg.identityTransition(t.tArgs, { ...deps, fs: crashOnRename(t.stateFile) }), /injected crash/);
+    assert.equal(initProg.identityTransitionRecover(t.tArgs, deps).transitioned, true);
+    assert.equal(gate.readState(t.stateFile, t.key, expectedNew).workflowIdentityHash, g.newIdHash);
+    fs.rmSync(t.dir, { recursive: true, force: true }); }
+
+  // (b) The signed intent records generation 0. An out-of-band ledger-head advance (a directly
+  //     written gen.1 claim -- note the GOVERNED claimGeneration path is REFUSED while the intent
+  //     is present; see the mutual-exclusion test) makes the current head differ from the intent
+  //     -> recovery BLOCKS + RETAINS the intent. A stale signed journal with matching predecessor
+  //     artifacts on disk cannot bypass the newer fence.
+  { const t = mk();
+    throws(() => initProg.identityTransition(t.tArgs, { ...deps, fs: crashOnRename(t.stateFile) }), /injected crash/);
+    assert.ok(fs.existsSync(gate.idtxnPath(t.stateFile)), "intent present at generation 0");
+    fs.writeFileSync(gate.genClaimPath(t.stateFile, 1), JSON.stringify({ version: gate.GEN_LEDGER_VERSION, generation: 1, previousDigest: gate.GEN_CHAIN_ROOT, owner: "out-of-band", at: new Date().toISOString() }));
+    throws(() => initProg.identityTransitionRecover(t.tArgs, deps), /fencing generation \/ ledger head advanced|superseded/);
+    assert.ok(fs.existsSync(gate.idtxnPath(t.stateFile)), "intent RETAINED on BLOCKED");
+    assert.equal(gate.readState(t.stateFile, t.key, expectedOld).workflowIdentityHash, g.oldIdHash, "state not resurrected under the new identity");
+    fs.rmSync(t.dir, { recursive: true, force: true }); }
+
+  fs.rmSync(g.root, { recursive: true, force: true });
+});
+
+ok("IDENTITY TRANSITION mutual exclusion: while the transition HOLDS the shared fence lock, a generation-advance acquisition is refused in EVERY window (pre-publish / state / anchor / verify->cleanup) and the transition completes", () => {
+  const g = buildTransitionRepo("demo-authpr4");
+  const expectedNew = { authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", workflowIdentityHash: g.newIdHash, personaOrder: ORDER };
+  const deps = { repoRoot: g.root, personaOrder: ORDER };
+  const mk = () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-idt-mx-"));
+    const keyFile = path.join(dir, "k"); const key = crypto.randomBytes(48); fs.writeFileSync(keyFile, key, { mode: 0o600 });
+    const stateFile = path.join(dir, "state.json");
+    writeSuspended(stateFile, key, { authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", idHash: g.oldIdHash, completed: ORDER.slice(0, 4), revision: 12 });
+    return { dir, keyFile, key, stateFile, tArgs: { projectId: "demo-authpr4", confirmProduction: "demo-authpr4", authorizedCommit: g.authorizedCommit, oldAuthorizedCommit: g.oldAuthorizedCommit, executionModeConfirmation: g.executionModeToken, executor: g.executor, stateKeyFile: keyFile, progressionOut: stateFile, confirmIdentityTransition: "transition-workflow-identity" } };
+  };
+  // A generation advancement begins by acquiring the SHARED fence lock -- while the transition holds
+  // it, that acquisition is refused (EEXIST). (The transition holds the lock from before intent
+  // publication through cleanup, so every window below is covered.)
+  const attemptAdvance = (stateFile, key) => assert.throws(() => initProg.acquireFenceLock(stateFile, "generation-advance", key, {}), /already held|mutual exclusion/);
+  const completes = (seam) => {
+    const t = mk();
+    assert.equal(initProg.identityTransition(t.tArgs, { ...deps, [seam]: () => attemptAdvance(t.stateFile, t.key) }).transitioned, true);
+    assert.equal(gate.readState(t.stateFile, t.key, expectedNew).workflowIdentityHash, g.newIdHash);
+    assert.ok(!fs.existsSync(gate.idtxnPath(t.stateFile)), "intent cleaned up");
+    assert.ok(!fs.existsSync(gate.fenceLockPath(t.stateFile)), "fence lock released");
+    fs.rmSync(t.dir, { recursive: true, force: true });
+  };
+  completes("beforeIntentPublish"); // capture->publish window
+  completes("beforeStateReplace");  // state check->write window
+  completes("beforeAnchorReplace"); // anchor check->write window
+  completes("beforeIntentCleanup"); // verify->cleanup window
+  fs.rmSync(g.root, { recursive: true, force: true });
+});
+
+ok("IDENTITY TRANSITION shared fence lock: generation advancement + identity transition acquire ONE lock atomically -> exactly one wins, the loser publishes/mutates nothing (reverse race); a crash-left lock is cleared only by governed fence-recover", () => {
+  const g = buildTransitionRepo("demo-authpr4");
+  const expectedNew = { authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", workflowIdentityHash: g.newIdHash, personaOrder: ORDER };
+  const expectedOld = { ...expectedNew, workflowIdentityHash: g.oldIdHash };
+  const deps = { repoRoot: g.root, personaOrder: ORDER };
+  const mk = () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-idt-fl-"));
+    const keyFile = path.join(dir, "k"); const key = crypto.randomBytes(48); fs.writeFileSync(keyFile, key, { mode: 0o600 });
+    const stateFile = path.join(dir, "state.json");
+    writeSuspended(stateFile, key, { authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", idHash: g.oldIdHash, completed: ORDER.slice(0, 4), revision: 12 });
+    return { dir, keyFile, key, stateFile, tArgs: { projectId: "demo-authpr4", confirmProduction: "demo-authpr4", authorizedCommit: g.authorizedCommit, oldAuthorizedCommit: g.oldAuthorizedCommit, executionModeConfirmation: g.executionModeToken, executor: g.executor, stateKeyFile: keyFile, progressionOut: stateFile, confirmIdentityTransition: "transition-workflow-identity" }, fenceArgs: { projectId: "demo-authpr4", confirmProduction: "demo-authpr4", authorizedCommit: g.authorizedCommit, executionModeConfirmation: g.executionModeToken, executor: g.executor, stateKeyFile: keyFile, progressionOut: stateFile } };
+  };
+
+  // REVERSE RACE (Codex #7): the generation worker acquires the shared lock first (passes initial
+  // setup); the identity transition then attempts publication -> it cannot acquire the SAME lock
+  // (EEXIST) -> it publishes NO intent and mutates NO state. Exactly one wins.
+  { const t = mk();
+    const genLock = initProg.acquireFenceLock(t.stateFile, "generation-advance", t.key, {}); // generation worker holds it
+    throws(() => initProg.identityTransition(t.tArgs, deps), /fence-exclusion lock is already held|mutual exclusion/);
+    assert.ok(!fs.existsSync(gate.idtxnPath(t.stateFile)), "loser transition published NO intent");
+    assert.equal(gate.readState(t.stateFile, t.key, expectedOld).workflowIdentityHash, g.oldIdHash, "loser transition mutated NO state");
+    initProg.releaseFenceLock(t.stateFile, genLock.token, {});
+    assert.equal(initProg.identityTransition(t.tArgs, deps).transitioned, true, "with the lock released the transition now wins");
+    fs.rmSync(t.dir, { recursive: true, force: true }); }
+
+  // SYMMETRIC: while a transition holds the lock, a concurrent generation-advance acquisition loses.
+  { const t = mk();
+    const txLock = initProg.acquireFenceLock(t.stateFile, "identity-transition", t.key, {});
+    throws(() => initProg.acquireFenceLock(t.stateFile, "generation-advance", t.key, {}), /already held|mutual exclusion/);
+    initProg.releaseFenceLock(t.stateFile, txLock.token, {});
+    fs.rmSync(t.dir, { recursive: true, force: true }); }
+
+  // CRASH-LEFT lock (a hard crash leaves it; finally did not run). It blocks a new transition and is
+  // cleared ONLY by governed fence-recover (owner-stopped attestation + matching fingerprint), never
+  // auto-broken. fence-recover touches only the lock; the state stays intact and the transition then runs.
+  { const t = mk();
+    initProg.acquireFenceLock(t.stateFile, "generation-advance", t.key, {}); // stranded (never released)
+    throws(() => initProg.identityTransition(t.tArgs, deps), /fence-exclusion lock is already held|mutual exclusion/);
+    const insp = initProg.fenceInspect(t.fenceArgs, deps);
+    assert.equal(insp.present, true); assert.equal(insp.valid, true); assert.equal(insp.holder, "generation-advance");
+    throws(() => initProg.fenceRecover({ ...t.fenceArgs, fingerprint: insp.fingerprint }, deps), /confirmOwnerStopped/);
+    throws(() => initProg.fenceRecover({ ...t.fenceArgs, confirmOwnerStopped: "fence-holder-stopped" }, deps), /--fingerprint/);
+    throws(() => initProg.fenceRecover({ ...t.fenceArgs, confirmOwnerStopped: "fence-holder-stopped", fingerprint: "f".repeat(64) }, deps), /fingerprint mismatch/);
+    const rec = initProg.fenceRecover({ ...t.fenceArgs, confirmOwnerStopped: "fence-holder-stopped", fingerprint: insp.fingerprint }, deps);
+    assert.equal(rec.lockCleared, true);
+    assert.ok(!fs.existsSync(gate.fenceLockPath(t.stateFile)), "fence lock cleared");
+    assert.equal(gate.readState(t.stateFile, t.key, expectedOld).workflowIdentityHash, g.oldIdHash, "state untouched by fence-recover");
+    assert.equal(initProg.identityTransition(t.tArgs, deps).transitioned, true, "transition runs after the lock is cleared");
+    fs.rmSync(t.dir, { recursive: true, force: true }); }
+
+  fs.rmSync(g.root, { recursive: true, force: true });
+});
+
 ok("TRANSITION MUTEX (TOCTOU): a held .txn fails closed (no auto-break); after release the loser re-reads terminal state and does not overwrite", () => {
   const key = KEY(); const idHash = "ab".repeat(32);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-txn-"));
@@ -641,6 +1062,45 @@ async function runProductionForward({ g, key, keyFile, stateFile, mappingFile, e
   return { ctx, capturedOut, map, pre };
 }
 
+// Drive one governed rollback step (single post-forward rollback OR a reverse-order
+// continuation step). `capturedOut` is the persona's signed rollback artifact; on a
+// confirmed rollback + durable progression it is deleted, mirroring main()'s ordering.
+async function runProductionRollback({ g, key, keyFile, stateFile, mappingFile, capturedOut, employeeId, continuation, authObj }) {
+  const ctx = gate.assertProductionAuthorization(
+    { projectId: PROJECT, executeProduction: true, rollback: true, rollbackContinuation: continuation || undefined,
+      mappingFile, progressionFile: stateFile, stateKeyFile: keyFile,
+      authorizedCommit: g.authorizedCommit, executionModeConfirmation: g.executionModeToken, executor: g.executor,
+      capturedStateFile: capturedOut, employeeId },
+    { repoRoot: g.root, personaOrder: ORDER },
+  );
+  const captured = JSON.parse(fs.readFileSync(capturedOut, "utf8"));
+  try {
+    await wf.applyPlan(authObj || auth, wf.buildRollbackPlan({ employeeId, uid: captured.uid, priorAddress: captured.priorAddress, priorEmailVerified: captured.priorEmailVerified }), { execute: true });
+  } catch (err) {
+    ctx.recordUncertain("rollback-uncertain", { personaOrder: ORDER });
+    throw err;
+  }
+  ctx.recordCompletion({ personaOrder: ORDER }); // durable SUSPENDED/rolled_back FIRST
+  wf.secureUnlink(capturedOut); // only AFTER confirmed rollback + durable progression
+  return ctx;
+}
+
+// Seed an ALREADY-migrated persona: the account currently holds its new alias
+// (emailVerified=false), with a signed rollback artifact capturing the exact prior address
+// (emailVerified=true) -- the on-disk shape a continuation resumes from.
+async function seedMigrated(mappingFile, employeeId, key, dir) {
+  const prior = `prod_${employeeId}_${uniq()}@example.com`;
+  const newAlias = `base+${employeeId}_${uniq()}@gmail.com`;
+  const user = await auth.createUser({ email: newAlias, emailVerified: false, password: "Passw0rd!23" });
+  const map = fs.existsSync(mappingFile) ? JSON.parse(fs.readFileSync(mappingFile, "utf8")) : {};
+  map[employeeId] = { uid: user.uid, newAlias };
+  fs.writeFileSync(mappingFile, JSON.stringify(map), { mode: 0o600 });
+  const position = ORDER.indexOf(employeeId) + 1;
+  const capturedOut = path.join(dir, `${employeeId}.rollback.json`);
+  wf.writeCapturedState(capturedOut, { version: 1, projectId: PROJECT, employeeId, position, uid: user.uid, priorAddress: prior, priorEmailVerified: true, newAlias, createdAt: new Date().toISOString() }, key);
+  return { uid: user.uid, prior, newAlias, capturedOut };
+}
+
 await okAsync("GRANTED production-shaped path advances the full sequence 1..5 (break-glass at 5) against the emulator", async () => {
   const g = buildGrantedRepo(PROJECT);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-run-"));
@@ -718,7 +1178,7 @@ await okAsync("FAULT: completion-persistence failure leaves progression CLAIMED 
   fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
 });
 
-await okAsync("GRANTED rollback of the most recent persona SUSPENDS progression + restores exact prior; later blocked", async () => {
+await okAsync("GRANTED rollback of the ONLY completed persona reaches terminal rolled_back (completed empties) + restores exact prior; later blocked", async () => {
   const g = buildGrantedRepo(PROJECT);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-rb-"));
   const keyFile = path.join(dir, "k"); const key = crypto.randomBytes(48); fs.writeFileSync(keyFile, key, { mode: 0o600 });
@@ -738,8 +1198,11 @@ await okAsync("GRANTED rollback of the most recent persona SUSPENDS progression 
   assert.equal(restored.email, drv.prior, "exact prior address restored");
   assert.equal(restored.emailVerified, true, "exact prior emailVerified restored");
   const st = gate.readState(stateFile, key, { authorizationId: "AUTHPR4-PROD-TEST", projectId: PROJECT, workflowIdentityHash: idHash, personaOrder: ORDER });
-  assert.equal(st.status, "suspended");
+  // Rolling back the only completed persona empties `completed`, so the sequence reaches the
+  // TERMINAL rolled_back state (not suspended); either way, later steps are blocked.
+  assert.equal(st.status, "rolled_back");
   assert.deepEqual(st.completed, []);
+  assert.equal(st.lastOutcome.result, "rolled-back-terminal");
   fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
 });
 
@@ -773,6 +1236,113 @@ await okAsync("FAULT: rollback Auth succeeds but progression persistence fails -
   fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
 });
 
+await okAsync("REVERSE-ORDER ROLLBACK-CONTINUATION (emulator): forward 1..5, owner rollback -> suspended, then continuation restores 4->3->2->1 to terminal rolled_back; each exact prior restored + artifact deleted; terminal blocks further", async () => {
+  const g = buildGrantedRepo(PROJECT);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-cont-e2e-"));
+  const keyFile = path.join(dir, "k"); const key = crypto.randomBytes(48); fs.writeFileSync(keyFile, key, { mode: 0o600 });
+  const stateFile = path.join(dir, "state.json"); const mappingFile = path.join(dir, "map.json");
+  const idHash = gate.workflowIdentityHash(gate.governedHashesAtCommit(g.root, g.authorizedCommit));
+  const expected = { authorizationId: "AUTHPR4-PROD-TEST", projectId: PROJECT, workflowIdentityHash: idHash, personaOrder: ORDER };
+  writeGenesis(stateFile, key, { authorizationId: "AUTHPR4-PROD-TEST", projectId: PROJECT, idHash });
+  const seeded = {}; for (const id of ORDER) seeded[id] = await seed(mappingFile, id);
+  const captured = {};
+  // Forward 1..5 (break-glass bound to the live progression hash at position 5).
+  for (let i = 0; i < ORDER.length; i += 1) {
+    const id = ORDER[i];
+    let bgFile;
+    if (i === 4) {
+      const st = gate.readState(stateFile, key, expected);
+      bgFile = path.join(dir, "bg.json");
+      const bg = { version: 1, authorizationId: "AUTHPR4-PROD-TEST", progressionHash: gate.progressionHash(st), position: 5, confirmer: g.requiredConfirmer, createdAt: new Date().toISOString(), validityWindowSeconds: g.windowSeconds, sanitizedResult: { recoverable: true, loginVerified: true } };
+      fs.writeFileSync(bgFile, JSON.stringify({ ...bg, signature: gate.signBreakGlass(bg, key) }), { mode: 0o600 });
+    }
+    const r = await runProductionForward({ g, key, keyFile, stateFile, mappingFile, employeeId: id, bgFile });
+    captured[id] = r.capturedOut;
+  }
+  assert.deepEqual(gate.readState(stateFile, key, expected).completed, ORDER);
+
+  // Single post-forward rollback of the owner (position 5) -> suspended (positions 1-4 remain).
+  await runProductionRollback({ g, key, keyFile, stateFile, mappingFile, capturedOut: captured["emp-rudy-owner"], employeeId: "emp-rudy-owner", continuation: false });
+  let st = gate.readState(stateFile, key, expected);
+  assert.equal(st.status, "suspended");
+  assert.deepEqual(st.completed, ORDER.slice(0, 4));
+  assert.equal((await auth.getUser(seeded["emp-rudy-owner"].uid)).email, seeded["emp-rudy-owner"].prior, "owner restored to exact prior");
+  assert.ok(!fs.existsSync(captured["emp-rudy-owner"]), "owner rollback artifact deleted after confirmed rollback");
+
+  // Reverse-order continuation: 4 -> 3 -> 2 -> 1.
+  const revOrder = ["emp-rudy-parts-manager", "emp-rudy-warehouse-manager", "emp-rudy-parts-associate", "emp-rudy-driver"];
+  for (let k = 0; k < revOrder.length; k += 1) {
+    const id = revOrder[k];
+    await runProductionRollback({ g, key, keyFile, stateFile, mappingFile, capturedOut: captured[id], employeeId: id, continuation: true });
+    const u = await auth.getUser(seeded[id].uid);
+    assert.equal(u.email, seeded[id].prior, `${id} restored to exact prior address`);
+    assert.equal(u.emailVerified, true, `${id} prior emailVerified restored`);
+    assert.ok(!fs.existsSync(captured[id]), `${id} rollback artifact deleted after confirmed rollback + durable progression`);
+    const mid = gate.readState(stateFile, key, expected);
+    if (k < revOrder.length - 1) {
+      assert.equal(mid.status, "suspended", `${id}: still suspended while identities remain`);
+      assert.deepEqual(mid.completed, ORDER.slice(0, 3 - k));
+    }
+  }
+  // Terminal reached: rolled_back, completed=[].
+  st = gate.readState(stateFile, key, expected);
+  assert.equal(st.status, "rolled_back");
+  assert.deepEqual(st.completed, []);
+  assert.equal(st.lastOutcome.result, "rolled-back-terminal");
+  // Terminal blocks any further continuation (fails closed before touching Auth).
+  await assert.rejects(
+    () => runProductionRollback({ g, key, keyFile, stateFile, mappingFile, capturedOut: path.join(dir, "nope.json"), employeeId: "emp-rudy-driver", continuation: true }),
+    /ROLLED_BACK \(terminal\)/,
+  );
+  fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
+});
+
+await okAsync("IDENTITY-TRANSITION + CONTINUATION regression (emulator): a PRE-change suspended state (OLD identity) cannot resume until the governed transition re-binds it, then rolls back 4->3->2->1 to terminal", async () => {
+  const g = buildTransitionRepo(PROJECT);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-idt-e2e-"));
+  const keyFile = path.join(dir, "k"); const key = crypto.randomBytes(48); fs.writeFileSync(keyFile, key, { mode: 0o600 });
+  const stateFile = path.join(dir, "state.json"); const mappingFile = path.join(dir, "map.json");
+  // Positions 1-4 remain migrated (the owner was already rolled back in the real scenario).
+  const remaining = ORDER.slice(0, 4);
+  const seeded = {}; const captured = {};
+  for (const id of remaining) { const s = await seedMigrated(mappingFile, id, key, dir); seeded[id] = s; captured[id] = s.capturedOut; }
+  // A signed SUSPENDED state under the OLD workflow identity (completed 1-4, revision 12).
+  writeSuspended(stateFile, key, { authorizationId: "AUTHPR4-PROD-TEST", projectId: PROJECT, idHash: g.oldIdHash, completed: remaining, revision: 12 });
+  const expectedNew = { authorizationId: "AUTHPR4-PROD-TEST", projectId: PROJECT, workflowIdentityHash: g.newIdHash, personaOrder: ORDER };
+
+  // Codex P1: after a rebind to the new identity, a continuation on the pre-change state fails
+  // closed ("bound to a different (stale) workflow identity") -- proven here directly.
+  throws(() => gate.readState(stateFile, key, expectedNew), /different \(stale\) workflow identity/);
+  await assert.rejects(
+    () => runProductionRollback({ g, key, keyFile, stateFile, mappingFile, capturedOut: captured["emp-rudy-parts-manager"], employeeId: "emp-rudy-parts-manager", continuation: true }),
+    /different \(stale\) workflow identity/,
+  );
+
+  // The governed, credential-free identity transition re-binds the EXISTING state old -> new.
+  const tr = initProg.identityTransition(
+    { projectId: PROJECT, confirmProduction: PROJECT, authorizedCommit: g.authorizedCommit, oldAuthorizedCommit: g.oldAuthorizedCommit, executionModeConfirmation: g.executionModeToken, executor: g.executor, stateKeyFile: keyFile, progressionOut: stateFile, confirmIdentityTransition: "transition-workflow-identity" },
+    { repoRoot: g.root, personaOrder: ORDER });
+  assert.equal(tr.status, "suspended");
+  assert.equal(tr.completedCount, 4);
+  const st0 = gate.readState(stateFile, key, expectedNew);
+  assert.equal(st0.workflowIdentityHash, g.newIdHash);
+  assert.deepEqual(st0.completed, remaining);
+
+  // Reverse-order continuation now proceeds under the NEW identity: 4 -> 3 -> 2 -> 1.
+  const revOrder = ["emp-rudy-parts-manager", "emp-rudy-warehouse-manager", "emp-rudy-parts-associate", "emp-rudy-driver"];
+  for (const id of revOrder) {
+    await runProductionRollback({ g, key, keyFile, stateFile, mappingFile, capturedOut: captured[id], employeeId: id, continuation: true });
+    const u = await auth.getUser(seeded[id].uid);
+    assert.equal(u.email, seeded[id].prior, `${id} restored to exact prior`);
+    assert.equal(u.emailVerified, true, `${id} prior emailVerified restored`);
+    assert.ok(!fs.existsSync(captured[id]), `${id} artifact deleted after confirmed rollback + durable progression`);
+  }
+  const fin = gate.readState(stateFile, key, expectedNew);
+  assert.equal(fin.status, "rolled_back");
+  assert.deepEqual(fin.completed, []);
+  fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
+});
+
 // ---------------------------------------------------------------------------
 // 7. CLI -- plain + gated production refusal against the REAL repo (PENDING)
 // ---------------------------------------------------------------------------
@@ -787,17 +1357,17 @@ await okAsync("plain --execute / --rollback vs taylor-parts still refuse (never 
   }
 });
 
-// Gated production refusal against taylor-parts at the exact PR HEAD. With the three-file
-// re-authorization committed, the authorization now VERIFIES (governed-hash boundary passes),
-// so a --executeProduction run against taylor-parts fails closed at the NEXT governed boundary
-// -- there is no genesis progression state on disk -- and it does so BEFORE any Firebase SDK
-// init, so no production Auth call is ever made. (This proves the authorization no longer fails
-// at the schema-mismatch boundary AND that a bare production execute still fails closed and
-// mutates nothing without a genuine, out-of-band genesis + private inputs.)
+// Gated production refusal against taylor-parts at the exact PR HEAD. This PR changes two
+// governed files (the rollback-continuation), so the committed authorization binding (pinned
+// to the pre-continuation hashes) no longer matches the running code at HEAD: a
+// --executeProduction run fails closed at the GOVERNED-HASH boundary (running code differs
+// from the committed reviewed authorization), BEFORE any Firebase SDK init, so no production
+// Auth call is ever made. Re-binding the artifact to the new hashes is a separate Owner
+// re-authorization; until then production stays fail-closed (the intended behavior).
 const GRANTED = JSON.parse(fs.readFileSync(path.join(REAL_ROOT, gate.AUTH_ARTIFACT_PATH), "utf8"));
 const HEAD = gate.deriveRepositoryIdentity(REAL_ROOT).head;
 
-await okAsync("gated --executeProduction vs taylor-parts fails closed at the governed genesis boundary (no progression state), before any SDK init", async () => {
+await okAsync("gated --executeProduction vs taylor-parts fails closed at the governed-hash boundary (governed files changed by this PR), before any SDK init", async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-prodrefuse-"));
   const keyFile = path.join(dir, "k"); fs.writeFileSync(keyFile, crypto.randomBytes(48));
   const r = spawnSync(process.execPath, [SCRIPT, "--projectId", "taylor-parts", "--confirmProduction", "taylor-parts", "--executeProduction",
@@ -806,10 +1376,9 @@ await okAsync("gated --executeProduction vs taylor-parts fails closed at the gov
     "--executionModeConfirmation", GRANTED.executionModeToken, "--executor", GRANTED.executor.name],
     { cwd: path.resolve("."), env: process.env, encoding: "utf8" });
   assert.notEqual(r.status, 0, "must refuse");
-  // The re-bound artifact verifies, so it is NOT a schema-mismatch failure any more; it fails
-  // closed at the missing-genesis-progression boundary, before SDK init / any Auth mutation.
-  assert.doesNotMatch(r.stderr, /governedFileHashes: schema mismatch/);
-  assert.match(r.stderr, /Progression state missing\/malformed/);
+  // Governed files changed vs the committed binding -> fails closed at the governed-hash
+  // boundary (running code differs from the reviewed authorization), before SDK init / Auth.
+  assert.match(r.stderr, /hash mismatch|running code differs/);
   assert.doesNotMatch(r.stderr, /FORWARD executed|updateUser/);
   fs.rmSync(dir, { recursive: true, force: true });
 });

@@ -93,6 +93,36 @@ Migration order (readiness §4): `emp-rudy-driver` (1) → `emp-rudy-parts-assoc
 (2) → `emp-rudy-warehouse-manager` (3) → `emp-rudy-parts-manager` (4) →
 `emp-rudy-owner` (5, primary admin, last).
 
+### Reverse-order rollback-continuation (unwind)
+
+A single `--rollback` restores the most-recently-completed persona and drives the progression
+to **`suspended`**, which blocks every further step by design. To unwind the remaining migrated
+identities, a governed **reverse-order rollback-continuation** resumes from `suspended` under the
+explicit `--rollback --rollbackContinuation` opt-in — one identity per invocation, always the
+current last-completed persona (reverse order), through to the **terminal `rolled_back`** state
+(`completed === []`). It reuses the same claim/lease/anchor/two-phase machinery; a matching
+signed rollback artifact is required per identity; the exact prior address + `emailVerified` are
+restored; the artifact is deleted only after a confirmed mutation **and** durable progression;
+uncertain outcomes retain the artifact and fail closed. See
+[`auth-pr-4-rollback-continuation-design.md`](../deployment/auth-pr-4-rollback-continuation-design.md).
+
+**Governance / enablement (three separately-authorized steps).** Changing governed files invalidates
+the committed authorization binding **and** moves the workflow identity the existing signed
+progression is bound to. Re-binding `production-authorization.json` **alone is not sufficient**: the
+existing suspended state fails closed with *"bound to a different (stale) workflow identity"* until a
+one-time governed **workflow-identity transition** (`authPr4InitProgression.js --mode
+identity-transition`, credential-free, no SDK/network) re-signs it to the new identity. The
+transition is **journaled and crash-safe**: it publishes a signed `.idtxn` intent before touching
+state/anchor and removes it only after both verify under the new identity; an interrupted transition
+is completed deterministically by `--mode identity-transition-recover` (rolls forward from the intent;
+blocks on any substituted/foreign artifact). The transition and the generation-ledger advancement
+(`reconcile-recover`) are **mutually exclusive** via a single owner-bound `.fencelock` both acquire
+atomically and hold across their critical sections; a crash-left fence lock is cleared only by the
+governed `--mode fence-inspect` + `--mode fence-recover` (owner-stopped attestation + fingerprint).
+Full unwind =
+**re-authorization → identity transition → continuation**, each separately authorized. This PR is
+repo + emulator only and performs/authorizes none of them.
+
 ## Running the tests
 
 Pure-helper layer (no emulator — guards, plans, sanitization):

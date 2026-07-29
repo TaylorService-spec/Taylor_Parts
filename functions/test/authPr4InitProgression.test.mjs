@@ -106,6 +106,22 @@ const OWNER_STOPPED = "prior-cleanup-stopped";
 const RDEPS = (g) => ({ repoRoot: g.root, personaOrder: ORDER });
 const CONFIRM = init.RECONCILE_CONFIRM;
 
+// Advance the fencing generation the PRODUCTION way: hold the shared fence lock (generation-advance)
+// and thread its owner token into the now lock-owned claimGeneration primitive. `key` is the raw
+// protected state-key bytes (the fence lock is signed/verified with it).
+function genAdvance(prog, key, owner = "o") {
+  const next = init.currentGeneration(prog) + 1;
+  const l = init.acquireFenceLock(prog, "generation-advance", key, {});
+  try { init.claimGeneration(prog, next, owner, { stateKey: key, fenceToken: l.token }); }
+  finally { init.releaseFenceLock(prog, l.token, {}); }
+}
+// Simulate an OUT-OF-BAND / adversarial generation-head advance (a directly written, chain-valid
+// gen.N claim) -- the governed genAdvance is REFUSED while a fence lock is held, so tests that model
+// a concurrent advance vs a held lock use this to move the ledger head behind the fence lock's back.
+function writeGenClaimDirect(prog, n, prevDigest = gate.GEN_CHAIN_ROOT, owner = "out-of-band") {
+  fs.writeFileSync(gate.genClaimPath(prog, n), JSON.stringify({ version: gate.GEN_LEDGER_VERSION, generation: n, previousDigest: prevDigest, owner, at: new Date().toISOString() }));
+}
+
 ok("GOVERNED_FILES now includes the initializer (bound)", () => {
   assert.ok(gate.GOVERNED_FILES.includes("functions/scripts/authPr4InitProgression.js"));
   assert.equal(gate.GOVERNED_FILES.length, 3);
@@ -661,7 +677,7 @@ function runFencedCleanup(g, s, { residue, hookRole, atFinalize } = {}) {
   // Build residue, run inspect, then run a cleanup whose test seam advances the fence
   // mid-flight (simulating a concurrent recovery). The cleanup must abort (fenced).
   const rep = init.reconcileInspect(s.rargs(), RDEPS(g));
-  const advanceFence = () => init.claimGeneration(s.progOut, init.currentGeneration(s.progOut) + 1, "recover-test");
+  const advanceFence = () => genAdvance(s.progOut, s.key, "recover-test");
   const deps = { ...RDEPS(g) };
   if (hookRole) deps.beforeTargetRecheck = (role) => { if (role === hookRole) advanceFence(); };
   if (atFinalize) deps.beforeFinalize = advanceFence;
@@ -719,12 +735,13 @@ ok("INTERLEAVE: delayed Recovery A (bound to gen 0) cannot advance or touch a re
   // NEW cleanup publishes a different mutex M1 (recorded at generation 1).
   const m1token = crypto.randomBytes(16).toString("hex");
   const deps = { ...RDEPS(g), beforeGenerationClaim: () => {
-    init.claimGeneration(s.progOut, 1, "recover-B");        // B wins the CAS to generation 1
+    writeGenClaimDirect(s.progOut, 1, gate.GEN_CHAIN_ROOT, "recover-B"); // out-of-band advance to gen 1 (a real recovery could not -- A holds the fence lock)
     fs.unlinkSync(gate.reconcilePath(s.progOut));           // B clears M0
     writeReconcileMutex(s.progOut, { tok: m1token, generation: 1 }); // new cleanup publishes M1
   } };
-  // A resumes: its CAS to generation 1 already exists -> A did NOT obtain authority.
-  throws(() => init.reconcileRecover(s.rargs({ fingerprint: rep.fingerprint, confirmReconciliation: init.RECOVER_CONFIRM, confirmOwnerStopped: OWNER_STOPPED }), deps), /already advanced by another recovery/);
+  // A resumes: the ledger head advanced since A acquired its fence lock -> A's lock-owned claim is
+  // stale and A did NOT obtain authority.
+  throws(() => init.reconcileRecover(s.rargs({ fingerprint: rep.fingerprint, confirmReconciliation: init.RECOVER_CONFIRM, confirmOwnerStopped: OWNER_STOPPED }), deps), /stale|ledger head|already advanced/);
   // M1 is untouched and the generation is exactly 1 (A did not leapfrog to 2).
   assert.equal(init.currentGeneration(s.progOut), 1, "A did not advance the generation");
   assert.equal(JSON.parse(fs.readFileSync(gate.reconcilePath(s.progOut), "utf8")).token, m1token, "M1 untouched by A");
@@ -734,8 +751,8 @@ ok("INTERLEAVE: delayed Recovery A (bound to gen 0) cannot advance or touch a re
 ok("INTERLEAVE: two recoveries read the same generation -> exactly one wins the CAS advance", () => {
   const g = buildGrantedRepo(); const s = setup(g); writeMarker(s.progOut); writeReconcileMutex(s.progOut);
   const rep = init.reconcileInspect(s.rargs(), RDEPS(g));
-  const deps = { ...RDEPS(g), beforeGenerationClaim: () => init.claimGeneration(s.progOut, 1, "recover-other") };
-  throws(() => init.reconcileRecover(s.rargs({ fingerprint: rep.fingerprint, confirmReconciliation: init.RECOVER_CONFIRM, confirmOwnerStopped: OWNER_STOPPED }), deps), /already advanced by another recovery/);
+  const deps = { ...RDEPS(g), beforeGenerationClaim: () => writeGenClaimDirect(s.progOut, 1, gate.GEN_CHAIN_ROOT, "recover-other") };
+  throws(() => init.reconcileRecover(s.rargs({ fingerprint: rep.fingerprint, confirmReconciliation: init.RECOVER_CONFIRM, confirmOwnerStopped: OWNER_STOPPED }), deps), /stale|ledger head|already advanced/);
   assert.ok(fs.existsSync(gate.reconcilePath(s.progOut)), "loser removed no mutex");
   fs.rmSync(s.dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
 });
@@ -794,7 +811,7 @@ ok("BOUNDARY (documented guarantee): supersession AFTER the ownership check with
   // finalization, detects the advanced generation, and FAILS CLOSED (mutex retained). In
   // production the Owner-stopped attestation is what excludes a live owner from reaching here.
   const g = buildGrantedRepo(); const s = setup(g); writeMarker(s.progOut);
-  const deps = { ...RDEPS(g), afterOwnerCheck: (role) => { if (role === "marker") init.claimGeneration(s.progOut, init.currentGeneration(s.progOut) + 1, "recover-race"); } };
+  const deps = { ...RDEPS(g), afterOwnerCheck: (role) => { if (role === "marker") genAdvance(s.progOut, s.key, "recover-race"); } };
   const rep = init.reconcileInspect(s.rargs(), RDEPS(g));
   throws(() => init.reconcileCleanup(s.rargs({ fingerprint: rep.fingerprint, action: "clean-reset", confirmReconciliation: CONFIRM }), deps), /fenced by a newer reconciliation generation/);
   assert.ok(!fs.existsSync(gate.initMarkerPath(s.progOut)), "the exact inspected marker was removed in the residual window");
@@ -889,10 +906,10 @@ function claimObj(n, previousDigest, over = {}) {
 function writeClaim(prog, n, obj) { fs.writeFileSync(gate.genClaimPath(prog, n), typeof obj === "string" ? obj : JSON.stringify(obj)); }
 
 ok("LEDGER: a valid contiguous hash-chained ledger is accepted; currentGeneration = highest (initializer + gate agree)", () => {
-  const dir = tmp(); const prog = path.join(dir, "progression.json");
-  init.claimGeneration(prog, 1, "recover-a");
-  init.claimGeneration(prog, 2, "recover-b");
-  init.claimGeneration(prog, 3, "recover-c");
+  const dir = tmp(); const prog = path.join(dir, "progression.json"); const key = crypto.randomBytes(48);
+  genAdvance(prog, key, "recover-a");
+  genAdvance(prog, key, "recover-b");
+  genAdvance(prog, key, "recover-c");
   assert.equal(gate.readGenerationLedger(prog), 3);
   assert.equal(init.currentGeneration(prog), 3);
   fs.rmSync(dir, { recursive: true, force: true });
@@ -929,36 +946,38 @@ ok("LEDGER: gaps / missing-middle / foreign-high-number / chain-break / middle-r
   // gen.2 without gen.1
   { const dir = tmp(); const prog = path.join(dir, "p.json"); writeClaim(prog, 2, claimObj(2, gate.GEN_CHAIN_ROOT)); throws(() => gate.readGenerationLedger(prog), /contiguous \(missing generation 1\)/); fs.rmSync(dir, { recursive: true, force: true }); }
   // missing middle: gen.1 + gen.3 (no gen.2)
-  { const dir = tmp(); const prog = path.join(dir, "p.json"); init.claimGeneration(prog, 1, "o"); writeClaim(prog, 3, claimObj(3, gate.GEN_CHAIN_ROOT)); throws(() => gate.readGenerationLedger(prog), /contiguous \(missing generation 2\)/); fs.rmSync(dir, { recursive: true, force: true }); }
+  { const dir = tmp(); const prog = path.join(dir, "p.json"); const key = crypto.randomBytes(48); genAdvance(prog, key, "o"); writeClaim(prog, 3, claimObj(3, gate.GEN_CHAIN_ROOT)); throws(() => gate.readGenerationLedger(prog), /contiguous \(missing generation 2\)/); fs.rmSync(dir, { recursive: true, force: true }); }
   // foreign high-number claim jumps the ledger (valid 1..2, foreign gen.9)
-  { const dir = tmp(); const prog = path.join(dir, "p.json"); init.claimGeneration(prog, 1, "o"); init.claimGeneration(prog, 2, "o"); writeClaim(prog, 9, claimObj(9, gate.GEN_CHAIN_ROOT)); throws(() => gate.readGenerationLedger(prog), /contiguous \(missing generation 3\)/); fs.rmSync(dir, { recursive: true, force: true }); }
+  { const dir = tmp(); const prog = path.join(dir, "p.json"); const key = crypto.randomBytes(48); genAdvance(prog, key, "o"); genAdvance(prog, key, "o"); writeClaim(prog, 9, claimObj(9, gate.GEN_CHAIN_ROOT)); throws(() => gate.readGenerationLedger(prog), /contiguous \(missing generation 3\)/); fs.rmSync(dir, { recursive: true, force: true }); }
   // chain break: gen.2.previousDigest does not match gen.1's content digest
-  { const dir = tmp(); const prog = path.join(dir, "p.json"); init.claimGeneration(prog, 1, "o"); writeClaim(prog, 2, claimObj(2, gate.GEN_CHAIN_ROOT)); throws(() => gate.readGenerationLedger(prog), /claim 2 breaks the hash chain/); fs.rmSync(dir, { recursive: true, force: true }); }
+  { const dir = tmp(); const prog = path.join(dir, "p.json"); const key = crypto.randomBytes(48); genAdvance(prog, key, "o"); writeClaim(prog, 2, claimObj(2, gate.GEN_CHAIN_ROOT)); throws(() => gate.readGenerationLedger(prog), /claim 2 breaks the hash chain/); fs.rmSync(dir, { recursive: true, force: true }); }
   // recreation of a consumed MIDDLE generation with different content breaks the successor's chain
-  { const dir = tmp(); const prog = path.join(dir, "p.json"); init.claimGeneration(prog, 1, "o"); init.claimGeneration(prog, 2, "o");
+  { const dir = tmp(); const prog = path.join(dir, "p.json"); const key = crypto.randomBytes(48); genAdvance(prog, key, "o"); genAdvance(prog, key, "o");
     fs.unlinkSync(gate.genClaimPath(prog, 1)); writeClaim(prog, 1, claimObj(1, gate.GEN_CHAIN_ROOT, { owner: "different" })); // recreate gen.1 with different content
     throws(() => gate.readGenerationLedger(prog), /claim 2 breaks the hash chain/); fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
 ok("LEDGER: staging temp files are OUTSIDE the ledger namespace and never poison the scan (in-progress / crash-left publication)", () => {
-  const dir = tmp(); const prog = path.join(dir, "progression.json");
-  init.claimGeneration(prog, 1, "o");
+  const dir = tmp(); const prog = path.join(dir, "progression.json"); const key = crypto.randomBytes(48);
+  genAdvance(prog, key, "o");
   fs.writeFileSync(`${prog}.genstage-abc123`, "partial in-progress bytes");       // crash-left staging temp (outside `.gen.` namespace)
   assert.ok(!`${path.basename(prog)}.genstage-abc123`.startsWith(`${path.basename(prog)}.gen.`), "staging name is outside the ledger namespace");
   assert.equal(gate.readGenerationLedger(prog), 1, "staging temp ignored; ledger still valid");
   // A subsequent real claim still publishes and validates.
-  init.claimGeneration(prog, 2, "o");
+  genAdvance(prog, key, "o");
   assert.equal(gate.readGenerationLedger(prog), 2);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
 ok("LEDGER: crash after staging but before link leaves an inert temp; the generation is unclaimed and re-claimable", () => {
-  const dir = tmp(); const prog = path.join(dir, "progression.json");
+  const dir = tmp(); const prog = path.join(dir, "progression.json"); const key = crypto.randomBytes(48);
+  const l = init.acquireFenceLock(prog, "generation-advance", key, {}); // held (normal fs) so the gen-claim link is what crashes
   // fs whose linkSync throws (simulate crash between stage-write and link) for the gen.1 target.
   const dfs = { ...fs, linkSync: (a, b, ...r) => { if (typeof b === "string" && b === gate.genClaimPath(prog, 1)) throw new Error("injected link crash"); return fs.linkSync(a, b, ...r); } };
-  throws(() => init.claimGeneration(prog, 1, "o", { fs: dfs }), /Failed to publish a generation claim|injected link crash/);
+  throws(() => init.claimGeneration(prog, 1, "o", { fs: dfs, stateKey: key, fenceToken: l.token }), /Failed to publish a generation claim|injected link crash/);
+  init.releaseFenceLock(prog, l.token, {});
   assert.equal(gate.readGenerationLedger(prog), 0, "generation 1 was never claimed");
-  init.claimGeneration(prog, 1, "o"); // re-claimable
+  genAdvance(prog, key, "o"); // re-claimable
   assert.equal(gate.readGenerationLedger(prog), 1);
   fs.rmSync(dir, { recursive: true, force: true });
 });
@@ -996,7 +1015,7 @@ ok("LEDGER: a directory-read failure blocks assertProductionAuthorization BEFORE
 
 ok("LEDGER REGRESSION: an in-flight cleanup whose recorded generation exceeds the current ledger fails closed", () => {
   const g = buildGrantedRepo(); const s = setup(g);
-  init.claimGeneration(s.progOut, 1, "o"); // ledger at generation 1
+  genAdvance(s.progOut, s.key, "o"); // ledger at generation 1
   writeMarker(s.progOut);
   const rep = init.reconcileInspect(s.rargs(), RDEPS(g));
   // The cleanup starts at myGen=1; a regression (top claim deleted) drops the ledger to 0.
@@ -1004,6 +1023,45 @@ ok("LEDGER REGRESSION: an in-flight cleanup whose recorded generation exceeds th
   throws(() => init.reconcileCleanup(s.rargs({ fingerprint: rep.fingerprint, action: "clean-reset", confirmReconciliation: CONFIRM }), deps), /fenced by a newer reconciliation generation/);
   assert.ok(fs.existsSync(gate.initMarkerPath(s.progOut)), "nothing deleted under a ledger regression");
   fs.rmSync(s.dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
+});
+
+ok("LOCK-OWNED claimGeneration: refuses without a held fence lock, and for a wrong-holder / wrong-token / malformed / stale-generation lock", () => {
+  const dir = tmp(); const prog = path.join(dir, "progression.json"); const key = crypto.randomBytes(48);
+  // No fence lock present at all -> readFenceLock fails closed.
+  throws(() => init.claimGeneration(prog, 1, "o", { stateKey: key, fenceToken: "ab".repeat(16) }), /Fence lock missing|malformed/i);
+  const l = init.acquireFenceLock(prog, "generation-advance", key, {});
+  // Missing token / missing state key -> refuse (lock-owned).
+  throws(() => init.claimGeneration(prog, 1, "o", { stateKey: key }), /fence-lock token|lock-owned/i);
+  throws(() => init.claimGeneration(prog, 1, "o", { fenceToken: l.token }), /stateKey|lock-owned/i);
+  // Wrong token -> refuse.
+  throws(() => init.claimGeneration(prog, 1, "o", { stateKey: key, fenceToken: "cd".repeat(16) }), /different token/);
+  init.releaseFenceLock(prog, l.token, {});
+  // Wrong HOLDER (an identity-transition lock cannot authorize a generation claim) -> refuse.
+  const lt = init.acquireFenceLock(prog, "identity-transition", key, {});
+  throws(() => init.claimGeneration(prog, 1, "o", { stateKey: key, fenceToken: lt.token }), /not a generation-advance lock|holder/);
+  init.releaseFenceLock(prog, lt.token, {});
+  // Malformed / foreign lock -> fail closed at signature/schema.
+  fs.writeFileSync(gate.fenceLockPath(prog), '{"not":"a-lock"}');
+  throws(() => init.claimGeneration(prog, 1, "o", { stateKey: key, fenceToken: "ab".repeat(16) }), /malformed|schema|integrity/i);
+  fs.unlinkSync(gate.fenceLockPath(prog));
+  // STALE captured generation/head: acquire at gen 0, advance the ledger head out-of-band, then the
+  // held lock's captured generation no longer equals the current validated head -> refuse.
+  const l0 = init.acquireFenceLock(prog, "generation-advance", key, {}); // records gen 0
+  writeGenClaimDirect(prog, 1, gate.GEN_CHAIN_ROOT, "out-of-band");
+  throws(() => init.claimGeneration(prog, 2, "o", { stateKey: key, fenceToken: l0.token }), /stale|captured generation|ledger head/);
+  init.releaseFenceLock(prog, l0.token, {});
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+ok("CALL-GRAPH GUARD: the only production claimGeneration call site threads a fence-lock token (no lock-free generation publication)", () => {
+  const src = fs.readFileSync(SCRIPT, "utf8");
+  assert.equal((src.match(/function claimGeneration\(/g) || []).length, 1, "single definition");
+  // Count invocations WITH arguments (`claimGeneration(<arg>`), which excludes prose mentions
+  // written as `claimGeneration()`; subtract the one definition to get real call sites.
+  const total = (src.match(/claimGeneration\([^)]/g) || []).length;
+  const defs = (src.match(/function claimGeneration\(/g) || []).length;
+  assert.equal(total - defs, 1, "exactly one production call site (reconcile-recover)");
+  assert.match(src, /claimGeneration\(args\.progressionOut, fromGen \+ 1,[\s\S]{0,180}fenceToken: fence\.token/, "the call site threads the held fence-lock token");
 });
 
 ok("CREDENTIAL-FREE: the initializer performs no Firebase initialization", () => {
