@@ -1,0 +1,75 @@
+name: Equipment Compatibility UI Tests
+
+# D6 (Part Detail "Used In Equipment" section) enforcement for field-ops-app-vite. Runs the frontend
+# unit-test chain (incl. the new pure view-model + capability-seam + no-fallback/no-leak tests), the
+# lint, the typecheck, and the build — path-gated to the D6 files and their host. Pure/offline: no
+# emulator, no Firebase, no deployment, no production access, no repository secrets. The compatibility
+# section is capability-gated + INERT (equipment.compatibility.view is active:false), so nothing here
+# activates, grants, exports, or deploys anything.
+
+on:
+  pull_request:
+    paths:
+      - "field-ops-app-vite/src/domain/equipmentCompatibilitySection.js"
+      - "field-ops-app-vite/src/services/equipmentCompatibilitySource.js"
+      - "field-ops-app-vite/src/modules/inventory/UsedInEquipmentSection.jsx"
+      - "field-ops-app-vite/src/modules/inventory/PartDetail.jsx"
+      - "field-ops-app-vite/src/App.jsx"
+      - "field-ops-app-vite/src/index.css"
+      - "field-ops-app-vite/test/equipmentCompatibilitySection.test.mjs"
+      - "field-ops-app-vite/test/usedInEquipmentSection.test.jsx"
+      - "field-ops-app-vite/vitest.config.js"
+      - "field-ops-app-vite/package.json"
+      - "field-ops-app-vite/package-lock.json"
+      - ".github/workflows/equipment-compatibility-ui-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "field-ops-app-vite/src/domain/equipmentCompatibilitySection.js"
+      - "field-ops-app-vite/src/services/equipmentCompatibilitySource.js"
+      - "field-ops-app-vite/src/modules/inventory/UsedInEquipmentSection.jsx"
+      - "field-ops-app-vite/src/modules/inventory/PartDetail.jsx"
+      - "field-ops-app-vite/src/App.jsx"
+      - "field-ops-app-vite/src/index.css"
+      - "field-ops-app-vite/test/equipmentCompatibilitySection.test.mjs"
+      - "field-ops-app-vite/test/usedInEquipmentSection.test.jsx"
+      - "field-ops-app-vite/vitest.config.js"
+      - "field-ops-app-vite/package.json"
+      - "field-ops-app-vite/package-lock.json"
+      - ".github/workflows/equipment-compatibility-ui-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  equipment-compatibility-ui:
+    name: Equipment compatibility UI (unit + lint + typecheck + build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: field-ops-app-vite/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+        working-directory: field-ops-app-vite
+      - name: Unit tests (offline view-model chain)
+        run: npm test
+        working-directory: field-ops-app-vite
+      - name: Component render / lifecycle / a11y gate (vitest + jsdom)
+        run: npm run test:components
+        working-directory: field-ops-app-vite
+      - name: Lint
+        run: npm run lint
+        working-directory: field-ops-app-vite
+      - name: Typecheck
+        run: npm run typecheck
+        working-directory: field-ops-app-vite
+      - name: Build
+        run: npm run build
+        working-directory: field-ops-app-vite

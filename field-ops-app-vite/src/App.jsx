@@ -326,7 +326,7 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
               subnav item today, so isDomainVisible is already false for
               that role -- this route simply doesn't exist for them). */}
           {domain.key === "inventory" && isDomainVisible(domain, role, allowedLegacyKeys, operationalContext) && (
-            <Route path=":partId" element={<PartDetail />} />
+            <Route path=":partId" element={<PartDetail hasCapability={operationalContext?.hasCapability} accessVersion={operationalContext?.accessVersion} />} />
           )}
           {/* Platform Task 3 -- Service Operations fails CLOSED for a role without
               access. For admin/dispatcher the visible index item above renders
