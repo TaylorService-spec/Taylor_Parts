@@ -6,8 +6,8 @@
 > (`--executeProduction`, the [`authPr4ProductionGate`](../../functions/scripts/authPr4ProductionGate.js))
 > is **conditional and fails closed**. The recorded Owner authorization now **exists and is
 > GRANTED**: [`functions/authpr4/production-authorization.json`](../../functions/authpr4/production-authorization.json)
-> is `GRANTED` and its **three-file governed binding verifies** (DECISIONS #52 + #53, `reviewedHead
-> dba0e33`; security suites CI-enforced). **Even so, nothing runs:** no genesis/progression state,
+> is `GRANTED` and its **three-file governed binding verifies** (DECISIONS #52 + #53 + #54, `reviewedHead
+> bc0fda57` — the PR #467 merge; security suites CI-enforced). **Even so, nothing runs:** no genesis/progression state,
 > protected state key, or private operational inputs (alias mapping) exist, so a production
 > `--executeProduction` run still **fails closed** at the progression/genesis boundary before any SDK
 > init. Execution remains blocked until the **separate, not-yet-granted Gate A** (protected genesis
@@ -26,7 +26,7 @@ any SDK init, the gate independently verifies, and **fails closed** on any of:
   git-tracked [`functions/authpr4/production-authorization.json`](../../functions/authpr4/production-authorization.json),
   read **from git at `--authorizedCommit`** (never an operator-authored path). Its
   status must be **`GRANTED`** (the committed artifact **is now `GRANTED`** and its
-  three-file governed binding verifies at `reviewedHead dba0e33`); strict schema (no unknown
+  three-file governed binding verifies at `reviewedHead bc0fda57`); strict schema (no unknown
   fields); project, exact ordered persona allowlist, reviewed head, and **blob-based**
   governed-file SHA-256 hashes must match; the operator's `--executionModeConfirmation` and
   `--executor` must equal the repository-recorded values ("nonempty" is not authorization). A
