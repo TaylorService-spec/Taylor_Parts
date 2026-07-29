@@ -93,6 +93,22 @@ Migration order (readiness §4): `emp-rudy-driver` (1) → `emp-rudy-parts-assoc
 (2) → `emp-rudy-warehouse-manager` (3) → `emp-rudy-parts-manager` (4) →
 `emp-rudy-owner` (5, primary admin, last).
 
+### Reverse-order rollback-continuation (unwind)
+
+A single `--rollback` restores the most-recently-completed persona and drives the progression
+to **`suspended`**, which blocks every further step by design. To unwind the remaining migrated
+identities, a governed **reverse-order rollback-continuation** resumes from `suspended` under the
+explicit `--rollback --rollbackContinuation` opt-in — one identity per invocation, always the
+current last-completed persona (reverse order), through to the **terminal `rolled_back`** state
+(`completed === []`). It reuses the same claim/lease/anchor/two-phase machinery; a matching
+signed rollback artifact is required per identity; the exact prior address + `emailVerified` are
+restored; the artifact is deleted only after a confirmed mutation **and** durable progression;
+uncertain outcomes retain the artifact and fail closed. See
+[`auth-pr-4-rollback-continuation-design.md`](../deployment/auth-pr-4-rollback-continuation-design.md).
+**Governance:** this changes governed files, so the committed authorization binding fails closed
+at the governed-hash boundary until a **separate Owner re-authorization** re-binds it (repo +
+emulator only; no production execution).
+
 ## Running the tests
 
 Pure-helper layer (no emulator — guards, plans, sanitization):

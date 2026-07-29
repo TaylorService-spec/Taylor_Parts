@@ -859,7 +859,7 @@ await okAsync("FAULT: completion-persistence failure leaves progression CLAIMED 
   fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
 });
 
-await okAsync("GRANTED rollback of the most recent persona SUSPENDS progression + restores exact prior; later blocked", async () => {
+await okAsync("GRANTED rollback of the ONLY completed persona reaches terminal rolled_back (completed empties) + restores exact prior; later blocked", async () => {
   const g = buildGrantedRepo(PROJECT);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-rb-"));
   const keyFile = path.join(dir, "k"); const key = crypto.randomBytes(48); fs.writeFileSync(keyFile, key, { mode: 0o600 });
@@ -879,8 +879,11 @@ await okAsync("GRANTED rollback of the most recent persona SUSPENDS progression 
   assert.equal(restored.email, drv.prior, "exact prior address restored");
   assert.equal(restored.emailVerified, true, "exact prior emailVerified restored");
   const st = gate.readState(stateFile, key, { authorizationId: "AUTHPR4-PROD-TEST", projectId: PROJECT, workflowIdentityHash: idHash, personaOrder: ORDER });
-  assert.equal(st.status, "suspended");
+  // Rolling back the only completed persona empties `completed`, so the sequence reaches the
+  // TERMINAL rolled_back state (not suspended); either way, later steps are blocked.
+  assert.equal(st.status, "rolled_back");
   assert.deepEqual(st.completed, []);
+  assert.equal(st.lastOutcome.result, "rolled-back-terminal");
   fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
 });
 

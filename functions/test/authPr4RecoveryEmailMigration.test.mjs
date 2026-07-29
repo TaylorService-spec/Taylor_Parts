@@ -86,6 +86,18 @@ ok("assertExecutionAuthorization allows dry-run against production and execute a
   assert.equal(wf.assertExecutionAuthorization({ execute: true, projectId: "demo-authpr4" }), "write");
 });
 
+ok("parseArgs recognizes --rollbackContinuation (governed reverse-order continuation opt-in) alongside --rollback", () => {
+  const a = wf.parseArgs(["--rollback", "--rollbackContinuation"]);
+  assert.equal(a.rollback, true);
+  assert.equal(a.rollbackContinuation, true);
+  // Not implied on its own; unset unless explicitly passed.
+  assert.equal(wf.parseArgs(["--rollback"]).rollbackContinuation, undefined);
+  // The continuation flag does not by itself relax the production-write block (still needs
+  // --executeProduction); a bare --rollback (+continuation) against production still refuses.
+  throws(() => wf.assertExecutionAuthorization({ rollback: true, rollbackContinuation: true, projectId: "taylor-parts" }),
+    /Refusing to write against the production project/);
+});
+
 ok("assertPersonaOrder rejects excluded personas (sales-manager, break-glass)", () => {
   throws(
     () => wf.assertPersonaOrder({ employeeId: "emp-rudy-sales-manager", position: 1 }),
