@@ -54,7 +54,11 @@ const BREAKGLASS_POSITION = 5;
 const MAX_STR = 512;
 const MAX_LEASE_SEC = 3600;
 const MAX_WINDOW_SEC = 3600;
-const STATES = Object.freeze(["eligible", "claimed", "completed", "uncertain", "recovery_required", "suspended"]);
+// "suspended"   -- a governed rollback outcome with completed personas remaining (the
+//                  reverse-order teardown is in progress; only a rollback-continuation resumes).
+// "rolled_back" -- TERMINAL: the governed reverse-order rollback-continuation has restored
+//                  every migrated identity (completed === []); no further step may proceed.
+const STATES = Object.freeze(["eligible", "claimed", "completed", "uncertain", "recovery_required", "suspended", "rolled_back"]);
 const GENESIS_HASH = crypto.createHash("sha256").update("authpr4-genesis").digest("hex");
 
 // ---------------------------------------------------------------------------
@@ -346,6 +350,16 @@ function validateStatePayload(p, expected) {
   }
   if (p.status === "suspended" && (p.lastOutcome === null || p.lastOutcome.mode !== "rollback")) {
     throw new Error("Invariant: suspended must represent a governed rollback outcome.");
+  }
+  // A suspended progression must still have at least one migrated identity to roll back;
+  // once completed empties via rollback the terminal is "rolled_back", never "suspended".
+  if (p.status === "suspended" && p.completed.length === 0) {
+    throw new Error("Invariant: suspended must have at least one remaining migrated identity (empty completed is terminal rolled_back).");
+  }
+  // rolled_back is TERMINAL: every migrated identity has been rolled back (completed === [])
+  // and it must represent a governed rollback outcome. Nothing may transition out of it.
+  if (p.status === "rolled_back" && (p.completed.length !== 0 || p.lastOutcome === null || p.lastOutcome.mode !== "rollback")) {
+    throw new Error("Invariant: rolled_back is terminal and must have completed=[] with a governed rollback outcome.");
   }
 }
 
@@ -810,7 +824,19 @@ function assertProductionAuthorization(args, deps = {}) {
   if (["uncertain", "recovery_required"].includes(state.status)) {
     throw new Error(`Progression is in a blocking state ("${state.status}") -- governed reconciliation required before any further production step.`);
   }
-  if (state.status === "suspended") throw new Error("Progression is SUSPENDED (post-rollback); later personas are blocked.");
+  if (state.status === "rolled_back") {
+    throw new Error("Progression is ROLLED_BACK (terminal): the governed reverse-order rollback-continuation is complete; no further production step may proceed.");
+  }
+  if (state.status === "suspended") {
+    // A single post-forward rollback SUSPENDS the sequence; forward steps stay blocked.
+    // A governed REVERSE-ORDER ROLLBACK-CONTINUATION may resume from a suspended state,
+    // but ONLY under the explicit --rollback --rollbackContinuation opt-in. It rolls back
+    // the current most-recently-completed persona (structurally reverse order), one per
+    // invocation, inheriting the same claim/lease/txn/anchor two-phase machinery.
+    if (!(args.rollback && args.rollbackContinuation)) {
+      throw new Error("Progression is SUSPENDED (post-rollback); forward steps are blocked. A governed reverse-order rollback-continuation requires --rollback --rollbackContinuation.");
+    }
+  }
   if (state.status === "claimed") {
     // A prior attempt is mid-flight. A LIVE lease => concurrent worker => refuse.
     // An EXPIRED lease => the prior worker likely crashed mid-attempt (Auth outcome
@@ -861,20 +887,23 @@ function assertProductionAuthorization(args, deps = {}) {
         contractWindowSeconds: authorization.breakGlassContract.validityWindowSeconds, now: now(),
       }, deps);
     }
-    return acquireAndClaim({ args, state, stateKey, authorization, idHash, mode, targetPersona: next.employeeId, position: next.position, leaseSeconds, deps });
+    return acquireAndClaim({ args, state, stateKey, authorization, idHash, mode, targetPersona: next.employeeId, position: next.position, leaseSeconds, fromStatus: "eligible", deps });
   }
 
-  // rollback of the most recently completed persona
+  // rollback of the most recently completed persona (structurally reverse order). This
+  // covers BOTH the single post-forward rollback (from an eligible predecessor) and each
+  // step of the reverse-order rollback-continuation (from a suspended predecessor). The
+  // starting status is passed as fromStatus so the claim commits from the exact predecessor.
   if (!args.capturedStateFile) throw new Error("--rollback requires --capturedStateFile.");
   const last = state.completed[state.completed.length - 1];
   if (!last) throw new Error("Nothing to roll back (no completed persona).");
   if (args.employeeId !== undefined && args.employeeId !== last) throw new Error("Production rollback may only target the most recently completed persona.");
-  return acquireAndClaim({ args, state, stateKey, authorization, idHash, mode, targetPersona: last, position: state.completed.length, leaseSeconds, deps });
+  return acquireAndClaim({ args, state, stateKey, authorization, idHash, mode, targetPersona: last, position: state.completed.length, leaseSeconds, fromStatus: state.status, deps });
 }
 
 // Acquire the exclusive claim and persist the CLAIMED (pending) state BEFORE the
 // Auth call (C3). On a stale takeover, record recovery_required and fail closed.
-function acquireAndClaim({ args, state, stateKey, authorization, idHash, mode, targetPersona, position, leaseSeconds, deps }) {
+function acquireAndClaim({ args, state, stateKey, authorization, idHash, mode, targetPersona, position, leaseSeconds, fromStatus = "eligible", deps }) {
   const attemptId = `att-${Date.now()}-${crypto.randomBytes(6).toString("hex")}`;
   const { lock, tookOver } = acquireClaim(args.progressionFile, {
     authorizationId: authorization.authorizationId, attemptId, mode, targetPersona, revision: state.revision, leaseSeconds,
@@ -891,7 +920,7 @@ function acquireAndClaim({ args, state, stateKey, authorization, idHash, mode, t
     withTransition(args.progressionFile, deps, (txnToken) => {
       const cur = readState(args.progressionFile, stateKey, expectedBinding, deps);
       verifyStateFreshness(args.progressionFile, cur, stateKey, deps);
-      if (cur.status !== "eligible") throw new Error(`Progression already transitioned to "${cur.status}"; no double recovery write.`);
+      if (cur.status !== fromStatus) throw new Error(`Progression already transitioned to "${cur.status}"; no double recovery write.`);
       const lk = readLock(args.progressionFile, deps);
       if (!lk) throw new Error("Orphaned lock disappeared; re-run the governed step.");
       if (!leaseExpired(lk, now)) throw new Error("A concurrent claim is held (unexpired lease); refusing.");
@@ -910,7 +939,7 @@ function acquireAndClaim({ args, state, stateKey, authorization, idHash, mode, t
       authorizationId: authorization.authorizationId, projectId: args.projectId, workflowIdentityHash: idHash, personaOrder: deps.personaOrder,
     }, deps);
     verifyStateFreshness(args.progressionFile, cur, stateKey, deps);
-    if (cur.status !== "eligible" || cur.revision !== state.revision) throw new Error("Progression changed between claim and commit; refusing.");
+    if (cur.status !== fromStatus || cur.revision !== state.revision) throw new Error("Progression changed between claim and commit; refusing.");
     return commitState(args.progressionFile, cur, {
       status: "claimed",
       attempt: { attemptId, mode, targetPersona, claimedAt: lock.claimedAt, leaseExpiresAt: lock.leaseExpiresAt },
@@ -938,9 +967,19 @@ function acquireAndClaim({ args, state, stateKey, authorization, idHash, mode, t
       // TOCTOU window in which a takeover could interleave.
       return withTransition(args.progressionFile, d, (txnToken) => {
         const cur = assertLiveOwnership(args.progressionFile, stateKey, own, d);
-        const changes = mode === "forward"
-          ? { status: "eligible", completed: [...cur.completed, targetPersona], attempt: null, lastOutcome: { attemptId, mode, targetPersona, result: "completed", at: (d.now ? d.now() : new Date()).toISOString() } }
-          : { status: "suspended", completed: cur.completed.filter((x) => x !== targetPersona), attempt: null, lastOutcome: { attemptId, mode, targetPersona, result: "rolled-back-suspended", at: (d.now ? d.now() : new Date()).toISOString() } };
+        const at = (d.now ? d.now() : new Date()).toISOString();
+        let changes;
+        if (mode === "forward") {
+          changes = { status: "eligible", completed: [...cur.completed, targetPersona], attempt: null, lastOutcome: { attemptId, mode, targetPersona, result: "completed", at } };
+        } else {
+          // Rollback removes the most-recently-completed persona (the exact last element of
+          // the in-order prefix). Once nothing remains, the sequence reaches the TERMINAL
+          // rolled_back state; otherwise it stays suspended for the next continuation step.
+          const remaining = cur.completed.filter((x) => x !== targetPersona);
+          const terminal = remaining.length === 0;
+          changes = { status: terminal ? "rolled_back" : "suspended", completed: remaining, attempt: null,
+            lastOutcome: { attemptId, mode, targetPersona, result: terminal ? "rolled-back-terminal" : "rolled-back-suspended", at } };
+        }
         const done = commitState(args.progressionFile, cur, changes, stateKey, d, txnToken);
         releaseClaim(args.progressionFile, attemptId, d);
         return done;

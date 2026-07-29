@@ -118,6 +118,14 @@ function parseArgs(argv) {
       case "--rollback":
         args.rollback = true;
         break;
+      case "--rollbackContinuation":
+        // Governed REVERSE-ORDER ROLLBACK-CONTINUATION opt-in. Used WITH --rollback +
+        // --executeProduction, it permits the gate to resume a rollback from a SUSPENDED
+        // progression (rolling back the current most-recently-completed persona, one per
+        // invocation, in reverse order) through to the terminal rolled_back state. Without
+        // it, a suspended progression blocks every step (fail closed).
+        args.rollbackContinuation = true;
+        break;
       case "--progressionFile":
         args.progressionFile = argv[++i];
         break;

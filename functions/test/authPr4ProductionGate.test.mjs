@@ -109,21 +109,26 @@ ok("strict validators reject non-canonical values", () => {
 // 2. C1 -- repository-governed authorization artifact
 // ---------------------------------------------------------------------------
 
-ok("REAL repo committed authorization VERIFIES against the exact 3-file governed binding at HEAD; fails closed for missing / substituted / stale / drifted files", () => {
-  // The three-file re-authorization (rebinding the artifact to reviewedHead dba0e33 + the
-  // three governed blob hashes) is now committed: the artifact verifies against the exact
-  // 3-file set at HEAD, and any deviation from that exact binding fails closed.
+ok("REAL repo: this PR CHANGES governed files, so the committed 3-file binding NO LONGER verifies at HEAD (fails closed, hash mismatch) until a separate re-authorization; the exact fail-closed cases still hold", () => {
+  // The reverse-order rollback-continuation modifies two governed files
+  // (authPr4ProductionGate.js + authPr4RecoveryEmailMigration.js). Per the governance model,
+  // changing governed code invalidates the committed GRANTED binding (pinned to the
+  // pre-continuation hashes at reviewedHead dba0e33): verifying it against HEAD now fails
+  // closed at the governed-hash boundary. Re-binding the artifact to the new hashes is a
+  // SEPARATE Owner re-authorization (mirrors #461 -> #462); this repo+emulator PR does not
+  // touch production-authorization.json and authorizes no production execution.
   assert.equal(gate.GOVERNED_FILES.length, 3);
   const repoIdentity = gate.deriveRepositoryIdentity(REAL_ROOT);
   const head = repoIdentity.head;
   const { artifact } = gate.loadGovernedAuthorization({ repoRoot: REAL_ROOT, authorizedCommit: head });
-  assert.equal(artifact.authorizationStatus, "GRANTED");
-  assert.equal(Object.keys(artifact.governedFileHashes).length, 3, "committed artifact records the 3-file governed set");
+  assert.equal(artifact.authorizationStatus, "GRANTED", "the committed artifact JSON is still GRANTED (unchanged by this PR)");
+  assert.equal(Object.keys(artifact.governedFileHashes).length, 3, "still records the 3-file governed set");
   for (const rel of gate.GOVERNED_FILES) assert.ok(rel in artifact.governedFileHashes, `binds ${rel}`);
   const derived = gate.governedHashesAtCommit(REAL_ROOT, head);
   const base = { projectId: "taylor-parts", personaOrder: ORDER, derivedHashes: derived, repoIdentity, authorizedCommit: head, executionModeConfirmation: artifact.executionModeToken, executor: artifact.executor.name };
-  // (a) verifies against the exact reviewed 3-file binding.
-  assert.equal(gate.verifyGovernedAuthorization(artifact, base).authorizationStatus, "GRANTED");
+  // (a) POST-CHANGE: the committed binding no longer matches the (now changed) governed code
+  //     at HEAD -> fails closed with a governed-hash mismatch (re-authorization required).
+  throws(() => gate.verifyGovernedAuthorization(artifact, base), /hash mismatch/);
   // (b) MISSING governed file (a 2-file subset) -> schema mismatch (fails closed).
   const { [gate.GOVERNED_FILES[2]]: _dropped, ...twoFileSubset } = artifact.governedFileHashes;
   throws(() => gate.verifyGovernedAuthorization({ ...artifact, governedFileHashes: twoFileSubset }, base), /governedFileHashes: schema mismatch/);
@@ -443,6 +448,119 @@ ok("GENERATION LEDGER: assertProductionAuthorization validates the ledger (singl
   fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
 });
 
+// ---------------------------------------------------------------------------
+// REVERSE-ORDER ROLLBACK-CONTINUATION (resume from suspended -> terminal rolled_back)
+// ---------------------------------------------------------------------------
+
+// A signed SUSPENDED progression (a governed rollback outcome) with `completed` still
+// migrated, plus its matching high-water anchor -- the state a continuation resumes from.
+function writeSuspended(stateFile, key, { authorizationId, projectId, idHash, completed, revision = 6 }) {
+  const base = gate.genesisState({ authorizationId, projectId, workflowIdentityHash: idHash, personaOrder: ORDER });
+  const s = { ...base, revision, previousStateHash: gate.GENESIS_HASH, status: "suspended", completed,
+    attempt: null, lastOutcome: { attemptId: "att-prior", mode: "rollback", targetPersona: "emp-rudy-owner", result: "rolled-back-suspended", at: new Date().toISOString() } };
+  fs.writeFileSync(stateFile, JSON.stringify({ ...s, signature: gate.signProgression(s, key) }), { mode: 0o600 });
+  gate.writeAnchor(stateFile, { authorizationId, highWaterRevision: revision, stateHash: gate.progressionHash(s) }, key);
+  return s;
+}
+
+ok("CONTINUATION invariants: suspended requires remaining identities; rolled_back is terminal (completed=[] + rollback outcome)", () => {
+  const key = KEY(); const idHash = "cd".repeat(32);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-cont-inv-"));
+  const f = path.join(dir, "state.json");
+  const expected = { authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", workflowIdentityHash: idHash, personaOrder: ORDER };
+  const base = gate.genesisState({ authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", workflowIdentityHash: idHash, personaOrder: ORDER });
+  const writeSigned = (p) => { fs.writeFileSync(f, JSON.stringify({ ...p, signature: gate.signProgression(p, key) })); gate.writeAnchor(f, { authorizationId: p.authorizationId, highWaterRevision: p.revision, stateHash: gate.progressionHash(p) }, key); };
+  const roll = (t, r) => ({ attemptId: "a", mode: "rollback", targetPersona: t, result: r, at: new Date().toISOString() });
+  // suspended with EMPTY completed -> rejected (empty completed is terminal rolled_back).
+  writeSigned({ ...base, revision: 1, status: "suspended", completed: [], attempt: null, lastOutcome: roll("emp-rudy-driver", "rolled-back-suspended") });
+  throws(() => gate.readState(f, key, expected), /suspended must have at least one remaining/);
+  // rolled_back with NON-EMPTY completed -> rejected.
+  writeSigned({ ...base, revision: 1, status: "rolled_back", completed: ["emp-rudy-driver"], attempt: null, lastOutcome: roll("emp-rudy-driver", "rolled-back-terminal") });
+  throws(() => gate.readState(f, key, expected), /rolled_back is terminal/);
+  // rolled_back with a FORWARD outcome -> rejected.
+  writeSigned({ ...base, revision: 1, status: "rolled_back", completed: [], attempt: null, lastOutcome: { attemptId: "a", mode: "forward", targetPersona: "emp-rudy-driver", result: "completed", at: new Date().toISOString() } });
+  throws(() => gate.readState(f, key, expected), /rolled_back is terminal/);
+  // rolled_back with completed=[] + a rollback outcome -> VALID.
+  writeSigned({ ...base, revision: 1, status: "rolled_back", completed: [], attempt: null, lastOutcome: roll("emp-rudy-driver", "rolled-back-terminal") });
+  assert.equal(gate.readState(f, key, expected).status, "rolled_back");
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+ok("CONTINUATION gate: suspended blocks forward + bare --rollback; --rollback --rollbackContinuation resumes REVERSE order and stays suspended while identities remain", () => {
+  const g = buildGrantedRepo("demo-authpr4");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-cont-"));
+  const keyFile = path.join(dir, "k"); const key = crypto.randomBytes(48); fs.writeFileSync(keyFile, key, { mode: 0o600 });
+  const stateFile = path.join(dir, "state.json"); const mappingFile = path.join(dir, "map.json");
+  fs.writeFileSync(mappingFile, JSON.stringify(Object.fromEntries(ORDER.map((id) => [id, { uid: `u-${id}`, newAlias: `base+${id}@gmail.com` }]))));
+  const idHash = gate.workflowIdentityHash(gate.governedHashesAtCommit(g.root, g.authorizedCommit));
+  const expected = { authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", workflowIdentityHash: idHash, personaOrder: ORDER };
+  // Suspended after the position-5 (owner) rollback: positions 1-4 remain migrated.
+  writeSuspended(stateFile, key, { authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", idHash, completed: ORDER.slice(0, 4) });
+  const args = (extra) => ({ projectId: "demo-authpr4", executeProduction: true, mappingFile, progressionFile: stateFile, stateKeyFile: keyFile, authorizedCommit: g.authorizedCommit, executionModeConfirmation: g.executionModeToken, executor: g.executor, capturedStateFile: path.join(dir, "cap.json"), capturedStateOut: path.join(dir, "cap.json"), ...extra });
+  const deps = { repoRoot: g.root, personaOrder: ORDER, now: () => new Date(), leaseSeconds: 300 };
+  // (a) FORWARD from suspended -> blocked.
+  throws(() => gate.assertProductionAuthorization(args({}), deps), /SUSPENDED.*forward steps are blocked/i);
+  // (b) BARE --rollback (no continuation) from suspended -> blocked, told to add the flag.
+  throws(() => gate.assertProductionAuthorization(args({ rollback: true }), deps), /requires --rollback --rollbackContinuation/);
+  // (c) --rollback --rollbackContinuation -> resumes, targeting the LAST completed (reverse order).
+  const ctx = gate.assertProductionAuthorization(args({ rollback: true, rollbackContinuation: true }), deps);
+  assert.equal(ctx.mode, "rollback");
+  assert.equal(ctx.effective.employeeId, "emp-rudy-parts-manager", "reverse order rolls back position 4 first");
+  assert.equal(ctx.effective.position, 4);
+  assert.equal(gate.readState(stateFile, key, expected).status, "claimed", "claimed from the suspended predecessor");
+  // recordCompletion -> back to suspended with positions 1-3 remaining (still not terminal).
+  ctx.recordCompletion({ personaOrder: ORDER });
+  const st = gate.readState(stateFile, key, expected);
+  assert.equal(st.status, "suspended");
+  assert.deepEqual(st.completed, ORDER.slice(0, 3));
+  assert.equal(st.lastOutcome.result, "rolled-back-suspended");
+  assert.equal(st.lastOutcome.targetPersona, "emp-rudy-parts-manager");
+  fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
+});
+
+ok("CONTINUATION terminal: rolling back the LAST remaining identity reaches terminal rolled_back, which blocks every further step", () => {
+  const g = buildGrantedRepo("demo-authpr4");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-cont-term-"));
+  const keyFile = path.join(dir, "k"); const key = crypto.randomBytes(48); fs.writeFileSync(keyFile, key, { mode: 0o600 });
+  const stateFile = path.join(dir, "state.json"); const mappingFile = path.join(dir, "map.json");
+  fs.writeFileSync(mappingFile, JSON.stringify({ "emp-rudy-driver": { uid: "u1", newAlias: "base+driver@gmail.com" } }));
+  const idHash = gate.workflowIdentityHash(gate.governedHashesAtCommit(g.root, g.authorizedCommit));
+  const expected = { authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", workflowIdentityHash: idHash, personaOrder: ORDER };
+  // Only position 1 remains migrated.
+  writeSuspended(stateFile, key, { authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", idHash, completed: ["emp-rudy-driver"] });
+  const args = (extra) => ({ projectId: "demo-authpr4", executeProduction: true, mappingFile, progressionFile: stateFile, stateKeyFile: keyFile, authorizedCommit: g.authorizedCommit, executionModeConfirmation: g.executionModeToken, executor: g.executor, capturedStateFile: path.join(dir, "cap.json"), ...extra });
+  const deps = { repoRoot: g.root, personaOrder: ORDER, now: () => new Date(), leaseSeconds: 300 };
+  const ctx = gate.assertProductionAuthorization(args({ rollback: true, rollbackContinuation: true }), deps);
+  assert.equal(ctx.effective.employeeId, "emp-rudy-driver");
+  assert.equal(ctx.effective.position, 1);
+  ctx.recordCompletion({ personaOrder: ORDER });
+  const st = gate.readState(stateFile, key, expected);
+  assert.equal(st.status, "rolled_back", "terminal after the last remaining identity");
+  assert.deepEqual(st.completed, []);
+  assert.equal(st.lastOutcome.result, "rolled-back-terminal");
+  // Terminal blocks EVERYTHING (further continuation and any forward).
+  throws(() => gate.assertProductionAuthorization(args({ rollback: true, rollbackContinuation: true }), deps), /ROLLED_BACK \(terminal\)/);
+  throws(() => gate.assertProductionAuthorization(args({}), deps), /ROLLED_BACK \(terminal\)/);
+  fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
+});
+
+ok("CONTINUATION concurrency: two continuation workers on the same suspended state -> exactly one claims; the second is refused (one identity at a time)", () => {
+  const g = buildGrantedRepo("demo-authpr4");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-cont-conc-"));
+  const keyFile = path.join(dir, "k"); const key = crypto.randomBytes(48); fs.writeFileSync(keyFile, key, { mode: 0o600 });
+  const stateFile = path.join(dir, "state.json"); const mappingFile = path.join(dir, "map.json");
+  fs.writeFileSync(mappingFile, JSON.stringify(Object.fromEntries(ORDER.map((id) => [id, { uid: `u-${id}`, newAlias: `base+${id}@gmail.com` }]))));
+  const idHash = gate.workflowIdentityHash(gate.governedHashesAtCommit(g.root, g.authorizedCommit));
+  writeSuspended(stateFile, key, { authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", idHash, completed: ORDER.slice(0, 4) });
+  const args = { projectId: "demo-authpr4", executeProduction: true, rollback: true, rollbackContinuation: true, mappingFile, progressionFile: stateFile, stateKeyFile: keyFile, authorizedCommit: g.authorizedCommit, executionModeConfirmation: g.executionModeToken, executor: g.executor, capturedStateFile: path.join(dir, "cap.json") };
+  const deps = { repoRoot: g.root, personaOrder: ORDER, now: () => new Date(), leaseSeconds: 300 };
+  const first = gate.assertProductionAuthorization(args, deps); // claims (live lease held)
+  assert.equal(first.effective.employeeId, "emp-rudy-parts-manager");
+  // Second worker while the first holds an unexpired claim -> refused.
+  throws(() => gate.assertProductionAuthorization(args, deps), /concurrent claim is held|no longer|claimed/i);
+  fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
+});
+
 ok("TRANSITION MUTEX (TOCTOU): a held .txn fails closed (no auto-break); after release the loser re-reads terminal state and does not overwrite", () => {
   const key = KEY(); const idHash = "ab".repeat(32);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-txn-"));
@@ -641,6 +759,29 @@ async function runProductionForward({ g, key, keyFile, stateFile, mappingFile, e
   return { ctx, capturedOut, map, pre };
 }
 
+// Drive one governed rollback step (single post-forward rollback OR a reverse-order
+// continuation step). `capturedOut` is the persona's signed rollback artifact; on a
+// confirmed rollback + durable progression it is deleted, mirroring main()'s ordering.
+async function runProductionRollback({ g, key, keyFile, stateFile, mappingFile, capturedOut, employeeId, continuation, authObj }) {
+  const ctx = gate.assertProductionAuthorization(
+    { projectId: PROJECT, executeProduction: true, rollback: true, rollbackContinuation: continuation || undefined,
+      mappingFile, progressionFile: stateFile, stateKeyFile: keyFile,
+      authorizedCommit: g.authorizedCommit, executionModeConfirmation: g.executionModeToken, executor: g.executor,
+      capturedStateFile: capturedOut, employeeId },
+    { repoRoot: g.root, personaOrder: ORDER },
+  );
+  const captured = JSON.parse(fs.readFileSync(capturedOut, "utf8"));
+  try {
+    await wf.applyPlan(authObj || auth, wf.buildRollbackPlan({ employeeId, uid: captured.uid, priorAddress: captured.priorAddress, priorEmailVerified: captured.priorEmailVerified }), { execute: true });
+  } catch (err) {
+    ctx.recordUncertain("rollback-uncertain", { personaOrder: ORDER });
+    throw err;
+  }
+  ctx.recordCompletion({ personaOrder: ORDER }); // durable SUSPENDED/rolled_back FIRST
+  wf.secureUnlink(capturedOut); // only AFTER confirmed rollback + durable progression
+  return ctx;
+}
+
 await okAsync("GRANTED production-shaped path advances the full sequence 1..5 (break-glass at 5) against the emulator", async () => {
   const g = buildGrantedRepo(PROJECT);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-run-"));
@@ -773,6 +914,67 @@ await okAsync("FAULT: rollback Auth succeeds but progression persistence fails -
   fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
 });
 
+await okAsync("REVERSE-ORDER ROLLBACK-CONTINUATION (emulator): forward 1..5, owner rollback -> suspended, then continuation restores 4->3->2->1 to terminal rolled_back; each exact prior restored + artifact deleted; terminal blocks further", async () => {
+  const g = buildGrantedRepo(PROJECT);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-cont-e2e-"));
+  const keyFile = path.join(dir, "k"); const key = crypto.randomBytes(48); fs.writeFileSync(keyFile, key, { mode: 0o600 });
+  const stateFile = path.join(dir, "state.json"); const mappingFile = path.join(dir, "map.json");
+  const idHash = gate.workflowIdentityHash(gate.governedHashesAtCommit(g.root, g.authorizedCommit));
+  const expected = { authorizationId: "AUTHPR4-PROD-TEST", projectId: PROJECT, workflowIdentityHash: idHash, personaOrder: ORDER };
+  writeGenesis(stateFile, key, { authorizationId: "AUTHPR4-PROD-TEST", projectId: PROJECT, idHash });
+  const seeded = {}; for (const id of ORDER) seeded[id] = await seed(mappingFile, id);
+  const captured = {};
+  // Forward 1..5 (break-glass bound to the live progression hash at position 5).
+  for (let i = 0; i < ORDER.length; i += 1) {
+    const id = ORDER[i];
+    let bgFile;
+    if (i === 4) {
+      const st = gate.readState(stateFile, key, expected);
+      bgFile = path.join(dir, "bg.json");
+      const bg = { version: 1, authorizationId: "AUTHPR4-PROD-TEST", progressionHash: gate.progressionHash(st), position: 5, confirmer: g.requiredConfirmer, createdAt: new Date().toISOString(), validityWindowSeconds: g.windowSeconds, sanitizedResult: { recoverable: true, loginVerified: true } };
+      fs.writeFileSync(bgFile, JSON.stringify({ ...bg, signature: gate.signBreakGlass(bg, key) }), { mode: 0o600 });
+    }
+    const r = await runProductionForward({ g, key, keyFile, stateFile, mappingFile, employeeId: id, bgFile });
+    captured[id] = r.capturedOut;
+  }
+  assert.deepEqual(gate.readState(stateFile, key, expected).completed, ORDER);
+
+  // Single post-forward rollback of the owner (position 5) -> suspended (positions 1-4 remain).
+  await runProductionRollback({ g, key, keyFile, stateFile, mappingFile, capturedOut: captured["emp-rudy-owner"], employeeId: "emp-rudy-owner", continuation: false });
+  let st = gate.readState(stateFile, key, expected);
+  assert.equal(st.status, "suspended");
+  assert.deepEqual(st.completed, ORDER.slice(0, 4));
+  assert.equal((await auth.getUser(seeded["emp-rudy-owner"].uid)).email, seeded["emp-rudy-owner"].prior, "owner restored to exact prior");
+  assert.ok(!fs.existsSync(captured["emp-rudy-owner"]), "owner rollback artifact deleted after confirmed rollback");
+
+  // Reverse-order continuation: 4 -> 3 -> 2 -> 1.
+  const revOrder = ["emp-rudy-parts-manager", "emp-rudy-warehouse-manager", "emp-rudy-parts-associate", "emp-rudy-driver"];
+  for (let k = 0; k < revOrder.length; k += 1) {
+    const id = revOrder[k];
+    await runProductionRollback({ g, key, keyFile, stateFile, mappingFile, capturedOut: captured[id], employeeId: id, continuation: true });
+    const u = await auth.getUser(seeded[id].uid);
+    assert.equal(u.email, seeded[id].prior, `${id} restored to exact prior address`);
+    assert.equal(u.emailVerified, true, `${id} prior emailVerified restored`);
+    assert.ok(!fs.existsSync(captured[id]), `${id} rollback artifact deleted after confirmed rollback + durable progression`);
+    const mid = gate.readState(stateFile, key, expected);
+    if (k < revOrder.length - 1) {
+      assert.equal(mid.status, "suspended", `${id}: still suspended while identities remain`);
+      assert.deepEqual(mid.completed, ORDER.slice(0, 3 - k));
+    }
+  }
+  // Terminal reached: rolled_back, completed=[].
+  st = gate.readState(stateFile, key, expected);
+  assert.equal(st.status, "rolled_back");
+  assert.deepEqual(st.completed, []);
+  assert.equal(st.lastOutcome.result, "rolled-back-terminal");
+  // Terminal blocks any further continuation (fails closed before touching Auth).
+  await assert.rejects(
+    () => runProductionRollback({ g, key, keyFile, stateFile, mappingFile, capturedOut: path.join(dir, "nope.json"), employeeId: "emp-rudy-driver", continuation: true }),
+    /ROLLED_BACK \(terminal\)/,
+  );
+  fs.rmSync(dir, { recursive: true, force: true }); fs.rmSync(g.root, { recursive: true, force: true });
+});
+
 // ---------------------------------------------------------------------------
 // 7. CLI -- plain + gated production refusal against the REAL repo (PENDING)
 // ---------------------------------------------------------------------------
@@ -787,17 +989,17 @@ await okAsync("plain --execute / --rollback vs taylor-parts still refuse (never 
   }
 });
 
-// Gated production refusal against taylor-parts at the exact PR HEAD. With the three-file
-// re-authorization committed, the authorization now VERIFIES (governed-hash boundary passes),
-// so a --executeProduction run against taylor-parts fails closed at the NEXT governed boundary
-// -- there is no genesis progression state on disk -- and it does so BEFORE any Firebase SDK
-// init, so no production Auth call is ever made. (This proves the authorization no longer fails
-// at the schema-mismatch boundary AND that a bare production execute still fails closed and
-// mutates nothing without a genuine, out-of-band genesis + private inputs.)
+// Gated production refusal against taylor-parts at the exact PR HEAD. This PR changes two
+// governed files (the rollback-continuation), so the committed authorization binding (pinned
+// to the pre-continuation hashes) no longer matches the running code at HEAD: a
+// --executeProduction run fails closed at the GOVERNED-HASH boundary (running code differs
+// from the committed reviewed authorization), BEFORE any Firebase SDK init, so no production
+// Auth call is ever made. Re-binding the artifact to the new hashes is a separate Owner
+// re-authorization; until then production stays fail-closed (the intended behavior).
 const GRANTED = JSON.parse(fs.readFileSync(path.join(REAL_ROOT, gate.AUTH_ARTIFACT_PATH), "utf8"));
 const HEAD = gate.deriveRepositoryIdentity(REAL_ROOT).head;
 
-await okAsync("gated --executeProduction vs taylor-parts fails closed at the governed genesis boundary (no progression state), before any SDK init", async () => {
+await okAsync("gated --executeProduction vs taylor-parts fails closed at the governed-hash boundary (governed files changed by this PR), before any SDK init", async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-prodrefuse-"));
   const keyFile = path.join(dir, "k"); fs.writeFileSync(keyFile, crypto.randomBytes(48));
   const r = spawnSync(process.execPath, [SCRIPT, "--projectId", "taylor-parts", "--confirmProduction", "taylor-parts", "--executeProduction",
@@ -806,10 +1008,9 @@ await okAsync("gated --executeProduction vs taylor-parts fails closed at the gov
     "--executionModeConfirmation", GRANTED.executionModeToken, "--executor", GRANTED.executor.name],
     { cwd: path.resolve("."), env: process.env, encoding: "utf8" });
   assert.notEqual(r.status, 0, "must refuse");
-  // The re-bound artifact verifies, so it is NOT a schema-mismatch failure any more; it fails
-  // closed at the missing-genesis-progression boundary, before SDK init / any Auth mutation.
-  assert.doesNotMatch(r.stderr, /governedFileHashes: schema mismatch/);
-  assert.match(r.stderr, /Progression state missing\/malformed/);
+  // Governed files changed vs the committed binding -> fails closed at the governed-hash
+  // boundary (running code differs from the reviewed authorization), before SDK init / Auth.
+  assert.match(r.stderr, /hash mismatch|running code differs/);
   assert.doesNotMatch(r.stderr, /FORWARD executed|updateUser/);
   fs.rmSync(dir, { recursive: true, force: true });
 });
