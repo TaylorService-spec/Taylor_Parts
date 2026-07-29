@@ -604,6 +604,20 @@ function assertNoIdentityTransactionIntent(stateFile, deps = {}) {
   }
 }
 
+// FENCE-EXCLUSION LOCK -- the SINGLE owner-bound exclusion both the generation-ledger advancement
+// (claimGeneration) and the identity transition (+ its recovery) acquire ATOMICALLY (O_EXCL hard-
+// link) before inspecting or publishing the `.idtxn` intent or a `gen.<N>` claim. It is held across
+// each path's whole critical section, so the two can never interleave (true mutual exclusion, not a
+// one-sided presence check). Its presence blocks every production step; a crash-left lock is cleared
+// only by the governed fingerprint-bound fence-recover, never auto-broken.
+function fenceLockPath(stateFile) { return `${stateFile}.fencelock`; }
+function assertNoFenceLock(stateFile, deps = {}) {
+  const _fs = deps.fs || fs;
+  if (_fs.existsSync(fenceLockPath(stateFile))) {
+    throw new Error("A fence-exclusion lock is present: a generation advancement or identity transition holds it, or one was interrupted (crash-left). Resolve it with fence-recover before any production step.");
+  }
+}
+
 // FENCING-GENERATION LEDGER -- the single, gate-owned authority for the reconciliation
 // fencing generation. It is an APPEND-ONLY, HASH-CHAINED, CONTIGUOUS ledger of claim files
 // `<stateFile>.gen.<N>` (N = 1..K). Authority never comes from a filename alone: every
@@ -845,6 +859,7 @@ function assertProductionAuthorization(args, deps = {}) {
   assertNoInitMarker(args.progressionFile, deps);
   assertNoReconcileMutex(args.progressionFile, deps);
   assertNoIdentityTransactionIntent(args.progressionFile, deps); // crash-left identity transition blocks
+  assertNoFenceLock(args.progressionFile, deps); // crash-left fence-exclusion lock blocks
   readGenerationLedger(args.progressionFile, deps); // throws (fail-closed) on any ledger anomaly
 
   const expected = { authorizationId: authorization.authorizationId, projectId: args.projectId, workflowIdentityHash: idHash, personaOrder: deps.personaOrder };
@@ -1047,7 +1062,7 @@ module.exports = {
   txnPath, withTransition, assertMutexOwner,
   INIT_MARKER_VERSION, INIT_MARKER_FIELDS, INIT_TOKEN_RE, initMarkerPath, isValidInitMarker, readInitMarker, assertNoInitMarker,
   RECONCILE_MUTEX_VERSION, RECONCILE_MUTEX_FIELDS, reconcilePath, isValidReconcileMutex, assertNoReconcileMutex,
-  idtxnPath, assertNoIdentityTransactionIntent,
+  idtxnPath, assertNoIdentityTransactionIntent, fenceLockPath, assertNoFenceLock,
   GEN_LEDGER_VERSION, GEN_CLAIM_FIELDS, GEN_CHAIN_ROOT, genClaimPath, genLedgerPrefix, canonicalGenClaim, genClaimDigest, isValidGenClaim, readGenerationLedger, generationLedgerHead,
   nextEligiblePersona,
   signBreakGlass, readAndVerifyBreakGlass,

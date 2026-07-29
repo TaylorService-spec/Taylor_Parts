@@ -185,6 +185,86 @@ function atomicExclusiveCreate(finalPath, contents, deps = {}) {
   try { _fs.chmodSync(finalPath, 0o600); } catch { /* Windows ACLs */ }
 }
 
+// ---- Fence-exclusion lock ------------------------------------------------------------
+// THE single owner-bound mutual-exclusion lock shared by the two operations that touch the
+// fencing generation + the identity transition's protected state: (1) the governed
+// generation-ledger advancement (reconcile-recover, the ONLY production advancer) and (2) the
+// identity transition (+ its recovery). Both ATOMICALLY acquire this lock (O_EXCL hard-link via
+// atomicExclusiveCreate) BEFORE inspecting/publishing the `.idtxn` intent or a `gen.<N>` claim, and
+// HOLD it across their entire critical section, so the two can never interleave (a presence check
+// is not mutual exclusion; a single atomically-acquired lock is). It is signed with the protected
+// state key, released only by its owner token, never auto-broken, and a crash-left lock is cleared
+// only by the governed, fingerprint-bound fence-recover.
+const FENCE_LOCK_VERSION = 1;
+const FENCE_HOLDERS = Object.freeze(["generation-advance", "identity-transition"]);
+const FENCE_RECOVER_CONFIRM = "fence-holder-stopped";
+const FENCE_LOCK_FIELDS = Object.freeze(["version", "token", "holder", "generation", "stateDigest", "anchorDigest", "idtxnDigest", "at"]);
+function canonicalFenceLock(p) { return JSON.stringify(FENCE_LOCK_FIELDS.map((f) => [f, p[f]])); }
+function signFenceLock(p, key) { return crypto.createHmac("sha256", key).update(canonicalFenceLock(p)).digest("hex"); }
+
+// A sanitized fingerprint over the fence lock + the fence-relevant on-disk artifacts (generation
+// head + state/anchor/idtxn digests). Binds a fence-inspect snapshot so fence-recover detects any
+// change between inspection and recovery. Reveals no path or content.
+function fenceFingerprint(progressionOut, stateKey, deps = {}) {
+  const head = gate.generationLedgerHead(progressionOut, deps); // validates the ledger
+  const roles = artifactRoles(progressionOut);
+  const parts = {
+    lock: fileDigest(gate.fenceLockPath(progressionOut), deps),
+    generation: head.generation, ledgerHeadDigest: head.headDigest,
+    state: fileDigest(roles.state, deps), anchor: fileDigest(gate.anchorPath(progressionOut), deps),
+    idtxn: fileDigest(gate.idtxnPath(progressionOut), deps),
+  };
+  return { parts, fingerprint: sha256Of(JSON.stringify(Object.entries(parts).sort())) };
+}
+
+// Acquire the shared fence-exclusion lock ATOMICALLY. Returns { token }. Throws (fail closed) if it
+// is already held (EEXIST) -- exactly one of {generation advancement, identity transition} wins.
+function acquireFenceLock(progressionOut, holder, stateKey, deps = {}) {
+  if (!FENCE_HOLDERS.includes(holder)) throw new Error("Invalid fence-lock holder.");
+  const roles = artifactRoles(progressionOut);
+  const head = gate.generationLedgerHead(progressionOut, deps);
+  const payload = {
+    version: FENCE_LOCK_VERSION, token: crypto.randomBytes(16).toString("hex"), holder,
+    generation: head.generation, stateDigest: fileDigest(roles.state, deps),
+    anchorDigest: fileDigest(gate.anchorPath(progressionOut), deps), idtxnDigest: fileDigest(gate.idtxnPath(progressionOut), deps),
+    at: (deps.now ? deps.now() : new Date()).toISOString(),
+  };
+  try {
+    atomicExclusiveCreate(gate.fenceLockPath(progressionOut), JSON.stringify({ ...payload, signature: signFenceLock(payload, stateKey) }), deps);
+  } catch (err) {
+    if (err && err.code === "EEXIST") throw new Error("The fence-exclusion lock is already held (a generation advancement or identity transition is in progress) -- refusing (mutual exclusion).");
+    throw err;
+  }
+  return { token: payload.token };
+}
+
+// Owner-bound release: remove the lock ONLY if it still carries our token. Never removes a foreign
+// or replaced lock (leaves it for governed fence-recover).
+function releaseFenceLock(progressionOut, token, deps = {}) {
+  const _fs = deps.fs || fs;
+  try {
+    const held = JSON.parse(_fs.readFileSync(gate.fenceLockPath(progressionOut), "utf8"));
+    if (held && held.token === token) _fs.unlinkSync(gate.fenceLockPath(progressionOut));
+  } catch { /* gone / unreadable / foreign -> leave for governed fence-recover */ }
+}
+
+// Read + verify the signed fence lock (schema + canonical holder + signature).
+function readFenceLock(progressionOut, stateKey, deps = {}) {
+  const _fs = deps.fs || fs;
+  let art;
+  try { art = JSON.parse(_fs.readFileSync(gate.fenceLockPath(progressionOut), "utf8")); }
+  catch (err) { throw new Error(`Fence lock missing/malformed: ${err.message}`); }
+  if (!art || typeof art !== "object" || typeof art.signature !== "string") throw new Error("Fence lock malformed.");
+  const { signature, ...payload } = art;
+  gate.assertExactShape({ ...payload, signature }, [...FENCE_LOCK_FIELDS, "signature"], "fence lock");
+  if (payload.version !== FENCE_LOCK_VERSION) throw new Error("Fence lock version unsupported.");
+  if (!FENCE_HOLDERS.includes(payload.holder)) throw new Error("Fence lock holder is not canonical.");
+  const expect = signFenceLock(payload, stateKey);
+  const a = Buffer.from(signature, "hex"); const b = Buffer.from(expect, "hex");
+  if (a.length !== b.length || a.length === 0 || !crypto.timingSafeEqual(a, b)) throw new Error("Fence lock failed integrity verification (tampered/wrong key).");
+  return payload;
+}
+
 // Per-role content digests over the confined artifact set (digest hex or null-if-absent).
 function perRoleDigests(progressionOut, deps = {}) {
   const _fs = deps.fs || fs;
@@ -527,7 +607,7 @@ function reconcileRecover(args, deps = {}) {
   if (args.confirmOwnerStopped !== OWNER_STOPPED_CONFIRM) throw new Error(`Recovery requires an explicit --confirmOwnerStopped ${OWNER_STOPPED_CONFIRM} attesting the prior cleanup process/host has stopped (age/malformed state is NOT proof).`);
   if (!args.fingerprint || !gate.isSha256(args.fingerprint)) throw new Error("--fingerprint (from a prior reconcile-inspect) is required.");
 
-  const { idHash } = loadProductionAuthority(args, deps); // governed authority verification
+  const { idHash, stateKey } = loadProductionAuthority(args, deps); // governed authority verification
   const _fs = deps.fs || fs;
   const reconFile = gate.reconcilePath(args.progressionOut);
   if (!_fs.existsSync(reconFile)) throw new Error("No reconciliation mutex present; nothing to recover.");
@@ -549,31 +629,42 @@ function reconcileRecover(args, deps = {}) {
   // delayed recovery bound to an old generation cannot leapfrog (the newer claim already
   // exists -> EEXIST -> refuse). New cleanups cannot start meanwhile: the reconciliation
   // mutex we are about to remove is still present, so their exclusive publish fails closed.
-  const fromGen = currentGeneration(args.progressionOut, deps);
-  if (deps.beforeGenerationClaim) deps.beforeGenerationClaim(); // test seam: simulate a concurrent recovery/cleanup between read and CAS
-  try { claimGeneration(args.progressionOut, fromGen + 1, `recover-${crypto.randomBytes(8).toString("hex")}`, deps); }
-  catch (err) {
-    if (err && err.code === "EEXIST") throw new Error("The fencing generation was already advanced by another recovery -- this attempt did not obtain authority (refusing).");
-    throw err;
+  // MUTUAL EXCLUSION: acquire the shared fence-exclusion lock BEFORE advancing the fencing
+  // generation and hold it through the mutex removal. An identity transition (which holds the SAME
+  // lock across its entire critical section) therefore cannot interleave with this generation
+  // advance -- exactly one of {generation advancement, identity transition} proceeds; the other
+  // fails closed (EEXIST) without mutating anything. Released in finally (a crash-left lock is
+  // cleared only by the governed fence-recover).
+  const fence = acquireFenceLock(args.progressionOut, "generation-advance", stateKey, deps);
+  try {
+    const fromGen = currentGeneration(args.progressionOut, deps);
+    if (deps.beforeGenerationClaim) deps.beforeGenerationClaim(); // test seam: simulate a concurrent recovery/cleanup between read and CAS
+    try { claimGeneration(args.progressionOut, fromGen + 1, `recover-${crypto.randomBytes(8).toString("hex")}`, deps); }
+    catch (err) {
+      if (err && err.code === "EEXIST") throw new Error("The fencing generation was already advanced by another recovery -- this attempt did not obtain authority (refusing).");
+      throw err;
+    }
+
+    // Holding generation fromGen+1, re-bind to the EXACT inspected mutex immediately before the
+    // destructive step. If the mutex disappeared or was replaced (different bytes), fail closed
+    // WITHOUT removing it -- the advanced generation already fences any live prior cleanup, and
+    // the gate stays blocked by whatever mutex is present.
+    if (deps.beforeRecoveryUnlink) deps.beforeRecoveryUnlink(); // test seam
+    if (!_fs.existsSync(reconFile)) throw new Error("The reconciliation mutex disappeared during recovery -- refusing (fail-closed; the advanced generation still fences).");
+    if (digestOf(reconFile) !== boundMutexDigest) throw new Error("The reconciliation mutex was replaced during recovery -- refusing to remove a mutex other than the one inspected (fail-closed).");
+    _fs.unlinkSync(reconFile);
+
+    // Re-classify the remaining residue so the operator knows the next governed step.
+    const after = reconcileInspect(args, deps);
+    return {
+      ok: true, mode: "reconcile-recover",
+      mutexWasValid: held.valid, mutexCleared: true, fencedFromGeneration: fromGen, fencedToGeneration: fromGen + 1,
+      residualReconciliationNeeded: after.reconciliationNeeded, residualRecommendation: after.recommendation,
+      fingerprint: args.fingerprint, workflowIdentityRef: `ref:${idHash.slice(0, 16)}`,
+    };
+  } finally {
+    releaseFenceLock(args.progressionOut, fence.token, deps);
   }
-
-  // Holding generation fromGen+1, re-bind to the EXACT inspected mutex immediately before the
-  // destructive step. If the mutex disappeared or was replaced (different bytes), fail closed
-  // WITHOUT removing it -- the advanced generation already fences any live prior cleanup, and
-  // the gate stays blocked by whatever mutex is present.
-  if (deps.beforeRecoveryUnlink) deps.beforeRecoveryUnlink(); // test seam
-  if (!_fs.existsSync(reconFile)) throw new Error("The reconciliation mutex disappeared during recovery -- refusing (fail-closed; the advanced generation still fences).");
-  if (digestOf(reconFile) !== boundMutexDigest) throw new Error("The reconciliation mutex was replaced during recovery -- refusing to remove a mutex other than the one inspected (fail-closed).");
-  _fs.unlinkSync(reconFile);
-
-  // Re-classify the remaining residue so the operator knows the next governed step.
-  const after = reconcileInspect(args, deps);
-  return {
-    ok: true, mode: "reconcile-recover",
-    mutexWasValid: held.valid, mutexCleared: true, fencedFromGeneration: fromGen, fencedToGeneration: fromGen + 1,
-    residualReconciliationNeeded: after.reconciliationNeeded, residualRecommendation: after.recommendation,
-    fingerprint: args.fingerprint, workflowIdentityRef: `ref:${idHash.slice(0, 16)}`,
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -727,6 +818,13 @@ function identityTransition(args, deps = {}) {
   const progressionOut = args.progressionOut;
   const anchorP = gate.anchorPath(progressionOut);
   const idtxnP = gate.idtxnPath(progressionOut);
+  // MUTUAL EXCLUSION: acquire the shared fence lock and HOLD it across the ENTIRE critical section
+  // (before the intent is published, through state+anchor verification and intent cleanup), so a
+  // concurrent generation advancement (reconcile-recover, which acquires the SAME lock) can never
+  // interleave. Released in finally; a real crash strands both this lock and the intent -- clear the
+  // lock with fence-recover, then complete the intent with identity-transition-recover.
+  const fence = acquireFenceLock(progressionOut, "identity-transition", stateKey, deps);
+  try {
   if (_fs.existsSync(idtxnP)) throw new Error("An identity-transition intent is already present (a prior transition is in progress or was interrupted) -- run --mode identity-transition-recover.");
 
   // Read + verify the EXISTING state under the OLD identity (signature + strict binding + freshness).
@@ -793,6 +891,9 @@ function identityTransition(args, deps = {}) {
     lastOutcomeResult: back.lastOutcome ? back.lastOutcome.result : null,
     transitioned: true,
   };
+  } finally {
+    releaseFenceLock(progressionOut, fence.token, deps);
+  }
 }
 
 // MODE: identity-transition-recover -- deterministically COMPLETE a crash-interrupted identity
@@ -804,6 +905,11 @@ function identityTransitionRecover(args, deps = {}) {
   const { stateKey, newIdHash, oldIdHash, authorization, expected } = identityTransitionPreflight(args, deps);
   const progressionOut = args.progressionOut;
   if (!_fs.existsSync(gate.idtxnPath(progressionOut))) throw new Error("No identity-transition intent is present -- nothing to recover.");
+  // Hold the shared fence lock across recovery (same exclusion as the forward path). A REAL crash
+  // strands both the fence lock and the intent -- clear the stranded fence lock with fence-recover
+  // first, then run this recovery (which then acquires a fresh lock and completes the intent).
+  const fence = acquireFenceLock(progressionOut, "identity-transition", stateKey, deps);
+  try {
   const intent = readIdentityIntent(progressionOut, stateKey, { authorization, oldIdHash, newIdHash }, deps);
   const { back, stateIs, anchorIs } = classifyAndFinishTransition(progressionOut, stateKey, expected, intent, deps);
   return {
@@ -814,6 +920,59 @@ function identityTransitionRecover(args, deps = {}) {
     revisionAfter: back.revision, status: back.status, completedCount: back.completed.length,
     intentCleared: true, transitioned: true,
   };
+  } finally {
+    releaseFenceLock(progressionOut, fence.token, deps);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// MODE: fence-inspect / fence-recover -- governed recovery of a CRASH-LEFT fence lock.
+// ---------------------------------------------------------------------------
+// A real crash of a generation advancement (reconcile-recover) or an identity transition strands
+// the shared fence-exclusion lock (finally does not run on a hard crash). fence-inspect classifies
+// it read-only (sanitized fingerprint); fence-recover removes ONLY the lock -- never state / anchor
+// / idtxn / gen -- requiring an explicit owner-stopped attestation AND a matching fingerprint
+// (nothing changed since inspection). It never infers holder death from elapsed time and never
+// auto-breaks the lock. After clearing it the operator runs the appropriate follow-on
+// (identity-transition-recover for a stranded intent; reconcile-recover for a stranded reconciliation).
+function fencePreflight(args, deps = {}) {
+  if (!args.projectId) throw new Error("--projectId is required.");
+  if (args.confirmProduction !== args.projectId) throw new Error("This production command requires an explicit matching --confirmProduction <projectId>.");
+  if (!gate.isFullSha(args.authorizedCommit || "")) throw new Error("--authorizedCommit (canonical full 40-hex SHA) is required.");
+  if (!gate.isBoundedString(args.executionModeConfirmation || "", 128)) throw new Error("--executionModeConfirmation is required.");
+  if (!gate.isBoundedString(args.executor || "", 128)) throw new Error("--executor is required.");
+  if (!args.progressionOut) throw new Error("--progressionOut <path> is required.");
+  const { stateKey } = loadProductionAuthority(args, deps); // governed authority verification
+  return { stateKey };
+}
+
+function fenceInspect(args, deps = {}) {
+  const _fs = deps.fs || fs;
+  const { stateKey } = fencePreflight(args, deps);
+  const p = gate.fenceLockPath(args.progressionOut);
+  if (!_fs.existsSync(p)) {
+    return { ok: true, mode: "fence-inspect", present: false, valid: false, holder: null, reconciliationNeeded: false, recommendation: "none", fingerprint: fenceFingerprint(args.progressionOut, stateKey, deps).fingerprint };
+  }
+  let lock = null, valid = false;
+  try { lock = readFenceLock(args.progressionOut, stateKey, deps); valid = true; } catch { valid = false; }
+  const fp = fenceFingerprint(args.progressionOut, stateKey, deps);
+  return { ok: true, mode: "fence-inspect", present: true, valid, holder: valid ? lock.holder : null, reconciliationNeeded: true, recommendation: valid ? "fence-recover" : "blocked", fingerprint: fp.fingerprint };
+}
+
+function fenceRecover(args, deps = {}) {
+  const _fs = deps.fs || fs;
+  if (args.confirmOwnerStopped !== FENCE_RECOVER_CONFIRM) throw new Error(`Fence recovery requires an explicit --confirmOwnerStopped ${FENCE_RECOVER_CONFIRM} attesting the prior holder process/host has stopped (age is NOT proof).`);
+  if (!args.fingerprint || !gate.isSha256(args.fingerprint)) throw new Error("--fingerprint (from a prior fence-inspect) is required.");
+  const { stateKey } = fencePreflight(args, deps);
+  const p = gate.fenceLockPath(args.progressionOut);
+  if (!_fs.existsSync(p)) throw new Error("No fence lock present -- nothing to recover.");
+  const lock = readFenceLock(args.progressionOut, stateKey, deps); // signature/schema -- fail closed on a foreign/malformed lock
+  if (fenceFingerprint(args.progressionOut, stateKey, deps).fingerprint !== args.fingerprint) throw new Error("Artifacts changed since fence-inspect (fingerprint mismatch) -- refusing to recover.");
+  // Remove ONLY the lock; never touch state / anchor / idtxn / gen. The fingerprint (which includes
+  // the lock's own digest) is re-verified immediately before the unlink.
+  if (fenceFingerprint(args.progressionOut, stateKey, deps).fingerprint !== args.fingerprint) throw new Error("Fence lock / artifacts changed at finalization -- refusing (fail closed).");
+  _fs.unlinkSync(p);
+  return { ok: true, mode: "fence-recover", holder: lock.holder, lockCleared: true, fingerprint: args.fingerprint };
 }
 
 // ---------------------------------------------------------------------------
@@ -838,7 +997,7 @@ function sanitizeForOutput(msg, protectedValues = []) {
 
 function protectedPathValues(args) {
   const vals = [args.executionModeConfirmation, args.stateKeyFile];
-  if (args.progressionOut) { const r = artifactRoles(args.progressionOut); vals.push(r.state, r.anchor, r.marker, r.lock, r.txn, gate.reconcilePath(args.progressionOut), gate.idtxnPath(args.progressionOut)); }
+  if (args.progressionOut) { const r = artifactRoles(args.progressionOut); vals.push(r.state, r.anchor, r.marker, r.lock, r.txn, gate.reconcilePath(args.progressionOut), gate.idtxnPath(args.progressionOut), gate.fenceLockPath(args.progressionOut)); }
   return vals.filter(Boolean);
 }
 
@@ -853,6 +1012,8 @@ async function main() {
     else if (args.mode === "reconcile-recover") { result = reconcileRecover(args); headline = `RECONCILE-RECOVER: mutexCleared=${result.mutexCleared} residual=${result.residualRecommendation}`; }
     else if (args.mode === "identity-transition") { result = identityTransition(args); headline = `IDENTITY-TRANSITION: ${result.oldWorkflowIdentityRef} -> ${result.newWorkflowIdentityRef} (status=${result.status}, completed=${result.completedCount}, rev ${result.revisionBefore}->${result.revisionAfter}).`; }
     else if (args.mode === "identity-transition-recover") { result = identityTransitionRecover(args); headline = `IDENTITY-TRANSITION-RECOVER: completed (from state=${result.recoveredFromState}/anchor=${result.recoveredFromAnchor} -> ${result.newWorkflowIdentityRef}, status=${result.status}, rev ${result.revisionAfter}).`; }
+    else if (args.mode === "fence-inspect") { result = fenceInspect(args); headline = `FENCE-INSPECT: present=${result.present} valid=${result.valid} holder=${result.holder} recommendation=${result.recommendation}`; }
+    else if (args.mode === "fence-recover") { result = fenceRecover(args); headline = `FENCE-RECOVER: holder=${result.holder} lockCleared=${result.lockCleared}`; }
     else { result = initGenesis(args); headline = `GENESIS initialised (eligible, revision 0, next=${result.nextPersona} position ${result.nextPosition}).`; }
     emit(headline);
     emit(result);
@@ -867,7 +1028,8 @@ if (require.main === module) { main(); }
 module.exports = {
   parseArgs, createOnly, atomicExclusiveCreate, initGenesis, reconcileInspect, reconcileCleanup, reconcileRecover,
   identityTransition, identityTransitionRecover, readIdentityIntent, signIdtxn, classifyAndFinishTransition,
+  fenceInspect, fenceRecover, acquireFenceLock, releaseFenceLock, readFenceLock, fenceFingerprint,
   sanitizeForOutput, artifactRoles, fingerprintArtifacts, perRoleDigests, readReconcileMutex,
   currentGeneration, claimGeneration, assertProductionArgs,
-  PRODUCTION_PROJECT_ID, RECONCILE_CONFIRM, RECOVER_CONFIRM, OWNER_STOPPED_CONFIRM, IDENTITY_TRANSITION_CONFIRM, IDTXN_VERSION, MIGRATION_PERSONA_ORDER,
+  PRODUCTION_PROJECT_ID, RECONCILE_CONFIRM, RECOVER_CONFIRM, OWNER_STOPPED_CONFIRM, IDENTITY_TRANSITION_CONFIRM, FENCE_RECOVER_CONFIRM, IDTXN_VERSION, MIGRATION_PERSONA_ORDER,
 };

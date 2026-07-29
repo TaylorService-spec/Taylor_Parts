@@ -836,6 +836,59 @@ ok("IDENTITY TRANSITION mutual exclusion: while an intent is held generation adv
   fs.rmSync(g.root, { recursive: true, force: true });
 });
 
+ok("IDENTITY TRANSITION shared fence lock: generation advancement + identity transition acquire ONE lock atomically -> exactly one wins, the loser publishes/mutates nothing (reverse race); a crash-left lock is cleared only by governed fence-recover", () => {
+  const g = buildTransitionRepo("demo-authpr4");
+  const expectedNew = { authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", workflowIdentityHash: g.newIdHash, personaOrder: ORDER };
+  const expectedOld = { ...expectedNew, workflowIdentityHash: g.oldIdHash };
+  const deps = { repoRoot: g.root, personaOrder: ORDER };
+  const mk = () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-idt-fl-"));
+    const keyFile = path.join(dir, "k"); const key = crypto.randomBytes(48); fs.writeFileSync(keyFile, key, { mode: 0o600 });
+    const stateFile = path.join(dir, "state.json");
+    writeSuspended(stateFile, key, { authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", idHash: g.oldIdHash, completed: ORDER.slice(0, 4), revision: 12 });
+    return { dir, keyFile, key, stateFile, tArgs: { projectId: "demo-authpr4", confirmProduction: "demo-authpr4", authorizedCommit: g.authorizedCommit, oldAuthorizedCommit: g.oldAuthorizedCommit, executionModeConfirmation: g.executionModeToken, executor: g.executor, stateKeyFile: keyFile, progressionOut: stateFile, confirmIdentityTransition: "transition-workflow-identity" }, fenceArgs: { projectId: "demo-authpr4", confirmProduction: "demo-authpr4", authorizedCommit: g.authorizedCommit, executionModeConfirmation: g.executionModeToken, executor: g.executor, stateKeyFile: keyFile, progressionOut: stateFile } };
+  };
+
+  // REVERSE RACE (Codex #7): the generation worker acquires the shared lock first (passes initial
+  // setup); the identity transition then attempts publication -> it cannot acquire the SAME lock
+  // (EEXIST) -> it publishes NO intent and mutates NO state. Exactly one wins.
+  { const t = mk();
+    const genLock = initProg.acquireFenceLock(t.stateFile, "generation-advance", t.key, {}); // generation worker holds it
+    throws(() => initProg.identityTransition(t.tArgs, deps), /fence-exclusion lock is already held|mutual exclusion/);
+    assert.ok(!fs.existsSync(gate.idtxnPath(t.stateFile)), "loser transition published NO intent");
+    assert.equal(gate.readState(t.stateFile, t.key, expectedOld).workflowIdentityHash, g.oldIdHash, "loser transition mutated NO state");
+    initProg.releaseFenceLock(t.stateFile, genLock.token, {});
+    assert.equal(initProg.identityTransition(t.tArgs, deps).transitioned, true, "with the lock released the transition now wins");
+    fs.rmSync(t.dir, { recursive: true, force: true }); }
+
+  // SYMMETRIC: while a transition holds the lock, a concurrent generation-advance acquisition loses.
+  { const t = mk();
+    const txLock = initProg.acquireFenceLock(t.stateFile, "identity-transition", t.key, {});
+    throws(() => initProg.acquireFenceLock(t.stateFile, "generation-advance", t.key, {}), /already held|mutual exclusion/);
+    initProg.releaseFenceLock(t.stateFile, txLock.token, {});
+    fs.rmSync(t.dir, { recursive: true, force: true }); }
+
+  // CRASH-LEFT lock (a hard crash leaves it; finally did not run). It blocks a new transition and is
+  // cleared ONLY by governed fence-recover (owner-stopped attestation + matching fingerprint), never
+  // auto-broken. fence-recover touches only the lock; the state stays intact and the transition then runs.
+  { const t = mk();
+    initProg.acquireFenceLock(t.stateFile, "generation-advance", t.key, {}); // stranded (never released)
+    throws(() => initProg.identityTransition(t.tArgs, deps), /fence-exclusion lock is already held|mutual exclusion/);
+    const insp = initProg.fenceInspect(t.fenceArgs, deps);
+    assert.equal(insp.present, true); assert.equal(insp.valid, true); assert.equal(insp.holder, "generation-advance");
+    throws(() => initProg.fenceRecover({ ...t.fenceArgs, fingerprint: insp.fingerprint }, deps), /confirmOwnerStopped/);
+    throws(() => initProg.fenceRecover({ ...t.fenceArgs, confirmOwnerStopped: "fence-holder-stopped" }, deps), /--fingerprint/);
+    throws(() => initProg.fenceRecover({ ...t.fenceArgs, confirmOwnerStopped: "fence-holder-stopped", fingerprint: "f".repeat(64) }, deps), /fingerprint mismatch/);
+    const rec = initProg.fenceRecover({ ...t.fenceArgs, confirmOwnerStopped: "fence-holder-stopped", fingerprint: insp.fingerprint }, deps);
+    assert.equal(rec.lockCleared, true);
+    assert.ok(!fs.existsSync(gate.fenceLockPath(t.stateFile)), "fence lock cleared");
+    assert.equal(gate.readState(t.stateFile, t.key, expectedOld).workflowIdentityHash, g.oldIdHash, "state untouched by fence-recover");
+    assert.equal(initProg.identityTransition(t.tArgs, deps).transitioned, true, "transition runs after the lock is cleared");
+    fs.rmSync(t.dir, { recursive: true, force: true }); }
+
+  fs.rmSync(g.root, { recursive: true, force: true });
+});
+
 ok("TRANSITION MUTEX (TOCTOU): a held .txn fails closed (no auto-break); after release the loser re-reads terminal state and does not overwrite", () => {
   const key = KEY(); const idHash = "ab".repeat(32);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-txn-"));
