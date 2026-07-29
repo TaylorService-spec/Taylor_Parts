@@ -72,9 +72,12 @@ function RelationshipRow({ item }) {
   );
 }
 
-export default function UsedInEquipmentSection({ hasCapability, partId, source = inertEquipmentCompatibilitySource, pageSize = PAGE_SIZE }) {
+export default function UsedInEquipmentSection({ hasCapability, partId, accessVersion, source = inertEquipmentCompatibilitySource, pageSize = PAGE_SIZE }) {
   const canView = canViewCompatibility(hasCapability);
-  const [accumulated, setAccumulated] = useState(null);
+  // The QUERY KEY binds every rendered/loaded page to BOTH the Part and the access version. Any change
+  // to either produces a new key; results carrying a stale key are neither rendered nor applied.
+  const queryKey = `${partId ?? ""}::${accessVersion ?? ""}`;
+  const [stored, setStored] = useState(null); // { key, data } — data is the accumulated view for that key
   const [loading, setLoading] = useState(false);
   const [reloadTick, setReloadTick] = useState(0);
   const reqRef = useRef(0);
@@ -84,46 +87,59 @@ export default function UsedInEquipmentSection({ hasCapability, partId, source =
   const hasCapabilityRef = useRef(hasCapability);
   hasCapabilityRef.current = hasCapability;
 
-  // Initial load / reload. NO read occurs unless the capability is exactly granted AND a part is selected.
+  // Initial load / reset on any query-key (partId OR accessVersion) change, or explicit reload. NO read
+  // occurs unless the capability is exactly granted AND a part is selected (loadCompatibilityPage gate).
   useEffect(() => {
     const seq = reqRef.current + 1;
     reqRef.current = seq;
-    setAccumulated(null);
+    const key = queryKey;
+    setStored(null);
     setLoading(true);
     loadCompatibilityPage(source, { hasCapability: hasCapabilityRef.current, partId, cursor: null, limit: pageSize })
       .then((r) => {
         if (reqRef.current !== seq) return;
-        setAccumulated(r.skipped ? null : accumulateCompatibilityPages(null, r.page));
+        setStored(r.skipped ? null : { key, data: accumulateCompatibilityPages(null, r.page) });
       })
       .finally(() => { if (reqRef.current === seq) setLoading(false); });
-  }, [canView, partId, source, pageSize, reloadTick]);
+  }, [canView, queryKey, partId, source, pageSize, reloadTick]);
 
   // HIDDEN — render nothing (must come AFTER hooks). The effect above also performed zero reads.
   if (!canView) return null;
 
+  // Render ONLY data whose key matches the CURRENT query key — a prior Part's / access version's rows and
+  // cursor are unrenderable immediately (this render), not merely after the reset effect runs.
+  const current = stored && stored.key === queryKey ? stored.data : null;
+
   const showMore = () => {
-    if (!accumulated || !accumulated.hasMore || loading) return;
+    if (!current || !current.hasMore || loading) return;
     const seq = reqRef.current + 1;
     reqRef.current = seq;
+    const key = queryKey;
     setLoading(true);
-    loadCompatibilityPage(source, { hasCapability, partId, cursor: accumulated.nextCursor, limit: pageSize })
-      .then((r) => { if (reqRef.current !== seq || r.skipped) return; setAccumulated((prev) => accumulateCompatibilityPages(prev, r.page)); })
+    loadCompatibilityPage(source, { hasCapability: hasCapabilityRef.current, partId, cursor: current.nextCursor, limit: pageSize })
+      .then((r) => {
+        if (reqRef.current !== seq || r.skipped) return;
+        setStored((prev) => (prev && prev.key === key ? { key, data: accumulateCompatibilityPages(prev.data, r.page) } : prev));
+      })
       .finally(() => { if (reqRef.current === seq) setLoading(false); });
   };
   const reload = () => setReloadTick((t) => t + 1);
 
-  const state = accumulated ? accumulated.state : SECTION_STATES.LOADING;
-  const items = accumulated ? accumulated.items : [];
-  const counts = accumulated ? accumulated.counts : null;
+  const state = current ? current.state : SECTION_STATES.LOADING;
+  const items = current ? current.items : [];
+  const counts = current ? current.counts : null;
   const showList = state === SECTION_STATES.AVAILABLE || state === SECTION_STATES.DEGRADED;
-  const complete = isWholeQueryComplete(accumulated);
+  // A neutral end-of-pagination marker is shown ONLY when the traversal is genuinely clean+complete: no
+  // more pages, and nothing degraded / excluded / malformed / evidence-incomplete / load-more-errored.
+  const cleanComplete = isWholeQueryComplete(current) && state === SECTION_STATES.AVAILABLE && !!counts
+    && counts.excludedRejected === 0 && counts.malformedOmitted === 0 && counts.evidenceIncomplete === 0;
 
   let summary;
-  if (loading && !accumulated) summary = "Loading equipment compatibility…";
+  if (loading && !current) summary = "Loading equipment compatibility…";
   else if (state === SECTION_STATES.EMPTY) summary = "No known equipment compatibility is recorded for this part.";
   else if (state === SECTION_STATES.UNAVAILABLE) summary = "Compatibility information is temporarily unavailable.";
   else if (state === SECTION_STATES.DENIED) summary = "You don't have access to compatibility information.";
-  else summary = `${items.length} compatible equipment record${items.length === 1 ? "" : "s"} shown${complete ? "" : "; more may exist"}.`;
+  else summary = `Showing ${items.length} equipment compatibility record${items.length === 1 ? "" : "s"}.`;
 
   return (
     <section className="fo-card fo-equipment-compat" aria-labelledby="used-in-equipment-heading">
@@ -163,15 +179,15 @@ export default function UsedInEquipmentSection({ hasCapability, partId, source =
           {counts && counts.excludedRejected > 0 && (
             <p className="fo-muted">{counts.excludedRejected} record(s) excluded from review.</p>
           )}
-          {accumulated && accumulated.loadMoreError && (
+          {current && current.loadMoreError && (
             <p className="fo-muted" role="alert">Couldn't load more right now. The records above are still shown.</p>
           )}
-          {accumulated && accumulated.hasMore && (
+          {current && current.hasMore && (
             <button type="button" className="fo-btn-secondary" onClick={showMore} disabled={loading}>
               {loading ? "Loading…" : "Show more"}
             </button>
           )}
-          {complete && <p className="fo-muted fo-equipment-compat-complete">All known records shown.</p>}
+          {cleanComplete && <p className="fo-muted fo-equipment-compat-complete">No more records to load.</p>}
         </>
       )}
     </section>

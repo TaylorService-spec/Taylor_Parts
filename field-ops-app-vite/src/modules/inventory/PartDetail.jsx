@@ -1189,7 +1189,7 @@ function InventoryActionsPanel({ partId }) {
   );
 }
 
-export default function PartDetail({ hasCapability } = {}) {
+export default function PartDetail({ hasCapability, accessVersion } = {}) {
   const { partId } = useParams();
   // Notification identity fix (docs/specifications/notification-identity.md,
   // Issue #145) -- every Notification Panel/PartsList.jsx queue link now
@@ -1389,7 +1389,7 @@ export default function PartDetail({ hasCapability } = {}) {
           reads nothing unless equipment.compatibility.view is exactly granted (active:false today, so
           hidden for everyone). A compatibility failure is scoped to this card and never affects the
           Part identity / stock / reorder behavior above or below it. */}
-      <UsedInEquipmentSection hasCapability={hasCapability} partId={resolvedPartId} />
+      <UsedInEquipmentSection hasCapability={hasCapability} accessVersion={accessVersion} partId={resolvedPartId} />
 
       {loading ? (
         <p className="fo-muted">Loading stock position...</p>

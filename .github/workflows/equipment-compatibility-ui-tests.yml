@@ -17,6 +17,8 @@ on:
       - "field-ops-app-vite/src/App.jsx"
       - "field-ops-app-vite/src/index.css"
       - "field-ops-app-vite/test/equipmentCompatibilitySection.test.mjs"
+      - "field-ops-app-vite/test/usedInEquipmentSection.test.jsx"
+      - "field-ops-app-vite/vitest.config.js"
       - "field-ops-app-vite/package.json"
       - "field-ops-app-vite/package-lock.json"
       - ".github/workflows/equipment-compatibility-ui-tests.yml"
@@ -30,6 +32,8 @@ on:
       - "field-ops-app-vite/src/App.jsx"
       - "field-ops-app-vite/src/index.css"
       - "field-ops-app-vite/test/equipmentCompatibilitySection.test.mjs"
+      - "field-ops-app-vite/test/usedInEquipmentSection.test.jsx"
+      - "field-ops-app-vite/vitest.config.js"
       - "field-ops-app-vite/package.json"
       - "field-ops-app-vite/package-lock.json"
       - ".github/workflows/equipment-compatibility-ui-tests.yml"
@@ -56,6 +60,9 @@ jobs:
         working-directory: field-ops-app-vite
       - name: Unit tests (offline view-model chain)
         run: npm test
+        working-directory: field-ops-app-vite
+      - name: Component render / lifecycle / a11y gate (vitest + jsdom)
+        run: npm run test:components
         working-directory: field-ops-app-vite
       - name: Lint
         run: npm run lint

@@ -114,6 +114,39 @@ check("operational ONLY for VERIFIED + applicabilityResolved + model + OK eviden
   // defence in depth: even a lying operational:true is re-guarded to false when preconditions fail
   assert.equal(one({ verificationStatus: "CONFLICT", operational: true }).operational, false);
 });
+check("MALFORMED items fail closed: null/primitive/array/empty/bad-enum are OMITTED + counted, page DEGRADES, never operational", () => {
+  const good = item({ assembly: "GOOD" });
+  const malformedItems = [null, 42, "x", [], {}, item({ compatibilityType: "NOPE" }), item({ verificationStatus: "BOGUS" })];
+  const page = buildCompatibilitySectionPage(okResult(resp({ items: [good, ...malformedItems] })));
+  assert.equal(page.items.length, 1, "only the well-formed item survives");
+  assert.equal(page.state, SECTION_STATES.DEGRADED, "any client-omitted malformed item degrades the page (never AVAILABLE)");
+  assert.equal(page.counts.malformedOmitted, malformedItems.length, "malformed items are counted");
+  assert.equal(page.items.every((i) => typeof i === "object" && i !== null), true);
+});
+check("a hostile operational:true payload cannot be rendered operational", () => {
+  // Structurally malformed but claims operational:true => OMITTED entirely (not shown at all).
+  const p1 = buildCompatibilitySectionPage(okResult(resp({ items: [item({ compatibilityType: "NOPE", operational: true })] })));
+  assert.equal(p1.items.length, 0);
+  assert.equal(p1.state, SECTION_STATES.DEGRADED);
+  // Well-formed but lying operational:true with a non-VERIFIED status => re-guarded to false.
+  const p2 = buildCompatibilitySectionPage(okResult(resp({ items: [item({ verificationStatus: "CONFLICT", operational: true })] })));
+  assert.equal(p2.items[0].operational, false);
+});
+check("a malformed model => model:null + non-operational (item still shown); malformed evidence => UNAVAILABLE + non-operational", () => {
+  const badModel = buildCompatibilitySectionPage(okResult(resp({ items: [item({ model: {}, operational: true })] }))).items[0];
+  assert.equal(badModel.model, null, "a model missing required identity fields is null");
+  assert.equal(badModel.operational, false);
+  assert.ok(badModel.reasons.includes("model-unavailable"));
+  const badEv = buildCompatibilitySectionPage(okResult(resp({ items: [item({ evidence: { status: "GARBAGE" }, operational: true })] }))).items[0];
+  assert.equal(badEv.evidence.status, "UNAVAILABLE");
+  assert.equal(badEv.operational, false);
+});
+check("the builder never throws on a hostile items payload", () => {
+  for (const items of [[null], [undefined], [[]], [42], ["str"], [{}], [{ model: [] }]]) {
+    assert.doesNotThrow(() => buildCompatibilitySectionPage(okResult(resp({ items }))));
+  }
+});
+
 check("nextCursor drives hasMore", () => {
   assert.equal(buildCompatibilitySectionPage(okResult(resp({ nextCursor: "C" }))).hasMore, true);
   assert.equal(buildCompatibilitySectionPage(okResult(resp({ nextCursor: "C" }))).nextCursor, "C");
@@ -183,12 +216,18 @@ check("the view-model imports NOTHING and references no fallback data source", (
 });
 
 // ============================ F. capability prop path (source scan) ============================
-check("App → PartDetail passes hasCapability; PartDetail → UsedInEquipmentSection passes it through unchanged", () => {
+check("App → PartDetail passes hasCapability + accessVersion; PartDetail → UsedInEquipmentSection passes them through unchanged", () => {
   const app = fs.readFileSync(rel("src/App.jsx"), "utf8");
-  assert.ok(/<PartDetail\s+hasCapability=\{operationalContext\?\.hasCapability\}\s*\/>/.test(app), "App mounts PartDetail with the hasCapability prop");
+  assert.ok(
+    /<PartDetail\s+hasCapability=\{operationalContext\?\.hasCapability\}\s+accessVersion=\{operationalContext\?\.accessVersion\}\s*\/>/.test(app),
+    "App mounts PartDetail with the hasCapability and accessVersion props",
+  );
   const pd = fs.readFileSync(rel("src/modules/inventory/PartDetail.jsx"), "utf8");
-  assert.ok(/function PartDetail\(\{\s*hasCapability\b/.test(pd), "PartDetail accepts the hasCapability prop");
-  assert.ok(/<UsedInEquipmentSection\s+hasCapability=\{hasCapability\}\s+partId=\{resolvedPartId\}/.test(pd), "PartDetail forwards hasCapability + resolvedPartId unchanged");
+  assert.ok(/function PartDetail\(\{\s*hasCapability,\s*accessVersion\b/.test(pd), "PartDetail accepts both props");
+  assert.ok(
+    /<UsedInEquipmentSection\s+hasCapability=\{hasCapability\}\s+accessVersion=\{accessVersion\}\s+partId=\{resolvedPartId\}/.test(pd),
+    "PartDetail forwards hasCapability + accessVersion + resolvedPartId unchanged",
+  );
   assert.equal(/resolveEffectivePermission|COMPATIBILITY_ROLES|role\s*===/.test(pd.split("UsedInEquipmentSection")[0].split("PartDetail")[0] || ""), false);
   const sec = fs.readFileSync(rel("src/modules/inventory/UsedInEquipmentSection.jsx"), "utf8");
   assert.ok(/if \(!canView\) return null;/.test(sec), "the section returns null (HIDDEN) when the capability is not granted");

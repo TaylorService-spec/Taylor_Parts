@@ -40,24 +40,30 @@ const COMPATIBILITY_TYPES = new Set(["DIRECT_FIT", "APPROVED_ALTERNATE", "OPTION
 const str = (v) => (typeof v === "string" ? v : null);
 const nonNegInt = (v) => (typeof v === "number" && Number.isInteger(v) && v >= 0 ? v : 0);
 
+// A model is PRESENT only when its required sanitized identity/display fields validate as non-empty
+// strings; anything else (null / array / primitive / missing field) => null (model unavailable,
+// fail-closed, never dereferenced downstream).
 function projectModel(model) {
-  if (model === null || typeof model !== "object") return null;
-  return {
-    manufacturerName: str(model.manufacturerName) ?? "",
-    modelNumber: str(model.modelNumber) ?? "",
-    displayName: str(model.displayName) ?? "",
-    family: str(model.family),
-    subtype: str(model.subtype),
-  };
+  if (model === null || typeof model !== "object" || Array.isArray(model)) return null;
+  const manufacturerName = str(model.manufacturerName);
+  const modelNumber = str(model.modelNumber);
+  const displayName = str(model.displayName);
+  if (!manufacturerName || !modelNumber || !displayName) return null;
+  return { manufacturerName, modelNumber, displayName, family: str(model.family), subtype: str(model.subtype) };
 }
 
-// Sanitized, allowlisted projection of ONE relationship. Explicit field-by-field copy — an unknown or
-// forbidden field on the input can never pass through. NO compatibilityId / equipmentModelId.
+// Sanitized, allowlisted projection of ONE relationship — or null when the payload is MALFORMED (null,
+// array, primitive, empty object, or an unrecognized verificationStatus/compatibilityType). A malformed
+// item is NEVER dereferenced and NEVER rendered/operational; the caller omits it and DEGRADES the page.
+// Explicit field-by-field copy — an unknown or forbidden field can never pass through; NO
+// compatibilityId / equipmentModelId.
 function projectItem(item) {
-  const model = projectModel(item.model);
-  const verificationStatus = VERIFICATION_STATES.has(item.verificationStatus) ? item.verificationStatus : "UNVERIFIED";
+  if (item === null || typeof item !== "object" || Array.isArray(item)) return null;
+  const verificationStatus = VERIFICATION_STATES.has(item.verificationStatus) ? item.verificationStatus : null;
   const compatibilityType = COMPATIBILITY_TYPES.has(item.compatibilityType) ? item.compatibilityType : null;
-  const ev = item.evidence && typeof item.evidence === "object" ? item.evidence : {};
+  if (verificationStatus === null || compatibilityType === null) return null; // core governed fields missing/invalid => malformed
+  const model = projectModel(item.model);
+  const ev = item.evidence && typeof item.evidence === "object" && !Array.isArray(item.evidence) ? item.evidence : {};
   const evStatus = ev.status === "OK" || ev.status === "INCOMPLETE" || ev.status === "UNAVAILABLE" ? ev.status : "UNAVAILABLE";
   const windowComplete = ev.windowComplete === true && evStatus === "OK";
   const applicabilityResolved = item.applicabilityResolved === true;
@@ -132,12 +138,23 @@ export function buildCompatibilitySectionPage(sourceResult) {
     return emptyPageView(SECTION_STATES.UNAVAILABLE); // unknown disposition => fail closed
   }
 
-  const items = r.items.map(projectItem);
+  // Client-side fail-closed: omit any malformed item (null/array/primitive/empty/bad-enum) and count it.
+  // Any client omission forces DEGRADED — a malformed payload can NEVER be presented as a clean page.
+  const projected = [];
+  let clientMalformed = 0;
+  for (const raw of r.items) {
+    const it = projectItem(raw);
+    if (it === null) { clientMalformed += 1; continue; }
+    projected.push(it);
+  }
+  const serverCounts = projectCounts(r.windowCounts);
+  const counts = { ...serverCounts, malformedOmitted: serverCounts.malformedOmitted + clientMalformed };
+  const degraded = disposition === "DEGRADED" || clientMalformed > 0;
   const hasMore = typeof r.nextCursor === "string" && r.nextCursor.length > 0;
   return {
-    state: disposition === "DEGRADED" ? SECTION_STATES.DEGRADED : SECTION_STATES.AVAILABLE,
-    items,
-    counts: projectCounts(r.windowCounts),
+    state: degraded ? SECTION_STATES.DEGRADED : SECTION_STATES.AVAILABLE,
+    items: projected,
+    counts,
     nextCursor: hasMore ? r.nextCursor : null,
     hasMore,
   };
