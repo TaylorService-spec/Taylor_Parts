@@ -128,6 +128,16 @@ function currentGeneration(progressionOut, deps = {}) { return gate.readGenerati
 // staging file. EEXIST on the link => another worker already claimed this generation.
 function claimGeneration(progressionOut, next, owner, deps = {}) {
   const _fs = deps.fs || fs;
+  // MUTUAL EXCLUSION with the identity transition: an identity transition (and its recovery) holds
+  // an owner-published, exclusive, never-auto-broken `.idtxn` intent across its ENTIRE critical
+  // section (classify -> state replace -> anchor replace -> combined verify -> intent cleanup). While
+  // that intent is present, advancing the fencing generation is REFUSED (fail closed) -- so a
+  // governed reconciliation can never publish a new generation between a transition's fence check
+  // and its following state/anchor replacement. The intent is resolved only by the governed
+  // identity-transition-recover; advancement is never auto-broken here.
+  if (_fs.existsSync(gate.idtxnPath(progressionOut))) {
+    throw new Error("Refusing to advance the fencing generation while an identity-transition intent is present (mutual exclusion) -- resolve it with identity-transition-recover first.");
+  }
   const now = deps.now || (() => new Date());
   let previousDigest = gate.GEN_CHAIN_ROOT;
   if (next > 1) {
@@ -683,15 +693,20 @@ function classifyAndFinishTransition(progressionOut, stateKey, expected, intent,
   const anchorIs = ad === intent.targetAnchorDigest ? "target" : ad === intent.predecessorAnchorDigest ? "predecessor" : "foreign";
   if (stateIs === "foreign" || anchorIs === "foreign") throw new Error("Identity-transition recovery: state/anchor is neither the exact predecessor nor the authorized target (substituted/foreign/conflicting) -- BLOCKED, escalate to the Owner.");
   if (stateIs === "predecessor" && anchorIs === "target") throw new Error("Identity-transition recovery: anchor advanced ahead of state (impossible ordering) -- BLOCKED, escalate to the Owner.");
-  assertIdentityFence(progressionOut, intent, deps); // fence before any replacement
+  // The `.idtxn` intent is present throughout this section, so claimGeneration() is REFUSED
+  // (mutual exclusion) -- the fencing generation cannot advance between a fence check and the
+  // following write. The assertIdentityFence() calls are defense-in-depth (they catch any advance
+  // that landed BEFORE the intent was published); the seams run in the exact check->write window
+  // to prove the guard closes the race (a concurrent claimGeneration there is refused, not applied).
+  assertIdentityFence(progressionOut, intent, deps);
   if (stateIs === "predecessor") {
-    if (deps.beforeStateReplace) deps.beforeStateReplace(); // test seam (generation change mid-flight)
-    assertIdentityFence(progressionOut, intent, deps);      // immediately before the state replacement
+    assertIdentityFence(progressionOut, intent, deps);        // final state fence check
+    if (deps.beforeStateReplace) deps.beforeStateReplace();   // advancement ATTEMPT in the check->write window
     gate.atomicWrite(roles.state, intent.targetState, deps);
   }
   if (anchorIs === "predecessor") {
-    if (deps.beforeAnchorReplace) deps.beforeAnchorReplace(); // test seam
-    assertIdentityFence(progressionOut, intent, deps);        // immediately before the anchor replacement
+    assertIdentityFence(progressionOut, intent, deps);        // final anchor fence check
+    if (deps.beforeAnchorReplace) deps.beforeAnchorReplace(); // advancement ATTEMPT in the check->write window
     gate.atomicWrite(anchorP, intent.targetAnchor, deps);
   }
   const back = gate.readState(roles.state, stateKey, expected, deps);
@@ -700,7 +715,8 @@ function classifyAndFinishTransition(progressionOut, stateKey, expected, intent,
   if (fileDigest(anchorP, deps) !== intent.targetAnchorDigest) throw new Error("Post-transition anchor digest mismatch -- fail closed.");
   if (back.workflowIdentityHash !== intent.newWorkflowIdentityHash) throw new Error("Post-transition workflow identity mismatch -- fail closed.");
   if (back.revision !== intent.predecessorRevision + 1) throw new Error("Post-transition revision mismatch -- fail closed.");
-  assertIdentityFence(progressionOut, intent, deps); // immediately before intent cleanup
+  assertIdentityFence(progressionOut, intent, deps);          // final verification->cleanup fence check
+  if (deps.beforeIntentCleanup) deps.beforeIntentCleanup();   // advancement ATTEMPT in the verify->cleanup window
   _fs.unlinkSync(gate.idtxnPath(progressionOut)); // BOUNDARY: intent cleanup (only after both verify + fence)
   return { back, stateIs, anchorIs };
 }
@@ -739,23 +755,30 @@ function identityTransition(args, deps = {}) {
   };
 
   // BOUNDARY 1 -- publish the intent journal ATOMICALLY + EXCLUSIVELY (full-or-absent; EEXIST =>
-  // a concurrent transition already owns it). This is the crash marker AND the recovery journal.
+  // a concurrent transition already owns it). This is the crash marker, the recovery journal, AND
+  // the mutual-exclusion lock: once it exists, claimGeneration() refuses to advance the fence.
+  if (deps.beforeIntentPublish) deps.beforeIntentPublish(); // test seam: advancement in the capture->publish window
   try {
     atomicExclusiveCreate(idtxnP, JSON.stringify({ ...intent, signature: signIdtxn(intent, stateKey) }), deps);
   } catch (err) {
     if (err && err.code === "EEXIST") throw new Error("An identity-transition intent is already present (a concurrent transition) -- refusing.");
     throw err;
   }
-  // Close the claim race: re-confirm the state is STILL the exact predecessor and no claim/txn
-  // appeared while the intent was being published. If a continuation intervened, abort WITHOUT
-  // touching state/anchor and remove the just-published intent (nothing was committed yet).
-  if (fileDigest(roles.state, deps) !== predStateDigest || _fs.existsSync(roles.lock) || _fs.existsSync(gate.txnPath(progressionOut))) {
-    try { _fs.unlinkSync(idtxnP); } catch { /* leave for recovery */ }
-    throw new Error("A concurrent state change / claim appeared during identity-transition setup -- aborted without modifying state/anchor.");
+  // POST-PUBLISH, PRE-WRITE validation. Nothing has been written to state/anchor yet, so on ANY
+  // failure here the just-published intent is removed -- no protected state was modified, so there
+  // is NO residue to recover (the transition "mutates nothing"). This closes the capture->publish
+  // window: if a governed reconciliation advanced the generation before the intent existed, the
+  // fence check fails and the intent is withdrawn. (Once the intent exists, claimGeneration() is
+  // refused, so the generation cannot advance for the rest of the critical section.)
+  try {
+    if (fileDigest(roles.state, deps) !== predStateDigest || _fs.existsSync(roles.lock) || _fs.existsSync(gate.txnPath(progressionOut))) {
+      throw new Error("A concurrent state change / claim appeared during identity-transition setup -- aborted without modifying state/anchor.");
+    }
+    assertIdentityFence(progressionOut, intent, deps); // generation must not have advanced pre-publish
+  } catch (err) {
+    try { _fs.unlinkSync(idtxnP); } catch { /* leave for governed recovery */ }
+    throw err;
   }
-  // Revalidate the fence AFTER publication: if the generation advanced between capture and publish,
-  // fail closed. (classifyAndFinishTransition also re-checks before each write and before cleanup.)
-  assertIdentityFence(progressionOut, intent, deps);
 
   // BOUNDARIES 2-4 -- write state, write anchor, verify together, remove intent (idempotent path
   // shared with recovery). A crash at any boundary leaves the intent for identity-transition-recover.
