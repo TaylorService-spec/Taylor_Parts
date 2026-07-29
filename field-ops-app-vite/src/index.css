@@ -160,6 +160,27 @@ body { -webkit-font-smoothing: antialiased; font-family: -apple-system, BlinkMac
 .fo-badge-equipment-inactive { background: #FFF4DE; color: #A9740D; }
 .fo-badge-equipment-retired { background: #EEF1F0; color: #667; }
 
+/* D6 -- Part Detail "Used In Equipment" compatibility section. Verification-status badges are namespaced
+   (fo-badge-equipment-compat-*) so they never inherit another feature's status cascade; only VERIFIED +
+   the "Usable" (operational) badge read as green. */
+.fo-badge-equipment-compat-verified { background: #E6F6EC; color: #237A45; }
+.fo-badge-equipment-compat-operational { background: #DFF3E6; color: #1C6B3A; }
+.fo-badge-equipment-compat-conflict { background: #FDECEC; color: #B23B3B; }
+.fo-badge-equipment-compat-in-review { background: #FFF4DE; color: #A9740D; }
+.fo-badge-equipment-compat-unverified { background: #EEF1F0; color: #667; }
+.fo-badge-equipment-compat-rejected { background: #EEF1F0; color: #889; }
+.fo-equipment-compat-model-sub { font-size: 13px; }
+.fo-equipment-compat-nonoperational td { opacity: 0.85; }
+.fo-equipment-compat-complete { margin-top: 6px; }
+/* OD-E -- table on wider screens; stacked per-record cards below 640px using the data-label technique. */
+@media (max-width: 640px) {
+  .fo-equipment-compat-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .fo-equipment-compat-table, .fo-equipment-compat-table tbody, .fo-equipment-compat-table tr, .fo-equipment-compat-table td { display: block; width: 100%; }
+  .fo-equipment-compat-table tr { border: 1px solid #E3E8E6; border-radius: 8px; margin-bottom: 10px; padding: 6px 10px; }
+  .fo-equipment-compat-table td { border: none; padding: 4px 0; }
+  .fo-equipment-compat-table td::before { content: attr(data-label) ": "; font-weight: 600; color: #667; }
+}
+
 /* Operations dashboard -- severity/urgency levels shared by the
    Inventory Health, Warehouse reconciliation, and Procurement panels
    (Epics 3/4/5). */
