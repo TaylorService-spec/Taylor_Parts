@@ -115,7 +115,11 @@ identity-transition`, credential-free, no SDK/network) re-signs it to the new id
 transition is **journaled and crash-safe**: it publishes a signed `.idtxn` intent before touching
 state/anchor and removes it only after both verify under the new identity; an interrupted transition
 is completed deterministically by `--mode identity-transition-recover` (rolls forward from the intent;
-blocks on any substituted/foreign artifact). Full unwind =
+blocks on any substituted/foreign artifact). The transition and the generation-ledger advancement
+(`reconcile-recover`) are **mutually exclusive** via a single owner-bound `.fencelock` both acquire
+atomically and hold across their critical sections; a crash-left fence lock is cleared only by the
+governed `--mode fence-inspect` + `--mode fence-recover` (owner-stopped attestation + fingerprint).
+Full unwind =
 **re-authorization → identity transition → continuation**, each separately authorized. This PR is
 repo + emulator only and performs/authorizes none of them.
 

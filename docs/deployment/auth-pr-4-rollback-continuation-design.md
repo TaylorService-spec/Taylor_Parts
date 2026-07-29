@@ -88,17 +88,28 @@ governed reconciliation advances the generation, a stale intent (even with its m
 artifacts still on disk) is **superseded and blocked** — it can never be replayed to resurrect a
 transition the newer generation has fenced out.
 
-**Mutual exclusion with generation advancement.** The `.idtxn` intent is also the **shared
-exclusion lock**: `claimGeneration()` (the only way the fencing generation advances) **refuses while
-an intent is present**. So once the intent is published, the generation cannot advance for the rest
-of the critical section — the fence-check → replacement race is closed *by construction* (a
-concurrent advance is impossible, not merely re-detected), across classification, state replacement,
-anchor replacement, combined verification, and intent cleanup. The only advance window is *before*
-the intent exists (capture → publish); an advance there is caught by the post-publish, pre-write
-fence check, which **withdraws** the just-published intent so the transition mutates nothing. The
-lock is owner-published, exclusive, never auto-broken, and resolved only by the governed
-`identity-transition-recover`; a governed reconciliation that needs to advance the generation must
-first resolve the intent through that path.
+**Mutual exclusion with generation advancement (a shared lock, not a presence check).** A single
+owner-bound **fence-exclusion lock** (`<progression>.fencelock`) is acquired **atomically** (O_EXCL
+hard-link) by BOTH operations that can touch the fencing generation + the transition's protected
+state, and **held across each one's whole critical section**:
+
+- **generation advancement** — `reconcile-recover` is the only production path that advances the
+  fencing generation (via `claimGeneration`); it acquires the fence lock **before** the generation
+  CAS and holds it through the reconciliation-mutex removal;
+- **identity transition (+ recovery)** — acquires the fence lock **before** publishing the intent
+  and holds it through classification, state replacement, anchor replacement, combined verification,
+  and intent cleanup.
+
+Because both acquire the **same** lock atomically, exactly one wins; the loser gets `EEXIST` and
+**publishes/mutates nothing**. This closes the reverse race (a generation worker cannot slip a
+`gen.N+1` claim in between the transition's checks and writes, and vice-versa) — mutual exclusion by
+a single atomically-acquired lock, not a one-sided presence check. The lock is signed with the state
+key, released only by its owner token, and **never auto-broken**. A hard crash strands it; the
+governed **`fence-inspect` / `fence-recover`** modes clear a crash-left lock — and *only* the lock —
+requiring an explicit **owner-stopped attestation** plus a matching **fingerprint** (nothing changed
+since inspection), after which the operator runs the appropriate follow-on
+(`identity-transition-recover` for a stranded intent; `reconcile-recover` for a stranded
+reconciliation). The gate blocks every production step while a fence lock is present.
 
 ```bash
 node functions/scripts/authPr4InitProgression.js --mode identity-transition \
@@ -204,6 +215,10 @@ continuation**.
   advancement attempt in every check→write window (state / anchor / verify→cleanup) is refused and
   the transition completes; a pre-publish advance wins and the transition mutates nothing (intent
   withdrawn, no residue).
+- **Pure (shared fence lock / reverse race):** the generation worker and the identity transition
+  acquire ONE lock atomically — exactly one wins and the loser publishes/mutates nothing (both
+  directions); a crash-left lock blocks a new transition and is cleared only by governed
+  `fence-recover` (owner-stopped attestation + matching fingerprint), after which the transition runs.
 - **Auth emulator (end-to-end):** forward 1→5, owner rollback → `suspended`, then continuation
   4 → 3 → 2 → 1 → terminal `rolled_back`; each step restores the exact prior address +
   `emailVerified` and deletes the rollback artifact only after durable progression.
