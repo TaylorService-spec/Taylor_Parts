@@ -88,6 +88,18 @@ governed reconciliation advances the generation, a stale intent (even with its m
 artifacts still on disk) is **superseded and blocked** — it can never be replayed to resurrect a
 transition the newer generation has fenced out.
 
+**Mutual exclusion with generation advancement.** The `.idtxn` intent is also the **shared
+exclusion lock**: `claimGeneration()` (the only way the fencing generation advances) **refuses while
+an intent is present**. So once the intent is published, the generation cannot advance for the rest
+of the critical section — the fence-check → replacement race is closed *by construction* (a
+concurrent advance is impossible, not merely re-detected), across classification, state replacement,
+anchor replacement, combined verification, and intent cleanup. The only advance window is *before*
+the intent exists (capture → publish); an advance there is caught by the post-publish, pre-write
+fence check, which **withdraws** the just-published intent so the transition mutates nothing. The
+lock is owner-published, exclusive, never auto-broken, and resolved only by the governed
+`identity-transition-recover`; a governed reconciliation that needs to advance the generation must
+first resolve the intent through that path.
+
 ```bash
 node functions/scripts/authPr4InitProgression.js --mode identity-transition \
   --projectId taylor-parts --confirmProduction taylor-parts \
@@ -185,10 +197,13 @@ continuation**.
   `--mode identity-transition-recover` to a consistent new-identity state+anchor — including the
   exact new-state/old-anchor case (shown to fail anchor freshness before recovery); recovery
   refuses with no intent and **blocks** (retains the intent) on a substituted/foreign artifact.
-- **Pure (generation fence):** same-generation transition + recovery succeed; a generation advance
-  after intent creation blocks recovery and retains the intent (a stale journal + matching
-  predecessors cannot bypass the newer fence); a generation change between classification and
-  replacement fails closed before any write.
+- **Pure (generation fence):** same-generation transition + recovery succeed; an out-of-band
+  ledger-head advance versus the signed intent blocks recovery and retains the intent (a stale
+  journal + matching predecessors cannot bypass the newer fence).
+- **Pure (mutual exclusion):** while an intent is held, `claimGeneration()` is refused; an
+  advancement attempt in every check→write window (state / anchor / verify→cleanup) is refused and
+  the transition completes; a pre-publish advance wins and the transition mutates nothing (intent
+  withdrawn, no residue).
 - **Auth emulator (end-to-end):** forward 1→5, owner rollback → `suspended`, then continuation
   4 → 3 → 2 → 1 → terminal `rolled_back`; each step restores the exact prior address +
   `emailVerified` and deletes the rollback artifact only after durable progression.
