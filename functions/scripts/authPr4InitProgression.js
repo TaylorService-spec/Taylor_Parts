@@ -128,16 +128,23 @@ function currentGeneration(progressionOut, deps = {}) { return gate.readGenerati
 // staging file. EEXIST on the link => another worker already claimed this generation.
 function claimGeneration(progressionOut, next, owner, deps = {}) {
   const _fs = deps.fs || fs;
-  // MUTUAL EXCLUSION with the identity transition: an identity transition (and its recovery) holds
-  // an owner-published, exclusive, never-auto-broken `.idtxn` intent across its ENTIRE critical
-  // section (classify -> state replace -> anchor replace -> combined verify -> intent cleanup). While
-  // that intent is present, advancing the fencing generation is REFUSED (fail closed) -- so a
-  // governed reconciliation can never publish a new generation between a transition's fence check
-  // and its following state/anchor replacement. The intent is resolved only by the governed
-  // identity-transition-recover; advancement is never auto-broken here.
-  if (_fs.existsSync(gate.idtxnPath(progressionOut))) {
-    throw new Error("Refusing to advance the fencing generation while an identity-transition intent is present (mutual exclusion) -- resolve it with identity-transition-recover first.");
-  }
+  // LOCK-OWNED: publishing an authoritative generation claim REQUIRES holding the shared fence lock.
+  // Immediately before publishing, strictly parse + verify the signed on-disk fence lock and require
+  // holder="generation-advance", the caller's EXACT owner token, and the captured generation +
+  // ledger-head digest equal to the CURRENT validated ledger head. An absent / malformed /
+  // foreign-owned / wrong-holder / wrong-token / stale lock fails closed. The only production caller,
+  // reconcile-recover, acquires the fence lock and threads deps.fenceToken -- there is no lock-free
+  // generation publication (the mutual exclusion with the identity transition is enforced HERE, at
+  // the authoritative primitive, not merely by a caller convention).
+  const stateKey = deps.stateKey;
+  if (!stateKey) throw new Error("claimGeneration requires deps.stateKey to verify the held fence lock (generation publication must be lock-owned).");
+  if (!deps.fenceToken || typeof deps.fenceToken !== "string") throw new Error("claimGeneration requires a held generation-advance fence-lock token (deps.fenceToken) -- generation publication must be lock-owned.");
+  const lock = readFenceLock(progressionOut, stateKey, deps); // absent / malformed / foreign-key -> throws
+  if (lock.holder !== "generation-advance") throw new Error("The held fence lock is not a generation-advance lock (holder mismatch) -- refusing to publish a generation claim.");
+  if (lock.token !== deps.fenceToken) throw new Error("The fence lock is owned by a different token -- refusing to publish a generation claim.");
+  const head = gate.generationLedgerHead(progressionOut, deps); // validated current head
+  if (lock.generation !== head.generation || lock.ledgerHeadDigest !== head.headDigest) throw new Error("The fence lock's captured generation / ledger head is stale (the ledger advanced since acquisition) -- refusing to publish a generation claim.");
+  if (next !== head.generation + 1) throw new Error("A generation claim must advance exactly one from the current validated generation -- refusing.");
   const now = deps.now || (() => new Date());
   let previousDigest = gate.GEN_CHAIN_ROOT;
   if (next > 1) {
@@ -198,7 +205,7 @@ function atomicExclusiveCreate(finalPath, contents, deps = {}) {
 const FENCE_LOCK_VERSION = 1;
 const FENCE_HOLDERS = Object.freeze(["generation-advance", "identity-transition"]);
 const FENCE_RECOVER_CONFIRM = "fence-holder-stopped";
-const FENCE_LOCK_FIELDS = Object.freeze(["version", "token", "holder", "generation", "stateDigest", "anchorDigest", "idtxnDigest", "at"]);
+const FENCE_LOCK_FIELDS = Object.freeze(["version", "token", "holder", "generation", "ledgerHeadDigest", "stateDigest", "anchorDigest", "idtxnDigest", "at"]);
 function canonicalFenceLock(p) { return JSON.stringify(FENCE_LOCK_FIELDS.map((f) => [f, p[f]])); }
 function signFenceLock(p, key) { return crypto.createHmac("sha256", key).update(canonicalFenceLock(p)).digest("hex"); }
 
@@ -225,7 +232,7 @@ function acquireFenceLock(progressionOut, holder, stateKey, deps = {}) {
   const head = gate.generationLedgerHead(progressionOut, deps);
   const payload = {
     version: FENCE_LOCK_VERSION, token: crypto.randomBytes(16).toString("hex"), holder,
-    generation: head.generation, stateDigest: fileDigest(roles.state, deps),
+    generation: head.generation, ledgerHeadDigest: head.headDigest, stateDigest: fileDigest(roles.state, deps),
     anchorDigest: fileDigest(gate.anchorPath(progressionOut), deps), idtxnDigest: fileDigest(gate.idtxnPath(progressionOut), deps),
     at: (deps.now ? deps.now() : new Date()).toISOString(),
   };
@@ -639,7 +646,7 @@ function reconcileRecover(args, deps = {}) {
   try {
     const fromGen = currentGeneration(args.progressionOut, deps);
     if (deps.beforeGenerationClaim) deps.beforeGenerationClaim(); // test seam: simulate a concurrent recovery/cleanup between read and CAS
-    try { claimGeneration(args.progressionOut, fromGen + 1, `recover-${crypto.randomBytes(8).toString("hex")}`, deps); }
+    try { claimGeneration(args.progressionOut, fromGen + 1, `recover-${crypto.randomBytes(8).toString("hex")}`, { ...deps, stateKey, fenceToken: fence.token }); }
     catch (err) {
       if (err && err.code === "EEXIST") throw new Error("The fencing generation was already advanced by another recovery -- this attempt did not obtain authority (refusing).");
       throw err;
@@ -784,11 +791,11 @@ function classifyAndFinishTransition(progressionOut, stateKey, expected, intent,
   const anchorIs = ad === intent.targetAnchorDigest ? "target" : ad === intent.predecessorAnchorDigest ? "predecessor" : "foreign";
   if (stateIs === "foreign" || anchorIs === "foreign") throw new Error("Identity-transition recovery: state/anchor is neither the exact predecessor nor the authorized target (substituted/foreign/conflicting) -- BLOCKED, escalate to the Owner.");
   if (stateIs === "predecessor" && anchorIs === "target") throw new Error("Identity-transition recovery: anchor advanced ahead of state (impossible ordering) -- BLOCKED, escalate to the Owner.");
-  // The `.idtxn` intent is present throughout this section, so claimGeneration() is REFUSED
-  // (mutual exclusion) -- the fencing generation cannot advance between a fence check and the
-  // following write. The assertIdentityFence() calls are defense-in-depth (they catch any advance
-  // that landed BEFORE the intent was published); the seams run in the exact check->write window
-  // to prove the guard closes the race (a concurrent claimGeneration there is refused, not applied).
+  // The transition HOLDS the shared fence lock throughout this section (acquired before the intent
+  // was published), and claimGeneration() is lock-owned -- so a generation advancement cannot occur
+  // between a fence check and the following write (a concurrent reconcile-recover cannot acquire the
+  // lock). The assertIdentityFence() calls are defense-in-depth (they catch any advance that landed
+  // BEFORE the fence lock was acquired); the seams exercise the exact check->write window.
   assertIdentityFence(progressionOut, intent, deps);
   if (stateIs === "predecessor") {
     assertIdentityFence(progressionOut, intent, deps);        // final state fence check
@@ -825,6 +832,10 @@ function identityTransition(args, deps = {}) {
   // lock with fence-recover, then complete the intent with identity-transition-recover.
   const fence = acquireFenceLock(progressionOut, "identity-transition", stateKey, deps);
   try {
+  // The fence lock is now held, so the generation is FROZEN for the rest of this function. Bind the
+  // intent to the head observed UNDER the lock (not the preflight snapshot): an advance that landed
+  // in the tiny preflight->acquire window is captured here, so the intent is never stale-on-publish.
+  const heldHead = gate.generationLedgerHead(progressionOut, deps);
   if (_fs.existsSync(idtxnP)) throw new Error("An identity-transition intent is already present (a prior transition is in progress or was interrupted) -- run --mode identity-transition-recover.");
 
   // Read + verify the EXISTING state under the OLD identity (signature + strict binding + freshness).
@@ -849,12 +860,13 @@ function identityTransition(args, deps = {}) {
     predecessorStateDigest: predStateDigest, predecessorAnchorDigest: predAnchorDigest,
     targetStateDigest: sha256Of(targetState), targetAnchorDigest: sha256Of(targetAnchor),
     targetState, targetAnchor,
-    generation: ledgerHead.generation, ledgerHeadDigest: ledgerHead.headDigest, at,
+    generation: heldHead.generation, ledgerHeadDigest: heldHead.headDigest, at,
   };
 
   // BOUNDARY 1 -- publish the intent journal ATOMICALLY + EXCLUSIVELY (full-or-absent; EEXIST =>
-  // a concurrent transition already owns it). This is the crash marker, the recovery journal, AND
-  // the mutual-exclusion lock: once it exists, claimGeneration() refuses to advance the fence.
+  // a concurrent transition already owns it). This is the crash marker and the recovery journal.
+  // (Mutual exclusion with generation advancement is provided by the shared fence lock held around
+  // this whole function, not by the intent's presence.)
   if (deps.beforeIntentPublish) deps.beforeIntentPublish(); // test seam: advancement in the capture->publish window
   try {
     atomicExclusiveCreate(idtxnP, JSON.stringify({ ...intent, signature: signIdtxn(intent, stateKey) }), deps);
@@ -864,10 +876,10 @@ function identityTransition(args, deps = {}) {
   }
   // POST-PUBLISH, PRE-WRITE validation. Nothing has been written to state/anchor yet, so on ANY
   // failure here the just-published intent is removed -- no protected state was modified, so there
-  // is NO residue to recover (the transition "mutates nothing"). This closes the capture->publish
-  // window: if a governed reconciliation advanced the generation before the intent existed, the
-  // fence check fails and the intent is withdrawn. (Once the intent exists, claimGeneration() is
-  // refused, so the generation cannot advance for the rest of the critical section.)
+  // is NO residue to recover (the transition "mutates nothing"). This closes any advance that
+  // landed BEFORE the fence lock was acquired: the fence check fails and the intent is withdrawn.
+  // (While the fence lock is held -- across the rest of this function -- reconcile-recover cannot
+  // acquire it, and claimGeneration() is lock-owned, so the generation cannot advance.)
   try {
     if (fileDigest(roles.state, deps) !== predStateDigest || _fs.existsSync(roles.lock) || _fs.existsSync(gate.txnPath(progressionOut))) {
       throw new Error("A concurrent state change / claim appeared during identity-transition setup -- aborted without modifying state/anchor.");

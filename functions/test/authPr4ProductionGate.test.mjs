@@ -781,10 +781,9 @@ ok("IDENTITY TRANSITION generation fence: same-gen recovery succeeds; an out-of-
   fs.rmSync(g.root, { recursive: true, force: true });
 });
 
-ok("IDENTITY TRANSITION mutual exclusion: while an intent is held generation advancement is REFUSED; an advancement attempt in EVERY check->write window (state / anchor / verify->cleanup) is refused and the transition completes; a pre-publish advance wins and the transition mutates nothing", () => {
+ok("IDENTITY TRANSITION mutual exclusion: while the transition HOLDS the shared fence lock, a generation-advance acquisition is refused in EVERY window (pre-publish / state / anchor / verify->cleanup) and the transition completes", () => {
   const g = buildTransitionRepo("demo-authpr4");
   const expectedNew = { authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", workflowIdentityHash: g.newIdHash, personaOrder: ORDER };
-  const expectedOld = { ...expectedNew, workflowIdentityHash: g.oldIdHash };
   const deps = { repoRoot: g.root, personaOrder: ORDER };
   const mk = () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "authpr4-idt-mx-"));
@@ -793,46 +792,22 @@ ok("IDENTITY TRANSITION mutual exclusion: while an intent is held generation adv
     writeSuspended(stateFile, key, { authorizationId: "AUTHPR4-PROD-TEST", projectId: "demo-authpr4", idHash: g.oldIdHash, completed: ORDER.slice(0, 4), revision: 12 });
     return { dir, keyFile, key, stateFile, tArgs: { projectId: "demo-authpr4", confirmProduction: "demo-authpr4", authorizedCommit: g.authorizedCommit, oldAuthorizedCommit: g.oldAuthorizedCommit, executionModeConfirmation: g.executionModeToken, executor: g.executor, stateKeyFile: keyFile, progressionOut: stateFile, confirmIdentityTransition: "transition-workflow-identity" } };
   };
-  // A governed generation advancement attempt: MUST be refused while the intent is present.
-  const attemptAdvance = (stateFile) => assert.throws(() => initProg.claimGeneration(stateFile, 1, "governed-reconciliation", {}), /mutual exclusion|identity-transition intent is present/);
-
-  // Direct exclusion: an intent left by a crash refuses generation advancement; recovery (which
-  // never advances) still completes.
-  { const t = mk();
-    throws(() => initProg.identityTransition(t.tArgs, { ...deps, fs: crashOnRename(t.stateFile) }), /injected crash/);
-    assert.ok(fs.existsSync(gate.idtxnPath(t.stateFile)));
-    attemptAdvance(t.stateFile);
-    assert.equal(initProg.identityTransitionRecover(t.tArgs, deps).transitioned, true);
+  // A generation advancement begins by acquiring the SHARED fence lock -- while the transition holds
+  // it, that acquisition is refused (EEXIST). (The transition holds the lock from before intent
+  // publication through cleanup, so every window below is covered.)
+  const attemptAdvance = (stateFile, key) => assert.throws(() => initProg.acquireFenceLock(stateFile, "generation-advance", key, {}), /already held|mutual exclusion/);
+  const completes = (seam) => {
+    const t = mk();
+    assert.equal(initProg.identityTransition(t.tArgs, { ...deps, [seam]: () => attemptAdvance(t.stateFile, t.key) }).transitioned, true);
     assert.equal(gate.readState(t.stateFile, t.key, expectedNew).workflowIdentityHash, g.newIdHash);
-    fs.rmSync(t.dir, { recursive: true, force: true }); }
-
-  // Interleave: an advancement ATTEMPT in the state check->write window is refused; transition completes.
-  { const t = mk();
-    assert.equal(initProg.identityTransition(t.tArgs, { ...deps, beforeStateReplace: () => attemptAdvance(t.stateFile) }).transitioned, true);
-    assert.equal(gate.readState(t.stateFile, t.key, expectedNew).workflowIdentityHash, g.newIdHash);
-    fs.rmSync(t.dir, { recursive: true, force: true }); }
-
-  // Interleave: an advancement ATTEMPT in the anchor check->write window is refused; transition completes.
-  { const t = mk();
-    assert.equal(initProg.identityTransition(t.tArgs, { ...deps, beforeAnchorReplace: () => attemptAdvance(t.stateFile) }).transitioned, true);
-    assert.equal(gate.readState(t.stateFile, t.key, expectedNew).workflowIdentityHash, g.newIdHash);
-    fs.rmSync(t.dir, { recursive: true, force: true }); }
-
-  // Interleave: an advancement ATTEMPT in the verify->cleanup window is refused; transition completes + intent removed.
-  { const t = mk();
-    assert.equal(initProg.identityTransition(t.tArgs, { ...deps, beforeIntentCleanup: () => attemptAdvance(t.stateFile) }).transitioned, true);
-    assert.ok(!fs.existsSync(gate.idtxnPath(t.stateFile)), "intent cleaned up after a refused advancement attempt");
-    assert.equal(gate.readState(t.stateFile, t.key, expectedNew).workflowIdentityHash, g.newIdHash);
-    fs.rmSync(t.dir, { recursive: true, force: true }); }
-
-  // Pre-publish advance WINS: an advancement in the capture->publish window (no intent yet) succeeds,
-  // then the transition fails closed and WITHDRAWS its intent -> state/anchor unmodified, no residue.
-  { const t = mk();
-    throws(() => initProg.identityTransition(t.tArgs, { ...deps, beforeIntentPublish: () => { initProg.claimGeneration(t.stateFile, 1, "governed-reconciliation", {}); } }), /fencing generation \/ ledger head advanced|superseded|aborted without modifying/);
-    assert.ok(!fs.existsSync(gate.idtxnPath(t.stateFile)), "intent withdrawn -> no residue");
-    assert.equal(gate.readState(t.stateFile, t.key, expectedOld).workflowIdentityHash, g.oldIdHash, "state unmodified (advancement won)");
-    fs.rmSync(t.dir, { recursive: true, force: true }); }
-
+    assert.ok(!fs.existsSync(gate.idtxnPath(t.stateFile)), "intent cleaned up");
+    assert.ok(!fs.existsSync(gate.fenceLockPath(t.stateFile)), "fence lock released");
+    fs.rmSync(t.dir, { recursive: true, force: true });
+  };
+  completes("beforeIntentPublish"); // capture->publish window
+  completes("beforeStateReplace");  // state check->write window
+  completes("beforeAnchorReplace"); // anchor check->write window
+  completes("beforeIntentCleanup"); // verify->cleanup window
   fs.rmSync(g.root, { recursive: true, force: true });
 });
 
