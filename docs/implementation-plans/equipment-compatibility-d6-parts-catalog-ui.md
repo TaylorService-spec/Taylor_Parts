@@ -84,10 +84,14 @@ exactly as the D5 callable is inert. All D6 behavior is exercised only by **test
   Existing READY-body cards (DOM order): Header → Reorder status → **Catalog** → **Stock Position & Reorder**
   → **Inventory Action Log** → **Recent Transactions** (`PartDetail.jsx:1315-1493`). Each card is
   `<div className="fo-card"><h3>…</h3></div>`.
-- **Permission idiom** — the capability-feed gate: `operationalContext.hasCapability(<capId>) === true`
-  (fail-closed; `navConfig.js:349-353`), wired from the trusted feed hook `useReportCapabilities(user)`
-  (`App.jsx:413,419`). This is the exact idiom nav items use for `report.*` capabilities. A D6 section gates
-  on `hasCapability("equipment.compatibility.view")`.
+- **Permission idiom** — the capability-feed gate: `hasCapability(<capId>) === true` (fail-closed), where
+  `hasCapability` is produced by the trusted effective-access feed `useReportCapabilities(user)` in
+  `App()` (`App.jsx:413`) and threaded as `operationalContext.hasCapability` into `AppRoutes`
+  (`App.jsx:419,444`). **`PartDetail` is currently mounted PROPLESS** — `<Route path=":partId"
+  element={<PartDetail />} />` (`App.jsx:329`) — so it cannot reach `hasCapability` today; the exact
+  on-main precedent for passing it down is `<SavedReports hasCapability={operationalContext?.hasCapability}
+  … />` (`App.jsx:201`). D6 therefore defines an explicit, narrow **capability-injection seam** (§1a); it
+  introduces **no** independent client permission resolver and **never** infers permission from roles.
 - **Async data seam** — `services/partMasterQueries.js` returns a discriminated `{ ok: true, … } | { ok:
   false, code }` (`code ∈ "permission-denied" | "unavailable"`), mapped in-component to a `canonicalRead`
   sentinel. A D6 compatibility read source mirrors this shape.
@@ -103,6 +107,47 @@ exactly as the D5 callable is inert. All D6 behavior is exercised only by **test
 
 ---
 
+## 1a. Capability-injection seam (the exact prop path) — REQUIRED
+
+The capability reaches the section through **one explicit, narrow prop path**, mirroring the on-main
+`SavedReports` precedent (`App.jsx:201`). No component constructs its own resolver, reads roles, or calls
+the feed independently.
+
+```
+App() → useReportCapabilities(user) → operationalContext.hasCapability   (App.jsx:413,419)
+  → AppRoutes({ operationalContext })                                     (App.jsx:220,444)
+     → <PartDetail hasCapability={operationalContext?.hasCapability} />   (extends the propless mount, App.jsx:329)
+        → <UsedInEquipmentSection hasCapability={hasCapability} … />      (PartDetail passes the prop straight through)
+```
+
+`hasCapability` is threaded **verbatim** as a prop — `PartDetail` neither interprets it nor derives it,
+and `UsedInEquipmentSection` receives the same function reference. The **only** production change to a
+mounted element is adding the `hasCapability` prop to `App.jsx:329` (exactly as `App.jsx:201` already does
+for `SavedReports`).
+
+**Fail-closed gate (the single decision that renders the section):**
+
+```
+const canView =
+  typeof hasCapability === "function" && (() => {
+    try { return hasCapability("equipment.compatibility.view") === true; }
+    catch { return false; }   // a throwing resolver is HIDDEN, never rendered
+  })();
+```
+
+- The section renders **only** when `hasCapability("equipment.compatibility.view") === true` (strict).
+- **Missing, `null`/`undefined`, non-function, throwing, or `false`** ⇒ `canView === false` ⇒ **`HIDDEN`**.
+- When `HIDDEN`, the section renders **nothing** and the compatibility **data source is invoked ZERO
+  times** — the source is only constructed/called on a branch guarded by `canView === true` (§5), so a
+  suppressed capability can never trigger a read.
+- This client gate is a **presentation / read-suppression defense only — NOT the authorization boundary.**
+  The real enforcement is server-side: `equipment.compatibility.view` is `active:false` (denies everyone),
+  and D10's future live callable (`equipmentCompatibilityReadCallable` → `readService` → the injected
+  `resolvePermission`) enforces the capability on the server regardless of any client state. The client
+  gate only avoids rendering/fetching for a caller the server would deny anyway.
+
+---
+
 ## 2. Proposed D6 boundary
 
 **In scope (proposed):** a **capability-gated, inert, fail-closed** "Used In Equipment" section inside
@@ -113,10 +158,11 @@ data source** (§5), rendering **bounded forward** compatibility for the selecte
    `CompatibilityReadResponse` (or a source error) to an exhaustive, fail-closed **view state** (§3) —
    never interpreting a non-operational record as verified.
 2. A **section component** (proposed `src/modules/inventory/UsedInEquipmentSection.jsx`) rendered as a
-   `fo-card` in the READY body, gated by `hasCapability("equipment.compatibility.view")`, showing model/
-   manufacturer summaries, sanitized relationship fields, per-record verification/operational status, and
-   an evidence summary — with loading, retry, pagination ("show more" over the D5 cursor), and
-   **section-scoped** failure handling.
+   `fo-card` in the READY body, gated by the **§1a capability-injection seam** (`hasCapability` threaded as
+   a prop; renders only on an exact `=== true`, zero reads otherwise), showing model/manufacturer
+   summaries, sanitized relationship fields, per-record verification/operational status, and an evidence
+   summary — with loading, retry, pagination ("show more" over the D5 cursor), and **section-scoped**
+   failure handling.
 3. **Sanitized display only** (§4): the D5 item allowlist; **never** raw provenance, `sourceReference`,
    `capturedBy`, `contentFingerprint`, raw serial lists, internal error text, or protected identifiers.
 4. An **injectable data-source seam** (§5) that in D6 wires **no live callable** (the callable stays
@@ -141,7 +187,7 @@ card.
 
 | Source / D5 signal | Section state | UI treatment |
 |---|---|---|
-| capability **not granted** (`hasCapability` false — incl. the D6 `active:false` DENY) | `HIDDEN` *(OD-B)* | the section is **not rendered** — no read attempted (recommended); the alternative neutral state is OD-B |
+| `canView === false` per the §1a gate — `hasCapability` missing / null / non-function / throwing / not exactly `true` for `equipment.compatibility.view` (incl. the D6 `active:false` DENY) | `HIDDEN` *(OD-B)* | the section renders **nothing** and invokes the data source **zero times** (recommended); the alternative neutral state is OD-B |
 | source in flight | `LOADING` | `LoadingEmptyState` loading copy; a short `role="status"` `.fo-sr-only` summary |
 | response `DENIED` | `DENIED` | neutral "You don't have access to compatibility information." (only reachable if OD-B chooses to render rather than hide) |
 | response `UNAVAILABLE` **or** source `{ok:false}` | `UNAVAILABLE` | "Compatibility information is temporarily unavailable." + **Retry**; **never** shown as "none" |
@@ -212,8 +258,13 @@ interface EquipmentCompatibilitySource {
   it is **never reached**, because the capability gate hides the section (§0.2). The real binding — an
   onCall wrapper around the exported D5 `equipmentCompatibilityReadCallable` — is wired **only at D10**,
   when the callable is exported and deployed. *(OD-F fixes the exact seam.)*
+- **Reads happen only past the §1a gate.** The source is constructed and `readForPart` is called **only**
+  on a branch guarded by `canView === true`. Every fail-closed capability case (§1a) short-circuits to
+  `HIDDEN` **before** any source reference exists, so a suppressed/denied capability performs **zero**
+  reads.
 - **Tests / Playwright gate:** inject a fixture `EquipmentCompatibilitySource` returning crafted
-  `CompatibilityReadResponse`s (per disposition) plus a granted-capability fixture, so every state (§3) and
+  `CompatibilityReadResponse`s (per disposition) plus a granted-capability fixture **through the same
+  `hasCapability` production prop** (§1a) — never a test-only bypass of the gate — so every state (§3) and
   pagination path is exercised without any live backend or activation.
 
 This mirrors D5's own inert-callable posture: the code path exists and is fully tested, but nothing is
@@ -239,14 +290,20 @@ the Playwright browser gate. D6 uses both:
   compatibility source error / `DEGRADED` / `UNAVAILABLE` leaves the Catalog, Stock/Reorder, pricing, and
   transactions view-models **unchanged and fully usable** (the compatibility state is a sibling, never a
   parent, of the Part-identity state).
-- **Permission tests** — `hasCapability("equipment.compatibility.view")` false ⇒ `HIDDEN` (no read); the
-  `active:false` inactive-capability path denies through the resolver mirror (as
-  `reportNavAccess`/`reportCapabilityAccess` tests do for `report.*`).
-- **Playwright browser gate** (skill driver scenario) — renders the section with an injected fixture source
-  + granted capability, verifying: status badges + labels present and correct per state; `role="status"`/
-  `role="alert"` live region and `.fo-sr-only` summary; Retry control; "Show more" pagination; responsive
-  `.fo-table-scroll`; keyboard focus/labels on interactive controls; and that hiding/UNAVAILABLE never
-  reads as "none".
+- **Capability-seam + zero-read tests (§1a)** — a pure/integration test over the **complete prop path**
+  (`operationalContext.hasCapability` → `PartDetail` prop → `UsedInEquipmentSection` prop) using a **spy
+  `EquipmentCompatibilitySource`** that counts `readForPart` calls, proving for EVERY fail-closed input —
+  `hasCapability` **absent, `undefined`, `null`, a non-function, a function that throws, and one returning
+  `false`** (plus a non-`view` capability and a `true` for a *different* id) — that the state is `HIDDEN`
+  **and the source was invoked ZERO times**; and that **only** an exact `hasCapability(
+  "equipment.compatibility.view") === true` yields a read + a rendered section. Also asserts `PartDetail`
+  passes the prop through **unmodified** (same function reference) and derives nothing from roles.
+- **Playwright browser gate** (skill driver scenario) — renders the section by injecting the capability
+  **through the same `hasCapability` production prop path** (§1a), NOT a test-only bypass, plus a fixture
+  source; verifies: status badges + labels correct per state; `role="status"`/`role="alert"` live region
+  and `.fo-sr-only` summary; Retry control; "Show more" pagination; responsive `.fo-table-scroll`; keyboard
+  focus/labels on interactive controls; that a suppressed capability renders nothing and issues no request;
+  and that hiding/`UNAVAILABLE` never reads as "none".
 - **Regression** — full `field-ops-app-vite` `npm test` chain, `oxlint`, `tsc --noEmit`, and the existing
   Inventory/Part Detail suites stay green.
 - **CI enforcement** — a path-gated workflow (or extension of the existing frontend workflow) runs the new
