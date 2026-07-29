@@ -584,7 +584,17 @@ function reconcileRecover(args, deps = {}) {
 // ledger anomaly, a blocking/terminal/in-flight status, or an identical old/new identity.
 function identityTransition(args, deps = {}) {
   const _fs = deps.fs || fs;
-  assertProductionArgs(args); // projectId/confirmProduction/authorizedCommit/token/executor/progressionOut
+  // Production guard: an explicit matching --confirmProduction (deliberate), plus the standard
+  // authorized-commit / token / executor / target args. Real-production gating comes from the
+  // GRANTED artifact's projectId binding (verified in loadProductionAuthority below), exactly
+  // like the gate -- so in production the taylor-parts GRANTED artifact is still required, while
+  // a demo project is usable under the emulator for tests.
+  if (!args.projectId) throw new Error("--projectId is required.");
+  if (args.confirmProduction !== args.projectId) throw new Error("This production command requires an explicit matching --confirmProduction <projectId>.");
+  if (!gate.isFullSha(args.authorizedCommit || "")) throw new Error("--authorizedCommit (canonical full 40-hex SHA) is required.");
+  if (!gate.isBoundedString(args.executionModeConfirmation || "", 128)) throw new Error("--executionModeConfirmation is required.");
+  if (!gate.isBoundedString(args.executor || "", 128)) throw new Error("--executor is required.");
+  if (!args.progressionOut) throw new Error("--progressionOut <path> is required.");
   if (!gate.isFullSha(args.oldAuthorizedCommit || "")) throw new Error("--oldAuthorizedCommit (canonical full 40-hex SHA of the pre-change reviewed commit) is required.");
   if (args.confirmIdentityTransition !== IDENTITY_TRANSITION_CONFIRM) throw new Error(`Identity transition requires an explicit --confirmIdentityTransition ${IDENTITY_TRANSITION_CONFIRM}.`);
 
