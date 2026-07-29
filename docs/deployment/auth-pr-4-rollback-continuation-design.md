@@ -103,7 +103,15 @@ state, and **held across each one's whole critical section**:
 Because both acquire the **same** lock atomically, exactly one wins; the loser gets `EEXIST` and
 **publishes/mutates nothing**. This closes the reverse race (a generation worker cannot slip a
 `gen.N+1` claim in between the transition's checks and writes, and vice-versa) — mutual exclusion by
-a single atomically-acquired lock, not a one-sided presence check. The lock is signed with the state
+a single atomically-acquired lock, not a one-sided presence check.
+
+The exclusion is enforced at the **authoritative primitive**, not by caller convention:
+`claimGeneration()` (which publishes a `gen.<N>` ledger claim) **requires a held `generation-advance`
+fence lock** — it strictly parses and verifies the signed on-disk lock (exact owner token, holder,
+and captured generation + ledger-head digest equal to the current validated head) immediately before
+publishing, and refuses an absent / malformed / foreign-owned / wrong-holder / wrong-token / stale
+lock. There is no lock-free generation publication (a call-graph guard test proves the single
+production call site — `reconcile-recover` — threads its held token). The lock is signed with the state
 key, released only by its owner token, and **never auto-broken**. A hard crash strands it; the
 governed **`fence-inspect` / `fence-recover`** modes clear a crash-left lock — and *only* the lock —
 requiring an explicit **owner-stopped attestation** plus a matching **fingerprint** (nothing changed
