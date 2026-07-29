@@ -141,6 +141,25 @@ check("a malformed model => model:null + non-operational (item still shown); mal
   assert.equal(badEv.evidence.status, "UNAVAILABLE");
   assert.equal(badEv.operational, false);
 });
+check("INCONSISTENT evidence OK+windowComplete=false is reclassified INCOMPLETE: non-operational, evidence-incomplete reason, DEGRADED page, clean-complete suppressed (server count NOT trusted)", () => {
+  const page = buildCompatibilitySectionPage(okResult(resp({
+    items: [item({
+      operational: true, verificationStatus: "VERIFIED", applicabilityResolved: true, model: model(),
+      evidence: { status: "OK", windowComplete: false, strongestSupportingAuthority: "MANUFACTURER", boundedSupportsCount: 1, boundedContradictsCount: 0, windowSize: 1 },
+    })],
+    // Server INCORRECTLY reports a clean, complete window:
+    pageDisposition: "AVAILABLE", nextCursor: null,
+    windowCounts: { returned: 1, operational: 1, excludedRejected: 0, malformedOmitted: 0, evidenceIncomplete: 0 },
+  })));
+  const it0 = page.items[0];
+  assert.equal(it0.evidence.status, "INCOMPLETE", "OK without a complete window is reclassified INCOMPLETE");
+  assert.equal(it0.evidence.complete, false);
+  assert.equal(it0.operational, false, "operational requires a COMPLETE evidence window");
+  assert.ok(it0.reasons.includes("evidence-incomplete"));
+  assert.equal(page.state, SECTION_STATES.DEGRADED, "the inconsistency forces DEGRADED despite a server AVAILABLE");
+  assert.ok(page.counts.evidenceIncomplete >= 1, "the client forces evidenceIncomplete even when the server says 0");
+});
+
 check("the builder never throws on a hostile items payload", () => {
   for (const items of [[null], [undefined], [[]], [42], ["str"], [{}], [{ model: [] }]]) {
     assert.doesNotThrow(() => buildCompatibilitySectionPage(okResult(resp({ items }))));

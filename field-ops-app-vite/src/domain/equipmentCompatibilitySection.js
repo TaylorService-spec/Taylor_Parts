@@ -64,11 +64,15 @@ function projectItem(item) {
   if (verificationStatus === null || compatibilityType === null) return null; // core governed fields missing/invalid => malformed
   const model = projectModel(item.model);
   const ev = item.evidence && typeof item.evidence === "object" && !Array.isArray(item.evidence) ? item.evidence : {};
-  const evStatus = ev.status === "OK" || ev.status === "INCOMPLETE" || ev.status === "UNAVAILABLE" ? ev.status : "UNAVAILABLE";
-  const windowComplete = ev.windowComplete === true && evStatus === "OK";
+  const evStatusRaw = ev.status === "OK" || ev.status === "INCOMPLETE" || ev.status === "UNAVAILABLE" ? ev.status : "UNAVAILABLE";
+  const windowComplete = evStatusRaw === "OK" && ev.windowComplete === true;
+  // FAIL CLOSED on an inconsistent payload: status "OK" WITHOUT a complete window is not actually complete
+  // — reclassify it as evidence-INCOMPLETE so it can never read as operational and always degrades the page.
+  const evStatus = evStatusRaw === "OK" && !windowComplete ? "INCOMPLETE" : evStatusRaw;
   const applicabilityResolved = item.applicabilityResolved === true;
-  // operational is authoritative from the service and re-guarded here (defence in depth).
-  const operational = item.operational === true && verificationStatus === "VERIFIED" && applicabilityResolved && model !== null && evStatus === "OK";
+  // operational REQUIRES complete evidence (windowComplete), never merely status "OK" (defence in depth;
+  // the service's own `operational` is also re-checked, never trusted alone).
+  const operational = item.operational === true && verificationStatus === "VERIFIED" && applicabilityResolved && model !== null && evStatus === "OK" && windowComplete;
 
   // Why a record is NOT operational — used for visible caveats; never upgrades the record.
   const reasons = [];
@@ -142,14 +146,23 @@ export function buildCompatibilitySectionPage(sourceResult) {
   // Any client omission forces DEGRADED — a malformed payload can NEVER be presented as a clean page.
   const projected = [];
   let clientMalformed = 0;
+  let clientEvidenceIncomplete = 0;
   for (const raw of r.items) {
     const it = projectItem(raw);
     if (it === null) { clientMalformed += 1; continue; }
+    // Client-derived (never trusting the server's count): any item whose evidence is not fully complete —
+    // INCOMPLETE, UNAVAILABLE, or the reclassified OK-without-window — is an incompleteness the page must
+    // reflect, so a server AVAILABLE/evidenceIncomplete:0 can never preserve a clean presentation.
+    if (it.evidence.status !== "OK") clientEvidenceIncomplete += 1;
     projected.push(it);
   }
   const serverCounts = projectCounts(r.windowCounts);
-  const counts = { ...serverCounts, malformedOmitted: serverCounts.malformedOmitted + clientMalformed };
-  const degraded = disposition === "DEGRADED" || clientMalformed > 0;
+  const counts = {
+    ...serverCounts,
+    malformedOmitted: serverCounts.malformedOmitted + clientMalformed,
+    evidenceIncomplete: Math.max(serverCounts.evidenceIncomplete, clientEvidenceIncomplete),
+  };
+  const degraded = disposition === "DEGRADED" || clientMalformed > 0 || clientEvidenceIncomplete > 0;
   const hasMore = typeof r.nextCursor === "string" && r.nextCursor.length > 0;
   return {
     state: degraded ? SECTION_STATES.DEGRADED : SECTION_STATES.AVAILABLE,
