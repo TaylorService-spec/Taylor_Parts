@@ -51,16 +51,22 @@ export function isModeSupportedHere(mode) {
 // role, nav visibility, or a client Role definition.
 export const ADMIN_CREDENTIAL_RESET_INITIATE_CAPABILITY = "admin.credentialReset.initiate";
 
-// Fail-closed by construction: the surface is permitted to exist ONLY when a
-// real hasCapability previewer is supplied AND it returns an EXPLICIT `true`
-// for the reset capability. A missing/non-function previewer (surface reached
-// without the feed wired), a `false`/undefined decision (inactive OR ungranted
-// -- the catalog entry is `active: false` today, so this is always false), or
-// any non-`true` truthy value all deny. This is a usability/UX gate; the
-// backend command remains the security boundary and re-authorizes every call.
+// Fail-closed by construction (mirrors equipmentCompatibilitySection's
+// canViewCompatibility): the surface is permitted to exist ONLY when a real
+// hasCapability previewer is supplied AND it returns an EXPLICIT `true` for the
+// reset capability. Missing / null / non-function / THROWING previewer (a
+// throwing previewer must hide the surface, never crash render), a
+// `false`/undefined decision (inactive OR ungranted -- the catalog entry is
+// `active: false` today, so this is always false), or any non-`true` truthy
+// value ALL deny. This is a usability/UX gate; the backend command remains the
+// security boundary and re-authorizes every call.
 export function canInitiateAdminCredentialReset(hasCapability) {
-  return typeof hasCapability === "function"
-    && hasCapability(ADMIN_CREDENTIAL_RESET_INITIATE_CAPABILITY) === true;
+  if (typeof hasCapability !== "function") return false;
+  try {
+    return hasCapability(ADMIN_CREDENTIAL_RESET_INITIATE_CAPABILITY) === true;
+  } catch {
+    return false;
+  }
 }
 
 // ---------------------------------------------------------------------------

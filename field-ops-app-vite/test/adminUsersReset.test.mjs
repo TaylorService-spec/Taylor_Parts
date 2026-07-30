@@ -70,10 +70,12 @@ await okAsync("loadEligibleUsers treats a thrown seam as unavailable, never fata
 });
 
 // -- fail-closed gate: ZERO list callable attempts while hidden/inactive -----
-await okAsync("maybeLoadEligibleUsers makes ZERO seam calls when the capability is absent", async () => {
-  for (const hasCapability of [undefined, null, {}, () => false, () => undefined, () => "yes"]) {
+await okAsync("maybeLoadEligibleUsers makes ZERO seam calls when the capability is absent (incl. a throwing previewer)", async () => {
+  const throwing = () => { throw new Error("previewer boom"); };
+  for (const hasCapability of [undefined, null, {}, () => false, () => undefined, () => "yes", throwing]) {
     let calls = 0;
     const listFn = async () => { calls += 1; return { ok: true, users: USERS }; };
+    // A throwing previewer must fail closed here too: gated, no crash, zero calls.
     const res = await maybeLoadEligibleUsers({ hasCapability, listFn, actorUid: "admin1" });
     assert.strictEqual(calls, 0, "listResetEligibleUsers must NOT be invoked while gated");
     assert.deepStrictEqual(res, { gated: true, ok: false, rows: [] });

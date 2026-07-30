@@ -146,6 +146,9 @@ ok("canInitiateAdminCredentialReset requires an EXPLICIT true from a real previe
   // Denied: previewer says false/undefined (inactive OR ungranted -- today always).
   assert.strictEqual(canInitiateAdminCredentialReset(() => false), false);
   assert.strictEqual(canInitiateAdminCredentialReset(() => undefined), false);
+  // Denied: a THROWING previewer must fail closed (hide the surface), never
+  // propagate the throw into render (matches canViewCompatibility).
+  assert.strictEqual(canInitiateAdminCredentialReset(() => { throw new Error("previewer boom"); }), false);
   // Denied: a non-`true` truthy decision must NOT be honored (strict === true).
   assert.strictEqual(canInitiateAdminCredentialReset(() => "yes"), false);
   assert.strictEqual(canInitiateAdminCredentialReset(() => 1), false);
