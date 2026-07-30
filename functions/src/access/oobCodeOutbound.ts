@@ -62,8 +62,9 @@ export function validateNativeSendConfig(config: Partial<NativeSendConfig> | nul
   if (apiKeyProject !== project) {
     return { valid: false, reason: "apiKey project attestation does not match the target project" };
   }
-  // Production config may NOT redirect the endpoint (exfiltration guard): reject any
-  // `endpoint` field. Custom origins are reachable only via the test-only seam.
+  // Config may NOT redirect the endpoint (exfiltration guard): reject any `endpoint`
+  // field. The origin is a hardcoded constant (APPROVED_ENDPOINT) with no override of
+  // any kind; there is no custom-origin seam.
   if ("endpoint" in c) return { valid: false, reason: "endpoint override is not permitted in config (uses APPROVED_ENDPOINT)" };
   return { valid: true };
 }
