@@ -17,8 +17,10 @@ vi.mock("../src/hooks/useReorderRequests", () => {
   const r = () => ({ data: [{ id: "r1", partId: "TST-9001", urgency: "HIGH" }] });
   return { useReorderRequests: r, useReorderRequestsByStatus: r, useReorderRequestsAssignedTo: r };
 });
-// canSeeReorderRequests -> true so NotificationPanel mounts.
-vi.mock("../src/access/navPermissionPreview", () => ({ createPermissionPreviewer: () => () => true }));
+// canSeeReorderRequests is controlled per-test via a hoisted flag (default true so
+// NotificationPanel mounts); set perm.canSee=false to simulate an unauthorized/non-notification role.
+const perm = vi.hoisted(() => ({ canSee: true }));
+vi.mock("../src/access/navPermissionPreview", () => ({ createPermissionPreviewer: () => () => perm.canSee }));
 vi.mock("../src/access/resolveEffectivePermission", () => ({ resolveEffectivePermission: () => ({}) }));
 vi.mock("../src/access/compatibilityRoles", () => ({ COMPATIBILITY_ROLES: {} }));
 // Spy: capture the resolveName AppHeader passes into NotificationPanel.
@@ -28,19 +30,28 @@ vi.mock("../src/shared/ui/NotificationPanel", () => ({ default: ({ resolveName }
 import { fetchPartMasterList } from "../src/services/partMasterQueries";
 import AppHeader from "../src/shared/ui/AppHeader.jsx";
 
-afterEach(() => { cleanup(); vi.clearAllMocks(); captured.length = 0; });
+afterEach(() => { cleanup(); vi.clearAllMocks(); captured.length = 0; perm.canSee = true; });
 
 const latest = (id) => captured[captured.length - 1](id);
 const READY = { ok: true, parts: [{ partId: "TST-9001", name: "CANONICAL-NAME-A", category: "Valves", stockingUnit: "each" }], invalid: [] };
 const renderHeader = (accessVersion) => render(<MemoryRouter><AppHeader accessVersion={accessVersion} /></MemoryRouter>);
 
 describe("AppHeader + NotificationPanel (OD-3)", () => {
-  it("READY: ONE canonical read for the header; the resolveName passed to NotificationPanel is canonical", async () => {
+  it("authorized (canSeeReorderRequests): ONE canonical read; the resolveName passed to NotificationPanel is canonical", async () => {
     fetchPartMasterList.mockResolvedValue(READY);
     renderHeader(1);
     await waitFor(() => expect(latest("TST-9001")).toBe("CANONICAL-NAME-A"));
-    expect(fetchPartMasterList).toHaveBeenCalledTimes(1);        // one shared read, not per-notification
+    expect(fetchPartMasterList).toHaveBeenCalledTimes(1);        // exactly one shared read
     expect(latest("TST-0000-ABSENT")).toBe("TST-0000-ABSENT");   // absent -> raw partId
+  });
+
+  it("unauthorized / non-notification role (canSeeReorderRequests=false): ZERO canonical reads", async () => {
+    perm.canSee = false;                                         // technician / no reorder-queue read access
+    fetchPartMasterList.mockResolvedValue(READY);
+    renderHeader(1);
+    await act(async () => {});                                   // let any effects flush
+    expect(fetchPartMasterList).toHaveBeenCalledTimes(0);        // NO canonical parts read issued
+    expect(captured).toHaveLength(0);                            // NotificationPanel not mounted either
   });
 
   it("permission-denied canonical read: the resolver fails closed to the raw partId (never static)", async () => {

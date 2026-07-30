@@ -28,13 +28,20 @@ import { resolveCanonicalPartNames, partNamesBoundaryKey, selectCanonicalReadFor
 // result is stored under the new key. A monotonically increasing token + per-run cancel flag
 // mean a stale completion from a prior boundary (or after unmount) is dropped, and even if it
 // weren't, its stored key would no longer match the current render key.
-export function useCanonicalPartNames({ uid, accessVersion } = {}) {
+// `enabled` (default true): when false, NO canonical read is issued -- for callers that must
+// not read `parts` unless the surface is authorized (e.g. AppHeader only reads for a role that
+// can see reorder notifications; a technician never triggers a permission-denied read). While
+// disabled, resolveName fails closed to the raw partId exactly as under any BLOCKED read.
+export function useCanonicalPartNames({ uid, accessVersion, enabled = true } = {}) {
   const currentKey = partNamesBoundaryKey(uid, accessVersion);
   const [stored, setStored] = useState({ key: currentKey, read: { status: "LOADING" } });
   const tokenRef = useRef(0);
 
   useEffect(() => {
+    // Bump the token unconditionally so any prior boundary's in-flight read is staled even when
+    // we now skip reading (e.g. access just dropped).
     const token = ++tokenRef.current;
+    if (!enabled) return undefined; // no read issued
     let cancelled = false;
     // Mark this boundary's read as LOADING (keyed) so an in-flight read is attributed to the
     // current boundary and never confused with a prior one.
@@ -57,10 +64,11 @@ export function useCanonicalPartNames({ uid, accessVersion } = {}) {
     return () => {
       cancelled = true;
     };
-  }, [currentKey]);
+  }, [currentKey, enabled]);
 
-  // Render-time key match -- old-boundary data is never used, synchronously.
-  const canonicalRead = selectCanonicalReadForKey(stored, currentKey);
+  // Render-time key match -- old-boundary data is never used, synchronously. When disabled we
+  // never present a name map (LOADING -> empty map -> resolveName degrades to the raw partId).
+  const canonicalRead = enabled ? selectCanonicalReadForKey(stored, currentKey) : { status: "LOADING" };
 
   const { namesReady, nameBySku } = useMemo(
     () => resolveCanonicalPartNames({ canonicalRead, staticCatalog: PARTS_CATALOG }),

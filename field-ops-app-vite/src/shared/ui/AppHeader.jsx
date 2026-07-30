@@ -34,12 +34,6 @@ const previewHasPermission = createPermissionPreviewer(resolveEffectivePermissio
 // notifying the Parts Manager that purchasing has begun.
 export default function AppHeader({ accessVersion } = {}) {
   const { user, role, logout } = useAuth();
-  // OD-3: one canonical part-name read for the whole header, threaded as `resolveName` into
-  // NotificationPanel (never an independent read per notification). Fail-closed: a
-  // denied/unavailable/incomplete/invalid canonical read degrades names to the raw partId
-  // (never the static-catalog name). `accessVersion` is threaded from App so a same-UID access
-  // change re-runs the read and invalidates the prior name map synchronously (boundary-key).
-  const { resolveName } = useCanonicalPartNames({ uid: user?.uid, accessVersion });
   // Issue #226 Row 16 -- presentation-only permission preview (Spec sec8/
   // sec12: never authoritative, UI visibility stays convenience only).
   // Legacy admin/dispatcher check retained as the `fallback` in case the
@@ -47,6 +41,18 @@ export default function AppHeader({ accessVersion } = {}) {
   // navPermissionPreview.js's own doc comment.
   const canSeeReorderRequests = previewHasPermission("reorder.request.read.queue", role, {
     fallback: role === "admin" || role === "dispatcher",
+  });
+  // OD-3: one canonical part-name read for the whole header, threaded as `resolveName` into
+  // NotificationPanel (never an independent read per notification). ENABLED only when the role
+  // can see reorder notifications -- a technician/unauthorized role never triggers a canonical
+  // `parts` read (no permission-denied read for someone who has no read access and no panel).
+  // Fail-closed: a denied/unavailable/incomplete/invalid read (or the disabled state) degrades
+  // names to the raw partId (never the static-catalog name). `accessVersion` is threaded from
+  // App so a same-UID access change re-runs the read and invalidates the prior name map.
+  const { resolveName } = useCanonicalPartNames({
+    uid: user?.uid,
+    accessVersion,
+    enabled: canSeeReorderRequests,
   });
   const { data: pendingReorderRequests } = useReorderRequests(canSeeReorderRequests);
   const { data: partsManagerRequests } = useReorderRequestsByStatus(
