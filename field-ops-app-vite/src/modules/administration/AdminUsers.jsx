@@ -29,6 +29,7 @@ import {
   markSubmitting,
   settle,
   sanitizeReasonCode,
+  canInitiateAdminCredentialReset,
   DEFAULT_MODE,
 } from "../../domain/adminPasswordReset";
 import {
@@ -36,13 +37,25 @@ import {
   RESET_ACTION_LABEL,
   RESET_CONFIRM_TITLE,
   RESET_UNAVAILABLE_COPY,
-  loadEligibleUsers,
+  maybeLoadEligibleUsers,
   resetStatusView,
 } from "../../domain/adminUsersResetView";
 
-export default function AdminUsers({ client = adminPasswordResetClient }) {
+// `hasCapability` is the trusted effective-access previewer threaded from the
+// App.jsx dispatcher (operationalContext.hasCapability). The password-reset
+// surface -- and its eligible-user list read -- exist ONLY when the session
+// effectively holds `admin.credentialReset.initiate`. This gate is enforced
+// HERE, at the rendered surface, NOT merely by nav visibility: reaching
+// /administration/users directly still yields a fail-closed hasCapability
+// (undefined default) and the whole reset surface stays hidden with ZERO list
+// callable attempts. The catalog entry is `active: false` today, so this is
+// always false until a separate activation/grant gate -- keeping production
+// fail-closed. The setUserStatus preview below is a SEPARATE surface and is
+// intentionally not gated by this capability.
+export default function AdminUsers({ client = adminPasswordResetClient, hasCapability }) {
   const { user } = useAuth();
   const actorUid = user?.uid ?? "";
+  const canReset = canInitiateAdminCredentialReset(hasCapability);
 
   const [loadState, setLoadState] = useState({ loading: true, ok: false, rows: [], result: null });
   const [selected, setSelected] = useState(null); // the row being reset
@@ -59,17 +72,25 @@ export default function AdminUsers({ client = adminPasswordResetClient }) {
   }
 
   useEffect(() => {
+    // Fail-closed: without the reset capability the surface is hidden and the
+    // governed list read must NEVER be attempted. Return before any call.
+    if (!canReset) {
+      setLoadState({ loading: false, ok: false, rows: [], result: null });
+      return undefined;
+    }
     let alive = true;
     setLoadState((s) => ({ ...s, loading: true }));
-    loadEligibleUsers(client.listResetEligibleUsers, actorUid).then((res) => {
+    // maybeLoadEligibleUsers re-checks the SAME capability predicate and only
+    // invokes the seam when it holds -- a second, single-source-of-truth guard.
+    maybeLoadEligibleUsers({ hasCapability, listFn: client.listResetEligibleUsers, actorUid }).then((res) => {
       if (!alive) return;
       if (res.ok) setLoadState({ loading: false, ok: true, rows: res.rows, result: null });
-      else setLoadState({ loading: false, ok: false, rows: [], result: res.result });
+      else setLoadState({ loading: false, ok: false, rows: [], result: res.result ?? null });
     });
     return () => {
       alive = false;
     };
-  }, [client, actorUid]);
+  }, [client, actorUid, canReset, hasCapability]);
 
   const openConfirm = useCallback((row) => {
     setSelected(row);
@@ -127,78 +148,85 @@ export default function AdminUsers({ client = adminPasswordResetClient }) {
         Disable user
       </button>
 
-      <h3>{RESET_SECTION_TITLE}</h3>
-      <p className="fo-muted">
-        Initiates a governed password reset for another eligible user. The user sets their own new
-        password from an email they receive; an administrator never sees a reset link, code, or the
-        user&apos;s password. Routine resets do not sign the user out.
-      </p>
-
-      {loadState.loading && <p className="fo-muted">Loading eligible users…</p>}
-
-      {!loadState.loading && !loadState.ok && (
-        <p className="fo-muted" role="status">
-          {RESET_UNAVAILABLE_COPY}
-        </p>
-      )}
-
-      {!loadState.loading && loadState.ok && loadState.rows.length === 0 && (
-        <p className="fo-muted">No eligible users to display.</p>
-      )}
-
-      {!loadState.loading && loadState.ok && loadState.rows.length > 0 && (
-        <ul className="fo-list">
-          {loadState.rows.map((row) => (
-            <li key={row.uid}>
-              <span>{row.displayName || row.uid}</span>
-              {row.role ? <span className="fo-muted"> — {row.role}</span> : null}{" "}
-              {row.eligible ? (
-                <button type="button" onClick={() => openConfirm(row)} disabled={inFlight}>
-                  {RESET_ACTION_LABEL}
-                </button>
-              ) : (
-                <span className="fo-muted" title={row.ineligibleReasonCopy || undefined}>
-                  (not eligible)
-                </span>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {selected && (
-        <div className="fo-modal" role="dialog" aria-modal="true" aria-label={RESET_CONFIRM_TITLE}>
-          <h4>{RESET_CONFIRM_TITLE}</h4>
-          <p>
-            Send a password reset for <strong>{selected.displayName || selected.uid}</strong>
-            {selected.role ? <span className="fo-muted"> ({selected.role})</span> : null}?
+      {/* Fail-closed: the ENTIRE password-reset surface renders only when the
+          session effectively holds admin.credentialReset.initiate. Hidden (and
+          zero list calls) otherwise -- see the gate at the top of this file. */}
+      {canReset && (
+        <>
+          <h3>{RESET_SECTION_TITLE}</h3>
+          <p className="fo-muted">
+            Initiates a governed password reset for another eligible user. The user sets their own new
+            password from an email they receive; an administrator never sees a reset link, code, or the
+            user&apos;s password. Routine resets do not sign the user out.
           </p>
-          <label>
-            Reason (optional)
-            <input
-              type="text"
-              value={reason}
-              maxLength={200}
-              onChange={(e) => setReason(e.target.value)}
-              aria-invalid={reasonError ? "true" : "false"}
-            />
-          </label>
-          {reasonError && <p className="fo-error">{reasonError}</p>}
-          <div>
-            <button type="button" onClick={confirmSend} disabled={inFlight}>
-              {inFlight ? "Sending…" : "Confirm"}
-            </button>{" "}
-            <button type="button" onClick={cancel} disabled={inFlight}>
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
 
-      {status.show && (
-        <p className={`fo-${status.tone}`} {...status.aria}>
-          {status.message}
-        </p>
+          {loadState.loading && <p className="fo-muted">Loading eligible users…</p>}
+
+          {!loadState.loading && !loadState.ok && (
+            <p className="fo-muted" role="status">
+              {RESET_UNAVAILABLE_COPY}
+            </p>
+          )}
+
+          {!loadState.loading && loadState.ok && loadState.rows.length === 0 && (
+            <p className="fo-muted">No eligible users to display.</p>
+          )}
+
+          {!loadState.loading && loadState.ok && loadState.rows.length > 0 && (
+            <ul className="fo-list">
+              {loadState.rows.map((row) => (
+                <li key={row.uid}>
+                  <span>{row.displayName || row.uid}</span>
+                  {row.role ? <span className="fo-muted"> — {row.role}</span> : null}{" "}
+                  {row.eligible ? (
+                    <button type="button" onClick={() => openConfirm(row)} disabled={inFlight}>
+                      {RESET_ACTION_LABEL}
+                    </button>
+                  ) : (
+                    <span className="fo-muted" title={row.ineligibleReasonCopy || undefined}>
+                      (not eligible)
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {selected && (
+            <div className="fo-modal" role="dialog" aria-modal="true" aria-label={RESET_CONFIRM_TITLE}>
+              <h4>{RESET_CONFIRM_TITLE}</h4>
+              <p>
+                Send a password reset for <strong>{selected.displayName || selected.uid}</strong>
+                {selected.role ? <span className="fo-muted"> ({selected.role})</span> : null}?
+              </p>
+              <label>
+                Reason (optional)
+                <input
+                  type="text"
+                  value={reason}
+                  maxLength={200}
+                  onChange={(e) => setReason(e.target.value)}
+                  aria-invalid={reasonError ? "true" : "false"}
+                />
+              </label>
+              {reasonError && <p className="fo-error">{reasonError}</p>}
+              <div>
+                <button type="button" onClick={confirmSend} disabled={inFlight}>
+                  {inFlight ? "Sending…" : "Confirm"}
+                </button>{" "}
+                <button type="button" onClick={cancel} disabled={inFlight}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          {status.show && (
+            <p className={`fo-${status.tone}`} {...status.aria}>
+              {status.message}
+            </p>
+          )}
+        </>
       )}
     </div>
   );

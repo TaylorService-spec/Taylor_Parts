@@ -21,6 +21,9 @@ import {
   isRetryableResult,
   mapCallableOutcome,
   mapCallableError,
+  normalizeCallableCode,
+  ADMIN_CREDENTIAL_RESET_INITIATE_CAPABILITY,
+  canInitiateAdminCredentialReset,
   ELIGIBILITY_REASON,
   deriveTargetEligibility,
   describeTargetUser,
@@ -95,6 +98,68 @@ ok("error mapping ignores message/details entirely (no leak path)", () => {
   // even a permission error carrying a secret message maps only by code
   const r = mapCallableError({ code: "permission-denied", message: "target user@example.com not found; link=abc" });
   assert.strictEqual(r, RESET_RESULT.DENIED);
+});
+
+// -- Firebase "functions/"-namespaced code normalization --------------------
+ok("normalizeCallableCode strips ONE leading functions/ namespace only", () => {
+  assert.strictEqual(normalizeCallableCode("functions/permission-denied"), "permission-denied");
+  assert.strictEqual(normalizeCallableCode("permission-denied"), "permission-denied"); // already bare
+  assert.strictEqual(normalizeCallableCode("functions/"), ""); // namespace with no status
+  assert.strictEqual(normalizeCallableCode("functions/functions/x"), "functions/x"); // only ONE prefix stripped
+  assert.strictEqual(normalizeCallableCode("other/permission-denied"), "other/permission-denied"); // foreign ns untouched
+  assert.strictEqual(normalizeCallableCode(undefined), ""); // non-string -> ""
+  assert.strictEqual(normalizeCallableCode(42), "");
+});
+ok("mapCallableError classifies the SDK's functions/-prefixed codes (no fail-open drift)", () => {
+  // The callable SDK surfaces FunctionsError.code prefixed; these must classify
+  // exactly as their bare equivalents -- NOT fall through to UNCERTAIN.
+  const cases = {
+    "functions/unauthenticated": RESET_RESULT.DENIED,
+    "functions/permission-denied": RESET_RESULT.DENIED,
+    "functions/failed-precondition": RESET_RESULT.DENIED,
+    "functions/invalid-argument": RESET_RESULT.DENIED,
+    "functions/unavailable": RESET_RESULT.SERVICE_UNAVAILABLE,
+    "functions/aborted": RESET_RESULT.UNCERTAIN,
+    "functions/already-exists": RESET_RESULT.UNCERTAIN,
+    "functions/internal": RESET_RESULT.UNCERTAIN,
+    "functions/unknown-status": RESET_RESULT.UNCERTAIN, // unknown status still UNCERTAIN
+    "functions/": RESET_RESULT.UNCERTAIN, // empty status -> UNCERTAIN
+  };
+  for (const [code, expected] of Object.entries(cases)) {
+    assert.strictEqual(mapCallableError({ code, message: "leak https://x/oob?code=SECRET" }), expected, code);
+  }
+  // Regression: the bare (unprefixed) forms still classify identically.
+  assert.strictEqual(mapCallableError({ code: "permission-denied" }), RESET_RESULT.DENIED);
+  assert.strictEqual(mapCallableError({ code: "unavailable" }), RESET_RESULT.SERVICE_UNAVAILABLE);
+});
+
+// -- fail-closed capability gate (admin.credentialReset.initiate) -----------
+ok("capability id is byte-identical to the backend Permission catalog id", () => {
+  assert.strictEqual(ADMIN_CREDENTIAL_RESET_INITIATE_CAPABILITY, "admin.credentialReset.initiate");
+});
+ok("canInitiateAdminCredentialReset requires an EXPLICIT true from a real previewer", () => {
+  // Denied: no previewer / non-function / wrong shape -- surface reached without the feed.
+  assert.strictEqual(canInitiateAdminCredentialReset(undefined), false);
+  assert.strictEqual(canInitiateAdminCredentialReset(null), false);
+  assert.strictEqual(canInitiateAdminCredentialReset({}), false);
+  assert.strictEqual(canInitiateAdminCredentialReset(true), false);
+  // Denied: previewer says false/undefined (inactive OR ungranted -- today always).
+  assert.strictEqual(canInitiateAdminCredentialReset(() => false), false);
+  assert.strictEqual(canInitiateAdminCredentialReset(() => undefined), false);
+  // Denied: a THROWING previewer must fail closed (hide the surface), never
+  // propagate the throw into render (matches canViewCompatibility).
+  assert.strictEqual(canInitiateAdminCredentialReset(() => { throw new Error("previewer boom"); }), false);
+  // Denied: a non-`true` truthy decision must NOT be honored (strict === true).
+  assert.strictEqual(canInitiateAdminCredentialReset(() => "yes"), false);
+  assert.strictEqual(canInitiateAdminCredentialReset(() => 1), false);
+  // Granted: only an explicit true for THIS capability id.
+  const spy = [];
+  const grantAll = (cap) => { spy.push(cap); return true; };
+  assert.strictEqual(canInitiateAdminCredentialReset(grantAll), true);
+  assert.deepStrictEqual(spy, ["admin.credentialReset.initiate"], "gate queries exactly the reset capability id");
+  // Granted ONLY for the reset id, not a different capability.
+  const grantOther = (cap) => cap === "some.other.capability";
+  assert.strictEqual(canInitiateAdminCredentialReset(grantOther), false);
 });
 
 // -- result helpers ----------------------------------------------------------

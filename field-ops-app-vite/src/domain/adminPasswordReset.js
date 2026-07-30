@@ -39,6 +39,37 @@ export function isModeSupportedHere(mode) {
 }
 
 // ---------------------------------------------------------------------------
+// Capability gate (fail-closed) -- whether the admin-reset SURFACE may exist
+// ---------------------------------------------------------------------------
+
+// The governed catalog id for admin-initiated credential reset. Byte-identical
+// to the backend Permission id (access/permissionCatalog.ts:
+// `admin.credentialReset.initiate`, registered `active: false`). The whole
+// reset surface -- the eligible-user list read included -- is gated on the
+// session EFFECTIVELY holding this capability, decided ONLY by the trusted
+// effective-access feed (operationalContext.hasCapability), never by a raw
+// role, nav visibility, or a client Role definition.
+export const ADMIN_CREDENTIAL_RESET_INITIATE_CAPABILITY = "admin.credentialReset.initiate";
+
+// Fail-closed by construction (mirrors equipmentCompatibilitySection's
+// canViewCompatibility): the surface is permitted to exist ONLY when a real
+// hasCapability previewer is supplied AND it returns an EXPLICIT `true` for the
+// reset capability. Missing / null / non-function / THROWING previewer (a
+// throwing previewer must hide the surface, never crash render), a
+// `false`/undefined decision (inactive OR ungranted -- the catalog entry is
+// `active: false` today, so this is always false), or any non-`true` truthy
+// value ALL deny. This is a usability/UX gate; the backend command remains the
+// security boundary and re-authorizes every call.
+export function canInitiateAdminCredentialReset(hasCapability) {
+  if (typeof hasCapability !== "function") return false;
+  try {
+    return hasCapability(ADMIN_CREDENTIAL_RESET_INITIATE_CAPABILITY) === true;
+  } catch {
+    return false;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Terminal result states (what the UI may truthfully show)
 // ---------------------------------------------------------------------------
 
@@ -107,8 +138,21 @@ export function mapCallableOutcome(outcome) {
   return RESET_RESULT.UNCERTAIN;
 }
 
+// Firebase's callable SDK surfaces its FunctionsError.code NAMESPACED with a
+// "functions/" prefix (e.g. "functions/permission-denied"), while the bare
+// Cloud Functions status names ("permission-denied", "unavailable", ...) are
+// what the switch below classifies. Normalize by stripping a single leading
+// "functions/" so a real permission-denied is not misclassified as UNCERTAIN
+// (fail-open drift). Only that exact known namespace is stripped; any other
+// value passes through untouched (and unknown codes still map to UNCERTAIN).
+const CALLABLE_CODE_NAMESPACE = "functions/";
+export function normalizeCallableCode(code) {
+  const raw = typeof code === "string" ? code : "";
+  return raw.startsWith(CALLABLE_CODE_NAMESPACE) ? raw.slice(CALLABLE_CODE_NAMESPACE.length) : raw;
+}
+
 export function mapCallableError(error) {
-  const code = error && typeof error.code === "string" ? error.code : "";
+  const code = normalizeCallableCode(error && error.code);
   switch (code) {
     case "unauthenticated":
     case "permission-denied":

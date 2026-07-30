@@ -16,6 +16,7 @@ import {
   RESET_UNAVAILABLE_COPY,
   buildResetUserRows,
   loadEligibleUsers,
+  maybeLoadEligibleUsers,
   canSubmitReset,
   resetStatusView,
 } from "../src/domain/adminUsersResetView.js";
@@ -65,6 +66,35 @@ await okAsync("loadEligibleUsers surfaces the sanitized unavailable result", asy
 await okAsync("loadEligibleUsers treats a thrown seam as unavailable, never fatal", async () => {
   const listFn = async () => { throw new Error("network boom"); };
   const res = await loadEligibleUsers(listFn, "admin1");
+  assert.deepStrictEqual(res, { ok: false, result: RESET_RESULT.SERVICE_UNAVAILABLE });
+});
+
+// -- fail-closed gate: ZERO list callable attempts while hidden/inactive -----
+await okAsync("maybeLoadEligibleUsers makes ZERO seam calls when the capability is absent (incl. a throwing previewer)", async () => {
+  const throwing = () => { throw new Error("previewer boom"); };
+  for (const hasCapability of [undefined, null, {}, () => false, () => undefined, () => "yes", throwing]) {
+    let calls = 0;
+    const listFn = async () => { calls += 1; return { ok: true, users: USERS }; };
+    // A throwing previewer must fail closed here too: gated, no crash, zero calls.
+    const res = await maybeLoadEligibleUsers({ hasCapability, listFn, actorUid: "admin1" });
+    assert.strictEqual(calls, 0, "listResetEligibleUsers must NOT be invoked while gated");
+    assert.deepStrictEqual(res, { gated: true, ok: false, rows: [] });
+  }
+});
+await okAsync("maybeLoadEligibleUsers loads via the seam ONLY when the capability holds (authorized)", async () => {
+  let calls = 0;
+  const listFn = async () => { calls += 1; return { ok: true, users: USERS }; };
+  const res = await maybeLoadEligibleUsers({ hasCapability: () => true, listFn, actorUid: "admin1" });
+  assert.strictEqual(calls, 1, "authorized session performs exactly one list read");
+  assert.strictEqual(res.ok, true);
+  assert.strictEqual(res.gated, undefined);
+  assert.strictEqual(res.rows.length, 3);
+});
+await okAsync("maybeLoadEligibleUsers surfaces a sanitized unavailable result when authorized but backend absent", async () => {
+  let calls = 0;
+  const listFn = async () => { calls += 1; return { ok: false, result: RESET_RESULT.SERVICE_UNAVAILABLE }; };
+  const res = await maybeLoadEligibleUsers({ hasCapability: () => true, listFn, actorUid: "admin1" });
+  assert.strictEqual(calls, 1);
   assert.deepStrictEqual(res, { ok: false, result: RESET_RESULT.SERVICE_UNAVAILABLE });
 });
 
@@ -155,6 +185,36 @@ ok("AdminUsers.jsx never references a reset link/token/oobCode or session revoca
   // No POSITIVE delivery claim in the rendered copy (the only "delivered" token
   // permitted is the negated truthfulness comment). Guard the affirmative phrasings.
   assert.ok(!/email (was|is) delivered|successfully delivered|has been delivered/i.test(adminUsersSrc));
+});
+
+// -- fail-closed capability gating wiring (AdminUsers.jsx) --------------------
+ok("AdminUsers.jsx accepts hasCapability and derives canReset from the gate", () => {
+  assert.match(adminUsersSrc, /canInitiateAdminCredentialReset/);
+  assert.match(adminUsersSrc, /hasCapability/);
+  assert.match(adminUsersSrc, /const\s+canReset\s*=\s*canInitiateAdminCredentialReset\(hasCapability\)/);
+});
+ok("AdminUsers.jsx gates the ENTIRE reset section render on canReset", () => {
+  // The reset section (its title constant) must sit behind the canReset gate.
+  assert.match(adminUsersSrc, /\{canReset && \(/);
+  const gateIdx = adminUsersSrc.indexOf("{canReset && (");
+  const titleIdx = adminUsersSrc.indexOf("{RESET_SECTION_TITLE}");
+  assert.ok(gateIdx > -1 && titleIdx > gateIdx, "RESET_SECTION_TITLE must render inside the canReset gate");
+});
+ok("AdminUsers.jsx guards the list effect and never calls the seam unconditionally", () => {
+  // The effect must early-return when !canReset and route the read through the
+  // capability-gated orchestrator -- never loadEligibleUsers(...) directly.
+  assert.match(adminUsersSrc, /if \(!canReset\)/);
+  assert.match(adminUsersSrc, /maybeLoadEligibleUsers\(/);
+  assert.ok(!/\bloadEligibleUsers\(/.test(adminUsersSrc), "must not call the ungated loadEligibleUsers directly");
+});
+
+// -- dispatcher threads the fail-closed previewer (App.jsx) -------------------
+const appSrc = fs.readFileSync(
+  fileURLToPath(new URL("../src/App.jsx", import.meta.url)),
+  "utf8",
+);
+ok("App.jsx dispatcher passes hasCapability into AdminUsers (not nav-only gating)", () => {
+  assert.match(appSrc, /<AdminUsers hasCapability=\{operationalContext\?\.hasCapability\}\s*\/>/);
 });
 
 console.log(`\n${passed} passed`);
