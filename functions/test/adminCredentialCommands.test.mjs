@@ -80,7 +80,7 @@ function makeDeps({ target = facts(), actor = actorFacts(), configured = true, s
     sendReset: async (args) => {
       sends.push(args);
       if (typeof send === "function") return send(args);
-      return { accepted: true };
+      return { outcome: "accepted" };
     },
   };
   const resolveTargetFacts = async () => {
@@ -215,8 +215,8 @@ async function main() {
   await okAsync("NOT_CONFIGURED_NATIVE_SEND is fail-closed", async () => {
     assert.strictEqual(NOT_CONFIGURED_NATIVE_SEND.isConfigured(), false);
     assert.deepStrictEqual(
-      await NOT_CONFIGURED_NATIVE_SEND.sendReset({ targetUid: "x", email: "y", idempotencyKey: "z" }),
-      { accepted: false },
+      await NOT_CONFIGURED_NATIVE_SEND.sendReset({ targetUid: "x", email: "y", idempotencyKey: "z", binding: "b" }),
+      { outcome: "not_accepted" },
     );
   });
 
@@ -227,7 +227,11 @@ async function main() {
     const out = await initiateAdminPasswordReset({ actorUid: ADMIN, targetUid: TARGET, idempotencyKey: key }, deps);
     assert.deepStrictEqual(out, { status: "accepted" });
     assert.strictEqual(sends.length, 1);
-    assert.deepStrictEqual(sends[0], { targetUid: TARGET, email: "target@example.com", idempotencyKey: key });
+    assert.strictEqual(sends[0].targetUid, TARGET);
+    assert.strictEqual(sends[0].email, "target@example.com");
+    assert.strictEqual(sends[0].idempotencyKey, key);
+    assert.strictEqual(typeof sends[0].binding, "string"); // command-computed binding is passed
+    assert.ok(sends[0].binding.length > 0);
     const op = await opDoc(key);
     assert.strictEqual(op.status, "completed");
     assert.strictEqual(op.stages.send, "sent");
@@ -291,12 +295,43 @@ async function main() {
   // -- send not accepted -> retryable failed --------------------------------
   await okAsync("send not accepted -> neutral, op status failed (retryable)", async () => {
     const key = freshKey();
-    const { deps } = makeDeps({ send: () => ({ accepted: false }) });
+    const { deps } = makeDeps({ send: () => ({ outcome: "not_accepted" }) });
     const out = await initiateAdminPasswordReset({ actorUid: ADMIN, targetUid: TARGET, idempotencyKey: key }, deps);
     assert.deepStrictEqual(out, { status: "accepted" });
     const op = await opDoc(key);
     assert.strictEqual(op.status, "failed");
     assert.strictEqual(op.stages.send, undefined, "an unaccepted send is not persisted");
+  });
+
+  // -- PRE-1: uncertain send -> reconciliation_required (never accepted/sent) -
+  await okAsync("uncertain send -> reconciliation_required, NO stages.send, uncertain audit", async () => {
+    const key = freshKey();
+    const { deps } = makeDeps({ send: () => ({ outcome: "uncertain" }) });
+    const out = await initiateAdminPasswordReset({ actorUid: ADMIN, targetUid: TARGET, idempotencyKey: key }, deps);
+    assert.deepStrictEqual(out, { status: "accepted" }, "caller still gets the neutral envelope");
+    const op = await opDoc(key);
+    assert.strictEqual(op.status, "reconciliation_required");
+    assert.strictEqual(op.stages?.send, undefined, "uncertain never persists stages.send=sent");
+    assert.strictEqual(op.reconciliation.reason, "uncertain_send");
+    // The uncertain audit exists and no "accepted" delivery audit was written for this op.
+    const uncertainAudits = (await db.collection(AUDIT).where("targetId", "==", TARGET).get()).docs
+      .filter((d) => d.data().action === "deliverAdminPasswordReset" && d.data().outcome === "uncertain");
+    assert.ok(uncertainAudits.length >= 1, "a sanitized uncertain audit is written");
+  });
+  await okAsync("reconciliation_required op -> same-key replay is blocked, side-effect-free", async () => {
+    const key = freshKey();
+    const first = makeDeps({ send: () => ({ outcome: "uncertain" }) });
+    await initiateAdminPasswordReset({ actorUid: ADMIN, targetUid: TARGET, idempotencyKey: key }, first.deps);
+    const opBefore = await opDoc(key);
+    const auditBefore = await auditCount(TARGET);
+    const second = makeDeps(); // would-accept sender
+    const out = await initiateAdminPasswordReset({ actorUid: ADMIN, targetUid: TARGET, idempotencyKey: key }, second.deps);
+    assert.deepStrictEqual(out, { status: "accepted" });
+    assert.strictEqual(second.sends.length, 0, "blocked replay must NOT call the sender");
+    const opAfter = await opDoc(key);
+    assert.strictEqual(opAfter.status, "reconciliation_required", "stays blocked; never becomes completed");
+    assert.strictEqual(opAfter.updatedAtMs, opBefore.updatedAtMs, "no state change on blocked replay");
+    assert.strictEqual(await auditCount(TARGET), auditBefore, "no new audit on blocked replay");
   });
 
   // -- send throws -> AdminResetStageError, failed --------------------------

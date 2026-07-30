@@ -177,7 +177,7 @@ async function main() {
   await seed({ uid: actorUid, role: "admin", employeeId: actorEmp, email: `${actorUid}@example.com`, employee: { userId: actorUid, employmentStatus: "ACTIVE" } });
   const makeSpy = () => {
     const sends = [];
-    return { sends, sender: { isConfigured: () => true, sendReset: async (a) => { sends.push(a); return { accepted: true }; } } };
+    return { sends, sender: { isConfigured: () => true, sendReset: async (a) => { sends.push(a); return { outcome: "accepted" }; } } };
   };
 
   await okAsync("initiate: eligible target reaches send via the real target adapter", async () => {

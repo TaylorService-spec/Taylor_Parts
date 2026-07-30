@@ -193,7 +193,12 @@ export type AuditAction =
   | "shareReportDefinition"
   | "scheduleReportDefinition";
 
-export type AuditOutcome = "applied" | "denied";
+// "uncertain" (PRE-1, G-PRE1-IMPL): a native reset send whose outcome could not be
+// durably determined (Firebase may have accepted, but the outcome was not persisted).
+// Distinct from "applied" (definitely done) and "denied" (definitely not done);
+// used only for the admin-reset reconciliation_required transition. Kept byte-identical
+// with the functions mirror.
+export type AuditOutcome = "applied" | "denied" | "uncertain";
 
 // Spec §5.8 / §14 -- append-only and immutable (no update/delete by
 // anyone, including admins); written only by a trusted writer; never

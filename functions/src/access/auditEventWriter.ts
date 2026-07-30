@@ -238,8 +238,8 @@ function assertValid(input: RecordAuditEventInput): void {
   if (!input.targetId || typeof input.targetId !== "string") {
     throw new AuditEventValidationError("targetId is required");
   }
-  if (input.outcome !== "applied" && input.outcome !== "denied") {
-    throw new AuditEventValidationError('outcome must be "applied" or "denied"');
+  if (input.outcome !== "applied" && input.outcome !== "denied" && input.outcome !== "uncertain") {
+    throw new AuditEventValidationError('outcome must be "applied", "denied", or "uncertain"');
   }
   if (!input.summary || typeof input.summary !== "string") {
     throw new AuditEventValidationError("summary is required");

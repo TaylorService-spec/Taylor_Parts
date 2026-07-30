@@ -20,6 +20,7 @@
     "test:adminCredential": "npm run build && node test/adminCredentialEligibility.test.mjs && node test/adminCredentialCommands.test.mjs",
     "test:adminCredentialActorFacts": "node test/adminCredentialActorFacts.test.mjs",
     "test:adminCredentialTargetFacts": "node test/adminCredentialTargetFacts.test.mjs",
+    "test:adminCredentialSendDedupe": "node test/adminCredentialSendDedupe.test.mjs",
     "test:adminCredentialLinkValidity": "node test/adminCredentialResetLinkValidity.test.mjs",
     "test:authPr4Migration": "node test/authPr4RecoveryEmailMigration.test.mjs",
     "test:authPr4Gate": "node test/authPr4ProductionGate.test.mjs",

@@ -16,6 +16,7 @@ import type { CallableRequest } from "firebase-functions/v2/https";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
 import * as commands from "./adminCredentialCommands";
+import { createNativeResetSender } from "./nativeResetSender";
 
 const REGION = "us-central1";
 
@@ -197,14 +198,6 @@ export async function resolveActorFacts(actorUid: string): Promise<commands.Acto
   };
 }
 
-// The Admin-SDK deps, wired with NOT_CONFIGURED_NATIVE_SEND so NO email is sent
-// until an Owner-authorized Firebase-native sender is wired at the AUTH-PROD
-// enablement gate (D-DELIVERY-NATIVE, DECISIONS #56 -- NEVER an external
-// provider, #54). As wired, the command FAILS CLOSED on the send-capability
-// check and performs ZERO Auth side effects (no send, no revocation, and no
-// reset-link generation at all -- link generation was removed for the native
-// path). Real-Firebase earlier-link consumability + native-send behavior are the
-// separate AUTH-PROD-1 verification.
 // Single source of the actor-authorization gate for BOTH callables: the deployed
 // production adapter `resolveActorFacts`. Exported so the Auth+Firestore emulator
 // suite exercises the exact function the callables wire (no divergent test path).
@@ -212,11 +205,21 @@ export function actorAuthorizationDeps(): commands.ActorAuthorizationDeps {
   return { resolveActorFacts };
 }
 
+// The concrete native sender is wired with `outbound: null` (PRE-1): it is the real
+// dedupe-backed adapter, but FAIL-CLOSED -- `isConfigured()` is false, so the command
+// performs ZERO Auth side effects (no send, no revocation, no reset-link generation)
+// and no email is ever sent. A real outbound (Function -> Auth REST
+// `accounts:sendOobCode`) plus its Secret Manager credential is wired only at a later,
+// separately authorized AUTH-PROD enablement gate (D-DELIVERY-NATIVE, #56 -- never an
+// external provider, #54). Real-Firebase native-send + earlier-link behavior are the
+// separate AUTH-PROD-1 verification.
+export const DEPLOYED_NATIVE_SENDER = createNativeResetSender({ outbound: null });
+
 function adminSdkDeps(): commands.AdminResetDeps {
   return {
     ...actorAuthorizationDeps(),
     resolveTargetFacts,
-    nativeSend: commands.NOT_CONFIGURED_NATIVE_SEND,
+    nativeSend: DEPLOYED_NATIVE_SENDER,
   };
 }
 
