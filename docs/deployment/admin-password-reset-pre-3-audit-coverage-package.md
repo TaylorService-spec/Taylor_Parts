@@ -101,8 +101,15 @@ intentional shared-contract extension (§5, D-PRE3-ACTION).
 
 - **Allowed fields only:** `actorUid`, `action`, `targetType`/`targetId` (or a scope-level target for the
   list access event), a bounded `outcome` (`applied` | `denied`; PRE-1's `uncertain` is reserved for the
-  reconciliation transition and is not reused here), `scope`, timestamp, and — where meaningful and
-  non-enumerating — a bounded `rowCount` for a list access event (a count, never identities).
+  reconciliation transition and is not reused here), `scope`, and timestamp.
+- **Result count — NOT the report-only `rowCount` (D-PRE3-LIST-COUNT).** The merged writer restricts
+  `rowCount` to `runReportDefinition`/`exportReportDefinition` (`auditEventWriter.ts:293-297`); a list
+  access event carrying `rowCount` would **fail runtime validation** the moment a `listResetEligibleUsers`
+  action is added. Therefore the list access event **does not use `rowCount`.** Default: **carry no count
+  at all** (attribution — who listed, when — is sufficient and simplest, and avoids a shared-contract
+  coupling). If the Owner wants a count, it must be a **purpose-specific bounded field** given the full
+  contract treatment (both type mirrors + writer validation + comments + consumer safety + tests) — never
+  by widening the report-only `rowCount`.
 - **Bounded summary:** ≤ `MAX_SUMMARY_LENGTH` (500); no free-form target data. **Prohibited:** email
   addresses, reset links, OOB codes, credentials/API keys, provider bodies, raw Firebase responses,
   per-target eligibility detail in list events, and any unbounded text. The existing secret-pattern
@@ -111,6 +118,16 @@ intentional shared-contract extension (§5, D-PRE3-ACTION).
   transition (via the transaction-aware `stageAuditEvent`), exactly as the PRE-1 `uncertain` path does —
   both commit or neither. A **pure denial/access** audit with **no** state change may use the standalone
   path (`recordStandaloneAuditEvent`), matching the existing initiate-denial audits.
+- **Audit-write-failure / durability (D-PRE3-AUDIT-DURABILITY).** For a **security-required access grant**
+  (`listResetEligibleUsers` success), the audit is a **precondition of returning data**: resolve
+  authorization → resolve the bounded candidate rows → **persist the sanitized access audit** → return the
+  rows **only after** the audit commit succeeds. If the audit cannot be committed, **fail closed**: return
+  **no** rows and a sanitized error (e.g. an `unavailable` "could not complete the request"), never the
+  candidate list. For a **denial** (list authz denial; and the initiate-lane conflict/malformed/authz
+  denials), the **denial is authoritative regardless of the audit outcome** — the caller is still denied
+  with the existing sanitized error even if the denial audit write fails; the audit failure is surfaced to
+  server-side telemetry only (never to the caller, never leaking the reason). A denial must never become
+  an allow because its audit failed; an access grant must never leak rows whose access could not be audited.
 - **Replay behavior:** audits are append-only/immutable (Spec §14); a replay/no-op path writes **no** new
   audit. Idempotent re-invocations must not multiply audit events.
 - **Retention:** unchanged — Audit Events are append-only and immutable; no deletion path. (Distinct from
@@ -125,7 +142,9 @@ intentional shared-contract extension (§5, D-PRE3-ACTION).
 | # | Decision | Options | Recommended default |
 | --- | --- | --- | --- |
 | D-PRE3-LIST-DENY | Audit `listResetEligibleUsers` authorization **denials** | (a) audit; (b) none | **(a)** — a denied privileged read is a security signal (parity with initiate) |
-| D-PRE3-LIST-ACCESS | Audit `listResetEligibleUsers` **successful** access | (a) audit an access event (actor + bounded rowCount, no identities); (b) none | **(a)** — governed enumeration should be attributable; strictly non-enumerating fields |
+| D-PRE3-LIST-ACCESS | Audit `listResetEligibleUsers` **successful** access | (a) audit an access event (actor + action + outcome + timestamp, no identities, no count); (b) none | **(a)** — governed enumeration should be attributable; strictly non-enumerating fields |
+| D-PRE3-LIST-COUNT | Include a result count on the list access event | (a) no count; (b) a **purpose-specific** bounded count field with full contract treatment (mirrors + writer + tests); (c) widen the report-only `rowCount` (rejected — validation coupling) | **(a)** — attribution needs no count; avoids widening the report-only `rowCount` |
+| D-PRE3-AUDIT-DURABILITY | Behavior when a required audit write fails | (a) access grant: audit-before-return, fail closed (no rows) on audit failure; denial: denial stays authoritative, audit failure to telemetry only; (b) best-effort audit, return regardless | **(a)** — never leak un-audited access; a denial never becomes an allow |
 | D-PRE3-ACTION | Shared-contract change to represent list events | (a) extend `AuditAction` with a bounded `listResetEligibleUsers` action in **both** mirrors + writer allow-list (mirror-integrity tested); (b) reuse an existing action (rejected — none is truthful) | **(a)** — required to audit list events truthfully; mirrors kept byte-identical (as with the PRE-1 `uncertain` outcome) |
 | D-PRE3-CONFLICT | Audit operation-key-conflict + malformed-op-record | (a) audit both (sanitized `denied`); (b) none | **(a)** — misuse / integrity signals |
 | D-PRE3-VALIDATION | Audit input-validation rejections | (a) audit; (b) none | **(b)** — client input, no security value, high noise |
@@ -149,8 +168,10 @@ inactive/ungranted.
 ## 7. Sign-off (to be completed at future gates)
 
 - [ ] Owner decisions §5 ratified (or amended) — _pending_
-- [ ] **G-PRE3-IMPL** authorized: implement the approved audits + any `AuditAction` extension + tests
-  (repository/emulator only) — _pending_
+- [ ] **G-PRE3-IMPL** authorized: implement the approved audits + any `AuditAction` extension + any
+  purpose-specific count field, with tests (repository/emulator only) — including **audit-before-return
+  fail-closed** for list access (no rows on audit-write failure), **denial-authoritative-on-audit-failure**
+  for denials, mirror-integrity, and writer-validation coverage — _pending_
 - [ ] Independent Codex review of the implementation — _pending_
 - [ ] AUTH-PROD-1 (D-PROD-1A/B/C) — _separate gate; unblocked only after G-PRE3-IMPL lands_
 
