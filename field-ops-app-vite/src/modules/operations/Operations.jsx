@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "../../firebase/firebase";
 import { PARTS_CATALOG } from "../../data/partsCatalog";
+import { useAuth } from "../../auth/AuthContext";
+import { useCanonicalPartNames } from "../../hooks/useCanonicalPartNames";
 import { TECHNICIANS_COLLECTION } from "../../domain/constants";
 import {
   fetchInventoryTransactions,
@@ -66,7 +68,15 @@ import ExecutionInsightsPanel from "./panels/ExecutionInsightsPanel";
 // (modules/inventory/PartsList.jsx/PartDetail.jsx) share one
 // computation instead of each maintaining its own copy.
 
-export default function Operations() {
+export default function Operations({ accessVersion } = {}) {
+  const { user } = useAuth();
+  // OD-3: ONE canonical part-name read for the whole dashboard, threaded as `resolveName`
+  // into the panels below (never an independent read per panel). Fail-closed: on a
+  // denied/unavailable/incomplete/invalid canonical read, names degrade to the raw partId
+  // (never the static-catalog name); the panels' tables/calculations are unaffected.
+  // accessVersion is threaded from App so a same-UID access change re-runs the read and
+  // invalidates the prior name map synchronously (boundary-key guard in the hook).
+  const { resolveName, namesUnavailable } = useCanonicalPartNames({ uid: user?.uid, accessVersion });
   const [state, setState] = useState({ loading: true, error: null, data: null });
 
   useEffect(() => {
@@ -196,18 +206,29 @@ export default function Operations() {
         (Epic 4), and procurement system (Epic 5). Nothing on this screen writes anywhere -- catalog data ({PARTS_CATALOG.length} parts) is a
         static baseline, not live stock.
       </p>
+      {namesUnavailable && (
+        <p className="fo-muted" role="status">Some part names are unavailable; Part IDs are shown.</p>
+      )}
+      {/* InventoryHealthPanel is intentionally NOT migrated in this gate -- it is a shared
+          cross-lane component (also mounted by PartsList, PartsManagerHome,
+          WarehouseManagerHome), so its canonical name resolution is a separate coordinated
+          gate across all four parents. It keeps its existing static name resolution here;
+          this same-screen inconsistency is explicitly temporary (see the Issue #100
+          implementation plan's OD-3 section). */}
       <InventoryHealthPanel healthEntries={healthEntries} />
       <WarehousePanel
         warehouses={warehouses}
         stockLocations={stockLocations}
         transferOrders={transferOrders}
         reconciliationReport={reconciliationReport}
+        resolveName={resolveName}
       />
-      <ProcurementPanel purchaseOrders={purchaseOrders} suppliers={suppliers} procurementDrafts={procurementDrafts} />
+      <ProcurementPanel purchaseOrders={purchaseOrders} suppliers={suppliers} procurementDrafts={procurementDrafts} resolveName={resolveName} />
       <ExecutionInsightsPanel
         consumptionSnapshot={consumptionSnapshot}
         technicianVolume={technicianVolume}
         technicianName={technicianName}
+        resolveName={resolveName}
       />
     </div>
   );

@@ -1,11 +1,9 @@
-import { getCatalogItem } from "../../../data/partsCatalog";
-
 // Epic 5 Procurement -- pure renderer. Draft proposals are exactly
 // that: proposals. There is no "approve"/"create PO" button here --
 // turning one into a real PurchaseOrder requires a human-triggered
 // Cloud Function call outside this dashboard's scope (see
 // procurementDraftEngine.ts's header comment).
-export default function ProcurementPanel({ purchaseOrders, suppliers, procurementDrafts }) {
+export default function ProcurementPanel({ purchaseOrders, suppliers, procurementDrafts, resolveName }) {
   const supplierName = (id) => suppliers.find((s) => s.id === id)?.name ?? id;
 
   return (
@@ -57,7 +55,7 @@ export default function ProcurementPanel({ purchaseOrders, suppliers, procuremen
           <tbody>
             {procurementDrafts.map((draft) => (
               <tr key={draft.partId}>
-                <td>{getCatalogItem(draft.partId)?.name ?? draft.partId}</td>
+                <td>{resolveName(draft.partId)}</td>
                 <td>{draft.recommendedQuantity}</td>
                 <td>
                   <span className={`fo-badge fo-badge-${draft.urgency.toLowerCase()}`}>{draft.urgency}</span>

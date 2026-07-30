@@ -1,9 +1,7 @@
-import { getCatalogItem } from "../../../data/partsCatalog";
-
 // Epic 4 Warehouse -- pure renderer. Reconciliation is strictly
 // informational (see warehouseReconciliationEngine.ts) -- there is no
 // "fix" button anywhere on this panel.
-export default function WarehousePanel({ warehouses, stockLocations, transferOrders, reconciliationReport }) {
+export default function WarehousePanel({ warehouses, stockLocations, transferOrders, reconciliationReport, resolveName }) {
   const warehouseName = (id) => warehouses.find((w) => w.id === id)?.name ?? id;
 
   return (
@@ -26,7 +24,7 @@ export default function WarehousePanel({ warehouses, stockLocations, transferOrd
             {stockLocations.map((loc) => (
               <tr key={loc.id}>
                 <td>{warehouseName(loc.warehouseId)}</td>
-                <td>{getCatalogItem(loc.partId)?.name ?? loc.partId}</td>
+                <td>{resolveName(loc.partId)}</td>
                 <td>{loc.binCode}</td>
                 <td>{loc.quantity}</td>
               </tr>
@@ -59,7 +57,7 @@ export default function WarehousePanel({ warehouses, stockLocations, transferOrd
             <tbody>
               {reconciliationReport.discrepancies.map((d) => (
                 <tr key={`${d.warehouseId}-${d.partId}`}>
-                  <td>{getCatalogItem(d.partId)?.name ?? d.partId}</td>
+                  <td>{resolveName(d.partId)}</td>
                   <td>{warehouseName(d.warehouseId)}</td>
                   <td>{d.expectedQuantity}</td>
                   <td>{d.actualQuantity}</td>
@@ -91,7 +89,7 @@ export default function WarehousePanel({ warehouses, stockLocations, transferOrd
           <tbody>
             {transferOrders.map((t) => (
               <tr key={t.id}>
-                <td>{getCatalogItem(t.partId)?.name ?? t.partId}</td>
+                <td>{resolveName(t.partId)}</td>
                 <td>{warehouseName(t.fromWarehouseId)}</td>
                 <td>{warehouseName(t.toWarehouseId)}</td>
                 <td>{t.quantity}</td>

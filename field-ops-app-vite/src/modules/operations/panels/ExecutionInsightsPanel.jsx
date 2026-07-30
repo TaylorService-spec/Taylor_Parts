@@ -1,5 +1,3 @@
-import { getCatalogItem } from "../../../data/partsCatalog";
-
 // Epic 7 Step 5 -- Dispatcher Insight Layer, read-only. Pure renderer;
 // all computation already done by Operations.jsx via
 // analytics/executionAnalyticsService.ts's getInventoryConsumptionSnapshot()
@@ -7,7 +5,7 @@ import { getCatalogItem } from "../../../data/partsCatalog";
 // existing role (rule 8, docs/CLAUDE_CONTEXT.md): read-only executive/
 // monitoring, explicitly not a second dispatcher tool -- no action
 // buttons here, ever.
-export default function ExecutionInsightsPanel({ consumptionSnapshot, technicianVolume, technicianName }) {
+export default function ExecutionInsightsPanel({ consumptionSnapshot, technicianVolume, technicianName, resolveName }) {
   const topParts = consumptionSnapshot?.parts.slice(0, 5) ?? [];
   const topTechnicians = (technicianVolume ?? []).slice(0, 5);
 
@@ -30,7 +28,7 @@ export default function ExecutionInsightsPanel({ consumptionSnapshot, technician
           <tbody>
             {topParts.map((p) => (
               <tr key={p.partId}>
-                <td>{getCatalogItem(p.partId)?.name ?? p.partId}</td>
+                <td>{resolveName(p.partId)}</td>
                 <td>{p.totalQuantityUsed}</td>
                 <td>{p.frequency}</td>
               </tr>
