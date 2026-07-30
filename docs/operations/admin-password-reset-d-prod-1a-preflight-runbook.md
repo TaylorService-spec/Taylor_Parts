@@ -36,12 +36,33 @@ appears to need a mutating step, **halt** (§4) — do not improvise.
   Viewer; NOT accessor/admin). No owner/editor is required or should be used.
 - The exact approved project id, region, and (for later gates, not created here) the intended sender-secret
   name + API-key id, provided out-of-band. Placeholders below: `<PROJECT>`, `<REGION>` (e.g. `us-central1`),
-  `<SENDER_SECRET>`, `<API_KEY_ID>`.
+  `<SENDER_SECRET>`, `<API_KEY_ID>`, and the runtime service accounts `<INITIATE_RUNTIME_SA>` /
+  `<LIST_RUNTIME_SA>` (read from each function's `describe` in C2). Effective-access analysis additionally
+  needs Policy Analyzer/Troubleshooter read roles (e.g. `roles/policytroubleshooter.viewer`, and
+  `roles/cloudasset.viewer` if using `asset analyze-iam-policy`).
 - Run each command, capture output, and transcribe **only** the sanitized fields into §5's template.
 
 ---
 
 ## 1. Checks (each: command → expected → pass/fail → halt)
+
+### 1.0 Existence classification (branching convention — apply to C2/C3/C4/C5)
+
+Each function and the sender secret may legitimately be **absent** before the later gates (functions:
+export ≠ deploy, so pre-AUTH-PROD-2/3 they are NOT_FOUND; the sender secret is created only at the
+authorized D-NATIVE-SEND-CONFIG execution). For each such object, classify the `describe` result into
+exactly one branch and act accordingly:
+
+- **PRESENT** — the object exists and `describe` returns it → run the object's inspection checks below.
+- **CONFIRMED-ABSENT** — `describe` returns a clean **NOT_FOUND** (the resource does not exist; the call
+  itself succeeded/authenticated) → the object's binding/access sub-checks are **N/A and PASS** (nothing can
+  be bound/granted on a resource that does not exist); record "absent / not deployed".
+- **ERROR-HALT** — any other outcome (PERMISSION_DENIED, quota/API error, ambiguous/partial state, a
+  transport failure, or an unrecognized shape) → **HALT** (§4); posture cannot be established. A
+  PERMISSION_DENIED is never treated as "absent".
+
+Never infer absence from a non-NOT_FOUND error, and never run an object's downstream inspection while it is
+CONFIRMED-ABSENT (there is nothing to inspect) or ERROR-HALT (posture is unknown).
 
 ### C1 — Project identity
 ```
@@ -73,27 +94,51 @@ firebase functions:list --project <PROJECT>
 gcloud functions describe initiateAdminPasswordReset --project <PROJECT> --region <REGION> --gen2 \
   --format="value(serviceConfig.secretEnvironmentVariables,serviceConfig.secretVolumes)"
 ```
-- **Expected:** **empty** — no sender secret is bound (D-NATIVE-SEND-CONFIG execution has not run). Deployed
-  behavior is the fail-closed sender (`buildNativeResetSender(null)`; code baseline
+- **Branch (per §1.0):** if `initiateAdminPasswordReset` is CONFIRMED-ABSENT → no secret can be bound → PASS
+  (record "not deployed"); ERROR-HALT → stop. If PRESENT, evaluate the output below.
+- **Expected (PRESENT):** **empty** — no sender secret is bound (D-NATIVE-SEND-CONFIG execution has not run).
+  Deployed behavior is the fail-closed sender (`buildNativeResetSender(null)`; code baseline
   `adminCredentialCallables.ts` `DEPLOYED_NATIVE_SENDER = buildNativeResetSender(null)`).
 - **PASS:** no secret binding present (and, if deployed, matches the fail-closed code baseline).
   **FAIL/HALT:** any secret already bound to `initiateAdminPasswordReset` before the authorized config gate → stop.
 
-### C4 — `listResetEligibleUsers` proof: NO sender-secret binding AND no secret-reading identity
+### C4 — `listResetEligibleUsers` proof: no sender-secret binding AND no EFFECTIVE secret access
+Resource-level IAM alone is insufficient — inherited project/folder/org grants, group memberships,
+conditional bindings, and service-account **impersonation** can still yield access. This check combines the
+binding read with **read-only effective-access analysis** for the list runtime identity.
 ```
-# (a) no secret bound to the list function:
+# (a) no secret bound to the list function (branch per §1.0 if the function is absent):
 gcloud functions describe listResetEligibleUsers --project <PROJECT> --region <REGION> --gen2 \
   --format="value(serviceConfig.secretEnvironmentVariables,serviceConfig.secretVolumes,serviceConfig.serviceAccountEmail)"
-# (b) the sender secret's access policy does NOT grant the list function's runtime SA:
+# (b) resource-level policy on the sender secret (context only; NOT sufficient by itself):
 gcloud secrets get-iam-policy <SENDER_SECRET> --project <PROJECT> \
   --flatten="bindings[]" --format="table(bindings.role, bindings.members)"
+# (c) EFFECTIVE access of the LIST runtime SA to the sender secret value -- expands inherited grants,
+#     group membership, and conditions (read-only IAM Policy Troubleshooter):
+gcloud policy-troubleshoot iam \
+  //secretmanager.googleapis.com/projects/<PROJECT>/secrets/<SENDER_SECRET> \
+  --principal-email=<LIST_RUNTIME_SA> \
+  --permission=secretmanager.versions.access \
+  --project <PROJECT>
+# (d) impersonation guard: the list SA must not be able to impersonate the initiate SA (which would let it
+#     borrow the initiate SA's secret access). Read the initiate SA's own IAM policy:
+gcloud iam service-accounts get-iam-policy <INITIATE_RUNTIME_SA> --project <PROJECT> \
+  --flatten="bindings[]" --format="table(bindings.role, bindings.members)"
 ```
-- **Expected:** (a) the list function has **no** `secretEnvironmentVariables`/`secretVolumes` for the sender
-  secret; (b) the sender secret's IAM policy has **no** `roles/secretmanager.secretAccessor` member equal to
-  the list function's runtime SA (nor `allUsers`/`allAuthenticatedUsers`).
-- **PASS:** list has no secret binding AND its SA is absent from the secret accessor list. **FAIL/HALT:** the
-  list function binds the sender secret, or its SA can read the secret, or the secret is world/broadly
-  readable → stop (this is the P1 least-privilege boundary).
+(If Cloud Asset Inventory is available, `gcloud asset analyze-iam-policy --scope=projects/<PROJECT>
+--full-resource-name=//secretmanager.googleapis.com/projects/<PROJECT>/secrets/<SENDER_SECRET>
+--identity=serviceAccount:<LIST_RUNTIME_SA>` is an equivalent read-only cross-check.)
+- **Branch (per §1.0):** if `listResetEligibleUsers` is CONFIRMED-ABSENT → no binding possible → the (a)
+  binding sub-check PASSes; still run (c)/(d) against whatever SA it WILL use only if that SA is known,
+  otherwise record "list not deployed; effective-access re-checked at the deploy gate". If the sender secret
+  is CONFIRMED-ABSENT → (b)/(c) are N/A PASS (no secret to access). ERROR-HALT on (c)/(d) → stop.
+- **Expected (all applicable):** (a) list has **no** sender secret binding; (b) no `secretAccessor` member ==
+  the list SA and no `allUsers`/`allAuthenticatedUsers`; (c) troubleshooter verdict is **NOT GRANTED /
+  cannot access** for the list SA on `secretmanager.versions.access`; (d) the list SA has **no**
+  `roles/iam.serviceAccountTokenCreator` (or `serviceAccountUser`) on the initiate SA.
+- **PASS:** all applicable checks confirm the list identity has **no effective path** to the secret value.
+  **FAIL/HALT:** any binding, any GRANTED/CONDITIONAL-grant effective verdict, broad readability, or an
+  impersonation path from the list SA to the initiate SA → stop (this is the P1 least-privilege boundary).
 
 ### C5 — Secret metadata + bindings WITHOUT reading values
 ```
@@ -103,12 +148,13 @@ gcloud secrets versions list <SENDER_SECRET> --project <PROJECT> --format="table
 gcloud secrets get-iam-policy <SENDER_SECRET> --project <PROJECT> --flatten="bindings[]" \
   --format="table(bindings.role, bindings.members)"
 ```
-- **Expected (pre-config-gate):** the sender secret may **not exist yet** (created only at the authorized
-  D-NATIVE-SEND-CONFIG execution) — record "absent". If it exists, its accessor list is limited to the
-  dedicated `initiateAdminPasswordReset` runtime SA only.
-- **PASS:** secret absent, or present with accessor == the dedicated initiate-only SA only. **FAIL/HALT:**
-  the secret is readable by the list SA, the default Functions SA, a human/group, or `allUsers`/
-  `allAuthenticatedUsers` → stop. **NEVER run `gcloud secrets versions access` (reads the value).**
+- **Branch (per §1.0):** if the sender secret is CONFIRMED-ABSENT → PASS (record "absent"; created only at
+  the config gate); ERROR-HALT → stop. If PRESENT, evaluate below.
+- **Expected (PRESENT):** its EFFECTIVE accessor set (resource + inherited/group/conditional, cross-checked
+  with C4's troubleshooter) is limited to the dedicated `initiateAdminPasswordReset` runtime SA only.
+- **PASS:** secret absent, or present with the effective accessor == the dedicated initiate-only SA only.
+  **FAIL/HALT:** the secret is effectively readable by the list SA, the default Functions SA, a human/group,
+  or `allUsers`/`allAuthenticatedUsers` → stop. **NEVER run `gcloud secrets versions access` (reads the value).**
 
 ### C6 — API-key metadata/restrictions WITHOUT exposing the key
 ```
@@ -125,13 +171,16 @@ gcloud services api-keys describe <API_KEY_ID> --project <PROJECT> \
   `gcloud services api-keys get-key-string` (exposes the key).**
 
 ### C7 — Required API availability
+Use `gcloud --filter` (portable; no shell `grep`/pipe — suitable for the protected Windows/PowerShell
+operator environment):
 ```
 gcloud services list --enabled --project <PROJECT> \
-  --format="table(config.name)" | grep -E "identitytoolkit.googleapis.com|secretmanager.googleapis.com"
+  --filter="config.name=(identitytoolkit.googleapis.com secretmanager.googleapis.com)" \
+  --format="value(config.name)"
 ```
-- **Expected:** `identitytoolkit.googleapis.com` **enabled** (native send) and `secretmanager.googleapis.com`
-  **enabled** (secret binding). **PASS:** both enabled. **FAIL/HALT:** either disabled → stop (do NOT enable
-  here; enabling is a mutation for a later gate).
+- **Expected:** the output lists **both** `identitytoolkit.googleapis.com` (native send) and
+  `secretmanager.googleapis.com` (secret binding). **PASS:** both present. **FAIL/HALT:** either missing →
+  stop (do NOT enable here; enabling is a mutation for a later gate).
 
 ### C8 — Exact two-Function deployment boundary + rollback baseline
 ```
@@ -146,25 +195,40 @@ gcloud functions list --project <PROJECT> --regions <REGION> --format="table(nam
 - **PASS:** boundary is exactly the two callables (or cleanly not-deployed) and the rollback baseline is
   recorded. **FAIL/HALT:** any extra/unexpected admin-reset Function, or an indeterminate baseline → stop.
 
-### C9 — Permission remains inactive/ungranted (code + live)
-- **Code baseline (already true on `main` d6628a5):** `permissionCatalog.ts` registers
-  `admin.credentialReset.initiate` with `active:false`; no code grants it. (No live IAM role represents this
-  application permission; it is enforced in-app, so there is no production role to inspect — record the code
-  attestation.)
-- **PASS:** code shows `active:false` and no grant; the runbook asserts no activation/grant step is run.
-  **FAIL/HALT:** any evidence the permission was activated or granted → stop.
+### C9 — Permission posture: `admin.credentialReset.initiate` inactive/ungranted (SCOPE-LIMITED)
+This is a **repository attestation**, not a live permission check — be explicit about what it does and does
+**not** prove:
+- **Repository attestation (true on `main` `d6628a5`):** `permissionCatalog.ts` registers
+  `admin.credentialReset.initiate` with `active:false`, and no code path activates or grants it. This is an
+  in-app (not IAM) permission, so there is no live GCP role to inspect.
+- **What C9 does NOT prove by itself:** (i) that the **deployed** code equals `d6628a5` — that is inferred
+  separately from C2's recorded revision/build id vs the merged baseline (deploy-provenance), not asserted
+  here; and (ii) that no **stored** role definition/assignment effectively grants the permission.
+- **Optional read-only stored-grant probe (only with existing read access; NO mutation):** enumerate role
+  definitions/assignments that could carry the permission and confirm none is active — e.g. a read-only
+  query of the governed role/permission collections (`roles`, `roleAssignments`) for any active role whose
+  permissions include `admin.credentialReset.initiate`. If the operator lacks read access, record the check
+  as **not performed (limitation)** rather than asserting a pass.
+- **PASS:** the repository attestation holds AND (deploy-provenance from C2 matches the baseline) AND (the
+  stored-grant probe found none active, or is explicitly recorded as a documented limitation). **FAIL/HALT:**
+  any active role/assignment granting the permission, deployed code that does not match the baseline, or
+  evidence of activation → stop.
 
 ---
 
 ## 2. Aggregate verdict
 
-D-PROD-1A **passes** only if C1–C9 all PASS: correct project; the two callables cleanly deployed-or-not with
-recorded revisions + runtime SAs; `initiateAdminPasswordReset` has no sender secret bound; `listResetEligibleUsers`
-has no sender-secret binding and no secret-reading identity; the sender secret (if present) is accessor-scoped
-to the dedicated initiate-only SA; the API key is project-owned with Identity-Toolkit-appropriate restrictions;
-Identity Toolkit + Secret Manager APIs enabled; the deployment boundary is exactly the two callables with a
-recorded rollback baseline; and the permission stays inactive/ungranted. **Any FAIL halts the gate** — report
-the sanitized blocker; do not repair or proceed to D-NATIVE-SEND-CONFIG execution / D-PROD-1B/C.
+D-PROD-1A **passes** only if C1–C9 all PASS under the §1.0 branching: correct project; the two callables
+cleanly deployed-or-CONFIRMED-ABSENT with recorded revisions + runtime SAs (any non-NOT_FOUND error halts);
+`initiateAdminPasswordReset` has no sender secret bound; `listResetEligibleUsers` has no sender-secret
+binding and **no EFFECTIVE secret access** (resource + inherited/group/conditional troubleshooter verdict
+NOT GRANTED, and no impersonation path to the initiate SA); the sender secret (if present) is **effectively**
+accessor-scoped to the dedicated initiate-only SA; the API key is project-owned with Identity-Toolkit-
+appropriate restrictions; Identity Toolkit + Secret Manager APIs enabled; the deployment boundary is exactly
+the two callables with a recorded rollback baseline; and the permission-posture attestation holds (with
+deploy-provenance from C2 and the stored-grant probe or its recorded limitation). **Any FAIL or ERROR-HALT
+halts the gate** — report the sanitized blocker; do not repair or proceed to D-NATIVE-SEND-CONFIG execution /
+D-PROD-1B/C.
 
 ---
 
@@ -178,15 +242,15 @@ the sanitized blocker; do not repair or proceed to D-NATIVE-SEND-CONFIG executio
 ```
 D-PROD-1A EVIDENCE (sanitized) — operator: <role, not name/email> — date: <UTC>
 C1 project identity            : projectId=<PROJECT> matches approved=? [PASS/FAIL]
-C2 initiate deployed           : [deployed rev=<id> | NOT_FOUND]  runtimeSA=<dedicated? yes/no; default? yes/no> [PASS/FAIL]
-C2 list deployed               : [deployed rev=<id> | NOT_FOUND]  runtimeSA=<dedicated? yes/no; default? yes/no> [PASS/FAIL]
-C3 initiate secret bound       : sender secret bound? [no=PASS / yes=FAIL]
-C4 list secret binding         : list has sender secret? [no=PASS/yes=FAIL]; list SA is secret accessor? [no=PASS/yes=FAIL]
-C5 sender secret               : [absent | present]; accessors == dedicated initiate-only SA only? [yes=PASS/no=FAIL]; broad/allUsers? [no=PASS/yes=FAIL]
+C2 initiate function           : [PRESENT rev=<id> | CONFIRMED-ABSENT | ERROR-HALT]  runtimeSA=<dedicated? yes/no; default? yes/no> [PASS/FAIL]
+C2 list function               : [PRESENT rev=<id> | CONFIRMED-ABSENT | ERROR-HALT]  runtimeSA=<dedicated? yes/no; default? yes/no> [PASS/FAIL]
+C3 initiate secret bound       : [initiate PRESENT: bound? no=PASS/yes=FAIL | initiate ABSENT: N/A=PASS]
+C4 list effective secret access: binding? [no=PASS/yes=FAIL]; troubleshooter(list SA, versions.access)=[NOT_GRANTED=PASS/GRANTED|CONDITIONAL=FAIL]; list->initiate impersonation? [no=PASS/yes=FAIL]
+C5 sender secret               : [CONFIRMED-ABSENT=PASS | PRESENT]; EFFECTIVE accessor == dedicated initiate-only SA only? [yes=PASS/no=FAIL]; broad/allUsers? [no=PASS/yes=FAIL]
 C6 API key                     : owned by <PROJECT>? [yes/no]; Identity-Toolkit-appropriate restrictions? [yes/no] [PASS/FAIL]  (key string NOT recorded)
 C7 APIs enabled                : identitytoolkit=? secretmanager=? [PASS/FAIL]
 C8 deploy boundary + rollback  : surface == {initiate,list} only? [yes/no]; rollback baseline=<per-fn rev or not-deployed; sender fail-closed> [PASS/FAIL]
-C9 permission posture          : admin.credentialReset.initiate active:false + ungranted? [yes=PASS/no=FAIL]
+C9 permission posture          : code attestation active:false (d6628a5)=yes; deploy-provenance rev matches baseline? [yes/no/na]; stored-grant probe=[none-active=PASS | not-performed(limitation) | active=FAIL]
 AGGREGATE                      : [PASS / HALT: <sanitized reason>]
 ```
 
@@ -194,13 +258,16 @@ AGGREGATE                      : [PASS / HALT: <sanitized reason>]
 
 ## 4. Halt conditions (stop without repair or mutation; report sanitized)
 
-Halt immediately (do not repair, mutate, or continue) if: the project id does not match the approved
-project; a Function is partially/unexpectedly deployed or has an unrecognized runtime identity; a sender
-secret is already bound to either callable before the authorized config gate; `listResetEligibleUsers` can
-read the sender secret (binding or SA accessor) or the secret is broadly readable; the API key belongs to
-another project or is over-broad/blocks server use; a required API is disabled; the deployment boundary is
-not exactly the two callables; the permission appears active or granted; or any check requires a prohibited
-(mutating / value-reading) command to complete. Report the **sanitized** blocker only.
+Halt immediately (do not repair, mutate, or continue) if: any object resolves to **ERROR-HALT** (a
+non-NOT_FOUND error — e.g. PERMISSION_DENIED — is never treated as absent); the project id does not match the
+approved project; a Function is partially/unexpectedly deployed or has an unrecognized runtime identity; a
+sender secret is already bound to either callable before the authorized config gate; `listResetEligibleUsers`
+has any **effective** path to the sender secret (binding, resource/inherited/group/conditional accessor, or
+impersonation of the initiate SA) or the secret is broadly readable; the API key belongs to another project
+or is over-broad/blocks server use; a required API is disabled; the deployment boundary is not exactly the
+two callables; the deployed code does not match the `d6628a5` baseline or a stored role/assignment grants the
+permission; or any check requires a prohibited (mutating / value-reading) command to complete. Report the
+**sanitized** blocker only.
 
 ---
 
