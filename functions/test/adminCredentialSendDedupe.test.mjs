@@ -92,13 +92,17 @@ async function main() {
     assert.strictEqual(calls.length, 1, "failed replay does not re-send");
   });
 
-  // -- crash gap: a record left "claimed" resolves to uncertain (fail closed)
-  await okAsync("re-encountered claimed record -> uncertain, NO outbound call", async () => {
+  // -- crash gap: a STALE (abandoned) claim resolves to uncertain (fail closed) -
+  await okAsync("stale abandoned claim -> uncertain, NO outbound call, flipped to uncertain", async () => {
     const { outbound, calls } = fakeOutbound("accept");
     const sender = createNativeResetSender({ outbound });
     const key = uniq("crash");
-    // Simulate a crash after claim but before the terminal write.
-    await db.collection(DEDUPE).doc(key).set({ binding: BIND, state: "claimed", claimedAtMs: Date.now(), updatedAtMs: Date.now() });
+    // Simulate a crash after claim but before the terminal write: an OLD claim
+    // (past the lease) owned by a now-gone invocation.
+    await db.collection(DEDUPE).doc(key).set({
+      binding: BIND, state: "claimed", owner: "prior-owner-gone",
+      claimedAtMs: Date.now() - 10 * 60 * 1000, updatedAtMs: Date.now() - 10 * 60 * 1000,
+    });
     const r = await sender.sendReset(args(key));
     assert.deepStrictEqual(r, { outcome: "uncertain" });
     assert.strictEqual(calls.length, 0, "uncertain never calls the outbound");
@@ -106,6 +110,35 @@ async function main() {
     // replay stays uncertain, still no call
     assert.deepStrictEqual(await sender.sendReset(args(key)), { outcome: "uncertain" });
     assert.strictEqual(calls.length, 0);
+  });
+
+  // -- P1 race (Codex): a live claim flipped to uncertain must NOT return accepted
+  await okAsync("owner whose claim was flipped to uncertain returns uncertain (never accepted); durable stays uncertain", async () => {
+    const key = uniq("p1race");
+    // Caller A: an outbound that blocks until we release it (A holds a live claim).
+    let releaseA;
+    const aBarrier = new Promise((r) => { releaseA = r; });
+    const aCalls = [];
+    const outboundA = async (a) => { aCalls.push(a); await aBarrier; return { accepted: true }; };
+    const senderA = createNativeResetSender({ outbound: outboundA });
+    const aPromise = senderA.sendReset(args(key)); // creates claim (owner A), then blocks in outbound
+    // Wait until A's claim exists, then age it past the lease so a sibling treats it as abandoned.
+    for (let i = 0; i < 50 && (await dedupeDoc(key))?.state !== "claimed"; i += 1) await new Promise((r) => setTimeout(r, 20));
+    assert.strictEqual((await dedupeDoc(key)).state, "claimed");
+    await db.collection(DEDUPE).doc(key).update({ claimedAtMs: Date.now() - 10 * 60 * 1000 });
+    // Caller B encounters the (now-stale) claim -> uncertain, NO outbound.
+    const { outbound: outboundB, calls: bCalls } = fakeOutbound("accept");
+    const senderB = createNativeResetSender({ outbound: outboundB });
+    const bOut = await senderB.sendReset(args(key));
+    assert.strictEqual(bOut.outcome, "uncertain");
+    assert.strictEqual(bCalls.length, 0, "B never sends");
+    assert.strictEqual((await dedupeDoc(key)).state, "uncertain", "B flipped the stale claim to uncertain");
+    // Release A: its Firebase send was accepted, but its claim was flipped away.
+    releaseA();
+    const aOut = await aPromise;
+    assert.strictEqual(aOut.outcome, "uncertain", "A must NOT return accepted once it lost ownership");
+    assert.strictEqual((await dedupeDoc(key)).state, "uncertain", "durable stays uncertain (no accepted overwrite)");
+    assert.strictEqual(aCalls.length, 1, "only A's outbound ran once");
   });
 
   // -- outbound throws -> leaves claimed; next call is uncertain ------------
@@ -148,9 +181,14 @@ async function main() {
     const sender = createNativeResetSender({ outbound });
     const key = uniq("race");
     const [a, b] = await Promise.allSettled([sender.sendReset(args(key)), sender.sendReset(args(key))]);
-    // Both settle; neither double-sends. Outcomes are accepted and/or uncertain.
     for (const s of [a, b]) assert.strictEqual(s.status, "fulfilled");
     assert.ok(calls.length <= 1, "at most one outbound call under concurrency");
+    // Return/durable correspondence: an `accepted` return MUST match a durable
+    // `accepted`, and no `accepted` return may coexist with an uncertain record.
+    const outcomes = [a.value.outcome, b.value.outcome];
+    const durable = (await dedupeDoc(key)).state;
+    if (outcomes.includes("accepted")) assert.strictEqual(durable, "accepted", "accepted return must match durable accepted");
+    if (durable === "uncertain") assert.ok(!outcomes.includes("accepted"), "no accepted return may coexist with an uncertain record");
   });
 
   console.log(`\n${passed} passed`);
