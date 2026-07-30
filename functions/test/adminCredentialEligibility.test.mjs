@@ -8,6 +8,9 @@
 // Prerequisite: npm run build (compiles to functions/lib). Then:
 //   node functions/test/adminCredentialEligibility.test.mjs
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 import {
   evaluateTargetEligibility,
   evaluateActorAuthorization,
@@ -251,6 +254,18 @@ ok("link: reciprocal but malformed (non-string) employmentStatus -> null (deny)"
   const v = resolveEmployeeLinkFacts(linkInput({ employeeEmploymentStatus: { weird: true } }));
   assert.strictEqual(v.employeeLinkReciprocal, true);
   assert.strictEqual(v.employmentStatus, null);
+});
+
+// -- PRE-1: AuditOutcome mirror integrity (both governed type files identical) --
+ok("AuditOutcome is byte-identical across both mirrors and includes 'uncertain'", () => {
+  const here = dirname(fileURLToPath(import.meta.url)); // functions/test
+  const fnLine = readFileSync(join(here, "../src/types/access.ts"), "utf8")
+    .split("\n").find((l) => l.includes("export type AuditOutcome"));
+  const appLine = readFileSync(join(here, "../../field-ops-app-vite/src/types/access.ts"), "utf8")
+    .split("\n").find((l) => l.includes("export type AuditOutcome"));
+  assert.ok(fnLine && appLine, "both mirrors declare AuditOutcome");
+  assert.strictEqual(fnLine.trim(), appLine.trim(), "AuditOutcome mirrors must be identical");
+  assert.match(fnLine, /"uncertain"/, "AuditOutcome must include 'uncertain'");
 });
 
 console.log(`\n${passed} passed`);

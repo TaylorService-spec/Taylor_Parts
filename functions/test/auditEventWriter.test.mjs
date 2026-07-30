@@ -130,7 +130,20 @@ async function main() {
     assert.equal(typeof data.at.toDate, "function");
   });
 
-  // --- Complete contract validation ---
+  // --- PRE-1: the "uncertain" outcome is now an accepted, committable value ---
+  await check("stageAuditEvent accepts outcome 'uncertain' and commits it (PRE-1)", async () => {
+    const targetId = `uncertain-${Date.now()}`;
+    const probeRef = db.collection("probe_mutations").doc(targetId);
+    await db.runTransaction(async (txn) => {
+      txn.set(probeRef, { businessField: "reconciliation_required" });
+      stageAuditEvent(txn, { ...VALID_EVENT, targetId, action: "deliverAdminPasswordReset", outcome: "uncertain" });
+    });
+    const snap = await db.collection("auditEvents").where("targetId", "==", targetId).get();
+    assert.equal(snap.size, 1, "an 'uncertain' audit event must commit");
+    assert.equal(snap.docs[0].data().outcome, "uncertain");
+  });
+
+  // --- Complete contract validation ('maybe' proves unknown outcomes still fail) ---
   for (const [field, value] of [
     ["actorUid", undefined],
     ["action", "notARealAction"],

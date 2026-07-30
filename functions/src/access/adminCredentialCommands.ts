@@ -46,8 +46,9 @@
 //
 // Repository-only: no deployment; tests run against the emulator with injected
 // Admin-SDK deps + the pure evaluator's own node tests.
+import { createHash } from "crypto";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
-import { recordStandaloneAuditEvent } from "./auditEventWriter";
+import { recordStandaloneAuditEvent, stageAuditEvent, type RecordAuditEventInput } from "./auditEventWriter";
 import type { AuditAction, AuditOutcome, Scope } from "../types/access";
 
 const USERS_COLLECTION = "users";
@@ -64,9 +65,16 @@ const RETRY_COOLDOWN_MS = 30 * 1000;
 // (immediate revocation) is a separate governed action, not this command.
 const RESET_MODES = ["routine"] as const;
 export type ResetMode = (typeof RESET_MODES)[number];
-const OP_STATUSES = ["in_progress", "completed", "failed"] as const;
+// PRE-1 (D-PRE1-OPSTATE) adds the terminal `reconciliation_required` status: an
+// uncertain send leaves the op here -- NOT completed, NOT failed, never
+// auto-retried, resolvable only by the separately authorized reconciliation
+// command (D-PRE1-XKEY-RECON, not implemented here).
+const OP_STATUSES = ["in_progress", "completed", "failed", "reconciliation_required"] as const;
 type OpStatus = (typeof OP_STATUSES)[number];
-type SendRuntime = "accepted" | "not_accepted";
+// Bounded reason enum for the reconciliation sub-object (no free-form text).
+const RECONCILIATION_REASONS = ["uncertain_send"] as const;
+type ReconciliationReason = (typeof RECONCILIATION_REASONS)[number];
+interface OpReconciliation { reason: ReconciliationReason; atMs: number }
 // Only a SUCCESSFUL send is persisted -- an unaccepted send is left unrecorded
 // so a later attempt RETRIES it. A persisted stage is therefore terminal-done.
 interface OpStages { send?: "sent" }
@@ -83,20 +91,30 @@ export class AdminResetStageError extends Error {}
 // Raised when a lease-bound write is refused because a newer attempt owns the op.
 export class LeaseLostError extends AdminResetStageError {}
 
-// -- Firebase-native send seam (D-DELIVERY-NATIVE) ---------------------------
-// The ONLY truthful signal is `accepted` (Firebase accepted the reset-email
-// request), NEVER "delivered". A configured sender MUST be idempotent on
-// `idempotencyKey` (native send is internally at-least-once after a stale-worker
-// takeover): a repeat call with the same key MUST NOT enqueue a second email.
-// `isConfigured()` true is the sender's attestation that it can send natively
-// AND deduplicates on `idempotencyKey`; the command fails closed when it is
-// false, so no un-attested sender ever runs. No reset link is generated here.
+// -- Firebase-native send seam (D-DELIVERY-NATIVE / PRE-1) -------------------
+// The ONLY truthful positive signal is `accepted` (Firebase accepted the
+// reset-email request), NEVER "delivered". PRE-1 makes the outcome THREE-STATE
+// (D-PRE1-INTERFACE): `accepted` | `not_accepted` (definite non-success,
+// retryable) | `uncertain` (the send may have reached Firebase but the outcome
+// could not be durably determined -- NEVER reported as accepted). A configured
+// sender MUST deduplicate on `idempotencyKey` so a repeat call with the same key
+// makes AT MOST ONE Firebase call and NEVER enqueues a second email. The command
+// passes a deterministic `binding` (a digest of its governed inputs) that the
+// sender persists and compares; the sender never infers authority fields and
+// never persists the email. `isConfigured()` true is the sender's attestation
+// that it can send natively AND deduplicates; the command fails closed when it is
+// false. No reset link is generated here.
+export type NativeSendOutcome = "accepted" | "not_accepted" | "uncertain";
 export interface NativeResetSender {
   isConfigured(): boolean;
-  // Resolves { accepted: true } when Firebase accepted the send request. Any
-  // provider body / code / link stays inside this boundary and is never
-  // returned to the command.
-  sendReset(args: { targetUid: string; email: string; idempotencyKey: string }): Promise<{ accepted: boolean }>;
+  // Any provider body / code / link stays inside this boundary and is never
+  // returned to the command. `binding` is the command-computed digest (§4).
+  sendReset(args: {
+    targetUid: string;
+    email: string;
+    idempotencyKey: string;
+    binding: string;
+  }): Promise<{ outcome: NativeSendOutcome }>;
 }
 
 // Fail-closed default: reports not-configured and performs no send. This is the
@@ -107,9 +125,17 @@ export const NOT_CONFIGURED_NATIVE_SEND: NativeResetSender = {
     return false;
   },
   async sendReset() {
-    return { accepted: false };
+    return { outcome: "not_accepted" };
   },
 };
+
+// D-PRE1: the command computes this deterministic binding from its governed
+// inputs and passes it to the sender, which persists + compares it (a key reused
+// with a different binding fails closed). The sender never recomputes it from,
+// or infers, the authority fields.
+export function computeCommandBinding(actorUid: string, targetUid: string, mode: ResetMode): string {
+  return createHash("sha256").update(JSON.stringify([actorUid, targetUid, mode])).digest("hex");
+}
 
 // -- Target eligibility facts + PURE evaluator (guard gap, #56) ---------------
 
@@ -306,6 +332,7 @@ interface OpRecord {
   status: OpStatus;
   attempt: number;
   stages?: OpStages;
+  reconciliation?: OpReconciliation;
   createdAtMs: number;
   updatedAtMs: number;
 }
@@ -369,11 +396,33 @@ function isValidOpRecord(d: unknown): d is OpRecord {
     if (st.send !== undefined && st.send !== "sent") return false;
     for (const k of Object.keys(st)) if (k !== "send") return false;
   }
+  // PRE-1 reconciliation sub-object: strict shape (bounded reason enum + finite atMs).
+  if (r.reconciliation !== undefined) {
+    if (typeof r.reconciliation !== "object" || r.reconciliation === null || Array.isArray(r.reconciliation)) return false;
+    const rc = r.reconciliation as Record<string, unknown>;
+    if (typeof rc.reason !== "string" || !(RECONCILIATION_REASONS as readonly string[]).includes(rc.reason)) return false;
+    if (!isFiniteNumber(rc.atMs)) return false;
+    for (const k of Object.keys(rc)) if (k !== "reason" && k !== "atMs") return false;
+  }
+  // Invariants tying status to the other fields (fail closed on violation):
+  const stagesSent = (r.stages as Record<string, unknown> | undefined)?.send === "sent";
+  if (r.status === "reconciliation_required") {
+    // Must carry a reconciliation reason and must NOT be marked sent.
+    if (r.reconciliation === undefined) return false;
+    if (stagesSent) return false;
+  } else if (r.reconciliation !== undefined) {
+    // reconciliation is only valid on the reconciliation_required status.
+    return false;
+  }
   return true;
 }
 
 interface ClaimResult {
-  action: "replay" | "run";
+  // "blocked" -> the op is in reconciliation_required: same-key replay is
+  // side-effect-free (no send, no state change, no new audit); the caller gets the
+  // neutral envelope. Resolution is only via the separately authorized
+  // reconciliation command (D-PRE1-XKEY-RECON).
+  action: "replay" | "run" | "blocked";
   attempt: number;
   stages: OpStages;
 }
@@ -393,6 +442,10 @@ async function claimOrResume(key: string, actorUid: string, targetUid: string, m
       }
       const stages = d.stages ?? {};
       if (d.status === "completed") return { action: "replay", attempt: d.attempt, stages };
+      // PRE-1: reconciliation_required is terminal-until-reconciled -- never resume,
+      // never auto-retry, never re-enter the send path. Same-key replay is blocked
+      // and side-effect-free.
+      if (d.status === "reconciliation_required") return { action: "blocked", attempt: d.attempt, stages };
       if (d.status === "in_progress" && now - d.updatedAtMs < STALE_PENDING_MS) {
         throw new OperationInProgressError("a reset for this key is already in progress");
       }
@@ -441,14 +494,46 @@ export async function recordStageOwned(key: string, stage: "send", value: "sent"
   });
 }
 
-// Set terminal status ONLY if this attempt still owns the op.
+// Set terminal status ONLY if this attempt still owns the op. `reconciliation_required`
+// is deliberately NOT settable here -- it must go through setReconciliationRequiredOwned
+// so its sanitized audit is written atomically in the same transaction.
 export async function setStatusOwned(key: string, status: OpStatus, attempt: number): Promise<boolean> {
+  if (status === "reconciliation_required") {
+    throw new Error("reconciliation_required must be set via setReconciliationRequiredOwned (atomic audit)");
+  }
   return db().runTransaction(async (tx) => {
     const snap = await tx.get(opRef(key));
     if (!snap.exists) return false;
     const raw = snap.data();
     if (!isValidOpRecord(raw) || raw.attempt !== attempt) return false;
     tx.update(opRef(key), { status, updatedAtMs: Date.now() });
+    return true;
+  });
+}
+
+// PRE-1 (D-PRE1-OPSTATE + D-PRE1-AUDIT): atomically transition the op to
+// `reconciliation_required` AND stage the sanitized uncertainty audit in the SAME
+// Firestore transaction -- commit both or neither. Attempt-bound (a stale worker is
+// refused). Never sets stages.send; never transitions to completed. The standalone
+// audit path is intentionally NOT used for this transition.
+async function setReconciliationRequiredOwned(
+  key: string,
+  attempt: number,
+  reason: ReconciliationReason,
+  auditInput: RecordAuditEventInput,
+): Promise<boolean> {
+  return db().runTransaction(async (tx) => {
+    const snap = await tx.get(opRef(key));
+    if (!snap.exists) return false;
+    const raw = snap.data();
+    if (!isValidOpRecord(raw) || raw.attempt !== attempt) return false;
+    tx.update(opRef(key), {
+      status: "reconciliation_required",
+      reconciliation: { reason, atMs: Date.now() },
+      updatedAtMs: Date.now(),
+    });
+    // Atomic sanitized audit: transition cannot commit without it (and vice versa).
+    stageAuditEvent(tx, auditInput);
     return true;
   });
 }
@@ -506,9 +591,11 @@ export async function initiateAdminPasswordReset(input: InitiateAdminPasswordRes
 
   // --- Eligible: idempotent, lease-bound native send ------------------------
   const claim = await claimOrResume(key, actorUid, targetUid, mode);
-  if (claim.action === "replay") return NEUTRAL_ACCEPTED;
+  // replay (completed) or blocked (reconciliation_required) -> side-effect-free neutral.
+  if (claim.action === "replay" || claim.action === "blocked") return NEUTRAL_ACCEPTED;
   const { attempt, stages } = claim;
   const email = facts.email as string; // eligible => non-null
+  const binding = computeCommandBinding(actorUid, targetUid, mode);
 
   const recordStage = async () => {
     if (!(await recordStageOwned(key, "send", "sent", attempt))) throw new LeaseLostError("superseded by a newer attempt");
@@ -532,10 +619,10 @@ export async function initiateAdminPasswordReset(input: InitiateAdminPasswordRes
       return NEUTRAL_ACCEPTED;
     }
 
-    let accepted: SendRuntime;
+    let outcome: NativeSendOutcome;
     try {
-      const res = await deps.nativeSend.sendReset({ targetUid, email, idempotencyKey: key });
-      accepted = res.accepted ? "accepted" : "not_accepted";
+      const res = await deps.nativeSend.sendReset({ targetUid, email, idempotencyKey: key, binding });
+      outcome = res.outcome;
     } catch (e) {
       if (e instanceof LeaseLostError) throw e;
       await audit(actorUid, targetUid, "deliverAdminPasswordReset", "denied", "Failed: native reset send error.");
@@ -543,14 +630,30 @@ export async function initiateAdminPasswordReset(input: InitiateAdminPasswordRes
       throw new AdminResetStageError("native reset send failed");
     }
 
-    if (accepted === "accepted") {
+    if (outcome === "accepted") {
       await recordStage();
       // TRUTHFUL: "request accepted", never "delivered".
       await audit(actorUid, targetUid, "deliverAdminPasswordReset", "applied", "Reset email requested (accepted by Firebase native send).");
       await setStatus("completed");
       return NEUTRAL_ACCEPTED;
     }
-    // Not accepted -> retryable (status failed), no stage persisted.
+    if (outcome === "uncertain") {
+      // Possibly sent, outcome unknown: NEVER reported as accepted, NEVER stages.send,
+      // NEVER completed, no auto-retry. Atomically transition to reconciliation_required
+      // together with a truthful sanitized uncertainty audit (both commit or neither).
+      const staged = await setReconciliationRequiredOwned(key, attempt, "uncertain_send", {
+        actorUid,
+        action: "deliverAdminPasswordReset",
+        targetType: TARGET_TYPE,
+        targetId: targetUid,
+        outcome: "uncertain",
+        summary: "Send outcome uncertain (possibly sent); operation requires reconciliation.",
+        scope: GLOBAL_SCOPE,
+      });
+      if (!staged) throw new LeaseLostError("superseded by a newer attempt");
+      return NEUTRAL_ACCEPTED;
+    }
+    // not_accepted -> retryable (status failed), no stage persisted.
     await audit(actorUid, targetUid, "deliverAdminPasswordReset", "denied", "Not sent: native send did not accept the request.");
     await setStatus("failed");
     return NEUTRAL_ACCEPTED;
