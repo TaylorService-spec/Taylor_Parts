@@ -18,6 +18,7 @@
     "test:equipmentCompatibilityUnit": "npm run build && node test/equipmentCompatibilityDomainParity.test.mjs && node test/equipmentCompatibilityOperations.test.mjs && node test/equipmentCompatibilityRepositories.test.mjs && node test/equipmentCompatibilityFingerprint.test.mjs && node test/equipmentCompatibilityCommands.test.mjs && node test/equipmentCompatibilityRegistry.test.mjs && node test/equipmentCompatibilityReadCursor.test.mjs",
     "test:equipmentCompatibilityEmulator": "npm run build && node test/equipmentCompatibilityEmulator.test.mjs && node test/equipmentCompatibilityReadEmulator.test.mjs && node test/equipmentCompatibilityReadCallable.test.mjs",
     "test:adminCredential": "npm run build && node test/adminCredentialEligibility.test.mjs && node test/adminCredentialCommands.test.mjs",
+    "test:adminCredentialActorFacts": "node test/adminCredentialActorFacts.test.mjs",
     "test:adminCredentialLinkValidity": "node test/adminCredentialResetLinkValidity.test.mjs",
     "test:authPr4Migration": "node test/authPr4RecoveryEmailMigration.test.mjs",
     "test:authPr4Gate": "node test/authPr4ProductionGate.test.mjs",

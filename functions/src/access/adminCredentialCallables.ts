@@ -125,6 +125,59 @@ async function resolveTargetFacts(targetUid: string): Promise<commands.TargetFac
   return { authExists, disabled, email, hasEmployeeLink, employeeLinkReciprocal, isBreakGlass, isFinalActiveAdmin };
 }
 
+// Resolve the actor authorization facts (Auth + Firestore) for PRE-2. Mirrors
+// resolveTargetFacts' sourcing but for the AUTHENTICATED ACTOR -- the uid comes
+// only from the callable context (never client data). Fail-safe: an
+// undeterminable fact defaults to the DENY side; the command additionally fails
+// closed if this resolver throws. The exact production fact sources (active
+// account state, employees reciprocal-link field, governed admin authority) are
+// VERIFIED at the AUTH-PROD-1 gate against the real project -- this adapter is
+// emulator/repository-only and NOT deployed/enabled.
+export async function resolveActorFacts(actorUid: string): Promise<commands.ActorAuthorizationFacts> {
+  const authUser = await getAuth().getUser(actorUid).catch(() => null);
+  const authExists = authUser !== null;
+  const disabled = authUser?.disabled === true;
+
+  const db = getFirestore();
+  const userSnap = await db.collection("users").doc(actorUid).get();
+  const userData = userSnap.exists ? (userSnap.data() as Record<string, unknown>) : undefined;
+  const isAdmin = userData?.role === "admin";
+  const userEmployeeId = userData?.employeeId;
+
+  // Read the EXACT reciprocally-linked Employee document (governed userId back-link
+  // only) and its authoritative employmentStatus. The pure resolver enforces the
+  // exact-userId contract and only trusts employmentStatus when the link is reciprocal.
+  const employeeId =
+    typeof userEmployeeId === "string" && userEmployeeId.length > 0 ? userEmployeeId : null;
+  let employeeExists = false;
+  let employeeUserId: unknown = undefined;
+  let employeeEmploymentStatus: unknown = undefined;
+  if (employeeId) {
+    const empSnap = await db.collection("employees").doc(employeeId).get();
+    employeeExists = empSnap.exists;
+    const empData = empSnap.exists ? (empSnap.data() as Record<string, unknown>) : undefined;
+    employeeUserId = empData?.userId;
+    employeeEmploymentStatus = empData?.employmentStatus;
+  }
+
+  const link = commands.resolveEmployeeLinkFacts({
+    userEmployeeId,
+    employeeExists,
+    employeeUserId,
+    employeeEmploymentStatus,
+    uid: actorUid,
+  });
+
+  return {
+    authExists,
+    disabled,
+    isAdmin,
+    hasEmployeeLink: link.hasEmployeeLink,
+    employeeLinkReciprocal: link.employeeLinkReciprocal,
+    employmentStatus: link.employmentStatus,
+  };
+}
+
 // The Admin-SDK deps, wired with NOT_CONFIGURED_NATIVE_SEND so NO email is sent
 // until an Owner-authorized Firebase-native sender is wired at the AUTH-PROD
 // enablement gate (D-DELIVERY-NATIVE, DECISIONS #56 -- NEVER an external
@@ -133,8 +186,16 @@ async function resolveTargetFacts(targetUid: string): Promise<commands.TargetFac
 // reset-link generation at all -- link generation was removed for the native
 // path). Real-Firebase earlier-link consumability + native-send behavior are the
 // separate AUTH-PROD-1 verification.
+// Single source of the actor-authorization gate for BOTH callables: the deployed
+// production adapter `resolveActorFacts`. Exported so the Auth+Firestore emulator
+// suite exercises the exact function the callables wire (no divergent test path).
+export function actorAuthorizationDeps(): commands.ActorAuthorizationDeps {
+  return { resolveActorFacts };
+}
+
 function adminSdkDeps(): commands.AdminResetDeps {
   return {
+    ...actorAuthorizationDeps(),
     resolveTargetFacts,
     nativeSend: commands.NOT_CONFIGURED_NATIVE_SEND,
   };
@@ -165,10 +226,13 @@ export const listResetEligibleUsers = onCall({ region: REGION }, async (request)
   const actorUid = requireAuthUid(request);
   const data = (request.data ?? {}) as { limit?: unknown };
   try {
-    const users = await commands.listResetEligibleUsers({
-      actorUid,
-      limit: typeof data.limit === "number" ? data.limit : undefined,
-    });
+    const users = await commands.listResetEligibleUsers(
+      {
+        actorUid,
+        limit: typeof data.limit === "number" ? data.limit : undefined,
+      },
+      actorAuthorizationDeps(),
+    );
     return { users };
   } catch (err) {
     throw mapError(err);

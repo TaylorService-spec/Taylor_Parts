@@ -52,7 +52,6 @@ import type { AuditAction, AuditOutcome, Scope } from "../types/access";
 
 const USERS_COLLECTION = "users";
 const RESET_OPS_COLLECTION = "admin_credential_reset_ops";
-const ADMIN_ROLE = "admin";
 const GLOBAL_SCOPE: Scope = { type: "global" };
 const TARGET_TYPE = "user";
 const MAX_LIST_LIMIT = 100;
@@ -170,7 +169,108 @@ export function evaluateTargetEligibility(
   return { category: "eligible", disposition: "eligible" };
 }
 
-export interface AdminResetDeps {
+// -- Actor authorization (PRE-2, corrected) ----------------------------------
+//
+// AUTH-PR-3.5 authorized the actor by stored role ALONE. PRE-2 makes admin
+// password-reset authorization FAIL CLOSED unless the authenticated actor is a
+// governed admin with an ACTIVE employment status, a non-disabled Auth account,
+// and a valid RECIPROCAL Employee<->User linkage. Facts are resolved server-side
+// from the authenticated context (Auth + Firestore) behind an injected dep -- the
+// actor uid always comes from the authenticated callable context, never from
+// client data, and no client-supplied role/status/capability value is ever
+// consulted.
+//
+// TWO INDEPENDENT active-state gates (both required):
+//  1. Firebase Auth account control: the account exists and `disabled !== true`.
+//  2. Governed employment lifecycle: the reciprocally-linked
+//     `employees/{employeeId}.employmentStatus === "ACTIVE"`. This is the
+//     authoritative business lifecycle field (mirrors firestore.rules
+//     `isActiveOperationalRole`); ON_LEAVE / INACTIVE / TERMINATED / RETIRED /
+//     CONTRACTOR / missing / malformed all DENY. Auth-disabled is a distinct
+//     account control and does not substitute for employmentStatus (or vice versa).
+//
+// Reciprocal linkage uses the GOVERNED field ONLY:
+//   users/{uid}.employeeId == employeeId  AND  employees/{employeeId}.userId == uid.
+// Alias fields (employees.authUid / employees.uid) are intentionally NOT accepted:
+// a stale or conflicting record must never authorize when the authoritative
+// `userId` is absent or points elsewhere.
+const ACTIVE_EMPLOYMENT_STATUS = "ACTIVE";
+
+export interface ActorAuthorizationFacts {
+  authExists: boolean; // a Firebase Auth user exists for the actor uid
+  disabled: boolean; // Auth user is disabled (inactive account)
+  isAdmin: boolean; // governed admin role: users/{actorUid}.role === "admin"
+  hasEmployeeLink: boolean; // users/{actorUid}.employeeId present
+  employeeLinkReciprocal: boolean; // employees/{employeeId}.userId === actorUid (exact)
+  employmentStatus: string | null; // employees/{employeeId}.employmentStatus (from the reciprocal doc)
+}
+
+export type ActorAuthorizationCategory =
+  | "authorized"
+  | "no-auth-account"
+  | "disabled-actor"
+  | "not-admin"
+  | "missing-or-nonreciprocal-employee-link"
+  | "inactive-employment";
+
+export interface ActorAuthorizationVerdict {
+  authorized: boolean;
+  category: ActorAuthorizationCategory;
+}
+
+// PURE. Fail-closed order: a missing Auth account, a disabled account, a
+// non-admin role, a missing/non-reciprocal Employee<->User link, or a non-ACTIVE
+// employment status each deny. Only a governed admin with an enabled Auth account,
+// an exact reciprocal Employee link, and employmentStatus === "ACTIVE" is authorized.
+export function evaluateActorAuthorization(facts: ActorAuthorizationFacts): ActorAuthorizationVerdict {
+  if (!facts.authExists) return { authorized: false, category: "no-auth-account" };
+  if (facts.disabled) return { authorized: false, category: "disabled-actor" };
+  if (!facts.isAdmin) return { authorized: false, category: "not-admin" };
+  if (!facts.hasEmployeeLink || !facts.employeeLinkReciprocal) {
+    return { authorized: false, category: "missing-or-nonreciprocal-employee-link" };
+  }
+  if (facts.employmentStatus !== ACTIVE_EMPLOYMENT_STATUS) {
+    return { authorized: false, category: "inactive-employment" };
+  }
+  return { authorized: true, category: "authorized" };
+}
+
+// PURE. Resolve the Employee-link facts from raw document values using the
+// GOVERNED reciprocal contract only. `employmentStatus` is trusted ONLY when the
+// link is exactly reciprocal (`employees/{employeeId}.userId === uid`); otherwise
+// it is null (deny). A non-string employmentStatus is treated as malformed (null).
+export interface EmployeeLinkResolutionInput {
+  userEmployeeId: unknown; // users/{uid}.employeeId
+  employeeExists: boolean; // employees/{employeeId} document exists
+  employeeUserId: unknown; // employees/{employeeId}.userId (authoritative back-link)
+  employeeEmploymentStatus: unknown; // employees/{employeeId}.employmentStatus
+  uid: string;
+}
+export interface EmployeeLinkFacts {
+  hasEmployeeLink: boolean;
+  employeeLinkReciprocal: boolean;
+  employmentStatus: string | null;
+}
+export function resolveEmployeeLinkFacts(input: EmployeeLinkResolutionInput): EmployeeLinkFacts {
+  const employeeId =
+    typeof input.userEmployeeId === "string" && input.userEmployeeId.length > 0 ? input.userEmployeeId : null;
+  const hasEmployeeLink = employeeId !== null;
+  // GOVERNED reciprocal field ONLY -- exact userId match. No authUid/uid aliases.
+  const employeeLinkReciprocal = hasEmployeeLink && input.employeeExists && input.employeeUserId === input.uid;
+  const employmentStatus =
+    employeeLinkReciprocal && typeof input.employeeEmploymentStatus === "string"
+      ? input.employeeEmploymentStatus
+      : null;
+  return { hasEmployeeLink, employeeLinkReciprocal, employmentStatus };
+}
+
+export interface ActorAuthorizationDeps {
+  // Resolve the actor authorization facts (Auth + Firestore) from the
+  // authenticated context. Throwing FAILS CLOSED (treated as unauthorized).
+  resolveActorFacts(actorUid: string): Promise<ActorAuthorizationFacts>;
+}
+
+export interface AdminResetDeps extends ActorAuthorizationDeps {
   // Resolve the guard facts for the target (Auth + Firestore). Throwing is a
   // stage error (audited), not a silent pass.
   resolveTargetFacts(targetUid: string): Promise<TargetFacts>;
@@ -213,17 +313,26 @@ function opRef(key: string) {
   return db().collection(RESET_OPS_COLLECTION).doc(key);
 }
 
-async function readUserRole(uid: string): Promise<string | null> {
-  const snap = await db().collection(USERS_COLLECTION).doc(uid).get();
-  if (!snap.exists) return null;
-  const data = snap.data() as { role?: unknown } | undefined;
-  return typeof data?.role === "string" ? data.role : null;
-}
-async function assertActorIsAdmin(actorUid: string): Promise<void> {
-  const role = await readUserRole(actorUid);
-  if (role !== ADMIN_ROLE) {
-    throw new UnauthorizedActorError("actor is not authorized for credential administration");
+// Fail-closed actor authorization (PRE-2). Any lookup error is treated as
+// unauthorized (never a silent pass). The sanitized public error never reveals
+// which condition failed. The denial category is INTERNAL to the thrown error and
+// is NOT persisted -- the existing denied audit records only the generic
+// unauthorized summary (audit coverage is owned by the separate PRE-3 gate).
+async function assertActorAuthorized(
+  actorUid: string,
+  deps: ActorAuthorizationDeps,
+): Promise<ActorAuthorizationCategory> {
+  let facts: ActorAuthorizationFacts;
+  try {
+    facts = await deps.resolveActorFacts(actorUid);
+  } catch {
+    throw new UnauthorizedActorError("actor authorization lookup failed");
   }
+  const verdict = evaluateActorAuthorization(facts);
+  if (!verdict.authorized) {
+    throw new UnauthorizedActorError(`actor is not authorized (${verdict.category})`);
+  }
+  return verdict.category;
 }
 
 async function audit(actorUid: string, targetUid: string, action: AuditAction, outcome: AuditOutcome, summary: string): Promise<void> {
@@ -351,7 +460,7 @@ export async function initiateAdminPasswordReset(input: InitiateAdminPasswordRes
 
   // --- Pre-claim denials (no op record for these) ---------------------------
   try {
-    await assertActorIsAdmin(actorUid);
+    await assertActorAuthorized(actorUid, deps);
   } catch (err) {
     await audit(actorUid, targetUid, "initiateAdminPasswordReset", "denied", `Denied: actor not authorized (mode ${mode}).`);
     throw err;
@@ -462,9 +571,12 @@ function clampLimit(limit: number | undefined): number {
   }
   return limit;
 }
-export async function listResetEligibleUsers(input: ListResetEligibleUsersInput): Promise<ResetEligibleUser[]> {
+export async function listResetEligibleUsers(
+  input: ListResetEligibleUsersInput,
+  deps: ActorAuthorizationDeps,
+): Promise<ResetEligibleUser[]> {
   assertNonEmptyString(input.actorUid, "actorUid");
-  await assertActorIsAdmin(input.actorUid);
+  await assertActorAuthorized(input.actorUid, deps);
   const limit = clampLimit(input.limit);
   const snap = await db().collection(USERS_COLLECTION).limit(limit).get();
   return snap.docs.map((doc) => {
