@@ -113,8 +113,10 @@ gcloud functions describe listResetEligibleUsers --project <PROJECT> --region <R
 # (b) resource-level policy on the sender secret (context only; NOT sufficient by itself):
 gcloud secrets get-iam-policy <SENDER_SECRET> --project <PROJECT> --flatten="bindings[]" --format="table(bindings.role, bindings.members)"
 # (c) AUTHORITATIVE: the FULL set of identities with EFFECTIVE secretmanager.versions.access on the secret,
-#     expanding inherited/group/conditional grants (official syntax uses --project, NOT --scope):
-gcloud asset analyze-iam-policy --project=<PROJECT> --full-resource-name="//secretmanager.googleapis.com/projects/<PROJECT>/secrets/<SENDER_SECRET>" --permissions="secretmanager.versions.access" --format="json"
+#     with GROUP membership AND service-account IMPERSONATION expanded (official syntax uses --project, NOT
+#     --scope). The `fullyExplored` fields in the JSON MUST be true; an incomplete/permission-limited result
+#     is ERROR-HALT, never a "clean set":
+gcloud asset analyze-iam-policy --project=<PROJECT> --full-resource-name="//secretmanager.googleapis.com/projects/<PROJECT>/secrets/<SENDER_SECRET>" --permissions="secretmanager.versions.access" --expand-groups --analyze-service-account-impersonation --format="json"
 # (d) DIRECT impersonation permission for the list SA over the initiate SA (captures inherited grants,
 #     unlike reading the resource policy) -- expect NOT GRANTED:
 gcloud policy-troubleshoot iam "//iam.googleapis.com/projects/<PROJECT>/serviceAccounts/<INITIATE_RUNTIME_SA>" --principal-email="<LIST_RUNTIME_SA>" --permission="iam.serviceAccounts.getAccessToken"
@@ -125,10 +127,14 @@ gcloud policy-troubleshoot iam "//secretmanager.googleapis.com/projects/<PROJECT
   access). If `listResetEligibleUsers` is CONFIRMED-ABSENT → (a) PASSes; run (c) regardless (it enumerates
   the secret's whole accessor set); run (d)/(e) only if the list SA is known, else record "list not deployed;
   list-SA effective-access re-checked at the deploy gate". ERROR-HALT on any command → stop.
-- **Expected (all applicable):** (a) list has **no** sender secret binding; (c) the **entire** effective-
-  accessor set for `secretmanager.versions.access` is **exactly** `{<INITIATE_RUNTIME_SA>}` — no list SA, no
-  default Functions SA, no human/group, no `allUsers`/`allAuthenticatedUsers`, no conditional grant; (d) NOT
-  GRANTED (list SA cannot impersonate the initiate SA); (e) NOT GRANTED (list SA cannot read the secret).
+- **Expected (all applicable):** (a) list has **no** sender secret binding; (c) the analysis is **fully
+  explored** (all `fullyExplored` true) AND the **entire** effective-accessor set for
+  `secretmanager.versions.access` — after group + impersonation expansion — is **exactly**
+  `{<INITIATE_RUNTIME_SA>}`: no list SA, no default Functions SA, no human/group, no `allUsers`/
+  `allAuthenticatedUsers`, no conditional grant, no impersonation-derived accessor; (d) NOT GRANTED (list SA
+  cannot impersonate the initiate SA); (e) NOT GRANTED (list SA cannot read the secret). **An incomplete or
+  permission-limited analysis (`fullyExplored` false, or a partial/denied result) is ERROR-HALT — never read
+  as a clean set.**
 - **PASS:** the initiate SA is the **sole** effective accessor AND the list SA has no effective access or
   impersonation path. **FAIL/HALT:** any additional effective accessor, any GRANTED/CONDITIONAL verdict, a
   binding on the list function, broad readability, or a list→initiate impersonation path → stop (the P1
@@ -197,7 +203,12 @@ revision id does **not** tie the deployed code to a git commit. Establish proven
 deployed revision's build source commit and comparing it to the merge baseline:
 ```
 gcloud functions describe initiateAdminPasswordReset --project <PROJECT> --region <REGION> --gen2 --format="value(buildConfig.build)"
-gcloud builds describe <BUILD_ID> --project <PROJECT> --format="value(substitutions.COMMIT_SHA,sourceProvenance.resolvedRepoSource.commitSha,source.repoSource.commitSha)"
+```
+`buildConfig.build` is a **full resource name** `projects/<PROJECT>/locations/<REGION>/builds/<BUILD_ID>`.
+Extract `<BUILD_ID>` and its `<REGION>` from it, then describe the build **with `--region`** (required for
+regional Gen2 builds):
+```
+gcloud builds describe <BUILD_ID> --project <PROJECT> --region=<REGION> --format="value(substitutions.COMMIT_SHA,sourceProvenance.resolvedRepoSource.commitSha,source.repoSource.commitSha)"
 ```
 - **Established:** the build's source commit equals the merged baseline (the admin-reset code is at
   `d6628a5`; the operator compares against the release SHA the deploy actually used). **Not establishable:**
@@ -290,7 +301,9 @@ D-PROD-1A is **read-only**. It authorizes NO Secret Manager creation or value ac
 service-account creation/assignment, NO configuration change, NO deployment, NO fixture creation, NO email
 send, NO permission activation/grant, NO cross-key reconciliation, and NO D-PROD-1B/C action. It is a
 precondition for — never a substitute for — those separately authorized gates. `admin.credentialReset.initiate`
-remains inactive/ungranted; the deployed sender remains fail-closed.
+remains **inactive** (code attestation, C9a) and **fail-closed**; "ungranted" is asserted only where C9c's
+stored-grant probe was performed (otherwise it is recorded as NOT ESTABLISHED, not claimed). The deployed
+sender remains fail-closed.
 
 _This runbook is a documentation deliverable only. It remains **PENDING / NOT AUTHORIZED FOR EXECUTION**
 until Codex review and a separate Owner merge/run decision; then a named operator runs it out-of-band and
