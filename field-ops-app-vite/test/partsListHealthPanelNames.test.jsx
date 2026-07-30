@@ -76,4 +76,24 @@ describe("PartsList + InventoryHealthPanel (OD-3)", () => {
     expect(latestResolve("TST-9001")).toBe("TST-9001");    // resolver invalidated immediately -> raw partId
     expect(screen.queryByText("CANONICAL-NAME-A")).toBeNull();
   });
+
+  it("stale completion: an OLD-boundary read LEFT PENDING across the access change cannot alter the new boundary's resolver", async () => {
+    const deferreds = [];
+    fetchPartMasterList.mockImplementation(() => { let r; const p = new Promise((res) => { r = res; }); deferreds.push({ resolve: r }); return p; });
+    const { rerender } = render(<PartsList accessVersion={1} />);
+    expect(deferreds).toHaveLength(1);                       // read #1 issued, LEFT PENDING
+    rerender(<PartsList accessVersion={2} />);               // access changes; read #2 issued
+    expect(deferreds).toHaveLength(2);
+
+    // Resolve the OLD read #1 NOW, after the boundary changed -> dropped (stale token + key mismatch).
+    await act(async () => { deferreds[0].resolve({ ok: true, parts: [{ partId: "TST-9001", name: "STALE-OLD-NAME", category: "Valves", stockingUnit: "each" }], invalid: [] }); });
+    expect(latestResolve("TST-9001")).toBe("TST-9001");     // still raw partId -- stale result did not apply
+    expect(screen.queryByText("STALE-OLD-NAME")).toBeNull();
+
+    // The CURRENT read #2 applies.
+    await act(async () => { deferreds[1].resolve(READY); });
+    await screen.findByText("CANONICAL-NAME-A");
+    expect(latestResolve("TST-9001")).toBe("CANONICAL-NAME-A");
+    expect(screen.queryByText("STALE-OLD-NAME")).toBeNull();
+  });
 });

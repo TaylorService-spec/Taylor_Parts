@@ -49,7 +49,7 @@ describe("WarehouseManagerHome + InventoryHealthPanel (OD-3)", () => {
     expect(screen.queryByText("Static Name A")).toBeNull();
   });
 
-  it("accessVersion change invalidates the prior canonical name immediately; stale completion is suppressed", async () => {
+  it("accessVersion change invalidates the prior canonical name immediately (synchronous render-time guard)", async () => {
     const deferreds = [];
     fetchPartMasterList.mockImplementation(() => { let r; const p = new Promise((res) => { r = res; }); deferreds.push({ resolve: r }); return p; });
     const { rerender } = render(<WarehouseManagerHome accessVersion={1} />);
@@ -60,11 +60,27 @@ describe("WarehouseManagerHome + InventoryHealthPanel (OD-3)", () => {
     expect(screen.queryAllByText("Canonical Name A")).toHaveLength(0); // prior name unrenderable immediately
     expect(screen.getAllByText("TST-9001").length).toBeGreaterThan(0); // health row preserved, raw partId
 
-    // Stale completion of the OLD (accessVersion 1) read must NOT reintroduce the old name.
-    await act(async () => { deferreds[0].resolve(READY); });
-    expect(screen.queryAllByText("Canonical Name A")).toHaveLength(0);
-    // The CURRENT (accessVersion 2) read applies.
-    await act(async () => { deferreds[deferreds.length - 1].resolve(READY); });
+    await act(async () => { deferreds[1].resolve(READY); });            // the CURRENT (av 2) read applies
     expect((await screen.findAllByText("Canonical Name A")).length).toBeGreaterThan(0);
+  });
+
+  it("stale completion: an OLD-boundary read LEFT PENDING across the access change cannot alter the new boundary", async () => {
+    const deferreds = [];
+    fetchPartMasterList.mockImplementation(() => { let r; const p = new Promise((res) => { r = res; }); deferreds.push({ resolve: r }); return p; });
+    const { rerender } = render(<WarehouseManagerHome accessVersion={1} />);
+    expect(deferreds).toHaveLength(1);                                  // read #1 issued, LEFT PENDING (not resolved)
+    rerender(<WarehouseManagerHome accessVersion={2} />);
+    expect(deferreds).toHaveLength(2);                                  // read #2 issued for the new boundary
+
+    // Resolve the OLD read #1 NOW, AFTER the boundary changed -> its result must be dropped
+    // (stale request token + render-time key mismatch), never presented.
+    await act(async () => { deferreds[0].resolve({ ok: true, parts: [{ partId: "TST-9001", name: "STALE-OLD-NAME", category: "Valves", stockingUnit: "each" }], invalid: [] }); });
+    expect(screen.queryAllByText("STALE-OLD-NAME")).toHaveLength(0);
+    expect(screen.getAllByText("TST-9001").length).toBeGreaterThan(0); // still raw partId under the new boundary
+
+    // The CURRENT read #2 applies normally.
+    await act(async () => { deferreds[1].resolve(READY); });
+    expect((await screen.findAllByText("Canonical Name A")).length).toBeGreaterThan(0);
+    expect(screen.queryAllByText("STALE-OLD-NAME")).toHaveLength(0);
   });
 });
