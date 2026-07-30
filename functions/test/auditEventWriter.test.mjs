@@ -143,6 +143,19 @@ async function main() {
     assert.equal(snap.docs[0].data().outcome, "uncertain");
   });
 
+  // --- PRE-3: the "listResetEligibleUsers" action is now an accepted value ---
+  await check("stageAuditEvent accepts action 'listResetEligibleUsers' and commits it (PRE-3)", async () => {
+    const targetId = `listaccess-${Date.now()}`;
+    const probeRef = db.collection("probe_mutations").doc(targetId);
+    await db.runTransaction(async (txn) => {
+      txn.set(probeRef, { businessField: "list-access" });
+      stageAuditEvent(txn, { ...VALID_EVENT, targetId, action: "listResetEligibleUsers", targetType: "adminCredentialReset", outcome: "applied" });
+    });
+    const snap = await db.collection("auditEvents").where("targetId", "==", targetId).get();
+    assert.equal(snap.size, 1, "a 'listResetEligibleUsers' audit event must commit");
+    assert.equal(snap.docs[0].data().action, "listResetEligibleUsers");
+  });
+
   // --- Complete contract validation ('maybe' proves unknown outcomes still fail) ---
   for (const [field, value] of [
     ["actorUid", undefined],
