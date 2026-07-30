@@ -203,8 +203,11 @@ export default function Operations({ accessVersion } = {}) {
       <h2>Operations</h2>
       <p className="fo-muted">
         Read-only reporting over the inventory ledger (Epic 2D), analytics engine (Epic 3), warehouse system
-        (Epic 4), and procurement system (Epic 5). Nothing on this screen writes anywhere -- catalog data ({PARTS_CATALOG.length} parts) is a
-        static baseline, not live stock.
+        (Epic 4), and procurement system (Epic 5). Nothing on this screen writes anywhere. Part names in the
+        Warehouse, Procurement, and Execution Insights panels are resolved from the canonical Parts source
+        (fail-closed to the raw Part ID if it can't be verified); the Inventory Health panel's part names and
+        the static catalog count ({PARTS_CATALOG.length} parts) below remain on the static baseline, and all
+        stock quantities and calculations are ledger/analytics-derived, not live stock.
       </p>
       {namesUnavailable && (
         <p className="fo-muted" role="status">Some part names are unavailable; Part IDs are shown.</p>
