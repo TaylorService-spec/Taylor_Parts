@@ -68,6 +68,24 @@ ok("OK canonical read but static catalog missing/empty => BLOCKED_INCOMPLETE_INP
   assert.equal(buildWarehouseCatalog({ canonicalRead: okRead, staticCatalog: undefined }).blocked, true);
 });
 
+// ---- fail-closed on INVALID canonical documents (WMH passes fetchPartMasterList's `invalid` through) ----
+ok("canonical read with non-empty invalid documents => BLOCKED, rows [] (malformed docs never dropped)", () => {
+  const c = buildWarehouseCatalog({ canonicalRead: { ...okRead, invalid: [{ id: "x", invalid: true }] }, staticCatalog });
+  assert.equal(c.status, "BLOCKED_INCOMPLETE_INPUT");
+  assert.equal(c.blocked, true);
+  assert.deepEqual(c.rows, []);
+  assert.equal(c.meta.invalidCount, 1);
+});
+ok("a malformed canonical doc overlapping an approved STATIC_ONLY_EXCLUDED sku still BLOCKS", () => {
+  const c = buildWarehouseCatalog({ canonicalRead: { ...okRead, invalid: [{ partId: "TST-1047", invalid: true }] }, staticCatalog });
+  assert.equal(c.status, "BLOCKED_INCOMPLETE_INPUT");
+  assert.deepEqual(c.rows, []);
+});
+ok("malformed invalid metadata (not an array) BLOCKS; empty invalid array stays READY", () => {
+  assert.equal(buildWarehouseCatalog({ canonicalRead: { ...okRead, invalid: "nope" }, staticCatalog }).blocked, true);
+  assert.equal(buildWarehouseCatalog({ canonicalRead: { ...okRead, invalid: [] }, staticCatalog }).status, "READY");
+});
+
 ok("incomplete accounting (a static sku with no canonical match, not an approved exclusion) => BLOCKED, never a partial list", () => {
   const extraStatic = staticCatalog.concat([{ sku: "TST-9999", name: "Orphan", category: "X", unit: "each", cost: 1, price: 2, reorderThreshold: 5, warehouseQty: 1 }]);
   const c = buildWarehouseCatalog({ canonicalRead: okRead, staticCatalog: extraStatic });

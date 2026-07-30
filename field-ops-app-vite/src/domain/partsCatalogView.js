@@ -61,6 +61,20 @@ export function composeGovernedPartsWorkspace(input = {}) {
   if (cstatus === "UNAVAILABLE") return block("BLOCKED_UNAVAILABLE", "canonical read unavailable");
   if (cstatus !== "OK") return block("BLOCKED_INCOMPLETE_INPUT", "canonical read status missing or unknown");
 
+  // 1b. Invalid canonical documents must NEVER be silently dropped. fetchPartMasterList splits its read
+  //     into { parts, invalid }; a malformed doc omitted from `rows` could be masked by an approved
+  //     STATIC_ONLY_EXCLUDED sku and wrongly read READY. Any present-and-non-empty (or malformed) invalid
+  //     collection therefore BLOCKS here, before composition. Sanitized: only a count is surfaced, never
+  //     the raw invalid documents. Backward-compatible: a caller that does not supply `invalid` is
+  //     unchanged (a not-yet-updated consumer keeps its prior behavior; adopting `invalid` is a separate
+  //     step for those consumers).
+  if (canonicalRead.invalid !== undefined) {
+    if (!Array.isArray(canonicalRead.invalid)) return block("BLOCKED_INCOMPLETE_INPUT", "canonical invalid metadata is malformed");
+    if (canonicalRead.invalid.length > 0) {
+      return { status: "BLOCKED_INCOMPLETE_INPUT", ws: null, meta: { reason: "canonical read returned invalid documents", invalidCount: canonicalRead.invalid.length } };
+    }
+  }
+
   // 2. Required inputs present as arrays.
   if (!Array.isArray(canonicalRead.rows)) return block("BLOCKED_INCOMPLETE_INPUT", "canonical rows missing");
   if (!Array.isArray(staticCatalog) || staticCatalog.length === 0) {

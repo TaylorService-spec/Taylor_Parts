@@ -59,6 +59,16 @@ describe("WarehouseManagerHome — canonical Parts Catalog cutover", () => {
     expect(screen.queryByText("Static Name A")).toBeNull();
   });
 
+  it("FAILS CLOSED when the canonical read returns invalid documents: blocked banner, neither canonical nor static rows", async () => {
+    // invalid overlaps an approved static-only-excluded sku would-be — must still block, never render.
+    fetchPartMasterList.mockResolvedValue({ ok: true, parts: canonicalMatching, invalid: [{ partId: "TST-9001", invalid: true }] });
+    render(<WarehouseManagerHome />);
+    await screen.findByText(/catalog is unavailable right now/i);
+    expect(screen.queryByText("Canonical Name A")).toBeNull();
+    expect(screen.queryByText("Static Name A")).toBeNull();
+    expect(screen.queryByText(/parts in catalog/)).toBeNull();
+  });
+
   it("shows a loading state while the canonical read is in flight (no static shown)", async () => {
     let resolve;
     fetchPartMasterList.mockReturnValue(new Promise((r) => { resolve = r; }));
