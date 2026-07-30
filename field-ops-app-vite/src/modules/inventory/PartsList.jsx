@@ -320,7 +320,9 @@ export default function PartsList() {
     let cancelled = false;
     fetchPartMasterList().then((result) => {
       if (cancelled) return;
-      if (result.ok) setCanonicalRead({ status: "OK", rows: result.parts });
+      // Pass `invalid` through so the shared composer fails closed on any malformed canonical document
+      // (never silently dropped) -- see domain/partsCatalogView composeGovernedPartsWorkspace step 1b.
+      if (result.ok) setCanonicalRead({ status: "OK", rows: result.parts, invalid: result.invalid });
       else setCanonicalRead({ status: result.code === "permission-denied" ? "PERMISSION_DENIED" : "UNAVAILABLE" });
     });
     return () => {

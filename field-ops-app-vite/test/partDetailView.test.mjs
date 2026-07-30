@@ -162,6 +162,29 @@ check("BLOCKED_INCOMPLETE_INPUT when canonical rows are missing/malformed", () =
   assert.equal(view(A_CANONICAL_SKU, { status: "OK" }).status, "BLOCKED_INCOMPLETE_INPUT");
   assert.equal(view(A_CANONICAL_SKU, { status: "OK", rows: "nope" }).status, "BLOCKED_INCOMPLETE_INPUT");
 });
+// ---- fail-closed on INVALID canonical documents (C2 passes fetchPartMasterList's `invalid` through) ----
+check("BLOCKED when the canonical read reports non-empty invalid documents (never a partial detail page)", () => {
+  const { status, part } = view(A_CANONICAL_SKU, { ...OK(), invalid: [{ id: "x", invalid: true }] });
+  assert.equal(status, "BLOCKED_INCOMPLETE_INPUT");
+  assert.equal(part, null);
+  assert.equal(isPartDetailBlocked(status), true);
+});
+check("a malformed canonical doc overlapping an approved STATIC_ONLY_EXCLUDED sku STILL blocks the detail page", () => {
+  const { status, part } = view(AN_EXCLUDED_SKU, { ...OK(), invalid: [{ partId: AN_EXCLUDED_SKU, invalid: true }] });
+  assert.equal(status, "BLOCKED_INCOMPLETE_INPUT");
+  assert.equal(part, null);
+});
+check("malformed invalid metadata (not an array) blocks; empty/absent invalid stays READY (back-compat)", () => {
+  assert.equal(view(A_CANONICAL_SKU, { ...OK(), invalid: "nope" }).status, "BLOCKED_INCOMPLETE_INPUT");
+  assert.equal(view(A_CANONICAL_SKU, { ...OK(), invalid: [] }).status, "READY");
+  assert.equal(view(A_CANONICAL_SKU, OK()).status, "READY");
+});
+check("invalid blocking on the detail view surfaces no raw canonical document data", () => {
+  const res = view(A_CANONICAL_SKU, { ...OK(), invalid: [{ partId: AN_EXCLUDED_SKU, secretField: "raw-value", invalid: true }] });
+  const blob = JSON.stringify(res);
+  assert.equal(blob.includes("secretField"), false);
+  assert.equal(blob.includes("raw-value"), false);
+});
 check("BLOCKED (not a stale page) when the canonical read omits this very Part", () => {
   const short = { status: "OK", rows: CANONICAL.filter((c) => c.partId !== A_CANONICAL_SKU) };
   const { status, part } = view(A_CANONICAL_SKU, short);
