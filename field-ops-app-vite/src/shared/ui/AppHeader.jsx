@@ -1,6 +1,7 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
+import { useCanonicalPartNames } from "../../hooks/useCanonicalPartNames";
 import { useReorderRequests, useReorderRequestsByStatus, useReorderRequestsAssignedTo } from "../../hooks/useReorderRequests";
 import { REORDER_REQUEST_STATUS } from "../../domain/constants";
 import NotificationPanel from "./NotificationPanel";
@@ -31,8 +32,14 @@ const previewHasPermission = createPermissionPreviewer(resolveEffectivePermissio
 // broadcast notification (like "Ready for Parts Manager", not
 // per-user like "Assigned to You"): PURCHASING_IN_PROGRESS requests,
 // notifying the Parts Manager that purchasing has begun.
-export default function AppHeader() {
+export default function AppHeader({ accessVersion } = {}) {
   const { user, role, logout } = useAuth();
+  // OD-3: one canonical part-name read for the whole header, threaded as `resolveName` into
+  // NotificationPanel (never an independent read per notification). Fail-closed: a
+  // denied/unavailable/incomplete/invalid canonical read degrades names to the raw partId
+  // (never the static-catalog name). `accessVersion` is threaded from App so a same-UID access
+  // change re-runs the read and invalidates the prior name map synchronously (boundary-key).
+  const { resolveName } = useCanonicalPartNames({ uid: user?.uid, accessVersion });
   // Issue #226 Row 16 -- presentation-only permission preview (Spec sec8/
   // sec12: never authoritative, UI visibility stays convenience only).
   // Legacy admin/dispatcher check retained as the `fallback` in case the
@@ -86,6 +93,7 @@ export default function AppHeader() {
             partsManagerRequests={partsManagerRequests}
             assignedToYouRequests={assignedToYouRequests}
             purchasingStartedRequests={purchasingStartedRequests}
+            resolveName={resolveName}
           />
         )}
         <span className="fo-appheader-email">{user?.email}</span>
