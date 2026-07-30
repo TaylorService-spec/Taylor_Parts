@@ -1,5 +1,7 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { getCatalogItem, PARTS_CATALOG } from "../../data/partsCatalog";
+import { fetchPartMasterList } from "../../services/partMasterQueries";
+import { buildWarehouseCatalog, catalogCategories, filterCatalogRowsByCategory, nameBySku } from "../../domain/warehouseManagerCatalogView";
 import { useInventoryLedger } from "../../hooks/useInventoryLedger";
 import { useInventoryActionsForPart } from "../../hooks/useInventoryActions";
 import { requestReorderForRecommendation } from "../../domain/inventoryReorderRequests";
@@ -17,6 +19,19 @@ import LoadingEmptyState from "../../shared/ui/LoadingEmptyState";
 // ever mounting for admin/dispatcher or an ineligible technician, so no
 // role check is repeated here -- same convention every other role-gated
 // screen in this app follows (e.g. TechnicianDashboard.jsx).
+//
+// Parts Catalog source (INV-CONVERGENCE-E cutover): this surface reads the LIVE
+// canonical `parts` Part Master as its PRIMARY identity/metadata source, via the
+// SAME canonical-first composition PartsList (C1) and PartDetail (C2) use
+// (services/partMasterQueries.fetchPartMasterList -> domain/warehouseManagerCatalogView
+// -> the shared domain/partsCatalogView.buildPartsCatalogRows). The static
+// PARTS_CATALOG remains ONLY the governed STATIC_FALLBACK input to that
+// composition -- NOT a parallel source of truth, and it is NOT retired here.
+// Fail-closed: a denied/unavailable/incomplete canonical read renders a blocked
+// banner, NEVER the static 200 presented as canonical (canonical read access for
+// WAREHOUSE_MANAGER is the deployed Issue #100 Rules grant). The WAREHOUSE_MANAGER
+// canonical `parts` read Rule is already merged AND deployed; this is a
+// repository-only UI cutover with no Rules/permission/deploy change.
 //
 // Reuses, unchanged: useInventoryLedger() (PR 1a's inventory_transactions
 // read), InventoryHealthPanel.jsx (Operations/PartsList's own renderer),
@@ -53,12 +68,6 @@ import LoadingEmptyState from "../../shared/ui/LoadingEmptyState";
 // by an admin/dispatcher (Rules: `allow create: if isAdminOrDispatcher()`)
 // -- there's no directory-free way to show a real name, and a raw uid
 // would violate this app's "no raw IDs in human-facing flows" convention.
-function useCategories() {
-  return useMemo(() => {
-    const set = new Set(PARTS_CATALOG.map((part) => part.category));
-    return ["ALL", ...[...set].sort()];
-  }, []);
-}
 
 const PAGE_SIZE = 25;
 
@@ -68,9 +77,9 @@ const INVENTORY_ACTION_LABEL = {
   [INVENTORY_ACTION_TYPE.CORRECT_MISTAKE]: "Correction Note (log only)",
 };
 
-function PartActivityPanel({ partId, onClose }) {
+function PartActivityPanel({ partId, resolveName, onClose }) {
   const { data: actions, loading } = useInventoryActionsForPart(partId);
-  const partName = getCatalogItem(partId)?.name ?? partId;
+  const partName = resolveName(partId);
 
   return (
     <div className="fo-card">
@@ -115,7 +124,42 @@ function PartActivityPanel({ partId, onClose }) {
 
 export default function WarehouseManagerHome() {
   const { healthEntries, loading, error } = useInventoryLedger();
-  const categories = useCategories();
+
+  // INV-CONVERGENCE-E cutover -- live canonical `parts` read (one-shot, the same
+  // fetchPartMasterList PartsList/PartDetail use; no new query surface). null until
+  // the first read resolves. Mapped to the canonicalRead status contract the shared
+  // buildPartsCatalogRows() consumes (OK / PERMISSION_DENIED / UNAVAILABLE).
+  const [canonicalRead, setCanonicalRead] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetchPartMasterList().then((result) => {
+      if (cancelled) return;
+      // Pass `invalid` through so the shared composer fails closed on any malformed canonical document
+      // (never silently dropped) -- see domain/partsCatalogView composeGovernedPartsWorkspace step 1b.
+      if (result.ok) setCanonicalRead({ status: "OK", rows: result.parts, invalid: result.invalid });
+      else setCanonicalRead({ status: result.code === "permission-denied" ? "PERMISSION_DENIED" : "UNAVAILABLE" });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Canonical-first catalog composition (pure). Static PARTS_CATALOG is only the
+  // STATIC_FALLBACK input; a denied/unavailable/incomplete canonical read => blocked
+  // (rows:[]), never the static 200 shown as canonical.
+  const catalog = useMemo(
+    () => buildWarehouseCatalog({ canonicalRead, staticCatalog: PARTS_CATALOG }),
+    [canonicalRead]
+  );
+  const catalogRows = catalog.rows;
+  const categories = useMemo(() => catalogCategories(catalogRows), [catalogRows]);
+  const catalogNameBySku = useMemo(() => nameBySku(catalogRows), [catalogRows]);
+  // Canonical name first, then static fallback, then the raw id -- never a bare uid-like id in the UI.
+  const resolveName = useMemo(
+    () => (partId) => catalogNameBySku.get(partId) ?? getCatalogItem(partId)?.name ?? partId,
+    [catalogNameBySku]
+  );
+
   const [category, setCategory] = useState("ALL");
   const [page, setPage] = useState(0);
   const [selectedPartId, setSelectedPartId] = useState(null);
@@ -141,8 +185,7 @@ export default function WarehouseManagerHome() {
       await requestReorderForRecommendation({ partId, recommendation, manualQty });
       setJustRequestedPartIds((prev) => new Set(prev).add(partId));
     } catch (err) {
-      const partName = getCatalogItem(partId)?.name ?? partId;
-      setReorderError(`Could not request reorder for ${partName}: ${err.message}`);
+      setReorderError(`Could not request reorder for ${resolveName(partId)}: ${err.message}`);
     } finally {
       setSubmittingPartId(null);
     }
@@ -159,10 +202,10 @@ export default function WarehouseManagerHome() {
     [healthEntries]
   );
 
-  const filteredParts = useMemo(() => {
-    if (category === "ALL") return PARTS_CATALOG;
-    return PARTS_CATALOG.filter((part) => part.category === category);
-  }, [category]);
+  const filteredParts = useMemo(
+    () => filterCatalogRowsByCategory(catalogRows, category),
+    [catalogRows, category]
+  );
 
   const pageCount = Math.max(1, Math.ceil(filteredParts.length / PAGE_SIZE));
   const currentPage = Math.min(page, pageCount - 1);
@@ -176,7 +219,7 @@ export default function WarehouseManagerHome() {
   const filterOptions = categories.map((cat) => ({
     key: cat,
     label: cat === "ALL" ? "All Categories" : cat,
-    count: cat === "ALL" ? PARTS_CATALOG.length : PARTS_CATALOG.filter((part) => part.category === cat).length,
+    count: cat === "ALL" ? catalogRows.length : catalogRows.filter((part) => part.category === cat).length,
   }));
 
   return (
@@ -221,85 +264,97 @@ export default function WarehouseManagerHome() {
       )}
 
       <h3>Parts Catalog</h3>
-      <p className="fo-muted">
-        {PARTS_CATALOG.length} parts in catalog. Select a part to view its read-only activity log.
-      </p>
-
-      <FilterBar options={filterOptions} activeKey={category} onChange={handleCategoryChange} />
-
-      {error ? (
-        <p className="fo-muted">Unable to load stock position right now. Try again shortly.</p>
+      {catalog.blocked ? (
+        // Fail-closed: canonical `parts` read denied/unavailable/incomplete -- surfaced, never the static
+        // 200 shown as canonical, never a silent fallback.
+        <p className="fo-muted">
+          Parts catalog is unavailable right now (canonical Parts could not be read). Try again shortly.
+        </p>
       ) : (
-        <LoadingEmptyState loading={loading} isEmpty={false} loadingText="Loading stock position..." emptyText="">
-          <>
-            <div className="fo-table-scroll">
-              <table className="fo-table">
-                <thead>
-                  <tr>
-                    <th>Part</th>
-                    <th>SKU</th>
-                    <th>Category</th>
-                    <th>Available</th>
-                    <th>Risk</th>
-                    <th>Activity</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pagedParts.map((part) => {
-                    const health = healthByPartId.get(part.sku);
-                    return (
-                      <tr key={part.sku}>
-                        <td>{part.name}</td>
-                        <td className="fo-muted">{part.sku}</td>
-                        <td className="fo-muted">{part.category}</td>
-                        <td>{health ? health.stock.availableStock : `${part.warehouseQty} (baseline)`}</td>
-                        <td>
-                          {!health ? (
-                            <span className="fo-muted">No ledger activity</span>
-                          ) : health.recommendation.urgency ? (
-                            <span className={`fo-badge fo-badge-${health.recommendation.urgency.toLowerCase()}`}>
-                              {health.recommendation.urgency}
-                            </span>
-                          ) : (
-                            <span className="fo-badge">Needs planning</span>
-                          )}
-                        </td>
-                        <td>
-                          <button
-                            type="button"
-                            aria-label={`View Activity for ${part.name}`}
-                            onClick={(e) => {
-                              lastTriggerRef.current = e.currentTarget;
-                              setSelectedPartId(part.sku);
-                            }}
-                          >
-                            View Activity
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+        <>
+          <p className="fo-muted">
+            {catalog.loading ? "Loading canonical parts..." : `${catalogRows.length} parts in catalog.`} Select a part
+            to view its read-only activity log.
+          </p>
 
-            <div className="disp-board-toolbar" style={{ justifyContent: "flex-end" }}>
-              <button type="button" disabled={currentPage === 0} onClick={() => setPage((p) => p - 1)}>
-                Previous
-              </button>
-              <span className="fo-muted">
-                Page {currentPage + 1} of {pageCount}
-              </span>
-              <button type="button" disabled={currentPage >= pageCount - 1} onClick={() => setPage((p) => p + 1)}>
-                Next
-              </button>
-            </div>
-          </>
-        </LoadingEmptyState>
+          <FilterBar options={filterOptions} activeKey={category} onChange={handleCategoryChange} />
+
+          <LoadingEmptyState
+            loading={catalog.loading}
+            isEmpty={!catalog.loading && catalogRows.length === 0}
+            loadingText="Loading canonical parts..."
+            emptyText="No parts in the canonical catalog."
+          >
+            <>
+              <div className="fo-table-scroll">
+                <table className="fo-table">
+                  <thead>
+                    <tr>
+                      <th>Part</th>
+                      <th>SKU</th>
+                      <th>Category</th>
+                      <th>Available</th>
+                      <th>Risk</th>
+                      <th>Activity</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pagedParts.map((part) => {
+                      const health = healthByPartId.get(part.sku);
+                      return (
+                        <tr key={part.sku}>
+                          <td>{part.name}</td>
+                          <td className="fo-muted">{part.sku}</td>
+                          <td className="fo-muted">{part.category}</td>
+                          <td>{health ? health.stock.availableStock : `${part.warehouseQty} (baseline)`}</td>
+                          <td>
+                            {!health ? (
+                              <span className="fo-muted">No ledger activity</span>
+                            ) : health.recommendation.urgency ? (
+                              <span className={`fo-badge fo-badge-${health.recommendation.urgency.toLowerCase()}`}>
+                                {health.recommendation.urgency}
+                              </span>
+                            ) : (
+                              <span className="fo-badge">Needs planning</span>
+                            )}
+                          </td>
+                          <td>
+                            <button
+                              type="button"
+                              aria-label={`View Activity for ${part.name}`}
+                              onClick={(e) => {
+                                lastTriggerRef.current = e.currentTarget;
+                                setSelectedPartId(part.sku);
+                              }}
+                            >
+                              View Activity
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="disp-board-toolbar" style={{ justifyContent: "flex-end" }}>
+                <button type="button" disabled={currentPage === 0} onClick={() => setPage((p) => p - 1)}>
+                  Previous
+                </button>
+                <span className="fo-muted">
+                  Page {currentPage + 1} of {pageCount}
+                </span>
+                <button type="button" disabled={currentPage >= pageCount - 1} onClick={() => setPage((p) => p + 1)}>
+                  Next
+                </button>
+              </div>
+            </>
+          </LoadingEmptyState>
+        </>
       )}
 
       {selectedPartId && (
-        <PartActivityPanel partId={selectedPartId} onClose={handleClosePartActivity} />
+        <PartActivityPanel partId={selectedPartId} resolveName={resolveName} onClose={handleClosePartActivity} />
       )}
     </div>
   );

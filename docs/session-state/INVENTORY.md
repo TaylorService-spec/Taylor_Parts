@@ -1,16 +1,16 @@
 # Inventory Session State
 
 ## Baseline
-- Main commit: `081df750d89d9044f0e09bb0241796b8171ed33f`
-- Last reconciled: 2026-07-27
-- Relevant PRs: #445 (merged `2d08e2e`), #447 (merged `081df750`), #448 (draft — C2 Hosting evidence)
-- Relevant issues: C2 repository-only authorization recorded in [`DECISIONS.md`](../DECISIONS.md) #49
+- Main commit: `24b6c091d7fc20e7c29c6230fb22f20c0ce6cf6a`
+- Last reconciled: 2026-07-29
+- Relevant PRs: #445 (merged `2d08e2e`), #447 (merged `081df750`), #448 (**MERGED** `e1a23d6` — C2 Hosting evidence, DECISIONS #50)
+- Relevant issues: C2 repository-only authorization DECISIONS #49; C2 Hosting deployment + production verification DECISIONS #50 (merged truth).
 
 ## Current Objective
-Track the INV-CONVERGENCE-E C2 (PartDetail cutover) stream. The separate C2 repository-only authorization is recorded in DECISIONS #49; PR #445 merged (`2d08e2e`) and PR #447 merged (`081df750`), the latter landing the C2 Hosting runbook/preparation. C2 has since been deployed to production; sanitized evidence is pending repository merge on draft PR #448.
+Post-C2 operational-role Parts convergence. C1 (PartsList) and C2 (PartDetail) cutovers are merged, C2 is deployed to production, and the sanitized C2 Hosting evidence is now MERGED truth (PR #448 / DECISIONS #50). Current bounded gate (Owner-authorized 2026-07-29): the **WarehouseManagerHome canonical Parts Catalog cutover** — bring the one operational-role Inventory surface still reading static `PARTS_CATALOG` as primary onto the canonical-first path (the same `fetchPartMasterList` → `buildPartsCatalogRows` composition PartsList/PartDetail use; static demoted to `STATIC_FALLBACK`). Repository-only; no Rules/permission/deploy change (the WAREHOUSE_MANAGER canonical `parts` read Rule is already deployed).
 
 ## Status
-Active — C2 authorized (DECISIONS #49), merged, and deployed to production; evidence pending repository merge (draft PR #448).
+C2 SATISFIED (merged + deployed + evidence merged, DECISIONS #49/#50). Active gate: WarehouseManagerHome canonical cutover (DRAFT implementation PR, repository-only, not merged — awaiting Codex review + a separate Owner merge decision). Static-catalog retirement remains a later Phase F gate (not safe/authorized: ~13 `getCatalogItem` consumers + the other role surfaces still read static; blocked by DECISIONS #45/UD-3 and excluded by #49).
 
 ## Delta Since Last Handoff
 - C1 PartsList cutover and Hosting evidence are merged through PR #443.
@@ -57,7 +57,7 @@ Active — C2 authorized (DECISIONS #49), merged, and deployed to production; ev
 - High: treating access-control completion as data-model reconciliation.
 
 ## Next Action
-Merge the sanitized C2 Hosting production evidence (draft PR #448) so the deployed-and-verified state becomes merged truth. Until #448 lands, do not treat the production evidence as merged.
+Land the WarehouseManagerHome canonical cutover (DRAFT implementation PR, repository-only) after independent Codex review and a separate Owner merge decision. **Separate immediate correction gate identified (Codex, 2026-07-29):** PartsList (C1) and PartDetail (C2) drop `fetchPartMasterList`'s `invalid` collection when mapping `canonicalRead`; the shared composer now fails closed on `invalid`, but C1/C2 must be updated to pass it through — a separate small gate (not done in the WMH PR, which does not modify those admin/dispatcher surfaces). It reads canonical `parts` via the already-deployed WAREHOUSE_MANAGER Rule; it deploys nothing. Deployment of the cutover to Hosting is a later, separately-authorized step — never off a merge approval. The static catalog is NOT retired here; the remaining static consumers (the PARTS_MANAGER/PARTS_ASSOCIATE role surfaces plus ~13 `getCatalogItem` consumers across operations/control-tower/technician/analytics/notifications) are a later separately-scoped convergence phase (OD-3 deferred).
 
 ## Stop Conditions
 - A further C2 action (evidence merge, static-catalog retirement, or any new deployment) lacks its own separately-linked authorization; DECISIONS #49 authorizes the repository-only cutover merge alone.

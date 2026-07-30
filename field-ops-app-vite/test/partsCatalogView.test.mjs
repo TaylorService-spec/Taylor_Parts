@@ -180,6 +180,31 @@ check("BLOCKED_INCOMPLETE_INPUT when canonical read omits a Part (never silently
   assert.equal(res.status, "BLOCKED_INCOMPLETE_INPUT");
   assert.equal(res.rows.length, 0);
 });
+// ---- fail-closed on INVALID canonical documents (fetchPartMasterList's `invalid`) -------------------
+check("BLOCKED when the canonical read reports non-empty invalid documents (never silently dropped)", () => {
+  const res = buildPartsCatalogRows({ canonicalRead: { ...OK(), invalid: [{ id: "x", invalid: true }] }, staticCatalog: STATIC });
+  assert.equal(res.status, "BLOCKED_INCOMPLETE_INPUT");
+  assert.equal(res.rows.length, 0);
+  assert.equal(res.meta.invalidCount, 1);
+});
+check("a malformed canonical doc overlapping an approved STATIC_ONLY_EXCLUDED sku STILL blocks (exclusion cannot mask it)", () => {
+  const res = buildPartsCatalogRows({ canonicalRead: { ...OK(), invalid: [{ partId: "TST-1047", invalid: true }] }, staticCatalog: STATIC });
+  assert.equal(res.status, "BLOCKED_INCOMPLETE_INPUT");
+  assert.equal(res.rows.length, 0);
+});
+check("malformed invalid metadata (not an array) blocks", () => {
+  assert.equal(buildPartsCatalogRows({ canonicalRead: { ...OK(), invalid: "nope" }, staticCatalog: STATIC }).status, "BLOCKED_INCOMPLETE_INPUT");
+});
+check("empty invalid array is backward-compatible (still READY); absent invalid unchanged", () => {
+  assert.equal(buildPartsCatalogRows({ canonicalRead: { ...OK(), invalid: [] }, staticCatalog: STATIC }).status, "READY");
+  assert.equal(buildPartsCatalogRows({ canonicalRead: OK(), staticCatalog: STATIC }).status, "READY");
+});
+check("invalid blocking surfaces only a sanitized count, never raw canonical document data", () => {
+  const res = buildPartsCatalogRows({ canonicalRead: { ...OK(), invalid: [{ partId: "TST-1047", secretField: "raw-value", invalid: true }] }, staticCatalog: STATIC });
+  const blob = JSON.stringify(res);
+  assert.equal(blob.includes("secretField"), false);
+  assert.equal(blob.includes("raw-value"), false);
+});
 check("BLOCKED_INCOMPLETE_INPUT on empty/missing static catalog", () => {
   assert.equal(buildPartsCatalogRows({ canonicalRead: OK(), staticCatalog: [] }).status, "BLOCKED_INCOMPLETE_INPUT");
   assert.equal(buildPartsCatalogRows({ canonicalRead: OK() }).status, "BLOCKED_INCOMPLETE_INPUT");

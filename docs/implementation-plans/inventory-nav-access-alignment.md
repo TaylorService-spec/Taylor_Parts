@@ -123,6 +123,10 @@ Restated from the Specification's own "Rollback strategy," expanded per-PR for t
 
 All three UI tracks (`manager`/`warehouse`/`mine`) are now implemented, merged, and browser-verified against the local emulator. The one open item this initiative leaves behind is the PR 1b employees-read grant's own production deployment and live verification -- tracked going forward as its own narrow, separately-authorized deployment action, not as unfinished UI work.
 
+### Post-merge refinement (2026-07-29): WarehouseManagerHome canonical Parts Catalog cutover
+
+PR 2b (#227) shipped WarehouseManagerHome reading the static `PARTS_CATALOG` for its Parts Catalog list (the spec's design at the time). Since the INV-CONVERGENCE-E C1/C2 cutovers merged + C2 deployed (DECISIONS #49/#50), canonical `parts` is authoritative for the Parts surfaces. Owner-authorized 2026-07-29, a bounded repository-only refinement (DRAFT implementation PR) cuts WarehouseManagerHome's Parts Catalog list onto the same canonical-first path PartsList/PartDetail use (`fetchPartMasterList` → new pure `domain/warehouseManagerCatalogView.js` → shared `buildPartsCatalogRows`; static demoted to `STATIC_FALLBACK`; fail-closed blocked banner on a denied/unavailable canonical read, never static-as-canonical). See the Specification's "Post-merge refinement (2026-07-29)" section for the superseded language and the deferred remaining-static-consumer inventory (OD-3). No Rules/permission/index/deployment change (the WAREHOUSE_MANAGER canonical `parts` read Rule is already deployed); no static-catalog retirement (Phase F). Tests: pure `warehouseManagerCatalogView.test.mjs` (offline, in `npm test`) + `warehouseManagerHome.test.jsx` (vitest+jsdom render/fail-closed gate) + full frontend regression; new path-gated CI `inventory-parts-ui-tests.yml`.
+
 ## Testing strategy
 
 Restated and made concrete from the Specification's own "Testing strategy" -- each PR extends the `run-field-ops-app-vite` Playwright skill's `driver.mjs` with its own named command(s), same established pattern as PR #148/#151/#177:
