@@ -37,10 +37,13 @@ appears to need a mutating step, **halt** (§4) — do not improvise.
 - The exact approved project id, region, and (for later gates, not created here) the intended sender-secret
   name + API-key id, provided out-of-band. Placeholders below: `<PROJECT>`, `<REGION>` (e.g. `us-central1`),
   `<SENDER_SECRET>`, `<API_KEY_ID>`, the runtime service accounts `<INITIATE_RUNTIME_SA>` /
-  `<LIST_RUNTIME_SA>` (read from each function's `describe` in C2), and `<BUILD_ID>` (the deployed revision's
-  build, from C9b). Effective-access + provenance analysis needs read roles: `roles/cloudasset.viewer`
-  (asset analyze-iam-policy), `roles/policytroubleshooter.viewer` (policy-troubleshoot iam), and
-  `roles/cloudbuild.builds.viewer` (builds describe).
+  `<LIST_RUNTIME_SA>` (read from each function's `describe` in C2), `<BUILD_ID>` (the deployed revision's
+  build, from C9b), and `<ORG_ID>` — the governing **organization** id (or the highest required ancestor
+  folder, `<FOLDER_ID>`) used as the Cloud Asset analysis **scope** so ancestor grants are covered.
+  Effective-access + provenance analysis needs read roles at the **org/ancestor** scope where required:
+  `roles/cloudasset.viewer` on the organization/folder (asset analyze-iam-policy must see ancestor grants),
+  `roles/policytroubleshooter.viewer` (policy-troubleshoot iam), and `roles/cloudbuild.builds.viewer`
+  (builds describe). If org/ancestor Cloud Asset visibility is unavailable, C4 is ERROR-HALT (§4).
 - **Shell:** every command is a **single line** (no continuations) so it runs unchanged in the protected
   Windows/PowerShell operator environment (and any POSIX shell).
 - Run each command, capture output, and transcribe **only** the sanitized fields into §5's template.
@@ -112,11 +115,14 @@ impersonation-permission** troubleshoot. All read-only; each command is one line
 gcloud functions describe listResetEligibleUsers --project <PROJECT> --region <REGION> --gen2 --format="value(serviceConfig.secretEnvironmentVariables,serviceConfig.secretVolumes,serviceConfig.serviceAccountEmail)"
 # (b) resource-level policy on the sender secret (context only; NOT sufficient by itself):
 gcloud secrets get-iam-policy <SENDER_SECRET> --project <PROJECT> --flatten="bindings[]" --format="table(bindings.role, bindings.members)"
-# (c) AUTHORITATIVE: the FULL set of identities with EFFECTIVE secretmanager.versions.access on the secret,
-#     with GROUP membership AND service-account IMPERSONATION expanded (official syntax uses --project, NOT
-#     --scope). The `fullyExplored` fields in the JSON MUST be true; an incomplete/permission-limited result
-#     is ERROR-HALT, never a "clean set":
-gcloud asset analyze-iam-policy --project=<PROJECT> --full-resource-name="//secretmanager.googleapis.com/projects/<PROJECT>/secrets/<SENDER_SECRET>" --permissions="secretmanager.versions.access" --expand-groups --analyze-service-account-impersonation --format="json"
+# (c) AUTHORITATIVE: the FULL set of identities with EFFECTIVE secretmanager.versions.access on the secret.
+#     SCOPE = the governing ORGANIZATION (or the highest required ancestor folder), NOT the project --
+#     `--project` covers only policies at/below the project and MISSES ancestor folder/org grants. Retain the
+#     secret's full resource name. Expand GROUPS, ROLES (resolve roles -> the permission), and service-account
+#     IMPERSONATION; request the raw response so `fullyExplored` completeness fields are inspectable. Every
+#     `fullyExplored` MUST be true; an incomplete/permission-limited result (or missing ancestor-scope
+#     visibility) is ERROR-HALT, never a "clean set":
+gcloud asset analyze-iam-policy --organization=<ORG_ID> --full-resource-name="//secretmanager.googleapis.com/projects/<PROJECT>/secrets/<SENDER_SECRET>" --permissions="secretmanager.versions.access" --expand-groups --expand-roles --analyze-service-account-impersonation --show-response --format="json"
 # (d) DIRECT impersonation permission for the list SA over the initiate SA (captures inherited grants,
 #     unlike reading the resource policy) -- expect NOT GRANTED:
 gcloud policy-troubleshoot iam "//iam.googleapis.com/projects/<PROJECT>/serviceAccounts/<INITIATE_RUNTIME_SA>" --principal-email="<LIST_RUNTIME_SA>" --permission="iam.serviceAccounts.getAccessToken"
@@ -127,14 +133,15 @@ gcloud policy-troubleshoot iam "//secretmanager.googleapis.com/projects/<PROJECT
   access). If `listResetEligibleUsers` is CONFIRMED-ABSENT → (a) PASSes; run (c) regardless (it enumerates
   the secret's whole accessor set); run (d)/(e) only if the list SA is known, else record "list not deployed;
   list-SA effective-access re-checked at the deploy gate". ERROR-HALT on any command → stop.
-- **Expected (all applicable):** (a) list has **no** sender secret binding; (c) the analysis is **fully
-  explored** (all `fullyExplored` true) AND the **entire** effective-accessor set for
-  `secretmanager.versions.access` — after group + impersonation expansion — is **exactly**
-  `{<INITIATE_RUNTIME_SA>}`: no list SA, no default Functions SA, no human/group, no `allUsers`/
-  `allAuthenticatedUsers`, no conditional grant, no impersonation-derived accessor; (d) NOT GRANTED (list SA
-  cannot impersonate the initiate SA); (e) NOT GRANTED (list SA cannot read the secret). **An incomplete or
-  permission-limited analysis (`fullyExplored` false, or a partial/denied result) is ERROR-HALT — never read
-  as a clean set.**
+- **Expected (all applicable):** (a) list has **no** sender secret binding; (c) the org/ancestor-scoped
+  analysis is **fully explored** (all `fullyExplored` true in the raw `--show-response` output) AND the
+  **entire** effective-accessor set for `secretmanager.versions.access` — after group + role + impersonation
+  expansion, including ancestor folder/org grants — is **exactly** `{<INITIATE_RUNTIME_SA>}`: no list SA, no
+  default Functions SA, no human/group, no `allUsers`/`allAuthenticatedUsers`, no conditional grant, no
+  ancestor-inherited or impersonation-derived accessor; (d) NOT GRANTED (list SA cannot impersonate the
+  initiate SA); (e) NOT GRANTED (list SA cannot read the secret). **An incomplete/permission-limited analysis
+  (any `fullyExplored` false, a partial/denied result, or the operator lacking org/ancestor-scope
+  visibility) is ERROR-HALT — never read as a clean set.**
 - **PASS:** the initiate SA is the **sole** effective accessor AND the list SA has no effective access or
   impersonation path. **FAIL/HALT:** any additional effective accessor, any GRANTED/CONDITIONAL verdict, a
   binding on the list function, broad readability, or a list→initiate impersonation path → stop (the P1
@@ -285,9 +292,11 @@ AGGREGATE                      : [PASS / HALT: <sanitized reason>]
 Halt immediately (do not repair, mutate, or continue) if: any object resolves to **ERROR-HALT** (a
 non-NOT_FOUND error — e.g. PERMISSION_DENIED — is never treated as absent); the project id does not match the
 approved project; a Function is partially/unexpectedly deployed or has an unrecognized runtime identity; a
-sender secret is already bound to either callable before the authorized config gate; `listResetEligibleUsers`
-has any **effective** path to the sender secret (binding, resource/inherited/group/conditional accessor, or
-impersonation of the initiate SA) or the secret is broadly readable; the API key belongs to another project
+sender secret is already bound to either callable before the authorized config gate; the effective-accessor
+analysis is incomplete (any `fullyExplored` false) or the operator lacks org/ancestor-scope Cloud Asset
+visibility (cannot enumerate ancestor folder/org grants); `listResetEligibleUsers` has any **effective** path
+to the sender secret (binding, resource/ancestor/group/role/conditional accessor, or impersonation of the
+initiate SA) or the secret is broadly readable; the API key belongs to another project
 or is over-broad/blocks server use; a required API is disabled; the deployment boundary is not exactly the
 two callables; the deployed code does not match the `d6628a5` baseline or a stored role/assignment grants the
 permission; or any check requires a prohibited (mutating / value-reading) command to complete. Report the
