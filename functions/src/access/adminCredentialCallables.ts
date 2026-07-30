@@ -16,7 +16,7 @@ import type { CallableRequest } from "firebase-functions/v2/https";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
 import * as commands from "./adminCredentialCommands";
-import { createNativeResetSender } from "./nativeResetSender";
+import { buildNativeResetSender } from "./oobCodeOutbound";
 
 const REGION = "us-central1";
 
@@ -205,15 +205,15 @@ export function actorAuthorizationDeps(): commands.ActorAuthorizationDeps {
   return { resolveActorFacts };
 }
 
-// The concrete native sender is wired with `outbound: null` (PRE-1): it is the real
-// dedupe-backed adapter, but FAIL-CLOSED -- `isConfigured()` is false, so the command
-// performs ZERO Auth side effects (no send, no revocation, no reset-link generation)
-// and no email is ever sent. A real outbound (Function -> Auth REST
-// `accounts:sendOobCode`) plus its Secret Manager credential is wired only at a later,
-// separately authorized AUTH-PROD enablement gate (D-DELIVERY-NATIVE, #56 -- never an
-// external provider, #54). Real-Firebase native-send + earlier-link behavior are the
-// separate AUTH-PROD-1 verification.
-export const DEPLOYED_NATIVE_SENDER = createNativeResetSender({ outbound: null });
+// The deployed native sender is built through the FAIL-CLOSED builder with NO config
+// (`null`): validateNativeSendConfig fails -> the builder returns the `outbound: null`
+// sender, so `isConfigured()` is false and the command performs ZERO Auth side effects
+// (no send, no revocation, no reset-link generation) and no email is ever sent. The
+// concrete accounts:sendOobCode outbound (oobCodeOutbound.ts) exists but is wired only
+// at a later, separately authorized AUTH-PROD config/enablement gate that supplies a
+// validated config + Secret Manager credential (D-NATIVE-SEND-CONFIG; never an external
+// provider, #54). Real-Firebase native-send is the separate D-PROD-1C verification.
+export const DEPLOYED_NATIVE_SENDER = buildNativeResetSender(null);
 
 function adminSdkDeps(): commands.AdminResetDeps {
   return {
