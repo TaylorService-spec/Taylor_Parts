@@ -12,32 +12,31 @@ import {
   buildNativeResetSender,
 } from "../lib/access/oobCodeOutbound.js";
 
-const VALID = { apiKey: "AIzaTESTKEY_1234567890abcdef", project: "demo-project" };
+const VALID = { apiKey: "AIzaTESTKEY_1234567890abcdef", project: "demo-project", apiKeyProject: "demo-project" };
 
 let passed = 0;
 function ok(name, fn) { fn(); passed += 1; console.log("PASS -- " + name); }
 async function okAsync(name, fn) { await fn(); passed += 1; console.log("PASS -- " + name); }
 
 // -- non-sending validation --------------------------------------------------
-ok("valid config -> valid", () => {
+ok("valid config (apiKeyProject === project) -> valid", () => {
   assert.deepStrictEqual(validateNativeSendConfig(VALID), { valid: true });
-});
-ok("valid config with https endpoint -> valid", () => {
-  assert.deepStrictEqual(validateNativeSendConfig({ ...VALID, endpoint: "https://example.test" }), { valid: true });
 });
 for (const [label, cfg] of [
   ["null", null],
   ["undefined", undefined],
-  ["missing apiKey", { project: "p" }],
-  ["empty apiKey", { apiKey: "   ", project: "p" }],
-  ["whitespace in apiKey", { apiKey: "AIza has space 1234567890", project: "p" }],
-  ["too-short apiKey", { apiKey: "AIzaShort", project: "p" }],
-  ["missing project", { apiKey: "AIzaTESTKEY_1234567890abcdef" }],
-  ["non-https endpoint", { ...VALID, endpoint: "http://insecure.test" }],
+  ["missing apiKey", { project: "p", apiKeyProject: "p" }],
+  ["empty apiKey", { apiKey: "   ", project: "p", apiKeyProject: "p" }],
+  ["whitespace in apiKey", { apiKey: "AIza has space 1234567890", project: "p", apiKeyProject: "p" }],
+  ["too-short apiKey", { apiKey: "AIzaShort", project: "p", apiKeyProject: "p" }],
+  ["missing project", { apiKey: "AIzaTESTKEY_1234567890abcdef", apiKeyProject: "p" }],
+  ["missing project-ownership attestation", { apiKey: "AIzaTESTKEY_1234567890abcdef", project: "demo-project" }],
+  ["attestation/project MISMATCH", { ...VALID, apiKeyProject: "some-other-project" }],
+  ["arbitrary https endpoint override in config (exfiltration guard)", { ...VALID, endpoint: "https://attacker.test" }],
 ]) {
   ok(`invalid config: ${label} -> invalid`, () => {
     const v = validateNativeSendConfig(cfg);
-    assert.strictEqual(v.valid, false);
+    assert.strictEqual(v.valid, false, `${label} must be rejected`);
     assert.strictEqual(typeof v.reason, "string");
   });
 }
@@ -53,17 +52,17 @@ function fakeTransport(result) {
   return { transport, calls };
 }
 
-await okAsync("HTTP 200 -> accepted true; PASSWORD_RESET + email in body; key in URL; nothing else returned", async () => {
+await okAsync("HTTP 200 -> accepted true; targets the APPROVED origin; PASSWORD_RESET + email; only { accepted }", async () => {
   const { transport, calls } = fakeTransport({ ok: true, status: 200 });
   const outbound = createOobCodeOutbound(VALID, transport);
   const res = await outbound({ targetUid: "t", email: "user@example.test", idempotencyKey: "k" });
   assert.deepStrictEqual(res, { accepted: true }, "returns ONLY { accepted }");
   assert.strictEqual(calls.length, 1);
+  // Config cannot redirect: the adapter ALWAYS calls the approved Identity Toolkit origin.
+  assert.match(calls[0].url, /^https:\/\/identitytoolkit\.googleapis\.com\/v1\/accounts:sendOobCode\?key=/);
   const body = JSON.parse(calls[0].init.body);
   assert.strictEqual(body.requestType, "PASSWORD_RESET");
   assert.strictEqual(body.email, "user@example.test");
-  assert.match(calls[0].url, /accounts:sendOobCode\?key=/, "key passed in query string");
-  // The response body / oob code / link are never surfaced -- result has only `accepted`.
   assert.deepStrictEqual(Object.keys(res), ["accepted"]);
 });
 await okAsync("non-200 (400) -> accepted false", async () => {
@@ -81,9 +80,17 @@ await okAsync("transport throws -> propagates (command/sender handle throw/uncer
   const outbound = createOobCodeOutbound(VALID, transport);
   await assert.rejects(outbound({ targetUid: "t", email: "e@x.test", idempotencyKey: "k" }), /transport boom/);
 });
-await okAsync("custom https endpoint is honored", async () => {
+await okAsync("config cannot redirect the origin (an endpoint field in config is ignored by the adapter)", async () => {
   const { transport, calls } = fakeTransport({ ok: true, status: 200 });
-  const outbound = createOobCodeOutbound({ ...VALID, endpoint: "https://emu.test/it/" }, transport);
+  // Even if a rogue caller sneaks an endpoint onto the config object, the adapter ignores
+  // it and calls the approved origin (and validateNativeSendConfig rejects such a config).
+  const outbound = createOobCodeOutbound({ ...VALID, endpoint: "https://attacker.test" }, transport);
+  await outbound({ targetUid: "t", email: "e@x.test", idempotencyKey: "k" });
+  assert.match(calls[0].url, /^https:\/\/identitytoolkit\.googleapis\.com\//, "config endpoint is NOT honored");
+});
+await okAsync("test-only endpoint override seam is honored (clearly separate from config)", async () => {
+  const { transport, calls } = fakeTransport({ ok: true, status: 200 });
+  const outbound = createOobCodeOutbound(VALID, transport, "https://emu.test/it/"); // 3rd arg = TEST-ONLY seam
   await outbound({ targetUid: "t", email: "e@x.test", idempotencyKey: "k" });
   assert.match(calls[0].url, /^https:\/\/emu\.test\/it\/v1\/accounts:sendOobCode/);
 });
@@ -92,8 +99,16 @@ await okAsync("custom https endpoint is honored", async () => {
 ok("buildNativeResetSender(null) -> fail-closed (isConfigured false)", () => {
   assert.strictEqual(buildNativeResetSender(null).isConfigured(), false);
 });
-ok("buildNativeResetSender(invalid) -> fail-closed (isConfigured false)", () => {
+ok("buildNativeResetSender(invalid: missing fields) -> fail-closed", () => {
   assert.strictEqual(buildNativeResetSender({ project: "p" }).isConfigured(), false);
+});
+ok("buildNativeResetSender(attestation MISMATCH) -> fail-closed (no unproven-ownership config)", () => {
+  const { transport } = fakeTransport({ ok: true, status: 200 });
+  assert.strictEqual(buildNativeResetSender({ ...VALID, apiKeyProject: "other" }, transport).isConfigured(), false);
+});
+ok("buildNativeResetSender(endpoint override in config) -> fail-closed (exfiltration guard)", () => {
+  const { transport } = fakeTransport({ ok: true, status: 200 });
+  assert.strictEqual(buildNativeResetSender({ ...VALID, endpoint: "https://attacker.test" }, transport).isConfigured(), false);
 });
 ok("buildNativeResetSender(valid, fakeTransport) -> configured (isConfigured true)", () => {
   const { transport } = fakeTransport({ ok: true, status: 200 });

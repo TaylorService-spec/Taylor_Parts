@@ -16,16 +16,23 @@
 import { createNativeResetSender } from "./nativeResetSender";
 import type { NativeResetSender } from "./adminCredentialCommands";
 
-const DEFAULT_ENDPOINT = "https://identitytoolkit.googleapis.com";
+// The ONLY origin the production adapter ever calls. Config cannot redirect it -- an
+// arbitrary host would exfiltrate the API key + reset email. A custom origin is
+// reachable ONLY through the clearly test-only seam on `createOobCodeOutbound`.
+export const APPROVED_ENDPOINT = "https://identitytoolkit.googleapis.com";
 
 export interface NativeSendConfig {
   // Web API key -- supplied ONLY at a future config gate from Secret Manager; never
   // hardcoded, logged, read from the repo, or present in this change.
   apiKey: string;
-  // The target Firebase project id (used for project-ownership validation + evidence).
+  // The target Firebase project id the send must belong to.
   project: string;
-  // Identity Toolkit base URL (defaults to the standard endpoint).
-  endpoint?: string;
+  // The project the API key is ATTESTED to belong to (provided out-of-band at the
+  // config gate). Non-sending project-ownership check = `apiKeyProject === project`.
+  // (Ownership cannot be derived from the key string; full confirmation is D-PROD-1A/
+  // config-gate + proven live at D-PROD-1C.) There is intentionally NO `endpoint`
+  // field: production always targets APPROVED_ENDPOINT.
+  apiKeyProject: string;
 }
 
 // A minimal fetch-like transport, injectable so tests never hit the network.
@@ -41,16 +48,22 @@ export type ConfigValidationResult = { valid: true } | { valid: false; reason: s
 // send acceptance stays unverified until the post-deployment D-PROD-1C gate.
 export function validateNativeSendConfig(config: Partial<NativeSendConfig> | null | undefined): ConfigValidationResult {
   if (!config || typeof config !== "object") return { valid: false, reason: "config missing" };
-  const { apiKey, project, endpoint } = config as Partial<NativeSendConfig>;
+  const c = config as Record<string, unknown>;
+  const { apiKey, project, apiKeyProject } = config as Partial<NativeSendConfig>;
   if (typeof apiKey !== "string" || apiKey.trim().length === 0) return { valid: false, reason: "apiKey missing" };
   if (apiKey !== apiKey.trim() || /\s/.test(apiKey)) return { valid: false, reason: "apiKey malformed (whitespace)" };
   if (apiKey.length < 20) return { valid: false, reason: "apiKey too short to be well-formed" };
   if (typeof project !== "string" || project.trim().length === 0) return { valid: false, reason: "project missing" };
-  if (endpoint !== undefined) {
-    if (typeof endpoint !== "string" || !/^https:\/\//.test(endpoint)) {
-      return { valid: false, reason: "endpoint must be an https URL" };
-    }
+  // Project-ownership attestation (used): the key must be attested for the target project.
+  if (typeof apiKeyProject !== "string" || apiKeyProject.trim().length === 0) {
+    return { valid: false, reason: "missing apiKey project-ownership attestation" };
   }
+  if (apiKeyProject !== project) {
+    return { valid: false, reason: "apiKey project attestation does not match the target project" };
+  }
+  // Production config may NOT redirect the endpoint (exfiltration guard): reject any
+  // `endpoint` field. Custom origins are reachable only via the test-only seam.
+  if ("endpoint" in c) return { valid: false, reason: "endpoint override is not permitted in config (uses APPROVED_ENDPOINT)" };
   return { valid: true };
 }
 
@@ -58,8 +71,15 @@ export function validateNativeSendConfig(config: Partial<NativeSendConfig> | nul
 // on HTTP 200. The response body / OOB code / action link stay inside this function
 // and are NEVER returned, logged, or persisted; the API key (in the query string) is
 // never logged either.
-export function createOobCodeOutbound(config: NativeSendConfig, transport: FetchLike): (args: { targetUid: string; email: string; idempotencyKey: string }) => Promise<{ accepted: boolean }> {
-  const base = (config.endpoint ?? DEFAULT_ENDPOINT).replace(/\/+$/, "");
+// `testEndpointOverride` is a CLEARLY TEST-ONLY seam (e.g. an emulator origin). It is
+// NEVER supplied by `buildNativeResetSender` or any production path -- production always
+// targets APPROVED_ENDPOINT. A production caller passing config alone can never redirect.
+export function createOobCodeOutbound(
+  config: NativeSendConfig,
+  transport: FetchLike,
+  testEndpointOverride?: string,
+): (args: { targetUid: string; email: string; idempotencyKey: string }) => Promise<{ accepted: boolean }> {
+  const base = (testEndpointOverride ?? APPROVED_ENDPOINT).replace(/\/+$/, "");
   return async ({ email }) => {
     const url = `${base}/v1/accounts:sendOobCode?key=${encodeURIComponent(config.apiKey)}`;
     const res = await transport(url, {
