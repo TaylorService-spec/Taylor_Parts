@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { getCatalogItem } from "../../data/partsCatalog";
+import { snapshotPartName, snapshotPartSku } from "../../domain/workOrderInventorySnapshot";
 import { updateWorkOrderExecutionData } from "../../services/workOrderService";
 
 // Epic 6 Phase 6.3 -- Field Execution Capture UI. This is NOT lifecycle
@@ -74,13 +74,16 @@ export default function ExecutionCapture({ workOrder }) {
         {plannedParts.length === 0 ? (
           <p className="fo-muted">No planned parts on this Work Order.</p>
         ) : (
-          plannedParts.map((item) => {
-            const catalogEntry = getCatalogItem(item.sku);
-            const displayName = item.name || catalogEntry?.name || item.sku;
+          plannedParts.map((item, idx) => {
+            // Snapshot-authoritative name (recorded on the Work Order) -- no catalog lookup;
+            // missing/empty/whitespace/malformed -> raw SKU. Safe sku projection for the key so
+            // a malformed legacy sku can never reach React output. The action path
+            // (adjustQty -> updateWorkOrderExecutionData) still uses the recorded item.sku.
+            const displayName = snapshotPartName(item);
             const qtyUsed = item.qtyUsed ?? 0;
             const busy = submittingSku === item.sku;
             return (
-              <div key={item.sku} className="fo-btn-row" style={{ alignItems: "center" }}>
+              <div key={snapshotPartSku(item) || idx} className="fo-btn-row" style={{ alignItems: "center" }}>
                 <span style={{ flex: 1 }}>
                   {displayName} -- {qtyUsed} / {item.qtyPlanned} used
                 </span>

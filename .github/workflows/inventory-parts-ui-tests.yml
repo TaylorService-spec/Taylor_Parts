@@ -46,6 +46,13 @@ on:
       - "field-ops-app-vite/package.json"
       - "field-ops-app-vite/package-lock.json"
       - "field-ops-app-vite/vitest.config.js"
+      - "field-ops-app-vite/src/domain/workOrderInventorySnapshot.js"
+      - "field-ops-app-vite/src/modules/controlTower/WorkOrderDetail.jsx"
+      - "field-ops-app-vite/src/modules/controlTower/panels/PartsOverviewPanel.jsx"
+      - "field-ops-app-vite/src/modules/technicianDashboard/ExecutionCapture.jsx"
+      - "field-ops-app-vite/src/modules/technicianDashboard/TechnicianWorkOrderCard.jsx"
+      - "field-ops-app-vite/test/workOrderInventorySnapshot.test.mjs"
+      - "field-ops-app-vite/test/workOrderSnapshotNames.test.jsx"
       - ".github/workflows/inventory-parts-ui-tests.yml"
   push:
     branches: [main]
@@ -85,6 +92,13 @@ on:
       - "field-ops-app-vite/package.json"
       - "field-ops-app-vite/package-lock.json"
       - "field-ops-app-vite/vitest.config.js"
+      - "field-ops-app-vite/src/domain/workOrderInventorySnapshot.js"
+      - "field-ops-app-vite/src/modules/controlTower/WorkOrderDetail.jsx"
+      - "field-ops-app-vite/src/modules/controlTower/panels/PartsOverviewPanel.jsx"
+      - "field-ops-app-vite/src/modules/technicianDashboard/ExecutionCapture.jsx"
+      - "field-ops-app-vite/src/modules/technicianDashboard/TechnicianWorkOrderCard.jsx"
+      - "field-ops-app-vite/test/workOrderInventorySnapshot.test.mjs"
+      - "field-ops-app-vite/test/workOrderSnapshotNames.test.jsx"
       - ".github/workflows/inventory-parts-ui-tests.yml"
   workflow_dispatch:
 
