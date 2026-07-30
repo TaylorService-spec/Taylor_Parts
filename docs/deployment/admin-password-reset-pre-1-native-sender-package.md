@@ -26,11 +26,12 @@ call per governed operation key**, even across crashes and stale-worker retries.
 call; it is **not** a global "never two emails" guarantee — see §10 and D-PRE1-XKEY-RECON for the residual
 cross-key risk after an uncertain outcome.)
 
-**In scope of this document:** the native mechanism, the dedupe data model + state machine, atomic
-claim / accepted / failed / retry / stale-lease / replay / crash / uncertain behavior, the fail-closed
-no-duplicate policy, sanitized evidence + audit boundaries, the emulator/unit test matrix, the future
-production configuration + deployment gates (named, not opened), OOB-link reconciliation, and the genuine
-Owner decisions with recommended safe defaults.
+**In scope of this document:** the native mechanism, the sender interface change, the dedupe data model +
+state machine, atomic claim / accepted / failed / retry / stale-lease / replay / crash / uncertain
+behavior, the fail-closed no-duplicate policy, the **operation `reconciliation_required` state**
+(intentional command schema/state-machine change, §6A), the coherent sanitized-audit boundary (§7), the
+emulator/unit test matrix, the future production configuration + deployment gates (named, not opened),
+OOB-link reconciliation, and the genuine Owner decisions with recommended safe defaults.
 
 **Explicitly NOT in scope (and not authorized):** implementing the sender or dedupe layer; activating or
 granting `admin.credentialReset.initiate`; deploying Functions/Rules/indexes/Hosting; accessing production
@@ -179,15 +180,66 @@ the second call hits a `claimed`/`accepted`/`uncertain` record and does not doub
 
 ---
 
+## 6A. Operation reconciliation state (intentional command schema + state-machine change)
+
+The uncertain outcome (§6) requires a new **terminal operation status** on the governed op record
+(`admin_credential_reset_ops/{idempotencyKey}`). The merged schema allows only `in_progress | completed |
+failed`; PRE-1 implementation adds **one** status. This is an **intentional command operation-schema and
+state-machine change** (D-PRE1-OPSTATE), not merely prose behavior — it changes `OP_STATUSES`, the strict
+`isValidOpRecord` validator, and `claimOrResume`.
+
+**New status (recommended): `reconciliation_required`.** Contract:
+
+- **Fields (all sanitized, bounded):** the existing op fields plus a `reconciliation` sub-object with a
+  bounded enum `reason` (e.g. `uncertain_send`) and `atMs`. **No** free-form/unbounded text; **no**
+  `stages.send="sent"` is written (the send is *not* known-sent).
+- **Invariants:** `reconciliation_required` is terminal-until-reconciled; `stages.send` is absent;
+  `attempt` and `boundDigest`/`(actorUid,targetUid,mode)` binding are preserved. A record that is
+  malformed or violates these invariants **fails closed** (`MalformedOperationError`), never a silent pass.
+- **Transitions:** `in_progress → reconciliation_required` (written atomically with the sanitized
+  uncertainty audit, §7); **no** transition `reconciliation_required → completed`; **no** terminal
+  rewrite; **no** automatic retry or resume out of this state. `claimOrResume` must treat
+  `reconciliation_required` as **blocked** (it is not a stale-`in_progress` or past-cooldown-`failed`
+  case) and must not increment `attempt` or re-enter the send path.
+- **Same-key replay:** returns the neutral caller envelope and remains **side-effect-free** — no Firebase
+  call, no state change, no new audit.
+- **Resolution authority:** only the separately authorized governed reconciliation command
+  (D-PRE1-XKEY-RECON) may resolve a `reconciliation_required` op; PRE-1 defines the state but does **not**
+  implement that resolver.
+- **Concurrency/fencing:** all transitions are attempt-bound within Firestore transactions (same
+  discipline as `claimStage`/`setStatusOwned`); a stale worker cannot move the op out of
+  `reconciliation_required`.
+- **Emulator tests (see §8):** the `in_progress → reconciliation_required` transition; blocked same-key
+  replay; concurrency (only one writer sets the state); stale-worker fencing; crash recovery
+  (post-uncertain resume stays blocked, no resend); and prohibited rewrites (`→ completed`, terminal
+  overwrite, and auto-retry are all refused).
+
+---
+
 ## 7. Sanitized evidence and audit boundaries (item 6)
 
 - The sender **never** persists, logs, audits, or returns: email addresses, reset links, OOB action codes,
   credentials/API keys, provider/endpoint response bodies, or raw Firebase responses. These live only in
   transient local scope inside `sendReset` and are discarded.
 - The dedupe record stores only non-secret control fields (§4) — never the email/link/code.
-- Audit behavior is **unchanged** by PRE-1 (audit coverage is owned by PRE-3): the command still writes
-  its truthful `deliverAdminPasswordReset` "accepted"/denied events; PRE-1 adds **no** new audit surface
-  and must not weaken the existing sanitized summaries.
+- **Audit boundary (D-PRE1-AUDIT — coherent, resolves the prior §6/§7 contradiction).** PRE-1 adds
+  **exactly one** minimal, sanitized audit outcome required by its new `reconciliation_required`
+  transition — so an uncertain send is **never** recorded as acceptance. Specifically:
+  - The command writes a single sanitized `deliverAdminPasswordReset` **uncertain/possibly-sent** audit
+    (a new bounded outcome), written **atomically with** the `in_progress → reconciliation_required`
+    transition (§6A) — the transition MUST NOT commit without its audit, and the audit MUST NOT claim
+    acceptance.
+  - **Allowed sanitized fields only:** `actorUid`, `targetType`/`targetId`, `action`, the bounded
+    `outcome` (`uncertain`), the bounded `reason` enum (e.g. `uncertain_send`), `scope`, and timestamp.
+    **Prohibited:** email addresses, UIDs beyond the actor/target identifiers already in the audit schema,
+    reset links, OOB codes, credentials/API keys, provider/endpoint bodies, raw Firebase responses, and
+    any free-form/unbounded text.
+  - This is the **only** new audit surface PRE-1 introduces. All **other** audit-coverage gaps (validation,
+    claim-conflict, replay, list access, etc.) remain **PRE-3's** scope and are untouched here. PRE-1 does
+    not weaken any existing sanitized summary.
+  - (Alternative, if the Owner defers even this audit to PRE-3: PRE-1 **implementation is then blocked
+    until PRE-3 lands**, because PRE-1 cannot leave an uncertain send either unaudited or falsely audited.
+    Recommended default is the minimal PRE-1-owned audit above.)
 - Emulator test evidence is sanitized (pass/fail, counts, states) → any evidence dir is created at test
   time; no secret is committed.
 
@@ -211,6 +263,16 @@ except where the Auth emulator is used. Required coverage:
   transport error → stage error, no stage persisted.
 - **Binding mismatch:** same key, different command `binding` (from a different `(actor,target,mode)`) →
   refused (fail closed); the sender does not persist the email to compensate.
+- **Operation reconciliation state (§6A):** the `in_progress → reconciliation_required` transition sets the
+  new status with a bounded `reason`, **no** `stages.send="sent"`; a `reconciliation_required` op is
+  **blocked** on same-key replay (side-effect-free, no resend); concurrency admits one writer;
+  stale-worker fencing holds; post-uncertain crash-recovery resume stays blocked; and prohibited rewrites
+  (`→ completed`, terminal overwrite, auto-retry) are refused. A malformed `reconciliation_required`
+  record fails closed (`MalformedOperationError`).
+- **Uncertainty audit atomicity (§7):** the uncertain transition **cannot** produce an `accepted` audit,
+  and the `reconciliation_required` transition **cannot** commit without its corresponding sanitized
+  `uncertain` audit; the audit contains only the allowed sanitized fields (no email/UID-beyond-schema/
+  link/code/credential/provider-body/raw-response/free-form text).
 - **Adapter-vs-injected:** follow the PRE-2/target-parity precedent — an Auth+Firestore emulator test of
   the **deployed** sender wiring (its `isConfigured()` attestation + dedupe reads/writes), not only
   injected fakes, so a wiring regression is caught. (The actual `sendOobCode` network call remains a
@@ -261,6 +323,8 @@ None of the following is opened by PRE-1; each requires its own separate Owner a
 | --- | --- | --- | --- |
 | D-PRE1-MECHANISM | Native send mechanism | (a) Function → Auth REST `accounts:sendOobCode`; (b) Trigger-Email extension; (c) client `sendPasswordResetEmail` | **(a)** — native, no provider (#54), server-governed/auditable |
 | D-PRE1-INTERFACE | Sender interface change | (a) three-state `outcome` return + command-supplied `binding` param; (b) keep boolean + `(targetUid,email,idempotencyKey)` | **(a)** — required to represent `uncertain` and to compare an authoritative binding without inferring authority fields |
+| D-PRE1-OPSTATE | Operation reconciliation state | (a) add one terminal status `reconciliation_required` (schema + `isValidOpRecord` + `claimOrResume` change; blocked, no `completed`, no rewrite/auto-retry, resolver-only); (b) reuse `failed` | **(a)** — `failed` is retryable and would risk a duplicate; the uncertain state must be distinctly blocked |
+| D-PRE1-AUDIT | Uncertain-audit ownership | (a) PRE-1 adds exactly one minimal sanitized `uncertain` audit, committed atomically with the transition; PRE-3 keeps all other coverage; (b) defer to PRE-3 (PRE-1 impl then blocked until PRE-3 lands) | **(a)** — an uncertain send must be neither unaudited nor falsely audited as accepted |
 | D-PRE1-UNCERTAIN | In-flight/crash outcome | (a) fail-closed: `uncertain` (never `accepted`), no `stages.send`, no "accepted" audit, op blocked for reconciliation, no auto-resend; (b) report accepted; (c) at-least-once auto-retry (may duplicate) | **(a)** — never a false `accepted`; never a silent duplicate |
 | D-PRE1-XKEY-RECON | Cross-key retry after `uncertain` | (a) require a separately authorized governed operator reconciliation that explicitly accepts the possible-duplicate-email risk; (b) allow a new key routinely | **(a)** — a new key can double-send if the first attempt reached Firebase; gate it behind reconciliation authority |
 | D-PRE1-STALE-RECLAIM | Reclaim a stuck `claimed`/`uncertain` record | (a) never auto-reclaim (resolve only via D-PRE1-XKEY-RECON); (b) auto-reclaim after a TTL | **(a)** — auto-reclaim reintroduces duplicate risk |
