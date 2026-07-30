@@ -51,6 +51,11 @@ implementing the `outbound` adapter; AUTH-PROD-1 execution.
 `OutboundNativeSend` (built at the enablement gate) **only when** its Secret Manager credential is present
 and valid. Nothing else in the command changes.
 
+**Reconciliation supporting the credential scoping (§4):** the native sender is wired **only** into
+`adminSdkDeps().nativeSend` (used by `initiateAdminPasswordReset`). `listResetEligibleUsers` is invoked with
+`actorAuthorizationDeps()` — it has **no** `nativeSend` and calls no sender at all. So the sender secret is
+needed **only** by `initiateAdminPasswordReset`; scoping it there (not to the list) matches the code.
+
 ---
 
 ## 3. Concrete `accounts:sendOobCode` adapter + configuration boundary
@@ -82,24 +87,31 @@ and valid. Nothing else in the command changes.
 - **Secret:** the Firebase Web API key (or a dedicated restricted key) used by `accounts:sendOobCode`,
   stored in **Google Secret Manager** — never in the repository, environment files committed to VCS, or
   client-readable config. **This document contains no secret value and never will.**
-- **Least-privilege access via a DEDICATED runtime identity (D-NSC-IDENTITY).** The two admin-reset
-  Functions MUST run under a **dedicated, user-managed runtime service account** assigned **only** to
-  `initiateAdminPasswordReset` + `listResetEligibleUsers` — **not** the shared default Functions service
-  account (a grant to the default SA would leak secret access to every function that uses it). The
-  `secretmanager.versions.access` grant on this one secret is scoped to **that dedicated SA only**, so no
-  unrelated workload can read it. In addition, the secret MUST be bound as a Firebase secret parameter
-  to **each of the two functions individually** (per-function `secrets:` binding), so only those two
-  functions receive it at runtime. If a dedicated identity cannot be used, an equivalent function-scoped
-  mechanism proving unrelated workloads cannot access the secret must be documented and reviewed before
-  wiring. Granted at the enablement gate, time-scoped/reviewed; no human reads it via this path.
-- **Rotation:** rotate by adding a new secret version and updating the Functions' bound version; the
-  adapter reads the bound version at cold start. Rotation never requires committing a value. A rotation
-  that yields an absent/invalid credential MUST leave the sender fail-closed (§5), not degraded-open.
-- **Rollback:** unbinding the secret (or setting `outbound` back to `null`, §6) returns the sender to the
-  fail-closed posture. Rollback requires no secret handling.
-- **Evidence (sanitized):** record secret **existence/version id/binding** and access-grant attestations —
-  **never** the secret value, key material, or any OOB code/link/email. Evidence → the AUTH-PROD evidence
-  location at the execution gate.
+- **Secret scoped to the SENDING function ONLY (D-NSC-IDENTITY / D-NSC-SECRET-SCOPE).** Only
+  `initiateAdminPasswordReset` calls the native sender; `listResetEligibleUsers` performs candidate
+  discovery and **never** sends. Therefore:
+  - The Web API key secret MUST be bound (per-function `secrets:` binding) to **`initiateAdminPasswordReset`
+    only** — **not** to `listResetEligibleUsers`.
+  - `initiateAdminPasswordReset` runs under a **dedicated, user-managed runtime service account** (NOT the
+    shared default Functions SA); `secretmanager.versions.access` on this one secret is granted to **that SA
+    only**, so no other workload — including `listResetEligibleUsers` — can read it.
+  - `listResetEligibleUsers` is deployed **without** the sender secret and **without** any identity that can
+    read it. If the list callable needs a dedicated runtime identity for other resources, it uses a
+    **separate** least-privilege SA with **no** sender-secret grant.
+  - If a dedicated identity cannot be used, an equivalent function-scoped mechanism proving that
+    `listResetEligibleUsers` (and every unrelated workload) cannot access the secret must be documented and
+    reviewed before wiring. Granted at the enablement gate, time-scoped/reviewed; no human reads it via this path.
+- **Rotation:** rotate by adding a new secret version and updating the bound version on
+  `initiateAdminPasswordReset`; the adapter reads the bound version at cold start. Rotation never touches
+  `listResetEligibleUsers`, never requires committing a value, and a rotation that yields an absent/invalid
+  credential MUST leave the sender fail-closed (§5), not degraded-open.
+- **Rollback:** unbinding the secret from `initiateAdminPasswordReset` (or setting `outbound` back to
+  `null`, §6) returns the sender to the fail-closed posture. Rollback requires no secret handling and does
+  not affect `listResetEligibleUsers`.
+- **Evidence (sanitized):** record secret **existence/version id/binding (initiate-only)**, the dedicated
+  SA identity, and an attestation that **`listResetEligibleUsers` cannot read the secret** — **never** the
+  secret value, key material, or any OOB code/link/email. Evidence → the AUTH-PROD evidence location at the
+  execution gate.
 
 ---
 
@@ -131,6 +143,9 @@ and valid. Nothing else in the command changes.
 ## 7. Exact Functions deployment bundle + prohibitions (deployment is a later gate)
 
 - **Bundle = exactly two callables:** `initiateAdminPasswordReset` + `listResetEligibleUsers`. Nothing else.
+  Only `initiateAdminPasswordReset` is deployed with the sender secret binding + the dedicated
+  secret-access runtime identity; `listResetEligibleUsers` is deployed **without** the secret and **without**
+  a secret-reading identity (§4).
 - **Prohibited in the same deploy:** any other Function; Hosting; Firestore Rules; indexes; any AUTH-PR-4 /
   Inventory / Equipment artifact. No `firebase deploy` without `--only functions:initiateAdminPasswordReset,functions:listResetEligibleUsers`
   (exact target list) at the enablement/AUTH-PROD-2/3 gate.
@@ -152,6 +167,10 @@ and valid. Nothing else in the command changes.
   dedupe state machine and the config-validation gate — they do **not** prove the deployed callable, the
   dedicated runtime identity, the secret binding, or real-endpoint acceptance. Those are proven only by the
   post-deployment end-to-end D-PROD-1C (§11).
+- **Least-privilege attestation (required at the deploy gate):** a deployment test/attestation MUST prove
+  `listResetEligibleUsers` cannot read the sender secret — e.g. the deployed `listResetEligibleUsers` has no
+  `secrets:` binding for it and its runtime SA lacks `secretmanager.versions.access` on it, while
+  `initiateAdminPasswordReset` has both. A list function able to read the secret is a halt condition (§9).
 
 ---
 
@@ -160,8 +179,9 @@ and valid. Nothing else in the command changes.
 Halt and report (do not proceed) if: the target project cannot be confirmed or mismatches the secret; the
 secret is absent, unreadable, or fails non-sending validation at wiring time (stay fail-closed);
 `isConfigured()` would return true without a structurally + project-valid config (§3); the secret is
-readable by anything beyond the dedicated two-function runtime identity; the deploy target is anything
-beyond the two callables; a real send is attempted before deployment or outside D-PROD-1C; any secret
+bound to `listResetEligibleUsers`, or readable by `listResetEligibleUsers`'s runtime identity, or by
+anything beyond the dedicated `initiateAdminPasswordReset`-only secret-access identity; the deploy target is
+anything beyond the two callables; a real send is attempted before deployment or outside D-PROD-1C; any secret
 value, OOB code, link, or email would be logged or committed; or `admin.credentialReset.initiate` is found
 active or granted.
 
@@ -186,7 +206,8 @@ secret binding, and production wiring) — a pre-deployment send could not. The 
 2. **Sender-adapter implementation (repository-only):** build the `outbound` adapter + non-sending
    validation + emulator tests (outbound faked). Repo-only; no secret, no send.
 3. **D-NATIVE-SEND-CONFIG execution (separate):** provision the Secret Manager secret + the dedicated
-   runtime identity + per-function binding; the adapter passes non-sending validation (§3) so
+   secret-access identity bound to **`initiateAdminPasswordReset` only** (`listResetEligibleUsers` gets
+   neither the secret nor a secret-reading identity); the adapter passes non-sending validation (§3) so
    `isConfigured()` is structurally/project-valid. Still **no** send.
 4. **D-PROD-1B (bounded fixtures):** provision the disposable test personas.
 5. **Narrowly-authorized deployment (AUTH-PROD-2/3):** deploy the exact two-Function bundle with the bound
@@ -209,7 +230,8 @@ Each step is a **separate** Owner authorization; this package opens none of them
 | D-NSC-ENDPOINT | Native send mechanism | (a) Function → Auth REST `accounts:sendOobCode` (PASSWORD_RESET); (b) any external/provider path | **(a)** — native, no provider (#54), matches PRE-1/D-DELIVERY-NATIVE |
 | D-NSC-KEY | Credential | (a) dedicated **restricted** Web API key in Secret Manager; (b) reuse the general Web API key | **(a)** — least privilege, revocable/rotatable without wider impact |
 | D-NSC-KEY-STORE | Secret location | (a) Google Secret Manager, per-function secret binding, least-privilege; (b) env/config | **(a)** — never in repo/client-readable config |
-| D-NSC-IDENTITY | Runtime identity for secret access | (a) dedicated user-managed SA assigned only to the two admin-reset functions (or an equivalent proven function-scoped mechanism); (b) shared default Functions SA | **(a)** — a default-SA grant leaks the secret to unrelated functions |
+| D-NSC-SECRET-SCOPE | Which functions receive the sender secret | (a) `initiateAdminPasswordReset` ONLY (it alone sends); `listResetEligibleUsers` gets neither the secret nor a secret-reading identity; (b) both admin-reset functions | **(a)** — the list function never sends; binding it the secret needlessly widens the credential boundary |
+| D-NSC-IDENTITY | Runtime identity for secret access | (a) dedicated user-managed SA assigned only to `initiateAdminPasswordReset` (or an equivalent proven function-scoped mechanism); list uses a separate SA with no sender-secret grant; (b) shared default / shared-across-both SA | **(a)** — a default or shared SA leaks the secret to unrelated / non-sending functions |
 | D-NSC-VALIDATION | Meaning of `isConfigured()===true` | (a) non-sending validation only (secret present/well-formed, project ownership, API restrictions, enabled state); send acceptance unverified until D-PROD-1C; (b) claim send-verified at construction | **(a)** — construction cannot prove Firebase will accept a send |
 | D-NSC-SEQUENCE | Deploy vs first real send | (a) deploy the two-function bundle, THEN D-PROD-1C end-to-end verifies the deployed callable, THEN broader enablement; (b) real send before deployment | **(a)** — a pre-deployment send cannot verify the deployed callable/identity/binding |
 | D-NSC-ROTATION | Rotation model | (a) add version + rebind at deploy; invalid/absent ⇒ fail-closed; (b) hot-swap without fail-closed guard | **(a)** — rotation can never degrade-open |
@@ -233,9 +255,9 @@ ungranted**; the deployed sender **remains `outbound:null` / fail-closed** until
 - [ ] Owner decisions §12 ratified (or amended) — _pending_
 - [ ] **D-PROD-1A** read-only preflight (confirms fail-closed) — _pending, separate authorization_
 - [ ] Sender-adapter implementation + non-sending validation + emulator coverage (repository-only, outbound faked) — _pending_
-- [ ] D-NATIVE-SEND-CONFIG execution: Secret Manager secret + dedicated runtime identity + per-function binding + non-sending-validated wiring — _pending, separate authorization_
+- [ ] D-NATIVE-SEND-CONFIG execution: Secret Manager secret bound to `initiateAdminPasswordReset` ONLY + its dedicated secret-access identity (list gets neither) + non-sending-validated wiring — _pending, separate authorization_
 - [ ] **D-PROD-1B** bounded fixtures — _pending, separate authorization_
-- [ ] Narrowly-authorized deployment (AUTH-PROD-2/3): the exact two-Function bundle with bound secret + dedicated identity — _pending, separate authorization_
+- [ ] Narrowly-authorized deployment (AUTH-PROD-2/3): the exact two-Function bundle; secret binding + dedicated identity on `initiateAdminPasswordReset` only; attestation that `listResetEligibleUsers` cannot read the secret — _pending, separate authorization_
 - [ ] **D-PROD-1C** end-to-end real-send verification against the DEPLOYED callable (first real `sendOobCode`) — _pending, separate authorization_
 - [ ] Broader enablement (permission activation/grant) — _pending, separate authorization_
 
