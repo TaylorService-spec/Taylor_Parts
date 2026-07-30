@@ -9,6 +9,7 @@ import fs from "node:fs";
 import {
   buildPartsCatalogRows,
   nameBySkuFromRows,
+  resolveCanonicalPartNames,
   isCatalogBlocked,
   partCatalogRoute,
   CATALOG_STATES,
@@ -226,6 +227,53 @@ check("purity: same inputs -> deep-equal output; inputs not mutated", () => {
 });
 check("CATALOG_STATES enumerates exactly the produced statuses", () => {
   assert.deepEqual([...CATALOG_STATES].sort(), ["BLOCKED_INCOMPLETE_INPUT", "BLOCKED_PERMISSION", "BLOCKED_UNAVAILABLE", "READY"].sort());
+});
+
+// ---- OD-3: resolveCanonicalPartNames (PartsManagerHome / PartsAssociateHome name resolution) --------
+check("resolveCanonicalPartNames READY: namesReady, 190 canonical names, a known partId maps to its canonical name", () => {
+  const r = resolveCanonicalPartNames({ canonicalRead: OK(), staticCatalog: STATIC });
+  assert.equal(r.namesReady, true);
+  assert.equal(r.status, "READY");
+  assert.equal(r.nameBySku.size, 190);
+  const first = CANONICAL[0];
+  assert.equal(r.nameBySku.get(first.partId), first.name);
+});
+check("resolveCanonicalPartNames (decision #2): STATIC_ONLY_EXCLUDED sku is NOT in the map -> caller degrades to partId; static name never surfaced", () => {
+  const r = resolveCanonicalPartNames({ canonicalRead: OK(), staticCatalog: STATIC });
+  for (const sku of APPROVED_STATIC_ONLY_EXCLUSIONS) {
+    assert.equal(r.nameBySku.has(sku), false);
+    // the static catalog DOES carry a name for these skus; prove we did not leak it
+    const staticName = STATIC.find((s) => s.sku === sku)?.name;
+    assert.ok(staticName);
+    assert.notEqual(r.nameBySku.get(sku), staticName);
+  }
+});
+check("resolveCanonicalPartNames: a partId absent from canonical entirely is not in the map", () => {
+  const r = resolveCanonicalPartNames({ canonicalRead: OK(), staticCatalog: STATIC });
+  assert.equal(r.nameBySku.has("TST-0000-NONEXISTENT"), false);
+});
+check("resolveCanonicalPartNames fails closed on PERMISSION_DENIED / UNAVAILABLE / incomplete -> namesReady false, empty map", () => {
+  for (const canonicalRead of [{ status: "PERMISSION_DENIED" }, { status: "UNAVAILABLE" }, { status: "WHAT" }, {}]) {
+    const r = resolveCanonicalPartNames({ canonicalRead, staticCatalog: STATIC });
+    assert.equal(r.namesReady, false);
+    assert.equal(r.nameBySku.size, 0);
+  }
+});
+check("resolveCanonicalPartNames fails closed on invalid / malformed-invalid canonical documents -> empty map, no leak", () => {
+  const nonEmpty = resolveCanonicalPartNames({ canonicalRead: { ...OK(), invalid: [{ partId: "TST-1001", secretField: "raw-value" }] }, staticCatalog: STATIC });
+  assert.equal(nonEmpty.namesReady, false);
+  assert.equal(nonEmpty.nameBySku.size, 0);
+  const malformed = resolveCanonicalPartNames({ canonicalRead: { ...OK(), invalid: "nope" }, staticCatalog: STATIC });
+  assert.equal(malformed.namesReady, false);
+  assert.equal(malformed.nameBySku.size, 0);
+  // nothing in either result carries the raw invalid content
+  const dump = JSON.stringify([...nonEmpty.nameBySku.entries()]) + JSON.stringify([...malformed.nameBySku.entries()]);
+  assert.equal(dump.includes("raw-value"), false);
+  assert.equal(dump.includes("secretField"), false);
+});
+check("resolveCanonicalPartNames: every map value is a canonical name string (no null/object leakage)", () => {
+  const r = resolveCanonicalPartNames({ canonicalRead: OK(), staticCatalog: STATIC });
+  for (const v of r.nameBySku.values()) assert.equal(typeof v, "string");
 });
 
 console.log(`\n${passed} passed, 0 failed`);

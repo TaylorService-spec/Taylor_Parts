@@ -180,6 +180,32 @@ export function nameBySkuFromRows(rows) {
   return map;
 }
 
+/**
+ * OD-3 -- governed canonical NAME resolution for the reorder-request/purchasing
+ * surfaces (PartsManagerHome, PartsAssociateHome) that resolve a partId -> display
+ * name but render NO catalog list. Reuses the exact shared governed path
+ * (fetchPartMasterList -> composeGovernedPartsWorkspace via buildPartsCatalogRows ->
+ * nameBySkuFromRows), so it fails closed on any denied/unavailable/incomplete/invalid
+ * canonical read (namesReady:false, empty map) and never leaks raw invalid documents.
+ *
+ * Decision #2 (Owner, 2026-07-30): names come ONLY from CANONICAL_MATCH rows. A sku
+ * with no canonical row -- an approved STATIC_ONLY_EXCLUDED part or any partId absent
+ * from canonical -- is deliberately EXCLUDED from the map so the caller degrades it to
+ * the raw partId; the static-catalog name (carried on STATIC_ONLY_EXCLUDED rows as a
+ * STATIC_FALLBACK value) is never presented as canonical.
+ *
+ * @param {object} input  { canonicalRead: {status, rows?, invalid?}, staticCatalog }
+ * @returns {{ namesReady: boolean, status: string, nameBySku: Map<string,string> }}
+ */
+export function resolveCanonicalPartNames(input = {}) {
+  const { status, rows } = buildPartsCatalogRows(input);
+  if (status !== "READY") {
+    return { namesReady: false, status, nameBySku: new Map() };
+  }
+  const canonicalMatchRows = rows.filter((r) => r.identityState === "CANONICAL_MATCH");
+  return { namesReady: true, status, nameBySku: nameBySkuFromRows(canonicalMatchRows) };
+}
+
 /** True when the status is any BLOCKED_* state. */
 export function isCatalogBlocked(status) {
   return status === "BLOCKED_PERMISSION" || status === "BLOCKED_UNAVAILABLE" || status === "BLOCKED_INCOMPLETE_INPUT";

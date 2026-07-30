@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from "react";
-import { getCatalogItem } from "../../data/partsCatalog";
 import { useAuth } from "../../auth/AuthContext";
+import { useCanonicalPartNames } from "../../hooks/useCanonicalPartNames";
 import { useInventoryLedger } from "../../hooks/useInventoryLedger";
 import { useReorderRequestsByStatus, useReorderRequestsByStatuses, useReviewedRequestsHistory } from "../../hooks/useReorderRequests";
 import { useAssignableEmployees } from "../../hooks/useAssignableEmployees";
@@ -48,12 +48,12 @@ function resolveAssigneeDisplayFromAssignable(userId, employeesByUserId) {
   return employeesByUserId.get(userId)?.displayName ?? "Unknown assignee";
 }
 
-function AssignPanel({ request, onAssigned, onClose }) {
+function AssignPanel({ request, resolveName, onAssigned, onClose }) {
   const [selectedEmployeeId, setSelectedEmployeeId] = useState("");
   const [assignedToUserId, setAssignedToUserId] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
-  const partName = getCatalogItem(request.partId)?.name ?? request.partId;
+  const partName = resolveName(request.partId);
 
   function handleEmployeeSelect(employee) {
     setSelectedEmployeeId(employee.employeeId);
@@ -112,6 +112,9 @@ const OVERSIGHT_STATUSES = [REORDER_REQUEST_STATUS.ASSIGNED_TO_PARTS_ASSOCIATE, 
 
 export default function PartsManagerHome() {
   const { user } = useAuth();
+  // OD-3: canonical part-name resolution (fail-closed; degrades to raw partId, never
+  // the static-catalog name). Does not gate any operational table below.
+  const { resolveName, namesUnavailable } = useCanonicalPartNames({ uid: user?.uid });
   const { healthEntries, loading: healthLoading, error: healthError } = useInventoryLedger();
   const { data: queue, loading: queueLoading } = useReorderRequestsByStatus(REORDER_REQUEST_STATUS.READY_FOR_PARTS_MANAGER);
   const { data: oversight, loading: oversightLoading, error: oversightError } = useReorderRequestsByStatuses(OVERSIGHT_STATUSES);
@@ -147,6 +150,10 @@ export default function PartsManagerHome() {
     <div className="fo-panel">
       <WorkspaceHeader title="Parts Manager" />
 
+      {namesUnavailable && (
+        <p className="fo-muted" role="status">Some part names are unavailable; Part IDs are shown.</p>
+      )}
+
       <p className="fo-muted">
         Parts ranked by urgency, from the same analytics used by the Operations dashboard's Inventory Health panel.
         Read-only -- Reorder Requests for these analytics-computed recommendations are submitted by Purchasing, not
@@ -181,7 +188,7 @@ export default function PartsManagerHome() {
           <tbody>
             {queue.map((request) => (
               <tr key={request.id}>
-                <td>{getCatalogItem(request.partId)?.name ?? request.partId}</td>
+                <td>{resolveName(request.partId)}</td>
                 <td>{getDisplayQty(request)}</td>
                 <td>
                   {request.urgency ? (
@@ -194,7 +201,7 @@ export default function PartsManagerHome() {
                 <td>
                   <button
                     type="button"
-                    aria-label={`Assign ${getCatalogItem(request.partId)?.name ?? request.partId}`}
+                    aria-label={`Assign ${resolveName(request.partId)}`}
                     onClick={(e) => {
                       lastTriggerRef.current = e.currentTarget;
                       setAssigningRequestId(request.id);
@@ -212,6 +219,7 @@ export default function PartsManagerHome() {
       {assigningRequest && (
         <AssignPanel
           request={assigningRequest}
+          resolveName={resolveName}
           onAssigned={handleCloseAssignPanel}
           onClose={handleCloseAssignPanel}
         />
@@ -243,7 +251,7 @@ export default function PartsManagerHome() {
               <tbody>
                 {oversight.map((request) => (
                   <tr key={request.id}>
-                    <td>{getCatalogItem(request.partId)?.name ?? request.partId}</td>
+                    <td>{resolveName(request.partId)}</td>
                     <td>{getDisplayQty(request)}</td>
                     <td>
                       {request.urgency ? (
@@ -288,7 +296,7 @@ export default function PartsManagerHome() {
             <tbody>
               {history.map((request) => (
                 <tr key={request.id}>
-                  <td>{getCatalogItem(request.partId)?.name ?? request.partId}</td>
+                  <td>{resolveName(request.partId)}</td>
                   <td>{getDisplayQty(request)}</td>
                   <td className="fo-muted">{HISTORY_STATUS_LABEL[request.status] ?? request.status}</td>
                   <td className="fo-muted">{request.createdAt ? new Date(request.createdAt).toLocaleString() : "—"}</td>
