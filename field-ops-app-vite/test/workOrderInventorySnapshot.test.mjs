@@ -61,4 +61,21 @@ check("snapshotPartUnit: valid recorded unit else the neutral 'unit(s)'", () => 
   assert.equal(snapshotPartUnit({}), "unit(s)");
 });
 
+// ---- whitespace-only treated as missing; valid strings returned UNCHANGED (Codex P2) --------
+check("snapshotPartName: whitespace-only name is MISSING -> SKU; a valid name is returned unchanged (not trimmed)", () => {
+  assert.equal(snapshotPartName({ name: "   ", sku: "TST-9001" }), "TST-9001");
+  assert.equal(snapshotPartName({ name: "\t\n ", sku: "TST-9001" }), "TST-9001");
+  assert.equal(snapshotPartName({ name: "  Hex Coupler  ", sku: "TST-9001" }), "  Hex Coupler  "); // unchanged
+});
+check("snapshotPartSku: whitespace-only sku is MISSING -> ''", () => {
+  assert.equal(snapshotPartSku({ sku: "   " }), "");
+  assert.equal(snapshotPartName({ name: "  ", sku: "  " }), ""); // both whitespace -> ""
+});
+check("snapshotPartCategory / snapshotPartUnit: whitespace-only -> neutral fallback; valid returned unchanged", () => {
+  assert.equal(snapshotPartCategory({ category: "   " }), "—");
+  assert.equal(snapshotPartCategory({ category: "  Valves  " }), "  Valves  ");
+  assert.equal(snapshotPartUnit({ unit: "   " }), "unit(s)");
+  assert.equal(snapshotPartUnit({ unit: "  each  " }), "  each  ");
+});
+
 console.log(`\n${passed} passed, 0 failed`);

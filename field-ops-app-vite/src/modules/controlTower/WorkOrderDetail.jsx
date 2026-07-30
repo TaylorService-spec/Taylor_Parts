@@ -2,7 +2,7 @@ import { computeWorkOrderSignalFromDoc } from "../../domain/workOrderScoring";
 import { buildTimeline } from "../../domain/timelineBuilder";
 import { describeEvent } from "../../domain/eventModel";
 import { EVENT_ICON } from "../../domain/eventTypes";
-import { snapshotPartName, snapshotPartCategory, snapshotPartUnit } from "../../domain/workOrderInventorySnapshot";
+import { snapshotPartName, snapshotPartSku, snapshotPartCategory, snapshotPartUnit } from "../../domain/workOrderInventorySnapshot";
 import WorkOrderActions from "./WorkOrderActions";
 
 // Work Order Engine v1.2 (Epic 1, see docs/architecture/ADR-002):
@@ -105,14 +105,16 @@ export default function WorkOrderDetail({ workOrder, jobs, role, technicians, cu
             <strong>Planned Parts:</strong>
             {workOrder.inventorySnapshot
               .filter((item) => item.qtyPlanned)
-              .map((item) => {
+              .map((item, idx) => {
                 // Snapshot-authoritative: name/category/unit come from the Work Order's own
-                // recorded inventorySnapshot -- NO catalog lookup. Missing/empty/malformed ->
-                // raw SKU (name) / "—" (category) / "unit(s)" (unit).
-                const displayName = snapshotPartName(item);
+                // recorded inventorySnapshot -- NO catalog lookup. Missing/empty/whitespace/
+                // malformed -> raw SKU (name) / "—" (category) / "unit(s)" (unit). All values
+                // placed into output go through the safe string projections so a malformed
+                // legacy sku (object/array) can never crash the view.
+                const sku = snapshotPartSku(item);
                 return (
-                  <div key={item.sku}>
-                    - {displayName} ({item.sku}, {snapshotPartCategory(item)}) &rarr; {item.qtyPlanned} {snapshotPartUnit(item)}
+                  <div key={sku || idx}>
+                    - {snapshotPartName(item)} ({sku}, {snapshotPartCategory(item)}) &rarr; {item.qtyPlanned} {snapshotPartUnit(item)}
                     {item.notes && <span className="fo-muted"> -- {item.notes}</span>}
                   </div>
                 );
@@ -124,8 +126,8 @@ export default function WorkOrderDetail({ workOrder, jobs, role, technicians, cu
             {workOrder.inventorySnapshot.some((item) => item.qtyUsed) ? (
               workOrder.inventorySnapshot
                 .filter((item) => item.qtyUsed)
-                .map((item) => (
-                  <div key={item.sku}>
+                .map((item, idx) => (
+                  <div key={snapshotPartSku(item) || idx}>
                     - {snapshotPartName(item)} &rarr; {item.qtyUsed}
                   </div>
                 ))

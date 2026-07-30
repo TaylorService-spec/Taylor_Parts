@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { assertPanelProps } from "../../../domain/controlTower/types";
-import { snapshotPartName } from "../../../domain/workOrderInventorySnapshot";
+import { snapshotPartName, snapshotPartSku } from "../../../domain/workOrderInventorySnapshot";
 
 // Epic 1.1 Inventory Visual Layer -- read-only, collapsible rollup of
 // planned parts demand across every currently-loaded Work Order's
@@ -26,10 +26,15 @@ export default function PartsOverviewPanel({ jobs, technicians, workOrders }) {
     workOrders.forEach((wo) => {
       (wo.inventorySnapshot ?? []).forEach((item) => {
         if (!item.qtyPlanned) return;
-        const existing = totals.get(item.sku) ?? { sku: item.sku, name: item.name, qtyPlanned: 0 };
+        // Aggregate by the SAFE string sku so a malformed legacy sku (object/array) can never
+        // become a Map key or reach React output. The raw recorded snapshot name is kept and
+        // resolved safely at render (snapshotPartName below); the first valid recorded name
+        // across Work Orders for a sku wins.
+        const sku = snapshotPartSku(item);
+        const existing = totals.get(sku) ?? { sku, name: item.name, qtyPlanned: 0 };
         existing.qtyPlanned += item.qtyPlanned;
         existing.name = existing.name || item.name;
-        totals.set(item.sku, existing);
+        totals.set(sku, existing);
       });
     });
 

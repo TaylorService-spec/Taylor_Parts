@@ -88,4 +88,26 @@ describe("Work Order snapshot-name cohort (OD-3)", () => {
     expect(text.includes("unit(s)")).toBe(true);
     noStaticLeak();
   });
+
+  it("malformed legacy sku (object / array) does not crash WorkOrderDetail or PartsOverviewPanel; safe projection, no [object Object]", () => {
+    const badSnapshot = [
+      { sku: { legacy: "obj" }, name: "RECORDED-OBJ", category: "Valves", unit: "each", qtyPlanned: 1, qtyUsed: 1 },
+      { sku: ["arr"], name: "  ", qtyPlanned: 2 }, // whitespace name + array sku -> both degrade
+    ];
+    // WorkOrderDetail
+    render(
+      <WorkOrderDetail
+        workOrder={{ id: "wo1", woNumber: "WO-1", status: "OPEN", priority: "HIGH", createdAt: 1, events: [], inventorySnapshot: badSnapshot }}
+        jobs={[]} role="dispatcher" technicians={[]} customerName="Acme" locationLabel="Site"
+      />
+    );
+    expect(document.body.textContent.includes("RECORDED-OBJ")).toBe(true);           // valid recorded name still shown
+    expect(document.body.textContent.includes("[object Object]")).toBe(false);       // malformed sku never rendered raw
+    cleanup();
+
+    // PartsOverviewPanel
+    render(<PartsOverviewPanel jobs={[]} technicians={[]} workOrders={[{ inventorySnapshot: badSnapshot }]} />);
+    expect(document.body.textContent.includes("RECORDED-OBJ")).toBe(true);
+    expect(document.body.textContent.includes("[object Object]")).toBe(false);
+  });
 });

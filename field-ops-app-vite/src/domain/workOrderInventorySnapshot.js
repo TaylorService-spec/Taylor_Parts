@@ -8,7 +8,10 @@
 // lookup (canonical or static) occurs. A missing, empty, or malformed snapshot value degrades
 // to the raw SKU (for the name) or a bounded neutral fallback (category "—", unit "unit(s)").
 
-const isNonEmptyString = (v) => typeof v === "string" && v.length > 0;
+// A snapshot value is "present" only if it is a string with at least one non-whitespace
+// character. Whitespace-only strings are treated as MISSING. The original string is returned
+// UNCHANGED by the resolvers below (we never trim/mutate a valid recorded value).
+const isNonEmptyString = (v) => typeof v === "string" && v.trim().length > 0;
 
 /** Display name for a snapshot item: the recorded snapshot name, else the raw SKU (never a
  * catalog name). Malformed/missing/empty name -> SKU; malformed/missing SKU -> "". */
