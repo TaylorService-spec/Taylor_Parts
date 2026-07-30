@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { getCatalogItem } from "../../data/partsCatalog";
+import { snapshotPartName } from "../../domain/workOrderInventorySnapshot";
 
 // Epic 6 Phase 6.1 -- reuses the same card shape/CSS classes as
 // modules/dispatcherBoard/WorkOrderQueue.jsx's cards (disp-wo-card,
@@ -46,7 +46,7 @@ function TechnicianWorkOrderCard({ workOrder, isSelected, onSelect }) {
       </div>
       {plannedParts.length > 0 && (
         <div className="fo-muted">
-          Parts planned: {plannedParts.map((item) => item.name || getCatalogItem(item.sku)?.name || item.sku).join(", ")}
+          Parts planned: {plannedParts.map((item) => snapshotPartName(item)).join(", ")}
         </div>
       )}
     </div>

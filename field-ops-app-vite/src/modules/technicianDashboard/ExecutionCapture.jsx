@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { getCatalogItem } from "../../data/partsCatalog";
+import { snapshotPartName } from "../../domain/workOrderInventorySnapshot";
 import { updateWorkOrderExecutionData } from "../../services/workOrderService";
 
 // Epic 6 Phase 6.3 -- Field Execution Capture UI. This is NOT lifecycle
@@ -75,8 +75,9 @@ export default function ExecutionCapture({ workOrder }) {
           <p className="fo-muted">No planned parts on this Work Order.</p>
         ) : (
           plannedParts.map((item) => {
-            const catalogEntry = getCatalogItem(item.sku);
-            const displayName = item.name || catalogEntry?.name || item.sku;
+            // Snapshot-authoritative name (recorded on the Work Order) -- no catalog lookup;
+            // missing/empty/malformed -> raw SKU.
+            const displayName = snapshotPartName(item);
             const qtyUsed = item.qtyUsed ?? 0;
             const busy = submittingSku === item.sku;
             return (

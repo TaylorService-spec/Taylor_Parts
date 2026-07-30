@@ -2,7 +2,7 @@ import { computeWorkOrderSignalFromDoc } from "../../domain/workOrderScoring";
 import { buildTimeline } from "../../domain/timelineBuilder";
 import { describeEvent } from "../../domain/eventModel";
 import { EVENT_ICON } from "../../domain/eventTypes";
-import { getCatalogItem } from "../../data/partsCatalog";
+import { snapshotPartName, snapshotPartCategory, snapshotPartUnit } from "../../domain/workOrderInventorySnapshot";
 import WorkOrderActions from "./WorkOrderActions";
 
 // Work Order Engine v1.2 (Epic 1, see docs/architecture/ADR-002):
@@ -106,13 +106,13 @@ export default function WorkOrderDetail({ workOrder, jobs, role, technicians, cu
             {workOrder.inventorySnapshot
               .filter((item) => item.qtyPlanned)
               .map((item) => {
-                const catalogEntry = getCatalogItem(item.sku);
-                const displayName = item.name || catalogEntry?.name || item.sku;
+                // Snapshot-authoritative: name/category/unit come from the Work Order's own
+                // recorded inventorySnapshot -- NO catalog lookup. Missing/empty/malformed ->
+                // raw SKU (name) / "—" (category) / "unit(s)" (unit).
+                const displayName = snapshotPartName(item);
                 return (
                   <div key={item.sku}>
-                    - {displayName} ({item.sku}
-                    {catalogEntry?.category ? `, ${catalogEntry.category}` : item.category ? `, ${item.category}` : ""}
-                    ) &rarr; {item.qtyPlanned} {catalogEntry?.unit ?? "unit(s)"}
+                    - {displayName} ({item.sku}, {snapshotPartCategory(item)}) &rarr; {item.qtyPlanned} {snapshotPartUnit(item)}
                     {item.notes && <span className="fo-muted"> -- {item.notes}</span>}
                   </div>
                 );
@@ -126,7 +126,7 @@ export default function WorkOrderDetail({ workOrder, jobs, role, technicians, cu
                 .filter((item) => item.qtyUsed)
                 .map((item) => (
                   <div key={item.sku}>
-                    - {item.name || getCatalogItem(item.sku)?.name || item.sku} &rarr; {item.qtyUsed}
+                    - {snapshotPartName(item)} &rarr; {item.qtyUsed}
                   </div>
                 ))
             ) : (

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { assertPanelProps } from "../../../domain/controlTower/types";
-import { getCatalogItem } from "../../../data/partsCatalog";
+import { snapshotPartName } from "../../../domain/workOrderInventorySnapshot";
 
 // Epic 1.1 Inventory Visual Layer -- read-only, collapsible rollup of
 // planned parts demand across every currently-loaded Work Order's
@@ -52,7 +52,7 @@ export default function PartsOverviewPanel({ jobs, technicians, workOrders }) {
           ) : (
             aggregated.map(({ sku, name, qtyPlanned }) => (
               <div key={sku}>
-                {name || getCatalogItem(sku)?.name || sku} ({sku}) &times;{qtyPlanned} (Planned)
+                {snapshotPartName({ name, sku })} ({sku}) &times;{qtyPlanned} (Planned)
               </div>
             ))
           )}
