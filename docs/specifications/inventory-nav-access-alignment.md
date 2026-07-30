@@ -68,6 +68,18 @@ An Employee whose security `role` is `technician` but who holds an `ACTIVE`, eli
 - **A new "Reorder Work"/"Inventory Health"/"Parts Catalog" top-level page restructuring** (the Issue #154 Assessment's "Live-page architecture finding," adopted as a future direction for the *existing* `admin`/`dispatcher` page) -- unrelated to and untouched by this Specification's three new, separate surfaces.
 - **Live, mid-session propagation of role/employment-status changes.** § "Fail-closed behavior" below defines the exact, deliberate behavior instead -- this is a resolved design decision, not a deferred one, but it is not "live sync."
 
+## Post-merge refinement (2026-07-29) -- WarehouseManagerHome canonical Parts Catalog cutover
+
+This Specification's role surfaces were designed against the static `PARTS_CATALOG` for their catalog/health lists (§1/§2), because at spec time only the shadow-parity diagnostic read canonical `parts`. Since then the INV-CONVERGENCE-E C1 (PartsList) and C2 (PartDetail) cutovers merged and C2 deployed to production (DECISIONS #49/#50), making canonical `parts` the authoritative identity/metadata source for those surfaces via the shared `services/partMasterQueries.fetchPartMasterList` -> `domain/partsCatalogView.buildPartsCatalogRows` composition (static demoted to a governed `STATIC_FALLBACK` input, never a parallel source of truth).
+
+Owner-authorized 2026-07-29, this refinement brings the **WarehouseManagerHome** Parts Catalog LIST onto that same canonical-first path (new pure `domain/warehouseManagerCatalogView.js` wrapping `buildPartsCatalogRows`). It **supersedes** the "reuses ... the static `PARTS_CATALOG`" language for WarehouseManagerHome's catalog list specifically. Fail-closed: a denied/unavailable/incomplete canonical read renders a blocked banner, never the static 200 presented as canonical. Repository-only: the WAREHOUSE_MANAGER canonical `parts` read Rule is already merged AND deployed (DECISIONS #50 persona confirmation) -- this refinement adds **no** Rules/permission/index/deployment change, retires **nothing**, and preserves all Part IDs, the Inventory Health / Needs Planning sections, and every reused hook.
+
+**Remaining static-catalog consumers (OD-3 -- inventoried here, DEFERRED to a separate later convergence phase; NOT changed by this gate):**
+- Role surfaces still reading static `PARTS_CATALOG` / `getCatalogItem` as primary: `modules/inventoryRole/PartsManagerHome.jsx`, `modules/inventoryRole/PartsAssociateHome.jsx`.
+- ~11 further direct `getCatalogItem()` consumers: `analytics/operationsIntelligenceService.ts`, `domain/inventoryAnalyticsEngine.ts`, `shared/ui/NotificationPanel.jsx`, `modules/controlTower/WorkOrderDetail.jsx` + `panels/PartsOverviewPanel.jsx`, `modules/operations/panels/{ExecutionInsightsPanel,InventoryHealthPanel,ProcurementPanel,WarehousePanel}.jsx`, `modules/technicianDashboard/{ExecutionCapture,TechnicianWorkOrderCard}.jsx`, plus `modules/operations/Operations.jsx` (`PARTS_CATALOG.length`).
+- `partsShadowParityReaders.js` (Stage A diagnostic static provider) -- intentionally static.
+- Static-catalog RETIREMENT (deleting `data/partsCatalog.ts`) remains Phase F: not safe and not authorized while these hard consumers exist; additionally blocked by DECISIONS #45 (UD-3 physical-on-hand ledger) and excluded by #49.
+
 ## Technical design
 
 ### Reciprocal linkage and the canonical eligibility helper
