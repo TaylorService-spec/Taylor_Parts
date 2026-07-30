@@ -213,6 +213,12 @@ function renderSubnavItem(domain, item, role, operationalContext) {
   if (domain.key === "administration" && (item.key === "permissionPreview" || item.key === "auditLogs")) {
     return <AdministrationUnavailable title={item.label} />;
   }
+  // Operations owns the canonical part-name read for its dashboard panels; accessVersion
+  // is threaded so that read re-runs and its name map is invalidated on any access change
+  // (same convention as PartDetail / the inventoryRole surfaces).
+  if (item.legacyKey === "operations") {
+    return <Operations accessVersion={operationalContext?.accessVersion} />;
+  }
   if (item.legacyKey) {
     const Component = LEGACY_COMPONENTS[item.legacyKey];
     return <Component />;
