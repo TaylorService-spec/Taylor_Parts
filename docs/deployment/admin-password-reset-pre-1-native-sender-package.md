@@ -224,22 +224,34 @@ state-machine change** (D-PRE1-OPSTATE), not merely prose behavior — it change
 - The dedupe record stores only non-secret control fields (§4) — never the email/link/code.
 - **Audit boundary (D-PRE1-AUDIT — coherent, resolves the prior §6/§7 contradiction).** PRE-1 adds
   **exactly one** minimal, sanitized audit outcome required by its new `reconciliation_required`
-  transition — so an uncertain send is **never** recorded as acceptance. Specifically:
-  - The command writes a single sanitized `deliverAdminPasswordReset` **uncertain/possibly-sent** audit
-    (a new bounded outcome), written **atomically with** the `in_progress → reconciliation_required`
-    transition (§6A) — the transition MUST NOT commit without its audit, and the audit MUST NOT claim
-    acceptance.
-  - **Allowed sanitized fields only:** `actorUid`, `targetType`/`targetId`, `action`, the bounded
-    `outcome` (`uncertain`), the bounded `reason` enum (e.g. `uncertain_send`), `scope`, and timestamp.
-    **Prohibited:** email addresses, UIDs beyond the actor/target identifiers already in the audit schema,
-    reset links, OOB codes, credentials/API keys, provider/endpoint bodies, raw Firebase responses, and
-    any free-form/unbounded text.
+  transition — so an uncertain send is **never** recorded as acceptance. The merged shared contract
+  currently permits only `AuditOutcome = "applied" | "denied"` and the writer **rejects** any other value
+  at runtime (`auditEventWriter.ts:241-242`); an `"uncertain"` outcome therefore requires an **intentional
+  shared-contract extension**, named here and included in G-PRE1-IMPL (§9):
+  - **Extend `AuditOutcome` with `"uncertain"` in BOTH mirrored type files** — `functions/src/types/
+    access.ts` (:239) and `field-ops-app-vite/src/types/access.ts` (:196) — kept byte-for-byte in sync.
+  - **Update the writer's runtime allowed-outcome validation** (`auditEventWriter.ts:241-242`) to accept
+    `"uncertain"` alongside `applied`/`denied`.
+  - **Atomicity:** stage the uncertain audit through the **transaction-aware writer**
+    (`stageAuditEvent`, `auditEventWriter.ts:386`) **inside the same Firestore transaction** that sets
+    `reconciliation_required` (§6A) — commit both or neither. A **standalone** post-transition audit call
+    (`recordStandaloneAuditEvent`, currently used by the command's `audit()` helper) is **prohibited** for
+    this path (it cannot be atomic with the transition).
+  - **Consumer safety:** existing audit consumers (`listRecentAuditEvents`, reporting/read paths) must
+    continue to handle `applied`/`denied` unchanged and treat an unknown/`uncertain` outcome safely
+    (never crash, never coerce it to `applied`); proven by regression tests.
+  - **Allowed sanitized fields only:** `actorUid`, `targetType`/`targetId`, `action`, `outcome`
+    (`uncertain`), a bounded `reason` enum (e.g. `uncertain_send`), `scope`, and timestamp. **Prohibited:**
+    email addresses, UIDs beyond the actor/target identifiers already in the audit schema, reset links,
+    OOB codes, credentials/API keys, provider/endpoint bodies, raw Firebase responses, and any
+    free-form/unbounded text.
   - This is the **only** new audit surface PRE-1 introduces. All **other** audit-coverage gaps (validation,
     claim-conflict, replay, list access, etc.) remain **PRE-3's** scope and are untouched here. PRE-1 does
     not weaken any existing sanitized summary.
-  - (Alternative, if the Owner defers even this audit to PRE-3: PRE-1 **implementation is then blocked
-    until PRE-3 lands**, because PRE-1 cannot leave an uncertain send either unaudited or falsely audited.
-    Recommended default is the minimal PRE-1-owned audit above.)
+  - **Alternative (if the Owner defers even this audit to PRE-3):** PRE-1 **implementation is then blocked
+    until PRE-3 lands** — PRE-1 cannot leave an uncertain send either unaudited or falsely audited, and
+    cannot emit `"uncertain"` while the shared contract rejects it. Recommended default is the minimal
+    PRE-1-owned contract extension + atomic audit above.
 - Emulator test evidence is sanitized (pass/fail, counts, states) → any evidence dir is created at test
   time; no secret is committed.
 
@@ -269,10 +281,15 @@ except where the Auth emulator is used. Required coverage:
   stale-worker fencing holds; post-uncertain crash-recovery resume stays blocked; and prohibited rewrites
   (`→ completed`, terminal overwrite, auto-retry) are refused. A malformed `reconciliation_required`
   record fails closed (`MalformedOperationError`).
-- **Uncertainty audit atomicity (§7):** the uncertain transition **cannot** produce an `accepted` audit,
-  and the `reconciliation_required` transition **cannot** commit without its corresponding sanitized
-  `uncertain` audit; the audit contains only the allowed sanitized fields (no email/UID-beyond-schema/
-  link/code/credential/provider-body/raw-response/free-form text).
+- **Uncertainty audit atomicity + contract (§7):** the uncertain transition **cannot** produce an
+  `accepted`/`applied` audit; the `reconciliation_required` transition **cannot** commit without its
+  sanitized `uncertain` audit and the audit **cannot** commit without the transition (both staged via
+  `stageAuditEvent` in one transaction; the standalone path is not used). The audit contains only the
+  allowed sanitized fields (no email/UID-beyond-schema/link/code/credential/provider-body/raw-response/
+  free-form text). **Mirror-integrity:** `functions/src/types/access.ts` and `field-ops-app-vite/src/types/
+  access.ts` `AuditOutcome` stay identical (both include `"uncertain"`). **Runtime-writer:** the writer
+  accepts `"uncertain"` and still rejects unknown outcomes. **Regression:** existing consumers keep
+  handling `applied`/`denied` and treat `uncertain` safely.
 - **Adapter-vs-injected:** follow the PRE-2/target-parity precedent — an Auth+Firestore emulator test of
   the **deployed** sender wiring (its `isConfigured()` attestation + dedupe reads/writes), not only
   injected fakes, so a wiring regression is caught. (The actual `sendOobCode` network call remains a
@@ -285,8 +302,14 @@ except where the Auth emulator is used. Required coverage:
 
 None of the following is opened by PRE-1; each requires its own separate Owner authorization:
 
-- **G-PRE1-IMPL** (repository/emulator-only): implement the sender + dedupe + tests per this package;
-  independent Codex review; merge. Still no deployment/activation.
+- **G-PRE1-IMPL** (repository/emulator-only): implement the sender + dedupe + the `reconciliation_required`
+  op state + the `"uncertain"` audit contract + tests per this package; independent Codex review; merge.
+  Still no deployment/activation. **Files/contracts affected:** `functions/src/access/
+  adminCredentialCommands.ts` (op state machine, `OP_STATUSES`, `isValidOpRecord`, `claimOrResume`,
+  three-state `sendReset`, atomic transition+audit), `functions/src/access/adminCredentialCallables.ts`
+  (concrete sender + command-computed `binding`), `functions/src/access/auditEventWriter.ts` (allowed-outcome
+  validation), `functions/src/types/access.ts` **and** `field-ops-app-vite/src/types/access.ts`
+  (`AuditOutcome` += `"uncertain"`, mirrored), a new dedupe collection, and the emulator/unit tests in §8.
 - **Config prerequisites (later, separate):** provision the `sendOobCode` credential/API key via
   **Secret Manager** (never in the repo, never in client-readable config), least-privilege, and the
   Firebase Auth email template/sender identity. This is D-PRE1-APIKEY and belongs to the AUTH-PROD
@@ -324,7 +347,7 @@ None of the following is opened by PRE-1; each requires its own separate Owner a
 | D-PRE1-MECHANISM | Native send mechanism | (a) Function → Auth REST `accounts:sendOobCode`; (b) Trigger-Email extension; (c) client `sendPasswordResetEmail` | **(a)** — native, no provider (#54), server-governed/auditable |
 | D-PRE1-INTERFACE | Sender interface change | (a) three-state `outcome` return + command-supplied `binding` param; (b) keep boolean + `(targetUid,email,idempotencyKey)` | **(a)** — required to represent `uncertain` and to compare an authoritative binding without inferring authority fields |
 | D-PRE1-OPSTATE | Operation reconciliation state | (a) add one terminal status `reconciliation_required` (schema + `isValidOpRecord` + `claimOrResume` change; blocked, no `completed`, no rewrite/auto-retry, resolver-only); (b) reuse `failed` | **(a)** — `failed` is retryable and would risk a duplicate; the uncertain state must be distinctly blocked |
-| D-PRE1-AUDIT | Uncertain-audit ownership | (a) PRE-1 adds exactly one minimal sanitized `uncertain` audit, committed atomically with the transition; PRE-3 keeps all other coverage; (b) defer to PRE-3 (PRE-1 impl then blocked until PRE-3 lands) | **(a)** — an uncertain send must be neither unaudited nor falsely audited as accepted |
+| D-PRE1-AUDIT | Uncertain-audit ownership + shared-contract extension | (a) extend `AuditOutcome` with `"uncertain"` in both mirrored `types/access.ts` files + the writer's runtime validation, and stage the audit atomically via `stageAuditEvent` in the reconciliation_required transaction (standalone path prohibited); PRE-3 keeps all other coverage; (b) reuse an existing outcome (rejected — neither `applied` nor `denied` is truthful for uncertain); (c) defer to PRE-3 (PRE-1 impl then blocked until PRE-3 lands) | **(a)** — the shared schema rejects a new outcome today, so it must be intentionally extended; uncertain must be neither unaudited, falsely `applied`, nor non-atomic |
 | D-PRE1-UNCERTAIN | In-flight/crash outcome | (a) fail-closed: `uncertain` (never `accepted`), no `stages.send`, no "accepted" audit, op blocked for reconciliation, no auto-resend; (b) report accepted; (c) at-least-once auto-retry (may duplicate) | **(a)** — never a false `accepted`; never a silent duplicate |
 | D-PRE1-XKEY-RECON | Cross-key retry after `uncertain` | (a) require a separately authorized governed operator reconciliation that explicitly accepts the possible-duplicate-email risk; (b) allow a new key routinely | **(a)** — a new key can double-send if the first attempt reached Firebase; gate it behind reconciliation authority |
 | D-PRE1-STALE-RECLAIM | Reclaim a stuck `claimed`/`uncertain` record | (a) never auto-reclaim (resolve only via D-PRE1-XKEY-RECON); (b) auto-reclaim after a TTL | **(a)** — auto-reclaim reintroduces duplicate risk |
