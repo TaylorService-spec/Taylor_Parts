@@ -18,10 +18,10 @@
 
 - Window size: **127 commits**, ~20 merged PRs across Inventory, Customer/Auth, Equipment, and Reporting/Platform lanes.
 - `081df750` is a **direct ancestor** of `1f76f84` (linear-forward; a `1f76f84` build strictly adds to the baseline, reverts nothing that is on the baseline).
-- **Shipping runtime source files changed = 16** (files that compile into the SPA bundle; excludes tests, CI, docs).
+- **Shipping runtime source files changed = 18** (files that compile into the SPA bundle; excludes tests, CI, docs). Breakdown: Inventory 5 + Customer/Auth 5 + Equipment 6 + shared frontend infrastructure 2 = **18**.
 - **Not shipping:** `package.json` / `package-lock.json` changed **dev-tooling only** (`@testing-library/*`, `jsdom`, `vitest`, added `test:components` script and test-list entries). The production dependency block (`firebase`, `react`, `react-dom`, `react-router-dom`) is **unchanged** — no runtime dependency enters the bundle from this delta.
 
-### Lane classification of the 16 shipping runtime files
+### Lane classification of the 18 shipping runtime files
 
 | Lane | Files | Driving PR(s) |
 |---|---|---|
@@ -36,19 +36,19 @@
 
 ## 3. Intervening Hosting deployments after the C2 evidence
 
-**None.** Every governance entry after DECISIONS #50 (#51 Equipment architecture, #52/#53 AUTH-PR-4 production identity-mutation *(Functions/Auth, not frontend Hosting)*, #54/#55/#56 Customer password-reset roadmap/authority/design, #57 WMH cutover, #58 C1/C2) is **repository-only** and each explicitly states "**not deployed**" and/or "**merge ≠ deployment**", with hard-stops before any Hosting deployment. No committed deployment-evidence directory records a **frontend Hosting** release after `081df750`:
+**No later frontend Hosting deployment is recorded or proven by repository evidence.** This assessment inspected only committed governance and evidence; it did **not** access production and therefore cannot assert as fact that none occurred — only that the repository records none. Every governance entry after DECISIONS #50 (#51 Equipment architecture, #52/#53 AUTH-PR-4 production identity-mutation *(Functions/Auth, not frontend Hosting)*, #54/#55/#56 Customer password-reset roadmap/authority/design, #57 WMH cutover, #58 C1/C2) is **repository-only** and each explicitly states "**not deployed**" and/or "**merge ≠ deployment**", with hard-stops before any Hosting deployment. No committed deployment-evidence directory records a **frontend Hosting** release after `081df750`:
 
 - `docs/audits/inv-convergence-e-c1-hosting-deploy/` and `…-c2-hosting-deploy/` — the C1 and C2 frontend deploys (≤ `081df750`).
 - `docs/audits/firestore-deployment-verification-20260727/`, `…/f-rules-1/d2-rules-deployment/` — **Rules** deploys, not frontend.
 - `docs/audits/inv-convergence-e-stage-a/deployment/` — the Stage-A diagnostic deploy (≤ C2).
 
-**Conclusion:** no later frontend change is proven live. The Customer/Auth (AUTH-UI-2/3, AUTH-PR-3.5) and Equipment (D3/D4/D6) runtime changes in the window have **never been released to Hosting**.
+**Conclusion (repository-evidence-bounded):** no later frontend Hosting deployment is **recorded or proven by repository evidence**; on that evidence the Customer/Auth (AUTH-UI-2/3, AUTH-PR-3.5) and Equipment (D3/D4/D6) runtime changes in the window are **not recorded as released to Hosting**. `081df750` therefore remains the **expected** baseline. Because no production inspection was performed, an **authorized read-only production check must establish the actual current live baseline before any deployment gate** — this assessment does not, and cannot, prove the live state.
 
 ## 4. Monolithic-bundle impact
 
 Firebase Hosting for this project serves the **complete built SPA** (`vite build` → `dist/` → content-hashed JS/CSS chunks + `index.html`), published wholesale via `firebase deploy --only hosting`. **Hosting does not deploy selected source files** — it publishes whatever the build compiled from the working tree at build time.
 
-Therefore a build from `1f76f84` compiles and makes live **all 16 shipping runtime changes at once**, including:
+Therefore a build from `1f76f84` compiles and makes live **all 18 shipping runtime changes at once**, including:
 
 - **Customer/Auth:** the admin password-reset client/domain/view state and the `AdminUsers.jsx` reset action (AUTH-UI-3 wires a reset control into the admin surface; AUTH-PR-3.5's Firebase-native reset path and `permissionCatalog` entry are compiled in). DECISIONS #56 states production use of admin password reset **remains blocked until separately authorized**; the permission is registered **inactive** with **no role grants**.
 - **Equipment:** the D3/D4 pure compatibility/model domains and the D6 Part Detail "Used In Equipment" section (`UsedInEquipmentSection.jsx` + `equipmentCompatibilitySource.js`), described at merge as **INERT / repository-only**.
