@@ -453,7 +453,9 @@ export default function App() {
       <BrowserRouter basename={ROUTER_BASENAME}>
         <div className="fo-app">
           {IS_DEMO && <div className="fo-demo-banner">DEMO MODE ACTIVE (SAFE - NO WRITES TO PRODUCTION)</div>}
-          <AppHeader />
+          {/* accessVersion threaded so AppHeader's one canonical part-name read re-runs and its
+              name map is invalidated on any access change (governs NotificationPanel names). */}
+          <AppHeader accessVersion={operationalContext?.accessVersion} />
           <AppShell role={role} allowedLegacyKeys={allowedLegacyKeys} operationalContext={operationalContext}>
             <AppRoutes role={role} allowedLegacyKeys={allowedLegacyKeys} operationalContext={operationalContext} />
           </AppShell>

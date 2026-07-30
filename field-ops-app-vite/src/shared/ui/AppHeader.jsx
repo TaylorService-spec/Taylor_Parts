@@ -1,6 +1,7 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
+import { useCanonicalPartNames } from "../../hooks/useCanonicalPartNames";
 import { useReorderRequests, useReorderRequestsByStatus, useReorderRequestsAssignedTo } from "../../hooks/useReorderRequests";
 import { REORDER_REQUEST_STATUS } from "../../domain/constants";
 import NotificationPanel from "./NotificationPanel";
@@ -31,7 +32,7 @@ const previewHasPermission = createPermissionPreviewer(resolveEffectivePermissio
 // broadcast notification (like "Ready for Parts Manager", not
 // per-user like "Assigned to You"): PURCHASING_IN_PROGRESS requests,
 // notifying the Parts Manager that purchasing has begun.
-export default function AppHeader() {
+export default function AppHeader({ accessVersion } = {}) {
   const { user, role, logout } = useAuth();
   // Issue #226 Row 16 -- presentation-only permission preview (Spec sec8/
   // sec12: never authoritative, UI visibility stays convenience only).
@@ -40,6 +41,18 @@ export default function AppHeader() {
   // navPermissionPreview.js's own doc comment.
   const canSeeReorderRequests = previewHasPermission("reorder.request.read.queue", role, {
     fallback: role === "admin" || role === "dispatcher",
+  });
+  // OD-3: one canonical part-name read for the whole header, threaded as `resolveName` into
+  // NotificationPanel (never an independent read per notification). ENABLED only when the role
+  // can see reorder notifications -- a technician/unauthorized role never triggers a canonical
+  // `parts` read (no permission-denied read for someone who has no read access and no panel).
+  // Fail-closed: a denied/unavailable/incomplete/invalid read (or the disabled state) degrades
+  // names to the raw partId (never the static-catalog name). `accessVersion` is threaded from
+  // App so a same-UID access change re-runs the read and invalidates the prior name map.
+  const { resolveName } = useCanonicalPartNames({
+    uid: user?.uid,
+    accessVersion,
+    enabled: canSeeReorderRequests,
   });
   const { data: pendingReorderRequests } = useReorderRequests(canSeeReorderRequests);
   const { data: partsManagerRequests } = useReorderRequestsByStatus(
@@ -86,6 +99,7 @@ export default function AppHeader() {
             partsManagerRequests={partsManagerRequests}
             assignedToYouRequests={assignedToYouRequests}
             purchasingStartedRequests={purchasingStartedRequests}
+            resolveName={resolveName}
           />
         )}
         <span className="fo-appheader-email">{user?.email}</span>

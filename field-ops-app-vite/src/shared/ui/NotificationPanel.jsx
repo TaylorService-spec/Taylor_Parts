@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { getCatalogItem } from "../../data/partsCatalog";
 
 // Sprint 2.1.3 -- Reorder Request & Notification Foundation. Minimal
 // (Version 0.1) notification experience: Header -> Notification Panel
@@ -41,14 +40,14 @@ import { getCatalogItem } from "../../data/partsCatalog";
 // produced this notification instead of "whichever request for this
 // part happens to be newest" -- which could silently be a different,
 // terminal request for the same part.
-function NotificationItem({ request, onNavigate }) {
+function NotificationItem({ request, resolveName, onNavigate }) {
   return (
     <Link
       to={`/inventory/${request.partId}?requestId=${request.id}`}
       className="fo-notification-panel-item"
       onClick={onNavigate}
     >
-      <span>{getCatalogItem(request.partId)?.name ?? request.partId}</span>
+      <span>{resolveName(request.partId)}</span>
       {request.urgency ? (
         <span className={`fo-badge fo-badge-${request.urgency.toLowerCase()}`}>{request.urgency}</span>
       ) : (
@@ -63,6 +62,10 @@ export default function NotificationPanel({
   partsManagerRequests = [],
   assignedToYouRequests = [],
   purchasingStartedRequests = [],
+  // OD-3: governed canonical partId -> name resolver supplied by AppHeader (one shared read).
+  // Defaults to the raw partId so this presentational component NEVER falls back to a static
+  // name and never crashes if a caller omits it -- fail-closed by construction.
+  resolveName = (partId) => partId,
 }) {
   const [open, setOpen] = useState(false);
   const total =
@@ -84,7 +87,7 @@ export default function NotificationPanel({
                 <>
                   <p className="fo-notification-panel-section">Pending Review</p>
                   {requests.map((request) => (
-                    <NotificationItem key={request.id} request={request} onNavigate={close} />
+                    <NotificationItem key={request.id} request={request} resolveName={resolveName} onNavigate={close} />
                   ))}
                 </>
               )}
@@ -92,7 +95,7 @@ export default function NotificationPanel({
                 <>
                   <p className="fo-notification-panel-section">Ready for Parts Manager</p>
                   {partsManagerRequests.map((request) => (
-                    <NotificationItem key={request.id} request={request} onNavigate={close} />
+                    <NotificationItem key={request.id} request={request} resolveName={resolveName} onNavigate={close} />
                   ))}
                 </>
               )}
@@ -100,7 +103,7 @@ export default function NotificationPanel({
                 <>
                   <p className="fo-notification-panel-section">Assigned to You</p>
                   {assignedToYouRequests.map((request) => (
-                    <NotificationItem key={request.id} request={request} onNavigate={close} />
+                    <NotificationItem key={request.id} request={request} resolveName={resolveName} onNavigate={close} />
                   ))}
                 </>
               )}
@@ -108,7 +111,7 @@ export default function NotificationPanel({
                 <>
                   <p className="fo-notification-panel-section">Purchasing Started</p>
                   {purchasingStartedRequests.map((request) => (
-                    <NotificationItem key={request.id} request={request} onNavigate={close} />
+                    <NotificationItem key={request.id} request={request} resolveName={resolveName} onNavigate={close} />
                   ))}
                 </>
               )}

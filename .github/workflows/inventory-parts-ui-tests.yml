@@ -53,6 +53,10 @@ on:
       - "field-ops-app-vite/src/modules/technicianDashboard/TechnicianWorkOrderCard.jsx"
       - "field-ops-app-vite/test/workOrderInventorySnapshot.test.mjs"
       - "field-ops-app-vite/test/workOrderSnapshotNames.test.jsx"
+      - "field-ops-app-vite/src/shared/ui/NotificationPanel.jsx"
+      - "field-ops-app-vite/src/shared/ui/AppHeader.jsx"
+      - "field-ops-app-vite/test/notificationPanelNames.test.jsx"
+      - "field-ops-app-vite/test/appHeaderNotificationNames.test.jsx"
       - ".github/workflows/inventory-parts-ui-tests.yml"
   push:
     branches: [main]
@@ -99,6 +103,10 @@ on:
       - "field-ops-app-vite/src/modules/technicianDashboard/TechnicianWorkOrderCard.jsx"
       - "field-ops-app-vite/test/workOrderInventorySnapshot.test.mjs"
       - "field-ops-app-vite/test/workOrderSnapshotNames.test.jsx"
+      - "field-ops-app-vite/src/shared/ui/NotificationPanel.jsx"
+      - "field-ops-app-vite/src/shared/ui/AppHeader.jsx"
+      - "field-ops-app-vite/test/notificationPanelNames.test.jsx"
+      - "field-ops-app-vite/test/appHeaderNotificationNames.test.jsx"
       - ".github/workflows/inventory-parts-ui-tests.yml"
   workflow_dispatch:
 
