@@ -16,15 +16,15 @@ import { resolveCanonicalPartNames } from "../domain/partsCatalogView";
 // caller's operational tables (reorder queue, oversight, history, purchasing) are NOT
 // this hook's concern and must keep rendering regardless.
 //
-// Staleness guard (Owner decision #3): the canonical `parts` read is GLOBAL catalog
-// data -- identical for every authorized viewer, not scoped to a user, access version,
-// or a specific request -- so a late resolve cannot present access-inappropriate data;
-// a revoked read simply returns PERMISSION_DENIED and degrades to partIds. Even so, we
-// never let a stale async result apply: each run takes a monotonically increasing token
-// and a per-run cancel flag, so only the latest in-flight read for the current mount is
-// applied, and a resolve after unmount or after `uid` changes is dropped. The optional
-// `accessVersion` is included in the reset key so that if a caller ever threads it, an
-// access-version change re-runs the read as well.
+// Staleness guard (Owner decision #3): the canonical `parts` DATA is global, but the
+// PERMISSION to read and keep displaying it is not -- a same-UID role/claims/accessVersion
+// change must not leave previously loaded canonical names on screen. The effect is keyed
+// on BOTH `uid` and `accessVersion` (threaded from App), so any access change re-runs the
+// read and resets the name map to LOADING (prior names become unrenderable immediately,
+// before the replacement read settles). A denied replacement read then degrades to raw
+// partIds + the bounded notice. Each run also takes a monotonically increasing token and a
+// per-run cancel flag, so a stale completion from a prior uid/accessVersion (or after
+// unmount) is dropped and can never overwrite the current state.
 export function useCanonicalPartNames({ uid, accessVersion } = {}) {
   const [canonicalRead, setCanonicalRead] = useState({ status: "LOADING" });
   const tokenRef = useRef(0);

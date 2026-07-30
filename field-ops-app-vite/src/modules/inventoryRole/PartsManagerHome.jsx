@@ -110,11 +110,13 @@ const HISTORY_STATUS_LABEL = {
 
 const OVERSIGHT_STATUSES = [REORDER_REQUEST_STATUS.ASSIGNED_TO_PARTS_ASSOCIATE, REORDER_REQUEST_STATUS.PURCHASING_IN_PROGRESS];
 
-export default function PartsManagerHome() {
+export default function PartsManagerHome({ accessVersion } = {}) {
   const { user } = useAuth();
   // OD-3: canonical part-name resolution (fail-closed; degrades to raw partId, never
-  // the static-catalog name). Does not gate any operational table below.
-  const { resolveName, namesUnavailable } = useCanonicalPartNames({ uid: user?.uid });
+  // the static-catalog name). Does not gate any operational table below. `accessVersion`
+  // is threaded from App so an access change re-runs the read and invalidates the prior
+  // name map before the replacement read settles.
+  const { resolveName, namesUnavailable } = useCanonicalPartNames({ uid: user?.uid, accessVersion });
   const { healthEntries, loading: healthLoading, error: healthError } = useInventoryLedger();
   const { data: queue, loading: queueLoading } = useReorderRequestsByStatus(REORDER_REQUEST_STATUS.READY_FOR_PARTS_MANAGER);
   const { data: oversight, loading: oversightLoading, error: oversightError } = useReorderRequestsByStatuses(OVERSIGHT_STATUSES);
