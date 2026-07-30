@@ -257,15 +257,35 @@ ok("link: reciprocal but malformed (non-string) employmentStatus -> null (deny)"
 });
 
 // -- PRE-1: AuditOutcome mirror integrity (both governed type files identical) --
+const HERE = dirname(fileURLToPath(import.meta.url)); // functions/test
+const FN_ACCESS = readFileSync(join(HERE, "../src/types/access.ts"), "utf8");
+const APP_ACCESS = readFileSync(join(HERE, "../../field-ops-app-vite/src/types/access.ts"), "utf8");
 ok("AuditOutcome is byte-identical across both mirrors and includes 'uncertain'", () => {
-  const here = dirname(fileURLToPath(import.meta.url)); // functions/test
-  const fnLine = readFileSync(join(here, "../src/types/access.ts"), "utf8")
-    .split("\n").find((l) => l.includes("export type AuditOutcome"));
-  const appLine = readFileSync(join(here, "../../field-ops-app-vite/src/types/access.ts"), "utf8")
-    .split("\n").find((l) => l.includes("export type AuditOutcome"));
+  const fnLine = FN_ACCESS.split("\n").find((l) => l.includes("export type AuditOutcome"));
+  const appLine = APP_ACCESS.split("\n").find((l) => l.includes("export type AuditOutcome"));
   assert.ok(fnLine && appLine, "both mirrors declare AuditOutcome");
   assert.strictEqual(fnLine.trim(), appLine.trim(), "AuditOutcome mirrors must be identical");
   assert.match(fnLine, /"uncertain"/, "AuditOutcome must include 'uncertain'");
+});
+
+// -- PRE-3: AuditAction is functions-authoritative; the app is an intentional subset --
+// Extract the AuditAction union block from a source file.
+function auditActionBlock(src) {
+  const start = src.indexOf("export type AuditAction");
+  const end = src.indexOf(";", start);
+  return src.slice(start, end);
+}
+ok("functions AuditAction includes listResetEligibleUsers + the server-only admin-reset actions", () => {
+  const fn = auditActionBlock(FN_ACCESS);
+  for (const a of ["listResetEligibleUsers", "initiateAdminPasswordReset", "deliverAdminPasswordReset", "revokeUserSessions"]) {
+    assert.match(fn, new RegExp(`"${a}"`), `functions AuditAction must include ${a}`);
+  }
+});
+ok("frontend AuditAction is a subset: NO server-only admin-reset actions (incl. listResetEligibleUsers)", () => {
+  const app = auditActionBlock(APP_ACCESS);
+  for (const a of ["listResetEligibleUsers", "initiateAdminPasswordReset", "deliverAdminPasswordReset", "revokeUserSessions"]) {
+    assert.doesNotMatch(app, new RegExp(`"${a}"`), `frontend AuditAction must NOT include the server-only action ${a}`);
+  }
 });
 
 console.log(`\n${passed} passed`);

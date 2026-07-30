@@ -375,6 +375,19 @@ async function audit(actorUid: string, targetUid: string, action: AuditAction, o
   await recordStandaloneAuditEvent({ actorUid, action, targetType: TARGET_TYPE, targetId: targetUid, outcome, summary, scope: GLOBAL_SCOPE });
 }
 
+// PRE-3 (D-PRE3-AUDIT-DURABILITY): a DENIAL stays authoritative even if its audit
+// cannot be persisted. This best-effort helper records the sanitized denial and, on
+// audit-write failure, surfaces the failure to server-side telemetry ONLY -- it never
+// throws, never blocks the denial, and never leaks the reason to the caller.
+async function auditDenial(actorUid: string, targetUid: string, action: AuditAction, summary: string): Promise<void> {
+  try {
+    await recordStandaloneAuditEvent({ actorUid, action, targetType: TARGET_TYPE, targetId: targetUid, outcome: "denied", summary, scope: GLOBAL_SCOPE });
+  } catch (e) {
+    // Telemetry only -- the denial remains authoritative.
+    console.error("admin-reset denial audit failed (denial remains authoritative)", { action, error: (e as Error)?.message });
+  }
+}
+
 function isFiniteNumber(v: unknown): v is number {
   return typeof v === "number" && Number.isFinite(v);
 }
@@ -556,15 +569,15 @@ export async function initiateAdminPasswordReset(input: InitiateAdminPasswordRes
   try {
     await assertActorAuthorized(actorUid, deps);
   } catch (err) {
-    await audit(actorUid, targetUid, "initiateAdminPasswordReset", "denied", `Denied: actor not authorized (mode ${mode}).`);
+    await auditDenial(actorUid, targetUid, "initiateAdminPasswordReset", `Denied: actor not authorized (mode ${mode}).`);
     throw err;
   }
   if (actorUid === targetUid) {
-    await audit(actorUid, targetUid, "initiateAdminPasswordReset", "denied", "Denied: self-reset via admin tool is not permitted.");
+    await auditDenial(actorUid, targetUid, "initiateAdminPasswordReset", "Denied: self-reset via admin tool is not permitted.");
     throw new ProtectedAccountError("Use self-service password recovery to reset your own password.");
   }
   if (!deps.nativeSend.isConfigured()) {
-    await audit(actorUid, targetUid, "deliverAdminPasswordReset", "denied", "Denied: native reset send not configured; no Auth side effect performed.");
+    await auditDenial(actorUid, targetUid, "deliverAdminPasswordReset", "Denied: native reset send not configured; no Auth side effect performed.");
     throw new DeliveryUnavailableError("Password reset send is not configured.");
   }
 
@@ -573,13 +586,13 @@ export async function initiateAdminPasswordReset(input: InitiateAdminPasswordRes
   try {
     facts = await deps.resolveTargetFacts(targetUid);
   } catch {
-    await audit(actorUid, targetUid, "initiateAdminPasswordReset", "denied", "Denied: target eligibility lookup error.");
+    await auditDenial(actorUid, targetUid, "initiateAdminPasswordReset", "Denied: target eligibility lookup error.");
     throw new AdminResetStageError("target eligibility lookup failed");
   }
   const verdict = evaluateTargetEligibility(facts, actorUid, targetUid);
   if (verdict.disposition === "protected") {
     // Visible refusal (self already handled above; here: final-active-admin).
-    await audit(actorUid, targetUid, "initiateAdminPasswordReset", "denied", `Denied: protected target (${verdict.category}).`);
+    await auditDenial(actorUid, targetUid, "initiateAdminPasswordReset", `Denied: protected target (${verdict.category}).`);
     throw new ProtectedAccountError("This account is protected and cannot be reset from the admin tool.");
   }
   if (verdict.disposition === "neutral-ineligible") {
@@ -590,7 +603,20 @@ export async function initiateAdminPasswordReset(input: InitiateAdminPasswordRes
   }
 
   // --- Eligible: idempotent, lease-bound native send ------------------------
-  const claim = await claimOrResume(key, actorUid, targetUid, mode);
+  // PRE-3 (D-PRE3-CONFLICT): audit the security-relevant claim denials
+  // (key-conflict, malformed op record) as best-effort denials; in-progress /
+  // retry-cooldown are intentionally NOT audited (benign, D-PRE3-BENIGN).
+  let claim: ClaimResult;
+  try {
+    claim = await claimOrResume(key, actorUid, targetUid, mode);
+  } catch (err) {
+    if (err instanceof OperationKeyConflictError) {
+      await auditDenial(actorUid, targetUid, "initiateAdminPasswordReset", "Denied: idempotency key bound to a different request.");
+    } else if (err instanceof MalformedOperationError) {
+      await auditDenial(actorUid, targetUid, "initiateAdminPasswordReset", "Denied: malformed operation record.");
+    }
+    throw err;
+  }
   // replay (completed) or blocked (reconciliation_required) -> side-effect-free neutral.
   if (claim.action === "replay" || claim.action === "blocked") return NEUTRAL_ACCEPTED;
   const { attempt, stages } = claim;
@@ -681,6 +707,29 @@ export interface ListResetEligibleUsersInput {
   actorUid: string;
   limit?: number;
 }
+// PRE-3: optional injectable audit sinks (default to the module writers). Tests inject
+// FAILING sinks to prove fail-closed access (no rows) + denial-authoritative behavior.
+export interface ListResetAuditDeps {
+  recordAccessAudit?: (actorUid: string) => Promise<void>;
+  recordDenialAudit?: (actorUid: string) => Promise<void>;
+}
+// Governed list access/denial events are scope-level (no per-target identity).
+const LIST_ACCESS_TARGET_TYPE = "adminCredentialReset";
+const LIST_ACCESS_TARGET_ID = "reset-eligible-candidates";
+async function defaultListAccessAudit(actorUid: string): Promise<void> {
+  await recordStandaloneAuditEvent({
+    actorUid, action: "listResetEligibleUsers", targetType: LIST_ACCESS_TARGET_TYPE,
+    targetId: LIST_ACCESS_TARGET_ID, outcome: "applied",
+    summary: "Listed admin-reset candidates (access; no identities, no count).", scope: GLOBAL_SCOPE,
+  });
+}
+async function defaultListDenialAudit(actorUid: string): Promise<void> {
+  await recordStandaloneAuditEvent({
+    actorUid, action: "listResetEligibleUsers", targetType: LIST_ACCESS_TARGET_TYPE,
+    targetId: LIST_ACCESS_TARGET_ID, outcome: "denied",
+    summary: "Denied: not authorized to list admin-reset candidates.", scope: GLOBAL_SCOPE,
+  });
+}
 function clampLimit(limit: number | undefined): number {
   if (limit === undefined) return DEFAULT_LIST_LIMIT;
   if (typeof limit !== "number" || !Number.isInteger(limit) || limit < 1 || limit > MAX_LIST_LIMIT) {
@@ -690,13 +739,24 @@ function clampLimit(limit: number | undefined): number {
 }
 export async function listResetEligibleUsers(
   input: ListResetEligibleUsersInput,
-  deps: ActorAuthorizationDeps,
+  deps: ActorAuthorizationDeps & ListResetAuditDeps,
 ): Promise<ResetEligibleUser[]> {
   assertNonEmptyString(input.actorUid, "actorUid");
-  await assertActorAuthorized(input.actorUid, deps);
-  const limit = clampLimit(input.limit);
+  try {
+    await assertActorAuthorized(input.actorUid, deps);
+  } catch (err) {
+    // PRE-3 (D-PRE3-AUDIT-DURABILITY): best-effort denial audit; the denial stays
+    // authoritative even if its audit cannot be persisted.
+    try {
+      await (deps.recordDenialAudit ?? defaultListDenialAudit)(input.actorUid);
+    } catch (e) {
+      console.error("list denial audit failed (denial remains authoritative)", { error: (e as Error)?.message });
+    }
+    throw err;
+  }
+  const limit = clampLimit(input.limit); // validation: NOT audited (D-PRE3-VALIDATION)
   const snap = await db().collection(USERS_COLLECTION).limit(limit).get();
-  return Promise.all(
+  const users = await Promise.all(
     snap.docs.map(async (doc) => {
       const data = doc.data() as { displayName?: unknown; role?: unknown; employeeId?: unknown };
       // Resolve the GOVERNED reciprocal link (Firestore only): read the exact
@@ -727,4 +787,12 @@ export async function listResetEligibleUsers(
       };
     }),
   );
+  // PRE-3 (D-PRE3-AUDIT-DURABILITY): AUDIT BEFORE RETURN, fail closed. If the access
+  // audit cannot be committed, return NO rows (a sanitized error), never the candidates.
+  try {
+    await (deps.recordAccessAudit ?? defaultListAccessAudit)(input.actorUid);
+  } catch {
+    throw new AdminResetStageError("could not record list-access audit");
+  }
+  return users;
 }

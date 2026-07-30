@@ -234,6 +234,13 @@ export type AuditAction =
   // path -- no parallel audit system.
   | "initiateAdminPasswordReset"
   | "deliverAdminPasswordReset"
+  // "listResetEligibleUsers" (PRE-3, G-PRE3-IMPL): governed access event for the
+  // reset-candidate listing -- attribution only (actor/action/outcome/scope/time),
+  // no identities, no result count. AuditAction is FUNCTIONS-AUTHORITATIVE: this and
+  // the other server-only admin-reset actions intentionally do NOT appear in the
+  // field-ops-app-vite AuditAction consumer subset (only AuditOutcome is mirrored
+  // byte-identically). D-PRE3-ACTION option (a).
+  | "listResetEligibleUsers"
   | "revokeUserSessions";
 
 // "uncertain" (PRE-1, G-PRE1-IMPL): a native reset send whose outcome could not be

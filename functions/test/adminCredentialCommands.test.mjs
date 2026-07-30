@@ -419,6 +419,62 @@ async function main() {
     assert.strictEqual(byUid[noempid].hasEmployeeLink, false, "no employeeId -> false");
   });
 
+  // -- PRE-3: list access + denial audits --------------------------------------
+  const listAuditCount = async (outcome) => {
+    const s = await db.collection(AUDIT).where("action", "==", "listResetEligibleUsers").get();
+    return s.docs.filter((d) => d.data().outcome === outcome).length;
+  };
+  await okAsync("list success -> a listResetEligibleUsers/applied access audit is written before rows", async () => {
+    const before = await listAuditCount("applied");
+    const rows = await listResetEligibleUsers({ actorUid: ADMIN, limit: 5 }, makeDeps().deps);
+    assert.ok(Array.isArray(rows));
+    assert.strictEqual(await listAuditCount("applied"), before + 1, "exactly one access audit per successful list");
+  });
+  await okAsync("list denial -> a listResetEligibleUsers/denied audit is written; still throws", async () => {
+    const before = await listAuditCount("denied");
+    await assert.rejects(
+      listResetEligibleUsers({ actorUid: TECH }, makeDeps({ actor: actorFacts({ isAdmin: false }) }).deps),
+      (e) => e instanceof UnauthorizedActorError,
+    );
+    assert.strictEqual(await listAuditCount("denied"), before + 1);
+  });
+  await okAsync("list access-audit failure -> FAIL CLOSED (AdminResetStageError, no rows)", async () => {
+    const deps = { ...makeDeps().deps, recordAccessAudit: async () => { throw new Error("audit sink down"); } };
+    await assert.rejects(
+      listResetEligibleUsers({ actorUid: ADMIN, limit: 5 }, deps),
+      (e) => e instanceof AdminResetStageError,
+    );
+  });
+  await okAsync("list denial-audit failure -> denial remains authoritative (still UnauthorizedActorError)", async () => {
+    const deps = { ...makeDeps({ actor: actorFacts({ isAdmin: false }) }).deps, recordDenialAudit: async () => { throw new Error("audit sink down"); } };
+    await assert.rejects(
+      listResetEligibleUsers({ actorUid: TECH }, deps),
+      (e) => e instanceof UnauthorizedActorError,
+    );
+  });
+
+  // -- PRE-3: initiate claim-conflict + malformed-op are audited (denied) -------
+  await okAsync("operation-key conflict -> OperationKeyConflictError + initiate/denied audit", async () => {
+    const key = freshKey();
+    await initiateAdminPasswordReset({ actorUid: ADMIN, targetUid: TARGET, idempotencyKey: key }, makeDeps().deps);
+    const before = await auditCount("other-target", "denied");
+    await assert.rejects(
+      initiateAdminPasswordReset({ actorUid: ADMIN, targetUid: "other-target", idempotencyKey: key }, makeDeps().deps),
+      (e) => e instanceof OperationKeyConflictError,
+    );
+    assert.ok((await auditCount("other-target", "denied")) > before, "key-conflict writes a denied audit");
+  });
+  await okAsync("malformed op record -> MalformedOperationError + initiate/denied audit", async () => {
+    const key = freshKey();
+    await db.collection(OPS).doc(key).set({ actorUid: ADMIN, targetUid: TARGET, mode: "routine", status: "weird", attempt: 0 });
+    const before = await auditCount(TARGET, "denied");
+    await assert.rejects(
+      initiateAdminPasswordReset({ actorUid: ADMIN, targetUid: TARGET, idempotencyKey: key }, makeDeps().deps),
+      (e) => e instanceof MalformedOperationError,
+    );
+    assert.ok((await auditCount(TARGET, "denied")) > before, "malformed-op writes a denied audit");
+  });
+
   console.log(`\n${passed} passed`);
 }
 

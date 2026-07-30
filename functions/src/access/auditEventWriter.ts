@@ -108,6 +108,10 @@ const AUDIT_ACTIONS: readonly AuditAction[] = [
   // delivery/revocation events). Mirrors the types/access.ts AuditAction union.
   "initiateAdminPasswordReset",
   "deliverAdminPasswordReset",
+  // PRE-3 (G-PRE3-IMPL) -- governed access event for the reset-candidate listing
+  // (attribution only; no identities/count). Functions-authoritative; the frontend
+  // AuditAction subset intentionally omits this and every server-only admin-reset action.
+  "listResetEligibleUsers",
   "revokeUserSessions",
   // D4 -- Part-Equipment Compatibility trusted persistence (five lifecycle actions).
   "initiateEquipmentCompatibilityCommand",
