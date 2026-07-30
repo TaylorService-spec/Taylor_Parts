@@ -74,7 +74,7 @@ function requireAuthUid(request: CallableRequest): string {
 // production fact sources (employees reciprocal-link field, break-glass marker,
 // active-admin authority) are VERIFIED at the AUTH-PROD-1 gate against the real
 // project -- this adapter is emulator/repository-only and NOT deployed/enabled.
-async function resolveTargetFacts(targetUid: string): Promise<commands.TargetFacts> {
+export async function resolveTargetFacts(targetUid: string): Promise<commands.TargetFacts> {
   const authUser = await getAuth().getUser(targetUid).catch(() => null);
   const authExists = authUser !== null;
   const disabled = authUser?.disabled === true;
@@ -83,22 +83,32 @@ async function resolveTargetFacts(targetUid: string): Promise<commands.TargetFac
   const db = getFirestore();
   const userSnap = await db.collection("users").doc(targetUid).get();
   const userData = userSnap.exists ? (userSnap.data() as Record<string, unknown>) : undefined;
-  const employeeId =
-    typeof userData?.employeeId === "string" && (userData.employeeId as string).length > 0
-      ? (userData.employeeId as string)
-      : null;
-  const hasEmployeeLink = employeeId !== null;
+  const userEmployeeId = userData?.employeeId;
   const isBreakGlass = userData?.breakGlass === true || userData?.isBreakGlass === true;
 
-  // Reciprocal Employee<->Auth linkage: employees/{employeeId} must link back to
-  // this uid. Accept any of the observed back-link field names.
-  let employeeLinkReciprocal = false;
+  // GOVERNED reciprocal Employee linkage + authoritative employmentStatus, read
+  // from the EXACT employees/{employeeId} doc (userId back-link ONLY; no
+  // authUid/uid aliases). employmentStatus is trusted only when the link is
+  // reciprocal. Shared with the actor path and the list via resolveEmployeeLinkFacts.
+  const employeeId =
+    typeof userEmployeeId === "string" && userEmployeeId.length > 0 ? userEmployeeId : null;
+  let employeeExists = false;
+  let employeeUserId: unknown = undefined;
+  let employeeEmploymentStatus: unknown = undefined;
   if (employeeId) {
     const empSnap = await db.collection("employees").doc(employeeId).get();
+    employeeExists = empSnap.exists;
     const empData = empSnap.exists ? (empSnap.data() as Record<string, unknown>) : undefined;
-    employeeLinkReciprocal =
-      empData?.userId === targetUid || empData?.authUid === targetUid || empData?.uid === targetUid;
+    employeeUserId = empData?.userId;
+    employeeEmploymentStatus = empData?.employmentStatus;
   }
+  const link = commands.resolveEmployeeLinkFacts({
+    userEmployeeId,
+    employeeExists,
+    employeeUserId,
+    employeeEmploymentStatus,
+    uid: targetUid,
+  });
 
   // Final-active-recoverable-admin protection. If the target is an admin and no
   // OTHER active admin roleAssignment exists, protect. Fail-safe: if the query
@@ -122,7 +132,16 @@ async function resolveTargetFacts(targetUid: string): Promise<commands.TargetFac
     }
   }
 
-  return { authExists, disabled, email, hasEmployeeLink, employeeLinkReciprocal, isBreakGlass, isFinalActiveAdmin };
+  return {
+    authExists,
+    disabled,
+    email,
+    hasEmployeeLink: link.hasEmployeeLink,
+    employeeLinkReciprocal: link.employeeLinkReciprocal,
+    employmentStatus: link.employmentStatus,
+    isBreakGlass,
+    isFinalActiveAdmin,
+  };
 }
 
 // Resolve the actor authorization facts (Auth + Firestore) for PRE-2. Mirrors

@@ -48,6 +48,7 @@ const ELIGIBLE_FACTS = Object.freeze({
   email: "target@example.com",
   hasEmployeeLink: true,
   employeeLinkReciprocal: true,
+  employmentStatus: "ACTIVE",
   isBreakGlass: false,
   isFinalActiveAdmin: false,
 });
@@ -66,6 +67,7 @@ const AUTHORIZED_ACTOR = Object.freeze({
 const actorFacts = (over = {}) => ({ ...AUTHORIZED_ACTOR, ...over });
 
 let counter = 0;
+const uniqUid = (p) => `${p}_${Date.now().toString(36)}_${(counter += 1)}`;
 function freshKey(prefix = "aprkey") {
   counter += 1;
   return `${prefix}.${Date.now().toString(36)}.${counter}0000`;
@@ -256,6 +258,8 @@ async function main() {
     ["break-glass target", { isBreakGlass: true }],
     ["missing employee link", { hasEmployeeLink: false }],
     ["non-reciprocal link", { employeeLinkReciprocal: false }],
+    ["inactive-employment target (TERMINATED)", { employmentStatus: "TERMINATED" }],
+    ["inactive-employment target (missing)", { employmentStatus: null }],
     ["no recoverable email", { email: null }],
     ["no auth account", { authExists: false }],
   ]) {
@@ -353,6 +357,31 @@ async function main() {
       assert.ok(!("email" in r) && !("password" in r));
       assert.ok("uid" in r && "hasEmployeeLink" in r);
     }
+  });
+
+  // -- list hasEmployeeLink reflects the GOVERNED reciprocal link (Firestore) --
+  await okAsync("list: hasEmployeeLink true ONLY for exact reciprocal employees.userId", async () => {
+    const recip = uniqUid("list-recip");
+    const nonrecip = uniqUid("list-nonrecip");
+    const aliasOnly = uniqUid("list-alias");
+    const nodoc = uniqUid("list-nodoc");
+    const noempid = uniqUid("list-noempid");
+    await db.collection(USERS).doc(recip).set({ role: "technician", displayName: recip, employeeId: `${recip}-e` });
+    await db.collection("employees").doc(`${recip}-e`).set({ userId: recip, employmentStatus: "ACTIVE" });
+    await db.collection(USERS).doc(nonrecip).set({ role: "technician", displayName: nonrecip, employeeId: `${nonrecip}-e` });
+    await db.collection("employees").doc(`${nonrecip}-e`).set({ userId: "someone-else" });
+    await db.collection(USERS).doc(aliasOnly).set({ role: "technician", displayName: aliasOnly, employeeId: `${aliasOnly}-e` });
+    await db.collection("employees").doc(`${aliasOnly}-e`).set({ authUid: aliasOnly, uid: aliasOnly });
+    await db.collection(USERS).doc(nodoc).set({ role: "technician", displayName: nodoc, employeeId: `${nodoc}-e` }); // no employee doc
+    await db.collection(USERS).doc(noempid).set({ role: "technician", displayName: noempid }); // no employeeId
+
+    const rows = await listResetEligibleUsers({ actorUid: ADMIN, limit: 100 }, makeDeps().deps);
+    const byUid = Object.fromEntries(rows.map((r) => [r.uid, r]));
+    assert.strictEqual(byUid[recip].hasEmployeeLink, true, "exact reciprocal userId -> true");
+    assert.strictEqual(byUid[nonrecip].hasEmployeeLink, false, "mismatched userId -> false");
+    assert.strictEqual(byUid[aliasOnly].hasEmployeeLink, false, "alias-only authUid/uid -> false");
+    assert.strictEqual(byUid[nodoc].hasEmployeeLink, false, "missing employee doc -> false");
+    assert.strictEqual(byUid[noempid].hasEmployeeLink, false, "no employeeId -> false");
   });
 
   console.log(`\n${passed} passed`);

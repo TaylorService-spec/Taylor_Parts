@@ -121,7 +121,8 @@ export interface TargetFacts {
   disabled: boolean; // Auth user is disabled
   email: string | null; // recoverable email (Auth), or null
   hasEmployeeLink: boolean; // users/{uid}.employeeId present
-  employeeLinkReciprocal: boolean; // employees/{employeeId} links back to uid
+  employeeLinkReciprocal: boolean; // employees/{employeeId}.userId === uid (exact; no aliases)
+  employmentStatus: string | null; // employees/{employeeId}.employmentStatus (from the reciprocal doc)
   isBreakGlass: boolean; // designated break-glass identity
   isFinalActiveAdmin: boolean; // resetting risks the last recoverable admin
 }
@@ -134,6 +135,7 @@ export type EligibilityCategory =
   | "missing-or-nonreciprocal-employee-link"
   | "disabled-target"
   | "break-glass-target"
+  | "inactive-employment-target"
   | "no-recoverable-email";
 
 // "protected" -> a VISIBLE refusal (the actor may know; not an enumeration
@@ -151,7 +153,11 @@ export interface EligibilityVerdict {
 // PURE. Order matters: self and final-admin are the visible "protected"
 // refusals; the rest are neutral to avoid enumeration. A missing Auth account
 // or broken linkage is neutral-ineligible (never silently created/linked); a
-// disabled target is neutral-ineligible and is NEVER silently enabled.
+// disabled target is neutral-ineligible and is NEVER silently enabled. A
+// non-ACTIVE governed employmentStatus (ON_LEAVE / INACTIVE / TERMINATED /
+// RETIRED / CONTRACTOR / missing / malformed) is neutral-ineligible -- it is read
+// from the EXACT reciprocal Employee doc (checked after linkage) and mirrors
+// firestore.rules `isActiveOperationalRole`; a routine reset requires ACTIVE.
 export function evaluateTargetEligibility(
   facts: TargetFacts,
   actorUid: string,
@@ -165,6 +171,9 @@ export function evaluateTargetEligibility(
   if (facts.isFinalActiveAdmin) return { category: "protected-final-admin", disposition: "protected" };
   if (facts.disabled) return { category: "disabled-target", disposition: "neutral-ineligible" };
   if (facts.isBreakGlass) return { category: "break-glass-target", disposition: "neutral-ineligible" };
+  if (facts.employmentStatus !== ACTIVE_EMPLOYMENT_STATUS) {
+    return { category: "inactive-employment-target", disposition: "neutral-ineligible" };
+  }
   if (!facts.email) return { category: "no-recoverable-email", disposition: "neutral-ineligible" };
   return { category: "eligible", disposition: "eligible" };
 }
@@ -558,6 +567,11 @@ export interface ResetEligibleUser {
   uid: string;
   displayName: string | null;
   role: string | null;
+  // GOVERNED reciprocal Employee link: users/{uid}.employeeId present AND
+  // employees/{employeeId}.userId === uid (exact; no authUid/uid aliases). A bare
+  // users.employeeId with no reciprocal back-link reports false. Authoritative
+  // reset eligibility (Auth state, employmentStatus, break-glass, final-admin,
+  // email) is evaluated per-target at initiate; this flag surfaces linkage only.
   hasEmployeeLink: boolean;
 }
 export interface ListResetEligibleUsersInput {
@@ -579,13 +593,35 @@ export async function listResetEligibleUsers(
   await assertActorAuthorized(input.actorUid, deps);
   const limit = clampLimit(input.limit);
   const snap = await db().collection(USERS_COLLECTION).limit(limit).get();
-  return snap.docs.map((doc) => {
-    const data = doc.data() as { displayName?: unknown; role?: unknown; employeeId?: unknown };
-    return {
-      uid: doc.id,
-      displayName: typeof data.displayName === "string" ? data.displayName : null,
-      role: typeof data.role === "string" ? data.role : null,
-      hasEmployeeLink: typeof data.employeeId === "string" && data.employeeId.length > 0,
-    };
-  });
+  return Promise.all(
+    snap.docs.map(async (doc) => {
+      const data = doc.data() as { displayName?: unknown; role?: unknown; employeeId?: unknown };
+      // Resolve the GOVERNED reciprocal link (Firestore only): read the exact
+      // employees/{employeeId} back-link. No authUid/uid aliases; a non-reciprocal
+      // or missing employee doc yields hasEmployeeLink=false.
+      const userEmployeeId = data.employeeId;
+      const employeeId =
+        typeof userEmployeeId === "string" && userEmployeeId.length > 0 ? userEmployeeId : null;
+      let employeeExists = false;
+      let employeeUserId: unknown = undefined;
+      if (employeeId) {
+        const empSnap = await db().collection("employees").doc(employeeId).get();
+        employeeExists = empSnap.exists;
+        employeeUserId = empSnap.exists ? (empSnap.data() as Record<string, unknown>).userId : undefined;
+      }
+      const link = resolveEmployeeLinkFacts({
+        userEmployeeId,
+        employeeExists,
+        employeeUserId,
+        employeeEmploymentStatus: undefined, // not surfaced by the list
+        uid: doc.id,
+      });
+      return {
+        uid: doc.id,
+        displayName: typeof data.displayName === "string" ? data.displayName : null,
+        role: typeof data.role === "string" ? data.role : null,
+        hasEmployeeLink: link.employeeLinkReciprocal,
+      };
+    }),
+  );
 }

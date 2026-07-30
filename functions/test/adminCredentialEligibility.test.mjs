@@ -24,6 +24,7 @@ const ELIGIBLE = Object.freeze({
   email: "t@example.com",
   hasEmployeeLink: true,
   employeeLinkReciprocal: true,
+  employmentStatus: "ACTIVE",
   isBreakGlass: false,
   isFinalActiveAdmin: false,
 });
@@ -93,6 +94,29 @@ ok("broken linkage outranks final-admin/disabled (cannot trust identity)", () =>
     "t",
   );
   assert.strictEqual(v.category, "missing-or-nonreciprocal-employee-link");
+});
+
+// -- target employmentStatus gate (target-side parity) -----------------------
+for (const bad of ["INACTIVE", "TERMINATED", "ON_LEAVE", "RETIRED", "CONTRACTOR", "active", "", null, undefined]) {
+  ok(`target employmentStatus=${JSON.stringify(bad)} -> inactive-employment-target (neutral)`, () => {
+    const v = evaluateTargetEligibility(facts({ employmentStatus: bad }), "admin", "t");
+    assert.deepStrictEqual(v, { category: "inactive-employment-target", disposition: "neutral-ineligible" });
+  });
+}
+ok("target ACTIVE employment -> eligible", () => {
+  assert.strictEqual(evaluateTargetEligibility(facts({ employmentStatus: "ACTIVE" }), "admin", "t").category, "eligible");
+});
+ok("final-admin protection outranks inactive employment (visible refusal preserved)", () => {
+  const v = evaluateTargetEligibility(facts({ isFinalActiveAdmin: true, employmentStatus: "TERMINATED" }), "admin", "t");
+  assert.strictEqual(v.category, "protected-final-admin");
+});
+ok("broken linkage outranks inactive employment (cannot trust the employee doc)", () => {
+  const v = evaluateTargetEligibility(facts({ employeeLinkReciprocal: false, employmentStatus: "INACTIVE" }), "admin", "t");
+  assert.strictEqual(v.category, "missing-or-nonreciprocal-employee-link");
+});
+ok("disabled outranks inactive employment (both neutral; disabled checked first)", () => {
+  const v = evaluateTargetEligibility(facts({ disabled: true, employmentStatus: "INACTIVE" }), "admin", "t");
+  assert.strictEqual(v.category, "disabled-target");
 });
 
 // -- PRE-2: pure evaluateActorAuthorization (fail-closed actor gate) ----------

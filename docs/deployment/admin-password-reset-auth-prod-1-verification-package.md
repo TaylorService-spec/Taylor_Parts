@@ -72,11 +72,22 @@ unreachable through configuration alone. A separate repository-only sender + ide
 gate must be implemented, emulator-tested, independently reviewed, and merged before any mutation/send
 sub-gate can be requested. This package does not implement it.
 
-**Repository prerequisite F3 — actor authorization is role-only.** The merged
-`assertActorIsAdmin` checks the stored role only. It does not enforce active employment/account state and
-does not enforce the inactive `admin.credentialReset.initiate` capability. This package therefore makes
-no claim that inactive admins are denied. A separate repository correction with emulator tests for
-inactive/disabled actor denial is required before any production sub-gate can be requested.
+**Repository prerequisite F3 — actor authorization hardened (RESOLVED, PR #477 merged).** AUTH-PR-3.5's
+`assertActorIsAdmin` was role-only. PRE-2 (PR #477, merged) replaced it: admin-reset authorization now
+FAILS CLOSED unless the actor is a governed admin with an active (non-disabled) Auth account, an ACTIVE
+employment status, and an exact reciprocal Employee link. Inactive/disabled/non-reciprocal/non-admin
+actors are denied, verified against the real adapter under the Auth+Firestore emulator. The inactive
+`admin.credentialReset.initiate` capability is still not consulted (recorded behavior, not authorization
+to activate/grant).
+
+**Governed linkage + lifecycle contract (actor AND target).** Reciprocal linkage is the GOVERNED field
+ONLY: `users/{uid}.employeeId == employeeId` AND `employees/{employeeId}.userId == uid`. The
+`authUid`/`uid` alias fields are **NOT** accepted (a stale/conflicting record must never authorize). The
+authoritative lifecycle gate is `employees/{employeeId}.employmentStatus === "ACTIVE"`; ON_LEAVE /
+INACTIVE / TERMINATED / RETIRED / CONTRACTOR / missing / malformed / unknown all FAIL CLOSED. This
+contract applies to the **target** eligibility path as well (target-side parity workstream), mirroring
+firestore.rules `isActiveOperationalRole`. AUTH-PROD-1 verifies the exact-`userId`, ACTIVE-employment
+contract on both sides — it does not accept aliases or non-ACTIVE statuses.
 
 **Observation (out of this package's edit scope):** the admin-reset implementation-plan's "Lane isolation"
 risk line still reads "AUTH-PR-4 is operationally active." That is now stale — AUTH-PR-4 partially executed
@@ -98,8 +109,8 @@ plan-accuracy pass; **not** edited here to preserve this package's scope.
    (D-RESET-PERMISSION-ACTIVATION deferred) throughout — AUTH-PROD-1 does not require activation.
 6. **PRE-1 — concrete sender prerequisite:** the repository-only native sender + durable
    idempotency-key deduplication gate described in F2 must be merged. **Missing / blocking.**
-7. **PRE-2 — actor-authorization prerequisite:** the repository-only inactive/disabled-admin
-   authorization correction described in F3 must be merged with emulator coverage. **Missing / blocking.**
+7. **PRE-2 — actor-authorization correction:** **MERGED (PR #477)** — satisfied. The governed
+   linkage + ACTIVE-employment actor gate is in place and emulator-tested against the real adapter.
 8. **PRE-3 — audit-coverage decision:** the Owner must approve either repository audit expansion or an
    explicit bounded exception for every unaudited path enumerated in §4.I. **Unresolved / blocking.**
 9. **D-NATIVE-SEND-CONFIG** — the concrete Firebase-native send configuration. **Unresolved and untouched.**
@@ -141,26 +152,35 @@ Verify each disposition on real Firebase facts resolved by `resolveTargetFacts` 
 | --- | --- | --- | --- | --- |
 | actor == target | `self-target` | protected | visible refusal (`failed-precondition`) | none |
 | no Auth account | `no-auth-account` | neutral-ineligible | neutral `accepted` | none |
-| missing/non-reciprocal Employee↔Auth link | `missing-or-nonreciprocal-employee-link` | neutral-ineligible | neutral `accepted` | none |
+| missing/non-reciprocal Employee↔User link (exact `userId` only) | `missing-or-nonreciprocal-employee-link` | neutral-ineligible | neutral `accepted` | none |
 | final active recoverable admin | `protected-final-admin` | protected | visible refusal | none |
 | disabled Auth user | `disabled-target` | neutral-ineligible | neutral `accepted` | none (never silently enabled) |
 | break-glass identity | `break-glass-target` | neutral-ineligible | neutral `accepted` | none |
+| employmentStatus ≠ `ACTIVE` (missing/malformed/unknown/ON_LEAVE/INACTIVE/TERMINATED/RETIRED/CONTRACTOR) | `inactive-employment-target` | neutral-ineligible | neutral `accepted` | none |
 | no recoverable email | `no-recoverable-email` | neutral-ineligible | neutral `accepted` | none |
-| otherwise | `eligible` | eligible | neutral `accepted` | send (posture A/B) |
+| otherwise (exact link + `ACTIVE` employment + email + enabled + not break-glass/final-admin) | `eligible` | eligible | neutral `accepted` | send (posture A/B) |
 
 - Confirm the **fail-safe defaults** hold against real data: an unresolvable final-active-admin query
-  protects (`callables.ts:120-122`); a lookup error denies with a stage error, never a silent pass
-  (`commands.ts:369-375`).
-- Confirm **reciprocal** linkage semantics (`employees/{employeeId}` links back via
-  `userId`/`authUid`/`uid`, `callables.ts:94-101`) match the real `employees`/`users` schema. If the real
-  back-link field differs, **halt and reconcile** (do not weaken the guard).
+  protects; a lookup error denies with a stage error, never a silent pass.
+- Confirm **reciprocal** linkage uses the GOVERNED field ONLY: `employees/{employeeId}.userId ===
+  targetUid`. The `authUid`/`uid` aliases are **not** accepted — verify that an alias-only or
+  non-reciprocal `userId` record is denied. If the real schema's authoritative back-link field differs,
+  **halt and reconcile** (do not weaken the guard, do not reintroduce aliases).
+- Confirm the authoritative **employmentStatus** is read from the exact reciprocal Employee doc and that
+  only `ACTIVE` is eligible; every other value (including missing/malformed/unknown) is a neutral
+  `inactive-employment-target` denial.
 
 ### E. Enumeration protection
 - All `neutral-ineligible` outcomes return an identical neutral `accepted` to the caller; the
   distinguishing category exists **only** in the server-side audit (`commands.ts:382-387`). Verify a
   caller cannot distinguish disabled / break-glass / missing-link / no-email / no-account targets.
-- Verify `listResetEligibleUsers` returns only `{uid, displayName, role, hasEmployeeLink}` and enforces
-  the admin authority + limit clamp (`commands.ts:458-479`); no email/link/token fields leak.
+- `listResetEligibleUsers` is **sanitized reset-candidate discovery**, not a full per-row eligibility
+  scan. Verify it returns only `{uid, displayName, role, hasEmployeeLink}` and enforces the admin
+  authority + limit clamp; `hasEmployeeLink` reflects the **governed reciprocal link only** (exact
+  `employees/{employeeId}.userId`; no aliases). Auth state, employmentStatus, break-glass, final-admin,
+  and recoverable-email facts stay server-side and must **not** be revealed through list inclusion or
+  omission; authoritative eligibility is enforced only at `initiateAdminPasswordReset`. Do not describe a
+  returned row as "fully eligible" — it is a reset **candidate**.
 
 ### F. Idempotency, leasing, crash-safety
 - Same `idempotencyKey` + same (actor,target,mode) → single send; replay returns neutral `accepted`
@@ -171,14 +191,14 @@ Verify each disposition on real Firebase facts resolved by `resolveTargetFacts` 
 - A configured native sender MUST dedupe on `idempotencyKey` (`commands.ts:87-101`); verify a retry
   after stale-worker takeover does **not** enqueue a second email.
 
-### G. Authorization
-- The merged implementation currently authorizes only by
-  `users/{actorUid}.role === "admin"` (`assertActorIsAdmin`, `commands.ts:222-227`); client-supplied actor
-  identity is impossible because the actor comes from authenticated context.
-- Non-admin and unauthenticated actors are denied. **Inactive or disabled admins are not proven denied by
-  the merged code** and must remain a blocking PRE-2 case until the separate repository correction lands.
-- The inactive `admin.credentialReset.initiate` capability is not currently consulted by this command.
-  This is recorded behavior, not authorization to activate or grant it.
+### G. Authorization (PRE-2 merged, PR #477)
+- The actor is authorized by the governed gate: admin role, active (non-disabled) Auth account, ACTIVE
+  employment, and an exact reciprocal Employee link. Client-supplied actor identity is impossible (the
+  actor comes from authenticated context); no client-supplied role/status/capability is consulted.
+- Non-admin, unauthenticated, **inactive/disabled, non-ACTIVE-employment, and non-reciprocal-link actors
+  are denied** (fail closed), verified against the real adapter under the Auth+Firestore emulator.
+- The inactive `admin.credentialReset.initiate` capability is not consulted by this command. This is
+  recorded behavior, not authorization to activate or grant it.
 
 ### H. Inactive-permission behavior
 - Confirm `admin.credentialReset.initiate` remains `active:false` and **ungranted**; verify the command's
@@ -215,9 +235,9 @@ ordinary personnel.
 | Test fixture | Purpose | Mutation/send permitted? |
 | --- | --- | --- |
 | disposable eligible admin actor | Exercise corrected actor authorization | Authentication/read only unless §6.B is separately authorized |
-| inactive/disabled disposable admin actor | Prove PRE-2 denial | No |
+| inactive/disabled/non-reciprocal/non-ACTIVE-employment disposable admin actor | Verify the merged PRE-2 actor gate on real Firebase | No |
 | disposable eligible target + controlled mailbox | Native-send/idempotency/link assertions | Only under separately authorized §6.C |
-| disposable no-account/missing-link/disabled/no-email facts | Neutral-equivalence guards | Provisioning only under §6.B; no send |
+| disposable no-account/missing-link/mismatched-userId/alias-only/disabled/inactive-employment/no-email target facts | Neutral-equivalence guards (incl. exact-`userId` and employmentStatus) | Provisioning only under §6.B; no send |
 | synthetic final-admin and break-glass facts | Protected/neutral classification | No real identity; no mutation/send |
 
 One identity cannot stand in for incompatible facts. Every fixture has a bounded creation/deletion plan,
@@ -236,8 +256,8 @@ create a user or document, alter configuration, invoke a reset send, or write au
 
 ### 6.B D-PROD-1B-AUTH — mutation preparation
 
-Only after PRE-1, PRE-2, and PRE-3 are resolved, a separate Owner authorization may permit the exact
-bounded test fixtures. It must explicitly name Auth test-user creation/deletion, Employee/User test-record
+Only after the remaining prerequisites (PRE-1 and PRE-3; PRE-2 already merged in PR #477) are resolved, a
+separate Owner authorization may permit the exact bounded test fixtures. It must explicitly name Auth test-user creation/deletion, Employee/User test-record
 creation/deletion, any required audit/operation-record writes, the named executor, rollback order, and
 sanitized evidence. It does not authorize a reset email.
 
@@ -265,8 +285,8 @@ Each sub-gate stops on completion. Passing one does not authorize the next.
   from the guard's expectations; any neutral-ineligible path is caller-distinguishable; any secret appears
   in caller output or audit; a send occurs under the fail-closed posture; a duplicate email is enqueued for
   a repeated idempotency key; an earlier Firebase OOB link becomes unusable after a later send; the
-  permission is found active or granted; PRE-1/PRE-2/PRE-3 is unresolved; or any change would risk leaving
-  zero recoverable admins.
+  permission is found active or granted; the remaining prerequisites (PRE-1 or PRE-3) are unresolved; or
+  any change would risk leaving zero recoverable admins.
 - **DECISIONS #55 hard stops remain in force throughout:** no deployment (Functions/Rules/Hosting/index);
   no production mutation or send unless the exact later 6.B/6.C authorization explicitly opens that one
   bounded action; no revocation/recovery-email/session action; no role/claim/`accessVersion`/existing
@@ -297,7 +317,7 @@ Each sub-gate stops on completion. Passing one does not authorize the next.
 | 3 | Approved test identity (Auth user + linked test employee) | Owner-provisioned, out-of-band | Not supplied |
 | 4 | Firebase project / real-Auth access for the test window | Owner-scoped, least-privilege | Not supplied |
 | 5 | Concrete repository native sender + dedupe | **PRE-1** | Missing / blocking |
-| 5b | Corrected inactive/disabled-admin authorization | **PRE-2** | Missing / blocking |
+| 5b | Governed actor authorization (linkage + ACTIVE employment) | **PRE-2** | **MERGED (PR #477)** |
 | 5c | Audit-gap decision/correction | **PRE-3** | Unresolved / blocking |
 | 5d | Concrete Firebase-native send configuration (posture B) | **D-NATIVE-SEND-CONFIG** | Unresolved / untouched |
 | 6 | Confirmation permission stays inactive/ungranted | **D-RESET-PERMISSION-ACTIVATION** (deferred) | Deferred |
@@ -320,7 +340,7 @@ production evidence.
 ## 11. Sign-off (to be completed at future gates)
 
 - [ ] PRE-1 native sender + dedupe merged and independently reviewed — _pending_
-- [ ] PRE-2 actor-authorization correction merged and independently reviewed — _pending_
+- [x] PRE-2 governed actor authorization (linkage + ACTIVE employment) merged and reviewed — **DONE (PR #477)**
 - [ ] PRE-3 audit-gap decision resolved — _pending_
 - [ ] **D-PROD-1A-AUTH** granted and read-only preflight passed — _pending_
 - [ ] **D-PROD-1B-AUTH** granted and bounded fixtures prepared/cleaned — _pending_
