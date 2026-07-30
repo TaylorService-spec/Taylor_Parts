@@ -154,7 +154,9 @@ function renderSubnavItem(domain, item, role, operationalContext) {
   // Same operationalRoleAccess-gated pattern as PR 2b's WAREHOUSE_MANAGER
   // case below.
   if (domain.key === "inventoryRole" && item.key === "manager") {
-    return <PartsManagerHome />;
+    // accessVersion is threaded so the canonical part-name read re-runs and the prior
+    // name map is invalidated on any access change (same convention as PartDetail).
+    return <PartsManagerHome accessVersion={operationalContext?.accessVersion} />;
   }
   // Issue #100 PR 2b -- WAREHOUSE_MANAGER's dedicated, role-scoped
   // surface. No legacyKey (net-new screen); item.operationalRoleAccess
@@ -168,7 +170,8 @@ function renderSubnavItem(domain, item, role, operationalContext) {
   // Issue #100 PR 3b -- PARTS_ASSOCIATE's dedicated, role-scoped surface.
   // Same operationalRoleAccess-gated pattern as PR 1b/2b above.
   if (domain.key === "inventoryRole" && item.key === "mine") {
-    return <PartsAssociateHome />;
+    // accessVersion threaded -- see the PartsManagerHome case above.
+    return <PartsAssociateHome accessVersion={operationalContext?.accessVersion} />;
   }
   // Issue #226 Row 10 -- Admin Portal foundation. Same special-case pattern as
   // every other net-new, no-legacyKey screen above: a brand-new Overview hub,

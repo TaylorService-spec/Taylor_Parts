@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
-import { getCatalogItem } from "../../data/partsCatalog";
 import { useAuth } from "../../auth/AuthContext";
+import { useCanonicalPartNames } from "../../hooks/useCanonicalPartNames";
 import { useReorderRequestsAssignedTo, useReorderRequestById } from "../../hooks/useReorderRequests";
 import { usePurchaseOrderForReorderRequest } from "../../hooks/useReorderPurchaseOrders";
 import { useReorderPurchaseOrderVoid } from "../../hooks/useReorderPurchaseOrderVoids";
@@ -59,13 +59,13 @@ function formatTimestamp(ms) {
   return ms ? new Date(ms).toLocaleString() : "—";
 }
 
-function RequestSummary({ request }) {
+function RequestSummary({ request, resolveName }) {
   return (
     <table className="fo-table">
       <tbody>
         <tr>
           <td>Part</td>
-          <td>{getCatalogItem(request.partId)?.name ?? request.partId}</td>
+          <td>{resolveName(request.partId)}</td>
         </tr>
         <tr>
           <td>Requested qty</td>
@@ -92,7 +92,7 @@ function RequestSummary({ request }) {
 // panel re-renders into the NEXT status's own card automatically the
 // instant a write lands, with no imperative "now refresh" signal
 // needed. Passing a no-op callback here would be dead code.
-function StartPurchasingCard({ request }) {
+function StartPurchasingCard({ request, resolveName }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
 
@@ -110,7 +110,7 @@ function StartPurchasingCard({ request }) {
   return (
     <div className="fo-card">
       <h3>Reorder Request -- Assigned to You</h3>
-      <RequestSummary request={request} />
+      <RequestSummary request={request} resolveName={resolveName} />
       {error && <p className="fo-muted">{error}</p>}
       <div className="disp-board-toolbar">
         <button type="button" onClick={handleStart} disabled={submitting}>
@@ -121,7 +121,7 @@ function StartPurchasingCard({ request }) {
   );
 }
 
-function PurchasingInProgressCard({ request }) {
+function PurchasingInProgressCard({ request, resolveName }) {
   const [purchasingNotes, setPurchasingNotes] = useState(request.purchasingNotes ?? "");
   const [vendorContacted, setVendorContacted] = useState(!!request.vendorContacted);
   const [expectedAvailabilityDate, setExpectedAvailabilityDate] = useState(request.expectedAvailabilityDate ?? "");
@@ -172,7 +172,7 @@ function PurchasingInProgressCard({ request }) {
     <>
       <div className="fo-card">
         <h3>Reorder Request -- Purchasing In Progress</h3>
-        <RequestSummary request={request} />
+        <RequestSummary request={request} resolveName={resolveName} />
         <table className="fo-table">
           <tbody>
             <tr>
@@ -260,7 +260,7 @@ function PurchasingInProgressCard({ request }) {
   );
 }
 
-function OrderedCard({ request }) {
+function OrderedCard({ request, resolveName }) {
   const { data: purchaseOrder, loading } = usePurchaseOrderForReorderRequest(request.id);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
@@ -279,7 +279,7 @@ function OrderedCard({ request }) {
   return (
     <div className="fo-card">
       <h3>Reorder Request -- Ordered</h3>
-      <RequestSummary request={request} />
+      <RequestSummary request={request} resolveName={resolveName} />
       <table className="fo-table">
         <tbody>
           <tr>
@@ -334,13 +334,13 @@ function OrderedCard({ request }) {
   );
 }
 
-function TerminalCard({ request }) {
+function TerminalCard({ request, resolveName }) {
   const { data: voidRecord } = useReorderPurchaseOrderVoid(request.status === REORDER_REQUEST_STATUS.VOIDED ? request.id : null);
 
   return (
     <div className="fo-card">
       <h3>Reorder Request -- {HISTORY_STATUS_LABEL[request.status] ?? request.status}</h3>
-      <RequestSummary request={request} />
+      <RequestSummary request={request} resolveName={resolveName} />
       {request.status === REORDER_REQUEST_STATUS.CANCELLED && (
         <table className="fo-table">
           <tbody>
@@ -383,7 +383,7 @@ function TerminalCard({ request }) {
   );
 }
 
-function AssignedRequestDetail({ requestId, onClose }) {
+function AssignedRequestDetail({ requestId, resolveName, onClose }) {
   const { data: request, loading } = useReorderRequestById(requestId);
 
   if (loading) {
@@ -413,20 +413,20 @@ function AssignedRequestDetail({ requestId, onClose }) {
         </button>
       </div>
       {request.status === REORDER_REQUEST_STATUS.ASSIGNED_TO_PARTS_ASSOCIATE && (
-        <StartPurchasingCard request={request} />
+        <StartPurchasingCard request={request} resolveName={resolveName} />
       )}
       {request.status === REORDER_REQUEST_STATUS.PURCHASING_IN_PROGRESS && (
-        <PurchasingInProgressCard request={request} />
+        <PurchasingInProgressCard request={request} resolveName={resolveName} />
       )}
-      {request.status === REORDER_REQUEST_STATUS.ORDERED && <OrderedCard request={request} />}
+      {request.status === REORDER_REQUEST_STATUS.ORDERED && <OrderedCard request={request} resolveName={resolveName} />}
       {[REORDER_REQUEST_STATUS.RECEIVED, REORDER_REQUEST_STATUS.CANCELLED, REORDER_REQUEST_STATUS.VOIDED].includes(request.status) && (
-        <TerminalCard request={request} />
+        <TerminalCard request={request} resolveName={resolveName} />
       )}
     </div>
   );
 }
 
-function RequestTable({ requests, onSelect }) {
+function RequestTable({ requests, resolveName, onSelect }) {
   return (
     <table className="fo-table">
       <thead>
@@ -440,7 +440,7 @@ function RequestTable({ requests, onSelect }) {
       <tbody>
         {requests.map((request) => (
           <tr key={request.id}>
-            <td>{getCatalogItem(request.partId)?.name ?? request.partId}</td>
+            <td>{resolveName(request.partId)}</td>
             <td>{getDisplayQty(request)}</td>
             <td>
               {request.urgency ? (
@@ -452,7 +452,7 @@ function RequestTable({ requests, onSelect }) {
             <td>
               <button
                 type="button"
-                aria-label={`View ${getCatalogItem(request.partId)?.name ?? request.partId}`}
+                aria-label={`View ${resolveName(request.partId)}`}
                 onClick={(e) => onSelect(request.id, e.currentTarget)}
               >
                 View
@@ -465,8 +465,13 @@ function RequestTable({ requests, onSelect }) {
   );
 }
 
-export default function PartsAssociateHome() {
+export default function PartsAssociateHome({ accessVersion } = {}) {
   const { user } = useAuth();
+  // OD-3: canonical part-name resolution (fail-closed; degrades to raw partId, never
+  // the static-catalog name). Does not gate any operational table below. `accessVersion`
+  // is threaded from App so an access change re-runs the read and invalidates the prior
+  // name map before the replacement read settles.
+  const { resolveName, namesUnavailable } = useCanonicalPartNames({ uid: user?.uid, accessVersion });
   const { data: waiting, loading: waitingLoading } = useReorderRequestsAssignedTo(
     user?.uid,
     REORDER_REQUEST_STATUS.ASSIGNED_TO_PARTS_ASSOCIATE
@@ -497,6 +502,10 @@ export default function PartsAssociateHome() {
       <WorkspaceHeader title="My Purchasing" />
       <p className="fo-muted">Reorder Requests currently assigned to you.</p>
 
+      {namesUnavailable && (
+        <p className="fo-muted" role="status">Some part names are unavailable; Part IDs are shown.</p>
+      )}
+
       <h3>Waiting</h3>
       <LoadingEmptyState
         loading={waitingLoading}
@@ -504,7 +513,7 @@ export default function PartsAssociateHome() {
         loadingText="Loading your assigned requests..."
         emptyText="No requests currently waiting on you."
       >
-        <RequestTable requests={waiting} onSelect={handleSelect} />
+        <RequestTable requests={waiting} resolveName={resolveName} onSelect={handleSelect} />
       </LoadingEmptyState>
 
       <h3>In Progress</h3>
@@ -514,11 +523,11 @@ export default function PartsAssociateHome() {
         loadingText="Loading your in-progress purchasing..."
         emptyText="No purchasing currently in progress."
       >
-        <RequestTable requests={inProgress} onSelect={handleSelect} />
+        <RequestTable requests={inProgress} resolveName={resolveName} onSelect={handleSelect} />
       </LoadingEmptyState>
 
       {selectedRequestId && (
-        <AssignedRequestDetail requestId={selectedRequestId} onClose={handleCloseDetail} />
+        <AssignedRequestDetail requestId={selectedRequestId} resolveName={resolveName} onClose={handleCloseDetail} />
       )}
     </div>
   );

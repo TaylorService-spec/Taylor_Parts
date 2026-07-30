@@ -180,6 +180,52 @@ export function nameBySkuFromRows(rows) {
   return map;
 }
 
+/**
+ * OD-3 -- governed canonical NAME resolution for the reorder-request/purchasing
+ * surfaces (PartsManagerHome, PartsAssociateHome) that resolve a partId -> display
+ * name but render NO catalog list. Reuses the exact shared governed path
+ * (fetchPartMasterList -> composeGovernedPartsWorkspace via buildPartsCatalogRows ->
+ * nameBySkuFromRows), so it fails closed on any denied/unavailable/incomplete/invalid
+ * canonical read (namesReady:false, empty map) and never leaks raw invalid documents.
+ *
+ * Decision #2 (Owner, 2026-07-30): names come ONLY from CANONICAL_MATCH rows. A sku
+ * with no canonical row -- an approved STATIC_ONLY_EXCLUDED part or any partId absent
+ * from canonical -- is deliberately EXCLUDED from the map so the caller degrades it to
+ * the raw partId; the static-catalog name (carried on STATIC_ONLY_EXCLUDED rows as a
+ * STATIC_FALLBACK value) is never presented as canonical.
+ *
+ * @param {object} input  { canonicalRead: {status, rows?, invalid?}, staticCatalog }
+ * @returns {{ namesReady: boolean, status: string, nameBySku: Map<string,string> }}
+ */
+/**
+ * OD-3 (Codex P1/P2) -- the access boundary a canonical name read belongs to. A read is
+ * only valid for the exact (uid, accessVersion) it was issued under; when either changes,
+ * the boundary key changes and prior data must not be reused. Pure + deterministic.
+ */
+export function partNamesBoundaryKey(uid, accessVersion) {
+  return `${uid ?? ""}::${accessVersion ?? ""}`;
+}
+
+/**
+ * OD-3 (Codex P2) -- synchronous, render-time selection of a keyed read. Returns the
+ * stored read ONLY when it was produced under the current render's boundary key; on any
+ * mismatch it returns a LOADING read so the caller derives an empty name map on that SAME
+ * render (prior-boundary names never appear for even one paint, without waiting for an
+ * effect to reset state). Pure -- no effects, no timing dependence.
+ */
+export function selectCanonicalReadForKey(stored, currentKey) {
+  return stored && stored.key === currentKey ? stored.read : { status: "LOADING" };
+}
+
+export function resolveCanonicalPartNames(input = {}) {
+  const { status, rows } = buildPartsCatalogRows(input);
+  if (status !== "READY") {
+    return { namesReady: false, status, nameBySku: new Map() };
+  }
+  const canonicalMatchRows = rows.filter((r) => r.identityState === "CANONICAL_MATCH");
+  return { namesReady: true, status, nameBySku: nameBySkuFromRows(canonicalMatchRows) };
+}
+
 /** True when the status is any BLOCKED_* state. */
 export function isCatalogBlocked(status) {
   return status === "BLOCKED_PERMISSION" || status === "BLOCKED_UNAVAILABLE" || status === "BLOCKED_INCOMPLETE_INPUT";
