@@ -36,6 +36,9 @@ vi.mock("../src/domain/procurementDraftEngine", () => ({
 vi.mock("../src/analytics/executionAnalyticsService", () => ({
   getInventoryConsumptionSnapshot: async () => ({ parts: [] }), getTechnicianVolumeBreakdown: async () => [],
 }));
+// Spy: capture the resolveName Operations passes into its Inventory Health panel (5th mount coverage here).
+const capturedIHP = [];
+vi.mock("../src/modules/operations/panels/InventoryHealthPanel", () => ({ default: ({ resolveName }) => { capturedIHP.push(resolveName); return null; } }));
 
 import { fetchPartMasterList } from "../src/services/partMasterQueries";
 import Operations from "../src/modules/operations/Operations.jsx";
@@ -53,6 +56,8 @@ describe("Operations (OD-3) -- dashboard canonical name resolution, mounted path
     expect(fetchPartMasterList).toHaveBeenCalledTimes(1); // one shared read, not one per panel
     expect(screen.queryByText("STATIC-CATALOG-NAME-A")).toBeNull();
     expect(screen.queryByText(NOTICE)).toBeNull();
+    // the Inventory Health panel mount receives the SAME single canonical resolver
+    expect(capturedIHP[capturedIHP.length - 1]("TST-9001")).toBe("CANONICAL-NAME-A");
   });
 
   it("invalid canonical documents: raw partId + bounded notice; draft row (table) preserved; no static name; no raw invalid leak", async () => {

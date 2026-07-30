@@ -140,7 +140,10 @@ function renderSubnavItem(domain, item, role, operationalContext) {
   // existing role gating (ROLE_NAV_ACCESS, admin/dispatcher only) is
   // untouched.
   if (domain.key === "inventory" && item.key === "parts") {
-    return <PartsList />;
+    // accessVersion threaded so the canonical part-name read re-runs and its name map is
+    // invalidated on any access change (governs the catalog, reorder/history tables, and the
+    // embedded Inventory Health panel) -- same convention as PartDetail / Operations.
+    return <PartsList accessVersion={operationalContext?.accessVersion} />;
   }
   // INV-1 Phase 1 PR 1.9 -- governed read-only Part Master registry. Same
   // brand-new-screen pattern as AccountsList/EquipmentRegister: no
@@ -165,7 +168,9 @@ function renderSubnavItem(domain, item, role, operationalContext) {
   // WAREHOUSE_MANAGER, so this case never renders for admin/dispatcher
   // or an ineligible technician.
   if (domain.key === "inventoryRole" && item.key === "warehouse") {
-    return <WarehouseManagerHome />;
+    // accessVersion threaded -- see the PartsList/Operations cases (governs WMH's catalog,
+    // Part Activity, and Inventory Health panel name resolution).
+    return <WarehouseManagerHome accessVersion={operationalContext?.accessVersion} />;
   }
   // Issue #100 PR 3b -- PARTS_ASSOCIATE's dedicated, role-scoped surface.
   // Same operationalRoleAccess-gated pattern as PR 1b/2b above.

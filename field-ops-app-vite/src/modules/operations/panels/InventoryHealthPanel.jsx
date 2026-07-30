@@ -1,4 +1,3 @@
-import { getCatalogItem } from "../../../data/partsCatalog";
 import { URGENCY_ORDER, hasUsageHistory } from "../../../domain/inventoryAnalyticsEngine";
 import RequestReorderControl from "../../../shared/inventory/RequestReorderControl";
 
@@ -38,6 +37,11 @@ import RequestReorderControl from "../../../shared/inventory/RequestReorderContr
 export default function InventoryHealthPanel({
   healthEntries,
   title = "Inventory Health",
+  // OD-3: governed canonical partId -> display name resolver supplied by the parent (each of
+  // the four parents owns one canonical read and passes a fail-closed resolver). Defaults to
+  // the raw partId so this shared component NEVER falls back to a static-catalog name and
+  // never crashes if a caller omits it -- fail-closed by construction.
+  resolveName = (partId) => partId,
   onRequestReorder,
   requestedPartIds,
   submittingPartId,
@@ -86,7 +90,7 @@ export default function InventoryHealthPanel({
               const hasHistory = hasUsageHistory(usage);
               return (
               <tr key={partId}>
-                <td>{getCatalogItem(partId)?.name ?? partId}</td>
+                <td>{resolveName(partId)}</td>
                 <td>{stock.availableStock}</td>
                 <td>{hasHistory ? usage.avgDailyUsage.toFixed(2) : <span className="fo-muted">Insufficient usage history</span>}</td>
                 <td>{hasHistory && recommendation.daysRemaining !== Infinity ? recommendation.daysRemaining.toFixed(1) : "—"}</td>

@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { PARTS_CATALOG, getCatalogItem } from "../../data/partsCatalog";
+import { PARTS_CATALOG } from "../../data/partsCatalog";
 import { fetchPartMasterList } from "../../services/partMasterQueries";
-import { buildPartsCatalogRows, nameBySkuFromRows, isCatalogBlocked, partCatalogRoute } from "../../domain/partsCatalogView";
+import { buildPartsCatalogRows, canonicalNameBySku, partNamesBoundaryKey, selectCanonicalReadForKey, isCatalogBlocked, partCatalogRoute } from "../../domain/partsCatalogView";
 import { useInventoryLedger } from "../../hooks/useInventoryLedger";
 import {
   useReorderRequests,
@@ -40,8 +40,11 @@ import { hasUsageHistory } from "../../domain/inventoryAnalyticsEngine";
 // read) composed with the static catalog through buildPartsWorkspace(), via
 // the pure domain/partsCatalogView.buildPartsCatalogRows(). The static
 // PARTS_CATALOG remains the compatibility INPUT to that composition (not a
-// parallel source of truth), and getCatalogItem stays as a resilient name
-// fallback for the Firestore-backed reorder queues. Canonical is authoritative;
+// parallel source of truth). OD-3 (2026-07-30): every partId -> name display on
+// this surface (catalog, reorder/history tables, and the embedded Inventory Health
+// panel) now resolves through one governed `resolveName` derived from CANONICAL_MATCH
+// rows -- canonical name, else the raw partId, NEVER a static-catalog name -- and the
+// canonical read is access-version boundary-key guarded. Canonical is authoritative;
 // a denied/unavailable/incomplete canonical read renders an explicit BLOCKED
 // state (never an empty list, never a silent static fallback). Stock position
 // still comes from useInventoryLedger() (one-shot inventory_transactions read +
@@ -302,7 +305,7 @@ function catalogBlockedMessage(status) {
   return "The Parts catalog could not be verified against the canonical source, so no parts are shown (an incomplete catalog is never displayed). Try again later.";
 }
 
-export default function PartsList() {
+export default function PartsList({ accessVersion } = {}) {
   const { user } = useAuth();
   const {
     byUserId: employeeDirectory,
@@ -315,20 +318,33 @@ export default function PartsList() {
   // fetchPartMasterList; no new query surface). null until the first read
   // resolves. Mapped to the canonicalRead status contract the pure
   // buildPartsCatalogRows() consumes (OK / PERMISSION_DENIED / UNAVAILABLE).
-  const [canonicalRead, setCanonicalRead] = useState(null);
+  // Stored TAGGED with the (uid, accessVersion) boundary key it was produced under; `null`
+  // read until the first resolve. OD-3 access-version boundary guard: a same-UID access
+  // change re-reads (effect keyed on the boundary key) with a request token + cancel flag
+  // (stale completions dropped), and at render the stored read is selected ONLY on an exact
+  // key match -- else `null` (LOADING) synchronously, so stale-boundary names never paint in
+  // the catalog OR the reorder/history tables OR the embedded Inventory Health panel.
+  const currentKey = partNamesBoundaryKey(user?.uid, accessVersion);
+  const [stored, setStored] = useState({ key: currentKey, read: null });
+  const tokenRef = useRef(0);
   useEffect(() => {
+    const token = ++tokenRef.current;
     let cancelled = false;
+    setStored({ key: currentKey, read: null });
     fetchPartMasterList().then((result) => {
-      if (cancelled) return;
+      if (cancelled || token !== tokenRef.current) return;
       // Pass `invalid` through so the shared composer fails closed on any malformed canonical document
       // (never silently dropped) -- see domain/partsCatalogView composeGovernedPartsWorkspace step 1b.
-      if (result.ok) setCanonicalRead({ status: "OK", rows: result.parts, invalid: result.invalid });
-      else setCanonicalRead({ status: result.code === "permission-denied" ? "PERMISSION_DENIED" : "UNAVAILABLE" });
+      const read = result.ok
+        ? { status: "OK", rows: result.parts, invalid: result.invalid }
+        : { status: result.code === "permission-denied" ? "PERMISSION_DENIED" : "UNAVAILABLE" };
+      setStored({ key: currentKey, read });
     });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [currentKey]);
+  const canonicalRead = selectCanonicalReadForKey(stored, currentKey, null);
   const canonicalLoading = canonicalRead === null;
   // Governed catalog composition (pure). While the read is in flight we pass a
   // LOADING sentinel (composes to BLOCKED with rows:[]) but render the loading
@@ -338,7 +354,13 @@ export default function PartsList() {
     [canonicalRead]
   );
   const catalogRows = catalog.rows;
-  const nameBySku = useMemo(() => nameBySkuFromRows(catalogRows), [catalogRows]);
+  // OD-3 (Owner decision, 2026-07-30): canonical name only (CANONICAL_MATCH rows), else the
+  // raw partId -- NEVER a static-catalog name. Derived from the already-composed catalog rows
+  // (no second read, no second compose). Empty under LOADING/BLOCKED -> degrades to partId.
+  const resolveName = useMemo(() => {
+    const map = canonicalNameBySku(catalogRows);
+    return (partId) => map.get(partId) ?? partId;
+  }, [catalogRows]);
 
   const { data: pendingRequests } = useReorderRequests();
   const { data: partsManagerQueue, loading: partsManagerLoading } = useReorderRequestsByStatus(
@@ -477,7 +499,7 @@ export default function PartsList() {
       await requestReorderForRecommendation({ partId, recommendation, manualQty });
       setJustRequestedPartIds((prev) => new Set(prev).add(partId));
     } catch (err) {
-      const partName = nameBySku.get(partId) ?? getCatalogItem(partId)?.name ?? partId;
+      const partName = resolveName(partId);
       setReorderError(`Could not request reorder for ${partName}: ${err.message}`);
     } finally {
       setSubmittingPartId(null);
@@ -531,6 +553,7 @@ export default function PartsList() {
         <InventoryHealthPanel
           healthEntries={queueEntries}
           title="Needs Reorder"
+          resolveName={resolveName}
           onRequestReorder={handleRequestReorder}
           requestedPartIds={requestedPartIds}
           submittingPartId={submittingPartId}
@@ -562,7 +585,7 @@ export default function PartsList() {
               <tr key={request.id}>
                 <td>
                   <Link to={`/inventory/${request.partId}?requestId=${request.id}`}>
-                    {nameBySku.get(request.partId) ?? getCatalogItem(request.partId)?.name ?? request.partId}
+                    {resolveName(request.partId)}
                   </Link>
                 </td>
                 <td>{getDisplayQty(request)}</td>
@@ -606,7 +629,7 @@ export default function PartsList() {
               <tr key={request.id}>
                 <td>
                   <Link to={`/inventory/${request.partId}?requestId=${request.id}`}>
-                    {nameBySku.get(request.partId) ?? getCatalogItem(request.partId)?.name ?? request.partId}
+                    {resolveName(request.partId)}
                   </Link>
                 </td>
                 <td>{getDisplayQty(request)}</td>
@@ -648,7 +671,7 @@ export default function PartsList() {
               <tr key={request.id}>
                 <td>
                   <Link to={`/inventory/${request.partId}?requestId=${request.id}`}>
-                    {nameBySku.get(request.partId) ?? getCatalogItem(request.partId)?.name ?? request.partId}
+                    {resolveName(request.partId)}
                   </Link>
                 </td>
                 <td>{getDisplayQty(request)}</td>
@@ -727,7 +750,7 @@ export default function PartsList() {
                     <tr key={request.id}>
                       <td>
                         <Link to={`/inventory/${request.partId}?requestId=${request.id}`}>
-                          {nameBySku.get(request.partId) ?? getCatalogItem(request.partId)?.name ?? request.partId}
+                          {resolveName(request.partId)}
                         </Link>
                       </td>
                       <td>{getDisplayQty(request)}</td>
@@ -867,7 +890,7 @@ export default function PartsList() {
                     <>
                       Found:{" "}
                       <Link to={`/inventory/${historyLookupResult.partId}?requestId=${historyLookupResult.id}`}>
-                        {nameBySku.get(historyLookupResult.partId) ?? getCatalogItem(historyLookupResult.partId)?.name ?? historyLookupResult.partId}
+                        {resolveName(historyLookupResult.partId)}
                       </Link>{" "}
                       -- {HISTORY_STATUS_LABEL[historyLookupResult.status] ?? historyLookupResult.status}
                     </>
@@ -902,7 +925,7 @@ export default function PartsList() {
                   <tr key={request.id}>
                     <td>
                       <Link to={`/inventory/${request.partId}?requestId=${request.id}`}>
-                        {nameBySku.get(request.partId) ?? getCatalogItem(request.partId)?.name ?? request.partId}
+                        {resolveName(request.partId)}
                       </Link>
                     </td>
                     <td>{getDisplayQty(request)}</td>

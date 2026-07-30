@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { getCatalogItem, PARTS_CATALOG } from "../../data/partsCatalog";
+import { PARTS_CATALOG } from "../../data/partsCatalog";
 import { fetchPartMasterList } from "../../services/partMasterQueries";
-import { buildWarehouseCatalog, catalogCategories, filterCatalogRowsByCategory, nameBySku } from "../../domain/warehouseManagerCatalogView";
+import { buildWarehouseCatalog, catalogCategories, filterCatalogRowsByCategory } from "../../domain/warehouseManagerCatalogView";
+import { partNamesBoundaryKey, selectCanonicalReadForKey, canonicalNameBySku } from "../../domain/partsCatalogView";
+import { useAuth } from "../../auth/AuthContext";
 import { useInventoryLedger } from "../../hooks/useInventoryLedger";
 import { useInventoryActionsForPart } from "../../hooks/useInventoryActions";
 import { requestReorderForRecommendation } from "../../domain/inventoryReorderRequests";
@@ -122,27 +124,42 @@ function PartActivityPanel({ partId, resolveName, onClose }) {
   );
 }
 
-export default function WarehouseManagerHome() {
+export default function WarehouseManagerHome({ accessVersion } = {}) {
+  const { user } = useAuth();
   const { healthEntries, loading, error } = useInventoryLedger();
 
   // INV-CONVERGENCE-E cutover -- live canonical `parts` read (one-shot, the same
-  // fetchPartMasterList PartsList/PartDetail use; no new query surface). null until
-  // the first read resolves. Mapped to the canonicalRead status contract the shared
-  // buildPartsCatalogRows() consumes (OK / PERMISSION_DENIED / UNAVAILABLE).
-  const [canonicalRead, setCanonicalRead] = useState(null);
+  // fetchPartMasterList PartsList/PartDetail use; no new query surface). Stored TAGGED with
+  // the (uid, accessVersion) boundary key it was produced under; `null` read until the first
+  // resolve. Mapped to the canonicalRead status contract the shared buildPartsCatalogRows()
+  // consumes (OK / PERMISSION_DENIED / UNAVAILABLE).
+  //
+  // OD-3 access-version boundary guard: a same-UID role/claims/accessVersion change must not
+  // leave prior canonical names (catalog or health panel) on screen. The effect is keyed on
+  // the boundary key (so it re-reads on any access change) with a request token + cancel flag
+  // (stale completions dropped), and at render the stored read is selected ONLY on an exact
+  // key match -- otherwise `null` (LOADING) synchronously, so stale-boundary data never paints.
+  const currentKey = partNamesBoundaryKey(user?.uid, accessVersion);
+  const [stored, setStored] = useState({ key: currentKey, read: null });
+  const tokenRef = useRef(0);
   useEffect(() => {
+    const token = ++tokenRef.current;
     let cancelled = false;
+    setStored({ key: currentKey, read: null });
     fetchPartMasterList().then((result) => {
-      if (cancelled) return;
+      if (cancelled || token !== tokenRef.current) return;
       // Pass `invalid` through so the shared composer fails closed on any malformed canonical document
       // (never silently dropped) -- see domain/partsCatalogView composeGovernedPartsWorkspace step 1b.
-      if (result.ok) setCanonicalRead({ status: "OK", rows: result.parts, invalid: result.invalid });
-      else setCanonicalRead({ status: result.code === "permission-denied" ? "PERMISSION_DENIED" : "UNAVAILABLE" });
+      const read = result.ok
+        ? { status: "OK", rows: result.parts, invalid: result.invalid }
+        : { status: result.code === "permission-denied" ? "PERMISSION_DENIED" : "UNAVAILABLE" };
+      setStored({ key: currentKey, read });
     });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [currentKey]);
+  const canonicalRead = selectCanonicalReadForKey(stored, currentKey, null);
 
   // Canonical-first catalog composition (pure). Static PARTS_CATALOG is only the
   // STATIC_FALLBACK input; a denied/unavailable/incomplete canonical read => blocked
@@ -153,12 +170,14 @@ export default function WarehouseManagerHome() {
   );
   const catalogRows = catalog.rows;
   const categories = useMemo(() => catalogCategories(catalogRows), [catalogRows]);
-  const catalogNameBySku = useMemo(() => nameBySku(catalogRows), [catalogRows]);
-  // Canonical name first, then static fallback, then the raw id -- never a bare uid-like id in the UI.
-  const resolveName = useMemo(
-    () => (partId) => catalogNameBySku.get(partId) ?? getCatalogItem(partId)?.name ?? partId,
-    [catalogNameBySku]
-  );
+  // OD-3 (Owner decision, 2026-07-30): canonical name only (CANONICAL_MATCH rows), else the
+  // raw partId -- NEVER a static-catalog name. Derived from the already-composed catalog rows
+  // (no second read, no second compose). Empty under LOADING/BLOCKED -> everything degrades to
+  // the raw partId.
+  const resolveName = useMemo(() => {
+    const map = canonicalNameBySku(catalogRows);
+    return (partId) => map.get(partId) ?? partId;
+  }, [catalogRows]);
 
   const [category, setCategory] = useState("ALL");
   const [page, setPage] = useState(0);
@@ -235,7 +254,7 @@ export default function WarehouseManagerHome() {
         <p className="fo-muted">Unable to load inventory health right now. Try again shortly.</p>
       ) : (
         <LoadingEmptyState loading={loading} isEmpty={false} loadingText="Loading inventory health..." emptyText="">
-          <InventoryHealthPanel healthEntries={healthEntries} />
+          <InventoryHealthPanel healthEntries={healthEntries} resolveName={resolveName} />
         </LoadingEmptyState>
       )}
 
@@ -255,6 +274,7 @@ export default function WarehouseManagerHome() {
           <InventoryHealthPanel
             healthEntries={needsPlanningEntries}
             title="Needs Planning"
+            resolveName={resolveName}
             onRequestReorder={handleRequestReorder}
             requestedPartIds={justRequestedPartIds}
             submittingPartId={submittingPartId}

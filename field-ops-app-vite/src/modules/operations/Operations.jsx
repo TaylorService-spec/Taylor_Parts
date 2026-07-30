@@ -204,21 +204,15 @@ export default function Operations({ accessVersion } = {}) {
       <p className="fo-muted">
         Read-only reporting over the inventory ledger (Epic 2D), analytics engine (Epic 3), warehouse system
         (Epic 4), and procurement system (Epic 5). Nothing on this screen writes anywhere. Part names in the
-        Warehouse, Procurement, and Execution Insights panels are resolved from the canonical Parts source
-        (fail-closed to the raw Part ID if it can't be verified); the Inventory Health panel's part names and
-        the static catalog count ({PARTS_CATALOG.length} parts) below remain on the static baseline, and all
-        stock quantities and calculations are ledger/analytics-derived, not live stock.
+        Inventory Health, Warehouse, Procurement, and Execution Insights panels are resolved from the canonical
+        Parts source (fail-closed to the raw Part ID if it can't be verified); the static catalog count
+        ({PARTS_CATALOG.length} parts) is a static baseline, and all stock quantities and calculations are
+        ledger/analytics-derived, not live stock.
       </p>
       {namesUnavailable && (
         <p className="fo-muted" role="status">Some part names are unavailable; Part IDs are shown.</p>
       )}
-      {/* InventoryHealthPanel is intentionally NOT migrated in this gate -- it is a shared
-          cross-lane component (also mounted by PartsList, PartsManagerHome,
-          WarehouseManagerHome), so its canonical name resolution is a separate coordinated
-          gate across all four parents. It keeps its existing static name resolution here;
-          this same-screen inconsistency is explicitly temporary (see the Issue #100
-          implementation plan's OD-3 section). */}
-      <InventoryHealthPanel healthEntries={healthEntries} />
+      <InventoryHealthPanel healthEntries={healthEntries} resolveName={resolveName} />
       <WarehousePanel
         warehouses={warehouses}
         stockLocations={stockLocations}
