@@ -10,6 +10,8 @@ import {
   buildPartsCatalogRows,
   nameBySkuFromRows,
   resolveCanonicalPartNames,
+  partNamesBoundaryKey,
+  selectCanonicalReadForKey,
   isCatalogBlocked,
   partCatalogRoute,
   CATALOG_STATES,
@@ -274,6 +276,41 @@ check("resolveCanonicalPartNames fails closed on invalid / malformed-invalid can
 check("resolveCanonicalPartNames: every map value is a canonical name string (no null/object leakage)", () => {
   const r = resolveCanonicalPartNames({ canonicalRead: OK(), staticCatalog: STATIC });
   for (const v of r.nameBySku.values()) assert.equal(typeof v, "string");
+});
+
+// ---- OD-3 (Codex P2): render-time boundary-key selection (synchronous, effect-independent) --------
+check("partNamesBoundaryKey is distinct per (uid, accessVersion) and stable for the same inputs", () => {
+  assert.equal(partNamesBoundaryKey("u1", 1), partNamesBoundaryKey("u1", 1));
+  assert.notEqual(partNamesBoundaryKey("u1", 1), partNamesBoundaryKey("u1", 2)); // access change
+  assert.notEqual(partNamesBoundaryKey("u1", 1), partNamesBoundaryKey("u2", 1)); // user change
+  assert.notEqual(partNamesBoundaryKey("u1", undefined), partNamesBoundaryKey("u1", 0)); // absent vs 0
+});
+check("selectCanonicalReadForKey: stored data used ONLY on exact key match", () => {
+  const okRead = { status: "OK", rows: CANONICAL, invalid: [] };
+  const stored = { key: partNamesBoundaryKey("u1", 1), read: okRead };
+  // exact match -> the stored read is returned verbatim
+  assert.equal(selectCanonicalReadForKey(stored, partNamesBoundaryKey("u1", 1)), okRead);
+});
+check("selectCanonicalReadForKey: ANY key mismatch -> LOADING synchronously (prior-boundary data never reused)", () => {
+  const okRead = { status: "OK", rows: CANONICAL, invalid: [] };
+  const stored = { key: partNamesBoundaryKey("u1", 1), read: okRead };
+  for (const mismatch of [partNamesBoundaryKey("u1", 2), partNamesBoundaryKey("u2", 1), partNamesBoundaryKey(undefined, undefined)]) {
+    const sel = selectCanonicalReadForKey(stored, mismatch);
+    assert.equal(sel.status, "LOADING");
+    assert.notEqual(sel, okRead);
+  }
+});
+check("render-time guard end to end: mismatched-key OK data resolves to an EMPTY name map (no stale names), independent of any effect", () => {
+  const stored = { key: partNamesBoundaryKey("u1", 1), read: { status: "OK", rows: CANONICAL, invalid: [] } };
+  // A render under a NEW access boundary selects LOADING, so names are empty on that same render.
+  const canonicalRead = selectCanonicalReadForKey(stored, partNamesBoundaryKey("u1", 2));
+  const r = resolveCanonicalPartNames({ canonicalRead, staticCatalog: STATIC });
+  assert.equal(r.namesReady, false);
+  assert.equal(r.nameBySku.size, 0);
+  // whereas the matching key still resolves the full canonical map
+  const matched = resolveCanonicalPartNames({ canonicalRead: selectCanonicalReadForKey(stored, partNamesBoundaryKey("u1", 1)), staticCatalog: STATIC });
+  assert.equal(matched.namesReady, true);
+  assert.equal(matched.nameBySku.size, 190);
 });
 
 console.log(`\n${passed} passed, 0 failed`);

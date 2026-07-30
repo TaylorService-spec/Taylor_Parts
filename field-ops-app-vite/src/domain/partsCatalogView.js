@@ -197,6 +197,26 @@ export function nameBySkuFromRows(rows) {
  * @param {object} input  { canonicalRead: {status, rows?, invalid?}, staticCatalog }
  * @returns {{ namesReady: boolean, status: string, nameBySku: Map<string,string> }}
  */
+/**
+ * OD-3 (Codex P1/P2) -- the access boundary a canonical name read belongs to. A read is
+ * only valid for the exact (uid, accessVersion) it was issued under; when either changes,
+ * the boundary key changes and prior data must not be reused. Pure + deterministic.
+ */
+export function partNamesBoundaryKey(uid, accessVersion) {
+  return `${uid ?? ""}::${accessVersion ?? ""}`;
+}
+
+/**
+ * OD-3 (Codex P2) -- synchronous, render-time selection of a keyed read. Returns the
+ * stored read ONLY when it was produced under the current render's boundary key; on any
+ * mismatch it returns a LOADING read so the caller derives an empty name map on that SAME
+ * render (prior-boundary names never appear for even one paint, without waiting for an
+ * effect to reset state). Pure -- no effects, no timing dependence.
+ */
+export function selectCanonicalReadForKey(stored, currentKey) {
+  return stored && stored.key === currentKey ? stored.read : { status: "LOADING" };
+}
+
 export function resolveCanonicalPartNames(input = {}) {
   const { status, rows } = buildPartsCatalogRows(input);
   if (status !== "READY") {

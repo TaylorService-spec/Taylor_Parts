@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { fetchPartMasterList } from "../services/partMasterQueries";
 import { PARTS_CATALOG } from "../data/partsCatalog";
-import { resolveCanonicalPartNames } from "../domain/partsCatalogView";
+import { resolveCanonicalPartNames, partNamesBoundaryKey, selectCanonicalReadForKey } from "../domain/partsCatalogView";
 
 // OD-3 -- governed canonical NAME resolution for the reorder-request/purchasing role
 // surfaces (PartsManagerHome, PartsAssociateHome). These surfaces render NO Parts
@@ -16,45 +16,51 @@ import { resolveCanonicalPartNames } from "../domain/partsCatalogView";
 // caller's operational tables (reorder queue, oversight, history, purchasing) are NOT
 // this hook's concern and must keep rendering regardless.
 //
-// Staleness guard (Owner decision #3): the canonical `parts` DATA is global, but the
-// PERMISSION to read and keep displaying it is not -- a same-UID role/claims/accessVersion
-// change must not leave previously loaded canonical names on screen. The effect is keyed
-// on BOTH `uid` and `accessVersion` (threaded from App), so any access change re-runs the
-// read and resets the name map to LOADING (prior names become unrenderable immediately,
-// before the replacement read settles). A denied replacement read then degrades to raw
-// partIds + the bounded notice. Each run also takes a monotonically increasing token and a
-// per-run cancel flag, so a stale completion from a prior uid/accessVersion (or after
-// unmount) is dropped and can never overwrite the current state.
+// Staleness guard (Owner decision #3; Codex P1/P2): the canonical `parts` DATA is global,
+// but the PERMISSION to read and keep displaying it is not -- a same-UID role/claims/
+// accessVersion change must not leave previously loaded canonical names on screen, not even
+// for one render/paint. We store the read TAGGED with the boundary key (uid + accessVersion)
+// it was produced under, and during render we select it ONLY when its key matches the
+// current render's boundary key (partNamesBoundaryKey / selectCanonicalReadForKey). On any
+// mismatch the selection is LOADING SYNCHRONOUSLY on that same render -- so when accessVersion
+// changes, the prior name map is gone on the first render under the new boundary, before the
+// effect runs. The effect (keyed on the boundary key) then issues the replacement read; its
+// result is stored under the new key. A monotonically increasing token + per-run cancel flag
+// mean a stale completion from a prior boundary (or after unmount) is dropped, and even if it
+// weren't, its stored key would no longer match the current render key.
 export function useCanonicalPartNames({ uid, accessVersion } = {}) {
-  const [canonicalRead, setCanonicalRead] = useState({ status: "LOADING" });
+  const currentKey = partNamesBoundaryKey(uid, accessVersion);
+  const [stored, setStored] = useState({ key: currentKey, read: { status: "LOADING" } });
   const tokenRef = useRef(0);
 
   useEffect(() => {
     const token = ++tokenRef.current;
     let cancelled = false;
-    // Reset to LOADING on a boundary change (uid/accessVersion) so a prior context's
-    // names never linger while the fresh read is in flight.
-    setCanonicalRead({ status: "LOADING" });
+    // Mark this boundary's read as LOADING (keyed) so an in-flight read is attributed to the
+    // current boundary and never confused with a prior one.
+    setStored({ key: currentKey, read: { status: "LOADING" } });
     fetchPartMasterList()
       .then((result) => {
         if (cancelled || token !== tokenRef.current) return;
-        if (result.ok) {
-          // Pass `invalid` through so the shared composer fails closed on any malformed
-          // canonical document (never silently dropped) -- see partsCatalogView
-          // composeGovernedPartsWorkspace step 1b.
-          setCanonicalRead({ status: "OK", rows: result.parts, invalid: result.invalid });
-        } else {
-          setCanonicalRead({ status: result.code === "permission-denied" ? "PERMISSION_DENIED" : "UNAVAILABLE" });
-        }
+        // Pass `invalid` through so the shared composer fails closed on any malformed
+        // canonical document (never silently dropped) -- see partsCatalogView
+        // composeGovernedPartsWorkspace step 1b.
+        const read = result.ok
+          ? { status: "OK", rows: result.parts, invalid: result.invalid }
+          : { status: result.code === "permission-denied" ? "PERMISSION_DENIED" : "UNAVAILABLE" };
+        setStored({ key: currentKey, read });
       })
       .catch(() => {
         if (cancelled || token !== tokenRef.current) return;
-        setCanonicalRead({ status: "UNAVAILABLE" });
+        setStored({ key: currentKey, read: { status: "UNAVAILABLE" } });
       });
     return () => {
       cancelled = true;
     };
-  }, [uid, accessVersion]);
+  }, [currentKey]);
+
+  // Render-time key match -- old-boundary data is never used, synchronously.
+  const canonicalRead = selectCanonicalReadForKey(stored, currentKey);
 
   const { namesReady, nameBySku } = useMemo(
     () => resolveCanonicalPartNames({ canonicalRead, staticCatalog: PARTS_CATALOG }),
