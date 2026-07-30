@@ -65,6 +65,15 @@ and valid. Nothing else in the command changes.
 - **Configuration boundary:** the adapter reads its credential and endpoint config **only** from the
   runtime secret/config surface (§4) at construction time. It never accepts a credential from client
   input, request data, or the command layer. `isConfigured()` stays the single attestation gate.
+- **Non-sending validation contract (what `isConfigured()===true` attests).** Without calling
+  `sendOobCode`, the adapter validates: the secret is **present** and **readable**; the key is **well-formed**
+  (expected shape/length, non-empty); the key/project **ownership matches** the confirmed target project
+  (§8); the key's **API restrictions** permit the Identity Toolkit endpoint and its **HTTP-referrer/IP
+  restrictions** are compatible with a server call; and the Identity Toolkit API is **enabled** for the
+  project. `isConfigured()===true` therefore attests the required configuration is **structurally and
+  project-valid** — it does **NOT** attest that Firebase will accept an email request. **Actual send
+  acceptance remains UNVERIFIED until D-PROD-1C** (the first real `sendOobCode`, post-deployment, §11). If
+  any non-sending validation fails, the wiring stays fail-closed (§5).
 
 ---
 
@@ -73,9 +82,16 @@ and valid. Nothing else in the command changes.
 - **Secret:** the Firebase Web API key (or a dedicated restricted key) used by `accounts:sendOobCode`,
   stored in **Google Secret Manager** — never in the repository, environment files committed to VCS, or
   client-readable config. **This document contains no secret value and never will.**
-- **Least-privilege access:** only the two admin-reset Functions' runtime service account may read the
-  secret version (`secretmanager.versions.access` on that one secret), granted at the enablement gate,
-  time-scoped/reviewed. No human or unrelated service reads it via this path.
+- **Least-privilege access via a DEDICATED runtime identity (D-NSC-IDENTITY).** The two admin-reset
+  Functions MUST run under a **dedicated, user-managed runtime service account** assigned **only** to
+  `initiateAdminPasswordReset` + `listResetEligibleUsers` — **not** the shared default Functions service
+  account (a grant to the default SA would leak secret access to every function that uses it). The
+  `secretmanager.versions.access` grant on this one secret is scoped to **that dedicated SA only**, so no
+  unrelated workload can read it. In addition, the secret MUST be bound as a Firebase secret parameter
+  to **each of the two functions individually** (per-function `secrets:` binding), so only those two
+  functions receive it at runtime. If a dedicated identity cannot be used, an equivalent function-scoped
+  mechanism proving unrelated workloads cannot access the secret must be documented and reviewed before
+  wiring. Granted at the enablement gate, time-scoped/reviewed; no human reads it via this path.
 - **Rotation:** rotate by adding a new secret version and updating the Functions' bound version; the
   adapter reads the bound version at cold start. Rotation never requires committing a value. A rotation
   that yields an absent/invalid credential MUST leave the sender fail-closed (§5), not degraded-open.
@@ -90,12 +106,14 @@ and valid. Nothing else in the command changes.
 ## 5. `outbound:null → configured` transition + fail-closed invariants
 
 - The enablement gate constructs `createNativeResetSender({ outbound: <adapter> })` **only when** the
-  secret is present and the adapter validated it at construction. If the credential/config is **absent or
-  invalid**, the wiring MUST remain `createNativeResetSender({ outbound: null })` (fail-closed:
+  adapter passes the **non-sending validation contract** (§3: secret present/readable, key well-formed,
+  project ownership match, compatible API/referrer restrictions, API enabled). If the credential/config is
+  **absent or invalid**, the wiring MUST remain `createNativeResetSender({ outbound: null })` (fail-closed:
   `isConfigured()===false` → the command throws `DeliveryUnavailableError`, zero side effects). There is
-  **no degraded/partial mode**: either a fully valid configured sender, or fail-closed.
-- **Invariant:** `isConfigured()` may return `true` **only** when a validated outbound + secret are wired.
-  A missing/invalid secret can never produce `isConfigured()===true`.
+  **no degraded/partial mode**: either a structurally + project-valid configured sender, or fail-closed.
+- **Invariant:** `isConfigured()` may return `true` **only** when a structurally + project-valid outbound +
+  secret are wired (per §3). It attests configuration validity, **not** send acceptance (unverified until
+  D-PROD-1C). A missing/invalid secret can never produce `isConfigured()===true`.
 - The transition changes **only** the `nativeSend` wiring in `adminSdkDeps()`; the command, dedupe,
   uncertain/reconciliation, and audit paths are unchanged.
 
@@ -127,19 +145,25 @@ and valid. Nothing else in the command changes.
   secret/key belongs to that project before any wiring; a project mismatch is a halt condition (§9).
 - **Non-production emulator coverage (repository-only, at the sender-adapter impl gate):** the adapter is
   emulator/unit-tested with the outbound faked (as G-PRE1-IMPL already does for the dedupe state machine):
-  `isConfigured()` true only with a wired outbound; absent/invalid config → fail-closed; accepted/
-  not-accepted/uncertain outcomes; no secret/link/code ever logged. **No real `sendOobCode` call in the
-  emulator.** Real-endpoint behavior is verified only under D-PROD-1C.
+  the non-sending validation gate (§3) drives `isConfigured()`; absent/invalid config → fail-closed;
+  accepted/not-accepted/uncertain outcomes; no secret/link/code ever logged. **No real `sendOobCode` call
+  in the emulator.**
+- **Adapter-only evidence is NOT deployed-behavior evidence.** The emulator/faked-outbound tests prove the
+  dedupe state machine and the config-validation gate — they do **not** prove the deployed callable, the
+  dedicated runtime identity, the secret binding, or real-endpoint acceptance. Those are proven only by the
+  post-deployment end-to-end D-PROD-1C (§11).
 
 ---
 
 ## 9. Halt conditions
 
 Halt and report (do not proceed) if: the target project cannot be confirmed or mismatches the secret; the
-secret is absent, unreadable, or invalid at wiring time (stay fail-closed); `isConfigured()` would return
-true without a validated outbound + secret; the deploy target is anything beyond the two callables; a
-real send is attempted outside D-PROD-1C; any secret value, OOB code, link, or email would be logged or
-committed; or `admin.credentialReset.initiate` is found active or granted.
+secret is absent, unreadable, or fails non-sending validation at wiring time (stay fail-closed);
+`isConfigured()` would return true without a structurally + project-valid config (§3); the secret is
+readable by anything beyond the dedicated two-function runtime identity; the deploy target is anything
+beyond the two callables; a real send is attempted before deployment or outside D-PROD-1C; any secret
+value, OOB code, link, or email would be logged or committed; or `admin.credentialReset.initiate` is found
+active or granted.
 
 ---
 
@@ -152,18 +176,29 @@ committed; or `admin.credentialReset.initiate` is found active or granted.
 
 ---
 
-## 11. Sequencing relative to D-PROD-1A / D-PROD-1B / D-PROD-1C
+## 11. Sequencing (D-NSC-SEQUENCE — deployment precedes the first real send)
 
-- **D-PROD-1A (read-only preflight):** may confirm project/config/fact-sources and that the sender is
-  fail-closed (`isConfigured()===false`) — **no** secret creation, **no** wiring, **no** send.
-- **This config gate (D-NATIVE-SEND-CONFIG execution, separate):** provision the secret + build/validate the
-  outbound adapter (repository impl + emulator tests are a repo-only prerequisite; secret/wiring is the
-  execution step) — still **no** send.
-- **D-PROD-1B (bounded fixtures):** provision the disposable test personas.
-- **D-PROD-1C (send verification):** the **first** point a real `sendOobCode` runs, to the approved test
-  recipient only, under the configured sender — bounded send count, duplicate-send + earlier-link checks.
-- **AUTH-PROD-2/3:** deploy the exact two-Function bundle. Each of the above is a **separate** Owner
-  authorization; this package opens none of them.
+The first real `sendOobCode` MUST verify the **deployed** callable (with its dedicated runtime identity,
+secret binding, and production wiring) — a pre-deployment send could not. The coherent order (option a):
+
+1. **D-PROD-1A (read-only preflight):** confirm project/config/fact-sources and that the sender is
+   fail-closed (`isConfigured()===false`) — **no** secret creation, **no** wiring, **no** send.
+2. **Sender-adapter implementation (repository-only):** build the `outbound` adapter + non-sending
+   validation + emulator tests (outbound faked). Repo-only; no secret, no send.
+3. **D-NATIVE-SEND-CONFIG execution (separate):** provision the Secret Manager secret + the dedicated
+   runtime identity + per-function binding; the adapter passes non-sending validation (§3) so
+   `isConfigured()` is structurally/project-valid. Still **no** send.
+4. **D-PROD-1B (bounded fixtures):** provision the disposable test personas.
+5. **Narrowly-authorized deployment (AUTH-PROD-2/3):** deploy the exact two-Function bundle with the bound
+   secret + dedicated runtime identity. No broader enablement.
+6. **D-PROD-1C (end-to-end send verification against the DEPLOYED callable):** the **first** real
+   `sendOobCode`, to the approved test recipient only — verifies the deployed callable, runtime identity,
+   secret binding, and production wiring; bounded send count, duplicate-send + earlier-link checks. Adapter-
+   only/emulator evidence does **not** substitute for this deployed verification (§8).
+7. **Broader enablement** (permission activation/grant, real operator use) only after D-PROD-1C passes —
+   each its own separate authorization (D-RESET-PERMISSION-ACTIVATION, etc.).
+
+Each step is a **separate** Owner authorization; this package opens none of them.
 
 ---
 
@@ -173,7 +208,10 @@ committed; or `admin.credentialReset.initiate` is found active or granted.
 | --- | --- | --- | --- |
 | D-NSC-ENDPOINT | Native send mechanism | (a) Function → Auth REST `accounts:sendOobCode` (PASSWORD_RESET); (b) any external/provider path | **(a)** — native, no provider (#54), matches PRE-1/D-DELIVERY-NATIVE |
 | D-NSC-KEY | Credential | (a) dedicated **restricted** Web API key in Secret Manager; (b) reuse the general Web API key | **(a)** — least privilege, revocable/rotatable without wider impact |
-| D-NSC-KEY-STORE | Secret location | (a) Google Secret Manager, least-privilege to the two Functions' SA only; (b) env/config | **(a)** — never in repo/client-readable config |
+| D-NSC-KEY-STORE | Secret location | (a) Google Secret Manager, per-function secret binding, least-privilege; (b) env/config | **(a)** — never in repo/client-readable config |
+| D-NSC-IDENTITY | Runtime identity for secret access | (a) dedicated user-managed SA assigned only to the two admin-reset functions (or an equivalent proven function-scoped mechanism); (b) shared default Functions SA | **(a)** — a default-SA grant leaks the secret to unrelated functions |
+| D-NSC-VALIDATION | Meaning of `isConfigured()===true` | (a) non-sending validation only (secret present/well-formed, project ownership, API restrictions, enabled state); send acceptance unverified until D-PROD-1C; (b) claim send-verified at construction | **(a)** — construction cannot prove Firebase will accept a send |
+| D-NSC-SEQUENCE | Deploy vs first real send | (a) deploy the two-function bundle, THEN D-PROD-1C end-to-end verifies the deployed callable, THEN broader enablement; (b) real send before deployment | **(a)** — a pre-deployment send cannot verify the deployed callable/identity/binding |
 | D-NSC-ROTATION | Rotation model | (a) add version + rebind at deploy; invalid/absent ⇒ fail-closed; (b) hot-swap without fail-closed guard | **(a)** — rotation can never degrade-open |
 | D-NSC-CONFIG-FAIL | Absent/invalid config behavior | (a) stay `outbound:null` fail-closed (no degraded mode); (b) partial/degraded send | **(a)** — either fully valid or fail-closed |
 | D-NSC-BUNDLE | Deploy scope | (a) exactly `initiateAdminPasswordReset` + `listResetEligibleUsers`, nothing else; (b) broader | **(a)** — no unrelated Functions/Hosting/Rules |
@@ -193,12 +231,13 @@ ungranted**; the deployed sender **remains `outbound:null` / fail-closed** until
 ## 14. Sign-off (to be completed at future gates)
 
 - [ ] Owner decisions §12 ratified (or amended) — _pending_
-- [ ] Sender-adapter implementation + emulator coverage (repository-only, outbound faked) — _pending_
 - [ ] **D-PROD-1A** read-only preflight (confirms fail-closed) — _pending, separate authorization_
-- [ ] D-NATIVE-SEND-CONFIG execution: Secret Manager secret + validated adapter wiring — _pending, separate authorization_
+- [ ] Sender-adapter implementation + non-sending validation + emulator coverage (repository-only, outbound faked) — _pending_
+- [ ] D-NATIVE-SEND-CONFIG execution: Secret Manager secret + dedicated runtime identity + per-function binding + non-sending-validated wiring — _pending, separate authorization_
 - [ ] **D-PROD-1B** bounded fixtures — _pending, separate authorization_
-- [ ] **D-PROD-1C** real-send verification (first real `sendOobCode`) — _pending, separate authorization_
-- [ ] AUTH-PROD-2/3 deploy the two-Function bundle — _pending, separate authorization_
+- [ ] Narrowly-authorized deployment (AUTH-PROD-2/3): the exact two-Function bundle with bound secret + dedicated identity — _pending, separate authorization_
+- [ ] **D-PROD-1C** end-to-end real-send verification against the DEPLOYED callable (first real `sendOobCode`) — _pending, separate authorization_
+- [ ] Broader enablement (permission activation/grant) — _pending, separate authorization_
 
 _This package is the documentation deliverable for the native-send configuration + deployment boundary
 only. It remains **PENDING / NOT AUTHORIZED** until the Owner ratifies §12 and separately authorizes each
