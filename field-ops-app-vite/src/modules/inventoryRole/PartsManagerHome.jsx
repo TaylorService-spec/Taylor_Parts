@@ -165,7 +165,7 @@ export default function PartsManagerHome({ accessVersion } = {}) {
         <p className="fo-muted">Unable to load inventory health right now. Try again shortly.</p>
       ) : (
         <LoadingEmptyState loading={healthLoading} isEmpty={false} loadingText="Loading inventory health..." emptyText="">
-          <InventoryHealthPanel healthEntries={healthEntries} />
+          <InventoryHealthPanel healthEntries={healthEntries} resolveName={resolveName} />
         </LoadingEmptyState>
       )}
 

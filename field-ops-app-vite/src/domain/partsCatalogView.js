@@ -213,8 +213,8 @@ export function partNamesBoundaryKey(uid, accessVersion) {
  * render (prior-boundary names never appear for even one paint, without waiting for an
  * effect to reset state). Pure -- no effects, no timing dependence.
  */
-export function selectCanonicalReadForKey(stored, currentKey) {
-  return stored && stored.key === currentKey ? stored.read : { status: "LOADING" };
+export function selectCanonicalReadForKey(stored, currentKey, notReady = { status: "LOADING" }) {
+  return stored && stored.key === currentKey ? stored.read : notReady;
 }
 
 export function resolveCanonicalPartNames(input = {}) {
@@ -222,8 +222,21 @@ export function resolveCanonicalPartNames(input = {}) {
   if (status !== "READY") {
     return { namesReady: false, status, nameBySku: new Map() };
   }
-  const canonicalMatchRows = rows.filter((r) => r.identityState === "CANONICAL_MATCH");
-  return { namesReady: true, status, nameBySku: nameBySkuFromRows(canonicalMatchRows) };
+  return { namesReady: true, status, nameBySku: canonicalNameBySku(rows) };
+}
+
+/**
+ * OD-3 -- partId -> canonical display name map derived from ALREADY-composed catalog rows
+ * (buildPartsCatalogRows / buildWarehouseCatalog output). For consumers that already hold a
+ * governed canonical composition (PartsList, WarehouseManagerHome) so they resolve names
+ * WITHOUT a second read or a second compose. Decision #2: names come ONLY from
+ * CANONICAL_MATCH rows -- a STATIC_ONLY_EXCLUDED or absent sku is omitted so the caller
+ * degrades it to the raw partId; the static-fallback name carried on excluded rows is never
+ * presented as canonical. Empty when rows are empty (LOADING/BLOCKED).
+ */
+export function canonicalNameBySku(catalogRows) {
+  const rows = (Array.isArray(catalogRows) ? catalogRows : []).filter((r) => r && r.identityState === "CANONICAL_MATCH");
+  return nameBySkuFromRows(rows);
 }
 
 /** True when the status is any BLOCKED_* state. */

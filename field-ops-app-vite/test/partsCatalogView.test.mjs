@@ -10,6 +10,7 @@ import {
   buildPartsCatalogRows,
   nameBySkuFromRows,
   resolveCanonicalPartNames,
+  canonicalNameBySku,
   partNamesBoundaryKey,
   selectCanonicalReadForKey,
   isCatalogBlocked,
@@ -311,6 +312,29 @@ check("render-time guard end to end: mismatched-key OK data resolves to an EMPTY
   const matched = resolveCanonicalPartNames({ canonicalRead: selectCanonicalReadForKey(stored, partNamesBoundaryKey("u1", 1)), staticCatalog: STATIC });
   assert.equal(matched.namesReady, true);
   assert.equal(matched.nameBySku.size, 190);
+});
+
+// ---- OD-3 (shared InventoryHealthPanel gate): canonicalNameBySku + null-sentinel key select --------
+check("canonicalNameBySku: names ONLY from CANONICAL_MATCH composed rows; excluded skus omitted (caller degrades to partId)", () => {
+  const { rows } = buildPartsCatalogRows({ canonicalRead: OK(), staticCatalog: STATIC });
+  const map = canonicalNameBySku(rows);
+  assert.equal(map.size, 190);
+  // a CANONICAL_MATCH sku resolves to its canonical name
+  assert.equal(map.get(CANONICAL[0].partId), CANONICAL[0].name);
+  // every approved STATIC_ONLY_EXCLUDED sku is ABSENT (so the caller shows the raw partId, never static)
+  for (const sku of APPROVED_STATIC_ONLY_EXCLUSIONS) assert.equal(map.has(sku), false);
+});
+check("canonicalNameBySku: empty/non-array rows -> empty map", () => {
+  assert.equal(canonicalNameBySku([]).size, 0);
+  assert.equal(canonicalNameBySku(undefined).size, 0);
+});
+check("selectCanonicalReadForKey null-sentinel: mismatch -> null (LOADING contract for compose-based consumers); match -> stored read", () => {
+  const okRead = { status: "OK", rows: CANONICAL, invalid: [] };
+  const stored = { key: partNamesBoundaryKey("u1", 1), read: okRead };
+  assert.equal(selectCanonicalReadForKey(stored, partNamesBoundaryKey("u1", 2), null), null);
+  assert.equal(selectCanonicalReadForKey(stored, partNamesBoundaryKey("u1", 1), null), okRead);
+  // default sentinel still {status:LOADING} on mismatch (backward-compatible)
+  assert.equal(selectCanonicalReadForKey(stored, partNamesBoundaryKey("u1", 2)).status, "LOADING");
 });
 
 console.log(`\n${passed} passed, 0 failed`);

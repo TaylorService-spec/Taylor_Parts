@@ -25,7 +25,9 @@ vi.mock("../src/hooks/useReorderRequests", () => {
 });
 vi.mock("../src/hooks/useAssignableEmployees", () => ({ useAssignableEmployees: () => ({ employees: [] }) }));
 vi.mock("../src/domain/inventoryReorderRequests", () => ({ assignReorderRequest: vi.fn(), getDisplayQty: () => 3 }));
-vi.mock("../src/modules/operations/panels/InventoryHealthPanel", () => ({ default: () => null }));
+// Spy: capture the resolveName PartsManagerHome passes into its Inventory Health panel.
+const capturedIHP = [];
+vi.mock("../src/modules/operations/panels/InventoryHealthPanel", () => ({ default: ({ resolveName }) => { capturedIHP.push(resolveName); return null; } }));
 vi.mock("../src/shared/assignment/EmployeeAssignmentPicker", () => ({ default: () => null }));
 vi.mock("../src/shared/ui/WorkspaceHeader", () => ({ default: () => null }));
 vi.mock("../src/modules/inventory/PartsList", () => ({ formatAssignmentAge: () => "1d", default: () => null }));
@@ -45,6 +47,9 @@ describe("PartsManagerHome (OD-3) -- canonical name resolution, fail-closed", ()
     await screen.findByText("CANONICAL-NAME-A");
     expect(screen.queryByText("STATIC-CATALOG-NAME-A")).toBeNull();
     expect(screen.queryByText(NOTICE)).toBeNull();
+    // the Inventory Health panel mount receives the same canonical (fail-closed) resolver
+    expect(capturedIHP[capturedIHP.length - 1]("TST-9001")).toBe("CANONICAL-NAME-A");
+    expect(capturedIHP[capturedIHP.length - 1]("TST-0000-ABSENT")).toBe("TST-0000-ABSENT");
   });
 
   it("invalid canonical documents: names degrade to raw partId, queue table still renders, notice shown, no raw invalid leak, no static name", async () => {
