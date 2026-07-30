@@ -57,6 +57,9 @@ on:
       - "field-ops-app-vite/src/shared/ui/AppHeader.jsx"
       - "field-ops-app-vite/test/notificationPanelNames.test.jsx"
       - "field-ops-app-vite/test/appHeaderNotificationNames.test.jsx"
+      - "field-ops-app-vite/src/modules/operations/Operations.jsx"
+      - "field-ops-app-vite/src/shared/search/searchProviders.js"
+      - "field-ops-app-vite/test/od3ClosureSource.test.mjs"
       - ".github/workflows/inventory-parts-ui-tests.yml"
   push:
     branches: [main]
@@ -107,6 +110,9 @@ on:
       - "field-ops-app-vite/src/shared/ui/AppHeader.jsx"
       - "field-ops-app-vite/test/notificationPanelNames.test.jsx"
       - "field-ops-app-vite/test/appHeaderNotificationNames.test.jsx"
+      - "field-ops-app-vite/src/modules/operations/Operations.jsx"
+      - "field-ops-app-vite/src/shared/search/searchProviders.js"
+      - "field-ops-app-vite/test/od3ClosureSource.test.mjs"
       - ".github/workflows/inventory-parts-ui-tests.yml"
   workflow_dispatch:
 

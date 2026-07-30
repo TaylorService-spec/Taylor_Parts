@@ -66,10 +66,22 @@ export const SEARCH_PROVIDERS = {
 
   // Sprint 2.1.1 -- Inventory Domain Foundation. Same client-side-
   // filter-over-already-loaded-data shape as `accounts`/`workOrders`
-  // above. `context.parts` is PARTS_CATALOG (data/partsCatalog.ts, a
-  // static in-memory array, not a Firestore read) as PartsList.jsx
-  // already has it; this provider triggers no Firestore read of its
-  // own, new or otherwise.
+  // above. This provider is pure over `context.parts` -- it imports and
+  // reads no parts catalog itself.
+  //
+  // OD-3 (Issue #100, 2026-07-30): `context.parts` is the GOVERNED CANONICAL
+  // composition PartsList.jsx already holds (PartsList.jsx passes
+  // `context={{ parts: catalogRows }}`, where `catalogRows` = the
+  // domain/partsCatalogView.buildPartsCatalogRows() output over the live
+  // canonical `parts` read). So the Parts search is canonical-first: it is
+  // access-version boundary-key guarded (via PartsList's read) and fails
+  // closed on a denied/unavailable/incomplete/invalid canonical read
+  // (`catalogRows` is [] -> no results, never the raw static catalog). The
+  // governed 200-row set (190 CANONICAL_MATCH + the 10 approved
+  // STATIC_ONLY_EXCLUDED, kept searchable/routable per Stage D
+  // KEEP_VISIBLE) is what the caller injects; this provider triggers no
+  // Firestore read of its own. (Earlier this comment said `context.parts`
+  // was the static `PARTS_CATALOG`; that predated the C1 canonical cutover.)
   parts: {
     key: "parts",
     label: "Parts",

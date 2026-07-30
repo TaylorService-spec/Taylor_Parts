@@ -58,6 +58,12 @@ describe("Operations (OD-3) -- dashboard canonical name resolution, mounted path
     expect(screen.queryByText(NOTICE)).toBeNull();
     // the Inventory Health panel mount receives the SAME single canonical resolver
     expect(capturedIHP[capturedIHP.length - 1]("TST-9001")).toBe("CANONICAL-NAME-A");
+    // OD-3 closure: the header copy keeps the static-baseline / not-live-stock meaning but no
+    // longer renders a static parts count.
+    const copy = document.body.textContent;
+    expect(copy).toMatch(/static baseline/);
+    expect(copy).toMatch(/not live stock/);
+    expect(copy).not.toMatch(/\(\d+ parts\)/);
   });
 
   it("invalid canonical documents: raw partId + bounded notice; draft row (table) preserved; no static name; no raw invalid leak", async () => {
