@@ -80,19 +80,14 @@ await okAsync("transport throws -> propagates (command/sender handle throw/uncer
   const outbound = createOobCodeOutbound(VALID, transport);
   await assert.rejects(outbound({ targetUid: "t", email: "e@x.test", idempotencyKey: "k" }), /transport boom/);
 });
-await okAsync("config cannot redirect the origin (an endpoint field in config is ignored by the adapter)", async () => {
+await okAsync("no caller can redirect the origin (an endpoint field on config is ignored; approved origin used)", async () => {
   const { transport, calls } = fakeTransport({ ok: true, status: 200 });
-  // Even if a rogue caller sneaks an endpoint onto the config object, the adapter ignores
-  // it and calls the approved origin (and validateNativeSendConfig rejects such a config).
+  // Even if a rogue caller sneaks an `endpoint` onto the config object, the adapter has no
+  // endpoint parameter and no config field for it, so it calls the approved origin. (And
+  // validateNativeSendConfig rejects such a config outright.)
   const outbound = createOobCodeOutbound({ ...VALID, endpoint: "https://attacker.test" }, transport);
   await outbound({ targetUid: "t", email: "e@x.test", idempotencyKey: "k" });
-  assert.match(calls[0].url, /^https:\/\/identitytoolkit\.googleapis\.com\//, "config endpoint is NOT honored");
-});
-await okAsync("test-only endpoint override seam is honored (clearly separate from config)", async () => {
-  const { transport, calls } = fakeTransport({ ok: true, status: 200 });
-  const outbound = createOobCodeOutbound(VALID, transport, "https://emu.test/it/"); // 3rd arg = TEST-ONLY seam
-  await outbound({ targetUid: "t", email: "e@x.test", idempotencyKey: "k" });
-  assert.match(calls[0].url, /^https:\/\/emu\.test\/it\/v1\/accounts:sendOobCode/);
+  assert.match(calls[0].url, /^https:\/\/identitytoolkit\.googleapis\.com\//, "origin is fixed to the approved endpoint");
 });
 
 // -- fail-closed builder -----------------------------------------------------

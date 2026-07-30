@@ -16,9 +16,10 @@
 import { createNativeResetSender } from "./nativeResetSender";
 import type { NativeResetSender } from "./adminCredentialCommands";
 
-// The ONLY origin the production adapter ever calls. Config cannot redirect it -- an
-// arbitrary host would exfiltrate the API key + reset email. A custom origin is
-// reachable ONLY through the clearly test-only seam on `createOobCodeOutbound`.
+// The ONLY origin the adapter ever calls. It is a hardcoded constant -- there is NO
+// config field and NO parameter that can redirect it, so an arbitrary host can never
+// receive the API key + reset email. Unit/emulator tests use the injectable transport
+// (they inspect/fake the call) and never need a different origin.
 export const APPROVED_ENDPOINT = "https://identitytoolkit.googleapis.com";
 
 export interface NativeSendConfig {
@@ -71,15 +72,14 @@ export function validateNativeSendConfig(config: Partial<NativeSendConfig> | nul
 // on HTTP 200. The response body / OOB code / action link stay inside this function
 // and are NEVER returned, logged, or persisted; the API key (in the query string) is
 // never logged either.
-// `testEndpointOverride` is a CLEARLY TEST-ONLY seam (e.g. an emulator origin). It is
-// NEVER supplied by `buildNativeResetSender` or any production path -- production always
-// targets APPROVED_ENDPOINT. A production caller passing config alone can never redirect.
+// Always calls the hardcoded APPROVED_ENDPOINT. There is intentionally NO endpoint
+// parameter and NO config field: no caller -- production or otherwise -- can redirect
+// the origin. Tests fake the HTTP call via the injectable `transport`.
 export function createOobCodeOutbound(
   config: NativeSendConfig,
   transport: FetchLike,
-  testEndpointOverride?: string,
 ): (args: { targetUid: string; email: string; idempotencyKey: string }) => Promise<{ accepted: boolean }> {
-  const base = (testEndpointOverride ?? APPROVED_ENDPOINT).replace(/\/+$/, "");
+  const base = APPROVED_ENDPOINT.replace(/\/+$/, "");
   return async ({ email }) => {
     const url = `${base}/v1/accounts:sendOobCode?key=${encodeURIComponent(config.apiKey)}`;
     const res = await transport(url, {
