@@ -16,6 +16,7 @@ import {
   deriveTargetEligibility,
   describeTargetUser,
   ELIGIBILITY_REASON_COPY,
+  canInitiateAdminCredentialReset,
 } from "./adminPasswordReset.js";
 
 export const RESET_SECTION_TITLE = "Password reset";
@@ -39,6 +40,24 @@ export function buildResetUserRows(users, actorUid) {
       ineligibleReasonCopy: eligibility.reason ? ELIGIBILITY_REASON_COPY[eligibility.reason] : null,
     };
   });
+}
+
+// CAPABILITY-GATED load. The eligible-user list is a governed read that must
+// NOT be attempted unless the session effectively holds the reset capability
+// (canInitiateAdminCredentialReset). When gated, this resolves to a `gated`
+// state WITHOUT ever invoking `listFn` -- guaranteeing ZERO
+// listResetEligibleUsers callable attempts while the surface is hidden/inactive
+// (the fail-closed default, since the catalog entry is `active: false` today).
+// Binding the zero-call guarantee to the SAME predicate that gates rendering
+// keeps one source of truth. Resolves (never rejects) to one of:
+//   { gated:true, ok:false, rows:[] }  -- capability absent; NO call was made
+//   { ok:true, rows }                  -- listed successfully (rows may be empty)
+//   { ok:false, result }               -- unavailable/denied/etc. (sanitized state)
+export async function maybeLoadEligibleUsers({ hasCapability, listFn, actorUid, options = {} } = {}) {
+  if (!canInitiateAdminCredentialReset(hasCapability)) {
+    return { gated: true, ok: false, rows: [] };
+  }
+  return loadEligibleUsers(listFn, actorUid, options);
 }
 
 // Load + compose the eligible-user list via the injected seam list function.
