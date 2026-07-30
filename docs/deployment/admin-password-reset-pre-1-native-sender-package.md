@@ -21,9 +21,10 @@
 The merged command (AUTH-PR-3.5) defines a fail-closed `NativeResetSender` seam but **no concrete
 sender**: `NOT_CONFIGURED_NATIVE_SEND` reports `isConfigured() === false`, so the command performs zero
 Auth side effects. PRE-1 designs the concrete sender and its **durable idempotency-key deduplication** so
-that a routine admin-initiated reset can, under a **later** production gate, trigger Firebase's own
-password-reset email **at most once per governed operation key**, even across crashes and stale-worker
-retries.
+that a routine admin-initiated reset makes, under a **later** production gate, **at most one Firebase send
+call per governed operation key**, even across crashes and stale-worker retries. (This bounds the per-key
+call; it is **not** a global "never two emails" guarantee — see §10 and D-PRE1-XKEY-RECON for the residual
+cross-key risk after an uncertain outcome.)
 
 **In scope of this document:** the native mechanism, the dedupe data model + state machine, atomic
 claim / accepted / failed / retry / stale-lease / replay / crash / uncertain behavior, the fail-closed
@@ -70,12 +71,25 @@ templated password-reset email (the same delivery self-service uses via the clie
 `sendPasswordResetEmail`). **No external transactional provider** (#54); no `ResetDelivery`/link-relay
 seam.
 
-- `sendReset({targetUid,email,idempotencyKey})` resolves `{accepted:true}` **only** when the endpoint
-  returns success (HTTP 200 = "Firebase accepted the send request"). Any non-success is `{accepted:false}`
-  (retryable) or throws (stage error). **`accepted` never means delivered/opened/consumed** (#56).
+- `sendReset(...)` resolves a **three-state outcome**, not a boolean: `"accepted"` **only** when the
+  endpoint returns success (HTTP 200 = "Firebase accepted the send request"); `"not_accepted"` for a
+  definite non-success (retryable); and `"uncertain"` when the send may have reached Firebase but the
+  outcome could not be durably determined (§6). A transport exception may still throw (stage error).
+  **`accepted` never means delivered/opened/consumed** (#56), and **`uncertain` is never reported as
+  `accepted`.**
 - The endpoint response body, OOB code, action link, and email are consumed **inside the sender boundary
   only** and are **never** returned to the command, logged, or persisted (see §7). `isConfigured()` is the
   sender's attestation that it can send natively **and** deduplicates on `idempotencyKey` (§4).
+
+**Intentional sender-interface change (D-PRE1-INTERFACE).** The merged seam is
+`sendReset({targetUid,email,idempotencyKey}) → {accepted:boolean}`. Implementation (G-PRE1-IMPL) will
+change it in two ways, both required by this package:
+1. **Return type** becomes `{ outcome: "accepted" | "not_accepted" | "uncertain" }` (the command maps each
+   per §5/§6). `NOT_CONFIGURED_NATIVE_SEND` returns `{ outcome: "not_accepted" }`.
+2. **A command-computed binding** is passed in: `sendReset({targetUid,email,idempotencyKey,binding})`,
+   where `binding` is a deterministic digest the **command** computes from its governed inputs
+   `(actorUid,targetUid,mode)` (§4). The sender **persists and compares** `binding`; it **must not** infer
+   `actorUid`/`mode` from other sources, and **must not** persist the email address to compensate.
 - **Rejected alternatives:** Admin SDK `generatePasswordResetLink` (generates a link but **sends nothing**
   — would require our own delivery = external provider, #54); a Firestore "Trigger Email" extension
   (provider-shaped, #54); the client `sendPasswordResetEmail` (not a server-governed, audited path).
@@ -93,8 +107,8 @@ Record (strict schema; fail closed on any malformed field):
 | Field | Meaning |
 | --- | --- |
 | `idempotencyKey` | bound key (matches doc id) |
-| `boundDigest` | hash of `(actorUid,targetUid,mode)` — a key reused for a different request is refused |
-| `state` | `claimed` (in-flight) → `accepted` \| `failed` |
+| `binding` | the **command-computed** deterministic digest of `(actorUid,targetUid,mode)`, passed into `sendReset` (§3). The sender persists it verbatim and compares it; it never recomputes or infers the authority fields and never persists the email. A key reused with a **different** `binding` fails closed. |
+| `state` | `claimed` (in-flight) → `accepted` \| `failed` \| `uncertain` |
 | `attempt` | monotonic attempt that owns the claim (lease fencing) |
 | `claimedAtMs` / `updatedAtMs` | timestamps for stale detection |
 
@@ -108,15 +122,18 @@ operation; the dedupe record is the sender's at-most-once attestation for the ac
 `sendReset` state machine (all transitions via Firestore transactions):
 
 1. **Claim.** Transaction reads the dedupe doc for `idempotencyKey`:
-   - **absent** → create `state=claimed` (attempt N) → proceed to step 2.
-   - **`accepted`** → **replay**: return `{accepted:true}` **without** calling Firebase (dedupe hit).
-   - **`failed`** (terminal, this key) → return `{accepted:false}` (the command's own cooldown/attempt
+   - **absent** → create `state=claimed` (attempt N, with `binding`) → proceed to step 2.
+   - **`accepted`** → **replay**: return `outcome:"accepted"` **without** calling Firebase (dedupe hit).
+   - **`failed`** (terminal, this key) → return `outcome:"not_accepted"` (the command's own cooldown/attempt
      logic governs whether a *new* attempt/key retries; the sender does not silently re-send).
-   - **`claimed`** (in-flight) → **uncertain** — see §6 (fail closed; do **not** send again).
-   - **`boundDigest` mismatch** → refuse (key reused for a different request).
+   - **`uncertain`** (terminal, this key) → return `outcome:"uncertain"` **without** calling Firebase; the
+     operation stays blocked for governed reconciliation (§6). Same-key replay is side-effect-free.
+   - **`claimed`** (in-flight, re-encountered — i.e. a crash left it claimed) → resolve to
+     **`uncertain`** (fail closed; do **not** send again) and record `state=uncertain` (attempt-bound).
+   - **`binding` mismatch** → refuse (key reused for a different request → fail closed).
 2. **Native send.** Call `accounts:sendOobCode` (§3).
 3. **Record terminal outcome.** On success → transaction sets `state=accepted` (attempt-bound); on a
-   definite non-success → `state=failed`. Return the corresponding `{accepted}`.
+   definite non-success → `state=failed`. Return the corresponding `outcome`.
 - **Stale-lease fencing.** Terminal writes are attempt-bound; a superseded worker's write is refused
   (mirrors the command's `LeaseLostError` discipline), so a slow/stale worker cannot flip a newer
   attempt's outcome.
@@ -130,24 +147,35 @@ operation; the dedupe record is the sender's at-most-once attestation for the ac
 The unavoidable hazard: Firebase **accepts** the send (step 2) but the process crashes **before** the
 terminal write (step 3), leaving `state=claimed`.
 
-**Policy (D-PRE1-UNCERTAIN default = fail-closed-no-duplicate):** a `claimed` (in-flight) dedupe record
-that is re-encountered is treated as **UNCERTAIN → possibly already sent**. The sender **must not** call
-Firebase again for that key. It reports the outcome so the command does **not** cause a duplicate email:
+**Policy (D-PRE1-UNCERTAIN default = fail-closed, no false `accepted`, no automatic resend):** a
+`claimed` (in-flight) dedupe record that is re-encountered resolves to the terminal **`uncertain`**
+outcome — **possibly already sent, outcome unknown**. The sender **must not** call Firebase again for that
+key, and **must not** report `accepted`. The command handles `uncertain` as follows:
 
-- Option A (recommended): treat uncertain as **accepted** (`{accepted:true}`) — an email may already be in
-  flight; never risk a second. The op completes; the admin is told the request was accepted.
-- Consequence: a send that crashed *before* Firebase accepted would also be treated as possibly-sent and
-  **not** retried under that key. A genuine re-send requires a **new idempotencyKey** (a fresh admin
-  action). This deliberately prefers "maybe one email, never two" over "guaranteed one, maybe two."
+- The sender returns `outcome:"uncertain"`.
+- The command **does NOT** persist `stages.send="sent"` and **does NOT** write an audit claiming Firebase
+  accepted the request. It writes a **truthful** audit that the send outcome is **uncertain / possibly
+  sent** (sanitized; no email/link/code), and leaves the operation in a **blocked, needs-reconciliation**
+  terminal (not `completed`) so it is **not** silently replayable-as-sent.
+- To the caller, the response stays the neutral `{status:"accepted"}` envelope (enumeration resistance —
+  this envelope means "request accepted for processing," never "Firebase delivered"); the uncertainty is
+  recorded server-side only.
+- **Never silently retry the same key.** A same-key replay returns `uncertain` again, side-effect-free.
 
-**Why not auto-reclaim the claim?** Reclaiming an in-flight claim to retry would reintroduce the duplicate
-risk. **D-PRE1-STALE-RECLAIM default = never auto-reclaim**; only a new key retries. (An operator/runbook
-path to inspect and, with explicit authorization, resolve a stuck `claimed` record is an AUTH-PROD-gate
-concern, not PRE-1.)
+**Cross-key retry after uncertainty requires separate reconciliation authority (D-PRE1-XKEY-RECON).**
+Issuing a **new** idempotencyKey after an uncertain attempt **can** cause a second email **if the first
+attempt actually reached Firebase**. Therefore a cross-key retry after an uncertain outcome is **not**
+routine: it requires a **separately authorized governed operator reconciliation** that explicitly
+acknowledges the possible-duplicate-email risk before a new key is allowed to send. PRE-1 does not open
+that path; it names it.
+
+**Why not auto-reclaim the claim?** Reclaiming an in-flight/`uncertain` record to retry would reintroduce
+the duplicate risk. **D-PRE1-STALE-RECLAIM default = never auto-reclaim**; resolution is only via the
+separately authorized reconciliation above.
 
 **Interaction with the command's existing lease.** The command already resumes a stale `in_progress` op
-after `STALE_PENDING_MS` and calls `sendReset` again — the sender's dedupe is exactly what makes that
-resume safe: the second call hits a `claimed`/`accepted` record and does not double-send.
+after `STALE_PENDING_MS` and calls `sendReset` again — the sender's dedupe is what makes that resume safe:
+the second call hits a `claimed`/`accepted`/`uncertain` record and does not double-call Firebase.
 
 ---
 
@@ -171,15 +199,18 @@ All repository/emulator-only; the concrete sender is dependency-injected so the 
 except where the Auth emulator is used. Required coverage:
 
 - **Happy path:** claim → accepted → dedupe `accepted`; command persists `stages.send="sent"`.
-- **Replay:** same key after `accepted` → `{accepted:true}`, **zero** additional Firebase calls.
+- **Replay:** same key after `accepted` → `outcome:"accepted"`, **zero** additional Firebase calls.
 - **Concurrency:** two workers race the same key → exactly one claims + sends; the other replays or is
   fenced (no double send).
 - **Stale worker:** an older attempt's terminal write is refused after a newer attempt takes over.
 - **Uncertain (crash between accept and persist):** inject a fault after the faked Firebase "accept" and
-  before the terminal write; a retry sees `claimed` and **does not** re-send (fail closed, §6).
+  before the terminal write; a retry sees `claimed`/`uncertain`, resolves to `uncertain`, **does not**
+  re-send, **does not** report `accepted`, **does not** persist `stages.send="sent"`, and leaves the op
+  blocked for reconciliation (§6).
 - **Sender failure:** definite non-success → `failed`, retryable via a new attempt/key; a thrown
   transport error → stage error, no stage persisted.
-- **Bound-digest mismatch:** same key, different `(actor,target,mode)` → refused.
+- **Binding mismatch:** same key, different command `binding` (from a different `(actor,target,mode)`) →
+  refused (fail closed); the sender does not persist the email to compensate.
 - **Adapter-vs-injected:** follow the PRE-2/target-parity precedent — an Auth+Firestore emulator test of
   the **deployed** sender wiring (its `isConfigured()` attestation + dedupe reads/writes), not only
   injected fakes, so a wiring regression is caught. (The actual `sendOobCode` network call remains a
@@ -212,11 +243,15 @@ None of the following is opened by PRE-1; each requires its own separate Owner a
   later generation does not **remove** an earlier code from the outstanding list, but **end-to-end
   earlier-link consumability after a later send is unproven** and remains an **AUTH-PROD-1** verification
   (§4.C of the AUTH-PROD-1 package).
-- PRE-1's dedupe guarantees **at most one** `sendOobCode` call **per idempotencyKey**, so it does **not**
-  add OOB-code churn for retries/replays of the same governed operation. Across **different** keys (a
-  genuine re-initiation, or the fail-closed "new key to retry" path in §6), a new code is minted — the
-  cross-generation consumability question is Firebase's behavior and stays an AUTH-PROD-1 assertion, not
-  something PRE-1 resolves. PRE-1 must not weaken or presume that behavior.
+- **Scope of the guarantee (do not overclaim).** PRE-1's dedupe guarantees **at most one Firebase
+  `sendOobCode` *call* per `idempotencyKey`** — it does **not** guarantee that the design can never send
+  two emails. After an **uncertain** attempt, a **new** key (allowed only via the separately authorized
+  D-PRE1-XKEY-RECON reconciliation, §6) **can** cause a second email **if the first attempt actually
+  reached Firebase**. That residual duplicate risk is explicitly accepted and gated behind reconciliation
+  authority; it is not silently taken.
+- Same-key retries/replays add **no** OOB-code churn (at most one call per key). Across **different** keys,
+  a new code is minted; the cross-generation earlier-link consumability question is Firebase's behavior and
+  stays an **AUTH-PROD-1** assertion, not something PRE-1 resolves or presumes.
 
 ---
 
@@ -225,10 +260,12 @@ None of the following is opened by PRE-1; each requires its own separate Owner a
 | # | Decision | Options | Recommended default |
 | --- | --- | --- | --- |
 | D-PRE1-MECHANISM | Native send mechanism | (a) Function → Auth REST `accounts:sendOobCode`; (b) Trigger-Email extension; (c) client `sendPasswordResetEmail` | **(a)** — native, no provider (#54), server-governed/auditable |
-| D-PRE1-UNCERTAIN | In-flight/crash outcome | (a) fail-closed-no-duplicate (uncertain ⇒ possibly-sent, no resend, new key to retry); (b) at-least-once (may duplicate) | **(a)** — never send two reset emails |
-| D-PRE1-STALE-RECLAIM | Reclaim a stuck `claimed` record | (a) never auto-reclaim; (b) auto-reclaim after a TTL | **(a)** — auto-reclaim reintroduces duplicate risk |
+| D-PRE1-INTERFACE | Sender interface change | (a) three-state `outcome` return + command-supplied `binding` param; (b) keep boolean + `(targetUid,email,idempotencyKey)` | **(a)** — required to represent `uncertain` and to compare an authoritative binding without inferring authority fields |
+| D-PRE1-UNCERTAIN | In-flight/crash outcome | (a) fail-closed: `uncertain` (never `accepted`), no `stages.send`, no "accepted" audit, op blocked for reconciliation, no auto-resend; (b) report accepted; (c) at-least-once auto-retry (may duplicate) | **(a)** — never a false `accepted`; never a silent duplicate |
+| D-PRE1-XKEY-RECON | Cross-key retry after `uncertain` | (a) require a separately authorized governed operator reconciliation that explicitly accepts the possible-duplicate-email risk; (b) allow a new key routinely | **(a)** — a new key can double-send if the first attempt reached Firebase; gate it behind reconciliation authority |
+| D-PRE1-STALE-RECLAIM | Reclaim a stuck `claimed`/`uncertain` record | (a) never auto-reclaim (resolve only via D-PRE1-XKEY-RECON); (b) auto-reclaim after a TTL | **(a)** — auto-reclaim reintroduces duplicate risk |
 | D-PRE1-DEDUPE-STORE | Dedupe record location | (a) dedicated `admin_credential_reset_send_dedupe/{key}`; (b) extend the op record | **(a)** — sender-owned, single responsibility, key-scoped |
-| D-PRE1-DEDUPE-RETENTION | Dedupe record lifetime | (a) retain at least the OOB-code validity window; (b) short TTL | **(a)** — a too-short TTL erodes the at-most-once guarantee |
+| D-PRE1-DEDUPE-RETENTION | Dedupe record lifetime | (a) retain for **at least the full governed operation/idempotency retention horizon** (never delete while the op may be retried/replayed); if ever deleted, a **coordinated governed-retirement** retires the op record **and** the dedupe record together; (b) short/independent TTL | **(a)** — expiration must never silently make an old key eligible to send again |
 | D-PRE1-APIKEY | `sendOobCode` credential handling | (a) Secret Manager, least-privilege, config-time only; (b) env/config file | **(a)** — never in repo or client-readable config |
 | D-PRE1-ACCEPTED-SEMANTICS | Meaning of `accepted` | (a) "Firebase accepted the request" only (HTTP 200); (b) "delivered" | **(a)** — truthful, per #56; never claim delivery |
 
