@@ -92,8 +92,9 @@ intentional shared-contract extension (§5, D-PRE3-ACTION).
 **Enumeration-resistance invariants (unchanged, must be preserved):**
 - The caller-facing response for every neutral-ineligible target stays the identical neutral envelope; the
   distinguishing **category lives only in the server-side audit**, never in caller output.
-- Any list audit records the **actor's access** (who listed / how many rows), **never** per-target
-  eligibility, and never leaks which specific accounts are eligible via inclusion or omission.
+- Any list audit records **access attribution only** — actor, action, outcome, scope-level target, and
+  timestamp — with **no identities and no result count** (D-PRE3-LIST-COUNT default). It never records
+  per-target eligibility and never leaks which specific accounts are eligible via inclusion or omission.
 
 ---
 
