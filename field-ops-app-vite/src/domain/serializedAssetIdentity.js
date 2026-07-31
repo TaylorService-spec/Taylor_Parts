@@ -2,60 +2,58 @@
 // Available Equipment PROJECTION composition.
 //
 // PURE and DETERMINISTIC: no Firebase import, no persistence, no quantities, no
-// availability CALCULATION, no ledger. It only (1) validates the identity of one
-// serialized unit -- which exists ONLY for a SERIAL-tracked Part -- and (2) composes
-// the read-only Available Equipment projection from three INJECTED authorities whose
-// ids must agree. Node-importable and unit-tested directly
+// availability CALCULATION, no ledger. It only (1) validates the governed identity of
+// one serialized unit -- whose Part must be SERIAL-tracked per the INJECTED Part
+// authority -- and (2) composes the read-only Available Equipment projection from
+// injected authorities whose ids must agree. Node-importable and unit-tested directly
 // (test/serializedAssetIdentity.test.mjs).
 //
-// AUTHORITY SEPARATION (the core invariant this contract enforces):
-//   * The Serialized Asset identity holds ONLY unit-scoped facts: serialNo, partId,
-//     tracking mode, a Location REFERENCE, inventory state/condition, the availability
-//     flag, and the nullable active Equipment link. It NEVER copies descriptive Part
-//     authority (internalPartNumber/category/type/manufacturer/model) or Location
-//     descriptive authority (display label) -- those live in Part Master and Location.
-//   * The Available Equipment projection is a DERIVED read view that MAY combine all
-//     three, but only after requiring their ids to match; any mismatch or malformed
-//     input fails closed rather than fabricating a joined row.
+// GOVERNANCE (durable): the Serialized Asset lifecycle states below are the Rev 6
+// Specification set (docs/specifications/serialized-asset-equipment-installation.md,
+// ADR-010 + DECISIONS #59). EI-P1a neither adds, renames, nor removes lifecycle states,
+// and it introduces NO condition/disposition enum -- that is a separate, later business
+// decision and is deliberately absent here.
 //
-// FAIL CLOSED throughout: unknown enum values, a non-SERIAL/absent tracking mode, a
-// bad Location reference, mismatched ids, or malformed injected records are rejected.
-import { isSerialTracked } from "./partTrackingMode.js";
+// AUTHORITY SEPARATION (the core invariant this contract enforces):
+//   * Serialized Asset identity holds ONLY governed unit fields: serialNo, partId, a
+//     ledger-derived Location REFERENCE (currentLocation), the ledger-derived lifecycle
+//     `state`, and the nullable active Equipment link. It NEVER stores Part authority
+//     (trackingMode / internalPartNumber / category / type / manufacturer / model) nor
+//     any availability/reservation read decision.
+//   * SERIAL eligibility is validated AGAINST the injected Part authority (which owns
+//     trackingMode) -- it is never copied onto the asset.
+//   * Availability (availableForAssignment) is a ledger/reservation-DERIVED read
+//     decision. It is accepted as an explicitly injected input that GATES the Available
+//     Equipment projection; it is never a canonical identity field.
+//   * The Available Equipment projection is a DERIVED read view that MAY combine the
+//     authorities, but only after requiring their ids to match; any mismatch, malformed
+//     input, or absent availability fails closed rather than fabricating a joined row.
+import { isSerialTracked, isTrackingMode } from "./partTrackingMode.js";
 import { validateLocationRef, isLocationType } from "./inventoryLocation.js";
 
-// Inventory lifecycle STATE of a serialized unit (not a computed availability, and not
-// a quantity). RETIRED is terminal. Bounded and fail-closed.
+// Rev 6 Specification lifecycle STATE of a serialized unit (a ledger-derived read, not a
+// quantity and not the availability decision). Bounded, ordered as the spec lists them,
+// and fail-closed. Note AVAILABLE (a lifecycle state) is distinct from the separately
+// injected availableForAssignment reservation decision.
 export const SERIALIZED_ASSET_STATES = Object.freeze([
-  "IN_STOCK",
+  "RECEIVED",
+  "AVAILABLE",
   "RESERVED",
+  "STAGED",
+  "LOADED",
   "IN_TRANSIT",
+  "DELIVERED",
   "INSTALLED",
-  "RETIRED",
 ]);
 
-// Physical CONDITION grade of the unit. Bounded and fail-closed.
-export const SERIALIZED_ASSET_CONDITIONS = Object.freeze([
-  "NEW",
-  "USED",
-  "REFURBISHED",
-  "DAMAGED",
-]);
-
-// The exact fields the identity contract owns -- extras are rejected so descriptive
-// Part/Location authority can never be smuggled onto a Serialized Asset.
-const IDENTITY_FIELDS = new Set([
-  "serialNo",
-  "partId",
-  "trackingMode",
-  "currentLocation",
-  "state",
-  "condition",
-  "availableForAssignment",
-  "currentEquipmentId",
-]);
+// The exact governed fields the identity contract owns. Extras are rejected so Part
+// authority or a read decision can never be smuggled onto a Serialized Asset.
+const IDENTITY_FIELDS = new Set(["serialNo", "partId", "currentLocation", "state", "currentEquipmentId"]);
 
 // The descriptive fields Part Master SUPPLIES to the projection (keyed by partId).
-const PART_FIELDS = new Set(["partId", "internalPartNumber", "category", "type", "manufacturer", "model"]);
+// trackingMode is Part authority and is required so SERIAL eligibility can be validated
+// against it -- it is consumed here, never stored on the asset.
+const PART_FIELDS = new Set(["partId", "trackingMode", "internalPartNumber", "category", "type", "manufacturer", "model"]);
 
 // The fields the Location authority SUPPLIES to the projection (keyed by locationId).
 const LOCATION_DISPLAY_FIELDS = new Set(["locationId", "type", "label"]);
@@ -83,65 +81,18 @@ function isOptionalString(value) {
 }
 
 // ---------------------------------------------------------------------------
-// Serialized Asset identity (fail-closed). Requires a SERIAL-tracked Part.
+// Part authority (injected). Validates the Part Master contract the Serialized Asset
+// references and the projection consumes. trackingMode is Part authority (required, a
+// valid mode); internalPartNumber is required; category/type/manufacturer/model are
+// optional descriptive strings that fail closed only when wrong-typed. { valid, value, reason }.
 // ---------------------------------------------------------------------------
-// Returns { valid, value, reason }. `value` carries ONLY unit-scoped identity -- never
-// descriptive Part/Location authority -- and a validated Location REFERENCE.
-export function validateSerializedAssetIdentity(input) {
-  if (!isPlainObject(input)) return { valid: false, value: null, reason: "not_object" };
-  if (Object.keys(input).some((k) => !IDENTITY_FIELDS.has(k))) {
-    return { valid: false, value: null, reason: "unknown_field" };
-  }
-  // A serialized unit exists ONLY for a SERIAL-tracked Part. Missing/NONE/LOT/unknown
-  // fails closed here (partTrackingMode never assumes SERIAL).
-  if (!isSerialTracked(input.trackingMode)) return { valid: false, value: null, reason: "not_serial_tracked" };
-  if (!isNonEmptyString(input.serialNo)) return { valid: false, value: null, reason: "serial_no_invalid" };
-  if (!isNonEmptyString(input.partId)) return { valid: false, value: null, reason: "part_id_invalid" };
-  const location = validateLocationRef(input.currentLocation);
-  if (!location.valid) return { valid: false, value: null, reason: "current_location_invalid" };
-  if (!SERIALIZED_ASSET_STATES.includes(input.state)) return { valid: false, value: null, reason: "state_invalid" };
-  if (!SERIALIZED_ASSET_CONDITIONS.includes(input.condition)) return { valid: false, value: null, reason: "condition_invalid" };
-  if (typeof input.availableForAssignment !== "boolean") {
-    return { valid: false, value: null, reason: "availability_invalid" };
-  }
-  if (!isNullableEquipmentRef(input.currentEquipmentId)) {
-    return { valid: false, value: null, reason: "current_equipment_id_invalid" };
-  }
-  const currentEquipmentId = isNonEmptyString(input.currentEquipmentId) ? input.currentEquipmentId : null;
-  // INVARIANT: a unit may never be simultaneously installed AND available stock.
-  if (currentEquipmentId !== null && input.availableForAssignment === true) {
-    return { valid: false, value: null, reason: "installed_and_available" };
-  }
-  return {
-    valid: true,
-    value: {
-      serialNo: input.serialNo,
-      partId: input.partId,
-      trackingMode: "SERIAL",
-      currentLocation: location.value, // reference only: { type, locationId }
-      state: input.state,
-      condition: input.condition,
-      availableForAssignment: input.availableForAssignment,
-      currentEquipmentId,
-    },
-    reason: null,
-  };
-}
-
-export function isSerializedAssetIdentity(input) {
-  return validateSerializedAssetIdentity(input).valid;
-}
-
-// Validate the Part Master descriptive record the projection consumes (keyed by
-// partId). internalPartNumber is required (the internal identifier the projection must
-// surface); category/type/manufacturer/model are optional descriptive strings, but a
-// wrong-typed value fails closed. { valid, value, reason }.
-function validatePartProjection(part) {
+export function validatePart(part) {
   if (!isPlainObject(part)) return { valid: false, value: null, reason: "part_not_object" };
   if (Object.keys(part).some((k) => !PART_FIELDS.has(k))) {
     return { valid: false, value: null, reason: "part_unknown_field" };
   }
   if (!isNonEmptyString(part.partId)) return { valid: false, value: null, reason: "part_id_invalid" };
+  if (!isTrackingMode(part.trackingMode)) return { valid: false, value: null, reason: "tracking_mode_invalid" };
   if (!isNonEmptyString(part.internalPartNumber)) return { valid: false, value: null, reason: "internal_part_number_invalid" };
   for (const field of ["category", "type", "manufacturer", "model"]) {
     if (!isOptionalString(part[field])) return { valid: false, value: null, reason: `${field}_invalid` };
@@ -150,6 +101,7 @@ function validatePartProjection(part) {
     valid: true,
     value: {
       partId: part.partId,
+      trackingMode: part.trackingMode,
       internalPartNumber: part.internalPartNumber,
       category: part.category ?? null,
       type: part.type ?? null,
@@ -158,6 +110,52 @@ function validatePartProjection(part) {
     },
     reason: null,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Serialized Asset identity (fail-closed). SERIAL eligibility is validated AGAINST the
+// injected Part authority; trackingMode is never stored on the returned identity.
+// ---------------------------------------------------------------------------
+// Returns { valid, value, reason }. `value` carries ONLY governed unit identity -- a
+// ledger-derived Location REFERENCE and lifecycle state -- never Part authority or an
+// availability read decision.
+export function validateSerializedAssetIdentity(input, part) {
+  if (!isPlainObject(input)) return { valid: false, value: null, reason: "not_object" };
+  if (Object.keys(input).some((k) => !IDENTITY_FIELDS.has(k))) {
+    return { valid: false, value: null, reason: "unknown_field" };
+  }
+  if (!isNonEmptyString(input.serialNo)) return { valid: false, value: null, reason: "serial_no_invalid" };
+  if (!isNonEmptyString(input.partId)) return { valid: false, value: null, reason: "part_id_invalid" };
+  const location = validateLocationRef(input.currentLocation);
+  if (!location.valid) return { valid: false, value: null, reason: "current_location_invalid" };
+  if (!SERIALIZED_ASSET_STATES.includes(input.state)) return { valid: false, value: null, reason: "state_invalid" };
+  if (!isNullableEquipmentRef(input.currentEquipmentId)) {
+    return { valid: false, value: null, reason: "current_equipment_id_invalid" };
+  }
+  // SERIAL eligibility comes from the injected Part authority (which owns trackingMode).
+  // The identity must reference exactly that Part, and that Part must be SERIAL-tracked.
+  if (!isPlainObject(part) || !isNonEmptyString(part.partId)) {
+    return { valid: false, value: null, reason: "part_invalid" };
+  }
+  if (part.partId !== input.partId) return { valid: false, value: null, reason: "part_mismatch" };
+  if (!isSerialTracked(part.trackingMode)) return { valid: false, value: null, reason: "not_serial_tracked" };
+
+  const currentEquipmentId = isNonEmptyString(input.currentEquipmentId) ? input.currentEquipmentId : null;
+  return {
+    valid: true,
+    value: {
+      serialNo: input.serialNo,
+      partId: input.partId,
+      currentLocation: location.value, // ledger-derived reference only: { type, locationId }
+      state: input.state, // ledger-derived lifecycle state
+      currentEquipmentId,
+    },
+    reason: null,
+  };
+}
+
+export function isSerializedAssetIdentity(input, part) {
+  return validateSerializedAssetIdentity(input, part).valid;
 }
 
 // Validate the Location descriptive record the projection consumes (keyed by
@@ -179,27 +177,28 @@ function validateLocationDisplay(location) {
 }
 
 // ---------------------------------------------------------------------------
-// Available Equipment projection (fail-closed) -- composed from three injected
-// authorities whose ids MUST match.
+// Available Equipment projection (fail-closed) -- composed from injected authorities
+// whose ids MUST match, gated by an explicitly injected availability read decision.
 // ---------------------------------------------------------------------------
-//   1. serializedAsset -> identity, condition/state, availability, location reference
-//   2. part            -> internalPartNumber, category/type, manufacturer, model
-//   3. location        -> display label + type (must match the asset's location ref)
-// The asset must be genuinely available (flag true, not installed). Any malformed
-// input or id mismatch fails closed; a joined row is never fabricated.
-export function composeAvailableEquipment({ serializedAsset, part, location } = {}) {
-  const asset = validateSerializedAssetIdentity(serializedAsset);
-  if (!asset.valid) return { valid: false, value: null, reason: `asset:${asset.reason}` };
-  // "Available Equipment" surfaces only genuinely-available units. Availability is the
-  // INJECTED flag (never computed here) combined with the not-installed link state.
-  if (asset.value.availableForAssignment !== true || asset.value.currentEquipmentId !== null) {
-    return { valid: false, value: null, reason: "unavailable" };
-  }
-
-  const partView = validatePartProjection(part);
+//   * serializedAsset -> governed identity, ledger-derived state + location reference
+//   * part            -> SERIAL eligibility + internalPartNumber, category/type,
+//                        manufacturer, model
+//   * location        -> display label + type (must match the asset's location ref)
+//   * availability    -> the ledger/reservation-DERIVED read decision that this unit is
+//                        available for assignment (injected, never computed here)
+// A unit projects ONLY when availability === true AND it is not installed. Any malformed
+// input, id mismatch, or absent availability fails closed; a joined row is never fabricated.
+export function composeAvailableEquipment({ serializedAsset, part, location, availability } = {}) {
+  const partView = validatePart(part);
   if (!partView.valid) return { valid: false, value: null, reason: partView.reason };
-  if (partView.value.partId !== asset.value.partId) {
-    return { valid: false, value: null, reason: "part_mismatch" };
+
+  const asset = validateSerializedAssetIdentity(serializedAsset, part);
+  if (!asset.valid) return { valid: false, value: null, reason: `asset:${asset.reason}` };
+
+  // Availability is the INJECTED derived read decision, combined with the not-installed
+  // link state. This module never infers availability from stock or reservations.
+  if (availability !== true || asset.value.currentEquipmentId !== null) {
+    return { valid: false, value: null, reason: "unavailable" };
   }
 
   const locationView = validateLocationDisplay(location);
@@ -217,8 +216,7 @@ export function composeAvailableEquipment({ serializedAsset, part, location } = 
       serialNo: asset.value.serialNo,
       partId: asset.value.partId,
       state: asset.value.state,
-      condition: asset.value.condition,
-      availableForAssignment: asset.value.availableForAssignment,
+      availableForAssignment: true, // the injected read decision that gated inclusion
       currentEquipmentId: asset.value.currentEquipmentId, // null (available => not installed)
       // Part Master descriptive authority (supplied, not owned by the asset):
       internalPartNumber: partView.value.internalPartNumber,

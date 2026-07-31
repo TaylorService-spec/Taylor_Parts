@@ -1,14 +1,16 @@
 // Enterprise Inventory -- EI-P1a. Deterministic pure unit tests for the Serialized
 // Asset identity contract and the Available Equipment projection composition
-// (src/domain/serializedAssetIdentity.js). Proves fail-closed identity validation,
-// the SERIAL-tracked-Part gate, strict authority separation (no descriptive
-// Part/Location fields on the identity), and id-matched three-authority composition.
+// (src/domain/serializedAssetIdentity.js). Proves: fail-closed identity validation;
+// SERIAL eligibility validated AGAINST the injected Part authority (trackingMode never
+// stored on the asset); Rev 6 lifecycle states; NO condition enum; availability as an
+// explicitly injected derived read input that gates the projection only; and id-matched
+// three-authority composition.
 //
 // Run: node test/serializedAssetIdentity.test.mjs   (also `npm test`)
 import assert from "node:assert/strict";
 import {
   SERIALIZED_ASSET_STATES,
-  SERIALIZED_ASSET_CONDITIONS,
+  validatePart,
   validateSerializedAssetIdentity,
   isSerializedAssetIdentity,
   composeAvailableEquipment,
@@ -21,20 +23,19 @@ function ok(name, fn) {
   console.log("PASS -- " + name);
 }
 
-// A valid, AVAILABLE serialized-asset identity fixture (not installed).
+// A valid governed identity fixture (no trackingMode, no condition, no availability).
 const asset = (over) => ({
   serialNo: "SN-100",
   partId: "PART-1",
-  trackingMode: "SERIAL",
   currentLocation: { type: "WAREHOUSE", locationId: "WH-1" },
-  state: "IN_STOCK",
-  condition: "NEW",
-  availableForAssignment: true,
+  state: "AVAILABLE",
   currentEquipmentId: null,
   ...over,
 });
+// The injected Part authority. trackingMode is Part authority (SERIAL here).
 const part = (over) => ({
   partId: "PART-1",
+  trackingMode: "SERIAL",
   internalPartNumber: "IPN-42",
   category: "PUMP",
   type: "HYDRAULIC",
@@ -44,119 +45,141 @@ const part = (over) => ({
 });
 const location = (over) => ({ locationId: "WH-1", type: "WAREHOUSE", label: "Main Warehouse", ...over });
 
-// --- enums ---
-ok("state/condition enums are the bounded frozen sets", () => {
-  assert.deepEqual(SERIALIZED_ASSET_STATES, ["IN_STOCK", "RESERVED", "IN_TRANSIT", "INSTALLED", "RETIRED"]);
-  assert.deepEqual(SERIALIZED_ASSET_CONDITIONS, ["NEW", "USED", "REFURBISHED", "DAMAGED"]);
+// --- governance: Rev 6 states, NO condition enum ---
+ok("state enum is exactly the durable Rev 6 set (ordered, frozen)", () => {
+  assert.deepEqual(SERIALIZED_ASSET_STATES, [
+    "RECEIVED", "AVAILABLE", "RESERVED", "STAGED", "LOADED", "IN_TRANSIT", "DELIVERED", "INSTALLED",
+  ]);
   assert.equal(Object.isFrozen(SERIALIZED_ASSET_STATES), true);
-  assert.equal(Object.isFrozen(SERIALIZED_ASSET_CONDITIONS), true);
 });
 
-// --- identity: happy path + shape ---
-ok("valid identity: normalized value carries ONLY unit-scoped identity", () => {
-  const r = validateSerializedAssetIdentity(asset());
+ok("no condition enum/authority is exported by EI-P1a", async () => {
+  const mod = await import("../src/domain/serializedAssetIdentity.js");
+  assert.equal("SERIALIZED_ASSET_CONDITIONS" in mod, false);
+});
+
+// --- Part authority contract ---
+ok("validatePart: valid Part authority, trackingMode retained on the Part (not the asset)", () => {
+  const r = validatePart(part());
+  assert.equal(r.valid, true);
+  assert.equal(r.value.trackingMode, "SERIAL");
+  assert.equal(r.value.internalPartNumber, "IPN-42");
+});
+
+ok("validatePart: fail-closed on shape/tracking/identifier", () => {
+  assert.equal(validatePart(null).reason, "part_not_object");
+  assert.equal(validatePart(part({ secret: "x" })).reason, "part_unknown_field");
+  assert.equal(validatePart(part({ partId: "" })).reason, "part_id_invalid");
+  assert.equal(validatePart(part({ trackingMode: "serial" })).reason, "tracking_mode_invalid");
+  assert.equal(validatePart(part({ trackingMode: undefined })).reason, "tracking_mode_invalid");
+  assert.equal(validatePart(part({ internalPartNumber: "" })).reason, "internal_part_number_invalid");
+  assert.equal(validatePart(part({ manufacturer: 5 })).reason, "manufacturer_invalid");
+});
+
+ok("validatePart: optional descriptive fields default to null (not fabricated)", () => {
+  const r = validatePart({ partId: "PART-1", trackingMode: "SERIAL", internalPartNumber: "IPN-42" });
+  assert.equal(r.valid, true);
+  assert.deepEqual([r.value.category, r.value.type, r.value.manufacturer, r.value.model], [null, null, null, null]);
+});
+
+// --- identity: happy path + authority separation ---
+ok("valid identity: value carries ONLY governed unit fields (no Part/availability authority)", () => {
+  const r = validateSerializedAssetIdentity(asset(), part());
   assert.equal(r.valid, true);
   assert.equal(r.reason, null);
-  assert.deepEqual(Object.keys(r.value).sort(), [
-    "availableForAssignment", "condition", "currentEquipmentId", "currentLocation",
-    "partId", "serialNo", "state", "trackingMode",
-  ]);
-  // Location is a REFERENCE only (no label); no descriptive Part authority present.
-  assert.deepEqual(r.value.currentLocation, { type: "WAREHOUSE", locationId: "WH-1" });
-  for (const forbidden of ["internalPartNumber", "manufacturer", "model", "category", "label"]) {
+  assert.deepEqual(Object.keys(r.value).sort(), ["currentEquipmentId", "currentLocation", "partId", "serialNo", "state"]);
+  assert.deepEqual(r.value.currentLocation, { type: "WAREHOUSE", locationId: "WH-1" }); // reference only
+  for (const forbidden of ["trackingMode", "condition", "availableForAssignment", "internalPartNumber", "manufacturer", "model", "category", "label"]) {
     assert.equal(forbidden in r.value, false, `identity must not carry ${forbidden}`);
   }
 });
 
-ok("installed (but not available) identity is valid; currentEquipmentId retained", () => {
-  const r = validateSerializedAssetIdentity(asset({ state: "INSTALLED", availableForAssignment: false, currentEquipmentId: "EQ-9" }));
+ok("installed identity is valid; currentEquipmentId retained", () => {
+  const r = validateSerializedAssetIdentity(asset({ state: "INSTALLED", currentEquipmentId: "EQ-9" }), part());
   assert.equal(r.valid, true);
   assert.equal(r.value.currentEquipmentId, "EQ-9");
 });
 
-ok("isSerializedAssetIdentity mirrors validity", () => {
-  assert.equal(isSerializedAssetIdentity(asset()), true);
-  assert.equal(isSerializedAssetIdentity({}), false);
+ok("isSerializedAssetIdentity mirrors validity (with Part authority)", () => {
+  assert.equal(isSerializedAssetIdentity(asset(), part()), true);
+  assert.equal(isSerializedAssetIdentity({}, part()), false);
 });
 
-// --- identity: fail-closed ---
+// --- identity: SERIAL eligibility validated AGAINST the injected Part ---
+ok("SERIAL eligibility comes from the injected Part, not the asset", () => {
+  // A NONE/LOT/missing/unknown Part is not SERIAL-eligible -> fail closed.
+  for (const trackingMode of ["NONE", "LOT", undefined, null, "serial", "SERIALIZED"]) {
+    assert.equal(validateSerializedAssetIdentity(asset(), part({ trackingMode })).reason, "not_serial_tracked", `trackingMode=${String(trackingMode)}`);
+  }
+});
+
+ok("identity must reference exactly the injected Part (id match)", () => {
+  assert.equal(validateSerializedAssetIdentity(asset(), part({ partId: "OTHER" })).reason, "part_mismatch");
+  assert.equal(validateSerializedAssetIdentity(asset(), null).reason, "part_invalid");
+  assert.equal(validateSerializedAssetIdentity(asset(), {}).reason, "part_invalid");
+});
+
+ok("trackingMode may NOT be stored on the asset (unknown_field)", () => {
+  assert.equal(validateSerializedAssetIdentity(asset({ trackingMode: "SERIAL" }), part()).reason, "unknown_field");
+});
+
+// --- identity: fail-closed field validation ---
 ok("not_object", () => {
   for (const v of [null, undefined, "x", 5, []]) {
-    assert.equal(validateSerializedAssetIdentity(v).reason, "not_object", String(v));
+    assert.equal(validateSerializedAssetIdentity(v, part()).reason, "not_object", String(v));
   }
 });
 
-ok("unknown_field rejected (no descriptive smuggling onto identity)", () => {
-  assert.equal(validateSerializedAssetIdentity(asset({ manufacturer: "Taylor" })).reason, "unknown_field");
-  assert.equal(validateSerializedAssetIdentity(asset({ label: "Main" })).reason, "unknown_field");
-});
-
-ok("requires a SERIAL-tracked Part -- NONE/LOT/missing/unknown all fail closed", () => {
-  for (const trackingMode of ["NONE", "LOT", undefined, null, "serial", "SERIALIZED", ""]) {
-    assert.equal(
-      validateSerializedAssetIdentity(asset({ trackingMode })).reason,
-      "not_serial_tracked",
-      `trackingMode=${String(trackingMode)}`,
-    );
-  }
+ok("unknown_field rejected (no availability/condition smuggling onto identity)", () => {
+  assert.equal(validateSerializedAssetIdentity(asset({ availableForAssignment: true }), part()).reason, "unknown_field");
+  assert.equal(validateSerializedAssetIdentity(asset({ condition: "NEW" }), part()).reason, "unknown_field");
+  assert.equal(validateSerializedAssetIdentity(asset({ label: "Main" }), part()).reason, "unknown_field");
 });
 
 ok("serialNo / partId must be non-empty strings", () => {
-  assert.equal(validateSerializedAssetIdentity(asset({ serialNo: "" })).reason, "serial_no_invalid");
-  assert.equal(validateSerializedAssetIdentity(asset({ serialNo: 100 })).reason, "serial_no_invalid");
-  assert.equal(validateSerializedAssetIdentity(asset({ partId: "  " })).reason, "part_id_invalid");
+  assert.equal(validateSerializedAssetIdentity(asset({ serialNo: "" }), part()).reason, "serial_no_invalid");
+  assert.equal(validateSerializedAssetIdentity(asset({ serialNo: 100 }), part()).reason, "serial_no_invalid");
+  assert.equal(validateSerializedAssetIdentity(asset({ partId: "  " }), part()).reason, "part_id_invalid");
 });
 
 ok("currentLocation must be a valid discriminated reference", () => {
-  assert.equal(validateSerializedAssetIdentity(asset({ currentLocation: null })).reason, "current_location_invalid");
-  assert.equal(validateSerializedAssetIdentity(asset({ currentLocation: { type: "TRUCK", locationId: "T-1" } })).reason, "current_location_invalid");
-  assert.equal(validateSerializedAssetIdentity(asset({ currentLocation: { type: "WAREHOUSE", locationId: "" } })).reason, "current_location_invalid");
+  assert.equal(validateSerializedAssetIdentity(asset({ currentLocation: null }), part()).reason, "current_location_invalid");
+  assert.equal(validateSerializedAssetIdentity(asset({ currentLocation: { type: "TRUCK", locationId: "T-1" } }), part()).reason, "current_location_invalid");
+  assert.equal(validateSerializedAssetIdentity(asset({ currentLocation: { type: "WAREHOUSE", locationId: "" } }), part()).reason, "current_location_invalid");
   // A location reference may NOT carry a label here (that is Location display authority).
-  assert.equal(validateSerializedAssetIdentity(asset({ currentLocation: { type: "WAREHOUSE", locationId: "WH-1", label: "x" } })).reason, "current_location_invalid");
+  assert.equal(validateSerializedAssetIdentity(asset({ currentLocation: { type: "WAREHOUSE", locationId: "WH-1", label: "x" } }), part()).reason, "current_location_invalid");
 });
 
-ok("state / condition must be canonical enum members", () => {
-  assert.equal(validateSerializedAssetIdentity(asset({ state: "in_stock" })).reason, "state_invalid");
-  assert.equal(validateSerializedAssetIdentity(asset({ state: undefined })).reason, "state_invalid");
-  assert.equal(validateSerializedAssetIdentity(asset({ condition: "MINT" })).reason, "condition_invalid");
-});
-
-ok("availableForAssignment must be a real boolean", () => {
-  for (const v of ["true", 1, 0, null, undefined]) {
-    assert.equal(validateSerializedAssetIdentity(asset({ availableForAssignment: v, currentEquipmentId: null })).reason, "availability_invalid", String(v));
-  }
+ok("state must be a canonical Rev 6 member; old states rejected", () => {
+  assert.equal(validateSerializedAssetIdentity(asset({ state: "available" }), part()).reason, "state_invalid");
+  assert.equal(validateSerializedAssetIdentity(asset({ state: undefined }), part()).reason, "state_invalid");
+  // Pre-correction states no longer exist.
+  assert.equal(validateSerializedAssetIdentity(asset({ state: "IN_STOCK" }), part()).reason, "state_invalid");
+  assert.equal(validateSerializedAssetIdentity(asset({ state: "RETIRED" }), part()).reason, "state_invalid");
 });
 
 ok("currentEquipmentId is nullable but never malformed", () => {
-  assert.equal(validateSerializedAssetIdentity(asset({ currentEquipmentId: "" })).reason, "current_equipment_id_invalid");
-  assert.equal(validateSerializedAssetIdentity(asset({ currentEquipmentId: 5 })).reason, "current_equipment_id_invalid");
-  // undefined is an allowed "not installed" value.
-  assert.equal(validateSerializedAssetIdentity(asset({ currentEquipmentId: undefined })).valid, true);
+  assert.equal(validateSerializedAssetIdentity(asset({ currentEquipmentId: "" }), part()).reason, "current_equipment_id_invalid");
+  assert.equal(validateSerializedAssetIdentity(asset({ currentEquipmentId: 5 }), part()).reason, "current_equipment_id_invalid");
+  assert.equal(validateSerializedAssetIdentity(asset({ currentEquipmentId: undefined }), part()).valid, true);
 });
 
-ok("INVARIANT: installed AND available fails closed", () => {
-  assert.equal(
-    validateSerializedAssetIdentity(asset({ currentEquipmentId: "EQ-1", availableForAssignment: true })).reason,
-    "installed_and_available",
-  );
-});
-
-ok("validation does not mutate input", () => {
-  const input = asset();
-  const snapshot = structuredClone(input);
-  validateSerializedAssetIdentity(input);
-  assert.deepEqual(input, snapshot);
+ok("validation does not mutate inputs", () => {
+  const a = asset(), p = part();
+  const sa = structuredClone(a), sp = structuredClone(p);
+  validateSerializedAssetIdentity(a, p);
+  assert.deepEqual(a, sa);
+  assert.deepEqual(p, sp);
 });
 
 // --- projection: happy path ---
-ok("composeAvailableEquipment: id-matched three-authority join", () => {
-  const r = composeAvailableEquipment({ serializedAsset: asset(), part: part(), location: location() });
+ok("composeAvailableEquipment: id-matched join gated by injected availability", () => {
+  const r = composeAvailableEquipment({ serializedAsset: asset(), part: part(), location: location(), availability: true });
   assert.equal(r.valid, true);
   assert.deepEqual(r.value, {
     serialNo: "SN-100",
     partId: "PART-1",
-    state: "IN_STOCK",
-    condition: "NEW",
+    state: "AVAILABLE",
     availableForAssignment: true,
     currentEquipmentId: null,
     internalPartNumber: "IPN-42",
@@ -171,62 +194,60 @@ ok("composeAvailableEquipment: id-matched three-authority join", () => {
 ok("projection: optional Part descriptive fields default to null (not fabricated)", () => {
   const r = composeAvailableEquipment({
     serializedAsset: asset(),
-    part: { partId: "PART-1", internalPartNumber: "IPN-42" },
+    part: { partId: "PART-1", trackingMode: "SERIAL", internalPartNumber: "IPN-42" },
     location: location(),
+    availability: true,
   });
   assert.equal(r.valid, true);
-  assert.equal(r.value.manufacturer, null);
-  assert.equal(r.value.model, null);
-  assert.equal(r.value.category, null);
-  assert.equal(r.value.type, null);
+  assert.deepEqual([r.value.manufacturer, r.value.model, r.value.category, r.value.type], [null, null, null, null]);
 });
 
-// --- projection: fail-closed ---
+// --- projection: availability is an explicitly injected derived gate ---
+ok("projection: absent/false availability fails closed (never inferred)", () => {
+  assert.equal(composeAvailableEquipment({ serializedAsset: asset(), part: part(), location: location() }).reason, "unavailable");
+  assert.equal(composeAvailableEquipment({ serializedAsset: asset(), part: part(), location: location(), availability: false }).reason, "unavailable");
+  assert.equal(composeAvailableEquipment({ serializedAsset: asset(), part: part(), location: location(), availability: "true" }).reason, "unavailable");
+});
+
+ok("projection: installed unit can never appear even if availability=true is injected", () => {
+  const installed = asset({ state: "INSTALLED", currentEquipmentId: "EQ-9" });
+  assert.equal(composeAvailableEquipment({ serializedAsset: installed, part: part(), location: location(), availability: true }).reason, "unavailable");
+});
+
+// --- projection: fail-closed inputs ---
+ok("projection: malformed Part fails closed (part checked first)", () => {
+  assert.equal(composeAvailableEquipment({ serializedAsset: asset(), part: null, location: location(), availability: true }).reason, "part_not_object");
+  assert.equal(composeAvailableEquipment({ serializedAsset: asset(), part: part({ internalPartNumber: "" }), location: location(), availability: true }).reason, "internal_part_number_invalid");
+  assert.equal(composeAvailableEquipment({ serializedAsset: asset(), part: part({ trackingMode: "LOT" }), location: location(), availability: true }).reason, "asset:not_serial_tracked");
+});
+
 ok("projection: asset failure propagates with asset: prefix", () => {
-  assert.equal(composeAvailableEquipment({ serializedAsset: null, part: part(), location: location() }).reason, "asset:not_object");
-  assert.equal(composeAvailableEquipment({ serializedAsset: {}, part: part(), location: location() }).reason, "asset:not_serial_tracked");
-  assert.equal(composeAvailableEquipment({ serializedAsset: asset({ trackingMode: "LOT" }), part: part(), location: location() }).reason, "asset:not_serial_tracked");
-});
-
-ok("projection: unavailable asset (flag false) fails closed", () => {
-  const r = composeAvailableEquipment({ serializedAsset: asset({ availableForAssignment: false }), part: part(), location: location() });
-  assert.equal(r.reason, "unavailable");
-});
-
-ok("projection: installed asset can never appear in Available Equipment", () => {
-  // installed + not-available is a valid identity, but it is NOT available -> excluded.
-  const installed = asset({ state: "INSTALLED", availableForAssignment: false, currentEquipmentId: "EQ-9" });
-  assert.equal(composeAvailableEquipment({ serializedAsset: installed, part: part(), location: location() }).reason, "unavailable");
-});
-
-ok("projection: malformed Part fails closed", () => {
-  assert.equal(composeAvailableEquipment({ serializedAsset: asset(), part: null, location: location() }).reason, "part_not_object");
-  assert.equal(composeAvailableEquipment({ serializedAsset: asset(), part: part({ secret: "x" }), location: location() }).reason, "part_unknown_field");
-  assert.equal(composeAvailableEquipment({ serializedAsset: asset(), part: part({ internalPartNumber: "" }), location: location() }).reason, "internal_part_number_invalid");
-  assert.equal(composeAvailableEquipment({ serializedAsset: asset(), part: part({ manufacturer: 5 }), location: location() }).reason, "manufacturer_invalid");
+  assert.equal(composeAvailableEquipment({ serializedAsset: null, part: part(), location: location(), availability: true }).reason, "asset:not_object");
+  assert.equal(composeAvailableEquipment({ serializedAsset: {}, part: part(), location: location(), availability: true }).reason, "asset:serial_no_invalid");
 });
 
 ok("projection: Part id must match the asset's partId", () => {
-  assert.equal(composeAvailableEquipment({ serializedAsset: asset(), part: part({ partId: "OTHER" }), location: location() }).reason, "part_mismatch");
+  // Part is internally consistent but references a different part than the asset.
+  const otherPart = part({ partId: "OTHER" });
+  assert.equal(composeAvailableEquipment({ serializedAsset: asset(), part: otherPart, location: location(), availability: true }).reason, "asset:part_mismatch");
 });
 
 ok("projection: malformed Location fails closed", () => {
-  assert.equal(composeAvailableEquipment({ serializedAsset: asset(), part: part(), location: null }).reason, "location_not_object");
-  assert.equal(composeAvailableEquipment({ serializedAsset: asset(), part: part(), location: location({ extra: 1 }) }).reason, "location_unknown_field");
-  assert.equal(composeAvailableEquipment({ serializedAsset: asset(), part: part(), location: location({ label: "" }) }).reason, "location_label_invalid");
-  assert.equal(composeAvailableEquipment({ serializedAsset: asset(), part: part(), location: location({ type: "TRUCK" }) }).reason, "location_type_invalid");
+  assert.equal(composeAvailableEquipment({ serializedAsset: asset(), part: part(), location: null, availability: true }).reason, "location_not_object");
+  assert.equal(composeAvailableEquipment({ serializedAsset: asset(), part: part(), location: location({ extra: 1 }), availability: true }).reason, "location_unknown_field");
+  assert.equal(composeAvailableEquipment({ serializedAsset: asset(), part: part(), location: location({ label: "" }), availability: true }).reason, "location_label_invalid");
+  assert.equal(composeAvailableEquipment({ serializedAsset: asset(), part: part(), location: location({ type: "TRUCK" }), availability: true }).reason, "location_type_invalid");
 });
 
 ok("projection: Location id and type must match the asset's location reference", () => {
-  assert.equal(composeAvailableEquipment({ serializedAsset: asset(), part: part(), location: location({ locationId: "WH-2" }) }).reason, "location_mismatch");
-  // A location whose id matches but whose type disagrees with the reference fails closed.
+  assert.equal(composeAvailableEquipment({ serializedAsset: asset(), part: part(), location: location({ locationId: "WH-2" }), availability: true }).reason, "location_mismatch");
   const a = asset({ currentLocation: { type: "BIN", locationId: "WH-1" } });
-  assert.equal(composeAvailableEquipment({ serializedAsset: a, part: part(), location: location() }).reason, "location_type_mismatch");
+  assert.equal(composeAvailableEquipment({ serializedAsset: a, part: part(), location: location(), availability: true }).reason, "location_type_mismatch");
 });
 
 ok("projection: missing argument object fails closed (no throw)", () => {
-  assert.equal(composeAvailableEquipment().reason, "asset:not_object");
-  assert.equal(composeAvailableEquipment({}).reason, "asset:not_object");
+  assert.equal(composeAvailableEquipment().reason, "part_not_object");
+  assert.equal(composeAvailableEquipment({}).reason, "part_not_object");
 });
 
 console.log(`\n${passed} passed`);
