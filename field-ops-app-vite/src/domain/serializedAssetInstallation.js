@@ -47,7 +47,9 @@ export const LINK_REJECT = Object.freeze({
   NOT_INSTALLED: "not-installed",
   LINK_MISMATCH: "link-mismatch", // non-reciprocal serial<->equipment
   NO_PRIOR_INSTALL: "no-prior-install", // redeploy requires a prior sequential install
-  SAME_EQUIPMENT: "same-equipment", // a new serial may never attach to the existing Equipment record
+  SAME_EQUIPMENT: "same-equipment", // a serial may never (re)attach to a prior Equipment record
+  SAME_SERIAL: "same-serial", // replacement must be a DIFFERENT serial from the retiring one
+  HISTORY_OPEN: "history-open", // redeploy requires the prior history to end uninstalled
   INSTALLED_AND_AVAILABLE: "installed-and-available", // invariant violation
 });
 
@@ -165,7 +167,17 @@ export function validateRedeploy(asset, { equipmentId, linkHistory = [] } = {}) 
   if (!validateSerializedAsset(asset).ok) return reject(LINK_REJECT.INVALID_INPUT);
   if (!isNonEmptyString(equipmentId)) return reject(LINK_REJECT.INVALID_INPUT);
   if (isInstalled(asset)) return reject(LINK_REJECT.ALREADY_INSTALLED);
-  if (!Array.isArray(linkHistory) || countInstalls(linkHistory) < 1) return reject(LINK_REJECT.NO_PRIOR_INSTALL);
+  if (!Array.isArray(linkHistory)) return reject(LINK_REJECT.INVALID_INPUT);
+  // The history must be a VALID sequential (single-serial, non-concurrent) record...
+  if (!isSequentialHistory(linkHistory)) return reject(LINK_REJECT.INVALID_INPUT);
+  // ...for THIS serial...
+  if (linkHistory.length > 0 && linkHistory[0].serialNo !== asset.serialNo) return reject(LINK_REJECT.LINK_MISMATCH);
+  // ...with at least one prior install...
+  if (countInstalls(linkHistory) < 1) return reject(LINK_REJECT.NO_PRIOR_INSTALL);
+  // ...that ENDS uninstalled (no still-open link)...
+  if (deriveCurrentEquipmentId(linkHistory) !== null) return reject(LINK_REJECT.HISTORY_OPEN);
+  // ...and the redeployment target must be a genuinely NEW Equipment, never a prior one.
+  if (priorEquipmentIds(linkHistory).includes(equipmentId)) return reject(LINK_REJECT.SAME_EQUIPMENT);
   return { ok: true, action: LINK_ACTION.REDEPLOY, resultingCurrentEquipmentId: equipmentId };
 }
 
@@ -180,6 +192,8 @@ export function validateReplacement({ oldAsset, oldEquipment, newAsset, newEquip
   if (!validateEquipmentRecord(oldEquipment).ok) return reject(LINK_REJECT.INVALID_INPUT);
   // The old side must be a genuine reciprocal installation being replaced.
   if (!isReciprocalLink(oldAsset, oldEquipment)) return reject(LINK_REJECT.LINK_MISMATCH);
+  // The replacement must be a genuinely DIFFERENT serial from the one being retired.
+  if (newAsset.serialNo === oldAsset.serialNo) return reject(LINK_REJECT.SAME_SERIAL);
   // A new serial may never re-use the existing Equipment record.
   if (newEquipmentId === oldEquipment.id) return reject(LINK_REJECT.SAME_EQUIPMENT);
   if (isInstalled(newAsset)) return reject(LINK_REJECT.ALREADY_INSTALLED);
@@ -196,14 +210,30 @@ export function validateReplacement({ oldAsset, oldEquipment, newAsset, newEquip
 // Immutable installation-link history (PURE modelling; append-only by contract)
 // ---------------------------------------------------------------------------
 
+// Fail-closed, ACTION-SPECIFIC entry validity: install/redeploy/replace MUST carry a
+// valid equipmentId; uninstall MUST NOT carry one (null/absent). serialNo and a
+// non-negative integer seq are always required. Cross-entry serial consistency is
+// enforced at the history level (isSequentialHistory).
 function isLinkEntry(entry) {
-  return (
-    isPlainObject(entry) &&
-    LINK_ACTIONS.includes(entry.action) &&
-    isNonEmptyString(entry.serialNo) &&
-    Number.isInteger(entry.seq) &&
-    entry.seq >= 0
-  );
+  if (!isPlainObject(entry)) return false;
+  if (!LINK_ACTIONS.includes(entry.action)) return false;
+  if (!isNonEmptyString(entry.serialNo)) return false;
+  if (!(Number.isInteger(entry.seq) && entry.seq >= 0)) return false;
+  if (entry.action === LINK_ACTION.UNINSTALL) {
+    return entry.equipmentId === null || entry.equipmentId === undefined;
+  }
+  return isNonEmptyString(entry.equipmentId);
+}
+
+// The equipmentIds a serial has EVER been linked to (install/redeploy/replace),
+// in order. Malformed entries are skipped (they already fail isSequentialHistory).
+export function priorEquipmentIds(linkHistory) {
+  if (!Array.isArray(linkHistory)) return [];
+  const ids = [];
+  for (const e of linkHistory) {
+    if (isLinkEntry(e) && e.action !== LINK_ACTION.UNINSTALL) ids.push(e.equipmentId);
+  }
+  return ids;
 }
 
 export function countInstalls(linkHistory) {
@@ -222,15 +252,19 @@ export function nextLinkSeq(linkHistory) {
   return max + 1;
 }
 
-// Sequential-not-concurrent: seq strictly increasing with no gaps, and at most ONE
-// open installation at any point (every install/redeploy is closed by an uninstall
-// before the next opens). Fail-closed on any malformed entry.
+// Sequential-not-concurrent AND single-serial: seq strictly increasing with no gaps;
+// at most ONE open installation at any point (every install/redeploy/replace is closed
+// by an uninstall before the next opens); and EVERY entry shares one consistent serialNo.
+// Fail-closed on any malformed entry, mixed serial, gap, or concurrent link.
 export function isSequentialHistory(linkHistory) {
   if (!Array.isArray(linkHistory)) return false;
   let expected = 0;
   let open = false; // is there a currently-open installation?
+  let serial = null; // the one serial this history may reference
   for (const e of linkHistory) {
     if (!isLinkEntry(e) || e.seq !== expected) return false;
+    if (serial === null) serial = e.serialNo;
+    else if (e.serialNo !== serial) return false; // mixed serial across the history
     if (e.action === LINK_ACTION.INSTALL || e.action === LINK_ACTION.REDEPLOY || e.action === LINK_ACTION.REPLACE) {
       if (open) return false; // concurrent link
       open = true;
@@ -261,15 +295,13 @@ export function buildLinkEntry({ action, serialNo, equipmentId = null, seq, at =
   if (!LINK_ACTIONS.includes(action) || !isNonEmptyString(serialNo) || !Number.isInteger(seq) || seq < 0) {
     return { ok: false, reason: LINK_REJECT.INVALID_INPUT };
   }
-  const entry = Object.freeze({
-    action,
-    serialNo,
-    equipmentId: action === LINK_ACTION.UNINSTALL ? null : (isNonEmptyString(equipmentId) ? equipmentId : null),
-    seq,
-    at,
-    reason,
-    context,
-  });
+  // Action-specific equipmentId rule, matching isLinkEntry: uninstall carries none;
+  // install/redeploy/replace REQUIRE a valid equipmentId (fail closed, never silently null).
+  const resolvedEquipmentId = action === LINK_ACTION.UNINSTALL ? null : equipmentId;
+  if (action !== LINK_ACTION.UNINSTALL && !isNonEmptyString(resolvedEquipmentId)) {
+    return { ok: false, reason: LINK_REJECT.INVALID_INPUT };
+  }
+  const entry = Object.freeze({ action, serialNo, equipmentId: resolvedEquipmentId, seq, at, reason, context });
   return { ok: true, entry };
 }
 
