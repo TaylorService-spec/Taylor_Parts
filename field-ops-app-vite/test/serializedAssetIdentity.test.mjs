@@ -105,6 +105,23 @@ ok("isSerializedAssetIdentity mirrors validity (with Part authority)", () => {
   assert.equal(isSerializedAssetIdentity({}, part()), false);
 });
 
+// --- identity: state <-> link coupling (INSTALLED iff active link) ---
+ok("INSTALLED requires a nonempty currentEquipmentId", () => {
+  assert.equal(validateSerializedAssetIdentity(asset({ state: "INSTALLED", currentEquipmentId: null }), part()).reason, "installed_requires_link");
+  assert.equal(validateSerializedAssetIdentity(asset({ state: "INSTALLED", currentEquipmentId: undefined }), part()).reason, "installed_requires_link");
+});
+
+ok("any non-INSTALLED state requires currentEquipmentId null", () => {
+  for (const state of ["RECEIVED", "AVAILABLE", "RESERVED", "STAGED", "LOADED", "IN_TRANSIT", "DELIVERED"]) {
+    assert.equal(validateSerializedAssetIdentity(asset({ state, currentEquipmentId: "EQ-1" }), part()).reason, "link_requires_installed", state);
+  }
+});
+
+ok("the two consistent shapes remain valid", () => {
+  assert.equal(validateSerializedAssetIdentity(asset({ state: "AVAILABLE", currentEquipmentId: null }), part()).valid, true);
+  assert.equal(validateSerializedAssetIdentity(asset({ state: "INSTALLED", currentEquipmentId: "EQ-9" }), part()).valid, true);
+});
+
 // --- identity: SERIAL eligibility validated AGAINST the injected Part ---
 ok("SERIAL eligibility comes from the injected Part, not the asset", () => {
   // A NONE/LOT/missing/unknown Part is not SERIAL-eligible -> fail closed.
@@ -209,9 +226,14 @@ ok("projection: absent/false availability fails closed (never inferred)", () => 
   assert.equal(composeAvailableEquipment({ serializedAsset: asset(), part: part(), location: location(), availability: "true" }).reason, "unavailable");
 });
 
-ok("projection: installed unit can never appear even if availability=true is injected", () => {
+ok("projection: installed unit can never appear even if availability=true is injected (defensive INSTALLED reject)", () => {
   const installed = asset({ state: "INSTALLED", currentEquipmentId: "EQ-9" });
   assert.equal(composeAvailableEquipment({ serializedAsset: installed, part: part(), location: location(), availability: true }).reason, "unavailable");
+});
+
+ok("projection: contradictory INSTALLED + null link + availability true is rejected at identity", () => {
+  const contradictory = asset({ state: "INSTALLED", currentEquipmentId: null });
+  assert.equal(composeAvailableEquipment({ serializedAsset: contradictory, part: part(), location: location(), availability: true }).reason, "asset:installed_requires_link");
 });
 
 // --- projection: fail-closed inputs ---

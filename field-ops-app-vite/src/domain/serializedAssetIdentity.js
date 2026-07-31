@@ -141,6 +141,15 @@ export function validateSerializedAssetIdentity(input, part) {
   if (!isSerialTracked(part.trackingMode)) return { valid: false, value: null, reason: "not_serial_tracked" };
 
   const currentEquipmentId = isNonEmptyString(input.currentEquipmentId) ? input.currentEquipmentId : null;
+  // State <-> link coupling: INSTALLED iff there is an active Equipment link. INSTALLED
+  // with no link, or any non-INSTALLED state carrying a link, is a contradictory read
+  // and fails closed (the two ledger-derived facts may never disagree).
+  if (input.state === "INSTALLED" && currentEquipmentId === null) {
+    return { valid: false, value: null, reason: "installed_requires_link" };
+  }
+  if (input.state !== "INSTALLED" && currentEquipmentId !== null) {
+    return { valid: false, value: null, reason: "link_requires_installed" };
+  }
   return {
     valid: true,
     value: {
@@ -196,8 +205,10 @@ export function composeAvailableEquipment({ serializedAsset, part, location, ava
   if (!asset.valid) return { valid: false, value: null, reason: `asset:${asset.reason}` };
 
   // Availability is the INJECTED derived read decision, combined with the not-installed
-  // link state. This module never infers availability from stock or reservations.
-  if (availability !== true || asset.value.currentEquipmentId !== null) {
+  // link state. This module never infers availability from stock or reservations. The
+  // INSTALLED-state check is defensive and redundant with the identity coupling above,
+  // but ensures an installed unit can never enter Available Equipment.
+  if (availability !== true || asset.value.state === "INSTALLED" || asset.value.currentEquipmentId !== null) {
     return { valid: false, value: null, reason: "unavailable" };
   }
 
