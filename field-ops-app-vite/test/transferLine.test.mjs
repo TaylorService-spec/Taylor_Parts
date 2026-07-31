@@ -1,9 +1,10 @@
 // Enterprise Inventory -- EI-P1c-3. Deterministic pure unit tests for the SERIAL
 // transfer-LINE membership contract (src/domain/transferLine.js). Proves: collision-safe
-// doc key; line shape (only {transferOrderId, serialNo, state}); canonical-key + stored-id
-// guards; composeLineTransferRef returns the parent transferRef unchanged; add/remove
-// pre-dispatch legality (REQUESTED, no OUT, no other active membership); and the full
-// planned-vs-actual reconciliation matrix. SERIAL only; no quantities/custody/stock math.
+// doc key; exact line shape (only {transferOrderId, serialNo, state}); canonical-key +
+// stored-id guards; composeLineTransferRef/validateRemoveLine require a PLANNED line;
+// validateAddLine accepts only a state-absent-or-PLANNED candidate; add/remove pre-dispatch
+// legality; and the planned-vs-actual reconciliation, DELEGATING per-serial actual state to
+// the merged pairing contract (IN_TRANSIT permits OUT-only; COMPLETED requires OUT+IN).
 //
 // Run: node test/transferLine.test.mjs   (also `npm test`)
 import assert from "node:assert/strict";
@@ -50,10 +51,8 @@ ok("stored + derived state enums", () => {
 // --- collision-safe doc key ---
 ok("transferLineDocKey is deterministic and collision-safe (delimiter cannot collide)", () => {
   assert.equal(transferLineDocKey("TO-1", "SN-9"), transferLineDocKey("TO-1", "SN-9"));
-  // Raw `a__b`+`c` vs `a`+`b__c` would collide under naive concatenation; these must differ.
   assert.notEqual(transferLineDocKey("a__b", "c"), transferLineDocKey("a", "b__c"));
   assert.notEqual(transferLineDocKey("a-b", "c"), transferLineDocKey("a", "b-c"));
-  // No raw "/", "." or reserved "__" leaks into the key.
   const k = transferLineDocKey("a/b.c", "d__e");
   assert.equal(/[/.]/.test(k), false);
   assert.equal(k.includes("__"), false);
@@ -74,8 +73,8 @@ ok("validateTransferLine: doc id must be the canonical composite key", () => {
 
 ok("validateTransferLine: authority + shape guards", () => {
   assert.equal(validateTransferLine(KEY, line({ id: "OTHER" }), ref(), PART).reason, "stored_id_conflict");
-  assert.equal(validateTransferLine(KEY, line({ partId: "PART-1" }), ref(), PART).reason, "unknown_field"); // no partId on a line
-  assert.equal(validateTransferLine(KEY, line({ origin: ORIGIN }), ref(), PART).reason, "unknown_field");   // no endpoints on a line
+  assert.equal(validateTransferLine(KEY, line({ partId: "PART-1" }), ref(), PART).reason, "unknown_field");
+  assert.equal(validateTransferLine(KEY, line({ origin: ORIGIN }), ref(), PART).reason, "unknown_field");
   assert.equal(validateTransferLine(KEY, line({ state: "IN_TRANSIT" }), ref(), PART).reason, "state_invalid");
   assert.equal(validateTransferLine(transferLineDocKey("TO-1", "SN-9"), line({ transferOrderId: "OTHER" }), ref(), PART).reason, "transfer_order_mismatch");
   assert.equal(validateTransferLine(KEY, null, ref(), PART).reason, "not_object");
@@ -84,35 +83,43 @@ ok("validateTransferLine: authority + shape guards", () => {
   assert.equal(validateTransferLine(KEY, line(), ref({ status: "NOPE" }), PART).reason, "transfer_ref_status_invalid");
 });
 
-// --- composeLineTransferRef ---
-ok("composeLineTransferRef: returns the parent transferRef unchanged", () => {
+// --- composeLineTransferRef (requires a PLANNED line) ---
+ok("composeLineTransferRef: returns the parent transferRef unchanged; requires an exact PLANNED line", () => {
   const r = composeLineTransferRef(line(), ref());
   assert.equal(r.valid, true);
   assert.deepEqual(r.value, { transferOrderId: "TO-1", partId: "PART-1", origin: ORIGIN, destination: DEST, status: "REQUESTED" });
-  assert.equal(composeLineTransferRef({ transferOrderId: "OTHER", serialNo: "S" }, ref()).reason, "transfer_order_mismatch");
-  assert.equal(composeLineTransferRef({}, ref()).reason, "line_invalid");
+  assert.equal(composeLineTransferRef(line({ transferOrderId: "OTHER" }), ref()).reason, "transfer_order_mismatch");
+  assert.equal(composeLineTransferRef(line({ state: "CANCELLED" }), ref()).reason, "state_invalid");
+  assert.equal(composeLineTransferRef({ transferOrderId: "TO-1", serialNo: "S" }, ref()).reason, "state_invalid"); // state absent
+  assert.equal(composeLineTransferRef(line({ extra: 1 }), ref()).reason, "unknown_field");
+  assert.equal(composeLineTransferRef(null, ref()).reason, "line_invalid");
 });
 
 // --- validateAddLine ---
-ok("validateAddLine: legal only REQUESTED + no OUT + no other active membership", () => {
+ok("validateAddLine: legal only REQUESTED + no OUT + no other active membership; exact PLANNED-or-absent shape", () => {
   assert.deepEqual(validateAddLine(line(), ref(), {}).value, { transferOrderId: "TO-1", serialNo: "SN-9", state: "PLANNED" });
+  // state may be ABSENT for an add candidate.
+  assert.deepEqual(validateAddLine({ transferOrderId: "TO-1", serialNo: "SN-9" }, ref(), {}).value, { transferOrderId: "TO-1", serialNo: "SN-9", state: "PLANNED" });
+  assert.equal(validateAddLine(line({ state: "CANCELLED" }), ref(), {}).reason, "state_invalid");
+  assert.equal(validateAddLine(line({ extra: 1 }), ref(), {}).reason, "unknown_field");
   assert.equal(validateAddLine(line(), ref({ status: "IN_TRANSIT" }), {}).reason, "status_forbids_add");
   assert.equal(validateAddLine(line(), ref({ status: "COMPLETED" }), {}).reason, "status_forbids_add");
   assert.equal(validateAddLine(line(), ref(), { serialHasOutEvent: true }).reason, "already_dispatched");
   assert.equal(validateAddLine(line(), ref(), { activeMemberships: [{ transferOrderId: "TO-2" }] }).reason, "duplicate_active_membership");
   assert.equal(validateAddLine(line(), ref(), { activeMemberships: ["TO-1"] }).reason, "already_member");
   assert.equal(validateAddLine(line(), ref(), { activeMemberships: [{}] }).reason, "active_memberships_invalid");
-  assert.equal(validateAddLine(line({ state: "CANCELLED" }), ref(), {}).reason, "state_invalid");
 });
 
-// --- validateRemoveLine ---
-ok("validateRemoveLine: legal only REQUESTED + no OUT -> CANCELLED", () => {
+// --- validateRemoveLine (requires a PLANNED line) ---
+ok("validateRemoveLine: legal only REQUESTED + no OUT -> CANCELLED; requires an exact PLANNED line", () => {
   assert.deepEqual(validateRemoveLine(line(), ref(), {}).value, { transferOrderId: "TO-1", serialNo: "SN-9", state: "CANCELLED" });
+  assert.equal(validateRemoveLine(line({ state: "CANCELLED" }), ref(), {}).reason, "state_invalid");
+  assert.equal(validateRemoveLine(line({ extra: 1 }), ref(), {}).reason, "unknown_field");
   assert.equal(validateRemoveLine(line(), ref({ status: "IN_TRANSIT" }), {}).reason, "status_forbids_remove");
   assert.equal(validateRemoveLine(line(), ref(), { serialHasOutEvent: true }).reason, "already_dispatched");
 });
 
-// --- reconcileTransferLines: matrix ---
+// --- reconcileTransferLines: matrix (delegates actual state to the merged pairing contract) ---
 ok("reconcile: REQUESTED + planned/no events -> PLANNED", () => {
   const r = reconcileTransferLines({ transferRef: ref({ status: "REQUESTED" }), lines: [line({ serialNo: "SN-1" }), line({ serialNo: "SN-2" })], events: [], part: PART });
   assert.equal(r.valid, true);
@@ -139,6 +146,19 @@ ok("reconcile: COMPLETED + OUT+IN -> RECEIVED; planned/no OUT -> MISSING", () =>
   assert.deepEqual(r.states, [{ serialNo: "SN-1", reconState: "RECEIVED" }, { serialNo: "SN-2", reconState: "MISSING" }]);
 });
 
+// --- P2-1: status consistency is delegated to the merged pairing contract ---
+ok("reconcile P2-1: IN_TRANSIT + OUT+IN for a serial fails status consistency (never RECEIVED)", () => {
+  const r = reconcileTransferLines({ transferRef: ref({ status: "IN_TRANSIT" }), lines: [line({ serialNo: "SN-1" })], events: [outEv("SN-1"), inEv("SN-1")], part: PART });
+  assert.equal(r.valid, false);
+  assert.equal(r.reason, "status_inconsistent");
+});
+
+ok("reconcile P2-1: COMPLETED + OUT-only for a serial fails status consistency (never IN_TRANSIT)", () => {
+  const r = reconcileTransferLines({ transferRef: ref({ status: "COMPLETED" }), lines: [line({ serialNo: "SN-1" })], events: [outEv("SN-1")], part: PART });
+  assert.equal(r.valid, false);
+  assert.equal(r.reason, "status_inconsistent");
+});
+
 ok("reconcile: event for a serial with no planned line -> UNEXPECTED", () => {
   const r = reconcileTransferLines({
     transferRef: ref({ status: "IN_TRANSIT" }),
@@ -159,25 +179,28 @@ ok("reconcile: events for a CANCELLED line fail closed", () => {
   assert.equal(r.reason, "events_for_cancelled_line");
 });
 
-ok("reconcile: movement forbidden under REQUESTED / CANCELLED order", () => {
+ok("reconcile: movement forbidden under REQUESTED / CANCELLED order (delegated)", () => {
   assert.equal(reconcileTransferLines({ transferRef: ref({ status: "REQUESTED" }), lines: [line({ serialNo: "SN-1" })], events: [outEv("SN-1")], part: PART }).reason, "status_forbids_movement");
   assert.equal(reconcileTransferLines({ transferRef: ref({ status: "CANCELLED" }), lines: [line({ serialNo: "SN-1" })], events: [outEv("SN-1")], part: PART }).reason, "status_forbids_movement");
 });
 
-ok("reconcile: structural event failures fail closed", () => {
+ok("reconcile: structural event failures propagate from the merged validators", () => {
   const base = { transferRef: ref({ status: "IN_TRANSIT" }), lines: [line({ serialNo: "SN-1" })], part: PART };
   assert.equal(reconcileTransferLines({ ...base, events: [outEv("SN-1"), outEv("SN-1", { idempotencyKey: "o2" })] }).reason, "duplicate_out");
   assert.equal(reconcileTransferLines({ transferRef: ref({ status: "COMPLETED" }), lines: [line({ serialNo: "SN-1" })], part: PART, events: [outEv("SN-1"), inEv("SN-1"), inEv("SN-1", { idempotencyKey: "i2" })] }).reason, "duplicate_in");
   assert.equal(reconcileTransferLines({ ...base, events: [inEv("SN-1")] }).reason, "in_without_out");
   assert.equal(reconcileTransferLines({ ...base, events: [outEv("SN-1", { quantity: 2 })] }).reason, "event_quantity_invalid");
   assert.equal(reconcileTransferLines({ ...base, events: [outEv("SN-1", { sourceObject: { type: "TRANSFER_ORDER", id: "OTHER" } })] }).reason, "transfer_order_mismatch");
-  assert.equal(reconcileTransferLines({ ...base, events: [outEv("SN-1", { location: DEST, counterpartyLocation: ORIGIN })] }).reason, "endpoint_mismatch");
+  assert.equal(reconcileTransferLines({ ...base, events: [outEv("SN-1", { location: DEST, counterpartyLocation: ORIGIN })] }).reason, "origin_destination_mismatch");
+  assert.equal(reconcileTransferLines({ ...base, events: [{ type: "RECEIVED" }] }).reason, "event_type_invalid");
   assert.equal(reconcileTransferLines({ transferRef: ref({ status: "COMPLETED" }), lines: [line({ serialNo: "SN-1" })], part: PART, events: [outEv("SN-1", { occurredAt: 1730000002000 }), inEv("SN-1", { occurredAt: 1730000001000 })] }).reason, "out_of_order");
 });
 
 ok("reconcile: bad plan / input fail closed", () => {
   assert.equal(reconcileTransferLines({ transferRef: ref({ status: "IN_TRANSIT" }), lines: [line({ serialNo: "SN-1" }), line({ serialNo: "SN-1" })], events: [], part: PART }).reason, "duplicate_line");
-  assert.equal(reconcileTransferLines({ transferRef: ref(), lines: [{ transferOrderId: "TO-1", serialNo: "", state: "PLANNED" }], events: [], part: PART }).reason, "line_invalid");
+  assert.equal(reconcileTransferLines({ transferRef: ref(), lines: [{ transferOrderId: "TO-1", serialNo: "", state: "PLANNED" }], events: [], part: PART }).reason, "serial_no_invalid");
+  assert.equal(reconcileTransferLines({ transferRef: ref(), lines: [{ transferOrderId: "TO-1", serialNo: "S", state: "PLANNED", extra: 1 }], events: [], part: PART }).reason, "unknown_field");
+  assert.equal(reconcileTransferLines({ transferRef: ref(), lines: [{ transferOrderId: "OTHER", serialNo: "S", state: "PLANNED" }], events: [], part: PART }).reason, "transfer_order_mismatch");
   assert.equal(reconcileTransferLines({ transferRef: ref(), lines: "nope", events: [], part: PART }).reason, "input_invalid");
   assert.equal(reconcileTransferLines({ transferRef: ref(), lines: [], events: [], part: { partId: "PART-1", trackingMode: "NONE" } }).reason, "unsupported_tracking_mode");
 });

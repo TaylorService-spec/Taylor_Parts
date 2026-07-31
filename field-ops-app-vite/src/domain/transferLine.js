@@ -19,8 +19,7 @@
 //
 // BOUNDARIES: no persistence, Rules, indexes, Functions, capabilities, QR, UI, migration,
 // deployment, or data mutation. Reuses the merged transferRef + ledger-event validators.
-import { validateTransferRef, TRANSFER_ORDER_STATUSES } from "./inventoryTransferPairing.js";
-import { validateInventoryMovementEvent } from "./inventoryLedgerEvent.js";
+import { validateTransferRef, deriveSerialTransferState, TRANSFER_ORDER_STATUSES } from "./inventoryTransferPairing.js";
 
 // Stored line membership states (only these two are persisted).
 export const TRANSFER_LINE_STATES = Object.freeze(["PLANNED", "CANCELLED"]);
@@ -40,10 +39,6 @@ function isPlainObject(value) {
 
 function isNonEmptyString(value) {
   return typeof value === "string" && value.trim() !== "";
-}
-
-function sameLocation(a, b) {
-  return a.type === b.type && a.locationId === b.locationId;
 }
 
 function fail(reason) {
@@ -71,6 +66,32 @@ function checkSerialPart(part, ref) {
   if (part.trackingMode !== "SERIAL") return "unsupported_tracking_mode";
   if (part.partId !== ref.partId) return "part_mismatch";
   return null;
+}
+
+// Centralized EXACT line-shape parser. `policy` constrains the state field:
+//   "add"     -> state absent OR "PLANNED" (a candidate membership);
+//   "planned" -> state present and exactly "PLANNED";
+//   "stored"  -> state present and in TRANSFER_LINE_STATES (a persisted line).
+// Any extra/unauthorized field (including a stored `id`) is rejected. Returns
+// { ok, value:{ transferOrderId, serialNo, state }, reason }.
+function parseLine(line, policy) {
+  if (!isPlainObject(line)) return { ok: false, reason: "line_invalid" };
+  if (Object.keys(line).some((k) => !LINE_FIELDS.has(k))) return { ok: false, reason: "unknown_field" };
+  if (!isNonEmptyString(line.transferOrderId)) return { ok: false, reason: "transfer_order_id_invalid" };
+  if (!isNonEmptyString(line.serialNo)) return { ok: false, reason: "serial_no_invalid" };
+  const hasState = "state" in line;
+  let state;
+  if (policy === "add") {
+    if (hasState && line.state !== "PLANNED") return { ok: false, reason: "state_invalid" };
+    state = "PLANNED";
+  } else if (policy === "planned") {
+    if (line.state !== "PLANNED") return { ok: false, reason: "state_invalid" };
+    state = "PLANNED";
+  } else {
+    if (!TRANSFER_LINE_STATES.includes(line.state)) return { ok: false, reason: "state_invalid" };
+    state = line.state;
+  }
+  return { ok: true, value: { transferOrderId: line.transferOrderId, serialNo: line.serialNo, state }, reason: null };
 }
 
 // ---------------------------------------------------------------------------
@@ -103,28 +124,23 @@ export function validateTransferLine(docId, data, transferRef, part) {
 export function composeLineTransferRef(line, transferRef) {
   const ref = validateTransferRef(transferRef);
   if (!ref.valid) return fail(ref.reason);
-  if (!isPlainObject(line) || !isNonEmptyString(line.transferOrderId) || !isNonEmptyString(line.serialNo)) return fail("line_invalid");
-  if (line.transferOrderId !== ref.value.transferOrderId) return fail("transfer_order_mismatch");
+  const parsed = parseLine(line, "planned");
+  if (!parsed.ok) return fail(parsed.reason);
+  if (parsed.value.transferOrderId !== ref.value.transferOrderId) return fail("transfer_order_mismatch");
   return { valid: true, value: ref.value, reason: null };
-}
-
-// Shared line + parent binding used by add/remove.
-function bindLine(line, ref) {
-  if (!isPlainObject(line) || !isNonEmptyString(line.transferOrderId) || !isNonEmptyString(line.serialNo)) return "line_invalid";
-  if (line.transferOrderId !== ref.transferOrderId) return "transfer_order_mismatch";
-  return null;
 }
 
 // ---------------------------------------------------------------------------
 // validateAddLine -- add a serial's membership. Legal only when the order is REQUESTED,
 // the serial has no TRANSFER_OUT event, and the serial has no other active membership.
+// The candidate line must be an exact shape with state absent or PLANNED.
 // ---------------------------------------------------------------------------
 export function validateAddLine(line, transferRef, { serialHasOutEvent = false, activeMemberships = [] } = {}) {
   const ref = validateTransferRef(transferRef);
   if (!ref.valid) return fail(ref.reason);
-  const bindReason = bindLine(line, ref.value);
-  if (bindReason) return fail(bindReason);
-  if (line.state !== undefined && line.state !== "PLANNED") return fail("state_invalid");
+  const parsed = parseLine(line, "add");
+  if (!parsed.ok) return fail(parsed.reason);
+  if (parsed.value.transferOrderId !== ref.value.transferOrderId) return fail("transfer_order_mismatch");
   if (ref.value.status !== "REQUESTED") return fail("status_forbids_add");
   if (serialHasOutEvent === true) return fail("already_dispatched");
   if (!Array.isArray(activeMemberships)) return fail("active_memberships_invalid");
@@ -133,51 +149,44 @@ export function validateAddLine(line, transferRef, { serialHasOutEvent = false, 
   for (const m of activeMemberships) {
     const otherId = typeof m === "string" ? m : isPlainObject(m) ? m.transferOrderId : null;
     if (!isNonEmptyString(otherId)) return fail("active_memberships_invalid");
-    if (otherId === line.transferOrderId) sameOrder = true;
+    if (otherId === parsed.value.transferOrderId) sameOrder = true;
     else otherOrder = true;
   }
   if (otherOrder) return fail("duplicate_active_membership");
   if (sameOrder) return fail("already_member");
-  return { valid: true, value: { transferOrderId: line.transferOrderId, serialNo: line.serialNo, state: "PLANNED" }, reason: null };
+  return { valid: true, value: parsed.value, reason: null };
 }
 
 // ---------------------------------------------------------------------------
 // validateRemoveLine -- cancel a serial's membership. Legal only when the order is
-// REQUESTED and the serial has no TRANSFER_OUT event.
+// REQUESTED and the serial has no TRANSFER_OUT event. Requires a PLANNED line.
 // ---------------------------------------------------------------------------
 export function validateRemoveLine(line, transferRef, { serialHasOutEvent = false } = {}) {
   const ref = validateTransferRef(transferRef);
   if (!ref.valid) return fail(ref.reason);
-  const bindReason = bindLine(line, ref.value);
-  if (bindReason) return fail(bindReason);
+  const parsed = parseLine(line, "planned");
+  if (!parsed.ok) return fail(parsed.reason);
+  if (parsed.value.transferOrderId !== ref.value.transferOrderId) return fail("transfer_order_mismatch");
   if (ref.value.status !== "REQUESTED") return fail("status_forbids_remove");
   if (serialHasOutEvent === true) return fail("already_dispatched");
-  return { valid: true, value: { transferOrderId: line.transferOrderId, serialNo: line.serialNo, state: "CANCELLED" }, reason: null };
-}
-
-// Validate + normalize one TRANSFER leg event against the parent transferRef.
-function validateLegForReconcile(event, ref, part) {
-  const revalidated = validateInventoryMovementEvent(event, part);
-  if (!revalidated.valid) return { ok: false, reason: `event_${revalidated.reason}` };
-  const v = revalidated.value;
-  if (v.sourceObject.id !== ref.transferOrderId) return { ok: false, reason: "transfer_order_mismatch" };
-  if (!isNonEmptyString(v.serialNo)) return { ok: false, reason: "serial_no_invalid" };
-  const own = v.type === "TRANSFER_OUT" ? ref.origin : ref.destination;
-  const other = v.type === "TRANSFER_OUT" ? ref.destination : ref.origin;
-  if (!sameLocation(v.location, own) || !sameLocation(v.counterpartyLocation, other)) return { ok: false, reason: "endpoint_mismatch" };
-  return { ok: true, value: v };
+  return { valid: true, value: { transferOrderId: parsed.value.transferOrderId, serialNo: parsed.value.serialNo, state: "CANCELLED" }, reason: null };
 }
 
 // ---------------------------------------------------------------------------
 // reconcileTransferLines({ transferRef, lines, events, part }) -- planned membership vs
-// actual ledger events. Returns { valid, states, reason }; states = [{ serialNo,
-// reconState }] sorted by serialNo. No quantity math (each unit is one).
+// actual ledger events. The per-serial ACTUAL state is DELEGATED to the merged pairing
+// contract (deriveSerialTransferState), which enforces EI-P1b-2 status consistency
+// (IN_TRANSIT permits OUT-only; COMPLETED requires OUT+IN). This function only overlays the
+// plan on top: MISSING (planned, no events once dispatched) and UNEXPECTED (an evented
+// serial with no planned line), plus fail-closed on events for a CANCELLED line. Returns
+// { valid, states, reason }; states = [{ serialNo, reconState }] sorted. No quantity math.
 //   REQUESTED + planned/no events            -> PLANNED
 //   IN_TRANSIT + OUT only                    -> IN_TRANSIT
 //   COMPLETED + OUT+IN                        -> RECEIVED
 //   IN_TRANSIT/COMPLETED + planned/no OUT     -> MISSING
 //   event for a serial with no planned line   -> UNEXPECTED
 //   event for a CANCELLED line                -> fail closed
+//   (any status/pairing inconsistency from the merged contract propagates as its reason)
 // ---------------------------------------------------------------------------
 export function reconcileTransferLines({ transferRef, lines, events, part } = {}) {
   const ref = validateTransferRef(transferRef);
@@ -187,63 +196,37 @@ export function reconcileTransferLines({ transferRef, lines, events, part } = {}
   if (!Array.isArray(lines) || !Array.isArray(events)) return { valid: false, states: null, reason: "input_invalid" };
 
   const orderId = ref.value.transferOrderId;
-  const status = ref.value.status;
-  const eventsAllowed = status === "IN_TRANSIT" || status === "COMPLETED";
+  const eventsAllowed = ref.value.status === "IN_TRANSIT" || ref.value.status === "COMPLETED";
 
-  // Planned / cancelled membership sets (a serial may not appear twice).
+  // Planned / cancelled membership sets (exact line shape; a serial may not appear twice).
   const planned = new Set();
   const cancelled = new Set();
   for (const line of lines) {
-    if (!isPlainObject(line) || line.transferOrderId !== orderId || !isNonEmptyString(line.serialNo) || !TRANSFER_LINE_STATES.includes(line.state)) {
-      return { valid: false, states: null, reason: "line_invalid" };
-    }
-    if (planned.has(line.serialNo) || cancelled.has(line.serialNo)) return { valid: false, states: null, reason: "duplicate_line" };
-    (line.state === "PLANNED" ? planned : cancelled).add(line.serialNo);
-  }
-
-  // Validate + group the transfer events by serial.
-  const bySerial = new Map();
-  for (const event of events) {
-    if (!isPlainObject(event) || (event.type !== "TRANSFER_OUT" && event.type !== "TRANSFER_IN")) {
-      return { valid: false, states: null, reason: "event_type_invalid" };
-    }
-    // Movement can only exist once the order has actually dispatched.
-    if (!eventsAllowed) return { valid: false, states: null, reason: "status_forbids_movement" };
-    const leg = validateLegForReconcile(event, ref.value, part);
-    if (!leg.ok) return { valid: false, states: null, reason: leg.reason };
-    const v = leg.value;
-    const entry = bySerial.get(v.serialNo) || { out: null, in: null };
-    if (v.type === "TRANSFER_OUT") {
-      if (entry.out) return { valid: false, states: null, reason: "duplicate_out" };
-      entry.out = v;
-    } else {
-      if (entry.in) return { valid: false, states: null, reason: "duplicate_in" };
-      entry.in = v;
-    }
-    bySerial.set(v.serialNo, entry);
+    const parsed = parseLine(line, "stored");
+    if (!parsed.ok) return { valid: false, states: null, reason: parsed.reason };
+    if (parsed.value.transferOrderId !== orderId) return { valid: false, states: null, reason: "transfer_order_mismatch" };
+    if (planned.has(parsed.value.serialNo) || cancelled.has(parsed.value.serialNo)) return { valid: false, states: null, reason: "duplicate_line" };
+    (parsed.value.state === "PLANNED" ? planned : cancelled).add(parsed.value.serialNo);
   }
 
   const states = [];
-  // Serials that have events.
-  for (const [serialNo, { out, in: inLeg }] of bySerial) {
-    if (cancelled.has(serialNo)) return { valid: false, states: null, reason: "events_for_cancelled_line" };
-    if (!planned.has(serialNo)) {
-      states.push({ serialNo, reconState: "UNEXPECTED" });
-      continue;
+  if (events.length === 0) {
+    // Nothing dispatched: every planned serial is PLANNED (pre-dispatch) or MISSING (dispatched).
+    for (const serialNo of planned) states.push({ serialNo, reconState: eventsAllowed ? "MISSING" : "PLANNED" });
+  } else {
+    // DELEGATE actual-state validation to the merged pairing contract (status-consistent).
+    const derived = deriveSerialTransferState(transferRef, events, part);
+    if (!derived.valid) return { valid: false, states: null, reason: derived.reason };
+    const evented = new Set();
+    for (const { serialNo, state } of derived.states) {
+      evented.add(serialNo);
+      if (cancelled.has(serialNo)) return { valid: false, states: null, reason: "events_for_cancelled_line" };
+      states.push({ serialNo, reconState: planned.has(serialNo) ? state : "UNEXPECTED" });
     }
-    if (!out && inLeg) return { valid: false, states: null, reason: "in_without_out" };
-    if (out && inLeg) {
-      if (out.occurredAt > inLeg.occurredAt) return { valid: false, states: null, reason: "out_of_order" };
-      if (out.idempotencyKey === inLeg.idempotencyKey) return { valid: false, states: null, reason: "duplicate_idempotency_key" };
-      states.push({ serialNo, reconState: "RECEIVED" });
-    } else {
-      states.push({ serialNo, reconState: "IN_TRANSIT" });
+    // events non-empty => status is IN_TRANSIT/COMPLETED => planned-but-not-evented is MISSING.
+    for (const serialNo of planned) {
+      if (!evented.has(serialNo)) states.push({ serialNo, reconState: "MISSING" });
     }
-  }
-  // Planned serials with no events: PLANNED before dispatch, MISSING once dispatched.
-  for (const serialNo of planned) {
-    if (bySerial.has(serialNo)) continue;
-    states.push({ serialNo, reconState: eventsAllowed ? "MISSING" : "PLANNED" });
   }
 
   states.sort((a, b) => (a.serialNo < b.serialNo ? -1 : a.serialNo > b.serialNo ? 1 : 0));
