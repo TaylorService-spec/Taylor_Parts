@@ -1,8 +1,26 @@
 // Epic 4 Warehouse -- pure renderer. Reconciliation is strictly
 // informational (see warehouseReconciliationEngine.ts) -- there is no
-// "fix" button anywhere on this panel.
-export default function WarehousePanel({ warehouses, stockLocations, transferOrders, reconciliationReport, resolveName }) {
+// "fix" button anywhere on this panel. The Transfer Orders table is a
+// read-only, location-aware view (EI-P1c-2): rows come from the pure
+// buildTransferOrdersView, which applies the merged transfer-order
+// adapter so invalid/contradictory records are counted, never rendered.
+import { buildTransferOrdersView } from "../transferOrdersViewModel.js";
+
+// One transfer endpoint cell: a WAREHOUSE shows its resolved name; every
+// other location type shows a type badge plus the raw locationId (no
+// governed label authority exists for trucks/vendors/customers yet).
+function TransferEndpoint({ endpoint }) {
+  if (endpoint.type === "WAREHOUSE") return <>{endpoint.label}</>;
+  return (
+    <>
+      <span className="fo-badge">{endpoint.type}</span> {endpoint.locationId}
+    </>
+  );
+}
+
+export default function WarehousePanel({ warehouses, stockLocations, transferOrderDocs, reconciliationReport, resolveName }) {
   const warehouseName = (id) => warehouses.find((w) => w.id === id)?.name ?? id;
+  const { rows: transferRows, hiddenInvalidCount } = buildTransferOrdersView(transferOrderDocs, warehouses);
 
   return (
     <div className="fo-card">
@@ -73,31 +91,36 @@ export default function WarehousePanel({ warehouses, stockLocations, transferOrd
       )}
 
       <h4>Transfer Orders</h4>
-      {transferOrders.length === 0 ? (
-        <p className="fo-muted">No transfer orders.</p>
-      ) : (
-        <table className="fo-table">
-          <thead>
-            <tr>
-              <th>Part</th>
-              <th>From</th>
-              <th>To</th>
-              <th>Quantity</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {transferOrders.map((t) => (
-              <tr key={t.id}>
-                <td>{resolveName(t.partId)}</td>
-                <td>{warehouseName(t.fromWarehouseId)}</td>
-                <td>{warehouseName(t.toWarehouseId)}</td>
-                <td>{t.quantity}</td>
-                <td>{t.status}</td>
+      {hiddenInvalidCount > 0 && (
+        <p className="fo-muted" role="status">
+          {hiddenInvalidCount} transfer order{hiddenInvalidCount === 1 ? "" : "s"} hidden (invalid or contradictory records).
+        </p>
+      )}
+      {transferRows.length > 0 ? (
+        <div className="fo-table-scroll" style={{ overflowX: "auto" }}>
+          <table className="fo-table">
+            <thead>
+              <tr>
+                <th>Part</th>
+                <th>Origin</th>
+                <th>Destination</th>
+                <th>Status</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {transferRows.map((t) => (
+                <tr key={t.transferOrderId}>
+                  <td>{resolveName(t.partId)}</td>
+                  <td><TransferEndpoint endpoint={t.origin} /></td>
+                  <td><TransferEndpoint endpoint={t.destination} /></td>
+                  <td>{t.status}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        hiddenInvalidCount === 0 && <p className="fo-muted">No transfer orders.</p>
       )}
     </div>
   );

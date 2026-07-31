@@ -75,6 +75,19 @@ async function listCollection<T>(name: string): Promise<T[]> {
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as T);
 }
 
+// EI-P1c-2: a dedicated transfer-order read that preserves the authoritative Firestore
+// document id SEPARATELY from the stored data, so the transfer-order adapter can compare
+// them and fail closed on a stored-id conflict (never merge/override). This is the ONLY
+// read that keeps id out of data; the generic listCollection above is unchanged.
+export interface TransferOrderDoc {
+  docId: string;
+  data: Record<string, unknown>;
+}
+export const fetchTransferOrderDocs = async (): Promise<TransferOrderDoc[]> => {
+  const snap = await getDocs(collection(db, TRANSFER_ORDERS_COLLECTION));
+  return snap.docs.map((d) => ({ docId: d.id, data: d.data() as Record<string, unknown> }));
+};
+
 export const fetchInventoryTransactions = () => listCollection<RawInventoryTransaction>(INVENTORY_TRANSACTIONS_COLLECTION);
 export const fetchStockLocations = () => listCollection<RawStockLocation>(STOCK_LOCATIONS_COLLECTION);
 export const fetchWarehouses = () => listCollection<RawWarehouse>(WAREHOUSES_COLLECTION);
