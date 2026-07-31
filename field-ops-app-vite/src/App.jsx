@@ -10,7 +10,7 @@ import Operations from "./modules/operations/Operations";
 import DispatcherBoard from "./modules/dispatcherBoard/DispatcherBoard";
 import TechnicianDashboard from "./modules/technicianDashboard/TechnicianDashboard";
 import AccountsList from "./modules/accounts/AccountsList";
-import EquipmentRegister from "./modules/equipment/EquipmentRegister";
+import EquipmentWorkspace from "./modules/equipment/EquipmentWorkspace";
 import EquipmentDetail from "./modules/equipment/EquipmentDetail";
 import AccountDetail from "./modules/accounts/AccountDetail";
 import PartsShadowParityDiagnostics from "./modules/inventory/PartsShadowParityDiagnostics";
@@ -118,11 +118,12 @@ function renderSubnavItem(domain, item, role, operationalContext) {
   if (domain.key === "customers" && item.key === "customers") {
     return <AccountsList />;
   }
-  // Issue #232 unit E5 -- Equipment register. Same special-case pattern: a brand new
-  // screen with no legacyKey, so it needs an explicit branch rather than the generic
-  // legacyKey/PlaceholderPage ones.
+  // Issue #232 E5 + INV-EQ-P1b -- the visible Equipment workspace (two tabs: Customer
+  // Equipment = cross-customer paginated installed list; Available Equipment = honest
+  // not-yet-connected Serialized Asset surface). accessVersion is threaded so the
+  // list read resets on any access change (same convention as PartsList/Operations).
   if (domain.key === "equipment" && item.key === "equipment") {
-    return <EquipmentRegister />;
+    return <EquipmentWorkspace accessVersion={operationalContext?.accessVersion} />;
   }
   // Sprint 2.0.3 -- Work Order Experience. "Work Orders" now renders
   // the real workspace; the legacy Jobs.jsx screen it used to render
