@@ -163,10 +163,24 @@ ok("location must be a valid discriminated reference", () => {
 ok("transfers require counterpartyLocation; distinct from own location", () => {
   assert.equal(validateInventoryMovementEvent(ev("TRANSFER_OUT", "NONE", { counterpartyLocation: undefined }), PART("NONE")).reason, "counterparty_invalid");
   assert.equal(validateInventoryMovementEvent(ev("TRANSFER_IN", "NONE", { counterpartyLocation: { type: "TRUCK", locationId: "X" } }), PART("NONE")).reason, "counterparty_invalid");
-  assert.equal(validateInventoryMovementEvent(ev("TRANSFER_OUT", "NONE", { counterpartyLocation: LOC("WH-1") }), PART("NONE")).reason, "transfer_same_location");
   const okOut = validateInventoryMovementEvent(ev("TRANSFER_OUT", "NONE"), PART("NONE"));
   assert.equal(okOut.valid, true);
   assert.deepEqual(okOut.value.counterpartyLocation, { type: "WAREHOUSE", locationId: "WH-2" });
+});
+
+ok("transfer_same_location requires BOTH type AND locationId to match (identity is the whole ref)", () => {
+  // a. identical {type, locationId} -> same endpoint -> fails
+  assert.equal(
+    validateInventoryMovementEvent(ev("TRANSFER_OUT", "NONE", { counterpartyLocation: { type: "WAREHOUSE", locationId: "WH-1" } }), PART("NONE")).reason,
+    "transfer_same_location",
+  );
+  // b. same locationId, different valid types -> distinct governed locations -> succeeds
+  const r = validateInventoryMovementEvent(
+    ev("TRANSFER_OUT", "NONE", { location: { type: "WAREHOUSE", locationId: "X" }, counterpartyLocation: { type: "BIN", locationId: "X" } }),
+    PART("NONE"),
+  );
+  assert.equal(r.valid, true, r.reason);
+  assert.deepEqual(r.value.counterpartyLocation, { type: "BIN", locationId: "X" });
 });
 
 ok("counterpartyLocation not allowed on non-transfer types (unknown_field)", () => {
@@ -248,6 +262,17 @@ ok("occurredAt must be a positive epoch-ms integer", () => {
   assert.equal(validateInventoryMovementEvent(ev("RECEIVED", "NONE", { occurredAt: -1 }), PART("NONE")).reason, "occurred_at_invalid");
   assert.equal(validateInventoryMovementEvent(ev("RECEIVED", "NONE", { occurredAt: 1730000000000.5 }), PART("NONE")).reason, "occurred_at_invalid");
   assert.equal(validateInventoryMovementEvent(ev("RECEIVED", "NONE", { occurredAt: "1730000000000" }), PART("NONE")).reason, "occurred_at_invalid");
+});
+
+ok("occurredAt must be a REPRESENTABLE epoch-ms (Date range), rejecting unusable values", () => {
+  assert.equal(validateInventoryMovementEvent(ev("RECEIVED", "NONE", { occurredAt: NaN }), PART("NONE")).reason, "occurred_at_invalid");
+  assert.equal(validateInventoryMovementEvent(ev("RECEIVED", "NONE", { occurredAt: Infinity }), PART("NONE")).reason, "occurred_at_invalid");
+  // 1e100 is a finite integer but far outside Date's representable range -> rejected.
+  assert.equal(validateInventoryMovementEvent(ev("RECEIVED", "NONE", { occurredAt: 1e100 }), PART("NONE")).reason, "occurred_at_invalid");
+  // Just past Date's max time value (8.64e15) -> rejected.
+  assert.equal(validateInventoryMovementEvent(ev("RECEIVED", "NONE", { occurredAt: 8640000000000001 }), PART("NONE")).reason, "occurred_at_invalid");
+  // The exact maximum representable instant -> accepted boundary.
+  assert.equal(validateInventoryMovementEvent(ev("RECEIVED", "NONE", { occurredAt: 8640000000000000 }), PART("NONE")).valid, true);
 });
 
 ok("recordedAt is a forbidden input (reserved for the trusted server writer)", () => {

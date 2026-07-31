@@ -114,9 +114,16 @@ function isNonEmptyString(value) {
   return typeof value === "string" && value.trim() !== "";
 }
 
-// A positive epoch-millisecond instant (repo convention: Date.now()). Integer, finite, > 0.
+// The maximum time value representable by a JavaScript Date, in epoch milliseconds
+// (ECMA-262: +/-8.64e15). A larger integer is finite but not a usable instant -- it
+// yields an Invalid Date / range failure downstream -- so it is rejected here.
+const MAX_EPOCH_MILLIS = 8_640_000_000_000_000;
+
+// A positive, representable epoch-millisecond instant (repo convention: Date.now()).
+// Integer, > 0, and within Date's representable range. Number.isInteger already excludes
+// NaN and Infinity.
 function isEpochMillis(value) {
-  return typeof value === "number" && Number.isInteger(value) && value > 0;
+  return typeof value === "number" && Number.isInteger(value) && value > 0 && value <= MAX_EPOCH_MILLIS;
 }
 
 function fail(reason) {
@@ -196,12 +203,16 @@ export function validateInventoryMovementEvent(event, part) {
 
   // Transfer counterparty: required for transfers, forbidden otherwise. TRANSFER_OUT
   // location=origin/counterparty=destination; TRANSFER_IN location=destination/counterparty=origin.
-  // Origin and destination must differ. (Pairing across the two events stays DEFERRED.)
+  // A Location identity is the WHOLE {type, locationId} reference, so origin and destination
+  // are the same endpoint only when BOTH match -- WAREHOUSE/X and BIN/X are distinct
+  // governed locations. (Pairing across the two events stays DEFERRED.)
   let counterparty = null;
   if (isTransfer) {
     const cp = validateLocationRef(event.counterpartyLocation);
     if (!cp.valid) return fail("counterparty_invalid");
-    if (cp.value.locationId === location.value.locationId) return fail("transfer_same_location");
+    if (cp.value.type === location.value.type && cp.value.locationId === location.value.locationId) {
+      return fail("transfer_same_location");
+    }
     counterparty = cp.value;
   }
   // (counterpartyLocation on a non-transfer type is already rejected as unknown_field.)
