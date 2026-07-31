@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useEquipmentDoc, useWorkOrdersForEquipment } from "../../hooks/useEquipment";
 import { useAccount } from "../../hooks/useAccount";
@@ -6,15 +6,13 @@ import { useLocationsForAccount } from "../../hooks/useLocationsForAccount";
 import {
   equipmentDisplayName,
   equipmentSummary,
-  equipmentServiceHistory,
-  groupServiceHistoryByYear,
   isRetired,
 } from "../../domain/equipment";
 import { trustedActionUnavailable } from "../../domain/equipment";
 import { updateEquipment } from "../../domain/equipmentRepository";
 import EquipmentEditModal from "./EquipmentEditModal";
+import EquipmentTimeline from "./EquipmentTimeline";
 import LoadingState from "../../shared/ui/LoadingState";
-import EmptyState from "../../shared/ui/EmptyState";
 import FailureState from "../../shared/ui/FailureState";
 import { EQUIPMENT_STATUS } from "../../domain/constants";
 
@@ -59,11 +57,6 @@ export default function EquipmentDetail() {
   const { account, loading: accountLoading } = useAccount(equipment?.accountId ?? null);
   const { data: locations, loading: locationsLoading, error: locationsError, retry: retryLocations } =
     useLocationsForAccount(equipment?.accountId ?? null);
-
-  const history = useMemo(
-    () => groupServiceHistoryByYear(equipmentServiceHistory(workOrders, equipmentId)),
-    [workOrders, equipmentId]
-  );
 
   // E8. Declared with the other hooks, above this component's early returns -- a
   // useState after them would run conditionally.
@@ -231,45 +224,18 @@ export default function EquipmentDetail() {
       {/* §8 linked Work Orders + §10 derived Service History. Both come from the same
           bounded subscription; a failure is reported rather than rendered as "none",
           because "this asset has no service history" is a claim we would be making. */}
-      <section className="fo-panel" aria-labelledby="equip-history" data-history-section>
-        <h2 id="equip-history">Service history</h2>
-        {woLoading ? (
-          // §9: loading is NOT database-empty. Without this branch the page rendered
-          // "No work orders reference this equipment yet" on every cold load, as a
-          // statement of fact, until the query returned -- on an asset with three of
-          // them. The register got this right; the detail page did not, and its own
-          // comment above ("a failure is reported rather than rendered as 'none'
-          // because that is a claim we would be making") named the principle it broke.
-          <LoadingState>Loading service history…</LoadingState>
-        ) : woError ? (
-          <FailureState message={woError} />
-        ) : history.length === 0 ? (
-          <EmptyState
-            variant="database"
-            title="No service history"
-            message="No work orders reference this equipment yet."
-          />
-        ) : (
-          history.map((group) => (
-            <div key={String(group.year)} className="fo-history-year" data-history-year={String(group.year)}>
-              <h3 className="fo-history-year-heading">{group.year}</h3>
-              <ul className="fo-history-list">
-                {group.entries.map((entry) => (
-                  <li key={entry.workOrderId} data-history-entry={entry.workOrderId}>
-                    {/* The Work Order NUMBER is the human reference; the id is only the
-                        link target. entry has no `id` field -- keying on workOrderId. */}
-                    <Link to={`/service/work-orders/${entry.workOrderId}`}>
-                      {entry.woNumber ?? "Work order"}
-                    </Link>
-                    {entry.type ? <span className="fo-muted"> · {entry.type}</span> : null}
-                    {entry.status ? <span className="fo-muted"> · {entry.status}</span> : null}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))
-        )}
-      </section>
+      {/* §8/§10 + INV-EQ-P2 -- ONE unified Activity Timeline (service + inventory),
+          replacing the year-grouped Service History. Reuses the same bounded Work
+          Order subscription (workOrders); the inventory half is an injected source
+          that stays inert -- honestly reported, never fabricated -- until the
+          Enterprise Inventory sources exist. A read failure is reported as unavailable,
+          never rendered as "no activity". */}
+      <EquipmentTimeline
+        workOrders={workOrders}
+        equipmentId={equipmentId}
+        workOrdersLoading={woLoading}
+        workOrdersError={woError}
+      />
 
       {/* Mounted only while open, so the form always seeds from the CURRENT record: a
           modal kept mounted and merely hidden would reopen holding whatever the user
