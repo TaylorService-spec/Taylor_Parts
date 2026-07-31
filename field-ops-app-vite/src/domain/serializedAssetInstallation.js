@@ -236,9 +236,12 @@ export function priorEquipmentIds(linkHistory) {
   return ids;
 }
 
+// Count every INSTALLING action -- install, redeploy, AND replace (all open a link;
+// only uninstall closes one). Counting the same non-uninstall set as priorEquipmentIds
+// keeps the two consistent: a replacement-installed serial has a genuine prior install.
 export function countInstalls(linkHistory) {
   if (!Array.isArray(linkHistory)) return 0;
-  return linkHistory.filter((e) => isLinkEntry(e) && (e.action === LINK_ACTION.INSTALL || e.action === LINK_ACTION.REDEPLOY)).length;
+  return linkHistory.filter((e) => isLinkEntry(e) && e.action !== LINK_ACTION.UNINSTALL).length;
 }
 
 // The next monotonic sequence number for an append. Fail-closed to 0 on a malformed history.

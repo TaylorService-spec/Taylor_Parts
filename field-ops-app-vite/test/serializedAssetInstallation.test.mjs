@@ -180,6 +180,26 @@ ok("validateRedeploy is fully fail-closed: malformed / open / mixed-serial / pri
     { ok: true, action: LINK_ACTION.REDEPLOY, resultingCurrentEquipmentId: "EQ-NEW" },
   );
 });
+ok("a REPLACE-installed serial counts as a prior install and can be uninstalled + redeployed", () => {
+  // countInstalls includes REPLACE
+  const replThenOut = [
+    { action: LINK_ACTION.REPLACE, serialNo: "SN-1", equipmentId: "EQ-R", seq: 0 },
+    { action: LINK_ACTION.UNINSTALL, serialNo: "SN-1", equipmentId: null, seq: 1 },
+  ];
+  assert.strictEqual(countInstalls(replThenOut), 1);
+  assert.strictEqual(isSequentialHistory(replThenOut), true);
+  const asset = { serialNo: "SN-1", partId: "P-1", currentEquipmentId: null, availableForAssignment: true };
+  // REPLACE -> UNINSTALL -> REDEPLOY to a genuinely new Equipment id is allowed
+  assert.deepStrictEqual(
+    validateRedeploy(asset, { equipmentId: "EQ-NEW", linkHistory: replThenOut }),
+    { ok: true, action: LINK_ACTION.REDEPLOY, resultingCurrentEquipmentId: "EQ-NEW" },
+  );
+  // ...but reusing the REPLACE Equipment id is still rejected
+  assert.deepStrictEqual(
+    validateRedeploy(asset, { equipmentId: "EQ-R", linkHistory: replThenOut }),
+    { ok: false, reason: LINK_REJECT.SAME_EQUIPMENT },
+  );
+});
 ok("buildLinkEntry rejects install/redeploy/replace without a valid equipmentId", () => {
   assert.deepStrictEqual(buildLinkEntry({ action: LINK_ACTION.INSTALL, serialNo: "S", seq: 0 }), { ok: false, reason: LINK_REJECT.INVALID_INPUT });
   assert.deepStrictEqual(buildLinkEntry({ action: LINK_ACTION.REDEPLOY, serialNo: "S", equipmentId: "", seq: 0 }), { ok: false, reason: LINK_REJECT.INVALID_INPUT });
