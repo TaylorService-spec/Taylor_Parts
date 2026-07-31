@@ -162,7 +162,10 @@ export default function Operations({ accessVersion } = {}) {
     return () => {
       cancelled = true;
     };
-  }, []);
+    // accessVersion is a dependency so a same-UID access-boundary change re-runs the
+    // one-shot reads (re-scoping what this admin/dispatcher may see). The `cancelled`
+    // guard suppresses a stale in-flight completion from the prior access version.
+  }, [accessVersion]);
 
   if (state.loading) {
     return (

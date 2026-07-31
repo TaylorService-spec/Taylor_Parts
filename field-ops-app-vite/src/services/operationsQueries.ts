@@ -72,7 +72,11 @@ export interface RawPurchaseOrder {
 
 async function listCollection<T>(name: string): Promise<T[]> {
   const snap = await getDocs(collection(db, name));
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as T);
+  // The authoritative Firestore document id ALWAYS wins: spreading d.data() FIRST and
+  // setting id LAST means a stored `id` field can never override d.id. Downstream
+  // consumers (e.g. the transfer-order adapter, which must never trust a stored id) can
+  // therefore rely on `id` being the real document id.
+  return snap.docs.map((d) => ({ ...d.data(), id: d.id }) as T);
 }
 
 export const fetchInventoryTransactions = () => listCollection<RawInventoryTransaction>(INVENTORY_TRANSACTIONS_COLLECTION);
