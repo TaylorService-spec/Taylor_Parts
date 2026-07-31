@@ -77,6 +77,41 @@ describe("AvailableEquipment honest state", () => {
   });
 });
 
+describe("AvailableEquipment catalog filtering (READY source)", () => {
+  const readySource = {
+    connected: true,
+    status: "ready",
+    assets: [
+      { serialNo: "S1", partId: "P1", internalPartNumber: "IPN-1", category: "Valve", manufacturer: "Acme", model: "M1", status: "NEW", locationLabel: "WH-A", currentEquipmentId: null, availableForAssignment: true },
+      { serialNo: "S2", partId: "P2", type: "Pump", manufacturer: "Beta", model: "M2", condition: "REFURB", location: "Truck-7", currentEquipmentId: null, availableForAssignment: true },
+      { serialNo: "S3", partId: "P1", currentEquipmentId: "EQ-9", availableForAssignment: false }, // installed -> excluded
+    ],
+  };
+
+  it("lists only available assets with a count, no customer filter, and accessible controls", () => {
+    render(<AvailableEquipment source={readySource} />);
+    expect(screen.getByRole("group", { name: /available equipment filters/i })).toBeTruthy();
+    // no customer/account filter control on this tab
+    expect(screen.queryByLabelText(/customer/i)).toBeNull();
+    expect(screen.getByText(/2 of 2 available/i)).toBeTruthy();
+    expect(screen.getByText("IPN-1")).toBeTruthy(); // S1 internal identifier
+    expect(screen.getByText(/S\/N S2/)).toBeTruthy(); // S3 (installed) never shown
+  });
+
+  it("combined filters narrow the list and update the count; Clear resets", () => {
+    render(<AvailableEquipment source={readySource} />);
+    fireEvent.change(screen.getByLabelText(/Type \/ category/i), { target: { value: "Valve" } });
+    expect(screen.getByText(/1 of 2 available/i)).toBeTruthy();
+    expect(screen.queryByText(/S\/N S2/)).toBeNull();
+    // term further narrows (and can exclude all)
+    fireEvent.change(screen.getByLabelText(/^Search$/i), { target: { value: "beta" } });
+    expect(screen.getByText(/no available inventory matches these filters/i)).toBeTruthy();
+    // clear resets to the full available set
+    fireEvent.click(screen.getByRole("button", { name: /clear filters/i }));
+    expect(screen.getByText(/2 of 2 available/i)).toBeTruthy();
+  });
+});
+
 describe("CustomerEquipment states", () => {
   const rowDocs = [
     { id: "e1", accountId: "a1", locationId: "l1", name: "RTU One", status: "ACTIVE", serialNumber: "SN1" },

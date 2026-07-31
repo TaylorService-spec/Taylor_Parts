@@ -1,9 +1,10 @@
 // INV-EQ-P1b -- the Customer Equipment tab (default). A cross-customer, cursor-
-// paginated list of installed Equipment. Account/location/status/search are OPTIONAL
-// filters over the LOADED set (not query prerequisites and not a global search); the
-// note below states that plainly. Each row links to Equipment Detail. All data logic
-// lives in the injected hook (useInstalledEquipmentPage) + the pure view-model
-// (installedEquipmentListView); this JSX stays thin.
+// paginated list of installed Equipment. Per the final Owner filtering decision this
+// tab carries ONLY customer and location filters (catalog-style search/status live on
+// the Available tab). They are optional LOADED-only filters, not query prerequisites
+// and not a global search; the note below states that plainly. Each row links to
+// Equipment Detail. All data logic lives in the injected hook
+// (useInstalledEquipmentPage) + the pure view-model (installedEquipmentListView).
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useInstalledEquipmentPage } from "../../hooks/useInstalledEquipmentPage";
@@ -16,7 +17,6 @@ import {
   LIST_STATE,
   LOADED_ONLY_FILTER_NOTE,
 } from "../../domain/installedEquipmentListView";
-import { STATUS_FILTERS, statusFilterValue } from "./equipmentStatusFilters";
 import LoadingState from "../../shared/ui/LoadingState";
 import EmptyState from "../../shared/ui/EmptyState";
 import FailureState from "../../shared/ui/FailureState";
@@ -26,12 +26,10 @@ export default function CustomerEquipment({ accessVersion, usePage = useInstalle
 
   const [accountId, setAccountId] = useState("");
   const [locationId, setLocationId] = useState("");
-  const [statusKey, setStatusKey] = useState("all");
-  const [term, setTerm] = useState("");
 
   const filters = useMemo(
-    () => ({ accountId: accountId || null, locationId: locationId || null, status: statusFilterValue(statusKey), term }),
-    [accountId, locationId, statusKey, term],
+    () => ({ accountId: accountId || null, locationId: locationId || null }),
+    [accountId, locationId],
   );
 
   const { rows } = useMemo(
@@ -52,7 +50,7 @@ export default function CustomerEquipment({ accessVersion, usePage = useInstalle
     [docs, locationNames],
   );
 
-  const filtersApplied = accountId !== "" || locationId !== "" || statusKey !== "all" || term.trim() !== "";
+  const filtersApplied = accountId !== "" || locationId !== "";
 
   return (
     <div className="fo-panel">
@@ -77,18 +75,6 @@ export default function CustomerEquipment({ accessVersion, usePage = useInstalle
               <option key={l.id} value={l.id}>{l.name}</option>
             ))}
           </select>
-        </label>
-        <label>
-          Status
-          <select value={statusKey} onChange={(e) => setStatusKey(e.target.value)}>
-            {STATUS_FILTERS.map((f) => (
-              <option key={f.key} value={f.key}>{f.label}</option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Search
-          <input type="text" value={term} onChange={(e) => setTerm(e.target.value)} placeholder="Filter loaded equipment…" />
         </label>
       </div>
 
