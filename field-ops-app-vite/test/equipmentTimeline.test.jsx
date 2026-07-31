@@ -60,4 +60,19 @@ describe("EquipmentTimeline", () => {
     const first = list.querySelector("li");
     expect(first.getAttribute("data-timeline-source")).toBe("inventory");
   });
+
+  it("malformed injected inventory timestamps are dropped without crashing", () => {
+    const inventorySource = { connected: true, status: "ready", events: [{ at: NaN, kind: "BROKEN" }, { at: Infinity, kind: "ALSO_BAD" }, { at: 999, kind: "RECEIVED" }] };
+    withRouter(<EquipmentTimeline workOrders={[]} equipmentId="E" inventorySource={inventorySource} />);
+    expect(screen.getByText("RECEIVED")).toBeTruthy(); // finite event renders
+    expect(screen.queryByText("BROKEN")).toBeNull(); // NaN dropped
+    expect(screen.queryByText("ALSO_BAD")).toBeNull(); // Infinity dropped
+  });
+
+  it("discloses Service-history-unavailable when Service errored but inventory rows remain", () => {
+    const inventorySource = { connected: true, status: "ready", events: [{ at: 999, kind: "RECEIVED" }] };
+    withRouter(<EquipmentTimeline workOrders={[]} equipmentId="E" workOrdersError="glitch" inventorySource={inventorySource} />);
+    expect(screen.getByText("RECEIVED")).toBeTruthy(); // inventory rows still shown
+    expect(screen.getByText(/service history is currently unavailable/i)).toBeTruthy(); // failure not hidden
+  });
 });

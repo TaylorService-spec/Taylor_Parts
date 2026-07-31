@@ -63,6 +63,14 @@ export default function EquipmentTimeline({
         </p>
       )}
 
+      {/* If the Service read failed but other-source (inventory) rows are still shown,
+          disclose that Service history is unavailable -- never hide a source failure. */}
+      {!!workOrdersError && (state === TIMELINE_STATE.READY || state === TIMELINE_STATE.PARTIAL) && (
+        <p className="fo-warning" role="status">
+          Service history is currently unavailable — showing other activity only.
+        </p>
+      )}
+
       {state === TIMELINE_STATE.LOADING && <LoadingState>Loading activity…</LoadingState>}
 
       {state === TIMELINE_STATE.UNAVAILABLE && (
@@ -82,11 +90,14 @@ export default function EquipmentTimeline({
             const e = row.ref || {};
             const isService = row.source === TIMELINE_SOURCE.SERVICE;
             const sourceLabel = isService ? "Service" : "Inventory";
-            const date = formatDate(row.at);
+            // rows are pre-sanitized to finite `at`; guard defensively anyway so a Date
+            // render can never throw.
+            const iso = Number.isFinite(row.at) ? new Date(row.at).toISOString() : null;
+            const date = iso ? formatDate(row.at) : "";
             return (
               <li key={`${row.source}-${e.workOrderId || e.id || i}-${row.at}`} data-timeline-source={row.source}>
                 <span className="fo-tag" aria-label={`${sourceLabel} event`}>{sourceLabel}</span>{" "}
-                {date ? <time dateTime={new Date(row.at).toISOString()}>{date}</time> : null}{" "}
+                {iso ? <time dateTime={iso}>{date}</time> : null}{" "}
                 {isService && e.workOrderId ? (
                   <Link to={`/service/work-orders/${e.workOrderId}`}>{e.woNumber ?? "Work order"}</Link>
                 ) : (

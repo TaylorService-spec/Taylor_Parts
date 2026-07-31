@@ -32,11 +32,25 @@ export function mapServiceEvents(workOrders, equipmentId) {
   }));
 }
 
+// Drop any event without a FINITE `at` BEFORE composition. composeUnifiedTimeline
+// accepts any `typeof number` (so NaN/Infinity would pass and later crash a Date
+// render); here we reject non-finite/malformed timestamps from BOTH the service and
+// the injected (untrusted) inventory events, fail-closed, so an invalid event is
+// silently dropped rather than rendered or thrown on.
+function finiteEvents(events) {
+  return Array.isArray(events)
+    ? events.filter((e) => e && typeof e === "object" && Number.isFinite(e.at))
+    : [];
+}
+
 // Compose service + injected inventory events, then order NEWEST-FIRST while
 // preserving composeUnifiedTimeline's stable ordering for equal timestamps (its
 // ascending stable order is re-sorted descending with a stable secondary index).
 export function buildEquipmentTimeline({ serviceEvents = [], inventoryEvents = [] } = {}) {
-  const ascending = composeUnifiedTimeline({ inventoryEvents, serviceEvents });
+  const ascending = composeUnifiedTimeline({
+    inventoryEvents: finiteEvents(inventoryEvents),
+    serviceEvents: finiteEvents(serviceEvents),
+  });
   const rows = ascending
     .map((row, i) => ({ row, i }))
     .sort((a, b) => (b.row.at - a.row.at) || (a.i - b.i))

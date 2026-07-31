@@ -52,6 +52,32 @@ ok("buildEquipmentTimeline interleaves injected inventory events by time (never 
   ]);
 });
 
+ok("buildEquipmentTimeline drops non-finite / malformed timestamps before composition (no crash)", () => {
+  const serviceEvents = [
+    { at: 300, kind: "PM", workOrderId: "ok" },
+    { at: NaN, kind: "bad-nan", workOrderId: "nan" },
+    { at: Infinity, kind: "bad-inf", workOrderId: "inf" },
+    { at: -Infinity, kind: "bad-ninf" },
+    { at: null, kind: "null" },
+    { at: "500", kind: "string" },
+    null,
+    "not-an-object",
+  ];
+  const inventoryEvents = [
+    { at: 400, kind: "RECEIVED" },
+    { at: NaN, kind: "bad-inventory" },
+    { kind: "no-date" },
+  ];
+  const { rows } = buildEquipmentTimeline({ serviceEvents, inventoryEvents });
+  // only the two finite events survive, newest-first
+  assert.deepStrictEqual(rows.map((r) => [r.at, r.source, r.kind]), [
+    [400, TIMELINE_SOURCE.INVENTORY, "RECEIVED"],
+    [300, TIMELINE_SOURCE.SERVICE, "PM"],
+  ]);
+  // every surviving row has a finite timestamp (safe to Date-render)
+  assert.ok(rows.every((r) => Number.isFinite(r.at)));
+});
+
 ok("deriveTimelineState is fail-closed and treats a service read failure as UNAVAILABLE", () => {
   assert.strictEqual(deriveTimelineState({ serviceLoading: true }), TIMELINE_STATE.LOADING);
   assert.strictEqual(deriveTimelineState({ serviceError: true, inventoryStatus: "unavailable", rowCount: 0 }), TIMELINE_STATE.UNAVAILABLE);
