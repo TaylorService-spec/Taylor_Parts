@@ -34,6 +34,18 @@ function pickName(data) {
   return null;
 }
 
+// Compose page rows from raw snapshot docs. The AUTHORITATIVE Firestore document id
+// always wins over any stored `id` field (`...d.data()` first, then `id: d.id`), and
+// the pagination cursor is derived from the snapshot document's id -- never from
+// composed row data -- so stored data can neither change a row's identity/link nor
+// corrupt the next-page cursor (skip/duplicate/misroute). Pure over {id, data()} docs.
+export function composeEquipmentSnapshot(snapDocs) {
+  const list = Array.isArray(snapDocs) ? snapDocs : [];
+  const docs = list.map((d) => ({ ...(typeof d?.data === "function" ? d.data() : {}), id: d.id }));
+  const lastId = list.length ? list[list.length - 1].id : null;
+  return { docs, lastId };
+}
+
 // One page ordered by documentId(), starting after the last-seen id.
 async function defaultReadEquipmentPage({ cursor, pageSize }) {
   const base = collection(db, EQUIPMENT_COLLECTION);
@@ -41,8 +53,8 @@ async function defaultReadEquipmentPage({ cursor, pageSize }) {
     ? query(base, orderBy(documentId()), startAfter(cursor), limit(pageSize))
     : query(base, orderBy(documentId()), limit(pageSize));
   const snap = await getDocs(q);
-  const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-  return { docs, lastId: docs.length ? docs[docs.length - 1].id : cursor, hasMore: docs.length === pageSize };
+  const { docs, lastId } = composeEquipmentSnapshot(snap.docs);
+  return { docs, lastId: lastId ?? cursor, hasMore: docs.length === pageSize };
 }
 
 // Resolve names for ONLY the given ids, in bounded batches.

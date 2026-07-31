@@ -4,7 +4,7 @@
 // partial load-more failure. Run via `npm run test:components` (vitest + jsdom).
 import { describe, it, expect, vi } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
-import { useInstalledEquipmentPage } from "../src/hooks/useInstalledEquipmentPage";
+import { useInstalledEquipmentPage, composeEquipmentSnapshot } from "../src/hooks/useInstalledEquipmentPage";
 import { ACCOUNTS_COLLECTION, LOCATIONS_COLLECTION } from "../src/domain/constants";
 
 const upperNames = vi.fn(async ({ ids }) => new Map(ids.map((id) => [id, id.toUpperCase()])));
@@ -13,6 +13,23 @@ function deferred() {
   const promise = new Promise((res, rej) => { resolve = res; reject = rej; });
   return { promise, resolve, reject };
 }
+
+describe("composeEquipmentSnapshot", () => {
+  it("the authoritative document id overrides a conflicting stored id, and drives the cursor", () => {
+    const snapDocs = [
+      { id: "REAL1", data: () => ({ id: "EVIL", accountId: "a1", name: "Unit One" }) },
+      { id: "REAL2", data: () => ({ accountId: "a2" }) },
+    ];
+    const { docs, lastId } = composeEquipmentSnapshot(snapDocs);
+    // rendered identity comes from the doc id, never the stored `id`
+    expect(docs[0].id).toBe("REAL1");
+    expect(docs[0].name).toBe("Unit One");
+    expect(docs.map((d) => d.id)).toEqual(["REAL1", "REAL2"]);
+    // next-page cursor is the snapshot's last doc id, not any composed/stored value
+    expect(lastId).toBe("REAL2");
+    expect(composeEquipmentSnapshot([]).lastId).toBe(null);
+  });
+});
 
 describe("useInstalledEquipmentPage", () => {
   it("loads page 1 by documentId cursor, resolves bounded names, and appends on loadMore", async () => {
