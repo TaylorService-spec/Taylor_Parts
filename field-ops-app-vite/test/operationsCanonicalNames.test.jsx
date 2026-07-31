@@ -20,7 +20,7 @@ vi.mock("../src/firebase/firebase", () => ({ db: {} }));
 vi.mock("firebase/firestore", () => ({ collection: () => ({}), getDocs: async () => ({ docs: [] }) }));
 vi.mock("../src/services/operationsQueries", () => ({
   fetchInventoryTransactions: async () => [], fetchStockLocations: async () => [], fetchWarehouses: async () => [],
-  fetchTransferOrders: async () => [], fetchSuppliers: async () => [], fetchSupplierCatalog: async () => [],
+  fetchTransferOrders: async () => [], fetchTransferOrderDocs: async () => [], fetchSuppliers: async () => [], fetchSupplierCatalog: async () => [],
   fetchPurchaseOrders: async () => [],
 }));
 vi.mock("../src/domain/inventoryAnalyticsEngine", () => ({
@@ -78,7 +78,7 @@ describe("Operations (OD-3) -- dashboard canonical name resolution, mounted path
     expect(document.body.textContent.includes("secretField")).toBe(false);
   });
 
-  it("accessVersion change invalidates prior names immediately; a denied replacement leaves raw partId + notice", async () => {
+  it("accessVersion change fail-closes prior data + names immediately; a denied replacement leaves raw partId + notice", async () => {
     // Deferred reads so we control resolution ordering across the accessVersion change.
     const deferreds = [];
     fetchPartMasterList.mockImplementation(() => { let r; const p = new Promise((res) => { r = res; }); deferreds.push({ resolve: r }); return p; });
@@ -87,11 +87,15 @@ describe("Operations (OD-3) -- dashboard canonical name resolution, mounted path
     await screen.findByText("CANONICAL-NAME-A");
 
     rerender(<Operations accessVersion={2} />); // same UID, access changes
+    // EI-P1c-2 / P2-1: prior-scope DATA and names now invalidate SYNCHRONOUSLY -- the
+    // dashboard fail-closes to loading before the replacement reads settle, so previously
+    // authorized data can never linger during a slow/hung re-read.
     expect(screen.queryByText("CANONICAL-NAME-A")).toBeNull();   // prior name unrenderable immediately
-    expect(screen.getByText("TST-9001")).toBeTruthy();           // draft row preserved, raw partId
+    expect(screen.queryByText("TST-9001")).toBeNull();           // prior-scope data cleared (not preserved)
 
     await act(async () => { deferreds[deferreds.length - 1].resolve({ ok: false, code: "permission-denied" }); });
     await screen.findByText(NOTICE);
+    expect(screen.getByText("TST-9001")).toBeTruthy();           // after the re-read: raw partId (names denied)
     expect(screen.queryByText("CANONICAL-NAME-A")).toBeNull();
   });
 });

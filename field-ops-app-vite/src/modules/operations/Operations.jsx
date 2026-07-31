@@ -8,7 +8,7 @@ import {
   fetchInventoryTransactions,
   fetchStockLocations,
   fetchWarehouses,
-  fetchTransferOrders,
+  fetchTransferOrderDocs,
   fetchSuppliers,
   fetchSupplierCatalog,
   fetchPurchaseOrders,
@@ -78,6 +78,17 @@ export default function Operations({ accessVersion } = {}) {
   const { resolveName, namesUnavailable } = useCanonicalPartNames({ uid: user?.uid, accessVersion });
   const [state, setState] = useState({ loading: true, error: null, data: null });
 
+  // Fail-closed access invalidation: when accessVersion changes, SYNCHRONOUSLY drop the
+  // prior-scope data back to a loading state during render -- before the new reads start --
+  // so previously-authorized rows can never remain visible during a slow/hung re-read (and
+  // a stale completion is separately suppressed by the effect's `cancelled` guard). This is
+  // the React "adjust state when a prop changes" pattern (guarded setState during render).
+  const [loadedVersion, setLoadedVersion] = useState(accessVersion);
+  if (loadedVersion !== accessVersion) {
+    setLoadedVersion(accessVersion);
+    setState({ loading: true, error: null, data: null });
+  }
+
   useEffect(() => {
     let cancelled = false;
 
@@ -85,7 +96,7 @@ export default function Operations({ accessVersion } = {}) {
       fetchInventoryTransactions(),
       fetchStockLocations(),
       fetchWarehouses(),
-      fetchTransferOrders(),
+      fetchTransferOrderDocs(),
       fetchSuppliers(),
       fetchSupplierCatalog(),
       fetchPurchaseOrders(),
@@ -98,7 +109,7 @@ export default function Operations({ accessVersion } = {}) {
           rawTransactions,
           stockLocations,
           warehouses,
-          transferOrders,
+          transferOrderDocs,
           suppliers,
           supplierCatalog,
           purchaseOrders,
@@ -144,7 +155,7 @@ export default function Operations({ accessVersion } = {}) {
             healthEntries,
             warehouses,
             stockLocations,
-            transferOrders,
+            transferOrderDocs,
             reconciliationReport,
             purchaseOrders,
             suppliers,
@@ -189,7 +200,7 @@ export default function Operations({ accessVersion } = {}) {
     healthEntries,
     warehouses,
     stockLocations,
-    transferOrders,
+    transferOrderDocs,
     reconciliationReport,
     purchaseOrders,
     suppliers,
@@ -217,7 +228,7 @@ export default function Operations({ accessVersion } = {}) {
       <WarehousePanel
         warehouses={warehouses}
         stockLocations={stockLocations}
-        transferOrders={transferOrders}
+        transferOrderDocs={transferOrderDocs}
         reconciliationReport={reconciliationReport}
         resolveName={resolveName}
       />

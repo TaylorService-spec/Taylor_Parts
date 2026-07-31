@@ -18,9 +18,9 @@ function TransferEndpoint({ endpoint }) {
   );
 }
 
-export default function WarehousePanel({ warehouses, stockLocations, transferOrders, reconciliationReport, resolveName }) {
+export default function WarehousePanel({ warehouses, stockLocations, transferOrderDocs, reconciliationReport, resolveName }) {
   const warehouseName = (id) => warehouses.find((w) => w.id === id)?.name ?? id;
-  const { rows: transferRows, hiddenInvalidCount } = buildTransferOrdersView(transferOrders, warehouses);
+  const { rows: transferRows, hiddenInvalidCount } = buildTransferOrdersView(transferOrderDocs, warehouses);
 
   return (
     <div className="fo-card">

@@ -6,10 +6,11 @@
 // contradictory records NEVER become rows -- they are counted, not rendered. Node-
 // importable and unit-tested directly (test/transferOrdersViewModel.test.mjs).
 //
-// AUTHORITATIVE DOC ID: each record's `id` is the real Firestore document id
-// (operationsQueries.listCollection guarantees the doc id always wins over any stored
-// `id`), and it is passed as the SEPARATE docId argument to toTransferRef -- a stored
-// data.id can never override it.
+// AUTHORITATIVE DOC ID: input is a list of { docId, data } pairs (from
+// operationsQueries.fetchTransferOrderDocs), where docId is the real Firestore document id
+// kept SEPARATE from the stored data. toTransferRef(docId, data) therefore still sees a
+// conflicting stored data.id and fails closed (stored_id_conflict) -- that record is
+// counted, never rendered.
 //
 // LABELS (no N+1, never fabricated): WAREHOUSE endpoints resolve from the already-loaded
 // warehouse list (one map, zero extra reads); a missing warehouse falls back to the raw
@@ -36,22 +37,23 @@ function endpointView(ref, nameMap) {
   return { type: ref.type, locationId: ref.locationId, label };
 }
 
-// Build the location-aware Transfer Orders view. Returns { rows, hiddenInvalidCount };
-// rows are sorted deterministically by transferOrderId and carry ONLY display fields
-// (no quantity, timestamps, tracking mode, or serial membership).
-export function buildTransferOrdersView(transferOrders, warehouses) {
+// Build the location-aware Transfer Orders view from { docId, data } pairs. Returns
+// { rows, hiddenInvalidCount }; rows are sorted deterministically by transferOrderId and
+// carry ONLY display fields (no quantity, timestamps, tracking mode, or serial membership).
+export function buildTransferOrdersView(transferOrderDocs, warehouses) {
   const nameMap = warehouseNameMap(warehouses);
-  const list = Array.isArray(transferOrders) ? transferOrders : [];
+  const list = Array.isArray(transferOrderDocs) ? transferOrderDocs : [];
   const rows = [];
   let hiddenInvalidCount = 0;
 
-  for (const record of list) {
-    if (record === null || typeof record !== "object") {
+  for (const entry of list) {
+    if (entry === null || typeof entry !== "object") {
       hiddenInvalidCount += 1;
       continue;
     }
-    // `record.id` is the authoritative Firestore document id (see module header).
-    const result = toTransferRef(record.id, record);
+    // docId is the authoritative Firestore document id, kept separate from data so a
+    // conflicting stored data.id fails closed inside the adapter.
+    const result = toTransferRef(entry.docId, entry.data);
     if (!result.valid) {
       hiddenInvalidCount += 1;
       continue;
