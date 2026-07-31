@@ -3,8 +3,8 @@
 Issued: 2026-07-30 19:49:42 -07:00 (America/Phoenix)
 Authoritative starting head: `364a8b49dcd32209c9fece7c87bc885260b26e71`
 
-Status: Accepted — Owner-approved docs-only architecture  
-Extends: [ADR-006](ADR-006-equipment-and-installed-asset-management.md), [ADR-008](ADR-008-part-master.md), [ADR-009](ADR-009-business-operations-through-application.md)  
+Status: Accepted — Owner-approved docs-only architecture
+Extends: [ADR-006](ADR-006-equipment-and-installed-asset-management.md), [ADR-008](ADR-008-part-master.md), [ADR-009](ADR-009-business-operations-through-application.md)
 Depends on: [Enterprise Inventory Specification](../specifications/enterprise-inventory-architecture.md) and [Implementation Plan](../implementation-plans/enterprise-inventory-architecture.md)
 
 ## 1. Decision
