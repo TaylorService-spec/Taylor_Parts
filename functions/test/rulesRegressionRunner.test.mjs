@@ -207,7 +207,7 @@ ok("6b. descendantPids returns only the owned root's descendants by PID", () => 
 // updated any time SUITES' expected counts change -- a deliberate
 // hardcoded cross-check that EXPECTED_TOTAL wasn't silently miscomputed,
 // not a value that should ever drift unnoticed.
-await okAsync("7. a fully-passing run reports exactly 664 passed, 0 failed", async () => {
+await okAsync("7. a fully-passing run reports exactly 674 passed, 0 failed", async () => {
   const byFile = new Map(SUITES.map((s) => [s.file, s.expected]));
   const lines = [];
   const r = await runAll({
@@ -234,8 +234,11 @@ await okAsync("7. a fully-passing run reports exactly 664 passed, 0 failed", asy
   // behavioral proofs). 644 -> 664: EI-P1d-2-2b registered
   // truckRegistryRules.test.js (20 assertions -- trucks + mobile_locations,
   // admin/dispatcher read only, all client create/update/delete denied).
-  assert.equal(EXPECTED_TOTAL, 664); // EI-P1d-2-2b: +20 truckRegistryRules (was 644)
-  assert.ok(lines.some((l) => /664 passed, 0 failed/.test(l)), "summary must state 664 passed, 0 failed");
+  // 664 -> 674: EI Truck Registry write service registered
+  // truckRegistryWriteRules.test.js (10 assertions -- location_truck_claims
+  // fully closed to all client access, read included).
+  assert.equal(EXPECTED_TOTAL, 674); // EI Truck Registry write service: +10 truckRegistryWriteRules (was 664)
+  assert.ok(lines.some((l) => /674 passed, 0 failed/.test(l)), "summary must state 674 passed, 0 failed");
   // parseSuiteResult correctness (count-mismatch and failed>0 both fail).
   assert.equal(parseSuiteResult("10 passed, 0 failed", 10).ok, true);
   assert.equal(parseSuiteResult("9 passed, 0 failed", 10).ok, false);

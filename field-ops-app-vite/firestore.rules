@@ -1210,6 +1210,17 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
+    // EI Truck Registry write service -- the atomic 1:1 Truck<->MOBILE-Location
+    // guard doc (docId IS the locationId). This is INTERNAL bookkeeping that
+    // enforces, inside a trusted transaction, the cross-document uniqueness
+    // Rules cannot express -- it carries no reporting value and is never read
+    // by any client surface, so ALL client access is denied unconditionally
+    // (read included), same posture as counters / inventory_sync_status.
+    match /location_truck_claims/{locationId} {
+      allow read: if false;
+      allow create, update, delete: if false;
+    }
+
     // Epic 5 Procurement + Supplier Management System. Same Admin-SDK-
     // only write posture as the ledger/warehouse collections above --
     // fully internal, no external vendor integration, no client writes.

@@ -46,6 +46,7 @@
     "test:partSupplierItems": "npm run build && node test/partSupplierItems.test.mjs",
     "test:partAliasCommands": "npm run build && node test/partAliasCommands.test.mjs",
     "test:partMasterCommands": "npm run build && node test/partMasterCommands.test.mjs",
+    "test:truckRegistryCommands": "npm run build && node test/truckRegistryCommands.test.mjs",
     "test:partMasterDomain": "npm run build && node test/partMasterDomain.test.mjs",
     "test:inventoryEffectOperatorTools": "npm run build && node --test test/inventoryEffectOperatorTools.test.js",
     "test:firestoreDeploymentVerification": "node --test test/firestoreDeploymentVerification.test.js",

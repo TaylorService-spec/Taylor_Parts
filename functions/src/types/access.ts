@@ -223,6 +223,19 @@ export type AuditAction =
   | "equipmentCompatibilityCorrection"
   | "equipmentCompatibilityConflict"
   | "setPreferredSupplier"
+  // EI Truck Registry (ADR-010 / Decision #59) -- trusted internal write service. Seven narrow
+  // actions extending this SAME immutable Audit Event path (no parallel audit system):
+  // create; driver assign/reassign (shared) and unassign; status/home-warehouse change; and the
+  // paired deactivate/reactivate. assignTruckDriver covers both assign and reassign (same
+  // governed write). Same verb+Noun convention. Runtime allow-list mirror lives in
+  // access/auditEventWriter.ts's AUDIT_ACTIONS.
+  | "createTruck"
+  | "assignTruckDriver"
+  | "unassignTruckDriver"
+  | "changeTruckStatus"
+  | "changeTruckHomeWarehouse"
+  | "deactivateTruck"
+  | "reactivateTruck"
   // Legacy Compatibility-Admin Bootstrap -- one-time, audited migration of an
   // existing legacy `users/{uid}.role === "admin"` principal into the governed
   // roleAssignment model (ADR-005 / ADR-009 controlled technical exception).
