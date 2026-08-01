@@ -51,6 +51,7 @@
     "test:partMasterDomain": "npm run build && node test/partMasterDomain.test.mjs",
     "test:inventoryEffectOperatorTools": "npm run build && node --test test/inventoryEffectOperatorTools.test.js",
     "test:firestoreDeploymentVerification": "node --test test/firestoreDeploymentVerification.test.js",
+    "test:truckRegistryVerifier": "node --test test/verifyTruckRegistryDeployment.test.js",
     "verify:firestore-deployment": "node scripts/verifyFirestoreDeployment.js",
     "audit:inventory-effects": "npm run build && node scripts/auditInventoryEffects.js",
     "retry:inventory-effects": "npm run build && node scripts/retryInventoryEffects.js",
