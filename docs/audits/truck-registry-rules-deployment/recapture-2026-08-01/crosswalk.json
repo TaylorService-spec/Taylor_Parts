@@ -1,0 +1,594 @@
+[
+  {
+    "collection": "trucks",
+    "rule": "trucks — read: isAdminOrDispatcher(); create,update,delete: false",
+    "checks": [
+      {
+        "label": "admin/trucks/get",
+        "decision": "ALLOW"
+      },
+      {
+        "label": "admin/trucks/create",
+        "decision": "DENY"
+      },
+      {
+        "label": "admin/trucks/update",
+        "decision": "DENY"
+      },
+      {
+        "label": "admin/trucks/delete",
+        "decision": "DENY"
+      },
+      {
+        "label": "admin/trucks/list",
+        "decision": "ALLOW"
+      },
+      {
+        "label": "dispatcher/trucks/get",
+        "decision": "ALLOW"
+      },
+      {
+        "label": "dispatcher/trucks/create",
+        "decision": "DENY"
+      },
+      {
+        "label": "dispatcher/trucks/update",
+        "decision": "DENY"
+      },
+      {
+        "label": "dispatcher/trucks/delete",
+        "decision": "DENY"
+      },
+      {
+        "label": "dispatcher/trucks/list",
+        "decision": "ALLOW"
+      },
+      {
+        "label": "technician/trucks/get",
+        "decision": "DENY"
+      },
+      {
+        "label": "technician/trucks/create",
+        "decision": "DENY"
+      },
+      {
+        "label": "technician/trucks/update",
+        "decision": "DENY"
+      },
+      {
+        "label": "technician/trucks/delete",
+        "decision": "DENY"
+      },
+      {
+        "label": "technician/trucks/list",
+        "decision": "DENY"
+      },
+      {
+        "label": "unauthenticated/trucks/get",
+        "decision": "DENY"
+      },
+      {
+        "label": "unauthenticated/trucks/create",
+        "decision": "DENY"
+      },
+      {
+        "label": "unauthenticated/trucks/update",
+        "decision": "DENY"
+      },
+      {
+        "label": "unauthenticated/trucks/delete",
+        "decision": "DENY"
+      },
+      {
+        "label": "unauthenticated/trucks/list",
+        "decision": "DENY"
+      }
+    ]
+  },
+  {
+    "collection": "mobile_locations",
+    "rule": "mobile_locations — read: isAdminOrDispatcher(); create,update,delete: false",
+    "checks": [
+      {
+        "label": "admin/mobile_locations/get",
+        "decision": "ALLOW"
+      },
+      {
+        "label": "admin/mobile_locations/create",
+        "decision": "DENY"
+      },
+      {
+        "label": "admin/mobile_locations/update",
+        "decision": "DENY"
+      },
+      {
+        "label": "admin/mobile_locations/delete",
+        "decision": "DENY"
+      },
+      {
+        "label": "admin/mobile_locations/list",
+        "decision": "ALLOW"
+      },
+      {
+        "label": "dispatcher/mobile_locations/get",
+        "decision": "ALLOW"
+      },
+      {
+        "label": "dispatcher/mobile_locations/create",
+        "decision": "DENY"
+      },
+      {
+        "label": "dispatcher/mobile_locations/update",
+        "decision": "DENY"
+      },
+      {
+        "label": "dispatcher/mobile_locations/delete",
+        "decision": "DENY"
+      },
+      {
+        "label": "dispatcher/mobile_locations/list",
+        "decision": "ALLOW"
+      },
+      {
+        "label": "technician/mobile_locations/get",
+        "decision": "DENY"
+      },
+      {
+        "label": "technician/mobile_locations/create",
+        "decision": "DENY"
+      },
+      {
+        "label": "technician/mobile_locations/update",
+        "decision": "DENY"
+      },
+      {
+        "label": "technician/mobile_locations/delete",
+        "decision": "DENY"
+      },
+      {
+        "label": "technician/mobile_locations/list",
+        "decision": "DENY"
+      },
+      {
+        "label": "unauthenticated/mobile_locations/get",
+        "decision": "DENY"
+      },
+      {
+        "label": "unauthenticated/mobile_locations/create",
+        "decision": "DENY"
+      },
+      {
+        "label": "unauthenticated/mobile_locations/update",
+        "decision": "DENY"
+      },
+      {
+        "label": "unauthenticated/mobile_locations/delete",
+        "decision": "DENY"
+      },
+      {
+        "label": "unauthenticated/mobile_locations/list",
+        "decision": "DENY"
+      }
+    ]
+  },
+  {
+    "collection": "location_truck_claims",
+    "rule": "location_truck_claims — read: false; create,update,delete: false",
+    "checks": [
+      {
+        "label": "admin/location_truck_claims/get",
+        "decision": "DENY"
+      },
+      {
+        "label": "admin/location_truck_claims/create",
+        "decision": "DENY"
+      },
+      {
+        "label": "admin/location_truck_claims/update",
+        "decision": "DENY"
+      },
+      {
+        "label": "admin/location_truck_claims/delete",
+        "decision": "DENY"
+      },
+      {
+        "label": "dispatcher/location_truck_claims/get",
+        "decision": "DENY"
+      },
+      {
+        "label": "dispatcher/location_truck_claims/create",
+        "decision": "DENY"
+      },
+      {
+        "label": "dispatcher/location_truck_claims/update",
+        "decision": "DENY"
+      },
+      {
+        "label": "dispatcher/location_truck_claims/delete",
+        "decision": "DENY"
+      },
+      {
+        "label": "technician/location_truck_claims/get",
+        "decision": "DENY"
+      },
+      {
+        "label": "technician/location_truck_claims/create",
+        "decision": "DENY"
+      },
+      {
+        "label": "technician/location_truck_claims/update",
+        "decision": "DENY"
+      },
+      {
+        "label": "technician/location_truck_claims/delete",
+        "decision": "DENY"
+      },
+      {
+        "label": "unauthenticated/location_truck_claims/get",
+        "decision": "DENY"
+      },
+      {
+        "label": "unauthenticated/location_truck_claims/create",
+        "decision": "DENY"
+      },
+      {
+        "label": "unauthenticated/location_truck_claims/update",
+        "decision": "DENY"
+      },
+      {
+        "label": "unauthenticated/location_truck_claims/delete",
+        "decision": "DENY"
+      }
+    ]
+  },
+  {
+    "collection": "equipment_models",
+    "rule": "equipment_models — read, write: false (D4)",
+    "checks": [
+      {
+        "label": "admin/equipment_models/get",
+        "decision": "DENY"
+      },
+      {
+        "label": "admin/equipment_models/create",
+        "decision": "DENY"
+      },
+      {
+        "label": "admin/equipment_models/update",
+        "decision": "DENY"
+      },
+      {
+        "label": "admin/equipment_models/delete",
+        "decision": "DENY"
+      },
+      {
+        "label": "dispatcher/equipment_models/get",
+        "decision": "DENY"
+      },
+      {
+        "label": "dispatcher/equipment_models/create",
+        "decision": "DENY"
+      },
+      {
+        "label": "dispatcher/equipment_models/update",
+        "decision": "DENY"
+      },
+      {
+        "label": "dispatcher/equipment_models/delete",
+        "decision": "DENY"
+      },
+      {
+        "label": "technician/equipment_models/get",
+        "decision": "DENY"
+      },
+      {
+        "label": "technician/equipment_models/create",
+        "decision": "DENY"
+      },
+      {
+        "label": "technician/equipment_models/update",
+        "decision": "DENY"
+      },
+      {
+        "label": "technician/equipment_models/delete",
+        "decision": "DENY"
+      },
+      {
+        "label": "unauthenticated/equipment_models/get",
+        "decision": "DENY"
+      },
+      {
+        "label": "unauthenticated/equipment_models/create",
+        "decision": "DENY"
+      },
+      {
+        "label": "unauthenticated/equipment_models/update",
+        "decision": "DENY"
+      },
+      {
+        "label": "unauthenticated/equipment_models/delete",
+        "decision": "DENY"
+      }
+    ]
+  },
+  {
+    "collection": "equipment_model_aliases",
+    "rule": "equipment_model_aliases — read, write: false (D4)",
+    "checks": [
+      {
+        "label": "admin/equipment_model_aliases/get",
+        "decision": "DENY"
+      },
+      {
+        "label": "admin/equipment_model_aliases/create",
+        "decision": "DENY"
+      },
+      {
+        "label": "admin/equipment_model_aliases/update",
+        "decision": "DENY"
+      },
+      {
+        "label": "admin/equipment_model_aliases/delete",
+        "decision": "DENY"
+      },
+      {
+        "label": "dispatcher/equipment_model_aliases/get",
+        "decision": "DENY"
+      },
+      {
+        "label": "dispatcher/equipment_model_aliases/create",
+        "decision": "DENY"
+      },
+      {
+        "label": "dispatcher/equipment_model_aliases/update",
+        "decision": "DENY"
+      },
+      {
+        "label": "dispatcher/equipment_model_aliases/delete",
+        "decision": "DENY"
+      },
+      {
+        "label": "technician/equipment_model_aliases/get",
+        "decision": "DENY"
+      },
+      {
+        "label": "technician/equipment_model_aliases/create",
+        "decision": "DENY"
+      },
+      {
+        "label": "technician/equipment_model_aliases/update",
+        "decision": "DENY"
+      },
+      {
+        "label": "technician/equipment_model_aliases/delete",
+        "decision": "DENY"
+      },
+      {
+        "label": "unauthenticated/equipment_model_aliases/get",
+        "decision": "DENY"
+      },
+      {
+        "label": "unauthenticated/equipment_model_aliases/create",
+        "decision": "DENY"
+      },
+      {
+        "label": "unauthenticated/equipment_model_aliases/update",
+        "decision": "DENY"
+      },
+      {
+        "label": "unauthenticated/equipment_model_aliases/delete",
+        "decision": "DENY"
+      }
+    ]
+  },
+  {
+    "collection": "equipment_part_compatibility",
+    "rule": "equipment_part_compatibility — read, write: false (D4)",
+    "checks": [
+      {
+        "label": "admin/equipment_part_compatibility/get",
+        "decision": "DENY"
+      },
+      {
+        "label": "admin/equipment_part_compatibility/create",
+        "decision": "DENY"
+      },
+      {
+        "label": "admin/equipment_part_compatibility/update",
+        "decision": "DENY"
+      },
+      {
+        "label": "admin/equipment_part_compatibility/delete",
+        "decision": "DENY"
+      },
+      {
+        "label": "dispatcher/equipment_part_compatibility/get",
+        "decision": "DENY"
+      },
+      {
+        "label": "dispatcher/equipment_part_compatibility/create",
+        "decision": "DENY"
+      },
+      {
+        "label": "dispatcher/equipment_part_compatibility/update",
+        "decision": "DENY"
+      },
+      {
+        "label": "dispatcher/equipment_part_compatibility/delete",
+        "decision": "DENY"
+      },
+      {
+        "label": "technician/equipment_part_compatibility/get",
+        "decision": "DENY"
+      },
+      {
+        "label": "technician/equipment_part_compatibility/create",
+        "decision": "DENY"
+      },
+      {
+        "label": "technician/equipment_part_compatibility/update",
+        "decision": "DENY"
+      },
+      {
+        "label": "technician/equipment_part_compatibility/delete",
+        "decision": "DENY"
+      },
+      {
+        "label": "unauthenticated/equipment_part_compatibility/get",
+        "decision": "DENY"
+      },
+      {
+        "label": "unauthenticated/equipment_part_compatibility/create",
+        "decision": "DENY"
+      },
+      {
+        "label": "unauthenticated/equipment_part_compatibility/update",
+        "decision": "DENY"
+      },
+      {
+        "label": "unauthenticated/equipment_part_compatibility/delete",
+        "decision": "DENY"
+      }
+    ]
+  },
+  {
+    "collection": "equipment_compatibility_sources",
+    "rule": "equipment_compatibility_sources — read, write: false (D4)",
+    "checks": [
+      {
+        "label": "admin/equipment_compatibility_sources/get",
+        "decision": "DENY"
+      },
+      {
+        "label": "admin/equipment_compatibility_sources/create",
+        "decision": "DENY"
+      },
+      {
+        "label": "admin/equipment_compatibility_sources/update",
+        "decision": "DENY"
+      },
+      {
+        "label": "admin/equipment_compatibility_sources/delete",
+        "decision": "DENY"
+      },
+      {
+        "label": "dispatcher/equipment_compatibility_sources/get",
+        "decision": "DENY"
+      },
+      {
+        "label": "dispatcher/equipment_compatibility_sources/create",
+        "decision": "DENY"
+      },
+      {
+        "label": "dispatcher/equipment_compatibility_sources/update",
+        "decision": "DENY"
+      },
+      {
+        "label": "dispatcher/equipment_compatibility_sources/delete",
+        "decision": "DENY"
+      },
+      {
+        "label": "technician/equipment_compatibility_sources/get",
+        "decision": "DENY"
+      },
+      {
+        "label": "technician/equipment_compatibility_sources/create",
+        "decision": "DENY"
+      },
+      {
+        "label": "technician/equipment_compatibility_sources/update",
+        "decision": "DENY"
+      },
+      {
+        "label": "technician/equipment_compatibility_sources/delete",
+        "decision": "DENY"
+      },
+      {
+        "label": "unauthenticated/equipment_compatibility_sources/get",
+        "decision": "DENY"
+      },
+      {
+        "label": "unauthenticated/equipment_compatibility_sources/create",
+        "decision": "DENY"
+      },
+      {
+        "label": "unauthenticated/equipment_compatibility_sources/update",
+        "decision": "DENY"
+      },
+      {
+        "label": "unauthenticated/equipment_compatibility_sources/delete",
+        "decision": "DENY"
+      }
+    ]
+  },
+  {
+    "collection": "equipment_compatibility_operations",
+    "rule": "equipment_compatibility_operations — read, write: false (D4)",
+    "checks": [
+      {
+        "label": "admin/equipment_compatibility_operations/get",
+        "decision": "DENY"
+      },
+      {
+        "label": "admin/equipment_compatibility_operations/create",
+        "decision": "DENY"
+      },
+      {
+        "label": "admin/equipment_compatibility_operations/update",
+        "decision": "DENY"
+      },
+      {
+        "label": "admin/equipment_compatibility_operations/delete",
+        "decision": "DENY"
+      },
+      {
+        "label": "dispatcher/equipment_compatibility_operations/get",
+        "decision": "DENY"
+      },
+      {
+        "label": "dispatcher/equipment_compatibility_operations/create",
+        "decision": "DENY"
+      },
+      {
+        "label": "dispatcher/equipment_compatibility_operations/update",
+        "decision": "DENY"
+      },
+      {
+        "label": "dispatcher/equipment_compatibility_operations/delete",
+        "decision": "DENY"
+      },
+      {
+        "label": "technician/equipment_compatibility_operations/get",
+        "decision": "DENY"
+      },
+      {
+        "label": "technician/equipment_compatibility_operations/create",
+        "decision": "DENY"
+      },
+      {
+        "label": "technician/equipment_compatibility_operations/update",
+        "decision": "DENY"
+      },
+      {
+        "label": "technician/equipment_compatibility_operations/delete",
+        "decision": "DENY"
+      },
+      {
+        "label": "unauthenticated/equipment_compatibility_operations/get",
+        "decision": "DENY"
+      },
+      {
+        "label": "unauthenticated/equipment_compatibility_operations/create",
+        "decision": "DENY"
+      },
+      {
+        "label": "unauthenticated/equipment_compatibility_operations/update",
+        "decision": "DENY"
+      },
+      {
+        "label": "unauthenticated/equipment_compatibility_operations/delete",
+        "decision": "DENY"
+      }
+    ]
+  }
+]
