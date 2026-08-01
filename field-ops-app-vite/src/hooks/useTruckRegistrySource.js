@@ -14,8 +14,9 @@
 //     cancelled flag), and the stamped accessVersion additionally lets the workspace downgrade
 //     any prior-version READY source to LOADING synchronously.
 // Reads are injectable (deps) so the behavior is unit-testable without Firestore.
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { buildTruckInventorySourceFromRegistry } from "../access/truckRegistrySource.js";
+import { projectManagementRecords } from "../domain/truckManagement.js";
 import {
   fetchTruckDocs as defaultFetchTruckDocs,
   fetchMobileLocationDocs as defaultFetchMobileLocationDocs,
@@ -39,6 +40,13 @@ export function useTruckRegistrySource(accessVersion, deps = {}) {
   // Start (and re-scope on any access change) in a sanitized LOADING state -- never a prior
   // access version's data. The bridge is fed a message-less non-ready read.
   const [read, setRead] = useState(() => LOADING_SOURCE(accessVersion));
+
+  // A monotonic reload token: bumping it re-runs the read WITHOUT an access change, so a
+  // successful management command can reconcile the fleet (and the governed management
+  // records) against the current backend state. Additive -- the frozen read contract and
+  // the LOADING/DENIED/ERROR/READY semantics are unchanged.
+  const [reloadToken, setReloadToken] = useState(0);
+  const reload = useCallback(() => setReloadToken((n) => n + 1), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -75,8 +83,12 @@ export function useTruckRegistrySource(accessVersion, deps = {}) {
     return () => {
       cancelled = true;
     };
-  }, [accessVersion, fetchTruckDocs, fetchMobileLocationDocs, fetchDriverNames]);
+  }, [accessVersion, reloadToken, fetchTruckDocs, fetchMobileLocationDocs, fetchDriverNames]);
 
   const source = buildTruckInventorySourceFromRegistry(read);
-  return { source };
+  // Governed management projection (truckId + version + governed ids) for the Manage
+  // drawer's optimistic-concurrency writes. Derived from the SAME truck docs (zero extra
+  // reads); empty unless the read is READY. Never surfaced to the frozen inventory view.
+  const managementRecords = read.status === "ready" ? projectManagementRecords(read.truckDocs) : [];
+  return { source, managementRecords, reload };
 }

@@ -1,0 +1,187 @@
+// EI Truck Registry -- the Manage Truck drawer for a selected truck. It exposes ONLY the
+// eight governed commands (no fabricated generic update): assign / reassign / unassign
+// driver, change status, change home warehouse, deactivate, reactivate. Each command is
+// CAS'd with the truck's current version (record.version); a version conflict surfaces as
+// the sanitized reload-required outcome. displayLabel and vehicleNumber are shown READ-ONLY
+// (a governed update command for them is not approved in this gate). Deactivate / reactivate
+// require an inline confirmation. Built on the shared Modal (focus trap, Escape, restore).
+import { useEffect, useState } from "react";
+import Modal from "../../../shared/ui/Modal";
+import { Field } from "../../../shared/ui/form";
+import GovernedStatusSelect from "./GovernedStatusSelect";
+import BoundedSelect from "./BoundedSelect";
+import WriteDisabledNotice from "./WriteDisabledNotice";
+import OutcomeBanner from "./OutcomeBanner";
+import {
+  TRUCK_COMMAND_OUTCOME,
+  REACTIVATION_TARGET_OPTIONS,
+  DEACTIVATED_STATUS,
+  truckStatusLabel,
+} from "../../../domain/truckManagement.js";
+
+const dash = (v) => (v == null || v === "" ? "—" : v);
+
+export default function ManageTruckDrawer({
+  record,
+  driverName,
+  commands,
+  writeReady,
+  useDriverOptions,
+  useWarehouseOptions,
+  onClose,
+  onReconcile,
+}) {
+  const [driver, setDriver] = useState(record.assignedDriverEmployeeId || "");
+  const [statusTarget, setStatusTarget] = useState(record.status || "");
+  const [warehouse, setWarehouse] = useState(record.homeWarehouseId || "");
+  const [busy, setBusy] = useState(null);
+  const [outcome, setOutcome] = useState(null);
+  const [confirm, setConfirm] = useState(null); // { action: "deactivate" | "reactivate", targetStatus? }
+
+  // Re-sync the controls to the current record after a successful op reconciles a new
+  // version in (never mid-flight -- keyed on version, which only changes post-success).
+  useEffect(() => {
+    setDriver(record.assignedDriverEmployeeId || "");
+    setStatusTarget(record.status || "");
+    setWarehouse(record.homeWarehouseId || "");
+    setConfirm(null);
+  }, [record.version, record.assignedDriverEmployeeId, record.status, record.homeWarehouseId]);
+
+  const drivers = useDriverOptions(writeReady);
+  const warehouses = useWarehouseOptions(writeReady);
+  const expectedVersion = record.version;
+  const hasDriver = Boolean(record.assignedDriverEmployeeId);
+
+  async function runAction(key, fn) {
+    if (!writeReady || busy) return;
+    setBusy(key);
+    setOutcome(null);
+    const result = await fn();
+    setBusy(null);
+    if (result.stale) return; // access changed mid-flight -- discard
+    setOutcome(result);
+    if (result.kind === TRUCK_COMMAND_OUTCOME.OK) setConfirm(null);
+  }
+
+  const onStatusUpdate = () => {
+    if (!statusTarget || statusTarget === record.status) return;
+    if (statusTarget === DEACTIVATED_STATUS) {
+      setConfirm({ action: "deactivate" });
+      return;
+    }
+    if (record.status === DEACTIVATED_STATUS) {
+      setConfirm({ action: "reactivate", targetStatus: statusTarget });
+      return;
+    }
+    runAction("status", () => commands.changeStatus({ truckId: record.truckId, status: statusTarget, expectedVersion }));
+  };
+
+  const busyLabel = (key, idle) => (busy === key ? "Working…" : idle);
+
+  return (
+    <Modal title={`Manage truck · ${record.truckId}`} onClose={onClose} closeLabel="Close">
+      <div className="fo-create-modal-form" data-testid="manage-truck-drawer">
+        {!writeReady && <WriteDisabledNotice />}
+
+        {/* Read-only identity -- displayLabel/vehicleNumber are NOT editable in this gate. */}
+        <dl style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, margin: 0 }}>
+          <div><dt className="fo-muted">Display label</dt><dd style={{ margin: 0 }} data-testid="tm-displayLabel-readonly">{dash(record.displayLabel)}</dd></div>
+          <div><dt className="fo-muted">Vehicle number</dt><dd style={{ margin: 0 }} data-testid="tm-vehicleNumber-readonly">{dash(record.vehicleNumber)}</dd></div>
+          <div><dt className="fo-muted">Current status</dt><dd style={{ margin: 0 }} data-testid="tm-current-status">{truckStatusLabel(record.status)}</dd></div>
+          <div><dt className="fo-muted">Current driver</dt><dd style={{ margin: 0 }} data-testid="tm-current-driver">{dash(driverName)}</dd></div>
+        </dl>
+
+        <OutcomeBanner outcome={outcome} onReload={onReconcile} />
+
+        {/* Driver */}
+        <fieldset className="fo-fieldset">
+          <legend>Driver</legend>
+          <Field id="tm-manage-driver" label="Employee">
+            <BoundedSelect id="tm-manage-driver" value={driver} onChange={setDriver}
+              options={drivers.options} loading={drivers.loading} error={drivers.error}
+              placeholder="Select an employee…" emptyLabel="No active employees" disabled={!writeReady} />
+          </Field>
+          <div className="fo-btn-row">
+            {hasDriver ? (
+              <>
+                <button type="button" disabled={!writeReady || Boolean(busy) || !driver || driver === record.assignedDriverEmployeeId}
+                  onClick={() => runAction("reassign", () => commands.reassignDriver({ truckId: record.truckId, employeeId: driver, expectedVersion }))}>
+                  {busyLabel("reassign", "Reassign driver")}
+                </button>
+                <button type="button" className="fo-btn-secondary" disabled={!writeReady || Boolean(busy)}
+                  onClick={() => runAction("unassign", () => commands.unassignDriver({ truckId: record.truckId, expectedVersion }))}>
+                  {busyLabel("unassign", "Unassign driver")}
+                </button>
+              </>
+            ) : (
+              <button type="button" disabled={!writeReady || Boolean(busy) || !driver}
+                onClick={() => runAction("assign", () => commands.assignDriver({ truckId: record.truckId, employeeId: driver, expectedVersion }))}>
+                {busyLabel("assign", "Assign driver")}
+              </button>
+            )}
+          </div>
+        </fieldset>
+
+        {/* Status */}
+        <fieldset className="fo-fieldset">
+          <legend>Status</legend>
+          <Field id="tm-manage-status" label="Status">
+            <GovernedStatusSelect id="tm-manage-status" value={statusTarget} onChange={setStatusTarget} disabled={!writeReady} />
+          </Field>
+          {confirm?.action === "deactivate" ? (
+            <div className="fo-warning" role="group" aria-label="Confirm deactivate">
+              <p>Deactivate this truck? Deactivation is blocked while governed inventory remains at its location.</p>
+              <div className="fo-btn-row">
+                <button type="button" className="fo-btn-destructive" disabled={Boolean(busy)}
+                  onClick={() => runAction("deactivate", () => commands.deactivateTruck({ truckId: record.truckId, expectedVersion }))}>
+                  {busyLabel("deactivate", "Confirm deactivate")}
+                </button>
+                <button type="button" className="fo-btn-secondary" disabled={Boolean(busy)} onClick={() => setConfirm(null)}>Cancel</button>
+              </div>
+            </div>
+          ) : confirm?.action === "reactivate" ? (
+            <div className="fo-warning" role="group" aria-label="Confirm reactivate">
+              <p>Reactivate this truck to “{truckStatusLabel(confirm.targetStatus)}”?</p>
+              <div className="fo-btn-row">
+                <button type="button" disabled={Boolean(busy)}
+                  onClick={() => runAction("reactivate", () => commands.reactivateTruck({ truckId: record.truckId, targetStatus: confirm.targetStatus, expectedVersion }))}>
+                  {busyLabel("reactivate", "Confirm reactivate")}
+                </button>
+                <button type="button" className="fo-btn-secondary" disabled={Boolean(busy)} onClick={() => setConfirm(null)}>Cancel</button>
+              </div>
+            </div>
+          ) : (
+            <div className="fo-btn-row">
+              <button type="button" disabled={!writeReady || Boolean(busy) || !statusTarget || statusTarget === record.status} onClick={onStatusUpdate}>
+                {busyLabel("status", "Update status")}
+              </button>
+            </div>
+          )}
+          {record.status === DEACTIVATED_STATUS && (
+            <p className="fo-muted">Reactivation targets: {REACTIVATION_TARGET_OPTIONS.map(truckStatusLabel).join(" or ")}.</p>
+          )}
+        </fieldset>
+
+        {/* Home warehouse */}
+        <fieldset className="fo-fieldset">
+          <legend>Home warehouse</legend>
+          <Field id="tm-manage-warehouse" label="Warehouse">
+            <BoundedSelect id="tm-manage-warehouse" value={warehouse} onChange={setWarehouse}
+              options={warehouses.options} loading={warehouses.loading} error={warehouses.error}
+              placeholder="Select a warehouse…" emptyLabel="No warehouses available" disabled={!writeReady} />
+          </Field>
+          <div className="fo-btn-row">
+            <button type="button" disabled={!writeReady || Boolean(busy) || !warehouse || warehouse === record.homeWarehouseId}
+              onClick={() => runAction("warehouse", () => commands.changeHomeWarehouse({ truckId: record.truckId, homeWarehouseId: warehouse, expectedVersion }))}>
+              {busyLabel("warehouse", "Update home warehouse")}
+            </button>
+          </div>
+        </fieldset>
+
+        <div className="fo-btn-row">
+          <button type="button" className="fo-btn-secondary" onClick={onClose} disabled={Boolean(busy)}>Close</button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
