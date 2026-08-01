@@ -25,8 +25,15 @@ import { SERIALIZED_ASSET_STATES } from "./serializedAssetIdentity.js";
 // Governed fleet-status enum (the Truck registry owns this).
 export const TRUCK_STATUSES = Object.freeze(["ACTIVE", "IDLE", "OUT_OF_SERVICE"]);
 
-const MOBILE_LOCATION_FIELDS = new Set(["locationId", "type", "displayLabel", "active"]);
-const TRUCK_FIELDS = new Set(["truckId", "locationId", "vehicleNumber", "displayLabel", "status", "homeWarehouseId", "assignedDriverEmployeeId"]);
+// Governed storage metadata the trusted write service (functions/src/truckRegistry) stamps on
+// every persisted record: an optimistic-lock version + create/update audit stamps. The read
+// contract TOLERATES these (they are never surfaced in the validated value) so a real governed
+// record round-trips through validateMobileLocation/validateTruckRecord; a truly unknown field
+// still fails closed. `active` is additionally a truck write-side flag (the read model derives
+// the inactive marking from the LOCATION's active, but the truck record carries its own).
+const STORAGE_META_FIELDS = ["version", "createdAt", "createdBy", "updatedAt", "updatedBy"];
+const MOBILE_LOCATION_FIELDS = new Set(["locationId", "type", "displayLabel", "active", ...STORAGE_META_FIELDS]);
+const TRUCK_FIELDS = new Set(["truckId", "locationId", "vehicleNumber", "displayLabel", "status", "homeWarehouseId", "assignedDriverEmployeeId", "active", ...STORAGE_META_FIELDS]);
 
 function isPlainObject(v) {
   if (typeof v !== "object" || v === null || Array.isArray(v)) return false;
