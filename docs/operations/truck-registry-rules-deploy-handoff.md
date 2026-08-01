@@ -66,17 +66,30 @@ This mirrors the merged emulator suites (`truckRegistryRules` 20/20, `truckRegis
 ---
 
 > **Mandatory-cleanup invariant (P2 — Codex).** Every fixture and temporary Auth user is created
-> with the single deterministic prefix `trc_gatec_` and its own on-disk manifest, so **Step 9
-> (Mandatory cleanup) removes them by prefix in ONE idempotent pass and MUST run on EVERY exit
-> path — success, any stop condition, and after ROLLBACK — BEFORE the final report.** Set the
-> trap once at the start of the run so no failure can bypass it:
+> with the single deterministic prefix `trc_gatec_` and its own on-disk manifest, so cleanup
+> removes them by prefix in ONE idempotent pass. **Step 0 AUTHORS and `chmod`s the cleanup script
+> FIRST, then installs the EXIT trap** — so an exit during ANY of Steps 1–8 invokes a script that
+> already exists (never a missing file). The trap is the **abnormal-exit fallback**. On the
+> **success path**, Step 9 runs cleanup **explicitly**, verifies `CLEANUP-DONE`, and **disarms the
+> trap (`trap - EXIT`) BEFORE** packaging evidence and generating the final report — so cleanup
+> provably precedes the report on the normal path, and the trap still covers every failure/rollback
+> path.
 >
 > ```bash
 > mkdir -p ~/trc && cd ~/trc && mkdir -p evidence
 > export TRC_PREFIX="trc_gatec_$(date +%s)"          # deterministic fixture/user prefix
-> # Guaranteed cleanup on ANY exit (success, error, or after rollback):
+> : > ~/trc/created-manifest.txt                      # manifest starts empty
+>
+> # (1) AUTHOR the cleanup script FIRST (idempotent; safe when nothing was created) -- see Step 9
+> #     body for the full script. It MUST exist before the trap is installed.
+> #     >>> paste the `cat > ~/trc/step9_cleanup.sh <<'CLEAN' ... CLEAN` block from Step 9 here, then:
+> chmod +x ~/trc/step9_cleanup.sh
+> test -x ~/trc/step9_cleanup.sh && echo CLEANUP-SCRIPT-READY   # gate: do not proceed without this
+>
+> # (2) THEN install the trap as the abnormal-exit fallback (script already exists):
 > trap 'bash ~/trc/step9_cleanup.sh || echo "CLEANUP-FAILED -- MANUAL REMOVAL REQUIRED for prefix $TRC_PREFIX"' EXIT
 > ```
+> Do not begin Step 1 until `CLEANUP-SCRIPT-READY` has printed.
 
 ## Step 1 — Clone the pinned commit and self-derive the governed hash
 ```bash
@@ -156,8 +169,12 @@ cd ~/trc && TOKEN=$(gcloud auth print-access-token) \
 ## Step 8 — Production verification matrix (disposable fixtures; every fixture/user carries `$TRC_PREFIX`)
 Execute `verification-matrix.md` (§4) with real client REST + short-lived password-auth ID tokens for one admin, one dispatcher, one technician, plus unauthenticated. **Client writes (create/update/delete) are attempted for ALL FOUR principals** on `trucks` and `mobile_locations` (rows 5a–5d, 10a–10d) and on `location_truck_claims` + the D4 blocks — every one must DENY. Seed each fixture doc id and each temp Auth user's display/email local-part with `$TRC_PREFIX` and append every created id/uid to `~/trc/created-manifest.txt` as you go, so Step 9 can remove them deterministically even if this step aborts midway. Record labels-and-statuses-only results (no tokens/UIDs/emails/raw records) as `evidence/smoke-results.json`. Any deviation → STOP → ROLLBACK (cleanup still runs via the trap).
 
-## Step 9 — MANDATORY cleanup (runs on EVERY path via the Step-0 trap) + package sanitized evidence
-Author `~/trc/step9_cleanup.sh` at the start of the run so the trap can call it. It removes, **idempotently and by `$TRC_PREFIX` / the manifest**, every fixture doc and temp Auth user, and clears any smoke password — and it is safe to run when nothing was created:
+## Step 9 — MANDATORY cleanup, then package sanitized evidence
+
+### 9.0 The cleanup script (this is the block AUTHORED IN STEP 0, before the trap)
+It removes, **idempotently and by `$TRC_PREFIX` / the manifest**, every fixture doc and temp Auth
+user, and clears any smoke password — and is safe to run when nothing was created. It is written
+and `chmod`ed in **Step 0** (before the trap); it is reproduced here for reference:
 ```bash
 cat > ~/trc/step9_cleanup.sh <<'CLEAN'
 #!/usr/bin/env bash
@@ -188,12 +205,28 @@ echo "CLEANUP-DONE for $TRC_PREFIX"
 CLEAN
 chmod +x ~/trc/step9_cleanup.sh
 ```
-After the trap has run cleanup, package evidence:
+
+### 9.1 SUCCESS PATH — run cleanup explicitly, verify, THEN disarm the trap, THEN package + report
+On a clean run, do NOT rely on the trap: run cleanup yourself so it provably precedes report
+generation, confirm `CLEANUP-DONE`, and only then disarm the trap and package evidence.
+```bash
+bash ~/trc/step9_cleanup.sh | tee ~/trc/cleanup.log \
+ && grep -q "CLEANUP-DONE for $TRC_PREFIX" ~/trc/cleanup.log && echo CLEANUP-VERIFIED \
+ && trap - EXIT                                    # disarm the fallback -- cleanup already ran and is verified
+```
+Only after `CLEANUP-VERIFIED` + `trap - EXIT`, package evidence and complete the report:
 ```bash
 cd ~/trc/evidence && sha256sum * > checksums.sha256 \
  && ( grep -riE "token|password|secret|bearer|@[A-Za-z0-9.-]+\.[A-Za-z]{2,}|eyJ[A-Za-z0-9_-]{10,}" . | grep -v checksums.sha256 && echo "SENSITIVE-FOUND -- REDACT BEFORE EXPORT" || echo SENSITIVE-SCAN-CLEAN )
 ```
-Fill `deployment-report.md`. A `.gitattributes` (`* -text`) preserves evidence bytes exactly. **Confirm `CLEANUP-DONE` and `SENSITIVE-SCAN-CLEAN` before reporting.**
+Fill `deployment-report.md`. A `.gitattributes` (`* -text`) preserves evidence bytes exactly.
+**The final report is written only after `CLEANUP-VERIFIED`, `trap - EXIT`, and `SENSITIVE-SCAN-CLEAN`.**
+
+### 9.2 ABNORMAL-EXIT / ROLLBACK PATH — the trap is the fallback
+If the run aborts at any Step (1–8) or takes the ROLLBACK path, the Step-0 EXIT trap invokes the
+already-authored `step9_cleanup.sh` (it exists — Step 0 wrote it before arming the trap), so
+fixtures/users are removed even on failure. Evidence packaging (9.1) is skipped on an abort; the
+operator reports the stop condition after the trap has run cleanup.
 
 ---
 
