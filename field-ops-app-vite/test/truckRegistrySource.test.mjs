@@ -38,6 +38,13 @@ ok("unknown status / no input -> inert unavailable (never fabricated)", () => {
   assert.deepEqual(build().trucks, []);
 });
 
+ok("malformed input (null / array / string / number) fails closed, never throws", () => {
+  for (const bad of [null, undefined, [], [locDoc()], "ready", 7, true, NaN]) {
+    const src = build(bad);
+    assert.deepEqual(src, { connected: false, status: "unavailable", accessVersion: undefined, trucks: [] });
+  }
+});
+
 // --- READY success + empty ---
 ok("READY success: composes trucks + governed options; accessVersion stamped", () => {
   const src = build({ status: "ready", mobileLocationDocs: [locDoc()], truckDocs: [truckDoc()], accessVersion: 1, resolveDriverName: (id) => (id === "emp-mb" ? "Marcus Bell" : null) });

@@ -5,8 +5,8 @@
 // PURE and INJECTED: no Firebase import, no persistence, no reads. The governed read is
 // injected as { status, mobileLocationDocs, truckDocs, accessVersion, ... }; NOTHING here
 // reads a collection. Until a later, separately-authorized gate persists the collections +
-// Rules + a Function-backed read and wires it in, the default is INERT (unavailable, no
-// trucks) -- never fabricated records.
+// Rules + a client-direct governed read (admin/dispatcher; trusted Functions are for WRITES)
+// and wires it in, the default is INERT (unavailable, no trucks) -- never fabricated records.
 //
 //   * boundary-keyed: the produced source is STAMPED with accessVersion, so the workspace's
 //     readTruckInventorySource(source, boundaryKey) turns a prior-version READY source into
@@ -46,7 +46,11 @@ function truckLocationMap(mobileLocationDocs, truckDocs) {
 
 // Build the EI-P1d-1 TruckInventorySource { connected, status, accessVersion, trucks, options }
 // from an injected registry read. Fail-closed on every axis.
-export function buildTruckInventorySourceFromRegistry({ status, mobileLocationDocs = [], truckDocs = [], accessVersion, resolveDriverName, equipmentConditionOptions = [] } = {}) {
+export function buildTruckInventorySourceFromRegistry(input) {
+  // Accept the raw input first: null, arrays, strings, numbers, and any other non-plain-object
+  // fail closed to the inert UNAVAILABLE state rather than throwing on destructuring.
+  const read = input && typeof input === "object" && !Array.isArray(input) ? input : {};
+  const { status, mobileLocationDocs = [], truckDocs = [], accessVersion, resolveDriverName, equipmentConditionOptions = [] } = read;
   const s = REGISTRY_READ_STATUS.includes(status) ? status : "unavailable";
 
   if (s !== "ready") {
