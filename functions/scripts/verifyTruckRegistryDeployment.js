@@ -8,7 +8,7 @@
 // Lifecycle (finally-style): (1) pin governed hash + authorized project BEFORE any effect; (2) assert
 // LIVE-EXTRACTED-SOURCE-EQUALS-GOVERNED before any fixture; (3) provision prefixed personas + seed
 // disposable prefixed fixtures (absence-preflighted; durable-manifest recorded at the required
-// point); (4) probe the governed 128-check matrix, failing closed on the first mismatch; (5) emit
+// point); (4) probe the governed 136-check matrix (incl. collection-list), failing closed; (5) emit
 // sanitized evidence; (6) ALWAYS clean up and independently verify zero residuals. The original
 // matrix/probe error is preserved; the durable manifest is retained on any cleanup/residual failure
 // and completed only when both succeed.
@@ -30,6 +30,28 @@ function interpretRow(row, status) {
   const pass = row.expected.includes(status);
   const interpretation =
     status === 200 ? "ALLOW" : status === 403 ? "DENY" : status === 401 ? "DENY_UNAUTHENTICATED" : "UNEXPECTED";
+  return { label: row.label, persona: row.persona, collection: row.collection, operation: row.operation, decision: row.decision, status, expected: [...row.expected], pass, interpretation };
+}
+
+// Interpret a collection-LIST outcome. `out` = { status, ids } (ids = doc ids the list returned) or
+// { malformed: true }. A malformed response fails closed. An ALLOW list must be 200 AND contain the
+// seeded run-specific record (proves presence). A DENY list must be a governed denial status AND
+// return NO records (no unexpected record leakage to an unauthorized principal).
+function interpretListRow(row, seededId, out) {
+  const status = out && typeof out.status === "number" ? out.status : 0;
+  const ids = out && Array.isArray(out.ids) ? out.ids : null;
+  let pass;
+  let interpretation;
+  if (!out || out.malformed || (status === 200 && ids === null)) {
+    pass = false; interpretation = "MALFORMED";
+  } else if (row.decision === "ALLOW") {
+    pass = status === 200 && ids !== null && ids.includes(seededId);
+    interpretation = pass ? "ALLOW_LIST_SEEDED_PRESENT" : (status === 200 ? "ALLOW_LIST_SEEDED_MISSING" : "UNEXPECTED");
+  } else {
+    const noLeak = ids === null || ids.length === 0;
+    pass = row.expected.includes(status) && noLeak;
+    interpretation = !noLeak ? "DENY_LIST_LEAKED_RECORDS" : (row.expected.includes(status) ? "DENY" : "UNEXPECTED");
+  }
   return { label: row.label, persona: row.persona, collection: row.collection, operation: row.operation, decision: row.decision, status, expected: [...row.expected], pass, interpretation };
 }
 
@@ -137,7 +159,8 @@ async function residualCheck({ admin, manifest = [], prefix }) {
 //         evidence:{write(files,secrets)}, manifestStore:{append(entry),retain(),complete()},
 //         prefix, recaptureDate, log }
 async function runVerification(deps) {
-  const { config, targetProject, rules, auth, probe, admin, evidence, manifestStore, prefix, recaptureDate, log = () => {} } = deps;
+  const { config, targetProject, rules, auth, probe, listProbe, admin, evidence, manifestStore, prefix, recaptureDate, log = () => {} } = deps;
+  if (typeof listProbe !== "function") throw new VerificationError("a listProbe dependency is required.");
   if (!/^trc_[A-Za-z0-9]+_[0-9a-f]{8,}$/.test(prefix || "")) {
     throw new VerificationError("prefix must be high-entropy and run-unique (trc_<tag>_<hex>).");
   }
@@ -192,24 +215,33 @@ async function runVerification(deps) {
     const probed = [];
     for (const row of rows) {
       const seededPath = `${row.collection}/${seededId[row.collection]}`;
-      let req;
-      if (row.operation === "get") {
-        req = { method: "GET", target: seededPath };
-      } else if (row.operation === "create") {
-        const cid = `${prefix}_create_${row.collection}_${row.persona}`;
-        const cpath = `${row.collection}/${cid}`;
-        if (await admin.docExists(cpath)) throw new VerificationError(`fixture collision (create-probe): ${cpath}`);
-        await record({ kind: "DOC", ref: cpath }); // record BEFORE the attempt (record-before-attempt)
-        req = { method: "POST", target: `${row.collection}?documentId=${cid}`, body: { fields: { probe: { booleanValue: true } } } };
-      } else if (row.operation === "update") {
-        req = { method: "PATCH", target: `${seededPath}?updateMask.fieldPaths=probe`, body: { fields: { probe: { booleanValue: true } } } };
+      let interpreted;
+      if (row.operation === "list") {
+        // Collection-list read (getDocs(collection(...))). listProbe returns { status, ids } (ids =
+        // the doc ids the list returned) or { malformed:true }. ALLOW must be 200 AND contain the
+        // seeded record; DENY must be a governed denial with NO records (no leakage).
+        const out = await listProbe({ persona: row.persona, token: tokens[row.persona], collection: row.collection });
+        interpreted = interpretListRow(row, seededId[row.collection], out);
       } else {
-        req = { method: "DELETE", target: seededPath };
+        let req;
+        if (row.operation === "get") {
+          req = { method: "GET", target: seededPath };
+        } else if (row.operation === "create") {
+          const cid = `${prefix}_create_${row.collection}_${row.persona}`;
+          const cpath = `${row.collection}/${cid}`;
+          if (await admin.docExists(cpath)) throw new VerificationError(`fixture collision (create-probe): ${cpath}`);
+          await record({ kind: "DOC", ref: cpath }); // record BEFORE the attempt (record-before-attempt)
+          req = { method: "POST", target: `${row.collection}?documentId=${cid}`, body: { fields: { probe: { booleanValue: true } } } };
+        } else if (row.operation === "update") {
+          req = { method: "PATCH", target: `${seededPath}?updateMask.fieldPaths=probe`, body: { fields: { probe: { booleanValue: true } } } };
+        } else {
+          req = { method: "DELETE", target: seededPath };
+        }
+        const status = await probe({ persona: row.persona, token: tokens[row.persona], ...req });
+        interpreted = interpretRow(row, status);
       }
-      const status = await probe({ persona: row.persona, token: tokens[row.persona], ...req });
-      const interpreted = interpretRow(row, status);
       probed.push(interpreted);
-      if (!interpreted.pass) throw new VerificationError(`Matrix mismatch ${row.label}: ${status} not in ${JSON.stringify(row.expected)}`);
+      if (!interpreted.pass) throw new VerificationError(`Matrix mismatch ${row.label}: ${interpreted.interpretation} status=${interpreted.status}`);
     }
 
     const smokeResults = buildSmokeResults({ rows: probed, governedCommit: config.governedCommit, governedRulesSha256: config.governedRulesSha256, recaptureDate });
@@ -266,6 +298,7 @@ module.exports = {
   GOVERNED_RULES_SHA256,
   EXPECTED_PROJECT,
   interpretRow,
+  interpretListRow,
   buildSmokeResults,
   assertRunSecretFree,
   assertGovernedPins,

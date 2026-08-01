@@ -138,6 +138,44 @@ function buildProductionDeps(config, { prefix, evidenceDir, env = {} } = {}) {
     });
     return res.status;
   };
+  // Collection-list read (getDocs(collection(...))). The Firestore REST list is PAGINATED — it
+  // returns up to a page of documents plus a nextPageToken. The verifier must NOT assume these
+  // collections are empty: existing truck records could push the seeded record onto a later page.
+  // So this follows nextPageToken to exhaustion and accumulates every doc id across all pages.
+  // Fails closed on: a non-200 status (denial -> no ids), an unparseable/mis-shaped body, a
+  // repeated page token (a server loop), a non-string page token, or exceeding the bounded page
+  // limit.
+  const LIST_MAX_PAGES = 100;
+  const listProbe = async ({ token, collection }) => {
+    const ids = [];
+    const seenTokens = new Set();
+    let pageToken;
+    for (let page = 0; ; page += 1) {
+      if (page >= LIST_MAX_PAGES) return { status: 200, malformed: true }; // bounded safety limit
+      const url = `${DOC_BASE}/${collection}?pageSize=300${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ""}`;
+      const res = await doFetch(url, { headers: { ...(token ? { authorization: `Bearer ${token}` } : {}) } });
+      if (res.status !== 200) {
+        // A non-200 on the FIRST request is a legitimate denial (no records). A non-200 AFTER a
+        // successful page is an anomaly: earlier pages may already have returned records, so we must
+        // NOT collapse to a clean "denial with no records" (that would let a DENY row falsely pass).
+        // Fail closed, preserving the fact that leakage may already have been observed.
+        if (page === 0) return { status: res.status, ids: [] };
+        return { status: res.status, malformed: true, leakedIdCount: ids.length };
+      }
+      let body;
+      try { body = await res.json(); } catch { return { status: 200, malformed: true }; }
+      if (body && body.documents !== undefined && !Array.isArray(body.documents)) return { status: 200, malformed: true };
+      const docs = body && Array.isArray(body.documents) ? body.documents : [];
+      for (const d of docs) { const id = String(d.name || "").split("/").pop(); if (id) ids.push(id); }
+      const next = body ? body.nextPageToken : undefined;
+      if (next === undefined || next === null || next === "") break; // last page
+      if (typeof next !== "string") return { status: 200, malformed: true }; // malformed token
+      if (seenTokens.has(next)) return { status: 200, malformed: true }; // repeated token -> loop -> fail closed
+      seenTokens.add(next);
+      pageToken = next;
+    }
+    return { status: 200, ids };
+  };
   const admin = {
     async docExists(docPath) { return (await getAdmin().firestore().doc(docPath).get()).exists; },
     async seedDoc(collection, id) { await getAdmin().firestore().collection(collection).doc(id).set({ trc_probe_seed: true, trc_prefix: prefix }); },
@@ -170,7 +208,7 @@ function buildProductionDeps(config, { prefix, evidenceDir, env = {} } = {}) {
   };
   const { writeEvidence } = require("./firestoreDeploymentVerificationShared");
   const evidence = { async write(files) { writeEvidence(evidenceDir, files); } };
-  return { rules, auth, probe, admin, evidence };
+  return { rules, auth, probe, listProbe, admin, evidence };
 }
 
 async function main(argv, { fs = fsDefault, path = pathDefault, crypto = cryptoDefault, log = console.log } = {}) {

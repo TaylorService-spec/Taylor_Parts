@@ -18,28 +18,34 @@ required recapture artifact `smoke-results.json`.
 - `docs/DECISIONS.md` #60 · ADR-010 — admin/dispatcher-only reads; truck-scoped driver access
   stays with Issue #100 (operational roles get no authorization here).
 
-## Derived matrix — 128 checks (4 ALLOW, 124 DENY)
-8 collections × 4 personas × 4 operations. Personas: `admin`, `dispatcher`, `technician`,
-`unauthenticated`. Operations: single-document `get`, `create`, `update`, `delete` (collection
-`list` is INTENTIONALLY excluded — `allow read` covers get+list and the governed posture probes
-single-doc reads). Denial statuses: `unauthenticated` → 401 or 403; authenticated-unauthorized →
-403. An ALLOWED read targets a seeded doc and must return 200 (a 404 is never accepted as proof).
+## Derived matrix — 136 checks (8 ALLOW, 128 DENY)
+Personas: `admin`, `dispatcher`, `technician`, `unauthenticated`. Doc-level operations on every
+collection: single-document `get`, `create`, `update`, `delete` (8 collections × 4 personas × 4 =
+128). PLUS the collection-`list` read (`getDocs(collection(...))`, which the real Truck Registry UI
+performs) on the two ADMIN_DISPATCHER-readable collections only (`trucks`, `mobile_locations`) × 4
+personas = 8. A CLOSED collection's list is already governed-denied by the same `read: false` rule as
+its get, so no separate list check is added there. Denial statuses: `unauthenticated` → 401 or 403;
+authenticated-unauthorized → 403. An ALLOWED `get`/`list` targets a seeded run-specific record and
+must return 200 (a 404 is never accepted). An ALLOWED `list` must additionally CONTAIN the seeded
+record; a DENIED `list` must return NO records (no unexpected leakage); a malformed list response
+fails closed.
 
 ### Crosswalk (governed rule → checks)
-| Collection | Rule | read (admin/dispatcher) | read (technician/unauth) | create/update/delete (all personas) |
+| Collection | Rule | get/list (admin/dispatcher) | get/list (technician/unauth) | create/update/delete (all personas) |
 |---|---|---|---|---|
 | `trucks` | read: isAdminOrDispatcher(); writes: false | ALLOW (200) | DENY | DENY |
 | `mobile_locations` | read: isAdminOrDispatcher(); writes: false | ALLOW (200) | DENY | DENY |
-| `location_truck_claims` | read: false; writes: false | DENY | DENY | DENY |
-| `equipment_models` (D4) | read, write: false | DENY | DENY | DENY |
-| `equipment_model_aliases` (D4) | read, write: false | DENY | DENY | DENY |
-| `equipment_part_compatibility` (D4) | read, write: false | DENY | DENY | DENY |
-| `equipment_compatibility_sources` (D4) | read, write: false | DENY | DENY | DENY |
-| `equipment_compatibility_operations` (D4) | read, write: false | DENY | DENY | DENY |
+| `location_truck_claims` | read: false; writes: false | DENY (get; no list check) | DENY | DENY |
+| `equipment_models` (D4) | read, write: false | DENY (get; no list check) | DENY | DENY |
+| `equipment_model_aliases` (D4) | read, write: false | DENY (get; no list check) | DENY | DENY |
+| `equipment_part_compatibility` (D4) | read, write: false | DENY (get; no list check) | DENY | DENY |
+| `equipment_compatibility_sources` (D4) | read, write: false | DENY (get; no list check) | DENY | DENY |
+| `equipment_compatibility_operations` (D4) | read, write: false | DENY (get; no list check) | DENY | DENY |
 
-Each block contributes 16 checks (4 personas × 4 operations). ALLOW cells: `trucks`/`mobile_locations`
-`get` for `admin` and `dispatcher` only = 4. The tool independently regenerates and cardinality-checks
-this matrix at run time and fails if the generated matrix and the crosswalk disagree.
+Readable blocks contribute 20 checks (4 personas × 5 operations, list included); closed blocks 16
+(4 × 4). ALLOW cells: `trucks`/`mobile_locations` `get` AND `list` for `admin` and `dispatcher`
+only = 8. The tool independently regenerates and cardinality-checks this matrix at run time and
+fails if the generated matrix and the crosswalk disagree.
 
 ## Prerequisites (operator, separate Owner authorization)
 - Node 20+; authenticated `gcloud` read access to project `taylor-parts`; a Firebase Web API key;
@@ -74,9 +80,10 @@ The CLI: validates the config (pins the compiled governed hash + the authorized 
 `--confirm-project`) and the args BEFORE building any dependency; generates a high-entropy run-unique
 prefix; then runs the core, which (1) asserts live == governed BEFORE any fixture; (2) provisions
 disposable prefixed personas (recorded after success); (3) seeds one doc per collection
-(absence-preflighted, recorded after success); (4) probes all 128 rows, failing closed on the first
-mismatch; (5) emits `smoke-results.json` (recaptured/recapture_date/note/governedCommit/
-governed_rules_sha256 + 128 sanitized `{label,status,expected,pass}` rows) + `production-matrix.json`
+(absence-preflighted, recorded after success); (4) probes all 136 rows (incl. the 8 collection-list
+checks), failing closed on the first mismatch; (5) emits `smoke-results.json` (recaptured/
+recapture_date/note/governedCommit/governed_rules_sha256 + 136 sanitized `{label,status,expected,pass}`
+rows) + `production-matrix.json`
 + `crosswalk.json` into `--evidence-dir`; (6) ALWAYS cleans up and independently verifies
 `RESIDUAL-DOCS 0 ; RESIDUAL-AUTH-USERS 0`. The durable recovery manifest is written to `--recovery-dir`
 (NOT the sanitized evidence dir) and is retained on any cleanup/residual failure, marked `COMPLETE`
