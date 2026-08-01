@@ -24,6 +24,7 @@ import WorkOrderDetailPage from "./modules/workOrders/WorkOrderDetailPage";
 import PartsList from "./modules/inventory/PartsList";
 import PartMasterList from "./modules/inventory/PartMasterList";
 import TruckInventory from "./modules/inventory/TruckInventory";
+import { useTruckRegistrySource } from "./hooks/useTruckRegistrySource";
 import PartDetail from "./modules/inventory/PartDetail";
 import WarehouseManagerHome from "./modules/inventoryRole/WarehouseManagerHome";
 import PartsManagerHome from "./modules/inventoryRole/PartsManagerHome";
@@ -108,6 +109,15 @@ function DashboardIndex({ role }) {
   );
 }
 
+// EI-P1d-2-2b -- connects the client-direct Truck Registry reads to the frozen EI-P1d-1
+// TruckInventory workspace. renderSubnavItem is a plain function (not a component), so the
+// producer hook lives here in a real component; it threads the one accessVersion into both the
+// producer and the workspace so their boundary keys match.
+function TruckInventoryConnected({ accessVersion }) {
+  const { source } = useTruckRegistrySource(accessVersion);
+  return <TruckInventory source={source} accessVersion={accessVersion} />;
+}
+
 function renderSubnavItem(domain, item, role, operationalContext) {
   if (domain.key === "dashboard" && item.key === "my") {
     return <DashboardIndex role={role} />;
@@ -155,13 +165,15 @@ function renderSubnavItem(domain, item, role, operationalContext) {
   if (domain.key === "inventory" && item.key === "partMaster") {
     return <PartMasterList />;
   }
-  // EI-P1d-1 -- the visible Truck Inventory workspace (replaces the placeholder at
-  // /inventory/truck-inventory). Read-only + fail-closed: it reads ONLY an inert injected
-  // source (no operationsQueries/collections) and honestly reports "not connected" until a
-  // governed Truck Inventory view ships. accessVersion is threaded so the view resets on any
-  // access change (same convention as PartsList/Operations/EquipmentWorkspace).
+  // EI-P1d-1 workspace + EI-P1d-2-2b read wiring -- the visible Truck Inventory workspace
+  // (replaces the placeholder at /inventory/truck-inventory). The workspace stays frozen and
+  // read-only; TruckInventoryConnected supplies its source from the client-direct Truck
+  // Registry reads via useTruckRegistrySource, threading the SAME accessVersion into the
+  // producer AND the workspace so the boundary key matches (same convention as
+  // PartsList/Operations/EquipmentWorkspace). Fail-closed: no governed records -> honest
+  // empty/not-connected; a denied/failed read -> the workspace's denied/error surface.
   if (domain.key === "inventory" && item.key === "truckInventory") {
-    return <TruckInventory accessVersion={operationalContext?.accessVersion} />;
+    return <TruckInventoryConnected accessVersion={operationalContext?.accessVersion} />;
   }
   // Issue #100 PR 1b -- PARTS_MANAGER's dedicated, role-scoped surface.
   // Same operationalRoleAccess-gated pattern as PR 2b's WAREHOUSE_MANAGER
