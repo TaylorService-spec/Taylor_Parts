@@ -1,6 +1,6 @@
 name: Truck Registry Command Tests
 
-# EI Truck Registry trusted write service (ADR-010 / Decision #59) -- tests for
+# EI Truck Registry trusted write service (ADR-010 / Decision #60) -- tests for
 # functions/src/truckRegistry/truckRegistryCommands.ts against freshly started
 # Firestore + Auth emulators (Firestore for trucks/mobile_locations/
 # location_truck_claims/employees/warehouses/auditEvents; Auth for the actor
