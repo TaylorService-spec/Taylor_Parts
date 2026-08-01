@@ -1,15 +1,23 @@
 // EI-P1d-1 -- pure, node-testable view-model composer for the Truck Inventory workspace.
 // No Firebase, no persistence, no reads. It shapes the GOVERNED, already-read Truck
-// Inventory source into render-ready fleet and per-truck view-models, and derives the
-// honest fail-closed states.
+// Inventory source into render-ready fleet and per-truck view-models, derives the honest
+// fail-closed states, and validates the GOVERNED pick-lists (fleet status / equipment
+// status / equipment condition).
 //
 // STRICT NON-COMPUTATION (authorized EI-P1d-1 boundary): this module NEVER computes
 // inventory value, on-hand, reserved, available, reorder status, or discrepancy counts.
 // Those appear ONLY when a future governed source injects them as display values; here they
-// are passed through verbatim (or defaulted to null / empty). There is no stock math here.
+// are passed through verbatim (or defaulted to null). There is no stock math here.
+//
+// GOVERNED PICK-LISTS: fleet status, equipment status, and equipment condition are gated
+// against injected option sets -- a row value outside its governed set becomes null (the UI
+// renders "Unavailable") and never seeds a selectable filter option. No condition enum is
+// invented here; the options are entirely source-injected.
 
 export const TRUCK_FLEET_STATE = Object.freeze({
   UNAVAILABLE: "unavailable", // governed view not connected (honest default)
+  LOADING: "loading", // a governed read is in flight / re-scoping for a new access version
+  ERROR: "error", // the governed read failed (sanitized, message-less)
   DENIED: "denied", // access denied
   EMPTY: "empty", // connected, but no trucks recorded
   READY: "ready", // connected with trucks
@@ -29,9 +37,38 @@ function num(v) {
 function arr(v) {
   return Array.isArray(v) ? v : [];
 }
+// A governed value gated against its injected option set: kept only if it is a governed
+// option, else null (rendered "Unavailable"; never a selectable filter option).
+function gated(v, optionSet) {
+  return typeof v === "string" && optionSet.includes(v) ? v : null;
+}
+// Validate one injected pick-list into a deduped array of non-empty strings.
+function validateOptionSet(v) {
+  const seen = new Set();
+  const out = [];
+  for (const x of arr(v)) {
+    if (typeof x === "string" && x.trim() !== "" && !seen.has(x)) {
+      seen.add(x);
+      out.push(x);
+    }
+  }
+  return out;
+}
 
-// One fleet-row summary. `metrics` are all governed display values (never computed).
-function normalizeSummary(t) {
+// The governed, validated pick-lists from the read source. Always returns the three sets
+// (empty when not supplied). These drive the controlled Status/Condition filters.
+export function buildTruckInventoryOptions(readResult) {
+  const o = isPlainObject(readResult) && isPlainObject(readResult.options) ? readResult.options : {};
+  return {
+    fleetStatus: validateOptionSet(o.fleetStatus),
+    equipmentStatus: validateOptionSet(o.equipmentStatus),
+    equipmentCondition: validateOptionSet(o.equipmentCondition),
+  };
+}
+
+// One fleet-row summary. `status` is gated to governed fleetStatus options; `metrics` are
+// all governed display values (never computed).
+function normalizeSummary(t, options) {
   if (!isPlainObject(t) || !str(t.id)) return null;
   const m = isPlainObject(t.metrics) ? t.metrics : {};
   return {
@@ -39,7 +76,7 @@ function normalizeSummary(t) {
     technician: str(t.technician),
     location: str(t.location),
     homeWarehouse: str(t.homeWarehouse),
-    status: str(t.status),
+    status: gated(t.status, options.fleetStatus),
     metrics: {
       // inventoryValue is a PRE-FORMATTED governed label (e.g. "$48,250"), never summed here.
       inventoryValue: str(m.inventoryValue),
@@ -51,29 +88,33 @@ function normalizeSummary(t) {
   };
 }
 
-function normalizeEquipment(e) {
+// One serialized-equipment row. status/condition are gated to governed options. An all-null
+// row (no meaningful governed data) is dropped rather than rendered as dashes.
+function normalizeEquipment(e, options) {
   if (!isPlainObject(e)) return null;
-  return {
+  const row = {
     assetId: str(e.assetId),
     internalSku: str(e.internalSku),
     manufacturer: str(e.manufacturer),
     model: str(e.model),
     serial: str(e.serial),
-    condition: str(e.condition),
-    status: str(e.status),
+    condition: gated(e.condition, options.equipmentCondition),
+    status: gated(e.status, options.equipmentStatus),
     destination: str(e.destination),
     currentLocation: str(e.currentLocation),
   };
+  if (Object.values(row).every((v) => v === null)) return null;
+  return row;
 }
 
+// One stocked-part row. A part without an internal SKU is dropped. on-hand/reserved/
+// available/reorder are governed display values -- passed through, NEVER computed.
 function normalizePart(p) {
-  if (!isPlainObject(p)) return null;
+  if (!isPlainObject(p) || !str(p.internalSku)) return null;
   return {
-    internalSku: str(p.internalSku),
+    internalSku: p.internalSku,
     description: str(p.description),
     bin: str(p.bin),
-    // on-hand / reserved / available / reorder are GOVERNED display values -- passed through,
-    // NEVER computed (available is not derived from on-hand minus reserved here).
     onHand: num(p.onHand),
     reserved: num(p.reserved),
     available: num(p.available),
@@ -116,33 +157,39 @@ function normalizeActivity(a) {
 // Map the (already-read) source status + truck count to the honest fleet state.
 export function deriveTruckFleetState(sourceStatus, truckCount) {
   if (sourceStatus === "denied") return TRUCK_FLEET_STATE.DENIED;
+  if (sourceStatus === "error") return TRUCK_FLEET_STATE.ERROR;
+  if (sourceStatus === "loading") return TRUCK_FLEET_STATE.LOADING;
   if (sourceStatus !== "ready") return TRUCK_FLEET_STATE.UNAVAILABLE;
   return truckCount > 0 ? TRUCK_FLEET_STATE.READY : TRUCK_FLEET_STATE.EMPTY;
 }
 
-// Fleet view-model from the read result { status, trucks }. Trucks appear only when READY.
+// Fleet view-model from the read result { status, trucks, options }. Trucks appear only
+// when READY; each summary's status is gated to governed fleetStatus options.
 export function buildTruckFleetView(readResult) {
   const source = isPlainObject(readResult) ? readResult : {};
-  const normalized = arr(source.trucks).map(normalizeSummary).filter(Boolean);
+  const options = buildTruckInventoryOptions(source);
+  const normalized = arr(source.trucks).map((t) => normalizeSummary(t, options)).filter(Boolean);
   const state = deriveTruckFleetState(source.status, normalized.length);
   return { state, trucks: state === TRUCK_FLEET_STATE.READY ? normalized : [] };
 }
 
 // Per-truck detail view-model. Returns { state, truck }. `truck` is null unless the source
-// is READY and the id is found. Every tab is a governed pass-through (never computed).
+// is READY and the id is found. Every tab is a governed pass-through (never computed);
+// equipment status/condition are gated to governed options and meaningless rows are dropped.
 export function buildTruckDetailView(readResult, truckId) {
   const source = isPlainObject(readResult) ? readResult : {};
+  const options = buildTruckInventoryOptions(source);
   const state = deriveTruckFleetState(source.status, arr(source.trucks).length);
   if (state !== TRUCK_FLEET_STATE.READY || !str(truckId)) return { state, truck: null };
   const raw = arr(source.trucks).find((t) => isPlainObject(t) && t.id === truckId);
   if (!raw) return { state, truck: null };
-  const summary = normalizeSummary(raw);
+  const summary = normalizeSummary(raw, options);
   if (!summary) return { state, truck: null };
   return {
     state,
     truck: {
       ...summary,
-      serializedEquipment: arr(raw.serializedEquipment).map(normalizeEquipment).filter(Boolean),
+      serializedEquipment: arr(raw.serializedEquipment).map((e) => normalizeEquipment(e, options)).filter(Boolean),
       parts: arr(raw.parts).map(normalizePart).filter(Boolean),
       manifest: normalizeManifest(raw.manifest),
       reconciliation: normalizeReconciliation(raw.reconciliation),

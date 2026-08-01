@@ -4,13 +4,19 @@
 // (access/truckInventorySource) -- never operationsQueries or any Firestore collection --
 // and composes render-ready view-models via the pure domain/truckInventoryView. Until a
 // governed Truck Inventory view is connected, the default source is INERT and this renders
-// an HONEST "not connected" surface: visible, never blank, never fabricated inventory. It
-// computes no inventory value, on-hand, reserved, available, reorder, or discrepancy -- those
-// render only from governed injected values. The QR/scan panel is IDENTIFICATION + REVIEW
-// ONLY: no scanner library and no inventory movement (a scan never moves stock here).
+// an HONEST "not connected" surface: visible, never blank, never fabricated inventory.
+//
+//   * accessVersion is the BOUNDARY KEY: a READY source tagged for a prior access version
+//     becomes LOADING synchronously, so prior-scope fleet/detail data disappears at once and
+//     cannot reappear until a source for the current version is supplied.
+//   * Loading and (sanitized, message-less) error states are rendered explicitly.
+//   * Status and Condition are controlled selects driven by GOVERNED injected option sets;
+//     an ungoverned row value shows "Unavailable" and is never a selectable option.
+//   * It computes no inventory value, on-hand, reserved, available, reorder, or discrepancy.
+//   * The scan panel is IDENTIFICATION + REVIEW ONLY: no scanner library, movement disabled.
 import { useState } from "react";
 import { inertTruckInventorySource, readTruckInventorySource } from "../../access/truckInventorySource";
-import { TRUCK_FLEET_STATE, buildTruckFleetView, buildTruckDetailView } from "../../domain/truckInventoryView";
+import { TRUCK_FLEET_STATE, buildTruckFleetView, buildTruckDetailView, buildTruckInventoryOptions } from "../../domain/truckInventoryView";
 import EmptyState from "../../shared/ui/EmptyState";
 import FailureState from "../../shared/ui/FailureState";
 
@@ -29,16 +35,18 @@ const SCAN_OUTCOMES = [
   { id: "missing", label: "Flagged missing", message: "This asset is flagged missing here. Locating it clears the discrepancy after review." },
 ];
 const dash = (v) => (v == null ? "—" : v);
+// Governed status/condition display: an ungoverned/absent value reads "Unavailable".
+const gov = (v) => (v == null ? "Unavailable" : v);
 
 export default function TruckInventory({ source = inertTruckInventorySource, accessVersion }) {
   const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [selectedId, setSelectedId] = useState(null);
   const [tab, setTab] = useState("inventory");
-  const [scan, setScan] = useState(null); // null | outcome id
+  const [scan, setScan] = useState(null);
 
   // Fail-closed access invalidation: on any access-boundary change, synchronously drop the
-  // selected truck, filters, and any open scan panel (the React "adjust state on prop change"
-  // pattern) so a downgraded session can never keep viewing prior-scope detail.
+  // selected truck, filters, and any open scan panel (the READY *data* is separately
+  // invalidated by the accessVersion boundary key passed to readTruckInventorySource).
   const [loadedVersion, setLoadedVersion] = useState(accessVersion);
   if (loadedVersion !== accessVersion) {
     setLoadedVersion(accessVersion);
@@ -47,11 +55,24 @@ export default function TruckInventory({ source = inertTruckInventorySource, acc
     setScan(null);
   }
 
-  const read = readTruckInventorySource(source);
+  const read = readTruckInventorySource(source, accessVersion);
+  const options = buildTruckInventoryOptions(read);
   const fleet = buildTruckFleetView(read);
 
   if (fleet.state === TRUCK_FLEET_STATE.DENIED) {
     return <FailureState title="Truck Inventory unavailable" message="You are not able to view Truck Inventory." />;
+  }
+  if (fleet.state === TRUCK_FLEET_STATE.ERROR) {
+    // Sanitized, generic failure -- never a raw error object/message.
+    return <FailureState title="Truck Inventory couldn’t be loaded" message="Something went wrong loading Truck Inventory. Please try again." />;
+  }
+  if (fleet.state === TRUCK_FLEET_STATE.LOADING) {
+    return (
+      <div className="fo-panel" role="status" aria-live="polite">
+        <h3>Truck Inventory</h3>
+        <p className="fo-muted">Loading truck inventory…</p>
+      </div>
+    );
   }
   if (fleet.state === TRUCK_FLEET_STATE.UNAVAILABLE) {
     return (
@@ -96,10 +117,11 @@ export default function TruckInventory({ source = inertTruckInventorySource, acc
         </div>
       );
     }
-    return <TruckDetail truck={detail.truck} tab={tab} setTab={setTab} onBack={() => setSelectedId(null)} onScan={() => setScan("success")} scanModal={scanModal} />;
+    return <TruckDetail key={detail.truck.id} truck={detail.truck} options={options} tab={tab} setTab={setTab} onBack={() => setSelectedId(null)} onScan={() => setScan("success")} scanModal={scanModal} />;
   }
 
-  // Fleet view (READY or EMPTY).
+  // Fleet view (READY or EMPTY). Technician/warehouse filters derive from rows (free
+  // identifiers); Status uses the GOVERNED fleetStatus option set (never row-derived).
   const distinct = (key) => [...new Set(fleet.trucks.map((t) => t[key]).filter(Boolean))].sort();
   const rows = fleet.trucks.filter((t) => {
     const f = filters;
@@ -125,7 +147,7 @@ export default function TruckInventory({ source = inertTruckInventorySource, acc
         <label>Truck<input type="text" value={filters.q} onChange={setField("q")} placeholder="Truck # or technician…" /></label>
         <label>Technician<select value={filters.technician} onChange={setField("technician")}><option value="">All</option>{distinct("technician").map((v) => <option key={v} value={v}>{v}</option>)}</select></label>
         <label>Warehouse<select value={filters.warehouse} onChange={setField("warehouse")}><option value="">All</option>{distinct("homeWarehouse").map((v) => <option key={v} value={v}>{v}</option>)}</select></label>
-        <label>Status<select value={filters.status} onChange={setField("status")}><option value="">All</option>{distinct("status").map((v) => <option key={v} value={v}>{v}</option>)}</select></label>
+        <label>Status<select value={filters.status} onChange={setField("status")}><option value="">All</option>{options.fleetStatus.map((v) => <option key={v} value={v}>{v}</option>)}</select></label>
         <label>Discrepancy<select value={filters.discrepancy} onChange={setField("discrepancy")}><option value="">All</option><option value="yes">With discrepancies</option><option value="no">Clean</option></select></label>
       </div>
 
@@ -140,7 +162,7 @@ export default function TruckInventory({ source = inertTruckInventorySource, acc
               <button type="button" className="fo-card" style={{ width: "100%", textAlign: "left", cursor: "pointer" }} onClick={() => { setSelectedId(t.id); setTab("inventory"); }}>
                 <div className="fo-btn-row" style={{ justifyContent: "space-between" }}>
                   <b>{t.id}</b>
-                  {t.status ? <span className={`fo-badge ${t.status === "ACTIVE" ? "fo-badge-active" : ""}`}>{t.status}</span> : null}
+                  <span className={`fo-badge ${t.status === "ACTIVE" ? "fo-badge-active" : ""}`}>{gov(t.status)}</span>
                 </div>
                 <div className="fo-muted">{t.technician || "Unassigned"}{t.location ? ` · ${t.location}` : ""}</div>
                 <dl style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, margin: "10px 0 0" }}>
@@ -161,17 +183,17 @@ export default function TruckInventory({ source = inertTruckInventorySource, acc
 }
 
 function StatusBadge({ value }) {
-  if (!value) return <span className="fo-muted">—</span>;
+  if (!value) return <span className="fo-badge">Unavailable</span>;
   const map = { RECEIVED: "fo-badge-completed", MISSING: "fo-badge-critical", IN_TRANSIT: "fo-badge-pending", COMPLETED: "fo-badge-completed", PLANNED: "", AVAILABLE: "fo-badge-available", ACTIVE: "fo-badge-active" };
   return <span className={`fo-badge ${map[value] || ""}`}>{value.replace(/_/g, " ")}</span>;
 }
 
-function TruckDetail({ truck, tab, setTab, onBack, onScan, scanModal }) {
+function TruckDetail({ truck, options, tab, setTab, onBack, onScan, scanModal }) {
   return (
     <div className="fo-panel">
       <button type="button" className="fo-back-link" onClick={onBack}>← All trucks</button>
       <div className="fo-btn-row" style={{ justifyContent: "space-between" }}>
-        <h3>{truck.id} {truck.status ? <StatusBadge value={truck.status} /> : null}</h3>
+        <h3>{truck.id} <StatusBadge value={truck.status} /></h3>
         <button type="button" className="fo-btn-secondary" onClick={onScan}>▣ Scan</button>
       </div>
       <p className="fo-muted">{truck.technician || "Unassigned"}{truck.location ? ` · ${truck.location}` : ""}{truck.homeWarehouse ? ` · Home: ${truck.homeWarehouse}` : ""}</p>
@@ -183,7 +205,7 @@ function TruckDetail({ truck, tab, setTab, onBack, onScan, scanModal }) {
       </div>
 
       <div role="tabpanel" aria-label={TABS.find((t) => t.id === tab)?.label}>
-        {tab === "inventory" && <InventoryTab truck={truck} />}
+        {tab === "inventory" && <InventoryTab truck={truck} options={options} />}
         {tab === "manifest" && <ManifestTab manifest={truck.manifest} />}
         {tab === "activity" && <ActivityTab activity={truck.activity} />}
         {tab === "reconciliation" && <ReconciliationTab reconciliation={truck.reconciliation} />}
@@ -193,22 +215,29 @@ function TruckDetail({ truck, tab, setTab, onBack, onScan, scanModal }) {
   );
 }
 
-function InventoryTab({ truck }) {
+function InventoryTab({ truck, options }) {
+  const [condition, setCondition] = useState("");
+  const equipment = condition ? truck.serializedEquipment.filter((e) => e.condition === condition) : truck.serializedEquipment;
   return (
     <>
-      <h4>Serialized Equipment</h4>
+      <div className="fo-btn-row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+        <h4>Serialized Equipment</h4>
+        <label>Condition<select value={condition} onChange={(e) => setCondition(e.target.value)}><option value="">All</option>{options.equipmentCondition.map((c) => <option key={c} value={c}>{c}</option>)}</select></label>
+      </div>
       {truck.serializedEquipment.length === 0 ? (
         <EmptyState title="No serialized equipment" message="No serialized units are reported on this truck." />
+      ) : equipment.length === 0 ? (
+        <EmptyState variant="filtered" title="No equipment matches" message="No serialized units match this condition." />
       ) : (
         <div className="fo-table-scroll">
           <table className="fo-table">
             <thead><tr><th>Asset ID</th><th>Internal SKU</th><th>Manufacturer / Model</th><th>Serial</th><th>Condition</th><th>Status</th><th>Destination</th><th>Current location</th></tr></thead>
             <tbody>
-              {truck.serializedEquipment.map((e, i) => (
+              {equipment.map((e, i) => (
                 <tr key={e.assetId || e.serial || i}>
                   <td>{dash(e.assetId)}</td><td>{dash(e.internalSku)}</td>
                   <td>{e.manufacturer || e.model ? `${e.manufacturer || ""}${e.manufacturer && e.model ? " · " : ""}${e.model || ""}` : "—"}</td>
-                  <td>{dash(e.serial)}</td><td>{dash(e.condition)}</td><td><StatusBadge value={e.status} /></td>
+                  <td>{dash(e.serial)}</td><td>{gov(e.condition)}</td><td><StatusBadge value={e.status} /></td>
                   <td>{dash(e.destination)}</td><td>{dash(e.currentLocation)}</td>
                 </tr>
               ))}
@@ -226,7 +255,7 @@ function InventoryTab({ truck }) {
             <tbody>
               {truck.parts.map((p, i) => (
                 <tr key={p.internalSku || i}>
-                  <td>{dash(p.internalSku)}</td><td>{dash(p.description)}</td><td>{dash(p.bin)}</td>
+                  <td>{p.internalSku}</td><td>{dash(p.description)}</td><td>{dash(p.bin)}</td>
                   <td>{dash(p.onHand)}</td><td>{dash(p.reserved)}</td><td>{dash(p.available)}</td>
                   <td>{p.reorderStatus ? <span className={`fo-badge ${p.reorderStatus === "REORDER" ? "fo-badge-low-stock" : "fo-badge-completed"}`}>{p.reorderStatus}</span> : "—"}</td>
                 </tr>
