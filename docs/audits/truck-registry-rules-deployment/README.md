@@ -19,12 +19,18 @@ The operator runbook is `docs/operations/truck-registry-rules-deploy-handoff.md`
 ## Added by the operator AT deploy time (NOT present now)
 - `pre-deploy-production.rules` + `pre-deploy-production-rules.sha256` — the live rollback baseline
   (extracted source), and `pre-deploy-production-rules-api.json` (+ `.sha256`, API-artifact) — the
-  hard-gate live-baseline capture (handoff §3 / Step 3).
+  hard-gate live-baseline capture (handoff Step 3).
+- `predeploy-functions-inventory.txt` / `postdeploy-functions-inventory.txt` — the Functions list
+  before/after, proving `FUNCTIONS-UNCHANGED` (Steps 2 + 7).
 - `deploy-output.txt` — full deploy stdout (Step 5).
-- `post-deploy-production.rules` — extracted live source after deploy; its sha256 MUST equal
+- `post-deploy-production.rules` + `.sha256`, and `post-deploy-production-rules-api.json`
+  (+ `.sha256`, API-artifact) — extracted live source after deploy; the source hash MUST equal
   `bb1492b9…` (Step 6).
-- `smoke-results.json` — raw production matrix results (Step 8).
+- `smoke-results.json` — raw production matrix results, all four principals for writes (Step 8).
 - `checksums.sha256` — checksums over every evidence file (Step 9); a `SENSITIVE-SCAN-CLEAN` note.
+
+The operator run also carries a guaranteed cleanup (`step9_cleanup.sh`, invoked by a Step-0
+`trap` on every exit path) so fixtures / temp Auth users cannot survive a mid-run failure or rollback.
 
 Nothing in this directory authorizes deployment. Deployment requires a separate explicit Owner
 authorization (Tier 2, Delegation Charter).

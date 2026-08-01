@@ -65,44 +65,154 @@ This mirrors the merged emulator suites (`truckRegistryRules` 20/20, `truckRegis
 
 ---
 
+> **Mandatory-cleanup invariant (P2 — Codex).** Every fixture and temporary Auth user is created
+> with the single deterministic prefix `trc_gatec_` and its own on-disk manifest, so **Step 9
+> (Mandatory cleanup) removes them by prefix in ONE idempotent pass and MUST run on EVERY exit
+> path — success, any stop condition, and after ROLLBACK — BEFORE the final report.** Set the
+> trap once at the start of the run so no failure can bypass it:
+>
+> ```bash
+> mkdir -p ~/trc && cd ~/trc && mkdir -p evidence
+> export TRC_PREFIX="trc_gatec_$(date +%s)"          # deterministic fixture/user prefix
+> # Guaranteed cleanup on ANY exit (success, error, or after rollback):
+> trap 'bash ~/trc/step9_cleanup.sh || echo "CLEANUP-FAILED -- MANUAL REMOVAL REQUIRED for prefix $TRC_PREFIX"' EXIT
+> ```
+
 ## Step 1 — Clone the pinned commit and self-derive the governed hash
-`git fetch`, check out the pinned `origin/main`, then `git show HEAD:firestore.rules | sha256sum` → MUST equal `bb1492b9…`. Confirm root == mirror (`git diff --no-index` of both extracted sources → identical).
+```bash
+cd ~/trc && rm -rf repo && git clone --depth 1 https://github.com/TaylorService-spec/Taylor_Parts repo && cd repo \
+ && EXPECTED_RULES_SHA=bb1492b98cba95cb30ac23f7078f0fdba24befa64fa604da27d84ddc9ebac907 \
+ && GOV=$(git show HEAD:firestore.rules | sha256sum | cut -d" " -f1) \
+ && echo "governed Git/LF source sha256: $GOV" \
+ && test "$GOV" = "$EXPECTED_RULES_SHA" && echo GOVERNED-HASH-OK \
+ && diff <(git show HEAD:firestore.rules) <(git show HEAD:field-ops-app-vite/firestore.rules) >/dev/null && echo ROOT-MIRROR-IDENTICAL \
+ && DEPLOY_COMMIT=$(git rev-parse HEAD) && echo "DEPLOY_COMMIT=$DEPLOY_COMMIT"
+```
+**Expected:** `GOVERNED-HASH-OK` and `ROOT-MIRROR-IDENTICAL`. If either fails → STOP (do not deploy).
 
-## Step 2 — Confirm no Functions/index/data are in scope (pre-deploy inventory)
-Confirm the deploy command targets `firestore:rules` only. Record the current deployed Functions list (`firebase functions:list`) for the post-deploy comparison in Step 7 — it MUST be unchanged (the Truck Registry callables stay **undeployed**).
+## Step 2 — Confirm no Functions/index/data are in scope (pre-deploy Functions inventory)
+```bash
+cd ~/trc && TOKEN=$(gcloud auth print-access-token) \
+ && curl -s -H "Authorization: Bearer $TOKEN" "https://cloudfunctions.googleapis.com/v2/projects/taylor-parts/locations/-/functions" \
+      | python3 -c "import sys,json; d=json.load(sys.stdin); print('FUNCTIONS_COUNT', len(d.get('functions',[]))); [print('FN', f['name'].split('/')[-1]) for f in d.get('functions',[])]" | sort | tee evidence/predeploy-functions-inventory.txt >/dev/null \
+ && echo "recorded predeploy Functions inventory"
+```
+The deploy command targets `firestore:rules` ONLY; this inventory is compared in Step 7 and MUST be unchanged (the exported-but-undeployed Truck Registry callables must NOT appear).
 
-## Step 3 — Capture the production Rules baseline as EXTRACTED SOURCE + full API artifact (rollback artifact)
-Fetch the live ruleset via the Rules API. Save the extracted source as `pre-deploy-production.rules`, its `sha256` as `pre-deploy-production-rules.sha256`, and the full API JSON verbatim as `pre-deploy-production-rules-api.json` (+ `.sha256`, labeled API-artifact). **Diff the extracted baseline against the governed file — the only differences MUST be the acknowledged §2 blocks.** Deploy is gated on this.
+## Step 3 — Capture the live Rules baseline as EXTRACTED SOURCE + full API artifact (rollback artifact — P2-B HARD GATE)
+```bash
+cd ~/trc && mkdir -p rollback && TOKEN=$(gcloud auth print-access-token) \
+ && REL=$(curl -s -H "Authorization: Bearer $TOKEN" "https://firebaserules.googleapis.com/v1/projects/taylor-parts/releases" | python3 -c "import sys,json; rs=json.load(sys.stdin)['releases']; print([r['rulesetName'] for r in rs if r['name'].endswith('cloud.firestore')][0])") \
+ && curl -s -H "Authorization: Bearer $TOKEN" "https://firebaserules.googleapis.com/v1/$REL" > evidence/pre-deploy-production-rules-api.json \
+ # extract ONLY the firestore.rules source content bytes (no JSON quoting, no added newline):
+ && python3 -c "import sys,json; fs=json.load(open('evidence/pre-deploy-production-rules-api.json'))['source']['files']; f=[x for x in fs if x.get('name','').endswith('firestore.rules')] or fs; sys.stdout.write(f[0]['content'])" > rollback/firestore.rules \
+ && cp rollback/firestore.rules evidence/pre-deploy-production.rules \
+ && printf '{"firestore":{"rules":"firestore.rules"}}\n' > rollback/firebase.json \
+ && echo -n "predeploy EXTRACTED SOURCE sha256: " && sha256sum rollback/firestore.rules | tee evidence/pre-deploy-production-rules.sha256 \
+ && echo -n "predeploy API-ARTIFACT sha256 (provenance only): " && sha256sum evidence/pre-deploy-production-rules-api.json | tee evidence/pre-deploy-production-rules-api.json.sha256 \
+ # HARD-GATE DIFF: the ONLY blocks in governed-not-in-baseline must be the acknowledged §2 set:
+ && echo "== governed-not-in-live baseline match blocks ==" \
+ && diff <(grep -E "match /" repo/firestore.rules) <(grep -E "match /" rollback/firestore.rules) | grep -E "^<" | sed 's/^< *//'
+```
+**Expected:** first line of `rollback/firestore.rules` is `rules_version = '2';`; the governed-not-in-baseline match-block list is **exactly** the §2 set — the 3 Truck blocks + the 5 D4 blocks — **and nothing else**. If the extracted source is empty/malformed, or the diff shows ANY block outside §2, **STOP — do not deploy.** `rollback/` (extracted source + `firebase.json`) is now an independently deployable artifact. **PAUSE.**
 
-## Step 4 — Validate the rollback baseline source (compile check)
-Confirm the captured baseline is itself a syntactically valid, independently redeployable ruleset (so rollback is guaranteed to work).
+## Step 4 — Validate the rollback baseline source (predicate + compile)
+```bash
+cd ~/trc \
+ && ! grep -qE "match /(trucks|mobile_locations|location_truck_claims|equipment_models|equipment_model_aliases|equipment_part_compatibility|equipment_compatibility_sources|equipment_compatibility_operations)/" rollback/firestore.rules \
+ && echo "TARGET-BLOCKS-ABSENT-IN-BASELINE (rollback provably restores the pre-Gate-C state)" \
+ && ( cd rollback && firebase deploy --only firestore:rules --project taylor-parts --dry-run && echo BASELINE-COMPILE-OK )
+```
+**Expected:** `TARGET-BLOCKS-ABSENT-IN-BASELINE` and `BASELINE-COMPILE-OK` (a dry-run compile of the rollback source). If any target block is already present in the live baseline, the change may already be deployed — **STOP and report** (no deploy needed). **PAUSE.**
 
 ## Step 5 — Deploy ONLY Firestore Rules
-`firebase deploy --only firestore:rules --project taylor-parts` → capture full stdout to `deploy-output.txt`. Confirm the output shows Rules only, nothing else.
+```bash
+cd ~/trc/repo && firebase deploy --only firestore:rules --project taylor-parts 2>&1 | tee ../evidence/deploy-output.txt
+```
+**Expected:** `firestore: released rules firestore.rules to cloud.firestore` … `Deploy complete!` — nothing about functions/hosting/indexes. If the output mentions functions/hosting/indexes, or the deploy fails → STOP → ROLLBACK. **PAUSE.**
 
 ## Step 6 — Verify the live ruleset EXTRACTED SOURCE equals the governed Git/LF source
-Re-fetch the live ruleset, extract its source, `sha256sum` → MUST equal `bb1492b9…` (`LIVE-EQUALS-GOVERNED`). Save as `post-deploy-production.rules`. (Do not compare a raw API JSON body to the source file.)
+```bash
+cd ~/trc && TOKEN=$(gcloud auth print-access-token) \
+ && REL=$(curl -s -H "Authorization: Bearer $TOKEN" "https://firebaserules.googleapis.com/v1/projects/taylor-parts/releases" | python3 -c "import sys,json; rs=json.load(sys.stdin)['releases']; print([r['rulesetName'] for r in rs if r['name'].endswith('cloud.firestore')][0])") \
+ && curl -s -H "Authorization: Bearer $TOKEN" "https://firebaserules.googleapis.com/v1/$REL" > evidence/post-deploy-production-rules-api.json \
+ && python3 -c "import sys,json; fs=json.load(open('evidence/post-deploy-production-rules-api.json'))['source']['files']; f=[x for x in fs if x.get('name','').endswith('firestore.rules')] or fs; sys.stdout.write(f[0]['content'])" > evidence/post-deploy-production.rules \
+ && POST=$(sha256sum evidence/post-deploy-production.rules | cut -d" " -f1) \
+ && echo "POSTDEPLOY EXTRACTED SOURCE sha256: $POST" | tee evidence/post-deploy-production.rules.sha256 \
+ && echo -n "postdeploy API-ARTIFACT sha256 (provenance only): " && sha256sum evidence/post-deploy-production-rules-api.json | tee evidence/post-deploy-production-rules-api.json.sha256 \
+ && test "$POST" = "$EXPECTED_RULES_SHA" && echo LIVE-EXTRACTED-SOURCE-EQUALS-GOVERNED
+```
+**Required:** `LIVE-EXTRACTED-SOURCE-EQUALS-GOVERNED` (extracted **source** hash == governed `bb1492b9…`). The API-artifact hash is retained **separately, labeled**, and is never compared to a source hash. If missing → STOP → ROLLBACK. **PAUSE.**
 
-## Step 7 — Post-deploy Functions inventory comparison
-`firebase functions:list` again → MUST be byte-identical to Step 2 (no Functions deployed; the exported-but-undeployed Truck Registry callables remain absent from the live project).
+## Step 7 — Post-deploy Functions inventory comparison (MUST be unchanged)
+```bash
+cd ~/trc && TOKEN=$(gcloud auth print-access-token) \
+ && curl -s -H "Authorization: Bearer $TOKEN" "https://cloudfunctions.googleapis.com/v2/projects/taylor-parts/locations/-/functions" \
+      | python3 -c "import sys,json; d=json.load(sys.stdin); print('FUNCTIONS_COUNT', len(d.get('functions',[]))); [print('FN', f['name'].split('/')[-1]) for f in d.get('functions',[])]" | sort | tee evidence/postdeploy-functions-inventory.txt >/dev/null \
+ && diff evidence/predeploy-functions-inventory.txt evidence/postdeploy-functions-inventory.txt && echo FUNCTIONS-UNCHANGED
+```
+**Expected:** `FUNCTIONS-UNCHANGED`. If it differs → STOP and report (this deploy must not touch Functions). **PAUSE.**
 
-## Step 8 — Production verification matrix
-Execute §4 with disposable fixtures + short-lived password-auth ID tokens. Record raw results as `smoke-results.json`. Every row must match §4.
+## Step 8 — Production verification matrix (disposable fixtures; every fixture/user carries `$TRC_PREFIX`)
+Execute `verification-matrix.md` (§4) with real client REST + short-lived password-auth ID tokens for one admin, one dispatcher, one technician, plus unauthenticated. **Client writes (create/update/delete) are attempted for ALL FOUR principals** on `trucks` and `mobile_locations` (rows 5a–5d, 10a–10d) and on `location_truck_claims` + the D4 blocks — every one must DENY. Seed each fixture doc id and each temp Auth user's display/email local-part with `$TRC_PREFIX` and append every created id/uid to `~/trc/created-manifest.txt` as you go, so Step 9 can remove them deterministically even if this step aborts midway. Record labels-and-statuses-only results (no tokens/UIDs/emails/raw records) as `evidence/smoke-results.json`. Any deviation → STOP → ROLLBACK (cleanup still runs via the trap).
 
-## Step 9 — Cleanup + package sanitized evidence
-Delete ALL fixture docs and temp Auth users (confirm remaining fixtures = `[]`); clear any smoke password. Compute `checksums.sha256` over every evidence file; run a sensitive-scan (`SENSITIVE-SCAN-CLEAN`). Fill `deployment-report.md`. A `.gitattributes` (`* -text`) preserves evidence bytes exactly.
+## Step 9 — MANDATORY cleanup (runs on EVERY path via the Step-0 trap) + package sanitized evidence
+Author `~/trc/step9_cleanup.sh` at the start of the run so the trap can call it. It removes, **idempotently and by `$TRC_PREFIX` / the manifest**, every fixture doc and temp Auth user, and clears any smoke password — and it is safe to run when nothing was created:
+```bash
+cat > ~/trc/step9_cleanup.sh <<'CLEAN'
+#!/usr/bin/env bash
+set -uo pipefail
+: "${TRC_PREFIX:?}"
+# Delete fixture docs (by recorded id) and temp Auth users (by recorded uid); both idempotent.
+if [ -f ~/trc/created-manifest.txt ]; then
+  while read -r kind ref; do
+    case "$kind" in
+      DOC)  firebase firestore:delete "$ref" --project taylor-parts --yes >/dev/null 2>&1 || true ;;
+      USER) firebase auth:delete "$ref" --project taylor-parts >/dev/null 2>&1 || true ;;
+    esac
+  done < ~/trc/created-manifest.txt
+fi
+# Belt-and-suspenders: remove any residual Auth users whose email local-part carries the prefix.
+firebase auth:export ~/trc/_users.json --project taylor-parts >/dev/null 2>&1 || true
+python3 - "$TRC_PREFIX" <<'PY' 2>/dev/null || true
+import json,sys,subprocess,os
+pfx=sys.argv[1]; p=os.path.expanduser("~/trc/_users.json")
+u=json.load(open(p)).get("users",[]) if os.path.exists(p) else []
+for x in u:
+    if pfx in (x.get("email","")+x.get("displayName","")):
+        subprocess.run(["firebase","auth:delete",x["localId"],"--project","taylor-parts"])
+PY
+unset TRC_SMOKE_PASSWORD 2>/dev/null || true
+rm -f ~/trc/_users.json
+echo "CLEANUP-DONE for $TRC_PREFIX"
+CLEAN
+chmod +x ~/trc/step9_cleanup.sh
+```
+After the trap has run cleanup, package evidence:
+```bash
+cd ~/trc/evidence && sha256sum * > checksums.sha256 \
+ && ( grep -riE "token|password|secret|bearer|@[A-Za-z0-9.-]+\.[A-Za-z]{2,}|eyJ[A-Za-z0-9_-]{10,}" . | grep -v checksums.sha256 && echo "SENSITIVE-FOUND -- REDACT BEFORE EXPORT" || echo SENSITIVE-SCAN-CLEAN )
+```
+Fill `deployment-report.md`. A `.gitattributes` (`* -text`) preserves evidence bytes exactly. **Confirm `CLEANUP-DONE` and `SENSITIVE-SCAN-CLEAN` before reporting.**
 
 ---
 
-## ROLLBACK (only on a stop/rollback condition — restores the pre-deploy baseline)
-Redeploy the Step 3 `pre-deploy-production.rules` baseline (`firebase deploy --only firestore:rules` from a checkout of that exact source), then re-verify live source == baseline sha256. No data rollback is needed (Rules-only; only disposable fixtures existed, removed in Step 9).
+## ROLLBACK (only on a stop/rollback condition — restores the pre-deploy baseline; cleanup still runs via the trap)
+```bash
+cd ~/trc/rollback && firebase deploy --only firestore:rules --project taylor-parts && sha256sum firestore.rules
+```
+Then re-run Step 6's fetch + extraction and confirm the postdeploy **extracted source** hash equals the **Step 3 predeploy extracted-source baseline** hash. **Rules only, no data change.** Report immediately either way. The Step-0 `trap` still runs Step 9 cleanup on exit.
 
-## Stop conditions (abort → run ROLLBACK if already deployed → report)
-- Step 1 governed hash ≠ `bb1492b9…`, or root ≠ mirror.
-- Step 3 baseline capture fails, or the baseline↔governed diff shows any block outside §2.
-- Step 6 live source ≠ governed.
-- Step 7 Functions list changed.
-- Any Step 8 matrix row fails.
+## Stop conditions (abort → run ROLLBACK if already deployed → cleanup runs via trap → report)
+- Step 1 `GOVERNED-HASH-OK`/`ROOT-MIRROR-IDENTICAL` fails.
+- Step 3 baseline capture fails/empty, or the governed-not-in-baseline diff shows ANY block outside §2.
+- Step 4 a target block is already present in the baseline, or `BASELINE-COMPILE-OK` fails.
+- Step 5 deploy output mentions functions/hosting/indexes, or deploy fails.
+- Step 6 `LIVE-EXTRACTED-SOURCE-EQUALS-GOVERNED` missing.
+- Step 7 Functions inventory changed.
+- Any Step 8 matrix row fails (any unexpected ALLOW, any successful client write by any principal, any DENY where ALLOW expected).
+- Sensitive data present in evidence (Step 9).
+In every case, **cleanup (Step 9) still runs via the Step-0 trap before the final report.**
 
 ## After this handoff (separately Owner-authorized)
 Gate D (Truck Registry Admin UI) and Gate A (real governed inventory predicate) remain deferred.

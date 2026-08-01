@@ -4,7 +4,10 @@ Real client REST against the live project, using short-lived password-authentica
 one admin, one dispatcher, and one technician principal (plus unauthenticated), against **disposable**
 Admin-SDK fixtures. Every allow/deny below is the behavior of the **deployed** Rules. Mirrors the
 merged emulator suites (`truckRegistryRules` 20/20, `truckRegistryWriteRules` 10/10, and the D4
-rules suites). Fixtures + temp Auth users are removed in Step 9.
+rules suites). Client writes (create/update/delete) are tested for **all four principals**
+(admin, dispatcher, technician, unauthenticated) on every collection — none has a client write
+path. Fixtures + temp Auth users are removed by the mandatory cleanup step, which runs on every
+path (success, failure, or rollback).
 
 ## Readable collections (Truck Registry)
 
@@ -14,12 +17,18 @@ rules suites). Fixtures + temp Auth users are removed in Step 9.
 | 2 | `trucks` | dispatcher | GET (read) | ALLOW (200) |
 | 3 | `trucks` | technician | GET (read) | DENY (403) |
 | 4 | `trucks` | unauth | GET (read) | DENY (403) |
-| 5 | `trucks` | admin | create / update / delete | DENY (403) |
+| 5a | `trucks` | admin | create / update / delete | DENY (403) |
+| 5b | `trucks` | dispatcher | create / update / delete | DENY (403) |
+| 5c | `trucks` | technician | create / update / delete | DENY (403) |
+| 5d | `trucks` | unauth | create / update / delete | DENY (403) |
 | 6 | `mobile_locations` | admin | GET (read) | ALLOW (200) |
 | 7 | `mobile_locations` | dispatcher | GET (read) | ALLOW (200) |
 | 8 | `mobile_locations` | technician | GET (read) | DENY (403) |
 | 9 | `mobile_locations` | unauth | GET (read) | DENY (403) |
-| 10 | `mobile_locations` | admin | create / update / delete | DENY (403) |
+| 10a | `mobile_locations` | admin | create / update / delete | DENY (403) |
+| 10b | `mobile_locations` | dispatcher | create / update / delete | DENY (403) |
+| 10c | `mobile_locations` | technician | create / update / delete | DENY (403) |
+| 10d | `mobile_locations` | unauth | create / update / delete | DENY (403) |
 
 ## Fully client-closed collections (read included)
 

@@ -29,8 +29,9 @@ ADR-010 · runbook `docs/operations/truck-registry-rules-deploy-handoff.md`.
 - Result: `‹TO BE CAPTURED AT DEPLOY — D2-STYLE "N passed, 0 failed"›`
 - Raw: `smoke-results.json`
 
-## 6. Cleanup
-- All disposable fixtures + temp Auth users removed (remaining = `[]`); smoke password cleared: `‹TO BE CONFIRMED›`
+## 6. Cleanup (MANDATORY — runs on every path via the Step-0 trap)
+- `CLEANUP-DONE` for `$TRC_PREFIX` printed on this run's exit (success, stop, or post-rollback): `‹TO BE CONFIRMED›`
+- All disposable fixtures + temp Auth users removed by prefix/manifest (remaining = `[]`); smoke password cleared: `‹TO BE CONFIRMED›`
 
 ## 7. Final production posture after Gate C
 | Item | State |
