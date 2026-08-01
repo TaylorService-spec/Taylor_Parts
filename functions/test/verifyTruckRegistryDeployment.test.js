@@ -396,18 +396,55 @@ test("full run: a denied list that LEAKS records aborts the run", async () => {
   };
   await assert.rejects(runVerification(makeDeps({ world, listProbe }).deps), /Matrix mismatch .*\/list/);
 });
+const docName = (id) => ({ name: `projects/p/databases/(default)/documents/trucks/${id}` });
+const pageTokenOf = (url) => (url.match(/pageToken=([^&]+)/) || [])[1];
+// Build a listProbe over an injected paginated fetch keyed by pageToken (undefined = first page).
+const listProbeOverPages = (pages) => cli.buildProductionDeps({ projectId: "taylor-parts" }, { prefix: PREFIX, evidenceDir: "/ev", env: {
+  doFetch: async (url) => { const t = pageTokenOf(url); const page = pages[t === undefined ? "_" : decodeURIComponent(t)]; return page || { status: 200, async json() { return { documents: [] }; } }; },
+} }).listProbe;
+
 test("adapter: real listProbe parses documents on 200, empties on denial, flags malformed", async () => {
-  const responses = {
-    ok: { status: 200, async json() { return { documents: [{ name: `projects/p/databases/(default)/documents/trucks/${SEED("trucks")}` }, { name: "x/y/trucks/OTHER" }] }; } },
-    denied: { status: 403, async json() { return {}; } },
-    malformed: { status: 200, async json() { throw new Error("not json"); } },
-    baddocs: { status: 200, async json() { return { documents: "not-an-array" }; } },
-  };
-  const mk = (r) => cli.buildProductionDeps({ projectId: "taylor-parts" }, { prefix: PREFIX, evidenceDir: "/ev", env: { doFetch: async () => r } });
-  assert.deepEqual((await mk(responses.ok).listProbe({ collection: "trucks", token: "t" })).ids.sort(), [SEED("trucks"), "OTHER"].sort());
-  assert.deepEqual(await mk(responses.denied).listProbe({ collection: "trucks", token: "t" }), { status: 403, ids: [] });
-  assert.equal((await mk(responses.malformed).listProbe({ collection: "trucks", token: "t" })).malformed, true);
-  assert.equal((await mk(responses.baddocs).listProbe({ collection: "trucks", token: "t" })).malformed, true);
+  const mk = (r) => cli.buildProductionDeps({ projectId: "taylor-parts" }, { prefix: PREFIX, evidenceDir: "/ev", env: { doFetch: async () => r } }).listProbe;
+  const ok = mk({ status: 200, async json() { return { documents: [docName(SEED("trucks")), { name: "x/y/trucks/OTHER" }] }; } });
+  assert.deepEqual((await ok({ collection: "trucks", token: "t" })).ids.sort(), [SEED("trucks"), "OTHER"].sort());
+  assert.deepEqual(await mk({ status: 403, async json() { return {}; } })({ collection: "trucks", token: "t" }), { status: 403, ids: [] });
+  assert.equal((await mk({ status: 200, async json() { throw new Error("not json"); } })({ collection: "trucks", token: "t" })).malformed, true);
+  assert.equal((await mk({ status: 200, async json() { return { documents: "nope" }; } })({ collection: "trucks", token: "t" })).malformed, true);
+});
+test("adapter: listProbe follows nextPageToken — seeded record on a LATER page is found", async () => {
+  const listProbe = listProbeOverPages({
+    _: { status: 200, async json() { return { documents: [docName("OTHER1"), docName("OTHER2")], nextPageToken: "p2" }; } },
+    p2: { status: 200, async json() { return { documents: [docName(SEED("trucks"))] }; } }, // last page, no token
+  });
+  const out = await listProbe({ collection: "trucks", token: "t" });
+  assert.equal(out.status, 200);
+  assert.ok(out.ids.includes(SEED("trucks")), "seeded record found across pages");
+  assert.deepEqual(out.ids.sort(), ["OTHER1", "OTHER2", SEED("trucks")].sort());
+});
+test("adapter: listProbe fails closed on a REPEATED page token (server loop)", async () => {
+  const listProbe = listProbeOverPages({
+    _: { status: 200, async json() { return { documents: [docName("A")], nextPageToken: "p2" }; } },
+    p2: { status: 200, async json() { return { documents: [docName("B")], nextPageToken: "p2" }; } }, // repeats itself
+  });
+  assert.equal((await listProbe({ collection: "trucks", token: "t" })).malformed, true);
+});
+test("adapter: listProbe fails closed on a MALFORMED (non-string) page token", async () => {
+  const listProbe = listProbeOverPages({
+    _: { status: 200, async json() { return { documents: [docName("A")], nextPageToken: 12345 }; } },
+  });
+  assert.equal((await listProbe({ collection: "trucks", token: "t" })).malformed, true);
+});
+test("adapter: listProbe fails closed on exceeding the bounded page limit", async () => {
+  // every page returns a fresh, ever-increasing token -> never terminates -> bounded limit trips.
+  let n = 0;
+  const listProbe = cli.buildProductionDeps({ projectId: "taylor-parts" }, { prefix: PREFIX, evidenceDir: "/ev", env: {
+    doFetch: async () => ({ status: 200, async json() { n += 1; return { documents: [], nextPageToken: `t${n}` }; } }),
+  } }).listProbe;
+  assert.equal((await listProbe({ collection: "trucks", token: "t" })).malformed, true);
+});
+test("adapter: paginated denial still returns no records", async () => {
+  const listProbe = listProbeOverPages({ _: { status: 403, async json() { return {}; } } });
+  assert.deepEqual(await listProbe({ collection: "trucks", token: "t" }), { status: 403, ids: [] });
 });
 
 // ---------- REAL adapter boundary tests (injected firebase-admin/fetch fakes; no production) ----------

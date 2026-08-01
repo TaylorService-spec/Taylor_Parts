@@ -138,17 +138,36 @@ function buildProductionDeps(config, { prefix, evidenceDir, env = {} } = {}) {
     });
     return res.status;
   };
-  // Collection-list read (getDocs(collection(...))). On 200, parse the `documents` array into doc
-  // ids; on a denial status, return no ids. A 200 whose body is unparseable or whose `documents` is
-  // neither an array nor absent is reported malformed (fails closed downstream).
+  // Collection-list read (getDocs(collection(...))). The Firestore REST list is PAGINATED — it
+  // returns up to a page of documents plus a nextPageToken. The verifier must NOT assume these
+  // collections are empty: existing truck records could push the seeded record onto a later page.
+  // So this follows nextPageToken to exhaustion and accumulates every doc id across all pages.
+  // Fails closed on: a non-200 status (denial -> no ids), an unparseable/mis-shaped body, a
+  // repeated page token (a server loop), a non-string page token, or exceeding the bounded page
+  // limit.
+  const LIST_MAX_PAGES = 100;
   const listProbe = async ({ token, collection }) => {
-    const res = await doFetch(`${DOC_BASE}/${collection}`, { headers: { ...(token ? { authorization: `Bearer ${token}` } : {}) } });
-    if (res.status !== 200) return { status: res.status, ids: [] };
-    let body;
-    try { body = await res.json(); } catch { return { status: 200, malformed: true }; }
-    if (body && body.documents !== undefined && !Array.isArray(body.documents)) return { status: 200, malformed: true };
-    const docs = body && Array.isArray(body.documents) ? body.documents : [];
-    return { status: 200, ids: docs.map((d) => String(d.name || "").split("/").pop()).filter(Boolean) };
+    const ids = [];
+    const seenTokens = new Set();
+    let pageToken;
+    for (let page = 0; ; page += 1) {
+      if (page >= LIST_MAX_PAGES) return { status: 200, malformed: true }; // bounded safety limit
+      const url = `${DOC_BASE}/${collection}?pageSize=300${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ""}`;
+      const res = await doFetch(url, { headers: { ...(token ? { authorization: `Bearer ${token}` } : {}) } });
+      if (res.status !== 200) return { status: res.status, ids: [] }; // denial (page 0) or a mid-run anomaly
+      let body;
+      try { body = await res.json(); } catch { return { status: 200, malformed: true }; }
+      if (body && body.documents !== undefined && !Array.isArray(body.documents)) return { status: 200, malformed: true };
+      const docs = body && Array.isArray(body.documents) ? body.documents : [];
+      for (const d of docs) { const id = String(d.name || "").split("/").pop(); if (id) ids.push(id); }
+      const next = body ? body.nextPageToken : undefined;
+      if (next === undefined || next === null || next === "") break; // last page
+      if (typeof next !== "string") return { status: 200, malformed: true }; // malformed token
+      if (seenTokens.has(next)) return { status: 200, malformed: true }; // repeated token -> loop -> fail closed
+      seenTokens.add(next);
+      pageToken = next;
+    }
+    return { status: 200, ids };
   };
   const admin = {
     async docExists(docPath) { return (await getAdmin().firestore().doc(docPath).get()).exists; },
