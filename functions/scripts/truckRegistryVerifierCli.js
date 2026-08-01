@@ -154,7 +154,14 @@ function buildProductionDeps(config, { prefix, evidenceDir, env = {} } = {}) {
       if (page >= LIST_MAX_PAGES) return { status: 200, malformed: true }; // bounded safety limit
       const url = `${DOC_BASE}/${collection}?pageSize=300${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ""}`;
       const res = await doFetch(url, { headers: { ...(token ? { authorization: `Bearer ${token}` } : {}) } });
-      if (res.status !== 200) return { status: res.status, ids: [] }; // denial (page 0) or a mid-run anomaly
+      if (res.status !== 200) {
+        // A non-200 on the FIRST request is a legitimate denial (no records). A non-200 AFTER a
+        // successful page is an anomaly: earlier pages may already have returned records, so we must
+        // NOT collapse to a clean "denial with no records" (that would let a DENY row falsely pass).
+        // Fail closed, preserving the fact that leakage may already have been observed.
+        if (page === 0) return { status: res.status, ids: [] };
+        return { status: res.status, malformed: true, leakedIdCount: ids.length };
+      }
       let body;
       try { body = await res.json(); } catch { return { status: 200, malformed: true }; }
       if (body && body.documents !== undefined && !Array.isArray(body.documents)) return { status: 200, malformed: true };

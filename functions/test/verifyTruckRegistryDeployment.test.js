@@ -446,6 +446,17 @@ test("adapter: paginated denial still returns no records", async () => {
   const listProbe = listProbeOverPages({ _: { status: 403, async json() { return {}; } } });
   assert.deepEqual(await listProbe({ collection: "trucks", token: "t" }), { status: 403, ids: [] });
 });
+test("adapter: a non-200 AFTER a successful page fails closed (page1=200+record+token, page2=403 => FAIL)", async () => {
+  const listProbe = listProbeOverPages({
+    _: { status: 200, async json() { return { documents: [docName(SEED("trucks"))], nextPageToken: "p2" }; } }, // page 1 leaked a record
+    p2: { status: 403, async json() { return {}; } }, // page 2 denies
+  });
+  const out = await listProbe({ collection: "trucks", token: "t" });
+  assert.equal(out.malformed, true, "must NOT collapse to a clean denial after a successful page");
+  assert.notDeepEqual(out, { status: 403, ids: [] });
+  // a DENY row given this output FAILS closed (never falsely passes as 403-with-no-records)
+  assert.equal(interpretListRow(listRow("technician", "trucks"), SEED("trucks"), out).pass, false);
+});
 
 // ---------- REAL adapter boundary tests (injected firebase-admin/fetch fakes; no production) ----------
 test("adapter: provisionPersona durably records USER then role DOC BEFORE sign-in; sign-in failure orphans nothing", async () => {
