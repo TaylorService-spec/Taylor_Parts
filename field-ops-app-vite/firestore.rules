@@ -1187,6 +1187,29 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
+    // EI-P1d-2-2b -- Truck Registry (ADR-010: trucks = MOBILE Inventory
+    // Locations; the optional Vehicle business record links 1:1 but is
+    // NOT custody authority). Same Admin-SDK-only write posture as the
+    // ledger/warehouse/transfer collections above: registry writes are a
+    // separately-gated trusted-Function concern (the cross-document 1:1
+    // Truck<->MOBILE-Location invariant CANNOT be enforced in Rules, so
+    // there is no client-write path here -- create/update/delete are
+    // unconditionally denied, admin/dispatcher included). Read is opened
+    // to admin/dispatcher for the Truck Inventory workspace; future
+    // truck-scoped (driver) read access stays with Issue #100 and is NOT
+    // granted here. mobile_locations is the inventory Location record
+    // (docId IS the locationId); trucks is the business record (docId IS
+    // the truckId).
+    match /mobile_locations/{locationId} {
+      allow read: if isAdminOrDispatcher();
+      allow create, update, delete: if false;
+    }
+
+    match /trucks/{truckId} {
+      allow read: if isAdminOrDispatcher();
+      allow create, update, delete: if false;
+    }
+
     // Epic 5 Procurement + Supplier Management System. Same Admin-SDK-
     // only write posture as the ledger/warehouse collections above --
     // fully internal, no external vendor integration, no client writes.
