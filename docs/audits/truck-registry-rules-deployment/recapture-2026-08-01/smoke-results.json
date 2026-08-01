@@ -1,0 +1,1134 @@
+{
+  "recaptured": true,
+  "recapture_date": "2026-08-01",
+  "note": "Post-deployment recapture using the governed truck-registry smoke verifier. NOT original deployment-time output.",
+  "governedCommit": "55a449882c649027fb5018458a62ab377f79c9b3",
+  "governed_rules_sha256": "bb1492b98cba95cb30ac23f7078f0fdba24befa64fa604da27d84ddc9ebac907",
+  "matrix_total": 136,
+  "passed": 136,
+  "failed": 0,
+  "results": [
+    {
+      "label": "admin/equipment_compatibility_operations/create",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "admin/equipment_compatibility_operations/delete",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "admin/equipment_compatibility_operations/get",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "admin/equipment_compatibility_operations/update",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "admin/equipment_compatibility_sources/create",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "admin/equipment_compatibility_sources/delete",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "admin/equipment_compatibility_sources/get",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "admin/equipment_compatibility_sources/update",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "admin/equipment_model_aliases/create",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "admin/equipment_model_aliases/delete",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "admin/equipment_model_aliases/get",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "admin/equipment_model_aliases/update",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "admin/equipment_models/create",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "admin/equipment_models/delete",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "admin/equipment_models/get",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "admin/equipment_models/update",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "admin/equipment_part_compatibility/create",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "admin/equipment_part_compatibility/delete",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "admin/equipment_part_compatibility/get",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "admin/equipment_part_compatibility/update",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "admin/location_truck_claims/create",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "admin/location_truck_claims/delete",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "admin/location_truck_claims/get",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "admin/location_truck_claims/update",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "admin/mobile_locations/create",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "admin/mobile_locations/delete",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "admin/mobile_locations/get",
+      "status": 200,
+      "expected": [
+        200
+      ],
+      "pass": true
+    },
+    {
+      "label": "admin/mobile_locations/list",
+      "status": 200,
+      "expected": [
+        200
+      ],
+      "pass": true
+    },
+    {
+      "label": "admin/mobile_locations/update",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "admin/trucks/create",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "admin/trucks/delete",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "admin/trucks/get",
+      "status": 200,
+      "expected": [
+        200
+      ],
+      "pass": true
+    },
+    {
+      "label": "admin/trucks/list",
+      "status": 200,
+      "expected": [
+        200
+      ],
+      "pass": true
+    },
+    {
+      "label": "admin/trucks/update",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "dispatcher/equipment_compatibility_operations/create",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "dispatcher/equipment_compatibility_operations/delete",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "dispatcher/equipment_compatibility_operations/get",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "dispatcher/equipment_compatibility_operations/update",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "dispatcher/equipment_compatibility_sources/create",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "dispatcher/equipment_compatibility_sources/delete",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "dispatcher/equipment_compatibility_sources/get",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "dispatcher/equipment_compatibility_sources/update",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "dispatcher/equipment_model_aliases/create",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "dispatcher/equipment_model_aliases/delete",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "dispatcher/equipment_model_aliases/get",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "dispatcher/equipment_model_aliases/update",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "dispatcher/equipment_models/create",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "dispatcher/equipment_models/delete",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "dispatcher/equipment_models/get",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "dispatcher/equipment_models/update",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "dispatcher/equipment_part_compatibility/create",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "dispatcher/equipment_part_compatibility/delete",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "dispatcher/equipment_part_compatibility/get",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "dispatcher/equipment_part_compatibility/update",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "dispatcher/location_truck_claims/create",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "dispatcher/location_truck_claims/delete",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "dispatcher/location_truck_claims/get",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "dispatcher/location_truck_claims/update",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "dispatcher/mobile_locations/create",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "dispatcher/mobile_locations/delete",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "dispatcher/mobile_locations/get",
+      "status": 200,
+      "expected": [
+        200
+      ],
+      "pass": true
+    },
+    {
+      "label": "dispatcher/mobile_locations/list",
+      "status": 200,
+      "expected": [
+        200
+      ],
+      "pass": true
+    },
+    {
+      "label": "dispatcher/mobile_locations/update",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "dispatcher/trucks/create",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "dispatcher/trucks/delete",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "dispatcher/trucks/get",
+      "status": 200,
+      "expected": [
+        200
+      ],
+      "pass": true
+    },
+    {
+      "label": "dispatcher/trucks/list",
+      "status": 200,
+      "expected": [
+        200
+      ],
+      "pass": true
+    },
+    {
+      "label": "dispatcher/trucks/update",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "technician/equipment_compatibility_operations/create",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "technician/equipment_compatibility_operations/delete",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "technician/equipment_compatibility_operations/get",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "technician/equipment_compatibility_operations/update",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "technician/equipment_compatibility_sources/create",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "technician/equipment_compatibility_sources/delete",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "technician/equipment_compatibility_sources/get",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "technician/equipment_compatibility_sources/update",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "technician/equipment_model_aliases/create",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "technician/equipment_model_aliases/delete",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "technician/equipment_model_aliases/get",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "technician/equipment_model_aliases/update",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "technician/equipment_models/create",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "technician/equipment_models/delete",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "technician/equipment_models/get",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "technician/equipment_models/update",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "technician/equipment_part_compatibility/create",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "technician/equipment_part_compatibility/delete",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "technician/equipment_part_compatibility/get",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "technician/equipment_part_compatibility/update",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "technician/location_truck_claims/create",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "technician/location_truck_claims/delete",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "technician/location_truck_claims/get",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "technician/location_truck_claims/update",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "technician/mobile_locations/create",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "technician/mobile_locations/delete",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "technician/mobile_locations/get",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "technician/mobile_locations/list",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "technician/mobile_locations/update",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "technician/trucks/create",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "technician/trucks/delete",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "technician/trucks/get",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "technician/trucks/list",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "technician/trucks/update",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "unauthenticated/equipment_compatibility_operations/create",
+      "status": 403,
+      "expected": [
+        401,
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "unauthenticated/equipment_compatibility_operations/delete",
+      "status": 403,
+      "expected": [
+        401,
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "unauthenticated/equipment_compatibility_operations/get",
+      "status": 403,
+      "expected": [
+        401,
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "unauthenticated/equipment_compatibility_operations/update",
+      "status": 403,
+      "expected": [
+        401,
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "unauthenticated/equipment_compatibility_sources/create",
+      "status": 403,
+      "expected": [
+        401,
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "unauthenticated/equipment_compatibility_sources/delete",
+      "status": 403,
+      "expected": [
+        401,
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "unauthenticated/equipment_compatibility_sources/get",
+      "status": 403,
+      "expected": [
+        401,
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "unauthenticated/equipment_compatibility_sources/update",
+      "status": 403,
+      "expected": [
+        401,
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "unauthenticated/equipment_model_aliases/create",
+      "status": 403,
+      "expected": [
+        401,
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "unauthenticated/equipment_model_aliases/delete",
+      "status": 403,
+      "expected": [
+        401,
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "unauthenticated/equipment_model_aliases/get",
+      "status": 403,
+      "expected": [
+        401,
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "unauthenticated/equipment_model_aliases/update",
+      "status": 403,
+      "expected": [
+        401,
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "unauthenticated/equipment_models/create",
+      "status": 403,
+      "expected": [
+        401,
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "unauthenticated/equipment_models/delete",
+      "status": 403,
+      "expected": [
+        401,
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "unauthenticated/equipment_models/get",
+      "status": 403,
+      "expected": [
+        401,
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "unauthenticated/equipment_models/update",
+      "status": 403,
+      "expected": [
+        401,
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "unauthenticated/equipment_part_compatibility/create",
+      "status": 403,
+      "expected": [
+        401,
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "unauthenticated/equipment_part_compatibility/delete",
+      "status": 403,
+      "expected": [
+        401,
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "unauthenticated/equipment_part_compatibility/get",
+      "status": 403,
+      "expected": [
+        401,
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "unauthenticated/equipment_part_compatibility/update",
+      "status": 403,
+      "expected": [
+        401,
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "unauthenticated/location_truck_claims/create",
+      "status": 403,
+      "expected": [
+        401,
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "unauthenticated/location_truck_claims/delete",
+      "status": 403,
+      "expected": [
+        401,
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "unauthenticated/location_truck_claims/get",
+      "status": 403,
+      "expected": [
+        401,
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "unauthenticated/location_truck_claims/update",
+      "status": 403,
+      "expected": [
+        401,
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "unauthenticated/mobile_locations/create",
+      "status": 403,
+      "expected": [
+        401,
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "unauthenticated/mobile_locations/delete",
+      "status": 403,
+      "expected": [
+        401,
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "unauthenticated/mobile_locations/get",
+      "status": 403,
+      "expected": [
+        401,
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "unauthenticated/mobile_locations/list",
+      "status": 403,
+      "expected": [
+        401,
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "unauthenticated/mobile_locations/update",
+      "status": 403,
+      "expected": [
+        401,
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "unauthenticated/trucks/create",
+      "status": 403,
+      "expected": [
+        401,
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "unauthenticated/trucks/delete",
+      "status": 403,
+      "expected": [
+        401,
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "unauthenticated/trucks/get",
+      "status": 403,
+      "expected": [
+        401,
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "unauthenticated/trucks/list",
+      "status": 403,
+      "expected": [
+        401,
+        403
+      ],
+      "pass": true
+    },
+    {
+      "label": "unauthenticated/trucks/update",
+      "status": 403,
+      "expected": [
+        401,
+        403
+      ],
+      "pass": true
+    }
+  ]
+}

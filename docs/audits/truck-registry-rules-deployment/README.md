@@ -1,10 +1,26 @@
 # EI Truck Registry — Rules Deployment Evidence (Gate C)
 
-**Status: PRE-DEPLOY SCAFFOLDING. No deployment has occurred. No file here is live-capture evidence yet.**
+**Status (2026-08-01): production RECAPTURE evidence imported and independently verified —**
+**see `recapture-2026-08-01/` (136/136 PASS, live == governed, residual 0/0).**
 
-This directory holds the checksummed evidence for the Tier 2 production deployment of the merged
-Truck Registry Firestore Rules blocks (plus the Owner-acknowledged combined whole-file content).
-The operator runbook is `docs/operations/truck-registry-rules-deploy-handoff.md`.
+This directory holds the Gate C evidence for the merged Truck Registry Firestore Rules blocks (plus
+the Owner-acknowledged combined whole-file content). The operator runbook for the Rules deployment
+is `docs/operations/truck-registry-rules-deploy-handoff.md`; the governed production smoke verifier
+that produced the recapture is documented in `docs/operations/truck-registry-smoke-verifier.md`.
+
+## `recapture-2026-08-01/` — production-verification evidence (imported, verified)
+Sanitized output of the governed smoke verifier (merged commit
+`55a449882c649027fb5018458a62ab377f79c9b3`), run once against production on 2026-08-01. Independently
+verified at import (archive SHA `38690963…`, internal checksums 3/3, sensitive-scan clean, provenance
+136/136 PASS / 0 FAIL, residual docs/users 0/0). See `recapture-2026-08-01/import-validation.md` for
+the full verification record and the Gate C closure assessment. The archive-hash sidecar
+(`truck-registry-rules-deployment-evidence.tgz.sha256`) is the provenance anchor; the byte-exact
+evidence files are `smoke-results.json` (the required artifact), `production-matrix.json`,
+`crosswalk.json`, and `SHA256SUMS.txt` (the bundle's internal checksums).
+
+The pre-deploy scaffolding below (deployment-report template, verification-matrix, governed-rules
+source hash) documents the earlier Rules-deployment run structure; the recapture re-proves the
+durable end-state (live == governed + full matrix pass) independently.
 
 ## Present now (repository scaffolding, review-only)
 - `README.md` — this file.
