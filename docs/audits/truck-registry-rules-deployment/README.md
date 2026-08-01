@@ -11,9 +11,14 @@ that produced the recapture is documented in `docs/operations/truck-registry-smo
 ## `recapture-2026-08-01/` — production-verification evidence (imported, verified)
 Sanitized output of the governed smoke verifier (merged commit
 `55a449882c649027fb5018458a62ab377f79c9b3`), run once against production on 2026-08-01. Independently
-verified at import (archive SHA `38690963…`, internal checksums 3/3, sensitive-scan clean, provenance
-136/136 PASS / 0 FAIL, residual docs/users 0/0). See `recapture-2026-08-01/import-validation.md` for
-the full verification record and the Gate C closure assessment. The archive-hash sidecar
+verified at import (archive SHA `38690963…`, internal checksums 3/3, sensitive-scan clean, and the
+provenance READ FROM the JSON: `recaptured=true` / `2026-08-01` / governed commit + pin / **136/136
+PASS, 0 FAIL**). Provenance distinction: cleanup completion and residual docs/users 0/0 are NOT
+fields in the imported JSON — the governed verifier performed cleanup + independent residual
+verification IN-RUN, and those facts come from the separately-recorded operator terminal result
+(`CLEANUP-DONE …` / `RESIDUAL-DOCS 0 ; RESIDUAL-AUTH-USERS 0`), not from this docs-only import (which
+did not query production). See `recapture-2026-08-01/import-validation.md` for the full verification
+record, the operator-relayed terminal result, and the Gate C closure assessment. The archive-hash sidecar
 (`truck-registry-rules-deployment-evidence.tgz.sha256`) is the provenance anchor; the byte-exact
 evidence files are `smoke-results.json` (the required artifact), `production-matrix.json`,
 `crosswalk.json`, and `SHA256SUMS.txt` (the bundle's internal checksums).

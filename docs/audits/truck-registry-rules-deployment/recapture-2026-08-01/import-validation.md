@@ -23,7 +23,9 @@ reinterpret the evidence bytes. No production access, deployment, or verifier re
 - **Byte preservation:** imported byte-exact; this directory carries `.gitattributes` (`* -text`,
   also inherited from the parent audit dir) so the bytes are preserved verbatim.
 
-## Evidence provenance (read from `smoke-results.json`, cross-checked against `production-matrix.json`)
+## Evidence provenance (read FROM the imported JSON files and verified at import)
+These fields are present IN `smoke-results.json` (cross-checked against `production-matrix.json`)
+and were read/verified from the byte-exact imported bytes — nothing here is taken from chat:
 | Field | Value |
 |---|---|
 | recaptured | `true` |
@@ -34,14 +36,24 @@ reinterpret the evidence bytes. No production access, deployment, or verifier re
 | matrix_total | 136 |
 | passed / failed | 136 / 0 |
 | list checks (collection reads) | 8 |
-| production execution cleanup | complete |
-| residual documents / Auth users | 0 / 0 |
 
 The verifier asserts `LIVE-EXTRACTED-SOURCE-EQUALS-GOVERNED` (against the compiled pin
-`bb1492b9…07`) BEFORE creating any fixture, so this run independently re-establishes that the LIVE
-production Firestore Rules equal the governed source, and then proves the full 136-check
-allow/deny matrix (incl. the 8 collection-`list` checks the real UI performs) passes in production,
-with all disposable fixtures/Auth users cleaned up and residuals independently verified at 0/0.
+`bb1492b9…07`) BEFORE creating any fixture, so this run re-establishes that the LIVE production
+Firestore Rules equal the governed source, and then proves the full 136-check allow/deny matrix
+(incl. the 8 collection-`list` checks the real UI performs) passes in production. **Cleanup and
+residual counts are NOT fields in these JSON files** — see the operator-relayed terminal result below.
+
+## Operator-relayed terminal result (NOT read from the imported JSON; not independently re-verified here)
+The following sanitized terminal lines were produced by the governed verifier's own run and relayed
+by the operator (and independently confirmed by Codex's separate intake). The governed verifier
+performs cleanup and independent residual verification INSIDE the run itself; this docs-only import
+did NOT query production and therefore cannot independently re-verify them here:
+```
+CLEANUP-DONE for trc_gatec_6d411242cacef3e9
+RESIDUAL-DOCS 0 ; RESIDUAL-AUTH-USERS 0
+GATE-C RECAPTURE OK matrix_total=136 passed=136 failed=0 residual-docs=0 residual-users=0
+GATE-C-EXECUTION-PASS
+```
 
 ## Imported files (this directory)
 - `smoke-results.json` — the required recapture artifact (136 sanitized `{label,status,expected,pass}` rows).
@@ -52,11 +64,17 @@ with all disposable fixtures/Auth users cleaned up and residuals independently v
 - `.gitattributes` — `* -text` (byte preservation).
 
 ## Gate C closure assessment (for Codex + Owner review — NOT a unilateral closure)
-The imported evidence establishes the **production-verification** leg of Gate C for the merged
-Truck Registry Rules: at 2026-08-01 the LIVE rules equal the governed pin, the deployed rules
-enforce the full 136-check governed allow/deny matrix (0 failures), and the run created only
-disposable prefixed fixtures/Auth users which were cleaned up with independently-verified 0/0
-residuals. Codex's independent intake returned FINAL PASS on the same bundle.
+This recommendation rests on TWO clearly-separated sources:
+1. **Byte-exact imported evidence** (verified at import): the LIVE rules equal the governed pin and
+   the deployed rules enforce the full 136-check governed allow/deny matrix with 0 failures
+   (`smoke-results.json` / `production-matrix.json`).
+2. **The separately-recorded successful verifier terminal result** (operator-relayed, above; also
+   confirmed by Codex's independent intake): the governed verifier's in-run cleanup completed and
+   its independent residual verification reported 0 documents / 0 Auth users
+   (`CLEANUP-DONE …` / `RESIDUAL-DOCS 0 ; RESIDUAL-AUTH-USERS 0` / `GATE-C-EXECUTION-PASS`).
+
+This docs-only import did not itself query production, so the cleanup/residual facts are attributed
+to source (2), not to the imported JSON.
 
 Recommendation: this satisfies the governed production verification required to **close Gate C**.
 The deploy-event provenance (rollback baseline, `firebase deploy` output, and pre/post Functions
