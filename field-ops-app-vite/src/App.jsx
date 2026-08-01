@@ -23,6 +23,7 @@ import WorkOrderWizard from "./modules/workOrders/WorkOrderWizard";
 import WorkOrderDetailPage from "./modules/workOrders/WorkOrderDetailPage";
 import PartsList from "./modules/inventory/PartsList";
 import PartMasterList from "./modules/inventory/PartMasterList";
+import TruckInventory from "./modules/inventory/TruckInventory";
 import PartDetail from "./modules/inventory/PartDetail";
 import WarehouseManagerHome from "./modules/inventoryRole/WarehouseManagerHome";
 import PartsManagerHome from "./modules/inventoryRole/PartsManagerHome";
@@ -153,6 +154,14 @@ function renderSubnavItem(domain, item, role, operationalContext) {
   // posture server-side -- the UI gate is never the sole enforcement.
   if (domain.key === "inventory" && item.key === "partMaster") {
     return <PartMasterList />;
+  }
+  // EI-P1d-1 -- the visible Truck Inventory workspace (replaces the placeholder at
+  // /inventory/truck-inventory). Read-only + fail-closed: it reads ONLY an inert injected
+  // source (no operationsQueries/collections) and honestly reports "not connected" until a
+  // governed Truck Inventory view ships. accessVersion is threaded so the view resets on any
+  // access change (same convention as PartsList/Operations/EquipmentWorkspace).
+  if (domain.key === "inventory" && item.key === "truckInventory") {
+    return <TruckInventory accessVersion={operationalContext?.accessVersion} />;
   }
   // Issue #100 PR 1b -- PARTS_MANAGER's dedicated, role-scoped surface.
   // Same operationalRoleAccess-gated pattern as PR 2b's WAREHOUSE_MANAGER
