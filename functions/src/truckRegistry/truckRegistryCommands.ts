@@ -1,4 +1,4 @@
-// EI Truck Registry -- trusted internal write service (ADR-010 / Decision #59). INTERNAL
+// EI Truck Registry -- trusted internal write service (ADR-010 / Decision #60). INTERNAL
 // trusted service only: nothing here is exported from functions/src/index.ts, there is no
 // callable/HTTP surface, and "export is not deployment" applies throughout. A future callable
 // (separate gate) is the ONLY thing that derives actorUid from request.auth.uid; these

@@ -119,7 +119,7 @@ const AUDIT_ACTIONS: readonly AuditAction[] = [
   "equipmentCompatibilityVerification",
   "equipmentCompatibilityCorrection",
   "equipmentCompatibilityConflict",
-  // EI Truck Registry (ADR-010 / Decision #59) -- see the matching entries on the AuditAction
+  // EI Truck Registry (ADR-010 / Decision #60) -- see the matching entries on the AuditAction
   // union (types/access.ts). Seven narrow trusted-write actions.
   "createTruck",
   "assignTruckDriver",

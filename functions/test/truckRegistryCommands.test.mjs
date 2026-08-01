@@ -19,6 +19,10 @@ const {
   InventoryPresentError, InventoryStateUnknownError, VersionConflictError, IdempotencyConflictError,
   ClaimIntegrityError,
 } = await import("../lib/truckRegistry/types.js");
+// The AUTHORITATIVE governed read contract (pure ESM, no firebase) -- the parity test proves
+// records produced by createTruck() round-trip through it.
+const { validateMobileLocation, validateTruckRecord } =
+  await import("../../field-ops-app-vite/src/domain/truckRegistry.js");
 
 let passed = 0, failed = 0;
 async function check(name, fn) {
@@ -42,10 +46,14 @@ const admin1 = await seedActor("admin");
 const disp1 = await seedActor("dispatcher");
 const tech1 = await seedActor("technician");
 
+// displayLabel + vehicleNumber are REQUIRED create inputs (the read contract drops records
+// without them) -- every create that is meant to pass validation supplies them.
+const LBL = { displayLabel: "Truck 204", vehicleNumber: "204" };
+
 async function makeTruck(deps = DEPS, over = {}) {
   const wh = await seedWarehouse(true);
   const truckId = uid("TRK"), locationId = uid("MLOC");
-  const r = await createTruck({ actorUid: admin1, idempotencyKey: key("c"), truckId, locationId, homeWarehouseId: wh, ...over }, deps);
+  const r = await createTruck({ actorUid: admin1, idempotencyKey: key("c"), truckId, locationId, homeWarehouseId: wh, ...LBL, ...over }, deps);
   return { truckId, locationId, wh, version: r.version };
 }
 
@@ -53,13 +61,15 @@ async function makeTruck(deps = DEPS, over = {}) {
 await check("admin creates truck: loc + truck + claim + audit(createTruck), version 1", async () => {
   const wh = await seedWarehouse(true);
   const truckId = uid("TRK"), locationId = uid("MLOC");
-  const r = await createTruck({ actorUid: admin1, idempotencyKey: key("c"), truckId, locationId, homeWarehouseId: wh }, DEPS);
+  const r = await createTruck({ actorUid: admin1, idempotencyKey: key("c"), truckId, locationId, homeWarehouseId: wh, ...LBL }, DEPS);
   assert.deepEqual(r, { outcome: "applied", version: 1 });
   const t = await db.collection("trucks").doc(truckId).get();
   assert.equal(t.data().locationId, locationId);
   assert.equal(t.data().active, true);
   assert.equal(t.data().status, "ACTIVE");
   assert.equal(t.data().assignedDriverEmployeeId, null);
+  assert.equal(t.data().displayLabel, "Truck 204");
+  assert.equal(t.data().vehicleNumber, "204");
   const loc = await db.collection("mobile_locations").doc(locationId).get();
   assert.equal(loc.data().type, "MOBILE"); assert.equal(loc.data().active, true);
   const claim = await db.collection("location_truck_claims").doc(locationId).get();
@@ -69,13 +79,13 @@ await check("admin creates truck: loc + truck + claim + audit(createTruck), vers
 });
 await check("dispatcher is authorized to create", async () => {
   const wh = await seedWarehouse(true);
-  const r = await createTruck({ actorUid: disp1, idempotencyKey: key("c"), truckId: uid("TRK"), locationId: uid("MLOC"), homeWarehouseId: wh }, DEPS);
+  const r = await createTruck({ actorUid: disp1, idempotencyKey: key("c"), truckId: uid("TRK"), locationId: uid("MLOC"), homeWarehouseId: wh, ...LBL }, DEPS);
   assert.equal(r.outcome, "applied");
 });
 await check("technician create rejected (PERMISSION_DENIED) + denied audit; nothing written", async () => {
   const wh = await seedWarehouse(true);
   const truckId = uid("TRK"), locationId = uid("MLOC");
-  await assert.rejects(createTruck({ actorUid: tech1, idempotencyKey: key("c"), truckId, locationId, homeWarehouseId: wh }, DEPS), UnauthorizedActorError);
+  await assert.rejects(createTruck({ actorUid: tech1, idempotencyKey: key("c"), truckId, locationId, homeWarehouseId: wh, ...LBL }, DEPS), UnauthorizedActorError);
   assert.equal((await db.collection("trucks").doc(truckId).get()).exists, false);
   assert.equal((await db.collection("location_truck_claims").doc(locationId).get()).exists, false);
   const audits = await db.collection("auditEvents").where("targetId", "==", truckId).get();
@@ -91,40 +101,71 @@ await check("invalid input (blank truckId) -> INVALID_INPUT", async () => {
 });
 await check("inactive/missing warehouse -> WAREHOUSE_INVALID", async () => {
   const wh = await seedWarehouse(false);
-  await assert.rejects(createTruck({ actorUid: admin1, idempotencyKey: key("c"), truckId: uid("TRK"), locationId: uid("MLOC"), homeWarehouseId: wh }, DEPS), WarehouseInvalidError);
+  await assert.rejects(createTruck({ actorUid: admin1, idempotencyKey: key("c"), truckId: uid("TRK"), locationId: uid("MLOC"), homeWarehouseId: wh, ...LBL }, DEPS), WarehouseInvalidError);
 });
 await check("assigned driver not active -> EMPLOYEE_INVALID", async () => {
   const emp = await seedEmployee(false);
-  await assert.rejects(createTruck({ actorUid: admin1, idempotencyKey: key("c"), truckId: uid("TRK"), locationId: uid("MLOC"), homeWarehouseId: await seedWarehouse(), assignedDriverEmployeeId: emp }, DEPS), EmployeeInvalidError);
+  await assert.rejects(createTruck({ actorUid: admin1, idempotencyKey: key("c"), truckId: uid("TRK"), locationId: uid("MLOC"), homeWarehouseId: await seedWarehouse(), assignedDriverEmployeeId: emp, ...LBL }, DEPS), EmployeeInvalidError);
+});
+// displayLabel + vehicleNumber are REQUIRED (the read contract drops records without them).
+await check("missing displayLabel -> INVALID_INPUT", async () => {
+  await assert.rejects(createTruck({ actorUid: admin1, idempotencyKey: key("c"), truckId: uid("TRK"), locationId: uid("MLOC"), homeWarehouseId: await seedWarehouse(), vehicleNumber: "204" }, DEPS), InvalidInputError);
+});
+await check("blank displayLabel -> INVALID_INPUT", async () => {
+  await assert.rejects(createTruck({ actorUid: admin1, idempotencyKey: key("c"), truckId: uid("TRK"), locationId: uid("MLOC"), homeWarehouseId: await seedWarehouse(), displayLabel: "   ", vehicleNumber: "204" }, DEPS), InvalidInputError);
+});
+await check("missing vehicleNumber -> INVALID_INPUT", async () => {
+  await assert.rejects(createTruck({ actorUid: admin1, idempotencyKey: key("c"), truckId: uid("TRK"), locationId: uid("MLOC"), homeWarehouseId: await seedWarehouse(), displayLabel: "Truck 204" }, DEPS), InvalidInputError);
+});
+await check("blank vehicleNumber -> INVALID_INPUT", async () => {
+  await assert.rejects(createTruck({ actorUid: admin1, idempotencyKey: key("c"), truckId: uid("TRK"), locationId: uid("MLOC"), homeWarehouseId: await seedWarehouse(), displayLabel: "Truck 204", vehicleNumber: "   " }, DEPS), InvalidInputError);
+});
+// CONTRACT PARITY: a record produced by createTruck() must pass the authoritative read
+// contract (validateMobileLocation + validateTruckRecord) -- including its governed storage
+// metadata (version/audit stamps) and truck `active`. This proves composeTruckFleet will NOT
+// discard a created truck as malformed (Codex PR #512 P2, requirement 5).
+await check("PARITY: createTruck() records pass validateMobileLocation() + validateTruckRecord()", async () => {
+  const wh = await seedWarehouse(true);
+  const emp = await seedEmployee(true);
+  const truckId = uid("TRK"), locationId = uid("MLOC");
+  await createTruck({ actorUid: admin1, idempotencyKey: key("c"), truckId, locationId, homeWarehouseId: wh, assignedDriverEmployeeId: emp, ...LBL }, DEPS);
+  const locData = (await db.collection("mobile_locations").doc(locationId).get()).data();
+  const truckData = (await db.collection("trucks").doc(truckId).get()).data();
+  const locR = validateMobileLocation(locationId, locData);
+  assert.equal(locR.valid, true, `mobile_location rejected: ${locR.reason}`);
+  const truckR = validateTruckRecord(truckId, truckData, { mobileLocation: locR.value });
+  assert.equal(truckR.valid, true, `truck rejected: ${truckR.reason}`);
+  assert.equal(truckR.value.displayLabel, "Truck 204");
+  assert.equal(truckR.value.vehicleNumber, "204");
 });
 await check("duplicate truckId -> TRUCK_EXISTS", async () => {
   const { truckId } = await makeTruck();
-  await assert.rejects(createTruck({ actorUid: admin1, idempotencyKey: key("c2"), truckId, locationId: uid("MLOC"), homeWarehouseId: await seedWarehouse() }, DEPS), TruckAlreadyExistsError);
+  await assert.rejects(createTruck({ actorUid: admin1, idempotencyKey: key("c2"), truckId, locationId: uid("MLOC"), homeWarehouseId: await seedWarehouse(), ...LBL }, DEPS), TruckAlreadyExistsError);
 });
 await check("second truck on a claimed location -> LOCATION_CLAIMED (1:1 enforced)", async () => {
   const { locationId } = await makeTruck();
-  await assert.rejects(createTruck({ actorUid: admin1, idempotencyKey: key("c2"), truckId: uid("TRK"), locationId, homeWarehouseId: await seedWarehouse() }, DEPS), LocationClaimedError);
+  await assert.rejects(createTruck({ actorUid: admin1, idempotencyKey: key("c2"), truckId: uid("TRK"), locationId, homeWarehouseId: await seedWarehouse(), ...LBL }, DEPS), LocationClaimedError);
 });
 
 // ---- idempotency + atomic rollback ----
 await check("exact replay is idempotent (no dup write/audit, version stable)", async () => {
   const wh = await seedWarehouse(true);
   const truckId = uid("TRK"), locationId = uid("MLOC"), k = key("c");
-  await createTruck({ actorUid: admin1, idempotencyKey: k, truckId, locationId, homeWarehouseId: wh }, DEPS);
-  const r2 = await createTruck({ actorUid: admin1, idempotencyKey: k, truckId, locationId, homeWarehouseId: wh }, DEPS);
+  await createTruck({ actorUid: admin1, idempotencyKey: k, truckId, locationId, homeWarehouseId: wh, ...LBL }, DEPS);
+  const r2 = await createTruck({ actorUid: admin1, idempotencyKey: k, truckId, locationId, homeWarehouseId: wh, ...LBL }, DEPS);
   assert.deepEqual(r2, { outcome: "replayed", version: 1 });
   assert.equal((await db.collection("auditEvents").where("targetId", "==", truckId).get()).size, 1);
 });
 await check("same key, different request -> IDEMPOTENCY_CONFLICT", async () => {
   const wh = await seedWarehouse(true);
   const truckId = uid("TRK"), k = key("c");
-  await createTruck({ actorUid: admin1, idempotencyKey: k, truckId, locationId: uid("MLOC"), homeWarehouseId: wh }, DEPS);
-  await assert.rejects(createTruck({ actorUid: admin1, idempotencyKey: k, truckId, locationId: uid("MLOC2"), homeWarehouseId: wh }, DEPS), IdempotencyConflictError);
+  await createTruck({ actorUid: admin1, idempotencyKey: k, truckId, locationId: uid("MLOC"), homeWarehouseId: wh, ...LBL }, DEPS);
+  await assert.rejects(createTruck({ actorUid: admin1, idempotencyKey: k, truckId, locationId: uid("MLOC2"), homeWarehouseId: wh, ...LBL }, DEPS), IdempotencyConflictError);
 });
 await check("transaction failure after staging leaves NO partial state (atomic)", async () => {
   const wh = await seedWarehouse(true);
   const truckId = uid("TRK"), locationId = uid("MLOC");
-  await assert.rejects(createTruck({ actorUid: admin1, idempotencyKey: key("c"), truckId, locationId, homeWarehouseId: wh }, { ...DEPS, __simulateFailureAfterStage: new Error("boom") }), /boom/);
+  await assert.rejects(createTruck({ actorUid: admin1, idempotencyKey: key("c"), truckId, locationId, homeWarehouseId: wh, ...LBL }, { ...DEPS, __simulateFailureAfterStage: new Error("boom") }), /boom/);
   assert.equal((await db.collection("trucks").doc(truckId).get()).exists, false);
   assert.equal((await db.collection("mobile_locations").doc(locationId).get()).exists, false);
   assert.equal((await db.collection("location_truck_claims").doc(locationId).get()).exists, false);

@@ -14,13 +14,17 @@ const isNonEmptyString = (v: unknown): v is string => typeof v === "string" && v
 // permissive on charset (ids are opaque business/inventory keys), but strict on emptiness and
 // a sane length ceiling so a malformed id can never become a document key.
 const ID_MAX = 200;
+const LABEL_MAX = 300;
 const isId = (v: unknown): v is string => isNonEmptyString(v) && v.length <= ID_MAX && v === (v as string).trim();
-const isLabel = (v: unknown): v is string => typeof v === "string" && v.length <= 300;
+// The governed read contract (domain/truckRegistry.js) REQUIRES a non-empty displayLabel on
+// both records and a non-empty vehicleNumber on the truck -- composeTruckFleet drops any record
+// missing them. So the write path requires them too (Codex PR #512 P2).
+const isRequiredLabel = (v: unknown): v is string => isNonEmptyString(v) && v.length <= LABEL_MAX;
 
 export interface MobileLocationInput {
   locationId: string;
   type: "MOBILE";
-  displayLabel?: string;
+  displayLabel: string;
 }
 export interface TruckInput {
   truckId: string;
@@ -28,8 +32,8 @@ export interface TruckInput {
   homeWarehouseId: string;
   status: TruckStatus;
   assignedDriverEmployeeId: string | null;
-  displayLabel?: string;
-  vehicleNumber?: string;
+  displayLabel: string;
+  vehicleNumber: string;
 }
 
 export function parseTruckId(v: unknown): ValidationResult<string> {
@@ -79,25 +83,27 @@ export function validateCreateInput(raw: unknown): ValidationResult<CreateTruckF
     else assignedDriverEmployeeId = data.assignedDriverEmployeeId;
   }
 
-  if (data.displayLabel !== undefined && !isLabel(data.displayLabel)) errors.push({ path: "displayLabel", code: "invalid" });
-  if (data.vehicleNumber !== undefined && !isLabel(data.vehicleNumber)) errors.push({ path: "vehicleNumber", code: "invalid" });
+  // displayLabel and vehicleNumber are REQUIRED, non-empty (the read contract drops records
+  // without them). displayLabel is written to BOTH the truck and its MOBILE Location.
+  if (!isRequiredLabel(data.displayLabel)) errors.push({ path: "displayLabel", code: "invalid" });
+  if (!isRequiredLabel(data.vehicleNumber)) errors.push({ path: "vehicleNumber", code: "invalid" });
 
   if (errors.length > 0) return { valid: false, errors };
 
-  const displayLabel = isNonEmptyString(data.displayLabel) ? (data.displayLabel as string) : undefined;
-  const vehicleNumber = isNonEmptyString(data.vehicleNumber) ? (data.vehicleNumber as string) : undefined;
+  const displayLabel = data.displayLabel as string;
+  const vehicleNumber = data.vehicleNumber as string;
   return {
     valid: true,
     value: {
-      location: { locationId: locationId as string, type: "MOBILE", ...(displayLabel ? { displayLabel } : {}) },
+      location: { locationId: locationId as string, type: "MOBILE", displayLabel },
       truck: {
         truckId: truckId as string,
         locationId: locationId as string,
         homeWarehouseId: homeWarehouseId as string,
         status: status as TruckStatus,
         assignedDriverEmployeeId,
-        ...(displayLabel ? { displayLabel } : {}),
-        ...(vehicleNumber ? { vehicleNumber } : {}),
+        displayLabel,
+        vehicleNumber,
       },
     },
   };

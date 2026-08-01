@@ -70,7 +70,7 @@ export function mobileLocationToFirestore(s: StoredMobileLocation): Record<strin
   return {
     locationId: s.location.locationId,
     type: "MOBILE",
-    ...(s.location.displayLabel !== undefined ? { displayLabel: s.location.displayLabel } : {}),
+    displayLabel: s.location.displayLabel,
     active: s.active,
     ...metaToFirestore(s),
   };
@@ -79,8 +79,8 @@ export function mobileLocationFromFirestore(docId: string, data: Record<string, 
   if (data === undefined) throw new MalformedStoredRecordError(`mobile_location ${docId} has no data`);
   if (data.locationId !== docId) throw new MalformedStoredRecordError(`mobile_location ${docId} carries mismatched locationId`);
   if (data.type !== "MOBILE") throw new MalformedStoredRecordError(`mobile_location ${docId} is not MOBILE`);
-  const displayLabel = data.displayLabel === undefined ? undefined : (typeof data.displayLabel === "string" ? data.displayLabel : (() => { throw new MalformedStoredRecordError(`mobile_location ${docId} has invalid displayLabel`); })());
-  return { location: { locationId: docId, type: "MOBILE", ...(displayLabel !== undefined ? { displayLabel } : {}) }, active: readActive(docId, data), ...readMeta(docId, data) };
+  if (typeof data.displayLabel !== "string" || data.displayLabel.trim() === "") throw new MalformedStoredRecordError(`mobile_location ${docId} has missing/invalid displayLabel`);
+  return { location: { locationId: docId, type: "MOBILE", displayLabel: data.displayLabel }, active: readActive(docId, data), ...readMeta(docId, data) };
 }
 
 export function truckToFirestore(s: StoredTruck): Record<string, unknown> {
@@ -91,8 +91,8 @@ export function truckToFirestore(s: StoredTruck): Record<string, unknown> {
     homeWarehouseId: t.homeWarehouseId,
     status: t.status,
     assignedDriverEmployeeId: t.assignedDriverEmployeeId, // string | null
-    ...(t.displayLabel !== undefined ? { displayLabel: t.displayLabel } : {}),
-    ...(t.vehicleNumber !== undefined ? { vehicleNumber: t.vehicleNumber } : {}),
+    displayLabel: t.displayLabel,
+    vehicleNumber: t.vehicleNumber,
     active: s.active,
     ...metaToFirestore(s),
   };
@@ -105,8 +105,10 @@ export function truckFromFirestore(docId: string, data: Record<string, unknown> 
   if (typeof data.status !== "string" || !(TRUCK_STATUSES as readonly string[]).includes(data.status)) throw new MalformedStoredRecordError(`truck ${docId} has invalid status`);
   const driver = data.assignedDriverEmployeeId;
   if (!(driver === null || (typeof driver === "string" && driver.trim() !== ""))) throw new MalformedStoredRecordError(`truck ${docId} has invalid assignedDriverEmployeeId`);
-  const displayLabel = data.displayLabel === undefined ? undefined : (typeof data.displayLabel === "string" ? data.displayLabel : (() => { throw new MalformedStoredRecordError(`truck ${docId} has invalid displayLabel`); })());
-  const vehicleNumber = data.vehicleNumber === undefined ? undefined : (typeof data.vehicleNumber === "string" ? data.vehicleNumber : (() => { throw new MalformedStoredRecordError(`truck ${docId} has invalid vehicleNumber`); })());
+  if (typeof data.displayLabel !== "string" || data.displayLabel.trim() === "") throw new MalformedStoredRecordError(`truck ${docId} has missing/invalid displayLabel`);
+  if (typeof data.vehicleNumber !== "string" || data.vehicleNumber.trim() === "") throw new MalformedStoredRecordError(`truck ${docId} has missing/invalid vehicleNumber`);
+  const displayLabel = data.displayLabel;
+  const vehicleNumber = data.vehicleNumber;
   return {
     truck: {
       truckId: docId,
@@ -114,8 +116,8 @@ export function truckFromFirestore(docId: string, data: Record<string, unknown> 
       homeWarehouseId: data.homeWarehouseId,
       status: data.status as TruckStatus,
       assignedDriverEmployeeId: driver as string | null,
-      ...(displayLabel !== undefined ? { displayLabel } : {}),
-      ...(vehicleNumber !== undefined ? { vehicleNumber } : {}),
+      displayLabel,
+      vehicleNumber,
     },
     active: readActive(docId, data),
     ...readMeta(docId, data),

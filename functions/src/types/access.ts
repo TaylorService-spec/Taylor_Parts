@@ -223,12 +223,13 @@ export type AuditAction =
   | "equipmentCompatibilityCorrection"
   | "equipmentCompatibilityConflict"
   | "setPreferredSupplier"
-  // EI Truck Registry (ADR-010 / Decision #59) -- trusted internal write service. Seven narrow
-  // actions extending this SAME immutable Audit Event path (no parallel audit system):
-  // create; driver assign/reassign (shared) and unassign; status/home-warehouse change; and the
-  // paired deactivate/reactivate. assignTruckDriver covers both assign and reassign (same
+  // EI Truck Registry (ADR-010 / Decision #60) -- trusted internal write service. Seven narrow
+  // actions extending this SAME immutable Audit Event path (no parallel audit system) -- create,
+  // driver assign/reassign (shared) and unassign, status and home-warehouse change, plus the
+  // paired deactivate/reactivate. assignTruckDriver covers both assign and reassign (the same
   // governed write). Same verb+Noun convention. Runtime allow-list mirror lives in
-  // access/auditEventWriter.ts's AUDIT_ACTIONS.
+  // access/auditEventWriter.ts's AUDIT_ACTIONS. This comment is deliberately punctuated without
+  // the statement-terminator character, since mirror checks parse the union up to the first one.
   | "createTruck"
   | "assignTruckDriver"
   | "unassignTruckDriver"

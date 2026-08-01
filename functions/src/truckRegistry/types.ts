@@ -1,6 +1,6 @@
 // EI Truck Registry -- trusted internal write service, shared types + failure taxonomy.
 // ADR-010 (trucks = MOBILE Inventory Locations; the optional business record links 1:1 but is
-// NOT custody authority) / Decision #59. Same "export is not deployment" posture as
+// NOT custody authority) / Decision #60. Same "export is not deployment" posture as
 // partMasterCommands.ts: nothing here is exported from functions/src/index.ts, there is no
 // callable/HTTP surface, and every mutation is Admin-SDK-only (Rules deny all client writes).
 //
