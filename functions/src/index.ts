@@ -88,3 +88,20 @@ export {
   initiateAdminPasswordReset,
   listResetEligibleUsers,
 } from "./access/adminCredentialCallables";
+
+// --- EI Truck Registry surface (ADR-010 / Decision #60): trusted write callables ---
+// Same "export is not deployment" posture as every surface above: NOT deployed to the live
+// project, NO Admin UI wired to call them, NO App Check requirement (matching every other
+// callable here), and the governed inventory predicate does NOT exist yet -- so
+// deactivateTruck FAILS CLOSED (INVENTORY_STATE_UNKNOWN) until a separate, later gate injects a
+// real predicate. Authorization is admin/dispatcher (users/{uid}.role), enforced in the service.
+export {
+  createTruckCallable,
+  assignTruckDriverCallable,
+  reassignTruckDriverCallable,
+  unassignTruckDriverCallable,
+  changeTruckStatusCallable,
+  changeTruckHomeWarehouseCallable,
+  deactivateTruckCallable,
+  reactivateTruckCallable,
+} from "./truckRegistry/truckRegistryCallables";
