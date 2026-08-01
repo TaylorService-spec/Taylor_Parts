@@ -162,17 +162,16 @@ async function runVerification(deps) {
     }
     log(`LIVE-EQUALS-GOVERNED ${liveSha}`);
 
-    // Provision disposable prefixed personas (record uid AFTER success). uid+token are secrets.
+    // Provision disposable prefixed personas. The adapter is handed `record` and MUST durably
+    // record the Auth USER immediately after creating it and the uid-keyed users/{uid} role DOC
+    // immediately after creating it — BEFORE sign-in — so a later sub-step failure (e.g. sign-in)
+    // can never leave an unrecorded production resource. uid + token are secrets.
     const tokens = { unauthenticated: null };
     for (const persona of AUTHENTICATED_PERSONAS) {
-      const provisioned = await auth.provisionPersona(persona, prefix);
+      const provisioned = await auth.provisionPersona(persona, prefix, record);
       if (!provisioned || typeof provisioned.uid !== "string" || !provisioned.uid || typeof provisioned.token !== "string" || !provisioned.token) {
         throw new VerificationError(`persona provisioning for ${persona} returned no uid/token`);
       }
-      await record({ kind: "USER", ref: provisioned.uid });
-      // A persona's role is granted by a users/{uid} doc (uid-keyed, not prefix-swept) — record
-      // every such doc so cleanup + the manifest-based residual check remove/verify it.
-      for (const docPath of provisioned.docs || []) await record({ kind: "DOC", ref: docPath });
       tokens[persona] = provisioned.token;
       secrets.push(provisioned.token, provisioned.uid);
     }
@@ -223,6 +222,16 @@ async function runVerification(deps) {
     primaryError = e; // preserve the ORIGINAL matrix/probe/precondition error
   }
 
+  // Attach lifecycle diagnostics to an error so the operator ALWAYS sees the cleanup outcome,
+  // residual counts, and where the durable recovery manifest is — even when the primary error is
+  // preserved. Never masks the primary error's type/message.
+  const attachLifecycle = (err, info) => {
+    err.lifecycleFailure = info;
+    err.recoveryRetained = true;
+    err.recoveryLocation = (manifestStore && manifestStore.file) || "operator recovery manifest (see --recovery-dir)";
+    return err;
+  };
+
   // Cleanup + independent residual — ALWAYS run. Cleanup infra failure is surfaced, never silent.
   let cleanupOutcome;
   let residual;
@@ -232,14 +241,17 @@ async function runVerification(deps) {
     log(`RESIDUAL-DOCS ${residual.residualDocs} ; RESIDUAL-AUTH-USERS ${residual.residualUsers}`);
   } catch (lifecycleInfraError) {
     await manifestStore.retain(); // durable recovery state retained
-    throw primaryError || lifecycleInfraError; // original error wins if present
+    const info = { stage: "cleanup-or-residual-infra", message: lifecycleInfraError && lifecycleInfraError.message };
+    if (primaryError) throw attachLifecycle(primaryError, info); // preserve original + surface lifecycle
+    throw attachLifecycle(lifecycleInfraError, info);
   }
 
   const lifecycleFailed = !cleanupOutcome.ok || !residual.ok;
   if (lifecycleFailed) {
     await manifestStore.retain(); // retain for recovery; DO NOT complete
-    if (primaryError) throw primaryError; // preserve the original error
-    throw new VerificationError(`LIFECYCLE FAILURE — cleanup.ok=${cleanupOutcome.ok} residual docs=${residual.residualDocs} users=${residual.residualUsers} errors=${JSON.stringify(cleanupOutcome.errors)}`);
+    const info = { cleanupOk: cleanupOutcome.ok, cleanupErrors: cleanupOutcome.errors, residualDocs: residual.residualDocs, residualUsers: residual.residualUsers };
+    if (primaryError) throw attachLifecycle(primaryError, info); // preserve original error AND surface the lifecycle failure
+    throw attachLifecycle(new VerificationError(`LIFECYCLE FAILURE — cleanup.ok=${cleanupOutcome.ok} residual docs=${residual.residualDocs} users=${residual.residualUsers} errors=${JSON.stringify(cleanupOutcome.errors)}`), info);
   }
 
   // Cleanup + residual both succeeded → fixtures verified gone → the manifest can be completed.

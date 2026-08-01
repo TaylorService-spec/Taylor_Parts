@@ -92,6 +92,14 @@ production entry point.
 - Manifest entries: `DOC <collection>/<id>` (including each persona's uid-keyed `users/<uid>` role
   doc) and `USER <uid>`. Entries are flushed to a DURABLE recovery file under `--recovery-dir`
   (protected, OUTSIDE the sanitized evidence dir — it holds temporary uids/fixture identities).
+- Persona provisioning records the Auth `USER` immediately after creating it and the `users/<uid>`
+  role `DOC` immediately after creating it — BOTH durable BEFORE sign-in — so a sign-in failure can
+  never orphan an unrecorded production resource. Residual `userExists()` fails closed: ONLY the
+  specific `auth/user-not-found` error means "absent"; any other error is rethrown. The independent
+  document sweep uses the supported `FieldPath.documentId()` id-prefix query.
+- If a primary matrix/probe error and a cleanup/residual failure occur together, the primary error
+  is preserved AND the cleanup outcome, residual counts, and durable recovery-manifest location are
+  surfaced on it.
 - Cleanup runs on success, failure, and partial creation. It is idempotent, surfaces per-entry
   delete failures (never silent success), and operates only on this run's validated paths/uids plus
   a prefix re-sweep. The recovery manifest is RETAINED (marked `RETAINED-FOR-RECOVERY`) if cleanup or

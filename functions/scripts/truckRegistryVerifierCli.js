@@ -86,45 +86,53 @@ function buildDurableManifestStore({ recoveryDir, prefix, fs = fsDefault, path =
   };
 }
 
-// Real production dependency wiring. Every adapter lazily requires its heavy/production module, so
-// constructing this object performs NO production I/O (unit tests assert only its shape).
-function buildProductionDeps(config, { prefix, evidenceDir }) {
-  const gcloudToken = () => require("node:child_process").execFileSync("gcloud", ["auth", "print-access-token"], { encoding: "utf8" }).trim();
+// Firebase Auth "user not found" — the ONLY error `userExists()` may swallow.
+const AUTH_USER_NOT_FOUND = "auth/user-not-found";
+
+// Real production dependency wiring. Every heavy/production module is reached through the injectable
+// `env`, so constructing this object performs NO production I/O — the unit tests inject fakes for
+// `env` to exercise the REAL adapter logic (persona-provisioning order, the document-id prefix
+// query, and userExists error handling) without a live project.
+function buildProductionDeps(config, { prefix, evidenceDir, env = {} } = {}) {
   const project = config.projectId;
-  const getAdmin = () => {
-    const admin = require("firebase-admin");
-    if (!admin.apps.length) admin.initializeApp({ projectId: project });
-    return admin;
-  };
+  const gcloudToken = env.gcloudToken || (() => require("node:child_process").execFileSync("gcloud", ["auth", "print-access-token"], { encoding: "utf8" }).trim());
+  const doFetch = env.doFetch || ((...a) => fetch(...a));
+  const getAdmin = env.getAdmin || (() => { const admin = require("firebase-admin"); if (!admin.apps.length) admin.initializeApp({ projectId: project }); return admin; });
+  const cryptoLib = env.crypto || cryptoDefault;
+  const readEnv = env.readEnv || ((name) => process.env[name]);
   const DOC_BASE = `https://firestore.googleapis.com/v1/projects/${project}/databases/(default)/documents`;
 
   const rules = {
     async fetchLiveSource() {
       const token = gcloudToken();
-      const rel = await (await fetch(`https://firebaserules.googleapis.com/v1/projects/${project}/releases`, { headers: { authorization: `Bearer ${token}` } })).json();
+      const rel = await (await doFetch(`https://firebaserules.googleapis.com/v1/projects/${project}/releases`, { headers: { authorization: `Bearer ${token}` } })).json();
       const matches = (rel.releases || []).filter((r) => r.name.endsWith("cloud.firestore"));
       if (matches.length !== 1) throw new VerificationError(`expected exactly 1 active cloud.firestore release, got ${matches.length}`);
-      return (await fetch(`https://firebaserules.googleapis.com/v1/${matches[0].rulesetName}`, { headers: { authorization: `Bearer ${token}` } })).json();
+      return (await doFetch(`https://firebaserules.googleapis.com/v1/${matches[0].rulesetName}`, { headers: { authorization: `Bearer ${token}` } })).json();
     },
   };
   const auth = {
-    async provisionPersona(persona, runPrefix) {
+    // Records the Auth USER right after creation and the users/{uid} role DOC right after creation —
+    // BOTH durable BEFORE sign-in — so a sign-in failure can never orphan an unrecorded resource.
+    async provisionPersona(persona, runPrefix, record) {
       const admin = getAdmin();
       const email = `${runPrefix}.${persona}@trc-gatec.invalid`;
-      const password = cryptoDefault.randomBytes(24).toString("base64url");
+      const password = cryptoLib.randomBytes(24).toString("base64url");
       const user = await admin.auth().createUser({ email, password, displayName: `${runPrefix}_${persona}` });
+      await record({ kind: "USER", ref: user.uid }); // durable immediately after Auth creation
       await admin.firestore().collection("users").doc(user.uid).set({ role: PERSONA_ROLE[persona] });
-      const apiKey = process.env[config.webApiKeyEnv];
+      await record({ kind: "DOC", ref: `users/${user.uid}` }); // durable immediately after doc creation
+      const apiKey = readEnv(config.webApiKeyEnv);
       if (!apiKey) throw new VerificationError(`missing ${config.webApiKeyEnv}`);
-      const signIn = await (await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${apiKey}`, {
+      const signIn = await (await doFetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${apiKey}`, {
         method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email, password, returnSecureToken: true }),
       })).json();
-      if (!signIn.idToken) throw new VerificationError(`sign-in failed for ${persona}`);
-      return { uid: user.uid, token: signIn.idToken, docs: [`users/${user.uid}`] };
+      if (!signIn.idToken) throw new VerificationError(`sign-in failed for ${persona}`); // both resources already recorded
+      return { uid: user.uid, token: signIn.idToken };
     },
   };
   const probe = async ({ token, method, target, body }) => {
-    const res = await fetch(`${DOC_BASE}/${target}`, {
+    const res = await doFetch(`${DOC_BASE}/${target}`, {
       method, headers: { ...(token ? { authorization: `Bearer ${token}` } : {}), ...(body ? { "content-type": "application/json" } : {}) },
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
@@ -132,10 +140,14 @@ function buildProductionDeps(config, { prefix, evidenceDir }) {
   };
   const admin = {
     async docExists(docPath) { return (await getAdmin().firestore().doc(docPath).get()).exists; },
-    async seedDoc(collection, id) { await getAdmin().firestore().collection(collection).doc(id).set({ trc_probe_seed: true }); },
+    async seedDoc(collection, id) { await getAdmin().firestore().collection(collection).doc(id).set({ trc_probe_seed: true, trc_prefix: prefix }); },
     async deleteDoc(docPath) { await getAdmin().firestore().doc(docPath).delete(); },
     async deleteUser(uid) { await getAdmin().auth().deleteUser(uid); },
-    async userExists(uid) { try { await getAdmin().auth().getUser(uid); return true; } catch { return false; } },
+    // Fail closed: ONLY the specific user-not-found error means "absent"; any other error rethrows.
+    async userExists(uid) {
+      try { await getAdmin().auth().getUser(uid); return true; }
+      catch (e) { if (e && e.code === AUTH_USER_NOT_FOUND) return false; throw e; }
+    },
     async listUsersByPrefix(runPrefix) {
       const out = [];
       let pageToken;
@@ -146,9 +158,13 @@ function buildProductionDeps(config, { prefix, evidenceDir }) {
       } while (pageToken);
       return out;
     },
+    // Document-id prefix enumeration via the supported FieldPath.documentId() sentinel + orderBy +
+    // startAt/endAt bounds ([prefix, prefix + high sentinel] matches ids that begin with prefix).
     async listDocIdsByPrefix(collection, runPrefix) {
-      const snap = await getAdmin().firestore().collection(collection)
-        .where("__name__", ">=", `${collection}/${runPrefix}`).where("__name__", "<", `${collection}/${runPrefix}`).get();
+      const adminSdk = getAdmin();
+      const docId = adminSdk.firestore.FieldPath.documentId();
+      const snap = await adminSdk.firestore().collection(collection)
+        .orderBy(docId).startAt(runPrefix).endAt(runPrefix + "").get();
       return snap.docs.map((d) => d.id);
     },
   };

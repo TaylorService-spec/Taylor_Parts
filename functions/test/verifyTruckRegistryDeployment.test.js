@@ -91,10 +91,12 @@ function makeWorld() {
     async listDocIdsByPrefix(c, pfx) { return [...docs].filter((p) => p.startsWith(`${c}/`) && p.includes(pfx)).map((p) => p.slice(c.length + 1)); },
   };
   const auth = {
-    async provisionPersona(persona, pfx) {
+    // The adapter records the USER + the users/{uid} role DOC (durable) BEFORE returning.
+    async provisionPersona(persona, pfx, record) {
       const uid = `${pfx}_uid_${persona}`;
-      users.add(uid); docs.add(`users/${uid}`);
-      return { uid, token: `eyJ${persona}.${"a".repeat(20)}.${"b".repeat(20)}`, docs: [`users/${uid}`] };
+      users.add(uid); await record({ kind: "USER", ref: uid });
+      docs.add(`users/${uid}`); await record({ kind: "DOC", ref: `users/${uid}` });
+      return { uid, token: `eyJ${persona}.${"a".repeat(20)}.${"b".repeat(20)}` };
     },
   };
   return { docs, users, admin, auth };
@@ -313,4 +315,60 @@ test("cli.buildProductionDeps returns the dep shape WITHOUT touching production 
 });
 test("cli module does not self-execute on import", () => {
   assert.equal(typeof cli.main, "function"); // requiring it above ran no production code
+});
+
+// ---------- REAL adapter boundary tests (injected firebase-admin/fetch fakes; no production) ----------
+test("adapter: provisionPersona durably records USER then role DOC BEFORE sign-in; sign-in failure orphans nothing", async () => {
+  const calls = [];
+  const fakeAdmin = {
+    auth: () => ({ createUser: async () => ({ uid: "UID1" }) }),
+    firestore: () => ({ collection: () => ({ doc: () => ({ set: async () => {} }) }) }),
+  };
+  const env = { getAdmin: () => fakeAdmin, doFetch: async () => ({ json: async () => ({}) }), readEnv: () => "apikey", crypto: { randomBytes: () => ({ toString: () => "pw" }) } };
+  const deps = cli.buildProductionDeps({ projectId: "taylor-parts", webApiKeyEnv: "K" }, { prefix: PREFIX, evidenceDir: "/ev", env });
+  await assert.rejects(deps.auth.provisionPersona("admin", PREFIX, async (e) => calls.push(e)), /sign-in failed/);
+  assert.deepEqual(calls.map((c) => c.kind), ["USER", "DOC"]); // both recorded before the throw
+  assert.equal(calls[0].ref, "UID1");
+  assert.equal(calls[1].ref, "users/UID1");
+});
+
+test("adapter: listDocIdsByPrefix uses FieldPath.documentId() + startAt/endAt; finds prefixed, excludes unrelated", async () => {
+  const captured = {};
+  const store = [{ id: `${PREFIX}_seed_trucks` }, { id: "unrelated" }, { id: `${PREFIX}_seed_x` }];
+  const q = { orderBy(f) { captured.orderBy = f; return q; }, startAt(v) { captured.startAt = v; return q; }, endAt(v) { captured.endAt = v; return q; },
+    async get() { return { docs: store.filter((d) => d.id >= captured.startAt && d.id <= captured.endAt) }; } };
+  const firestore = () => ({ collection: () => q });
+  firestore.FieldPath = { documentId: () => "__DOCID__" };
+  const env = { getAdmin: () => ({ firestore }) };
+  const deps = cli.buildProductionDeps({ projectId: "taylor-parts" }, { prefix: PREFIX, evidenceDir: "/ev", env });
+  const ids = await deps.admin.listDocIdsByPrefix("trucks", PREFIX);
+  assert.equal(captured.orderBy, "__DOCID__");
+  assert.equal(captured.startAt, PREFIX);
+  assert.equal(captured.endAt, `${PREFIX}`);
+  assert.deepEqual(ids.sort(), [`${PREFIX}_seed_trucks`, `${PREFIX}_seed_x`].sort());
+  assert.ok(!ids.includes("unrelated"));
+});
+
+test("adapter: userExists returns false ONLY for user-not-found; rethrows any other error", async () => {
+  const mk = (err) => cli.buildProductionDeps({ projectId: "taylor-parts" }, { prefix: PREFIX, evidenceDir: "/ev", env: { getAdmin: () => ({ auth: () => ({ getUser: async () => { if (err) throw err; } }) }) } });
+  const notFound = Object.assign(new Error("no user"), { code: "auth/user-not-found" });
+  const backend = Object.assign(new Error("backend error"), { code: "unavailable" });
+  assert.equal(await mk(notFound).admin.userExists("u"), false);
+  assert.equal(await mk(null).admin.userExists("u"), true);
+  await assert.rejects(mk(backend).admin.userExists("u"), /backend error/);
+});
+
+test("lifecycle: simultaneous probe failure + cleanup failure preserves the primary error AND surfaces the lifecycle failure + recovery", async () => {
+  const world = makeWorld();
+  world.admin._failDeleteDoc = `trucks/${PREFIX}_seed_trucks`; // cleanup delete throws
+  const probe = async (req) => (req.method === "POST" ? 200 : happyProbe(req)); // forbidden create -> matrix mismatch
+  const { manifestStore, deps } = makeDeps({ world, probe });
+  let caught;
+  await runVerification(deps).catch((e) => { caught = e; });
+  assert.match(caught.message, /Matrix mismatch/); // ORIGINAL error preserved
+  assert.ok(caught.lifecycleFailure, "lifecycle failure attached");
+  assert.equal(caught.recoveryRetained, true);
+  assert.ok(caught.recoveryLocation);
+  assert.ok(manifestStore.calls.includes("retain"));
+  assert.ok(!manifestStore.calls.includes("complete"));
 });
