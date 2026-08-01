@@ -12,7 +12,7 @@ const path = require("node:path");
 const matrix = require("../scripts/truckRegistryVerificationMatrix");
 const { PERSONAS, OPERATIONS, COLLECTIONS, expectedOutcome, deniedStatuses, buildMatrix, buildCrosswalk } = matrix;
 const core = require("../scripts/verifyTruckRegistryDeployment");
-const { GOVERNED_RULES_SHA256, EXPECTED_PROJECT, interpretRow, buildSmokeResults, assertRunSecretFree, assertGovernedPins, cleanup, residualCheck, runVerification } = core;
+const { GOVERNED_RULES_SHA256, EXPECTED_PROJECT, interpretRow, interpretListRow, buildSmokeResults, assertRunSecretFree, assertGovernedPins, cleanup, residualCheck, runVerification } = core;
 const cli = require("../scripts/truckRegistryVerifierCli");
 
 const sha256 = (v) => crypto.createHash("sha256").update(v).digest("hex");
@@ -37,20 +37,30 @@ test("a. collections/personas/operations are exactly the governed sets", () => {
   assert.deepEqual([...PERSONAS].sort(), ["admin", "dispatcher", "technician", "unauthenticated"]);
   assert.deepEqual([...OPERATIONS].sort(), ["create", "delete", "get", "update"]);
 });
-test("a. buildMatrix: 128 rows, one per (collection,persona,operation), no extras/dupes; 4 ALLOW/124 DENY", () => {
+test("a. buildMatrix: 136 rows (128 base + 8 list on readable collections), no extras/dupes; 8 ALLOW/128 DENY", () => {
   const rows = buildMatrix();
-  assert.equal(rows.length, 128);
+  assert.equal(rows.length, 136);
   const seen = new Map();
   for (const r of rows) seen.set(`${r.collection}::${r.persona}::${r.operation}`, (seen.get(`${r.collection}::${r.persona}::${r.operation}`) || 0) + 1);
+  // every base op × every collection × every persona exists exactly once (128)
   for (const c of COLLECTIONS) for (const p of PERSONAS) for (const o of OPERATIONS) assert.equal(seen.get(`${c.name}::${p}::${o}`), 1);
-  assert.equal(seen.size, 128);
-  for (const c of COLLECTIONS) assert.equal(rows.filter((r) => r.collection === c.name).length, 16);
-  for (const p of PERSONAS) assert.equal(rows.filter((r) => r.persona === p).length, 32);
+  // list exists exactly once for EACH readable collection × persona, and NOWHERE else
+  for (const c of COLLECTIONS) for (const p of PERSONAS) {
+    const expected = c.readPolicy === "ADMIN_DISPATCHER" ? 1 : undefined;
+    assert.equal(seen.get(`${c.name}::${p}::list`), expected, `list on ${c.name}`);
+  }
+  assert.equal(seen.size, 128 + 8);
+  // per-collection: readable = 20 (4 personas × 5 ops), closed = 16
+  for (const c of COLLECTIONS) assert.equal(rows.filter((r) => r.collection === c.name).length, c.readPolicy === "ADMIN_DISPATCHER" ? 20 : 16);
+  for (const p of PERSONAS) assert.equal(rows.filter((r) => r.persona === p).length, 34); // 32 base + 2 list
   for (const o of OPERATIONS) assert.equal(rows.filter((r) => r.operation === o).length, 32);
-  assert.equal(rows.filter((r) => r.decision === "ALLOW").length, 4);
-  assert.equal(rows.filter((r) => r.decision === "DENY").length, 124);
-  assert.deepEqual(rows.filter((r) => r.decision === "ALLOW").map((r) => r.label).sort(),
-    ["admin/mobile_locations/get", "admin/trucks/get", "dispatcher/mobile_locations/get", "dispatcher/trucks/get"]);
+  assert.equal(rows.filter((r) => r.operation === "list").length, 8);
+  assert.equal(rows.filter((r) => r.decision === "ALLOW").length, 8);
+  assert.equal(rows.filter((r) => r.decision === "DENY").length, 128);
+  assert.deepEqual(rows.filter((r) => r.decision === "ALLOW").map((r) => r.label).sort(), [
+    "admin/mobile_locations/get", "admin/mobile_locations/list", "admin/trucks/get", "admin/trucks/list",
+    "dispatcher/mobile_locations/get", "dispatcher/mobile_locations/list", "dispatcher/trucks/get", "dispatcher/trucks/list",
+  ]);
 });
 
 // ---------- (b) expected allow/deny mapping ----------
@@ -60,6 +70,11 @@ test("b. expectedOutcome + denial statuses", () => {
   assert.equal(expectedOutcome("admin", "trucks", "create").decision, "DENY");
   assert.equal(expectedOutcome("admin", "location_truck_claims", "get").decision, "DENY");
   assert.equal(expectedOutcome("admin", "equipment_models", "get").decision, "DENY");
+  // list mirrors the read policy for the readable collections
+  assert.equal(expectedOutcome("admin", "trucks", "list").decision, "ALLOW");
+  assert.equal(expectedOutcome("dispatcher", "mobile_locations", "list").decision, "ALLOW");
+  assert.equal(expectedOutcome("technician", "trucks", "list").decision, "DENY");
+  assert.equal(expectedOutcome("unauthenticated", "mobile_locations", "list").decision, "DENY");
   assert.deepEqual([...deniedStatuses("unauthenticated")], [401, 403]);
   assert.deepEqual([...deniedStatuses("technician")], [403]);
 });
@@ -114,6 +129,11 @@ function happyProbe({ persona, method, target }) {
   const eo = expectedOutcome(persona, collection, op);
   return eo.decision === "ALLOW" ? 200 : (persona === "unauthenticated" ? 401 : 403);
 }
+function happyListProbe({ persona, collection }) {
+  const eo = expectedOutcome(persona, collection, "list");
+  if (eo.decision === "ALLOW") return { status: 200, ids: [`${PREFIX}_seed_${collection}`] }; // seeded record present
+  return { status: persona === "unauthenticated" ? 401 : 403, ids: [] }; // denial, no records
+}
 function makeDeps(overrides = {}) {
   const world = overrides.world || makeWorld();
   const manifestStore = overrides.manifestStore || makeManifestStore();
@@ -126,6 +146,7 @@ function makeDeps(overrides = {}) {
       rules: { async fetchLiveSource() { return { source: { files: [{ name: "firestore.rules", content: overrides.liveSource || GOVERNED_SOURCE }] } }; } },
       auth: world.auth,
       probe: overrides.probe || (async (req) => happyProbe(req)),
+      listProbe: overrides.listProbe || (async (req) => happyListProbe(req)),
       admin: world.admin,
       evidence: { async write(files) { Object.assign(evidenceFiles, files); } },
       manifestStore,
@@ -140,13 +161,13 @@ function makeDeps(overrides = {}) {
 test("full run: 128/128 pass; sanitized evidence; durable manifest appended + completed; cleanup+residual 0/0", async () => {
   const { world, manifestStore, evidenceFiles, deps } = makeDeps();
   const out = await runVerification(deps);
-  assert.equal(out.matrixTotal, 128);
+  assert.equal(out.matrixTotal, 136);
   const sr = evidenceFiles["smoke-results.json"];
   assert.equal(sr.recaptured, true);
   assert.equal(sr.governed_rules_sha256, GOVERNED_RULES_SHA256);
-  assert.equal(sr.matrix_total, 128); assert.equal(sr.passed, 128); assert.equal(sr.failed, 0);
+  assert.equal(sr.matrix_total, 136); assert.equal(sr.passed, 136); assert.equal(sr.failed, 0);
   for (const r of sr.results) assert.deepEqual(Object.keys(r).sort(), ["expected", "label", "pass", "status"]);
-  // durable manifest: 3 users + 3 role docs + 8 seeds + 32 create-probes = 46 appended entries
+  // list rows produce no fixtures, so durable manifest is unchanged: 3 users + 3 role docs + 8 seeds + 32 create-probes = 46
   assert.equal(manifestStore.appended.length, 46);
   assert.equal(manifestStore.appended.filter((e) => e.kind === "USER").length, 3);
   assert.equal(manifestStore.appended.filter((e) => e.kind === "DOC").length, 43);
@@ -257,21 +278,30 @@ test("h. sanitized durable evidence contains no manifest secrets (uid/prefix liv
 test("h. buildSmokeResults validates provenance + the compiled pin", () => {
   const rows = buildMatrix().map((r) => interpretRow(r, r.decision === "ALLOW" ? 200 : 403));
   const sr = buildSmokeResults({ rows, governedCommit: "a".repeat(40), governedRulesSha256: GOVERNED_RULES_SHA256, recaptureDate: "2026-08-01" });
-  assert.equal(sr.results.length, 128);
+  assert.equal(sr.results.length, 136);
   assert.throws(() => buildSmokeResults({ rows, governedCommit: "a".repeat(40), governedRulesSha256: GOVERNED_RULES_SHA256, recaptureDate: "bad" }), /recaptureDate/);
   assert.throws(() => buildSmokeResults({ rows, governedCommit: "a".repeat(40), governedRulesSha256: "b".repeat(64), recaptureDate: "2026-08-01" }), /governed pin/);
 });
 
 // ---------- crosswalk authority ----------
-test("crosswalk maps 8 rule blocks × 16 checks; decisions consistent with expectedOutcome", () => {
+test("crosswalk maps 8 rule blocks; readable=20 checks (with list), closed=16; decisions consistent", () => {
   const xwalk = buildCrosswalk();
   assert.equal(xwalk.length, 8);
   let total = 0;
+  let listChecks = 0;
   for (const b of xwalk) {
-    assert.equal(b.checks.length, 16); total += b.checks.length;
-    for (const chk of b.checks) { const [p, c, o] = chk.label.split("/"); assert.equal(chk.decision, expectedOutcome(p, c, o).decision); assert.equal(c, b.collection); }
+    const col = COLLECTIONS.find((c) => c.name === b.collection);
+    assert.equal(b.checks.length, col.readPolicy === "ADMIN_DISPATCHER" ? 20 : 16);
+    total += b.checks.length;
+    for (const chk of b.checks) {
+      const [p, c, o] = chk.label.split("/");
+      assert.equal(chk.decision, expectedOutcome(p, c, o).decision);
+      assert.equal(c, b.collection);
+      if (o === "list") { listChecks += 1; assert.equal(col.readPolicy, "ADMIN_DISPATCHER"); } // list only on readable
+    }
   }
-  assert.equal(total, 128);
+  assert.equal(total, 136);
+  assert.equal(listChecks, 8);
 });
 
 // ---------- operator CLI: config validation + dry dependency boundaries (no production) ----------
@@ -315,6 +345,69 @@ test("cli.buildProductionDeps returns the dep shape WITHOUT touching production 
 });
 test("cli module does not self-execute on import", () => {
   assert.equal(typeof cli.main, "function"); // requiring it above ran no production code
+});
+
+// ---------- collection-LIST checks (governed getDocs(collection(...)) verification) ----------
+const SEED = (c) => `${PREFIX}_seed_${c}`;
+const listRow = (persona, collection) => buildMatrix().find((r) => r.label === `${persona}/${collection}/list`);
+
+test("list: ALLOW requires 200 AND the seeded run-specific record present", () => {
+  const row = listRow("admin", "trucks");
+  assert.equal(interpretListRow(row, SEED("trucks"), { status: 200, ids: [SEED("trucks"), "OTHER"] }).pass, true);
+  assert.equal(interpretListRow(row, SEED("trucks"), { status: 200, ids: ["OTHER"] }).pass, false); // seeded missing
+  assert.equal(interpretListRow(row, SEED("trucks"), { status: 403, ids: [] }).pass, false); // allowed but denied
+});
+test("list: DENY requires a governed denial status AND no records (no leakage)", () => {
+  const tech = listRow("technician", "trucks");
+  const unauth = listRow("unauthenticated", "mobile_locations");
+  assert.equal(interpretListRow(tech, SEED("trucks"), { status: 403, ids: [] }).pass, true);
+  assert.equal(interpretListRow(unauth, SEED("mobile_locations"), { status: 401, ids: [] }).pass, true);
+  // leakage: a denied list that returns records fails, even with a denial status
+  const leaked = interpretListRow(tech, SEED("trucks"), { status: 403, ids: [SEED("trucks")] });
+  assert.equal(leaked.pass, false);
+  assert.equal(leaked.interpretation, "DENY_LIST_LEAKED_RECORDS");
+  // wrong denial status also fails
+  assert.equal(interpretListRow(tech, SEED("trucks"), { status: 200, ids: [] }).pass, false);
+});
+test("list: a malformed response fails closed", () => {
+  const row = listRow("admin", "trucks");
+  assert.equal(interpretListRow(row, SEED("trucks"), { malformed: true }).pass, false);
+  assert.equal(interpretListRow(row, SEED("trucks"), { status: 200 }).pass, false); // 200 with no ids array
+  assert.equal(interpretListRow(row, SEED("trucks"), undefined).pass, false);
+});
+test("full run: list mismatch (allowed list missing the seeded record) aborts AND cleanup still runs", async () => {
+  const world = makeWorld();
+  const listProbe = async ({ persona, collection }) => {
+    const eo = expectedOutcome(persona, collection, "list");
+    if (eo.decision === "ALLOW") return { status: 200, ids: [] }; // seeded MISSING -> fail
+    return { status: persona === "unauthenticated" ? 401 : 403, ids: [] };
+  };
+  const { manifestStore, deps } = makeDeps({ world, listProbe });
+  await assert.rejects(runVerification(deps), /Matrix mismatch .*\/list/);
+  assert.equal(world.docs.size, 0); assert.equal(world.users.size, 0); // cleanup ran
+  assert.ok(manifestStore.calls.includes("complete")); // cleanup+residual succeeded; matrix error still thrown
+});
+test("full run: a denied list that LEAKS records aborts the run", async () => {
+  const world = makeWorld();
+  const listProbe = async ({ persona, collection }) => {
+    const eo = expectedOutcome(persona, collection, "list");
+    if (eo.decision === "ALLOW") return { status: 200, ids: [SEED(collection)] };
+    return { status: 403, ids: [SEED(collection)] }; // DENY but leaks the record -> fail
+  };
+  await assert.rejects(runVerification(makeDeps({ world, listProbe }).deps), /Matrix mismatch .*\/list/);
+});
+test("adapter: real listProbe parses documents on 200, empties on denial, flags malformed", async () => {
+  const responses = {
+    ok: { status: 200, async json() { return { documents: [{ name: `projects/p/databases/(default)/documents/trucks/${SEED("trucks")}` }, { name: "x/y/trucks/OTHER" }] }; } },
+    denied: { status: 403, async json() { return {}; } },
+    malformed: { status: 200, async json() { throw new Error("not json"); } },
+    baddocs: { status: 200, async json() { return { documents: "not-an-array" }; } },
+  };
+  const mk = (r) => cli.buildProductionDeps({ projectId: "taylor-parts" }, { prefix: PREFIX, evidenceDir: "/ev", env: { doFetch: async () => r } });
+  assert.deepEqual((await mk(responses.ok).listProbe({ collection: "trucks", token: "t" })).ids.sort(), [SEED("trucks"), "OTHER"].sort());
+  assert.deepEqual(await mk(responses.denied).listProbe({ collection: "trucks", token: "t" }), { status: 403, ids: [] });
+  assert.equal((await mk(responses.malformed).listProbe({ collection: "trucks", token: "t" })).malformed, true);
+  assert.equal((await mk(responses.baddocs).listProbe({ collection: "trucks", token: "t" })).malformed, true);
 });
 
 // ---------- REAL adapter boundary tests (injected firebase-admin/fetch fakes; no production) ----------

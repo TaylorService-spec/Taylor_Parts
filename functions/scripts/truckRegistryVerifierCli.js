@@ -138,6 +138,18 @@ function buildProductionDeps(config, { prefix, evidenceDir, env = {} } = {}) {
     });
     return res.status;
   };
+  // Collection-list read (getDocs(collection(...))). On 200, parse the `documents` array into doc
+  // ids; on a denial status, return no ids. A 200 whose body is unparseable or whose `documents` is
+  // neither an array nor absent is reported malformed (fails closed downstream).
+  const listProbe = async ({ token, collection }) => {
+    const res = await doFetch(`${DOC_BASE}/${collection}`, { headers: { ...(token ? { authorization: `Bearer ${token}` } : {}) } });
+    if (res.status !== 200) return { status: res.status, ids: [] };
+    let body;
+    try { body = await res.json(); } catch { return { status: 200, malformed: true }; }
+    if (body && body.documents !== undefined && !Array.isArray(body.documents)) return { status: 200, malformed: true };
+    const docs = body && Array.isArray(body.documents) ? body.documents : [];
+    return { status: 200, ids: docs.map((d) => String(d.name || "").split("/").pop()).filter(Boolean) };
+  };
   const admin = {
     async docExists(docPath) { return (await getAdmin().firestore().doc(docPath).get()).exists; },
     async seedDoc(collection, id) { await getAdmin().firestore().collection(collection).doc(id).set({ trc_probe_seed: true, trc_prefix: prefix }); },
@@ -170,7 +182,7 @@ function buildProductionDeps(config, { prefix, evidenceDir, env = {} } = {}) {
   };
   const { writeEvidence } = require("./firestoreDeploymentVerificationShared");
   const evidence = { async write(files) { writeEvidence(evidenceDir, files); } };
-  return { rules, auth, probe, admin, evidence };
+  return { rules, auth, probe, listProbe, admin, evidence };
 }
 
 async function main(argv, { fs = fsDefault, path = pathDefault, crypto = cryptoDefault, log = console.log } = {}) {
