@@ -107,9 +107,30 @@ ok("composeTruckFleet: fail-closed drops -- unmatched link / invalid records / b
   assert.equal(out.trucks[0].technician, null); // resolver returned null
 });
 
+ok("composeTruckFleet: 1:1 invariant -- two trucks on one MOBILE Location BOTH fail closed (never first-wins)", () => {
+  const shared = { docId: LOC_ID, data: loc() };
+  const a = { docId: "TRK-A", data: truck({ truckId: "TRK-A", locationId: LOC_ID }) };
+  const b = { docId: "TRK-B", data: truck({ truckId: "TRK-B", locationId: LOC_ID }) }; // same locationId
+  // Both orderings drop BOTH conflicting trucks (order-independent).
+  assert.deepEqual(composeTruckFleet({ mobileLocations: [shared], trucks: [a, b] }).trucks, []);
+  assert.deepEqual(composeTruckFleet({ mobileLocations: [shared], trucks: [b, a] }).trucks, []);
+  // A third truck on its OWN location still appears; only the conflicting pair is dropped.
+  const otherLoc = { docId: "MLOC-9", data: loc({ locationId: "MLOC-9", displayLabel: "Truck 9" }) };
+  const c = { docId: "TRK-C", data: truck({ truckId: "TRK-C", locationId: "MLOC-9" }) };
+  const out = composeTruckFleet({ mobileLocations: [shared, otherLoc], trucks: [a, b, c] });
+  assert.deepEqual(out.trucks.map((t) => t.id), ["TRK-C"]);
+});
+
+ok("composeTruckFleet: a duplicated truckId also fails closed for every conflicting record", () => {
+  const dup = { docId: "TRK-204", data: truck() };
+  assert.deepEqual(composeTruckFleet({ mobileLocations: [{ docId: LOC_ID, data: loc() }], trucks: [dup, dup] }).trucks, []);
+});
+
 ok("composeTruckFleet: deterministic order by truckId", () => {
-  const mk = (id) => ({ docId: id, data: truck({ truckId: id }) });
-  const out = composeTruckFleet({ mobileLocations: [{ docId: LOC_ID, data: loc() }], trucks: [mk("TRK-3"), mk("TRK-1"), mk("TRK-2")] });
+  // Each truck has its OWN MOBILE Location (the 1:1 invariant forbids sharing one).
+  const mk = (id) => ({ docId: id, data: truck({ truckId: id, locationId: `MLOC-${id}` }) });
+  const mkLoc = (id) => ({ docId: `MLOC-${id}`, data: loc({ locationId: `MLOC-${id}`, displayLabel: `Truck ${id}` }) });
+  const out = composeTruckFleet({ mobileLocations: [mkLoc("TRK-3"), mkLoc("TRK-1"), mkLoc("TRK-2")], trucks: [mk("TRK-3"), mk("TRK-1"), mk("TRK-2")] });
   assert.deepEqual(out.trucks.map((t) => t.id), ["TRK-1", "TRK-2", "TRK-3"]);
 });
 

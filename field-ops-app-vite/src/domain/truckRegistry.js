@@ -136,13 +136,30 @@ export function composeTruckFleet({ mobileLocations = [], trucks = [], resolveDr
     if (r.valid) locationById.set(r.value.locationId, r.value);
   }
 
-  const summaries = [];
+  // Pass 1: validate each truck against its own MOBILE Location link.
+  const valid = [];
   for (const { docId, data } of asPairs(trucks)) {
     const locId = isPlainObject(data) && typeof data.locationId === "string" ? data.locationId : undefined;
     const mobileLocation = locId !== undefined ? locationById.get(locId) : undefined;
     const r = validateTruckRecord(docId, data, { mobileLocation });
-    if (!r.valid) continue;
-    const t = r.value;
+    if (r.valid) valid.push({ truck: r.value, mobileLocation });
+  }
+
+  // Enforce the FLEET-LEVEL 1:1 invariant: one MOBILE Location resolves to exactly one truck
+  // (and one truckId to exactly one record). Any locationId (or truckId) claimed by more than
+  // one otherwise-valid record makes EVERY conflicting record fail closed -- never first-wins,
+  // so the drop is order-independent.
+  const byLocation = new Map();
+  const byTruck = new Map();
+  for (const v of valid) {
+    byLocation.set(v.truck.locationId, (byLocation.get(v.truck.locationId) || 0) + 1);
+    byTruck.set(v.truck.truckId, (byTruck.get(v.truck.truckId) || 0) + 1);
+  }
+
+  const summaries = [];
+  for (const { truck: t, mobileLocation } of valid) {
+    if (byLocation.get(t.locationId) !== 1) continue; // conflicting MOBILE Location -> drop all
+    if (byTruck.get(t.truckId) !== 1) continue; // duplicate truck record -> drop all
     const driverName = typeof resolveDriverName === "function" && t.assignedDriverEmployeeId ? resolveDriverName(t.assignedDriverEmployeeId) : null;
     summaries.push({
       id: t.truckId,
