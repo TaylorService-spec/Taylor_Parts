@@ -50,39 +50,57 @@ this matrix at run time and fails if the generated matrix and the crosswalk disa
   (never committed); set `governedCommit` + `governedRulesSha256` for the deploy commit; put
   credentials ONLY in the referenced environment variables.
 
-## Invocation (under separate Owner authorization only)
-The verifier's testable core is `runVerification(deps)`; the operator wires real dependencies:
-```js
-const { runVerification } = require("./functions/scripts/verifyTruckRegistryDeployment");
-await runVerification({
-  config: require("./config/truck-registry-deployment-verification.local.json"),
-  rules:  { fetchLiveSource },        // Firebase Rules API fetch (returns the ruleset JSON)
-  auth:   { provisionPersona },       // creates a disposable prefixed Auth user + signs in -> {uid, token}
-  probe,                              // real client REST probe -> HTTP status
-  admin:  { docExists, seedDoc, deleteDoc, deleteUser, listUsersByPrefix, listDocIdsByPrefix }, // firebase-admin
-  evidence: { write },                // writes sanitized files + checksums to the evidence dir
-  prefix: `trc_gatec_${crypto.randomBytes(8).toString("hex")}`,  // high-entropy, run-unique
-  recaptureDate: "2026-08-01",
-  log: console.log,
-});
+## Invocation — the exact operator command (under separate Owner authorization only)
+The committed operator entry point is `functions/scripts/truckRegistryVerifierCli.js`. It wires the
+reviewed real dependencies (firebase-admin, the Rules/Firestore REST APIs, a gcloud token) and runs
+ONLY on an explicit invocation with the confirmation arguments — it never runs on import, and the
+compiled governed pin (`bb1492b98cba95cb30ac23f7078f0fdba24befa64fa604da27d84ddc9ebac907`) plus the
+authorized project cannot be weakened by the local config.
+
+Prerequisite environment (never in the repo): an authenticated `gcloud`; `TRC_WEB_API_KEY`;
+`TRC_ADMIN_EMAIL`/`TRC_ADMIN_PASSWORD`, `TRC_DISPATCHER_EMAIL`/`TRC_DISPATCHER_PASSWORD`,
+`TRC_TECHNICIAN_EMAIL`/`TRC_TECHNICIAN_PASSWORD` (or the names your local config references).
+
+```bash
+# From the repo root, on a clean checkout of the governed commit, under Owner authorization:
+node functions/scripts/truckRegistryVerifierCli.js \
+  --config        config/truck-registry-deployment-verification.local.json \
+  --evidence-dir  ~/trc/evidence \
+  --recovery-dir  ~/trc/recovery \
+  --recapture-date 2026-08-01 \
+  --confirm-project taylor-parts
 ```
-The run: (1) asserts live == governed (`bb1492b98cba95cb30ac23f7078f0fdba24befa64fa604da27d84ddc9ebac907`)
-BEFORE any fixture; (2) provisions prefixed personas; (3) seeds one doc per collection
+The CLI: validates the config (pins the compiled governed hash + the authorized project +
+`--confirm-project`) and the args BEFORE building any dependency; generates a high-entropy run-unique
+prefix; then runs the core, which (1) asserts live == governed BEFORE any fixture; (2) provisions
+disposable prefixed personas (recorded after success); (3) seeds one doc per collection
 (absence-preflighted, recorded after success); (4) probes all 128 rows, failing closed on the first
 mismatch; (5) emits `smoke-results.json` (recaptured/recapture_date/note/governedCommit/
 governed_rules_sha256 + 128 sanitized `{label,status,expected,pass}` rows) + `production-matrix.json`
-+ `crosswalk.json`; (6) ALWAYS cleans up and independently verifies `RESIDUAL-DOCS 0 ; RESIDUAL-AUTH-USERS 0`.
++ `crosswalk.json` into `--evidence-dir`; (6) ALWAYS cleans up and independently verifies
+`RESIDUAL-DOCS 0 ; RESIDUAL-AUTH-USERS 0`. The durable recovery manifest is written to `--recovery-dir`
+(NOT the sanitized evidence dir) and is retained on any cleanup/residual failure, marked `COMPLETE`
+only when both succeed.
+
+The pure core (`runVerification`) remains injectable for the unit tests; the CLI is the only
+production entry point.
 
 ## Fixture, manifest, cleanup, residual contract
 - Fixtures + Auth users carry a high-entropy run-unique `$prefix`. Seeded docs and users are recorded
   in the manifest only AFTER successful creation; a client-create probe target is recorded BEFORE the
   attempt so an unexpectedly-allowed write is still cleaned up.
-- Manifest entries: `DOC <collection>/<id>` and `USER <uid>`.
-- Cleanup runs on success, failure, and partial creation (finally-style). It is idempotent and
-  operates only on this run's validated paths/uids plus a prefix re-sweep; the manifest is retained
-  if cleanup or residual verification fails so recovery remains possible.
-- Residual verification is independent of the manifest: it sweeps each fixture collection and the
-  Auth directory for the run prefix and fails unless both counts are zero.
+- Manifest entries: `DOC <collection>/<id>` (including each persona's uid-keyed `users/<uid>` role
+  doc) and `USER <uid>`. Entries are flushed to a DURABLE recovery file under `--recovery-dir`
+  (protected, OUTSIDE the sanitized evidence dir — it holds temporary uids/fixture identities).
+- Cleanup runs on success, failure, and partial creation. It is idempotent, surfaces per-entry
+  delete failures (never silent success), and operates only on this run's validated paths/uids plus
+  a prefix re-sweep. The recovery manifest is RETAINED (marked `RETAINED-FOR-RECOVERY`) if cleanup or
+  residual verification fails, and marked `COMPLETE` only when both succeed.
+- Residual verification checks every manifest entry is gone (catching uid-keyed `users/<uid>` docs a
+  prefix sweep cannot find) AND, independently, sweeps each fixture collection + the Auth directory
+  for the run prefix; it fails unless both counts are zero.
+- The original matrix/probe error is preserved even when cleanup succeeds (the lifecycle never masks
+  the primary failure).
 
 ## Evidence safety
 No credentials, tokens, passwords, emails, UIDs, run prefix, fixture ids, or absolute paths enter

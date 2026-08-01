@@ -1,19 +1,18 @@
 "use strict";
 
-// EI Truck Registry — GOVERNED production smoke verifier (Gate C). Repository-only tool; it is
-// NOT run in CI and NOT run against production without separate Owner authorization.
+// EI Truck Registry — GOVERNED production smoke verifier core (Gate C). Repository-only; this
+// module NEVER self-executes and performs no production I/O itself — all effects are injected. The
+// committed operator CLI (truckRegistryVerifierCli.js) wires the reviewed real dependencies; running
+// it against production is a separately Owner-authorized action.
 //
-// It (in order): asserts LIVE-EXTRACTED-SOURCE-EQUALS-GOVERNED (bb1492b9…07) BEFORE any fixture
-// creation; seeds disposable, uniquely-prefixed fixtures (Admin SDK, absence-preflighted, recorded
-// only after success); runs the governed 128-check matrix with real client REST + password-auth ID
-// tokens; and, in a finally-style lifecycle, ALWAYS cleans up and independently verifies zero
-// residuals. It emits smoke-results.json (the required recapture artifact) + production-matrix.json.
-//
-// The testable core (runVerification/interpretRow/buildSmokeResults/cleanup/residualCheck/
-// assertRunSecretFree) takes INJECTED dependencies, so the full lifecycle is unit-tested with fakes
-// — no live project. `main()` wires the real firebase-admin + fetch + gcloud-token dependencies.
+// Lifecycle (finally-style): (1) pin governed hash + authorized project BEFORE any effect; (2) assert
+// LIVE-EXTRACTED-SOURCE-EQUALS-GOVERNED before any fixture; (3) provision prefixed personas + seed
+// disposable prefixed fixtures (absence-preflighted; durable-manifest recorded at the required
+// point); (4) probe the governed 128-check matrix, failing closed on the first mismatch; (5) emit
+// sanitized evidence; (6) ALWAYS clean up and independently verify zero residuals. The original
+// matrix/probe error is preserved; the durable manifest is retained on any cleanup/residual failure
+// and completed only when both succeed.
 const {
-  PERSONAS,
   AUTHENTICATED_PERSONAS,
   COLLECTIONS,
   buildMatrix,
@@ -21,7 +20,9 @@ const {
 } = require("./truckRegistryVerificationMatrix");
 const { sha256, extractRulesSource, VerificationError } = require("./firestoreDeploymentVerificationShared");
 
+// Compiled-in governed pins — the authoritative values a local config can NEVER weaken.
 const GOVERNED_RULES_SHA256 = "bb1492b98cba95cb30ac23f7078f0fdba24befa64fa604da27d84ddc9ebac907";
+const EXPECTED_PROJECT = "taylor-parts";
 
 // ----- pure helpers -------------------------------------------------------------------------
 
@@ -32,10 +33,9 @@ function interpretRow(row, status) {
   return { label: row.label, persona: row.persona, collection: row.collection, operation: row.operation, decision: row.decision, status, expected: [...row.expected], pass, interpretation };
 }
 
-// The required recapture artifact. Rows are sanitized to ONLY {label,status,expected,pass}.
 function buildSmokeResults({ rows, governedCommit, governedRulesSha256, recaptureDate }) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(recaptureDate || "")) throw new VerificationError("recaptureDate must be YYYY-MM-DD.");
-  if (!/^[0-9a-f]{64}$/.test(governedRulesSha256 || "")) throw new VerificationError("governedRulesSha256 must be a full SHA-256.");
+  if (governedRulesSha256 !== GOVERNED_RULES_SHA256) throw new VerificationError("governed_rules_sha256 must equal the compiled governed pin.");
   const results = rows.map((r) => ({ label: r.label, status: r.status, expected: [...r.expected], pass: r.pass }));
   return {
     recaptured: true,
@@ -50,10 +50,9 @@ function buildSmokeResults({ rows, governedCommit, governedRulesSha256, recaptur
   };
 }
 
-// Safeguard #7: fail closed if any ACTUAL run-specific sensitive value (tokens, persona emails,
-// created UIDs, the run prefix, absolute paths) reaches durable evidence — WITHOUT rejecting safe
-// governed collection/persona/operation labels (which are plain identifiers). We test against the
-// concrete secret VALUES for this run plus generic token/email/path shapes.
+// Fail closed if any ACTUAL run-specific sensitive value (tokens, persona emails, created UIDs, the
+// run prefix, absolute paths) reaches SANITIZED evidence — while permitting governed
+// collection/persona/operation labels (plain identifiers).
 function assertRunSecretFree(value, secrets = []) {
   const text = typeof value === "string" ? value : JSON.stringify(value);
   for (const s of secrets) {
@@ -74,88 +73,118 @@ function assertRunSecretFree(value, secrets = []) {
   }
 }
 
-// ----- lifecycle: cleanup + residual (injected admin deps) ----------------------------------
-
-// Idempotent cleanup over the run's manifest; safe when nothing was created. Operates ONLY on
-// validated paths/uids belonging to this run (recorded in the manifest) plus a prefix re-sweep.
-async function cleanup({ admin, manifest, prefix, log = () => {} }) {
-  let docs = 0;
-  let users = 0;
-  for (const entry of manifest) {
-    if (entry.kind === "DOC") { await admin.deleteDoc(entry.ref).catch(() => {}); docs += 1; }
-    else if (entry.kind === "USER") { await admin.deleteUser(entry.ref).catch(() => {}); users += 1; }
+// (1) Governed pins — enforced BEFORE any effect. A local config can point the precondition at a
+// LATER live value only by also changing the compiled pin (impossible without a reviewed code
+// change). Also binds the authorized project on both the config and the real dependencies.
+function assertGovernedPins(config, targetProject) {
+  if (!config || typeof config !== "object") throw new VerificationError("config must be an object.");
+  if (config.governedRulesSha256 !== GOVERNED_RULES_SHA256) {
+    throw new VerificationError("config.governedRulesSha256 does not equal the compiled governed pin.");
   }
-  // Prefix re-sweep (belt-and-suspenders): any residual prefixed user/doc the manifest missed.
-  const sweepUsers = await admin.listUsersByPrefix(prefix).catch(() => []);
-  for (const uid of sweepUsers) { await admin.deleteUser(uid).catch(() => {}); users += 1; }
-  for (const col of COLLECTIONS) {
-    const ids = await admin.listDocIdsByPrefix(col.name, prefix).catch(() => []);
-    for (const id of ids) { await admin.deleteDoc(`${col.name}/${id}`).catch(() => {}); docs += 1; }
-  }
-  log(`CLEANUP-DONE for ${prefix}`);
-  return { deletedDocs: docs, deletedUsers: users, marker: `CLEANUP-DONE for ${prefix}` };
+  if (config.projectId !== EXPECTED_PROJECT) throw new VerificationError(`config.projectId must be ${EXPECTED_PROJECT}.`);
+  if (config.confirmProject !== config.projectId) throw new VerificationError("config.confirmProject must equal config.projectId.");
+  if (targetProject !== EXPECTED_PROJECT) throw new VerificationError("dependency target project must equal the authorized project.");
 }
 
-// Safeguard #6: residual verification INDEPENDENT of the manifest — sweep the known fixture
-// collections + Auth users for the current prefix. Fail unless both counts are zero.
-async function residualCheck({ admin, prefix }) {
-  let residualDocs = 0;
+// ----- lifecycle: cleanup + residual (injected admin deps) ----------------------------------
+
+// Idempotent cleanup over the run's manifest + a prefix re-sweep. Per-entry delete failures are
+// COLLECTED and surfaced (never silently treated as success). The list sweeps are NOT swallowed —
+// a sweep failure propagates so cleanup cannot falsely report success.
+async function cleanup({ admin, manifest, prefix, log = () => {} }) {
+  const errors = [];
+  let deletedDocs = 0;
+  let deletedUsers = 0;
+  for (const entry of manifest) {
+    try {
+      if (entry.kind === "DOC") { await admin.deleteDoc(entry.ref); deletedDocs += 1; }
+      else if (entry.kind === "USER") { await admin.deleteUser(entry.ref); deletedUsers += 1; }
+    } catch (e) { errors.push(`${entry.kind} ${entry.ref}: ${e && e.code ? e.code : "delete-failed"}`); }
+  }
+  const sweepUsers = await admin.listUsersByPrefix(prefix); // not swallowed
+  for (const uid of sweepUsers) { try { await admin.deleteUser(uid); deletedUsers += 1; } catch (e) { errors.push(`sweep USER ${uid}: delete-failed`); } }
   for (const col of COLLECTIONS) {
-    const ids = await admin.listDocIdsByPrefix(col.name, prefix).catch(() => { throw new VerificationError("residual doc sweep failed"); });
+    const ids = await admin.listDocIdsByPrefix(col.name, prefix); // not swallowed
+    for (const id of ids) { try { await admin.deleteDoc(`${col.name}/${id}`); deletedDocs += 1; } catch (e) { errors.push(`sweep DOC ${col.name}/${id}: delete-failed`); } }
+  }
+  log(`CLEANUP-DONE for ${prefix}`);
+  return { deletedDocs, deletedUsers, errors, ok: errors.length === 0, marker: `CLEANUP-DONE for ${prefix}` };
+}
+
+// Residual verification: (a) check EVERY manifest entry is gone — this catches uid-keyed role docs
+// (users/{uid}) that a prefix sweep cannot find — AND (b) sweep every fixture collection + the Auth
+// directory for the run prefix, INDEPENDENT of the manifest. Fail unless both counts are zero. A
+// sweep/existence failure throws.
+async function residualCheck({ admin, manifest = [], prefix }) {
+  let residualDocs = 0;
+  let residualUsers = 0;
+  for (const e of manifest) {
+    if (e.kind === "DOC" && (await admin.docExists(e.ref))) residualDocs += 1;
+    if (e.kind === "USER" && (await admin.userExists(e.ref))) residualUsers += 1;
+  }
+  for (const col of COLLECTIONS) {
+    const ids = await admin.listDocIdsByPrefix(col.name, prefix);
     residualDocs += ids.length;
   }
-  const users = await admin.listUsersByPrefix(prefix).catch(() => { throw new VerificationError("residual user sweep failed"); });
-  const residualUsers = users.length;
+  residualUsers += (await admin.listUsersByPrefix(prefix)).length;
   return { residualDocs, residualUsers, ok: residualDocs === 0 && residualUsers === 0 };
 }
 
 // ----- orchestration (injected deps; unit-tested with fakes) ---------------------------------
 
-// deps: { config, rules:{fetchLiveSource}, auth:{authenticate(persona)->token}, probe(req)->status,
-//         admin:{docExists, seedDoc, deleteDoc, createUser, deleteUser, listUsersByPrefix,
-//         listDocIdsByPrefix}, evidence:{write(files, secrets)}, prefix, recaptureDate, log }
+// deps: { config, targetProject, rules:{fetchLiveSource}, auth:{provisionPersona(persona,prefix)->{uid,token}},
+//         probe(req)->status, admin:{docExists,seedDoc,deleteDoc,deleteUser,listUsersByPrefix,listDocIdsByPrefix},
+//         evidence:{write(files,secrets)}, manifestStore:{append(entry),retain(),complete()},
+//         prefix, recaptureDate, log }
 async function runVerification(deps) {
-  const { config, rules, auth, probe, admin, evidence, prefix, recaptureDate, log = () => {} } = deps;
+  const { config, targetProject, rules, auth, probe, admin, evidence, manifestStore, prefix, recaptureDate, log = () => {} } = deps;
   if (!/^trc_[A-Za-z0-9]+_[0-9a-f]{8,}$/.test(prefix || "")) {
     throw new VerificationError("prefix must be high-entropy and run-unique (trc_<tag>_<hex>).");
   }
+  if (!manifestStore || typeof manifestStore.append !== "function" || typeof manifestStore.retain !== "function" || typeof manifestStore.complete !== "function") {
+    throw new VerificationError("a durable manifestStore { append, retain, complete } is required.");
+  }
+  // (1) Pins BEFORE any effect — no token, no user, no doc is created before this passes.
+  assertGovernedPins(config, targetProject);
+
   const manifest = [];
   const secrets = [prefix];
-  let outcome = null;
-  let cleanupResult = null;
-  let residual = null;
+  const record = async (entry) => { manifest.push(entry); await manifestStore.append(entry); }; // durable at the required point
+
+  let result = null;
+  let primaryError = null;
   try {
-    // (4) HARD precondition BEFORE any creation: live extracted source == governed.
+    // (2) live == governed BEFORE any fixture.
     const liveSource = extractRulesSource(await rules.fetchLiveSource());
     const liveSha = sha256(liveSource);
-    if (liveSha !== config.governedRulesSha256) {
+    if (liveSha !== GOVERNED_RULES_SHA256) {
       throw new VerificationError(`LIVE-EXTRACTED-SOURCE != GOVERNED (live=${liveSha}); no fixtures created.`);
     }
     log(`LIVE-EQUALS-GOVERNED ${liveSha}`);
 
-    // Provision one disposable, prefixed Auth user per authenticated persona and sign in. The uid
-    // (recorded AFTER success) and the token are both secrets — never written to evidence. The
-    // "unauthenticated" persona sends no token. Prefixed users let the residual sweep (6) find any
-    // leftover independently of the manifest.
+    // Provision disposable prefixed personas (record uid AFTER success). uid+token are secrets.
     const tokens = { unauthenticated: null };
     for (const persona of AUTHENTICATED_PERSONAS) {
       const provisioned = await auth.provisionPersona(persona, prefix);
       if (!provisioned || typeof provisioned.uid !== "string" || !provisioned.uid || typeof provisioned.token !== "string" || !provisioned.token) {
         throw new VerificationError(`persona provisioning for ${persona} returned no uid/token`);
       }
-      manifest.push({ kind: "USER", ref: provisioned.uid });
+      await record({ kind: "USER", ref: provisioned.uid });
+      // A persona's role is granted by a users/{uid} doc (uid-keyed, not prefix-swept) — record
+      // every such doc so cleanup + the manifest-based residual check remove/verify it.
+      for (const docPath of provisioned.docs || []) await record({ kind: "DOC", ref: docPath });
       tokens[persona] = provisioned.token;
       secrets.push(provisioned.token, provisioned.uid);
     }
 
-    // Seed one doc per collection (1): preflight absence -> create -> record AFTER success.
+    // Seed one doc per collection (preflight absence; record AFTER success).
     const seededId = {};
     for (const col of COLLECTIONS) {
       const id = `${prefix}_seed_${col.name}`;
       const path = `${col.name}/${id}`;
       if (await admin.docExists(path)) throw new VerificationError(`fixture collision (seed): ${path}`);
       await admin.seedDoc(col.name, id);
-      manifest.push({ kind: "DOC", ref: path });
+      await record({ kind: "DOC", ref: path });
       seededId[col.name] = id;
     }
 
@@ -168,12 +197,10 @@ async function runVerification(deps) {
       if (row.operation === "get") {
         req = { method: "GET", target: seededPath };
       } else if (row.operation === "create") {
-        // (1) create-probe: preflight absence + record BEFORE the attempted client create, so an
-        // unexpectedly-allowed write is still cleaned up.
         const cid = `${prefix}_create_${row.collection}_${row.persona}`;
         const cpath = `${row.collection}/${cid}`;
         if (await admin.docExists(cpath)) throw new VerificationError(`fixture collision (create-probe): ${cpath}`);
-        manifest.push({ kind: "DOC", ref: cpath });
+        await record({ kind: "DOC", ref: cpath }); // record BEFORE the attempt (record-before-attempt)
         req = { method: "POST", target: `${row.collection}?documentId=${cid}`, body: { fields: { probe: { booleanValue: true } } } };
       } else if (row.operation === "update") {
         req = { method: "PATCH", target: `${seededPath}?updateMask.fieldPaths=probe`, body: { fields: { probe: { booleanValue: true } } } };
@@ -183,60 +210,58 @@ async function runVerification(deps) {
       const status = await probe({ persona: row.persona, token: tokens[row.persona], ...req });
       const interpreted = interpretRow(row, status);
       probed.push(interpreted);
-      // (2) any forbidden success or forbidden read fails the run immediately (cleanup still runs).
       if (!interpreted.pass) throw new VerificationError(`Matrix mismatch ${row.label}: ${status} not in ${JSON.stringify(row.expected)}`);
     }
 
-    const smokeResults = buildSmokeResults({
-      rows: probed,
-      governedCommit: config.governedCommit,
-      governedRulesSha256: config.governedRulesSha256,
-      recaptureDate,
-    });
+    const smokeResults = buildSmokeResults({ rows: probed, governedCommit: config.governedCommit, governedRulesSha256: config.governedRulesSha256, recaptureDate });
     const productionMatrix = probed.map((r) => ({ label: r.label, status: r.status, expected: r.expected, pass: r.pass, interpretation: r.interpretation }));
-    const files = {
-      "smoke-results.json": smokeResults,
-      "production-matrix.json": productionMatrix,
-      "crosswalk.json": buildCrosswalk(),
-    };
-    // (7) sanitize every emitted file against this run's actual secrets before persisting.
-    for (const v of Object.values(files)) assertRunSecretFree(v, secrets);
+    const files = { "smoke-results.json": smokeResults, "production-matrix.json": productionMatrix, "crosswalk.json": buildCrosswalk() };
+    for (const v of Object.values(files)) assertRunSecretFree(v, secrets); // (7) never write a run secret
     await evidence.write(files, secrets);
-    outcome = { smokeResults, matrixTotal: probed.length };
-    return outcome;
-  } finally {
-    // (5) cleanup runs on success, failure, or partial creation. (6) residual verified independently.
-    cleanupResult = await cleanup({ admin, manifest, prefix, log });
-    residual = await residualCheck({ admin, prefix });
-    log(`RESIDUAL-DOCS ${residual.residualDocs} ; RESIDUAL-AUTH-USERS ${residual.residualUsers}`);
-    if (!residual.ok) {
-      // Retain the manifest (do not clear) so recovery is possible; surface the failure.
-      throw new VerificationError(`RESIDUAL NON-ZERO after cleanup: docs=${residual.residualDocs} users=${residual.residualUsers}`);
-    }
-    if (outcome) {
-      outcome.cleanup = cleanupResult;
-      outcome.residual = residual;
-    }
+    result = { smokeResults, matrixTotal: probed.length };
+  } catch (e) {
+    primaryError = e; // preserve the ORIGINAL matrix/probe/precondition error
   }
+
+  // Cleanup + independent residual — ALWAYS run. Cleanup infra failure is surfaced, never silent.
+  let cleanupOutcome;
+  let residual;
+  try {
+    cleanupOutcome = await cleanup({ admin, manifest, prefix, log });
+    residual = await residualCheck({ admin, manifest, prefix });
+    log(`RESIDUAL-DOCS ${residual.residualDocs} ; RESIDUAL-AUTH-USERS ${residual.residualUsers}`);
+  } catch (lifecycleInfraError) {
+    await manifestStore.retain(); // durable recovery state retained
+    throw primaryError || lifecycleInfraError; // original error wins if present
+  }
+
+  const lifecycleFailed = !cleanupOutcome.ok || !residual.ok;
+  if (lifecycleFailed) {
+    await manifestStore.retain(); // retain for recovery; DO NOT complete
+    if (primaryError) throw primaryError; // preserve the original error
+    throw new VerificationError(`LIFECYCLE FAILURE — cleanup.ok=${cleanupOutcome.ok} residual docs=${residual.residualDocs} users=${residual.residualUsers} errors=${JSON.stringify(cleanupOutcome.errors)}`);
+  }
+
+  // Cleanup + residual both succeeded → fixtures verified gone → the manifest can be completed.
+  await manifestStore.complete();
+  if (primaryError) throw primaryError; // matrix/probe error preserved even though cleanup succeeded
+  result.cleanup = cleanupOutcome;
+  result.residual = residual;
+  return result;
 }
 
 module.exports = {
   GOVERNED_RULES_SHA256,
+  EXPECTED_PROJECT,
   interpretRow,
   buildSmokeResults,
   assertRunSecretFree,
+  assertGovernedPins,
   cleanup,
   residualCheck,
   runVerification,
 };
 
-// A real-deps main() is intentionally NOT wired for autonomous execution here: production execution
-// is a separately Owner-authorized action, and this repository gate authorizes NO production run.
-// The recapture operator handoff invokes this module's runVerification with real firebase-admin +
-// fetch + gcloud-token dependencies under that separate authorization (see
-// docs/operations/truck-registry-smoke-verifier.md).
-if (require.main === module) {
-  // eslint-disable-next-line no-console
-  console.error("This governed verifier does not self-execute. See docs/operations/truck-registry-smoke-verifier.md; production execution requires separate Owner authorization.");
-  process.exit(2);
-}
+// This core module never self-executes and does no production I/O. The operator entry point is
+// functions/scripts/truckRegistryVerifierCli.js (a separate, committed CLI); production execution
+// requires separate Owner authorization. See docs/operations/truck-registry-smoke-verifier.md.
