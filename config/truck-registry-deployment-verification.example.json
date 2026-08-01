@@ -1,0 +1,14 @@
+{
+  "_comment": "Governed truck-registry smoke-verifier config (Gate C). Copy to a LOCAL *.local.json (never committed) and fill governedCommit + governedRulesSha256 for the deploy commit. Credentials live ONLY in the named environment variables, never in this file. The 'unauthenticated' persona is added by the tool and needs no credentials.",
+  "projectId": "taylor-parts",
+  "confirmProject": "taylor-parts",
+  "governedCommit": "0000000000000000000000000000000000000000",
+  "governedRulesSha256": "bb1492b98cba95cb30ac23f7078f0fdba24befa64fa604da27d84ddc9ebac907",
+  "webApiKeyEnv": "TRC_WEB_API_KEY",
+  "recaptureDate": "2026-08-01",
+  "personas": [
+    { "label": "admin", "emailEnv": "TRC_ADMIN_EMAIL", "passwordEnv": "TRC_ADMIN_PASSWORD" },
+    { "label": "dispatcher", "emailEnv": "TRC_DISPATCHER_EMAIL", "passwordEnv": "TRC_DISPATCHER_PASSWORD" },
+    { "label": "technician", "emailEnv": "TRC_TECHNICIAN_EMAIL", "passwordEnv": "TRC_TECHNICIAN_PASSWORD" }
+  ]
+}
