@@ -6,9 +6,9 @@ name: Truck Registry Command Tests
 # location_truck_claims/employees/warehouses/auditEvents; Auth for the actor
 # custom tokens the harness mints). Emulator-only, project "taylor-parts",
 # loopback host -- no production access, no credentials, no repository secrets.
-# NOT a production activation workflow -- these commands are unexported from
-# functions/src/index.ts and stay inert until deployment is separately
-# authorized (Issue #15).
+# NOT a production activation workflow -- these commands are now EXPORTED from
+# functions/src/index.ts (Gate B) but remain UNDEPLOYED and inert until deployment
+# is separately authorized (Issue #15). "Export is not deployment."
 
 on:
   pull_request:

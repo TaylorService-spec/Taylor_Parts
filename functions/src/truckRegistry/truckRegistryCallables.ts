@@ -48,7 +48,10 @@ const FAILURE_MAP: Record<TruckRegistryFailureCode, { code: FunctionsErrorCode; 
   MALFORMED_STORED_RECORD: { code: "internal", message: "The request could not be completed." },
 };
 
-function mapError(err: unknown): HttpsError {
+// Exported for direct sanitization tests: proves a known service error surfaces ONLY its
+// generic per-code message (never its raw internal message) and an unexpected non-
+// TruckRegistryError collapses to the generic "internal" response.
+export function mapError(err: unknown): HttpsError {
   if (err instanceof TruckRegistryError) {
     const mapped = FAILURE_MAP[err.code] ?? { code: "internal" as FunctionsErrorCode, message: "The request could not be completed." };
     return new HttpsError(mapped.code, mapped.message);

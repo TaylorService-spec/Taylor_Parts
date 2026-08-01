@@ -12,6 +12,7 @@ admin.initializeApp({ projectId: "taylor-parts" });
 const db = admin.firestore();
 
 const c = await import("../lib/truckRegistry/truckRegistryCallables.js");
+const { TruckAlreadyExistsError } = await import("../lib/truckRegistry/types.js");
 
 let passed = 0, failed = 0;
 async function check(name, fn) {
@@ -122,6 +123,43 @@ await check("changeStatus / changeHomeWarehouse / reassign / unassign / reactiva
 await check("reactivate with invalid targetStatus -> invalid-argument", async () => {
   const { truckId } = await createOk(admin1);
   await assertHttps(c.reactivateTruckCallable.run(req({ idempotencyKey: key("re"), truckId, targetStatus: "OUT_OF_SERVICE", expectedVersion: 1 }, admin1)), "invalid-argument");
+});
+
+// ---- idempotency passes through the callable ----
+await check("idempotency: repeating the same request through the callable returns replayed", async () => {
+  const wh = await seedWarehouse();
+  const truckId = uid("TRK"), locationId = uid("MLOC"), k = key("c");
+  const first = await c.createTruckCallable.run(req({ idempotencyKey: k, truckId, locationId, homeWarehouseId: wh, ...LBL }, admin1));
+  assert.deepEqual(first, { outcome: "applied", version: 1 });
+  const second = await c.createTruckCallable.run(req({ idempotencyKey: k, truckId, locationId, homeWarehouseId: wh, ...LBL }, admin1));
+  assert.deepEqual(second, { outcome: "replayed", version: 1 });
+  assert.equal((await db.collection("auditEvents").where("targetId", "==", truckId).get()).size, 1); // no duplicate write
+});
+
+// ---- sanitized error surfaces (end-to-end + direct) ----
+await check("known error's raw internal message is NOT exposed (only the generic per-code message)", async () => {
+  const { truckId } = await createOk(admin1); // real truckId, echoes into the raw service message
+  try {
+    await c.createTruckCallable.run(req({ idempotencyKey: key("c2"), truckId, locationId: uid("MLOC"), homeWarehouseId: await seedWarehouse(), ...LBL }, admin1));
+    assert.fail("expected an already-exists HttpsError");
+  } catch (err) {
+    assert.equal(err.code, "already-exists");
+    assert.equal(err.message, "A truck already exists at that id.");        // the generic per-code message
+    assert.doesNotMatch(err.message, new RegExp(truckId), "must not leak the truckId");
+    assert.doesNotMatch(err.message, /already exists\b.*\b(truck )?[A-Za-z0-9-]{6,}/); // no raw "truck <id> already exists"
+  }
+});
+await check("mapError: a known TruckRegistryError -> generic per-code message, no raw detail", () => {
+  const https = c.mapError(new TruckAlreadyExistsError("truck TRK-SECRET-123 already exists at location MLOC-SECRET"));
+  assert.equal(https.code, "already-exists");
+  assert.equal(https.message, "A truck already exists at that id.");
+  assert.doesNotMatch(https.message, /TRK-SECRET-123|MLOC-SECRET/);
+});
+await check("mapError: an unexpected/internal failure -> only the generic internal response", () => {
+  const https = c.mapError(new Error("boom at /var/secret/path with token abc123"));
+  assert.equal(https.code, "internal");
+  assert.equal(https.message, "The request could not be completed.");
+  assert.doesNotMatch(https.message, /boom|secret|token|abc123/);
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);
