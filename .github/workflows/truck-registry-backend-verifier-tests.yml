@@ -1,0 +1,57 @@
+name: Truck Registry Backend Verifier Unit Tests
+
+# EI Truck Registry — Gate E4 READ-ONLY BACKEND-verifier unit tests
+# (functions/scripts/verifyTruckBackend.js + truckBackendVerifierCli.js). These are PURE unit tests
+# with injected fakes — NO emulator, NO credentials, NO gcloud/firebase, NO production reads or
+# writes, NO execution against production. The verifier does NOT self-execute and is never run
+# against production in CI; production execution remains gated by separate Owner authorization.
+
+on:
+  pull_request:
+    paths:
+      - "functions/scripts/verifyTruckBackend.js"
+      - "functions/scripts/truckBackendVerifierCli.js"
+      - "functions/scripts/firestoreDeploymentVerificationShared.js"
+      - "functions/test/verifyTruckBackend.test.js"
+      - "config/truck-backend-verification.example.json"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - ".github/workflows/truck-registry-backend-verifier-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/scripts/verifyTruckBackend.js"
+      - "functions/scripts/truckBackendVerifierCli.js"
+      - "functions/scripts/firestoreDeploymentVerificationShared.js"
+      - "functions/test/verifyTruckBackend.test.js"
+      - "config/truck-backend-verification.example.json"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - ".github/workflows/truck-registry-backend-verifier-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  truck-backend-verifier-tests:
+    name: Truck Registry backend verifier unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+
+      - name: Truck Registry backend verifier unit tests (injected fakes only)
+        run: npm run test:truckBackendVerifier
+        working-directory: functions
