@@ -4,8 +4,21 @@
 // a completion that lands after an access-boundary change is discarded (stale).
 import { describe, it, expect, vi } from "vitest";
 import { renderHook, act } from "@testing-library/react";
+import { createRoot } from "react-dom/client";
 import { useTruckManagement } from "../src/hooks/useTruckManagement.js";
 import { TRUCK_COMMAND_OUTCOME } from "../src/domain/truckManagement.js";
+
+const nextTick = () => new Promise((r) => setTimeout(r, 0));
+
+// A component that exposes the hook result to the test via a callback, and (crucially) records
+// only NON-stale outcomes as "visible management state" -- exactly how the modal/drawer gate on
+// result.stale. Lets the regression assert a stale completion never becomes visible.
+function Harness({ accessVersion, client, onReconcile, onReady, applied }) {
+  const mgmt = useTruckManagement({ accessVersion, canManage: true, writeReadyOverride: true, client, keyFactory: () => "key-1", onReconcile });
+  onReady(mgmt);
+  applied.access = accessVersion;
+  return null;
+}
 
 function spyClient() {
   return {
@@ -108,6 +121,56 @@ describe("useTruckManagement enabled behavior", () => {
     });
     expect([TRUCK_COMMAND_OUTCOME.FAILURE, TRUCK_COMMAND_OUTCOME.UNAVAILABLE]).toContain(out.kind);
     expect(onReconcile).not.toHaveBeenCalled();
+  });
+
+  // Regression for the Codex P2: with the boundary synchronized only in a useEffect, an in-flight
+  // v1 command could resolve in the window AFTER the v2 render commits but BEFORE its passive
+  // effect runs, and be wrongly accepted (reconciling under the new boundary). We reproduce that
+  // exact window with a real (non-act) concurrent root: after committing the v2 render, a single
+  // macrotask flushes the render (and the render-time boundary write) but NOT the passive effect.
+  // On the buggy version this asserts stale=undefined / reconcile called; on the fix, stale=true /
+  // no reconcile / no visible state applied.
+  it("stale (pre-effect window): a v1 completion after the v2 render commit but before its effect is discarded", async () => {
+    const prevActEnv = globalThis.IS_REACT_ACT_ENVIRONMENT;
+    globalThis.IS_REACT_ACT_ENVIRONMENT = false; // real async scheduling (render task before effect task)
+    try {
+      let resolveCall;
+      const deferred = new Promise((res) => { resolveCall = res; });
+      const client = { ...spyClient(), assignDriver: vi.fn(() => deferred) };
+      const onReconcile = vi.fn();
+      let commands;
+      const applied = { access: undefined, visible: null };
+      const onReady = (m) => { commands = m.commands; };
+      const container = document.createElement("div");
+      document.body.appendChild(container);
+      const root = createRoot(container);
+
+      root.render(<Harness accessVersion="v1" client={client} onReconcile={onReconcile} onReady={onReady} applied={applied} />);
+      await nextTick();
+      await nextTick();
+
+      // Start the command under v1.
+      const pending = commands.assignDriver({ truckId: "T", employeeId: "E", expectedVersion: 1 });
+
+      // Commit the v2 render; one macrotask flushes render (+ the render-time boundary capture)
+      // but not the passive effect -- the exact production window.
+      root.render(<Harness accessVersion="v2" client={client} onReconcile={onReconcile} onReady={onReady} applied={applied} />);
+      await nextTick();
+
+      resolveCall({ truckId: "T", version: 2 });
+      const out = await pending;
+      // A well-behaved consumer applies only non-stale outcomes to visible state.
+      if (!out.stale) applied.visible = out;
+
+      expect(out.stale).toBe(true);
+      expect(onReconcile).not.toHaveBeenCalled();
+      expect(applied.visible).toBeNull(); // prior-scope completion never alters visible management state
+
+      root.unmount();
+      container.remove();
+    } finally {
+      globalThis.IS_REACT_ACT_ENVIRONMENT = prevActEnv;
+    }
   });
 
   it("stale: a completion after an accessVersion change is discarded (no reconcile)", async () => {

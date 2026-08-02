@@ -45,12 +45,15 @@ export function useTruckManagement({
   const accessVersionRef = useRef(accessVersion);
   const mountedRef = useRef(true);
   const reconcileRef = useRef(onReconcile);
-  useEffect(() => {
-    accessVersionRef.current = accessVersion;
-  }, [accessVersion]);
-  useEffect(() => {
-    reconcileRef.current = onReconcile;
-  }, [onReconcile]);
+  // SYNCHRONOUS boundary update: assign during render, NOT in a useEffect. A useEffect runs
+  // AFTER commit, leaving a window where a render with a new accessVersion has committed but the
+  // ref still holds the old value -- an in-flight command resolving in that window would be
+  // wrongly accepted (and would reconcile) under the new access boundary. Writing the ref in
+  // render closes that window: any command captures the boundary that is current as of the last
+  // render, and a completion under a newer boundary is always stale. (Idempotent write; safe in
+  // StrictMode's double render.)
+  accessVersionRef.current = accessVersion;
+  reconcileRef.current = onReconcile;
   useEffect(() => {
     mountedRef.current = true;
     return () => {
