@@ -1,0 +1,3 @@
+# Byte-exact preservation of the imported Gate D verification evidence (no CRLF/LF normalization),
+# so the committed verification-report.json keeps its published SHA-256 and SHA256SUMS.txt verifies.
+* -text
