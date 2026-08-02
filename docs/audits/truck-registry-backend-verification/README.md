@@ -24,5 +24,12 @@ events, version/audit coherence, and the final contained state. It does **not** 
 record operationally, any deployment, activation of the ninth (delete) callable, or deletion of the
 truck — each remains a separate governed gate.
 
-See each run's `import-validation.md` for the provenance separation (facts read from the report vs.
-repository-side integrity verification vs. transit provenance).
+The `Result` column above is read from each run's sanitized `verification-report.json`. Execution
+context — the verifier exit code, the run-log hash, the observed production Hosting build, and the
+visible UI state before verification — are **operator-relayed facts, not JSON fields**, and are
+recorded (clearly attributed) in each run's `import-validation.md` §D; this docs-only import did not
+independently query production.
+
+See each run's `import-validation.md` for the full provenance separation: (A) facts read from the
+report, (B) repository-side integrity verification, (C) transit provenance, and (D) operator-relayed
+execution facts.

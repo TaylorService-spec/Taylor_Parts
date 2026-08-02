@@ -84,6 +84,31 @@ provenance — it rests on the recomputed archive hash matching the separately p
 (Section B). The evidence facts in Section A rest on the byte-exact `verification-report.json` extracted
 from that hash-verified archive.
 
+## D. Operator-relayed execution facts — not fields of `verification-report.json` and not independently re-queried during this docs-only import
+
+These facts establish **how** the production evidence was produced. They were relayed by the
+Owner-authorized operator run (via the Gate E4 execution + review channel). They are **not** fields of
+the imported `verification-report.json`, and this repository/docs-only import did **not** independently
+query production for them. They are recorded here, clearly attributed, as operator-relayed execution
+context only:
+
+| Operator-relayed fact | Value |
+| --- | --- |
+| Verifier executions | exactly **one** Owner-authorized, read-only run |
+| Verifier exit code | `0` |
+| Run-log SHA-256 | `0add651b8b883175fcf8898a2061ec596d335bf10df58430f5db11f2357c55b6` (the run log itself is intentionally not committed; only its hash is relayed as an anchor) |
+| Production Hosting build observed | `9615ec5` |
+| Visible UI state **before** backend verification | exactly one truck; Truck ID `1`; status `IDLE`; driver `Unassigned`; display label `10`; vehicle number `10`; home warehouse `Main Warehouse` / `wh-main`; no serialized equipment and no stocked parts reported |
+| Production side effects during the run | **none** — no Firestore write, fixture, Auth operation, cleanup, deployment, callable invocation, repair, or Truck ID 1 mutation occurred during the verifier run |
+| Archive SHA-256 | posted separately from Cloud Shell (`be6e62ac…`; see §B/§C) |
+| Sidecar provenance | reconstructed locally as a byte-equivalent transit anchor (see §C) |
+
+**Attribution.** The bullet list above records **operator-relayed** facts, **not** fields of
+`verification-report.json`. This docs-only import did **not** independently query production. The
+imported JSON **independently proves** the 30/30 backend result (Sections A/B); the operator relay in
+this section establishes the **execution context** only (that the evidence came from one authorized,
+read-only, side-effect-free run against the observed `9615ec5` Hosting build).
+
 ## Files imported (byte-exact) under `verify-2026-08-02/`
 
 - `verification-report.json` — the single sanitized evidence object (SHA-256 `4b59eea7…`).
