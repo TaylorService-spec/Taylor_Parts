@@ -1,0 +1,339 @@
+{
+  "verified": true,
+  "verify_date": "2026-08-01",
+  "note": "Gate D governed post-deployment verification of the eight trusted truck callables. Sanitized; no run-specific values.",
+  "governedCommit": "1d9d6854ba531dfd13d467f9d02a03656b37c18a",
+  "project": "taylor-parts",
+  "region": "us-central1",
+  "matrix_total": 32,
+  "discovery": {
+    "total": 8,
+    "passed": 8,
+    "results": [
+      {
+        "label": "discovery:createTruckCallable",
+        "region": "us-central1",
+        "pass": true
+      },
+      {
+        "label": "discovery:assignTruckDriverCallable",
+        "region": "us-central1",
+        "pass": true
+      },
+      {
+        "label": "discovery:reassignTruckDriverCallable",
+        "region": "us-central1",
+        "pass": true
+      },
+      {
+        "label": "discovery:unassignTruckDriverCallable",
+        "region": "us-central1",
+        "pass": true
+      },
+      {
+        "label": "discovery:changeTruckStatusCallable",
+        "region": "us-central1",
+        "pass": true
+      },
+      {
+        "label": "discovery:changeTruckHomeWarehouseCallable",
+        "region": "us-central1",
+        "pass": true
+      },
+      {
+        "label": "discovery:deactivateTruckCallable",
+        "region": "us-central1",
+        "pass": true
+      },
+      {
+        "label": "discovery:reactivateTruckCallable",
+        "region": "us-central1",
+        "pass": true
+      }
+    ]
+  },
+  "denial": {
+    "total": 16,
+    "passed": 16,
+    "results": [
+      {
+        "label": "deny:unauthenticated:createTruckCallable",
+        "expectedCode": "unauthenticated",
+        "pass": true
+      },
+      {
+        "label": "deny:unauthenticated:assignTruckDriverCallable",
+        "expectedCode": "unauthenticated",
+        "pass": true
+      },
+      {
+        "label": "deny:unauthenticated:reassignTruckDriverCallable",
+        "expectedCode": "unauthenticated",
+        "pass": true
+      },
+      {
+        "label": "deny:unauthenticated:unassignTruckDriverCallable",
+        "expectedCode": "unauthenticated",
+        "pass": true
+      },
+      {
+        "label": "deny:unauthenticated:changeTruckStatusCallable",
+        "expectedCode": "unauthenticated",
+        "pass": true
+      },
+      {
+        "label": "deny:unauthenticated:changeTruckHomeWarehouseCallable",
+        "expectedCode": "unauthenticated",
+        "pass": true
+      },
+      {
+        "label": "deny:unauthenticated:deactivateTruckCallable",
+        "expectedCode": "unauthenticated",
+        "pass": true
+      },
+      {
+        "label": "deny:unauthenticated:reactivateTruckCallable",
+        "expectedCode": "unauthenticated",
+        "pass": true
+      },
+      {
+        "label": "deny:technician:createTruckCallable",
+        "expectedCode": "permission-denied",
+        "pass": true
+      },
+      {
+        "label": "deny:technician:assignTruckDriverCallable",
+        "expectedCode": "permission-denied",
+        "pass": true
+      },
+      {
+        "label": "deny:technician:reassignTruckDriverCallable",
+        "expectedCode": "permission-denied",
+        "pass": true
+      },
+      {
+        "label": "deny:technician:unassignTruckDriverCallable",
+        "expectedCode": "permission-denied",
+        "pass": true
+      },
+      {
+        "label": "deny:technician:changeTruckStatusCallable",
+        "expectedCode": "permission-denied",
+        "pass": true
+      },
+      {
+        "label": "deny:technician:changeTruckHomeWarehouseCallable",
+        "expectedCode": "permission-denied",
+        "pass": true
+      },
+      {
+        "label": "deny:technician:deactivateTruckCallable",
+        "expectedCode": "permission-denied",
+        "pass": true
+      },
+      {
+        "label": "deny:technician:reactivateTruckCallable",
+        "expectedCode": "permission-denied",
+        "pass": true
+      }
+    ]
+  },
+  "sequence": {
+    "total": 8,
+    "passed": 8,
+    "results": [
+      {
+        "label": "seq:create:createTruckCallable",
+        "interpretation": "APPLIED",
+        "pass": true
+      },
+      {
+        "label": "seq:assign:assignTruckDriverCallable",
+        "interpretation": "APPLIED",
+        "pass": true
+      },
+      {
+        "label": "seq:reassign:reassignTruckDriverCallable",
+        "interpretation": "APPLIED",
+        "pass": true
+      },
+      {
+        "label": "seq:unassign:unassignTruckDriverCallable",
+        "interpretation": "APPLIED",
+        "pass": true
+      },
+      {
+        "label": "seq:status:changeTruckStatusCallable",
+        "interpretation": "APPLIED",
+        "pass": true
+      },
+      {
+        "label": "seq:warehouse:changeTruckHomeWarehouseCallable",
+        "interpretation": "APPLIED",
+        "pass": true
+      },
+      {
+        "label": "seq:deactivate:deactivateTruckCallable",
+        "interpretation": "FAIL_CLOSED_AS_EXPECTED",
+        "pass": true
+      },
+      {
+        "label": "seq:reactivate:reactivateTruckCallable",
+        "interpretation": "APPLIED",
+        "pass": true
+      }
+    ]
+  },
+  "passed": 32,
+  "crosswalk": {
+    "region": "us-central1",
+    "callables": [
+      "createTruckCallable",
+      "assignTruckDriverCallable",
+      "reassignTruckDriverCallable",
+      "unassignTruckDriverCallable",
+      "changeTruckStatusCallable",
+      "changeTruckHomeWarehouseCallable",
+      "deactivateTruckCallable",
+      "reactivateTruckCallable"
+    ],
+    "discovery": [
+      {
+        "label": "discovery:createTruckCallable",
+        "requires": "present@us-central1"
+      },
+      {
+        "label": "discovery:assignTruckDriverCallable",
+        "requires": "present@us-central1"
+      },
+      {
+        "label": "discovery:reassignTruckDriverCallable",
+        "requires": "present@us-central1"
+      },
+      {
+        "label": "discovery:unassignTruckDriverCallable",
+        "requires": "present@us-central1"
+      },
+      {
+        "label": "discovery:changeTruckStatusCallable",
+        "requires": "present@us-central1"
+      },
+      {
+        "label": "discovery:changeTruckHomeWarehouseCallable",
+        "requires": "present@us-central1"
+      },
+      {
+        "label": "discovery:deactivateTruckCallable",
+        "requires": "present@us-central1"
+      },
+      {
+        "label": "discovery:reactivateTruckCallable",
+        "requires": "present@us-central1"
+      }
+    ],
+    "denial": [
+      {
+        "label": "deny:unauthenticated:createTruckCallable",
+        "expectedCode": "unauthenticated"
+      },
+      {
+        "label": "deny:unauthenticated:assignTruckDriverCallable",
+        "expectedCode": "unauthenticated"
+      },
+      {
+        "label": "deny:unauthenticated:reassignTruckDriverCallable",
+        "expectedCode": "unauthenticated"
+      },
+      {
+        "label": "deny:unauthenticated:unassignTruckDriverCallable",
+        "expectedCode": "unauthenticated"
+      },
+      {
+        "label": "deny:unauthenticated:changeTruckStatusCallable",
+        "expectedCode": "unauthenticated"
+      },
+      {
+        "label": "deny:unauthenticated:changeTruckHomeWarehouseCallable",
+        "expectedCode": "unauthenticated"
+      },
+      {
+        "label": "deny:unauthenticated:deactivateTruckCallable",
+        "expectedCode": "unauthenticated"
+      },
+      {
+        "label": "deny:unauthenticated:reactivateTruckCallable",
+        "expectedCode": "unauthenticated"
+      },
+      {
+        "label": "deny:technician:createTruckCallable",
+        "expectedCode": "permission-denied"
+      },
+      {
+        "label": "deny:technician:assignTruckDriverCallable",
+        "expectedCode": "permission-denied"
+      },
+      {
+        "label": "deny:technician:reassignTruckDriverCallable",
+        "expectedCode": "permission-denied"
+      },
+      {
+        "label": "deny:technician:unassignTruckDriverCallable",
+        "expectedCode": "permission-denied"
+      },
+      {
+        "label": "deny:technician:changeTruckStatusCallable",
+        "expectedCode": "permission-denied"
+      },
+      {
+        "label": "deny:technician:changeTruckHomeWarehouseCallable",
+        "expectedCode": "permission-denied"
+      },
+      {
+        "label": "deny:technician:deactivateTruckCallable",
+        "expectedCode": "permission-denied"
+      },
+      {
+        "label": "deny:technician:reactivateTruckCallable",
+        "expectedCode": "permission-denied"
+      }
+    ],
+    "sequence": [
+      {
+        "label": "seq:create:createTruckCallable",
+        "expected": "applied@v1"
+      },
+      {
+        "label": "seq:assign:assignTruckDriverCallable",
+        "expected": "applied@v2"
+      },
+      {
+        "label": "seq:reassign:reassignTruckDriverCallable",
+        "expected": "applied@v3"
+      },
+      {
+        "label": "seq:unassign:unassignTruckDriverCallable",
+        "expected": "applied@v4"
+      },
+      {
+        "label": "seq:status:changeTruckStatusCallable",
+        "expected": "applied@v5"
+      },
+      {
+        "label": "seq:warehouse:changeTruckHomeWarehouseCallable",
+        "expected": "applied@v6"
+      },
+      {
+        "label": "seq:deactivate:deactivateTruckCallable",
+        "expected": "fail-closed:failed-precondition"
+      },
+      {
+        "label": "seq:reactivate:reactivateTruckCallable",
+        "expected": "applied@v7"
+      }
+    ],
+    "matrix_total": 32
+  },
+  "cleanup_complete": true,
+  "residual_documents": 0,
+  "residual_auth_users": 0
+}
