@@ -2,8 +2,9 @@
 // (src/domain/mobileLocationInventoryProjection.js). Proves: nullable-unless-authoritative section
 // content, NO quantity fabrication, NO direct cycle-count/reconciliation stock overwrite,
 // per-section honest fail-closed states (unavailable/loading/denied/error/ready), the access-version
-// boundary invalidation, governed pick-list gating, malformed-input fail-closed downgrade, identity
-// resolution (truckId->locationId), and deterministic output.
+// boundary invalidation, the LOCATION binding (every READY source must carry an authoritative
+// locationId == the resolved identity.locationId), governed pick-list gating, malformed-input
+// fail-closed downgrade, identity resolution (truckId->locationId), and deterministic output.
 //
 // Run: node test/mobileLocationInventoryProjection.test.mjs   (also `npm test`)
 import assert from "node:assert/strict";
@@ -20,7 +21,8 @@ function ok(name, fn) { fn(); passed += 1; console.log("PASS -- " + name); }
 
 const IDENTITY = { truckId: "1", locationId: "1" };
 const OPTIONS = { equipmentStatus: ["LOADED", "AVAILABLE", "RESERVED"], equipmentCondition: ["New", "Refurbished", "Used"] };
-const ready = (payload) => ({ status: "ready", accessVersion: "v1", ...payload });
+// Every READY fixture carries locationId matching IDENTITY.locationId ("1") -- the contract is explicit.
+const ready = (payload) => ({ status: "ready", accessVersion: "v1", locationId: "1", ...payload });
 
 // ---- honest default (today's reality: no source is MOBILE-indexed) -----------------------------
 ok("no sources -> every section UNAVAILABLE with null content (honest default)", () => {
@@ -64,14 +66,12 @@ ok("reconciliation is an OBSERVATION only: discrepancies never alter the parts s
       reconciliation: ready({ observation: { expectedParts: 5, scannedParts: 4, missing: [{ internalSku: "TST-1007", note: "1 short" }], unexpected: [] } }),
     },
   });
-  // reconciliation records the observation...
   assert.equal(r.sections.reconciliation.state, S.READY);
   assert.equal(r.sections.reconciliation.observation.scannedParts, 4);
   assert.equal(r.sections.reconciliation.observation.missing.length, 1);
-  // ...but the parts stock is untouched by it (no overwrite to scanned 4).
+  // parts stock untouched by the reconciliation observation (no overwrite to scanned 4).
   assert.equal(r.sections.parts.items[0].onHand, 5);
   assert.equal(r.sections.parts.items[0].available, 3);
-  // and there is no mutation/write field anywhere in the read-model.
   assert.ok(!("write" in r) && !("mutations" in r) && !("adjustments" in r));
 });
 
@@ -93,7 +93,6 @@ ok("each section reflects its OWN injected source state independently", () => {
   assert.equal(r.sections.reservations.state, S.LOADING);
   assert.equal(r.sections.reconciliation.state, S.ERROR);
   assert.equal(r.sections.activity.state, S.UNAVAILABLE);
-  // denied/loading/error/unavailable all yield null content
   assert.equal(r.sections.serializedAssets.items, null);
   assert.equal(r.sections.reservations.items, null);
   assert.equal(r.sections.reconciliation.observation, null);
@@ -104,7 +103,7 @@ ok("each section reflects its OWN injected source state independently", () => {
 ok("READY array source with a non-array payload downgrades to ERROR, content null", () => {
   const r = composeMobileLocationInventory({
     identity: IDENTITY, boundaryKey: "v1",
-    sources: { parts: { status: "ready", accessVersion: "v1", items: "not-an-array" } },
+    sources: { parts: { status: "ready", accessVersion: "v1", locationId: "1", items: "not-an-array" } },
   });
   assert.equal(r.sections.parts.state, S.ERROR);
   assert.equal(r.sections.parts.items, null);
@@ -113,7 +112,7 @@ ok("READY array source with a non-array payload downgrades to ERROR, content nul
 ok("READY reconciliation with a non-object observation downgrades to ERROR", () => {
   const r = composeMobileLocationInventory({
     identity: IDENTITY, boundaryKey: "v1",
-    sources: { reconciliation: { status: "ready", accessVersion: "v1", observation: 42 } },
+    sources: { reconciliation: { status: "ready", accessVersion: "v1", locationId: "1", observation: 42 } },
   });
   assert.equal(r.sections.reconciliation.state, S.ERROR);
   assert.equal(r.sections.reconciliation.observation, null);
@@ -141,16 +140,85 @@ ok("composeMobileLocationInventory tolerates a non-object argument (fail-closed)
 ok("stale READY source (accessVersion != boundaryKey) becomes LOADING with null content", () => {
   const r = composeMobileLocationInventory({
     identity: IDENTITY, boundaryKey: "v2",
-    sources: { parts: { status: "ready", accessVersion: "v1", items: [{ internalSku: "TST-1" }] } },
+    sources: { parts: { status: "ready", accessVersion: "v1", locationId: "1", items: [{ internalSku: "TST-1" }] } },
   });
   assert.equal(r.sections.parts.state, S.LOADING);
   assert.equal(r.sections.parts.items, null);
 });
 
 ok("matching accessVersion is READY; undefined boundaryKey does not gate", () => {
-  const src = { parts: { status: "ready", accessVersion: "v9", items: [{ internalSku: "TST-1" }] } };
+  const src = { parts: { status: "ready", accessVersion: "v9", locationId: "1", items: [{ internalSku: "TST-1" }] } };
   assert.equal(composeMobileLocationInventory({ identity: IDENTITY, boundaryKey: "v9", sources: src }).sections.parts.state, S.READY);
   assert.equal(composeMobileLocationInventory({ identity: IDENTITY, sources: src }).sections.parts.state, S.READY);
+});
+
+// ---- LOCATION binding (P2) ---------------------------------------------------------------------
+ok("matching locationId + matching accessVersion -> READY", () => {
+  const r = composeMobileLocationInventory({
+    identity: IDENTITY, boundaryKey: "v1",
+    sources: { parts: ready({ items: [{ internalSku: "TST-1", onHand: 3 }] }) }, // locationId "1" via helper
+  });
+  assert.equal(r.sections.parts.state, S.READY);
+  assert.equal(r.sections.parts.items[0].onHand, 3);
+});
+
+ok("MISSING locationId on a READY source -> no content (integrity ERROR)", () => {
+  const r = composeMobileLocationInventory({
+    identity: IDENTITY, boundaryKey: "v1",
+    sources: { parts: { status: "ready", accessVersion: "v1", items: [{ internalSku: "TST-1", onHand: 9 }] } }, // no locationId
+  });
+  assert.equal(r.sections.parts.state, S.ERROR);
+  assert.equal(r.sections.parts.items, null);
+});
+
+ok("MALFORMED locationId on a READY source -> no content (integrity ERROR)", () => {
+  for (const bad of [42, "", "   ", null, {}]) {
+    const r = composeMobileLocationInventory({
+      identity: IDENTITY, boundaryKey: "v1",
+      sources: { parts: { status: "ready", accessVersion: "v1", locationId: bad, items: [{ internalSku: "TST-1" }] } },
+    });
+    assert.equal(r.sections.parts.state, S.ERROR, `locationId=${JSON.stringify(bad)}`);
+    assert.equal(r.sections.parts.items, null);
+  }
+});
+
+ok("MISMATCHED locationId -> no content (wrong-scope, never exposes another location's rows)", () => {
+  const r = composeMobileLocationInventory({
+    identity: IDENTITY, boundaryKey: "v1",
+    sources: { parts: { status: "ready", accessVersion: "v1", locationId: "2", items: [{ internalSku: "OTHER-LOC", onHand: 99 }] } },
+  });
+  assert.notEqual(r.sections.parts.state, S.READY);
+  assert.equal(r.sections.parts.state, S.LOADING); // wrong-scope data -> boundary semantics
+  assert.equal(r.sections.parts.items, null, "rows from location 2 must never surface under location 1");
+});
+
+ok("reconciliation receives the same location binding", () => {
+  const mism = composeMobileLocationInventory({
+    identity: IDENTITY, boundaryKey: "v1",
+    sources: { reconciliation: { status: "ready", accessVersion: "v1", locationId: "2", observation: { expectedParts: 5 } } },
+  });
+  assert.equal(mism.sections.reconciliation.observation, null);
+  assert.notEqual(mism.sections.reconciliation.state, S.READY);
+  const missing = composeMobileLocationInventory({
+    identity: IDENTITY, boundaryKey: "v1",
+    sources: { reconciliation: { status: "ready", accessVersion: "v1", observation: { expectedParts: 5 } } }, // no locationId
+  });
+  assert.equal(missing.sections.reconciliation.state, S.ERROR);
+  assert.equal(missing.sections.reconciliation.observation, null);
+});
+
+ok("one valid section cannot make a mismatched section visible", () => {
+  const r = composeMobileLocationInventory({
+    identity: IDENTITY, boundaryKey: "v1",
+    sources: {
+      parts: ready({ items: [{ internalSku: "TST-1", onHand: 3 }] }), // location "1" -> READY
+      serializedAssets: { status: "ready", accessVersion: "v1", locationId: "2", items: [{ assetId: "EQ-X" }] }, // location "2"
+    },
+  });
+  assert.equal(r.sections.parts.state, S.READY);
+  assert.equal(r.sections.parts.items.length, 1);
+  assert.notEqual(r.sections.serializedAssets.state, S.READY);
+  assert.equal(r.sections.serializedAssets.items, null, "location-2 serialized rows must never surface");
 });
 
 // ---- governed pick-list gating -----------------------------------------------------------------
@@ -185,8 +253,8 @@ ok("resolveMobileLocationIdentity requires both governed ids", () => {
   assert.equal(resolveMobileLocationIdentity(null), null);
 });
 
-// ---- deterministic ------------------------------------------------------------------------------
-ok("deterministic: identical input -> deeply equal output", () => {
+// ---- deterministic + non-mutating --------------------------------------------------------------
+ok("deterministic: identical input -> deeply equal output; input not mutated", () => {
   const input = {
     identity: IDENTITY, boundaryKey: "v1", options: OPTIONS,
     sources: {
@@ -197,7 +265,9 @@ ok("deterministic: identical input -> deeply equal output", () => {
       activity: ready({ items: [{ time: "09:42", type: "scan", message: "ok" }] }),
     },
   };
+  const snapshot = JSON.stringify(input);
   assert.deepEqual(composeMobileLocationInventory(input), composeMobileLocationInventory(input));
+  assert.equal(JSON.stringify(input), snapshot, "input must not be mutated");
 });
 
 console.log(`\n${passed} passed`);

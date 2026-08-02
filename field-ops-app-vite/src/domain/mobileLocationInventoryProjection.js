@@ -23,6 +23,10 @@
 //     composer has no write path; reconciliation content cannot alter the parts section.
 //   * FAIL CLOSED -- a missing / malformed / denied / errored / stale source yields state != READY
 //     and null content; a READY source whose payload is malformed is downgraded to ERROR.
+//   * LOCATION BINDING -- a READY source MUST carry an authoritative source.locationId that equals
+//     the resolved identity.locationId. A missing / malformed locationId is an integrity fault ->
+//     ERROR; a mismatched locationId is wrong-scope data -> LOADING (same boundary semantics as a
+//     stale access version). Inventory for one MOBILE location can NEVER attach to another.
 //   * ACCESS-VERSION BOUNDARY -- a READY source whose accessVersion != boundaryKey is stale and
 //     becomes LOADING (its content disappears until a current-version source arrives).
 //   * DETERMINISTIC -- pure function of its inputs; no clock, no randomness.
@@ -165,36 +169,42 @@ function normalizeActivityRow(a) {
   return row;
 }
 
-// Resolve one injected section source to a state, applying the access-version boundary and
-// sanitizing ERROR. Never returns a raw error.
-function readSectionState(source, boundaryKey) {
+// Resolve one injected section source to a state, applying (1) the access-version boundary and
+// (2) the LOCATION binding, and sanitizing ERROR. Never returns a raw error / identifier.
+// `expectedLocationId` is the resolved identity.locationId (a validated non-empty string).
+function readSectionState(source, boundaryKey, expectedLocationId) {
   if (!isPlainObject(source)) return MOBILE_INVENTORY_SECTION_STATE.UNAVAILABLE;
   const status = KNOWN_STATES.includes(source.status) ? source.status : MOBILE_INVENTORY_SECTION_STATE.UNAVAILABLE;
   if (status === MOBILE_INVENTORY_SECTION_STATE.READY) {
     if (boundaryKey !== undefined && source.accessVersion !== boundaryKey) {
       return MOBILE_INVENTORY_SECTION_STATE.LOADING; // stale prior-access-version READY -> loading
     }
+    const sourceLocationId = str(source.locationId);
+    if (sourceLocationId === null) return MOBILE_INVENTORY_SECTION_STATE.ERROR; // missing/malformed -> integrity fault
+    if (sourceLocationId !== expectedLocationId) return MOBILE_INVENTORY_SECTION_STATE.LOADING; // wrong-scope data -> boundary
     return MOBILE_INVENTORY_SECTION_STATE.READY;
   }
   if (status === MOBILE_INVENTORY_SECTION_STATE.ERROR) return MOBILE_INVENTORY_SECTION_STATE.ERROR;
   return status; // loading / denied / unavailable
 }
 
-// Build one ARRAY section ({ state, items }). `items` is null unless the section is READY with a
-// well-formed array payload; a READY-but-malformed payload fails closed to ERROR.
-function buildArraySection(source, boundaryKey, resolved, normalizeRow) {
+// Build one ARRAY section ({ state, items }). `items` is null unless the section is READY, bound to
+// the resolved location, with a well-formed array payload; a READY-but-malformed payload fails
+// closed to ERROR.
+function buildArraySection(source, boundaryKey, expectedLocationId, resolved, normalizeRow) {
   if (!resolved) return { state: MOBILE_INVENTORY_SECTION_STATE.UNAVAILABLE, items: null };
-  const state = readSectionState(source, boundaryKey);
+  const state = readSectionState(source, boundaryKey, expectedLocationId);
   if (state !== MOBILE_INVENTORY_SECTION_STATE.READY) return { state, items: null };
   if (!Array.isArray(source.items)) return { state: MOBILE_INVENTORY_SECTION_STATE.ERROR, items: null };
   return { state, items: source.items.map(normalizeRow).filter(Boolean) };
 }
 
 // Build the reconciliation OBSERVATION section ({ state, observation }). `observation` is null
-// unless READY with a well-formed object payload; malformed READY fails closed to ERROR.
-function buildReconciliationSection(source, boundaryKey, resolved) {
+// unless READY, bound to the resolved location, with a well-formed object payload; malformed READY
+// fails closed to ERROR.
+function buildReconciliationSection(source, boundaryKey, expectedLocationId, resolved) {
   if (!resolved) return { state: MOBILE_INVENTORY_SECTION_STATE.UNAVAILABLE, observation: null };
-  const state = readSectionState(source, boundaryKey);
+  const state = readSectionState(source, boundaryKey, expectedLocationId);
   if (state !== MOBILE_INVENTORY_SECTION_STATE.READY) return { state, observation: null };
   const observation = normalizeReconciliationObservation(source.observation);
   if (observation === null) return { state: MOBILE_INVENTORY_SECTION_STATE.ERROR, observation: null };
@@ -215,6 +225,7 @@ export function composeMobileLocationInventory(input = {}) {
   const identity = resolveMobileLocationIdentity(in_.identity);
   const resolved = identity !== null;
   const boundaryKey = in_.boundaryKey;
+  const locationId = resolved ? identity.locationId : null; // the authoritative location every READY source must match
   const options = buildMobileInventoryOptions(in_.options);
   const sources = isPlainObject(in_.sources) ? in_.sources : {};
 
@@ -222,11 +233,11 @@ export function composeMobileLocationInventory(input = {}) {
     identity,
     resolved,
     sections: {
-      parts: buildArraySection(sources.parts, boundaryKey, resolved, normalizePartRow),
-      serializedAssets: buildArraySection(sources.serializedAssets, boundaryKey, resolved, (e) => normalizeSerializedRow(e, options)),
-      reservations: buildArraySection(sources.reservations, boundaryKey, resolved, normalizeReservationRow),
-      reconciliation: buildReconciliationSection(sources.reconciliation, boundaryKey, resolved),
-      activity: buildArraySection(sources.activity, boundaryKey, resolved, normalizeActivityRow),
+      parts: buildArraySection(sources.parts, boundaryKey, locationId, resolved, normalizePartRow),
+      serializedAssets: buildArraySection(sources.serializedAssets, boundaryKey, locationId, resolved, (e) => normalizeSerializedRow(e, options)),
+      reservations: buildArraySection(sources.reservations, boundaryKey, locationId, resolved, normalizeReservationRow),
+      reconciliation: buildReconciliationSection(sources.reconciliation, boundaryKey, locationId, resolved),
+      activity: buildArraySection(sources.activity, boundaryKey, locationId, resolved, normalizeActivityRow),
     },
   };
 }
