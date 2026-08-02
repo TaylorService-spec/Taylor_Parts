@@ -140,6 +140,11 @@ export function useTruckManagement({
         run((idempotencyKey) => client.reactivateTruck({ idempotencyKey, truckId, targetStatus, expectedVersion })),
       [run, client]
     ),
+    deleteTruckCreatedInError: useCallback(
+      ({ truckId, expectedVersion, deletionReason }) =>
+        run((idempotencyKey) => client.deleteTruckCreatedInError({ idempotencyKey, truckId, expectedVersion, deletionReason })),
+      [run, client]
+    ),
   };
 
   return { enabled, canManage, writeReady, commands };

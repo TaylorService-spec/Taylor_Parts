@@ -127,8 +127,9 @@ function DashboardIndex({ role }) {
 function TruckInventoryConnected({ accessVersion, role }) {
   const { source, managementRecords, reload } = useTruckRegistrySource(accessVersion);
   const canManage = role === ROLES.ADMIN || role === ROLES.DISPATCHER;
+  const isAdmin = role === ROLES.ADMIN; // admin-only capabilities (Created-in-Error delete)
   const { enabled, writeReady, commands } = useTruckManagement({ accessVersion, canManage, onReconcile: reload });
-  const management = { canManage, writeReady, enabled, commands, useDriverOptions, useWarehouseOptions };
+  const management = { canManage, isAdmin, writeReady, enabled, commands, useDriverOptions, useWarehouseOptions };
   return (
     <TruckInventory
       source={source}

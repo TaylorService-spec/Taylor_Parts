@@ -120,7 +120,8 @@ const AUDIT_ACTIONS: readonly AuditAction[] = [
   "equipmentCompatibilityCorrection",
   "equipmentCompatibilityConflict",
   // EI Truck Registry (ADR-010 / Decision #60) -- see the matching entries on the AuditAction
-  // union (types/access.ts). Seven narrow trusted-write actions.
+  // union (types/access.ts). Narrow trusted-write actions, incl. the admin-only Created-in-Error
+  // hard delete whose Audit Event is the immutable deletion tombstone.
   "createTruck",
   "assignTruckDriver",
   "unassignTruckDriver",
@@ -128,6 +129,7 @@ const AUDIT_ACTIONS: readonly AuditAction[] = [
   "changeTruckHomeWarehouse",
   "deactivateTruck",
   "reactivateTruck",
+  "deleteTruckCreatedInError",
 ];
 
 // Issue #325 / ADR-007 D-AUDIT -- the subset of AUDIT_ACTIONS this

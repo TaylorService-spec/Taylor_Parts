@@ -4,9 +4,11 @@
 // CAS'd with the truck's current version (record.version); a version conflict surfaces as
 // the sanitized reload-required outcome. displayLabel and vehicleNumber are shown READ-ONLY
 // (a governed update command for them is not approved in this gate). Deactivate / reactivate
-// require an inline confirmation. Built on the shared Modal (focus trap, Escape, restore).
+// require an inline confirmation. The ADMIN-ONLY Created-in-Error delete uses the shared
+// destructive ConfirmDialog (required reason). Built on the shared Modal (focus trap, Escape).
 import { useEffect, useState } from "react";
 import Modal from "../../../shared/ui/Modal";
+import ConfirmDialog from "../../../shared/ui/ConfirmDialog";
 import { Field } from "../../../shared/ui/form";
 import GovernedStatusSelect from "./GovernedStatusSelect";
 import BoundedSelect from "./BoundedSelect";
@@ -26,6 +28,7 @@ export default function ManageTruckDrawer({
   driverName,
   commands,
   writeReady,
+  isAdmin = false,
   useDriverOptions,
   useWarehouseOptions,
   onClose,
@@ -37,6 +40,7 @@ export default function ManageTruckDrawer({
   const [busy, setBusy] = useState(null);
   const [outcome, setOutcome] = useState(null);
   const [confirm, setConfirm] = useState(null); // { action: "deactivate" | "reactivate", targetStatus? }
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   // Re-sync the controls to the current record after a successful op reconciles a new
   // version in (never mid-flight -- keyed on version, which only changes post-success).
@@ -178,10 +182,51 @@ export default function ManageTruckDrawer({
           </div>
         </fieldset>
 
+        {/* Danger zone -- ADMIN-ONLY Created-in-Error hard delete. */}
+        {isAdmin && (
+          <fieldset className="fo-fieldset" data-testid="tm-danger-zone">
+            <legend>Danger zone · admin only</legend>
+            <p className="fo-muted">
+              Permanently delete a truck created in error. This removes the truck, its MOBILE inventory
+              location, and the location link. Only trucks with NO operational history can be deleted —
+              operational trucks cannot be deleted.
+            </p>
+            <div className="fo-btn-row">
+              <button type="button" className="fo-btn-destructive" data-testid="tm-delete-cie"
+                disabled={!writeReady || Boolean(busy)} onClick={() => setDeleteOpen(true)}>
+                Delete truck (created in error)
+              </button>
+            </div>
+          </fieldset>
+        )}
+
         <div className="fo-btn-row">
           <button type="button" className="fo-btn-secondary" onClick={onClose} disabled={Boolean(busy)}>Close</button>
         </div>
       </div>
+
+      {deleteOpen && (
+        <ConfirmDialog
+          title={`Delete truck ${record.truckId} (created in error)`}
+          consequence="This permanently deletes the truck, its MOBILE inventory location, and the 1:1 location claim. It cannot be undone. Only a truck created in error with NO operational history can be deleted — a truck with inventory, transfers, ledger history, or a driver assignment cannot be deleted."
+          confirmLabel="Delete truck"
+          cancelLabel="Cancel"
+          requireReason
+          reasonLabel="Reason for deletion"
+          reasonHint="Recorded in the immutable deletion audit (e.g. duplicate entry, wrong warehouse)."
+          reasonRequiredMessage="Enter a reason to delete."
+          onConfirm={async (reason) => {
+            const result = await commands.deleteTruckCreatedInError({ truckId: record.truckId, expectedVersion, deletionReason: reason });
+            if (result.stale) { setDeleteOpen(false); return; } // access changed mid-flight -- discard
+            if (result.kind !== TRUCK_COMMAND_OUTCOME.OK) throw result; // ConfirmDialog renders mapError(result)
+            onReconcile?.();
+            setDeleteOpen(false);
+            onClose?.(); // the truck is gone -- close the drawer back to the fleet
+          }}
+          onClose={() => setDeleteOpen(false)}
+          mapError={(err) => (err && typeof err.message === "string" && err.message) ? err.message : "The truck could not be deleted."}
+        />
+      )}
     </Modal>
   );
 }

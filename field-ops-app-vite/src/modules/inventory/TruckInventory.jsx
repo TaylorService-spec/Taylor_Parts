@@ -151,6 +151,7 @@ export default function TruckInventory({
             driverName={detail.truck.technician}
             commands={management.commands}
             writeReady={management.writeReady}
+            isAdmin={management.isAdmin === true}
             useDriverOptions={management.useDriverOptions}
             useWarehouseOptions={management.useWarehouseOptions}
             onClose={() => setManageOpen(false)}

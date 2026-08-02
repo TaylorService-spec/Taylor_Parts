@@ -11,13 +11,13 @@ const db = admin.firestore();
 
 const {
   createTruck, assignDriver, reassignDriver, unassignDriver,
-  changeStatus, changeHomeWarehouse, deactivateTruck, reactivateTruck,
+  changeStatus, changeHomeWarehouse, deactivateTruck, reactivateTruck, deleteTruckCreatedInError,
 } = await import("../lib/truckRegistry/truckRegistryCommands.js");
 const {
   InvalidInputError, UnauthorizedActorError, TruckNotFoundError, TruckAlreadyExistsError,
   LocationClaimedError, EmployeeInvalidError, WarehouseInvalidError, InvalidStatusTransitionError,
   InventoryPresentError, InventoryStateUnknownError, VersionConflictError, IdempotencyConflictError,
-  ClaimIntegrityError,
+  ClaimIntegrityError, TruckReferencedError, ReferenceStateUnknownError,
 } = await import("../lib/truckRegistry/types.js");
 // The AUTHORITATIVE governed read contract (pure ESM, no firebase) -- the parity test proves
 // records produced by createTruck() round-trip through it.
@@ -267,6 +267,162 @@ await check("reactivate with a missing/mismatched claim -> CLAIM_INTEGRITY", asy
   await deactivateTruck({ actorUid: admin1, idempotencyKey: key("d"), truckId, expectedVersion: 1 }, ABSENT);
   await db.collection("location_truck_claims").doc(locationId).delete(); // Admin SDK tamper
   await assert.rejects(reactivateTruck({ actorUid: admin1, idempotencyKey: key("re"), truckId, targetStatus: "ACTIVE", expectedVersion: 2 }, DEPS), ClaimIntegrityError);
+});
+
+// ---- deleteTruckCreatedInError (admin-only Created-in-Error hard delete) ----
+const CLEAR = { ...DEPS, hasOperationalReferences: async () => "CLEAR" };
+const REFERENCED = { ...DEPS, hasOperationalReferences: async () => "REFERENCED" };
+const REASON = "created in error - duplicate entry";
+async function docsExist(truckId, locationId) {
+  const [t, l, c] = await Promise.all([
+    db.collection("trucks").doc(truckId).get(),
+    db.collection("mobile_locations").doc(locationId).get(),
+    db.collection("location_truck_claims").doc(locationId).get(),
+  ]);
+  return { t: t.exists, l: l.exists, c: c.exists };
+}
+
+await check("delete: admin + CLEAR probe + no driver -> truck+location+claim gone, tombstone written", async () => {
+  const { truckId, locationId } = await makeTruck();
+  const k = key("del");
+  const r = await deleteTruckCreatedInError({ actorUid: admin1, idempotencyKey: k, truckId, expectedVersion: 1, deletionReason: REASON }, CLEAR);
+  assert.deepEqual(r, { outcome: "applied", version: 1 });
+  assert.deepEqual(await docsExist(truckId, locationId), { t: false, l: false, c: false });
+  // Immutable deletion tombstone: exactly one auditEvents doc for this actor/target with the action + reason.
+  const audits = await db.collection("auditEvents").where("actorUid", "==", admin1).where("targetId", "==", truckId).get();
+  const tomb = audits.docs.map((d) => d.data()).find((a) => a.action === "deleteTruckCreatedInError");
+  assert.ok(tomb, "tombstone audit exists");
+  assert.equal(tomb.outcome, "applied");
+  assert.match(tomb.summary, /deleted-in-error truck/);
+  assert.match(tomb.summary, /reason:\[created in error - duplicate entry\]/);
+});
+
+await check("delete retry (same key) -> replayed, idempotent (no error though truck is gone)", async () => {
+  const { truckId } = await makeTruck();
+  const k = key("del");
+  await deleteTruckCreatedInError({ actorUid: admin1, idempotencyKey: k, truckId, expectedVersion: 1, deletionReason: REASON }, CLEAR);
+  const retry = await deleteTruckCreatedInError({ actorUid: admin1, idempotencyKey: k, truckId, expectedVersion: 1, deletionReason: REASON }, CLEAR);
+  assert.equal(retry.outcome, "replayed");
+});
+
+await check("delete same key, DIFFERENT reason -> IDEMPOTENCY_CONFLICT", async () => {
+  const { truckId } = await makeTruck();
+  const k = key("del");
+  await deleteTruckCreatedInError({ actorUid: admin1, idempotencyKey: k, truckId, expectedVersion: 1, deletionReason: REASON }, CLEAR);
+  await assert.rejects(deleteTruckCreatedInError({ actorUid: admin1, idempotencyKey: k, truckId, expectedVersion: 1, deletionReason: "different reason" }, CLEAR), IdempotencyConflictError);
+});
+
+await check("delete DENIED for dispatcher (admin-only) -> truck untouched", async () => {
+  const { truckId, locationId } = await makeTruck();
+  await assert.rejects(deleteTruckCreatedInError({ actorUid: disp1, idempotencyKey: key("del"), truckId, expectedVersion: 1, deletionReason: REASON }, CLEAR), UnauthorizedActorError);
+  assert.deepEqual(await docsExist(truckId, locationId), { t: true, l: true, c: true });
+});
+
+await check("delete DENIED for technician", async () => {
+  const { truckId } = await makeTruck();
+  await assert.rejects(deleteTruckCreatedInError({ actorUid: tech1, idempotencyKey: key("del"), truckId, expectedVersion: 1, deletionReason: REASON }, CLEAR), UnauthorizedActorError);
+});
+
+await check("delete malformed: empty reason / reason with '=' / bad truckId / bad version -> INVALID_INPUT", async () => {
+  const { truckId } = await makeTruck();
+  await assert.rejects(deleteTruckCreatedInError({ actorUid: admin1, idempotencyKey: key("del"), truckId, expectedVersion: 1, deletionReason: "   " }, CLEAR), InvalidInputError);
+  await assert.rejects(deleteTruckCreatedInError({ actorUid: admin1, idempotencyKey: key("del"), truckId, expectedVersion: 1, deletionReason: "fp=deadbeefdeadbeef" }, CLEAR), InvalidInputError);
+  await assert.rejects(deleteTruckCreatedInError({ actorUid: admin1, idempotencyKey: key("del"), truckId: "  ", expectedVersion: 1, deletionReason: REASON }, CLEAR), InvalidInputError);
+  await assert.rejects(deleteTruckCreatedInError({ actorUid: admin1, idempotencyKey: key("del"), truckId, expectedVersion: 0, deletionReason: REASON }, CLEAR), InvalidInputError);
+});
+
+await check("delete VERSION_CONFLICT (stale expectedVersion) -> truck untouched", async () => {
+  const { truckId, locationId } = await makeTruck();
+  await assert.rejects(deleteTruckCreatedInError({ actorUid: admin1, idempotencyKey: key("del"), truckId, expectedVersion: 99, deletionReason: REASON }, CLEAR), VersionConflictError);
+  assert.deepEqual(await docsExist(truckId, locationId), { t: true, l: true, c: true });
+});
+
+await check("delete BLOCKED: truck has a driver assignment (conclusive) -> TRUCK_REFERENCED", async () => {
+  const { truckId, locationId } = await makeTruck();
+  const emp = await seedEmployee(true);
+  const a = await assignDriver({ actorUid: admin1, idempotencyKey: key("a"), truckId, employeeId: emp, expectedVersion: 1 }, CLEAR);
+  await assert.rejects(deleteTruckCreatedInError({ actorUid: admin1, idempotencyKey: key("del"), truckId, expectedVersion: a.version, deletionReason: REASON }, CLEAR), TruckReferencedError);
+  assert.deepEqual(await docsExist(truckId, locationId), { t: true, l: true, c: true });
+});
+
+await check("delete BLOCKED: reference probe REFERENCED -> TRUCK_REFERENCED, truck untouched", async () => {
+  const { truckId, locationId } = await makeTruck();
+  await assert.rejects(deleteTruckCreatedInError({ actorUid: admin1, idempotencyKey: key("del"), truckId, expectedVersion: 1, deletionReason: REASON }, REFERENCED), TruckReferencedError);
+  assert.deepEqual(await docsExist(truckId, locationId), { t: true, l: true, c: true });
+});
+
+await check("delete FAILS CLOSED: default probe UNKNOWN -> REFERENCE_STATE_UNKNOWN, truck untouched", async () => {
+  const { truckId, locationId } = await makeTruck();
+  await assert.rejects(deleteTruckCreatedInError({ actorUid: admin1, idempotencyKey: key("del"), truckId, expectedVersion: 1, deletionReason: REASON }, DEPS), ReferenceStateUnknownError);
+  assert.deepEqual(await docsExist(truckId, locationId), { t: true, l: true, c: true });
+});
+
+await check("delete NOT_FOUND for a nonexistent truck", async () => {
+  await assert.rejects(deleteTruckCreatedInError({ actorUid: admin1, idempotencyKey: key("del"), truckId: uid("GHOST"), expectedVersion: 1, deletionReason: REASON }, CLEAR), TruckNotFoundError);
+});
+
+await check("delete BLOCKED: mismatched claim -> CLAIM_INTEGRITY, no partial delete", async () => {
+  const { truckId, locationId } = await makeTruck();
+  await db.collection("location_truck_claims").doc(locationId).set({ locationId, truckId: "SOMEONE-ELSE", version: 1, createdAt: admin.firestore.Timestamp.now(), createdBy: admin1 });
+  await assert.rejects(deleteTruckCreatedInError({ actorUid: admin1, idempotencyKey: key("del"), truckId, expectedVersion: 1, deletionReason: REASON }, CLEAR), ClaimIntegrityError);
+  assert.equal((await db.collection("trucks").doc(truckId).get()).exists, true);
+});
+
+await check("delete AUTHZ commit-time: admin role REVOKED mid-transaction -> denied, nothing deleted, no applied tombstone", async () => {
+  const { truckId, locationId } = await makeTruck();
+  const raceAdmin = await seedActor("admin"); // fresh admin so revoking it is isolated
+  // A SEPARATE Firestore connection performs the concurrent revocation (a genuinely independent
+  // writer -- not the transaction's own stream), so it conflicts the txn's read set of
+  // users/{raceAdmin} instead of corrupting the in-flight transaction.
+  const writerApp = admin.apps.find((a) => a && a.name === "concurrent-writer") || admin.initializeApp({ projectId: "taylor-parts" }, "concurrent-writer");
+  const db2 = writerApp.firestore();
+  let revokedOnce = false;
+  const deps = {
+    ...CLEAR,
+    // After the in-txn admin read passes (attempt 1), revoke the role via the OTHER connection. This
+    // conflicts the transaction's read set -> Firestore retries -> attempt 2 re-reads the now-
+    // technician role and throws UnauthorizedActorError before any write commits.
+    __afterAuthReadHook: async () => {
+      if (!revokedOnce) { revokedOnce = true; await db2.collection("users").doc(raceAdmin).set({ role: "technician" }); }
+    },
+  };
+  // The concurrent revocation conflicts the transaction's read set, so the deletion NEVER commits.
+  // (Real Firestore retries -> the retried txn re-reads the now-technician role -> UnauthorizedActor
+  // Error; the emulator aborts the conflicted transaction with a non-retryable error. Both outcomes
+  // guarantee the safety property here: no stale-authorized deletion commits. The SANITIZED
+  // UnauthorizedActorError itself is proven by the entry-time non-admin tests above.)
+  await assert.rejects(deleteTruckCreatedInError({ actorUid: raceAdmin, idempotencyKey: key("del"), truckId, expectedVersion: 1, deletionReason: REASON }, deps));
+  // truck + MOBILE location + claim all remain; no APPLIED deletion tombstone was written.
+  assert.deepEqual(await docsExist(truckId, locationId), { t: true, l: true, c: true });
+  const audits = await db.collection("auditEvents").where("actorUid", "==", raceAdmin).where("targetId", "==", truckId).get();
+  const applied = audits.docs.map((d) => d.data()).filter((a) => a.action === "deleteTruckCreatedInError" && a.outcome === "applied");
+  assert.equal(applied.length, 0, "no applied deletion tombstone");
+});
+
+await check("delete AUTHZ before replay: a SAME actor who loses admin cannot execute an idempotent replay", async () => {
+  // A fresh admin deletes a truck (its per-actor tombstone would make a same-key retry a REPLAY).
+  // After the role is revoked, the SAME actor retries the SAME key -> the in-txn admin read (which
+  // runs BEFORE checkIdempotency) denies it, so the former admin never receives/executes the replay.
+  const { truckId } = await makeTruck();
+  const exAdmin = await seedActor("admin");
+  const k = key("del");
+  await deleteTruckCreatedInError({ actorUid: exAdmin, idempotencyKey: k, truckId, expectedVersion: 1, deletionReason: REASON }, CLEAR);
+  await db.collection("users").doc(exAdmin).set({ role: "technician" }); // revoke admin
+  await assert.rejects(
+    deleteTruckCreatedInError({ actorUid: exAdmin, idempotencyKey: k, truckId, expectedVersion: 1, deletionReason: REASON }, CLEAR),
+    UnauthorizedActorError,
+  );
+});
+
+await check("delete ATOMIC ROLLBACK: failure after stage -> nothing deleted, no tombstone", async () => {
+  const { truckId, locationId } = await makeTruck();
+  await assert.rejects(
+    deleteTruckCreatedInError({ actorUid: admin1, idempotencyKey: key("del"), truckId, expectedVersion: 1, deletionReason: REASON }, { ...CLEAR, __simulateFailureAfterStage: new Error("boom") }),
+    /boom/,
+  );
+  assert.deepEqual(await docsExist(truckId, locationId), { t: true, l: true, c: true });
+  const audits = await db.collection("auditEvents").where("actorUid", "==", admin1).where("targetId", "==", truckId).get();
+  assert.equal(audits.docs.some((d) => d.data().action === "deleteTruckCreatedInError"), false);
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

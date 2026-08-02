@@ -104,4 +104,5 @@ export {
   changeTruckHomeWarehouseCallable,
   deactivateTruckCallable,
   reactivateTruckCallable,
+  deleteTruckCreatedInErrorCallable,
 } from "./truckRegistry/truckRegistryCallables";

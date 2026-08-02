@@ -162,5 +162,37 @@ await check("mapError: an unexpected/internal failure -> only the generic intern
   assert.doesNotMatch(https.message, /boom|secret|token|abc123/);
 });
 
+// ---- deleteTruckCreatedInErrorCallable (admin-only; fails closed under the default probe) ----
+await check("delete callable: unauthenticated -> unauthenticated", async () => {
+  await assertHttps(c.deleteTruckCreatedInErrorCallable.run(req({ idempotencyKey: key("del"), truckId: uid("TRK"), expectedVersion: 1, deletionReason: "x" })), "unauthenticated");
+});
+await check("delete callable: dispatcher (admin-only) -> permission-denied", async () => {
+  const { truckId } = await createOk(admin1);
+  await assertHttps(c.deleteTruckCreatedInErrorCallable.run(req({ idempotencyKey: key("del"), truckId, expectedVersion: 1, deletionReason: "created in error" }, disp1)), "permission-denied");
+});
+await check("delete callable: technician -> permission-denied", async () => {
+  const { truckId } = await createOk(admin1);
+  await assertHttps(c.deleteTruckCreatedInErrorCallable.run(req({ idempotencyKey: key("del"), truckId, expectedVersion: 1, deletionReason: "created in error" }, tech1)), "permission-denied");
+});
+await check("delete callable: admin + default UNKNOWN probe -> failed-precondition (fail closed)", async () => {
+  const { truckId } = await createOk(admin1);
+  await assertHttps(c.deleteTruckCreatedInErrorCallable.run(req({ idempotencyKey: key("del"), truckId, expectedVersion: 1, deletionReason: "created in error" }, admin1)), "failed-precondition");
+});
+await check("delete callable: missing/blank deletionReason -> invalid-argument", async () => {
+  const { truckId } = await createOk(admin1);
+  await assertHttps(c.deleteTruckCreatedInErrorCallable.run(req({ idempotencyKey: key("del"), truckId, expectedVersion: 1, deletionReason: "  " }, admin1)), "invalid-argument");
+});
+await check("mapError: TRUCK_REFERENCED / REFERENCE_STATE_UNKNOWN -> sanitized failed-precondition", async () => {
+  const { TruckReferencedError, ReferenceStateUnknownError } = await import("../lib/truckRegistry/types.js");
+  const a = c.mapError(new TruckReferencedError("truck TRK-SECRET has ledger row LR-9"));
+  assert.equal(a.code, "failed-precondition");
+  assert.equal(a.message, "This truck has operational history and cannot be deleted.");
+  assert.doesNotMatch(a.message, /SECRET|LR-9/);
+  const b = c.mapError(new ReferenceStateUnknownError("probe timeout at 10.0.0.1"));
+  assert.equal(b.code, "failed-precondition");
+  assert.equal(b.message, "The truck's operational history cannot be confirmed, so deletion is blocked.");
+  assert.doesNotMatch(b.message, /10\.0\.0\.1/);
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);

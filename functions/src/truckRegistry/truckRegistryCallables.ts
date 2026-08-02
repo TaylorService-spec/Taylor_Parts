@@ -23,6 +23,7 @@ import {
   changeHomeWarehouse,
   deactivateTruck,
   reactivateTruck,
+  deleteTruckCreatedInError,
 } from "./truckRegistryCommands";
 import { TruckRegistryError, type TruckRegistryFailureCode } from "./types";
 
@@ -45,6 +46,8 @@ const FAILURE_MAP: Record<TruckRegistryFailureCode, { code: FunctionsErrorCode; 
   VERSION_CONFLICT: { code: "aborted", message: "The record changed since you loaded it. Reload and retry." },
   IDEMPOTENCY_CONFLICT: { code: "aborted", message: "That idempotency key was already used for a different request." },
   CLAIM_INTEGRITY: { code: "failed-precondition", message: "The truck-location link is missing or inconsistent." },
+  TRUCK_REFERENCED: { code: "failed-precondition", message: "This truck has operational history and cannot be deleted." },
+  REFERENCE_STATE_UNKNOWN: { code: "failed-precondition", message: "The truck's operational history cannot be confirmed, so deletion is blocked." },
   MALFORMED_STORED_RECORD: { code: "internal", message: "The request could not be completed." },
 };
 
@@ -162,6 +165,20 @@ export const reactivateTruckCallable = onCall(REGION, async (request) => {
   const d = asObject(request.data);
   try {
     return await reactivateTruck({ actorUid, idempotencyKey: d.idempotencyKey as string, truckId: d.truckId as string, targetStatus: d.targetStatus as never, expectedVersion: d.expectedVersion as number });
+  } catch (err) {
+    throw mapError(err);
+  }
+});
+
+// ADMIN-ONLY Created-in-Error hard delete. Runs with the default UNKNOWN operational-reference
+// probe -> fails closed (REFERENCE_STATE_UNKNOWN -> failed-precondition) until a later gate injects
+// a real cross-collection history probe. The service enforces admin-only + all safety checks; this
+// adapter only derives actorUid and maps sanitized errors.
+export const deleteTruckCreatedInErrorCallable = onCall(REGION, async (request) => {
+  const actorUid = requireAuth(request);
+  const d = asObject(request.data);
+  try {
+    return await deleteTruckCreatedInError({ actorUid, idempotencyKey: d.idempotencyKey as string, truckId: d.truckId as string, expectedVersion: d.expectedVersion as number, deletionReason: d.deletionReason as string });
   } catch (err) {
     throw mapError(err);
   }

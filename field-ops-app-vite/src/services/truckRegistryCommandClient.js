@@ -26,6 +26,7 @@ export const TRUCK_CALLABLES = Object.freeze({
   changeHomeWarehouse: "changeTruckHomeWarehouseCallable",
   deactivate: "deactivateTruckCallable",
   reactivate: "reactivateTruckCallable",
+  deleteCreatedInError: "deleteTruckCreatedInErrorCallable",
 });
 
 const call = (name, payload) => httpsCallable(functions, name)(payload).then((res) => res?.data);
@@ -56,6 +57,11 @@ export const truckRegistryCommandClient = Object.freeze({
 
   reactivateTruck: ({ idempotencyKey, truckId, targetStatus, expectedVersion }) =>
     call(TRUCK_CALLABLES.reactivate, { idempotencyKey, truckId, targetStatus, expectedVersion }),
+
+  // ADMIN-ONLY Created-in-Error hard delete. Sends the deletionReason; the trusted service
+  // re-enforces admin-only + every safety check and fails closed on an unknown footprint.
+  deleteTruckCreatedInError: ({ idempotencyKey, truckId, expectedVersion, deletionReason }) =>
+    call(TRUCK_CALLABLES.deleteCreatedInError, { idempotencyKey, truckId, expectedVersion, deletionReason }),
 });
 
 // Bounded pick-list read for the home-warehouse selector: one-shot getDocs of the
