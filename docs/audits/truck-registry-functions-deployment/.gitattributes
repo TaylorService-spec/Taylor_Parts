@@ -1,0 +1,2 @@
+# Keep verification evidence byte-exact (no CRLF/LF normalization) so checksums stay stable.
+* -text

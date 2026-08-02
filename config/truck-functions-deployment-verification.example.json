@@ -1,0 +1,8 @@
+{
+  "_comment": "EI Truck Registry — Gate D FUNCTIONS verifier config TEMPLATE. Copy to a local, UNCOMMITTED *.local.json and fill governedCommit with the exact deployed commit. NO secrets live here: credentials are read from the named environment variables in the authenticated operator environment. projectId/confirmProject must both be the authorized project; the CLI additionally requires a clean checkout whose HEAD equals governedCommit.",
+  "projectId": "taylor-parts",
+  "confirmProject": "taylor-parts",
+  "governedCommit": "REPLACE_WITH_EXACT_40_HEX_DEPLOYED_COMMIT",
+  "webApiKeyEnv": "TRUCKFN_WEB_API_KEY",
+  "callableBaseUrl": "https://us-central1-taylor-parts.cloudfunctions.net"
+}
