@@ -251,7 +251,7 @@ async function runVerification(deps) {
   const actorUids = [];
   const record = async (entry) => { manifest.push(entry); await manifestStore.append(entry); };
 
-  let result = null;
+  let reportDraft = null;
   let primaryError = null;
   try {
     // (2) Export discovery @ us-central1 — read-only; no fixtures created yet.
@@ -320,8 +320,10 @@ async function runVerification(deps) {
     }
     log(`SEQUENCE-OK applied through v${version}`);
 
-    // (6) ONE sanitized evidence object.
-    const report = {
+    // (6) Build the evidence DRAFT — but do NOT write it here. The single sanitized object is
+    // finalized and written ONLY after cleanup + independent residual verification both pass (see
+    // the tail), so a verified:true report can never exist alongside a lifecycle failure.
+    reportDraft = {
       verified: true,
       verify_date: verifyDate,
       note: "Gate D governed post-deployment verification of the eight trusted truck callables. Sanitized; no run-specific values.",
@@ -335,9 +337,6 @@ async function runVerification(deps) {
       passed: discovered.filter((d) => d.pass).length + denialRows.filter((r) => r.pass).length + seqRows.filter((r) => r.pass).length,
       crosswalk: buildCrosswalk(),
     };
-    assertRunSecretFree(report, secrets); // (7) never write a run secret
-    await evidence.write({ "verification-report.json": report }, secrets);
-    result = { report, matrixTotal: MATRIX_TOTAL };
   } catch (e) {
     primaryError = e; // preserve the ORIGINAL assertion/precondition error
   }
@@ -371,11 +370,33 @@ async function runVerification(deps) {
     throw attachLifecycle(new VerificationError(`LIFECYCLE FAILURE — cleanup.ok=${cleanupOutcome.ok} residual docs=${residual.residualDocs} users=${residual.residualUsers} errors=${JSON.stringify(cleanupOutcome.errors)}`), info);
   }
 
+  // Cleanup + residual both succeeded. If the matrix failed, the fixtures are gone but the run is
+  // NOT verified — complete the manifest and rethrow WITHOUT writing any successful evidence.
+  if (primaryError) {
+    await manifestStore.complete();
+    throw primaryError;
+  }
+
+  // Full success ONLY here: finalize the single sanitized evidence object WITH the zero-residual
+  // lifecycle fields, then write it. An evidence-write (or sanitizer) failure keeps the run FAILED
+  // and leaves no verified:true report — cleanup/residual already succeeded, so no resource is
+  // concealed; the manifest is completed to reflect that true lifecycle state.
+  const report = {
+    ...reportDraft,
+    cleanup_complete: cleanupOutcome.ok,
+    residual_documents: residual.residualDocs,
+    residual_auth_users: residual.residualUsers,
+  };
+  let evidenceError = null;
+  try {
+    assertRunSecretFree(report, secrets); // never write a run secret
+    await evidence.write({ "verification-report.json": report }, secrets);
+  } catch (e) {
+    evidenceError = e;
+  }
   await manifestStore.complete();
-  if (primaryError) throw primaryError; // assertion error preserved even though cleanup succeeded
-  result.cleanup = cleanupOutcome;
-  result.residual = residual;
-  return result;
+  if (evidenceError) throw evidenceError; // failed run; no verified report persisted
+  return { report, matrixTotal: MATRIX_TOTAL, cleanup: cleanupOutcome, residual };
 }
 
 module.exports = {

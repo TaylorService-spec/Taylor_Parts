@@ -128,7 +128,14 @@ test("happy path: discovery + denial + governed sequence all pass; cleanup + zer
   // Every fixture/user/created doc was removed.
   assert.equal(store.docs.size, 0);
   assert.equal(store.users.size, 0);
-  assert.ok(written["verification-report.json"]);
+  // Evidence is written ONLY after cleanup + residual pass, and carries the zero-residual lifecycle
+  // fields (P2-1).
+  const report = written["verification-report.json"];
+  assert.ok(report);
+  assert.equal(report.verified, true);
+  assert.equal(report.cleanup_complete, true);
+  assert.equal(report.residual_documents, 0);
+  assert.equal(report.residual_auth_users, 0);
 });
 
 test("evidence is sanitized: no token/uid/email/prefix leaks into the report", async () => {
@@ -204,15 +211,45 @@ test("contradictory result (ok:false with data) fails closed", () => {
 
 // ---- lifecycle: partial execution, cleanup-on-failure, cleanup failure, residual ------------
 
-test("partial execution: a mid-sequence failure still cleans up, retains recovery, preserves the primary error", async () => {
+test("partial execution: a mid-sequence failure cleans up, preserves the primary error, and writes NO verified evidence", async () => {
   // Force the reassign step (v3) to fail; earlier create already wrote docs.
-  const { error, result, store, calls } = await runWith({ invoke: (req) => (req.name === "reassignTruckDriverCallable" && req.token === "tok_admin" ? { ok: false, code: "internal" } : null) });
+  const { error, result, store, calls, written } = await runWith({ invoke: (req) => (req.name === "reassignTruckDriverCallable" && req.token === "tok_admin" ? { ok: false, code: "internal" } : null) });
   assert.equal(result, null);
   assert.match(error.message, /Sequence mismatch reassign/);
-  // Cleanup ran and residual was zero, so the run is complete (fixtures removed) but the error is preserved.
   assert.equal(store.docs.size, 0);
   assert.equal(store.users.size, 0);
-  assert.equal(calls.completed, true); // cleanup+residual succeeded -> manifest completed even though primary error is rethrown
+  assert.equal(calls.completed, true); // fixtures gone -> manifest completed even though the primary error is rethrown
+  assert.equal(written["verification-report.json"], undefined); // matrix failure -> no verified:true report (P2-1)
+});
+
+test("P2-1: a cleanup failure writes NO successful evidence and retains recovery", async () => {
+  const { error, calls, written } = await runWith({ deleteDocFails: (path) => path.startsWith("trucks/") });
+  assert.ok(error);
+  assert.equal(calls.retained, true);
+  assert.equal(calls.completed, false);
+  assert.equal(written["verification-report.json"], undefined); // no verified report despite a passing matrix
+});
+
+test("P2-1: nonzero residual writes NO successful evidence", async () => {
+  const store = makeStore();
+  const h = makeDeps(store);
+  const realDelete = h.deps.admin.deleteDoc;
+  h.deps.admin.deleteDoc = async (path) => { if (path.endsWith("_wh1")) return; await realDelete(path); }; // wh1 survives
+  let error = null;
+  try { await core.runVerification(h.deps); } catch (e) { error = e; }
+  assert.ok(error);
+  assert.ok(error.lifecycleFailure.residualDocs >= 1);
+  assert.equal(h.written["verification-report.json"], undefined);
+  assert.equal(h.calls.completed, false);
+});
+
+test("P2-1: an evidence-write failure keeps the run FAILED without concealing the (successful) lifecycle", async () => {
+  const { error, store, calls, written } = await runWith({ evidenceThrows: true });
+  assert.ok(error); // the run fails at evidence finalization
+  assert.equal(written["verification-report.json"], undefined); // no verified report persisted
+  assert.equal(store.docs.size, 0); // cleanup still ran (lifecycle not concealed)
+  assert.equal(store.users.size, 0);
+  assert.equal(calls.completed, true); // cleanup+residual succeeded -> manifest reflects that true state
 });
 
 test("cleanup failure: a delete error surfaces a lifecycle failure and retains recovery", async () => {
@@ -306,4 +343,49 @@ test("CLI buildProductionDeps constructs adapters with NO production I/O; callab
   assert.deepEqual(denied, { ok: false, code: "permission-denied" });
   // The token is sent as an Authorization header but never returned in the mapped result.
   assert.ok(!JSON.stringify(ok).includes("SECRET_TOKEN"));
+});
+
+// ---- P2-2: provisionPersona records the uid-keyed role DOC BEFORE writing it -----------------
+
+function provisionEnv(opts = {}) {
+  const order = [];
+  const fakeAdmin = {
+    auth: () => ({ createUser: async () => { order.push("createUser"); return { uid: "UID1" }; } }),
+    firestore: () => ({ collection: () => ({ doc: () => ({ set: async () => { order.push("set"); if (opts.failSet) throw new Error("set-failed"); } }) }) }),
+  };
+  const env = {
+    getAdmin: () => fakeAdmin,
+    doFetch: async () => ({ async json() { return { idToken: "tok" }; } }),
+    readEnv: () => "APIKEY",
+    crypto: { randomBytes: () => ({ toString: () => "pw" }) },
+  };
+  const deps = cli.buildProductionDeps({ projectId: "taylor-parts", webApiKeyEnv: "WEB" }, { prefix: "trf_gated_ab", evidenceDir: "/e", env });
+  return { deps, order };
+}
+
+test("P2-2: the uid-keyed role DOC is recorded BEFORE the Firestore write", async () => {
+  const { deps, order } = provisionEnv();
+  const recorded = [];
+  const record = async (e) => { recorded.push(e); };
+  const res = await deps.auth.provisionPersona("admin", "trf_gated_ab", record);
+  assert.deepEqual(res, { uid: "UID1", token: "tok" });
+  // record order: USER then DOC users/UID1; and the DOC record precedes the set() write.
+  assert.deepEqual(recorded.map((e) => `${e.kind}:${e.ref}`), ["USER:UID1", "DOC:users/UID1"]);
+  assert.ok(order.indexOf("set") > order.indexOf("createUser"));
+});
+
+test("P2-2: a role-doc write failure cannot orphan the uid-keyed doc (already recorded for cleanup)", async () => {
+  const { deps } = provisionEnv({ failSet: true });
+  const recorded = [];
+  const record = async (e) => { recorded.push(e); };
+  await assert.rejects(deps.auth.provisionPersona("admin", "trf_gated_ab", record), /set-failed/);
+  // Even though the write failed, the cleanup entry for users/UID1 was already durably recorded.
+  assert.ok(recorded.some((e) => e.kind === "DOC" && e.ref === "users/UID1"));
+});
+
+test("P2-2: a manifest-append failure at the DOC boundary prevents the role-doc write (no orphan)", async () => {
+  const { deps, order } = provisionEnv();
+  const record = async (e) => { if (e.kind === "DOC") throw new Error("append-failed"); };
+  await assert.rejects(deps.auth.provisionPersona("admin", "trf_gated_ab", record), /append-failed/);
+  assert.ok(!order.includes("set")); // the role doc was never written -> nothing to orphan
 });

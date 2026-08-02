@@ -150,8 +150,12 @@ function buildProductionDeps(config, { prefix, evidenceDir, env = {} } = {}) {
       const password = cryptoLib.randomBytes(24).toString("base64url");
       const user = await admin.auth().createUser({ email, password, displayName: `${runPrefix}_${persona}` });
       await record({ kind: "USER", ref: user.uid }); // durable immediately after Auth creation
+      // Record the uid-keyed role DOC cleanup entry BEFORE writing it: a users/{uid} doc is keyed by
+      // the generated Auth uid (not the run prefix), so a prefix sweep cannot find it. Recording it
+      // first means a failed role-doc write OR a failed manifest append at this boundary can never
+      // leave an untracked orphan — cleanup will target it (deleting a nonexistent doc is a safe no-op).
+      await record({ kind: "DOC", ref: `users/${user.uid}` });
       await admin.firestore().collection("users").doc(user.uid).set({ role: PERSONA_ROLE[persona] });
-      await record({ kind: "DOC", ref: `users/${user.uid}` }); // durable immediately after doc creation
       const apiKey = readEnv(config.webApiKeyEnv);
       if (!apiKey) throw new VerificationError(`missing ${config.webApiKeyEnv}`);
       const signIn = await (await doFetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${apiKey}`, {
