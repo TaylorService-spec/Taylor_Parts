@@ -305,7 +305,14 @@ async function runVerification({ config, targetProject, targetCommit, reads, pub
     for (const row of auditRes.rows) {
       const d = row && row.data;
       if (!d || typeof d !== "object") { malformed = true; continue; }
-      if (d.targetType !== undefined && d.targetType !== "truck") continue; // not a truck-scoped event
+      // targetType ESTABLISHES truck-authority membership (the query is targetId-only, so a targetId
+      // can collide across governed target types). It must never be inferred: absent / null /
+      // non-string / empty targetType is MALFORMED -> fail closed; a valid string other than "truck"
+      // is a legitimate cross-target collision and is ignored; ONLY targetType === "truck" is counted
+      // toward the required create/unassign/status sequence.
+      const targetType = d.targetType;
+      if (typeof targetType !== "string" || targetType.trim() === "") { malformed = true; continue; }
+      if (targetType !== "truck") continue;
       const action = d.action;
       const outcome = d.outcome;
       if (typeof action !== "string" || !KNOWN_TRUCK_AUDIT_ACTIONS.includes(action) ||

@@ -223,6 +223,40 @@ test("denied audit events are tolerated (counted, not failed)", async () => {
   assert.equal(report.audit_summary.deniedCount, 1);
 });
 
+test("required applied event with MISSING targetType fails closed (P2)", async () => {
+  const s = healthyStore();
+  delete s.auditEvents.find((e) => e.data.action === "createTruck").data.targetType;
+  const published = {};
+  await assert.rejects(core.runVerification({
+    config: goodConfig(), targetProject: "taylor-parts", targetCommit: COMMIT,
+    reads: makeReads(s), publish: async (f) => { published.files = f; return "/x"; }, verifyDate: "2026-08-02", log: () => {},
+  }), /verification FAILED/);
+  assert.equal(published.files, undefined, "no evidence published for malformed targetType");
+});
+
+test("required applied event with NULL / non-string targetType fails closed (P2)", async () => {
+  for (const bad of [null, 42, {}]) {
+    const s = healthyStore();
+    s.auditEvents.find((e) => e.data.action === "unassignTruckDriver").data.targetType = bad;
+    const published = {};
+    await assert.rejects(core.runVerification({
+      config: goodConfig(), targetProject: "taylor-parts", targetCommit: COMMIT,
+      reads: makeReads(s), publish: async (f) => { published.files = f; return "/x"; }, verifyDate: "2026-08-02", log: () => {},
+    }), /verification FAILED/);
+    assert.equal(published.files, undefined, "no evidence published for malformed targetType");
+  }
+});
+
+test("valid event for another targetType sharing targetId is ignored; truck sequence still passes (P2)", async () => {
+  const s = healthyStore();
+  // A legitimate non-truck governed event that happens to share targetId "1".
+  s.auditEvents.push({ id: "wo_1", data: { targetType: "workOrder", targetId: "1", action: "createWorkOrder", outcome: "applied", at: ts(2500) } });
+  const { report } = await run(s);
+  assert.equal(report.verified, true);
+  assert.equal(report.audit_summary.appliedCreateTruck, 1);
+  assert.equal(report.audit_summary.otherAppliedCount, 0, "the non-truck event must not count as a truck action");
+});
+
 test("audit query failure fails closed", async () => {
   const s = healthyStore();
   await assert.rejects(run(s, { opts: { throwOn: ({ collection }) => collection === "auditEvents" } }), /verification FAILED/);
