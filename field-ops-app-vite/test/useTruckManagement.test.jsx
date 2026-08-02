@@ -35,11 +35,11 @@ function spyClient() {
 const KEY = () => "key-1";
 
 describe("useTruckManagement gating", () => {
-  it("readiness=false (default): every command is blocked and invokes NO callable", async () => {
+  it("readiness override false: every command is blocked and invokes NO callable", async () => {
     const client = spyClient();
     const onReconcile = vi.fn();
     const { result } = renderHook(() =>
-      useTruckManagement({ accessVersion: "v1", canManage: true, client, keyFactory: KEY, onReconcile })
+      useTruckManagement({ accessVersion: "v1", canManage: true, writeReadyOverride: false, client, keyFactory: KEY, onReconcile })
     );
     expect(result.current.writeReady).toBe(false);
     expect(result.current.enabled).toBe(false);

@@ -97,12 +97,12 @@ test("validateCreateInput: required fields + explicit governed status", () => {
   assert.equal(good.value.assignedDriverEmployeeId, null); // blank -> null (unassigned)
 });
 
-test("write-readiness seam defaults to FALSE (fail closed); override wins only when boolean", () => {
-  assert.equal(TRUCK_MANAGEMENT_WRITE_READY, false);
-  assert.equal(resolveWriteReadiness(undefined), false);
-  assert.equal(resolveWriteReadiness("true"), false); // non-boolean ignored
-  assert.equal(resolveWriteReadiness(true), true);
-  assert.equal(resolveWriteReadiness(false), false);
+test("write-readiness seam is ACTIVATED (true); explicit boolean override still wins, false still fails closed", () => {
+  assert.equal(TRUCK_MANAGEMENT_WRITE_READY, true);
+  assert.equal(resolveWriteReadiness(undefined), true); // no override -> the activated constant
+  assert.equal(resolveWriteReadiness("true"), true); // non-boolean ignored -> falls back to the constant
+  assert.equal(resolveWriteReadiness(true), true); // explicit true override
+  assert.equal(resolveWriteReadiness(false), false); // explicit false override STILL fails closed (zero callable attempts)
 });
 
 test("idempotency keys are unique and prefixed", () => {
