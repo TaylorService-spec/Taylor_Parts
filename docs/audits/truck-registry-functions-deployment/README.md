@@ -41,23 +41,32 @@ See the operator runbook: [`docs/operations/truck-registry-functions-deploy-hand
 
 ## Gate D closure assessment (recommendation — closure is a separate Owner decision)
 
-On the imported, independently-verified evidence, the technical bar for Gate D closure is met:
+The technical bar for Gate D closure is met on the correctly-separated combination of imported evidence
+and operator-relayed execution facts (see `verify-2026-08-01/import-validation.md` §A/§C):
 
-- Governed commit / project / region match the merged Gate D-prep (`1d9d685…` / `taylor-parts` /
-  `us-central1`).
-- Verifier matrix **32/32 PASS** — discovery 8/8, denial 16/16, sequence 8/8.
-- Deactivate is **FAIL_CLOSED_AS_EXPECTED** (the intended posture until a real inventory predicate).
+Imported evidence (fields of `verification-report.json`; project/region `taylor-parts` / `us-central1`):
+- Verifier matrix **32/32 PASS** — live `discovery` 8/8, `denial` 16/16, `sequence` 8/8.
+- Deactivate **FAIL_CLOSED_AS_EXPECTED** (the intended posture until a real inventory predicate).
 - Lifecycle clean: `cleanup_complete = true`, residual documents **0**, residual Auth users **0**.
-- Evidence integrity: archive SHA `fade7013…` (= posted + sidecar), report SHA `66e41b7c…`
-  (`sha256sum -c` OK), sensitive-scan clean, byte-exact import.
-- Readiness remains **false**; no callable-implementation / frontend / Rules / Hosting change.
+- Integrity: archive SHA `fade7013…` (= posted + sidecar), report SHA `66e41b7c…` (`sha256sum -c` OK),
+  sensitive-scan clean, byte-exact import.
 
-Recommendation: **RECOMMEND CLOSE Gate D** (deploy + single verification complete and clean). Two
-optional caveats the Owner may weigh before recording closure: (1) the operator terminal facts (deploy
-exit 0, pre/post-deploy inventory hashes, exact allowlist command) were not relayed to this import and
-could be attached for a fully self-contained deployment record; (2) `deactivateTruckCallable` remains
-intentionally fail-closed pending the real inventory predicate (a separate, later gate). Neither blocks
-the deploy/verification outcome. **This document does not itself close Gate D.**
+Operator-relayed execution facts (not JSON fields; not re-queried here):
+- Deployed from the clean exact-head checkout at `1d9d685…` using the exact eight-name Functions-only
+  allowlist (no broad deploy); deploy **exit 0**.
+- Pre-deploy 8 targets **absent** (12 existing Functions; inventory SHA `d9b23f1e…`) → post-deploy 8
+  **present / 0 missing** (deploy-log SHA `b03ea75f…`, post-deploy inventory SHA `952b39bd…`).
+- Readiness remained **false**; **recovery not invoked**.
+
+Repository-verifiable: `TRUCK_MANAGEMENT_WRITE_READY = false` at the governed head; no
+callable-implementation / frontend / Rules / Hosting change.
+
+Recommendation: **RECOMMEND CLOSE Gate D** — the targeted deployment and its single governed verification
+are complete and clean on the combined record above. Optional caveat the Owner may weigh:
+`deactivateTruckCallable` remains intentionally fail-closed pending the real inventory predicate (a
+separate, later gate); this does not affect the deploy/verification outcome. **This document does not
+itself close Gate D.** Note the `governedCommit` JSON field proves the verifier's checkout pin; the
+deployed-source claim rests on the operator-relayed checkout→build→deploy sequence, not the field alone.
 
 Next (each separately authorized): Gate D closure decision → Gate E (flip `TRUCK_MANAGEMENT_WRITE_READY`
 → `true` + Hosting release + visual acceptance) → later, the real deactivate inventory predicate.

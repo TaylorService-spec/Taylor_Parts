@@ -41,31 +41,48 @@ pre/post-deploy function-inventory hashes — those are not report fields.
   hardlinks, or device entries.
 - `SHA256SUMS.txt` reverified against `verification-report.json` → `verification-report.json: OK`
   (recomputed report SHA equals the listed and separately posted `66e41b7c…`).
-- Sensitive-content scan (JWT/API-key/bearer/email/absolute-path/secret shapes) → clean.
+- Sensitive-content scan (token / key / credential / address / local-path shapes) → clean.
 - Both files imported byte-exact; post-copy SHA and `sha256sum -c` re-verified in the worktree.
 - This matches Codex's independent intake result (archive SHA, member set, report SHA, `verified=true`,
   governed commit/project/region, 32/32, 8/8/8, deactivate fail-closed, cleanup_complete, 0/0 residual,
   sensitive-scan clean).
 
-## C. Operator-relayed deployment facts — provenance note
+## C. Operator-relayed terminal facts — not fields of `verification-report.json` and not independently re-queried during this docs-only import
 
-The runbook's deployment record (deploy exit code, the exact eight-name deploy command used, and the
-pre/post-deploy function-inventory hashes) are **operator terminal facts**, not fields of the imported
-evidence. This evidence-import authorization relayed only the Codex intake result (all of which is
-derived from the report in §A) — it did **not** include a separate operator terminal transcript with
-the deploy exit code or inventory hashes. To avoid the provenance weakness corrected in Gate C, those
-values are therefore **NOT recorded here as facts and are NOT fabricated**; if required for closure they
-must be supplied by the operator in a subsequent, clearly-attributed relay.
+These deployment facts were relayed by the operator run (via the Gate D authorization + review channel).
+They are **not** fields of the imported `verification-report.json`, and this repository/docs-only import
+did **not** independently re-query production for them. They are recorded here, clearly attributed, as
+operator-relayed execution facts:
 
-What the imported evidence independently attests about the deployment outcome:
-- **All eight target callables are deployed and reachable at us-central1** — the verifier's
-  `discovery` = 8/8 (a positive verification against the live project), which the report records.
-- The eight governed flows behave correctly in production (denial 16/16, applied sequence, deactivate
-  fail-closed) with a clean lifecycle (cleanup complete, zero residual docs/users).
+| Operator-relayed fact | Value |
+| --- | --- |
+| Pre-deploy inventory (existing Functions) | 12 |
+| Target callables before deploy | 0 present / 8 absent |
+| Pre-deploy inventory SHA-256 | `d9b23f1e8b900a974dc8e5296166ff462333963474b8e959e39ebe451a2ec438` |
+| Deploy command exit code | `0` |
+| Post-deploy target callables @ us-central1 | 8 present / 0 missing |
+| Deploy-log SHA-256 | `b03ea75f6f6a14cac40b56a1dc2dc5c5ddf672d80a6d7f9f94d9ef642bff07d0` |
+| Post-deploy inventory SHA-256 | `952b39bd884fb2d781b16d724deffb625433b8f9bb97b526e103e7977e13c5fd` |
+| Deployment source | ran from the clean exact-head checkout at `1d9d6854ba531dfd13d467f9d02a03656b37c18a` |
+| Deploy command | the exact eight-name Functions-only allowlist (no broad deploy) |
+| Readiness during/after deploy | remained `false` |
+| Recovery | not invoked |
 
-Separately repository-verifiable (not from the report): at the governed head `1d9d685…`,
-`field-ops-app-vite/src/config/truckManagementReadiness.js` has `TRUCK_MANAGEMENT_WRITE_READY = false`
-— **readiness remains false**; this import changes nothing.
+Date: **2026-08-01** (no exact deployment timestamp was relayed; none is invented here).
+
+**Source-attribution.** The imported JSON's `governedCommit` proves the **verifier's** governed checkout
+pin (the commit the verifier ran from). That this same commit was the **deployed source** rests on the
+operator-relayed clean-exact-head checkout → build → targeted deploy sequence above, **not** on the JSON
+field alone. The imported JSON does **not** by itself prove the deploy exit code, the exact deploy
+command, pre-deploy absence, the inventory/deploy-log hashes, or rollback status — those are the
+operator-relayed facts in this section. "Recovery not invoked" is likewise an operator-relayed execution
+fact, not an evidence field.
+
+What the imported evidence **independently** attests about the live outcome (positive verification
+against the live project, from the report): `discovery` 8/8 (all eight callables reachable @
+us-central1), `denial` 16/16, applied sequence, deactivate fail-closed, cleanup complete, zero residual
+docs/users. Repository-verifiable (not from the report): `TRUCK_MANAGEMENT_WRITE_READY = false` at the
+governed head — readiness remains false; this import changes nothing.
 
 ## Files imported (byte-exact) under `verify-2026-08-01/`
 
