@@ -81,6 +81,9 @@ export interface TruckRegistryDeps {
   now?: () => Date;
   /** TEST-ONLY atomicity seam: thrown inside the transaction AFTER all writes are staged. */
   __simulateFailureAfterStage?: Error;
+  /** TEST-ONLY seam: awaited inside the delete transaction AFTER the in-txn admin read, to perturb
+   *  the actor's role mid-transaction and prove commit-time authorization is retry-authoritative. */
+  __afterAuthReadHook?: () => Promise<void>;
 }
 function resolveDeps(deps: TruckRegistryDeps | undefined) {
   const db = deps?.db ?? getFirestore();
@@ -91,6 +94,7 @@ function resolveDeps(deps: TruckRegistryDeps | undefined) {
     referenceProbe: deps?.hasOperationalReferences ?? UNKNOWN_REFERENCES,
     now: deps?.now ?? (() => new Date()),
     failAfterStage: deps?.__simulateFailureAfterStage,
+    afterAuthReadHook: deps?.__afterAuthReadHook,
   };
 }
 
@@ -130,17 +134,6 @@ async function requireAdminOrDispatcherOrAudit(db: Firestore, actorUid: string, 
   const role = snap.exists ? snap.data()?.role : undefined;
   if (role === "admin" || role === "dispatcher") return;
   await recordStandaloneAuditEvent({ actorUid, action, targetType, targetId, outcome: "denied", summary: `denied: actor is not admin/dispatcher for ${action}` });
-  throw new UnauthorizedActorError(`actor is not authorized for ${action}`);
-}
-
-// ADMIN-ONLY authorization (stricter than admin/dispatcher) for the Created-in-Error hard
-// delete -- a dispatcher may operate trucks but may NOT destroy the record. Denials emit a
-// standalone "denied" audit event.
-async function requireAdminOrAudit(db: Firestore, actorUid: string, action: AuditAction, targetType: string, targetId: string): Promise<void> {
-  const snap = await db.collection("users").doc(actorUid).get();
-  const role = snap.exists ? snap.data()?.role : undefined;
-  if (role === "admin") return;
-  await recordStandaloneAuditEvent({ actorUid, action, targetType, targetId, outcome: "denied", summary: `denied: actor is not admin for ${action}` });
   throw new UnauthorizedActorError(`actor is not authorized for ${action}`);
 }
 
@@ -393,7 +386,7 @@ export interface DeleteTruckCreatedInErrorInput {
   deletionReason: string;
 }
 export async function deleteTruckCreatedInError(input: DeleteTruckCreatedInErrorInput, deps?: TruckRegistryDeps): Promise<MutationOutcome> {
-  const { db, repo, referenceProbe, failAfterStage } = resolveDeps(deps);
+  const { db, repo, referenceProbe, failAfterStage, afterAuthReadHook } = resolveDeps(deps);
   assertActorUid(input.actorUid);
   assertIdempotencyKey(input.idempotencyKey);
   const tid = parseTruckId(input.truckId);
@@ -401,52 +394,76 @@ export async function deleteTruckCreatedInError(input: DeleteTruckCreatedInError
   assertExpectedVersion(input.expectedVersion);
   assertDeletionReason(input.deletionReason);
   const reason = input.deletionReason.trim();
-  await requireAdminOrAudit(db, input.actorUid, "deleteTruckCreatedInError", "truck", tid.value);
 
   // The reason is part of the request -> in the fingerprint, so a same-key/different-reason retry
   // is rejected as an idempotency conflict.
   const fp = fingerprint(["deleteTruckCreatedInError", tid.value, input.expectedVersion, reason]);
   const auditId = auditDocId("deleteTruckCreatedInError", input.actorUid, tid.value, input.idempotencyKey);
 
-  return db.runTransaction(async (txn) => {
-    const replay = await checkIdempotency(db, txn, auditId, fp);
-    if (replay) return replay; // tombstone exists -> already deleted -> idempotent
+  try {
+    return await db.runTransaction(async (txn) => {
+      // (0) COMMIT-TIME AUTHORITATIVE admin authorization. Read the actor's CURRENT role THROUGH the
+      // transaction, FIRST -- before idempotency/replay, reference checks, and any write. This puts
+      // users/{actorUid} in the transaction's read set, so a concurrent role change (revocation)
+      // conflicts the commit and Firestore RETRIES; the retried callback re-reads the current role.
+      // A former admin therefore can neither delete nor receive/execute an idempotent replay. This
+      // in-txn read -- NOT any pre-transaction helper -- is the authoritative gate.
+      const actorSnap = await txn.get(db.collection("users").doc(input.actorUid));
+      if (!actorSnap.exists || actorSnap.data()?.role !== "admin") {
+        throw new UnauthorizedActorError("actor is not admin for deleteTruckCreatedInError");
+      }
+      if (afterAuthReadHook) await afterAuthReadHook(); // TEST-ONLY: perturb the role mid-transaction
 
-    // ----- ALL reads first (Firestore transaction rule) -----
-    const truck = await repo.getTruck(txn, tid.value);
-    if (truck === null) throw new TruckNotFoundError(`truck ${tid.value} not found`);
-    if (truck.version !== input.expectedVersion) {
-      throw new VersionConflictError(`expectedVersion ${input.expectedVersion}, stored ${truck.version}`);
-    }
-    const locationId = truck.truck.locationId;
-    const location = await repo.getLocation(txn, locationId);
-    if (location === null) throw new LocationNotFoundError(`location ${locationId} not found`);
-    if (location.location.locationId !== locationId) throw new ClaimIntegrityError("truck/location identity is not reciprocal");
-    const claim = await repo.getClaim(txn, locationId);
-    if (claim === null || claim.truckId !== tid.value || claim.locationId !== locationId) {
-      throw new ClaimIntegrityError("location_truck_claim is missing or does not match the truck+location");
-    }
-    // Conclusive in-truck assignment check -- a truck with a driver is not an unused error record.
-    if (truck.truck.assignedDriverEmployeeId !== null) {
-      throw new TruckReferencedError("truck has an active driver assignment");
-    }
-    // Cross-collection operational history -- fail closed on UNKNOWN.
-    const refs = await referenceProbe({ truckId: tid.value, locationId }, txn);
-    if (refs === "REFERENCED") throw new TruckReferencedError("operational history references the truck or its MOBILE location");
-    if (refs !== "CLEAR") throw new ReferenceStateUnknownError("operational reference state could not be conclusively determined");
+      const replay = await checkIdempotency(db, txn, auditId, fp);
+      if (replay) return replay; // tombstone exists -> already deleted -> idempotent
 
-    // ----- atomic delete + immutable tombstone (never partial) -----
-    repo.stageDeleteTruck(txn, tid.value);
-    repo.stageDeleteLocation(txn, locationId);
-    repo.stageDeleteClaim(txn, locationId);
-    stageAuditEventWithId(txn, auditId, {
-      actorUid: input.actorUid, action: "deleteTruckCreatedInError", targetType: "truck", targetId: tid.value, outcome: "applied",
-      // reason has no "=" or "]" (assertDeletionReason), so the v=/fp= tags stay unambiguous.
-      // Concise (truckId + reason only) to stay under the 500-char audit-summary bound even with
-      // max-length ids; the atomic MOBILE-location + claim removal is implied by the action.
-      summary: `deleted-in-error truck ${tid.value} reason:[${reason}] v=${truck.version} fp=${fp}`,
+      // ----- remaining reads (Firestore transaction rule: all reads before writes) -----
+      const truck = await repo.getTruck(txn, tid.value);
+      if (truck === null) throw new TruckNotFoundError(`truck ${tid.value} not found`);
+      if (truck.version !== input.expectedVersion) {
+        throw new VersionConflictError(`expectedVersion ${input.expectedVersion}, stored ${truck.version}`);
+      }
+      const locationId = truck.truck.locationId;
+      const location = await repo.getLocation(txn, locationId);
+      if (location === null) throw new LocationNotFoundError(`location ${locationId} not found`);
+      if (location.location.locationId !== locationId) throw new ClaimIntegrityError("truck/location identity is not reciprocal");
+      const claim = await repo.getClaim(txn, locationId);
+      if (claim === null || claim.truckId !== tid.value || claim.locationId !== locationId) {
+        throw new ClaimIntegrityError("location_truck_claim is missing or does not match the truck+location");
+      }
+      // Conclusive in-truck assignment check -- a truck with a driver is not an unused error record.
+      if (truck.truck.assignedDriverEmployeeId !== null) {
+        throw new TruckReferencedError("truck has an active driver assignment");
+      }
+      // Cross-collection operational history -- fail closed on UNKNOWN.
+      const refs = await referenceProbe({ truckId: tid.value, locationId }, txn);
+      if (refs === "REFERENCED") throw new TruckReferencedError("operational history references the truck or its MOBILE location");
+      if (refs !== "CLEAR") throw new ReferenceStateUnknownError("operational reference state could not be conclusively determined");
+
+      // ----- atomic delete + immutable tombstone (never partial) -----
+      repo.stageDeleteTruck(txn, tid.value);
+      repo.stageDeleteLocation(txn, locationId);
+      repo.stageDeleteClaim(txn, locationId);
+      stageAuditEventWithId(txn, auditId, {
+        actorUid: input.actorUid, action: "deleteTruckCreatedInError", targetType: "truck", targetId: tid.value, outcome: "applied",
+        // reason has no "=" or "]" (assertDeletionReason), so the v=/fp= tags stay unambiguous.
+        // Concise (truckId + reason only) to stay under the 500-char audit-summary bound even with
+        // max-length ids; the atomic MOBILE-location + claim removal is implied by the action.
+        summary: `deleted-in-error truck ${tid.value} reason:[${reason}] v=${truck.version} fp=${fp}`,
+      });
+      if (failAfterStage) throw failAfterStage;
+      return { outcome: "applied", version: truck.version };
     });
-    if (failAfterStage) throw failAfterStage;
-    return { outcome: "applied", version: truck.version };
-  });
+  } catch (err) {
+    // Preserve denied auditing WITHOUT it being the authoritative gate: on a commit-time
+    // authorization failure (e.g. admin revoked mid-transaction), record a best-effort standalone
+    // "denied" audit outside the aborted transaction, then rethrow. Never masks the original error.
+    if (err instanceof UnauthorizedActorError) {
+      await recordStandaloneAuditEvent({
+        actorUid: input.actorUid, action: "deleteTruckCreatedInError", targetType: "truck", targetId: tid.value,
+        outcome: "denied", summary: "denied: actor is not admin for deleteTruckCreatedInError",
+      }).catch(() => { /* best-effort audit; never masks the authorization failure */ });
+    }
+    throw err;
+  }
 }

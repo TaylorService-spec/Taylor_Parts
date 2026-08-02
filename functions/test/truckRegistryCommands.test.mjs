@@ -368,6 +368,52 @@ await check("delete BLOCKED: mismatched claim -> CLAIM_INTEGRITY, no partial del
   assert.equal((await db.collection("trucks").doc(truckId).get()).exists, true);
 });
 
+await check("delete AUTHZ commit-time: admin role REVOKED mid-transaction -> denied, nothing deleted, no applied tombstone", async () => {
+  const { truckId, locationId } = await makeTruck();
+  const raceAdmin = await seedActor("admin"); // fresh admin so revoking it is isolated
+  // A SEPARATE Firestore connection performs the concurrent revocation (a genuinely independent
+  // writer -- not the transaction's own stream), so it conflicts the txn's read set of
+  // users/{raceAdmin} instead of corrupting the in-flight transaction.
+  const writerApp = admin.apps.find((a) => a && a.name === "concurrent-writer") || admin.initializeApp({ projectId: "taylor-parts" }, "concurrent-writer");
+  const db2 = writerApp.firestore();
+  let revokedOnce = false;
+  const deps = {
+    ...CLEAR,
+    // After the in-txn admin read passes (attempt 1), revoke the role via the OTHER connection. This
+    // conflicts the transaction's read set -> Firestore retries -> attempt 2 re-reads the now-
+    // technician role and throws UnauthorizedActorError before any write commits.
+    __afterAuthReadHook: async () => {
+      if (!revokedOnce) { revokedOnce = true; await db2.collection("users").doc(raceAdmin).set({ role: "technician" }); }
+    },
+  };
+  // The concurrent revocation conflicts the transaction's read set, so the deletion NEVER commits.
+  // (Real Firestore retries -> the retried txn re-reads the now-technician role -> UnauthorizedActor
+  // Error; the emulator aborts the conflicted transaction with a non-retryable error. Both outcomes
+  // guarantee the safety property here: no stale-authorized deletion commits. The SANITIZED
+  // UnauthorizedActorError itself is proven by the entry-time non-admin tests above.)
+  await assert.rejects(deleteTruckCreatedInError({ actorUid: raceAdmin, idempotencyKey: key("del"), truckId, expectedVersion: 1, deletionReason: REASON }, deps));
+  // truck + MOBILE location + claim all remain; no APPLIED deletion tombstone was written.
+  assert.deepEqual(await docsExist(truckId, locationId), { t: true, l: true, c: true });
+  const audits = await db.collection("auditEvents").where("actorUid", "==", raceAdmin).where("targetId", "==", truckId).get();
+  const applied = audits.docs.map((d) => d.data()).filter((a) => a.action === "deleteTruckCreatedInError" && a.outcome === "applied");
+  assert.equal(applied.length, 0, "no applied deletion tombstone");
+});
+
+await check("delete AUTHZ before replay: a SAME actor who loses admin cannot execute an idempotent replay", async () => {
+  // A fresh admin deletes a truck (its per-actor tombstone would make a same-key retry a REPLAY).
+  // After the role is revoked, the SAME actor retries the SAME key -> the in-txn admin read (which
+  // runs BEFORE checkIdempotency) denies it, so the former admin never receives/executes the replay.
+  const { truckId } = await makeTruck();
+  const exAdmin = await seedActor("admin");
+  const k = key("del");
+  await deleteTruckCreatedInError({ actorUid: exAdmin, idempotencyKey: k, truckId, expectedVersion: 1, deletionReason: REASON }, CLEAR);
+  await db.collection("users").doc(exAdmin).set({ role: "technician" }); // revoke admin
+  await assert.rejects(
+    deleteTruckCreatedInError({ actorUid: exAdmin, idempotencyKey: k, truckId, expectedVersion: 1, deletionReason: REASON }, CLEAR),
+    UnauthorizedActorError,
+  );
+});
+
 await check("delete ATOMIC ROLLBACK: failure after stage -> nothing deleted, no tombstone", async () => {
   const { truckId, locationId } = await makeTruck();
   await assert.rejects(
