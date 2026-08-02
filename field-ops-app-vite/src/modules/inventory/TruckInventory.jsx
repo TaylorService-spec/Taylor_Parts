@@ -19,6 +19,9 @@ import { inertTruckInventorySource, readTruckInventorySource } from "../../acces
 import { TRUCK_FLEET_STATE, buildTruckFleetView, buildTruckDetailView, buildTruckInventoryOptions } from "../../domain/truckInventoryView";
 import EmptyState from "../../shared/ui/EmptyState";
 import FailureState from "../../shared/ui/FailureState";
+import CreateTruckModal from "./truckManagement/CreateTruckModal";
+import ManageTruckDrawer from "./truckManagement/ManageTruckDrawer";
+import { indexManagementRecords } from "../../domain/truckManagement.js";
 
 const EMPTY_FILTERS = { q: "", technician: "", warehouse: "", status: "", discrepancy: "" };
 const TABS = [
@@ -38,22 +41,40 @@ const dash = (v) => (v == null ? "—" : v);
 // Governed status/condition display: an ungoverned/absent value reads "Unavailable".
 const gov = (v) => (v == null ? "Unavailable" : v);
 
-export default function TruckInventory({ source = inertTruckInventorySource, accessVersion }) {
+// Fail-closed default: with no management prop the workspace is the pre-existing
+// read-only surface (canManage false -> no Add/Manage controls, no callable seam).
+const FAIL_CLOSED_MANAGEMENT = Object.freeze({ canManage: false });
+
+export default function TruckInventory({
+  source = inertTruckInventorySource,
+  accessVersion,
+  management = FAIL_CLOSED_MANAGEMENT,
+  managementRecords = [],
+  onReconcile,
+}) {
   const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [selectedId, setSelectedId] = useState(null);
   const [tab, setTab] = useState("inventory");
   const [scan, setScan] = useState(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [manageOpen, setManageOpen] = useState(false);
 
   // Fail-closed access invalidation: on any access-boundary change, synchronously drop the
-  // selected truck, filters, and any open scan panel (the READY *data* is separately
-  // invalidated by the accessVersion boundary key passed to readTruckInventorySource).
+  // selected truck, filters, any open scan panel, and any open management surface (the
+  // READY *data* is separately invalidated by the accessVersion boundary key passed to
+  // readTruckInventorySource).
   const [loadedVersion, setLoadedVersion] = useState(accessVersion);
   if (loadedVersion !== accessVersion) {
     setLoadedVersion(accessVersion);
     setFilters(EMPTY_FILTERS);
     setSelectedId(null);
     setScan(null);
+    setShowCreate(false);
+    setManageOpen(false);
   }
+
+  const canManage = management.canManage === true;
+  const recordsById = indexManagementRecords(managementRecords);
 
   const read = readTruckInventorySource(source, accessVersion);
   const options = buildTruckInventoryOptions(read);
@@ -117,7 +138,27 @@ export default function TruckInventory({ source = inertTruckInventorySource, acc
         </div>
       );
     }
-    return <TruckDetail key={detail.truck.id} truck={detail.truck} options={options} tab={tab} setTab={setTab} onBack={() => setSelectedId(null)} onScan={() => setScan("success")} scanModal={scanModal} />;
+    // Management (admin/dispatcher) can open the Manage drawer for this truck, provided a
+    // governed management record (with a version for optimistic concurrency) exists.
+    const record = recordsById.get(detail.truck.id);
+    const onManage = canManage && record ? () => setManageOpen(true) : null;
+    return (
+      <>
+        <TruckDetail key={detail.truck.id} truck={detail.truck} options={options} tab={tab} setTab={setTab} onBack={() => { setManageOpen(false); setSelectedId(null); }} onScan={() => setScan("success")} scanModal={scanModal} onManage={onManage} />
+        {manageOpen && canManage && record && (
+          <ManageTruckDrawer
+            record={record}
+            driverName={detail.truck.technician}
+            commands={management.commands}
+            writeReady={management.writeReady}
+            useDriverOptions={management.useDriverOptions}
+            useWarehouseOptions={management.useWarehouseOptions}
+            onClose={() => setManageOpen(false)}
+            onReconcile={onReconcile}
+          />
+        )}
+      </>
+    );
   }
 
   // Fleet view (READY or EMPTY). Technician/warehouse filters derive from rows (free
@@ -139,7 +180,20 @@ export default function TruckInventory({ source = inertTruckInventorySource, acc
     <div className="fo-panel">
       <div className="fo-btn-row" style={{ justifyContent: "space-between" }}>
         <h3>Truck Inventory</h3>
-        <button type="button" className="fo-btn-secondary" onClick={() => setScan("success")}>▣ Scan</button>
+        <div className="fo-btn-row">
+          {canManage && (
+            <button
+              type="button"
+              onClick={() => setShowCreate(true)}
+              disabled={!management.writeReady}
+              title={management.writeReady ? "Add a truck" : "Truck management is not yet enabled"}
+              data-testid="add-truck"
+            >
+              + Add truck{management.writeReady ? "" : " (not yet enabled)"}
+            </button>
+          )}
+          <button type="button" className="fo-btn-secondary" onClick={() => setScan("success")}>▣ Scan</button>
+        </div>
       </div>
       <p className="fo-muted">Serialized equipment and parts carried on each service truck. Read-only. Values shown are provided by the governed view — nothing is calculated here.</p>
 
@@ -178,6 +232,16 @@ export default function TruckInventory({ source = inertTruckInventorySource, acc
         </ul>
       )}
       {scanModal}
+      {showCreate && canManage && (
+        <CreateTruckModal
+          commands={management.commands}
+          writeReady={management.writeReady}
+          useDriverOptions={management.useDriverOptions}
+          useWarehouseOptions={management.useWarehouseOptions}
+          onClose={() => setShowCreate(false)}
+          onCreated={() => setShowCreate(false)}
+        />
+      )}
     </div>
   );
 }
@@ -188,13 +252,18 @@ function StatusBadge({ value }) {
   return <span className={`fo-badge ${map[value] || ""}`}>{value.replace(/_/g, " ")}</span>;
 }
 
-function TruckDetail({ truck, options, tab, setTab, onBack, onScan, scanModal }) {
+function TruckDetail({ truck, options, tab, setTab, onBack, onScan, scanModal, onManage }) {
   return (
     <div className="fo-panel">
       <button type="button" className="fo-back-link" onClick={onBack}>← All trucks</button>
       <div className="fo-btn-row" style={{ justifyContent: "space-between" }}>
         <h3>{truck.id} <StatusBadge value={truck.status} /></h3>
-        <button type="button" className="fo-btn-secondary" onClick={onScan}>▣ Scan</button>
+        <div className="fo-btn-row">
+          {onManage && (
+            <button type="button" onClick={onManage} data-testid="manage-truck">Manage truck</button>
+          )}
+          <button type="button" className="fo-btn-secondary" onClick={onScan}>▣ Scan</button>
+        </div>
       </div>
       <p className="fo-muted">{truck.technician || "Unassigned"}{truck.location ? ` · ${truck.location}` : ""}{truck.homeWarehouse ? ` · Home: ${truck.homeWarehouse}` : ""}</p>
 

@@ -25,6 +25,9 @@ import PartsList from "./modules/inventory/PartsList";
 import PartMasterList from "./modules/inventory/PartMasterList";
 import TruckInventory from "./modules/inventory/TruckInventory";
 import { useTruckRegistrySource } from "./hooks/useTruckRegistrySource";
+import { useTruckManagement } from "./hooks/useTruckManagement";
+import { useDriverOptions } from "./hooks/useDriverOptions";
+import { useWarehouseOptions } from "./hooks/useWarehouseOptions";
 import PartDetail from "./modules/inventory/PartDetail";
 import WarehouseManagerHome from "./modules/inventoryRole/WarehouseManagerHome";
 import PartsManagerHome from "./modules/inventoryRole/PartsManagerHome";
@@ -34,7 +37,7 @@ import Login from "./auth/Login";
 import AppHeader from "./shared/ui/AppHeader";
 import { InventoryProvider } from "./demo/InventoryContext";
 import { IS_DEMO } from "./config/env";
-import { ROLE_NAV_ACCESS } from "./domain/constants";
+import { ROLE_NAV_ACCESS, ROLES } from "./domain/constants";
 import { createPermissionPreviewer } from "./access/navPermissionPreview";
 import { resolveEffectivePermission } from "./access/resolveEffectivePermission";
 import { COMPATIBILITY_ROLES } from "./access/compatibilityRoles";
@@ -113,9 +116,28 @@ function DashboardIndex({ role }) {
 // TruckInventory workspace. renderSubnavItem is a plain function (not a component), so the
 // producer hook lives here in a real component; it threads the one accessVersion into both the
 // producer and the workspace so their boundary keys match.
-function TruckInventoryConnected({ accessVersion }) {
-  const { source } = useTruckRegistrySource(accessVersion);
-  return <TruckInventory source={source} accessVersion={accessVersion} />;
+// EI Truck Management UI -- the same connector now also supplies the management surface.
+// canManage is the client-side admin/dispatcher SECURITY-ROLE gate (defense-in-depth; the
+// route is already admin/dispatcher-only and the trusted service re-checks the role). The
+// write-readiness seam (config/truckManagementReadiness.js) is fail-closed by default, so
+// useTruckManagement invokes NO callable today -- the controls render for review with the
+// "not yet enabled" notice. onReconcile re-reads the registry after a (future) successful
+// command. The option hooks (drivers/warehouses) hold the only firebase reads and are gated
+// to fetch nothing until management is authorized AND write-ready.
+function TruckInventoryConnected({ accessVersion, role }) {
+  const { source, managementRecords, reload } = useTruckRegistrySource(accessVersion);
+  const canManage = role === ROLES.ADMIN || role === ROLES.DISPATCHER;
+  const { enabled, writeReady, commands } = useTruckManagement({ accessVersion, canManage, onReconcile: reload });
+  const management = { canManage, writeReady, enabled, commands, useDriverOptions, useWarehouseOptions };
+  return (
+    <TruckInventory
+      source={source}
+      accessVersion={accessVersion}
+      management={management}
+      managementRecords={managementRecords}
+      onReconcile={reload}
+    />
+  );
 }
 
 function renderSubnavItem(domain, item, role, operationalContext) {
@@ -173,7 +195,7 @@ function renderSubnavItem(domain, item, role, operationalContext) {
   // PartsList/Operations/EquipmentWorkspace). Fail-closed: no governed records -> honest
   // empty/not-connected; a denied/failed read -> the workspace's denied/error surface.
   if (domain.key === "inventory" && item.key === "truckInventory") {
-    return <TruckInventoryConnected accessVersion={operationalContext?.accessVersion} />;
+    return <TruckInventoryConnected accessVersion={operationalContext?.accessVersion} role={role} />;
   }
   // Issue #100 PR 1b -- PARTS_MANAGER's dedicated, role-scoped surface.
   // Same operationalRoleAccess-gated pattern as PR 2b's WAREHOUSE_MANAGER
