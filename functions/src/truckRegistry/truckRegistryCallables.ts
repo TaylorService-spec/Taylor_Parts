@@ -14,6 +14,8 @@
 // enforced inside the service -- no new capability, no Issue #100 change.
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import type { FunctionsErrorCode } from "firebase-functions/v2/https";
+import { getFirestore } from "firebase-admin/firestore";
+import { buildOperationalReferenceProbe } from "./operationalReferenceProbe";
 import {
   createTruck,
   assignDriver,
@@ -170,15 +172,21 @@ export const reactivateTruckCallable = onCall(REGION, async (request) => {
   }
 });
 
-// ADMIN-ONLY Created-in-Error hard delete. Runs with the default UNKNOWN operational-reference
-// probe -> fails closed (REFERENCE_STATE_UNKNOWN -> failed-precondition) until a later gate injects
-// a real cross-collection history probe. The service enforces admin-only + all safety checks; this
-// adapter only derives actorUid and maps sanitized errors.
+// ADMIN-ONLY Created-in-Error hard delete. Injects the REAL cross-collection operational-reference
+// probe (operationalReferenceProbe.ts). On the current schema every governed authority is
+// unverifiable, so the probe returns UNKNOWN and the delete FAILS CLOSED (REFERENCE_STATE_UNKNOWN ->
+// failed-precondition) -- it will only succeed once a governed authority ships a MOBILE-location/
+// truck-indexed reference and its check is wired in. The service enforces admin-only + all safety
+// checks; this adapter derives actorUid, injects the probe, and maps sanitized errors (no collection
+// names / document data / query details leak).
 export const deleteTruckCreatedInErrorCallable = onCall(REGION, async (request) => {
   const actorUid = requireAuth(request);
   const d = asObject(request.data);
   try {
-    return await deleteTruckCreatedInError({ actorUid, idempotencyKey: d.idempotencyKey as string, truckId: d.truckId as string, expectedVersion: d.expectedVersion as number, deletionReason: d.deletionReason as string });
+    return await deleteTruckCreatedInError(
+      { actorUid, idempotencyKey: d.idempotencyKey as string, truckId: d.truckId as string, expectedVersion: d.expectedVersion as number, deletionReason: d.deletionReason as string },
+      { hasOperationalReferences: buildOperationalReferenceProbe({ db: getFirestore() }) },
+    );
   } catch (err) {
     throw mapError(err);
   }

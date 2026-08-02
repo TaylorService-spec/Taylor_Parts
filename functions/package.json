@@ -48,6 +48,7 @@
     "test:partMasterCommands": "npm run build && node test/partMasterCommands.test.mjs",
     "test:truckRegistryCommands": "npm run build && node test/truckRegistryCommands.test.mjs",
     "test:truckRegistryCallables": "npm run build && node test/truckRegistryCallables.test.mjs",
+    "test:operationalReferenceProbe": "npm run build && node --test test/operationalReferenceProbe.test.mjs",
     "test:partMasterDomain": "npm run build && node test/partMasterDomain.test.mjs",
     "test:inventoryEffectOperatorTools": "npm run build && node --test test/inventoryEffectOperatorTools.test.js",
     "test:firestoreDeploymentVerification": "node --test test/firestoreDeploymentVerification.test.js",

@@ -19,6 +19,7 @@ on:
       - "functions/src/access/auditEventWriter.ts"
       - "functions/test/truckRegistryCommands.test.mjs"
       - "functions/test/truckRegistryCallables.test.mjs"
+      - "functions/test/operationalReferenceProbe.test.mjs"
       - "functions/package.json"
       - "functions/package-lock.json"
       - "firebase.json"
@@ -32,6 +33,7 @@ on:
       - "functions/src/access/auditEventWriter.ts"
       - "functions/test/truckRegistryCommands.test.mjs"
       - "functions/test/truckRegistryCallables.test.mjs"
+      - "functions/test/operationalReferenceProbe.test.mjs"
       - "functions/package.json"
       - "functions/package-lock.json"
       - "firebase.json"
@@ -58,6 +60,10 @@ jobs:
 
       - name: Install functions dependencies (reproducible)
         run: npm ci
+        working-directory: functions
+
+      - name: Operational-reference probe unit tests (offline, no emulator)
+        run: npm run test:operationalReferenceProbe
         working-directory: functions
 
       - name: Start Firestore + Auth emulators (background)
