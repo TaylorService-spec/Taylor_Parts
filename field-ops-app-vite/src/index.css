@@ -977,6 +977,63 @@ button:hover {
   min-width: 0; /* lets the control shrink inside a flex row instead of forcing overflow */
 }
 
+/* Shared catalog/workspace filters. Truck Inventory and both Equipment registers
+   use this primitive. Labels stay above their controls, fields have a consistent
+   hit target, and the grid collapses without creating the run-together label/control
+   string that an unstyled flex of inline <label> elements produces. */
+.fo-filters {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.7fr) repeat(4, minmax(110px, 1fr));
+  align-items: end;
+  gap: 12px;
+  margin: 16px 0 20px;
+  padding: 16px;
+  border: 1px solid #E1E6E5;
+  border-radius: 10px;
+  background: #F7F9F8;
+}
+.fo-filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  color: #445559;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+.fo-filters input,
+.fo-filters select {
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid #C8D1CF;
+  border-radius: 7px;
+  background: #fff;
+  color: #23383D;
+  font: inherit;
+  font-size: 14px;
+}
+.fo-filters input:focus-visible,
+.fo-filters select:focus-visible {
+  border-color: #2E4A50;
+  outline: 2px solid rgba(46, 74, 80, 0.22);
+  outline-offset: 1px;
+}
+
+@media (max-width: 760px) {
+  .fo-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 480px) {
+  .fo-filters {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 12px;
+  }
+}
+
 .fo-filter-reset {
   background: none;
   border: 1px solid #D6DCDA;
