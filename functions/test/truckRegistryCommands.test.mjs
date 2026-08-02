@@ -23,6 +23,11 @@ const {
 // records produced by createTruck() round-trip through it.
 const { validateMobileLocation, validateTruckRecord } =
   await import("../../field-ops-app-vite/src/domain/truckRegistry.js");
+// The REAL cross-collection operational-reference probe (the one the callable injects).
+const { buildOperationalReferenceProbe, REFERENCE_AUTHORITY_KEYS } =
+  await import("../lib/truckRegistry/operationalReferenceProbe.js");
+// A full-coverage authorities list where every governed authority returns `state` (override some).
+const authoritiesAll = (state, overrides = {}) => REFERENCE_AUTHORITY_KEYS.map((key) => ({ key, description: key, verifiableNow: true, check: overrides[key] ?? (async () => state) }));
 
 let passed = 0, failed = 0;
 async function check(name, fn) {
@@ -412,6 +417,47 @@ await check("delete AUTHZ before replay: a SAME actor who loses admin cannot exe
     deleteTruckCreatedInError({ actorUid: exAdmin, idempotencyKey: k, truckId, expectedVersion: 1, deletionReason: REASON }, CLEAR),
     UnauthorizedActorError,
   );
+});
+
+// ---- deleteTruckCreatedInError through the REAL OperationalReferenceProbe framework ----
+await check("delete via the REAL probe (current schema) -> REFERENCE_STATE_UNKNOWN (fail closed), nothing deleted", async () => {
+  const { truckId, locationId } = await makeTruck();
+  const probe = buildOperationalReferenceProbe({ db });
+  await assert.rejects(
+    deleteTruckCreatedInError({ actorUid: admin1, idempotencyKey: key("del"), truckId, expectedVersion: 1, deletionReason: REASON }, { ...DEPS, hasOperationalReferences: probe }),
+    ReferenceStateUnknownError,
+  );
+  assert.deepEqual(await docsExist(truckId, locationId), { t: true, l: true, c: true });
+});
+
+await check("delete via a probe with a REFERENCED authority -> TRUCK_REFERENCED, no partial delete, no tombstone", async () => {
+  const { truckId, locationId } = await makeTruck();
+  const probe = buildOperationalReferenceProbe({ db }, authoritiesAll("CLEAR", { ledgerEvents: async () => "REFERENCED" }));
+  await assert.rejects(
+    deleteTruckCreatedInError({ actorUid: admin1, idempotencyKey: key("del"), truckId, expectedVersion: 1, deletionReason: REASON }, { ...DEPS, hasOperationalReferences: probe }),
+    TruckReferencedError,
+  );
+  assert.deepEqual(await docsExist(truckId, locationId), { t: true, l: true, c: true });
+  const audits = await db.collection("auditEvents").where("actorUid", "==", admin1).where("targetId", "==", truckId).get();
+  assert.equal(audits.docs.some((d) => d.data().action === "deleteTruckCreatedInError" && d.data().outcome === "applied"), false);
+});
+
+await check("delete via a FULLY-CLEAR probe (all authorities CLEAR) -> atomic deletion + tombstone", async () => {
+  const { truckId, locationId } = await makeTruck();
+  const probe = buildOperationalReferenceProbe({ db }, authoritiesAll("CLEAR"));
+  const r = await deleteTruckCreatedInError({ actorUid: admin1, idempotencyKey: key("del"), truckId, expectedVersion: 1, deletionReason: REASON }, { ...DEPS, hasOperationalReferences: probe });
+  assert.equal(r.outcome, "applied");
+  assert.deepEqual(await docsExist(truckId, locationId), { t: false, l: false, c: false });
+});
+
+await check("delete via a probe whose authority THROWS -> REFERENCE_STATE_UNKNOWN (fail closed), nothing deleted", async () => {
+  const { truckId, locationId } = await makeTruck();
+  const probe = buildOperationalReferenceProbe({ db }, authoritiesAll("CLEAR", { partsStock: async () => { throw new Error("query boom"); } }));
+  await assert.rejects(
+    deleteTruckCreatedInError({ actorUid: admin1, idempotencyKey: key("del"), truckId, expectedVersion: 1, deletionReason: REASON }, { ...DEPS, hasOperationalReferences: probe }),
+    ReferenceStateUnknownError,
+  );
+  assert.deepEqual(await docsExist(truckId, locationId), { t: true, l: true, c: true });
 });
 
 await check("delete ATOMIC ROLLBACK: failure after stage -> nothing deleted, no tombstone", async () => {
