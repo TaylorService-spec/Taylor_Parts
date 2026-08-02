@@ -1,0 +1,187 @@
+{
+  "verified": true,
+  "verify_date": "2026-08-02",
+  "note": "Read-only Gate E4 backend verification of a single Owner-named truck. No production mutation performed or reachable.",
+  "project": "taylor-parts",
+  "region": "us-central1",
+  "governedCommit": "d9bd532dbdd8c6e38176f55274f993be2baabd38",
+  "truckId": "1",
+  "expected": {
+    "displayLabel": "10",
+    "vehicleNumber": "10",
+    "status": "IDLE",
+    "homeWarehouseId": "wh-main",
+    "assignedDriverEmployeeId": null
+  },
+  "locationIdSha256": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+  "stored": {
+    "version": 3,
+    "active": true,
+    "status": "IDLE",
+    "driverAssigned": false
+  },
+  "audit_summary": {
+    "appliedCreateTruck": 1,
+    "appliedUnassignTruckDriver": 1,
+    "appliedChangeTruckStatus": 1,
+    "otherAppliedCount": 0,
+    "deniedCount": 0,
+    "uncertainCount": 0,
+    "versionEqualsAppliedCount": true,
+    "creationPrecedesContainment": true
+  },
+  "matrix_total": 30,
+  "passed": 30,
+  "checks": [
+    {
+      "label": "truck.present-exactly-one",
+      "pass": true,
+      "category": "PRESENT_ONE"
+    },
+    {
+      "label": "truck.stored-id-equals-doc-id",
+      "pass": true,
+      "category": "PRESENT_ONE"
+    },
+    {
+      "label": "truck.version-positive-integer",
+      "pass": true,
+      "category": "PRESENT_ONE"
+    },
+    {
+      "label": "truck.displayLabel-matches-expected",
+      "pass": true,
+      "category": "PRESENT_ONE"
+    },
+    {
+      "label": "truck.vehicleNumber-matches-expected",
+      "pass": true,
+      "category": "PRESENT_ONE"
+    },
+    {
+      "label": "truck.status-matches-expected",
+      "pass": true,
+      "category": "PRESENT_ONE"
+    },
+    {
+      "label": "truck.homeWarehouse-matches-expected",
+      "pass": true,
+      "category": "PRESENT_ONE"
+    },
+    {
+      "label": "truck.driver-null",
+      "pass": true,
+      "category": "PRESENT_ONE"
+    },
+    {
+      "label": "truck.locationId-valid",
+      "pass": true,
+      "category": "PRESENT_ONE"
+    },
+    {
+      "label": "truck.active-true",
+      "pass": true,
+      "category": "PRESENT_ONE"
+    },
+    {
+      "label": "location.present-exactly-one",
+      "pass": true,
+      "category": "PRESENT_ONE"
+    },
+    {
+      "label": "location.stored-id-equals-doc-id",
+      "pass": true,
+      "category": "PRESENT_ONE"
+    },
+    {
+      "label": "location.type-is-MOBILE",
+      "pass": true,
+      "category": "PRESENT_ONE"
+    },
+    {
+      "label": "location.active-true",
+      "pass": true,
+      "category": "PRESENT_ONE"
+    },
+    {
+      "label": "claim.present-exactly-one",
+      "pass": true,
+      "category": "PRESENT_ONE"
+    },
+    {
+      "label": "claim.stored-id-equals-doc-id",
+      "pass": true,
+      "category": "PRESENT_ONE"
+    },
+    {
+      "label": "claim.truckId-matches",
+      "pass": true,
+      "category": "PRESENT_ONE"
+    },
+    {
+      "label": "reciprocal.truck-location-claim-identities-agree",
+      "pass": true,
+      "category": "PRESENT_ONE"
+    },
+    {
+      "label": "duplicates.exactly-one-truck-references-location",
+      "pass": true,
+      "category": "PRESENT_ONE"
+    },
+    {
+      "label": "duplicates.exactly-one-claim-points-to-truck",
+      "pass": true,
+      "category": "PRESENT_ONE"
+    },
+    {
+      "label": "duplicates.no-second-location-linked-to-truck",
+      "pass": true,
+      "category": "PRESENT_ONE"
+    },
+    {
+      "label": "audit.exactly-one-createTruck-applied",
+      "pass": true,
+      "category": "PRESENT_ONE"
+    },
+    {
+      "label": "audit.exactly-one-unassignTruckDriver-applied",
+      "pass": true,
+      "category": "PRESENT_ONE"
+    },
+    {
+      "label": "audit.exactly-one-changeTruckStatus-applied",
+      "pass": true,
+      "category": "PRESENT_ONE"
+    },
+    {
+      "label": "audit.no-other-applied-actions",
+      "pass": true,
+      "category": "PRESENT_ONE"
+    },
+    {
+      "label": "audit.no-malformed-or-uncertain-outcomes",
+      "pass": true,
+      "category": "PRESENT_ONE"
+    },
+    {
+      "label": "consistency.version-equals-applied-audit-count",
+      "pass": true,
+      "category": "PRESENT_ONE"
+    },
+    {
+      "label": "consistency.creation-precedes-containment",
+      "pass": true,
+      "category": "PRESENT_ONE"
+    },
+    {
+      "label": "consistency.final-state-idle-and-unassigned",
+      "pass": true,
+      "category": "PRESENT_ONE"
+    },
+    {
+      "label": "consistency.no-write-api-reachable",
+      "pass": true,
+      "category": "PRESENT_ONE"
+    }
+  ]
+}
