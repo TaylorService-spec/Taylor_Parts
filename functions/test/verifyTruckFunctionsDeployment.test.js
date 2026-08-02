@@ -9,9 +9,28 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 
+const nodePath = require("node:path");
 const core = require("../scripts/verifyTruckFunctionsDeployment");
 const cli = require("../scripts/truckFunctionsVerifierCli");
 const matrix = require("../scripts/truckFunctionsVerificationMatrix");
+const { sha256 } = require("../scripts/firestoreDeploymentVerificationShared");
+
+// A minimal in-memory fs for the atomic-publication tests (no real disk). `failOn` makes
+// writeFileSync throw for a path ending with that suffix (e.g. the checksum file).
+function makeFakeFs(failOn) {
+  const files = new Map();
+  const dirs = new Set();
+  const sep = "/"; // POSIX-consistent keys (tests pass nodePath.posix); the real fs renames dirs atomically
+  return {
+    files, dirs,
+    existsSync: (p) => dirs.has(p) || files.has(p),
+    mkdirSync: (p) => { dirs.add(p); },
+    rmSync: (p) => { for (const k of Array.from(files.keys())) if (k === p || k.startsWith(p + sep)) files.delete(k); dirs.delete(p); },
+    writeFileSync: (p, c) => { if (failOn && String(p).endsWith(failOn)) throw new Error("ENOSPC"); files.set(p, c); },
+    readFileSync: (p) => { if (!files.has(p)) throw new Error(`ENOENT ${p}`); return files.get(p); },
+    renameSync: (a, b) => { for (const [k, v] of Array.from(files)) if (k === a || k.startsWith(a + sep)) { files.set(b + k.slice(a.length), v); files.delete(k); } dirs.delete(a); dirs.add(b); },
+  };
+}
 
 const COMMIT = "a".repeat(40);
 const goodConfig = () => ({ projectId: "taylor-parts", confirmProject: "taylor-parts", governedCommit: COMMIT });
@@ -388,4 +407,37 @@ test("P2-2: a manifest-append failure at the DOC boundary prevents the role-doc 
   const record = async (e) => { if (e.kind === "DOC") throw new Error("append-failed"); };
   await assert.rejects(deps.auth.provisionPersona("admin", "trf_gated_ab", record), /append-failed/);
   assert.ok(!order.includes("set")); // the role doc was never written -> nothing to orphan
+});
+
+// ---- P2-3: evidence publication is ATOMIC (staging -> verify -> rename) ----------------------
+
+const EV_DIR = "/audits/verify-2026-08-02";
+const EV_PREFIX = "trf_gated_abcd";
+const REPORT = { verified: true, cleanup_complete: true, residual_documents: 0, residual_auth_users: 0 };
+const reportText = () => `${JSON.stringify(REPORT, null, 2)}\n`;
+
+test("P2-3: successful publication contains verification-report.json AND a valid SHA256SUMS.txt", () => {
+  const fs = makeFakeFs();
+  const out = cli.publishEvidenceAtomic(EV_DIR, { "verification-report.json": REPORT }, { fs, path: nodePath.posix, prefix: EV_PREFIX });
+  assert.equal(out, EV_DIR);
+  assert.ok(fs.files.has(nodePath.posix.join(EV_DIR, "verification-report.json")));
+  const sums = fs.files.get(nodePath.posix.join(EV_DIR, "SHA256SUMS.txt"));
+  assert.ok(sums.includes(`${sha256(reportText())}  verification-report.json`)); // valid checksum
+  assert.ok(!fs.existsSync(`${EV_DIR}.staging-${EV_PREFIX}`)); // staging gone after publish
+});
+
+test("P2-3: failure after report write but before checksum leaves NO final verified report; staging cleaned", () => {
+  const fs = makeFakeFs("SHA256SUMS.txt"); // report writes; checksum write throws
+  assert.throws(() => cli.publishEvidenceAtomic(EV_DIR, { "verification-report.json": REPORT }, { fs, path: nodePath.posix, prefix: EV_PREFIX }), /ENOSPC/);
+  assert.ok(!fs.existsSync(EV_DIR)); // final directory never materialized (atomic)
+  assert.ok(!fs.files.has(nodePath.posix.join(EV_DIR, "verification-report.json"))); // no lone verified report at the final path
+  const staging = `${EV_DIR}.staging-${EV_PREFIX}`;
+  assert.ok(!fs.dirs.has(staging)); // staging removed on failure
+  assert.ok(![...fs.files.keys()].some((k) => k.startsWith(staging))); // no staged artifacts remain
+});
+
+test("P2-3: an existing final evidence directory is NEVER overwritten", () => {
+  const fs = makeFakeFs();
+  fs.dirs.add(EV_DIR); // pretend a prior run already published here
+  assert.throws(() => cli.publishEvidenceAtomic(EV_DIR, { "verification-report.json": REPORT }, { fs, path: nodePath.posix, prefix: EV_PREFIX }), /refusing to overwrite/);
 });

@@ -16,7 +16,7 @@
 const fsDefault = require("node:fs");
 const pathDefault = require("node:path");
 const cryptoDefault = require("node:crypto");
-const { VerificationError } = require("./firestoreDeploymentVerificationShared");
+const { VerificationError, sha256 } = require("./firestoreDeploymentVerificationShared");
 const { EXPECTED_PROJECT, EXPECTED_REGION, assertGovernedPins, runVerification } = require("./verifyTruckFunctionsDeployment");
 const { CALLABLES, PERSONA_ROLE } = require("./truckFunctionsVerificationMatrix");
 
@@ -89,6 +89,42 @@ function buildDurableManifestStore({ recoveryDir, prefix, fs = fsDefault, path =
 }
 
 const AUTH_USER_NOT_FOUND = "auth/user-not-found";
+
+// ATOMIC evidence publication. writeEvidence() (shared) writes the report and SHA256SUMS.txt as
+// SEPARATE filesystem writes, so a checksum-write failure (e.g. disk exhaustion) could leave a lone
+// verified:true report at the final path. This publishes to a UNIQUE sibling staging dir, verifies
+// every staged file + its checksum, then RENAMES the completed dir into place (an atomic operation on
+// one filesystem) — so the final evidence directory materializes only after all writes succeed, is
+// removed from staging on any failure, and an existing final directory is never overwritten.
+function publishEvidenceAtomic(evidenceDir, files, { fs = fsDefault, path = pathDefault, prefix } = {}) {
+  if (fs.existsSync(evidenceDir)) throw new VerificationError(`refusing to overwrite existing final evidence directory: ${evidenceDir}`);
+  const staging = `${evidenceDir}.staging-${prefix}`;
+  fs.rmSync(staging, { recursive: true, force: true }); // clear any stale staging for this run prefix
+  fs.mkdirSync(staging, { recursive: true, mode: 0o700 });
+  try {
+    const serialized = {};
+    const sums = [];
+    for (const [name, value] of Object.entries(files)) {
+      const text = typeof value === "string" ? value : `${JSON.stringify(value, null, 2)}\n`;
+      serialized[name] = text;
+      fs.writeFileSync(path.join(staging, name), text, { mode: 0o600 });
+      sums.push(`${sha256(text)}  ${name}`);
+    }
+    fs.writeFileSync(path.join(staging, "SHA256SUMS.txt"), `${sums.join("\n")}\n`, { mode: 0o600 });
+    // Verify EVERY staged file round-trips and its checksum is listed, before publishing.
+    const sumsText = fs.readFileSync(path.join(staging, "SHA256SUMS.txt"), "utf8");
+    for (const [name, text] of Object.entries(serialized)) {
+      const back = fs.readFileSync(path.join(staging, name), "utf8");
+      if (back !== text) throw new VerificationError(`staged evidence file corrupt: ${name}`);
+      if (!sumsText.includes(`${sha256(text)}  ${name}`)) throw new VerificationError(`staged checksum missing: ${name}`);
+    }
+    fs.renameSync(staging, evidenceDir); // atomic publish
+  } catch (e) {
+    try { fs.rmSync(staging, { recursive: true, force: true }); } catch { /* best-effort staging cleanup */ }
+    throw e;
+  }
+  return evidenceDir;
+}
 
 // Canonical callable error status -> sanitized code suffix (lower-hyphen). Unknown/absent -> internal.
 function statusToCode(status) {
@@ -199,8 +235,7 @@ function buildProductionDeps(config, { prefix, evidenceDir, env = {} } = {}) {
     },
   };
 
-  const { writeEvidence } = require("./firestoreDeploymentVerificationShared");
-  const evidence = { async write(files) { writeEvidence(evidenceDir, files); } };
+  const evidence = { async write(files) { publishEvidenceAtomic(evidenceDir, files, { fs: env.fs || fsDefault, path: env.path || pathDefault, prefix }); } };
   return { discovery, callable, auth, admin, evidence };
 }
 
@@ -226,7 +261,7 @@ async function main(argv, { fs = fsDefault, path = pathDefault, crypto = cryptoD
   return result;
 }
 
-module.exports = { parseArgs, loadConfig, validateCliInputs, generatePrefix, resolveCheckout, buildDurableManifestStore, buildProductionDeps, statusToCode, main };
+module.exports = { parseArgs, loadConfig, validateCliInputs, generatePrefix, resolveCheckout, buildDurableManifestStore, buildProductionDeps, statusToCode, publishEvidenceAtomic, main };
 
 if (require.main === module) {
   main(process.argv.slice(2)).then(() => process.exit(0)).catch((err) => {

@@ -105,15 +105,22 @@ Do **not** delete or modify any other function. Verify against `/tmp/functions-b
 
 ## 5. Evidence packaging, checksum, sanitized return
 
+The verifier publishes the evidence directory **atomically**: it writes `verification-report.json` and
+`SHA256SUMS.txt` into a unique sibling staging directory, verifies both, then renames the completed
+directory into place. So the `--evidence-dir` path materializes **only** on full success (report +
+valid checksum), is never partially written, and is never overwritten if it already exists. Do **not**
+regenerate `SHA256SUMS.txt`. Verify and package:
+
 ```bash
 cd docs/audits/truck-registry-functions-deployment/verify-<YYYY-MM-DD>
-sha256sum verification-report.json > SHA256SUMS.txt
+sha256sum -c SHA256SUMS.txt                                   # must print: verification-report.json: OK
 tar -czf ../truck-functions-verify-<YYYY-MM-DD>.tgz verification-report.json SHA256SUMS.txt
 sha256sum ../truck-functions-verify-<YYYY-MM-DD>.tgz > ../truck-functions-verify-<YYYY-MM-DD>.tgz.sha256
 ```
-Return **only** the sanitized `verification-report.json` (and its checksum). The durable recovery
+Return **only** the sanitized `verification-report.json` and its `SHA256SUMS.txt`. The durable recovery
 manifest stays in `--recovery-dir` (outside the evidence dir) — it holds temporary uids/identities and
-is **never** committed or returned.
+is **never** committed or returned. If a run fails, no final evidence directory exists (only a staging
+directory may remain, which the verifier removes) — do not hand-assemble evidence from a failed run.
 
 ## 6. Stop conditions & escalation
 
