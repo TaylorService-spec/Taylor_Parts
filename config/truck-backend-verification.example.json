@@ -1,0 +1,14 @@
+{
+  "_comment": "EI Truck Registry — Gate E4 READ-ONLY BACKEND verifier config TEMPLATE. Copy to a local, UNCOMMITTED *.local.json (matched by .gitignore) and fill: governedCommit = the exact reviewed merge commit checked out; truckId + expected.* = the EXACT Owner-approved visible values for the single truck under verification. NO secrets live here — the verifier authenticates only via Application Default Credentials (`gcloud auth application-default login`) and REFUSES a service-account key file. projectId/confirmProject must both be the authorized project; the CLI additionally requires --confirm-project=taylor-parts, a clean checkout whose HEAD equals governedCommit, and rejects any emulator target. expected.assignedDriverEmployeeId MUST be null (the quarantined truck is unassigned).",
+  "projectId": "taylor-parts",
+  "confirmProject": "taylor-parts",
+  "governedCommit": "REPLACE_WITH_EXACT_40_HEX_REVIEWED_COMMIT",
+  "truckId": "REPLACE_WITH_OWNER_APPROVED_TRUCK_ID",
+  "expected": {
+    "displayLabel": "REPLACE_WITH_OWNER_APPROVED_DISPLAY_LABEL",
+    "vehicleNumber": "REPLACE_WITH_OWNER_APPROVED_VEHICLE_NUMBER",
+    "status": "IDLE",
+    "homeWarehouseId": "REPLACE_WITH_OWNER_APPROVED_WAREHOUSE_ID",
+    "assignedDriverEmployeeId": null
+  }
+}
