@@ -36,8 +36,10 @@ See the operator runbook: [`docs/operations/truck-registry-functions-deploy-hand
 
 - Not a readiness activation. `TRUCK_MANAGEMENT_WRITE_READY` stays `false` through Gate D.
 - Not a Gate D closure. Closure is a separate Owner decision (below).
-- Not fabricated: the imported values are the operator run's sanitized report; operator terminal facts
-  not supplied to this import are explicitly marked as such, not invented.
+- Not fabricated: the imported values are the operator run's sanitized report; the deploy exit code,
+  inventory/deploy-log hashes and other deployment facts are not fields of that JSON — they are recorded
+  separately as operator-relayed facts (supplied through the governed execution channel, not
+  re-queried here), clearly attributed in `verify-2026-08-01/import-validation.md` §C.
 
 ## Gate D closure assessment (recommendation — closure is a separate Owner decision)
 

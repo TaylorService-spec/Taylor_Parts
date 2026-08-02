@@ -1,14 +1,15 @@
 # Gate D — Trusted Truck Functions Deployment Report
 
 > Populated from the imported, sanitized verification evidence of one governed, Owner-authorized
-> operator run (2026-08-01). Values are split into **evidence-backed** (from `verify-2026-08-01/
-> verification-report.json`, SHA-256 `66e41b7c…`) and **operator-relayed** (terminal facts not part of
-> the evidence). Operator-relayed facts NOT supplied to this evidence-import are marked as such and are
-> deliberately not fabricated — see `verify-2026-08-01/import-validation.md` §C.
+> operator run (2026-08-01). Values are split into **evidence-backed** (fields of `verify-2026-08-01/
+> verification-report.json`, SHA-256 `66e41b7c…`) and **operator-relayed** (deployment terminal facts
+> that are not fields of that JSON). The operator-relayed facts were supplied through the governed
+> execution channel and are recorded separately; they were **not** independently re-queried during this
+> docs-only import — see `verify-2026-08-01/import-validation.md` §C.
 
 | Field | Value | Source |
 | --- | --- | --- |
-| Governed commit (deployed) | `1d9d6854ba531dfd13d467f9d02a03656b37c18a` | evidence (`governedCommit`) |
+| Governed commit | `1d9d6854ba531dfd13d467f9d02a03656b37c18a` | verifier checkout pin: evidence (`governedCommit`); deployed-source: operator-relayed |
 | Project | `taylor-parts` | evidence (`project`) |
 | Region | `us-central1` | evidence (`region`) |
 | Deploy authorization | Owner Gate D targeted-deploy + single-verification authorization (2026-08-01) | authorization |
@@ -60,4 +61,5 @@ docs-only import — see [`verify-2026-08-01/import-validation.md`](verify-2026-
 ## Stop conditions encountered
 
 None recorded in the imported evidence (matrix 32/32, cleanup complete, zero residual). No recovery was
-invoked per the evidence.
+invoked, per the operator-relayed execution result (the imported JSON does not attest rollback/recovery
+status).
