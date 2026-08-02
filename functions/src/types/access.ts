@@ -237,6 +237,7 @@ export type AuditAction =
   | "changeTruckHomeWarehouse"
   | "deactivateTruck"
   | "reactivateTruck"
+  | "deleteTruckCreatedInError"
   // Legacy Compatibility-Admin Bootstrap -- one-time, audited migration of an
   // existing legacy `users/{uid}.role === "admin"` principal into the governed
   // roleAssignment model (ADR-005 / ADR-009 controlled technical exception).

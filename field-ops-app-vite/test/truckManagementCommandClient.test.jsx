@@ -60,6 +60,9 @@ describe("truckRegistryCommandClient payloads", () => {
     await truckRegistryCommandClient.reactivateTruck({ idempotencyKey: "k", truckId: "T", targetStatus: "ACTIVE", expectedVersion: 4 });
     expect(calls[5]).toEqual({ name: TRUCK_CALLABLES.reactivate, payload: { idempotencyKey: "k", truckId: "T", targetStatus: "ACTIVE", expectedVersion: 4 } });
 
+    await truckRegistryCommandClient.deleteTruckCreatedInError({ idempotencyKey: "k", truckId: "T", expectedVersion: 4, deletionReason: "created in error" });
+    expect(calls[6]).toEqual({ name: TRUCK_CALLABLES.deleteCreatedInError, payload: { idempotencyKey: "k", truckId: "T", expectedVersion: 4, deletionReason: "created in error" } });
+
     for (const c of calls) expect("actorUid" in c.payload).toBe(false);
   });
 

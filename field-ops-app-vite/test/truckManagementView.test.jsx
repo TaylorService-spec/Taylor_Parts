@@ -186,3 +186,52 @@ describe("access boundary", () => {
     await waitFor(() => expect(screen.queryByTestId("manage-truck-drawer")).toBeNull());
   });
 });
+
+describe("Created-in-Error delete (admin-only)", () => {
+  it("admin sees the danger zone + delete control in the Manage drawer", async () => {
+    render(<TruckManagementPreview />); // isAdmin defaults true
+    const drawer = await openManage("TRK-102");
+    expect(within(drawer).getByTestId("tm-danger-zone")).toBeTruthy();
+    expect(within(drawer).getByTestId("tm-delete-cie")).toBeTruthy();
+  });
+
+  it("dispatcher (isAdmin=false) does NOT see the delete control", async () => {
+    render(<TruckManagementPreview isAdmin={false} />);
+    const drawer = await openManage("TRK-102");
+    expect(within(drawer).queryByTestId("tm-danger-zone")).toBeNull();
+    expect(within(drawer).queryByTestId("tm-delete-cie")).toBeNull();
+  });
+
+  it("delete happy path: confirm with a reason removes the truck tile and closes the drawer", async () => {
+    render(<TruckManagementPreview />);
+    const drawer = await openManage("TRK-102"); // no driver -> deletable in the mock
+    fireEvent.click(within(drawer).getByTestId("tm-delete-cie"));
+    const dialog = await screen.findByRole("dialog", { name: /Delete truck TRK-102/ });
+    fireEvent.change(within(dialog).getByLabelText(/Reason for deletion/), { target: { value: "created in error - duplicate" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete truck" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: /TRK-102/ })).toBeNull());
+    expect(screen.queryByTestId("manage-truck-drawer")).toBeNull();
+  });
+
+  it("delete requires a reason (no reason -> no deletion)", async () => {
+    render(<TruckManagementPreview />);
+    const drawer = await openManage("TRK-102");
+    fireEvent.click(within(drawer).getByTestId("tm-delete-cie"));
+    const dialog = await screen.findByRole("dialog", { name: /Delete truck TRK-102/ });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete truck" })); // no reason entered
+    expect(await within(dialog).findByText(/Enter a reason to delete/)).toBeTruthy();
+    expect(screen.getByTestId("manage-truck-drawer")).toBeTruthy(); // drawer still open -> not deleted
+  });
+
+  it("a blocked delete surfaces the SANITIZED message and never the raw backend detail", async () => {
+    render(<TruckManagementPreview />);
+    const drawer = await openManage("TRK-101"); // has a driver -> the mock rejects failed-precondition
+    fireEvent.click(within(drawer).getByTestId("tm-delete-cie"));
+    const dialog = await screen.findByRole("dialog", { name: /Delete truck TRK-101/ });
+    fireEvent.change(within(dialog).getByLabelText(/Reason for deletion/), { target: { value: "attempted delete" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete truck" }));
+    await waitFor(() => expect(within(dialog).getByText(/completed|could not be deleted/i)).toBeTruthy());
+    expect(screen.queryByText(/INTERNAL mock detail/)).toBeNull();
+    expect(screen.getByTestId("manage-truck-drawer")).toBeTruthy(); // drawer still open -> truck not deleted
+  });
+});

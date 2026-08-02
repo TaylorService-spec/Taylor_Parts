@@ -49,6 +49,8 @@ import {
   VersionConflictError,
   IdempotencyConflictError,
   ClaimIntegrityError,
+  TruckReferencedError,
+  ReferenceStateUnknownError,
 } from "./types";
 
 // Injected governed-inventory-at-location predicate. It receives the SAME transaction and
@@ -57,10 +59,25 @@ import {
 export type GovernedInventoryProbe = (locationId: string, txn: Transaction) => Promise<InventoryPresence>;
 const UNKNOWN_INVENTORY: GovernedInventoryProbe = async () => "UNKNOWN";
 
+// Injected cross-collection operational-history probe for Created-in-Error delete. It receives
+// the SAME transaction and performs ALL reads through it, and reports whether ANY operational
+// history (serialized assets, parts stock, transfer lines/orders, ledger events, or other
+// history) references the truck or its MOBILE location:
+//   CLEAR       -- conclusively no references anywhere it checks;
+//   REFERENCED  -- at least one reference exists -> block the delete;
+//   UNKNOWN     -- could NOT be conclusively determined -> FAIL CLOSED (block).
+// The default returns UNKNOWN because the governed EI history-at-location persistence does not
+// exist yet, so a delete is impossible until a real probe is injected by a later gate. (The
+// truck's OWN driver assignment is checked conclusively in-transaction, separately.)
+export type OperationalReferenceState = "CLEAR" | "REFERENCED" | "UNKNOWN";
+export type OperationalReferenceProbe = (args: { truckId: string; locationId: string }, txn: Transaction) => Promise<OperationalReferenceState>;
+const UNKNOWN_REFERENCES: OperationalReferenceProbe = async () => "UNKNOWN";
+
 export interface TruckRegistryDeps {
   db?: Firestore;
   repo?: TruckRegistryRepository;
   hasGovernedInventoryAtLocation?: GovernedInventoryProbe;
+  hasOperationalReferences?: OperationalReferenceProbe;
   now?: () => Date;
   /** TEST-ONLY atomicity seam: thrown inside the transaction AFTER all writes are staged. */
   __simulateFailureAfterStage?: Error;
@@ -71,6 +88,7 @@ function resolveDeps(deps: TruckRegistryDeps | undefined) {
     db,
     repo: deps?.repo ?? buildFirestoreTruckRegistryRepository(db),
     probe: deps?.hasGovernedInventoryAtLocation ?? UNKNOWN_INVENTORY,
+    referenceProbe: deps?.hasOperationalReferences ?? UNKNOWN_REFERENCES,
     now: deps?.now ?? (() => new Date()),
     failAfterStage: deps?.__simulateFailureAfterStage,
   };
@@ -113,6 +131,29 @@ async function requireAdminOrDispatcherOrAudit(db: Firestore, actorUid: string, 
   if (role === "admin" || role === "dispatcher") return;
   await recordStandaloneAuditEvent({ actorUid, action, targetType, targetId, outcome: "denied", summary: `denied: actor is not admin/dispatcher for ${action}` });
   throw new UnauthorizedActorError(`actor is not authorized for ${action}`);
+}
+
+// ADMIN-ONLY authorization (stricter than admin/dispatcher) for the Created-in-Error hard
+// delete -- a dispatcher may operate trucks but may NOT destroy the record. Denials emit a
+// standalone "denied" audit event.
+async function requireAdminOrAudit(db: Firestore, actorUid: string, action: AuditAction, targetType: string, targetId: string): Promise<void> {
+  const snap = await db.collection("users").doc(actorUid).get();
+  const role = snap.exists ? snap.data()?.role : undefined;
+  if (role === "admin") return;
+  await recordStandaloneAuditEvent({ actorUid, action, targetType, targetId, outcome: "denied", summary: `denied: actor is not admin for ${action}` });
+  throw new UnauthorizedActorError(`actor is not authorized for ${action}`);
+}
+
+// Deletion reason: required, trimmed, bounded, and restricted to a safe printable charset that
+// DELIBERATELY excludes "=" so the reason can never inject an "fp=" / "v=" tag into the audit
+// summary the idempotency parser reads (checkIdempotency). Also excludes the "]" delimiter used
+// around it in the summary.
+const DELETION_REASON_PATTERN = /^[A-Za-z0-9 .,:;()'#/_-]{1,200}$/;
+function assertDeletionReason(reason: unknown): asserts reason is string {
+  const r = typeof reason === "string" ? reason.trim() : "";
+  if (r.length === 0 || !DELETION_REASON_PATTERN.test(r)) {
+    throw new InvalidInputError("deletionReason is required (1-200 chars, letters/digits/spaces/.,:;()'#/_- only)");
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -326,4 +367,86 @@ export async function reactivateTruck(input: ReactivateTruckInput, deps?: TruckR
     },
     summary: (v, fp) => `reactivated truck ${input.truckId} (status ${input.targetStatus}, location active) v=${v} fp=${fp}`,
   }, deps);
+}
+
+// ---------------------------------------------------------------------------
+// deleteTruckCreatedInError -- ADMIN-ONLY hard delete of a truck created in error.
+// Atomically removes trucks/{truckId} + mobile_locations/{locationId} + the 1:1 claim ONLY
+// after proving, inside ONE transaction, that the record carries NO operational footprint:
+//   * the truck exists and matches expectedVersion (version CAS);
+//   * its MOBILE location exists and the identity is reciprocal;
+//   * the atomic location_truck_claim exists and points back to this exact truck+location;
+//   * the truck has NO driver assignment (a conclusive, in-truck "no assignment" check);
+//   * the injected operational-reference probe returns CLEAR (serialized assets / parts stock /
+//     transfer lines+orders / ledger events / other history). REFERENCED -> blocked;
+//     UNKNOWN (the default) -> FAIL CLOSED.
+// It writes an immutable, sanitized deletion TOMBSTONE (the deterministic Audit Event doc) that
+// survives the deleted records AND is the idempotency key: a retry with the same key finds the
+// tombstone and returns "replayed" without re-deleting. Everything (three deletes + tombstone)
+// is staged in the ONE transaction, so there is never a partial deletion.
+// ---------------------------------------------------------------------------
+export interface DeleteTruckCreatedInErrorInput {
+  actorUid: string;
+  idempotencyKey: string;
+  truckId: string;
+  expectedVersion: number;
+  deletionReason: string;
+}
+export async function deleteTruckCreatedInError(input: DeleteTruckCreatedInErrorInput, deps?: TruckRegistryDeps): Promise<MutationOutcome> {
+  const { db, repo, referenceProbe, failAfterStage } = resolveDeps(deps);
+  assertActorUid(input.actorUid);
+  assertIdempotencyKey(input.idempotencyKey);
+  const tid = parseTruckId(input.truckId);
+  if (!tid.valid) throw new InvalidInputError("invalid truckId");
+  assertExpectedVersion(input.expectedVersion);
+  assertDeletionReason(input.deletionReason);
+  const reason = input.deletionReason.trim();
+  await requireAdminOrAudit(db, input.actorUid, "deleteTruckCreatedInError", "truck", tid.value);
+
+  // The reason is part of the request -> in the fingerprint, so a same-key/different-reason retry
+  // is rejected as an idempotency conflict.
+  const fp = fingerprint(["deleteTruckCreatedInError", tid.value, input.expectedVersion, reason]);
+  const auditId = auditDocId("deleteTruckCreatedInError", input.actorUid, tid.value, input.idempotencyKey);
+
+  return db.runTransaction(async (txn) => {
+    const replay = await checkIdempotency(db, txn, auditId, fp);
+    if (replay) return replay; // tombstone exists -> already deleted -> idempotent
+
+    // ----- ALL reads first (Firestore transaction rule) -----
+    const truck = await repo.getTruck(txn, tid.value);
+    if (truck === null) throw new TruckNotFoundError(`truck ${tid.value} not found`);
+    if (truck.version !== input.expectedVersion) {
+      throw new VersionConflictError(`expectedVersion ${input.expectedVersion}, stored ${truck.version}`);
+    }
+    const locationId = truck.truck.locationId;
+    const location = await repo.getLocation(txn, locationId);
+    if (location === null) throw new LocationNotFoundError(`location ${locationId} not found`);
+    if (location.location.locationId !== locationId) throw new ClaimIntegrityError("truck/location identity is not reciprocal");
+    const claim = await repo.getClaim(txn, locationId);
+    if (claim === null || claim.truckId !== tid.value || claim.locationId !== locationId) {
+      throw new ClaimIntegrityError("location_truck_claim is missing or does not match the truck+location");
+    }
+    // Conclusive in-truck assignment check -- a truck with a driver is not an unused error record.
+    if (truck.truck.assignedDriverEmployeeId !== null) {
+      throw new TruckReferencedError("truck has an active driver assignment");
+    }
+    // Cross-collection operational history -- fail closed on UNKNOWN.
+    const refs = await referenceProbe({ truckId: tid.value, locationId }, txn);
+    if (refs === "REFERENCED") throw new TruckReferencedError("operational history references the truck or its MOBILE location");
+    if (refs !== "CLEAR") throw new ReferenceStateUnknownError("operational reference state could not be conclusively determined");
+
+    // ----- atomic delete + immutable tombstone (never partial) -----
+    repo.stageDeleteTruck(txn, tid.value);
+    repo.stageDeleteLocation(txn, locationId);
+    repo.stageDeleteClaim(txn, locationId);
+    stageAuditEventWithId(txn, auditId, {
+      actorUid: input.actorUid, action: "deleteTruckCreatedInError", targetType: "truck", targetId: tid.value, outcome: "applied",
+      // reason has no "=" or "]" (assertDeletionReason), so the v=/fp= tags stay unambiguous.
+      // Concise (truckId + reason only) to stay under the 500-char audit-summary bound even with
+      // max-length ids; the atomic MOBILE-location + claim removal is implied by the action.
+      summary: `deleted-in-error truck ${tid.value} reason:[${reason}] v=${truck.version} fp=${fp}`,
+    });
+    if (failAfterStage) throw failAfterStage;
+    return { outcome: "applied", version: truck.version };
+  });
 }

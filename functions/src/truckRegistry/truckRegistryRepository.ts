@@ -3,8 +3,10 @@
 // mobile_locations/{locationId}, location_truck_claims/{locationId}); never derived from a
 // mutable label. All client writes are denied by Rules; every mutation flows through
 // truckRegistryCommands.ts. No DocumentSnapshot leaks; malformed stored data is surfaced
-// explicitly (MalformedStoredRecordError), never silently defaulted. Physical delete of a
-// truck/location does not exist -- lifecycle active/status only.
+// explicitly (MalformedStoredRecordError), never silently defaulted. Physical delete exists
+// ONLY through the admin-only Created-in-Error path (deleteTruckCreatedInError), which
+// atomically removes the truck + its MOBILE location + the 1:1 claim after proving the record
+// carries no operational history; ordinary lifecycle is active/status only.
 import type { Firestore, Transaction } from "firebase-admin/firestore";
 import { Timestamp } from "firebase-admin/firestore";
 import { TRUCK_STATUSES, MalformedStoredRecordError, type TruckStatus } from "./types";
@@ -147,6 +149,10 @@ export interface TruckRegistryRepository {
   stageCreateTruck(txn: Transaction, s: StoredTruck): void;
   stageUpdateTruck(txn: Transaction, s: StoredTruck): void;
   stageCreateClaim(txn: Transaction, c: StoredClaim): void;
+  /** Created-in-Error hard delete ONLY (deleteTruckCreatedInError) -- physical removal. */
+  stageDeleteTruck(txn: Transaction, truckId: string): void;
+  stageDeleteLocation(txn: Transaction, locationId: string): void;
+  stageDeleteClaim(txn: Transaction, locationId: string): void;
   /** ACTIVE-existence checks for injected reference validation -- all reads through the txn. */
   isEmployeeActive(txn: Transaction, employeeId: string): Promise<boolean>;
   isWarehouseActive(txn: Transaction, warehouseId: string): Promise<boolean>;
@@ -174,6 +180,9 @@ export function buildFirestoreTruckRegistryRepository(db: Firestore): TruckRegis
     stageCreateTruck(txn, s) { txn.create(truckRef(s.truck.truckId), truckToFirestore(s)); },
     stageUpdateTruck(txn, s) { txn.set(truckRef(s.truck.truckId), truckToFirestore(s)); },
     stageCreateClaim(txn, c) { txn.create(claimRef(c.locationId), claimToFirestore(c)); },
+    stageDeleteTruck(txn, truckId) { txn.delete(truckRef(truckId)); },
+    stageDeleteLocation(txn, locationId) { txn.delete(locRef(locationId)); },
+    stageDeleteClaim(txn, locationId) { txn.delete(claimRef(locationId)); },
     async isEmployeeActive(txn, employeeId) {
       // employmentStatus is the authoritative Employee lifecycle field (domain/employees.js).
       const snap = await txn.get(db.collection(EMPLOYEES_COLLECTION).doc(employeeId));

@@ -37,6 +37,7 @@ const FIXTURE_WAREHOUSES = [
 
 export default function TruckManagementPreview({
   writeReady = true,
+  isAdmin = true,
   client,
   driverOptions = FIXTURE_DRIVERS,
   warehouseOptions = FIXTURE_WAREHOUSES,
@@ -92,7 +93,7 @@ export default function TruckManagementPreview({
 
   const source = buildTruckInventorySourceFromRegistry(read);
   const managementRecords = projectManagementRecords(read.truckDocs);
-  const management = { canManage: true, writeReady: wr, enabled: wr, commands, useDriverOptions, useWarehouseOptions };
+  const management = { canManage: true, isAdmin, writeReady: wr, enabled: wr, commands, useDriverOptions, useWarehouseOptions };
 
   return (
     <div data-testid="truck-management-preview">

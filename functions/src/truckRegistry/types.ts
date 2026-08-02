@@ -25,10 +25,13 @@ export const DEACTIVATED_STATUS: TruckStatus = "OUT_OF_SERVICE";
 // location persistence does not exist yet.
 export type InventoryPresence = "PRESENT" | "ABSENT" | "UNKNOWN";
 
-// The seven NARROW Truck Registry audit actions (mirrored into the functions-authoritative
+// The NARROW Truck Registry audit actions (mirrored into the functions-authoritative
 // AuditAction union in types/access.ts and the runtime AUDIT_ACTIONS allow-list in
 // auditEventWriter.ts). assign and reassign share assignTruckDriver -- both are the same
 // governed write (set the driver to a value); the summary records prior/next.
+// deleteTruckCreatedInError is the admin-only Created-in-Error hard delete; its Audit Event
+// is the immutable deletion TOMBSTONE (it survives the deleted truck/location/claim) and is
+// also the idempotency record for the delete.
 export const TRUCK_REGISTRY_AUDIT_ACTIONS = [
   "createTruck",
   "assignTruckDriver",
@@ -37,6 +40,7 @@ export const TRUCK_REGISTRY_AUDIT_ACTIONS = [
   "changeTruckHomeWarehouse",
   "deactivateTruck",
   "reactivateTruck",
+  "deleteTruckCreatedInError",
 ] as const;
 export type TruckRegistryAuditAction = (typeof TRUCK_REGISTRY_AUDIT_ACTIONS)[number];
 
@@ -66,6 +70,13 @@ export type TruckRegistryFailureCode =
   | "VERSION_CONFLICT"
   | "IDEMPOTENCY_CONFLICT"
   | "CLAIM_INTEGRITY"
+  // Created-in-Error delete: the truck (or its MOBILE location) is still referenced by
+  // operational history (serialized assets, parts stock, transfer lines/orders, ledger
+  // events, driver assignments, or other history) -> not deletable.
+  | "TRUCK_REFERENCED"
+  // The operational-reference/inventory state could NOT be conclusively determined ->
+  // fail closed (never delete on an unknown footprint). Mirrors INVENTORY_STATE_UNKNOWN.
+  | "REFERENCE_STATE_UNKNOWN"
   | "MALFORMED_STORED_RECORD";
 
 export class TruckRegistryError extends Error {
@@ -90,4 +101,6 @@ export class InventoryStateUnknownError extends TruckRegistryError { constructor
 export class VersionConflictError extends TruckRegistryError { constructor(m: string) { super("VERSION_CONFLICT", m); } }
 export class IdempotencyConflictError extends TruckRegistryError { constructor(m: string) { super("IDEMPOTENCY_CONFLICT", m); } }
 export class ClaimIntegrityError extends TruckRegistryError { constructor(m: string) { super("CLAIM_INTEGRITY", m); } }
+export class TruckReferencedError extends TruckRegistryError { constructor(m: string) { super("TRUCK_REFERENCED", m); } }
+export class ReferenceStateUnknownError extends TruckRegistryError { constructor(m: string) { super("REFERENCE_STATE_UNKNOWN", m); } }
 export class MalformedStoredRecordError extends TruckRegistryError { constructor(m: string) { super("MALFORMED_STORED_RECORD", m); } }

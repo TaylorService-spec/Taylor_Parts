@@ -111,5 +111,15 @@ export function createMockTruckCommandClient(store, options = {}) {
       requireTruck(truckId, expectedVersion);
       return bump(truckId, { status: targetStatus });
     },
+    async deleteTruckCreatedInError({ truckId, expectedVersion }) {
+      maybeForce();
+      const data = requireTruck(truckId, expectedVersion);
+      // Mirror the trusted service: a truck with a driver assignment is not deletable.
+      if (data.assignedDriverEmployeeId) throw fail("failed-precondition");
+      const { locationId, version } = data;
+      store.trucks.delete(truckId);
+      if (locationId) { store.locations.delete(locationId); store.claims.delete(locationId); }
+      return { truckId, deleted: true, version };
+    },
   };
 }
