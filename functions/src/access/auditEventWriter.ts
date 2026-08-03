@@ -130,6 +130,8 @@ const AUDIT_ACTIONS: readonly AuditAction[] = [
   "deactivateTruck",
   "reactivateTruck",
   "deleteTruckCreatedInError",
+  // EI Phase-2 Receiving (Phase C): runtime mirror of the receiveInventoryStock AuditAction union member.
+  "receiveInventoryStock",
 ];
 
 // Issue #325 / ADR-007 D-AUDIT -- the subset of AUDIT_ACTIONS this

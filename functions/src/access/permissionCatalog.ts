@@ -642,6 +642,18 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     resource: "inventory.catalog",
     action: "activate",
   }),
+  // EI Phase-2 Receiving (Phase C): the trusted receiveInventoryStock command's capability.
+  // REGISTERED BUT UNGRANTED by design -- no compatibility/default/operational Role holds it, no
+  // claims initializer/migration/fixture mints it, and there is no superuser/wildcard bypass, so
+  // resolveEffectivePermission() denies `noQualifyingGrant` for every principal until a later,
+  // separately-authorized grant gate. The trusted command's authorization is an injected seam;
+  // nothing invokes it in production. Same ungranted posture as the inventory.catalog.* entries above.
+  Object.freeze({
+    id: "inventory.stock.receive",
+    description: "Receive inbound stock into an inventory location against a reorder purchase order (trusted Receiving service).",
+    resource: "inventory.stock",
+    action: "receive",
+  }),
   // D4 -- Part-Equipment Compatibility trusted persistence (design package
   // docs/implementation-plans/equipment-compatibility-d4-trusted-persistence.md sec5).
   // REGISTERED BUT NOT GRANTABLE: every entry is `active: false`, so

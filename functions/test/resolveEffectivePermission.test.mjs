@@ -92,6 +92,10 @@ check("A3: every Permission id is granted by at least one compatibility Role (di
     // compatibility Role here would be doubly premature: no Role should hold them, and the inactive
     // flag would deny anyway. Activation and grants are later, separately authorized decisions.
     ...PERMISSION_CATALOG.filter((p) => p.id.startsWith("equipment.")).map((p) => p.id),
+    // EI Phase-2 Receiving (Phase C): inventory.stock.receive is registered-but-UNGRANTED by design --
+    // no Role holds it; the trusted Receiving command's authorization is an injected seam and its grant
+    // is a later, separately-authorized gate. Recorded here as ungranted-by-design.
+    ...PERMISSION_CATALOG.filter((p) => p.id.startsWith("inventory.stock.")).map((p) => p.id),
     // AUTH-PR-3.5 (DECISIONS #56): admin.credentialReset.initiate is registered
     // `active: false` and granted to NO Role -- activation and any grant are a
     // later, separately-authorized production/security gate (same posture as the
