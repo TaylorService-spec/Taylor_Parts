@@ -241,43 +241,65 @@ validator/deserializer, the migration (§4), the verifier (§4/§9), the trusted
 | `version` | **required**, integer ≥ 1 | optimistic-concurrency counter for the §5 CAS |
 | `updatedAt`, `updatedBy` | **required** | last governed write (server timestamp + governed actor) |
 | `createdAt`, `createdBy` | **optional** | authentic creation metadata — present for writer-created warehouses; **absent for migrated legacy docs whose history is unknown; never fabricated** |
-| `governanceInitializedAt`, `governanceInitializedBy` | present **iff** governance was applied by migration (not native creation) | server migration timestamp + governed migration tool/actor identity |
+| `provenance` | **required** | discriminator: `NATIVE` (writer-created) or `MIGRATED` (governance applied by §4) |
+| `governanceInitializedAt`, `governanceInitializedBy` | required **iff** `provenance == MIGRATED`; **absent** iff `NATIVE` | server migration timestamp + governed migration tool/actor identity |
 | `active` | **must be absent** | legacy field removed (§3.2) |
 
-Two initialization provenances, **both yielding a transition-ready `version: 1` record**:
+Two initialization provenances, **both yielding a transition-ready `version: 1` record**,
+distinguished by the required `provenance` discriminator:
 
-- **Natively created (trusted writer, §5):** `version: 1`, `status: "ACTIVE"`,
-  `createdAt/By` = server actor metadata, `updatedAt/By` = the same creation metadata, no
-  `governanceInitialized*` (creation *is* the governance origin).
-- **Migrated legacy (I-LA3 migration, §4):** `version: 1`, `status` = resolved per the §4
-  matrix, `governanceInitializedAt/By` = server migration timestamp + governed migration
-  tool identity, `updatedAt/By` = that initialization timestamp/actor, **`createdAt/By`
-  preserved only if an authentic valid value already exists — otherwise left absent, never
-  fabricated**, `active` deleted.
+- **`provenance: "NATIVE"` (trusted writer, §5):** `version: 1`, `status: "ACTIVE"`,
+  `createdAt/By` = server actor metadata (**both required**), `updatedAt/By` = the same
+  creation metadata, and **no** `governanceInitialized*` (creation *is* the governance
+  origin).
+- **`provenance: "MIGRATED"` (I-LA3 migration, §4):** `version: 1`, `status` = resolved
+  per the §4 matrix, `governanceInitializedAt/By` = server migration timestamp + governed
+  migration tool identity (**both required**), `updatedAt/By` = that initialization
+  timestamp/actor, **`createdAt/By` either both absent or both present-and-valid** — a
+  legacy value is preserved only if authentic, otherwise left absent, never fabricated;
+  `active` deleted.
+
+### 3A.1 Provenance invariants (P2-1)
+
+The `provenance` discriminator plus complete-pair rules make origin state unambiguous and
+are enforced **identically** by all five consumers. A governed record is valid **iff it
+matches exactly one** model:
+
+| `provenance` | `createdAt/By` | `governanceInitializedAt/By` |
+|---|---|---|
+| `NATIVE` | **both present & valid** | **both absent** |
+| `MIGRATED` | **both absent**, or **both present & valid** | **both present & valid** |
+
+**Invalid → fail closed (not governed):** `provenance` missing or not in
+`{NATIVE, MIGRATED}`; only one half of any pair present; `governanceInitialized*` present
+on a `NATIVE` record or absent on a `MIGRATED` one; a timestamp that is not a well-formed
+server timestamp, or an actor identity that is blank/non-string; any combination not
+matching exactly one row above. ("Valid" = well-formed server timestamp for a time field;
+non-blank string for an actor field.)
 
 **Validator/deserializer rule (shared):** a governed warehouse must have `status ∈
-{ACTIVE, INACTIVE}`, integer `version ≥ 1`, and `updatedAt/By`, and must **not** carry an
-`active` field; `createdAt/By` and `governanceInitialized*` are optional. A record missing
-`status`/`version`/`updatedAt`, carrying a malformed `status`, or still carrying `active`
-is **not governed** → fail closed (the verifier rejects it; the resolver §6 treats the
-warehouse as ineligible). This is why transitions (§5) operate only on already-initialized
-records — the writer never fabricates history.
+{ACTIVE, INACTIVE}`, integer `version ≥ 1`, `updatedAt/By`, a valid `provenance` with its
+coherent pairs (§3A.1), and must **not** carry an `active` field. Any record failing any
+clause is **not governed** → fail closed (the verifier rejects it; the resolver §6 treats
+the warehouse as ineligible). This is why transitions (§5) operate only on
+already-initialized records — the writer never fabricates history.
 
-> **O-5 (Owner/Codex):** adopt this single-`version` envelope (recommended), or Codex's
-> alternative — a separate `statusVersion` field with legacy creation metadata kept
-> optional. This spec pins the single-`version` model; whichever is ratified is shared by
-> all five consumers above.
+> **O-5 (Owner/Codex):** adopt this single-`version` envelope with the `provenance`
+> discriminator (recommended), or Codex's alternative — a separate `statusVersion` field
+> with legacy creation metadata kept optional. This spec pins the single-`version` +
+> `provenance` model; whichever is ratified is shared verbatim by all five consumers.
 
 ---
 
 ## 4. Existing-document migration / governance-initialization (I-LA3)
 
 The migration is the **governed initializer** for legacy warehouses: one trusted write
-per document that **initializes the full governed schema (§3A)** — sets `status`,
-`version: 1`, `updatedAt/By`, and `governanceInitializedAt/By`, preserves an authentic
-`createdAt/By` only if already present and valid (**never fabricated**), and **removes
-`active`**. It performs no runtime inference and never silently overwrites an ambiguous
-record. Every pre-migration combination is resolved by an **explicit matrix**:
+per document that **initializes the full governed schema (§3A)** — sets `provenance:
+"MIGRATED"`, `status`, `version: 1`, `updatedAt/By`, and `governanceInitializedAt/By`,
+preserves an authentic `createdAt/By` only if already present and valid (both halves or
+neither; **never fabricated**), and **removes `active`**. It performs no runtime inference
+and never silently overwrites an ambiguous record. Every pre-migration combination is
+resolved by an **explicit matrix**:
 
 | Pre-migration state | Action |
 |---|---|
@@ -296,15 +318,27 @@ itself is the initializer, and ambiguous records are resolved by an Owner-author
 manifest:
 
 - **Dry-run (default)** lists every planned action **and every contradiction/malformed
-  record** (id + raw legacy fields) into the immutable evidence archive.
-- The **Owner authors a resolution manifest** — an explicit `warehouseId → intended
-  status (ACTIVE|INACTIVE)` mapping for exactly those ambiguous records.
-- The manifest is content-hashed; `--execute` requires the **manifest hash** plus
-  `--acknowledge-production-write`. An ambiguous record with **no** matching manifest
-  entry, or a manifest whose hash does not match, **fails closed (HALT)** — the migration
-  never chooses a status itself and never depends on a future undeployed callable.
-- On execution the migration initializes the full §3A schema with the manifest-resolved
-  `status`, removes `active`, and records per-document evidence.
+  record** — each with its id and a **sanitized, deterministic pre-state fingerprint** (a
+  stable hash over the record's governed-relevant fields; **no unexpected raw field
+  values**) — into the immutable evidence archive, stamped with the target **project id**
+  and the **governed commit** under which the dry-run ran.
+- The **Owner authors a resolution manifest** — for exactly the ambiguous set, an explicit
+  `warehouseId → { intended status (ACTIVE|INACTIVE), pre-state fingerprint }` entry,
+  carrying the same project-id + governed-commit stamp.
+- `--execute` requires the **manifest content-hash** plus `--acknowledge-production-write`,
+  and **re-reads each ambiguous warehouse and re-computes its fingerprint before writing.**
+  Hashing the manifest only proves its bytes are unchanged; the live re-read proves the
+  warehouse documents did not drift between dry-run and execution.
+- **Fail closed (HALT) before any write** on: a changed/stale pre-state fingerprint; a
+  missing entry; an extra or duplicate entry; a `warehouseId` outside the dry-run
+  ambiguous set; an invalid target status; or a manifest/dry-run **project or
+  governed-commit mismatch**. No document is written until the complete manifest **and
+  every** live precondition validate. The migration never chooses a status itself and
+  never depends on a future undeployed callable.
+- On successful validation the migration initializes the full §3A schema with the
+  manifest-resolved `status` and `provenance: "MIGRATED"`, removes `active`, and records
+  per-document evidence containing **no unexpected raw fields** (only sanitized,
+  governed-relevant values).
 
 - **Tooling conventions to mirror** (`functions/scripts/`): dry-run default; `--execute`
   gated on `--acknowledge-production-write`; idempotent; stop-on-first-failure; emits an
@@ -329,10 +363,11 @@ house pattern (one `db.runTransaction`; reads-before-writes; `version` CAS;
 sanitized error taxonomy).
 
 - **Creation default.** The writer creates a warehouse as a **full governed record per
-  §3A**: `version: 1`, `status: "ACTIVE"` (explicit, never absent), `createdAt/By` +
-  `updatedAt/By` = server actor metadata, **no `active` field**. Seed scripts set `status`
-  explicitly and stop writing `active` (§3.2), so no code path produces a status-less,
-  version-less, or `active`-bearing warehouse.
+  §3A**: `provenance: "NATIVE"`, `version: 1`, `status: "ACTIVE"` (explicit, never absent),
+  `createdAt/By` + `updatedAt/By` = server actor metadata, **no `active` field** and **no
+  `governanceInitialized*`**. Seed scripts set `status` explicitly and stop writing
+  `active` (§3.2), so no code path produces a status-less, version-less, or
+  `active`-bearing warehouse.
 - **Allowed transitions (`version`-CAS).** `ACTIVE → INACTIVE` (retire) and `INACTIVE →
   ACTIVE` (reinstate), each requiring the caller's `expectedVersion` to equal the stored
   `version`; on success the writer sets the new `status`, **bumps `version` by exactly
@@ -366,22 +401,30 @@ resolveLocationActive(txn, { type, locationId }) -> Promise<boolean>
 
 eligible (return true)  IFF ALL of:
   • type === "WAREHOUSE"                         // first slice: WAREHOUSE only
-  • warehouses/{locationId} exists (read through txn)
-  • the doc's status is the exact string "ACTIVE"
+  • warehouses/{locationId} read through txn EXISTS
+  • the COMPLETE document passes the shared §3A validator/deserializer
+      (governed: status∈{ACTIVE,INACTIVE}, integer version≥1, updatedAt/By present,
+       exactly one coherent provenance §3A.1, and NO `active` field)
+  • the validated record's status === "ACTIVE"
 
 ineligible (return false)  — fail closed — for ANY of:
   • type !== "WAREHOUSE"        (BIN/MOBILE/VENDOR/CUSTOMER/VIRTUAL: no authority yet)
   • document missing
-  • status field absent
-  • status not a string / not in { ACTIVE, INACTIVE } (malformed → ineligible)
-  • status === "INACTIVE"
+  • §3A validation fails: missing status/version/updatedAt-By, malformed status,
+    invalid/incomplete provenance (§3A.1), or a lingering `active` field
+  • the validated status === "INACTIVE"
 ```
 
-- The resolver is **total**: data conditions (missing/malformed/INACTIVE) return
-  `false`, never throw — a `false` surfaces as the command's existing
-  `DestinationInvalidError` (`DESTINATION_INVALID`). This matches the merged seam
-  contract (`Promise<boolean>`, `:157`) and keeps corrupt-data handling a
-  migration/verifier concern (§4), caught before deploy.
+- **The resolver enforces the shared §3A schema, not just `status` (P1).** It does not
+  cherry-pick fields: it runs the **same** validator/deserializer that the migration,
+  verifier, writer, and tests use, so a partially-migrated record like `{ status:
+  "ACTIVE" }` (no `version`/`updatedAt`/provenance) is **ineligible** even though its raw
+  `status` reads `"ACTIVE"`. Governed-and-`ACTIVE` is the only accept condition.
+- The resolver is **total**: every validation failure returns `false`, never throws — a
+  `false` surfaces as the command's existing `DestinationInvalidError`
+  (`DESTINATION_INVALID`). This matches the merged seam contract (`Promise<boolean>`,
+  `:157`). The pre-deploy verifier (§4) still guarantees no un-governed doc survives to
+  production, but the resolver **independently** fails closed rather than trusting that.
 - The read is performed **through the transaction** (commit-time state), consistent with
   the seam's declared signature and with `isWarehouseActive`'s transactional read.
 - **Divergence from `isWarehouseActive` is intentional and documented:** Receiving is
@@ -491,9 +534,12 @@ C2 pins the **eligibility source** the CUSTOMER LF1 adapter consumes
     7. only then permit Customer readiness activation (Phase F).
   Operator-run in Cloud Shell; never by this agent.
 - **Emulator tests (per phase):**
-  - I-LA1 offline (validator, §3A): accept a governed record (status∈enum, integer
-    version≥1, updatedAt/By, no active); reject missing status/version/updatedAt, unknown/
-    boolean status, or a lingering `active` field.
+  - I-LA1 offline (validator, §3A/§3A.1): accept a valid `NATIVE` record and a valid
+    `MIGRATED` record (both provenance models); reject missing status/version/updatedAt,
+    unknown/boolean status, a lingering `active` field, a missing/invalid `provenance`, a
+    half-populated `createdAt/By` or `governanceInitialized*` pair, `governanceInitialized*`
+    on a `NATIVE` record (or absent on a `MIGRATED` one), and a malformed timestamp / blank
+    actor.
   - I-LA2 emulator (writer, §3A/§5): create yields a full §3A record at `version: 1` with
     created/updated metadata and no `active`; a transition advances `version` **exactly
     once** and updates updatedAt/By; idempotent same-status no-op (no bump);
@@ -511,10 +557,13 @@ C2 pins the **eligibility source** the CUSTOMER LF1 adapter consumes
     (g) **re-running the migration is idempotent** (already-governed docs untouched).
   - I-LA4: Rules/read-visibility tests for the chosen I-LR mechanism (regression suite +
     byte-identical mirror) — only if (2) is chosen.
-  - I-LA5 emulator: resolver returns true only for an existing WAREHOUSE with
-    status===ACTIVE; false for missing/absent/INACTIVE/malformed/non-WAREHOUSE; the
-    Receiving command rejects a receipt to an INACTIVE warehouse with
-    `DESTINATION_INVALID`; accepts to an ACTIVE one.
+  - I-LA5 emulator: resolver returns true only for an existing WAREHOUSE whose **complete
+    document passes the §3A validator** AND status===ACTIVE; returns **false** for a
+    non-WAREHOUSE type, a missing doc, INACTIVE, malformed status, and — critically — an
+    **ACTIVE record that fails §3A** (missing `version`, missing `updatedAt/By`, invalid/
+    incomplete provenance §3A.1, or a lingering `active` field), e.g. `{ status: "ACTIVE" }`;
+    every false case drives `DESTINATION_INVALID`. The Receiving command accepts a receipt
+    only to a fully-governed ACTIVE warehouse.
 - **Rollback per phase:** every I-LA phase is repo-only and independently revertable.
   The field is additive and inert until the resolver is wired (I-LA5); reverting I-LA5
   returns Receiving to the merged seam's stubbed/HALT posture (fail closed), never a bad
@@ -598,7 +647,9 @@ implementation, Rules, index, Function, callable, capability, migration, deploym
 production-data action. Ratifies **C2** and specifies the governed field, the shared
 governance-initialization schema (§3A: `status`/`version`/`updatedAt/By`, optional
 never-fabricated `createdAt/By`, `governanceInitialized*`), the migration/manifest-repair
-policy, trusted writer, Receiving resolver contract, Rules/read-authorization
+policy (with live pre-state-fingerprint binding), a `provenance`-discriminated
+governed-record model (§3A.1), a Receiving resolver that enforces the **complete** shared
+§3A schema (not just `status`), trusted writer, Rules/read-authorization
 implications, Customer read-option reconciliation, and the phased PR sequence. Reconciles
 with the merged `isWarehouseActive` convention (§1.2/§3.2) by **removing** the legacy
 `active` field in the migration — leaving `status` the single authority while keeping the
