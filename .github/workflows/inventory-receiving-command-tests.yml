@@ -1,0 +1,78 @@
+name: Inventory Receiving Command Tests
+
+# EI Phase-2 Receiving, Phase B -- the INERT, UNEXPORTED trusted receiveInventoryStock command
+# (functions/src/inventoryReceiving/receiveInventoryStockCommand.ts). Firestore-emulator tests only:
+# NO production, NO deployment, NO callable. The command is not exported from index.ts and never runs
+# against production. Authorization/audit are injected seams (Phase C wires the real ones).
+
+on:
+  pull_request:
+    paths:
+      - "functions/src/inventoryReceiving/**"
+      - "functions/src/inventoryLedger/**"
+      - "functions/test/receiveInventoryStockCommand.test.mjs"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - ".github/workflows/inventory-receiving-command-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/src/inventoryReceiving/**"
+      - "functions/src/inventoryLedger/**"
+      - "functions/test/receiveInventoryStockCommand.test.mjs"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - ".github/workflows/inventory-receiving-command-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inventory-receiving-command-tests:
+    name: Inventory receiving command tests (Firestore emulator)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+
+      - name: Offline receiving foundation tests
+        run: npm run test:inventoryReceiving
+        working-directory: functions
+
+      - name: Start Firestore emulator (background)
+        run: |
+          nohup node node_modules/firebase-tools/lib/bin/firebase.js emulators:start --only firestore --project taylor-parts --config ../firebase.json > /tmp/receiving-emulator.log 2>&1 &
+          for i in $(seq 1 60); do
+            if grep -q "All emulators ready" /tmp/receiving-emulator.log 2>/dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "Emulator did not become ready in time"
+          cat /tmp/receiving-emulator.log
+          exit 1
+        working-directory: functions
+
+      - name: Receiving command tests (build + run)
+        run: npm run test:receiveInventoryStock
+        working-directory: functions
+
+      - name: Upload emulator debug logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: receiving-emulator-logs
+          path: |
+            /tmp/receiving-emulator.log
+            functions/firestore-debug.log
+          if-no-files-found: ignore
