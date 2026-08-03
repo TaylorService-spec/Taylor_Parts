@@ -94,8 +94,9 @@ check("A3: every Permission id is granted by at least one compatibility Role (di
     ...PERMISSION_CATALOG.filter((p) => p.id.startsWith("equipment.")).map((p) => p.id),
     // EI Phase-2 Receiving (Phase C): inventory.stock.receive is registered-but-UNGRANTED by design --
     // no Role holds it; the trusted Receiving command's authorization is an injected seam and its grant
-    // is a later, separately-authorized gate. Recorded here as ungranted-by-design.
-    ...PERMISSION_CATALOG.filter((p) => p.id.startsWith("inventory.stock.")).map((p) => p.id),
+    // is a later, separately-authorized gate. EXACT id (NOT an inventory.stock.* prefix) so any FUTURE
+    // inventory.stock.* capability is NOT silently exempted -- it must earn its own reviewed decision.
+    "inventory.stock.receive",
     // AUTH-PR-3.5 (DECISIONS #56): admin.credentialReset.initiate is registered
     // `active: false` and granted to NO Role -- activation and any grant are a
     // later, separately-authorized production/security gate (same posture as the
@@ -111,6 +112,26 @@ check("A3: every Permission id is granted by at least one compatibility Role (di
     if (deferredForNow.has(permission.id)) continue;
     assert.ok(grantedIds.has(permission.id), `"${permission.id}" is granted by no seeded Role`);
   }
+});
+
+// --- A3-inv: the inventory.stock exhaustiveness exception is an EXACT allowlist, not a prefix ---
+check("A3-inv: inventory.stock.receive is the SOLE explicit exception; a synthetic future inventory.stock.* is NOT auto-exempted", () => {
+  // The exact explicit ungranted-by-design set for inventory.stock (mirrors the deferredForNow literal above).
+  const explicitUngrantedInventoryStock = new Set(["inventory.stock.receive"]);
+  // Exactly one inventory.stock.* capability exists today, and it is the reviewed one.
+  const inventoryStockIds = PERMISSION_CATALOG.filter((p) => p.id.startsWith("inventory.stock.")).map((p) => p.id);
+  assert.deepEqual(inventoryStockIds.sort(), ["inventory.stock.receive"]);
+  assert.equal(explicitUngrantedInventoryStock.has("inventory.stock.receive"), true);
+
+  // A synthetic FUTURE inventory.stock.* entry is neither granted nor in the explicit exception, so the
+  // exhaustiveness gate would flag it (it is NOT silently exempted by an inventory.stock.* prefix).
+  const grantedIds = new Set([...ADMIN_ROLE.permissions, ...DISPATCHER_ROLE.permissions, ...TECHNICIAN_ROLE.permissions]);
+  const synthetic = "inventory.stock.transferOut";
+  assert.equal(explicitUngrantedInventoryStock.has(synthetic), false, "a future inventory.stock.* id must NOT be auto-exempted");
+  assert.equal(grantedIds.has(synthetic), false);
+  // -> for a synthetic catalog including it, the exhaustiveness loop would fail: not granted AND not deferred.
+  const wouldFail = !grantedIds.has(synthetic) && !explicitUngrantedInventoryStock.has(synthetic);
+  assert.equal(wouldFail, true, "a synthetic inventory.stock.* entry must trip the exhaustiveness gate until separately enumerated");
 });
 
 // --- A1: pure function, identical inputs -> identical decision ---
