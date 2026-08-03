@@ -145,6 +145,59 @@ await check("malformed stored record rejected on deserialize + on replay", async
   assert.equal(store.creates, 0);
 });
 
+// ---- P2-1: stored receivingId identity --------------------------------------------------------
+await check("stored record carries receivingId == doc id == derived; round-trip exposes it", () => {
+  const v = V.validateReceivingOrderInput(input(), AUTH).value;
+  const data = R.serializeReceivingOrder(v, actor, now, R.fingerprintReceivingOrder(v));
+  const docId = R.receivingOrderDocId(v.idempotencyKey);
+  assert.equal(data.receivingId, docId);
+  assert.match(data.receivingId, /^rcv_[0-9a-f]{40}$/);
+  const back = R.deserializeReceivingOrder(data);
+  assert.equal(back.receivingId, docId);
+});
+
+await check("missing / malformed / wrong-path receivingId -> MalformedStoredRecordError", () => {
+  const v = V.validateReceivingOrderInput(input(), AUTH).value;
+  const good = R.serializeReceivingOrder(v, actor, now, R.fingerprintReceivingOrder(v));
+  const { receivingId, ...noId } = good;
+  assert.throws(() => R.deserializeReceivingOrder(noId), /receivingId|unknown field/);
+  assert.throws(() => R.deserializeReceivingOrder({ ...good, receivingId: "not-path-safe" }), /receivingId/);
+  assert.throws(() => R.deserializeReceivingOrder({ ...good, receivingId: R.receivingOrderDocId("some-other-key") }), /receivingId does not agree/);
+});
+
+await check("replay: stored receivingId not matching its doc id -> MalformedStoredRecordError, zero writes", async () => {
+  const v = V.validateReceivingOrderInput(input(), AUTH).value;
+  const docId = R.receivingOrderDocId(v.idempotencyKey);
+  // a self-consistent record for a DIFFERENT key, placed at this key's doc id
+  const other = V.validateReceivingOrderInput({ ...input(), idempotencyKey: "idem-99999999" }, AUTH).value;
+  const otherDoc = R.serializeReceivingOrder(other, actor, now, R.fingerprintReceivingOrder(other));
+  const store = makeStore();
+  store.docs.set(docId, otherDoc);
+  await assert.rejects(R.stageReceivingOrder(store, input(), AUTH, { actor, now }), (e) => e instanceof T.MalformedStoredRecordError);
+  assert.equal(store.creates, 0);
+});
+
+// ---- P2-2: server-metadata coherence ----------------------------------------------------------
+await check("incoherent server metadata (createdBy/updatedBy != actor.id, or createdAt != updatedAt) -> Malformed", () => {
+  const v = V.validateReceivingOrderInput(input(), AUTH).value;
+  const good = R.serializeReceivingOrder(v, actor, now, R.fingerprintReceivingOrder(v));
+  assert.throws(() => R.deserializeReceivingOrder({ ...good, createdBy: "B" }), /createdBy/);
+  assert.throws(() => R.deserializeReceivingOrder({ ...good, updatedBy: "C" }), /updatedBy/);
+  assert.throws(() => R.deserializeReceivingOrder({ ...good, actor: { kind: "USER", id: "OTHER" } }), /createdBy|updatedBy/);
+  const later = R.serializeReceivingOrder(v, actor, new Date(now.getTime() + 1000), R.fingerprintReceivingOrder(v));
+  assert.throws(() => R.deserializeReceivingOrder({ ...good, updatedAt: later.updatedAt }), /same instant/);
+});
+
+await check("replay against a metadata-incoherent stored record -> Malformed, zero writes", async () => {
+  const v = V.validateReceivingOrderInput(input(), AUTH).value;
+  const docId = R.receivingOrderDocId(v.idempotencyKey);
+  const good = R.serializeReceivingOrder(v, actor, now, R.fingerprintReceivingOrder(v));
+  const store = makeStore();
+  store.docs.set(docId, { ...good, createdBy: "MISMATCH" });
+  await assert.rejects(R.stageReceivingOrder(store, input(), AUTH, { actor, now }), (e) => e instanceof T.MalformedStoredRecordError);
+  assert.equal(store.creates, 0);
+});
+
 // ---- no stage/write after any validation failure ----------------------------------------------
 await check("invalid input throws before any create; invalid actor/deps rejected", async () => {
   const store = makeStore();

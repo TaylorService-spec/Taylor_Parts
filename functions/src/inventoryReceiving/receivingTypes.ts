@@ -83,6 +83,7 @@ export type ReceivingOutcome = {
 
 // A deserialized stored order. Server timestamps are exposed as epoch millis (no Timestamp leak).
 export interface DeserializedReceivingOrder {
+  readonly receivingId: string; // stored doc identity (== receivingOrderDocId(idempotencyKey))
   readonly value: ReceivingOrderValue;
   readonly actor: ReceivingActor;
   readonly createdAt: number;

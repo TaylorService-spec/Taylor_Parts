@@ -58,6 +58,7 @@ export function receivingOrderDocId(idempotencyKey: string): string {
 export function serializeReceivingOrder(value: ReceivingOrderValue, actor: ReceivingActor, now: Date, fingerprint: string): Record<string, unknown> {
   return {
     schemaVersion: RECEIVING_SCHEMA_VERSION,
+    receivingId: receivingOrderDocId(value.idempotencyKey), // stored identity == doc path; server-derived, never from input
     source: { type: value.source.type, reorderRequestId: value.source.reorderRequestId, purchaseOrderId: value.source.purchaseOrderId },
     receivingLocation: { type: value.receivingLocation.type, locationId: value.receivingLocation.locationId },
     status: value.status,
@@ -81,9 +82,10 @@ function isPositiveFiniteNumber(v: unknown): v is number {
 }
 
 const STORED_KEYS = new Set([
-  "schemaVersion", "source", "receivingLocation", "status", "version", "lines", "idempotencyKey",
+  "schemaVersion", "receivingId", "source", "receivingLocation", "status", "version", "lines", "idempotencyKey",
   "actor", "createdAt", "createdBy", "updatedAt", "updatedBy", "fingerprint",
 ]);
+const RECEIVING_ID_RE = /^rcv_[0-9a-f]{40}$/;
 const STORED_LINE_KEYS = new Set(["lineId", "partId", "trackingMode", "expectedQuantity", "receivedQuantity", "status"]);
 
 // Fail-closed deserialize of a stored receiving_orders record. Validates self-consistency (first-slice
@@ -115,9 +117,16 @@ export function deserializeReceivingOrder(data: unknown): DeserializedReceivingO
     throw new MalformedStoredRecordError("stored line quantity invalid");
   }
   if (!isNonEmptyString(data.idempotencyKey)) throw new MalformedStoredRecordError("stored idempotencyKey invalid");
+  // Stored identity must be a path-safe receivingId that agrees with the idempotency-derived doc id.
+  if (typeof data.receivingId !== "string" || !RECEIVING_ID_RE.test(data.receivingId)) throw new MalformedStoredRecordError("stored receivingId invalid");
+  if (data.receivingId !== receivingOrderDocId(data.idempotencyKey)) throw new MalformedStoredRecordError("stored receivingId does not agree with its idempotencyKey");
   if (!isActor(data.actor)) throw new MalformedStoredRecordError("stored actor invalid");
   if (!isNonEmptyString(data.createdBy) || !isNonEmptyString(data.updatedBy)) throw new MalformedStoredRecordError("stored createdBy/updatedBy invalid");
   if (!(data.createdAt instanceof Timestamp) || !(data.updatedAt instanceof Timestamp)) throw new MalformedStoredRecordError("stored timestamps are not server Timestamps");
+  // First-slice immutable single-version-1 creation: metadata must be internally coherent.
+  if (data.createdBy !== data.actor.id) throw new MalformedStoredRecordError("stored createdBy does not match actor.id");
+  if (data.updatedBy !== data.actor.id) throw new MalformedStoredRecordError("stored updatedBy does not match actor.id");
+  if (data.createdAt.toMillis() !== data.updatedAt.toMillis()) throw new MalformedStoredRecordError("stored createdAt/updatedAt are not the same instant");
   if (typeof data.fingerprint !== "string" || !/^[0-9a-f]{16}$/.test(data.fingerprint)) throw new MalformedStoredRecordError("stored fingerprint invalid");
 
   const line: ReceivingLineValue = { lineId: l.lineId, partId: l.partId, trackingMode: RECEIVING_LINE_TRACKING_MODE, expectedQuantity: l.expectedQuantity, receivedQuantity: l.receivedQuantity, status: RECEIVING_LINE_STATUS };
@@ -130,6 +139,7 @@ export function deserializeReceivingOrder(data: unknown): DeserializedReceivingO
     idempotencyKey: data.idempotencyKey,
   };
   return {
+    receivingId: data.receivingId,
     value,
     actor: { kind: data.actor.kind, id: data.actor.id },
     createdAt: data.createdAt.toDate().getTime(),
@@ -185,6 +195,9 @@ export async function stageReceivingOrder(
   const existing = await store.read(docId);
   if (existing !== null) {
     const stored = deserializeReceivingOrder(existing); // malformed -> MalformedStoredRecordError
+    if (stored.receivingId !== docId) {
+      throw new MalformedStoredRecordError("stored receivingId does not match its document id");
+    }
     if (receivingOrderDocId(stored.value.idempotencyKey) !== docId) {
       throw new MalformedStoredRecordError("stored idempotencyKey does not derive its document id");
     }
