@@ -76,8 +76,13 @@ emulator (§12). **But Phase B provides only an _injected_ `resolveLocationActiv
 transaction SEAM — an enforcement hook — not a persisted authority and not a governed
 predicate that defines what "active" means.** A command is the *enforcement point*;
 it cannot authoritatively answer "active" until a concrete source + predicate are
-governed and merged. (PR #533 is Phase B's `receiveInventoryStock` command; its
-callable name/payload/errors are **not merged** and are **not pinned here**.)
+governed and merged. **This is now confirmed on `main`:** PR #533 merged the Phase-B
+command (`functions/src/inventoryReceiving/receiveInventoryStockCommand.ts`), which
+declares `resolveLocationActive: (txn, location) => Promise<boolean>` as an **injected
+dependency** (`:63`) and rejects when it returns non-`true` (`:157-158`) — the
+resolver itself is **not implemented and backed by no persisted authority** in that
+merge. (Its callable name/payload/errors/response remain **not pinned here** —
+backend-contract boundary.)
 
 **Key finding (corrected):** **there is currently NO active-location authority —
 neither client nor backend.** No collection exposes an active/eligibility field, and
