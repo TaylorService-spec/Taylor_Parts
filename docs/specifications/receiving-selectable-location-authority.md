@@ -69,63 +69,88 @@ trusted backend own activity.
 
 **Backend Phase-B destination seam (read-only, from the merged
 `enterprise-inventory-receiving-phase2.md`):** the command takes
-`receivingLocation { type, locationId }`, a **"validated active `InventoryLocation`
-reference"** (§2); step 5 *"validate `receivingLocation` is an active governed
-Location"* (§7 line 148); emulator asserts *"active-destination-location validation"*
-(§12). **The trusted command is the active-location authority.** (PR #533 is Phase B's
-`receiveInventoryStock` command; its exact callable name/payload/errors are **not
-merged** and are **not pinned here** — backend-contract boundary.)
+`receivingLocation { type, locationId }` and its steps *describe* it as a "validated
+active `InventoryLocation` reference" (§2) / "validate `receivingLocation` is an
+active governed Location" (§7) with an "active-destination-location validation"
+emulator (§12). **But Phase B provides only an _injected_ `resolveLocationActive`
+transaction SEAM — an enforcement hook — not a persisted authority and not a governed
+predicate that defines what "active" means.** A command is the *enforcement point*;
+it cannot authoritatively answer "active" until a concrete source + predicate are
+governed and merged. (PR #533 is Phase B's `receiveInventoryStock` command; its
+callable name/payload/errors are **not merged** and are **not pinned here**.)
 
-**Key finding:** **warehouse activity CANNOT be proven from any client-readable
-persisted authority.** No collection exposes an active/eligibility field to the
-client; the sole authority for "is this an active governed Location" is the trusted
-backend command.
-
----
-
-## 2. Required decision — recommendation: **Option C**
-
-> **C. Temporary WAREHOUSE-only adapter with backend-authoritative validation.**
-
-**Why C (evidence-based):**
-
-- A safe source exists to *offer* options — the bounded `warehouses` id/label read
-  (`fetchWarehouseOptions`) — but it does **not** establish activity (§1).
-- The backend command **is** the active-location authority (Phase-2 §2/§7/§12).
-- Therefore the frontend offers `WAREHOUSE` options as an **existence/activity-agnostic
-  bounded pick-list** and makes **no active-state claim**. Eligibility is defined
-  **solely as "the trusted command accepts the `{ type:"WAREHOUSE", locationId }`
-  reference as an active governed Location."** A stale/ineligible option is handled by
-  the command's **sanitized rejection → refresh** (idempotent, never a ledgerless
-  write), exactly as the merged cutover spec already requires.
-- **This is not a false active-state claim:** the UI never labels an option "active",
-  never asserts existence at submit time, and defers activity entirely to the
-  backend — the same discipline `useWarehouseOptions.js` already ships.
-
-**Why not the others:**
-
-- **A (reuse `warehouses` as the governed active authority) — REJECTED.** `warehouses`
-  has **no** eligibility/active field to pin; selecting A would require inventing a
-  field or asserting that an id/label implies eligibility — a named STOP condition.
-- **B (dedicated `inventory_locations` projection/authority) — DEFERRED, future.** A
-  governed, client-readable active-location authority is the *correct long-term*
-  source, but it is an **Inventory-owned persistence build** (writer + Rules + index)
-  and is not required for a fail-closed first slice. Named here as the future
-  upgrade path (§7); recommended if/when the frontend must show eligibility *before*
-  submit, or support multiple putaway types.
-- **D (HALT) — not required.** A defensible, fail-closed specification is producible
-  (C). D is the conservative alternative the Owner may still elect **as a one-line
-  policy** (§6): if the frontend must never *offer* an option it cannot prove active,
-  Receiving stays unavailable until B ships.
-
-**First-slice destination type: `WAREHOUSE` only.** `BIN` adds sub-warehouse
-granularity; `MOBILE` is the excluded Truck surface and putaway-to-truck is out of
-scope; `VENDOR`/`CUSTOMER`/`VIRTUAL` have no persisted backing and are not physical
-receipt destinations. The NONE-only first slice receives to a single `WAREHOUSE`.
+**Key finding (corrected):** **there is currently NO active-location authority —
+neither client nor backend.** No collection exposes an active/eligibility field, and
+the backend `resolveLocationActive` is an **unresolved injected seam, not an
+authority**. Under the present schema a production resolver could only: (a) treat
+warehouse *existence* as eligibility — contradicting this document's own rejection of
+id/existence as proof; (b) invent an unstored active state; (c) always reject; or
+(d) depend on a not-yet-specified/merged authority. **No safe eligibility answer
+exists today.**
 
 ---
 
-## 3. Specification (contingent on Owner electing C)
+## 2. Required decision — present decision: **Option D (HALT / fail closed)**
+
+> **D. HALT — no governed authority currently exists to produce eligible options.**
+> Option **C** is not implementable as originally described (there is no active
+> authority for its resolver to consult, §1) and is redefined as a **conditional
+> future option**, unlocked only after an **Inventory-owned gate** ratifies and merges
+> one concrete authoritative predicate (C1/C2/C3 below).
+
+**Why D now (evidence-based):** a command is an *enforcement point*, not an
+authority; the injected `resolveLocationActive` seam has **no persisted source or
+governed predicate** to answer "active" (§1). Offering `warehouses` id/label options
+and calling backend acceptance "eligibility" would, under the present schema, reduce
+to *existence-is-eligibility* — which this document explicitly rejects as proof.
+Until an authority is pinned, **the frontend can safely offer nothing**.
+
+**Until an Inventory-owned authority gate merges (binding):**
+
+- Receiving offers **no selectable destination**.
+- **LF1/LF2 runtime work remains blocked.**
+- The current `warehouses` list may be **displayed nowhere as a Receiving option**.
+- `resolveLocationActive` remains an **unresolved injected seam, not an authority**.
+- **No callable may be activated** for production Receiving.
+
+**Option C — conditional future, unlocked by ONE Inventory-ratified predicate:**
+
+- **C1 — Existence-is-eligible policy.** For first-slice `WAREHOUSE` receiving, the
+  existence of a well-formed `warehouses/{id}` document is *explicitly defined* as
+  eligible; **no "active" claim is made**; the backend resolver performs a
+  transactional existence/schema check. This is a **governance change to the current
+  "active location" wording** and must be reviewed against the Receiving
+  specification (`enterprise-inventory-receiving-phase2.md`) before adoption.
+- **C2 — Persisted eligibility field.** `warehouses` gains an explicit governed
+  `status`/`active` field — pin allowed values, default/migration treatment, write
+  owner, Rules, backend resolver, and client-display semantics.
+- **C3 — Dedicated `inventory_locations` authority.** Introduce `inventory_locations`
+  with identity, type, lifecycle/status, warehouse linkage, trusted writer, Rules,
+  indexes, and migration.
+
+All three are **Inventory-owned** (persistence writer / Rules / catalog / index /
+migration). This Customer document neither builds nor pins them; it records the
+requirement and the frontend contract that becomes valid **after** one is merged (§3).
+
+- **A (reuse `warehouses` as the governed active authority) — REJECTED.** No
+  eligibility/active field to pin; would require inventing a field or asserting
+  id/existence ⇒ eligibility (a STOP condition).
+
+**First-slice destination type (when C unlocks): `WAREHOUSE` only.** `BIN` adds
+sub-warehouse granularity; `MOBILE` is the excluded Truck surface (putaway-to-truck
+out of scope); `VENDOR`/`CUSTOMER`/`VIRTUAL` have no persisted backing and are not
+physical receipt destinations.
+
+---
+
+## 3. Frontend contract — valid ONLY after an Inventory authority (C1/C2/C3) merges
+
+**This section does not apply to the present state (§2 = D/HALT).** It defines the
+frontend location-options contract that becomes buildable **only after** Inventory
+ratifies and merges one of C1/C2/C3 **and** the read-authorization gap (§3.10) is
+resolved. Until then, none of it is implemented and Receiving offers no destination.
+Where it says "eligible", that means "accepted by the *then-governed* authority's
+predicate" — never mere existence, unless C1 is the ratified predicate.
 
 ### 3.1 Source & type
 - **Source collection:** `warehouses` (bounded read).
@@ -135,10 +160,12 @@ receipt destinations. The NONE-only first slice receives to a single `WAREHOUSE`
 - **Frontend predicate (shape + presence only):** an option is *offerable* iff it is a
   `warehouses` document with a non-blank string `id`. The frontend asserts **nothing**
   about activity.
-- **Authoritative predicate (backend):** the option is *eligible* iff the trusted
-  command validates it as an **active governed Location**. Ineligible ⇒ sanitized
-  rejection ⇒ refresh (§3.9). The frontend treats backend acceptance as the only
-  eligibility truth.
+- **Authoritative predicate (backend):** the option is *eligible* iff the
+  **then-governed authority's predicate** (the ratified C1/C2/C3) accepts it — an
+  existence/schema check (C1), a persisted `status`/`active` field (C2), or the
+  `inventory_locations` lifecycle (C3). **This predicate does not exist today**
+  (§1/§2); the frontend has no authoritative eligibility truth to defer to until one
+  is merged. Once merged, ineligible ⇒ sanitized rejection ⇒ refresh (§3.9).
 
 ### 3.3 Bounded client read shape
 - Reuse the `fetchWarehouseOptions` pattern: one-shot `getDocs(warehouses)` →
@@ -203,11 +230,13 @@ receipt destinations. The NONE-only first slice receives to a single `WAREHOUSE`
 
 ## 4. Behavior when no eligible location exists
 
-- If the bounded read returns zero offerable warehouses (or the actor cannot read
-  them, §3.10), the Receiving location field offers **nothing** and Receiving is
-  **unavailable** — fail closed, consistent with the merged cutover spec (§5). The
-  `warehouses` list is **never** treated as proof of active locations, and the UI
-  never defaults to an unproven option.
+- **This is the present state.** With no ratified eligibility authority (§2 = D),
+  there are **zero eligible options today** and Receiving is **unavailable now** —
+  fail closed, consistent with the merged cutover spec (§5).
+- The same fail-closed behavior also applies post-authority if a read returns zero
+  offerable records or the actor cannot read them (§3.10). The `warehouses` list is
+  **never** treated as proof of active locations, and the UI never defaults to an
+  unproven option.
 
 ---
 
@@ -227,25 +256,29 @@ unauthorized personas.
 
 ---
 
-## 6. Owner decision required
+## 6. Decision recorded & gates required
 
-Elect exactly one, with repository evidence recorded above:
+**Present decision: D — HALT / fail closed.** Receiving offers no selectable
+destination and LF1/LF2 runtime stays blocked until an **Inventory-owned gate**
+ratifies and merges **one** authoritative eligibility predicate:
 
-- **C (recommended)** — WAREHOUSE-only adapter, backend-authoritative validation,
-  no active-state claim. Proceed to §7 LF-phases.
-- **D (conservative)** — if the frontend must never *offer* an option whose activity
-  it cannot prove, HALT the Receiving location field (Receiving stays unavailable)
-  until Inventory ships Option **B**. This is a one-line policy flip of C's "offer"
-  step; nothing else in the cutover spec changes (it already fails closed).
+- **C1** — existence-is-eligible policy (a governance change to the current "active
+  location" wording; must be reviewed against `enterprise-inventory-receiving-phase2.md`); or
+- **C2** — a persisted governed `warehouses.status`/`active` field; or
+- **C3** — a dedicated `inventory_locations` authority.
 
-**Unresolved gates (regardless of C/D):**
-1. The **`warehouses` read-authorization gap** for `PARTS_ASSOCIATE` receivers
-   (Inventory — §3.10).
-2. The **merged Phase-B/E command contract** (callable name/payload/errors/response)
-   (Inventory — cutover spec §18).
-3. Whether a governed **`inventory_locations` active authority (Option B)** is
-   ultimately required (Inventory persistence) — recommended once eligibility must be
-   shown pre-submit or multiple putaway types are supported.
+**Two independent Inventory gates must BOTH clear before any client wiring:**
+
+1. **I-LA — eligibility authority/predicate** (C1/C2/C3), §2.
+2. **I-LR — read-authorization for the option list.** Even once eligibility is solved,
+   a full `getDocs(warehouses)` is **unavailable** to the `PARTS_ASSOCIATE` receiver
+   persona (§3.10). Inventory must separately choose: a restricted admin/dispatcher
+   first slice · a narrowly governed client read · or trusted backend-served options.
+   **Solving eligibility does NOT automatically solve option visibility** — the two
+   are independent.
+
+**Also unresolved:** the **merged Phase-B/E command contract** (callable
+name/payload/errors/response) — Inventory, cutover spec §18.
 
 ---
 
@@ -253,14 +286,15 @@ Elect exactly one, with repository evidence recorded above:
 
 | Phase | Scope | Owner | Depends on | Gate |
 |---|---|---|---|---|
-| **LF0 (this)** | Authority reconciliation + decision | Customer | — | Spec (docs) |
-| **LF1** | inert `services/receivingLocationOptions.js` + `hooks/useReceivingLocationOptions.js` + tests, **unwired** | Customer | Owner elects C; §3.10 read decision | repo-only DRAFT → Codex → Owner merge |
-| **LF2** | wire options into the Receiving modal behind `readiness=false` (feeds the cutover spec's location field, §3) | Customer | LF1, cutover-spec F2 | repo-only DRAFT |
-| **(Inventory)** | warehouse-read Rules decision (§3.10); active-destination validation in the command | Inventory | — | Inventory gates (Rules/Functions) |
-| **LF3+** | activation rides the cutover spec's F3/F4 (client wiring → readiness flip) | Customer + Owner | Phase-B/E merged + verified, deployment-lock | activation gate → Owner auth |
+| **LF0 (this)** | authority reconciliation; records the current **D / HALT** | Customer | — | Spec (docs) |
+| **I-LA** | eligibility **authority/predicate** decision + implementation (C1 policy / C2 field / C3 `inventory_locations`) | **Inventory** | — | Inventory gate (Rules/Functions/persistence/migration) |
+| **I-LR** | **read-authorization** decision for the option list (§3.10) | **Inventory** | — | Inventory gate (Rules) |
+| **LF1** | inert `services/receivingLocationOptions.js` + `hooks/useReceivingLocationOptions.js` + tests, **unwired — only after I-LA + I-LR merge** | Customer | **I-LA, I-LR** | repo-only DRAFT → Codex → Owner merge |
+| **LF2** | isolated UI wiring under `readiness=false` (feeds the cutover spec's location field, §3) | Customer | LF1, cutover F2 | repo-only DRAFT |
+| **F3+** | cutover **only after the callable AND the authority are verified** (rides cutover F3/F4) | Customer + Owner | Phase-B/E merged + verified, I-LA verified, deployment-lock | activation gate → Owner auth |
 
-LF1 is authored **only after** the Owner elects C and the §3.10 read path is decided;
-until then this reconciliation stands and no adapter code exists.
+**LF1 is blocked until BOTH I-LA and I-LR merge.** Until then this reconciliation
+stands as a HALT record, no adapter code exists, and Receiving offers no destination.
 
 ---
 
@@ -268,8 +302,12 @@ until then this reconciliation stands and no adapter code exists.
 
 **Gate:** Receiving Location Authority Reconciliation. **Status: DRAFT.** Opened as a
 **DRAFT PR** for Codex review; authorizes no implementation and no production-data
-action. Recommendation **C** with **D** as the conservative alternative; the persisted
-client-visible active-location authority is **absent** and is disclosed as the gap
-Option B would close. No `functions/**`, PR #533, Rules, index, runtime-frontend,
-capability, callable, deployment, Hosting, production, or Truck change. **STOP for
-Codex review.**
+action. **Present decision: D — HALT / fail closed.** No governed active-location
+authority exists (client or backend); the injected `resolveLocationActive` seam is
+**not** one. Option **C** is a **conditional future**, unlocked only after an
+Inventory-owned gate ratifies and merges one predicate (**C1/C2/C3**, §2) **and** the
+read-authorization gate (**I-LR**, §3.10) clears. Until then Receiving offers no
+selectable destination, LF1/LF2 stay blocked, the `warehouses` list is displayed
+nowhere as a Receiving option, and no callable is activated. No `functions/**`,
+PR #533, Rules, index, runtime-frontend, capability, callable, deployment, Hosting,
+production, or Truck change. **STOP for Codex review.**
