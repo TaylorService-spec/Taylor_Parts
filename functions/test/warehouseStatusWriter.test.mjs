@@ -54,6 +54,9 @@ function makeDeps(actorId, over = {}) {
   return { deps, audits };
 }
 const read = async (id) => (await db.collection("warehouses").doc(id).get()).data();
+// A SEPARATE Firestore connection used to mutate a grant mid-transaction (commit-time revocation).
+const revoker = admin.initializeApp({ projectId: "taylor-parts" }, "revoker").firestore();
+const auditCount = async (id) => (await db.collection("warehouse_audit_test").where("warehouseId", "==", id).get()).size;
 
 // ---- CREATE ---------------------------------------------------------------------------------------
 await check("create: governed NATIVE record (v1, ACTIVE, provenance, server metadata, NO active) + audit", async () => {
@@ -224,6 +227,88 @@ await check("trusted actor context required (missing/invalid actor -> PERMISSION
   await assert.rejects(createWarehouse({ warehouseId: nextId("wh"), name: "n", location: "l" }, bad), UnauthorizedWarehouseWriteError);
   const bad2 = { ...deps, actor: { kind: "ROBOT", id: "r" } };
   await assert.rejects(setWarehouseStatus({ warehouseId: "x", expectedVersion: 1, targetStatus: "ACTIVE" }, bad2), UnauthorizedWarehouseWriteError);
+});
+
+// ---- P2-1: COMMIT-TIME AUTHORIZATION REVOCATION -------------------------------------------------
+// authorize reads the grant THROUGH the txn; a separate connection revokes it after that read but
+// before commit. The read doc changed under the txn, so Firestore retries; on retry authorize sees
+// the revoked grant and the command fails closed. Either way: ZERO writes commit. The revoke hook is
+// one-shot so it never re-mutates on a transaction retry.
+await check("commit-time revocation: grant revoked after auth read -> create does not commit (zero writes)", async () => {
+  const actorId = await seedActor();
+  const id = nextId("wh");
+  let revoked = false;
+  const { deps } = makeDeps(actorId, {
+    __afterAuthReadHook: async () => { if (!revoked) { revoked = true; await revoker.collection(GRANTS).doc(actorId).delete(); } },
+  });
+  await assert.rejects(createWarehouse({ warehouseId: id, name: "n", location: "l" }, deps));
+  assert.equal(await read(id), undefined, "no warehouse created under stale authorization");
+  assert.equal(await auditCount(id), 0, "no applied audit under stale authorization");
+});
+
+await check("commit-time revocation: grant revoked after auth read -> transition does not commit (unchanged)", async () => {
+  const actorId = await seedActor();
+  const id = await seedGoverned(actorId);
+  const auditsBefore = await auditCount(id); // the create audit
+  let revoked = false;
+  const { deps } = makeDeps(actorId, {
+    now: () => LATER,
+    __afterAuthReadHook: async () => { if (!revoked) { revoked = true; await revoker.collection(GRANTS).doc(actorId).delete(); } },
+  });
+  await assert.rejects(setWarehouseStatus({ warehouseId: id, expectedVersion: 1, targetStatus: "INACTIVE" }, deps));
+  const after = await read(id);
+  assert.equal(after.status, "ACTIVE");
+  assert.equal(after.version, 1);
+  assert.equal(after.updatedAt.toMillis(), NOW.getTime(), "updated metadata unchanged");
+  assert.equal(await auditCount(id), auditsBefore, "no transition audit under stale authorization");
+});
+
+// ---- P2-2: UNTRUSTED REQUEST ENVELOPES FAIL CLOSED ON UNKNOWN FIELDS -----------------------------
+await check("create: embedded actor / server-owned / overrides / arbitrary fields -> INVALID_REQUEST, zero writes", async () => {
+  const actorId = await seedActor();
+  const { deps } = makeDeps(actorId);
+  const id = nextId("wh");
+  const base = { warehouseId: id, name: "n", location: "l" };
+  const bads = [
+    { ...base, actor: { kind: "USER", id: "evil" } },
+    { ...base, createdAt: 1, createdBy: "x" },
+    { ...base, updatedAt: 1, updatedBy: "x" },
+    { ...base, status: "INACTIVE" },
+    { ...base, version: 5 },
+    { ...base, provenance: "MIGRATED" },
+    { ...base, active: false },
+    { ...base, governanceInitializedAt: 1, governanceInitializedBy: "x" },
+    { ...base, whatever: 1 },
+  ];
+  for (const bad of bads) {
+    await assert.rejects(createWarehouse(bad, deps), InvalidWarehouseRequestError);
+  }
+  assert.equal(await read(id), undefined, "no warehouse created from a rejected envelope");
+  assert.equal(await auditCount(id), 0);
+});
+
+await check("setWarehouseStatus: embedded actor / server-owned / overrides / arbitrary fields -> INVALID_REQUEST, zero writes", async () => {
+  const actorId = await seedActor();
+  const id = await seedGoverned(actorId);
+  const auditsBefore = await auditCount(id);
+  const { deps } = makeDeps(actorId);
+  const base = { warehouseId: id, expectedVersion: 1, targetStatus: "INACTIVE" };
+  const bads = [
+    { ...base, actor: { kind: "USER", id: "evil" } },
+    { ...base, updatedAt: 1, updatedBy: "x" },
+    { ...base, version: 9 },
+    { ...base, provenance: "NATIVE" },
+    { ...base, active: true },
+    { ...base, status: "ACTIVE" }, // 'status' is not an allowed key (targetStatus is)
+    { ...base, whatever: 1 },
+  ];
+  for (const bad of bads) {
+    await assert.rejects(setWarehouseStatus(bad, deps), InvalidWarehouseRequestError);
+  }
+  const after = await read(id);
+  assert.equal(after.status, "ACTIVE");
+  assert.equal(after.version, 1);
+  assert.equal(await auditCount(id), auditsBefore, "no transition audit from rejected envelopes");
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

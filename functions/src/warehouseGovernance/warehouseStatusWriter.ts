@@ -24,6 +24,12 @@ import { WAREHOUSE_STATUSES, type WarehouseStatus, type GovernedWarehouse } from
 const WAREHOUSE_STATUS_SET_CAPABILITY = "inventory.warehouse.status.set";
 const INITIAL_VERSION = 1;
 
+// Exact untrusted-request key allowlists. The trusted-writer boundary fails closed: any own
+// property outside these sets (an embedded actor, server-owned timestamps/metadata, status/version/
+// provenance/active overrides, or arbitrary keys) is rejected rather than silently ignored.
+const CREATE_ALLOWED_KEYS: ReadonlySet<string> = new Set(["warehouseId", "name", "location"]);
+const SET_STATUS_ALLOWED_KEYS: ReadonlySet<string> = new Set(["warehouseId", "expectedVersion", "targetStatus"]);
+
 // -------- sanitized error taxonomy (no raw Firestore/auth/document data in messages) --------
 export type WarehouseWriterFailureCode =
   | "PERMISSION_DENIED"
@@ -93,6 +99,14 @@ function assertTrustedActor(actor: unknown): asserts actor is WarehouseWriterAct
   }
 }
 
+// Fail closed on any own property outside the allowlist (e.g. an embedded actor or a server-owned
+// field the untrusted caller must never supply).
+function rejectUnknownKeys(obj: Record<string, unknown>, allowed: ReadonlySet<string>): void {
+  for (const key of Object.keys(obj)) {
+    if (!allowed.has(key)) throw new InvalidWarehouseRequestError("unknown request field");
+  }
+}
+
 // CREATE a governed NATIVE warehouse. Fails closed if the document already exists. Stamps version 1,
 // status ACTIVE, provenance NATIVE, and server-owned created/updated actor+timestamp metadata; never
 // writes a legacy `active` field.
@@ -100,6 +114,7 @@ export async function createWarehouse(request: unknown, deps: WarehouseWriterDep
   assertTrustedActor(deps.actor);
   const actor = deps.actor;
   if (!isPlainObject(request)) throw new InvalidWarehouseRequestError("request is not an object");
+  rejectUnknownKeys(request, CREATE_ALLOWED_KEYS);
   const warehouseId = request.warehouseId;
   const name = request.name;
   const location = request.location;
@@ -149,6 +164,7 @@ export async function setWarehouseStatus(request: unknown, deps: WarehouseWriter
   assertTrustedActor(deps.actor);
   const actor = deps.actor;
   if (!isPlainObject(request)) throw new InvalidWarehouseRequestError("request is not an object");
+  rejectUnknownKeys(request, SET_STATUS_ALLOWED_KEYS);
   const warehouseId = request.warehouseId;
   const expectedVersion = request.expectedVersion;
   const targetStatus = request.targetStatus;
