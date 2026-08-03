@@ -4,22 +4,22 @@
 // functions/src/index.ts; no callable; production-inert (no caller). Reuses the merged Phase-A receiving
 // repository + the merged inventoryLedger repository; touches no existing writer.
 //
-// Authorization and audit are INJECTED seams (Phase C registers the real capability + AuditAction). The
-// command reads authorization commit-time through the transaction (so a concurrent revocation conflicts
-// the commit), performs ALL Firestore reads before any writes (writes are buffered and flushed after the
-// last read), never writes reorder_purchase_orders (byte-identical), transitions only reorder_requests
-// ORDERED->RECEIVED, and stages exactly one RECEIVED ledger event + one immutable audit event.
+// The server-derived ACTOR is TRUSTED COMMAND CONTEXT (deps.actor, derived by the caller from
+// request.auth.uid) -- it is NEVER read from the untrusted request payload. Authorization and audit are
+// INJECTED seams (Phase C registers the real capability + AuditAction). The command reads authorization
+// commit-time through the transaction (so a concurrent revocation conflicts the commit), performs ALL
+// Firestore reads before any writes (writes buffered + flushed after the last read), never writes
+// reorder_purchase_orders (byte-identical), transitions only reorder_requests ORDERED->RECEIVED, and
+// stages exactly one RECEIVED ledger event + one immutable audit event.
 
+import { createHash } from "node:crypto";
 import { Timestamp } from "firebase-admin/firestore";
 import type { Firestore, Transaction, DocumentReference } from "firebase-admin/firestore";
 import { INVENTORY_TRANSACTIONS_COLLECTION } from "../constants/collections.js";
 import { stageOperationalMovement } from "../inventoryLedger/operationalMovementRepository.js";
-import {
-  RECEIVING_ORDERS_COLLECTION,
-  type ReceivingActor,
-} from "./receivingTypes.js";
+import { RECEIVING_ORDERS_COLLECTION, type ReceivingActor } from "./receivingTypes.js";
 import { validateReceivingOrderInput } from "./receivingValidation.js";
-import { stageReceivingOrder, type ReceivingIdempotencyStore } from "./receivingRepository.js";
+import { stageReceivingOrder, receivingOrderDocId, deserializeReceivingOrder, type ReceivingIdempotencyStore } from "./receivingRepository.js";
 
 const REORDER_PURCHASE_ORDERS_COLLECTION = "reorder_purchase_orders";
 const REORDER_REQUESTS_COLLECTION = "reorder_requests";
@@ -52,11 +52,12 @@ export class ReceivingIntegrityError extends ReceiveCommandError { constructor(m
 
 export interface ResolvedPart { readonly partId: string; readonly trackingMode: string; readonly active: boolean; }
 
-// Injected dependencies. Authorization / part / location resolution read THROUGH the transaction (so a
-// concurrent revocation conflicts the commit); audit staging is a write seam. now() supplies the server
-// clock. __afterAuthReadHook is a TEST-ONLY seam to inject a concurrent write after the authz read.
+// Injected dependencies + TRUSTED command context. `actor` is server-derived (from request.auth.uid at
+// the caller boundary) and passed here as trusted context -- never taken from the request. authorize /
+// resolvePart / resolveLocationActive read THROUGH the transaction. __after*Hook are TEST-ONLY seams.
 export interface ReceiveInventoryStockDeps {
   readonly db: Firestore;
+  readonly actor: ReceivingActor;
   readonly authorize: (txn: Transaction, actorId: string, capability: string) => Promise<boolean>;
   readonly resolvePart: (txn: Transaction, partId: string) => Promise<ResolvedPart | null>;
   readonly resolveLocationActive: (txn: Transaction, location: { type: string; locationId: string }) => Promise<boolean>;
@@ -90,18 +91,23 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
 }
 function str(v: unknown): string | null { return typeof v === "string" && v.trim() !== "" ? v : null; }
 
-// The trusted command. `request` is the untrusted receive request PLUS the server-derived actor.
+// Collision-free deterministic per-line ledger idempotency key: sha256 over a JSON tuple of the fixed
+// receivingId + lineId (JSON quoting makes the components unambiguous, unlike raw delimiter concatenation).
+function ledgerLineIdempotencyKey(receivingId: string, lineId: string): string {
+  return "recvln_" + createHash("sha256").update(JSON.stringify([receivingId, lineId])).digest("hex").slice(0, 40);
+}
+
+// The trusted command. `request` is the UNTRUSTED receive payload ONLY (no actor). The server-derived
+// actor comes from deps.actor (trusted context).
 export async function receiveInventoryStock(request: unknown, deps: ReceiveInventoryStockDeps): Promise<ReceiveInventoryStockOutcome> {
-  if (!isPlainObject(request)) throw new SourceNotReceivableError("request is not an object");
-  const actorRaw = request.actor;
-  if (!isPlainObject(actorRaw) || (actorRaw.kind !== "USER" && actorRaw.kind !== "SYSTEM") || !str(actorRaw.id)) {
-    throw new UnauthorizedReceivingError("actor identity missing");
+  const actor = deps.actor;
+  if (!isPlainObject(actor) || (actor.kind !== "USER" && actor.kind !== "SYSTEM") || !str(actor.id)) {
+    throw new UnauthorizedReceivingError("trusted actor context missing");
   }
-  const actor: ReceivingActor = { kind: actorRaw.kind as "USER" | "SYSTEM", id: actorRaw.id as string };
+  if (!isPlainObject(request)) throw new SourceNotReceivableError("request is not an object");
   const source = request.source;
   if (!isPlainObject(source) || !str(source.reorderRequestId)) throw new SourceNotReceivableError("source reorderRequestId missing");
   const reorderRequestId = source.reorderRequestId as string;
-  const { actor: _actor, ...receivingInput } = request; // stripped input for the Phase-A validator (no actor)
 
   return deps.db.runTransaction(async (txn) => {
     const now = deps.now();
@@ -147,24 +153,31 @@ export async function receiveInventoryStock(request: unknown, deps: ReceiveInven
     if (part.partId !== poPartId) throw new PartInvalidError("resolved part identity incoherent");
 
     // ---- 5. DESTINATION location (active) ----
-    if (!isPlainObject(receivingInput.receivingLocation)) throw new DestinationInvalidError("destination missing");
-    const locActive = await deps.resolveLocationActive(txn, receivingInput.receivingLocation as { type: string; locationId: string });
+    if (!isPlainObject(request.receivingLocation)) throw new DestinationInvalidError("destination missing");
+    const locActive = await deps.resolveLocationActive(txn, request.receivingLocation as { type: string; locationId: string });
     if (locActive !== true) throw new DestinationInvalidError("destination is not an active governed location");
 
     // ---- 7. validate + bind the receiving value against the authoritative Part + orderedQuantity ----
     const authority = { part: { partId: part.partId, trackingMode: part.trackingMode }, orderedQuantity };
-    const validated = validateReceivingOrderInput(receivingInput, authority);
+    const validated = validateReceivingOrderInput(request, authority);
     if (!validated.valid) {
       if (validated.reason === "tracking_mode_unsupported") throw new PartInvalidError("tracking mode not supported (SERIAL/LOT deferred)");
       throw new SourceNotReceivableError(`receiving input invalid: ${validated.reason}`);
     }
     const value = validated.value;
     const line = value.lines[0];
+    const receivingId = receivingOrderDocId(value.idempotencyKey);
+
+    // ---- occurredAt STABILITY: the ledger event's business time is the Receiving Order's authoritative
+    // createdAt, so an exact retry at a later clock reproduces the same fingerprint (replay, not conflict).
+    // On apply the order is created with createdAt = now, so occurredAt = now; on replay we read the
+    // stored order's createdAt (malformed stored -> fail closed here).
+    const receivingStore = bufferedStore(RECEIVING_ORDERS_COLLECTION);
+    const existingReceiving = await receivingStore.read(receivingId);
+    const occurredAtMillis = existingReceiving === null ? now.getTime() : deserializeReceivingOrder(existingReceiving).createdAt;
 
     // ---- 8. stage the Receiving Order (reads idempotency doc; buffers create if applying) ----
-    const receivingStore = bufferedStore(RECEIVING_ORDERS_COLLECTION);
-    const receivingOutcome = await stageReceivingOrder(receivingStore, receivingInput, authority, { actor, now });
-    const receivingId = receivingOutcome.receivingId;
+    const receivingOutcome = await stageReceivingOrder(receivingStore, request, authority, { actor, now });
 
     // ---- 9. stage exactly one RECEIVED ledger event (reads ledger idempotency doc; buffers create) ----
     const ledgerStore = bufferedStore(INVENTORY_TRANSACTIONS_COLLECTION);
@@ -174,9 +187,9 @@ export async function receiveInventoryStock(request: unknown, deps: ReceiveInven
       location: { type: value.receivingLocation.type, locationId: value.receivingLocation.locationId },
       quantity: orderedQuantity,
       sourceObject: { type: "RECEIVING_ORDER", id: receivingId },
-      idempotencyKey: `recv:${value.idempotencyKey}:${line.lineId}`,
+      idempotencyKey: ledgerLineIdempotencyKey(receivingId, line.lineId),
       actor: { kind: actor.kind, id: actor.id },
-      occurredAt: now.getTime(),
+      occurredAt: occurredAtMillis,
     };
     const ledgerOutcome = await stageOperationalMovement(ledgerStore, ledgerEvent, { partId: part.partId, trackingMode: part.trackingMode }, { now });
     const ledgerEventId = ledgerOutcome.docId;
@@ -205,8 +218,8 @@ export async function receiveInventoryStock(request: unknown, deps: ReceiveInven
       ledgerEventId,
     });
 
-    // ---- 13. flush all buffered writes (creates + the reorder_requests update). reorder_purchase_orders
-    // is never written. Commit is all-or-nothing (the enclosing runTransaction). ----
+    // ---- 13. flush all buffered writes. reorder_purchase_orders is never written. Commit is
+    // all-or-nothing (the enclosing runTransaction). ----
     for (const w of writes) {
       if (w.op === "create") txn.create(w.ref, w.data);
       else txn.update(w.ref, w.data);
