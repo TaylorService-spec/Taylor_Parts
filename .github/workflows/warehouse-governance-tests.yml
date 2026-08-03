@@ -1,0 +1,53 @@
+name: Warehouse Governance Tests
+
+# Receiving Location Authority -- I-LA C2 / gate I-LA1a: the INERT, additive §3A governed
+# Warehouse schema + shared validator (functions/src/warehouseGovernance/*,
+# functions/src/types/warehouse.ts). Pure/OFFLINE unit tests: NO emulator, NO credentials,
+# NO gcloud/firebase, NO production. Nothing imports the validator at runtime in this gate
+# (no writer, migration, resolver, callable, or Rules) -- it is exercised only by this test.
+
+on:
+  pull_request:
+    paths:
+      - "functions/src/warehouseGovernance/**"
+      - "functions/src/types/warehouse.ts"
+      - "functions/test/governedWarehouseValidation.test.mjs"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - ".github/workflows/warehouse-governance-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/src/warehouseGovernance/**"
+      - "functions/src/types/warehouse.ts"
+      - "functions/test/governedWarehouseValidation.test.mjs"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - ".github/workflows/warehouse-governance-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  warehouse-governance-tests:
+    name: Governed warehouse validator unit tests (offline, inert)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+
+      - name: Governed warehouse validator unit tests (offline, no emulator)
+        run: npm run test:warehouseGovernance
+        working-directory: functions
