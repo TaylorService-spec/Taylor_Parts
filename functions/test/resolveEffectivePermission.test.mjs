@@ -63,75 +63,58 @@ function resolve(roleId, permissionId, target, accessVersion = 1) {
   });
 }
 
-// --- A3: every catalog id is accounted for by at least one seeded Role ---
-check("A3: every Permission id is granted by at least one compatibility Role (directly or Conditioned) except the still-deferred audit.event.read (Row 11) and the report.* field-read capability class (Issue #325 / ADR-007 D-226)", () => {
-  // admin.userStatus.write/admin.roleAssignment.write/admin.
-  // accessRequest.decide were granted to ADMIN_ROLE in Row 7 (Task 12) --
-  // Row 7 is the trusted-writer row Row 2's own comment deferred them to.
-  //
-  // report.* (34 ids, permissionCatalog.ts's "Report field-level read
-  // capabilities" section): D-226 is catalog-only per its own scope --
-  // no Rule, Function, or Role grants these ids yet. Granting them here
-  // would be premature: the trusted execution/projection service (D-FN)
-  // that would be the actual caller does not exist, is #15-gated, and
-  // per ADR-007 is "unavailable-not-unsafe" until then. Whether/how
-  // report.* ids are eventually granted to a compatibility Role (vs.
-  // only to a future reporting-specific Role) is an open decision for
-  // that later, separately-authorized row -- not resolved by this
-  // catalog-only PR.
-  const deferredForNow = new Set([
+// Shared A3 accounting -- consumed by BOTH the real A3 exhaustiveness assertion AND the A3-inv synthetic
+// regression, so the regression exercises the REAL gate. An id is "accounted for" if a seeded
+// compatibility Role grants it OR it is deferred-by-design. buildDeferredForNow() derives the
+// report.*/inventory.catalog.*/equipment.* CLASSES from the passed catalog (separate reviewed classes),
+// but lists inventory.stock and the audit/admin ids as EXACT literals -- so a FUTURE inventory.stock.*
+// capability is NOT auto-exempted. Broadening the inventory.stock exception back to a prefix here would
+// make the A3-inv regression fail (its synthetic future id would become deferred instead of unaccounted).
+const SEEDED_GRANTED_IDS = new Set([
+  ...ADMIN_ROLE.permissions,
+  ...DISPATCHER_ROLE.permissions,
+  ...TECHNICIAN_ROLE.permissions,
+]);
+function buildDeferredForNow(catalog) {
+  // report.* (D-226 catalog-only), inventory.catalog.* (INV-1 Phase 1 PR 1.2 / ADR-008 Decision #40),
+  // and equipment.* (D4, `active: false`) are ungranted-by-design CLASSES. The audit/admin/inventory.stock
+  // ids are individually named EXACT exceptions (never prefix-generated).
+  return new Set([
     "audit.event.read",
-    ...PERMISSION_CATALOG.filter((p) => p.id.startsWith("report.")).map((p) => p.id),
-    // INV-1 Phase 1 PR 1.2 (ADR-008 / Decision #40): registered-but-
-    // ungranted by design -- the trusted Part Master service denies for
-    // every real principal until a Role grants these under its own gate.
-    ...PERMISSION_CATALOG.filter((p) => p.id.startsWith("inventory.catalog.")).map((p) => p.id),
-    // D4 Part-Equipment Compatibility: registered-but-NOT-GRANTABLE by design. These go further than
-    // the INV-1 precedent above -- every equipment.* entry is `active: false`, so
-    // resolveEffectivePermission denies unconditionally ahead of any Role check. Granting them to a
-    // compatibility Role here would be doubly premature: no Role should hold them, and the inactive
-    // flag would deny anyway. Activation and grants are later, separately authorized decisions.
-    ...PERMISSION_CATALOG.filter((p) => p.id.startsWith("equipment.")).map((p) => p.id),
-    // EI Phase-2 Receiving (Phase C): inventory.stock.receive is registered-but-UNGRANTED by design --
-    // no Role holds it; the trusted Receiving command's authorization is an injected seam and its grant
-    // is a later, separately-authorized gate. EXACT id (NOT an inventory.stock.* prefix) so any FUTURE
-    // inventory.stock.* capability is NOT silently exempted -- it must earn its own reviewed decision.
+    ...catalog.filter((p) => p.id.startsWith("report.")).map((p) => p.id),
+    ...catalog.filter((p) => p.id.startsWith("inventory.catalog.")).map((p) => p.id),
+    ...catalog.filter((p) => p.id.startsWith("equipment.")).map((p) => p.id),
+    // EI Phase-2 Receiving (Phase C): EXACT id, NOT an inventory.stock.* prefix.
     "inventory.stock.receive",
-    // AUTH-PR-3.5 (DECISIONS #56): admin.credentialReset.initiate is registered
-    // `active: false` and granted to NO Role -- activation and any grant are a
-    // later, separately-authorized production/security gate (same posture as the
-    // equipment.* inactive capabilities above).
+    // AUTH-PR-3.5 (DECISIONS #56): registered `active: false`, granted to NO Role.
     "admin.credentialReset.initiate",
   ]);
-  const grantedIds = new Set([
-    ...ADMIN_ROLE.permissions,
-    ...DISPATCHER_ROLE.permissions,
-    ...TECHNICIAN_ROLE.permissions,
-  ]);
-  for (const permission of PERMISSION_CATALOG) {
-    if (deferredForNow.has(permission.id)) continue;
-    assert.ok(grantedIds.has(permission.id), `"${permission.id}" is granted by no seeded Role`);
-  }
+}
+// Catalog ids neither granted by a seeded Role nor deferred-by-design (the exhaustiveness gate's
+// "unaccounted" set). A3 requires this empty; A3-inv requires a synthetic future id to appear in it.
+function unaccountedIds(catalog) {
+  const deferred = buildDeferredForNow(catalog);
+  return catalog.filter((p) => !deferred.has(p.id) && !SEEDED_GRANTED_IDS.has(p.id)).map((p) => p.id);
+}
+
+// --- A3: every catalog id is accounted for by a seeded Role or is deferred-by-design ---
+check("A3: every Permission id is granted by at least one compatibility Role, or is deferred-by-design (audit.event.read, report.*, inventory.catalog.*, equipment.*, inventory.stock.receive, admin.credentialReset.initiate)", () => {
+  assert.deepEqual(unaccountedIds(PERMISSION_CATALOG), [], "every catalog id must be granted or explicitly deferred-by-design");
 });
 
-// --- A3-inv: the inventory.stock exhaustiveness exception is an EXACT allowlist, not a prefix ---
-check("A3-inv: inventory.stock.receive is the SOLE explicit exception; a synthetic future inventory.stock.* is NOT auto-exempted", () => {
-  // The exact explicit ungranted-by-design set for inventory.stock (mirrors the deferredForNow literal above).
-  const explicitUngrantedInventoryStock = new Set(["inventory.stock.receive"]);
-  // Exactly one inventory.stock.* capability exists today, and it is the reviewed one.
-  const inventoryStockIds = PERMISSION_CATALOG.filter((p) => p.id.startsWith("inventory.stock.")).map((p) => p.id);
-  assert.deepEqual(inventoryStockIds.sort(), ["inventory.stock.receive"]);
-  assert.equal(explicitUngrantedInventoryStock.has("inventory.stock.receive"), true);
-
-  // A synthetic FUTURE inventory.stock.* entry is neither granted nor in the explicit exception, so the
-  // exhaustiveness gate would flag it (it is NOT silently exempted by an inventory.stock.* prefix).
-  const grantedIds = new Set([...ADMIN_ROLE.permissions, ...DISPATCHER_ROLE.permissions, ...TECHNICIAN_ROLE.permissions]);
-  const synthetic = "inventory.stock.transferOut";
-  assert.equal(explicitUngrantedInventoryStock.has(synthetic), false, "a future inventory.stock.* id must NOT be auto-exempted");
-  assert.equal(grantedIds.has(synthetic), false);
-  // -> for a synthetic catalog including it, the exhaustiveness loop would fail: not granted AND not deferred.
-  const wouldFail = !grantedIds.has(synthetic) && !explicitUngrantedInventoryStock.has(synthetic);
-  assert.equal(wouldFail, true, "a synthetic inventory.stock.* entry must trip the exhaustiveness gate until separately enumerated");
+// --- A3-inv: the inventory.stock exception is EXACT -- a synthetic future inventory.stock.* is caught by
+// the SAME accounting A3 uses (broadening the shared exception to inventory.stock.* would make this fail) ---
+check("A3-inv: a synthetic future inventory.stock.* capability is reported UNACCOUNTED by the real A3 accounting", () => {
+  // Sanity: today exactly one inventory.stock.* exists (the reviewed one).
+  assert.deepEqual(PERMISSION_CATALOG.filter((p) => p.id.startsWith("inventory.stock.")).map((p) => p.id).sort(), ["inventory.stock.receive"]);
+  // Run an AUGMENTED catalog (with a future capability) through the SAME accounting the real A3 uses:
+  const synthetic = Object.freeze({ id: "inventory.stock.transferOut", description: "synthetic future capability", resource: "inventory.stock", action: "transferOut" });
+  const augmented = [...PERMISSION_CATALOG, synthetic];
+  const unaccounted = unaccountedIds(augmented);
+  assert.equal(unaccounted.includes("inventory.stock.transferOut"), true,
+    "a future inventory.stock.* must be reported UNACCOUNTED until separately enumerated (broadening the exact exception to inventory.stock.* would make this fail)");
+  // The reviewed capability remains accounted-for (deferred-by-design), i.e. NOT reported unaccounted.
+  assert.equal(unaccounted.includes("inventory.stock.receive"), false);
 });
 
 // --- A1: pure function, identical inputs -> identical decision ---
