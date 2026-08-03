@@ -207,7 +207,7 @@ ok("6b. descendantPids returns only the owned root's descendants by PID", () => 
 // updated any time SUITES' expected counts change -- a deliberate
 // hardcoded cross-check that EXPECTED_TOTAL wasn't silently miscomputed,
 // not a value that should ever drift unnoticed.
-await okAsync("7. a fully-passing run reports exactly 674 passed, 0 failed", async () => {
+await okAsync("7. a fully-passing run reports exactly 712 passed, 0 failed", async () => {
   const byFile = new Map(SUITES.map((s) => [s.file, s.expected]));
   const lines = [];
   const r = await runAll({
@@ -236,9 +236,14 @@ await okAsync("7. a fully-passing run reports exactly 674 passed, 0 failed", asy
   // admin/dispatcher read only, all client create/update/delete denied).
   // 664 -> 674: EI Truck Registry write service registered
   // truckRegistryWriteRules.test.js (10 assertions -- location_truck_claims
-  // fully closed to all client access, read included).
-  assert.equal(EXPECTED_TOTAL, 674); // EI Truck Registry write service: +10 truckRegistryWriteRules (was 664)
-  assert.ok(lines.some((l) => /674 passed, 0 failed/.test(l)), "summary must state 674 passed, 0 failed");
+  // fully closed to all client access, read included). 674 -> 712: EI
+  // Phase-2 Receiving Phase D registered receivingOrdersRules.test.js (38
+  // assertions -- receiving_orders fully backend-private: all client
+  // read/create/update/delete denied for 8 principals incl admin, malformed
+  // auth rejected 4xx, Admin-SDK trusted write is not a client grant, and no
+  // neighboring collection's permissions changed).
+  assert.equal(EXPECTED_TOTAL, 712); // EI Phase-2 Receiving Phase D: +38 receivingOrdersRules (was 674)
+  assert.ok(lines.some((l) => /712 passed, 0 failed/.test(l)), "summary must state 712 passed, 0 failed");
   // parseSuiteResult correctness (count-mismatch and failed>0 both fail).
   assert.equal(parseSuiteResult("10 passed, 0 failed", 10).ok, true);
   assert.equal(parseSuiteResult("9 passed, 0 failed", 10).ok, false);
