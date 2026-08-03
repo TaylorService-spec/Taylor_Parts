@@ -142,6 +142,69 @@ await check("same idempotencyKey with a changed payload conflicts", async () => 
   assert.equal(store.creates, 1, "conflict stages nothing new");
 });
 
+// ---- P2: replay fully validates the stored record (no trust in its raw fingerprint field) -------
+function validStoredDoc(over = {}) {
+  const e = ev("RECEIVED", over);
+  const v = V.validateOperationalMovementEvent(e, partNone).value;
+  return { doc: R.serializeOperationalMovement(v, now, R.fingerprintMovement(v)), event: e, value: v };
+}
+function seededStore(existingData, forKey = "idem-RECEIVED-0001") {
+  const store = makeStore();
+  const docId = R.operationalMovementDocId(forKey);
+  store.docs.set(docId, existingData);
+  // reset the create counter view: pre-seeding is not a "create" through the API
+  return { store, docId, event: ev("RECEIVED", { idempotencyKey: forKey }) };
+}
+
+await check("exact valid existing record replays; nothing new staged", async () => {
+  const { doc } = validStoredDoc();
+  const { store, event } = seededStore(doc);
+  const r = await R.stageOperationalMovement(store, event, partNone, { now });
+  assert.equal(r.outcome, "replayed");
+  assert.equal(store.creates, 0);
+});
+
+await check("valid existing record with a DIFFERENT payload conflicts; nothing staged", async () => {
+  const { doc } = validStoredDoc({ quantity: 5 });
+  const { store } = seededStore(doc);
+  await assert.rejects(
+    R.stageOperationalMovement(store, ev("RECEIVED", { quantity: 9 }), partNone, { now }),
+    (err) => err instanceof T.IdempotencyConflictError,
+  );
+  assert.equal(store.creates, 0);
+});
+
+await check("fingerprint-only existing document -> MalformedStoredRecordError; nothing staged", async () => {
+  const { store, event } = seededStore({ fingerprint: "abcdef0123456789" });
+  await assert.rejects(R.stageOperationalMovement(store, event, partNone, { now }), (e) => e instanceof T.MalformedStoredRecordError);
+  assert.equal(store.creates, 0);
+});
+
+await check("malformed stored schema/version/type -> MalformedStoredRecordError; nothing staged", async () => {
+  const { doc } = validStoredDoc();
+  for (const bad of [{ ...doc, schemaVersion: 1 }, { ...doc, schemaVersion: undefined }, { ...doc, type: "NOPE" }]) {
+    const { store, event } = seededStore(bad);
+    await assert.rejects(R.stageOperationalMovement(store, event, partNone, { now }), (e) => e instanceof T.MalformedStoredRecordError);
+    assert.equal(store.creates, 0);
+  }
+});
+
+await check("stored fingerprint not matching stored value -> MalformedStoredRecordError; nothing staged", async () => {
+  const v = V.validateOperationalMovementEvent(ev("RECEIVED"), partNone).value;
+  const doc = R.serializeOperationalMovement(v, now, "0000000000000000"); // valid format, wrong fingerprint
+  const { store, event } = seededStore(doc);
+  await assert.rejects(R.stageOperationalMovement(store, event, partNone, { now }), (e) => e instanceof T.MalformedStoredRecordError);
+  assert.equal(store.creates, 0);
+});
+
+await check("stored idempotencyKey not deriving the current document id -> MalformedStoredRecordError; nothing staged", async () => {
+  // A self-consistent record for key B, placed at the document id for key A.
+  const { doc } = validStoredDoc({ idempotencyKey: "different-key-0002" });
+  const { store, event } = seededStore(doc, "idem-RECEIVED-0001");
+  await assert.rejects(R.stageOperationalMovement(store, event, partNone, { now }), (e) => e instanceof T.MalformedStoredRecordError);
+  assert.equal(store.creates, 0);
+});
+
 // ---- transaction failure stages no partial event -----------------------------------------------
 await check("invalid envelope throws before any create (no partial stage)", async () => {
   const store = makeStore();

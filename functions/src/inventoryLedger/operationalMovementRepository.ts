@@ -211,8 +211,22 @@ export async function stageOperationalMovement(
 
   const existing = await store.read(docId);
   if (existing !== null) {
-    const storedFp = typeof existing.fingerprint === "string" ? existing.fingerprint : null;
-    if (storedFp !== fp) throw new IdempotencyConflictError("idempotencyKey was already used for a different movement");
+    // Fully validate the stored record before trusting it -- never rely on its raw fingerprint field.
+    // A malformed / partial / schema-mismatched record throws MalformedStoredRecordError.
+    const stored = deserializeOperationalMovement(existing);
+    // Internal coherence: its own idempotencyKey must derive THIS document id...
+    if (operationalMovementDocId(stored.value.idempotencyKey) !== docId) {
+      throw new MalformedStoredRecordError("stored idempotencyKey does not derive its document id");
+    }
+    // ...and its stored fingerprint must equal the fingerprint recomputed from its deserialized value.
+    const storedRecomputed = fingerprintMovement(stored.value);
+    if (storedRecomputed !== stored.fingerprint) {
+      throw new MalformedStoredRecordError("stored fingerprint does not match stored value");
+    }
+    // Replay only when the (coherent) stored value fingerprint equals the incoming validated value's.
+    if (storedRecomputed !== fp) {
+      throw new IdempotencyConflictError("idempotencyKey was already used for a different movement");
+    }
     return { outcome: "replayed", docId, fingerprint: fp };
   }
   store.create(docId, serializeOperationalMovement(value, deps.now, fp));
