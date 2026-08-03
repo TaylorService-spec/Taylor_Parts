@@ -24,9 +24,12 @@ serialized-asset authority, or purchase-order authority is created.
 
 ## 1. `receiving_orders` schema (exact)
 
-New **Admin-SDK-only** collection `receiving_orders/{receivingId}` (Rules deny all client read/write —
-same posture as `inventory_transactions` / `trucks`). Document identity **is** domain identity; never
-derived from a mutable label.
+New **Admin-SDK-only** collection `receiving_orders/{receivingId}`, **fully backend-private** — Rules
+deny **all** client reads **and** all client writes (Option A, §9). This is **deliberately stricter**
+than `inventory_transactions` / `trucks`, which deny client writes but **do permit** governed client
+reads (admin/dispatcher, and for the ledger active PARTS_MANAGER/WAREHOUSE_MANAGER); `receiving_orders`
+grants **no** client read in this slice. Document identity **is** domain identity; never derived from a
+mutable label.
 
 | Field | Type | Rules |
 |---|---|---|
@@ -173,8 +176,18 @@ event carries its own ledger idempotency (`imv_` docs) so replays never duplicat
 
 ## 9. Rules posture
 
-- `receiving_orders`: **new Admin-SDK-only** collection — `firestore.rules` **deny all client
-  read/write** (posture identical to `inventory_transactions` / `trucks`). Added in **Phase D** only.
+- `receiving_orders`: **new Admin-SDK-only, fully backend-private** collection — **Option A**:
+  ```
+  allow read, create, update, delete: if false;   // deny ALL client reads AND writes
+  ```
+  This is **deliberately stricter** than `inventory_transactions` / `trucks` (which deny client writes
+  but permit governed client reads); the earlier "same posture" comparison was inaccurate and is
+  removed. All reads/writes go through the trusted Admin-SDK command only. **Any future Receiving-history
+  UI requires a separately reviewed read grant (Option B personas) or a trusted read surface** — it is
+  NOT implied by this gate. Rules added in **Phase D** only.
+  - **Phase-D Rules tests (required):** client reads DENIED for admin, dispatcher, each operational role
+    (PARTS_MANAGER/WAREHOUSE_MANAGER/PARTS_ASSOCIATE), technician, and unauthenticated; and all client
+    writes (create/update/delete) DENIED for every persona.
 - `reorder_requests`: Rules **unchanged during repo prep**. At cutover the trusted command writes the
   `reorder_requests` closeout via Admin SDK (Rules do not gate Admin writes); the client status path is
   retired (Phase F). No client rule is loosened.
