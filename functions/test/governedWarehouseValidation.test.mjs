@@ -68,15 +68,23 @@ function baseMigrated(over = {}) {
   };
 }
 
-function expectValid(input) {
-  const r = validateGovernedWarehouse(input);
+// A valid fallback expected-id so a broken-`id` fixture still reaches its own field failure
+// (id_invalid/not_object) rather than expected_id_invalid.
+function expectedIdFor(input) {
+  if (input && typeof input === "object" && !Array.isArray(input) && typeof input.id === "string" && input.id.trim() !== "") {
+    return input.id;
+  }
+  return "wh-expected";
+}
+function expectValid(input, expectedId = expectedIdFor(input)) {
+  const r = validateGovernedWarehouse(input, expectedId);
   assert.equal(r.valid, true, `expected valid, got ${JSON.stringify(r.reason)}`);
   assert.equal(r.reason, null);
   assert.ok(r.value && typeof r.value === "object");
   return r.value;
 }
-function expectInvalid(input, reason) {
-  const r = validateGovernedWarehouse(input);
+function expectInvalid(input, reason, expectedId = expectedIdFor(input)) {
+  const r = validateGovernedWarehouse(input, expectedId);
   assert.equal(r.valid, false, `expected invalid for reason ${reason}`);
   assert.equal(r.value, null);
   assert.equal(r.reason, reason);
@@ -113,6 +121,33 @@ check("valid MIGRATED record PRESERVING a complete authentic creation pair", () 
 check("ACTIVE and INACTIVE are both accepted", () => {
   assert.equal(expectValid(baseNative({ status: "ACTIVE" })).status, "ACTIVE");
   assert.equal(expectValid(baseMigrated({ status: "INACTIVE" })).status, "INACTIVE");
+});
+
+// ---- document-id binding ----
+check("stored id matching expectedWarehouseId -> valid", () => {
+  const v = expectValid(baseNative({ id: "wh-77" }), "wh-77");
+  assert.equal(v.id, "wh-77");
+  assert.equal(expectValid(baseMigrated({ id: "wh-88" }), "wh-88").id, "wh-88");
+});
+check("stored id mismatching expectedWarehouseId -> id_mismatch", () => {
+  expectInvalid(baseNative({ id: "wh-1" }), GOVERNED_WAREHOUSE_REASONS.ID_MISMATCH, "wh-OTHER");
+  expectInvalid(baseMigrated({ id: "wh-2" }), GOVERNED_WAREHOUSE_REASONS.ID_MISMATCH, "wh-2 "); // trailing space differs
+});
+check("malformed expectedWarehouseId -> expected_id_invalid (before any input inspection)", () => {
+  for (const badExpected of ["", "   ", 42, null, undefined, {}, ["wh-1"]]) {
+    const r = validateGovernedWarehouse(baseNative({ id: "wh-1" }), badExpected);
+    assert.equal(r.valid, false);
+    assert.equal(r.reason, GOVERNED_WAREHOUSE_REASONS.EXPECTED_ID_INVALID);
+  }
+  // even a malformed input yields expected_id_invalid first when the expected id is bad
+  assert.equal(validateGovernedWarehouse(null, "").reason, GOVERNED_WAREHOUSE_REASONS.EXPECTED_ID_INVALID);
+});
+check("id binding does not mutate input", () => {
+  const input = baseNative({ id: "wh-33" });
+  const before = { ...input };
+  validateGovernedWarehouse(input, "wh-NOPE"); // mismatch
+  assert.deepEqual(Object.keys(input).sort(), Object.keys(before).sort());
+  for (const k of Object.keys(before)) assert.equal(input[k], before[k]);
 });
 
 // ---- status / provenance ----
@@ -238,8 +273,8 @@ check("deterministic output and no input mutation", () => {
   delete input.region; // ensure a clean valid input
   const snapshotKeys = Object.keys(input).sort();
   const snapshotEntries = snapshotKeys.map((k) => [k, input[k]]);
-  const r1 = validateGovernedWarehouse(input);
-  const r2 = validateGovernedWarehouse(input);
+  const r1 = validateGovernedWarehouse(input, input.id);
+  const r2 = validateGovernedWarehouse(input, input.id);
   assert.equal(r1.valid, true);
   // deterministic: identical JSON on repeat runs
   assert.equal(JSON.stringify(r1.value), JSON.stringify(r2.value));
@@ -271,7 +306,7 @@ check("every failure reason is a bounded governed token", () => {
     baseMigrated({ governanceInitializedBy: "" }),
   ];
   for (const s of samples) {
-    const r = validateGovernedWarehouse(s);
+    const r = validateGovernedWarehouse(s, expectedIdFor(s));
     assert.equal(r.valid, false);
     assert.ok(ALL_REASONS.has(r.reason), `reason ${r.reason} not bounded`);
     // sanitized: reason is a short snake_case token, never echoes a raw value

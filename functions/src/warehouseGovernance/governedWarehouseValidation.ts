@@ -14,6 +14,12 @@
 // Timestamp contract: the accepted stored representation is the repository's actual
 // Firestore server-timestamp type -- `Timestamp` from firebase-admin/firestore, checked
 // with `instanceof`. A look-alike object that merely exposes `.toMillis()` is rejected.
+//
+// Identity binding: the caller passes the `expectedWarehouseId` (the Firestore document id
+// it read the record from, e.g. the resolver's `warehouses/{locationId}`). A governed
+// record is accepted only when its stored `id` field equals that document id -- a record
+// whose stored id disagrees with its path is a data-integrity fault and fails closed. The
+// expected id must itself be a non-blank string; an invalid expected id fails closed too.
 
 import { Timestamp } from "firebase-admin/firestore";
 import { isPlainObject, isNonEmptyString } from "../inventoryLedger/operationalMovementValidation.js";
@@ -44,10 +50,12 @@ const ALLOWED_KEYS: ReadonlySet<string> = new Set([
 // Bounded governed failure reasons. Stable tokens (no raw values) so callers/tests can
 // assert on them and nothing sensitive leaks into logs.
 export const GOVERNED_WAREHOUSE_REASONS = Object.freeze({
+  EXPECTED_ID_INVALID: "expected_id_invalid",
   NOT_OBJECT: "not_object",
   ACTIVE_FORBIDDEN: "active_forbidden",
   UNKNOWN_FIELD: "unknown_field",
   ID_INVALID: "id_invalid",
+  ID_MISMATCH: "id_mismatch",
   NAME_INVALID: "name_invalid",
   LOCATION_INVALID: "location_invalid",
   STATUS_INVALID: "status_invalid",
@@ -97,9 +105,16 @@ function pairState(obj: Record<string, unknown>, atKey: string, byKey: string): 
   return "invalid";
 }
 
-// Validate/deserialize an untrusted stored value into a governed §3A warehouse record.
-// Returns a sanitized result; never throws for data reasons; never mutates `input`.
-export function validateGovernedWarehouse(input: unknown): GovernedWarehouseValidationResult {
+// Validate/deserialize an untrusted stored value into a governed §3A warehouse record,
+// binding the stored `id` to `expectedWarehouseId` (the document id the record was read
+// from). Returns a sanitized result; never throws for data reasons; never mutates `input`.
+export function validateGovernedWarehouse(
+  input: unknown,
+  expectedWarehouseId: unknown,
+): GovernedWarehouseValidationResult {
+  // Caller contract: the expected document id must be a non-blank string.
+  if (!isNonEmptyString(expectedWarehouseId)) return fail(GOVERNED_WAREHOUSE_REASONS.EXPECTED_ID_INVALID);
+
   if (!isPlainObject(input)) return fail(GOVERNED_WAREHOUSE_REASONS.NOT_OBJECT);
 
   // `active` is forbidden regardless of value (true/false/null/undefined-own-property).
@@ -108,8 +123,9 @@ export function validateGovernedWarehouse(input: unknown): GovernedWarehouseVali
     if (!ALLOWED_KEYS.has(key)) return fail(GOVERNED_WAREHOUSE_REASONS.UNKNOWN_FIELD);
   }
 
-  // Base identity fields.
+  // Base identity fields + document-id binding.
   if (!isNonEmptyString(input.id)) return fail(GOVERNED_WAREHOUSE_REASONS.ID_INVALID);
+  if (input.id !== expectedWarehouseId) return fail(GOVERNED_WAREHOUSE_REASONS.ID_MISMATCH);
   if (!isNonEmptyString(input.name)) return fail(GOVERNED_WAREHOUSE_REASONS.NAME_INVALID);
   if (!isNonEmptyString(input.location)) return fail(GOVERNED_WAREHOUSE_REASONS.LOCATION_INVALID);
 
