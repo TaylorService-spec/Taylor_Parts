@@ -163,6 +163,37 @@ describe("PartsStockSection -- READY payload integrity", () => {
   });
 });
 
+// internalSku is the mandatory governed identity -- no other field may substitute for it.
+describe("PartsStockSection -- mandatory internalSku identity", () => {
+  it.each([
+    ["{ onHand: 5 }", { onHand: 5 }],
+    ["{ description: 'Widget' }", { description: "Widget" }],
+    ["{ internalSku: null, available: 3 }", { internalSku: null, available: 3 }],
+    ["{ internalSku: '   ', available: 3 }", { internalSku: "   ", available: 3 }],
+  ])("READY + [%s] -> ERROR (missing/blank SKU, no substitute)", (_l, row) => {
+    const { getByTestId, queryByRole } = render(<PartsStockSection section={readySection([row])} />);
+    expect(getByTestId("ps-error")).toBeTruthy();
+    expect(queryByRole("table")).toBeNull();
+  });
+
+  it("READY + [valid SKU row, missing-SKU row] -> whole-section ERROR, no partial table", () => {
+    const { getByTestId, queryByRole, queryByText } = render(
+      <PartsStockSection section={readySection([{ internalSku: "HAS-SKU" }, { onHand: 9 }])} />
+    );
+    expect(getByTestId("ps-error")).toBeTruthy();
+    expect(queryByRole("table")).toBeNull();
+    expect(queryByText("HAS-SKU")).toBeNull();
+  });
+
+  it("READY + [nonblank SKU with nullable optional fields] -> READY", () => {
+    const { getByRole } = render(
+      <PartsStockSection section={readySection([{ internalSku: "SKU-ONLY", description: null, bin: null, onHand: null, reserved: null, available: null, reorderStatus: null }])} />
+    );
+    const cells = within(getByRole("table")).getAllByRole("cell").map((td) => td.textContent);
+    expect(cells).toEqual(["SKU-ONLY", "—", "—", "—", "—", "—", "—"]);
+  });
+});
+
 describe("PartsStockSection -- determinism & no input mutation", () => {
   it("renders identical content across two renders (per-instance useId normalized)", () => {
     const normalize = (html) => html.replace(/id="[^"]*"/g, 'id="X"').replace(/aria-labelledby="[^"]*"/g, 'aria-labelledby="X"');

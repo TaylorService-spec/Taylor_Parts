@@ -86,16 +86,20 @@ function isGovernedFieldValue(key, v) {
     : typeof v === "string" && v.trim() !== "";
 }
 
-// A row satisfies the projected-row DISPLAY contract iff it is a plain object, every
-// recognized field it carries is governed-shaped for its type, AND it carries at least one
-// governed value in a DISPLAYED column. Unknown extra keys are ignored. Validates the WHOLE
-// payload before render (no silent per-row drop).
+// A row satisfies the projected-row DISPLAY contract iff it is a plain object, carries the
+// MANDATORY `internalSku` governed identity (a non-blank string), and every recognized field
+// it carries is governed-shaped for its type. No other field (description / bin / quantities /
+// reorderStatus) may substitute for the SKU identity. Unknown extra keys are ignored.
+// Validates the WHOLE payload before render (no silent per-row drop).
 function isValidProjectedRow(row) {
   if (!isPlainObject(row)) return false;
+  // internalSku is the required identity of a parts-stock row; a missing/blank/non-string
+  // SKU is an integrity fault even if other governed values are present.
+  if (displayString(row.internalSku) === null) return false;
   for (const key of RECOGNIZED_KEYS) {
     if (key in row && !isGovernedFieldValue(key, row[key])) return false;
   }
-  return DISPLAY_COLUMNS.some((col) => cellValue(row, col) !== null);
+  return true;
 }
 
 // Resolve the section to a governed display state, failing closed over the WHOLE payload.
