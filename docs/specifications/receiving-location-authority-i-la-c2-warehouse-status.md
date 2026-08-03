@@ -184,26 +184,35 @@ dedicated `inventory_locations` lifecycle. C2 is the first slice, `WAREHOUSE`-on
   non-`ACTIVE`) and the `TRUCK_STATUSES` validated-on-read convention
   (`truckRegistryRepository.ts:107`, `MalformedStoredRecordError`).
 
-### 3.2 Relationship to the legacy `active` boolean (precedence — decision required)
+### 3.2 Relationship to the legacy `active` boolean — convergence by removal (P1)
 
-**Recommendation:** `status` is the **single governed authority**. The legacy `active`
-boolean is **not** governed by C2 and is treated as **deprecated**.
+`status` is the **single governed authority**, and C2 **eliminates** the legacy
+`active` boolean rather than letting it coexist. A dual-field world permits a direct
+contradiction — e.g. `status == "ACTIVE"` with `active == false` — under which Receiving
+(which reads `status`, §6) would accept a warehouse that the Truck Registry's
+`isWarehouseActive` (`d.active !== false && ...`, §1.2) rejects. That is not a
+single-authority model, and it would make `INACTIVE → ACTIVE` reinstatement inconsistent
+across production commands. To close it:
 
-- The C2 trusted writer (§5) writes **only** `status`; it never writes `active`.
-- To keep `isWarehouseActive` coherent, the migration (§4) **derives** each doc's
-  `status` from its current state so both readers agree afterward:
-  `active === false ⇒ status = "INACTIVE"`, otherwise `status = "ACTIVE"`.
-- After backfill, `isWarehouseActive`'s formula `d.active !== false && d.status !==
-  "INACTIVE"` remains correct for every doc, and governing `status` actually *improves*
-  it: an explicitly retired warehouse (`status="INACTIVE"`) is now rejected by the
-  Truck Registry too.
-- **Follow-up (out of this gate, noted for the roadmap):** converge
-  `isWarehouseActive` onto reading `status` only and remove the `active` boolean from
-  fixtures — a separate Truck-surface change requiring its own gate; **not** performed
-  here (Truck exclusion).
+- **The migration (§4) removes the `active` field in the same trusted write that sets
+  `status`.** After migration every warehouse has `status ∈ {ACTIVE, INACTIVE}` and
+  **no** `active` field.
+- **The trusted writer (§5) writes only `status` and never `active`.** All seeds and
+  fixtures stop writing `active` (including
+  `functions/scripts/truckFunctionsVerificationMatrix.js:35-36`, which currently sets
+  `active: true`).
+- **The existing Truck reader stays compatible with no Truck-surface change:** with
+  `active` absent, `d.active !== false` is `true`, so `isWarehouseActive` falls through
+  to `d.status !== "INACTIVE"` — `status` becomes authoritative for both consumers, and
+  an explicitly retired warehouse is now correctly rejected by the Truck Registry too.
+- Because `active` is removed, `INACTIVE → ACTIVE` reinstatement (§5) is safe: no stale
+  `active === false` remains to contradict the reinstated `status`.
+- Dropping the now-vestigial `d.active !== false` clause from `isWarehouseActive` is
+  **cosmetic** (no doc carries `active` post-migration) and remains a separate Truck
+  gate — **not** required for correctness and **not** performed here.
 
-> **Open decision O-1 (Owner/Codex):** confirm `status` subsumes `active` as above, or
-> direct that both remain co-governed. The rest of this spec assumes `status`-single.
+> **O-1 resolved (recommended): YES — `status` subsumes `active`, and the migration
+> removes `active`** (Codex round 1 concurs). Confirm at ratification.
 
 ### 3.3 No runtime inference (binding)
 
@@ -218,22 +227,37 @@ corrupt data.
 
 ## 4. Existing-document migration / default policy
 
-- **Backfill, do not infer.** A governed migration script sets an explicit `status` on
-  every existing `warehouses/{id}`:
-  - `active === false` (legacy inactive) ⇒ `status = "INACTIVE"`;
-  - otherwise ⇒ `status = "ACTIVE"`.
-  It never leaves a warehouse without `status` and never guesses at runtime.
+The migration performs a single trusted write per warehouse that **sets a governed
+`status` and removes the legacy `active` field** (§3.2). It never infers at runtime and
+never silently overwrites an ambiguous record. Every pre-migration combination is
+resolved by an **explicit matrix** — nothing is left to undocumented precedence:
+
+| Pre-migration state | Action |
+|---|---|
+| missing `status` + `active === false` | write `status = "INACTIVE"`, delete `active` |
+| missing `status` + (`active === true` or `active` absent) | write `status = "ACTIVE"`, delete `active` |
+| `status == "ACTIVE"` + `active === false` (contradiction) | **HALT** — operator reconciles; no silent overwrite |
+| `status == "INACTIVE"` + `active === true` (contradiction) | **HALT** — operator reconciles; no silent overwrite |
+| valid `status ∈ {ACTIVE, INACTIVE}` + no `active` | preserve (no-op) |
+| valid `status` + `active` present, non-contradictory | delete `active` (status already authoritative) |
+| malformed `status` (present, not in enum) | **HALT** — no silent overwrite |
+
+- **HALT = stop-on-first-failure**, surfaced in the dry-run evidence for operator
+  remediation (explicitly set the intended `status` via the trusted writer §5, then
+  re-run). Contradictions and malformed records are never auto-resolved — consistent
+  with the no-runtime-inference / no-guessing rule (§3.3).
 - **Tooling conventions to mirror** (`functions/scripts/`): dry-run default; `--execute`
   gated on `--acknowledge-production-write`; idempotent; stop-on-first-failure; emits an
   immutable evidence archive — same posture as the Part-Master migration set
   (`SYSTEM_AUTHORITIES.md:47`) and the operator-CLI shape of
   `truckRegistryVerifierCli.js:1-40` (lazy deps, `--config/--evidence-dir/--confirm-project`).
 - **Verifier (initially inert, I-LA3).** A read-only verifier asserts every warehouse
-  doc has `status ∈ {ACTIVE, INACTIVE}` and reports any missing/invalid record. It is
-  the deploy-gate that proves §3.3's persisted-value invariant holds before the
-  resolver is wired (I-LA5) and before deploy (E2).
-- **Idempotency.** Re-running the backfill is a no-op for docs already carrying a valid
-  `status`.
+  doc has `status ∈ {ACTIVE, INACTIVE}` **AND has no `active` field**, and reports any
+  missing / invalid / legacy-`active` record. It is the deploy-gate proving the
+  §3.2/§3.3 invariant (governed status present, legacy field gone) before the resolver
+  is wired (I-LA5) and before deploy (E2).
+- **Idempotency.** Re-running is a no-op for docs already carrying a valid `status` and
+  no `active` field.
 
 ---
 
@@ -245,8 +269,9 @@ house pattern (one `db.runTransaction`; reads-before-writes; `version` CAS;
 sanitized error taxonomy).
 
 - **Creation default.** When the writer creates a warehouse it stamps `status =
-  "ACTIVE"` **explicitly** (never absent). Seed scripts are updated to set `status`
-  explicitly as well, so no code path produces a status-less warehouse.
+  "ACTIVE"` **explicitly** (never absent) and **never writes a legacy `active` field**.
+  Seed scripts are updated to set `status` explicitly and to stop writing `active`
+  (§3.2), so no code path produces a status-less or `active`-bearing warehouse.
 - **Allowed transitions.** `ACTIVE → INACTIVE` (retire) and `INACTIVE → ACTIVE`
   (reinstate). Setting `status` to its current value is an idempotent no-op success. Any
   other target value is rejected (`INVALID_STATUS`). Retiring a warehouse never deletes
@@ -331,6 +356,36 @@ ineligible (return false)  — fail closed — for ANY of:
 
 ---
 
+## 7A. Receiving capability grant gate (separate Owner authorization) (P2-1)
+
+`inventory.stock.receive` was deliberately registered in Phase C with **zero role
+grants** (ungranted, no `active` flag). Exporting/wiring the Receiving callable in E1
+does **not** grant it — a callable guarding an ungranted capability authorizes no
+persona. A distinct, **Owner-authorized grant gate** must clear before the callable is
+activated for any real user; the catalog entry and callable export never grant it
+implicitly. The grant gate specifies:
+
+- **Eligible personas** — recommended first slice: `admin` / `dispatcher`, plus active
+  `PARTS_ASSOCIATE` **only if** I-LR (§7) supports that persona (O-4).
+- **Scope model** — global vs. per-warehouse (e.g. tied to `assignedWarehouseIds`).
+- **Operational-role / employment conditions** — active `employmentStatus` and required
+  `operationalRoles`, mirroring `isActiveOperationalRole`.
+- **Explicit exclusions** — personas that must NOT receive (e.g. technician,
+  authenticated-no-role).
+- **Resolver + emulator tests** — a granted persona invokes; an ungranted/excluded
+  persona is denied; the grant honors its scope model.
+- **accessVersion invalidation** — granting/revoking bumps `accessVersion` so in-flight
+  sessions re-resolve (a receive begun under a now-stale capability is not submitted).
+- **Rollback / revocation** — revoking the grant immediately fails closed; procedure
+  documented.
+
+This is its own DRAFT → Codex → Owner-authorized step (the **GRANT** phase, §10),
+sequenced **before** E2 callable activation. It is separate from O-2's
+`inventory.warehouse.status.set` (the writer/transition capability, §5); the two grant
+different commands.
+
+---
+
 ## 8. Read-option contract for the Customer frontend (LF1) — reconciliation
 
 C2 pins the **eligibility source** the CUSTOMER LF1 adapter consumes
@@ -338,9 +393,12 @@ C2 pins the **eligibility source** the CUSTOMER LF1 adapter consumes
 
 - **Source / identity:** `warehouses`, option identity `warehouses/{id}`.
 - **Eligibility predicate:** governed `warehouses.status === "ACTIVE"` (this spec's §3).
-- **Option shape:** `{ value: id, label: name ?? id, type: "WAREHOUSE" }`, sorted by
-  `label` (localeCompare, id tiebreak), malformed/blank-id records dropped, deduped by
-  value — the existing `fetchWarehouseOptions` pattern.
+- **Option shape:** `{ value: id, label, type: "WAREHOUSE" }` where
+  **`label = (trimmed name is non-blank) ? name : id`** — an empty or whitespace-only
+  warehouse name falls back to the `id`, never rendered blank (this corrects the naive
+  `name ?? id`, which preserves an empty/whitespace name). Sorted by `label`
+  (localeCompare, id tiebreak), malformed / blank-`id` records dropped, deduped by
+  value. The **blank-name fallback is a required LF1 unit-test case** (§ Customer tests).
 - **Frontend is never authoritative:** the client may *filter to* status===ACTIVE for
   display, but the trusted command's `resolveLocationActive` (§6) is the single source
   of truth; a stale/inactive selection yields a sanitized rejection + refresh
@@ -352,9 +410,20 @@ C2 pins the **eligibility source** the CUSTOMER LF1 adapter consumes
 
 ## 9. Migration · emulator · rollback · production-verification plan
 
-- **Migration (E2):** run the §4 backfill in dry-run, review the evidence archive, then
-  `--execute` under production-write acknowledgement; run the verifier to prove every
-  warehouse carries a valid `status`. Operator-run in Cloud Shell; never by this agent.
+- **E2 deploy ordering (pinned, P2-2).** The merged Phase-D `receiving_orders` deny-all
+  Rules artifact was reviewed but **not deployed**; it must be deployed and verified
+  **unconditionally** before the Receiving callable is activated. Any I-LA4 Rules delta
+  is *additional*, never the trigger for deploying Phase D. Exact order:
+    1. deploy the exact reviewed Rules artifact (Phase-D `receiving_orders` deny-all +
+       any I-LA4 read-arm delta);
+    2. verify `receiving_orders` client denial live (persona matrix);
+    3. run the warehouse `status` migration (§4: dry-run → review evidence → `--execute`
+       under production-write acknowledgement);
+    4. run the warehouse verifier (valid `status`, no `active`);
+    5. deploy the targeted Receiving / option callable(s);
+    6. run backend verification (below);
+    7. only then permit Customer readiness activation (Phase F).
+  Operator-run in Cloud Shell; never by this agent.
 - **Emulator tests (per phase):**
   - I-LA1 offline: enum/validation + type parse (valid ACTIVE/INACTIVE; reject
     missing/unknown/boolean).
@@ -387,12 +456,14 @@ C2 pins the **eligibility source** the CUSTOMER LF1 adapter consumes
 | **I-LA3** | migration/backfill tooling + read-only verifier, **initially inert** | no | no |
 | **I-LA4** | I-LR read-authorization decision (§7) + tests | maybe (Tier 2 if arm) | no |
 | **I-LA5** | implement + inject production `resolveLocationActive` into the Receiving command; emulator tests | no | no |
-| **E1** | Receiving callable adapter/export + real capability + AuditAction wiring | no | no |
-| **E2** | deploy Rules (if I-LA4 changed them), run migration + verifier, targeted Function deploy | — | **yes (Owner/operator)** |
+| **E1** | Receiving callable adapter/export + real capability + AuditAction wiring (capability still **ungranted**) | no | no |
+| **GRANT** | Receiving capability grant gate (§7A) — grant `inventory.stock.receive` to the pinned personas + tests | maybe (Tier 2 if arm) | no |
+| **E2** | **unconditionally deploy the reviewed Phase-D Rules artifact (+ any I-LA4 delta) & verify `receiving_orders` denial**, then migration + verifier, then targeted callable, then backend-verify — ordered per §9 | Rules | **yes (Owner/operator)** |
 | **F** | CUSTOMER frontend cutover (LF1 adapter/hook → LF2 UI → F3 activation) | no | no |
 | **G** | production verification (§9) | — | verify |
 
-I-LA1–I-LA5 and E1 are repository-only. E2/G require separate Owner authorization and
+I-LA1–I-LA5, E1, and the **GRANT** gate are repository-only (GRANT still requires its
+own Owner grant authorization). E2/G require separate Owner authorization and
 operator-run production actions; this agent orchestrates/verifies but never deploys.
 
 ---
@@ -422,15 +493,17 @@ PRs — this docs-only spec does not edit them:
 
 ---
 
-## 12. Open decisions requiring Owner / Codex
+## 12. Open decisions (Codex round 1 concurred; pending Owner ratification)
 
-- **O-1** — `status` subsumes the legacy `active` boolean (§3.2). *Recommend: yes.*
-- **O-2** — capability model for the transition command (§5). *Recommend: dedicated
-  `inventory.warehouse.status.set`, ungranted at introduction.*
-- **O-3** — I-LR read-visibility mechanism (§7). *Recommend: trusted backend-served
-  options (frontend non-authoritative; PARTS_ASSOCIATE works without a broad read grant).*
-- **O-4** — first-slice receiver personas: admin/dispatcher only, or include
-  PARTS_ASSOCIATE via O-3? *Recommend: decide with O-3.*
+- **O-1 — `status` subsumes `active`; the migration REMOVES `active` (§3.2/§4).**
+  Recommended: **YES.**
+- **O-2 — dedicated `inventory.warehouse.status.set` capability (§5)** for the
+  writer/transition command, initially inactive/ungranted, separately activated.
+  Recommended: **YES.**
+- **O-3 — I-LR read-visibility (§7): trusted backend-served eligible-location options.**
+- **O-4 — receiver personas (§7A): include active `PARTS_ASSOCIATE` only after BOTH
+  I-LR (§7) and the `inventory.stock.receive` grant gate (§7A) are approved;** the first
+  slice is otherwise admin/dispatcher.
 
 ---
 
@@ -442,7 +515,11 @@ implementation, Rules, index, Function, callable, capability, migration, deploym
 production-data action. Ratifies **C2** and specifies the governed field, migration/
 default policy, trusted writer, Receiving resolver contract, Rules/read-authorization
 implications, Customer read-option reconciliation, and the phased PR sequence. Reconciles
-with the merged `isWarehouseActive` convention (§1.2/§3.2) without editing the Truck
-surface. No `functions/**`, `firestore.rules`, index, runtime-frontend, capability,
+with the merged `isWarehouseActive` convention (§1.2/§3.2) by **removing** the legacy
+`active` field in the migration — leaving `status` the single authority while keeping the
+Truck reader compatible without editing the Truck surface. Applies Codex round-1
+corrections: convergence-by-removal matrix (P1), a separate Receiving capability grant
+gate (§7A / P2-1), unconditional Phase-D Rules deploy ordering (§9 / §10 E2 / P2-2), and
+blank-name option-label fallback (§8 / P2-3). No `functions/**`, `firestore.rules`, index, runtime-frontend, capability,
 callable, deployment, Hosting, production, Truck, `DECISIONS.md`, or `SYSTEM_AUTHORITIES.md`
 change. **STOP for Codex review and separate Owner ratification.**
