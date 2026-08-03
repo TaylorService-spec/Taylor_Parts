@@ -54,3 +54,49 @@ export interface WarehouseDiscrepancy {
   variance: number;
   severity: DiscrepancySeverity;
 }
+
+// ---------------------------------------------------------------------------
+// Receiving Location Authority -- I-LA C2 (ratified: docs/specifications/
+// receiving-location-authority-i-la-c2-warehouse-status.md). The governed
+// §3A warehouse-eligibility record. These constants + the GovernedWarehouse
+// shape are the SHARED contract consumed by the pure validator/deserializer
+// (governedWarehouseValidation.ts) and, in later gates, by the migration,
+// verifier, trusted writer, and Receiving resolver. INERT here: this gate adds
+// types + a pure validator only -- no writer, migration, resolver, or Rules.
+// ---------------------------------------------------------------------------
+
+// Governed eligibility state. Receiving treats ONLY "ACTIVE" as eligible; the
+// resolver fails closed on anything else (spec §3/§6).
+export const WAREHOUSE_STATUSES = ["ACTIVE", "INACTIVE"] as const;
+export type WarehouseStatus = (typeof WAREHOUSE_STATUSES)[number];
+
+// Governance-initialization provenance discriminator (spec §3A.1). NATIVE =
+// created by the trusted writer; MIGRATED = governance applied by the I-LA3
+// migration to a legacy document.
+export const WAREHOUSE_PROVENANCES = ["NATIVE", "MIGRATED"] as const;
+export type WarehouseProvenance = (typeof WAREHOUSE_PROVENANCES)[number];
+
+// The governed warehouse record (post-initialization), spec §3A. `createdAt/By`
+// are optional (present for NATIVE; absent-or-both-present for MIGRATED, never
+// fabricated). `governanceInitializedAt/By` are present iff MIGRATED. A legacy
+// `active` field must NOT appear on a governed record.
+export interface GovernedWarehouse {
+  id: string;
+  name: string;
+  location: string;
+  status: WarehouseStatus;
+  version: number;
+  updatedAt: Timestamp;
+  updatedBy: string;
+  provenance: WarehouseProvenance;
+  createdAt?: Timestamp;
+  createdBy?: string;
+  governanceInitializedAt?: Timestamp;
+  governanceInitializedBy?: string;
+}
+
+// Sanitized, non-throwing result of the shared §3A validator/deserializer. On
+// failure `reason` is a bounded governed token (never a raw stored value).
+export type GovernedWarehouseValidationResult =
+  | { readonly valid: true; readonly value: GovernedWarehouse; readonly reason: null }
+  | { readonly valid: false; readonly value: null; readonly reason: string };

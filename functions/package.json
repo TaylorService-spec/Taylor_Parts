@@ -53,6 +53,7 @@
     "test:inventoryReceiving": "npm run build && node test/inventoryReceivingFoundation.test.mjs",
     "test:receiveInventoryStock": "npm run build && node test/receiveInventoryStockCommand.test.mjs",
     "test:receivingCapability": "npm run build && node test/receivingCapabilityRegistration.test.mjs",
+    "test:warehouseGovernance": "npm run build && node test/governedWarehouseValidation.test.mjs",
     "test:partMasterDomain": "npm run build && node test/partMasterDomain.test.mjs",
     "test:inventoryEffectOperatorTools": "npm run build && node --test test/inventoryEffectOperatorTools.test.js",
     "test:firestoreDeploymentVerification": "node --test test/firestoreDeploymentVerification.test.js",
