@@ -73,9 +73,11 @@ function displayNumber(v) {
   return typeof v === "number" && Number.isFinite(v) ? String(v) : null;
 }
 
-// A count field must be absent, null, or a finite number.
-function isFiniteOrNull(v) {
-  return v === undefined || v === null || (typeof v === "number" && Number.isFinite(v));
+// A REQUIRED count value must be exactly null or a finite number. undefined/absent, string,
+// NaN, and Infinity are integrity faults (the composer always projects all four keys, mapping
+// a missing source value to null -- an absent projected key means the boundary was crossed).
+function isCountValue(v) {
+  return v === null || (typeof v === "number" && Number.isFinite(v));
 }
 // A recognized item field must be absent, null, or a non-blank string.
 function isGovernedString(v) {
@@ -93,12 +95,14 @@ function isValidReconItem(item) {
   return ITEM_COLUMNS.some((col) => displayString(item[col.key]) !== null);
 }
 
-// The observation is valid iff it is a plain object, every present count is finite-or-null,
-// missing/unexpected are BOTH actual arrays, and every array member is a valid recon item.
+// The observation is valid iff it is a plain object, ALL FOUR counts are present as own
+// properties each holding null or a finite number, missing/unexpected are BOTH actual arrays,
+// and every array member is a valid recon item.
 function isValidObservation(obs) {
   if (!isPlainObject(obs)) return false;
   for (const key of COUNT_KEYS) {
-    if (key in obs && !isFiniteOrNull(obs[key])) return false;
+    if (!Object.prototype.hasOwnProperty.call(obs, key)) return false; // required own property
+    if (!isCountValue(obs[key])) return false; // null | finite number only
   }
   if (!Array.isArray(obs.missing) || !Array.isArray(obs.unexpected)) return false;
   return obs.missing.every(isValidReconItem) && obs.unexpected.every(isValidReconItem);

@@ -36,6 +36,10 @@ const OBS_VALID = Object.freeze({
   unexpected: [{ assetId: "AST-2", serial: "SN-2" }],
 });
 
+// The four required count keys as own properties (all valid finite numbers).
+const COUNTS = Object.freeze({ expectedSerialized: 1, scannedSerialized: 1, expectedParts: 1, scannedParts: 1 });
+const COUNT_KEYS = ["expectedSerialized", "scannedSerialized", "expectedParts", "scannedParts"];
+
 function readyObs(observation) {
   return { state: "ready", observation };
 }
@@ -93,7 +97,7 @@ describe("ReconciliationSection -- READY complete observation", () => {
   });
 
   it("renders a sparse valid item (one governed value) with em dashes elsewhere", () => {
-    const cells = within(render(<ReconciliationSection section={readyObs({ missing: [{ note: "seen once" }], unexpected: [] })} />).getByTestId("rc-missing-table")).getAllByRole("cell").map((td) => td.textContent);
+    const cells = within(render(<ReconciliationSection section={readyObs({ ...COUNTS, missing: [{ note: "seen once" }], unexpected: [] })} />).getByTestId("rc-missing-table")).getAllByRole("cell").map((td) => td.textContent);
     expect(cells).toEqual(["—", "—", "—", "—", "—", "—", "—", "seen once"]);
   });
 });
@@ -175,6 +179,45 @@ describe("ReconciliationSection -- READY observation integrity", () => {
   });
 });
 
+// The four count keys form a REQUIRED own-property envelope: each must be present and be
+// null or a finite number; absence/undefined crosses an integrity boundary -> whole ERROR.
+describe("ReconciliationSection -- required count envelope", () => {
+  it.each(COUNT_KEYS)("count '%s' absent (own property missing) -> whole-section ERROR", (missingKey) => {
+    const obs = { ...COUNTS, missing: [], unexpected: [] };
+    delete obs[missingKey];
+    const { getByTestId, queryByTestId } = render(<ReconciliationSection section={readyObs(obs)} />);
+    expect(getByTestId("rc-error")).toBeTruthy();
+    expect(queryByTestId("rc-ready")).toBeNull();
+  });
+
+  it.each(COUNT_KEYS)("count '%s' explicitly undefined -> whole-section ERROR", (key) => {
+    const obs = { ...COUNTS, missing: [], unexpected: [], [key]: undefined };
+    expect(render(<ReconciliationSection section={readyObs(obs)} />).getByTestId("rc-error")).toBeTruthy();
+  });
+
+  it("all four counts null -> READY, four em dashes", () => {
+    const { getByTestId } = render(<ReconciliationSection section={readyObs({ expectedSerialized: null, scannedSerialized: null, expectedParts: null, scannedParts: null, missing: [], unexpected: [] })} />);
+    expect(getByTestId("rc-ready")).toBeTruthy();
+    expect([...getByTestId("rc-summary").querySelectorAll("dd")].map((d) => d.textContent)).toEqual(["—", "—", "—", "—"]);
+  });
+
+  it("all four counts finite zero -> READY, displays 0", () => {
+    const { getByTestId } = render(<ReconciliationSection section={readyObs({ expectedSerialized: 0, scannedSerialized: 0, expectedParts: 0, scannedParts: 0, missing: [], unexpected: [] })} />);
+    expect(getByTestId("rc-ready")).toBeTruthy();
+    expect([...getByTestId("rc-summary").querySelectorAll("dd")].map((d) => d.textContent)).toEqual(["0", "0", "0", "0"]);
+  });
+
+  it("a malformed observation (absent count) renders NEITHER summary NOR lists", () => {
+    const obs = { scannedSerialized: 1, expectedParts: 1, scannedParts: 1, missing: [{ assetId: "X" }], unexpected: [] }; // expectedSerialized absent
+    const { getByTestId, queryByTestId } = render(<ReconciliationSection section={readyObs(obs)} />);
+    expect(getByTestId("rc-error")).toBeTruthy();
+    expect(queryByTestId("rc-summary")).toBeNull();
+    expect(queryByTestId("rc-missing-table")).toBeNull();
+    expect(queryByTestId("rc-missing-empty")).toBeNull();
+    expect(queryByTestId("rc-unexpected-empty")).toBeNull();
+  });
+});
+
 describe("ReconciliationSection -- determinism & no input mutation", () => {
   it("renders identical content across two renders (per-instance useId normalized)", () => {
     const normalize = (html) => html.replace(/id="[^"]*"/g, 'id="X"').replace(/aria-labelledby="[^"]*"/g, 'aria-labelledby="X"');
@@ -210,7 +253,7 @@ describe("ReconciliationSection -- unique render identities", () => {
   });
   it("duplicate item identifiers retain every row with no duplicate-key warning", () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
-    const table = render(<ReconciliationSection section={readyObs({ missing: [{ assetId: "DUP", serial: "S" }, { assetId: "DUP", serial: "S" }, { assetId: "DUP", serial: "S" }], unexpected: [] })} />).getByTestId("rc-missing-table");
+    const table = render(<ReconciliationSection section={readyObs({ ...COUNTS, missing: [{ assetId: "DUP", serial: "S" }, { assetId: "DUP", serial: "S" }, { assetId: "DUP", serial: "S" }], unexpected: [] })} />).getByTestId("rc-missing-table");
     expect(table.querySelectorAll("tbody tr").length).toBe(3);
     const keyWarning = spy.mock.calls.some((c) => c.some((a) => typeof a === "string" && a.includes("same key")));
     expect(keyWarning).toBe(false);
