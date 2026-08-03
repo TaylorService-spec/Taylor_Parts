@@ -21,7 +21,11 @@ const {
 const { sha256, extractRulesSource, VerificationError } = require("./firestoreDeploymentVerificationShared");
 
 // Compiled-in governed pins — the authoritative values a local config can NEVER weaken.
-const GOVERNED_RULES_SHA256 = "bb1492b98cba95cb30ac23f7078f0fdba24befa64fa604da27d84ddc9ebac907";
+// This is the SHA-256 of the whole governed `firestore.rules` (Git/LF source). It is
+// re-pinned whenever the governed rules legitimately change: bumped from
+// bb1492b9... to ec1f0a9b... to track the merged Phase-D `receiving_orders` deny-all
+// block (PR #537), which the smoke-verifier's own test asserts equals HEAD:firestore.rules.
+const GOVERNED_RULES_SHA256 = "ec1f0a9b78d937d1eff1aef6c2588b20a0dc77501b392e560b491e7c13b1ccd1";
 const EXPECTED_PROJECT = "taylor-parts";
 
 // ----- pure helpers -------------------------------------------------------------------------
