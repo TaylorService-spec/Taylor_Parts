@@ -22,11 +22,16 @@
 //                        a one-line allowlist change if the Owner authorizes it.
 //     quantity / valuation / custody / driver / GPS / active-status are absent from the
 //     merged row contract and are therefore never read at all.
-//   * FAIL CLOSED. A null / undefined / malformed section, an unknown state, or a
-//     READY section whose `items` is not an array all resolve to an honest
-//     unavailable/sanitized-error state -- never fabricated inventory, never a raw error.
+//   * FAIL CLOSED -- WHOLE PAYLOAD. A null / undefined / malformed section, an unknown
+//     state, a READY section whose `items` is not an array, OR a READY payload
+//     containing ANY malformed row (a non-object, or a row carrying no governed
+//     displayable value) all resolve to the sanitized ERROR state for the ENTIRE
+//     section. Only a genuine READY `items: []` asserts empty inventory; a malformed
+//     non-empty payload is an integrity failure, never a false "empty" and never a
+//     partial mix of valid + malformed rows. No raw values or error details reach the UI.
 //   * DETERMINISTIC. Pure function of its `section` prop; row order is preserved
 //     (no sort), and the prop is never mutated.
+import { useId } from "react";
 import { MOBILE_INVENTORY_SECTION_STATE } from "../../../domain/mobileLocationInventoryProjection.js";
 
 const { UNAVAILABLE, LOADING, DENIED, ERROR, READY } = MOBILE_INVENTORY_SECTION_STATE;
@@ -42,7 +47,12 @@ const DISPLAY_COLUMNS = Object.freeze([
   { key: "currentLocation", label: "Location" },
 ]);
 
-const HEADING_ID = "serialized-assets-heading";
+// Every field name the merged serialized-row contract may carry. A projected row's value
+// for any of these must be governed-shaped (a non-blank string or null); anything else is
+// an integrity fault. Unknown/extra keys are ignored (never read, never rendered).
+const RECOGNIZED_KEYS = Object.freeze([
+  "assetId", "internalSku", "manufacturer", "model", "serial", "condition", "status", "currentLocation",
+]);
 
 function isPlainObject(v) {
   return v !== null && typeof v === "object" && !Array.isArray(v);
@@ -55,34 +65,42 @@ function displayValue(v) {
   return typeof v === "string" && v.trim() !== "" ? v : null;
 }
 
-// Resolve the section to a governed display state, failing closed.
+// A recognized field is governed-shaped iff it is absent, null, or a non-blank string.
+function isGovernedFieldValue(v) {
+  return v === undefined || v === null || (typeof v === "string" && v.trim() !== "");
+}
+
+// A row satisfies the projected-row DISPLAY contract iff it is a plain object, every
+// recognized field it carries is governed-shaped, AND it carries at least one governed
+// value in a DISPLAYED column (so it is a renderable serialized row, not an empty/opaque
+// object). Unknown extra keys are ignored. Used to validate the WHOLE payload before render.
+function isValidProjectedRow(row) {
+  if (!isPlainObject(row)) return false;
+  for (const key of RECOGNIZED_KEYS) {
+    if (key in row && !isGovernedFieldValue(row[key])) return false;
+  }
+  return DISPLAY_COLUMNS.some((col) => displayValue(row[col.key]) !== null);
+}
+
+// Resolve the section to a governed display state, failing closed over the WHOLE payload.
 function resolveDisplayState(section) {
   if (section === null || section === undefined) return UNAVAILABLE;
   if (!isPlainObject(section)) return ERROR;
   if (!KNOWN_STATES.includes(section.state)) return ERROR;
-  if (section.state === READY && !Array.isArray(section.items)) return ERROR;
+  if (section.state === READY) {
+    if (!Array.isArray(section.items)) return ERROR;
+    // items:[] is an honest empty result; a non-empty payload with ANY malformed row
+    // is an integrity failure -> ERROR the entire section (never partial, never false empty).
+    if (section.items.length > 0 && !section.items.every(isValidProjectedRow)) return ERROR;
+  }
   return section.state;
 }
 
-// Build the render rows from a READY section, reading ONLY the allowlist keys. Rows that
-// are not plain objects, or that carry no governed value in any displayed column, are
-// dropped (honest -- nothing to show). Never mutates the input.
-function readyRows(section) {
-  const items = Array.isArray(section?.items) ? section.items : [];
-  const rows = [];
-  for (const raw of items) {
-    if (!isPlainObject(raw)) continue;
-    const cells = {};
-    let hasValue = false;
-    for (const col of DISPLAY_COLUMNS) {
-      const val = displayValue(raw[col.key]);
-      cells[col.key] = val;
-      if (val !== null) hasValue = true;
-    }
-    if (!hasValue) continue;
-    rows.push(cells);
-  }
-  return rows;
+// Map a validated row to its display cells (allowlist keys only). Never mutates input.
+function toDisplayCells(row) {
+  const cells = {};
+  for (const col of DISPLAY_COLUMNS) cells[col.key] = displayValue(row[col.key]);
+  return cells;
 }
 
 function StateMessage({ testId, role, live, children }) {
@@ -93,9 +111,8 @@ function StateMessage({ testId, role, live, children }) {
   );
 }
 
-function ReadyBody({ section }) {
-  const rows = readyRows(section);
-  if (rows.length === 0) {
+function ReadyBody({ items }) {
+  if (items.length === 0) {
     return (
       <StateMessage testId="sa-empty">
         No serialized assets at this location.
@@ -116,13 +133,19 @@ function ReadyBody({ section }) {
           </tr>
         </thead>
         <tbody>
-          {rows.map((row, i) => (
-            <tr key={row.assetId ?? row.serial ?? `row-${i}`}>
-              {DISPLAY_COLUMNS.map((col) => (
-                <td key={col.key}>{row[col.key] ?? "—"}</td>
-              ))}
-            </tr>
-          ))}
+          {items.map((row, i) => {
+            const cells = toDisplayCells(row);
+            // Row key combines the governed identity with the render index so duplicate
+            // assetId/serial values can never collide (order is preserved, read-only slice).
+            const identity = displayValue(row.assetId) ?? displayValue(row.serial) ?? "row";
+            return (
+              <tr key={`${identity}#${i}`}>
+                {DISPLAY_COLUMNS.map((col) => (
+                  <td key={col.key}>{cells[col.key] ?? "—"}</td>
+                ))}
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -132,7 +155,7 @@ function ReadyBody({ section }) {
 function SectionBody({ state, section }) {
   switch (state) {
     case READY:
-      return <ReadyBody section={section} />;
+      return <ReadyBody items={section.items} />;
     case LOADING:
       return (
         <StateMessage testId="sa-loading" role="status" live="polite">
@@ -164,14 +187,15 @@ function SectionBody({ state, section }) {
 // `section` is the serializedAssets slice `{ state, items }` from
 // composeMobileLocationInventory(...).sections.serializedAssets. No other prop is read.
 export default function SerializedAssetsSection({ section }) {
+  const headingId = useId(); // per-instance -> two instances never collide on id/aria-labelledby
   const state = resolveDisplayState(section);
   return (
-    <section className="fo-card" aria-labelledby={HEADING_ID} data-testid="serialized-assets-section">
-      <h3 id={HEADING_ID}>Serialized Assets</h3>
+    <section className="fo-card" aria-labelledby={headingId} data-testid="serialized-assets-section">
+      <h3 id={headingId}>Serialized Assets</h3>
       <SectionBody state={state} section={section} />
     </section>
   );
 }
 
-// Exported for tests only -- the governed display allowlist and state resolver.
-export const __test__ = Object.freeze({ DISPLAY_COLUMNS, resolveDisplayState, readyRows });
+// Exported for tests only -- the governed display allowlist, state resolver, and row validator.
+export const __test__ = Object.freeze({ DISPLAY_COLUMNS, resolveDisplayState, isValidProjectedRow });

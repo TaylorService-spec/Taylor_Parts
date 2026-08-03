@@ -2,7 +2,7 @@
 // SerializedAssetsSection presentation slice (vitest + jsdom + RTL). The component has
 // no Firebase/hooks/context, so nothing is mocked: it is rendered directly through its
 // `section` prop with fixtures, exactly as it will be wired later.
-import { afterEach, describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import { render, cleanup, within } from "@testing-library/react";
 import SerializedAssetsSection, { __test__ } from "../src/modules/inventory/mobile/SerializedAssetsSection.jsx";
 
@@ -127,7 +127,7 @@ describe("SerializedAssetsSection -- no leakage of raw/withheld/unsupported fiel
   });
 });
 
-describe("SerializedAssetsSection -- fail closed on malformed/null input", () => {
+describe("SerializedAssetsSection -- fail closed on malformed section input", () => {
   it("null -> unavailable", () => {
     const { getByTestId } = render(<SerializedAssetsSection section={null} />);
     expect(getByTestId("sa-unavailable")).toBeTruthy();
@@ -143,28 +143,75 @@ describe("SerializedAssetsSection -- fail closed on malformed/null input", () =>
     ["unknown state", { state: "bogus" }],
     ["ready but items not an array", { state: "ready", items: "not-an-array" }],
     ["ready but items is an object", { state: "ready", items: {} }],
-  ])("malformed input (%s) fails closed to a sanitized error", (_label, bad) => {
+  ])("malformed section (%s) fails closed to a sanitized error", (_label, bad) => {
     const { getByTestId } = render(<SerializedAssetsSection section={bad} />);
     expect(getByTestId("sa-error")).toBeTruthy();
   });
+});
 
-  it("drops non-object and no-governed-value rows without throwing", () => {
-    const { getByRole } = render(
-      <SerializedAssetsSection section={readySection([null, 5, "x", {}, { unknownOnly: "z" }, { assetId: "KEEP" }])} />
+// P2-1 -- a malformed READY payload must fail the WHOLE section to ERROR, never a false
+// empty and never a partial table. Only a genuine items:[] is an honest empty result.
+describe("SerializedAssetsSection -- READY payload integrity (whole-payload fail closed)", () => {
+  it("READY + [null] -> ERROR, not empty", () => {
+    const { getByTestId, queryByTestId } = render(<SerializedAssetsSection section={readySection([null])} />);
+    expect(getByTestId("sa-error")).toBeTruthy();
+    expect(queryByTestId("sa-empty")).toBeNull();
+    expect(queryByTestId("sa-ready")).toBeNull();
+  });
+
+  it("READY + [{}] -> ERROR, not empty", () => {
+    const { getByTestId, queryByTestId } = render(<SerializedAssetsSection section={readySection([{}])} />);
+    expect(getByTestId("sa-error")).toBeTruthy();
+    expect(queryByTestId("sa-empty")).toBeNull();
+  });
+
+  it("READY + [validRow, malformedRow] -> ERROR, no partial table", () => {
+    const { getByTestId, queryByRole, queryByText } = render(
+      <SerializedAssetsSection section={readySection([{ assetId: "VALID-1" }, {}])} />
     );
-    const bodyRows = getByRole("table").querySelectorAll("tbody tr");
-    expect(bodyRows.length).toBe(1); // only the { assetId: "KEEP" } row survives
-    expect(within(getByRole("table")).getByText("KEEP")).toBeTruthy();
+    expect(getByTestId("sa-error")).toBeTruthy();
+    expect(queryByRole("table")).toBeNull();
+    expect(queryByText("VALID-1")).toBeNull(); // the valid row is NOT partially rendered
+  });
+
+  it("READY + row with only withheld/unknown fields (no displayable value) -> ERROR", () => {
+    const { getByTestId } = render(
+      <SerializedAssetsSection section={readySection([{ condition: "GOOD", status: "IN_SERVICE", rawSecret: "x" }])} />
+    );
+    expect(getByTestId("sa-error")).toBeTruthy();
+  });
+
+  it("READY + row with a non-string recognized field -> ERROR", () => {
+    const { getByTestId } = render(
+      <SerializedAssetsSection section={readySection([{ assetId: 5, serial: "S1" }])} />
+    );
+    expect(getByTestId("sa-error")).toBeTruthy();
+  });
+
+  it("READY + [] remains the sole honest empty result", () => {
+    const { getByTestId } = render(<SerializedAssetsSection section={readySection([])} />);
+    expect(getByTestId("sa-empty")).toBeTruthy();
+  });
+
+  it("READY + all valid rows renders the table (no false error)", () => {
+    const { getByRole } = render(
+      <SerializedAssetsSection section={readySection([{ assetId: "A" }, { serial: "S" }])} />
+    );
+    expect(getByRole("table").querySelectorAll("tbody tr").length).toBe(2);
   });
 });
 
 describe("SerializedAssetsSection -- determinism & no input mutation", () => {
-  it("renders identically across two renders (deterministic)", () => {
+  it("renders identical content across two renders (deterministic; per-instance useId aside)", () => {
+    // useId() intentionally differs per instance (P2-2), so normalize the heading id /
+    // aria-labelledby before comparing -- the RENDERED CONTENT must be identical.
+    const normalize = (html) =>
+      html.replace(/id="[^"]*"/g, 'id="X"').replace(/aria-labelledby="[^"]*"/g, 'aria-labelledby="X"');
     const section = readySection([FULL_ROW, { assetId: "AST-002", serial: "SN-2" }]);
     const a = render(<SerializedAssetsSection section={section} />).container.innerHTML;
     cleanup();
     const b = render(<SerializedAssetsSection section={section} />).container.innerHTML;
-    expect(a).toBe(b);
+    expect(normalize(a)).toBe(normalize(b));
   });
 
   it("does not mutate the input section or its rows (deep-frozen input renders cleanly)", () => {
@@ -175,6 +222,39 @@ describe("SerializedAssetsSection -- determinism & no input mutation", () => {
   });
 });
 
+// P2-2 -- render identities must be per-instance and per-row unique.
+describe("SerializedAssetsSection -- unique render identities", () => {
+  it("two instances rendered together have distinct heading ids, each labelling itself", () => {
+    const { container } = render(
+      <div>
+        <SerializedAssetsSection section={{ state: "unavailable" }} />
+        <SerializedAssetsSection section={{ state: "loading" }} />
+      </div>
+    );
+    const sections = container.querySelectorAll("section");
+    expect(sections.length).toBe(2);
+    const h0 = sections[0].querySelector("h3");
+    const h1 = sections[1].querySelector("h3");
+    expect(h0.id).toBeTruthy();
+    expect(h1.id).toBeTruthy();
+    expect(h0.id).not.toBe(h1.id);
+    expect(sections[0].getAttribute("aria-labelledby")).toBe(h0.id);
+    expect(sections[1].getAttribute("aria-labelledby")).toBe(h1.id);
+  });
+
+  it("duplicate assetId/serial rows render deterministically with no duplicate-key warning or lost rows", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { getByRole } = render(
+      <SerializedAssetsSection section={readySection([{ assetId: "DUP", serial: "S" }, { assetId: "DUP", serial: "S" }])} />
+    );
+    const rows = getByRole("table").querySelectorAll("tbody tr");
+    expect(rows.length).toBe(2); // both rows survive
+    const keyWarning = spy.mock.calls.some((c) => c.some((a) => typeof a === "string" && a.includes("same key")));
+    expect(keyWarning).toBe(false);
+    spy.mockRestore();
+  });
+});
+
 describe("SerializedAssetsSection -- accessibility & responsive semantics", () => {
   it("exposes a labelled region with a heading", () => {
     const { getByTestId, getByRole } = render(<SerializedAssetsSection section={{ state: "unavailable" }} />);
@@ -182,7 +262,6 @@ describe("SerializedAssetsSection -- accessibility & responsive semantics", () =
     expect(region.tagName.toLowerCase()).toBe("section");
     const heading = getByRole("heading", { level: 3 });
     expect(heading.textContent).toBe("Serialized Assets");
-    // region is labelled by the heading id
     expect(region.getAttribute("aria-labelledby")).toBe(heading.id);
   });
 
