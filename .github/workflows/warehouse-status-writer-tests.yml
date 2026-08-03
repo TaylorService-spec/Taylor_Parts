@@ -1,0 +1,79 @@
+name: Warehouse Status Writer Tests
+
+# Receiving Location Authority -- I-LA2: the INERT, UNEXPORTED trusted warehouse-status writer
+# (functions/src/warehouseGovernance/warehouseStatusWriter.ts). Firestore-emulator tests only:
+# NO production, NO deployment, NO callable. The writer is not exported from index.ts and never runs
+# against production. Authorization/audit are injected seams (E1 wires the real ones). Governed by the
+# merged §3A validator.
+
+on:
+  pull_request:
+    paths:
+      - "functions/src/warehouseGovernance/**"
+      - "functions/src/types/warehouse.ts"
+      - "functions/test/warehouseStatusWriter.test.mjs"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - ".github/workflows/warehouse-status-writer-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/src/warehouseGovernance/**"
+      - "functions/src/types/warehouse.ts"
+      - "functions/test/warehouseStatusWriter.test.mjs"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - ".github/workflows/warehouse-status-writer-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  warehouse-status-writer-tests:
+    name: Warehouse status writer tests (Firestore emulator)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+
+      - name: Offline governed warehouse validator tests
+        run: npm run test:warehouseGovernance
+        working-directory: functions
+
+      - name: Start Firestore emulator (background)
+        run: |
+          nohup node node_modules/firebase-tools/lib/bin/firebase.js emulators:start --only firestore --project taylor-parts --config ../firebase.json > /tmp/warehouse-writer-emulator.log 2>&1 &
+          for i in $(seq 1 60); do
+            if grep -q "All emulators ready" /tmp/warehouse-writer-emulator.log 2>/dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "Emulator did not become ready in time"
+          cat /tmp/warehouse-writer-emulator.log
+          exit 1
+        working-directory: functions
+
+      - name: Warehouse status writer tests (build + run)
+        run: npm run test:warehouseStatusWriter
+        working-directory: functions
+
+      - name: Upload emulator debug logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: warehouse-writer-emulator-logs
+          path: |
+            /tmp/warehouse-writer-emulator.log
+            functions/firestore-debug.log
+          if-no-files-found: ignore
