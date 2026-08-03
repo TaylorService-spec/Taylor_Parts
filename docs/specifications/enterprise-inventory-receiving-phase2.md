@@ -41,8 +41,9 @@ derived from a mutable label.
 | `createdAt/createdBy/updatedAt/updatedBy` | server-authored | trusted-writer clock; **never** caller-supplied |
 
 **Line** (`lines[]`): `{ lineId, partId, trackingMode: "NONE", expectedQuantity, receivedQuantity,
-status: "EXPECTED" | "RECEIVED" }`. `lineId` is a stable within-order identity. One accepted line ⇒
-one `RECEIVED` ledger event (§7). No `serialNo`/`lotId`/expiration fields in this slice (deferred, §5).
+status: "RECEIVED" }`. `lineId` is a stable within-order identity. **First slice: exactly one line**,
+whose `receivedQuantity == expectedQuantity == PO.orderedQuantity` (§5), created directly as `RECEIVED`
+⇒ one `RECEIVED` ledger event (§7). No `serialNo`/`lotId`/expiration fields in this slice (deferred, §5).
 
 Aggregates (`on_hand`/`reserved`, §4.1) are **out of this slice** — the RECEIVED ledger event is the
 truth; materialized aggregates arrive with the §4.1 warehouse-aggregate gate. This slice never writes
@@ -68,34 +69,56 @@ as an **Adjustment-authorized** flow whose approval lifecycle is not implemented
 
 ## 3. Lifecycle and version/CAS rules
 
-`EXPECTED → CHECKED_IN → PUTAWAY_COMPLETE` (+ `CANCELLED` only from `EXPECTED`/`CHECKED_IN`, pre-receipt).
-Each transition is a trusted-writer command reading the current `version` and writing `version + 1`
-(mismatch → `VERSION_CONFLICT`). `RECEIVED` ledger events are emitted at the `PUTAWAY_COMPLETE`
-transition (putaway location). For the NONE-only first command, a single `receiveInventoryStock`
-transition may create the Receiving Order and drive it to `PUTAWAY_COMPLETE` in one transaction (§7);
-`EXPECTED`/`CHECKED_IN` remain specified for later multi-step receiving. No status may regress; terminal
-states are immutable.
+**First NONE-only command — one governed transition, final `version = 1`.** The initial
+`receiveInventoryStock` command is defined as **exactly one** governed transition that **creates** the
+Receiving Order directly in the terminal `PUTAWAY_COMPLETE` state with **final `version = 1`** and emits
+**one** `receiveInventoryStock` Audit Event. It is *not* three transitions and does not pass through
+`EXPECTED`/`CHECKED_IN` (there is no intermediate persisted state and no `version` 2/3).
+
+**Later multi-step receiving (deferred).** The full `EXPECTED → CHECKED_IN → PUTAWAY_COMPLETE` machine
+(+ `CANCELLED` only from `EXPECTED`/`CHECKED_IN`, pre-receipt) is specified for a later gate: each
+transition is a trusted-writer command reading the current `version` and writing `version + 1` (mismatch
+→ `VERSION_CONFLICT`) with **one Audit Event per transition**, and `RECEIVED` ledger events emitted at
+the `PUTAWAY_COMPLETE` transition. In both models no status regresses and terminal states are immutable.
 
 ## 4. `reorder_purchase_orders` / `reorder_requests` compatibility mapping
 
 | Existing (client, status-only) | Receiving (trusted, ledger-backed) |
 |---|---|
-| `reorder_requests.status ORDERED` | source precondition; on successful receipt → terminal `RECEIVED` (same terminal the client sets today) **+** `receivedAt/receivedBy` |
-| `reorder_purchase_orders.status ORDERED` | source precondition; on successful receipt → `RECEIVED` |
+| `reorder_purchase_orders/{reorderRequestId}` (status `ORDERED`) | **READ-ONLY authoritative ordered source.** The PO document is treated as **immutable after creation** (its `PURCHASE_ORDER_STATUS` enum has only `ORDERED`; there is no `RECEIVED` PO status). The command **never** writes, transitions, or rewrites it — it is byte-for-byte unchanged after receipt. |
+| `reorder_requests.status ORDERED` | source precondition; on successful receipt → terminal `RECEIVED` (the same terminal the client sets today) **+** `receivedAt/receivedBy`. This is the **only** reorder-chain document the command transitions. |
 | `receiveReorderRequest()` (client, no ledger) | **unchanged during repo prep**; superseded by the trusted command **only at cutover (§11 / Phase F)** |
-| historical reorder/PO/void records | **read-only, never rewritten**; the Receiving Order is a new additive record linking back via `source` |
+| historical reorder/PO/void records + `inventory_actions` | **read-only, never rewritten** |
 
-No existing client writer is silently redirected. The reorder terminal meaning (`RECEIVED`) is
-preserved; the delta is that the trusted path *also* appends a `RECEIVED` ledger event atomically.
+Physical completion is recorded **only** in the additive `receiving_orders` document and the `RECEIVED`
+ledger event(s) — never as a PO mutation. No existing client writer is silently redirected. The reorder
+terminal meaning (`reorder_requests` → `RECEIVED`) is preserved; the delta is that the trusted path
+*also* appends a `RECEIVED` ledger event atomically. (Because the PO is never mutated, this slice adds
+**no** `reorder_purchase_orders` write, Rules change, or index.)
 
 ## 5. NONE-only line contract
 
-- `trackingMode` per line resolved from the **Part authority** (Part-owned NONE/SERIAL/LOT).
-- **NONE:** positive `receivedQuantity` (finite > 0). One `RECEIVED` ledger event per line.
+The current `reorder_purchase_orders` authority is **single-part** and carries `orderedQuantity`, so the
+first slice is a **full, exact, single-line** receipt bound to the ordered quantity — no partial, over-,
+or under-receipt:
+
+- **Exactly one** receiving line per Receiving Order (reject line-count ≠ 1 atomically).
+- `line.partId == reorder_purchase_orders.partId == reorder_requests.partId` (reject mismatch).
+- `line.expectedQuantity == reorder_purchase_orders.orderedQuantity` (reject mismatch).
+- `line.receivedQuantity == reorder_purchase_orders.orderedQuantity` (reject **partial**, **over-**, and
+  **under-**receipt) — all atomic; nothing commits on any mismatch.
+- `trackingMode` resolved from the **Part authority**; **NONE** required. `receivedQuantity` is finite
+  `> 0` (guaranteed by the equality above, since a valid PO `orderedQuantity` is `> 0`). One `RECEIVED`
+  ledger event for the single line.
 - **SERIAL:** command **fails closed** (`TRACKING_MODE_UNSUPPORTED`) — deferred until `serialized_assets`
   persisted identity/uniqueness is pinned (EI-P2a deferral). No partial serial receipt.
 - **LOT:** command **fails closed** — deferred until the governed lot-identity contract exists (§4.10).
-- A mixed request containing any SERIAL/LOT line fails the whole transaction (no partial receipt).
+- A request with any SERIAL/LOT part fails the whole transaction (no partial receipt).
+
+**Partial / multi-line receipt is out of scope** and requires a **later governed remaining-quantity
+model** (a `receivedToDate` / open-quantity contract on the source and a Receiving Order that can remain
+open across multiple receipts) — not attempted here. Until that model exists, a receipt is all-or-nothing
+against the full `orderedQuantity`.
 
 ## 6. Capability and AuditAction
 
@@ -116,17 +139,21 @@ preserved; the delta is that the trusted path *also* appends a `RECEIVED` ledger
    commit-time authoritative read of the actor's grant.
 2. **Idempotency** — deterministic Receiving idempotency doc (§8): existing coherent record → replay;
    changed payload → conflict.
-3. **Source PO** — read `reorder_purchase_orders/{reorderRequestId}`; require exists + `ORDERED`.
+3. **Source PO (read-only)** — read `reorder_purchase_orders/{reorderRequestId}`; require exists +
+   `ORDERED`. The PO is the authoritative ordered source and is **never written** (§4).
 4. **Linked request** — read `reorder_requests/{reorderRequestId}`; require exists + `ORDERED` + `partId` match.
 5. **Destination** — validate `receivingLocation` is an active governed Location.
 6. **Part authority** — active Part + `trackingMode`; **NONE only** (fail closed on SERIAL/LOT, §5).
-7. **Line validation** — NONE lines, positive quantities, unique `lineId`.
-8. **Receiving Order** — stage create (`version = 1`) + lifecycle transition to `PUTAWAY_COMPLETE`.
-9. **Ledger** — one `RECEIVED` event per accepted NONE line via `stageOperationalMovement`
+7. **Line + quantity validation (§5)** — **exactly one** line; `line.partId == PO.partId ==
+   request.partId`; `line.expectedQuantity == PO.orderedQuantity`; `line.receivedQuantity ==
+   PO.orderedQuantity` (reject partial/over/under and line-count ≠ 1, atomically).
+8. **Receiving Order** — stage **create** at `PUTAWAY_COMPLETE` with final `version = 1` (one governed
+   transition, §3).
+9. **Ledger** — one `RECEIVED` event for the accepted NONE line via `stageOperationalMovement`
    (`sourceObject {RECEIVING_ORDER, receivingId}`, `location = receivingLocation`, quantity =
    `receivedQuantity`; `recordedAt` server-authored).
-10. **Reorder closeout** — `reorder_requests` `ORDERED→RECEIVED` (+ `receivedAt/receivedBy`) and
-    `reorder_purchase_orders` `ORDERED→RECEIVED`, **only** when the physical receipt succeeds.
+10. **Reorder closeout** — `reorder_requests` `ORDERED→RECEIVED` (+ `receivedAt/receivedBy`) **only** when
+    the physical receipt succeeds. **No `reorder_purchase_orders` write** — the PO stays byte-identical (§4).
 11. **Audit** — one immutable `receiveInventoryStock` Audit Event.
 
 No workflow transition commits without its ledger event and audit; no ledger event commits without its
@@ -148,9 +175,11 @@ event carries its own ledger idempotency (`imv_` docs) so replays never duplicat
 
 - `receiving_orders`: **new Admin-SDK-only** collection — `firestore.rules` **deny all client
   read/write** (posture identical to `inventory_transactions` / `trucks`). Added in **Phase D** only.
-- `reorder_requests` / `reorder_purchase_orders`: Rules **unchanged during repo prep**. At cutover the
-  trusted command writes their closeout via Admin SDK (Rules do not gate Admin writes); the client status
-  path is retired (Phase F). No client rule is loosened.
+- `reorder_requests`: Rules **unchanged during repo prep**. At cutover the trusted command writes the
+  `reorder_requests` closeout via Admin SDK (Rules do not gate Admin writes); the client status path is
+  retired (Phase F). No client rule is loosened.
+- `reorder_purchase_orders`: **read-only** to the command — never written by it (§4), so **no Rules or
+  index change** for the PO in any phase of this slice.
 - No Rules are changed or deployed in this specification gate.
 
 ## 10. Index requirements
@@ -171,9 +200,17 @@ event carries its own ledger idempotency (`imv_` docs) so replays never duplicat
   verification. **No interval** where the UI implies physical receipt without a `RECEIVED` ledger event.
 - **Historical records** (reorder/PO/void/`inventory_actions`) remain readable and are **never
   rewritten**. `inventory_actions` RECEIVE_STOCK remains an **audit-only log** (never applied stock).
-- **Rollback:** re-point the client to the status-only path; the trusted command is idempotent (safe
-  re-run); Receiving Orders + `RECEIVED` events are additive (removing the client cutover cannot corrupt
-  them). `updateStockLocation` retirement (§4.3) is **not** part of this slice.
+- **Rollback (fail-closed — never re-enable ledgerless receipt).** After production activation the
+  legacy status-only `receiveReorderRequest()` writer is **never restored**; re-enabling it would recreate
+  the exact receipt-without-ledger interval this gate eliminates. A rollback instead **disables/hides the
+  receiving action** (or restores a prior frontend build in a **fail-closed** state where receipt
+  submission is **unavailable**) — the user cannot mark `RECEIVED` at all rather than marking it without a
+  ledger event. The **verified trusted callable stays deployed** during any frontend rollback (the
+  ledger-backed path is preserved). Recovery is a **forward fix**, or a **separately reviewed** rollback
+  that still routes every `RECEIVED` through the trusted command; a rollback that reintroduces the
+  status-only writer is prohibited. The trusted command is idempotent (safe re-run) and Receiving Orders +
+  `RECEIVED` events are additive (a frontend rollback cannot corrupt them). `updateStockLocation`
+  retirement (§4.3) is **not** part of this slice.
 
 ## 12. Emulator + regression matrix
 
@@ -184,18 +221,28 @@ non-mutating.
 **Firestore emulator (trusted command):**
 - authorization deny (no `inventory.stock.receive`) / allow;
 - source PO + linked reorder-request validation (missing / wrong-status / partId mismatch → fail closed);
+- **quantity/line-count binding (§5): line-count ≠ 1, `receivedQuantity`/`expectedQuantity` ≠
+  `orderedQuantity` (partial, over-, under-receipt), and partId mismatch each → fail closed with ZERO
+  writes** (no Receiving Order, ledger event, closeout, or audit);
+- **`reorder_purchase_orders/{reorderRequestId}` is byte-identical before and after a successful receipt**
+  (the command never writes the PO);
 - active-destination-location validation;
-- Receiving lifecycle + version CAS (conflict rejected);
-- `RECEIVED` ledger event **shape + putaway location** per accepted line;
+- Receiving Order created at `PUTAWAY_COMPLETE` with final `version = 1` (single governed transition);
+- `RECEIVED` ledger event **shape + putaway location** for the accepted line;
 - NONE receipt succeeds; SERIAL/LOT rejected (no partial);
-- duplicate `lineId` rejected;
+- duplicate `lineId` / multi-line request rejected;
 - **atomicity**: simulated failure after each staged boundary (Receiving stage / ledger stage / closeout
   stage / audit stage) → **nothing** commits (no partial Receiving Order, ledger, closeout, or audit);
 - idempotent replay (zero duplicates) and same-key-changed-payload conflict;
-- terminal reorder closeout **only** on successful receipt;
+- terminal reorder closeout (`reorder_requests` only) **only** on successful receipt;
 - audit-only `inventory_actions` remains non-stock-changing;
 - existing `inventoryService` + Work-Order engine tests remain green;
 - **no callable/export/deployment path exists** for the command in Phases A–D (inert).
+
+**Cutover regression (Phase F):** prove that **no production UI path can mark a reorder request
+`RECEIVED` without invoking the trusted command** — the status-only `receiveReorderRequest()` client
+writer is removed/disabled, and a rollback leaves receipt submission unavailable rather than
+ledgerless (§11).
 
 ## 13. Phased PR sequence
 
