@@ -87,7 +87,48 @@ ok("adapter includes a valid non-installed asset at the requested MOBILE locatio
 
 ok("adapter fails closed on a malformed request (blank locationId or accessVersion)", () => {
   assert.deepEqual(projectMobileSerializedAssets({ records: [rec()], locationId: "", accessVersion: "v1" }), { status: "error", accessVersion: "v1", locationId: null, items: null });
-  assert.deepEqual(projectMobileSerializedAssets({ records: [rec()], locationId: "1", accessVersion: "" }), { status: "error", accessVersion: null, locationId: null, items: null });
+  assert.deepEqual(projectMobileSerializedAssets({ records: [rec()], locationId: "1", accessVersion: "" }), { status: "error", accessVersion: null, locationId: "1", items: null });
+});
+
+// ---- P2: non-READY / malformed status never carries a payload nor processes records -------------
+for (const st of ["denied", "error", "loading", "unavailable"]) {
+  ok(`status="${st}" + valid records -> ${st.toUpperCase()} with items:null (records not processed)`, () => {
+    const src = projectMobileSerializedAssets({ records: [rec()], locationId: "1", accessVersion: "v1", status: st });
+    assert.equal(src.status, st);
+    assert.equal(src.items, null);
+    assert.equal(src.locationId, "1");
+    assert.equal(src.accessVersion, "v1");
+  });
+}
+
+ok("unknown/malformed status + valid records -> fail-closed ERROR, items:null (unknown never passes through)", () => {
+  // NB: an OMITTED/undefined status defaults to "ready" (JS default param) and is covered by the
+  // READY branch tests; here we exercise explicitly-supplied unknown/malformed status values.
+  for (const bad of ["ready-ish", "READY", "", 42, null, {}]) {
+    const src = projectMobileSerializedAssets({ records: [rec()], locationId: "1", accessVersion: "v1", status: bad });
+    assert.equal(src.status, "error");
+    assert.equal(src.items, null);
+    assert.notEqual(src.status, bad);
+  }
+});
+
+ok("READY + non-array records (undefined/null/object/string/number) -> ERROR, items:null (never READY-empty)", () => {
+  for (const bad of [undefined, null, {}, { 0: rec() }, "recs", 5]) {
+    const src = projectMobileSerializedAssets({ records: bad, locationId: "1", accessVersion: "v1", status: "ready" });
+    assert.equal(src.status, "error", `records=${JSON.stringify(bad)}`);
+    assert.equal(src.items, null);
+  }
+});
+
+ok("READY + [] -> READY with items:[] (legitimate empty read preserved)", () => {
+  assert.deepEqual(projectMobileSerializedAssets({ records: [], locationId: "1", accessVersion: "v1", status: "ready" }), { status: "ready", accessVersion: "v1", locationId: "1", items: [] });
+});
+
+ok("READY + valid records remains unchanged (regression guard)", () => {
+  const src = projectMobileSerializedAssets({ records: [rec()], locationId: "1", accessVersion: "v1", status: "ready" });
+  assert.equal(src.status, "ready");
+  assert.equal(src.items.length, 1);
+  assert.equal(src.items[0].serial, "SN-100");
 });
 
 ok("wrong-location assets never surface", () => {

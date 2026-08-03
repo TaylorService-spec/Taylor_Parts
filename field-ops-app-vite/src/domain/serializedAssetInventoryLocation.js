@@ -84,28 +84,52 @@ function toSectionItem(row) {
   };
 }
 
+// The governed MOBILE inventory section states (mirror mobileLocationInventoryProjection
+// MOBILE_INVENTORY_SECTION_STATE). Any other value fails closed to a sanitized ERROR.
+const SECTION_STATES = Object.freeze(new Set(["unavailable", "loading", "denied", "error", "ready"]));
+
 // Pure MOBILE serialized-assets projection adapter. From INJECTED records only (each a
 // { asset, part } pair), produce the serializedAssets SOURCE shape
 // { status, accessVersion, locationId, items } that mobileLocationInventoryProjection consumes.
-// Includes ONLY valid, non-INSTALLED assets whose ledger-derived inventoryLocation is exactly the
-// requested MOBILE location. Fails closed: a malformed request (blank locationId/accessVersion) ->
-// an ERROR source with null items; malformed / installed / linked / wrong-location records are
-// dropped and can never surface. Performs NO reads, writes, movement, availability calc, custody
-// inference, or mutation, and does not mutate its inputs.
+//
+// FAIL CLOSED on every axis:
+//   * status is validated against the governed section states; an unknown/malformed status becomes a
+//     sanitized ERROR (the unknown value never passes through).
+//   * a non-READY governed state (unavailable/loading/denied/error) carries NO payload (items: null)
+//     and NEVER processes or exposes the injected records.
+//   * READY requires a valid non-empty locationId, a valid non-empty accessVersion, AND `records` an
+//     ACTUAL array; otherwise it downgrades to a sanitized ERROR with items: null (never a fabricated
+//     READY-empty result).
+//   * a legitimate READY read with records: [] returns READY with items: [].
+// Only valid, non-INSTALLED assets whose ledger-derived inventoryLocation is exactly the requested
+// MOBILE location are projected; malformed / installed / linked / wrong-location records are dropped.
+// No raw errors/identifiers are surfaced. NO reads, writes, movement, availability calc, custody
+// inference, or mutation; inputs are not mutated.
 export function projectMobileSerializedAssets({ records, locationId, accessVersion, status = "ready" } = {}) {
-  const accessVersionOk = isNonEmptyString(accessVersion);
-  if (!isNonEmptyString(locationId) || !accessVersionOk) {
-    return { status: "error", accessVersion: accessVersionOk ? accessVersion : null, locationId: null, items: null };
+  const loc = isNonEmptyString(locationId) ? locationId : null;
+  const av = isNonEmptyString(accessVersion) ? accessVersion : null;
+
+  // Normalize status; unknown/malformed -> sanitized ERROR (never pass the unknown value through).
+  const requested = SECTION_STATES.has(status) ? status : "error";
+
+  // Non-READY governed states carry no payload and never touch the injected records.
+  if (requested !== "ready") {
+    return { status: requested, accessVersion: av, locationId: loc, items: null };
   }
-  const list = Array.isArray(records) ? records : [];
+
+  // READY preconditions: valid locationId + accessVersion + an ACTUAL records array.
+  if (loc === null || av === null || !Array.isArray(records)) {
+    return { status: "error", accessVersion: av, locationId: loc, items: null };
+  }
+
   const items = [];
-  for (const rec of list) {
+  for (const rec of records) {
     if (!isPlainObject(rec)) continue;
     const row = validateSerializedAssetInventoryRow(rec.asset, rec.part);
     if (!row.valid) continue; // malformed / installed / linked dropped
-    const loc = row.value.inventoryLocation;
-    if (loc.type !== MOBILE || loc.locationId !== locationId) continue; // wrong-location never surfaces
+    const l = row.value.inventoryLocation;
+    if (l.type !== MOBILE || l.locationId !== loc) continue; // wrong-location never surfaces
     items.push(toSectionItem(row.value));
   }
-  return { status, accessVersion, locationId, items };
+  return { status: "ready", accessVersion: av, locationId: loc, items };
 }
