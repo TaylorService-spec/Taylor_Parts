@@ -497,6 +497,16 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
+    // EI Phase-2 Receiving (Phase D) -- receiving_orders is FULLY BACKEND-PRIVATE
+    // (docs/specifications/enterprise-inventory-receiving-phase2.md Option A, sec 1/9): the trusted
+    // receiveInventoryStock command writes it Admin-SDK-only, and there is no client read/write path
+    // in this slice. Deny ALL client reads AND writes for every principal (admin included) -- deliberately
+    // stricter than inventory_transactions/trucks, which permit governed client reads. Any future
+    // Receiving-history UI requires a separately reviewed read grant.
+    match /receiving_orders/{receivingId} {
+      allow read, create, update, delete: if false;
+    }
+
     // Sprint 2.1.3 -- Reorder Request & Notification Foundation
     // (docs/BusinessEntityModel.md's Reorder Request entry). Unlike the
     // ledger above, this IS a client-direct-write collection (Inventory
