@@ -92,24 +92,30 @@ const SECTION_STATES = Object.freeze(new Set(["unavailable", "loading", "denied"
 // { asset, part } pair), produce the serializedAssets SOURCE shape
 // { status, accessVersion, locationId, items } that mobileLocationInventoryProjection consumes.
 //
-// FAIL CLOSED on every axis:
-//   * status is validated against the governed section states; an unknown/malformed status becomes a
-//     sanitized ERROR (the unknown value never passes through).
+// FAIL CLOSED on every axis, and NEVER throws:
+//   * the raw argument must be a plain object; null / array / string / number / boolean / undefined ->
+//     sanitized ERROR with null fields and items: null.
+//   * `status` must be an EXPLICITLY supplied governed section state; there is NO default. A missing /
+//     undefined / unknown / malformed status becomes a sanitized ERROR (the value never passes through).
 //   * a non-READY governed state (unavailable/loading/denied/error) carries NO payload (items: null)
 //     and NEVER processes or exposes the injected records.
-//   * READY requires a valid non-empty locationId, a valid non-empty accessVersion, AND `records` an
-//     ACTUAL array; otherwise it downgrades to a sanitized ERROR with items: null (never a fabricated
-//     READY-empty result).
+//   * READY requires status === "ready", a valid non-empty locationId, a valid non-empty accessVersion,
+//     AND `records` an ACTUAL array; otherwise it downgrades to a sanitized ERROR with items: null
+//     (never a fabricated READY-empty result).
 //   * a legitimate READY read with records: [] returns READY with items: [].
 // Only valid, non-INSTALLED assets whose ledger-derived inventoryLocation is exactly the requested
 // MOBILE location are projected; malformed / installed / linked / wrong-location records are dropped.
 // No raw errors/identifiers are surfaced. NO reads, writes, movement, availability calc, custody
 // inference, or mutation; inputs are not mutated.
-export function projectMobileSerializedAssets({ records, locationId, accessVersion, status = "ready" } = {}) {
+export function projectMobileSerializedAssets(input) {
+  if (!isPlainObject(input)) {
+    return { status: "error", accessVersion: null, locationId: null, items: null };
+  }
+  const { records, locationId, accessVersion, status } = input;
   const loc = isNonEmptyString(locationId) ? locationId : null;
   const av = isNonEmptyString(accessVersion) ? accessVersion : null;
 
-  // Normalize status; unknown/malformed -> sanitized ERROR (never pass the unknown value through).
+  // status must be an explicitly supplied governed state; missing/undefined/unknown -> sanitized ERROR.
   const requested = SECTION_STATES.has(status) ? status : "error";
 
   // Non-READY governed states carry no payload and never touch the injected records.

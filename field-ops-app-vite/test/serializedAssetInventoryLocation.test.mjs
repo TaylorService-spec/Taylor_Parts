@@ -4,8 +4,10 @@
 // untouched (no equipment/installation fields, INSTALLED excluded), SERIAL Part eligibility required,
 // MOBILE location + accessVersion binding, wrong-location assets never surface, INSTALLED/linked
 // assets never surface, unknown lifecycle state fails closed, NO Condition enum/value invented, no
-// quantity/value/custody/driver/GPS inference, deterministic + non-mutating output; and end-to-end
-// through the merged mobileLocationInventoryProjection (locationId + accessVersion binding still govern).
+// quantity/value/custody/driver/GPS inference, deterministic + non-mutating; the adapter's fail-closed
+// source-status + record-payload contract (governed section states only, explicit READY required,
+// null-safe argument, never a fabricated READY-empty result); and end-to-end through the merged
+// mobileLocationInventoryProjection (locationId + accessVersion binding still govern).
 //
 // Run: node test/serializedAssetInventoryLocation.test.mjs   (also `npm test`)
 import assert from "node:assert/strict";
@@ -25,6 +27,8 @@ function ok(name, fn) { fn(); passed += 1; console.log("PASS -- " + name); }
 const PART = { partId: "PART-1", trackingMode: "SERIAL", internalPartNumber: "IPN-1" };
 const mobileAsset = (over = {}) => ({ serialNo: "SN-100", partId: "PART-1", currentLocation: { type: "MOBILE", locationId: "1" }, state: "LOADED", currentEquipmentId: null, ...over });
 const rec = (over = {}) => ({ asset: mobileAsset(over.asset), part: over.part || PART });
+// Adapter call with an EXPLICIT ready status (there is no default); override via spread.
+const project = (over = {}) => projectMobileSerializedAssets({ locationId: "1", accessVersion: "v1", status: "ready", ...over });
 
 // ---- row validator: happy path + shape ----------------------------------------------------------
 ok("valid non-installed MOBILE asset -> row carries only ledger-derived facts (no equipment fields)", () => {
@@ -36,7 +40,6 @@ ok("valid non-installed MOBILE asset -> row carries only ledger-derived facts (n
   assert.ok(!("currentEquipmentId" in r.value) && !("equipmentId" in r.value) && !("condition" in r.value));
 });
 
-// ---- SERIAL Part eligibility --------------------------------------------------------------------
 ok("SERIAL Part eligibility is required (non-SERIAL Part -> invalid)", () => {
   const r = validateSerializedAssetInventoryRow(mobileAsset(), { partId: "PART-1", trackingMode: "QUANTITY", internalPartNumber: "IPN-1" });
   assert.equal(r.valid, false);
@@ -44,56 +47,77 @@ ok("SERIAL Part eligibility is required (non-SERIAL Part -> invalid)", () => {
   assert.equal(isSerializedAssetInventoryRow(mobileAsset(), PART), true);
 });
 
-// ---- equipment authority untouched: INSTALLED / linked never counts as truck inventory ----------
 ok("INSTALLED (equipment-linked) asset is excluded as truck inventory", () => {
-  const installed = mobileAsset({ state: "INSTALLED", currentEquipmentId: "EQ-9" });
-  const r = validateSerializedAssetInventoryRow(installed, PART);
+  const r = validateSerializedAssetInventoryRow(mobileAsset({ state: "INSTALLED", currentEquipmentId: "EQ-9" }), PART);
   assert.equal(r.valid, false);
   assert.equal(r.reason, "installed_not_inventory");
 });
 
 ok("a non-installed state carrying an equipment link fails closed (contradictory read)", () => {
-  const linked = mobileAsset({ state: "LOADED", currentEquipmentId: "EQ-9" });
-  const r = validateSerializedAssetInventoryRow(linked, PART);
-  assert.equal(r.valid, false); // identity's link_requires_installed coupling
+  const r = validateSerializedAssetInventoryRow(mobileAsset({ state: "LOADED", currentEquipmentId: "EQ-9" }), PART);
+  assert.equal(r.valid, false);
 });
 
-// ---- unknown lifecycle state --------------------------------------------------------------------
 ok("unknown lifecycle state fails closed", () => {
   const r = validateSerializedAssetInventoryRow(mobileAsset({ state: "FLYING" }), PART);
   assert.equal(r.valid, false);
   assert.equal(r.reason, "state_invalid");
 });
 
-// ---- NO Condition invented ----------------------------------------------------------------------
 ok("a smuggled Condition field is rejected; no Condition enum is exported", () => {
-  const withCondition = { ...mobileAsset(), condition: "New" };
-  const r = validateSerializedAssetInventoryRow(withCondition, PART);
-  assert.equal(r.valid, false); // identity rejects unknown fields
+  const r = validateSerializedAssetInventoryRow({ ...mobileAsset(), condition: "New" }, PART);
+  assert.equal(r.valid, false);
   assert.equal(r.reason, "unknown_field");
   assert.equal("SERIALIZED_ASSET_CONDITIONS" in mod, false);
   assert.equal("CONDITIONS" in mod, false);
 });
 
-// ---- adapter: MOBILE location + accessVersion binding -------------------------------------------
-ok("adapter includes a valid non-installed asset at the requested MOBILE location", () => {
-  const src = projectMobileSerializedAssets({ records: [rec()], locationId: "1", accessVersion: "v1" });
+// ---- adapter: READY happy path + binding + filtering --------------------------------------------
+ok("adapter (explicit ready) includes a valid non-installed asset at the requested MOBILE location", () => {
+  const src = project({ records: [rec()] });
   assert.deepEqual({ status: src.status, accessVersion: src.accessVersion, locationId: src.locationId }, { status: "ready", accessVersion: "v1", locationId: "1" });
   assert.equal(src.items.length, 1);
   assert.equal(src.items[0].serial, "SN-100");
-  assert.equal(src.items[0].status, "LOADED"); // lifecycle state placed in the single status slot
+  assert.equal(src.items[0].status, "LOADED");
   assert.ok(!("condition" in src.items[0]));
 });
 
 ok("adapter fails closed on a malformed request (blank locationId or accessVersion)", () => {
-  assert.deepEqual(projectMobileSerializedAssets({ records: [rec()], locationId: "", accessVersion: "v1" }), { status: "error", accessVersion: "v1", locationId: null, items: null });
-  assert.deepEqual(projectMobileSerializedAssets({ records: [rec()], locationId: "1", accessVersion: "" }), { status: "error", accessVersion: null, locationId: "1", items: null });
+  assert.deepEqual(project({ records: [rec()], locationId: "" }), { status: "error", accessVersion: "v1", locationId: null, items: null });
+  assert.deepEqual(project({ records: [rec()], accessVersion: "" }), { status: "error", accessVersion: null, locationId: "1", items: null });
 });
 
-// ---- P2: non-READY / malformed status never carries a payload nor processes records -------------
+ok("wrong-location assets never surface", () => {
+  assert.deepEqual(project({ records: [rec({ asset: { currentLocation: { type: "MOBILE", locationId: "2" } } })] }).items, []);
+});
+
+ok("non-MOBILE (e.g. WAREHOUSE) assets never surface in a MOBILE projection", () => {
+  assert.deepEqual(project({ records: [rec({ asset: { currentLocation: { type: "WAREHOUSE", locationId: "1" }, state: "AVAILABLE" } })] }).items, []);
+});
+
+ok("adapter drops malformed / installed / linked records but keeps valid ones", () => {
+  const records = [
+    rec(),
+    rec({ asset: { state: "INSTALLED", currentEquipmentId: "EQ-1" } }),
+    rec({ asset: { serialNo: "SN-200", currentLocation: { type: "MOBILE", locationId: "1" }, state: "STAGED" } }),
+    { asset: 42, part: PART },
+    rec({ asset: { currentLocation: { type: "MOBILE", locationId: "2" } } }),
+  ];
+  assert.deepEqual(project({ records }).items.map((i) => i.serial).sort(), ["SN-100", "SN-200"]);
+});
+
+ok("output carries no quantity/value/custody/driver/GPS inference", () => {
+  const item = project({ records: [rec()] }).items[0];
+  assert.deepEqual(Object.keys(item).sort(), ["assetId", "currentLocation", "internalSku", "manufacturer", "model", "serial", "status"]);
+  for (const forbidden of ["quantity", "onHand", "reserved", "available", "value", "inventoryValue", "custody", "driver", "assignedDriverEmployeeId", "employeeId", "gps", "coordinates", "location"]) {
+    assert.ok(!(forbidden in item), `item must not carry ${forbidden}`);
+  }
+});
+
+// ---- fail-closed source status / payload --------------------------------------------------------
 for (const st of ["denied", "error", "loading", "unavailable"]) {
   ok(`status="${st}" + valid records -> ${st.toUpperCase()} with items:null (records not processed)`, () => {
-    const src = projectMobileSerializedAssets({ records: [rec()], locationId: "1", accessVersion: "v1", status: st });
+    const src = project({ records: [rec()], status: st });
     assert.equal(src.status, st);
     assert.equal(src.items, null);
     assert.equal(src.locationId, "1");
@@ -101,77 +125,61 @@ for (const st of ["denied", "error", "loading", "unavailable"]) {
   });
 }
 
-ok("unknown/malformed status + valid records -> fail-closed ERROR, items:null (unknown never passes through)", () => {
-  // NB: an OMITTED/undefined status defaults to "ready" (JS default param) and is covered by the
-  // READY branch tests; here we exercise explicitly-supplied unknown/malformed status values.
+ok("unknown/malformed status + valid records -> ERROR, items:null (unknown never passes through)", () => {
   for (const bad of ["ready-ish", "READY", "", 42, null, {}]) {
-    const src = projectMobileSerializedAssets({ records: [rec()], locationId: "1", accessVersion: "v1", status: bad });
+    const src = project({ records: [rec()], status: bad });
     assert.equal(src.status, "error");
     assert.equal(src.items, null);
     assert.notEqual(src.status, bad);
   }
 });
 
-ok("READY + non-array records (undefined/null/object/string/number) -> ERROR, items:null (never READY-empty)", () => {
-  for (const bad of [undefined, null, {}, { 0: rec() }, "recs", 5]) {
-    const src = projectMobileSerializedAssets({ records: bad, locationId: "1", accessVersion: "v1", status: "ready" });
+ok("READY + non-array records (null/object/string/number/boolean) -> ERROR, items:null (never READY-empty)", () => {
+  for (const bad of [null, {}, { 0: rec() }, "recs", 5, true]) {
+    const src = project({ records: bad });
     assert.equal(src.status, "error", `records=${JSON.stringify(bad)}`);
     assert.equal(src.items, null);
   }
 });
 
 ok("READY + [] -> READY with items:[] (legitimate empty read preserved)", () => {
-  assert.deepEqual(projectMobileSerializedAssets({ records: [], locationId: "1", accessVersion: "v1", status: "ready" }), { status: "ready", accessVersion: "v1", locationId: "1", items: [] });
+  assert.deepEqual(project({ records: [] }), { status: "ready", accessVersion: "v1", locationId: "1", items: [] });
 });
 
-ok("READY + valid records remains unchanged (regression guard)", () => {
+ok("explicit READY + valid records still succeeds", () => {
   const src = projectMobileSerializedAssets({ records: [rec()], locationId: "1", accessVersion: "v1", status: "ready" });
   assert.equal(src.status, "ready");
   assert.equal(src.items.length, 1);
   assert.equal(src.items[0].serial, "SN-100");
 });
 
-ok("wrong-location assets never surface", () => {
-  const other = rec({ asset: { currentLocation: { type: "MOBILE", locationId: "2" } } });
-  const src = projectMobileSerializedAssets({ records: [other], locationId: "1", accessVersion: "v1" });
-  assert.deepEqual(src.items, []);
-});
-
-ok("non-MOBILE (e.g. WAREHOUSE) assets never surface in a MOBILE projection", () => {
-  const wh = rec({ asset: { currentLocation: { type: "WAREHOUSE", locationId: "1" }, state: "AVAILABLE" } });
-  const src = projectMobileSerializedAssets({ records: [wh], locationId: "1", accessVersion: "v1" });
-  assert.deepEqual(src.items, []);
-});
-
-ok("adapter drops malformed / installed / linked records but keeps valid ones", () => {
-  const records = [
-    rec(), // valid
-    rec({ asset: { state: "INSTALLED", currentEquipmentId: "EQ-1" } }), // installed
-    rec({ asset: { serialNo: "SN-200", currentLocation: { type: "MOBILE", locationId: "1" }, state: "STAGED" } }), // valid
-    { asset: 42, part: PART }, // malformed
-    rec({ asset: { currentLocation: { type: "MOBILE", locationId: "2" } } }), // wrong location
-  ];
-  const src = projectMobileSerializedAssets({ records, locationId: "1", accessVersion: "v1" });
-  assert.deepEqual(src.items.map((i) => i.serial).sort(), ["SN-100", "SN-200"]);
-});
-
-// ---- no quantity/value/custody/driver/GPS inference ---------------------------------------------
-ok("output carries no quantity/value/custody/driver/GPS inference", () => {
+// ---- follow-up: require EXPLICIT ready status + null-safe argument -------------------------------
+ok("OMITTED status with otherwise-valid input -> ERROR, items:null (no default ready)", () => {
   const src = projectMobileSerializedAssets({ records: [rec()], locationId: "1", accessVersion: "v1" });
-  const item = src.items[0];
-  assert.deepEqual(Object.keys(item).sort(), ["assetId", "currentLocation", "internalSku", "manufacturer", "model", "serial", "status"]);
-  for (const forbidden of ["quantity", "onHand", "reserved", "available", "value", "inventoryValue", "custody", "driver", "assignedDriverEmployeeId", "employeeId", "gps", "coordinates", "location"]) {
-    assert.ok(!(forbidden in item), `item must not carry ${forbidden}`);
+  assert.equal(src.status, "error");
+  assert.equal(src.items, null);
+});
+
+ok("explicit status:undefined -> ERROR, items:null", () => {
+  const src = projectMobileSerializedAssets({ records: [rec()], locationId: "1", accessVersion: "v1", status: undefined });
+  assert.equal(src.status, "error");
+  assert.equal(src.items, null);
+});
+
+ok("non-object argument (null / array / string / number / boolean / undefined) -> ERROR, items:null, never throws", () => {
+  for (const bad of [null, undefined, [], [rec()], "x", 5, true, false, NaN]) {
+    let src;
+    assert.doesNotThrow(() => { src = projectMobileSerializedAssets(bad); });
+    assert.deepEqual(src, { status: "error", accessVersion: null, locationId: null, items: null }, `arg=${JSON.stringify(bad)}`);
   }
+  assert.doesNotThrow(() => projectMobileSerializedAssets());
 });
 
 // ---- deterministic + non-mutating ---------------------------------------------------------------
 ok("deterministic + non-mutating", () => {
   const records = [rec(), rec({ asset: { serialNo: "SN-200", currentLocation: { type: "MOBILE", locationId: "1" }, state: "IN_TRANSIT" } })];
   const snapshot = JSON.stringify(records);
-  const a = projectMobileSerializedAssets({ records, locationId: "1", accessVersion: "v1" });
-  const b = projectMobileSerializedAssets({ records, locationId: "1", accessVersion: "v1" });
-  assert.deepEqual(a, b);
+  assert.deepEqual(project({ records }), project({ records }));
   assert.equal(JSON.stringify(records), snapshot, "inputs must not be mutated");
 });
 
@@ -183,19 +191,18 @@ ok("inert MOBILE serializedAssets source is UNAVAILABLE with no items (honest de
 
 // ---- end-to-end through the merged composer (binding still governs) -----------------------------
 ok("composed through mobileLocationInventoryProjection: serializedAssets READY, lifecycle state survives gating", () => {
-  const source = projectMobileSerializedAssets({ records: [rec()], locationId: "1", accessVersion: "v1" });
+  const source = project({ records: [rec()] });
   const composed = composeMobileLocationInventory({
     identity: { truckId: "1", locationId: "1" }, boundaryKey: "v1",
     options: { equipmentStatus: SERIALIZED_ASSET_STATES }, sources: { serializedAssets: source },
   });
   assert.equal(composed.sections.serializedAssets.state, S.READY);
   assert.equal(composed.sections.serializedAssets.items[0].serial, "SN-100");
-  assert.equal(composed.sections.serializedAssets.items[0].status, "LOADED"); // survived the governed gate
+  assert.equal(composed.sections.serializedAssets.items[0].status, "LOADED");
 });
 
 ok("composer locationId/accessVersion binding still governs the adapter's source", () => {
-  const src2 = projectMobileSerializedAssets({ records: [rec()], locationId: "2", accessVersion: "v1" });
-  // source scoped to location 2 must never surface under identity location 1
+  const src2 = project({ records: [rec()], locationId: "2" });
   const composed = composeMobileLocationInventory({
     identity: { truckId: "1", locationId: "1" }, boundaryKey: "v1",
     options: { equipmentStatus: SERIALIZED_ASSET_STATES }, sources: { serializedAssets: src2 },
