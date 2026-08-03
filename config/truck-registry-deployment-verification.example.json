@@ -3,7 +3,7 @@
   "projectId": "taylor-parts",
   "confirmProject": "taylor-parts",
   "governedCommit": "0000000000000000000000000000000000000000",
-  "governedRulesSha256": "bb1492b98cba95cb30ac23f7078f0fdba24befa64fa604da27d84ddc9ebac907",
+  "governedRulesSha256": "ec1f0a9b78d937d1eff1aef6c2588b20a0dc77501b392e560b491e7c13b1ccd1",
   "webApiKeyEnv": "TRC_WEB_API_KEY",
   "recaptureDate": "2026-08-01",
   "personas": [
