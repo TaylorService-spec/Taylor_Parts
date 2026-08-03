@@ -147,35 +147,55 @@ physical receipt destinations.
 
 **This section does not apply to the present state (§2 = D/HALT).** It defines the
 frontend location-options contract that becomes buildable **only after** Inventory
-ratifies and merges one of C1/C2/C3 **and** the read-authorization gap (§3.10) is
-resolved. Until then, none of it is implemented and Receiving offers no destination.
-Where it says "eligible", that means "accepted by the *then-governed* authority's
-predicate" — never mere existence, unless C1 is the ratified predicate.
+ratifies and merges one of C1/C2/C3 **and** its exact client-read contract, **and**
+the read-authorization gap (§3.10) is resolved. Until then, none of it is implemented
+and Receiving offers no destination. Where it says "eligible", that means "accepted by
+the *then-governed* authority's predicate" — never mere existence, unless C1 is the
+ratified predicate. **The option source collection itself is conditional on which
+authority I-LA ratifies (§3.1)** — `warehouses` under C1/C2, `inventory_locations`
+(filtered `type == WAREHOUSE`) under C3 — so nothing below hard-codes `warehouses`.
 
-### 3.1 Source & type
-- **Source collection:** `warehouses` (bounded read).
-- **Destination type:** `WAREHOUSE` only (`{ type: "WAREHOUSE", locationId: <warehouseId> }`).
+### 3.1 Source & type — **conditional on which authority I-LA ratifies**
+
+The **destination type is `WAREHOUSE` only** for the first slice **regardless of
+source**. The **option source, identity, and read-authorization target differ by the
+ratified authority** and are pinned by the I-LA gate that selects it:
+
+| Ratified authority | Option source collection | Option identity (`locationId`) | Eligibility predicate | I-LR read-auth target |
+|---|---|---|---|---|
+| **C1** existence-is-eligible | `warehouses` | `warehouses/{id}` | well-formed `warehouses/{id}` exists (transactional existence/schema check) | `warehouses` |
+| **C2** persisted field | `warehouses` | `warehouses/{id}` | governed `warehouses.status`/`active` value | `warehouses` |
+| **C3** dedicated authority | **`inventory_locations`**, filtered `type == WAREHOUSE` | Inventory Location doc identity / `locationId` | C3 governed lifecycle/status | **`inventory_locations`** (NOT automatically `warehouses`) |
+
+Under **C3** the warehouse link may supply only a **display label**; `warehouses` is
+**no longer the eligibility source**, and read-authorization applies to
+`inventory_locations`, not `warehouses`. The exact C3 warehouse-linkage/label behavior
+and read contract are pinned by the C3 I-LA gate, not here.
 
 ### 3.2 Eligible / ineligible predicate
 - **Frontend predicate (shape + presence only):** an option is *offerable* iff it is a
-  `warehouses` document with a non-blank string `id`. The frontend asserts **nothing**
-  about activity.
+  document from **the I-LA-selected source** (§3.1) with a non-blank string identity.
+  The frontend asserts **nothing** about activity.
 - **Authoritative predicate (backend):** the option is *eligible* iff the
-  **then-governed authority's predicate** (the ratified C1/C2/C3) accepts it — an
-  existence/schema check (C1), a persisted `status`/`active` field (C2), or the
-  `inventory_locations` lifecycle (C3). **This predicate does not exist today**
-  (§1/§2); the frontend has no authoritative eligibility truth to defer to until one
-  is merged. Once merged, ineligible ⇒ sanitized rejection ⇒ refresh (§3.9).
+  **then-governed authority's predicate** (the ratified C1/C2/C3, §3.1) accepts it.
+  **This predicate does not exist today** (§1/§2); the frontend has no authoritative
+  eligibility truth to defer to until one is merged. Once merged, ineligible ⇒
+  sanitized rejection ⇒ refresh (§3.9).
 
 ### 3.3 Bounded client read shape
-- Reuse the `fetchWarehouseOptions` pattern: one-shot `getDocs(warehouses)` →
-  `{ value: id, label }`. No realtime subscription, no per-doc fan-out, no aggregate.
+- One-shot bounded read of **the I-LA-selected source** (§3.1) — `getDocs(warehouses)`
+  under C1/C2, or `getDocs(inventory_locations)` filtered `type == WAREHOUSE` under C3
+  — mapped to `{ value, label }`. No realtime subscription, no per-doc fan-out, no
+  aggregate. The `fetchWarehouseOptions` shape is the *pattern* to reuse; the exact
+  collection and query are fixed by the ratified authority.
 - Read is `enabled`-gated: fetched only when the Receiving actor is capability-holding
   **and** the modal is open (never in the fail-closed idle posture).
 
 ### 3.4 Display-label fallback
-- `label = name` when `name` is a non-blank string; else `label = id`. Never a blank
-  or placeholder that hides which warehouse is selected.
+- `label = name` when a non-blank string is available; else `label = <identity>`.
+  Never a blank/placeholder that hides which destination is selected. Under **C3**,
+  the label may be sourced from the linked warehouse per the C3 gate's pinned linkage
+  behavior (§3.1).
 
 ### 3.5 Deterministic sort
 - Sort by `label` (`localeCompare`), tie-broken by `id` — stable, locale-deterministic
@@ -205,26 +225,35 @@ predicate" — never mere existence, unless C1 is the ratified predicate.
   spec's Conflict/sanitized-error state + refresh — **never** a ledgerless write.
 
 ### 3.10 Rules & index consequences (Inventory-owned; disclosed, not changed here)
-- **Read authorization gap (must be resolved before wiring):** `warehouses` read is
-  `isAdminOrDispatcher() || isAssignedToWarehouse(id)`. A `PARTS_ASSOCIATE`
-  receive-actor (technician + operational role, assignee-gated) satisfies **neither**
-  arm and **cannot currently read the warehouse pick-list**. This is an
-  **Inventory-owned decision**, one of:
-  - (i) first slice restricts location-selection to admin/dispatcher receivers; or
-  - (ii) Inventory grants a narrow warehouse-read arm tied to the receive capability;
-  - (iii) options are served through a backend read the actor is permitted.
-  This document **does not** change `firestore.rules`.
-- **Index:** none. A bounded full-collection equality read needs no composite index.
+- **I-LR targets the collection I-LA selects (§3.1), not `warehouses` unconditionally.**
+  - **Under C1/C2** (source = `warehouses`): read is
+    `isAdminOrDispatcher() || isAssignedToWarehouse(id)`. A `PARTS_ASSOCIATE`
+    receive-actor satisfies **neither** arm and **cannot currently read the warehouse
+    pick-list**.
+  - **Under C3** (source = `inventory_locations`): there is **no** current client read
+    path (the collection does not exist); its read authorization is defined by the C3
+    gate. **`warehouses` authorization does NOT solve C3 option visibility.**
+- **I-LR is an Inventory-owned decision** for the selected source, one of:
+  (i) restrict location-selection to admin/dispatcher receivers; (ii) grant a narrow
+  read arm on the selected collection tied to the receive capability; or (iii) serve
+  options through a backend read the actor is permitted. This document changes no
+  `firestore.rules`.
+- **Index:** a bounded full-collection equality read needs no composite index under
+  C1/C2; a C3 `type == WAREHOUSE` filter's index is pinned by the C3 gate.
 
 ### 3.11 Frontend adapter / hook contract (Customer-owned, future)
 - `src/services/receivingLocationOptions.js` — thin bounded read
-  (`fetchReceivingLocationOptions()`), `WAREHOUSE`-only, returns
-  `{ value, label, type: "WAREHOUSE" }[]`, sorted/deduped/label-fallback per §3.4–3.7.
-  Firebase lives here, not in the presentational select.
+  (`fetchReceivingLocationOptions()`) over **the I-LA-selected source** (§3.1),
+  `WAREHOUSE`-only, returns `{ value, label, type: "WAREHOUSE" }[]`,
+  sorted/deduped/label-fallback per §3.4–3.7. Firebase lives here, not in the
+  presentational select. **The exact collection/query is fixed by the ratified
+  authority — the adapter does not hard-code `warehouses`.**
 - `src/hooks/useReceivingLocationOptions.js` — mirrors `useWarehouseOptions`
   (`enabled` gate, `{ options, loading, error }`), injectable loader for tests, no
   active-state claim.
-- These are **future Customer PRs (LF-phases §7)**; **not created by this document.**
+- These are **future Customer PRs (LF-phases §7), authored only after the chosen
+  authority AND its exact client-read contract merge**; **not created by this
+  document.**
 
 ---
 
@@ -287,9 +316,9 @@ name/payload/errors/response) — Inventory, cutover spec §18.
 | Phase | Scope | Owner | Depends on | Gate |
 |---|---|---|---|---|
 | **LF0 (this)** | authority reconciliation; records the current **D / HALT** | Customer | — | Spec (docs) |
-| **I-LA** | eligibility **authority/predicate** decision + implementation (C1 policy / C2 field / C3 `inventory_locations`) | **Inventory** | — | Inventory gate (Rules/Functions/persistence/migration) |
-| **I-LR** | **read-authorization** decision for the option list (§3.10) | **Inventory** | — | Inventory gate (Rules) |
-| **LF1** | inert `services/receivingLocationOptions.js` + `hooks/useReceivingLocationOptions.js` + tests, **unwired — only after I-LA + I-LR merge** | Customer | **I-LA, I-LR** | repo-only DRAFT → Codex → Owner merge |
+| **I-LA** | eligibility **authority/predicate** decision + implementation (C1 policy / C2 field / C3 `inventory_locations`); **pins the option source collection + exact client-read contract** (§3.1) | **Inventory** | — | Inventory gate (Rules/Functions/persistence/migration) |
+| **I-LR** | **read-authorization** decision **for the collection I-LA selected** (§3.10) — `warehouses` under C1/C2, `inventory_locations` under C3 | **Inventory** | I-LA | Inventory gate (Rules) |
+| **LF1** | inert `services/receivingLocationOptions.js` + `hooks/useReceivingLocationOptions.js` + tests, **unwired — only after I-LA (incl. its client-read contract) + I-LR merge** | Customer | **I-LA, I-LR** | repo-only DRAFT → Codex → Owner merge |
 | **LF2** | isolated UI wiring under `readiness=false` (feeds the cutover spec's location field, §3) | Customer | LF1, cutover F2 | repo-only DRAFT |
 | **F3+** | cutover **only after the callable AND the authority are verified** (rides cutover F3/F4) | Customer + Owner | Phase-B/E merged + verified, I-LA verified, deployment-lock | activation gate → Owner auth |
 
