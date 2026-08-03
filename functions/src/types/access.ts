@@ -256,7 +256,10 @@ export type AuditAction =
   // field-ops-app-vite AuditAction consumer subset (only AuditOutcome is mirrored
   // byte-identically). D-PRE3-ACTION option (a).
   | "listResetEligibleUsers"
-  | "revokeUserSessions";
+  | "revokeUserSessions"
+  // EI Phase-2 Receiving (Phase C): the trusted receiveInventoryStock command's Audit Event action.
+  // Distinct from the client audit-only `RECEIVE_STOCK` inventory_action (domain/constants.js).
+  | "receiveInventoryStock";
 
 // "uncertain" (PRE-1, G-PRE1-IMPL): a native reset send whose outcome could not be
 // durably determined (Firebase may have accepted, but the outcome was not persisted).

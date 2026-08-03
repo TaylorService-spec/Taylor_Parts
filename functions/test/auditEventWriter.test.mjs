@@ -195,6 +195,19 @@ async function main() {
     }
   });
 
+  // --- EI Phase-2 Receiving (Phase C): the receiveInventoryStock trusted AuditAction ---
+  await check("no Audit Event is written merely by importing/initializing the registry", async () => {
+    assert.equal(await countAuditEventsFor("receiving-import-probe-unwritten"), 0);
+  });
+  await check("stageAuditEvent accepts the receiveInventoryStock AuditAction", () => {
+    assert.doesNotThrow(() => stageAuditEvent(db.batch(), { ...VALID_EVENT, action: "receiveInventoryStock", targetType: "receivingOrder", targetId: "rcv-1", summary: "Received reorder purchase order" }));
+  });
+  await check("stageAuditEvent rejects near-miss/case variants of receiveInventoryStock (incl. the client RECEIVE_STOCK)", () => {
+    for (const bad of ["receiveinventorystock", "RECEIVEINVENTORYSTOCK", "receiveInventoryStock ", "receive_inventory_stock", "RECEIVE_STOCK"]) {
+      assert.throws(() => stageAuditEvent(db.batch(), { ...VALID_EVENT, action: bad }), AuditEventValidationError, `action "${bad}" must be rejected`);
+    }
+  });
+
   // --- Issue #325 / ADR-007 D-AUDIT: report definition changes, runs,
   // exports, sharing, and (designed) scheduling, extending this SAME
   // Audit Event path -- never row data or secrets. ---
