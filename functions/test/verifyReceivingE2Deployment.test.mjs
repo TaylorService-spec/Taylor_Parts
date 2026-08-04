@@ -170,11 +170,44 @@ await check("CLI run publishes a SANITIZED FAILURE report on FAIL (P2-3), then t
   assert.ok(fs._files.has(J("out/verify.FAILED", "SHA256SUMS.txt")));
 });
 
-await check("CLI parseArgs enforces required flags + confirm-project + pre-deploy inventory", () => {
+await check("CLI parseArgs enforces required flags + confirm-project + pre-deploy inventory (full mode)", () => {
   assert.throws(() => cli.parseArgs(["--config", "c"]));
   assert.throws(() => cli.parseArgs(["--config", "c", "--evidence-dir", "d", "--verify-date", "x", "--confirm-project", "wrong", "--pre-deploy-inventory", "p", "--pre-deploy-inventory-sha256", "a".repeat(64)]));
   assert.throws(() => cli.parseArgs(["--config", "c", "--evidence-dir", "d", "--verify-date", "x", "--confirm-project", "taylor-parts"])); // missing pre-deploy inventory
   assert.doesNotThrow(() => cli.parseArgs(["--config", "c", "--evidence-dir", "d", "--verify-date", "x", "--confirm-project", "taylor-parts", "--pre-deploy-inventory", "p", "--pre-deploy-inventory-sha256", "a".repeat(64)]));
+  // --rules-only: valueless flag; pre-deploy inventory NOT required.
+  assert.doesNotThrow(() => cli.parseArgs(["--config", "c", "--evidence-dir", "d", "--verify-date", "x", "--confirm-project", "taylor-parts", "--rules-only"]));
+  assert.equal(cli.parseArgs(["--config", "c", "--evidence-dir", "d", "--verify-date", "x", "--confirm-project", "taylor-parts", "--rules-only"])["rules-only"], true);
+});
+
+await check("normalizeGcloudInventory: drops non-allowlisted fields, derives region, is idempotent (P1-3)", () => {
+  const raw = [{ name: "projects/p/locations/us-central1/functions/foo", state: "ACTIVE", buildConfig: { entryPoint: "foo", runtime: "nodejs20" }, serviceConfig: { serviceAccountEmail: "secret@x", uri: "https://x" }, labels: { k: "v" }, updateTime: "T" }];
+  const s = core.normalizeGcloudInventory(raw);
+  assert.deepEqual(s, [{ name: "foo", region: "us-central1", state: "ACTIVE", entryPoint: "foo", runtime: "nodejs20", updateTime: "T" }]);
+  assert.equal(JSON.stringify(s).includes("secret@x"), false);      // service account dropped
+  assert.deepEqual(core.normalizeGcloudInventory(s), s);            // idempotent on sanitized input
+});
+
+await check("runRulesDenialOnly PASS on all-403 + unchanged; FAILS CLOSED on any non-403 or a change (P1-1)", async () => {
+  const base = { config: CONFIG, probeRules: async () => 403, readReceivingOrderIds: async () => ["ro1"], log: () => {} };
+  const okp = await core.runRulesDenialOnly(base);
+  assert.equal(okp.pass, true); assert.equal(okp.report.kind, "receiving-e2-rules-denial"); assert.equal(okp.report.passed, okp.report.total);
+  const authFail = await core.runRulesDenialOnly({ ...base, probeRules: async (row) => (row.principal === "authenticated" ? 200 : 403) });
+  assert.equal(authFail.pass, false); // an authenticated 200 (allowed) fails the gate
+  let n = 0; const changed = await core.runRulesDenialOnly({ ...base, readReceivingOrderIds: async () => (n++ === 0 ? [] : ["ro-new"]) });
+  assert.equal(changed.pass, false);
+});
+
+await check("CLI --rules-only: no --pre-deploy-inventory required; publishes on PASS; .FAILED on FAIL (P1-1)", async () => {
+  const fs1 = fakeFs(); fs1.writeFileSecure("cfg.json", JSON.stringify(CONFIG));
+  const deps1 = { config: CONFIG, probeRules: async () => 403, readReceivingOrderIds: async () => ["ro1"], fs: fs1, log: () => {} };
+  const r = await cli.run(deps1, ["--config", "cfg.json", "--evidence-dir", "out/rules", "--verify-date", "2026-08-04", "--confirm-project", "taylor-parts", "--rules-only"]);
+  assert.equal(r.pass, true); assert.equal(r.mode, "rules-only");
+  assert.ok(fs1._files.has(J("out/rules", "verification-report.json")));
+  const fs2 = fakeFs(); fs2.writeFileSecure("cfg.json", JSON.stringify(CONFIG));
+  const deps2 = { config: CONFIG, probeRules: async (row) => (row.principal === "authenticated" ? 200 : 403), readReceivingOrderIds: async () => ["ro1"], fs: fs2, log: () => {} };
+  await assert.rejects(cli.run(deps2, ["--config", "cfg.json", "--evidence-dir", "out/rules", "--verify-date", "2026-08-04", "--confirm-project", "taylor-parts", "--rules-only"]), /rules-denial gate failed/);
+  assert.ok(fs2._files.has(J("out/rules.FAILED", "verification-report.FAILED.json")));
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

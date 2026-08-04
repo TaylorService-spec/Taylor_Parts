@@ -20,19 +20,23 @@ const core = require("./verifyReceivingE2Deployment");
 
 function parseArgs(argv) {
   const args = {};
+  const VALUELESS = new Set(["rules-only"]);
   for (let i = 0; i < argv.length; i += 1) {
     const token = argv[i];
     if (!token.startsWith("--")) throw new VerificationError(`unexpected argument: ${token}`);
     const key = token.slice(2);
+    if (VALUELESS.has(key)) { args[key] = true; continue; }
     const value = argv[i + 1];
     if (value === undefined || value.startsWith("--")) throw new VerificationError(`--${key} requires a value`);
     args[key] = value; i += 1;
   }
-  for (const required of ["config", "evidence-dir", "verify-date", "confirm-project", "pre-deploy-inventory", "pre-deploy-inventory-sha256"]) {
-    if (!args[required]) throw new VerificationError(`missing required --${required}`);
-  }
+  // Base requirements. Full mode additionally requires the hash-bound pre-deploy Functions inventory;
+  // --rules-only (the pre-migration Phase-3 gate) needs no deployed callables/inventory.
+  const required = ["config", "evidence-dir", "verify-date", "confirm-project"];
+  if (!args["rules-only"]) required.push("pre-deploy-inventory", "pre-deploy-inventory-sha256");
+  for (const r of required) { if (!args[r]) throw new VerificationError(`missing required --${r}`); }
   if (args["confirm-project"] !== "taylor-parts") throw new VerificationError("--confirm-project must be taylor-parts");
-  if (!/^[0-9a-f]{64}$/.test(String(args["pre-deploy-inventory-sha256"]).trim().toLowerCase())) throw new VerificationError("--pre-deploy-inventory-sha256 must be a 64-hex hash");
+  if (!args["rules-only"] && !/^[0-9a-f]{64}$/.test(String(args["pre-deploy-inventory-sha256"]).trim().toLowerCase())) throw new VerificationError("--pre-deploy-inventory-sha256 must be a 64-hex hash");
   return args;
 }
 
@@ -67,10 +71,30 @@ function publishEvidenceAtomically(fsDeps, finalDir, files) {
   }
 }
 
+// Publish on pass; on failure publish a sanitized `.FAILED` report and throw non-zero (P2-3).
+function finish(deps, evidenceDir, report, pass, failLabel) {
+  const content = `${JSON.stringify(report, null, 2)}\n`;
+  if (pass) return publishEvidenceAtomically(deps.fs, evidenceDir, [{ name: "verification-report.json", content }]);
+  const failDir = `${evidenceDir}.FAILED`;
+  let published = null;
+  try { published = publishEvidenceAtomically(deps.fs, failDir, [{ name: "verification-report.FAILED.json", content }]); } catch { /* keep the primary failure */ }
+  throw new VerificationError(`${failLabel}: ${report.passed}/${report.total ?? report.matrix_total} assertions passed${published ? ` (failure evidence: ${published})` : ""}`);
+}
+
 async function run(deps, argv) {
   const args = parseArgs(argv);
   const config = loadConfig(args.config, deps.fs);
   if (args["confirm-project"] !== config.projectId) throw new VerificationError("--confirm-project must equal config.projectId");
+
+  // Pre-migration RULES-DENIAL-ONLY gate (Phase 3): unauth + authenticated receiving_orders denial (all
+  // 403) + receiving_orders unchanged. No deployed callables/inventory required.
+  if (args["rules-only"]) {
+    const { report, pass } = await core.runRulesDenialOnly({
+      config, probeRules: deps.probeRules, readReceivingOrderIds: deps.readReceivingOrderIds, log: deps.log,
+    });
+    const dir = finish(deps, args["evidence-dir"], report, pass, "E2 pre-migration rules-denial gate failed");
+    return { pass, evidenceDir: dir, mode: "rules-only", total: report.total };
+  }
 
   // Hash-bind the COMPLETE pre-deploy Functions inventory the Owner recorded in Phase 1 (P1-2). The raw
   // bytes are hashed BEFORE parsing; a mismatch fails closed (no verification, no evidence).
@@ -89,17 +113,8 @@ async function run(deps, argv) {
     readReceivingOrderIds: deps.readReceivingOrderIds,
     log: deps.log,
   });
-  const content = `${JSON.stringify(report, null, 2)}\n`;
-  if (pass) {
-    const dir = publishEvidenceAtomically(deps.fs, args["evidence-dir"], [{ name: "verification-report.json", content }]);
-    return { pass, evidenceDir: dir, matrixTotal: report.matrix_total };
-  }
-  // (P2-3) On failure, atomically publish a SANITIZED failure report to a clearly-marked directory, then
-  // exit non-zero. The report is secret-free by construction (assertEvidenceSecretFree ran in the core).
-  const failDir = `${args["evidence-dir"]}.FAILED`;
-  let published = null;
-  try { published = publishEvidenceAtomically(deps.fs, failDir, [{ name: "verification-report.FAILED.json", content }]); } catch { /* keep the primary failure */ }
-  throw new VerificationError(`E2 verification failed: ${report.passed}/${report.matrix_total} assertions passed${published ? ` (failure evidence: ${published})` : ""}`);
+  const dir = finish(deps, args["evidence-dir"], report, pass, "E2 verification failed");
+  return { pass, evidenceDir: dir, matrixTotal: report.matrix_total };
 }
 
 // Lazily build real production deps. Node 20 global fetch; gcloud/ADC from the ambient authenticated env.
@@ -128,20 +143,13 @@ function buildProductionDeps(args) {
   }
   let cachedToken = null;
 
-  // Normalize a raw gcloud `functions list --format json` payload to the COMPLETE, unfiltered comparable
-  // set {name, region, state, entryPoint, runtime, updateTime}. Used for BOTH the pinned pre-deploy file
-  // and the live post-deploy read so the exact-delta comparison sees every function (P1-2).
-  const normalizeGcloudInventory = (list) => (Array.isArray(list) ? list : []).map((fn) => {
-    const name = String(fn.name || "").split("/").pop();
-    const region = fn.name && fn.name.includes("/locations/") ? fn.name.split("/locations/")[1].split("/")[0] : (fn.region || "");
-    const build = fn.buildConfig || {};
-    return { name, region, state: fn.state || "", entryPoint: build.entryPoint || fn.entryPoint || "", runtime: build.runtime || fn.runtime || "", updateTime: fn.updateTime || "" };
-  });
   return {
-    normalizeGcloudInventory,
+    // Shared, tested normalizer (P1-3): raw gcloud payload -> sanitized {name,region,state,entryPoint,
+    // runtime,updateTime}; idempotent, so an already-sanitized pre-deploy artifact passes through unchanged.
+    normalizeGcloudInventory: core.normalizeGcloudInventory,
     async readPostDeployInventory() {
       const out = execFileSync("gcloud", ["functions", "list", "--project", config.projectId, "--format", "json"], { encoding: "utf8" });
-      return normalizeGcloudInventory(JSON.parse(out));
+      return core.normalizeGcloudInventory(JSON.parse(out));
     },
     async probeRules(row) {
       const url = `${REST}/${RECEIVING_ORDERS_DOC}`;
