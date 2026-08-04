@@ -76,7 +76,9 @@
     "test:completeAssignedJob": "npm run build && node --test test/completeAssignedJob.test.js",
     "test:fRules1": "node test/legacyJobsTechniciansRules.test.js",
     "test:receivingGrantGate": "npm run build && node test/receivingGrantGate.test.mjs && node test/receivingCapabilityRegistration.test.mjs && node test/resolveEffectivePermission.test.mjs",
-    "test:receivingGrantGateEmulator": "npm run build && node test/receivingGrantGateEmulator.test.mjs"
+    "test:receivingGrantGateEmulator": "npm run build && node test/receivingGrantGateEmulator.test.mjs",
+    "test:receivingE2Verifier": "npm run build && node test/warehouseBackupCodec.test.mjs && node test/warehouseBackupRestore.test.mjs && node test/verifyReceivingE2Deployment.test.mjs && node test/firestoreRulesSourceHash.test.mjs",
+    "test:receivingE2VerifierEmulator": "npm run build && node test/warehouseBackupRestoreEmulator.test.mjs"
   },
   "dependencies": {
     "firebase-admin": "^12.7.0",
