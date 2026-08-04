@@ -9,12 +9,10 @@
 //
 // Flipping this constant ALONE is NOT activation: the authorized Hosting release that serves the
 // flipped bundle follows verified E2 completion (grant + Rules/migration/deploy/verify), and is a
-// separate Owner-authorized gate not covered here. Mirrors config/truckManagementReadiness.js.
+// separate Owner-authorized gate not covered here.
+//
+// This module exposes ONLY the constant -- there is NO runtime override/resolver seam. Readiness
+// can be changed only by editing this governed constant; consumers read it directly. Tests that
+// need the ready branch mock this module at build time (vi.mock), which introduces no
+// production-importable bypass.
 export const RECEIVING_TRANSPORT_READY = false;
-
-// Effective readiness. An explicit boolean override (tests/preview only) wins; anything else
-// falls back to the fail-closed production constant above. An explicit `false` still fails
-// closed (zero callable attempts).
-export function resolveReceivingTransportReady(override) {
-  return typeof override === "boolean" ? override : RECEIVING_TRANSPORT_READY;
-}
