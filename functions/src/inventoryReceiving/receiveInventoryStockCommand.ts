@@ -65,6 +65,7 @@ export interface ReceiveInventoryStockDeps {
   readonly now: () => Date;
   readonly __afterAuthReadHook?: () => Promise<void>;
   readonly __afterSourceReadHook?: () => Promise<void>;
+  readonly __afterLocationReadHook?: () => Promise<void>;
 }
 
 // Sanitized audit input (no supplier/commercial fields, no raw errors).
@@ -156,6 +157,7 @@ export async function receiveInventoryStock(request: unknown, deps: ReceiveInven
     if (!isPlainObject(request.receivingLocation)) throw new DestinationInvalidError("destination missing");
     const locActive = await deps.resolveLocationActive(txn, request.receivingLocation as { type: string; locationId: string });
     if (locActive !== true) throw new DestinationInvalidError("destination is not an active governed location");
+    if (deps.__afterLocationReadHook) await deps.__afterLocationReadHook();
 
     // ---- 7. validate + bind the receiving value against the authoritative Part + orderedQuantity ----
     const authority = { part: { partId: part.partId, trackingMode: part.trackingMode }, orderedQuantity };

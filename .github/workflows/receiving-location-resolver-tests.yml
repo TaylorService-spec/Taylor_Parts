@@ -1,0 +1,84 @@
+name: Receiving Location Resolver Tests
+
+# Receiving Location Authority -- I-LA5: the concrete resolveLocationActive resolver + production
+# composition pinned into the still-UNEXPORTED receiveInventoryStock command
+# (functions/src/inventoryReceiving/receivingLocationResolver.ts, receiveInventoryStockComposition.ts).
+# Offline + Firestore-emulator tests only: NO production, NO deployment, NO callable. The command +
+# composition are not exported from index.ts and never run against production. Governed by the merged §3A
+# validator. This workflow also re-runs the existing receiveInventoryStock command regression.
+
+on:
+  pull_request:
+    paths:
+      - "functions/src/inventoryReceiving/**"
+      - "functions/src/warehouseGovernance/**"
+      - "functions/test/receivingLocationResolver.test.mjs"
+      - "functions/test/receiveInventoryStockResolverIntegration.test.mjs"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - ".github/workflows/receiving-location-resolver-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/src/inventoryReceiving/**"
+      - "functions/src/warehouseGovernance/**"
+      - "functions/test/receivingLocationResolver.test.mjs"
+      - "functions/test/receiveInventoryStockResolverIntegration.test.mjs"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - ".github/workflows/receiving-location-resolver-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  receiving-location-resolver-tests:
+    name: Receiving location resolver tests (offline + Firestore emulator)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+
+      - name: Offline resolver unit tests
+        run: npm run test:receivingLocationResolver
+        working-directory: functions
+
+      - name: Start Firestore emulator (background)
+        run: |
+          nohup node node_modules/firebase-tools/lib/bin/firebase.js emulators:start --only firestore --project taylor-parts --config ../firebase.json > /tmp/receiving-resolver-emulator.log 2>&1 &
+          for i in $(seq 1 60); do
+            if grep -q "All emulators ready" /tmp/receiving-resolver-emulator.log 2>/dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "Emulator did not become ready in time"
+          cat /tmp/receiving-resolver-emulator.log
+          exit 1
+        working-directory: functions
+
+      - name: Resolver integration + existing receiving command regression (build + run)
+        run: |
+          npm run test:receivingResolverIntegration
+          npm run test:receiveInventoryStock
+        working-directory: functions
+
+      - name: Upload emulator debug logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: receiving-resolver-emulator-logs
+          path: |
+            /tmp/receiving-resolver-emulator.log
+            functions/firestore-debug.log
+          if-no-files-found: ignore
