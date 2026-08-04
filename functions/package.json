@@ -55,6 +55,8 @@
     "test:receivingCapability": "npm run build && node test/receivingCapabilityRegistration.test.mjs",
     "test:warehouseGovernance": "npm run build && node test/governedWarehouseValidation.test.mjs",
     "test:warehouseStatusWriter": "npm run build && node test/warehouseStatusWriter.test.mjs",
+    "test:warehouseMigration": "npm run build && node test/warehouseGovernanceMigration.test.mjs && node test/warehouseGovernanceVerifier.test.mjs",
+    "test:warehouseMigrationEmulator": "npm run build && node test/warehouseGovernanceMigrationEmulator.test.mjs",
     "test:partMasterDomain": "npm run build && node test/partMasterDomain.test.mjs",
     "test:inventoryEffectOperatorTools": "npm run build && node --test test/inventoryEffectOperatorTools.test.js",
     "test:firestoreDeploymentVerification": "node --test test/firestoreDeploymentVerification.test.js",
