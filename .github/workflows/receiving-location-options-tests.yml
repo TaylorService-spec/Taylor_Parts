@@ -1,0 +1,81 @@
+name: Receiving Location Options Tests
+
+# Receiving Location Authority -- I-LA4/I-LR: the INERT, UNEXPORTED trusted receiving-location option
+# service (functions/src/warehouseGovernance/receivingLocationOptionsService.ts). Offline + Firestore-
+# emulator tests only: NO production, NO deployment, NO callable. The service is not exported from
+# index.ts and never runs against production. Authorization + candidate read are injected, read-consistent
+# seams. Governed by the merged §3A validator; admin/dispatcher first slice.
+
+on:
+  pull_request:
+    paths:
+      - "functions/src/warehouseGovernance/**"
+      - "functions/src/types/warehouse.ts"
+      - "functions/test/receivingLocationOptionsService.test.mjs"
+      - "functions/test/receivingLocationOptionsServiceEmulator.test.mjs"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - ".github/workflows/receiving-location-options-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/src/warehouseGovernance/**"
+      - "functions/src/types/warehouse.ts"
+      - "functions/test/receivingLocationOptionsService.test.mjs"
+      - "functions/test/receivingLocationOptionsServiceEmulator.test.mjs"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - ".github/workflows/receiving-location-options-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  receiving-location-options-tests:
+    name: Receiving location options tests (offline + Firestore emulator)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+
+      - name: Offline option-service unit tests
+        run: npm run test:receivingLocationOptions
+        working-directory: functions
+
+      - name: Start Firestore emulator (background)
+        run: |
+          nohup node node_modules/firebase-tools/lib/bin/firebase.js emulators:start --only firestore --project taylor-parts --config ../firebase.json > /tmp/receiving-options-emulator.log 2>&1 &
+          for i in $(seq 1 60); do
+            if grep -q "All emulators ready" /tmp/receiving-options-emulator.log 2>/dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "Emulator did not become ready in time"
+          cat /tmp/receiving-options-emulator.log
+          exit 1
+        working-directory: functions
+
+      - name: Option-service emulator tests (build + run)
+        run: npm run test:receivingLocationOptionsEmulator
+        working-directory: functions
+
+      - name: Upload emulator debug logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: receiving-options-emulator-logs
+          path: |
+            /tmp/receiving-options-emulator.log
+            functions/firestore-debug.log
+          if-no-files-found: ignore
