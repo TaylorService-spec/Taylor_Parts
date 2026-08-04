@@ -16,8 +16,12 @@ const live = (id, data) => ({ warehouseId: id, data });
 
 function memFs() {
   const files = new Map();
-  return { _files: files, mkdirpSecure: () => {}, exists: (p) => files.has(p), writeFileSecure: (p, c) => files.set(p, c) };
+  return {
+    _files: files, mkdirpSecure: () => {}, exists: (p) => files.has(p),
+    writeFileExclusive: (p, c) => { if (files.has(p)) throw new Error(`EEXIST ${p}`); files.set(p, c); },
+  };
 }
+const EXP = (set) => { const crypto = require("node:crypto"); return codec.liveSetContentHash(set); };
 
 await check("parseArgs: backup requires --out-dir; project/commit pinned", () => {
   assert.throws(() => cli.parseArgs(["--project", "taylor-parts", "--commit", COMMIT]));           // no --out-dir
@@ -27,13 +31,21 @@ await check("parseArgs: backup requires --out-dir; project/commit pinned", () =>
   assert.equal(a.restore, false); assert.equal(a.outDir, "d");
 });
 
-await check("parseArgs: restore requires ack + snapshot + sha256 + owner authorization", () => {
+await check("parseArgs: restore requires ack + snapshot + sha256 + expected-live-sha256 + owner authorization", () => {
   const base = ["--restore", "--project", "taylor-parts", "--commit", COMMIT, "--snapshot", "s.json"];
   assert.throws(() => cli.parseArgs(base));                                                 // no ack
   assert.throws(() => cli.parseArgs([...base, "--acknowledge-production-write"]));          // no sha256
-  assert.throws(() => cli.parseArgs([...base, "--acknowledge-production-write", "--snapshot-sha256", "z".repeat(64)])); // no owner auth
-  const ok = cli.parseArgs([...base, "--acknowledge-production-write", "--snapshot-sha256", "a".repeat(64), "--owner-rollback-authorization", "OWNER-OK"]);
+  assert.throws(() => cli.parseArgs([...base, "--acknowledge-production-write", "--snapshot-sha256", "a".repeat(64)])); // no expected-live
+  assert.throws(() => cli.parseArgs([...base, "--acknowledge-production-write", "--snapshot-sha256", "a".repeat(64), "--expected-live-sha256", "b".repeat(64)])); // no owner auth
+  const ok = cli.parseArgs([...base, "--acknowledge-production-write", "--snapshot-sha256", "a".repeat(64), "--expected-live-sha256", "b".repeat(64), "--owner-rollback-authorization", "OWNER-OK"]);
   assert.equal(ok.restore, true);
+});
+
+await check("runBackup FAILS CLOSED when the captured set exceeds the single-transaction limit", async () => {
+  const many = []; for (let i = 0; i < 501; i += 1) many.push(live(`w${i}`, gov(`w${i}`)));
+  const deps = { readLiveWarehouses: async () => many, fs: memFs() };
+  const args = cli.parseArgs(["--project", "taylor-parts", "--commit", COMMIT, "--out-dir", "roll"]);
+  await assert.rejects(cli.runBackup(deps, args), /UNRESTORABLE|exceeds/);
 });
 
 await check("runBackup: encodes + writes snapshot + sha256; refuses to overwrite", async () => {
@@ -44,8 +56,8 @@ await check("runBackup: encodes + writes snapshot + sha256; refuses to overwrite
   assert.equal(r.mode, "backup"); assert.equal(r.capturedCount, 2);
   assert.match(r.snapshotSha256, /^[0-9a-f]{64}$/);
   assert.equal([...fs._files.keys()].filter((k) => k.includes("snapshot.json")).length, 1);
-  // second backup into the same dir refuses (snapshot.json already exists).
-  await assert.rejects(cli.runBackup(deps, args), /refusing to overwrite/);
+  // second backup into the same dir refuses via EXCLUSIVE creation (snapshot.json already exists).
+  await assert.rejects(cli.runBackup(deps, args), /EEXIST|refusing to overwrite/);
 });
 
 // Build a valid snapshot artifact the way runBackup would (bytes + hash) for restore tests.
@@ -57,30 +69,44 @@ function makeSnapshotArtifact(set) {
   return { snapshot, bytes, hash };
 }
 
-await check("runRestore: hash mismatch fails closed (zero writes)", async () => {
+const restoreArgs = (over = {}) => cli.parseArgs(["--restore", "--project", "taylor-parts", "--commit", COMMIT, "--snapshot", "s.json", "--acknowledge-production-write", "--snapshot-sha256", over.snap || "a".repeat(64), "--expected-live-sha256", over.exp || "b".repeat(64), "--owner-rollback-authorization", "OWNER-OK"]);
+
+await check("runRestore: snapshot hash mismatch fails closed (zero writes)", async () => {
   const { bytes } = makeSnapshotArtifact([live("w1", gov("w1"))]);
   let wrote = false;
   const deps = { readSnapshotRaw: async () => bytes, readLiveWarehouses: async () => [live("w1", gov("w1"))], runRestoreTxn: async () => { wrote = true; return { restoredCount: 1 }; } };
-  const args = cli.parseArgs(["--restore", "--project", "taylor-parts", "--commit", COMMIT, "--snapshot", "s.json", "--acknowledge-production-write", "--snapshot-sha256", "b".repeat(64), "--owner-rollback-authorization", "OWNER-OK"]);
-  await assert.rejects(cli.runRestore(deps, args), /snapshot hash mismatch/);
+  await assert.rejects(cli.runRestore(deps, restoreArgs({ snap: "b".repeat(64) })), /snapshot hash mismatch/);
   assert.equal(wrote, false);
 });
 
-await check("runRestore: SUCCESS path -> restores + post-restore parity holds", async () => {
+await check("runRestore: passes expected-live hash to the txn; SUCCESS path restores + parity holds", async () => {
   const set = [live("w1", gov("w1")), live("w2", gov("w2"))];
   const { bytes, hash } = makeSnapshotArtifact(set);
-  // Simulate: live is currently MIGRATED (differs); restore txn returns; after == snapshot content.
-  let restored = null;
+  const expLive = EXP(set);
+  let seenExpected = null, restored = null;
   const deps = {
     readSnapshotRaw: async () => bytes,
-    // runRestore reads live ONCE, for post-restore parity: after a faithful restore, live == snapshot.
-    readLiveWarehouses: async () => set,
-    runRestoreTxn: async ({ decoded }) => { restored = decoded; return { restoredCount: decoded.length }; },
+    readLiveWarehouses: async () => set, // post-restore parity read == snapshot
+    runRestoreTxn: async ({ decoded, expectedLiveSha256 }) => { seenExpected = expectedLiveSha256; restored = decoded; return { restoredCount: decoded.length }; },
   };
-  const args = cli.parseArgs(["--restore", "--project", "taylor-parts", "--commit", COMMIT, "--snapshot", "s.json", "--acknowledge-production-write", "--snapshot-sha256", hash, "--owner-rollback-authorization", "OWNER-OK"]);
-  const r = await cli.runRestore(deps, args);
-  assert.equal(r.mode, "restore"); assert.equal(r.restoredCount, 2); assert.equal(r.parity.changedCount, 0);
-  assert.ok(restored[0].data.updatedAt instanceof Timestamp); // decoded to real Timestamps for the write
+  const r = await cli.runRestore(deps, restoreArgs({ snap: hash, exp: expLive }));
+  assert.equal(seenExpected, expLive); // the content gate hash reached the txn
+  assert.equal(r.restoredCount, 2); assert.equal(r.parity.changedCount, 0);
+  assert.ok(restored[0].data.updatedAt instanceof Timestamp);
+});
+
+await check("runRestore: content-gate rejection inside the txn fails closed (a doc changed since migration)", async () => {
+  const set = [live("w1", gov("w1"))];
+  const { bytes, hash } = makeSnapshotArtifact(set);
+  // A realistic txn dep that enforces the expected-live content hash against the CURRENT live set.
+  const enforcingTxn = (currentLive) => async ({ snapshot, decoded, expectedLiveSha256 }) => {
+    if (codec.liveSetContentHash(currentLive) !== expectedLiveSha256) throw new Error("live-state content changed since the approved post-migration state");
+    return { restoredCount: decoded.length };
+  };
+  const changedLive = [live("w1", gov("w1", { status: "INACTIVE" }))]; // differs from the approved expected state
+  const deps = { readSnapshotRaw: async () => bytes, readLiveWarehouses: async () => set, runRestoreTxn: enforcingTxn(changedLive) };
+  // expected-live hash is for the ORIGINAL approved state; current live differs -> reject, zero writes.
+  await assert.rejects(cli.runRestore(deps, restoreArgs({ snap: hash, exp: EXP(set) })), /content changed/);
 });
 
 await check("runRestore: post-restore parity failure (live still differs) fails closed", async () => {
@@ -91,8 +117,7 @@ await check("runRestore: post-restore parity failure (live still differs) fails 
     readLiveWarehouses: async () => [live("w1", gov("w1", { status: "INACTIVE" }))], // never matches snapshot
     runRestoreTxn: async ({ decoded }) => ({ restoredCount: decoded.length }),
   };
-  const args = cli.parseArgs(["--restore", "--project", "taylor-parts", "--commit", COMMIT, "--snapshot", "s.json", "--acknowledge-production-write", "--snapshot-sha256", hash, "--owner-rollback-authorization", "OWNER-OK"]);
-  await assert.rejects(cli.runRestore(deps, args), /parity failed/);
+  await assert.rejects(cli.runRestore(deps, restoreArgs({ snap: hash, exp: EXP(set) })), /parity failed/);
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

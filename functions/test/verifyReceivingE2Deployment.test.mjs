@@ -15,11 +15,16 @@ async function check(name, fn) { try { await fn(); passed += 1; console.log(`PAS
 const COMMIT = "c".repeat(40);
 const CONFIG = { projectId: "taylor-parts", confirmProject: "taylor-parts", governedCommit: COMMIT, webApiKeyEnv: "E2_WEB_API_KEY", testEmailEnv: "E2_TEST_EMAIL", testPasswordEnv: "E2_TEST_PASSWORD" };
 
-// A fully-passing fake environment: both callables present@region, all rules probes 403, callables UNAUTHENTICATED, receiving_orders unchanged.
+// Complete inventories: pre-deploy has one pre-existing function; post-deploy adds EXACTLY the two callables.
+const BASE_FNS = [{ name: "someExistingFn", region: "us-central1", state: "ACTIVE", entryPoint: "x", runtime: "nodejs20", updateTime: "T0" }];
+const AFTER_FNS = [...BASE_FNS, { name: "receiveInventoryStock", region: "us-central1" }, { name: "listReceivingLocationOptions", region: "us-central1" }];
+
+// A fully-passing fake environment: exact deploy delta, both callables present@region, rules probes 403, callables UNAUTHENTICATED, receiving_orders unchanged.
 function passingDeps(over = {}) {
   return {
     config: CONFIG,
-    discover: async () => CALLABLES.map((name) => ({ name, region: "us-central1" })),
+    readPreDeployInventory: async () => BASE_FNS,
+    readPostDeployInventory: async () => AFTER_FNS,
     probeRules: async () => 403,
     invokeCallable: async () => ({ code: "UNAUTHENTICATED" }),
     readReceivingOrderIds: async () => ["ro1", "ro2"],
@@ -34,12 +39,30 @@ await check("assertConfig fail-closed on bad pins", () => {
   assert.doesNotThrow(() => core.assertConfig(CONFIG));
 });
 
-await check("extractRulesSourceStrict requires exactly one named firestore.rules (no files[0] fallback)", () => {
-  const ok = { source: { files: [{ name: "a.rules" }, { name: "firestore.rules", content: "rules_version = '2';\n" }] } };
+await check("extractRulesSourceStrict requires EXACTLY one firestore.rules source file (P2-2)", () => {
+  const ok = { source: { files: [{ name: "firestore.rules", content: "rules_version = '2';\n" }] } };
   assert.equal(core.extractRulesSourceStrict(ok).startsWith("rules_version"), true);
+  // extra file is now REJECTED (structure must be exactly one file).
+  assert.throws(() => core.extractRulesSourceStrict({ source: { files: [{ name: "a.rules", content: "x" }, { name: "firestore.rules", content: "rules_version='2'" }] } }));
   assert.throws(() => core.extractRulesSourceStrict({ source: { files: [{ name: "other", content: "rules_version='2'" }] } }));
   assert.throws(() => core.extractRulesSourceStrict({ source: { files: [] } }));
   assert.throws(() => core.extractRulesSourceStrict({ source: { files: [{ name: "firestore.rules", content: "nope" }] } }));
+});
+
+await check("interpretDeploymentDelta: exact +2 pass; extra/removed/changed/duplicate/wrong-region fail (P1-2)", () => {
+  assert.equal(core.interpretDeploymentDelta(BASE_FNS, AFTER_FNS).pass, true);
+  // extra unexpected function added
+  assert.equal(core.interpretDeploymentDelta(BASE_FNS, [...AFTER_FNS, { name: "sneaky", region: "us-central1" }]).pass, false);
+  // a pre-existing function changed
+  assert.equal(core.interpretDeploymentDelta(BASE_FNS, [{ name: "someExistingFn", region: "us-central1", updateTime: "T9" }, ...AFTER_FNS.slice(1)]).pass, false);
+  // a pre-existing function removed
+  assert.equal(core.interpretDeploymentDelta(BASE_FNS, AFTER_FNS.slice(1)).pass, false);
+  // callable at the wrong region
+  assert.equal(core.interpretDeploymentDelta(BASE_FNS, [...BASE_FNS, { name: "receiveInventoryStock", region: "us-east1" }, { name: "listReceivingLocationOptions", region: "us-central1" }]).pass, false);
+  // duplicate name -> normalizeInventory rejects -> delta fails
+  assert.equal(core.interpretDeploymentDelta(BASE_FNS, [...AFTER_FNS, { name: "receiveInventoryStock", region: "us-central1" }]).pass, false);
+  // malformed entry (missing region)
+  assert.equal(core.interpretDeploymentDelta(BASE_FNS, [...AFTER_FNS, { name: "bad" }]).pass, false);
 });
 
 await check("interpretters are exact", () => {
@@ -69,8 +92,13 @@ await check("runVerification FAILS CLOSED: a callable accepts an unauthenticated
   assert.equal(pass, false);
 });
 
-await check("runVerification FAILS CLOSED: a callable missing @ region (discovery)", async () => {
-  const { pass } = await core.runVerification(passingDeps({ discover: async () => [{ name: CALLABLES[0], region: "us-central1" }] }));
+await check("runVerification FAILS CLOSED: a callable missing @ region (discovery + delta)", async () => {
+  const { pass } = await core.runVerification(passingDeps({ readPostDeployInventory: async () => [...BASE_FNS, { name: CALLABLES[0], region: "us-central1" }] }));
+  assert.equal(pass, false);
+});
+
+await check("runVerification FAILS CLOSED: deployment delta touched an unrelated function", async () => {
+  const { pass } = await core.runVerification(passingDeps({ readPostDeployInventory: async () => [{ name: "someExistingFn", region: "us-central1", updateTime: "CHANGED" }, ...AFTER_FNS.slice(1)] }));
   assert.equal(pass, false);
 });
 
@@ -99,31 +127,48 @@ function fakeFs() {
   };
 }
 
+const crypto = require("node:crypto");
+const PRE_RAW = JSON.stringify(BASE_FNS);
+const PRE_SHA = crypto.createHash("sha256").update(PRE_RAW).digest("hex");
+function cliDeps(fs, over = {}) {
+  return { ...passingDeps(over), normalizeGcloudInventory: (x) => x, fs, log: () => {} };
+}
+const CLI_ARGS = (dir) => ["--config", "cfg.json", "--evidence-dir", dir, "--verify-date", "2026-08-04", "--confirm-project", "taylor-parts", "--pre-deploy-inventory", "pre.json", "--pre-deploy-inventory-sha256", PRE_SHA];
+
 await check("CLI run publishes sanitized evidence atomically on PASS", async () => {
   const fs = fakeFs();
   fs.writeFileSecure("cfg.json", JSON.stringify(CONFIG));
-  const deps = { ...passingDeps(), fs, log: () => {} };
-  // core.runVerification uses deps.config etc.; CLI reads config from --config path.
-  const r = await cli.run(deps, ["--config", "cfg.json", "--evidence-dir", "out/verify", "--verify-date", "2026-08-04", "--confirm-project", "taylor-parts"]);
-  assert.equal(r.pass, true);
-  assert.equal(r.evidenceDir, "out/verify");
+  fs.writeFileSecure("pre.json", PRE_RAW);
+  const r = await cli.run(cliDeps(fs), CLI_ARGS("out/verify"));
+  assert.equal(r.pass, true); assert.equal(r.evidenceDir, "out/verify");
   assert.ok(fs._files.has(J("out/verify", "verification-report.json")));
   assert.ok(fs._files.has(J("out/verify", "SHA256SUMS.txt")));
 });
 
-await check("CLI run does NOT publish on FAIL (no evidence dir)", async () => {
+await check("CLI run: pre-deploy inventory hash mismatch fails closed (no verification)", async () => {
   const fs = fakeFs();
   fs.writeFileSecure("cfg.json", JSON.stringify(CONFIG));
-  const deps = { ...passingDeps({ probeRules: async () => 200 }), fs, log: () => {} };
-  await assert.rejects(cli.run(deps, ["--config", "cfg.json", "--evidence-dir", "out/verify", "--verify-date", "2026-08-04", "--confirm-project", "taylor-parts"]));
-  assert.ok(!fs._files.has(J("out/verify", "verification-report.json")));
-  assert.ok(!fs._dirs.has("out/verify"));
+  fs.writeFileSecure("pre.json", PRE_RAW);
+  const args = ["--config", "cfg.json", "--evidence-dir", "out/v2", "--verify-date", "2026-08-04", "--confirm-project", "taylor-parts", "--pre-deploy-inventory", "pre.json", "--pre-deploy-inventory-sha256", "a".repeat(64)];
+  await assert.rejects(cli.run(cliDeps(fs), args), /inventory hash mismatch/);
 });
 
-await check("CLI parseArgs enforces required flags + confirm-project", () => {
+await check("CLI run publishes a SANITIZED FAILURE report on FAIL (P2-3), then throws", async () => {
+  const fs = fakeFs();
+  fs.writeFileSecure("cfg.json", JSON.stringify(CONFIG));
+  fs.writeFileSecure("pre.json", PRE_RAW);
+  await assert.rejects(cli.run(cliDeps(fs, { probeRules: async () => 200 }), CLI_ARGS("out/verify")), /verification failed/);
+  // primary evidence dir NOT created; a clearly-marked FAILED dir IS published for incident review.
+  assert.ok(!fs._files.has(J("out/verify", "verification-report.json")));
+  assert.ok(fs._files.has(J("out/verify.FAILED", "verification-report.FAILED.json")));
+  assert.ok(fs._files.has(J("out/verify.FAILED", "SHA256SUMS.txt")));
+});
+
+await check("CLI parseArgs enforces required flags + confirm-project + pre-deploy inventory", () => {
   assert.throws(() => cli.parseArgs(["--config", "c"]));
-  assert.throws(() => cli.parseArgs(["--config", "c", "--evidence-dir", "d", "--verify-date", "x", "--confirm-project", "wrong"]));
-  assert.doesNotThrow(() => cli.parseArgs(["--config", "c", "--evidence-dir", "d", "--verify-date", "x", "--confirm-project", "taylor-parts"]));
+  assert.throws(() => cli.parseArgs(["--config", "c", "--evidence-dir", "d", "--verify-date", "x", "--confirm-project", "wrong", "--pre-deploy-inventory", "p", "--pre-deploy-inventory-sha256", "a".repeat(64)]));
+  assert.throws(() => cli.parseArgs(["--config", "c", "--evidence-dir", "d", "--verify-date", "x", "--confirm-project", "taylor-parts"])); // missing pre-deploy inventory
+  assert.doesNotThrow(() => cli.parseArgs(["--config", "c", "--evidence-dir", "d", "--verify-date", "x", "--confirm-project", "taylor-parts", "--pre-deploy-inventory", "p", "--pre-deploy-inventory-sha256", "a".repeat(64)]));
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

@@ -38,6 +38,13 @@ export function encodeValue(value: unknown, pathHint = "$"): EncodedValue {
   if (typeof value === "boolean" || typeof value === "string") return value;
   if (typeof value === "number") {
     if (!Number.isFinite(value)) throw new WarehouseBackupError("UNSUPPORTED_VALUE", `non-finite number at ${pathHint}`);
+    // Firestore int64 values outside JS's safe-integer range may already be rounded when read through the
+    // default Admin SDK number representation; writing them back would silently corrupt. Reject them (a
+    // full int64 codec would need an explicit BigInt envelope, out of scope here). Non-integer doubles
+    // round-trip through JSON exactly and are allowed.
+    if (Number.isInteger(value) && !Number.isSafeInteger(value)) {
+      throw new WarehouseBackupError("UNSUPPORTED_VALUE", `integer outside safe range (possible int64 rounding) at ${pathHint}`);
+    }
     return value;
   }
   if (value instanceof Timestamp) {
@@ -66,6 +73,7 @@ export function decodeValue(value: unknown, pathHint = "$"): unknown {
   if (value === null || typeof value === "boolean" || typeof value === "string") return value;
   if (typeof value === "number") {
     if (!Number.isFinite(value)) throw new WarehouseBackupError("CORRUPT_SNAPSHOT", `non-finite number at ${pathHint}`);
+    if (Number.isInteger(value) && !Number.isSafeInteger(value)) throw new WarehouseBackupError("CORRUPT_SNAPSHOT", `unsafe integer at ${pathHint}`);
     return value;
   }
   if (Array.isArray(value)) return value.map((v, i) => decodeValue(v, `${pathHint}[${i}]`));
@@ -102,6 +110,37 @@ function canonicalJson(value: unknown): string {
 export function snapshotHash(snapshot: WarehouseSnapshot): string {
   // Hash the whole envelope canonically -- stable across key ordering; binds identity + content + pins.
   return createHash("sha256").update(canonicalJson(snapshot)).digest("hex");
+}
+
+// Content-only fingerprint of a COMPLETE live set: the sorted [{warehouseId, encoded}] pairs, WITHOUT the
+// project/commit pins. Used to bind a rollback to an exact expected-current-state (post-migration) hash so
+// the restore fails closed if ANY document content changed since that state was approved (not just added/
+// deleted ids). encodeValue enforces round-trippability, so this hash also rejects unrestorable values.
+export function liveSetContentHash(live: readonly LiveDoc[]): string {
+  const seen = new Set<string>();
+  const pairs = live.map((d) => {
+    if (typeof d.warehouseId !== "string" || d.warehouseId.trim() === "") throw new WarehouseBackupError("INVALID_INPUT", "blank warehouseId");
+    if (seen.has(d.warehouseId)) throw new WarehouseBackupError("INVALID_INPUT", `duplicate warehouseId ${d.warehouseId}`);
+    seen.add(d.warehouseId);
+    if (!isPlainObject(d.data)) throw new WarehouseBackupError("UNSUPPORTED_VALUE", `warehouse ${d.warehouseId} data is not a map`);
+    return { warehouseId: d.warehouseId, encoded: encodeValue(d.data, `$(${d.warehouseId})`) };
+  });
+  pairs.sort((a, b) => (a.warehouseId < b.warehouseId ? -1 : a.warehouseId > b.warehouseId ? 1 : 0));
+  return createHash("sha256").update(canonicalJson(pairs)).digest("hex");
+}
+
+// A restore commits every captured doc in ONE Firestore transaction. Firestore caps a transaction at 500
+// document writes and ~10 MiB request size; a snapshot that cannot be restored atomically must fail closed
+// at BACKUP time (never leave the operator with an un-restorable rollback artifact).
+export const MAX_RESTORE_TXN_WRITES = 500;
+export const MAX_RESTORE_TXN_BYTES = 9_000_000; // safety margin under the ~10 MiB transaction request limit
+export function assertRestorableSnapshot(snapshot: WarehouseSnapshot, byteLength: number): void {
+  if (snapshot.capturedCount > MAX_RESTORE_TXN_WRITES) {
+    throw new WarehouseBackupError("UNRESTORABLE", `captured ${snapshot.capturedCount} docs exceeds the ${MAX_RESTORE_TXN_WRITES}-write single-transaction limit`);
+  }
+  if (byteLength > MAX_RESTORE_TXN_BYTES) {
+    throw new WarehouseBackupError("UNRESTORABLE", `snapshot ${byteLength} bytes exceeds the ${MAX_RESTORE_TXN_BYTES}-byte single-transaction limit`);
+  }
 }
 
 function assertPins(projectId: string, governedCommit: string): void {

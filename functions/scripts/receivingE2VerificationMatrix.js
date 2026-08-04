@@ -29,14 +29,22 @@ const CALLABLE_DENIAL_CASES = Object.freeze(
   CALLABLES.map((callable) => ({ label: `callable:unauth:${callable}`, callable, expectedCode: "UNAUTHENTICATED" })),
 );
 
-// Total governed assertions: 2 discovery + 4 rules-denial + 2 callable-denial + 1 receiving_orders-unchanged.
-const MATRIX_TOTAL = CALLABLES.length + RULES_DENIAL_CASES.length + CALLABLE_DENIAL_CASES.length + 1;
+// The authorized deployment delta: EXACTLY the two receiving callables added @ region, with EVERY
+// pre-existing function unchanged and NOTHING removed. Proven by comparing a hash-bound complete pre-deploy
+// Functions inventory against the complete post-deploy inventory (unfiltered) -- not by name-filtered
+// presence, so an unexpected/changed/removed function halts the gate.
+const EXPECTED_DEPLOY_ADDED = Object.freeze(CALLABLES.map((name) => ({ name, region: REGION })));
+
+// Total governed assertions: 2 discovery + 1 deployment-delta + 4 rules-denial + 2 callable-denial
+// + 1 receiving_orders-unchanged.
+const MATRIX_TOTAL = CALLABLES.length + 1 + RULES_DENIAL_CASES.length + CALLABLE_DENIAL_CASES.length + 1;
 
 function buildCrosswalk() {
   return {
     region: REGION,
     callables: [...CALLABLES],
     discovery: CALLABLES.map((name) => ({ label: `discovery:${name}`, requires: `present@${REGION}` })),
+    deploymentDelta: { label: "deployment:exact-delta", requires: `+${CALLABLES.join(",")} @ ${REGION}; all pre-existing functions unchanged; none removed` },
     rulesDenial: RULES_DENIAL_CASES.map((r) => ({ label: r.label, expectedStatus: r.expectedStatus })),
     callableDenial: CALLABLE_DENIAL_CASES.map((r) => ({ label: r.label, expectedCode: r.expectedCode })),
     receivingOrdersUnchanged: { label: "receiving_orders:unchanged", requires: "identity-set + count unchanged vs pre-probe baseline" },
@@ -50,6 +58,7 @@ module.exports = {
   RECEIVING_ORDERS_DOC,
   RULES_DENIAL_CASES,
   CALLABLE_DENIAL_CASES,
+  EXPECTED_DEPLOY_ADDED,
   MATRIX_TOTAL,
   buildCrosswalk,
 };

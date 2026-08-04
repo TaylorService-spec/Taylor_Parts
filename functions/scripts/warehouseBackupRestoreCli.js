@@ -36,6 +36,7 @@ function parseArgs(argv) {
     else if (a === "--out-dir") args.outDir = argv[++i];
     else if (a === "--snapshot") args.snapshotPath = argv[++i];
     else if (a === "--snapshot-sha256") args.snapshotSha256 = argv[++i];
+    else if (a === "--expected-live-sha256") args.expectedLiveSha256 = argv[++i];
     else if (a === "--owner-rollback-authorization") args.ownerRollbackAuthorization = argv[++i];
     else throw new Error(`unknown argument: ${a}`);
   }
@@ -44,7 +45,8 @@ function parseArgs(argv) {
   if (args.restore) {
     if (!args.acknowledgeProductionWrite) throw new Error("--restore requires --acknowledge-production-write");
     if (!args.snapshotPath) throw new Error("--restore requires --snapshot");
-    if (!isHex64(normalizeHash(args.snapshotSha256))) throw new Error("--restore requires --snapshot-sha256 (the Owner-recorded snapshot hash)");
+    if (!isHex64(normalizeHash(args.snapshotSha256))) throw new Error("--restore requires --snapshot-sha256 (the Owner-recorded pre-migration snapshot hash)");
+    if (!isHex64(normalizeHash(args.expectedLiveSha256))) throw new Error("--restore requires --expected-live-sha256 (the Owner-approved post-migration live-state content hash)");
     if (!args.ownerRollbackAuthorization || String(args.ownerRollbackAuthorization).trim() === "") throw new Error("--restore requires --owner-rollback-authorization");
   } else if (!args.outDir) {
     throw new Error("backup requires --out-dir");
@@ -57,14 +59,18 @@ async function runBackup(deps, args) {
   const live = await deps.readLiveWarehouses();
   const snapshot = codec.encodeSnapshot(live, { projectId: args.projectId, governedCommit: args.governedCommit });
   const bytes = JSON.stringify(snapshot, null, 2) + "\n";
+  // Fail closed NOW if this set could not be restored in one transaction -- never persist an
+  // un-restorable rollback artifact.
+  codec.assertRestorableSnapshot(snapshot, Buffer.byteLength(bytes, "utf8"));
   const hash = sha256Hex(bytes);
-  // Write to an access-controlled rollback dir (0700/0600). Refuse to overwrite an existing snapshot.
+  const contentHash = codec.liveSetContentHash(live); // the expected-current-state hash for a later restore
+  // Write to an access-controlled rollback dir (0700/0600) via EXCLUSIVE creation (fail if it exists).
   deps.fs.mkdirpSecure(args.outDir);
   const snapPath = path.join(args.outDir, "snapshot.json");
-  if (deps.fs.exists(snapPath)) throw new Error(`refusing to overwrite existing snapshot ${snapPath}`);
-  deps.fs.writeFileSecure(snapPath, bytes);
-  deps.fs.writeFileSecure(path.join(args.outDir, "snapshot.sha256"), `${hash}  snapshot.json\n`);
-  return { mode: "backup", capturedCount: snapshot.capturedCount, snapshotSha256: hash, snapshotPath: snapPath };
+  deps.fs.writeFileExclusive(snapPath, bytes);
+  deps.fs.writeFileExclusive(path.join(args.outDir, "snapshot.sha256"), `${hash}  snapshot.json\n`);
+  deps.fs.writeFileExclusive(path.join(args.outDir, "content.sha256"), `${contentHash}  live-set-content\n`);
+  return { mode: "backup", capturedCount: snapshot.capturedCount, snapshotSha256: hash, liveContentSha256: contentHash, snapshotPath: snapPath };
 }
 
 async function runRestore(deps, args) {
@@ -79,9 +85,12 @@ async function runRestore(deps, args) {
   if (snapshot.governedCommit !== args.governedCommit) throw new Error("snapshot governedCommit != --commit");
   const decoded = codec.decodeSnapshot(snapshot); // real Firestore-typed docs (fails closed if corrupt)
 
-  // (2) Restore in ONE transaction: re-read the live set THROUGH the txn, fail closed on identity drift,
-  //     overwrite exactly the captured docs, then verify parity after commit.
-  const result = await deps.runRestoreTxn({ snapshot, decoded });
+  // (2) Restore in ONE transaction: re-read the live set THROUGH the txn, fail closed on identity drift
+  //     AND on ANY content difference from the Owner-approved expected post-migration live-state hash
+  //     (so a document changed since migration is never silently overwritten), overwrite exactly the
+  //     captured docs, then verify parity after commit.
+  const expectedLiveSha256 = normalizeHash(args.expectedLiveSha256);
+  const result = await deps.runRestoreTxn({ snapshot, decoded, expectedLiveSha256 });
   const after = await deps.readLiveWarehouses();
   const parity = codec.planRestore(snapshot, after, { projectId: args.projectId, governedCommit: args.governedCommit });
   // After a faithful restore, live == snapshot: bounded set (ok) AND zero content changes.
@@ -110,21 +119,25 @@ function buildProductionDeps() {
       return snap.docs.map((d) => ({ warehouseId: d.id, data: d.data() }));
     },
     async readSnapshotRaw(p) { return fs.readFileSync(p, "utf8"); },
-    async runRestoreTxn({ snapshot, decoded }) {
+    async runRestoreTxn({ snapshot, decoded, expectedLiveSha256 }) {
       return db.runTransaction(async (txn) => {
         // Re-read the COMPLETE collection through the txn (locks it; a concurrent add/change/delete conflicts).
         const liveSnap = await txn.get(db.collection(WAREHOUSES));
         const live = liveSnap.docs.map((d) => ({ warehouseId: d.id, data: d.data() }));
         const plan = codec.planRestore(snapshot, live, { projectId: snapshot.projectId, governedCommit: snapshot.governedCommit });
         if (!plan.ok) throw new Error(`restore drift/precondition failed: ${plan.reason} (added=${plan.added.length} deleted=${plan.deleted.length})`);
+        // Content gate: the live set must match the Owner-approved expected post-migration state EXACTLY.
+        const actualLiveHash = codec.liveSetContentHash(live);
+        if (actualLiveHash !== expectedLiveSha256) throw new Error("live-state content changed since the approved post-migration state: refusing to restore (no writes)");
         for (const d of decoded) txn.set(db.collection(WAREHOUSES).doc(d.warehouseId), d.data);
         return { restoredCount: decoded.length };
       });
     },
     fs: {
-      mkdirpSecure: (d) => fs.mkdirSync(d, { recursive: true, mode: 0o700 }),
+      mkdirpSecure: (d) => { fs.mkdirSync(d, { recursive: true, mode: 0o700 }); try { fs.chmodSync(d, 0o700); } catch { /* win32: mode bits limited */ } },
       exists: (p) => fs.existsSync(p),
-      writeFileSecure: (p, c) => fs.writeFileSync(p, c, { mode: 0o600 }),
+      // Exclusive create (O_EXCL): fails if the path already exists -- no TOCTOU overwrite window.
+      writeFileExclusive: (p, c) => { fs.writeFileSync(p, c, { flag: "wx", mode: 0o600 }); const st = fs.statSync(p); if (process.platform !== "win32" && (st.mode & 0o077)) throw new Error(`rollback file ${p} has group/other permissions`); },
     },
   };
 }

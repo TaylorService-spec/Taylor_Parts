@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { Timestamp } from "firebase-admin/firestore";
 import {
   encodeValue, decodeValue, encodeSnapshot, decodeSnapshot, validateSnapshotShape, snapshotHash, planRestore,
+  liveSetContentHash, assertRestorableSnapshot, MAX_RESTORE_TXN_WRITES,
   WarehouseBackupError,
 } from "../lib/warehouseGovernance/warehouseBackupCodec.js";
 
@@ -40,6 +41,33 @@ check("encode FAILS CLOSED on non-round-trippable values", () => {
   assert.throws(() => encodeValue(Buffer.from("x")), (e) => e.code === "UNSUPPORTED_VALUE");
   assert.throws(() => encodeValue(() => 1), (e) => e.code === "UNSUPPORTED_VALUE");
   assert.throws(() => encodeValue({ __fsTypeX: 1 }), (e) => e instanceof WarehouseBackupError); // reserved-key guard
+});
+
+check("number codec: safe-integer boundaries (P2-1 int64 rounding guard)", () => {
+  // Exactly at the boundary: allowed and round-trips.
+  assert.equal(decodeValue(encodeValue(Number.MAX_SAFE_INTEGER)), Number.MAX_SAFE_INTEGER);
+  assert.equal(decodeValue(encodeValue(-Number.MAX_SAFE_INTEGER)), -Number.MAX_SAFE_INTEGER);
+  assert.equal(decodeValue(encodeValue(1.5)), 1.5); // non-integer double is fine
+  // Just outside: integer-shaped but unsafe -> fail closed (possible int64 rounding).
+  assert.throws(() => encodeValue(Number.MAX_SAFE_INTEGER + 1), (e) => e.code === "UNSUPPORTED_VALUE");
+  assert.throws(() => encodeValue(-(Number.MAX_SAFE_INTEGER + 1)), (e) => e.code === "UNSUPPORTED_VALUE");
+  assert.throws(() => encodeValue(2 ** 60), (e) => e.code === "UNSUPPORTED_VALUE");
+  // Decode defense: an unsafe integer in a snapshot is rejected too.
+  assert.throws(() => decodeValue(Number.MAX_SAFE_INTEGER + 2), (e) => e.code === "CORRUPT_SNAPSHOT");
+});
+
+check("liveSetContentHash: content-only, order-independent, changes on any content diff", () => {
+  const set = [live("w1", gov("w1")), live("w2", gov("w2"))];
+  assert.equal(liveSetContentHash(set), liveSetContentHash([...set].reverse()));
+  assert.notEqual(liveSetContentHash(set), liveSetContentHash([live("w1", gov("w1", { status: "INACTIVE" })), live("w2", gov("w2"))]));
+  assert.throws(() => liveSetContentHash([live("w", gov("w")), live("w", gov("w"))]), (e) => e.code === "INVALID_INPUT");
+});
+
+check("assertRestorableSnapshot: fails closed above the single-transaction write/byte limits", () => {
+  const small = encodeSnapshot([live("w1", gov("w1"))], PINS);
+  assert.doesNotThrow(() => assertRestorableSnapshot(small, 1000));
+  assert.throws(() => assertRestorableSnapshot({ ...small, capturedCount: MAX_RESTORE_TXN_WRITES + 1 }, 1000), (e) => e.code === "UNRESTORABLE");
+  assert.throws(() => assertRestorableSnapshot(small, 9_000_001), (e) => e.code === "UNRESTORABLE");
 });
 
 check("snapshot: encode -> validate -> decode round-trips a governed set; hash is deterministic", () => {

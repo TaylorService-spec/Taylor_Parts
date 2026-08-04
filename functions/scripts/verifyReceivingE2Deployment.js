@@ -13,7 +13,7 @@
 // (in the CLI) a non-zero exit; sanitized evidence is published atomically only by the operator CLI.
 
 const {
-  CALLABLES, REGION, RECEIVING_ORDERS_DOC, RULES_DENIAL_CASES, CALLABLE_DENIAL_CASES, MATRIX_TOTAL,
+  CALLABLES, REGION, RULES_DENIAL_CASES, CALLABLE_DENIAL_CASES, EXPECTED_DEPLOY_ADDED, MATRIX_TOTAL,
 } = require("./receivingE2VerificationMatrix");
 const { VerificationError, sha256, canonicalJson, assertEvidenceSecretFree } = require("./firestoreDeploymentVerificationShared");
 
@@ -34,27 +34,59 @@ function assertConfig(config) {
 
 // ---- pure interpreters --------------------------------------------------
 
-// Strict live-Rules source extraction (P1-3): REQUIRE a file whose name ends with firestore.rules; never
-// silently fall back to files[0].
+// Strict live-Rules source extraction (P1-3/P2-2): the governed deploy ships EXACTLY one source file named
+// firestore.rules. Require that exact structure -- reject extra files, duplicate suffix matches, missing
+// names, and malformed content. Never silently fall back to files[0].
 function extractRulesSourceStrict(apiPayload) {
   const files = apiPayload && apiPayload.source && apiPayload.source.files;
-  if (!Array.isArray(files) || files.length === 0) throw new VerificationError("live Rules API response has no source files");
-  const named = files.filter((f) => String(f && f.name || "").endsWith("firestore.rules"));
-  if (named.length !== 1) throw new VerificationError(`expected exactly one firestore.rules source file, found ${named.length}`);
-  const content = named[0].content;
+  if (!Array.isArray(files) || files.length !== 1) throw new VerificationError(`expected exactly one Rules source file, found ${Array.isArray(files) ? files.length : "none"}`);
+  const only = files[0];
+  if (!only || !String(only.name || "").endsWith("firestore.rules")) throw new VerificationError("the single Rules source file is not named firestore.rules");
+  const content = only.content;
   if (typeof content !== "string" || !content.startsWith("rules_version")) throw new VerificationError("live Rules source is empty or malformed");
   return content;
 }
 
-function interpretDiscovery(discovered) {
-  // discovered: array of { name, region } from the adapter. Require BOTH callables present @ region, exact names.
-  const byName = new Map((Array.isArray(discovered) ? discovered : []).map((d) => [String(d && d.name || ""), d]));
+function interpretDiscovery(afterInventory) {
+  // Derive presence@region for the two callables from the COMPLETE post-deploy inventory (exact names).
+  const byName = new Map((Array.isArray(afterInventory) ? afterInventory : []).map((d) => [String(d && d.name || ""), d]));
   return CALLABLES.map((name) => {
     const hit = byName.get(name);
     const region = hit ? String(hit.region || "") : "";
     const pass = Boolean(hit) && region === EXPECTED_REGION;
     return { label: `discovery:${name}`, name, region, pass };
   });
+}
+
+// Normalize a COMPLETE gcloud functions inventory to a stable, comparable shape; reject duplicates/malformed.
+function normalizeInventory(list, whichSide) {
+  if (!Array.isArray(list)) throw new VerificationError(`${whichSide} functions inventory is not an array`);
+  const byName = new Map();
+  for (const fn of list) {
+    const name = fn && typeof fn.name === "string" ? fn.name : null;
+    const region = fn && typeof fn.region === "string" ? fn.region : null;
+    if (!name || !region) throw new VerificationError(`${whichSide} inventory has a malformed entry (missing name/region)`);
+    if (byName.has(name)) throw new VerificationError(`${whichSide} inventory has a duplicate function name: ${name}`);
+    // Fingerprint the stable identity fields so an unrelated function CHANGE is detectable.
+    byName.set(name, { name, region, fingerprint: sha256(canonicalJson({ name, region, state: fn.state || "", entryPoint: fn.entryPoint || "", runtime: fn.runtime || "", updateTime: fn.updateTime || "" })) });
+  }
+  return byName;
+}
+
+// Prove the deployment changed ONLY the two authorized targets: exactly them added @ region, nothing
+// removed, and every pre-existing function byte-stable (P1-2).
+function interpretDeploymentDelta(beforeList, afterList) {
+  let before, after;
+  try { before = normalizeInventory(beforeList, "pre-deploy"); after = normalizeInventory(afterList, "post-deploy"); }
+  catch (err) { return { label: "deployment:exact-delta", pass: false, reason: err.message, added: [], removed: [], changed: [] }; }
+  const added = [...after.keys()].filter((n) => !before.has(n)).sort();
+  const removed = [...before.keys()].filter((n) => !after.has(n)).sort();
+  const changed = [...after.keys()].filter((n) => before.has(n) && before.get(n).fingerprint !== after.get(n).fingerprint).sort();
+  const expectedAdded = EXPECTED_DEPLOY_ADDED.map((e) => e.name).sort();
+  const addedExact = canonicalJson(added) === canonicalJson(expectedAdded)
+    && EXPECTED_DEPLOY_ADDED.every((e) => after.get(e.name) && after.get(e.name).region === e.region);
+  const pass = addedExact && removed.length === 0 && changed.length === 0;
+  return { label: "deployment:exact-delta", pass, reason: pass ? null : "delta not exactly the two authorized callables", added, removed, changed };
 }
 
 function interpretRulesDenial(row, status) {
@@ -81,20 +113,24 @@ function interpretReceivingOrdersUnchanged(before, after) {
 }
 
 // ---- orchestration (fail-closed) ----------------------------------------
-// deps: { config, discover, probeRules, invokeCallable, readReceivingOrderIds, log? }
-//  - discover(): Promise<[{name, region}]>
+// deps: { config, readPreDeployInventory, readPostDeployInventory, probeRules, invokeCallable, readReceivingOrderIds, log? }
+//  - readPreDeployInventory(): Promise<[{name, region, ...}]>   // COMPLETE, hash-bound pre-deploy inventory
+//  - readPostDeployInventory(): Promise<[{name, region, ...}]>  // COMPLETE post-deploy inventory (unfiltered)
 //  - probeRules(row): Promise<number>   // HTTP status for the receiving_orders probe
 //  - invokeCallable(callable): Promise<{ ok?: true, code?: string }>   // unauthenticated call
 //  - readReceivingOrderIds(): Promise<string[]>  // Admin-SDK doc ids
 async function runVerification(deps) {
-  const { config, discover, probeRules, invokeCallable, readReceivingOrderIds, log = () => {} } = deps;
+  const { config, readPreDeployInventory, readPostDeployInventory, probeRules, invokeCallable, readReceivingOrderIds, log = () => {} } = deps;
   assertConfig(config);
 
   // Baseline BEFORE any probe (proves the probes wrote nothing).
   const beforeIds = await readReceivingOrderIds();
 
-  const discovered = interpretDiscovery(await discover());
-  log(`discovery: ${discovered.filter((d) => d.pass).length}/${CALLABLES.length} present@${EXPECTED_REGION}`);
+  const beforeInv = await readPreDeployInventory();
+  const afterInv = await readPostDeployInventory();
+  const discovered = interpretDiscovery(afterInv);
+  const delta = interpretDeploymentDelta(beforeInv, afterInv);
+  log(`discovery: ${discovered.filter((d) => d.pass).length}/${CALLABLES.length} present@${EXPECTED_REGION}; delta ${delta.pass ? "exact" : "REJECTED"}`);
 
   const rulesRows = [];
   for (const row of RULES_DENIAL_CASES) rulesRows.push(interpretRulesDenial(row, await probeRules(row)));
@@ -107,6 +143,7 @@ async function runVerification(deps) {
 
   const passedCount =
     discovered.filter((d) => d.pass).length +
+    (delta.pass ? 1 : 0) +
     rulesRows.filter((r) => r.pass).length +
     callableRows.filter((r) => r.pass).length +
     (unchanged.pass ? 1 : 0);
@@ -121,6 +158,7 @@ async function runVerification(deps) {
     passed: passedCount,
     pass,
     discovery: { total: discovered.length, passed: discovered.filter((d) => d.pass).length, results: discovered.map((d) => ({ label: d.label, region: d.region, pass: d.pass })) },
+    deploymentDelta: { label: delta.label, pass: delta.pass, reason: delta.reason, added: delta.added, removed: delta.removed, changed: delta.changed },
     rulesDenial: { total: rulesRows.length, passed: rulesRows.filter((r) => r.pass).length, results: rulesRows.map((r) => ({ label: r.label, expectedStatus: r.expectedStatus, status: r.status, pass: r.pass })) },
     callableDenial: { total: callableRows.length, passed: callableRows.filter((r) => r.pass).length, results: callableRows.map((r) => ({ label: r.label, expectedCode: r.expectedCode, code: r.code, interpretation: r.interpretation, pass: r.pass })) },
     receivingOrdersUnchanged: unchanged,
@@ -136,6 +174,8 @@ module.exports = {
   assertConfig,
   extractRulesSourceStrict,
   interpretDiscovery,
+  interpretDeploymentDelta,
+  normalizeInventory,
   interpretRulesDenial,
   interpretCallableDenial,
   interpretReceivingOrdersUnchanged,

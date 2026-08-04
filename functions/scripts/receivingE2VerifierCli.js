@@ -15,7 +15,7 @@
 
 const path = require("node:path");
 const { VerificationError, sha256, assertEvidenceSecretFree } = require("./firestoreDeploymentVerificationShared");
-const { RECEIVING_ORDERS_DOC, CALLABLES, REGION } = require("./receivingE2VerificationMatrix");
+const { RECEIVING_ORDERS_DOC, REGION } = require("./receivingE2VerificationMatrix");
 const core = require("./verifyReceivingE2Deployment");
 
 function parseArgs(argv) {
@@ -28,10 +28,11 @@ function parseArgs(argv) {
     if (value === undefined || value.startsWith("--")) throw new VerificationError(`--${key} requires a value`);
     args[key] = value; i += 1;
   }
-  for (const required of ["config", "evidence-dir", "verify-date", "confirm-project"]) {
+  for (const required of ["config", "evidence-dir", "verify-date", "confirm-project", "pre-deploy-inventory", "pre-deploy-inventory-sha256"]) {
     if (!args[required]) throw new VerificationError(`missing required --${required}`);
   }
   if (args["confirm-project"] !== "taylor-parts") throw new VerificationError("--confirm-project must be taylor-parts");
+  if (!/^[0-9a-f]{64}$/.test(String(args["pre-deploy-inventory-sha256"]).trim().toLowerCase())) throw new VerificationError("--pre-deploy-inventory-sha256 must be a 64-hex hash");
   return args;
 }
 
@@ -70,19 +71,35 @@ async function run(deps, argv) {
   const args = parseArgs(argv);
   const config = loadConfig(args.config, deps.fs);
   if (args["confirm-project"] !== config.projectId) throw new VerificationError("--confirm-project must equal config.projectId");
+
+  // Hash-bind the COMPLETE pre-deploy Functions inventory the Owner recorded in Phase 1 (P1-2). The raw
+  // bytes are hashed BEFORE parsing; a mismatch fails closed (no verification, no evidence).
+  const rawPre = deps.fs.readFileSync(args["pre-deploy-inventory"], "utf8");
+  const expectedPre = String(args["pre-deploy-inventory-sha256"]).trim().toLowerCase();
+  if (sha256(rawPre) !== expectedPre) throw new VerificationError("pre-deploy inventory hash mismatch: refusing to verify");
+  let preInventory;
+  try { preInventory = JSON.parse(rawPre); } catch { throw new VerificationError("pre-deploy inventory is not valid JSON"); }
+
   const { report, pass } = await core.runVerification({
     config,
-    discover: deps.discover,
+    readPreDeployInventory: async () => deps.normalizeGcloudInventory(preInventory),
+    readPostDeployInventory: deps.readPostDeployInventory,
     probeRules: deps.probeRules,
     invokeCallable: deps.invokeCallable,
     readReceivingOrderIds: deps.readReceivingOrderIds,
     log: deps.log,
   });
   const content = `${JSON.stringify(report, null, 2)}\n`;
-  // Publish evidence ONLY on a fully passing run (mirrors the migration/verifier contract).
-  if (!pass) throw new VerificationError(`E2 verification failed: ${report.passed}/${report.matrix_total} assertions passed (no evidence published)`);
-  const dir = publishEvidenceAtomically(deps.fs, args["evidence-dir"], [{ name: "verification-report.json", content }]);
-  return { pass, evidenceDir: dir, matrixTotal: report.matrix_total };
+  if (pass) {
+    const dir = publishEvidenceAtomically(deps.fs, args["evidence-dir"], [{ name: "verification-report.json", content }]);
+    return { pass, evidenceDir: dir, matrixTotal: report.matrix_total };
+  }
+  // (P2-3) On failure, atomically publish a SANITIZED failure report to a clearly-marked directory, then
+  // exit non-zero. The report is secret-free by construction (assertEvidenceSecretFree ran in the core).
+  const failDir = `${args["evidence-dir"]}.FAILED`;
+  let published = null;
+  try { published = publishEvidenceAtomically(deps.fs, failDir, [{ name: "verification-report.FAILED.json", content }]); } catch { /* keep the primary failure */ }
+  throw new VerificationError(`E2 verification failed: ${report.passed}/${report.matrix_total} assertions passed${published ? ` (failure evidence: ${published})` : ""}`);
 }
 
 // Lazily build real production deps. Node 20 global fetch; gcloud/ADC from the ambient authenticated env.
@@ -111,15 +128,20 @@ function buildProductionDeps(args) {
   }
   let cachedToken = null;
 
+  // Normalize a raw gcloud `functions list --format json` payload to the COMPLETE, unfiltered comparable
+  // set {name, region, state, entryPoint, runtime, updateTime}. Used for BOTH the pinned pre-deploy file
+  // and the live post-deploy read so the exact-delta comparison sees every function (P1-2).
+  const normalizeGcloudInventory = (list) => (Array.isArray(list) ? list : []).map((fn) => {
+    const name = String(fn.name || "").split("/").pop();
+    const region = fn.name && fn.name.includes("/locations/") ? fn.name.split("/locations/")[1].split("/")[0] : (fn.region || "");
+    const build = fn.buildConfig || {};
+    return { name, region, state: fn.state || "", entryPoint: build.entryPoint || fn.entryPoint || "", runtime: build.runtime || fn.runtime || "", updateTime: fn.updateTime || "" };
+  });
   return {
-    async discover() {
+    normalizeGcloudInventory,
+    async readPostDeployInventory() {
       const out = execFileSync("gcloud", ["functions", "list", "--project", config.projectId, "--format", "json"], { encoding: "utf8" });
-      const list = JSON.parse(out);
-      return (Array.isArray(list) ? list : []).map((fn) => {
-        const name = String(fn.name || "").split("/").pop();
-        const region = fn.name && fn.name.includes("/locations/") ? fn.name.split("/locations/")[1].split("/")[0] : (fn.region || "");
-        return { name, region };
-      }).filter((f) => CALLABLES.includes(f.name));
+      return normalizeGcloudInventory(JSON.parse(out));
     },
     async probeRules(row) {
       const url = `${REST}/${RECEIVING_ORDERS_DOC}`;
