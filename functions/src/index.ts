@@ -106,3 +106,14 @@ export {
   reactivateTruckCallable,
   deleteTruckCreatedInErrorCallable,
 } from "./truckRegistry/truckRegistryCallables";
+
+// --- EI Phase-2 Receiving surface (E1): trusted Receiving callables ---
+// "Export is not deployment/grant": NOT deployed to the live project, NO Admin/Customer UI wired to
+// call them, NO App Check requirement (matching every other callable here). Both require the governed
+// inventory.stock.receive capability, which is REGISTERED BUT UNGRANTED -- so every real user is denied
+// until a separate grant gate. The receive callable runs the pinned §3A ACTIVE-warehouse resolver; the
+// option callable serves sanitized eligible options from the trusted backend (no client warehouses read).
+export {
+  receiveInventoryStockCallable,
+  listReceivingLocationOptionsCallable,
+} from "./inventoryReceiving/receivingCallables";
