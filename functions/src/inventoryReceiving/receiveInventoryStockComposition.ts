@@ -9,6 +9,8 @@ import type { Firestore, Transaction } from "firebase-admin/firestore";
 import type { ReceivingActor } from "./receivingTypes.js";
 import {
   receiveInventoryStock,
+  ReceiveCommandError,
+  ReceivingIntegrityError,
   type ReceiveInventoryStockDeps,
   type ReceiveInventoryStockOutcome,
   type ResolvedPart,
@@ -39,7 +41,21 @@ export function buildReceiveInventoryStockDeps(input: ReceiveInventoryStockCompo
   };
 }
 
-// Production entry: run the receiveInventoryStock command with the pinned governed-warehouse resolver.
+// Sanitized production error boundary: a governed ReceiveCommandError (PERMISSION_DENIED,
+// DESTINATION_INVALID, RECEIVING_INTEGRITY, ...) passes through unchanged; ANY other surviving error --
+// e.g. a raw Firestore/transaction failure from a concurrent conflict -- is mapped to the bounded,
+// sanitized ReceivingIntegrityError so no raw Firestore code/message/path/retry detail can escape.
+export async function runReceiveInventoryStockSanitized(request: unknown, deps: ReceiveInventoryStockDeps): Promise<ReceiveInventoryStockOutcome> {
+  try {
+    return await receiveInventoryStock(request, deps);
+  } catch (err) {
+    if (err instanceof ReceiveCommandError) throw err;
+    throw new ReceivingIntegrityError("receiving failed due to a transient transaction/integrity error");
+  }
+}
+
+// Production entry: run the command with the pinned governed-warehouse resolver, behind the sanitized
+// error boundary. No production caller supplies a resolver, hooks, or sees a raw Firestore error.
 export function receiveInventoryStockProduction(request: unknown, input: ReceiveInventoryStockCompositionInput): Promise<ReceiveInventoryStockOutcome> {
-  return receiveInventoryStock(request, buildReceiveInventoryStockDeps(input));
+  return runReceiveInventoryStockSanitized(request, buildReceiveInventoryStockDeps(input));
 }

@@ -50,6 +50,14 @@ await check("blank/invalid locationId or non-object location -> false", async ()
   assert.equal(await h.resolve(h.txn, null), false);
 });
 
+await check("path-unsafe locationId (slash/traversal/reserved) -> false, NO read", async () => {
+  const h = harness(new Map([["a", governed("a")], ["a/b", governed("a/b")]]));
+  for (const bad of ["a/b", "a/b/c", "/a", "a/", ".", "..", "__x__", "__proto__"]) {
+    assert.equal(await h.resolve(h.txn, loc(bad)), false, `expected false for locationId ${JSON.stringify(bad)}`);
+  }
+  assert.deepEqual(h.reads, [], "no Firestore reference constructed / read for a path-unsafe id");
+});
+
 await check("missing warehouse -> false", async () => {
   const h = harness(new Map());
   assert.equal(await h.resolve(h.txn, loc("nope")), false);

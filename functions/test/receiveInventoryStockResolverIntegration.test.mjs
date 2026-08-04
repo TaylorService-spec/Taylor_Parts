@@ -11,8 +11,9 @@ admin.initializeApp({ projectId: "taylor-parts" });
 const db = admin.firestore();
 const { FieldValue } = admin.firestore;
 
-const { receiveInventoryStockProduction, buildReceiveInventoryStockDeps } = await import("../lib/inventoryReceiving/receiveInventoryStockComposition.js");
-const { receiveInventoryStock, DestinationInvalidError } = await import("../lib/inventoryReceiving/receiveInventoryStockCommand.js");
+const { receiveInventoryStockProduction, buildReceiveInventoryStockDeps, runReceiveInventoryStockSanitized } = await import("../lib/inventoryReceiving/receiveInventoryStockComposition.js");
+const { receiveInventoryStock, DestinationInvalidError, ReceiveCommandError, ReceivingIntegrityError, SourceNotReceivableError } = await import("../lib/inventoryReceiving/receiveInventoryStockCommand.js");
+const RAW_LEAK_RE = /INVALID_ARGUMENT|Transaction is invalid|ABORTED|firestore|\bcode\b|a\/b/i;
 
 let passed = 0, failed = 0;
 async function check(name, fn) {
@@ -104,12 +105,38 @@ await check("concurrent ACTIVE->INACTIVE AFTER the resolver read cannot commit a
     ...buildReceiveInventoryStockDeps(input(sc).deps),
     __afterLocationReadHook: async () => { if (!flipped) { flipped = true; await flipper.collection("warehouses").doc(sc.wh).update({ status: "INACTIVE" }); } },
   };
-  // FAIL CLOSED: the warehouse was read in the command's transaction, so a concurrent retire cannot
-  // commit a receipt. (On the emulator this surfaces as a raw transaction-conflict; production ABORTs and
-  // retries, and the retry's resolver re-read of INACTIVE yields DESTINATION_INVALID -- both never commit.)
-  await assert.rejects(receiveInventoryStock(request(sc, sc.wh), deps));
+  // FAIL CLOSED through the SANITIZED production boundary: the warehouse was read in the command's
+  // transaction, so a concurrent retire cannot commit a receipt. Production ABORTs->retries and the
+  // retry's resolver re-read yields DESTINATION_INVALID; the emulator surfaces a raw transaction-conflict
+  // which the sanitized boundary maps to RECEIVING_INTEGRITY. Either way the error is a GOVERNED command
+  // error with no raw transaction detail, and zero writes commit.
+  await assert.rejects(
+    runReceiveInventoryStockSanitized(request(sc, sc.wh), deps),
+    (e) => e instanceof ReceiveCommandError && (e.code === "DESTINATION_INVALID" || e.code === "RECEIVING_INTEGRITY") && !RAW_LEAK_RE.test(e.message),
+  );
   assert.equal(await reorderStatus(sc.rrid), "ORDERED", "no receipt committed under a concurrent retire");
   assert.equal(await auditCount(sc.rrid), 0);
+});
+
+await check("path-unsafe locationId -> DESTINATION_INVALID, zero writes", async () => {
+  const sc = await seedScenario({ warehouse: "ACTIVE" });
+  const { deps } = input(sc);
+  const req = request(sc, sc.wh); req.receivingLocation = { type: "WAREHOUSE", locationId: "a/b/c" };
+  await assert.rejects(receiveInventoryStockProduction(req, deps), DestinationInvalidError);
+  assert.equal(await reorderStatus(sc.rrid), "ORDERED");
+});
+
+await check("composition sanitizes a raw transaction error -> RECEIVING_INTEGRITY (no raw leak)", async () => {
+  const raw = Object.assign(new Error("3 INVALID_ARGUMENT: Transaction is invalid or closed; path warehouses/a/b"), { code: 3 });
+  const fakeInput = { db: { runTransaction: async () => { throw raw; } }, actor: { kind: "USER", id: "a" }, authorize: async () => true, resolvePart: async () => ({ partId: "p", trackingMode: "NONE", active: true }), stageAudit: () => {}, now: () => NOW };
+  const req = { source: { reorderRequestId: "rr-x", purchaseOrderId: "rr-x" } };
+  await assert.rejects(receiveInventoryStockProduction(req, fakeInput), (e) => e instanceof ReceivingIntegrityError && e.code === "RECEIVING_INTEGRITY" && !RAW_LEAK_RE.test(e.message));
+});
+
+await check("composition preserves a governed ReceiveCommandError (not remapped)", async () => {
+  const fakeInput = { db: { runTransaction: async () => { throw new Error("unused"); } }, actor: { kind: "USER", id: "a" }, authorize: async () => true, resolvePart: async () => null, stageAudit: () => {}, now: () => NOW };
+  // request missing source -> the command throws SourceNotReceivableError BEFORE runTransaction -> preserved
+  await assert.rejects(receiveInventoryStockProduction({}, fakeInput), (e) => e instanceof SourceNotReceivableError && e.code === "SOURCE_NOT_RECEIVABLE");
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);
