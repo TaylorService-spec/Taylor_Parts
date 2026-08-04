@@ -6,8 +6,8 @@ authorization**, from a clean checkout of the exact governed commit. Prepared by
 the Owner's *E2 Activation Gate Preparation* authorization, updated after the prerequisite **Gate E2-V**
 verifier + rollback tooling merged (PR #555).
 
-**Governed commit (pin):** `$E2_COMMIT` — the PR #554 merge commit (`origin/main` after this PR merges),
-bound in Phase 0.
+**Governed commit (pin):** `$E2_COMMIT` — the **exact 40-hex SHA supplied in the E2 execution
+authorization** (expected: the PR #554 merge commit), checked out **directly** in Phase 0 (not `origin/main`).
 **Project (pin):** `taylor-parts`. **Region (pin):** `us-central1`.
 
 This gate deploys and verifies the **backend** for Receiving: the `receiving_orders` deny-client Rules, the
@@ -26,7 +26,7 @@ sanitized evidence) — no ad-hoc checks.
 
 | Item | Value |
 |---|---|
-| Governed commit | **PR #554 merge commit** (`origin/main` after this PR merges — the commit at which this runbook and all E2/E2-V tooling coexist); Phase 0 checks it out and binds it as `$E2_COMMIT` |
+| Governed commit | The **exact 40-hex SHA supplied verbatim in the E2 execution authorization** (expected value: the PR #554 merge commit — the commit at which this runbook and all E2/E2-V tooling coexist). Phase 0 checks out **that exact SHA directly** (detached), never `origin/main`, and binds it as `$E2_COMMIT` |
 | Project / region | `taylor-parts` / `us-central1` |
 | Rules artifact | `firestore.rules` (root) + byte-identical mirror `field-ops-app-vite/firestore.rules` |
 | Rules **content** sha256 | `ec1f0a9b78d937d1eff1aef6c2588b20a0dc77501b392e560b491e7c13b1ccd1` |
@@ -107,9 +107,15 @@ Run each phase as one block; **pause and compare with the expected output** befo
 node -v                                   # v20.x
 gcloud config get-value project           # taylor-parts
 firebase projects:list                    # shows access to taylor-parts
-# Check out the PR #554 merge commit (origin/main after this PR merges) and bind it.
-git fetch origin && git checkout origin/main && git status --porcelain   # prints nothing
-E2_COMMIT=$(git rev-parse HEAD) && echo "E2_COMMIT: $E2_COMMIT"   # the governed commit for this run
+# Check out the EXACT Owner-authorized commit (supplied verbatim in the E2 execution authorization) --
+# NOT origin/main, which could have advanced past the reviewed PR #554 merge commit with unreviewed changes.
+E2_COMMIT="<OWNER_AUTHORIZED_EXACT_40_SHA>"          # paste the exact 40-hex SHA from the E2 execution auth
+test "$E2_COMMIT" != "<OWNER_AUTHORIZED_EXACT_40_SHA>"   # fail closed if the placeholder was not replaced
+git fetch origin
+git cat-file -e "${E2_COMMIT}^{commit}"              # the commit exists
+git checkout --detach "$E2_COMMIT"
+test "$(git rev-parse HEAD)" = "$E2_COMMIT" && echo E2-COMMIT-CHECKED-OUT
+test -z "$(git status --porcelain)" && echo TREE-CLEAN
 cd functions && npm ci && npm run build && cd ..
 # Reviewed-tool integrity: the E2/E2-V tools must be byte-exactly the versions reviewed in PR #554.
 for f in functions/scripts/receivingE2VerifierCli.js functions/scripts/verifyReceivingE2Deployment.js \
@@ -119,9 +125,10 @@ for f in functions/scripts/receivingE2VerifierCli.js functions/scripts/verifyRec
 done
 ```
 
-**Expected:** `origin/main` reflects the merged PR #554; working tree clean; build succeeds; `$E2_COMMIT`
-recorded. Compare the printed tool hashes to the **Reviewed-tool content hashes** table above. Any mismatch
-→ **STOP** (an unreviewed tool must never run against production). **PAUSE.**
+**Expected:** `E2-COMMIT-CHECKED-OUT` and `TREE-CLEAN`; `HEAD` equals the exact Owner-authorized SHA (a
+detached checkout of that commit, NOT whatever `origin/main` currently points to); build succeeds. Compare
+the printed tool hashes to the **Reviewed-tool content hashes** table above. Any mismatch, or `HEAD` ≠ the
+authorized SHA → **STOP** (an unreviewed baseline/tool must never run against production). **PAUSE.**
 
 ## Phase 1 — Reconfirm preconditions + capture the hash-bound pre-deploy Functions inventory
 
@@ -162,11 +169,15 @@ mkdir -p rollback && TOKEN=$(gcloud auth print-access-token) \
  && REL=$(curl -s -H "Authorization: Bearer $TOKEN" "https://firebaserules.googleapis.com/v1/projects/taylor-parts/releases" | python3 -c "import sys,json; rs=json.load(sys.stdin)['releases']; m=[r for r in rs if r['name']=='projects/taylor-parts/releases/cloud.firestore']; assert len(m)==1, f'expected exactly one cloud.firestore release, got {len(m)}'; print(m[0]['rulesetName'])") \
  && curl -s -H "Authorization: Bearer $TOKEN" "https://firebaserules.googleapis.com/v1/$REL" > rollback/baseline-ruleset.json \
  && node functions/scripts/firestoreRulesSourceHashCli.js --in rollback/baseline-ruleset.json | tee e2-evidence/pre-deploy-rules-hash.json
-BASELINE_RULES_SHA=$(python3 -c 'import sys,json;print(json.load(open("e2-evidence/pre-deploy-rules-hash.json"))["contentSha256"])') && echo "baseline rules sha256: $BASELINE_RULES_SHA"
 # Build a self-contained, source-bound rollback config so R1 deploys EXACTLY the captured baseline
-# (never the governed working tree via parent firebase.json discovery).
+# (never the governed working tree via parent firebase.json discovery). Write the baseline content verbatim.
 python3 -c "import json;open('rollback/firestore.rules','w').write(json.load(open('rollback/baseline-ruleset.json'))['source']['files'][0]['content'])"
 printf '{"firestore":{"rules":"firestore.rules"}}\n' > rollback/firebase.json
+# Record BOTH rollback-artifact hashes (source + config). R1 fails closed if either changes before deploy.
+BASELINE_RULES_SHA=$(sha256sum rollback/firestore.rules | cut -d' ' -f1)
+ROLLBACK_CONFIG_SHA=$(sha256sum rollback/firebase.json | cut -d' ' -f1)
+printf '%s  %s\n%s  %s\n' "$BASELINE_RULES_SHA" "rollback/firestore.rules" "$ROLLBACK_CONFIG_SHA" "rollback/firebase.json" > /secure/local/rollback/rules-rollback-artifacts.sha256
+echo "baseline rules sha256: $BASELINE_RULES_SHA ; rollback config sha256: $ROLLBACK_CONFIG_SHA"
 # 2b. Baseline diff — the exact delta the deploy will introduce (Owner-reviewed at Phase 2.5).
 diff rollback/firestore.rules <(git show HEAD:firestore.rules) > e2-evidence/rules-baseline.diff || echo "REVIEW-DELTA in e2-evidence/rules-baseline.diff"
 git show HEAD:firestore.rules | grep -nE "match /receiving_orders|allow read, create, update, delete: if false"
@@ -348,9 +359,16 @@ already landed via PR #552; readiness stays `false` throughout E2.)
 
 - **R1 — Rules (Phase 2/2.5/3):** redeploy the **captured baseline**, bound to the rollback config's own
   source file via `--config` (never the governed working tree — `--config` roots Rules-source resolution at
-  the rollback dir, not a parent `firebase.json`). Then re-fetch and prove the live content hash equals the
-  baseline hash recorded in Phase 2a; fail closed otherwise. The callables are unaffected (not yet deployed).
+  the rollback dir, not a parent `firebase.json`). **Fail closed BEFORE deploying** if the captured source,
+  the config, or either hash changed since Phase 2a; then deploy; then re-fetch and prove the live content
+  hash equals the baseline hash. The callables are unaffected (not yet deployed).
   ```bash
+  # Pre-deploy guards: the rollback artifacts must be byte-exactly what Phase 2a captured (else deploying
+  # would replace production Rules with unintended content, detected only afterward).
+  test -f rollback/firestore.rules && test -f rollback/firebase.json
+  test "$(sha256sum rollback/firestore.rules | cut -d' ' -f1)" = "$BASELINE_RULES_SHA"
+  test "$(sha256sum rollback/firebase.json | cut -d' ' -f1)" = "$ROLLBACK_CONFIG_SHA"
+  python3 -c "import json; assert json.load(open('rollback/firebase.json')) == {'firestore': {'rules': 'firestore.rules'}}, 'unexpected rollback Firebase configuration'"
   firebase deploy --only firestore:rules --project taylor-parts --config rollback/firebase.json
   TOKEN=$(gcloud auth print-access-token) \
    && REL=$(curl -s -H "Authorization: Bearer $TOKEN" "https://firebaserules.googleapis.com/v1/projects/taylor-parts/releases" | python3 -c "import sys,json; rs=json.load(sys.stdin)['releases']; m=[r for r in rs if r['name']=='projects/taylor-parts/releases/cloud.firestore']; assert len(m)==1; print(m[0]['rulesetName'])") \
@@ -376,12 +394,27 @@ already landed via PR #552; readiness stays `false` throughout E2.)
   Escalate to the Owner with the rollback dir path before any retry.
 
 - **R3 — Callables (Phase 7/8):** first-time deploy → recovery is **delete exactly these two**, returning
-  to the exported-but-undeployed state (no client path; readiness `false`). Verify against
-  `e2-evidence/functions-before.json`.
+  to the exported-but-undeployed state (no client path; readiness `false`). Prove recovery by NORMALIZED
+  inventory equality: re-capture the live inventory, sanitize it with the committed
+  `functionsInventorySanitizeCli`, verify the hash-bound sanitized pre-deploy baseline ($PRE_INV_SHA), and
+  require the post-rollback sanitized inventory to be byte-identical to it (deterministic sorted output, so
+  equality is exact normalized-inventory equality — both callables absent, no pre-existing function removed
+  or changed).
   ```bash
   for fn in receiveInventoryStock listReceivingLocationOptions; do
     firebase functions:delete "$fn" --project taylor-parts --region us-central1 --force
   done
+  gcloud functions list --project taylor-parts --format json > /secure/local/rollback/functions-after-r3.raw.json
+  node functions/scripts/functionsInventorySanitizeCli.js \
+    --in /secure/local/rollback/functions-after-r3.raw.json \
+    --out /secure/local/rollback/functions-after-r3.sanitized.json
+  # Baseline integrity: the sanitized pre-deploy inventory is still the reviewed, hash-bound artifact.
+  test "$(sha256sum e2-evidence/functions-before.sanitized.json | cut -d' ' -f1)" = "$PRE_INV_SHA"
+  # Exact normalized equality (governing result) + explicit callable-absence assertions.
+  cmp e2-evidence/functions-before.sanitized.json /secure/local/rollback/functions-after-r3.sanitized.json
+  ! grep -q '"name": "receiveInventoryStock"' /secure/local/rollback/functions-after-r3.sanitized.json
+  ! grep -q '"name": "listReceivingLocationOptions"' /secure/local/rollback/functions-after-r3.sanitized.json
+  echo FUNCTIONS-ROLLBACK-EQUALS-PREDEPLOY-BASELINE
   ```
 
 ## Evidence schema (sanitized — no tokens/keys/passwords/PII; rollback snapshots excluded)
