@@ -2,7 +2,7 @@
 // is pure logic (no Firebase/DOM); this file is placed under test/ with a .test.jsx extension so
 // the existing vitest runner (test:components) auto-discovers it -- it contains no JSX/rendering.
 import { describe, it, expect } from "vitest";
-import { adaptReceivingLocationOptions, isPathSafeIdSegment, RECEIVING_LOCATION_TYPE, __test__ } from "../src/domain/receivingLocationOptionAdapter.js";
+import { adaptReceivingLocationOptions, isBackendValidIdSegment, RECEIVING_LOCATION_TYPE, __test__ } from "../src/domain/receivingLocationOptionAdapter.js";
 
 const OK = (value, label) => ({ value, label, type: "WAREHOUSE" });
 
@@ -82,33 +82,49 @@ describe("adaptReceivingLocationOptions -- exact keys + type", () => {
   });
 });
 
-describe("adaptReceivingLocationOptions -- value must be a path-safe id segment", () => {
+// The Customer adapter MIRRORS the merged I-LA5 backend single-segment ID predicate exactly
+// (no stricter Customer identity authority). These boundary cases must agree on both sides.
+describe("adaptReceivingLocationOptions -- value id: backend-predicate parity", () => {
+  const CTRL = "WH" + String.fromCharCode(1) + "1"; // control char accepted by the backend
+  const DEL = "WH" + String.fromCharCode(127) + "1"; // DEL accepted by the backend
   it.each([
-    ["contains slash", "a/b"],
-    ["dot", "."],
-    ["dotdot", ".."],
-    ["reserved __x__", "__name__"],
-    ["leading space", " WH-1"],
-    ["trailing space", "WH-1 "],
-    ["empty", ""],
-    ["whitespace only", "   "],
-    ["non-string number", 5],
-    ["non-string null", null],
-    ["control char U+0001", "WH" + String.fromCharCode(1) + "-1"],
-    ["DEL char U+007F", "WH" + String.fromCharCode(127) + "-1"],
-    ["too long", "x".repeat(1501)],
-  ])("value %s -> fails closed", (_l, value) => {
-    expect(adaptReceivingLocationOptions([{ value, label: "L", type: "WAREHOUSE" }])).toEqual({ ok: false, options: [] });
+    // [label, value, backendValid]
+    ["simple", "WH-1", true],
+    ["dot inside", "WH.1", true],
+    ["underscores (not reserved)", "_WH_1_", true],
+    ["leading whitespace (trim-nonblank)", " WH-1", true],
+    ["trailing whitespace (trim-nonblank)", "WH-1 ", true],
+    ["surrounding whitespace", " WH-1 ", true],
+    ["internal whitespace", "WH 1", true],
+    ["control char U+0001 (backend-accepted)", CTRL, true],
+    ["DEL U+007F (backend-accepted)", DEL, true],
+    ["max length 1500 bytes", "x".repeat(1500), true],
+    ["contains slash", "a/b", false],
+    ["dot", ".", false],
+    ["dotdot", "..", false],
+    ["reserved __x__", "__name__", false],
+    ["empty", "", false],
+    ["whitespace only", "   ", false],
+    ["too long 1501", "x".repeat(1501), false],
+  ])("id %s -> predicate and adapter agree", (_l, value, backendValid) => {
+    expect(isBackendValidIdSegment(value)).toBe(backendValid);
+    expect(adaptReceivingLocationOptions([{ value, label: "L", type: "WAREHOUSE" }]).ok).toBe(backendValid);
   });
 
   it.each([
-    ["simple", "WH-1"],
-    ["dot inside", "WH.1"],
-    ["underscores not reserved", "_WH_1_"],
-    ["max length", "x".repeat(1500)],
-  ])("value %s -> path-safe", (_l, value) => {
-    expect(isPathSafeIdSegment(value)).toBe(true);
-    expect(adaptReceivingLocationOptions([{ value, label: "L", type: "WAREHOUSE" }]).ok).toBe(true);
+    ["non-string number", 5],
+    ["non-string null", null],
+    ["non-string object", {}],
+  ])("non-string value %s -> fails closed", (_l, value) => {
+    expect(isBackendValidIdSegment(value)).toBe(false);
+    expect(adaptReceivingLocationOptions([{ value, label: "L", type: "WAREHOUSE" }])).toEqual({ ok: false, options: [] });
+  });
+
+  it("preserves a backend-valid whitespace-bearing ID VERBATIM (value never trimmed)", () => {
+    const r = adaptReceivingLocationOptions([{ value: " WH-1 ", label: "  Central  ", type: "WAREHOUSE" }]);
+    expect(r.ok).toBe(true);
+    expect(r.options[0].value).toBe(" WH-1 "); // whitespace preserved verbatim
+    expect(r.options[0].label).toBe("Central"); // label still trimmed for display
   });
 });
 

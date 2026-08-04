@@ -33,26 +33,23 @@ function byteLength(s) {
   return new TextEncoder().encode(s).length;
 }
 
-// True if `s` contains a C0 control character (U+0000..U+001F) or DEL (U+007F). Implemented by
-// code point (not a literal control-char regex) so the source carries no control bytes.
-function hasControlChar(s) {
-  for (let i = 0; i < s.length; i++) {
-    const c = s.charCodeAt(i);
-    if (c <= 0x1f || c === 0x7f) return true;
-  }
-  return false;
-}
-
-// A `value` must be a non-blank, path-safe SINGLE document-ID segment: a string with no
-// surrounding whitespace, no "/" (single segment), not "."/"..", not a Firestore-reserved
-// __…__ id, no control characters, and within the Firestore id byte limit. The value is an
-// identity and is NEVER trimmed/normalized -- surrounding whitespace fails closed.
-export function isPathSafeIdSegment(v) {
+// A `value` must satisfy EXACTLY the merged I-LA5 backend single-segment ID predicate. The
+// Customer adapter MIRRORS that authoritative contract and never invents a stricter identity
+// authority: a value the trusted I-LA4 service accepts must not be rejected here, or one
+// governed warehouse would fail-close every otherwise-valid Receiving option. The predicate:
+//   - a string that is TRIM-NONBLANK (surrounding whitespace is allowed, and the value is
+//     PRESERVED VERBATIM -- never trimmed/normalized);
+//   - contains no "/" (single segment);
+//   - is not "." or "..";
+//   - does not match the Firestore-reserved /^__.*__$/;
+//   - is <= 1500 UTF-8 bytes.
+// Control characters and DEL are intentionally NOT rejected -- the merged backend accepts them,
+// so the frontend must too (parity, not a stricter Customer authority).
+export function isBackendValidIdSegment(v) {
   if (typeof v !== "string") return false;
-  if (v.length === 0 || v !== v.trim()) return false;
-  if (v === "." || v === "..") return false;
+  if (v.trim() === "") return false;
   if (v.includes("/")) return false;
-  if (hasControlChar(v)) return false;
+  if (v === "." || v === "..") return false;
   if (RESERVED_ID.test(v)) return false;
   if (byteLength(v) > MAX_ID_BYTES) return false;
   return true;
@@ -71,7 +68,7 @@ function validateOption(row) {
   if (!isPlainObject(row)) return null;
   if (!hasExactKeys(row)) return null;
   if (row.type !== RECEIVING_LOCATION_TYPE) return null;
-  if (!isPathSafeIdSegment(row.value)) return null;
+  if (!isBackendValidIdSegment(row.value)) return null;
   if (typeof row.label !== "string" || row.label.trim() === "") return null;
   return Object.freeze({ value: row.value, label: row.label.trim(), type: RECEIVING_LOCATION_TYPE });
 }
@@ -105,4 +102,4 @@ export function adaptReceivingLocationOptions(input) {
 }
 
 // Exported for focused tests only.
-export const __test__ = Object.freeze({ isPathSafeIdSegment, RECEIVING_LOCATION_TYPE });
+export const __test__ = Object.freeze({ isBackendValidIdSegment, RECEIVING_LOCATION_TYPE });
