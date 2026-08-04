@@ -39,14 +39,20 @@ await check("assertConfig fail-closed on bad pins", () => {
   assert.doesNotThrow(() => core.assertConfig(CONFIG));
 });
 
-await check("extractRulesSourceStrict requires EXACTLY one firestore.rules source file (P2-2)", () => {
+await check("extractRulesSourceStrict requires EXACTLY one file named EXACTLY firestore.rules (P2-2, round 2)", () => {
   const ok = { source: { files: [{ name: "firestore.rules", content: "rules_version = '2';\n" }] } };
-  assert.equal(core.extractRulesSourceStrict(ok).startsWith("rules_version"), true);
-  // extra file is now REJECTED (structure must be exactly one file).
+  assert.equal(core.extractRulesSourceStrict(ok).startsWith("rules_version"), true);       // exact name accepted
+  // suffix-but-not-exact names are REJECTED (no unrestricted endsWith).
+  assert.throws(() => core.extractRulesSourceStrict({ source: { files: [{ name: "evilfirestore.rules", content: "rules_version='2'" }] } }));
+  assert.throws(() => core.extractRulesSourceStrict({ source: { files: [{ name: "archive/firestore.rules", content: "rules_version='2'" }] } }));
+  // extra file rejected (structure must be exactly one file).
   assert.throws(() => core.extractRulesSourceStrict({ source: { files: [{ name: "a.rules", content: "x" }, { name: "firestore.rules", content: "rules_version='2'" }] } }));
+  // wrong name / blank name / missing name / malformed content / empty set.
   assert.throws(() => core.extractRulesSourceStrict({ source: { files: [{ name: "other", content: "rules_version='2'" }] } }));
-  assert.throws(() => core.extractRulesSourceStrict({ source: { files: [] } }));
+  assert.throws(() => core.extractRulesSourceStrict({ source: { files: [{ name: "", content: "rules_version='2'" }] } }));
+  assert.throws(() => core.extractRulesSourceStrict({ source: { files: [{ content: "rules_version='2'" }] } }));
   assert.throws(() => core.extractRulesSourceStrict({ source: { files: [{ name: "firestore.rules", content: "nope" }] } }));
+  assert.throws(() => core.extractRulesSourceStrict({ source: { files: [] } }));
 });
 
 await check("interpretDeploymentDelta: exact +2 pass; extra/removed/changed/duplicate/wrong-region fail (P1-2)", () => {

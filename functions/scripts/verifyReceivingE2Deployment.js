@@ -41,7 +41,11 @@ function extractRulesSourceStrict(apiPayload) {
   const files = apiPayload && apiPayload.source && apiPayload.source.files;
   if (!Array.isArray(files) || files.length !== 1) throw new VerificationError(`expected exactly one Rules source file, found ${Array.isArray(files) ? files.length : "none"}`);
   const only = files[0];
-  if (!only || !String(only.name || "").endsWith("firestore.rules")) throw new VerificationError("the single Rules source file is not named firestore.rules");
+  // Exact filename -- NOT a suffix match. `evilfirestore.rules` and `archive/firestore.rules` are rejected.
+  // (The Firebase Rules GetRelease/GetRuleset representation names the deployed source file exactly
+  // "firestore.rules"; if that contract ever changes, normalize that specific documented representation
+  // here rather than loosening to a suffix.)
+  if (!only || only.name !== "firestore.rules") throw new VerificationError(`the single Rules source file must be named exactly firestore.rules (got ${JSON.stringify(only && only.name)})`);
   const content = only.content;
   if (typeof content !== "string" || !content.startsWith("rules_version")) throw new VerificationError("live Rules source is empty or malformed");
   return content;

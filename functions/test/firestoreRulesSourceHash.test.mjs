@@ -18,9 +18,13 @@ await check("hashRulesPayload: exactly one firestore.rules -> content sha256", (
   assert.equal(r.byteLength, Buffer.byteLength(RULES, "utf8"));
 });
 
-await check("hashRulesPayload FAILS CLOSED: extra file / wrong name / empty / malformed / bad JSON", () => {
+await check("hashRulesPayload FAILS CLOSED: suffix-not-exact / extra / wrong / blank / malformed / bad JSON (P2-2 round 2)", () => {
+  // exact-name enforcement through the OPERATOR path (not just the helper).
+  assert.throws(() => cli.hashRulesPayload(payload([{ name: "evilfirestore.rules", content: RULES }])));
+  assert.throws(() => cli.hashRulesPayload(payload([{ name: "archive/firestore.rules", content: RULES }])));
   assert.throws(() => cli.hashRulesPayload(payload([{ name: "a.rules", content: "x" }, { name: "firestore.rules", content: RULES }])));
   assert.throws(() => cli.hashRulesPayload(payload([{ name: "other.rules", content: RULES }])));
+  assert.throws(() => cli.hashRulesPayload(payload([{ name: "", content: RULES }])));
   assert.throws(() => cli.hashRulesPayload(payload([])));
   assert.throws(() => cli.hashRulesPayload(payload([{ name: "firestore.rules", content: "not-rules" }])));
   assert.throws(() => cli.hashRulesPayload("{not json"));
