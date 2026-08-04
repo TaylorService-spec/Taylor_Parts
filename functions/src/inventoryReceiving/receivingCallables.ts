@@ -54,7 +54,9 @@ export function validateReceiveRequest(data: unknown): Record<string, unknown> {
   if (loc.type !== "WAREHOUSE") throw invalidArg("receivingLocation.type is invalid.");
   if (!isNonBlankString(loc.locationId)) throw invalidArg("receivingLocation.locationId is invalid.");
   const lines = data.lines;
-  if (!Array.isArray(lines) || lines.length === 0) throw invalidArg("lines must be a non-empty array.");
+  // First slice: exactly one line. Empty or multiple lines are an invalid payload (invalid-argument),
+  // rejected at the callable boundary before authorization or any Firestore read.
+  if (!Array.isArray(lines) || lines.length !== 1) throw invalidArg("lines must contain exactly one line.");
   for (const line of lines) {
     if (!isPlainObject(line) || !noUnknownKeys(line, LINE_KEYS)) throw invalidArg("a line is missing or has unknown fields.");
     if (!isNonBlankString(line.lineId)) throw invalidArg("line.lineId is invalid.");
@@ -66,9 +68,9 @@ export function validateReceiveRequest(data: unknown): Record<string, unknown> {
   return data;
 }
 
-// Options request must be the exact empty payload {} (or no payload). Any field is invalid-argument.
+// Options request must be the EXACT empty object {}. null/undefined/arrays/primitives/any keyed object
+// are invalid-argument (the client must explicitly send {}).
 export function validateEmptyRequest(data: unknown): void {
-  if (data === undefined || data === null) return;
   if (!isPlainObject(data) || Object.keys(data).length > 0) throw invalidArg("This request takes no fields.");
 }
 

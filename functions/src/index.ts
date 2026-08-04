@@ -113,7 +113,10 @@ export {
 // inventory.stock.receive capability, which is REGISTERED BUT UNGRANTED -- so every real user is denied
 // until a separate grant gate. The receive callable runs the pinned §3A ACTIVE-warehouse resolver; the
 // option callable serves sanitized eligible options from the trusted backend (no client warehouses read).
+// Firebase deploys each callable under its exported index property name, so these MUST be the exact
+// frozen public names (no "Callable" suffix). The suffixed implementation consts are aliased here and are
+// NOT otherwise exposed as callable surfaces.
 export {
-  receiveInventoryStockCallable,
-  listReceivingLocationOptionsCallable,
+  receiveInventoryStockCallable as receiveInventoryStock,
+  listReceivingLocationOptionsCallable as listReceivingLocationOptions,
 } from "./inventoryReceiving/receivingCallables";

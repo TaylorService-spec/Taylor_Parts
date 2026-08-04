@@ -2,9 +2,6 @@
 // (functions/src/inventoryReceiving/receivingCallables.ts). PURE: no Firebase app, no emulator. Also
 // asserts the two callables are exported from the compiled entry point. Prerequisite: npm run build.
 import assert from "node:assert/strict";
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import {
   validateReceiveRequest,
   validateEmptyRequest,
@@ -61,17 +58,21 @@ check("receivingLocation: wrong type / blank id / unknown field -> invalid-argum
   expectInvalid({ ...validReq(), receivingLocation: { type: "WAREHOUSE", locationId: "  " } });
   expectInvalid({ ...validReq(), receivingLocation: { type: "WAREHOUSE", locationId: "wh", nope: 1 } });
 });
-check("lines: empty / non-array / bad line -> invalid-argument", () => {
+check("lines: empty / multiple / non-array / bad line -> invalid-argument (exactly one line)", () => {
+  const good = { lineId: "L1", partId: "p", expectedQuantity: 5, receivedQuantity: 5 };
   expectInvalid({ ...validReq(), lines: [] });
+  expectInvalid({ ...validReq(), lines: [good, { ...good, lineId: "L2" }] }); // multiple -> invalid-argument
   expectInvalid({ ...validReq(), lines: "x" });
   expectInvalid({ ...validReq(), lines: [{ lineId: "L1", partId: "p", expectedQuantity: "5", receivedQuantity: 5 }] });
   expectInvalid({ ...validReq(), lines: [{ lineId: "L1", partId: "p", expectedQuantity: 5, receivedQuantity: 5, nope: 1 }] });
   expectInvalid({ ...validReq(), lines: [{ lineId: "", partId: "p", expectedQuantity: 5, receivedQuantity: 5 }] });
 });
 
-check("validateEmptyRequest: {} / undefined / null ok; any field or non-object -> invalid-argument", () => {
-  validateEmptyRequest({}); validateEmptyRequest(undefined); validateEmptyRequest(null);
-  for (const bad of [{ a: 1 }, [], "x", 1]) assert.throws(() => validateEmptyRequest(bad), (e) => e instanceof HttpsError && e.code === "invalid-argument");
+check("validateEmptyRequest: only {} ok; null/undefined/array/primitive/keyed -> invalid-argument", () => {
+  validateEmptyRequest({});
+  for (const bad of [undefined, null, { a: 1 }, [], "x", 1, true]) {
+    assert.throws(() => validateEmptyRequest(bad), (e) => e instanceof HttpsError && e.code === "invalid-argument");
+  }
 });
 
 check("requireAuth: derives uid from request.auth only; missing/invalid -> unauthenticated", () => {
@@ -119,12 +120,7 @@ check("mapOptionsError: option-service codes -> public matrix, no raw leak", () 
   }
 });
 
-check("both callables are exported from the compiled entry point (lib/index.js)", () => {
-  const __dirname = path.dirname(fileURLToPath(import.meta.url));
-  const compiled = fs.readFileSync(path.join(__dirname, "..", "lib", "index.js"), "utf8");
-  assert.match(compiled, /receiveInventoryStockCallable/);
-  assert.match(compiled, /listReceivingLocationOptionsCallable/);
-});
+// (Compiled-entry export-name assertions live in receivingCallablesExport.test.mjs, which imports lib/index.js.)
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);

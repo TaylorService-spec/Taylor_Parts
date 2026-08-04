@@ -148,5 +148,24 @@ await check("unknown request field rejected at the callable -> invalid-argument,
   assert.equal(await reorderStatus(sc.rrid), "ORDERED");
 });
 
+await check("options handler: null/undefined/array/primitive/keyed rejected -> invalid-argument BEFORE authorization", async () => {
+  const uid = nextId("actor");
+  // resolvePermission throws if reached; a rejection with invalid-argument proves validation runs first.
+  const throwWiring = wiring(async () => { throw new Error("authorization must not run"); });
+  for (const bad of [undefined, null, [], "x", 1, { a: 1 }]) {
+    await assert.rejects(runListReceivingLocationOptions({ auth: { uid }, data: bad }, throwWiring), (e) => e instanceof HttpsError && e.code === "invalid-argument", `options data ${JSON.stringify(bad)}`);
+  }
+});
+
+await check("receive handler: empty/multiple lines rejected -> invalid-argument BEFORE authorization, zero writes", async () => {
+  const sc = await seed();
+  const line = { lineId: "L1", partId: sc.partId, expectedQuantity: 5, receivedQuantity: 5 };
+  const throwWiring = wiring(async () => { throw new Error("authorization must not run"); });
+  for (const lines of [[], [line, { ...line, lineId: "L2" }]]) {
+    await assert.rejects(runReceiveInventoryStock(callReq(sc.actorId, reqData(sc, { lines })), throwWiring), (e) => e instanceof HttpsError && e.code === "invalid-argument");
+  }
+  assert.equal(await reorderStatus(sc.rrid), "ORDERED");
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);
