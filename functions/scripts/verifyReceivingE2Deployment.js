@@ -62,6 +62,22 @@ function interpretDiscovery(afterInventory) {
   });
 }
 
+// Map a RAW `gcloud functions list --format json` payload to the SANITIZED, comparable inventory shape:
+// exactly {name, region, state, entryPoint, runtime, updateTime} per function -- dropping every other
+// operational field (env vars, service config/account, URIs, labels, build metadata). Pure + idempotent
+// (re-normalizing an already-sanitized list yields the same list), so it is safe to feed either raw gcloud
+// output or a previously-sanitized artifact through it. Used by the verifier, the inventory sanitizer CLI,
+// and the exact-delta comparison.
+function normalizeGcloudInventory(list) {
+  return (Array.isArray(list) ? list : []).map((fn) => {
+    const rawName = String((fn && fn.name) || "");
+    const name = rawName.split("/").pop();
+    const region = rawName.includes("/locations/") ? rawName.split("/locations/")[1].split("/")[0] : ((fn && fn.region) || "");
+    const build = (fn && fn.buildConfig) || {};
+    return { name, region, state: (fn && fn.state) || "", entryPoint: build.entryPoint || (fn && fn.entryPoint) || "", runtime: build.runtime || (fn && fn.runtime) || "", updateTime: (fn && fn.updateTime) || "" };
+  });
+}
+
 // Normalize a COMPLETE gcloud functions inventory to a stable, comparable shape; reject duplicates/malformed.
 function normalizeInventory(list, whichSide) {
   if (!Array.isArray(list)) throw new VerificationError(`${whichSide} functions inventory is not an array`);
@@ -172,6 +188,37 @@ async function runVerification(deps) {
   return { report, pass, matrixTotal: MATRIX_TOTAL };
 }
 
+// Pre-migration RULES-DENIAL-ONLY gate (P1-1): prove receiving_orders denies ALL clients -- unauthenticated
+// AND authenticated (the same governed E2 persona the full verifier uses) -- BEFORE the irreversible
+// migration. Fail-closed: pass iff every probe is exactly 403 AND receiving_orders is unchanged (no
+// successful write). Needs no deployed callables or Functions inventory, so it can run at Phase 3.
+// deps: { config, probeRules, readReceivingOrderIds, log? }
+async function runRulesDenialOnly(deps) {
+  const { config, probeRules, readReceivingOrderIds, log = () => {} } = deps;
+  assertConfig(config);
+  const beforeIds = await readReceivingOrderIds();
+  const rulesRows = [];
+  for (const row of RULES_DENIAL_CASES) rulesRows.push(interpretRulesDenial(row, await probeRules(row)));
+  const afterIds = await readReceivingOrderIds();
+  const unchanged = interpretReceivingOrdersUnchanged(beforeIds, afterIds);
+  const total = RULES_DENIAL_CASES.length + 1;
+  const passedCount = rulesRows.filter((r) => r.pass).length + (unchanged.pass ? 1 : 0);
+  const pass = passedCount === total;
+  log(`rules-denial: ${rulesRows.filter((r) => r.pass).length}/${RULES_DENIAL_CASES.length} == 403; receiving_orders ${unchanged.pass ? "unchanged" : "CHANGED"}`);
+  const report = {
+    kind: "receiving-e2-rules-denial",
+    project: EXPECTED_PROJECT,
+    governedCommit: config.governedCommit,
+    total,
+    passed: passedCount,
+    pass,
+    rulesDenial: { total: rulesRows.length, passed: rulesRows.filter((r) => r.pass).length, results: rulesRows.map((r) => ({ label: r.label, principal: r.principal, method: r.method, expectedStatus: r.expectedStatus, status: r.status, pass: r.pass })) },
+    receivingOrdersUnchanged: unchanged,
+  };
+  assertEvidenceSecretFree(report);
+  return { report, pass, total };
+}
+
 module.exports = {
   EXPECTED_PROJECT,
   EXPECTED_REGION,
@@ -180,9 +227,11 @@ module.exports = {
   interpretDiscovery,
   interpretDeploymentDelta,
   normalizeInventory,
+  normalizeGcloudInventory,
   interpretRulesDenial,
   interpretCallableDenial,
   interpretReceivingOrdersUnchanged,
   receivingOrdersFingerprint,
   runVerification,
+  runRulesDenialOnly,
 };
