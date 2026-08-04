@@ -70,6 +70,12 @@ const SHARED_ADMIN_DISPATCHER_BASE_PERMISSIONS = [
   "inventory.transaction.read",
   "inventory.action.read",
   "inventory.action.create",
+  // EI Phase-2 Receiving -- Capability Grant Gate: grant inventory.stock.receive to the governed ADMIN
+  // and DISPATCHER roles ONLY (both spread this shared base; technician + operational roles do NOT hold
+  // it). First slice; PARTS_ASSOCIATE remains DEFERRED until a separately ratified scoped model exists or
+  // the Owner explicitly accepts global Receiving authority. Uses the existing E1 global capability
+  // target; accessVersion + active-status revocation are enforced by resolveEffectivePermission.
+  "inventory.stock.receive",
   // Spec §27.3 -- additive-only: reproduces admin/dispatcher's already-
   // existing, unchanged `warehouses`/`stock_locations`/`transfer_orders`
   // read grant (Epic 4), not a new capability. Required to keep this

@@ -1,0 +1,93 @@
+name: Receiving Capability Grant Gate Tests
+
+# EI Phase-2 Receiving -- Capability Grant Gate: grants inventory.stock.receive to the governed admin +
+# dispatcher compatibility Roles (functions/src/access/compatibilityRoles.ts). Offline + Firestore-
+# emulator tests: NO deployment, NO production. Runs the grant-gate + registration + A3 exhaustiveness
+# oracle offline, the end-to-end callable grant/revocation on the emulator, and the full access-decision
+# regression suite (governedBusinessRoles / shadow parity / compact claims).
+
+on:
+  pull_request:
+    paths:
+      - "functions/src/access/**"
+      - "functions/src/inventoryReceiving/**"
+      - "functions/src/warehouseGovernance/**"
+      - "functions/src/partMaster/**"
+      - "functions/test/receivingGrantGate.test.mjs"
+      - "functions/test/receivingGrantGateEmulator.test.mjs"
+      - "functions/test/receivingCapabilityRegistration.test.mjs"
+      - "functions/test/resolveEffectivePermission.test.mjs"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - ".github/workflows/receiving-grant-gate-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/src/access/**"
+      - "functions/src/inventoryReceiving/**"
+      - "functions/src/warehouseGovernance/**"
+      - "functions/src/partMaster/**"
+      - "functions/test/receivingGrantGate.test.mjs"
+      - "functions/test/receivingGrantGateEmulator.test.mjs"
+      - "functions/test/receivingCapabilityRegistration.test.mjs"
+      - "functions/test/resolveEffectivePermission.test.mjs"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - ".github/workflows/receiving-grant-gate-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  receiving-grant-gate-tests:
+    name: Receiving capability grant gate tests (offline + Firestore emulator)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+
+      - name: Offline grant-gate + registration + A3 exhaustiveness oracle
+        run: npm run test:receivingGrantGate
+        working-directory: functions
+
+      - name: Access-decision regression suite (resolver / governed roles / shadow parity / claims)
+        run: npm run test:access
+        working-directory: functions
+
+      - name: Start Firestore emulator (background)
+        run: |
+          nohup node node_modules/firebase-tools/lib/bin/firebase.js emulators:start --only firestore --project taylor-parts --config ../firebase.json > /tmp/grant-gate-emulator.log 2>&1 &
+          for i in $(seq 1 60); do
+            if grep -q "All emulators ready" /tmp/grant-gate-emulator.log 2>/dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "Emulator did not become ready in time"
+          cat /tmp/grant-gate-emulator.log
+          exit 1
+        working-directory: functions
+
+      - name: End-to-end grant/revocation through the callables (build + run)
+        run: npm run test:receivingGrantGateEmulator
+        working-directory: functions
+
+      - name: Upload emulator debug logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: grant-gate-emulator-logs
+          path: |
+            /tmp/grant-gate-emulator.log
+            functions/firestore-debug.log
+          if-no-files-found: ignore

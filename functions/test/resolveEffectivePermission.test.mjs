@@ -84,8 +84,9 @@ function buildDeferredForNow(catalog) {
     ...catalog.filter((p) => p.id.startsWith("report.")).map((p) => p.id),
     ...catalog.filter((p) => p.id.startsWith("inventory.catalog.")).map((p) => p.id),
     ...catalog.filter((p) => p.id.startsWith("equipment.")).map((p) => p.id),
-    // EI Phase-2 Receiving (Phase C): EXACT id, NOT an inventory.stock.* prefix.
-    "inventory.stock.receive",
+    // NOTE: inventory.stock.receive is NO LONGER deferred -- the Capability Grant Gate granted it to the
+    // ADMIN + DISPATCHER compatibility Roles, so it is now accounted-for via SEEDED_GRANTED_IDS (derived
+    // from those roles), NOT via this deferred set. A future inventory.stock.* stays UNACCOUNTED (A3-inv).
     // AUTH-PR-3.5 (DECISIONS #56): registered `active: false`, granted to NO Role.
     "admin.credentialReset.initiate",
   ]);
@@ -98,7 +99,7 @@ function unaccountedIds(catalog) {
 }
 
 // --- A3: every catalog id is accounted for by a seeded Role or is deferred-by-design ---
-check("A3: every Permission id is granted by at least one compatibility Role, or is deferred-by-design (audit.event.read, report.*, inventory.catalog.*, equipment.*, inventory.stock.receive, admin.credentialReset.initiate)", () => {
+check("A3: every Permission id is granted by at least one compatibility Role, or is deferred-by-design (audit.event.read, report.*, inventory.catalog.*, equipment.*, admin.credentialReset.initiate) -- inventory.stock.receive is now GRANTED (admin/dispatcher), not deferred", () => {
   assert.deepEqual(unaccountedIds(PERMISSION_CATALOG), [], "every catalog id must be granted or explicitly deferred-by-design");
 });
 
@@ -113,7 +114,8 @@ check("A3-inv: a synthetic future inventory.stock.* capability is reported UNACC
   const unaccounted = unaccountedIds(augmented);
   assert.equal(unaccounted.includes("inventory.stock.transferOut"), true,
     "a future inventory.stock.* must be reported UNACCOUNTED until separately enumerated (broadening the exact exception to inventory.stock.* would make this fail)");
-  // The reviewed capability remains accounted-for (deferred-by-design), i.e. NOT reported unaccounted.
+  // The reviewed capability remains accounted-for -- now via GRANT (admin/dispatcher), not deferral --
+  // i.e. NOT reported unaccounted.
   assert.equal(unaccounted.includes("inventory.stock.receive"), false);
 });
 
