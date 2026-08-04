@@ -44,7 +44,8 @@ const reqData = (sc) => ({ source: { type: "REORDER_PURCHASE_ORDER", reorderRequ
 const callReq = (uid, data) => ({ auth: { uid }, data });
 const reorderStatus = async (rrid) => (await db.collection("reorder_requests").doc(rrid).get()).data().status;
 
-for (const role of ["admin", "dispatcher"]) {
+// owner is Owner-ratified as an inherited holder (owner >= admin).
+for (const role of ["admin", "dispatcher", "owner"]) {
   await check(`${role} roleAssignment -> receive APPLIED + options returns (real governed grant)`, async () => {
     const sc = await seedReceive();
     const uid = nextId("actor"); await grantRole(uid, role);
@@ -88,6 +89,27 @@ await check("revocation (deactivate the assignment) prevents BOTH receive and op
   assert.ok((await runListReceivingLocationOptions(callReq(uid, {}), wiring)).options.some((o) => o.value === sc.wh));
   // revoke
   await db.collection("roleAssignments").doc(asgId).update({ status: "inactive" });
+  await assert.rejects(runReceiveInventoryStock(callReq(uid, reqData(sc)), wiring), (e) => e instanceof HttpsError && e.code === "permission-denied");
+  await assert.rejects(runListReceivingLocationOptions(callReq(uid, {}), wiring), (e) => e instanceof HttpsError && e.code === "permission-denied");
+  assert.equal(await reorderStatus(sc.rrid), "ORDERED");
+});
+
+await check("OWNER stale accessVersion -> permission-denied (inherited holder, same enforcement)", async () => {
+  const sc = await seedReceive();
+  const uid = nextId("actor");
+  await db.collection("users").doc(uid).set({ accessVersion: 1 });
+  await grantRole(uid, "owner", { accessVersionAtGrant: 2 }); // ahead of current -> stale
+  await assert.rejects(runReceiveInventoryStock(callReq(uid, reqData(sc)), wiring), (e) => e instanceof HttpsError && e.code === "permission-denied");
+  await assert.rejects(runListReceivingLocationOptions(callReq(uid, {}), wiring), (e) => e instanceof HttpsError && e.code === "permission-denied");
+});
+
+await check("OWNER revocation (deactivate the assignment) prevents BOTH receive and options", async () => {
+  const sc = await seedReceive();
+  const uid = nextId("actor");
+  const asgId = nextId("asg");
+  await db.collection("roleAssignments").doc(asgId).set({ principalUid: uid, roleId: "owner", scope: { type: "global" }, status: "active", accessVersionAtGrant: 0, grantedBy: "seed", grantedAt: TS });
+  assert.ok((await runListReceivingLocationOptions(callReq(uid, {}), wiring)).options.some((o) => o.value === sc.wh)); // granted
+  await db.collection("roleAssignments").doc(asgId).update({ status: "inactive" }); // revoke
   await assert.rejects(runReceiveInventoryStock(callReq(uid, reqData(sc)), wiring), (e) => e instanceof HttpsError && e.code === "permission-denied");
   await assert.rejects(runListReceivingLocationOptions(callReq(uid, {}), wiring), (e) => e instanceof HttpsError && e.code === "permission-denied");
   assert.equal(await reorderStatus(sc.rrid), "ORDERED");

@@ -99,7 +99,7 @@ function unaccountedIds(catalog) {
 }
 
 // --- A3: every catalog id is accounted for by a seeded Role or is deferred-by-design ---
-check("A3: every Permission id is granted by at least one compatibility Role, or is deferred-by-design (audit.event.read, report.*, inventory.catalog.*, equipment.*, admin.credentialReset.initiate) -- inventory.stock.receive is now GRANTED (admin/dispatcher), not deferred", () => {
+check("A3: every Permission id is granted by at least one compatibility Role, or is deferred-by-design (audit.event.read, report.*, inventory.catalog.*, equipment.*, admin.credentialReset.initiate) -- inventory.stock.receive is now GRANTED (admin + dispatcher direct; owner inherited), not deferred", () => {
   assert.deepEqual(unaccountedIds(PERMISSION_CATALOG), [], "every catalog id must be granted or explicitly deferred-by-design");
 });
 

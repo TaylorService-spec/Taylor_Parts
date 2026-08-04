@@ -7,6 +7,8 @@ import type { Firestore, Transaction } from "firebase-admin/firestore";
 import { resolveEffectivePermission, type TargetContext } from "../access/resolveEffectivePermission.js";
 import { COMPATIBILITY_ROLES } from "../access/compatibilityRoles.js";
 import { isValidAccessVersionValue } from "../access/compactClaims.js";
+import { GOVERNED_BUSINESS_ROLES } from "../access/governedBusinessRoles.js";
+import type { Role } from "../types/access.js";
 import { stageAuditEvent } from "../access/auditEventWriter.js";
 import { buildFirestorePartRepository } from "../partMaster/partMasterRepository.js";
 import type { PartId } from "../partMaster/types.js";
@@ -17,6 +19,11 @@ const USERS_COLLECTION = "users";
 const ROLE_ASSIGNMENTS_COLLECTION = "roleAssignments";
 // A non-scoped (global) governed capability.
 const GLOBAL_TARGET: TargetContext = { scope: { type: "global" }, condition: {} };
+// The CANONICAL governed role catalog is the merge of the compatibility roles (admin/dispatcher/technician)
+// and the governed business roles (owner, managers, ...), exactly as effectiveAccessFeed resolves. A
+// principal may hold ANY governed role, so resolution must know all of them -- e.g. the Owner-ratified
+// OWNER role (owner >= admin) holds inventory.stock.receive by composition and must resolve ALLOW.
+const RECEIVE_ROLE_CATALOG: Readonly<Record<string, Role>> = { ...COMPATIBILITY_ROLES, ...GOVERNED_BUSINESS_ROLES };
 
 // Governed authorization for inventory.stock.receive, read THROUGH the transaction so a concurrent
 // revocation conflicts the commit. Reads the actor's active roleAssignments + authoritative accessVersion,
@@ -39,7 +46,7 @@ export async function resolveReceivePermissionThroughTxn(txn: Transaction, db: F
   const result = resolveEffectivePermission({
     permissionId: RECEIVE_CAPABILITY,
     assignments,
-    roles: COMPATIBILITY_ROLES,
+    roles: RECEIVE_ROLE_CATALOG,
     currentAccessVersion: accessVersion,
     target: GLOBAL_TARGET,
   });
