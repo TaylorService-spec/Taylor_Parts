@@ -1,0 +1,85 @@
+name: Warehouse Migration + Verifier Tests
+
+# Receiving Location Authority -- I-LA3: the INERT warehouse-governance migration tooling + read-only
+# verifier (functions/src/warehouseGovernance/warehouseGovernance{Migration,Verifier,Evidence}.ts,
+# functions/scripts/warehouseGovernanceMigrationCli.js). Offline + Firestore-emulator tests only: NO
+# production, NO deployment, NO callable. The tooling is dry-run-by-default, not exported from index.ts,
+# and never runs against production. Governed by the merged §3A validator.
+
+on:
+  pull_request:
+    paths:
+      - "functions/src/warehouseGovernance/**"
+      - "functions/src/types/warehouse.ts"
+      - "functions/scripts/warehouseGovernanceMigrationCli.js"
+      - "functions/test/warehouseGovernanceMigration.test.mjs"
+      - "functions/test/warehouseGovernanceVerifier.test.mjs"
+      - "functions/test/warehouseGovernanceMigrationEmulator.test.mjs"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - ".github/workflows/warehouse-migration-verifier-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/src/warehouseGovernance/**"
+      - "functions/src/types/warehouse.ts"
+      - "functions/scripts/warehouseGovernanceMigrationCli.js"
+      - "functions/test/warehouseGovernanceMigration.test.mjs"
+      - "functions/test/warehouseGovernanceVerifier.test.mjs"
+      - "functions/test/warehouseGovernanceMigrationEmulator.test.mjs"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - ".github/workflows/warehouse-migration-verifier-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  warehouse-migration-verifier-tests:
+    name: Warehouse migration + verifier tests (offline + Firestore emulator)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+
+      - name: Offline migration + verifier unit tests
+        run: npm run test:warehouseMigration
+        working-directory: functions
+
+      - name: Start Firestore emulator (background)
+        run: |
+          nohup node node_modules/firebase-tools/lib/bin/firebase.js emulators:start --only firestore --project taylor-parts --config ../firebase.json > /tmp/warehouse-migration-emulator.log 2>&1 &
+          for i in $(seq 1 60); do
+            if grep -q "All emulators ready" /tmp/warehouse-migration-emulator.log 2>/dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "Emulator did not become ready in time"
+          cat /tmp/warehouse-migration-emulator.log
+          exit 1
+        working-directory: functions
+
+      - name: Migration staging emulator tests (build + run)
+        run: npm run test:warehouseMigrationEmulator
+        working-directory: functions
+
+      - name: Upload emulator debug logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: warehouse-migration-emulator-logs
+          path: |
+            /tmp/warehouse-migration-emulator.log
+            functions/firestore-debug.log
+          if-no-files-found: ignore
