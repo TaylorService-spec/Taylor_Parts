@@ -12,7 +12,8 @@ import {
   validateReceiveResponse,
   mapCallableErrorToStatus,
 } from "../src/domain/receivingTransport.js";
-import { fetchReceivingLocationOptions, submitReceiveInventoryStock } from "../src/services/receivingCallableClient.js";
+import { fetchReceivingLocationOptions, submitReceiveInventoryStock, __test__ as CLIENT } from "../src/services/receivingCallableClient.js";
+const { fetchOptionsCore, submitReceiveCore } = CLIENT;
 
 // A well-formed receive request carrying the exact frozen fields.
 const RECEIVE_REQ = () => ({
@@ -124,71 +125,73 @@ describe("mapCallableErrorToStatus -- frozen codes only", () => {
   });
 });
 
-describe("fetchReceivingLocationOptions -- transport", () => {
-  it("readiness false -> UNAVAILABLE, ZERO callable attempts", async () => {
-    const invoke = okInvoke({ options: [] });
-    const r = await fetchReceivingLocationOptions({ readyOverride: false, invoke });
-    expect(r).toEqual({ status: RECEIVING_OUTCOME.UNAVAILABLE, options: [] });
+// The PUBLIC production methods take no readiness override and no injectable invoker: they
+// consult ONLY the governed constant (currently false), so nothing can invoke while readiness
+// is false, and no extra option can enable invocation.
+describe("receivingCallableClient -- production readiness gate (no override)", () => {
+  it("fetchReceivingLocationOptions() -> UNAVAILABLE while readiness is false", async () => {
+    expect(await fetchReceivingLocationOptions()).toEqual({ status: RECEIVING_OUTCOME.UNAVAILABLE, options: [] });
+  });
+  it("submitReceiveInventoryStock(request) -> UNAVAILABLE while readiness is false", async () => {
+    expect(await submitReceiveInventoryStock(RECEIVE_REQ())).toEqual({ status: RECEIVING_OUTCOME.UNAVAILABLE });
+  });
+  it("passing extra options (readyOverride/invoke) to the PUBLIC API cannot enable invocation", async () => {
+    const invoke = okInvoke({ options: [{ value: "WH-1", label: "A", type: "WAREHOUSE" }] });
+    // The public methods ignore any extra argument; readiness stays governed by the constant.
+    expect(await fetchReceivingLocationOptions({ readyOverride: true, invoke })).toEqual({ status: RECEIVING_OUTCOME.UNAVAILABLE, options: [] });
+    expect(await submitReceiveInventoryStock(RECEIVE_REQ(), { readyOverride: true, invoke })).toEqual({ status: RECEIVING_OUTCOME.UNAVAILABLE });
     expect(invoke).not.toHaveBeenCalled();
   });
-  it("ready: calls the exact name with {} and adapts the options", async () => {
+});
+
+// The ready branch is exercised through the test-only invocation core (no production seam).
+describe("fetchOptionsCore -- invocation (test seam)", () => {
+  it("calls the exact name with {} and adapts the options", async () => {
     const invoke = okInvoke({ options: [{ value: "WH-2", label: "Bravo", type: "WAREHOUSE" }, { value: "WH-1", label: "Alpha", type: "WAREHOUSE" }] });
-    const r = await fetchReceivingLocationOptions({ readyOverride: true, invoke });
+    const r = await fetchOptionsCore(invoke);
     expect(invoke).toHaveBeenCalledWith("listReceivingLocationOptions", {});
     expect(r.status).toBe(RECEIVING_OUTCOME.READY);
     expect(r.options.map((o) => o.value)).toEqual(["WH-1", "WH-2"]); // adapter sorts by label
   });
   it("malformed envelope -> UNAVAILABLE", async () => {
-    const r = await fetchReceivingLocationOptions({ readyOverride: true, invoke: okInvoke({ options: 5 }) });
-    expect(r).toEqual({ status: RECEIVING_OUTCOME.UNAVAILABLE, options: [] });
+    expect(await fetchOptionsCore(okInvoke({ options: 5 }))).toEqual({ status: RECEIVING_OUTCOME.UNAVAILABLE, options: [] });
   });
   it("adapter failure (bad option row) -> UNAVAILABLE", async () => {
-    const r = await fetchReceivingLocationOptions({ readyOverride: true, invoke: okInvoke({ options: [{ value: "a/b", label: "X", type: "WAREHOUSE" }] }) });
-    expect(r).toEqual({ status: RECEIVING_OUTCOME.UNAVAILABLE, options: [] });
+    expect(await fetchOptionsCore(okInvoke({ options: [{ value: "a/b", label: "X", type: "WAREHOUSE" }] }))).toEqual({ status: RECEIVING_OUTCOME.UNAVAILABLE, options: [] });
   });
   it("maps a frozen callable error", async () => {
-    const r = await fetchReceivingLocationOptions({ readyOverride: true, invoke: throwInvoke({ code: "functions/permission-denied" }) });
-    expect(r).toEqual({ status: RECEIVING_OUTCOME.DENIED, options: [] });
+    expect(await fetchOptionsCore(throwInvoke({ code: "functions/permission-denied" }))).toEqual({ status: RECEIVING_OUTCOME.DENIED, options: [] });
   });
 });
 
-describe("submitReceiveInventoryStock -- transport", () => {
-  it("readiness false -> UNAVAILABLE, ZERO callable attempts", async () => {
-    const invoke = okInvoke({ outcome: "applied", receivingId: "R", ledgerEventId: "L" });
-    const r = await submitReceiveInventoryStock(RECEIVE_REQ(), { readyOverride: false, invoke });
-    expect(r).toEqual({ status: RECEIVING_OUTCOME.UNAVAILABLE });
-    expect(invoke).not.toHaveBeenCalled();
-  });
+describe("submitReceiveCore -- invocation (test seam)", () => {
   it("malformed request -> INVALID, ZERO callable attempts", async () => {
     const invoke = okInvoke({ outcome: "applied", receivingId: "R", ledgerEventId: "L" });
-    const r = await submitReceiveInventoryStock({ ...RECEIVE_REQ(), extra: 1 }, { readyOverride: true, invoke });
-    expect(r).toEqual({ status: RECEIVING_OUTCOME.INVALID });
+    expect(await submitReceiveCore({ ...RECEIVE_REQ(), extra: 1 }, invoke)).toEqual({ status: RECEIVING_OUTCOME.INVALID });
     expect(invoke).not.toHaveBeenCalled();
   });
   it("applied: sends exact name + sanitized payload; returns APPLIED + receipt", async () => {
     const invoke = okInvoke({ outcome: "applied", receivingId: "RCV-9", ledgerEventId: "LE-9" });
-    const r = await submitReceiveInventoryStock(RECEIVE_REQ(), { readyOverride: true, invoke });
+    const r = await submitReceiveCore(RECEIVE_REQ(), invoke);
     expect(invoke).toHaveBeenCalledWith("receiveInventoryStock", RECEIVE_REQ());
     expect(r).toEqual({ status: RECEIVING_OUTCOME.APPLIED, receipt: { outcome: "applied", receivingId: "RCV-9", ledgerEventId: "LE-9" } });
   });
   it("replayed outcome -> REPLAYED", async () => {
-    const invoke = okInvoke({ outcome: "replayed", receivingId: "RCV-9", ledgerEventId: "LE-9" });
-    const r = await submitReceiveInventoryStock(RECEIVE_REQ(), { readyOverride: true, invoke });
+    const r = await submitReceiveCore(RECEIVE_REQ(), okInvoke({ outcome: "replayed", receivingId: "RCV-9", ledgerEventId: "LE-9" }));
     expect(r.status).toBe(RECEIVING_OUTCOME.REPLAYED);
   });
   it("preserves the SAME idempotencyKey across retries (no replacement key)", async () => {
     const invoke = okInvoke({ outcome: "applied", receivingId: "R", ledgerEventId: "L" });
     const req = RECEIVE_REQ();
-    await submitReceiveInventoryStock(req, { readyOverride: true, invoke });
-    await submitReceiveInventoryStock(req, { readyOverride: true, invoke });
+    await submitReceiveCore(req, invoke);
+    await submitReceiveCore(req, invoke);
     const [k1, k2] = invoke.mock.calls.map((c) => c[1].idempotencyKey);
     expect(k1).toBe("recv-key-123");
     expect(k2).toBe("recv-key-123");
     expect(k1).toBe(k2);
   });
   it("malformed response (unknown field) -> UNAVAILABLE", async () => {
-    const r = await submitReceiveInventoryStock(RECEIVE_REQ(), { readyOverride: true, invoke: okInvoke({ outcome: "applied", receivingId: "R", ledgerEventId: "L", extra: 1 }) });
-    expect(r).toEqual({ status: RECEIVING_OUTCOME.UNAVAILABLE });
+    expect(await submitReceiveCore(RECEIVE_REQ(), okInvoke({ outcome: "applied", receivingId: "R", ledgerEventId: "L", extra: 1 }))).toEqual({ status: RECEIVING_OUTCOME.UNAVAILABLE });
   });
   it.each([
     ["functions/unauthenticated", RECEIVING_OUTCOME.UNAUTHENTICATED],
@@ -198,19 +201,19 @@ describe("submitReceiveInventoryStock -- transport", () => {
     ["functions/failed-precondition", RECEIVING_OUTCOME.CONFLICT],
     ["functions/internal", RECEIVING_OUTCOME.UNAVAILABLE],
   ])("maps callable error %s", async (code, status) => {
-    const r = await submitReceiveInventoryStock(RECEIVE_REQ(), { readyOverride: true, invoke: throwInvoke({ code, message: "RAW-BACKEND-DETAIL", details: { path: "warehouses/secret" } }) });
+    const r = await submitReceiveCore(RECEIVE_REQ(), throwInvoke({ code, message: "RAW-BACKEND-DETAIL", details: { path: "warehouses/secret" } }));
     expect(r).toEqual({ status }); // ONLY the bounded status -- no raw message/details/path
   });
   it("never returns raw backend message/details/path on error", async () => {
-    const r = await submitReceiveInventoryStock(RECEIVE_REQ(), { readyOverride: true, invoke: throwInvoke({ code: "functions/internal", message: "RAW-BACKEND-DETAIL", details: { path: "warehouses/secret" } }) });
+    const r = await submitReceiveCore(RECEIVE_REQ(), throwInvoke({ code: "functions/internal", message: "RAW-BACKEND-DETAIL", details: { path: "warehouses/secret" } }));
     const json = JSON.stringify(r);
     expect(json.includes("RAW-BACKEND-DETAIL")).toBe(false);
     expect(json.includes("warehouses/secret")).toBe(false);
     expect(Object.keys(r)).toEqual(["status"]);
   });
   it("is deterministic across calls with the same inputs", async () => {
-    const a = await submitReceiveInventoryStock(RECEIVE_REQ(), { readyOverride: true, invoke: okInvoke({ outcome: "applied", receivingId: "R", ledgerEventId: "L" }) });
-    const b = await submitReceiveInventoryStock(RECEIVE_REQ(), { readyOverride: true, invoke: okInvoke({ outcome: "applied", receivingId: "R", ledgerEventId: "L" }) });
+    const a = await submitReceiveCore(RECEIVE_REQ(), okInvoke({ outcome: "applied", receivingId: "R", ledgerEventId: "L" }));
+    const b = await submitReceiveCore(RECEIVE_REQ(), okInvoke({ outcome: "applied", receivingId: "R", ledgerEventId: "L" }));
     expect(a).toEqual(b);
   });
 });
