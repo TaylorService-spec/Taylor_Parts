@@ -3,6 +3,7 @@
 // warehouseGovernanceEvidence.ts, functions/scripts/warehouseGovernanceMigrationCli.js). PURE: no Firebase
 // app, no emulator, no network. `Timestamp` is constructed offline. Prerequisite: npm run build.
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { Timestamp } from "firebase-admin/firestore";
 import {
   warehouseGovernanceFingerprint,
@@ -120,7 +121,7 @@ check("validateResolutionManifest: valid + every failure mode", () => {
 // ---- executeMigration (fake in-memory store) ----
 function fakeStore(map) {
   const staged = [];
-  return { staged, async reRead(id) { return map.has(id) ? map.get(id) : null; }, stage(id, rec) { staged.push({ id, rec }); } };
+  return { staged, async readAll() { return [...map.entries()].map(([warehouseId, data]) => ({ warehouseId, data })); }, stage(id, rec) { staged.push({ id, rec }); } };
 }
 const NOW = () => new Date(TS.toMillis());
 
@@ -164,10 +165,33 @@ await acheck("executeMigration: stale pre-state -> STALE_PRESTATE, no further st
   assert.equal(store.staged.length, 0);
 });
 
-await acheck("executeMigration: disappeared record -> RECORD_DISAPPEARED", async () => {
-  const live = [{ warehouseId: "a", data: { name: "A", location: "L" } }];
+await acheck("executeMigration: deleted record after dry-run -> LIVE_SET_DRIFT, zero writes", async () => {
+  const plan = planMigration([{ warehouseId: "a", data: { name: "A", location: "L" } }], PINS);
+  const store = fakeStore(new Map());
+  await assert.rejects(executeMigration({ plan, manifest: {}, store, actorId: "tool", now: NOW }), (e) => e.code === "LIVE_SET_DRIFT");
+  assert.equal(store.staged.length, 0);
+});
+
+await acheck("executeMigration: new warehouse added after dry-run -> LIVE_SET_DRIFT, zero writes", async () => {
+  const plan = planMigration([{ warehouseId: "a", data: { name: "A", location: "L" } }], PINS);
+  const store = fakeStore(new Map([["a", { name: "A", location: "L" }], ["b", { name: "B", location: "L" }]]));
+  await assert.rejects(executeMigration({ plan, manifest: {}, store, actorId: "tool", now: NOW }), (e) => e.code === "LIVE_SET_DRIFT");
+  assert.equal(store.staged.length, 0);
+});
+
+await acheck("executeMigration: a GOVERNED record changed after dry-run -> STALE_PRESTATE (governed re-checked)", async () => {
+  const plan = planMigration([{ warehouseId: "g", data: governed("g") }], PINS);
+  const store = fakeStore(new Map([["g", { ...governed("g"), name: "CHANGED" }]]));
+  await assert.rejects(executeMigration({ plan, manifest: {}, store, actorId: "tool", now: NOW }), (e) => e.code === "STALE_PRESTATE");
+  assert.equal(store.staged.length, 0);
+});
+
+await acheck("executeMigration: the SECOND of multiple records drifts -> STALE_PRESTATE, zero writes", async () => {
+  const live = [{ warehouseId: "a", data: { name: "A", location: "L" } }, { warehouseId: "b", data: { name: "B", location: "L" } }];
   const plan = planMigration(live, PINS);
-  await assert.rejects(executeMigration({ plan, manifest: {}, store: fakeStore(new Map()), actorId: "tool", now: NOW }), (e) => e.code === "RECORD_DISAPPEARED");
+  const store = fakeStore(new Map([["a", { name: "A", location: "L" }], ["b", { name: "B-CHANGED", location: "L" }]]));
+  await assert.rejects(executeMigration({ plan, manifest: {}, store, actorId: "tool", now: NOW }), (e) => e.code === "STALE_PRESTATE");
+  assert.equal(store.staged.length, 0);
 });
 
 await acheck("executeMigration: idempotent -- all-governed set stages nothing", async () => {
@@ -184,8 +208,9 @@ check("cli.parseArgs: dry-run default; execute requires ack + manifest; required
   const base = ["--project", "taylor-parts", "--commit", "c", "--evidence-dir", "/ev"];
   assert.equal(cli.parseArgs(base).execute, false);
   assert.throws(() => cli.parseArgs([...base, "--execute"]), /acknowledge-production-write/);
-  assert.throws(() => cli.parseArgs([...base, "--execute", "--acknowledge-production-write"]), /--manifest/);
-  assert.equal(cli.parseArgs([...base, "--execute", "--acknowledge-production-write", "--manifest", "/m.json"]).execute, true);
+  assert.throws(() => cli.parseArgs([...base, "--execute", "--acknowledge-production-write"]), /--manifest\b/);
+  assert.throws(() => cli.parseArgs([...base, "--execute", "--acknowledge-production-write", "--manifest", "/m.json"]), /--manifest-sha256/);
+  assert.equal(cli.parseArgs([...base, "--execute", "--acknowledge-production-write", "--manifest", "/m.json", "--manifest-sha256", "a".repeat(64)]).execute, true);
   assert.throws(() => cli.parseArgs(["--commit", "c", "--evidence-dir", "/ev"]), /--project/);
 });
 
@@ -214,16 +239,37 @@ check("cli.publishEvidenceAtomically: secret-like content blocks publish; NO fin
   assert.ok(![...fs.dirs].some((d) => d.includes(".tmp-")), "temp dir removed");
 });
 
-await acheck("cli.runExecute: failed verification publishes NO evidence", async () => {
+const RAW_MANIFEST = JSON.stringify({ projectId: PINS.projectId, governedCommit: PINS.governedCommit, entries: [] });
+const RAW_MANIFEST_HASH = createHash("sha256").update(RAW_MANIFEST).digest("hex");
+function execDeps(over = {}) {
+  let txnCalls = 0;
   const fs = fakeFs();
   const deps = {
     fs,
-    readManifest: async () => ({ projectId: PINS.projectId, governedCommit: PINS.governedCommit, entries: [] }),
+    readManifestRaw: async () => RAW_MANIFEST,
     readLiveWarehouses: async () => [{ warehouseId: "a", data: { name: "N", location: "L" } }], // still legacy after "migration"
-    runMigrationTxn: async () => ({ migrated: [], skippedGoverned: [], counts: { migrated: 0, skippedGoverned: 0 } }),
+    runMigrationTxn: async () => { txnCalls += 1; return { migrated: [], skippedGoverned: [], counts: { migrated: 0, skippedGoverned: 0 } }; },
+    ...over,
   };
-  await assert.rejects(cli.runExecute(deps, { projectId: PINS.projectId, governedCommit: PINS.governedCommit, evidenceDir: "/ev/x", execute: true }), /verification failed/);
+  return { deps, fs, calls: () => txnCalls };
+}
+const execArgs = (over = {}) => ({ projectId: PINS.projectId, governedCommit: PINS.governedCommit, evidenceDir: "/ev/x", execute: true, manifestSha256: RAW_MANIFEST_HASH, ...over });
+
+await acheck("cli.runExecute: matching manifest hash but failed verification publishes NO evidence", async () => {
+  const { deps, fs } = execDeps();
+  await assert.rejects(cli.runExecute(deps, execArgs()), /verification failed/);
   assert.ok(!fs.dirs.has("/ev/x"), "no evidence dir when verification fails");
+});
+await acheck("cli.runExecute: MISMATCHED manifest hash -> zero writes (txn never runs)", async () => {
+  const { deps, fs, calls } = execDeps();
+  await assert.rejects(cli.runExecute(deps, execArgs({ manifestSha256: "b".repeat(64) })), /hash mismatch/);
+  assert.equal(calls(), 0, "migration txn not invoked on hash mismatch");
+  assert.ok(!fs.dirs.has("/ev/x"));
+});
+await acheck("cli.runExecute: MALFORMED expected hash -> zero writes", async () => {
+  const { deps, calls } = execDeps();
+  await assert.rejects(cli.runExecute(deps, execArgs({ manifestSha256: "not-a-hash" })), /64-hex/);
+  assert.equal(calls(), 0);
 });
 
 check("evidence: dry-run evidence is sanitized (no raw name/location leak) + secret scan", () => {

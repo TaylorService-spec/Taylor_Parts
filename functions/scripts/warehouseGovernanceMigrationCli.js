@@ -12,6 +12,11 @@
 "use strict";
 
 const path = require("node:path");
+const crypto = require("node:crypto");
+
+function sha256Hex(text) { return crypto.createHash("sha256").update(text).digest("hex"); }
+function normalizeHash(h) { return typeof h === "string" ? h.trim().toLowerCase() : ""; }
+function isHex64(h) { return /^[0-9a-f]{64}$/.test(h); }
 
 const lib = () => ({
   migration: require("../lib/warehouseGovernance/warehouseGovernanceMigration.js"),
@@ -28,6 +33,7 @@ function parseArgs(argv) {
     else if (a === "--project") args.projectId = argv[++i];
     else if (a === "--commit") args.governedCommit = argv[++i];
     else if (a === "--manifest") args.manifestPath = argv[++i];
+    else if (a === "--manifest-sha256") args.manifestSha256 = argv[++i];
     else if (a === "--evidence-dir") args.evidenceDir = argv[++i];
     else throw new Error(`unknown argument: ${a}`);
   }
@@ -37,6 +43,7 @@ function parseArgs(argv) {
   if (args.execute) {
     if (!args.acknowledgeProductionWrite) throw new Error("--execute requires --acknowledge-production-write");
     if (!args.manifestPath) throw new Error("--execute requires --manifest");
+    if (!args.manifestSha256) throw new Error("--execute requires --manifest-sha256 (the Owner-approved manifest hash)");
   }
   return args;
 }
@@ -77,20 +84,30 @@ async function runDryRun(deps, args) {
 
 async function runExecute(deps, args) {
   const { migration, verifier, evidence } = lib();
-  const manifest = await deps.readManifest(args.manifestPath);
+  // (P1-2) Bind execution to the Owner-approved manifest content hash. Hash the EXACT manifest bytes
+  // BEFORE parsing; require an exact normalized 64-hex match; fail closed (zero writes) on mismatch.
+  const rawManifest = await deps.readManifestRaw(args.manifestPath);
+  const expected = normalizeHash(args.manifestSha256);
+  if (!isHex64(expected)) throw new Error("expected manifest sha256 must be a normalized 64-hex value");
+  const actualHash = sha256Hex(rawManifest);
+  if (actualHash !== expected) throw new Error("manifest hash mismatch: refusing to execute (no writes)");
+  const manifest = JSON.parse(rawManifest);
+
   const live = await deps.readLiveWarehouses();
   const plan = migration.planMigration(live, { projectId: args.projectId, governedCommit: args.governedCommit });
-  // Stage the whole migration in ONE transaction (all-or-nothing). deps.runMigrationTxn re-reads through
-  // the txn and stages writes; it fails closed on stale pre-state / integrity.
+  // Stage the whole migration in ONE transaction (all-or-nothing). deps.runMigrationTxn re-reads the
+  // COMPLETE live set through the txn and stages writes; it fails closed on set/pre-state drift.
   const result = await deps.runMigrationTxn({ plan, manifest });
   // Read-only verification AFTER staging. Evidence is published only if it passes.
   const after = await deps.readLiveWarehouses();
   const verification = verifier.verifyWarehouseGovernance(after.map((w) => ({ warehouseId: w.warehouseId, data: w.data })));
   if (!verification.pass) throw new Error("post-migration verification failed: not publishing evidence");
+  // The verified manifest hash is recorded in the sanitized execution evidence.
+  const evObj = { ...evidence.buildVerifierEvidence(verification), verifiedManifestSha256: actualHash };
   const dir = publishEvidenceAtomically(deps.fs, args.evidenceDir, [
-    { name: "verification.json", content: evidence.serializeEvidence(evidence.buildVerifierEvidence(verification)) },
+    { name: "verification.json", content: evidence.serializeEvidence(evObj) },
   ]);
-  return { mode: "execute", result, verification, evidenceDir: dir };
+  return { mode: "execute", result, verification, verifiedManifestSha256: actualHash, evidenceDir: dir };
 }
 
 async function run(deps, argv) {
@@ -111,13 +128,14 @@ function buildProductionDeps() {
       const snap = await db.collection(WAREHOUSES).get();
       return snap.docs.map((d) => ({ warehouseId: d.id, data: d.data() }));
     },
-    async readManifest(p) { return JSON.parse(fs.readFileSync(p, "utf8")); },
+    async readManifestRaw(p) { return fs.readFileSync(p, "utf8"); },
     async runMigrationTxn({ plan, manifest }) {
       const { migration } = lib();
       return db.runTransaction(async (txn) => {
         const staged = [];
         const store = {
-          async reRead(id) { const s = await txn.get(db.collection(WAREHOUSES).doc(id)); return s.exists ? s.data() : null; },
+          // Read the COMPLETE collection through the txn (locks it; a concurrent add/change/delete conflicts).
+          async readAll() { const snap = await txn.get(db.collection(WAREHOUSES)); return snap.docs.map((d) => ({ warehouseId: d.id, data: d.data() })); },
           stage(id, record) { staged.push({ id, record }); },
         };
         const result = await migration.executeMigration({ plan, manifest, store, actorId: "tool:warehouse-governance-migration", now: () => new Date() });

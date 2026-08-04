@@ -27,7 +27,7 @@ export type MigrationFailureCode =
   | "MANIFEST_INVALID"
   | "AMBIGUOUS_UNRESOLVED"
   | "STALE_PRESTATE"
-  | "RECORD_DISAPPEARED"
+  | "LIVE_SET_DRIFT"
   | "MIGRATION_INTEGRITY";
 export class WarehouseMigrationError extends Error {
   readonly code: MigrationFailureCode;
@@ -178,11 +178,11 @@ export function buildMigratedRecord(warehouseId: string, data: unknown, status: 
   return record;
 }
 
-// The injected staging seam: re-reads live state and stages governed writes. `reRead` returns the current
-// stored data (null if the doc disappeared); `stage` persists the full governed record (replacing the doc,
-// which drops any legacy `active`). Implemented over a Firestore transaction by the caller.
+// The injected staging seam. `readAll` returns the COMPLETE current warehouse set (read through the
+// caller's transaction, which locks the whole collection so a concurrent add/change/delete conflicts the
+// commit); `stage` persists the full governed record (replacing the doc, which drops any legacy `active`).
 export interface MigrationStore {
-  reRead(warehouseId: string): Promise<unknown>;
+  readAll(): Promise<readonly LiveWarehouse[]>;
   stage(warehouseId: string, record: GovernedWarehouse): void;
 }
 export interface MigrationExecuteResult {
@@ -191,10 +191,13 @@ export interface MigrationExecuteResult {
   readonly counts: { readonly migrated: number; readonly skippedGoverned: number };
 }
 
-// EXECUTE the migration bound to a dry-run `plan`. Validates the manifest against the plan's ambiguous set
-// FIRST (no writes if unresolved). Then, per non-governed record: re-reads live state, recomputes the
-// fingerprint, and fails closed (STALE_PRESTATE) on ANY drift from the plan; builds + self-validates the
-// governed record; stages it. GOVERNED records are byte-stable no-ops. Stops on the first integrity
+// EXECUTE the migration bound to a dry-run `plan`. Binds to the COMPLETE live warehouse set inside the
+// caller's transaction: (1) validates the manifest against the ambiguous set; (2) re-reads the WHOLE set
+// and requires its exact id-set to match the planned set -- a record added or deleted since dry-run fails
+// closed (LIVE_SET_DRIFT); (3) recomputes + compares the fingerprint of EVERY planned record, GOVERNED
+// included, so a governed record that changed after planning fails closed (STALE_PRESTATE); (4) builds +
+// self-validates every proposed record; and only after the complete set passes does it stage any write.
+// GOVERNED records are byte-stable no-ops (fingerprint-checked but not restaged). Stops on the first
 // failure (throws) -- the caller's transaction makes it all-or-nothing.
 export async function executeMigration(args: {
   plan: MigrationPlan;
@@ -206,28 +209,43 @@ export async function executeMigration(args: {
   if (!isNonBlank(args.actorId)) throw new WarehouseMigrationError("INVALID_INPUT", "actorId invalid");
   const nowMillis = args.now().getTime();
 
-  // Whole-set validation before ANY write: the manifest must exactly resolve the ambiguous set.
+  // (1) Whole-set manifest validation before ANY write: the manifest must exactly resolve the ambiguous set.
   const manifestCheck = validateResolutionManifest(args.manifest, args.plan);
   if (args.plan.ambiguous.length > 0 || (isPlainObject(args.manifest) && Array.isArray(args.manifest.entries) && args.manifest.entries.length > 0)) {
     if (!manifestCheck.valid) throw new WarehouseMigrationError("MANIFEST_INVALID", `manifest invalid: ${manifestCheck.reason}`);
   }
 
-  const migrated: string[] = [];
+  // (2) Re-read the COMPLETE live set through the txn and require an exact id-set match with the plan.
+  const liveMap = new Map<string, unknown>();
+  for (const w of await args.store.readAll()) {
+    if (!isNonBlank(w.warehouseId)) throw new WarehouseMigrationError("INVALID_INPUT", "live warehouseId invalid");
+    if (liveMap.has(w.warehouseId)) throw new WarehouseMigrationError("INVALID_INPUT", "duplicate warehouseId in live set");
+    liveMap.set(w.warehouseId, w.data);
+  }
+  const planIds = new Set(args.plan.classified.map((c) => c.warehouseId));
+  if (liveMap.size !== planIds.size) throw new WarehouseMigrationError("LIVE_SET_DRIFT", "live warehouse set changed since dry-run");
+  for (const id of planIds) if (!liveMap.has(id)) throw new WarehouseMigrationError("LIVE_SET_DRIFT", "planned warehouse missing from live set");
+
+  // (3) Recompute + compare the fingerprint of EVERY planned record (GOVERNED included).
+  for (const c of args.plan.classified) {
+    if (warehouseGovernanceFingerprint(liveMap.get(c.warehouseId)) !== c.fingerprint) {
+      throw new WarehouseMigrationError("STALE_PRESTATE", "live pre-state changed since dry-run");
+    }
+  }
+
+  // (4) Build + self-validate all proposed records BEFORE staging any write.
+  const toStage: Array<{ id: string; record: GovernedWarehouse }> = [];
   const skippedGoverned: string[] = [];
   for (const c of args.plan.classified) {
     if (c.category === "GOVERNED") { skippedGoverned.push(c.warehouseId); continue; }
-    // Re-read live + recompute fingerprint; any drift from the planned pre-state fails closed.
-    const live = await args.store.reRead(c.warehouseId);
-    if (live === null || live === undefined) throw new WarehouseMigrationError("RECORD_DISAPPEARED", "warehouse disappeared before migration");
-    if (warehouseGovernanceFingerprint(live) !== c.fingerprint) throw new WarehouseMigrationError("STALE_PRESTATE", "live pre-state changed since dry-run");
-
     const status = c.category === "DERIVE" ? (c.derivedStatus as WarehouseStatus) : manifestCheck.resolved.get(c.warehouseId);
     if (status === undefined) throw new WarehouseMigrationError("AMBIGUOUS_UNRESOLVED", "ambiguous record has no resolution");
-
-    const record = buildMigratedRecord(c.warehouseId, live, status, { actorId: args.actorId, nowMillis });
+    const record = buildMigratedRecord(c.warehouseId, liveMap.get(c.warehouseId), status, { actorId: args.actorId, nowMillis });
     if (!validateGovernedWarehouse(record, c.warehouseId).valid) throw new WarehouseMigrationError("MIGRATION_INTEGRITY", "built record is not governed");
-    args.store.stage(c.warehouseId, record);
-    migrated.push(c.warehouseId);
+    toStage.push({ id: c.warehouseId, record });
   }
-  return { migrated, skippedGoverned, counts: { migrated: migrated.length, skippedGoverned: skippedGoverned.length } };
+
+  // (5) Stage only after the COMPLETE set has passed.
+  for (const s of toStage) args.store.stage(s.id, s.record);
+  return { migrated: toStage.map((s) => s.id), skippedGoverned, counts: { migrated: toStage.length, skippedGoverned: skippedGoverned.length } };
 }
