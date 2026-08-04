@@ -13,6 +13,7 @@ const { FieldValue } = admin.firestore;
 
 const { receiveInventoryStockProduction, buildReceiveInventoryStockDeps, runReceiveInventoryStockSanitized } = await import("../lib/inventoryReceiving/receiveInventoryStockComposition.js");
 const { receiveInventoryStock, DestinationInvalidError, ReceiveCommandError, ReceivingIntegrityError, SourceNotReceivableError } = await import("../lib/inventoryReceiving/receiveInventoryStockCommand.js");
+const { receivingOrderDocId } = await import("../lib/inventoryReceiving/receivingRepository.js");
 const RAW_LEAK_RE = /INVALID_ARGUMENT|Transaction is invalid|ABORTED|firestore|\bcode\b|a\/b/i;
 
 let passed = 0, failed = 0;
@@ -61,6 +62,16 @@ function request(sc, locationId) {
 }
 const reorderStatus = async (rrid) => (await db.collection("reorder_requests").doc(rrid).get()).data().status;
 const auditCount = async (rrid) => (await db.collection("receiving_audit_la5").where("reorderRequestId", "==", rrid).get()).size;
+// Prove a fail-closed receipt committed ZERO of the primary writes: the deterministic receiving_orders
+// document is absent, no inventory_transactions ledger event references that Receiving Order, the reorder
+// request is still ORDERED, and no audit was staged.
+async function assertNoReceipt(req, rrid) {
+  const receivingId = receivingOrderDocId(req.idempotencyKey);
+  assert.equal((await db.collection("receiving_orders").doc(receivingId).get()).exists, false, "no receiving_orders document");
+  assert.equal((await db.collection("inventory_transactions").where("sourceObject.id", "==", receivingId).get()).size, 0, "no ledger event for the receiving order");
+  assert.equal(await reorderStatus(rrid), "ORDERED", "reorder request unchanged");
+  assert.equal(await auditCount(rrid), 0, "no audit staged");
+}
 
 await check("governed ACTIVE WAREHOUSE via pinned resolver -> receipt proceeds atomically", async () => {
   const sc = await seedScenario({ warehouse: "ACTIVE" });
@@ -73,26 +84,26 @@ await check("governed ACTIVE WAREHOUSE via pinned resolver -> receipt proceeds a
 
 await check("INACTIVE warehouse -> DESTINATION_INVALID, zero writes", async () => {
   const sc = await seedScenario({ warehouse: "INACTIVE" });
-  const { deps, audits } = input(sc);
-  await assert.rejects(receiveInventoryStockProduction(request(sc, sc.wh), deps), DestinationInvalidError);
-  assert.equal(await reorderStatus(sc.rrid), "ORDERED"); // unchanged
-  assert.equal(audits.length, 0);
-  assert.equal(await auditCount(sc.rrid), 0);
+  const { deps } = input(sc);
+  const req = request(sc, sc.wh);
+  await assert.rejects(receiveInventoryStockProduction(req, deps), DestinationInvalidError);
+  await assertNoReceipt(req, sc.rrid);
 });
 
 await check("missing warehouse -> DESTINATION_INVALID, zero writes", async () => {
   const sc = await seedScenario({ warehouse: null }); // no warehouse doc
   const { deps } = input(sc);
-  await assert.rejects(receiveInventoryStockProduction(request(sc, nextId("ghost")), deps), DestinationInvalidError);
-  assert.equal(await reorderStatus(sc.rrid), "ORDERED");
+  const req = request(sc, nextId("ghost"));
+  await assert.rejects(receiveInventoryStockProduction(req, deps), DestinationInvalidError);
+  await assertNoReceipt(req, sc.rrid);
 });
 
-await check("non-WAREHOUSE location type -> DESTINATION_INVALID", async () => {
+await check("non-WAREHOUSE location type -> DESTINATION_INVALID, zero writes", async () => {
   const sc = await seedScenario({ warehouse: "ACTIVE" });
   const { deps } = input(sc);
   const req = request(sc, sc.wh); req.receivingLocation = { type: "BIN", locationId: sc.wh };
   await assert.rejects(receiveInventoryStockProduction(req, deps), DestinationInvalidError);
-  assert.equal(await reorderStatus(sc.rrid), "ORDERED");
+  await assertNoReceipt(req, sc.rrid);
 });
 
 await check("concurrent ACTIVE->INACTIVE AFTER the resolver read cannot commit a receipt (fail closed, zero writes)", async () => {
@@ -110,12 +121,12 @@ await check("concurrent ACTIVE->INACTIVE AFTER the resolver read cannot commit a
   // retry's resolver re-read yields DESTINATION_INVALID; the emulator surfaces a raw transaction-conflict
   // which the sanitized boundary maps to RECEIVING_INTEGRITY. Either way the error is a GOVERNED command
   // error with no raw transaction detail, and zero writes commit.
+  const req = request(sc, sc.wh);
   await assert.rejects(
-    runReceiveInventoryStockSanitized(request(sc, sc.wh), deps),
+    runReceiveInventoryStockSanitized(req, deps),
     (e) => e instanceof ReceiveCommandError && (e.code === "DESTINATION_INVALID" || e.code === "RECEIVING_INTEGRITY") && !RAW_LEAK_RE.test(e.message),
   );
-  assert.equal(await reorderStatus(sc.rrid), "ORDERED", "no receipt committed under a concurrent retire");
-  assert.equal(await auditCount(sc.rrid), 0);
+  await assertNoReceipt(req, sc.rrid); // no receiving_orders doc, no ledger event, reorder ORDERED, no audit
 });
 
 await check("path-unsafe locationId -> DESTINATION_INVALID, zero writes", async () => {
@@ -123,7 +134,7 @@ await check("path-unsafe locationId -> DESTINATION_INVALID, zero writes", async 
   const { deps } = input(sc);
   const req = request(sc, sc.wh); req.receivingLocation = { type: "WAREHOUSE", locationId: "a/b/c" };
   await assert.rejects(receiveInventoryStockProduction(req, deps), DestinationInvalidError);
-  assert.equal(await reorderStatus(sc.rrid), "ORDERED");
+  await assertNoReceipt(req, sc.rrid);
 });
 
 await check("composition sanitizes a raw transaction error -> RECEIVING_INTEGRITY (no raw leak)", async () => {
