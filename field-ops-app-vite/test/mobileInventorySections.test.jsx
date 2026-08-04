@@ -59,7 +59,7 @@ describe("MobileInventorySections -- exact delegation & isolation", () => {
   });
 
   it("preserves five governed states independently (distinct state per section)", () => {
-    const model = { sections: {
+    const model = { resolved: true, sections: {
       parts: { state: "ready", items: [{ internalSku: "P1" }] },
       serializedAssets: { state: "loading" },
       reservations: { state: "denied" },
@@ -75,7 +75,7 @@ describe("MobileInventorySections -- exact delegation & isolation", () => {
   });
 
   it("a malformed value in one section does not affect the others (isolation)", () => {
-    const model = { sections: {
+    const model = { resolved: true, sections: {
       parts: { state: "ready", items: [{ internalSku: "STILL-HERE" }] },
       serializedAssets: { state: "ready", items: [{}] }, // malformed row -> whole section ERROR
       reservations: { state: "ready", items: [] },
@@ -92,7 +92,7 @@ describe("MobileInventorySections -- exact delegation & isolation", () => {
   });
 
   it("a missing section KEY fails only that section closed to unavailable", () => {
-    const model = { sections: { parts: { state: "ready", items: [{ internalSku: "PP" }] } } }; // only parts present
+    const model = { resolved: true, sections: { parts: { state: "ready", items: [{ internalSku: "PP" }] } } }; // only parts present
     const { getByTestId } = render(<MobileInventorySections model={model} />);
     expect(within(getByTestId("parts-stock-section")).getByText("PP")).toBeTruthy();
     for (const [rootId, testid] of [["serialized-assets-section", "sa-unavailable"], ["reservations-section", "rs-unavailable"], ["reconciliation-section", "rc-unavailable"], ["activity-section", "as-unavailable"]]) {
@@ -101,12 +101,60 @@ describe("MobileInventorySections -- exact delegation & isolation", () => {
   });
 
   it("empty sections object renders all five sections unavailable, no invented data", () => {
-    const { getByTestId, queryByRole } = render(<MobileInventorySections model={{ sections: {} }} />);
+    const { getByTestId, queryByRole } = render(<MobileInventorySections model={{ resolved: true, sections: {} }} />);
     expect(getByTestId("mis-sections")).toBeTruthy();
     for (const testid of ["ps-unavailable", "sa-unavailable", "rs-unavailable", "rc-unavailable", "as-unavailable"]) {
       expect(getByTestId(testid)).toBeTruthy();
     }
     expect(queryByRole("table")).toBeNull(); // no fabricated tables/data
+  });
+});
+
+// The composer's `resolved` boundary: only resolved === true (an actual boolean) may expose
+// section content; unresolved/malformed resolved fails the whole composite closed.
+describe("MobileInventorySections -- resolved boundary", () => {
+  it("resolved:false + READY section payload -> unavailable, section content absent, no children", () => {
+    const model = { resolved: false, sections: { parts: { state: "ready", items: [{ internalSku: "SECRET-ROW" }] } } };
+    const { getByTestId, queryByTestId, container } = render(<MobileInventorySections model={model} />);
+    expect(getByTestId("mis-unavailable")).toBeTruthy();
+    expect(queryByTestId("mis-sections")).toBeNull();
+    expect(queryByTestId("parts-stock-section")).toBeNull();
+    expect(container.innerHTML.includes("SECRET-ROW")).toBe(false); // no section content leaked
+  });
+
+  it("resolved:false + malformed/throw-prone section payload -> unavailable, no throw", () => {
+    const model = { resolved: false, sections: { parts: { state: "ready", items: [null, 5] }, serializedAssets: "garbage" } };
+    let result;
+    expect(() => { result = render(<MobileInventorySections model={model} />); }).not.toThrow();
+    expect(result.getByTestId("mis-unavailable")).toBeTruthy();
+    expect(result.queryByTestId("mis-sections")).toBeNull();
+  });
+
+  it.each([
+    ["missing", { sections: { parts: { state: "ready", items: [{ internalSku: "X" }] } } }],
+    ["null", { resolved: null, sections: {} }],
+    ["string 'true'", { resolved: "true", sections: {} }],
+    ["number 1", { resolved: 1, sections: {} }],
+    ["number 0", { resolved: 0, sections: {} }],
+  ])("resolved %s (non-boolean-true) -> unavailable, no children", (_l, model) => {
+    const { getByTestId, queryByTestId } = render(<MobileInventorySections model={model} />);
+    expect(getByTestId("mis-unavailable")).toBeTruthy();
+    expect(queryByTestId("mis-sections")).toBeNull();
+    expect(queryByTestId("parts-stock-section")).toBeNull();
+  });
+
+  it("resolved:true + valid sections -> exact five-way delegation", () => {
+    const { getByTestId } = render(<MobileInventorySections model={FULL_MODEL} />);
+    for (const [rootId, ownId] of Object.entries(ROUTES)) {
+      expect(within(getByTestId(rootId)).getByText(ownId)).toBeTruthy();
+    }
+  });
+
+  it("does not mutate a deep-frozen resolved:false model", () => {
+    const frozen = Object.freeze({ resolved: false, sections: Object.freeze({ parts: Object.freeze({ state: "ready", items: Object.freeze([Object.freeze({ internalSku: "P" })]) }) }) });
+    const before = JSON.stringify(frozen);
+    expect(() => render(<MobileInventorySections model={frozen} />)).not.toThrow();
+    expect(JSON.stringify(frozen)).toBe(before);
   });
 });
 
