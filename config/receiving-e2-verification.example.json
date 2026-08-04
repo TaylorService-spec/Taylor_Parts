@@ -1,0 +1,9 @@
+{
+  "_comment": "EI Phase-2 Receiving — Gate E2-V production verifier config TEMPLATE. Copy to a local, UNCOMMITTED *.local.json and fill governedCommit with the exact deployed commit. NO secrets live here: the Firebase Web API key and the dedicated NON-production test-persona email/password are read from the named environment variables in the authenticated operator environment. projectId/confirmProject must both be the authorized project. The verifier performs NO receipt and NO write — discovery + receiving_orders client-denial (403) + callable unauthenticated-denial (UNAUTHENTICATED) + receiving_orders-unchanged.",
+  "projectId": "taylor-parts",
+  "confirmProject": "taylor-parts",
+  "governedCommit": "REPLACE_WITH_EXACT_40_HEX_DEPLOYED_COMMIT",
+  "webApiKeyEnv": "E2_WEB_API_KEY",
+  "testEmailEnv": "E2_TEST_EMAIL",
+  "testPasswordEnv": "E2_TEST_PASSWORD"
+}
