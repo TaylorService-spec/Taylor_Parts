@@ -34,7 +34,7 @@ permissions:
 
 jobs:
   inventory-receiving-capability-tests:
-    name: Inventory receiving capability registration tests (offline, ungranted)
+    name: Inventory receiving capability registration tests (offline; granted to {admin,dispatcher,owner})
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -51,6 +51,6 @@ jobs:
         run: npm ci
         working-directory: functions
 
-      - name: Receiving capability registration tests (offline; proves UNGRANTED posture)
+      - name: Receiving capability registration tests (offline; proves granted-by-exactly {admin,dispatcher,owner})
         run: npm run test:receivingCapability
         working-directory: functions

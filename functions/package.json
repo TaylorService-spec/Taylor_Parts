@@ -74,7 +74,9 @@
     "retry:inventory-effects": "npm run build && node scripts/retryInventoryEffects.js",
     "test:workOrderEngineFunctions": "npm run build && node --test test/workOrderEngineFunctions.test.js",
     "test:completeAssignedJob": "npm run build && node --test test/completeAssignedJob.test.js",
-    "test:fRules1": "node test/legacyJobsTechniciansRules.test.js"
+    "test:fRules1": "node test/legacyJobsTechniciansRules.test.js",
+    "test:receivingGrantGate": "npm run build && node test/receivingGrantGate.test.mjs && node test/receivingCapabilityRegistration.test.mjs && node test/resolveEffectivePermission.test.mjs",
+    "test:receivingGrantGateEmulator": "npm run build && node test/receivingGrantGateEmulator.test.mjs"
   },
   "dependencies": {
     "firebase-admin": "^12.7.0",
