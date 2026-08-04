@@ -17,6 +17,7 @@ import {
   type ReceiveAuditInput,
 } from "./receiveInventoryStockCommand.js";
 import { makeResolveWarehouseLocationActive } from "./receivingLocationResolver.js";
+import { ReceivingError } from "./receivingTypes.js";
 
 // The production seams EXCEPT resolveLocationActive (pinned) and the test-only hooks (never in production).
 export interface ReceiveInventoryStockCompositionInput {
@@ -49,7 +50,10 @@ export async function runReceiveInventoryStockSanitized(request: unknown, deps: 
   try {
     return await receiveInventoryStock(request, deps);
   } catch (err) {
-    if (err instanceof ReceiveCommandError) throw err;
+    // Governed command errors AND governed receiving-domain errors (idempotency conflict, malformed
+    // stored record, invalid receiving) pass through so the callable can map each to its exact public
+    // code; only a truly unknown/raw Firestore/transaction failure collapses to RECEIVING_INTEGRITY.
+    if (err instanceof ReceiveCommandError || err instanceof ReceivingError) throw err;
     throw new ReceivingIntegrityError("receiving failed due to a transient transaction/integrity error");
   }
 }

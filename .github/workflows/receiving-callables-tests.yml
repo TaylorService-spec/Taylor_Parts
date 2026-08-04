@@ -1,0 +1,92 @@
+name: Receiving Callables Tests
+
+# Receiving Phase-2 E1: the trusted Receiving callables + exact contracts + error matrix + real
+# authorization/audit/option/resolver wiring (functions/src/inventoryReceiving/receivingCallables.ts,
+# receivingCallableWiring.ts, index.ts export). Offline + Firestore-emulator tests only: NO production,
+# NO deployment, NO grant. inventory.stock.receive is registered-but-UNGRANTED so every real user is
+# denied. Also re-runs the receive command + resolver integration regressions the composition touches.
+
+on:
+  pull_request:
+    paths:
+      - "functions/src/inventoryReceiving/**"
+      - "functions/src/warehouseGovernance/**"
+      - "functions/src/access/**"
+      - "functions/src/partMaster/**"
+      - "functions/src/index.ts"
+      - "functions/test/receivingCallables.test.mjs"
+      - "functions/test/receivingCallablesExport.test.mjs"
+      - "functions/test/receivingCallablesEmulator.test.mjs"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - ".github/workflows/receiving-callables-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/src/inventoryReceiving/**"
+      - "functions/src/warehouseGovernance/**"
+      - "functions/src/access/**"
+      - "functions/src/partMaster/**"
+      - "functions/src/index.ts"
+      - "functions/test/receivingCallables.test.mjs"
+      - "functions/test/receivingCallablesExport.test.mjs"
+      - "functions/test/receivingCallablesEmulator.test.mjs"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - ".github/workflows/receiving-callables-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  receiving-callables-tests:
+    name: Receiving callables tests (offline + Firestore emulator)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+
+      - name: Offline callable contract + error-matrix tests
+        run: npm run test:receivingCallables
+        working-directory: functions
+
+      - name: Start Firestore emulator (background)
+        run: |
+          nohup node node_modules/firebase-tools/lib/bin/firebase.js emulators:start --only firestore --project taylor-parts --config ../firebase.json > /tmp/receiving-callables-emulator.log 2>&1 &
+          for i in $(seq 1 60); do
+            if grep -q "All emulators ready" /tmp/receiving-callables-emulator.log 2>/dev/null; then exit 0; fi
+            sleep 1
+          done
+          echo "Emulator did not become ready in time"
+          cat /tmp/receiving-callables-emulator.log
+          exit 1
+        working-directory: functions
+
+      - name: Callable emulator tests + command/resolver regressions (build + run)
+        run: |
+          npm run test:receivingCallablesEmulator
+          npm run test:receivingResolverIntegration
+          npm run test:receiveInventoryStock
+        working-directory: functions
+
+      - name: Upload emulator debug logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: receiving-callables-emulator-logs
+          path: |
+            /tmp/receiving-callables-emulator.log
+            functions/firestore-debug.log
+          if-no-files-found: ignore
