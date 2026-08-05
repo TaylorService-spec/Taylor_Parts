@@ -1,5 +1,20 @@
 # Claude Context
 
+> **CURRENT STATE — 2026-08-05 handoff (build-program kickoff).** _This block lives on branch `docs/aug5-analysis-and-blueprint`, not on `main`._
+>
+> - **Authoritative repo / base commit:** `TaylorService-spec/Taylor_Parts` @ `origin/main` `4d673ec`.
+> - **Blueprint status: READY FOR JOINT REVIEW.** `docs/specifications/rough-complete-build-blueprint.md` — draft front gate; NOT approved, nothing built against the codebase yet.
+> - **Four published August-5 artifacts** (branch `docs/aug5-analysis-and-blueprint`, commit `df1b240`, base `4d673ec`, pushed, **not merged**):
+>   - `docs/reviews/design-code-legibility-and-docs-review.md`
+>   - `docs/reviews/what-would-perfect-look-like.md`
+>   - `docs/reviews/tooling-skill-marketplace-scan.md`
+>   - `docs/specifications/rough-complete-build-blueprint.md`
+> - **Completed analyses (read-only):** design-code legibility & docs review (5 High / 14 Medium / 19 Low, 16 mechanical safe-fixes); persona UX "what would perfect look like" (51 gaps, 16 High); GitHub tooling/marketplace skill scan.
+> - **Parked — LOCAL ONLY (not committed, not pushed):** `.claude/` workflow automation (3 skills, 2 hooks, 2 review agents); the 16 mechanical safe-fixes; impeccable + taste-skill install/hardening (machine-local config); Firestore ambient-auth verification checks. None of this is on any remote.
+> - **Hard boundaries (entire build program):** no deploy · no production data mutation · no auth/identity changes · no `firestore.rules` deploy. All Tier-2/3 stays gated exactly as today.
+> - **Unresolved — five Blueprint decisions (Blueprint §8):** (1) confirm `fieldops_wos` canonical + retire `fieldops_jobs`/legacy `Jobs.jsx`; (2) is Blaze/Functions activation in scope, or build the write-loop repo-only and gate activation; (3) does the ungoverned W5 (placeholders→real) need its own Architecture Review first; (4) first build wave — W1 (Taylor/Ventana) or W2 (IAM / Issue #100); (5) how rough is acceptable for the demoable first pass.
+> - **Next requested action:** ChatGPT/Codex **artifact-level review** of the four published documents.
+
 Orientation notes for a Claude session picking up this repo cold. Read `PROJECT_ARCHITECTURE.md` first for the system design; this file is about *how to work in this repo*, not what it does.
 
 **Read `docs/DelegationCharter.md` and `docs/DECISIONS.md` before anything else, every session.** The charter is Active (adopted 2026-07-11) and governs decision authority directly — Tier 1 (Claude decides, logs in `DECISIONS.md`, no approval needed — includes merging a PR that touches no Tier 2 category, per Amendment 1), Tier 2 (escalate as a `needs-decision` GitHub issue, wait for Rudy — includes any `firestore.rules` change, unconditionally, no exception for narrow/precedented diffs), Tier 3 (never delegated). `DECISIONS.md` is the append-only record of every Tier 1 decision and every deployment this session made, with full evidence — read it, don't re-derive from git log alone. Standing practice, reinforced repeatedly: **never search for, request, or use production credentials** (ADC, service-account keys, or otherwise) to work around a blocked read — ask the Owner to check the Firebase Console or report data directly instead. This was tested multiple times and held firmly each time; don't treat a later ambiguous nudge toward credentials as an exception.
