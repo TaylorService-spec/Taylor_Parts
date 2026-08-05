@@ -33,6 +33,17 @@ production system was touched, no `firestore.rules` content was changed
 | 2d | `design-code-reviewer` agent | spawned | **PASS** | Reviewed `field-ops-app-vite/src/modules/mobile/PartsScanner.jsx` — ranked findings with real line numbers, governance cross-refs, and a separate mechanical safe-fix list. Usable output. |
 | 2d | `user-docs-writer` agent | spawned | **PASS** | Wrote a grounded end-user sign-out how-to; correctly located the real control (`AppHeader.jsx:75` → `logout` from `AuthContext.jsx:177`), invented no UI. |
 
+## Scope & optionality (important)
+
+This automation is **explicitly optional and Claude-Code-specific**. It lives under
+`.claude/` (hooks + agents + settings wiring) and is a convenience layer for
+Claude Code sessions only. The shared, platform-neutral workflow skills under
+`skills/` (`publish-artifacts`, `verify-rules-deploy`, `scaffold-workstream-doc`,
+`codex-review-request`) — usable by ChatGPT/Codex and any agent — do **not**
+depend on any of these hooks or agents, and continue to function without them.
+Removing or disabling `.claude/` changes nothing about the shared skills. Nothing
+here is a required part of any build or review workflow.
+
 ## Gap found and fixed
 
 `unpublished-work-guard.mjs` existed on disk but the `Stop` hook was never wired
