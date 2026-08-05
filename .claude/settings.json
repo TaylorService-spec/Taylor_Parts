@@ -1,4 +1,8 @@
 {
+  "env": {
+    "IMPECCABLE_NO_TELEMETRY": "1",
+    "IMPECCABLE_NO_UPDATE_CHECK": "1"
+  },
   "permissions": {
     "allow": [
       "Bash(ls -la \"/c/Users/Rudy2/Favorites/Downloads/\" 2>&1)",
@@ -6,7 +10,52 @@
       "Bash(git pull *)",
       "Bash(npm --version)",
       "Skill(run)",
-      "Skill(run:*)"
+      "Skill(run:*)",
+      "Bash(npm run lint)",
+      "Bash(git fetch *)",
+      "Bash(git ls-tree *)",
+      "Bash(npm run typecheck)",
+      "Bash(gh project item-list *)",
+      "Bash(git check-ignore *)",
+      "Bash(git merge-base *)",
+      "Bash(gh project field-list *)",
+      "Bash(gh project list *)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \".claude/hooks/session-context.mjs\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \".claude/hooks/rules-guard.mjs\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \".claude/hooks/unpublished-work-guard.mjs\"",
+            "timeout": 5
+          }
+        ]
+      }
     ]
   }
 }
