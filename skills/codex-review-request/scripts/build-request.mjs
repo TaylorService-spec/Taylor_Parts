@@ -54,13 +54,32 @@ export function touchesRules(files) {
 }
 
 /**
- * Decide whether a Codex review is warranted, per docs/ai/workflow.md.
+ * Security-sensitive path heuristic: auth, permissions/roles/claims, Cloud
+ * Functions (the server trust boundary), or a Rules file. Path-based only.
+ */
+export const SECURITY_PATH_RE =
+  /(^|\/)(auth|security|permissions?|roles?|claims)(\/|\.|-|_|$)|(^|\/)functions\/|(^|\/)firestore\.rules$/i;
+export function touchesSecurity(files) {
+  return normalizeFiles(files).some((f) => SECURITY_PATH_RE.test(f));
+}
+
+/**
+ * Decide whether a Codex review is warranted, per docs/ai/workflow.md: warranted
+ * for Rules, security-sensitive, complex-transaction, and large-refactor changes;
+ * NOT warranted for docs-only, routine UI, or small low-risk fixes. Routine/
+ * low-risk work is only warranted when a risk indicator (path or caller flag) or
+ * an explicit forceWarrant applies.
+ * opts: { forceWarrant, securitySensitive, complexTransaction, largeRefactorThreshold }
  * Returns { warranted, reason }.
  */
 export function assessWarrant(files, opts = {}) {
   const list = normalizeFiles(files);
+  const threshold = opts.largeRefactorThreshold ?? 15;
   if (list.length === 0) {
     return { warranted: false, reason: "no changed files supplied" };
+  }
+  if (opts.forceWarrant) {
+    return { warranted: true, reason: "caller forced Codex review (explicit risk not visible in paths)" };
   }
   if (touchesRules(list)) {
     return { warranted: true, reason: "firestore.rules changed — highest-value Codex reason" };
@@ -71,11 +90,21 @@ export function assessWarrant(files, opts = {}) {
       reason: "docs-only: every changed path is under docs/ or is Markdown — Codex not warranted per workflow.md",
     };
   }
-  if (opts.forceWarrant) {
-    return { warranted: true, reason: "caller forced (security/complex-transaction/large-refactor)" };
+  if (opts.securitySensitive || touchesSecurity(list)) {
+    return { warranted: true, reason: "security-sensitive change (auth / permissions / Cloud Functions / Rules)" };
   }
-  // Default: code change -> warranted.
-  return { warranted: true, reason: "code change with reviewable behavior" };
+  if (opts.complexTransaction) {
+    return { warranted: true, reason: "complex transaction flagged by caller" };
+  }
+  if (list.length >= threshold) {
+    return { warranted: true, reason: `large change set (${list.length} files >= ${threshold}) — treat as a large refactor` };
+  }
+  // Default: routine UI / small low-risk change -> NOT warranted per workflow.md.
+  return {
+    warranted: false,
+    reason:
+      "routine/low-risk change (UI or small fix) — Codex not warranted per workflow.md; pass forceWarrant (or a securitySensitive/complexTransaction flag) for risk not visible in the file paths",
+  };
 }
 
 /**
@@ -119,6 +148,9 @@ export function buildReviewRequest(input = {}) {
   const files = normalizeFiles(input.changedFiles);
   const { warranted, reason } = assessWarrant(files, {
     forceWarrant: input.forceWarrant,
+    securitySensitive: input.securitySensitive,
+    complexTransaction: input.complexTransaction,
+    largeRefactorThreshold: input.largeRefactorThreshold,
   });
 
   const prLine =

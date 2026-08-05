@@ -4,6 +4,9 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
 import {
   normalizeRepoPath,
@@ -13,6 +16,8 @@ import {
   buildBranchName,
   buildCommitMessage,
   buildPlan,
+  copyPathsToWorktree,
+  parseArgs,
   ALLOWED_PREFIXES,
 } from './publish-artifacts.mjs';
 
@@ -108,14 +113,26 @@ test('buildBranchName throws with no topic and no paths', () => {
   assert.throws(() => buildBranchName({ topic: '', paths: [] }), /cannot derive/);
 });
 
-test('buildCommitMessage lists paths and ends with Co-Authored-By', () => {
+test('buildCommitMessage adds NO co-author trailer by default (no fabricated author)', () => {
   const msg = buildCommitMessage({
     topic: 'integrity review',
     paths: ['docs/reviews/project-integrity-review.md'],
   });
   assert.match(msg, /^docs: publish integrity review artifacts\n/);
   assert.match(msg, /- docs\/reviews\/project-integrity-review\.md/);
-  assert.match(msg, /Co-Authored-By: Claude Opus 4\.8/);
+  assert.doesNotMatch(msg, /Co-Authored-By/);
+});
+
+test('buildCommitMessage includes ONLY an explicitly supplied co-author', () => {
+  const msg = buildCommitMessage({
+    topic: 't',
+    paths: ['docs/a.md'],
+    coAuthor: 'Some One <some.one@example.com>',
+  });
+  assert.match(msg, /\n\nCo-Authored-By: Some One <some\.one@example\.com>$/);
+  // blank/whitespace co-author is ignored (still no trailer)
+  const blank = buildCommitMessage({ topic: 't', paths: ['docs/a.md'], coAuthor: '   ' });
+  assert.doesNotMatch(blank, /Co-Authored-By/);
 });
 
 test('buildCommitMessage falls back to count subject with no topic', () => {
@@ -165,4 +182,45 @@ test('buildPlan respects a custom base', () => {
 
 test('ALLOWED_PREFIXES is docs-scoped', () => {
   assert.ok(ALLOWED_PREFIXES.includes('docs/'));
+});
+
+test('copyPathsToWorktree copies named files into the worktree, creating dirs (no git/network)', () => {
+  const src = mkdtempSync(path.join(os.tmpdir(), 'pa-src-'));
+  const wt = mkdtempSync(path.join(os.tmpdir(), 'pa-wt-'));
+  try {
+    mkdirSync(path.join(src, 'docs/reviews'), { recursive: true });
+    writeFileSync(path.join(src, 'docs/reviews/a.md'), 'HELLO-CONTENT');
+    const copied = copyPathsToWorktree(['docs/reviews/a.md'], src, wt);
+    assert.equal(copied.length, 1);
+    const dst = path.join(wt, 'docs/reviews/a.md');
+    assert.ok(existsSync(dst), 'destination file exists');
+    assert.equal(readFileSync(dst, 'utf8'), 'HELLO-CONTENT', 'content preserved exactly');
+  } finally {
+    rmSync(src, { recursive: true, force: true });
+    rmSync(wt, { recursive: true, force: true });
+  }
+});
+
+test('parseArgs collects paths + flags including optional --co-author', () => {
+  const a = parseArgs(['docs/a.md', '--topic', 'X Y', '--base', 'origin/dev', '--co-author', 'N <n@e.com>', '--execute']);
+  assert.deepEqual(a.paths, ['docs/a.md']);
+  assert.equal(a.topic, 'X Y');
+  assert.equal(a.base, 'origin/dev');
+  assert.equal(a.coAuthor, 'N <n@e.com>');
+  assert.equal(a.execute, true);
+});
+
+test('parseArgs defaults: no co-author, dry-run (execute=false)', () => {
+  const a = parseArgs(['docs/a.md']);
+  assert.equal(a.coAuthor, undefined);
+  assert.equal(a.execute, false);
+});
+
+test('parseArgs rejects an unknown flag instead of treating it as a path', () => {
+  assert.throws(() => parseArgs(['docs/a.md', '--frobnicate']), /unknown flag: --frobnicate/);
+});
+
+test('parseArgs rejects a value flag with no value', () => {
+  assert.throws(() => parseArgs(['--topic']), /missing value for --topic/);
+  assert.throws(() => parseArgs(['--base', '--execute']), /missing value for --base/);
 });

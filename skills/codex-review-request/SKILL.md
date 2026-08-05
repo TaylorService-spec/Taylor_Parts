@@ -49,7 +49,9 @@ the block and warrant assessment without implying any send. Tests:
 
 Do not send or contact Codex. Do not fill fields from memory. Do not invent a
 PR/URL/spec/plan path. Do not add a dimension the diff can't exercise. Do not ask
-Codex to redesign architecture. Do not recommend merge — that is the Owner's
-separate gate (`docs/DelegationCharter.md`).
+Codex to redesign architecture. This skill never merges and does not act on the
+review; any later merge follows the current `docs/DelegationCharter.md` (a
+Tier-1-only change may be merged once verification passes; Owner authorization
+remains required for Tier-2/3 work).
 
 Full workflow, edge cases, and the runnable gh/git pipeline: `references/workflow.md`.

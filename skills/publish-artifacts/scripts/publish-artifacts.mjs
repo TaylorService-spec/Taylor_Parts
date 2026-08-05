@@ -7,15 +7,13 @@
 // for unit testing. The side-effecting git execution runs child_process only
 // behind the --execute flag. Node stdlib only — runnable by any agent (Codex too).
 
-import { existsSync, statSync } from 'node:fs';
+import { existsSync, statSync, mkdirSync, copyFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 
 // ---------------------------------------------------------------------------
 // PURE CORE (no side effects) — exported for tests
 // ---------------------------------------------------------------------------
-
-const CO_AUTHOR = 'Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>';
 
 // Directories artifacts are allowed to come from. Publishing outside these is
 // refused: never product code, Rules, identity, deploy config, or parked work.
@@ -108,22 +106,29 @@ export function buildBranchName({ topic, paths, prefix = 'docs' } = {}) {
   return `${prefix}/${slug}-artifacts`;
 }
 
-// Build a deterministic docs: commit message listing the paths.
-export function buildCommitMessage({ topic, paths } = {}) {
+// Build a deterministic docs: commit message listing the paths. `coAuthor` is an
+// OPTIONAL, explicitly-supplied trailer value ("Name <email>"); when omitted, NO
+// co-author trailer is added, so the commit is attributed to whoever actually
+// runs it (Claude, Codex, or a human operator) — never a fabricated author.
+export function buildCommitMessage({ topic, paths, coAuthor } = {}) {
   const resolved = Array.isArray(paths) ? paths : [];
   const subjectTopic = slugify(topic).replace(/-/g, ' ').trim();
   const subject = subjectTopic
     ? `docs: publish ${subjectTopic} artifacts`
     : `docs: publish ${resolved.length} artifact${resolved.length === 1 ? '' : 's'}`;
   const body = resolved.map((p) => `- ${p}`).join('\n');
-  return `${subject}\n\n${body}\n\n${CO_AUTHOR}`;
+  const trailer =
+    typeof coAuthor === 'string' && coAuthor.trim()
+      ? `\n\nCo-Authored-By: ${coAuthor.trim()}`
+      : '';
+  return `${subject}\n\n${body}${trailer}`;
 }
 
 // Produce the full deterministic plan. `exists` injected for purity.
-export function buildPlan({ paths, topic, base = 'origin/main', prefix = 'docs' }, exists) {
+export function buildPlan({ paths, topic, base = 'origin/main', prefix = 'docs', coAuthor }, exists) {
   const resolved = resolvePaths(paths, exists);
   const branch = buildBranchName({ topic, paths: resolved, prefix });
-  const message = buildCommitMessage({ topic, paths: resolved });
+  const message = buildCommitMessage({ topic, paths: resolved, coAuthor });
   return {
     base,
     branch,
@@ -138,6 +143,22 @@ export function buildPlan({ paths, topic, base = 'origin/main', prefix = 'docs' 
     ],
     merge: false,
   };
+}
+
+// Copy the named repo-relative paths from srcRoot into worktreeRoot at the same
+// relative location, creating parent dirs. Node-only (mkdirSync/copyFileSync),
+// cross-platform — no external `mkdir`/`cp`. Side effects are filesystem-only
+// (no git, no network), so this is unit-testable with temp dirs. Returns dests.
+export function copyPathsToWorktree(paths, srcRoot, worktreeRoot) {
+  const copied = [];
+  for (const p of paths) {
+    const src = path.resolve(srcRoot, p);
+    const dst = path.resolve(worktreeRoot, p);
+    mkdirSync(path.dirname(dst), { recursive: true });
+    copyFileSync(src, dst);
+    copied.push(dst);
+  }
+  return copied;
 }
 
 // ---------------------------------------------------------------------------
@@ -156,16 +177,12 @@ function execute(plan, worktree) {
   git(['fetch', 'origin']);
   const baseSha = git(['rev-parse', plan.base]);
   git(['worktree', 'add', worktree, '-b', plan.branch, plan.base]);
+  let result;
   try {
-    // stage ONLY the named paths — copy from the dirty tree into the clean worktree
-    for (const p of plan.paths) {
-      const src = path.resolve(process.cwd(), p);
-      const dst = path.resolve(worktree, p);
-      spawnSync('mkdir', ['-p', path.dirname(dst)]);
-      const cp = spawnSync('cp', [src, dst]);
-      if (cp.status !== 0) throw new Error(`copy failed for ${p}`);
-      git(['-C', worktree, 'add', '--', p]);
-    }
+    // stage ONLY the named paths — copy from the working tree into the clean
+    // worktree via Node fs (cross-platform; no external mkdir/cp).
+    copyPathsToWorktree(plan.paths, process.cwd(), worktree);
+    for (const p of plan.paths) git(['-C', worktree, 'add', '--', p]);
     const porcelain = git(['-C', worktree, 'status', '--porcelain']);
     const staged = porcelain.split('\n').filter(Boolean).map((l) => l.slice(3));
     const unexpected = staged.filter((p) => !plan.paths.includes(p));
@@ -175,26 +192,52 @@ function execute(plan, worktree) {
     git(['-C', worktree, 'commit', '-m', plan.message]);
     const commit = git(['-C', worktree, 'rev-parse', 'HEAD']);
     git(['-C', worktree, 'push', '-u', 'origin', plan.branch]);
-    return { baseSha, commit, branch: plan.branch, pushed: true };
-  } finally {
-    git(['worktree', 'remove', worktree, '--force']);
-    git(['worktree', 'prune']);
+    result = { baseSha, commit, branch: plan.branch, pushed: true };
+  } catch (err) {
+    // Best-effort cleanup on failure, but NEVER let a cleanup failure mask the
+    // actionable original error — swallow cleanup errors here and rethrow err.
+    try { cleanupWorktree(worktree); } catch { /* original error wins */ }
+    throw err;
   }
+  // Success path: cleanup failures ARE surfaced (there is no error to mask).
+  cleanupWorktree(worktree);
+  return result;
+}
+
+function cleanupWorktree(worktree) {
+  git(['worktree', 'remove', worktree, '--force']);
+  git(['worktree', 'prune']);
 }
 
 // ---------------------------------------------------------------------------
 // CLI
 // ---------------------------------------------------------------------------
 
-function parseArgs(argv) {
-  const out = { paths: [], topic: '', base: 'origin/main', execute: false };
+const BOOL_FLAGS = new Set(['--execute', '--dry-run']);
+const VALUE_FLAGS = new Set(['--topic', '--base', '--co-author']);
+
+// Parse CLI args. Rejects unknown --flags and value flags with no value instead
+// of silently treating them as paths / undefined. Exported for tests.
+export function parseArgs(argv) {
+  const out = { paths: [], topic: '', base: 'origin/main', execute: false, coAuthor: undefined };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === '--execute') out.execute = true;
-    else if (a === '--dry-run') out.execute = false;
-    else if (a === '--topic') out.topic = argv[++i];
-    else if (a === '--base') out.base = argv[++i];
-    else out.paths.push(a);
+    if (BOOL_FLAGS.has(a)) {
+      out.execute = a === '--execute';
+    } else if (VALUE_FLAGS.has(a)) {
+      const v = argv[i + 1];
+      if (v === undefined || (typeof v === 'string' && v.startsWith('--'))) {
+        throw new Error(`missing value for ${a}`);
+      }
+      i += 1;
+      if (a === '--topic') out.topic = v;
+      else if (a === '--base') out.base = v;
+      else if (a === '--co-author') out.coAuthor = v;
+    } else if (a.startsWith('--')) {
+      throw new Error(`unknown flag: ${a}`);
+    } else {
+      out.paths.push(a);
+    }
   }
   return out;
 }

@@ -3,9 +3,11 @@
 This operation is repo-only and fully reversible. Hold these lines even when asked
 to relax them:
 
-- **Never merge, and never push to `main`.** Merge is a separate Owner gate
-  (`docs/DelegationCharter.md`, `docs/ai/workflow.md`). This skill only publishes a
-  branch for review. It does not open+merge a PR.
+- **This skill never merges, and never pushes to `main`.** It only publishes a
+  branch for review; it does not open+merge a PR. Any later merge of that branch
+  follows the current `docs/DelegationCharter.md` — a Tier-1-only change may be
+  merged once its verification conditions pass, and Owner authorization remains
+  required for Tier-2/3 work.
 - **Never commit paths beyond those named/confirmed.** No product code, Firestore
   Rules, identity, deploy config, `.claude/` parked work, or unrelated changes. The
   script enforces this with an allow/deny path policy and fails closed.
@@ -20,5 +22,5 @@ to relax them:
   of that is in scope for publishing docs.
 
 If a request would cross one of these lines, decline the crossing, explain which
-boundary applies, and offer the in-scope alternative (publish the branch; the Owner
-merges separately).
+boundary applies, and offer the in-scope alternative (publish the branch; any later
+merge follows the current Delegation Charter).

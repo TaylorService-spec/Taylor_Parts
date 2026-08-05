@@ -45,10 +45,12 @@ recommend skipping Codex rather than generating a low-value request. State the
 reason from the actual file list, e.g. "docs-only: every changed path is under
 `docs/` — Codex not warranted per workflow.md."
 
-`scripts/build-request.mjs` exposes `assessWarrant(files)` which encodes this:
-rules → warranted; all-docs → not warranted; otherwise a code change is
-warranted by default (pass `forceWarrant` for security/complex-transaction/
-large-refactor cases the path heuristic cannot see).
+`scripts/build-request.mjs` exposes `assessWarrant(files, opts)` which encodes
+this: rules → warranted; security-sensitive paths (auth / permissions / Cloud
+Functions) → warranted; a large change set (≥ threshold files) → warranted;
+all-docs and routine/low-risk changes (routine UI, small fixes) → NOT warranted.
+Pass `securitySensitive`, `complexTransaction`, or `forceWarrant` for risk the
+path heuristic cannot see.
 
 ## Step 3 — Locate the governing artifacts
 
@@ -133,5 +135,6 @@ operator to paste.
 - Do not invent a PR number, URL, spec path, or plan path that isn't real.
 - Do not add a "Review for" dimension the diff cannot exercise.
 - Do not ask Codex to redesign or re-approve architecture, or to reopen a spec.
-- Do not recommend merge based on the review — merge is the Owner's separate
-  gate (`docs/ai/workflow.md`, `docs/DelegationCharter.md`).
+- This workflow never merges and does not act on the review; any later merge
+  follows the current Delegation Charter (a Tier-1-only change may be merged once
+  verification passes; Owner authorization remains required for Tier-2/3 work).

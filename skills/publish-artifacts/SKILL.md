@@ -32,8 +32,10 @@ paths outside the exact list given.
    confirmed (YES/NO), committed paths. Label anything produced this session but
    NOT pushed as LOCAL ONLY.
 
-Merge is a separate Owner gate — see `docs/DelegationCharter.md` and
-`docs/ai/workflow.md`. Do not open+merge a PR here.
+This skill never merges and never pushes to `main` — it only publishes a branch.
+Any later merge of that branch follows the current `docs/DelegationCharter.md`: a
+Tier-1-only change may be merged once its verification conditions pass, and Owner
+authorization remains required for Tier-2/3 work. This skill does not open+merge a PR.
 
 ## Details
 
