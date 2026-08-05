@@ -75,6 +75,6 @@ Every guide is tagged so you're never misled about what actually works:
 ## Related references
 
 - [Reorder Requests (consolidated overview)](reorder-requests.md) — the end-to-end reorder story in one page, for Dispatchers, Parts Managers, Parts Associates, and Warehouse Managers. The per-step guides under **Inventory** above cover the same flow in detail.
-- [Connecting to Existing Company Infrastructure FAQ](../../field-ops-app-vite/src/modules/administration/README.md) — deeper end-to-end guidance for preparing, reviewing, implementing, and supporting an infrastructure connection.
+- [Read the integrations connection guide](administration/integrations-guide.md) — how to prepare for, review, request, and support an infrastructure/integration connection (Administration → Integrations).
 
 More pages are added as each capability ships. If a page you need doesn't exist yet, ask — it means it hasn't been written yet, not that the feature doesn't exist.
