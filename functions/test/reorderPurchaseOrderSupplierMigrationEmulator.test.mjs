@@ -17,22 +17,31 @@ async function check(name, fn) {
 }
 const stamp = Date.now();
 const ns = (p) => `s4-${p}-${stamp}`; // namespace ids so concurrent runs never collide
+// Namespace the supplier NAMES too (not just ids): the dry-run reads the WHOLE suppliers collection,
+// so a generic name like "Acme Supply" could collide with suppliers seeded by another suite sharing
+// the emulator DB and flip an EXACT match to AMBIGUOUS. A per-run token keeps every normalizedKey
+// unique to this run, so classification is deterministic regardless of what else is in the collection.
+const nm = (base) => `${base} ${stamp}`;
+const key = (base) => `${base.toLowerCase()} ${stamp}`; // matches normalizeSupplierName of nm(base)
 
 console.log("reorderPurchaseOrderSupplierMigrationEmulator.test.mjs");
 
 // Seed governed suppliers (direct Admin write; the governed shape the workspace/commands produce).
 const supplierSeed = [
-  { id: ns("acme"), name: "Acme Supply", normalizedKey: "acme supply", status: "ACTIVE", version: 1 },
-  { id: ns("glx1"), name: "Globex", normalizedKey: "globex", status: "ACTIVE", version: 1 },
-  { id: ns("glx2"), name: "Globex", normalizedKey: "globex", status: "ACTIVE", version: 1 },
-  { id: ns("umb"), name: "Umbrella Co", normalizedKey: "umbrella co", status: "INACTIVE", version: 1 },
+  { id: ns("acme"), name: nm("Acme Supply"), normalizedKey: key("Acme Supply"), status: "ACTIVE", version: 1 },
+  { id: ns("glx1"), name: nm("Globex"), normalizedKey: key("Globex"), status: "ACTIVE", version: 1 },
+  { id: ns("glx2"), name: nm("Globex"), normalizedKey: key("Globex"), status: "ACTIVE", version: 1 },
+  { id: ns("umb"), name: nm("Umbrella Co"), normalizedKey: key("Umbrella Co"), status: "INACTIVE", version: 1 },
 ];
+// EXACT PO uses a deliberately messy-cased/spaced form of the acme name; it normalizes to the same
+// key but must round-trip VERBATIM as the snapshot.
+const EXACT_MESSY_NAME = `  ACME   supply ${stamp}  `;
 // Seed reorder POs spanning every classification.
 const poSeed = [
-  { id: ns("po-exact"), supplierName: "acme   supply" }, // EXACT (normalizes to acme's key)
-  { id: ns("po-amb"), supplierName: "Globex" }, // AMBIGUOUS
-  { id: ns("po-inact"), supplierName: "Umbrella Co" }, // INACTIVE
-  { id: ns("po-unm"), supplierName: "Nobody Inc" }, // UNMATCHED
+  { id: ns("po-exact"), supplierName: EXACT_MESSY_NAME }, // EXACT (normalizes to acme's key)
+  { id: ns("po-amb"), supplierName: nm("Globex") }, // AMBIGUOUS
+  { id: ns("po-inact"), supplierName: nm("Umbrella Co") }, // INACTIVE
+  { id: ns("po-unm"), supplierName: `Nobody Inc ${stamp}` }, // UNMATCHED
   { id: ns("po-hist"), partId: "P-1" }, // HISTORICAL (no supplierName)
 ];
 
@@ -51,7 +60,7 @@ await check("dry-run: correct classification + EXACT linkage over the seeded set
   const byId = Object.fromEntries(mine.map((c) => [c.poId, c]));
   assert.equal(byId[ns("po-exact")].classification, "EXACT");
   assert.equal(byId[ns("po-exact")].supplierId, ns("acme"));
-  assert.equal(byId[ns("po-exact")].supplierNameSnapshot, "acme   supply"); // verbatim
+  assert.equal(byId[ns("po-exact")].supplierNameSnapshot, EXACT_MESSY_NAME); // verbatim, not normalized
   assert.equal(byId[ns("po-amb")].classification, "AMBIGUOUS");
   assert.equal(byId[ns("po-amb")].supplierId, null);
   assert.equal(byId[ns("po-inact")].classification, "INACTIVE");
