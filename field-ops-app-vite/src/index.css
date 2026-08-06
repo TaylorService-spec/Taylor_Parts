@@ -797,6 +797,14 @@ button:hover {
 
 /* Mobile parts scanner */
 .scan-workspace { max-width: 780px; margin: 0 auto; color: #172326; }
+.scan-demo-banner { background: #fef9c3; color: #854d0e; border-radius: 8px; padding: 8px 12px; font-size: 13px; margin: 0 0 12px; }
+/* PartsScanner mounted as a tool within FieldMode (Section A). */
+.fo-fieldmode-tool { margin-top: 12px; }
+.fo-fieldmode-tool-toggle { background: none; border: 1px solid #D8DEDD; border-radius: 8px; padding: 10px 12px; font-weight: 600; font-size: 15px; cursor: pointer; width: 100%; text-align: left; display: flex; justify-content: space-between; align-items: center; }
+.fo-fieldmode-tool-toggle:hover { background: #F7F9F9; }
+/* The scanner's hero was authored to bleed to a padded page edge; contain it inside the tool panel. */
+.fo-fieldmode-tool .scan-workspace { max-width: none; }
+.fo-fieldmode-tool .scan-hero { margin-left: 0; margin-right: 0; border-radius: 10px; }
 .scan-hero { display: flex; justify-content: space-between; gap: 24px; align-items: flex-end; margin: -24px -24px 18px; padding: 28px 28px 24px; background: linear-gradient(125deg, #132b31, #244c52); color: white; }
 .scan-hero h2 { margin: 5px 0 2px; font-size: clamp(26px, 5vw, 38px); letter-spacing: -.04em; }
 .scan-hero p { margin: 0; color: #b9d0d2; }

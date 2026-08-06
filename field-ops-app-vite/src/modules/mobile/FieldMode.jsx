@@ -11,6 +11,7 @@ import {
 } from "../../services/completionService";
 import { useInventory } from "../../demo/InventoryContext";
 import { isHeroActiveJob, HERO_JOB_PARTS_REQUIRED } from "../../demo/heroConfig";
+import PartsScanner from "./PartsScanner";
 
 // Sprint 3.6.3: mobile-first visual upgrade + demo interaction layer.
 // "Start Travel"/"Arrived" are purely local UI state (travelStage below),
@@ -64,6 +65,10 @@ export default function FieldMode() {
   // which job the attempt belongs to so the reconciliation effect below can
   // resolve it against authoritative snapshot data.
   const [completion, setCompletion] = useState({ phase: "idle", jobId: null, message: null, canRetry: false });
+  // PartsScanner is a tool WITHIN the Technician Workspace (Section A) -- collapsed
+  // by default so it never crowds the job list. Scan/lookup only; it owns no
+  // governed inventory transaction (see PartsScanner.jsx).
+  const [scannerOpen, setScannerOpen] = useState(false);
 
   async function updateStatus(job, status) {
     try {
@@ -184,6 +189,21 @@ export default function FieldMode() {
             </div>
           )}
         </>
+      )}
+
+      {!loading && (
+        <div className="fo-card fo-fieldmode-tool">
+          <button
+            type="button"
+            className="fo-fieldmode-tool-toggle"
+            onClick={() => setScannerOpen((open) => !open)}
+            aria-expanded={scannerOpen}
+          >
+            Parts Scanner <span aria-hidden="true">{scannerOpen ? "▲" : "▼"}</span>
+          </button>
+          <p className="fo-muted">Scan or look up a part. Demo — actions are not saved.</p>
+          {scannerOpen && <PartsScanner technicianId={technicianId} />}
+        </div>
       )}
     </div>
   );
