@@ -38,6 +38,7 @@ _None currently in flight. Add a row when you start a capability._
 
 - **Receiving activation (protected)** — the governed receive workflow now EXISTS (A1, scanner-within-FieldMode, DECISIONS #68) but is fail-closed on `RECEIVING_TRANSPORT_READY = false`. Turning it on is a **protected boundary**: Phase-F readiness flip + authorized Hosting release + the `inventory.stock.receive` grant already live for {admin,dispatcher,owner}. Owner-gated; not a repo-only capability.
 - **(Optional) dedicated admin/dispatcher Receiving surface** — A1 placed the governed receive on the scanner (technician input tool); a separate Receiving home on an admin/dispatcher surface (driven from Purchasing → Purchase Orders) could reuse the same `ReceiveAgainstPurchaseOrder` component. Repo-only if pursued; not required by A1.
+- Remaining Inventory placeholders — Warehouses, Cycle Counts, Back Orders (Truck Inventory already built; Transfers done #70). Warehouses has governed backend to reuse; Cycle Counts / Back Orders have little existing foundation.
 - Remaining Purchasing placeholders — Suppliers / Quotes / Receipts / Demand Planning (each a repo-only capability; Suppliers/Quotes would make currently-unused collections load-bearing → Tier-2 gate).
 
 ## Recently completed (this program window — see DECISIONS.md for the durable record)
@@ -51,3 +52,4 @@ _None currently in flight. Add a row when you start a capability._
 | Governed FieldMode Receive-against-Purchase-Order (A1) | MERGED (repo-only; readiness false) | DECISIONS #68 |
 | Inventory → Receiving first-class workspace (one workflow, two launch points) | MERGED (repo-only) | DECISIONS #69 |
 | Executive Architecture Office — Program 0 Authoritative Truth Pass | MERGED (docs-only) | DECISIONS #70 · `reviews/eao-program-0-truth-pass.md` |
+| Inventory → Transfers first-class workspace (read-only; reuses canonical view-model) | MERGED (repo-only) | DECISIONS #71 |

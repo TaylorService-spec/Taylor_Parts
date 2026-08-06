@@ -21,6 +21,7 @@ import AdminRolesPermissions from "./modules/administration/AdminRolesPermission
 import IntegrationsFaq from "./modules/administration/IntegrationsFaq";
 import PurchaseOrders from "./modules/purchasing/PurchaseOrders";
 import Receiving from "./modules/inventory/Receiving";
+import Transfers from "./modules/inventory/Transfers";
 import WorkOrdersList from "./modules/workOrders/WorkOrdersList";
 import WorkOrderWizard from "./modules/workOrders/WorkOrderWizard";
 import WorkOrderDetailPage from "./modules/workOrders/WorkOrderDetailPage";
@@ -313,6 +314,14 @@ function renderSubnavItem(domain, item, role, operationalContext) {
   // capability-gated) -- no live receipt here.
   if (domain.key === "inventory" && item.key === "receiving") {
     return <Receiving />;
+  }
+  // Inventory > Transfers -- first-class workspace for the inventory-transfer capability
+  // (movement between locations), replacing the placeholder (admin/dispatcher). Read-only:
+  // it REUSES the shared operationsQueries read + the canonical buildTransferOrdersView (the
+  // same view-model the Operations dashboard uses) -- no parallel read, no re-mapping.
+  // accessVersion is threaded so the read re-runs on any access change (inventory convention).
+  if (domain.key === "inventory" && item.key === "transfers") {
+    return <Transfers accessVersion={operationalContext?.accessVersion} />;
   }
   // Operations owns the canonical part-name read for its dashboard panels; accessVersion
   // is threaded so that read re-runs and its name map is invalidated on any access change
