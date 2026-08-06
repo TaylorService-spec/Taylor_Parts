@@ -161,6 +161,18 @@ Every capability entry below follows this shape:
 - **Key Workflows**: Technician recommendation scoring (Dispatch Management's TRE-v1).
 - **Future Expansion**: Predictive maintenance scheduling, demand forecasting beyond the current linear model, natural-language reporting interfaces.
 
+#### Enterprise Assistant *(Future — DESIGNED; not implemented; not currently scheduled)*
+
+Recorded 2026-08-06 as an Owner future product requirement, reconciled into this existing AI Platform capability (it is **not** a separate capability). Do not implement it now; it advances only when its dependencies and product value make it the strongest lever under `engineering/AI_ENGINEERING_OPERATING_MODEL.md` §1a. Its existence here is a recorded requirement, not a schedule.
+
+**Target experience:** ONE contextual **Enterprise Assistant** available from every appropriate workspace — understands bounded current-page/business context, uses governed platform data/tools, answers questions and explains conditions, can perform authorized background analysis, and preserves conversation/task continuity across workspaces. It should feel like a single intelligence layer across the platform (e.g. Purchase Orders "which orders need attention?", Receiving "why can't this PO be received?", Warehouses "which warehouses have exceptions?", Dispatch "which technician is the best fit and why?", global "what should I pay attention to today?") — **not** a collection of unrelated page-specific chatbots.
+
+**CRITICAL PRINCIPLE — AI is OPTIONAL.** Enterprise Operations OS MUST remain fully functional without AI. Core workflows stay deterministic, governed, auditable, and independently usable. A customer must be able to purchase and operate the platform without enabling AI, buying an AI module, paying model/token cost, sending company data to an AI provider, or depending on an AI provider's availability. The model is: **Core deterministic platform → OPTIONAL AI capability layer (assistant / recommendations / analysis / automation)** — never AI → required decision → core workflow. (The existing TRE-v1 is an *internal deterministic* scoring instance, not an external-AI dependency; this principle governs any external-AI feature.)
+
+**Future customer choice (design intent — do NOT add config fields now):** the architecture should eventually permit AI fully disabled / company-wide / per-persona / per-capability; background analysis disabled while conversational assistance remains; customer usage/budget limits; customer-approved provider/model policy. **AI consumption must eventually be separately measurable** so AI cost can be commercially separated from ordinary platform operation.
+
+**Architectural rule (when implemented):** ONE assistant capability → a shared assistant shell → capability-specific bounded **context adapters** → governed read models/tools → a **provider abstraction**. Do NOT build independent per-workspace bots (PurchaseOrderBot / WarehouseBot / ReceivingBot / DispatchBot / WorkOrderBot); each workspace contributes context and tools, but the assistant capability stays shared. **Assistant authority ≤ requesting user authority** always; AI instructions or hidden UI are never authorization controls; any future mutation still passes through the platform's trusted governed command authority (never AI directly). Core operations must gracefully continue if the AI capability is disabled, unavailable, over budget, rate-limited, or its provider is offline. Provider independence and graceful degradation are requirements, not enhancements.
+
 ## 4. Initial Capability Mapping
 
 | Capability | Related Business Entities | Existing Repository Modules | Existing Documentation | Planned Future Documents |
