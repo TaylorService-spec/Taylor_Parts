@@ -1,7 +1,7 @@
 # Delegation Charter
 
 **Status:** Active — adopted 2026-07-11, see `docs/DECISIONS.md` entry #1.
-**Version:** 0.2 — see "Amendment history" at the bottom of Section 7.
+**Version:** 0.3 — see "Amendment history" at the bottom of Section 7. Section 8 (Autonomous execution operating mode) is the standing default for how aggressively Tier 1 is exercised.
 **Location when adopted:** `docs/DelegationCharter.md` in Taylor_Parts
 **Authority:** Subordinate to `PlatformConstitution.md` and all governance documents listed in `docs/README.md`. Where this charter conflicts with them, they win.
 
@@ -90,3 +90,24 @@ Rudy may amend or revoke this charter at any time with a single message; the cha
 
 **Amendment history:**
 - **Amendment 1 (2026-07-11):** Added Tier 1 merge authority for Tier-1-only PRs (see Section 2). Prompted by the environment's own permission gate correctly blocking a merge (PR #94) that hadn't been separately authorized — the original charter granted "no approval needed" for Tier 1 *decisions* but never explicitly addressed whether that included the *merge* action itself. Rudy resolved the ambiguity in a single message; this amendment records it. See `docs/DECISIONS.md` entry #5.
+- **Amendment 2 (2026-08-06):** Added Section 8 (Autonomous execution operating mode), making default autonomy the standing rule so it survives across sessions and context compression. Prompted by repeated Owner interruptions for routine merge/doc/exact-head/review-routing/cleanup mechanics that Tier 1 already delegates; the rule kept being lost between sessions. Rudy directed it be made durable in the repository. See `docs/DECISIONS.md` entry #66.
+
+---
+
+## 8. Autonomous execution operating mode (Amendment 2, 2026-08-06)
+
+**Default: operate autonomously through implementation.** Rudy is the exception handler, not an approval relay (Section 1). Do not stop for routine merge, documentation, exact-head, review-routing, or cleanup approvals. Stop only for the genuine boundaries in §8.3. This section governs *how aggressively Tier 1 is exercised*; it does not expand what Tier 1 covers, and Tiers 2–3 still bind.
+
+**8.1 Autonomous by default (no approval needed).** For repo-only, reversible work within an already-approved architecture, once all required checks pass: implement the approved design; fix review findings; run tests/verification; update user documentation, execution records, and `DECISIONS.md` (after the implementation is settled); open PRs; complete governed code review; merge approved Tier-1 PRs under the exact-head guard; clean branches/worktrees; continue into the next already-directed repo-only section; and make small implementation decisions that have one reasonable governed answer. These are Tier 1 (Section 2) — decide, log, continue.
+
+**8.2 Do not stop merely to ask** "Approve this PR?", "Should I merge?", "Add the DECISIONS entry?", "Should the docs fix be separate?", "Route back to Codex?", "Use the exact-head guard?", "Clean the branch/worktree?", "Continue to the next already-directed section?", or "Apply a straightforward review fix?". When the work is repo-only, reversible, within the approved architecture, and all checks pass: do it, document it, merge it under the governed process, continue.
+
+**8.3 Required stop conditions (escalate — Tier 2/3).** Stop and ask the Owner when any applies: a material product/architecture decision with multiple valid directions; a security/authorization-model change; a `firestore.rules` or other protected-policy change; a capability grant/revoke/role change or access-administration action; a production deploy, Hosting release, Functions deploy, or live verification; a data migration, destructive cleanup, production write, or rollback; spending/billing/licensing/vendor commitment; an irreversible or hard-to-reverse action; work crossing a clearly parallel-owned surface without a handoff; tests failing with a cause not safely resolvable within the approved design; incomplete evidence or an uncertain zero-consumer/deletion claim; authoritative repo artifacts conflicting with no safe precedence rule; or scope that would materially broaden beyond the approved program direction.
+
+**8.4 Implementation-decision rule.** When an implementation question has one reasonable answer under the existing architecture, governance, conventions, and tests: choose it, record the reasoning briefly where appropriate, implement, continue. Do not escalate implementation mechanics.
+
+**8.5 Section/milestone reporting.** Do not return after every PR or commit. Return only at: a genuine protected boundary; a material architecture/product decision; an unresolvable blocker; the end of a meaningful feature-area milestone; or the end of all currently-assigned autonomous repo-only work. Keep logical changes in separate commits for traceability; they may be reviewed and merged as a consolidated milestone when practical. At milestone return, report what was completed, PRs/commits merged, verification performed, material decisions made under existing governance, protected/unresolved items still blocked, and the next recommended program lever — not routine approval questions.
+
+**8.6 Independent review workflow.** Use Codex / the established independent review process without an Owner decision for each routing step. If review finds a clear implementation defect: fix it, rerun verification, obtain the confirm review when required, and merge autonomously when the result is approved and no protected boundary is crossed.
+
+**8.7 Owner control remains intact.** This mode authorizes none of: production deploys; Rules deploys; grants or role changes; migrations; destructive operations; spending; architectural changes not already approved; or bypassing the human-operator credential boundary. The human operator still executes every production-credentialed command; the Owner still decides protected and material product boundaries. Where §8 conflicts with a Tier 2/3 limit or any governance document above this charter, the limit wins.
