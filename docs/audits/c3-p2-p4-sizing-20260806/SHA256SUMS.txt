@@ -1,0 +1,4 @@
+5c9d54644c68796c87b871ca84b3b4b049c24643d34884d464c4665af917d4f9 *available-firestore-metrics.txt
+ff0f708dbb549f13f32ddca22bbc65d852ece11652d45cdc1fc1d857fb82603a *cost-model.txt
+3434f678bba970ddb5b25acbf6df3e5a3a227e285edb522b68eb816f84a59c64 *storage-measurement.json
+0a797209dc63582e9997f94ff6107d118e01002ada627b14409bdbb79c5e7376 *us-central1-skus.txt

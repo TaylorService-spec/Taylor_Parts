@@ -1,0 +1,13 @@
+MEASURED size: 1,649,196 bytes = 1.5728 MiB = 0.0015359 GiB
+MEASURED growth: 2,464 bytes/day = 0.86 MiB/year
+
+MEASURED (today)                   size=   0.00154 GiB | P2 PITR $  0.0002 | P3 daily(28) $  0.0013 | P4 weekly(14) $  0.0006 | TOTAL $  0.0022/mo
+10x current                        size=   0.01536 GiB | P2 PITR $  0.0023 | P3 daily(28) $  0.0129 | P4 weekly(14) $  0.0065 | TOTAL $  0.0217/mo
+100x current                       size=   0.15359 GiB | P2 PITR $  0.0230 | P3 daily(28) $  0.1290 | P4 weekly(14) $  0.0645 | TOTAL $  0.2166/mo
+UPPER BOUND 1 GiB (~650x)          size=   1.00000 GiB | P2 PITR $  0.1500 | P3 daily(28) $  0.8400 | P4 weekly(14) $  0.4200 | TOTAL $  1.4100/mo
+UPPER BOUND 10 GiB (~6,500x)       size=  10.00000 GiB | P2 PITR $  1.5000 | P3 daily(28) $  8.4000 | P4 weekly(14) $  4.2000 | TOTAL $ 14.1000/mo
+
+Years to reach 1 GiB at measured growth: 1,192
+Years to reach 1 GiB at 100x measured growth: 11.9
+
+One full restore of the current DB: $0.00031
