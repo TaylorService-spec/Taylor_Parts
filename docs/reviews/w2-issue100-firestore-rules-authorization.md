@@ -134,3 +134,25 @@ One of:
 - **(c)** Hold the deploy; I run §4's emulator matrix repo-only as evidence and stop.
 
 No rules modified. Nothing deployed or live-verified. Awaiting your single decision.
+
+## 9. RESOLUTION (2026-08-05) — rules are ALREADY LIVE; the mismatch was a CRLF artifact
+
+- Owner chose §8(c): the repo-only emulator matrix was run — **30 passed / 0 failed**
+  (`field-ops-app-vite/test/emulator/inventoryRoleRulesMatrix.mjs`).
+- An authorized operator captured the LIVE ruleset:
+  `projects/taylor-parts/rulesets/6316db98-9fce-4123-9391-9919e6dd70bd`, SHA-256
+  **`ec1f0a9b…13b1ccd1`**.
+- **Correction:** the "expected" SHA `1bbf365…95636` reported earlier was `sha256sum` of
+  the **Windows working-tree checkout**, which git had normalized to **CRLF** — an
+  inflated hash, not the canonical repo rules. The canonical git **blob** of
+  `main:firestore.rules` (LF) hashes to **`ec1f0a9b…13b1ccd1`** — identical to the live
+  ruleset. `git diff e3e5565..main -- firestore.rules` is empty (byte-identical blobs).
+- **Therefore: repo Rules == live Rules. The Issue #100 grants are ALREADY DEPLOYED**
+  (in the whole-file ruleset deployed 2026-08-04 at commit `e3e5565`, EI Receiving Phase D).
+  No deploy needed; nothing to reconcile. The 30/30 matrix tested exactly the live ruleset.
+- **W2 Firestore Rules protected boundary: SATISFIED.** Remaining W2 work is repo-only
+  Tier-1 (already done: UI/hook read-error contract) → Codex review + Owner approval at the
+  W2 section boundary. Optional live-surface functional verification remains a separate,
+  Owner-authorized step (ambient-auth green-light still parked).
+- **Lesson:** on Windows, always hash the git blob (`git show <ref>:firestore.rules | sha256sum`),
+  never the checked-out file, when comparing against a deployed ruleset SHA.
