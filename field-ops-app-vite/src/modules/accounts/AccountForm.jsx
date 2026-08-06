@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { ACCOUNT_STATUS, ACCOUNT_RELATIONSHIP_TYPE, INVOICE_DELIVERY_METHOD, PAYMENT_TERMS, TAX_STATUS } from "../../domain/constants";
+import { ACCOUNT_STATUS, ACCOUNT_RELATIONSHIP_TYPE, ACCOUNT_LINE_OF_BUSINESS, INVOICE_DELIVERY_METHOD, PAYMENT_TERMS, TAX_STATUS } from "../../domain/constants";
 import { commercialProfileErrors, isValidInvoiceDeliveryMethod, isValidPaymentTerms, isValidTaxStatus, isContactOnAccount, resolveOwnerIdentity } from "../../domain/commercialProfile";
 import { accountSaveErrorMessage } from "../../domain/accountPortfolio";
 import { useAuth } from "../../auth/AuthContext";
@@ -55,6 +55,7 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
   });
   const [status, setStatus] = useState(initialValues?.status ?? ACCOUNT_STATUS.PROSPECT);
   const [relationshipTypes, setRelationshipTypes] = useState(initialValues?.relationshipTypes ?? []);
+  const [lineOfBusiness, setLineOfBusiness] = useState(initialValues?.lineOfBusiness ?? []);
   const [notes, setNotes] = useState(initialValues?.notes ?? "");
   const [tagsInput, setTagsInput] = useState((initialValues?.tags ?? []).join(", "));
   const [showExternalIds, setShowExternalIds] = useState(false);
@@ -138,6 +139,10 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
     setRelationshipTypes((cur) => (cur.includes(type) ? cur.filter((t) => t !== type) : [...cur, type]));
   }
 
+  function toggleLineOfBusiness(company) {
+    setLineOfBusiness((cur) => (cur.includes(company) ? cur.filter((c) => c !== company) : [...cur, company]));
+  }
+
   // Builds a COMPLETE Person Assignment. The assignee (employeeId + userId +
   // resolved display name) comes from the picker; the assignor's employee/user
   // IDs AND resolved display-name snapshot come from the authenticated session
@@ -188,12 +193,16 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
     const orderedRelationshipTypes = Object.values(ACCOUNT_RELATIONSHIP_TYPE).filter((t) =>
       relationshipTypes.includes(t)
     );
+    const orderedLineOfBusiness = Object.values(ACCOUNT_LINE_OF_BUSINESS).filter((c) =>
+      lineOfBusiness.includes(c)
+    );
 
     const payload = {
       name: trimmedName,
       billingAddress: hasAddress ? { street: trimmedStreet, city: trimmedCity, state: trimmedState, zip: trimmedZip } : null,
       status,
       relationshipTypes: orderedRelationshipTypes,
+      lineOfBusiness: orderedLineOfBusiness,
       notes: notes.trim() || null,
       tags,
       customerNumber: customerNumber.trim() || null,
@@ -284,6 +293,26 @@ export default function AccountForm({ initialValues, onSubmit, onCancel, submitL
             onChange={() => toggleRelationshipType(ACCOUNT_RELATIONSHIP_TYPE.VENDOR)}
           />
           Vendor
+        </label>
+      </fieldset>
+
+      <fieldset className="fo-fieldset">
+        <legend>Line of Business</legend>
+        <label className="fo-checkbox-label">
+          <input
+            type="checkbox"
+            checked={lineOfBusiness.includes(ACCOUNT_LINE_OF_BUSINESS.TAYLOR)}
+            onChange={() => toggleLineOfBusiness(ACCOUNT_LINE_OF_BUSINESS.TAYLOR)}
+          />
+          Taylor
+        </label>
+        <label className="fo-checkbox-label">
+          <input
+            type="checkbox"
+            checked={lineOfBusiness.includes(ACCOUNT_LINE_OF_BUSINESS.VENTANA)}
+            onChange={() => toggleLineOfBusiness(ACCOUNT_LINE_OF_BUSINESS.VENTANA)}
+          />
+          Ventana
         </label>
       </fieldset>
 

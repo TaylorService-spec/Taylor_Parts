@@ -92,6 +92,21 @@ export const ACCOUNT_RELATIONSHIP_TYPE = {
   VENDOR: "VENDOR",
 };
 
+// W1 / Line-of-business (LOB wireframe §3.8, Owner-approved model correction
+// 2026-08-05). An Account declares whether it has a Taylor relationship, a
+// Ventana relationship, or both -- the SAME optional/additive/multi-valued,
+// informational-only array idiom as ACCOUNT_RELATIONSHIP_TYPE above (no
+// Firestore Rules change, no migration; the accounts match block has no
+// field-level validation). It gates NO authorization and renders no badge when
+// unset (never a silent default to "Taylor"). Deliberately a FOURTH distinct
+// concept -- NOT operatingCompanyId (whose books a *transaction* lands in, a
+// per-transaction field), NOT salesChannel (retail vs national account, per
+// order). "Both" is a first-class, expected value.
+export const ACCOUNT_LINE_OF_BUSINESS = {
+  TAYLOR: "TAYLOR",
+  VENTANA: "VENTANA",
+};
+
 // Account Commercial Profile -- PR 1 (docs/specifications/
 // account-commercial-profile-and-financial-forecast-horizons.md;
 // docs/implementation-plans/...). How an invoice is delivered to the

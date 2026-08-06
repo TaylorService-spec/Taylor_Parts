@@ -7,7 +7,7 @@ import { updateAccount } from "../../domain/accounts";
 import { createLocation } from "../../domain/locations";
 import { createContact, primaryContactState } from "../../domain/contacts";
 import { formatAddress } from "../../domain/address";
-import { ACCOUNT_RELATIONSHIP_TYPE } from "../../domain/constants";
+import { ACCOUNT_RELATIONSHIP_TYPE, ACCOUNT_LINE_OF_BUSINESS } from "../../domain/constants";
 import AccountForm from "./AccountForm";
 import ContactImportModal from "./ContactImportModal";
 import ContactCreateModal from "./ContactCreateModal";
@@ -40,6 +40,11 @@ const RELATIONSHIP_LABEL = {
   [ACCOUNT_RELATIONSHIP_TYPE.VENDOR]: "Vendor",
 };
 
+const LINE_OF_BUSINESS_LABEL = {
+  [ACCOUNT_LINE_OF_BUSINESS.TAYLOR]: "Taylor",
+  [ACCOUNT_LINE_OF_BUSINESS.VENTANA]: "Ventana",
+};
+
 // Renders relationship-type badges inline. An Account with no
 // relationshipTypes renders nothing (never a silent default to "Customer").
 function RelationshipBadges({ relationshipTypes }) {
@@ -51,6 +56,23 @@ function RelationshipBadges({ relationshipTypes }) {
       {ordered.map((t) => (
         <span key={t} className={`fo-badge fo-badge-relationship-${t.toLowerCase()}`}>
           {RELATIONSHIP_LABEL[t] ?? t}
+        </span>
+      ))}
+    </>
+  );
+}
+
+// Renders line-of-business badges inline (W1, LOB wireframe §3.8). An Account
+// with no lineOfBusiness renders nothing (never a silent default to "Taylor").
+function LineOfBusinessBadges({ lineOfBusiness }) {
+  const values = lineOfBusiness ?? [];
+  const ordered = Object.values(ACCOUNT_LINE_OF_BUSINESS).filter((c) => values.includes(c));
+  if (ordered.length === 0) return null;
+  return (
+    <>
+      {ordered.map((c) => (
+        <span key={c} className={`fo-badge fo-badge-lob-${c.toLowerCase()}`}>
+          {LINE_OF_BUSINESS_LABEL[c] ?? c}
         </span>
       ))}
     </>
@@ -274,6 +296,7 @@ export default function AccountDetail() {
                 <span className={`fo-badge fo-badge-${account.status.toLowerCase()}`}>{account.status}</span>
               )}
               <RelationshipBadges relationshipTypes={account.relationshipTypes} />
+              <LineOfBusinessBadges lineOfBusiness={account.lineOfBusiness} />
             </div>
 
             {account.customerNumber && (
