@@ -69,24 +69,30 @@ Pages workflow, which is **not** a review environment and is out of scope here.
 | `suppliersView` | offline | 5 | (app test chain) |
 | `reorderPurchaseOrderSupplierLinkage` | offline | 9 | `test:supplierLinkage` |
 | `reorderPurchaseOrderSupplierMigration` | emulator (dry-run) | 3 | `test:supplierMigrationEmulator` |
+| `supplierMasterCallables` | emulator | 11 | `test:supplierMasterCallables` |
+| `supplierMasterCallablesExport` | offline | 2 | `test:supplierMasterCallables` |
 
-Plus: `tsc` build clean (functions); `vite build` clean (app); **three independent design-code
-reviews** (S2 commands, S3 workspace, S4 migration) — **zero correctness findings**, all mechanical
-legibility fixes applied.
+Plus: `tsc` build clean (functions); `vite build` clean (app); **four independent design-code
+reviews** (S2 commands, S3 workspace, S4 migration, callable adapters) — **zero correctness findings**,
+all mechanical legibility fixes applied.
 
 ## 5. Exact production changes eventually required (the promotion delta)
 
 None of these are done. Each is separately authorized.
 
-1. **Supplier command callables + Functions deploy.** The `supplierMasterCommands` are internal
-   command services with **no callable wrapper** and are **not** exported from `functions/src/index.ts`
-   (same posture as `partMasterCommands`). Production create/update/activate/deactivate therefore
-   requires (a) building `onCall` wrappers (mirroring `truckRegistryCallables`/`receivingCallables`),
-   and (b) a **Functions deploy**. *This is repo code that does not yet exist — the first
-   production-enabling slice.*
-2. **Capability grant.** `inventory.catalog.manage` / `inventory.catalog.activate` are defined but
-   carried by **no standing role** (only a temporary execution-scoped Part-Master role). A supplier
-   administrator role must be **granted** these. *Protected.*
+1. **Supplier command callables — BUILT (repo-only), Functions deploy remaining.** The `onCall`
+   wrappers now exist (`functions/src/supplierMaster/supplierMasterCallables.ts`, exported from
+   `functions/src/index.ts` under the frozen public names `createSupplier`/`updateSupplier`/
+   `activateSupplier`/`deactivateSupplier`) — thin adapters that derive actor identity only from
+   `request.auth.uid`, forward to the trusted commands, and sanitize errors. *Export is not
+   deployment:* they are **not deployed**. Remaining: a **Functions deploy**. *(Done in this slice —
+   PR reference in the RC changelog below.)*
+2. **Capability grant + a role that carries `inventory.catalog.activate`.** `inventory.catalog.manage`
+   is carried only by the temporary `inventoryCreateExecutor` role; **`inventory.catalog.activate` is
+   carried by NO role at all.** So even once deployed, create/update need a `.manage` grant and
+   **activate/deactivate cannot be authorized until a governed role is defined and granted
+   `inventory.catalog.activate`** (verified: the callables fail closed with permission-denied for a
+   `.manage`-only actor). A supplier-administrator role definition + grant is required. *Protected.*
 3. **`suppliers` Rules — NO CHANGE.** Already fail-closed governed (`read: isAdminOrDispatcher()`,
    all writes `if false`; trusted commands write via Admin SDK, bypassing rules). Nothing to deploy.
 4. **Frontend promotion.** The Suppliers workspace ships with the app bundle; making it visible to
@@ -125,15 +131,34 @@ Dry-run migration (this RC): nothing to roll back — it writes nothing.
 ## Included vs excluded in RC-1
 
 **Included:** governed Supplier object (validator/types/commands/repository), audit actions, the
-read-only Suppliers workspace + user guide, and the dry-run linkage migration tooling + evidence.
-**Excluded / deferred:** supplier write UI, command callables, any deploy/grant/promotion, forward-compat
-PO writer, governed supplier picker, real migration execute, and `mergeSupplier` (still deferred per S1).
+read-only Suppliers workspace + user guide, the dry-run linkage migration tooling + evidence, and the
+**trusted command callable adapters** (inert, not deployed).
+**Excluded / deferred:** supplier write UI, any deploy/grant/promotion, a governed role carrying
+`inventory.catalog.activate`, forward-compat PO writer, governed supplier picker, real migration
+execute, and `mergeSupplier` (still deferred per S1).
 
-## Environment backlog (route, do not build now unless it becomes the blocker)
+## RC changelog
+
+- **RC-1 → RC-1.1 (callable adapters).** Added inert `onCall` wrappers for the four Supplier commands
+  (repo-only, not deployed); production delta item 1 moves from "does not exist" to "built; Functions
+  deploy remaining", and item 2 is sharpened (no role carries `inventory.catalog.activate`).
+
+## Environment requirement — ROUTED to the Sandbox / Integration Environment program (not built here)
+
+Per Owner direction (2026-08-06), the missing Owner-experience environment is **not** a
+Supplier-specific mechanism — it is one reusable platform capability for reviewing ALL integrated
+Enterprise Operations OS capabilities, owned by the **Executive Architecture Office / environment
+workstream**. Do not fork the product architecture to make Supplier Master reviewable. Target: this
+exact RC experienced as *full current platform + Supplier Master + synthetic suppliers + sandbox
+personas + governed backend + no production data/credentials + stable review URL + visible deployed
+SHA*. Until it exists, the **local emulator review path (§3) stands as technical evidence** and does
+not block repo-only engineering progress.
+
+Requirements handed to that program:
 
 - **Turnkey seeded preview:** one command to bring up emulator + seed accounts + seed domain data +
   serve the app in `?emulator=1`, so Owner experience review needs no manual setup.
-- **Hosted non-production preview** with pre-provisioned admin auth (a real integrated preview
-  endpoint distinct from the ungated production Pages workflow).
+- **Hosted non-production preview** with pre-provisioned auth (a real integrated preview endpoint,
+  distinct from the ungated production Pages workflow) exposing a stable review URL + deployed SHA.
 - **Deployed-vs-intended observability:** capture deployed SHA / Rules hash / Function estate after any
   promotion (operational verification), surfaced automatically.
