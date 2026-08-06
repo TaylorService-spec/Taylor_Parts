@@ -197,6 +197,34 @@ gcloud firestore backups schedules create --database="(default)" \
 
 **Recommended authorization order: P1 alone first.** It is free, instantaneous, reversible, has no operational impact, and removes the worst single-command outcome. It should not wait on the spend decision for P2–P4.
 
+## 10a. DEFERRED — Identity / Firebase Auth Recovery & Continuity Review
+
+**Status: DEFERRED · REQUIRED BEFORE C3 / FINAL OPERATIONAL CERTIFICATION · NOT BLOCKING P5 · NOT AUTHORIZED FOR PRODUCTION ACTION.**
+
+**Firestore recovery does not constitute identity recovery.** Everything P1–P4 achieved protects *data*. Firebase Auth is entirely outside Firestore backup and restore: if Auth were lost while Firestore survived, every `users/{uid}` document, `roleAssignment`, audit attribution and operational-role linkage would still exist while the identities they point at would not.
+
+This section records the requirement in the C3 authority rather than in a competing roadmap artifact. It is **not** a design; the review itself is future work.
+
+**The question the review must answer:**
+
+> If Firebase Authentication were lost while Firestore survived, can Enterprise Operations OS reconstruct the identity and authorization estate **deterministically**, without breaking historical identity relationships?
+
+**Minimum scope:** production Auth identity inventory · Auth-vs-Firestore sources of identity truth · supported Auth export/import and recovery mechanisms · **UID preservation** requirements · password/hash recovery implications · MFA implications · federated/provider identity implications · accidental user-deletion recovery · bulk or malicious identity-change recovery · the UID ↔ Employee/User record relationship · historical audit attribution · custom-claims reconstruction · `accessVersion` reconstruction · governed-permission reconstruction · break-glass administrative access · identity RPO/RTO · monitoring and alerting · security, encryption and retention of recovery artifacts · rehearsal requirements.
+
+**Why UID preservation is the crux:** this platform's authorization model keys on `uid` throughout — `users/{uid}`, `roleAssignment.principalUid`, audit-event actor identity, and the `users/{uid}.technicianId` → `fieldops_technicians` mapping. An Auth recovery that produced *new* UIDs would silently sever every one of those relationships while leaving the data intact and apparently valid. That is a worse failure mode than data loss, because it is not obvious.
+
+**The whole-platform recovery posture this feeds:**
+
+| Layer | Mechanism | State |
+|---|---|---|
+| **Data** | Firestore PITR / backups / restore | ✅ configured (P1–P4); **proof pending P5** |
+| **Identity** | Firebase Auth recovery / reconstruction | ❌ **not assessed — this deferral** |
+| **Authorization** | permissions / claims / `accessVersion` reconstruction | ❌ not assessed |
+| **Application** | Rules / indexes / Functions / frontend / configuration | ⚠️ partially understood (§5, §9) |
+| **Operations** | monitoring / evidence / rehearsals | ⚠️ P5 designed; delivery reliability separate |
+
+**C3 cannot be certified complete while three of those five layers are unassessed.** P1–P5 close the first row only.
+
 ## 11. Status
 
 **P1 EXECUTED 2026-08-06** under Owner Decision A, scoped to delete protection only. `deleteProtectionState: DELETE_PROTECTION_DISABLED → DELETE_PROTECTION_ENABLED`; field-by-field comparison found **0 unintended changes**; PITR still disabled, backups still 0, schedules still 0. Evidence (7 files, hashed): [`../audits/c3-p1-delete-protection-20260806/`](../audits/c3-p1-delete-protection-20260806/).

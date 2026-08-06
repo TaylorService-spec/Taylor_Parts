@@ -39,7 +39,7 @@ For each collection: the Rules operations actually allowed; client and server ca
 
 **Row 23 is the cleanest cutover** — 4 of its 7 sites need no new permissions, and its 3 `accounts` sites are already covered. It is the correct first domain, and this analysis supports it.
 
-> Watch item: an Account-scoped permission implies row-level scoping (this Account's Locations, not all Locations). `resolveEffectivePermission` already supports Scope; confirm the Scope shape covers parent-child before cutover.
+> ~~Watch item: an Account-scoped permission implies row-level scoping...~~ **WITHDRAWN 2026-08-06 -- the premise was wrong.** The legacy Rules grant admin/dispatcher **global** access to `locations`/`contacts` with no per-Account narrowing, so exact parity requires global Scope and **no Scope-model change**. Introducing Account-level scoping at cutover would *narrow* access and break parity. See [`../specifications/r1-rows-23-24-permission-cutover.md`](../specifications/r1-rows-23-24-permission-cutover.md) section 1a.
 
 ## 4. Row 24 — Inventory / Reorder / Purchasing (11 sites, 9 collections)
 

@@ -83,6 +83,9 @@ Working conventions for contributing to this repo (human or AI).
 - [governance/ENTERPRISE_CERTIFICATION_FRAMEWORK.md](governance/ENTERPRISE_CERTIFICATION_FRAMEWORK.md) — **NOT ACTIVATED.** Baseline v1.0 names three core artifacts (Certification Matrix, Recommendation Register, Certification History); none exist. See [`reviews/eao-program-0-truth-pass.md`](reviews/eao-program-0-truth-pass.md) for the disposition recommendation.
 - [governance/templates/operational-handoff.md](governance/templates/operational-handoff.md) — handoff template.
 - [audits/](audits/) — **EVIDENCE.** Immutable run artifacts. Never edited after generation.
+- [deployment/c3-p5-restore-rehearsal-package.md](deployment/c3-p5-restore-rehearsal-package.md) - **AWAITING OWNER AUTHORIZATION.** P5 restore rehearsal: two paths (PITR clone available now; backup restore after V2), exact commands, RTO measurement, cleanup safety.
+- [design/c3-delivery-reliability-and-release-visibility.md](design/c3-delivery-reliability-and-release-visibility.md) - C3 delivery reliability and release visibility.
+- [specifications/r1-rows-23-24-permission-cutover.md](specifications/r1-rows-23-24-permission-cutover.md) - R-1 Rows 23/24 permission cutover specification.
 - [deployment/c3-firestore-data-protection-decision-package.md](deployment/c3-firestore-data-protection-decision-package.md) — **AWAITING OWNER AUTHORIZATION.** C3 production decision package: current posture (no PITR, no backups, no delete protection, 1-hour recoverable history), target posture, exact protected commands, verification plan, rollback.
 - [assessments/r1-permission-coverage-design.md](assessments/r1-permission-coverage-design.md) — R-1 permission design for the 15 uncovered collections (5 new permissions, not 15).
 - [operations/authorization-cutover-rollback.md](operations/authorization-cutover-rollback.md) — ADR-005 §2.7 criterion 11 rollback procedure.

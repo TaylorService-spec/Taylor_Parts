@@ -105,6 +105,27 @@ Likely high-collision shared surfaces (coordinate via the registry / Integration
 
 **Staleness is a first-class risk.** `origin/main` can advance mid-program. Re-verify the baseline before merging, and state the SHA any assessment was performed against — an assessment without a baseline SHA is not evidence.
 
+## 8b. Verification discipline for governed and protected work
+
+**Do not infer success from the completion of a chained command block.** A shell block that exits without an obvious error may still have skipped a step — a quoting failure, a path that did not exist, a heredoc that swallowed a command. Both have happened in this repository, and in one case a decision record was silently not written while every visible signal looked like success.
+
+For governed, protected, or evidence-producing work, each step completes in this order:
+
+```
+COMMAND EXECUTION
+  -> OBSERVE RESULT            (read the actual output, not the exit status alone)
+  -> VERIFY EXPECTED STATE     (re-read the system; does it now say what it should?)
+  -> VERIFY REQUIRED EVIDENCE  (does the record/entry/artifact actually exist?)
+  -> ONLY THEN declare complete
+```
+
+Corollaries:
+
+- **Re-read the target system after a mutation** rather than trusting the mutating command's own echo.
+- **Verify the decision record and evidence landed**, as a separate check from the change itself.
+- **Enumerate before concluding a capability is absent.** When a provider capability appears unavailable after guessed commands, metric names, or API paths fail, enumerate the authoritative surface (`--help`, `metricDescriptors`, service/SKU listings, API discovery) before reporting it as missing. Two capabilities in this repository were wrongly reported blocked on the strength of failed guesses, and both were available.
+- **A clean result still needs its evidence recorded** — the absence of a record is indistinguishable from not having looked.
+
 ## 9. Cost and token efficiency
 
 The goal is **one authoritative strategic reasoning stream**, with implementation agents consuming only the context their bounded capability needs — not one literal token consumer. Practices:
