@@ -1,0 +1,29 @@
+Request issued for: [recovery-rehearsal-20260806-223836]
+Updated database [recovery-rehearsal-20260806-223836].
+done: true
+metadata:
+  '@type': type.googleapis.com/google.firestore.admin.v1.UpdateDatabaseMetadata
+name: projects/taylor-parts/databases/recovery-rehearsal-20260806-223836/operations/BhAC2trcyBAG09SfxQgMChAa
+response:
+  '@type': type.googleapis.com/google.firestore.admin.v1.Database
+  appEngineIntegrationMode: DISABLED
+  concurrencyMode: PESSIMISTIC
+  createTime: '2026-08-06T22:38:54.648162Z'
+  databaseEdition: STANDARD
+  deleteProtectionState: DELETE_PROTECTION_DISABLED
+  earliestVersionTime: '2026-08-06T22:48:08.533266Z'
+  etag: IO7irL+LjZYDMMawrL+LjZYD
+  freeTier: false
+  locationId: us-central1
+  name: projects/taylor-parts/databases/recovery-rehearsal-20260806-223836
+  pointInTimeRecoveryEnablement: POINT_IN_TIME_RECOVERY_DISABLED
+  realtimeUpdatesMode: REALTIME_UPDATES_MODE_ENABLED
+  sourceInfo:
+    operation: projects/taylor-parts/databases/recovery-rehearsal-20260806-223836/operations/Q7Qg53V0HoweTGDf8FFiihAqMWxhcnRuZWMtc3ULIgwQIRo
+    pitrSnapshot:
+      snapshotTime: '2026-08-06T22:32:00Z'
+    progress: COMPLETED
+  type: FIRESTORE_NATIVE
+  uid: 8a6251f0-df60-4c1e-8c1e-7475e720b443
+  updateTime: '2026-08-06T22:50:45.727101Z'
+  versionRetentionPeriod: 3600s

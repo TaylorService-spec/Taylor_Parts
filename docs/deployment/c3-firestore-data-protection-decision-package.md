@@ -95,7 +95,7 @@ Model is conservative in every direction (PITR billed as a full copy though it s
 | **P2** | **PITR** | **ENABLED** (7-day window) | Moves RPO from 1 hour to 7 days at minute granularity. The single largest risk reduction available. |
 | **P3** | **Daily backup schedule** | **ENABLED**, retention **4 weeks** | Covers the beyond-7-days case PITR cannot. 4w balances cost against realistic discovery lag. |
 | **P4** | **Weekly backup schedule** | **ENABLED**, retention **14 weeks** | Long-horizon protection against slow-onset corruption. Cheap at this data scale. |
-| **P5** | **Restore rehearsal** | **Quarterly + before any migration** | §6. Without this, P2–P4 are untested assumptions. |
+| **P5** | **Restore rehearsal** | **P5-A PASSED 2026-08-06** (RTO-CLONE 9.31 min); P5-B pending V2; quarterly + before any migration thereafter | §6. Evidence: [`../audits/c3-p5a-pitr-rehearsal-20260806/`](../audits/c3-p5a-pitr-rehearsal-20260806/). |
 | **P6** | **Recovery runbook** | Published, owned | §5. |
 
 Resulting objectives: **RPO ≤ 1 minute** within 7 days; **≤ 24 hours** within 4 weeks; **≤ 7 days** within 14 weeks. **RTO target: ≤ 4 hours** for a full restore (dominated by the new-database + cutover work in §5, not by the restore itself).
@@ -217,11 +217,11 @@ This section records the requirement in the C3 authority rather than in a compet
 
 | Layer | Mechanism | State |
 |---|---|---|
-| **Data** | Firestore PITR / backups / restore | ✅ configured (P1–P4); **proof pending P5** |
+| **Data** | Firestore PITR / backups / restore | ✅ configured (P1–P4); **PITR clone recovery PROVEN (P5-A, RTO-CLONE 9.31 min)**; backup restore pending P5-B |
 | **Identity** | Firebase Auth recovery / reconstruction | ❌ **not assessed — this deferral** |
 | **Authorization** | permissions / claims / `accessVersion` reconstruction | ❌ not assessed |
 | **Application** | Rules / indexes / Functions / frontend / configuration | ⚠️ partially understood (§5, §9) |
-| **Operations** | monitoring / evidence / rehearsals | ⚠️ P5 designed; delivery reliability separate |
+| **Operations** | monitoring / evidence / rehearsals | ⚠️ P5-A executed and evidenced; P5-B pending; delivery reliability designed, not implemented |
 
 **C3 cannot be certified complete while three of those five layers are unassessed.** P1–P5 close the first row only.
 
