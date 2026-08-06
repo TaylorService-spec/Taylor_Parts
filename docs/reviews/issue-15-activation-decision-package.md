@@ -143,9 +143,15 @@ section supersedes §0–§7's empty-baseline framing.
   changeHomeWarehouse/deactivate/reactivate (2026-08-02). `truckRegistryCallables.ts` changed
   post-deploy ONLY to add the new delete callable; the 8 deployed callables' logic is unchanged.
 
-**Repo-wired but NOT deployed (the genuine delta):**
-- **W3 receiving: `receiveInventoryStock`, `listReceivingLocationOptions` — NOT LIVE.** ← the
-  answer to the narrow W3 question. This is the real W3 activation delta.
+**UPDATE 2026-08-06 — W3 receiving is now DEPLOYED (this delta is closed).**
+`receiveInventoryStock` + `listReceivingLocationOptions` were deployed live to `taylor-parts`
+from pinned source `fb45e6e` (estate 20 → 22; both `ACTIVE`/`GEN_2`/`callable`/`us-central1`/
+`nodejs20`/`256Mi`). Engineering/deploy/config-verification COMPLETE; operational acceptance
+DEFERRED pending a pre-existing `inventory.stock.receive` actor + an ORDERED/ORDERED source.
+See `docs/deployment/w3-receiving-activation-closure.md` and DECISIONS #63. The remaining
+undeployed items below are unchanged.
+
+**Repo-wired but NOT deployed (the remaining delta, after W3 receiving shipped):**
 - Access commands (6): `grantRole`/`revokeRole`/`assignApprovedRole`/`setUserStatus`/
   `approveAccessRequest`/`rejectAccessRequest` — behind their own Issue #226 Row-19+ gate.
 - AUTH-PR-3 (2): `initiateAdminPasswordReset`, `listResetEligibleUsers` — behind email-config.

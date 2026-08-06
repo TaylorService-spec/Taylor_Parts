@@ -2,7 +2,7 @@
 artifact_type: review
 gate: W3 — Close the inventory write-loop (readiness package)
 wave: W3
-status: Backend complete — activation deferred to Issue #15; scanner integration deferred to parallel owner
+status: SUPERSEDED — receiving DEPLOYED live 2026-08-06 (estate 20→22); see docs/deployment/w3-receiving-activation-closure.md + DECISIONS #63. Scanner integration still deferred.
 date: 2026-08-05
 owner: Claude Code
 base_commit: 28d695e (origin/main)
@@ -28,8 +28,11 @@ and hands off the two deferred boundaries with evidence.
 
 **Deploy-wired:** `functions/src/index.ts:120-121` exports
 `receiveInventoryStockCallable as receiveInventoryStock` and
-`listReceivingLocationOptionsCallable as listReceivingLocationOptions` — the callables are
-wired for deployment (not deployed; Blaze-gated, Issue #15).
+`listReceivingLocationOptionsCallable as listReceivingLocationOptions`. **As of 2026-08-06
+both are DEPLOYED live to `taylor-parts` (estate 20→22)** — see the closure record
+`docs/deployment/w3-receiving-activation-closure.md` and DECISIONS #63. (This package was
+written pre-deploy at `28d695e`, when they were wired-but-not-deployed; retained for its
+contract/invariant detail.)
 
 ## 2. Receive → ledger contract and invariants
 
