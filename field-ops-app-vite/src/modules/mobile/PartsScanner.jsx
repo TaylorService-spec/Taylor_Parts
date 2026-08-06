@@ -3,8 +3,10 @@
 // this tool does NOT own the receiving transaction and does NOT redefine receipt
 // eligibility. Its remaining part-movement ACTIONS write only the in-memory
 // demo/InventoryContext.jsx (no Firestore, resets on reload) and carry a persistent
-// "Demo -- not saved" banner (R5); it reads live jobs (useFirestoreCollection) for
-// the job picker only.
+// "Demo -- not saved" banner (R5). Its job picker reads live jobs through the
+// technician-scoped useAssignedJobs(technicianId) -- the SAME read-scoping interlock
+// FieldMode uses (F-RULES-1); an unscoped full-collection jobs read would be denied
+// for the technician persona this workspace serves.
 //
 // The ad-hoc "scan a part and add to warehouse" RECEIVE action has been REMOVED: the
 // governed receiving transaction is receiveInventoryStock (now deployed, capability
@@ -16,8 +18,8 @@
 // FEED that workflow (scanning the PO line, part, or destination) but never invokes
 // receiveInventoryStock itself. No live receive is wired here.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
-import { JOBS_COLLECTION, JOB_STATUS } from "../../domain/constants";
+import { useAssignedJobs } from "../../hooks/useAssignedJobs";
+import { JOB_STATUS } from "../../domain/constants";
 import { useInventory } from "../../demo/InventoryContext";
 
 // The ad-hoc "receive" action is intentionally absent -- receiving stock is a
@@ -29,9 +31,12 @@ const ACTIONS = [
   { id: "purchase-order", label: "Add to purchase order", hint: "Add to draft order" },
 ];
 
-export default function PartsScanner() {
+export default function PartsScanner({ technicianId }) {
   const inventory = useInventory();
-  const { data: jobs } = useFirestoreCollection(JOBS_COLLECTION);
+  // Technician-scoped jobs read (F-RULES-1): the caller (FieldMode) passes the
+  // resolved technicianId; an unscoped full-collection read would be Rules-denied
+  // for a technician. Fail-closed: no technicianId -> empty job picker.
+  const { data: jobs } = useAssignedJobs(technicianId);
   const [query, setQuery] = useState("");
   const [part, setPart] = useState(null);
   const [action, setAction] = useState("work-order");

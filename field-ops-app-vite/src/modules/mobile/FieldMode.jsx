@@ -202,7 +202,7 @@ export default function FieldMode() {
             Parts Scanner <span aria-hidden="true">{scannerOpen ? "▲" : "▼"}</span>
           </button>
           <p className="fo-muted">Scan or look up a part. Demo — actions are not saved.</p>
-          {scannerOpen && <PartsScanner />}
+          {scannerOpen && <PartsScanner technicianId={technicianId} />}
         </div>
       )}
     </div>

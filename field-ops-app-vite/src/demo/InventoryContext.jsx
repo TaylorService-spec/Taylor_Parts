@@ -40,10 +40,8 @@ export function InventoryProvider({ children }) {
     logActivity("Transfer", partId, quantity, "Truck 14");
   }, [logActivity]);
 
-  const receivePart = useCallback((partId, quantity) => {
-    setWarehouseStock((prev) => ({ ...prev, [partId]: (prev[partId] ?? 0) + quantity }));
-    logActivity("Received", partId, quantity, "Main warehouse");
-  }, [logActivity]);
+  // (receivePart retired with the ad-hoc scan-receive action, Section A — the
+  // governed receiving transaction is receiveInventoryStock, never a demo write.)
 
   const setCount = useCallback((partId, quantity, location = "warehouse") => {
     const setter = location === "truck" ? setTruckStock : setWarehouseStock;
@@ -91,7 +89,6 @@ export function InventoryProvider({ children }) {
     purchaseOrderDraft,
     scanActivity,
     transferPart,
-    receivePart,
     setCount,
     addToPurchaseOrder,
     consumePart,
