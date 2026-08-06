@@ -25,7 +25,7 @@ function formatAge(createdAt) {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
-function WorkOrderQueue({ workOrders, recommendationsByWorkOrderId, technicians, selectedId, onSelect }) {
+function WorkOrderQueue({ workOrders, customerNames, recommendationsByWorkOrderId, technicians, selectedId, onSelect }) {
   const techName = (id) => technicians.find((t) => t.id === id)?.name ?? id;
 
   // Dragging a card also selects it -- keeps the Preview/Technician
@@ -66,7 +66,7 @@ function WorkOrderQueue({ workOrders, recommendationsByWorkOrderId, technicians,
             </div>
             <div>{wo.woNumber}</div>
             <div className="fo-muted">
-              Customer: {wo.customerId} | {wo.type}
+              Customer: {customerNames?.get(wo.customerId) ?? wo.customerId} | {wo.type}
               {age && ` | ${age}`}
             </div>
             {wo.assignedTechId ? (

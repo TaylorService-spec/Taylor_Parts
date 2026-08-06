@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useWorkOrders } from "../../hooks/useWorkOrders";
+import { useAccountNames } from "../../hooks/useAccountNames";
 import GlobalSearch from "../../shared/search/GlobalSearch";
 import WorkspaceHeader from "../../shared/ui/WorkspaceHeader";
 import FilterBar from "../../shared/ui/FilterBar";
@@ -40,6 +41,7 @@ function formatAge(createdAt) {
 
 export default function WorkOrdersList() {
   const { data: workOrders, loading } = useWorkOrders();
+  const customerNames = useAccountNames((workOrders ?? []).map((w) => w.customerId));
   const [statusGroup, setStatusGroup] = useState("ALL");
 
   const groupCounts = useMemo(() => {
@@ -103,7 +105,7 @@ export default function WorkOrdersList() {
                 <td>
                   <span className={`wo-status wo-${wo.status.toLowerCase()}`}>{wo.status}</span>
                 </td>
-                <td className="fo-muted">{wo.customerId}</td>
+                <td className="fo-muted">{customerNames.get(wo.customerId) ?? wo.customerId}</td>
                 <td className="fo-muted">{wo.type}</td>
                 <td className="fo-muted">{formatAge(wo.createdAt) ?? "—"}</td>
               </tr>
