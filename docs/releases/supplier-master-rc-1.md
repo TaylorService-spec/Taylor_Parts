@@ -142,6 +142,13 @@ execute, and `mergeSupplier` (still deferred per S1).
 - **RC-1 → RC-1.1 (callable adapters).** Added inert `onCall` wrappers for the four Supplier commands
   (repo-only, not deployed); production delta item 1 moves from "does not exist" to "built; Functions
   deploy remaining", and item 2 is sharpened (no role carries `inventory.catalog.activate`).
+- **RC-1.1 → RC-1.2 (role design accepted + migration execute tooling).** Owner accepted the §A role
+  design (a durable least-privilege `inventoryCatalogAdministrator`; no production role
+  creation/grant). Added the repo-only, sandbox-verified migration **execute + rollback** tooling
+  (`reorderPurchaseOrderSupplierMigrationExecute.ts`): manifest-gated, DRY_RUN-by-default, additive-only
+  (never `supplierName`), destination-guarded, idempotent, with rollback artifact. Migration §6.6 moves
+  from "future slice" to "tooling built; execution still protected". Program is now at its repo-only
+  resting state (see the promotion package + registry).
 - **Release/promotion plan.** The coherent, step-by-step promotion plan (exact deploy, role authority
   proposal, Rules delta, migration ordering, dependency graph, gates, rollback, operational
   verification, protected-action list) lives in `docs/releases/supplier-master-promotion-package.md`.
