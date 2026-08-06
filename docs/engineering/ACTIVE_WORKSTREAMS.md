@@ -1,0 +1,42 @@
+# Active Workstreams — multi-agent registry
+
+**Status:** living registry. The coordination surface for concurrent AI-agent work, per [`AI_ENGINEERING_OPERATING_MODEL.md`](AI_ENGINEERING_OPERATING_MODEL.md) §8. The code-level ownership authority remains [`../architecture/SYSTEM_AUTHORITIES.md`](../architecture/SYSTEM_AUTHORITIES.md); this registry coordinates *who is actively writing where, right now*.
+
+**Rules (summary — full text = the 8 numbered rules in the Operating Model §8):** declare the assignment here before writing; (1) one active writer per owned path; (2) no silent edits to a reserved shared file; (3) a shared-file collision does not stop a whole capability; (4) finish non-conflicting work and record the integration delta; (5) an Integration Agent owns high-collision files when practical; (6) a builder is not the sole approver of its own material change; (7) reviewers use repository evidence, not another agent's chat memory; (8) production promotion is serialized.
+
+## How to use
+
+When you begin a capability, add a row to **Active** with every declared field. Move it to **Recently completed** at capability completion (§6). Keep it short — this is a coordination surface, not a history log; `DECISIONS.md` is the durable record.
+
+### Declared fields (template)
+
+```
+- Capability:          <business capability / feature area>
+- Agent/session:       <session id or agent name> · Role: <builder|reviewer|integration|release-prep>
+- Branch / worktree:   <branch> · <worktree path>
+- Base commit:         <sha>
+- Owned paths:         <paths this agent is the sole active writer of>
+- Shared paths req'd:  <high-collision files needed; coordinate via Integration Agent>
+- Dependencies:        <other workstreams/capabilities this waits on>
+- Expected outcome:    <the completed capability>
+- Protected boundaries:<Owner-gated items this will reach, if any>
+- Lifecycle stage:     <DESIGNED|SANDBOX BUILD|SANDBOX VERIFIED|INTEGRATION|RELEASE CANDIDATE|OWNER REVIEW|PRODUCTION AUTHORIZED|OPERATIONALLY VERIFIED|RETIRED>
+```
+
+## Active
+
+_None currently in flight. Add a row when you start a capability._
+
+## Ready for assignment
+
+- **Governed Inventory → Receiving surface** — the authorized home for the real PO receipt (Purchasing → Purchase Orders candidate → destination via `listReceivingLocationOptions` → confirm quantities → `receiveInventoryStock` through the fail-closed readiness transport). **MATERIAL/architecture design** (wires a live write path behind readiness) → begins at `DESIGNED` with an Owner-reviewed architecture plan before build; production/readiness activation is a separate protected boundary.
+- Remaining Purchasing placeholders — Suppliers / Quotes / Receipts / Demand Planning (each a repo-only capability; Suppliers/Quotes would make currently-unused collections load-bearing → Tier-2 gate).
+
+## Recently completed (this program window — see DECISIONS.md for the durable record)
+
+| Capability | Stage | Record |
+|---|---|---|
+| Purchase Orders read surface (Purchasing item C) | MERGED (repo-only) | DECISIONS #64 · PR #578 |
+| PartsScanner as a tool within FieldMode (item A) | MERGED (repo-only) | DECISIONS #65 · PR #581 |
+| Default-autonomy operating mode (Charter Amendment 2) | MERGED | DECISIONS #66 · PR #582 |
+| AI Engineering Operating Model + Owner/IP governance | MERGED | this program · see DECISIONS |
