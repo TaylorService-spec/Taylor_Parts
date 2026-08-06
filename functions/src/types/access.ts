@@ -213,6 +213,11 @@ export type AuditAction =
   | "createPartSupplierItem"
   | "updatePartSupplierItem"
   | "changePartSupplierItemStatus"
+  // Supplier Master (DECISIONS #78) -- governed Supplier reference object; catalog-governed
+  | "createSupplier"
+  | "updateSupplier"
+  | "activateSupplier"
+  | "deactivateSupplier"
   // D4 -- Part-Equipment Compatibility trusted persistence. Five lifecycle actions
   // extending this SAME immutable Audit Event path, not a parallel audit system:
   // a durable initiation, the terminal command outcome, and the three specialized
