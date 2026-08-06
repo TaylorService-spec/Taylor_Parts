@@ -4,6 +4,15 @@ import { JOBS_COLLECTION } from "../../domain/constants";
 import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
 import NewJobModal from "./NewJobModal";
 
+// LEGACY (jobs-based) surface -- NOT the canonical Work Order experience.
+// This screen ("Service > Job Assignments") operates on the legacy
+// JOBS_COLLECTION via domain/jobActions.js. The canonical, persisted Work
+// Order model is fieldops_wos, written only by the createWorkOrder/
+// transitionWorkOrder Cloud Functions (see CLAUDE_CONTEXT rule 2). Its
+// heading was relabeled "Job Assignments" (was "Work Orders") in W0 so it
+// cannot masquerade as the canonical Work Order experience. Full model
+// reconciliation/retirement is W4, not W0.
+//
 // A job is: { id, workOrderId, description, status, technicianId, address }
 // status is one of JOB_STATUS: "open" | "assigned" | "in_progress" | "complete"
 // Jobs are execution units grouped under a Work Order via workOrderId.
@@ -62,7 +71,7 @@ export default function Jobs() {
   return (
     <div className="fo-panel">
       <div className="fo-panel-head">
-        <h2>Work Orders</h2>
+        <h2>Job Assignments</h2>
         <button type="button" onClick={() => setShowCreate(true)}>New Job</button>
       </div>
 
