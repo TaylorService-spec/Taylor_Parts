@@ -22,3 +22,10 @@ jobs:
       - name: Verify build base (GitHub Pages + Firebase Hosting modes)
         run: npm run verify:build-base
         working-directory: field-ops-app-vite
+      # C3/D1 — deployed-version identity. Asserts both build modes emit a
+      # readable dist/version.json carrying build provenance (and no secrets),
+      # so "what version is production actually running?" is a single HTTP GET
+      # rather than a forensic exercise. Foundation for D2 expected-vs-deployed.
+      - name: Verify deployed-version manifest (D1)
+        run: npm run verify:version
+        working-directory: field-ops-app-vite
