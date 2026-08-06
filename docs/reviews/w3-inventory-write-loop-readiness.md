@@ -34,14 +34,23 @@ wired for deployment (not deployed; Blaze-gated, Issue #15).
 ## 2. Receive → ledger contract and invariants
 
 **Callable:** `receiveInventoryStock(request)` (`onCall`, v2).
-**Request `data`** (validated by `validateReceiveRequest`, all fields structurally checked):
+**Request `data`** (validated by `validateReceiveRequest`; `noUnknownKeys` rejects any
+unknown/server-owned field → `invalid-argument`). **Allowed line keys are ONLY `lineId`,
+`partId`, `expectedQuantity`, `receivedQuantity`** — `trackingMode` and `status` are
+**server-authored** during normalization and MUST NOT be sent (sending either →
+`invalid-argument`):
 ```
 { source: { type: "REORDER_PURCHASE_ORDER", reorderRequestId, purchaseOrderId },
-  receivingLocation: { type, locationId },
-  lines: [ { lineId, partId, trackingMode: "NONE", expectedQuantity, receivedQuantity, status: "RECEIVED" } ],
+  receivingLocation: { type: "WAREHOUSE", locationId },
+  lines: [ { lineId, partId, expectedQuantity, receivedQuantity } ],
   idempotencyKey }
 ```
-**Response:** `{ outcome: "applied" | "replayed", receivingId, fingerprint }`.
+For this first slice, **`purchaseOrderId === reorderRequestId`** (spec §2) — the backend
+rejects a mismatch.
+
+**Response:** `{ outcome: "applied" | "replayed", receivingId, ledgerEventId }`. (There is
+**no** public `fingerprint` field — the fingerprint exists only in internal idempotency
+handling and is not returned by `runReceiveInventoryStock`.)
 
 **Invariants (from `receivingTypes.ts` + the command):**
 - **Actor is server-derived.** `requireAuth` takes the UID from the verified auth context
@@ -53,9 +62,14 @@ wired for deployment (not deployed; Blaze-gated, Issue #15).
   at `PUTAWAY_COMPLETE` version 1, with `expectedQuantity == receivedQuantity ==
   PO.orderedQuantity` (authoritative from `reorder_purchase_orders.orderedQuantity`).
   `SERIAL`/`LOT` fail closed (deferred). Source `REORDER_PURCHASE_ORDER` only.
-- **Bounded public error matrix** (`mapReceiveError`): `invalid-argument` /
-  `failed-precondition` (idempotency conflict, malformed stored state) / `unauthenticated`
-  / `internal` — no raw Firestore path/value/code/reason ever leaks.
+- **Bounded public error matrix** (`mapReceiveError`), sanitized (no raw Firestore
+  path/value/code/reason ever leaks):
+  - missing authentication → `unauthenticated`
+  - unauthorized actor → `permission-denied`
+  - missing PO or reorder request → `not-found`
+  - invalid source state / destination / part / idempotency conflict → `failed-precondition`
+  - malformed request → `invalid-argument`
+  - integrity or unexpected failure → `internal`
 - **Ledger:** the operational-movement ledger append is the stock effect; audit is an
   append-only `receiveInventoryStock` AuditAction with a bounded, sanitized summary.
 
@@ -64,9 +78,10 @@ wired for deployment (not deployed; Blaze-gated, Issue #15).
 - Every write is keyed by a caller-supplied `idempotencyKey` → deterministic doc id
   (`receivingOrderDocId(idempotencyKey)`).
 - Re-submitting the **same** key returns `outcome: "replayed"` with the SAME `receivingId`
-  and `fingerprint` — the effect is applied at most once. A **different** payload under the
-  same key raises `IdempotencyConflictError` → `failed-precondition` (never a silent
-  double-apply). `fingerprint` pins the applied content for replay verification.
+  (and `ledgerEventId`) — the effect is applied at most once. A **different** payload under
+  the same key raises `IdempotencyConflictError` → `failed-precondition` (never a silent
+  double-apply). (An internal `fingerprint` pins the applied content for replay detection;
+  it is not part of the public callable response.)
 - (Test evidence: §6.)
 
 ## 4. Scanner integration contract (for the PARALLEL OWNER — do not implement here)
@@ -74,18 +89,34 @@ wired for deployment (not deployed; Blaze-gated, Issue #15).
 The parallel session owns `PartsScanner.jsx`. To wire it to the write-loop, its owner calls
 the existing callable — **no backend change needed**:
 
-1. Ensure the user is signed in (actor is derived server-side).
-2. `httpsCallable(functions, "receiveInventoryStock")({ source, receivingLocation, lines, idempotencyKey })`
-   with the shape in §2. Use a **stable** `idempotencyKey` per physical receipt (e.g. derived
-   from the reorderRequestId + line) so a double-scan/retry is a safe replay, not a duplicate.
-3. Populate a receiving location from `listReceivingLocationOptions()` (empty request →
-   options list) rather than free-typing a locationId.
-4. Handle the response `{ outcome, receivingId, fingerprint }` — treat `applied` and
-   `replayed` as success; surface `failed-precondition`/`invalid-argument` as user-facing
-   errors, never raw.
-5. First slice supports one `NONE`-tracked line at `expectedQuantity == receivedQuantity ==
-   orderedQuantity`; SERIAL/LOT are not yet available (fail closed) — the scanner UI should
-   not offer them yet.
+1. Ensure the user is signed in (actor is derived server-side; never send it).
+2. Call `httpsCallable(functions, "receiveInventoryStock")` with **exactly** this payload —
+   note the line carries ONLY `lineId`/`partId`/`expectedQuantity`/`receivedQuantity`
+   (`trackingMode`/`status` are server-authored; sending either → `invalid-argument`):
+   ```
+   {
+     source: { type: "REORDER_PURCHASE_ORDER", reorderRequestId, purchaseOrderId },
+     receivingLocation: { type: "WAREHOUSE", locationId },
+     lines: [ { lineId, partId, expectedQuantity, receivedQuantity } ],
+     idempotencyKey
+   }
+   ```
+   For this first slice, **`purchaseOrderId === reorderRequestId`** (the backend rejects a
+   mismatch).
+3. Populate `locationId` from `listReceivingLocationOptions()` (empty request → options list)
+   rather than free-typing it.
+4. **Idempotency key:** generate **one stable key for the intended receipt operation and
+   persist/reuse that same key for retries.** Do NOT generate a new key after an ambiguous
+   timeout (that would risk a duplicate). The key must carry enough operation identity to
+   avoid accidental reuse across future receipt attempts or later partial-receipt support;
+   for the present first slice — one full receipt per PO is enforced — a PO/line-derived key
+   is acceptable.
+5. Handle the response `{ outcome, receivingId, ledgerEventId }` — treat both `applied` and
+   `replayed` as success. Surface the bounded error codes (`unauthenticated` /
+   `permission-denied` / `not-found` / `failed-precondition` / `invalid-argument` /
+   `internal`) as user-facing messages, never raw.
+6. First slice supports one line at `expectedQuantity == receivedQuantity == orderedQuantity`;
+   SERIAL/LOT are not yet available (fail closed) — the scanner UI should not offer them yet.
 
 This contract is stable and versioned by the spec; the owner integrates against it on their
 own branch. **No change to `PartsScanner.jsx` is proposed or made here.**
@@ -98,9 +129,20 @@ merged repo-only (per DECISIONS / EI Phase-2 records).
 
 **Deploy:** `firebase deploy --only functions:receiveInventoryStock,functions:listReceivingLocationOptions --project taylor-parts`
 (the two wired callables). Do NOT blanket-deploy all functions.
-**Rollback:** callables are additive and idempotent; roll back by redeploying the prior
-Functions release (Firebase retains versions) or deleting the two callables. No data written
-by a deploy itself; the ledger is append-only and idempotent, so a re-run is safe.
+**Rollback (evidence-based — establish the artifact BEFORE deploying):**
+- Record the **pre-deploy deployed Functions revision/configuration** (the current live
+  release identity), as the explicit rollback target.
+- Retain the **exact prior source commit and dependency lock** (`package-lock.json`) for the
+  known-good release.
+- To roll back, **redeploy the prior known-good function source** from that commit/lock.
+- Use function **deletion only as an emergency disable action** (it takes the service down),
+  **not** as normal rollback.
+- Record whether any **shared exported dependencies or configuration changed** between the
+  prior release and this scoped deployment (a shared-code change can affect other functions
+  in the same deploy, so the rollback target must account for it).
+
+No data is written by a deploy itself, and the ledger is append-only + idempotent, so a
+re-run after rollback is safe.
 **Live verification (Owner-operated/authorized):** invoke `receiveInventoryStock` once with a
 real reorder PO at `PURCHASING_IN_PROGRESS`/`ORDERED`; confirm `applied`; re-invoke with the
 same `idempotencyKey` → `replayed` (no double stock); confirm the audit entry; confirm a
