@@ -838,3 +838,9 @@ button:hover {
   .scan-summary { grid-template-columns: 1fr 1fr; }
   .scan-summary div:first-child { grid-column: 1 / -1; }
 }
+
+/* W5 -- admin/dispatcher personalized landing (DashboardIndex) quick-access cards. */
+.fo-landing-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin-top: 12px; }
+.fo-landing-card { display: flex; flex-direction: column; gap: 4px; padding: 16px; border: 1px solid #d8dee0; border-radius: 8px; text-decoration: none; color: inherit; background: #fff; transition: border-color 0.15s, box-shadow 0.15s; }
+.fo-landing-card:hover { border-color: #2E4A50; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+.fo-landing-card-title { font-weight: 600; color: #23383D; }

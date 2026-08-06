@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, Link } from "react-router-dom";
 import { routerBasenameFrom } from "./routerBasename";
 import ControlTower from "./modules/controlTower/ControlTower";
 import Jobs from "./modules/jobs/Jobs";
@@ -98,18 +98,33 @@ const LEGACY_COMPONENTS = {
   technicianDashboard: TechnicianDashboard,
 };
 
+// Admin/dispatcher personalized landing (W5). Real role-aware home -- quick-access
+// cards to the primary operational surfaces both admin and dispatcher can reach --
+// replacing the prior "isn't built yet" placeholder. Technician gets the real
+// TechnicianDashboard. Every card links to a verified route; none is a dead link.
+const LANDING_AREAS = [
+  { to: "/dashboard/operations", label: "Inventory & Supply Overview", hint: "Cross-domain operational health" },
+  { to: "/service", label: "Work Orders", hint: "Browse and manage work orders" },
+  { to: "/service/dispatcher-board", label: "Dispatcher Board", hint: "Assign and dispatch work" },
+  { to: "/customers", label: "Customers", hint: "Accounts, contacts, and locations" },
+  { to: "/inventory", label: "Inventory", hint: "Parts and stock" },
+];
+
 function DashboardIndex({ role }) {
-  // "My Dashboard" only has a real screen for the technician role
-  // today (TechnicianDashboard.jsx, legacyKey "technicianDashboard").
-  // Admin/dispatcher have no personalized-dashboard screen yet --
-  // placeholder, per requirement #4, rather than forcing a screen
-  // that doesn't fit their role.
   if (role === "technician") return <TechnicianDashboard />;
   return (
-    <PlaceholderPage
-      title="My Dashboard"
-      note="A personalized dashboard for this role isn't built yet -- see Operations Dashboard for the current admin/dispatcher view."
-    />
+    <div className="fo-panel">
+      <h2>My Dashboard</h2>
+      <p className="fo-muted">Quick access to your areas.</p>
+      <div className="fo-landing-grid">
+        {LANDING_AREAS.map((a) => (
+          <Link key={a.to} to={a.to} className="fo-landing-card">
+            <span className="fo-landing-card-title">{a.label}</span>
+            <span className="fo-muted">{a.hint}</span>
+          </Link>
+        ))}
+      </div>
+    </div>
   );
 }
 
