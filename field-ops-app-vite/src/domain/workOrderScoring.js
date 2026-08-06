@@ -1,6 +1,6 @@
 import { SEVERITY, createSignal } from "./controlTower/types";
 import { WORK_ORDER_STATE } from "./constants";
-import { explainWorkOrderState, explainWorkOrder } from "./workOrderLifecycle";
+import { explainWorkOrder } from "./workOrderLifecycle";
 
 // Sprint 3.3's Signal layer for Work Orders, sitting on top of the
 // lifecycle engine (domain/workOrderLifecycle.js). This file computes
@@ -9,14 +9,12 @@ import { explainWorkOrderState, explainWorkOrder } from "./workOrderLifecycle";
 // (see domain/controlTower/types.js) so Control Tower renders Work Orders
 // the same way it renders risk/dispatch signals.
 //
-// TWO signal functions live here; consumers verified 2026-08-05 (W0):
-//   - computeWorkOrderSignalFromDoc()  -- the LIVE Work Order Engine v1.2
-//     path: wraps explainWorkOrder(workOrderDoc) (a pure map from a real
-//     fieldops_wos doc). Sole consumer: modules/controlTower/
-//     WorkOrderDetail.jsx.
-//   - computeWorkOrderSignal(jobs)  -- the LEGACY jobs-aggregate path:
-//     wraps explainWorkOrderState(jobs). Now ORPHANED (no consumer);
-//     retire with the other jobs-based lifecycle exports.
+// After W4's one-model reconciliation, ONE signal function remains:
+// computeWorkOrderSignalFromDoc() -- the LIVE Work Order Engine v1.2 path,
+// wrapping explainWorkOrder(workOrderDoc) (a pure map from a real
+// fieldops_wos doc). Sole consumer: modules/controlTower/WorkOrderDetail.jsx.
+// The legacy jobs-aggregate computeWorkOrderSignal() (which wrapped the
+// retired explainWorkOrderState) was verified zero-consumer and RETIRED in W4.
 
 // WORK_ORDER_STATE is a discrete state, not a continuous magnitude (a
 // work order isn't "60% blocked"), so its score/severity are a fixed
@@ -36,28 +34,12 @@ const STATE_SCORE = {
   [WORK_ORDER_STATE.COMPLETED]: 0,
 };
 
-// Canonical WorkOrderSignal for Control Tower: wraps
-// workOrderLifecycle.explainWorkOrderState() in the shared Signal
-// envelope. metadata carries the full { state, reasons, metrics } from
-// the lifecycle engine untouched -- consumers (e.g. WorkOrderDetail) read
-// it for display but never recompute state/reasons themselves.
-export function computeWorkOrderSignal(workOrderId, jobs) {
-  const { state, reasons, metrics } = explainWorkOrderState(jobs);
-
-  return createSignal({
-    id: workOrderId,
-    score: STATE_SCORE[state],
-    severity: STATE_SEVERITY[state],
-    label: `Work Order ${workOrderId}: ${state}`,
-    metadata: { state, reasons, metrics },
-  });
-}
-
-// Work Order Engine v1.2 sibling of computeWorkOrderSignal() above --
-// same Signal envelope, same STATE_SEVERITY/STATE_SCORE tables, but
-// derived from a real fieldops_wos doc (via workOrderLifecycle.js's
-// explainWorkOrder(), a pure map from workOrderDoc.status) instead of a
-// jobs array. computeWorkOrderSignal() and its callers are untouched.
+// Canonical WorkOrderSignal for Control Tower (Work Order Engine v1.2):
+// wraps workOrderLifecycle.explainWorkOrder(), derived from a real
+// fieldops_wos doc (via workOrderDoc.status), in the shared Signal
+// envelope. metadata carries the full { state, reasons, metrics } from the
+// lifecycle engine untouched -- consumers (WorkOrderDetail) read it for
+// display but never recompute state/reasons themselves.
 export function computeWorkOrderSignalFromDoc(workOrderDoc) {
   const { state, isCancelled, reasons, metrics } = explainWorkOrder(workOrderDoc);
 

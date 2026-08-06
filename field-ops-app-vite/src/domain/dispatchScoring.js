@@ -30,7 +30,7 @@ function activeJobCount(technicianId, jobs) {
 }
 
 // There's no explicit "priority" field on jobs or work orders (see
-// domain/workOrders.js) -- work-order priority is therefore approximated
+// fieldops_wos, ADR-002) -- work-order priority is therefore approximated
 // as continuity: a technician already active on the same work order
 // scores higher, since keeping one technician on a work order tends to
 // finish it faster than splitting it across people.

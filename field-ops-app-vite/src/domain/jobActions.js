@@ -11,7 +11,7 @@ import { isWriteBlocked } from "../config/env";
 // so every transition goes through canTransitionJob().
 //
 // Jobs never own customer data directly -- they resolve upward via
-// workOrderId: job -> workOrder -> customer. See domain/workOrders.js.
+// workOrderId: job -> workOrder -> customer. The canonical WO is fieldops_wos (ADR-002).
 //
 // createJob()/createTechnician() write through jobsStore/techniciansStore
 // (firebase/collectionStore.js), which already gate through

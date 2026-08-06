@@ -92,7 +92,7 @@ const STATE_EVENT_TYPE = {
 
 // A Work Order's "creation" isn't separately recorded -- there is no
 // populated Firestore "workOrders" collection yet (see
-// domain/workOrders.js) -- so it's approximated as the earliest of its
+// fieldops_wos, ADR-002) -- so it's approximated as the earliest of its
 // jobs' createdAt. Its current lifecycle state (via
 // domain/workOrderLifecycle.js -- the single aggregation engine) is
 // emitted as one event reflecting the *current* derived state, not a
