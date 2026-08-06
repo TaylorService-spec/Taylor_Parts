@@ -22,6 +22,7 @@ import IntegrationsFaq from "./modules/administration/IntegrationsFaq";
 import PurchaseOrders from "./modules/purchasing/PurchaseOrders";
 import Receiving from "./modules/inventory/Receiving";
 import Transfers from "./modules/inventory/Transfers";
+import Warehouses from "./modules/inventory/Warehouses";
 import WorkOrdersList from "./modules/workOrders/WorkOrdersList";
 import WorkOrderWizard from "./modules/workOrders/WorkOrderWizard";
 import WorkOrderDetailPage from "./modules/workOrders/WorkOrderDetailPage";
@@ -322,6 +323,15 @@ function renderSubnavItem(domain, item, role, operationalContext) {
   // accessVersion is threaded so the read re-runs on any access change (inventory convention).
   if (domain.key === "inventory" && item.key === "transfers") {
     return <Transfers accessVersion={operationalContext?.accessVersion} />;
+  }
+  // Inventory > Warehouses -- first-class registry workspace for the warehouse (inventory-
+  // location) capability: warehouse list + governed status (ACTIVE/INACTIVE) + receiving-
+  // eligibility, replacing the placeholder (admin/dispatcher). Read-only; REUSES the shared
+  // operationsQueries.fetchWarehouses read and mirrors the I-LA receiving-eligibility resolver.
+  // Does NOT duplicate the Operations WarehousePanel's stock/reconciliation; WarehouseManagerHome
+  // (persona surface) is untouched.
+  if (domain.key === "inventory" && item.key === "warehouses") {
+    return <Warehouses accessVersion={operationalContext?.accessVersion} />;
   }
   // Operations owns the canonical part-name read for its dashboard panels; accessVersion
   // is threaded so that read re-runs and its name map is invalidated on any access change

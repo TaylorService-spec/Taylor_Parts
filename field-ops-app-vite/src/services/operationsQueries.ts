@@ -36,6 +36,7 @@ export interface RawWarehouse {
   id: string;
   name: string;
   location: string;
+  status?: string; // governed §3A status (ACTIVE/INACTIVE); present at runtime, consumed by the Warehouses workspace
 }
 
 export interface RawTransferOrder {
