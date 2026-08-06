@@ -1,7 +1,7 @@
 ---
 artifact_type: specification
 gate: Rough-Complete Build Blueprint (PROGRAM front gate)
-status: Finalized 2026-08-05 — rulings R1–R5 + corrections C1–C4 applied and verified; HOLD before W0 for Owner go
+status: Finalized + authoritative 2026-08-05 — rulings R1–R5, corrections C1–C4, and three pre-merge corrections applied and verified; W0 GO given (W0 runs solo first)
 date: 2026-08-05
 finalized: 2026-08-05
 owner: Claude Code
@@ -18,11 +18,12 @@ approved_scope_decisions:
 
 # Rough-Complete Build Blueprint
 
-> **This is the front-gate artifact.** It is now **finalized** — the §8 rulings
-> block is resolved (R1–R5) and document corrections C1–C4 are applied. Per the
-> section-based execution model, Claude builds each complete Blueprint section
-> autonomously; Codex reviews and the Owner approves at each **section boundary**,
-> not during routine work. Execution still **HOLDS before W0 for the Owner's go.**
+> **This is the front-gate artifact.** It is now **finalized and authoritative** — the §8
+> rulings block is resolved (R1–R5), document corrections C1–C4 are applied, and the three
+> Owner pre-merge corrections are applied and verified. Per the section-based execution
+> model, Claude builds each complete Blueprint section autonomously; Codex reviews and the
+> Owner approves at each **section boundary**, not during routine work. The Owner has given
+> the **W0 GO** — W0 runs **solo** first, then the parallel-group briefing follows.
 
 ## 1. Purpose
 
@@ -110,6 +111,22 @@ Listed below in **execution order**:
   begin repository-only cleanup or W2 implementation** (C4) — it confirms deployment
   reality but does not gate the repo work. Unblocks accurate prioritization of
   everything after.
+
+  **W0 scope is testable and strictly behavior-preserving — W0 ≠ W4.** W0 changes
+  only comments, module-intent headers, honest placeholder/demo labels, stale
+  WO-Engine-v1.2 enum/doc notes, and user-visible *labels* on the legacy surfaces. It
+  **does not** migrate data, delete or retire any module/route/import/`workOrdersStore`,
+  change routing, or alter any write path or control flow — **all of that is W4** (the
+  actual `fieldops_jobs → fieldops_wos` reconciliation). Concretely, **W0 acceptance
+  criteria (all must pass):**
+  1. All 16 safe-fixes applied; `npm run build` / lint / typecheck green.
+  2. Every placeholder/demo surface carries an honest in-UI or header label (incl.
+     `PartsScanner.jsx` marked demo-backed, not the real inventory write path).
+  3. Legacy `Jobs.jsx` / `Dispatch.jsx` relabeled so neither reads as the canonical
+     Work Order experience (label/text only — no removal, no rerouting).
+  4. Stale WO-Engine-v1.2 migration comments/enum notes corrected to match code.
+  5. **Zero behavior/routing/write-path change** — verifiable by diff: only comments,
+     labels, JSX display text, and doc/enum notes changed.
 - **W2 — In-product Identity & Access Management.** Employee/User admin over `employees`;
   least-privilege Inventory route (Issue #100); read-first Roles & Permissions mirror.
   Finishes the already-active IAM/Admin foundation. 🔒 rules/roles → Tier 2.
@@ -127,7 +144,8 @@ Listed below in **execution order**:
   other consumers to `fieldops_wos`; retire legacy components/routes/imports/deep-links/
   `workOrdersStore` **only after verified zero-consumer/parity checks**. **No destructive
   data migration under W4 without separate escalation** (R1). Resolve customer/location
-  names.
+  names. **This is where the actual model reconciliation, consumer migration, and module
+  retirement happen — the behavior-changing work W0 deliberately leaves untouched.**
 - **W5 — Real landings; placeholders → real or honestly-marked.** Every persona gets a
   real dashboard. W5's data ownership, write authority, failure handling, idempotency,
   auditing, migration/rollback, and honest placeholder retirement are **acceptance
@@ -146,8 +164,12 @@ Listed below in **execution order**:
   limited to protected boundaries (Tier-2/3, security/trust, prod/deploy, identity/
   Rules/Blaze), material Blueprint departures, destructive actions, or a materially
   different business outcome.
-- **One Workflow per wave** (fan-out across the wave's files), with a design pass
-  (impeccable/taste) and a docs pass (user-docs-writer + governance artifact) built in.
+- **Fan-out is OPTIONAL and bounded, never mandatory.** A wave *may* use a Workflow to
+  fan out across its files **when the file-set is large and genuinely independent**, and
+  only under a **stated token range + hard cap declared before launch**; small or
+  tightly-coupled waves run inline in a single context. No wave is *required* to fan out.
+  Each wave still includes a design pass (impeccable/taste) and a docs pass
+  (user-docs-writer + governance artifact), whether run inline or fanned out.
 - **Continuous throughput:** waves chained in the R4/C3 order (`W0 → W2 → W1 → …`);
   between waves I checkpoint findings. For genuinely unattended runs, a scheduled
   continuation can drive successive waves — set up only after this Blueprint is approved.
@@ -212,8 +234,22 @@ hook/MCP/script-shipping plugin before install (same as impeccable/taste).
   review appendix); C3 (wave order `W0 → W2 / Issue #100 → W1 → remaining` — §5, §6);
   C4 (W0 live-environment checks reclassified as read-only, separately authorized, not
   required to begin repo-only cleanup or W2 — §5).
+- **Pre-merge corrections (Owner, second round — applied + verified before merge):**
+  (i) **Testable W0 scope vs W4** — W0 is strictly behavior-preserving (labels/comments/
+  enum notes only) with explicit pass/fail acceptance criteria; the actual reconciliation,
+  consumer migration, and module retirement are W4 (§5). (ii) **Supporting-doc status /
+  verification wording resolved** — the three input reviews moved from `Draft` to
+  `Accepted — Blueprint input`, and their "verify-live-first" recommendations reconciled
+  to rulings R2/C4 (repo-only build; live checks separately authorized, not a prerequisite)
+  via a `verification_note`. (iii) **Fan-out is optional and bounded** — per-wave Workflow
+  fan-out is no longer mandatory; a wave fans out only when its file-set is large and
+  independent, always under a stated token range + hard cap; small/coupled waves run
+  inline (§6).
 - **Base:** current `origin/main` @ `9d95871`, fresh branch, non-destructive (the
   `docs/aug5-analysis-and-blueprint` branch is left intact).
 
-**Status:** Blueprint **finalized subject to applying and verifying these edits** (done).
-**Next:** Owner's explicit go to begin **W0**. Execution HOLDS until then.
+**Status:** Blueprint **finalized** — rulings R1–R5 + corrections C1–C4 + the three
+pre-merge corrections all applied and verified. This is the **single authoritative
+Blueprint**, ready to merge to `main`.
+**Next:** W0 begins (Owner GO given) — run solo, debounce prerequisite first (done,
+PR #561 merged), autonomous to the section boundary, then Codex review + Owner approval.

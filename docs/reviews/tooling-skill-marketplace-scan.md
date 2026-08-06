@@ -1,7 +1,8 @@
 ---
 artifact_type: review
 gate: Tooling / Marketplace Skill Scan
-status: Draft
+status: Accepted — Blueprint input (finalized 2026-08-05)
+verification_note: "Live-environment verifications recommended in this review are governed by Blueprint rulings R2/C4 — build proceeds repository-only; live checks are separately authorized and are NOT a prerequisite to the repo work."
 date: 2026-08-05
 owner: Claude Code
 method: background research agent (gh search + WebSearch), provenance-checked
