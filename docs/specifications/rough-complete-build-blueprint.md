@@ -77,7 +77,7 @@ Blueprint and the main thing for ChatGPT to validate.
 
 | Persona gap (from analysis) | Existing governed workstream / doc | Wave |
 |---|---|---|
-| Operating-company dimension (Taylor/Ventana) absent in `src` | `docs/design/inventory-sales-templates-and-lines-of-business-wireframe.md` (LOB wireframe, Option A); Taylor/Ventana model | W1 |
+| Line-of-business (Taylor/Ventana) on Account absent in `src` | `docs/design/inventory-sales-templates-and-lines-of-business-wireframe.md` §3.8 (`Account.lineOfBusiness[]`, NOT `operatingCompanyId` — §3.3) | W1 ✅ |
 | In-product IAM; Parts Associate locked out of Inventory | **Issue #100 per-role Inventory access (current branch)** + Auth Modernization lanes + `provisionEmployeeAccess.js` | W2 |
 | Inventory write-loop doesn't close (receive→ledger) | **Enterprise Inventory Phase 2 Receiving** + INV-1 governance (Blaze/Functions gated) | W3 |
 | Two data models diverging (`fieldops_jobs` vs `fieldops_wos`) | **Work Order Engine v1.2 migration** (design-review debt) | W4 |
@@ -130,9 +130,14 @@ Listed below in **execution order**:
 - **W2 — In-product Identity & Access Management.** Employee/User admin over `employees`;
   least-privilege Inventory route (Issue #100); read-first Roles & Permissions mirror.
   Finishes the already-active IAM/Admin foundation. 🔒 rules/roles → Tier 2.
-- **W1 — Operating-company dimension (Taylor/Ventana).** Immutable `operatingCompanyId`
-  at Account creation (separate from `isNationalAccount`); company scope switcher +
-  badges. The organizing dimension. 🔒 rules touch → Tier 2.
+- **W1 — Line of Business (Taylor/Ventana) on Account.** ✅ DONE (PR #564, 2026-08-05).
+  **Model corrected (Owner-approved 2026-08-05):** `operatingCompanyId` is a *per-transaction*
+  field, NOT an Account field — stamping it on the Account is the LOB wireframe §3.3 "single
+  highest-risk modeling error." W1 instead adds `Account.lineOfBusiness[]` — an optional,
+  additive, informational array (`TAYLOR` / `VENTANA` / both), mirroring `relationshipTypes[]`,
+  rendered as badges (no badge when unset). **No Firestore Rules change, no migration, gates
+  no authorization** (the earlier "🔒 rules → Tier 2" reflected the wrong model).
+  `operatingCompanyId` / `salesChannel` are deferred to Sales Order / Invoice (transaction) work.
 - **W3 — Close the inventory write-loop.** Receive→ledger, one scanner, ad-hoc parts.
   Built and tested **repository-only** (implementation + unit/emulator tests + docs +
   deployment/runbook prep, R2). 🔒 Blaze activation, Functions deployment, production
