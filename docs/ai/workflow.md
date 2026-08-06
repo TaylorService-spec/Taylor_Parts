@@ -47,7 +47,11 @@ Owner Merge Authorization
    approved specification.
 7. **Owner Merge Authorization** — the project owner authorizes the
    merge. Architecture approval is not merge authorization; they are
-   separate, sequential gates.
+   separate, sequential gates. (For routine repo-only **Tier-1** PRs this
+   gate is satisfied by the standing default-autonomy authority —
+   [`../DelegationCharter.md`](../DelegationCharter.md) §8; explicit Owner
+   authorization is required only where a protected/material boundary is
+   crossed. See "Relationship to the AI Engineering Operating Model" below.)
 
 ## Codex — optional independent engineering review
 
@@ -97,3 +101,7 @@ may skip the Architecture Review and Specification stages.
 
 Any stage can send work backward to an earlier one — these are
 checkpoints, not one-way doors.
+
+## Relationship to the AI Engineering Operating Model
+
+This document is the **per-change** lifecycle (one architectural concern per PR). It sits inside the broader **capability-level** delivery frame in [`../engineering/AI_ENGINEERING_OPERATING_MODEL.md`](../engineering/AI_ENGINEERING_OPERATING_MODEL.md): the unit of delivery is a completed business capability (not a single PR); repo-only reversible work within an approved architecture runs autonomously ([`../DelegationCharter.md`](../DelegationCharter.md) §8) — the "Owner Merge Authorization" gate above is **not** required for routine repo-only Tier-1 PRs, only where a protected boundary is crossed; and work is promoted through DESIGNED → SANDBOX → INTEGRATION → RELEASE CANDIDATE → OWNER EXPERIENCE REVIEW → PRODUCTION with production promotion serialized. That document is the authority for the capability frame, environments, and multi-agent coordination; this one remains the authority for the per-change stages.

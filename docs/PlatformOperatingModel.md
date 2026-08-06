@@ -36,6 +36,8 @@ This table names *which document* is authoritative for a concern; it does not re
 
 ## 4. Product Ownership
 
+Product ownership here means *decision* authority. **Human/company and intellectual-property ownership** (Founder and Product Owner: Rudy DiGiorgio; AI systems are development tools, not owners) is a distinct concern owned by [`OWNERSHIP.md`](OWNERSHIP.md) and [`../LICENSE`](../LICENSE); this section defers to it for that posture.
+
 Product ownership — the same role [`architecture/SYSTEM_AUTHORITIES.md`](architecture/SYSTEM_AUTHORITIES.md) calls "Product Authority" — answers **why** the platform does something and **whether** it should exist at all. It is exercised through [`ProductVision.md`](ProductVision.md), [`PlatformConstitution.md`](PlatformConstitution.md), [`PlatformCapabilityModel.md`](PlatformCapabilityModel.md), [`ProductBlueprint.md`](ProductBlueprint.md), [`GuidingPrinciples.md`](GuidingPrinciples.md), [`MobileStrategy.md`](MobileStrategy.md), and [`BusinessEntityModel.md`](BusinessEntityModel.md) — the "Product Authorities" set already named in [`CLAUDE_CONTEXT.md`](CLAUDE_CONTEXT.md). A request that cannot be located in this set (no capability it advances, no domain it fits, no entity it touches) is a signal to pause and place it correctly before treating it as approved scope — not a signal to refuse it outright.
 
 ## 5. Architecture Ownership
@@ -90,6 +92,7 @@ Architecture ownership — the same role [`architecture/SYSTEM_AUTHORITIES.md`](
 - AI-assisted sessions (Claude Code or otherwise) follow the same governance authority chain as human contributors: Product Vision → Platform Capability → Business Entity → Architecture → Implementation Plan → Code → Review, as already established in [`PlatformCapabilityModel.md`](PlatformCapabilityModel.md)'s "AI Development Workflow" section. This document does not restate that workflow's steps, only affirms that it is the standing model for how AI-assisted changes are planned and traced.
 - An AI session's context documents ([`CLAUDE_CONTEXT.md`](CLAUDE_CONTEXT.md), [`architecture/SYSTEM_AUTHORITIES.md`](architecture/SYSTEM_AUTHORITIES.md)) are working aids for locating the governing authority quickly — they are not themselves a governance authority and defer to the documents named in Section 3 when the two disagree.
 - The standing verification discipline in [`CLAUDE_CONTEXT.md`](CLAUDE_CONTEXT.md) ("verify, don't assume" — live PR/branch/deploy state, doc paths that actually exist) applies to every AI-assisted change made under this operating model, not only to the session that first wrote that rule.
+- The *engineering execution* frame for AI-assisted work — outcome-based (capability-level) delivery, default autonomy through implementation, the DESIGNED→…→RETIRED environment-promotion lifecycle, the multi-agent workstream registry, and cost discipline — is owned by [`engineering/AI_ENGINEERING_OPERATING_MODEL.md`](engineering/AI_ENGINEERING_OPERATING_MODEL.md) (which operationalizes [`DelegationCharter.md`](DelegationCharter.md) §8). This section names it as the standing model rather than restating it.
 
 ## 14. Relationship to Other Governance Documents
 
