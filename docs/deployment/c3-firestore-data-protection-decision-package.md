@@ -64,11 +64,26 @@ Billing is already enabled (Blaze active, `DECISIONS.md` #35/#36/#47), so no pla
 | Restore | per GiB restored |
 | Recovery reads | standard read pricing for documents read during stale reads/exports |
 
-**Exact unit prices are deliberately not quoted here.** They were not machine-retrievable from the pricing pages at authoring time, and this program does not put unverified dollar figures into a governance artifact. Obtain them from the Cloud Firestore SKU page or the pricing calculator before authorizing.
+### RESOLVED 2026-08-06 — measured, not estimated
 
-**Expected magnitude:** small. Every indicator points to a database well under 1 GiB (the largest known collection is ~190 Part documents; `freeTier: true` indicates usage within free-tier allowances). At that scale PITR + a daily backup schedule is expected to cost on the order of cents-to-low-dollars per month. **This is an expectation, not a quote** — confirm the DB size on the Firebase console Usage tab before authorizing.
+Full evidence: [`../audits/c3-p2-p4-sizing-20260806/`](../audits/c3-p2-p4-sizing-20260806/).
 
-The relevant comparison is not the absolute cost but the ratio: the current alternative to a few dollars per month is **permanent, unrecoverable loss of the operating company's entire operational record**.
+> **Correction.** This section previously directed the Owner to the Firebase console Usage tab. That was wrong — the console shows Cloud Storage and Hosting bytes, neither of which is Firestore database size. The earlier "not machine-retrievable" conclusion was also wrong: it came from guessing metric names instead of enumerating them. `firestore.googleapis.com/storage/data_and_index_storage_bytes` is the correct metric and is readable.
+
+**Measured size: 1,649,196 bytes = 1.5728 MiB = 0.0015359 GiB** (data + indexes, `(default)`/`us-central1`, 9,744 points over 7 days). **Measured growth: +2,464 bytes/day ≈ 0.86 MiB/year.**
+
+**Authoritative unit prices** (Cloud Billing Catalog API, service `EE2C-7FAC-5E08`, Iowa/us-central1, STANDARD edition): storage **$0.15**/GiB-mo (first 1 GiB free) · PITR **$0.15**/GiB-mo (**no free tier**) · backup storage **$0.03**/GiB-mo · restore **$0.20**/GiB.
+
+| Scenario | Size | P2+P3+P4 total/month |
+|---|---|---|
+| **MEASURED today** | 0.00154 GiB | **$0.0022** |
+| 100× current | 0.154 GiB | $0.2166 |
+| Upper bound 1 GiB (~650×) | 1 GiB | $1.41 |
+| Upper bound 10 GiB (~6,500×) | 10 GiB | $14.10 |
+
+Model is conservative in every direction (PITR billed as a full copy though it stores deltas; every backup billed as an independent full copy; 28 daily + 14 weekly concurrent copies). **Time to reach 1 GiB at measured growth: ~1,192 years** (~12 years at 100× the growth rate). A full restore today costs **$0.0003**.
+
+**The cost question is settled: P2–P4 are immaterial.** The comparison is ~$0.002/month against a posture in which any data loss discovered more than one hour after it occurs is permanent and unrecoverable.
 
 ## 4. Recommended target posture
 
@@ -188,6 +203,6 @@ gcloud firestore backups schedules create --database="(default)" \
 
 **P1 changes the blast radius, not the recovery posture.** RPO and RTO are unchanged — recoverable history is still one hour and there is still no restore source. The database is now protected from accidental deletion and remains **unrecoverable** from data loss.
 
-**P2–P4 remain unauthorized**, pending database-size/cost evidence (§3). Sizing note: `firestore.googleapis.com/storage/*` and `document/count` metrics returned HTTP 404 for this project via the Monitoring API, so **database size was not machine-retrievable**. Read it from the Firebase console → Firestore → Usage before authorizing, rather than estimating. No IAM change requested. No restore rehearsal performed.
+**P2–P4 remain unauthorized, but the cost evidence they were waiting on is now complete** (§3, measured): total **$0.0022/month** at current scale, **≤$1.41/month even at 650× growth**. Recommendation: **authorize P2, P3 and P4.** No IAM change requested. No restore rehearsal performed.
 
 **Sources:** [PITR overview](https://firebase.google.com/docs/firestore/pitr) · [Backups & restore](https://docs.cloud.google.com/firestore/native/docs/backups) · [Firestore pricing](https://firebase.google.com/docs/firestore/pricing)

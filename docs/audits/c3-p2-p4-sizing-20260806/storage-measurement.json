@@ -1,0 +1,19 @@
+{
+  "metric": "firestore.googleapis.com/storage/data_and_index_storage_bytes",
+  "resource": {
+    "project_id": "taylor-parts",
+    "database_id": "(default)",
+    "location": "us-central1"
+  },
+  "points": 9744,
+  "earliest": [
+    "2026-07-30T22:06:00Z",
+    1631949
+  ],
+  "latest": [
+    "2026-08-06T22:03:00Z",
+    1649196
+  ],
+  "peak_bytes": 1649196,
+  "daily_growth_bytes": 2463.9
+}

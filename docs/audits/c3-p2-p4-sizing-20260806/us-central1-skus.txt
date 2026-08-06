@@ -1,0 +1,16 @@
+Cloud Firestore Backup Restore Operation (with free tier) Iowa | ['global'] | 0.200000000 USD per gibibyte | start_tier=0
+Cloud Firestore Backup Restore Operation Iowa | ['global'] | 0.200000000 USD per gibibyte | start_tier=0
+Cloud Firestore Enterprise PITR Storage Iowa (with free tier) | ['us-central1'] | 0.150000000 USD per gibibyte month | start_tier=0
+Cloud Firestore Enterprise PITR Storage Iowa | ['us-central1'] | 0.150000000 USD per gibibyte month | start_tier=0
+Cloud Firestore Enterprise Storage Iowa (with free tier) | ['us-central1'] | 0.000000000 USD per gibibyte month | start_tier=0
+Cloud Firestore Enterprise Storage Iowa (with free tier) | ['us-central1'] | 0.240000000 USD per gibibyte month | start_tier=0.03225806451612903
+Cloud Firestore Enterprise Storage Iowa | ['us-central1'] | 0.240000000 USD per gibibyte month | start_tier=0
+Cloud Firestore Enterprise Zonal Backup Storage Iowa (with free tier) | ['us-central1'] | 0.030000000 USD per gibibyte month | start_tier=0
+Cloud Firestore Enterprise Zonal Backup Storage Iowa | ['us-central1'] | 0.030000000 USD per gibibyte month | start_tier=0
+Cloud Firestore Point-in-time Recovery Storage (with free tier) Iowa | ['global'] | 0.150000000 USD per gibibyte month | start_tier=0
+Cloud Firestore Point-in-time Recovery Storage Iowa | ['global'] | 0.150000000 USD per gibibyte month | start_tier=0
+Cloud Firestore Storage (with free tier) Iowa | ['global'] | 0.000000000 USD per gibibyte month | start_tier=0
+Cloud Firestore Storage (with free tier) Iowa | ['global'] | 0.150000000 USD per gibibyte month | start_tier=0.03225806451612903
+Cloud Firestore Storage Iowa | ['global'] | 0.150000000 USD per gibibyte month | start_tier=0
+Cloud Firestore Zonal Backup Storage (with free tier) Iowa | ['global'] | 0.030000000 USD per gibibyte month | start_tier=0
+Cloud Firestore Zonal Backup Storage Iowa | ['global'] | 0.030000000 USD per gibibyte month | start_tier=0
