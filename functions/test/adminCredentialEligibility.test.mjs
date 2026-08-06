@@ -269,11 +269,22 @@ ok("AuditOutcome is byte-identical across both mirrors and includes 'uncertain'"
 });
 
 // -- PRE-3: AuditAction is functions-authoritative; the app is an intentional subset --
-// Extract the AuditAction union block from a source file.
+// Extract the AuditAction union block from a source file. Strip `//` line comments FIRST so a stray
+// ';' inside a comment cannot truncate the union -- a comment-format accident must never silently
+// change what this authorization-coverage check sees (regression: a ';' in a member comment once
+// dropped every action after it, hiding listResetEligibleUsers from this assertion, 2026-08-06).
 function auditActionBlock(src) {
   const start = src.indexOf("export type AuditAction");
-  const end = src.indexOf(";", start);
-  return src.slice(start, end);
+  const withoutComments = src.slice(start).replace(/\/\/[^\n]*/g, "");
+  const end = withoutComments.indexOf(";");
+  return withoutComments.slice(0, end);
+}
+// Self-check the hardening: a member preceded by a comment that contains a ';' must still be captured.
+{
+  const synthetic = 'export type AuditAction =\n  // trailing note; with a semicolon\n  | "alpha"\n  | "omega";\nexport type Other = 1;';
+  if (!/"omega"/.test(auditActionBlock(synthetic))) {
+    throw new Error("auditActionBlock hardening regressed: a ';' inside a comment truncated the union");
+  }
 }
 ok("functions AuditAction includes listResetEligibleUsers + the server-only admin-reset actions", () => {
   const fn = auditActionBlock(FN_ACCESS);

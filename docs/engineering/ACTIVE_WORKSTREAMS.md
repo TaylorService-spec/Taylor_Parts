@@ -27,7 +27,7 @@ When you begin a capability, add a row to **Active** with every declared field. 
 
 ## Active
 
-- Capability:          Supplier Master adoption (Tier-2 program, Owner-authorized) — governed Supplier identity + trusted write + Rules(prepared) + purchasing migration compat + Suppliers workspace. Phases S1–S5, repo-only.
+- Capability:          [CLOSED — AT REST 2026-08-06] Supplier Master adoption (Tier-2 program, Owner-authorized) — governed Supplier identity + trusted write + Rules(prepared) + purchasing migration compat + Suppliers workspace. Phases S1–S5, repo-only. Repo-complete + fully planned; no further Product Engineering work. Handoff: `docs/releases/supplier-master-sandbox-handoff.md`. Reactivates only on integrated-sandbox readiness, Owner experience review, or a protected promotion authorization.
 - Agent/session:       c981623b (Claude Code) · Role: builder
 - Branch / worktree:   feat/supplier-master-* · scratchpad/sm-wt (per-phase branches)
 - Base commit:         (current main)
