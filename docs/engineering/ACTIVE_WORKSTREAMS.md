@@ -36,7 +36,7 @@ When you begin a capability, add a row to **Active** with every declared field. 
 - Dependencies:        REUSES partMasterCommands machinery (capability/idempotency/versioning/audit/transaction) + inventory.catalog.manage/.activate; part_supplier_items is the part↔supplier authority (reused, not duplicated); WO snapshot convention for supplierNameSnapshot
 - Expected outcome:    governed Supplier business object; Supplier is the catalog-governed owner of the supplierId space part_supplier_items references; reorder_purchase_orders migrates free-text supplierName -> supplierId + supplierNameSnapshot; Suppliers registry workspace; RC package with migration dry-run/rollback. NO production activation.
 - Protected boundaries:Rules deploy / Functions deploy / prod supplier create / grants / prod migration / rewriting reorder_purchase_orders / deleting dormant collections / Hosting — ALL deferred to protected packages after sandbox+integration evidence
-- Lifecycle stage:     S1 DONE (spec merged, DECISIONS #78) → S2 SANDBOX BUILD next (governed backend; Rules prepared-not-deployed)
+- Lifecycle stage:     S2 SANDBOX BUILD in progress — governed Supplier validator + types + 12 tests DONE (functions/src/supplierMaster/); NEXT S2 slice = trusted command service (createSupplier/update/activate/deactivate) reusing partMasterCommands + independent review; then Rules-prepared
 
 > **Standing note.** Concurrent sessions have recently merged without declaring an assignment here
 > (PRs #584, #585). Per Operating Model §8 and §8a, declare the capability, branch, **verified base
