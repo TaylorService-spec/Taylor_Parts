@@ -214,7 +214,9 @@ export type AuditAction =
   | "updatePartSupplierItem"
   | "changePartSupplierItemStatus"
   | "setPreferredSupplier"
-  // Supplier Master (DECISIONS #78) -- governed Supplier reference object; catalog-governed
+  // Supplier Master (DECISIONS #78) -- governed Supplier reference object, catalog-governed
+  // (keep this comment free of the semicolon character -- adminCredentialEligibility slices the
+  //  AuditAction union at the first one)
   | "createSupplier"
   | "updateSupplier"
   | "activateSupplier"

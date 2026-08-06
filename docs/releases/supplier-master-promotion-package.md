@@ -76,9 +76,15 @@ fields with `keys().hasOnly([...])`, which omits the two new fields. Delta:
    (additive; depends on §5).
 5. **Governed supplier picker** in the reorder flow to set `supplierId` at creation (replaces
    free-text for new POs). *Future UI slice.*
-6. **Real migration execute** (existing POs): manifest-gated, fail-closed; apply linkage for EXACT
-   only; AMBIGUOUS/INACTIVE/UNMATCHED routed to human resolution; HISTORICAL left as-is. Mirrors the
-   warehouse-migration manifest/execute pattern (plan fingerprint must match at execute or it aborts).
+6. **Real migration execute** (existing POs): **TOOLING BUILT (repo-only, sandbox-verified)** —
+   `functions/src/supplierMaster/reorderPurchaseOrderSupplierMigrationExecute.ts`
+   (`executeSupplierLinkageMigration` + `rollbackSupplierLinkageMigration`). Manifest-gated, fail-closed;
+   EXECUTE is impossible by accidental default (defaults to DRY_RUN; EXECUTE needs an explicit target +
+   a `${projectId}/${databaseId}` confirmation token); writes ONLY the two additive fields, never
+   `supplierName`; per-PO isolated transactions with bounded failure reporting; idempotent/re-runnable;
+   EXACT auto, AMBIGUOUS/INACTIVE only via a human-chosen candidate in the manifest, HISTORICAL/UNMATCHED
+   rejected. Emits a rollback artifact + evidence. **Running EXECUTE against production is still a
+   separate protected step (§13).**
 
 Ordering rule: **1 → 2 → 3 → (4,5 in parallel) → 6.** Execute (6) never runs before the Rules delta
 (3) and reference data (2).
@@ -173,9 +179,11 @@ None are performed here. Each is a discrete Owner authorization.
   (already covered by `test:supplierMasterCommands`; the callable path by `test:supplierMasterCallables`).
 - The `reorder_purchase_orders` Rules delta: author + emulator-regress the allowlist change (accept
   new fields, still reject unknown) **without** deploying.
-- The migration execute: build + emulator-test the manifest/execute against synthetic POs + suppliers
-  (mirror `warehouseGovernanceMigration` execute tests) — dry-run is done; execute tooling is the next
-  repo-only slice **when scheduled**.
+- The migration execute: **DONE** — the manifest/execute + rollback tooling is built and emulator-tested
+  against synthetic POs + suppliers (`test:supplierMigrationExecute` offline manifest/guard suite +
+  `test:supplierMigrationExecuteEmulator` lifecycle: DRY_RUN no-write, additive-only EXECUTE with
+  `supplierName` intact, idempotency, STALE_PRESTATE, UNEXPECTED_EXISTING_LINK, rollback). A production
+  run is a separate protected step (§13).
 - The catalog-admin role definition + a shadow-parity/permission test (no production grant).
 - The full integrated experience — once the shared sandbox exists — presented as part of the whole
   product (not a Supplier-specific preview).
