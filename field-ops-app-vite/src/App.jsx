@@ -21,6 +21,7 @@ import AdminRolesPermissions from "./modules/administration/AdminRolesPermission
 import IntegrationsFaq from "./modules/administration/IntegrationsFaq";
 import PurchaseOrders from "./modules/purchasing/PurchaseOrders";
 import Receipts from "./modules/purchasing/Receipts";
+import Suppliers from "./modules/purchasing/Suppliers";
 import Receiving from "./modules/inventory/Receiving";
 import Transfers from "./modules/inventory/Transfers";
 import Warehouses from "./modules/inventory/Warehouses";
@@ -315,6 +316,15 @@ function renderSubnavItem(domain, item, role, operationalContext) {
   // only) and adds no receive path; see DECISIONS. Replaces the prior PlaceholderPage.
   if (domain.key === "purchasing" && item.key === "receipts") {
     return <Receipts />;
+  }
+  // Purchasing > Suppliers -- the first-class registry workspace for the governed Supplier business
+  // object (Supplier Master), replacing the PlaceholderPage for this existing nav item. Read-only;
+  // REUSES the shared operationsQueries.fetchSuppliers read + the pure buildSuppliersView, surfacing
+  // governed status (ACTIVE/INACTIVE) and honestly flagging legacy/ungoverned docs. No write path
+  // (suppliers is Admin-SDK-write-only). accessVersion is threaded so the read re-runs on any access
+  // change (the inventory/purchasing convention).
+  if (domain.key === "purchasing" && item.key === "suppliers") {
+    return <Suppliers accessVersion={operationalContext?.accessVersion} />;
   }
   // Inventory > Receiving -- the FIRST-CLASS Receiving workspace, replacing the prior
   // PlaceholderPage for this existing nav item (admin/dispatcher). It composes the ONE
