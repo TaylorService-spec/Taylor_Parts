@@ -114,6 +114,16 @@ U-1 through U-5 were resolved by a read-only observation run; evidence and hashe
   Eight truck-registry callables ARE deployed. **No Enterprise Access mutation callables are
   deployed**, confirming Issue #226 Rows 19/20 remain unexecuted.
 
+## Recorded drift — declared vs live Firestore indexes (2026-08-06)
+
+`firestore.indexes.json` declares **5** composite indexes (`employees` x2, `fieldops_wos` x2, `reorder_requests` x1). The live database has **6** — an additional index on **`fieldops_jobs`** that the repository does not declare.
+
+**This is a latent production risk, not merely a documentation gap.** A repo-driven `firebase deploy --only firestore:indexes` reconciles live state to the declared set, so such a deploy **could delete the live `fieldops_jobs` index**, degrading or breaking whatever query depends on it. Indexes have never been deployed from this repository by any CI path (no workflow references `firebase deploy`), which is why the drift has persisted unnoticed.
+
+It also blocks reproducibility: an environment built from the repository would not have that index, so it could not faithfully represent production behaviour.
+
+**Not remediated** — reconciling indexes touches production and is protected. Either the index is adopted into `firestore.indexes.json` (if it is wanted) or removed (if it is not); both are Owner decisions. See [`assessments/sandbox-integration-environment-readiness.md`](assessments/sandbox-integration-environment-readiness.md) finding S-2.
+
 ## Known unknowns
 
 | # | Unknown | Read-only evidence that would resolve it |
