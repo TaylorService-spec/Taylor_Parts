@@ -118,13 +118,17 @@ export default function PartsManagerHome({ accessVersion } = {}) {
   // name map before the replacement read settles.
   const { resolveName, namesUnavailable } = useCanonicalPartNames({ uid: user?.uid, accessVersion });
   const { healthEntries, loading: healthLoading, error: healthError } = useInventoryLedger();
-  const { data: queue, loading: queueLoading } = useReorderRequestsByStatus(REORDER_REQUEST_STATUS.READY_FOR_PARTS_MANAGER);
+  const { data: queue, loading: queueLoading, error: queueError } = useReorderRequestsByStatus(REORDER_REQUEST_STATUS.READY_FOR_PARTS_MANAGER);
   const { data: oversight, loading: oversightLoading, error: oversightError } = useReorderRequestsByStatuses(OVERSIGHT_STATUSES);
   const { data: history, loading: historyLoading, error: historyError } = useReviewedRequestsHistory(user?.uid);
   // Used only to resolve assignee display names in the oversight table
   // below -- EmployeeAssignmentPicker (inside AssignPanel) loads its own,
   // independent copy of this same query for the picker itself.
-  const { employees: assignableEmployees } = useAssignableEmployees({ requiredOperationalRole: OPERATIONAL_ROLE.PARTS_ASSOCIATE });
+  const {
+    employees: assignableEmployees,
+    loading: assigneesLoading,
+    error: assigneesError,
+  } = useAssignableEmployees({ requiredOperationalRole: OPERATIONAL_ROLE.PARTS_ASSOCIATE });
   const [assigningRequestId, setAssigningRequestId] = useState(null);
   // Focus restoration: the triggering "Assign" button that opened the
   // inline Assign panel, so closing it (button or after a successful
@@ -175,7 +179,7 @@ export default function PartsManagerHome({ accessVersion } = {}) {
         loading={queueLoading}
         isEmpty={queue.length === 0}
         loadingText="Loading Parts Manager Queue..."
-        emptyText="No requests awaiting assignment."
+        emptyText={queueError ? "Unable to load the Parts Manager Queue right now. Try again shortly." : "No requests awaiting assignment."}
       >
         <table className="fo-table">
           <thead>
@@ -229,8 +233,14 @@ export default function PartsManagerHome({ accessVersion } = {}) {
 
       <h3>Assigned-Work Oversight</h3>
       <p className="fo-muted">Every Reorder Request currently assigned to a Parts Associate, regardless of who assigned it.</p>
+      {assigneesLoading && <p className="fo-muted" role="status">Loading assignee names...</p>}
+      {assigneesError && (
+        <p className="fo-muted" role="alert">
+          Assignee names are unavailable right now. Assigned work remains visible with unknown assignee labels.
+        </p>
+      )}
       {oversightError ? (
-        <p className="fo-muted">Unable to load assigned-work oversight right now. Try again shortly.</p>
+        <p className="fo-muted" role="alert">Unable to load assigned-work oversight right now. Try again shortly.</p>
       ) : (
         <LoadingEmptyState
           loading={oversightLoading}
@@ -278,7 +288,7 @@ export default function PartsManagerHome({ accessVersion } = {}) {
       <h3>Relevant History</h3>
       <p className="fo-muted">Reorder Requests you personally approved, rejected, or assigned, now at a terminal status.</p>
       {historyError ? (
-        <p className="fo-muted">Unable to load Relevant History right now. Try again shortly.</p>
+        <p className="fo-muted" role="alert">Unable to load Relevant History right now. Try again shortly.</p>
       ) : (
         <LoadingEmptyState
           loading={historyLoading}
