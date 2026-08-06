@@ -20,6 +20,7 @@ import AdminUsers from "./modules/administration/AdminUsers";
 import AdminRolesPermissions from "./modules/administration/AdminRolesPermissions";
 import IntegrationsFaq from "./modules/administration/IntegrationsFaq";
 import PurchaseOrders from "./modules/purchasing/PurchaseOrders";
+import Receipts from "./modules/purchasing/Receipts";
 import Receiving from "./modules/inventory/Receiving";
 import Transfers from "./modules/inventory/Transfers";
 import Warehouses from "./modules/inventory/Warehouses";
@@ -302,10 +303,18 @@ function renderSubnavItem(domain, item, role, operationalContext) {
   // existing index nav item. Read-only; self-fetches the already-client-direct
   // reorder_requests + reorder_purchase_orders (admin/dispatcher). Surfaces
   // ORDERED/ORDERED receipt candidates for the (separately-authorized)
-  // receiveInventoryStock action; performs no receipt/write itself. Siblings
-  // Suppliers/Quotes/Receipts/Demand Planning remain placeholders.
+  // receiveInventoryStock action; performs no receipt/write itself. Receipts is
+  // wired below (the received/result launch point); Suppliers/Quotes/Demand
+  // Planning remain placeholders.
   if (domain.key === "purchasing" && item.key === "purchaseOrders") {
     return <PurchaseOrders />;
+  }
+  // Purchasing > Receipts -- NOT a separate capability: the received/result side of the ONE
+  // governed Receiving capability, rendered as a reuse-only launch point into the CANONICAL PO
+  // projection (buildPurchaseOrdersView, RECEIVED subset). It reads no receiving_orders (backend-
+  // only) and adds no receive path; see DECISIONS. Replaces the prior PlaceholderPage.
+  if (domain.key === "purchasing" && item.key === "receipts") {
+    return <Receipts />;
   }
   // Inventory > Receiving -- the FIRST-CLASS Receiving workspace, replacing the prior
   // PlaceholderPage for this existing nav item (admin/dispatcher). It composes the ONE

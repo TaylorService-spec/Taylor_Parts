@@ -38,7 +38,8 @@ _None currently in flight. Add a row when you start a capability._
 
 - **Receiving activation (protected)** — the governed receive workflow now EXISTS (A1, scanner-within-FieldMode, DECISIONS #68) but is fail-closed on `RECEIVING_TRANSPORT_READY = false`. Turning it on is a **protected boundary**: Phase-F readiness flip + authorized Hosting release + the `inventory.stock.receive` grant already live for {admin,dispatcher,owner}. Owner-gated; not a repo-only capability.
 - **(Optional) dedicated admin/dispatcher Receiving surface** — A1 placed the governed receive on the scanner (technician input tool); a separate Receiving home on an admin/dispatcher surface (driven from Purchasing → Purchase Orders) could reuse the same `ReceiveAgainstPurchaseOrder` component. Repo-only if pursued; not required by A1.
-- Remaining Inventory placeholders — Cycle Counts, Back Orders (Truck Inventory already built; Transfers #71 and Warehouses #74 done). Both have little existing domain/backend/hooks/tests foundation → mostly net-new; sequence under §1a against Purchasing placeholders and any higher-priority risk/dependency work.
+- **Cycle Counts / Back Orders — DESIGN-FIRST DEFERRED (DECISIONS #76):** no governed foundation (no collection/schema/Rules/write-authority/ledger/reconciliation). NOT a UI task — each needs a spec/ADR defining the business workflow + trusted write authority before any workspace. Do not build CRUD to fill the placeholder.
+- **AI Platform / Enterprise Assistant — FUTURE (reconciled into PlatformCapabilityModel §13 AI Platform):** optional cross-platform assistant; do NOT build now; brought forward only when dependencies + product value make it the strongest lever.
 - Remaining Purchasing placeholders — Suppliers / Quotes / Receipts / Demand Planning (each a repo-only capability; Suppliers/Quotes would make currently-unused collections load-bearing → Tier-2 gate).
 
 ## Recently completed (this program window — see DECISIONS.md for the durable record)
@@ -54,3 +55,4 @@ _None currently in flight. Add a row when you start a capability._
 | Executive Architecture Office — Program 0 Authoritative Truth Pass | MERGED (docs-only) | DECISIONS #70 · `reviews/eao-program-0-truth-pass.md` |
 | Inventory → Transfers first-class workspace (read-only; reuses canonical view-model) | MERGED (repo-only) | DECISIONS #71 |
 | Inventory → Warehouses first-class workspace (read-only; registry + governed status/eligibility) | MERGED (repo-only) | DECISIONS #74 |
+| Purchasing → Receipts launch point into canonical PO projection (+ Cycle Counts deferral) | MERGED (repo-only) | DECISIONS #76 |

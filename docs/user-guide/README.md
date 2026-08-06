@@ -60,6 +60,7 @@ Every guide is tagged so you're never misled about what actually works:
 ## Purchasing
 
 - [View purchase orders](purchasing/view-purchase-orders.md) — **live** — Read-only Purchasing > Purchase Orders list of orders placed against reorder requests, filterable by Open/Received/Voided/All (admin/dispatcher).
+- [View receipts](purchasing/view-receipts.md) — **live** — Read-only Purchasing > Receipts list of received purchase orders — the received-only view of Purchase Orders, with a link into Inventory > Receiving (admin/dispatcher).
 
 ## Accounts & customers
 
