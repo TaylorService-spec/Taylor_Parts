@@ -572,9 +572,10 @@ export async function changeManufacturerStatus(input: ChangeManufacturerStatusIn
 }
 
 // ---------------------------------------------------------------------------
-// INV-1 Phase 1 PR 1.3 -- shared internals re-exported for
-// partAliasCommands.ts ONLY (single capability/idempotency/deps
-// implementation; not part of any public surface).
+// INV-1 Phase 1 PR 1.3 -- shared internals re-exported for the trusted-command
+// modules built on this SAME machinery (single capability/idempotency/deps
+// implementation; not part of any public surface). Current consumers:
+// partAliasCommands.ts and supplierMaster/supplierMasterCommands.ts.
 // ---------------------------------------------------------------------------
 export {
   resolveDeps as __pm_internal_resolveDeps,

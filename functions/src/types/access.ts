@@ -213,6 +213,7 @@ export type AuditAction =
   | "createPartSupplierItem"
   | "updatePartSupplierItem"
   | "changePartSupplierItemStatus"
+  | "setPreferredSupplier"
   // Supplier Master (DECISIONS #78) -- governed Supplier reference object; catalog-governed
   | "createSupplier"
   | "updateSupplier"
@@ -227,7 +228,6 @@ export type AuditAction =
   | "equipmentCompatibilityVerification"
   | "equipmentCompatibilityCorrection"
   | "equipmentCompatibilityConflict"
-  | "setPreferredSupplier"
   // EI Truck Registry (ADR-010 / Decision #60) -- trusted internal write service. Seven narrow
   // actions extending this SAME immutable Audit Event path (no parallel audit system) -- create,
   // driver assign/reassign (shared) and unassign, status and home-warehouse change, plus the

@@ -102,6 +102,9 @@ export async function createSupplier(input: CreateSupplierInput, deps?: Supplier
 
   return db.runTransaction(async (txn) => {
     const replay = await __pm_internal_checkIdempotency(db, txn, auditId, fp);
+    // On idempotent replay we return [] for suspectedDuplicateOf by design: the flag list is not
+    // persisted on the record (it drives human review, not state), so it cannot be recomputed here.
+    // The ORIGINAL call's audit summary is the durable record of what was flagged.
     if (replay) return { ...replay, supplierId, suspectedDuplicateOf: [] };
     const existing = await repo.getById(txn, supplierId);
     if (existing !== null) throw new AlreadyExistsError(`supplier ${supplierId} already exists`);
