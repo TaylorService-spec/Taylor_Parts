@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, Link } from "react-router-dom";
 import { routerBasenameFrom } from "./routerBasename";
 import ControlTower from "./modules/controlTower/ControlTower";
 import Jobs from "./modules/jobs/Jobs";
@@ -18,6 +18,7 @@ import AdministrationOverview from "./modules/administration/AdministrationOverv
 import AdministrationUnavailable from "./modules/administration/AdministrationUnavailable";
 import AdminUsers from "./modules/administration/AdminUsers";
 import AdminRolesPermissions from "./modules/administration/AdminRolesPermissions";
+import IntegrationsFaq from "./modules/administration/IntegrationsFaq";
 import WorkOrdersList from "./modules/workOrders/WorkOrdersList";
 import WorkOrderWizard from "./modules/workOrders/WorkOrderWizard";
 import WorkOrderDetailPage from "./modules/workOrders/WorkOrderDetailPage";
@@ -97,18 +98,33 @@ const LEGACY_COMPONENTS = {
   technicianDashboard: TechnicianDashboard,
 };
 
+// Admin/dispatcher personalized landing (W5). Real role-aware home -- quick-access
+// cards to the primary operational surfaces both admin and dispatcher can reach --
+// replacing the prior "isn't built yet" placeholder. Technician gets the real
+// TechnicianDashboard. Every card links to a verified route; none is a dead link.
+const LANDING_AREAS = [
+  { to: "/dashboard/operations", label: "Inventory & Supply Overview", hint: "Cross-domain operational health" },
+  { to: "/service", label: "Work Orders", hint: "Browse and manage work orders" },
+  { to: "/service/dispatcher-board", label: "Dispatcher Board", hint: "Assign and dispatch work" },
+  { to: "/customers", label: "Customers", hint: "Accounts, contacts, and locations" },
+  { to: "/inventory", label: "Inventory", hint: "Parts and stock" },
+];
+
 function DashboardIndex({ role }) {
-  // "My Dashboard" only has a real screen for the technician role
-  // today (TechnicianDashboard.jsx, legacyKey "technicianDashboard").
-  // Admin/dispatcher have no personalized-dashboard screen yet --
-  // placeholder, per requirement #4, rather than forcing a screen
-  // that doesn't fit their role.
   if (role === "technician") return <TechnicianDashboard />;
   return (
-    <PlaceholderPage
-      title="My Dashboard"
-      note="A personalized dashboard for this role isn't built yet -- see Operations Dashboard for the current admin/dispatcher view."
-    />
+    <div className="fo-panel">
+      <h2>My Dashboard</h2>
+      <p className="fo-muted">Quick access to your areas.</p>
+      <div className="fo-landing-grid">
+        {LANDING_AREAS.map((a) => (
+          <Link key={a.to} to={a.to} className="fo-landing-card">
+            <span className="fo-landing-card-title">{a.label}</span>
+            <span className="fo-muted">{a.hint}</span>
+          </Link>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -245,6 +261,13 @@ function renderSubnavItem(domain, item, role, operationalContext) {
   }
   if (domain.key === "administration" && item.key === "rolesPermissions") {
     return <AdminRolesPermissions />;
+  }
+  // Administration > Integrations -- static, informational FAQ on the platform's
+  // approved integration boundary (no Firestore access, no writes). Replaces the
+  // prior PlaceholderPage for this existing nav item. (Handoff from the parallel
+  // session's App.jsx integration WIP.)
+  if (domain.key === "administration" && item.key === "integrations") {
+    return <IntegrationsFaq />;
   }
   // Issue #325 / ADR-007 -- the governed report builder. Net-new, no legacyKey; reached only
   // through the capability-gated item (isNavItemVisible checks capabilityAccess, resolved by the
@@ -494,8 +517,16 @@ export default function App() {
       <div className="fo-panel">
         <h2>No access</h2>
         <p className="fo-muted">
-          Your account isn't assigned a role yet. Contact an admin to get access.
+          You're signed in as <strong>{user.email}</strong>, but your account isn't
+          assigned a role with access yet.
         </p>
+        <p className="fo-muted">
+          Ask an administrator to grant your account a role — giving them the email above
+          helps them find it. Once access is granted, choose <strong>Check again</strong>.
+        </p>
+        <button type="button" className="fo-btn" onClick={() => window.location.reload()}>
+          Check again
+        </button>
       </div>
     );
   }
