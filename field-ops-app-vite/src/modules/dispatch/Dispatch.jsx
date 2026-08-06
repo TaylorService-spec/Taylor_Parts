@@ -6,6 +6,13 @@ import { computeJobRisk } from "../../domain/jobRiskScoring";
 import { SEVERITY } from "../../domain/controlTower/types";
 import { isHeroActiveJob, isHeroTechnician } from "../../demo/heroConfig";
 
+// LEGACY (jobs-based) dispatch surface -- NOT the canonical Work Order
+// dispatch. This board assigns legacy JOBS_COLLECTION jobs via assignJob();
+// it does NOT drive the canonical fieldops_wos Work Order lifecycle
+// (createWorkOrder/transitionWorkOrder Cloud Functions; see CLAUDE_CONTEXT
+// rule 2). Its heading is honestly "Dispatch" (not "Work Orders"), so no
+// user-visible relabel was needed in W0; model reconciliation is W4.
+//
 // Assigns pending jobs to available technicians. Writes back to both the
 // job (technicianId, status) and the technician (status) so Jobs,
 // Technicians, and Control Tower all stay in sync via their own

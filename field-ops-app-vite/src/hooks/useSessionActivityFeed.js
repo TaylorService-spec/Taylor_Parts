@@ -12,11 +12,14 @@ import { useEffect, useRef, useState } from "react";
 // this is.
 //
 // Diffs the current workOrders array against the previous one on every
-// change; a status or assignedTechId difference for an already-known
-// Work Order becomes one feed entry. The very first snapshot only
-// establishes the baseline and produces no entries -- otherwise
-// opening the board would "report" every Work Order's entire existing
-// state as if it just happened.
+// change. The entry gate is a STATUS change ONLY (verified 2026-08-05, W0:
+// the diff below `continue`s when prevState.status === wo.status). A change
+// to assignedTechId alone, with unchanged status, produces NO entry;
+// assignedTechId is read only to phrase the DISPATCHED message and is stored
+// in the baseline, but it is not an independent trigger. The very first
+// snapshot only establishes the baseline and produces no entries -- otherwise
+// opening the board would "report" every Work Order's entire existing state
+// as if it just happened.
 const STATUS_VERB = {
   CREATED: "created",
   READY_TO_DISPATCH: "marked ready to dispatch",

@@ -6,8 +6,9 @@ import { REPORT_WAVE1_OBJECT_READ_CAPABILITIES, REPORT_DEFINITION_CAPABILITIES }
 // which existing screen (if any) each sub-item re-homes.
 //
 // This REPLACES App.jsx's old flat `NAV` array as the navigation
-// source of truth (see docs/CLAUDE_CONTEXT.md's "Navigation" row in
-// SYSTEM_AUTHORITIES.md, updated in this same sprint). Unlike PR #22's
+// source of truth (see docs/architecture/SYSTEM_AUTHORITIES.md's
+// "Navigation" row -- the canonical location, not CLAUDE_CONTEXT.md).
+// Unlike PR #22's
 // domain-routing scaffold (torn out on the same PR for being
 // aspirational/not wired in -- see that PR's body), this one is wired
 // into App.jsx's real <Routes> and is meant to stay.

@@ -27,6 +27,11 @@ import { WORK_ORDERS_COLLECTION } from "./constants";
 // Both indexes are already deployed [READY]; this file only READS against
 // them and never defines or changes an index.
 
+// These two buckets partition the canonical 11-value WorkOrderStatus enum
+// (the authority is functions/src/transitionEngine.ts, mirrored client-side
+// in domain/workOrderWorkflow.js -- verified in sync 2026-08-05, W0). KEEP
+// IN SYNC: if a WorkOrderStatus value is ever added/renamed there, update
+// these buckets in the same change, or account counts silently drift.
 // CANCELLED is deliberately in NEITHER bucket -- a cancelled Work Order is
 // excluded from both Completed and Open counts, never folded into either.
 export const COMPLETED_WORK_ORDER_STATUSES = ["COMPLETED", "CLOSED"];
