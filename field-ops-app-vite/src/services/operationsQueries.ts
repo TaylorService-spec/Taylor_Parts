@@ -51,8 +51,22 @@ export interface RawTransferOrder {
 export interface RawSupplier {
   id: string;
   name: string;
-  contactEmail: string;
-  leadTimeDays: number;
+  // Governed Supplier Master fields (functions/src/supplierMaster/*). Optional here because the
+  // client read cannot re-run the backend governed validator and legacy Epic-5 demo docs predate
+  // governance; the Suppliers workspace surfaces a missing `status` honestly as "ungoverned".
+  status?: string; // "ACTIVE" | "INACTIVE"
+  normalizedKey?: string;
+  version?: number;
+  vendorNumber?: string;
+  contactName?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  paymentTermsRef?: string;
+  notes?: string;
+  // Legacy Epic-5 demo fields retained (optional) for the Operations ProcurementPanel consumer.
+  contactEmail?: string;
+  leadTimeDays?: number;
 }
 
 export interface RawSupplierCatalogItem {
