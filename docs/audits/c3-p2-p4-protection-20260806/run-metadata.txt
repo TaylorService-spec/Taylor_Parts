@@ -1,0 +1,7 @@
+executed_at_utc: 2026-08-06T22:14:52Z
+operator_identity: rudy.digiorgio@gmail.com
+gcloud_version: Google Cloud SDK 577.0.0
+P2: gcloud firestore databases update --database="(default)" --enable-pitr --project=taylor-parts
+p2_exit: 0
+P3: gcloud firestore backups schedules create --database="(default)" --retention=4w --recurrence=daily --project=taylor-parts
+P4: gcloud firestore backups schedules create --database="(default)" --retention=14w --recurrence=weekly --day-of-week=SUN --project=taylor-parts
