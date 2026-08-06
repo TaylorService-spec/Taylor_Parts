@@ -2,14 +2,21 @@ import { SEVERITY, createSignal } from "./controlTower/types";
 import { WORK_ORDER_STATE } from "./constants";
 import { explainWorkOrderState, explainWorkOrder } from "./workOrderLifecycle";
 
-// Sprint 3.3's Signal layer for Work Orders, sitting on top of Sprint
-// 3.4's lifecycle engine (domain/workOrderLifecycle.js). This file
-// computes nothing about Work Order state itself -- explainWorkOrderState()
-// is the single source of truth for state/reasons/metrics.
-// computeWorkOrderSignal() below only wraps that output in the shared
-// { id, score, severity, label, metadata } envelope (see
-// domain/controlTower/types.js) so Control Tower's panels/components can
-// render Work Orders the same way they render risk/dispatch signals.
+// Sprint 3.3's Signal layer for Work Orders, sitting on top of the
+// lifecycle engine (domain/workOrderLifecycle.js). This file computes
+// nothing about Work Order state itself -- it only wraps a lifecycle
+// result in the shared { id, score, severity, label, metadata } envelope
+// (see domain/controlTower/types.js) so Control Tower renders Work Orders
+// the same way it renders risk/dispatch signals.
+//
+// TWO signal functions live here; consumers verified 2026-08-05 (W0):
+//   - computeWorkOrderSignalFromDoc()  -- the LIVE Work Order Engine v1.2
+//     path: wraps explainWorkOrder(workOrderDoc) (a pure map from a real
+//     fieldops_wos doc). Sole consumer: modules/controlTower/
+//     WorkOrderDetail.jsx.
+//   - computeWorkOrderSignal(jobs)  -- the LEGACY jobs-aggregate path:
+//     wraps explainWorkOrderState(jobs). Now ORPHANED (no consumer);
+//     retire with the other jobs-based lifecycle exports.
 
 // WORK_ORDER_STATE is a discrete state, not a continuous magnitude (a
 // work order isn't "60% blocked"), so its score/severity are a fixed

@@ -1242,6 +1242,12 @@ export default function PartDetail({ hasCapability, accessVersion } = {}) {
     data: reorderRequest,
     loading: reorderRequestLoading,
     error: reorderRequestError,
+    // refreshReorderRequest is an intentional NO-OP retained only for call-site
+    // compatibility -- useReorderRequestForPart() is realtime (onSnapshot), so
+    // its `refresh` is an empty callback (verified useReorderRequests.js:204,
+    // 2026-08-05, W0). The onReviewed/onAssigned/etc. handlers below pass it so
+    // child components have a callback to call; the live subscription, not this
+    // call, is what actually re-renders the request.
     refresh: refreshReorderRequest,
   } = useReorderRequestForPart(partId, requestId);
   const { byUserId: employeeDirectory } = useEmployeeDirectory();

@@ -326,16 +326,20 @@ export const ROLE_NAV_ACCESS = {
 };
 
 //
-// NOTE:
-// WORK_ORDER_STATE is derived only -- never written to Firestore, never
-// transitioned independently of its Jobs. JOB_STATUS remains the single
-// source of truth; a Work Order's state is always an aggregate computed
-// from its child Jobs. domain/workOrderLifecycle.js is the one place that
-// computes it -- see computeWorkOrderState() there. Sprint 3.4 note:
-// this enum's COMPLETED value is what Sprint 3.4's design docs refer to
-// as "COMPLETE" -- kept as COMPLETED here (not renamed) since it's
-// already relied on by existing CSS classes (.wo-completed) and other
-// consumers, and the two names carry identical meaning.
+// NOTE (DEPRECATED for Work Order state as of Work Order Engine v1.2 --
+// see docs/architecture/ADR-002, CLAUDE_CONTEXT rule 2):
+// WORK_ORDER_STATE is the LEGACY jobs-aggregate enum -- a derived value
+// never written to Firestore. It is NOT the canonical Work Order state.
+// The authoritative Work Order state is `fieldops_wos.status` (the 11-value
+// WorkOrderStatus written only by the createWorkOrder/transitionWorkOrder
+// Cloud Functions; mirrored client-side in domain/workOrderWorkflow.js).
+// This enum survives only for the legacy jobs-based path
+// (domain/workOrderLifecycle.js's computeWorkOrderState(), whose one
+// consumer is domain/timelineBuilder.js -- verified 2026-08-05, W0). No new
+// consumer should read Work Order state from here; use fieldops_wos.status.
+// (Its COMPLETED value is what Sprint 3.4's design docs call "COMPLETE" --
+// kept as COMPLETED, relied on by existing CSS `.wo-completed` and others;
+// identical meaning.)
 //
 export const WORK_ORDER_STATE = {
   READY: "READY",

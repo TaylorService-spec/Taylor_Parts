@@ -6,14 +6,18 @@ import { JOB_STATUS, WORK_ORDER_STATE } from "./constants";
 // createWorkOrder/transitionWorkOrder Cloud Functions) -- not an
 // aggregate computed from Jobs.
 //
-// The four exports below (computeWorkOrderState/isActiveWorkOrder/
-// isCompletedWorkOrder/explainWorkOrderState) are kept byte-identical
-// and FROZEN, serving exactly one remaining consumer:
-// domain/timelineBuilder.js, whose call site only has a jobs array (no
-// WO doc) to work with and is out of scope for this migration. No new
-// code may call these four -- if timelineBuilder.js is ever migrated to
-// the real model, delete these four outright rather than extending them
-// further.
+// The four jobs-based exports below are kept byte-identical and FROZEN.
+// Their ACTUAL remaining consumers, verified 2026-08-05 (W0 truth pass):
+//   - computeWorkOrderState()  -> domain/timelineBuilder.js only (its
+//     call site has just a jobs array, no WO doc; out of scope for the
+//     v1.2 migration).
+//   - explainWorkOrderState()  -> domain/workOrderScoring.js's legacy
+//     computeWorkOrderSignal() only (which is ITSELF now orphaned -- see
+//     that file), NOT timelineBuilder.
+//   - isActiveWorkOrder(), isCompletedWorkOrder()  -> NO consumer at all
+//     (orphaned; safe to retire once timelineBuilder is migrated).
+// No new code may call these four -- if their last consumers migrate to
+// the real model, delete them outright rather than extending them.
 //
 // New consumers (modules/controlTower/WorkOrderDetail.jsx,
 // ControlTower.jsx) use mapWoStatusToLifecycleState()/explainWorkOrder()

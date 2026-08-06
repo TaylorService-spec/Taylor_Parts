@@ -16,7 +16,7 @@ window.disablePanicMode = () => {
 
 window.demoStatus = () => {
   console.log({
-    ENV: window.location.search,
+    search: window.location.search,
     PANIC_MODE: window.__PANIC_MODE__,
   });
 };

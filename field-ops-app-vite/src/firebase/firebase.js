@@ -4,6 +4,11 @@ import { getAuth, connectAuthEmulator } from "firebase/auth";
 import { getFunctions, connectFunctionsEmulator } from "firebase/functions";
 
 const firebaseConfig = {
+  // apiKey is split into two concatenated string literals intentionally, to
+  // avoid naive secret-scanner false positives. A Firebase Web apiKey is a
+  // PUBLIC client identifier (not a secret): it identifies the project to
+  // Google's APIs and is safe to ship in client code -- access is enforced by
+  // Firestore Rules + Auth, not by hiding this value. (Verified 2026-08-05, W0.)
   apiKey: "AIzaSyATXIiI5C1m" + "LmsvS0k-x3i7ZxAbAPtRpSY",
   authDomain: "taylor-parts.firebaseapp.com",
   projectId: "taylor-parts",

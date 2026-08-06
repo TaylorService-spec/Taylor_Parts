@@ -52,10 +52,11 @@ export function sortEvents(events, order = "desc") {
   });
 }
 
-// Groups events by an arbitrary key function -- e.g.
-// groupEvents(events, (e) => e.entity.type) for the Activity Timeline's
-// Job/Work Order/System filter, or groupEvents(events, (e) => e.entity.id)
-// for one entity's own history.
+// Generic helper: groups events by an arbitrary key function -- e.g.
+// groupEvents(events, (e) => e.entity.type) or
+// groupEvents(events, (e) => e.entity.id). NOTE (verified 2026-08-05, W0):
+// this export currently has NO consumer -- it is a general-purpose helper
+// kept for future Activity Timeline grouping, not a live filter path.
 export function groupEvents(events, keyFn) {
   const groups = {};
   events.forEach((event) => {

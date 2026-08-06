@@ -20,7 +20,12 @@ import { auth } from "../firebase/firebase";
 // reviewNotes, assignedToUserId, assignedBy, assignedAt,
 // purchasingStartedAt, purchasingStartedBy, purchasingNotes,
 // vendorContacted, expectedAvailabilityDate, lastPurchasingUpdateAt,
-// lastPurchasingUpdateBy, purchaseOrderId, orderedBy, orderedAt }.
+// lastPurchasingUpdateBy, purchaseOrderId, orderedBy, orderedAt,
+// receivedBy, receivedAt, cancelledBy, cancelledAt, cancellationReason,
+// voidedBy, voidedAt, voidReason }. (The eight receiving/cancel/void
+// fields were added by later sprints and are all written null here by
+// createReorderRequest() -- verified against the write object below,
+// 2026-08-05, W0; the enumeration previously stopped at orderedAt.)
 // `createdAt` (stamped automatically by makeCollectionStore.add()) IS
 // this record's "Reorder Requested" Platform Event timestamp -- an
 // immutable fact of when the request was made, never rewritten.
