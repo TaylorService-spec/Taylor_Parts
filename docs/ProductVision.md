@@ -27,9 +27,11 @@ The platform's long-term scope spans the following business domains:
 
 Not every domain is built today. This document describes the platform's intended eventual shape; [ProductBlueprint.md](ProductBlueprint.md) describes what's built now and what's planned per version, and [ROADMAP.md](ROADMAP.md) tracks version-by-version delivery.
 
-## Multi-Tenant Principle
+## Multi-Company Principle *(design objective — not implemented)*
 
-The platform is intended to support **multiple service companies through configuration, not hardcoding**. Business rules, navigation, and role structures should be designed so a new service organization can be onboarded by configuring the platform, not by forking or modifying its code. This principle governs how new features should be designed even while the platform currently serves a single organization — see [PlatformConstitution.md](PlatformConstitution.md)'s "Configurable Platform" principle for how this is enforced architecturally, and [DeploymentModeStrategy.md](DeploymentModeStrategy.md) for how this principle extends to deployment, tenancy, and integration.
+> **Implementation truth (2026-08-06).** Enterprise Operations OS is **a single-company deployment today.** Taylor Parts is the flagship and first deployment. No tenancy boundary is implemented: `companyId`/`tenantId` appear in the codebase only as inert placeholders, and no query, Firestore Rule, or write path is company-scoped. Multi-company support is an **architectural objective**, not a current capability — a real tenancy architecture is a future Tier-2 Owner decision requiring an ADR before any implementation. Do not describe this platform as multi-tenant in the present tense. See [`PlatformCapabilityModel.md`](PlatformCapabilityModel.md) §5a.
+
+The platform is **intended to support** multiple service companies through configuration, not hardcoding. Business rules, navigation, and role structures should be designed so a new service organization can be onboarded by configuring the platform, not by forking or modifying its code. This principle governs how new features should be designed even while the platform currently serves a single organization — see [PlatformConstitution.md](PlatformConstitution.md)'s "Configurable Platform" principle for how this is enforced architecturally, and [DeploymentModeStrategy.md](DeploymentModeStrategy.md) for how this principle extends to deployment, tenancy, and integration.
 
 ## Why This Matters
 

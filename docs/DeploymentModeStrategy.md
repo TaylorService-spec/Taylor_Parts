@@ -29,7 +29,9 @@ These four modes are the platform's **current deployment strategy** — the gove
 
 Every mode shares the same core product (entity model, capability set, write paths). Modes differ in **who operates the instance, what data is real, and what external systems are attached** — never in the underlying platform logic.
 
-## 4. Tenant Strategy
+## 4. Tenant Strategy *(FUTURE-STATE ARCHITECTURE — no tenancy is implemented)*
+
+> **Implementation truth (2026-08-06, Program 0 truth pass).** Nothing in this section is implemented. The platform runs as a **single-company deployment**. `companyId` exists only as an allowed custom-claim key and `tenantId` only as an explicitly inert placeholder; no collection, query, or Firestore Rule is company-scoped. This section states the *target*. Building it is a Tier-2 Owner decision requiring an ADR. Per Owner decision 2026-08-06: tenancy is deliberately deferred, no partial or cosmetic tenancy implementation may be introduced, and existing future-ready seams are retained rather than removed.
 
 - **Taylor Parts is the initial deployment** of the platform, and today the only operating company running on it.
 - **The platform is designed for multiple operating companies**, not just Taylor Parts. This is a design constraint on every capability and entity, not a currently-active multi-tenant runtime feature — see [`ProductVision.md`](ProductVision.md)'s Multi-Tenant Principle and [`PlatformCapabilityModel.md`](PlatformCapabilityModel.md)'s Administration capability (`Company` is a named future entity there).

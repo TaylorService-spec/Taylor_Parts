@@ -39,6 +39,8 @@ Every workflow is evaluated for unnecessary steps, clicks, re-entry, or context-
 
 ## 9. Configurable Platform
 
+> **Implementation truth (2026-08-06).** This principle is a **design constraint on how new work is built**, not a description of an existing mechanism. No configuration layer exists: there is no configuration store, no per-organization settings, and no runtime representation of which deployment mode an instance is running in. `src/config/` holds build-time readiness flags only. The principle still binds — it forbids `if Taylor Parts, do X` — but "configuration over customization" cannot yet be satisfied by an actual configuration facility. See [`PlatformCapabilityModel.md`](PlatformCapabilityModel.md) §5a.
+
 Business rules, navigation, and role structures are designed to be configured per organization, not hardcoded per customer. This is what makes the "one platform, multiple service companies" model in [ProductVision.md](ProductVision.md) possible. [DeploymentModeStrategy.md](DeploymentModeStrategy.md) extends this principle to deployment: how an instance is hosted, tenanted, and integrated.
 
 ## 10. Build for the Next Decade
