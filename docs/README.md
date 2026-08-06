@@ -79,10 +79,11 @@ Working conventions for contributing to this repo (human or AI).
 - [governance/audit-artifact-standard.md](governance/audit-artifact-standard.md) — **AUTHORITATIVE.** The required shape of run evidence (hashing, sanitization, immutability).
 - [governance/execution-environments.md](governance/execution-environments.md) — **AUTHORITATIVE.** Which environment a given command class may run against.
 - [governance/privileged-approval-classification.md](governance/privileged-approval-classification.md) — **AUTHORITATIVE.** Which grants need one approver vs. two.
+- [governance/ecf-reconciliation-plan.md](governance/ecf-reconciliation-plan.md) — **AUTHORITATIVE** plan for the accepted RECONCILE-THEN-ACTIVATE disposition of ECF (proposed baseline `c002b5e`). Not an activation.
 - [governance/ENTERPRISE_CERTIFICATION_FRAMEWORK.md](governance/ENTERPRISE_CERTIFICATION_FRAMEWORK.md) — **NOT ACTIVATED.** Baseline v1.0 names three core artifacts (Certification Matrix, Recommendation Register, Certification History); none exist. See [`reviews/eao-program-0-truth-pass.md`](reviews/eao-program-0-truth-pass.md) for the disposition recommendation.
 - [governance/templates/operational-handoff.md](governance/templates/operational-handoff.md) — handoff template.
 - [audits/](audits/) — **EVIDENCE.** Immutable run artifacts. Never edited after generation.
-- [operations/](operations/) — runbooks and operator handoffs for governed, credentialed procedures.
+- [operations/](operations/) — runbooks and operator handoffs for governed, credentialed procedures. Currently open: [operations/eao-readonly-evidence-package.md](operations/eao-readonly-evidence-package.md) (bundled read-only evidence run, resolves U-1…U-6) and [operations/local-checkout-and-worktree-reconciliation.md](operations/local-checkout-and-worktree-reconciliation.md) (preservation task — nothing deleted pending attribution).
 - [deployment/](deployment/) — per-program deployment authorization and verification packages.
 
 ## Working artifacts (AI-SDLC)
@@ -94,6 +95,7 @@ Per-workstream artifacts produced by [`ai/workflow.md`](ai/workflow.md). Templat
 - [specifications/](specifications/) — approved implementation specifications.
 - [implementation-plans/](implementation-plans/) — PR-level breakdowns.
 - [reviews/](reviews/) — architecture reviews and program execution records.
+- Current EAO programs: [assessments/r1-authorization-convergence-readiness.md](assessments/r1-authorization-convergence-readiness.md) (**R-1**, readiness against ADR-005 §2.7) · [design/pages-production-promotion-target-state.md](design/pages-production-promotion-target-state.md) (**R-2**, frontend promotion target state).
 - [capabilities/](capabilities/) — per-capability maturity plans, traced to [`PlatformCapabilityModel.md`](PlatformCapabilityModel.md). See [capabilities/InventoryManagementPlan.md](capabilities/InventoryManagementPlan.md).
 - [epics/](epics/) — feature-level planning for work that doesn't map to a single capability: [EPIC-6](epics/EPIC-6-Technician-Execution-Workspace.md), [EPIC-9](epics/EPIC-9-Platform-Workspace-Framework.md).
 
