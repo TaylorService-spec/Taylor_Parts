@@ -75,7 +75,7 @@ Every capability entry below follows this shape:
 - **Purpose**: Support field technicians executing assigned work.
 - **Business Objects**: Work Order, Employee/User (Technician).
 - **Primary Users**: Technician.
-- **Current Maturity**: Level 2 — Technician Dashboard, lifecycle actions (Accept/Travel/Arrive/WorkStart/Complete), execution capture (parts used, notes) — the execution-capture write path is Cloud-Function-based and currently non-functional pending deployment-mode resolution.
+- **Current Maturity**: Level 2 — Technician Dashboard, lifecycle actions (Accept/Travel/Arrive/WorkStart/Complete), execution capture (parts used, notes). *(Corrected 2026-08-06: the former "non-functional pending deployment-mode resolution" note is stale — `updateWorkOrderExecutionData` is deployed per [`DECISIONS.md`](DECISIONS.md) #36 and the functions-live-state audit.)* FieldMode remains on the legacy `fieldops_jobs` model — see the work-order-model convergence row in Section 5a.
 - **Target Maturity**: Level 3 — richer field workflows (photo capture, digital signature), offline support.
 - **Key Workflows**: View assigned Work Orders, progress through lifecycle, record parts used/notes.
 - **Future Expansion**: File Attachments (photos, manuals — named as a future capability in `BusinessEntityModel.md`), offline-first field mode.
@@ -84,7 +84,7 @@ Every capability entry below follows this shape:
 - **Purpose**: Track parts stock and consumption.
 - **Business Objects**: Part.
 - **Primary Users**: Admin, Dispatcher (read); Technician (consumption, via execution capture).
-- **Current Maturity**: Level 3 — append-only ledger (`inventory_transactions`), forecasting/reorder-point analytics, Operations dashboard reporting.
+- **Current Maturity**: Level 3 — append-only ledger (`inventory_transactions`), forecasting/reorder-point analytics, Operations dashboard reporting, the closed Reorder Request → Purchase Order lifecycle, and a deployed governed receiving write path (`receiveInventoryStock`, [`DECISIONS.md`](DECISIONS.md) #63). Operational acceptance of receiving is deferred — see Section 5a.
 - **Target Maturity**: Level 4 — automated reorder triggering feeding Procurement.
 - **Key Workflows**: View inventory health, view consumption via execution capture, forecast reorder needs.
 - **Future Expansion**: Real-time low-stock alerting, automated Purchase Order draft-to-send.
@@ -93,7 +93,7 @@ Every capability entry below follows this shape:
 - **Purpose**: Track physical stock locations and movement between them.
 - **Business Objects**: Warehouse, Part, Vehicle *(future)*.
 - **Primary Users**: Admin, Dispatcher (read); future Warehouse staff role.
-- **Current Maturity**: Level 2 — real Warehouse/stock-location backend and reconciliation reporting; no dedicated Warehouse-role UI yet (Inventory domain's "Warehouses"/"Truck Inventory" nav items are still placeholders).
+- **Current Maturity**: Level 2 — real Warehouse/stock-location backend and reconciliation reporting, plus a Warehouse-Manager role surface (`modules/inventoryRole/WarehouseManagerHome.jsx`) and governed `warehouses.status` location authority. *(Corrected 2026-08-06: the former "no dedicated Warehouse-role UI yet" note is stale.)* Truck/mobile-location management remains a repo-only, unactivated write surface.
 - **Target Maturity**: Level 3 — real transfer-order workflows, cycle counts.
 - **Key Workflows**: View warehouse reconciliation report, view stock by location.
 - **Future Expansion**: Vehicle (mobile stock location) entity and UI, receiving/put-away workflows, cycle counts.
@@ -102,7 +102,7 @@ Every capability entry below follows this shape:
 - **Purpose**: Manage supplier relationships and purchasing.
 - **Business Objects**: Supplier, Purchase Order.
 - **Primary Users**: Admin, Dispatcher.
-- **Current Maturity**: Level 2 — real Supplier/Purchase Order backend, draft-proposal generation from reorder recommendations, Operations dashboard reporting; no dedicated Purchasing-domain UI yet (nav items are placeholders).
+- **Current Maturity**: Level 2 — real Supplier/Purchase Order backend, draft-proposal generation from reorder recommendations, Operations dashboard reporting, and a read-only Purchasing > Purchase Orders surface (`modules/purchasing/PurchaseOrders.jsx`, [`DECISIONS.md`](DECISIONS.md) #64). *(Corrected 2026-08-06: the former "nav items are placeholders" note is stale for Purchase Orders.)* Suppliers / Quotes / Receipts / Demand Planning remain placeholders.
 - **Target Maturity**: Level 3 — real Purchase Order creation/approval UI, supplier catalog management UI.
 - **Key Workflows**: View purchase orders, view draft proposals.
 - **Future Expansion**: Demand planning UI, supplier catalog editing, PO approval workflow.
@@ -190,6 +190,62 @@ Every capability entry below follows this shape:
 | 5 | Intelligence / AI | Adaptive, learned, or predictive behavior beyond deterministic rules/scoring. |
 
 **Every capability progresses independently.** Service Management reaching Level 4 doesn't require Financial Operations to reach Level 2 first — there is no platform-wide "release version" that all capabilities must move in lockstep with. A capability's maturity is a property of that capability alone.
+
+## 5a. Implementation state — the second axis
+
+**A maturity Level is not an implementation claim.** Level 1–5 (Section 5) rates *what the capability does for the business when it is working*. It says nothing about whether the thing exists in the repository, runs in production, or can be configured for a second operating company. Rating those together is how a fully-documented, entirely-unbuilt platform service comes to look "mature."
+
+Every capability and platform service is therefore also tracked along seven independent implementation dimensions:
+
+| Dimension | Question it answers |
+|---|---|
+| **Designed** | Is there an approved architecture/specification for it? |
+| **Repo-implemented** | Does code for it exist on `main`? |
+| **Sandbox-verified** | Has it passed emulator/test verification? |
+| **Deployed** | Is it running in the production project? |
+| **Operationally verified** | Has real operational use been confirmed against it in production? |
+| **Platformized** | Is it configurable per operating company, rather than hardcoded for the first one? |
+| **Production-ready** | All of the above, with a rollback path and an owner. |
+
+Legend: **Y** yes · **N** no · **P** partial · **—** not applicable · **?** UNKNOWN from repository evidence (external read-only operator verification required).
+
+### Business capabilities
+
+| Capability | Level | Designed | Repo | Sandbox | Deployed | Ops-verified | Platformized | Prod-ready |
+|---|---|---|---|---|---|---|---|---|
+| Customer Management | 2 | Y | Y | Y | Y | Y | N | P |
+| Service Management | 2 | Y | Y | Y | Y | Y | N | P |
+| Dispatch Management | 3 | Y | Y | Y | Y | Y | N | P |
+| Technician Operations | 2 | Y | Y | Y | Y | P | N | P |
+| Inventory Management | 3 | Y | Y | Y | Y | P | N | P |
+| — Receiving (write path) | 3 | Y | Y | Y | Y | **N** (acceptance deferred, #63) | N | **N** |
+| Warehouse Management | 2 | Y | Y | Y | P | P | N | P |
+| — Truck / mobile locations | 2 | Y | Y | Y | **N** (repo-only, unactivated) | N | N | **N** |
+| Procurement / Purchasing | 2 | Y | P (read-only) | Y | Y | P | N | P |
+| Reporting & Analytics | 3 | Y | Y | Y | Y | P | N | P |
+| Administration | 2 | Y | P | Y | P (mutation Functions undeployed, #226) | N | N | **N** |
+| Financial Operations | 1 | P | N | — | — | — | — | **N** |
+| Sales & CRM | 1 | P | N | — | — | — | — | **N** |
+| Integration Platform | 1 | **Y** | **N** | — | — | — | — | **N** |
+| AI Platform | 2 | P | Y (TRE-v1) | Y | Y | P | N | P |
+
+### Platform services and cross-cutting properties
+
+These are not business capabilities; they are the properties that distinguish a *platform* from a single-company application. **This is the weakest area of the system and the honest reason the platform is not yet multi-company.**
+
+| Platform property | Designed | Repo | Sandbox | Deployed | Ops-verified | Platformized | Notes |
+|---|---|---|---|---|---|---|---|
+| **Tenancy / multi-company** | Y | **N** | — | — | — | — | `companyId`/`tenantId` exist only as inert placeholders. No query, Rule, or write path is company-scoped. Deferred by Owner decision; a real tenancy architecture requires a Tier-2 ADR first. |
+| **Configuration layer** | P | **N** | — | — | — | — | No configuration store or per-organization settings mechanism. `src/config/` holds build-time readiness flags only. Deployment mode is not representable at runtime. |
+| **Integration / event / API surface** | Y | **N** | — | — | — | — | Zero export, event-bus, webhook, or public-API code. [`IntegrationArchitecture.md`](IntegrationArchitecture.md) is future-state architecture. |
+| **Observability** | **N** | **N** | — | — | — | — | No error reporting, tracing, telemetry, uptime monitoring, or product analytics anywhere in the codebase. No owning document exists. |
+| **Backup / recovery (DR)** | **N** | **N** | — | — | — | — | No backup policy, RPO/RTO, restore procedure, or DR test. No owning document exists. |
+| **Deployment governance** | Y | P | — | P | P | — | Rules and Functions deploys are manual and Owner-gated (good). Frontend GitHub Pages **auto-deploys on merge to `main`**, which bypasses the promotion lifecycle — see [`Deployment.md`](Deployment.md). |
+| **Authorization convergence** | Y | P | Y | P | P | — | The governed capability/role model runs **alongside** legacy `users/{uid}.role`, still a live compatibility source in `firestore.rules`. Retirement is Issue #270 within the #226 program. |
+| **Work-order model convergence** | Y | P | Y | Y | P | — | `fieldops_jobs` and `fieldops_wos` both persist; `FieldMode.jsx` is entirely job-based. Blueprint wave W4 owns reconciliation. |
+| **AI engineering operations** | Y | Y | Y | — | Y | — | [`engineering/AI_ENGINEERING_OPERATING_MODEL.md`](engineering/AI_ENGINEERING_OPERATING_MODEL.md) + [`engineering/ACTIVE_WORKSTREAMS.md`](engineering/ACTIVE_WORKSTREAMS.md) + the AI-SDLC. The most mature non-application dimension. |
+
+**Standing rule:** a platform property with **N** under *Repo* must not be described in the present tense anywhere in this repository. State it as a design objective or target architecture. This rule is the capability-model counterpart to the artifact classification in [`README.md`](README.md).
 
 ## 6. Release Planning
 
