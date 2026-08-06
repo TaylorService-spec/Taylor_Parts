@@ -8,6 +8,7 @@ import { getAllowedActions } from "../../domain/workOrderWorkflow";
 import { transitionWorkOrder } from "../../services/workOrderService";
 import { recommendTechniciansBatch } from "../../domain/technicianRecommendationEngine";
 import WorkOrderQueue from "./WorkOrderQueue";
+import { useAccountNames } from "../../hooks/useAccountNames";
 import WorkOrderPreview from "./WorkOrderPreview";
 import TechnicianBoard from "./TechnicianBoard";
 import DispatcherActivityFeed from "./DispatcherActivityFeed";
@@ -47,6 +48,7 @@ import DispatcherActivityFeed from "./DispatcherActivityFeed";
 export default function DispatcherBoard() {
   const { role } = useAuth();
   const { data: workOrders, loading: workOrdersLoading } = useWorkOrders();
+  const customerNames = useAccountNames((workOrders ?? []).map((w) => w.customerId));
   const { data: technicians, loading: techniciansLoading } = useFirestoreCollection(TECHNICIANS_COLLECTION);
   const activityEntries = useSessionActivityFeed(workOrders, technicians);
 
@@ -187,6 +189,7 @@ export default function DispatcherBoard() {
         >
           <WorkOrderQueue
             workOrders={filteredWorkOrders}
+            customerNames={customerNames}
             recommendationsByWorkOrderId={recommendationsByWorkOrderId}
             technicians={technicians}
             selectedId={selectedId}
