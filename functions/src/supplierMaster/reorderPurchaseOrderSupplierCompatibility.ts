@@ -14,12 +14,14 @@ import { normalizeSupplierName } from "./supplierMasterValidation.js";
 
 // Classification of a reorder PO's supplierName against the governed Supplier set. Mirrors the
 // Owner's S4 taxonomy (exact / ambiguous(=duplicate) / unmatched / inactive / historical).
+// Declared in deriveSupplierLinkage's evaluation-precedence order (HISTORICAL -> EXACT -> AMBIGUOUS
+// -> INACTIVE -> UNMATCHED) so declaration and resolution order read the same.
 export type SupplierMatchClassification =
-  | "EXACT" //       exactly one ACTIVE governed supplier matches the normalized name -> linkable
-  | "AMBIGUOUS" //   more than one ACTIVE governed supplier shares the normalized name (duplicate) -> needs human choice
-  | "INACTIVE" //    no ACTIVE match, but one+ INACTIVE governed supplier matches -> not linkable for active purchasing
-  | "UNMATCHED" //   no governed supplier (active or inactive) matches the name -> candidate for supplier creation
-  | "HISTORICAL"; // the record carries no usable supplierName -> readable history, nothing to link
+  | "HISTORICAL" // the record carries no usable supplierName -> readable history, nothing to link
+  | "EXACT" //     exactly one ACTIVE governed supplier matches the normalized name -> linkable
+  | "AMBIGUOUS" // more than one ACTIVE governed supplier shares the normalized name (duplicate) -> needs human choice
+  | "INACTIVE" //  no ACTIVE match, but one+ INACTIVE governed supplier matches -> not linkable for active purchasing
+  | "UNMATCHED"; // no governed supplier (active or inactive) matches the name -> candidate for supplier creation
 
 export interface GovernedSupplierIndexEntry {
   readonly activeIds: readonly string[];

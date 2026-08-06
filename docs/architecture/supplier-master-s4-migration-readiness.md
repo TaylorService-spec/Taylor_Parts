@@ -46,7 +46,8 @@ policy from S2. `supplierNameSnapshot` is always the verbatim historical string 
   seeds synthetic suppliers + reorder POs across all classes, runs the dry-run against live reads,
   asserts the counts/linkage, and **proves the dry-run wrote nothing** (every seeded PO is
   byte-identical afterward — no `supplierId`/`supplierNameSnapshot` added). Run under the Firestore
-  emulator: `firebase emulators:exec --only firestore --project taylor-parts "node functions/test/reorderPurchaseOrderSupplierMigrationEmulator.test.mjs"`.
+  emulator (the wired script builds first, then runs the test):
+  `firebase emulators:exec --only firestore --project taylor-parts "npm --prefix functions run test:supplierMigrationEmulator"`.
 
 ## Integration finding — the protected Rules gate (do not bypass)
 

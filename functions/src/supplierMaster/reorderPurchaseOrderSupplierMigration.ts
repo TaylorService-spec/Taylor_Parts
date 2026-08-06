@@ -22,6 +22,11 @@ import {
 
 const REORDER_PURCHASE_ORDERS_COLLECTION = "reorder_purchase_orders";
 
+// Local copies of the canonical-JSON/sha256 helpers (warehouseGovernanceMigration.ts does not export
+// them). NOTE: unlike the warehouse version, this canonicalJson has no Timestamp branch -- deliberate,
+// because the S4 fingerprint hashes ONLY primitives ({poId, classification, supplierId}). Do not reuse
+// this helper for a payload containing Timestamps without re-adding that branch; if a third consumer of
+// this pattern appears, extract a shared, Timestamp-aware utility instead.
 function canonicalJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
   if (value && typeof value === "object") {
