@@ -67,9 +67,12 @@ deployment** and is **not** part of S4.
    POs. *Additive; depends on (1).*
 3. **Governed supplier picker** in the reorder flow to populate `supplierId` at creation time
    (replacing free-text entry for new POs). *Future UI workstream.*
-4. **Real migration execute** — a manifest-gated, fail-closed execute step that writes the derived
-   linkage for existing POs. *Protected; depends on (1); mirrors the warehouse-migration
-   manifest/execute pattern.*
+4. **Real migration execute — TOOLING BUILT (repo-only, sandbox-verified).**
+   `reorderPurchaseOrderSupplierMigrationExecute.ts` (`executeSupplierLinkageMigration` +
+   `rollbackSupplierLinkageMigration`): manifest-gated, fail-closed, DRY_RUN-by-default (EXECUTE needs an
+   explicit target + confirmation token), additive-only (never touches `supplierName`), per-PO isolated
+   with bounded failures, idempotent, with a rollback artifact. *Running EXECUTE against production
+   remains protected and still depends on (1).*
 
 ## Rollback
 

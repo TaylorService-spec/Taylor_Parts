@@ -39,6 +39,14 @@ function sha256(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
+// Opaque, deterministic pre-state fingerprint over a WHOLE stored reorder-PO record (no raw field value
+// is exposed). Any drift to the document changes it, so an execution manifest authored against a prior
+// state fails closed at execute. Same canonical-JSON basis as the plan fingerprint; primitives only
+// (reorder-PO docs carry no Timestamp fields today -- see the canonicalJson note above).
+export function reorderPurchaseOrderRecordFingerprint(data: unknown): string {
+  return sha256(canonicalJson(data));
+}
+
 export interface LiveReorderPurchaseOrder {
   readonly poId: string;
   readonly data: unknown;
