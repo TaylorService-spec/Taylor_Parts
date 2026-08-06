@@ -40,7 +40,7 @@ Every guide is tagged so you're never misled about what actually works:
 - [See my assigned work orders](technician-field/see-my-work-orders.md) — **live** — Technician home dashboard: assigned work orders grouped by stage (Ready to Start / In Progress / Waiting / Completed Today) plus a performance snapshot.
 - [Update a work order's status](technician-field/update-work-order-status.md) — **live** — Move an assigned work order through its lifecycle (Accept, Start Travel, Arrived, Start Work, Complete) from the work order detail view.
 - [Record parts used and work notes](technician-field/record-parts-and-notes.md) — **live** — Adjust used quantities on planned parts and add append-only work notes via Execution Capture on an assigned work order.
-- [Parts Scanner (Technician Workspace)](technician-field/parts-scanner.md) — **demo-only** — Field part scan/lookup workflow at Service > Technician Workspace — clearly marked demo-only, in-memory, saves nothing.
+- [Parts Scanner (Technician Workspace)](technician-field/parts-scanner.md) — **demo (except Receive)** — Field part scan/lookup at Service > Technician Workspace; in-memory demo except the real governed **Receive a purchase order** action — see [Receive a purchase order](inventory/receive-a-purchase-order.md).
 
 ## Inventory
 
@@ -50,9 +50,10 @@ Every guide is tagged so you're never misled about what actually works:
 - [Assign a reorder request to a Parts Associate](inventory/assign-a-reorder-request.md) — **live** — Assign an approved request to a Parts-Associate-role employee via the employee picker.
 - [Place the order and track purchasing](inventory/place-the-order.md) — **live** — Assignee-only: start purchasing, post progress updates, and record the purchase order (moves request to Ordered).
 - [Mark a reorder request received](inventory/mark-reorder-received.md) — **live** — Assignee-only closeout of an Ordered request; explicitly marked as NOT updating stock counts.
+- [Receive a purchase order](inventory/receive-a-purchase-order.md) — **real, fail-closed until activated** — The governed receipt: receive an Ordered purchase order into a warehouse via the Parts Scanner's "Receive a purchase order" action (Admin/Dispatcher/Owner); currently fail-closed (shows "Receiving not available") until receiving is activated.
 - [Cancel or void a reorder request](inventory/cancel-or-void-a-reorder.md) — **live** — Reason-then-confirm flow: cancel before ordering (admin/dispatcher) or void after ordering (assignee only); nothing deleted.
 - [Log an inventory action (receive, adjust, or correct)](inventory/log-an-inventory-action.md) — **live** — Record a Receive/Adjust/Correct audit note against a part; explicitly log-only and does not change stock.
-- [Parts scanner (Technician Workspace)](inventory/parts-scanner.md) — **demo-only** — Mobile scan-and-act preview (use/load/receive/count/PO); in-memory demo that saves nothing and resets on reload.
+- [Parts scanner (Technician Workspace)](inventory/parts-scanner.md) — **demo (except Receive)** — Mobile scan-and-act preview (use/load/count/PO draft are in-memory demo); its **Receive a purchase order** action is the real governed receipt — see [Receive a purchase order](inventory/receive-a-purchase-order.md).
 
 ## Purchasing
 

@@ -1,8 +1,8 @@
 # Parts scanner (Technician Workspace)
 
-**What this lets you do:** Scan or look up a part on a phone and pick an action — use it on a work order, load your truck, receive inventory, cycle count, or add it to a purchase order draft.
+**What this lets you do:** Scan or look up a part on a phone and pick an action — use it on a work order, load your truck, cycle count, add it to a purchase-order draft, or **receive a purchase order**.
 
-**Demo only — nothing you do here is saved.** This scanner runs on sample parts held in memory. Quantities, receipts, counts, and purchase-order drafts reset when you reload and are never stored or shared. Treat it as a preview of the mobile workflow, not a live inventory tool.
+**Mostly a demo — with one real action.** The scan and lookup are real, and **Receive a purchase order** is the real governed receiving transaction (see [Receive a purchase order](receive-a-purchase-order.md); it's fail-closed until receiving is activated). The other actions (use / load / cycle count / purchase-order draft) run on sample parts held in memory — those quantities, counts, and drafts reset when you reload and are never stored or shared. Treat everything except **Receive a purchase order** as a preview, not a live inventory tool.
 
 **Who can do it:** Technicians (and anyone with the Technician Workspace). You reach it from **Service > Technician Workspace**, not from the Inventory area.
 
