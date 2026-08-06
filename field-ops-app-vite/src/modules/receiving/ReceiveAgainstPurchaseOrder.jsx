@@ -15,11 +15,13 @@ import LoadingState from "../../shared/ui/LoadingState";
 import FailureState from "../../shared/ui/FailureState";
 import EmptyState from "../../shared/ui/EmptyState";
 
-// Governed FieldMode Receive-against-Purchase-Order (A1). The ONE governed receive workflow —
-// receive an ORDERED reorder Purchase Order into a warehouse location — rendered as the
-// PartsScanner "Receive" action within FieldMode (the scanner is the input tool). It reuses the
-// existing PO read stack for candidates and the READINESS-GATED, fail-closed transport
-// (services/receivingCallableClient.js) for the location options and the receipt itself.
+// Receive-against-Purchase-Order (A1) — the ONE canonical governed receive workflow, and the
+// single source of truth for receiving. It lives in the capability home modules/receiving/ and is
+// consumed by TWO launch points: the Inventory > Receiving workspace (modules/inventory/
+// Receiving.jsx, all ORDERED candidates) and the PartsScanner "Receive" action in FieldMode
+// (part-scoped via initialPartId). It receives an ORDERED reorder Purchase Order into a warehouse
+// location, reusing the existing PO read stack for candidates and the READINESS-GATED, fail-closed
+// transport (services/receivingCallableClient.js) for the location options and the receipt itself.
 //
 // Nothing here can execute a live receipt while readiness is false OR the caller lacks the
 // inventory.stock.receive capability — both fail closed to honest sanitized states. No readiness

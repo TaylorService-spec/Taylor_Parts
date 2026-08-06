@@ -26,7 +26,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useAssignedJobs } from "../../hooks/useAssignedJobs";
 import { JOB_STATUS } from "../../domain/constants";
 import { useInventory } from "../../demo/InventoryContext";
-import ReceiveAgainstPurchaseOrder from "./ReceiveAgainstPurchaseOrder";
+import ReceiveAgainstPurchaseOrder from "../receiving/ReceiveAgainstPurchaseOrder";
 
 // "Receive a purchase order" is the ONE governed receive workflow (A1): it receives against an
 // ORDERED reorder Purchase Order through the fail-closed receiveInventoryStock transport (see
