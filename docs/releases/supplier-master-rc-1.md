@@ -142,6 +142,9 @@ execute, and `mergeSupplier` (still deferred per S1).
 - **RC-1 → RC-1.1 (callable adapters).** Added inert `onCall` wrappers for the four Supplier commands
   (repo-only, not deployed); production delta item 1 moves from "does not exist" to "built; Functions
   deploy remaining", and item 2 is sharpened (no role carries `inventory.catalog.activate`).
+- **Release/promotion plan.** The coherent, step-by-step promotion plan (exact deploy, role authority
+  proposal, Rules delta, migration ordering, dependency graph, gates, rollback, operational
+  verification, protected-action list) lives in `docs/releases/supplier-master-promotion-package.md`.
 
 ## Environment requirement — ROUTED to the Sandbox / Integration Environment program (not built here)
 
