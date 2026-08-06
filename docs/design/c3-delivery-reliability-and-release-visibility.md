@@ -1,7 +1,7 @@
 ---
 artifact_type: design
 gate: C3 — delivery reliability & release visibility
-status: D1 IMPLEMENTED 2026-08-06 (repo-only). D2-D4 remain design-only; no alerting, Hosting, Pages, or deployment change.
+status: D1 + D2 IMPLEMENTED 2026-08-06 (repo-only, read-only). D3-D4 remain design-only; no alerting, Hosting, Pages, or deployment change.
 date: 2026-08-06
 owner: Claude Code (Executive Architecture & Company Office)
 base_commit: ab55c50
@@ -68,7 +68,27 @@ The running application must be able to state which revision it is. Concretely: 
 
 **Cost:** trivial — a build-time constant. **Risk:** none; additive and inert.
 
-### D2 · Expected-vs-deployed comparison
+### D2 · Expected-vs-deployed comparison — ✅ IMPLEMENTED 2026-08-06
+
+**Delivered, repo-only and strictly read-only.**
+
+- `config/environments.json` — the environment registry. Each entry declares a **`role`** (sandbox / integration / production) *independently* of a **`deployment`** (platform / customer). **`production` is deliberately not synonymous with Taylor Parts**; a test asserts a production environment never belongs to `platform`, so a future edit cannot quietly encode "production means the first customer" as permanent architecture. Company/brand identity is deliberately absent — `operator` is the neutral placeholder `platform-operator`, and a test scans for leaked brand or legal identity.
+- `scripts/deploymentDrift.mjs` — the pure comparison core. No network, filesystem, or process access, so it is hermetically testable.
+- `scripts/checkDeployedVersions.mjs` — the CLI. Unauthenticated GETs plus one local `git rev-parse`. Exit 0 = no drift, 1 = drift, 2 = config error.
+- `scripts/deploymentDrift.test.mjs` — **26 hermetic tests**, gated by `Deployment Drift Core Tests`.
+
+**Two findings from building it against the real deployment:**
+
+1. **HTTP status is not a usable signal.** The Firebase Hosting config rewrites `**` → `/index.html`, so a missing `/version.json` returns **HTTP 200 with `text/html`** — verified live. A status-only check would report a surface that predates D1 as *having a manifest*. Classification is therefore content-based, and `ABSENT_SPA_FALLBACK` is a distinct state meaning "this surface is serving a build older than D1" — a real answer, not an error.
+2. **A partial check must not read as a clean pass.** The first version reported `MATCH` for an environment where one surface matched and a second (governed, known days stale) could not be read. That is precisely the false confidence D2 exists to remove, so an environment with unreadable surfaces now reports **`MATCH_PARTIAL`** with the unobservable count, never `MATCH`.
+
+**Also surfaced:** `surfacesDisagree` — surfaces disagreeing with *each other* is a higher-severity signal than either disagreeing with expectation, because it means different users are running different code **right now**.
+
+**First live run** (expected `4372728`): `taylor-parts-production` → **MATCH_PARTIAL** — Pages `4372728` matches; Hosting unreadable (predates D1). `platform-sandbox` and `platform-integration` → **NOT_OBSERVABLE**, which is itself the point: the registry makes the missing integration environment visible as a declared gap rather than an unstated absence.
+
+**Honest limit:** D2 can only compare what a surface can self-report. Until a build carrying D1 is deployed to the governed Hosting surface, that surface stays `UNKNOWN` — and that deployment is Owner-gated (R-2).
+
+
 
 Given D1, a scheduled read-only check compares the deployed SHA against `origin/main` and against the Hosting release, and reports drift: *expected `abc123`, Pages serving `def456` (13h behind), Hosting serving `ghi789` (5d behind)*.
 
