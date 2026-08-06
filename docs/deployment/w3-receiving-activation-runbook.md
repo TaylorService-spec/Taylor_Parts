@@ -1,10 +1,10 @@
 ---
 artifact_type: runbook
 gate: W3 receiving activation — scoped two-function deploy
-status: READY FOR OPERATOR — deploy itself is a SEPARATE Tier-2 authorization (not granted by preparing this)
+status: READY FOR OPERATOR (corrected 2026-08-06: 20->22 estate, exact SHA, ORDERED source-state) — deploy itself is a SEPARATE Tier-2 authorization (not granted by preparing this)
 date: 2026-08-06
 owner: Claude Code
-source_commit: fb45e6e (origin/main)
+source_commit: fb45e6eed77f1a3ad89737ee22618a770e6362b5 (exact reviewed deploy SHA)
 scope: functions:receiveInventoryStock, functions:listReceivingLocationOptions — ONLY
 ---
 
@@ -25,15 +25,20 @@ gcloud functions list --project=taylor-parts --v2 \
   --format="table(name.basename(),state,updateTime,serviceConfig.uri)" \
   | tee ~/w3-evidence/01-pre-gcloud-v2.txt
 ```
-CONFIRM: the list has **21** functions and does **NOT** contain `receiveInventoryStock` or
-`listReceivingLocationOptions`. If either is already present, STOP — re-reconcile first.
+CONFIRM: the list has **exactly 20** functions (the reconciled baseline — the explicit 20
+names are enumerated in §5) and does **NOT** contain `receiveInventoryStock` or
+`listReceivingLocationOptions`. If the count is not 20, or either receiving callable is
+already present, STOP — re-reconcile first.
 
 ## 2. Exact source commit + dependency-lock capture
-Deploy from a clean checkout of `origin/main` at **`fb45e6e`** (or a later main — record the
-actual SHA):
+Deploy from a clean checkout of the EXACT reviewed commit
+**`fb45e6eed77f1a3ad89737ee22618a770e6362b5`** — NOT "or later." (`functions/src` is
+byte-identical at this commit to current main; deploying any other commit is out of scope
+for this authorization.)
 ```bash
-git -C <repo> fetch origin && git -C <repo> checkout origin/main
-git -C <repo> rev-parse HEAD | tee ~/w3-evidence/02-source-commit.txt        # expect fb45e6e or later
+git -C <repo> fetch origin && git -C <repo> checkout fb45e6eed77f1a3ad89737ee22618a770e6362b5
+HEAD_SHA=$(git -C <repo> rev-parse HEAD | tee ~/w3-evidence/02-source-commit.txt)
+[ "$HEAD_SHA" = "fb45e6eed77f1a3ad89737ee22618a770e6362b5" ] || echo "ABORT: not the reviewed deploy commit"
 sha256sum <repo>/functions/package-lock.json | tee ~/w3-evidence/02-lock-sha.txt
 ```
 
@@ -60,14 +65,27 @@ firebase deploy --only functions:receiveInventoryStock,functions:listReceivingLo
 CONFIRM the deploy summary lists **only** those two function names. If it proposes creating,
 updating, or deleting ANY other function, ABORT (answer "No" / Ctrl-C).
 
-## 5. Post-deploy inventory comparison
+## 5. Post-deploy inventory comparison (complete 20 → 22)
+The pre-deploy estate is EXACTLY these **20** functions (the reconciled baseline, from §1):
+```
+assignTruckDriverCallable          changeTruckHomeWarehouseCallable   changeTruckStatusCallable
+completeAssignedJob                createSavedDefinitionCallable      createTruckCallable
+createWorkOrder                    deactivateTruckCallable            deleteSavedDefinitionCallable
+duplicateSavedDefinitionCallable   getSavedDefinitionCallable         listSavedDefinitionsCallable
+reactivateTruckCallable            reassignTruckDriverCallable        renameSavedDefinitionCallable
+resolveEffectiveAccessCallable     runReportDefinitionCallable        transitionWorkOrder
+unassignTruckDriverCallable        updateWorkOrderExecutionData
+```
 ```bash
 firebase functions:list --project taylor-parts | tee ~/w3-evidence/05-post-functions-list.txt
-diff <(grep -oE '[A-Za-z]+Callable|createWorkOrder|transitionWorkOrder|updateWorkOrderExecutionData|completeAssignedJob|receiveInventoryStock|listReceivingLocationOptions' ~/w3-evidence/01-pre-functions-list.txt | sort -u) \
-     <(grep -oE '[A-Za-z]+Callable|createWorkOrder|transitionWorkOrder|updateWorkOrderExecutionData|completeAssignedJob|receiveInventoryStock|listReceivingLocationOptions' ~/w3-evidence/05-post-functions-list.txt | sort -u)
+# Additions only (must be exactly the two receiving callables):
+comm -13 <(grep -oE '[A-Za-z]+Callable|createWorkOrder|transitionWorkOrder|updateWorkOrderExecutionData|completeAssignedJob' ~/w3-evidence/01-pre-functions-list.txt | sort -u) \
+         <(grep -oE '[A-Za-z]+Callable|createWorkOrder|transitionWorkOrder|updateWorkOrderExecutionData|completeAssignedJob|receiveInventoryStock|listReceivingLocationOptions' ~/w3-evidence/05-post-functions-list.txt | sort -u)
 ```
-CONFIRM the ONLY difference is **+`receiveInventoryStock`** and **+`listReceivingLocationOptions`**
-(now 23 total). Every previously-deployed function is unchanged.
+CONFIRM post-deploy the list is EXACTLY those same 20 **plus** `receiveInventoryStock` and
+`listReceivingLocationOptions` = **22 total**. Each of the original 20 is still present and
+unchanged (name / version / trigger / location / memory / runtime identical to §1); nothing
+removed. The additions must be ONLY the two receiving callables.
 
 ## 6. Callable existence / configuration verification
 ```bash
@@ -75,15 +93,31 @@ gcloud functions list --project=taylor-parts --v2 \
   --format="table(name.basename(),state,updateTime,serviceConfig.uri)" \
   | tee ~/w3-evidence/06-post-gcloud-v2.txt
 ```
-CONFIRM both new functions are `ACTIVE`, `GEN_2`, `us-central1`, `nodejs20`, with run.app URIs,
-and that **no other function's `updateTime` changed** (i.e. the deploy touched only the two).
+CONFIRM each new function shows these EXACT configuration fields (matching every other
+callable in the estate):
+
+| Field | Expected value |
+|-------|----------------|
+| Version / Generation | `v2` / `GEN_2` |
+| Trigger | `callable` |
+| Location / Region | `us-central1` |
+| Memory | `256` (MB) |
+| Runtime | `nodejs20` |
+| State | `ACTIVE` |
+| Service URI | a `…-uc.a.run.app` HTTPS URI (record it) |
+
+Verify for BOTH `receiveInventoryStock` and `listReceivingLocationOptions`. Also confirm
+**no other function's `updateTime` changed** vs §1's capture (the deploy touched only the two).
 
 ## 7. Authorized live tests (Owner-operated, against production)
 > PREREQ: the calling actor must have the `inventory.stock.receive` capability **granted live**.
 > If it is NOT granted, the "applied" test instead returns `permission-denied` — a VALID
 > fail-closed result, not a deploy failure; granting is a SEPARATE, not-authorized-here step.
-> You also need one real `reorder_requests`/`reorder_purchase_orders` at `PURCHASING_IN_PROGRESS`
-> to receive against (or a receivable test fixture). Never paste uids/tokens/raw docs into evidence.
+> SOURCE-STATE PREREQ (ORDERED / ORDERED): the source `reorder_requests/{id}` must be at
+> status **`ORDERED`**, with its linked **`reorder_purchase_orders/{id}` present (an ORDERED
+> purchase order)** — a receipt applies against an ORDERED PO, not one still in
+> `PURCHASING_IN_PROGRESS`. Use a real ORDERED reorder request or a receivable ORDERED test
+> fixture. Never paste uids/tokens/raw docs into evidence.
 
 1. **Location options:** call `listReceivingLocationOptions({})` → returns a sanitized options
    list, no error. Save sanitized result to `~/w3-evidence/07a-options.txt`.
@@ -106,7 +140,7 @@ and that **no other function's `updateTime` changed** (i.e. the deploy touched o
    Save to `~/w3-evidence/07b-verify.txt`.
 
 ## 8. Emergency disable (ONLY the two new functions)
-Because both are new/additive, deletion returns the estate to the pre-deploy 21-function baseline.
+Because both are new/additive, deletion returns the estate to the pre-deploy 20-function baseline.
 ```bash
 firebase functions:delete receiveInventoryStock listReceivingLocationOptions \
   --project taylor-parts --force
@@ -119,7 +153,7 @@ repo source is unchanged, so a later re-deploy from the same commit restores the
 - Append a `docs/DECISIONS.md` entry: date; decision = "deployed receiveInventoryStock +
   listReceivingLocationOptions (only)"; source commit + package-lock sha; pre/post functions:list
   delta (+2, others unchanged); the 5 live-test results; rollback baseline = the pre-deploy
-  21-function revision set (§1). Note what was NOT done (no other deploy, no Rules, no redeploy,
+  20-function revision set (§1). Note what was NOT done (no other deploy, no Rules, no redeploy,
   no grant change).
 
 ---
