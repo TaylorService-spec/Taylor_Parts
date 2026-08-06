@@ -15,4 +15,12 @@
 // can be changed only by editing this governed constant; consumers read it directly. Tests that
 // need the ready branch mock this module at build time (vi.mock), which introduces no
 // production-importable bypass.
-export const RECEIVING_TRANSPORT_READY = false;
+// O-3 — resolved from the ONE environment registry (config/environments.json)
+// via vite.config.js, not a literal. Classification: this is DEPLOYMENT /
+// ENVIRONMENT configuration, not build configuration — the same source revision
+// is the Release Candidate, and each environment supplies its own readiness. That
+// keeps an RC a single identified revision (D1 records commit AND environmentId)
+// while still allowing a sandbox to exercise a capability production has not
+// activated. Fails closed: the registry requires an explicit boolean per
+// environment, so an absent flag is a build error, never a default-to-enabled.
+export const RECEIVING_TRANSPORT_READY = __APP_READINESS__.RECEIVING_TRANSPORT_READY;

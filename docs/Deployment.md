@@ -122,7 +122,21 @@ U-1 through U-5 were resolved by a read-only observation run; evidence and hashe
 
 It also blocks reproducibility: an environment built from the repository would not have that index, so it could not faithfully represent production behaviour.
 
-**Not remediated** — reconciling indexes touches production and is protected. Either the index is adopted into `firestore.indexes.json` (if it is wanted) or removed (if it is not); both are Owner decisions. See [`assessments/sandbox-integration-environment-readiness.md`](assessments/sandbox-integration-environment-readiness.md) finding S-2.
+### O-4 assessment and disposition (2026-08-06)
+
+**Exact live definition:** `fieldops_jobs` composite, `COLLECTION` scope, `technicianId ASC` + `status ASC` (+ implicit `__name__`), state `READY`, `SPARSE_ALL`.
+
+**Which queries require it: none currently.** The only live query against `fieldops_jobs` is `useAssignedJobs`, which is `where("technicianId", "==", ...)` — a **single-field** equality, satisfied by Firestore's automatic single-field index. No call site anywhere combines `technicianId` with a `status` filter or order. The index was presumably created for a query that no longer exists; provenance is not recoverable from the repository.
+
+**Is the domain still live? Yes.** `fieldops_jobs` is read by `useAssignedJobs`, consumed by `FieldMode.jsx` and `PartsScanner.jsx` — the technician's primary surfaces. The domain is pending W4 convergence onto `fieldops_wos`, not retired.
+
+**Disposition: DECLARE IT (repo-only), retire deliberately with W4.** The index is now declared in `firestore.indexes.json`, so **repo state matches live state and the silent-deletion path is closed**. Declaring costs nothing (the index already exists and is READY) and is strictly safer than leaving live state undeclared. It is *not* asserted to be required — it is preserved because removing it is a separate, deliberate decision that belongs with the W4 domain retirement, not to a side effect of an unrelated index deploy.
+
+**No production index mutation was performed.** Declaring the index in the repository changes no live state; a future `firebase deploy --only firestore:indexes` is now non-destructive with respect to it.
+
+### Fail-closed drift guard
+
+`scripts/indexDriftGuard.mjs` + `scripts/indexDriftGuard.test.mjs` (8 tests) implement the standing rule: **a repo-driven index deployment must never silently delete an undeclared live index.** The guard compares declared vs live, classifies `wouldDelete` (destructive) separately from `wouldCreate` (additive), and **blocks a destructive deploy unless the authorization names every index to be deleted** — there is deliberately no blanket force flag, so the approval cannot be given without knowing what it destroys. `__name__` is normalized away, since Firestore appends it implicitly and including it would make every live index appear undeclared.
 
 ## Known unknowns
 

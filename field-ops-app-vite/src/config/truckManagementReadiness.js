@@ -17,7 +17,9 @@
 // an explicit readiness value (with a MOCKED callable client) without depending on this
 // constant -- an explicit override, never an ambient/global mutation. An explicit
 // `false` override still fails closed (zero callable attempts).
-export const TRUCK_MANAGEMENT_WRITE_READY = true;
+// O-3 — resolved from the one environment registry; see receivingReadiness.js
+// for the classification rationale. Fails closed on an absent flag.
+export const TRUCK_MANAGEMENT_WRITE_READY = __APP_READINESS__.TRUCK_MANAGEMENT_WRITE_READY;
 
 // Returns the effective write-readiness. With no override, this is the fail-closed
 // production constant above. An explicit boolean override (tests / preview only)
