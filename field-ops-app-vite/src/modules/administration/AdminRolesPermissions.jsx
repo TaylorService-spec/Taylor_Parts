@@ -8,7 +8,8 @@ import { COMPATIBILITY_ROLES } from "../../access/compatibilityRoles";
 // selectable list here excludes any Role marked `privileged` (today, only
 // `admin`). Same "visible but inert" treatment as AdminUsers.jsx: the command
 // is server-side only and not yet a deployed, callable Cloud Function
-// (blocked on Issue #15). Activation is a separate, later Owner-authorized
+// (Enterprise Access activation gate, Issue #226 Row 22 -- NOT Issue #15, whose
+// Functions are deployed). Activation is a separate, later Owner-authorized
 // gate (Row 22), not this PR.
 const ASSIGNABLE_ROLES = Object.values(COMPATIBILITY_ROLES).filter((role) => !role.privileged);
 
@@ -18,10 +19,11 @@ export default function AdminRolesPermissions() {
       <h2>Roles &amp; Permissions</h2>
       <p className="fo-muted">
         This surface's read-only content requires the Enterprise Access &amp; Administration
-        Platform's trusted backend, which is not yet deployed and verified (Issue #15). Firestore
-        Rules deny all client-direct access to governed Role/Permission/Audit data by design
-        (Spec sec12) -- this surface will show real, live content once that backend ships and is
-        verified.
+        Platform's trusted read path, which is not yet deployed and verified for this surface
+        (tracked under the Enterprise Access activation gate, Issue #226 -- not Issue #15, whose
+        Work Order and receiving Functions are deployed). Firestore Rules deny all client-direct
+        access to governed Role/Permission/Audit data by design (Spec sec12) -- this surface will
+        show real, live content once that read path ships and is verified.
       </p>
       <h3>Assign an already-approved Role</h3>
       <p className="fo-muted">
