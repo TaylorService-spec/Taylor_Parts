@@ -120,3 +120,19 @@ export {
   receiveInventoryStockCallable as receiveInventoryStock,
   listReceivingLocationOptionsCallable as listReceivingLocationOptions,
 } from "./inventoryReceiving/receivingCallables";
+
+// --- Supplier Master (DECISIONS #78): trusted Supplier command callables ---
+// "Export is not deployment/grant": NOT deployed to the live project, NO UI wired to call them, NO App
+// Check requirement (matching every other callable here). Authorization is enforced INSIDE the command
+// against the actor's real governed roles -- inventory.catalog.manage for create/update,
+// inventory.catalog.activate for activate/deactivate. NO capability is granted here; activate/deactivate
+// currently fail closed because no STANDING role carries inventory.catalog.activate (a deferred protected
+// grant -- see docs/releases/supplier-master-rc-1.md). Firebase deploys each callable under its exported
+// index property name, so these MUST be the exact frozen public names (no "Callable" suffix); the
+// suffixed implementation consts are aliased here and are NOT otherwise exposed.
+export {
+  createSupplierCallable as createSupplier,
+  updateSupplierCallable as updateSupplier,
+  activateSupplierCallable as activateSupplier,
+  deactivateSupplierCallable as deactivateSupplier,
+} from "./supplierMaster/supplierMasterCallables";
