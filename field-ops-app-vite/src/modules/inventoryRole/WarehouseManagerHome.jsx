@@ -251,7 +251,7 @@ export default function WarehouseManagerHome({ accessVersion } = {}) {
         here.
       </p>
       {error ? (
-        <p className="fo-muted">Unable to load inventory health right now. Try again shortly.</p>
+        <p className="fo-muted" role="alert">Unable to load inventory health right now. Try again shortly.</p>
       ) : (
         <LoadingEmptyState loading={loading} isEmpty={false} loadingText="Loading inventory health..." emptyText="">
           <InventoryHealthPanel healthEntries={healthEntries} resolveName={resolveName} />
@@ -261,9 +261,9 @@ export default function WarehouseManagerHome({ accessVersion } = {}) {
       <p className="fo-muted">
         Parts with no usage history yet -- enter a manual reorder quantity to submit a Reorder Request.
       </p>
-      {reorderError && <p className="fo-muted">{reorderError}</p>}
+      {reorderError && <p className="fo-muted" role="alert">{reorderError}</p>}
       {error ? (
-        <p className="fo-muted">Unable to load Needs Planning right now. Try again shortly.</p>
+        <p className="fo-muted" role="alert">Unable to load Needs Planning right now. Try again shortly.</p>
       ) : (
         <LoadingEmptyState
           loading={loading}

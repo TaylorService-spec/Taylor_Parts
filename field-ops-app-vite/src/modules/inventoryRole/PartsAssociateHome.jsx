@@ -151,6 +151,15 @@ function PurchasingInProgressCard({ request, resolveName }) {
 
   async function handleRecordPo(e) {
     e.preventDefault();
+    const quantity = Number(orderedQuantity);
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      setPoError("Ordered quantity must be greater than zero.");
+      return;
+    }
+    if (expectedArrivalDate && expectedArrivalDate < orderedDate) {
+      setPoError("Expected arrival date cannot be before the ordered date.");
+      return;
+    }
     setPoSubmitting(true);
     setPoError(null);
     try {
@@ -239,7 +248,15 @@ function PurchasingInProgressCard({ request, resolveName }) {
           <input id="pa-po-number" type="text" value={externalPoNumber} onChange={(e) => setExternalPoNumber(e.target.value)} required />
 
           <label htmlFor="pa-po-qty">Ordered quantity</label>
-          <input id="pa-po-qty" type="number" value={orderedQuantity} onChange={(e) => setOrderedQuantity(e.target.value)} required />
+          <input
+            id="pa-po-qty"
+            type="number"
+            min="1"
+            step="any"
+            value={orderedQuantity}
+            onChange={(e) => setOrderedQuantity(e.target.value)}
+            required
+          />
 
           <label htmlFor="pa-po-ordered-date">Ordered date</label>
           <input id="pa-po-ordered-date" type="date" value={orderedDate} onChange={(e) => setOrderedDate(e.target.value)} required />
@@ -247,7 +264,7 @@ function PurchasingInProgressCard({ request, resolveName }) {
           <label htmlFor="pa-po-expected-arrival">Expected arrival date (optional)</label>
           <input id="pa-po-expected-arrival" type="date" value={expectedArrivalDate} onChange={(e) => setExpectedArrivalDate(e.target.value)} />
 
-          {poError && <p className="fo-muted">{poError}</p>}
+          {poError && <p className="fo-muted" role="alert">{poError}</p>}
 
           <div className="disp-board-toolbar">
             <button type="submit" disabled={poSubmitting}>
@@ -384,7 +401,7 @@ function TerminalCard({ request, resolveName }) {
 }
 
 function AssignedRequestDetail({ requestId, resolveName, onClose }) {
-  const { data: request, loading } = useReorderRequestById(requestId);
+  const { data: request, loading, error } = useReorderRequestById(requestId);
 
   if (loading) {
     return (
@@ -393,7 +410,17 @@ function AssignedRequestDetail({ requestId, resolveName, onClose }) {
       </div>
     );
   }
-  if (!request) {
+  if (error && error !== "not_found") {
+    return (
+      <div className="fo-card">
+        <p className="fo-muted" role="alert">Unable to load this request right now. Close it and try again.</p>
+        <button type="button" onClick={onClose}>
+          Close
+        </button>
+      </div>
+    );
+  }
+  if (!request || error === "not_found") {
     return (
       <div className="fo-card">
         <p className="fo-muted">This request is no longer available.</p>
@@ -421,6 +448,22 @@ function AssignedRequestDetail({ requestId, resolveName, onClose }) {
       {request.status === REORDER_REQUEST_STATUS.ORDERED && <OrderedCard request={request} resolveName={resolveName} />}
       {[REORDER_REQUEST_STATUS.RECEIVED, REORDER_REQUEST_STATUS.CANCELLED, REORDER_REQUEST_STATUS.VOIDED].includes(request.status) && (
         <TerminalCard request={request} resolveName={resolveName} />
+      )}
+      {![
+        REORDER_REQUEST_STATUS.ASSIGNED_TO_PARTS_ASSOCIATE,
+        REORDER_REQUEST_STATUS.PURCHASING_IN_PROGRESS,
+        REORDER_REQUEST_STATUS.ORDERED,
+        REORDER_REQUEST_STATUS.RECEIVED,
+        REORDER_REQUEST_STATUS.CANCELLED,
+        REORDER_REQUEST_STATUS.VOIDED,
+      ].includes(request.status) && (
+        <div className="fo-card">
+          <h3>Request Detail</h3>
+          <RequestSummary request={request} resolveName={resolveName} />
+          <p className="fo-muted" role="status">
+            This request is no longer in a purchasing status available on this screen.
+          </p>
+        </div>
       )}
     </div>
   );
