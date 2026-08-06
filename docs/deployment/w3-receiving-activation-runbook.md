@@ -35,10 +35,31 @@ Deploy from a clean checkout of the EXACT reviewed commit
 **`fb45e6eed77f1a3ad89737ee22618a770e6362b5`** — NOT "or later." (`functions/src` is
 byte-identical at this commit to current main; deploying any other commit is out of scope
 for this authorization.)
+Run this as one block. Both guards are FAIL-CLOSED — they `exit 1` (stop the script), they do
+not merely print. Do NOT continue to build/test/deploy if either aborts.
 ```bash
-git -C <repo> fetch origin && git -C <repo> checkout fb45e6eed77f1a3ad89737ee22618a770e6362b5
-HEAD_SHA=$(git -C <repo> rev-parse HEAD | tee ~/w3-evidence/02-source-commit.txt)
-[ "$HEAD_SHA" = "fb45e6eed77f1a3ad89737ee22618a770e6362b5" ] || echo "ABORT: not the reviewed deploy commit"
+set -euo pipefail
+EXPECTED_SHA="fb45e6eed77f1a3ad89737ee22618a770e6362b5"
+
+git -C <repo> fetch origin
+git -C <repo> checkout "$EXPECTED_SHA"
+
+HEAD_SHA="$(git -C <repo> rev-parse HEAD)"
+printf '%s\n' "$HEAD_SHA" | tee ~/w3-evidence/02-source-commit.txt
+
+# Guard 1 — exact reviewed commit (fail-closed):
+if [ "$HEAD_SHA" != "$EXPECTED_SHA" ]; then
+  echo "ABORT: HEAD is not the reviewed deploy commit ($HEAD_SHA != $EXPECTED_SHA)" >&2
+  exit 1
+fi
+
+# Guard 2 — clean deploy checkout, no local modifications (fail-closed):
+if [ -n "$(git -C <repo> status --porcelain)" ]; then
+  echo "ABORT: deploy checkout is not clean" >&2
+  git -C <repo> status --short >&2
+  exit 1
+fi
+
 sha256sum <repo>/functions/package-lock.json | tee ~/w3-evidence/02-lock-sha.txt
 ```
 
@@ -88,26 +109,37 @@ unchanged (name / version / trigger / location / memory / runtime identical to �
 removed. The additions must be ONLY the two receiving callables.
 
 ## 6. Callable existence / configuration verification
+Each asserted field is verified by the command that ACTUALLY surfaces it. `gcloud ... describe`
+per function surfaces generation/region/memory/runtime/state/URI; `firebase functions:list`
+supplies the `v2` version label and the `callable` trigger label (gcloud represents callables
+as plain HTTPS functions and does not print the word "callable"). Run describe for BOTH new
+functions:
 ```bash
-gcloud functions list --project=taylor-parts --v2 \
-  --format="table(name.basename(),state,updateTime,serviceConfig.uri)" \
-  | tee ~/w3-evidence/06-post-gcloud-v2.txt
+for FN in receiveInventoryStock listReceivingLocationOptions; do
+  gcloud functions describe "$FN" --gen2 --region=us-central1 --project=taylor-parts \
+    --format="yaml(name, environment, state, buildConfig.runtime, serviceConfig.availableMemory, serviceConfig.uri)" \
+    | tee ~/w3-evidence/06-describe-"$FN".txt
+done
+# version + trigger labels come from the firebase functions:list capture (§5):
+grep -E "receiveInventoryStock|listReceivingLocationOptions" ~/w3-evidence/05-post-functions-list.txt \
+  | tee ~/w3-evidence/06-firebase-version-trigger.txt
 ```
-CONFIRM each new function shows these EXACT configuration fields (matching every other
-callable in the estate):
+CONFIRM each new function shows these EXACT fields (each maps to the command that reports it):
 
-| Field | Expected value |
-|-------|----------------|
-| Version / Generation | `v2` / `GEN_2` |
-| Trigger | `callable` |
-| Location / Region | `us-central1` |
-| Memory | `256` (MB) |
-| Runtime | `nodejs20` |
-| State | `ACTIVE` |
-| Service URI | a `…-uc.a.run.app` HTTPS URI (record it) |
+| Field | Expected value | Verified by (field it prints) |
+|-------|----------------|-------------------------------|
+| Version | `v2` | `firebase functions:list` — Version column |
+| Generation | `GEN_2` | `gcloud describe` — `environment: GEN_2` |
+| Trigger | `callable` | `firebase functions:list` — Trigger column |
+| Location / Region | `us-central1` | `gcloud describe` — `name: …/locations/us-central1/…` (and the `--region` used) |
+| Memory | `256` (MB) | `gcloud describe` — `serviceConfig.availableMemory: 256Mi` |
+| Runtime | `nodejs20` | `gcloud describe` — `buildConfig.runtime: nodejs20` |
+| State | `ACTIVE` | `gcloud describe` — `state: ACTIVE` |
+| Service URI | a `…-uc.a.run.app` HTTPS URI (record it) | `gcloud describe` — `serviceConfig.uri` |
 
-Verify for BOTH `receiveInventoryStock` and `listReceivingLocationOptions`. Also confirm
-**no other function's `updateTime` changed** vs §1's capture (the deploy touched only the two).
+Verify the full table for BOTH `receiveInventoryStock` and `listReceivingLocationOptions`. Also
+confirm from §5's pre/post `functions:list` diff that **no other function changed** (the deploy
+touched only the two).
 
 ## 7. Authorized live tests (Owner-operated, against production)
 > PREREQ: the calling actor must have the `inventory.stock.receive` capability **granted live**.
