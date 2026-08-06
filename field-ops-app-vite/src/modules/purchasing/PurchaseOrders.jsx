@@ -64,13 +64,13 @@ const STATUS_LABEL = {
 export default function PurchaseOrders() {
   const requestsRead = useReorderRequestsByStatuses(PO_REQUEST_STATUSES);
   const ids = useMemo(() => requestsRead.data.map((r) => r.id), [requestsRead.data]);
-  const { purchaseOrdersById, loading: poLoading } = usePurchaseOrdersByIds(ids);
+  const purchaseOrdersRead = usePurchaseOrdersByIds(ids);
   const { byUserId } = useEmployeeDirectory();
   const [filterKey, setFilterKey] = useState("open");
 
   const view = useMemo(
-    () => buildPurchaseOrdersView({ requestsRead, purchaseOrdersById }),
-    [requestsRead, purchaseOrdersById]
+    () => buildPurchaseOrdersView({ requestsRead, purchaseOrdersRead }),
+    [requestsRead, purchaseOrdersRead]
   );
 
   const intro = (
@@ -92,11 +92,10 @@ export default function PurchaseOrders() {
       </div>
     );
   }
-  // Show Loading only until the FIRST rows exist. Once requests have rendered
-  // (even briefly as ORPHAN before PO docs resolve), a later poLoading refetch
-  // (e.g. the id set changed) streams updated rows in place rather than flashing
-  // the whole surface back to a loading state -- deliberate flicker avoidance.
-  if (view.status === PURCHASE_ORDERS_STATUS.LOADING || (poLoading && view.rows.length === 0)) {
+  // The view-model owns the load ladder: LOADING while EITHER the reorder-request
+  // read or the purchase-order read is in flight (so rows never flash as ORPHAN
+  // while their PO docs are still resolving), BLOCKED on either read's error.
+  if (view.status === PURCHASE_ORDERS_STATUS.LOADING) {
     return (
       <div className="fo-panel">
         <WorkspaceHeader title="Purchase Orders" />

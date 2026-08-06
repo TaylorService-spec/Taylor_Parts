@@ -103,28 +103,40 @@ export function buildPurchaseOrderRow(request, po) {
   };
 }
 
-// Compose the full surface view-model from the reorder-request read and the PO
-// read. Both inputs are {data,loading,error} shaped (the app's hook convention).
-// Fail-closed: any read error -> a BLOCKED_* status with rows:[], never an empty
-// success. `purchaseOrdersById` maps reorderRequestId -> PO doc (or missing).
-export function buildPurchaseOrdersView({ requestsRead, purchaseOrdersById = {} }) {
-  const safeRequests = isPlainObject(requestsRead) ? requestsRead : {};
-  const reqError = safeRequests.error;
+function isPermissionCode(code) {
+  const c = String(code ?? "");
+  return c === "permission-denied" || c === "firestore/permission-denied";
+}
 
-  if (reqError) {
-    const code = String(reqError);
+// Compose the full surface view-model from the reorder-request read and the
+// purchase-order read. BOTH are {data|purchaseOrdersById, loading, error} shaped
+// (the app's hook convention). Fail-closed on EITHER read: a denied/unavailable
+// purchase-order read is a genuine failure and must never be downgraded to
+// "these rows need attention" -- it BLOCKS the whole surface, never an empty
+// success and never spurious ORPHAN rows. ORPHAN is reserved for the honest case
+// where BOTH reads succeeded but a specific PO doc is simply absent.
+export function buildPurchaseOrdersView({ requestsRead, purchaseOrdersRead }) {
+  const safeRequests = isPlainObject(requestsRead) ? requestsRead : {};
+  const safePos = isPlainObject(purchaseOrdersRead) ? purchaseOrdersRead : {};
+  const reqError = safeRequests.error;
+  const poError = safePos.error;
+
+  // Fail closed on either error; permission takes precedence over unavailable.
+  if (reqError || poError) {
     const status =
-      code === "permission-denied" || code === "firestore/permission-denied"
+      isPermissionCode(reqError) || isPermissionCode(poError)
         ? PURCHASE_ORDERS_STATUS.BLOCKED_PERMISSION
         : PURCHASE_ORDERS_STATUS.BLOCKED_UNAVAILABLE;
     return { status, rows: [], summary: emptySummary() };
   }
-  if (safeRequests.loading) {
+  // Either read still in flight -> LOADING, so rows never flash as ORPHAN while
+  // their PO docs are still being fetched.
+  if (safeRequests.loading || safePos.loading) {
     return { status: PURCHASE_ORDERS_STATUS.LOADING, rows: [], summary: emptySummary() };
   }
 
   const requests = Array.isArray(safeRequests.data) ? safeRequests.data : [];
-  const map = isPlainObject(purchaseOrdersById) ? purchaseOrdersById : {};
+  const map = isPlainObject(safePos.purchaseOrdersById) ? safePos.purchaseOrdersById : {};
 
   const rows = requests
     .map((req) => buildPurchaseOrderRow(req, isPlainObject(req) ? map[req.id] ?? null : null))

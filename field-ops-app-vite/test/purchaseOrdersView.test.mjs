@@ -131,7 +131,7 @@ check("view: composes rows, joins PO by id, sorts most-recent-first, counts cand
     error: null,
   };
   const purchaseOrdersById = { r1: poDoc("r1"), r2: poDoc("r2"), r3: poDoc("r3") };
-  const v = buildPurchaseOrdersView({ requestsRead, purchaseOrdersById });
+  const v = buildPurchaseOrdersView({ requestsRead, purchaseOrdersRead: { purchaseOrdersById, loading: false, error: null } });
   assert.equal(v.status, PURCHASE_ORDERS_STATUS.READY);
   assert.deepEqual(v.rows.map((r) => r.reorderRequestId), ["r2", "r3", "r1"]); // orderedAt desc
   assert.equal(v.summary.total, 3);
@@ -144,14 +144,37 @@ check("view: composes rows, joins PO by id, sorts most-recent-first, counts cand
   const r3 = v.rows.find((r) => r.reorderRequestId === "r3");
   assert.equal(r3.receiptSource, null);
 });
-check("view: an ORDERED request with no PO in the map surfaces as ORPHAN, not dropped", () => {
+check("view: after a SUCCESSFUL PO read, an ORDERED request whose PO doc is genuinely absent -> ORPHAN, not dropped", () => {
   const requestsRead = { data: [orderedRequest("r1"), orderedRequest("r2")], loading: false, error: null };
-  const purchaseOrdersById = { r1: poDoc("r1") }; // r2's PO missing
-  const v = buildPurchaseOrdersView({ requestsRead, purchaseOrdersById });
+  const purchaseOrdersById = { r1: poDoc("r1") }; // r2's PO genuinely missing (read succeeded)
+  const v = buildPurchaseOrdersView({ requestsRead, purchaseOrdersRead: { purchaseOrdersById, loading: false, error: null } });
   assert.equal(v.rows.length, 2);
   assert.equal(v.summary.orphan, 1);
   assert.equal(v.summary.open, 1);
   assert.equal(v.summary.receiptCandidates, 1);
+});
+
+// ---- PO-read failure is PRESERVED and fails the surface closed (Codex correction) ----
+check("view: PO read permission-denied -> BLOCKED_PERMISSION (never spurious ORPHAN)", () => {
+  const requestsRead = { data: [orderedRequest("r1")], loading: false, error: null };
+  const v = buildPurchaseOrdersView({ requestsRead, purchaseOrdersRead: { purchaseOrdersById: {}, loading: false, error: "permission-denied" } });
+  assert.equal(v.status, PURCHASE_ORDERS_STATUS.BLOCKED_PERMISSION);
+  assert.deepEqual(v.rows, []);
+});
+check("view: PO read unavailable -> BLOCKED_UNAVAILABLE", () => {
+  const requestsRead = { data: [orderedRequest("r1")], loading: false, error: null };
+  const v = buildPurchaseOrdersView({ requestsRead, purchaseOrdersRead: { purchaseOrdersById: {}, loading: false, error: "unavailable" } });
+  assert.equal(v.status, PURCHASE_ORDERS_STATUS.BLOCKED_UNAVAILABLE);
+});
+check("view: PO read still loading -> LOADING (rows never flash as ORPHAN mid-fetch)", () => {
+  const requestsRead = { data: [orderedRequest("r1")], loading: false, error: null };
+  const v = buildPurchaseOrdersView({ requestsRead, purchaseOrdersRead: { purchaseOrdersById: {}, loading: true, error: null } });
+  assert.equal(v.status, PURCHASE_ORDERS_STATUS.LOADING);
+});
+check("view: a permission error on EITHER read wins over unavailable on the other", () => {
+  const requestsRead = { data: [], loading: false, error: "unavailable" };
+  const v = buildPurchaseOrdersView({ requestsRead, purchaseOrdersRead: { purchaseOrdersById: {}, loading: false, error: "permission-denied" } });
+  assert.equal(v.status, PURCHASE_ORDERS_STATUS.BLOCKED_PERMISSION);
 });
 check("view: malformed inputs fail closed (non-object requestsRead -> treated as empty, never throws)", () => {
   // A null read has no error and loading is falsy -> resolves to READY-empty. The
