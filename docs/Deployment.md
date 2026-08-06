@@ -94,11 +94,17 @@ The human operator executes **every** production-credentialed command. An AI age
 U-1 through U-5 were resolved by a read-only observation run; evidence and hashes at
 [`audits/eao-readonly-evidence-20260806/`](audits/eao-readonly-evidence-20260806/).
 
-- **U-1/U-2 — BOTH frontends are live and they serve DIFFERENT builds.** GitHub Pages serves
-  `index-BsITcohF.js` and tracks `main` continuously. Firebase Hosting serves `index-B7PB5BOc.js`
+- **U-1/U-2 — BOTH frontends are live, serve DIFFERENT builds, and BOTH are stale.** GitHub Pages
+  serves `index-BsITcohF.js`, built from `6f25e13` (2026-08-06 07:40 UTC) — the last *successful*
+  Pages deploy. The workflow is *intended* to track `main` on every merge, but its recent runs show
+  **32 success / 4 failure / 4 cancelled**, with the four most recent `main` pushes all failing or
+  cancelled on `The job was not acquired by Runner of type hosted` (GitHub runner capacity, not a
+  code defect). **The production publish path is ungoverned *and* unreliable, and its failures are
+  silent** — a merge that fails to publish produces no release record and no alert. Firebase Hosting serves `index-B7PB5BOc.js`
   and was **last released 2026-08-01 21:15:56** — five days and many merges stale. Only one
   Hosting site and only the `live` channel exist; there is no preview/staging channel.
   **Gating Pages before releasing Hosting would strand every user on a five-day-old build.**
+  Neither surface reliably equals `main`; they differ only in degree of staleness.
 - **U-3 — no backup or recovery posture exists.** `POINT_IN_TIME_RECOVERY_DISABLED`,
   `DELETE_PROTECTION_DISABLED`, `versionRetentionPeriod: 3600s`, zero backups, zero backup
   schedules. Recoverable history is **one hour**; a deletion or corruption older than that is

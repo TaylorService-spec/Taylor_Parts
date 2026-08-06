@@ -73,3 +73,36 @@ Confirms `DECISIONS.md` #63. All 22 are Gen 2, `us-central1`. Two further observ
 Not retrievable with the installed tooling: `firebase firestore:rules:get` is not a command in CLI 15.22.4, and `gcloud firebaserules` is not a valid command group in SDK 577.0.0.
 
 This is a **tooling** limitation, not an authorization one, and it is the only unresolved item. Owner action required — see [`../../operations/eao-readonly-evidence-package.md`](../../operations/eao-readonly-evidence-package.md) §U-6 for the Console path. Until captured, ADR-005 §2.7 criterion 6 (immutable auditing production-verified) stays **UNKNOWN**.
+
+---
+
+## Correction to U-1/U-2 — 2026-08-06, same run
+
+The finding above stated that Pages "tracks `main` continuously." **That is the workflow's design intent, not its observed behaviour, and the distinction matters.**
+
+CI history (`u2-pages-deploy-runs.txt`, via `gh run list --workflow=deploy-field-ops.yml --branch main`):
+
+- **Last SUCCESSFUL Pages deploy: `6f25e13`, 2026-08-06T07:40:46Z.**
+- The four most recent `main` pushes produced `failure`, `failure`, `cancelled`, `cancelled`.
+- Last 40 runs: **32 success · 4 failure · 4 cancelled**.
+- Failure cause is **infrastructure, not code**: `The job was not acquired by Runner of type hosted even after multiple attempts` — GitHub-hosted runner capacity, with the `build` job timing out after ~21 minutes and `deploy` never starting.
+- `vite-build-check.yml` shows the same pattern (6 failure / 4 success in the last 10).
+
+### Revised conclusion
+
+**Both production frontends are stale; they differ only in degree.**
+
+| Surface | Serving build from | Staleness |
+|---|---|---|
+| GitHub Pages | `6f25e13` @ 2026-08-06 07:40 UTC | ~13 hours, several merges |
+| Firebase Hosting | released 2026-08-01 21:15 UTC | ~5 days, many merges |
+
+This **strengthens** rather than weakens the R-2 case. The ungoverned auto-publish path is not only ungoverned — it is **unreliable**, and its failures are silent: a merge to `main` that fails to publish produces no release record, no alert, and no difference the repository can observe. The platform currently has **no mechanism that would notice** that production is serving a build nobody chose.
+
+### New finding — release-pipeline reliability (C3 input)
+
+A ~20% failure/cancellation rate on the production publish path, invisible to everyone, is an operational-readiness defect independent of R-2's authorization gap. It belongs to **C3 Operational Readiness** alongside the absent backup posture: both are cases where the platform cannot detect its own state. Recorded here; not remediated.
+
+### Effect on the R-2 acceptance criteria
+
+Criterion **C-1** (Hosting released to current `main`) is unchanged and remains first. **C-2** (parity verified) must compare against a *known* SHA rather than "current `main`", since neither surface reliably equals `main`. No other criterion changes.
