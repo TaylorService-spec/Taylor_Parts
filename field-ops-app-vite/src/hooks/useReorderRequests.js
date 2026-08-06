@@ -67,20 +67,23 @@ export function useReorderRequests(enabled = true) {
 // Started notification (PURCHASING_IN_PROGRESS), and their
 // Notification Panel sections, without a second read implementation.
 export function useReorderRequestsByStatus(status, enabled = true) {
-  const [state, setState] = useState({ data: [], loading: enabled });
+  const [state, setState] = useState({ data: [], loading: enabled, error: null });
 
   useEffect(() => {
     if (!enabled) {
-      setState({ data: [], loading: false });
+      setState({ data: [], loading: false, error: null });
       return;
     }
 
-    setState((prev) => ({ ...prev, loading: true }));
+    setState((prev) => ({ ...prev, loading: true, error: null }));
     const q = query(reorderRequestsRef, where("status", "==", status));
     const unsubscribe = onSnapshot(
       q,
-      (snap) => setState({ data: toDocs(snap), loading: false }),
-      () => setState({ data: [], loading: false })
+      (snap) => setState({ data: toDocs(snap), loading: false, error: null }),
+      // W2: preserve the read error instead of swallowing it, so consumers can
+      // distinguish a failed read from a genuinely-empty result (mirrors
+      // useReorderRequestsByStatuses). err.code is the Firestore SDK error code.
+      (err) => setState({ data: [], loading: false, error: err.code ?? "unknown" })
     );
 
     return unsubscribe;
@@ -104,20 +107,23 @@ export function useReorderRequestsByStatus(status, enabled = true) {
 // (ASSIGNED_TO_PARTS_ASSOCIATE) and "In Progress"
 // (PURCHASING_IN_PROGRESS) sections, still filtered to one person.
 export function useReorderRequestsAssignedTo(userId, status, enabled = true) {
-  const [state, setState] = useState({ data: [], loading: enabled });
+  const [state, setState] = useState({ data: [], loading: enabled, error: null });
 
   useEffect(() => {
     if (!enabled || !userId) {
-      setState({ data: [], loading: false });
+      setState({ data: [], loading: false, error: null });
       return;
     }
 
-    setState((prev) => ({ ...prev, loading: true }));
+    setState((prev) => ({ ...prev, loading: true, error: null }));
     const q = query(reorderRequestsRef, where("assignedToUserId", "==", userId), where("status", "==", status));
     const unsubscribe = onSnapshot(
       q,
-      (snap) => setState({ data: toDocs(snap), loading: false }),
-      () => setState({ data: [], loading: false })
+      (snap) => setState({ data: toDocs(snap), loading: false, error: null }),
+      // W2: preserve the read error (see useReorderRequestsByStatus) so the
+      // Parts Associate Waiting/In-Progress sections can distinguish a failed
+      // read from genuinely-empty personal work.
+      (err) => setState({ data: [], loading: false, error: err.code ?? "unknown" })
     );
 
     return unsubscribe;

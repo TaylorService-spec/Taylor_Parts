@@ -15,15 +15,15 @@ import { INVENTORY_ACTIONS_COLLECTION } from "../domain/constants";
 const inventoryActionsRef = collection(db, INVENTORY_ACTIONS_COLLECTION);
 
 export function useInventoryActionsForPart(partId) {
-  const [state, setState] = useState({ data: [], loading: true });
+  const [state, setState] = useState({ data: [], loading: true, error: null });
 
   useEffect(() => {
     if (!partId) {
-      setState({ data: [], loading: false });
+      setState({ data: [], loading: false, error: null });
       return;
     }
 
-    setState((prev) => ({ ...prev, loading: true }));
+    setState((prev) => ({ ...prev, loading: true, error: null }));
     const q = query(inventoryActionsRef, where("partId", "==", partId));
     const unsubscribe = onSnapshot(
       q,
@@ -31,9 +31,11 @@ export function useInventoryActionsForPart(partId) {
         const actions = snap.docs
           .map((d) => ({ id: d.id, ...d.data() }))
           .sort((a, b) => b.createdAt - a.createdAt);
-        setState({ data: actions, loading: false });
+        setState({ data: actions, loading: false, error: null });
       },
-      () => setState({ data: [], loading: false })
+      // W2: preserve the read error so the Warehouse Manager part-activity
+      // panel can distinguish a failed read from a genuinely-empty history.
+      (err) => setState({ data: [], loading: false, error: err.code ?? "unknown" })
     );
 
     return unsubscribe;

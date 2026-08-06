@@ -118,7 +118,7 @@ export default function PartsManagerHome({ accessVersion } = {}) {
   // name map before the replacement read settles.
   const { resolveName, namesUnavailable } = useCanonicalPartNames({ uid: user?.uid, accessVersion });
   const { healthEntries, loading: healthLoading, error: healthError } = useInventoryLedger();
-  const { data: queue, loading: queueLoading } = useReorderRequestsByStatus(REORDER_REQUEST_STATUS.READY_FOR_PARTS_MANAGER);
+  const { data: queue, loading: queueLoading, error: queueError } = useReorderRequestsByStatus(REORDER_REQUEST_STATUS.READY_FOR_PARTS_MANAGER);
   const { data: oversight, loading: oversightLoading, error: oversightError } = useReorderRequestsByStatuses(OVERSIGHT_STATUSES);
   const { data: history, loading: historyLoading, error: historyError } = useReviewedRequestsHistory(user?.uid);
   // Used only to resolve assignee display names in the oversight table
@@ -179,7 +179,7 @@ export default function PartsManagerHome({ accessVersion } = {}) {
         loading={queueLoading}
         isEmpty={queue.length === 0}
         loadingText="Loading Parts Manager Queue..."
-        emptyText="No requests awaiting assignment."
+        emptyText={queueError ? "Unable to load the Parts Manager Queue right now. Try again shortly." : "No requests awaiting assignment."}
       >
         <table className="fo-table">
           <thead>

@@ -515,11 +515,11 @@ export default function PartsAssociateHome({ accessVersion } = {}) {
   // is threaded from App so an access change re-runs the read and invalidates the prior
   // name map before the replacement read settles.
   const { resolveName, namesUnavailable } = useCanonicalPartNames({ uid: user?.uid, accessVersion });
-  const { data: waiting, loading: waitingLoading } = useReorderRequestsAssignedTo(
+  const { data: waiting, loading: waitingLoading, error: waitingError } = useReorderRequestsAssignedTo(
     user?.uid,
     REORDER_REQUEST_STATUS.ASSIGNED_TO_PARTS_ASSOCIATE
   );
-  const { data: inProgress, loading: inProgressLoading } = useReorderRequestsAssignedTo(
+  const { data: inProgress, loading: inProgressLoading, error: inProgressError } = useReorderRequestsAssignedTo(
     user?.uid,
     REORDER_REQUEST_STATUS.PURCHASING_IN_PROGRESS
   );
@@ -554,7 +554,7 @@ export default function PartsAssociateHome({ accessVersion } = {}) {
         loading={waitingLoading}
         isEmpty={waiting.length === 0}
         loadingText="Loading your assigned requests..."
-        emptyText="No requests currently waiting on you."
+        emptyText={waitingError ? "Unable to load your assigned requests right now. Try again shortly." : "No requests currently waiting on you."}
       >
         <RequestTable requests={waiting} resolveName={resolveName} onSelect={handleSelect} />
       </LoadingEmptyState>
@@ -564,7 +564,7 @@ export default function PartsAssociateHome({ accessVersion } = {}) {
         loading={inProgressLoading}
         isEmpty={inProgress.length === 0}
         loadingText="Loading your in-progress purchasing..."
-        emptyText="No purchasing currently in progress."
+        emptyText={inProgressError ? "Unable to load your in-progress purchasing right now. Try again shortly." : "No purchasing currently in progress."}
       >
         <RequestTable requests={inProgress} resolveName={resolveName} onSelect={handleSelect} />
       </LoadingEmptyState>
