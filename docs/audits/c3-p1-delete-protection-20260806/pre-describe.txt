@@ -1,0 +1,16 @@
+appEngineIntegrationMode: DISABLED
+concurrencyMode: PESSIMISTIC
+createTime: '2026-07-02T07:41:03.579572Z'
+databaseEdition: STANDARD
+deleteProtectionState: DELETE_PROTECTION_DISABLED
+earliestVersionTime: '2026-08-06T20:49:35.685140Z'
+etag: IPPWqen9jJYDMOjG3sDL8ZUD
+freeTier: true
+locationId: us-central1
+name: projects/taylor-parts/databases/(default)
+pointInTimeRecoveryEnablement: POINT_IN_TIME_RECOVERY_DISABLED
+realtimeUpdatesMode: REALTIME_UPDATES_MODE_ENABLED
+type: FIRESTORE_NATIVE
+uid: 895a2b0a-5826-4d2d-8e0e-bddcf0cfb552
+updateTime: '2026-07-02T07:41:03.579572Z'
+versionRetentionPeriod: 3600s
