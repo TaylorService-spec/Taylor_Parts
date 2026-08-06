@@ -8,23 +8,32 @@
 // FieldMode uses (F-RULES-1); an unscoped full-collection jobs read would be denied
 // for the technician persona this workspace serves.
 //
-// The ad-hoc "scan a part and add to warehouse" RECEIVE action has been REMOVED: the
-// governed receiving transaction is receiveInventoryStock (now deployed, capability
-// inventory.stock.receive = {admin, dispatcher, owner} -- NOT the technician persona
-// this workspace serves), and it receives a specific ORDERED reorder purchase order,
-// not an arbitrary scanned part. That workflow belongs to an authorized
-// Inventory -> Receiving surface driven by an ORDERED/ORDERED purchase-order
-// candidate (see the Purchasing > Purchase Orders surface). This scanner may later
-// FEED that workflow (scanning the PO line, part, or destination) but never invokes
-// receiveInventoryStock itself. No live receive is wired here.
+// The scanner's "Receive a purchase order" action IS the one governed receive workflow
+// (A1, 2026-08-06, superseding the earlier A3 "no receive here"): it receives a specific
+// ORDERED reorder Purchase Order by invoking receiveInventoryStock through the FAIL-CLOSED
+// readiness transport (see ReceiveAgainstPurchaseOrder.jsx). The old ad-hoc "add to warehouse"
+// receive stays retired; there is no second/demo receive path.
+//
+// PERSONA / CAPABILITY NOTE (by design, not a bug): receiving is governed. The candidate read
+// (reorder_requests, ORDERED) and inventory.stock.receive are role-gated to admin/dispatcher/
+// owner -- NOT the technician. FieldMode is reachable by ADMIN and TECHNICIAN (ROLE_NAV_ACCESS,
+// domain/constants.js), so an admin-in-FieldMode holding the capability can complete a receipt,
+// while a technician fails closed HONESTLY at both layers (candidate read -> BLOCKED_PERMISSION;
+// a submitted receive -> DENIED). And with RECEIVING_TRANSPORT_READY = false today the workflow
+// fails closed for everyone at the location step ("Receiving isn't activated") -- no live receipt
+// occurs until that separate, authorized activation gate.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAssignedJobs } from "../../hooks/useAssignedJobs";
 import { JOB_STATUS } from "../../domain/constants";
 import { useInventory } from "../../demo/InventoryContext";
+import ReceiveAgainstPurchaseOrder from "./ReceiveAgainstPurchaseOrder";
 
-// The ad-hoc "receive" action is intentionally absent -- receiving stock is a
-// governed transaction (receiveInventoryStock) that this technician tool never owns.
+// "Receive a purchase order" is the ONE governed receive workflow (A1): it receives against an
+// ORDERED reorder Purchase Order through the fail-closed receiveInventoryStock transport (see
+// ReceiveAgainstPurchaseOrder.jsx). It is NOT a demo write. The remaining actions are the
+// existing in-memory demo actions. There is no ad-hoc "add to warehouse" receive.
 const ACTIONS = [
+  { id: "receive", label: "Receive a purchase order", hint: "Governed PO receipt", governed: true },
   { id: "work-order", label: "Use on work order", hint: "Remove from truck stock" },
   { id: "transfer", label: "Load my truck", hint: "Move from warehouse" },
   { id: "count", label: "Cycle count", hint: "Set quantity on hand" },
@@ -174,8 +183,9 @@ export default function PartsScanner({ technicianId }) {
   return (
     <div className="scan-workspace">
       <p className="scan-demo-banner" role="note">
-        <strong>Demo — not saved.</strong> Scanning and lookup are real; the part-movement
-        actions below are an in-memory preview only and change no live inventory.
+        <strong>Demo — not saved.</strong> Scanning, lookup, and <strong>Receive a purchase
+        order</strong> are real (receiving is a governed transaction, currently fail-closed until
+        activated). The other part-movement actions are an in-memory preview only.
       </p>
       <header className="scan-hero">
         <div><span className="scan-eyebrow">FIELD INVENTORY</span><h2>Scan. Move. Done.</h2><p>Capture every part where the work happens.</p></div>
@@ -203,9 +213,18 @@ export default function PartsScanner({ technicianId }) {
 
       {part && <section className="scan-card scan-action-card"><div className="scan-step">2</div><div className="scan-card-body"><h3>What are you doing?</h3>
         <div className="scan-actions">{ACTIONS.map((item) => <button key={item.id} className={action === item.id ? "active" : ""} onClick={() => setAction(item.id)}><strong>{item.label}</strong><span>{item.hint}</span></button>)}</div>
-        {action === "work-order" && <label className="scan-field">Work order<select value={jobId} onChange={(e) => setJobId(e.target.value)}><option value="">Select work order</option>{activeJobs.map((job) => <option key={job.id} value={job.id}>{job.customer} — {job.description}</option>)}</select></label>}
-        <label className="scan-field">{action === "count" ? "Counted quantity" : "Quantity"}<div className="scan-quantity"><button onClick={() => setQuantity((q) => Math.max(1, q - 1))}>−</button><input type="number" min="1" value={quantity} onChange={(e) => setQuantity(e.target.value)} /><button onClick={() => setQuantity((q) => Number(q) + 1)}>+</button></div></label>
-        <button className="scan-confirm" onClick={applyAction}>Confirm {ACTIONS.find((item) => item.id === action)?.label.toLowerCase()}</button>
+        {action === "receive" ? (
+          <ReceiveAgainstPurchaseOrder
+            initialPartId={part.id}
+            onDone={() => { setPart(null); setAction("work-order"); setNotice("Receiving closed."); }}
+          />
+        ) : (
+          <>
+            {action === "work-order" && <label className="scan-field">Work order<select value={jobId} onChange={(e) => setJobId(e.target.value)}><option value="">Select work order</option>{activeJobs.map((job) => <option key={job.id} value={job.id}>{job.customer} — {job.description}</option>)}</select></label>}
+            <label className="scan-field">{action === "count" ? "Counted quantity" : "Quantity"}<div className="scan-quantity"><button onClick={() => setQuantity((q) => Math.max(1, q - 1))}>−</button><input type="number" min="1" value={quantity} onChange={(e) => setQuantity(e.target.value)} /><button onClick={() => setQuantity((q) => Number(q) + 1)}>+</button></div></label>
+            <button className="scan-confirm" onClick={applyAction}>Confirm {ACTIONS.find((item) => item.id === action)?.label.toLowerCase()}</button>
+          </>
+        )}
       </div></section>}
 
       <section className="scan-summary">
