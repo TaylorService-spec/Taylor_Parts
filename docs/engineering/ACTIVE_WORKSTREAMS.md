@@ -42,3 +42,4 @@ _None currently in flight. Add a row when you start a capability._
 | Default-autonomy operating mode (Charter Amendment 2) | MERGED | DECISIONS #66 · PR #582 |
 | AI Engineering Operating Model + Owner/IP governance | MERGED | this program · see DECISIONS |
 | Governed FieldMode Receive-against-Purchase-Order (A1) | MERGED (repo-only; readiness false) | DECISIONS #68 |
+| Inventory → Receiving first-class workspace (one workflow, two launch points) | MERGED (repo-only) | DECISIONS #69 |

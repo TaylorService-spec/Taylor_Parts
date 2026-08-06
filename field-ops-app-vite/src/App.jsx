@@ -20,6 +20,7 @@ import AdminUsers from "./modules/administration/AdminUsers";
 import AdminRolesPermissions from "./modules/administration/AdminRolesPermissions";
 import IntegrationsFaq from "./modules/administration/IntegrationsFaq";
 import PurchaseOrders from "./modules/purchasing/PurchaseOrders";
+import Receiving from "./modules/inventory/Receiving";
 import WorkOrdersList from "./modules/workOrders/WorkOrdersList";
 import WorkOrderWizard from "./modules/workOrders/WorkOrderWizard";
 import WorkOrderDetailPage from "./modules/workOrders/WorkOrderDetailPage";
@@ -303,6 +304,15 @@ function renderSubnavItem(domain, item, role, operationalContext) {
   // Suppliers/Quotes/Receipts/Demand Planning remain placeholders.
   if (domain.key === "purchasing" && item.key === "purchaseOrders") {
     return <PurchaseOrders />;
+  }
+  // Inventory > Receiving -- the FIRST-CLASS Receiving workspace, replacing the prior
+  // PlaceholderPage for this existing nav item (admin/dispatcher). It composes the ONE
+  // canonical governed receive workflow (ReceiveAgainstPurchaseOrder) with all ORDERED
+  // receipt candidates; the PartsScanner (in FieldMode) is a second launch point of the
+  // SAME workflow, not an alternate implementation. Fail-closed (readiness FALSE +
+  // capability-gated) -- no live receipt here.
+  if (domain.key === "inventory" && item.key === "receiving") {
+    return <Receiving />;
   }
   // Operations owns the canonical part-name read for its dashboard panels; accessVersion
   // is threaded so that read re-runs and its name map is invalidated on any access change

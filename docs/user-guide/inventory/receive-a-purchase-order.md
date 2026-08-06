@@ -15,15 +15,24 @@ from any Technician Workspace session, but a Technician who submits it will be t
 have permission (once receiving is activated). Today, everyone sees the same "not activated"
 result regardless of role, because receiving isn't switched on yet.
 
+## Two ways to get here (same receipt)
+There is one receiving workflow, reachable from two places — the steps and results are identical:
+- **Inventory > Receiving** (recommended for Admin/Dispatcher) — the receiving workspace, which
+  lists every ordered purchase order awaiting receipt. Start here to receive without scanning.
+- **Parts Scanner** (Service > Technician Workspace) — scan or pick a part first, then choose
+  **Receive a purchase order**; it shows the open purchase orders for that part.
+
 ## Before you start
 - The part must have a purchase order that's been placed and is in the **Ordered** state — see
   [Place the order and track purchasing](place-the-order.md). If nothing has been ordered yet,
   there's nothing to receive.
-- Open **Service > Technician Workspace** (Field Mode).
+- Open **Inventory > Receiving** (or, to receive from a scan, **Service > Technician Workspace**).
 
 ## Steps
-1. In the **Parts Scanner** tool, find the part — scan its company QR code, type its SKU/barcode,
-   or pick it from the "Try" list. See [Parts Scanner](parts-scanner.md) for how scanning works.
+1. **Choose the part / purchase order.** In **Inventory > Receiving**, you'll see the ordered
+   purchase orders awaiting receipt — skip to step 3. From the **Parts Scanner** tool instead,
+   find the part — scan its company QR code, type its SKU/barcode, or pick it from the "Try"
+   list (see [Parts Scanner](parts-scanner.md)), then choose **Receive a purchase order**.
 2. Under **What are you doing?**, choose **Receive a purchase order**.
 3. **Choose the purchase order.** You'll see the open purchase orders awaiting receipt for this
    part — each row shows the supplier, PO number, and ordered quantity. Select the one you're
