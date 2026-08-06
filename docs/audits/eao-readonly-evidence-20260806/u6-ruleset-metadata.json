@@ -1,0 +1,7 @@
+{
+  "name": "projects/taylor-parts/rulesets/6316db98-9fce-4123-9391-9919e6dd70bd",
+  "createTime": "2026-08-04T21:31:58.041183Z",
+  "files": [
+    "firestore.rules"
+  ]
+}

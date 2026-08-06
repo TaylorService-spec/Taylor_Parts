@@ -106,3 +106,47 @@ A ~20% failure/cancellation rate on the production publish path, invisible to ev
 ### Effect on the R-2 acceptance criteria
 
 Criterion **C-1** (Hosting released to current `main`) is unchanged and remains first. **C-2** (parity verified) must compare against a *known* SHA rather than "current `main`", since neither surface reliably equals `main`. No other criterion changes.
+
+---
+
+## U-6 — RESOLVED (2026-08-06, same day) — no Owner action required
+
+The earlier "BLOCKED" status was a **tooling** conclusion drawn too early. Before defaulting to Owner console work, the supported authenticated read-only API path was exhausted, and it works.
+
+**Method.** Firebase Rules REST API (`firebaserules.googleapis.com`), authenticated with the already-active `gcloud` ADC session. The first attempt returned HTTP 403 (`quota project not set`); adding the standard `x-goog-user-project: taylor-parts` header returned HTTP 200. **Read-only throughout** — `GET` on releases and rulesets only. No release was created, nothing was deployed, no project setting was changed, and **no API was enabled** to make a call succeed. The access token was used transiently in a request header and **never written to any file**; it does not appear in this evidence set.
+
+```
+GET /v1/projects/taylor-parts/releases
+GET /v1/projects/taylor-parts/rulesets/6316db98-9fce-4123-9391-9919e6dd70bd
+```
+
+**Result.** One active release: `cloud.firestore` → ruleset `6316db98-9fce-4123-9391-9919e6dd70bd`, `updateTime` 2026-08-04T21:32:00Z, ruleset `createTime` 2026-08-04T21:31:58Z. Source captured to `u6-live-firestore.rules` (104,130 bytes, 1,719 lines, sha256 `f0d4a5c2…`).
+
+### Finding — the live ruleset is functionally identical to the repository, but not byte-identical
+
+| Comparison | Result |
+|---|---|
+| Full-file | **differs** — 20 lines |
+| Non-comment (code) lines | **0 differences** |
+| Code-only sha256 (comments stripped) | **`124589e7078c5cb6…` on both sides — identical** |
+
+All 20 differing lines are comments, and every difference is the same one: the **live** ruleset contains `Â§` (U+00C2 U+00A7) where the repository correctly contains `§` (U+00A7). This is classic **UTF-8 double-encoding introduced at deploy time** — the file was read as Latin-1 and re-encoded as UTF-8 by whatever performed the deploy.
+
+**Impact assessment:**
+
+- **Functionally: none.** The difference is confined to comment text; the enforced rule logic is byte-identical. No authorization behaviour differs.
+- **Operationally: real.** `skills/verify-rules-deploy` hashes the deploy for parity. **A full-file live-vs-repo hash comparison will always report a mismatch**, regardless of whether a deploy was correct. That is a false positive that trains operators to ignore the signal — the worst failure mode for a verification control. Rules-deploy verification should compare **code-only (comment-stripped) content**, or the deploy path should be fixed to preserve UTF-8.
+
+Recorded as an operational finding. **Not remediated** — changing the deploy path or redeploying Rules is a protected Tier-2 action.
+
+### Criterion 6 (ADR-005 §2.7) — UNKNOWN → PARTIAL
+
+The **live** ruleset contains:
+
+```
+match /auditEvents/{eventId} {
+  allow read, write: if false;
+}
+```
+
+The audit collection is **client-closed in production** — confirmed against deployed Rules, not repository intent. Immutability is therefore Rules-verified. It remains **PARTIAL** rather than MET because append-only enforcement lives in the trusted writer (`access/auditEventWriter.ts`), and that behaviour has not been production-verified; Rules alone prove only that no client can read or write the collection.

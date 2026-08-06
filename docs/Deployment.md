@@ -118,4 +118,4 @@ U-1 through U-5 were resolved by a read-only observation run; evidence and hashe
 
 | # | Unknown | Read-only evidence that would resolve it |
 |---|---|---|
-| U-6 | Live Firestore Rules text (ADR-005 §2.7 criterion 6). | **BLOCKED on tooling**, not authorization: `firestore:rules:get` is absent from CLI 15.22.4 and `gcloud firebaserules` is not a valid command group. Firebase Console → Firestore → Rules. |
+| U-6 | ~~Live Firestore Rules text~~ | **RESOLVED 2026-08-06** via the Firebase Rules REST API (read-only, `x-goog-user-project` header). Live release `cloud.firestore` → ruleset `6316db98…`, 2026-08-04T21:32Z. **Code-only content is byte-identical to the repository**; 20 comment lines differ due to UTF-8 double-encoding introduced at deploy time (`Â§` vs `§`). A full-file live-vs-repo hash comparison therefore always mismatches — rules-deploy verification should compare comment-stripped content. |

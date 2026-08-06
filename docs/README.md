@@ -83,6 +83,9 @@ Working conventions for contributing to this repo (human or AI).
 - [governance/ENTERPRISE_CERTIFICATION_FRAMEWORK.md](governance/ENTERPRISE_CERTIFICATION_FRAMEWORK.md) — **NOT ACTIVATED.** Baseline v1.0 names three core artifacts (Certification Matrix, Recommendation Register, Certification History); none exist. See [`reviews/eao-program-0-truth-pass.md`](reviews/eao-program-0-truth-pass.md) for the disposition recommendation.
 - [governance/templates/operational-handoff.md](governance/templates/operational-handoff.md) — handoff template.
 - [audits/](audits/) — **EVIDENCE.** Immutable run artifacts. Never edited after generation.
+- [deployment/c3-firestore-data-protection-decision-package.md](deployment/c3-firestore-data-protection-decision-package.md) — **AWAITING OWNER AUTHORIZATION.** C3 production decision package: current posture (no PITR, no backups, no delete protection, 1-hour recoverable history), target posture, exact protected commands, verification plan, rollback.
+- [assessments/r1-permission-coverage-design.md](assessments/r1-permission-coverage-design.md) — R-1 permission design for the 15 uncovered collections (5 new permissions, not 15).
+- [operations/authorization-cutover-rollback.md](operations/authorization-cutover-rollback.md) — ADR-005 §2.7 criterion 11 rollback procedure.
 - [operations/](operations/) — runbooks and operator handoffs for governed, credentialed procedures. Currently open: [operations/eao-readonly-evidence-package.md](operations/eao-readonly-evidence-package.md) (bundled read-only evidence run, resolves U-1…U-6) and [operations/local-checkout-and-worktree-reconciliation.md](operations/local-checkout-and-worktree-reconciliation.md) (preservation task — nothing deleted pending attribution).
 - [deployment/](deployment/) — per-program deployment authorization and verification packages.
 
