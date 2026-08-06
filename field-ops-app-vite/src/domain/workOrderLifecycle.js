@@ -6,23 +6,19 @@ import { JOB_STATUS, WORK_ORDER_STATE } from "./constants";
 // createWorkOrder/transitionWorkOrder Cloud Functions) -- not an
 // aggregate computed from Jobs.
 //
-// The four jobs-based exports below are kept byte-identical and FROZEN.
-// Their ACTUAL remaining consumers, verified 2026-08-05 (W0 truth pass):
-//   - computeWorkOrderState()  -> domain/timelineBuilder.js only (its
-//     call site has just a jobs array, no WO doc; out of scope for the
-//     v1.2 migration).
-//   - explainWorkOrderState()  -> domain/workOrderScoring.js's legacy
-//     computeWorkOrderSignal() only (which is ITSELF now orphaned -- see
-//     that file), NOT timelineBuilder.
-//   - isActiveWorkOrder(), isCompletedWorkOrder()  -> NO consumer at all
-//     (orphaned; safe to retire once timelineBuilder is migrated).
-// No new code may call these four -- if their last consumers migrate to
-// the real model, delete them outright rather than extending them.
+// After W4's one-model reconciliation, exactly ONE jobs-based export
+// remains here: computeWorkOrderState(), whose sole consumer is
+// domain/timelineBuilder.js (its call site has only a jobs array, no WO
+// doc; out of scope for the v1.2 migration). The other jobs-based exports
+// (isActiveWorkOrder, isCompletedWorkOrder, explainWorkOrderState) were
+// verified zero-consumer and RETIRED in W4. No new code may call
+// computeWorkOrderState() -- if timelineBuilder is ever migrated to the
+// real model, delete it outright rather than extending it.
 //
-// New consumers (modules/controlTower/WorkOrderDetail.jsx,
-// ControlTower.jsx) use mapWoStatusToLifecycleState()/explainWorkOrder()
-// below instead -- both are pure MAPS from a real fieldops_wos doc's
-// `status` field, never inference from a jobs array.
+// New consumers (modules/controlTower/WorkOrderDetail.jsx, ControlTower.jsx)
+// use mapWoStatusToLifecycleState()/explainWorkOrder() below instead --
+// both are pure MAPS from a real fieldops_wos doc's `status` field, never
+// inference from a jobs array.
 
 // Computes a Work Order's aggregate state from its child Jobs.
 //
@@ -31,9 +27,7 @@ import { JOB_STATUS, WORK_ORDER_STATE } from "./constants";
 //   - READY: no job is in progress, but at least one is ASSIGNED
 //     (a technician is lined up -- work is about to start)
 //   - BLOCKED: none of the above -- nothing is assigned or moving
-//     (this also covers an empty job list; see workOrderValidation.js
-//     for flagging that as an operational anomaly rather than a normal
-//     lifecycle state)
+//     (this also covers an empty job list)
 export function computeWorkOrderState(jobs) {
   if (jobs.length === 0) return WORK_ORDER_STATE.BLOCKED;
 
@@ -47,72 +41,6 @@ export function computeWorkOrderState(jobs) {
   if (anyAssigned) return WORK_ORDER_STATE.READY;
 
   return WORK_ORDER_STATE.BLOCKED;
-}
-
-// A Work Order is "active" if it has work remaining and isn't blocked --
-// i.e. something is either ready to start or already moving.
-export function isActiveWorkOrder(jobs) {
-  const state = computeWorkOrderState(jobs);
-  return state === WORK_ORDER_STATE.READY || state === WORK_ORDER_STATE.IN_PROGRESS;
-}
-
-// A Work Order is "completed" only when every one of its jobs is
-// JOB_STATUS.COMPLETE.
-export function isCompletedWorkOrder(jobs) {
-  return computeWorkOrderState(jobs) === WORK_ORDER_STATE.COMPLETED;
-}
-
-function countByStatus(jobs, status) {
-  return jobs.filter((j) => j.status === status).length;
-}
-
-// Sprint 3.4.2: explains *why* a Work Order is in the state
-// computeWorkOrderState() says it's in, so Control Tower can show a
-// reason instead of just a badge. Same aggregation logic as
-// computeWorkOrderState() -- this doesn't recompute state independently,
-// it narrates the same decision.
-//
-// Returns:
-//   {
-//     state,             // one of WORK_ORDER_STATE
-//     reasons: string[],  // human-readable explanation(s)
-//     metrics: { totalJobs, openJobs, assignedJobs, inProgressJobs, completedJobs },
-//   }
-export function explainWorkOrderState(jobs) {
-  const metrics = {
-    totalJobs: jobs.length,
-    openJobs: countByStatus(jobs, JOB_STATUS.OPEN),
-    assignedJobs: countByStatus(jobs, JOB_STATUS.ASSIGNED),
-    inProgressJobs: countByStatus(jobs, JOB_STATUS.IN_PROGRESS),
-    completedJobs: countByStatus(jobs, JOB_STATUS.COMPLETE),
-  };
-
-  const state = computeWorkOrderState(jobs);
-  const reasons = [];
-
-  switch (state) {
-    case WORK_ORDER_STATE.COMPLETED:
-      reasons.push(`All ${metrics.totalJobs} job(s) are complete`);
-      break;
-    case WORK_ORDER_STATE.IN_PROGRESS:
-      reasons.push(`${metrics.inProgressJobs} job(s) in progress`);
-      if (metrics.openJobs > 0) reasons.push(`${metrics.openJobs} job(s) still unassigned`);
-      break;
-    case WORK_ORDER_STATE.READY:
-      reasons.push(`${metrics.assignedJobs} job(s) assigned, waiting to start`);
-      if (metrics.openJobs > 0) reasons.push(`${metrics.openJobs} job(s) still unassigned`);
-      break;
-    case WORK_ORDER_STATE.BLOCKED:
-    default:
-      reasons.push(
-        metrics.totalJobs === 0
-          ? "No jobs are attached to this work order"
-          : "No job is assigned or in progress -- waiting for technician assignment"
-      );
-      break;
-  }
-
-  return { state, reasons, metrics };
 }
 
 // --- New, map-only exports for Work Order Engine v1.2 consumers ---
@@ -147,7 +75,7 @@ export function mapWoStatusToLifecycleState(woStatus) {
   };
 }
 
-// Real-doc analog of explainWorkOrderState(jobs) above -- same return
+// Real-doc analog of the retired explainWorkOrderState(jobs) -- same return
 // shape ({ state, reasons, metrics }), but derived purely from a
 // fieldops_wos doc's own fields, never a jobs array.
 export function explainWorkOrder(workOrderDoc) {

@@ -3,7 +3,7 @@ import { EVENT_TYPE, ENTITY_TYPE, EVENT_SEQUENCE_RANK } from "./eventTypes";
 // Sprint 3.5.5: read-only structural validation for a derived Operational
 // Timeline (domain/timelineBuilder.js's output). No Firestore access, no
 // writes, no mutation -- detection only, mirroring
-// domain/workOrderValidation.js's role for Work Orders. Intended to catch
+// the retired work-order structural validation's role for Work Orders. Intended to catch
 // bugs in the event model/timeline builder themselves (a well-formed
 // timeline should never actually trip these), not to police external
 // data.
