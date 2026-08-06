@@ -19,6 +19,7 @@ import AdministrationUnavailable from "./modules/administration/AdministrationUn
 import AdminUsers from "./modules/administration/AdminUsers";
 import AdminRolesPermissions from "./modules/administration/AdminRolesPermissions";
 import IntegrationsFaq from "./modules/administration/IntegrationsFaq";
+import PurchaseOrders from "./modules/purchasing/PurchaseOrders";
 import WorkOrdersList from "./modules/workOrders/WorkOrdersList";
 import WorkOrderWizard from "./modules/workOrders/WorkOrderWizard";
 import WorkOrderDetailPage from "./modules/workOrders/WorkOrderDetailPage";
@@ -292,6 +293,16 @@ function renderSubnavItem(domain, item, role, operationalContext) {
   // .jsx's own doc comment.
   if (domain.key === "administration" && (item.key === "permissionPreview" || item.key === "auditLogs")) {
     return <AdministrationUnavailable title={item.label} />;
+  }
+  // Purchasing > Purchase Orders (item C) -- the real cross-request Reorder
+  // Purchase Order workspace, replacing the prior PlaceholderPage for this
+  // existing index nav item. Read-only; self-fetches the already-client-direct
+  // reorder_requests + reorder_purchase_orders (admin/dispatcher). Surfaces
+  // ORDERED/ORDERED receipt candidates for the (separately-authorized)
+  // receiveInventoryStock action; performs no receipt/write itself. Siblings
+  // Suppliers/Quotes/Receipts/Demand Planning remain placeholders.
+  if (domain.key === "purchasing" && item.key === "purchaseOrders") {
+    return <PurchaseOrders />;
   }
   // Operations owns the canonical part-name read for its dashboard panels; accessVersion
   // is threaded so that read re-runs and its name map is invalidated on any access change

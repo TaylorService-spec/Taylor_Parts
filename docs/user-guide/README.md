@@ -54,6 +54,10 @@ Every guide is tagged so you're never misled about what actually works:
 - [Log an inventory action (receive, adjust, or correct)](inventory/log-an-inventory-action.md) — **live** — Record a Receive/Adjust/Correct audit note against a part; explicitly log-only and does not change stock.
 - [Parts scanner (Technician Workspace)](inventory/parts-scanner.md) — **demo-only** — Mobile scan-and-act preview (use/load/receive/count/PO); in-memory demo that saves nothing and resets on reload.
 
+## Purchasing
+
+- [View purchase orders](purchasing/view-purchase-orders.md) — **live** — Read-only Purchasing > Purchase Orders list of orders placed against reorder requests, filterable by Open/Received/Voided/All (admin/dispatcher).
+
 ## Accounts & customers
 
 - [Browse and search customers](accounts-customers/browse-and-search-customers.md) — **live** — View the customer list, search by name, and open a record.
