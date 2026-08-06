@@ -1,5 +1,24 @@
 # Workstream Session State
 
+> **CLASS: HISTORICAL SNAPSHOT — superseded for active coordination (2026-08-06, Program 0 truth pass).**
+>
+> The single authoritative registry of **who is actively writing where** is now
+> [`../engineering/ACTIVE_WORKSTREAMS.md`](../engineering/ACTIVE_WORKSTREAMS.md), per
+> [`../engineering/AI_ENGINEERING_OPERATING_MODEL.md`](../engineering/AI_ENGINEERING_OPERATING_MODEL.md) §8.
+> Two registries for one concern violated the single-owner-concern rule in
+> [`../PlatformOperatingModel.md`](../PlatformOperatingModel.md) §6.
+>
+> **Do not record new in-flight assignments here.** The files in this directory
+> (`CUSTOMER.md`, `INVENTORY.md`, `PLATFORM.md`, `COORDINATION.md`) are retained as an accurate
+> record of the multi-lane session period, last reconciled 2026-07-28/29. They remain useful for
+> lane history — in particular the AUTH-PR-4 suspended-progression state and its protected rollback
+> artifacts, which are **still live constraints** and must not be altered. Read them for that
+> history; do not treat any status line as current, and do not rewrite them to look current.
+>
+> The concern each still owns: **historical lane narrative.** The concerns they no longer own:
+> active assignment declaration, base-commit declaration, and shared-path coordination — all now
+> owned by the registry above.
+
 This directory extends the delta-only Session Handoff Protocol in
 [`AGENTS.md`](../../AGENTS.md); it does not replace it.
 

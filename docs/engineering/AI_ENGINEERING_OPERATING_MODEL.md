@@ -72,6 +72,20 @@ Rules:
 
 Likely high-collision shared surfaces (coordinate via the registry / Integration Agent; the code-level ownership authority is [`architecture/SYSTEM_AUTHORITIES.md`](../architecture/SYSTEM_AUTHORITIES.md), not this list): `field-ops-app-vite/src/App.jsx`, `field-ops-app-vite/src/index.css`, `package.json`/lockfiles, `firestore.rules`, `firebase.json`, `functions/src/index.ts`, `docs/DECISIONS.md`, `docs/architecture/SYSTEM_AUTHORITIES.md`, and root governance files.
 
+## 8a. Baseline and worktree discipline
+
+§8 requires a **base commit** to be *declared*. This section requires it to be *verified*, and states what to do when the guard fails. (Complements [`../ai/claude-code.md`](../ai/claude-code.md)'s "fresh branch off updated `main`"; that line stands, this is the enforceable form.)
+
+**Default baseline rule.** Every new capability or architecture program begins from the **latest verified `origin/main`**, unless it is explicitly continuing an existing governed branch/worktree.
+
+**Pre-write guard.** Before writing, in order: `git fetch origin`; resolve and record the exact `origin/main` SHA; confirm the working tree is clean; confirm branch and base match the declared assignment in [`ACTIVE_WORKSTREAMS.md`](ACTIVE_WORKSTREAMS.md). **If any check fails, abort and create a fresh isolated worktree from the verified SHA** — do not repair an ambiguous checkout in place. Re-branching under this rule is routine Tier-1 work; do not ask the Owner whether to do it.
+
+**Dirty trees are never disposable.** A dirty or stale checkout may hold another session's unmerged work. Before any cleanup: inventory untracked and modified paths; determine whether another session or worktree owns them; preserve anything uncertain. **Never** run a destructive `reset --hard`, `clean -fd`, or force-checkout against an unattributed tree. The correct response to an ambiguous checkout is to leave it untouched and work elsewhere; reconciling it is a separate, explicitly-scoped task.
+
+**Read-only assessment worktrees** are permitted and encouraged for discovery, evidence comparison, and historical baseline review: pin one to an explicit SHA, never commit from it, record the pinned baseline where it is cited, and re-pin or remove it when its baseline goes stale. Creating and removing them is routine Tier-1 work needing no approval.
+
+**Staleness is a first-class risk.** `origin/main` can advance mid-program. Re-verify the baseline before merging, and state the SHA any assessment was performed against — an assessment without a baseline SHA is not evidence.
+
 ## 9. Cost and token efficiency
 
 The goal is **one authoritative strategic reasoning stream**, with implementation agents consuming only the context their bounded capability needs — not one literal token consumer. Practices:
