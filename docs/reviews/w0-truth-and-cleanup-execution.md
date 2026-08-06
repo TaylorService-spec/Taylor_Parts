@@ -15,8 +15,11 @@ blueprint: docs/specifications/rough-complete-build-blueprint.md
 W0 is the first Blueprint section. Its job is **repository truth**: make the
 codebase's comments/labels tell the truth, mark placeholder/demo surfaces
 honestly, and relabel the legacy Jobs surfaces so they cannot masquerade as the
-canonical Work Order experience — all **strictly behavior-preserving** (W0 ≠ W4;
-no data migration, no module retirement, no routing/write-path change).
+canonical Work Order experience — all **operationally behavior-preserving** (W0 ≠ W4;
+no data migration, no module retirement, no routing/write-path change). "Operationally
+behavior-preserving" is precise: two changes ARE observable — the Jobs.jsx heading
+text and the demoControls console key (`ENV`→`search`) — but both are intended
+presentation/developer-interface changes, not operational logic.
 
 ## Headline finding: the design review is not authoritative
 
@@ -85,7 +88,7 @@ demo surface is `PartsScanner.jsx` — deferred (parallel-owned).
 | 2 | Every placeholder/demo surface honestly labeled | **PASS** — verified already honest (except deferred PartsScanner) |
 | 3 | Legacy `Jobs.jsx`/`Dispatch.jsx` relabeled | **PASS** |
 | 4 | Stale WO-Engine-v1.2 comments/enum corrected | **PASS** (constants/workOrderLifecycle/workOrderScoring/workOrders) |
-| 5 | Zero behavior/routing/write-path change | **PASS** — diff is comments, labels, one JSX heading text, one dead-import removal, one console key rename; no logic/routing/write-path touched |
+| 5 | Zero operational logic, routing, persistence, lifecycle, or write-path change | **PASS** — changes are limited to comments, truthful labels/presentation text, one developer-console key correction, and one dead-import removal. (The Jobs.jsx heading and the demoControls `ENV`→`search` key ARE observable presentation/dev-interface changes — intended, and not operational behavior.) |
 
 Verification commands (worktree, deps installed): `npm run lint` (only pre-existing
 unrelated warnings), `npm run typecheck` (exit 0), `npm run build` (exit 0, 447ms).
