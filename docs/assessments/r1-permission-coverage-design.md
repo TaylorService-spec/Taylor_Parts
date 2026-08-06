@@ -54,9 +54,11 @@ For each collection: the Rules operations actually allowed; client and server ca
 | `inventory_transactions` | — | — | *covered* | `inventory.transaction.read` exists. |
 | `suppliers` | create, read | 3 / 2 | **NEW** | `procurement.supplier.read`. Distinct commercial-relationship authority; supplier terms are deliberately separated from Part (ADR-008). Not the same as reorder authority. |
 | `supplier_catalog` | create, read | 2 / 2 | **EXTEND** | Supplier catalog is supplier data. Fold into `procurement.supplier.read`. |
-| `purchase_orders` | create, read | 2 / 2 | **DEFER** | **Ambiguity flag.** This is distinct from `reorder_purchase_orders` (which *is* covered). Two purchase-order collections exist and only one is the governed reorder execution record. Which is authoritative for Purchasing is an **architecture question, not a permission question** — resolve it before granting either a permission. |
+| `purchase_orders` | create, read | 2 / 2 | **NO PERMISSION — DORMANT** | **RESOLVED by Owner architecture decision, 2026-08-06 (Decision B).** `reorder_purchase_orders` is the **canonical current operational Purchase Order model**; `purchase_orders` is the **dormant Epic-5 procurement model**, classified **DORMANT / NON-AUTHORITATIVE / DO-NOT-EXPAND**. Its legacy Rules sites are therefore **not** a permission-design target — granting one would make a dormant model load-bearing and create a second PO authority. Its 1 legacy site is retired by *removing or closing* the surface at Row 24, not by governing it. |
 
-**Net for Row 24: 3 new permissions** (`inventory.catalog.read`, `inventory.location.read`, `procurement.supplier.read`) covering 7 collections, plus 2 deferrals. Naive coverage-chasing would have produced nine.
+**Net for Row 24: 3 new permissions** (`inventory.catalog.read`, `inventory.location.read`, `procurement.supplier.read`) covering 7 collections, plus 1 deferral (`transfer_orders`) and 1 dormant-no-permission (`purchase_orders`). Naive coverage-chasing would have produced nine.
+
+> **Purchase Order authority is settled (Owner Decision B, 2026-08-06).** There is **one** operational PO authority: `reorder_purchase_orders` — the live purchasing flow, governed alongside `reorder_requests`, feeding the governed Receiving workflow, and already the client-visible operational projection. It is **already permission-covered** (`reorder.purchaseOrder.read`/`.create`/`.void`). The dormant `purchase_orders` collection must not receive permissions, new UI, a revived write path, or any expansion, pending the Supplier Master / Procurement reconciliation. Supplier Master adoption targets the active flow: **Supplier → governed `supplierId` → `reorder_purchase_orders`**, with historical display/snapshot compatibility.
 
 ## 5. Row 25 — Service / Work Orders (9 sites, 3 collections)
 
@@ -80,9 +82,10 @@ For each collection: the Rules operations actually allowed; client and server ca
 |---|---|---|
 | **EXTEND** (no new permission) | 6 | `locations`, `contacts`, `stock_locations`, `mobile_locations`, `trucks`, `supplier_catalog` |
 | **NEW** (genuine authority) | 5 | `inventory.catalog.read`, `inventory.location.read`, `procurement.supplier.read`, `equipment.record.read`/`.update`, `administration.employee.read` |
-| **DEFER** (blocked on a prior decision) | 4 | `transfer_orders`, `purchase_orders`, `fieldops_jobs`, `fieldops_technicians` |
+| **DEFER** (blocked on a prior decision) | 3 | `transfer_orders`, `fieldops_jobs`, `fieldops_technicians` |
+| **DORMANT — no permission, ever, while dormant** | 1 | `purchase_orders` (Owner Decision B) |
 
-**Five new permissions, not fifteen.** Six collections need none, and four must not be designed yet.
+**Five new permissions, not fifteen.** Six collections need none, one is dormant and must never be governed while dormant, and three must not be designed yet.
 
 ## 8. Parity and rollback requirements
 
@@ -96,7 +99,7 @@ Any permission added under this analysis must, before its domain's cutover:
 ## 9. Cross-program dependencies discovered
 
 1. **Row 25 is blocked on W4** (domain-model convergence). New, and it changes R-1's critical path: Rows 23 and 24 can proceed independently; Row 25 cannot.
-2. **`purchase_orders` vs `reorder_purchase_orders`** — two purchase-order collections, one governed. An architecture question that must precede a permission decision.
+2. ~~`purchase_orders` vs `reorder_purchase_orders`~~ — **RESOLVED (Owner Decision B, 2026-08-06).** `reorder_purchase_orders` is canonical; `purchase_orders` is dormant/non-authoritative/do-not-expand. Whether any Epic-5 procurement concepts are absorbed, retained as design input, or formally retired is owned by the **Supplier Master architecture program**, not by R-1.
 3. **Employee identity convergence** gates a correct `fieldops_technicians` permission.
 4. **Account-scoped permissions need parent-child Scope** confirmed in `resolveEffectivePermission` before Row 23.
 

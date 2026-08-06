@@ -1,0 +1,5 @@
+executed_at_utc: 2026-08-06T21:49:58Z
+operator_identity: rudy.digiorgio@gmail.com
+gcloud_version: Google Cloud SDK 577.0.0
+command: gcloud firestore databases update --database="(default)" --delete-protection --project=taylor-parts
+exit_code: 0

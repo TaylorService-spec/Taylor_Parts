@@ -1,7 +1,7 @@
 ---
 artifact_type: deployment
 gate: C3 — Firestore data protection / recovery · PRODUCTION DECISION PACKAGE
-status: Awaiting Owner authorization — NO configuration change performed
+status: P1 AUTHORIZED AND EXECUTED 2026-08-06 (delete protection ENABLED). P2-P4 remain unauthorized pending cost evidence.
 date: 2026-08-06
 owner: Claude Code (Executive Architecture & Company Office)
 base_commit: 42cd3ee
@@ -76,7 +76,7 @@ The relevant comparison is not the absolute cost but the ratio: the current alte
 
 | # | Control | Setting | Rationale |
 |---|---|---|---|
-| **P1** | **Delete protection** | **ENABLED** | Zero cost, zero operational impact, prevents catastrophic single-command loss. **Do this first.** |
+| **P1** | **Delete protection** | ✅ **ENABLED — EXECUTED 2026-08-06** | Zero cost, zero operational impact, prevents catastrophic single-command loss. Evidence: [`../audits/c3-p1-delete-protection-20260806/`](../audits/c3-p1-delete-protection-20260806/). |
 | **P2** | **PITR** | **ENABLED** (7-day window) | Moves RPO from 1 hour to 7 days at minute granularity. The single largest risk reduction available. |
 | **P3** | **Daily backup schedule** | **ENABLED**, retention **4 weeks** | Covers the beyond-7-days case PITR cannot. 4w balances cost against realistic discovery lag. |
 | **P4** | **Weekly backup schedule** | **ENABLED**, retention **14 weeks** | Long-horizon protection against slow-onset corruption. Cheap at this data scale. |
@@ -184,6 +184,10 @@ gcloud firestore backups schedules create --database="(default)" \
 
 ## 11. Status
 
-Design and evidence complete. **No configuration change executed. No IAM change requested. No production mutation performed.** Awaiting Owner authorization per §7 and §10.
+**P1 EXECUTED 2026-08-06** under Owner Decision A, scoped to delete protection only. `deleteProtectionState: DELETE_PROTECTION_DISABLED → DELETE_PROTECTION_ENABLED`; field-by-field comparison found **0 unintended changes**; PITR still disabled, backups still 0, schedules still 0. Evidence (7 files, hashed): [`../audits/c3-p1-delete-protection-20260806/`](../audits/c3-p1-delete-protection-20260806/).
+
+**P1 changes the blast radius, not the recovery posture.** RPO and RTO are unchanged — recoverable history is still one hour and there is still no restore source. The database is now protected from accidental deletion and remains **unrecoverable** from data loss.
+
+**P2–P4 remain unauthorized**, pending database-size/cost evidence (§3). Sizing note: `firestore.googleapis.com/storage/*` and `document/count` metrics returned HTTP 404 for this project via the Monitoring API, so **database size was not machine-retrievable**. Read it from the Firebase console → Firestore → Usage before authorizing, rather than estimating. No IAM change requested. No restore rehearsal performed.
 
 **Sources:** [PITR overview](https://firebase.google.com/docs/firestore/pitr) · [Backups & restore](https://docs.cloud.google.com/firestore/native/docs/backups) · [Firestore pricing](https://firebase.google.com/docs/firestore/pricing)
