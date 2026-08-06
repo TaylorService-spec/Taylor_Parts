@@ -517,8 +517,16 @@ export default function App() {
       <div className="fo-panel">
         <h2>No access</h2>
         <p className="fo-muted">
-          Your account isn't assigned a role yet. Contact an admin to get access.
+          You're signed in as <strong>{user.email}</strong>, but your account isn't
+          assigned a role with access yet.
         </p>
+        <p className="fo-muted">
+          Ask an administrator to grant your account a role — giving them the email above
+          helps them find it. Once access is granted, choose <strong>Check again</strong>.
+        </p>
+        <button type="button" className="fo-btn" onClick={() => window.location.reload()}>
+          Check again
+        </button>
       </div>
     );
   }
