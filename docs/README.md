@@ -59,6 +59,7 @@ Defines **how** the platform is implemented.
 - [ADR-008](architecture/ADR-008-part-master.md) — Part Master.
 - [ADR-009](architecture/ADR-009-business-operations-through-application.md) — business operations through the application.
 - [ADR-010](architecture/ADR-010-equipment-custody-and-available-inventory.md) — equipment custody and available inventory.
+- [ADR-011](architecture/ADR-011-environment-configuration-architecture.md) — environment configuration architecture (one registry for environment identity, readiness, and the project allow-list).
 
 ## Development
 

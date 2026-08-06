@@ -1,45 +1,72 @@
 {
   "$comment": [
-    "C3/D2 — the environment registry. Declares which environments exist, what each is FOR,",
-    "and where its deployed frontend can be read. Consumed by scripts/checkDeployedVersions.mjs",
-    "to answer 'what SHA should this environment be running, and does deployed == expected?'.",
+    "THE single source of truth for environment identity across Enterprise Operations OS.",
     "",
-    "READ-ONLY DECLARATION. Nothing here provisions, deploys, renames, or mutates any",
-    "infrastructure. Adding an entry does not create an environment; it records one that exists",
-    "or is planned, so drift against it can be observed.",
+    "Originally the C3/D2 drift registry (which environments exist, where their frontends are);",
+    "extended by O-3 to also carry each environment's Firebase identity and capability readiness,",
+    "so there is ONE authoritative mechanism rather than separate ad hoc ones for D2, R-2, Firebase",
+    "configuration, readiness flags, and operator scripts.",
     "",
-    "DELIBERATE MODELLING DECISION: 'production' is NOT synonymous with Taylor Parts.",
-    "An environment has a `role` (what it is for) and a `deployment` (whose instance it is).",
-    "Platform environments are operated by the platform for building the platform; customer",
-    "deployments are per-operating-company. Today exactly one customer deployment exists, but",
-    "the registry must not encode that as a permanent assumption — see docs/DeploymentModeStrategy.md",
-    "(tenancy is a design objective, NOT implemented) and docs/PlatformCapabilityModel.md §5a.",
+    "READ-ONLY DECLARATION. Nothing here provisions, deploys, renames, or mutates infrastructure.",
+    "Adding an entry does not create an environment; it records one that exists or is planned.",
     "",
-    "Company/brand identity is deliberately NOT expressed here. `operator` uses a neutral",
-    "architectural placeholder; brand foundation is a separate workstream and this file must not",
-    "duplicate or pre-empt it."
+    "MODELLING: `role` (what an environment is FOR) is independent of `deployment` (whose instance",
+    "it is). `production` is NOT synonymous with Taylor Parts — see docs/architecture/ADR-011.",
+    "",
+    "SECRETS: `firebase` holds PUBLIC Firebase Web client configuration only. A Firebase Web apiKey",
+    "is a public project identifier, not a credential — access is enforced by Firestore Rules and",
+    "Auth, not by hiding it. No service-account key, token, or private credential belongs in this",
+    "file, and a test asserts that."
   ],
-  "schema": 1,
+  "schema": 2,
   "operator": "platform-operator",
   "expectedRefDefault": "origin/main",
+  "defaultEnvironmentId": "taylor-parts-production",
   "environments": [
+    {
+      "id": "local-emulator",
+      "role": "sandbox",
+      "deployment": "platform",
+      "status": "not-provisioned",
+      "purpose": "Local developer/agent execution against the Firebase Emulator Suite. Synthetic data only; never production credentials.",
+      "firebase": null,
+      "readiness": {
+        "RECEIVING_TRANSPORT_READY": false,
+        "TRUCK_MANAGEMENT_WRITE_READY": true,
+        "TRUSTED_COMPLETION_ENABLED": true
+      },
+      "surfaces": [],
+      "notes": "Firebase identity is null by design: the emulator path is opt-in via ?emulator=1 and DEV-gated, and must never carry a real project identity."
+    },
     {
       "id": "platform-sandbox",
       "role": "sandbox",
       "deployment": "platform",
       "status": "not-provisioned",
-      "purpose": "Isolated platform development against the Firebase Emulator Suite. Synthetic data only, no production credentials.",
+      "purpose": "Persistent non-production platform environment: synthetic data, governed test personas, full integrated application.",
+      "firebase": null,
+      "readiness": {
+        "RECEIVING_TRANSPORT_READY": false,
+        "TRUCK_MANAGEMENT_WRITE_READY": true,
+        "TRUSTED_COMPLETION_ENABLED": true
+      },
       "surfaces": [],
-      "notes": "Exists informally as local emulator use (docs/DevelopmentSetup.md). Not a deployed, addressable environment — no stable URL to observe."
+      "notes": "NOT PROVISIONED. Firebase identity stays null until an Owner authorizes project creation (O-1/O-2). Selecting this environment for a build fails closed while identity is null."
     },
     {
       "id": "platform-integration",
       "role": "integration",
       "deployment": "platform",
       "status": "not-provisioned",
-      "purpose": "Integrated, non-production environment where a complete build can be exercised and reviewed before it becomes a release candidate.",
+      "purpose": "Exact integrated Release Candidate on a stable Owner-review URL with a known SHA.",
+      "firebase": null,
+      "readiness": {
+        "RECEIVING_TRANSPORT_READY": false,
+        "TRUCK_MANAGEMENT_WRITE_READY": true,
+        "TRUSTED_COMPLETION_ENABLED": true
+      },
       "surfaces": [],
-      "notes": "DOES NOT EXIST. Its absence is why production is currently the only place the integrated frontend can be exercised, contrary to the promotion lifecycle (AI_ENGINEERING_OPERATING_MODEL.md §7). Tracked as the Sandbox/Integration Environment program; Supplier Master is already waiting on it for Owner experience review."
+      "notes": "NOT PROVISIONED. Initially expected to share infrastructure with platform-sandbox as a distinct logical role; the forcing condition for a physical split is concurrency (an RC under review while sandbox rebuilds)."
     },
     {
       "id": "taylor-parts-production",
@@ -47,6 +74,21 @@
       "deployment": "taylor-parts",
       "status": "live",
       "purpose": "First customer production deployment of Enterprise Operations OS.",
+      "firebase": {
+        "apiKey": "AIzaSyATXIiI5C1mLmsvS0k-x3i7ZxAbAPtRpSY",
+        "authDomain": "taylor-parts.firebaseapp.com",
+        "projectId": "taylor-parts",
+        "storageBucket": "taylor-parts.firebasestorage.app",
+        "messagingSenderId": "664399427363",
+        "appId": "1:664399427363:web:de29dd9ae77bf548907e96",
+        "measurementId": "G-58GLNRJ5C8",
+        "functionsRegion": "us-central1"
+      },
+      "readiness": {
+        "RECEIVING_TRANSPORT_READY": false,
+        "TRUCK_MANAGEMENT_WRITE_READY": true,
+        "TRUSTED_COMPLETION_ENABLED": true
+      },
       "surfaces": [
         {
           "id": "hosting",
@@ -54,7 +96,7 @@
           "url": "https://taylor-parts.web.app",
           "versionPath": "/version.json",
           "governed": true,
-          "notes": "Owner-authorized, evidenced releases. SPA catch-all rewrite returns 200 + text/html for ANY unmatched path, so manifest ABSENCE cannot be detected by status code — the checker validates content, never status alone."
+          "notes": "Owner-authorized, evidenced releases. SPA catch-all rewrite returns 200 + text/html for any unmatched path, so manifest ABSENCE cannot be detected by status code — the checker validates content, never status alone."
         },
         {
           "id": "pages",
@@ -62,7 +104,7 @@
           "url": "https://taylorservice-spec.github.io/Taylor_Parts/field-ops",
           "versionPath": "/version.json",
           "governed": false,
-          "notes": "Auto-publishes on merge to main, outside the promotion lifecycle. Recorded as an open governance gap (R-2); this registry observes it, and does not change it."
+          "notes": "Auto-publishes on merge to main, outside the promotion lifecycle. Recorded as an open governance gap (R-2); this registry observes it and does not change it."
         }
       ]
     }

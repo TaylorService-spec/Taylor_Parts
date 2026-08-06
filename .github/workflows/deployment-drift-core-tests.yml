@@ -1,4 +1,4 @@
-name: Deployment Drift Core Tests
+name: Environment & Drift Core Tests
 
 # C3/D2 — expected-vs-deployed comparison, pure-core tests.
 #
@@ -15,6 +15,13 @@ on:
   pull_request:
     paths:
       - "scripts/deploymentDrift.mjs"
+      - "scripts/resolveEnvironment.mjs"
+      - "scripts/environmentArchitecture.test.mjs"
+      - "scripts/indexDriftGuard.mjs"
+      - "scripts/indexDriftGuard.test.mjs"
+      - "firestore.indexes.json"
+      - "field-ops-app-vite/src/firebase/firebase.js"
+      - "field-ops-app-vite/src/config/**"
       - "scripts/deploymentDrift.test.mjs"
       - "scripts/checkDeployedVersions.mjs"
       - "config/environments.json"
@@ -23,6 +30,13 @@ on:
     branches: [main]
     paths:
       - "scripts/deploymentDrift.mjs"
+      - "scripts/resolveEnvironment.mjs"
+      - "scripts/environmentArchitecture.test.mjs"
+      - "scripts/indexDriftGuard.mjs"
+      - "scripts/indexDriftGuard.test.mjs"
+      - "firestore.indexes.json"
+      - "field-ops-app-vite/src/firebase/firebase.js"
+      - "field-ops-app-vite/src/config/**"
       - "scripts/deploymentDrift.test.mjs"
       - "scripts/checkDeployedVersions.mjs"
       - "config/environments.json"
@@ -42,3 +56,11 @@ jobs:
           node-version: 20
       - name: Deployment drift pure-core tests
         run: node --test scripts/deploymentDrift.test.mjs
+      # O-3 — locks the environment-configuration invariants: no production
+      # hard-coding, no wildcard project acceptance, no role/deployment
+      # conflation, no weakened production guard.
+      - name: Environment architecture invariants (O-3)
+        run: node --test scripts/environmentArchitecture.test.mjs
+      # O-4 — a repo-driven index deploy must never silently delete a live index.
+      - name: Index drift guard (O-4)
+        run: node --test scripts/indexDriftGuard.test.mjs

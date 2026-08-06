@@ -3,28 +3,42 @@ import { getFirestore, connectFirestoreEmulator } from "firebase/firestore";
 import { getAuth, connectAuthEmulator } from "firebase/auth";
 import { getFunctions, connectFunctionsEmulator } from "firebase/functions";
 
-const firebaseConfig = {
-  // apiKey is split into two concatenated string literals intentionally, to
-  // avoid naive secret-scanner false positives. A Firebase Web apiKey is a
-  // PUBLIC client identifier (not a secret): it identifies the project to
-  // Google's APIs and is safe to ship in client code -- access is enforced by
-  // Firestore Rules + Auth, not by hiding this value. (Verified 2026-08-05, W0.)
-  apiKey: "AIzaSyATXIiI5C1m" + "LmsvS0k-x3i7ZxAbAPtRpSY",
-  authDomain: "taylor-parts.firebaseapp.com",
-  projectId: "taylor-parts",
-  storageBucket: "taylor-parts.firebasestorage.app",
-  messagingSenderId: "664399427363",
-  appId: "1:664399427363:web:de29dd9ae77bf548907e96",
-  measurementId: "G-58GLNRJ5C8",
-};
+// O-3 — Firebase identity is INJECTED from the one environment registry
+// (config/environments.json) at build time via vite.config.js, not hard-coded
+// here. Selecting a build target is `VITE_ENVIRONMENT_ID`; unset resolves to the
+// registry's defaultEnvironmentId, which reproduces the previous production
+// build exactly.
+//
+// Why this changed: the previous literal `projectId: "taylor-parts"` meant the
+// application could not point anywhere except the customer's production project,
+// which made a sandbox or preview environment impossible (finding S-1).
+//
+// PUBLIC, NOT SECRET: a Firebase Web apiKey is a project identifier, not a
+// credential — access is enforced by Firestore Rules + Auth, not by hiding it.
+// Real credentials never appear in client config or in the registry.
+//
+// FAILS CLOSED: the build throws on an unknown or unprovisioned environment, so
+// this constant is always a complete, deliberate identity.
+const firebaseConfig = __APP_FIREBASE_CONFIG__;
 
-const app = initializeApp(firebaseConfig);
+/** Which environment this bundle was built for: { id, role, deployment }. */
+export const APP_ENVIRONMENT = __APP_ENVIRONMENT__;
+
+const app = initializeApp({
+  apiKey: firebaseConfig.apiKey,
+  authDomain: firebaseConfig.authDomain,
+  projectId: firebaseConfig.projectId,
+  storageBucket: firebaseConfig.storageBucket,
+  messagingSenderId: firebaseConfig.messagingSenderId,
+  appId: firebaseConfig.appId,
+  ...(firebaseConfig.measurementId ? { measurementId: firebaseConfig.measurementId } : {}),
+});
 export const db = getFirestore(app);
 export const auth = getAuth(app);
-// Work Order Engine v1.2 (Epic 1): region must match functions/src's
-// deploy region (see functions/src/createWorkOrder.ts/
-// transitionWorkOrder.ts's onCall({ region: "us-central1" })).
-export const functions = getFunctions(app, "us-central1");
+// Work Order Engine v1.2 (Epic 1): region must match functions/src's deploy
+// region (onCall({ region: ... })). Now environment-resolved rather than a
+// literal, so a future environment can deploy Functions elsewhere.
+export const functions = getFunctions(app, firebaseConfig.functionsRegion);
 
 // Local dev/agent-driven smoke testing only -- opt-in via ?emulator=1,
 // same URL-param mode-switching pattern as config/env.js's ?env=demo.

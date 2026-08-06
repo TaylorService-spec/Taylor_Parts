@@ -75,13 +75,24 @@ check("D1: buildTime is a valid ISO-8601 instant", () => {
 });
 
 check("D1: manifest is schema-versioned so consumers can evolve safely", () => {
-  assert.equal(pages.schema, 1);
+  // schema 2 = O-3 added environment identity, so a consumer can verify BOTH
+  // which revision AND which environment a surface was built for.
+  assert.equal(pages.schema, 2);
+});
+
+check("D1/O-3: manifest records the environment the build targeted", () => {
+  assert.equal(typeof pages.environmentId, "string");
+  assert.ok(pages.environmentId.length > 0);
+  assert.equal(typeof pages.environmentRole, "string");
+  // An un-parameterised build must reproduce the current production target.
+  assert.equal(pages.environmentId, "taylor-parts-production");
+  assert.equal(pages.environmentRole, "production");
 });
 
 check("D1: manifest carries build provenance ONLY — no secrets or config", () => {
   assert.deepEqual(
     Object.keys(pages).sort(),
-    ["base", "buildTime", "commit", "schema"],
+    ["base", "buildTime", "commit", "environmentId", "environmentRole", "schema"],
     "unexpected keys in version.json — it must never carry configuration or credentials",
   );
   const serialized = JSON.stringify(pages).toLowerCase();

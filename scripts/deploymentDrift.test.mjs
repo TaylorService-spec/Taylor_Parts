@@ -180,7 +180,10 @@ test('D2: an environment with no surfaces at all is NOT_OBSERVABLE', () => {
 // --------------------------------------------------------------------- registry
 
 test('D2 registry: is valid and schema-versioned', () => {
-  assert.equal(registry.schema, 1);
+  // schema 2 = O-3 extended the registry with per-environment Firebase identity
+  // and readiness, making it the single source of truth rather than adding a
+  // second mechanism alongside it.
+  assert.equal(registry.schema, 2);
   assert.ok(Array.isArray(registry.environments) && registry.environments.length > 0);
 });
 

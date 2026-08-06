@@ -8,4 +8,6 @@
 // (statically unreachable in production builds) so the auto-published
 // GitHub Pages build could never invoke an undeployed callable -- see
 // docs/implementation-plans/technician-self-write.md, PR-B posture.
-export const TRUSTED_COMPLETION_ENABLED = true;
+// O-3 — resolved from the one environment registry; see receivingReadiness.js
+// for the classification rationale. Fails closed on an absent flag.
+export const TRUSTED_COMPLETION_ENABLED = __APP_READINESS__.TRUSTED_COMPLETION_ENABLED;
