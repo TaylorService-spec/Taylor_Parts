@@ -1,0 +1,19 @@
+1a2,3
+> backupConfig:
+>   backupSchedulesEnabled: true
+6,7c8,9
+< earliestVersionTime: '2026-08-06T21:14:09.251459Z'
+< etag: IMuD/aeDjZYDMPvP1Pb9jJYD
+---
+> earliestVersionTime: '2026-08-06T21:15:00Z'
+> etag: ILil/M6DjZYDMOWZnb+DjZYD
+11c13
+< pointInTimeRecoveryEnablement: POINT_IN_TIME_RECOVERY_DISABLED
+---
+> pointInTimeRecoveryEnablement: POINT_IN_TIME_RECOVERY_ENABLED
+15,16c17,18
+< updateTime: '2026-08-06T21:50:03.637128Z'
+< versionRetentionPeriod: 3600s
+---
+> updateTime: '2026-08-06T22:14:58.000690Z'
+> versionRetentionPeriod: 604800s

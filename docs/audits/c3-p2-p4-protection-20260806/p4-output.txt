@@ -1,0 +1,6 @@
+createTime: '2026-08-06T22:15:11.570121Z'
+name: projects/taylor-parts/databases/(default)/backupSchedules/b3963171-0577-4129-b823-83fad1ec7e44
+retention: 8467200s
+updateTime: '2026-08-06T22:15:11.570121Z'
+weeklyRecurrence:
+  day: SUNDAY
