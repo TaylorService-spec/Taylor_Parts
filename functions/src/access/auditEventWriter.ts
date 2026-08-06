@@ -101,6 +101,11 @@ const AUDIT_ACTIONS: readonly AuditAction[] = [
   "updatePartSupplierItem",
   "changePartSupplierItemStatus",
   "setPreferredSupplier",
+  // Supplier Master (DECISIONS #78) -- governed Supplier reference object
+  "createSupplier",
+  "updateSupplier",
+  "activateSupplier",
+  "deactivateSupplier",
   // Legacy Compatibility-Admin Bootstrap -- one-time audited migration of a
   // legacy users.role=admin principal into the governed roleAssignment model.
   "bootstrapCompatibilityAdmin",
