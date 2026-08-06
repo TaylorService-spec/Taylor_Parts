@@ -1,20 +1,30 @@
-// DEMO-BACKED, NOT the real inventory write path. All five ACTIONS below mutate
-// the in-memory demo/InventoryContext.jsx (no Firestore, resets on reload) -- they
-// do NOT write to the governed inventory_transactions ledger. It DOES read live
-// jobs (useFirestoreCollection(JOBS_COLLECTION)) for the job picker, so do not
-// mistake it for a connected write surface. This component is intentionally NOT
-// routed live yet (see App.jsx): its real receiving path is the W3
-// receiveInventoryStock callable, wired at W3 activation (Blaze/#15). Until then,
-// if it is ever shown it MUST carry an in-UI "demo -- not saved" banner (R5).
+// PartsScanner -- a non-mutating scan / identification / lookup TOOL inside FieldMode
+// (the Technician Workspace). Owner architecture decision (Section A, 2026-08-06):
+// this tool does NOT own the receiving transaction and does NOT redefine receipt
+// eligibility. Its remaining part-movement ACTIONS write only the in-memory
+// demo/InventoryContext.jsx (no Firestore, resets on reload) and carry a persistent
+// "Demo -- not saved" banner (R5); it reads live jobs (useFirestoreCollection) for
+// the job picker only.
+//
+// The ad-hoc "scan a part and add to warehouse" RECEIVE action has been REMOVED: the
+// governed receiving transaction is receiveInventoryStock (now deployed, capability
+// inventory.stock.receive = {admin, dispatcher, owner} -- NOT the technician persona
+// this workspace serves), and it receives a specific ORDERED reorder purchase order,
+// not an arbitrary scanned part. That workflow belongs to an authorized
+// Inventory -> Receiving surface driven by an ORDERED/ORDERED purchase-order
+// candidate (see the Purchasing > Purchase Orders surface). This scanner may later
+// FEED that workflow (scanning the PO line, part, or destination) but never invokes
+// receiveInventoryStock itself. No live receive is wired here.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
 import { JOBS_COLLECTION, JOB_STATUS } from "../../domain/constants";
 import { useInventory } from "../../demo/InventoryContext";
 
+// The ad-hoc "receive" action is intentionally absent -- receiving stock is a
+// governed transaction (receiveInventoryStock) that this technician tool never owns.
 const ACTIONS = [
   { id: "work-order", label: "Use on work order", hint: "Remove from truck stock" },
   { id: "transfer", label: "Load my truck", hint: "Move from warehouse" },
-  { id: "receive", label: "Receive inventory", hint: "Add to warehouse" },
   { id: "count", label: "Cycle count", hint: "Set quantity on hand" },
   { id: "purchase-order", label: "Add to purchase order", hint: "Add to draft order" },
 ];
@@ -32,7 +42,6 @@ export default function PartsScanner() {
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const scanFrameRef = useRef(null);
-  const decoderControlsRef = useRef(null);
 
   const activeJobs = useMemo(() => jobs.filter((job) =>
     job.status === JOB_STATUS.ASSIGNED || job.status === JOB_STATUS.IN_PROGRESS
@@ -44,7 +53,6 @@ export default function PartsScanner() {
 
   useEffect(() => () => {
     cancelAnimationFrame(scanFrameRef.current);
-    decoderControlsRef.current?.stop();
     streamRef.current?.getTracks().forEach((track) => track.stop());
   }, []);
 
@@ -122,32 +130,20 @@ export default function PartsScanner() {
           if (formats.includes("qr_code")) {
             detectQrCodes(new window.BarcodeDetector({ formats: ["qr_code"] }));
           } else {
-            await startEmbeddedQrDecoder();
+            setNotice("Live QR decoding isn't supported on this device. Enter the SKU or barcode below.");
           }
-        } else await startEmbeddedQrDecoder();
+        } else {
+          setNotice("Live QR decoding isn't supported on this device. Enter the SKU or barcode below.");
+        }
       }, 0);
     } catch {
       setNotice("Camera access was not granted. You can still enter a barcode or SKU.");
     }
   }
 
-  async function startEmbeddedQrDecoder() {
-    try {
-      const { BrowserQRCodeReader } = await import("@zxing/browser");
-      const reader = new BrowserQRCodeReader(undefined, { delayBetweenScanAttempts: 150 });
-      decoderControlsRef.current = await reader.decodeFromVideoElement(videoRef.current, (result) => {
-        if (result?.getText()) acceptScan(result.getText());
-      });
-    } catch {
-      setNotice("The camera opened, but QR decoding could not start. Enter the printed SKU below the code.");
-    }
-  }
-
   function closeCamera() {
     cancelAnimationFrame(scanFrameRef.current);
     scanFrameRef.current = null;
-    decoderControlsRef.current?.stop();
-    decoderControlsRef.current = null;
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
     setCameraOpen(false);
@@ -163,8 +159,7 @@ export default function PartsScanner() {
     } else if (action === "transfer") {
       if ((inventory.warehouseStock[part.id] ?? 0) < qty) return setNotice("Not enough stock in the warehouse.");
       inventory.transferPart(part.id, qty);
-    } else if (action === "receive") inventory.receivePart(part.id, qty);
-    else if (action === "count") inventory.setCount(part.id, qty, "truck");
+    } else if (action === "count") inventory.setCount(part.id, qty, "truck");
     else inventory.addToPurchaseOrder(part.id, qty);
     setNotice(`${qty} × ${part.name} added successfully.`);
     setPart(null);
@@ -173,6 +168,10 @@ export default function PartsScanner() {
 
   return (
     <div className="scan-workspace">
+      <p className="scan-demo-banner" role="note">
+        <strong>Demo — not saved.</strong> Scanning and lookup are real; the part-movement
+        actions below are an in-memory preview only and change no live inventory.
+      </p>
       <header className="scan-hero">
         <div><span className="scan-eyebrow">FIELD INVENTORY</span><h2>Scan. Move. Done.</h2><p>Capture every part where the work happens.</p></div>
         <div className="scan-location"><span>Current location</span><strong>Truck 14 · Taylor Service</strong></div>
