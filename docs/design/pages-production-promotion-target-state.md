@@ -99,3 +99,43 @@ Option C restores the *authorization* invariant but not the *environment* invari
 ## 8. Boundaries honored
 
 No workflow, Hosting, Pages, DNS, Firebase, or deployment change was made. No production command executed. This document is a design and a recommendation; it authorizes nothing.
+
+---
+
+# Evidence update — 2026-08-06 · U-1/U-2 resolved, and they invert an assumption
+
+Read-only evidence: [`../audits/eao-readonly-evidence-20260806/`](../audits/eao-readonly-evidence-20260806/).
+
+## What the evidence shows
+
+| Surface | Bundle | Last release | Tracks `main`? |
+|---|---|---|---|
+| GitHub Pages | `index-BsITcohF.js` | every merge, automatic | **yes** |
+| Firebase Hosting | `index-B7PB5BOc.js` | **2026-08-01 21:15:56** | **no — 5 days stale** |
+
+Both return HTTP 200. Only one Hosting site exists, with only the `live` channel (never expires). **There is no preview or staging channel.**
+
+## The inversion
+
+§1–§5 above treated Firebase Hosting as the current production surface and Pages as the ungoverned risk. **That framing was half right.** Pages *is* the ungoverned surface — but it is also the **current** one. Hosting, the governed surface, is five days and many merges behind.
+
+**Consequence for Option C: gating the Pages trigger today would freeze users on whichever surface they use, with the governed one stale.** The migration constraint recorded in §5 ("Hosting must be verified at parity *before* Pages is gated") was therefore not a formality — it is now proven to be the difference between a safe change and a regression. It holds, unchanged and now evidenced.
+
+**The recommendation itself is unchanged: C, then B.** What changes is the required order of operations inside C.
+
+## Revised C acceptance criteria
+
+C may proceed only when **all** are true:
+
+1. **C-1 · Hosting released to current `main`.** A Hosting release whose bundle fingerprint matches a build of the exact reviewed `main` SHA. Owner-authorized, human-operator-executed. **This must happen first.**
+2. **C-2 · Parity verified** — both surfaces serve the same bundle fingerprints, re-fetched after C-1.
+3. **C-3 · Surface disposition decided.** Both URLs are live and neither is proven unused. U-1 established *that* both are live; it did **not** establish *who uses which*. Options: keep Pages publishing manually from the same artifact; redirect Pages to Hosting; or retire Pages after a communicated window. **This remains an Owner decision** — repository evidence cannot answer who holds which bookmark.
+4. **C-4 · Trigger change authorized** — `push: branches: [main]` → `workflow_dispatch` (and/or release tag), on a normal governed PR naming the exact commit.
+
+## Revised risk if C is executed out of order
+
+Gating Pages before C-1 leaves the *only* current build unreachable by future merges while the governed surface stays stale — strictly worse than today's position, in which at least one surface is current. **Do not execute C-4 before C-1 and C-2.**
+
+## Standing observation
+
+That a governed, Owner-authorized surface drifted five days behind an ungoverned, automatic one is itself the argument for the target state. The ungoverned path is currently *more* current than the governed path — which is exactly how an ungoverned path becomes load-bearing by default.

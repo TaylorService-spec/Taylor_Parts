@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/Taylor_Parts/field-ops/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Field Ops" />
+    <title>Field Ops</title>
+    <script type="text/javascript">
+      // Single Page Apps for GitHub Pages -- https://github.com/rafgraph/spa-github-pages
+      // Sprint 2.0.1: restores the real deep-link path that public/404.html
+      // re-encoded into a query string, via history.replaceState, before
+      // React Router (in main.jsx/App.jsx) ever reads the URL.
+      (function (l) {
+        if (l.search[1] === "/") {
+          var decoded = l.search
+            .slice(1)
+            .split("&")
+            .map(function (s) {
+              return s.replace(/~and~/g, "&");
+            })
+            .join("?");
+          window.history.replaceState(null, null, l.pathname.slice(0, -1) + decoded + l.hash);
+        }
+      })(window.location);
+    </script>
+    <script type="module" crossorigin src="/Taylor_Parts/field-ops/assets/index-BsITcohF.js"></script>
+    <link rel="stylesheet" crossorigin href="/Taylor_Parts/field-ops/assets/index-CnbGLWW3.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>

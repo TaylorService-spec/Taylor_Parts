@@ -89,11 +89,33 @@ The human operator executes **every** production-credentialed command. An AI age
 | Cloud Function | Manual, per-function, Owner-authorized deploy from a pinned revision, with estate reconciliation. |
 | Firestore indexes | Manual deploy; no CI path. |
 
+## Resolved unknowns — read-only evidence, 2026-08-06
+
+U-1 through U-5 were resolved by a read-only observation run; evidence and hashes at
+[`audits/eao-readonly-evidence-20260806/`](audits/eao-readonly-evidence-20260806/).
+
+- **U-1/U-2 — BOTH frontends are live, serve DIFFERENT builds, and BOTH are stale.** GitHub Pages
+  serves `index-BsITcohF.js`, built from `6f25e13` (2026-08-06 07:40 UTC) — the last *successful*
+  Pages deploy. The workflow is *intended* to track `main` on every merge, but its recent runs show
+  **32 success / 4 failure / 4 cancelled**, with the four most recent `main` pushes all failing or
+  cancelled on `The job was not acquired by Runner of type hosted` (GitHub runner capacity, not a
+  code defect). **The production publish path is ungoverned *and* unreliable, and its failures are
+  silent** — a merge that fails to publish produces no release record and no alert. Firebase Hosting serves `index-B7PB5BOc.js`
+  and was **last released 2026-08-01 21:15:56** — five days and many merges stale. Only one
+  Hosting site and only the `live` channel exist; there is no preview/staging channel.
+  **Gating Pages before releasing Hosting would strand every user on a five-day-old build.**
+  Neither surface reliably equals `main`; they differ only in degree of staleness.
+- **U-3 — no backup or recovery posture exists.** `POINT_IN_TIME_RECOVERY_DISABLED`,
+  `DELETE_PROTECTION_DISABLED`, `versionRetentionPeriod: 3600s`, zero backups, zero backup
+  schedules. Recoverable history is **one hour**; a deletion or corruption older than that is
+  unrecoverable. RTO undefined — no restore path exists.
+- **U-4 — live composite indexes captured** as a baseline for future drift comparison.
+- **U-5 — 22 Functions live, exactly matching the repository record** (`DECISIONS.md` #63).
+  Eight truck-registry callables ARE deployed. **No Enterprise Access mutation callables are
+  deployed**, confirming Issue #226 Rows 19/20 remain unexecuted.
+
 ## Known unknowns
 
 | # | Unknown | Read-only evidence that would resolve it |
 |---|---|---|
-| U-1 | Which frontend surface real users use (Pages vs Hosting), and whether both are live concurrently. | Owner statement of the distributed URL + `firebase hosting:releases:list` + read-only fetch of both URLs. |
-| U-2 | Whether the currently-published Pages build matches the current `main` build fingerprint. | Read-only fetch of the Pages asset manifest vs a local `npm run build` at the same SHA. |
-| U-3 | Whether any Firestore backup/PITR configuration exists on `taylor-parts`. | `gcloud firestore databases describe` (read-only). No repository evidence of any backup posture exists. |
-| U-4 | Live index state vs `firestore.indexes.json`. | `firebase firestore:indexes --project taylor-parts` (read-only). |
+| U-6 | Live Firestore Rules text (ADR-005 §2.7 criterion 6). | **BLOCKED on tooling**, not authorization: `firestore:rules:get` is absent from CLI 15.22.4 and `gcloud firebaserules` is not a valid command group. Firebase Console → Firestore → Rules. |

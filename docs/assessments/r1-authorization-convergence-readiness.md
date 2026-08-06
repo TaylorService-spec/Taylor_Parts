@@ -108,3 +108,53 @@ This also means R-1 and **R-2** (Pages promotion remediation) are **not mutually
 ## 8. Boundaries honored
 
 No change to `firestore.rules`, Cloud Functions, identity, capability grants, role assignments, data, or any deployment. No production command executed. This assessment authorizes nothing; each Rules change in Rows 23–26 remains Tier 2, and Rows 19/20/22 remain Owner-gated production actions.
+
+---
+
+# R1-A execution update — 2026-08-06 (base `61150b7`)
+
+R1-A was authorized and executed repo-only. This section records what changed, **including two corrections to this assessment's own earlier claims.** Nothing above is rewritten; the original text stands as issued.
+
+## Correction 1 — the surface is 47 sites, not 66
+
+§2 reported **66** legacy-role sites in the deployed Rules. That figure came from a raw `grep -c`, which counted the three helper *definitions* and commentary references alongside real call sites. Re-measured by parsing `firestore.rules` and excluding comment lines and definitions:
+
+**47 enforced call sites across 22 collections.** `isAdminOrDispatcher` ×41, `isAdmin` ×2, `isTechnician` ×1 (by helper, across all collections; `accounts` and `fieldops_wos` carry the non-`isAdminOrDispatcher` sites).
+
+47 is now the enforced number — [`../../functions/src/access/legacyAuthorizationSurface.ts`](../../functions/src/access/legacyAuthorizationSurface.ts) records it and CI asserts it. The direction of the finding is unchanged: the legacy field is still the primary authorization authority for most collections.
+
+## Correction 2 — G-1 was wrong: the parity gate already exists
+
+§4 claimed "no CI workflow runs [the harness] as a gate." **That was incorrect.** `functions/test/shadowParityHarness.test.mjs` runs `runShadowParitySuite(PARITY_FIXTURES)` and asserts `fullParity === true` over 69 fixtures, gated in CI by `.github/workflows/access-catalog-unit-tests.yml`. Verified by reading both files.
+
+The real gap is narrower and different: **the corpus is persona-oriented, not decision-site-oriented.** Its 69 fixtures cover 25 permission IDs, but nothing mapped those fixtures to the legacy Rules decision sites each cutover row must retire — so no one could state a row's blast radius or its coverage. Criterion 7 was not unassertable because parity was ungated; it was unassertable because **coverage was unmeasurable**.
+
+## What R1-A delivered
+
+1. **Per-domain corpus** — `legacyAuthorizationSurface.ts` (dual-mirrored, pure data, no runtime import, no authority). Every one of the 47 sites is assigned to its Issue #226 cutover row: **Row 23** 7 sites / 3 collections · **Row 24** 25 / 13 · **Row 25** 8 / 4 · **unassigned** 1 (`employees`). Row 26 (Navigation/shared-UI) owns no Rules sites — it is a client-surface cutover.
+2. **Drift gate** — `functions/test/legacyAuthorizationSurface.test.mjs` + `.github/workflows/legacy-authorization-surface-gate.yml`. Re-parses the real Rules and fails if the surface changes without the corpus changing with it, **in either direction**. The legacy surface can no longer grow silently, and each cutover's burn-down is evidenced in the same commit that shrinks it. Also asserts the two Rules copies stay byte-identical. 7/7 tests pass; `tsc` clean.
+3. **Coverage gaps made explicit** — `collectionsWithoutPermissionCoverage()` enumerates the **14 of 22 collections with no governed permission defined yet**: `locations`, `contacts`, `parts`, `warehouses`, `stock_locations`, `transfer_orders`, `mobile_locations`, `trucks`, `suppliers`, `supplier_catalog`, `purchase_orders`, `fieldops_jobs`, `fieldops_technicians`, `equipment`, plus `employees` (unassigned). **This is the concrete precondition list for Rows 23–25**: a domain cannot move to the Permission engine while part of its surface has no permission to move to.
+
+## Criteria reassessment
+
+| # | Criterion | Was | Now |
+|---|---|---|---|
+| 1 | No direct role checks outside the compatibility boundary | NOT MET | **NOT MET — now measured and drift-gated** (47 sites; cannot grow silently) |
+| 6 | Immutable auditing production-verified | UNKNOWN | **STILL UNKNOWN — U-6 blocked on tooling** (see below) |
+| 7 | Compatibility and parity tests pass | PARTIAL | **PARTIAL — parity gate confirmed passing; coverage now measurable but 14 collections have no permission to be covered by** |
+| 9 | Issue #175 governed-field enforcement preserved | UNKNOWN | **PARTIAL** — `account.governedField.write` exists in the catalog and is exercised by two parity fixtures (admin allowed; dispatcher withheld). Issue #175 remains open, so full preservation cannot be asserted, but the enforcement path is present and gated. |
+
+Criteria 4, 5 and 10 remain **BLOCKED**, and are now confirmed blocked by production evidence rather than inference: the live estate contains **no Enterprise Access mutation callables** (`docs/audits/eao-readonly-evidence-20260806/`). Rows 19/20 are genuinely unexecuted.
+
+**Score: still 0 of 12 met.** R1-A did not move a criterion to MET — it made criterion 1 measurable and irreversible-in-the-wrong-direction, which is the prerequisite for Row 27 proving it with citations.
+
+## Row-19 decision package — what an authorization request can now assert
+
+1. The legacy surface is **47 sites / 22 collections**, enumerated per cutover row, machine-verified.
+2. The surface **cannot grow** without failing CI.
+3. Parity is **enforced and passing** over 69 fixtures / 25 permissions.
+4. **14 collections have no governed permission yet** — the explicit remaining design work before Rows 23–25.
+5. Rollback for a cutover is **defined** — [`../operations/authorization-cutover-rollback.md`](../operations/authorization-cutover-rollback.md).
+6. The blocking dependency is **confirmed in production**: no access mutation callables are deployed.
+
+Remaining before Row 19 is decidable on evidence alone: U-6 (criterion 6), and a permission design for the 14 uncovered collections.
