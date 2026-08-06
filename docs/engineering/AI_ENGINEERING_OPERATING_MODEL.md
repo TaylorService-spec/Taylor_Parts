@@ -16,6 +16,25 @@ Where this document conflicts with any of the above or with a governance documen
 
 The unit of delivery is a **completed business capability**, not an individual commit, PR, story, section, or documentation update. The Owner reviews the **designed endpoint and integrated user experience** — not routine implementation mechanics. Commits and PRs remain the traceability record (kept small and logical), but "done" is measured at the capability, per §6 below.
 
+## 1a. Evidence-based sequencing
+
+Do not execute roadmap items merely because they are next in the documented sequence. At every major capability/program boundary, **reassess sequencing from current evidence** — repository, architecture, production, operational, risk, and product state.
+
+**Default priority order** (higher wins):
+
+1. Active security, integrity, or production risk.
+2. Blocking architectural or operational dependencies.
+3. Operational reliability and recoverability.
+4. Customer / product / business value.
+5. Reuse and leverage that unlock multiple later capabilities.
+6. Existing roadmap sequence.
+
+The roadmap remains the default path when no stronger evidence changes priority. A newly discovered issue does **not** automatically interrupt active work — interrupt only when the discovered risk/value materially exceeds the cost and risk of context switching.
+
+When evidence changes sequencing: **record the reason and name the evidence**; update the authoritative planning/decision surface (`DECISIONS.md`, this document, or the relevant plan); **preserve deferred work** rather than silently abandoning it (e.g. in [`ACTIVE_WORKSTREAMS.md`](ACTIVE_WORKSTREAMS.md)'s "Ready for assignment"); and continue autonomously when existing governance resolves the choice. Do not ask the Owner to choose between routine sequencing alternatives when these principles provide a defensible answer.
+
+This is a standing operating principle for both **Product Engineering** (choosing the next capability, slice, remediation, or reuse opportunity) and the **Executive Architecture Office** (sequencing architecture, operational-readiness, governance-remediation, company-architecture, and systemic-risk work — architecture plans may be reordered when current evidence establishes a stronger priority).
+
 ## 2. Default autonomy
 
 Repo-only, reversible implementation within an already-approved architecture is delegated (Delegation Charter Tier 1 + §8). Within that scope an AI agent autonomously: implements; tests; obtains independent review; corrects review findings; updates user and technical documentation; updates decision (`DECISIONS.md`) and execution records; opens and **merges** governed repo-only PRs under the exact-head guard; cleans branches and worktrees; proceeds to the next already-directed work item; and **reports at capability milestones, not after every PR**. See [`DelegationCharter.md`](../DelegationCharter.md) §8 for the standing rule and its do-not-stop list.
