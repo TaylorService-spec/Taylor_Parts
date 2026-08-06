@@ -1,7 +1,7 @@
 ---
 artifact_type: design
 gate: C3 — delivery reliability & release visibility
-status: Design — no workflow, alerting, Hosting, Pages, or deployment change performed
+status: D1 IMPLEMENTED 2026-08-06 (repo-only). D2-D4 remain design-only; no alerting, Hosting, Pages, or deployment change.
 date: 2026-08-06
 owner: Claude Code (Executive Architecture & Company Office)
 base_commit: ab55c50
@@ -46,7 +46,21 @@ The platform therefore cannot distinguish "production is running current `main`"
 
 Four properties, in dependency order. Each is independently useful; none requires the ones after it.
 
-### D1 · Deployed-version identity (foundation)
+### D1 · Deployed-version identity (foundation) — ✅ IMPLEMENTED 2026-08-06
+
+**Delivered, repo-only.** The build now emits a stable, unauthenticated `version.json` next to `index.html` in **both** output modes:
+
+```json
+{ "commit": "fef1ca3", "base": "/", "buildTime": "2026-08-06T23:12:49.495Z", "schema": 1 }
+```
+
+`vite.config.js` gained an `emit-version-manifest` plugin; `npm run verify:version` (9 checks) is wired into the `Vite Build Check` workflow. The manifest carries **build provenance only** — a test asserts the exact key set and scans for leaked `apikey`/`secret`/`token`/`password`/`projectid`/`authdomain`.
+
+**A real bug was caught by that test during implementation:** the first version recomputed the asset base from `process.env.VITE_BASE`, but `npm run build:firebase` overrides it with a **CLI flag** applied *after* config evaluation — so the Firebase manifest recorded the GitHub Pages base, making the two surfaces indistinguishable from their manifests. That is exactly the discrimination D2 depends on. Fixed by reading Vite's **resolved** config in `configResolved`.
+
+**What this changes:** answering "what version is production running?" was previously a forensic exercise (fetch both surfaces, extract bundle fingerprints, list Hosting releases, cross-reference CI history). It is now `GET /version.json` — **once a build carrying this change is actually deployed.** The currently-live surfaces predate it and still require the forensic method.
+
+
 
 The running application must be able to state which revision it is. Concretely: stamp the build with its source SHA and build time, expose it at a stable path (a `version.json` emitted at build time, or a `<meta>` tag), and surface it in-app where support can read it.
 
