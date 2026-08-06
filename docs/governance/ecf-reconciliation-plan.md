@@ -61,6 +61,31 @@ Delta certifications compare against the **last certified commit**, which is why
 
 **`c002b5e`** — the Program 0 merge commit, the first point at which repository statements were verified true against implementation. Certifying an earlier baseline would certify statements now known false.
 
+## 4a. Recovered prior art — the Project Integrity Review
+
+A `docs/reviews/project-integrity-review.md` was found in a stale local checkout (2026-07-15, baseline `0c939d7`), never published to `origin/main`. It is **an independently-written implementation of exactly ECF's concern**: a durable charter for a *recurring, read-only* review of project status, architectural drift, production parity, and remaining business objects, delivered by exception.
+
+Its situational checkpoint is **superseded** and is deliberately not recovered — it records Issue #15 as blocking (since closed), roadmap staleness (since classified), and production-parity gaps (since measured). Recovering that content would reintroduce known-false statements.
+
+Its **procedure and delivery format are unique prior art and are recovered here**, because they answer the operational question this plan otherwise leaves open — *what does a certification run actually do?*
+
+**Recovered review procedure** (each run read-only, beginning with a recorded timestamp and the exact fetched `origin/main` commit):
+
+1. Re-read `AGENTS.md`; fetch remote state; **never use the local checkout as the review base**.
+2. Inspect open issues, draft/open PRs, checks, and merge state; report anything missing.
+3. Compare against the prior run and **report deltas**, not repeated project history.
+4. Confirm frontend deployment, deployed Rules identity, deployed Functions status, and known production-verification gaps — **without production writes or deployments**.
+5. Check architectural drift against governing Assessments, ADRs, Specifications, and Implementation Plans.
+6. Identify findings left only in chat or PR comments that require a tracked issue.
+7. Review active high-risk PRs touching Rules, Functions, claims, trusted writers, authorization enforcement, indexes, or production tooling — **do not merge them**.
+8. Report business-process coverage and the next blocked link in the end-to-end operating chain.
+9. Report documentation drift in global status documents — **do not edit them during the review**.
+10. Produce a concise report: baseline, deltas, what is going well, what is not, drift verdict, production parity, active risks, remaining objects, recommended next actions.
+
+**Recovered delivery principle:** one verified fact-set rendered in more than one form for different audiences (a concise report for the working record; an executive-readable summary). The specific channels named in the original — email and a local HTML dashboard — are **not** adopted here; channel choice is an operations decision, and `docs/audits/` is already the governed evidence home.
+
+**Why this matters to activation:** steps 1, 4, 7 and 9 encode exactly the disciplines this program had to rediscover the hard way — never trust the local checkout, never mutate during a read-only review, report deltas not history. Steps 3 and 10 are the delta-certification shape ECF names but does not specify. **This is the operational core of an ECF run**, and its recovery removes a real gap from the activation plan.
+
 ## 5. Cadence (proposed, for Owner ratification at activation)
 
 Per **capability boundary** rather than per calendar interval — consistent with §1a evidence-based sequencing and with capability-level delivery. A time-based cadence would generate certifications with no delta. A supplementary certification is warranted whenever a Red is opened or closed.

@@ -1,7 +1,7 @@
 ---
 artifact_type: operations
 gate: Preservation and reconciliation of the stale local checkout + registered worktree audit
-status: Inventory and classification COMPLETE — recovery decisions pending. Nothing deleted or overwritten.
+status: Class-C dispositions RESOLVED 2026-08-06 (2 of 3 recovered). Taylor-Migration-Evidence/ and pr189-live-verify.mjs still pending. Nothing deleted or overwritten.
 date: 2026-08-06
 owner: Claude Code (Executive Architecture & Company Office)
 base_commit: c002b5ee0834998207f7966be40bbd718cbd0e28
@@ -55,6 +55,16 @@ Machine-local. Not candidates for the repository. `.codex/` should be confirmed 
 ### F · UNKNOWN (1 entry)
 
 `Taylor-Migration-Evidence/` (12 files, none on `main`). Name suggests migration evidence; provenance and whether it duplicates `docs/audits/` content are unestablished.
+
+## 1a. Class-C dispositions — RESOLVED 2026-08-06
+
+| Artifact | Disposition | Action taken |
+|---|---|---|
+| `docs/design/inventory-sales-templates-and-lines-of-business-wireframe.md` (164 KB) | **SPLIT / PARTIALLY RECOVER** | **Recovered to `docs/design/`** with a classification header. Decisive evidence: the **merged** [`../reviews/w1-line-of-business-execution.md`](../reviews/w1-line-of-business-execution.md) cites it as `design_input` (sections 3.3, 3.8) — a **broken citation in merged governance**, pointing at a file no other session could read. Sections 3.3/3.8 are marked **CONSUMED** (built by W1; the shipped implementation is authority, not this document); templates T1-T4, intercompany, signature ladder and the open Owner questions are marked **NOT BUILT / OPEN** and bear on Financial Operations and Sales & CRM, both Level 1. Recovered as historical design input — **not** promoted to current authority, and **not** queued work (C2 is deferred behind C3). |
+| `docs/reviews/project-integrity-review.md` (8 KB) | **SPLIT / PARTIALLY RECOVER** | **Procedure recovered into [`../governance/ecf-reconciliation-plan.md`](../governance/ecf-reconciliation-plan.md) section 4a**; the 2026-07-15 checkpoint is **SUPERSEDED** and deliberately not recovered (it records Issue #15 as blocking, roadmap staleness, and production-parity gaps — all since resolved, closed, or measured; recovering it would reintroduce known-false statements). The document turned out to be **an independently-written implementation of ECF's own concern** — a recurring read-only integrity review delivered by exception. Its 10-step procedure and one-fact-set delivery principle fill a real gap in the ECF activation plan. |
+| `field-ops-app-vite/pr189-live-verify.mjs` | **UNKNOWN — OWNER REVIEW REQUIRED** | Untouched. Not yet analysed. |
+
+**Neither original was merged wholesale.** In both cases the reconciliation established which portions were superseded before anything moved, and the superseded portions were left behind.
 
 ## 2. Recovery decisions required
 
