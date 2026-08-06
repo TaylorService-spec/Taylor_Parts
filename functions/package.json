@@ -80,7 +80,9 @@
     "test:receivingE2Verifier": "npm run build && node test/warehouseBackupCodec.test.mjs && node test/warehouseBackupRestore.test.mjs && node test/verifyReceivingE2Deployment.test.mjs && node test/firestoreRulesSourceHash.test.mjs && node test/functionsInventorySanitize.test.mjs",
     "test:receivingE2VerifierEmulator": "npm run build && node test/warehouseBackupRestoreEmulator.test.mjs",
     "test:supplierMaster": "npm run build && node test/supplierMasterValidation.test.mjs",
-    "test:supplierMasterCommands": "npm run build && node test/supplierMasterCommands.test.mjs"
+    "test:supplierMasterCommands": "npm run build && node test/supplierMasterCommands.test.mjs",
+    "test:supplierLinkage": "npm run build && node test/reorderPurchaseOrderSupplierLinkage.test.mjs",
+    "test:supplierMigrationEmulator": "npm run build && node test/reorderPurchaseOrderSupplierMigrationEmulator.test.mjs"
   },
   "dependencies": {
     "firebase-admin": "^12.7.0",
