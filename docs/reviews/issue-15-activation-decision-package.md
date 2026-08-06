@@ -129,7 +129,7 @@ Nothing is enabled or deployed by this package. Awaiting your authorization.
 
 ## 8. RECONCILED ESTATE (authoritative — from operator `functions:list` + `gcloud functions list`, 2026-08-06)
 
-Blaze ACTIVE. **21 functions deployed, all ACTIVE / GEN_2 / us-central1 / nodejs20.** This
+Blaze ACTIVE. **20 functions deployed, all ACTIVE / GEN_2 / us-central1 / nodejs20.** This
 section supersedes §0–§7's empty-baseline framing.
 
 **Deployed & current (20) — no source change on main since their deploy → up to date:**
@@ -153,7 +153,7 @@ section supersedes §0–§7's empty-baseline framing.
 
 **Obsolete/unexpected deployed: NONE** — every deployed function maps to a current index export.
 
-**Rollback baseline (captured 2026-08-06):** the 21 currently-deployed ACTIVE GEN_2 revisions
+**Rollback baseline (captured 2026-08-06):** the 20 currently-deployed ACTIVE GEN_2 revisions
 (names + run.app URIs + update times from the operator output). THIS is the rollback target,
 not "no functions."
 
