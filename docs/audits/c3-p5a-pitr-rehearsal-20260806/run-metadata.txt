@@ -1,0 +1,13 @@
+T0_start_utc: 2026-08-06T22:38:50Z
+source_database: projects/taylor-parts/databases/(default)
+snapshot_time: 2026-08-06T22:32:00Z
+destination_database: recovery-rehearsal-20260806-223836
+operator_identity: rudy.digiorgio@gmail.com
+command: gcloud firestore databases clone --source-database=projects/taylor-parts/databases/(default) --snapshot-time=2026-08-06T22:32:00Z --destination-database=recovery-rehearsal-20260806-223836 --project=taylor-parts
+clone_exit_code: 0
+T3_complete_utc: 2026-08-06T22:38:55Z
+RTO_CLONE_seconds: 5
+T0=2026-08-06T22:38:50Z
+T3=2026-08-06T22:48:08.533266Z
+RTO_CLONE_seconds=559
+RTO_CLONE_minutes=9.31

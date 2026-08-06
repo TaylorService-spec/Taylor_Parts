@@ -1,7 +1,7 @@
 ---
 artifact_type: deployment
 gate: C3 P5 — restore rehearsal · PROTECTED ACTION PACKAGE
-status: Awaiting Owner authorization — NOT executed
+status: P5-A EXECUTED AND PASSED 2026-08-06 (RTO-CLONE 9.31 min). P5-B still required after V2.
 date: 2026-08-06
 owner: Claude Code (Executive Architecture & Company Office)
 base_commit: ab55c50
@@ -158,4 +158,13 @@ Stated so the result is not over-read:
 
 ## 11. Status
 
-Design complete. **No restore, clone, database creation, or deletion performed.** Awaiting Owner authorization per §10.
+**P5-A EXECUTED 2026-08-06 — PASS.** The PITR clone recovery mechanism is **proven**. Evidence: [`../audits/c3-p5a-pitr-rehearsal-20260806/`](../audits/c3-p5a-pitr-rehearsal-20260806/).
+
+- **MEASURED RTO-CLONE = 559 s = 9.31 minutes** for a 1,649,196-byte database (T0 22:38:50Z -> T3 22:48:08Z). This is the **Firestore data-recovery portion only**, and is dominated by fixed provisioning overhead at this size - **do not extrapolate linearly**.
+- **Validation PASS:** 23/23 identical collections; parts 190/190; warehouses 2/2; suppliers 2/2; **composite indexes 6/6 READY** (indexes are carried by the clone and did not need rebuilding).
+- **Cleanup PROVEN:** rehearsal database describe returns `NOT_FOUND`; only `(default)` remains.
+- **Production unchanged PROVEN:** the complete pre/post describe diff is the **etag alone**. Delete protection still ENABLED, PITR still ENABLED, `versionRetentionPeriod` 604800s, both backup schedules unchanged.
+
+**Finding for the recovery runbook - delete protection is INHERITED by a clone.** The rehearsal database was created with `DELETE_PROTECTION_ENABLED` despite this package specifying otherwise; the clone API offers no flag to suppress it, and cleanup **failed closed** until protection was explicitly removed from the rehearsal database. Any future restore or clone will behave the same way, so cleanup of a failed or superseded recovery attempt needs a deliberate unprotect step. Operators must not meet this for the first time mid-incident.
+
+**Still outstanding:** **P5-B** backup restore (blocked on V2 - no scheduled backup has materialized yet); whole-application recovery; **Firebase Auth recovery** (deferred, required before C3 certification); the <=4h whole-platform RTO; and recovery behaviour at scale.

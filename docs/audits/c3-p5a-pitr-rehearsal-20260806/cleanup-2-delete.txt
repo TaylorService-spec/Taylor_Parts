@@ -1,0 +1,28 @@
+metadata:
+  '@type': type.googleapis.com/google.firestore.admin.v1.DeleteDatabaseMetadata
+name: projects/taylor-parts/databases/recovery-rehearsal-20260806-223836/operations/ApeOyBAG09Sh_QgLGgcQAtra3MgQBtPUn8UIDAodGg
+response:
+  '@type': type.googleapis.com/google.firestore.admin.v1.Database
+  appEngineIntegrationMode: DISABLED
+  concurrencyMode: PESSIMISTIC
+  createTime: '2026-08-06T22:38:54.648162Z'
+  databaseEdition: STANDARD
+  deleteProtectionState: DELETE_PROTECTION_DISABLED
+  deleteTime: '2026-08-06T22:50:57.004573Z'
+  earliestVersionTime: '2026-08-06T22:50:57.004573Z'
+  etag: IPHs28SLjZYDMJ3Q28SLjZYD
+  freeTier: false
+  locationId: us-central1
+  name: projects/taylor-parts/databases/8a6251f0-df60-4c1e-8c1e-7475e720b443
+  pointInTimeRecoveryEnablement: POINT_IN_TIME_RECOVERY_DISABLED
+  previousId: recovery-rehearsal-20260806-223836
+  realtimeUpdatesMode: REALTIME_UPDATES_MODE_ENABLED
+  sourceInfo:
+    operation: projects/taylor-parts/databases/8a6251f0-df60-4c1e-8c1e-7475e720b443/operations/Q7Qg53V0HoweTGDf8FFiihAqMWxhcnRuZWMtc3ULIgwQIRo
+    pitrSnapshot:
+      snapshotTime: '2026-08-06T22:32:00Z'
+    progress: COMPLETED
+  type: FIRESTORE_NATIVE
+  uid: 8a6251f0-df60-4c1e-8c1e-7475e720b443
+  updateTime: '2026-08-06T22:50:45.727101Z'
+  versionRetentionPeriod: 3600s

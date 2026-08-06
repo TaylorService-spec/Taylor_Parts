@@ -1,0 +1,1 @@
+ERROR: (gcloud.firestore.databases.describe) NOT_FOUND: Project 'taylor-parts' or database 'recovery-rehearsal-20260806-223836' does not exist. This command is authenticated as rudy.digiorgio@gmail.com which is the active account specified by the [core/account] property.

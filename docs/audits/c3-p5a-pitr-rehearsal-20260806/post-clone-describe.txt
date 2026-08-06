@@ -1,0 +1,21 @@
+appEngineIntegrationMode: DISABLED
+concurrencyMode: PESSIMISTIC
+createTime: '2026-08-06T22:38:54.648162Z'
+databaseEdition: STANDARD
+deleteProtectionState: DELETE_PROTECTION_ENABLED
+earliestVersionTime: '2026-08-06T22:48:08.533266Z'
+etag: IJ7Z9YeLjZYDMJ6q4PSKjZYD
+freeTier: false
+locationId: us-central1
+name: projects/taylor-parts/databases/recovery-rehearsal-20260806-223836
+pointInTimeRecoveryEnablement: POINT_IN_TIME_RECOVERY_DISABLED
+realtimeUpdatesMode: REALTIME_UPDATES_MODE_ENABLED
+sourceInfo:
+  operation: projects/taylor-parts/databases/recovery-rehearsal-20260806-223836/operations/Q7Qg53V0HoweTGDf8FFiihAqMWxhcnRuZWMtc3ULIgwQIRo
+  pitrSnapshot:
+    snapshotTime: '2026-08-06T22:32:00Z'
+  progress: COMPLETED
+type: FIRESTORE_NATIVE
+uid: 8a6251f0-df60-4c1e-8c1e-7475e720b443
+updateTime: '2026-08-06T22:38:54.648162Z'
+versionRetentionPeriod: 3600s
