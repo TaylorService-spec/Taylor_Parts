@@ -1,0 +1,70 @@
+{
+  "$comment": [
+    "C3/D2 — the environment registry. Declares which environments exist, what each is FOR,",
+    "and where its deployed frontend can be read. Consumed by scripts/checkDeployedVersions.mjs",
+    "to answer 'what SHA should this environment be running, and does deployed == expected?'.",
+    "",
+    "READ-ONLY DECLARATION. Nothing here provisions, deploys, renames, or mutates any",
+    "infrastructure. Adding an entry does not create an environment; it records one that exists",
+    "or is planned, so drift against it can be observed.",
+    "",
+    "DELIBERATE MODELLING DECISION: 'production' is NOT synonymous with Taylor Parts.",
+    "An environment has a `role` (what it is for) and a `deployment` (whose instance it is).",
+    "Platform environments are operated by the platform for building the platform; customer",
+    "deployments are per-operating-company. Today exactly one customer deployment exists, but",
+    "the registry must not encode that as a permanent assumption — see docs/DeploymentModeStrategy.md",
+    "(tenancy is a design objective, NOT implemented) and docs/PlatformCapabilityModel.md §5a.",
+    "",
+    "Company/brand identity is deliberately NOT expressed here. `operator` uses a neutral",
+    "architectural placeholder; brand foundation is a separate workstream and this file must not",
+    "duplicate or pre-empt it."
+  ],
+  "schema": 1,
+  "operator": "platform-operator",
+  "expectedRefDefault": "origin/main",
+  "environments": [
+    {
+      "id": "platform-sandbox",
+      "role": "sandbox",
+      "deployment": "platform",
+      "status": "not-provisioned",
+      "purpose": "Isolated platform development against the Firebase Emulator Suite. Synthetic data only, no production credentials.",
+      "surfaces": [],
+      "notes": "Exists informally as local emulator use (docs/DevelopmentSetup.md). Not a deployed, addressable environment — no stable URL to observe."
+    },
+    {
+      "id": "platform-integration",
+      "role": "integration",
+      "deployment": "platform",
+      "status": "not-provisioned",
+      "purpose": "Integrated, non-production environment where a complete build can be exercised and reviewed before it becomes a release candidate.",
+      "surfaces": [],
+      "notes": "DOES NOT EXIST. Its absence is why production is currently the only place the integrated frontend can be exercised, contrary to the promotion lifecycle (AI_ENGINEERING_OPERATING_MODEL.md §7). Tracked as the Sandbox/Integration Environment program; Supplier Master is already waiting on it for Owner experience review."
+    },
+    {
+      "id": "taylor-parts-production",
+      "role": "production",
+      "deployment": "taylor-parts",
+      "status": "live",
+      "purpose": "First customer production deployment of Enterprise Operations OS.",
+      "surfaces": [
+        {
+          "id": "hosting",
+          "kind": "firebase-hosting",
+          "url": "https://taylor-parts.web.app",
+          "versionPath": "/version.json",
+          "governed": true,
+          "notes": "Owner-authorized, evidenced releases. SPA catch-all rewrite returns 200 + text/html for ANY unmatched path, so manifest ABSENCE cannot be detected by status code — the checker validates content, never status alone."
+        },
+        {
+          "id": "pages",
+          "kind": "github-pages",
+          "url": "https://taylorservice-spec.github.io/Taylor_Parts/field-ops",
+          "versionPath": "/version.json",
+          "governed": false,
+          "notes": "Auto-publishes on merge to main, outside the promotion lifecycle. Recorded as an open governance gap (R-2); this registry observes it, and does not change it."
+        }
+      ]
+    }
+  ]
+}

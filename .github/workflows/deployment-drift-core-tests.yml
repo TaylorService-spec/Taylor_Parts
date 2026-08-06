@@ -1,0 +1,44 @@
+name: Deployment Drift Core Tests
+
+# C3/D2 — expected-vs-deployed comparison, pure-core tests.
+#
+# Runs ONLY the hermetic core (scripts/deploymentDrift.test.mjs): fixtures in,
+# verdicts out. No network, no live deployment, no credentials, no secrets.
+#
+# Deliberately does NOT run scripts/checkDeployedVersions.mjs, which performs
+# real HTTP GETs against live surfaces. Putting that in CI would make the build
+# depend on production availability and turn an outage into a red build — the
+# same false-signal trap this program has repeatedly flagged. The live check is
+# run on demand and by the eventual D3 scheduled check.
+
+on:
+  pull_request:
+    paths:
+      - "scripts/deploymentDrift.mjs"
+      - "scripts/deploymentDrift.test.mjs"
+      - "scripts/checkDeployedVersions.mjs"
+      - "config/environments.json"
+      - ".github/workflows/deployment-drift-core-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "scripts/deploymentDrift.mjs"
+      - "scripts/deploymentDrift.test.mjs"
+      - "scripts/checkDeployedVersions.mjs"
+      - "config/environments.json"
+      - ".github/workflows/deployment-drift-core-tests.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  drift-core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Deployment drift pure-core tests
+        run: node --test scripts/deploymentDrift.test.mjs
