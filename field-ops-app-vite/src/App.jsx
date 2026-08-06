@@ -18,6 +18,7 @@ import AdministrationOverview from "./modules/administration/AdministrationOverv
 import AdministrationUnavailable from "./modules/administration/AdministrationUnavailable";
 import AdminUsers from "./modules/administration/AdminUsers";
 import AdminRolesPermissions from "./modules/administration/AdminRolesPermissions";
+import IntegrationsFaq from "./modules/administration/IntegrationsFaq";
 import WorkOrdersList from "./modules/workOrders/WorkOrdersList";
 import WorkOrderWizard from "./modules/workOrders/WorkOrderWizard";
 import WorkOrderDetailPage from "./modules/workOrders/WorkOrderDetailPage";
@@ -245,6 +246,13 @@ function renderSubnavItem(domain, item, role, operationalContext) {
   }
   if (domain.key === "administration" && item.key === "rolesPermissions") {
     return <AdminRolesPermissions />;
+  }
+  // Administration > Integrations -- static, informational FAQ on the platform's
+  // approved integration boundary (no Firestore access, no writes). Replaces the
+  // prior PlaceholderPage for this existing nav item. (Handoff from the parallel
+  // session's App.jsx integration WIP.)
+  if (domain.key === "administration" && item.key === "integrations") {
+    return <IntegrationsFaq />;
   }
   // Issue #325 / ADR-007 -- the governed report builder. Net-new, no legacyKey; reached only
   // through the capability-gated item (isNavItemVisible checks capabilityAccess, resolved by the
