@@ -63,8 +63,27 @@ export function resolveCustomerIdentity(workOrder, resolver = null) {
   return { state: CUSTOMER_IDENTITY.UNRESOLVED, name: null, customerId };
 }
 
+/**
+ * Site identity — the same four states, resolved the same way, so "which site
+ * am I going to?" is answered with the same honesty as "who is the customer?".
+ * Deliberately symmetric with resolveCustomerIdentity rather than a second
+ * mechanism.
+ */
+export function resolveSiteIdentity(workOrder, resolver = null) {
+  const locationId = workOrder?.locationId ?? null;
+  if (!locationId) return { state: CUSTOMER_IDENTITY.ABSENT, label: null, locationId: null };
+  if (typeof resolver !== "function") {
+    return { state: CUSTOMER_IDENTITY.NOT_AUTHORIZED, label: null, locationId };
+  }
+  const label = resolver(locationId);
+  if (typeof label === "string" && label.trim()) {
+    return { state: CUSTOMER_IDENTITY.RESOLVED, label: label.trim(), locationId };
+  }
+  return { state: CUSTOMER_IDENTITY.UNRESOLVED, label: null, locationId };
+}
+
 /** Attention items are things that should change what the technician does next. */
-function buildAttention(workOrder, readiness, customer) {
+function buildAttention(workOrder, readiness, customer, contextPending = false) {
   const items = [];
 
   if (readiness.jobReadiness === "ATTENTION") {
@@ -89,14 +108,17 @@ function buildAttention(workOrder, readiness, customer) {
       label: `${capability} information is unavailable here`,
     });
   }
-  if (customer.state === CUSTOMER_IDENTITY.NOT_AUTHORIZED) {
+  // While the trusted projection is still in flight the answer is not yet
+  // known -- reporting "unavailable to your role" then would be a lie that
+  // corrects itself, which is worse than saying nothing.
+  if (!contextPending && customer.state === CUSTOMER_IDENTITY.NOT_AUTHORIZED) {
     items.push({
       key: "customer-not-authorized",
       severity: "medium",
       label: "Customer details aren't available to your role",
     });
   }
-  if (customer.state === CUSTOMER_IDENTITY.ABSENT) {
+  if (!contextPending && customer.state === CUSTOMER_IDENTITY.ABSENT) {
     items.push({
       key: "customer-absent",
       severity: "medium",
@@ -122,10 +144,13 @@ export function buildCurrentJob({
   plannedParts = [],
   capabilities = {},
   customerResolver = null,
+  siteResolver = null,
+  contextPending = false,
 } = {}) {
   if (!workOrder) return null;
 
   const customer = resolveCustomerIdentity(workOrder, customerResolver);
+  const site = resolveSiteIdentity(workOrder, siteResolver);
   const readiness = buildWorkOrderPartsReadiness({ workOrder, plannedParts, capabilities });
   const next = nextFieldAction(workOrder, technicianId);
 
@@ -136,6 +161,8 @@ export function buildCurrentJob({
     // CONTEXT — where am I going, who is the customer, what am I working on
     context: {
       customer,
+      site,
+      contextPending,
       locationId: workOrder.locationId ?? null,
       complaint: workOrder.complaint ?? null,
       scheduledStart: workOrder.scheduledStart ?? null,
@@ -151,7 +178,7 @@ export function buildCurrentJob({
     },
 
     // ATTENTION — what requires me before I act
-    attention: buildAttention(workOrder, readiness, customer),
+    attention: buildAttention(workOrder, readiness, customer, contextPending),
 
     // READINESS — the SHARED projection, passed through unchanged
     readiness,

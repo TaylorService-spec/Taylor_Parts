@@ -4,6 +4,7 @@ import { useAssignedWorkOrders } from "../../hooks/useAssignedWorkOrders";
 import { transitionWorkOrder } from "../../services/workOrderService";
 import { activeFieldWorkOrders, FIELD_ACTIONS } from "../../domain/fieldWorkOrder";
 import { buildCurrentJob, CUSTOMER_IDENTITY } from "../../domain/fieldCurrentJob";
+import { useWorkOrderFieldContext } from "../../hooks/useWorkOrderFieldContext";
 import PartsScanner from "./PartsScanner";
 
 // F1 -- Field shell + Technician Home + Current Job.
@@ -18,14 +19,19 @@ import PartsScanner from "./PartsScanner";
 // projection. This module re-derives nothing: it owns no readiness vocabulary,
 // no availability arithmetic and no lifecycle rules of its own.
 //
-// CUSTOMER IDENTITY is deliberately honest. firestore.rules gates accounts /
-// locations / equipment reads to isAdminOrDispatcher(), and the technician
-// compatibility Role does not hold account.record.read -- so there is no
-// governed client path to a customer NAME today. Rather than fabricate a label,
-// print a raw id as though it were a name, or silently omit the field (which
-// would read as "no customer"), the surface states plainly that the details are
-// not available to this role. Resolving that is an authority decision, not a UI
-// one; see docs/assessments/f1-technician-customer-identity.md.
+// CUSTOMER / SITE IDENTITY resolves through the TRUSTED minimal projection
+// getWorkOrderFieldContext (Owner Option 1). firestore.rules still gates
+// accounts / locations / equipment to isAdminOrDispatcher() and the technician
+// Role still holds no account.record.read -- neither was widened. The server
+// verifies the Work Order is assigned to THIS technician, takes customerId /
+// locationId FROM the governed Work Order (never from the client), and returns
+// only display fields.
+//
+// The four identity states are preserved exactly, and the existing injected
+// resolver seam expresses them without restructuring: a DENIAL passes no
+// resolver, which the composition already reports as NOT_AUTHORIZED, so a
+// denial can never render as "no customer". See
+// docs/assessments/f1-technician-customer-identity.md.
 
 export default function FieldMode() {
   const { technicianId, loading: technicianLoading } = useCurrentTechnician();
@@ -40,20 +46,31 @@ export default function FieldMode() {
   const active = useMemo(() => activeFieldWorkOrders(workOrders), [workOrders]);
   const [current, ...upNext] = active;
 
-  // No customerResolver is supplied: there is no governed client read path for a
-  // technician today, so the projection reports NOT_AUTHORIZED rather than
-  // guessing. When an authorised path exists, it is injected here and nothing
-  // else on this screen changes.
-  const job = useMemo(
-    () =>
-      buildCurrentJob({
-        workOrder: current ?? null,
-        technicianId,
-        plannedParts: current?.inventorySnapshot ?? [],
-        customerResolver: null,
-      }),
-    [current, technicianId],
-  );
+  const { context: fieldContext, denied: contextDenied, loading: contextLoading } =
+    useWorkOrderFieldContext(current?.id ?? null);
+
+  // A denial passes NO resolver, which the composition already reports as
+  // NOT_AUTHORIZED -- that is why a denial can never be mistaken for absence.
+  // An allowed-but-unusable canonical value returns null from the resolver,
+  // which the composition reports as UNRESOLVED. The raw id is never returned
+  // as a fallback by either side.
+  const job = useMemo(() => {
+    const authorized = !contextDenied && !!fieldContext;
+    const customerResolver = authorized
+      ? () => (fieldContext.customer?.state === "RESOLVED" ? fieldContext.customer.displayName : null)
+      : null;
+    const siteResolver = authorized
+      ? () => (fieldContext.site?.state === "RESOLVED" ? fieldContext.site.displayLabel : null)
+      : null;
+    return buildCurrentJob({
+      workOrder: current ?? null,
+      technicianId,
+      plannedParts: current?.inventorySnapshot ?? [],
+      customerResolver,
+      siteResolver,
+      contextPending: contextLoading,
+    });
+  }, [current, technicianId, fieldContext, contextDenied, contextLoading]);
 
   const advance = useCallback(async (workOrderId, action) => {
     if (pending.id) return; // duplicate-tap guard
@@ -162,12 +179,14 @@ function CurrentJob({ job, pending, failure, onAdvance }) {
 
 /** "Where am I going? Who is the customer?" — answered honestly. */
 function CustomerContext({ context, reference }) {
-  const { customer, complaint } = context;
+  const { customer, site, complaint, contextPending } = context;
   return (
     <header className="fo-job__context">
       <p className="fo-job__ref">{reference}</p>
       {customer.state === CUSTOMER_IDENTITY.RESOLVED ? (
         <h3 className="fo-job__customer">{customer.name}</h3>
+      ) : contextPending ? (
+        <p className="fo-job__customer fo-job__customer--unavailable">Loading customer…</p>
       ) : (
         // Never a fabricated label, never a raw id dressed as a name, and never
         // silently omitted -- the distinction between "you may not see this" and
@@ -176,6 +195,17 @@ function CustomerContext({ context, reference }) {
           {customer.state === CUSTOMER_IDENTITY.ABSENT
             ? "No customer on record"
             : "Customer details unavailable to your role"}
+        </p>
+      )}
+      {/* "Where am I going?" -- resolved with the same four states and the same
+          honesty as the customer, never a raw locationId. */}
+      {site.state === CUSTOMER_IDENTITY.RESOLVED ? (
+        <p className="fo-job__site">{site.label}</p>
+      ) : contextPending ? null : (
+        <p className="fo-job__site fo-job__site--unavailable">
+          {site.state === CUSTOMER_IDENTITY.ABSENT
+            ? "No site on record"
+            : "Site details unavailable to your role"}
         </p>
       )}
       {complaint && <p className="fo-job__complaint">{complaint}</p>}

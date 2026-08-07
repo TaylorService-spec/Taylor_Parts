@@ -147,3 +147,89 @@ test("state exposes governed status and lifecycle position, never invents one", 
   assert.equal(job.state.totalSteps, 5);
   assert.ok(job.state.step > 0 && job.state.step < job.state.totalSteps);
 });
+
+// ---------------------------------------------------------------------------
+// F1 completion — the trusted projection is wired through the EXISTING seam.
+// A denial passes no resolver (=> NOT_AUTHORIZED); an allowed-but-unusable
+// canonical value returns null (=> UNRESOLVED). These must never collapse.
+// ---------------------------------------------------------------------------
+
+test("a resolved customer removes the customer-identity Attention warning", () => {
+  const job = buildCurrentJob({
+    workOrder: wo(), technicianId: TECH,
+    customerResolver: () => "Harbor Grill Restaurant Group",
+  });
+  assert.equal(job.context.customer.state, CUSTOMER_IDENTITY.RESOLVED);
+  assert.ok(!job.attention.some((a) => a.key.startsWith("customer-")));
+});
+
+test("an authorization DENIAL renders as NOT_AUTHORIZED, never ABSENT", () => {
+  // A denial supplies no resolver -- the seam's whole point.
+  const job = buildCurrentJob({ workOrder: wo(), technicianId: TECH, customerResolver: null });
+  assert.equal(job.context.customer.state, CUSTOMER_IDENTITY.NOT_AUTHORIZED);
+  assert.notEqual(job.context.customer.state, CUSTOMER_IDENTITY.ABSENT);
+  assert.ok(job.attention.some((a) => a.key === "customer-not-authorized"));
+});
+
+test("missing canonical data renders as UNRESOLVED, never as a denial", () => {
+  const job = buildCurrentJob({
+    workOrder: wo(), technicianId: TECH,
+    customerResolver: () => null, // authorised, but nothing usable came back
+  });
+  assert.equal(job.context.customer.state, CUSTOMER_IDENTITY.UNRESOLVED);
+  assert.notEqual(job.context.customer.state, CUSTOMER_IDENTITY.NOT_AUTHORIZED);
+});
+
+test("site identity resolves with the same four states", () => {
+  const resolved = buildCurrentJob({
+    workOrder: wo(), technicianId: TECH, siteResolver: () => "Harbor Grill — Downtown, Phoenix, AZ",
+  });
+  assert.equal(resolved.context.site.state, CUSTOMER_IDENTITY.RESOLVED);
+  assert.equal(resolved.context.site.label, "Harbor Grill — Downtown, Phoenix, AZ");
+
+  assert.equal(
+    buildCurrentJob({ workOrder: wo(), technicianId: TECH, siteResolver: null }).context.site.state,
+    CUSTOMER_IDENTITY.NOT_AUTHORIZED);
+  assert.equal(
+    buildCurrentJob({ workOrder: wo(), technicianId: TECH, siteResolver: () => "  " }).context.site.state,
+    CUSTOMER_IDENTITY.UNRESOLVED);
+  assert.equal(
+    buildCurrentJob({ workOrder: wo({ locationId: null }), technicianId: TECH, siteResolver: () => "X" })
+      .context.site.state,
+    CUSTOMER_IDENTITY.ABSENT);
+});
+
+test("neither raw id is ever used as a display value", () => {
+  const job = buildCurrentJob({
+    workOrder: wo(), technicianId: TECH,
+    customerResolver: () => null, siteResolver: () => null,
+  });
+  assert.equal(job.context.customer.name, null);
+  assert.equal(job.context.site.label, null);
+  assert.notEqual(job.context.customer.name, job.context.customer.customerId);
+  assert.notEqual(job.context.site.label, job.context.site.locationId);
+});
+
+test("while the trusted read is in flight, no identity claim is asserted", () => {
+  const job = buildCurrentJob({ workOrder: wo(), technicianId: TECH, contextPending: true });
+  // Reporting "unavailable to your role" before the answer is known would be a
+  // lie that corrects itself.
+  assert.ok(!job.attention.some((a) => a.key.startsWith("customer-")));
+  assert.equal(job.context.contextPending, true);
+});
+
+test("the resolver output creates no second authority -- readiness and next action are untouched", () => {
+  const withCustomer = buildCurrentJob({
+    workOrder: wo(), technicianId: TECH,
+    plannedParts: [{ partId: "PRT-1", qtyPlanned: 1 }],
+    customerResolver: () => "Harbor Grill", siteResolver: () => "Downtown",
+  });
+  const without = buildCurrentJob({
+    workOrder: wo(), technicianId: TECH,
+    plannedParts: [{ partId: "PRT-1", qtyPlanned: 1 }],
+  });
+  // Customer identity is CONTEXT, never mixed into parts-readiness semantics.
+  assert.deepEqual(withCustomer.readiness, without.readiness);
+  assert.deepEqual(withCustomer.nextAction, without.nextAction);
+  assert.equal(withCustomer.state.status, without.state.status);
+});
