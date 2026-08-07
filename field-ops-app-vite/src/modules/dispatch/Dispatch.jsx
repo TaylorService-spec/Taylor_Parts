@@ -4,6 +4,7 @@ import { useWorkOrders } from "../../hooks/useWorkOrders";
 import { transitionWorkOrder } from "../../services/workOrderService";
 import { TECHNICIANS_COLLECTION, TECH_STATUS } from "../../domain/constants";
 import { FIELD_PHASE, fieldPhase } from "../../domain/fieldWorkOrder";
+import { getAllowedActions } from "../../domain/workOrderWorkflow";
 import { computeJobRisk } from "../../domain/jobRiskScoring";
 import { SEVERITY } from "../../domain/controlTower/types";
 import { isHeroActiveJob, isHeroTechnician } from "../../demo/heroConfig";
@@ -109,7 +110,20 @@ export default function Dispatch() {
               </div>
               <p>{job.description}</p>
 
-              {!job.assignedTechId ? (
+              {/* The governed engine allows Dispatch only from SCHEDULED
+                  (CREATED -> READY_TO_DISPATCH -> SCHEDULED -> DISPATCHED).
+                  Asking the engine rather than assuming means this control is
+                  never offered where the transition would be rejected -- and
+                  scheduling is NOT fabricated here, because Schedule requires a
+                  real scheduledStart/End/TechId decision this board does not
+                  make. */}
+              {!getAllowedActions(job.status, "dispatcher", false).includes("Dispatch") ? (
+                <div className="fo-muted">
+                  {job.assignedTechId
+                    ? `Assigned to ${technicianName(job.assignedTechId) ?? job.assignedTechId}`
+                    : "Not ready to dispatch — this work order must be scheduled first."}
+                </div>
+              ) : !job.assignedTechId ? (
                 <select
                   key={heroTechnician?.id ?? "none"}
                   defaultValue={isHero && heroTechnician ? heroTechnician.id : ""}

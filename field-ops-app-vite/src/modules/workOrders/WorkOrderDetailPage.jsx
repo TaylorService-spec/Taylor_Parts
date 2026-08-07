@@ -4,7 +4,7 @@ import { useWorkOrder } from "../../hooks/useWorkOrder";
 import { useAccount } from "../../hooks/useAccount";
 import { useLocation as useLocationDoc } from "../../hooks/useLocation";
 import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
-import { JOBS_COLLECTION, TECHNICIANS_COLLECTION } from "../../domain/constants";
+import { TECHNICIANS_COLLECTION } from "../../domain/constants";
 import LoadingState from "../../shared/ui/LoadingState";
 import FailureState from "../../shared/ui/FailureState";
 import WorkOrderDetail from "../controlTower/WorkOrderDetail";
@@ -31,7 +31,6 @@ export default function WorkOrderDetailPage() {
   const { workOrder, loading } = useWorkOrder(workOrderId);
   const { account } = useAccount(workOrder?.customerId ?? null);
   const { location } = useLocationDoc(workOrder?.locationId ?? null);
-  const { data: jobs } = useFirestoreCollection(JOBS_COLLECTION);
   const { data: technicians } = useFirestoreCollection(TECHNICIANS_COLLECTION);
 
   if (loading) return <div className="fo-panel"><LoadingState>Loading work order…</LoadingState></div>;
@@ -47,7 +46,12 @@ export default function WorkOrderDetailPage() {
     );
   }
 
-  const jobsForThisWorkOrder = jobs.filter((j) => j.workOrderId === workOrder.id);
+  // F0 -- a governed Work Order has no child job rows: it IS the execution
+  // record, carrying its own status, lifecycle timestamps and executionLog.
+  // The legacy fieldops_jobs read that populated this has been removed rather
+  // than repointed, because there is nothing on the governed model to repoint
+  // it AT. Passing the Work Order itself keeps the detail panel's contract.
+  const jobsForThisWorkOrder = [workOrder];
 
   return (
     <div className="fo-panel">
