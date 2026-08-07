@@ -174,6 +174,14 @@ export const NAV_DOMAINS = [
       // ADR-009 G2 -- governed Part Master administration workspace (read + fail-closed write)
       // (no legacyKey: brand-new screen, explicit App.jsx branch; admin/dispatcher via the default).
       { key: "partMaster", label: "Part Master", path: "part-master" },
+      // Manufacturer administration workspace (catalog reference object Parts link to; read + fail-closed
+      // write). No legacyKey: brand-new screen, explicit App.jsx branch; admin/dispatcher via the default.
+      // DELIBERATE nav-vs-Rules asymmetry (same as Part Master above): this ADMIN workspace is
+      // admin/dispatcher-only by nav, while the prepared `manufacturers` READ Rules delta also allows
+      // active PARTS_MANAGER/WAREHOUSE_MANAGER -- because those personas read catalog data through their
+      // OWN home surfaces (PartsManagerHome/WarehouseManagerHome), not this admin console. The broader
+      // Rules read serves those surfaces; the narrower nav gate scopes the admin console. Not a defect.
+      { key: "manufacturers", label: "Manufacturers", path: "manufacturers" },
       { key: "warehouses", label: "Warehouses", path: "warehouses" },
       { key: "truckInventory", label: "Truck Inventory", path: "truck-inventory" },
       { key: "transfers", label: "Transfers", path: "transfers" },

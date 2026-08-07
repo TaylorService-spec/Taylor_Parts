@@ -1620,7 +1620,16 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
     match /manufacturers/{manufacturerId} {
-      allow read, write: if false;
+      // Manufacturer administration -- governed READ mirrors the `parts` read authority (same catalog
+      // visibility personas: admin/dispatcher + active PARTS_MANAGER/WAREHOUSE_MANAGER). READ != MANAGE:
+      // all client writes stay denied -- Manufacturer mutation is trusted-command-only (partMasterCommands
+      // create/update/changeManufacturerStatus via the Admin SDK, gated on inventory.catalog.manage/
+      // .activate). This read delta is authored for the Manufacturer workspace; DEPLOYING it is a separate
+      // protected Tier-2 Rules deployment (not done here) -- until then the workspace read fails closed.
+      allow read: if isAdminOrDispatcher()
+        || isActiveOperationalRole("PARTS_MANAGER")
+        || isActiveOperationalRole("WAREHOUSE_MANAGER");
+      allow create, update, delete: if false;
     }
     // INV-1 Phase 1 PR 1.3 (ADR-008 / Decision #40) -- part identifier
     // aliases: trusted-writer-only (partAliasCommands.ts, Admin SDK).
