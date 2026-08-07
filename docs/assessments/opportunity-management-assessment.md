@@ -1,6 +1,7 @@
 # Opportunity Management — Assessment (Sales commercial entry point)
 
-Status: **ASSESSMENT — design-first, no implementation.** Opportunity persistence is **greenfield**; per the
+Status: **ASSESSMENT — ACCEPTED; the four §9 decisions are RATIFIED (Owner, 2026-08-07).** Design-first, no
+implementation in this artifact. Opportunity persistence is **greenfield**; per the
 governance chain (Assessment → architecture/lifecycle → Specification → Implementation Plan → implementation)
 this is the first artifact. It exists because the frontend must reflect the **commercial process**, not the
 repository's operational mechanics — and because creating a new governed authority + its Firestore Rules is a
@@ -38,7 +39,8 @@ opportunities/{opportunityId}
   contactId?           → contacts
   locationId?          → locations
   salesChannel         → NATIONAL_ACCOUNTS | RETAIL        (Taylor's two commercial entry points)
-  ownerRef             → the salesperson (operating identity — see §6; NOT a security role)
+  ownerEmployeeId      → the salesperson, a CANONICAL EMPLOYEE reference (NOT free text, NOT a Firebase UID
+                         as business identity; display name resolved from Employee authority; NOT a grant)
   need                 → what the customer is trying to buy/solve (short text)
   lines[]              → { kind: EQUIPMENT_MODEL|PART|SERVICE, ref: equipmentModelId|partId|serviceKey, qty }
                          (commercial PRODUCT selection; NEVER a serialized asset — that is Sales-Order-time)
@@ -53,13 +55,19 @@ opportunities/{opportunityId}
 **Hard invariant:** an Opportunity existing (even Won) creates NO warehouse demand, inventory movement, Work
 Order, or invoice. Those are Sales-Order-and-downstream concerns.
 
-## 4. Lifecycle — small, Taylor-specific (HYPOTHESIS to validate against the business)
+## 4. Lifecycle — one small shared lifecycle (RATIFIED)
 ```
-NEW/IDENTIFIED → QUALIFICATION → PRODUCT_SOLUTION → QUOTING → CUSTOMER_REVIEW → DECISION → (WON | LOST)
+IDENTIFIED → QUALIFYING → SOLUTION → QUOTING → CUSTOMER_REVIEW → DECISION → (WON | LOST)
 ```
-Do NOT copy Salesforce's ten stages. Keep it small. **The exact state set + semantics require Taylor Parts
-business truth** (this is a genuine unresolved decision — see §9). `outcome` (WON/LOST) is distinct from
-`stage`; WON means "customer committed to buy" — it does NOT mean prepared/scheduled/delivered/invoiced/paid.
+IDENTIFIED = a real potential sale identified · QUALIFYING = is the need/customer/timing/opportunity
+legitimate to pursue · SOLUTION = which equipment/parts/services satisfy the need · QUOTING = a commercial
+offer is being prepared/revised · CUSTOMER_REVIEW = the proposal is with the customer · DECISION = the
+customer is at the commitment point · WON = committed to buy · LOST = did not proceed.
+ONE base lifecycle for **both** National Accounts and Retail (channel is context, not a second sales system —
+do not fork the schema by channel). `outcome` (WON | LOST) is kept logically distinct from active stage
+progression. WON means "customer committed to buy" — NOT prepared/scheduled/delivered/invoiced/paid. Do NOT
+add FOLLOW_UP / WAITING / STALLED / HOT / COLD / APPROVAL_PENDING stages — those conditions are represented
+through attention / nextAction / activity / approval state / dates, not by bloating the core lifecycle.
 
 ## 5. Quote & pricing boundary
 Quote/Estimate attaches **inside** the Opportunity commercial workflow (Cycle 4), carrying equipment/parts/
@@ -98,18 +106,25 @@ Read-first where authority is greenfield; consumes canonical Account/Contact con
   (equipment/parts/services) → **attention** → activity/timeline → **one next action**. Avoid equal-weight
   card farms — hierarchy + progressive disclosure + Context Band + Status Pill + Action Rail.
 
-## 9. Material decisions for Owner (return here — genuinely unresolved / protected)
-1. **Opportunity write path + Rules (PROTECTED).** New `opportunities` collection needs a governed write path
-   — (a) client-direct-with-rules (like `accounts`) or (b) a trusted command (like the catalog commands) —
-   and a `firestore.rules` addition (Tier-2, hash-anchored, operator-deployed). Which write path?
-2. **Lifecycle state set + semantics** — the §4 hypothesis needs Taylor Parts business truth (real stage names/
-   gates for National Accounts vs Retail). Confirm/adjust before it becomes schema.
-3. **Salesperson/channel identity model** — `accountOwner` is free text today; Opportunity needs an owner
-   reference + channel. Is owner an `employees`/`users` link or a business label for now? (Territory/scope is
-   a separate greenfield per ADR-012 G-2.)
-4. **Build-before-deploy path** — may the greenfield Opportunity frontend be developed and validated **read-
-   first over seeded sandbox opportunity fixtures** (using the Stream-C fixture pipeline) while the production
-   authority (collection + Rules) awaits its own protected deploy? (Recommended — keeps Cycle 2/3 moving.)
+## 9. Decisions — RATIFIED (Owner, 2026-08-07)
+1. **Write authority = TRUSTED COMMAND.** Client writes to `opportunities` **DENY**; business-intent commands
+   own writes (a small family — createOpportunity / updateOpportunity / advanceOpportunityStage /
+   closeOpportunityWon / closeOpportunityLost — expressible in one coherent command service, not necessarily
+   five Cloud Functions; never a `updateOpportunityDocument(fields)` public contract). Client **read** authority
+   is its own governed design — do NOT widen reads for convenience. The eventual `firestore.rules` delta stays
+   Tier-2 / hash-anchored / operator-deployed (a separate operational gate); the **architecture is approved
+   here** — no further "go" is needed to build the trusted-command design.
+2. **Lifecycle = the single shared set in §4** (IDENTIFIED → QUALIFYING → SOLUTION → QUOTING →
+   CUSTOMER_REVIEW → DECISION → WON | LOST), one base lifecycle for both channels. **Ratified.**
+3. **Owner = `ownerEmployeeId`** — a canonical Employee reference (not free text, not a Firebase UID as
+   business identity). `salesChannel` (NATIONAL_ACCOUNTS | RETAIL) is business context, not a grant or a
+   schema fork. **Ratified.**
+4. **Build-before-deploy = APPROVED.** Cycle 2/3 domain + frontend proceed before the Opportunity authority is
+   deployed. Because Opportunity is greenfield, use **SYNTHETIC governed Opportunity scenario fixtures** (they
+   reference the realistic sandbox Accounts/Contacts/Locations/Parts/Equipment once those exist). A MINIMAL
+   injected read-model seam (`OpportunitySource` → projections → frontend) hides whether the source is
+   synthetic-today or governed-later; do not expose fixture plumbing in business components, and do not build a
+   large repository framework or a second production authority.
 
 ## 10. Recommended Cycle-2 sequence
 Assessment (this) → **architecture/lifecycle decision** (ADR-scope: opportunities authority + write path + the
@@ -117,3 +132,26 @@ Won→Sales-Order seam) → **Specification** (fields, states, validation, Rules
 Implementation Plan → implementation (repo-only domain/UI first; the Rules/authority deploy is a separate
 protected gate). Frontend (Sales workspace + Opportunity detail on Wave-0 primitives) proceeds against seeded
 fixtures once the model is specified — no new authority shipped to production without its own gate.
+
+## 11. EOS commercial process invariants (durable — compression-integrity guard)
+These are ratified invariants for the whole Sales → fulfilment programme; keep them visible so long-session
+compression cannot drift the process. Any future work that violates one is DRIFT and must be rejected.
+
+- **Product/Design = one build stream** (owns product architecture, frontend design, implementation, shared
+  primitives). **UX = independent evaluator** (persona missions/scenarios/journeys/IA discovery/verdicts).
+  Product/Design running the canonical persona-scenario programme = **ROLE DRIFT — reject.**
+- **Sales entry = Opportunity.** **Account = relationship authority, not a pipeline transaction** (0..N
+  opportunities per account; no pipeline state on Account). `Account → Work Order` as the normal Sales flow =
+  **PROCESS DRIFT — reject.**
+- **Opportunity is pre-commitment** and identifies **product/model/part, never a serialized asset.**
+  `Opportunity → serialized inventory assignment` = **SEQUENCING DRIFT — reject.** Serialized assignment
+  happens after WON → Sales Order → fulfilment.
+- **WON = customer commitment, not fulfilment.** `WON = delivered/paid` = **AUTHORITY DRIFT — reject.**
+- Canonical authorities own their state: **Sales Order** = committed commercial order; **Work Order** =
+  downstream service execution; **Inventory** = physical stock; **Warehouse** = pick/prep; **Accounting** =
+  billing/receivable/collection; **Commission** = separate governed financial policy. Sales retains
+  cross-domain **visibility** (project downstream states) but **never persists** a parallel
+  `salesOrder.warehouseStatus / .workOrderStatus / .invoiceStatus` — prefer a cross-domain
+  commercial-fulfilment projection over the canonical authorities.
+- **ADR-012 controlling:** persona ≠ authority; operational responsibility ≠ grant; effective access is
+  derived. Opportunity ownership is business responsibility, not security authority.
