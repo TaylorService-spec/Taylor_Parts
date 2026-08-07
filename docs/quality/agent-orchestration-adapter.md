@@ -135,6 +135,50 @@ No working agent is retired; overlaps are resolved by lane-based finding dedup, 
 
 ---
 
+## G. Run Control Board (canonical status readout)
+
+The **presentation** of the framework §4 run ledger — how the primary orchestrator reports live agent state to
+the Owner. It is a **session-local view** (rendered on demand; not a committed artifact — only durable cycle
+summaries/findings are persisted). Every row uses a provider-independent `agentId` with a run number
+(`P-TECH-042`), a `modelTier` **separate** from `budgetClass`, and findings carrying **lane + remediation
+owner + corroboration** (deduped per framework §6). Advanced tier is Product/Design + escalations only.
+
+Canonical shape (illustrative values):
+
+```
+AGENT CONTROL BOARD
+CYCLE  <name>            BUDGET MODE  NORMAL
+
+ACTIVE AGENTS
+  P-TECH-042   Service Technician Persona   Model: Economy   Budget: SMALL
+    Mission: <one line>   Progress: 3/5 scenarios   Build: <pinned SHA>
+    Last useful result: <…>   Status: RUNNING   Fix owner: F2
+  GOV-AUTH-018 Governance/Authority Drift   Model: Standard  Budget: SMALL
+    Mission: <…>   Progress: COMPLETE   Findings: 1   Status: PASS
+  UX-COMPOSE-011 UX Composition             Model: Standard  Budget: SMALL
+    Mission: <…>   Progress: 2/3   Status: RUNNING
+
+QUEUED     DOC-WRITER-004  Documentation   Trigger: after scanner persona PASS
+BLOCKED    none
+
+UNIQUE FINDINGS  (one root defect = one finding + corroboration)
+  F-081  Scanner denied-state wording   Sev: Medium
+         Found by P-TECH, corroborated by UX-COMPOSE   Lane: EXPERIENCE   Owner: F2   Status: FIXING
+  F-082  Canonical part alias mismatch  Sev: High
+         Found by GOV-AUTH   Lane: DATA/AUTHORITY   Owner: F2   Status: FIXED
+
+BUDGET   Economy 1 active · Standard 1 active · Advanced = Product/Design only
+         Allocated ~62% · Reserve ~20% · Retries 0 · Duplicates 1 consolidated · Loops terminated 0
+
+RECENTLY COMPLETED   GOV-AUTH-018 PASS · Q-BUILD-027 PASS · UX-A11Y-009 PASS
+```
+
+Rules this readout enforces: build is **pinned** per run; `modelTier` and `budgetClass` are **separate**
+columns; the ~**20% reserve** is always shown; **duplicates are consolidated** (not re-counted as new
+findings); **loops terminated** is visible; and no agent shows ADVANCED unless it is Product/Design or an
+orchestrator-authorized escalation. Token/cost is reported honestly (tier + class + counts; exact numbers
+only if the runtime exposes them — framework §7a).
+
 ## F. What was deliberately NOT built (anti-over-engineering, framework §12)
 
 No agent dashboard, orchestration database, queue, event bus, token-billing engine, scheduler, agent
