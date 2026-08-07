@@ -174,6 +174,12 @@ export const NAV_DOMAINS = [
       // ADR-009 G2 -- governed Part Master administration workspace (read + fail-closed write)
       // (no legacyKey: brand-new screen, explicit App.jsx branch; admin/dispatcher via the default).
       { key: "partMaster", label: "Part Master", path: "part-master" },
+      // Manufacturer administration workspace (catalog reference object Parts link to; read + fail-closed
+      // write). No legacyKey: brand-new screen, explicit App.jsx branch; admin/dispatcher via the default.
+      // NOTE: the `manufacturers` collection read is still Rules-closed (the governed read-authority
+      // decision is DEFERRED to the Owner -- it interacts with the R-1 legacy-surface convergence gate),
+      // so the workspace read fails closed to a denied state until resolved.
+      { key: "manufacturers", label: "Manufacturers", path: "manufacturers" },
       { key: "warehouses", label: "Warehouses", path: "warehouses" },
       { key: "truckInventory", label: "Truck Inventory", path: "truck-inventory" },
       { key: "transfers", label: "Transfers", path: "transfers" },

@@ -30,6 +30,7 @@ export default defineConfig({
       RECEIVING_TRANSPORT_READY: false,
       TRUCK_MANAGEMENT_WRITE_READY: true,
       PART_MASTER_WRITE_READY: false,
+      MANUFACTURER_WRITE_READY: false,
       TRUSTED_COMPLETION_ENABLED: true,
     }),
   },

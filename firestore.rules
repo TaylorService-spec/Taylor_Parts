@@ -1620,6 +1620,13 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
     match /manufacturers/{manufacturerId} {
+      // DELIBERATELY still read-closed. The Manufacturer admin workspace needs a governed read, and the
+      // minimum-governed answer is `read: isAdminOrDispatcher()` (matching the sibling catalog reference
+      // object `suppliers`). BUT adding it grows the R-1 legacy-authorization surface by one recorded site
+      // (ADR-005 §2.7 criterion 1 / legacy-surface-gate), which is an elevated, separately-governed
+      // convergence baseline. That read-authority decision is DEFERRED to the Owner (record in the R-1
+      // corpus vs. await the governed catalog-read permission model), so the workspace read stays
+      // FAIL-CLOSED (denied) until it is resolved. Manufacturer mutation stays trusted-command-only.
       allow read, write: if false;
     }
     // INV-1 Phase 1 PR 1.3 (ADR-008 / Decision #40) -- part identifier
