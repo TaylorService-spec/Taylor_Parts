@@ -15,7 +15,7 @@ import { nextFieldAction } from "./fieldWorkOrder.js";
  *
  *   resolved identity
  *     + entity type
- *     + the caller's effective capabilities
+ *     + the caller's resolved role and identity
  *     + the current workflow state / resource relationship
  *       -> permitted actions
  *
@@ -24,8 +24,10 @@ import { nextFieldAction } from "./fieldWorkOrder.js";
  * and a reason, because "you may not do this" and "this does not exist" are
  * different facts (the same rule the resolver applies to NOT_FOUND).
  *
- * PURE. Capabilities are injected — this module resolves no permissions itself
- * and performs no reads, so it cannot widen access.
+ * PURE. The caller's resolved role/identity is injected — this module resolves
+ * no permissions itself and performs no reads, so it cannot widen access. It
+ * also invents no capability id: the derivation MIRRORS what the governed
+ * callable enforces, and the server remains the authority.
  *
  * ADR-012 alignment: Capability answers WHAT, the entity+context answer
  * WHERE/TO WHAT, and effective access is derived rather than declared. A
@@ -53,7 +55,7 @@ const action = (id, label, { enabled, reason = null, payload = null }) => ({
  * Derive the permitted actions for a resolved scan.
  *
  * `context`:
- *   capabilities   { [capabilityId]: true }  — what the caller effectively holds
+ *   role           the caller's resolved role
  *   technicianId   the caller's resolved technician identity, or null
  *   workOrders     the caller's own Work Orders (already authorised reads)
  *   activeWorkOrder the Work Order currently being worked, if any
@@ -66,13 +68,17 @@ export function deriveScanActions(identity, context = {}) {
   if (!identity || identity.resolutionState !== SCAN_RESOLUTION.RESOLVED) return [];
 
   const {
-    capabilities = {},
+    // `role` + `technicianId` mirror what updateWorkOrderExecutionData
+    // actually enforces server-side. There is deliberately NO invented
+    // capability id here: the permission catalog has no
+    // `workOrder.execution.record`, and R-1's governing constraint is not to
+    // create permissions merely to make a client look tidy. The client mirrors
+    // the real rule; the server remains the authority.
+    role = null,
     technicianId = null,
     workOrders = [],
     activeWorkOrder = null,
   } = context;
-
-  const can = (id) => capabilities[id] === true;
 
   switch (identity.entityType) {
     case "PART": {
@@ -94,10 +100,13 @@ export function deriveScanActions(identity, context = {}) {
         (row) => row.partId === partId || row.sku === partId,
       );
 
+      // The server's three conditions, mirrored in the same order it applies
+      // them: technician role, resolvable identity, own assignment -- plus the
+      // planned-sku check the callable also performs.
       let enabled = true;
       let reason = null;
-      if (!can("workOrder.execution.record")) {
-        enabled = false; reason = "You do not have permission to record part usage.";
+      if (role !== "technician" || !technicianId) {
+        enabled = false; reason = "Only the assigned technician can record part usage.";
       } else if (!isOwn) {
         enabled = false; reason = "This work order is not assigned to you.";
       } else if (!planned) {

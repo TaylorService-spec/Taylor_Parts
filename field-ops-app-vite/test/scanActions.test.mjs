@@ -10,7 +10,7 @@ const WO = {
   inventorySnapshot: [{ partId: "PRT-1001", sku: "PRT-1001", qtyPlanned: 2 }],
 };
 const CANDIDATES = { parts: [{ partId: "PRT-1001", sku: "PRT-1001" }], workOrders: [WO] };
-const FULL = { capabilities: { "workOrder.execution.record": true }, technicianId: TECH, workOrders: [WO], activeWorkOrder: WO };
+const FULL = { role: "technician", technicianId: TECH, workOrders: [WO], activeWorkOrder: WO };
 
 const partScan = () => resolveScannedIdentity("PRT-1001", CANDIDATES);
 const woScan = () => resolveScannedIdentity("WO-2026-000001", CANDIDATES);
@@ -37,16 +37,18 @@ test("an AMBIGUOUS scan yields no actions -- the scanner never picks a winner", 
 
 // ------------------------------------------------------------- capability
 
-test("recording usage requires the capability -- absent, it is offered but disabled with a reason", () => {
-  const acts = deriveScanActions(partScan(), { ...FULL, capabilities: {} });
+test("a non-technician caller is offered the action but disabled, with a reason", () => {
+  // Mirrors the server: updateWorkOrderExecutionData rejects any role but
+  // technician. No invented capability id is consulted.
+  const acts = deriveScanActions(partScan(), { ...FULL, role: "dispatcher" });
   const rec = acts.find((a) => a.id === SCAN_ACTIONS.RECORD_PART_USAGE);
   assert.equal(rec.enabled, false);
-  assert.match(rec.reason, /permission/i);
+  assert.match(rec.reason, /assigned technician/i);
   // Disabled, NOT hidden: "you may not" and "does not exist" are different facts.
   assert.ok(acts.length > 0);
 });
 
-test("with the capability and an own, planned part, usage is permitted", () => {
+test("as the assigned technician with a planned part, usage is permitted", () => {
   const rec = deriveScanActions(partScan(), FULL).find((a) => a.id === SCAN_ACTIONS.RECORD_PART_USAGE);
   assert.equal(rec.enabled, true);
   assert.equal(rec.reason, null);
@@ -114,7 +116,7 @@ test("entities with no governed write path get a READ action, never an invented 
 
 test("the action set is DERIVED, not a fixed menu -- it changes with authority and context", () => {
   const withCap = deriveScanActions(partScan(), FULL).filter((a) => a.enabled).map((a) => a.id);
-  const without = deriveScanActions(partScan(), { ...FULL, capabilities: {} }).filter((a) => a.enabled).map((a) => a.id);
+  const without = deriveScanActions(partScan(), { ...FULL, role: "dispatcher" }).filter((a) => a.enabled).map((a) => a.id);
   assert.notDeepEqual(withCap, without);
   // The legacy literal menu (receive / load truck / cycle count / add to PO)
   // must never reappear from a scan.
@@ -125,14 +127,14 @@ test("the action set is DERIVED, not a fixed menu -- it changes with authority a
 });
 
 test("enabledScanActions returns only what the caller may actually invoke now", () => {
-  const enabled = enabledScanActions(partScan(), { ...FULL, capabilities: {} });
+  const enabled = enabledScanActions(partScan(), { ...FULL, role: "dispatcher" });
   assert.ok(!enabled.some((a) => a.id === SCAN_ACTIONS.RECORD_PART_USAGE));
   assert.ok(enabled.every((a) => a.enabled));
 });
 
 test("no action carries an authority decision of its own", () => {
   for (const a of deriveScanActions(partScan(), FULL)) {
-    for (const forbidden of ["role", "persona", "capabilities", "grant"]) {
+    for (const forbidden of ["persona", "capabilities", "grant", "device"]) {
       assert.ok(!(forbidden in a), `action must not carry "${forbidden}"`);
     }
   }
