@@ -40,7 +40,7 @@ export const EMULATOR = Object.freeze({
 // The canonical, ORDERED suite list with expected pass counts. Order matters.
 export const SUITES = Object.freeze([
   { file: "employeesRules.test.js", expected: 20 },
-  { file: "reorderRequestsRules.test.js", expected: 82 },
+  { file: "reorderRequestsRules.test.js", expected: 90 },
   { file: "accountsGovernedFieldsRules.test.js", expected: 18 },
   { file: "issue100PartsManagerRules.test.js", expected: 40 },
   { file: "issue100WarehouseManagerRules.test.js", expected: 11 },

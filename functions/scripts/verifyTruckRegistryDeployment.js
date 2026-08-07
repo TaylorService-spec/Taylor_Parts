@@ -24,8 +24,10 @@ const { sha256, extractRulesSource, VerificationError } = require("./firestoreDe
 // This is the SHA-256 of the whole governed `firestore.rules` (Git/LF source). It is
 // re-pinned whenever the governed rules legitimately change: bumped from
 // bb1492b9... to ec1f0a9b... to track the merged Phase-D `receiving_orders` deny-all
-// block (PR #537), which the smoke-verifier's own test asserts equals HEAD:firestore.rules.
-const GOVERNED_RULES_SHA256 = "ec1f0a9b78d937d1eff1aef6c2588b20a0dc77501b392e560b491e7c13b1ccd1";
+// block (PR #537), then to 37593fc0... to track the WO Parts Planning Phase-3 additive
+// `reorder_requests.workOrderId` back-link (Owner-authorized narrow schema change). The
+// smoke-verifier's own test asserts this equals HEAD:firestore.rules.
+const GOVERNED_RULES_SHA256 = "37593fc0ed8c0259d37454898c5c9469bd6463c12247e18ae35d0bbc4e6a9076";
 const EXPECTED_PROJECT = "taylor-parts";
 
 // ----- pure helpers -------------------------------------------------------------------------

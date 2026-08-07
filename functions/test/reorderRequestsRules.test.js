@@ -578,6 +578,47 @@ async function main() {
       planningFields({ partId: "PART-P13", requestedByUid: "user-technician-partsmanager-rr", currentOwner: "PARTS_MANAGER" })
     )) === 403
   );
+
+  // --- WO Parts Planning Phase 3: additive OPTIONAL reorder_requests.workOrderId back-link ---
+  // The exact authorized schema change. workOrderId is PERMITTED (hasOnly) but NOT REQUIRED (absent from
+  // hasAll): absent stays valid (no historical migration), explicit null valid (this domain's unused-field
+  // convention), a non-empty string (governed Work Order id, validated like partId) valid, any other shape
+  // denied. It adds no field beyond itself (strict hasOnly intact) and broadens no writer role. workOrderId
+  // is ALSO immutable after creation: it appears in no update branch's affectedKeys().hasOnly() allowlist,
+  // so no update can add/change/remove it -- the full existing update suite below remains green, proving
+  // update behavior is unchanged.
+  report(
+    "workOrderId ABSENT: existing canonical create still accepted (back-compat, no migration)",
+    (await createReorderRequest("rr-wo-absent", adminToken, readyFields({ partId: "PART-WO1", requestedByUid: "user-admin-rr" }))) === 200
+  );
+  report(
+    "workOrderId = valid non-empty string (governed WO id) accepted",
+    (await createReorderRequest("rr-wo-valid", adminToken, readyFields({ partId: "PART-WO2", requestedByUid: "user-admin-rr", overrides: { workOrderId: str("WO-2026-000042") } }))) === 200
+  );
+  report(
+    "workOrderId = explicit null accepted (domain's unused-field convention)",
+    (await createReorderRequest("rr-wo-null", adminToken, readyFields({ partId: "PART-WO3", requestedByUid: "user-admin-rr", overrides: { workOrderId: nul() } }))) === 200
+  );
+  report(
+    "workOrderId = empty string rejected (must be non-empty)",
+    (await createReorderRequest("rr-wo-empty", adminToken, readyFields({ partId: "PART-WO4", requestedByUid: "user-admin-rr", overrides: { workOrderId: str("") } }))) === 403
+  );
+  report(
+    "workOrderId = wrong type (integer) rejected (must be a string)",
+    (await createReorderRequest("rr-wo-int", adminToken, readyFields({ partId: "PART-WO5", requestedByUid: "user-admin-rr", overrides: { workOrderId: int(5) } }))) === 403
+  );
+  report(
+    "workOrderId = wrong type (boolean) rejected",
+    (await createReorderRequest("rr-wo-bool", adminToken, readyFields({ partId: "PART-WO6", requestedByUid: "user-admin-rr", overrides: { workOrderId: { booleanValue: true } } }))) === 403
+  );
+  report(
+    "an UNKNOWN extra field is still rejected (strict hasOnly intact; workOrderId did not loosen it)",
+    (await createReorderRequest("rr-wo-extra", adminToken, readyFields({ partId: "PART-WO7", requestedByUid: "user-admin-rr", overrides: { someBogusField: str("x") } }))) === 403
+  );
+  report(
+    "workOrderId does NOT broaden writer roles: a plain technician create (even with a valid workOrderId) is still rejected",
+    (await createReorderRequest("rr-wo-tech", technicianPlainToken, readyFields({ partId: "PART-WO8", requestedByUid: "user-technician-plain-rr", overrides: { workOrderId: str("WO-2026-000099") } }))) === 403
+  );
   report(
     "NEEDS_PLANNING with spoofed requestedBy (a different uid than the caller) rejected",
     (await createReorderRequest(

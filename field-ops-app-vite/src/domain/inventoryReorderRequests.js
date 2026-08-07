@@ -1,6 +1,7 @@
 import { REORDER_REQUESTS_COLLECTION, REORDER_REQUEST_STATUS, REORDER_REQUEST_OWNER, QUANTITY_SOURCE } from "./constants";
 import { makeCollectionStore } from "../firebase/collectionStore";
 import { auth } from "../firebase/firebase";
+import { buildReorderRequestFields } from "./reorderRequestPayload";
 
 // Sprint 2.1.3 -- Reorder Request & Notification Foundation
 // (docs/BusinessEntityModel.md's Reorder Request entry; Inventory
@@ -49,9 +50,15 @@ export const reorderRequestsStore = makeCollectionStore(REORDER_REQUESTS_COLLECT
 // server-side enforcement (PR 2) -- fails fast client-side, exactly
 // the same "validated here, not just in the UI, since this is the
 // sole write path" posture reviewReorderRequest() already uses below.
-export function createReorderRequest({ partId, urgency, recommendedQty, recommendationStatus, requestedQty, quantitySource }) {
+export function createReorderRequest({ partId, urgency, recommendedQty, recommendationStatus, requestedQty, quantitySource, workOrderId = null }) {
   if (recommendationStatus !== "READY" && recommendationStatus !== "NEEDS_PLANNING") {
     throw new Error(`Invalid recommendationStatus: ${recommendationStatus}`);
+  }
+  // WO Parts Planning Phase 3 -- optional Work Order provenance back-link. When present it must be a
+  // non-empty governed Work Order id (mirrors firestore.rules' create validation). Back-link/provenance
+  // only: it confers no Work Order lifecycle authority here and no procurement authority on the Work Order.
+  if (workOrderId != null && (typeof workOrderId !== "string" || workOrderId.length === 0)) {
+    throw new Error("workOrderId, when provided, must be a non-empty Work Order id.");
   }
   if (!Number.isInteger(requestedQty)) {
     throw new Error("requestedQty must be a whole number.");
@@ -63,46 +70,21 @@ export function createReorderRequest({ partId, urgency, recommendedQty, recommen
     throw new Error("requestedQty must not be negative.");
   }
 
-  return reorderRequestsStore.add({
-    partId,
-    recommendationStatus,
-    urgency,
-    quantitySource,
-    recommendedQty,
-    requestedQty,
-    status: REORDER_REQUEST_STATUS.PENDING_REVIEW,
-    currentOwner: REORDER_REQUEST_OWNER.INVENTORY,
-    requestedBy: auth.currentUser?.uid ?? null,
-    reviewedBy: null,
-    reviewedAt: null,
-    reviewDecision: null,
-    reviewNotes: null,
-    assignedToUserId: null,
-    assignedBy: null,
-    assignedAt: null,
-    purchasingStartedAt: null,
-    purchasingStartedBy: null,
-    purchasingNotes: null,
-    vendorContacted: null,
-    expectedAvailabilityDate: null,
-    lastPurchasingUpdateAt: null,
-    lastPurchasingUpdateBy: null,
-    purchaseOrderId: null,
-    orderedBy: null,
-    orderedAt: null,
-    receivedBy: null,
-    receivedAt: null,
-    // Cancel/Void schema deployment sequence, step B (docs/specifications/
-    // reorder-request-cancellation.md) -- transitional Rules (PR #117,
-    // step A) already accept this shape; Cancel/Void themselves aren't
-    // wired to any write path until PR 4/5.
-    cancelledBy: null,
-    cancelledAt: null,
-    cancellationReason: null,
-    voidedBy: null,
-    voidedAt: null,
-    voidReason: null,
-  });
+  // The exact canonical payload is built by the PURE buildReorderRequestFields() (unit-tested), which also
+  // includes the optional Phase-3 workOrderId provenance back-link ONLY when supplied. The collection store
+  // injects createdAt. Cancel/Void fields remain present-and-null per the cancellation schema sequence.
+  return reorderRequestsStore.add(
+    buildReorderRequestFields({
+      partId,
+      recommendationStatus,
+      urgency,
+      quantitySource,
+      recommendedQty,
+      requestedQty,
+      requestedByUid: auth.currentUser?.uid ?? null,
+      workOrderId,
+    })
+  );
 }
 
 // Shared "Request Reorder" orchestrator -- builds the correct
@@ -112,7 +94,12 @@ export function createReorderRequest({ partId, urgency, recommendedQty, recommen
 // PartDetail.jsx's Stock Position card so the READY-vs-NEEDS_PLANNING
 // branching (per the Specification's per-path contract table) is
 // implemented once, not duplicated between the two call sites.
-export function requestReorderForRecommendation({ partId, recommendation, manualQty }) {
+// `workOrderId` (optional) threads a Work Order shortage's provenance through the SAME governed reorder
+// creation seam -- no parallel procurement path. It is HUMAN-triggered (a dispatcher/parts operator raising
+// a reorder for a shortage), exactly like today's manual reorder creation; there is no automatic
+// shortage-to-request behavior (which would require a deduplication key the repository does not yet own), so
+// readiness recompute / rerender / retry can never mint duplicate requests.
+export function requestReorderForRecommendation({ partId, recommendation, manualQty, workOrderId = null }) {
   if (recommendation.recommendationStatus === "READY") {
     const qty = Math.ceil(recommendation.recommendedOrderQty);
     return createReorderRequest({
@@ -122,6 +109,7 @@ export function requestReorderForRecommendation({ partId, recommendation, manual
       quantitySource: QUANTITY_SOURCE.ANALYTICS,
       recommendedQty: qty,
       requestedQty: qty,
+      workOrderId,
     });
   }
 
@@ -132,6 +120,7 @@ export function requestReorderForRecommendation({ partId, recommendation, manual
     quantitySource: QUANTITY_SOURCE.MANUAL_ZERO_HISTORY,
     recommendedQty: null,
     requestedQty: manualQty,
+    workOrderId,
   });
 }
 
