@@ -1,0 +1,5 @@
+i  You are about to set up a cleanup policy for Cloud Run functions container images in location us-central1
+i  This policy will automatically delete container images that are older than 1 days
+i  This helps reduce storage costs by removing old container images that are no longer needed
++  Successfully set up cleanup policy that deletes images older than 1 days
+i  Cleanup policy has been set for projects/eos-platform-sandbox/locations/us-central1/repositories/gcf-artifacts

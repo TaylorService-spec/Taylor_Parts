@@ -227,7 +227,10 @@ test('D2 registry: unobservable environments are enumerable', () => {
   const ids = un.map((e) => e.id);
   assert.ok(ids.includes('platform-integration'),
     'the missing integration environment must be visible as a declared gap');
-  assert.ok(ids.includes('platform-sandbox'));
+  // platform-sandbox was provisioned 2026-08-06 and is now OBSERVABLE, so it is
+  // deliberately no longer in this list. platform-integration remains the gap.
+  assert.ok(!ids.includes('platform-sandbox'),
+    'platform-sandbox is provisioned and should now be observable');
 });
 
 test('D2 registry: the governed/ungoverned distinction is recorded per surface', () => {
