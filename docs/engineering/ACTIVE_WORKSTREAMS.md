@@ -43,6 +43,8 @@ When you begin a capability, add a row to **Active** with every declared field. 
 > commit**, and owned/shared paths **before** writing — that declaration is what makes rules 1–2
 > enforceable.
 
+- Capability:          [CLOSED — AT REST 2026-08-07] Part Master in-app governed catalog write (ADR-009 G2). Phase 1 callables (createPart/updatePart/changePartStatus, PR #617, inert) + Phase 2 write workspace (PR #619, main c4121f6: PartMasterList evolved in-place + fail-closed partMasterWriteReadiness + partMasterCommandClient + partMasterWrite domain + usePartMasterWrite). Invariants verified (ONE Part authority / ONE trusted command path / NO client Firestore writes / NO parallel validator / NO parallel status vocab / actor server-derived / readiness fail-closed / honest states). RC `docs/releases/part-master-write-rc.md`; handoff `docs/releases/part-master-sandbox-handoff.md`. Authority reuses inventory.catalog.manage/.activate + the accepted inventoryCatalogAdministrator role design. PART_MASTER_WRITE_READY=false. Repo-complete; no further Product Engineering work. Reactivates only on integrated-sandbox experience review or a protected promotion authorization. (Merging remediated an inherited O-3 CI regression — see `docs/engineering/config-change-ci-coverage-contract.md`.)
+
 ## Ready for assignment
 
 - **Receiving activation (protected)** — the governed receive workflow now EXISTS (A1, scanner-within-FieldMode, DECISIONS #68) but is fail-closed on `RECEIVING_TRANSPORT_READY = false`. Turning it on is a **protected boundary**: Phase-F readiness flip + authorized Hosting release + the `inventory.stock.receive` grant already live for {admin,dispatcher,owner}. Owner-gated; not a repo-only capability.
