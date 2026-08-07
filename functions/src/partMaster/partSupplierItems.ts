@@ -96,7 +96,9 @@ export interface SupplierItemTermsInput {
   readonly availability?: unknown;
   readonly lastVerifiedAt?: unknown;
 }
-const TERM_KEYS = new Set(["supplierSku", "cost", "currency", "leadTimeDays", "minOrderQty", "orderMultiple", "purchaseUnit", "conversionToStockingUnit", "contractStart", "contractEnd", "availability", "lastVerifiedAt"]);
+// The recognized procurement-term field names. Exported so the callable adapter forwards EXACTLY these
+// (single source of truth -- no hand-maintained mirror that could silently drift).
+export const TERM_KEYS = new Set(["supplierSku", "cost", "currency", "leadTimeDays", "minOrderQty", "orderMultiple", "purchaseUnit", "conversionToStockingUnit", "contractStart", "contractEnd", "availability", "lastVerifiedAt"]);
 
 export function validateSupplierItemTerms(input: SupplierItemTermsInput, requireCore: boolean): Result<Partial<StoredPartSupplierItem>> {
   const errors: ValidationIssue[] = [];
