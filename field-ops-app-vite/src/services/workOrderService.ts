@@ -74,10 +74,17 @@ export async function getWorkOrder(id: string): Promise<WorkOrder | null> {
 // index, see firestore.indexes.json's commit note) -- not implemented
 // here since this pass only wires the admin/dispatcher-facing Control
 // Tower view.
-export function subscribeToWorkOrders(onChange: (workOrders: WorkOrder[]) => void): Unsubscribe {
+export function subscribeToWorkOrders(
+  onChange: (workOrders: WorkOrder[]) => void,
+  onError?: (err: Error) => void
+): Unsubscribe {
+  // The error channel is not optional in practice: this is an UNFILTERED
+  // collection listener, and firestore.rules only lets a technician read Work
+  // Orders assigned to them. Without it the denial was swallowed and the
+  // surface span forever on "Loading work orders...".
   return onSnapshot(collection(db, WORK_ORDERS_COLLECTION), (snap) => {
     onChange(snap.docs.map((d) => ({ id: d.id, ...d.data() } as WorkOrder)));
-  });
+  }, (err) => { onError?.(err as Error); });
 }
 
 // PT-002 -- Assigned Work Order Query Layer. A separate, additional
