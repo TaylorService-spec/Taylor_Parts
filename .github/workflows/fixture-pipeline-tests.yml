@@ -1,0 +1,50 @@
+name: Sandbox Fixture Pipeline Tests
+
+# Production-derived operational fixtures (Parts/Inventory/Equipment) — pure-logic tests for the
+# extraction guards, sanitizer, relationship closure, deterministic ID mapping, and the governed sandbox
+# importer guards. No emulator, no production, no network, no secrets — offline over synthetic records.
+
+on:
+  pull_request:
+    paths:
+      - "functions/scripts/fixtures/**"
+      - "functions/scripts/extractProductionFixtures.mjs"
+      - "functions/scripts/seedSandboxFixtures.mjs"
+      - "functions/test/fixturePipeline.test.mjs"
+      - "config/environments.json"
+      - "functions/package.json"
+      - ".github/workflows/fixture-pipeline-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/scripts/fixtures/**"
+      - "functions/scripts/extractProductionFixtures.mjs"
+      - "functions/scripts/seedSandboxFixtures.mjs"
+      - "functions/test/fixturePipeline.test.mjs"
+      - "config/environments.json"
+      - "functions/package.json"
+      - ".github/workflows/fixture-pipeline-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fixture-pipeline-tests:
+    name: Sandbox fixture pipeline tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+      - name: Fixture pipeline tests (offline; no emulator)
+        run: npm run test:fixturePipeline
+        working-directory: functions
