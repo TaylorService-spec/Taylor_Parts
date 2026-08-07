@@ -20,12 +20,17 @@ import { getAllowedActions } from "./workOrderWorkflow.js";
 // Labels for the technician lifecycle, in order. `from` documents the status
 // each action belongs to for progress display -- it is NEVER used to decide
 // whether an action is offered. Authority for that is getAllowedActions().
+// `label` is the ACTION ("do this"); `stateLabel` is the resulting STATE ("this
+// has happened"). They are separate because a progress track labelled with
+// actions reads wrongly -- the current step would repeat the button's words back
+// at the technician, so "Complete job" appeared both as a step and as the
+// action. Steps describe where the job IS; the button describes what to do next.
 export const FIELD_ACTIONS = [
-  { action: "Accept", label: "Accept job", from: "DISPATCHED" },
-  { action: "Travel", label: "Start travel", from: "ACCEPTED" },
-  { action: "Arrive", label: "Arrived", from: "EN_ROUTE" },
-  { action: "WorkStart", label: "Start work", from: "ARRIVED" },
-  { action: "Complete", label: "Complete job", from: "WORK_IN_PROGRESS" },
+  { action: "Accept", label: "Accept job", stateLabel: "Accepted", from: "DISPATCHED" },
+  { action: "Travel", label: "Start travel", stateLabel: "Travelling", from: "ACCEPTED" },
+  { action: "Arrive", label: "Arrived", stateLabel: "On site", from: "EN_ROUTE" },
+  { action: "WorkStart", label: "Start work", stateLabel: "Working", from: "ARRIVED" },
+  { action: "Complete", label: "Complete job", stateLabel: "Complete", from: "WORK_IN_PROGRESS" },
 ];
 
 const LABEL_BY_ACTION = new Map(FIELD_ACTIONS.map((a) => [a.action, a.label]));

@@ -197,7 +197,7 @@ function JobState({ state }) {
               className={`fo-field-progress__step${done ? " is-done" : ""}${isCurrent ? " is-current" : ""}`}
               aria-current={isCurrent ? "step" : undefined}
             >
-              {step.label}
+              {step.stateLabel}
             </li>
           );
         })}
