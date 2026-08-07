@@ -131,6 +131,6 @@ const styles = {
   },
   link: {
     textDecoration: "none",
-    color: "#2e4a50"
+    color: "var(--color-brand-secondary)"
   }
 };

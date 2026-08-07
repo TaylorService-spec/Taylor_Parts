@@ -6,6 +6,7 @@ import {
   buildServiceNavGroups,
   findActiveServiceGroupKey,
 } from "./navConfig";
+import VerenwardMark from "../shared/brand/VerenwardMark";
 
 // Sprint 2.0.1 -- top-level domain tabs + the active domain's sub-nav.
 // Real <NavLink> anchors (not onClick + setState) so the browser's
@@ -80,7 +81,17 @@ export default function AppShell({ role, allowedLegacyKeys, operationalContext, 
   return (
     <>
       <header className="fo-header">
-        <h1>Field Ops</h1>
+        {/* Brand hierarchy, expressed as two SEPARATE elements on purpose:
+            the Verenward lockup names the parent brand and the platform, while
+            the implementation block names the deployment. Taylor Parts is the
+            customer environment, not the product name, so it is identified
+            alongside the brand rather than replaced by it. */}
+        <VerenwardMark variant="horizontal" tone="onDark" />
+        <span className="fo-implementation">
+          <span className="fo-implementation__name">Taylor Parts</span>
+          <span className="fo-implementation__context">Arizona Operations</span>
+        </span>
+        <h1 className="fo-visually-hidden">Field Ops</h1>
         <nav className="fo-nav" aria-label="Primary">
           {visibleDomains.map((domain) => (
             <NavLink
