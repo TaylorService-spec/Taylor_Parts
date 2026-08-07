@@ -196,7 +196,10 @@ check("exactly 3 wave-1 report.* ids are inactive; every other wave-1 id is acti
 // AUTH-PR-3.5 (DECISIONS #56): admin.credentialReset.initiate is registered
 // `active: false` (inactive pending a separate production/security gate), the
 // same additive posture as the report.*/equipment.* inactive capabilities.
-const ACTIVE_DECLARING_PREFIXES = ["report.", "equipment.", "admin.credentialReset."];
+// WO Parts Planning Phase 2: workOrder.parts.plan is registered `active: false`
+// (the governed setWorkOrderPartsPlan producer's capability, ungranted-by-design
+// pending a separate Owner grant), same additive posture.
+const ACTIVE_DECLARING_PREFIXES = ["report.", "equipment.", "admin.credentialReset.", "workOrder.parts."];
 check("no other catalog entry declares `active` (this addition is additive-only for every pre-existing id)", () => {
   for (const permission of PERMISSION_CATALOG) {
     if (ACTIVE_DECLARING_PREFIXES.some((prefix) => permission.id.startsWith(prefix))) continue;

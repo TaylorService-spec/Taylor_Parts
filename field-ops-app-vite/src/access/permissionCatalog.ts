@@ -109,6 +109,18 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     resource: "workOrder",
     action: "cancel",
   }),
+  // WO Parts Planning Phase 2 -- authoring/changing a Work Order's planned parts (qtyPlanned) via the
+  // governed setWorkOrderPartsPlan producer. Registered active:false: fail-closed for every principal until
+  // a SEPARATE Owner grant through the Persona/Permissions architecture. A capability, NOT a role check --
+  // it answers only "may this actor author/change planned parts". PLAN != RESERVE != USE.
+  Object.freeze({
+    id: "workOrder.parts.plan",
+    description:
+      "Author or change the planned parts (qtyPlanned) for a Work Order via the governed setWorkOrderPartsPlan producer. Does not reserve, consume, or procure.",
+    resource: "workOrder.parts",
+    action: "plan",
+    active: false,
+  }),
 
   // --- Inventory / Reorder / Purchasing domain (Issue #100; Assessment's
   // Inventory domain audit table; firestore.rules current `main`) ---

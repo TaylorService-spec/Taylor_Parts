@@ -89,6 +89,10 @@ function buildDeferredForNow(catalog) {
     // from those roles), NOT via this deferred set. A future inventory.stock.* stays UNACCOUNTED (A3-inv).
     // AUTH-PR-3.5 (DECISIONS #56): registered `active: false`, granted to NO Role.
     "admin.credentialReset.initiate",
+    // WO Parts Planning Phase 2: workOrder.parts.plan is registered `active: false` and granted to NO
+    // compatibility Role -- ungranted-by-design, pending a separate Owner grant. Named as an EXACT literal
+    // (not a prefix), so a future workOrder.parts.* capability stays UNACCOUNTED until reviewed.
+    "workOrder.parts.plan",
   ]);
 }
 // Catalog ids neither granted by a seeded Role nor deferred-by-design (the exhaustiveness gate's

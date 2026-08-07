@@ -8,6 +8,10 @@ initializeApp();
 export { createWorkOrder } from "./createWorkOrder";
 export { transitionWorkOrder } from "./transitionWorkOrder";
 export { updateWorkOrderExecutionData } from "./updateWorkOrderExecutionData";
+// WO Parts Planning Phase 2 -- the governed PLANNED producer. "export is not deployment": not deployed to
+// the live project and no client calls it, and its capability (workOrder.parts.plan) is registered
+// active:false (fail-closed for everyone) until a separate Owner deploy + grant gate.
+export { setWorkOrderPartsPlan } from "./workOrderPartsPlan/setWorkOrderPartsPlan";
 
 // --- F-RULES-1 surface: trusted technician job completion (Decision #39) ---
 // Same "export is not deployment" posture as the surfaces below: not
