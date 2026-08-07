@@ -40,7 +40,14 @@ After migration:
 ## Current conformance gaps (governance defects — remediate via their own gates; NOT fixed here)
 
 - **G1 — `accounts` client-direct write (Customer domain).** `field-ops-app-vite/src/domain/accounts.js` `createAccount`/`updateAccount` write the protected `accounts` collection directly through the client SDK (Rules-gated), not a trusted command. The file documents this as an interim path pending a trusted server-side writer ("Customer PR 3b"), after which client mutation becomes Rules-denied. Remediate in the Customer workstream.
-- **G2 — no site-facing Part-creation workflow.** `createPart` is an internal trusted service, not an exported callable; the Part Master UI is read-only (PR 1.9). Until a `createPart` callable + site workflow exists, routine site-based Part creation is not yet possible — only the migration-exception operator script. Remediate in a later Inventory gate.
+- **G2 — no site-facing Part-creation workflow (PARTIALLY CLOSING, in progress).** The trusted
+  `createPart`/`updatePart`/`changePartStatus` **onCall callables now exist** and are exported from
+  `functions/src/index.ts` under their frozen public names (`functions/src/partMaster/partMasterCallables.ts`)
+  — but they are **NOT deployed and NOT granted** (catalog capabilities are carried by no standing role),
+  and **no site UI is wired to call them yet** (Part Master UI is still read-only, PR 1.9). So routine
+  site-based Part creation is still not possible until (a) the in-app Part Master write workspace lands
+  and (b) the protected Functions-deploy + capability-grant occur. Remaining work is the Part Master
+  write-workspace capability + its protected promotion.
 - **G3 — governed Roles not yet assignable via trusted commands.** The trusted role-assignment commands resolve `roleId` against `COMPATIBILITY_ROLES` only, so `inventoryCreateExecutor` cannot yet be granted through the audited callable path. Remediate in "Trusted Governed-Role Assignment Wiring" (already reviewed).
 
 Conformant today (no defect): `parts`/`users`/`employees` are client read-only; `fieldops_wos` and `reportDefinitions` are written only through trusted callables; `manufacturers`/`part_aliases`/`part_supplier_items`/`inventory_transactions`/`roleAssignments`/`auditEvents` have no client reference at all. No application Role is coupled to GCP/Firebase IAM (verified: no IAM APIs referenced in application code).

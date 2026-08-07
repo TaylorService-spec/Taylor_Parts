@@ -85,7 +85,8 @@
     "test:supplierLinkage": "npm run build && node test/reorderPurchaseOrderSupplierLinkage.test.mjs",
     "test:supplierMigrationEmulator": "npm run build && node test/reorderPurchaseOrderSupplierMigrationEmulator.test.mjs",
     "test:supplierMigrationExecute": "npm run build && node test/reorderPurchaseOrderSupplierMigrationExecuteManifest.test.mjs",
-    "test:supplierMigrationExecuteEmulator": "npm run build && node test/reorderPurchaseOrderSupplierMigrationExecuteEmulator.test.mjs"
+    "test:supplierMigrationExecuteEmulator": "npm run build && node test/reorderPurchaseOrderSupplierMigrationExecuteEmulator.test.mjs",
+    "test:partMasterCallables": "npm run build && node test/partMasterCallablesExport.test.mjs && node test/partMasterCallables.test.mjs"
   },
   "dependencies": {
     "firebase-admin": "^12.7.0",
