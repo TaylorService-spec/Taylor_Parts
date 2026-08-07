@@ -283,43 +283,53 @@ ok("no workOrderId is ever sent by the completion client", () => {
   assert.doesNotMatch(stripComments(flowSrc), /workOrderId/m);
 });
 
-ok("FieldMode routes completion through the trusted flow behind the release gate", () => {
-  assert.match(fieldMode, /TRUSTED_COMPLETION_ENABLED/);
-  assert.match(fieldMode, /completeAssignedJobViaCallable/);
-  // the ONLY updateJobStatus(...COMPLETE) call sits in the legacy pre-D1
-  // branch (the early-return when the gate is off):
-  const completeCalls = fieldMode.match(/updateStatus\(job, JOB_STATUS\.COMPLETE\)/g) ?? [];
-  assert.equal(completeCalls.length, 1, "exactly one legacy completion call, in the gated branch");
-  const gateBranch = fieldMode.slice(fieldMode.indexOf("if (!TRUSTED_COMPLETION_ENABLED)"));
-  assert.ok(gateBranch.indexOf("updateStatus(job, JOB_STATUS.COMPLETE)") >= 0);
-  assert.ok(
-    gateBranch.indexOf("updateStatus(job, JOB_STATUS.COMPLETE)") <
-      gateBranch.indexOf("completeAssignedJobViaCallable"),
-    "legacy call appears only inside the release-gate early return",
-  );
+// ---------------------------------------------------------------------------
+// F0 -- Field Job Authority convergence.
+//
+// FieldMode no longer completes through the LEGACY fieldops_jobs cascade. It
+// runs on the governed Work Order Engine, where completion is the `Complete`
+// transition -- the same governed path as every other lifecycle step, rather
+// than a separate completion mechanism.
+//
+// The pure completionFlow module and completionService above are UNCHANGED and
+// still asserted: the completeAssignedJob callable remains deployed and governs
+// the legacy cascade until the separately-authorized retirement package. What
+// changed is only which flow FieldMode uses, so the assertions below now
+// describe the governed one.
+// ---------------------------------------------------------------------------
+
+ok("FieldMode completes through the GOVERNED transition, not the legacy cascade", () => {
+  assert.match(fieldMode, /transitionWorkOrder/, "uses the governed transition service");
+  const code = stripComments(fieldMode);
+  assert.doesNotMatch(code, /completeAssignedJobViaCallable/, "legacy completion callable is gone");
+  assert.doesNotMatch(code, /TRUSTED_COMPLETION_ENABLED/, "legacy release gate is gone");
+  assert.doesNotMatch(code, /updateJobStatus|jobActions/, "no legacy job write path remains");
+  assert.doesNotMatch(code, /JOB_STATUS/, "no legacy status vocabulary remains");
 });
 
-ok("assigned -> in_progress remains the unchanged direct client transition", () => {
-  assert.match(fieldMode, /onUpdateStatus\(job, JOB_STATUS\.IN_PROGRESS\)/);
+ok("FieldMode never decides which action is allowed -- the governed matrix does", () => {
+  const code = stripComments(fieldMode);
+  assert.match(code, /nextFieldAction/, "next step comes from the governed selector");
+  // No hard-coded status branching deciding what the technician may do.
+  assert.doesNotMatch(code, /status === "(DISPATCHED|ACCEPTED|EN_ROUTE|ARRIVED|WORK_IN_PROGRESS)"/,
+    "must not branch on governed status literals to choose an action");
 });
 
 ok("duplicate-tap guard, pending state, and accessibility attributes present", () => {
-  assert.match(fieldMode, /completion\.phase === "pending"\) return/, "in-flight guard");
-  assert.match(fieldMode, /disabled=\{completing\}/, "button disabled while pending");
-  assert.match(fieldMode, /aria-busy=\{completing\}/, "loading announced");
+  assert.match(fieldMode, /if \(pending\.id\) return/, "in-flight guard");
+  assert.match(fieldMode, /disabled=\{!!pending\}/, "button disabled while pending");
+  assert.match(fieldMode, /aria-busy=\{busy\}/, "loading announced");
   assert.match(fieldMode, /role="alert"/, "errors associated with the action");
-  assert.match(fieldMode, /Retry completion/, "retry control present");
 });
 
-ok("completion button is only rendered for an in_progress job", () => {
-  // The ASSIGNED branch of ActiveJobActions returns before the IN_PROGRESS
-  // section that renders the completion button.
-  const assignedBranch = fieldMode.slice(
-    fieldMode.indexOf("if (job.status === JOB_STATUS.ASSIGNED)"),
-    fieldMode.indexOf("// IN_PROGRESS"),
-  );
-  assert.ok(assignedBranch.length > 0);
-  assert.doesNotMatch(assignedBranch, /Complete Job|onComplete\(/);
+ok("no lifecycle state is fabricated client-side after a governed transition", () => {
+  const code = stripComments(fieldMode);
+  // The authoritative listener moves the Work Order; the component must not
+  // set a status locally. This is the regression that made travel/arrival
+  // invisible to dispatch before F0.
+  assert.doesNotMatch(code, /setState.*status|status:\s*"(ACCEPTED|EN_ROUTE|ARRIVED)"/,
+    "must not fabricate a post-transition status locally");
+  assert.doesNotMatch(code, /travelStage/i, "local travel state must be gone -- it is governed now");
 });
 
 ok("release gate is ACTIVE (Gate D1): trusted completion resolved from the environment registry", () => {
