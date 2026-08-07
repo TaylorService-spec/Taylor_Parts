@@ -77,38 +77,28 @@ test("a part not planned on the job cannot be recorded against it", () => {
   assert.match(rec.reason, /not planned/i);
 });
 
-test("with no active job, a part offers only its read context", () => {
-  const acts = deriveScanActions(partScan(), { ...FULL, activeWorkOrder: null });
-  assert.deepEqual(acts.map((a) => a.id), [SCAN_ACTIONS.VIEW_CONTEXT]);
+test("with no active job there is nothing to record against, and nothing to press", () => {
+  assert.deepEqual(deriveScanActions(partScan(), { ...FULL, activeWorkOrder: null }), []);
 });
 
 // ------------------------------------------------------------ work orders
 
-test("a scanned own work order offers its governed next step, from the permission matrix", () => {
-  const acts = deriveScanActions(woScan(), FULL);
-  const adv = acts.find((a) => a.id === SCAN_ACTIONS.ADVANCE_WORK_ORDER);
-  assert.equal(adv.enabled, true);
-  // WORK_IN_PROGRESS -> Complete, per the governed matrix. Not a literal here.
-  assert.equal(adv.payload.action, "Complete");
-  assert.equal(adv.label, "Complete job");
+test("a scanned work order resolves its IDENTITY but offers no action", () => {
+  // Field testing found a full-strength "Complete job" on a scanned work order
+  // card, pixel-identical to the one for the ACTIVE job on the same 390px
+  // screen -- the scanner could close the WRONG job. A scanner records parts;
+  // it does not close work.
+  assert.deepEqual(deriveScanActions(woScan(), FULL), []);
+  // Identity resolution itself still works -- that is the value.
+  assert.equal(woScan().entityType, "WORK_ORDER");
+  assert.equal(woScan().entityId, "wo-1");
 });
 
-test("a work order not assigned to the caller offers no lifecycle action", () => {
-  const ctx = { ...FULL, technicianId: "other" };
-  const acts = deriveScanActions(woScan(), ctx);
-  assert.equal(acts.find((a) => a.id === SCAN_ACTIONS.ADVANCE_WORK_ORDER), undefined);
-});
 
-test("a work order outside the caller's own work is not actionable", () => {
-  const id = resolveScannedIdentity("WO-2026-000001", CANDIDATES);
-  const acts = deriveScanActions(id, { ...FULL, workOrders: [] });
-  assert.equal(acts[0].enabled, false);
-  assert.match(acts[0].reason, /not among your assigned work/i);
-});
 
 // ------------------------------------------- the F2 separation guarantee
 
-test("entities with no governed write path get a READ action, never an invented movement", () => {
+test("entities with no governed write path get NO action, never an invented movement", () => {
   const cands = {
     serializedAssets: [{ serialNo: "SN-1", partId: "PRT-1001" }],
     locations: [{ locationId: "truck-14", type: "MOBILE" }],
@@ -116,7 +106,9 @@ test("entities with no governed write path get a READ action, never an invented 
   };
   for (const token of ["SN-1", "truck-14", "S9"]) {
     const acts = deriveScanActions(resolveScannedIdentity(token, cands), FULL);
-    assert.deepEqual(acts.map((a) => a.id), [SCAN_ACTIONS.VIEW_CONTEXT], token);
+    assert.deepEqual(acts, [], token);
+    // ...but the identity still resolves, which is the useful part.
+    assert.ok(resolveScannedIdentity(token, cands).entityType, token);
   }
 });
 
@@ -127,9 +119,11 @@ test("the action set is DERIVED, not a fixed menu -- it changes with authority a
   // The legacy literal menu (receive / load truck / cycle count / add to PO)
   // must never reappear from a scan.
   const all = deriveScanActions(partScan(), FULL).map((a) => a.id);
-  for (const legacy of ["receive", "transfer", "count", "purchase-order"]) {
-    assert.ok(!all.includes(legacy), `legacy scanner action "${legacy}" resurfaced`);
+  for (const legacy of ["receive", "transfer", "count", "purchase-order", "VIEW_CONTEXT", "ADVANCE_WORK_ORDER"]) {
+    assert.ok(!all.includes(legacy), `retired scanner action "${legacy}" resurfaced`);
   }
+  // Exactly one governed action, deliberately.
+  assert.equal(Object.keys(SCAN_ACTIONS).length, 1);
 });
 
 test("enabledScanActions returns only what the caller may actually invoke now", () => {

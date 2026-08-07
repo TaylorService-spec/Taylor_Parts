@@ -190,7 +190,8 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
 .fo-appheader button {
   background: transparent; color: var(--color-text-secondary);
   border: 1px solid var(--color-border-strong); border-radius: var(--radius-sm);
-  padding: 3px 10px; font-size: 12.5px; cursor: pointer; font-family: inherit;
+  /* 44px minimum -- Logout measured 61x24 in field testing. */
+  min-height: 44px; padding: 8px 14px; font-size: 13px; cursor: pointer; font-family: inherit;
 }
 .fo-appheader button:hover { background: var(--color-surface-sunken); color: var(--color-brand-primary); }
 
@@ -1720,10 +1721,21 @@ button:hover {
 }
 .fo-scan__find:hover { background: var(--color-surface-sunken); color: var(--color-brand-primary); }
 
+/* A committing write and a refusal previously rendered in the same grey pill,
+   same place, same weight -- indistinguishable at a glance on a phone. */
 .fo-scan__notice {
   margin: 0; padding: 10px 12px; border-radius: var(--radius-sm);
-  background: var(--color-surface-sunken); color: var(--color-text-secondary); font-size: 14px;
+  font-size: 14px; font-weight: 500;
 }
+.fo-scan__notice--ok {
+  background: var(--color-success-surface); color: var(--color-success);
+  border-left: 3px solid var(--color-success);
+}
+.fo-scan__notice--warn {
+  background: var(--color-warning-surface); color: var(--color-warning);
+  border-left: 3px solid var(--color-warning);
+}
+.fo-scan__plan { margin: 0; font-size: 13px; color: var(--color-text-secondary); }
 
 /* Every outcome states which outcome it is. A denial is never styled or worded
    as an absence. */

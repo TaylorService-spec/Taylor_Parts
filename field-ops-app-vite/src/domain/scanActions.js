@@ -1,5 +1,4 @@
 import { SCAN_RESOLUTION } from "./scannedIdentity.js";
-import { nextFieldAction } from "./fieldWorkOrder.js";
 
 /**
  * F2 — deriving what may be done with a scanned entity.
@@ -36,15 +35,30 @@ import { nextFieldAction } from "./fieldWorkOrder.js";
 
 /** Governed action ids this boundary can offer. Deliberately small: each maps
  *  to a real, deployed governed write path. Nothing aspirational. */
+/**
+ * EXACTLY ONE action, and that is the finding, not an omission.
+ *
+ * The set previously also carried ADVANCE_WORK_ORDER and VIEW_CONTEXT. Field
+ * testing killed both:
+ *
+ *  - ADVANCE_WORK_ORDER put a full-strength "Complete job" button on a scanned
+ *    work order card, pixel-identical to the one for the ACTIVE job a little
+ *    further up the same 390px screen. The scanner could close the WRONG JOB.
+ *    A scanner records parts; it has no business closing work.
+ *  - VIEW_CONTEXT had no destination. It printed "Open this from your job to
+ *    continue" to a technician who was already on their job. An action that
+ *    cannot act is worse than no action -- it costs a tap and returns a
+ *    sentence that is not true.
+ *
+ * Identity resolution still reports WHAT was scanned for every supported
+ * entity. That is useful on its own -- scanning a ticket tells you which job
+ * you are holding. It simply does not manufacture something to press.
+ */
 export const SCAN_ACTIONS = Object.freeze({
   /** Record planned-part usage on the caller's own Work Order.
    *  Governed by updateWorkOrderExecutionData (technician-only, ownership
    *  checked server-side, append-only executionLog). */
   RECORD_PART_USAGE: "RECORD_PART_USAGE",
-  /** Advance the caller's own Work Order through the governed lifecycle. */
-  ADVANCE_WORK_ORDER: "ADVANCE_WORK_ORDER",
-  /** Open the entity's detail context. A read, still authority-gated. */
-  VIEW_CONTEXT: "VIEW_CONTEXT",
 });
 
 const action = (id, label, { enabled, reason = null, payload = null }) => ({
@@ -86,9 +100,9 @@ export function deriveScanActions(identity, context = {}) {
 
       // Usage is recorded against a Work Order, so without one there is
       // nothing to record it on -- state, not permission.
-      if (!activeWorkOrder) {
-        return [action(SCAN_ACTIONS.VIEW_CONTEXT, "View part details", { enabled: true, payload: { partId } })];
-      }
+      // Usage is recorded against a Work Order; with none there is nothing to
+      // record against, and nothing to press.
+      if (!activeWorkOrder) return [];
 
       // Ownership is the server's decision; this mirrors it so the UI does not
       // offer an action the callable will reject.
@@ -124,29 +138,18 @@ export function deriveScanActions(identity, context = {}) {
             workOrderId: activeWorkOrder.id,
             woNumber: activeWorkOrder.woNumber ?? activeWorkOrder.id,
             label: planned?.name || partId,
+            // The plan quantity, so the experience can compare what is being
+            // recorded against what was expected.
+            qtyPlanned: typeof planned?.qtyPlanned === "number" ? planned.qtyPlanned : null,
           },
         }),
-        action(SCAN_ACTIONS.VIEW_CONTEXT, "View part details", { enabled: true, payload: { partId } }),
       ];
     }
 
-    case "WORK_ORDER": {
-      const wo = workOrders.find((w) => w.id === identity.entityId || w.woNumber === identity.entityId);
-      if (!wo) {
-        return [action(SCAN_ACTIONS.VIEW_CONTEXT, "View work order", { enabled: false, reason: "That work order is not among your assigned work." })];
-      }
-      // The lifecycle step comes from the governed permission matrix, never
-      // from a status literal decided here.
-      const next = nextFieldAction(wo, technicianId);
-      const out = [action(SCAN_ACTIONS.VIEW_CONTEXT, "Open work order", { enabled: true, payload: { workOrderId: wo.id } })];
-      if (next) {
-        out.unshift(action(SCAN_ACTIONS.ADVANCE_WORK_ORDER, next.label, {
-          enabled: true,
-          payload: { workOrderId: wo.id, action: next.action },
-        }));
-      }
-      return out;
-    }
+    // A scanned work order tells you WHICH JOB you are holding. That is the
+    // whole value; it deliberately offers nothing to press (see above).
+    case "WORK_ORDER":
+      return [];
 
     // Identity resolves for these, but no governed write path exists that a
     // scan should trigger today. Returning a read-only action is the honest
@@ -155,7 +158,10 @@ export function deriveScanActions(identity, context = {}) {
     case "SERIALIZED_ASSET":
     case "INVENTORY_LOCATION":
     case "EQUIPMENT":
-      return [action(SCAN_ACTIONS.VIEW_CONTEXT, "View details", { enabled: true, payload: { entityId: identity.entityId } })];
+      // Identity resolves; no governed write path exists that a scan should
+      // trigger for these today. Inventing one is the failure this module
+      // exists to prevent.
+      return [];
 
     default:
       return [];

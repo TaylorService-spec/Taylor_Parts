@@ -49,7 +49,7 @@ export default function PartsScanner({ technicianId }) {
   const [query, setQuery] = useState("");
   const [phase, setPhase] = useState(STATE.IDLE);
   const [identity, setIdentity] = useState(null);
-  const [notice, setNotice] = useState(null);
+  const [notice, setNotice] = useState(null); // { tone: 'ok' | 'warn', text }
   const [cameraOpen, setCameraOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState(null);
   const [qty, setQty] = useState(1);
@@ -78,20 +78,28 @@ export default function PartsScanner({ technicianId }) {
   // to. Both names come from records already read.
   const shown = useMemo(() => {
     if (!identity || identity.resolutionState !== SCAN_RESOLUTION.RESOLVED) return identity;
-    let displayName = null;
+    let displayName = identity.entityId;
+    let humanCode = null;
     let jobLabel = null;
+    let qtyPlanned = null;
     if (identity.entityType === "PART") {
       const planned = (activeWorkOrder?.inventorySnapshot ?? []).find(
         (row) => row.partId === identity.entityId || row.sku === identity.entityId,
       );
-      if (planned) displayName = snapshotPartName(planned) || null;
+      if (planned) {
+        // snapshotPartName falls back to the SKU when the snapshot carries no
+        // name, so only show a separate code line when they actually differ.
+        displayName = snapshotPartName(planned) || identity.entityId;
+        humanCode = identity.entityId;
+        if (typeof planned.qtyPlanned === "number") qtyPlanned = planned.qtyPlanned;
+      }
       if (activeWorkOrder) jobLabel = activeWorkOrder.woNumber ?? activeWorkOrder.id;
     } else if (identity.entityType === "WORK_ORDER") {
       const wo = workOrders.find((w) => w.id === identity.entityId || w.woNumber === identity.entityId);
-      // Never show a raw Firestore document id to a technician.
+      // A technician never sees the internal document id.
       if (wo) displayName = wo.woNumber ?? wo.id;
     }
-    return { ...identity, displayName, jobLabel };
+    return { ...identity, displayName, humanCode, jobLabel, qtyPlanned };
   }, [identity, activeWorkOrder, workOrders]);
 
   const closeCamera = useCallback(() => {
@@ -132,7 +140,7 @@ export default function PartsScanner({ technicianId }) {
 
   async function openCamera() {
     if (!navigator.mediaDevices?.getUserMedia) {
-      return setNotice("Camera scanning isn’t available on this device. Enter the code instead.");
+      return setNotice({ tone: "warn", text: "Camera scanning isn’t available on this device. Enter the code instead." });
     }
     try {
       streamRef.current = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
@@ -149,37 +157,39 @@ export default function PartsScanner({ technicianId }) {
           const usable = formats.filter((f) => f !== "unknown");
           if (usable.length) return detect(new window.BarcodeDetector({ formats: usable }));
         }
-        setNotice("Live decoding isn’t supported here. Enter the code below.");
+        setNotice({ tone: "warn", text: "Live decoding isn’t supported here. Enter the code below." });
       }, 0);
     } catch {
-      setNotice("Camera access wasn’t granted. You can still enter the code.");
+      setNotice({ tone: "warn", text: "Camera access wasn’t granted. You can still enter the code." });
     }
   }
 
   async function invoke(action) {
     if (!action.enabled || pendingAction) return;
-    if (action.id !== SCAN_ACTIONS.RECORD_PART_USAGE) {
-      // VIEW_CONTEXT and lifecycle actions belong to their owning surfaces; a
-      // scan is an entry point, not a second Work Order screen.
-      setNotice("Open this from your job to continue.");
-      return;
-    }
     // Pending state is scoped to the INVOKED action -- it previously applied to
     // the whole group, so every button read "Recording...".
+    // Recording more than the plan is legitimate but must be deliberate:
+    // field testing booked 13 against a 1-part plan with a stray thumb and no
+    // warning at all.
+    const planned = action.payload.qtyPlanned;
+    if (typeof planned === "number" && qty > planned) {
+      const ok = window.confirm(`The plan says ${planned}. Record ${qty}?`);
+      if (!ok) return;
+    }
     setPendingAction(action.id);
     setNotice(null);
     try {
       await updateWorkOrderExecutionData(action.payload.workOrderId, {
         qtyUsedUpdates: [{ sku: action.payload.sku, delta: qty }],
       });
-      setNotice(`Recorded ${qty} × ${action.payload.label} on ${action.payload.woNumber}.`);
+      setNotice({ tone: "ok", text: `Recorded ${qty} × ${action.payload.label} on ${action.payload.woNumber}.` });
       setIdentity(null);
       setQuery("");
       setQty(1);
     } catch (err) {
       // The server is the authority and may still refuse. Say so plainly --
       // never silently, and never as "not found".
-      setNotice(err?.message || "That couldn’t be recorded. Nothing was changed.");
+      setNotice({ tone: "warn", text: err?.message || "That couldn’t be recorded. Nothing was changed." });
     } finally {
       setPendingAction(null);
     }
@@ -214,7 +224,12 @@ export default function PartsScanner({ technicianId }) {
         </div>
       )}
 
-      {notice && <p className="fo-scan__notice" role="status">{notice}</p>}
+      {/* A committing write and a refusal must not look identical. */}
+      {notice && (
+        <p className={`fo-scan__notice fo-scan__notice--${notice.tone}`} role="status">
+          {notice.tone === "ok" ? "✓ " : ""}{notice.text}
+        </p>
+      )}
 
       <ScanResult
         phase={phase}
@@ -284,8 +299,13 @@ function ScanResult({ phase, identity, actions, scope, loading, denied, pendingA
       {/* The NAME, not the code I just typed echoed back. A result card that
           repeats your own input cannot confirm you picked the right part. */}
       <h3 className="fo-scan__id">{identity.displayName ?? identity.entityId}</h3>
-      {identity.displayName && identity.displayName !== identity.entityId && (
-        <p className="fo-scan__code">{identity.entityId}</p>
+      {/* Only ever a human code beneath the name -- never an internal
+          document id, which a technician has no use for. */}
+      {identity.humanCode && identity.humanCode !== identity.displayName && (
+        <p className="fo-scan__code">{identity.humanCode}</p>
+      )}
+      {typeof identity.qtyPlanned === "number" && (
+        <p className="fo-scan__plan">Plan: {identity.qtyPlanned} on this job</p>
       )}
       {/* Name the job. "this job" is meaningless on a card 1400px below the
           job it refers to, with other jobs scrolling in between. */}
