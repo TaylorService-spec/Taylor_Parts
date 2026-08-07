@@ -69,15 +69,15 @@ export default function AppHeader({ accessVersion } = {}) {
   );
 
   return (
-    <div className="fo-appheader" style={styles.header}>
-      <div className="fo-appheader-left" style={styles.left}>
-        <span style={styles.title}>Field Ops Platform</span>
+    <div className="fo-appheader">
+      <div className="fo-appheader-left">
+        <span className="fo-appheader-title">Field Ops Platform</span>
 
         {/* Sprint 2.0.1, requirement #6: Home used to hard-link to
             "/Taylor_Parts/" -- the legacy root Parts Control Center,
             a different app entirely. Now a client-side route to this
             app's own dashboard, not a page navigation away from it. */}
-        <Link to="/dashboard" style={styles.link}>
+        <Link to="/dashboard">
           Home
         </Link>
 
@@ -86,12 +86,12 @@ export default function AppHeader({ accessVersion } = {}) {
             the asset base (I-1F) and router basename (I-1R) use -- so it
             resolves to the app's served root on GitHub Pages and on Firebase
             Hosting, never a hard-coded host path. */}
-        <a href={import.meta.env.BASE_URL} style={styles.link}>
+        <a href={import.meta.env.BASE_URL}>
           Refresh
         </a>
       </div>
 
-      <div className="fo-appheader-right" style={styles.right}>
+      <div className="fo-appheader-right">
         {canSeeReorderRequests && (
           <NotificationPanel
             requests={pendingReorderRequests}
@@ -108,29 +108,7 @@ export default function AppHeader({ accessVersion } = {}) {
   );
 }
 
-const styles = {
-  header: {
-    display: "flex",
-    justifyContent: "space-between",
-    padding: "10px 14px",
-    borderBottom: "1px solid #eee",
-    background: "#fff"
-  },
-  left: {
-    display: "flex",
-    gap: "12px",
-    alignItems: "center"
-  },
-  right: {
-    display: "flex",
-    gap: "10px",
-    alignItems: "center"
-  },
-  title: {
-    fontWeight: 600
-  },
-  link: {
-    textDecoration: "none",
-    color: "#2e4a50"
-  }
-};
+// Layout/colour for this strip now lives in index.css under .fo-appheader.
+// It was moved out of an inline `styles` object because inline styles outrank
+// the stylesheet, so the shell could not express the utility strip as
+// subordinate chrome while these were still applied here.

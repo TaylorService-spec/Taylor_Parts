@@ -14,7 +14,7 @@ import { captureShadowParity } from "../../domain/partsShadowParityCapture";
 import { toDiagnosticsView, isDiagnosticsAuthorized, runFailureView, sanitizedEvidencePayload } from "../../domain/partsShadowParityView";
 import { defaultReaders } from "./partsShadowParityReaders";
 
-const box = { padding: 12, border: "1px solid #dadce0", borderRadius: 8, marginTop: 8 };
+const box = { padding: 12, border: "1px solid var(--color-border)", borderRadius: 8, marginTop: 8 };
 
 export default function PartsShadowParityDiagnostics({ readers }) {
   const { role } = useAuth();
@@ -68,7 +68,7 @@ export default function PartsShadowParityDiagnostics({ readers }) {
   return (
     <div>
       <h2>Parts shadow-parity (diagnostic — non-authoritative)</h2>
-      <p style={{ color: "#5f6368", fontSize: 13 }}>
+      <p style={{ color: "var(--color-text-secondary)", fontSize: 13 }}>
         Read-only comparison of the canonical Part identity model against the current static-backed
         workspace model. Evidence only; changes no product behavior, is not persisted, and clears on refresh.
         Only a PASS result can qualify for Decision #44; FAIL/BLOCKED results are diagnostic evidence only.
@@ -104,7 +104,7 @@ export default function PartsShadowParityDiagnostics({ readers }) {
           <button type="button" onClick={copyEvidence} style={{ marginTop: 8 }}>
             Copy sanitized evidence
           </button>
-          {copied ? <span style={{ marginLeft: 8, color: "#137333", fontSize: 12 }}>copied</span> : null}
+          {copied ? <span style={{ marginLeft: 8, color: "var(--color-success)", fontSize: 12 }}>copied</span> : null}
         </>
       ) : null}
     </div>

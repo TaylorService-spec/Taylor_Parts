@@ -20,11 +20,11 @@ import {
 } from "../../domain/partMasterWrite";
 
 const STATUS_TONE = {
-  ACTIVE: { background: "#e6f4ea", color: "#137333" },
-  DRAFT: { background: "#e8eaed", color: "#3c4043" },
-  INACTIVE: { background: "#fef7e0", color: "#b06000" },
-  SUPERSEDED: { background: "#e8f0fe", color: "#1a56db" },
-  DISCONTINUED: { background: "#fce8e6", color: "#c5221f" },
+  ACTIVE: { background: "var(--color-success-surface)", color: "var(--color-success)" },
+  DRAFT: { background: "var(--color-border)", color: "var(--color-text-primary)" },
+  INACTIVE: { background: "var(--color-warning-surface)", color: "var(--color-warning)" },
+  SUPERSEDED: { background: "var(--color-surface-sunken)", color: "var(--color-info)" },
+  DISCONTINUED: { background: "var(--color-danger-surface)", color: "var(--color-danger)" },
 };
 function StatusBadge({ status }) {
   const tone = STATUS_TONE[status] ?? STATUS_TONE.DRAFT;
@@ -33,15 +33,15 @@ function StatusBadge({ status }) {
 
 // Governed-outcome banner: maps the domain outcome.kind to a tone + keeps the governed message verbatim.
 const OUTCOME_TONE = {
-  applied: { background: "#e6f4ea", color: "#137333" },
-  replayed: { background: "#e8f0fe", color: "#1a56db" },
-  noop: { background: "#e8eaed", color: "#3c4043" },
-  denied: { background: "#fce8e6", color: "#c5221f" },
-  invalid: { background: "#fef7e0", color: "#b06000" },
-  conflict: { background: "#fef7e0", color: "#b06000" },
-  notFound: { background: "#fce8e6", color: "#c5221f" },
-  unavailable: { background: "#e8eaed", color: "#3c4043" },
-  error: { background: "#fce8e6", color: "#c5221f" },
+  applied: { background: "var(--color-success-surface)", color: "var(--color-success)" },
+  replayed: { background: "var(--color-surface-sunken)", color: "var(--color-info)" },
+  noop: { background: "var(--color-border)", color: "var(--color-text-primary)" },
+  denied: { background: "var(--color-danger-surface)", color: "var(--color-danger)" },
+  invalid: { background: "var(--color-warning-surface)", color: "var(--color-warning)" },
+  conflict: { background: "var(--color-warning-surface)", color: "var(--color-warning)" },
+  notFound: { background: "var(--color-danger-surface)", color: "var(--color-danger)" },
+  unavailable: { background: "var(--color-border)", color: "var(--color-text-primary)" },
+  error: { background: "var(--color-danger-surface)", color: "var(--color-danger)" },
 };
 function OutcomeBanner({ outcome }) {
   if (!outcome) return null;
@@ -51,7 +51,7 @@ function OutcomeBanner({ outcome }) {
 
 const SELECT = { padding: 6, fontSize: 13, minWidth: 140 };
 const INPUT = { padding: 6, fontSize: 13, width: "100%", boxSizing: "border-box" };
-const LABEL = { display: "block", fontSize: 12, color: "#5f6368", marginBottom: 4 };
+const LABEL = { display: "block", fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 4 };
 const FIELD = { marginBottom: 10 };
 
 // Shared create/edit fields. `mode` = "create" | "edit". partId + internalPartNumber are identity and
@@ -123,15 +123,15 @@ export default function PartMasterList(props) {
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
         <h2 style={{ margin: 0 }}>Part Master</h2>
-        <button onClick={openCreate} disabled={busy} style={{ padding: "8px 14px", fontSize: 13, fontWeight: 600, borderRadius: 6, border: "1px solid #1a73e8", background: "#1a73e8", color: "white", cursor: "pointer" }}>New part</button>
+        <button onClick={openCreate} disabled={busy} style={{ padding: "8px 14px", fontSize: 13, fontWeight: 600, borderRadius: 6, border: "1px solid var(--color-brand-secondary)", background: "var(--color-brand-secondary)", color: "white", cursor: "pointer" }}>New part</button>
       </div>
-      <p style={{ color: "#5f6368", fontSize: 13 }}>
+      <p style={{ color: "var(--color-text-secondary)", fontSize: 13 }}>
         Governed canonical part registry. Create and edit parts here; stock levels live in the inventory ledger.
         Every change goes through the catalog administration service and is authorized server-side.
         {state.invalidCount > 0 ? ` ${state.invalidCount} malformed record(s) were excluded and need review.` : ""}
       </p>
       {!writeReady && (
-        <div style={{ background: "#e8eaed", color: "#3c4043", padding: "8px 12px", borderRadius: 6, fontSize: 13, marginBottom: 8 }}>
+        <div style={{ background: "var(--color-border)", color: "var(--color-text-primary)", padding: "8px 12px", borderRadius: 6, fontSize: 13, marginBottom: 8 }}>
           Editing isn’t enabled in this environment yet. You can review parts; create/edit/status changes are activated
           with the catalog administration service (a governed deployment + grant), not from this screen.
         </div>
@@ -139,22 +139,22 @@ export default function PartMasterList(props) {
       {!panel && <OutcomeBanner outcome={outcome} />}
 
       {panel && (
-        <div style={{ border: "1px solid #dadce0", borderRadius: 8, padding: 16, margin: "8px 0", background: "#fff" }}>
+        <div style={{ border: "1px solid var(--color-border)", borderRadius: 8, padding: 16, margin: "8px 0", background: "#fff" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <h3 style={{ margin: 0, fontSize: 15 }}>
               {panel.mode === "create" ? "New part" : panel.mode === "edit" ? `Edit ${panel.part.internalPartNumber}` : `Change status — ${panel.part.internalPartNumber}`}
             </h3>
-            <button onClick={close} disabled={busy} style={{ border: "none", background: "none", cursor: "pointer", fontSize: 18, color: "#5f6368" }}>×</button>
+            <button onClick={close} disabled={busy} style={{ border: "none", background: "none", cursor: "pointer", fontSize: 18, color: "var(--color-text-secondary)" }}>×</button>
           </div>
           <OutcomeBanner outcome={outcome} />
           {panel.mode === "status" ? (
             <div>
-              <p style={{ fontSize: 13, color: "#5f6368" }}>Current status: <StatusBadge status={panel.part.status} />. Choose a governed transition:</p>
+              <p style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>Current status: <StatusBadge status={panel.part.status} />. Choose a governed transition:</p>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 {allowedStatusTransitions(panel.part.status).length === 0
-                  ? <span style={{ fontSize: 13, color: "#5f6368" }}>No status changes are available from {panel.part.status}.</span>
+                  ? <span style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>No status changes are available from {panel.part.status}.</span>
                   : allowedStatusTransitions(panel.part.status).map((s) => (
-                      <button key={s} onClick={() => submitStatus(s)} disabled={busy || !writeReady} style={{ padding: "8px 14px", fontSize: 13, borderRadius: 6, border: "1px solid #dadce0", background: "#fff", cursor: writeReady ? "pointer" : "not-allowed" }}>→ {s}</button>
+                      <button key={s} onClick={() => submitStatus(s)} disabled={busy || !writeReady} style={{ padding: "8px 14px", fontSize: 13, borderRadius: 6, border: "1px solid var(--color-border)", background: "#fff", cursor: writeReady ? "pointer" : "not-allowed" }}>→ {s}</button>
                     ))}
               </div>
             </div>
@@ -162,8 +162,8 @@ export default function PartMasterList(props) {
             <>
               <PartForm mode={panel.mode} form={form} setForm={setForm} disabled={busy || !writeReady} />
               <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                <button onClick={panel.mode === "create" ? submitCreate : submitEdit} disabled={busy || !writeReady} style={{ padding: "8px 16px", fontSize: 13, fontWeight: 600, borderRadius: 6, border: "1px solid #1a73e8", background: writeReady ? "#1a73e8" : "#c6d4f0", color: "white", cursor: writeReady ? "pointer" : "not-allowed" }}>{busy ? "Saving…" : panel.mode === "create" ? "Create part" : "Save changes"}</button>
-                <button onClick={close} disabled={busy} style={{ padding: "8px 16px", fontSize: 13, borderRadius: 6, border: "1px solid #dadce0", background: "#fff", cursor: "pointer" }}>Cancel</button>
+                <button onClick={panel.mode === "create" ? submitCreate : submitEdit} disabled={busy || !writeReady} style={{ padding: "8px 16px", fontSize: 13, fontWeight: 600, borderRadius: 6, border: "1px solid var(--color-brand-secondary)", background: writeReady ? "var(--color-brand-secondary)" : "var(--color-info-surface)", color: "white", cursor: writeReady ? "pointer" : "not-allowed" }}>{busy ? "Saving…" : panel.mode === "create" ? "Create part" : "Save changes"}</button>
+                <button onClick={close} disabled={busy} style={{ padding: "8px 16px", fontSize: 13, borderRadius: 6, border: "1px solid var(--color-border)", background: "#fff", cursor: "pointer" }}>Cancel</button>
               </div>
             </>
           )}
@@ -175,7 +175,7 @@ export default function PartMasterList(props) {
       ) : (
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
-            <tr style={{ textAlign: "left", borderBottom: "2px solid #dadce0" }}>
+            <tr style={{ textAlign: "left", borderBottom: "2px solid var(--color-border)" }}>
               <th style={{ padding: 8 }}>Part #</th><th style={{ padding: 8 }}>Name</th><th style={{ padding: 8 }}>Category</th>
               <th style={{ padding: 8 }}>Control</th><th style={{ padding: 8 }}>Class</th><th style={{ padding: 8 }}>Unit</th>
               <th style={{ padding: 8 }}>Status</th><th style={{ padding: 8 }}>Actions</th>
@@ -183,7 +183,7 @@ export default function PartMasterList(props) {
           </thead>
           <tbody>
             {parts.map((part) => (
-              <tr key={part.partId} style={{ borderBottom: "1px solid #f1f3f4" }}>
+              <tr key={part.partId} style={{ borderBottom: "1px solid var(--color-surface-sunken)" }}>
                 <td style={{ padding: 8, fontFamily: "monospace" }}>{part.internalPartNumber}</td>
                 <td style={{ padding: 8 }}>{part.name}</td>
                 <td style={{ padding: 8 }}>{part.category || "—"}</td>
@@ -192,8 +192,8 @@ export default function PartMasterList(props) {
                 <td style={{ padding: 8 }}>{part.stockingUnit}</td>
                 <td style={{ padding: 8 }}><StatusBadge status={part.status} /></td>
                 <td style={{ padding: 8, whiteSpace: "nowrap" }}>
-                  <button onClick={() => openEdit(part)} disabled={busy} style={{ marginRight: 6, padding: "4px 10px", fontSize: 12, borderRadius: 4, border: "1px solid #dadce0", background: "#fff", cursor: "pointer" }}>Edit</button>
-                  <button onClick={() => openStatus(part)} disabled={busy} style={{ padding: "4px 10px", fontSize: 12, borderRadius: 4, border: "1px solid #dadce0", background: "#fff", cursor: "pointer" }}>Status</button>
+                  <button onClick={() => openEdit(part)} disabled={busy} style={{ marginRight: 6, padding: "4px 10px", fontSize: 12, borderRadius: 4, border: "1px solid var(--color-border)", background: "#fff", cursor: "pointer" }}>Edit</button>
+                  <button onClick={() => openStatus(part)} disabled={busy} style={{ padding: "4px 10px", fontSize: 12, borderRadius: 4, border: "1px solid var(--color-border)", background: "#fff", cursor: "pointer" }}>Status</button>
                 </td>
               </tr>
             ))}
