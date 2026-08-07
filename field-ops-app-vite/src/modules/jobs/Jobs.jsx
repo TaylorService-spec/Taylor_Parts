@@ -1,39 +1,22 @@
 import { useEffect, useRef, useState } from "react";
-import { createJob } from "../../domain/jobActions";
-import { JOBS_COLLECTION } from "../../domain/constants";
-import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
-import NewJobModal from "./NewJobModal";
+import { Link } from "react-router-dom";
+import { useWorkOrders } from "../../hooks/useWorkOrders";
+import { fieldPhase } from "../../domain/fieldWorkOrder";
 
-// LEGACY (jobs-based) surface -- NOT the canonical Work Order experience.
-// This screen ("Service > Job Assignments") operates on the legacy
-// JOBS_COLLECTION via domain/jobActions.js. The canonical, persisted Work
-// Order model is fieldops_wos, written only by the createWorkOrder/
-// transitionWorkOrder Cloud Functions (see CLAUDE_CONTEXT rule 2). Its
-// heading was relabeled "Job Assignments" (was "Work Orders") in W0 so it
-// cannot masquerade as the canonical Work Order experience. Full model
-// reconciliation/retirement is W4, not W0.
+// F0 -- this surface now READS the governed Work Order Engine (fieldops_wos)
+// instead of the legacy fieldops_jobs collection.
 //
-// A job is: { id, workOrderId, description, status, technicianId, address }
-// status is one of JOB_STATUS: "open" | "assigned" | "in_progress" | "complete"
-// Jobs are execution units grouped under a Work Order via workOrderId.
-// Jobs MUST NOT carry customer fields — customers are a separate domain.
-// address: { street, city, state, zip } -- optional. `geo` (lat/lng) is
-// reserved for later, not implemented yet.
-//
-// Issue #214 PR-5: the create form that used to sit above this live table is now
-// a "New Job" action opening the shared accessible Modal (NewJobModal). The table,
-// its live subscription, and every field/payload/validation are unchanged.
-
-function formatAddress(address) {
-  if (!address) return "";
-  const { street, city, state, zip } = address;
-  const cityStateZip = [city, state].filter(Boolean).join(", ") + (zip ? ` ${zip}` : "");
-  return [street, cityStateZip].filter(Boolean).join(", ");
-}
+// Its legacy "New Job" form is REMOVED rather than migrated. Creating a
+// governed Work Order requires a governed customerId + locationId + priority +
+// classification (functions/src/createWorkOrder.ts), which the legacy form's
+// free-text customer and optional address could not supply. Inventing a
+// placeholder customer to keep a create button here would have manufactured
+// exactly the ungoverned data F0 exists to eliminate. The governed creation
+// path already exists -- WorkOrderWizard at /service/work-orders/new, with a
+// real CustomerPicker -- so this surface links there.
 
 export default function Jobs() {
-  const { data: jobs, loading } = useFirestoreCollection(JOBS_COLLECTION);
-  const [showCreate, setShowCreate] = useState(false);
+  const { data: jobs, loading } = useWorkOrders();
   const [announcement, setAnnouncement] = useState("");
   // The new row keeps a stable tabIndex=-1 (focusRowId is not cleared) so focusing
   // it never blurs when a follow-up render runs -- removing tabIndex from the
@@ -52,35 +35,15 @@ export default function Jobs() {
     }
   }, [focusRowId, jobs]);
 
-  // Called by NewJobModal. THROWS on a blocked/denied write so the modal stays
-  // open with safe copy and nothing is persisted. On success: close once, announce
-  // a human-readable summary, and queue focus onto the new row. Payload/write path
-  // (createJob) unchanged from the old inline form.
-  async function handleCreate({ customer, description, address }) {
-    const created = await createJob(customer, description, address);
-    if (created?.blocked) {
-      const blockedErr = new Error("write blocked");
-      blockedErr.blocked = true;
-      throw blockedErr;
-    }
-    setShowCreate(false);
-    setFocusRowId(created.id);
-    setAnnouncement(`Work order for ${created.customer} added.`);
-  }
-
   return (
     <div className="fo-panel">
       <div className="fo-panel-head">
         <h2>Job Assignments</h2>
-        <button type="button" onClick={() => setShowCreate(true)}>New Job</button>
+        <Link className="fo-btn-link" to="/service/work-orders/new">New Work Order</Link>
       </div>
 
       {/* Success announcement -- polite live region for assistive tech. */}
       <p className="fo-sr-only" role="status" aria-live="polite">{announcement}</p>
-
-      {showCreate && (
-        <NewJobModal onCreate={handleCreate} onClose={() => setShowCreate(false)} />
-      )}
 
       {loading ? (
         <p className="fo-muted">Loading work orders…</p>
@@ -91,9 +54,9 @@ export default function Jobs() {
           <table className="fo-table">
             <thead>
               <tr>
-                <th>Customer</th>
-                <th>Description</th>
-                <th>Address</th>
+                <th>Work Order</th>
+                <th>Complaint</th>
+                <th>Assigned</th>
                 <th>Status</th>
               </tr>
             </thead>
@@ -104,11 +67,11 @@ export default function Jobs() {
                   ref={job.id === focusRowId ? newRowRef : null}
                   tabIndex={job.id === focusRowId ? -1 : undefined}
                 >
-                  <td>{job.customer}</td>
-                  <td>{job.description}</td>
-                  <td className="fo-muted">{formatAddress(job.address) || "—"}</td>
+                  <td>{job.woNumber ?? job.id}</td>
+                  <td>{job.complaint ?? job.description ?? "—"}</td>
+                  <td className="fo-muted">{job.assignedTechId ?? "—"}</td>
                   <td>
-                    <span className={`fo-badge fo-badge-${job.status}`}>{job.status}</span>
+                    <span className={`fo-badge fo-badge-${fieldPhase(job)}`}>{job.status}</span>
                   </td>
                 </tr>
               ))}

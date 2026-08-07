@@ -1,4 +1,9 @@
-import { JOB_STATUS, TECH_STATUS } from "./constants";
+import { TECH_STATUS } from "./constants";
+import { FIELD_PHASE, fieldPhase } from "./fieldWorkOrder";
+
+// F0 -- scored over GOVERNED Work Orders. "Active" and "awaiting dispatch" are
+// expressed as phases (a projection of the eleven governed statuses) rather
+// than legacy JOB_STATUS literals; the scoring logic itself is unchanged.
 import { createSignal } from "./controlTower/types";
 import { computeJobRisk } from "./jobRiskScoring";
 
@@ -8,7 +13,8 @@ import { computeJobRisk } from "./jobRiskScoring";
 // its inputs -- assignJob() remains the only place a job actually gets
 // assigned. This module only suggests.
 
-const ACTIVE_JOB_STATUSES = [JOB_STATUS.ASSIGNED, JOB_STATUS.IN_PROGRESS];
+const ACTIVE_PHASES = [FIELD_PHASE.ASSIGNED, FIELD_PHASE.ON_SITE];
+const isActive = (wo) => ACTIVE_PHASES.includes(fieldPhase(wo));
 
 // Weighted scoring model (Sprint 3.3.2). Each factor is normalized to
 // 0-100 before weighting, so the final score is always 0-100 regardless
@@ -25,7 +31,7 @@ const WORKLOAD_PENALTY_PER_JOB = 25;
 
 function activeJobCount(technicianId, jobs) {
   return jobs.filter(
-    (j) => j.technicianId === technicianId && ACTIVE_JOB_STATUSES.includes(j.status)
+    (j) => j.assignedTechId === technicianId && isActive(j)
   ).length;
 }
 
@@ -38,9 +44,9 @@ function hasWorkOrderAffinity(job, technicianId, jobs) {
   if (!job.workOrderId) return false;
   return jobs.some(
     (j) =>
-      j.technicianId === technicianId &&
+      j.assignedTechId === technicianId &&
       j.workOrderId === job.workOrderId &&
-      ACTIVE_JOB_STATUSES.includes(j.status)
+      isActive(j)
   );
 }
 
@@ -122,7 +128,7 @@ export function detectOverloadedTechnicians(technicians, jobs, threshold = OVERL
 // act on this (e.g. Dispatch.jsx still calls assignJob() itself; this
 // never does).
 export function computeDispatchRecommendations(jobs, technicians, now = Date.now()) {
-  const openJobs = jobs.filter((j) => j.status === JOB_STATUS.OPEN);
+  const openJobs = jobs.filter((j) => fieldPhase(j) === FIELD_PHASE.AWAITING_DISPATCH);
 
   return openJobs.map((job) => {
     const ranked = rankTechnicians(job, technicians, jobs, now);

@@ -1,4 +1,8 @@
-import { JOB_STATUS, WORK_ORDER_STATE } from "./constants";
+import { WORK_ORDER_STATE } from "./constants";
+import { FIELD_PHASE, fieldPhase } from "./fieldWorkOrder";
+
+// F0 -- timeline is built from GOVERNED Work Orders. "Reached" milestones are
+// derived from the operational phase rather than legacy JOB_STATUS literals.
 import { EVENT_TYPE } from "./eventTypes";
 import { normalizeEvent, sortEvents } from "./eventModel";
 import { computeWorkOrderState } from "./workOrderLifecycle";
@@ -39,11 +43,11 @@ function jobEvents(job) {
   ];
 
   const reachedAssigned =
-    job.status === JOB_STATUS.ASSIGNED ||
-    job.status === JOB_STATUS.IN_PROGRESS ||
-    job.status === JOB_STATUS.COMPLETE;
-  const reachedStarted = job.status === JOB_STATUS.IN_PROGRESS || job.status === JOB_STATUS.COMPLETE;
-  const reachedCompleted = job.status === JOB_STATUS.COMPLETE;
+    fieldPhase(job) === FIELD_PHASE.ASSIGNED ||
+    fieldPhase(job) === FIELD_PHASE.ON_SITE ||
+    fieldPhase(job) === FIELD_PHASE.FINISHED;
+  const reachedStarted = fieldPhase(job) === FIELD_PHASE.ON_SITE || fieldPhase(job) === FIELD_PHASE.FINISHED;
+  const reachedCompleted = fieldPhase(job) === FIELD_PHASE.FINISHED;
 
   if (reachedAssigned) {
     events.push(
@@ -51,7 +55,7 @@ function jobEvents(job) {
         timestamp: job.createdAt,
         type: EVENT_TYPE.JOB_ASSIGNED,
         entityId: job.id,
-        metadata: { job, technicianId: job.technicianId },
+        metadata: { job, technicianId: job.assignedTechId ?? job.technicianId },
       })
     );
   }
