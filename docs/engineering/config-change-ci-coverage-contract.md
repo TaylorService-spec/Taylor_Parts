@@ -47,3 +47,22 @@ value, verify (and, where a gate is missing, add coverage) across ALL of:
   this owning layer (the harness `define` / the registry / the config module), so every capability
   inherits the coverage.
 - When a build-injected global is added, add it to `vitest.config.js` `define` in the SAME change.
+
+## `firestore.rules` is hash-anchored to the live governed artifact (PR #629 lesson)
+
+The Truck Registry deployment verifier (`functions/test/verifyTruckRegistryDeployment.test.js`) asserts
+`sha256(git show HEAD:firestore.rules) == GOVERNED_RULES_SHA256` (the hash of the live-deployed governed
+Rules). So **`firestore.rules` must stay byte-identical to the live-deployed source** while that control
+is in force.
+
+- **Do NOT** add repo-only explanatory comments or formatting changes to `firestore.rules`. Any byte
+  change (even a comment) diverges committed from live and fails the verifier. Put rationale in governed
+  documentation or in the *code* that reads the rule, never in the rules file. (PR #626 added a comment;
+  it broke every subsequent `functions/`-touching PR — path-filtering hid it on #626 — and was reverted
+  in #629.)
+- A **real** Rules change must be an intentional Rules delta with: authorization (Tier-2) · a deploy
+  package · live verification (`verify-rules-deploy` skill) · evidence · and an updated
+  `GOVERNED_RULES_SHA256` reflecting the new deployed artifact.
+- Diagnosing a hash mismatch: hash the git BLOB (`git show :firestore.rules | sha256sum`), NOT the
+  CRLF working-tree file; walk `git log --format=%H -- firestore.rules` hashing each blob to find the
+  baseline commit, then diff.
