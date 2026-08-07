@@ -1686,3 +1686,75 @@ button:hover {
 .fo-detail-list { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 0; font-size: 14px; }
 .fo-detail-list dt { color: var(--color-text-muted); }
 .fo-detail-list dd { margin: 0; color: var(--color-text-primary); }
+
+/* ===========================================================================
+   F2 — FIELD SCANNER
+   ---------------------------------------------------------------------------
+   A scan is a contextual ENTRY POINT, not a workspace. This answers three
+   questions and stops: what did I scan, can I read it, what may I do here.
+   Deeper work routes to the owning surface.
+   ========================================================================= */
+.fo-scan { display: flex; flex-direction: column; gap: 14px; }
+
+.fo-scan__entry { display: grid; grid-template-columns: 1fr; gap: 8px; }
+.fo-scan__camera {
+  min-height: 52px; padding: 14px 18px;
+  background: var(--color-brand-primary); color: var(--color-text-inverse);
+  border: none; border-radius: var(--radius-md);
+  font-size: 16px; font-weight: 600; font-family: inherit; cursor: pointer;
+}
+.fo-scan__camera:hover { background: var(--verenward-evergreen-hover); }
+.fo-scan__entry input {
+  min-height: 48px; padding: 12px 14px; font-size: 16px; /* 16px avoids iOS zoom-on-focus */
+  border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+  background: var(--color-surface-elevated); color: var(--color-text-primary);
+}
+.fo-scan__find {
+  min-height: 48px; padding: 12px 18px;
+  background: transparent; color: var(--color-text-secondary);
+  border: 1px solid var(--color-border-strong); border-radius: var(--radius-sm);
+  font-size: 15px; font-family: inherit; cursor: pointer;
+}
+.fo-scan__find:hover { background: var(--color-surface-sunken); color: var(--color-brand-primary); }
+
+.fo-scan__notice {
+  margin: 0; padding: 10px 12px; border-radius: var(--radius-sm);
+  background: var(--color-surface-sunken); color: var(--color-text-secondary); font-size: 14px;
+}
+
+/* Every outcome states which outcome it is. A denial is never styled or worded
+   as an absence. */
+.fo-scan__state { margin: 0; font-size: 14.5px; color: var(--color-text-secondary); line-height: 1.45; }
+.fo-scan__state--denied { color: var(--color-danger); }
+.fo-scan__state ul { margin: 8px 0 0; padding-left: 18px; }
+
+.fo-scan__result {
+  display: flex; flex-direction: column; gap: 12px;
+  background: var(--color-surface-card); border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg); padding: 16px;
+}
+.fo-scan__kind {
+  margin: 0; font-size: 11px; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--color-brand-accent);
+}
+.fo-scan__id { margin: 0; font-size: 20px; line-height: 1.2; }
+.fo-scan__actions { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+/* The reason a disabled action is disabled sits with the action, not in a
+   toast that disappears before it is read. */
+.fo-scan__reason { margin: 6px 0 0; font-size: 13px; color: var(--color-text-muted); }
+
+.fo-scan__camera-modal {
+  position: fixed; inset: 0; z-index: 100;
+  background: rgba(16, 43, 36, 0.94); display: grid; place-items: center; padding: 20px;
+}
+.fo-scan__camera-modal > div { max-width: 520px; width: 100%; text-align: center; color: #fff; }
+.fo-scan__camera-modal video { width: 100%; border-radius: var(--radius-md); }
+.fo-scan__camera-modal button {
+  min-height: 44px; margin-top: 12px; padding: 10px 20px;
+  background: transparent; color: #fff; border: 1px solid rgba(255,255,255,0.4);
+  border-radius: var(--radius-sm); font-size: 15px; font-family: inherit; cursor: pointer;
+}
+
+@media (min-width: 700px) {
+  .fo-scan__entry { grid-template-columns: auto 1fr auto; align-items: center; }
+}

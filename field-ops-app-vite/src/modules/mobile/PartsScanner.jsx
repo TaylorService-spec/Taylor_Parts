@@ -1,240 +1,279 @@
-// PartsScanner -- a non-mutating scan / identification / lookup TOOL inside FieldMode
-// (the Technician Workspace). Owner architecture decision (Section A, 2026-08-06):
-// this tool does NOT own the receiving transaction and does NOT redefine receipt
-// eligibility. Its remaining part-movement ACTIONS write only the in-memory
-// demo/InventoryContext.jsx (no Firestore, resets on reload) and carry a persistent
-// "Demo -- not saved" banner (R5). Its job picker reads live jobs through the
-// technician-scoped useAssignedWorkOrders(technicianId) -- the SAME read-scoping
-// interlock FieldMode uses; an unscoped full-collection read would be denied for the
-// technician persona this workspace serves. F0 moved this from the legacy
-// fieldops_jobs read to the governed Work Order Engine.
-//
-// The scanner's "Receive a purchase order" action IS the one governed receive workflow
-// (A1, 2026-08-06, superseding the earlier A3 "no receive here"): it receives a specific
-// ORDERED reorder Purchase Order by invoking receiveInventoryStock through the FAIL-CLOSED
-// readiness transport (see ReceiveAgainstPurchaseOrder.jsx). The old ad-hoc "add to warehouse"
-// receive stays retired; there is no second/demo receive path.
-//
-// PERSONA / CAPABILITY NOTE (by design, not a bug): receiving is governed. The candidate read
-// (reorder_requests, ORDERED) and inventory.stock.receive are role-gated to admin/dispatcher/
-// owner -- NOT the technician. FieldMode is reachable by ADMIN and TECHNICIAN (ROLE_NAV_ACCESS,
-// domain/constants.js), so an admin-in-FieldMode holding the capability can complete a receipt,
-// while a technician fails closed HONESTLY at both layers (candidate read -> BLOCKED_PERMISSION;
-// a submitted receive -> DENIED). And with RECEIVING_TRANSPORT_READY = false today the workflow
-// fails closed for everyone at the location step ("Receiving isn't activated") -- no live receipt
-// occurs until that separate, authorized activation gate.
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useAuth } from "../../auth/AuthContext";
 import { useAssignedWorkOrders } from "../../hooks/useAssignedWorkOrders";
+import { updateWorkOrderExecutionData } from "../../services/workOrderService";
 import { activeFieldWorkOrders } from "../../domain/fieldWorkOrder";
-import { useInventory } from "../../demo/InventoryContext";
-import ReceiveAgainstPurchaseOrder from "../receiving/ReceiveAgainstPurchaseOrder";
+import { resolveScannedIdentity, SCAN_RESOLUTION } from "../../domain/scannedIdentity";
+import { buildScanCandidates, notFoundReason } from "../../domain/scanCandidates";
+import { deriveScanActions, SCAN_ACTIONS } from "../../domain/scanActions";
 
-// "Receive a purchase order" is the ONE governed receive workflow (A1): it receives against an
-// ORDERED reorder Purchase Order through the fail-closed receiveInventoryStock transport (see
-// ReceiveAgainstPurchaseOrder.jsx). It is NOT a demo write. The remaining actions are the
-// existing in-memory demo actions. There is no ad-hoc "add to warehouse" receive.
-const ACTIONS = [
-  { id: "receive", label: "Receive a purchase order", hint: "Governed PO receipt", governed: true },
-  { id: "work-order", label: "Use on work order", hint: "Remove from truck stock" },
-  { id: "transfer", label: "Load my truck", hint: "Move from warehouse" },
-  { id: "count", label: "Cycle count", hint: "Set quantity on hand" },
-  { id: "purchase-order", label: "Add to purchase order", hint: "Add to draft order" },
-];
+/**
+ * F2 — the field scanner, rebuilt on the entity resolution boundary.
+ *
+ * A scan is a CONTEXTUAL ENTRY POINT, not a workspace. This screen answers
+ * exactly three questions and then gets out of the way:
+ *
+ *   What did I scan?      -> governed identity, or an honest failure
+ *   Can I read it?        -> candidate scope, stated plainly
+ *   What may I do here?   -> actions derived from authority, not a menu
+ *
+ * WHAT THIS REPLACED. The previous scanner matched against `demo/
+ * InventoryContext`'s in-memory parts array and offered a literal five-item
+ * action menu (receive / use on work order / load truck / cycle count / add to
+ * PO) to everyone, always. That produced the defect persona review found: a
+ * technician's planned part `PRT-1001` did not exist in a scanner that only
+ * knew the demo SKU `CMP-048-230` — two disconnected part-number universes on
+ * one screen.
+ *
+ * That is fixed by RESOLVING IDENTITY through the governed layer, not by
+ * aliasing identifiers. There is no scanner-local normalization and no
+ * hardcoded equivalence: `scannedIdentity` matches exactly, on canonical
+ * identifiers, against candidates the caller is genuinely authorised to read.
+ * `demo/InventoryContext` is untouched elsewhere in the app — only the field
+ * scan path stops depending on it.
+ *
+ * AUTHORITY. This component decides nothing. `deriveScanActions` MIRRORS the
+ * conditions `updateWorkOrderExecutionData` enforces server-side so the UI does
+ * not offer an action the callable would reject; the server remains the
+ * authority and rejects independently.
+ */
+
+const STATE = { IDLE: "IDLE", SCANNING: "SCANNING", RESOLVING: "RESOLVING", DONE: "DONE" };
 
 export default function PartsScanner({ technicianId }) {
-  const inventory = useInventory();
-  // Technician-scoped jobs read (F-RULES-1): the caller (FieldMode) passes the
-  // resolved technicianId; an unscoped full-collection read would be Rules-denied
-  // for a technician. Fail-closed: no technicianId -> empty job picker.
-  const { data: workOrders } = useAssignedWorkOrders(technicianId);
+  const { role } = useAuth();
+  const { data: workOrders, loading: workOrdersLoading, error: workOrdersError } =
+    useAssignedWorkOrders(technicianId);
+
   const [query, setQuery] = useState("");
-  const [part, setPart] = useState(null);
-  const [action, setAction] = useState("work-order");
-  const [quantity, setQuantity] = useState(1);
-  const [jobId, setJobId] = useState("");
-  const [notice, setNotice] = useState("");
+  const [phase, setPhase] = useState(STATE.IDLE);
+  const [identity, setIdentity] = useState(null);
+  const [notice, setNotice] = useState(null);
   const [cameraOpen, setCameraOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
   const videoRef = useRef(null);
   const streamRef = useRef(null);
-  const scanFrameRef = useRef(null);
+  const frameRef = useRef(null);
 
-  // F0 -- the job picker now lists GOVERNED Work Orders the technician is
-  // actually assigned, filtered to the field-active lifecycle statuses by the
-  // shared selector rather than by a local status literal.
-  const activeJobs = useMemo(() => activeFieldWorkOrders(workOrders), [workOrders]);
+  // The candidate set is built ONLY from work the caller can already read.
+  // No catalogParts: a technician cannot read the Part Master (firestore.rules
+  // gates `parts` to admin/dispatcher or a parts/warehouse operational role),
+  // so the scope narrows honestly to their own assigned work.
+  const candidates = useMemo(() => buildScanCandidates({ workOrders }), [workOrders]);
 
-  useEffect(() => {
-    if (!jobId && activeJobs[0]) setJobId(activeJobs[0].id);
-  }, [activeJobs, jobId]);
+  const active = useMemo(() => activeFieldWorkOrders(workOrders), [workOrders]);
+  const activeWorkOrder = active[0] ?? null;
 
-  useEffect(() => () => {
-    cancelAnimationFrame(scanFrameRef.current);
-    streamRef.current?.getTracks().forEach((track) => track.stop());
+  const actions = useMemo(
+    () => deriveScanActions(identity, { role, technicianId, workOrders, activeWorkOrder }),
+    [identity, role, technicianId, workOrders, activeWorkOrder],
+  );
+
+  const closeCamera = useCallback(() => {
+    cancelAnimationFrame(frameRef.current);
+    frameRef.current = null;
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    setCameraOpen(false);
   }, []);
 
-  function valueFromQrPayload(rawValue) {
-    const value = rawValue.trim();
-    try {
-      const parsed = JSON.parse(value);
-      return parsed.partId ?? parsed.sku ?? parsed.barcode ?? parsed.item ?? value;
-    } catch {
-      try {
-        const url = new URL(value);
-        return url.searchParams.get("part") ?? url.searchParams.get("sku") ?? url.searchParams.get("barcode") ?? value;
-      } catch {
-        return value.replace(/^TAYLOR-PART:/i, "");
-      }
-    }
-  }
+  useEffect(() => () => closeCamera(), [closeCamera]);
 
-  function acceptScan(rawValue) {
-    const lookupValue = valueFromQrPayload(rawValue);
-    const match = findPart(lookupValue);
-    if (!match) {
-      closeCamera();
-      setQuery(lookupValue);
-      setNotice(`QR code read, but no part matches “${lookupValue}”.`);
-      return;
-    }
-    closeCamera();
-    setPart(match);
-    setQuery("");
-    setNotice(`${match.name} scanned from company QR code.`);
-    navigator.vibrate?.(80);
-  }
+  const resolve = useCallback((raw) => {
+    setPhase(STATE.RESOLVING);
+    setNotice(null);
+    const result = resolveScannedIdentity(raw, candidates);
+    setIdentity(result);
+    setPhase(STATE.DONE);
+    if (result.resolutionState === SCAN_RESOLUTION.RESOLVED) navigator.vibrate?.(60);
+  }, [candidates]);
 
-  async function detectQrCodes(detector) {
+  async function detect(detector) {
     if (!videoRef.current || !streamRef.current) return;
     try {
       if (videoRef.current.readyState >= 2) {
         const codes = await detector.detect(videoRef.current);
-        if (codes[0]?.rawValue) return acceptScan(codes[0].rawValue);
+        if (codes[0]?.rawValue) {
+          const value = codes[0].rawValue;
+          closeCamera();
+          return resolve(value);
+        }
       }
     } catch {
-      // A frame can fail while the phone camera is focusing; keep scanning.
+      // A frame can fail while the camera focuses; keep scanning.
     }
-    scanFrameRef.current = requestAnimationFrame(() => detectQrCodes(detector));
-  }
-
-  function findPart(value) {
-    const clean = value.trim().toLowerCase();
-    return inventory.parts.find((item) =>
-      [item.barcode, item.sku, item.id, item.name].some((field) => field?.toLowerCase() === clean)
-    );
-  }
-
-  function handleLookup(event) {
-    event?.preventDefault();
-    const match = findPart(query);
-    if (!match) return setNotice(`No part found for “${query}”. Try a SKU or barcode below.`);
-    setPart(match);
-    setQuery("");
-    setNotice(`${match.name} scanned and ready.`);
+    frameRef.current = requestAnimationFrame(() => detect(detector));
   }
 
   async function openCamera() {
-    if (!navigator.mediaDevices?.getUserMedia) return setNotice("Camera scanning is not available here. Enter the barcode instead.");
+    if (!navigator.mediaDevices?.getUserMedia) {
+      return setNotice("Camera scanning isn’t available on this device. Enter the code instead.");
+    }
     try {
       streamRef.current = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
       setCameraOpen(true);
+      setPhase(STATE.SCANNING);
       setTimeout(async () => {
         if (!videoRef.current) return;
         videoRef.current.srcObject = streamRef.current;
         await videoRef.current.play();
         if ("BarcodeDetector" in window) {
           const formats = await window.BarcodeDetector.getSupportedFormats();
-          if (formats.includes("qr_code")) {
-            detectQrCodes(new window.BarcodeDetector({ formats: ["qr_code"] }));
-          } else {
-            setNotice("Live QR decoding isn't supported on this device. Enter the SKU or barcode below.");
-          }
-        } else {
-          setNotice("Live QR decoding isn't supported on this device. Enter the SKU or barcode below.");
+          // Every format the device supports, not just QR -- the boundary
+          // normalizes whatever comes back.
+          const usable = formats.filter((f) => f !== "unknown");
+          if (usable.length) return detect(new window.BarcodeDetector({ formats: usable }));
         }
+        setNotice("Live decoding isn’t supported here. Enter the code below.");
       }, 0);
     } catch {
-      setNotice("Camera access was not granted. You can still enter a barcode or SKU.");
+      setNotice("Camera access wasn’t granted. You can still enter the code.");
     }
   }
 
-  function closeCamera() {
-    cancelAnimationFrame(scanFrameRef.current);
-    scanFrameRef.current = null;
-    streamRef.current?.getTracks().forEach((track) => track.stop());
-    streamRef.current = null;
-    setCameraOpen(false);
-  }
-
-  function applyAction() {
-    const qty = Math.max(1, Number(quantity) || 1);
-    if (!part) return;
-    if (action === "work-order") {
-      if (!jobId) return setNotice("Choose a work order first.");
-      if ((inventory.truckStock[part.id] ?? 0) < qty) return setNotice("Not enough stock on your truck.");
-      inventory.consumePart(jobId, part.id, qty);
-    } else if (action === "transfer") {
-      if ((inventory.warehouseStock[part.id] ?? 0) < qty) return setNotice("Not enough stock in the warehouse.");
-      inventory.transferPart(part.id, qty);
-    } else if (action === "count") inventory.setCount(part.id, qty, "truck");
-    else inventory.addToPurchaseOrder(part.id, qty);
-    setNotice(`${qty} × ${part.name} added successfully.`);
-    setPart(null);
-    setQuantity(1);
+  async function invoke(action) {
+    if (!action.enabled || submitting) return;
+    if (action.id !== SCAN_ACTIONS.RECORD_PART_USAGE) {
+      // VIEW_CONTEXT and lifecycle actions belong to their owning surfaces; a
+      // scan is an entry point, not a second Work Order screen.
+      setNotice("Open this from your job to continue.");
+      return;
+    }
+    setSubmitting(true);
+    setNotice(null);
+    try {
+      await updateWorkOrderExecutionData(action.payload.workOrderId, {
+        qtyUsedUpdates: [{ sku: action.payload.sku, delta: 1 }],
+      });
+      setNotice(`Recorded 1 × ${action.payload.partId} on this job.`);
+      setIdentity(null);
+      setQuery("");
+    } catch (err) {
+      // The server is the authority and may still refuse. Say so plainly --
+      // never silently, and never as "not found".
+      setNotice(err?.message || "That couldn’t be recorded. Nothing was changed.");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
-    <div className="scan-workspace">
-      <p className="scan-demo-banner" role="note">
-        <strong>Demo — not saved.</strong> Scanning, lookup, and <strong>Receive a purchase
-        order</strong> are real (receiving is a governed transaction, currently fail-closed until
-        activated). The other part-movement actions are an in-memory preview only.
-      </p>
-      <header className="scan-hero">
-        <div><span className="scan-eyebrow">FIELD INVENTORY</span><h2>Scan. Move. Done.</h2><p>Capture every part where the work happens.</p></div>
-        <div className="scan-location"><span>Current location</span><strong>Truck 14 · Taylor Service</strong></div>
-      </header>
+    <div className="fo-scan">
+      <form
+        className="fo-scan__entry"
+        onSubmit={(e) => { e.preventDefault(); resolve(query); }}
+      >
+        <button type="button" className="fo-scan__camera" onClick={openCamera}>
+          Scan a code
+        </button>
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Or type a part or work order code"
+          aria-label="Part or work order code"
+          enterKeyHint="search"
+        />
+        <button type="submit" className="fo-scan__find">Find</button>
+      </form>
 
-      <section className="scan-card scan-card-primary">
-        <div className="scan-step">1</div><div className="scan-card-body"><h3>Scan a part</h3><p>Use the camera, barcode, or part number.</p>
-          <form className="scan-entry" onSubmit={handleLookup}>
-            <button type="button" className="scan-camera" onClick={openCamera} aria-label="Open company QR scanner">▣ <span>Scan company QR</span></button>
-            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="QR value, barcode, or SKU" aria-label="QR value, barcode, or SKU" />
-            <button type="submit">Find part</button>
-          </form>
-          <div className="scan-quick">Try: {inventory.parts.map((item) => <button key={item.id} onClick={() => { setPart(item); setNotice(`${item.name} selected.`); }}>{item.sku}</button>)}</div>
+      {cameraOpen && (
+        <div className="fo-scan__camera-modal" role="dialog" aria-modal="true" aria-label="Scanner">
+          <div>
+            <video ref={videoRef} autoPlay playsInline muted />
+            <p>Point the camera at the code</p>
+            <button type="button" onClick={closeCamera}>Cancel</button>
+          </div>
         </div>
-      </section>
+      )}
 
-      {cameraOpen && <div className="scan-camera-modal" role="dialog" aria-modal="true" aria-label="Company QR scanner"><div><video ref={videoRef} autoPlay playsInline muted /><span className="scan-reticle" /><p><strong>Company QR scanner</strong><br />Center the QR code in the frame</p><button onClick={closeCamera}>Cancel scan</button></div></div>}
-      {notice && <div className="scan-notice" role="status">{notice}</div>}
+      {notice && <p className="fo-scan__notice" role="status">{notice}</p>}
 
-      {part && <section className="scan-card scan-result">
-        <div className="scan-part-icon">{part.category.slice(0, 1)}</div>
-        <div className="scan-part-info"><span className="scan-eyebrow">{part.category}</span><h3>{part.name}</h3><p>{part.sku} · Barcode {part.barcode}</p><div className="scan-stock"><span><b>{inventory.truckStock[part.id] ?? 0}</b> on truck</span><span><b>{inventory.warehouseStock[part.id] ?? 0}</b> warehouse</span></div></div>
-      </section>}
-
-      {part && <section className="scan-card scan-action-card"><div className="scan-step">2</div><div className="scan-card-body"><h3>What are you doing?</h3>
-        <div className="scan-actions">{ACTIONS.map((item) => <button key={item.id} className={action === item.id ? "active" : ""} onClick={() => setAction(item.id)}><strong>{item.label}</strong><span>{item.hint}</span></button>)}</div>
-        {action === "receive" ? (
-          <ReceiveAgainstPurchaseOrder
-            initialPartId={part.id}
-            onDone={() => { setPart(null); setAction("work-order"); setNotice("Receiving closed."); }}
-          />
-        ) : (
-          <>
-            {action === "work-order" && <label className="scan-field">Work order<select value={jobId} onChange={(e) => setJobId(e.target.value)}><option value="">Select work order</option>{activeJobs.map((wo) => <option key={wo.id} value={wo.id}>{wo.woNumber ?? wo.id}{wo.description ? ` — ${wo.description}` : ""}</option>)}</select></label>}
-            <label className="scan-field">{action === "count" ? "Counted quantity" : "Quantity"}<div className="scan-quantity"><button onClick={() => setQuantity((q) => Math.max(1, q - 1))}>−</button><input type="number" min="1" value={quantity} onChange={(e) => setQuantity(e.target.value)} /><button onClick={() => setQuantity((q) => Number(q) + 1)}>+</button></div></label>
-            <button className="scan-confirm" onClick={applyAction}>Confirm {ACTIONS.find((item) => item.id === action)?.label.toLowerCase()}</button>
-          </>
-        )}
-      </div></section>}
-
-      <section className="scan-summary">
-        <div><span>Truck units</span><strong>{Object.values(inventory.truckStock).reduce((a, b) => a + b, 0)}</strong></div>
-        <div><span>PO draft</span><strong>{inventory.purchaseOrderDraft.reduce((sum, line) => sum + line.quantity, 0)} items</strong></div>
-        <div><span>Recent activity</span><strong>{inventory.scanActivity.length}</strong></div>
-      </section>
-      {inventory.scanActivity.length > 0 && <section className="scan-card scan-activity"><h3>Today’s scans</h3>{inventory.scanActivity.slice(0, 5).map((item) => <div key={item.id}><span className="scan-activity-mark">✓</span><span><b>{item.type}</b><small>{item.quantity} × {inventory.parts.find((p) => p.id === item.partId)?.name}</small></span><time>{new Date(item.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</time></div>)}</section>}
+      <ScanResult
+        phase={phase}
+        identity={identity}
+        actions={actions}
+        scope={candidates.scope}
+        loading={workOrdersLoading}
+        denied={!!workOrdersError}
+        submitting={submitting}
+        onInvoke={invoke}
+      />
     </div>
+  );
+}
+
+/**
+ * Every distinct outcome gets its own words. LOADING, DENIED, INVALID,
+ * NOT_FOUND, AMBIGUOUS and RESOLVED are never collapsed into one another --
+ * particularly not denial into absence.
+ */
+function ScanResult({ phase, identity, actions, scope, loading, denied, submitting, onInvoke }) {
+  if (loading) return <p className="fo-muted">Loading your work…</p>;
+
+  // A read denial is NOT an empty scanner. Say which it is.
+  if (denied) {
+    return (
+      <p className="fo-scan__state fo-scan__state--denied" role="alert">
+        Your work orders couldn’t be loaded, so scanning can’t match anything right now.
+      </p>
+    );
+  }
+
+  if (phase === STATE.RESOLVING) return <p className="fo-muted">Checking…</p>;
+  if (!identity) return null;
+
+  if (identity.resolutionState === SCAN_RESOLUTION.INVALID) {
+    return <p className="fo-scan__state" role="status">That code couldn’t be read. Try again, or type it in.</p>;
+  }
+
+  if (identity.resolutionState === SCAN_RESOLUTION.NOT_FOUND) {
+    return (
+      <p className="fo-scan__state" role="status">
+        {/* Scoped search -- never claims the thing does not exist. */}
+        {notFoundReason(scope)}
+      </p>
+    );
+  }
+
+  if (identity.resolutionState === SCAN_RESOLUTION.AMBIGUOUS) {
+    return (
+      <div className="fo-scan__state" role="status">
+        <p>That code matches more than one record. Pick the right one from your job.</p>
+        <ul>
+          {identity.candidates.map((c) => (
+            <li key={`${c.entityType}:${c.entityId}`}>{c.entityType.replace("_", " ").toLowerCase()} · {c.entityId}</li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
+
+  return (
+    <section className="fo-scan__result" aria-label="Scan result">
+      <p className="fo-scan__kind">{identity.entityType.replace("_", " ").toLowerCase()}</p>
+      <h3 className="fo-scan__id">{identity.entityId}</h3>
+
+      {actions.length === 0 ? (
+        <p className="fo-muted">Nothing to do with this here.</p>
+      ) : (
+        <ul className="fo-scan__actions">
+          {actions.map((a) => (
+            <li key={a.id}>
+              <button
+                type="button"
+                className="fo-btn-field"
+                disabled={!a.enabled || submitting}
+                onClick={() => onInvoke(a)}
+              >
+                {submitting && a.enabled ? "Recording…" : a.label}
+              </button>
+              {/* Disabled actions explain themselves rather than vanishing. */}
+              {!a.enabled && a.reason && <p className="fo-scan__reason">{a.reason}</p>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
