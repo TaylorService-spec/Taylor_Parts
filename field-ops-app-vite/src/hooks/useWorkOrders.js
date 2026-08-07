@@ -9,15 +9,27 @@ import { subscribeToWorkOrders } from "../services/workOrderService";
 export function useWorkOrders() {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    const unsub = subscribeToWorkOrders((workOrders) => {
-      setData(workOrders);
-      setLoading(false);
-    });
+    const unsub = subscribeToWorkOrders(
+      (workOrders) => {
+        setData(workOrders);
+        setError(null);
+        setLoading(false);
+      },
+      (err) => {
+        // Fail VISIBLY. A swallowed permission-denied left this surface
+        // spinning indefinitely for a technician, who cannot read the
+        // collection unfiltered.
+        setError(err);
+        setData([]);
+        setLoading(false);
+      },
+    );
 
     return () => unsub();
   }, []);
 
-  return { data, loading };
+  return { data, loading, error };
 }

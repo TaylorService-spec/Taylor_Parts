@@ -43,7 +43,6 @@ import PartsManagerHome from "./modules/inventoryRole/PartsManagerHome";
 import PartsAssociateHome from "./modules/inventoryRole/PartsAssociateHome";
 import { useAuth } from "./auth/AuthContext";
 import Login from "./auth/Login";
-import AppHeader from "./shared/ui/AppHeader";
 import { InventoryProvider } from "./demo/InventoryContext";
 import { IS_DEMO } from "./config/env";
 import { ROLE_NAV_ACCESS, ROLES } from "./domain/constants";
@@ -615,9 +614,12 @@ export default function App() {
       <BrowserRouter basename={ROUTER_BASENAME}>
         <div className="fo-app">
           {IS_DEMO && <div className="fo-demo-banner">DEMO MODE ACTIVE (SAFE - NO WRITES TO PRODUCTION)</div>}
-          {/* accessVersion threaded so AppHeader's one canonical part-name read re-runs and its
-              name map is invalidated on any access change (governs NotificationPanel names). */}
-          <AppHeader accessVersion={operationalContext?.accessVersion} />
+          {/* Gate 2 -- AppHeader is now mounted INSIDE AppShell, as the workspace
+              column's utility bar, so it sits beside the navigation rail rather
+              than above the whole shell. accessVersion is threaded through
+              AppShell for the same reason as before: AppHeader's one canonical
+              part-name read must re-run and its name map be invalidated on any
+              access change (governs NotificationPanel names). */}
           <AppShell role={role} allowedLegacyKeys={allowedLegacyKeys} operationalContext={operationalContext}>
             <AppRoutes role={role} allowedLegacyKeys={allowedLegacyKeys} operationalContext={operationalContext} />
           </AppShell>

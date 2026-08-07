@@ -115,10 +115,16 @@ check("Firebase build bundle contains ZERO /Taylor_Parts/field-ops occurrences (
   const hits = fbTree.split("/Taylor_Parts/field-ops").length - 1;
   assert.equal(hits, 0, `Firebase build still references /Taylor_Parts/field-ops ${hits} time(s) — a hard-coded host path survived`);
 });
-check("AppHeader home link is base-derived (source: no hard-coded host path)", () => {
+// Gate 2 -- the AppHeader full-reload "Refresh" link this asserted has been
+// REMOVED (it shipped a browser function as application chrome, beside a "Home"
+// link that was a second navigation axis). The invariant that mattered is the
+// SECOND assertion, which is kept and strengthened: no hard-coded host path may
+// survive in the header. The bundle-level checks above remain the real proof of
+// per-mode base resolution.
+check("AppHeader contains no hard-coded host path (source)", () => {
   const header = fs.readFileSync(path.join(appDir, "src", "shared", "ui", "AppHeader.jsx"), "utf8");
-  assert.ok(header.includes("href={import.meta.env.BASE_URL}"), "AppHeader must derive the home href from import.meta.env.BASE_URL");
   assert.ok(!header.includes("/Taylor_Parts/field-ops"), "AppHeader still contains a hard-coded /Taylor_Parts/field-ops path");
+  assert.ok(!/href="https?:\/\//.test(header), "AppHeader must not hard-code an absolute URL");
 });
 
 console.log(`\nverifyBuildBase: ${passed} passed, 0 failed`);

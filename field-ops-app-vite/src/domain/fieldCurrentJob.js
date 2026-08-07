@@ -101,11 +101,19 @@ function buildAttention(workOrder, readiness, customer, contextPending = false) 
       label: "Parts readiness can't be confirmed",
     });
   }
+  // Human labels for degraded capabilities. Persona review caught the raw
+  // camelCase identifier ("truckInventory information is unavailable here")
+  // reaching a field technician -- an internal name leaking into user copy.
+  const DEGRADED_LABEL = {
+    truckInventory: "Truck stock isn't available for this job",
+    warehouse: "Warehouse availability isn't available for this job",
+    purchasing: "Purchasing status isn't available for this job",
+  };
   for (const capability of readiness.degraded ?? []) {
     items.push({
       key: `degraded-${capability}`,
       severity: "low",
-      label: `${capability} information is unavailable here`,
+      label: DEGRADED_LABEL[capability] ?? "Some availability information isn't available for this job",
     });
   }
   // While the trusted projection is still in flight the answer is not yet

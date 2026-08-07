@@ -23,6 +23,8 @@ on:
       - "field-ops-app-vite/src/firebase/firebase.js"
       - "field-ops-app-vite/src/config/**"
       - "scripts/deploymentDrift.test.mjs"
+      - "scripts/deployHosting.mjs"
+      - "scripts/deployHosting.test.mjs"
       - "scripts/checkDeployedVersions.mjs"
       - "config/environments.json"
       - ".github/workflows/deployment-drift-core-tests.yml"
@@ -38,6 +40,8 @@ on:
       - "field-ops-app-vite/src/firebase/firebase.js"
       - "field-ops-app-vite/src/config/**"
       - "scripts/deploymentDrift.test.mjs"
+      - "scripts/deployHosting.mjs"
+      - "scripts/deployHosting.test.mjs"
       - "scripts/checkDeployedVersions.mjs"
       - "config/environments.json"
       - ".github/workflows/deployment-drift-core-tests.yml"
@@ -64,3 +68,8 @@ jobs:
       # O-4 — a repo-driven index deploy must never silently delete a live index.
       - name: Index drift guard (O-4)
         run: node --test scripts/indexDriftGuard.test.mjs
+      # Gate 1 D1 finding -- a deploy must never resolve its target implicitly,
+      # and an artifact that misidentifies its environment must be refused
+      # BEFORE it ships, not discovered afterwards in the live manifest.
+      - name: Deploy target identity is fail-closed
+        run: node --test scripts/deployHosting.test.mjs

@@ -16,7 +16,7 @@ import { fieldPhase } from "../../domain/fieldWorkOrder";
 // real CustomerPicker -- so this surface links there.
 
 export default function Jobs() {
-  const { data: jobs, loading } = useWorkOrders();
+  const { data: jobs, loading, error } = useWorkOrders();
   const [announcement, setAnnouncement] = useState("");
   // The new row keeps a stable tabIndex=-1 (focusRowId is not cleared) so focusing
   // it never blurs when a follow-up render runs -- removing tabIndex from the
@@ -47,6 +47,14 @@ export default function Jobs() {
 
       {loading ? (
         <p className="fo-muted">Loading work orders…</p>
+      ) : error ? (
+        // Fail VISIBLY. This is an unfiltered collection read, which a
+        // technician is not permitted to perform -- the denial used to be
+        // swallowed, leaving the page spinning forever.
+        <p className="fo-muted" role="alert">
+          You don’t have access to the full work order list. Your own assigned
+          work is available in Technician Workspace.
+        </p>
       ) : jobs.length === 0 ? (
         <p className="fo-muted">No work orders yet.</p>
       ) : (
