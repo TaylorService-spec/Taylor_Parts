@@ -1,8 +1,9 @@
 // Manufacturer -- read-only client service. One-shot authorized read of `manufacturers`. NOTE: the
-// `manufacturers` collection is currently Rules-closed (read,write: if false); the governed read is a
-// PREPARED (not-deployed) Rules delta mirroring `parts` (admin/dispatcher + PARTS_MANAGER/WAREHOUSE_MANAGER).
-// Until that delta is deployed, this read FAILS CLOSED to permission-denied and the workspace shows a
-// read-disabled state. Imports ONLY read APIs; performs no writes.
+// `manufacturers` collection is currently Rules-closed (read,write: if false). The governed read-authority
+// decision is DEFERRED to the Owner (the minimum answer is isAdminOrDispatcher() like `suppliers`, but
+// adding it grows the R-1 legacy-surface convergence baseline -- a separately-governed decision). Until it
+// is resolved + deployed, this read FAILS CLOSED to permission-denied and the workspace shows a
+// read-disabled (denied) state. Imports ONLY read APIs; performs no writes.
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "../firebase/firebase";
 import { toManufacturerListView } from "../domain/manufacturersView";

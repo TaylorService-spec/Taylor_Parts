@@ -34,9 +34,23 @@ read-denied are distinct honest states).
 
 - `MANUFACTURER_WRITE_READY = false` everywhere (`config/environments.json`) → the workspace is
   write-disabled and `useManufacturerWrite` makes **zero** callable attempts.
-- The `manufacturers` collection READ is currently Rules-closed; the governed read delta is **PREPARED,
-  not deployed** (mirrors the `parts` read rule; both `firestore.rules` copies in parity). Until
-  deployed, the workspace read **fails closed** to a denied state.
+- The `manufacturers` collection READ is currently Rules-closed and stays that way: the governed
+  read-authority decision is **DEFERRED to the Owner** (see below). Until resolved + deployed, the
+  workspace read **fails closed** to a denied state.
+
+## ⚠ Deferred material governance decision — manufacturers read authority (returned to Owner)
+
+The admin workspace needs a governed read of `manufacturers`. The minimum-governed answer is
+`read: isAdminOrDispatcher()` — matching the sibling catalog reference object `suppliers` (not the
+broader `parts` operational-role read). **But** adding *any* new read authorization site to
+`firestore.rules` grows the **R-1 legacy-authorization-surface** convergence baseline (ADR-005 §2.7
+criterion 1 / the `legacy-surface-gate`), which is an elevated, separately-governed program. The
+`legacy-surface-gate` blocks the addition unless it is deliberately recorded in the R-1 corpus. The two
+options — **(a)** record `manufacturers` (isAdminOrDispatcher) in the R-1 corpus (grows the legacy
+baseline by one recorded catalog read, to be converged later alongside `suppliers`/`parts`), or **(b)**
+wait for the governed catalog-read permission model (R-1 future work) — both touch R-1's protected
+governance, so the decision is the Owner's. This RC keeps `manufacturers` read-closed until then; the
+write path + workspace are complete and the read simply fails closed.
 
 ## Verification (repo-side)
 
@@ -47,9 +61,10 @@ read-denied are distinct honest states).
 
 1. **Deploy the three Manufacturer callables:**
    `firebase deploy --only functions:createManufacturer,functions:updateManufacturer,functions:changeManufacturerStatus`.
-2. **Deploy the `manufacturers` read Rules delta** — `firebase deploy --only firestore:rules` (Tier-2;
-   run the `verify-rules-deploy` checklist; both copies already in parity). WITHOUT this, the workspace
-   read stays denied.
+2. **Resolve the read-authority decision (above) + deploy the `manufacturers` read Rules delta** — once
+   the Owner picks option (a) or (b), author the read rule (+ record it in the R-1 corpus if (a)) and
+   `firebase deploy --only firestore:rules` (Tier-2; run the `verify-rules-deploy` checklist). WITHOUT
+   this, the workspace read stays denied.
 3. **Define + grant the catalog-admin authority** — the accepted `inventoryCatalogAdministrator` role
    carrying `inventory.catalog.manage` + `.activate` (shared with Part/Supplier; no standing role carries
    these). Protected.

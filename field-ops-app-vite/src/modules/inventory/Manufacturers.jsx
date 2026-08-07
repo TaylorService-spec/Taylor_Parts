@@ -1,8 +1,9 @@
 // Manufacturer administration workspace (catalog reference object). Closes the referential gap Part
 // write created (parts.manufacturerId -> a manageable/readable Manufacturer). READ via
 // services/manufacturerQueries.fetchManufacturerList + domain/manufacturersView (the `manufacturers`
-// collection read is a PREPARED, not-deployed Rules delta mirroring `parts`; until deployed the read fails
-// closed to a denied state). WRITE via useManufacturerWrite -> manufacturerCommandClient -> the trusted
+// collection read is still Rules-closed; the governed read-authority decision is DEFERRED to the Owner --
+// it interacts with the R-1 legacy-surface convergence gate -- so the read fails closed to a denied state
+// until resolved). WRITE via useManufacturerWrite -> manufacturerCommandClient -> the trusted
 // createManufacturer/updateManufacturer/changeManufacturerStatus callables. ONE Manufacturer authority;
 // NO client Firestore writes; NO parallel validator; NO parallel status vocabulary (client mirror; the
 // command re-validates). FAIL-CLOSED: MANUFACTURER_WRITE_READY=false -> write-disabled + zero callable

@@ -215,8 +215,9 @@ function renderSubnavItem(domain, item, role, operationalContext) {
   // Manufacturer administration workspace (catalog reference object Parts link to; read + FAIL-CLOSED
   // write). Closes the referential gap Part write created. Same posture as Part Master: no legacyKey ->
   // admin/dispatcher via navConfig's PLACEHOLDER_DEFAULT_ROLES default; catalog write authority
-  // (inventory.catalog.manage/.activate) enforced server-side; the `manufacturers` read is a PREPARED,
-  // not-deployed Rules delta so the read fails closed until governed.
+  // (inventory.catalog.manage/.activate) enforced server-side; the `manufacturers` read is still
+  // Rules-closed (governed read-authority DEFERRED to the Owner -- R-1 legacy-surface interaction) so the
+  // read fails closed until resolved.
   if (domain.key === "inventory" && item.key === "manufacturers") {
     return <Manufacturers />;
   }
