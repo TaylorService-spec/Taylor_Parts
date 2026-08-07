@@ -1,0 +1,15 @@
+P-2 / P-3 RE-TEST — after baseline reference data, real client sign-in, Rules-enforced.
+Sandbox eos-platform-sandbox. No Admin SDK bypass.
+
+persona                      parts  reorder_requests  wh-main  wh-north  accounts
+owner@sandbox.invalid         200         200           200      200       200
+admin@sandbox.invalid         200         200           200      200       200
+dispatcher@sandbox.invalid    200         200           200      200       200
+partsmgr@sandbox.invalid      200         403           403      403       403
+whmgr@sandbox.invalid         200         403           200      403       403
+partsassoc@sandbox.invalid    403         403           403      403       403
+tech@sandbox.invalid          403         403           403      403       403
+restricted@sandbox.invalid    403         403           403      403       403
+
+wh-main   = warehouse ASSIGNED to whmgr
+wh-north  = warehouse NOT assigned to whmgr

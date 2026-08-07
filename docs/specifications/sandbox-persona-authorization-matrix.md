@@ -1,7 +1,7 @@
 ---
 artifact_type: specification
 gate: Sandbox persona authorization matrix (v1 — evidence-based)
-status: v1 — 7 personas IMPLEMENTED + VERIFIED; remainder DESIGNED / blocked. Sandbox only.
+status: v2 — 8 personas IMPLEMENTED + VERIFIED (incl. warehouse-scoped); P-2/P-3 classified. Sandbox only.
 date: 2026-08-06
 owner: Claude Code (Executive Architecture & Company Office)
 environment: eos-platform-sandbox (platform-sandbox)
@@ -49,6 +49,45 @@ All seven: bidirectional `employees`↔`users` linkage, `employmentStatus: ACTIV
 **P-4 — operational roles do differentiate.** `partsmgr` ≠ `partsassoc` ≠ `tech` despite all three sharing `securityRole: technician`. The operational-role model works as designed.
 
 > P-2/P-3 were observed against an **empty** database. Some Rules paths evaluate reference data, so these must be re-verified once the baseline pack exists. Recorded as observations, **not** yet as defects.
+
+---
+
+## Part 1b — v2 update: baseline reference data seeded, warehouse scoping proven
+
+The baseline reference pack is live (3 warehouses, 2 suppliers, 6 parts, 6 part-supplier items, 2 accounts, 3 locations, 2 contacts, 3 equipment) as one coherent relationship graph. Re-verified by real client sign-in. Evidence: [`../audits/sandbox-baseline-20260806/`](../audits/sandbox-baseline-20260806/).
+
+| personaId | job title | securityRole | operationalRoles | `parts` | `reorder_requests` | `wh-main` (assigned) | `wh-north` (NOT assigned) | `accounts` | status |
+|---|---|---|---|---|---|---|---|---|---|
+| `sbx-owner` | Owner | admin | — | 200 | 200 | 200 | 200 | 200 | IMPLEMENTED + VERIFIED |
+| `sbx-admin` | Platform Administrator | admin | — | 200 | 200 | 200 | 200 | 200 | IMPLEMENTED + VERIFIED |
+| `sbx-dispatcher` | Dispatcher | dispatcher | — | 200 | 200 | 200 | 200 | 200 | IMPLEMENTED + VERIFIED |
+| `sbx-whmgr` | Warehouse Manager | technician | `WAREHOUSE_MANAGER` | 200 | 403 | **200** | **403** | 403 | **IMPLEMENTED + VERIFIED** |
+| `sbx-partsmgr` | Parts Room Manager | technician | `PARTS_MANAGER` | 200 | 403 | 403 | 403 | 403 | IMPLEMENTED + VERIFIED |
+| `sbx-partsassoc` | Parts Associate | technician | `PARTS_ASSOCIATE` | 403 | 403 | 403 | 403 | 403 | IMPLEMENTED + VERIFIED |
+| `sbx-tech` | Field Technician | technician | — | 403 | 403 | 403 | 403 | 403 | IMPLEMENTED + VERIFIED |
+| `sbx-restricted` | Restricted User | technician | — | 403 | 403 | 403 | 403 | 403 | IMPLEMENTED + VERIFIED |
+
+### W-1 — record-level warehouse scoping is REAL and proven in both directions
+
+`sbx-whmgr` reads **`wh-main` (200)** — its assigned warehouse — and is **denied `wh-north` (403)**, which it is not assigned to. This is `isAssignedToWarehouse()` enforcing per-record scope through the full reciprocal-link chain (`users/{uid}` → `employees/{id}.userId` → `ACTIVE` → `operationalRoles` → `assignedWarehouseIds`).
+
+**This is the only record-level scope currently enforced anywhere in the platform**, and it is the working precedent for the business/team scope model G-2 says is missing.
+
+The governed provisioning validator also still **fails closed**: assigning a Warehouse Manager to `wh-does-not-exist` was refused after the baseline existed, so the guard is real and not an artifact of an empty database.
+
+### P-2 — CLASSIFIED: **EXPECTED CURRENT BEHAVIOR / R-1 PARITY REQUIREMENT**
+
+`PARTS_MANAGER` still cannot list `reorder_requests` (403) with real data present, so it was never a missing reference dependency.
+
+The Rules are explicit: `reorder_requests` **read** is `isAdminOrDispatcher()`, while `PARTS_MANAGER` and `PARTS_ASSOCIATE` have **write/lifecycle** branches (assign, update, start-purchasing). **The role can act on reorder requests it cannot list.**
+
+**Not a defect** — it is the deliberate current design, and R-1 must reproduce it exactly. It is, however, genuine **product** evidence: an operator who can advance a workflow but cannot see its queue depends entirely on being handed a specific record. Recorded for roadmap sequencing, **not** to be "fixed" by widening Rules during convergence.
+
+### P-3 — CLASSIFIED: **EXPECTED CURRENT BEHAVIOR**
+
+`PARTS_ASSOCIATE` is denied `parts` (403) while `PARTS_MANAGER` and `WAREHOUSE_MANAGER` are allowed (200) — with a populated catalog. The Rules deliberately grant the parts read to admin/dispatcher plus `PARTS_MANAGER`/`WAREHOUSE_MANAGER` and **deliberately exclude `PARTS_ASSOCIATE`** per the Owner-adopted role matrix.
+
+**Not a defect.** Both provisional observations are now closed as expected behavior.
 
 ---
 
