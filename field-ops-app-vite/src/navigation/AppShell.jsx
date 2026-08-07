@@ -94,6 +94,9 @@ export default function AppShell({ role, allowedLegacyKeys, operationalContext, 
 
   return (
     <div className={`fo-shell${drawerOpen ? " fo-shell--drawer-open" : ""}`}>
+      {/* First focusable element: lets a keyboard user reach the workspace
+          without traversing the entire navigation rail. */}
+      <a className="fo-skip-link" href="#fo-main">Skip to content</a>
       {/* Persistent rail. Hidden by CSS at drawer widths; the drawer below
           renders the same component so there is one navigation implementation. */}
       <aside className="fo-rail" aria-label="Application navigation">
@@ -130,7 +133,7 @@ export default function AppShell({ role, allowedLegacyKeys, operationalContext, 
           navToggleRef={toggleRef}
           navOpen={drawerOpen}
         />
-        <main className="fo-main">{children}</main>
+        <main className="fo-main" id="fo-main" tabIndex={-1}>{children}</main>
       </div>
     </div>
   );

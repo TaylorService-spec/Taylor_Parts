@@ -37,10 +37,24 @@ import VerenwardMark from "../shared/brand/VerenwardMark";
  * stays a link so the placeholder remains reachable.
  */
 
-// A future/placeholder domain has no children to click, so its row must itself
-// be the destination. Everything else expands.
-function domainIsLeaf(children) {
-  return children.groups.length === 0 && children.ungrouped.length === 0;
+// A domain row is a LEAF LINK (not an accordion) when expanding it could not
+// tell the user anything they do not already know:
+//   - a future/placeholder domain has no children at all, so the row must itself
+//     be the destination;
+//   - a domain with exactly ONE destination and no groups would expand to a
+//     restatement of its own label (Equipment -> "Equipment", Service Operations
+//     -> "Service Operations"). A disclosure that costs a click and reveals
+//     nothing new is IA generated from a route table, not designed. Persona
+//     review flagged all three.
+// Returns the single destination when there is one, so the caller can link
+// straight to it.
+function leafDestination(children) {
+  const total = children.groups.length + children.ungrouped.length;
+  if (total === 0) return { isLeaf: true, item: null };
+  if (children.groups.length === 0 && children.ungrouped.length === 1) {
+    return { isLeaf: true, item: children.ungrouped[0] };
+  }
+  return { isLeaf: false, item: null };
 }
 
 function ItemLink({ domainPath, item, onNavigate, depth = 1 }) {
@@ -86,41 +100,44 @@ export default function AppRail({
     });
   }, [role, allowedLegacyKeys, operationalContext]);
 
-  // Only the current domain is open by default; unrelated domains stay
-  // collapsed so the rail never becomes a wall of every destination at once.
-  // The user's own expansions are additive and survive route changes within
-  // the session — but arriving in a new domain always reveals that domain.
-  const [expanded, setExpanded] = useState(() => new Set(activeDomainPath ? [activeDomainPath] : []));
+  // SINGLE-EXPAND. Exactly one domain is open at a time, and it defaults to the
+  // domain you are actually in.
+  //
+  // This was multi-expand, and persona review measured the consequence: with
+  // three domains open at 1440x800 the rail needed 1462px in an 800px column,
+  // scrolling the brand block AND the currently-selected item off the top. A
+  // rail that cannot show you where you are has stopped doing its job. Capping
+  // it at one open domain bounds worst-case height instead of relying on the
+  // user to tidy up after themselves.
+  const [openDomain, setOpenDomain] = useState(activeDomainPath ?? null);
   const lastDomain = useRef(activeDomainPath);
   useEffect(() => {
     if (activeDomainPath && activeDomainPath !== lastDomain.current) {
       lastDomain.current = activeDomainPath;
-      setExpanded((prev) => new Set(prev).add(activeDomainPath));
+      setOpenDomain(activeDomainPath);
     }
   }, [activeDomainPath]);
 
-  const toggle = (path) =>
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(path)) next.delete(path);
-      else next.add(path);
-      return next;
-    });
+  // Collapsing the domain you are in is allowed; it simply closes.
+  const toggle = (path) => setOpenDomain((prev) => (prev === path ? null : path));
 
   return (
     <nav className="fo-rail__nav" aria-label="Primary">
       <ul className="fo-rail__list">
         {domains.map(({ domain, children }) => {
           const isCurrent = domain.path === activeDomainPath;
-          const leaf = domainIsLeaf(children);
-          const open = expanded.has(domain.path);
+          const { isLeaf, item: soleItem } = leafDestination(children);
+          const open = openDomain === domain.path;
           const panelId = `${idPrefix}-${domain.key}`;
 
           return (
             <li key={domain.key} className="fo-rail__domain">
-              {leaf ? (
+              {isLeaf ? (
                 <NavLink
-                  to={`/${domain.path}`}
+                  // A single-destination domain links straight to that
+                  // destination, so the row goes where its label promises.
+                  to={soleItem ? `/${domain.path}${soleItem.path ? `/${soleItem.path}` : ""}` : `/${domain.path}`}
+                  end={soleItem ? soleItem.path === "" : undefined}
                   onClick={onNavigate}
                   className={({ isActive }) =>
                     `fo-rail__domain-row fo-rail__domain-row--leaf${isActive ? " fo-rail__domain-row--current" : ""}`
@@ -143,8 +160,12 @@ export default function AppRail({
                 </button>
               )}
 
-              {!leaf && open && (
-                <div className="fo-rail__panel" id={panelId}>
+              {/* The panel is ALWAYS rendered and hidden when collapsed, so
+                  aria-controls never points at a missing element — a collapsed
+                  domain previously referenced an id that was not in the DOM,
+                  which some assistive tech announces as nothing at all. */}
+              {!isLeaf && (
+                <div className="fo-rail__panel" id={panelId} hidden={!open}>
                   {children.ungrouped.map((item) => (
                     <ItemLink
                       key={item.key}

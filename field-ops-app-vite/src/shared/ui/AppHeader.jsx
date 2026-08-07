@@ -1,4 +1,3 @@
-import { Link } from "react-router-dom";
 import { useAuth } from "../../auth/AuthContext";
 import { useCanonicalPartNames } from "../../hooks/useCanonicalPartNames";
 import { useReorderRequests, useReorderRequestsByStatus, useReorderRequestsAssignedTo } from "../../hooks/useReorderRequests";
@@ -88,24 +87,19 @@ export default function AppHeader({ accessVersion, onOpenNav = null, navToggleRe
             <span className="fo-navtoggle__bars" aria-hidden="true" />
           </button>
         )}
-        <span className="fo-appheader-title">Field Ops Platform</span>
-
-        {/* Sprint 2.0.1, requirement #6: Home used to hard-link to
-            "/Taylor_Parts/" -- the legacy root Parts Control Center,
-            a different app entirely. Now a client-side route to this
-            app's own dashboard, not a page navigation away from it. */}
-        <Link to="/dashboard">
-          Home
-        </Link>
-
-        {/* Full-reload link to the app root. Href is derived from Vite's
-            build-time base (import.meta.env.BASE_URL) -- the same authority
-            the asset base (I-1F) and router basename (I-1R) use -- so it
-            resolves to the app's served root on GitHub Pages and on Firebase
-            Hosting, never a hard-coded host path. */}
-        <a href={import.meta.env.BASE_URL}>
-          Refresh
-        </a>
+        {/* REMOVED by Gate 2 persona review, all four personas concurring:
+              - "Field Ops Platform" was a FIFTH product name on a screen that
+                already states Verenward / Enterprise Operations OS / Taylor
+                Parts / Arizona Operations in the rail head. The rail
+                establishes identity; repeating a different name here only
+                contradicted it.
+              - "Home" was a genuine SECOND NAVIGATION AXIS (verified: it
+                navigated /service -> /dashboard), which is precisely what
+                Option B's single-axis mandate exists to eliminate.
+              - "Refresh" shipped a browser function as application chrome,
+                sitting beside Home looking identical while doing something
+                completely different.
+            The bar now carries session utilities only. */}
       </div>
 
       <div className="fo-appheader-right">
