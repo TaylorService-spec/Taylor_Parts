@@ -1,0 +1,31 @@
+--- sbx-owner (owner) ---
+Failed: --securityRole must be one of: admin, dispatcher, technician.
+--- sbx-admin (admin) ---
+OK: admin@sandbox.invalid -> uid ZVu3lHTP1NQhj0Am04zTAGou0dx1, employees/sbx-admin <-> users/ZVu3lHTP1NQhj0Am04zTAGou0dx1 linked (Auth account created)
+
+Account created (no password set): email=admin@sandbox.invalid uid=ZVu3lHTP1NQhj0Am04zTAGou0dx1 employeeId=sbx-admin
+This account cannot sign in yet -- password setup/activation is a separate, approved process outside this script.
+--- sbx-dispatcher (dispatcher) ---
+OK: dispatcher@sandbox.invalid -> uid PEiRkebIGRPcEau7yBBV0D77Dho1, employees/sbx-dispatcher <-> users/PEiRkebIGRPcEau7yBBV0D77Dho1 linked (Auth account created)
+
+Account created (no password set): email=dispatcher@sandbox.invalid uid=PEiRkebIGRPcEau7yBBV0D77Dho1 employeeId=sbx-dispatcher
+This account cannot sign in yet -- password setup/activation is a separate, approved process outside this script.
+--- sbx-tech (technician) ---
+OK: tech@sandbox.invalid -> uid rgVA63PthVQH1LX4baueZPhO6MR2, employees/sbx-tech <-> users/rgVA63PthVQH1LX4baueZPhO6MR2 linked (Auth account created)
+
+Account created (no password set): email=tech@sandbox.invalid uid=rgVA63PthVQH1LX4baueZPhO6MR2 employeeId=sbx-tech
+This account cannot sign in yet -- password setup/activation is a separate, approved process outside this script.
+--- sbx-owner ---
+OK: owner@sandbox.invalid -> uid 0TeiR5wPHCXoAIJShLsY8HDMzJN2, employees/sbx-owner <-> users/0TeiR5wPHCXoAIJShLsY8HDMzJN2 linked (Auth account created)
+Account created (no password set): email=owner@sandbox.invalid uid=0TeiR5wPHCXoAIJShLsY8HDMzJN2 employeeId=sbx-owner
+--- sbx-whmgr ---
+Failed: Warehouse(s) not found: wh-main. Refusing to assign a Warehouse Manager to a nonexistent warehouse -- verify the warehouse ID(s) and that they exist, then re-run.
+--- sbx-partsassoc ---
+OK: partsassoc@sandbox.invalid -> uid sDtteBblHLRjVRIi9pywra0YunM2, employees/sbx-partsassoc <-> users/sDtteBblHLRjVRIi9pywra0YunM2 linked (Auth account created)
+Account created (no password set): email=partsassoc@sandbox.invalid uid=sDtteBblHLRjVRIi9pywra0YunM2 employeeId=sbx-partsassoc
+--- sbx-partsmgr ---
+OK: partsmgr@sandbox.invalid -> uid 9L4ISPqtTEfl3ARq8W5v1j0fOBm1, employees/sbx-partsmgr <-> users/9L4ISPqtTEfl3ARq8W5v1j0fOBm1 linked (Auth account created)
+Account created (no password set): email=partsmgr@sandbox.invalid uid=9L4ISPqtTEfl3ARq8W5v1j0fOBm1 employeeId=sbx-partsmgr
+--- sbx-restricted ---
+OK: restricted@sandbox.invalid -> uid lT75guU9mEY46QFQcegWRZRhYBi2, employees/sbx-restricted <-> users/lT75guU9mEY46QFQcegWRZRhYBi2 linked (Auth account created)
+Account created (no password set): email=restricted@sandbox.invalid uid=lT75guU9mEY46QFQcegWRZRhYBi2 employeeId=sbx-restricted
