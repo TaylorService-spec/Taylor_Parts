@@ -151,3 +151,18 @@ export {
   updatePartCallable as updatePart,
   changePartStatusCallable as changePartStatus,
 } from "./partMaster/partMasterCallables";
+
+// --- Manufacturer (catalog reference object): trusted Manufacturer command callables ---
+// "Export is not deployment/grant": NOT deployed, NO UI wired yet, NO App Check. Authorization enforced
+// INSIDE the command against real governed roles -- inventory.catalog.manage for create/update,
+// inventory.catalog.activate for status (the SAME catalog authority Part/Supplier use; future durable
+// inventoryCatalogAdministrator). NO capability granted here; catalog capabilities are carried by no
+// standing role, so all three fail closed until a deferred protected grant. Closes the referential gap
+// Part write created (parts.manufacturerId -> a currently-unmanageable entity). Firebase deploys each
+// callable under its exported index property name -> frozen public names (no "Callable" suffix); the
+// suffixed impl consts are aliased here and NOT otherwise exposed.
+export {
+  createManufacturerCallable as createManufacturer,
+  updateManufacturerCallable as updateManufacturer,
+  changeManufacturerStatusCallable as changeManufacturerStatus,
+} from "./partMaster/manufacturerCallables";
