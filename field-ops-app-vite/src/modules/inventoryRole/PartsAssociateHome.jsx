@@ -241,6 +241,13 @@ function PurchasingInProgressCard({ request, resolveName }) {
       <div className="fo-card">
         <h3>Record Purchase Order</h3>
         <form className="fo-form" onSubmit={handleRecordPo}>
+          {/* DEFERRED FOLLOW-ON (tracked, intentional): this PARTS_ASSOCIATE PO surface still captures the
+              supplier as FREE TEXT, unlike the governed Supplier picker on the admin/dispatcher path
+              (PartDetail's ReorderRequestRecordPurchaseOrder). It is NOT converted here because the
+              `suppliers` read is Rules-gated to admin/dispatcher and this increment must NOT widen the
+              legacy supplier read for PARTS_ASSOCIATE. Governed supplier selection for this role is
+              resolved through the future governed catalog-read / purchasing authorization model (R-1), not
+              by growing the legacy surface. See docs/architecture/part-supplier-items-procurement-terms-design.md. */}
           <label htmlFor="pa-po-supplier">Supplier name</label>
           <input id="pa-po-supplier" type="text" value={supplierName} onChange={(e) => setSupplierName(e.target.value)} required />
 

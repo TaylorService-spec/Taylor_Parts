@@ -28,6 +28,9 @@ import {
 } from "../../domain/inventoryReorderRequests";
 import { recordInventoryAction } from "../../domain/inventoryActions";
 import { recordPurchaseOrder, voidPurchaseOrder } from "../../domain/reorderPurchaseOrders";
+import { useSuppliers } from "../../hooks/useSuppliers";
+import SupplierPicker from "../../shared/supplier/SupplierPicker";
+import { isSelectableSupplier } from "../../domain/supplierPicker";
 import { REORDER_REQUEST_STATUS, INVENTORY_ACTION_TYPE, OPERATIONAL_ROLE } from "../../domain/constants";
 import { useAuth } from "../../auth/AuthContext";
 import LoadingEmptyState from "../../shared/ui/LoadingEmptyState";
@@ -628,10 +631,19 @@ function ReorderRequestPurchasingUpdate({ request, onUpdated, employeeDirectory 
 // recordPurchaseOrder(), which atomically creates the Reorder Purchase
 // Order record and transitions the Reorder Request to ORDERED in one
 // Firestore transaction.
-function ReorderRequestRecordPurchaseOrder({ request, onRecorded }) {
+function ReorderRequestRecordPurchaseOrder({ request, onRecorded, accessVersion }) {
   const { user } = useAuth();
   const isAssignee = user?.uid === request.assignedToUserId;
-  const [supplierName, setSupplierName] = useState("");
+  // Governed supplier SELECTION (admin/dispatcher PO path): the supplier comes from the ONE governed
+  // Supplier read model, not free text. `selectedSupplier` holds the chosen governed ENTITY; only its
+  // NAME is persisted for now (existing supplierName schema), and the entity-based state keeps the future
+  // supplierId + supplierNameSnapshot evolution from needing an interaction redesign. FAIL-CLOSED: if the
+  // supplier read is denied/unavailable, the picker says so and there is no free-text fallback -- submit
+  // stays disabled. NOTE: `suppliers` read is Rules-gated to admin/dispatcher; a PARTS_ASSOCIATE assignee
+  // gets a denied state here (the separately-governed PARTS_ASSOCIATE PO surface is a future follow-on --
+  // it must NOT widen the legacy supplier read; it awaits the governed catalog-read/purchasing model).
+  const [selectedSupplier, setSelectedSupplier] = useState(null);
+  const suppliersRead = useSuppliers(accessVersion);
   const [externalPoNumber, setExternalPoNumber] = useState("");
   const [orderedQuantity, setOrderedQuantity] = useState("");
   const [orderedDate, setOrderedDate] = useState("");
@@ -643,12 +655,18 @@ function ReorderRequestRecordPurchaseOrder({ request, onRecorded }) {
 
   async function handleSubmit(e) {
     e.preventDefault();
+    // Never trust a bare name: the persisted supplierName MUST come from the selected ACTIVE governed
+    // entity, not an editable text value.
+    if (!isSelectableSupplier(selectedSupplier)) {
+      setError("Select an active supplier before recording the purchase order.");
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
       await recordPurchaseOrder(request.id, {
         partId: request.partId,
-        supplierName,
+        supplierName: selectedSupplier.name,
         externalPoNumber,
         orderedQuantity,
         orderedDate,
@@ -665,13 +683,14 @@ function ReorderRequestRecordPurchaseOrder({ request, onRecorded }) {
     <div className="fo-card">
       <h3>Record Purchase Order</h3>
       <form className="fo-form" onSubmit={handleSubmit}>
-        <label htmlFor="po-supplier-name">Supplier name</label>
-        <input
-          id="po-supplier-name"
-          type="text"
-          value={supplierName}
-          onChange={(e) => setSupplierName(e.target.value)}
-          required
+        <label htmlFor="po-supplier-name">Supplier</label>
+        <SupplierPicker
+          inputId="po-supplier-name"
+          loading={suppliersRead.loading}
+          error={suppliersRead.error}
+          suppliers={suppliersRead.suppliers}
+          selected={selectedSupplier}
+          onSelect={setSelectedSupplier}
         />
 
         <label htmlFor="po-external-number">External PO/reference number</label>
@@ -712,7 +731,8 @@ function ReorderRequestRecordPurchaseOrder({ request, onRecorded }) {
         {error && <p className="fo-muted">{error}</p>}
 
         <div className="disp-board-toolbar">
-          <button type="submit" disabled={submitting}>
+          {/* Submit is disabled until an ACTIVE governed supplier is selected -- no free-text bypass. */}
+          <button type="submit" disabled={submitting || !isSelectableSupplier(selectedSupplier)}>
             Record Purchase Order
           </button>
         </div>
@@ -1351,7 +1371,7 @@ export default function PartDetail({ hasCapability, accessVersion } = {}) {
         ) : reorderRequest.status === REORDER_REQUEST_STATUS.PURCHASING_IN_PROGRESS ? (
           <>
             <ReorderRequestPurchasingUpdate request={reorderRequest} onUpdated={refreshReorderRequest} employeeDirectory={employeeDirectory} />
-            <ReorderRequestRecordPurchaseOrder request={reorderRequest} onRecorded={refreshReorderRequest} />
+            <ReorderRequestRecordPurchaseOrder request={reorderRequest} onRecorded={refreshReorderRequest} accessVersion={accessVersion} />
           </>
         ) : reorderRequest.status === REORDER_REQUEST_STATUS.ORDERED ? (
           <>
