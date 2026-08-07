@@ -110,12 +110,20 @@ export interface WorkOrder {
   executionLog?: ExecutionLogEntry[];
   lastUpdated?: Timestamp;
 
+  // WO Parts Planning Phase 2 -- set by setWorkOrderPartsPlan when the planned parts change. A SEPARATE
+  // field again (not lastUpdated/updatedAt) so it's unambiguous which Cloud Function last touched the doc.
+  partsPlanUpdatedAt?: Timestamp;
+
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
 
 export interface InventorySnapshotItem {
   sku: string;
+  // Canonical Part identity (Phase 2). Additive/optional: legacy items may carry only `sku`. The governed
+  // planning producer (setWorkOrderPartsPlan) writes BOTH `partId` (the projection/plan identity) and `sku`
+  // (kept so execution capture, which matches on `sku`, is unaffected). See docs/design/wo-parts-plan-command.md.
+  partId?: string;
   name?: string;
   qtyPlanned?: number;
   qtyUsed?: number;

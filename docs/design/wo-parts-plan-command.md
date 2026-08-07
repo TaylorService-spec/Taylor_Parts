@@ -1,8 +1,9 @@
 # WO Parts Planning — Phase 2: Dedicated Governed PLANNED Producer
 
-Status: **Design + client pure core (repo-only).** The governed Cloud Function write is **not built yet** —
-it has one material identity decision (§6) to confirm first. No Rules widening, no capability grant, no
-deploy. Owner-ratified Phase 2 (option b): a dedicated planning command, separate from lifecycle transitions.
+Status: **Implemented (repo-only).** The governed `setWorkOrderPartsPlan` Cloud Function, its `active:false`
+capability, the pure core, and tests are built. No Rules widening, no capability grant, no deploy. Owner-
+ratified Phase 2 (option b): a dedicated planning command, separate from lifecycle transitions. The identity
+question (§6) is resolved by applying the repository's established identity authority — see §6.
 
 ## 1. Business action
 
@@ -58,22 +59,24 @@ Given the WO's current `inventorySnapshot[]` and the validated `plan`:
 4. Write `inventorySnapshot` (whole array) + a planning `lastUpdated`; nothing else. **Never** call
    `triggerInventoryEffects` or any reserve/consume path.
 
-## 6. MATERIAL DECISION — identity on the stored `inventorySnapshot` item
+## 6. Identity on the stored `inventorySnapshot` item — RESOLVED by repository authority (applied)
 
-The stored `InventorySnapshotItem` is keyed on **`sku`** today, and `updateWorkOrderExecutionData` matches
-parts-used **by `sku`**. The readiness projection and this command key identity on **`partId`**. The command
-must reconcile the two on the stored item. Options:
-- **(i) Write both `partId` and `sku`, resolving `sku` from Part Master** (canonical `internalPartNumber`),
-  falling back to `sku = partId` when unavailable. Most correct; adds one Part Master read in the planning
-  transaction. Execution-capture keeps matching on `sku`; the projection keys on `partId`. *(Recommended.)*
-- **(ii) Write `partId` and set `sku = partId`.** Simplest, no extra read, but conflates the two ids on the
-  stored record.
-- **(iii) Converge `updateWorkOrderExecutionData` to match on `partId`.** Cleanest long-term, but changes an
-  existing live command's matching semantics — larger blast radius.
+The repository already establishes the identity authority: the canonical **Part identity is `partId`** (ADR-008
+Part Master; the readiness projection and the assessment both key on `partId`), while the existing live
+`updateWorkOrderExecutionData` matches parts-used **by `sku`** and must keep working unchanged. Applying that
+established architecture — additively, without redefining any live command — gives exactly one non-breaking
+answer, which is implemented:
 
-**Recommendation:** (i) now, with (iii) as a recorded follow-on so execution-capture prefers `partId`. This
-is surfaced for confirmation because it writes a governed stored representation and touches how an existing
-command matches parts — a material decision, not a silent pick.
+**Applied (option i, additive/non-breaking):** each planned item carries **BOTH `partId`** (the canonical
+projection/plan identity) **and `sku`** (kept so `updateWorkOrderExecutionData`'s sku-matching is unaffected).
+`applyPartsPlan` resolves `sku` from an optional Part-Master resolver, falling back to a kept prior `sku`,
+then to `partId`. `partId` is an additive optional field on `InventorySnapshotItem` (legacy items keep only
+`sku`; the merge matches a legacy item by `partId == sku`). Nothing existing changes behavior.
+
+**Recorded follow-on (NOT in scope here):** converging `updateWorkOrderExecutionData` to prefer `partId` is a
+separate change to a live command's matching — explicitly out of this Phase-2 scope and left for its own
+gate. This was NOT a genuine Owner decision (the repository authority already determines `partId` identity);
+it is applied per that authority.
 
 ## 7. Boundaries
 
@@ -88,7 +91,15 @@ Deploying the function and granting the capability are **separate protected gate
 (cannot un-plan a part with recorded usage). This is the client mirror of §4–§5 invariants; the server
 command re-enforces them as the authority.
 
-## 9. Server command test plan (next build)
+## 9. Tests (built)
 
-Capability fail-closed (no grant → denied); PLAN ≠ RESERVE (no ledger/`triggerInventoryEffects` effects);
-`qtyUsed` preserved across a re-plan; removal-blocked for a used part; idempotency; identity written per §6.
+`functions/test/setWorkOrderPartsPlan.test.mjs` (6, offline over the compiled pure core): validation
+(honest `PartsPlanError(INVALID)`), identity written (both `partId` + `sku`, sku fallback + resolver),
+**PLAN ≠ USE** (`qtyUsed` preserved across a re-plan), the used-part removal invariant
+(`failed-precondition`), and legacy sku-only matching (no fabricated duplicate). The two governance
+guardrails also cover it: `permissionCatalog.test.mjs` (registered `active:false`, additive) and
+`resolveEffectivePermission.test.mjs` (accounted-for as deferred-by-design, granted to no Role). Capability
+enforcement + the transaction are the callable layer (emulator/integration), asserted structurally here.
+
+The client callable binding lives in `services/workOrderService.ts` (`setWorkOrderPartsPlan`), alongside the
+other WO callables — the producer is invokable end-to-end; the planning **UI** is a later phase.

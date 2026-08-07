@@ -149,3 +149,34 @@ export async function updateWorkOrderExecutionData(
   const result = await updateWorkOrderExecutionDataCallable({ workOrderId, ...updates });
   return result.data;
 }
+
+// WO Parts Planning Phase 2 -- client binding for the governed PLANNED producer setWorkOrderPartsPlan.
+// A business intent ("plan these parts for this Work Order"), NOT a generic snapshot update. Same callable
+// pattern as the WO callables above; the server enforces the workOrder.parts.plan capability (fail-closed,
+// active:false until a separate grant) and the PLAN != RESERVE != USE invariants. Not yet consumed by any UI
+// (the planning experience is a later phase); the function is undeployed, so this fails closed today.
+interface PartsPlanLineInput {
+  partId: string;
+  sku?: string;
+  name?: string;
+  qtyPlanned: number;
+}
+
+interface SetWorkOrderPartsPlanResult {
+  success: true;
+  workOrderId: string;
+  plannedCount: number;
+}
+
+const setWorkOrderPartsPlanCallable = httpsCallable<
+  { workOrderId: string; plan: PartsPlanLineInput[] },
+  SetWorkOrderPartsPlanResult
+>(functions, "setWorkOrderPartsPlan");
+
+export async function setWorkOrderPartsPlan(
+  workOrderId: string,
+  plan: PartsPlanLineInput[]
+): Promise<SetWorkOrderPartsPlanResult> {
+  const result = await setWorkOrderPartsPlanCallable({ workOrderId, plan });
+  return result.data;
+}
