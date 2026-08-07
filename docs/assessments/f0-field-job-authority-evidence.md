@@ -6,6 +6,33 @@
 
 ---
 
+## 0. Deployment provenance
+
+The exact revision every piece of evidence below was produced against.
+
+| | |
+|---|---|
+| **Reviewed / deployed F0 SHA** | `17f05ffc195a28f8b16eeb5816e47653adc076c6` (`17f05ff`) |
+| **Sandbox** | https://eos-platform-sandbox.web.app |
+| **Deployed manifest** | `commit: 17f05ff`, `environmentId: platform-sandbox`, `environmentRole: sandbox` |
+| **Deployment / evidence result** | **D2 MATCH** — hosting `17f05ff` == expected, no drift observed |
+| **Live callable proof** | **19 / 19** |
+| **Live UI proof** | **10 / 10** |
+| **Base at review** | main `d124714e4add953e82e8250768d84f7d8fe30e66` |
+| **Environment role** | `sandbox` — production (`taylor-parts`) was never a deploy target |
+
+Verified directly against the live surface, not inferred: `version.json` on the
+deployed sandbox reports `17f05ff`, and `checkDeployedVersions.mjs --env
+platform-sandbox --expected 17f05ff` returns MATCH.
+
+> A stale `3a7f703` deployment reference appeared in an earlier PR-body draft.
+> That was a **reporting** inconsistency only — `3a7f703` was a genuine earlier
+> deploy of this branch, superseded when the test-verification correction
+> created `17f05ff`, which was then rebuilt, redeployed and re-verified. The
+> deployed artifact and this document now name the same revision.
+
+---
+
 ## 1. What changed materially
 
 Not a rewiring exercise. Three capabilities did not previously exist:
@@ -167,13 +194,37 @@ Not done, by explicit F0 boundary:
 
 ## 7. Verification summary
 
-| Check | Result |
-|---|---|
-| Build | clean |
-| eslint | 0 errors |
-| Unit suite | 0 failed |
-| Component suite | 491 passed |
-| New: `workOrderWorkflowMirrorContract` | 6 passed — and **verified to fail on an injected divergence**, so it is not vacuous |
-| New: `fieldWorkOrder` | 12 passed — exhaustive 11-status phase coverage, fail-closed unknown status, deny-for-every-status |
-| Live sandbox allow/deny | 19 / 19 |
-| Live sandbox UI | 10 / 10 |
+All gates judged by **process exit code**, at `17f05ff`:
+
+| Check | Exit code | Result |
+|---|---|---|
+| `npm run lint` | 0 | 0 errors |
+| `npm run typecheck` | 0 | clean |
+| `npm run build` | 0 | clean |
+| `npm test` | 0 | unit suite green |
+| `npm run test:components` | 0 | 498 passed |
+| CI (4 required checks) | — | all SUCCESS |
+| New: `workOrderWorkflowMirrorContract` | 0 | 6 passed — and **verified to fail on an injected divergence**, so it is not vacuous |
+| New: `fieldWorkOrder` | 0 | 12 passed — exhaustive 11-status phase coverage, fail-closed unknown status, deny-for-every-status |
+| Live sandbox allow/deny | — | **19 / 19** |
+| Live sandbox UI | — | **10 / 10** |
+
+### Verification discipline (adopted project rule)
+
+An earlier F0 run reported the unit suite green when it was red: success was
+inferred by grepping stdout for failure patterns, and the two failing suites
+report through a custom reporter whose output that pattern did not match. CI
+caught what the local check missed.
+
+The rule this establishes, to be applied to all future work:
+
+1. **Never infer test success from grep or pattern matching.** Every required
+   verification command is judged by its **process exit code**.
+2. A **custom reporter must not weaken the gate** — if a suite prints its own
+   summary, the exit code is still the verdict.
+3. **CI is an independent gate, not confirmation theatre.** A local pass does
+   not excuse a CI failure, and a CI pass does not excuse skipping local gates.
+
+*(Recorded here as F0 evidence. Promoting it into the durable operating
+docs is an F1 housekeeping item — this commit is deliberately kept
+provenance-only.)*
