@@ -1,134 +1,151 @@
-import { NavLink, useLocation } from "react-router-dom";
-import {
-  NAV_DOMAINS,
-  isDomainVisible,
-  isNavItemVisible,
-  buildServiceNavGroups,
-  findActiveServiceGroupKey,
-} from "./navConfig";
-import VerenwardMark from "../shared/brand/VerenwardMark";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
+import AppRail, { RailBrand } from "./AppRail";
+import { NAV_DOMAINS } from "./navConfig";
+import AppHeader from "../shared/ui/AppHeader";
 
-// Sprint 2.0.1 -- top-level domain tabs + the active domain's sub-nav.
-// Real <NavLink> anchors (not onClick + setState) so the browser's
-// native back/forward + address bar all work without any custom
-// history plumbing -- see App.jsx's header comment for why that's the
-// whole point of this sprint.
+// Sprint 2.0.1 -- real <NavLink> anchors (not onClick + setState) so the
+// browser's native back/forward + address bar all work without any custom
+// history plumbing. Still true; the links now live in AppRail.
 //
-// Platform Task 2 -- the Service domain's sub-nav is a two-level hierarchy
-// (Work Management / Dispatch / Technician Workspace groups + children, plus
-// standalone items like Control Tower). Every OTHER domain keeps the flat
-// sub-nav below, byte-for-byte unchanged. The grouping is presentation-only --
-// see navConfig.js's buildServiceNavGroups.
+// Gate 2 -- the shell is a persistent left rail plus a workspace column, and
+// the rail is the ONLY navigation axis. Previously there were two horizontal
+// axes (domain row inside the dark header, then a per-domain sub-nav row
+// beneath it); both overflowed independently and neither could absorb growth.
+// The taxonomy itself is untouched -- see AppRail's comment.
+//
+// Breakpoints, and why:
+//   >= 1200px  persistent full rail
+//   900-1199   persistent compact rail (narrower, same hierarchy)
+//   < 900px    off-canvas drawer, opened from the utility bar
+// Below 900 the full hierarchy cannot be squeezed into a permanent rail
+// without becoming unreadable, so it becomes a drawer -- same structure, same
+// selected-state semantics, different presentation.
+//
+// The single breakpoint value lives in CSS (--rail-drawer-max). This query is
+// the one place JS needs to agree with it, so that the drawer's focus and
+// Escape handling only run when the drawer is actually the active treatment.
+const DRAWER_QUERY = "(max-width: 899.98px)";
 
-function navLinkClass({ isActive }) {
-  return isActive ? "fo-nav-btn fo-nav-btn-active" : "fo-nav-btn";
-}
-
-// Two-level Service sub-nav. Each group is a labelled section whose header links
-// to the group's landing (its first visible child); the active group (the one
-// containing the current route) is marked for the active-group highlight.
-function ServiceSubnav({ domainPath, groups, ungrouped, activeGroupKey }) {
-  const href = (item) => `/${domainPath}${item.path ? `/${item.path}` : ""}`;
-  return (
-    <nav className="fo-nav fo-subnav fo-service-subnav" aria-label="Service sections">
-      {groups.map((group) => (
-        <div
-          key={group.key}
-          className={`fo-nav-group${group.key === activeGroupKey ? " fo-nav-group-active" : ""}`}
-          role="group"
-          aria-label={group.label}
-        >
-          {/* Group header -> the group landing (first reachable child). */}
-          <NavLink to={href(group.landing)} end={group.landing.path === ""} className="fo-nav-group-header">
-            {group.label}
-          </NavLink>
-          <div className="fo-nav-group-items">
-            {group.items.map((item) => (
-              <NavLink key={item.key} to={href(item)} end={item.path === ""} className={navLinkClass}>
-                {item.label}
-              </NavLink>
-            ))}
-          </div>
-        </div>
-      ))}
-      {ungrouped.map((item) => (
-        <div key={item.key} className="fo-nav-group fo-nav-group-standalone">
-          <NavLink to={href(item)} end={item.path === ""} className={navLinkClass}>
-            {item.label}
-          </NavLink>
-        </div>
-      ))}
-    </nav>
+function useIsDrawer() {
+  const [isDrawer, setIsDrawer] = useState(
+    () => typeof window !== "undefined" && window.matchMedia?.(DRAWER_QUERY).matches === true,
   );
+  useEffect(() => {
+    const mq = window.matchMedia?.(DRAWER_QUERY);
+    if (!mq) return undefined;
+    const onChange = (e) => setIsDrawer(e.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+  return isDrawer;
 }
 
 export default function AppShell({ role, allowedLegacyKeys, operationalContext, children }) {
   const location = useLocation();
   const activeDomainPath = location.pathname.split("/").filter(Boolean)[0];
-  const activeDomain = NAV_DOMAINS.find((d) => d.path === activeDomainPath);
+  // The shell's <h1>. The rail rewrite dropped it, leaving every page with NO
+  // level-one heading at all -- screen-reader users lost the primary document
+  // landmark and heading navigation had nothing to land on. It names the
+  // current DOMAIN rather than the product, so it changes as you navigate and
+  // actually says where you are.
+  const activeDomainLabel =
+    NAV_DOMAINS.find((d) => d.path === activeDomainPath)?.label ?? "Field Ops";
 
-  const visibleDomains = NAV_DOMAINS.filter((d) => isDomainVisible(d, role, allowedLegacyKeys, operationalContext));
-  const visibleSubnav = activeDomain?.future
-    ? []
-    : (activeDomain?.subnav ?? []).filter((item) => isNavItemVisible(item, role, allowedLegacyKeys, operationalContext));
+  const isDrawer = useIsDrawer();
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const toggleRef = useRef(null);
+  const drawerRef = useRef(null);
 
-  const isService = activeDomain?.key === "service";
-  const serviceGroups = isService ? buildServiceNavGroups(visibleSubnav) : null;
-  const activeServiceGroupKey = isService
-    ? findActiveServiceGroupKey(location.pathname.split("/").slice(2).join("/"), serviceGroups.groups)
-    : null;
+  const closeDrawer = useCallback(() => setDrawerOpen(false), []);
+
+  // Choosing a destination closes the drawer; on desktop the rail is
+  // persistent and there is nothing to close.
+  const handleNavigate = useCallback(() => {
+    if (isDrawer) setDrawerOpen(false);
+  }, [isDrawer]);
+
+  // Leaving drawer widths must not strand an open overlay on a desktop layout.
+  useEffect(() => {
+    if (!isDrawer) setDrawerOpen(false);
+  }, [isDrawer]);
+
+  // Escape closes, and focus returns to the control that opened it.
+  useEffect(() => {
+    if (!drawerOpen) return undefined;
+    const onKey = (e) => {
+      if (e.key === "Escape") {
+        setDrawerOpen(false);
+        toggleRef.current?.focus();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [drawerOpen]);
+
+  // Move focus into the drawer when it opens so keyboard and screen-reader
+  // users are not left behind on the page underneath.
+  useEffect(() => {
+    if (drawerOpen) drawerRef.current?.focus();
+  }, [drawerOpen]);
+
+  const rail = (
+    <AppRail
+      role={role}
+      allowedLegacyKeys={allowedLegacyKeys}
+      operationalContext={operationalContext}
+      activeDomainPath={activeDomainPath}
+      onNavigate={handleNavigate}
+      idPrefix={isDrawer ? "fo-drawer" : "fo-rail"}
+    />
+  );
 
   return (
-    <>
-      <header className="fo-header">
-        {/* Brand hierarchy, expressed as two SEPARATE elements on purpose:
-            the Verenward lockup names the parent brand and the platform, while
-            the implementation block names the deployment. Taylor Parts is the
-            customer environment, not the product name, so it is identified
-            alongside the brand rather than replaced by it. */}
-        <VerenwardMark variant="horizontal" tone="onDark" />
-        <span className="fo-implementation">
-          <span className="fo-implementation__name">Taylor Parts</span>
-          <span className="fo-implementation__context">Arizona Operations</span>
-        </span>
-        <h1 className="fo-visually-hidden">Field Ops</h1>
-        <nav className="fo-nav" aria-label="Primary">
-          {visibleDomains.map((domain) => (
-            <NavLink
-              key={domain.key}
-              to={`/${domain.path}`}
-              className={({ isActive }) => (isActive ? "fo-nav-btn fo-nav-btn-active" : "fo-nav-btn")}
-            >
-              {domain.label}
-            </NavLink>
-          ))}
-        </nav>
-      </header>
+    <div className={`fo-shell${drawerOpen ? " fo-shell--drawer-open" : ""}`}>
+      {/* First focusable element: lets a keyboard user reach the workspace
+          without traversing the entire navigation rail. */}
+      <a className="fo-skip-link" href="#fo-main">Skip to content</a>
+      {/* Persistent rail. Hidden by CSS at drawer widths; the drawer below
+          renders the same component so there is one navigation implementation. */}
+      <aside className="fo-rail" aria-label="Application navigation">
+        <RailBrand />
+        {rail}
+      </aside>
 
-      {visibleSubnav.length > 0 &&
-        (isService ? (
-          <ServiceSubnav
-            domainPath={activeDomain.path}
-            groups={serviceGroups.groups}
-            ungrouped={serviceGroups.ungrouped}
-            activeGroupKey={activeServiceGroupKey}
-          />
-        ) : (
-          <nav className="fo-nav fo-subnav" aria-label={`${activeDomain.label} sections`}>
-            {visibleSubnav.map((item) => (
-              <NavLink
-                key={item.key}
-                to={`/${activeDomain.path}${item.path ? `/${item.path}` : ""}`}
-                end={item.path === ""}
-                className={({ isActive }) => (isActive ? "fo-nav-btn fo-nav-btn-active" : "fo-nav-btn")}
-              >
-                {item.label}
-              </NavLink>
-            ))}
-          </nav>
-        ))}
+      {isDrawer && drawerOpen && (
+        <>
+          <div className="fo-drawer__scrim" onClick={closeDrawer} aria-hidden="true" />
+          <aside
+            className="fo-drawer"
+            ref={drawerRef}
+            tabIndex={-1}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Application navigation"
+          >
+            <div className="fo-drawer__head">
+              <RailBrand />
+              <button type="button" className="fo-drawer__close" onClick={closeDrawer}>
+                Close
+              </button>
+            </div>
+            {rail}
+          </aside>
+        </>
+      )}
 
-      <main className="fo-main">{children}</main>
-    </>
+      <div className="fo-workspace">
+        <AppHeader
+          accessVersion={operationalContext?.accessVersion}
+          onOpenNav={isDrawer ? () => setDrawerOpen(true) : null}
+          navToggleRef={toggleRef}
+          navOpen={drawerOpen}
+        />
+        <main className="fo-main" id="fo-main" tabIndex={-1}>
+          <h1 className="fo-visually-hidden">{activeDomainLabel}</h1>
+          {children}
+        </main>
+      </div>
+    </div>
   );
 }

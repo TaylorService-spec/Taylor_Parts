@@ -46,8 +46,13 @@ const STAGNATION_THRESHOLDS_HOURS = {
   [FIELD_PHASE.ON_SITE]: { medium: 8, high: 24, critical: 72 },
 };
 
+// Returns null when createdAt is unusable, so risk can say "unknown" instead of
+// inventing an age. Previously `job.createdAt || now` silently produced a
+// 54-year-old work order once the governed model started supplying a Firestore
+// Timestamp object where the legacy model had supplied epoch millis -- which
+// made every open job read CRITICAL.
 function computeAgeHours(job, now) {
-  return Math.max(0, (now - (job.createdAt || now)) / HOUR);
+  return toAgeHours(job.createdAt, now);
 }
 
 function ageFactor(ageHours) {
