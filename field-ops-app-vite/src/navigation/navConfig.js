@@ -91,6 +91,13 @@ export const NAV_DOMAINS = [
       // to /customers, and the register deliberately lives outside the
       // Customer hierarchy because it spans customers.
       { key: "customers", label: "Customers", path: "" },
+      // Sales Cycle 2 -- the Opportunity Operating Workspace (READ-FIRST). Opportunity Management is the
+      // ratified Sales entry point, and it lives inside this CRM/Sales area rather than as a second top-level
+      // "Sales" entry (Issue #288 removed the old `salesCrm` placeholder for exactly that one-area reason).
+      // No legacyKey: brand-new screen, explicit App.jsx branch; nav access falls to PLACEHOLDER_DEFAULT_ROLES
+      // (admin/dispatcher). It reads synthetic opportunities through an injected source seam and writes
+      // nothing (Opportunity is pre-commitment; a governed write path arrives in a later cycle).
+      { key: "opportunities", label: "Opportunities", path: "opportunities" },
     ],
   },
   {

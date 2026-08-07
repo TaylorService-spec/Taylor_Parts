@@ -1495,3 +1495,25 @@ button:hover {
 .fo-detail-list { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 0; font-size: 14px; }
 .fo-detail-list dt { color: var(--color-text-muted); }
 .fo-detail-list dd { margin: 0; color: var(--color-text-primary); }
+
+/* Sales Opportunity Operating Workspace (Cycle 2). A scannable pipeline table + a read-only detail aside,
+   composed on the Wave-0 primitives. No new colour tokens — tone comes from the shared StatusPill layer. */
+.fo-sales-banner { margin: 0 0 12px; font-size: 13px; }
+.fo-sales-attention { margin: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.fo-sales-pipeline { width: 100%; border-collapse: collapse; font-size: 14px; }
+.fo-sales-pipeline th { text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: .03em;
+  color: var(--color-text-muted); font-weight: 600; padding: 6px 12px; border-bottom: 1px solid var(--color-border); }
+.fo-sales-pipeline td { padding: 9px 12px; border-bottom: 1px solid var(--color-border); vertical-align: middle; }
+.fo-sales-row { cursor: pointer; }
+.fo-sales-row:hover { background: var(--color-surface-sunken); }
+.fo-sales-row.is-selected { background: var(--color-info-surface); }
+.fo-sales-row.is-attention td:first-child { box-shadow: inset 3px 0 0 var(--color-warning); }
+.fo-sales-row__customer { font-weight: 600; color: var(--color-text-primary); }
+.fo-sales-row__value { font-variant-numeric: tabular-nums; }
+.fo-sales-detail { display: grid; gap: 14px; }
+.fo-sales-detail__block h4 { margin: 0 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: .03em;
+  color: var(--color-text-muted); font-weight: 600; }
+.fo-sales-detail__block p { margin: 0; font-size: 14px; color: var(--color-text-primary); }
+.fo-sales-detail__lines { margin: 0; padding-left: 16px; font-size: 14px; }
+.fo-sales-detail__line-kind { color: var(--color-text-muted); font-size: 12px; }
+.fo-sales-detail__attention { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
