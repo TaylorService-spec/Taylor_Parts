@@ -1204,3 +1204,91 @@ button:hover {
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
   overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
 }
+
+/* ── Service > Scheduling: weekly dispatcher workspace ─────────────────────
+   Scoped .fo-sched-* only. Uses the verenward design tokens (no raw colors).
+   WEEK is the primary planning horizon on desktop/tablet; the 7-day board is
+   never squeezed on phones -- it scrolls horizontally and a Day drill-down
+   gives a per-technician agenda. */
+.fo-sched-toolbar {
+  display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center;
+  justify-content: space-between; margin-bottom: 0.75rem;
+}
+.fo-sched-weeknav { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
+.fo-sched-weeklabel { font-weight: 600; color: var(--color-text-primary); margin-left: 0.35rem; }
+.fo-sched-viewtoggle { display: inline-flex; gap: 0.25rem; }
+.fo-sched-viewtoggle button[aria-pressed="true"] {
+  background: var(--color-brand-primary); color: var(--color-text-inverse);
+}
+.fo-sched-summary {
+  display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; margin-bottom: 0.85rem;
+  padding-bottom: 0.6rem; border-bottom: 1px solid var(--color-border);
+}
+.fo-sched-stat { color: var(--color-text-secondary); font-size: 0.92rem; }
+.fo-sched-stat strong { color: var(--color-text-primary); }
+.fo-sched-stat--warn strong { color: var(--color-warning); }
+
+.fo-sched-body { display: grid; grid-template-columns: minmax(220px, 280px) 1fr; gap: 1rem; align-items: start; }
+@media (max-width: 900px) { .fo-sched-body { grid-template-columns: 1fr; } }
+
+.fo-sched-ready { background: var(--color-surface-sunken); border: 1px solid var(--color-border); border-radius: 8px; padding: 0.75rem; }
+.fo-sched-ready__title { margin: 0 0 0.5rem; font-size: 1rem; }
+.fo-sched-ready__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.4rem; }
+.fo-sched-ready__item { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
+.fo-sched-ready__wo { font-weight: 600; }
+.fo-sched-ready__form { margin-top: 0.75rem; padding-top: 0.6rem; border-top: 1px solid var(--color-border); }
+.fo-sched-attention { margin-top: 0.8rem; padding-top: 0.6rem; border-top: 1px solid var(--color-border); }
+.fo-sched-attention__title { margin: 0 0 0.35rem; font-size: 0.9rem; color: var(--color-warning); }
+.fo-sched-attention ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.88rem; }
+
+/* Week grid: horizontally scrollable so narrow screens never squeeze 7 days. */
+.fo-sched-gridscroll { overflow-x: auto; }
+.fo-sched-grid {
+  display: grid;
+  grid-template-columns: minmax(140px, 200px) repeat(var(--fo-sched-days, 7), minmax(120px, 1fr));
+  gap: 1px; background: var(--color-border); border: 1px solid var(--color-border); border-radius: 8px; overflow: hidden;
+}
+.fo-sched-grid__corner, .fo-sched-grid__dayhead, .fo-sched-grid__tech, .fo-sched-grid__cell { background: var(--color-surface-card); padding: 0.5rem; }
+.fo-sched-grid__corner { font-weight: 600; position: sticky; left: 0; z-index: 1; }
+.fo-sched-grid__dayhead { font-weight: 600; text-align: left; cursor: pointer; border: 0; color: var(--color-text-primary); }
+.fo-sched-grid__dayhead.is-today { box-shadow: inset 0 -3px 0 var(--color-brand-primary); }
+.fo-sched-grid__dayhead.is-weekend { background: var(--color-surface-sunken); color: var(--color-text-muted); }
+.fo-sched-grid__tech { position: sticky; left: 0; z-index: 1; display: flex; flex-direction: column; gap: 0.15rem; }
+.fo-sched-grid__techname { font-weight: 600; }
+.fo-sched-grid__techload { font-size: 0.8rem; }
+.fo-sched-grid__cell { display: flex; flex-direction: column; gap: 0.3rem; min-height: 3rem; }
+
+/* Job chip */
+.fo-sched-chip {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 0.1rem;
+  width: 100%; text-align: left; cursor: pointer; padding: 0.3rem 0.4rem; border-radius: 6px;
+  border: 1px solid var(--color-border-strong); background: var(--color-surface-elevated); font-size: 0.8rem;
+}
+.fo-sched-chip__wo { font-weight: 600; }
+.fo-sched-chip__time { color: var(--color-text-secondary); }
+.fo-sched-chip--overlap { border-color: var(--color-warning); background: var(--color-warning-surface); }
+.fo-sched-chip__flag { color: var(--color-warning); }
+.fo-sched-chip--completed, .fo-sched-chip--closed { opacity: 0.7; }
+
+/* Day drill-down agenda (phone-friendly) */
+.fo-sched-day__head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.6rem; }
+.fo-sched-day__tech { margin-bottom: 0.8rem; }
+.fo-sched-day__tech h4 { margin: 0 0 0.3rem; font-size: 0.95rem; }
+.fo-sched-day__jobs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.3rem; max-width: 32rem; }
+
+/* Schedule collector form */
+.fo-sched-form__wo { margin: 0 0 0.5rem; }
+.fo-sched-form__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+.fo-sched-form__grid label { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.85rem; }
+.fo-sched-form__error:not(:empty) { margin: 0.4rem 0; }
+
+/* Opened work-order detail */
+.fo-sched-detail {
+  margin-top: 1rem; border: 1px solid var(--color-border-strong); border-radius: 8px;
+  padding: 0.75rem; background: var(--color-surface-elevated); max-width: 32rem;
+}
+.fo-sched-detail__head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
+.fo-sched-detail__grid { display: grid; grid-template-columns: auto 1fr; gap: 0.2rem 0.75rem; margin: 0; font-size: 0.9rem; }
+.fo-sched-detail__grid dt { color: var(--color-text-muted); }
+.fo-sched-detail__grid dd { margin: 0; }
+.fo-sched-detail__note { margin: 0.6rem 0 0; font-size: 0.82rem; }

@@ -25,6 +25,7 @@ import Suppliers from "./modules/purchasing/Suppliers";
 import Receiving from "./modules/inventory/Receiving";
 import Transfers from "./modules/inventory/Transfers";
 import Warehouses from "./modules/inventory/Warehouses";
+import SchedulingWorkspace from "./modules/scheduling/SchedulingWorkspace";
 import WorkOrdersList from "./modules/workOrders/WorkOrdersList";
 import WorkOrderWizard from "./modules/workOrders/WorkOrderWizard";
 import WorkOrderDetailPage from "./modules/workOrders/WorkOrderDetailPage";
@@ -186,6 +187,14 @@ function renderSubnavItem(domain, item, role, operationalContext) {
   // the real workspace; the legacy Jobs.jsx screen it used to render
   // (via legacyKey "jobs") is relocated to the "Job Assignments" item
   // below, which keeps its legacyKey unchanged.
+  // Service > Scheduling -- the WEEKLY dispatcher scheduling workspace, replacing the prior
+  // PlaceholderPage for this existing nav item (admin/dispatcher via PLACEHOLDER_DEFAULT_ROLES).
+  // Exposes the already-deployed governed transitionWorkOrder("Schedule", ...) transition (the
+  // SCHEDULED gate that had no UI); repo-only, no Rules/Functions deploy, no grant, no direct
+  // fieldops_wos write. The write re-authorizes server-side (Schedule = admin/dispatcher).
+  if (domain.key === "service" && item.key === "scheduling") {
+    return <SchedulingWorkspace />;
+  }
   if (domain.key === "service" && item.key === "workOrders") {
     return <WorkOrdersList />;
   }

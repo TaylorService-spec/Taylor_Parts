@@ -31,6 +31,7 @@ Every guide is tagged so you're never misled about what actually works:
 
 ## Dispatch
 
+- [Schedule work orders (weekly workspace)](dispatch/schedule-work-orders.md) — **live** — See the week ahead across every technician and put a date, time, and technician on Work Orders that are ready to schedule, at Service > Scheduling (admin/dispatcher).
 - [Assign a job to a technician (Dispatch screen)](dispatch/assign-a-job-on-the-dispatch-screen.md) — **live** — One-click assign an unassigned job to an available technician from the Service > Dispatch cards.
 - [Dispatch a Work Order (Dispatcher Board)](dispatch/dispatch-a-work-order-on-the-dispatcher-board.md) — **live** — Review the Work Order queue with technician recommendations and dispatch a SCHEDULED Work Order by picker or drag-and-drop.
 - [Monitor operations (Control Tower)](dispatch/monitor-operations-in-control-tower.md) — **live** — Read-only operational overview: live counters, technician load, at-risk items, and a recommended dispatch queue.
