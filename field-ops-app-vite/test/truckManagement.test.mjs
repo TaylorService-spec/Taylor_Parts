@@ -21,7 +21,12 @@ import {
   truckStatusLabel,
   makeIdempotencyKey,
 } from "../src/domain/truckManagement.js";
-import { TRUCK_MANAGEMENT_WRITE_READY, resolveWriteReadiness } from "../src/config/truckManagementReadiness.js";
+// O-3 (ADR-011) made truckManagementReadiness resolve from the `__APP_READINESS__` vite define, which is
+// absent under plain Node -- a static import would hoist above any setup and throw ReferenceError.
+// Provide the registry's production values, then load the config DYNAMICALLY so its module-eval sees the
+// global. Fail-closed semantics are unchanged; this only supplies the ambient the build normally injects.
+globalThis.__APP_READINESS__ = globalThis.__APP_READINESS__ ?? { TRUCK_MANAGEMENT_WRITE_READY: true, RECEIVING_TRANSPORT_READY: false, PART_MASTER_WRITE_READY: false, TRUSTED_COMPLETION_ENABLED: true };
+const { TRUCK_MANAGEMENT_WRITE_READY, resolveWriteReadiness } = await import("../src/config/truckManagementReadiness.js");
 
 const here = dirname(fileURLToPath(import.meta.url));
 const src = join(here, "..", "src");

@@ -202,11 +202,12 @@ function renderSubnavItem(domain, item, role, operationalContext) {
     // embedded Inventory Health panel) -- same convention as PartDetail / Operations.
     return <PartsList accessVersion={operationalContext?.accessVersion} />;
   }
-  // INV-1 Phase 1 PR 1.9 -- governed read-only Part Master registry. Same
-  // brand-new-screen pattern as AccountsList/EquipmentRegister: no
-  // legacyKey, explicit branch. Inventory domain is already
-  // admin/dispatcher-gated (ROLE_NAV_ACCESS); Rules enforce the same
-  // posture server-side -- the UI gate is never the sole enforcement.
+  // ADR-009 G2 -- governed Part Master administration workspace (read + FAIL-CLOSED write; see
+  // PartMasterList.jsx header for the full invariant list). Same brand-new-screen pattern as
+  // AccountsList/EquipmentRegister: no legacyKey, explicit branch. This item has no legacyKey, so nav
+  // access falls to navConfig's PLACEHOLDER_DEFAULT_ROLES default (admin/dispatcher) -- NOT a
+  // ROLE_NAV_ACCESS lookup. Catalog WRITE authority (inventory.catalog.manage/.activate) is enforced
+  // server-side inside the trusted command; the UI gate is never the sole enforcement.
   if (domain.key === "inventory" && item.key === "partMaster") {
     return <PartMasterList />;
   }

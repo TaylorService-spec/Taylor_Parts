@@ -171,8 +171,8 @@ export const NAV_DOMAINS = [
     path: "inventory",
     subnav: [
       { key: "parts", label: "Parts", path: "", legacyKey: "inventory" },
-      // INV-1 Phase 1 PR 1.9 -- governed read-only Part Master registry
-      // (no legacyKey: brand-new screen, explicit App.jsx branch).
+      // ADR-009 G2 -- governed Part Master administration workspace (read + fail-closed write)
+      // (no legacyKey: brand-new screen, explicit App.jsx branch; admin/dispatcher via the default).
       { key: "partMaster", label: "Part Master", path: "part-master" },
       { key: "warehouses", label: "Warehouses", path: "warehouses" },
       { key: "truckInventory", label: "Truck Inventory", path: "truck-inventory" },
