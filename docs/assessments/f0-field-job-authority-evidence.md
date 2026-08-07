@@ -12,7 +12,8 @@ The exact revision every piece of evidence below was produced against.
 
 | | |
 |---|---|
-| **Reviewed / deployed F0 SHA** | `17f05ffc195a28f8b16eeb5816e47653adc076c6` (`17f05ff`) |
+| **F0 evidence SHA** — the revision every proof below was produced against | `17f05ffc195a28f8b16eeb5816e47653adc076c6` (`17f05ff`) |
+| **Final merged head** | `17f05ff` plus **this provenance record only** — a docs-only commit touching no source, test, seed or configuration. The two revisions are **code-identical**, so every proof below holds unchanged at the merged head, which is likewise deployed and D2-verified. |
 | **Sandbox** | https://eos-platform-sandbox.web.app |
 | **Deployed manifest** | `commit: 17f05ff`, `environmentId: platform-sandbox`, `environmentRole: sandbox` |
 | **Deployment / evidence result** | **D2 MATCH** — hosting `17f05ff` == expected, no drift observed |
