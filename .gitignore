@@ -11,3 +11,6 @@ dist/
 node_modules/
 .vscode/
 .firebase/
+
+# Sandbox-only persona credentials — generated at activation, never committed.
+*credentials.local.json

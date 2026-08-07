@@ -1,0 +1,13 @@
+A-7 VERIFICATION — observed via REAL CLIENT sign-in (REST Auth + Firestore).
+No Admin SDK bypass. Rules-enforced. Sandbox project eos-platform-sandbox.
+
+persona                      accounts  parts  reorder_requests  employees  auditEvents(write)
+owner@sandbox.invalid          200      200        200            200           403
+admin@sandbox.invalid          200      200        200            200           403
+dispatcher@sandbox.invalid     200      200        200            200           403
+partsmgr@sandbox.invalid       403      200        403            403           403
+partsassoc@sandbox.invalid     403      403        403            403           403
+tech@sandbox.invalid           403      403        403            403           403
+restricted@sandbox.invalid     403      403        403            403           403
+
+All 7 personas: SIGNIN_OK, self-read of users/{uid} = 200.
