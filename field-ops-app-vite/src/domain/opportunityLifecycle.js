@@ -74,6 +74,26 @@ export function buildPipelineRow(opp, { nowMillis = null, accountNameById = {} }
   };
 }
 
+// Lifecycle TRANSITION graph (read-side mirror of the write authority in functions/src/opportunity/
+// opportunityLifecycle.ts — kept in sync so the UI only ever offers actions the governed command will
+// accept). Minimal + defensible: advance forward by exactly one stage; LOST from any open stage; WON only
+// from DECISION; a closed opportunity offers nothing. This is UI GUIDANCE only — the server re-validates and
+// is the authority; no write happens here.
+export function nextStage(stage) {
+  const i = OPPORTUNITY_STAGES.indexOf(stage);
+  return i >= 0 && i < OPPORTUNITY_STAGES.length - 1 ? OPPORTUNITY_STAGES[i + 1] : null;
+}
+
+// The legal next actions for an opportunity: { advanceTo: <stage|null>, outcomes: [<WON?>, <LOST?>] }.
+export function allowedActions(opp) {
+  if (opp?.outcome === "WON" || opp?.outcome === "LOST") return { advanceTo: null, outcomes: [] };
+  const stage = opp?.stage;
+  return {
+    advanceTo: nextStage(stage),
+    outcomes: stage === "DECISION" ? ["WON", "LOST"] : ["LOST"],
+  };
+}
+
 // The pipeline/work-queue view model for the Sales workspace. Active (open) opportunities are the work;
 // closed ones are counted but not the queue. Sorted attention-first, then by nearest expected close.
 export function buildOpportunityPipeline(opportunities = [], { nowMillis = null, accountNameById = {} } = {}) {

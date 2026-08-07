@@ -12,6 +12,10 @@ export { updateWorkOrderExecutionData } from "./updateWorkOrderExecutionData";
 // the live project and no client calls it, and its capability (workOrder.parts.plan) is registered
 // active:false (fail-closed for everyone) until a separate Owner deploy + grant gate.
 export { setWorkOrderPartsPlan } from "./workOrderPartsPlan/setWorkOrderPartsPlan";
+// Sales Opportunity governed write callables (Cycle 3). EXPORT != DEPLOY, REGISTER != GRANT: exported for
+// build/test only; the `opportunity.write` capability is registered active:false (fail-closed) and nothing
+// runs in production until a separate deploy + Owner grant.
+export { createOpportunity, transitionOpportunity } from "./opportunity/opportunityCallables";
 
 // --- F1 surface: trusted minimal field-context display projection ---
 // Answers "who is the customer / which site am I going to?" for the CALLER'S

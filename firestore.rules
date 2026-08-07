@@ -1726,5 +1726,15 @@ service cloud.firestore {
     match /equipment_compatibility_operations/{idempotencyKey} {
       allow read, write: if false;
     }
+
+    // Sales Opportunity (Cycle 3) -- Admin-SDK-only, same fail-closed posture as the ledger/warehouse/
+    // equipment collections above. ALL direct client read/write is denied; the only write path is the
+    // trusted opportunity command (functions/src/opportunity/opportunityCallables.ts), which uses the Admin
+    // SDK and bypasses these rules. Opportunity is PRE-COMMITMENT and writes nothing downstream. Deployment
+    // is a separate operator gate and requires its own production authorization; merging this block changes
+    // nothing in production. A governed client READ model (if any) is a later, separately-authorized change.
+    match /opportunities/{opportunityId} {
+      allow read, write: if false;
+    }
   }
 }
