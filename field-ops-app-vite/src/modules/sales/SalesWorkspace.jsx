@@ -166,10 +166,13 @@ export default function SalesWorkspace() {
     { key: "lost", label: "Lost", value: pipeline.counts.lost },
   ];
 
+  // The inert "New opportunity" reason is exposed BOTH as an accessible label (keyboard/AT) and as visible
+  // on-page text (below), not tooltip-only — consistent with the disabled lifecycle actions in the detail.
+  const createDisabledReason = "Creating opportunities is not enabled yet — the governed write path arrives in a later cycle.";
   const actions = (
     <ActionRail
       primary={
-        <button type="button" className="fo-btn-primary" disabled title="Creating opportunities arrives in a later cycle (governed write path).">
+        <button type="button" className="fo-btn-primary" disabled aria-label={`New opportunity — ${createDisabledReason}`} title={createDisabledReason}>
           New opportunity
         </button>
       }
@@ -198,9 +201,14 @@ export default function SalesWorkspace() {
       {isSynthetic && (
         <p className="fo-sales-banner fo-muted">
           Showing synthetic sample opportunities. The live sales pipeline connects in a later cycle.
+          {" "}{createDisabledReason}
         </p>
       )}
-      {pipeline.rows.length === 0 ? (
+      {status !== "ready" ? (
+        // Distinct from a genuinely-empty pipeline: the source isn't connected/available (an honest
+        // "not connected" state, not "you have zero opportunities").
+        <p className="fo-muted">The opportunity pipeline source is not connected yet.</p>
+      ) : pipeline.rows.length === 0 ? (
         <p className="fo-muted">No open opportunities.</p>
       ) : (
         <table className="fo-sales-pipeline">
