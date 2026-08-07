@@ -1,0 +1,16 @@
+SBX-SCN-001 persona participation — real client sign-in, Rules-enforced, no Admin SDK bypass.
+Sandbox eos-platform-sandbox @ c4121f6.
+
+persona       fieldops_jobs(list)  reorder ro-sbx-001(get)  PO po-sbx-001(get)  parts write
+owner                200                    200                   200              403
+admin                200                    200                   200              403
+dispatcher           200                    200                   200              403
+partsmgr             403                    200                   403              403
+partsassoc           403                    200                   403              403
+whmgr                403                    403                   403              403
+tech                 403                    403                   403              403
+restricted           403                    403                   403              403
+
+NOTE: these are UNCONSTRAINED list/get probes. The application issues CONSTRAINED
+queries (e.g. where technicianId == me), which Rules evaluate differently — see S-1
+in the scenario record.
