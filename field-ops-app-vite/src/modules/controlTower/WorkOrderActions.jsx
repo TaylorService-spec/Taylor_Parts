@@ -3,6 +3,7 @@ import { getAllowedActions } from "../../domain/workOrderWorkflow";
 import { transitionWorkOrder } from "../../services/workOrderService";
 import { TECH_STATUS } from "../../domain/constants";
 import ConfirmDialog from "../../shared/ui/ConfirmDialog";
+import ScheduleWorkOrderForm from "../../shared/scheduling/ScheduleWorkOrderForm";
 import { FormError } from "../../shared/ui/form";
 import { workflowActionErrorMessage } from "../../domain/workflowActionError";
 import { orderWorkflowActions } from "../../domain/workflowActionOrder";
@@ -76,6 +77,7 @@ const ACTION_LABEL = {
 export default function WorkOrderActions({ workOrder, role, technicians }) {
   const [submitting, setSubmitting] = useState(false);
   const [showTechPicker, setShowTechPicker] = useState(false);
+  const [showSchedulePicker, setShowSchedulePicker] = useState(false);
   const [selectedTechId, setSelectedTechId] = useState("");
   const [confirmingCancel, setConfirmingCancel] = useState(false);
   const [actionError, setActionError] = useState(null);
@@ -105,6 +107,14 @@ export default function WorkOrderActions({ workOrder, role, technicians }) {
   function handleActionClick(action) {
     if (action === "Dispatch") {
       setShowTechPicker(true);
+      return;
+    }
+    // Schedule needs scheduledStart/End/TechId -- collect them via the governed scheduling form
+    // (shared with the Scheduling workspace) instead of firing an empty-payload transition, which the
+    // backend rejects with invalid-argument.
+    if (action === "Schedule") {
+      setActionError(null);
+      setShowSchedulePicker(true);
       return;
     }
     // Cancel is destructive -- confirm before the transition runs.
@@ -167,6 +177,15 @@ export default function WorkOrderActions({ workOrder, role, technicians }) {
           }}
           onClose={() => setConfirmingCancel(false)}
           mapError={workflowActionErrorMessage}
+        />
+      )}
+
+      {showSchedulePicker && (
+        <ScheduleWorkOrderForm
+          workOrder={workOrder}
+          technicians={technicians}
+          onScheduled={() => setShowSchedulePicker(false)}
+          onCancel={() => setShowSchedulePicker(false)}
         />
       )}
 

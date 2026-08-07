@@ -16,7 +16,7 @@
 // 9 named actions never targeted -- see transitionEngine.ts's header
 // comment for how this was found (emulator-based verification, not just
 // review).
-const WORK_ORDER_TRANSITIONS = {
+export const WORK_ORDER_TRANSITIONS = {
   CREATED: ["READY_TO_DISPATCH", "CANCELLED"],
   READY_TO_DISPATCH: ["SCHEDULED", "CANCELLED"],
   SCHEDULED: ["DISPATCHED", "CANCELLED"],
@@ -34,7 +34,7 @@ export function canTransitionWorkOrder(currentStatus, nextStatus) {
   return WORK_ORDER_TRANSITIONS[currentStatus]?.includes(nextStatus) ?? false;
 }
 
-const ACTION_TO_STATUS = {
+export const ACTION_TO_STATUS = {
   MarkReady: "READY_TO_DISPATCH",
   Schedule: "SCHEDULED",
   Dispatch: "DISPATCHED",
