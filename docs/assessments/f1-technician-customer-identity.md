@@ -1,7 +1,13 @@
 # F1 — Technician Customer Identity: Authority Investigation
 
-**Status:** INVESTIGATION COMPLETE · **GENUINE AUTHORITY GAP PROVEN** · no Rules, capability or
-authority changed · dependent display work stopped; all other F1 work continued
+**Status:** **RESOLVED — Option 1 implemented.** Investigation complete, gap proven, Owner
+selected the trusted minimal server projection. **No Rules widened, no capability granted, no
+customer identity denormalised.**
+
+> **Resolution (Owner decision, Option 1).** `getWorkOrderFieldContext` — a narrow trusted
+> display projection — now answers *"who is the customer / which site am I going to?"* for the
+> caller's **own assigned** Work Order. §§1–3 below remain as written: they are the evidence the
+> decision rested on. §7 records what was built.
 
 **Question:** can a technician resolve a governed Work Order's `customerId` to a
 customer/account display name using authority the repository *already* establishes?
@@ -104,3 +110,55 @@ F1 shipped: the field shell, Technician Home, the Current Job operating composit
 (Context → State → Attention → Readiness → Next Best Action), consumption of the shared
 WO Parts Readiness projection, the governed next-action seam, and the responsive field
 presentation.
+
+
+---
+
+## 7. Resolution — `getWorkOrderFieldContext` (Option 1, implemented)
+
+**Trust flow.** authenticated caller → resolve technician identity server-side
+(`getCallerContext`) → read the Work Order → verify it is assigned to **this** technician → take
+`customerId`/`locationId` **from the governed Work Order** → trusted read of canonical
+Account/Location → return only the approved display projection.
+
+**Why it cannot become a customer-lookup API.** The request carries `workOrderId` **only**.
+There is no client-supplied `customerId`/`locationId`, so every id read came from a Work Order
+the caller was already authorised to read. Proven live: supplying
+`customerId: "acct-summit"` alongside `workOrderId: "wo-sbx-001"` still returns *Harbor Grill
+Restaurant Group* — the injected ids are ignored entirely.
+
+**Minimal projection.** `{ workOrderId, customer: { state, displayName }, site: { state, displayLabel } }`,
+built from the canonical fields already on `accounts`/`locations` (`name`, `city`, `state`). No
+duplicate naming field was invented and the full documents are never returned.
+
+**The four states survive, and the existing seam expresses them with no restructuring:**
+
+| Situation | Mechanism | State |
+|---|---|---|
+| trusted read succeeds | resolver returns the canonical name | `RESOLVED` |
+| trusted read **denies** | **no resolver is passed** | `NOT_AUTHORIZED` |
+| Work Order has no reference | no id on the Work Order | `ABSENT` |
+| allowed, but no usable canonical value | resolver returns `null` | `UNRESOLVED` |
+
+A denial can therefore never render as "no customer", and missing data can never render as a
+denial. While the read is in flight, `contextPending` suppresses the claim — asserting
+"unavailable to your role" before the answer is known would be a lie that corrects itself.
+
+**Evidence.**
+
+| Proof | Result |
+|---|---|
+| Functions contract tests (hermetic, own CI workflow) | **24 / 24** |
+| Client identity-state tests | **23 / 23** total in `fieldCurrentJob` |
+| Live allow/deny against the deployed callable, real persona ID tokens | **21 / 21** |
+| Rendered proof, phone / tablet / laptop | **46 / 46** |
+
+Live denials proven: another technician's Work Order · an **unassigned** Work Order · a missing
+Work Order · unauthenticated · non-technician caller · missing `workOrderId` · injected
+customer/location ids. Live response asserted to contain **only** `workOrderId`/`customer`/`site`,
+with no `paymentTerms`, `taxStatus`, `lineOfBusiness`, `status`, `createdAt` or `accountId`, and
+with the raw ids absent from the payload.
+
+**Nothing was widened**, asserted directly against the repository: `accounts` and `locations`
+remain `allow read: if isAdminOrDispatcher()`, and the technician Role still holds no
+`account.record.read`.
