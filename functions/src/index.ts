@@ -136,3 +136,18 @@ export {
   activateSupplierCallable as activateSupplier,
   deactivateSupplierCallable as deactivateSupplier,
 } from "./supplierMaster/supplierMasterCallables";
+
+// --- Part Master (ADR-009 G2): trusted Part command callables ---
+// "Export is not deployment/grant": NOT deployed to the live project, NO UI wired to call them yet, NO
+// App Check requirement (matching every other callable here). Authorization is enforced INSIDE the
+// command against the actor's real governed roles -- inventory.catalog.manage for create/update,
+// inventory.catalog.activate for changePartStatus (the accepted catalog authority / future durable
+// inventoryCatalogAdministrator role). NO capability is granted here; catalog capabilities are carried
+// by no standing role, so create/update/status fail closed until a deferred protected grant. Firebase
+// deploys each callable under its exported index property name, so these MUST be the exact frozen
+// public names (no "Callable" suffix); the suffixed impl consts are aliased here and NOT otherwise exposed.
+export {
+  createPartCallable as createPart,
+  updatePartCallable as updatePart,
+  changePartStatusCallable as changePartStatus,
+} from "./partMaster/partMasterCallables";
