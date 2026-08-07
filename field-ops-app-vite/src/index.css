@@ -1296,6 +1296,33 @@ button:hover {
   .fo-implementation__context { display: none; }
 }
 
+/* Gate 2 -- the brand now sits in a fixed-width vertical rail rather than a
+   wide horizontal header, so the horizontal-header assumptions above stop
+   applying inside it:
+   - `white-space: nowrap` on the platform line overflowed the compact rail
+     (it clipped "ENTERPRISE OPERATIONS OS" at tablet width). In a column there
+     is room to wrap, so it wraps.
+   - the 720px rules hide the platform and deployment context because a phone's
+     horizontal header had no room. The drawer is a tall column that does, and
+     the deployment identity is exactly what a user needs to see there. */
+.fo-rail__brand .fo-brand,
+.fo-rail__brand .fo-implementation { max-width: 100%; min-width: 0; }
+.fo-rail__brand .fo-brand__platform {
+  white-space: normal; display: block; overflow-wrap: anywhere;
+}
+.fo-rail__brand .fo-implementation__context { display: block; }
+/* The implementation block sits BELOW the lockup in the rail, so its divider
+   becomes a left rule against the rail edge rather than a separator between
+   two side-by-side identities. */
+.fo-rail__brand .fo-implementation { padding-left: 10px; margin-left: 2px; }
+
+@media (max-width: 1199.98px) and (min-width: 900px) {
+  /* Compact rail: shrink the platform line rather than dropping it, so the
+     brand hierarchy stays intact at tablet width. */
+  .fo-rail__brand .fo-brand__wordmark { font-size: 13.5px; letter-spacing: 0.1em; }
+  .fo-rail__brand .fo-brand__platform { font-size: 9px; letter-spacing: 0.03em; }
+}
+
 /* The shell's <h1> is retained for document structure and screen readers even
    though the brand lockup now carries the visible identity — removing it would
    leave the page without a heading. */
