@@ -1,0 +1,2 @@
+deleteProtectionState: DELETE_PROTECTION_ENABLED
+pointInTimeRecoveryEnablement: POINT_IN_TIME_RECOVERY_ENABLED

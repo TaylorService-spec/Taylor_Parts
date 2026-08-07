@@ -1,0 +1,22 @@
+done: true
+metadata:
+  '@type': type.googleapis.com/google.firestore.admin.v1.CreateDatabaseMetadata
+name: projects/eos-platform-sandbox/databases/(default)/operations/Zug-jD5tVLojRqKUKF0yWhAqMWxhcnRuZWMtc3ULIgUQAY_Y6aAQBtPUx-EIDAovGg
+response:
+  '@type': type.googleapis.com/google.firestore.admin.v1.Database
+  appEngineIntegrationMode: DISABLED
+  concurrencyMode: PESSIMISTIC
+  createTime: '2026-08-07T00:16:33.301348Z'
+  databaseEdition: STANDARD
+  deleteProtectionState: DELETE_PROTECTION_DISABLED
+  earliestVersionTime: '2026-08-07T00:16:33.301348Z'
+  etag: IPnf8tWejZYDMOSm8tWejZYD
+  freeTier: true
+  locationId: us-central1
+  name: projects/eos-platform-sandbox/databases/(default)
+  pointInTimeRecoveryEnablement: POINT_IN_TIME_RECOVERY_DISABLED
+  realtimeUpdatesMode: REALTIME_UPDATES_MODE_ENABLED
+  type: FIRESTORE_NATIVE
+  uid: 5a325d28-94a2-4623-ba54-6d3e8c3ee866
+  updateTime: '2026-08-07T00:16:33.301348Z'
+  versionRetentionPeriod: 3600s

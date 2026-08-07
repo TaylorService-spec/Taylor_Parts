@@ -1,0 +1,11 @@
+- Adding Firebase resources to Google Cloud Platform project
+✔ Adding Firebase resources to Google Cloud Platform project
+
+=== Your Firebase project is ready! ===
+
+Project information:
+   - Project ID: eos-platform-sandbox
+   - Project Name: EOS Platform Sandbox
+
+Firebase console is available at
+https://console.firebase.google.com/project/eos-platform-sandbox/overview

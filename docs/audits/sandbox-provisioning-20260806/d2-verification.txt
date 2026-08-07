@@ -1,0 +1,22 @@
+Expected revision: 5dcd574
+Source:            explicit --expected
+
+local-emulator  [role=sandbox deployment=platform status=not-provisioned]  -> NOT_OBSERVABLE
+
+platform-sandbox  [role=sandbox deployment=platform status=live]  -> MATCH
+  ok    hosting: 5dcd574 == expected
+
+platform-integration  [role=integration deployment=platform status=not-provisioned]  -> NOT_OBSERVABLE
+
+taylor-parts-production  [role=production deployment=taylor-parts status=live]  -> MATCH_PARTIAL
+  note: 1 surface(s) could not be read — coverage is PARTIAL, not a clean pass
+  ?     hosting: no manifest — SPA catch-all served index.html (surface predates D1)
+  ok    pages (ungoverned surface): 5dcd574 == expected
+
+Declared but not observable (no deployed surface):
+  - local-emulator [sandbox] not-provisioned
+  - platform-integration [integration] not-provisioned
+
+RESULT: no drift observed.
+Note: UNKNOWN surfaces predate D1 and cannot self-identify until a build carrying
+      the version manifest is deployed. Deployment is Owner-gated (R-2).

@@ -1,0 +1,5 @@
+started_utc: 2026-08-07T00:14:26Z
+operator_identity: rudy.digiorgio@gmail.com
+authorized: A-1..A-8 (A-9 HELD)
+A-1: gcloud projects create eos-platform-sandbox --name="Enterprise Operations OS - Platform Sandbox"
+A-1 (retry, display name <=30 chars): EOS Platform Sandbox
