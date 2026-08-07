@@ -1,0 +1,59 @@
+{
+  "name": "projects/33669510651/config",
+  "signIn": {
+    "email": {
+      "enabled": true,
+      "passwordRequired": true
+    },
+    "hashConfig": {
+      "algorithm": "SCRYPT",
+      "signerKey": "Mt1fgcnBeF/EJy8ZK/t7iSvqykBysPIwoKWcsiOSw7JxihTzkj8lR2ce6Tl/18r3x8XdXNcaYGomtLPPrJa8yg==",
+      "saltSeparator": "Bw==",
+      "rounds": 8,
+      "memoryCost": 14
+    }
+  },
+  "notification": {
+    "sendEmail": {
+      "method": "DEFAULT",
+      "callbackUri": "https://eos-platform-sandbox.firebaseapp.com/__/auth/action",
+      "dnsInfo": {
+        "customDomainState": "NOT_STARTED",
+        "domainVerificationRequestTime": "1970-01-01T00:00:00Z"
+      }
+    },
+    "sendSms": {
+      "smsTemplate": {
+        "content": "%LOGIN_CODE% is your verification code for %APP_NAME%."
+      }
+    },
+    "defaultLocale": "en"
+  },
+  "quota": {},
+  "monitoring": {
+    "requestLogging": {}
+  },
+  "multiTenant": {},
+  "authorizedDomains": [
+    "eos-platform-sandbox.firebaseapp.com",
+    "eos-platform-sandbox.web.app"
+  ],
+  "subtype": "IDENTITY_PLATFORM",
+  "client": {
+    "permissions": {}
+  },
+  "mfa": {
+    "state": "DISABLED"
+  },
+  "blockingFunctions": {},
+  "smsRegionConfig": {
+    "allowlistOnly": {}
+  },
+  "emailPrivacyConfig": {
+    "enableImprovedEmailPrivacy": true
+  },
+  "mobileLinksConfig": {
+    "domain": "HOSTING_DOMAIN"
+  },
+  "defaultHostingSite": "eos-platform-sandbox"
+}
