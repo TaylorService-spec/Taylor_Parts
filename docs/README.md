@@ -85,6 +85,7 @@ Working conventions for contributing to this repo (human or AI).
 - [governance/templates/operational-handoff.md](governance/templates/operational-handoff.md) — handoff template.
 - [audits/](audits/) — **EVIDENCE.** Immutable run artifacts. Never edited after generation.
 - [assessments/sandbox-integration-environment-readiness.md](assessments/sandbox-integration-environment-readiness.md) - **AWAITING OWNER DECISION.** Sandbox/Integration sequencing assessment + design readiness: what the current product needs to be reviewable outside production, the configuration coupling that blocks it, and the infrastructure/spend decisions required.
+- [deployment/sandbox-o1-o2-authorization-package.md](deployment/sandbox-o1-o2-authorization-package.md) - **AWAITING OWNER AUTHORIZATION.** O-1/O-2 sandbox infrastructure + spend: project identity, services, personas, scenario packs, rebuild automation, cost ($0/month within Blaze no-cost quotas), and the 9 protected actions.
 - [deployment/c3-p5-restore-rehearsal-package.md](deployment/c3-p5-restore-rehearsal-package.md) - **AWAITING OWNER AUTHORIZATION.** P5 restore rehearsal: two paths (PITR clone available now; backup restore after V2), exact commands, RTO measurement, cleanup safety.
 - [design/c3-delivery-reliability-and-release-visibility.md](design/c3-delivery-reliability-and-release-visibility.md) - C3 delivery reliability and release visibility.
 - [specifications/r1-rows-23-24-permission-cutover.md](specifications/r1-rows-23-24-permission-cutover.md) - R-1 Rows 23/24 permission cutover specification.
