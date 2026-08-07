@@ -77,15 +77,21 @@ check("mirror parity: client enums match the server partMaster contract literals
   assert.equal(STOCKING_CLASSES.length, 4);
   assert.equal(UNIT_CODES.length, 11);
 });
-check("read-only surface: no write imports/calls, no write controls, no live-math consumers", () => {
+check("governed write surface: read service stays read-only; UI has NO direct client writes or callable bypass", () => {
+  // The READ query service remains strictly read-only -- no writes, no callable. Writes live in the
+  // SEPARATE partMasterCommandClient seam, never here.
   const svc = fs.readFileSync(new URL("../src/services/partMasterQueries.js", import.meta.url), "utf8");
   for (const bad of ["setDoc", "addDoc", "updateDoc", "deleteDoc", "writeBatch", "runTransaction", "httpsCallable"]) {
     assert.ok(!svc.includes(bad), `service contains ${bad}`);
   }
+  // The workspace UI is now interactive (ADR-009 G2 write workspace), but the invariant holds: it does
+  // NO direct client Firestore writes and does NOT call httpsCallable directly -- every mutation goes
+  // through the usePartMasterWrite -> partMasterCommandClient seam (the ONE trusted command path).
   const ui = fs.readFileSync(new URL("../src/modules/inventory/PartMasterList.jsx", import.meta.url), "utf8");
-  for (const bad of ["setDoc", "addDoc", "updateDoc", "deleteDoc", "writeBatch", "onClick", "<button", "<form", "createPart", "updatePart"]) {
+  for (const bad of ["setDoc", "addDoc", "updateDoc", "deleteDoc", "writeBatch", "runTransaction", "httpsCallable"]) {
     assert.ok(!ui.includes(bad), `UI contains ${bad}`);
   }
+  assert.ok(ui.includes("usePartMasterWrite"), "UI must route writes through the usePartMasterWrite seam");
   for (const src of [svc, ui]) {
     for (const bad of ["partReferenceCompatibility", "workOrderSnapshotCompatibility", "analyzePartMasterCsv", "PART_MASTER_REFERENCE", "inventory_transactions"]) {
       assert.ok(!src.includes(bad), `surface references ${bad}`);

@@ -322,10 +322,13 @@ ok("completion button is only rendered for an in_progress job", () => {
   assert.doesNotMatch(assignedBranch, /Complete Job|onComplete\(/);
 });
 
-ok("release gate is ACTIVE (Gate D1): trusted completion enabled everywhere", () => {
-  // Flipped by the D1 release change after completeAssignedJob was deployed
-  // and smoke-verified -- the trusted path is now the production path.
-  assert.match(stripComments(gate), /TRUSTED_COMPLETION_ENABLED = true/);
+ok("release gate is ACTIVE (Gate D1): trusted completion resolved from the environment registry", () => {
+  // Post-O-3 (ADR-011 environment configuration), the gate is no longer a source literal `= true`;
+  // it resolves from the one environment registry: `TRUSTED_COMPLETION_ENABLED =
+  // __APP_READINESS__.TRUSTED_COMPLETION_ENABLED` (config/environments.json carries the true value per
+  // environment, asserted by the Environment & Drift tests). This asserts the gate is wired to that
+  // registry and that the pre-D1 DEV conditional is gone -- not a stale source literal.
+  assert.match(stripComments(gate), /TRUSTED_COMPLETION_ENABLED\s*=\s*__APP_READINESS__\.TRUSTED_COMPLETION_ENABLED/);
   assert.doesNotMatch(stripComments(gate), /import\.meta\.env\.DEV/, "the pre-D1 conditional gate must be gone from code");
 });
 
