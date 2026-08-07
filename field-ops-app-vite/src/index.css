@@ -1292,3 +1292,136 @@ button:hover {
 .fo-sched-detail__grid dt { color: var(--color-text-muted); }
 .fo-sched-detail__grid dd { margin: 0; }
 .fo-sched-detail__note { margin: 0.6rem 0 0; font-size: 0.82rem; }
+
+/* ===========================================================================
+   F1 — FIELD SHELL / TECHNICIAN HOME / CURRENT JOB
+   ---------------------------------------------------------------------------
+   A field OPERATING surface, not a record screen. Composition follows the
+   platform rhythm top to bottom -- Context, State, Attention, Readiness, Next
+   Best Action -- so the answer a technician needs is always in the same place.
+
+   Phone-first: the primary action is a full-width target at the end of the
+   card, reachable one-handed, and nothing above it can be mistaken for it.
+   ========================================================================= */
+.fo-field { display: flex; flex-direction: column; gap: 16px; }
+
+.fo-field__head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.fo-field__title { margin: 0; font-size: 22px; letter-spacing: -0.01em; }
+.fo-field__count { margin: 0; color: var(--color-text-secondary); font-size: 13px; }
+
+.fo-field__section { display: flex; flex-direction: column; gap: 10px; }
+.fo-field__section-title {
+  margin: 0; font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.08em; color: var(--color-text-muted);
+}
+
+/* --- the Current Job card ------------------------------------------------ */
+.fo-job {
+  display: flex; flex-direction: column; gap: 16px;
+  background: var(--color-surface-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 18px;
+  box-shadow: var(--shadow-rest);
+}
+
+/* CONTEXT */
+.fo-job__ref {
+  margin: 0 0 2px; font-size: 11px; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--color-brand-accent);
+}
+.fo-job__customer { margin: 0; font-size: 20px; line-height: 1.2; }
+/* Deliberately quiet but NOT hidden: an unavailable customer is a fact the
+   technician must see, not an empty space they might read as "no customer". */
+.fo-job__customer--unavailable {
+  font-size: 15px; font-weight: 500; font-style: italic;
+  color: var(--color-text-muted);
+}
+.fo-job__complaint { margin: 6px 0 0; color: var(--color-text-secondary); line-height: 1.45; }
+
+/* STATE */
+.fo-field-progress {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  list-style: none; margin: 0; padding: 0;
+}
+.fo-field-progress__step {
+  font-size: 11.5px; padding: 4px 9px; border-radius: 999px;
+  background: var(--color-surface-sunken); color: var(--color-text-muted);
+  border: 1px solid transparent;
+}
+.fo-field-progress__step.is-done {
+  background: var(--color-success-surface); color: var(--color-success);
+}
+.fo-field-progress__step.is-current {
+  background: var(--color-brand-secondary); color: var(--color-text-inverse);
+  font-weight: 600; border-color: var(--color-brand-accent);
+}
+
+/* ATTENTION */
+.fo-job__attention ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.fo-attention {
+  font-size: 13px; padding: 8px 12px; border-radius: var(--radius-sm);
+  border-left: 3px solid transparent;
+}
+.fo-attention--high   { background: var(--color-danger-surface);  color: var(--color-danger);  border-left-color: var(--color-danger); }
+.fo-attention--medium { background: var(--color-warning-surface); color: var(--color-warning); border-left-color: var(--color-warning); }
+.fo-attention--low    { background: var(--color-surface-sunken);  color: var(--color-text-secondary); border-left-color: var(--color-border-strong); }
+
+/* READINESS -- presentation only; the semantics are the shared projection's. */
+.fo-readiness { margin: 0; font-size: 14px; font-weight: 600; }
+.fo-readiness--ready     { color: var(--color-success); }
+.fo-readiness--attention { color: var(--color-warning); }
+.fo-readiness--unknown   { color: var(--color-text-secondary); }
+.fo-readiness--no_plan   { color: var(--color-text-muted); font-weight: 500; }
+.fo-readiness__counts { font-weight: 400; color: var(--color-text-secondary); font-size: 12.5px; }
+.fo-readiness__rows { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.fo-readiness-row {
+  display: flex; justify-content: space-between; gap: 12px;
+  font-size: 12.5px; padding: 6px 10px; border-radius: var(--radius-sm);
+  background: var(--color-surface-sunken);
+}
+.fo-readiness-row__part { font-weight: 600; }
+.fo-readiness-row--ready     .fo-readiness-row__state { color: var(--color-success); }
+.fo-readiness-row--attention .fo-readiness-row__state { color: var(--color-warning); }
+.fo-readiness-row--unknown   .fo-readiness-row__state { color: var(--color-text-muted); }
+
+/* NEXT BEST ACTION -- the one thing to do, unmistakably the primary target. */
+.fo-job__next { display: flex; flex-direction: column; gap: 8px; }
+.fo-btn-field {
+  width: 100%; min-height: 52px; padding: 14px 20px;
+  background: var(--color-brand-primary); color: var(--color-text-inverse);
+  border: none; border-radius: var(--radius-md);
+  font-size: 16px; font-weight: 600; font-family: inherit; cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+.fo-btn-field:hover:not(:disabled) { background: var(--verenward-evergreen-hover); }
+.fo-btn-field:disabled { opacity: 0.6; cursor: default; }
+.fo-btn-field:focus-visible { outline: 2px solid var(--color-brand-accent); outline-offset: 2px; }
+.fo-job__failure { margin: 0; font-size: 13px; color: var(--color-danger); }
+.fo-job__next-empty { margin: 0; }
+
+/* UP NEXT -- deliberately low-weight so it cannot compete with Current Job. */
+.fo-upnext { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.fo-upnext__row {
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 10px 12px; border-radius: var(--radius-sm);
+  background: var(--color-surface-card); border: 1px solid var(--color-border);
+}
+.fo-upnext__ref { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; color: var(--color-text-muted); }
+.fo-upnext__complaint { font-size: 13.5px; color: var(--color-text-secondary); }
+
+.fo-field__tool-toggle {
+  background: transparent; border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm); padding: 10px 14px;
+  font-size: 14px; font-family: inherit; color: var(--color-text-secondary);
+  cursor: pointer; text-align: left;
+}
+.fo-field__tool-toggle:hover { background: var(--color-surface-sunken); color: var(--color-brand-primary); }
+
+@media (min-width: 900px) {
+  /* Laptop/tablet get more room, but the same composition and the same
+     primary-action prominence -- no separate data model, no separate rhythm. */
+  .fo-job { padding: 24px; gap: 20px; }
+  .fo-job__customer { font-size: 24px; }
+  .fo-btn-field { width: auto; min-width: 260px; align-self: flex-start; }
+}
