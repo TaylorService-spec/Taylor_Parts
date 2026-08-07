@@ -57,13 +57,18 @@ function leafDestination(children) {
   return { isLeaf: false, item: null };
 }
 
-function ItemLink({ domainPath, item, onNavigate, depth = 1 }) {
+function ItemLink({ domainPath, item, onNavigate, depth = 1, activeRef = null }) {
   const to = `/${domainPath}${item.path ? `/${item.path}` : ""}`;
   return (
     <NavLink
       to={to}
       end={item.path === ""}
       onClick={onNavigate}
+      ref={(el) => {
+        // Only the active item claims the ref, so the shell can scroll the
+        // current location back into view without tracking indices.
+        if (el && activeRef && el.classList.contains("fo-rail__item--active")) activeRef.current = el;
+      }}
       className={({ isActive }) =>
         `fo-rail__item fo-rail__item--d${depth}${isActive ? " fo-rail__item--active" : ""}`
       }
@@ -100,26 +105,45 @@ export default function AppRail({
     });
   }, [role, allowedLegacyKeys, operationalContext]);
 
-  // SINGLE-EXPAND. Exactly one domain is open at a time, and it defaults to the
-  // domain you are actually in.
+  // MULTI-EXPAND, with the scroll problem solved directly rather than by
+  // rationing expansion.
   //
-  // This was multi-expand, and persona review measured the consequence: with
-  // three domains open at 1440x800 the rail needed 1462px in an 800px column,
-  // scrolling the brand block AND the currently-selected item off the top. A
-  // rail that cannot show you where you are has stopped doing its job. Capping
-  // it at one open domain bounds worst-case height instead of relying on the
-  // user to tidy up after themselves.
-  const [openDomain, setOpenDomain] = useState(activeDomainPath ?? null);
+  // Round 1 produced two OPPOSING findings. Admin measured multi-expand
+  // scrolling the brand block and the current selection off the top (1462px of
+  // nav in an 800px rail). Inventory then measured single-expand breaking the
+  // Inventory<->Purchasing hot path: opening one collapsed the other, and an
+  // inventory operator works those two together all day.
+  //
+  // Rationing fixed the symptom and broke the workflow. The real defects were
+  // that the brand block scrolled away (now sticky) and that the rail never
+  // scrolled your current location back into view (now it does). With both
+  // fixed, several open domains cost only scroll depth -- which is what a
+  // scrollable rail is for.
+  const [expanded, setExpanded] = useState(() => new Set(activeDomainPath ? [activeDomainPath] : []));
   const lastDomain = useRef(activeDomainPath);
   useEffect(() => {
     if (activeDomainPath && activeDomainPath !== lastDomain.current) {
       lastDomain.current = activeDomainPath;
-      setOpenDomain(activeDomainPath);
+      setExpanded((prev) => new Set(prev).add(activeDomainPath));
     }
   }, [activeDomainPath]);
 
-  // Collapsing the domain you are in is allowed; it simply closes.
-  const toggle = (path) => setOpenDomain((prev) => (prev === path ? null : path));
+  const toggle = (path) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+
+  // Keep "where am I" visible. Review found the selected destination sitting at
+  // y=866 inside an 844px drawer that opened at scrollTop 0 -- off-screen. The
+  // active item registers itself below and is scrolled into view on mount and
+  // whenever the route's domain changes.
+  const activeItemRef = useRef(null);
+  useEffect(() => {
+    activeItemRef.current?.scrollIntoView({ block: "nearest" });
+  }, [activeDomainPath]);
 
   return (
     <nav className="fo-rail__nav" aria-label="Primary">
@@ -127,7 +151,7 @@ export default function AppRail({
         {domains.map(({ domain, children }) => {
           const isCurrent = domain.path === activeDomainPath;
           const { isLeaf, item: soleItem } = leafDestination(children);
-          const open = openDomain === domain.path;
+          const open = expanded.has(domain.path);
           const panelId = `${idPrefix}-${domain.key}`;
 
           return (
@@ -172,6 +196,7 @@ export default function AppRail({
                       domainPath={domain.path}
                       item={item}
                       onNavigate={onNavigate}
+                      activeRef={activeItemRef}
                     />
                   ))}
                   {children.groups.map((group) => (
@@ -192,6 +217,7 @@ export default function AppRail({
                           item={item}
                           onNavigate={onNavigate}
                           depth={2}
+                          activeRef={activeItemRef}
                         />
                       ))}
                     </div>

@@ -252,7 +252,7 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
   display: flex; align-items: center; gap: 8px; width: 100%;
   background: transparent; border: none; text-align: left;
   color: var(--verenward-moon);
-  font-size: 13.5px; font-weight: 500; font-family: inherit;
+  font-size: 14px; font-weight: 600; letter-spacing: 0.015em; font-family: inherit;
   padding: 9px 10px; border-radius: var(--radius-sm);
   cursor: pointer; text-decoration: none;
   transition: background var(--duration-fast) var(--ease-out),
@@ -266,12 +266,20 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
    hierarchy inverted: a merely-EXPANDED domain got a filled pill while the
    domain you were actually in got only a thin underline, so the rail pointed
    at the wrong row. Expansion is now signalled by the chevron alone. */
+/* THREE distinct treatments, because two of them collided.
+   Round 1 first found the hierarchy INVERTED (expanded louder than current), so
+   current became a filled pill -- which then rendered identically to the active
+   ITEM's pill, leaving two same-coloured highlights stacked five rows apart with
+   no way to tell which was the actual page. Now:
+     current domain  bold + accent bar + a quiet tint   (context)
+     active item     solid selection pill + accent bar  (strongest: you are here)
+     expanded        chevron rotation only              (state, not emphasis) */
 .fo-rail__domain-row--current {
   color: var(--color-text-inverse); font-weight: 600;
-  background: var(--color-rail-selected);
+  background: rgba(255, 255, 255, 0.07);
   box-shadow: inset 3px 0 0 var(--color-brand-accent);
 }
-.fo-rail__domain-row--current:hover { background: var(--color-rail-selected); }
+.fo-rail__domain-row--current:hover { background: rgba(255, 255, 255, 0.11); }
 .fo-rail__domain-label { min-width: 0; overflow-wrap: anywhere; }
 /* A leaf row is an <a>, a button row is a <button>: without this they compute
    different widths. Persona review measured the leaf at 270px inside a 252px
@@ -300,11 +308,12 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
 /* Destination rows. Indentation is restrained -- one step for an item, one
    more for a grouped item -- and the guide line does the hierarchy work. */
 .fo-rail__item {
-  display: block; padding: 7px 10px 7px 22px;
+  display: block; padding: 7px 10px 7px 28px;
   margin-left: 10px;
   border-left: 1px solid rgba(185, 193, 190, 0.18);
   color: var(--verenward-moon); text-decoration: none;
-  font-size: 13px; line-height: 1.35;
+  /* Clearly subordinate to a domain row: lighter weight, deeper indent. */
+  font-size: 13px; font-weight: 400; line-height: 1.35;
   transition: background var(--duration-fast) var(--ease-out),
               color var(--duration-fast) var(--ease-out);
 }
@@ -517,8 +526,11 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
      they get more height than the desktop rail's compact rows. */
   .fo-drawer .fo-rail__domain-row { min-height: 48px; padding: 12px 10px; font-size: 14.5px; }
   /* 44px minimum on every tappable destination, measured at 40.9px before. */
-  .fo-drawer .fo-rail__item { min-height: 44px; display: flex; align-items: center;
-    padding: 11px 10px 11px 22px; font-size: 14px; }
+  /* 48px: comfortably above the 44px touch minimum while recovering ~180px of
+     drawer height. At 66px a ten-child domain consumed 78% of the screen and
+     pushed four sibling domains below the fold. */
+  .fo-drawer .fo-rail__item { min-height: 48px; display: flex; align-items: center;
+    padding: 10px 10px 10px 28px; font-size: 14px; line-height: 1.25; }
   .fo-drawer .fo-rail__item--d2 { padding-left: 30px; }
 }
 
