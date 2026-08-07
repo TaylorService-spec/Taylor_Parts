@@ -1,0 +1,52 @@
+name: WO Parts Plan Producer Tests
+
+# WO Parts Planning Phase 2 -- pure-logic unit tests for the governed PLANNED producer
+# (setWorkOrderPartsPlan): validation, the authoritative applyPartsPlan merge (PLAN != RESERVE
+# != USE, qtyUsed preserved, used-part removal blocked, partId+sku identity). No emulator, no
+# deployment, no production access, no secrets -- runs against the compiled functions/lib output.
+
+on:
+  pull_request:
+    paths:
+      - "functions/src/workOrderPartsPlan/**"
+      - "functions/src/types/workOrder.ts"
+      - "functions/test/setWorkOrderPartsPlan.test.mjs"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - ".github/workflows/wo-parts-plan-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/src/workOrderPartsPlan/**"
+      - "functions/src/types/workOrder.ts"
+      - "functions/test/setWorkOrderPartsPlan.test.mjs"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - ".github/workflows/wo-parts-plan-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  wo-parts-plan-tests:
+    name: setWorkOrderPartsPlan producer tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+
+      - name: setWorkOrderPartsPlan producer tests (build + run)
+        run: npm run test:workOrderPartsPlan
+        working-directory: functions
