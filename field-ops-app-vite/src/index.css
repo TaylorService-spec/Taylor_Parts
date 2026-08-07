@@ -82,6 +82,18 @@
   --ease-out: cubic-bezier(0.22, 0.61, 0.36, 1);
   --duration-fast: 140ms;
   --duration-base: 240ms;
+
+  /* --- Layout ---------------------------------------------------------------
+     ONE shared content measure for the whole shell. Before this, the utility
+     strip, the brand header, the sub-nav and the workspace each decided their
+     own horizontal extent (full-bleed / 24px padding / flush-left / 960px
+     centred), so three different left edges were visible on every screen.
+     Anything that is part of the shell aligns to this, via .fo-measure below.
+     Chrome BACKGROUNDS still span the viewport -- only their CONTENT is
+     constrained, which is what keeps the anchored Verenward chrome reading as
+     a band rather than a floating card. */
+  --layout-measure: 1280px;
+  --layout-gutter: 24px;
 }
 
 /* Honour the platform reduced-motion preference globally rather than relying on
@@ -101,6 +113,27 @@ body { -webkit-font-smoothing: antialiased; font-family: -apple-system, BlinkMac
 
 .fo-app { min-height: 100vh; }
 
+/* Shared shell measure. Implemented as symmetric padding rather than
+   `max-width + margin:auto` so an element can keep a full-bleed background
+   while its content still lines up with everything else. `max()` keeps the
+   gutter intact once the viewport is narrower than the measure. */
+.fo-measure,
+.fo-appheader,
+.fo-header,
+.fo-subnav,
+.fo-main {
+  padding-inline: max(var(--layout-gutter), calc((100% - var(--layout-measure)) / 2));
+}
+
+/* Anchors with no other colour rule fell through to the browser default blue,
+   which is jarring against evergreen/bronze -- it showed up as the Service
+   sub-nav group headers and in-workspace "back" links. A bare element selector
+   is deliberate: specificity 0,0,1 means every existing class- or inline-styled
+   link (white-on-dark nav links especially) still wins untouched. */
+a { color: var(--color-brand-secondary); }
+a:hover { color: var(--color-brand-primary); }
+a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; border-radius: var(--radius-sm); }
+
 .fo-demo-banner {
   background: var(--color-warning);
   color: var(--color-brand-primary);
@@ -109,9 +142,41 @@ body { -webkit-font-smoothing: antialiased; font-family: -apple-system, BlinkMac
   font-size: 13px;
   font-weight: 600;
 }
+/* ---------------------------------------------------------------------------
+   UTILITY STRIP (AppHeader.jsx) -- subordinate chrome, not a second header.
+   It previously rendered as a white bar ABOVE the Verenward header, so the app
+   showed two competing application headers and the brand lockup was visually
+   outranked by "Field Ops Platform / Home / Refresh".
+   It is now the top tier of ONE continuous dark chrome block: darker than the
+   brand band, slimmer, smaller type, muted colour. Same actions, same order,
+   same behaviour -- it simply recedes. The Verenward platform/deployment
+   identity below it is unambiguously the primary application identity.
+   ------------------------------------------------------------------------- */
+.fo-appheader {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 12px;
+  background: var(--verenward-evergreen-hover);
+  color: var(--verenward-moon);
+  padding-block: 5px;
+  font-size: 12.5px;
+  border-bottom: 1px solid rgba(185, 193, 190, 0.10);
+}
+.fo-appheader-left, .fo-appheader-right { display: flex; align-items: center; gap: 12px; }
+/* Deliberately NOT bold: this is a system label, not the application name. */
+.fo-appheader-title { font-weight: 500; color: var(--verenward-moon); opacity: 0.75; letter-spacing: 0.01em; }
+.fo-appheader a { color: var(--verenward-moon); text-decoration: none; opacity: 0.85; }
+.fo-appheader a:hover { color: var(--color-text-inverse); opacity: 1; text-decoration: underline; }
+.fo-appheader-email { color: var(--verenward-moon); opacity: 0.75; }
+.fo-appheader button {
+  background: transparent; color: var(--verenward-moon);
+  border: 1px solid rgba(185, 193, 190, 0.30); border-radius: var(--radius-sm);
+  padding: 3px 10px; font-size: 12.5px; cursor: pointer;
+}
+.fo-appheader button:hover { background: rgba(255,255,255,0.08); color: var(--color-text-inverse); }
+
 .fo-header {
   background: var(--color-brand-primary); color: var(--color-text-inverse);
-  padding: 12px 24px; display: flex; align-items: center; gap: 20px;
+  padding-block: 12px; display: flex; align-items: center; gap: 20px;
   border-bottom: 1px solid rgba(185, 193, 190, 0.16);
   box-shadow: var(--shadow-rest);
 }
@@ -150,7 +215,39 @@ body { -webkit-font-smoothing: antialiased; font-family: -apple-system, BlinkMac
 }
 .fo-subnav .fo-nav-btn-active:hover { background: var(--verenward-guardian-hover); }
 
-.fo-main { padding: 24px; max-width: 960px; margin: 0 auto; }
+/* Sub-nav sits on the page ground, so it needs its own vertical rhythm and a
+   hairline to separate it from the workspace below. */
+.fo-subnav { padding-block: 8px; border-bottom: 1px solid var(--color-border); align-items: center; }
+
+/* ---------------------------------------------------------------------------
+   SERVICE TWO-LEVEL SUB-NAV (AppShell.jsx's ServiceSubnav).
+   These classes had NO rule anywhere in the stylesheet: the group headers fell
+   through to default-blue underlined anchors, and because .fo-nav is a flex row
+   the groups shrank below their content width, clipping "Work Management" off
+   the left viewport edge. Grouping is presentation-only -- destinations,
+   ordering and visibility logic are untouched.
+   ------------------------------------------------------------------------- */
+.fo-service-subnav { align-items: flex-end; gap: 22px; flex-wrap: wrap; }
+.fo-nav-group {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 3px;
+  flex: 0 0 auto;          /* never shrink below the label -- this was the clip */
+  min-width: 0;
+}
+/* The group label is a quiet section header, deliberately lighter than the
+   items beneath it so the hierarchy reads top-down rather than competing. */
+.fo-nav-group-header {
+  font-size: 10.5px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.08em; color: var(--color-text-muted);
+  text-decoration: none; padding: 0 14px; white-space: nowrap;
+}
+.fo-nav-group-header:hover { color: var(--color-brand-primary); text-decoration: none; }
+.fo-nav-group-active .fo-nav-group-header { color: var(--color-brand-secondary); }
+.fo-nav-group-items { display: flex; gap: 4px; }
+/* Standalone items (e.g. Control Tower) have no group label -- align them to
+   the item row rather than letting them float up to the label row. */
+.fo-nav-group-standalone { align-self: flex-end; }
+
+.fo-main { padding-block: 24px; }
 .fo-panel { background: var(--color-surface-elevated); border-radius: 10px; padding: 20px 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); overflow-x: auto; }
 .fo-panel h2 { margin-top: 0; }
 
@@ -254,21 +351,28 @@ body { -webkit-font-smoothing: antialiased; font-family: -apple-system, BlinkMac
    (six tabs no longer fit one row on a phone), and padding shrinks so
    content isn't cramped against the screen edge. */
 @media (max-width: 640px) {
-  .fo-header { padding: 12px 16px; gap: 16px; }
+  /* Narrow the shared gutter once rather than overriding each shell element
+     separately -- the utility strip, header, sub-nav and workspace all derive
+     their inline padding from this, so they stay aligned at phone width too. */
+  :root { --layout-gutter: 14px; }
+  .fo-header { padding-block: 12px; gap: 16px; }
   .fo-nav {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     flex-wrap: nowrap;
   }
   .fo-nav-btn { flex: 0 0 auto; white-space: nowrap; }
-  .fo-main { padding: 12px; }
+  .fo-main { padding-block: 14px; }
   .fo-panel { padding: 16px; }
   .fo-btn-row { flex-direction: column; }
 
-  /* AppHeader.jsx's top bar (Field Ops Platform / Home / Refresh /
-     email / Logout) uses an inline flex layout with no wrapping --
-     on a phone-width viewport it overflows horizontally. Wrapping it
-     is a pure CSS override of the inline styles, no logic change. */
+  /* The Service sub-nav's grouped columns do not fit side by side on a phone;
+     let the row scroll horizontally like the primary nav above it. */
+  .fo-service-subnav { flex-wrap: nowrap; overflow-x: auto; gap: 16px; }
+
+  /* AppHeader.jsx's utility strip (Field Ops Platform / Home / Refresh /
+     email / Logout) is a single flex row with no wrapping -- on a phone-width
+     viewport it overflows horizontally. Wrapping it is presentation only. */
   .fo-appheader { flex-wrap: wrap; gap: 8px; }
   .fo-appheader-right { flex-wrap: wrap; }
   .fo-appheader-email { display: none; }
