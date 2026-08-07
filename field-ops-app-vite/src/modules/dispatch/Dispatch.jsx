@@ -1,23 +1,25 @@
 import { useMemo } from "react";
 import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
-import { assignJob } from "../../domain/jobActions";
-import { JOBS_COLLECTION, TECHNICIANS_COLLECTION, JOB_STATUS, TECH_STATUS } from "../../domain/constants";
+import { useWorkOrders } from "../../hooks/useWorkOrders";
+import { transitionWorkOrder } from "../../services/workOrderService";
+import { TECHNICIANS_COLLECTION, TECH_STATUS } from "../../domain/constants";
+import { FIELD_PHASE, fieldPhase } from "../../domain/fieldWorkOrder";
+import { getAllowedActions } from "../../domain/workOrderWorkflow";
 import { computeJobRisk } from "../../domain/jobRiskScoring";
 import { SEVERITY } from "../../domain/controlTower/types";
 import { isHeroActiveJob, isHeroTechnician } from "../../demo/heroConfig";
 
-// LEGACY (jobs-based) dispatch surface -- NOT the canonical Work Order
-// dispatch. This board assigns legacy JOBS_COLLECTION jobs via assignJob();
-// it does NOT drive the canonical fieldops_wos Work Order lifecycle
-// (createWorkOrder/transitionWorkOrder Cloud Functions; see CLAUDE_CONTEXT
-// rule 2). Its heading is honestly "Dispatch" (not "Work Orders"), so no
-// user-visible relabel was needed in W0; model reconciliation is W4.
+// F0 -- this IS now the canonical Work Order dispatch surface. It reads
+// fieldops_wos and assigns by invoking the governed `Dispatch` transition
+// (transitionWorkOrder), which sets assignedTechId and writes the lifecycle
+// timestamp server-side. The legacy assignJob() client transaction against
+// fieldops_jobs is no longer used here.
 //
 // Assigns pending jobs to available technicians. Writes back to both the
 // job (technicianId, status) and the technician (status) so Jobs,
 // Technicians, and Control Tower all stay in sync via their own
-// realtime listeners. The write itself goes through assignJob(), which
-// re-checks technician availability inside a Firestore transaction so two
+// realtime listeners. The write goes through the governed Dispatch
+// transition, which re-checks permission and lifecycle server-side so two
 // dispatchers can't both win the same technician.
 //
 // Sprint 3.6.4: visual-only upgrade. Shows every job (not just
@@ -27,7 +29,7 @@ import { isHeroActiveJob, isHeroTechnician } from "../../demo/heroConfig";
 // (domain/jobRiskScoring.js -- already-derived, no new logic here) to
 // label them Emergency (HIGH/CRITICAL) vs Scheduled (MEDIUM/LOW). No new
 // backend logic, no schema change -- assign() below is byte-for-byte the
-// same call into assignJob() this screen already made.
+// same governed Dispatch transition this screen already invoked.
 //
 // Hero-story follow-up: pins demo/heroConfig.js's hero job to the top and
 // pre-selects the hero technician in its assign dropdown. Pure display
@@ -35,9 +37,11 @@ import { isHeroActiveJob, isHeroTechnician } from "../../demo/heroConfig";
 // call, and any job/technician not matching the hero config renders
 // exactly as before.
 
-const STATUS_CHIP = {
-  [JOB_STATUS.IN_PROGRESS]: { label: "In Progress", tone: "in-progress" },
-  [JOB_STATUS.COMPLETE]: { label: "Completed", tone: "completed" },
+// Chips read the governed operational phase, so all eleven statuses are
+// covered without this surface enumerating them.
+const PHASE_CHIP = {
+  [FIELD_PHASE.ON_SITE]: { label: "In Progress", tone: "in-progress" },
+  [FIELD_PHASE.FINISHED]: { label: "Completed", tone: "completed" },
 };
 
 function priorityChip(job) {
@@ -47,11 +51,11 @@ function priorityChip(job) {
 }
 
 function statusChipFor(job) {
-  return STATUS_CHIP[job.status] ?? priorityChip(job);
+  return PHASE_CHIP[fieldPhase(job)] ?? priorityChip(job);
 }
 
 export default function Dispatch() {
-  const { data: jobs, loading } = useFirestoreCollection(JOBS_COLLECTION);
+  const { data: jobs, loading } = useWorkOrders();
   const { data: technicians } = useFirestoreCollection(TECHNICIANS_COLLECTION);
 
   const technicianName = (id) => technicians.find((t) => t.id === id)?.name;
@@ -60,16 +64,20 @@ export default function Dispatch() {
   );
 
   const sortedJobs = useMemo(
-    () => [...jobs].sort((a, b) => (isHeroActiveJob(b.customer) ? 1 : 0) - (isHeroActiveJob(a.customer) ? 1 : 0)),
+    () => [...jobs].sort((a, b) => (isHeroActiveJob(b.woNumber) ? 1 : 0) - (isHeroActiveJob(a.woNumber) ? 1 : 0)),
     [jobs]
   );
 
+  // Governed dispatch: the server sets assignedTechId, enforces the
+  // CREATED/READY_TO_DISPATCH/SCHEDULED -> DISPATCHED transition and the
+  // admin/dispatcher permission, and writes the timestamp. Nothing about the
+  // assignment is decided client-side.
   async function assign(job, technicianId) {
     if (!technicianId) return;
     const technician = technicians.find((t) => t.id === technicianId);
     if (!technician) return;
     try {
-      await assignJob(job, technician);
+      await transitionWorkOrder(job.id, "Dispatch", { assignedTechId: technicianId });
     } catch (err) {
       console.error(err);
       alert(err.message);
@@ -87,7 +95,7 @@ export default function Dispatch() {
       ) : (
         sortedJobs.map((job) => {
           const chip = statusChipFor(job);
-          const isHero = isHeroActiveJob(job.customer);
+          const isHero = isHeroActiveJob(job.woNumber);
           return (
             <div
               key={job.id}
@@ -95,14 +103,27 @@ export default function Dispatch() {
             >
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <h3>
-                  {job.customer}
+                  {job.woNumber ?? job.id}
                   {isHero && <span className="fo-chip fo-chip-hero">Active Demo Job</span>}
                 </h3>
                 <span className={`fo-chip fo-chip-${chip.tone}`}>{chip.label}</span>
               </div>
               <p>{job.description}</p>
 
-              {!job.technicianId ? (
+              {/* The governed engine allows Dispatch only from SCHEDULED
+                  (CREATED -> READY_TO_DISPATCH -> SCHEDULED -> DISPATCHED).
+                  Asking the engine rather than assuming means this control is
+                  never offered where the transition would be rejected -- and
+                  scheduling is NOT fabricated here, because Schedule requires a
+                  real scheduledStart/End/TechId decision this board does not
+                  make. */}
+              {!getAllowedActions(job.status, "dispatcher", false).includes("Dispatch") ? (
+                <div className="fo-muted">
+                  {job.assignedTechId
+                    ? `Assigned to ${technicianName(job.assignedTechId) ?? job.assignedTechId}`
+                    : "Not ready to dispatch — this work order must be scheduled first."}
+                </div>
+              ) : !job.assignedTechId ? (
                 <select
                   key={heroTechnician?.id ?? "none"}
                   defaultValue={isHero && heroTechnician ? heroTechnician.id : ""}
@@ -120,7 +141,7 @@ export default function Dispatch() {
                     ))}
                 </select>
               ) : (
-                <div className="fo-muted">Assigned to {technicianName(job.technicianId) ?? job.technicianId}</div>
+                <div className="fo-muted">Assigned to {technicianName(job.assignedTechId) ?? job.assignedTechId}</div>
               )}
             </div>
           );

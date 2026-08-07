@@ -1,137 +1,72 @@
-import { useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { useCurrentTechnician } from "../../hooks/useCurrentTechnician";
-import { useAssignedJobs } from "../../hooks/useAssignedJobs";
-import { updateJobStatus } from "../../domain/jobActions";
-import { JOB_STATUS } from "../../domain/constants";
-import { jobCustomerName } from "../../domain/jobDisplay";
-import { TRUSTED_COMPLETION_ENABLED } from "../../config/trustedCompletion";
+import { useAssignedWorkOrders } from "../../hooks/useAssignedWorkOrders";
+import { transitionWorkOrder } from "../../services/workOrderService";
 import {
-  completeAssignedJobViaCallable,
-  reconcilePendingCompletion,
-} from "../../services/completionService";
-import { useInventory } from "../../demo/InventoryContext";
-import { isHeroActiveJob, HERO_JOB_PARTS_REQUIRED } from "../../demo/heroConfig";
+  activeFieldWorkOrders,
+  nextFieldAction,
+  fieldProgressStep,
+  FIELD_ACTIONS,
+} from "../../domain/fieldWorkOrder";
 import PartsScanner from "./PartsScanner";
 
-// Sprint 3.6.3: mobile-first visual upgrade + demo interaction layer.
-// "Start Travel"/"Arrived" are purely local UI state (travelStage below),
-// never written to Firestore and never part of JOB_STATUS -- they exist
-// only to make the demo flow feel complete before a job is actually
-// started. "Use Part" reads/writes demo/InventoryContext.jsx's in-memory
-// truck stock -- no Firestore write, no change to the job document.
+// F0 -- Field Job Authority convergence.
 //
-// F-RULES-1 PR-B: job COMPLETION now routes through the trusted
-// completeAssignedJob callable (services/completionService.js) when
-// TRUSTED_COMPLETION_ENABLED -- one request of exactly { jobId,
-// idempotencyKey }, identity resolved server-side, technician-availability
-// and audit written atomically by the Function, duplicate taps blocked,
-// the same idempotency key retained across retries of one attempt.
-// Until Owner Gate D1 deploys the callable, production builds keep the
-// pre-existing client transaction (updateJobStatus(COMPLETE), still
-// permitted by the interim Firestore Rules) -- see config/
-// trustedCompletion.js for the release-gate rationale. Start-work
-// (assigned -> in_progress) deliberately stays the direct client write
-// approved by Decision #39 / O-3.
-
-const TRAVEL_STAGE = {
-  NOT_STARTED: "not_started",
-  TRAVELING: "traveling",
-  ARRIVED: "arrived",
-};
+// Field Mode now runs entirely on the GOVERNED Work Order Engine
+// (`fieldops_wos` via transitionWorkOrder), not the legacy `fieldops_jobs`
+// model. Three things changed materially:
+//
+// 1. "Start Travel" and "Arrived" used to be React local state
+//    (travelStageByJob) that was NEVER written anywhere. They are now real
+//    governed transitions (Travel -> EN_ROUTE, Arrive -> ARRIVED) with real
+//    server timestamps (enRouteAt/arrivedAt), so a dispatcher can finally see
+//    that a technician is on the way.
+// 2. Acceptance exists at all. The legacy model had no ACCEPTED state, so
+//    "the technician has seen this job" was unrepresentable.
+// 3. Completion goes through the same governed transition as every other
+//    step, rather than a separate legacy completion cascade.
+//
+// Read-scoping is preserved: useAssignedWorkOrders(technicianId) is a
+// technician-scoped query, never a full-collection read, and an unmapped user
+// gets nothing plus a clear prompt (fail closed).
+//
+// What this screen still does NOT do, deliberately, because it belongs to a
+// later gate: typed notes and picklists (F3), scanning that resolves governed
+// entities (F2), photos/attachments (F4). PartsScanner remains a lookup tool
+// and still carries its own demo banner.
 
 export default function FieldMode() {
-  // Read-scoping: Field Mode reads ONLY the caller's own jobs, via a query
-  // constrained to their mapped technicianId (useCurrentTechnician's first
-  // hop) -- never a full-collection read. An unmapped user gets no jobs and a
-  // clear prompt (fail closed), which also matches the scoped read rule.
   const { technicianId, loading: technicianLoading } = useCurrentTechnician();
-  const { data: jobs, loading: jobsLoading } = useAssignedJobs(technicianId);
-  const loading = technicianLoading || jobsLoading;
+  const { data: workOrders, loading: workOrdersLoading, error } = useAssignedWorkOrders(technicianId);
+  const loading = technicianLoading || workOrdersLoading;
   const unmapped = !technicianLoading && !technicianId;
-  const { parts, truckStock, usedPartsByJob, consumePart } = useInventory();
-  const [travelStageByJob, setTravelStageByJob] = useState({});
 
-  // Hero-story follow-up: the hero job (demo/heroConfig.js), if present
-  // among today's assigned jobs, is sorted to the front so it's always
-  // the auto-opened "Active Job" -- pure display ordering, no data
-  // mutation. Falls back to whatever's first when no hero job matches.
-  const assignedJobs = jobs
-    .filter((j) => j.status === JOB_STATUS.ASSIGNED || j.status === JOB_STATUS.IN_PROGRESS)
-    .sort((a, b) => (isHeroActiveJob(jobCustomerName(b.customer)) ? 1 : 0) - (isHeroActiveJob(jobCustomerName(a.customer)) ? 1 : 0));
-
-  const [activeJob, ...upNext] = assignedJobs;
-
-  // Trusted-completion UI state: idle | pending | error. `jobId` tracks
-  // which job the attempt belongs to so the reconciliation effect below can
-  // resolve it against authoritative snapshot data.
-  const [completion, setCompletion] = useState({ phase: "idle", jobId: null, message: null, canRetry: false });
-  // PartsScanner is a tool WITHIN the Technician Workspace (Section A) -- collapsed
-  // by default so it never crowds the job list. Scan/lookup only; it owns no
-  // governed inventory transaction (see PartsScanner.jsx).
+  // One in-flight transition at a time, tracked by Work Order id so a stale
+  // response can never clear a newer attempt's state.
+  const [pending, setPending] = useState({ id: null, action: null });
+  const [failure, setFailure] = useState(null);
   const [scannerOpen, setScannerOpen] = useState(false);
 
-  async function updateStatus(job, status) {
+  const active = activeFieldWorkOrders(workOrders);
+  const [current, ...upNext] = active;
+
+  const advance = useCallback(async (workOrder, action) => {
+    if (pending.id) return; // duplicate-tap guard
+    setPending({ id: workOrder.id, action });
+    setFailure(null);
     try {
-      await updateJobStatus(job, status);
+      await transitionWorkOrder(workOrder.id, action);
+      // No local state to update: the authoritative onSnapshot listener moves
+      // the Work Order to its new status. Nothing is fabricated client-side.
     } catch (err) {
-      console.error(err);
-      alert(err.message);
+      setFailure({
+        id: workOrder.id,
+        message: err?.message || "That step could not be recorded. Try again.",
+      });
+    } finally {
+      setPending({ id: null, action: null });
     }
-  }
-
-  async function completeJob(job) {
-    if (!TRUSTED_COMPLETION_ENABLED) {
-      // Pre-D1 posture: the pre-existing client transaction, unchanged.
-      return updateStatus(job, JOB_STATUS.COMPLETE);
-    }
-    if (completion.phase === "pending") return; // duplicate-tap guard
-    setCompletion({ phase: "pending", jobId: job.id, message: null, canRetry: false });
-    const outcome = await completeAssignedJobViaCallable(job.id);
-    if (outcome.ok) {
-      // Success (including idempotent replay): the authoritative onSnapshot
-      // listener moves the job out of the active slot -- no local fabrication
-      // of the completed job document.
-      setCompletion({ phase: "idle", jobId: null, message: null, canRetry: false });
-      return;
-    }
-    setCompletion({
-      phase: "error",
-      jobId: job.id,
-      message: outcome.message,
-      // Only an UNRESOLVED attempt (transient/ambiguous outcome, or an auth
-      // recovery) retries with the same retained key; authoritative
-      // rejections rely on the snapshot refresh below instead.
-      canRetry: outcome.kind === "transient" || outcome.kind === "auth",
-    });
-  }
-
-  // Ambiguous-result reconciliation: whenever authoritative job data shows
-  // the tracked attempt's job as complete (the server committed even though
-  // the client saw a transport failure / refreshed mid-submit), resolve the
-  // attempt as success and release its idempotency key. A job that
-  // disappeared entirely resolves as halt (key released, state cleared).
-  useEffect(() => {
-    if (!TRUSTED_COMPLETION_ENABLED) return;
-    if (!completion.jobId || completion.phase === "pending") return;
-    const live = jobs.find((j) => j.id === completion.jobId);
-    if (!live) {
-      reconcilePendingCompletion(completion.jobId, "missing");
-      setCompletion({ phase: "idle", jobId: null, message: null, canRetry: false });
-      return;
-    }
-    if (live.status === JOB_STATUS.COMPLETE) {
-      reconcilePendingCompletion(completion.jobId, live.status);
-      setCompletion({ phase: "idle", jobId: null, message: null, canRetry: false });
-    }
-  }, [jobs, completion.jobId, completion.phase]);
-
-  function travelStageFor(jobId) {
-    return travelStageByJob[jobId] ?? TRAVEL_STAGE.NOT_STARTED;
-  }
-
-  function setTravelStage(jobId, stage) {
-    setTravelStageByJob((prev) => ({ ...prev, [jobId]: stage }));
-  }
+  }, [pending.id]);
 
   return (
     <div className="fo-panel">
@@ -144,46 +79,35 @@ export default function FieldMode() {
           Your account isn’t linked to a technician profile yet. Ask a
           dispatcher to link your account before using Field Mode.
         </p>
-      ) : assignedJobs.length === 0 ? (
+      ) : error ? (
+        <p className="fo-muted" role="alert">
+          Your work orders could not be loaded. {error.message}
+        </p>
+      ) : active.length === 0 ? (
         <p className="fo-muted">No assigned work orders</p>
       ) : (
         <>
           <div className="fo-card fo-card--field fo-card--field-active">
-            <div className="fo-muted">Active Job</div>
-            <h3>
-              {jobCustomerName(activeJob.customer)}
-              {isHeroActiveJob(jobCustomerName(activeJob.customer)) && (
-                <span className="fo-chip fo-chip-hero">Active Demo Job</span>
-              )}
-            </h3>
-            <p>{activeJob.description}</p>
-
-            {isHeroActiveJob(jobCustomerName(activeJob.customer)) && (
-              <div className="fo-muted" style={{ marginBottom: 8 }}>
-                Parts required: {HERO_JOB_PARTS_REQUIRED.join(", ")}
-              </div>
-            )}
-
-            <ActiveJobActions
-              job={activeJob}
-              travelStage={travelStageFor(activeJob.id)}
-              onTravelStageChange={(stage) => setTravelStage(activeJob.id, stage)}
-              onUpdateStatus={updateStatus}
-              onComplete={completeJob}
-              completion={completion.jobId === activeJob.id ? completion : null}
-              parts={parts}
-              truckStock={truckStock}
-              usedParts={usedPartsByJob[activeJob.id] ?? []}
-              onUsePart={(partId) => consumePart(activeJob.id, partId)}
+            <div className="fo-muted">Current Job</div>
+            <h3>{current.woNumber ?? current.id}</h3>
+            {current.description && <p>{current.description}</p>}
+            <FieldProgress status={current.status} />
+            <FieldStepAction
+              workOrder={current}
+              technicianId={technicianId}
+              pending={pending.id === current.id ? pending.action : null}
+              failure={failure?.id === current.id ? failure : null}
+              onAdvance={advance}
             />
           </div>
 
           {upNext.length > 0 && (
             <div className="fo-card">
               <h3>Up Next</h3>
-              {upNext.map((job) => (
-                <div key={job.id} className="fo-upnext-row">
-                  {jobCustomerName(job.customer)} — {job.description}
+              {upNext.map((workOrder) => (
+                <div key={workOrder.id} className="fo-upnext-row">
+                  {workOrder.woNumber ?? workOrder.id}
+                  {workOrder.description ? ` — ${workOrder.description}` : ""}
                 </div>
               ))}
             </div>
@@ -209,98 +133,61 @@ export default function FieldMode() {
   );
 }
 
-function ActiveJobActions({
-  job,
-  travelStage,
-  onTravelStageChange,
-  onUpdateStatus,
-  onComplete,
-  completion,
-  parts,
-  truckStock,
-  usedParts,
-  onUsePart,
-}) {
-  const [showPartPicker, setShowPartPicker] = useState(false);
+/**
+ * Where this job stands in the governed lifecycle. Presentation only -- it
+ * reads status, it never decides anything.
+ */
+function FieldProgress({ status }) {
+  const reached = fieldProgressStep(status);
+  return (
+    <ol className="fo-field-progress" aria-label="Job progress">
+      {FIELD_ACTIONS.map((step, index) => {
+        const done = index < reached;
+        const currentStep = index === reached;
+        return (
+          <li
+            key={step.action}
+            className={`fo-field-progress__step${done ? " is-done" : ""}${currentStep ? " is-current" : ""}`}
+            aria-current={currentStep ? "step" : undefined}
+          >
+            {step.label}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
 
-  if (job.status === JOB_STATUS.ASSIGNED) {
-    if (travelStage === TRAVEL_STAGE.NOT_STARTED) {
-      return (
-        <button className="fo-btn-large" onClick={() => onTravelStageChange(TRAVEL_STAGE.TRAVELING)}>
-          Start Travel
-        </button>
-      );
-    }
-    if (travelStage === TRAVEL_STAGE.TRAVELING) {
-      return (
-        <button className="fo-btn-large" onClick={() => onTravelStageChange(TRAVEL_STAGE.ARRIVED)}>
-          Arrived
-        </button>
-      );
-    }
-    // ARRIVED
+/**
+ * The one next governed step, derived from the permission matrix rather than
+ * from status directly -- so the button can never offer something the server
+ * would reject.
+ */
+function FieldStepAction({ workOrder, technicianId, pending, failure, onAdvance }) {
+  const next = nextFieldAction(workOrder, technicianId);
+
+  if (!next) {
     return (
-      <button className="fo-btn-large" onClick={() => onUpdateStatus(job, JOB_STATUS.IN_PROGRESS)}>
-        Start Work
-      </button>
+      <p className="fo-muted">
+        No action is available to you on this work order right now.
+      </p>
     );
   }
 
-  // IN_PROGRESS
-  const completing = completion?.phase === "pending";
-  const completionError = completion?.phase === "error" ? completion : null;
+  const busy = pending === next.action;
   return (
     <div>
-      <div className="fo-btn-row">
-        <button className="fo-btn-large fo-btn-secondary" onClick={() => setShowPartPicker((v) => !v)}>
-          Use Part
-        </button>
-        <button
-          className="fo-btn-large"
-          onClick={() => onComplete(job)}
-          disabled={completing}
-          aria-busy={completing}
-        >
-          {completing ? "Completing…" : "Complete Job"}
-        </button>
-      </div>
-
-      {completionError && (
+      <button
+        className="fo-btn-large"
+        onClick={() => onAdvance(workOrder, next.action)}
+        disabled={!!pending}
+        aria-busy={busy}
+      >
+        {busy ? "Recording…" : next.label}
+      </button>
+      {failure && (
         <div role="alert" className="fo-muted" style={{ marginTop: 8 }}>
-          {completionError.message}
-          {completionError.canRetry && (
-            <div style={{ marginTop: 8 }}>
-              {/* Retry re-submits the SAME pending attempt: the retained
-                  idempotency key makes the server replay, never duplicate. */}
-              <button className="fo-btn-large fo-btn-secondary" onClick={() => onComplete(job)}>
-                Retry completion
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-
-      {showPartPicker && (
-        <div className="fo-part-picker">
-          {parts.map((part) => (
-            <button
-              key={part.id}
-              className="fo-part-picker-row"
-              disabled={(truckStock[part.id] ?? 0) <= 0}
-              onClick={() => onUsePart(part.id)}
-            >
-              {part.name} ({truckStock[part.id] ?? 0} on truck)
-            </button>
-          ))}
-        </div>
-      )}
-
-      {usedParts.length > 0 && (
-        <div className="fo-muted" style={{ marginTop: 8 }}>
-          Parts used:{" "}
-          {usedParts
-            .map((u) => parts.find((p) => p.id === u.partId)?.name ?? u.partId)
-            .join(", ")}
+          {failure.message}
         </div>
       )}
     </div>
