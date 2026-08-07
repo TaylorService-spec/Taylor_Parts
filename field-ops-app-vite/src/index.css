@@ -356,7 +356,12 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
      their inline padding from this, so they stay aligned at phone width too. */
   :root { --layout-gutter: 14px; }
   .fo-header { padding-block: 12px; gap: 16px; }
-  .fo-nav {
+  /* Selector must match `.fo-header .fo-nav`'s specificity (0,2,0), which sets
+     flex-wrap:wrap for the desktop header -- as a plain `.fo-nav` rule this
+     lost, and the primary nav stacked into a tall vertical column on a phone
+     instead of scrolling horizontally as intended. */
+  .fo-nav,
+  .fo-header .fo-nav {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     flex-wrap: nowrap;
