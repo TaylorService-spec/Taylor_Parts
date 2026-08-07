@@ -13,6 +13,14 @@ export { updateWorkOrderExecutionData } from "./updateWorkOrderExecutionData";
 // active:false (fail-closed for everyone) until a separate Owner deploy + grant gate.
 export { setWorkOrderPartsPlan } from "./workOrderPartsPlan/setWorkOrderPartsPlan";
 
+// --- F1 surface: trusted minimal field-context display projection ---
+// Answers "who is the customer / which site am I going to?" for the CALLER'S
+// OWN assigned Work Order. Not a customer-lookup API: the request carries
+// workOrderId only, and every id read comes from the governed Work Order
+// itself. No Firestore Rules change and no broad customer-read capability
+// accompany it -- see docs/assessments/f1-technician-customer-identity.md.
+export { getWorkOrderFieldContext } from "./getWorkOrderFieldContext";
+
 // --- F-RULES-1 surface: trusted technician job completion (Decision #39) ---
 // Same "export is not deployment" posture as the surfaces below: not
 // deployed to the live project, and no client calls it (Field Mode's

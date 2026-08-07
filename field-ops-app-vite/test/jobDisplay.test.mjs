@@ -52,7 +52,15 @@ ok("FieldMode carries no legacy free-text customer usage", () => {
   const src = readFileSync(new URL("../src/modules/mobile/FieldMode.jsx", import.meta.url), "utf8");
   assert.doesNotMatch(src, /\{activeJob\.customer\}/, "raw active-job customer render must be gone");
   assert.doesNotMatch(src, /\{job\.customer\}/, "raw up-next customer render must be gone");
-  assert.doesNotMatch(src, /\.customer\b/, "the legacy free-text customer field must not be read at all");
+  // Narrowed for F1: the ban is on the LEGACY free-text `customer` field of a
+  // job/work-order record, not on the word "customer". FieldMode now reads
+  // `fieldContext.customer` -- the trusted projection's governed display block,
+  // which is a different thing entirely and is exactly what replaced the legacy
+  // field.
+  assert.doesNotMatch(src, /\b(job|activeJob|wo|workOrder)\.customer\b/,
+    "the legacy free-text customer field must not be read");
+  assert.doesNotMatch(src, /jobCustomerName/,
+    "the legacy free-text normalizer must not be reached from this screen");
   assert.doesNotMatch(src, /isHeroActiveJob/, "demo hero ordering must not drive a governed queue");
 });
 

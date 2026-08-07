@@ -309,10 +309,36 @@ ok("FieldMode completes through the GOVERNED transition, not the legacy cascade"
 
 ok("FieldMode never decides which action is allowed -- the governed matrix does", () => {
   const code = stripComments(fieldMode);
-  assert.match(code, /nextFieldAction/, "next step comes from the governed selector");
-  // No hard-coded status branching deciding what the technician may do.
-  assert.doesNotMatch(code, /status === "(DISPATCHED|ACCEPTED|EN_ROUTE|ARRIVED|WORK_IN_PROGRESS)"/,
-    "must not branch on governed status literals to choose an action");
+  // F1 -- the derivation moved one layer out: FieldMode composes buildCurrentJob,
+  // which derives the next step from nextFieldAction -> getAllowedActions. The
+  // property being guarded is unchanged (this screen does not decide), so the
+  // assertion follows the composition rather than pinning the call site.
+  assert.match(code, /buildCurrentJob/, "next step comes from the governed projection");
+  const currentJob = stripComments(
+    readFileSync(new URL("../src/domain/fieldCurrentJob.js", import.meta.url), "utf8"),
+  );
+  assert.match(currentJob, /nextFieldAction/, "the projection derives from the governed selector");
+  // No hard-coded status branching deciding what the technician may do, in
+  // either layer.
+  for (const [name, src] of [["FieldMode", code], ["fieldCurrentJob", currentJob]]) {
+    assert.doesNotMatch(src, /status === "(DISPATCHED|ACCEPTED|EN_ROUTE|ARRIVED|WORK_IN_PROGRESS)"/,
+      `${name} must not branch on governed status literals to choose an action`);
+  }
+});
+
+ok("the field experience consumes the SHARED readiness projection, never its own", () => {
+  const currentJob = stripComments(
+    readFileSync(new URL("../src/domain/fieldCurrentJob.js", import.meta.url), "utf8"),
+  );
+  assert.match(currentJob, /buildWorkOrderPartsReadiness/, "composes the shared projection");
+  // It must not restate the shared vocabulary or re-derive availability: the
+  // readiness/availability keys are the projection's to define, not the field
+  // layer's. (Reading jobReadiness/counts to PRESENT them is fine; declaring the
+  // states or doing availability arithmetic is not.)
+  assert.doesNotMatch(currentJob, /AVAILABILITY\s*=|READINESS\s*=/,
+    "must not redeclare the shared readiness/availability vocabulary");
+  assert.doesNotMatch(currentJob, /qtyPlanned|qtyUsed|reservedForJob|onHand/,
+    "must not re-derive parts availability -- that is the shared projection's job");
 });
 
 ok("duplicate-tap guard, pending state, and accessibility attributes present", () => {
