@@ -4,6 +4,17 @@
 **Owner directive:** 2026-08-07 §2 — "Do NOT assume `fieldops_jobs` can simply be deleted… Return with the evidence-based disposition."
 **Method:** static repository analysis + **read-only** production observation (`taylor-parts`). No writes, no deletes, no schema or Rules changes.
 
+> **CURRENT STATUS (post-F0).** The recommendation below — **RETIRE** — was accepted, and **F0 has
+> since executed the non-destructive half**: no routed application surface reads or writes
+> `fieldops_jobs` any more. See [`f0-field-job-authority-evidence.md`](f0-field-job-authority-evidence.md)
+> for the converged state and the enumerated remainder.
+>
+> **The destructive half has NOT been performed and remains a separate Owner-controlled gate.** The
+> 12 production records, the hardened Rules block, the declared `technicianId` index, the deployed
+> `completeAssignedJob` cascade and the inert reporting `job` stub are all still in place, exactly as
+> recorded below. The production observations in this document are preserved unchanged as
+> time-bound evidence gathered on 2026-08-07.
+
 ---
 
 ## 1. Production evidence

@@ -1,8 +1,49 @@
 # Field / Technician Application Experience — Platform Requirement & Repository Assessment
 
-**Status:** REQUIREMENT RECORDED · ASSESSMENT COMPLETE · NO IMPLEMENTATION PROGRAM LAUNCHED
+**Status:** ORIGINAL ASSESSMENT COMPLETE (time-bound) · **IMPLEMENTATION PROGRAM NOW ACTIVE** · original findings preserved as historical evidence
 **Owner directive:** 2026-08-07 — "Field / Technician Application Experience including Notes + Picklists"
-**Assessed at:** `cc0f039` (Gate 2 branch, based on main `3b66aa2`)
+**Assessed at:** `cc0f039` (Gate 2 branch, based on main `3b66aa2`) — see §0 for what has changed since
+
+---
+
+## 0. Current status — implementation reconciliation
+
+> **Read this first.** Everything below §0 is the **original assessment, preserved unchanged** as
+> time-bound evidence of the repository state at `cc0f039`. It records *why* the F0–F6 sequence
+> exists. It deliberately does **not** describe the repository today: F0 and F1 have since been
+> implemented and merged, materially changing several of its findings.
+>
+> The original production observations, findings and evidence are **not** rewritten. Where newer
+> canonical evidence exists, this section links to it rather than duplicating it.
+
+| Gate | Status | Canonical evidence |
+|---|---|---|
+| **F0 — Field Job Authority convergence** | **COMPLETE** (merged) | [`../assessments/f0-field-job-authority-evidence.md`](../assessments/f0-field-job-authority-evidence.md) |
+| **F1 — Field Shell + Technician Home + Current Job** | **COMPLETE** (merged) | [`../assessments/f1-technician-customer-identity.md`](../assessments/f1-technician-customer-identity.md) |
+| **F2 — Entity Resolution Boundary + governed scanning** | **NEXT / ACTIVE** | — |
+| **F3 — Structured Field Authority + typed notes/picklists** | PLANNED (unchanged) | — |
+| **F4 — Capture & Sync** | PLANNED — Storage enablement remains an Owner-controlled boundary | — |
+| **F5 — Sandbox scenarios + field/load model** | PLANNED (unchanged) | — |
+| **F6 — Next-best-action advisory** | PLANNED (unchanged) | — |
+
+**What F0 changed.** The assessment's central finding was two parallel job models, with the surface
+named "Field Mode" on the ungoverned one. That is resolved: `fieldops_wos` + the governed Work Order
+Engine is now the canonical field-execution authority; **no routed application surface reads or
+writes `fieldops_jobs`**; and travel/arrival/acceptance are governed transitions with server
+timestamps rather than React local state. **Destructive retirement of `fieldops_jobs` remains
+separately governed and has NOT been performed** — see
+[`../assessments/fieldops-jobs-disposition.md`](../assessments/fieldops-jobs-disposition.md).
+
+**What F1 changed.** Technician Home / Current Job now exists as an operating surface following
+Context → State → Attention → Readiness → Next Best Action, across phone/tablet/laptop on one
+authority. The customer-name gap this assessment recorded is closed by a **trusted minimal
+customer/site display projection** (`getWorkOrderFieldContext`) — with no Firestore Rules widening,
+no broad account-read capability, and no customer-name denormalisation onto the Work Order. Parts
+readiness **consumes** the shared WO Parts Readiness projection rather than re-deriving it.
+
+**Still accurate as written below.** The MISSING findings for structured field authority and
+picklists (F3), attachments and the total absence of any Storage layer (F4), offline design (F4),
+and multi-entity scan resolution (F2, now active) remain the current state.
 
 ---
 
@@ -38,6 +79,8 @@ Non-negotiables carried from the directive:
 
 ## 2. The finding that reframes everything
 
+> **HISTORICAL — resolved by F0.** Preserved as the evidence that produced the F0–F6 sequence. See §0.
+
 **The repository contains two parallel job models, and the surface named "Field Mode" is on
 the ungoverned one.**
 
@@ -65,6 +108,8 @@ completion gates, offline queueing and audit all attach to the job model; buildi
 ---
 
 ## 3. Requirement classification
+
+> **HISTORICAL — assessed at `cc0f039`.** F0 and F1 have since changed several rows. §0 records the current gate status; the classifications below are preserved as originally written.
 
 ### Workflow & job experience
 
