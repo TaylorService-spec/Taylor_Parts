@@ -114,7 +114,22 @@ ok("the CRM/Sales area is untouched by the Equipment addition (preserved by unio
   assert.equal(customersDomain.key, "customers");
   assert.equal(customersDomain.path, "customers");
   assert.equal(customersDomain.label, "CRM/Sales");
-  assert.deepEqual(customersDomain.subnav.map((i) => i.key), ["customers"]);
+  // Sales Cycle 2 adds the Opportunities workspace as a second subnav item under this same CRM/Sales area
+  // (rather than a second top-level "Sales" domain -- Issue #288's one-area rule, below).
+  assert.deepEqual(customersDomain.subnav.map((i) => i.key), ["customers", "opportunities"]);
+});
+
+ok("Sales Cycle 2: the Opportunities item is admin/dispatcher-only (no legacyKey), technician fail-closed", () => {
+  const opportunities = customersDomain.subnav.find((i) => i.key === "opportunities");
+  assert.ok(opportunities, "the Opportunity Operating Workspace item exists under CRM/Sales");
+  assert.equal(opportunities.label, "Opportunities");
+  assert.equal(opportunities.path, "opportunities");
+  // No legacyKey -> PLACEHOLDER_DEFAULT_ROLES (admin/dispatcher); same brand-new-screen posture as the
+  // customer-list item and Part Master. Read-first; no governed write path is wired here yet.
+  assert.equal(opportunities.legacyKey, undefined);
+  assert.equal(isNavItemVisible(opportunities, ROLES.ADMIN, allowed(ROLES.ADMIN)), true);
+  assert.equal(isNavItemVisible(opportunities, ROLES.DISPATCHER, allowed(ROLES.DISPATCHER)), true);
+  assert.equal(isNavItemVisible(opportunities, ROLES.TECHNICIAN, allowed(ROLES.TECHNICIAN)), false);
 });
 
 // ===== Issue #288: the stale "Sales / CRM" future placeholder is removed =====

@@ -1,0 +1,73 @@
+name: Sales Opportunity Workspace Tests
+
+# Sales Cycle 2 -- the read-first Opportunity Operating Workspace. Runs the pure-domain unit chain
+# (opportunityLifecycle: lifecycle vocabulary, stage->tone, honest attention derivation, pipeline
+# projection), the component render gate (vitest + jsdom: pipeline over the synthetic source, attention
+# sort, row->detail selection, inert create control), the nav-parity pins (crmSalesNav/equipmentRegister),
+# and lint. Pure/offline: no emulator, no Firebase, no deployment, no production access, no secrets. This
+# surface reads a SYNTHETIC in-memory source and writes nothing -- it activates, grants, and deploys nothing.
+
+on:
+  pull_request:
+    paths:
+      - "field-ops-app-vite/src/modules/sales/**"
+      - "field-ops-app-vite/src/domain/opportunityLifecycle.js"
+      - "field-ops-app-vite/src/access/opportunitySource.js"
+      - "field-ops-app-vite/src/hooks/useOpportunities.js"
+      - "field-ops-app-vite/src/data/opportunityScenarioFixtures.js"
+      - "field-ops-app-vite/src/navigation/navConfig.js"
+      - "field-ops-app-vite/test/opportunityLifecycle.test.mjs"
+      - "field-ops-app-vite/test/salesWorkspace.test.jsx"
+      - "field-ops-app-vite/test/crmSalesNav.test.mjs"
+      - "field-ops-app-vite/test/equipmentRegister.test.mjs"
+      - ".github/workflows/sales-opportunity-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "field-ops-app-vite/src/modules/sales/**"
+      - "field-ops-app-vite/src/domain/opportunityLifecycle.js"
+      - "field-ops-app-vite/src/access/opportunitySource.js"
+      - "field-ops-app-vite/src/hooks/useOpportunities.js"
+      - "field-ops-app-vite/src/data/opportunityScenarioFixtures.js"
+      - "field-ops-app-vite/test/opportunityLifecycle.test.mjs"
+      - "field-ops-app-vite/test/salesWorkspace.test.jsx"
+      - ".github/workflows/sales-opportunity-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sales-opportunity-tests:
+    name: Opportunity workspace (domain + component + lint)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: field-ops-app-vite/package-lock.json
+
+      - name: Install dependencies
+        run: npm install
+        working-directory: field-ops-app-vite
+
+      - name: Opportunity domain unit tests (node:test)
+        run: node test/opportunityLifecycle.test.mjs
+        working-directory: field-ops-app-vite
+
+      - name: Nav parity pins (crmSalesNav + equipmentRegister)
+        run: node test/crmSalesNav.test.mjs && node test/equipmentRegister.test.mjs
+        working-directory: field-ops-app-vite
+
+      - name: Opportunity workspace component tests (vitest + jsdom)
+        run: npx vitest run test/salesWorkspace.test.jsx
+        working-directory: field-ops-app-vite
+
+      - name: Lint the Sales slice (oxlint)
+        run: npx oxlint src/modules/sales src/domain/opportunityLifecycle.js src/access/opportunitySource.js src/hooks/useOpportunities.js src/data/opportunityScenarioFixtures.js
+        working-directory: field-ops-app-vite
