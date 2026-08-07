@@ -1,9 +1,9 @@
 // setWorkOrderPartsPlan — OFFLINE tests for the PURE core (validation + authoritative merge), imported from
-// the compiled lib. Proves the governed invariants without the emulator: PLAN != RESERVE != USE (the merge
-// writes only qtyPlanned/identity and never a reservation or usage), qtyUsed is preserved across a re-plan,
-// a used part cannot be un-planned, and each item carries BOTH partId (projection identity) and sku
-// (execution-capture key). The capability enforcement + transaction are the callable's concern (integration
-// / emulator), not this offline unit.
+// the compiled lib. Canonical identity (Owner-ratified): partId and sku are DISTINCT; sku is resolved from
+// Part Master's internalPartNumber and NEVER fabricated as partId. Proves: new rows require canonical
+// resolution (fail closed otherwise), no sku=partId path, legacy sku-only match only via canonical
+// internalPartNumber (with partId backfill), mismatch/ambiguity fail closed, qtyUsed preserved, used part
+// cannot be un-planned, PLAN != RESERVE != USE. The capability check + transaction are the callable layer.
 import assert from "node:assert/strict";
 import {
   validatePartsPlan,
@@ -15,72 +15,124 @@ let passed = 0;
 function check(name, fn) { fn(); passed += 1; console.log(`  ok - ${name}`); }
 console.log("setWorkOrderPartsPlan.test.mjs");
 
-check("validatePartsPlan: normalizes valid intent (partId identity, positive int qty)", () => {
-  const out = validatePartsPlan({ workOrderId: " WO-1 ", plan: [{ partId: " P-1 ", name: " Filter ", qtyPlanned: 2 }] });
+// A Part Master resolver over a fixture map: partId -> { found, sku }. Absent id => not found (fail closed).
+const resolver = (map) => (partId) => map[partId] ?? { found: false, sku: null };
+
+check("validatePartsPlan: normalizes intent (partId identity, positive int qty); no client sku accepted", () => {
+  const out = validatePartsPlan({ workOrderId: " WO-1 ", plan: [{ partId: " P-1 ", name: " Filter ", qtyPlanned: 2, sku: "IGNORED" }] });
   assert.equal(out.workOrderId, "WO-1");
-  assert.deepEqual(out.plan, [{ partId: "P-1", sku: undefined, name: "Filter", qtyPlanned: 2 }]);
-  // Empty plan is valid input (clear the plan).
-  assert.deepEqual(validatePartsPlan({ workOrderId: "WO-1", plan: [] }).plan, []);
+  assert.deepEqual(out.plan, [{ partId: "P-1", name: "Filter", qtyPlanned: 2 }]); // sku is NOT carried from the client
+  assert.deepEqual(validatePartsPlan({ workOrderId: "WO-1", plan: [] }).plan, []); // empty plan = clear
 });
 
 check("validatePartsPlan: honest failures throw PartsPlanError(INVALID)", () => {
-  const bad = [
-    {},
-    { workOrderId: "WO-1" },
-    { workOrderId: "WO-1", plan: "x" },
+  for (const bad of [
+    {}, { workOrderId: "WO-1" }, { workOrderId: "WO-1", plan: "x" },
     { workOrderId: "WO-1", plan: [{ qtyPlanned: 1 }] },
     { workOrderId: "WO-1", plan: [{ partId: "P", qtyPlanned: 0 }] },
     { workOrderId: "WO-1", plan: [{ partId: "P", qtyPlanned: 1.5 }] },
     { workOrderId: "WO-1", plan: [{ partId: "P", qtyPlanned: 1 }, { partId: "P", qtyPlanned: 2 }] },
-  ];
-  for (const b of bad) {
-    assert.throws(() => validatePartsPlan(b), (e) => e instanceof PartsPlanError && e.code === "INVALID");
+  ]) {
+    assert.throws(() => validatePartsPlan(bad), (e) => e instanceof PartsPlanError && e.code === "INVALID");
   }
 });
 
-check("applyPartsPlan: writes qtyPlanned + BOTH partId and sku (identity); new part sku falls back to partId", () => {
-  const next = applyPartsPlan([], [{ partId: "P-1", qtyPlanned: 2 }]);
+// (1)(3) new planned row REQUIRES canonical Part Master resolution; a missing Part fails closed.
+check("new row: missing canonical Part record -> FAIL CLOSED (PART_NOT_FOUND)", () => {
+  assert.throws(
+    () => applyPartsPlan([], [{ partId: "P-1", qtyPlanned: 2 }], resolver({})),
+    (e) => e instanceof PartsPlanError && e.code === "PART_NOT_FOUND"
+  );
+});
+
+// (4) missing/invalid internalPartNumber fails closed.
+check("new row: canonical Part with no valid internalPartNumber -> FAIL CLOSED (SKU_UNRESOLVED)", () => {
+  assert.throws(
+    () => applyPartsPlan([], [{ partId: "P-1", qtyPlanned: 1 }], resolver({ "P-1": { found: true, sku: null } })),
+    (e) => e instanceof PartsPlanError && e.code === "SKU_UNRESOLVED"
+  );
+  assert.throws(
+    () => applyPartsPlan([], [{ partId: "P-1", qtyPlanned: 1 }], resolver({ "P-1": { found: true, sku: "  " } })),
+    (e) => e instanceof PartsPlanError && e.code === "SKU_UNRESOLVED"
+  );
+});
+
+// (2)(5) new row writes partId + canonical internalPartNumber as sku; NEVER sku = partId.
+check("new row: writes partId + canonical internalPartNumber as sku (never sku = partId)", () => {
+  const next = applyPartsPlan([], [{ partId: "P-1", name: "Filter", qtyPlanned: 2 }], resolver({ "P-1": { found: true, sku: "IPN-9" } }));
   assert.equal(next.length, 1);
   assert.equal(next[0].partId, "P-1");
-  assert.equal(next[0].sku, "P-1"); // fallback when no sku + no resolver
+  assert.equal(next[0].sku, "IPN-9");
+  assert.notEqual(next[0].sku, next[0].partId); // canonical sku, never the partId
   assert.equal(next[0].qtyPlanned, 2);
-  // resolveSku (Part Master) supplies the canonical sku when available.
-  const resolved = applyPartsPlan([], [{ partId: "P-2", qtyPlanned: 1 }], (id) => (id === "P-2" ? "SKU-2" : undefined));
-  assert.equal(resolved[0].sku, "SKU-2");
+  assert.equal(next[0].qtyUsed, undefined); // planning never writes usage
 });
 
-check("applyPartsPlan: PLAN != USE -> qtyUsed on a kept part is PRESERVED across a re-plan", () => {
-  const current = [{ partId: "P-1", sku: "SKU-1", qtyPlanned: 2, qtyUsed: 1, name: "Filter" }];
-  const next = applyPartsPlan(current, [{ partId: "P-1", qtyPlanned: 5 }]);
-  assert.equal(next[0].qtyPlanned, 5);   // planned changed
-  assert.equal(next[0].qtyUsed, 1);      // usage untouched (never written by planning)
-  assert.equal(next[0].sku, "SKU-1");    // prior sku preserved
+// (6)(7)(10) legacy sku-only row matches ONLY through canonical internalPartNumber; backfills partId; keeps qtyUsed.
+check("legacy sku-only row: matches via canonical internalPartNumber, backfills partId, preserves qtyUsed", () => {
+  const legacy = [{ sku: "IPN-1", qtyPlanned: 1, qtyUsed: 2, name: "Filter" }]; // no partId (legacy)
+  const next = applyPartsPlan(legacy, [{ partId: "P-1", qtyPlanned: 4 }], resolver({ "P-1": { found: true, sku: "IPN-1" } }));
+  assert.equal(next.length, 1);
+  assert.equal(next[0].partId, "P-1"); // backfilled
+  assert.equal(next[0].sku, "IPN-1");
+  assert.equal(next[0].qtyPlanned, 4); // updated
+  assert.equal(next[0].qtyUsed, 2); // preserved -- PLAN != USE
 });
 
-check("applyPartsPlan: a part with recorded usage CANNOT be un-planned (failed-precondition invariant)", () => {
-  const current = [
-    { partId: "P-1", sku: "SKU-1", qtyPlanned: 1, qtyUsed: 0 },
-    { partId: "P-2", sku: "SKU-2", qtyPlanned: 2, qtyUsed: 3 }, // used
-  ];
-  // Dropping P-2 (used) must throw.
+check("legacy sku-only row whose sku != canonical internalPartNumber is NOT matched (a new row is created)", () => {
+  const legacy = [{ sku: "OTHER", qtyPlanned: 1, qtyUsed: 0 }]; // different canonical part; no usage -> droppable
+  const next = applyPartsPlan(legacy, [{ partId: "P-1", qtyPlanned: 3 }], resolver({ "P-1": { found: true, sku: "IPN-1" } }));
+  assert.deepEqual(next.map((i) => i.partId), ["P-1"]);
+  assert.equal(next[0].sku, "IPN-1");
+  assert.equal(next[0].qtyUsed, undefined); // did NOT merge the unrelated OTHER row
+});
+
+// (8) a stored sku that conflicts with the canonical internalPartNumber fails closed.
+check("existing partId row with a stored sku != canonical internalPartNumber -> FAIL CLOSED (SKU_CONFLICT)", () => {
+  const existing = [{ partId: "P-1", sku: "WRONG", qtyPlanned: 1 }];
   assert.throws(
-    () => applyPartsPlan(current, [{ partId: "P-1", qtyPlanned: 1 }]),
+    () => applyPartsPlan(existing, [{ partId: "P-1", qtyPlanned: 2 }], resolver({ "P-1": { found: true, sku: "IPN-1" } })),
+    (e) => e instanceof PartsPlanError && e.code === "SKU_CONFLICT"
+  );
+});
+
+// (9) ambiguous duplicate identity fails closed.
+check("ambiguous identity (a partId row AND a legacy row with the same canonical sku) -> FAIL CLOSED (IDENTITY_AMBIGUOUS)", () => {
+  const existing = [{ partId: "P-1", sku: "IPN-1", qtyPlanned: 1 }, { sku: "IPN-1", qtyPlanned: 1 }];
+  assert.throws(
+    () => applyPartsPlan(existing, [{ partId: "P-1", qtyPlanned: 2 }], resolver({ "P-1": { found: true, sku: "IPN-1" } })),
+    (e) => e instanceof PartsPlanError && e.code === "IDENTITY_AMBIGUOUS"
+  );
+  // Two rows sharing the same partId are also ambiguous.
+  assert.throws(
+    () => applyPartsPlan([{ partId: "P-1", sku: "IPN-1" }, { partId: "P-1", sku: "IPN-1" }], [{ partId: "P-1", qtyPlanned: 1 }], resolver({ "P-1": { found: true, sku: "IPN-1" } })),
+    (e) => e instanceof PartsPlanError && e.code === "IDENTITY_AMBIGUOUS"
+  );
+});
+
+// (11) a part with recorded usage cannot be un-planned.
+check("used part cannot be un-planned (USED_PART_REMOVAL); an unused part can be dropped", () => {
+  const existing = [
+    { partId: "P-1", sku: "IPN-1", qtyPlanned: 1, qtyUsed: 0 },
+    { partId: "P-2", sku: "IPN-2", qtyPlanned: 2, qtyUsed: 3 }, // used
+  ];
+  const res = resolver({ "P-1": { found: true, sku: "IPN-1" }, "P-2": { found: true, sku: "IPN-2" } });
+  assert.throws(
+    () => applyPartsPlan(existing, [{ partId: "P-1", qtyPlanned: 1 }], res), // drops used P-2
     (e) => e instanceof PartsPlanError && e.code === "USED_PART_REMOVAL"
   );
-  // Dropping only P-1 (no usage) is fine.
-  const next = applyPartsPlan(current, [{ partId: "P-2", qtyPlanned: 2 }]);
+  const next = applyPartsPlan(existing, [{ partId: "P-2", qtyPlanned: 2 }], res); // drops unused P-1
   assert.deepEqual(next.map((i) => i.partId), ["P-2"]);
 });
 
-check("applyPartsPlan: matches a legacy sku-only item by partId==sku (no fabricated duplicate)", () => {
-  const legacy = [{ sku: "P-1", qtyPlanned: 1, qtyUsed: 2 }]; // no partId (legacy)
-  // Re-planning partId "P-1" must UPDATE the legacy item, not add a second row, and must not trip the
-  // used-removal guard.
-  const next = applyPartsPlan(legacy, [{ partId: "P-1", qtyPlanned: 4 }]);
-  assert.equal(next.length, 1);
-  assert.equal(next[0].partId, "P-1");
-  assert.equal(next[0].qtyPlanned, 4);
-  assert.equal(next[0].qtyUsed, 2); // preserved
+// (12) PLAN != RESERVE != USE: the merge writes only planned/identity; never usage or a reservation field.
+check("PLAN != RESERVE != USE: only qtyPlanned/identity written; qtyUsed untouched; no reservation fabricated", () => {
+  const existing = [{ partId: "P-1", sku: "IPN-1", qtyPlanned: 2, qtyUsed: 1, notes: "keep" }];
+  const next = applyPartsPlan(existing, [{ partId: "P-1", qtyPlanned: 9 }], resolver({ "P-1": { found: true, sku: "IPN-1" } }));
+  assert.equal(next[0].qtyPlanned, 9);
+  assert.equal(next[0].qtyUsed, 1); // untouched
+  assert.equal(next[0].notes, "keep"); // unrelated fields preserved
+  assert.equal("reserved" in next[0], false); // nothing reservation-like fabricated
 });
 
 console.log(`\n${passed} passed, 0 failed`);

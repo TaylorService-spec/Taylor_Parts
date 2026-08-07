@@ -59,24 +59,37 @@ Given the WO's current `inventorySnapshot[]` and the validated `plan`:
 4. Write `inventorySnapshot` (whole array) + a planning `lastUpdated`; nothing else. **Never** call
    `triggerInventoryEffects` or any reserve/consume path.
 
-## 6. Identity on the stored `inventorySnapshot` item — RESOLVED by repository authority (applied)
+## 6. Identity on the stored `inventorySnapshot` item — canonical rule (applied)
 
-The repository already establishes the identity authority: the canonical **Part identity is `partId`** (ADR-008
-Part Master; the readiness projection and the assessment both key on `partId`), while the existing live
-`updateWorkOrderExecutionData` matches parts-used **by `sku`** and must keep working unchanged. Applying that
-established architecture — additively, without redefining any live command — gives exactly one non-breaking
-answer, which is implemented:
+`partId` and `sku`/`internalPartNumber` are **distinct governed identifiers** (ADR-008 Part Master). The
+command applies the canonical authority chain and **never** equates or fabricates them:
 
-**Applied (option i, additive/non-breaking):** each planned item carries **BOTH `partId`** (the canonical
-projection/plan identity) **and `sku`** (kept so `updateWorkOrderExecutionData`'s sku-matching is unaffected).
-`applyPartsPlan` resolves `sku` from an optional Part-Master resolver, falling back to a kept prior `sku`,
-then to `partId`. `partId` is an additive optional field on `InventorySnapshotItem` (legacy items keep only
-`sku`; the merge matches a legacy item by `partId == sku`). Nothing existing changes behavior.
+```
+partId → canonical Part Master (parts/{partId}) → internalPartNumber → inventorySnapshot.sku
+```
 
-**Recorded follow-on (NOT in scope here):** converging `updateWorkOrderExecutionData` to prefer `partId` is a
-separate change to a live command's matching — explicitly out of this Phase-2 scope and left for its own
-gate. This was NOT a genuine Owner decision (the repository authority already determines `partId` identity);
-it is applied per that authority.
+- **`partId`** is the canonical Part identity (the plan/projection key). **`sku`** is a compatibility/display
+  identifier that MUST equal the canonical Part's **`internalPartNumber`** — kept so the live
+  `updateWorkOrderExecutionData` (which matches by `sku`) is unaffected.
+- **Never** `sku = partId`; **never** infer `partId == sku`.
+
+**Fail-closed resolution (applied in `applyPartsPlan`, with reads done in the callable's transaction):**
+- **New row:** the canonical Part must exist **and** yield a valid `internalPartNumber`, which becomes `sku`.
+  Missing Part → `PART_NOT_FOUND` (fail closed); missing/invalid `internalPartNumber` → `SKU_UNRESOLVED`.
+- **Existing row:** match by canonical `partId`, **or** a legacy (partId-less) row **only** when
+  `existing.sku === canonical internalPartNumber`. On an unambiguous match: preserve the row (qtyUsed +
+  unrelated fields), backfill canonical `partId`, set `sku` to the canonical `internalPartNumber`, update
+  `qtyPlanned`. A prior `sku` is retained only because it was proven equal to the canonical sku (that is how
+  the legacy row matched) — never retained arbitrarily.
+- **Ambiguity → fail closed (`failed-precondition`):** more than one candidate row for a `partId`; a stored
+  `sku` that conflicts with the canonical `internalPartNumber` (`SKU_CONFLICT`); duplicate identities
+  (`IDENTITY_AMBIGUOUS`). Never silently choose, duplicate, or normalize by assuming `partId == sku`.
+
+`partId` is an additive optional field on `InventorySnapshotItem` (legacy items carry only `sku`).
+
+**Recorded follow-on (NOT in scope here):** converging `updateWorkOrderExecutionData` to match on `partId`
+is a separate change to a live command and is left for its own gate. Compatibility is satisfied by writing
+the canonical `internalPartNumber` into `sku` — **not** by equating `sku` with `partId`.
 
 ## 7. Boundaries
 

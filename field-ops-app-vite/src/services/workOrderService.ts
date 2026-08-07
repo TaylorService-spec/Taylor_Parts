@@ -155,9 +155,10 @@ export async function updateWorkOrderExecutionData(
 // pattern as the WO callables above; the server enforces the workOrder.parts.plan capability (fail-closed,
 // active:false until a separate grant) and the PLAN != RESERVE != USE invariants. Not yet consumed by any UI
 // (the planning experience is a later phase); the function is undeployed, so this fails closed today.
+// The client sends canonical partId only; sku is resolved server-side from Part Master's internalPartNumber
+// (never client-supplied, never fabricated as partId).
 interface PartsPlanLineInput {
   partId: string;
-  sku?: string;
   name?: string;
   qtyPlanned: number;
 }
