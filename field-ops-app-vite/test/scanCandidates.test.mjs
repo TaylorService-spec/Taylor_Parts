@@ -75,13 +75,30 @@ test("a part outside the caller's work is NOT_FOUND, and the copy says why hones
   const r = resolveScannedIdentity("PRT-9999", c);
   assert.equal(r.resolutionState, SCAN_RESOLUTION.NOT_FOUND);
   // The message must not claim the part does not exist -- the search was scoped.
-  const msg = notFoundReason(c.scope);
-  assert.match(msg, /assigned work/i);
+  const msg = notFoundReason(c.scope, r.tokenShape);
+  assert.match(msg, /your current jobs/i);
+  // The search was SCOPED -- it may never claim the thing does not exist.
   assert.doesNotMatch(msg, /does not exist|no such part/i);
 });
 
 test("catalog scope gets different, equally honest copy", () => {
-  assert.match(notFoundReason(CANDIDATE_SCOPE.CATALOG), /No governed record matches/i);
+  assert.match(notFoundReason(CANDIDATE_SCOPE.CATALOG, "PART"), /No governed record matches/i);
+});
+
+test("three different failures read three different ways", () => {
+  const scoped = CANDIDATE_SCOPE.ASSIGNED_WORK;
+  const gibberish = notFoundReason(scoped, "UNRECOGNIZED");
+  const notYours = notFoundReason(scoped, "PART");
+  const notYourWo = notFoundReason(scoped, "WORK_ORDER");
+  assert.notEqual(gibberish, notYours);
+  assert.notEqual(notYours, notYourWo);
+  // Gibberish must not imply a real object merely scoped away.
+  assert.match(gibberish, /doesn.t look like/i);
+  assert.doesNotMatch(gibberish, /your/i);
+  // And none of them asserts non-existence.
+  for (const m of [gibberish, notYours, notYourWo]) {
+    assert.doesNotMatch(m, /does not exist/i);
+  }
 });
 
 test("empty inputs are safe and yield an empty, scoped set", () => {

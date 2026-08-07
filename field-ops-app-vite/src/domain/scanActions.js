@@ -116,7 +116,15 @@ export function deriveScanActions(identity, context = {}) {
       return [
         action(SCAN_ACTIONS.RECORD_PART_USAGE, "Record use on this job", {
           enabled, reason,
-          payload: { partId, sku: planned?.sku ?? partId, workOrderId: activeWorkOrder.id },
+          // The payload carries what the CONFIRMATION needs to be meaningful:
+          // the human part label and the WO number, not internal ids.
+          payload: {
+            partId,
+            sku: planned?.sku ?? partId,
+            workOrderId: activeWorkOrder.id,
+            woNumber: activeWorkOrder.woNumber ?? activeWorkOrder.id,
+            label: planned?.name || partId,
+          },
         }),
         action(SCAN_ACTIONS.VIEW_CONTEXT, "View part details", { enabled: true, payload: { partId } }),
       ];

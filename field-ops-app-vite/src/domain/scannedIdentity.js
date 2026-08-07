@@ -49,6 +49,29 @@ export const SCAN_RESOLUTION = Object.freeze({
 });
 
 const WO_NUMBER = /^WO-\d{4}-[A-Z0-9]+$/i;
+const PART_CODE = /^[A-Z]{2,5}-?\d{2,6}[A-Z0-9-]*$/i;
+
+/**
+ * SHAPE of an unmatched token. Presentation only -- it lets the experience
+ * distinguish three genuinely different failures that were previously collapsed
+ * into one sentence:
+ *   WORK_ORDER / PART  it is shaped like a real code, but is not in the
+ *                      candidate set the caller may read
+ *   UNRECOGNIZED       it is not shaped like any code we issue
+ * This asserts NOTHING about existence -- claiming a thing does not exist is
+ * precisely what a scoped search may never do.
+ */
+export const TOKEN_SHAPE = Object.freeze({
+  WORK_ORDER: "WORK_ORDER",
+  PART: "PART",
+  UNRECOGNIZED: "UNRECOGNIZED",
+});
+
+function tokenShape(token) {
+  if (WO_NUMBER.test(token)) return TOKEN_SHAPE.WORK_ORDER;
+  if (PART_CODE.test(token)) return TOKEN_SHAPE.PART;
+  return TOKEN_SHAPE.UNRECOGNIZED;
+}
 
 function isNonEmptyString(v) {
   return typeof v === "string" && v.trim() !== "";
@@ -188,7 +211,7 @@ export function resolveScannedIdentity(raw, candidates = {}) {
     // hint for the error message only — it confers nothing.
     return identity(SCAN_RESOLUTION.NOT_FOUND, {
       token,
-      looksLike: WO_NUMBER.test(token) ? "WORK_ORDER" : null,
+      tokenShape: tokenShape(token),
     });
   }
 

@@ -87,11 +87,26 @@ export function buildScanCandidates({ workOrders = [], catalogParts = null } = {
 }
 
 /**
- * The honest "we didn't find it" message for a given scope. Never claims the
- * entity does not exist when the search was bounded.
+ * The honest "we didn't find it" message.
+ *
+ * Persona review found ONE sentence covering three different situations -- a
+ * part that does not exist, a real part outside the caller's work, and outright
+ * gibberish -- which was misleading in both directions: it implied nonsense was
+ * a real object merely scoped away, and it sent the reader looking for someone
+ * to grant access to something that was never real.
+ *
+ * These now read differently. None of them claims the entity does not exist
+ * when the search was bounded -- that remains the thing a scoped search may
+ * never assert.
  */
-export function notFoundReason(scope) {
-  return scope === CANDIDATE_SCOPE.CATALOG
-    ? "No governed record matches that code."
-    : "That code isn't part of your assigned work.";
+export function notFoundReason(scope, shape = null) {
+  if (shape === "UNRECOGNIZED") {
+    return "That doesn't look like a part or work order code. Part codes look like PRT-1004; work orders look like WO-2026-SBX004.";
+  }
+  if (scope === CANDIDATE_SCOPE.CATALOG) {
+    return "No governed record matches that code.";
+  }
+  return shape === "WORK_ORDER"
+    ? "That work order isn't one of yours."
+    : "That code isn't on any of your current jobs.";
 }

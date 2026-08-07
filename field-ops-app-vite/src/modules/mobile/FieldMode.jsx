@@ -219,8 +219,12 @@ function JobState({ state }) {
     <section className="fo-job__state" aria-label="Job state">
       <ol className="fo-field-progress">
         {FIELD_ACTIONS.map((step, index) => {
-          const done = index < state.step;
-          const isCurrent = index === state.step;
+          // fieldProgressStep returns how many states are BEHIND you, so the
+          // state you are IN is index === step - 1. Marking index === step
+          // current highlighted the NEXT state as though you were already in
+          // it.
+          const done = index < state.step - 1;
+          const isCurrent = index === state.step - 1;
           return (
             <li
               key={step.action}

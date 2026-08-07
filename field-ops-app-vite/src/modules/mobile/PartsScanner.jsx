@@ -6,6 +6,7 @@ import { activeFieldWorkOrders } from "../../domain/fieldWorkOrder";
 import { resolveScannedIdentity, SCAN_RESOLUTION } from "../../domain/scannedIdentity";
 import { buildScanCandidates, notFoundReason } from "../../domain/scanCandidates";
 import { deriveScanActions, SCAN_ACTIONS } from "../../domain/scanActions";
+import { snapshotPartName } from "../../domain/workOrderInventorySnapshot";
 
 /**
  * F2 — the field scanner, rebuilt on the entity resolution boundary.
@@ -50,7 +51,8 @@ export default function PartsScanner({ technicianId }) {
   const [identity, setIdentity] = useState(null);
   const [notice, setNotice] = useState(null);
   const [cameraOpen, setCameraOpen] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
+  const [pendingAction, setPendingAction] = useState(null);
+  const [qty, setQty] = useState(1);
 
   const videoRef = useRef(null);
   const streamRef = useRef(null);
@@ -69,6 +71,28 @@ export default function PartsScanner({ technicianId }) {
     () => deriveScanActions(identity, { role, technicianId, workOrders, activeWorkOrder }),
     [identity, role, technicianId, workOrders, activeWorkOrder],
   );
+
+  // DISPLAY ENRICHMENT ONLY -- never identity, never authority. A result card
+  // that echoes the code you just typed cannot confirm you picked up the right
+  // part, and "this job" means nothing on a card far below the job it refers
+  // to. Both names come from records already read.
+  const shown = useMemo(() => {
+    if (!identity || identity.resolutionState !== SCAN_RESOLUTION.RESOLVED) return identity;
+    let displayName = null;
+    let jobLabel = null;
+    if (identity.entityType === "PART") {
+      const planned = (activeWorkOrder?.inventorySnapshot ?? []).find(
+        (row) => row.partId === identity.entityId || row.sku === identity.entityId,
+      );
+      if (planned) displayName = snapshotPartName(planned) || null;
+      if (activeWorkOrder) jobLabel = activeWorkOrder.woNumber ?? activeWorkOrder.id;
+    } else if (identity.entityType === "WORK_ORDER") {
+      const wo = workOrders.find((w) => w.id === identity.entityId || w.woNumber === identity.entityId);
+      // Never show a raw Firestore document id to a technician.
+      if (wo) displayName = wo.woNumber ?? wo.id;
+    }
+    return { ...identity, displayName, jobLabel };
+  }, [identity, activeWorkOrder, workOrders]);
 
   const closeCamera = useCallback(() => {
     cancelAnimationFrame(frameRef.current);
@@ -133,28 +157,31 @@ export default function PartsScanner({ technicianId }) {
   }
 
   async function invoke(action) {
-    if (!action.enabled || submitting) return;
+    if (!action.enabled || pendingAction) return;
     if (action.id !== SCAN_ACTIONS.RECORD_PART_USAGE) {
       // VIEW_CONTEXT and lifecycle actions belong to their owning surfaces; a
       // scan is an entry point, not a second Work Order screen.
       setNotice("Open this from your job to continue.");
       return;
     }
-    setSubmitting(true);
+    // Pending state is scoped to the INVOKED action -- it previously applied to
+    // the whole group, so every button read "Recording...".
+    setPendingAction(action.id);
     setNotice(null);
     try {
       await updateWorkOrderExecutionData(action.payload.workOrderId, {
-        qtyUsedUpdates: [{ sku: action.payload.sku, delta: 1 }],
+        qtyUsedUpdates: [{ sku: action.payload.sku, delta: qty }],
       });
-      setNotice(`Recorded 1 × ${action.payload.partId} on this job.`);
+      setNotice(`Recorded ${qty} × ${action.payload.label} on ${action.payload.woNumber}.`);
       setIdentity(null);
       setQuery("");
+      setQty(1);
     } catch (err) {
       // The server is the authority and may still refuse. Say so plainly --
       // never silently, and never as "not found".
       setNotice(err?.message || "That couldn’t be recorded. Nothing was changed.");
     } finally {
-      setSubmitting(false);
+      setPendingAction(null);
     }
   }
 
@@ -191,12 +218,14 @@ export default function PartsScanner({ technicianId }) {
 
       <ScanResult
         phase={phase}
-        identity={identity}
+        identity={shown}
         actions={actions}
         scope={candidates.scope}
         loading={workOrdersLoading}
         denied={!!workOrdersError}
-        submitting={submitting}
+        pendingAction={pendingAction}
+        qty={qty}
+        onQty={setQty}
         onInvoke={invoke}
       />
     </div>
@@ -208,7 +237,7 @@ export default function PartsScanner({ technicianId }) {
  * NOT_FOUND, AMBIGUOUS and RESOLVED are never collapsed into one another --
  * particularly not denial into absence.
  */
-function ScanResult({ phase, identity, actions, scope, loading, denied, submitting, onInvoke }) {
+function ScanResult({ phase, identity, actions, scope, loading, denied, pendingAction, qty, onQty, onInvoke }) {
   if (loading) return <p className="fo-muted">Loading your work…</p>;
 
   // A read denial is NOT an empty scanner. Say which it is.
@@ -231,7 +260,7 @@ function ScanResult({ phase, identity, actions, scope, loading, denied, submitti
     return (
       <p className="fo-scan__state" role="status">
         {/* Scoped search -- never claims the thing does not exist. */}
-        {notFoundReason(scope)}
+        {notFoundReason(scope, identity.tokenShape)}
       </p>
     );
   }
@@ -252,7 +281,15 @@ function ScanResult({ phase, identity, actions, scope, loading, denied, submitti
   return (
     <section className="fo-scan__result" aria-label="Scan result">
       <p className="fo-scan__kind">{identity.entityType.replace("_", " ").toLowerCase()}</p>
-      <h3 className="fo-scan__id">{identity.entityId}</h3>
+      {/* The NAME, not the code I just typed echoed back. A result card that
+          repeats your own input cannot confirm you picked the right part. */}
+      <h3 className="fo-scan__id">{identity.displayName ?? identity.entityId}</h3>
+      {identity.displayName && identity.displayName !== identity.entityId && (
+        <p className="fo-scan__code">{identity.entityId}</p>
+      )}
+      {/* Name the job. "this job" is meaningless on a card 1400px below the
+          job it refers to, with other jobs scrolling in between. */}
+      {identity.jobLabel && <p className="fo-scan__job">for {identity.jobLabel}</p>}
 
       {actions.length === 0 ? (
         <p className="fo-muted">Nothing to do with this here.</p>
@@ -260,13 +297,20 @@ function ScanResult({ phase, identity, actions, scope, loading, denied, submitti
         <ul className="fo-scan__actions">
           {actions.map((a) => (
             <li key={a.id}>
+              {a.id === SCAN_ACTIONS.RECORD_PART_USAGE && a.enabled && (
+                <div className="fo-scan__qty">
+                  <button type="button" onClick={() => onQty(Math.max(1, qty - 1))} aria-label="Fewer">−</button>
+                  <span aria-live="polite">{qty}</span>
+                  <button type="button" onClick={() => onQty(qty + 1)} aria-label="More">+</button>
+                </div>
+              )}
               <button
                 type="button"
                 className="fo-btn-field"
-                disabled={!a.enabled || submitting}
+                disabled={!a.enabled || !!pendingAction}
                 onClick={() => onInvoke(a)}
               >
-                {submitting && a.enabled ? "Recording…" : a.label}
+                {pendingAction === a.id ? "Recording…" : a.label}
               </button>
               {/* Disabled actions explain themselves rather than vanishing. */}
               {!a.enabled && a.reason && <p className="fo-scan__reason">{a.reason}</p>}

@@ -1602,6 +1602,9 @@ button:hover {
 .fo-upnext__complaint { font-size: 13.5px; color: var(--color-text-secondary); }
 
 .fo-field__tool-toggle {
+  /* 44px minimum: this is the gate to the whole scanner feature and measured
+     41px. */
+  min-height: 44px;
   background: transparent; border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-sm); padding: 10px 14px;
   font-size: 14px; font-family: inherit; color: var(--color-text-secondary);
@@ -1742,6 +1745,18 @@ button:hover {
 /* The reason a disabled action is disabled sits with the action, not in a
    toast that disappears before it is read. */
 .fo-scan__reason { margin: 6px 0 0; font-size: 13px; color: var(--color-text-muted); }
+.fo-scan__code { margin: 0; font-size: 13px; color: var(--color-text-muted); }
+.fo-scan__job { margin: 0; font-size: 13.5px; color: var(--color-text-secondary); }
+/* Quantity: horizontal, with the value between the controls, so the two
+   opposite actions are not stacked on one vertical axis. */
+.fo-scan__qty { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.fo-scan__qty button {
+  width: 52px; height: 52px; font-size: 22px; line-height: 1;
+  background: var(--color-surface-sunken); color: var(--color-brand-primary);
+  border: 1px solid var(--color-border-strong); border-radius: var(--radius-sm);
+  font-family: inherit; cursor: pointer;
+}
+.fo-scan__qty span { font-size: 20px; font-weight: 600; min-width: 2ch; text-align: center; }
 
 .fo-scan__camera-modal {
   position: fixed; inset: 0; z-index: 100;

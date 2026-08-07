@@ -91,7 +91,19 @@ test("a well-formed Work Order number that matches nothing is NOT_FOUND, never f
   assert.equal(r.resolutionState, SCAN_RESOLUTION.NOT_FOUND);
   assert.equal(r.entityType, null);
   assert.equal(r.entityId, null);
-  assert.equal(r.looksLike, "WORK_ORDER"); // a message hint only
+  assert.equal(r.tokenShape, "WORK_ORDER"); // a message hint only -- asserts nothing about existence
+});
+
+test("token SHAPE distinguishes a real-looking code from gibberish, without claiming existence", () => {
+  assert.equal(resolveScannedIdentity("WO-2026-NOPE", CANDIDATES).tokenShape, "WORK_ORDER");
+  assert.equal(resolveScannedIdentity("PRT-9999", CANDIDATES).tokenShape, "PART");
+  assert.equal(resolveScannedIdentity("asdfgh", CANDIDATES).tokenShape, "UNRECOGNIZED");
+  // Shape is a presentation hint only -- it never becomes an identity.
+  for (const t of ["WO-2026-NOPE", "PRT-9999", "asdfgh"]) {
+    const r = resolveScannedIdentity(t, CANDIDATES);
+    assert.equal(r.entityType, null);
+    assert.equal(r.entityId, null);
+  }
 });
 
 test("a location without a governed type is not a canonical location", () => {

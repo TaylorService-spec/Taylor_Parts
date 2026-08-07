@@ -52,7 +52,13 @@ test("as the assigned technician with a planned part, usage is permitted", () =>
   const rec = deriveScanActions(partScan(), FULL).find((a) => a.id === SCAN_ACTIONS.RECORD_PART_USAGE);
   assert.equal(rec.enabled, true);
   assert.equal(rec.reason, null);
-  assert.deepEqual(rec.payload, { partId: "PRT-1001", sku: "PRT-1001", workOrderId: "wo-1" });
+  // The payload carries what a MEANINGFUL confirmation needs -- the human
+  // label and the WO number -- not just internal ids.
+  assert.equal(rec.payload.partId, "PRT-1001");
+  assert.equal(rec.payload.sku, "PRT-1001");
+  assert.equal(rec.payload.workOrderId, "wo-1");
+  assert.equal(rec.payload.woNumber, "WO-2026-000001");
+  assert.ok(rec.payload.label, "the action must carry a human label for its confirmation");
 });
 
 // -------------------------------------------------- ownership and planning
