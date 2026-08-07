@@ -11,7 +11,11 @@ DEFINED → ELIGIBLE → ACTIVE → REGRESSION.
 
 ## Register
 
-| agentId | family | maturity | default tier | Business/domain coverage | Scenario ref | Remediation authority (lane) | Known gaps |
+> **Model policy:** Taylor runs **OPUS** (Product/Design + UX primary) and **SONNET** (every delegated agent
+> below) — see [`model-tier-config.md`](./model-tier-config.md). The "default tier" column is the framework's
+> *logical* tier (portability only); the **runtime model for every agent here is SONNET**.
+
+| agentId | family | maturity | logical tier | Business/domain coverage | Scenario ref | Remediation authority (lane) | Known gaps |
 |---------|--------|----------|--------------|--------------------------|--------------|------------------------------|------------|
 | `P-DISPATCH` | PERSONA | ACTIVE | economy/standard | Service dispatch, scheduling, WO oversight | persona-shell R1–R2 §1 | EXPERIENCE / BUSINESS PROCESS | only shell reviewed; deep dispatch workflows not yet missioned |
 | `P-TECH` | PERSONA | ACTIVE | economy/standard | Field execution, current job, scanner | persona-shell R1–R2; R2 FUNCTIONAL FAIL | EXPERIENCE / BUSINESS PROCESS | F2 field-mode scenarios thin (Pilot A) |
@@ -25,7 +29,8 @@ DEFINED → ELIGIBLE → ACTIVE → REGRESSION.
 | `DOC-WRITE` | DOCUMENTATION | ACTIVE | economy/standard | End-user guides (`docs/user-guide/`) | per-capability | DOCUMENTATION | must be paired with `DOC-VERIFY` (not yet distinct) |
 | `REL-RULES` | RELEASE/EVIDENCE | ACTIVE | economy | Rules deploy parity/live match | per-Rules-change | RELEASE | — |
 | `GOV-DRIFT` | GOVERNANCE | DEFINED | standard | Architecture/authority drift | inline | ARCHITECTURE / AUTHORITY | not yet a distinct activated agent (Pilot A/B) |
-| `SEC-ACCESS` | SECURITY | DEFINED | standard | Access/data-exposure | inline | AUTHORITY/SECURITY | activate on authority/Rules changes |
+| `GOV-SEC` | SECURITY | DEFINED | standard | Access/data-exposure, authz, secret handling | inline | AUTHORITY/SECURITY | activate on authority/access changes |
+| `GOV-RULES` | GOVERNANCE | DEFINED | standard | Firestore Rules governance + regression | rules-regression suites | AUTHORITY | distinct from GOV-DRIFT (arch) + GOV-SEC (exposure); corroborates, not duplicates |
 | `DATA-ID` | DATA | DEFINED | economy/standard | Canonical identity (`partId`≠`sku`), convergence | inline | DATA | activate on domain/identity changes |
 | `J-SERVICE-INV` | JOURNEY | DEFINED | standard | Service↔Inventory handoff | persona-review Finding A | BUSINESS PROCESS | needs mature sandbox fixtures (Pilot C) |
 | `A11Y` | ACCESSIBILITY | DEFINED | economy | Interaction/accessibility | inline | ACCESSIBILITY | shell a11y strong (R2); product surfaces unmeasured |

@@ -1708,3 +1708,8 @@ button:hover {
 .fo-sales-detail__lines { margin: 0; padding-left: 16px; font-size: 14px; }
 .fo-sales-detail__line-kind { color: var(--color-text-muted); font-size: 12px; }
 .fo-sales-detail__attention { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+
+/* Opportunity lifecycle actions (Cycle 3b) — write-readiness seam surfaces the ratified actions as honest,
+   disabled affordances until a governed grant + deploy enable them. */
+.fo-sales-detail__lifecycle { display: grid; gap: 6px; }
+.fo-sales-lifecycle-note { margin: 0; font-size: 12px; }

@@ -39,4 +39,17 @@ describe("SalesWorkspace (read-first pipeline)", () => {
     // the detail aside now shows this opportunity's need
     expect(screen.getByText(/Cafeteria refresh/i)).toBeTruthy();
   });
+
+  it("surfaces the ratified lifecycle actions as DISABLED, honest affordances (write-readiness seam)", () => {
+    render(<SalesWorkspace />);
+    // Select an IDENTIFIED opportunity (Metro School District) — it offers a forward Advance + Mark Lost.
+    const table = screen.getByRole("table");
+    fireEvent.click(within(table).getByText("Metro School District").closest("tr"));
+    const advance = screen.getByRole("button", { name: /advance to qualifying/i });
+    expect(advance.disabled).toBe(true);
+    const markLost = screen.getByRole("button", { name: /mark lost/i });
+    expect(markLost.disabled).toBe(true);
+    // the honest reason is shown (governed write built but inactive), not a silent dead button
+    expect(screen.getAllByText(/not enabled yet/i).length).toBeGreaterThan(0);
+  });
 });

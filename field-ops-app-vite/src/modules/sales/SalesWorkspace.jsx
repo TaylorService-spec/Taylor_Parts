@@ -4,7 +4,8 @@ import ContextBand from "../../shared/ui/ContextBand.jsx";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
 import ActionRail from "../../shared/ui/ActionRail.jsx";
 import { useOpportunities } from "../../hooks/useOpportunities.js";
-import { buildOpportunityPipeline, channelLabel } from "../../domain/opportunityLifecycle.js";
+import { buildOpportunityPipeline, channelLabel, stageLabel, allowedActions } from "../../domain/opportunityLifecycle.js";
+import { opportunityWriteReadiness } from "../../access/opportunityWriteReadiness.js";
 
 // Sales — Opportunity Operating Workspace (Cycle 2, READ-FIRST). The commercial pipeline is the entry point
 // to Sales (ratified: Opportunity Management, NOT Account→Create Work Order). This surface reads SYNTHETIC
@@ -38,7 +39,38 @@ function LineSummary({ lines }) {
 
 // Read-only detail for the selected opportunity (the supporting aside). Facts as a ContextBand, then the
 // customer need, the solution lines, any attention reasons, and the next action — no editing affordances.
-function OpportunityDetail({ row }) {
+// The ratified lifecycle actions for the selected opportunity, rendered through the WRITE-READINESS seam
+// (access/opportunityWriteReadiness). The actions the governed command WOULD accept come from the pure
+// domain graph (allowedActions); today the seam reports writes disabled (capability ungranted + command not
+// deployed), so every action renders DISABLED with an honest reason — the same fail-closed, honest-affordance
+// posture as the inert "New opportunity" button. When a later cycle grants + deploys, the seam flips and the
+// SAME buttons become live (each would call the governed transitionOpportunity callable). Nothing here writes.
+function LifecycleActions({ row, readiness }) {
+  const actions = allowedActions(row);
+  if (!actions.advanceTo && actions.outcomes.length === 0) {
+    return <p className="fo-muted">Closed — no further lifecycle actions.</p>;
+  }
+  const disabled = !readiness.enabled;
+  const title = readiness.enabled ? undefined : readiness.reason;
+  const advance = actions.advanceTo ? (
+    <button type="button" className="fo-btn-primary" disabled={disabled} title={title}>
+      Advance to {stageLabel(actions.advanceTo)}
+    </button>
+  ) : null;
+  const outcomeBtns = actions.outcomes.map((o) => (
+    <button key={o} type="button" className="fo-btn-ghost" disabled={disabled} title={title}>
+      Mark {o === "WON" ? "Won" : "Lost"}
+    </button>
+  ));
+  return (
+    <div className="fo-sales-detail__lifecycle">
+      <ActionRail primary={advance} secondary={outcomeBtns.length ? <>{outcomeBtns}</> : null} />
+      {disabled && <p className="fo-sales-lifecycle-note fo-muted">{readiness.reason}</p>}
+    </div>
+  );
+}
+
+function OpportunityDetail({ row, readiness }) {
   if (!row) return <p className="fo-muted">Select an opportunity to see its detail.</p>;
   const facts = [
     { key: "customer", label: "Customer", value: row.customerName },
@@ -75,6 +107,10 @@ function OpportunityDetail({ row }) {
         <h4>Next action</h4>
         <p>{row.nextAction ? row.nextAction : <span className="fo-muted">None recorded</span>}</p>
       </section>
+      <section className="fo-sales-detail__block">
+        <h4>Lifecycle</h4>
+        <LifecycleActions row={row} readiness={readiness} />
+      </section>
     </div>
   );
 }
@@ -107,6 +143,9 @@ function PipelineRow({ row, selected, onSelect }) {
 export default function SalesWorkspace() {
   const { opportunities, accountNameById, status } = useOpportunities();
   const [selectedId, setSelectedId] = useState(null);
+  // Write-readiness through the seam. Fail-closed today (governed write built but inert); the lifecycle
+  // actions render disabled/honest. When a later cycle grants + deploys, this flips with no UI change here.
+  const writeReadiness = opportunityWriteReadiness();
 
   // Fixed "now" for the render pass so attention derivation is stable within a paint; sourced once from the
   // clock rather than per-row (deterministic across the whole projection).
@@ -127,10 +166,13 @@ export default function SalesWorkspace() {
     { key: "lost", label: "Lost", value: pipeline.counts.lost },
   ];
 
+  // The inert "New opportunity" reason is exposed BOTH as an accessible label (keyboard/AT) and as visible
+  // on-page text (below), not tooltip-only — consistent with the disabled lifecycle actions in the detail.
+  const createDisabledReason = "Creating opportunities is not enabled yet — the governed write path arrives in a later cycle.";
   const actions = (
     <ActionRail
       primary={
-        <button type="button" className="fo-btn-primary" disabled title="Creating opportunities arrives in a later cycle (governed write path).">
+        <button type="button" className="fo-btn-primary" disabled aria-label={`New opportunity — ${createDisabledReason}`} title={createDisabledReason}>
           New opportunity
         </button>
       }
@@ -154,14 +196,19 @@ export default function SalesWorkspace() {
       actions={actions}
       context={<ContextBand items={contextItems} />}
       attention={attention}
-      supporting={<OpportunityDetail row={selectedRow} />}
+      supporting={<OpportunityDetail row={selectedRow} readiness={writeReadiness} />}
     >
       {isSynthetic && (
         <p className="fo-sales-banner fo-muted">
           Showing synthetic sample opportunities. The live sales pipeline connects in a later cycle.
+          {" "}{createDisabledReason}
         </p>
       )}
-      {pipeline.rows.length === 0 ? (
+      {status !== "ready" ? (
+        // Distinct from a genuinely-empty pipeline: the source isn't connected/available (an honest
+        // "not connected" state, not "you have zero opportunities").
+        <p className="fo-muted">The opportunity pipeline source is not connected yet.</p>
+      ) : pipeline.rows.length === 0 ? (
         <p className="fo-muted">No open opportunities.</p>
       ) : (
         <table className="fo-sales-pipeline">

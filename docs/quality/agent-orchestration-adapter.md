@@ -18,9 +18,17 @@ to this repo, the pilot plan, and the overlap review. It never redefines the fra
 
 ---
 
+> **Model policy (Owner-ratified) — see [`model-tier-config.md`](./model-tier-config.md).** Taylor runs a
+> **two-model policy**: **OPUS** for the primary Product/Design and UX sessions, **SONNET** for **every**
+> delegated specialized agent. Taylor does **not** dynamically route among ECONOMY/STANDARD/ADVANCED at
+> runtime — those remain the framework's *logical, portable* tiers only. Any "default tier" wording in the
+> tables below is the framework's logical mapping; **the Taylor runtime model for all delegated agents is
+> SONNET**, and escalation means a SONNET agent returns `ESCALATION REQUIRED` to the parent OPUS session.
+
 ## A. Existing agent inventory (what already exists)
 
-`agentId` is provider/model-independent (framework §4); `modelTier` is separate metadata (framework §7a).
+`agentId` is provider/model-independent (framework §4); the Taylor runtime model is per
+[`model-tier-config.md`](./model-tier-config.md) (agents = SONNET; Product/Design + UX-primary = OPUS).
 
 | agentId | displayName | family | default tier | Where it lives | Status |
 |---------|-------------|--------|--------------|----------------|--------|
@@ -36,7 +44,7 @@ to this repo, the pilot plan, and the overlap review. It never redefines the fra
 | `REL-RULES` | Rules deploy verifier | RELEASE / EVIDENCE | economy | `.claude/skills/` + `skills/verify-rules-deploy` | ACTIVE |
 | `U-EXPLORE` / `U-PLAN` | Explore / Plan / general-purpose | utility (cross-family) | economy/standard | harness | ACTIVE |
 | `GOV-DRIFT` | Governance drift reviewer | GOVERNANCE | standard (→advanced on authority conflict) | inline today | DEFINED (gap) |
-| `SEC-ACCESS` | Security reviewer | SECURITY | standard (→advanced on authz architecture) | inline today | DEFINED (gap) |
+| `GOV-SEC` | Security reviewer | SECURITY | standard (→advanced on authz architecture) | inline today | DEFINED (gap) |
 | `DATA-ID` | Data integrity (`partId`≠`sku`, convergence) | DATA | economy (deterministic) / standard (ambiguous) | inline today | DEFINED (gap) |
 | `J-*` | Cross-persona Journey (e.g. `J-SERVICE-INV`) | JOURNEY | standard (→advanced on multi-domain synthesis) | inline today | DEFINED (gap) |
 | `A11Y` | Accessibility reviewer | ACCESSIBILITY | economy | inline today | DEFINED (gap) |
@@ -95,8 +103,8 @@ Framework §8 defaults, bound to this repo's change surfaces. Do **not** run eve
 
 Per framework §13 (refine on evidence, not speculation). Prefer **real** product work over invented pilots.
 
-Every pilot must exercise the tier spread (framework §7a): at least one **ECONOMY** regression/verification
-agent, one **STANDARD** persona/reviewer, and **Product/Design at ADVANCED**.
+Model policy per [`model-tier-config.md`](./model-tier-config.md): **Product/Design = OPUS**; **every
+delegated agent = SONNET**. Escalation is `ESCALATION REQUIRED` → parent OPUS (no self-promotion).
 
 - **Pilot A — F2 / field scanner.** `GOV-DRIFT` (standard) + `P-TECH` (economy for the established regression
   mission; standard only for new discovery) + `A11Y`/`RESP-QA` (economy) + Product/Design (advanced) for any
@@ -140,44 +148,47 @@ No working agent is retired; overlaps are resolved by lane-based finding dedup, 
 The **presentation** of the framework §4 run ledger — how the primary orchestrator reports live agent state to
 the Owner. It is a **session-local view** (rendered on demand; not a committed artifact — only durable cycle
 summaries/findings are persisted). Every row uses a provider-independent `agentId` with a run number
-(`P-TECH-042`), a `modelTier` **separate** from `budgetClass`, and findings carrying **lane + remediation
-owner + corroboration** (deduped per framework §6). Advanced tier is Product/Design + escalations only.
+(`P-TECH-042`), the **actual model** (OPUS for the primary session, SONNET for delegated agents) shown
+**separately** from `budgetClass`, and findings carrying **lane + remediation owner + corroboration**
+(deduped per framework §6).
 
-Canonical shape (illustrative values):
+Canonical shape (illustrative values — model column is OPUS/SONNET per `model-tier-config.md`):
 
 ```
 AGENT CONTROL BOARD
 CYCLE  <name>            BUDGET MODE  NORMAL
 
+PRIMARY
+  PRODUCT/DESIGN   Model: OPUS   Cycle: <name>
+
 ACTIVE AGENTS
-  P-TECH-042   Service Technician Persona   Model: Economy   Budget: SMALL
+  P-TECH-042    Service Technician Persona   Model: SONNET  Budget: SMALL
     Mission: <one line>   Progress: 3/5 scenarios   Build: <pinned SHA>
     Last useful result: <…>   Status: RUNNING   Fix owner: F2
-  GOV-AUTH-018 Governance/Authority Drift   Model: Standard  Budget: SMALL
+  GOV-DRIFT-001 Governance/Authority Drift   Model: SONNET  Budget: SMALL
     Mission: <…>   Progress: COMPLETE   Findings: 1   Status: PASS
-  UX-COMPOSE-011 UX Composition             Model: Standard  Budget: SMALL
+  UX-COMPOSE-001 UX Composition              Model: SONNET  Budget: SMALL
     Mission: <…>   Progress: 2/3   Status: RUNNING
 
-QUEUED     DOC-WRITER-004  Documentation   Trigger: after scanner persona PASS
+QUEUED     UX-A11Y  Model: SONNET  Trigger: material interactive UI change
 BLOCKED    none
 
 UNIQUE FINDINGS  (one root defect = one finding + corroboration)
-  F-081  Scanner denied-state wording   Sev: Medium
-         Found by P-TECH, corroborated by UX-COMPOSE   Lane: EXPERIENCE   Owner: F2   Status: FIXING
-  F-082  Canonical part alias mismatch  Sev: High
-         Found by GOV-AUTH   Lane: DATA/AUTHORITY   Owner: F2   Status: FIXED
+  F-081  <finding>   Sev: Medium
+         Found by P-TECH, corroborated by UX-COMPOSE   Lane: EXPERIENCE   Owner: <owner>   Status: FIXING
 
-BUDGET   Economy 1 active · Standard 1 active · Advanced = Product/Design only
-         Allocated ~62% · Reserve ~20% · Retries 0 · Duplicates 1 consolidated · Loops terminated 0
+BUDGET   Primary OPUS: Product/Design · SONNET agents: 3 active · Concurrency 3/3
+         Reserve ~20% · Retries 0 · Duplicates consolidated · Loops terminated 0 · Escalations 0
+         Exact tokens: unavailable in runtime (report by model + budget class + counts)
 
-RECENTLY COMPLETED   GOV-AUTH-018 PASS · Q-BUILD-027 PASS · UX-A11Y-009 PASS
+RECENTLY COMPLETED   GOV-DRIFT-001 PASS · Q-BUILD PASS · UX-A11Y PASS
 ```
 
-Rules this readout enforces: build is **pinned** per run; `modelTier` and `budgetClass` are **separate**
-columns; the ~**20% reserve** is always shown; **duplicates are consolidated** (not re-counted as new
-findings); **loops terminated** is visible; and no agent shows ADVANCED unless it is Product/Design or an
-orchestrator-authorized escalation. Token/cost is reported honestly (tier + class + counts; exact numbers
-only if the runtime exposes them — framework §7a).
+Rules this readout enforces: build is **pinned** per run; **model (OPUS/SONNET)** and `budgetClass` are
+**separate**; the ~**20% reserve** is always shown; **duplicates consolidated**; **loops terminated** and
+**escalations** visible; no agent shows OPUS (only Product/Design + UX-primary do). Token/cost is reported
+honestly — **exact per-agent tokens are not exposed by this runtime**, so cost is model + budget class +
+counts, never fabricated.
 
 ## F. What was deliberately NOT built (anti-over-engineering, framework §12)
 
