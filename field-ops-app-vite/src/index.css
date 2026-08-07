@@ -1063,6 +1063,14 @@ button:hover {
 .fo-sup-status--muted { background: var(--color-surface-sunken); color: var(--color-text-muted); }
 .fo-sup-status--warn { background: var(--color-surface-sunken); color: #b2591f; }
 .fo-sup-footnote { margin-top: 14px; font-size: 13px; }
+/* Governed Supplier picker (PO creation) */
+.fo-supplier-picker { display: flex; flex-direction: column; gap: 6px; }
+.fo-supplier-options { list-style: none; margin: 0; padding: 4px; border: 1px solid var(--color-border); border-radius: 6px; max-height: 220px; overflow-y: auto; background: var(--color-surface); }
+.fo-supplier-options li { padding: 0; }
+.fo-supplier-option { display: block; width: 100%; text-align: left; padding: 8px 10px; border: none; background: none; border-radius: 4px; cursor: pointer; font-size: 14px; color: var(--color-text-primary); }
+.fo-supplier-option:hover, .fo-supplier-option:focus-visible { background: var(--color-surface-sunken); }
+.fo-supplier-selected { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px; border: 1px solid var(--color-border); border-radius: 6px; background: var(--color-surface-sunken); }
+.fo-linkbtn { border: none; background: none; color: var(--color-brand-primary); cursor: pointer; font-size: 13px; padding: 0; text-decoration: underline; }
 .scan-hero { display: flex; justify-content: space-between; gap: 24px; align-items: flex-end; margin: -24px -24px 18px; padding: 28px 28px 24px; background: linear-gradient(125deg, var(--color-brand-primary), var(--color-brand-secondary)); color: white; }
 .scan-hero h2 { margin: 5px 0 2px; font-size: clamp(26px, 5vw, 38px); letter-spacing: -.04em; }
 .scan-hero p { margin: 0; color: var(--color-border); }
