@@ -185,6 +185,16 @@ async function main() {
     customerId: "acct-harbor", locationId: "loc-harbor-downtown", equipmentId: "eq-ice-001",
     assignedTechId: "tech-sbx-01", requiredPartId: "PRT-1001",
     severity: "HIGH",
+    // F1 -- planned parts drive the SHARED WO Parts Readiness projection.
+    // Without an inventorySnapshot every job reads NO_PLAN and readiness is
+    // never actually exercised. Dimensions (warehouse/truck/procurement) are
+    // deliberately NOT seeded: a technician cannot read those sources, so the
+    // projection reports UNKNOWN and explains the degradation -- which is the
+    // honest behaviour this scenario exists to prove.
+    inventorySnapshot: [
+      { partId: "PRT-1001", sku: "PRT-1001", qtyPlanned: 1, qtyUsed: 0 },
+      { partId: "PRT-1005", sku: "PRT-1005", qtyPlanned: 2, qtyUsed: 0 },
+    ],
     dispatchedAt: now, acceptedAt: now, enRouteAt: now, arrivedAt: now,
   }));
 
@@ -219,6 +229,7 @@ async function main() {
     complaint: "Second ice machine reporting intermittent shutdown; diagnosis in progress.",
     customerId: "acct-harbor", locationId: "loc-harbor-airport", equipmentId: "eq-ice-002",
     assignedTechId: "tech-sbx-01", requiredPartId: "PRT-1004",
+    inventorySnapshot: [{ partId: "PRT-1004", sku: "PRT-1004", qtyPlanned: 1, qtyUsed: 1 }],
     dispatchedAt: now, acceptedAt: now, enRouteAt: now, arrivedAt: now, workStartedAt: now,
   }));
 

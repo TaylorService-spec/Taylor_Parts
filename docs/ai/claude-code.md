@@ -19,6 +19,17 @@
 - **Tests.** Exercises the actual change — manual verification, rules
   simulator testing where rules changed — and reports explicitly when
   something couldn't be tested rather than claiming it was.
+- **Verification discipline (mandatory).** Every required gate is judged
+  by its **process exit code** — never by grepping output, matching
+  patterns, or the absence of visible error text. A suite that prints its
+  own summary does not change this: the exit code is the verdict, and a
+  custom reporter must never weaken the gate. CI is an **independent**
+  gate, not confirmation of a local result — a local pass does not excuse
+  a CI failure, and a CI pass does not excuse skipping local gates.
+  *Adopted after an F0 run reported a suite green while it was red,
+  because success had been inferred from a stdout pattern that the failing
+  suites' custom reporter did not emit; CI caught what the local check
+  missed. See `docs/assessments/f0-field-job-authority-evidence.md`.*
 - **PR management.** Opens PRs scoped to one architectural concern
   each, with a summary, changes list, and test plan. Merge and deploy
   are authorized by the project owner, not by Claude Code or ChatGPT
