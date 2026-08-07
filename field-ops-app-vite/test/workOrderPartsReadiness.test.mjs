@@ -6,7 +6,7 @@ import {
   deriveItemReadiness,
   buildWorkOrderPartsReadiness,
 } from "../src/domain/workOrderPartsReadiness.js";
-import { READINESS, rollUpReadiness, isReadinessKey } from "../src/domain/readinessLanguage.js";
+import { READINESS, AVAILABILITY, rollUpReadiness, isReadinessKey, isAvailabilityKey } from "../src/domain/readinessLanguage.js";
 
 let passed = 0;
 function check(name, fn) { fn(); passed += 1; console.log(`  ok - ${name}`); }
@@ -123,14 +123,32 @@ check("buildWorkOrderPartsReadiness: no planned parts reads as NO_PLAN, not READ
   assert.equal(view.jobReadiness, "NO_PLAN");
 });
 
-check("readinessLanguage: rollUp severity ATTENTION > UNKNOWN > UNAVAILABLE > READY; empty -> READY", () => {
+check("a disconnected capability NEVER makes job readiness UNAVAILABLE -> it yields UNKNOWN + degraded[]", () => {
+  const view = buildWorkOrderPartsReadiness({
+    workOrder: { id: "WO-9" },
+    plannedParts: [{ partId: "x", qtyPlanned: 1, warehouse: { status: "KNOWN", available: 0 } }], // truck off -> can't confirm
+    capabilities: { warehouse: true, truckInventory: false, purchasing: true },
+  });
+  assert.equal(view.jobReadiness, "UNKNOWN"); // NOT "UNAVAILABLE"
+  assert.notEqual(view.jobReadiness, "UNAVAILABLE");
+  assert.ok(view.degraded.includes("truckInventory")); // the capability is explained here, not in readiness
+});
+
+check("readinessLanguage: readiness rollup is ATTENTION > UNKNOWN > READY ONLY; UNAVAILABLE is not a readiness state", () => {
   assert.equal(rollUpReadiness([READINESS.READY, READINESS.UNKNOWN]).key, "UNKNOWN");
   assert.equal(rollUpReadiness([READINESS.UNKNOWN, READINESS.ATTENTION]).key, "ATTENTION");
-  assert.equal(rollUpReadiness([READINESS.UNAVAILABLE, READINESS.READY]).key, "UNAVAILABLE");
   assert.equal(rollUpReadiness(["READY", "ATTENTION"]).key, "ATTENTION"); // accepts keys too
-  assert.equal(rollUpReadiness([]).key, "READY");
+  // UNAVAILABLE is source/capability availability, NOT a readiness severity — it is ignored by the rollup
+  // and can never be the aggregate result.
+  assert.equal(READINESS.UNAVAILABLE, undefined);
+  assert.equal(rollUpReadiness(["UNAVAILABLE", "READY"]).key, "READY");
+  assert.equal(rollUpReadiness([AVAILABILITY.UNAVAILABLE, READINESS.UNKNOWN]).key, "UNKNOWN");
+  assert.equal(rollUpReadiness([]).key, "READY"); // callers handle NO_PLAN before rolling up
+  // The two vocabularies are disjoint by membership.
   assert.equal(isReadinessKey("READY"), true);
-  assert.equal(isReadinessKey("NOPE"), false);
+  assert.equal(isReadinessKey("UNAVAILABLE"), false);
+  assert.equal(isAvailabilityKey("UNAVAILABLE"), true);
+  assert.equal(isAvailabilityKey("ATTENTION"), false);
 });
 
 console.log(`\n${passed} passed, 0 failed`);

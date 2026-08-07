@@ -59,13 +59,23 @@ Job rollup = worst-actionable-first (ATTENTION > UNKNOWN > UNAVAILABLE > READY);
 
 ## 3. Readiness / state vocabulary (shared platform language)
 
-Defined once in `domain/readinessLanguage.js` and intended for reuse across Scheduling, Control Tower, Work
-Orders, Technician Current Job, Inventory, and Purchasing — so readiness means the same thing everywhere.
+Defined once in `domain/readinessLanguage.js`, for reuse across Scheduling, Control Tower, Work Orders,
+Technician Current Job, Inventory, and Purchasing. **TWO separate vocabularies** — readiness is a different
+axis from capability availability:
 
+**AGGREGATE READINESS** — the operational answer for a part or job (three states only):
 - **READY** (tone `positive`) — demonstrably available from a known authority.
 - **ATTENTION** (tone `attention`) — a known, actionable gap (short / procurement pending / awaiting decision).
-- **UNKNOWN** (tone `unknown`) — genuinely cannot be determined because a required source is unavailable.
-- **UNAVAILABLE** (tone `muted`) — the capability that would answer isn't enabled (honest modular degradation).
+- **UNKNOWN** (tone `unknown`) — cannot be determined because a required source is unavailable/unknown.
+
+**SOURCE / CAPABILITY AVAILABILITY** — a separate axis (whether a source could answer at all):
+- **KNOWN** / **UNKNOWN** / **UNAVAILABLE** (the last = a capability isn't enabled — honest degradation).
+
+**`UNAVAILABLE` is not a readiness severity.** A disconnected capability never makes a part or job readiness
+"unavailable": if an unavailable source is *needed* to determine a part, that part's readiness is **UNKNOWN**
+and the capability is explained in `degraded[]`. The rollup operates **only** across ATTENTION > UNKNOWN >
+READY (`rollUpReadiness` ignores any non-readiness input); **NO_PLAN** is handled *outside* the rollup and is
+never reinterpreted as READY.
 
 `tone` is a semantic token, **not** a color — Gate-3 owns the palette. This is a vocabulary + a pure
 `rollUpReadiness` helper, **not** a persisted readiness model.

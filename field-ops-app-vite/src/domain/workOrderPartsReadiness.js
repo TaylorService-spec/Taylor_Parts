@@ -20,18 +20,21 @@
 // The projection takes each planned part with its dimensions ALREADY resolved by the caller (so this stays
 // a pure transform), plus the tenant's enabled-capability flags for honest modular degradation.
 
-import { READINESS, rollUpReadiness } from "./readinessLanguage.js";
+import { READINESS, AVAILABILITY, isAvailabilityKey, rollUpReadiness } from "./readinessLanguage.js";
 
 const num = (v) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : 0);
 
-// A dimension source result is { status, ...value }. status ∈ KNOWN | UNKNOWN | UNAVAILABLE.
-// UNAVAILABLE = the source/capability isn't enabled (honest degradation). UNKNOWN = enabled but this datum
-// couldn't be determined. Missing/garbage normalizes to UNKNOWN (never a fabricated zero).
+// A dimension source result carries a SOURCE/CAPABILITY AVAILABILITY status (KNOWN | UNKNOWN | UNAVAILABLE)
+// — a separate axis from aggregate readiness. UNAVAILABLE = the capability/source isn't enabled (honest
+// degradation). UNKNOWN = enabled but this datum couldn't be determined. Missing/garbage normalizes to
+// UNKNOWN (never a fabricated zero). A dimension's UNAVAILABLE never becomes a part's *readiness* —
+// deriveItemReadiness maps "a needed source isn't KNOWN" to readiness UNKNOWN, and lists the capability in
+// the projection's degraded[].
 function normDimension(raw, { moduleEnabled = true } = {}) {
-  if (!moduleEnabled) return { status: "UNAVAILABLE" };
-  if (!raw || typeof raw !== "object") return { status: "UNKNOWN" };
-  if (raw.status === "UNAVAILABLE" || raw.status === "UNKNOWN" || raw.status === "KNOWN") return raw;
-  return { status: "UNKNOWN" };
+  if (!moduleEnabled) return { status: AVAILABILITY.UNAVAILABLE.key };
+  if (!raw || typeof raw !== "object") return { status: AVAILABILITY.UNKNOWN.key };
+  if (isAvailabilityKey(raw.status)) return raw;
+  return { status: AVAILABILITY.UNKNOWN.key };
 }
 
 const PROCUREMENT_ACTIVE = new Set(["PENDING", "ORDERED"]);
