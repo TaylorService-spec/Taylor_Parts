@@ -1,0 +1,20 @@
+SBX-SCN-001 v1.0.0 — seeded operating state.
+
+REFERENCE (baseline pack): 3 warehouses, 2 suppliers, 6 parts, 6 part-supplier items,
+2 accounts, 3 locations, 2 contacts, 3 equipment.
+
+TRANSACTIONAL:
+  fieldops_technicians  1   tech-sbx-01 (linked to sbx-tech uid)
+  fieldops_jobs         4   assigned / open / complete / in_progress
+  stock_locations       5   healthy, low, and PRT-1001 SHORTAGE at wh-main
+  reorder_requests      4   ORDERED / PENDING_REVIEW / PURCHASING_IN_PROGRESS / REJECTED
+  reorder_purchase_orders 2 ORDERED / VOIDED
+
+CANONICAL CHAIN (SBX-SCN-001):
+  acct-harbor -> loc-harbor-downtown -> eq-ice-001 -> job-sbx-001 (assigned,
+  tech-sbx-01) -> requires PRT-1001 -> PRT-1001 qty 0 at wh-main (SHORTAGE)
+  -> ro-sbx-001 (ORDERED) -> po-sbx-001 (ORDERED, sup-arcticparts)
+  -> RECEIVING-READY.
+
+The receipt is deliberately NOT seeded: it is the governed trusted-callable write
+the scenario exists to exercise. Seeding it would fake the step under test.

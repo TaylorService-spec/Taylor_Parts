@@ -1,7 +1,7 @@
 ---
 artifact_type: specification
 gate: Sandbox persona authorization matrix (v1 — evidence-based)
-status: v2 — 8 personas IMPLEMENTED + VERIFIED (incl. warehouse-scoped); P-2/P-3 classified. Sandbox only.
+status: v3 — 8 personas verified against live transactional scenario SBX-SCN-001. Sandbox only.
 date: 2026-08-06
 owner: Claude Code (Executive Architecture & Company Office)
 environment: eos-platform-sandbox (platform-sandbox)
@@ -88,6 +88,36 @@ The Rules are explicit: `reorder_requests` **read** is `isAdminOrDispatcher()`, 
 `PARTS_ASSOCIATE` is denied `parts` (403) while `PARTS_MANAGER` and `WAREHOUSE_MANAGER` are allowed (200) — with a populated catalog. The Rules deliberately grant the parts read to admin/dispatcher plus `PARTS_MANAGER`/`WAREHOUSE_MANAGER` and **deliberately exclude `PARTS_ASSOCIATE`** per the Owner-adopted role matrix.
 
 **Not a defect.** Both provisional observations are now closed as expected behavior.
+
+---
+
+## Part 1c — v3: verified against live operating data (scenario SBX-SCN-001)
+
+Re-verified with the transactional pack present. Evidence: [`../audits/sandbox-scenario-001-20260806/`](../audits/sandbox-scenario-001-20260806/).
+
+| persona | `fieldops_jobs` (list) | `ro-sbx-001` (get) | `po-sbx-001` (get) | `parts` write |
+|---|---|---|---|---|
+| owner / admin / dispatcher | 200 | 200 | 200 | **403** |
+| partsmgr | 403 | **200** | 403 | **403** |
+| partsassoc | 403 | **200** | 403 | **403** |
+| whmgr | 403 | 403 | 403 | **403** |
+| tech / restricted | 403 | 403 | 403 | **403** |
+
+### S-1 — P-2 REFINED: it is a *list* restriction, not a read restriction
+
+`PARTS_MANAGER` and `PARTS_ASSOCIATE` **can read an individual reorder request** (`ro-sbx-001` → **200**) but **cannot list the collection** (403). This is Firestore's get-vs-list distinction: a document read is permitted, an unconstrained collection query is not.
+
+So the accurate statement is **not** "cannot read reorder requests" — it is **"can read any request it is pointed at, but cannot discover the queue."** That sharpens the product question already recorded: the persona needs a governed queue projection or a scoped query, **not** broader raw collection access.
+
+### S-2 — unconstrained probes UNDERSTATE real persona access (methodology)
+
+`sbx-tech` is denied a bare `fieldops_jobs` list (403), yet the application never issues one: `useAssignedJobs` queries `where("technicianId","==",me)`. Firestore Rules evaluate a **constrained** query differently from an unconstrained list, so a bare-list probe measures something the product does not do.
+
+**Every persona result above is therefore a floor, not a ceiling.** Agent-based verification (which issues the app's real queries) will measure higher and is the correct instrument. Recorded so these numbers are not later misread as the product's actual behaviour.
+
+### S-3 — `parts` is client-closed for everyone, including owner and admin
+
+Write attempts returned **403 for all eight personas**, exactly as `allow create, update, delete: if false` specifies. Part Master writes are trusted-service-only (ADR-008). A clean negative control that proves the probe detects denials rather than reporting them by accident.
 
 ---
 
