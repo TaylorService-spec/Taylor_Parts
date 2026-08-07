@@ -1429,3 +1429,69 @@ button:hover {
 /* F1 -- site line sits directly beneath the customer, same honesty rules. */
 .fo-job__site { margin: 4px 0 0; font-size: 14px; color: var(--color-text-secondary); }
 .fo-job__site--unavailable { font-style: italic; color: var(--color-text-muted); font-size: 13px; }
+
+/* ═══ Wave-0 composition foundation ═══════════════════════════════════════
+   The missing composition layer between tokens and pages. Scoped, additive.
+   Establishes hierarchy without dictating one layout per domain. */
+
+/* Operating Workspace Shell — resolves the previously-phantom .fo-workspace. */
+.fo-workspace { display: flex; flex-direction: column; gap: 16px; }
+.fo-workspace__context { }
+.fo-workspace__attention { }
+.fo-workspace__body { display: block; }
+.fo-workspace__body--split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 340px); gap: 20px; align-items: start; }
+.fo-workspace__work { min-width: 0; }
+.fo-workspace__supporting { min-width: 0; }
+/* Density is job-fit, not one universal scale. Field = large targets/low load. */
+.fo-workspace[data-density="compact"] { gap: 12px; }
+.fo-workspace[data-density="field"] { gap: 18px; }
+.fo-workspace[data-density="field"] button { min-height: 48px; }
+@media (max-width: 860px) {
+  .fo-workspace__body--split { grid-template-columns: 1fr; } /* responsive = recomposition: aside stacks under work */
+}
+
+/* Context Band — a compact context strip, NOT a card. */
+.fo-context-band { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+  padding: 10px 14px; background: var(--color-surface-sunken); border: 1px solid var(--color-border); border-radius: 10px; }
+.fo-context-band__items { display: flex; flex-wrap: wrap; gap: 4px 22px; margin: 0; }
+.fo-context-band__item { display: flex; flex-direction: column; gap: 1px; }
+.fo-context-band__item dt { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--color-text-muted); }
+.fo-context-band__item dd { margin: 0; font-size: 14px; font-weight: 600; color: var(--color-text-primary); }
+.fo-context-band__action { flex: none; }
+
+/* Action Rail — one dominant action, quiet secondary, ghost utility. */
+.fo-action-rail { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.fo-action-rail__start { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.fo-action-rail__end { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.fo-btn-primary { background: var(--color-brand-primary); color: var(--color-text-inverse); border: 1px solid var(--color-brand-primary); }
+.fo-btn-primary:hover { background: var(--color-brand-secondary); border-color: var(--color-brand-secondary); }
+.fo-btn-ghost { background: transparent; color: var(--color-text-secondary); border: 1px solid transparent; }
+.fo-btn-ghost:hover { color: var(--color-brand-primary); background: var(--color-surface-sunken); }
+
+/* Semantic Status Pill — ONE pill, tone-driven (domain maps state -> tone). Use sparingly. */
+.fo-status-pill { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600;
+  padding: 2px 9px; border-radius: 999px; border: 1px solid transparent; white-space: nowrap; letter-spacing: .01em; }
+.fo-status-pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.fo-status-pill--positive { color: var(--color-success); background: var(--color-success-surface); border-color: color-mix(in srgb, var(--color-success) 30%, transparent); }
+.fo-status-pill--attention { color: var(--color-warning); background: var(--color-warning-surface); border-color: color-mix(in srgb, var(--color-warning) 30%, transparent); }
+.fo-status-pill--critical { color: var(--color-danger); background: var(--color-danger-surface); border-color: color-mix(in srgb, var(--color-danger) 30%, transparent); }
+.fo-status-pill--info { color: var(--color-info); background: var(--color-info-surface); border-color: color-mix(in srgb, var(--color-info) 30%, transparent); }
+.fo-status-pill--unknown { color: var(--color-text-secondary); background: var(--color-surface-sunken); border-color: var(--color-border); }
+.fo-status-pill--muted { color: var(--color-text-muted); background: var(--color-surface-sunken); border-color: var(--color-border); }
+.fo-status-pill--neutral { color: var(--color-text-secondary); background: var(--color-surface-sunken); border-color: var(--color-border); }
+/* Status-as-text: tone the text only (for non-scan-target statuses — avoid pill overload). */
+.fo-status-text { font-weight: 600; }
+.fo-tone-text--positive { color: var(--color-success); }
+.fo-tone-text--attention { color: var(--color-warning); }
+.fo-tone-text--critical { color: var(--color-danger); }
+.fo-tone-text--info { color: var(--color-info); }
+.fo-tone-text--unknown, .fo-tone-text--neutral { color: var(--color-text-secondary); }
+.fo-tone-text--muted { color: var(--color-text-muted); }
+
+/* Fix the previously-undefined detail layout classes (EquipmentDetail et al. silently degraded to a card
+   stack). A responsive detail grid + a two-column dt/dd list + a header row. */
+.fo-detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; align-items: start; }
+.fo-detail-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.fo-detail-list { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 0; font-size: 14px; }
+.fo-detail-list dt { color: var(--color-text-muted); }
+.fo-detail-list dd { margin: 0; color: var(--color-text-primary); }
