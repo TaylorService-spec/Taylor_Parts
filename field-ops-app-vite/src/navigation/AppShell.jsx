@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import AppRail, { RailBrand } from "./AppRail";
+import { NAV_DOMAINS } from "./navConfig";
 import AppHeader from "../shared/ui/AppHeader";
 
 // Sprint 2.0.1 -- real <NavLink> anchors (not onClick + setState) so the
@@ -43,6 +44,13 @@ function useIsDrawer() {
 export default function AppShell({ role, allowedLegacyKeys, operationalContext, children }) {
   const location = useLocation();
   const activeDomainPath = location.pathname.split("/").filter(Boolean)[0];
+  // The shell's <h1>. The rail rewrite dropped it, leaving every page with NO
+  // level-one heading at all -- screen-reader users lost the primary document
+  // landmark and heading navigation had nothing to land on. It names the
+  // current DOMAIN rather than the product, so it changes as you navigate and
+  // actually says where you are.
+  const activeDomainLabel =
+    NAV_DOMAINS.find((d) => d.path === activeDomainPath)?.label ?? "Field Ops";
 
   const isDrawer = useIsDrawer();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -133,7 +141,10 @@ export default function AppShell({ role, allowedLegacyKeys, operationalContext, 
           navToggleRef={toggleRef}
           navOpen={drawerOpen}
         />
-        <main className="fo-main" id="fo-main" tabIndex={-1}>{children}</main>
+        <main className="fo-main" id="fo-main" tabIndex={-1}>
+          <h1 className="fo-visually-hidden">{activeDomainLabel}</h1>
+          {children}
+        </main>
       </div>
     </div>
   );
