@@ -31,7 +31,35 @@ and lifecycle, no read. Catalog reference-data reads (`parts`/`suppliers`) are c
 Add one capability to complete the catalog resource's authority triad:
 
 - **`inventory.catalog.read`** — resource `inventory.catalog`, action `read`. The single governed
-  read for ALL catalog/reference objects: Parts, Manufacturers, Suppliers, and part_supplier_items.
+  read for basic catalog/reference visibility across ALL catalog objects: Parts, Manufacturers,
+  Suppliers, and part_supplier_items (relationship + operational fields).
+- **`inventory.catalog.cost.read`** — **RATIFIED as a SEPARATE capability (Owner 2026-08-07).**
+  Sensitive procurement-cost / commercial-terms visibility (unit cost, currency, contract terms). Cost
+  is NOT an incidental field of general catalog read: *"Supplier X supplies Part Y"* is materially
+  different authority from *"we pay Supplier X $Z for Part Y."* Cost/contract visibility must be
+  **independently grantable / revocable / auditable**, and the cost projection must never broaden general
+  catalog visibility. The cost projection requires **both** `inventory.catalog.read` AND
+  `inventory.catalog.cost.read`.
+
+### Ratified cost-authorized personas (near-term business intent — R-1 to grant, not Product Eng)
+
+Business responsibility determines cost authority; broad admin/seniority is NOT a shortcut.
+
+| Persona | catalog.read (relationship+operational) | catalog.cost.read |
+|---|---|---|
+| Catalog administrator | ✓ | ✓ |
+| Purchasing / procurement operator | ✓ | ✓ |
+| Finance / accounting | (future) | **FUTURE — do not invent now** |
+| Parts room manager | ✓ (as business need proves) | ✗ by default |
+| Warehouse manager | ✓ (as needed) | ✗ by default |
+| Dispatcher | ✓ (only where workflow requires) | ✗ by default |
+| Technician | — | ✗ |
+| Sales | — | ✗ |
+| Owner / Admin | do NOT infer from seniority/legacy-admin | do NOT infer |
+
+**Durable purchasing/procurement role:** if it does not yet exist as a governed role, R-1 should record
+that as an **authorization-design requirement** rather than manufacturing a production role. Do not use
+broad admin access as a shortcut for cost authority.
 
 Convergence path (R-1-owned, no production access change now):
 1. **New surfaces adopt it from day one** — Manufacturer + part_supplier_items reads gate on

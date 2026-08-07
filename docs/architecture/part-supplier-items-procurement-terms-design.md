@@ -21,14 +21,14 @@ Per item, keyed `<partId>__<supplierId>` (references governed Part + governed Su
 |---|---|---|---|
 | `partId`, `supplierId` | governed ids | relationship | the relationship itself |
 | `supplierSku` | string | relationship | the supplier's part/reference number |
-| `cost` | decimal string | **COST (sensitive)** | procurement cost |
-| `currency` | ISO-4217 | cost-adjacent | |
+| `cost` | decimal string | **COST/COMMERCIAL** | procurement cost |
+| `currency` | ISO-4217 | **COST/COMMERCIAL** | Owner §1 tier: currency is cost/commercial, not "adjacent" |
 | `leadTimeDays` | number | operational | |
 | `minOrderQty`, `orderMultiple`, `purchaseUnit`, `conversionToStockingUnit` | optional | operational | ordering terms |
-| `contractStart`, `contractEnd` | optional dates | operational | |
+| `contractStart`, `contractEnd` | optional dates | **COST/COMMERCIAL** | Owner §1 tier: contract/commercial terms |
 | `availability` | enum | operational | AVAILABLE/… |
 | `preferred` | boolean | **decision authority** | ≤1 ACTIVE preferred per Part (invariant) |
-| `lastVerifiedAt` | optional date | operational | |
+| `lastVerifiedAt` | optional date | operational | verification-freshness metadata, not sensitive economics |
 | `status` | ACTIVE/INACTIVE | lifecycle | inactive retained, non-selectable |
 
 **Three visibility tiers** (drives §2/§3): **relationship** (who supplies this part, sku, lead time,

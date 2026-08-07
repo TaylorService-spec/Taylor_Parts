@@ -166,3 +166,19 @@ export {
   updateManufacturerCallable as updateManufacturer,
   changeManufacturerStatusCallable as changeManufacturerStatus,
 } from "./partMaster/manufacturerCallables";
+
+// --- Part↔Supplier procurement terms (part_supplier_items): trusted command callables ---
+// "Export is not deployment/grant": NOT deployed, NO UI wired yet, NO capability granted, NO App Check.
+// Authorization enforced INSIDE the command against real governed roles -- inventory.catalog.manage for
+// create/update/setPreferred, inventory.catalog.activate for status (the SAME catalog authority the rest of
+// the catalog uses). All four fail closed until a deferred protected grant. Closes the procure-to-stock
+// gap (governed preferred-supplier + terms instead of free-form). The part_supplier_items READ stays served
+// by governed projections gated on R-1's inventory.catalog.read / .cost.read (partSupplierItemProjections.ts
+// is the pure contract; the read service is NOT activated here). Firebase deploys each callable under its
+// exported index property name -> frozen public names (no "Callable" suffix); suffixed impl consts aliased.
+export {
+  createPartSupplierItemCallable as createPartSupplierItem,
+  updatePartSupplierItemCallable as updatePartSupplierItem,
+  changePartSupplierItemStatusCallable as changePartSupplierItemStatus,
+  setPreferredSupplierCallable as setPreferredSupplier,
+} from "./partMaster/partSupplierItemCallables";
