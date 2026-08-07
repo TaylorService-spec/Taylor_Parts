@@ -79,6 +79,60 @@ Sprint numbering continues under Version 2 (Platform Experience) — see [`capab
 - **Lifecycle timestamps.** Add `assignedAt`/`startedAt` to the job schema, written inside `assignJob()`/`updateJobStatus()`'s existing transactions. This would let `jobRiskScoring.js` replace its `createdAt`-only age approximation with true per-status timing. Explicitly deferred in Sprints 3.2/3.3 to keep those sprints' write-surface at zero.
 - **Technician scheduling / shift management.** `TECH_STATUS.OFF_SHIFT` exists in the enum but nothing in the current UI sets or clears it — worth a dedicated sprint if shift-based dispatch becomes a priority.
 
+## Owner-supplied roadmap requirements (recorded 2026-08-07, not scheduled)
+
+Recorded so their seams are preserved during ongoing work. **Neither authorizes
+implementation, and neither expands F2** — F2's boundary remains scanned token →
+governed identity → canonical entity → authorized context → permitted action.
+
+### Temporary Equipment Pool / Placement
+
+Serialized equipment that leaves inventory **without being sold**, and must come back:
+
+- **Service Loaner** — equipment placed at a customer while their unit is repaired.
+- **Sales Evaluation** — equipment placed for trial ahead of a purchase decision.
+- Full serialized-equipment **availability and custody** tracking across the placement
+  lifecycle, not just at rest.
+
+**Where it converges, and why that matters:** physical execution runs
+**Warehouse → Work Order → Scheduling/Dispatch → Technician/Truck**. A loaner is not a
+separate mini-application; it is the same custody chain the platform already models, with a
+different reason for the movement and an expectation of return.
+
+**Existing seams to preserve rather than reinvent:** `serializedAssetIdentity.js`
+(`serialNo` + owning `partId` + `currentLocation` + state, with the INSTALLED↔link coupling),
+the `LocationRef` `{ type, locationId }` abstraction whose `CUSTOMER` type already names
+"installed/consigned at a customer", ADR-010's equipment custody decisions, and the governed
+Work Order lifecycle that would carry a placement and its retrieval. A placement is plausibly
+a **custody state plus an expected-return obligation**, not a new collection — but that is a
+design question for its own gate, not an assumption to build on now.
+
+### Technician labor + cost accounting
+
+Governed labor time, and eventually Work Order economics:
+
+- paid hours
+- **Work-Order-attributable** hours
+- travel time vs on-site/service time
+- non-job paid time
+- **unexplained time** — the residual, which is the number that makes the model honest
+- governed **historical** labor cost
+- future Work Order economics (cost-to-serve, margin)
+
+**Existing seams:** the governed lifecycle already timestamps `acceptedAt`, `enRouteAt`,
+`arrivedAt`, `workStartedAt`, `completedAt` — F0 made travel and arrival real rather than
+local UI state, which is precisely what makes travel-vs-on-site derivable at all. Those
+timestamps are the natural substrate; `laborHours` already exists on the Work Order type.
+
+**Two cautions worth recording now.** First, derived labor time must follow the
+derive-don't-invent rule: an absent or untrusted timestamp yields **UNKNOWN**, never a
+fabricated duration — the same rule that produced `timestampMillis.js` after a missing value
+became a 54-year-old work order. Second, "unexplained time" only means anything if the other
+buckets are honest, so it must be a **residual**, never a plug.
+
+**Not authorized:** no collection, no schema, no cost field, no payroll integration, no Rules
+change. Recorded as roadmap requirements with their seams identified.
+
 ## Explicitly out of scope until named otherwise
 
 - A second Control Tower implementation, in any form.
