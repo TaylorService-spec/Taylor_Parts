@@ -121,6 +121,18 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     action: "plan",
     active: false,
   }),
+  // Sales Opportunity Cycle 3 -- authoring/advancing a governed Opportunity (create + lifecycle transition)
+  // via the trusted opportunity command. Registered active:false: fail-closed for every principal until a
+  // SEPARATE Owner grant. A capability, NOT a role check. Opportunity is PRE-COMMITMENT: it never creates
+  // inventory movement, Work Orders, or invoices, and its lines are product-level (never a serialized asset).
+  Object.freeze({
+    id: "opportunity.write",
+    description:
+      "Create or advance a Sales Opportunity (lifecycle transition) via the governed opportunity command. Pre-commitment only; does not create Work Orders, inventory movement, or invoices.",
+    resource: "opportunity",
+    action: "write",
+    active: false,
+  }),
 
   // --- Inventory / Reorder / Purchasing domain (Issue #100; Assessment's
   // Inventory domain audit table; firestore.rules current `main`) ---

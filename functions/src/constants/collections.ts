@@ -26,3 +26,9 @@ export const TRANSFER_ORDERS_COLLECTION = "transfer_orders";
 export const SUPPLIERS_COLLECTION = "suppliers";
 export const SUPPLIER_CATALOG_COLLECTION = "supplier_catalog";
 export const PURCHASE_ORDERS_COLLECTION = "purchase_orders";
+
+// Sales Opportunity (Cycle 3) — governed pre-commitment commercial object. Admin-SDK-only, same posture as
+// the ledger/warehouse collections above: firestore.rules denies ALL direct client read/write, and the only
+// write path is the trusted opportunity command (opportunity/opportunityCallables.ts). No UI writes directly;
+// the Cycle-2 workspace still reads a SYNTHETIC source until a governed read model is wired.
+export const OPPORTUNITIES_COLLECTION = "opportunities";

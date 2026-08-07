@@ -220,13 +220,17 @@ Ordered by seed number; order does not imply priority or sequence.
 These were supplied earlier and have durable detail; summarized here and cross-referenced so the register is
 complete. Do not duplicate their full detail — treat the linked artifacts as authoritative.
 
-### 12. Temporary Equipment Pool / Placement (`SERVICE_LOANER`, `SALES_EVALUATION`)
+### 12. Temporary Equipment Placement / Custody Relationship (`SERVICE_LOANER`, `SALES_EVALUATION`)
 - **Business problem:** Govern temporary company-owned Equipment placed at a Customer/prospect — a service
   loaner (replacement while a unit is out for service) or a sales evaluation (try-before-buy).
 - **Primary domains:** Equipment, Service, Sales, Inventory, Dispatch.
-- **Known canonical authorities:** `equipment` remains **the** serialized asset authority; a new **Temporary
-  Placement** authority owns only the temporary relationship/custody context and must NOT duplicate
-  Warehouse / Dispatch / Work Order / Technician / Inventory-movement state.
+- **Known canonical authorities:** `equipment` remains **the** serialized asset authority. The BUSINESS
+  RELATIONSHIP + full tracking are ratified, but the **persistence shape is UNRESOLVED — representation to be
+  determined by formal Assessment** (do NOT yet ratify a new canonical "Temporary Placement" collection).
+  Options to assess: (a) a dedicated governed placement relationship, (b) existing Equipment custody/location
+  authority + a commitment/return relationship, (c) another minimal representation supported by existing
+  architecture. Whatever the shape, it owns ONLY the temporary relationship/custody context and must NOT
+  duplicate Warehouse / Dispatch / Work Order / Technician / Inventory-movement state.
 - **Key business questions:** For every eligible unit — where it is, who has custody, who owns it, why
   deployed, which Customer/location, related Opportunity/WO/Sales Order, condition/readiness, expected
   return, future commitments, whether actually available. **Unknown custody/location/commitment ⇒
@@ -257,6 +261,36 @@ complete. Do not duplicate their full detail — treat the linked artifacts as a
 - **Current maturity:** `IDENTIFIED`.
 - **Related:** Work Order lifecycle; WO parts readiness (shared AVAILABILITY=UNKNOWN posture).
 
+### 14. Multi-Equipment Fulfillment / Coordinated Field Execution
+- **Business problem:** Selling/servicing multiple machines (e.g. 5×C713) must keep **per-unit execution
+  accountability** without forcing five separate user experiences for one coordinated Customer visit. Taylor
+  today makes one Work Order per machine (cumbersome), but the underlying need — each serialized unit
+  independently accountable — is legitimate. Goal: **accountability of five WITH the operating experience of
+  one coordinated job.**
+- **Primary domains:** Sales, Service/Dispatch, Equipment, Inventory/Warehouse, Billing.
+- **Known canonical authorities:** `fieldops_wos` (Work Order execution), Scheduling, Dispatch, Sales Order
+  (greenfield, downstream of WON), `equipment` (serialized asset), Warehouse fulfillment, Technician Current
+  Job. **Do NOT invent a Job/Visit/WorkOrderGroup/InstallationGroup/FieldMission canonical collection yet** —
+  first determine whether existing authorities can COORDINATE related Work Orders (shared Customer/Location/
+  window/Technician/Truck) without duplicating each unit's independent execution state.
+- **Critical cardinality distinction (do not conflate):** COMMERCIAL granularity (Sales Order) · VISIT/
+  SCHEDULING granularity (one coordinated visit) · EXECUTION granularity (per-Equipment accountability) ·
+  PHYSICAL-ASSET granularity (one serialized unit). Example: 1 Opportunity → 1 Sales Order → 5 serialized
+  C713 → potentially 5 Equipment-accountable execution records → 1 coordinated delivery/install visit.
+- **Partial completion is first-class:** 4 installed / 1 blocked ⇒ overall 4/5 ATTENTION — never fake whole-
+  visit COMPLETE/INCOMPLETE. Preserve fulfillment evidence (SO qty 5 / fulfilled 4 / unresolved 1) for later
+  Billing/A/R; do NOT define partial-billing policy now. Also a general Service pattern (multi-equipment PM in
+  one visit; loaner remove+install).
+- **Key business questions:** Can existing authorities coordinate related Work Orders under one visit while
+  each unit keeps independent execution state? If yes → reuse; if no → return at Assessment with evidence a
+  parent Visit/Job is necessary.
+- **Dependencies:** Won Opportunity → Sales Order + Sales Order → fulfillment + Service Ops/Scheduling
+  convergence.
+- **Roadmap trigger:** Revisit during Won→Sales Order + SO→fulfillment + Service Ops/Scheduling convergence,
+  **before** the Sales-Order-line ↔ serialized-Equipment ↔ Work-Order ↔ scheduled-visit cardinality is
+  finalized. NOT in Opportunity Cycle 3.
+- **Current maturity:** `IDENTIFIED`.
+
 ---
 
 ## Change log
@@ -264,3 +298,6 @@ complete. Do not duplicate their full detail — treat the linked artifacts as a
 - **2026-08-07** — Register created (roadmap hygiene, Owner direction). Seeded with capabilities 1–11
   (11 = watch item) plus cross-domain requirements 12 (Temporary Equipment) and 13 (Technician Labor). All
   `IDENTIFIED`.
+- **2026-08-07 (2)** — Owner corrections: reworded #12 to "Temporary Equipment Placement / Custody
+  Relationship — representation TBD by Assessment" (persistence shape not yet a ratified authority); added
+  #14 Multi-Equipment Fulfillment / Coordinated Field Execution (`IDENTIFIED`).

@@ -8,6 +8,8 @@ import {
   buildOpportunityPipeline,
   stageLabel,
   channelLabel,
+  nextStage,
+  allowedActions,
 } from "../src/domain/opportunityLifecycle.js";
 
 const NOW = new Date(2026, 7, 8, 12, 0, 0, 0).getTime(); // fixed "now" = Aug 8 2026
@@ -77,6 +79,17 @@ test("pipeline sorts attention-first, then by nearest expected close", () => {
   const p = buildOpportunityPipeline(opps, { nowMillis: NOW });
   assert.equal(p.rows[0].id, "attention");
   assert.deepEqual(p.rows.slice(1).map((r) => r.id), ["calm-soon", "calm-late"]);
+});
+
+test("nextStage advances forward by one and stops at DECISION", () => {
+  assert.equal(nextStage("IDENTIFIED"), "QUALIFYING");
+  assert.equal(nextStage("DECISION"), null);
+});
+
+test("allowedActions: open stages offer advance + LOST; DECISION also offers WON; closed offers nothing", () => {
+  assert.deepEqual(allowedActions({ stage: "QUALIFYING" }), { advanceTo: "SOLUTION", outcomes: ["LOST"] });
+  assert.deepEqual(allowedActions({ stage: "DECISION" }), { advanceTo: null, outcomes: ["WON", "LOST"] });
+  assert.deepEqual(allowedActions({ stage: "DECISION", outcome: "WON" }), { advanceTo: null, outcomes: [] });
 });
 
 test("stage/channel labels are humanized with a safe fallback", () => {
