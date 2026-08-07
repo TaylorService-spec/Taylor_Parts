@@ -215,7 +215,13 @@ service cloud.firestore {
         "purchasingNotes", "vendorContacted", "expectedAvailabilityDate",
         "lastPurchasingUpdateAt", "lastPurchasingUpdateBy",
         "purchaseOrderId", "orderedBy", "orderedAt", "receivedBy", "receivedAt",
-        "cancelledBy", "cancelledAt", "cancellationReason", "voidedBy", "voidedAt", "voidReason"
+        "cancelledBy", "cancelledAt", "cancellationReason", "voidedBy", "voidedAt", "voidReason",
+        // WO Parts Planning Phase 3 -- additive OPTIONAL back-link: which Work Order demand caused/associates
+        // this reorder request. Permitted (hasOnly) but NOT required (absent from hasAll below), so existing
+        // non-WO creates without it remain valid and no historical migration is needed. Value validated in
+        // hasCanonicalReorderRequestCreationBaseline(). Back-link/provenance only -- confers no Work Order
+        // lifecycle authority here and no procurement authority on the Work Order.
+        "workOrderId"
       ]) && data.keys().hasAll([
         "partId", "recommendationStatus", "urgency", "quantitySource", "recommendedQty", "requestedQty",
         "status", "currentOwner", "requestedBy", "createdAt",
@@ -265,7 +271,13 @@ service cloud.firestore {
         && data.cancellationReason == null
         && data.voidedBy == null
         && data.voidedAt == null
-        && data.voidReason == null;
+        && data.voidReason == null
+        // WO Parts Planning Phase 3 -- workOrderId is OPTIONAL/nullable provenance: absent is valid (no
+        // migration), explicit null is valid (this domain's unused-field convention), a non-empty string
+        // (a governed Work Order id, validated like partId above) is valid; any other type/shape is denied.
+        && (!("workOrderId" in data)
+            || data.workOrderId == null
+            || (data.workOrderId is string && data.workOrderId.size() > 0));
     }
 
     // ---- F-RULES-1 PR-2 helpers (legacy job/technician enforcement) ----
