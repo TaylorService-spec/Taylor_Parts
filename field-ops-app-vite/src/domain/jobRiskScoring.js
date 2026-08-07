@@ -1,4 +1,9 @@
-import { JOB_STATUS, TECH_STATUS } from "./constants";
+import { TECH_STATUS } from "./constants";
+import { FIELD_PHASE, fieldPhase } from "./fieldWorkOrder";
+
+// F0 -- risk is scored over GOVERNED Work Orders. Stagnation thresholds are
+// keyed by operational PHASE rather than legacy JOB_STATUS; the threshold
+// values and the scoring logic are unchanged.
 import { createSignal, compareBySeverity, severityFromScore, SEVERITY } from "./controlTower/types";
 
 // Pure, derived-only risk scoring. No Firestore access, no writes -- takes
@@ -36,9 +41,9 @@ const ABSOLUTE_AGE_CEILING_HOURS = 96;
 // OPEN jobs have nobody working them yet, so they're held to tighter
 // stagnation thresholds than jobs already ASSIGNED/IN_PROGRESS.
 const STAGNATION_THRESHOLDS_HOURS = {
-  [JOB_STATUS.OPEN]: { medium: 2, high: 8, critical: 24 },
-  [JOB_STATUS.ASSIGNED]: { medium: 8, high: 24, critical: 72 },
-  [JOB_STATUS.IN_PROGRESS]: { medium: 8, high: 24, critical: 72 },
+  [FIELD_PHASE.AWAITING_DISPATCH]: { medium: 2, high: 8, critical: 24 },
+  [FIELD_PHASE.ASSIGNED]: { medium: 8, high: 24, critical: 72 },
+  [FIELD_PHASE.ON_SITE]: { medium: 8, high: 24, critical: 72 },
 };
 
 function computeAgeHours(job, now) {
@@ -57,7 +62,7 @@ function ageFactor(ageHours) {
 
 function stagnationFactor(job, ageHours) {
   const thresholds =
-    STAGNATION_THRESHOLDS_HOURS[job.status] ?? STAGNATION_THRESHOLDS_HOURS[JOB_STATUS.ASSIGNED];
+    STAGNATION_THRESHOLDS_HOURS[fieldPhase(job)] ?? STAGNATION_THRESHOLDS_HOURS[FIELD_PHASE.ASSIGNED];
 
   let score = 0;
   let tier = "within expected time for this status";
@@ -94,11 +99,11 @@ function fragmentationFactor(job, siblingJobs = []) {
     };
   }
 
-  const activeSiblingCount = siblingJobs.filter((j) => j.status !== JOB_STATUS.COMPLETE).length;
+  const activeSiblingCount = siblingJobs.filter((j) => fieldPhase(j) !== FIELD_PHASE.FINISHED).length;
   const hasActiveSibling = siblingJobs.some(
-    (j) => j.status === JOB_STATUS.ASSIGNED || j.status === JOB_STATUS.IN_PROGRESS
+    (j) => fieldPhase(j) === FIELD_PHASE.ASSIGNED || fieldPhase(j) === FIELD_PHASE.ON_SITE
   );
-  const orphaned = job.status === JOB_STATUS.OPEN && hasActiveSibling;
+  const orphaned = fieldPhase(job) === FIELD_PHASE.AWAITING_DISPATCH && hasActiveSibling;
   const score = orphaned
     ? Math.min(100, 40 + activeSiblingCount * 15)
     : Math.min(100, activeSiblingCount * 15);
@@ -118,7 +123,7 @@ function fragmentationFactor(job, siblingJobs = []) {
 // unassigned, that correlates with a dispatch process gap rather than a
 // genuinely hard-to-staff job.
 function idleCorrelationFactor(job, technicians = []) {
-  if (job.status !== JOB_STATUS.OPEN || technicians.length === 0) {
+  if (fieldPhase(job) !== FIELD_PHASE.AWAITING_DISPATCH || technicians.length === 0) {
     return {
       type: "idleCorrelation",
       weight: RISK_WEIGHTS.idleCorrelation,
@@ -166,7 +171,7 @@ export function getRiskBreakdown(job, context = {}, now = Date.now()) {
 // Returns a canonical RiskSignal ({ id, score, severity, label, metadata })
 // for non-complete jobs, or null for COMPLETE jobs (nothing to flag).
 export function computeJobRisk(job, context = {}, now = Date.now()) {
-  if (job.status === JOB_STATUS.COMPLETE) {
+  if (fieldPhase(job) === FIELD_PHASE.FINISHED) {
     return null;
   }
 
@@ -197,7 +202,7 @@ function siblingJobsFor(job, jobs) {
 // severity, most severe (then highest score) first.
 export function detectStalledJobs(jobs, technicians = [], now = Date.now()) {
   return jobs
-    .filter((j) => j.status !== JOB_STATUS.COMPLETE)
+    .filter((j) => fieldPhase(j) !== FIELD_PHASE.FINISHED)
     .map((job) =>
       computeJobRisk(job, { siblingJobs: siblingJobsFor(job, jobs), technicians }, now)
     )

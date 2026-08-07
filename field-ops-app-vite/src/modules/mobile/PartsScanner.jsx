@@ -4,9 +4,10 @@
 // eligibility. Its remaining part-movement ACTIONS write only the in-memory
 // demo/InventoryContext.jsx (no Firestore, resets on reload) and carry a persistent
 // "Demo -- not saved" banner (R5). Its job picker reads live jobs through the
-// technician-scoped useAssignedJobs(technicianId) -- the SAME read-scoping interlock
-// FieldMode uses (F-RULES-1); an unscoped full-collection jobs read would be denied
-// for the technician persona this workspace serves.
+// technician-scoped useAssignedWorkOrders(technicianId) -- the SAME read-scoping
+// interlock FieldMode uses; an unscoped full-collection read would be denied for the
+// technician persona this workspace serves. F0 moved this from the legacy
+// fieldops_jobs read to the governed Work Order Engine.
 //
 // The scanner's "Receive a purchase order" action IS the one governed receive workflow
 // (A1, 2026-08-06, superseding the earlier A3 "no receive here"): it receives a specific
@@ -23,8 +24,8 @@
 // fails closed for everyone at the location step ("Receiving isn't activated") -- no live receipt
 // occurs until that separate, authorized activation gate.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useAssignedJobs } from "../../hooks/useAssignedJobs";
-import { JOB_STATUS } from "../../domain/constants";
+import { useAssignedWorkOrders } from "../../hooks/useAssignedWorkOrders";
+import { activeFieldWorkOrders } from "../../domain/fieldWorkOrder";
 import { useInventory } from "../../demo/InventoryContext";
 import ReceiveAgainstPurchaseOrder from "../receiving/ReceiveAgainstPurchaseOrder";
 
@@ -45,7 +46,7 @@ export default function PartsScanner({ technicianId }) {
   // Technician-scoped jobs read (F-RULES-1): the caller (FieldMode) passes the
   // resolved technicianId; an unscoped full-collection read would be Rules-denied
   // for a technician. Fail-closed: no technicianId -> empty job picker.
-  const { data: jobs } = useAssignedJobs(technicianId);
+  const { data: workOrders } = useAssignedWorkOrders(technicianId);
   const [query, setQuery] = useState("");
   const [part, setPart] = useState(null);
   const [action, setAction] = useState("work-order");
@@ -57,9 +58,10 @@ export default function PartsScanner({ technicianId }) {
   const streamRef = useRef(null);
   const scanFrameRef = useRef(null);
 
-  const activeJobs = useMemo(() => jobs.filter((job) =>
-    job.status === JOB_STATUS.ASSIGNED || job.status === JOB_STATUS.IN_PROGRESS
-  ), [jobs]);
+  // F0 -- the job picker now lists GOVERNED Work Orders the technician is
+  // actually assigned, filtered to the field-active lifecycle statuses by the
+  // shared selector rather than by a local status literal.
+  const activeJobs = useMemo(() => activeFieldWorkOrders(workOrders), [workOrders]);
 
   useEffect(() => {
     if (!jobId && activeJobs[0]) setJobId(activeJobs[0].id);
@@ -220,7 +222,7 @@ export default function PartsScanner({ technicianId }) {
           />
         ) : (
           <>
-            {action === "work-order" && <label className="scan-field">Work order<select value={jobId} onChange={(e) => setJobId(e.target.value)}><option value="">Select work order</option>{activeJobs.map((job) => <option key={job.id} value={job.id}>{job.customer} — {job.description}</option>)}</select></label>}
+            {action === "work-order" && <label className="scan-field">Work order<select value={jobId} onChange={(e) => setJobId(e.target.value)}><option value="">Select work order</option>{activeJobs.map((wo) => <option key={wo.id} value={wo.id}>{wo.woNumber ?? wo.id}{wo.description ? ` — ${wo.description}` : ""}</option>)}</select></label>}
             <label className="scan-field">{action === "count" ? "Counted quantity" : "Quantity"}<div className="scan-quantity"><button onClick={() => setQuantity((q) => Math.max(1, q - 1))}>−</button><input type="number" min="1" value={quantity} onChange={(e) => setQuantity(e.target.value)} /><button onClick={() => setQuantity((q) => Number(q) + 1)}>+</button></div></label>
             <button className="scan-confirm" onClick={applyAction}>Confirm {ACTIONS.find((item) => item.id === action)?.label.toLowerCase()}</button>
           </>

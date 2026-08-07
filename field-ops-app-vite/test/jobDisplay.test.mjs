@@ -32,14 +32,28 @@ ok("hero matching works for both shapes via the normalizer", () => {
   assert.equal(jobCustomerName({ name: "Hero Co" }), jobCustomerName("Hero Co"));
 });
 
-// ---- structural: FieldMode renders customers ONLY through the normalizer --
-ok("FieldMode has no raw customer render left", () => {
+// ---- structural: FieldMode carries no legacy free-text customer ------------
+//
+// F0 -- FieldMode moved to the governed Work Order model, which carries a
+// customerId REFERENCE, not the legacy free-text `customer` field these
+// assertions were written for. jobCustomerName() itself is unchanged and stays
+// fully covered by the behavioural tests above; it is simply no longer reached
+// from this screen, because the shape it normalises no longer appears here.
+//
+// The guard that mattered is kept and strengthened: no raw customer render, and
+// now no legacy customer field usage at all.
+//
+// KNOWN GAP, recorded rather than hidden: the technician currently sees the
+// Work Order number and complaint but NOT the customer name, because resolving
+// customerId -> account name is a read this screen does not yet make (and whose
+// technician-side Rules access is unverified). Carried as an F1 item -- see
+// docs/assessments/f0-field-job-authority-evidence.md.
+ok("FieldMode carries no legacy free-text customer usage", () => {
   const src = readFileSync(new URL("../src/modules/mobile/FieldMode.jsx", import.meta.url), "utf8");
-  assert.match(src, /jobCustomerName\(activeJob\.customer\)/);
-  assert.match(src, /jobCustomerName\(job\.customer\)/);
   assert.doesNotMatch(src, /\{activeJob\.customer\}/, "raw active-job customer render must be gone");
   assert.doesNotMatch(src, /\{job\.customer\}/, "raw up-next customer render must be gone");
-  assert.doesNotMatch(src, /isHeroActiveJob\((activeJob|a|b|job)\.customer\)/, "hero checks must consume the normalized name");
+  assert.doesNotMatch(src, /\.customer\b/, "the legacy free-text customer field must not be read at all");
+  assert.doesNotMatch(src, /isHeroActiveJob/, "demo hero ordering must not drive a governed queue");
 });
 
 console.log(`\njobDisplay: ${passed} passed, 0 failed`);

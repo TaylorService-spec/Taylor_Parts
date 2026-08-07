@@ -1,5 +1,6 @@
 import { useMemo } from "react";
-import { JOBS_COLLECTION, TECHNICIANS_COLLECTION, JOB_STATUS, TECH_STATUS } from "../../domain/constants";
+import { TECHNICIANS_COLLECTION, TECH_STATUS } from "../../domain/constants";
+import { FIELD_PHASE, fieldPhase } from "../../domain/fieldWorkOrder";
 import { useFirestoreCollection } from "../../hooks/useFirestoreCollection";
 import { useWorkOrders } from "../../hooks/useWorkOrders";
 import { useAuth } from "../../auth/AuthContext";
@@ -56,13 +57,16 @@ import WorkOrderDetail from "./WorkOrderDetail";
 
 export default function ControlTower() {
   const { role } = useAuth();
-  const { data: jobs } = useFirestoreCollection(JOBS_COLLECTION);
   const { data: technicians } = useFirestoreCollection(TECHNICIANS_COLLECTION);
   const { data: workOrders } = useWorkOrders();
 
-  const openJobs = jobs.filter((j) => j.status === JOB_STATUS.OPEN).length;
-  const assignedJobs = jobs.filter((j) => j.status === JOB_STATUS.ASSIGNED || j.status === JOB_STATUS.IN_PROGRESS).length;
-  const completeJobs = jobs.filter((j) => j.status === JOB_STATUS.COMPLETE).length;
+  // F0 -- these counts now come from the GOVERNED Work Order Engine
+  // (fieldops_wos) via the phase projection, not the legacy fieldops_jobs
+  // collection. The operational question each answers is unchanged.
+  const byPhase = (phase) => workOrders.filter((wo) => fieldPhase(wo) === phase).length;
+  const openJobs = byPhase(FIELD_PHASE.AWAITING_DISPATCH);
+  const assignedJobs = byPhase(FIELD_PHASE.ASSIGNED) + byPhase(FIELD_PHASE.ON_SITE);
+  const completeJobs = byPhase(FIELD_PHASE.FINISHED);
   const availableTechs = technicians.filter((t) => t.status === TECH_STATUS.AVAILABLE).length;
   const onJobTechs = technicians.filter((t) => t.status === TECH_STATUS.ON_JOB).length;
 
@@ -73,14 +77,23 @@ export default function ControlTower() {
   // there's no referential integrity between the two collections
   // (deliberate, see docs/architecture/ADR-002) -- but that anomaly
   // isn't detected/surfaced this pass.
-  const unassignedJobs = useMemo(() => jobs.filter((job) => !job.workOrderId), [jobs]);
+  // F0 -- "jobs with no workOrderId" was a legacy-model integrity signal: a
+  // fieldops_jobs row that never pointed at a Work Order. On the governed model
+  // the Work Order IS the record, so that anomaly cannot exist. The equivalent
+  // live signal is a Work Order past dispatch readiness with no technician.
+  const unassignedJobs = useMemo(
+    () => workOrders.filter((wo) => fieldPhase(wo) !== FIELD_PHASE.FINISHED && !wo.assignedTechId),
+    [workOrders]
+  );
 
   // Jobs linked to a given real Work Order doc, for that WO's
   // "Operational History" (WorkOrderDetail.jsx) -- a soft-coupled join
   // done at render time, no denormalization, no write-time sync.
-  const jobsForWorkOrder = (workOrderId) => jobs.filter((j) => j.workOrderId === workOrderId);
+  // A governed Work Order has no child rows -- it is itself the execution
+  // record -- so its detail panel receives itself rather than a job list.
+  const jobsForWorkOrder = (workOrderId) => workOrders.filter((wo) => wo.id === workOrderId);
 
-  const techGroups = useMemo(() => groupJobsByTechnician(jobs), [jobs]);
+  const techGroups = useMemo(() => groupJobsByTechnician(workOrders), [workOrders]);
   const technicianName = (id) => technicians.find((t) => t.id === id)?.name || id;
 
   return (
@@ -114,7 +127,7 @@ export default function ControlTower() {
 
       {unassignedJobs.length > 0 && (
         <div className="warning">
-          ⚠ Jobs missing Work Order assignment: {unassignedJobs.length}
+          ⚠ Work Orders with no assigned technician: {unassignedJobs.length}
         </div>
       )}
 
@@ -131,11 +144,11 @@ export default function ControlTower() {
         ))}
       </div>
 
-      <AtRiskPanel jobs={jobs} technicians={technicians} workOrders={workOrders} />
-      <DispatchQueuePanel jobs={jobs} technicians={technicians} workOrders={workOrders} />
-      <OverloadedTechPanel jobs={jobs} technicians={technicians} workOrders={workOrders} />
-      <ActivityTimelinePanel jobs={jobs} technicians={technicians} workOrders={workOrders} />
-      <PartsOverviewPanel jobs={jobs} technicians={technicians} workOrders={workOrders} />
+      <AtRiskPanel jobs={workOrders} technicians={technicians} workOrders={workOrders} />
+      <DispatchQueuePanel jobs={workOrders} technicians={technicians} workOrders={workOrders} />
+      <OverloadedTechPanel jobs={workOrders} technicians={technicians} workOrders={workOrders} />
+      <ActivityTimelinePanel jobs={workOrders} technicians={technicians} workOrders={workOrders} />
+      <PartsOverviewPanel jobs={workOrders} technicians={technicians} workOrders={workOrders} />
     </div>
   );
 }
