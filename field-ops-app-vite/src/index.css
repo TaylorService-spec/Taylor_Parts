@@ -283,7 +283,12 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
 .fo-rail__group-label {
   margin: 0 0 3px; padding-left: 22px; margin-left: 10px;
   font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.09em;
-  color: var(--verenward-moon); opacity: 0.6;
+  /* opacity 0.6 read as "quiet" but measured 3.90:1 against the evergreen rail,
+     which fails AA -- and at 10px bold it does not qualify as large text, so
+     the 3.0 threshold does not apply. 0.85 keeps it clearly subordinate to the
+     destinations beneath it at 6.4:1. Accessibility outranks decorative
+     restraint, as elsewhere in this system. */
+  color: var(--verenward-moon); opacity: 0.85;
 }
 
 /* --- Workspace column ---------------------------------------------------- */
