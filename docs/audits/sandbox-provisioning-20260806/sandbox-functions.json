@@ -1,0 +1,1404 @@
+{
+  "status": "success",
+  "result": [
+    {
+      "platform": "gcfv2",
+      "id": "activateSupplier",
+      "project": "eos-platform-sandbox",
+      "region": "us-central1",
+      "callableTrigger": {},
+      "entryPoint": "activateSupplier",
+      "runtime": "nodejs20",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-33669510651-us-central1",
+          "object": "activateSupplier/function-source.zip",
+          "generation": "1786062050985915"
+        }
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "environmentVariables": {
+        "FIREBASE_CONFIG": "{\"projectId\":\"eos-platform-sandbox\",\"storageBucket\":\"eos-platform-sandbox.firebasestorage.app\"}",
+        "GCLOUD_PROJECT": "eos-platform-sandbox",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/eos-platform-sandbox/locations/us-central1/services/activateSupplier",
+        "FUNCTION_TARGET": "activateSupplier",
+        "LOG_EXECUTION_ID": "true",
+        "FUNCTION_SIGNATURE_TYPE": "http"
+      },
+      "timeoutSeconds": 60,
+      "uri": "https://us-central1-eos-platform-sandbox.cloudfunctions.net/activateSupplier",
+      "serviceAccount": "33669510651-compute@developer.gserviceaccount.com",
+      "availableMemoryMb": 256,
+      "cpu": 1,
+      "concurrency": 80,
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true",
+        "firebase-functions-hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3"
+      },
+      "runServiceId": "activatesupplier",
+      "codebase": "default",
+      "hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3",
+      "state": "ACTIVE"
+    },
+    {
+      "platform": "gcfv2",
+      "id": "approveAccessRequest",
+      "project": "eos-platform-sandbox",
+      "region": "us-central1",
+      "callableTrigger": {},
+      "entryPoint": "approveAccessRequest",
+      "runtime": "nodejs20",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-33669510651-us-central1",
+          "object": "approveAccessRequest/function-source.zip",
+          "generation": "1786062050966864"
+        }
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "environmentVariables": {
+        "FIREBASE_CONFIG": "{\"projectId\":\"eos-platform-sandbox\",\"storageBucket\":\"eos-platform-sandbox.firebasestorage.app\"}",
+        "GCLOUD_PROJECT": "eos-platform-sandbox",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/eos-platform-sandbox/locations/us-central1/services/approveAccessRequest",
+        "FUNCTION_TARGET": "approveAccessRequest",
+        "LOG_EXECUTION_ID": "true",
+        "FUNCTION_SIGNATURE_TYPE": "http"
+      },
+      "timeoutSeconds": 60,
+      "uri": "https://us-central1-eos-platform-sandbox.cloudfunctions.net/approveAccessRequest",
+      "serviceAccount": "33669510651-compute@developer.gserviceaccount.com",
+      "availableMemoryMb": 256,
+      "cpu": 1,
+      "concurrency": 80,
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true",
+        "firebase-functions-hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3"
+      },
+      "runServiceId": "approveaccessrequest",
+      "codebase": "default",
+      "hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3",
+      "state": "ACTIVE"
+    },
+    {
+      "platform": "gcfv2",
+      "id": "assignApprovedRole",
+      "project": "eos-platform-sandbox",
+      "region": "us-central1",
+      "callableTrigger": {},
+      "entryPoint": "assignApprovedRole",
+      "runtime": "nodejs20",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-33669510651-us-central1",
+          "object": "assignApprovedRole/function-source.zip",
+          "generation": "1786062050958595"
+        }
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "environmentVariables": {
+        "FIREBASE_CONFIG": "{\"projectId\":\"eos-platform-sandbox\",\"storageBucket\":\"eos-platform-sandbox.firebasestorage.app\"}",
+        "GCLOUD_PROJECT": "eos-platform-sandbox",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/eos-platform-sandbox/locations/us-central1/services/assignApprovedRole",
+        "FUNCTION_TARGET": "assignApprovedRole",
+        "LOG_EXECUTION_ID": "true",
+        "FUNCTION_SIGNATURE_TYPE": "http"
+      },
+      "timeoutSeconds": 60,
+      "uri": "https://us-central1-eos-platform-sandbox.cloudfunctions.net/assignApprovedRole",
+      "serviceAccount": "33669510651-compute@developer.gserviceaccount.com",
+      "availableMemoryMb": 256,
+      "cpu": 1,
+      "concurrency": 80,
+      "labels": {
+        "deployment-callable": "true",
+        "firebase-functions-hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3",
+        "deployment-tool": "cli-firebase"
+      },
+      "runServiceId": "assignapprovedrole",
+      "codebase": "default",
+      "hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3",
+      "state": "ACTIVE"
+    },
+    {
+      "platform": "gcfv2",
+      "id": "assignTruckDriverCallable",
+      "project": "eos-platform-sandbox",
+      "region": "us-central1",
+      "callableTrigger": {},
+      "entryPoint": "assignTruckDriverCallable",
+      "runtime": "nodejs20",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-33669510651-us-central1",
+          "object": "assignTruckDriverCallable/function-source.zip",
+          "generation": "1786062050941896"
+        }
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "environmentVariables": {
+        "FIREBASE_CONFIG": "{\"projectId\":\"eos-platform-sandbox\",\"storageBucket\":\"eos-platform-sandbox.firebasestorage.app\"}",
+        "GCLOUD_PROJECT": "eos-platform-sandbox",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/eos-platform-sandbox/locations/us-central1/services/assignTruckDriverCallable",
+        "FUNCTION_TARGET": "assignTruckDriverCallable",
+        "LOG_EXECUTION_ID": "true",
+        "FUNCTION_SIGNATURE_TYPE": "http"
+      },
+      "timeoutSeconds": 60,
+      "uri": "https://us-central1-eos-platform-sandbox.cloudfunctions.net/assignTruckDriverCallable",
+      "serviceAccount": "33669510651-compute@developer.gserviceaccount.com",
+      "availableMemoryMb": 256,
+      "cpu": 1,
+      "concurrency": 80,
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true",
+        "firebase-functions-hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3"
+      },
+      "runServiceId": "assigntruckdrivercallable",
+      "codebase": "default",
+      "hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3",
+      "state": "ACTIVE"
+    },
+    {
+      "platform": "gcfv2",
+      "id": "changeTruckHomeWarehouseCallable",
+      "project": "eos-platform-sandbox",
+      "region": "us-central1",
+      "callableTrigger": {},
+      "entryPoint": "changeTruckHomeWarehouseCallable",
+      "runtime": "nodejs20",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-33669510651-us-central1",
+          "object": "changeTruckHomeWarehouseCallable/function-source.zip",
+          "generation": "1786062050947769"
+        }
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "environmentVariables": {
+        "FIREBASE_CONFIG": "{\"projectId\":\"eos-platform-sandbox\",\"storageBucket\":\"eos-platform-sandbox.firebasestorage.app\"}",
+        "GCLOUD_PROJECT": "eos-platform-sandbox",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/eos-platform-sandbox/locations/us-central1/services/changeTruckHomeWarehouseCallable",
+        "FUNCTION_TARGET": "changeTruckHomeWarehouseCallable",
+        "LOG_EXECUTION_ID": "true",
+        "FUNCTION_SIGNATURE_TYPE": "http"
+      },
+      "timeoutSeconds": 60,
+      "uri": "https://us-central1-eos-platform-sandbox.cloudfunctions.net/changeTruckHomeWarehouseCallable",
+      "serviceAccount": "33669510651-compute@developer.gserviceaccount.com",
+      "availableMemoryMb": 256,
+      "cpu": 1,
+      "concurrency": 80,
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true",
+        "firebase-functions-hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3"
+      },
+      "runServiceId": "changetruckhomewarehousecallable",
+      "codebase": "default",
+      "hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3",
+      "state": "ACTIVE"
+    },
+    {
+      "platform": "gcfv2",
+      "id": "changeTruckStatusCallable",
+      "project": "eos-platform-sandbox",
+      "region": "us-central1",
+      "callableTrigger": {},
+      "entryPoint": "changeTruckStatusCallable",
+      "runtime": "nodejs20",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-33669510651-us-central1",
+          "object": "changeTruckStatusCallable/function-source.zip",
+          "generation": "1786062051190555"
+        }
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "environmentVariables": {
+        "FIREBASE_CONFIG": "{\"projectId\":\"eos-platform-sandbox\",\"storageBucket\":\"eos-platform-sandbox.firebasestorage.app\"}",
+        "GCLOUD_PROJECT": "eos-platform-sandbox",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/eos-platform-sandbox/locations/us-central1/services/changeTruckStatusCallable",
+        "FUNCTION_TARGET": "changeTruckStatusCallable",
+        "LOG_EXECUTION_ID": "true",
+        "FUNCTION_SIGNATURE_TYPE": "http"
+      },
+      "timeoutSeconds": 60,
+      "uri": "https://us-central1-eos-platform-sandbox.cloudfunctions.net/changeTruckStatusCallable",
+      "serviceAccount": "33669510651-compute@developer.gserviceaccount.com",
+      "availableMemoryMb": 256,
+      "cpu": 1,
+      "concurrency": 80,
+      "labels": {
+        "deployment-callable": "true",
+        "firebase-functions-hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3",
+        "deployment-tool": "cli-firebase"
+      },
+      "runServiceId": "changetruckstatuscallable",
+      "codebase": "default",
+      "hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3",
+      "state": "ACTIVE"
+    },
+    {
+      "platform": "gcfv2",
+      "id": "completeAssignedJob",
+      "project": "eos-platform-sandbox",
+      "region": "us-central1",
+      "callableTrigger": {},
+      "entryPoint": "completeAssignedJob",
+      "runtime": "nodejs20",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-33669510651-us-central1",
+          "object": "completeAssignedJob/function-source.zip",
+          "generation": "1786062050903807"
+        }
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "environmentVariables": {
+        "FIREBASE_CONFIG": "{\"projectId\":\"eos-platform-sandbox\",\"storageBucket\":\"eos-platform-sandbox.firebasestorage.app\"}",
+        "GCLOUD_PROJECT": "eos-platform-sandbox",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/eos-platform-sandbox/locations/us-central1/services/completeAssignedJob",
+        "FUNCTION_TARGET": "completeAssignedJob",
+        "LOG_EXECUTION_ID": "true",
+        "FUNCTION_SIGNATURE_TYPE": "http"
+      },
+      "timeoutSeconds": 60,
+      "uri": "https://us-central1-eos-platform-sandbox.cloudfunctions.net/completeAssignedJob",
+      "serviceAccount": "33669510651-compute@developer.gserviceaccount.com",
+      "availableMemoryMb": 256,
+      "cpu": 1,
+      "concurrency": 80,
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true",
+        "firebase-functions-hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3"
+      },
+      "runServiceId": "completeassignedjob",
+      "codebase": "default",
+      "hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3",
+      "state": "ACTIVE"
+    },
+    {
+      "platform": "gcfv2",
+      "id": "createSavedDefinitionCallable",
+      "project": "eos-platform-sandbox",
+      "region": "us-central1",
+      "callableTrigger": {},
+      "entryPoint": "createSavedDefinitionCallable",
+      "runtime": "nodejs20",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-33669510651-us-central1",
+          "object": "createSavedDefinitionCallable/function-source.zip",
+          "generation": "1786062050968898"
+        }
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "environmentVariables": {
+        "FIREBASE_CONFIG": "{\"projectId\":\"eos-platform-sandbox\",\"storageBucket\":\"eos-platform-sandbox.firebasestorage.app\"}",
+        "GCLOUD_PROJECT": "eos-platform-sandbox",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/eos-platform-sandbox/locations/us-central1/services/createSavedDefinitionCallable",
+        "FUNCTION_TARGET": "createSavedDefinitionCallable",
+        "LOG_EXECUTION_ID": "true",
+        "FUNCTION_SIGNATURE_TYPE": "http"
+      },
+      "timeoutSeconds": 60,
+      "uri": "https://us-central1-eos-platform-sandbox.cloudfunctions.net/createSavedDefinitionCallable",
+      "serviceAccount": "33669510651-compute@developer.gserviceaccount.com",
+      "availableMemoryMb": 256,
+      "cpu": 1,
+      "concurrency": 80,
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true",
+        "firebase-functions-hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3"
+      },
+      "runServiceId": "createsaveddefinitioncallable",
+      "codebase": "default",
+      "hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3",
+      "state": "ACTIVE"
+    },
+    {
+      "platform": "gcfv2",
+      "id": "createSupplier",
+      "project": "eos-platform-sandbox",
+      "region": "us-central1",
+      "callableTrigger": {},
+      "entryPoint": "createSupplier",
+      "runtime": "nodejs20",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-33669510651-us-central1",
+          "object": "createSupplier/function-source.zip",
+          "generation": "1786062050988258"
+        }
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "environmentVariables": {
+        "FIREBASE_CONFIG": "{\"projectId\":\"eos-platform-sandbox\",\"storageBucket\":\"eos-platform-sandbox.firebasestorage.app\"}",
+        "GCLOUD_PROJECT": "eos-platform-sandbox",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/eos-platform-sandbox/locations/us-central1/services/createSupplier",
+        "FUNCTION_TARGET": "createSupplier",
+        "LOG_EXECUTION_ID": "true",
+        "FUNCTION_SIGNATURE_TYPE": "http"
+      },
+      "timeoutSeconds": 60,
+      "uri": "https://us-central1-eos-platform-sandbox.cloudfunctions.net/createSupplier",
+      "serviceAccount": "33669510651-compute@developer.gserviceaccount.com",
+      "availableMemoryMb": 256,
+      "cpu": 1,
+      "concurrency": 80,
+      "labels": {
+        "firebase-functions-hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3",
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true"
+      },
+      "runServiceId": "createsupplier",
+      "codebase": "default",
+      "hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3",
+      "state": "ACTIVE"
+    },
+    {
+      "platform": "gcfv2",
+      "id": "createTruckCallable",
+      "project": "eos-platform-sandbox",
+      "region": "us-central1",
+      "callableTrigger": {},
+      "entryPoint": "createTruckCallable",
+      "runtime": "nodejs20",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-33669510651-us-central1",
+          "object": "createTruckCallable/function-source.zip",
+          "generation": "1786062051183966"
+        }
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "environmentVariables": {
+        "FIREBASE_CONFIG": "{\"projectId\":\"eos-platform-sandbox\",\"storageBucket\":\"eos-platform-sandbox.firebasestorage.app\"}",
+        "GCLOUD_PROJECT": "eos-platform-sandbox",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/eos-platform-sandbox/locations/us-central1/services/createTruckCallable",
+        "FUNCTION_TARGET": "createTruckCallable",
+        "LOG_EXECUTION_ID": "true",
+        "FUNCTION_SIGNATURE_TYPE": "http"
+      },
+      "timeoutSeconds": 60,
+      "uri": "https://us-central1-eos-platform-sandbox.cloudfunctions.net/createTruckCallable",
+      "serviceAccount": "33669510651-compute@developer.gserviceaccount.com",
+      "availableMemoryMb": 256,
+      "cpu": 1,
+      "concurrency": 80,
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true",
+        "firebase-functions-hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3"
+      },
+      "runServiceId": "createtruckcallable",
+      "codebase": "default",
+      "hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3",
+      "state": "ACTIVE"
+    },
+    {
+      "platform": "gcfv2",
+      "id": "createWorkOrder",
+      "project": "eos-platform-sandbox",
+      "region": "us-central1",
+      "callableTrigger": {},
+      "entryPoint": "createWorkOrder",
+      "runtime": "nodejs20",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-33669510651-us-central1",
+          "object": "createWorkOrder/function-source.zip",
+          "generation": "1786061972544834"
+        }
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "environmentVariables": {
+        "FIREBASE_CONFIG": "{\"projectId\":\"eos-platform-sandbox\",\"storageBucket\":\"eos-platform-sandbox.firebasestorage.app\"}",
+        "GCLOUD_PROJECT": "eos-platform-sandbox",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/eos-platform-sandbox/locations/us-central1/services/createWorkOrder",
+        "FUNCTION_TARGET": "createWorkOrder",
+        "LOG_EXECUTION_ID": "true"
+      },
+      "timeoutSeconds": 60,
+      "uri": "https://us-central1-eos-platform-sandbox.cloudfunctions.net/createWorkOrder",
+      "serviceAccount": "33669510651-compute@developer.gserviceaccount.com",
+      "availableMemoryMb": 256,
+      "cpu": 1,
+      "concurrency": 80,
+      "labels": {
+        "deployment-callable": "true",
+        "firebase-functions-hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3",
+        "deployment-tool": "cli-firebase"
+      },
+      "runServiceId": "createworkorder",
+      "codebase": "default",
+      "hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3",
+      "state": "ACTIVE"
+    },
+    {
+      "platform": "gcfv2",
+      "id": "deactivateSupplier",
+      "project": "eos-platform-sandbox",
+      "region": "us-central1",
+      "callableTrigger": {},
+      "entryPoint": "deactivateSupplier",
+      "runtime": "nodejs20",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-33669510651-us-central1",
+          "object": "deactivateSupplier/function-source.zip",
+          "generation": "1786062050957195"
+        }
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "environmentVariables": {
+        "FIREBASE_CONFIG": "{\"projectId\":\"eos-platform-sandbox\",\"storageBucket\":\"eos-platform-sandbox.firebasestorage.app\"}",
+        "GCLOUD_PROJECT": "eos-platform-sandbox",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/eos-platform-sandbox/locations/us-central1/services/deactivateSupplier",
+        "FUNCTION_TARGET": "deactivateSupplier",
+        "LOG_EXECUTION_ID": "true",
+        "FUNCTION_SIGNATURE_TYPE": "http"
+      },
+      "timeoutSeconds": 60,
+      "uri": "https://us-central1-eos-platform-sandbox.cloudfunctions.net/deactivateSupplier",
+      "serviceAccount": "33669510651-compute@developer.gserviceaccount.com",
+      "availableMemoryMb": 256,
+      "cpu": 1,
+      "concurrency": 80,
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true",
+        "firebase-functions-hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3"
+      },
+      "runServiceId": "deactivatesupplier",
+      "codebase": "default",
+      "hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3",
+      "state": "ACTIVE"
+    },
+    {
+      "platform": "gcfv2",
+      "id": "deactivateTruckCallable",
+      "project": "eos-platform-sandbox",
+      "region": "us-central1",
+      "callableTrigger": {},
+      "entryPoint": "deactivateTruckCallable",
+      "runtime": "nodejs20",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-33669510651-us-central1",
+          "object": "deactivateTruckCallable/function-source.zip",
+          "generation": "1786062050965237"
+        }
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "environmentVariables": {
+        "FIREBASE_CONFIG": "{\"projectId\":\"eos-platform-sandbox\",\"storageBucket\":\"eos-platform-sandbox.firebasestorage.app\"}",
+        "GCLOUD_PROJECT": "eos-platform-sandbox",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/eos-platform-sandbox/locations/us-central1/services/deactivateTruckCallable",
+        "FUNCTION_TARGET": "deactivateTruckCallable",
+        "LOG_EXECUTION_ID": "true",
+        "FUNCTION_SIGNATURE_TYPE": "http"
+      },
+      "timeoutSeconds": 60,
+      "uri": "https://us-central1-eos-platform-sandbox.cloudfunctions.net/deactivateTruckCallable",
+      "serviceAccount": "33669510651-compute@developer.gserviceaccount.com",
+      "availableMemoryMb": 256,
+      "cpu": 1,
+      "concurrency": 80,
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true",
+        "firebase-functions-hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3"
+      },
+      "runServiceId": "deactivatetruckcallable",
+      "codebase": "default",
+      "hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3",
+      "state": "ACTIVE"
+    },
+    {
+      "platform": "gcfv2",
+      "id": "deleteSavedDefinitionCallable",
+      "project": "eos-platform-sandbox",
+      "region": "us-central1",
+      "callableTrigger": {},
+      "entryPoint": "deleteSavedDefinitionCallable",
+      "runtime": "nodejs20",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-33669510651-us-central1",
+          "object": "deleteSavedDefinitionCallable/function-source.zip",
+          "generation": "1786062050965815"
+        }
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "environmentVariables": {
+        "FIREBASE_CONFIG": "{\"projectId\":\"eos-platform-sandbox\",\"storageBucket\":\"eos-platform-sandbox.firebasestorage.app\"}",
+        "GCLOUD_PROJECT": "eos-platform-sandbox",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/eos-platform-sandbox/locations/us-central1/services/deleteSavedDefinitionCallable",
+        "FUNCTION_TARGET": "deleteSavedDefinitionCallable",
+        "LOG_EXECUTION_ID": "true",
+        "FUNCTION_SIGNATURE_TYPE": "http"
+      },
+      "timeoutSeconds": 60,
+      "uri": "https://us-central1-eos-platform-sandbox.cloudfunctions.net/deleteSavedDefinitionCallable",
+      "serviceAccount": "33669510651-compute@developer.gserviceaccount.com",
+      "availableMemoryMb": 256,
+      "cpu": 1,
+      "concurrency": 80,
+      "labels": {
+        "deployment-callable": "true",
+        "firebase-functions-hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3",
+        "deployment-tool": "cli-firebase"
+      },
+      "runServiceId": "deletesaveddefinitioncallable",
+      "codebase": "default",
+      "hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3",
+      "state": "ACTIVE"
+    },
+    {
+      "platform": "gcfv2",
+      "id": "deleteTruckCreatedInErrorCallable",
+      "project": "eos-platform-sandbox",
+      "region": "us-central1",
+      "callableTrigger": {},
+      "entryPoint": "deleteTruckCreatedInErrorCallable",
+      "runtime": "nodejs20",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-33669510651-us-central1",
+          "object": "deleteTruckCreatedInErrorCallable/function-source.zip",
+          "generation": "1786062050979640"
+        }
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "environmentVariables": {
+        "FIREBASE_CONFIG": "{\"projectId\":\"eos-platform-sandbox\",\"storageBucket\":\"eos-platform-sandbox.firebasestorage.app\"}",
+        "GCLOUD_PROJECT": "eos-platform-sandbox",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/eos-platform-sandbox/locations/us-central1/services/deleteTruckCreatedInErrorCallable",
+        "FUNCTION_TARGET": "deleteTruckCreatedInErrorCallable",
+        "LOG_EXECUTION_ID": "true",
+        "FUNCTION_SIGNATURE_TYPE": "http"
+      },
+      "timeoutSeconds": 60,
+      "uri": "https://us-central1-eos-platform-sandbox.cloudfunctions.net/deleteTruckCreatedInErrorCallable",
+      "serviceAccount": "33669510651-compute@developer.gserviceaccount.com",
+      "availableMemoryMb": 256,
+      "cpu": 1,
+      "concurrency": 80,
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true",
+        "firebase-functions-hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3"
+      },
+      "runServiceId": "deletetruckcreatedinerrorcallable",
+      "codebase": "default",
+      "hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3",
+      "state": "ACTIVE"
+    },
+    {
+      "platform": "gcfv2",
+      "id": "duplicateSavedDefinitionCallable",
+      "project": "eos-platform-sandbox",
+      "region": "us-central1",
+      "callableTrigger": {},
+      "entryPoint": "duplicateSavedDefinitionCallable",
+      "runtime": "nodejs20",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-33669510651-us-central1",
+          "object": "duplicateSavedDefinitionCallable/function-source.zip",
+          "generation": "1786062050951580"
+        }
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "environmentVariables": {
+        "FIREBASE_CONFIG": "{\"projectId\":\"eos-platform-sandbox\",\"storageBucket\":\"eos-platform-sandbox.firebasestorage.app\"}",
+        "GCLOUD_PROJECT": "eos-platform-sandbox",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/eos-platform-sandbox/locations/us-central1/services/duplicateSavedDefinitionCallable",
+        "FUNCTION_TARGET": "duplicateSavedDefinitionCallable",
+        "LOG_EXECUTION_ID": "true",
+        "FUNCTION_SIGNATURE_TYPE": "http"
+      },
+      "timeoutSeconds": 60,
+      "uri": "https://us-central1-eos-platform-sandbox.cloudfunctions.net/duplicateSavedDefinitionCallable",
+      "serviceAccount": "33669510651-compute@developer.gserviceaccount.com",
+      "availableMemoryMb": 256,
+      "cpu": 1,
+      "concurrency": 80,
+      "labels": {
+        "deployment-callable": "true",
+        "firebase-functions-hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3",
+        "deployment-tool": "cli-firebase"
+      },
+      "runServiceId": "duplicatesaveddefinitioncallable",
+      "codebase": "default",
+      "hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3",
+      "state": "ACTIVE"
+    },
+    {
+      "platform": "gcfv2",
+      "id": "getSavedDefinitionCallable",
+      "project": "eos-platform-sandbox",
+      "region": "us-central1",
+      "callableTrigger": {},
+      "entryPoint": "getSavedDefinitionCallable",
+      "runtime": "nodejs20",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-33669510651-us-central1",
+          "object": "getSavedDefinitionCallable/function-source.zip",
+          "generation": "1786062050977191"
+        }
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "environmentVariables": {
+        "FIREBASE_CONFIG": "{\"projectId\":\"eos-platform-sandbox\",\"storageBucket\":\"eos-platform-sandbox.firebasestorage.app\"}",
+        "GCLOUD_PROJECT": "eos-platform-sandbox",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/eos-platform-sandbox/locations/us-central1/services/getSavedDefinitionCallable",
+        "FUNCTION_TARGET": "getSavedDefinitionCallable",
+        "LOG_EXECUTION_ID": "true",
+        "FUNCTION_SIGNATURE_TYPE": "http"
+      },
+      "timeoutSeconds": 60,
+      "uri": "https://us-central1-eos-platform-sandbox.cloudfunctions.net/getSavedDefinitionCallable",
+      "serviceAccount": "33669510651-compute@developer.gserviceaccount.com",
+      "availableMemoryMb": 256,
+      "cpu": 1,
+      "concurrency": 80,
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true",
+        "firebase-functions-hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3"
+      },
+      "runServiceId": "getsaveddefinitioncallable",
+      "codebase": "default",
+      "hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3",
+      "state": "ACTIVE"
+    },
+    {
+      "platform": "gcfv2",
+      "id": "grantRole",
+      "project": "eos-platform-sandbox",
+      "region": "us-central1",
+      "callableTrigger": {},
+      "entryPoint": "grantRole",
+      "runtime": "nodejs20",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-33669510651-us-central1",
+          "object": "grantRole/function-source.zip",
+          "generation": "1786062050988469"
+        }
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "environmentVariables": {
+        "FIREBASE_CONFIG": "{\"projectId\":\"eos-platform-sandbox\",\"storageBucket\":\"eos-platform-sandbox.firebasestorage.app\"}",
+        "GCLOUD_PROJECT": "eos-platform-sandbox",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/eos-platform-sandbox/locations/us-central1/services/grantRole",
+        "FUNCTION_TARGET": "grantRole",
+        "LOG_EXECUTION_ID": "true",
+        "FUNCTION_SIGNATURE_TYPE": "http"
+      },
+      "timeoutSeconds": 60,
+      "uri": "https://us-central1-eos-platform-sandbox.cloudfunctions.net/grantRole",
+      "serviceAccount": "33669510651-compute@developer.gserviceaccount.com",
+      "availableMemoryMb": 256,
+      "cpu": 1,
+      "concurrency": 80,
+      "labels": {
+        "firebase-functions-hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3",
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true"
+      },
+      "runServiceId": "grantrole",
+      "codebase": "default",
+      "hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3",
+      "state": "ACTIVE"
+    },
+    {
+      "platform": "gcfv2",
+      "id": "initiateAdminPasswordReset",
+      "project": "eos-platform-sandbox",
+      "region": "us-central1",
+      "callableTrigger": {},
+      "entryPoint": "initiateAdminPasswordReset",
+      "runtime": "nodejs20",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-33669510651-us-central1",
+          "object": "initiateAdminPasswordReset/function-source.zip",
+          "generation": "1786062050975352"
+        }
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "environmentVariables": {
+        "FIREBASE_CONFIG": "{\"projectId\":\"eos-platform-sandbox\",\"storageBucket\":\"eos-platform-sandbox.firebasestorage.app\"}",
+        "GCLOUD_PROJECT": "eos-platform-sandbox",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/eos-platform-sandbox/locations/us-central1/services/initiateAdminPasswordReset",
+        "FUNCTION_TARGET": "initiateAdminPasswordReset",
+        "LOG_EXECUTION_ID": "true",
+        "FUNCTION_SIGNATURE_TYPE": "http"
+      },
+      "timeoutSeconds": 60,
+      "uri": "https://us-central1-eos-platform-sandbox.cloudfunctions.net/initiateAdminPasswordReset",
+      "serviceAccount": "33669510651-compute@developer.gserviceaccount.com",
+      "availableMemoryMb": 256,
+      "cpu": 1,
+      "concurrency": 80,
+      "labels": {
+        "deployment-callable": "true",
+        "firebase-functions-hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3",
+        "deployment-tool": "cli-firebase"
+      },
+      "runServiceId": "initiateadminpasswordreset",
+      "codebase": "default",
+      "hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3",
+      "state": "ACTIVE"
+    },
+    {
+      "platform": "gcfv2",
+      "id": "listReceivingLocationOptions",
+      "project": "eos-platform-sandbox",
+      "region": "us-central1",
+      "callableTrigger": {},
+      "entryPoint": "listReceivingLocationOptions",
+      "runtime": "nodejs20",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-33669510651-us-central1",
+          "object": "listReceivingLocationOptions/function-source.zip",
+          "generation": "1786062050958228"
+        }
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "environmentVariables": {
+        "FIREBASE_CONFIG": "{\"projectId\":\"eos-platform-sandbox\",\"storageBucket\":\"eos-platform-sandbox.firebasestorage.app\"}",
+        "GCLOUD_PROJECT": "eos-platform-sandbox",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/eos-platform-sandbox/locations/us-central1/services/listReceivingLocationOptions",
+        "FUNCTION_TARGET": "listReceivingLocationOptions",
+        "LOG_EXECUTION_ID": "true",
+        "FUNCTION_SIGNATURE_TYPE": "http"
+      },
+      "timeoutSeconds": 60,
+      "uri": "https://us-central1-eos-platform-sandbox.cloudfunctions.net/listReceivingLocationOptions",
+      "serviceAccount": "33669510651-compute@developer.gserviceaccount.com",
+      "availableMemoryMb": 256,
+      "cpu": 1,
+      "concurrency": 80,
+      "labels": {
+        "firebase-functions-hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3",
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true"
+      },
+      "runServiceId": "listreceivinglocationoptions",
+      "codebase": "default",
+      "hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3",
+      "state": "ACTIVE"
+    },
+    {
+      "platform": "gcfv2",
+      "id": "listResetEligibleUsers",
+      "project": "eos-platform-sandbox",
+      "region": "us-central1",
+      "callableTrigger": {},
+      "entryPoint": "listResetEligibleUsers",
+      "runtime": "nodejs20",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-33669510651-us-central1",
+          "object": "listResetEligibleUsers/function-source.zip",
+          "generation": "1786062050974625"
+        }
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "environmentVariables": {
+        "FIREBASE_CONFIG": "{\"projectId\":\"eos-platform-sandbox\",\"storageBucket\":\"eos-platform-sandbox.firebasestorage.app\"}",
+        "GCLOUD_PROJECT": "eos-platform-sandbox",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/eos-platform-sandbox/locations/us-central1/services/listResetEligibleUsers",
+        "FUNCTION_TARGET": "listResetEligibleUsers",
+        "LOG_EXECUTION_ID": "true",
+        "FUNCTION_SIGNATURE_TYPE": "http"
+      },
+      "timeoutSeconds": 60,
+      "uri": "https://us-central1-eos-platform-sandbox.cloudfunctions.net/listResetEligibleUsers",
+      "serviceAccount": "33669510651-compute@developer.gserviceaccount.com",
+      "availableMemoryMb": 256,
+      "cpu": 1,
+      "concurrency": 80,
+      "labels": {
+        "deployment-callable": "true",
+        "firebase-functions-hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3",
+        "deployment-tool": "cli-firebase"
+      },
+      "runServiceId": "listreseteligibleusers",
+      "codebase": "default",
+      "hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3",
+      "state": "ACTIVE"
+    },
+    {
+      "platform": "gcfv2",
+      "id": "listSavedDefinitionsCallable",
+      "project": "eos-platform-sandbox",
+      "region": "us-central1",
+      "callableTrigger": {},
+      "entryPoint": "listSavedDefinitionsCallable",
+      "runtime": "nodejs20",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-33669510651-us-central1",
+          "object": "listSavedDefinitionsCallable/function-source.zip",
+          "generation": "1786062050979844"
+        }
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "environmentVariables": {
+        "FIREBASE_CONFIG": "{\"projectId\":\"eos-platform-sandbox\",\"storageBucket\":\"eos-platform-sandbox.firebasestorage.app\"}",
+        "GCLOUD_PROJECT": "eos-platform-sandbox",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/eos-platform-sandbox/locations/us-central1/services/listSavedDefinitionsCallable",
+        "FUNCTION_TARGET": "listSavedDefinitionsCallable",
+        "LOG_EXECUTION_ID": "true",
+        "FUNCTION_SIGNATURE_TYPE": "http"
+      },
+      "timeoutSeconds": 60,
+      "uri": "https://us-central1-eos-platform-sandbox.cloudfunctions.net/listSavedDefinitionsCallable",
+      "serviceAccount": "33669510651-compute@developer.gserviceaccount.com",
+      "availableMemoryMb": 256,
+      "cpu": 1,
+      "concurrency": 80,
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true",
+        "firebase-functions-hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3"
+      },
+      "runServiceId": "listsaveddefinitionscallable",
+      "codebase": "default",
+      "hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3",
+      "state": "ACTIVE"
+    },
+    {
+      "platform": "gcfv2",
+      "id": "reactivateTruckCallable",
+      "project": "eos-platform-sandbox",
+      "region": "us-central1",
+      "callableTrigger": {},
+      "entryPoint": "reactivateTruckCallable",
+      "runtime": "nodejs20",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-33669510651-us-central1",
+          "object": "reactivateTruckCallable/function-source.zip",
+          "generation": "1786062051022200"
+        }
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "environmentVariables": {
+        "FIREBASE_CONFIG": "{\"projectId\":\"eos-platform-sandbox\",\"storageBucket\":\"eos-platform-sandbox.firebasestorage.app\"}",
+        "GCLOUD_PROJECT": "eos-platform-sandbox",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/eos-platform-sandbox/locations/us-central1/services/reactivateTruckCallable",
+        "FUNCTION_TARGET": "reactivateTruckCallable",
+        "LOG_EXECUTION_ID": "true",
+        "FUNCTION_SIGNATURE_TYPE": "http"
+      },
+      "timeoutSeconds": 60,
+      "uri": "https://us-central1-eos-platform-sandbox.cloudfunctions.net/reactivateTruckCallable",
+      "serviceAccount": "33669510651-compute@developer.gserviceaccount.com",
+      "availableMemoryMb": 256,
+      "cpu": 1,
+      "concurrency": 80,
+      "labels": {
+        "firebase-functions-hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3",
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true"
+      },
+      "runServiceId": "reactivatetruckcallable",
+      "codebase": "default",
+      "hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3",
+      "state": "ACTIVE"
+    },
+    {
+      "platform": "gcfv2",
+      "id": "reassignTruckDriverCallable",
+      "project": "eos-platform-sandbox",
+      "region": "us-central1",
+      "callableTrigger": {},
+      "entryPoint": "reassignTruckDriverCallable",
+      "runtime": "nodejs20",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-33669510651-us-central1",
+          "object": "reassignTruckDriverCallable/function-source.zip",
+          "generation": "1786062050970220"
+        }
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "environmentVariables": {
+        "FIREBASE_CONFIG": "{\"projectId\":\"eos-platform-sandbox\",\"storageBucket\":\"eos-platform-sandbox.firebasestorage.app\"}",
+        "GCLOUD_PROJECT": "eos-platform-sandbox",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/eos-platform-sandbox/locations/us-central1/services/reassignTruckDriverCallable",
+        "FUNCTION_TARGET": "reassignTruckDriverCallable",
+        "LOG_EXECUTION_ID": "true",
+        "FUNCTION_SIGNATURE_TYPE": "http"
+      },
+      "timeoutSeconds": 60,
+      "uri": "https://us-central1-eos-platform-sandbox.cloudfunctions.net/reassignTruckDriverCallable",
+      "serviceAccount": "33669510651-compute@developer.gserviceaccount.com",
+      "availableMemoryMb": 256,
+      "cpu": 1,
+      "concurrency": 80,
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true",
+        "firebase-functions-hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3"
+      },
+      "runServiceId": "reassigntruckdrivercallable",
+      "codebase": "default",
+      "hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3",
+      "state": "ACTIVE"
+    },
+    {
+      "platform": "gcfv2",
+      "id": "receiveInventoryStock",
+      "project": "eos-platform-sandbox",
+      "region": "us-central1",
+      "callableTrigger": {},
+      "entryPoint": "receiveInventoryStock",
+      "runtime": "nodejs20",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-33669510651-us-central1",
+          "object": "receiveInventoryStock/function-source.zip",
+          "generation": "1786062050991653"
+        }
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "environmentVariables": {
+        "FIREBASE_CONFIG": "{\"projectId\":\"eos-platform-sandbox\",\"storageBucket\":\"eos-platform-sandbox.firebasestorage.app\"}",
+        "GCLOUD_PROJECT": "eos-platform-sandbox",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/eos-platform-sandbox/locations/us-central1/services/receiveInventoryStock",
+        "FUNCTION_TARGET": "receiveInventoryStock",
+        "LOG_EXECUTION_ID": "true",
+        "FUNCTION_SIGNATURE_TYPE": "http"
+      },
+      "timeoutSeconds": 60,
+      "uri": "https://us-central1-eos-platform-sandbox.cloudfunctions.net/receiveInventoryStock",
+      "serviceAccount": "33669510651-compute@developer.gserviceaccount.com",
+      "availableMemoryMb": 256,
+      "cpu": 1,
+      "concurrency": 80,
+      "labels": {
+        "firebase-functions-hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3",
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true"
+      },
+      "runServiceId": "receiveinventorystock",
+      "codebase": "default",
+      "hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3",
+      "state": "ACTIVE"
+    },
+    {
+      "platform": "gcfv2",
+      "id": "rejectAccessRequest",
+      "project": "eos-platform-sandbox",
+      "region": "us-central1",
+      "callableTrigger": {},
+      "entryPoint": "rejectAccessRequest",
+      "runtime": "nodejs20",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-33669510651-us-central1",
+          "object": "rejectAccessRequest/function-source.zip",
+          "generation": "1786062050940184"
+        }
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "environmentVariables": {
+        "FIREBASE_CONFIG": "{\"projectId\":\"eos-platform-sandbox\",\"storageBucket\":\"eos-platform-sandbox.firebasestorage.app\"}",
+        "GCLOUD_PROJECT": "eos-platform-sandbox",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/eos-platform-sandbox/locations/us-central1/services/rejectAccessRequest",
+        "FUNCTION_TARGET": "rejectAccessRequest",
+        "LOG_EXECUTION_ID": "true",
+        "FUNCTION_SIGNATURE_TYPE": "http"
+      },
+      "timeoutSeconds": 60,
+      "uri": "https://us-central1-eos-platform-sandbox.cloudfunctions.net/rejectAccessRequest",
+      "serviceAccount": "33669510651-compute@developer.gserviceaccount.com",
+      "availableMemoryMb": 256,
+      "cpu": 1,
+      "concurrency": 80,
+      "labels": {
+        "deployment-callable": "true",
+        "firebase-functions-hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3",
+        "deployment-tool": "cli-firebase"
+      },
+      "runServiceId": "rejectaccessrequest",
+      "codebase": "default",
+      "hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3",
+      "state": "ACTIVE"
+    },
+    {
+      "platform": "gcfv2",
+      "id": "renameSavedDefinitionCallable",
+      "project": "eos-platform-sandbox",
+      "region": "us-central1",
+      "callableTrigger": {},
+      "entryPoint": "renameSavedDefinitionCallable",
+      "runtime": "nodejs20",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-33669510651-us-central1",
+          "object": "renameSavedDefinitionCallable/function-source.zip",
+          "generation": "1786062050973272"
+        }
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "environmentVariables": {
+        "FIREBASE_CONFIG": "{\"projectId\":\"eos-platform-sandbox\",\"storageBucket\":\"eos-platform-sandbox.firebasestorage.app\"}",
+        "GCLOUD_PROJECT": "eos-platform-sandbox",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/eos-platform-sandbox/locations/us-central1/services/renameSavedDefinitionCallable",
+        "FUNCTION_TARGET": "renameSavedDefinitionCallable",
+        "LOG_EXECUTION_ID": "true",
+        "FUNCTION_SIGNATURE_TYPE": "http"
+      },
+      "timeoutSeconds": 60,
+      "uri": "https://us-central1-eos-platform-sandbox.cloudfunctions.net/renameSavedDefinitionCallable",
+      "serviceAccount": "33669510651-compute@developer.gserviceaccount.com",
+      "availableMemoryMb": 256,
+      "cpu": 1,
+      "concurrency": 80,
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true",
+        "firebase-functions-hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3"
+      },
+      "runServiceId": "renamesaveddefinitioncallable",
+      "codebase": "default",
+      "hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3",
+      "state": "ACTIVE"
+    },
+    {
+      "platform": "gcfv2",
+      "id": "resolveEffectiveAccessCallable",
+      "project": "eos-platform-sandbox",
+      "region": "us-central1",
+      "callableTrigger": {},
+      "entryPoint": "resolveEffectiveAccessCallable",
+      "runtime": "nodejs20",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-33669510651-us-central1",
+          "object": "resolveEffectiveAccessCallable/function-source.zip",
+          "generation": "1786062050993046"
+        }
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "environmentVariables": {
+        "FIREBASE_CONFIG": "{\"projectId\":\"eos-platform-sandbox\",\"storageBucket\":\"eos-platform-sandbox.firebasestorage.app\"}",
+        "GCLOUD_PROJECT": "eos-platform-sandbox",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/eos-platform-sandbox/locations/us-central1/services/resolveEffectiveAccessCallable",
+        "FUNCTION_TARGET": "resolveEffectiveAccessCallable",
+        "LOG_EXECUTION_ID": "true",
+        "FUNCTION_SIGNATURE_TYPE": "http"
+      },
+      "timeoutSeconds": 60,
+      "uri": "https://us-central1-eos-platform-sandbox.cloudfunctions.net/resolveEffectiveAccessCallable",
+      "serviceAccount": "33669510651-compute@developer.gserviceaccount.com",
+      "availableMemoryMb": 256,
+      "cpu": 1,
+      "concurrency": 80,
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true",
+        "firebase-functions-hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3"
+      },
+      "runServiceId": "resolveeffectiveaccesscallable",
+      "codebase": "default",
+      "hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3",
+      "state": "ACTIVE"
+    },
+    {
+      "platform": "gcfv2",
+      "id": "revokeRole",
+      "project": "eos-platform-sandbox",
+      "region": "us-central1",
+      "callableTrigger": {},
+      "entryPoint": "revokeRole",
+      "runtime": "nodejs20",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-33669510651-us-central1",
+          "object": "revokeRole/function-source.zip",
+          "generation": "1786062051090683"
+        }
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "environmentVariables": {
+        "FIREBASE_CONFIG": "{\"projectId\":\"eos-platform-sandbox\",\"storageBucket\":\"eos-platform-sandbox.firebasestorage.app\"}",
+        "GCLOUD_PROJECT": "eos-platform-sandbox",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/eos-platform-sandbox/locations/us-central1/services/revokeRole",
+        "FUNCTION_TARGET": "revokeRole",
+        "LOG_EXECUTION_ID": "true",
+        "FUNCTION_SIGNATURE_TYPE": "http"
+      },
+      "timeoutSeconds": 60,
+      "uri": "https://us-central1-eos-platform-sandbox.cloudfunctions.net/revokeRole",
+      "serviceAccount": "33669510651-compute@developer.gserviceaccount.com",
+      "availableMemoryMb": 256,
+      "cpu": 1,
+      "concurrency": 80,
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true",
+        "firebase-functions-hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3"
+      },
+      "runServiceId": "revokerole",
+      "codebase": "default",
+      "hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3",
+      "state": "ACTIVE"
+    },
+    {
+      "platform": "gcfv2",
+      "id": "runReportDefinitionCallable",
+      "project": "eos-platform-sandbox",
+      "region": "us-central1",
+      "callableTrigger": {},
+      "entryPoint": "runReportDefinitionCallable",
+      "runtime": "nodejs20",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-33669510651-us-central1",
+          "object": "runReportDefinitionCallable/function-source.zip",
+          "generation": "1786062051003895"
+        }
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "environmentVariables": {
+        "FIREBASE_CONFIG": "{\"projectId\":\"eos-platform-sandbox\",\"storageBucket\":\"eos-platform-sandbox.firebasestorage.app\"}",
+        "GCLOUD_PROJECT": "eos-platform-sandbox",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/eos-platform-sandbox/locations/us-central1/services/runReportDefinitionCallable",
+        "FUNCTION_TARGET": "runReportDefinitionCallable",
+        "LOG_EXECUTION_ID": "true",
+        "FUNCTION_SIGNATURE_TYPE": "http"
+      },
+      "timeoutSeconds": 60,
+      "uri": "https://us-central1-eos-platform-sandbox.cloudfunctions.net/runReportDefinitionCallable",
+      "serviceAccount": "33669510651-compute@developer.gserviceaccount.com",
+      "availableMemoryMb": 256,
+      "cpu": 1,
+      "concurrency": 80,
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true",
+        "firebase-functions-hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3"
+      },
+      "runServiceId": "runreportdefinitioncallable",
+      "codebase": "default",
+      "hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3",
+      "state": "ACTIVE"
+    },
+    {
+      "platform": "gcfv2",
+      "id": "setUserStatus",
+      "project": "eos-platform-sandbox",
+      "region": "us-central1",
+      "callableTrigger": {},
+      "entryPoint": "setUserStatus",
+      "runtime": "nodejs20",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-33669510651-us-central1",
+          "object": "setUserStatus/function-source.zip",
+          "generation": "1786062051159049"
+        }
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "environmentVariables": {
+        "FIREBASE_CONFIG": "{\"projectId\":\"eos-platform-sandbox\",\"storageBucket\":\"eos-platform-sandbox.firebasestorage.app\"}",
+        "GCLOUD_PROJECT": "eos-platform-sandbox",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/eos-platform-sandbox/locations/us-central1/services/setUserStatus",
+        "FUNCTION_TARGET": "setUserStatus",
+        "LOG_EXECUTION_ID": "true",
+        "FUNCTION_SIGNATURE_TYPE": "http"
+      },
+      "timeoutSeconds": 60,
+      "uri": "https://us-central1-eos-platform-sandbox.cloudfunctions.net/setUserStatus",
+      "serviceAccount": "33669510651-compute@developer.gserviceaccount.com",
+      "availableMemoryMb": 256,
+      "cpu": 1,
+      "concurrency": 80,
+      "labels": {
+        "firebase-functions-hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3",
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true"
+      },
+      "runServiceId": "setuserstatus",
+      "codebase": "default",
+      "hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3",
+      "state": "ACTIVE"
+    },
+    {
+      "platform": "gcfv2",
+      "id": "transitionWorkOrder",
+      "project": "eos-platform-sandbox",
+      "region": "us-central1",
+      "callableTrigger": {},
+      "entryPoint": "transitionWorkOrder",
+      "runtime": "nodejs20",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-33669510651-us-central1",
+          "object": "transitionWorkOrder/function-source.zip",
+          "generation": "1786062050866355"
+        }
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "environmentVariables": {
+        "FIREBASE_CONFIG": "{\"projectId\":\"eos-platform-sandbox\",\"storageBucket\":\"eos-platform-sandbox.firebasestorage.app\"}",
+        "GCLOUD_PROJECT": "eos-platform-sandbox",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/eos-platform-sandbox/locations/us-central1/services/transitionWorkOrder",
+        "FUNCTION_TARGET": "transitionWorkOrder",
+        "LOG_EXECUTION_ID": "true",
+        "FUNCTION_SIGNATURE_TYPE": "http"
+      },
+      "timeoutSeconds": 60,
+      "uri": "https://us-central1-eos-platform-sandbox.cloudfunctions.net/transitionWorkOrder",
+      "serviceAccount": "33669510651-compute@developer.gserviceaccount.com",
+      "availableMemoryMb": 256,
+      "cpu": 1,
+      "concurrency": 80,
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true",
+        "firebase-functions-hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3"
+      },
+      "runServiceId": "transitionworkorder",
+      "codebase": "default",
+      "hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3",
+      "state": "ACTIVE"
+    },
+    {
+      "platform": "gcfv2",
+      "id": "unassignTruckDriverCallable",
+      "project": "eos-platform-sandbox",
+      "region": "us-central1",
+      "callableTrigger": {},
+      "entryPoint": "unassignTruckDriverCallable",
+      "runtime": "nodejs20",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-33669510651-us-central1",
+          "object": "unassignTruckDriverCallable/function-source.zip",
+          "generation": "1786062050986966"
+        }
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "environmentVariables": {
+        "FIREBASE_CONFIG": "{\"projectId\":\"eos-platform-sandbox\",\"storageBucket\":\"eos-platform-sandbox.firebasestorage.app\"}",
+        "GCLOUD_PROJECT": "eos-platform-sandbox",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/eos-platform-sandbox/locations/us-central1/services/unassignTruckDriverCallable",
+        "FUNCTION_TARGET": "unassignTruckDriverCallable",
+        "LOG_EXECUTION_ID": "true",
+        "FUNCTION_SIGNATURE_TYPE": "http"
+      },
+      "timeoutSeconds": 60,
+      "uri": "https://us-central1-eos-platform-sandbox.cloudfunctions.net/unassignTruckDriverCallable",
+      "serviceAccount": "33669510651-compute@developer.gserviceaccount.com",
+      "availableMemoryMb": 256,
+      "cpu": 1,
+      "concurrency": 80,
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true",
+        "firebase-functions-hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3"
+      },
+      "runServiceId": "unassigntruckdrivercallable",
+      "codebase": "default",
+      "hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3",
+      "state": "ACTIVE"
+    },
+    {
+      "platform": "gcfv2",
+      "id": "updateSupplier",
+      "project": "eos-platform-sandbox",
+      "region": "us-central1",
+      "callableTrigger": {},
+      "entryPoint": "updateSupplier",
+      "runtime": "nodejs20",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-33669510651-us-central1",
+          "object": "updateSupplier/function-source.zip",
+          "generation": "1786062051139339"
+        }
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "environmentVariables": {
+        "FIREBASE_CONFIG": "{\"projectId\":\"eos-platform-sandbox\",\"storageBucket\":\"eos-platform-sandbox.firebasestorage.app\"}",
+        "GCLOUD_PROJECT": "eos-platform-sandbox",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/eos-platform-sandbox/locations/us-central1/services/updateSupplier",
+        "FUNCTION_TARGET": "updateSupplier",
+        "LOG_EXECUTION_ID": "true",
+        "FUNCTION_SIGNATURE_TYPE": "http"
+      },
+      "timeoutSeconds": 60,
+      "uri": "https://us-central1-eos-platform-sandbox.cloudfunctions.net/updateSupplier",
+      "serviceAccount": "33669510651-compute@developer.gserviceaccount.com",
+      "availableMemoryMb": 256,
+      "cpu": 1,
+      "concurrency": 80,
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true",
+        "firebase-functions-hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3"
+      },
+      "runServiceId": "updatesupplier",
+      "codebase": "default",
+      "hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3",
+      "state": "ACTIVE"
+    },
+    {
+      "platform": "gcfv2",
+      "id": "updateWorkOrderExecutionData",
+      "project": "eos-platform-sandbox",
+      "region": "us-central1",
+      "callableTrigger": {},
+      "entryPoint": "updateWorkOrderExecutionData",
+      "runtime": "nodejs20",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-33669510651-us-central1",
+          "object": "updateWorkOrderExecutionData/function-source.zip",
+          "generation": "1786062050928570"
+        }
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "environmentVariables": {
+        "FIREBASE_CONFIG": "{\"projectId\":\"eos-platform-sandbox\",\"storageBucket\":\"eos-platform-sandbox.firebasestorage.app\"}",
+        "GCLOUD_PROJECT": "eos-platform-sandbox",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/eos-platform-sandbox/locations/us-central1/services/updateWorkOrderExecutionData",
+        "FUNCTION_TARGET": "updateWorkOrderExecutionData",
+        "LOG_EXECUTION_ID": "true",
+        "FUNCTION_SIGNATURE_TYPE": "http"
+      },
+      "timeoutSeconds": 60,
+      "uri": "https://us-central1-eos-platform-sandbox.cloudfunctions.net/updateWorkOrderExecutionData",
+      "serviceAccount": "33669510651-compute@developer.gserviceaccount.com",
+      "availableMemoryMb": 256,
+      "cpu": 1,
+      "concurrency": 80,
+      "labels": {
+        "deployment-callable": "true",
+        "firebase-functions-hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3",
+        "deployment-tool": "cli-firebase"
+      },
+      "runServiceId": "updateworkorderexecutiondata",
+      "codebase": "default",
+      "hash": "cf3eb60787f83bb6e595afb9617c8868d584d3a3",
+      "state": "ACTIVE"
+    }
+  ]
+}

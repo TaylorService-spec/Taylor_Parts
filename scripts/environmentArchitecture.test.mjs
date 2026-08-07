@@ -83,8 +83,10 @@ test('INVARIANT: an unknown environment id FAILS CLOSED — never falls back', (
 });
 
 test('INVARIANT: a declared-but-unprovisioned environment FAILS CLOSED', () => {
+  // platform-sandbox was provisioned 2026-08-06, so platform-integration is now
+  // the unprovisioned example. The property under test is unchanged.
   assert.throws(
-    () => resolveEnvironment(registry, 'platform-sandbox'),
+    () => resolveEnvironment(registry, 'platform-integration'),
     (err) => err instanceof EnvironmentResolutionError && err.code === 'ENVIRONMENT_NOT_PROVISIONED',
   );
 });
@@ -206,8 +208,10 @@ test('INVARIANT: the default environment reproduces the current production ident
   assert.equal(resolved.readiness.TRUSTED_COMPLETION_ENABLED, true);
 });
 
-test('INVARIANT: exactly one real project id is known today', () => {
-  // Documents current reality. When a sandbox project is authorized (O-1) this
-  // becomes 2 and the test is updated deliberately — not silently.
-  assert.deepEqual(knownProjectIds(registry), ['taylor-parts']);
+test('INVARIANT: the known-project allow-list is exactly the provisioned projects', () => {
+  // Updated DELIBERATELY on 2026-08-06 when O-1 provisioned the sandbox — which
+  // is exactly what the previous single-project assertion existed to force. The
+  // allow-list must never grow silently; each addition is a real project that
+  // was really created.
+  assert.deepEqual(knownProjectIds(registry).sort(), ['eos-platform-sandbox', 'taylor-parts']);
 });

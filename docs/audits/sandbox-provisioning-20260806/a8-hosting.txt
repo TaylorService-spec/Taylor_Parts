@@ -1,0 +1,18 @@
+
+=== Deploying to 'eos-platform-sandbox'...
+
+i  deploying hosting
+i  hosting[eos-platform-sandbox]: beginning deploy...
+i  hosting[eos-platform-sandbox]: found 6 files in field-ops-app-vite/dist
+i  hosting: uploading new files [1/6] (16%)
+i  hosting: upload complete
++  hosting[eos-platform-sandbox]: file upload complete
+i  hosting[eos-platform-sandbox]: finalizing version...
++  hosting[eos-platform-sandbox]: version finalized
+i  hosting[eos-platform-sandbox]: releasing new version...
++  hosting[eos-platform-sandbox]: release complete
+
++  Deploy complete!
+
+Project Console: https://console.firebase.google.com/project/eos-platform-sandbox/overview
+Hosting URL: https://eos-platform-sandbox.web.app

@@ -1,0 +1,12 @@
+Create your WEB app in project eos-platform-sandbox:
+- Creating your Web app
+✔ Creating your Web app
+
+🎉🎉🎉 Your Firebase WEB App is ready! 🎉🎉🎉
+
+App information:
+  - App ID: 1:33669510651:web:6dcd02971b78e4f101075e
+  - Display name: EOS Sandbox Web
+
+You can run this command to print out your new app's Google Services config:
+  firebase apps:sdkconfig WEB 1:33669510651:web:6dcd02971b78e4f101075e

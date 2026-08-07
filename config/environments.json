@@ -11,10 +11,10 @@
     "Adding an entry does not create an environment; it records one that exists or is planned.",
     "",
     "MODELLING: `role` (what an environment is FOR) is independent of `deployment` (whose instance",
-    "it is). `production` is NOT synonymous with Taylor Parts — see docs/architecture/ADR-011.",
+    "it is). `production` is NOT synonymous with Taylor Parts \u00e2\u20ac\u201d see docs/architecture/ADR-011.",
     "",
     "SECRETS: `firebase` holds PUBLIC Firebase Web client configuration only. A Firebase Web apiKey",
-    "is a public project identifier, not a credential — access is enforced by Firestore Rules and",
+    "is a public project identifier, not a credential \u00e2\u20ac\u201d access is enforced by Firestore Rules and",
     "Auth, not by hiding it. No service-account key, token, or private credential belongs in this",
     "file, and a test asserts that."
   ],
@@ -42,16 +42,33 @@
       "id": "platform-sandbox",
       "role": "sandbox",
       "deployment": "platform",
-      "status": "not-provisioned",
+      "status": "live",
       "purpose": "Persistent non-production platform environment: synthetic data, governed test personas, full integrated application.",
-      "firebase": null,
+      "firebase": {
+        "apiKey": "AIzaSyAd3xie4pGTyzBhBpA8HT7E5M9OFnPYgTE",
+        "authDomain": "eos-platform-sandbox.firebaseapp.com",
+        "projectId": "eos-platform-sandbox",
+        "storageBucket": "eos-platform-sandbox.firebasestorage.app",
+        "messagingSenderId": "33669510651",
+        "appId": "1:33669510651:web:6dcd02971b78e4f101075e",
+        "functionsRegion": "us-central1"
+      },
       "readiness": {
-        "RECEIVING_TRANSPORT_READY": false,
+        "RECEIVING_TRANSPORT_READY": true,
         "TRUCK_MANAGEMENT_WRITE_READY": true,
         "TRUSTED_COMPLETION_ENABLED": true
       },
-      "surfaces": [],
-      "notes": "NOT PROVISIONED. Firebase identity stays null until an Owner authorizes project creation (O-1/O-2). Selecting this environment for a build fails closed while identity is null."
+      "surfaces": [
+        {
+          "id": "hosting",
+          "kind": "firebase-hosting",
+          "url": "https://eos-platform-sandbox.web.app",
+          "versionPath": "/version.json",
+          "governed": true,
+          "notes": "Stable Owner review URL. Rebuilt freely; no delete protection, PITR or backups by design."
+        }
+      ],
+      "notes": "Provisioned 2026-08-06 (O-1..O-8). Complete platform estate: 35 Functions (13 more than production, which has never deployed the Enterprise Access + Supplier Master callables), full Rules, all 6 indexes."
     },
     {
       "id": "platform-integration",
@@ -96,7 +113,7 @@
           "url": "https://taylor-parts.web.app",
           "versionPath": "/version.json",
           "governed": true,
-          "notes": "Owner-authorized, evidenced releases. SPA catch-all rewrite returns 200 + text/html for any unmatched path, so manifest ABSENCE cannot be detected by status code — the checker validates content, never status alone."
+          "notes": "Owner-authorized, evidenced releases. SPA catch-all rewrite returns 200 + text/html for any unmatched path, so manifest ABSENCE cannot be detected by status code \u00e2\u20ac\u201d the checker validates content, never status alone."
         },
         {
           "id": "pages",

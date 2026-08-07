@@ -1,0 +1,882 @@
+{
+  "status": "success",
+  "result": [
+    {
+      "platform": "gcfv2",
+      "id": "assignTruckDriverCallable",
+      "project": "taylor-parts",
+      "region": "us-central1",
+      "callableTrigger": {},
+      "entryPoint": "assignTruckDriverCallable",
+      "runtime": "nodejs20",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-664399427363-us-central1",
+          "object": "assignTruckDriverCallable/function-source.zip",
+          "generation": "1785635708619930"
+        }
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "environmentVariables": {
+        "FIREBASE_CONFIG": "{\"projectId\":\"taylor-parts\",\"storageBucket\":\"taylor-parts.firebasestorage.app\"}",
+        "GCLOUD_PROJECT": "taylor-parts",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/taylor-parts/locations/us-central1/services/assignTruckDriverCallable",
+        "FUNCTION_TARGET": "assignTruckDriverCallable",
+        "LOG_EXECUTION_ID": "true",
+        "FUNCTION_SIGNATURE_TYPE": "http"
+      },
+      "timeoutSeconds": 60,
+      "uri": "https://us-central1-taylor-parts.cloudfunctions.net/assignTruckDriverCallable",
+      "serviceAccount": "664399427363-compute@developer.gserviceaccount.com",
+      "availableMemoryMb": 256,
+      "cpu": 1,
+      "concurrency": 80,
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true",
+        "firebase-functions-hash": "10bfd8b7d0c0a37c3444c6a08e35ba23c50fc3ca"
+      },
+      "runServiceId": "assigntruckdrivercallable",
+      "codebase": "default",
+      "hash": "10bfd8b7d0c0a37c3444c6a08e35ba23c50fc3ca",
+      "state": "ACTIVE"
+    },
+    {
+      "platform": "gcfv2",
+      "id": "changeTruckHomeWarehouseCallable",
+      "project": "taylor-parts",
+      "region": "us-central1",
+      "callableTrigger": {},
+      "entryPoint": "changeTruckHomeWarehouseCallable",
+      "runtime": "nodejs20",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-664399427363-us-central1",
+          "object": "changeTruckHomeWarehouseCallable/function-source.zip",
+          "generation": "1785635708523727"
+        }
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "environmentVariables": {
+        "FIREBASE_CONFIG": "{\"projectId\":\"taylor-parts\",\"storageBucket\":\"taylor-parts.firebasestorage.app\"}",
+        "GCLOUD_PROJECT": "taylor-parts",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/taylor-parts/locations/us-central1/services/changeTruckHomeWarehouseCallable",
+        "FUNCTION_TARGET": "changeTruckHomeWarehouseCallable",
+        "LOG_EXECUTION_ID": "true",
+        "FUNCTION_SIGNATURE_TYPE": "http"
+      },
+      "timeoutSeconds": 60,
+      "uri": "https://us-central1-taylor-parts.cloudfunctions.net/changeTruckHomeWarehouseCallable",
+      "serviceAccount": "664399427363-compute@developer.gserviceaccount.com",
+      "availableMemoryMb": 256,
+      "cpu": 1,
+      "concurrency": 80,
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true",
+        "firebase-functions-hash": "10bfd8b7d0c0a37c3444c6a08e35ba23c50fc3ca"
+      },
+      "runServiceId": "changetruckhomewarehousecallable",
+      "codebase": "default",
+      "hash": "10bfd8b7d0c0a37c3444c6a08e35ba23c50fc3ca",
+      "state": "ACTIVE"
+    },
+    {
+      "platform": "gcfv2",
+      "id": "changeTruckStatusCallable",
+      "project": "taylor-parts",
+      "region": "us-central1",
+      "callableTrigger": {},
+      "entryPoint": "changeTruckStatusCallable",
+      "runtime": "nodejs20",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-664399427363-us-central1",
+          "object": "changeTruckStatusCallable/function-source.zip",
+          "generation": "1785635708607174"
+        }
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "environmentVariables": {
+        "FIREBASE_CONFIG": "{\"projectId\":\"taylor-parts\",\"storageBucket\":\"taylor-parts.firebasestorage.app\"}",
+        "GCLOUD_PROJECT": "taylor-parts",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/taylor-parts/locations/us-central1/services/changeTruckStatusCallable",
+        "FUNCTION_TARGET": "changeTruckStatusCallable",
+        "LOG_EXECUTION_ID": "true",
+        "FUNCTION_SIGNATURE_TYPE": "http"
+      },
+      "timeoutSeconds": 60,
+      "uri": "https://us-central1-taylor-parts.cloudfunctions.net/changeTruckStatusCallable",
+      "serviceAccount": "664399427363-compute@developer.gserviceaccount.com",
+      "availableMemoryMb": 256,
+      "cpu": 1,
+      "concurrency": 80,
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true",
+        "firebase-functions-hash": "10bfd8b7d0c0a37c3444c6a08e35ba23c50fc3ca"
+      },
+      "runServiceId": "changetruckstatuscallable",
+      "codebase": "default",
+      "hash": "10bfd8b7d0c0a37c3444c6a08e35ba23c50fc3ca",
+      "state": "ACTIVE"
+    },
+    {
+      "platform": "gcfv2",
+      "id": "completeAssignedJob",
+      "project": "taylor-parts",
+      "region": "us-central1",
+      "callableTrigger": {},
+      "entryPoint": "completeAssignedJob",
+      "runtime": "nodejs20",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-664399427363-us-central1",
+          "object": "completeAssignedJob/function-source.zip",
+          "generation": "1784770557374515"
+        }
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "environmentVariables": {
+        "FIREBASE_CONFIG": "{\"projectId\":\"taylor-parts\",\"storageBucket\":\"taylor-parts.firebasestorage.app\"}",
+        "GCLOUD_PROJECT": "taylor-parts",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/taylor-parts/locations/us-central1/services/completeAssignedJob",
+        "FUNCTION_TARGET": "completeAssignedJob",
+        "LOG_EXECUTION_ID": "true"
+      },
+      "timeoutSeconds": 60,
+      "uri": "https://us-central1-taylor-parts.cloudfunctions.net/completeAssignedJob",
+      "serviceAccount": "664399427363-compute@developer.gserviceaccount.com",
+      "availableMemoryMb": 256,
+      "cpu": 1,
+      "concurrency": 80,
+      "labels": {
+        "firebase-functions-hash": "7221495d80b0a2c07a2437d52b38dc1b7473f13b",
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true"
+      },
+      "runServiceId": "completeassignedjob",
+      "codebase": "default",
+      "hash": "7221495d80b0a2c07a2437d52b38dc1b7473f13b",
+      "state": "ACTIVE"
+    },
+    {
+      "platform": "gcfv2",
+      "id": "createSavedDefinitionCallable",
+      "project": "taylor-parts",
+      "region": "us-central1",
+      "callableTrigger": {},
+      "entryPoint": "createSavedDefinitionCallable",
+      "runtime": "nodejs20",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-664399427363-us-central1",
+          "object": "createSavedDefinitionCallable/function-source.zip",
+          "generation": "1784610417984098"
+        }
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "environmentVariables": {
+        "FIREBASE_CONFIG": "{\"projectId\":\"taylor-parts\",\"storageBucket\":\"taylor-parts.firebasestorage.app\"}",
+        "GCLOUD_PROJECT": "taylor-parts",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/taylor-parts/locations/us-central1/services/createSavedDefinitionCallable",
+        "FUNCTION_TARGET": "createSavedDefinitionCallable",
+        "LOG_EXECUTION_ID": "true",
+        "FUNCTION_SIGNATURE_TYPE": "http"
+      },
+      "timeoutSeconds": 60,
+      "uri": "https://us-central1-taylor-parts.cloudfunctions.net/createSavedDefinitionCallable",
+      "serviceAccount": "664399427363-compute@developer.gserviceaccount.com",
+      "availableMemoryMb": 256,
+      "cpu": 1,
+      "concurrency": 80,
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true",
+        "firebase-functions-hash": "9a780b2573fab4908feb11948e32ef451f6764ee"
+      },
+      "runServiceId": "createsaveddefinitioncallable",
+      "codebase": "default",
+      "hash": "9a780b2573fab4908feb11948e32ef451f6764ee",
+      "state": "ACTIVE"
+    },
+    {
+      "platform": "gcfv2",
+      "id": "createTruckCallable",
+      "project": "taylor-parts",
+      "region": "us-central1",
+      "callableTrigger": {},
+      "entryPoint": "createTruckCallable",
+      "runtime": "nodejs20",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-664399427363-us-central1",
+          "object": "createTruckCallable/function-source.zip",
+          "generation": "1785635659972468"
+        }
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "environmentVariables": {
+        "FIREBASE_CONFIG": "{\"projectId\":\"taylor-parts\",\"storageBucket\":\"taylor-parts.firebasestorage.app\"}",
+        "GCLOUD_PROJECT": "taylor-parts",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/taylor-parts/locations/us-central1/services/createTruckCallable",
+        "FUNCTION_TARGET": "createTruckCallable",
+        "LOG_EXECUTION_ID": "true"
+      },
+      "timeoutSeconds": 60,
+      "uri": "https://us-central1-taylor-parts.cloudfunctions.net/createTruckCallable",
+      "serviceAccount": "664399427363-compute@developer.gserviceaccount.com",
+      "availableMemoryMb": 256,
+      "cpu": 1,
+      "concurrency": 80,
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true",
+        "firebase-functions-hash": "10bfd8b7d0c0a37c3444c6a08e35ba23c50fc3ca"
+      },
+      "runServiceId": "createtruckcallable",
+      "codebase": "default",
+      "hash": "10bfd8b7d0c0a37c3444c6a08e35ba23c50fc3ca",
+      "state": "ACTIVE"
+    },
+    {
+      "platform": "gcfv2",
+      "id": "createWorkOrder",
+      "project": "taylor-parts",
+      "region": "us-central1",
+      "callableTrigger": {},
+      "entryPoint": "createWorkOrder",
+      "runtime": "nodejs20",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-664399427363-us-central1",
+          "object": "createWorkOrder/function-source.zip",
+          "generation": "1784610359276262"
+        }
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "environmentVariables": {
+        "FIREBASE_CONFIG": "{\"projectId\":\"taylor-parts\",\"storageBucket\":\"taylor-parts.firebasestorage.app\"}",
+        "GCLOUD_PROJECT": "taylor-parts",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/taylor-parts/locations/us-central1/services/createWorkOrder",
+        "FUNCTION_TARGET": "createWorkOrder",
+        "LOG_EXECUTION_ID": "true"
+      },
+      "timeoutSeconds": 60,
+      "uri": "https://us-central1-taylor-parts.cloudfunctions.net/createWorkOrder",
+      "serviceAccount": "664399427363-compute@developer.gserviceaccount.com",
+      "availableMemoryMb": 256,
+      "cpu": 1,
+      "concurrency": 80,
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true",
+        "firebase-functions-hash": "9a780b2573fab4908feb11948e32ef451f6764ee"
+      },
+      "runServiceId": "createworkorder",
+      "codebase": "default",
+      "hash": "9a780b2573fab4908feb11948e32ef451f6764ee",
+      "state": "ACTIVE"
+    },
+    {
+      "platform": "gcfv2",
+      "id": "deactivateTruckCallable",
+      "project": "taylor-parts",
+      "region": "us-central1",
+      "callableTrigger": {},
+      "entryPoint": "deactivateTruckCallable",
+      "runtime": "nodejs20",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-664399427363-us-central1",
+          "object": "deactivateTruckCallable/function-source.zip",
+          "generation": "1785635708766349"
+        }
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "environmentVariables": {
+        "FIREBASE_CONFIG": "{\"projectId\":\"taylor-parts\",\"storageBucket\":\"taylor-parts.firebasestorage.app\"}",
+        "GCLOUD_PROJECT": "taylor-parts",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/taylor-parts/locations/us-central1/services/deactivateTruckCallable",
+        "FUNCTION_TARGET": "deactivateTruckCallable",
+        "LOG_EXECUTION_ID": "true",
+        "FUNCTION_SIGNATURE_TYPE": "http"
+      },
+      "timeoutSeconds": 60,
+      "uri": "https://us-central1-taylor-parts.cloudfunctions.net/deactivateTruckCallable",
+      "serviceAccount": "664399427363-compute@developer.gserviceaccount.com",
+      "availableMemoryMb": 256,
+      "cpu": 1,
+      "concurrency": 80,
+      "labels": {
+        "deployment-callable": "true",
+        "firebase-functions-hash": "10bfd8b7d0c0a37c3444c6a08e35ba23c50fc3ca",
+        "deployment-tool": "cli-firebase"
+      },
+      "runServiceId": "deactivatetruckcallable",
+      "codebase": "default",
+      "hash": "10bfd8b7d0c0a37c3444c6a08e35ba23c50fc3ca",
+      "state": "ACTIVE"
+    },
+    {
+      "platform": "gcfv2",
+      "id": "deleteSavedDefinitionCallable",
+      "project": "taylor-parts",
+      "region": "us-central1",
+      "callableTrigger": {},
+      "entryPoint": "deleteSavedDefinitionCallable",
+      "runtime": "nodejs20",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-664399427363-us-central1",
+          "object": "deleteSavedDefinitionCallable/function-source.zip",
+          "generation": "1784610417953562"
+        }
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "environmentVariables": {
+        "FIREBASE_CONFIG": "{\"projectId\":\"taylor-parts\",\"storageBucket\":\"taylor-parts.firebasestorage.app\"}",
+        "GCLOUD_PROJECT": "taylor-parts",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/taylor-parts/locations/us-central1/services/deleteSavedDefinitionCallable",
+        "FUNCTION_TARGET": "deleteSavedDefinitionCallable",
+        "LOG_EXECUTION_ID": "true",
+        "FUNCTION_SIGNATURE_TYPE": "http"
+      },
+      "timeoutSeconds": 60,
+      "uri": "https://us-central1-taylor-parts.cloudfunctions.net/deleteSavedDefinitionCallable",
+      "serviceAccount": "664399427363-compute@developer.gserviceaccount.com",
+      "availableMemoryMb": 256,
+      "cpu": 1,
+      "concurrency": 80,
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true",
+        "firebase-functions-hash": "9a780b2573fab4908feb11948e32ef451f6764ee"
+      },
+      "runServiceId": "deletesaveddefinitioncallable",
+      "codebase": "default",
+      "hash": "9a780b2573fab4908feb11948e32ef451f6764ee",
+      "state": "ACTIVE"
+    },
+    {
+      "platform": "gcfv2",
+      "id": "duplicateSavedDefinitionCallable",
+      "project": "taylor-parts",
+      "region": "us-central1",
+      "callableTrigger": {},
+      "entryPoint": "duplicateSavedDefinitionCallable",
+      "runtime": "nodejs20",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-664399427363-us-central1",
+          "object": "duplicateSavedDefinitionCallable/function-source.zip",
+          "generation": "1784610417939794"
+        }
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "environmentVariables": {
+        "FIREBASE_CONFIG": "{\"projectId\":\"taylor-parts\",\"storageBucket\":\"taylor-parts.firebasestorage.app\"}",
+        "GCLOUD_PROJECT": "taylor-parts",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/taylor-parts/locations/us-central1/services/duplicateSavedDefinitionCallable",
+        "FUNCTION_TARGET": "duplicateSavedDefinitionCallable",
+        "LOG_EXECUTION_ID": "true",
+        "FUNCTION_SIGNATURE_TYPE": "http"
+      },
+      "timeoutSeconds": 60,
+      "uri": "https://us-central1-taylor-parts.cloudfunctions.net/duplicateSavedDefinitionCallable",
+      "serviceAccount": "664399427363-compute@developer.gserviceaccount.com",
+      "availableMemoryMb": 256,
+      "cpu": 1,
+      "concurrency": 80,
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true",
+        "firebase-functions-hash": "9a780b2573fab4908feb11948e32ef451f6764ee"
+      },
+      "runServiceId": "duplicatesaveddefinitioncallable",
+      "codebase": "default",
+      "hash": "9a780b2573fab4908feb11948e32ef451f6764ee",
+      "state": "ACTIVE"
+    },
+    {
+      "platform": "gcfv2",
+      "id": "getSavedDefinitionCallable",
+      "project": "taylor-parts",
+      "region": "us-central1",
+      "callableTrigger": {},
+      "entryPoint": "getSavedDefinitionCallable",
+      "runtime": "nodejs20",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-664399427363-us-central1",
+          "object": "getSavedDefinitionCallable/function-source.zip",
+          "generation": "1784610417960052"
+        }
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "environmentVariables": {
+        "FIREBASE_CONFIG": "{\"projectId\":\"taylor-parts\",\"storageBucket\":\"taylor-parts.firebasestorage.app\"}",
+        "GCLOUD_PROJECT": "taylor-parts",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/taylor-parts/locations/us-central1/services/getSavedDefinitionCallable",
+        "FUNCTION_TARGET": "getSavedDefinitionCallable",
+        "LOG_EXECUTION_ID": "true",
+        "FUNCTION_SIGNATURE_TYPE": "http"
+      },
+      "timeoutSeconds": 60,
+      "uri": "https://us-central1-taylor-parts.cloudfunctions.net/getSavedDefinitionCallable",
+      "serviceAccount": "664399427363-compute@developer.gserviceaccount.com",
+      "availableMemoryMb": 256,
+      "cpu": 1,
+      "concurrency": 80,
+      "labels": {
+        "firebase-functions-hash": "9a780b2573fab4908feb11948e32ef451f6764ee",
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true"
+      },
+      "runServiceId": "getsaveddefinitioncallable",
+      "codebase": "default",
+      "hash": "9a780b2573fab4908feb11948e32ef451f6764ee",
+      "state": "ACTIVE"
+    },
+    {
+      "platform": "gcfv2",
+      "id": "listReceivingLocationOptions",
+      "project": "taylor-parts",
+      "region": "us-central1",
+      "callableTrigger": {},
+      "entryPoint": "listReceivingLocationOptions",
+      "runtime": "nodejs20",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-664399427363-us-central1",
+          "object": "listReceivingLocationOptions/function-source.zip",
+          "generation": "1786025618878154"
+        }
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "environmentVariables": {
+        "FIREBASE_CONFIG": "{\"projectId\":\"taylor-parts\",\"storageBucket\":\"taylor-parts.firebasestorage.app\"}",
+        "GCLOUD_PROJECT": "taylor-parts",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/taylor-parts/locations/us-central1/services/listReceivingLocationOptions",
+        "FUNCTION_TARGET": "listReceivingLocationOptions",
+        "LOG_EXECUTION_ID": "true"
+      },
+      "timeoutSeconds": 60,
+      "uri": "https://us-central1-taylor-parts.cloudfunctions.net/listReceivingLocationOptions",
+      "serviceAccount": "664399427363-compute@developer.gserviceaccount.com",
+      "availableMemoryMb": 256,
+      "cpu": 1,
+      "concurrency": 80,
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true",
+        "firebase-functions-hash": "54b02af018c3578c4a367864459fa053ba8dd185"
+      },
+      "runServiceId": "listreceivinglocationoptions",
+      "codebase": "default",
+      "hash": "54b02af018c3578c4a367864459fa053ba8dd185",
+      "state": "ACTIVE"
+    },
+    {
+      "platform": "gcfv2",
+      "id": "listSavedDefinitionsCallable",
+      "project": "taylor-parts",
+      "region": "us-central1",
+      "callableTrigger": {},
+      "entryPoint": "listSavedDefinitionsCallable",
+      "runtime": "nodejs20",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-664399427363-us-central1",
+          "object": "listSavedDefinitionsCallable/function-source.zip",
+          "generation": "1784610417961847"
+        }
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "environmentVariables": {
+        "FIREBASE_CONFIG": "{\"projectId\":\"taylor-parts\",\"storageBucket\":\"taylor-parts.firebasestorage.app\"}",
+        "GCLOUD_PROJECT": "taylor-parts",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/taylor-parts/locations/us-central1/services/listSavedDefinitionsCallable",
+        "FUNCTION_TARGET": "listSavedDefinitionsCallable",
+        "LOG_EXECUTION_ID": "true",
+        "FUNCTION_SIGNATURE_TYPE": "http"
+      },
+      "timeoutSeconds": 60,
+      "uri": "https://us-central1-taylor-parts.cloudfunctions.net/listSavedDefinitionsCallable",
+      "serviceAccount": "664399427363-compute@developer.gserviceaccount.com",
+      "availableMemoryMb": 256,
+      "cpu": 1,
+      "concurrency": 80,
+      "labels": {
+        "deployment-callable": "true",
+        "firebase-functions-hash": "9a780b2573fab4908feb11948e32ef451f6764ee",
+        "deployment-tool": "cli-firebase"
+      },
+      "runServiceId": "listsaveddefinitionscallable",
+      "codebase": "default",
+      "hash": "9a780b2573fab4908feb11948e32ef451f6764ee",
+      "state": "ACTIVE"
+    },
+    {
+      "platform": "gcfv2",
+      "id": "reactivateTruckCallable",
+      "project": "taylor-parts",
+      "region": "us-central1",
+      "callableTrigger": {},
+      "entryPoint": "reactivateTruckCallable",
+      "runtime": "nodejs20",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-664399427363-us-central1",
+          "object": "reactivateTruckCallable/function-source.zip",
+          "generation": "1785635708413150"
+        }
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "environmentVariables": {
+        "FIREBASE_CONFIG": "{\"projectId\":\"taylor-parts\",\"storageBucket\":\"taylor-parts.firebasestorage.app\"}",
+        "GCLOUD_PROJECT": "taylor-parts",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/taylor-parts/locations/us-central1/services/reactivateTruckCallable",
+        "FUNCTION_TARGET": "reactivateTruckCallable",
+        "LOG_EXECUTION_ID": "true",
+        "FUNCTION_SIGNATURE_TYPE": "http"
+      },
+      "timeoutSeconds": 60,
+      "uri": "https://us-central1-taylor-parts.cloudfunctions.net/reactivateTruckCallable",
+      "serviceAccount": "664399427363-compute@developer.gserviceaccount.com",
+      "availableMemoryMb": 256,
+      "cpu": 1,
+      "concurrency": 80,
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true",
+        "firebase-functions-hash": "10bfd8b7d0c0a37c3444c6a08e35ba23c50fc3ca"
+      },
+      "runServiceId": "reactivatetruckcallable",
+      "codebase": "default",
+      "hash": "10bfd8b7d0c0a37c3444c6a08e35ba23c50fc3ca",
+      "state": "ACTIVE"
+    },
+    {
+      "platform": "gcfv2",
+      "id": "reassignTruckDriverCallable",
+      "project": "taylor-parts",
+      "region": "us-central1",
+      "callableTrigger": {},
+      "entryPoint": "reassignTruckDriverCallable",
+      "runtime": "nodejs20",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-664399427363-us-central1",
+          "object": "reassignTruckDriverCallable/function-source.zip",
+          "generation": "1785635708534467"
+        }
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "environmentVariables": {
+        "FIREBASE_CONFIG": "{\"projectId\":\"taylor-parts\",\"storageBucket\":\"taylor-parts.firebasestorage.app\"}",
+        "GCLOUD_PROJECT": "taylor-parts",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/taylor-parts/locations/us-central1/services/reassignTruckDriverCallable",
+        "FUNCTION_TARGET": "reassignTruckDriverCallable",
+        "LOG_EXECUTION_ID": "true",
+        "FUNCTION_SIGNATURE_TYPE": "http"
+      },
+      "timeoutSeconds": 60,
+      "uri": "https://us-central1-taylor-parts.cloudfunctions.net/reassignTruckDriverCallable",
+      "serviceAccount": "664399427363-compute@developer.gserviceaccount.com",
+      "availableMemoryMb": 256,
+      "cpu": 1,
+      "concurrency": 80,
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true",
+        "firebase-functions-hash": "10bfd8b7d0c0a37c3444c6a08e35ba23c50fc3ca"
+      },
+      "runServiceId": "reassigntruckdrivercallable",
+      "codebase": "default",
+      "hash": "10bfd8b7d0c0a37c3444c6a08e35ba23c50fc3ca",
+      "state": "ACTIVE"
+    },
+    {
+      "platform": "gcfv2",
+      "id": "receiveInventoryStock",
+      "project": "taylor-parts",
+      "region": "us-central1",
+      "callableTrigger": {},
+      "entryPoint": "receiveInventoryStock",
+      "runtime": "nodejs20",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-664399427363-us-central1",
+          "object": "receiveInventoryStock/function-source.zip",
+          "generation": "1786025683070635"
+        }
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "environmentVariables": {
+        "FIREBASE_CONFIG": "{\"projectId\":\"taylor-parts\",\"storageBucket\":\"taylor-parts.firebasestorage.app\"}",
+        "GCLOUD_PROJECT": "taylor-parts",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/taylor-parts/locations/us-central1/services/receiveInventoryStock",
+        "FUNCTION_TARGET": "receiveInventoryStock",
+        "LOG_EXECUTION_ID": "true",
+        "FUNCTION_SIGNATURE_TYPE": "http"
+      },
+      "timeoutSeconds": 60,
+      "uri": "https://us-central1-taylor-parts.cloudfunctions.net/receiveInventoryStock",
+      "serviceAccount": "664399427363-compute@developer.gserviceaccount.com",
+      "availableMemoryMb": 256,
+      "cpu": 1,
+      "maxInstances": 20,
+      "concurrency": 80,
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true",
+        "firebase-functions-hash": "54b02af018c3578c4a367864459fa053ba8dd185"
+      },
+      "runServiceId": "receiveinventorystock",
+      "codebase": "default",
+      "hash": "54b02af018c3578c4a367864459fa053ba8dd185",
+      "state": "ACTIVE"
+    },
+    {
+      "platform": "gcfv2",
+      "id": "renameSavedDefinitionCallable",
+      "project": "taylor-parts",
+      "region": "us-central1",
+      "callableTrigger": {},
+      "entryPoint": "renameSavedDefinitionCallable",
+      "runtime": "nodejs20",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-664399427363-us-central1",
+          "object": "renameSavedDefinitionCallable/function-source.zip",
+          "generation": "1784610417988919"
+        }
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "environmentVariables": {
+        "FIREBASE_CONFIG": "{\"projectId\":\"taylor-parts\",\"storageBucket\":\"taylor-parts.firebasestorage.app\"}",
+        "GCLOUD_PROJECT": "taylor-parts",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/taylor-parts/locations/us-central1/services/renameSavedDefinitionCallable",
+        "FUNCTION_TARGET": "renameSavedDefinitionCallable",
+        "LOG_EXECUTION_ID": "true",
+        "FUNCTION_SIGNATURE_TYPE": "http"
+      },
+      "timeoutSeconds": 60,
+      "uri": "https://us-central1-taylor-parts.cloudfunctions.net/renameSavedDefinitionCallable",
+      "serviceAccount": "664399427363-compute@developer.gserviceaccount.com",
+      "availableMemoryMb": 256,
+      "cpu": 1,
+      "concurrency": 80,
+      "labels": {
+        "firebase-functions-hash": "9a780b2573fab4908feb11948e32ef451f6764ee",
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true"
+      },
+      "runServiceId": "renamesaveddefinitioncallable",
+      "codebase": "default",
+      "hash": "9a780b2573fab4908feb11948e32ef451f6764ee",
+      "state": "ACTIVE"
+    },
+    {
+      "platform": "gcfv2",
+      "id": "resolveEffectiveAccessCallable",
+      "project": "taylor-parts",
+      "region": "us-central1",
+      "callableTrigger": {},
+      "entryPoint": "resolveEffectiveAccessCallable",
+      "runtime": "nodejs20",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-664399427363-us-central1",
+          "object": "resolveEffectiveAccessCallable/function-source.zip",
+          "generation": "1784610417950029"
+        }
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "environmentVariables": {
+        "FIREBASE_CONFIG": "{\"projectId\":\"taylor-parts\",\"storageBucket\":\"taylor-parts.firebasestorage.app\"}",
+        "GCLOUD_PROJECT": "taylor-parts",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/taylor-parts/locations/us-central1/services/resolveEffectiveAccessCallable",
+        "FUNCTION_TARGET": "resolveEffectiveAccessCallable",
+        "LOG_EXECUTION_ID": "true",
+        "FUNCTION_SIGNATURE_TYPE": "http"
+      },
+      "timeoutSeconds": 60,
+      "uri": "https://us-central1-taylor-parts.cloudfunctions.net/resolveEffectiveAccessCallable",
+      "serviceAccount": "664399427363-compute@developer.gserviceaccount.com",
+      "availableMemoryMb": 256,
+      "cpu": 1,
+      "concurrency": 80,
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true",
+        "firebase-functions-hash": "9a780b2573fab4908feb11948e32ef451f6764ee"
+      },
+      "runServiceId": "resolveeffectiveaccesscallable",
+      "codebase": "default",
+      "hash": "9a780b2573fab4908feb11948e32ef451f6764ee",
+      "state": "ACTIVE"
+    },
+    {
+      "platform": "gcfv2",
+      "id": "runReportDefinitionCallable",
+      "project": "taylor-parts",
+      "region": "us-central1",
+      "callableTrigger": {},
+      "entryPoint": "runReportDefinitionCallable",
+      "runtime": "nodejs20",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-664399427363-us-central1",
+          "object": "runReportDefinitionCallable/function-source.zip",
+          "generation": "1784610418007776"
+        }
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "environmentVariables": {
+        "FIREBASE_CONFIG": "{\"projectId\":\"taylor-parts\",\"storageBucket\":\"taylor-parts.firebasestorage.app\"}",
+        "GCLOUD_PROJECT": "taylor-parts",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/taylor-parts/locations/us-central1/services/runReportDefinitionCallable",
+        "FUNCTION_TARGET": "runReportDefinitionCallable",
+        "LOG_EXECUTION_ID": "true",
+        "FUNCTION_SIGNATURE_TYPE": "http"
+      },
+      "timeoutSeconds": 60,
+      "uri": "https://us-central1-taylor-parts.cloudfunctions.net/runReportDefinitionCallable",
+      "serviceAccount": "664399427363-compute@developer.gserviceaccount.com",
+      "availableMemoryMb": 256,
+      "cpu": 1,
+      "concurrency": 80,
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true",
+        "firebase-functions-hash": "9a780b2573fab4908feb11948e32ef451f6764ee"
+      },
+      "runServiceId": "runreportdefinitioncallable",
+      "codebase": "default",
+      "hash": "9a780b2573fab4908feb11948e32ef451f6764ee",
+      "state": "ACTIVE"
+    },
+    {
+      "platform": "gcfv2",
+      "id": "transitionWorkOrder",
+      "project": "taylor-parts",
+      "region": "us-central1",
+      "callableTrigger": {},
+      "entryPoint": "transitionWorkOrder",
+      "runtime": "nodejs20",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-664399427363-us-central1",
+          "object": "transitionWorkOrder/function-source.zip",
+          "generation": "1784610417906153"
+        }
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "environmentVariables": {
+        "FIREBASE_CONFIG": "{\"projectId\":\"taylor-parts\",\"storageBucket\":\"taylor-parts.firebasestorage.app\"}",
+        "GCLOUD_PROJECT": "taylor-parts",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/taylor-parts/locations/us-central1/services/transitionWorkOrder",
+        "FUNCTION_TARGET": "transitionWorkOrder",
+        "LOG_EXECUTION_ID": "true",
+        "FUNCTION_SIGNATURE_TYPE": "http"
+      },
+      "timeoutSeconds": 60,
+      "uri": "https://us-central1-taylor-parts.cloudfunctions.net/transitionWorkOrder",
+      "serviceAccount": "664399427363-compute@developer.gserviceaccount.com",
+      "availableMemoryMb": 256,
+      "cpu": 1,
+      "concurrency": 80,
+      "labels": {
+        "deployment-callable": "true",
+        "firebase-functions-hash": "9a780b2573fab4908feb11948e32ef451f6764ee",
+        "deployment-tool": "cli-firebase"
+      },
+      "runServiceId": "transitionworkorder",
+      "codebase": "default",
+      "hash": "9a780b2573fab4908feb11948e32ef451f6764ee",
+      "state": "ACTIVE"
+    },
+    {
+      "platform": "gcfv2",
+      "id": "unassignTruckDriverCallable",
+      "project": "taylor-parts",
+      "region": "us-central1",
+      "callableTrigger": {},
+      "entryPoint": "unassignTruckDriverCallable",
+      "runtime": "nodejs20",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-664399427363-us-central1",
+          "object": "unassignTruckDriverCallable/function-source.zip",
+          "generation": "1785635708734673"
+        }
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "environmentVariables": {
+        "FIREBASE_CONFIG": "{\"projectId\":\"taylor-parts\",\"storageBucket\":\"taylor-parts.firebasestorage.app\"}",
+        "GCLOUD_PROJECT": "taylor-parts",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/taylor-parts/locations/us-central1/services/unassignTruckDriverCallable",
+        "FUNCTION_TARGET": "unassignTruckDriverCallable",
+        "LOG_EXECUTION_ID": "true",
+        "FUNCTION_SIGNATURE_TYPE": "http"
+      },
+      "timeoutSeconds": 60,
+      "uri": "https://us-central1-taylor-parts.cloudfunctions.net/unassignTruckDriverCallable",
+      "serviceAccount": "664399427363-compute@developer.gserviceaccount.com",
+      "availableMemoryMb": 256,
+      "cpu": 1,
+      "concurrency": 80,
+      "labels": {
+        "deployment-callable": "true",
+        "firebase-functions-hash": "10bfd8b7d0c0a37c3444c6a08e35ba23c50fc3ca",
+        "deployment-tool": "cli-firebase"
+      },
+      "runServiceId": "unassigntruckdrivercallable",
+      "codebase": "default",
+      "hash": "10bfd8b7d0c0a37c3444c6a08e35ba23c50fc3ca",
+      "state": "ACTIVE"
+    },
+    {
+      "platform": "gcfv2",
+      "id": "updateWorkOrderExecutionData",
+      "project": "taylor-parts",
+      "region": "us-central1",
+      "callableTrigger": {},
+      "entryPoint": "updateWorkOrderExecutionData",
+      "runtime": "nodejs20",
+      "source": {
+        "storageSource": {
+          "bucket": "gcf-v2-sources-664399427363-us-central1",
+          "object": "updateWorkOrderExecutionData/function-source.zip",
+          "generation": "1784610417975676"
+        }
+      },
+      "ingressSettings": "ALLOW_ALL",
+      "environmentVariables": {
+        "FIREBASE_CONFIG": "{\"projectId\":\"taylor-parts\",\"storageBucket\":\"taylor-parts.firebasestorage.app\"}",
+        "GCLOUD_PROJECT": "taylor-parts",
+        "EVENTARC_CLOUD_EVENT_SOURCE": "projects/taylor-parts/locations/us-central1/services/updateWorkOrderExecutionData",
+        "FUNCTION_TARGET": "updateWorkOrderExecutionData",
+        "LOG_EXECUTION_ID": "true",
+        "FUNCTION_SIGNATURE_TYPE": "http"
+      },
+      "timeoutSeconds": 60,
+      "uri": "https://us-central1-taylor-parts.cloudfunctions.net/updateWorkOrderExecutionData",
+      "serviceAccount": "664399427363-compute@developer.gserviceaccount.com",
+      "availableMemoryMb": 256,
+      "cpu": 1,
+      "concurrency": 80,
+      "labels": {
+        "deployment-tool": "cli-firebase",
+        "deployment-callable": "true",
+        "firebase-functions-hash": "9a780b2573fab4908feb11948e32ef451f6764ee"
+      },
+      "runServiceId": "updateworkorderexecutiondata",
+      "codebase": "default",
+      "hash": "9a780b2573fab4908feb11948e32ef451f6764ee",
+      "state": "ACTIVE"
+    }
+  ]
+}

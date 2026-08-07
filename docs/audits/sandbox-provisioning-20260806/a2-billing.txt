@@ -1,0 +1,4 @@
+billingAccountName: billingAccounts/014857-036ECF-0FB27E
+billingEnabled: true
+name: projects/eos-platform-sandbox/billingInfo
+projectId: eos-platform-sandbox
