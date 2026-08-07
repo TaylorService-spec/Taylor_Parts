@@ -94,6 +94,13 @@
      a band rather than a floating card. */
   --layout-measure: 1280px;
   --layout-gutter: 24px;
+
+  /* Gate 2 shell. The rail is chrome, so it sits OUTSIDE the measure -- the
+     measure governs the workspace column only. --rail-drawer-max is the single
+     breakpoint at which the rail stops being persistent and becomes a drawer;
+     AppShell.jsx's DRAWER_QUERY must agree with it. */
+  --rail-width: 252px;
+  --rail-drawer-max: 899.98px;
 }
 
 /* Honour the platform reduced-motion preference globally rather than relying on
@@ -119,8 +126,6 @@ body { -webkit-font-smoothing: antialiased; font-family: -apple-system, BlinkMac
    gutter intact once the viewport is narrower than the measure. */
 .fo-measure,
 .fo-appheader,
-.fo-header,
-.fo-subnav,
 .fo-main {
   padding-inline: max(var(--layout-gutter), calc((100% - var(--layout-measure)) / 2));
 }
@@ -152,102 +157,186 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
    same behaviour -- it simply recedes. The Verenward platform/deployment
    identity below it is unambiguously the primary application identity.
    ------------------------------------------------------------------------- */
+/* ---------------------------------------------------------------------------
+   UTILITY BAR (AppHeader.jsx) — session utilities only.
+   Gate 1 made this subordinate to the brand header by darkening it. Gate 2
+   removes the competition entirely: the Verenward brand + deployment identity
+   now live at the head of the rail, so this strip has no identity role left.
+   It becomes warm ground, which keeps the whole workspace column light and
+   leaves the evergreen rail as the single anchoring chrome element.
+   ------------------------------------------------------------------------- */
 .fo-appheader {
   display: flex; justify-content: space-between; align-items: center;
   gap: 12px;
-  background: var(--verenward-evergreen-hover);
-  color: var(--verenward-moon);
-  padding-block: 5px;
+  background: var(--color-surface-page);
+  color: var(--color-text-secondary);
+  padding-block: 9px;
   font-size: 12.5px;
-  border-bottom: 1px solid rgba(185, 193, 190, 0.10);
+  border-bottom: 1px solid var(--color-border);
 }
 .fo-appheader-left, .fo-appheader-right { display: flex; align-items: center; gap: 12px; }
 /* Deliberately NOT bold: this is a system label, not the application name. */
-.fo-appheader-title { font-weight: 500; color: var(--verenward-moon); opacity: 0.75; letter-spacing: 0.01em; }
-.fo-appheader a { color: var(--verenward-moon); text-decoration: none; opacity: 0.85; }
-.fo-appheader a:hover { color: var(--color-text-inverse); opacity: 1; text-decoration: underline; }
-.fo-appheader-email { color: var(--verenward-moon); opacity: 0.75; }
+.fo-appheader-title { font-weight: 500; color: var(--color-text-muted); letter-spacing: 0.01em; }
+.fo-appheader a { color: var(--color-text-secondary); text-decoration: none; }
+.fo-appheader a:hover { color: var(--color-brand-primary); text-decoration: underline; }
+.fo-appheader-email { color: var(--color-text-muted); }
 .fo-appheader button {
-  background: transparent; color: var(--verenward-moon);
-  border: 1px solid rgba(185, 193, 190, 0.30); border-radius: var(--radius-sm);
-  padding: 3px 10px; font-size: 12.5px; cursor: pointer;
+  background: transparent; color: var(--color-text-secondary);
+  border: 1px solid var(--color-border-strong); border-radius: var(--radius-sm);
+  padding: 3px 10px; font-size: 12.5px; cursor: pointer; font-family: inherit;
 }
-.fo-appheader button:hover { background: rgba(255,255,255,0.08); color: var(--color-text-inverse); }
+.fo-appheader button:hover { background: var(--color-surface-sunken); color: var(--color-brand-primary); }
 
-.fo-header {
+/* ===========================================================================
+   GATE 2 — APPLICATION SHELL
+   ---------------------------------------------------------------------------
+   Rail + workspace. The rail is the ONLY navigation axis: the previous shell
+   had two horizontal ones (domain row, then per-domain sub-nav row) and both
+   overflowed independently -- eleven domains already wrapped, and a growing
+   domain would have hit the same wall inside its own row. A vertical rail
+   absorbs growth by scrolling.
+
+   Verenward anchored chrome (the evergreen rail) + Warm Ground page
+   composition (the stone workspace) — the confirmed direction.
+   ========================================================================= */
+.fo-shell { display: flex; min-height: 100vh; align-items: stretch; }
+
+.fo-rail {
+  flex: 0 0 var(--rail-width);
+  width: var(--rail-width);
+  background: var(--color-brand-primary);
+  color: var(--color-text-inverse);
+  display: flex; flex-direction: column;
+  /* The rail scrolls independently and stays put while the workspace scrolls,
+     which is what makes "where am I / what else is here" answerable at all
+     times without scrolling back up. */
+  position: sticky; top: 0; align-self: flex-start;
+  height: 100vh; overflow-y: auto; overscroll-behavior: contain;
+}
+
+.fo-rail__brand {
+  display: flex; flex-direction: column; gap: 10px; align-items: flex-start;
+  padding: 18px 18px 16px;
+  border-bottom: 1px solid rgba(185, 193, 190, 0.14);
+}
+.fo-rail__nav { padding: 10px 10px 28px; }
+.fo-rail__list { list-style: none; margin: 0; padding: 0; }
+.fo-rail__domain + .fo-rail__domain { margin-top: 1px; }
+
+/* Domain row. A button (not a link) for expandable domains, so revealing what
+   a domain contains never moves you off the page you are on. */
+.fo-rail__domain-row {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  background: transparent; border: none; text-align: left;
+  color: var(--verenward-moon);
+  font-size: 13.5px; font-weight: 500; font-family: inherit;
+  padding: 9px 10px; border-radius: var(--radius-sm);
+  cursor: pointer; text-decoration: none;
+  transition: background var(--duration-fast) var(--ease-out),
+              color var(--duration-fast) var(--ease-out);
+}
+.fo-rail__domain-row:hover { background: rgba(255,255,255,0.07); color: var(--color-text-inverse); }
+.fo-rail__domain-row:focus-visible { outline: 2px solid var(--verenward-bronze); outline-offset: -2px; }
+/* "What domain am I in?" — answered by the bronze marker, which is the only
+   place bronze appears in the rail. */
+.fo-rail__domain-row--current { color: var(--color-text-inverse); font-weight: 600; }
+.fo-rail__domain-row--current .fo-rail__domain-label { box-shadow: inset 0 -2px 0 var(--color-brand-accent); padding-bottom: 2px; }
+.fo-rail__domain-label { min-width: 0; overflow-wrap: anywhere; }
+.fo-rail__domain-row--leaf { padding-left: 28px; }
+
+/* Subtle disclosure. Rotation is the only affordance -- no icon set, per the
+   "no decorative icon overload" constraint. */
+.fo-rail__chevron {
+  flex: none; width: 10px; height: 10px; margin-left: 2px;
+  border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg); opacity: 0.55;
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+.fo-rail__domain-row[aria-expanded="true"] .fo-rail__chevron { transform: rotate(45deg); opacity: 0.9; }
+
+.fo-rail__panel { padding: 2px 0 6px; }
+
+/* Destination rows. Indentation is restrained -- one step for an item, one
+   more for a grouped item -- and the guide line does the hierarchy work. */
+.fo-rail__item {
+  display: block; padding: 7px 10px 7px 22px;
+  margin-left: 10px;
+  border-left: 1px solid rgba(185, 193, 190, 0.18);
+  color: var(--verenward-moon); text-decoration: none;
+  font-size: 13px; line-height: 1.35;
+  transition: background var(--duration-fast) var(--ease-out),
+              color var(--duration-fast) var(--ease-out);
+}
+.fo-rail__item:hover { background: rgba(255,255,255,0.06); color: var(--color-text-inverse); }
+.fo-rail__item:focus-visible { outline: 2px solid var(--verenward-bronze); outline-offset: -2px; }
+/* "Where am I?" — the selected state is the strongest thing in the rail. */
+.fo-rail__item--active {
+  background: var(--color-brand-secondary); color: var(--color-text-inverse);
+  font-weight: 600; border-left-color: var(--color-brand-accent);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+.fo-rail__item--active:hover { background: var(--verenward-guardian-hover); color: var(--color-text-inverse); }
+.fo-rail__item--d2 { padding-left: 30px; }
+
+/* Group label — organisational hierarchy, not a destination. Quiet by design. */
+.fo-rail__group { margin-top: 8px; }
+.fo-rail__group-label {
+  margin: 0 0 3px; padding-left: 22px; margin-left: 10px;
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.09em;
+  color: var(--verenward-moon); opacity: 0.6;
+}
+
+/* --- Workspace column ---------------------------------------------------- */
+.fo-workspace { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.fo-main { padding-block: 26px; flex: 1 1 auto; }
+
+/* --- Drawer (below --rail-drawer-max) ------------------------------------ */
+.fo-drawer__scrim {
+  position: fixed; inset: 0; z-index: 40;
+  background: rgba(16, 43, 36, 0.55);
+  animation: fo-fade-in var(--duration-fast) var(--ease-out);
+}
+.fo-drawer {
+  position: fixed; inset-block: 0; left: 0; z-index: 41;
+  width: min(86vw, 320px);
   background: var(--color-brand-primary); color: var(--color-text-inverse);
-  padding-block: 12px; display: flex; align-items: center; gap: 20px;
-  border-bottom: 1px solid rgba(185, 193, 190, 0.16);
-  box-shadow: var(--shadow-rest);
+  display: flex; flex-direction: column; overflow-y: auto;
+  box-shadow: var(--shadow-lift);
+  animation: fo-slide-in var(--duration-base) var(--ease-out);
 }
-/* The primary nav takes the remaining width so the brand lockup and the
-   implementation identity stay together on the left. */
-.fo-header .fo-nav { margin-left: auto; flex-wrap: wrap; }
-.fo-header h1 { font-size: 18px; margin: 0; }
-.fo-nav { display: flex; gap: 8px; }
-.fo-nav-btn { background: transparent; border: none; color: var(--verenward-moon); padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 14px; }
-.fo-nav-btn:hover { background: rgba(255,255,255,0.08); }
-.fo-nav-btn-active {
-  background: var(--color-brand-secondary); color: var(--color-text-inverse);
-  box-shadow: inset 0 -2px 0 var(--color-brand-accent);  /* bronze, used sparingly */
+.fo-drawer:focus { outline: none; }
+.fo-drawer__head {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+  padding: 16px 16px 14px; border-bottom: 1px solid rgba(185, 193, 190, 0.14);
 }
+.fo-drawer__head .fo-rail__brand { padding: 0; border-bottom: none; }
+.fo-drawer__close {
+  flex: none; background: transparent; color: var(--verenward-moon);
+  border: 1px solid rgba(185, 193, 190, 0.30); border-radius: var(--radius-sm);
+  padding: 5px 12px; font-size: 12.5px; cursor: pointer; font-family: inherit;
+}
+.fo-drawer__close:hover { background: rgba(255,255,255,0.08); color: var(--color-text-inverse); }
+@keyframes fo-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes fo-slide-in { from { transform: translateX(-100%); } to { transform: none; } }
 
-/* Epic 9 follow-up -- the second-row secondary domain nav
-   (AppShell.jsx's `<nav className="fo-nav fo-subnav">`) renders
-   OUTSIDE .fo-header, directly against the light page background, but
-   was reusing .fo-nav-btn/.fo-nav-btn-active unmodified -- the exact
-   same "class tuned for the dark header, reused on a light
-   background" issue already fixed for the in-workspace filter bar
-   (fo-filter-btn below), just in a different, platform-wide location.
-   AppShell.jsx is the actual owner of this second row across every
-   domain (Dashboard, Customers, Service, Inventory, Purchasing,
-   Reporting, Administration) -- fixing it here applies everywhere at
-   once. .fo-header's own primary nav (the dark top row) is untouched;
-   this override only applies inside .fo-subnav. Same color language
-   as fo-filter-btn below, so the two secondary-navigation patterns
-   read consistently. */
-.fo-subnav .fo-nav-btn { color: var(--color-text-secondary); }
-.fo-subnav .fo-nav-btn:hover { background: var(--color-surface-sunken); color: var(--color-brand-primary); }
-.fo-subnav .fo-nav-btn:focus-visible { outline: 2px solid var(--color-brand-secondary); outline-offset: 2px; }
-.fo-subnav .fo-nav-btn-active {
-  background: var(--color-brand-secondary); color: var(--color-text-inverse);
-  box-shadow: inset 0 -2px 0 var(--color-brand-accent);  /* bronze, used sparingly */
+/* Navigation toggle in the utility bar — only rendered at drawer widths. */
+.fo-navtoggle {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  /* 34px keeps the only touch-critical control in the bar comfortably
+     tappable even though the strip itself is compact. */
+  width: 34px; height: 30px; padding: 0;
+  background: transparent; border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm); cursor: pointer;
 }
-.fo-subnav .fo-nav-btn-active:hover { background: var(--verenward-guardian-hover); }
-
-/* Sub-nav sits on the page ground, so it needs its own vertical rhythm and a
-   hairline to separate it from the workspace below. */
-.fo-subnav { padding-block: 8px; border-bottom: 1px solid var(--color-border); align-items: center; }
-
-/* ---------------------------------------------------------------------------
-   SERVICE TWO-LEVEL SUB-NAV (AppShell.jsx's ServiceSubnav).
-   These classes had NO rule anywhere in the stylesheet: the group headers fell
-   through to default-blue underlined anchors, and because .fo-nav is a flex row
-   the groups shrank below their content width, clipping "Work Management" off
-   the left viewport edge. Grouping is presentation-only -- destinations,
-   ordering and visibility logic are untouched.
-   ------------------------------------------------------------------------- */
-.fo-service-subnav { align-items: flex-end; gap: 22px; flex-wrap: wrap; }
-.fo-nav-group {
-  display: flex; flex-direction: column; align-items: flex-start; gap: 3px;
-  flex: 0 0 auto;          /* never shrink below the label -- this was the clip */
-  min-width: 0;
+.fo-navtoggle:hover { background: var(--color-surface-sunken); }
+.fo-navtoggle:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.fo-navtoggle__bars, .fo-navtoggle__bars::before, .fo-navtoggle__bars::after {
+  display: block; width: 15px; height: 1.5px; background: var(--color-text-secondary); border-radius: 1px;
 }
-/* The group label is a quiet section header, deliberately lighter than the
-   items beneath it so the hierarchy reads top-down rather than competing. */
-.fo-nav-group-header {
-  font-size: 10.5px; font-weight: 600; text-transform: uppercase;
-  letter-spacing: 0.08em; color: var(--color-text-muted);
-  text-decoration: none; padding: 0 14px; white-space: nowrap;
-}
-.fo-nav-group-header:hover { color: var(--color-brand-primary); text-decoration: none; }
-.fo-nav-group-active .fo-nav-group-header { color: var(--color-brand-secondary); }
-.fo-nav-group-items { display: flex; gap: 4px; }
-/* Standalone items (e.g. Control Tower) have no group label -- align them to
-   the item row rather than letting them float up to the label row. */
-.fo-nav-group-standalone { align-self: flex-end; }
-
-.fo-main { padding-block: 24px; }
+.fo-navtoggle__bars { position: relative; }
+.fo-navtoggle__bars::before, .fo-navtoggle__bars::after { content: ""; position: absolute; left: 0; }
+.fo-navtoggle__bars::before { top: -4.5px; }
+.fo-navtoggle__bars::after { top: 4.5px; }
 .fo-panel { background: var(--color-surface-elevated); border-radius: 10px; padding: 20px 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); overflow-x: auto; }
 .fo-panel h2 { margin-top: 0; }
 
@@ -346,38 +435,48 @@ a:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; bo
    groups (Pending Review, Ready for Parts Manager). */
 .fo-notification-panel-section { margin: 4px 8px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; color: var(--color-text-secondary); }
 
-/* Sprint 3.6.5: mobile breakpoint. Visual/spacing only -- no layout
-   logic changes. The nav bar scrolls horizontally instead of wrapping
-   (six tabs no longer fit one row on a phone), and padding shrinks so
-   content isn't cramped against the screen edge. */
+/* ===========================================================================
+   SHELL RESPONSIVE BEHAVIOUR
+   ---------------------------------------------------------------------------
+   One information architecture across all three breakpoints -- same hierarchy,
+   same selected-state semantics, same destinations. Only the presentation of
+   the navigation surface changes.
+   ========================================================================= */
+
+/* TABLET -- the rail stays persistent but compacts. The full hierarchy is
+   still visible; it simply takes less width. */
+@media (max-width: 1199.98px) and (min-width: 900px) {
+  :root { --rail-width: 208px; --layout-gutter: 18px; }
+  .fo-rail__brand { padding: 14px 14px 13px; }
+  .fo-rail__nav { padding: 8px 8px 24px; }
+  .fo-rail__domain-row { font-size: 13px; padding: 8px 8px; }
+  .fo-rail__item { font-size: 12.5px; padding: 6px 8px 6px 18px; margin-left: 8px; }
+  .fo-rail__item--d2 { padding-left: 26px; }
+  .fo-rail__group-label { padding-left: 18px; margin-left: 8px; }
+}
+
+/* PHONE / SMALL TABLET -- the persistent rail is replaced by the drawer.
+   Squeezing an eleven-domain, three-level hierarchy into a permanent narrow
+   rail would make it unreadable, so it moves off-canvas instead. Must agree
+   with AppShell.jsx's DRAWER_QUERY. */
+@media (max-width: 899.98px) {
+  :root { --layout-gutter: 16px; }
+  .fo-rail { display: none; }
+  /* Drawer rows are the primary touch target for navigation on a phone, so
+     they get more height than the desktop rail's compact rows. */
+  .fo-drawer .fo-rail__domain-row { padding: 12px 10px; font-size: 14.5px; }
+  .fo-drawer .fo-rail__item { padding: 11px 10px 11px 22px; font-size: 14px; }
+  .fo-drawer .fo-rail__item--d2 { padding-left: 30px; }
+}
+
 @media (max-width: 640px) {
-  /* Narrow the shared gutter once rather than overriding each shell element
-     separately -- the utility strip, header, sub-nav and workspace all derive
-     their inline padding from this, so they stay aligned at phone width too. */
   :root { --layout-gutter: 14px; }
-  .fo-header { padding-block: 12px; gap: 16px; }
-  /* Selector must match `.fo-header .fo-nav`'s specificity (0,2,0), which sets
-     flex-wrap:wrap for the desktop header -- as a plain `.fo-nav` rule this
-     lost, and the primary nav stacked into a tall vertical column on a phone
-     instead of scrolling horizontally as intended. */
-  .fo-nav,
-  .fo-header .fo-nav {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    flex-wrap: nowrap;
-  }
-  .fo-nav-btn { flex: 0 0 auto; white-space: nowrap; }
-  .fo-main { padding-block: 14px; }
+  .fo-main { padding-block: 16px; }
   .fo-panel { padding: 16px; }
   .fo-btn-row { flex-direction: column; }
 
-  /* The Service sub-nav's grouped columns do not fit side by side on a phone;
-     let the row scroll horizontally like the primary nav above it. */
-  .fo-service-subnav { flex-wrap: nowrap; overflow-x: auto; gap: 16px; }
-
-  /* AppHeader.jsx's utility strip (Field Ops Platform / Home / Refresh /
-     email / Logout) is a single flex row with no wrapping -- on a phone-width
-     viewport it overflows horizontally. Wrapping it is presentation only. */
+  /* The utility bar is a single flex row with no wrapping -- at phone width it
+     would otherwise overflow horizontally. */
   .fo-appheader { flex-wrap: wrap; gap: 8px; }
   .fo-appheader-right { flex-wrap: wrap; }
   .fo-appheader-email { display: none; }

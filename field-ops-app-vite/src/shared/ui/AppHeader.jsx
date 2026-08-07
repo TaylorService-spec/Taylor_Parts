@@ -31,7 +31,12 @@ const previewHasPermission = createPermissionPreviewer(resolveEffectivePermissio
 // broadcast notification (like "Ready for Parts Manager", not
 // per-user like "Assigned to You"): PURCHASING_IN_PROGRESS requests,
 // notifying the Parts Manager that purchasing has begun.
-export default function AppHeader({ accessVersion } = {}) {
+// Gate 2 -- this is the workspace column's utility bar. It no longer competes
+// with an application header: the Verenward brand + deployment identity now
+// live at the head of the navigation rail, so this strip carries only session
+// utilities. At drawer widths it also hosts the navigation toggle, because the
+// rail is off-canvas there and needs an opener.
+export default function AppHeader({ accessVersion, onOpenNav = null, navToggleRef = null, navOpen = false } = {}) {
   const { user, role, logout } = useAuth();
   // Issue #226 Row 16 -- presentation-only permission preview (Spec sec8/
   // sec12: never authoritative, UI visibility stays convenience only).
@@ -71,6 +76,18 @@ export default function AppHeader({ accessVersion } = {}) {
   return (
     <div className="fo-appheader">
       <div className="fo-appheader-left">
+        {onOpenNav && (
+          <button
+            type="button"
+            ref={navToggleRef}
+            className="fo-navtoggle"
+            onClick={onOpenNav}
+            aria-expanded={navOpen}
+            aria-label="Open navigation"
+          >
+            <span className="fo-navtoggle__bars" aria-hidden="true" />
+          </button>
+        )}
         <span className="fo-appheader-title">Field Ops Platform</span>
 
         {/* Sprint 2.0.1, requirement #6: Home used to hard-link to
