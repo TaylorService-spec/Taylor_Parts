@@ -1,0 +1,64 @@
+name: Part ↔ Equipment-Model Link Tests
+
+# Owner Decision — Option A (ordered-model ↔ serialized-equipment mapping). The governed Part.equipmentModelId
+# FK + Part.wholeUnit classification: pure validation (whole-unit guardrail + canonical-id format) and the
+# injectable command-layer referential-existence check. Pure/offline node:test over the compiled functions lib
+# (tsc build only) — no emulator, no Firebase runtime, no deployment, no secrets. Also re-runs the Part Master
+# domain suite so the new fields never regress existing validation.
+
+on:
+  pull_request:
+    paths:
+      - "functions/src/partMaster/types.ts"
+      - "functions/src/partMaster/validation.ts"
+      - "functions/src/partMaster/partMasterCommands.ts"
+      - "functions/src/equipmentCompatibility/domain/equipmentModel.ts"
+      - "functions/test/partMasterEquipmentModelLink.test.mjs"
+      - "functions/test/partMasterDomain.test.mjs"
+      - "field-ops-app-vite/src/domain/partMasterWrite.js"
+      - "field-ops-app-vite/test/partMasterWrite.test.mjs"
+      - ".github/workflows/part-equipment-model-link-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/src/partMaster/types.ts"
+      - "functions/src/partMaster/validation.ts"
+      - "functions/src/partMaster/partMasterCommands.ts"
+      - "functions/src/equipmentCompatibility/domain/equipmentModel.ts"
+      - "functions/test/partMasterEquipmentModelLink.test.mjs"
+      - ".github/workflows/part-equipment-model-link-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  part-equipment-model-link:
+    name: Part ↔ equipment-model link (functions build + node:test + client)
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies
+        run: npm ci --no-audit --no-fund
+        working-directory: functions
+
+      - name: Build functions (tsc)
+        run: npm run build
+        working-directory: functions
+
+      - name: Part ↔ equipment-model link + Part Master domain (node:test)
+        run: node test/partMasterEquipmentModelLink.test.mjs && node test/partMasterDomain.test.mjs
+        working-directory: functions
+
+      - name: Client Part Master write helper parity (node:test)
+        run: node test/partMasterWrite.test.mjs
+        working-directory: field-ops-app-vite

@@ -41,6 +41,7 @@ import {
   type StoredPart,
 } from "./partMasterRepository";
 import { parseManufacturerId, parsePartId, validatePart, type PartInput } from "./validation";
+import { EQUIPMENT_MODELS_COLLECTION } from "../equipmentCompatibility/repository";
 import { MANUFACTURER_STATUSES, PART_STATUSES } from "./types";
 import type { Manufacturer, ManufacturerStatus, Part, PartStatus } from "./types";
 
@@ -172,6 +173,20 @@ async function checkIdempotency(
   return { outcome: "replayed", version: versionMatch ? Number(versionMatch[1]) : INITIAL_VERSION };
 }
 
+// Referential integrity for the equipment-model FK (Option A, Owner §5: "do not allow arbitrary unknown model
+// ids"). PURE + injectable: given the FK (or undefined) and an existence reader, it throws when the id does not
+// resolve to a real equipment_models document. The command supplies a transaction-scoped reader; tests supply a
+// stub. A part with no FK is a no-op. The FORMAT is already validated (validatePart → isCanonicalEquipmentModelId).
+export async function assertEquipmentModelExists(
+  equipmentModelId: string | undefined,
+  exists: (id: string) => Promise<boolean>,
+): Promise<void> {
+  if (equipmentModelId === undefined) return;
+  if (!(await exists(equipmentModelId))) {
+    throw new InvalidInputError(`equipmentModelId "${equipmentModelId}" does not reference a known equipment_models identity`);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Part commands
 // ---------------------------------------------------------------------------
@@ -201,6 +216,9 @@ export async function createPart(input: CreatePartInput, deps?: PartMasterDeps):
     if (replay) return replay;
     const existing = await repo.getById(txn, part.partId);
     if (existing !== null) throw new AlreadyExistsError(`part ${part.partId} already exists`);
+    // Referential integrity: the equipment-model FK (whole-unit Parts only) must resolve to a real catalog doc.
+    // Read inside the transaction, before any staged write.
+    await assertEquipmentModelExists(part.equipmentModelId, async (id) => (await txn.get(db.collection(EQUIPMENT_MODELS_COLLECTION).doc(id))).exists);
     const at = now();
     const stored: StoredPart = {
       part,
@@ -232,10 +250,10 @@ export interface UpdatePartInput {
   idempotencyKey: string;
   partId: string;
   expectedVersion: number;
-  changes: Partial<Pick<Part, "internalPartNumber" | "name" | "description" | "category" | "stockingUnit" | "controlType" | "stockingClass" | "flags" | "manufacturerId" | "manufacturerPartNumber" | "oemStatus">>;
+  changes: Partial<Pick<Part, "internalPartNumber" | "name" | "description" | "category" | "stockingUnit" | "controlType" | "stockingClass" | "flags" | "manufacturerId" | "manufacturerPartNumber" | "oemStatus" | "wholeUnit" | "equipmentModelId">>;
 }
 
-const UPDATABLE_FIELDS = new Set(["internalPartNumber", "name", "description", "category", "stockingUnit", "controlType", "stockingClass", "flags", "manufacturerId", "manufacturerPartNumber", "oemStatus"]);
+const UPDATABLE_FIELDS = new Set(["internalPartNumber", "name", "description", "category", "stockingUnit", "controlType", "stockingClass", "flags", "manufacturerId", "manufacturerPartNumber", "oemStatus", "wholeUnit", "equipmentModelId"]);
 
 export async function updatePart(input: UpdatePartInput, deps?: PartMasterDeps): Promise<MutationOutcome> {
   const { db, roles, now, failAfterStage } = resolveDeps(deps);
@@ -270,6 +288,8 @@ export async function updatePart(input: UpdatePartInput, deps?: PartMasterDeps):
     if (!merged.valid) {
       throw new InvalidInputError(`invalid update: ${merged.errors.map((e) => `${e.path}:${e.code}`).join(",")}`);
     }
+    // Referential integrity for the (possibly changed) equipment-model FK — read before any staged write.
+    await assertEquipmentModelExists(merged.value.equipmentModelId, async (id) => (await txn.get(db.collection(EQUIPMENT_MODELS_COLLECTION).doc(id))).exists);
     // INV-1 PR 1.3 -- internalPartNumber historical-alias backfill (the
     // documented PR 1.2 -> 1.3 dependency). When the governed business
     // number changes: the OLD value is preserved as an ACTIVE INTERNAL_PN

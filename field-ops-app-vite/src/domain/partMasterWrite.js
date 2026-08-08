@@ -31,6 +31,9 @@ export function allowedStatusTransitions(currentStatus) {
 export const UPDATABLE_FIELDS = Object.freeze([
   "internalPartNumber", "name", "description", "category", "stockingUnit", "controlType",
   "stockingClass", "manufacturerId", "manufacturerPartNumber", "oemStatus",
+  // Equipment-model link (Option A). wholeUnit = the whole-unit classification (boolean); equipmentModelId =
+  // the canonical equipment_models FK (string). The command re-validates the guardrail + catalog existence.
+  "wholeUnit", "equipmentModelId",
 ]);
 
 function trimOrUndefined(v) {
@@ -52,11 +55,13 @@ export function buildCreatePartInput(form) {
     controlType: form?.controlType ?? "STANDARD",
     stockingClass: form?.stockingClass ?? "STOCKED",
   };
-  for (const f of ["description", "category", "manufacturerId", "manufacturerPartNumber"]) {
+  for (const f of ["description", "category", "manufacturerId", "manufacturerPartNumber", "equipmentModelId"]) {
     const v = trimOrUndefined(form?.[f]);
     if (v !== undefined) part[f] = v;
   }
   if (form?.oemStatus && OEM_STATUSES.includes(form.oemStatus)) part.oemStatus = form.oemStatus;
+  // Whole-unit classification passes through only when explicitly true (the command owns the guardrail).
+  if (form?.wholeUnit === true) part.wholeUnit = true;
   return part;
 }
 

@@ -20,6 +20,9 @@ import type {
 } from "./types";
 import { normalizeIdentifier } from "./normalization";
 import { isUnitCode, parseQuantity, UNIT_DEFINITIONS } from "./units";
+// Canonical equipment-model identity predicate — the SINGLE source of truth for the equipmentModelId format
+// (reused, never re-stated), so a Part's equipment-model FK can only be a well-formed canonical id.
+import { isCanonicalEquipmentModelId } from "../equipmentCompatibility/domain/equipmentModel";
 
 const ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/; // opaque internal IDs (grandfathered skus like TST-1001 conform)
 const MAX_NAME_LENGTH = 200;
@@ -77,6 +80,8 @@ export interface PartInput {
   readonly manufacturerId?: unknown;
   readonly manufacturerPartNumber?: unknown;
   readonly oemStatus?: unknown;
+  readonly wholeUnit?: unknown;
+  readonly equipmentModelId?: unknown;
 }
 
 const DEFAULT_FLAGS: PartFlags = { expiryTracked: false, consumable: false, returnableCore: false };
@@ -138,6 +143,38 @@ export function validatePart(input: PartInput): Result<Part> {
     }
   }
 
+  // Equipment-model link (Option A) — whole-unit guardrail + canonical FK. wholeUnit is the EXPLICIT
+  // classification; equipmentModelId is never allowed to imply it.
+  let wholeUnit = false;
+  if (input.wholeUnit !== undefined) {
+    if (typeof input.wholeUnit !== "boolean") {
+      errors.push(issue("wholeUnit", "INVALID_FORMAT", "wholeUnit must be a boolean"));
+    } else {
+      wholeUnit = input.wholeUnit;
+    }
+  }
+  let equipmentModelId: string | undefined;
+  if (input.equipmentModelId !== undefined) {
+    if (!isCanonicalEquipmentModelId(input.equipmentModelId)) {
+      errors.push(issue("equipmentModelId", "INVALID_FORMAT", "equipmentModelId must be a canonical equipment_models id"));
+    } else {
+      equipmentModelId = input.equipmentModelId as string;
+    }
+  }
+  // Guardrail combinations: the FK is valid ONLY on a declared whole-unit Part; a whole-unit Part must be
+  // serialized and is never a SERVICE part. (Never infer whole-unit from equipmentModelId — Owner §4.)
+  if (equipmentModelId !== undefined && wholeUnit !== true) {
+    errors.push(issue("equipmentModelId", "INVALID_COMBINATION", "equipmentModelId is valid only on a whole-unit Part (set wholeUnit=true)"));
+  }
+  if (wholeUnit === true) {
+    if (controlType !== "SERIALIZED" && controlType !== "SERIALIZED_LOT") {
+      errors.push(issue("wholeUnit", "INVALID_COMBINATION", "a whole-unit Part must be SERIALIZED or SERIALIZED_LOT"));
+    }
+    if (stockingClass === "SERVICE") {
+      errors.push(issue("wholeUnit", "INVALID_COMBINATION", "a SERVICE part cannot be a whole-unit Part"));
+    }
+  }
+
   if (input.manufacturerPartNumber !== undefined && input.manufacturerId === undefined) {
     errors.push(issue("manufacturerId", "CONFLICTING_FIELDS", "manufacturerPartNumber requires manufacturerId"));
   }
@@ -165,6 +202,8 @@ export function validatePart(input: PartInput): Result<Part> {
       ...(manufacturerId !== undefined ? { manufacturerId } : {}),
       ...(typeof input.manufacturerPartNumber === "string" ? { manufacturerPartNumber: input.manufacturerPartNumber } : {}),
       ...(isEnum(["OEM", "AFTERMARKET", "UNKNOWN"] as const, input.oemStatus) ? { oemStatus: input.oemStatus } : {}),
+      ...(wholeUnit ? { wholeUnit: true } : {}),
+      ...(equipmentModelId !== undefined ? { equipmentModelId } : {}),
     },
   };
 }
