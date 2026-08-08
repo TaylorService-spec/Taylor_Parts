@@ -65,3 +65,70 @@ describe("SalesWorkspace (read-first pipeline)", () => {
     expect(screen.getAllByText(/not enabled yet/i).length).toBeGreaterThan(0);
   });
 });
+
+// EDITING-READY composition. The detail pane is built to become an OPERATING surface: editable sections carry
+// contextual, section-level edit affordances that are fail-closed (disabled/honest) until the write-readiness
+// seam flips. These tests exercise the composition WITHOUT activating anything — readiness is injected.
+describe("SalesWorkspace (editing-ready detail composition)", () => {
+  const DISABLED = { enabled: false, reason: "Editing is not enabled yet — governed write path inactive." };
+  const ENABLED = { enabled: true, reason: null };
+
+  it("reads by default: editable sections show a DISABLED Edit affordance (no wall of form controls)", () => {
+    render(<SalesWorkspace readiness={DISABLED} />);
+    // detail renders the first pipeline row; the editable sections expose Edit buttons, all disabled + honest
+    const editButtons = screen.getAllByRole("button", { name: /^edit /i });
+    expect(editButtons.length).toBeGreaterThan(0);
+    editButtons.forEach((b) => expect(b.disabled).toBe(true));
+    // no edit form is present in the read state (no textbox/spinbutton standing controls)
+    expect(screen.queryByRole("textbox")).toBeNull();
+  });
+
+  it("entering a section edit (readiness enabled) swaps read for a compact form; Cancel returns to read", () => {
+    render(<SalesWorkspace readiness={ENABLED} />);
+    // Customer need is an editable section; enter its edit mode
+    const editNeed = screen.getByRole("button", { name: /edit customer need/i });
+    expect(editNeed.disabled).toBe(false);
+    fireEvent.click(editNeed);
+    // the section form is now present (a textbox for the need); a Save + Cancel are offered
+    expect(screen.getByRole("textbox")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^cancel$/i })).toBeTruthy();
+    // Cancel returns to read (no standing controls)
+    fireEvent.click(screen.getByRole("button", { name: /^cancel$/i }));
+    expect(screen.queryByRole("textbox")).toBeNull();
+  });
+
+  it("only one section edits at a time (section-level editing, not a whole-detail form)", () => {
+    render(<SalesWorkspace readiness={ENABLED} />);
+    fireEvent.click(screen.getByRole("button", { name: /edit customer need/i }));
+    // while the need edits, other sections still show their Edit affordance (not all forced into edit)
+    expect(screen.getByRole("button", { name: /edit commercial details/i })).toBeTruthy();
+  });
+
+  it("save stays inert when readiness is enabled but no governed command is wired", () => {
+    render(<SalesWorkspace readiness={ENABLED} />); // no onSaveSection
+    fireEvent.click(screen.getByRole("button", { name: /edit customer need/i }));
+    const save = screen.getByRole("button", { name: /^save$/i });
+    expect(save.disabled).toBe(true); // command not wired => honest, inert
+  });
+
+  it("with readiness enabled AND a wired command, saving hands the section draft to the governed command", () => {
+    const saved = [];
+    render(<SalesWorkspace readiness={ENABLED} onSaveSection={(id, draft) => saved.push([id, draft])} />);
+    fireEvent.click(screen.getByRole("button", { name: /edit customer need/i }));
+    const textbox = screen.getByRole("textbox");
+    fireEvent.change(textbox, { target: { value: "Revised need text" } });
+    const save = screen.getByRole("button", { name: /^save$/i });
+    expect(save.disabled).toBe(false);
+    fireEvent.click(save);
+    expect(saved.length).toBe(1);
+    expect(saved[0][0]).toBe("need");
+    expect(saved[0][1]).toEqual({ need: "Revised need text" });
+  });
+
+  it("system-derived + read-only sections expose NO edit affordance", () => {
+    render(<SalesWorkspace readiness={ENABLED} />);
+    // attention (derived) and record (audit) must not offer an Edit button
+    expect(screen.queryByRole("button", { name: /edit needs attention/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /edit record/i })).toBeNull();
+  });
+});
