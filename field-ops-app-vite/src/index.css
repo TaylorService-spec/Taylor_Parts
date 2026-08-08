@@ -1976,3 +1976,15 @@ button:hover {
 /* Names what the notification panel is about, so its rows are not read as stock
    conditions and matched against the Inventory queue severity counts. */
 .fo-notification-panel-scope { margin: 0 0 8px; font-size: 12px; line-height: 1.4; }
+
+/* An integrity exception must not read as ordinary workflow state. The ORPHAN row
+   says why its fields are blank -- unknown, because the purchase order record could
+   not be read -- so a reader is not left guessing between stale record, different
+   shortage, and rendering bug. */
+.fo-po-integrity {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.4;
+  max-width: 46ch;
+  color: var(--color-text-muted);
+}
