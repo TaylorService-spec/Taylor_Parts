@@ -18,7 +18,10 @@ export default function AtRiskPanel({ jobs, technicians, workOrders }) {
 
   const sorted = useMemo(() => {
     if (sort === "age") {
-      return [...stalledJobs].sort((a, b) => b.metadata.ageHours - a.metadata.ageHours);
+      // ageHours is null when createdAt is unusable (timestamp honesty). Sort those LAST rather than letting
+      // `b - a` produce NaN (which leaves the order undefined).
+      const age = (s) => (typeof s.metadata.ageHours === "number" ? s.metadata.ageHours : -Infinity);
+      return [...stalledJobs].sort((a, b) => age(b) - age(a));
     }
     return stalledJobs; // already severity -> score sorted by detectStalledJobs()
   }, [stalledJobs, sort]);
@@ -42,8 +45,10 @@ export default function AtRiskPanel({ jobs, technicians, workOrders }) {
               <SignalBadge severity={signal.severity}>{signal.severity}</SignalBadge>
             </h3>
             <div className="fo-muted">
-              Work Order: {signal.metadata.workOrderId || "unassigned"} · ~
-              {Math.round(signal.metadata.ageHours)}h since creation (approx.)
+              Work Order: {signal.metadata.workOrderId || "unassigned"} ·{" "}
+              {typeof signal.metadata.ageHours === "number"
+                ? `~${Math.round(signal.metadata.ageHours)}h since creation (approx.)`
+                : "age unknown (createdAt unavailable)"}
             </div>
             <div className="fo-muted">
               {signal.metadata.factors.map((f) => f.explanation).join(" · ")}

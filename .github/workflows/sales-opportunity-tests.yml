@@ -12,6 +12,7 @@ on:
     paths:
       - "field-ops-app-vite/src/modules/sales/**"
       - "field-ops-app-vite/src/domain/opportunityLifecycle.js"
+      - "field-ops-app-vite/src/domain/opportunityFieldModel.js"
       - "field-ops-app-vite/src/access/opportunitySource.js"
       - "field-ops-app-vite/src/access/opportunityWriteReadiness.js"
       - "field-ops-app-vite/src/hooks/useOpportunities.js"
@@ -20,6 +21,7 @@ on:
       - "field-ops-app-vite/test/opportunityLifecycle.test.mjs"
       - "field-ops-app-vite/test/opportunityWriteReadiness.test.mjs"
       - "field-ops-app-vite/test/opportunityReadMapping.test.mjs"
+      - "field-ops-app-vite/test/opportunityFieldModel.test.mjs"
       - "field-ops-app-vite/test/salesWorkspace.test.jsx"
       - "field-ops-app-vite/test/crmSalesNav.test.mjs"
       - "field-ops-app-vite/test/equipmentRegister.test.mjs"
@@ -33,9 +35,11 @@ on:
       - "field-ops-app-vite/src/access/opportunityWriteReadiness.js"
       - "field-ops-app-vite/src/hooks/useOpportunities.js"
       - "field-ops-app-vite/src/data/opportunityScenarioFixtures.js"
+      - "field-ops-app-vite/src/domain/opportunityFieldModel.js"
       - "field-ops-app-vite/test/opportunityLifecycle.test.mjs"
       - "field-ops-app-vite/test/opportunityWriteReadiness.test.mjs"
       - "field-ops-app-vite/test/opportunityReadMapping.test.mjs"
+      - "field-ops-app-vite/test/opportunityFieldModel.test.mjs"
       - "field-ops-app-vite/test/salesWorkspace.test.jsx"
       - ".github/workflows/sales-opportunity-tests.yml"
   workflow_dispatch:
@@ -63,7 +67,7 @@ jobs:
         working-directory: field-ops-app-vite
 
       - name: Opportunity domain unit tests (node:test)
-        run: node test/opportunityLifecycle.test.mjs && node test/opportunityWriteReadiness.test.mjs && node test/opportunityReadMapping.test.mjs
+        run: node test/opportunityLifecycle.test.mjs && node test/opportunityWriteReadiness.test.mjs && node test/opportunityReadMapping.test.mjs && node test/opportunityFieldModel.test.mjs
         working-directory: field-ops-app-vite
 
       - name: Nav parity pins (crmSalesNav + equipmentRegister)
@@ -75,5 +79,5 @@ jobs:
         working-directory: field-ops-app-vite
 
       - name: Lint the Sales slice (oxlint)
-        run: npx oxlint src/modules/sales src/domain/opportunityLifecycle.js src/access/opportunitySource.js src/hooks/useOpportunities.js src/data/opportunityScenarioFixtures.js src/access/opportunityWriteReadiness.js
+        run: npx oxlint src/modules/sales src/domain/opportunityLifecycle.js src/domain/opportunityFieldModel.js src/access/opportunitySource.js src/hooks/useOpportunities.js src/data/opportunityScenarioFixtures.js src/access/opportunityWriteReadiness.js
         working-directory: field-ops-app-vite
