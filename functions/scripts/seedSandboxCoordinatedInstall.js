@@ -33,7 +33,7 @@
  *   node scripts/seedSandboxCoordinatedInstall.js --projectId eos-platform-sandbox
  */
 const { initializeApp, applicationDefault } = require("firebase-admin/app");
-const { getFirestore, Timestamp } = require("firebase-admin/firestore");
+const { getFirestore, Timestamp, FieldValue } = require("firebase-admin/firestore");
 const fs = require("node:fs");
 const path = require("node:path");
 
@@ -141,7 +141,16 @@ async function main() {
       // Orders sharing one salesOrderId IS the coordinated group. No invented key.
       salesOrderId: "so-harbor-c713",
       dispatchedAt: now, acceptedAt: now, enRouteAt: now, arrivedAt: now, workStartedAt: now,
-      ...(complete ? { completedAt: now } : {}),
+      // Genuinely idempotent, not merely re-runnable. A persona mission can
+      // COMPLETE the blocked unit during a run -- one did -- and a merge-only
+      // write cannot take that back, so a re-seed would silently leave the
+      // scenario in the state the previous run left it in. Every field that
+      // distinguishes blocked from complete is therefore asserted in BOTH
+      // directions. A fixture that cannot restore its own premise produces
+      // evidence about the last agent that touched it, not about the product.
+      ...(complete
+        ? { completedAt: now }
+        : { completedAt: FieldValue.delete(), resolution: FieldValue.delete() }),
       createdAt: now, updatedAt: now,
     });
   }
