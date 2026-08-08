@@ -93,6 +93,13 @@ function buildDeferredForNow(catalog) {
     // compatibility Role -- ungranted-by-design, pending a separate Owner grant. Named as an EXACT literal
     // (not a prefix), so a future workOrder.parts.* capability stays UNACCOUNTED until reviewed.
     "workOrder.parts.plan",
+    // Sales Opportunity Cycle 3: opportunity.write is registered `active: false` and granted to NO
+    // compatibility Role -- ungranted-by-design, pending a separate Owner grant. EXACT literal (not a
+    // prefix), so a future opportunity.* capability stays UNACCOUNTED until reviewed.
+    "opportunity.write",
+    // Sales Opportunity Cycle 3c: opportunity.read (trusted read projection) -- same ungranted-by-design
+    // posture, EXACT literal.
+    "opportunity.read",
   ]);
 }
 // Catalog ids neither granted by a seeded Role nor deferred-by-design (the exhaustiveness gate's

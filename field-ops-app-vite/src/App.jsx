@@ -10,6 +10,7 @@ import Operations from "./modules/operations/Operations";
 import DispatcherBoard from "./modules/dispatcherBoard/DispatcherBoard";
 import TechnicianDashboard from "./modules/technicianDashboard/TechnicianDashboard";
 import AccountsList from "./modules/accounts/AccountsList";
+import SalesWorkspace from "./modules/sales/SalesWorkspace";
 import EquipmentWorkspace from "./modules/equipment/EquipmentWorkspace";
 import EquipmentDetail from "./modules/equipment/EquipmentDetail";
 import AccountDetail from "./modules/accounts/AccountDetail";
@@ -174,6 +175,12 @@ function renderSubnavItem(domain, item, role, operationalContext) {
   // rather than the generic legacyKey/PlaceholderPage branches below.
   if (domain.key === "customers" && item.key === "customers") {
     return <AccountsList />;
+  }
+  // Sales Cycle 2 -- the Opportunity Operating Workspace (READ-FIRST, synthetic source). Same brand-new-screen
+  // pattern as AccountsList/PartMasterList: no legacyKey, explicit branch; admin/dispatcher via
+  // PLACEHOLDER_DEFAULT_ROLES. Reads only; no governed write path is wired here yet.
+  if (domain.key === "customers" && item.key === "opportunities") {
+    return <SalesWorkspace />;
   }
   // Issue #232 E5 + INV-EQ-P1b -- the visible Equipment workspace (two tabs: Customer
   // Equipment = cross-customer paginated installed list; Available Equipment = honest
