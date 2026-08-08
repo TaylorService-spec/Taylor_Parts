@@ -48,8 +48,18 @@ function NotificationItem({ request, resolveName, onNavigate }) {
       onClick={onNavigate}
     >
       <span>{resolveName(request.partId)}</span>
+      {/* Personas read a bare "MEDIUM" here beside the Inventory queue's
+          "Critical & High (0)" and took them for one scale -- then reported the two
+          screens as contradicting each other. They are different authorities: this is
+          a REORDER REQUEST's urgency (a request awaiting review), not a stock-condition
+          severity (see the Service<->Inventory material-truth assessment). Same badge
+          vocabulary, different meaning, nothing saying which. Name the scale on the
+          row. This does not reconcile the two numbers -- they are not the same fact
+          and must not be made to agree. */}
       {request.urgency ? (
-        <span className={`fo-badge fo-badge-${request.urgency.toLowerCase()}`}>{request.urgency}</span>
+        <span className={`fo-badge fo-badge-${request.urgency.toLowerCase()}`}>
+          Request urgency: {request.urgency}
+        </span>
       ) : (
         <span className="fo-badge">Needs planning</span>
       )}
@@ -83,6 +93,14 @@ export default function NotificationPanel({
             <p className="fo-muted">No pending reorder requests.</p>
           ) : (
             <>
+              {/* State the authority once, at the top. Everything in this panel is a
+                  REORDER REQUEST moving through review/assignment/purchasing -- not a
+                  stock condition. Without this, readers matched these rows against the
+                  Inventory queue's severity counts and reported a contradiction between
+                  two surfaces that were never describing the same thing. */}
+              <p className="fo-muted fo-notification-panel-scope">
+                Reorder requests in progress. Stock levels live in Inventory.
+              </p>
               {requests.length > 0 && (
                 <>
                   <p className="fo-notification-panel-section">Pending Review</p>
