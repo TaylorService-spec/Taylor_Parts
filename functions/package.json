@@ -39,7 +39,7 @@
     "test:workOrderPartsPlan": "npm run build && node --test test/setWorkOrderPartsPlan.test.mjs",
     "test:opportunity": "npm run build && node --test test/opportunityCommands.test.mjs test/opportunityReadService.test.mjs",
     "test:salesOrder": "npm run build && node --test test/salesOrderCommands.test.mjs",
-    "test:fulfillment": "npm run build && node --test test/allocationProjection.test.mjs",
+    "test:fulfillment": "npm run build && node --test test/allocationProjection.test.mjs test/fulfillmentAvailability.test.mjs",
     "test:inventoryEffectDetection": "npm run build && node test/inventoryEffectDetection.test.mjs",
     "test:csvMigrationAnalysis": "npm run build && node test/csvMigrationAnalysis.test.mjs",
     "test:migrationEvidence": "npm run build && node test/migrationEvidence.test.mjs",

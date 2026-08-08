@@ -157,6 +157,17 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     action: "write",
     active: false,
   }),
+  // Fulfillment Cycle 5 -- allocate a committed Sales Order via the governed allocateSalesOrder command
+  // (authoritative availability from canonical inventory/warehouses; records allocation only on the Sales
+  // Order). Registered active:false (fail-closed).
+  Object.freeze({
+    id: "salesOrder.fulfill",
+    description:
+      "Allocate a committed Sales Order against authoritative inventory availability via the governed allocateSalesOrder command. Records allocation only on the Sales Order; does not write the inventory ledger or Equipment authority.",
+    resource: "salesOrder",
+    action: "fulfill",
+    active: false,
+  }),
 
   // --- Inventory / Reorder / Purchasing domain (Issue #100; Assessment's
   // Inventory domain audit table; firestore.rules current `main`) ---
