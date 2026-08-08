@@ -22,9 +22,19 @@ const num0 = (v: unknown): number => (typeof v === "number" && Number.isFinite(v
 
 // Net open Work-Order reservations for a part from the append-only ledger rows: RESERVED − RELEASED −
 // CONSUMED, floored at 0. `rows` are the inventory_transactions for the part (already filtered by partId).
-export function openWorkOrderReserved(rows: Array<{ type: string; quantity: number }>): number {
+//
+// DEMAND LINEAGE (C7): a Work Order created to fulfill a Sales Order carries that lineage; the parts it
+// reserves are the SAME underlying demand already counted via the Sales Order's allocation. To avoid
+// double-counting, `excludeWorkOrderIds` (the set of WO ids linked to an active Sales Order) drops those
+// reservations here — SO-origin demand is counted ONCE, by the Sales Order; standalone WO reservations are
+// counted here. A unit is thus never both an SO allocation and a WO reservation.
+export function openWorkOrderReserved(
+  rows: Array<{ type: string; quantity: number; workOrderId?: string }>,
+  excludeWorkOrderIds: Set<string> = new Set()
+): number {
   let reserved = 0;
   for (const r of rows) {
+    if (r.workOrderId && excludeWorkOrderIds.has(r.workOrderId)) continue; // counted via the Sales Order
     const q = num0(r.quantity);
     if (r.type === "RESERVED") reserved += q;
     else if (r.type === "RELEASED" || r.type === "CONSUMED") reserved -= q;

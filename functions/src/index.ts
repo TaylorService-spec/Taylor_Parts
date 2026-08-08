@@ -24,6 +24,8 @@ export { listOpportunityContext } from "./opportunity/opportunityReadService";
 export { createSalesOrder, transitionSalesOrder } from "./salesOrder/salesOrderCallables";
 // Fulfillment allocation (Cycle 5 live). EXPORT != DEPLOY; capability `salesOrder.fulfill` active:false.
 export { allocateSalesOrder } from "./fulfillment/allocateSalesOrder";
+// Sales Order → Service seam (Cycle 7). EXPORT != DEPLOY; capability `salesOrder.service` active:false.
+export { createServiceForSalesOrder } from "./salesOrder/createServiceForSalesOrder";
 
 // --- F1 surface: trusted minimal field-context display projection ---
 // Answers "who is the customer / which site am I going to?" for the CALLER'S
