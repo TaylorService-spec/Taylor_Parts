@@ -10,6 +10,7 @@ on:
     paths:
       - "functions/src/fulfillment/**"
       - "functions/test/allocationProjection.test.mjs"
+      - "functions/test/coordinatedVisit.test.mjs"
       - "functions/package.json"
       - "functions/package-lock.json"
       - ".github/workflows/fulfillment-allocation-tests.yml"
@@ -18,6 +19,7 @@ on:
     paths:
       - "functions/src/fulfillment/**"
       - "functions/test/allocationProjection.test.mjs"
+      - "functions/test/coordinatedVisit.test.mjs"
       - ".github/workflows/fulfillment-allocation-tests.yml"
   workflow_dispatch:
 
