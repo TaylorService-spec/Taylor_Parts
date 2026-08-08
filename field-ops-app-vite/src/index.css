@@ -1789,6 +1789,11 @@ button:hover {
    composed on the Wave-0 primitives. No new colour tokens — tone comes from the shared StatusPill layer. */
 .fo-sales-banner { margin: 0 0 12px; font-size: 13px; }
 .fo-sales-attention { margin: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* Overflow-safe wrapper — the pipeline can never paint over the detail rail (fixes the original intermediate-
+   width overlap defect where the 6-col table overflowed its grid cell). The column-priority + phone-block
+   rules below keep the table fitting so this guard's scrollbar effectively never appears; it is a hard
+   backstop, not the primary responsive mechanism. */
+.fo-sales-pipeline-wrap { min-width: 0; overflow-x: auto; }
 .fo-sales-pipeline { width: 100%; border-collapse: collapse; font-size: 14px; }
 .fo-sales-pipeline th { text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: .03em;
   color: var(--color-text-muted); font-weight: 600; padding: 6px 12px; border-bottom: 1px solid var(--color-border); }
@@ -1799,6 +1804,33 @@ button:hover {
 .fo-sales-row.is-attention td:first-child { box-shadow: inset 3px 0 0 var(--color-warning); }
 .fo-sales-row__customer { font-weight: 600; color: var(--color-text-primary); }
 .fo-sales-row__value { font-variant-numeric: tabular-nums; }
+
+/* ── PIPELINE RESPONSIVE CONTENT PRIORITY (recompose, not squeeze) ──────────────────────────────────────
+   The original defect was at intermediate widths: with the detail as a side rail, the 6-column pipeline was
+   squeezed past readability / overflowed and collided with the detail. Fix = an intentional content-priority
+   strategy — keep the highest-value Sales columns (Customer / Stage / Est. value / Attention·next) and DEFER
+   the lower-priority ones (Channel, Expected close), which remain visible in the detail pane for the selected
+   opportunity. This preserves the desktop master/detail and recomposes narrower widths instead of shrinking. */
+@media (max-width: 1024px) {
+  /* qualified with .fo-sales-pipeline so this hide wins over the phone-block `td { display:flex }` rule below
+     (which is more specific than a bare .fo-sales-col--secondary) — the deferral must hold at phone widths too */
+  .fo-sales-pipeline .fo-sales-col--secondary { display: none; }
+}
+/* Phone: recompose each row from a squeezed 4-col table into a compact stacked block (labelled cells) — not a
+   card farm, just a legible list. thead is visually hidden (kept for AT); each cell carries its data-label. */
+@media (max-width: 640px) {
+  .fo-sales-pipeline thead { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+  .fo-sales-pipeline, .fo-sales-pipeline tbody, .fo-sales-pipeline tr, .fo-sales-pipeline td { display: block; }
+  .fo-sales-pipeline tr { border: 1px solid var(--color-border); border-radius: 10px; padding: 8px 11px; margin-bottom: 8px; }
+  .fo-sales-pipeline td { border: 0; padding: 3px 0; display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+  .fo-sales-pipeline td::before { content: attr(data-label); color: var(--color-text-muted); font-size: 11px;
+    text-transform: uppercase; letter-spacing: .03em; flex: none; }
+  /* the attention left-marker doesn't translate to a block cell — move it to the row card edge */
+  .fo-sales-row.is-attention td:first-child { box-shadow: none; }
+  .fo-sales-row.is-attention { box-shadow: inset 3px 0 0 var(--color-warning); }
+}
+
 .fo-sales-detail { display: grid; gap: 14px; }
 .fo-sales-detail__block h4 { margin: 0 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: .03em;
   color: var(--color-text-muted); font-weight: 600; }

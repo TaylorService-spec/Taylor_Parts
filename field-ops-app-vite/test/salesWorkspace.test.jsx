@@ -132,3 +132,37 @@ describe("SalesWorkspace (editing-ready detail composition)", () => {
     expect(screen.queryByRole("button", { name: /edit record/i })).toBeNull();
   });
 });
+
+// PIPELINE RESPONSIVE CONTENT PRIORITY. The original observed defect was at intermediate width: the 6-column
+// pipeline overflowed its grid cell and collided with the detail rail. The fix recomposes narrower widths via
+// an overflow-safe wrapper + a content-priority strategy (defer Channel + Expected close — both shown in the
+// detail) + a phone block recomposition. jsdom has no layout engine, so these lock the STRUCTURE that drives
+// the responsive CSS (the actual geometry was verified in a real browser at ~400/768/900/1360 widths).
+describe("SalesWorkspace (pipeline responsive content priority)", () => {
+  it("wraps the pipeline in an overflow-safe container so it can never overlap the detail rail", () => {
+    const { container } = render(<SalesWorkspace />);
+    const table = container.querySelector("table.fo-sales-pipeline");
+    expect(table).toBeTruthy();
+    expect(table.closest(".fo-sales-pipeline-wrap")).toBeTruthy();
+  });
+
+  it("marks the lower-priority columns (Channel, Expected close) as secondary/deferrable in header and rows", () => {
+    const { container } = render(<SalesWorkspace />);
+    // both header cells flagged
+    const secHeaders = [...container.querySelectorAll("thead th.fo-sales-col--secondary")].map((th) => th.textContent);
+    expect(secHeaders).toEqual(["Channel", "Expected close"]);
+    // and every row's Channel + Expected close cells flagged (2 per row)
+    const firstRow = container.querySelector("tbody tr");
+    const secCells = firstRow.querySelectorAll("td.fo-sales-col--secondary");
+    expect(secCells.length).toBe(2);
+    // the priority columns are NOT flagged secondary
+    expect(firstRow.querySelector("td.fo-sales-row__customer").classList.contains("fo-sales-col--secondary")).toBe(false);
+    expect(firstRow.querySelector("td.fo-sales-row__value").classList.contains("fo-sales-col--secondary")).toBe(false);
+  });
+
+  it("labels every pipeline cell (data-label) so the phone block recomposition stays legible", () => {
+    const { container } = render(<SalesWorkspace />);
+    const labels = [...container.querySelectorAll("tbody tr:first-child td")].map((td) => td.getAttribute("data-label"));
+    expect(labels).toEqual(["Customer", "Stage", "Channel", "Est. value", "Expected close", "Attention / next"]);
+  });
+});
