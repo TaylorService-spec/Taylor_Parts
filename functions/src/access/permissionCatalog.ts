@@ -217,6 +217,17 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     action: "record",
     active: false,
   }),
+  // Finance (Billing/AR) -- trusted AR READ (a governed backend projection over the Admin-SDK-only invoices
+  // collection; the client never reads invoices directly). Registered active:false (fail-closed) pending a
+  // separate Owner grant. A READ capability -- it writes nothing and widens no client Rule.
+  Object.freeze({
+    id: "finance.read",
+    description:
+      "Read the minimal Finance AR projection (invoice + derived AR position) for an account via the trusted listAccountInvoiceAr callable. Backend read only; the client never reads invoices/payments/adjustments directly.",
+    resource: "finance",
+    action: "read",
+    active: false,
+  }),
 
   // --- Inventory / Reorder / Purchasing domain (Issue #100; Assessment's
   // Inventory domain audit table; firestore.rules current `main`) ---
