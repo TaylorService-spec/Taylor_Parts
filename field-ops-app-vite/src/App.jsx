@@ -27,6 +27,8 @@ import Receiving from "./modules/inventory/Receiving";
 import Transfers from "./modules/inventory/Transfers";
 import Warehouses from "./modules/inventory/Warehouses";
 import SchedulingWorkspace from "./modules/scheduling/SchedulingWorkspace";
+import CoordinatedVisitsWorkspace from "./modules/service/CoordinatedVisitsWorkspace";
+import CoordinatedMissionView from "./modules/mobile/CoordinatedMissionView";
 import WorkOrdersList from "./modules/workOrders/WorkOrdersList";
 import WorkOrderWizard from "./modules/workOrders/WorkOrderWizard";
 import WorkOrderDetailPage from "./modules/workOrders/WorkOrderDetailPage";
@@ -203,6 +205,16 @@ function renderSubnavItem(domain, item, role, operationalContext) {
   }
   if (domain.key === "service" && item.key === "workOrders") {
     return <WorkOrdersList />;
+  }
+  // Coordinated Operations — user-consumable reads of the already-built coordinatedVisit /
+  // coordinatedFieldMission projections. Brand-new screens, explicit branch (no legacyKey for Visits →
+  // admin/dispatcher via PLACEHOLDER_DEFAULT_ROLES; Mission uses legacyKey "fieldMode" → admin + technician).
+  // Read-only synthetic source; no authority invented, nothing written (no Job/Visit/WorkOrderGroup).
+  if (domain.key === "service" && item.key === "coordinatedVisits") {
+    return <CoordinatedVisitsWorkspace />;
+  }
+  if (domain.key === "service" && item.key === "coordinatedMission") {
+    return <CoordinatedMissionView />;
   }
   // Sprint 2.1.1 -- Inventory Domain Foundation. "Parts" now renders
   // the real Inventory workspace; the legacy demo Inventory.jsx it

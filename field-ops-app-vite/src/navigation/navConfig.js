@@ -144,6 +144,18 @@ export const NAV_DOMAINS = [
       // in the new Dispatch group). Path/legacyKey UNCHANGED, so its URL
       // (/service/dispatch) and role access are identical -- only the label moved.
       { key: "dispatch", label: "Dispatch Queue", path: "dispatch", legacyKey: "dispatch" },
+      // Coordinated Operations — the user-consumable reads of the already-built coordinatedVisit /
+      // coordinatedFieldMission projections (functions/src/fulfillment). NO new authority: the Sales Order is
+      // the coordination anchor; Work Orders keep individual execution. Both read a SYNTHETIC source through
+      // an injected seam and write nothing.
+      //   • Coordinated Visits = the Service/Dispatch projection. No legacyKey → admin/dispatcher (PLACEHOLDER
+      //     _DEFAULT_ROLES), grouped under Dispatch.
+      //   • Coordinated Mission = the Technician projection. legacyKey "fieldMode" so it inherits the SAME
+      //     visibility as the Technician Workspace (admin + technician), grouped under Technician Workspace.
+      //     Reusing fieldMode avoids inventing a new ROLE_NAV_ACCESS key; nav visibility is not the security
+      //     boundary (Rules are), and this surface is read-only synthetic.
+      { key: "coordinatedVisits", label: "Coordinated Visits", path: "coordinated-visits" },
+      { key: "coordinatedMission", label: "Coordinated Mission", path: "coordinated-mission", legacyKey: "fieldMode" },
       { key: "technicianWorkspace", label: "Technician Workspace", path: "technician-workspace", legacyKey: "fieldMode" },
       // Platform Task 3 -- Control Tower left the Service sub-nav: it is now the
       // top-level "Service Operations" area (NAV_DOMAINS' serviceOperations
@@ -390,8 +402,8 @@ export function isDomainVisible(domain, role, allowedLegacyKeys, operationalCont
 // controlTower) renders as a standalone item, preserving its access + URL.
 export const SERVICE_NAV_GROUPS = [
   { key: "workManagement", label: "Work Management", itemKeys: ["workOrders", "jobAssignments", "warranty"] },
-  { key: "dispatch", label: "Dispatch", itemKeys: ["dispatcherBoard", "scheduling", "dispatch"] },
-  { key: "technicianWorkspace", label: "Technician Workspace", itemKeys: ["technicianWorkspace"] },
+  { key: "dispatch", label: "Dispatch", itemKeys: ["dispatcherBoard", "scheduling", "dispatch", "coordinatedVisits"] },
+  { key: "technicianWorkspace", label: "Technician Workspace", itemKeys: ["technicianWorkspace", "coordinatedMission"] },
 ];
 
 // Build the two-level Service nav model from the ALREADY-VISIBILITY-FILTERED
