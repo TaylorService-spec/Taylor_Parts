@@ -113,6 +113,16 @@ export interface Part {
   readonly manufacturerId?: ManufacturerId; // primary manufacturer
   readonly manufacturerPartNumber?: string; // primary MPN (raw display value)
   readonly oemStatus?: OemStatus;
+  // Equipment-model link (Owner Decision — Option A: ordered-model ↔ serialized-equipment mapping). A governed
+  // FK to the canonical equipment_models identity (equipmentModelId), present ONLY on whole-unit / serialized-
+  // equipment SKUs. `wholeUnit` is the EXPLICIT whole-unit classification (the guardrail): it is never inferred
+  // from equipmentModelId. Invariants enforced by validatePart: equipmentModelId is valid ONLY when
+  // wholeUnit === true; a whole-unit Part must be SERIALIZED (or SERIALIZED_LOT); a SERVICE part is never a
+  // whole unit. ONE equipmentModelId may map to MANY whole-unit Parts (revisions/variants) — no uniqueness.
+  // Ordinary service/repair parts leave both absent (equipment_compatibility, a separate authority, carries
+  // their model relationship). Existence of equipmentModelId in the catalog is enforced at the command layer.
+  readonly wholeUnit?: boolean;
+  readonly equipmentModelId?: string;
 }
 
 // ---------------------------------------------------------------------------
