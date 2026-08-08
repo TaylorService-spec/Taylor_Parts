@@ -35,9 +35,27 @@ check("the Receiving WORKSPACE composes the canonical workflow (no alternate imp
   assert.ok(!/submitReceiveInventoryStock|buildReceiveRequestInput|httpsCallable/.test(ws), "workspace does not re-implement receive");
 });
 
-check("the PartsScanner TOOL launches the SAME canonical workflow (two launch points, one workflow)", () => {
+// F2 -- the scanner no longer launches receiving. A scan is a CONTEXTUAL ENTRY
+// POINT, and deeper work routes to the surface that owns it: Receiving is a
+// first-class workspace at /inventory/receiving, asserted below, importing the
+// same canonical ReceiveAgainstPurchaseOrder workflow. The capability is not
+// lost -- it stopped being reachable from a barcode, which is the point of
+// separating identity resolution from action authority.
+//
+// The invariant that mattered survives: there is still exactly ONE canonical
+// receive workflow, and the workspace uses it.
+check("Receiving remains the single canonical workflow's owning surface", () => {
+  const workspace = read("modules/inventory/Receiving.jsx");
+  assert.match(workspace, /import ReceiveAgainstPurchaseOrder from "\.\.\/receiving\/ReceiveAgainstPurchaseOrder"/);
+});
+
+check("F2: the scanner does NOT re-create a second receive launch point", () => {
   const scanner = read("modules/mobile/PartsScanner.jsx");
-  assert.match(scanner, /import ReceiveAgainstPurchaseOrder from "\.\.\/receiving\/ReceiveAgainstPurchaseOrder"/);
+  assert.doesNotMatch(scanner, /ReceiveAgainstPurchaseOrder/, "a scan must not launch the receive workflow");
+  // And it must not have grown a literal action menu again.
+  for (const legacy of ["Load my truck", "Cycle count", "Add to purchase order"]) {
+    assert.ok(!scanner.includes(legacy), `legacy scanner action "${legacy}" resurfaced`);
+  }
 });
 
 check("App.jsx routes Inventory > Receiving to the workspace", () => {
