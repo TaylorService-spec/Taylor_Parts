@@ -37,3 +37,5 @@ export const OPPORTUNITIES_COLLECTION = "opportunities";
 // posture as the ledger/opportunities collections: firestore.rules denies ALL direct client read/write; the
 // only write path is the trusted salesOrder command (salesOrder/salesOrderCallables.ts). No UI writes.
 export const SALES_ORDERS_COLLECTION = "sales_orders";
+// Finance — governed invoices (Admin-SDK-only; deny-all client Rules). Sensitive/audited.
+export const INVOICES_COLLECTION = "invoices";

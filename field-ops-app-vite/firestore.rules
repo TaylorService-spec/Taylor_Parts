@@ -1745,5 +1745,14 @@ service cloud.firestore {
     match /sales_orders/{salesOrderId} {
       allow read, write: if false;
     }
+
+    // Finance -- invoices (Billing/AR). Admin-SDK-only, same fail-closed posture. ALL direct client read/write
+    // denied; the only write path is the trusted issueInvoice command (functions/src/finance/
+    // invoiceCallables.ts), which uses the Admin SDK and bypasses these rules. Finance is sensitive/audited:
+    // the client never writes invoices, mutates AR, allocates invoice numbers, or computes authoritative tax.
+    // Deployment is a separate operator gate; merging this block changes nothing in production.
+    match /invoices/{invoiceId} {
+      allow read, write: if false;
+    }
   }
 }

@@ -26,6 +26,9 @@ export { createSalesOrder, transitionSalesOrder } from "./salesOrder/salesOrderC
 export { allocateSalesOrder } from "./fulfillment/allocateSalesOrder";
 // Sales Order → Service seam (Cycle 7). EXPORT != DEPLOY; capability `salesOrder.service` active:false.
 export { createServiceForSalesOrder } from "./salesOrder/createServiceForSalesOrder";
+// Finance (Billing/AR) — governed invoice issuance. EXPORT != DEPLOY; capability `finance.invoice.issue`
+// active:false (ungranted); `invoices` is Admin-SDK-only (deny-all client Rules). Sensitive/audited.
+export { issueInvoice } from "./finance/invoiceCallables";
 
 // --- F1 surface: trusted minimal field-context display projection ---
 // Answers "who is the customer / which site am I going to?" for the CALLER'S
