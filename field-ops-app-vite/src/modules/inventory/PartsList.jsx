@@ -23,7 +23,7 @@ import FilterBar from "../../shared/ui/FilterBar";
 import LoadingEmptyState from "../../shared/ui/LoadingEmptyState";
 import InventoryHealthPanel from "../operations/panels/InventoryHealthPanel";
 import { hasUsageHistory } from "../../domain/inventoryAnalyticsEngine";
-import { formatTimestamp } from "../../domain/displayTimestamp.js";
+import { formatTimestamp, formatAge } from "../../domain/displayTimestamp.js";
 
 // Sprint 2.1.1 -- Inventory Domain Foundation. The real Inventory >
 // Parts workspace, replacing the legacy demo Inventory.jsx that
@@ -259,15 +259,12 @@ const QUEUE_FILTER_EMPTY_TEXT = {
 // raw locale timestamp -- "age" means how long a request has been
 // assigned, not merely when it happened.
 export function formatAssignmentAge(assignedAtMs, nowMs = Date.now()) {
-  if (assignedAtMs == null) return "—";
-  const diffMs = Math.max(0, nowMs - assignedAtMs);
-  const minutes = Math.floor(diffMs / 60_000);
-  if (minutes < 1) return "Just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
+  // Delegates to the shared honest formatter. This used to do its own arithmetic
+  // with Math.max(0, now - value), which turns an epoch-zero or otherwise unusable
+  // timestamp into a confident "19933d ago" -- about 54 years, printed on a request
+  // made this week. A Parts Manager reported it as data they had to mentally flag as
+  // false rather than read. An unusable timestamp is Unknown, not an age.
+  return formatAge(assignedAtMs, nowMs, { unknown: "—" });
 }
 
 // Inventory Operational Queue, PR A, Final Review correction: this app's

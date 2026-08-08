@@ -163,3 +163,79 @@ Associate actions the needs-attention PO and the dispatcher re-checks whether it
 surfaces; six stub screens reachable from primary nav with no visual distinction from
 working ones — **carried to the IA backlog, not fixed here**, since nav presentation is
 part of the pending IA decision.
+
+---
+
+## Part 3 — Parts-role view of the rejected replenishment request
+
+Build `251c16d` · D2 MATCH · non-cached identity confirmed · premise verified.
+One bounded read-only Parts Manager mission.
+
+**FUNCTIONAL: FAIL · EXPERIENCE: FAIL** — 6 routes, 2 modules.
+
+### The question this mission answered
+
+Was the dispatcher's inability to resolve the blocked material condition **A** a
+legitimate role handoff, **B** a broken cross-role workflow, **C** missing canonical
+linkage, or **D** a combination?
+
+**Answer: D — B and C together, with C as the root cause.**
+
+It is emphatically **not A**. A legitimate handoff means the receiving role can act.
+This one cannot.
+
+### The inversion — the role that owns the decision has less context than the role that doesn't
+
+The Parts Manager is **worse off** than the dispatcher who called them:
+
+- They **rejected this request themselves** — and the app cannot tell them why. There
+  is no reason field. Confirmed in canonical data before the run: `reorder_requests`
+  carry `reviewedBy` but **no reason field exists at all**. This is a model gap, not a
+  UI omission.
+- They cannot see the **part's name**. The page states *"Some part names are
+  unavailable; Part IDs are shown."* They could not determine which of their two open
+  rows is even the water inlet valve — *"I can't even prove it's one of mine."*
+- They cannot reach the **job**: Job Assignments, Technician Workspace and the
+  Dashboard all correctly deny them.
+- **Every control is read-only.** No re-request, no reversal, no escalation, no
+  annotation. Nothing to hand back.
+- Who decided was inferred only from the section's framing (*"requests you personally
+  approved, rejected, or assigned"*), never stated on the record. Had a colleague
+  rejected it, that would be invisible.
+
+So the chain breaks in both directions: Service cannot see Inventory's decision, and
+Inventory cannot see Service's job. Neither side of a "colleague calls about a stuck
+part" conversation has a shared record to point at.
+
+### Confirms, with a new dimension
+
+The missing demand relationship (routed to Product) is not only a *dispatcher*
+navigation problem. It leaves the **deciding role unable to justify or revisit its own
+decision.** That raises the routed question's stakes: this is not merely cross-linking
+for convenience, it is whether a replenishment decision is accountable at all.
+
+### Remediated here
+
+`formatAssignmentAge` did its own arithmetic (`Math.max(0, now - value)`), which turns
+an unusable timestamp into a confident *"19933d ago"* — about 54 years, on a request
+made this week. My earlier timestamp fix wired the absolute-date path but **missed this
+age path**, which is why the Parts Manager still hit it and had to mentally flag it as
+false data. It now delegates to the shared honest formatter, covering both call sites.
+
+### NOT fixed, correctly
+
+Part names unavailable to the Parts Manager is downstream of **Part Master holding no
+canonical records** — already routed. Resolving names in the client would manufacture
+an authority the platform has not established.
+
+### Routed to Product (new / sharpened)
+
+- **A rejection with no recorded reason is not an auditable decision.** Whether
+  `reorder_requests` should carry a reason is a Product model question, not a label.
+- **Can a Parts Manager act at all on a terminal request?** Re-request, reverse and
+  escalate do not exist. Whether they *should* is workflow policy.
+
+### Next scenario, selected from this evidence
+
+The page states reorder requests are *"submitted by Purchasing, not here"* — so
+Purchasing may hold the missing half of this story. That is the next mission.
