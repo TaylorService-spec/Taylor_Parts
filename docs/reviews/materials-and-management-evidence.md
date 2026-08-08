@@ -296,16 +296,26 @@ index redirect for exactly that bug) and shipped a generic fix.
 contained the change and the page stayed blank. Neither branch could fire, because the
 domain *does* have a visible index item.
 
-**Actual cause, now established:** `/inventory` renders `<PartsList />`, and
-`PartsList` returns **nothing** for these roles — a component-level fail-closed that
-renders empty rather than stating denial. The defect is in the component's denied
-state, not in routing.
+**CORRECTED — that diagnosis was also wrong.** I recorded here that `PartsList`
+returns nothing for these roles. It does not: `PartsList` has a single `return` and
+cannot render empty. **It never renders at all.**
 
-The routing change was **reverted rather than shipped**: it did not fix the reported
-bug, and an unverified change that adds a branch to the route generator is worse than
-no change. Recorded here so the next attempt starts from the right component.
+The real cause: the domain index item is gated -- Inventory > Parts by
+`legacyKey: "inventory"` -- so for a role without that key the subnav filter emits
+**no index route**, the parent route matches with no child, and the user gets the
+shell with an empty body. The screen they were denied never mounted, so it could not
+say so itself. The route-generator hypothesis was right; my first fix simply tested
+the wrong condition (whole-domain visibility instead of the index item), and I called
+it inert on ambiguous evidence -- the marker I grepped for existed in both builds.
 
-**Still open:** DENIED rendered as EMPTY in `PartsList` — third confirmation, owner UX.
+**RESOLVED.** The index route is now emitted regardless and states the denial, via
+`deniedDomainIndexItem()` -- asserted in tests to be the exact complement of
+`isNavItemVisible()` across every domain and role, so it grants nothing. Verified
+live: denied roles see the refusal, admin still sees the full catalog unchanged.
+
+**Lesson recorded:** two wrong diagnoses in a row on one defect, both from verifying
+a symptom rather than the mechanism. The fix landed only after reading how the route
+is generated and confirming the marker reached the deployed bundle before judging.
 
 ### Routed to Product (new)
 
