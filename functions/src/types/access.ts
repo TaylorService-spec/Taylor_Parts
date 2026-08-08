@@ -268,7 +268,9 @@ export type AuditAction =
   // Distinct from the client audit-only `RECEIVE_STOCK` inventory_action (domain/constants.js).
   | "receiveInventoryStock"
   // Finance (Billing/AR) -- the trusted issueInvoice command's Audit Event action (invoice issuance)
-  | "issueInvoice";
+  | "issueInvoice"
+  // Finance (Billing/AR) -- the trusted applyPayment command's Audit Event action (cash receipt + application)
+  | "applyPayment";
 
 // "uncertain" (PRE-1, G-PRE1-IMPL): a native reset send whose outcome could not be
 // durably determined (Firebase may have accepted, but the outcome was not persisted).

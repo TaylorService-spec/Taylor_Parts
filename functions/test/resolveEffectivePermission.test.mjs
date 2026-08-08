@@ -108,6 +108,8 @@ function buildDeferredForNow(catalog) {
     "salesOrder.service",
     // Finance (Billing/AR): finance.invoice.issue -- ungranted-by-design (Admin-SDK-only issuance), EXACT literal.
     "finance.invoice.issue",
+    // Finance (Billing/AR): finance.payment.apply -- ungranted-by-design (Admin-SDK-only payment application), EXACT literal.
+    "finance.payment.apply",
   ]);
 }
 // Catalog ids neither granted by a seeded Role nor deferred-by-design (the exhaustiveness gate's

@@ -193,6 +193,18 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     action: "issue",
     active: false,
   }),
+  // Finance (Billing/AR) -- apply a cash receipt to an invoice via the trusted applyPayment command. Records
+  // the receipt + the application and maintains the invoice's AR projection (outstanding/state DERIVED from
+  // the application fact, not an independent authority) + an audit event, in one transaction. Registered
+  // active:false (fail-closed). payments / payment_applications are Admin-SDK-only (deny-all client Rules).
+  Object.freeze({
+    id: "finance.payment.apply",
+    description:
+      "Record a cash receipt and apply it to an invoice (maintaining the invoice's derived AR projection + audit) via the trusted applyPayment command. Does not expose client-direct financial writes or edit an outstanding balance independently of its facts.",
+    resource: "finance.payment",
+    action: "apply",
+    active: false,
+  }),
 
   // --- Inventory / Reorder / Purchasing domain (Issue #100; Assessment's
   // Inventory domain audit table; firestore.rules current `main`) ---

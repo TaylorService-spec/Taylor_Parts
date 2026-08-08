@@ -139,6 +139,8 @@ const AUDIT_ACTIONS: readonly AuditAction[] = [
   "receiveInventoryStock",
   // Finance (Billing/AR): runtime mirror of the issueInvoice AuditAction union member (invoice issuance).
   "issueInvoice",
+  // Finance (Billing/AR): runtime mirror of the applyPayment AuditAction union member (cash receipt + application).
+  "applyPayment",
 ];
 
 // Issue #325 / ADR-007 D-AUDIT -- the subset of AUDIT_ACTIONS this

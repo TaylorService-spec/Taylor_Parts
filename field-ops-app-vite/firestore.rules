@@ -1754,5 +1754,17 @@ service cloud.firestore {
     match /invoices/{invoiceId} {
       allow read, write: if false;
     }
+
+    // Finance -- cash receipts (payments) + payment applications (Billing/AR). Admin-SDK-only, same fail-closed
+    // posture. ALL direct client read/write denied; the only write path is the trusted applyPayment command
+    // (functions/src/finance/paymentCallables.ts), which uses the Admin SDK and bypasses these rules. The AR
+    // outstanding balance is a transactionally-maintained projection of these facts, never a client-editable
+    // authority. Deployment is a separate operator gate; merging these blocks changes nothing in production.
+    match /payments/{paymentId} {
+      allow read, write: if false;
+    }
+    match /payment_applications/{applicationId} {
+      allow read, write: if false;
+    }
   }
 }
