@@ -275,7 +275,9 @@ export type AuditAction =
   | "recordInvoiceAdjustment"
   // Commercial Coverage & Territory (#15) -- the trusted coverage commands' Audit Event actions
   | "createSalesTerritory"
-  | "createCoverageAssignment";
+  | "createCoverageAssignment"
+  // Finance (Billing/AR) -- the trusted recordRefund command's Audit Event action (money returned after payment)
+  | "recordRefund";
 
 // "uncertain" (PRE-1, G-PRE1-IMPL): a native reset send whose outcome could not be
 // durably determined (Firebase may have accepted, but the outcome was not persisted).

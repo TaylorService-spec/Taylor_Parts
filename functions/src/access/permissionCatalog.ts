@@ -228,6 +228,18 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     action: "read",
     active: false,
   }),
+  // Finance (Billing/AR) -- record a refund (money returned after payment) via the trusted recordRefund
+  // command. Reverses applied payment on the invoice (outstanding/state re-derived) + audit; NEVER rewrites the
+  // issued invoice. Distinct from a credit/write-off. Registered active:false (fail-closed). refunds is
+  // Admin-SDK-only (deny-all client Rules).
+  Object.freeze({
+    id: "finance.refund.record",
+    description:
+      "Record a refund (money returned after payment) and reverse the applied payment on the invoice via the trusted recordRefund command. Does not rewrite the issued invoice, collapse into a negative payment, or expose client-direct financial writes.",
+    resource: "finance.refund",
+    action: "record",
+    active: false,
+  }),
   // Commercial Coverage & Territory (#15) -- create durable Sales Territories + effective-dated coverage
   // assignments via the trusted coverage commands. Records only (no precedence/credit/commission). Registered
   // active:false (fail-closed). sales_territories / commercial_coverage_assignments are Admin-SDK-only.

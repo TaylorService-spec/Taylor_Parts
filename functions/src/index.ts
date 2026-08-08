@@ -44,6 +44,9 @@ export { createSalesTerritory, createCoverageAssignment } from "./coverage/cover
 // Commercial Coverage & Territory (#15) — trusted coverage resolve (read). EXPORT != DEPLOY; capability
 // `coverage.read` active:false; backend read only (coverage collections stay Admin-SDK-only / deny-all).
 export { resolveCoverageForContext } from "./coverage/coverageReadCallables";
+// Finance (Billing/AR) — governed refund. EXPORT != DEPLOY; capability `finance.refund.record` active:false;
+// `refunds` is Admin-SDK-only (deny-all client Rules). Sensitive/audited.
+export { recordRefund } from "./finance/refundCallables";
 
 // --- F1 surface: trusted minimal field-context display projection ---
 // Answers "who is the customer / which site am I going to?" for the CALLER'S

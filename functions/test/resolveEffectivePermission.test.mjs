@@ -114,6 +114,8 @@ function buildDeferredForNow(catalog) {
     "finance.adjustment.record",
     // Finance (Billing/AR): finance.read -- ungranted-by-design (trusted backend AR read), EXACT literal.
     "finance.read",
+    // Finance (Billing/AR): finance.refund.record -- ungranted-by-design (Admin-SDK-only refund), EXACT literal.
+    "finance.refund.record",
     // Commercial Coverage & Territory (#15): coverage.write -- ungranted-by-design (Admin-SDK-only), EXACT literal.
     "coverage.write",
     // Commercial Coverage & Territory (#15): coverage.read -- ungranted-by-design (trusted backend resolve), EXACT literal.
