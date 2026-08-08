@@ -9,13 +9,25 @@ on:
   pull_request:
     paths:
       - "field-ops-app-vite/src/domain/commercialFinance.js"
+      - "field-ops-app-vite/src/domain/money.js"
+      - "field-ops-app-vite/src/domain/financeBillingPolicy.js"
+      - "field-ops-app-vite/src/domain/financeInvoiceAmounts.js"
       - "field-ops-app-vite/test/commercialFinance.test.mjs"
+      - "field-ops-app-vite/test/money.test.mjs"
+      - "field-ops-app-vite/test/financeBillingPolicy.test.mjs"
+      - "field-ops-app-vite/test/financeInvoiceAmounts.test.mjs"
       - ".github/workflows/commercial-finance-tests.yml"
   push:
     branches: [main]
     paths:
       - "field-ops-app-vite/src/domain/commercialFinance.js"
+      - "field-ops-app-vite/src/domain/money.js"
+      - "field-ops-app-vite/src/domain/financeBillingPolicy.js"
+      - "field-ops-app-vite/src/domain/financeInvoiceAmounts.js"
       - "field-ops-app-vite/test/commercialFinance.test.mjs"
+      - "field-ops-app-vite/test/money.test.mjs"
+      - "field-ops-app-vite/test/financeBillingPolicy.test.mjs"
+      - "field-ops-app-vite/test/financeInvoiceAmounts.test.mjs"
       - ".github/workflows/commercial-finance-tests.yml"
   workflow_dispatch:
 
@@ -42,9 +54,9 @@ jobs:
         working-directory: field-ops-app-vite
 
       - name: Commercial finance model unit tests (node:test)
-        run: node test/commercialFinance.test.mjs
+        run: node --test test/commercialFinance.test.mjs test/money.test.mjs test/financeBillingPolicy.test.mjs test/financeInvoiceAmounts.test.mjs
         working-directory: field-ops-app-vite
 
       - name: Lint the commercial-finance domain (oxlint)
-        run: npx oxlint src/domain/commercialFinance.js
+        run: npx oxlint src/domain/commercialFinance.js src/domain/money.js src/domain/financeBillingPolicy.js src/domain/financeInvoiceAmounts.js
         working-directory: field-ops-app-vite
