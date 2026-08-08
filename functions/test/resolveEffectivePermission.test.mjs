@@ -116,6 +116,8 @@ function buildDeferredForNow(catalog) {
     "finance.read",
     // Commercial Coverage & Territory (#15): coverage.write -- ungranted-by-design (Admin-SDK-only), EXACT literal.
     "coverage.write",
+    // Commercial Coverage & Territory (#15): coverage.read -- ungranted-by-design (trusted backend resolve), EXACT literal.
+    "coverage.read",
   ]);
 }
 // Catalog ids neither granted by a seeded Role nor deferred-by-design (the exhaustiveness gate's
