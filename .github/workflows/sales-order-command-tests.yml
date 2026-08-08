@@ -1,0 +1,48 @@
+name: Sales Order Command Tests
+
+# Sales Order Cycle 4 -- pure-logic unit tests for the governed Sales Order write core (lifecycle + create/
+# transition builders): commercial-vs-physical cardinality (one product-level line with quantity; serialized
+# asset forbidden), the ordered/allocated/fulfilled quantity model, canonical-ref requirements, and the
+# fulfillment-gated lifecycle. No emulator, no deployment, no production access, no secrets -- runs against the
+# compiled functions/lib. Capability `salesOrder.write` is active:false and the callables are undeployed.
+
+on:
+  pull_request:
+    paths:
+      - "functions/src/salesOrder/**"
+      - "functions/src/constants/collections.ts"
+      - "functions/src/access/permissionCatalog.ts"
+      - "functions/test/salesOrderCommands.test.mjs"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - ".github/workflows/sales-order-command-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/src/salesOrder/**"
+      - "functions/test/salesOrderCommands.test.mjs"
+      - ".github/workflows/sales-order-command-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sales-order-command-tests:
+    name: Sales Order write core (build + run)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+      - name: Sales Order command tests (build + run)
+        run: npm run test:salesOrder
+        working-directory: functions

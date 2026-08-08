@@ -32,3 +32,8 @@ export const PURCHASE_ORDERS_COLLECTION = "purchase_orders";
 // write path is the trusted opportunity command (opportunity/opportunityCallables.ts). No UI writes directly;
 // the Cycle-2 workspace still reads a SYNTHETIC source until a governed read model is wired.
 export const OPPORTUNITIES_COLLECTION = "opportunities";
+
+// Sales Order (Cycle 4) — the committed commercial order that follows a WON Opportunity. Admin-SDK-only, same
+// posture as the ledger/opportunities collections: firestore.rules denies ALL direct client read/write; the
+// only write path is the trusted salesOrder command (salesOrder/salesOrderCallables.ts). No UI writes.
+export const SALES_ORDERS_COLLECTION = "sales_orders";
