@@ -39,6 +39,7 @@ import { FormError } from "../../shared/ui/form";
 import { workflowActionErrorMessage } from "../../domain/workflowActionError";
 import RequestReorderControl from "../../shared/inventory/RequestReorderControl";
 import EmployeeAssignmentPicker from "../../shared/assignment/EmployeeAssignmentPicker";
+import { formatTimestamp as formatTimestampHonest } from "../../domain/displayTimestamp.js";
 
 // Sprint 2.1.1 -- Inventory Domain Foundation. Part detail screen,
 // reached from PartsList.jsx or Global Search.
@@ -145,8 +146,11 @@ import EmployeeAssignmentPicker from "../../shared/assignment/EmployeeAssignment
 // not the existing purchase_orders collection (Epic 5, Procurement +
 // Supplier Management) -- see domain/constants.js's comment for why.
 function formatTimestamp(ms) {
-  if (!ms) return "—";
-  return new Date(ms).toLocaleString();
+  // A Parts Associate read "Purchasing started: Invalid Date" and "Last update:
+  // Invalid Date" on the one record their job depends on. This local helper assumed
+  // milliseconds and handed anything else straight to new Date(). Delegate to the
+  // shared formatter, which refuses unusable values instead of printing them.
+  return formatTimestampHonest(ms, { unknown: "—" });
 }
 
 // INV-CONVERGENCE-E C2 -- null-safe money render. The composed Catalog card values

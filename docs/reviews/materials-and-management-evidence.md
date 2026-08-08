@@ -239,3 +239,77 @@ an authority the platform has not established.
 
 The page states reorder requests are *"submitted by Purchasing, not here"* — so
 Purchasing may hold the missing half of this story. That is the next mission.
+
+---
+
+## Part 4 — Purchasing-role view (Parts Associate)
+
+Build `251c16d` · D2 MATCH · preflight verified. One bounded read-only mission.
+
+**FUNCTIONAL: FAIL · EXPERIENCE: FAIL** — 8 screens, 2 modules.
+
+### The three-role picture is now complete, and it closes the A/B/C/D question
+
+The Parts Manager screen states reorder requests are *"submitted by Purchasing, not
+here"* — so Purchasing was the last role that could have made this a legitimate
+handoff. It cannot:
+
+| Role | Can see the blocked job | Can identify the part by name | Can see why it stopped | Can act |
+|---|---|---|---|---|
+| Dispatcher (Service) | yes | yes, from the WO | no | no |
+| Parts Manager | no | **no** | no | **no** |
+| Parts Associate (Purchasing) | no | **no** | no | on their own queue only |
+
+The Parts Associate has **no search, no history, no completed/cancelled view, and no
+list of anything not currently assigned to them.** They could not confirm the water
+inlet valve request exists at all. Their whole world is one row: `PRT-1006`, qty 8,
+"Purchasing In Progress" — with no indication of who raised it, which job needs it, or
+for which customer. *"Its provenance is invisible from this role."*
+
+**Confirmed: not A.** No role in the chain can complete the handoff. The workflow is
+broken (B) because the canonical linkage is missing (C).
+
+### Vocabulary — third independent reading, consistent with #675
+
+The persona again separated **Reorder Request** from **Purchase Order** correctly
+(*"clearly DIFFERENT, sequential objects"* — inferred from two distinct form sections,
+which is right). And again could not tell whether **"Material blocker"** on the
+coordinated surface and **"Reorder Request"** are the same shortage seen from two
+sides — the only place they met "Material blocker" was sample data. That is precisely
+the seam #675 describes, and the user cannot see it.
+
+### Remediated here
+
+`PartDetail` carried its **own local `formatTimestamp`** that assumed milliseconds and
+handed anything else to `new Date()` — which is why *"Purchasing started: Invalid Date"*
+and *"Last update: Invalid Date"* appeared on the one record this role's job depends
+on. It now delegates to the shared honest formatter. **Third distinct date path** found
+by a persona after the first two were fixed.
+
+### Attempted and reverted — the blank `/inventory` and `/purchasing` pages
+
+Three personas have now landed on a blank page at these routes. I diagnosed it as a
+missing index route (there is real precedent: `inventoryRole` carries a hand-written
+index redirect for exactly that bug) and shipped a generic fix.
+
+**It was inert.** Verified live, twice, against two roles: the deployed bundle
+contained the change and the page stayed blank. Neither branch could fire, because the
+domain *does* have a visible index item.
+
+**Actual cause, now established:** `/inventory` renders `<PartsList />`, and
+`PartsList` returns **nothing** for these roles — a component-level fail-closed that
+renders empty rather than stating denial. The defect is in the component's denied
+state, not in routing.
+
+The routing change was **reverted rather than shipped**: it did not fix the reported
+bug, and an unverified change that adds a branch to the route generator is worse than
+no change. Recorded here so the next attempt starts from the right component.
+
+**Still open:** DENIED rendered as EMPTY in `PartsList` — third confirmation, owner UX.
+
+### Routed to Product (new)
+
+- **Can a Parts Associate see replenishment work not assigned to them?** There is no
+  queue, history or search. Whether that scoping is intended is a Product decision, not
+  a UI gap I should close.
+- **What raises a reorder request** — threshold, technician, manual? No role can see it.
