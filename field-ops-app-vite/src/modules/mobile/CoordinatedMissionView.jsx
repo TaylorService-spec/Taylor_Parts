@@ -112,6 +112,9 @@ export default function CoordinatedMissionView({ source } = {}) {
           onClick={() => setSelectedId(v.salesOrderId)}
         >
           {nameOr(ctx.accountNameById, v.customerId)}
+          {/* A technician saw a SAMPLE "unit 3 COMPLETED" beside their real "unit 3 Working".
+              Same model, same unit number, opposite status. The tab must say which is which. */}
+          {synthetic && <span className="fo-sample-badge">SAMPLE</span>}
         </button>
       ))}
     </div>

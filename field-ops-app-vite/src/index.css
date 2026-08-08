@@ -1961,3 +1961,14 @@ button:hover {
 /* Part code beside its human name on the readiness row: the name leads, the code stays
    legible because that is what is printed on the shelf label and the box. */
 .fo-readiness-row__code { color: var(--color-text-muted); font-size: 12px; }
+
+/* Sample/demo rows must be identifiable while SCANNING, not only after clicking in.
+   One intro paragraph was not enough: two personas nearly reported fabricated customer
+   obligations as real, and a technician saw a sample unit contradict their live one. */
+.fo-sample-badge {
+  display: inline-block; margin-left: 6px; padding: 1px 6px;
+  border: 1px solid var(--color-border); border-radius: 999px;
+  font-size: 10.5px; font-weight: 700; letter-spacing: .04em;
+  color: var(--color-text-muted); background: var(--color-surface-muted, #F3F1EC);
+  vertical-align: middle;
+}

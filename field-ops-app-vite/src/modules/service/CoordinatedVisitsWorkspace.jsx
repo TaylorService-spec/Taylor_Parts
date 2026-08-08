@@ -131,7 +131,7 @@ function VisitDetail({ visit, ctx }) {
 }
 
 // One scannable visit row (the coordination queue). Attention-first sorting is done in the hook.
-function VisitRow({ visit, ctx, selected, onSelect }) {
+function VisitRow({ visit, ctx, selected, onSelect, synthetic }) {
   return (
     <tr
       className={`fo-sales-row ${selected ? "is-selected" : ""} ${visit.readiness === "ATTENTION" ? "is-attention" : ""}`.trim()}
@@ -141,7 +141,13 @@ function VisitRow({ visit, ctx, selected, onSelect }) {
       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelect(visit.salesOrderId); } }}
       aria-selected={selected}
     >
-      <td className="fo-sales-row__customer" data-label="Customer">{nameOr(ctx.accountNameById, visit.customerId)}</td>
+      <td className="fo-sales-row__customer" data-label="Customer">
+        {nameOr(ctx.accountNameById, visit.customerId)}
+        {/* Two dispatchers in a row nearly reported a SAMPLE obligation as real. One intro
+            paragraph is not enough: a busy person scanning rows never reads it, and the sample
+            customer names are close enough to live ones to pass. Mark every row. */}
+        {synthetic && <span className="fo-sample-badge" title="Sample data — not a real customer obligation">SAMPLE</span>}
+      </td>
       <td className="fo-sales-col--secondary" data-label="Location">{nameOr(ctx.locationNameById, visit.locationId)}</td>
       <td data-label="Progress">{visit.completed}/{visit.total}{visit.blocked > 0 ? ` · ${visit.blocked} blocked` : ""}</td>
       <td className="fo-sales-col--secondary" data-label="Remaining">{visit.remaining}</td>
@@ -207,7 +213,7 @@ export default function CoordinatedVisitsWorkspace({ source } = {}) {
             </thead>
             <tbody>
               {visits.map((v) => (
-                <VisitRow key={v.salesOrderId} visit={v} ctx={ctx} selected={selected?.salesOrderId === v.salesOrderId} onSelect={setSelectedId} />
+                <VisitRow key={v.salesOrderId} visit={v} ctx={ctx} selected={selected?.salesOrderId === v.salesOrderId} onSelect={setSelectedId} synthetic={synthetic} />
               ))}
             </tbody>
           </table>
