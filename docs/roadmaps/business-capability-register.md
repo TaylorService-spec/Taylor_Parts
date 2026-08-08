@@ -291,6 +291,62 @@ complete. Do not duplicate their full detail — treat the linked artifacts as a
   finalized. NOT in Opportunity Cycle 3.
 - **Current maturity:** `IDENTIFIED`.
 
+### 15. Commercial Coverage & Territory Management
+- **Business problem:** durable commercial coverage — who covers which business — independent of the current
+  salesperson, spanning channel, geography, and named/corporate relationships. **HIGH-VALUE platform
+  capability + the minimum foundation for Sales reporting / pipeline scoping / commission attribution /
+  Account-ownership hardening. Advanced capability may become independently valuable/premium.**
+- **Primary domains:** Sales/Commercial; Admin (config); reuses Account/Location/Employee.
+- **Known canonical authorities (reuse, NO forks):** `accounts` (+ corporate/parent↔child/franchisee/affiliate
+  relationships), `locations`, Employee (`ownerEmployeeId`), Channel. New: a **Territory** authority + a
+  **Coverage Assignment** authority (greenfield). **Persona/assignment ≠ security role (ADR-012); admin via
+  the existing governed #226/ADR-012 model, never client-direct.**
+- **Key principles to preserve (do NOT build now):**
+  - **Channel** = configurable platform reference data; Taylor initial = `RETAIL, NATIONAL_ACCOUNTS,
+    STRATEGIC_ACCOUNTS`. Do NOT permanently hard-code. Channel ≠ Territory ≠ Employee ≠ security role.
+    *(Current code: `SALES_CHANNELS` const holds RETAIL/NATIONAL_ACCOUNTS only — making it configurable +
+    adding STRATEGIC_ACCOUNTS is part of THIS capability, not a runway hot-fix.)*
+  - **Territory** exists independently of the assigned salesperson (people change; territory persists). Model
+    it as an identity, never a salesperson name. Geographic coverage: STATE / group-of-states / ZIP-group /
+    future GEOSPATIAL polygon — preserve the geographic abstraction; do NOT build a map editor or pick a
+    mapping vendor now.
+  - **Coverage resolver returns MULTIPLE assignments** — `resolveCommercialCoverage() → coverageAssignments[]`,
+    NOT `resolveSalesperson() → one employee`. A coverage assignment may eventually carry Employee · Territory ·
+    Account/relationship · Channel · responsibility type (Salesperson/AE/Territory Mgr/National/Strategic/
+    Relationship Mgr — configurable labels, not new identities) · primary/secondary · effective dates · future
+    credit participation. Preserve the architecture; don't build all fields.
+  - **Corporate + local coverage COEXIST** — a corporate/national rep may own the parent relationship while a
+    local rep owns the local market; both simultaneous; neither overwrites the other. Corporate coverage may
+    propagate across a relationship even when local Locations fall in other geographic Territories. Named/
+    Strategic Account coverage must be possible (geography is NOT the only mechanism). Override/inheritance/
+    combination/precedence rules = a LATER formal assessment (do NOT silently implement precedence).
+  - **Coverage ≠ Opportunity owner ≠ Sales credit ≠ commission split ≠ security authority** — keep all
+    distinct; do NOT infer commission from coverage; commission attribution NOT finalized here.
+  - **My Pipeline / My Book** target = "MY COMMERCIAL COVERAGE" (channel + territory + geography + named
+    account + corporate/franchise + local + split/shared), NOT a simplistic Channel filter (preserve SALES-001
+    evidence). Don't finalize My Book until Coverage is assessed.
+  - **Extensible coverage dimensions** (REGION/SUB_REGION/BUSINESS_UNIT/MARKET/SUB_CHANNEL/CLIENT_SEGMENT/
+    INSTITUTION_TYPE/product/strategic/global-national-regional/specialist overlays) — a **configurable**
+    dimension model; do NOT ratify each as mandatory or add dozens of nullable fields. Platform capability may
+    exceed Taylor's configured experience: advanced dimensions **available-but-hidden/inactive** for Taylor
+    until an authorized Admin enables them (hidden ≠ security; config controls participation, governance
+    controls who administers).
+  - **Effective-dated / commitment-time attribution** — territory/assignment changes over time; a historical
+    sale must NOT silently migrate to today's owner. Preserve the need; don't design the full history model now.
+  - **Service Territory is SEPARATE** — commercial Sales Territory must NOT automatically govern Dispatch /
+    technician routing / Service territory (national rep owns the relationship; the AZ service team installs).
+    They may share geographic primitives later but remain separate concepts/authorities.
+- **Dependencies:** Account/Location/Employee foundations; governed Admin (#226/ADR-012). Feeds Sales credit/
+  commissions (#7).
+- **Roadmap trigger:** Before Sales reporting / pipeline scoping (My Book) / commission attribution / Account-
+  ownership hardening. Formal assessment then decides Territory + Coverage-Assignment shape, precedence/
+  inheritance, and effective-dated attribution.
+- **Current maturity:** `IDENTIFIED`.
+- **Runway protection (now):** keep using `ownerEmployeeId` + Channel + canonical Account/Location + commercial
+  attribution on the Sales Order. Do NOT create a simplistic `territoryId` shortcut, a salesperson-name
+  Territory, a geography-only or one-salesperson-only resolver, or commission-split logic. Do NOT reproduce a
+  full Salesforce-style Territory implementation.
+
 ---
 
 ## Change log
@@ -298,6 +354,10 @@ complete. Do not duplicate their full detail — treat the linked artifacts as a
 - **2026-08-07** — Register created (roadmap hygiene, Owner direction). Seeded with capabilities 1–11
   (11 = watch item) plus cross-domain requirements 12 (Temporary Equipment) and 13 (Technician Labor). All
   `IDENTIFIED`.
+- **2026-08-07 (3)** — Added #15 Commercial Coverage & Territory Management (`IDENTIFIED`): durable
+  Territory + multi-assignment Coverage model (channel/geography/named-account/corporate-franchise/split-shared),
+  coverage ≠ credit ≠ commission ≠ security, configurable dimensions, effective-dated attribution, Service
+  Territory separate. RECORD + preserve seams; do NOT build during the current runway.
 - **2026-08-07 (2)** — Owner corrections: reworded #12 to "Temporary Equipment Placement / Custody
   Relationship — representation TBD by Assessment" (persistence shape not yet a ratified authority); added
   #14 Multi-Equipment Fulfillment / Coordinated Field Execution (`IDENTIFIED`).
