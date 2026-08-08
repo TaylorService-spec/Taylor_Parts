@@ -1766,5 +1766,14 @@ service cloud.firestore {
     match /payment_applications/{applicationId} {
       allow read, write: if false;
     }
+
+    // Finance -- explicit linked invoice adjustments (credit memo / debit charge / write-off). Admin-SDK-only,
+    // same fail-closed posture. ALL direct client read/write denied; the only write path is the trusted
+    // recordInvoiceAdjustment command (functions/src/finance/adjustmentCallables.ts). Adjustments never rewrite
+    // the issued invoice; the AR outstanding is a transactionally-maintained projection of these facts.
+    // Deployment is a separate operator gate; merging this block changes nothing in production.
+    match /invoice_adjustments/{adjustmentId} {
+      allow read, write: if false;
+    }
   }
 }

@@ -32,6 +32,9 @@ export { issueInvoice } from "./finance/invoiceCallables";
 // Finance (Billing/AR) — governed payment application. EXPORT != DEPLOY; capability `finance.payment.apply`
 // active:false; `payments`/`payment_applications` are Admin-SDK-only (deny-all client Rules). Sensitive/audited.
 export { applyPayment } from "./finance/paymentCallables";
+// Finance (Billing/AR) — governed invoice adjustments (credit/charge/write-off). EXPORT != DEPLOY; capability
+// `finance.adjustment.record` active:false; `invoice_adjustments` is Admin-SDK-only (deny-all client Rules).
+export { recordInvoiceAdjustment } from "./finance/adjustmentCallables";
 
 // --- F1 surface: trusted minimal field-context display projection ---
 // Answers "who is the customer / which site am I going to?" for the CALLER'S

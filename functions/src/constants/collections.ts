@@ -43,3 +43,5 @@ export const INVOICES_COLLECTION = "invoices";
 // authorities so one payment may later apply across many invoices / leave unapplied balances. Admin-SDK-only.
 export const PAYMENTS_COLLECTION = "payments";
 export const PAYMENT_APPLICATIONS_COLLECTION = "payment_applications";
+// Finance — explicit linked invoice adjustments (credit memo / debit charge / write-off). Admin-SDK-only.
+export const INVOICE_ADJUSTMENTS_COLLECTION = "invoice_adjustments";

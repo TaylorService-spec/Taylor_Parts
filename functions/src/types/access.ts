@@ -270,7 +270,9 @@ export type AuditAction =
   // Finance (Billing/AR) -- the trusted issueInvoice command's Audit Event action (invoice issuance)
   | "issueInvoice"
   // Finance (Billing/AR) -- the trusted applyPayment command's Audit Event action (cash receipt + application)
-  | "applyPayment";
+  | "applyPayment"
+  // Finance (Billing/AR) -- the trusted recordInvoiceAdjustment command's Audit Event action (credit/charge/write-off)
+  | "recordInvoiceAdjustment";
 
 // "uncertain" (PRE-1, G-PRE1-IMPL): a native reset send whose outcome could not be
 // durably determined (Firebase may have accepted, but the outcome was not persisted).
