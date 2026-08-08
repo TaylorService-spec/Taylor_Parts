@@ -1844,6 +1844,35 @@ button:hover {
 .fo-sales-detail__lifecycle { display: grid; gap: 6px; }
 .fo-sales-lifecycle-note { margin: 0; font-size: 12px; }
 
+/* ── COORDINATED OPERATIONS (Service/Dispatch visit + Technician mission) ───────────────────────────────
+   User-consumable reads of the coordinatedVisit / coordinatedFieldMission projections. Reuse the Wave-0
+   primitives + the sales pipeline table styling (rows, responsive priority/recompose). These add only the
+   detail/unit/mission layout. Honest states (UNKNOWN/attention) come from the shared StatusPill tones. */
+.fo-covisit-detail, .fo-mission { display: grid; gap: 14px; }
+.fo-covisit-anchor, .fo-mission__anchor { margin: 0; font-size: 13px; }
+.fo-covisit-warn { margin: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; }
+.fo-covisit-block h4, .fo-mission__progress h4, .fo-mission__units h4 {
+  margin: 0 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: .03em;
+  color: var(--color-text-muted); font-weight: 600; }
+.fo-covisit-block p, .fo-mission__progress p { margin: 0 0 4px; font-size: 14px; color: var(--color-text-primary); }
+.fo-covisit-count, .fo-mission-count { font-weight: 600; }
+
+/* Related-unit list (Service detail) + equipment-unit list (Technician mission). Each unit is a bounded row/
+   card — per-unit accountability, never merged into one execution record. */
+.fo-covisit-units, .fo-mission-units { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.fo-covisit-unit, .fo-mission-unit { border: 1px solid var(--color-border); border-radius: 10px; padding: 8px 11px; display: grid; gap: 4px; }
+.fo-covisit-unit__head, .fo-mission-unit__head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.fo-covisit-unit__label, .fo-mission-unit__label { font-weight: 600; color: var(--color-text-primary); }
+.fo-covisit-unit__meta { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 12px; align-items: baseline; }
+.fo-covisit-unit__wo { font-variant-numeric: tabular-nums; color: var(--color-text-secondary); }
+.fo-covisit-unit__parts, .fo-mission-unit__signals { display: flex; flex-wrap: wrap; gap: 6px 12px; }
+.fo-covisit-blocker, .fo-mission-unit__blocker { margin: 2px 0 0; font-size: 12px; }
+.fo-mission-unit__meta { font-size: 12px; }
+
+/* Technician mission switcher (only when >1 coordinated mission). Field density = large targets. */
+.fo-mission-switch { display: flex; flex-wrap: wrap; gap: 8px; }
+.fo-mission-switch .is-active { background: var(--color-info-surface); color: var(--color-brand-primary); }
+
 /* Technician execution surfaces are worked one-handed, often with gloves, in a
    hot kitchen -- but they render in the ordinary desktop workspace, so they
    never picked up the 48px minimum that .fo-workspace[data-density="field"]

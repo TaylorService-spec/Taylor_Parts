@@ -1,0 +1,76 @@
+name: Coordinated Operations Surfaces Tests
+
+# Service/Dispatch (Coordinated Visits) + Technician (Coordinated Mission) — the user-consumable reads of the
+# already-built coordinatedVisit / coordinatedFieldMission projections. Runs the pure-domain mirrors
+# (readiness/partial-completion/material-blocker routing), the component render gate (vitest + jsdom over the
+# synthetic source), the Service nav-grouping parity pins, and lint. Pure/offline: no emulator, no Firebase, no
+# deployment, no production access, no secrets. These surfaces read a SYNTHETIC in-memory source and write
+# nothing — they activate, grant, and deploy nothing (no Job/Visit/WorkOrderGroup, no scheduling authority).
+
+on:
+  pull_request:
+    paths:
+      - "field-ops-app-vite/src/domain/coordinatedVisit.js"
+      - "field-ops-app-vite/src/domain/coordinatedFieldMission.js"
+      - "field-ops-app-vite/src/access/coordinatedOperationsSource.js"
+      - "field-ops-app-vite/src/hooks/useCoordinatedOperations.js"
+      - "field-ops-app-vite/src/data/coordinatedOperationsFixtures.js"
+      - "field-ops-app-vite/src/modules/service/**"
+      - "field-ops-app-vite/src/modules/mobile/CoordinatedMissionView.jsx"
+      - "field-ops-app-vite/src/navigation/navConfig.js"
+      - "field-ops-app-vite/test/coordinatedVisit.test.mjs"
+      - "field-ops-app-vite/test/coordinatedFieldMission.test.mjs"
+      - "field-ops-app-vite/test/coordinatedOperationsSurfaces.test.jsx"
+      - "field-ops-app-vite/test/serviceNavGroups.test.mjs"
+      - ".github/workflows/coordinated-operations-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "field-ops-app-vite/src/domain/coordinatedVisit.js"
+      - "field-ops-app-vite/src/domain/coordinatedFieldMission.js"
+      - "field-ops-app-vite/src/access/coordinatedOperationsSource.js"
+      - "field-ops-app-vite/src/hooks/useCoordinatedOperations.js"
+      - "field-ops-app-vite/src/data/coordinatedOperationsFixtures.js"
+      - "field-ops-app-vite/src/modules/service/**"
+      - "field-ops-app-vite/src/modules/mobile/CoordinatedMissionView.jsx"
+      - "field-ops-app-vite/src/navigation/navConfig.js"
+      - ".github/workflows/coordinated-operations-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  coordinated-operations-tests:
+    name: Coordinated operations (domain + component + nav + lint)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: field-ops-app-vite/package-lock.json
+
+      - name: Install dependencies
+        run: npm install
+        working-directory: field-ops-app-vite
+
+      - name: Coordinated projection mirrors (node:test)
+        run: node test/coordinatedVisit.test.mjs && node test/coordinatedFieldMission.test.mjs
+        working-directory: field-ops-app-vite
+
+      - name: Service nav-grouping parity pins (node:test)
+        run: node test/serviceNavGroups.test.mjs
+        working-directory: field-ops-app-vite
+
+      - name: Coordinated surfaces component tests (vitest + jsdom)
+        run: npx vitest run test/coordinatedOperationsSurfaces.test.jsx
+        working-directory: field-ops-app-vite
+
+      - name: Lint the coordinated-operations slice (oxlint)
+        run: npx oxlint src/modules/service src/modules/mobile/CoordinatedMissionView.jsx src/domain/coordinatedVisit.js src/domain/coordinatedFieldMission.js src/access/coordinatedOperationsSource.js src/hooks/useCoordinatedOperations.js src/data/coordinatedOperationsFixtures.js
+        working-directory: field-ops-app-vite
