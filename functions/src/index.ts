@@ -35,6 +35,9 @@ export { applyPayment } from "./finance/paymentCallables";
 // Finance (Billing/AR) — governed invoice adjustments (credit/charge/write-off). EXPORT != DEPLOY; capability
 // `finance.adjustment.record` active:false; `invoice_adjustments` is Admin-SDK-only (deny-all client Rules).
 export { recordInvoiceAdjustment } from "./finance/adjustmentCallables";
+// Finance (Billing/AR) — trusted AR read projection. EXPORT != DEPLOY; capability `finance.read` active:false;
+// backend read only (invoices stay Admin-SDK-only / deny-all client Rules).
+export { listAccountInvoiceAr } from "./finance/financeReadCallables";
 
 // --- F1 surface: trusted minimal field-context display projection ---
 // Answers "who is the customer / which site am I going to?" for the CALLER'S
