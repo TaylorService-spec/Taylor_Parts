@@ -12,6 +12,7 @@ on:
     paths:
       - "field-ops-app-vite/src/domain/coordinatedVisit.js"
       - "field-ops-app-vite/src/domain/coordinatedFieldMission.js"
+      - "field-ops-app-vite/src/domain/obligationAttention.js"
       - "field-ops-app-vite/src/access/coordinatedOperationsSource.js"
       - "field-ops-app-vite/src/hooks/useCoordinatedOperations.js"
       - "field-ops-app-vite/src/data/coordinatedOperationsFixtures.js"
@@ -20,6 +21,7 @@ on:
       - "field-ops-app-vite/src/navigation/navConfig.js"
       - "field-ops-app-vite/test/coordinatedVisit.test.mjs"
       - "field-ops-app-vite/test/coordinatedFieldMission.test.mjs"
+      - "field-ops-app-vite/test/obligationAttention.test.mjs"
       - "field-ops-app-vite/test/coordinatedOperationsSurfaces.test.jsx"
       - "field-ops-app-vite/test/serviceNavGroups.test.mjs"
       - ".github/workflows/coordinated-operations-tests.yml"
@@ -60,7 +62,7 @@ jobs:
         working-directory: field-ops-app-vite
 
       - name: Coordinated projection mirrors (node:test)
-        run: node test/coordinatedVisit.test.mjs && node test/coordinatedFieldMission.test.mjs
+        run: node test/coordinatedVisit.test.mjs && node test/coordinatedFieldMission.test.mjs && node test/obligationAttention.test.mjs
         working-directory: field-ops-app-vite
 
       - name: Service nav-grouping parity pins (node:test)
@@ -72,5 +74,5 @@ jobs:
         working-directory: field-ops-app-vite
 
       - name: Lint the coordinated-operations slice (oxlint)
-        run: npx oxlint src/modules/service src/modules/mobile/CoordinatedMissionView.jsx src/domain/coordinatedVisit.js src/domain/coordinatedFieldMission.js src/access/coordinatedOperationsSource.js src/hooks/useCoordinatedOperations.js src/data/coordinatedOperationsFixtures.js
+        run: npx oxlint src/modules/service src/modules/mobile/CoordinatedMissionView.jsx src/domain/coordinatedVisit.js src/domain/coordinatedFieldMission.js src/domain/obligationAttention.js src/access/coordinatedOperationsSource.js src/hooks/useCoordinatedOperations.js src/data/coordinatedOperationsFixtures.js
         working-directory: field-ops-app-vite

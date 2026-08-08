@@ -42,6 +42,14 @@ describe("CoordinatedVisitsWorkspace (Service/Dispatch)", () => {
     render(<CoordinatedVisitsWorkspace source={inertCoordinatedOperationsSource} />);
     expect(screen.getByText(/source is not connected yet/i)).toBeTruthy();
   });
+
+  it("surfaces committed-obligation attention (C713×5 blocked unit is material) as WAITING_ON_MATERIAL", () => {
+    render(<CoordinatedVisitsWorkspace source={src} />);
+    // the default (attention-first) Metro visit has a blocked unit with a material blocker → intervention
+    expect(screen.getByText(/Obligation attention/i)).toBeTruthy();
+    expect(screen.getByText(/Waiting on material/i)).toBeTruthy();
+    expect(screen.getByText(/intervention may be required/i)).toBeTruthy();
+  });
 });
 
 describe("CoordinatedMissionView (Technician)", () => {
