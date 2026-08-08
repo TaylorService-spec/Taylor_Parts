@@ -3,7 +3,7 @@
 **Status:** COMPLETE · Gate 2 shell **PASS** (merged in PR #633) · **product findings preserved and routed**
 **Method:** four independent persona agents per round, each returning a FUNCTIONAL and an EXPERIENCE verdict.
 **Round 1 build:** `dd1916f` (Inventory review straddled `dd1916f`→`eaff2f4`, see §5)
-**Round 2 build:** `f2291e7` — agents were given **business missions only**, no defect list, no knowledge of what had been fixed.
+**Round 2 build:** `f2291e7` — agents were given **business missions only**, no defect list, no knowledge of what had been fixed. **Three of the four missions completed**; see the correction in §1.
 **Merged shell:** `0210148` (merge `b3558ab`)
 
 ---
@@ -14,10 +14,34 @@
 |---|---|---|
 | Dispatcher / Service Manager | FUNCTIONAL PASS · EXPERIENCE FAIL | FUNCTIONAL PASS (barely) · EXPERIENCE FAIL |
 | Technician | FUNCTIONAL PASS · EXPERIENCE FAIL | FUNCTIONAL FAIL · EXPERIENCE FAIL |
-| Inventory / Warehouse | FUNCTIONAL FAIL · EXPERIENCE FAIL | FUNCTIONAL FAIL · EXPERIENCE FAIL |
+| Inventory / Warehouse | FUNCTIONAL FAIL · EXPERIENCE FAIL | **NOT COMPLETED — see correction below** |
 | Administrator / Owner | FUNCTIONAL PASS · EXPERIENCE FAIL | FUNCTIONAL FAIL · EXPERIENCE FAIL |
 
-**The shell passed at Round 2.** Across four independent missions, no reviewer reported a remaining defect in the rail, drawer, navigation mechanics, selected state, contrast, touch targets, keyboard behaviour, focus behaviour, or shell accessibility. Round 1's shell defects did not recur. The Administrator review named accessibility "the one bright spot… better than most production apps."
+> ### CORRECTION (recorded 2026-08-07, after the fact)
+>
+> **The Round 2 Inventory / Warehouse mission never completed.** Its agent was
+> stopped when the session it ran in exited, and no verdict was ever returned.
+> An earlier revision of this document recorded `FUNCTIONAL FAIL · EXPERIENCE
+> FAIL` for that cell. **That verdict was not evidence — it was asserted without
+> a result and is retracted.**
+>
+> Consequences, stated plainly rather than minimised:
+> - **Round 2 rests on THREE completed missions, not four** — Dispatcher,
+>   Technician and Administrator.
+> - The "no reviewer reported a shell defect" finding below is therefore drawn
+>   from **three** independent missions. It remains true of those three, and
+>   Round 1's shell defects did not recur in any of them.
+> - The **Inventory / Warehouse persona was not re-tested after the Round 1
+>   fixes.** Its Round 1 findings (which also straddled two builds, see §5)
+>   are the most recent evidence for that persona, and the largest domain in
+>   the application is consequently the least verified.
+>
+> Gate 2 was accepted and #633 merged on this evidence. This correction does
+> not reverse that decision, and no shell defect has since been reported — but
+> the record must state what was actually measured. A missing result is not a
+> failing result, and neither is a passing one.
+
+**The shell passed at Round 2 on the missions that ran.** Across three completed independent missions, no reviewer reported a remaining defect in the rail, drawer, navigation mechanics, selected state, contrast, touch targets, keyboard behaviour, focus behaviour, or shell accessibility. Round 1's shell defects did not recur. The Administrator review named accessibility "the one bright spot… better than most production apps."
 
 **Round 2's failures are the application beneath the shell.** Given real work, the personas walked past navigation and hit the product. Those failures are preserved below and routed — they are *not* Gate 2 defects, and #633 was not made responsible for them.
 
@@ -118,4 +142,10 @@ Classified: **MANAGEMENT / OVERSIGHT EXPERIENCE UNRESOLVED.** This is why Contro
 - **Round 2 was blind.** Agents received business missions, invariants and the first-five-seconds test — never a defect list, never "is X better now?". Navigation behaviour was treated as evidence.
 - **Round 1's Inventory review straddled two builds** (ran 34 min, picked up the fix deploy mid-run — it reported `rgb(51,129,90)`, a token that only exists in the fix commit). Its findings are valid but are *not* clean Round-1 evidence. Round 2 was pinned to a single build for exactly this reason. **Pin the build for every future round.**
 - **Two reviewers mishandled credentials** — one hardcoded live sandbox passwords into scratch scripts, another dumped the raw credentials file to output. Sandbox-only fictional personas, so low material impact, but the practice is wrong. Future persona prompts must require reading credentials from file at runtime and never echoing them.
+- **A stopped agent must never be recorded as a verdict.** The Round 2
+  Inventory mission was reported as complete when its agent had in fact been
+  stopped, and a FAIL/FAIL result was attributed to it. Future rounds must
+  confirm a returned result per persona before tabulating, and an incomplete
+  mission is recorded as NOT COMPLETED — never inferred from the other
+  personas' outcomes.
 - Persona reviews are for **discovery, workflow evaluation and UX critique**. Deterministic invariants, authorization and state transitions belong in automated tests. Not every finding should become a browser test.
