@@ -39,3 +39,7 @@ export const OPPORTUNITIES_COLLECTION = "opportunities";
 export const SALES_ORDERS_COLLECTION = "sales_orders";
 // Finance — governed invoices (Admin-SDK-only; deny-all client Rules). Sensitive/audited.
 export const INVOICES_COLLECTION = "invoices";
+// Finance — cash receipts (money received) + payment applications (how it is applied to invoices). Separate
+// authorities so one payment may later apply across many invoices / leave unapplied balances. Admin-SDK-only.
+export const PAYMENTS_COLLECTION = "payments";
+export const PAYMENT_APPLICATIONS_COLLECTION = "payment_applications";

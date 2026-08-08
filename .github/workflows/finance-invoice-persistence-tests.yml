@@ -19,6 +19,7 @@ on:
       - "functions/src/access/auditEventWriter.ts"
       - "functions/src/types/access.ts"
       - "functions/test/invoiceCommands.test.mjs"
+      - "functions/test/paymentCommands.test.mjs"
       - "functions/test/invoiceNumbering.test.mjs"
       - "functions/test/permissionCatalog.test.mjs"
       - "functions/test/resolveEffectivePermission.test.mjs"
@@ -29,6 +30,7 @@ on:
       - "functions/src/finance/**"
       - "functions/src/access/permissionCatalog.ts"
       - "functions/test/invoiceCommands.test.mjs"
+      - "functions/test/paymentCommands.test.mjs"
       - "functions/test/invoiceNumbering.test.mjs"
       - ".github/workflows/finance-invoice-persistence-tests.yml"
   workflow_dispatch:
@@ -60,7 +62,7 @@ jobs:
         working-directory: functions
 
       - name: Invoice command core + numbering (node:test)
-        run: node --test test/invoiceCommands.test.mjs test/invoiceNumbering.test.mjs
+        run: node --test test/invoiceCommands.test.mjs test/invoiceNumbering.test.mjs test/paymentCommands.test.mjs
         working-directory: functions
 
       - name: Capability catalog + resolver exhaustiveness (node:test)

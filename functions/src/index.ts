@@ -29,6 +29,9 @@ export { createServiceForSalesOrder } from "./salesOrder/createServiceForSalesOr
 // Finance (Billing/AR) — governed invoice issuance. EXPORT != DEPLOY; capability `finance.invoice.issue`
 // active:false (ungranted); `invoices` is Admin-SDK-only (deny-all client Rules). Sensitive/audited.
 export { issueInvoice } from "./finance/invoiceCallables";
+// Finance (Billing/AR) — governed payment application. EXPORT != DEPLOY; capability `finance.payment.apply`
+// active:false; `payments`/`payment_applications` are Admin-SDK-only (deny-all client Rules). Sensitive/audited.
+export { applyPayment } from "./finance/paymentCallables";
 
 // --- F1 surface: trusted minimal field-context display projection ---
 // Answers "who is the customer / which site am I going to?" for the CALLER'S
