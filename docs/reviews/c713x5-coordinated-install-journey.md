@@ -77,7 +77,10 @@ personas, so impact is low, but the pattern is the finding. Two runs were also
 wasted pointing agents at `sandbox.txt`, which is stale; the current file is
 `sandbox-credentials.local.json`.
 
-**Rule:** persona prompts must forbid *any* derivative of a credential —
+**RESOLVED** by the single-source-of-truth contract:
+`docs/testing/sandbox-persona-credentials.md` plus one read-only loader
+(`scripts/sandboxCredentials.mjs`) that cannot fall back to `sandbox.txt` and
+has no write path. **Rule:** persona prompts must forbid *any* derivative of a credential —
 character codes, hex, base64, hashes, partial masks, per-character inspection —
 and permit only a success boolean and a length. Parse straight into `fill()`;
 never read the value back.
