@@ -205,6 +205,18 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     action: "apply",
     active: false,
   }),
+  // Finance (Billing/AR) -- record an explicit linked invoice adjustment (credit memo / debit charge /
+  // write-off) via the trusted recordInvoiceAdjustment command. Writes the adjustment record + maintains the
+  // invoice's derived AR projection + audit, in one transaction; NEVER rewrites the issued invoice. Registered
+  // active:false (fail-closed). invoice_adjustments is Admin-SDK-only (deny-all client Rules).
+  Object.freeze({
+    id: "finance.adjustment.record",
+    description:
+      "Record an explicit linked invoice adjustment (credit memo / debit charge / write-off) and maintain the invoice's derived AR projection + audit via the trusted recordInvoiceAdjustment command. Does not rewrite the issued invoice or expose client-direct financial writes.",
+    resource: "finance.adjustment",
+    action: "record",
+    active: false,
+  }),
 
   // --- Inventory / Reorder / Purchasing domain (Issue #100; Assessment's
   // Inventory domain audit table; firestore.rules current `main`) ---
