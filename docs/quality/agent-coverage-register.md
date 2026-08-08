@@ -21,7 +21,7 @@ DEFINED → ELIGIBLE → ACTIVE → REGRESSION.
 | `P-TECH` | PERSONA | ACTIVE | economy/standard | Field execution, current job, scanner | persona-shell R1–R2; R2 FUNCTIONAL FAIL | EXPERIENCE / BUSINESS PROCESS | F2 field-mode scenarios thin (Pilot A) |
 | `P-MATERIALS` | PERSONA | ACTIVE (blocked) | economy/standard | Inventory/warehouse/parts | persona-shell R1–R2; #226/R-1 access gap | BUSINESS PROCESS / AUTHORITY | blocked: Warehouse Manager sees 4 destinations, none a warehouse |
 | `P-ADMIN` | PERSONA | ACTIVE | economy/standard | Administration/access surfaces | persona-shell R1–R2 | EXPERIENCE | management/oversight persona distinct + unresolved (Finding D) |
-| `P-SALES` | PERSONA | ELIGIBLE | standard | Opportunity pipeline (Cycle 2 read; Cycle 3 write inert) | (none yet) | EXPERIENCE / CORRECTNESS | activate on synthetic fixtures at Cycle 3b (Pilot B) |
+| `P-SALES-NA` | PERSONA | **ACTIVE** | standard | Opportunity pipeline (read-first + inert write) | **SALES-001** ([pilot](./pilots/sales-001-discovery.md)) | EXPERIENCE / CORRECTNESS | first live DISCOVERY run done; F-SALES-001-A fixed, B/C routed to UX/IA; SALES-002/003, DASH-001, J-ORDER2CASH seeded |
 | `Q-LEGIBLE` | QUALITY | ACTIVE | standard | Frontend+domain legibility/docs | ad-hoc | ARCHITECTURE / DOCUMENTATION | — |
 | `UX-COMPOSE` | UX/EXPERIENCE | ACTIVE | standard | Per-screen composition/hierarchy/density | per-screen | EXPERIENCE | systematic card-farm sweep deferred (evidence-driven) |
 | `Q-CODE` | QUALITY/REGRESSION | ACTIVE | standard | Correctness of changed code | per-PR | CORRECTNESS | business-process regression corpus not yet built |
@@ -56,6 +56,20 @@ DEFINED → ELIGIBLE → ACTIVE → REGRESSION.
   surface produces **one finding + corroboration**, not three.
 - Persona EXPERIENCE FAIL + `UX-COMPOSE` finding on the same screen → one EXPERIENCE-lane finding.
 - `DOC-WRITE` and `DOC-VERIFY` are intentionally separate (no self-certification).
+
+## Scenario backlog (seeded organically — corpus, not quota)
+
+Discovered scenarios feed the corpus; they are not auto-executed (framework §5a). ~100 meaningful scenarios
+per mature persona is a coverage ambition, not a target.
+
+| scenarioId | persona / family | business situation | domains | owner | status |
+|------------|------------------|--------------------|---------|-------|--------|
+| SALES-001 | P-SALES-NA | manage an active opportunity; determine next commercial step | Sales | Sales/UX | RUN (discovery, done) |
+| SALES-002 | P-SALES-NA | scope/filter pipeline to my channel/book | Sales | UX/Sales | candidate |
+| SALES-003 | P-SALES-NA | advance an opportunity to WON (write path live) | Sales | Sales (post-activation) | candidate |
+| DASH-001 | (any persona) | persona-appropriate dashboard entry points | nav/IA | UX | candidate |
+| J-ORDER2CASH | JOURNEY | won opp → Sales Order → prep → dispatch → install → completion → billing → AR | cross-domain | Journey + reg #14 | candidate (greenfield prereqs) |
+| TOOLING-001 | (agent-framework) | delegable persistent live-persona browser harness | tooling | agent-framework | candidate (evidence-triggered) |
 
 ## Changelog
 - **v1 (2026-08-07)** — Register created from the existing agent inventory + persona-shell review Rounds 1–2

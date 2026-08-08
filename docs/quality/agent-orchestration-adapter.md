@@ -99,6 +99,16 @@ Framework §8 defaults, bound to this repo's change surfaces. Do **not** run eve
 
 ---
 
+## C2. Operating modes (framework §5a)
+
+Every Taylor run declares **VERIFICATION** or **DISCOVERY**. VERIFICATION = bounded question, narrow context,
+stop when answered (GOV-DRIFT/GOV-SEC/GOV-RULES/Q-*/DOC-VERIFY/targeted A11Y). DISCOVERY = business objective,
+**open path**, cross-domain traversal allowed (persona/journey/exploratory UX). Discovery personas are given
+mission + business facts + governed credentials + browser access — **not** routes/collections/capability IDs.
+Discovery runs return the yield fields (findings, `questionsRaised`, `scenariosDiscovered`, `domainsTraversed`,
+`deadEnds`, `newCoverageCreated`) into the coverage register's scenario backlog. First discovery run:
+[`pilots/sales-001-discovery.md`](./pilots/sales-001-discovery.md).
+
 ## D. Pilot plan (next 2–3 real increments)
 
 Per framework §13 (refine on evidence, not speculation). Prefer **real** product work over invented pilots.
