@@ -66,7 +66,8 @@ const previewHasPermission = createPermissionPreviewer(resolveEffectivePermissio
 // separate deployment + Owner authorization.
 import AppShell from "./navigation/AppShell";
 import PlaceholderPage from "./navigation/PlaceholderPage";
-import { NAV_DOMAINS, isDomainVisible, isNavItemVisible } from "./navigation/navConfig";
+import { NAV_DOMAINS, isDomainVisible, isNavItemVisible, deniedDomainIndexItem } from "./navigation/navConfig";
+import EmptyState from "./shared/ui/EmptyState.jsx";
 
 // Sprint 2.0.1 -- Navigation Foundation (Release 2.0, Platform
 // Experience). Real URL-based routing via react-router-dom, replacing
@@ -427,6 +428,32 @@ function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
                 element={renderSubnavItem(domain, item, role, operationalContext)}
               />
             ))}
+          {/* Three independent missions landed on a blank page at /inventory and
+              /purchasing. The domain index item (e.g. Inventory > Parts, path "") is
+              gated -- Parts by legacyKey "inventory" -- so for a role without it the
+              filter above emits NO index route, the parent matches with no child, and
+              the user gets the shell with an empty body. The screen they were denied
+              never rendered, so it could not say so itself.
+              DENIED must not be presented as EMPTY. Emit the index route regardless and
+              let it state the denial. Deliberately not a redirect: bouncing to another
+              surface hides the reason and leaves the user believing the area is broken.
+              Access is unchanged -- this only gives the refusal somewhere to be said. */}
+          {(() => {
+            const indexItem = deniedDomainIndexItem(domain, role, allowedLegacyKeys, operationalContext);
+            if (!indexItem) return null;
+            return (
+              <Route
+                index
+                element={
+                  <EmptyState
+                    variant="filtered"
+                    title={`${indexItem.label} isn't available to your role`}
+                    message="Your account doesn't have access to this area. Contact an administrator if you believe this is an error."
+                  />
+                }
+              />
+            );
+          })()}
           {/* Sprint 2.0.2 -- first parameterized route in this
               generic, subnav-driven route generator. navConfig.js's
               subnav items are all static paths; a per-record detail
