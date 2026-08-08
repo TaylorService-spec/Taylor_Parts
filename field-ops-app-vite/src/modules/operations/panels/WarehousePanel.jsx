@@ -5,6 +5,12 @@
 // buildTransferOrdersView, which applies the merged transfer-order
 // adapter so invalid/contradictory records are counted, never rendered.
 import { buildTransferOrdersView } from "../transferOrdersViewModel.js";
+import {
+  classifyReconciliationRow,
+  quantityText,
+  varianceText,
+  summariseReconciliation,
+} from "../../../domain/reconciliationRowHonesty.js";
 
 // One transfer endpoint cell: a WAREHOUSE shows its resolved name; every
 // other location type shows a type badge plus the raw locationId (no
@@ -57,9 +63,18 @@ export default function WarehousePanel({ warehouses, stockLocations, transferOrd
       ) : (
         <>
           <p className="fo-muted">
-            {reconciliationReport.totalDiscrepancies} discrepancies -- {reconciliationReport.bySeverity.CRITICAL} critical,{" "}
-            {reconciliationReport.bySeverity.HIGH} high, {reconciliationReport.bySeverity.MEDIUM} medium,{" "}
-            {reconciliationReport.bySeverity.LOW} low.
+            {(() => {
+              // Counted from rows that could actually be evaluated. A row whose
+              // arithmetic failed is reported as unevaluable, never as critical.
+              const s = summariseReconciliation(reconciliationReport.discrepancies);
+              return (
+                <>
+                  {s.evaluated} evaluated discrepanc{s.evaluated === 1 ? "y" : "ies"} -- {s.CRITICAL} critical,{" "}
+                  {s.HIGH} high, {s.MEDIUM} medium, {s.LOW} low.
+                  {s.unevaluable > 0 && ` ${s.unevaluable} row${s.unevaluable === 1 ? "" : "s"} could not be evaluated (shown below as Unknown).`}
+                </>
+              );
+            })()}
           </p>
           <table className="fo-table">
             <thead>
@@ -77,11 +92,14 @@ export default function WarehousePanel({ warehouses, stockLocations, transferOrd
                 <tr key={`${d.warehouseId}-${d.partId}`}>
                   <td>{resolveName(d.partId)}</td>
                   <td>{warehouseName(d.warehouseId)}</td>
-                  <td>{d.expectedQuantity}</td>
-                  <td>{d.actualQuantity}</td>
-                  <td>{d.variance > 0 ? `+${d.variance}` : d.variance}</td>
+                  <td>{quantityText(classifyReconciliationRow(d).expected)}</td>
+                  <td>{quantityText(classifyReconciliationRow(d).actual)}</td>
+                  <td>{varianceText(classifyReconciliationRow(d).variance)}</td>
                   <td>
-                    <span className={`fo-badge fo-badge-${d.severity.toLowerCase()}`}>{d.severity}</span>
+                    {(() => {
+                      const { severity } = classifyReconciliationRow(d);
+                      return <span className={`fo-badge fo-badge-${severity.toLowerCase()}`}>{severity}</span>;
+                    })()}
                   </td>
                 </tr>
               ))}
