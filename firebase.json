@@ -26,6 +26,18 @@
         "source": "**",
         "destination": "/index.html"
       }
+    ],
+    "headers": [
+      {
+        "//": "Everything revalidates by default. Firebase's default for HTML is max-age=3600, which meant a browser that had loaded the app within the hour kept serving the OLD index.html -- and therefore the OLD hashed bundles -- for up to an hour after a deploy. Users saw behaviour from builds that had already been fixed and merged, on a deployment whose identity verified as current. version.json is worse: it is how D1/D2 establish deployed identity, so caching it lets a browser report a SHA that is no longer deployed. This is a catch-all rather than a rule on /index.html, because every SPA route is REWRITTEN to index.html and header rules match the REQUEST path, not the rewrite target -- a rule on '/index.html' alone leaves '/' and every deep link still cached.",
+        "source": "**",
+        "headers": [{ "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }]
+      },
+      {
+        "//": "Build output is content-hashed by Vite, so a changed file gets a new filename. Safe to cache hard and immutably -- that is what makes revalidating the HTML cheap. Listed LAST because a later matching rule overrides an earlier one for the same header key.",
+        "source": "/assets/**",
+        "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+      }
     ]
   }
 }

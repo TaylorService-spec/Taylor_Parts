@@ -12,6 +12,7 @@ import InventoryHealthPanel from "../operations/panels/InventoryHealthPanel";
 import WorkspaceHeader from "../../shared/ui/WorkspaceHeader";
 import FilterBar from "../../shared/ui/FilterBar";
 import LoadingEmptyState from "../../shared/ui/LoadingEmptyState";
+import { formatTimestamp } from "../../domain/displayTimestamp.js";
 
 // Issue #100 PR 2b (docs/specifications/inventory-nav-access-alignment.md,
 // docs/implementation-plans/inventory-nav-access-alignment.md) -- the
@@ -113,7 +114,7 @@ function PartActivityPanel({ partId, resolveName, onClose }) {
                   <td>{INVENTORY_ACTION_LABEL[action.transactionType] ?? action.transactionType}</td>
                   <td>{action.quantityDelta > 0 ? `+${action.quantityDelta}` : action.quantityDelta}</td>
                   <td className="fo-muted">{action.reason ?? "—"}</td>
-                  <td className="fo-muted">{action.createdAt ? new Date(action.createdAt).toLocaleString() : "—"}</td>
+                  <td className="fo-muted">{formatTimestamp(action.createdAt, { unknown: "—" })}</td>
                 </tr>
               ))}
             </tbody>
