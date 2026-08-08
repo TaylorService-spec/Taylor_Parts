@@ -22,6 +22,7 @@ import { resolveEffectiveAccess } from "../access/effectiveAccessFeed";
 import { SALES_ORDERS_COLLECTION, WAREHOUSES_COLLECTION, STOCK_LOCATIONS_COLLECTION, INVENTORY_TRANSACTIONS_COLLECTION } from "../constants/collections";
 import { buildAllocationPlan, type Availability } from "./allocationProjection";
 import { computePartAvailability, openWorkOrderReserved, sumOtherSoCommitments } from "./fulfillmentAvailability";
+import { readEquipmentAvailability } from "./equipmentAvailabilityContract";
 
 export const SALES_ORDER_FULFILL_CAPABILITY = "salesOrder.fulfill";
 
@@ -118,8 +119,10 @@ export const allocateSalesOrder = onCall({ region: "us-central1" }, async (reque
         const other = sumOtherSoCommitments(otherSoLines, ref);
         availabilityByRef[ref] = computePartAvailability({ onHandEligible, openWoReserved, otherSoAllocated: other.allocatedQty });
       }
-      // Equipment availability is fail-closed UNKNOWN this slice (see file header / design doc).
-      for (const ref of distinctEquipRefs) availabilityByRef[ref] = { kind: "UNKNOWN" };
+      // Equipment availability via the governed contract (equipmentAvailabilityContract). Fail-closed UNKNOWN
+      // today per the canonical-read assessment (availability substrate not-yet-connected + ordered-model↔serial
+      // mapping unresolved + no #12 Temporary Placement authority); auto-activates when the substrate connects.
+      for (const ref of distinctEquipRefs) availabilityByRef[ref] = readEquipmentAvailability(ref);
 
       // SERVICE lines need no inventory ⇒ treat as fully available.
       const planLines = lines.map((l) =>
