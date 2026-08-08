@@ -102,6 +102,8 @@ function buildDeferredForNow(catalog) {
     "opportunity.read",
     // Sales Order Cycle 4: salesOrder.write -- ungranted-by-design, EXACT literal.
     "salesOrder.write",
+    // Fulfillment Cycle 5: salesOrder.fulfill -- ungranted-by-design, EXACT literal.
+    "salesOrder.fulfill",
   ]);
 }
 // Catalog ids neither granted by a seeded Role nor deferred-by-design (the exhaustiveness gate's
