@@ -1957,3 +1957,7 @@ button:hover {
   .fo-sales-lineedit__row .fo-input { flex-basis: 100%; }
   .fo-sales-fieldgrid__row { grid-template-columns: 1fr; gap: 2px; }
 }
+
+/* Part code beside its human name on the readiness row: the name leads, the code stays
+   legible because that is what is printed on the shelf label and the box. */
+.fo-readiness-row__code { color: var(--color-text-muted); font-size: 12px; }
