@@ -401,7 +401,7 @@ function renderSubnavItem(domain, item, role, operationalContext) {
     const Component = LEGACY_COMPONENTS[item.legacyKey];
     return <Component />;
   }
-  return <PlaceholderPage title={item.label} />;
+  return <PlaceholderPage title={item.label} explanation={item.placeholderExplanation} />;
 }
 
 function AppRoutes({ role, allowedLegacyKeys, operationalContext }) {
