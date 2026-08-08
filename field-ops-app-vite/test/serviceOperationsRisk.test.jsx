@@ -57,12 +57,16 @@ describe("AtRiskPanel — Service Operations render path (was crashing)", () => 
     expect(screen.getAllByText(/since creation/i).length).toBeGreaterThan(0);
   });
 
-  it("renders honest 'age unknown' (never a fake 0h) when a surfaced job has an unusable createdAt", () => {
-    // Force a job into the panel whose stagnation is unknown but status makes it high-risk is not possible via
-    // age; instead assert the display helper directly by rendering a job the panel receives. A stale job with a
-    // valid timestamp still renders; the unusable-timestamp display is guaranteed by the domain honesty above.
+  it("renders a real age for a valid timestamp — never a fabricated leading 0h", () => {
+    // A stale job with a VALID timestamp renders a real age. NOTE: AtRiskPanel derives age from live
+    // Date.now() (not the test's NOW), so the displayed hour count is large and drifts over real time — the
+    // assertion must therefore be robust to that. The honesty being guarded is "no fabricated ZERO age":
+    // a real count like 8870h legitimately contains the substring "0h", so anchor with \b so only a genuine
+    // leading "0h since creation" (a fabricated zero) can match. The unusable-timestamp ⇒ "age unknown" path
+    // is covered deterministically by the domain tests above.
     const jobs = [{ id: "old", customer: "Elm Dental", status: "CREATED", createdAt: NOW - 100 * HOUR }];
     render(<AtRiskPanel jobs={jobs} technicians={[]} workOrders={[]} />);
-    expect(screen.queryByText(/0h since creation/)).toBeNull(); // no fabricated zero-age
+    expect(screen.getAllByText(/since creation/i).length).toBeGreaterThan(0); // a real age renders
+    expect(screen.queryByText(/\b0h since creation/)).toBeNull(); // no fabricated zero-age
   });
 });
