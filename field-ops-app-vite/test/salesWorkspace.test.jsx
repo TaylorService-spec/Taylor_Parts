@@ -40,6 +40,18 @@ describe("SalesWorkspace (read-first pipeline)", () => {
     expect(screen.getByText(/Cafeteria refresh/i)).toBeTruthy();
   });
 
+  it("pipeline rows are keyboard-operable (SALES-001 accessibility fix): role, tabindex, Enter selects", () => {
+    render(<SalesWorkspace />);
+    const table = screen.getByRole("table");
+    const metroCell = within(table).getByText("Metro School District");
+    const row = metroCell.closest("tr");
+    expect(row.getAttribute("role")).toBe("button");
+    expect(row.getAttribute("tabindex")).toBe("0");
+    // Enter selects the row → its detail (customer need) renders in the aside
+    fireEvent.keyDown(row, { key: "Enter" });
+    expect(screen.getByText(/Cafeteria refresh/i)).toBeTruthy();
+  });
+
   it("surfaces the ratified lifecycle actions as DISABLED, honest affordances (write-readiness seam)", () => {
     render(<SalesWorkspace />);
     // Select an IDENTIFIED opportunity (Metro School District) — it offers a forward Advance + Mark Lost.

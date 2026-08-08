@@ -122,6 +122,17 @@ function PipelineRow({ row, selected, onSelect }) {
     <tr
       className={`fo-sales-row ${selected ? "is-selected" : ""} ${row.attentionTone === "attention" ? "is-attention" : ""}`.trim()}
       onClick={() => onSelect(row.id)}
+      // Live-pilot SALES-001 finding (ACCESSIBILITY): pipeline rows were mouse-only (no role/tabindex/key
+      // handler), so a keyboard/AT user could not select an opportunity to open its detail. Make each row a
+      // keyboard-operable option — focusable, Enter/Space selects.
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onSelect(row.id);
+        }
+      }}
       aria-selected={selected}
     >
       <td className="fo-sales-row__customer">{row.customerName}</td>
