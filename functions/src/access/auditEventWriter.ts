@@ -143,6 +143,9 @@ const AUDIT_ACTIONS: readonly AuditAction[] = [
   "applyPayment",
   // Finance (Billing/AR): runtime mirror of the recordInvoiceAdjustment AuditAction union member (credit/charge/write-off).
   "recordInvoiceAdjustment",
+  // Commercial Coverage & Territory (#15): runtime mirror of the coverage command Audit Event actions.
+  "createSalesTerritory",
+  "createCoverageAssignment",
 ];
 
 // Issue #325 / ADR-007 D-AUDIT -- the subset of AUDIT_ACTIONS this

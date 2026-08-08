@@ -1,0 +1,65 @@
+name: Commercial Coverage Persistence Tests
+
+# Commercial Coverage & Territory (#15) governed inert persistence: the pure write command core (durable Sales
+# Territories + effective-dated coverage assignments; records only, no precedence/credit/commission) and the
+# capability/resolver registration (coverage.write active:false, deferred-by-design). Offline node:test over
+# the compiled functions lib (tsc build only) — no emulator, no Firebase runtime, no deployment, no secrets.
+# INERT: registers a capability active:false, exports (not deploys) callables, adds DENY-ALL Rules — it
+# activates, grants, and deploys nothing. (The Firestore Rules regression + governed-hash pin guard run in
+# their own workflows, triggered by the firestore.rules / verifyTruckRegistryDeployment.js changes.)
+
+on:
+  pull_request:
+    paths:
+      - "functions/src/coverage/**"
+      - "functions/src/constants/collections.ts"
+      - "functions/src/index.ts"
+      - "functions/src/access/permissionCatalog.ts"
+      - "functions/src/access/auditEventWriter.ts"
+      - "functions/src/types/access.ts"
+      - "functions/test/coverageCommands.test.mjs"
+      - "functions/test/permissionCatalog.test.mjs"
+      - "functions/test/resolveEffectivePermission.test.mjs"
+      - ".github/workflows/commercial-coverage-persistence-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/src/coverage/**"
+      - "functions/src/access/permissionCatalog.ts"
+      - "functions/test/coverageCommands.test.mjs"
+      - ".github/workflows/commercial-coverage-persistence-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  commercial-coverage-persistence:
+    name: Commercial coverage persistence (functions build + node:test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies
+        run: npm ci --no-audit --no-fund
+        working-directory: functions
+
+      - name: Build functions (tsc)
+        run: npm run build
+        working-directory: functions
+
+      - name: Coverage command core (node:test)
+        run: node --test test/coverageCommands.test.mjs
+        working-directory: functions
+
+      - name: Capability catalog + resolver exhaustiveness (node:test)
+        run: node test/permissionCatalog.test.mjs && node test/resolveEffectivePermission.test.mjs
+        working-directory: functions
