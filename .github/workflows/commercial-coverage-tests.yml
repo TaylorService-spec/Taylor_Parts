@@ -1,0 +1,51 @@
+name: Commercial Coverage & Territory Tests
+
+# Capability #15 — the PURE commercial-coverage authority model + resolver (configurable channels, durable
+# geographic territories independent of salesperson, MULTI-assignment resolution, effective dating, and the
+# distinctions coverage ≠ owner/credit/commission/security/Service-Territory). Pure/offline node:test — no
+# Firebase, no emulator, no persistence, no deployment, no secrets. This model is INERT (injected assignments);
+# it activates, grants, and deploys nothing.
+
+on:
+  pull_request:
+    paths:
+      - "field-ops-app-vite/src/domain/commercialCoverage.js"
+      - "field-ops-app-vite/test/commercialCoverage.test.mjs"
+      - ".github/workflows/commercial-coverage-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "field-ops-app-vite/src/domain/commercialCoverage.js"
+      - "field-ops-app-vite/test/commercialCoverage.test.mjs"
+      - ".github/workflows/commercial-coverage-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  commercial-coverage:
+    name: Commercial coverage authority model (node:test + lint)
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: field-ops-app-vite/package-lock.json
+
+      - name: Install dependencies
+        run: npm install
+        working-directory: field-ops-app-vite
+
+      - name: Commercial coverage model unit tests (node:test)
+        run: node test/commercialCoverage.test.mjs
+        working-directory: field-ops-app-vite
+
+      - name: Lint the commercial-coverage domain (oxlint)
+        run: npx oxlint src/domain/commercialCoverage.js
+        working-directory: field-ops-app-vite
