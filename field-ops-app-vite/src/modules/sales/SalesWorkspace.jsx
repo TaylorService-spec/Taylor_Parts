@@ -342,12 +342,15 @@ function PipelineRow({ row, selected, onSelect }) {
       }}
       aria-selected={selected}
     >
-      <td className="fo-sales-row__customer">{row.customerName}</td>
-      <td><StatusPill tone={row.commercial.tone} label={row.commercial.label} /></td>
-      <td>{channelLabel(row.channel)}</td>
-      <td className="fo-sales-row__value">{currency(row.expectedValue)}</td>
-      <td>{shortDate(row.expectedCloseAt)}</td>
-      <td className="fo-sales-row__next">
+      {/* data-label drives the phone recomposition (thead hidden; each cell labelled). The `secondary`
+          columns are the lower-priority ones (Channel, Expected close) — deferred at constrained widths and
+          still shown in the detail pane for the selected opportunity, so information is deferred not lost. */}
+      <td className="fo-sales-row__customer" data-label="Customer">{row.customerName}</td>
+      <td data-label="Stage"><StatusPill tone={row.commercial.tone} label={row.commercial.label} /></td>
+      <td className="fo-sales-col--secondary" data-label="Channel">{channelLabel(row.channel)}</td>
+      <td className="fo-sales-row__value" data-label="Est. value">{currency(row.expectedValue)}</td>
+      <td className="fo-sales-col--secondary" data-label="Expected close">{shortDate(row.expectedCloseAt)}</td>
+      <td className="fo-sales-row__next" data-label="Attention / next">
         {row.attention.length > 0 ? (
           <StatusPill tone={row.attentionTone} label={row.attention[0].label} asText />
         ) : (
@@ -432,23 +435,29 @@ export default function SalesWorkspace({ readiness, onSaveSection } = {}) {
       ) : pipeline.rows.length === 0 ? (
         <p className="fo-muted">No open opportunities.</p>
       ) : (
-        <table className="fo-sales-pipeline">
-          <thead>
-            <tr>
-              <th>Customer</th>
-              <th>Stage</th>
-              <th>Channel</th>
-              <th>Est. value</th>
-              <th>Expected close</th>
-              <th>Attention / next</th>
-            </tr>
-          </thead>
-          <tbody>
-            {pipeline.rows.map((row) => (
-              <PipelineRow key={row.id} row={row} selected={selectedRow?.id === row.id} onSelect={setSelectedId} />
-            ))}
-          </tbody>
-        </table>
+        // Overflow-safe wrapper: the pipeline can NEVER paint over the detail rail (the original intermediate-
+        // width defect — the 6-col table overflowed its grid cell and overlapped the detail aside). The wrapper
+        // is a guarantee; the real recomposition is the column-priority + phone-block CSS, which keeps the
+        // table fitting so the guard scrollbar effectively never appears.
+        <div className="fo-sales-pipeline-wrap">
+          <table className="fo-sales-pipeline">
+            <thead>
+              <tr>
+                <th>Customer</th>
+                <th>Stage</th>
+                <th className="fo-sales-col--secondary">Channel</th>
+                <th>Est. value</th>
+                <th className="fo-sales-col--secondary">Expected close</th>
+                <th>Attention / next</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pipeline.rows.map((row) => (
+                <PipelineRow key={row.id} row={row} selected={selectedRow?.id === row.id} onSelect={setSelectedId} />
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </WorkspaceShell>
   );

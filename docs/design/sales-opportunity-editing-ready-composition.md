@@ -99,6 +99,30 @@ When a future cycle grants `opportunity.write` and deploys the transition/mainte
 2. `SalesWorkspace` is passed an `onSaveSection(sectionId, draft)` wired to the governed maintenance callable
    (server re-validates and remains the authority; the client only offers the actions the domain graph allows).
 
+## Pipeline responsive content priority (reconciliation)
+
+The original observed defect lived on the **pipeline** (master), not the detail: at intermediate widths the
+six-column table overflowed its grid cell and **collided with the detail rail** (labels/values compressed, the
+desktop master/detail squeezed rather than recomposed). The editing-ready detail work did not touch this, so it
+was reconciled separately with an intentional **content-priority** strategy — recompose, never squeeze:
+
+- **Overflow-safe wrapper** (`.fo-sales-pipeline-wrap`, `overflow-x:auto`) — a hard backstop so the pipeline can
+  never paint over the detail rail. It is a guarantee, not the mechanism; the priority rules keep the table
+  fitting so its scrollbar effectively never appears.
+- **Column priority** — the highest-value Sales columns (Customer / Stage / Est. value / Attention·next) always
+  show; the lower-priority **Channel** and **Expected close** (`.fo-sales-col--secondary`) are **deferred** at
+  ≤1024px and remain visible in the **detail pane** for the selected opportunity. Information is deferred, not
+  lost. This ordering is a starting point, not immutable — UX may revise it with evidence.
+- **Phone recomposition** (≤640px) — each row recomposes from a squeezed table row into a compact **labelled
+  block** (thead visually hidden for AT; each cell carries a `data-label`). A legible list, not a card farm.
+
+Verified in a real browser (synthetic source, no auth/emulator) by measuring actual layout geometry at
+**~400 / 768 / 900 / 1360px**: before, at 900px the table right edge (593px) overlapped the detail aside (left
+529px); after, it sits clear (509 < 529), no wrapper scroll, no page horizontal scroll, master/detail intact at
+desktop, and the phone block recomposition shows the four priority fields. jsdom has no layout engine, so the
+regression tests lock the enabling **structure** (wrapper + secondary classes + per-cell data-labels) rather
+than pixels.
+
 ## Tests
 
 - `test/opportunityFieldModel.test.mjs` (node:test) — data-class classification, control types, governed owner,
@@ -107,4 +131,5 @@ When a future cycle grants `opportunity.write` and deploys the transition/mainte
 - `test/salesWorkspace.test.jsx` (vitest + jsdom) — reads by default (disabled Edit affordances, no standing
   controls); enabling readiness opens a section form; Cancel returns; one-section-at-a-time; Save inert without a
   wired command; Save with a wired command hands the section draft to the command; derived/read-only sections
-  expose no edit affordance.
+  expose no edit affordance; **pipeline responsive priority** — overflow-safe wrapper, Channel/Expected-close
+  flagged secondary in header + rows, every cell carries a `data-label`.
