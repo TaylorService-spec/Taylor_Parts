@@ -34,6 +34,14 @@ test("create: one product-level line with qty (C713 x5), starts CONFIRMED, qtys 
   );
 });
 
+test("create: accepts the ratified STRATEGIC_ACCOUNTS channel (#15)", () => {
+  const so = buildCreateSalesOrder(
+    { accountId: "A", ownerEmployeeId: "E", salesChannel: "STRATEGIC_ACCOUNTS", lines: [{ kind: "PART", ref: "p", orderedQty: 1 }] },
+    CTX
+  );
+  assert.equal(so.salesChannel, "STRATEGIC_ACCOUNTS");
+});
+
 test("create: a serialized-asset line is FORBIDDEN (commercial != physical)", () => {
   for (const bad of [
     { kind: "EQUIPMENT_MODEL", ref: "C713", orderedQty: 1, serial: "SN-1" },

@@ -21,7 +21,10 @@ export type OpportunityStage = (typeof OPPORTUNITY_STAGES)[number];
 export const OPPORTUNITY_OUTCOMES = ["WON", "LOST"] as const;
 export type OpportunityOutcome = (typeof OPPORTUNITY_OUTCOMES)[number];
 
-export const SALES_CHANNELS = ["NATIONAL_ACCOUNTS", "RETAIL"] as const;
+// Commercial Coverage (#15) ratified minimum channels — STRATEGIC_ACCOUNTS added. Kept in sync with the Sales
+// Order channel set (salesOrderLifecycle.ts) and the client mirror; a later increment unifies these into one
+// configurable ref-data source (see docs/assessments/commercial-coverage-territory-authority-model.md).
+export const SALES_CHANNELS = ["NATIONAL_ACCOUNTS", "RETAIL", "STRATEGIC_ACCOUNTS"] as const;
 export type SalesChannel = (typeof SALES_CHANNELS)[number];
 
 // Solution line kinds — product-level commercial intent ONLY. A serialized Equipment asset is deliberately
