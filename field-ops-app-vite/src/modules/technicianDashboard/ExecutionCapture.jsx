@@ -61,7 +61,7 @@ export default function ExecutionCapture({ workOrder }) {
   }
 
   return (
-    <div className="fo-card">
+    <div className="fo-card fo-touch-targets">
       <h4>Execution Capture</h4>
       {error && (
         <div className="warning" role="alert">
