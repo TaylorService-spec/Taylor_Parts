@@ -386,6 +386,23 @@ export function isNavItemVisible(item, role, allowedLegacyKeys, operationalConte
   return PLACEHOLDER_DEFAULT_ROLES.includes(role);
 }
 
+/**
+ * The domain index item (path "") when the current session may NOT see it -- otherwise null.
+ *
+ * Three independent persona missions landed on a blank page at /inventory and /purchasing.
+ * The index item is gated (Inventory > Parts by legacyKey "inventory"), so for a role without
+ * it no index route is emitted, the parent route matches with no child, and the user gets the
+ * shell with an empty body. The screen they were denied never rendered, so it could not say so.
+ *
+ * DENIED must never be presented as EMPTY. This decides where a refusal has to be stated. It
+ * grants nothing: visibility is still isNavItemVisible(), unchanged.
+ */
+export function deniedDomainIndexItem(domain, role, allowedLegacyKeys, operationalContext) {
+  const indexItem = (domain?.subnav ?? []).find((item) => item.path === "");
+  if (!indexItem) return null;
+  return isNavItemVisible(indexItem, role, allowedLegacyKeys, operationalContext) ? null : indexItem;
+}
+
 export function isDomainVisible(domain, role, allowedLegacyKeys, operationalContext) {
   if (domain.future) {
     return PLACEHOLDER_DEFAULT_ROLES.includes(role);

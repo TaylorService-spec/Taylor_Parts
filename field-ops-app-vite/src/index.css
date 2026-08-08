@@ -1972,3 +1972,7 @@ button:hover {
   color: var(--color-text-muted); background: var(--color-surface-muted, #F3F1EC);
   vertical-align: middle;
 }
+
+/* Names what the notification panel is about, so its rows are not read as stock
+   conditions and matched against the Inventory queue severity counts. */
+.fo-notification-panel-scope { margin: 0 0 8px; font-size: 12px; line-height: 1.4; }
