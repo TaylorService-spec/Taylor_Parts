@@ -100,6 +100,8 @@ function buildDeferredForNow(catalog) {
     // Sales Opportunity Cycle 3c: opportunity.read (trusted read projection) -- same ungranted-by-design
     // posture, EXACT literal.
     "opportunity.read",
+    // Sales Order Cycle 4: salesOrder.write -- ungranted-by-design, EXACT literal.
+    "salesOrder.write",
   ]);
 }
 // Catalog ids neither granted by a seeded Role nor deferred-by-design (the exhaustiveness gate's

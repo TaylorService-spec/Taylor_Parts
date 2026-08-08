@@ -19,6 +19,9 @@ export { createOpportunity, transitionOpportunity } from "./opportunity/opportun
 // Trusted minimal Opportunity READ projection (avoids client Rules widening). EXPORT != DEPLOY, capability
 // `opportunity.read` registered active:false (REGISTER != GRANT).
 export { listOpportunityContext } from "./opportunity/opportunityReadService";
+// Sales Order governed write callables (Cycle 4). EXPORT != DEPLOY; capability `salesOrder.write` registered
+// active:false (REGISTER != GRANT).
+export { createSalesOrder, transitionSalesOrder } from "./salesOrder/salesOrderCallables";
 
 // --- F1 surface: trusted minimal field-context display projection ---
 // Answers "who is the customer / which site am I going to?" for the CALLER'S

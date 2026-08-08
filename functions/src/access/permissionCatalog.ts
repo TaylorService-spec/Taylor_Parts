@@ -146,6 +146,17 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     action: "read",
     active: false,
   }),
+  // Sales Order Cycle 4 -- creating/advancing a committed Sales Order via the governed salesOrder command.
+  // Registered active:false (fail-closed). The committed commercial order following a WON Opportunity; it does
+  // not assign serialized assets or write Work Orders/inventory (later governed seams do).
+  Object.freeze({
+    id: "salesOrder.write",
+    description:
+      "Create or advance a committed Sales Order (lifecycle transition) via the governed salesOrder command. Does not assign serialized assets, write Work Orders, or move inventory.",
+    resource: "salesOrder",
+    action: "write",
+    active: false,
+  }),
 
   // --- Inventory / Reorder / Purchasing domain (Issue #100; Assessment's
   // Inventory domain audit table; firestore.rules current `main`) ---
