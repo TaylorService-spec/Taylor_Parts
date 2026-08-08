@@ -14,8 +14,22 @@
  *   - only touches accounts whose email ends `@sandbox.invalid`;
  *   - passwords are randomly generated at runtime, never derived from anything
  *     guessable, and never committed — the output file is gitignored;
- *   - re-running rotates the passwords, which is safe and expected for a
- *     disposable environment.
+ *
+ * ROTATION IS NOT THE DEFAULT, AND MUST NEVER BE (Owner direction, "Sandbox
+ * credentials -- single source of truth"). This script used to rotate every
+ * persona password on every run and describe that as "safe and expected for a
+ * disposable environment". It is not. It silently invalidated the Owner's saved
+ * copy and every agent's working credentials, and the resulting failure surfaces
+ * as "invalid password" -- which sends you debugging the wrong thing entirely.
+ * It did exactly that twice in one day, the second time to the author of this
+ * comment, who ran it believing a patch had applied when it had not.
+ *
+ * AUTH PERSONAS ARE NOT BUSINESS FIXTURE DATA. Resetting scenario data must never
+ * touch a persona account. An existing persona is REUSED; a missing one is
+ * REPORTED as CREDENTIAL_ACCESS_FAILED, never silently manufactured with a new
+ * password. Rotation now requires --rotate, stated out loud by someone who means
+ * it. Read credentials through scripts/sandboxCredentials.mjs; never parse the
+ * file yourself.
  *
  * Usage:
  *   cd functions
@@ -57,9 +71,10 @@ async function main() {
   try { env = assertNonProductionTarget(args.projectId); }
   catch (err) { console.error(err.message); process.exitCode = 1; return; }
 
+  const rotate = args.rotate === "true";
   const outPath = args.out && args.out !== "true"
     ? path.resolve(process.cwd(), args.out)
-    : path.resolve(__dirname, "../../.sandbox-credentials.local.json");
+    : path.resolve(__dirname, "../../sandbox-credentials.local.json");
   if (!/credentials\.local\.json$/.test(outPath)) {
     console.error("REFUSING: --out must end with 'credentials.local.json' so it matches the gitignore rule.");
     process.exitCode = 1;
@@ -69,16 +84,37 @@ async function main() {
   initializeApp({ credential: applicationDefault(), projectId: args.projectId });
   const auth = getAuth();
   const list = await auth.listUsers(1000);
+  const personas = list.users.filter((u) => u.email && u.email.endsWith(SANDBOX_EMAIL_SUFFIX));
+
+  if (!rotate) {
+    // THE DEFAULT CHANGES NOTHING. Anyone reaching for this script during an
+    // ordinary scenario reset wants exactly this: tell me what exists.
+    console.log(`Found ${personas.length} sandbox personas in '${env.id}'. Nothing was read, written or changed.`);
+    for (const u of personas) {
+      console.log(`  ${u.email}${u.passwordHash ? "" : "   <-- NO PASSWORD SET, cannot sign in"}`);
+    }
+    const unusable = personas.filter((u) => !u.passwordHash);
+    if (unusable.length > 0) {
+      console.error(`\nCREDENTIAL_ACCESS_FAILED: ${unusable.length} persona(s) cannot sign in.`);
+      console.error("Re-run with --rotate ONLY if you intend to invalidate every saved copy.");
+      process.exitCode = 1;
+      return;
+    }
+    console.log("\nAll personas are usable. Read them through scripts/sandboxCredentials.mjs (loadSandboxPersona).");
+    return;
+  }
+
+  console.log("--rotate given: every previously saved credential is about to become invalid.");
   const creds = {};
-  for (const u of list.users) {
-    if (!u.email || !u.email.endsWith(SANDBOX_EMAIL_SUFFIX)) continue;
+  for (const u of personas) {
     const password = `Sbx!${crypto.randomBytes(12).toString("base64url")}`;
     await auth.updateUser(u.uid, { password, emailVerified: true });
     creds[u.email] = password;
   }
   fs.writeFileSync(outPath, `${JSON.stringify(creds, null, 2)}\n`);
-  console.log(`Activated ${Object.keys(creds).length} sandbox personas in '${env.id}'.`);
+  console.log(`ROTATED ${Object.keys(creds).length} sandbox persona passwords in '${env.id}'.`);
   console.log(`Credentials written to: ${outPath}`);
+  console.log("Every previously saved copy is now invalid -- the Owner's included, and any running mission's.");
   console.log("This file is gitignored and must never be committed or shared outside the sandbox.");
 }
 

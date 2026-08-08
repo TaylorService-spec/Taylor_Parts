@@ -1812,6 +1812,38 @@ button:hover {
 .fo-sales-detail__lifecycle { display: grid; gap: 6px; }
 .fo-sales-lifecycle-note { margin: 0; font-size: 12px; }
 
+/* Technician execution surfaces are worked one-handed, often with gloves, in a
+   hot kitchen -- but they render in the ordinary desktop workspace, so they
+   never picked up the 48px minimum that .fo-workspace[data-density="field"]
+   gives FieldMode. A technician mission measured the real controls here at
+   31px: the Complete button, and the +/- parts steppers that get tapped most.
+   WCAG 2.5.5 wants 44px; these are the controls that most need it. */
+.fo-touch-targets button {
+  min-height: 44px;
+  min-width: 44px;
+}
+.fo-touch-targets .wo-parts-warning button {
+  min-width: 0; /* text buttons size to their label; the height minimum still applies */
+}
+
+/* Completion is allowed to proceed with planned parts unrecorded -- the server
+   is the authority and there are legitimate reasons -- but it must never happen
+   silently. See domain/plannedPartsCompletion.js. */
+.wo-parts-warning {
+  margin-block: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-warning-border, #C9A227);
+  border-left-width: 3px;
+  border-radius: 6px;
+  background: var(--color-warning-bg, #FDF8EC);
+}
+.wo-parts-warning__text {
+  margin: 0 0 8px;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--color-text, #2B2B2B);
+}
+
 /* ── EDITING-READY OPPORTUNITY DETAIL ──────────────────────────────────────────────────────────────────
    The detail pane composes for BOTH read/scan and edit/operate without becoming a wall of form controls.
    Editing is CONTEXTUAL + SECTION-LEVEL: each editable section shows a quiet "Edit" affordance in its header

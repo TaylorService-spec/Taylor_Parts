@@ -3,6 +3,7 @@ import { getAllowedActions } from "../../domain/workOrderWorkflow";
 import { transitionWorkOrder } from "../../services/workOrderService";
 import { FormError } from "../../shared/ui/form";
 import { workflowActionErrorMessage } from "../../domain/workflowActionError";
+import { unusedPlannedPartsMessage } from "../../domain/plannedPartsCompletion";
 
 // Epic 6 Phase 6.2 -- technician-side lifecycle action UI. Mirrors
 // modules/controlTower/WorkOrderActions.jsx's pattern (getAllowedActions()

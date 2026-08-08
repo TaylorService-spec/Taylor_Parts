@@ -18,7 +18,7 @@ import ExecutionCapture from "./ExecutionCapture";
 // ExecutionCapture.jsx, not duplicated here.
 export default function TechnicianWorkOrderDetail({ workOrder, onClose }) {
   return (
-    <div className="fo-card work-order-card">
+    <div className="fo-card work-order-card fo-touch-targets">
       <div className="disp-wo-card-header">
         <h3 style={{ margin: 0 }}>{workOrder.woNumber}</h3>
         <button type="button" onClick={onClose}>
