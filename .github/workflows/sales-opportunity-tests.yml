@@ -19,6 +19,7 @@ on:
       - "field-ops-app-vite/src/navigation/navConfig.js"
       - "field-ops-app-vite/test/opportunityLifecycle.test.mjs"
       - "field-ops-app-vite/test/opportunityWriteReadiness.test.mjs"
+      - "field-ops-app-vite/test/opportunityReadMapping.test.mjs"
       - "field-ops-app-vite/test/salesWorkspace.test.jsx"
       - "field-ops-app-vite/test/crmSalesNav.test.mjs"
       - "field-ops-app-vite/test/equipmentRegister.test.mjs"
@@ -34,6 +35,7 @@ on:
       - "field-ops-app-vite/src/data/opportunityScenarioFixtures.js"
       - "field-ops-app-vite/test/opportunityLifecycle.test.mjs"
       - "field-ops-app-vite/test/opportunityWriteReadiness.test.mjs"
+      - "field-ops-app-vite/test/opportunityReadMapping.test.mjs"
       - "field-ops-app-vite/test/salesWorkspace.test.jsx"
       - ".github/workflows/sales-opportunity-tests.yml"
   workflow_dispatch:
@@ -61,7 +63,7 @@ jobs:
         working-directory: field-ops-app-vite
 
       - name: Opportunity domain unit tests (node:test)
-        run: node test/opportunityLifecycle.test.mjs && node test/opportunityWriteReadiness.test.mjs
+        run: node test/opportunityLifecycle.test.mjs && node test/opportunityWriteReadiness.test.mjs && node test/opportunityReadMapping.test.mjs
         working-directory: field-ops-app-vite
 
       - name: Nav parity pins (crmSalesNav + equipmentRegister)
