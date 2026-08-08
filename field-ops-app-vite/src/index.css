@@ -1811,3 +1811,55 @@ button:hover {
    disabled affordances until a governed grant + deploy enable them. */
 .fo-sales-detail__lifecycle { display: grid; gap: 6px; }
 .fo-sales-lifecycle-note { margin: 0; font-size: 12px; }
+
+/* ── EDITING-READY OPPORTUNITY DETAIL ──────────────────────────────────────────────────────────────────
+   The detail pane composes for BOTH read/scan and edit/operate without becoming a wall of form controls.
+   Editing is CONTEXTUAL + SECTION-LEVEL: each editable section shows a quiet "Edit" affordance in its header
+   and, when entered, swaps its read body for a compact section form. This recomposes cleanly from desktop
+   down to phone (the detail aside already stacks full-width under the work area at ≤860px — see
+   .fo-workspace__body--split), so a section edit is a small stacked form at every width, never a desktop
+   grid squeezed narrow. Edit affordances are fail-closed: disabled + honest until the write-readiness seam
+   flips (capability grant + callable deploy). */
+
+/* Section header carries the title + its contextual edit affordance on one scan line. */
+.fo-sales-detail__block-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.fo-sales-detail__block-head h4 { margin: 0; }
+.fo-sales-detail__edit { font-size: 12px; padding: 2px 8px; }
+/* Read-only + system-derived sections are visually quieter (no operate affordance lives there). */
+.fo-sales-detail__block[data-dataclass="READ_ONLY"] { opacity: .9; }
+
+/* Read field rows within a section. Single-field sections render just the value; multi-field sections use a
+   label/value grid that collapses to stacked rows on narrow widths. */
+.fo-sales-field__value { font-size: 14px; color: var(--color-text-primary); }
+.fo-sales-fieldgrid { margin: 0; display: grid; gap: 6px; }
+.fo-sales-fieldgrid__row { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 8px; align-items: baseline; }
+.fo-sales-fieldgrid__row dt { margin: 0; font-size: 12px; color: var(--color-text-muted); }
+.fo-sales-fieldgrid__row dd { margin: 0; font-size: 14px; color: var(--color-text-primary); }
+
+/* Shared control base for the edit forms (no canonical .fo-input existed; this is a modest token-driven
+   control the Opportunity edit forms use and other surfaces may adopt). */
+.fo-input { width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid var(--color-border);
+  border-radius: 6px; font-size: 14px; font-family: inherit; background: var(--color-surface-card, #fff);
+  color: var(--color-text-primary); }
+.fo-input:focus-visible { outline: 2px solid var(--color-brand-primary); outline-offset: 1px; }
+
+/* Section edit form — a compact, single-column stack of the section's user-maintained fields. Single column
+   by design so it reads and operates identically at desktop, tablet and phone (the aside is the narrow rail
+   at desktop and full width on phone — either way this is a readable form, not a squeezed grid). */
+.fo-sales-editform { display: grid; gap: 12px; }
+.fo-sales-editform__field { display: grid; gap: 4px; }
+.fo-sales-editform__field label { font-size: 12px; color: var(--color-text-secondary); font-weight: 600; }
+.fo-sales-editform__gov { color: var(--color-text-muted); font-weight: 400; text-transform: none; letter-spacing: 0; }
+.fo-sales-editform__actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.fo-sales-editform__note { margin: 0; font-size: 12px; }
+
+/* Solution-line editor — compact rows that wrap to stacked controls on narrow widths (no wide line table). */
+.fo-sales-lineedit { display: grid; gap: 8px; }
+.fo-sales-lineedit__row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.fo-sales-lineedit__row .fo-input { width: auto; flex: 1 1 auto; min-width: 96px; }
+.fo-sales-lineedit__qty { flex: 0 0 72px; min-width: 64px; }
+@media (max-width: 640px) {
+  /* On phone widths let each line control take a full row so nothing is cramped. */
+  .fo-sales-lineedit__row .fo-input { flex-basis: 100%; }
+  .fo-sales-fieldgrid__row { grid-template-columns: 1fr; gap: 2px; }
+}

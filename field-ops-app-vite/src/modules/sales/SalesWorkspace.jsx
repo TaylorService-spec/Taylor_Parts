@@ -5,23 +5,34 @@ import StatusPill from "../../shared/ui/StatusPill.jsx";
 import ActionRail from "../../shared/ui/ActionRail.jsx";
 import { useOpportunities } from "../../hooks/useOpportunities.js";
 import { buildOpportunityPipeline, channelLabel, stageLabel, allowedActions } from "../../domain/opportunityLifecycle.js";
+import { opportunityDetailModel, OPPORTUNITY_DATA_CLASS, sectionDraft } from "../../domain/opportunityFieldModel.js";
 import { opportunityWriteReadiness } from "../../access/opportunityWriteReadiness.js";
 
-// Sales — Opportunity Operating Workspace (Cycle 2, READ-FIRST). The commercial pipeline is the entry point
-// to Sales (ratified: Opportunity Management, NOT Account→Create Work Order). This surface reads SYNTHETIC
-// opportunities through the injected source seam (hooks/useOpportunities → access/opportunitySource) and
-// renders them on the Wave-0 composition primitives (WorkspaceShell / ContextBand / StatusPill / ActionRail),
-// serving as their first Sales-side proving ground. It is a PIPELINE built for rapid scanning + comparison,
-// not a metric-card CRM dashboard and not a giant-card-per-opportunity page.
+// Sales — Opportunity OPERATING Workspace. The commercial pipeline is the entry point to Sales (ratified:
+// Opportunity Management, NOT Account→Create Work Order). This surface reads opportunities through the
+// injected source seam (hooks/useOpportunities → access/opportunitySource) and renders them on the Wave-0
+// composition primitives (WorkspaceShell / ContextBand / StatusPill / ActionRail). It is a PIPELINE built for
+// rapid scanning + comparison, not a metric-card CRM dashboard and not a giant-card-per-opportunity page.
 //
-// No write path exists here yet. Opportunity is PRE-COMMITMENT — nothing on this screen creates a Work
-// Order, reserves inventory, or touches an invoice. Cycle 3+ adds mutation through a TRUSTED COMMAND service
-// + governed callable (client stays deny by Rules); the "New opportunity" control is intentionally inert
-// until that lands, so the affordance is honest rather than a dead button pretending to work.
+// EDITING-READY (design requirement): the workspace is intended to become an operating workspace where
+// authorized users MAINTAIN Opportunity information once the governed write authority is activated. The detail
+// pane is therefore composed for BOTH read/scan AND edit/operate WITHOUT another structural redesign — but it
+// is NOT a permanent wall of form controls. It reads cleanly by default; editing is CONTEXTUAL and SECTION-
+// LEVEL (one section at a time), which is the interaction that recomposes cleanly from desktop down to phone
+// (a section edit is a small stacked form, never a desktop grid squeezed narrow).
+//
+// FAIL-CLOSED: no write path is live. Field editing AND lifecycle transitions are both governed writes; both
+// are gated by the SAME write-readiness seam (access/opportunityWriteReadiness). Today the seam reports writes
+// disabled (capability ungranted + command not deployed), so every edit/lifecycle affordance renders DISABLED
+// with an honest reason. When a later, separately-authorized cycle grants + deploys, the seam flips and the
+// SAME affordances become live — no structural change here. Nothing on this screen writes, and the data model
+// (what CAN be maintained) is kept separate from the seam (whether it may be maintained right now).
 
 const currency = (v) =>
   typeof v === "number" ? v.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 }) : "—";
 const shortDate = (ms) => (typeof ms === "number" ? new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "—");
+// ISO date for <input type="date"> binding (yyyy-mm-dd); null-safe.
+const isoDate = (ms) => (typeof ms === "number" ? new Date(ms).toISOString().slice(0, 10) : "");
 
 function LineSummary({ lines }) {
   if (!lines?.length) return <span className="fo-muted">No solution lines yet</span>;
@@ -37,14 +48,193 @@ function LineSummary({ lines }) {
   );
 }
 
-// Read-only detail for the selected opportunity (the supporting aside). Facts as a ContextBand, then the
-// customer need, the solution lines, any attention reasons, and the next action — no editing affordances.
-// The ratified lifecycle actions for the selected opportunity, rendered through the WRITE-READINESS seam
-// (access/opportunityWriteReadiness). The actions the governed command WOULD accept come from the pure
-// domain graph (allowedActions); today the seam reports writes disabled (capability ungranted + command not
-// deployed), so every action renders DISABLED with an honest reason — the same fail-closed, honest-affordance
-// posture as the inert "New opportunity" button. When a later cycle grants + deploys, the seam flips and the
-// SAME buttons become live (each would call the governed transitionOpportunity callable). Nothing here writes.
+// Read view for one field of an editable section — label + formatted value. SYSTEM_DERIVED attention items
+// render as tone pills; solution lines render via LineSummary; everything else is a formatted string.
+function FieldRead({ field }) {
+  if (field.control === "lines") return <LineSummary lines={field.value} />;
+  if (field.dataClass === OPPORTUNITY_DATA_CLASS.SYSTEM_DERIVED) {
+    return <StatusPill tone={field.tone} label={field.display} asText />;
+  }
+  return <span className="fo-sales-field__value">{field.display}</span>;
+}
+
+// Edit control for one USER_MAINTAINED field, bound to the section draft. These render ONLY inside an active
+// section edit form (never as a standing wall of controls). No control performs a write — Save is what would
+// hand the draft to the governed command, and Save is itself gated by readiness + a wired command.
+function FieldEdit({ field, value, onChange }) {
+  const id = `opp-edit-${field.key}`;
+  switch (field.control) {
+    case "select":
+      return (
+        <select id={id} className="fo-input" value={value ?? ""} onChange={(e) => onChange(e.target.value)}>
+          {(field.options ?? []).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+      );
+    case "currency":
+      return (
+        <input id={id} className="fo-input" type="number" inputMode="numeric" min="0" step="1"
+          value={value ?? ""} onChange={(e) => onChange(e.target.value === "" ? null : Number(e.target.value))} />
+      );
+    case "date":
+      return (
+        <input id={id} className="fo-input" type="date" value={isoDate(value)}
+          onChange={(e) => onChange(e.target.value ? new Date(e.target.value).getTime() : null)} />
+      );
+    case "textarea":
+      return <textarea id={id} className="fo-input" rows={3} value={value ?? ""} onChange={(e) => onChange(e.target.value)} />;
+    case "owner":
+      // Owner reassignment (governed). The employee directory is not connected yet (accountOwner is free text,
+      // ADR-012 has no team/scope model), so this is a bounded id field, honest about the not-yet-connected
+      // directory rather than a fake picker.
+      return (
+        <input id={id} className="fo-input" type="text" value={value ?? ""} onChange={(e) => onChange(e.target.value)}
+          aria-describedby={`${id}-note`} />
+      );
+    case "lines":
+      // Solution-line editing is the richest control; kept honest + minimal here (the responsive composition
+      // is the deliverable, not a full line-item builder). Lines are product/model/part refs + qty.
+      return <LineEditor lines={value ?? []} onChange={onChange} />;
+    default:
+      return <input id={id} className="fo-input" type="text" value={value ?? ""} onChange={(e) => onChange(e.target.value)} />;
+  }
+}
+
+// Minimal solution-line editor: edit qty, remove a line, add a line. References product/model/part identities
+// (kind + ref) — never a serialized asset. Deliberately compact so it recomposes to phone width as stacked
+// rows rather than a wide table.
+function LineEditor({ lines, onChange }) {
+  const update = (i, patch) => onChange(lines.map((l, j) => (j === i ? { ...l, ...patch } : l)));
+  const remove = (i) => onChange(lines.filter((_, j) => j !== i));
+  const add = () => onChange([...lines, { kind: "EQUIPMENT_MODEL", ref: "", qty: 1 }]);
+  return (
+    <div className="fo-sales-lineedit">
+      {lines.length === 0 && <p className="fo-muted">No solution lines yet.</p>}
+      {lines.map((l, i) => (
+        <div className="fo-sales-lineedit__row" key={i}>
+          <select className="fo-input" aria-label="Line kind" value={l.kind} onChange={(e) => update(i, { kind: e.target.value })}>
+            <option value="EQUIPMENT_MODEL">Model</option>
+            <option value="PART">Part</option>
+            <option value="SERVICE">Service</option>
+          </select>
+          <input className="fo-input" aria-label="Line reference" type="text" value={l.ref} placeholder="Product / model / part"
+            onChange={(e) => update(i, { ref: e.target.value })} />
+          <input className="fo-input fo-sales-lineedit__qty" aria-label="Quantity" type="number" min="1" step="1" value={l.qty ?? 1}
+            onChange={(e) => update(i, { qty: e.target.value === "" ? null : Number(e.target.value) })} />
+          <button type="button" className="fo-btn-ghost" onClick={() => remove(i)} aria-label={`Remove line ${i + 1}`}>Remove</button>
+        </div>
+      ))}
+      <button type="button" className="fo-btn-ghost" onClick={add}>Add line</button>
+    </div>
+  );
+}
+
+// A section edit FORM (opened when the user enters section-level editing). Binds a draft of the section's
+// USER_MAINTAINED fields, offers Save + Cancel. Save is inert unless BOTH (a) write-readiness is enabled and
+// (b) a governed save command is wired (onSave) — today neither, so Save is disabled + honest. Cancel always
+// returns to read without side effects.
+function SectionEditForm({ section, readiness, onSave, onCancel }) {
+  const [draft, setDraft] = useState(() => sectionDraft(section));
+  const set = (key, v) => setDraft((d) => ({ ...d, [key]: v }));
+  const editable = section.fields.filter((f) => f.dataClass === OPPORTUNITY_DATA_CLASS.USER_MAINTAINED);
+  const saveWired = typeof onSave === "function";
+  const canSave = readiness.enabled && saveWired;
+  const saveReason = !readiness.enabled
+    ? readiness.reason
+    : !saveWired
+      ? "The governed save command is not wired in this build."
+      : undefined;
+  return (
+    <form
+      className="fo-sales-editform"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (canSave) onSave(section.id, draft);
+      }}
+    >
+      {editable.map((f) => (
+        <div className="fo-sales-editform__field" key={f.key}>
+          <label htmlFor={`opp-edit-${f.key}`}>
+            {f.label}
+            {f.governed && <span className="fo-sales-editform__gov" title="Authorized (governed) change"> · governed</span>}
+          </label>
+          <FieldEdit field={f} value={draft[f.key]} onChange={(v) => set(f.key, v)} />
+          {f.control === "owner" && (
+            <p id={`opp-edit-${f.key}-note`} className="fo-muted fo-sales-editform__note">
+              Employee directory not connected yet — reassignment records the owner id.
+            </p>
+          )}
+        </div>
+      ))}
+      <div className="fo-sales-editform__actions">
+        <button type="submit" className="fo-btn-primary" disabled={!canSave} title={saveReason}>Save</button>
+        <button type="button" className="fo-btn-ghost" onClick={onCancel}>Cancel</button>
+        {!canSave && <span className="fo-muted fo-sales-editform__note">{saveReason}</span>}
+      </div>
+    </form>
+  );
+}
+
+// A detail SECTION. Reads by default. Editable-by-design sections carry a contextual Edit affordance in the
+// header (disabled + honest when readiness is off — same fail-closed posture as the lifecycle actions and the
+// inert create control). Entering edit swaps the read body for the section form; only one section edits at a
+// time (owned by the parent). SYSTEM_DERIVED / READ_ONLY sections never show an edit affordance.
+function DetailSection({ section, editing, onEnterEdit, onCancelEdit, readiness, onSave }) {
+  const showEdit = section.editable;
+  const editDisabled = !readiness.enabled;
+  return (
+    <section className="fo-sales-detail__block" aria-label={section.title} data-dataclass={section.dataClass}>
+      <div className="fo-sales-detail__block-head">
+        <h4>{section.title}</h4>
+        {showEdit && !editing && (
+          <button
+            type="button"
+            className="fo-btn-ghost fo-sales-detail__edit"
+            disabled={editDisabled}
+            title={editDisabled ? readiness.reason : undefined}
+            aria-label={editDisabled ? `Edit ${section.title} — ${readiness.reason}` : `Edit ${section.title}`}
+            onClick={() => onEnterEdit(section.id)}
+          >
+            Edit
+          </button>
+        )}
+      </div>
+      {editing ? (
+        <SectionEditForm section={section} readiness={readiness} onSave={onSave} onCancel={onCancelEdit} />
+      ) : (
+        <SectionReadBody section={section} />
+      )}
+    </section>
+  );
+}
+
+// Read body for a section: its fields as label/value rows (single-field sections render just the value).
+function SectionReadBody({ section }) {
+  if (section.future && section.fields.length === 0) {
+    return <p className="fo-muted">No qualification fields configured yet.</p>;
+  }
+  if (section.fields.length === 0) {
+    return <p className="fo-muted">None.</p>;
+  }
+  if (section.fields.length === 1 && section.dataClass !== OPPORTUNITY_DATA_CLASS.READ_ONLY) {
+    return <div className="fo-sales-field"><FieldRead field={section.fields[0]} /></div>;
+  }
+  return (
+    <dl className="fo-sales-fieldgrid">
+      {section.fields.map((f) => (
+        <div className="fo-sales-fieldgrid__row" key={f.key}>
+          <dt>{f.label}</dt>
+          <dd><FieldRead field={f} /></dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+// The ratified lifecycle actions for the selected opportunity, rendered through the WRITE-READINESS seam.
+// Stage / WON / LOST are GOVERNED TRANSITIONS, not field edits — so they live here, never as a Stage <select>
+// in an edit form. Actions come from the pure domain graph (allowedActions); today the seam reports writes
+// disabled, so each renders DISABLED with an honest reason. When a later cycle grants + deploys, the SAME
+// buttons become live (each would call the governed transitionOpportunity callable). Nothing here writes.
 function LifecycleActions({ row, readiness }) {
   const actions = allowedActions(row);
   if (!actions.advanceTo && actions.outcomes.length === 0) {
@@ -70,8 +260,17 @@ function LifecycleActions({ row, readiness }) {
   );
 }
 
-function OpportunityDetail({ row, readiness }) {
+// The detail aside. A ContextBand scans the key facts (read), then the editing-ready sections operate on the
+// underlying data. Same datum can appear as a scannable fact AND be maintained in a section — scan up top,
+// operate below. Lifecycle sits between the derived attention and the read-only record.
+function OpportunityDetail({ row, readiness, onSaveSection }) {
+  const [editingSection, setEditingSection] = useState(null);
+  const model = useMemo(
+    () => opportunityDetailModel(row, { format: { currency, date: shortDate } }),
+    [row]
+  );
   if (!row) return <p className="fo-muted">Select an opportunity to see its detail.</p>;
+
   const facts = [
     { key: "customer", label: "Customer", value: row.customerName },
     { key: "channel", label: "Channel", value: channelLabel(row.channel) },
@@ -80,37 +279,45 @@ function OpportunityDetail({ row, readiness }) {
     { key: "close", label: "Expected close", value: shortDate(row.expectedCloseAt) },
     { key: "owner", label: "Owner", value: row.ownerEmployeeId ?? "—" },
   ];
+
+  // Render order: commercial / need / solution / next-action / qualification (editable), then a Lifecycle
+  // section (governed actions), then attention (derived) + record (read-only) which the model also supplies.
+  const bySlot = Object.fromEntries(model.sections.map((s) => [s.id, s]));
+  const editableOrder = ["commercial", "need", "solution", "nextAction", "qualification"];
+
+  const renderSection = (id) => {
+    const section = bySlot[id];
+    if (!section) return null;
+    return (
+      <DetailSection
+        key={id}
+        section={section}
+        editing={editingSection === id}
+        onEnterEdit={setEditingSection}
+        onCancelEdit={() => setEditingSection(null)}
+        readiness={readiness}
+        onSave={
+          onSaveSection
+            ? (sectionId, draft) => {
+                onSaveSection(sectionId, draft);
+                setEditingSection(null);
+              }
+            : undefined
+        }
+      />
+    );
+  };
+
   return (
     <div className="fo-sales-detail">
       <ContextBand items={facts} />
-      <section className="fo-sales-detail__block">
-        <h4>Customer need</h4>
-        <p>{row.need ?? "—"}</p>
-      </section>
-      <section className="fo-sales-detail__block">
-        <h4>Solution</h4>
-        <LineSummary lines={row.lines} />
-      </section>
-      {row.attention.length > 0 && (
-        <section className="fo-sales-detail__block">
-          <h4>Needs attention</h4>
-          <ul className="fo-sales-detail__attention">
-            {row.attention.map((a) => (
-              <li key={a.kind}>
-                <StatusPill tone={a.tone} label={a.label} asText />
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-      <section className="fo-sales-detail__block">
-        <h4>Next action</h4>
-        <p>{row.nextAction ? row.nextAction : <span className="fo-muted">None recorded</span>}</p>
-      </section>
-      <section className="fo-sales-detail__block">
-        <h4>Lifecycle</h4>
+      {editableOrder.map(renderSection)}
+      <section className="fo-sales-detail__block" aria-label="Lifecycle" data-dataclass={OPPORTUNITY_DATA_CLASS.LIFECYCLE_ACTION}>
+        <div className="fo-sales-detail__block-head"><h4>Lifecycle</h4></div>
         <LifecycleActions row={row} readiness={readiness} />
       </section>
+      {renderSection("attention")}
+      {renderSection("record")}
     </div>
   );
 }
@@ -151,12 +358,15 @@ function PipelineRow({ row, selected, onSelect }) {
   );
 }
 
-export default function SalesWorkspace() {
+// Props are optional injection seams for tests/activation: `readiness` defaults to the fail-closed write-
+// readiness seam; `onSaveSection` is the governed save command (unwired today ⇒ Save stays inert). Production
+// renders <SalesWorkspace /> with neither, preserving the fully fail-closed posture.
+export default function SalesWorkspace({ readiness, onSaveSection } = {}) {
   const { opportunities, accountNameById, status } = useOpportunities();
   const [selectedId, setSelectedId] = useState(null);
-  // Write-readiness through the seam. Fail-closed today (governed write built but inert); the lifecycle
-  // actions render disabled/honest. When a later cycle grants + deploys, this flips with no UI change here.
-  const writeReadiness = opportunityWriteReadiness();
+  // Write-readiness through the seam. Fail-closed today (governed write built but inert); every edit + lifecycle
+  // affordance renders disabled/honest. When a later cycle grants + deploys, this flips with no UI change here.
+  const writeReadiness = readiness ?? opportunityWriteReadiness();
 
   // Fixed "now" for the render pass so attention derivation is stable within a paint; sourced once from the
   // clock rather than per-row (deterministic across the whole projection).
@@ -207,7 +417,7 @@ export default function SalesWorkspace() {
       actions={actions}
       context={<ContextBand items={contextItems} />}
       attention={attention}
-      supporting={<OpportunityDetail row={selectedRow} readiness={writeReadiness} />}
+      supporting={<OpportunityDetail row={selectedRow} readiness={writeReadiness} onSaveSection={onSaveSection} />}
     >
       {isSynthetic && (
         <p className="fo-sales-banner fo-muted">
