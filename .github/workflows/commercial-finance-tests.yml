@@ -1,0 +1,50 @@
+name: Commercial Finance (Billing / AR) Tests
+
+# Finance/Billing/AR design-first foundation — the PURE, amounts-free invoice lifecycle + factual AR position +
+# the fail-closed operations→Finance invoice-candidate projection (over the billingEligibility seam). Pure/
+# offline node:test — no Firebase, no emulator, no persistence, no amounts/tax/revenue/policy, no deployment,
+# no secrets. Inert design foundation: it activates, grants, and deploys nothing.
+
+on:
+  pull_request:
+    paths:
+      - "field-ops-app-vite/src/domain/commercialFinance.js"
+      - "field-ops-app-vite/test/commercialFinance.test.mjs"
+      - ".github/workflows/commercial-finance-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "field-ops-app-vite/src/domain/commercialFinance.js"
+      - "field-ops-app-vite/test/commercialFinance.test.mjs"
+      - ".github/workflows/commercial-finance-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  commercial-finance:
+    name: Commercial finance authority foundation (node:test + lint)
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: field-ops-app-vite/package-lock.json
+
+      - name: Install dependencies
+        run: npm install
+        working-directory: field-ops-app-vite
+
+      - name: Commercial finance model unit tests (node:test)
+        run: node test/commercialFinance.test.mjs
+        working-directory: field-ops-app-vite
+
+      - name: Lint the commercial-finance domain (oxlint)
+        run: npx oxlint src/domain/commercialFinance.js
+        working-directory: field-ops-app-vite
