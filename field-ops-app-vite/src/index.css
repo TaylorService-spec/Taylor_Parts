@@ -1856,6 +1856,7 @@ button:hover {
   color: var(--color-text-muted); font-weight: 600; }
 .fo-covisit-block p, .fo-mission__progress p { margin: 0 0 4px; font-size: 14px; color: var(--color-text-primary); }
 .fo-covisit-count, .fo-mission-count { font-weight: 600; }
+.fo-covisit-obligation { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
 
 /* Related-unit list (Service detail) + equipment-unit list (Technician mission). Each unit is a bounded row/
    card — per-unit accountability, never merged into one execution record. */

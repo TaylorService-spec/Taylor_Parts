@@ -4,7 +4,8 @@ import ContextBand from "../../shared/ui/ContextBand.jsx";
 import StatusPill from "../../shared/ui/StatusPill.jsx";
 import { useCoordinatedOperations } from "../../hooks/useCoordinatedOperations.js";
 import { visitReadinessTone, visitReadinessLabel, workOrderStatusTone } from "../../domain/coordinatedVisit.js";
-import { normalizeMaterialBlocker, partsReadinessLabel, partsReadinessTone } from "../../domain/coordinatedFieldMission.js";
+import { buildCoordinatedFieldMission, normalizeMaterialBlocker, partsReadinessLabel, partsReadinessTone } from "../../domain/coordinatedFieldMission.js";
+import { deriveObligationAttention, obligationReasonLabel } from "../../domain/obligationAttention.js";
 
 // Service / Dispatch — COORDINATED VISITS. The user-consumable read of the already-built coordinatedVisit
 // projection (functions/src/fulfillment/coordinatedVisit.ts). It exposes the Product truth WITHOUT a new
@@ -73,6 +74,12 @@ function VisitDetail({ visit, ctx }) {
     { key: "obligation", label: "Coordinated obligation", value: `${visit.total} equipment unit${visit.total === 1 ? "" : "s"}` },
     { key: "readiness", label: "Readiness", value: <StatusPill tone={visitReadinessTone(visit.readiness)} label={visitReadinessLabel(visit.readiness)} /> },
   ];
+  // Committed-obligation attention — the HONEST operational-attention signal derived from existing facts only
+  // (this visit + its mission signals). Reasons are exactly BLOCKED / WAITING_ON_MATERIAL / PARTIAL /
+  // REMAINING_WORK / UNKNOWN — no SLA/risk/severity/ETA. Answers "does this committed obligation need
+  // intervention or review?" — the Service counterpart to Sales' pre-commitment Opportunity attention.
+  const mission = buildCoordinatedFieldMission(visit, ctx.fieldSignalsByWorkOrderId ?? {});
+  const obligation = deriveObligationAttention(visit, mission);
   return (
     <div className="fo-covisit-detail">
       <ContextBand items={facts} />
@@ -82,6 +89,19 @@ function VisitDetail({ visit, ctx }) {
           <StatusPill tone="attention" label="Units disagree on customer/location" asText /> — data to reconcile.
         </p>
       )}
+      <section className="fo-covisit-block">
+        <h4>Obligation attention</h4>
+        {obligation.satisfied ? (
+          <StatusPill tone="positive" label="On track — obligation satisfied" asText />
+        ) : (
+          <p className="fo-covisit-obligation">
+            {obligation.reasons.map((r) => (
+              <StatusPill key={r} tone={r === "UNKNOWN" ? "unknown" : obligation.needsIntervention && (r === "BLOCKED" || r === "WAITING_ON_MATERIAL") ? "attention" : "info"} label={obligationReasonLabel(r)} asText />
+            ))}
+            {obligation.needsIntervention && <span className="fo-muted"> — intervention may be required.</span>}
+          </p>
+        )}
+      </section>
       <section className="fo-covisit-block">
         <h4>Completion progress</h4>
         <p>
