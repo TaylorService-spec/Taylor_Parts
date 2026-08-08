@@ -174,6 +174,21 @@ export default function PurchaseOrders() {
                     <span className={`fo-po-status fo-po-status--${row.viewStatus.toLowerCase()}`}>
                       {STATUS_LABEL[row.viewStatus] ?? row.viewStatus}
                     </span>
+                    {/* An ORPHAN row is an INTEGRITY EXCEPTION, not a workflow state, and it
+                        was wearing the costume of one: "Needs attention" beside six em-dashes,
+                        indistinguishable in kind from Open/Received/Voided. A dispatcher could
+                        not tell whether the blanks meant a stale record, a different shortage,
+                        or a rendering bug -- three very different next moves.
+                        Say what is actually true: the request claims ORDERED and its purchase
+                        order could not be read, so those fields are UNKNOWN rather than empty.
+                        The missing record is not invented and the request is not hidden; what
+                        the exception MEANS for purchasing remains a Product question. */}
+                    {row.viewStatus === PURCHASE_ORDER_VIEW_STATUS.ORPHAN && (
+                      <p className="fo-po-integrity" role="note">
+                        This request is marked ORDERED, but its purchase order record could not be
+                        read. The blank fields are unknown, not empty.
+                      </p>
+                    )}
                     {row.isReceiptCandidate && row.receiptSource && (
                       <details className="fo-po-receipt">
                         <summary>Receipt source</summary>
