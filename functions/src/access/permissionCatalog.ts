@@ -134,6 +134,18 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     action: "write",
     active: false,
   }),
+  // Sales Opportunity Cycle 3c -- read authorization for the TRUSTED MINIMAL read projection
+  // (listOpportunityContext). Registered active:false (fail-closed). This governs a trusted backend read that
+  // returns only the minimal Sales-workspace projection; the client never reads the opportunities collection
+  // directly (no client Rules widening).
+  Object.freeze({
+    id: "opportunity.read",
+    description:
+      "Read the minimal Sales Opportunity projection via the trusted listOpportunityContext read service (backend-resolved scope; no client-direct collection read).",
+    resource: "opportunity",
+    action: "read",
+    active: false,
+  }),
 
   // --- Inventory / Reorder / Purchasing domain (Issue #100; Assessment's
   // Inventory domain audit table; firestore.rules current `main`) ---
