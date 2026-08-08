@@ -66,6 +66,11 @@ test("buildCreateOpportunity: fails closed on missing account/owner/invalid chan
   assert.throws(() => buildCreateOpportunity({ accountId: "A", ownerEmployeeId: "E", salesChannel: "BOGUS" }, CTX), (e) => e.code === "CHANNEL_INVALID");
 });
 
+test("buildCreateOpportunity: accepts the ratified STRATEGIC_ACCOUNTS channel (#15)", () => {
+  const built = buildCreateOpportunity({ accountId: "A", ownerEmployeeId: "E", salesChannel: "STRATEGIC_ACCOUNTS", lines: [{ kind: "PART", ref: "p" }] }, CTX);
+  assert.equal(built.salesChannel, "STRATEGIC_ACCOUNTS");
+});
+
 test("buildCreateOpportunity: a serialized-asset line is FORBIDDEN (pre-commitment boundary)", () => {
   for (const bad of [
     { kind: "EQUIPMENT_MODEL", ref: "C713", serial: "SN-1" },

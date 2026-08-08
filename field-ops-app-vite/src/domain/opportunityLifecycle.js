@@ -7,14 +7,17 @@
 // Ratified lifecycle (one shared set for National Accounts and Retail — channel is context, not a fork).
 export const OPPORTUNITY_STAGES = ["IDENTIFIED", "QUALIFYING", "SOLUTION", "QUOTING", "CUSTOMER_REVIEW", "DECISION"];
 export const OPPORTUNITY_OUTCOMES = ["WON", "LOST"];
-export const SALES_CHANNELS = ["NATIONAL_ACCOUNTS", "RETAIL"];
+// Commercial Coverage (#15) ratified minimum channels — STRATEGIC_ACCOUNTS added. This list is the seam a
+// later increment sources from configurable ref data (docs/assessments/commercial-coverage-territory-authority-
+// model.md); channelOptions() (UI select) + the governed write validators read from it, so a value widens both.
+export const SALES_CHANNELS = ["NATIONAL_ACCOUNTS", "RETAIL", "STRATEGIC_ACCOUNTS"];
 
 const STAGE_LABEL = {
   IDENTIFIED: "Identified", QUALIFYING: "Qualifying", SOLUTION: "Solution",
   QUOTING: "Quoting", CUSTOMER_REVIEW: "Customer review", DECISION: "Decision",
 };
 const OUTCOME_LABEL = { WON: "Won", LOST: "Lost" };
-const CHANNEL_LABEL = { NATIONAL_ACCOUNTS: "National Accounts", RETAIL: "Retail" };
+const CHANNEL_LABEL = { NATIONAL_ACCOUNTS: "National Accounts", RETAIL: "Retail", STRATEGIC_ACCOUNTS: "Strategic Accounts" };
 
 export const stageLabel = (s) => STAGE_LABEL[s] ?? s ?? "—";
 export const channelLabel = (c) => CHANNEL_LABEL[c] ?? c ?? "—";
