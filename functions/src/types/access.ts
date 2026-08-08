@@ -266,7 +266,9 @@ export type AuditAction =
   | "revokeUserSessions"
   // EI Phase-2 Receiving (Phase C): the trusted receiveInventoryStock command's Audit Event action.
   // Distinct from the client audit-only `RECEIVE_STOCK` inventory_action (domain/constants.js).
-  | "receiveInventoryStock";
+  | "receiveInventoryStock"
+  // Finance (Billing/AR) -- the trusted issueInvoice command's Audit Event action (invoice issuance)
+  | "issueInvoice";
 
 // "uncertain" (PRE-1, G-PRE1-IMPL): a native reset send whose outcome could not be
 // durably determined (Firebase may have accepted, but the outcome was not persisted).

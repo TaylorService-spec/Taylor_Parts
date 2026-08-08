@@ -1,0 +1,68 @@
+name: Finance Invoice Persistence Tests
+
+# Governed inert Finance invoice persistence: the pure command core (server-recomputed integer amounts,
+# fail-closed on non-BILL_NOW / missing price / missing tax), per-company invoice numbering (concurrency-safe,
+# never reused, per-company), and the capability/resolver registration (finance.invoice.issue active:false,
+# deferred-by-design). Offline node:test over the compiled functions lib (tsc build only) — no emulator, no
+# Firebase runtime, no deployment, no secrets. INERT: registers a capability active:false, exports (not
+# deploys) a callable, and adds a DENY-ALL Rules block — it activates, grants, and deploys nothing.
+# (The Firestore Rules regression suite + the governed-hash pin guard run in their own workflows, triggered by
+# the firestore.rules / verifyTruckRegistryDeployment.js changes.)
+
+on:
+  pull_request:
+    paths:
+      - "functions/src/finance/**"
+      - "functions/src/constants/collections.ts"
+      - "functions/src/index.ts"
+      - "functions/src/access/permissionCatalog.ts"
+      - "functions/src/access/auditEventWriter.ts"
+      - "functions/src/types/access.ts"
+      - "functions/test/invoiceCommands.test.mjs"
+      - "functions/test/invoiceNumbering.test.mjs"
+      - "functions/test/permissionCatalog.test.mjs"
+      - "functions/test/resolveEffectivePermission.test.mjs"
+      - ".github/workflows/finance-invoice-persistence-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/src/finance/**"
+      - "functions/src/access/permissionCatalog.ts"
+      - "functions/test/invoiceCommands.test.mjs"
+      - "functions/test/invoiceNumbering.test.mjs"
+      - ".github/workflows/finance-invoice-persistence-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  finance-invoice-persistence:
+    name: Finance invoice persistence (functions build + node:test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies
+        run: npm ci --no-audit --no-fund
+        working-directory: functions
+
+      - name: Build functions (tsc)
+        run: npm run build
+        working-directory: functions
+
+      - name: Invoice command core + numbering (node:test)
+        run: node --test test/invoiceCommands.test.mjs test/invoiceNumbering.test.mjs
+        working-directory: functions
+
+      - name: Capability catalog + resolver exhaustiveness (node:test)
+        run: node test/permissionCatalog.test.mjs && node test/resolveEffectivePermission.test.mjs
+        working-directory: functions

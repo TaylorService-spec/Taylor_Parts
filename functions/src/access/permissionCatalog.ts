@@ -179,6 +179,20 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     action: "service",
     active: false,
   }),
+  // Finance (Billing/AR) -- issue a governed invoice for a Sales Order's billable lines via the trusted
+  // issueInvoice command. The server allocates a per-company invoice number, recomputes authoritative amounts
+  // (integer minor units) from the committed unit-price snapshot + injected tax determination, and writes the
+  // immutable ISSUED invoice + an audit event. Registered active:false (fail-closed): hard DENY for everyone
+  // until a separate Owner grant. Invoices are Admin-SDK-only (deny-all client Rules); the client never writes
+  // invoices, allocates numbers, or computes authoritative money/tax.
+  Object.freeze({
+    id: "finance.invoice.issue",
+    description:
+      "Issue a governed invoice (per-company number, server-recomputed amounts, immutable ISSUED record + audit) for a committed Sales Order's billable lines via the trusted issueInvoice command. Does not compute tax authority, re-price, or write client-visible financial data.",
+    resource: "finance.invoice",
+    action: "issue",
+    active: false,
+  }),
 
   // --- Inventory / Reorder / Purchasing domain (Issue #100; Assessment's
   // Inventory domain audit table; firestore.rules current `main`) ---
