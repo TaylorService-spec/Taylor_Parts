@@ -19,7 +19,7 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { getFirestore, FieldValue, type Transaction } from "firebase-admin/firestore";
 import { resolveEffectiveAccess } from "../access/effectiveAccessFeed";
-import { SALES_ORDERS_COLLECTION, WAREHOUSES_COLLECTION, STOCK_LOCATIONS_COLLECTION, INVENTORY_TRANSACTIONS_COLLECTION } from "../constants/collections";
+import { SALES_ORDERS_COLLECTION, WAREHOUSES_COLLECTION, STOCK_LOCATIONS_COLLECTION, INVENTORY_TRANSACTIONS_COLLECTION, WORK_ORDERS_COLLECTION } from "../constants/collections";
 import { buildAllocationPlan, type Availability } from "./allocationProjection";
 import { computePartAvailability, openWorkOrderReserved, sumOtherSoCommitments } from "./fulfillmentAvailability";
 import { readEquipmentAvailability } from "./equipmentAvailabilityContract";
@@ -66,10 +66,28 @@ async function readPartOnHand(tx: Transaction, ref: string, eligibleWarehouseIds
   return sawEligible ? onHand : 0; // stock exists but none at an eligible ACTIVE warehouse ⇒ known 0 (backorder)
 }
 
-async function readOpenWoReserved(tx: Transaction, ref: string): Promise<number> {
+async function readOpenWoReserved(tx: Transaction, ref: string, excludeWorkOrderIds: Set<string>): Promise<number> {
   const db = getFirestore();
   const snap = await tx.get(db.collection(INVENTORY_TRANSACTIONS_COLLECTION).where("partId", "==", ref));
-  return openWorkOrderReserved(snap.docs.map((d) => d.data() as { type: string; quantity: number }));
+  return openWorkOrderReserved(
+    snap.docs.map((d) => d.data() as { type: string; quantity: number; workOrderId?: string }),
+    excludeWorkOrderIds
+  );
+}
+
+// The set of Work Order ids linked (via salesOrderId lineage) to an active Sales Order — their reservations
+// are counted via the Sales Order allocation, not again here (C7 demand lineage). Chunked to respect the
+// Firestore `in` limit.
+async function readSalesOrderLinkedWorkOrderIds(tx: Transaction, activeSoIds: string[]): Promise<Set<string>> {
+  const db = getFirestore();
+  const ids = new Set<string>();
+  for (let i = 0; i < activeSoIds.length; i += 30) {
+    const chunk = activeSoIds.slice(i, i + 30);
+    if (chunk.length === 0) continue;
+    const snap = await tx.get(db.collection(WORK_ORDERS_COLLECTION).where("salesOrderId", "in", chunk));
+    for (const d of snap.docs) ids.add(d.id);
+  }
+  return ids;
 }
 
 export const allocateSalesOrder = onCall({ region: "us-central1" }, async (request) => {
@@ -101,13 +119,18 @@ export const allocateSalesOrder = onCall({ region: "us-central1" }, async (reque
       const eligibleWarehouseIds = new Set(whSnap.docs.map((d) => d.id));
 
       // Other active Sales Orders' commitments (netted so we never double-allocate).
-      const otherSoSnap = await tx.get(db.collection(SALES_ORDERS_COLLECTION).where("state", "in", [...ACTIVE_SO_STATES]));
+      const activeSoSnap = await tx.get(db.collection(SALES_ORDERS_COLLECTION).where("state", "in", [...ACTIVE_SO_STATES]));
       const otherSoLines: SoLine[] = [];
-      for (const d of otherSoSnap.docs) {
+      const activeSoIds: string[] = [];
+      for (const d of activeSoSnap.docs) {
+        activeSoIds.push(d.id);
         if (d.id === salesOrderId) continue;
         const data = d.data() as { lines?: SoLine[] };
         if (Array.isArray(data.lines)) otherSoLines.push(...data.lines);
       }
+      // C7 demand lineage: WO reservations whose WO is linked to an active Sales Order are counted via that
+      // SO's allocation, so exclude them from openWoReserved to avoid double-counting the same demand.
+      const soLinkedWorkOrderIds = await readSalesOrderLinkedWorkOrderIds(tx, activeSoIds);
 
       // Availability per distinct ref.
       const availabilityByRef: Record<string, Availability> = {};
@@ -115,7 +138,7 @@ export const allocateSalesOrder = onCall({ region: "us-central1" }, async (reque
       const distinctEquipRefs = [...new Set(lines.filter((l) => l.kind === "EQUIPMENT_MODEL").map((l) => l.ref))];
       for (const ref of distinctPartRefs) {
         const onHandEligible = await readPartOnHand(tx, ref, eligibleWarehouseIds);
-        const openWoReserved = onHandEligible === null ? 0 : await readOpenWoReserved(tx, ref);
+        const openWoReserved = onHandEligible === null ? 0 : await readOpenWoReserved(tx, ref, soLinkedWorkOrderIds);
         const other = sumOtherSoCommitments(otherSoLines, ref);
         availabilityByRef[ref] = computePartAvailability({ onHandEligible, openWoReserved, otherSoAllocated: other.allocatedQty });
       }

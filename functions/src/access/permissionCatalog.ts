@@ -168,6 +168,17 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     action: "fulfill",
     active: false,
   }),
+  // Sales Order Cycle 7 -- create governed Service demand for a Sales Order via createServiceForSalesOrder,
+  // which produces a Work Order through the existing governed Work Order authority (ADR-009) with demand
+  // lineage. Registered active:false. The Sales Order never writes Work Order state / assignment / schedule.
+  Object.freeze({
+    id: "salesOrder.service",
+    description:
+      "Create governed Service demand (a Work Order via the governed Work Order authority) for a committed Sales Order, with demand lineage. Does not author Work Order state, assignment, or schedule directly.",
+    resource: "salesOrder",
+    action: "service",
+    active: false,
+  }),
 
   // --- Inventory / Reorder / Purchasing domain (Issue #100; Assessment's
   // Inventory domain audit table; firestore.rules current `main`) ---

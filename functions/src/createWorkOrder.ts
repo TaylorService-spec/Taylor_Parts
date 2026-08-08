@@ -6,7 +6,7 @@
 // fieldops_wos is ever written -- firestore.rules denies all direct
 // client writes to that collection unconditionally.
 import { onCall, HttpsError } from "firebase-functions/v2/https";
-import { getFirestore, FieldValue } from "firebase-admin/firestore";
+import { getFirestore, FieldValue, type Firestore, type Transaction } from "firebase-admin/firestore";
 import { getCallerContext } from "./callerContext";
 import { allocateWorkOrderNumber } from "./woNumbering";
 import { WORK_ORDERS_COLLECTION } from "./constants/collections";
@@ -19,6 +19,38 @@ interface CreateWorkOrderInput {
   severity?: Severity;
   type: WorkOrderType;
   complaint?: string;
+}
+
+// The governed Work Order creation CORE, factored out so the callable AND other trusted server commands (e.g.
+// the Sales Order → Service seam) create Work Orders through the SAME authority instead of duplicating it.
+// `salesOrderId` is an optional DEMAND-LINEAGE link: a Work Order created to fulfill a Sales Order carries it
+// so the same underlying parts demand is never double-counted (ATP counts SO-origin demand via the Sales
+// Order allocation, not again via this Work Order's reservation). Must be called inside a transaction.
+export async function createWorkOrderRecord(
+  db: Firestore,
+  tx: Transaction,
+  // `type` is optional here (a Work Order is valid with EITHER a type OR a complaint — see assertValidInput);
+  // callers that omit both must supply a complaint. `salesOrderId`/`salesOrderLineRefs` are the demand-lineage link.
+  input: Omit<CreateWorkOrderInput, "type"> & { type?: WorkOrderType; salesOrderId?: string; salesOrderLineRefs?: string[] },
+  nowYear: number
+): Promise<{ id: string; woNumber: string }> {
+  const { woNumber } = await allocateWorkOrderNumber(tx, nowYear);
+  const woRef = db.collection(WORK_ORDERS_COLLECTION).doc();
+  tx.set(woRef, {
+    woNumber,
+    status: "CREATED",
+    priority: input.priority,
+    ...(input.severity ? { severity: input.severity } : {}),
+    ...(input.type ? { type: input.type } : {}),
+    customerId: input.customerId,
+    locationId: input.locationId,
+    ...(input.complaint ? { complaint: input.complaint } : {}),
+    ...(input.salesOrderId ? { salesOrderId: input.salesOrderId } : {}),
+    ...(Array.isArray(input.salesOrderLineRefs) && input.salesOrderLineRefs.length ? { salesOrderLineRefs: input.salesOrderLineRefs } : {}),
+    createdAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+  return { id: woRef.id, woNumber };
 }
 
 function assertValidInput(data: unknown): asserts data is CreateWorkOrderInput {
@@ -59,23 +91,5 @@ export const createWorkOrder = onCall({ region: "us-central1" }, async (request)
   const db = getFirestore();
   const year = new Date().getFullYear();
 
-  return db.runTransaction(async (tx) => {
-    const { woNumber } = await allocateWorkOrderNumber(tx, year);
-    const woRef = db.collection(WORK_ORDERS_COLLECTION).doc();
-
-    tx.set(woRef, {
-      woNumber,
-      status: "CREATED",
-      priority,
-      ...(severity ? { severity } : {}),
-      ...(type ? { type } : {}),
-      customerId,
-      locationId,
-      ...(complaint ? { complaint } : {}),
-      createdAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
-    });
-
-    return { id: woRef.id, woNumber };
-  });
+  return db.runTransaction(async (tx) => createWorkOrderRecord(db, tx, { customerId, locationId, priority, severity, type, complaint }, year));
 });
