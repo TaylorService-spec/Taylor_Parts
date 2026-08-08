@@ -45,3 +45,6 @@ export const PAYMENTS_COLLECTION = "payments";
 export const PAYMENT_APPLICATIONS_COLLECTION = "payment_applications";
 // Finance — explicit linked invoice adjustments (credit memo / debit charge / write-off). Admin-SDK-only.
 export const INVOICE_ADJUSTMENTS_COLLECTION = "invoice_adjustments";
+// Commercial Coverage & Territory (#15) -- durable coverage objects + effective-dated assignments. Admin-SDK-only.
+export const SALES_TERRITORIES_COLLECTION = "sales_territories";
+export const COMMERCIAL_COVERAGE_ASSIGNMENTS_COLLECTION = "commercial_coverage_assignments";

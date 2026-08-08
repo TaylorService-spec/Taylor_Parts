@@ -1775,5 +1775,16 @@ service cloud.firestore {
     match /invoice_adjustments/{adjustmentId} {
       allow read, write: if false;
     }
+
+    // Commercial Coverage & Territory (#15) -- durable coverage objects + effective-dated assignments.
+    // Admin-SDK-only, same fail-closed posture. ALL direct client read/write denied; the only write path is the
+    // trusted coverage commands (functions/src/coverage/coverageCallables.ts). Records only (no precedence /
+    // credit / commission). Deployment is a separate operator gate; merging these blocks changes nothing.
+    match /sales_territories/{territoryId} {
+      allow read, write: if false;
+    }
+    match /commercial_coverage_assignments/{assignmentId} {
+      allow read, write: if false;
+    }
   }
 }

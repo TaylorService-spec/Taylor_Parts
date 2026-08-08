@@ -228,6 +228,17 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     action: "read",
     active: false,
   }),
+  // Commercial Coverage & Territory (#15) -- create durable Sales Territories + effective-dated coverage
+  // assignments via the trusted coverage commands. Records only (no precedence/credit/commission). Registered
+  // active:false (fail-closed). sales_territories / commercial_coverage_assignments are Admin-SDK-only.
+  Object.freeze({
+    id: "coverage.write",
+    description:
+      "Create a Sales Territory or a Commercial Coverage Assignment via the governed coverage command. Records durable coverage facts only; does not resolve precedence, credit, or commission, and exposes no client-direct writes.",
+    resource: "coverage",
+    action: "write",
+    active: false,
+  }),
 
   // --- Inventory / Reorder / Purchasing domain (Issue #100; Assessment's
   // Inventory domain audit table; firestore.rules current `main`) ---
