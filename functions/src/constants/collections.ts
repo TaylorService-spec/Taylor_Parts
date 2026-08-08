@@ -48,3 +48,5 @@ export const INVOICE_ADJUSTMENTS_COLLECTION = "invoice_adjustments";
 // Commercial Coverage & Territory (#15) -- durable coverage objects + effective-dated assignments. Admin-SDK-only.
 export const SALES_TERRITORIES_COLLECTION = "sales_territories";
 export const COMMERCIAL_COVERAGE_ASSIGNMENTS_COLLECTION = "commercial_coverage_assignments";
+// Finance — refunds (money returned after payment). Distinct from credit/write-off; Admin-SDK-only.
+export const REFUNDS_COLLECTION = "refunds";

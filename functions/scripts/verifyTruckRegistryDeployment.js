@@ -27,7 +27,7 @@ const { sha256, extractRulesSource, VerificationError } = require("./firestoreDe
 // block (PR #537), then to 37593fc0... to track the WO Parts Planning Phase-3 additive
 // `reorder_requests.workOrderId` back-link (Owner-authorized narrow schema change). The
 // smoke-verifier's own test asserts this equals HEAD:firestore.rules.
-const GOVERNED_RULES_SHA256 = "f2d3293996204cd776795813028ecd10b443063b195e40ed1e149529d2619063";
+const GOVERNED_RULES_SHA256 = "ff22df90580ee91ead797f19c62e71c7300a0c56a56964776f783a9fde5809da";
 const EXPECTED_PROJECT = "taylor-parts";
 
 // ----- pure helpers -------------------------------------------------------------------------

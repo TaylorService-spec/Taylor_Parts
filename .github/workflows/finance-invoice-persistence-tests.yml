@@ -22,6 +22,7 @@ on:
       - "functions/test/paymentCommands.test.mjs"
       - "functions/test/adjustmentCommands.test.mjs"
       - "functions/test/financeReadProjection.test.mjs"
+      - "functions/test/refundCommands.test.mjs"
       - "functions/test/invoiceNumbering.test.mjs"
       - "functions/test/permissionCatalog.test.mjs"
       - "functions/test/resolveEffectivePermission.test.mjs"
@@ -35,6 +36,7 @@ on:
       - "functions/test/paymentCommands.test.mjs"
       - "functions/test/adjustmentCommands.test.mjs"
       - "functions/test/financeReadProjection.test.mjs"
+      - "functions/test/refundCommands.test.mjs"
       - "functions/test/invoiceNumbering.test.mjs"
       - ".github/workflows/finance-invoice-persistence-tests.yml"
   workflow_dispatch:
@@ -66,7 +68,7 @@ jobs:
         working-directory: functions
 
       - name: Invoice command core + numbering (node:test)
-        run: node --test test/invoiceCommands.test.mjs test/invoiceNumbering.test.mjs test/paymentCommands.test.mjs test/adjustmentCommands.test.mjs test/financeReadProjection.test.mjs
+        run: node --test test/invoiceCommands.test.mjs test/invoiceNumbering.test.mjs test/paymentCommands.test.mjs test/adjustmentCommands.test.mjs test/financeReadProjection.test.mjs test/refundCommands.test.mjs
         working-directory: functions
 
       - name: Capability catalog + resolver exhaustiveness (node:test)

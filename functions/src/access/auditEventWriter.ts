@@ -146,6 +146,8 @@ const AUDIT_ACTIONS: readonly AuditAction[] = [
   // Commercial Coverage & Territory (#15): runtime mirror of the coverage command Audit Event actions.
   "createSalesTerritory",
   "createCoverageAssignment",
+  // Finance (Billing/AR): runtime mirror of the recordRefund AuditAction union member (money returned).
+  "recordRefund",
 ];
 
 // Issue #325 / ADR-007 D-AUDIT -- the subset of AUDIT_ACTIONS this

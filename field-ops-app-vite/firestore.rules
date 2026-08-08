@@ -1786,5 +1786,13 @@ service cloud.firestore {
     match /commercial_coverage_assignments/{assignmentId} {
       allow read, write: if false;
     }
+
+    // Finance -- refunds (money returned after payment). Admin-SDK-only, same fail-closed posture. ALL direct
+    // client read/write denied; the only write path is the trusted recordRefund command (functions/src/finance/
+    // refundCallables.ts). Distinct from credits/write-offs; never rewrites the issued invoice. Deployment is a
+    // separate operator gate; merging this block changes nothing in production.
+    match /refunds/{refundId} {
+      allow read, write: if false;
+    }
   }
 }
