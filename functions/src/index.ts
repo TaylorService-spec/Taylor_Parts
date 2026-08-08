@@ -41,6 +41,9 @@ export { listAccountInvoiceAr } from "./finance/financeReadCallables";
 // Commercial Coverage & Territory (#15) — governed coverage writes. EXPORT != DEPLOY; capability
 // `coverage.write` active:false; sales_territories / commercial_coverage_assignments are Admin-SDK-only.
 export { createSalesTerritory, createCoverageAssignment } from "./coverage/coverageCallables";
+// Commercial Coverage & Territory (#15) — trusted coverage resolve (read). EXPORT != DEPLOY; capability
+// `coverage.read` active:false; backend read only (coverage collections stay Admin-SDK-only / deny-all).
+export { resolveCoverageForContext } from "./coverage/coverageReadCallables";
 
 // --- F1 surface: trusted minimal field-context display projection ---
 // Answers "who is the customer / which site am I going to?" for the CALLER'S

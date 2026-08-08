@@ -239,6 +239,17 @@ export const PERMISSION_CATALOG: readonly Permission[] = Object.freeze([
     action: "write",
     active: false,
   }),
+  // Commercial Coverage & Territory (#15) -- trusted READ: resolve the coverageAssignments[] for a context via
+  // the governed backend (the client never reads coverage collections directly). Registered active:false
+  // (fail-closed). A READ capability -- writes nothing, widens no client Rule, resolves no precedence/winner.
+  Object.freeze({
+    id: "coverage.read",
+    description:
+      "Resolve the commercial coverage (all effective, matching coverage assignments) for a context via the trusted resolveCoverageForContext callable. Backend read only; returns every matching assignment (split coverage), never a single owner/credit/commission.",
+    resource: "coverage",
+    action: "read",
+    active: false,
+  }),
 
   // --- Inventory / Reorder / Purchasing domain (Issue #100; Assessment's
   // Inventory domain audit table; firestore.rules current `main`) ---
