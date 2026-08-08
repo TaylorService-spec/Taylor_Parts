@@ -11,6 +11,7 @@ import EmployeeAssignmentPicker from "../../shared/assignment/EmployeeAssignment
 import WorkspaceHeader from "../../shared/ui/WorkspaceHeader";
 import LoadingEmptyState from "../../shared/ui/LoadingEmptyState";
 import { formatAssignmentAge } from "../inventory/PartsList";
+import { formatTimestamp } from "../../domain/displayTimestamp.js";
 
 // Issue #100 PR 1b (docs/specifications/inventory-nav-access-alignment.md,
 // docs/implementation-plans/inventory-nav-access-alignment.md) -- the
@@ -203,7 +204,7 @@ export default function PartsManagerHome({ accessVersion } = {}) {
                     <span className="fo-badge">Needs planning</span>
                   )}
                 </td>
-                <td className="fo-muted">{request.reviewedAt ? new Date(request.reviewedAt).toLocaleString() : "—"}</td>
+                <td className="fo-muted">{formatTimestamp(request.reviewedAt, { unknown: "—" })}</td>
                 <td>
                   <button
                     type="button"
@@ -311,7 +312,7 @@ export default function PartsManagerHome({ accessVersion } = {}) {
                   <td>{resolveName(request.partId)}</td>
                   <td>{getDisplayQty(request)}</td>
                   <td className="fo-muted">{HISTORY_STATUS_LABEL[request.status] ?? request.status}</td>
-                  <td className="fo-muted">{request.createdAt ? new Date(request.createdAt).toLocaleString() : "—"}</td>
+                  <td className="fo-muted">{formatTimestamp(request.createdAt, { unknown: "—" })}</td>
                 </tr>
               ))}
             </tbody>

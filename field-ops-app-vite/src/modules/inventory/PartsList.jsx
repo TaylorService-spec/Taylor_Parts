@@ -23,6 +23,7 @@ import FilterBar from "../../shared/ui/FilterBar";
 import LoadingEmptyState from "../../shared/ui/LoadingEmptyState";
 import InventoryHealthPanel from "../operations/panels/InventoryHealthPanel";
 import { hasUsageHistory } from "../../domain/inventoryAnalyticsEngine";
+import { formatTimestamp } from "../../domain/displayTimestamp.js";
 
 // Sprint 2.1.1 -- Inventory Domain Foundation. The real Inventory >
 // Parts workspace, replacing the legacy demo Inventory.jsx that
@@ -597,7 +598,7 @@ export default function PartsList({ accessVersion } = {}) {
                   )}
                 </td>
                 <td className="fo-muted">
-                  {request.reviewedAt ? new Date(request.reviewedAt).toLocaleString() : "—"}
+                  {formatTimestamp(request.reviewedAt, { unknown: "—" })}
                 </td>
               </tr>
             ))}
@@ -641,7 +642,7 @@ export default function PartsList({ accessVersion } = {}) {
                   )}
                 </td>
                 <td className="fo-muted">
-                  {request.assignedAt ? new Date(request.assignedAt).toLocaleString() : "—"}
+                  {formatTimestamp(request.assignedAt, { unknown: "—" })}
                 </td>
               </tr>
             ))}
@@ -683,7 +684,7 @@ export default function PartsList({ accessVersion } = {}) {
                   )}
                 </td>
                 <td className="fo-muted">
-                  {request.purchasingStartedAt ? new Date(request.purchasingStartedAt).toLocaleString() : "—"}
+                  {formatTimestamp(request.purchasingStartedAt, { unknown: "—" })}
                 </td>
                 <td className="fo-muted">
                   {request.lastPurchasingUpdateAt
@@ -930,7 +931,7 @@ export default function PartsList({ accessVersion } = {}) {
                     </td>
                     <td>{getDisplayQty(request)}</td>
                     <td className="fo-muted">{HISTORY_STATUS_LABEL[request.status] ?? request.status}</td>
-                    <td className="fo-muted">{request.createdAt ? new Date(request.createdAt).toLocaleString() : "—"}</td>
+                    <td className="fo-muted">{formatTimestamp(request.createdAt, { unknown: "—" })}</td>
                   </tr>
                 ))}
               </tbody>
