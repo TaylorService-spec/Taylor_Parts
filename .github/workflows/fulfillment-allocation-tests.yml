@@ -1,0 +1,45 @@
+name: Fulfillment Allocation Tests
+
+# Fulfillment Cycle 5 -- pure-logic unit tests for the allocation-seam projection: the honest allocation-state
+# model (ALLOCATED/PARTIAL/BACKORDERED/UNAVAILABLE/UNKNOWN) and the readiness rollup. No emulator, no
+# deployment, no production access, no secrets -- runs against the compiled functions/lib. Pure domain only;
+# no collection, capability, callable, or Rules change in this slice.
+
+on:
+  pull_request:
+    paths:
+      - "functions/src/fulfillment/**"
+      - "functions/test/allocationProjection.test.mjs"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - ".github/workflows/fulfillment-allocation-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "functions/src/fulfillment/**"
+      - "functions/test/allocationProjection.test.mjs"
+      - ".github/workflows/fulfillment-allocation-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fulfillment-allocation-tests:
+    name: Allocation projection (build + run)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+      - name: Allocation projection tests (build + run)
+        run: npm run test:fulfillment
+        working-directory: functions
