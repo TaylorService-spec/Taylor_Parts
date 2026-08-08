@@ -279,7 +279,20 @@ function Readiness({ readiness }) {
         <ul className="fo-readiness__rows">
           {rows.map((row) => (
             <li key={row.partId ?? row.sku} className={`fo-readiness-row fo-readiness-row--${String(row.readiness).toLowerCase()}`}>
-              <span className="fo-readiness-row__part">{row.partId ?? row.sku}</span>
+              {/* A technician planning a run read only "PRT-1002 — UNKNOWN" here and had to
+                  open the scanner and search the code to learn it meant "Water Inlet Valve".
+                  The readiness projection already carries the name; show it, and keep the code
+                  alongside since that is what is printed on the shelf and the box. If no name
+                  resolved, the code stands alone rather than a placeholder pretending to be one. */}
+              <span className="fo-readiness-row__part">
+                {row.name ? (
+                  <>
+                    {row.name} <span className="fo-readiness-row__code">{row.partId ?? row.sku}</span>
+                  </>
+                ) : (
+                  (row.partId ?? row.sku)
+                )}
+              </span>
               <span className="fo-readiness-row__state">{row.readiness}</span>
             </li>
           ))}
