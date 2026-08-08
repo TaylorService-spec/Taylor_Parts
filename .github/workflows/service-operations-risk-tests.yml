@@ -1,0 +1,51 @@
+name: Service Operations Risk Tests
+
+# Regression guard for the Service Operations (/service-operations, ControlTower) render path. A prior refactor
+# left jobRiskScoring.js calling an undefined `toAgeHours` (canonical helper is `ageHours` in timestampMillis.js),
+# which crashed the page at runtime with "ReferenceError: toAgeHours is not defined". `vite build` does NOT
+# catch this (an undefined reference is valid syntax), so this workflow runs the component/domain regression
+# (vitest + jsdom) + lint that actually renders the failing path. Offline: no emulator, deploy, or secrets.
+
+on:
+  pull_request:
+    paths:
+      - "field-ops-app-vite/src/domain/jobRiskScoring.js"
+      - "field-ops-app-vite/src/domain/timestampMillis.js"
+      - "field-ops-app-vite/src/modules/controlTower/**"
+      - "field-ops-app-vite/test/serviceOperationsRisk.test.jsx"
+      - ".github/workflows/service-operations-risk-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "field-ops-app-vite/src/domain/jobRiskScoring.js"
+      - "field-ops-app-vite/src/domain/timestampMillis.js"
+      - "field-ops-app-vite/src/modules/controlTower/**"
+      - "field-ops-app-vite/test/serviceOperationsRisk.test.jsx"
+      - ".github/workflows/service-operations-risk-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  service-operations-risk-tests:
+    name: Service Operations risk render + honesty (vitest + lint)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: field-ops-app-vite/package-lock.json
+      - name: Install dependencies
+        run: npm install
+        working-directory: field-ops-app-vite
+      - name: Service Operations risk regression (vitest + jsdom)
+        run: npx vitest run test/serviceOperationsRisk.test.jsx
+        working-directory: field-ops-app-vite
+      - name: Lint the corrected surfaces (oxlint)
+        run: npx oxlint src/domain/jobRiskScoring.js src/domain/timestampMillis.js src/modules/controlTower/panels/AtRiskPanel.jsx
+        working-directory: field-ops-app-vite

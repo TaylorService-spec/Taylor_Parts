@@ -1,5 +1,10 @@
 import { TECH_STATUS } from "./constants";
 import { FIELD_PHASE, fieldPhase } from "./fieldWorkOrder";
+// Canonical age helper (returns null for an unusable/unparseable createdAt -- never a fake age). A prior
+// refactor renamed the extracted helper to `ageHours` here but left this module calling an undefined
+// `toAgeHours` (and never importing it), which crashed the Service Operations render path with
+// "ReferenceError: toAgeHours is not defined". Import + call the canonical helper.
+import { ageHours as ageHoursSince } from "./timestampMillis";
 
 // F0 -- risk is scored over GOVERNED Work Orders. Stagnation thresholds are
 // keyed by operational PHASE rather than legacy JOB_STATUS; the threshold
@@ -52,10 +57,15 @@ const STAGNATION_THRESHOLDS_HOURS = {
 // Timestamp object where the legacy model had supplied epoch millis -- which
 // made every open job read CRITICAL.
 function computeAgeHours(job, now) {
-  return toAgeHours(job.createdAt, now);
+  return ageHoursSince(job.createdAt, now);
 }
 
+// ageHours is null when createdAt is unusable. Timestamp-honesty rule: an unknown age scores NO risk (we do
+// not invent risk from evidence we don't have) and reports "unknown" -- NOT a fake "0h since creation".
 function ageFactor(ageHours) {
+  if (ageHours === null || ageHours === undefined) {
+    return { type: "age", weight: RISK_WEIGHTS.age, score: 0, explanation: "age unknown (createdAt unavailable)" };
+  }
   const score = Math.min(100, (ageHours / ABSOLUTE_AGE_CEILING_HOURS) * 100);
   return {
     type: "age",
@@ -68,6 +78,11 @@ function ageFactor(ageHours) {
 function stagnationFactor(job, ageHours) {
   const thresholds =
     STAGNATION_THRESHOLDS_HOURS[fieldPhase(job)] ?? STAGNATION_THRESHOLDS_HOURS[FIELD_PHASE.ASSIGNED];
+
+  // Unknown age ⇒ cannot assess stagnation; score 0 and say so honestly (no fake "within expected time").
+  if (ageHours === null || ageHours === undefined) {
+    return { type: "stagnation", weight: RISK_WEIGHTS.stagnation, score: 0, explanation: `stagnation unknown (createdAt unavailable) (${job.status})` };
+  }
 
   let score = 0;
   let tier = "within expected time for this status";
