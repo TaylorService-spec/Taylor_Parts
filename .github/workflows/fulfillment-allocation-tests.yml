@@ -10,6 +10,8 @@ on:
     paths:
       - "functions/src/fulfillment/**"
       - "functions/test/allocationProjection.test.mjs"
+      - "functions/test/equipmentModelResolution.test.mjs"
+      - "functions/test/equipmentAvailabilityContract.test.mjs"
       - "functions/test/coordinatedVisit.test.mjs"
       - "functions/test/coordinatedFieldMission.test.mjs"
       - "functions/test/billingEligibility.test.mjs"
@@ -21,6 +23,8 @@ on:
     paths:
       - "functions/src/fulfillment/**"
       - "functions/test/allocationProjection.test.mjs"
+      - "functions/test/equipmentModelResolution.test.mjs"
+      - "functions/test/equipmentAvailabilityContract.test.mjs"
       - "functions/test/coordinatedVisit.test.mjs"
       - "functions/test/coordinatedFieldMission.test.mjs"
       - "functions/test/billingEligibility.test.mjs"
