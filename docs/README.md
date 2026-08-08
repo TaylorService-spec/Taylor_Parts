@@ -32,6 +32,10 @@ Defines **why** the platform exists and how users are meant to interact with it.
 - [GuidingPrinciples.md](GuidingPrinciples.md) — **AUTHORITATIVE.** Concrete UX/product working principles.
 - [MobileStrategy.md](MobileStrategy.md) — **AUTHORITATIVE.** Multi-experience (desktop/technician mobile/warehouse mobile) and PWA strategy.
 
+## Business process discovery
+
+- [business-processes/cross-franchise-equipment-receiving-installation.md](business-processes/cross-franchise-equipment-receiving-installation.md) — **DISCOVERY BASELINE.** Confirmed cross-Taylor equipment receiving, installation, ownership, custody, fulfillment, billing, and service distinctions. Not architecture or implementation authorization.
+
 ## Architecture
 
 Defines **how** the platform is implemented.
