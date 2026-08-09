@@ -15,7 +15,7 @@ corrected. Advancing roadmap maturity remains a governance act, not an edit here
 **This ledger creates no capability, grant, collection, or Rule.** `Register ≠ grant · Export ≠ deploy ·
 Merge ≠ live.`
 
-Baseline reconciled at `origin/main` = `e096f56` (pin `ff22df90…`; Finance + Coverage capabilities
+Baseline reconciled at `origin/main` = `d1ab2ae` (pin `ff22df90…`; Finance + Coverage capabilities
 `active:false`; all new collections deny-all in both Rules mirrors).
 
 ---
@@ -24,19 +24,25 @@ Baseline reconciled at `origin/main` = `e096f56` (pin `ff22df90…`; Finance + C
 
 | # | Item | Why READY | Next reversible increment |
 |---|---|---|---|
-| R1 | **Continuous Workstream Orchestrator foundation** *(this workstream)* | Owner-directed; repo-only governance docs; no material dependency | Backlog + state machine + selection rule + checkpoint policy → PR → merge *(in progress)* |
+| — | *(none)* | — | — |
 
-> After R1 merges, the highest-value **non-protected, non-UX-only, non-deferred** product increments are
-> gated on an `OWNER_DECISION` (R-1 catalog-read authority — see below) or a `PROTECTED_ACTION` (Finance /
-> Coverage / Receiving activation). This is *why* the process capability (R1) is correctly the top READY
-> item: the product backends have reached their authorized repo-only boundary. New product READY items are
-> promoted here as their blockers clear.
+> **Selection rule last run 2026-08-09 (post driver + permission-policy merges) → terminal CHECKPOINT.**
+> After the orchestrator (R1), the `/loop` driver, and the bounded permission policy reached `DONE`, no
+> product item is independently `READY`. Applying the ratified **blocker-decomposition** step (§4.3.b) to the
+> top blocked chain (R-1 catalog-read → Manufacturer / `part_supplier_items` read surfaces): its repo-safe
+> prerequisite — the R1-A domain **parity corpus** and shadow-parity gate — **already exists and is
+> CI-enforced** (`functions/src/access/legacyAuthorizationSurface.ts` + `legacyAuthorizationSurface.test.mjs`;
+> 47 legacy sites / 22 collections, grouped by cutover row, with post-cutover permission IDs). The impactful
+> R-1 remainder (criterion-6 production evidence, Row 19 authorization request, the R1-C cutovers) is all
+> `PROTECTED_ACTION` / `OWNER_DECISION`. Rebuilding the existing corpus would be duplication, which the rule
+> forbids. **"No authorized READY work" is a legitimate terminal state** (Owner, 2026-08-09) — the loop
+> checkpoints and does not manufacture work. New product `READY` items are promoted here as blockers clear.
 
 ## RUNNING — a worker currently owns it
 
 | Item | Worker | Declared in |
 |---|---|---|
-| R1 (this doc) | session `c981623b` (Claude Code, OPUS) | [`ACTIVE_WORKSTREAMS.md`](../engineering/ACTIVE_WORKSTREAMS.md) |
+| *(none)* | — | R1 completed → moved to DONE (see `ACTIVE_WORKSTREAMS.md` recently-completed) |
 
 ## BLOCKED_DEPENDENCY — skip; select another READY; promote when blocker is DONE
 
@@ -45,7 +51,7 @@ Baseline reconciled at `origin/main` = `e096f56` (pin `ff22df90…`; Finance + C
 | Serialized Equipment availability | P1a real serialized-asset availability signal **+** #12 Temporary Equipment/Placement. Do **not** fabricate availability data | roadmap |
 | #12 Temporary Equipment / Placement | Assess only **after** F2 + integrated sandbox mature (custody persistence shape unresolved) | roadmap (preserved) |
 | #13 Technician Labor / Cost | Assess only **after** Service Ops convergence + F2 + sandbox | roadmap (preserved) |
-| Manufacturer read surface · `part_supplier_items` read/Purchasing UI | **R-1 catalog-read authority** (`inventory.catalog.read` / `.cost.read`) — no legacy read site to reuse; workspaces fail closed today | repo-complete, read-blocked |
+| Manufacturer read surface · `part_supplier_items` read/Purchasing UI | **R-1 catalog-read authority** (`inventory.catalog.read` / `.cost.read`). Repo-safe R1-A prerequisite (parity corpus + shadow gate) already exists + CI-enforced; the wiring (R1-C cutover) is gated behind R1-B **protected production deployment** (Issue #226 Rows 19/20/22). Workspaces fail closed today | repo-complete, read-blocked |
 | Supplier Master · Part Master — integrated-sandbox experience review | EAO integrated-sandbox environment program (not yet available) | AT REST |
 | Final Service IA | UX journey evidence still being accumulated (UX-owned; evidence-dependent) | evidence-dependent |
 
@@ -53,9 +59,9 @@ Baseline reconciled at `origin/main` = `e096f56` (pin `ff22df90…`; Finance + C
 
 | Item | Decision needed |
 |---|---|
-| **Continuation-trigger activation** *(from this design §5)* | Enable **B: unattended self-scheduling** (with a budget cap + checkpoint cadence) now, or keep **A: in-session `/loop` continuation** as default? |
-| **Tool-permission allow-list** *(from this design §7)* | Ratify the VERIFICATION-class `permissions.allow` additions + PROTECTED-class `deny` block in `.claude/settings.json` |
-| **R-1 catalog-read authority** | Adopt a durable `inventory.catalog.read` (+ separate `inventory.catalog.cost.read`) model? Unblocks Manufacturer / `part_supplier_items` read surfaces. Requirement: [`docs/assessments/r1-catalog-read-authority-requirement.md`](../assessments/r1-catalog-read-authority-requirement.md) |
+| ~~Continuation-trigger activation (§5)~~ | **RESOLVED 2026-08-09 → Option A adopted** (in-session `/loop`; PR #710). Option B (unattended) deferred with its own design checklist. |
+| ~~Tool-permission allow-list (§7)~~ | **RESOLVED 2026-08-09 → ratified** (bounded two-class policy; PR #712). |
+| **R-1 catalog-read authority** | Adopt a durable `inventory.catalog.read` (+ separate `inventory.catalog.cost.read`) model? Unblocks Manufacturer / `part_supplier_items` read surfaces. Requirement: [`docs/assessments/r1-catalog-read-authority-requirement.md`](../assessments/r1-catalog-read-authority-requirement.md). *(Note: the repo-safe R1-A prerequisite corpus already exists; activation is R1-B/R1-C protected.)* |
 | Coverage precedence / override / inheritance · sales credit · commission | Intentionally deferred policy (#15). Do **not** manufacture to make "My Book" easier |
 | Finance revenue recognition engine | Separate future accounting-policy seam; not an EOS engine now |
 | Cycle Counts · Back Orders | Design-first (DECISIONS #76): each needs a spec/ADR defining the business workflow + trusted write authority **before** any workspace. Not a CRUD-fill task |
@@ -74,12 +80,15 @@ Baseline reconciled at `origin/main` = `e096f56` (pin `ff22df90…`; Finance + C
 
 | Symptom | Resolution |
 |---|---|
-| Routine safe Bash (`git status`, `npm test`, `node --test`) prompts for approval in this VS Code session | Apply the two-class permission policy — orchestrator design §7. Pending the Owner-ratified `settings.json` change (an `OWNER_DECISION` row above); until then, individual prompts are approved ad hoc and do **not** count as product gates |
+| Routine safe Bash (`git status`, `npm test`, `node --test`) prompts for approval in this VS Code session | **RESOLVED** — bounded two-class permission policy merged (PR #712): VERIFICATION-class pre-authorized in `.claude/settings.json`, PROTECTED-class hard-denied, no `Bash(*)`. Policy: `.claude/permission-policy.md` |
 
 ## DONE — recent capability completions (see DECISIONS.md for the durable record)
 
 | Capability | Evidence | Schedulability note |
 |---|---|---|
+| **Continuous Workstream Orchestrator** — design + seeded backlog + Option A `/loop` driver (tested selector + CI) + blocker-decomposition correction | #703 · #710 | orchestrator capability DONE |
+| **Bounded two-class tool-permission policy** (VERIFICATION allow + PROTECTED deny, no `Bash(*)`) | #712 | DONE (Tier-2, Owner-ratified) |
+| **Authority-map currency** — Finance/Coverage + Sales-Opportunity/Order/Fulfillment rows in `SYSTEM_AUTHORITIES.md` | #706 · #707 | DONE (governance hygiene) |
 | Finance: money model · invoice issuance · payment/AR · adjustments · trusted AR read · refund | #690 · #691 · #692 · #693 · #694 · #701 | → `PROTECTED_ACTION` (activation held) |
 | Commercial Coverage #15: governed inert persistence · trusted resolution | #695 · #697 | → `PROTECTED_ACTION` (activation held) |
 | Supplier Master (S1–S5, RC + promotion package + migration tooling) | #596–#612 | AT REST → sandbox review |
