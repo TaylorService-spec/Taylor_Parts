@@ -1,0 +1,51 @@
+name: Orchestration Roadmap Projection Tests
+
+# Owner Roadmap Projection — pure, zero-dependency read-only projection over the durable roadmap model
+# (docs/orchestration/roadmap-projection.md). node:test for the model + views, plus a drift guard that
+# regenerates the committed snapshot and fails if it differs from the model. No Firebase, no emulator, no
+# npm install, no secrets, no deployment. It projects state; it activates, grants, and deploys nothing.
+
+on:
+  pull_request:
+    paths:
+      - "docs/orchestration/lib/roadmapModel.mjs"
+      - "docs/orchestration/lib/roadmapProjection.mjs"
+      - "docs/orchestration/lib/roadmapProjection.test.mjs"
+      - "docs/orchestration/lib/generateRoadmapViews.mjs"
+      - "docs/orchestration/roadmap/ROADMAP.md"
+      - ".github/workflows/orchestration-roadmap-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "docs/orchestration/lib/roadmapModel.mjs"
+      - "docs/orchestration/lib/roadmapProjection.mjs"
+      - "docs/orchestration/lib/roadmapProjection.test.mjs"
+      - "docs/orchestration/lib/generateRoadmapViews.mjs"
+      - "docs/orchestration/roadmap/ROADMAP.md"
+      - ".github/workflows/orchestration-roadmap-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  roadmap:
+    name: Roadmap projection (node:test + snapshot drift guard)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Projection unit tests (node:test, zero-dependency)
+        run: node --test docs/orchestration/lib/roadmapProjection.test.mjs
+
+      - name: Snapshot is in sync with the model (drift guard)
+        run: |
+          node docs/orchestration/lib/generateRoadmapViews.mjs
+          git diff --exit-code -- docs/orchestration/roadmap/ROADMAP.md \
+            || (echo "::error::ROADMAP.md is stale — run: node docs/orchestration/lib/generateRoadmapViews.mjs" && exit 1)
