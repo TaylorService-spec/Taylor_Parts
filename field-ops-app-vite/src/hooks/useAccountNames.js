@@ -14,8 +14,16 @@ import { ACCOUNTS_COLLECTION } from "../domain/constants";
 //
 // Requires the caller's role to have accounts read access (admin/dispatcher).
 // Technicians are deliberately NOT granted accounts read, so this hook must not
-// be used on technician surfaces -- their opaque-id fix needs a WorkOrder
-// customerName denormalization (backend) or a scoped Rules grant, not this hook.
+// be used on technician surfaces. That fix now EXISTS and is neither of the two
+// options this comment used to name: F1 built a trusted WorkOrder-keyed identity
+// projection (hooks/useWorkOrderFieldContext + domain/fieldCurrentJob), so no
+// customerName denormalization and no Rules widening were required. Technician
+// surfaces resolve identity through that path; callers here are admin/dispatcher.
+//
+// The "fall back to the raw id" behaviour below is the MAP contract, not a display
+// contract: an unresolved id must never be rendered as the customer name. Render
+// through shared/ui/CustomerIdentity, which keeps RESOLVED / NOT_AUTHORIZED /
+// ABSENT / UNRESOLVED distinct.
 function chunk(arr, size) {
   const out = [];
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));

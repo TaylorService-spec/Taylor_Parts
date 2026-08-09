@@ -1,5 +1,8 @@
 import { memo } from "react";
 import { snapshotPartName } from "../../domain/workOrderInventorySnapshot";
+import { useWorkOrderFieldContext } from "../../hooks/useWorkOrderFieldContext";
+import { resolveCustomerIdentity } from "../../domain/fieldCurrentJob";
+import CustomerIdentity from "../../shared/ui/CustomerIdentity.jsx";
 
 // Epic 6 Phase 6.1 -- reuses the same card shape/CSS classes as
 // modules/dispatcherBoard/WorkOrderQueue.jsx's cards (disp-wo-card,
@@ -20,6 +23,17 @@ import { snapshotPartName } from "../../domain/workOrderInventorySnapshot";
 // phase's.
 function TechnicianWorkOrderCard({ workOrder, isSelected, onSelect }) {
   const plannedParts = (workOrder.inventorySnapshot ?? []).filter((item) => item.qtyPlanned);
+
+  // Same governed projection as the detail view -- one trusted read per card. A
+  // technician list is their own small assignment set, so this stays proportionate,
+  // and it is the ONLY path that can name a customer for a role without accounts read.
+  const { context: fieldContext, denied: contextDenied } = useWorkOrderFieldContext(workOrder?.id ?? null);
+  const customerIdentity = resolveCustomerIdentity(
+    workOrder,
+    !contextDenied && fieldContext
+      ? () => (fieldContext.customer?.state === "RESOLVED" ? fieldContext.customer.displayName : null)
+      : null,
+  );
 
   return (
     <div
@@ -42,7 +56,7 @@ function TechnicianWorkOrderCard({ workOrder, isSelected, onSelect }) {
       </div>
       <div>{workOrder.woNumber}</div>
       <div className="fo-muted">
-        Customer: {workOrder.customerId} | {workOrder.type}
+        Customer: <CustomerIdentity identity={customerIdentity} /> | {workOrder.type}
       </div>
       {plannedParts.length > 0 && (
         <div className="fo-muted">

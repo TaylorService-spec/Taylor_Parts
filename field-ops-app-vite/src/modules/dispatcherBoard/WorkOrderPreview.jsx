@@ -1,5 +1,8 @@
 import { memo, useState } from "react";
 import { getAllowedActions } from "../../domain/workOrderWorkflow";
+import { useAccountNames } from "../../hooks/useAccountNames";
+import { resolveCustomerIdentity } from "../../domain/fieldCurrentJob";
+import CustomerIdentity from "../../shared/ui/CustomerIdentity.jsx";
 
 // Epic 2 Phase 2C -- center pane. Pure renderer, no Firestore access,
 // no scoring logic of its own -- recommendations are passed in
@@ -7,6 +10,12 @@ import { getAllowedActions } from "../../domain/workOrderWorkflow";
 // call.
 function ScoreBreakdown({ recommendation }) {
   const { breakdown, reasons } = recommendation;
+  const accountNames = useAccountNames(workOrder?.customerId ? [workOrder.customerId] : []);
+  const customerIdentity = resolveCustomerIdentity(
+    workOrder,
+    (id) => accountNames.get(id) ?? null,
+  );
+
   return (
     <div className="disp-score-breakdown">
       <div>Workload contribution: {breakdown.workload}/100</div>
@@ -59,7 +68,11 @@ function WorkOrderPreview({ workOrder, technicians, recommendations, onDispatchT
       <div className="fo-muted">
         Priority {workOrder.priority} | Type: {workOrder.type}
       </div>
-      <div className="fo-muted">Customer: {workOrder.customerId}</div>
+      {/* Dispatcher holds canonical accounts read, so identity resolves through the
+          existing useAccountNames path -- same four states as the technician surfaces,
+          a different authorized transport. showReference keeps the id quotable on a
+          support call without ever presenting it as the name. */}
+      <div className="fo-muted">Customer: <CustomerIdentity identity={customerIdentity} showReference /></div>
 
       <h4>Assigned Technician</h4>
       <div>{workOrder.assignedTechId ? techName(workOrder.assignedTechId) : "Unassigned"}</div>

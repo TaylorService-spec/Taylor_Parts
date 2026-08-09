@@ -1,5 +1,8 @@
 import TechnicianWorkOrderActions from "./TechnicianWorkOrderActions";
 import ExecutionCapture from "./ExecutionCapture";
+import { useWorkOrderFieldContext } from "../../hooks/useWorkOrderFieldContext";
+import { resolveCustomerIdentity } from "../../domain/fieldCurrentJob";
+import CustomerIdentity from "../../shared/ui/CustomerIdentity.jsx";
 
 // Epic 6 Phase 6.2/6.3 -- the technician execution entry point.
 // Rendered inline within TechnicianDashboard.jsx when a Work Order is
@@ -17,6 +20,14 @@ import ExecutionCapture from "./ExecutionCapture";
 // summary. Planned-parts display (with qty-used editing) now lives in
 // ExecutionCapture.jsx, not duplicated here.
 export default function TechnicianWorkOrderDetail({ workOrder, onClose }) {
+  const { context: fieldContext, denied: contextDenied } = useWorkOrderFieldContext(workOrder?.id ?? null);
+  const customerIdentity = resolveCustomerIdentity(
+    workOrder,
+    !contextDenied && fieldContext
+      ? () => (fieldContext.customer?.state === "RESOLVED" ? fieldContext.customer.displayName : null)
+      : null,
+  );
+
   return (
     <div className="fo-card work-order-card fo-touch-targets">
       <div className="disp-wo-card-header">
@@ -29,7 +40,11 @@ export default function TechnicianWorkOrderDetail({ workOrder, onClose }) {
       <div className="fo-muted">
         Priority {workOrder.priority} | Type: {workOrder.type}
       </div>
-      <div className="fo-muted">Customer: {workOrder.customerId}</div>
+      {/* Identity via the F1 trusted WorkOrder-keyed projection -- the governed path
+          for a technician, who deliberately has NO accounts read. A denial passes no
+          resolver, which the domain reports as NOT_AUTHORIZED. The raw id is never
+          rendered as the name. */}
+      <div className="fo-muted">Customer: <CustomerIdentity identity={customerIdentity} /></div>
 
       {workOrder.complaint && <div>Complaint: {workOrder.complaint}</div>}
 
