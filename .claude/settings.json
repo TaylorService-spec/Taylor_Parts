@@ -19,7 +19,46 @@
       "Bash(git check-ignore *)",
       "Bash(git merge-base *)",
       "Bash(gh project field-list *)",
-      "Bash(gh project list *)"
+      "Bash(gh project list *)",
+
+      "Bash(git status)",
+      "Bash(git status *)",
+      "Bash(git log)",
+      "Bash(git log *)",
+      "Bash(git diff)",
+      "Bash(git diff *)",
+      "Bash(git show *)",
+      "Bash(git rev-parse *)",
+      "Bash(git branch --show-current)",
+      "Bash(git worktree list)",
+      "Bash(git remote -v)",
+
+      "Bash(npm run build)",
+      "Bash(npm test)",
+      "Bash(npm run test)",
+      "Bash(node --test *)",
+      "Bash(node --version)",
+
+      "Bash(gh pr view *)",
+      "Bash(gh pr checks *)",
+      "Bash(gh pr list *)",
+      "Bash(gh pr diff *)",
+      "Bash(gh run view *)",
+      "Bash(gh run list *)"
+    ],
+    "deny": [
+      "Bash(firebase deploy*)",
+      "Bash(npx firebase deploy*)",
+      "Bash(firebase functions:delete*)",
+      "Bash(firebase firestore:delete*)",
+      "Bash(gh secret*)",
+      "Bash(rm -rf*)",
+      "Bash(rm -fr*)",
+      "Bash(rm -r *)",
+      "Bash(git push --force*)",
+      "Bash(git push -f *)",
+      "Bash(git reset --hard*)",
+      "Bash(git clean -f*)"
     ]
   },
   "hooks": {
