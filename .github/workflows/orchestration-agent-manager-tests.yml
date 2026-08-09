@@ -1,0 +1,52 @@
+name: Orchestration Agent Manager Tests
+
+# Shared Agent Manager + Resource-Aware Orchestration (docs/orchestration/agent-manager.md). Pure,
+# zero-dependency node:test for the durable Agent Request/Result contracts, the global resource governor,
+# the network-aware state machine, and the dispatcher — plus the extended selector (READY_BUT_WAITING_RESOURCE).
+# No Firebase, no emulator, no npm install, no secrets, no deployment. It dispatches nothing here; it governs
+# and decides. Activates, grants, and deploys nothing.
+
+on:
+  pull_request:
+    paths:
+      - "docs/orchestration/lib/agentRequest.mjs"
+      - "docs/orchestration/lib/agentResult.mjs"
+      - "docs/orchestration/lib/resourceGovernor.mjs"
+      - "docs/orchestration/lib/networkState.mjs"
+      - "docs/orchestration/lib/agentManager.mjs"
+      - "docs/orchestration/lib/agentManager.test.mjs"
+      - "docs/orchestration/lib/selectNextWork.mjs"
+      - "docs/orchestration/lib/selectNextWork.test.mjs"
+      - ".github/workflows/orchestration-agent-manager-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "docs/orchestration/lib/agentRequest.mjs"
+      - "docs/orchestration/lib/agentResult.mjs"
+      - "docs/orchestration/lib/resourceGovernor.mjs"
+      - "docs/orchestration/lib/networkState.mjs"
+      - "docs/orchestration/lib/agentManager.mjs"
+      - "docs/orchestration/lib/agentManager.test.mjs"
+      - "docs/orchestration/lib/selectNextWork.mjs"
+      - "docs/orchestration/lib/selectNextWork.test.mjs"
+      - ".github/workflows/orchestration-agent-manager-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  agent-manager:
+    name: Agent Manager stack + extended selector (node:test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Agent Manager stack (node:test, zero-dependency)
+        run: node --test docs/orchestration/lib/agentManager.test.mjs
+      - name: Extended selector (node:test)
+        run: node --test docs/orchestration/lib/selectNextWork.test.mjs
