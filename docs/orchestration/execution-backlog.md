@@ -24,7 +24,16 @@ Baseline reconciled at `origin/main` = `d1ab2ae` (pin `ff22df90…`; Finance + C
 
 | # | Item | Why READY | Next reversible increment |
 |---|---|---|---|
-| — | *(none)* | — | — |
+| UX-1 | Cross-surface business-claim vocabulary sweep | UX-owned; repo-safe; authority traced per finding. Defect family already proven 4x (NaN→CRITICAL, request urgency, derived risk→"Emergency", priority collision) | Trace the next derived signal (PartsList urgency thresholds; coordinated-visit obligation pills); classify FACT / HONEST_DERIVATION / OVERCLAIM / VOCABULARY_COLLISION; correct only proven local defects |
+| UX-2 | Coordinated Visits / Mission — SAMPLE vs live confusion recheck | The SAMPLE treatment shipped (#683). Measure whether it resolves the demonstrated confusion before any further change | Live re-measure against the pinned build; ACCEPTABLE → close, else minimum honest correction |
+| UX-3 | Activity destination scope | IA scope question surfaced by #708. Repo-safe: tracing + evidence only | Determine whose activity / what grain relative to Operational History; record evidence, do not merge or remove routes |
+
+> **UX workstream registered 2026-08-09.** The prior terminal CHECKPOINT was reached with the UX
+> workstream **absent from this ledger** — UX items existed only in session state, so the selector could not
+> see them and correctly concluded "no authorized READY work" from the items it had. That was an
+> ORCHESTRATOR_INTEGRATION_GAP in registration, not a genuine terminal state. UX-1..UX-3 above are
+> UX-owned, repo-safe and unblocked; UX now selects through this same ledger and the shared
+> `selectNextWork()` rather than a second mechanism.
 
 > **Selection rule last run 2026-08-09 (post driver + permission-policy merges) → terminal CHECKPOINT.**
 > After the orchestrator (R1), the `/loop` driver, and the bounded permission policy reached `DONE`, no
@@ -42,7 +51,7 @@ Baseline reconciled at `origin/main` = `d1ab2ae` (pin `ff22df90…`; Finance + C
 
 | Item | Worker | Declared in |
 |---|---|---|
-| *(none)* | — | R1 completed → moved to DONE (see `ACTIVE_WORKSTREAMS.md` recently-completed) |
+| UX-1 Cross-surface vocabulary sweep | UX | This ledger; first finding merged as #714 (priority vocabulary) |
 
 ## BLOCKED_DEPENDENCY — skip; select another READY; promote when blocker is DONE
 
