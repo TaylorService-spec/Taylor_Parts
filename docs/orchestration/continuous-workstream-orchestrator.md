@@ -86,21 +86,36 @@ The rule that makes "after DONE, do the next thing" unambiguous:
    d. Declared backlog order (seed order; ties resolved top-down).
 3. If **no `READY`** item exists:
    a. Re-evaluate `BLOCKED_DEPENDENCY`: any whose blocker is now `DONE` → promote to `READY`, go to (2).
-   b. Else emit an **Owner checkpoint** (§6) enumerating the `OWNER_DECISION` / `PROTECTED_ACTION` /
-      `BUDGET_LIMIT` items that remain, and stop. This is a *genuine* gate, reached only when nothing is
-      independently actionable.
+   b. **Blocker decomposition (Owner-ratified correction, 2026-08-09).** Before declaring no-READY,
+      inspect each still-`BLOCKED_DEPENDENCY` item for executable **repo-safe prerequisite work** —
+      investigation, assessment, authority tracing, design, evidence gathering, testing,
+      documentation/reconciliation, or migration/readiness planning. A blocked *implementation* does not
+      mean its prerequisite *discovery/design* is blocked. If any exists, select it and go to (2). *(This
+      is the error the first R1 cycle briefly made — concluding "no READY work" before decomposing
+      blockers exposed executable prerequisite work.)*
+   c. Else emit an **Owner checkpoint** (§6) enumerating the `OWNER_DECISION` / `PROTECTED_ACTION` /
+      `BUDGET_LIMIT` / passively-blocked items that remain, and stop. This is a *genuine* gate, reached
+      only when nothing is independently actionable. **"No authorized READY work" is a legitimate
+      terminal/checkpoint state** — do **not** manufacture low-value cleanup/documentation to stay busy,
+      and do **not** ask the Owner what to work on next; the selection rule already answered.
 4. `SAFE_CHECKPOINT` and `TOOL_PERMISSION_BLOCKED` never terminate the workstream — they route to resume
    (§5) and to the permission policy (§7) respectively.
 5. If every roadmap-linked item is `DONE` and none can be promoted → `ROADMAP_COMPLETE`.
 
 The rule is intentionally executable-by-a-human-worker from the backlog table alone — **no engine required**.
-A tiny pure validator may be added later *iff* a pilot shows ambiguity; per §8 we do not build it speculatively.
+It is also encoded as a pure, CI-tested selector — [`lib/selectNextWork.mjs`](./lib/selectNextWork.mjs)
+(+ `.test.mjs`) — so "the selection rule runs" is deterministic, including the §4.3.b blocker-decomposition
+correction. This is the *core the Option A driver runs*, not an orchestration engine (§8 still holds).
 
-## 5. The continuation trigger — MATERIAL OWNER DECISION (returned with recommendation)
+## 5. The continuation trigger — Owner decision (RESOLVED: Option A adopted 2026-08-09)
 
-This is the crux of the observed failure and the one place with **materially different, legitimately-Owner
-choices about execution authority and unattended spend.** Per Operating Model §4 and the Owner's own
-return-triggers, it is surfaced rather than chosen unilaterally.
+This was the crux of the observed failure and the one place with **materially different, legitimately-Owner
+choices about execution authority and unattended spend** — so it was surfaced rather than chosen unilaterally.
+**The Owner ratified Option A (in-session `/loop`)** on 2026-08-09; it is implemented as the minimum driver in
+[`loop-continuation-driver.md`](./loop-continuation-driver.md) + the tested selector in `lib/`. **Option B
+(unattended self-scheduling) is deliberately NOT built** and requires an explicit future design for budget
+cap · cadence · maximum autonomous work window · retry/backoff · failure containment · Owner checkpoint
+interval · unattended-spend controls; validate A operationally before proposing B. The original options:
 
 | Option | Mechanism | Solves "auto-start next"? | Acts while Owner is away? | Unattended token spend | Risk |
 |---|---|---|---|---|---|
@@ -197,5 +212,7 @@ registry-first, not infrastructure-first (Operating Model §1a; framework §12).
 
 Design + repo-safe foundation adopted as a Tier-1 repo-only governance capability. The backlog, state
 machine, selection rule, checkpoint policy, and anti-over-engineering boundary are in force now. The
-continuation-trigger activation (§5) and the tool-permission settings change (§7) are **returned for Owner
-decision** and are the only two items here that are not self-adopted.
+continuation-trigger activation (§5) and the tool-permission settings change (§7) were **returned for Owner
+decision and both are now ratified (2026-08-09)**: Option A `/loop` is implemented
+([`loop-continuation-driver.md`](./loop-continuation-driver.md) + `lib/`), and the §7 two-class permission
+policy proceeds as a bounded Tier-2 settings PR. Option B remains deferred.
