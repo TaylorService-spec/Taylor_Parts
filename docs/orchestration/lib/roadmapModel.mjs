@@ -22,7 +22,7 @@ export const BACKEND = Object.freeze(["COMPLETE", "PARTIAL", "NONE", "NOT_APPLIC
 export const UX = Object.freeze(["COMPLETE", "PARTIAL", "NONE", "NOT_APPLICABLE", "UNKNOWN"]);
 export const DEPLOY = Object.freeze(["DEPLOYED", "NOT_DEPLOYED", "NOT_APPLICABLE", "UNKNOWN"]);
 export const TRISTATE = Object.freeze([true, false, "NOT_APPLICABLE", "UNKNOWN"]);
-export const EVIDENCE_KINDS = Object.freeze(["PR", "CI", "TEST", "RULES", "DOC", "PERSONA_FINDING", "CAPABILITY_FLAG"]);
+export const EVIDENCE_KINDS = Object.freeze(["PR", "CI", "TEST", "RULES", "DOC", "PERSONA_FINDING", "CAPABILITY_FLAG", "BROWSER_RUN"]);
 export const OWNERS = Object.freeze(["Product/Design", "UX", "EAO", "Access", "Operator", "Owner"]);
 
 // Convenience: a fully NOT_APPLICABLE dimension set for pure-doc/process capabilities.
@@ -33,7 +33,7 @@ const INERT_BACKEND = { implementationState: "IMPLEMENTED", activationState: "IN
 export const roadmapModel = Object.freeze({
   id: "EOS",
   name: "Enterprise Operations OS",
-  lastVerifiedRepoState: "origin/main + Phase-5 (2026-08-09)",
+  lastVerifiedRepoState: "origin/main + Phase-5 pilot (2026-08-09)",
   domains: [
     {
       id: "platform-orchestration", name: "Platform & Orchestration", kind: "PROGRAM",
@@ -112,7 +112,7 @@ export const roadmapModel = Object.freeze({
         {
           id: "unattended-readiness", name: "Unattended-Readiness Proof + Bounded Autonomy Policy (Phase 5)", workstreamOwner: "Product/Design",
           status: "OWNER_DECISION", ...PROCESS_DIMS, dependencies: ["network-telemetry-integration"], lastVerifiedRepoState: "37995c2",
-          ownerDecision: "Readiness assessment recommends READY FOR CONTROLLED PILOT (supervised, Option B still off). Owner ratifies the pilot + any tuned parameters; full unattended Option B remains NOT READY until the pilot passes.",
+          ownerDecision: "Supervised pilot PASSED (UX-2 browser proof: network NORMAL throughout, ceilings enforced, zero relay). Recommendation now READY FOR LIMITED UNATTENDED PILOT (short, budget-capped, still supervised); FULL unattended Option B remains NOT READY until a real pressure window + the 90-min/checkpoint/retry machinery are observed live. Owner ratifies any unattended activation separately.",
           milestones: [
             { id: "ur-supervisor", name: "Persistent telemetry supervisor (token-free) + logger-health adapter", complete: true,
               completionCriteria: ["relaunch-if-dead", "no duplicate", "idempotent", "logger health exposed"],
@@ -126,10 +126,10 @@ export const roadmapModel = Object.freeze({
               completionCriteria: ["proven/unproven/proposed/risks", "READY-FOR-PILOT recommendation", "UX-2 registered durably"],
               workItems: [{ id: "ur-w3", name: "phase5-option-b-readiness.md + UX-2 request", status: "OWNER_DECISION", owner: "Owner",
                 evidence: [{ kind: "DOC", ref: "phase5-option-b-readiness.md" }] }] },
-            { id: "ur-browser-proof", name: "Browser/network-heavy real-work proof (UX-2, dedicated run)", complete: false,
+            { id: "ur-browser-proof", name: "Browser/network-heavy real-work proof (UX-2, supervised pilot)", complete: true,
               completionCriteria: ["run app+emulator+browser", "measure BROWSER_REMOTE + REMOTE_AI concurrent telemetry", "close or correct UX-2"],
-              workItems: [{ id: "ur-w4", name: "UX-2 browser proof (registered READY_BUT_WAITING_RESOURCE)", status: "READY_BUT_WAITING_RESOURCE", owner: "UX",
-                blockedReason: "Deferred from Phase-5 close under token-budget discipline; needs a dedicated app+emulator+browser run", evidence: [{ kind: "DOC", ref: "agent-requests/UX-2.request.json" }] }] },
+              workItems: [{ id: "ur-w4", name: "UX-2 browser proof — executed in the supervised pilot; network NORMAL throughout, ceilings enforced, zero relay", status: "DONE", owner: "UX",
+                evidence: [{ kind: "DOC", ref: "phase5-pilot-evidence.md" }, { kind: "BROWSER_RUN", ref: "UX-2 coordinated-visits" }] }] },
           ],
         },
       ],

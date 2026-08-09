@@ -1,24 +1,24 @@
 {
-  "label": "phase4-realload-proof",
-  "asOf": "2026-08-09 (proof window)",
+  "label": "phase5-supervised-pilot",
+  "asOf": "2026-08-09 (pilot window)",
   "state": "NORMAL",
   "confidence": "HIGH",
   "telemetryAvailable": true,
-  "sampleAgeSec": 3,
+  "sampleAgeSec": 2,
   "gatewayReachable": true,
   "wanReachable": true,
   "dnsHealthy": true,
   "recentLatency": {
-    "gatewayMsAvg": 1.1,
-    "wan1MsAvg": 13.1,
-    "wan2MsAvg": 21.2
+    "gatewayMsAvg": 1,
+    "wan1MsAvg": 13.7,
+    "wan2MsAvg": 22.4
   },
   "outageSamplesInWindow": 0,
-  "connectionCount": 47,
+  "connectionCount": 54,
   "evidenceWindow": {
     "samples": 12,
-    "fromTs": "2026-08-09 16:12:07",
-    "toTs": "2026-08-09 16:13:04"
+    "fromTs": "2026-08-09 16:55:26",
+    "toTs": "2026-08-09 16:56:24"
   },
   "reasonCodes": [
     "ALL_HEALTHY"
