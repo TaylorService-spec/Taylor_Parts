@@ -4,7 +4,7 @@
 > `lib/generateRoadmapViews.mjs`. Do not hand-edit — change the model and regenerate. Contract:
 > [`roadmap-projection.md`](../roadmap-projection.md).
 
-**Last verified repository state:** `origin/main + Phase-5 (2026-08-09)`
+**Last verified repository state:** `origin/main + Phase-5 pilot (2026-08-09)`
 
 **Distinctions preserved** (each is a separate field, never one number): IMPLEMENTED ≠ ACTIVATED · MERGED ≠ DEPLOYED · BACKEND COMPLETE ≠ USER-OPERABLE · UX COMPLETE ≠ BACKEND ACTIVE · PERSONA FINDING ≠ PRODUCT DECISION. No invented percentages — the only number is a milestone count.
 
@@ -18,7 +18,7 @@
 | Owner Roadmap Projection | Product/Design | DONE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | 1/1 |
 | Shared Agent Manager + Resource Governor | Product/Design | DONE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | 2/2 |
 | Network Telemetry Integration + Real-Load Proof | Product/Design | DONE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | 2/3 |
-| Unattended-Readiness Proof + Bounded Autonomy Policy (Phase 5) | Product/Design | OWNER_DECISION | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | 3/4 |
+| Unattended-Readiness Proof + Bounded Autonomy Policy (Phase 5) | Product/Design | OWNER_DECISION | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | 4/4 |
 
 ### Commercial & Sales _(domain)_
 
@@ -92,7 +92,7 @@ _None._
 
 | Capability | Decision | Blocking? |
 |---|---|---|
-| Unattended-Readiness Proof + Bounded Autonomy Policy (Phase 5) | Readiness assessment recommends READY FOR CONTROLLED PILOT (supervised, Option B still off). Owner ratifies the pilot + any tuned parameters; full unattended Option B remains NOT READY until the pilot passes. | **yes** |
+| Unattended-Readiness Proof + Bounded Autonomy Policy (Phase 5) | Supervised pilot PASSED (UX-2 browser proof: network NORMAL throughout, ceilings enforced, zero relay). Recommendation now READY FOR LIMITED UNATTENDED PILOT (short, budget-capped, still supervised); FULL unattended Option B remains NOT READY until a real pressure window + the 90-min/checkpoint/retry machinery are observed live. Owner ratifies any unattended activation separately. | **yes** |
 | Commercial Coverage & Territory (register #15) | Precedence/override/inheritance + sales credit + commission are deferred policy (do not manufacture) | recorded/deferred |
 | Trusted AR read projection | Revenue recognition remains a separate future accounting-policy seam (not an EOS engine) | recorded/deferred |
 | Catalog-read authority model | Adopt durable inventory.catalog.read (+ separate inventory.catalog.cost.read)? Unblocks Manufacturer + part_supplier_items read surfaces | **yes** |
@@ -122,7 +122,7 @@ Legend: `[x]` done · `[>]` in progress · `[ ]` planned/ready · `[!]` owner de
 - [x] Owner Roadmap Projection _(Platform & Orchestration)_
 - [x] Shared Agent Manager + Resource Governor _(Platform & Orchestration)_
 - [x] Network Telemetry Integration + Real-Load Proof _(Platform & Orchestration)_
-- [!] Unattended-Readiness Proof + Bounded Autonomy Policy (Phase 5) _(Platform & Orchestration)_ — Readiness assessment recommends READY FOR CONTROLLED PILOT (supervised, Option B still off). Owner ratifies the pilot + any tuned parameters; full unattended Option B remains NOT READY until the pilot passes.
+- [!] Unattended-Readiness Proof + Bounded Autonomy Policy (Phase 5) _(Platform & Orchestration)_ — Supervised pilot PASSED (UX-2 browser proof: network NORMAL throughout, ceilings enforced, zero relay). Recommendation now READY FOR LIMITED UNATTENDED PILOT (short, budget-capped, still supervised); FULL unattended Option B remains NOT READY until a real pressure window + the 90-min/checkpoint/retry machinery are observed live. Owner ratifies any unattended activation separately.
 - [P] Sales Opportunity lifecycle (Cycles 2–3) _(Commercial & Sales)_ — Grant opportunity.* + deploy callables
 - [P] Sales Order lifecycle (Cycle 4) + Service lineage (Cycle 7) _(Commercial & Sales)_ — Grant salesOrder.* + deploy callables
 - [P] Fulfillment allocation & availability (Cycle 5) _(Commercial & Sales)_ — Equipment availability fails closed = UNKNOWN pending P1a serialized-asset signal + #12
@@ -204,18 +204,18 @@ _None modeled yet._
 
 #### Unattended-Readiness Proof + Bounded Autonomy Policy (Phase 5) — `OWNER_DECISION`
 
-- Owner: Product/Design · Milestones: 3/4 · Last verified: `37995c2`
+- Owner: Product/Design · Milestones: 4/4 · Last verified: `37995c2`
 - Dimensions — Impl: NOT_APPLICABLE · Activation: NOT_APPLICABLE · Backend: NOT_APPLICABLE · UserOperable: NOT_APPLICABLE · UX: NOT_APPLICABLE · Deploy: NOT_APPLICABLE
 - Dependencies: network-telemetry-integration
-- Owner decision: Readiness assessment recommends READY FOR CONTROLLED PILOT (supervised, Option B still off). Owner ratifies the pilot + any tuned parameters; full unattended Option B remains NOT READY until the pilot passes.
+- Owner decision: Supervised pilot PASSED (UX-2 browser proof: network NORMAL throughout, ceilings enforced, zero relay). Recommendation now READY FOR LIMITED UNATTENDED PILOT (short, budget-capped, still supervised); FULL unattended Option B remains NOT READY until a real pressure window + the 90-min/checkpoint/retry machinery are observed live. Owner ratifies any unattended activation separately.
   - ☑ **Persistent telemetry supervisor (token-free) + logger-health adapter** — criteria: relaunch-if-dead; no duplicate; idempotent; logger health exposed
     - netwatch-supervisor + summarizeLoggerHealth — `DONE` · PRs: #723 · tests: 15 node:test · evidence: PR:#723
   - ☑ **Bounded autonomy contract + checkpoint + recovery policy (DESIGN ONLY)** — criteria: work window/budget/retries/backoff/containment/cadence/recovery; Option B NOT activated
     - autonomyPolicy + contract doc — `DONE` · PRs: #724 · tests: 9 node:test · evidence: PR:#724
   - ☑ **Option-B readiness assessment + registered browser/network-heavy proof (UX-2)** — criteria: proven/unproven/proposed/risks; READY-FOR-PILOT recommendation; UX-2 registered durably
     - phase5-option-b-readiness.md + UX-2 request — `OWNER_DECISION` · evidence: DOC:phase5-option-b-readiness.md
-  - ☐ **Browser/network-heavy real-work proof (UX-2, dedicated run)** — criteria: run app+emulator+browser; measure BROWSER_REMOTE + REMOTE_AI concurrent telemetry; close or correct UX-2
-    - UX-2 browser proof (registered READY_BUT_WAITING_RESOURCE) — `READY_BUT_WAITING_RESOURCE` · evidence: DOC:agent-requests/UX-2.request.json
+  - ☑ **Browser/network-heavy real-work proof (UX-2, supervised pilot)** — criteria: run app+emulator+browser; measure BROWSER_REMOTE + REMOTE_AI concurrent telemetry; close or correct UX-2
+    - UX-2 browser proof — executed in the supervised pilot; network NORMAL throughout, ceilings enforced, zero relay — `DONE` · evidence: DOC:phase5-pilot-evidence.md, BROWSER_RUN:UX-2 coordinated-visits
 
 ### Commercial & Sales _(domain)_
 
@@ -461,15 +461,14 @@ _None modeled yet._
 
 Read-only over the durable [Agent Request/Result ledger](../agent-requests/) + governor/network telemetry. See [`agent-manager.md`](../agent-manager.md) / [`network-telemetry.md`](../network-telemetry.md). AGENT OUTPUT ≠ PRODUCT AUTHORITY.
 
-- **Network state:** NORMAL (HIGH confidence · ALL_HEALTHY) — telemetry as of 2026-08-09 (proof window), sample age 3s
-- **Recent latency (reported, not thresholded):** gateway 1.1ms · WAN1 13.1ms · WAN2 21.2ms · TCP conns 47
+- **Network state:** NORMAL (HIGH confidence · ALL_HEALTHY) — telemetry as of 2026-08-09 (pilot window), sample age 2s
+- **Recent latency (reported, not thresholded):** gateway 1ms · WAN1 13.7ms · WAN2 22.4ms · TCP conns 54
 - **Remote slots:** REMOTE_AI 0/2 · BROWSER 0/1 · NETWORK_HEAVY 0/1 · MUTATING 0/1
-- **Efficiency:** requests 6 · executed 5 · deduped/reused 0 · waiting(resource/net) 1/0 · retries 0 · accepted findings 19 · results-with-token-metrics 5
+- **Efficiency:** requests 6 · executed 6 · deduped/reused 0 · waiting(resource/net) 0/0 · retries 0 · accepted findings 23 · results-with-token-metrics 5
 - **Owner relay count (routine handoffs):** 0
 - **Proof status:** Phase-4A real-load proof COMPLETE: 2 concurrent remote workers stable (network NORMAL throughout), ceiling enforced (READY_BUT_WAITING_RESOURCE), zero Owner relay.
 
-**Queued requests:** 
-- UX-2 — UX · PERSONA · READY_BUT_WAITING_RESOURCE — BROWSER/NETWORK-HEAVY proof: live re-measure Coordinated Visits / Mission SAMPLE-vs-live confusion against the pinned build (via run-field-ops-app-vite: emulator + seed + Playwright driver). Read-only measurement, no IA change.
+**Queued requests:** _none_
 
 **Running agents:** _none_
 
@@ -479,6 +478,7 @@ Read-only over the durable [Agent Request/Result ledger](../agent-requests/) + g
 | DR-001-R1 | DR-001 | Design | COMPLETE | PASS | 3 | 0 |
 | DR-002-R1 | DR-002 | Design | COMPLETE | PASS | 4 | 0 |
 | DR-003-R1 | DR-003 | Design | COMPLETE | PASS | 1 | 0 |
+| UX-2-R1 | UX-2 | UX | COMPLETE | NOT_APPLICABLE | 4 | 0 |
 | UX-EX-001-R1 | UX-EX-001 | UX | COMPLETE | NOT_APPLICABLE | 7 | 0 |
 | UX-EX-002-R1 | UX-EX-002 | UX | COMPLETE | NOT_APPLICABLE | 4 | 0 |
 

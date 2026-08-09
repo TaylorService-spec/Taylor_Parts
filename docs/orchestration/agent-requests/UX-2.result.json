@@ -1,0 +1,19 @@
+{
+  "resultId": "UX-2-R1", "requestId": "UX-2", "routedBackTo": "UX", "status": "COMPLETE", "verdict": "NOT_APPLICABLE",
+  "findings": [
+    "SAMPLE treatment IS present at two levels on the Coordinated Visits workspace: (1) a top banner 'Showing a synthetic sample coordinated visit (C713x5). The live coordinated-operations feed connects in a later cycle.', and (2) a per-row inline 'SAMPLE' marker on every customer row (Metro School District / Harbor Grill Downtown) — the #683 'mark while scanning' fix.",
+    "ASSESSMENT: the sample-vs-live confusion is addressed both at the banner and per-row level, so a user scanning the table sees SAMPLE on every row rather than discovering it only after clicking in — the specific gap #683 targeted. Reads as ACCEPTABLE.",
+    "MINOR (visual, unconfirmed): the accessibility-text extraction rendered the marker run-on with the customer name ('Metro School DistrictSAMPLE'). A screenshot could not be captured (Browser pane not displayed), so whether SAMPLE renders as a visually distinct badge with separation vs appended text is unconfirmed — a quick visual check is advised before closing UX-2.",
+    "The workspace also honestly surfaces the coordinated-obligation model (SO-4001, 5x C713, 3/5 complete, 1 BLOCKED on PRT-C713-COMPRESSOR short, routed to Inventory/Purchasing) — consistent with the accountability-of-many, experience-of-one intent."
+  ],
+  "evidence": [
+    { "kind": "BROWSER_RUN", "ref": "mcp browser @ localhost:5173/service/coordinated-visits?emulator=1 (main code, seeded admin)", "note": "BROWSER_REMOTE worker; page text captured" }
+  ],
+  "questionsRaised": [
+    "Confirm SAMPLE renders as a distinct badge (separation from the customer name) before closing UX-2.",
+    "INCIDENTAL (UX-1 family): Service Operations 'Operational History' rendered 'Invalid Date' for every timestamp in the emulator/seed context — a separate timestamp-rendering defect candidate (ties to the UX-EX-002 'Operational History' overclaim finding)."
+  ],
+  "scenariosDiscovered": ["'Invalid Date' Operational-History timestamps observed live — candidate for the UX-1 vocabulary/rendering sweep."],
+  "metrics": { "tokens": null, "note": "browser worker driven by the primary session; exact tokens not separately exposed — not fabricated" },
+  "retries": 0, "contextExpanded": false, "contaminated": false, "retracted": false, "createdAt": "2026-08-09"
+}
