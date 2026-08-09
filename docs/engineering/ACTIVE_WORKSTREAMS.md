@@ -27,16 +27,7 @@ When you begin a capability, add a row to **Active** with every declared field. 
 
 ## Active
 
-- Capability:          Continuous Workstream Backlog & Orchestrator (Tier-1 repo-only process governance; Owner-directed). Taylor adapter for the Keystone `frameworks/continuous-workstream-orchestration/` methodology. Closes the observed "completed work does not auto-trigger the next eligible execution" gap with a durable schedulability backlog + state machine + deterministic selection rule + checkpoint policy. NO capability/grant/collection/Rule.
-- Agent/session:       c981623b (Claude Code, OPUS) · Role: builder
-- Branch / worktree:   docs/continuous-workstream-orchestrator · wt-orch
-- Base commit:         e096f56 (origin/main; pin ff22df90…)
-- Owned paths:         docs/orchestration/continuous-workstream-orchestrator.md · docs/orchestration/execution-backlog.md
-- Shared paths req'd:  docs/engineering/ACTIVE_WORKSTREAMS.md (this declaration)
-- Dependencies:        REUSES roadmap register + this registry + Operating Model §1a/§2/§4/§8 + Delegation Charter §8.3 + quality adapter §G Run Control Board; no code dependency
-- Expected outcome:    Merged design + seeded backlog. Two items RETURNED for Owner decision (not self-adopted): continuation-trigger activation (§5) and the tool-permission settings change (§7).
-- Protected boundaries:`.claude/settings.json` permission change (Tier-2, returned) · any unattended self-scheduling activation (Owner opt-in) · Keystone upstream contribution (separate repo)
-- Lifecycle stage:     SANDBOX BUILD → RELEASE CANDIDATE (docs-only; self-mergeable Tier-1 foundation, with two Owner-decision returns)
+- Capability:          [CLOSED — DONE 2026-08-09] Continuous Workstream Backlog & Orchestrator (Tier-1 repo-only process governance; Owner-directed). Design + seeded backlog (#703) + Option A `/loop` continuation driver with tested pure selector + zero-dep CI + blocker-decomposition correction (#710) + bounded two-class tool-permission policy (#712). Both returned Owner decisions RATIFIED: Option A adopted (B deferred w/ its design checklist); permission policy ratified. Selection rule run post-merge → terminal CHECKPOINT (no authorized READY; R-1 R1-A prerequisite already exists + CI-enforced, remainder protected). NO capability/grant/collection/Rule. Keystone upstream contribution of the reusable methodology remains a separate-repo follow-up.
 - Capability:          [CLOSED — AT REST 2026-08-06] Supplier Master adoption (Tier-2 program, Owner-authorized) — governed Supplier identity + trusted write + Rules(prepared) + purchasing migration compat + Suppliers workspace. Phases S1–S5, repo-only. Repo-complete + fully planned; no further Product Engineering work. Handoff: `docs/releases/supplier-master-sandbox-handoff.md`. Reactivates only on integrated-sandbox readiness, Owner experience review, or a protected promotion authorization. (Tier-2 program, Owner-authorized) — governed Supplier identity + trusted write + Rules(prepared) + purchasing migration compat + Suppliers workspace. Phases S1–S5, repo-only. Repo-complete + fully planned; no further Product Engineering work. Handoff: `docs/releases/supplier-master-sandbox-handoff.md`. Reactivates only on integrated-sandbox readiness, Owner experience review, or a protected promotion authorization.
 - Agent/session:       c981623b (Claude Code) · Role: builder
 - Branch / worktree:   feat/supplier-master-* · scratchpad/sm-wt (per-phase branches)
