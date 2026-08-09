@@ -239,3 +239,39 @@ an authority the platform has not established.
 
 The page states reorder requests are *"submitted by Purchasing, not here"* — so
 Purchasing may hold the missing half of this story. That is the next mission.
+
+---
+
+## Part 5 — Technician trusted-read volume: MEASURED, ACCEPTABLE
+
+After wiring technician surfaces to the F1 trusted projection, one card issues one
+trusted read. Measured on the live build rather than reasoned about.
+
+```
+cards showing a customer line ........ 4
+trusted reads fired ................. 4
+distinct workOrderIds requested ..... 4
+duplicate reads ..................... 0
+spread of calls (first -> last) ..... 1 ms
+additional reads on opening a job ... 0
+```
+
+**Verdict: ACCEPTABLE. Not routed, not optimized.**
+
+Three facts decide it:
+
+1. **One read per card, none wasted.** No id is requested twice, and opening a job
+   adds nothing — React reuses the already-resolved context rather than re-fetching.
+2. **The reads are parallel, not serial.** A 1 ms spread means wall-clock cost is one
+   round trip regardless of card count, so latency does not scale with the list.
+3. **The list is inherently bounded.** It is one technician's own *active* assignments
+   (`FIELD_ACTIVE_STATUSES`), not an unbounded history — single digits by the nature of
+   the work, not by a cap that could be raised later.
+
+Batching, request deduplication or a richer projection would each add a mechanism to
+solve a cost that measurement says is not being paid. The hook has no cache and needs
+none at this shape; if a future surface renders technician work at genuinely larger
+scale, re-measure there rather than pre-building for it.
+
+**Boundaries preserved:** no technician accounts read, no denormalized `customerName`,
+no Rules widening.
