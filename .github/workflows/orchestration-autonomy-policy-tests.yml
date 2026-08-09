@@ -1,0 +1,37 @@
+name: Orchestration Autonomy Policy Tests
+
+# Option-B bounded autonomy policy (docs/orchestration/option-b-autonomy-contract.md) — pure, zero-dependency
+# node:test over the DESIGN-ONLY policy parameters + decision functions (budget, retry/backoff, failure
+# containment, checkpoint cadence, network recovery, hard-stops). Option B is NOT activated. No Firebase, no
+# emulator, no npm install, no secrets, no deployment.
+
+on:
+  pull_request:
+    paths:
+      - "docs/orchestration/lib/autonomyPolicy.mjs"
+      - "docs/orchestration/lib/autonomyPolicy.test.mjs"
+      - ".github/workflows/orchestration-autonomy-policy-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "docs/orchestration/lib/autonomyPolicy.mjs"
+      - "docs/orchestration/lib/autonomyPolicy.test.mjs"
+      - ".github/workflows/orchestration-autonomy-policy-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  autonomy-policy:
+    name: Bounded autonomy policy (node:test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Autonomy policy tests (node:test, zero-dependency)
+        run: node --test docs/orchestration/lib/autonomyPolicy.test.mjs
