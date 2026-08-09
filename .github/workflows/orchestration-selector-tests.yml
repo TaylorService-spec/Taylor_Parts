@@ -1,0 +1,39 @@
+name: Orchestration Selector Tests
+
+# Continuous Workstream Orchestrator — the PURE next-eligible work selector that the Option A `/loop`
+# continuation driver runs each iteration (docs/orchestration/loop-continuation-driver.md). Zero-dependency
+# node:test — no Firebase, no emulator, no npm install, no secrets, no deployment. It selects work and
+# encodes the blocked-item prerequisite-decomposition correction; it activates, grants, and deploys nothing.
+
+on:
+  pull_request:
+    paths:
+      - "docs/orchestration/lib/selectNextWork.mjs"
+      - "docs/orchestration/lib/selectNextWork.test.mjs"
+      - ".github/workflows/orchestration-selector-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "docs/orchestration/lib/selectNextWork.mjs"
+      - "docs/orchestration/lib/selectNextWork.test.mjs"
+      - ".github/workflows/orchestration-selector-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  selector:
+    name: Next-eligible work selector (node:test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Selector unit tests (node:test, zero-dependency)
+        run: node --test docs/orchestration/lib/selectNextWork.test.mjs
