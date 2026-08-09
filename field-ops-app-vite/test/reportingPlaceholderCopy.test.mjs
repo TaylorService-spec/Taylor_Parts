@@ -59,3 +59,17 @@ test("the Notifications stub distinguishes itself from the working bell", () => 
   assert.match(item.placeholderExplanation, /bell/i, "must point at the surface that works today");
   assert.match(item.placeholderExplanation, /history/i, "must say what this destination is for");
 });
+
+test("the Activity stub does not deny a timeline that is already live", () => {
+  // Traced: buildTimeline() is the single authority and states that every consumer
+  // calls it and nothing else generates events. Two consumers are already live —
+  // ActivityTimelinePanel (Service Operations) and Work Order Detail's Operational
+  // History. Only a standalone cross-domain destination is unbuilt, so "this area
+  // isn't built yet" would send a user away from a timeline they can already read.
+  const dashboard = NAV_DOMAINS.find((d) => d.key === "dashboard");
+  const item = dashboard?.subnav.find((i) => i.key === "activity");
+  assert.ok(item, "the Activity destination must still exist — this is not a removal");
+  assert.ok(item.placeholderExplanation, "it must not claim the capability is absent");
+  assert.match(item.placeholderExplanation, /Service Operations/, "must name where the live timeline is");
+  assert.match(item.placeholderExplanation, /Operational History/, "must name the per-Work-Order view");
+});

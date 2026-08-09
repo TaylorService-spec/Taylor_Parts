@@ -53,7 +53,7 @@ export const NAV_DOMAINS = [
       // area. Path/legacyKey UNCHANGED (still /dashboard/operations, legacyKey
       // "operations") -- only the user-facing label moved.
       { key: "operationsDashboard", label: "Inventory & Supply Overview", path: "operations", legacyKey: "operations" },
-      { key: "activity", label: "Activity", path: "activity" },
+      { key: "activity", label: "Activity", path: "activity", placeholderExplanation: "The operational activity timeline is built and live in Service Operations, and each Work Order carries its own under Operational History. A separate cross-domain activity destination is not built yet." },
       { key: "notifications", label: "Notifications", path: "notifications", placeholderExplanation: "Current notifications appear in the bell at the top of every screen. This destination is for the full notification history, which is not built yet." },
     ],
   },
