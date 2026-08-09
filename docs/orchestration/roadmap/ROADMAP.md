@@ -4,7 +4,7 @@
 > `lib/generateRoadmapViews.mjs`. Do not hand-edit — change the model and regenerate. Contract:
 > [`roadmap-projection.md`](../roadmap-projection.md).
 
-**Last verified repository state:** `origin/main da89558 (2026-08-09)`
+**Last verified repository state:** `origin/main 85a9549 (2026-08-09)`
 
 **Distinctions preserved** (each is a separate field, never one number): IMPLEMENTED ≠ ACTIVATED · MERGED ≠ DEPLOYED · BACKEND COMPLETE ≠ USER-OPERABLE · UX COMPLETE ≠ BACKEND ACTIVE · PERSONA FINDING ≠ PRODUCT DECISION. No invented percentages — the only number is a milestone count.
 
@@ -15,7 +15,7 @@
 | Capability | Owner | Status | Impl | Activation | Backend | UserOp | UX | Deploy | Milestones |
 |---|---|---|---|---|---|---|---|---|---|
 | Continuous Workstream Backlog & Orchestrator | Product/Design | DONE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | 4/5 |
-| Owner Roadmap Projection | Product/Design | RUNNING | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | 0/1 |
+| Owner Roadmap Projection | Product/Design | DONE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | 1/1 |
 
 ### Commercial & Sales _(domain)_
 
@@ -76,7 +76,7 @@
 
 ## 2. Active Work (RUNNING / READY)
 
-- **Owner Roadmap Projection** _(Platform & Orchestration)_ — RUNNING · 0/1 milestones
+_None._
 
 ## 3. Blocked / Dependencies
 
@@ -115,7 +115,7 @@
 Legend: `[x]` done · `[>]` in progress · `[ ]` planned/ready · `[!]` owner decision · `[P]` protected · `[B]` blocked · `[R]` routed · `[-]` at rest.
 
 - [x] Continuous Workstream Backlog & Orchestrator _(Platform & Orchestration)_
-- [>] Owner Roadmap Projection _(Platform & Orchestration)_
+- [x] Owner Roadmap Projection _(Platform & Orchestration)_
 - [P] Sales Opportunity lifecycle (Cycles 2–3) _(Commercial & Sales)_ — Grant opportunity.* + deploy callables
 - [P] Sales Order lifecycle (Cycle 4) + Service lineage (Cycle 7) _(Commercial & Sales)_ — Grant salesOrder.* + deploy callables
 - [P] Fulfillment allocation & availability (Cycle 5) _(Commercial & Sales)_ — Equipment availability fails closed = UNKNOWN pending P1a serialized-asset signal + #12
@@ -165,13 +165,13 @@ _None modeled yet._
   - ☐ **Option B unattended self-scheduling** — criteria: design: budget cap; cadence; max work window; retry/backoff; failure containment; checkpoint interval; unattended-spend controls
     - Option B design (deferred — validate A first) — `PLANNED`
 
-#### Owner Roadmap Projection — `RUNNING`
+#### Owner Roadmap Projection — `DONE`
 
-- Owner: Product/Design · Milestones: 0/1 · Last verified: `da89558`
+- Owner: Product/Design · Milestones: 1/1 · Last verified: `85a9549`
 - Dimensions — Impl: NOT_APPLICABLE · Activation: NOT_APPLICABLE · Backend: NOT_APPLICABLE · UserOperable: NOT_APPLICABLE · UX: NOT_APPLICABLE · Deploy: NOT_APPLICABLE
 - Dependencies: continuous-workstream-orchestrator
-  - ☐ **Projection contract + model + pure views + tests + snapshots** — criteria: contract doc; structured model; 8 pure views; tests + CI; committed snapshots
-    - This increment — `RUNNING`
+  - ☑ **Projection contract + model + pure views + tests + snapshots** — criteria: contract doc; structured model; 8 pure views; tests + CI; committed snapshots
+    - Contract + model + 8 pure views + 14 tests + drift-guarded CI + snapshot — `DONE` · PRs: #715 · tests: 14 node:test (orchestration-roadmap-tests.yml) · evidence: PR:#715, CI:orchestration-roadmap-tests.yml
 
 ### Commercial & Sales _(domain)_
 

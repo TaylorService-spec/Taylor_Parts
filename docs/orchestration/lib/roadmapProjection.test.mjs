@@ -79,10 +79,12 @@ test("Executive Roadmap: one compact entry per capability with all six dimension
   }
 });
 
-test("Active Work = RUNNING or READY only", () => {
+test("Active Work = RUNNING or READY only (invariant; may be empty at a checkpoint)", () => {
   const active = projectActiveWork();
   assert.ok(active.every((c) => c.status === "RUNNING" || c.status === "READY"));
-  assert.ok(active.some((c) => c.id === "owner-roadmap-projection")); // this increment is RUNNING
+  // No dependency on a specific item: at a terminal checkpoint Active Work is legitimately empty.
+  const runningOrReady = allCapabilities().filter((c) => c.status === "RUNNING" || c.status === "READY");
+  assert.equal(active.length, runningOrReady.length);
 });
 
 test("Blocked view carries blockedReason + dependencies", () => {
