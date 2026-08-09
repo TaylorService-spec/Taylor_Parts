@@ -413,3 +413,21 @@ _None modeled yet._
 - Blocked: Assess after Service Ops convergence + F2 + sandbox
 - Roadmap trigger: Assess after Service Ops convergence + F2 + sandbox
 
+## 9. Agent Operations
+
+Read-only over the durable [Agent Request/Result ledger](../agent-requests/) + governor/network state. See [`agent-manager.md`](../agent-manager.md). AGENT OUTPUT ≠ PRODUCT AUTHORITY.
+
+- **Network state:** NORMAL
+- **Remote slots:** REMOTE_AI 0/2 · BROWSER 0/1 · NETWORK_HEAVY 0/1 · MUTATING 0/1
+- **Efficiency:** requests 2 · executed 2 · deduped/reused 0 · waiting(resource/net) 0/0 · retries 0 · accepted findings 10 · results-with-token-metrics 2
+
+**Queued requests:** _none_
+
+**Running agents:** _none_
+
+**Recent results:** 
+| Result | Request | Routed to | Status | Verdict | Findings | Retries |
+|---|---|---|---|---|---|---|
+| DR-001-R1 | DR-001 | Design | COMPLETE | PASS | 3 | 0 |
+| UX-EX-001-R1 | UX-EX-001 | UX | COMPLETE | NOT_APPLICABLE | 7 | 0 |
+

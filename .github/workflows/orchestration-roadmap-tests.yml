@@ -12,7 +12,12 @@ on:
       - "docs/orchestration/lib/roadmapProjection.mjs"
       - "docs/orchestration/lib/roadmapProjection.test.mjs"
       - "docs/orchestration/lib/generateRoadmapViews.mjs"
+      - "docs/orchestration/lib/resourceGovernor.mjs"
+      - "docs/orchestration/lib/agentManager.mjs"
+      - "docs/orchestration/lib/agentRequest.mjs"
+      - "docs/orchestration/lib/agentResult.mjs"
       - "docs/orchestration/roadmap/ROADMAP.md"
+      - "docs/orchestration/agent-requests/**"
       - ".github/workflows/orchestration-roadmap-tests.yml"
   push:
     branches: [main]
@@ -21,7 +26,12 @@ on:
       - "docs/orchestration/lib/roadmapProjection.mjs"
       - "docs/orchestration/lib/roadmapProjection.test.mjs"
       - "docs/orchestration/lib/generateRoadmapViews.mjs"
+      - "docs/orchestration/lib/resourceGovernor.mjs"
+      - "docs/orchestration/lib/agentManager.mjs"
+      - "docs/orchestration/lib/agentRequest.mjs"
+      - "docs/orchestration/lib/agentResult.mjs"
       - "docs/orchestration/roadmap/ROADMAP.md"
+      - "docs/orchestration/agent-requests/**"
       - ".github/workflows/orchestration-roadmap-tests.yml"
   workflow_dispatch:
 

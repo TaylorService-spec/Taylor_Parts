@@ -1,0 +1,35 @@
+{
+  "resultId": "UX-EX-001-R1",
+  "requestId": "UX-EX-001",
+  "routedBackTo": "UX",
+  "status": "COMPLETE",
+  "verdict": "NOT_APPLICABLE",
+  "findings": [
+    "'Activity' nav destination /dashboard/activity (navConfig.js) renders NO surface — falls through to PlaceholderPage; #708 added only explanatory copy. This is the unbuilt cross-domain destination UX-3 concerns.",
+    "Control Tower 'Activity Timeline' panel — global/system-wide, jobs-derived via buildTimeline(jobs) over all fieldops_jobs. Derived-only, not persisted.",
+    "'Operational History' (WorkOrderDetail) — same buildTimeline builder scoped to ONE work order (jobsForWorkOrder). Not a competing authority — a narrower view of #2.",
+    "Dispatcher Board 'Recent Activity (this session)' — global WO status changes, session-scoped + ephemeral (in-memory, max 50, gone on reload). Distinct data source (useSessionActivityFeed).",
+    "Account 'Service Activity' / 'Account Activity' — single Account's Work Orders queried from fieldops_wos (third data source).",
+    "Wayfinding discrepancy: the /dashboard/activity placeholder says the live timeline is in 'Service Operations', but the panel actually lives in Control Tower; no screen is labeled 'Service Operations'.",
+    "Term collision: 'Activity' names four different things at four grains, backed by three different data sources."
+  ],
+  "evidence": [
+    { "kind": "AGENT_RUN", "ref": "Explore UX-EX-001", "note": "read-only repo tracing, 22 tool uses, no browser" }
+  ],
+  "questionsRaised": [
+    "What is the intended data grain of a standalone /dashboard/activity destination (global vs per-technician vs 'my activity' vs cross-domain roll-up)?",
+    "Does a standalone Activity destination duplicate the already-live Control Tower Activity Timeline (if global)?",
+    "Should the placeholder wayfinding text be corrected to name an actual surface (Control Tower)?",
+    "How should the four 'Activity'-named surfaces be disambiguated for users given differing scope and persistence?",
+    "Relationship to the unbuilt 'Service History' (Customers) and 'Audit Logs' (Administration) placeholders?"
+  ],
+  "scenariosDiscovered": [
+    "Four distinct 'Activity' grains coexisting is itself a vocabulary-collision candidate for the UX business-claim sweep (UX-1 family)."
+  ],
+  "metrics": { "tokens": 61118, "toolUses": 22, "runtimeMs": 89537 },
+  "retries": 0,
+  "contextExpanded": false,
+  "contaminated": false,
+  "retracted": false,
+  "createdAt": "2026-08-09"
+}

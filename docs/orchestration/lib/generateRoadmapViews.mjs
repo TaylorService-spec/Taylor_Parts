@@ -5,14 +5,28 @@
 // stamped from the model's lastVerifiedRepoState, never the wall clock — so
 // re-running produces no spurious diff. Run:
 //   node docs/orchestration/lib/generateRoadmapViews.mjs
-import { writeFileSync } from "node:fs";
+import { writeFileSync, readdirSync, readFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { roadmapModel } from "./roadmapModel.mjs";
-import { projectAll, statusToSymbol } from "./roadmapProjection.mjs";
+import { projectAll, statusToSymbol, projectAgentOperations } from "./roadmapProjection.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const OUT = join(here, "..", "roadmap", "ROADMAP.md");
+const LEDGER = join(here, "..", "agent-requests");
+
+// Load the durable Agent Request/Result ledger (deterministic: sorted by filename).
+function loadLedger() {
+  if (!existsSync(LEDGER)) return { requests: [], results: [] };
+  const files = readdirSync(LEDGER).filter((f) => f.endsWith(".json")).sort();
+  const requests = [], results = [];
+  for (const f of files) {
+    const obj = JSON.parse(readFileSync(join(LEDGER, f), "utf8"));
+    if (f.endsWith(".request.json")) requests.push(obj);
+    else if (f.endsWith(".result.json")) results.push(obj);
+  }
+  return { requests, results };
+}
 
 const dimCols = (d) => `${d.implementationState} | ${d.activationState} | ${d.backendState} | ${d.userOperable} | ${d.uxState} | ${d.deployState}`;
 const ms = (m) => (m ? `${m.complete}/${m.total}` : "—");
@@ -123,6 +137,31 @@ function render(model) {
       L.push("");
     }
   }
+
+  // 9. Agent Operations (Phase 3) — read-only over the durable ledger.
+  const { requests, results } = loadLedger();
+  const ops = projectAgentOperations(requests, results, { networkState: "NORMAL", allocations: [] });
+  L.push(`## 9. Agent Operations`);
+  L.push("");
+  L.push(`Read-only over the durable [Agent Request/Result ledger](../agent-requests/) + governor/network state. See [\`agent-manager.md\`](../agent-manager.md). AGENT OUTPUT ≠ PRODUCT AUTHORITY.`);
+  L.push("");
+  L.push(`- **Network state:** ${ops.networkState}`);
+  L.push(`- **Remote slots:** REMOTE_AI ${ops.capacity.remoteAi.used}/${ops.capacity.remoteAi.total} · BROWSER ${ops.capacity.browser.used}/${ops.capacity.browser.total} · NETWORK_HEAVY ${ops.capacity.networkHeavy.used}/${ops.capacity.networkHeavy.total} · MUTATING ${ops.capacity.mutating.used}/${ops.capacity.mutating.total}`);
+  L.push(`- **Efficiency:** requests ${ops.metrics.requestsCreated} · executed ${ops.metrics.executed} · deduped/reused ${ops.metrics.dedupedOrReused} · waiting(resource/net) ${ops.metrics.waitingResource}/${ops.metrics.waitingNetwork} · retries ${ops.metrics.retries} · accepted findings ${ops.metrics.acceptedFindings} · results-with-token-metrics ${ops.metrics.tokensReported}`);
+  L.push("");
+  L.push(`**Queued requests:** ${ops.queued.length ? "" : "_none_"}`);
+  for (const q of ops.queued) L.push(`- ${esc(q.requestId)} — ${esc(q.workstream)} · ${esc(q.mode)} · ${esc(q.status)} — ${esc(q.purpose)}`);
+  L.push("");
+  L.push(`**Running agents:** ${ops.running.length ? "" : "_none_"}`);
+  for (const r of ops.running) L.push(`- ${esc(r.requestId)} — ${esc(r.workstream)} · ${esc(r.mode)} — ${esc(r.purpose)}`);
+  L.push("");
+  L.push(`**Recent results:** ${ops.recentResults.length ? "" : "_none_"}`);
+  if (ops.recentResults.length) {
+    L.push(`| Result | Request | Routed to | Status | Verdict | Findings | Retries |`);
+    L.push(`|---|---|---|---|---|---|---|`);
+    for (const r of ops.recentResults) L.push(`| ${esc(r.resultId)} | ${esc(r.requestId)} | ${esc(r.routedBackTo)} | ${esc(r.status)} | ${esc(r.verdict)} | ${r.findings} | ${r.retries} |`);
+  }
+  L.push("");
   return L.join("\n") + "\n";
 }
 

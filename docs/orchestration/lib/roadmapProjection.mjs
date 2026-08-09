@@ -6,6 +6,8 @@
 // generateRoadmapViews.mjs so these stay trivially testable.
 
 import { roadmapModel, allCapabilities } from "./roadmapModel.mjs";
+import { capacitySnapshot } from "./resourceGovernor.mjs";
+import { efficiencyMetrics } from "./agentManager.mjs";
 
 // Milestone-derived progress ONLY — {complete,total} or null when no explicit
 // milestones exist. Never a fabricated percentage.
@@ -124,6 +126,28 @@ function boardFor(model, owner) {
 // 7. Design execution board. 8. UX execution board.
 export function projectDesignBoard(model = roadmapModel) { return boardFor(model, "Product/Design"); }
 export function projectUxBoard(model = roadmapModel) { return boardFor(model, "UX"); }
+
+// 9. Agent Operations (Phase 3 §9) — read-only projection over the durable Agent
+// Request/Result ledger + live governor/network state. Pure: the generator loads
+// the ledger files and current state and passes them in.
+const QUEUED_STATUSES = new Set(["PENDING", "VALIDATED", "READY_BUT_WAITING_RESOURCE", "WAITING_NETWORK"]);
+const RUNNING_STATUSES = new Set(["DISPATCHED", "RUNNING"]);
+function compactRequest(r) {
+  return { requestId: r.requestId, workstream: r.requestedByWorkstream, mode: r.mode, purpose: r.purpose, status: r.status, execution: r.execution, priority: r.priority };
+}
+export function projectAgentOperations(requests = [], results = [], { networkState = "NORMAL", allocations = [] } = {}) {
+  return {
+    networkState,
+    capacity: capacitySnapshot(allocations),
+    queued: requests.filter((r) => QUEUED_STATUSES.has(r.status)).map(compactRequest),
+    running: requests.filter((r) => RUNNING_STATUSES.has(r.status)).map(compactRequest),
+    recentResults: results.map((r) => ({
+      resultId: r.resultId, requestId: r.requestId, routedBackTo: r.routedBackTo,
+      status: r.status, verdict: r.verdict, findings: (r.findings || []).length, retries: r.retries || 0,
+    })),
+    metrics: efficiencyMetrics(requests, results),
+  };
+}
 
 // Convenience: all eight views at once (used by the generator).
 export function projectAll(model = roadmapModel) {

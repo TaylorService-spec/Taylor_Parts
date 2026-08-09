@@ -7,7 +7,10 @@ import {
   milestoneProgress, dimensions, statusToSymbol,
   projectExecutiveRoadmap, projectDetailedRoadmap, projectActiveWork, projectBlocked,
   projectOwnerDecisions, projectProtected, projectDesignBoard, projectUxBoard, projectAll,
+  projectAgentOperations,
 } from "./roadmapProjection.mjs";
+import { createAgentRequest } from "./agentRequest.mjs";
+import { createAgentResult } from "./agentResult.mjs";
 
 test("model is valid: known enums, unique ids, resolvable dependencies, gate-text present", () => {
   const errors = validateRoadmapModel(roadmapModel);
@@ -123,4 +126,22 @@ test("statusToSymbol maps the genuine stops and routed items", () => {
   assert.equal(statusToSymbol("PROTECTED_ACTION"), "P");
   assert.equal(statusToSymbol("BLOCKED_DEPENDENCY"), "B");
   assert.equal(statusToSymbol("DONE", "some-workstream"), "R"); // routed overrides
+});
+
+test("Agent Operations projection: capacity, queue/running split, results, metrics", () => {
+  const requests = [
+    createAgentRequest({ requestId: "DR-001", requestedByWorkstream: "Design", purpose: "verify", outputContract: "PASS/FAIL", mode: "VERIFICATION", status: "COMPLETE" }),
+    createAgentRequest({ requestId: "Q-1", requestedByWorkstream: "UX", purpose: "queued", outputContract: "o", status: "PENDING" }),
+    createAgentRequest({ requestId: "RUN-1", requestedByWorkstream: "Design", purpose: "running", outputContract: "o", status: "RUNNING" }),
+  ];
+  const results = [createAgentResult({ resultId: "DR-001-R1", requestId: "DR-001", routedBackTo: "Design", status: "COMPLETE", verdict: "PASS", findings: ["a", "b"], metrics: { tokens: 44196 } })];
+  const ops = projectAgentOperations(requests, results, { networkState: "NORMAL", allocations: [] });
+  assert.equal(ops.networkState, "NORMAL");
+  assert.deepEqual(ops.capacity.remoteAi, { used: 0, total: 2 });
+  assert.equal(ops.queued.length, 1);
+  assert.equal(ops.running.length, 1);
+  assert.equal(ops.recentResults[0].findings, 2);
+  assert.equal(ops.metrics.requestsCreated, 3);
+  assert.equal(ops.metrics.acceptedFindings, 2);
+  assert.equal(ops.metrics.tokensTotal, 44196); // real reported tokens, not fabricated
 });
