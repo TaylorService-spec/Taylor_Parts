@@ -5,6 +5,8 @@ import { technicianStatusLabel } from "../dispatcherBoard/technicianStatusLabel"
 import TechnicianWorkOrderCard from "./TechnicianWorkOrderCard";
 import TechnicianWorkOrderDetail from "./TechnicianWorkOrderDetail";
 import PerformanceSnapshot from "./PerformanceSnapshot";
+import { Link } from "react-router-dom";
+import { useAuth } from "../../auth/AuthContext";
 
 // Epic 6 Phase 6.1/6.2 -- Technician Dashboard, the landing page for
 // the technician role. UI + read-layer composition (6.1) plus the
@@ -56,6 +58,7 @@ function Section({ title, workOrders, selectedId, onSelect, emptyMessage }) {
 }
 
 export default function TechnicianDashboard() {
+  const { operationalRoles } = useAuth();
   const { technician, loading: technicianLoading } = useCurrentTechnician();
   const { data: workOrders, loading: workOrdersLoading, error } = useAssignedWorkOrders(technician?.id ?? null);
   const [selectedId, setSelectedId] = useState(null);
@@ -95,6 +98,22 @@ export default function TechnicianDashboard() {
   }
 
   if (!technician) {
+    // Operational roles (Warehouse Manager, Parts Manager, Parts Associate) sit ON TOP
+    // of the base "technician" role, so they land here and read a technician-record
+    // message they can never satisfy -- two personas reported it as the first thing
+    // they saw. They are not mis-provisioned; this simply is not their workspace.
+    // Point them at the one that is, rather than leaving an error as their landing page.
+    if (operationalRoles && operationalRoles.length > 0) {
+      return (
+        <div className="fo-panel">
+          <h2>My Dashboard</h2>
+          <p className="fo-muted">
+            This account is set up for inventory and purchasing work, not field work.
+          </p>
+          <p><Link to="/inventory-role">Go to My Inventory Role</Link></p>
+        </div>
+      );
+    }
     return (
       <div className="fo-panel">
         <h2>My Work Orders</h2>
