@@ -14,3 +14,10 @@ node_modules/
 
 # Sandbox-only persona credentials — generated at activation, never committed.
 *credentials.local.json
+
+# EOS network telemetry (Phase 4) — raw machine-local logs must never be committed (see docs/orchestration/network-telemetry.md §13)
+netwatch-standalone.csv
+netwatch-full.csv
+netwatch.pid
+netwatch.log
+**/netwatch-*.csv

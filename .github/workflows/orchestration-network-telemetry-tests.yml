@@ -1,0 +1,39 @@
+name: Orchestration Network Telemetry Tests
+
+# EOS Network Health Adapter (docs/orchestration/network-telemetry.md) — pure, zero-dependency node:test over
+# the READ-ONLY netwatch telemetry adapter that maps into the existing Phase-3 governor network states. No
+# Firebase, no emulator, no npm install, no secrets, no network access, no deployment. It reads telemetry it
+# is given (synthetic in tests); it controls nothing and activates nothing.
+
+on:
+  pull_request:
+    paths:
+      - "docs/orchestration/lib/networkHealthAdapter.mjs"
+      - "docs/orchestration/lib/networkHealthAdapter.test.mjs"
+      - "docs/orchestration/lib/networkHealthLoader.mjs"
+      - ".github/workflows/orchestration-network-telemetry-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "docs/orchestration/lib/networkHealthAdapter.mjs"
+      - "docs/orchestration/lib/networkHealthAdapter.test.mjs"
+      - "docs/orchestration/lib/networkHealthLoader.mjs"
+      - ".github/workflows/orchestration-network-telemetry-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  network-telemetry:
+    name: Network health adapter (node:test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Network health adapter tests (node:test, zero-dependency)
+        run: node --test docs/orchestration/lib/networkHealthAdapter.test.mjs
