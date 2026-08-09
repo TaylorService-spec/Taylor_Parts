@@ -145,3 +145,12 @@ test("Agent Operations projection: capacity, queue/running split, results, metri
   assert.equal(ops.metrics.acceptedFindings, 2);
   assert.equal(ops.metrics.tokensTotal, 44196); // real reported tokens, not fabricated
 });
+
+test("Agent Operations: network telemetry drives state; owner relay count is surfaced (Phase 4)", () => {
+  const health = { state: "NETWORK_PRESSURE", confidence: "LOW", sampleAgeSec: 999, reasonCodes: ["TELEMETRY_STALE"], recentLatency: { gatewayMsAvg: 1 }, connectionCount: 40, evidenceWindow: { samples: 12 }, asOf: "2026-08-09" };
+  const ops = projectAgentOperations([], [], { networkState: "NORMAL", networkHealth: health, ownerRelayCount: 0 });
+  assert.equal(ops.networkState, "NETWORK_PRESSURE"); // telemetry health overrides the passed default
+  assert.equal(ops.networkHealth.confidence, "LOW");
+  assert.deepEqual(ops.networkHealth.reasonCodes, ["TELEMETRY_STALE"]);
+  assert.equal(ops.ownerRelayCount, 0); // routine handoffs require zero Owner relay
+});

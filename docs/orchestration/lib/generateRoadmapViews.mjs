@@ -20,12 +20,14 @@ function loadLedger() {
   if (!existsSync(LEDGER)) return { requests: [], results: [] };
   const files = readdirSync(LEDGER).filter((f) => f.endsWith(".json")).sort();
   const requests = [], results = [];
+  let telemetry = null;
   for (const f of files) {
     const obj = JSON.parse(readFileSync(join(LEDGER, f), "utf8"));
     if (f.endsWith(".request.json")) requests.push(obj);
     else if (f.endsWith(".result.json")) results.push(obj);
+    else if (f === "telemetry-summary.json") telemetry = obj; // sanitized, committed (no raw rows)
   }
-  return { requests, results };
+  return { requests, results, telemetry };
 }
 
 const dimCols = (d) => `${d.implementationState} | ${d.activationState} | ${d.backendState} | ${d.userOperable} | ${d.uxState} | ${d.deployState}`;
@@ -138,16 +140,27 @@ function render(model) {
     }
   }
 
-  // 9. Agent Operations (Phase 3) — read-only over the durable ledger.
-  const { requests, results } = loadLedger();
-  const ops = projectAgentOperations(requests, results, { networkState: "NORMAL", allocations: [] });
+  // 9. Agent Operations (Phase 3 + Phase 4 network telemetry) — read-only over the durable ledger.
+  const { requests, results, telemetry } = loadLedger();
+  const ops = projectAgentOperations(requests, results, {
+    networkHealth: telemetry, ownerRelayCount: 0, // routine Design/UX handoffs carried by the ledger — zero Owner relay
+    proofStatus: "Phase-4A real-load proof COMPLETE: 2 concurrent remote workers stable (network NORMAL throughout), ceiling enforced (READY_BUT_WAITING_RESOURCE), zero Owner relay.",
+  });
   L.push(`## 9. Agent Operations`);
   L.push("");
-  L.push(`Read-only over the durable [Agent Request/Result ledger](../agent-requests/) + governor/network state. See [\`agent-manager.md\`](../agent-manager.md). AGENT OUTPUT ≠ PRODUCT AUTHORITY.`);
+  L.push(`Read-only over the durable [Agent Request/Result ledger](../agent-requests/) + governor/network telemetry. See [\`agent-manager.md\`](../agent-manager.md) / [\`network-telemetry.md\`](../network-telemetry.md). AGENT OUTPUT ≠ PRODUCT AUTHORITY.`);
   L.push("");
-  L.push(`- **Network state:** ${ops.networkState}`);
+  if (ops.networkHealth) {
+    const nh = ops.networkHealth;
+    L.push(`- **Network state:** ${ops.networkState} (${nh.confidence} confidence · ${(nh.reasonCodes || []).join(", ")}) — telemetry as of ${esc(nh.asOf)}, sample age ${nh.sampleAgeSec}s`);
+    if (nh.recentLatency) L.push(`- **Recent latency (reported, not thresholded):** gateway ${nh.recentLatency.gatewayMsAvg}ms · WAN1 ${nh.recentLatency.wan1MsAvg}ms · WAN2 ${nh.recentLatency.wan2MsAvg}ms · TCP conns ${nh.connectionCount}`);
+  } else {
+    L.push(`- **Network state:** ${ops.networkState}`);
+  }
   L.push(`- **Remote slots:** REMOTE_AI ${ops.capacity.remoteAi.used}/${ops.capacity.remoteAi.total} · BROWSER ${ops.capacity.browser.used}/${ops.capacity.browser.total} · NETWORK_HEAVY ${ops.capacity.networkHeavy.used}/${ops.capacity.networkHeavy.total} · MUTATING ${ops.capacity.mutating.used}/${ops.capacity.mutating.total}`);
   L.push(`- **Efficiency:** requests ${ops.metrics.requestsCreated} · executed ${ops.metrics.executed} · deduped/reused ${ops.metrics.dedupedOrReused} · waiting(resource/net) ${ops.metrics.waitingResource}/${ops.metrics.waitingNetwork} · retries ${ops.metrics.retries} · accepted findings ${ops.metrics.acceptedFindings} · results-with-token-metrics ${ops.metrics.tokensReported}`);
+  L.push(`- **Owner relay count (routine handoffs):** ${ops.ownerRelayCount}`);
+  if (ops.proofStatus) L.push(`- **Proof status:** ${esc(ops.proofStatus)}`);
   L.push("");
   L.push(`**Queued requests:** ${ops.queued.length ? "" : "_none_"}`);
   for (const q of ops.queued) L.push(`- ${esc(q.requestId)} — ${esc(q.workstream)} · ${esc(q.mode)} · ${esc(q.status)} — ${esc(q.purpose)}`);

@@ -33,7 +33,7 @@ const INERT_BACKEND = { implementationState: "IMPLEMENTED", activationState: "IN
 export const roadmapModel = Object.freeze({
   id: "EOS",
   name: "Enterprise Operations OS",
-  lastVerifiedRepoState: "origin/main 85a9549 (2026-08-09)",
+  lastVerifiedRepoState: "origin/main + Phase-4 proof (2026-08-09)",
   domains: [
     {
       id: "platform-orchestration", name: "Platform & Orchestration", kind: "PROGRAM",
@@ -75,6 +75,38 @@ export const roadmapModel = Object.freeze({
               workItems: [{ id: "orp-w1", name: "Contract + model + 8 pure views + 14 tests + drift-guarded CI + snapshot", status: "DONE", owner: "Product/Design",
                 prEvidence: ["#715"], tests: "14 node:test (orchestration-roadmap-tests.yml)", verification: "CI green",
                 evidence: [{ kind: "PR", ref: "#715" }, { kind: "CI", ref: "orchestration-roadmap-tests.yml" }] }] },
+          ],
+        },
+        {
+          id: "shared-agent-manager", name: "Shared Agent Manager + Resource Governor", workstreamOwner: "Product/Design",
+          status: "DONE", ...PROCESS_DIMS, dependencies: ["continuous-workstream-orchestrator"], lastVerifiedRepoState: "5639894",
+          milestones: [
+            { id: "sam-core", name: "Durable Request/Result contracts + governor + network state + dispatcher + registration invariant", complete: true,
+              completionCriteria: ["files not chat", "global caps REMOTE_AI=2/BROWSER=1/NETWORK_HEAVY=1", "READY_BUT_WAITING_RESOURCE", "registration invariant"],
+              workItems: [{ id: "sam-w1", name: "agentRequest/Result/resourceGovernor/networkState/agentManager + selector", status: "DONE", owner: "Product/Design",
+                prEvidence: ["#719"], tests: "17+14 node:test", evidence: [{ kind: "PR", ref: "#719" }] }] },
+            { id: "sam-ops", name: "Agent Operations roadmap view + Design/UX operational exercise", complete: true,
+              completionCriteria: ["Agent Ops projection", "durable Design + UX exercise", "no Owner relay"],
+              workItems: [{ id: "sam-w2", name: "projectAgentOperations + DR-001/UX-EX-001", status: "DONE", owner: "Product/Design",
+                prEvidence: ["#720"], evidence: [{ kind: "PR", ref: "#720" }] }] },
+          ],
+        },
+        {
+          id: "network-telemetry-integration", name: "Network Telemetry Integration + Real-Load Proof", workstreamOwner: "Product/Design",
+          status: "DONE", ...PROCESS_DIMS, dependencies: ["shared-agent-manager"], lastVerifiedRepoState: "5639894",
+          milestones: [
+            { id: "nt-adapter", name: "Read-only netwatch Network Health Adapter mapped into existing governor states", complete: true,
+              completionCriteria: ["reuse logger (durable local home)", "obvious-fact states only", "no latency thresholds (Phase 4A)", "telemetry never in git"],
+              workItems: [{ id: "nt-w1", name: "networkHealthAdapter/Loader + tests + CI + doc", status: "DONE", owner: "Product/Design",
+                prEvidence: ["#721"], tests: "11 node:test", evidence: [{ kind: "PR", ref: "#721" }] }] },
+            { id: "nt-proof", name: "Real-load proof: 2 concurrent stable, ceiling enforced, zero relay, telemetry correlated", complete: true,
+              completionCriteria: ["Design+UX real requests", "READY_BUT_WAITING_RESOURCE demonstrated", "network NORMAL throughout", "owner relay = 0"],
+              workItems: [{ id: "nt-w2", name: "Agent-Ops network view + DR-002/UX-EX-002/DR-003 proof", status: "DONE", owner: "Product/Design",
+                evidence: [{ kind: "DOC", ref: "phase4-realload-proof.md" }] }] },
+            { id: "nt-optionb", name: "Option B unattended (still gated: browser/network-heavy correlation, pressure window, budget/cadence/backoff/containment)", complete: false,
+              completionCriteria: ["browser/network-heavy correlation measured", "a pressure/outage window observed", "budget cap + max window + cadence + backoff + containment + unattended-spend defined"],
+              workItems: [{ id: "nt-w3", name: "Option B design (deferred)", status: "PLANNED", owner: "Owner",
+                blockedReason: "Phase 4 proved prerequisites under a healthy window; pressure behavior + browser/heavy correlation + unattended controls still undefined", evidence: [] }] },
           ],
         },
       ],
