@@ -11,6 +11,7 @@ import {
   stepBlockedReason,
 } from "../../domain/workOrderWizard";
 import CustomerPicker from "./CustomerPicker";
+import { WORK_ORDER_PRIORITY_OPTIONS } from "../../domain/workOrderPriority";
 
 // Sprint 2.0.3 -- Work Order creation wizard. Four steps, mapped
 // directly to createWorkOrder()'s actual validated input
@@ -38,12 +39,9 @@ import CustomerPicker from "./CustomerPicker";
 // The catch-block create-error rationale (two distinct callable failure
 // shapes) is documented alongside getWizardCreateErrorMessage there.
 
-const PRIORITY_OPTIONS = [
-  { value: 1, label: "1 - Emergency" },
-  { value: 2, label: "2 - High" },
-  { value: 3, label: "3 - Normal" },
-  { value: 4, label: "4 - Low" },
-];
+// Options come from domain/workOrderPriority.js so what a user PICKS here is what
+// every other surface says back to them.
+const PRIORITY_OPTIONS = WORK_ORDER_PRIORITY_OPTIONS;
 
 const TYPE_OPTIONS = ["SERVICE_CALL", "PM", "INSTALL", "WARRANTY", "INSPECTION"];
 const SEVERITY_OPTIONS = ["EQUIPMENT_DOWN", "PARTIAL_OPERATION", "COSMETIC", "PREVENTIVE"];

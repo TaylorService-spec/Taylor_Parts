@@ -4,6 +4,7 @@ import { describeEvent } from "../../domain/eventModel";
 import { EVENT_ICON } from "../../domain/eventTypes";
 import { snapshotPartName, snapshotPartSku, snapshotPartCategory, snapshotPartUnit } from "../../domain/workOrderInventorySnapshot";
 import WorkOrderActions from "./WorkOrderActions";
+import { workOrderPriorityText } from "../../domain/workOrderPriority";
 
 // Work Order Engine v1.2 (Epic 1, see docs/architecture/ADR-002):
 // renders a real, persisted fieldops_wos doc -- NOT an aggregate
@@ -69,7 +70,7 @@ export default function WorkOrderDetail({ workOrder, jobs, role, technicians, cu
       <div className="fo-muted">{reasons.join(" · ")}</div>
 
       <div>
-        Priority: {workOrder.priority}
+        Priority: {workOrderPriorityText(workOrder.priority) ?? "Priority not set"}
         {workOrder.severity && <> | Severity: {workOrder.severity}</>}
         {" "}| Type: {workOrder.type}
       </div>

@@ -4,6 +4,7 @@ import LoadingState from "../../shared/ui/LoadingState";
 import FailureState from "../../shared/ui/FailureState";
 import ScheduleWorkOrderForm from "../../shared/scheduling/ScheduleWorkOrderForm";
 import { useSchedulingData } from "../../hooks/useSchedulingData";
+import { workOrderPriorityLabel } from "../../domain/workOrderPriority";
 import {
   buildWeeklySchedule,
   startOfWeekMillis,
@@ -31,7 +32,8 @@ import {
 // board is NOT squeezed -- it scrolls horizontally (min-width day columns) AND a Day drill-down gives a
 // per-technician agenda for one day, with week + date navigation always preserved.
 
-const PRIORITY_LABEL = { 1: "Emergency", 2: "High", 3: "Normal", 4: "Low" };
+// Priority vocabulary lives in domain/workOrderPriority.js -- one definition, so a
+// record cannot read "High" here and "Priority 2" on the next screen.
 
 function fmtTime(ms) {
   if (ms == null) return "";
@@ -86,7 +88,7 @@ function JobDetail({ job, techName, onClose }) {
         <dt>Status</dt><dd>{job.status}</dd>
         <dt>When</dt><dd>{new Date(job.startMillis).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}{job.endMillis ? ` – ${fmtTime(job.endMillis)}` : ""}</dd>
         <dt>Technician</dt><dd>{techName ?? job.techId ?? "—"}</dd>
-        <dt>Priority</dt><dd>{PRIORITY_LABEL[job.priority] ?? "—"}</dd>
+        <dt>Priority</dt><dd>{workOrderPriorityLabel(job.priority) ?? "—"}</dd>
         <dt>Type</dt><dd>{job.type ?? "—"}</dd>
         <dt>Customer</dt><dd>{job.customerId ?? "—"}</dd>
         <dt>Location</dt><dd>{job.locationId ?? "—"}</dd>
@@ -195,7 +197,7 @@ export default function SchedulingWorkspace({ nowMillis, initialWeekStart } = {}
                 <li key={wo.id} className="fo-sched-ready__item">
                   <div>
                     <span className="fo-sched-ready__wo">{wo.woNumber}</span>
-                    {wo.priority ? <span className="fo-muted"> · {PRIORITY_LABEL[wo.priority] ?? ""}</span> : null}
+                    {wo.priority ? <span className="fo-muted"> · {workOrderPriorityLabel(wo.priority) ?? ""}</span> : null}
                     {wo.type ? <span className="fo-muted"> · {wo.type}</span> : null}
                   </div>
                   <button type="button" onClick={() => setSchedulingWo(wo)}>Schedule</button>
