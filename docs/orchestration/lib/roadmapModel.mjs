@@ -33,7 +33,7 @@ const INERT_BACKEND = { implementationState: "IMPLEMENTED", activationState: "IN
 export const roadmapModel = Object.freeze({
   id: "EOS",
   name: "Enterprise Operations OS",
-  lastVerifiedRepoState: "origin/main + Phase-4 proof (2026-08-09)",
+  lastVerifiedRepoState: "origin/main + Phase-5 (2026-08-09)",
   domains: [
     {
       id: "platform-orchestration", name: "Platform & Orchestration", kind: "PROGRAM",
@@ -107,6 +107,29 @@ export const roadmapModel = Object.freeze({
               completionCriteria: ["browser/network-heavy correlation measured", "a pressure/outage window observed", "budget cap + max window + cadence + backoff + containment + unattended-spend defined"],
               workItems: [{ id: "nt-w3", name: "Option B design (deferred)", status: "PLANNED", owner: "Owner",
                 blockedReason: "Phase 4 proved prerequisites under a healthy window; pressure behavior + browser/heavy correlation + unattended controls still undefined", evidence: [] }] },
+          ],
+        },
+        {
+          id: "unattended-readiness", name: "Unattended-Readiness Proof + Bounded Autonomy Policy (Phase 5)", workstreamOwner: "Product/Design",
+          status: "OWNER_DECISION", ...PROCESS_DIMS, dependencies: ["network-telemetry-integration"], lastVerifiedRepoState: "37995c2",
+          ownerDecision: "Readiness assessment recommends READY FOR CONTROLLED PILOT (supervised, Option B still off). Owner ratifies the pilot + any tuned parameters; full unattended Option B remains NOT READY until the pilot passes.",
+          milestones: [
+            { id: "ur-supervisor", name: "Persistent telemetry supervisor (token-free) + logger-health adapter", complete: true,
+              completionCriteria: ["relaunch-if-dead", "no duplicate", "idempotent", "logger health exposed"],
+              workItems: [{ id: "ur-w1", name: "netwatch-supervisor + summarizeLoggerHealth", status: "DONE", owner: "Product/Design",
+                prEvidence: ["#723"], tests: "15 node:test", evidence: [{ kind: "PR", ref: "#723" }] }] },
+            { id: "ur-policy", name: "Bounded autonomy contract + checkpoint + recovery policy (DESIGN ONLY)", complete: true,
+              completionCriteria: ["work window/budget/retries/backoff/containment/cadence/recovery", "Option B NOT activated"],
+              workItems: [{ id: "ur-w2", name: "autonomyPolicy + contract doc", status: "DONE", owner: "Product/Design",
+                prEvidence: ["#724"], tests: "9 node:test", evidence: [{ kind: "PR", ref: "#724" }] }] },
+            { id: "ur-readiness", name: "Option-B readiness assessment + registered browser/network-heavy proof (UX-2)", complete: true,
+              completionCriteria: ["proven/unproven/proposed/risks", "READY-FOR-PILOT recommendation", "UX-2 registered durably"],
+              workItems: [{ id: "ur-w3", name: "phase5-option-b-readiness.md + UX-2 request", status: "OWNER_DECISION", owner: "Owner",
+                evidence: [{ kind: "DOC", ref: "phase5-option-b-readiness.md" }] }] },
+            { id: "ur-browser-proof", name: "Browser/network-heavy real-work proof (UX-2, dedicated run)", complete: false,
+              completionCriteria: ["run app+emulator+browser", "measure BROWSER_REMOTE + REMOTE_AI concurrent telemetry", "close or correct UX-2"],
+              workItems: [{ id: "ur-w4", name: "UX-2 browser proof (registered READY_BUT_WAITING_RESOURCE)", status: "READY_BUT_WAITING_RESOURCE", owner: "UX",
+                blockedReason: "Deferred from Phase-5 close under token-budget discipline; needs a dedicated app+emulator+browser run", evidence: [{ kind: "DOC", ref: "agent-requests/UX-2.request.json" }] }] },
           ],
         },
       ],
