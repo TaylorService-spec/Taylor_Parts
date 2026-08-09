@@ -54,7 +54,7 @@ export const NAV_DOMAINS = [
       // "operations") -- only the user-facing label moved.
       { key: "operationsDashboard", label: "Inventory & Supply Overview", path: "operations", legacyKey: "operations" },
       { key: "activity", label: "Activity", path: "activity" },
-      { key: "notifications", label: "Notifications", path: "notifications" },
+      { key: "notifications", label: "Notifications", path: "notifications", placeholderExplanation: "Current notifications appear in the bell at the top of every screen. This destination is for the full notification history, which is not built yet." },
     ],
   },
   {
