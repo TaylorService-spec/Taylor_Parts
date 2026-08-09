@@ -3,13 +3,27 @@
 //   node --test docs/orchestration/lib/agentManager.test.mjs
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createAgentRequest, validateAgentRequest, requestFingerprint } from "./agentRequest.mjs";
-import { createAgentResult, validateAgentResult, isReusableResult } from "./agentResult.mjs";
+import { createAgentRequest, validateAgentRequest, requestFingerprint, AGENT_MODES, MODEL_TIERS, BUDGET_CLASSES, EXECUTION, REQUEST_STATUS } from "./agentRequest.mjs";
+import { createAgentResult, validateAgentResult, isReusableResult, RESULT_STATUS, VERDICTS } from "./agentResult.mjs";
 import { CAPACITY, classifyResourceNeed, allocate, capacitySnapshot } from "./resourceGovernor.mjs";
-import { transition, remotePolicy } from "./networkState.mjs";
-import { decideDispatch, findEquivalentResult, selectNextQueuedRequest, efficiencyMetrics } from "./agentManager.mjs";
+import { transition, remotePolicy, NETWORK_STATES, SIGNALS } from "./networkState.mjs";
+import { decideDispatch, findEquivalentResult, selectNextQueuedRequest, efficiencyMetrics, DISPATCH_DECISIONS } from "./agentManager.mjs";
 
 const req = (over = {}) => createAgentRequest({ requestId: "r1", requestedByWorkstream: "Design", purpose: "verify X", outputContract: "PASS/FAIL", ...over });
+
+// Lock the exported vocabularies by name (closes the DR-001-R1 nuance: previously exercised only transitively).
+test("exported vocabularies have their expected membership (guards silent drift)", () => {
+  assert.deepEqual([...AGENT_MODES], ["DISCOVERY", "VERIFICATION", "REVIEW", "PERSONA", "GENERAL"]);
+  assert.deepEqual([...MODEL_TIERS], ["economy", "standard", "advanced"]);
+  assert.deepEqual([...BUDGET_CLASSES], ["TINY", "SMALL", "MEDIUM", "LARGE"]);
+  assert.deepEqual([...EXECUTION], ["REMOTE", "LOCAL"]);
+  assert.ok(REQUEST_STATUS.includes("READY_BUT_WAITING_RESOURCE") && REQUEST_STATUS.includes("DISPATCHED"));
+  assert.deepEqual([...RESULT_STATUS], ["COMPLETE", "FAILED"]);
+  assert.deepEqual([...VERDICTS], ["PASS", "FAIL", "NOT_APPLICABLE"]);
+  assert.deepEqual([...NETWORK_STATES], ["NORMAL", "NETWORK_PRESSURE", "NETWORK_UNAVAILABLE", "RECOVERY"]);
+  assert.ok(SIGNALS.includes("UNAVAILABLE_DETECTED") && SIGNALS.includes("STABILITY_WINDOW_ELAPSED"));
+  assert.deepEqual([...DISPATCH_DECISIONS], ["REJECT_INVALID", "DEDUPE_REUSE", "WAIT_NETWORK", "READY_BUT_WAITING_RESOURCE", "DISPATCH"]);
+});
 
 // --- Request contract ---
 test("a well-formed request validates; missing required fields are caught", () => {

@@ -1,0 +1,25 @@
+{
+  "resultId": "DR-001-R1",
+  "requestId": "DR-001",
+  "routedBackTo": "Design",
+  "status": "COMPLETE",
+  "verdict": "PASS",
+  "findings": [
+    "All exported functions across agentRequest/agentResult/resourceGovernor/networkState/agentManager are exercised by at least one assertion in agentManager.test.mjs.",
+    "The workflow path filter lists all five libs plus agentManager.test.mjs (and the selector lib/test).",
+    "Nuance: 10 exported enum/decision CONSTANTS (AGENT_MODES, MODEL_TIERS, BUDGET_CLASSES, EXECUTION, REQUEST_STATUS, RESULT_STATUS, VERDICTS, NETWORK_STATES, SIGNALS, DISPATCH_DECISIONS) are exercised only transitively, not asserted by name."
+  ],
+  "evidence": [
+    { "kind": "AGENT_RUN", "ref": "Explore DR-001", "note": "read-only, 14 tool uses, 7 files at 0cf6238" }
+  ],
+  "questionsRaised": [
+    "Should the exported vocabulary constants be asserted by name so their membership is locked against silent drift?"
+  ],
+  "scenariosDiscovered": [],
+  "metrics": { "tokens": 44196, "toolUses": 14, "runtimeMs": 92893 },
+  "retries": 0,
+  "contextExpanded": false,
+  "contaminated": false,
+  "retracted": false,
+  "createdAt": "2026-08-09"
+}

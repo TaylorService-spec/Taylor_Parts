@@ -1,0 +1,31 @@
+{
+  "requestId": "DR-001",
+  "requestedByWorkstream": "Design",
+  "parentWorkItemId": "shared-agent-manager",
+  "purpose": "Verify Phase-3 Agent Manager CI coverage: every exported function in the five new lib files is exercised by a test assertion, and the workflow path filter lists all five libs plus the test.",
+  "mode": "VERIFICATION",
+  "modelTier": "standard",
+  "execution": "REMOTE",
+  "budgetClass": "SMALL",
+  "priority": 3,
+  "blocking": false,
+  "requiresBrowser": false,
+  "mutating": false,
+  "allowedSurfaces": [
+    "docs/orchestration/lib/agentRequest.mjs",
+    "docs/orchestration/lib/agentResult.mjs",
+    "docs/orchestration/lib/resourceGovernor.mjs",
+    "docs/orchestration/lib/networkState.mjs",
+    "docs/orchestration/lib/agentManager.mjs",
+    "docs/orchestration/lib/agentManager.test.mjs",
+    ".github/workflows/orchestration-agent-manager-tests.yml"
+  ],
+  "contextPacket": "Phase-3 Agent Manager core merged in #719 (origin/main 0cf6238).",
+  "outputContract": "PASS if every exported function is exercised by a test AND all five libs are in the path filter; else FAIL with the specific gaps.",
+  "retryAllowance": 1,
+  "freshnessAnchor": "0cf6238",
+  "status": "COMPLETE",
+  "createdAt": "2026-08-09",
+  "fingerprint": "VERIFICATION::verify phase-3 agent manager ci coverage::RO::NOBROWSER",
+  "evidence": []
+}
