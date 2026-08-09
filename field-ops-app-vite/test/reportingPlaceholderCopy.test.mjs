@@ -46,3 +46,16 @@ test("domains that ARE genuinely unbuilt keep the honest default", () => {
   assert.equal(warranty.placeholderExplanation, undefined);
   assert.equal(demand.placeholderExplanation, undefined);
 });
+
+test("the Notifications stub distinguishes itself from the working bell", () => {
+  // Two destinations were named "Notifications" — one functional (the header bell,
+  // which shows a live count), one an empty stub. A persona reported the pair as a
+  // dead badge; the badge was real, the collision was the defect. The stub must point
+  // at the working surface rather than implying notifications do not exist.
+  const dashboard = NAV_DOMAINS.find((d) => d.key === "dashboard");
+  const item = dashboard?.subnav.find((i) => i.key === "notifications");
+  assert.ok(item, "the Notifications destination must still exist — this is not a removal");
+  assert.ok(item.placeholderExplanation, "it must not claim the area simply isn't built");
+  assert.match(item.placeholderExplanation, /bell/i, "must point at the surface that works today");
+  assert.match(item.placeholderExplanation, /history/i, "must say what this destination is for");
+});
