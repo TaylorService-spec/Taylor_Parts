@@ -1,0 +1,11 @@
+{
+  "requestId": "DR-003", "requestedByWorkstream": "Design", "parentWorkItemId": "network-telemetry-integration",
+  "purpose": "Verify the Phase-4 CI path filter covers networkHealthAdapter + loader + test and runs the test.",
+  "mode": "VERIFICATION", "modelTier": "standard", "execution": "REMOTE", "budgetClass": "TINY",
+  "priority": 5, "blocking": false, "requiresBrowser": false, "mutating": false,
+  "allowedSurfaces": [".github/workflows/orchestration-network-telemetry-tests.yml"],
+  "outputContract": "PASS/FAIL + any missing path.",
+  "retryAllowance": 1, "status": "COMPLETE", "createdAt": "2026-08-09",
+  "waitNote": "Held READY_BUT_WAITING_RESOURCE while REMOTE_AI was 2/2 (DR-002 + UX-EX-002 in flight); DISPATCHED after a slot freed. Ceiling enforced, not exceeded.",
+  "fingerprint": "VERIFICATION::verify the phase-4 ci path filter covers networkhealthadapter + loader + test and runs the test::RO::NOBROWSER", "evidence": []
+}

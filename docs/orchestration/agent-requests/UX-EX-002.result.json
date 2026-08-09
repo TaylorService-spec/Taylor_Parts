@@ -1,0 +1,19 @@
+{
+  "resultId": "UX-EX-002-R1", "requestId": "UX-EX-002", "routedBackTo": "UX", "status": "COMPLETE", "verdict": "NOT_APPLICABLE",
+  "findings": [
+    "OVERCLAIM (mild): Work Order Detail 'Operational History' — 'History' implies a durable authoritative record, but data is buildTimeline(jobs) derived from job.createdAt with approximated times (conceded only in a source comment, invisible to users) over an unenforced jobs↔WO link.",
+    "HONEST: Control Tower 'Activity Timeline' (neutral; no log/audit/complete claim).",
+    "HONEST (best-in-class): Dispatcher Board 'Recent Activity (this session)' — names its ephemerality inline.",
+    "HONEST: Account 'Service Activity'/'Account Activity' — labels name exactly the queried Work Orders; distinct loading/empty/error states."
+  ],
+  "evidence": [{ "kind": "AGENT_RUN", "ref": "Explore UX-EX-002", "note": "read-only, 4 tool uses, no browser" }],
+  "questionsRaised": [
+    "Should 'History' be reserved for durable/authoritative logs and this surface renamed to match (1)/(3)?",
+    "Does UX-1 need a user-visible 'approximate/derived' affordance wherever timestamps derive from job.createdAt?",
+    "Adopt standard parenthetical scope qualifiers ('(this session)','(derived)','(Work Orders only)') across surfaces?",
+    "Same buildTimeline() builder, different nouns ('Timeline' vs 'History') — intentional or reconcile?"
+  ],
+  "scenariosDiscovered": ["'Operational History' is a concrete OVERCLAIM candidate for the UX-1 vocabulary sweep."],
+  "metrics": { "tokens": 36287, "toolUses": 4, "runtimeMs": 42125 },
+  "retries": 0, "contextExpanded": false, "contaminated": false, "retracted": false, "createdAt": "2026-08-09"
+}

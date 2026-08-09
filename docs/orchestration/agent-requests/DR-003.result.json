@@ -1,0 +1,8 @@
+{
+  "resultId": "DR-003-R1", "requestId": "DR-003", "routedBackTo": "Design", "status": "COMPLETE", "verdict": "PASS",
+  "findings": ["All three paths (adapter, adapter.test, loader) present in both pull_request and push filters; job runs `node --test ...networkHealthAdapter.test.mjs`; no missing paths."],
+  "evidence": [{ "kind": "AGENT_RUN", "ref": "Explore DR-003", "note": "read-only, dispatched after slot freed" }],
+  "questionsRaised": [], "scenariosDiscovered": [],
+  "metrics": { "tokens": 29406, "toolUses": 1, "runtimeMs": 6708 },
+  "retries": 0, "contextExpanded": false, "contaminated": false, "retracted": false, "createdAt": "2026-08-09"
+}

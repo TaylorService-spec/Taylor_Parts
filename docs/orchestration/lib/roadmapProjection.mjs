@@ -135,9 +135,16 @@ const RUNNING_STATUSES = new Set(["DISPATCHED", "RUNNING"]);
 function compactRequest(r) {
   return { requestId: r.requestId, workstream: r.requestedByWorkstream, mode: r.mode, purpose: r.purpose, status: r.status, execution: r.execution, priority: r.priority };
 }
-export function projectAgentOperations(requests = [], results = [], { networkState = "NORMAL", allocations = [] } = {}) {
+export function projectAgentOperations(requests = [], results = [], { networkState = "NORMAL", allocations = [], networkHealth = null, ownerRelayCount = 0, proofStatus = null } = {}) {
   return {
-    networkState,
+    // Phase 4: network state may come from real telemetry (networkHealth.state); fall back to the passed state.
+    networkState: (networkHealth && networkHealth.state) || networkState,
+    networkHealth: networkHealth ? {
+      state: networkHealth.state, confidence: networkHealth.confidence, sampleAgeSec: networkHealth.sampleAgeSec,
+      reasonCodes: networkHealth.reasonCodes || [], recentLatency: networkHealth.recentLatency || null,
+      connectionCount: networkHealth.connectionCount ?? null, evidenceWindow: networkHealth.evidenceWindow || null,
+      asOf: networkHealth.asOf || null,
+    } : null,
     capacity: capacitySnapshot(allocations),
     queued: requests.filter((r) => QUEUED_STATUSES.has(r.status)).map(compactRequest),
     running: requests.filter((r) => RUNNING_STATUSES.has(r.status)).map(compactRequest),
@@ -146,6 +153,9 @@ export function projectAgentOperations(requests = [], results = [], { networkSta
       status: r.status, verdict: r.verdict, findings: (r.findings || []).length, retries: r.retries || 0,
     })),
     metrics: efficiencyMetrics(requests, results),
+    // §10: routine Design/UX agent handoffs require ZERO Owner relay when the durable ledger carries them.
+    ownerRelayCount,
+    proofStatus,
   };
 }
 

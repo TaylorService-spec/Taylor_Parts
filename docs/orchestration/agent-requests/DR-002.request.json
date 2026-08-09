@@ -1,0 +1,10 @@
+{
+  "requestId": "DR-002", "requestedByWorkstream": "Design", "parentWorkItemId": "network-telemetry-integration",
+  "purpose": "Verify the READ-ONLY invariant of the network telemetry integration: no code path mutates the logger/CSV/PID/process, no latency thresholding changes state, path is machine-local/overridable.",
+  "mode": "VERIFICATION", "modelTier": "standard", "execution": "REMOTE", "budgetClass": "SMALL",
+  "priority": 3, "blocking": false, "requiresBrowser": false, "mutating": false,
+  "allowedSurfaces": ["docs/orchestration/lib/networkHealthAdapter.mjs", "docs/orchestration/lib/networkHealthLoader.mjs", "docs/orchestration/network-telemetry.md"],
+  "outputContract": "PASS if strictly read-only AND no latency thresholding AND path machine-local/overridable; else FAIL with offending lines.",
+  "retryAllowance": 1, "freshnessAnchor": "5639894", "status": "COMPLETE", "createdAt": "2026-08-09",
+  "fingerprint": "VERIFICATION::verify the read-only invariant of the network telemetry integration::RO::NOBROWSER", "evidence": []
+}

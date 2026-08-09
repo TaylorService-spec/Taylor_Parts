@@ -4,7 +4,7 @@
 > `lib/generateRoadmapViews.mjs`. Do not hand-edit — change the model and regenerate. Contract:
 > [`roadmap-projection.md`](../roadmap-projection.md).
 
-**Last verified repository state:** `origin/main 85a9549 (2026-08-09)`
+**Last verified repository state:** `origin/main + Phase-4 proof (2026-08-09)`
 
 **Distinctions preserved** (each is a separate field, never one number): IMPLEMENTED ≠ ACTIVATED · MERGED ≠ DEPLOYED · BACKEND COMPLETE ≠ USER-OPERABLE · UX COMPLETE ≠ BACKEND ACTIVE · PERSONA FINDING ≠ PRODUCT DECISION. No invented percentages — the only number is a milestone count.
 
@@ -16,6 +16,8 @@
 |---|---|---|---|---|---|---|---|---|---|
 | Continuous Workstream Backlog & Orchestrator | Product/Design | DONE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | 4/5 |
 | Owner Roadmap Projection | Product/Design | DONE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | 1/1 |
+| Shared Agent Manager + Resource Governor | Product/Design | DONE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | 2/2 |
+| Network Telemetry Integration + Real-Load Proof | Product/Design | DONE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | 2/3 |
 
 ### Commercial & Sales _(domain)_
 
@@ -116,6 +118,8 @@ Legend: `[x]` done · `[>]` in progress · `[ ]` planned/ready · `[!]` owner de
 
 - [x] Continuous Workstream Backlog & Orchestrator _(Platform & Orchestration)_
 - [x] Owner Roadmap Projection _(Platform & Orchestration)_
+- [x] Shared Agent Manager + Resource Governor _(Platform & Orchestration)_
+- [x] Network Telemetry Integration + Real-Load Proof _(Platform & Orchestration)_
 - [P] Sales Opportunity lifecycle (Cycles 2–3) _(Commercial & Sales)_ — Grant opportunity.* + deploy callables
 - [P] Sales Order lifecycle (Cycle 4) + Service lineage (Cycle 7) _(Commercial & Sales)_ — Grant salesOrder.* + deploy callables
 - [P] Fulfillment allocation & availability (Cycle 5) _(Commercial & Sales)_ — Equipment availability fails closed = UNKNOWN pending P1a serialized-asset signal + #12
@@ -172,6 +176,28 @@ _None modeled yet._
 - Dependencies: continuous-workstream-orchestrator
   - ☑ **Projection contract + model + pure views + tests + snapshots** — criteria: contract doc; structured model; 8 pure views; tests + CI; committed snapshots
     - Contract + model + 8 pure views + 14 tests + drift-guarded CI + snapshot — `DONE` · PRs: #715 · tests: 14 node:test (orchestration-roadmap-tests.yml) · evidence: PR:#715, CI:orchestration-roadmap-tests.yml
+
+#### Shared Agent Manager + Resource Governor — `DONE`
+
+- Owner: Product/Design · Milestones: 2/2 · Last verified: `5639894`
+- Dimensions — Impl: NOT_APPLICABLE · Activation: NOT_APPLICABLE · Backend: NOT_APPLICABLE · UserOperable: NOT_APPLICABLE · UX: NOT_APPLICABLE · Deploy: NOT_APPLICABLE
+- Dependencies: continuous-workstream-orchestrator
+  - ☑ **Durable Request/Result contracts + governor + network state + dispatcher + registration invariant** — criteria: files not chat; global caps REMOTE_AI=2/BROWSER=1/NETWORK_HEAVY=1; READY_BUT_WAITING_RESOURCE; registration invariant
+    - agentRequest/Result/resourceGovernor/networkState/agentManager + selector — `DONE` · PRs: #719 · tests: 17+14 node:test · evidence: PR:#719
+  - ☑ **Agent Operations roadmap view + Design/UX operational exercise** — criteria: Agent Ops projection; durable Design + UX exercise; no Owner relay
+    - projectAgentOperations + DR-001/UX-EX-001 — `DONE` · PRs: #720 · evidence: PR:#720
+
+#### Network Telemetry Integration + Real-Load Proof — `DONE`
+
+- Owner: Product/Design · Milestones: 2/3 · Last verified: `5639894`
+- Dimensions — Impl: NOT_APPLICABLE · Activation: NOT_APPLICABLE · Backend: NOT_APPLICABLE · UserOperable: NOT_APPLICABLE · UX: NOT_APPLICABLE · Deploy: NOT_APPLICABLE
+- Dependencies: shared-agent-manager
+  - ☑ **Read-only netwatch Network Health Adapter mapped into existing governor states** — criteria: reuse logger (durable local home); obvious-fact states only; no latency thresholds (Phase 4A); telemetry never in git
+    - networkHealthAdapter/Loader + tests + CI + doc — `DONE` · PRs: #721 · tests: 11 node:test · evidence: PR:#721
+  - ☑ **Real-load proof: 2 concurrent stable, ceiling enforced, zero relay, telemetry correlated** — criteria: Design+UX real requests; READY_BUT_WAITING_RESOURCE demonstrated; network NORMAL throughout; owner relay = 0
+    - Agent-Ops network view + DR-002/UX-EX-002/DR-003 proof — `DONE` · evidence: DOC:phase4-realload-proof.md
+  - ☐ **Option B unattended (still gated: browser/network-heavy correlation, pressure window, budget/cadence/backoff/containment)** — criteria: browser/network-heavy correlation measured; a pressure/outage window observed; budget cap + max window + cadence + backoff + containment + unattended-spend defined
+    - Option B design (deferred) — `PLANNED`
 
 ### Commercial & Sales _(domain)_
 
@@ -415,11 +441,14 @@ _None modeled yet._
 
 ## 9. Agent Operations
 
-Read-only over the durable [Agent Request/Result ledger](../agent-requests/) + governor/network state. See [`agent-manager.md`](../agent-manager.md). AGENT OUTPUT ≠ PRODUCT AUTHORITY.
+Read-only over the durable [Agent Request/Result ledger](../agent-requests/) + governor/network telemetry. See [`agent-manager.md`](../agent-manager.md) / [`network-telemetry.md`](../network-telemetry.md). AGENT OUTPUT ≠ PRODUCT AUTHORITY.
 
-- **Network state:** NORMAL
+- **Network state:** NORMAL (HIGH confidence · ALL_HEALTHY) — telemetry as of 2026-08-09 (proof window), sample age 3s
+- **Recent latency (reported, not thresholded):** gateway 1.1ms · WAN1 13.1ms · WAN2 21.2ms · TCP conns 47
 - **Remote slots:** REMOTE_AI 0/2 · BROWSER 0/1 · NETWORK_HEAVY 0/1 · MUTATING 0/1
-- **Efficiency:** requests 2 · executed 2 · deduped/reused 0 · waiting(resource/net) 0/0 · retries 0 · accepted findings 10 · results-with-token-metrics 2
+- **Efficiency:** requests 5 · executed 5 · deduped/reused 0 · waiting(resource/net) 0/0 · retries 0 · accepted findings 19 · results-with-token-metrics 5
+- **Owner relay count (routine handoffs):** 0
+- **Proof status:** Phase-4A real-load proof COMPLETE: 2 concurrent remote workers stable (network NORMAL throughout), ceiling enforced (READY_BUT_WAITING_RESOURCE), zero Owner relay.
 
 **Queued requests:** _none_
 
@@ -429,5 +458,8 @@ Read-only over the durable [Agent Request/Result ledger](../agent-requests/) + g
 | Result | Request | Routed to | Status | Verdict | Findings | Retries |
 |---|---|---|---|---|---|---|
 | DR-001-R1 | DR-001 | Design | COMPLETE | PASS | 3 | 0 |
+| DR-002-R1 | DR-002 | Design | COMPLETE | PASS | 4 | 0 |
+| DR-003-R1 | DR-003 | Design | COMPLETE | PASS | 1 | 0 |
 | UX-EX-001-R1 | UX-EX-001 | UX | COMPLETE | NOT_APPLICABLE | 7 | 0 |
+| UX-EX-002-R1 | UX-EX-002 | UX | COMPLETE | NOT_APPLICABLE | 4 | 0 |
 
