@@ -4,7 +4,28 @@
 //   node --test docs/orchestration/lib/networkHealthAdapter.test.mjs
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { deriveNetworkHealth, reconcileNetworkState, parseNetwatchCsv, HEALTH_STATES } from "./networkHealthAdapter.mjs";
+import { deriveNetworkHealth, reconcileNetworkState, parseNetwatchCsv, summarizeLoggerHealth, HEALTH_STATES } from "./networkHealthAdapter.mjs";
+
+const NOW_H = Date.parse("2026-08-09T16:30:00");
+test("logger health: supervised + running + fresh → SUPERVISED_OK", () => {
+  const h = summarizeLoggerHealth({ loggerRunning: true, loggerPid: 999, lastSampleAgeSec: 3, telemetryStale: false, checkedAt: "2026-08-09 16:29:40" }, NOW_H);
+  assert.equal(h.supervised, true);
+  assert.equal(h.loggerRunning, true);
+  assert.deepEqual(h.reasonCodes, ["SUPERVISED_OK"]);
+});
+test("logger health: logger down is flagged (LOGGER_DOWN)", () => {
+  const h = summarizeLoggerHealth({ loggerRunning: false, telemetryStale: true, checkedAt: "2026-08-09 16:29:40" }, NOW_H);
+  assert.ok(h.reasonCodes.includes("LOGGER_DOWN") && h.reasonCodes.includes("TELEMETRY_STALE"));
+});
+test("logger health: no supervisor health file → NO_SUPERVISOR_HEALTH, not supervised", () => {
+  const h = summarizeLoggerHealth(null, NOW_H);
+  assert.equal(h.supervised, false);
+  assert.deepEqual(h.reasonCodes, ["NO_SUPERVISOR_HEALTH"]);
+});
+test("logger health: supervisor silent (>30min since last check) → SUPERVISOR_SILENT", () => {
+  const h = summarizeLoggerHealth({ loggerRunning: true, telemetryStale: false, checkedAt: "2026-08-09 15:30:00" }, NOW_H);
+  assert.ok(h.reasonCodes.includes("SUPERVISOR_SILENT"));
+});
 
 const HEADER = "ts,gw_ms,wan1_ms,wan2_ms,dns,tcp_conns";
 // Build a CSV of N rows ending at a base time, each 5s apart, with a shaper(row_index)->fields.

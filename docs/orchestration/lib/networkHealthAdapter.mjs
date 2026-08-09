@@ -117,6 +117,26 @@ export function deriveNetworkHealth(csvText, nowMs, opts = {}) {
   };
 }
 
+// Logger supervision health (Phase 5) — pure summary of the supervisor's sanitized
+// netwatch-health.json (written machine-local by netwatch-supervisor.ps1). Lets the
+// Owner Roadmap show whether the logger is actively supervised, distinct from the
+// derived network state. Pure: caller injects nowMs.
+export function summarizeLoggerHealth(health, nowMs, opts = {}) {
+  const supervisorStaleSec = opts.supervisorStaleSec ?? 1800; // >30 min since last supervisor check ⇒ silent
+  if (!health) return { supervised: false, loggerRunning: false, loggerPid: null, lastSampleAgeSec: null, supervisorAgeSec: null, reasonCodes: ["NO_SUPERVISOR_HEALTH"] };
+  const checkedMs = health.checkedAt ? Date.parse(String(health.checkedAt).replace(" ", "T")) : NaN;
+  const supervisorAgeSec = Number.isNaN(checkedMs) ? null : Math.max(0, Math.round((nowMs - checkedMs) / 1000));
+  const reasonCodes = [];
+  if (!health.loggerRunning) reasonCodes.push("LOGGER_DOWN");
+  if (health.telemetryStale) reasonCodes.push("TELEMETRY_STALE");
+  if (supervisorAgeSec != null && supervisorAgeSec > supervisorStaleSec) reasonCodes.push("SUPERVISOR_SILENT");
+  if (reasonCodes.length === 0) reasonCodes.push("SUPERVISED_OK");
+  return {
+    supervised: true, loggerRunning: !!health.loggerRunning, loggerPid: health.loggerPid ?? null,
+    lastSampleAgeSec: health.lastSampleAgeSec ?? null, supervisorAgeSec, reasonCodes,
+  };
+}
+
 // Compose the instantaneous adapter health with the EXISTING Phase-3 network state
 // machine so RECOVERY (a temporal, stability-window concept) is reused, not reinvented.
 // previousState: last governor network state; instantaneous: deriveNetworkHealth().state.

@@ -8,13 +8,21 @@
 // Default telemetry location (durable machine-local EOS runtime home):
 //   %LOCALAPPDATA%\EOS\netwatch\netwatch-standalone.csv   (override: env EOS_NETWATCH_CSV)
 import { readFileSync, existsSync } from "node:fs";
-import { join } from "node:path";
-import { deriveNetworkHealth } from "./networkHealthAdapter.mjs";
+import { join, dirname } from "node:path";
+import { deriveNetworkHealth, summarizeLoggerHealth } from "./networkHealthAdapter.mjs";
 
 export function defaultNetwatchCsvPath() {
   if (process.env.EOS_NETWATCH_CSV) return process.env.EOS_NETWATCH_CSV;
   const base = process.env.LOCALAPPDATA || join(process.env.HOME || process.env.USERPROFILE || ".", "AppData", "Local");
   return join(base, "EOS", "netwatch", "netwatch-standalone.csv");
+}
+
+// Read the supervisor's sanitized health file (Phase 5) and summarize logger supervision.
+export function loadLoggerHealth({ csvPath = defaultNetwatchCsvPath(), nowMs = Date.now() } = {}) {
+  const healthPath = join(dirname(csvPath), "netwatch-health.json");
+  if (!existsSync(healthPath)) return summarizeLoggerHealth(null, nowMs);
+  try { return summarizeLoggerHealth(JSON.parse(readFileSync(healthPath, "utf8")), nowMs); }
+  catch { return summarizeLoggerHealth(null, nowMs); }
 }
 
 // Read telemetry and derive health. nowMs defaults to the real clock (runtime use).
