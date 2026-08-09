@@ -3,6 +3,7 @@ import { getAllowedActions } from "../../domain/workOrderWorkflow";
 import { useAccountNames } from "../../hooks/useAccountNames";
 import { resolveCustomerIdentity } from "../../domain/fieldCurrentJob";
 import CustomerIdentity from "../../shared/ui/CustomerIdentity.jsx";
+import { workOrderPriorityText } from "../../domain/workOrderPriority";
 
 // Epic 2 Phase 2C -- center pane. Pure renderer, no Firestore access,
 // no scoring logic of its own -- recommendations are passed in
@@ -66,7 +67,7 @@ function WorkOrderPreview({ workOrder, technicians, recommendations, onDispatchT
         <span className={`wo-status wo-${workOrder.status.toLowerCase()}`}>{workOrder.status}</span>
       </div>
       <div className="fo-muted">
-        Priority {workOrder.priority} | Type: {workOrder.type}
+        Priority: {workOrderPriorityText(workOrder.priority) ?? "Priority not set"} | Type: {workOrder.type}
       </div>
       {/* Dispatcher holds canonical accounts read, so identity resolves through the
           existing useAccountNames path -- same four states as the technician surfaces,

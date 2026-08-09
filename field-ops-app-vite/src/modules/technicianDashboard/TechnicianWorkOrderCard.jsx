@@ -3,6 +3,7 @@ import { snapshotPartName } from "../../domain/workOrderInventorySnapshot";
 import { useWorkOrderFieldContext } from "../../hooks/useWorkOrderFieldContext";
 import { resolveCustomerIdentity } from "../../domain/fieldCurrentJob";
 import CustomerIdentity from "../../shared/ui/CustomerIdentity.jsx";
+import { workOrderPriorityText, workOrderPriorityLabel } from "../../domain/workOrderPriority";
 
 // Epic 6 Phase 6.1 -- reuses the same card shape/CSS classes as
 // modules/dispatcherBoard/WorkOrderQueue.jsx's cards (disp-wo-card,
@@ -48,11 +49,11 @@ function TechnicianWorkOrderCard({ workOrder, isSelected, onSelect }) {
         }
       }}
       aria-pressed={isSelected}
-      aria-label={`Work Order ${workOrder.woNumber}, status ${workOrder.status}, priority ${workOrder.priority}`}
+      aria-label={`Work Order ${workOrder.woNumber}, status ${workOrder.status}, priority ${workOrderPriorityLabel(workOrder.priority) ?? "not set"}`}
     >
       <div className="disp-wo-card-header">
         <span className={`wo-status wo-${workOrder.status.toLowerCase()}`}>{workOrder.status}</span>
-        <span className="fo-muted">Priority {workOrder.priority}</span>
+        <span className="fo-muted">{workOrderPriorityText(workOrder.priority) ?? "Priority not set"}</span>
       </div>
       <div>{workOrder.woNumber}</div>
       <div className="fo-muted">

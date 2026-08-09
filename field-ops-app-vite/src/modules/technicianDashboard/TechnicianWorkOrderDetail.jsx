@@ -3,6 +3,7 @@ import ExecutionCapture from "./ExecutionCapture";
 import { useWorkOrderFieldContext } from "../../hooks/useWorkOrderFieldContext";
 import { resolveCustomerIdentity } from "../../domain/fieldCurrentJob";
 import CustomerIdentity from "../../shared/ui/CustomerIdentity.jsx";
+import { workOrderPriorityText } from "../../domain/workOrderPriority";
 
 // Epic 6 Phase 6.2/6.3 -- the technician execution entry point.
 // Rendered inline within TechnicianDashboard.jsx when a Work Order is
@@ -38,7 +39,7 @@ export default function TechnicianWorkOrderDetail({ workOrder, onClose }) {
       </div>
 
       <div className="fo-muted">
-        Priority {workOrder.priority} | Type: {workOrder.type}
+        Priority: {workOrderPriorityText(workOrder.priority) ?? "Priority not set"} | Type: {workOrder.type}
       </div>
       {/* Identity via the F1 trusted WorkOrder-keyed projection -- the governed path
           for a technician, who deliberately has NO accounts read. A denial passes no
