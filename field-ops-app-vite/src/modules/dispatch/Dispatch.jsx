@@ -45,9 +45,17 @@ const PHASE_CHIP = {
 };
 
 function priorityChip(job) {
+  // This chip reads computeJobRisk(), which is DERIVED from how long a job has been
+  // sitting and what state it is in -- age and status factors. It is not a customer-
+  // declared priority, and this platform has no such field.
+  //
+  // It used to render that score as "Emergency". A dispatcher persona reported
+  // routine PM work badged red and read the queue as full of emergencies. "At risk"
+  // is what the number actually supports: this job needs attention because it is
+  // aging or stuck, which is a claim the data can carry.
   const risk = computeJobRisk(job);
-  const isEmergency = risk && (risk.severity === SEVERITY.HIGH || risk.severity === SEVERITY.CRITICAL);
-  return isEmergency ? { label: "Emergency", tone: "emergency" } : { label: "Scheduled", tone: "scheduled" };
+  const atRisk = risk && (risk.severity === SEVERITY.HIGH || risk.severity === SEVERITY.CRITICAL);
+  return atRisk ? { label: "At risk", tone: "emergency" } : { label: "Scheduled", tone: "scheduled" };
 }
 
 function statusChipFor(job) {
