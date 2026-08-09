@@ -15,6 +15,13 @@ corrected. Advancing roadmap maturity remains a governance act, not an edit here
 **This ledger creates no capability, grant, collection, or Rule.** `Register ≠ grant · Export ≠ deploy ·
 Merge ≠ live.`
 
+**Detailed roadmap progress (Phase 2):** for the full EOS → Domain → Capability → Milestone → Work Item →
+Evidence hierarchy with per-item status/ownership/evidence/deployment distinctions, see the
+[Owner Roadmap Projection](./roadmap-projection.md) — its structured model
+([`lib/roadmapModel.mjs`](./lib/roadmapModel.mjs)) is the single durable roadmap state, and the rendered
+snapshot [`roadmap/ROADMAP.md`](./roadmap/ROADMAP.md) is a read-only projection of it (not a second roadmap).
+This schedulability ledger and that roadmap are both projections of the same state.
+
 Baseline reconciled at `origin/main` = `d1ab2ae` (pin `ff22df90…`; Finance + Coverage capabilities
 `active:false`; all new collections deny-all in both Rules mirrors).
 
