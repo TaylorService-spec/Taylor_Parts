@@ -108,7 +108,33 @@ test("unknown state is rejected (fail-closed, no silent skip)", () => {
   assert.throws(() => selectNextWork([{ id: "x", state: "NOT_A_STATE" }]), /unknown state/);
 });
 
-test("state vocabulary is exactly the ten design states", () => {
-  assert.equal(WORK_STATES.length, 10);
+test("state vocabulary includes ROADMAP_COMPLETE and the Phase-3 resource-wait state", () => {
+  assert.equal(WORK_STATES.length, 11);
   assert.ok(WORK_STATES.includes("ROADMAP_COMPLETE"));
+  assert.ok(WORK_STATES.includes("READY_BUT_WAITING_RESOURCE"));
+});
+
+test("READY_BUT_WAITING_RESOURCE → WAIT_RESOURCE (transient), not a CHECKPOINT gate", () => {
+  const r = selectNextWork([{ id: "q", state: "READY_BUT_WAITING_RESOURCE" }]);
+  assert.equal(r.decision, DECISIONS.WAIT_RESOURCE);
+  assert.equal(r.waitingResource.length, 1);
+  // NOT ROADMAP_COMPLETE and NOT CHECKPOINT — the slot will free and it runs.
+});
+
+test("a resource wait does not mask a READY item — READY still runs first", () => {
+  const r = selectNextWork([
+    { id: "q", state: "READY_BUT_WAITING_RESOURCE" },
+    { id: "local", state: "READY", priority: 1 },
+  ]);
+  assert.equal(r.decision, DECISIONS.RUN);
+  assert.equal(r.item.id, "local"); // local READY work continues while the remote slot is contended
+});
+
+test("resource wait is surfaced alongside (not collapsed into) genuine gates", () => {
+  const r = selectNextWork([
+    { id: "q", state: "READY_BUT_WAITING_RESOURCE" },
+    { id: "o", state: "OWNER_DECISION" },
+  ]);
+  assert.equal(r.decision, DECISIONS.WAIT_RESOURCE); // transient wait takes precedence over stopping
+  assert.equal(r.pending.ownerDecision.length, 1); // but the gate is still reported
 });

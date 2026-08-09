@@ -99,8 +99,17 @@ The rule that makes "after DONE, do the next thing" unambiguous:
       terminal/checkpoint state** — do **not** manufacture low-value cleanup/documentation to stay busy,
       and do **not** ask the Owner what to work on next; the selection rule already answered.
 4. `SAFE_CHECKPOINT` and `TOOL_PERMISSION_BLOCKED` never terminate the workstream — they route to resume
-   (§5) and to the permission policy (§7) respectively.
+   (§5) and to the permission policy (§7) respectively. `READY_BUT_WAITING_RESOURCE` (Phase 3 §4) is a
+   *transient* resource wait (no free global remote-agent slot), **not** a product blocker — the selector
+   returns `WAIT_RESOURCE` (hold and retry when a slot frees), never an Owner gate.
 5. If every roadmap-linked item is `DONE` and none can be promoted → `ROADMAP_COMPLETE`.
+
+**Global registration invariant (Phase 3 §8, Owner-ratified 2026-08-09).** Any workstream that participates in
+orchestration — Design, UX, Agent-Manager requests, results requiring follow-up, future workstreams — **MUST
+register its actionable work in durable state** (this backlog and/or an [Agent Request](./agent-manager.md)).
+Before the selector may declare **no authorized READY work**, it must be reasoning over **every registered
+workstream**; **absent registration is not evidence of completeness.** (This closes the real failure the UX
+integration exposed — the selector reached "no READY work" while UX work existed only in session state.)
 
 The rule is intentionally executable-by-a-human-worker from the backlog table alone — **no engine required**.
 It is also encoded as a pure, CI-tested selector — [`lib/selectNextWork.mjs`](./lib/selectNextWork.mjs)

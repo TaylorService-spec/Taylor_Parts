@@ -14,10 +14,11 @@
 // migration-readiness) — a blocked *implementation* does not mean its
 // prerequisite *discovery* is blocked.
 
-/** The ten schedulability states a work item may carry (design §3). */
+/** The schedulability states a work item may carry (design §3; +READY_BUT_WAITING_RESOURCE, Phase 3 §4). */
 export const WORK_STATES = Object.freeze([
   "READY",
   "RUNNING",
+  "READY_BUT_WAITING_RESOURCE", // valid + unblocked, but no global remote-agent slot free — a TRANSIENT resource wait, NOT a product blocker
   "BLOCKED_DEPENDENCY",
   "OWNER_DECISION",
   "PROTECTED_ACTION",
@@ -32,6 +33,7 @@ export const WORK_STATES = Object.freeze([
 export const DECISIONS = Object.freeze({
   RUN: "RUN", // begin (or resume) this item now
   PREREQUISITE_AVAILABLE: "PREREQUISITE_AVAILABLE", // no READY item, but a blocked item exposes repo-safe prerequisite work
+  WAIT_RESOURCE: "WAIT_RESOURCE", // only resource-waiting work remains — hold and retry when a slot frees (transient, not a gate)
   CHECKPOINT: "CHECKPOINT", // no actionable work; only genuine gates (owner/protected/budget/blocked) remain
   ROADMAP_COMPLETE: "ROADMAP_COMPLETE", // nothing left in any non-DONE state
 });
@@ -114,17 +116,24 @@ export function selectNextWork(items = []) {
     return { decision: DECISIONS.PREREQUISITE_AVAILABLE, prerequisites: prereqItems };
   }
 
-  // 3b. Only genuine gates / passive blockers remain → checkpoint (or complete).
+  // 3b. Transient resource wait (Phase 3 §4). Items that are valid + unblocked but
+  // waiting for a global remote-agent slot are NOT a product gate — the driver holds
+  // and retries when a slot frees, rather than checkpointing to the Owner.
+  const waitingResource = withIndex.filter((it) => it.state === "READY_BUT_WAITING_RESOURCE");
+
+  // 3c. Genuine gates / passive blockers.
   const pending = {
     ownerDecision: withIndex.filter((it) => it.state === "OWNER_DECISION"),
     protectedAction: withIndex.filter((it) => it.state === "PROTECTED_ACTION"),
     budgetLimit: withIndex.filter((it) => it.state === "BUDGET_LIMIT"),
     blocked: withIndex.filter((it) => it.state === "BLOCKED_DEPENDENCY"),
   };
-  const anyPending =
+  const anyGate =
     pending.ownerDecision.length + pending.protectedAction.length + pending.budgetLimit.length + pending.blocked.length > 0;
 
-  if (!anyPending) return { decision: DECISIONS.ROADMAP_COMPLETE };
+  // Prefer the transient wait: resource-waiting work will run once a slot frees.
+  if (waitingResource.length > 0) return { decision: DECISIONS.WAIT_RESOURCE, waitingResource, pending };
+  if (!anyGate) return { decision: DECISIONS.ROADMAP_COMPLETE };
   return { decision: DECISIONS.CHECKPOINT, pending };
 }
 
