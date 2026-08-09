@@ -33,7 +33,7 @@ const INERT_BACKEND = { implementationState: "IMPLEMENTED", activationState: "IN
 export const roadmapModel = Object.freeze({
   id: "EOS",
   name: "Enterprise Operations OS",
-  lastVerifiedRepoState: "origin/main da89558 (2026-08-09)",
+  lastVerifiedRepoState: "origin/main 85a9549 (2026-08-09)",
   domains: [
     {
       id: "platform-orchestration", name: "Platform & Orchestration", kind: "PROGRAM",
@@ -68,11 +68,13 @@ export const roadmapModel = Object.freeze({
         },
         {
           id: "owner-roadmap-projection", name: "Owner Roadmap Projection", workstreamOwner: "Product/Design",
-          status: "RUNNING", ...PROCESS_DIMS, dependencies: ["continuous-workstream-orchestrator"], lastVerifiedRepoState: "da89558",
+          status: "DONE", ...PROCESS_DIMS, dependencies: ["continuous-workstream-orchestrator"], lastVerifiedRepoState: "85a9549",
           milestones: [
-            { id: "orp-contract", name: "Projection contract + model + pure views + tests + snapshots", complete: false,
+            { id: "orp-contract", name: "Projection contract + model + pure views + tests + snapshots", complete: true,
               completionCriteria: ["contract doc", "structured model", "8 pure views", "tests + CI", "committed snapshots"],
-              workItems: [{ id: "orp-w1", name: "This increment", status: "RUNNING", owner: "Product/Design", evidence: [] }] },
+              workItems: [{ id: "orp-w1", name: "Contract + model + 8 pure views + 14 tests + drift-guarded CI + snapshot", status: "DONE", owner: "Product/Design",
+                prEvidence: ["#715"], tests: "14 node:test (orchestration-roadmap-tests.yml)", verification: "CI green",
+                evidence: [{ kind: "PR", ref: "#715" }, { kind: "CI", ref: "orchestration-roadmap-tests.yml" }] }] },
           ],
         },
       ],
