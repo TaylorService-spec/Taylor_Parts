@@ -49,3 +49,35 @@ export function checkPayloadCompatibility(payload, expectedMajor = 1) {
   }
   return { compatible: true, reason: null };
 }
+
+/** Freshness states a hosted (or local) Control Center must distinguish — a board that loaded
+ * successfully is NOT thereby CURRENT. Dependency-free so keystone vendors the rule (decided once). */
+export const FRESHNESS_STATES = Object.freeze(["CURRENT", "STALE", "UNKNOWN", "INCOMPATIBLE"]);
+
+/**
+ * Decide whether a payload's displayed state is CURRENT / STALE / UNKNOWN / INCOMPATIBLE.
+ * Never infers CURRENT merely because a payload exists: it must be compatible, carry a parseable
+ * generatedAt within the window, and (if a latest known publish is provided) match its commit.
+ *
+ * @param {object} payload            the Control Center envelope
+ * @param {number} nowMs              current epoch ms (injected — pure)
+ * @param {object} [opts]
+ * @param {number} [opts.freshWindowMs] max age before STALE (default 24h)
+ * @param {string} [opts.latestKnownCommit] the newest governed-publish commit, if known
+ * @param {number} [opts.expectedMajor] schema major the consumer understands (default 1)
+ * @returns {{state:string, reason:string|null, ageMs:number|null}}
+ */
+export function freshnessState(payload, nowMs, { freshWindowMs = 24 * 60 * 60 * 1000, latestKnownCommit = null, expectedMajor = 1 } = {}) {
+  const compat = checkPayloadCompatibility(payload, expectedMajor);
+  if (!compat.compatible) return { state: "INCOMPATIBLE", reason: compat.reason, ageMs: null };
+  const generatedAt = payload.source && payload.source.generatedAt;
+  const genMs = typeof generatedAt === "string" ? Date.parse(generatedAt) : NaN;
+  if (!Number.isFinite(genMs)) return { state: "UNKNOWN", reason: "no parseable generatedAt", ageMs: null };
+  const ageMs = nowMs - genMs;
+  if (latestKnownCommit && payload.source && payload.source.commit && payload.source.commit !== latestKnownCommit) {
+    return { state: "STALE", reason: `envelope commit ${payload.source.commit} is behind ${latestKnownCommit}`, ageMs };
+  }
+  if (ageMs > freshWindowMs) return { state: "STALE", reason: `generated ${Math.round(ageMs / 3.6e6)}h ago (> window)`, ageMs };
+  if (ageMs < 0) return { state: "UNKNOWN", reason: "generatedAt is in the future", ageMs };
+  return { state: "CURRENT", reason: null, ageMs };
+}

@@ -5,7 +5,24 @@ import {
   checkPayloadCompatibility,
   CONTROL_CENTER_SCHEMA_VERSION,
   PRESERVED_DISTINCTIONS,
+  freshnessState,
+  FRESHNESS_STATES,
 } from "./controlCenterAdapter.mjs";
+
+test("freshness never infers CURRENT from a payload merely existing", () => {
+  const NOW = Date.parse("2026-08-10T00:00:00Z");
+  assert.deepEqual([...FRESHNESS_STATES], ["CURRENT", "STALE", "UNKNOWN", "INCOMPATIBLE"]);
+  // incompatible payload -> INCOMPATIBLE (never rendered as understood)
+  assert.equal(freshnessState({ schemaVersion: "9.0.0" }, NOW).state, "INCOMPATIBLE");
+  // no generatedAt -> UNKNOWN (not guessed)
+  assert.equal(freshnessState({ schemaVersion: "1.1.0", source: {} }, NOW).state, "UNKNOWN");
+  // fresh -> CURRENT
+  assert.equal(freshnessState({ schemaVersion: "1.1.0", source: { generatedAt: "2026-08-10T00:00:00Z", commit: "a" } }, NOW).state, "CURRENT");
+  // old -> STALE (announces staleness rather than passing as current)
+  assert.equal(freshnessState({ schemaVersion: "1.1.0", source: { generatedAt: "2026-08-01T00:00:00Z" } }, NOW).state, "STALE");
+  // a newer known publish commit -> STALE even if recent
+  assert.equal(freshnessState({ schemaVersion: "1.1.0", source: { generatedAt: "2026-08-10T00:00:00Z", commit: "old" } }, NOW, { latestKnownCommit: "new" }).state, "STALE");
+});
 
 // autoLoad:false so the UNKNOWN-without-injected-data tests are deterministic (the real
 // generation path — import-envelope — uses the default autoLoad:true to self-load).
