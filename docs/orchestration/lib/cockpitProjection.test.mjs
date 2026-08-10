@@ -69,6 +69,20 @@ test("aiGovernance is an HONEST gap; customerOutcome is durable but UNKNOWN for 
   assert.equal(c.customerOutcome.established.length, 0);
 });
 
+test("whosDoingWhat projects work assignments; routed is NEVER shown as active", () => {
+  const assignments = [
+    { workId: "A", responsibleParty: "UX", lifecycle: "ASSIGNED", escalationState: "WAITING_FOR_PICKUP", triggerOutcome: "NO_WAKE_MECHANISM", assignedAt: 1000 },
+    { workId: "B", responsibleParty: "Design", lifecycle: "ACTIVE", escalationState: "NONE", triggerOutcome: "WOKEN", assignedAt: 1000, startedAt: 2000, lastActivityAt: 2000 },
+  ];
+  const c = projectCockpit(model([cap()]), { workAssignments: assignments });
+  assert.equal(c.whosDoingWhat.length, 2);
+  const a = c.whosDoingWhat.find((w) => w.workId === "A");
+  assert.equal(a.lifecycle, "ASSIGNED");                 // routed, not active
+  assert.equal(a.escalationState, "WAITING_FOR_PICKUP"); // honest: assigned but not picked up
+  assert.equal(a.triggerOutcome, "NO_WAKE_MECHANISM");   // the wake FUTURE_SEAM, surfaced
+  assert.equal(c.whosDoingWhat.find((w) => w.workId === "B").lifecycle, "ACTIVE");
+});
+
 test("sinceLastVisit is PR-sequence based (not wall-clock) and client diffs the marker", () => {
   const c = projectCockpit(model([cap({
     milestones: [{ workItems: [{ name: "w", status: "DONE", prEvidence: ["#700"] }] }],

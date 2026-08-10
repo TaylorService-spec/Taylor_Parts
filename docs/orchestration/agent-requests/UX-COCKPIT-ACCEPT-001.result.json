@@ -1,0 +1,29 @@
+{
+  "resultId": "UX-COCKPIT-ACCEPT-001-R1",
+  "requestId": "UX-COCKPIT-ACCEPT-001",
+  "routedBackTo": "Design",
+  "status": "COMPLETE",
+  "verdict": "NOT_APPLICABLE",
+  "disposition": "CONTAMINATED",
+  "findings": [
+    "The REJECT verdict is a FALSE NEGATIVE from stale source, not a valid rejection. The worker read the Owner's LOCAL checkout (C:/Users/Rudy2/project-keystone + C:/Users/Rudy2/Taylor_Parts), which is behind origin/main, and reviewed the pre-cockpit v1.1 board — schema 1.1.0, no cockpitSection, no projectCockpit — none of which is the merged deliverable (#15 / #744 / #745).",
+    "Orchestration finding (real, distinct from the wake FUTURE_SEAM): dispatched review agents read the Owner's LOCAL filesystem, which drifts behind merged main. A 'route a review' can therefore produce a verdict against stale code unless the review target is a fresh checkout. Mitigation used: re-route (ACCEPT-002) against fresh origin/main worktrees.",
+    "One genuinely useful signal survived the contamination and was independently confirmed against the real code by ACCEPT-002: the pre-fix app.js blank-on-refresh-failure (already fixed in #14)."
+  ],
+  "evidence": [
+    { "kind": "AGENT_RUN", "ref": "general-purpose UX-COCKPIT-ACCEPT-001", "note": "read-only; reviewed STALE local checkout; verdict invalidated by source freshness" }
+  ],
+  "questionsRaised": [
+    "Should the Owner update their LOCAL project-keystone + Taylor_Parts checkouts (git pull on main) before any local-source review or hosted publish? (An Owner action — the launcher detects+reports stale, never auto-pulls.)"
+  ],
+  "scenariosDiscovered": [
+    "Review-agent source freshness is a first-class orchestration concern: a review request should target a known-fresh checkout, or record the reviewed commit so a stale review is detectable and disposable."
+  ],
+  "metrics": { "tokens": 70561, "toolUses": 10 },
+  "retries": 0,
+  "contextExpanded": false,
+  "contaminated": true,
+  "contaminationReason": "read the Owner's local checkout (behind origin/main); reviewed the pre-cockpit v1.1 board, not the merged cockpit",
+  "retracted": false,
+  "createdAt": "2026-08-09"
+}

@@ -1,0 +1,15 @@
+{
+  "workId": "UX-COCKPIT-ACCEPT-001",
+  "responsibleParty": "UX",
+  "resultDestination": "Design",
+  "lifecycle": "COMPLETED",
+  "triggerOutcome": "WOKEN",
+  "escalationState": "NONE",
+  "assignedAt": "2026-08-09",
+  "acknowledgedAt": "2026-08-09",
+  "startedAt": "2026-08-09",
+  "lastActivityAt": "2026-08-09",
+  "completedAt": "2026-08-09",
+  "consumedAt": null,
+  "note": "LIVE PROCESS TEST run 1. Routed via the Agent Manager (no Owner relay). In this runtime UX is realized as an on-demand subagent, so ROUTE→TRIGGER(spawn=WOKEN)→ACKNOWLEDGED→ACTIVE→COMPLETED all occurred — the subagent routing path works end-to-end. The COMPLETED result is NOT CONSUMED: it is CONTAMINATED (the worker read the Owner's LOCAL checkout, which is behind origin/main, and reviewed the pre-cockpit v1.1 board, not the merged #15 cockpit). This exposes a real orchestration limitation distinct from the wake FUTURE_SEAM: dispatched review agents read the Owner's local filesystem, which drifts behind merged main. The standing-session NO_WAKE_MECHANISM seam was NOT exercised (subagents are spawnable)."
+}
