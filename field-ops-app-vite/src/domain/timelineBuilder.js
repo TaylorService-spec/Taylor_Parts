@@ -6,6 +6,11 @@ import { FIELD_PHASE, fieldPhase } from "./fieldWorkOrder";
 import { EVENT_TYPE } from "./eventTypes";
 import { normalizeEvent, sortEvents } from "./eventModel";
 import { computeWorkOrderState } from "./workOrderLifecycle";
+// A governed Work Order's createdAt is a Firestore Timestamp; legacy jobs carried epoch
+// millis. Coerce to millis so job events carry a usable number AND work-order-level events
+// stop being silently dropped by the numeric filter below. Pure (duck-types the Timestamp);
+// this module still performs no Firestore access.
+import { toMillis } from "./timestampMillis";
 
 // The single Operational Timeline builder (Sprint 3.5). Every consumer --
 // ActivityTimelinePanel, WorkOrderDetail's Operational History -- calls
@@ -35,7 +40,7 @@ import { computeWorkOrderState } from "./workOrderLifecycle";
 function jobEvents(job) {
   const events = [
     normalizeEvent({
-      timestamp: job.createdAt,
+      timestamp: toMillis(job.createdAt),
       type: EVENT_TYPE.JOB_CREATED,
       entityId: job.id,
       metadata: { job },
@@ -52,7 +57,7 @@ function jobEvents(job) {
   if (reachedAssigned) {
     events.push(
       normalizeEvent({
-        timestamp: job.createdAt,
+        timestamp: toMillis(job.createdAt),
         type: EVENT_TYPE.JOB_ASSIGNED,
         entityId: job.id,
         metadata: { job, technicianId: job.assignedTechId ?? job.technicianId },
@@ -62,7 +67,7 @@ function jobEvents(job) {
   if (reachedStarted) {
     events.push(
       normalizeEvent({
-        timestamp: job.createdAt,
+        timestamp: toMillis(job.createdAt),
         type: EVENT_TYPE.JOB_STARTED,
         entityId: job.id,
         metadata: { job },
@@ -72,7 +77,7 @@ function jobEvents(job) {
   if (reachedCompleted) {
     events.push(
       normalizeEvent({
-        timestamp: job.createdAt,
+        timestamp: toMillis(job.createdAt),
         type: EVENT_TYPE.JOB_COMPLETED,
         entityId: job.id,
         metadata: { job },
@@ -106,7 +111,7 @@ const STATE_EVENT_TYPE = {
 function workOrderEvents(workOrderId, jobs) {
   if (jobs.length === 0) return [];
 
-  const timestamps = jobs.map((j) => j.createdAt).filter((t) => typeof t === "number");
+  const timestamps = jobs.map((j) => toMillis(j.createdAt)).filter((t) => typeof t === "number");
   if (timestamps.length === 0) return [];
 
   const earliestCreatedAt = Math.min(...timestamps);
