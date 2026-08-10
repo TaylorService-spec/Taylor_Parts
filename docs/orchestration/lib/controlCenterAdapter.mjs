@@ -29,7 +29,7 @@ import { roadmapModel, validateRoadmapModel } from "./roadmapModel.mjs";
 // The contract is dependency-free and lives in its own module so a consumer can
 // vendor it without dragging the roadmap model along -- see controlCenterContract.mjs.
 import { CONTROL_CENTER_SCHEMA_VERSION, PRESERVED_DISTINCTIONS, checkPayloadCompatibility, freshnessState, FRESHNESS_STATES } from "./controlCenterContract.mjs";
-import { projectAll, projectAgentOperations, projectRecentProgress } from "./roadmapProjection.mjs";
+import { projectAll, projectAgentOperations, projectRecentProgress, projectCockpit } from "./roadmapProjection.mjs";
 
 // Auto-load the PROJECT's own durable state (the agent-request ledger + the sanitized
 // telemetry summary) that sit next to this module, so a plain buildControlCenterPayload()
@@ -134,6 +134,11 @@ export function buildControlCenterPayload({
     // §Recent Progress — derived only from the model's own DONE + PR evidence (trustworthy
     // sequence), never a git-history dump and never a fabricated timeline.
     recentProgress: projectRecentProgress(model),
+    // §Owner Cockpit (M6) — progressive-disclosure rollups derived from the same durable
+    // state (systemHealth/needsYou/workSupply/autonomy/operability/sinceLastVisit). AI
+    // governance + customer outcome are honest {available:false} gaps until their sources
+    // exist. The renderer must keep these BELOW the Owner abstraction boundary by drilldown.
+    cockpit: projectCockpit(model, { networkHealth, ownerRelayCount }),
   };
 }
 

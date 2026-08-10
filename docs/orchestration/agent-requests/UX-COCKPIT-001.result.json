@@ -1,0 +1,37 @@
+{
+  "resultId": "UX-COCKPIT-001-R1",
+  "requestId": "UX-COCKPIT-001",
+  "routedBackTo": "Design",
+  "status": "COMPLETE",
+  "verdict": "DELIVERED",
+  "disposition": "CONSUMED",
+  "findings": [
+    "Cockpit composition delivered: a persistent FRESHNESS bar + glance-order sections SYSTEM HEALTH / NEEDS YOU / CUSTOMER-OUTCOME / WHAT IS RUNNING / WORK SUPPLY / AUTONOMY / SINCE YOUR LAST VISIT above the Owner abstraction boundary; AGENT MANAGER / NETWORK / QUALITY / AI-GOVERNANCE / full OPERABILITY matrix below it behind a single 'Machinery' expander. Mobile single-column priority defined.",
+    "Proposed adapter projection shape mapped each section to EXISTING durable state or an honest gap: systemHealth (governed conditions, no %), needsYou (triageClass proxy from OWNER_DECISION/PROTECTED_ACTION), workSupply (coarse READY/RUNNING counts; DRAINED legitimate), autonomy (from unattended-readiness; authorityExpansions must be 0), operability (6-lane distribution from existing dimensions, never a %), sinceLastVisit (PR-sequence, client-diffed).",
+    "GROUNDING CORRECTION: the worker read the Owner's LOCAL C:/Users/Rudy2/Taylor_Parts checkout, which is BEHIND origin/main — so it reported freshnessState + the review/contract docs as 'missing' when they are merged (#738/#741/#742). Illustrates the launcher's source-freshness concern; the design remains valid.",
+    "REAL keystone defect found: app.js load() wipes the board (innerHTML = '') on fetch failure instead of preserving last-known-good marked STALE — contradicts §6 / M5. Routed as a keystone-side correction.",
+    "Customer/outcome gap: roadmapModel capabilities carry NO customerOutcome field, so §8's first-class CUSTOMER/OUTCOME section has no data source today — an honest projection gap; adding a durable field is a product-structure decision routed to Design/Owner.",
+    "AI-governance gap: no Claude<->ChatGPT exchange ledger exists (only intra-Claude agent ops + ownerRelayCount); concur/correction/nonconcur + authorityExpansions counter are not durable yet."
+  ],
+  "evidence": [
+    { "kind": "AGENT_RUN", "ref": "general-purpose UX-COCKPIT-001", "note": "read-only trace of keystone src/views.js+app.js+bin + Taylor adapter/contract/projection/model; 24 tool uses; created/deployed nothing" }
+  ],
+  "questionsRaised": [
+    "Should the four triage classes become a durable `triageClass` capability field (RECOMMEND_OWNER + AUTO_RESOLVED visibility) or remain adapter proxies? (Product-structure decision, routed to Design.)",
+    "Add a durable `customerOutcome { statement, persona, valueKind }` per capability/domain so CUSTOMER/OUTCOME can be projected? (§8 first-class requirement; product-structure decision.)",
+    "Where does autonomy mode live durably vs being parsed from unattended-readiness prose?",
+    "authorityExpansions=0 needs a real durable source to back the invariant beyond assertion.",
+    "Is a Claude<->ChatGPT exchange ledger (CONCUR/CORRECTION/NONCONCUR/AWAITING + owner-relay) in scope to author now? (Contracts landed in #742; the ledger population is the next seam.)",
+    "NOT_AUTHORIZED freshness presumes a remote/phone fetch path that doesn't exist in v1 (local import only) — confirm remote fetch is being built and what returns the auth-denied signal.",
+    "Confirm the keystone app.js failure-wipe fix (preserve last-known-good marked STALE) is accepted."
+  ],
+  "scenariosDiscovered": [
+    "The Owner's local Taylor checkout drifting behind origin/main silently produces a stale cockpit — the launcher must surface source freshness (already designed) and the Owner should update the checkout before hosted publish."
+  ],
+  "metrics": { "tokens": 86750, "toolUses": 24, "runtimeMs": 228130 },
+  "retries": 0,
+  "contextExpanded": false,
+  "contaminated": false,
+  "retracted": false,
+  "createdAt": "2026-08-09"
+}

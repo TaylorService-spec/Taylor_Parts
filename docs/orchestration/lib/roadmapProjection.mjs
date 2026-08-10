@@ -185,6 +185,112 @@ export function projectRecentProgress(model = roadmapModel, { limit = 20 } = {})
   return items.slice(0, limit);
 }
 
+// Owner cockpit projection (M6). Progressive-disclosure rollups DERIVED from existing durable
+// state — no new authority, no second roadmap. Glance-level verdicts + drilldown lists. Every
+// section that has no durable source is emitted as an honest { available:false } gap, never
+// simulated. `networkHealth` (sanitized) and `ownerRelayCount` are injected by the adapter.
+export function projectCockpit(model = roadmapModel, { networkHealth = null, freshness = null, ownerRelayCount = null } = {}) {
+  const caps = [];
+  for (const d of model.domains || []) for (const c of d.capabilities || []) caps.push({ ...c, domain: d.name });
+
+  const byStatus = (s) => caps.filter((c) => c.status === s);
+  const ownerDecisions = byStatus("OWNER_DECISION");
+  const protectedActions = byStatus("PROTECTED_ACTION");
+  const blocked = byStatus("BLOCKED_DEPENDENCY");
+  const ready = byStatus("READY");
+  const running = byStatus("RUNNING");
+
+  // SYSTEM HEALTH — explicit governed conditions ONLY (never a percentage/blend).
+  // A pending OWNER_DECISION is ACTION_REQUIRED. PROTECTED_ACTION is an intentional resting
+  // gate (activation held), surfaced under NEEDS YOU as OWNER_AUTHORIZATION but not itself a
+  // health alarm. Network pressure / stale freshness / blocked deps are ATTENTION.
+  const reasons = [];
+  for (const c of ownerDecisions) reasons.push({ code: "OWNER_DECISION", detail: `${c.id} awaits an Owner decision` });
+  const networkPressure = networkHealth && networkHealth.state && networkHealth.state !== "NORMAL" && networkHealth.state !== "UNKNOWN";
+  if (networkPressure) reasons.push({ code: "NETWORK", detail: `network ${networkHealth.state}` });
+  if (freshness && (freshness === "STALE" || freshness === "UNKNOWN")) reasons.push({ code: "FRESHNESS", detail: `board is ${freshness}` });
+  for (const c of blocked) reasons.push({ code: "BLOCKED_DEPENDENCY", detail: `${c.id} is blocked` });
+  const state = ownerDecisions.length > 0 ? "ACTION_REQUIRED"
+    : (networkPressure || blocked.length > 0 || (freshness === "STALE" || freshness === "UNKNOWN")) ? "ATTENTION"
+    : "HEALTHY";
+  const systemHealth = { state, reasons };
+
+  // NEEDS YOU — triage-classified, genuine asks only. AUTO_RESOLVED never appears here (it is
+  // the filter, not a row). The four-class taxonomy is NOT yet a durable model field; this maps
+  // OWNER_DECISION→NEEDS_OWNER and PROTECTED_ACTION→OWNER_AUTHORIZATION and flags itself a proxy.
+  const needsYou = {
+    proxy: true,
+    proxyReason: "triageClass is not yet a durable capability field; derived from status. RECOMMEND_OWNER not represented until the field exists (routed to Design).",
+    items: [
+      ...ownerDecisions.map((c) => ({ triageClass: "NEEDS_OWNER", capabilityId: c.id, name: c.name, domain: c.domain, text: c.ownerDecision || null })),
+      ...protectedActions.map((c) => ({ triageClass: "OWNER_AUTHORIZATION", capabilityId: c.id, name: c.name, domain: c.domain, protectedBoundary: c.protectedBoundary || null, requiresReconfirmAtExecution: true })),
+    ],
+  };
+
+  // WORK SUPPLY — coarse model-count proxy (the fine schedulability truth lives in
+  // execution-backlog.md, not the envelope). DRAINED is legitimate, never an error.
+  const supplyState = ready.length === 0 ? "DRAINED" : ready.length <= 2 ? "LOW" : "HEALTHY";
+  const workSupply = {
+    state: supplyState, readyCount: ready.length, runningCount: running.length,
+    terminalCheckpoint: ready.length === 0,
+    note: ready.length === 0 ? "No authorized READY work is a legitimate terminal state, not a failure." : null,
+    proxy: true, proxyReason: "coarse capability-status counts; richer schedulability is in execution-backlog.md (not the envelope).",
+  };
+
+  // AUTONOMY — derived from the unattended-readiness capability; not parsed from prose.
+  const ur = caps.find((c) => c.id === "unattended-readiness");
+  const autonomy = {
+    mode: "SUPERVISED_IN_SESSION", // Option A (/loop) is the current continuation mechanism
+    governingCapability: ur ? ur.id : null,
+    overnightAuthorized: false,
+    authorityExpansions: 0,
+    authorityExpansionsBasis: "no authority-expansion action exists in the model; the invariant is that this MUST remain 0.",
+  };
+
+  // OPERABILITY — distribution across the six lanes from the existing dimensions. NEVER a
+  // single completion %. Process capabilities (all dims NOT_APPLICABLE) are excluded and counted.
+  const dist = { BUILT: 0, INERT: 0, DEPLOYED: 0, USER_OPERABLE: 0, PROTECTED: 0, UNKNOWN: 0 };
+  let processExcluded = 0;
+  const perCapability = [];
+  for (const c of caps) {
+    const dm = dimensions(c);
+    const allNA = Object.values(dm).every((v) => v === "NOT_APPLICABLE" || v === undefined);
+    if (allNA) { processExcluded++; continue; }
+    let lane;
+    if (c.status === "PROTECTED_ACTION") lane = "PROTECTED";
+    else if (dm.userOperable === true && dm.deployState === "DEPLOYED") lane = "USER_OPERABLE";
+    else if (dm.deployState === "DEPLOYED") lane = "DEPLOYED";
+    else if (dm.activationState === "INERT") lane = "INERT";
+    else if (dm.implementationState === "IMPLEMENTED") lane = "BUILT";
+    else lane = "UNKNOWN";
+    dist[lane]++;
+    perCapability.push({ id: c.id, name: c.name, lane, dimensions: dm });
+  }
+  const operability = { distribution: dist, processExcluded, perCapability };
+
+  // SINCE YOUR LAST VISIT — ordered PR-evidenced increments; the client diffs against its own
+  // last-seen marker (the envelope cannot know when the Owner last looked). Basis is honestly
+  // PR sequence, not wall-clock.
+  const increments = projectRecentProgress(model);
+  const sinceLastVisit = { markerBasis: "PR_SEQUENCE", latestPr: increments.length ? increments[0].latestPr : null, increments };
+
+  // AI GOVERNANCE — honest gap: no cross-AI (Claude↔ChatGPT) exchange ledger exists yet. The
+  // only real datum is ownerRelayCount. authorityExpansions invariant lives under autonomy.
+  const aiGovernance = {
+    available: false,
+    reason: "no Claude↔ChatGPT exchange ledger yet (contracts-only phase); current ledger is intra-Claude agent ops.",
+    ownerRelayCount: ownerRelayCount ?? null,
+  };
+
+  // CUSTOMER / PRODUCT OUTCOME — honest gap: capabilities carry no customerOutcome field.
+  const customerOutcome = {
+    available: false,
+    reason: "no durable customerOutcome field on capabilities; adding one is a product-structure decision routed to Design/Owner.",
+  };
+
+  return { systemHealth, needsYou, workSupply, autonomy, operability, sinceLastVisit, aiGovernance, customerOutcome };
+}
+
 // Convenience: all eight views at once (used by the generator).
 export function projectAll(model = roadmapModel) {
   return {
