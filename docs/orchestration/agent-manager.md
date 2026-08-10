@@ -108,6 +108,20 @@ network behavior proven, budget cap + max work window + Owner checkpoint cadence
 containment defined, and Agent-Manager result routing proven. **Option A (in-session `/loop`) remains
 current.**
 
+## 10a. Result consumption lifecycle (§23 continuation correction)
+
+A completed agent run is **not** completed parent work. `agentResult.mjs` now carries a
+`disposition` (`AWAITING_INTERPRETATION` → `CONSUMED`/`REJECTED`/`STALE`/`CONTAMINATED`).
+A COMPLETE result routed to a registered workstream and still `AWAITING_INTERPRETATION` is
+actionable continuation work: `resultConsumption.mjs` projects it into an ordinary `READY`
+item and feeds it to the **same** `selectNextWork` (no second queue). So a valid unconsumed
+result **prevents a false terminal checkpoint**; disposing of it clears the actionable
+state; an honest checkpoint remains reachable once nothing is awaiting. Results predating
+the lifecycle (no `disposition` field) are historical and never resurrected. A result routed
+to an *unregistered* workstream is surfaced as `unroutable` (an ORCHESTRATOR_INTEGRATION_GAP),
+not silently dropped. Drivers MUST call `selectNextWorkIncludingResults(...)` (or concat
+`interpretationWorkItems(...)`) before concluding a terminal state.
+
 ## 11. Anti-over-engineering
 
 Smallest local/repo-native mechanism consistent with #703/#710/#715/#716: pure libs + durable files + the
