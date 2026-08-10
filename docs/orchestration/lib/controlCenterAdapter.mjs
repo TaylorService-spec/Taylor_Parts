@@ -22,11 +22,39 @@
 // adapter emitting the same envelope. No tenant registry, no routing, no shared
 // infrastructure is created here, because none is needed to render one project today.
 
+import { readdirSync, readFileSync, existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 import { roadmapModel, validateRoadmapModel } from "./roadmapModel.mjs";
 // The contract is dependency-free and lives in its own module so a consumer can
 // vendor it without dragging the roadmap model along -- see controlCenterContract.mjs.
 import { CONTROL_CENTER_SCHEMA_VERSION, PRESERVED_DISTINCTIONS, checkPayloadCompatibility } from "./controlCenterContract.mjs";
 import { projectAll, projectAgentOperations, projectRecentProgress } from "./roadmapProjection.mjs";
+
+// Auto-load the PROJECT's own durable state (the agent-request ledger + the sanitized
+// telemetry summary) that sit next to this module, so a plain buildControlCenterPayload()
+// -- the call keystone's import-envelope.mjs makes -- carries Agent Operations and Network
+// Health from real data. Reads only THIS repository's files, relative to this module; if
+// they are not reachable (e.g. the module is vendored elsewhere) it returns nulls and the
+// sections fail closed to honest UNKNOWN. Never reads raw telemetry (only the sanitized
+// summary the repo already commits). Tests pass autoLoad:false for determinism.
+function loadDurableState() {
+  try {
+    const ledgerDir = join(dirname(fileURLToPath(import.meta.url)), "..", "agent-requests");
+    if (!existsSync(ledgerDir)) return { ledger: null, networkHealth: null };
+    const requests = [], results = [];
+    let networkHealth = null;
+    for (const f of readdirSync(ledgerDir).filter((n) => n.endsWith(".json")).sort()) {
+      const obj = JSON.parse(readFileSync(join(ledgerDir, f), "utf8"));
+      if (f.endsWith(".request.json")) requests.push(obj);
+      else if (f.endsWith(".result.json")) results.push(obj);
+      else if (f === "telemetry-summary.json") networkHealth = obj;
+    }
+    return { ledger: { requests, results }, networkHealth };
+  } catch {
+    return { ledger: null, networkHealth: null }; // fail closed to UNKNOWN, never a fabricated section
+  }
+}
 
 /**
  * Build the Control Center payload.
@@ -48,7 +76,14 @@ export function buildControlCenterPayload({
   ledger = null, // { requests: [...], results: [...] } from docs/orchestration/agent-requests/
   networkHealth = null, // sanitized telemetry summary (telemetry-summary.json) — never raw
   ownerRelayCount = 0,
+  autoLoad = true, // load the project's durable ledger/telemetry when not injected (import-envelope path)
 } = {}) {
+  // Fill from the project's own durable files unless explicitly injected (tests inject).
+  if (autoLoad && (ledger === null || networkHealth === null)) {
+    const durable = loadDurableState();
+    if (ledger === null) ledger = durable.ledger;
+    if (networkHealth === null) networkHealth = durable.networkHealth;
+  }
   // Fail closed: never hand a renderer a model this repo would not accept itself.
   const validation = validateRoadmapModel(model);
   const errors = Array.isArray(validation) ? validation : validation?.errors ?? [];

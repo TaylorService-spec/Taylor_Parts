@@ -7,7 +7,9 @@ import {
   PRESERVED_DISTINCTIONS,
 } from "./controlCenterAdapter.mjs";
 
-const payload = () => buildControlCenterPayload({ commit: "abc1234", generatedAt: "2026-08-09T00:00:00Z" });
+// autoLoad:false so the UNKNOWN-without-injected-data tests are deterministic (the real
+// generation path — import-envelope — uses the default autoLoad:true to self-load).
+const payload = () => buildControlCenterPayload({ commit: "abc1234", generatedAt: "2026-08-09T00:00:00Z", autoLoad: false });
 
 test("the payload carries every Owner view, unmodified", () => {
   const p = payload();
