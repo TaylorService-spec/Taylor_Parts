@@ -1,0 +1,25 @@
+{
+  "exchangeId": "AIX-C7-REVIEW-001",
+  "direction": "CLAUDE_TO_CHATGPT",
+  "question": "Review the C-7 context-management study's architecture recommendation before it is treated as settled: is the no-RAG, repo-native governed-context-map direction correct for EOS, or does a mechanism exist that beats grep+index for THIS bounded governance corpus without introducing a second authority?",
+  "contextRefs": [
+    "project-keystone/docs/research/c7-context-registry-study.md",
+    "project-keystone/docs/company-capability-register.md (C-7)"
+  ],
+  "claudePosition": "EOS already provides 7/8 required properties; the genuine gap is a governed CONTEXT MAP + retrieval policy, not storage or a retrieval engine. Recommend: small repo-native BUILD (context-map.json + per-domain README index + Context Health lint + context-package generator) over heavy REUSE (Git · grep · existing freshnessState/reviewProvenance · roadmap model + ledgers · Agent Skills as L0 · context packets); ADOPT front-matter governance envelope + ADR/MADR status lifecycle + llms.txt-style index; INTEGRATE CODEOWNERS + Actions validator + MCP Resources (cautiously) + Aider repo-map (optional). NOT BUILD vector DB/embeddings/semantic search/knowledge graph/second authority/standing server/managed RAG. Two routed research streams converge (grep beats embeddings for small structured corpora; Sourcegraph dropped embeddings-as-primary); load-bearing finding: machine-auto-summarized context files measurably hurt agent success (ETH Zurich) → narrative content stays human/governed-authored.",
+  "chatgptPosition": null,
+  "evidenceRefs": [
+    "jxnl/Augment grep-vs-embeddings",
+    "Sourcegraph/Cody embeddings-not-primary",
+    "ETH Zurich AGENTS.md/CLAUDE.md study",
+    "ADR/MADR lifecycle",
+    "MCP Resources spec + client-support-gap reports"
+  ],
+  "verdict": null,
+  "conclusion": null,
+  "responsibility": "ChatGPT (architecture/governance/build-vs-buy review) → Claude consumes the response; Design/Owner disposition gates any implementation.",
+  "ownerRequirement": "Independent Claude analysis first, then ChatGPT comparison; resolve disagreement by evidence; only unresolved strategic tradeoffs reach the Owner.",
+  "disposition": "OPEN",
+  "ownerRelayed": true,
+  "provenance": { "capturedAt": "2026-08-09", "note": "AI_REVIEW request; awaiting ChatGPT. Owner is the conduit today (live bridge = FUTURE_SEAM). Claude's recommendation is NOT to be optimized toward any prior ChatGPT suggestion." }
+}
