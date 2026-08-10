@@ -3,7 +3,7 @@
   "requestId": "UX-COCKPIT-001",
   "routedBackTo": "Design",
   "status": "COMPLETE",
-  "verdict": "DELIVERED",
+  "verdict": "NOT_APPLICABLE",
   "disposition": "CONSUMED",
   "findings": [
     "Cockpit composition delivered: a persistent FRESHNESS bar + glance-order sections SYSTEM HEALTH / NEEDS YOU / CUSTOMER-OUTCOME / WHAT IS RUNNING / WORK SUPPLY / AUTONOMY / SINCE YOUR LAST VISIT above the Owner abstraction boundary; AGENT MANAGER / NETWORK / QUALITY / AI-GOVERNANCE / full OPERABILITY matrix below it behind a single 'Machinery' expander. Mobile single-column priority defined.",
