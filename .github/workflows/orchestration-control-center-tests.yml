@@ -15,6 +15,7 @@ on:
       - "docs/orchestration/lib/tokenCapacity.mjs"
       - "docs/orchestration/lib/improvementRegister.mjs"
       - "docs/orchestration/lib/controlPlaneSeams.test.mjs"
+      - "docs/orchestration/lib/cockpitProjection.test.mjs"
       - "docs/orchestration/lib/publishControlCenterEnvelope.mjs"
       - "docs/orchestration/lib/publishControlCenterEnvelope.test.mjs"
       - "docs/orchestration/lib/roadmapModel.mjs"
@@ -29,6 +30,7 @@ on:
       - "docs/orchestration/lib/tokenCapacity.mjs"
       - "docs/orchestration/lib/improvementRegister.mjs"
       - "docs/orchestration/lib/controlPlaneSeams.test.mjs"
+      - "docs/orchestration/lib/cockpitProjection.test.mjs"
       - "docs/orchestration/lib/publishControlCenterEnvelope.mjs"
       - "docs/orchestration/lib/publishControlCenterEnvelope.test.mjs"
       - "docs/orchestration/lib/roadmapModel.mjs"
@@ -51,4 +53,4 @@ jobs:
         with:
           node-version: 22
       - name: Control Center adapter + publish tooling tests (node:test, zero-dependency)
-        run: node --test docs/orchestration/lib/controlCenterAdapter.test.mjs docs/orchestration/lib/publishControlCenterEnvelope.test.mjs docs/orchestration/lib/controlPlaneSeams.test.mjs
+        run: node --test docs/orchestration/lib/controlCenterAdapter.test.mjs docs/orchestration/lib/publishControlCenterEnvelope.test.mjs docs/orchestration/lib/controlPlaneSeams.test.mjs docs/orchestration/lib/cockpitProjection.test.mjs

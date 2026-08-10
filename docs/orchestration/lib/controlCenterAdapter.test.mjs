@@ -133,9 +133,12 @@ test("§UX board now carries the registered UX workstream (gap 4 closed)", () =>
   assert.ok(ux.some((r) => r.status === "OWNER_DECISION"), "UX-3 grain stays an Owner decision, not flattened");
 });
 
-test("the additive schema is 1.1 and still major-1 compatible for a pinned consumer", () => {
-  assert.equal(payload().schemaVersion, "1.1.0");
+test("the additive schema is 1.2 and still major-1 compatible for a pinned consumer", () => {
+  assert.equal(payload().schemaVersion, "1.2.0");
   assert.equal(checkPayloadCompatibility(payload(), 1).compatible, true);
+  // the additive cockpit section is present and its honest gaps are declared, not fabricated
+  assert.equal(payload().cockpit.aiGovernance.available, false);
+  assert.equal(payload().cockpit.customerOutcome.available, false);
 });
 
 import fs from "node:fs";
