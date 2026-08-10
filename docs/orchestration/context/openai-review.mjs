@@ -91,26 +91,41 @@ async function main() {
   // stateless reviewer.
   const contextText = readGoverningAuthorityText(boot);
 
+  // ONE canonical invocation, built ONCE. Dry-run inspects/estimates THIS object; live transmits THIS
+  // EXACT object — no separate prompt construction, no live-only abbreviated payload.
   const built = buildReviewInvocation({ request, contextPackage, diff, model: request.selectedModel, contextText });
   if (!built.ok) { process.stdout.write(JSON.stringify({ mode: flag("live") ? "LIVE" : "DRY_RUN", ok: false, failureKind: built.failureKind, reason: built.reason, wouldInvoke: false }, null, 2) + "\n"); process.exit(1); }
   const estCostUsd = estimateCost({ inputTokens: built.invocation.inputTokensEstimate, outputTokens: built.invocation.maxOutputTokens, pricing: DEFAULT_PRICING_ESTIMATE });
   const gate = guardBudget({ estCostUsd, spentSoFarUsd });
 
+  // EOS-owned metadata (never authored by the model): context package identity, provenance, timestamps.
+  const prov = boot.provenance || {};
+  const contextPackageRef = { mapVersion: (contextPackage.provenance && contextPackage.provenance.mapVersion) || null, sourceCommit: prov.sourceCommit || null, governingAuthority: contextPackage.governingAuthority || null, scope };
+  const provenance = { sourceFreshness: prov.freshness || "UNKNOWN", sourceCommit: prov.sourceCommit || null };
+  const sourceFreshness = prov.freshness || "UNKNOWN";
+  const triggerKind = arg("triggerKind", "MANUAL_RUNTIME_TRIGGER");
+
   if (!flag("live")) {
-    // DRY-RUN: show what WOULD happen — no network, no key read. wouldInvoke is honest: it requires a
-    // valid configured model AND a passing budget gate.
+    // DRY-RUN: show what WOULD transmit — no network, no key read. wouldInvoke requires a valid
+    // configured model AND a passing budget gate. Reports the same canonical payload + EOS metadata.
     process.stdout.write(JSON.stringify({
       mode: "DRY_RUN", reviewClass: request.reviewClass, contextSufficiency: contextPackage.sufficiency,
       governingAuthority: contextPackage.governingAuthority, modelConfigured: configuredModel || null, model: built.invocation.model,
-      inlinedContextBytes: contextText.length, inputTokensEstimate: built.invocation.inputTokensEstimate,
+      contextPackageRef, sourceProvenance: provenance, inlinedContextBytes: contextText.length, inputTokensEstimate: built.invocation.inputTokensEstimate,
       estCostUsd, budget: gate, pricingModel: DEFAULT_PRICING_ESTIMATE.model, pricingSource: DEFAULT_PRICING_ESTIMATE.source, wouldInvoke: gate.ok,
-      note: "DRY-RUN only. No provider call. `--live` + OPENAI_API_KEY + a configured OPENAI_REVIEW_MODEL crosses the Owner activation boundary.",
+      note: "DRY-RUN only. No provider call. This is the EXACT canonical payload live would transmit.",
     }, null, 2) + "\n");
     process.exit(gate.ok ? 0 : 1);
   }
 
-  // LIVE — the Owner activation boundary. Only reached with explicit --live.
-  const r = await runOpenAIReview({ request, contextPackage, diff, transport: makeRealTransport(), spentSoFarUsd });
+  // LIVE — the Owner activation boundary. Transmits the SAME `built.invocation` object; EOS owns all
+  // metadata and the model supplies only semantic fields.
+  const nowIso = new Date().toISOString();
+  const r = await runOpenAIReview({
+    request, invocation: built.invocation, transport: makeRealTransport(), spentSoFarUsd,
+    sourceFreshness, contextPackageRef, provenance, triggerKind,
+    timestamps: { requestedAt: nowIso, triggeredAt: nowIso }, clock: () => new Date().toISOString(),
+  });
   // Never print the key or headers; only the structured result + usage.
   process.stdout.write(JSON.stringify({ mode: "LIVE", ok: r.ok, failureKind: r.failureKind || null, reason: r.reason || null, result: r.result || null, usage: r.usage || null }, null, 2) + "\n");
   process.exit(r.ok ? 0 : 1);
