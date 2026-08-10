@@ -1,0 +1,6 @@
+{ "workId": "STD-DISPATCH-001", "responsibleParty": "Design", "resultDestination": "Design",
+  "lifecycle": "CONSUMED", "triggerOutcome": "WOKEN", "escalationState": "NONE",
+  "assignedAt": "2026-08-10", "acknowledgedAt": "2026-08-10", "startedAt": "2026-08-10",
+  "lastActivityAt": "2026-08-10", "completedAt": "2026-08-10", "consumedAt": "2026-08-10",
+  "reviewProvenance": { "repository": "Taylor_Parts", "sourceLocation": "isolated fresh worktree pinned to origin/main", "actualCommit": "36bc93c", "originMainCommit": "36bc93c", "workingTreeState": "CLEAN", "sourceFreshnessState": "CURRENT", "provenanceCapturedAt": "2026-08-10" },
+  "note": "LIVE verification that STANDARD Agent Manager dispatch (not the Wake Supervisor) yields a usable C-7 package. Ordinary cold worker succeeded from the standard-dispatch-generated package alone, minimum retrieval, no EVIDENCE_REQUIRED. Evidence: docs/orchestration/context/standard-dispatch-live-test.md." }
