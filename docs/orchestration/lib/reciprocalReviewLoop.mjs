@@ -19,13 +19,15 @@ export const EXCHANGE_LIFECYCLE = Object.freeze(["NOT_TRIGGERED", "TRIGGERED", "
  * INDEPENDENT_AI + authorized-for-review + context SUFFICIENT + provenance CURRENT + not duplicate.
  * Reuses assessTriggerEligibility for the dedupe/context/freshness gate. No AI here.
  */
-export function selectEligibleReviews(reviews = [], { store, sufficiencyOf = () => "SUFFICIENT", freshnessOf = () => "CURRENT" } = {}) {
+export function selectEligibleReviews(reviews = [], { store, sufficiencyOf = () => "SUFFICIENT", freshnessOf = () => "CURRENT", protectedOf = () => false } = {}) {
   const eligible = [];
   const skipped = [];
   for (const r of reviews || []) {
     if (r.status !== "OPEN") { skipped.push({ requestId: r.requestId, reason: "not OPEN" }); continue; }
     if (r.reviewClass !== "INDEPENDENT_AI") { skipped.push({ requestId: r.requestId, reason: "not INDEPENDENT_AI" }); continue; }
-    if (r.authorizedForReview !== true) { skipped.push({ requestId: r.requestId, reason: "not authorized for review" }); continue; }
+    if (r.authorizedForReview !== true) { skipped.push({ requestId: r.requestId, reason: "not authorized for review (READY ≠ authorization; EVENT ≠ authorization)" }); continue; }
+    // A review that targets a PROTECTED action never reaches a GPT call — a reviewer can't authorize it.
+    if (protectedOf(r) === true) { skipped.push({ requestId: r.requestId, reason: "targets a protected action — not eligible for automated review" }); continue; }
     const gate = assessTriggerEligibility({ request: r, store, contextSufficiency: sufficiencyOf(r), sourceFreshness: freshnessOf(r) });
     if (!gate.eligible) { skipped.push({ requestId: r.requestId, reason: gate.reason, failureKind: gate.failureKind }); continue; }
     eligible.push(r);
