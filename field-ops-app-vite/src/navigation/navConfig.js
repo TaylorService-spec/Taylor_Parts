@@ -53,7 +53,19 @@ export const NAV_DOMAINS = [
       // area. Path/legacyKey UNCHANGED (still /dashboard/operations, legacyKey
       // "operations") -- only the user-facing label moved.
       { key: "operationsDashboard", label: "Inventory & Supply Overview", path: "operations", legacyKey: "operations" },
-      { key: "activity", label: "Activity", path: "activity", placeholderExplanation: "The operational activity timeline is built and live in Service Operations, and each Work Order carries its own under Operational History. A separate cross-domain activity destination is not built yet." },
+      // RETIRED (Owner decision, 2026-08-09). A standalone "Activity" destination had
+      // no demonstrated unique product responsibility: the operational timeline is live
+      // in Service Operations, each Work Order carries its own Operational History, the
+      // Dispatcher Board has a session feed, and an Account has Service Activity --
+      // four surfaces at four grains over three data sources. This destination was a
+      // fifth name for none of them.
+      //
+      // Do NOT restore it without an explicit product decision. Reinstating it means
+      // choosing what it IS ("my activity" or a cross-domain roll-up), and each is a new
+      // product with its own authority and projection -- not a nav entry. See
+      // docs/reviews/ux3-activity-destination-scope.md.
+      // The existing activity/history surfaces are untouched: their grains and
+      // authorities are genuinely distinct.
       { key: "notifications", label: "Notifications", path: "notifications", placeholderExplanation: "Current notifications appear in the bell at the top of every screen. This destination is for the full notification history, which is not built yet." },
     ],
   },
