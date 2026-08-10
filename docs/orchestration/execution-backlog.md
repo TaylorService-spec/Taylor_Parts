@@ -31,7 +31,6 @@ Baseline reconciled at `origin/main` = `d1ab2ae` (pin `ff22df90…`; Finance + C
 
 | # | Item | Why READY | Next reversible increment |
 |---|---|---|---|
-| UX-1 | Cross-surface business-claim vocabulary sweep | UX-owned; repo-safe; authority traced per finding. Defect family already proven 4x (NaN→CRITICAL, request urgency, derived risk→"Emergency", priority collision) | Trace the next derived signal (PartsList urgency thresholds; coordinated-visit obligation pills); classify FACT / HONEST_DERIVATION / OVERCLAIM / VOCABULARY_COLLISION; correct only proven local defects |
 | UX-2 | Coordinated Visits / Mission — SAMPLE vs live confusion recheck | The SAMPLE treatment shipped (#683). Measure whether it resolves the demonstrated confusion before any further change | Live re-measure against the pinned build; ACCEPTABLE → close, else minimum honest correction |
 | UX-3 | Activity destination scope | IA scope question surfaced by #708. Repo-safe: tracing + evidence only. **Durable evidence available** — persona request `UX-EX-001` routed a read-only trace of 5 Activity-rendering surfaces + grains + a wayfinding discrepancy + questionsRaised ([`agent-requests/UX-EX-001.result.json`](./agent-requests/UX-EX-001.result.json)). Evidence, not a decision — UX interprets | Determine whose activity / what grain relative to Operational History using the routed evidence; record decision, do not merge or remove routes |
 
@@ -58,12 +57,16 @@ Baseline reconciled at `origin/main` = `d1ab2ae` (pin `ff22df90…`; Finance + C
 
 | Item | Worker | Declared in |
 |---|---|---|
-| UX-1 Cross-surface vocabulary sweep | UX | This ledger; first finding merged as #714 (priority vocabulary) |
+| *(none)* | — | UX-1 vocabulary sweep CLOSED (#714 fix, #717 record); Owner Control Center CLOSED (keystone PR #8, Taylor #726/#728) |
 
 ## BLOCKED_DEPENDENCY — skip; select another READY; promote when blocker is DONE
 
 | Item | Blocked on | Type |
 |---|---|---|
+| Control Center — Agent Operations view | Envelope carries no agent slot utilisation, running/queued, WAITING_RESOURCE, dedupe, retries, token metrics or supervisor health. **PROJECTION_GAP routed to Design** — keystone renders it as a named gap and must not approximate it | projection |
+| Control Center — Network Health view | Envelope carries no sanitized telemetry. **PROJECTION_GAP routed to Design** | projection |
+| Control Center — Recent Progress view | Envelope states current state, not a change history; a timeline cannot be derived without inventing ordering. **PROJECTION_GAP routed to Design** | projection |
+| Control Center — UX board is empty | Accurate, not a rendering bug: UX items live in `execution-backlog.md`, not `roadmapModel.mjs`, so the model genuinely has no UX capabilities registered. Whether UX work belongs in the roadmap model is a **model question routed to Design** | projection |
 | Serialized Equipment availability | P1a real serialized-asset availability signal **+** #12 Temporary Equipment/Placement. Do **not** fabricate availability data | roadmap |
 | #12 Temporary Equipment / Placement | Assess only **after** F2 + integrated sandbox mature (custody persistence shape unresolved) | roadmap (preserved) |
 | #13 Technician Labor / Cost | Assess only **after** Service Ops convergence + F2 + sandbox | roadmap (preserved) |
@@ -128,3 +131,27 @@ The worker updates this ledger as part of each item's `DONE` transition (Operati
 move the finished item to **DONE**, re-evaluate **BLOCKED_DEPENDENCY** for promotion, then apply the §4
 selection rule to name the next **READY** item. Keep it short — this is a schedulability surface, not a
 history log; `DECISIONS.md` and `ACTIVE_WORKSTREAMS.md` remain the durable records.
+
+## Owner Control Center — DONE (recorded 2026-08-09)
+
+Reusable Owner Control Center UI shipped to `project-keystone` per the Owner placement
+decision; **data stays here**, keystone renders.
+
+| Evidence | Where |
+|---|---|
+| Control Center UI (zero-dep, local-first, read-only) | project-keystone PR #8, merged, content-verified on its `main` |
+| Adapter contract + placement decision | #726 |
+| Contract split into a dependency-free module | #728 |
+| Live browser verification | 1280px + 390px · 0 page errors · 10 sections · 3 named gaps · provenance visible · no horizontal scroll |
+| Tests | 10 (keystone) + 7 (adapter contract, CI-enforced here) |
+
+**The split in #728 was made on consumer evidence, the only condition the placement
+decision permits.** `checkPayloadCompatibility` lived in the adapter, which imports
+`roadmapModel.mjs` — a module keystone does not have and must never need. Vendoring the
+adapter dragged those imports along, the browser could not load the check, and every
+project rendered as incompatible: a compatibility mechanism failing closed against
+itself. One definition remains; only its packaging changed.
+
+Four projection gaps are recorded above as routed to Design. **They must not be worked
+around inside keystone** — a renderer that fills a gap it cannot source is manufacturing
+project truth, which is the one thing the boundary exists to prevent.
