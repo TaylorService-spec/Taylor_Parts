@@ -56,6 +56,31 @@ export function decideDispatch({ request, allocations = [], results = [], reques
   return { decision: "DISPATCH", allocation: need };
 }
 
+// C-7 STANDARD-DISPATCH CONTEXT (Owner directive): every ORDINARY worker is bootstrapped with the
+// SAME reproducible context package the Wake Supervisor uses — never a second bootstrap path. Pure:
+// the package builder (contextPackageFor from context/build-package.mjs) is INJECTED so this module
+// performs no I/O. Only a DISPATCH decision attaches a package; other decisions pass through unchanged.
+// If the request's scope has no L1 authority in the map, the package's sufficiency is EVIDENCE_REQUIRED
+// — the worker must escalate, not guess.
+export function attachDispatchContext(dispatchResult, request, contextPackageFn, { sourceCommit = null } = {}) {
+  if (!dispatchResult || dispatchResult.decision !== "DISPATCH") return dispatchResult;
+  if (typeof contextPackageFn !== "function") throw new Error("attachDispatchContext: contextPackageFn is required (inject contextPackageFor — the shared package mechanism)");
+  const contextPackage = contextPackageFn({
+    id: request.requestId,
+    scope: request.scope || [],
+    role: request.requestedByWorkstream,
+    objective: request.purpose,
+    sourceCommit,
+  });
+  return { ...dispatchResult, contextPackage };
+}
+
+// Convenience: decide + attach the C-7 package in one call (the standard dispatch path).
+export function dispatchWithContext({ contextPackageFn, sourceCommit = null, ...args } = {}) {
+  const decision = decideDispatch(args);
+  return attachDispatchContext(decision, args.request, contextPackageFn, { sourceCommit });
+}
+
 // Pick the next request to consider: blocking before non-blocking, then lower
 // priority number first, then declared order. Only PENDING/validated-waiting states.
 const SELECTABLE = new Set(["PENDING", "VALIDATED", "READY_BUT_WAITING_RESOURCE", "WAITING_NETWORK"]);
