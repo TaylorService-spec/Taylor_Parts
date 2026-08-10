@@ -1,0 +1,47 @@
+name: Orchestration Collaboration & Decision Contract Tests
+
+# Owner Control Plane, contracts-only (owner-control-plane-collaboration-contract.md). Pure,
+# zero-dependency node:test for the unified collaboration request envelope + reciprocal
+# lifecycle + §11 single-responsibility-owner + escalation, the Owner Decision + pure triage
+# (incl. CASE 1-3 regression), and the narrow bridge API + in-memory mock transport +
+# FUTURE_SEAM register. No Firebase, no emulator, no npm install, no secrets, no network, no
+# deployment. It procures no credential and claims no live integration.
+
+on:
+  pull_request:
+    paths:
+      - "docs/orchestration/lib/collaborationContract.mjs"
+      - "docs/orchestration/lib/collaborationContract.test.mjs"
+      - "docs/orchestration/lib/ownerDecision.mjs"
+      - "docs/orchestration/lib/ownerDecision.test.mjs"
+      - "docs/orchestration/lib/bridgeTransport.mjs"
+      - "docs/orchestration/lib/bridgeTransport.test.mjs"
+      - ".github/workflows/orchestration-collaboration-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "docs/orchestration/lib/collaborationContract.mjs"
+      - "docs/orchestration/lib/collaborationContract.test.mjs"
+      - "docs/orchestration/lib/ownerDecision.mjs"
+      - "docs/orchestration/lib/ownerDecision.test.mjs"
+      - "docs/orchestration/lib/bridgeTransport.mjs"
+      - "docs/orchestration/lib/bridgeTransport.test.mjs"
+      - ".github/workflows/orchestration-collaboration-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  collaboration:
+    name: Collaboration & decision contracts (node:test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Contracts + triage + bridge mock (node:test, zero-dependency)
+        run: node --test docs/orchestration/lib/collaborationContract.test.mjs docs/orchestration/lib/ownerDecision.test.mjs docs/orchestration/lib/bridgeTransport.test.mjs
