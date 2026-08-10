@@ -1,10 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildReviewInvocation, estimateCost, guardBudget, parseOpenAIResult, runOpenAIReview, PILOT_BUDGET, DEFAULT_PRICING_ESTIMATE } from "./openaiReviewProvider.mjs";
+import { buildReviewInvocation, estimateCost, guardBudget, parseOpenAIResult, runOpenAIReview, resolveConcreteModel, estTokens, PILOT_BUDGET, PLACEHOLDER_MODELS, DEFAULT_PRICING_ESTIMATE } from "./openaiReviewProvider.mjs";
 import { consumeReviewResult } from "./reviewTrigger.mjs";
 
 const SUFFICIENT_PKG = { governingAuthority: "orch-operating-model", sufficiency: "SUFFICIENT", required: [{ id: "orch-operating-model", authority: "AI Engineering Operating Model", retrievalPath: "docs/orchestration/continuous-workstream-orchestrator.md" }] };
-const REQ = { requestId: "R1", reviewClass: "INDEPENDENT_AI", subject: "review PR #900", reviewerRole: "independent-architecture-review", selectedModel: "gpt-mid-tier", routedBackTo: "Orchestration" };
+const MODEL = "gpt-5.6-terra";
+const REQ = { requestId: "R1", reviewClass: "INDEPENDENT_AI", subject: "review PR #900", reviewerRole: "independent-architecture-review", selectedModel: MODEL, routedBackTo: "Orchestration" };
 
 // A mock transport: records calls, never receives a key, returns a canned structured response.
 function mockTransport({ response, throwErr } = {}) {
@@ -33,13 +34,60 @@ test("insufficient C-7 context → CONTEXT_INSUFFICIENT, no invocation", async (
   assert.equal(t.calls.length, 0);
 });
 
-test("invocation uses MINIMUM C-7 context (governing authority + required refs + diff), not the whole repo", () => {
-  const b = buildReviewInvocation({ request: REQ, contextPackage: SUFFICIENT_PKG, diff: "DIFF-BODY" });
+test("invocation uses MINIMUM C-7 context (governing authority + inlined content + diff), not the whole repo", () => {
+  const b = buildReviewInvocation({ request: REQ, contextPackage: SUFFICIENT_PKG, diff: "DIFF-BODY", model: MODEL, contextText: "INLINED-CTX" });
   assert.equal(b.ok, true);
+  assert.equal(b.invocation.model, MODEL);          // concrete configured model, no fallback
   const userMsg = b.invocation.messages.find((m) => m.role === "user").content;
   assert.match(userMsg, /orch-operating-model/);
+  assert.match(userMsg, /INLINED-CTX/);             // inlined minimum context is present
   assert.match(userMsg, /DIFF-BODY/);
   assert.ok(b.invocation.inputTokensEstimate > 0);
+});
+
+// ── Pre-flight corrections: fail-closed model + complete-payload estimate ──────
+
+test("resolveConcreteModel: placeholders/empty fail; a real id passes", () => {
+  for (const p of PLACEHOLDER_MODELS) assert.equal(resolveConcreteModel(p).ok, false);
+  assert.equal(resolveConcreteModel(null).ok, false);
+  const ok = resolveConcreteModel("gpt-5.6-terra");
+  assert.equal(ok.ok, true);
+  assert.equal(ok.model, "gpt-5.6-terra");
+});
+
+test("missing OPENAI_REVIEW_MODEL (empty selectedModel) → live REFUSES before any provider call", async () => {
+  const t = mockTransport();
+  const r = await runOpenAIReview({ request: { ...REQ, selectedModel: "" }, contextPackage: SUFFICIENT_PKG, diff: "x", transport: t });
+  assert.equal(r.ok, false);
+  assert.equal(r.failureKind, "TRIGGER_FAILED");
+  assert.match(r.reason, /MODEL_NOT_CONFIGURED/);
+  assert.equal(t.calls.length, 0);                  // no provider call
+});
+
+test("invalid model configuration (placeholder gpt-mid-tier) → fail closed, no call", async () => {
+  const t = mockTransport();
+  const r = await runOpenAIReview({ request: { ...REQ, selectedModel: "gpt-mid-tier" }, contextPackage: SUFFICIENT_PKG, diff: "x", transport: t });
+  assert.equal(r.ok, false);
+  assert.match(r.reason, /MODEL_NOT_CONFIGURED/);
+  assert.equal(t.calls.length, 0);
+});
+
+test("selectedModel == gpt-5.6-terra reaches the provider invocation with that exact model", async () => {
+  const t = mockTransport();
+  const r = await runOpenAIReview({ request: REQ, contextPackage: SUFFICIENT_PKG, diff: "x", transport: t });
+  assert.equal(r.ok, true);
+  assert.equal(t.calls.length, 1);
+  assert.equal(t.calls[0].model, "gpt-5.6-terra");  // the concrete configured model is what is sent
+});
+
+test("estimated input reflects the COMPLETE transmitted messages (system + user, incl. inlined context + diff)", () => {
+  const contextText = "GOVERNING-AUTHORITY-CONTENT ".repeat(200);
+  const diff = "DIFF-LINE\n".repeat(100);
+  const b = buildReviewInvocation({ request: REQ, contextPackage: SUFFICIENT_PKG, diff, model: MODEL, contextText });
+  const summed = b.invocation.messages.reduce((s, m) => s + estTokens(m.content), 0);
+  assert.equal(b.invocation.inputTokensEstimate, summed);   // estimate == tokens over the full payload
+  // and it materially reflects the inlined content (not the 221-token pointers-only undercount)
+  assert.ok(b.invocation.inputTokensEstimate > estTokens(contextText) * 0.9);
 });
 
 test("per-review ceiling → refuse, NO invocation (budget guard, no auto-recharge)", async () => {
@@ -116,5 +164,6 @@ test("a reviewer verdict never authorizes a protected action (gate stays in cons
 
 test("estimateCost is linear in tokens and pricing (never fabricated — pricing is an input)", () => {
   const c = estimateCost({ inputTokens: 30000, outputTokens: 1500, pricing: DEFAULT_PRICING_ESTIMATE });
-  assert.ok(Math.abs(c - (30000 / 1e6 * 2.5 + 1500 / 1e6 * 15)) < 1e-9);
+  assert.ok(Math.abs(c - (30000 / 1e6 * DEFAULT_PRICING_ESTIMATE.inputPerM + 1500 / 1e6 * DEFAULT_PRICING_ESTIMATE.outputPerM)) < 1e-9);
+  assert.equal(DEFAULT_PRICING_ESTIMATE.model, "gpt-5.6-terra");
 });

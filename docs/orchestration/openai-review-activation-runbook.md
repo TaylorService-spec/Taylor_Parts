@@ -28,20 +28,32 @@ This runbook is the ONLY way the first live call happens, and it is the Owner's 
 | Pilot total | **$10.00** | `guardBudget` — refuses when cumulative + next > $10 |
 | Auto-recharge | **OFF** | `PILOT_BUDGET.autoRecharge = false` + OpenAI billing setting (Owner) |
 
-Pricing is an **injected estimate** (`DEFAULT_PRICING_ESTIMATE`, mid-tier ≈ $2.50/$15 per 1M) — **verify
-at openai.com/api/pricing and set the real model id** before relying on the cost math.
+Pricing is an **injected estimate** (`DEFAULT_PRICING_ESTIMATE`, **gpt-5.6-terra ≈ $2/$12 per 1M**) —
+**verify at openai.com/api/pricing** before relying on the cost math.
+
+**Model is required and fail-closed.** The model comes ONLY from the repo variable `OPENAI_REVIEW_MODEL`
+(expected `gpt-5.6-terra`). If it is unset or a placeholder, a live invocation **refuses before any
+provider call** (`MODEL_NOT_CONFIGURED`) — it never silently picks another model. The live request uses
+the current **Responses API** (`POST /v1/responses`) with **strict `json_schema` structured output** (not
+the legacy `json_object` mode), aligned to the #764 result fields.
+
+**Cost estimate reflects the complete payload.** `inputTokensEstimate` counts the full transmitted
+messages, including the **inlined governing-authority content** (a stateless reviewer can't open files),
+not bare pointers. A configured dry-run shows ≈ 5,100 tokens / ≈ $0.028 for the governing authority alone
+(the earlier 221 was a pointers-only placeholder run); a real diff adds on top, and the $0.25 ceiling
+refuses anything larger before calling.
 
 ## Activation steps (Owner — crosses the boundary)
 
 1. **Confirm OpenAI billing caps** in the OpenAI dashboard: a hard monthly usage limit (≈ $10 for the
    pilot) and **auto-recharge disabled**. The in-code ceiling is a second belt; the dashboard cap is the
    backstop.
-2. **Set the repo secret** (Owner does this — never share the value with the agent):
-   `Settings → Secrets and variables → Actions → New repository secret` → name `OPENAI_API_KEY`.
-   Optionally set repo **variable** `OPENAI_REVIEW_MODEL` to the exact current model id.
+2. **Set the repo secret + model variable** (Owner does this — never share the key value with the agent):
+   `Settings → Secrets and variables → Actions` → secret `OPENAI_API_KEY`, and **variable**
+   `OPENAI_REVIEW_MODEL = gpt-5.6-terra` (required — the live run refuses without it).
 3. **Dry-run first (no spend):** run the workflow **Reciprocal GPT Review** via *Run workflow* with
-   `mode = dry-run`. Confirm it prints `contextSufficiency: SUFFICIENT`, a bounded `inputTokensEstimate`,
-   `estCostUsd` under $0.25, and `wouldInvoke: true`. No call is made.
+   `mode = dry-run`. Confirm `contextSufficiency: SUFFICIENT`, `model: gpt-5.6-terra`, a realistic
+   `inputTokensEstimate`, `estCostUsd` under $0.25, and `wouldInvoke: true`. No call is made.
 4. **First live review (one, watched):** run the workflow with `mode = live` and a small `diff_path`.
    The job refuses if the secret is missing. Expect a single structured result (verdict + conclusion +
    corrections) and a `usage.actualCostUsd` well under $0.25. This is the first real spend.

@@ -19,12 +19,24 @@ export const PILOT_BUDGET = Object.freeze({
   autoRecharge: false,
 });
 
-// Default pricing is an ESTIMATE (mid-tier reasoning tier), injected so it is never silently wrong.
-// Verify at openai.com/api/pricing before any live call. Per 1,000,000 tokens.
-export const DEFAULT_PRICING_ESTIMATE = Object.freeze({ model: "gpt-mid-tier", inputPerM: 2.5, outputPerM: 15.0, source: "ESTIMATE — verify at openai.com/api/pricing" });
+// Default pricing is an ESTIMATE for the pilot model (gpt-5.6-terra ≈ $2/$12 per 1M), injected so it is
+// never silently wrong. Verify at openai.com/api/pricing before any live call.
+export const DEFAULT_PRICING_ESTIMATE = Object.freeze({ model: "gpt-5.6-terra", inputPerM: 2.0, outputPerM: 12.0, source: "ESTIMATE — verify at openai.com/api/pricing" });
+
+// Non-real placeholders that must NEVER be sent to a live provider. A live invocation refuses if the
+// configured model is empty or a placeholder — it never silently picks another model.
+export const PLACEHOLDER_MODELS = Object.freeze(["", "gpt-mid-tier", "gpt-tier", "placeholder", "unknown"]);
+
+/** Resolve the concrete model from config. Fail-closed: empty/placeholder → not a valid live model. */
+export function resolveConcreteModel(configured) {
+  const m = (configured || "").trim();
+  if (!m || PLACEHOLDER_MODELS.includes(m)) return { ok: false, reason: `MODEL_NOT_CONFIGURED — no valid concrete OPENAI_REVIEW_MODEL (got ${m ? `placeholder "${m}"` : "empty"})` };
+  return { ok: true, model: m };
+}
 
 const MAX_OUTPUT_TOKENS = 1500;            // structured verdict/corrections/evidence — bounded
 const estTokens = (s) => Math.ceil((s || "").length / 4); // ≈ 4 bytes/token, labeled estimate
+export { estTokens };
 
 /**
  * Build the reviewer invocation from MINIMUM C-7 context — the governing authority + required refs the
@@ -32,27 +44,36 @@ const estTokens = (s) => Math.ceil((s || "").length / 4); // ≈ 4 bytes/token, 
  * inline the whole repo. INDEPENDENT_AI only.
  * @returns {{ ok:boolean, failureKind?, invocation? }}
  */
-export function buildReviewInvocation({ request = {}, contextPackage = {}, diff = "", model = null } = {}) {
+export function buildReviewInvocation({ request = {}, contextPackage = {}, diff = "", model = null, contextText = "" } = {}) {
   if (request.reviewClass !== "INDEPENDENT_AI") return { ok: false, failureKind: "TRIGGER_FAILED", reason: `adapter serves INDEPENDENT_AI only, not ${request.reviewClass}` };
   if ((contextPackage.sufficiency || "EVIDENCE_REQUIRED") !== "SUFFICIENT") return { ok: false, failureKind: "CONTEXT_INSUFFICIENT", reason: "C-7 package not SUFFICIENT — retrieve-don't-guess" };
+  // Fail-closed model: a live invocation must use a concrete configured model, never a placeholder.
+  const resolved = resolveConcreteModel(model);
+  if (!resolved.ok) return { ok: false, failureKind: "TRIGGER_FAILED", reason: resolved.reason };
 
   const refs = [...(contextPackage.required || [])].map((r) => `- ${r.id} (${r.authority || "authority"}): ${r.retrievalPath}`);
   const system = "You are an INDEPENDENT architecture/check-and-balance reviewer for EOS. Reason only about correctness, independence, and governance. You do NOT authorize anything; a protected action is never yours to approve. Return ONLY the structured result fields requested.";
+  // A stateless API reviewer cannot open files, so the MINIMUM context is INLINED here (governing
+  // authority text + diff), not sent as bare pointers. `contextText` is that inlined content; the
+  // token estimate below therefore reflects the COMPLETE transmitted payload.
   const user = [
     `Governing authority: ${contextPackage.governingAuthority || "unknown"}`,
-    `Required context refs (retrieve as needed):\n${refs.join("\n")}`,
+    `Governing authority content (inlined minimum context):\n${contextText || "(none inlined)"}`,
+    `Other context refs (names only):\n${refs.join("\n")}`,
     `Review subject: ${request.subject || request.requestId || "review"}`,
     `Diff under review:\n${diff}`,
     "Return fields: verdict (CONCUR|CONCUR_WITH_CORRECTION|NONCONCUR_ESCALATE|EVIDENCE_REQUIRED|NEEDS_OWNER), conclusion, corrections[], evidenceRefs[], ownerDecisionRequired(bool).",
   ].join("\n\n");
 
-  const inputTokensEstimate = estTokens(system) + estTokens(user);
+  const messages = [{ role: "system", content: system }, { role: "user", content: user }];
+  // Estimate over the ENTIRE message content actually transmitted (system + user, which now includes
+  // the inlined context + diff). Proven complete by test: it equals estTokens(concatenated messages).
+  const inputTokensEstimate = messages.reduce((sum, m) => sum + estTokens(m.content), 0);
   return {
     ok: true,
     invocation: {
-      // provider-neutral request body fields; the real transport maps these to the API shape.
-      model: model || "gpt-mid-tier",
-      messages: [{ role: "system", content: system }, { role: "user", content: user }],
+      model: resolved.model,                 // concrete, validated — no silent fallback
+      messages,
       maxOutputTokens: MAX_OUTPUT_TOKENS,
       responseFormat: "structured_review_result",
       inputTokensEstimate,
@@ -115,8 +136,10 @@ export function parseOpenAIResult({ response = null, request = {}, sourceFreshne
  * @param {string} [p.sourceFreshness] provenance of the reviewed source (must be CURRENT to be authoritative)
  * @returns {Promise<{ ok, failureKind?, reason?, result?, usage? }>}
  */
-export async function runOpenAIReview({ request = {}, contextPackage = {}, diff = "", transport, pricing = DEFAULT_PRICING_ESTIMATE, spentSoFarUsd = 0, sourceFreshness = "CURRENT" } = {}) {
-  const built = buildReviewInvocation({ request, contextPackage, diff, model: request.selectedModel });
+export async function runOpenAIReview({ request = {}, contextPackage = {}, diff = "", contextText = "", transport, pricing = DEFAULT_PRICING_ESTIMATE, spentSoFarUsd = 0, sourceFreshness = "CURRENT" } = {}) {
+  // Model fail-closed happens inside buildReviewInvocation (resolveConcreteModel) — a placeholder/empty
+  // model refuses HERE, before any transport call.
+  const built = buildReviewInvocation({ request, contextPackage, diff, model: request.selectedModel, contextText });
   if (!built.ok) return { ok: false, failureKind: built.failureKind, reason: built.reason };
 
   const estCostUsd = estimateCost({ inputTokens: built.invocation.inputTokensEstimate, outputTokens: built.invocation.maxOutputTokens, pricing });
