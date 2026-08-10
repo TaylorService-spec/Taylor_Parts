@@ -11,7 +11,9 @@ import {
 
 test("freshness never infers CURRENT from a payload merely existing", () => {
   const NOW = Date.parse("2026-08-10T00:00:00Z");
-  assert.deepEqual([...FRESHNESS_STATES], ["CURRENT", "STALE", "UNKNOWN", "INCOMPATIBLE"]);
+  assert.deepEqual([...FRESHNESS_STATES], ["CURRENT", "STALE", "UNKNOWN", "INCOMPATIBLE", "NOT_AUTHORIZED"]);
+  // an unauthorized viewer -> NOT_AUTHORIZED, never STALE/UNKNOWN (auth failure isn't old data)
+  assert.equal(freshnessState({ schemaVersion: "1.1.0", source: { generatedAt: "2026-08-10T00:00:00Z", commit: "a" } }, NOW, { authorized: false }).state, "NOT_AUTHORIZED");
   // incompatible payload -> INCOMPATIBLE (never rendered as understood)
   assert.equal(freshnessState({ schemaVersion: "9.0.0" }, NOW).state, "INCOMPATIBLE");
   // no generatedAt -> UNKNOWN (not guessed)
