@@ -1,0 +1,24 @@
+{
+  "workId": "C7-REPLACEMENT-TEST-001",
+  "responsibleParty": "Design",
+  "resultDestination": "Design",
+  "lifecycle": "CONSUMED",
+  "triggerOutcome": "WOKEN",
+  "escalationState": "NONE",
+  "assignedAt": "2026-08-09",
+  "acknowledgedAt": "2026-08-09",
+  "startedAt": "2026-08-09",
+  "lastActivityAt": "2026-08-09",
+  "completedAt": "2026-08-09",
+  "consumedAt": "2026-08-09",
+  "reviewProvenance": {
+    "repository": "Taylor_Parts",
+    "sourceLocation": "isolated fresh worktree pinned to origin/main",
+    "actualCommit": "9a68b49",
+    "originMainCommit": "9a68b49",
+    "workingTreeState": "CLEAN",
+    "sourceFreshnessState": "CURRENT",
+    "provenanceCapturedAt": "2026-08-09"
+  },
+  "note": "C-7 LIVE replacement-session test (TEST A). Cold worker given ONLY a map-derived context package (no chat history) answered both orchestration questions with exact file+function citations, retrieved MINIMUM correct context (skipped 2 of 5 on-demand refs), no EVIDENCE_REQUIRED. PASS. Evidence: docs/orchestration/context/replacement-session-test-001.md. Reviewed against a CURRENT fresh checkout (DEFAULT REVIEW SOURCE)."
+}
