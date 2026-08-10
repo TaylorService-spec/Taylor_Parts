@@ -61,10 +61,7 @@ Baseline reconciled at `origin/main` = `d1ab2ae` (pin `ff22df90…`; Finance + C
 
 | Item | Blocked on | Type |
 |---|---|---|
-| Control Center — Agent Operations view | Envelope carries no agent slot utilisation, running/queued, WAITING_RESOURCE, dedupe, retries, token metrics or supervisor health. **PROJECTION_GAP routed to Design** — keystone renders it as a named gap and must not approximate it | projection |
-| Control Center — Network Health view | Envelope carries no sanitized telemetry. **PROJECTION_GAP routed to Design** | projection |
-| Control Center — Recent Progress view | Envelope states current state, not a change history; a timeline cannot be derived without inventing ordering. **PROJECTION_GAP routed to Design** | projection |
-| Control Center — UX board is empty | Accurate, not a rendering bug: UX items live in `execution-backlog.md`, not `roadmapModel.mjs`, so the model genuinely has no UX capabilities registered. Whether UX work belongs in the roadmap model is a **model question routed to Design** | projection |
+| ~~Control Center — Agent Operations / Network Health / Recent Progress / UX board~~ | **RESOLVED (#732 / keystone #9).** All four projection gaps filled by extending `controlCenterAdapter` (schema 1.1.0: `agentOperations`, `networkHealth` sanitized-only, `recentProgress` from PR evidence, populated `uxBoard`); keystone renders them; UX capabilities registered in `roadmapModel.mjs`. Not approximated | ~~projection~~ → DONE |
 | Serialized Equipment availability | P1a real serialized-asset availability signal **+** #12 Temporary Equipment/Placement. Do **not** fabricate availability data | roadmap |
 | #12 Temporary Equipment / Placement | Assess only **after** F2 + integrated sandbox mature (custody persistence shape unresolved) | roadmap (preserved) |
 | #13 Technician Labor / Cost | Assess only **after** Service Ops convergence + F2 + sandbox | roadmap (preserved) |
@@ -150,9 +147,26 @@ adapter dragged those imports along, the browser could not load the check, and e
 project rendered as incompatible: a compatibility mechanism failing closed against
 itself. One definition remains; only its packaging changed.
 
-Four projection gaps are recorded above as routed to Design. **They must not be worked
-around inside keystone** — a renderer that fills a gap it cannot source is manufacturing
-project truth, which is the one thing the boundary exists to prevent.
+The four projection gaps have since been **closed at the source** (#732 / keystone #9) by
+extending `controlCenterAdapter` (Agent Operations, sanitized Network Health, Recent
+Progress, populated UX board) — never worked around inside keystone. The boundary held:
+keystone renders only what the governed envelope carries.
+
+### Delivery phase (recorded 2026-08-09)
+
+Owner ratified security-gating **Model A** (Firestore-gated envelope) and **authorized**
+the Hosting site + deploy and the Tier-2 Rules change + deploy **for operator execution**.
+
+| Evidence | Where |
+|---|---|
+| Hosting/auth/freshness design + `freshnessState()` helper | #738 |
+| Model-A publish tooling (`publishControlCenterEnvelope.mjs`, dry-run default) + parameterized Rule proposal + operator runbook + roadmap reconciliation | #739 |
+| One-click Windows launcher (hosted-first / governed local-fallback, §13 safety) | keystone #10 |
+| Launcher handoff | `UX-LAUNCHER-001` via the shared Agent Manager (0 Owner relay) |
+
+**Still Owner/operator-gated (unexecuted):** Hosting site creation + deploy · Firestore
+Rules deploy + authorized-Owner uid · credential/billing · any scheduled publish job.
+Register ≠ grant · Export ≠ deploy · Merge ≠ live.
 
 ## UX-2 — CLOSED, ACCEPTABLE (recorded 2026-08-09)
 
