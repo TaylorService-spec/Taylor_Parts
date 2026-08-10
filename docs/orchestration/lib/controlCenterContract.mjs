@@ -15,7 +15,7 @@
  * Envelope schema version. Bump MAJOR only for a breaking shape change; a consumer
  * pins the major it understands.
  */
-export const CONTROL_CENTER_SCHEMA_VERSION = "1.0.0";
+export const CONTROL_CENTER_SCHEMA_VERSION = "1.1.0"; // 1.1: additive sections (agentOperations, networkHealth, recentProgress) + populated uxBoard; still major 1
 
 /** The distinctions the Control Center must never collapse into a single "progress" idea. */
 export const PRESERVED_DISTINCTIONS = Object.freeze([

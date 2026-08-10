@@ -7,7 +7,7 @@ import {
   milestoneProgress, dimensions, statusToSymbol,
   projectExecutiveRoadmap, projectDetailedRoadmap, projectActiveWork, projectBlocked,
   projectOwnerDecisions, projectProtected, projectDesignBoard, projectUxBoard, projectAll,
-  projectAgentOperations,
+  projectAgentOperations, projectRecentProgress,
 } from "./roadmapProjection.mjs";
 import { createAgentRequest } from "./agentRequest.mjs";
 import { createAgentResult } from "./agentResult.mjs";
@@ -153,4 +153,11 @@ test("Agent Operations: network telemetry drives state; owner relay count is sur
   assert.equal(ops.networkHealth.confidence, "LOW");
   assert.deepEqual(ops.networkHealth.reasonCodes, ["TELEMETRY_STALE"]);
   assert.equal(ops.ownerRelayCount, 0); // routine handoffs require zero Owner relay
+});
+
+test("Recent Progress: DONE + PR evidence only, ordered by PR number", () => {
+  const rp = projectRecentProgress();
+  assert.ok(rp.length > 0);
+  for (let i = 1; i < rp.length; i++) assert.ok(rp[i-1].latestPr >= rp[i].latestPr);
+  assert.ok(rp.every((x) => x.prs.length > 0));
 });

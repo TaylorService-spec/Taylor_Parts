@@ -66,6 +66,15 @@
 | Weekly Scheduling workspace | Product/Design | DONE | IMPLEMENTED | UNKNOWN | COMPLETE | UNKNOWN | COMPLETE | UNKNOWN | 1/1 |
 | WO Parts Planning | Product/Design | PROTECTED_ACTION | IMPLEMENTED | INERT | COMPLETE | false | UNKNOWN | NOT_DEPLOYED | 1/1 |
 
+### UX / Experience _(domain)_
+
+| Capability | Owner | Status | Impl | Activation | Backend | UserOp | UX | Deploy | Milestones |
+|---|---|---|---|---|---|---|---|---|---|
+| UX-1 Cross-surface business-claim vocabulary sweep | UX | DONE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | COMPLETE | NOT_APPLICABLE | 1/1 |
+| Operational History 'Invalid Date' (UX-1 family) | UX | DONE | IMPLEMENTED | NOT_APPLICABLE | NOT_APPLICABLE | true | COMPLETE | UNKNOWN | 1/1 |
+| UX-2 Coordinated Visits / Mission SAMPLE recheck | UX | DONE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | COMPLETE | NOT_APPLICABLE | 1/1 |
+| UX-3 Activity destination scope (grain) | UX | OWNER_DECISION | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | PARTIAL | NOT_APPLICABLE | 1/1 |
+
 ### Roadmap Register (identified future capabilities) _(program)_
 
 | Capability | Owner | Status | Impl | Activation | Backend | UserOp | UX | Deploy | Milestones |
@@ -96,6 +105,7 @@ _None._
 | Commercial Coverage & Territory (register #15) | Precedence/override/inheritance + sales credit + commission are deferred policy (do not manufacture) | recorded/deferred |
 | Trusted AR read projection | Revenue recognition remains a separate future accounting-policy seam (not an EOS engine) | recorded/deferred |
 | Catalog-read authority model | Adopt durable inventory.catalog.read (+ separate inventory.catalog.cost.read)? Unblocks Manufacturer + part_supplier_items read surfaces | **yes** |
+| UX-3 Activity destination scope (grain) | Evidence phase DONE (5 Activity surfaces + grains + wayfinding discrepancy routed); the residual 'what grain should a standalone Activity destination be' is a product-direction decision — persona evidence is evidence, not authority. | **yes** |
 
 ## 5. Protected / Awaiting Operator
 
@@ -151,7 +161,10 @@ Legend: `[x]` done · `[>]` in progress · `[ ]` planned/ready · `[!]` owner de
 
 ## 7. UX execution board
 
-_None modeled yet._
+- [x] UX-1 Cross-surface business-claim vocabulary sweep _(UX / Experience)_
+- [x] Operational History 'Invalid Date' (UX-1 family) _(UX / Experience)_
+- [x] UX-2 Coordinated Visits / Mission SAMPLE recheck _(UX / Experience)_
+- [!] UX-3 Activity destination scope (grain) _(UX / Experience)_ — Evidence phase DONE (5 Activity surfaces + grains + wayfinding discrepancy routed); the residual 'what grain should a standalone Activity destination be' is a product-direction decision — persona evidence is evidence, not authority.
 
 ## 8. Detailed Roadmap
 
@@ -416,6 +429,37 @@ _None modeled yet._
 - Protected boundary: Rules deploy
   - ☑ **Phase 1–3 governed PLANNED producer + back-link** — criteria: setWorkOrderPartsPlan governed; Ph3 back-link
     - WO Parts Planning Ph1–3 — `DONE` · PRs: #638 #639 #643 · evidence: PR:#639
+
+### UX / Experience _(domain)_
+
+#### UX-1 Cross-surface business-claim vocabulary sweep — `DONE`
+
+- Owner: UX · Milestones: 1/1 · Last verified: `4cd5520`
+- Dimensions — Impl: NOT_APPLICABLE · Activation: NOT_APPLICABLE · Backend: NOT_APPLICABLE · UserOperable: NOT_APPLICABLE · UX: COMPLETE · Deploy: NOT_APPLICABLE
+  - ☑ **Priority vocabulary + business-claim sweep round** — criteria: one priority vocabulary; 5 fixed / 2 confirmed honest
+    - priority vocabulary + sweep close — `DONE` · PRs: #714 #717 · evidence: PR:#714, PR:#717
+
+#### Operational History 'Invalid Date' (UX-1 family) — `DONE`
+
+- Owner: UX · Milestones: 1/1 · Last verified: `0a6bd22`
+- Dimensions — Impl: IMPLEMENTED · Activation: NOT_APPLICABLE · Backend: NOT_APPLICABLE · UserOperable: true · UX: COMPLETE · Deploy: UNKNOWN
+  - ☑ **Root-caused (rendering defect) + fixed with canonical formatClockTime + test** — criteria: never renders Invalid Date; canonical toMillis path; test
+    - formatClockTime + WorkOrderDetail + convergence fix — `DONE` · PRs: #729 · evidence: PR:#729, BROWSER_RUN:pilot classify+fix
+
+#### UX-2 Coordinated Visits / Mission SAMPLE recheck — `DONE`
+
+- Owner: UX · Milestones: 1/1 · Last verified: `4cd5520`
+- Dimensions — Impl: NOT_APPLICABLE · Activation: NOT_APPLICABLE · Backend: NOT_APPLICABLE · UserOperable: NOT_APPLICABLE · UX: COMPLETE · Deploy: NOT_APPLICABLE
+  - ☑ **Live recheck: SAMPLE treatment (banner + per-row) resolves confusion → ACCEPTABLE** — criteria: live browser recheck; ACCEPTABLE or minimum correction
+    - supervised pilot recheck + close — `DONE` · PRs: #727 #731 · evidence: PR:#727, PR:#731, BROWSER_RUN:coordinated-visits
+
+#### UX-3 Activity destination scope (grain) — `OWNER_DECISION`
+
+- Owner: UX · Milestones: 1/1 · Last verified: `4cd5520`
+- Dimensions — Impl: NOT_APPLICABLE · Activation: NOT_APPLICABLE · Backend: NOT_APPLICABLE · UserOperable: NOT_APPLICABLE · UX: PARTIAL · Deploy: NOT_APPLICABLE
+- Owner decision: Evidence phase DONE (5 Activity surfaces + grains + wayfinding discrepancy routed); the residual 'what grain should a standalone Activity destination be' is a product-direction decision — persona evidence is evidence, not authority.
+  - ☑ **Evidence gathered (UX-EX-001) → routed to UX; grain remains product-direction** — criteria: surfaces + grains enumerated; questionsRaised routed
+    - Activity destination evidence — `OWNER_DECISION` · evidence: DOC:agent-requests/UX-EX-001.result.json
 
 ### Roadmap Register (identified future capabilities) _(program)_
 

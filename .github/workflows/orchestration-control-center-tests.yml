@@ -1,0 +1,44 @@
+name: Orchestration Control Center Tests
+
+# Owner Control Center adapter/envelope (docs/orchestration/owner-control-center-placement.md) — the ONLY
+# thing project-keystone may depend on. Pure, zero-dependency node:test over the versioned envelope
+# (schemaVersion/provenance/preserved distinctions/compatibility, the 8 views, and the v1.1 additive sections:
+# agentOperations, networkHealth, recentProgress, populated uxBoard). Fail-closed; no fabricated metrics. No
+# Firebase, no emulator, no npm install, no secrets, no deployment.
+
+on:
+  pull_request:
+    paths:
+      - "docs/orchestration/lib/controlCenterAdapter.mjs"
+      - "docs/orchestration/lib/controlCenterAdapter.test.mjs"
+      - "docs/orchestration/lib/controlCenterContract.mjs"
+      - "docs/orchestration/lib/roadmapModel.mjs"
+      - "docs/orchestration/lib/roadmapProjection.mjs"
+      - ".github/workflows/orchestration-control-center-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "docs/orchestration/lib/controlCenterAdapter.mjs"
+      - "docs/orchestration/lib/controlCenterAdapter.test.mjs"
+      - "docs/orchestration/lib/controlCenterContract.mjs"
+      - "docs/orchestration/lib/roadmapModel.mjs"
+      - "docs/orchestration/lib/roadmapProjection.mjs"
+      - ".github/workflows/orchestration-control-center-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  control-center:
+    name: Control Center adapter/envelope (node:test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Control Center adapter tests (node:test, zero-dependency)
+        run: node --test docs/orchestration/lib/controlCenterAdapter.test.mjs
