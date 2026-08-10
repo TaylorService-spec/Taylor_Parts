@@ -10,7 +10,13 @@
 // provider error, or malformed output all yield a non-actionable failure — never an approval, never an
 // authorization of a protected action (that gate stays in consumeReviewResult).
 
-import { structureReviewResult } from "./reviewTrigger.mjs";
+import { structureReviewResult, REVIEW_VERDICTS } from "./reviewTrigger.mjs";
+
+// The ONLY fields a GPT reviewer authors (semantic). Everything else in the durable envelope is
+// SYSTEM-OWNED (EOS) and is never taken from the model — so the model cannot fabricate provenance,
+// timestamps, ids, model, or trigger metadata.
+export const SEMANTIC_REVIEW_FIELDS = Object.freeze(["verdict", "conclusion", "corrections", "evidenceRefs", "ownerDecisionRequired"]);
+export const SYSTEM_OWNED_FIELDS = Object.freeze(["exchangeId", "requestId", "reviewerRole", "provider", "selectedModel", "triggerKind", "contextPackageRef", "provenance", "sourceFreshness", "requestedAt", "triggeredAt", "completedAt", "consumedAt", "disposition"]);
 
 // Pilot budget ceilings (Owner-set). No automatic recharge — a ceiling REFUSES, it never tops up.
 export const PILOT_BUDGET = Object.freeze({
@@ -99,26 +105,65 @@ export function guardBudget({ estCostUsd = 0, spentSoFarUsd = 0, budget = PILOT_
   return { ok: true, estCostUsd, projectedTotalUsd };
 }
 
-/** Parse a provider response into the structured result. Fail-closed on malformed. */
-export function parseOpenAIResult({ response = null, request = {}, sourceFreshness = "CURRENT" } = {}) {
-  if (!response || typeof response !== "object") return { ok: false, failureKind: "MALFORMED_RESULT", reason: "empty provider response" };
-  const body = response.review || response.output || response;
+/**
+ * Extract ONLY the semantic review fields the model is allowed to author. Any other key the model
+ * returns (a system field, a fabricated timestamp, an id) is DROPPED here — it can never reach the
+ * durable envelope. Fail-closed on an unknown/missing verdict.
+ */
+export function extractSemanticFields(body = {}) {
+  if (!body || typeof body !== "object") return { ok: false, failureKind: "MALFORMED_RESULT", reason: "no model body" };
+  if (!REVIEW_VERDICTS.includes(body.verdict)) return { ok: false, failureKind: "MALFORMED_RESULT", reason: `unknown verdict ${body.verdict}` };
+  return {
+    ok: true,
+    semantic: {
+      verdict: body.verdict,
+      conclusion: typeof body.conclusion === "string" ? body.conclusion : null,
+      corrections: Array.isArray(body.corrections) ? [...body.corrections] : [],
+      evidenceRefs: Array.isArray(body.evidenceRefs) ? [...body.evidenceRefs] : [],
+      ownerDecisionRequired: body.ownerDecisionRequired === true,
+    },
+  };
+}
+
+/**
+ * Assemble the durable result envelope. EOS OWNS every system field (ids, model, trigger, context
+ * package identity, provenance, timestamps); the model supplies ONLY `semantic`. The model can never
+ * overwrite a system-owned field because those values come from these arguments, not from the model.
+ */
+export function assembleReviewEnvelope({ request = {}, invocation = {}, semantic = {}, sourceFreshness = "CURRENT", contextPackageRef = null, provenance = null, triggerKind = null, timestamps = {}, clock = null } = {}) {
+  const completedAt = timestamps.completedAt ?? (typeof clock === "function" ? clock() : null);
   const raw = {
+    // ── SYSTEM-OWNED (EOS runtime) ──
     exchangeId: `rev:${request.requestId}`,
     requestId: request.requestId,
     reviewerRole: request.reviewerRole || "independent-architecture-review",
     provider: "OPENAI",
-    selectedModel: request.selectedModel || null,
-    triggerKind: request.triggerKind || null,
-    verdict: body.verdict,
-    conclusion: body.conclusion ?? null,
-    corrections: body.corrections ?? [],
-    evidenceRefs: body.evidenceRefs ?? [],
-    ownerDecisionRequired: body.ownerDecisionRequired === true,
+    selectedModel: invocation.model || request.selectedModel || null,   // the model ACTUALLY transmitted
+    triggerKind: triggerKind ?? request.triggerKind ?? null,
+    contextPackageRef,
+    provenance,
     sourceFreshness,
+    requestedAt: timestamps.requestedAt ?? null,
+    triggeredAt: timestamps.triggeredAt ?? null,
+    completedAt,
     routedBackTo: request.routedBackTo ?? null,
+    // ── SEMANTIC (model-authored, validated) ──
+    verdict: semantic.verdict,
+    conclusion: semantic.conclusion ?? null,
+    corrections: semantic.corrections ?? [],
+    evidenceRefs: semantic.evidenceRefs ?? [],
+    ownerDecisionRequired: semantic.ownerDecisionRequired === true,
   };
-  return structureReviewResult(raw); // reuses the contract's validation; malformed → MALFORMED_RESULT
+  return structureReviewResult(raw); // final shape validation; disposition/consumedAt default here
+}
+
+/** Parse a provider response into the durable envelope: semantic from the model, metadata from EOS. */
+export function parseOpenAIResult({ response = null, request = {}, invocation = {}, sourceFreshness = "CURRENT", contextPackageRef = null, provenance = null, triggerKind = null, timestamps = {}, clock = null } = {}) {
+  if (!response || typeof response !== "object") return { ok: false, failureKind: "MALFORMED_RESULT", reason: "empty provider response" };
+  const body = response.review || response.output || response;
+  const sem = extractSemanticFields(body);
+  if (!sem.ok) return sem;
+  return assembleReviewEnvelope({ request, invocation, semantic: sem.semantic, sourceFreshness, contextPackageRef, provenance, triggerKind, timestamps, clock });
 }
 
 /**
@@ -136,13 +181,21 @@ export function parseOpenAIResult({ response = null, request = {}, sourceFreshne
  * @param {string} [p.sourceFreshness] provenance of the reviewed source (must be CURRENT to be authoritative)
  * @returns {Promise<{ ok, failureKind?, reason?, result?, usage? }>}
  */
-export async function runOpenAIReview({ request = {}, contextPackage = {}, diff = "", contextText = "", transport, pricing = DEFAULT_PRICING_ESTIMATE, spentSoFarUsd = 0, sourceFreshness = "CURRENT" } = {}) {
-  // Model fail-closed happens inside buildReviewInvocation (resolveConcreteModel) — a placeholder/empty
-  // model refuses HERE, before any transport call.
-  const built = buildReviewInvocation({ request, contextPackage, diff, model: request.selectedModel, contextText });
-  if (!built.ok) return { ok: false, failureKind: built.failureKind, reason: built.reason };
+export async function runOpenAIReview({ request = {}, contextPackage = {}, diff = "", contextText = "", invocation = null, transport, pricing = DEFAULT_PRICING_ESTIMATE, spentSoFarUsd = 0, sourceFreshness = "CURRENT", contextPackageRef = null, provenance = null, triggerKind = null, timestamps = {}, clock = null } = {}) {
+  // ONE canonical payload. If the caller already built it (the CLI does, and hands the SAME object to
+  // both the dry-run estimate and here), transmit THAT EXACT object — guaranteeing dry/live parity. If
+  // not supplied, build it from the same inputs via the single canonical builder.
+  let inv = invocation;
+  if (!inv) {
+    const built = buildReviewInvocation({ request, contextPackage, diff, model: request.selectedModel, contextText });
+    if (!built.ok) return { ok: false, failureKind: built.failureKind, reason: built.reason };
+    inv = built.invocation;
+  }
+  // Model fail-closed — covers the prebuilt-invocation path too (never transmit a placeholder model).
+  const mc = resolveConcreteModel(inv.model);
+  if (!mc.ok) return { ok: false, failureKind: "TRIGGER_FAILED", reason: mc.reason };
 
-  const estCostUsd = estimateCost({ inputTokens: built.invocation.inputTokensEstimate, outputTokens: built.invocation.maxOutputTokens, pricing });
+  const estCostUsd = estimateCost({ inputTokens: inv.inputTokensEstimate, outputTokens: inv.maxOutputTokens, pricing });
   const gate = guardBudget({ estCostUsd, spentSoFarUsd });
   if (!gate.ok) return { ok: false, failureKind: gate.failureKind, reason: gate.reason, usage: { estCostUsd, projectedTotalUsd: gate.projectedTotalUsd, invoked: false } };
 
@@ -150,7 +203,7 @@ export async function runOpenAIReview({ request = {}, contextPackage = {}, diff 
 
   let response;
   try {
-    response = await transport(built.invocation); // transport injects auth; adapter never sees the key
+    response = await transport(inv); // transmit the CANONICAL invocation; transport injects auth
   } catch (e) {
     return { ok: false, failureKind: "PROVIDER_FAILED", reason: `provider error: ${e && e.message ? e.message : "unknown"}`, usage: { estCostUsd, invoked: true } };
   }
@@ -158,11 +211,12 @@ export async function runOpenAIReview({ request = {}, contextPackage = {}, diff 
     return { ok: false, failureKind: "PROVIDER_FAILED", reason: `provider returned an error status`, usage: { estCostUsd, invoked: true } };
   }
 
-  const parsed = parseOpenAIResult({ response, request, sourceFreshness });
+  // EOS assembles the envelope: model supplies ONLY semantic fields; all metadata is system-owned.
+  const parsed = parseOpenAIResult({ response, request, invocation: inv, sourceFreshness, contextPackageRef, provenance, triggerKind, timestamps, clock });
   if (!parsed.ok) return { ok: false, failureKind: parsed.failureKind, reason: parsed.reason, usage: { estCostUsd, invoked: true } };
 
-  const actualInput = (response.usage && response.usage.inputTokens) || built.invocation.inputTokensEstimate;
-  const actualOutput = (response.usage && response.usage.outputTokens) || built.invocation.maxOutputTokens;
+  const actualInput = (response.usage && response.usage.inputTokens) || inv.inputTokensEstimate;
+  const actualOutput = (response.usage && response.usage.outputTokens) || inv.maxOutputTokens;
   const actualCostUsd = estimateCost({ inputTokens: actualInput, outputTokens: actualOutput, pricing });
   return { ok: true, result: parsed.result, usage: { estCostUsd, actualCostUsd, inputTokens: actualInput, outputTokens: actualOutput, invoked: true, pricingSource: pricing.source || null } };
 }

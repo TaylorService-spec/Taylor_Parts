@@ -15,6 +15,14 @@ This runbook is the ONLY way the first live call happens, and it is the Owner's 
   budget over ceiling → refuse with **no invocation**. A verdict never authorizes a protected action —
   that gate stays in `consumeReviewResult` (protected → `NEEDS_OWNER`).
 - **No key in code.** The adapter never receives/logs a key; only the transport injects `Authorization`.
+- **Dry/live payload parity.** `buildReviewInvocation` is the single canonical builder; the CLI builds
+  the invocation **once** and hands that exact object to both the dry-run estimate and the live
+  transport — no separate prompt construction, no live-only abbreviated/pointer-only payload. The
+  governing-authority **content is inlined** (a stateless reviewer can't open files), so what dry-run
+  measures is what live transmits.
+- **System-owned metadata.** EOS owns ids, model, trigger kind, context-package identity, provenance,
+  and timestamps; the GPT model supplies ONLY the semantic fields (verdict/conclusion/corrections/
+  evidenceRefs/ownerDecisionRequired). The model can never overwrite or fabricate a system field.
 - **Deterministic/Claude tiers first.** The router (#765) sends work to GPT only when the class is
   `INDEPENDENT_AI` and no cheaper capable worker suffices; deterministic-sufficient reviews never reach
   the adapter.

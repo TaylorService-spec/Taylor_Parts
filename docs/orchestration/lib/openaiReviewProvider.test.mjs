@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildReviewInvocation, estimateCost, guardBudget, parseOpenAIResult, runOpenAIReview, resolveConcreteModel, estTokens, PILOT_BUDGET, PLACEHOLDER_MODELS, DEFAULT_PRICING_ESTIMATE } from "./openaiReviewProvider.mjs";
+import { buildReviewInvocation, estimateCost, guardBudget, parseOpenAIResult, runOpenAIReview, resolveConcreteModel, estTokens, extractSemanticFields, assembleReviewEnvelope, SEMANTIC_REVIEW_FIELDS, PILOT_BUDGET, PLACEHOLDER_MODELS, DEFAULT_PRICING_ESTIMATE } from "./openaiReviewProvider.mjs";
 import { consumeReviewResult } from "./reviewTrigger.mjs";
 
 const SUFFICIENT_PKG = { governingAuthority: "orch-operating-model", sufficiency: "SUFFICIENT", required: [{ id: "orch-operating-model", authority: "AI Engineering Operating Model", retrievalPath: "docs/orchestration/continuous-workstream-orchestrator.md" }] };
@@ -166,4 +166,98 @@ test("estimateCost is linear in tokens and pricing (never fabricated — pricing
   const c = estimateCost({ inputTokens: 30000, outputTokens: 1500, pricing: DEFAULT_PRICING_ESTIMATE });
   assert.ok(Math.abs(c - (30000 / 1e6 * DEFAULT_PRICING_ESTIMATE.inputPerM + 1500 / 1e6 * DEFAULT_PRICING_ESTIMATE.outputPerM)) < 1e-9);
   assert.equal(DEFAULT_PRICING_ESTIMATE.model, "gpt-5.6-terra");
+});
+
+// ── Dry-run / live payload parity + system-owned metadata (first-live reconciliation) ──────────────
+
+const CTX_TEXT = "GOVERNING-AUTHORITY-CONTENT ".repeat(300); // ~8KB inlined content
+const EOS_META = {
+  contextPackageRef: { mapVersion: "1.0.0", sourceCommit: "abc123", governingAuthority: "orch-operating-model" },
+  provenance: { sourceFreshness: "CURRENT", sourceCommit: "abc123" },
+  triggerKind: "MANUAL_RUNTIME_TRIGGER",
+  timestamps: { requestedAt: "2026-01-01T00:00:00Z", triggeredAt: "2026-01-01T00:00:01Z", completedAt: "2026-01-01T00:00:05Z" },
+};
+
+test("1. dry-run and live use the SAME canonical provider payload (exact object transmitted)", async () => {
+  const built = buildReviewInvocation({ request: REQ, contextPackage: SUFFICIENT_PKG, diff: "DIFF", model: MODEL, contextText: CTX_TEXT });
+  assert.equal(built.ok, true);
+  const t = mockTransport();
+  const r = await runOpenAIReview({ request: REQ, invocation: built.invocation, transport: t, ...EOS_META });
+  assert.equal(r.ok, true);
+  assert.equal(t.calls.length, 1);
+  assert.strictEqual(t.calls[0], built.invocation); // the EXACT object the dry-run would estimate is transmitted
+  // and the canonical builder is deterministic for the same inputs
+  const built2 = buildReviewInvocation({ request: REQ, contextPackage: SUFFICIENT_PKG, diff: "DIFF", model: MODEL, contextText: CTX_TEXT });
+  assert.deepEqual(built2.invocation.messages, built.invocation.messages);
+});
+
+test("2. inlined governing content is present in the ACTUAL transmitted request (not pointers-only)", async () => {
+  const built = buildReviewInvocation({ request: REQ, contextPackage: SUFFICIENT_PKG, diff: "DIFF", model: MODEL, contextText: CTX_TEXT });
+  const t = mockTransport();
+  await runOpenAIReview({ request: REQ, invocation: built.invocation, transport: t, ...EOS_META });
+  const transmittedUser = t.calls[0].messages.find((m) => m.role === "user").content;
+  assert.match(transmittedUser, /GOVERNING-AUTHORITY-CONTENT/); // the inlined content actually left the building
+  assert.ok(t.calls[0].inputTokensEstimate > 1500);             // reflects real content, not ~300 pointers
+});
+
+test("3. token estimate examines EXACTLY the transmitted input messages", async () => {
+  const built = buildReviewInvocation({ request: REQ, contextPackage: SUFFICIENT_PKG, diff: "DIFF", model: MODEL, contextText: CTX_TEXT });
+  const t = mockTransport();
+  await runOpenAIReview({ request: REQ, invocation: built.invocation, transport: t, ...EOS_META });
+  const transmitted = t.calls[0];
+  const summed = transmitted.messages.reduce((s, m) => s + estTokens(m.content), 0);
+  assert.equal(transmitted.inputTokensEstimate, summed); // estimate == tokens over exactly what was sent
+});
+
+test("4. system-owned metadata cannot be overwritten/fabricated by the model", async () => {
+  // a hostile/confused model tries to set system fields — they must be IGNORED
+  const t = mockTransport({ response: { ok: true, review: { verdict: "CONCUR", conclusion: "ok", exchangeId: "HACKED", provenance: { spoofed: true }, requestedAt: "1999", selectedModel: "gpt-evil", triggerKind: "HACK", disposition: "CONSUMED" } } });
+  const built = buildReviewInvocation({ request: REQ, contextPackage: SUFFICIENT_PKG, diff: "D", model: MODEL, contextText: CTX_TEXT });
+  const r = await runOpenAIReview({ request: REQ, invocation: built.invocation, transport: t, ...EOS_META });
+  assert.equal(r.ok, true);
+  assert.equal(r.result.exchangeId, "rev:R1");                       // EOS, not "HACKED"
+  assert.equal(r.result.requestedAt, "2026-01-01T00:00:00Z");        // EOS timestamp, not "1999"
+  assert.equal(r.result.selectedModel, "gpt-5.6-terra");             // the transmitted model, not "gpt-evil"
+  assert.equal(r.result.triggerKind, "MANUAL_RUNTIME_TRIGGER");      // EOS, not "HACK"
+  assert.deepEqual(r.result.provenance, EOS_META.provenance);        // EOS, not {spoofed:true}
+  assert.equal(r.result.disposition, "OPEN");                        // EOS default, not model's "CONSUMED"
+});
+
+test("5. extractSemanticFields returns ONLY the semantic fields (drops anything else)", () => {
+  const s = extractSemanticFields({ verdict: "CONCUR", conclusion: "c", corrections: ["x"], evidenceRefs: [], ownerDecisionRequired: false, exchangeId: "nope", provenance: { a: 1 }, requestedAt: "nope" });
+  assert.equal(s.ok, true);
+  assert.deepEqual(Object.keys(s.semantic).sort(), [...SEMANTIC_REVIEW_FIELDS].sort());
+  assert.equal(extractSemanticFields({ verdict: "LGTM" }).ok, false); // unknown verdict → malformed
+});
+
+test("6. EOS assembles the envelope with authoritative runtime metadata (no nulls where EOS owns them)", () => {
+  const env = assembleReviewEnvelope({ request: REQ, invocation: { model: MODEL }, semantic: { verdict: "CONCUR", conclusion: "ok" }, ...EOS_META });
+  assert.equal(env.ok, true);
+  assert.equal(env.result.requestId, "R1");
+  assert.equal(env.result.selectedModel, MODEL);
+  assert.equal(env.result.triggerKind, "MANUAL_RUNTIME_TRIGGER");
+  assert.deepEqual(env.result.contextPackageRef, EOS_META.contextPackageRef);
+  assert.equal(env.result.requestedAt, "2026-01-01T00:00:00Z");
+  assert.equal(env.result.triggeredAt, "2026-01-01T00:00:01Z");
+  assert.equal(env.result.completedAt, "2026-01-01T00:00:05Z");
+  assert.equal(env.result.sourceFreshness, "CURRENT");
+});
+
+test("7. missing required evidence still returns EVIDENCE_REQUIRED through the envelope", async () => {
+  const t = mockTransport({ response: { ok: true, review: { verdict: "EVIDENCE_REQUIRED", conclusion: "governing content not sufficient" } } });
+  const built = buildReviewInvocation({ request: REQ, contextPackage: SUFFICIENT_PKG, diff: "D", model: MODEL, contextText: CTX_TEXT });
+  const r = await runOpenAIReview({ request: REQ, invocation: built.invocation, transport: t, ...EOS_META });
+  assert.equal(r.ok, true);
+  assert.equal(r.result.verdict, "EVIDENCE_REQUIRED");
+  assert.equal(r.result.evidenceRequired, true);
+});
+
+test("8. no API key leaks into the request payload, the result envelope, or usage", async () => {
+  const FAKE_KEY = "sk-LEAK-CANARY-9999";
+  const transport = async (inv) => { void FAKE_KEY; return { ok: true, review: { verdict: "CONCUR", conclusion: "ok" }, usage: { inputTokens: 2000, outputTokens: 100 } }; };
+  const built = buildReviewInvocation({ request: REQ, contextPackage: SUFFICIENT_PKG, diff: "D", model: MODEL, contextText: CTX_TEXT });
+  const r = await runOpenAIReview({ request: REQ, invocation: built.invocation, transport, ...EOS_META });
+  const blob = JSON.stringify(built.invocation) + JSON.stringify(r);
+  assert.ok(!blob.includes(FAKE_KEY));
+  assert.ok(!blob.includes("Authorization"));
 });
