@@ -1,0 +1,12 @@
+{
+  "workId": "C7-TESTB-001",
+  "responsibleParty": "Design",
+  "resultDestination": "Design",
+  "lifecycle": "CONSUMED",
+  "triggerOutcome": "WOKEN",
+  "escalationState": "NONE",
+  "assignedAt": "2026-08-09", "acknowledgedAt": "2026-08-09", "startedAt": "2026-08-09",
+  "lastActivityAt": "2026-08-09", "completedAt": "2026-08-09", "consumedAt": "2026-08-09",
+  "reviewProvenance": { "repository": "Taylor_Parts", "sourceLocation": "isolated fresh worktree pinned to origin/main", "actualCommit": "origin/main HEAD", "originMainCommit": "origin/main HEAD", "workingTreeState": "CLEAN", "sourceFreshnessState": "CURRENT", "provenanceCapturedAt": "2026-08-09" },
+  "note": "C-7 LIVE TEST B (ADVERSARIAL). Cold worker (no parent transcript) given only a package for an adversarial corpus (current governing principle + superseded-plausible + unrelated-similar + historical + convincing-lower-precedence). Chose the GOVERNING authority (reviewProvenance/SOURCE_FRESHNESS), excluded all distractors, resisted the lower-precedence lure, read ONE file, no EVIDENCE_REQUIRED. PASS. Evidence: docs/orchestration/context/replacement-session-test-002-adversarial.md; fixture: context/test-fixtures/adversarial-map.json."
+}

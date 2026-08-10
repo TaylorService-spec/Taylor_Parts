@@ -12,6 +12,7 @@ import { summarizeAssignment, withEscalation } from "./workLifecycle.mjs";
 import { projectAiGovernance } from "./aiExchange.mjs";
 import { reviewProvenanceLabel } from "./reviewProvenance.mjs";
 import { projectOwnerFriction } from "./ownerFriction.mjs";
+import { projectWakeBoard } from "./wakeState.mjs";
 
 // "Who's Doing What" — worker responsibility visibility (Owner requirement). Projects durable
 // WORK ASSIGNMENTS (routed via the Agent Manager) into a glance list: who is responsible, the
@@ -353,7 +354,13 @@ export function projectCockpit(model = roadmapModel, { networkHealth = null, fre
   // authorization. MANUAL_CONTEXT_RELAY is derived from ownerRelayed exchanges (real evidence).
   const ownerFriction = projectOwnerFriction(frictionEvents, { aiExchanges });
 
-  return { systemHealth, needsYou, workSupply, autonomy, operability, sinceLastVisit, whosDoingWhat, reviewProvenance, ownerFriction, aiGovernance, customerOutcome };
+  // WAKE BOARD — the wake-state chain (READY/AUTHORIZED/ROUTED/TRIGGERED/…/CONSUMED) + trigger
+  // mechanism, surfacing the Owner's distinction: authorized work WAITING_FOR_TRIGGER vs no
+  // authorized work. Populates from assignments that carry a wakeState (the wake supervisor writes
+  // them); honest-empty otherwise.
+  const wakeBoard = projectWakeBoard(workAssignments);
+
+  return { systemHealth, needsYou, workSupply, autonomy, operability, sinceLastVisit, whosDoingWhat, wakeBoard, reviewProvenance, ownerFriction, aiGovernance, customerOutcome };
 }
 
 // Convenience: all eight views at once (used by the generator).
