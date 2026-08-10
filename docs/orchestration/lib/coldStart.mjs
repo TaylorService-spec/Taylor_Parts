@@ -153,7 +153,18 @@ export function assembleBootstrap({ entries = [], pkg = null, scope = [], curren
     contract: "EOS-COLD-START/1.0.0",
     l0: l0Path,
     provenance: (currentState && currentState.provenance) || (pkg && pkg.provenance) || null,
-    currentState: currentState ? { readyItemIds: currentState.derived?.readyItemIds || [], ownerGateIds: currentState.derived?.ownerGateIds || [], protectedActionIds: currentState.derived?.protectedActionIds || [], activeAssignmentIds: currentState.derived?.activeAssignmentIds || [] } : null,
+    currentState: currentState ? {
+      readyItemIds: currentState.derived?.readyItemIds || [],
+      ownerGateIds: currentState.derived?.ownerGateIds || [],
+      protectedActionIds: currentState.derived?.protectedActionIds || [],
+      activeAssignmentIds: currentState.derived?.activeAssignmentIds || [],
+      // Selector interpretation — DERIVED by the pointer from the real selectNextWork authority, not
+      // inferred here from an empty array. Surfaces the terminal-CHECKPOINT conclusion a cold worker
+      // needs ("no authorized READY work; do not manufacture autonomous work").
+      selectorState: currentState.selectorState ?? null,
+      terminalCheckpoint: currentState.terminalCheckpoint ?? null,
+      selectorHint: currentState.selectorHint ?? null,
+    } : null,
     package: pkg,
     authorityFirst: gate,
     governedSubjectsOutsideScope: outside,

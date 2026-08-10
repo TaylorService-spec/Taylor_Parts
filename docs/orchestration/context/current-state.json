@@ -2,9 +2,9 @@
   "pointer": "EOS-CURRENT-STATE/1.0.0",
   "note": "POINTER/INDEX only — the execution-backlog is the authority; this is a generated digest with provenance. Not a second state store. Regenerate when generatedFromCommit is behind origin/main.",
   "provenance": {
-    "sourceCommit": "cdbd7a1f7ae2b7c90789e83179517d5d377bf2bf",
-    "generatedFromCommit": "cdbd7a1f7ae2b7c90789e83179517d5d377bf2bf",
-    "originMainCommit": "cdbd7a1f7ae2b7c90789e83179517d5d377bf2bf",
+    "sourceCommit": "f5a313125c1fa336b8e1d822890a9fae356b5152",
+    "generatedFromCommit": "f5a313125c1fa336b8e1d822890a9fae356b5152",
+    "originMainCommit": "f5a313125c1fa336b8e1d822890a9fae356b5152",
     "freshness": "CURRENT",
     "mapVersion": "1.0.0"
   },
@@ -52,5 +52,7 @@
       "Supplier / Part Master / Manufacturer / part_supplier_items promotion"
     ]
   },
-  "selectorHint": "No READY item in the backlog — the last selection reached a legitimate terminal CHECKPOINT. A DIRECTED assignment overrides this; do not manufacture autonomous work."
+  "selectorState": "CHECKPOINT",
+  "terminalCheckpoint": true,
+  "selectorHint": "No authorized READY work — the selector reached a legitimate terminal CHECKPOINT; only genuine gates (Owner/protected/blocked) remain. A DIRECTED assignment overrides this; do not manufacture autonomous work."
 }
