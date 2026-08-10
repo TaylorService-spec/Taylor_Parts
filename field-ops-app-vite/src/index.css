@@ -1988,3 +1988,6 @@ button:hover {
   max-width: 46ch;
   color: var(--color-text-muted);
 }
+
+/* States what Operational History IS, on the surface rather than in a source comment. */
+.wo-history__basis { font-size: 12px; margin: 2px 0 8px; max-width: 62ch; }
