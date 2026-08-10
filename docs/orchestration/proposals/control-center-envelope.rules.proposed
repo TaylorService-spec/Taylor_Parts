@@ -1,0 +1,32 @@
+// PROPOSED Firestore Rule — Owner Control Center envelope (Model A) — NOT LIVE.
+// ---------------------------------------------------------------------------
+// This is a REVIEWABLE DIFF, not a deployed rule. It is deliberately kept OUT
+// of the live firestore.rules because it cannot be finalized autonomously:
+//   (1) the authorized-Owner uid(s) are an Owner-gated input (not known here);
+//   (2) a firestore.rules change is Tier-2 and its deploy is Owner/operator-gated
+//       (merged != live — firestore.rules is not auto-deployed).
+//
+// OPERATOR STEPS (see control-center-publication-runbook.md):
+//   1. Replace <OWNER_UID_1> (and add more uids if a second Owner is authorized)
+//      with the real Firebase Auth uid(s).
+//   2. Paste this match block INTO firestore.rules inside the existing
+//      `match /databases/{database}/documents { ... }` block.
+//   3. Review as a Tier-2 change; deploy with the verify-rules-deploy skill.
+//
+// SECURITY MODEL (Model A, Owner-ratified 2026-08-09):
+//   * The hosted board's DATA lives in control_center_envelopes/{projectId}.
+//   * READ is allowed ONLY to the authorized Owner uid(s). Everyone else — signed
+//     in or not — is denied. Fail-closed by default.
+//   * WRITE is denied to ALL clients. The envelope is published exclusively by
+//     the Admin-SDK publish tooling (Admin SDK bypasses Rules by design), so no
+//     client — not even the Owner's browser — can forge or overwrite the board.
+// ---------------------------------------------------------------------------
+
+match /control_center_envelopes/{projectId} {
+  allow read: if request.auth != null
+              && request.auth.uid in [
+                   "<OWNER_UID_1>"
+                   // , "<OWNER_UID_2>"   // add only if a second Owner is authorized
+                 ];
+  allow write: if false; // published only by governed Admin-SDK tooling, never a client
+}

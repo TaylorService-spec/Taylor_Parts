@@ -244,7 +244,9 @@ Legend: `[x]` done · `[>]` in progress · `[ ]` planned/ready · `[!]` owner de
   - ☑ **Projection completion — Agent Ops + Network Health + Recent Progress + UX board via the governed envelope** — criteria: 4 gaps filled in controlCenterAdapter (schema 1.1.0); keystone renders from real data; no reach-around; browser-verified
     - controlCenterAdapter extension (Taylor #732) + keystone renderer (keystone #9) — `DONE` · PRs: #732 · evidence: PR:#732, DOC:keystone PR #9, BROWSER_RUN:control center renderProject
   - ☐ **Delivery phase — secure hosting + one-click Windows launcher (hosted-first / local-fallback)** — criteria: hosting/auth/publication/freshness contract; repo-safe hosted foundation; one-click launcher (UX); browser + launcher acceptance
-    - hosting design + launcher (Design owns arch/auth/contract/freshness; UX owns launcher experience) — `RUNNING`
+    - hosting/auth/publication/freshness design + freshnessState() helper — `DONE` · PRs: #738 · evidence: PR:#738, DOC:owner-control-center-hosting-design.md
+    - one-click Windows launcher (hosted-first / governed local-fallback) — UX experience design + launcher.ps1 + install.ps1 — `DELIVERED` · evidence: AGENT_RUN:UX-LAUNCHER-001(Design→UX handoff via Agent Manager, 0 Owner relay)
+    - hosted Model-A repo-safe artifacts (publish tooling + parameterized Rule proposal + operator deploy runbook) — `RUNNING`
 
 ### Commercial & Sales _(domain)_
 
@@ -524,7 +526,7 @@ Read-only over the durable [Agent Request/Result ledger](../agent-requests/) + g
 - **Network state:** NORMAL (HIGH confidence · ALL_HEALTHY) — telemetry as of 2026-08-09 (pilot window), sample age 2s
 - **Recent latency (reported, not thresholded):** gateway 1ms · WAN1 13.7ms · WAN2 22.4ms · TCP conns 54
 - **Remote slots:** REMOTE_AI 0/2 · BROWSER 0/1 · NETWORK_HEAVY 0/1 · MUTATING 0/1
-- **Efficiency:** requests 7 · executed 7 · deduped/reused 0 · waiting(resource/net) 0/0 · retries 0 · accepted findings 27 · results-with-token-metrics 6
+- **Efficiency:** requests 8 · executed 8 · deduped/reused 0 · waiting(resource/net) 0/0 · retries 0 · accepted findings 35 · results-with-token-metrics 7
 - **Owner relay count (routine handoffs):** 0
 - **Proof status:** Phase-4A real-load proof COMPLETE: 2 concurrent remote workers stable (network NORMAL throughout), ceiling enforced (READY_BUT_WAITING_RESOURCE), zero Owner relay.
 
@@ -542,4 +544,5 @@ Read-only over the durable [Agent Request/Result ledger](../agent-requests/) + g
 | UX-EX-001-R1 | UX-EX-001 | UX | COMPLETE | NOT_APPLICABLE | 7 | 0 |
 | UX-EX-002-R1 | UX-EX-002 | UX | COMPLETE | NOT_APPLICABLE | 4 | 0 |
 | UX-INV-DATE-001-R1 | UX-INV-DATE-001 | UX | COMPLETE | FAIL | 4 | 0 |
+| UX-LAUNCHER-001-R1 | UX-LAUNCHER-001 | Design | COMPLETE | DELIVERED | 8 | 0 |
 

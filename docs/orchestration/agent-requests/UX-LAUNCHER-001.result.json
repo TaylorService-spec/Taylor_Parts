@@ -1,0 +1,38 @@
+{
+  "resultId": "UX-LAUNCHER-001-R1",
+  "requestId": "UX-LAUNCHER-001",
+  "routedBackTo": "Design",
+  "status": "COMPLETE",
+  "verdict": "DELIVERED",
+  "findings": [
+    "Owner experience: double-click a Start Menu / Desktop 'EOS Control Center' shortcut; no console window; transient tray NotifyIcon balloons per phase; browser opens when ready. Only the local-fallback path can raise a dialog -- hosted-unreachable is expected, never an error.",
+    "Status presentation without a terminal: tray balloon tips for progress; a single MessageBox (warning or error) with Owner-readable text on failure; an always-on silent evidence log at %LOCALAPPDATA%/EOS/logs/control-center-YYYYMMDD.log. No spinner window (would read as a dev tool).",
+    "Failure taxonomy is warning-vs-fatal: network-fetch-failed / stale-or-dirty-source are WARNINGS that continue on local state; couldn't-build / server-wouldn't-start / foreign-port-in-use / health-timeout are FATALS that stop with one dialog + log path. A foreign process on :4173 is reported (name+PID), NEVER killed.",
+    "§13 safety enforced structurally: the only git verbs used are fetch / symbolic-ref / status --porcelain / rev-list --count / rev-parse -- all read-only. No reset/checkout/clean/pull/merge, no process kills, no deploy, no agent/Option-B launch, no roadmap mutation.",
+    "Config: %LOCALAPPDATA%/EOS/control-center-launcher.json, seeded with defaults on first run (keystonePath, taylorPath, projectId, hostedUrl blank=local-only, hostedHealth, localUrl, port 4173, healthTimeoutSec). Envelope source = the Owner's C:/Users/Rudy2/Taylor_Parts main checkout (NOT the D:/Taylor_Parts working tree); the launcher uses the configured taylorPath and REPORTS its freshness rather than choosing.",
+    "Local-fallback pipeline: git fetch (read-only) -> detect+report source freshness (branch/dirty/behind) -> node bin/import-envelope.mjs --project <taylor> --projectId taylor-parts (build envelope into keystone/data) -> duplicate-server check (reuse our own healthy serve.mjs; refuse to touch a foreign listener) -> start hidden node bin/serve.mjs (PORT env) -> health-check :4173 until 200 or timeout -> open browser.",
+    "Hosted-first: if hostedUrl configured, probe hostedHealth (or hostedUrl); 200 => open hosted; unreachable OR redirect-to-login => silent fallback to local. Default hostedUrl is blank (local-only) until the hosted site + auth-check endpoint exist.",
+    "One-click trigger: a .cmd shim (start \"\" /min pwsh -WindowStyle Hidden -File launcher.ps1) and/or a real .lnk shortcut (Run: Minimized, custom icon) in Start Menu + Desktop; a small install.ps1 copies launcher.ps1, writes default config, drops the shortcuts, sets the icon."
+  ],
+  "evidence": [
+    { "kind": "AGENT_RUN", "ref": "general-purpose UX-LAUNCHER-001", "note": "read-only inspection of keystone bin/serve.mjs + bin/import-envelope.mjs + Taylor adapter dir; git/ls/node --version only; created/modified/executed nothing" }
+  ],
+  "questionsRaised": [
+    "Hosted 'access valid' semantics: any-200 => open hosted and let the browser handle SSO login, OR a dedicated auth-check endpoint that returns 200 only when the Owner's access is provisioned (else fall back to local)? Design assumes the latter when hostedHealth is set.",
+    "Is there a hosted Center yet? hostedUrl defaults blank (local-only) -- provide URL + health endpoint when it exists.",
+    "PowerShell 7 (pwsh) vs Windows PowerShell 5.1 for the shortcut target -- confirm pwsh is installed or default the shims to powershell.exe.",
+    "Refresh the keystone repo read-only too, or only Taylor? (keystone app code changes rarely.)",
+    "Server lifetime: leave serve.mjs running until reboot (fast reuse) vs a companion 'Quit' tray action? Design leaves it running, never auto-kills.",
+    "Execution policy / SmartScreen: sign the launcher, or accept a one-time 'More info -> Run anyway'?",
+    "Icon asset: does branding have an EOS Control Center .ico or should Design produce one?"
+  ],
+  "scenariosDiscovered": [
+    "D:/Taylor_Parts has no docs/orchestration dir; the orchestration library + adapter live only in the Owner's C:/Users/Rudy2/Taylor_Parts main checkout -- the launcher must point taylorPath there and surface source freshness because a stale source silently produces a stale board."
+  ],
+  "metrics": { "tokens": 49125, "toolUses": 8, "runtimeMs": 172010 },
+  "retries": 0,
+  "contextExpanded": false,
+  "contaminated": false,
+  "retracted": false,
+  "createdAt": "2026-08-09"
+}

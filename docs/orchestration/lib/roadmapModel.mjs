@@ -22,7 +22,7 @@ export const BACKEND = Object.freeze(["COMPLETE", "PARTIAL", "NONE", "NOT_APPLIC
 export const UX = Object.freeze(["COMPLETE", "PARTIAL", "NONE", "NOT_APPLICABLE", "UNKNOWN"]);
 export const DEPLOY = Object.freeze(["DEPLOYED", "NOT_DEPLOYED", "NOT_APPLICABLE", "UNKNOWN"]);
 export const TRISTATE = Object.freeze([true, false, "NOT_APPLICABLE", "UNKNOWN"]);
-export const EVIDENCE_KINDS = Object.freeze(["PR", "CI", "TEST", "RULES", "DOC", "PERSONA_FINDING", "CAPABILITY_FLAG", "BROWSER_RUN"]);
+export const EVIDENCE_KINDS = Object.freeze(["PR", "CI", "TEST", "RULES", "DOC", "PERSONA_FINDING", "CAPABILITY_FLAG", "BROWSER_RUN", "AGENT_RUN"]);
 export const OWNERS = Object.freeze(["Product/Design", "UX", "EAO", "Access", "Operator", "Owner"]);
 
 // Convenience: a fully NOT_APPLICABLE dimension set for pure-doc/process capabilities.
@@ -150,8 +150,16 @@ export const roadmapModel = Object.freeze({
                 prEvidence: ["#732"], evidence: [{ kind: "PR", ref: "#732" }, { kind: "DOC", ref: "keystone PR #9" }, { kind: "BROWSER_RUN", ref: "control center renderProject" }] }] },
             { id: "occ-delivery", name: "Delivery phase — secure hosting + one-click Windows launcher (hosted-first / local-fallback)", complete: false,
               completionCriteria: ["hosting/auth/publication/freshness contract", "repo-safe hosted foundation", "one-click launcher (UX)", "browser + launcher acceptance"],
-              workItems: [{ id: "occ-w2", name: "hosting design + launcher (Design owns arch/auth/contract/freshness; UX owns launcher experience)", status: "RUNNING", owner: "Product/Design",
-                protectedBoundary: "actual Firebase Hosting deploy + any credential/billing = Owner/operator-gated; repo-safe design/config/launcher proceed", evidence: [] }] },
+              ownerDecision: "Owner (2026-08-09) ratified security-gating MODEL A (Firestore-gated envelope: static Hosting shell + envelope in a Firestore doc read only by the authorized Owner uid via Firebase Auth + a fail-closed Rule) and AUTHORIZED the Firebase Hosting site creation + deploy + (for Model A) the Tier-2 Firestore Rules change + deploy — to be EXECUTED BY THE OWNER/OPERATOR when ready, NOT autonomously. Repo-safe deliverables (design, launcher, publish tooling, parameterized Rule proposal, operator runbook) proceed here; actual site creation, Rules deploy, Hosting deploy, and the authorized-Owner uid(s) remain Owner/operator-gated (Register≠grant, Export≠deploy, Merge≠live).",
+              workItems: [
+                { id: "occ-w2", name: "hosting/auth/publication/freshness design + freshnessState() helper", status: "DONE", owner: "Product/Design",
+                  prEvidence: ["#738"], evidence: [{ kind: "PR", ref: "#738" }, { kind: "DOC", ref: "owner-control-center-hosting-design.md" }] },
+                { id: "occ-w3", name: "one-click Windows launcher (hosted-first / governed local-fallback) — UX experience design + launcher.ps1 + install.ps1", status: "DELIVERED", owner: "UX",
+                  protectedBoundary: "§13 safety boundary: launch NEVER starts Option B / agents / deploy / grants / Rules deploy / roadmap mutation / repo reset-or-clean; git fetch/status only",
+                  evidence: [{ kind: "AGENT_RUN", ref: "UX-LAUNCHER-001", note: "Design→UX handoff via Agent Manager, 0 Owner relay" }] },
+                { id: "occ-w4", name: "hosted Model-A repo-safe artifacts (publish tooling + parameterized Rule proposal + operator deploy runbook)", status: "RUNNING", owner: "Product/Design",
+                  protectedBoundary: "actual Firebase Hosting/site/Rules deploy + credential/billing + authorized-Owner uid = Owner/operator-gated", evidence: [] },
+              ] },
           ],
         },
       ],
