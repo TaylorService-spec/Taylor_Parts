@@ -1,0 +1,16 @@
+{
+  "exchangeId": "AIX-COCKPIT-001",
+  "direction": "CLAUDE_TO_CHATGPT",
+  "question": "Is the Owner cockpit end-to-end (durable model → projectCockpit → durable outcome/triage → schema 1.2.0 → keystone rendering → last-known-good/STALE) accepted, and the work-pickup lifecycle + LIVE PROCESS TEST?",
+  "contextRefs": ["docs/orchestration/work-pickup-live-test.md", "PR #744", "PR #745", "keystone PR #15", "PR #746"],
+  "claudePosition": "Cockpit rendered end-to-end with honest gaps; work-pickup lifecycle (ASSIGNED≠ACKNOWLEDGED≠ACTIVE≠COMPLETED≠CONSUMED, ROUTE≠TRIGGER); LIVE TEST surfaced review-agent source-freshness (contaminated run → re-route → valid), reported not concealed.",
+  "chatgptPosition": "Accepted. #746 / keystone #16 accepted; contaminated first review correctly dispositioned and rerun. Codified review source-freshness/provenance as a durable requirement.",
+  "evidenceRefs": ["keystone PR #16", "PR #747"],
+  "verdict": "CONCUR_WITH_CORRECTION",
+  "conclusion": "Cockpit + work-pickup accepted; the correction was to make review source-provenance a first-class durable requirement (delivered as reviewProvenance.mjs in #747).",
+  "responsibility": "Design (Claude) continues repo-safe seams.",
+  "ownerRequirement": "Owner cockpit answers health/needs-me/while-away/current at a glance; routed ≠ active; silence implies nothing.",
+  "disposition": "RESOLVED",
+  "ownerRelayed": true,
+  "provenance": { "capturedAt": "2026-08-09", "note": "Owner-relayed." }
+}

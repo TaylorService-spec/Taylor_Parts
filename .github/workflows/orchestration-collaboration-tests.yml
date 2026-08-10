@@ -19,6 +19,8 @@ on:
       - "docs/orchestration/lib/durableOutcomeTriage.test.mjs"
       - "docs/orchestration/lib/reviewProvenance.mjs"
       - "docs/orchestration/lib/reviewProvenance.test.mjs"
+      - "docs/orchestration/lib/aiExchange.mjs"
+      - "docs/orchestration/lib/aiExchange.test.mjs"
       - ".github/workflows/orchestration-collaboration-tests.yml"
   push:
     branches: [main]
@@ -32,6 +34,8 @@ on:
       - "docs/orchestration/lib/durableOutcomeTriage.test.mjs"
       - "docs/orchestration/lib/reviewProvenance.mjs"
       - "docs/orchestration/lib/reviewProvenance.test.mjs"
+      - "docs/orchestration/lib/aiExchange.mjs"
+      - "docs/orchestration/lib/aiExchange.test.mjs"
       - ".github/workflows/orchestration-collaboration-tests.yml"
   workflow_dispatch:
 
@@ -50,4 +54,4 @@ jobs:
         with:
           node-version: 22
       - name: Contracts + triage + bridge mock (node:test, zero-dependency)
-        run: node --test docs/orchestration/lib/collaborationContract.test.mjs docs/orchestration/lib/ownerDecision.test.mjs docs/orchestration/lib/bridgeTransport.test.mjs docs/orchestration/lib/durableOutcomeTriage.test.mjs docs/orchestration/lib/reviewProvenance.test.mjs
+        run: node --test docs/orchestration/lib/collaborationContract.test.mjs docs/orchestration/lib/ownerDecision.test.mjs docs/orchestration/lib/bridgeTransport.test.mjs docs/orchestration/lib/durableOutcomeTriage.test.mjs docs/orchestration/lib/reviewProvenance.test.mjs docs/orchestration/lib/aiExchange.test.mjs
