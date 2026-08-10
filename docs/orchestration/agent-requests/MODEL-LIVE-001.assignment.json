@@ -1,0 +1,6 @@
+{ "workId": "MODEL-LIVE-001", "responsibleParty": "Design", "resultDestination": "Design",
+  "lifecycle": "CONSUMED", "triggerOutcome": "WOKEN", "escalationState": "NONE",
+  "assignedAt": "2026-08-10", "acknowledgedAt": "2026-08-10", "startedAt": "2026-08-10",
+  "lastActivityAt": "2026-08-10", "completedAt": "2026-08-10", "consumedAt": "2026-08-10",
+  "selectedModel": "sonnet", "modelTier": "standard", "modelSelectionReason": "delegated agent → SONNET (ratified two-model policy)",
+  "note": "LIVE proof of the model-routing chain via STANDARD dispatch: request modelTier 'standard' recorded → dispatchWithContext resolved selectedModel 'sonnet' (delegated, ratified two-model policy) → attached to the dispatch → persisted on this durable assignment record. No authority expansion (delegated → SONNET, never OPUS). Worker execution from the standard-dispatch package proven separately by STD-DISPATCH-001." }

@@ -18,6 +18,7 @@ import { validateAgentRequest } from "./agentRequest.mjs";
 import { isReusableResult } from "./agentResult.mjs";
 import { classifyResourceNeed, allocate } from "./resourceGovernor.mjs";
 import { remotePolicy } from "./networkState.mjs";
+import { resolveDispatchModel } from "./modelPolicy.mjs";
 
 export const DISPATCH_DECISIONS = Object.freeze([
   "REJECT_INVALID", "DEDUPE_REUSE", "WAIT_NETWORK", "READY_BUT_WAITING_RESOURCE", "DISPATCH",
@@ -72,7 +73,11 @@ export function attachDispatchContext(dispatchResult, request, contextPackageFn,
     objective: request.purpose,
     sourceCommit,
   });
-  return { ...dispatchResult, contextPackage };
+  // Standard dispatch dispatches a DELEGATED worker → resolve the concrete model via the ratified
+  // two-model policy (delegated → SONNET). modelTier is preserved as portability metadata. This is
+  // the SAME resolver the Wake Supervisor uses, so the two paths cannot silently diverge.
+  const modelSelection = resolveDispatchModel({ modelTier: request.modelTier, workstream: request.requestedByWorkstream, delegated: true });
+  return { ...dispatchResult, contextPackage, selectedModel: modelSelection.selectedModel, modelSelection };
 }
 
 // Convenience: decide + attach the C-7 package in one call (the standard dispatch path).
