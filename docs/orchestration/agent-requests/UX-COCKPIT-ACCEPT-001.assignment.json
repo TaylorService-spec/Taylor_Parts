@@ -11,5 +11,14 @@
   "lastActivityAt": "2026-08-09",
   "completedAt": "2026-08-09",
   "consumedAt": null,
-  "note": "LIVE PROCESS TEST run 1. Routed via the Agent Manager (no Owner relay). In this runtime UX is realized as an on-demand subagent, so ROUTE→TRIGGER(spawn=WOKEN)→ACKNOWLEDGED→ACTIVE→COMPLETED all occurred — the subagent routing path works end-to-end. The COMPLETED result is NOT CONSUMED: it is CONTAMINATED (the worker read the Owner's LOCAL checkout, which is behind origin/main, and reviewed the pre-cockpit v1.1 board, not the merged #15 cockpit). This exposes a real orchestration limitation distinct from the wake FUTURE_SEAM: dispatched review agents read the Owner's local filesystem, which drifts behind merged main. The standing-session NO_WAKE_MECHANISM seam was NOT exercised (subagents are spawnable)."
+  "note": "LIVE PROCESS TEST run 1. Routed via the Agent Manager (no Owner relay). In this runtime UX is realized as an on-demand subagent, so ROUTE→TRIGGER(spawn=WOKEN)→ACKNOWLEDGED→ACTIVE→COMPLETED all occurred — the subagent routing path works end-to-end. The COMPLETED result is NOT CONSUMED: it is CONTAMINATED (the worker read the Owner's LOCAL checkout, which is behind origin/main, and reviewed the pre-cockpit v1.1 board, not the merged #15 cockpit). This exposes a real orchestration limitation distinct from the wake FUTURE_SEAM: dispatched review agents read the Owner's local filesystem, which drifts behind merged main. The standing-session NO_WAKE_MECHANISM seam was NOT exercised (subagents are spawnable).",
+  "reviewProvenance": {
+    "repository": "project-keystone + Taylor_Parts",
+    "sourceLocation": "C:/Users/Rudy2/project-keystone + C:/Users/Rudy2/Taylor_Parts (Owner local checkouts)",
+    "actualCommit": "pre-#15 (local, behind origin/main)",
+    "originMainCommit": "origin/main @ #15/#745",
+    "workingTreeState": "CLEAN",
+    "sourceFreshnessState": "BEHIND_REMOTE",
+    "provenanceCapturedAt": "2026-08-09"
+  }
 }
