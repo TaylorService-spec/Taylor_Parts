@@ -31,7 +31,6 @@ Baseline reconciled at `origin/main` = `d1ab2ae` (pin `ff22df90…`; Finance + C
 
 | # | Item | Why READY | Next reversible increment |
 |---|---|---|---|
-| UX-3 | Activity destination scope | IA scope question surfaced by #708. Repo-safe: tracing + evidence only. **Durable evidence available** — persona request `UX-EX-001` routed a read-only trace of 5 Activity-rendering surfaces + grains + a wayfinding discrepancy + questionsRaised ([`agent-requests/UX-EX-001.result.json`](./agent-requests/UX-EX-001.result.json)). Evidence, not a decision — UX interprets | Determine whose activity / what grain relative to Operational History using the routed evidence; record decision, do not merge or remove routes |
 
 > **UX workstream registered 2026-08-09.** The prior terminal CHECKPOINT was reached with the UX
 > workstream **absent from this ledger** — UX items existed only in session state, so the selector could not
@@ -176,3 +175,24 @@ Classified `NO_DEFECT`. No agent re-run was needed; repository tracing answered 
 string. The run was against a local dev server predating the fix. **Not routed as a
 Product finding** — per the build-currency rule, a stale-build observation is
 invalidated evidence, not a defect.
+
+## UX-3 — PRODUCT_DIRECTION_REQUIRED (recorded 2026-08-09)
+
+Activity destination scope. Evidence `UX-EX-001.result.json` interpreted and traced;
+**no new agent requested**. Full disposition:
+[`docs/reviews/ux3-activity-destination-scope.md`](../reviews/ux3-activity-destination-scope.md).
+
+"Activity" names **four surfaces at four grains over three data sources**. Two share one
+authority (Operational History is `buildTimeline` scoped to a single Work Order — a
+narrower view, not a competitor). The other two are genuinely different: a session-only
+in-memory feed and a persisted per-Account query. **Not a duplicate entry point.**
+
+The open question is what a standalone `/dashboard/activity` should BE — global (which
+would duplicate the live Service Operations timeline), "my activity" (a grain no surface
+provides), or a cross-domain roll-up (a new projection). Each is a different product,
+not a different layout, and nothing in the repository decides between them. **No UX fix
+was manufactured to close the item.**
+
+One routed finding was **refuted by tracing**: the claim that no screen is labelled
+"Service Operations". `navConfig.js` declares exactly that domain at `/service-operations`;
+"Control Tower" is the internal component name. The #708 copy is correct and unchanged.
