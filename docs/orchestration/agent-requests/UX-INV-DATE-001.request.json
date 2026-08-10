@@ -1,0 +1,10 @@
+{
+  "requestId": "UX-INV-DATE-001", "requestedByWorkstream": "UX", "parentWorkItemId": "UX-1",
+  "purpose": "Root-cause + classify the 'Invalid Date' Operational History finding routed from the #727 pilot: seed/data artifact vs rendering defect.",
+  "mode": "VERIFICATION", "modelTier": "standard", "execution": "REMOTE", "budgetClass": "SMALL",
+  "priority": 2, "blocking": false, "requiresBrowser": false, "mutating": false,
+  "allowedSurfaces": ["field-ops-app-vite/src/domain/timelineBuilder.js", "field-ops-app-vite/src/modules/controlTower/WorkOrderDetail.jsx", "field-ops-app-vite/.claude/skills/run-field-ops-app-vite/seed.mjs"],
+  "outputContract": "Classification A(seed)/B(rendering-defect)/C(both) with file:line evidence + a fix-location recommendation. Evidence only.",
+  "retryAllowance": 1, "freshnessAnchor": "27797e4", "status": "COMPLETE", "createdAt": "2026-08-09",
+  "fingerprint": "VERIFICATION::root-cause invalid date operational history::RO::NOBROWSER", "evidence": []
+}
