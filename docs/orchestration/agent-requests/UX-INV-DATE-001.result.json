@@ -1,0 +1,14 @@
+{
+  "resultId": "UX-INV-DATE-001-R1", "requestId": "UX-INV-DATE-001", "routedBackTo": "UX", "status": "COMPLETE", "verdict": "FAIL",
+  "findings": [
+    "Classification (B) RENDERING/BUILDER DEFECT — not a seed artifact. timelineBuilder.js jobEvents() passes job.createdAt (a Firestore Timestamp on governed WOs) as event.timestamp with no guard (lines 38/55/65/75); WorkOrderDetail.jsx:153 did new Date(<Timestamp>).toLocaleTimeString() -> literal 'Invalid Date' on every row.",
+    "Not A/C: seed writes createdAt as a Firestore Timestamp faithful to production (types/workOrder.ts:117 createdAt: Timestamp); a real production WO would render 'Invalid Date' here too.",
+    "workOrderEvents() guards with typeof===number and silently DROPS the Timestamp (WO-level rows vanish) — the same root cause, half-fixed. Noted as a follow-up (not in the display fix).",
+    "REMEDIATED (pilot cycle 2): added formatClockTime() to domain/displayTimestamp.js (canonical toMillis-based, never 'Invalid Date') and used it in WorkOrderDetail; 9/9 displayTimestamp tests pass, oxlint clean."
+  ],
+  "evidence": [{ "kind": "AGENT_RUN", "ref": "Explore UX-INV-DATE-001", "note": "read-only, 29 tool uses" }],
+  "questionsRaised": ["Follow-up: normalize createdAt in timelineBuilder (jobEvents + workOrderEvents typeof===number filter) so WO-level rows also return with real times — separate from this display fix."],
+  "scenariosDiscovered": ["The F0 timestamp-coercion rule (timestampMillis/displayTimestamp) had one un-migrated consumer (Operational History) — worth a sweep for other raw new Date(x) timestamp sites."],
+  "metrics": { "tokens": 91989, "toolUses": 29, "runtimeMs": 274116 },
+  "retries": 0, "contextExpanded": false, "contaminated": false, "retracted": false, "createdAt": "2026-08-09"
+}

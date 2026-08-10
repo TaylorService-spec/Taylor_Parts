@@ -1,8 +1,23 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { formatTimestamp, formatAge } from "../src/domain/displayTimestamp.js";
+import { formatTimestamp, formatAge, formatClockTime } from "../src/domain/displayTimestamp.js";
 
 const NOW = Date.parse("2026-08-08T12:00:00Z");
+
+test("formatClockTime never renders Invalid Date and coerces a Firestore Timestamp (the Operational History bug)", () => {
+  const ms = Date.parse("2026-08-07T14:15:00Z");
+  // The exact shape that produced "Invalid Date" on every Operational History row:
+  // a governed Work Order's createdAt is a Firestore Timestamp, not epoch millis.
+  const fromTimestamp = formatClockTime({ toMillis: () => ms });
+  assert.notEqual(fromTimestamp, "Invalid Date");
+  assert.notEqual(fromTimestamp, "Unknown"); // a valid Timestamp renders a real clock time
+  assert.equal(formatClockTime({ seconds: Math.floor(ms / 1000) }) !== "Unknown", true);
+  for (const bad of [undefined, null, NaN, 0, "", "not a date", {}, Infinity, -1]) {
+    assert.equal(formatClockTime(bad), "Unknown", `${String(bad)} must be Unknown`);
+    assert.notEqual(formatClockTime(bad), "Invalid Date");
+  }
+  assert.equal(formatClockTime(null, { unknown: "—" }), "—"); // caller-configurable, matching WorkOrderDetail
+});
 
 test("never renders the literal string Invalid Date", () => {
   for (const bad of [undefined, null, NaN, 0, "", "not a date", {}, [], Infinity, -1]) {

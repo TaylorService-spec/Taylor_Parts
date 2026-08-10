@@ -25,6 +25,20 @@ export function formatTimestamp(value, { unknown = "Unknown" } = {}) {
   return text === "Invalid Date" ? unknown : text;
 }
 
+/**
+ * Time-of-day for display (e.g. "02:15 PM). The Operational History timeline
+ * shows a clock time only, so it needs the same "never render Invalid Date"
+ * rule as formatTimestamp — the governed Work Order's `createdAt` is a Firestore
+ * Timestamp, and `new Date(<Timestamp>)` produced the literal "Invalid Date" on
+ * every row until this coercion was applied.
+ */
+export function formatClockTime(value, { unknown = "Unknown" } = {}) {
+  const ms = toMillis(value);
+  if (ms === null) return unknown;
+  const text = new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return text === "Invalid Date" ? unknown : text;
+}
+
 // Beyond this, an age is far more likely to be a broken value than a real
 // request that has genuinely been waiting since before the business existed.
 // Capping the phrasing keeps the row honest without silently hiding it.

@@ -24,7 +24,7 @@ describe("NotificationPanel (OD-3) -- resolveName name resolution", () => {
     openDropdown();
     expect(screen.getByText("Pending Review")).toBeTruthy();                 // section preserved
     expect(screen.getByText("CANONICAL-NAME-A")).toBeTruthy();               // canonical name
-    expect(screen.getByText("HIGH")).toBeTruthy();                           // urgency badge
+    expect(screen.getByText("Request urgency: HIGH")).toBeTruthy();          // urgency badge (named scale, #696)
     expect(screen.getByText("Needs planning")).toBeTruthy();                 // null-urgency badge
     // request identity link preserved: partId + requestId query param
     const link = screen.getByText("CANONICAL-NAME-A").closest("a");

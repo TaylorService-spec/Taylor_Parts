@@ -2,6 +2,7 @@ import { computeWorkOrderSignalFromDoc } from "../../domain/workOrderScoring";
 import { buildTimeline } from "../../domain/timelineBuilder";
 import { describeEvent } from "../../domain/eventModel";
 import { EVENT_ICON } from "../../domain/eventTypes";
+import { formatClockTime } from "../../domain/displayTimestamp";
 import { snapshotPartName, snapshotPartSku, snapshotPartCategory, snapshotPartUnit } from "../../domain/workOrderInventorySnapshot";
 import WorkOrderActions from "./WorkOrderActions";
 import { workOrderPriorityText } from "../../domain/workOrderPriority";
@@ -150,7 +151,7 @@ export default function WorkOrderDetail({ workOrder, jobs, role, technicians, cu
           {history.map((event, index) => (
             <div key={`${event.type}-${event.entity.id}-${index}`} className="wo-history-row">
               <span className="fo-muted">
-                {new Date(event.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                {formatClockTime(event.timestamp, { unknown: "—" })}
               </span>{" "}
               <span aria-hidden="true">{EVENT_ICON[event.type] ?? "•"}</span>{" "}
               {describeEvent(event)}
