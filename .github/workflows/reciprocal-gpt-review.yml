@@ -37,26 +37,29 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+      # SAFE INPUT HANDLING: request_id / diff_path are NEVER interpolated into the shell command.
+      # They flow ONLY through env vars, read by Node as plain strings (no shell, no eval, no command
+      # substitution, no generated fragments). diff_path is validated in-code (repo-relative, in-
+      # checkout, must exist). Dry-run and live use IDENTICAL input wiring — the only differences are
+      # the API key (live only) and the --live flag.
       - name: Dry-run (no provider call, no key)
         if: ${{ inputs.mode != 'live' }}
         env:
-          # Model ONLY — same repository configuration as live, so dry-run reflects the real model.
-          # Deliberately NO OPENAI_API_KEY here: dry-run must never receive the key or call OpenAI.
           OPENAI_REVIEW_MODEL: ${{ vars.OPENAI_REVIEW_MODEL }}
-        run: |
-          node docs/orchestration/context/openai-review.mjs \
-            --request "${{ inputs.request_id }}" \
-            ${{ inputs.diff_path != '' && format('--diff {0}', inputs.diff_path) || '' }}
+          REVIEW_REQUEST_ID: ${{ inputs.request_id }}
+          REVIEW_DIFF_PATH: ${{ inputs.diff_path }}
+          # Deliberately NO OPENAI_API_KEY here: dry-run must never receive the key or call OpenAI.
+        run: node docs/orchestration/context/openai-review.mjs
       - name: Live review (Owner activation boundary — real spend, ceilings enforced in-code)
         if: ${{ inputs.mode == 'live' }}
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}   # injected secret; never printed
           OPENAI_REVIEW_MODEL: ${{ vars.OPENAI_REVIEW_MODEL }}
+          REVIEW_REQUEST_ID: ${{ inputs.request_id }}
+          REVIEW_DIFF_PATH: ${{ inputs.diff_path }}
         run: |
           if [ -z "${OPENAI_API_KEY}" ]; then
             echo "OPENAI_API_KEY secret not set — refusing live call (activation boundary not crossed)."
             exit 1
           fi
-          node docs/orchestration/context/openai-review.mjs --live \
-            --request "${{ inputs.request_id }}" \
-            ${{ inputs.diff_path != '' && format('--diff {0}', inputs.diff_path) || '' }}
+          node docs/orchestration/context/openai-review.mjs --live

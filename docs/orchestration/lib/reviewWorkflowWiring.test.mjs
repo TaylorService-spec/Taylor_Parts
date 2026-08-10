@@ -43,3 +43,33 @@ test("the workflow is manual-dispatch only (never auto-triggered on push/PR)", (
   assert.match(yaml, /on:\s*\n\s*workflow_dispatch:/, "must be workflow_dispatch only");
   assert.ok(!/^\s*push:/m.test(yaml) && !/^\s*pull_request:/m.test(yaml), "no push/pull_request triggers");
 });
+
+// ── Input-injection hardening: inputs flow via env, NEVER interpolated into shell ────────────────
+
+test("neither step interpolates workflow inputs into the shell command (no ${{ inputs.* }} in run:)", () => {
+  // Extract the run: body of each step and assert it contains no `${{ inputs.` interpolation.
+  for (const [label, block] of [["dry-run", dryRun], ["live", live]]) {
+    const runIdx = block.indexOf("run:");
+    assert.ok(runIdx !== -1, `${label} has a run:`);
+    const runBody = block.slice(runIdx);
+    assert.ok(!/\$\{\{\s*inputs\./.test(runBody), `${label} run: must not interpolate workflow inputs into shell`);
+    assert.ok(!/format\(/.test(runBody), `${label} run: must not build shell fragments via format()`);
+  }
+});
+
+test("both steps pass request_id and diff_path through ENV (read by Node, not shell)", () => {
+  for (const block of [dryRun, live]) {
+    assert.match(block, /REVIEW_REQUEST_ID:\s*\$\{\{\s*inputs\.request_id\s*\}\}/);
+    assert.match(block, /REVIEW_DIFF_PATH:\s*\$\{\{\s*inputs\.diff_path\s*\}\}/);
+  }
+});
+
+test("dry-run and live input wiring is IDENTICAL except the key (live) and --live", () => {
+  // Same env inputs on both.
+  for (const v of ["OPENAI_REVIEW_MODEL", "REVIEW_REQUEST_ID", "REVIEW_DIFF_PATH"]) {
+    assert.ok(dryRun.includes(v) && live.includes(v), `${v} present in both`);
+  }
+  // Differences: key only in live, --live only in live.
+  assert.ok(!/secrets\.OPENAI_API_KEY/.test(dryRun) && /secrets\.OPENAI_API_KEY/.test(live), "key only in live");
+  assert.ok(!/--live/.test(dryRun) && /--live/.test(live), "--live only in live");
+});
