@@ -1,0 +1,50 @@
+# Taylor_Parts secret-scanning policy (gitleaks).
+#
+# GOAL: catch genuinely sensitive credentials while NOT false-alarming on the Firebase Web API key,
+# which is public BY DESIGN (it ships in the client bundle; security is enforced by Firestore Rules +
+# Google Cloud API-key restrictions, not by secrecy — see docs/security/secret-scanning.md).
+#
+# The distinction is CONTEXTUAL, not by value: the Google API-key pattern (AIza…) is exempted ONLY
+# inside the known Firebase client-config path (and known historical exposures). The SAME pattern
+# anywhere else still fails, and NO sensitive credential type (service-account JSON, PEM/RSA private
+# keys, sk-… tokens, AWS/GCP keys, etc.) is ever exempted — those keep the full default rule set.
+
+title = "Taylor_Parts gitleaks config"
+
+[extend]
+useDefault = true   # keep the high-signal built-in rules (private-key, gcp-service-account, aws, openai sk-, gcp-api-key, github/slack/stripe tokens, …)
+# `generic-api-key` is gitleaks' entropy heuristic — it is very noisy (it flags test fixtures, doc
+# examples, and high-entropy config strings that are not secrets). We DISABLE it for the enforced gate
+# to keep the signal high, and delegate generic-token detection to GitHub's provider-aware native secret
+# scanning + push protection (which found the original alerts). All STRUCTURED-credential rules stay on.
+disabledRules = ["generic-api-key"]
+
+# ── Allowlists — each is AND-scoped so it exempts ONLY the Firebase web-key pattern in a specific path.
+
+[[allowlists]]
+description = "Firebase Web API key is public by design — exempt the Google API-key pattern ONLY inside the client Firebase config. The same pattern elsewhere still fails."
+condition = "AND"
+regexTarget = "match"
+regexes = ['''AIza[0-9A-Za-z\-_]{35}''']
+paths = [
+  '''field-ops-app-vite/src/firebase/firebase\.js''',   # client Firebase config (public web key)
+  '''(^|/)index\.html$''',                                # web key inlined in the app HTML — public by design
+]
+
+[[allowlists]]
+description = "Known HISTORICAL Firebase web-key exposures (removed from HEAD; remediated by restrict/rotate per docs/security/secret-scanning.md, NOT scrubbed per Owner decision). Only the Google API-key pattern is exempt here — any sensitive credential in these paths still fails."
+condition = "AND"
+regexTarget = "match"
+regexes = ['''AIza[0-9A-Za-z\-_]{35}''']
+paths = [
+  '''config/environments\.json''',
+  '''.*parts-control-center-sha.*''',
+]
+
+[[allowlists]]
+description = "Documentation/policy references to the Google API-key PATTERN itself (this file, the policy doc) — pattern strings, never real values."
+condition = "OR"
+paths = [
+  '''\.gitleaks\.toml''',
+  '''docs/security/secret-scanning\.md''',
+]

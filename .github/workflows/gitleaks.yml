@@ -1,0 +1,29 @@
+# Secret-scanning gate (gitleaks). Fails a PR if a genuinely sensitive credential is committed.
+# Firebase Web API keys in the client config are allowlisted by policy (.gitleaks.toml). Findings are
+# REDACTED in logs — the scanner never prints a secret value.
+name: Secret scan (gitleaks)
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install gitleaks (pinned)
+        run: |
+          VERSION=8.30.1
+          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz" -o gitleaks.tgz
+          tar -xzf gitleaks.tgz gitleaks
+          sudo mv gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+      - name: Scan working tree (redacted; policy = .gitleaks.toml)
+        # --no-git scans the resulting tree (what actually merges), so historical exposures that were
+        # removed from HEAD are not re-flagged. --redact guarantees no secret value reaches the logs.
+        run: gitleaks detect --no-git --source . --config .gitleaks.toml --redact --exit-code 1 --verbose
