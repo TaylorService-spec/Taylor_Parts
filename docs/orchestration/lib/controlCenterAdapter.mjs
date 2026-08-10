@@ -42,18 +42,19 @@ function loadDurableState() {
   try {
     const ledgerDir = join(dirname(fileURLToPath(import.meta.url)), "..", "agent-requests");
     if (!existsSync(ledgerDir)) return { ledger: null, networkHealth: null };
-    const requests = [], results = [], workAssignments = [];
+    const requests = [], results = [], workAssignments = [], decisionRequests = [];
     let networkHealth = null;
     for (const f of readdirSync(ledgerDir).filter((n) => n.endsWith(".json")).sort()) {
       const obj = JSON.parse(readFileSync(join(ledgerDir, f), "utf8"));
       if (f.endsWith(".assignment.json")) workAssignments.push(obj);
+      else if (f.endsWith(".decision.json")) decisionRequests.push(obj);
       else if (f.endsWith(".request.json")) requests.push(obj);
       else if (f.endsWith(".result.json")) results.push(obj);
       else if (f === "telemetry-summary.json") networkHealth = obj;
     }
-    return { ledger: { requests, results }, networkHealth, workAssignments };
+    return { ledger: { requests, results }, networkHealth, workAssignments, decisionRequests };
   } catch {
-    return { ledger: null, networkHealth: null, workAssignments: [] }; // fail closed to UNKNOWN, never a fabricated section
+    return { ledger: null, networkHealth: null, workAssignments: [], decisionRequests: [] }; // fail closed to UNKNOWN, never a fabricated section
   }
 }
 
@@ -78,16 +79,19 @@ export function buildControlCenterPayload({
   networkHealth = null, // sanitized telemetry summary (telemetry-summary.json) — never raw
   ownerRelayCount = 0,
   workAssignments = null, // durable *.assignment.json work-pickup records (Who's Doing What)
+  decisionRequests = null, // durable *.decision.json Owner Decision Requests (persisted triageClass → Needs You)
   autoLoad = true, // load the project's durable ledger/telemetry when not injected (import-envelope path)
 } = {}) {
   // Fill from the project's own durable files unless explicitly injected (tests inject).
-  if (autoLoad && (ledger === null || networkHealth === null || workAssignments === null)) {
+  if (autoLoad && (ledger === null || networkHealth === null || workAssignments === null || decisionRequests === null)) {
     const durable = loadDurableState();
     if (ledger === null) ledger = durable.ledger;
     if (networkHealth === null) networkHealth = durable.networkHealth;
     if (workAssignments === null) workAssignments = durable.workAssignments;
+    if (decisionRequests === null) decisionRequests = durable.decisionRequests;
   }
   if (workAssignments === null) workAssignments = [];
+  if (decisionRequests === null) decisionRequests = [];
   // Fail closed: never hand a renderer a model this repo would not accept itself.
   const validation = validateRoadmapModel(model);
   const errors = Array.isArray(validation) ? validation : validation?.errors ?? [];
@@ -142,7 +146,7 @@ export function buildControlCenterPayload({
     // state (systemHealth/needsYou/workSupply/autonomy/operability/sinceLastVisit). AI
     // governance + customer outcome are honest {available:false} gaps until their sources
     // exist. The renderer must keep these BELOW the Owner abstraction boundary by drilldown.
-    cockpit: projectCockpit(model, { networkHealth, ownerRelayCount, workAssignments, nowMs: generatedAt ? Date.parse(generatedAt) : null }),
+    cockpit: projectCockpit(model, { networkHealth, ownerRelayCount, workAssignments, decisionRequests, nowMs: generatedAt ? Date.parse(generatedAt) : null }),
   };
 }
 
