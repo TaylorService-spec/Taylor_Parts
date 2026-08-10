@@ -52,7 +52,7 @@ export function checkPayloadCompatibility(payload, expectedMajor = 1) {
 
 /** Freshness states a hosted (or local) Control Center must distinguish — a board that loaded
  * successfully is NOT thereby CURRENT. Dependency-free so keystone vendors the rule (decided once). */
-export const FRESHNESS_STATES = Object.freeze(["CURRENT", "STALE", "UNKNOWN", "INCOMPATIBLE"]);
+export const FRESHNESS_STATES = Object.freeze(["CURRENT", "STALE", "UNKNOWN", "INCOMPATIBLE", "NOT_AUTHORIZED"]);
 
 /**
  * Decide whether a payload's displayed state is CURRENT / STALE / UNKNOWN / INCOMPATIBLE.
@@ -65,9 +65,15 @@ export const FRESHNESS_STATES = Object.freeze(["CURRENT", "STALE", "UNKNOWN", "I
  * @param {number} [opts.freshWindowMs] max age before STALE (default 24h)
  * @param {string} [opts.latestKnownCommit] the newest governed-publish commit, if known
  * @param {number} [opts.expectedMajor] schema major the consumer understands (default 1)
+ * @param {boolean} [opts.authorized] whether the viewer is authorized to read the envelope.
+ *   Pass false when the gated fetch returned 401/403 or the session/auth expired. Takes
+ *   precedence over everything: you cannot judge the freshness of data you may not see, and
+ *   an auth failure must NEVER be shown as STALE/UNKNOWN (that would mask a NOT_AUTHORIZED
+ *   condition as merely old data). Distinct from host-unreachable, which the launcher handles.
  * @returns {{state:string, reason:string|null, ageMs:number|null}}
  */
-export function freshnessState(payload, nowMs, { freshWindowMs = 24 * 60 * 60 * 1000, latestKnownCommit = null, expectedMajor = 1 } = {}) {
+export function freshnessState(payload, nowMs, { freshWindowMs = 24 * 60 * 60 * 1000, latestKnownCommit = null, expectedMajor = 1, authorized = true } = {}) {
+  if (authorized === false) return { state: "NOT_AUTHORIZED", reason: "viewer is not authorized to read this envelope (or the session expired)", ageMs: null };
   const compat = checkPayloadCompatibility(payload, expectedMajor);
   if (!compat.compatible) return { state: "INCOMPATIBLE", reason: compat.reason, ageMs: null };
   const generatedAt = payload.source && payload.source.generatedAt;
