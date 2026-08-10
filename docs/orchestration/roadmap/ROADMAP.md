@@ -4,7 +4,7 @@
 > `lib/generateRoadmapViews.mjs`. Do not hand-edit — change the model and regenerate. Contract:
 > [`roadmap-projection.md`](../roadmap-projection.md).
 
-**Last verified repository state:** `origin/main + Phase-5 pilot (2026-08-09)`
+**Last verified repository state:** `origin/main e704922 (2026-08-09; endurance pilot + Control Center)`
 
 **Distinctions preserved** (each is a separate field, never one number): IMPLEMENTED ≠ ACTIVATED · MERGED ≠ DEPLOYED · BACKEND COMPLETE ≠ USER-OPERABLE · UX COMPLETE ≠ BACKEND ACTIVE · PERSONA FINDING ≠ PRODUCT DECISION. No invented percentages — the only number is a milestone count.
 
@@ -18,7 +18,8 @@
 | Owner Roadmap Projection | Product/Design | DONE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | 1/1 |
 | Shared Agent Manager + Resource Governor | Product/Design | DONE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | 2/2 |
 | Network Telemetry Integration + Real-Load Proof | Product/Design | DONE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | 2/3 |
-| Unattended-Readiness Proof + Bounded Autonomy Policy (Phase 5) | Product/Design | OWNER_DECISION | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | 4/4 |
+| Unattended-Readiness Proof + Bounded Autonomy Policy (Phase 5) | Product/Design | DONE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | 5/6 |
+| Owner Control Center (projection + delivery) | Product/Design | RUNNING | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | 1/2 |
 
 ### Commercial & Sales _(domain)_
 
@@ -88,7 +89,7 @@
 
 ## 2. Active Work (RUNNING / READY)
 
-_None._
+- **Owner Control Center (projection + delivery)** _(Platform & Orchestration)_ — RUNNING · 1/2 milestones
 
 ## 3. Blocked / Dependencies
 
@@ -101,7 +102,7 @@ _None._
 
 | Capability | Decision | Blocking? |
 |---|---|---|
-| Unattended-Readiness Proof + Bounded Autonomy Policy (Phase 5) | Supervised pilot PASSED (UX-2 browser proof: network NORMAL throughout, ceilings enforced, zero relay). Recommendation now READY FOR LIMITED UNATTENDED PILOT (short, budget-capped, still supervised); FULL unattended Option B remains NOT READY until a real pressure window + the 90-min/checkpoint/retry machinery are observed live. Owner ratifies any unattended activation separately. | **yes** |
+| Unattended-Readiness Proof + Bounded Autonomy Policy (Phase 5) | RECONCILED 2026-08-09: the supervised, limited, expanded, and 8-hour daytime endurance pilots have ALL been Owner-authorized, executed, and ACCEPTED (0 relay / 0 automation-defects / 0 rework). Classification READY FOR SUPERVISED OVERNIGHT PILOT is accepted. Overnight execution is READY but NOT AUTHORIZED (readiness ≠ authorization); its remaining prerequisite is the persistent-telemetry Scheduled Task (an Owner standing-config action). The limiting factor is now READY-work supply, not loop reliability. | recorded/deferred |
 | Commercial Coverage & Territory (register #15) | Precedence/override/inheritance + sales credit + commission are deferred policy (do not manufacture) | recorded/deferred |
 | Trusted AR read projection | Revenue recognition remains a separate future accounting-policy seam (not an EOS engine) | recorded/deferred |
 | Catalog-read authority model | Adopt durable inventory.catalog.read (+ separate inventory.catalog.cost.read)? Unblocks Manufacturer + part_supplier_items read surfaces | **yes** |
@@ -132,7 +133,8 @@ Legend: `[x]` done · `[>]` in progress · `[ ]` planned/ready · `[!]` owner de
 - [x] Owner Roadmap Projection _(Platform & Orchestration)_
 - [x] Shared Agent Manager + Resource Governor _(Platform & Orchestration)_
 - [x] Network Telemetry Integration + Real-Load Proof _(Platform & Orchestration)_
-- [!] Unattended-Readiness Proof + Bounded Autonomy Policy (Phase 5) _(Platform & Orchestration)_ — Supervised pilot PASSED (UX-2 browser proof: network NORMAL throughout, ceilings enforced, zero relay). Recommendation now READY FOR LIMITED UNATTENDED PILOT (short, budget-capped, still supervised); FULL unattended Option B remains NOT READY until a real pressure window + the 90-min/checkpoint/retry machinery are observed live. Owner ratifies any unattended activation separately.
+- [x] Unattended-Readiness Proof + Bounded Autonomy Policy (Phase 5) _(Platform & Orchestration)_ — RECONCILED 2026-08-09: the supervised, limited, expanded, and 8-hour daytime endurance pilots have ALL been Owner-authorized, executed, and ACCEPTED (0 relay / 0 automation-defects / 0 rework). Classification READY FOR SUPERVISED OVERNIGHT PILOT is accepted. Overnight execution is READY but NOT AUTHORIZED (readiness ≠ authorization); its remaining prerequisite is the persistent-telemetry Scheduled Task (an Owner standing-config action). The limiting factor is now READY-work supply, not loop reliability.
+- [>] Owner Control Center (projection + delivery) _(Platform & Orchestration)_
 - [P] Sales Opportunity lifecycle (Cycles 2–3) _(Commercial & Sales)_ — Grant opportunity.* + deploy callables
 - [P] Sales Order lifecycle (Cycle 4) + Service lineage (Cycle 7) _(Commercial & Sales)_ — Grant salesOrder.* + deploy callables
 - [P] Fulfillment allocation & availability (Cycle 5) _(Commercial & Sales)_ — Equipment availability fails closed = UNKNOWN pending P1a serialized-asset signal + #12
@@ -215,12 +217,12 @@ Legend: `[x]` done · `[>]` in progress · `[ ]` planned/ready · `[!]` owner de
   - ☐ **Option B unattended (still gated: browser/network-heavy correlation, pressure window, budget/cadence/backoff/containment)** — criteria: browser/network-heavy correlation measured; a pressure/outage window observed; budget cap + max window + cadence + backoff + containment + unattended-spend defined
     - Option B design (deferred) — `PLANNED`
 
-#### Unattended-Readiness Proof + Bounded Autonomy Policy (Phase 5) — `OWNER_DECISION`
+#### Unattended-Readiness Proof + Bounded Autonomy Policy (Phase 5) — `DONE`
 
-- Owner: Product/Design · Milestones: 4/4 · Last verified: `37995c2`
+- Owner: Product/Design · Milestones: 5/6 · Last verified: `e704922`
 - Dimensions — Impl: NOT_APPLICABLE · Activation: NOT_APPLICABLE · Backend: NOT_APPLICABLE · UserOperable: NOT_APPLICABLE · UX: NOT_APPLICABLE · Deploy: NOT_APPLICABLE
 - Dependencies: network-telemetry-integration
-- Owner decision: Supervised pilot PASSED (UX-2 browser proof: network NORMAL throughout, ceilings enforced, zero relay). Recommendation now READY FOR LIMITED UNATTENDED PILOT (short, budget-capped, still supervised); FULL unattended Option B remains NOT READY until a real pressure window + the 90-min/checkpoint/retry machinery are observed live. Owner ratifies any unattended activation separately.
+- Owner decision: RECONCILED 2026-08-09: the supervised, limited, expanded, and 8-hour daytime endurance pilots have ALL been Owner-authorized, executed, and ACCEPTED (0 relay / 0 automation-defects / 0 rework). Classification READY FOR SUPERVISED OVERNIGHT PILOT is accepted. Overnight execution is READY but NOT AUTHORIZED (readiness ≠ authorization); its remaining prerequisite is the persistent-telemetry Scheduled Task (an Owner standing-config action). The limiting factor is now READY-work supply, not loop reliability.
   - ☑ **Persistent telemetry supervisor (token-free) + logger-health adapter** — criteria: relaunch-if-dead; no duplicate; idempotent; logger health exposed
     - netwatch-supervisor + summarizeLoggerHealth — `DONE` · PRs: #723 · tests: 15 node:test · evidence: PR:#723
   - ☑ **Bounded autonomy contract + checkpoint + recovery policy (DESIGN ONLY)** — criteria: work window/budget/retries/backoff/containment/cadence/recovery; Option B NOT activated
@@ -229,6 +231,20 @@ Legend: `[x]` done · `[>]` in progress · `[ ]` planned/ready · `[!]` owner de
     - phase5-option-b-readiness.md + UX-2 request — `OWNER_DECISION` · evidence: DOC:phase5-option-b-readiness.md
   - ☑ **Browser/network-heavy real-work proof (UX-2, supervised pilot)** — criteria: run app+emulator+browser; measure BROWSER_REMOTE + REMOTE_AI concurrent telemetry; close or correct UX-2
     - UX-2 browser proof — executed in the supervised pilot; network NORMAL throughout, ceilings enforced, zero relay — `DONE` · evidence: DOC:phase5-pilot-evidence.md, BROWSER_RUN:UX-2 coordinated-visits
+  - ☑ **Limited + expanded + 8-hour daytime endurance pilots executed and accepted** — criteria: limited pilot merged; endurance pilot merged; 0 relay / 0 automation-defects / 0 rework; Owner accepted
+    - limited pilot (Invalid-Date classify+fix) + endurance (timeline WO-rows) — accepted READY FOR SUPERVISED OVERNIGHT — `DONE` · PRs: #729 #734 · evidence: PR:#729, PR:#734, DOC:phase5-limited-pilot-evidence.md
+  - ☐ **Supervised overnight pilot** — criteria: persistent-telemetry Scheduled Task installed (Owner); separate Owner authorization; a stocked READY backlog
+    - Overnight execution — READY, NOT AUTHORIZED (separate Owner gate) — `OWNER_DECISION`
+
+#### Owner Control Center (projection + delivery) — `RUNNING`
+
+- Owner: Product/Design · Milestones: 1/2 · Last verified: `e704922`
+- Dimensions — Impl: NOT_APPLICABLE · Activation: NOT_APPLICABLE · Backend: NOT_APPLICABLE · UserOperable: NOT_APPLICABLE · UX: NOT_APPLICABLE · Deploy: NOT_APPLICABLE
+- Dependencies: owner-roadmap-projection, shared-agent-manager, network-telemetry-integration
+  - ☑ **Projection completion — Agent Ops + Network Health + Recent Progress + UX board via the governed envelope** — criteria: 4 gaps filled in controlCenterAdapter (schema 1.1.0); keystone renders from real data; no reach-around; browser-verified
+    - controlCenterAdapter extension (Taylor #732) + keystone renderer (keystone #9) — `DONE` · PRs: #732 · evidence: PR:#732, DOC:keystone PR #9, BROWSER_RUN:control center renderProject
+  - ☐ **Delivery phase — secure hosting + one-click Windows launcher (hosted-first / local-fallback)** — criteria: hosting/auth/publication/freshness contract; repo-safe hosted foundation; one-click launcher (UX); browser + launcher acceptance
+    - hosting design + launcher (Design owns arch/auth/contract/freshness; UX owns launcher experience) — `RUNNING`
 
 ### Commercial & Sales _(domain)_
 

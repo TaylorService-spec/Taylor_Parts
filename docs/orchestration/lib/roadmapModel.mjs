@@ -33,7 +33,7 @@ const INERT_BACKEND = { implementationState: "IMPLEMENTED", activationState: "IN
 export const roadmapModel = Object.freeze({
   id: "EOS",
   name: "Enterprise Operations OS",
-  lastVerifiedRepoState: "origin/main + Phase-5 pilot (2026-08-09)",
+  lastVerifiedRepoState: "origin/main e704922 (2026-08-09; endurance pilot + Control Center)",
   domains: [
     {
       id: "platform-orchestration", name: "Platform & Orchestration", kind: "PROGRAM",
@@ -111,8 +111,8 @@ export const roadmapModel = Object.freeze({
         },
         {
           id: "unattended-readiness", name: "Unattended-Readiness Proof + Bounded Autonomy Policy (Phase 5)", workstreamOwner: "Product/Design",
-          status: "OWNER_DECISION", ...PROCESS_DIMS, dependencies: ["network-telemetry-integration"], lastVerifiedRepoState: "37995c2",
-          ownerDecision: "Supervised pilot PASSED (UX-2 browser proof: network NORMAL throughout, ceilings enforced, zero relay). Recommendation now READY FOR LIMITED UNATTENDED PILOT (short, budget-capped, still supervised); FULL unattended Option B remains NOT READY until a real pressure window + the 90-min/checkpoint/retry machinery are observed live. Owner ratifies any unattended activation separately.",
+          status: "DONE", ...PROCESS_DIMS, dependencies: ["network-telemetry-integration"], lastVerifiedRepoState: "e704922",
+          ownerDecision: "RECONCILED 2026-08-09: the supervised, limited, expanded, and 8-hour daytime endurance pilots have ALL been Owner-authorized, executed, and ACCEPTED (0 relay / 0 automation-defects / 0 rework). Classification READY FOR SUPERVISED OVERNIGHT PILOT is accepted. Overnight execution is READY but NOT AUTHORIZED (readiness ≠ authorization); its remaining prerequisite is the persistent-telemetry Scheduled Task (an Owner standing-config action). The limiting factor is now READY-work supply, not loop reliability.",
           milestones: [
             { id: "ur-supervisor", name: "Persistent telemetry supervisor (token-free) + logger-health adapter", complete: true,
               completionCriteria: ["relaunch-if-dead", "no duplicate", "idempotent", "logger health exposed"],
@@ -130,6 +130,28 @@ export const roadmapModel = Object.freeze({
               completionCriteria: ["run app+emulator+browser", "measure BROWSER_REMOTE + REMOTE_AI concurrent telemetry", "close or correct UX-2"],
               workItems: [{ id: "ur-w4", name: "UX-2 browser proof — executed in the supervised pilot; network NORMAL throughout, ceilings enforced, zero relay", status: "DONE", owner: "UX",
                 evidence: [{ kind: "DOC", ref: "phase5-pilot-evidence.md" }, { kind: "BROWSER_RUN", ref: "UX-2 coordinated-visits" }] }] },
+            { id: "ur-pilots-executed", name: "Limited + expanded + 8-hour daytime endurance pilots executed and accepted", complete: true,
+              completionCriteria: ["limited pilot merged", "endurance pilot merged", "0 relay / 0 automation-defects / 0 rework", "Owner accepted"],
+              workItems: [{ id: "ur-w5", name: "limited pilot (Invalid-Date classify+fix) + endurance (timeline WO-rows) — accepted READY FOR SUPERVISED OVERNIGHT", status: "DONE", owner: "Product/Design",
+                prEvidence: ["#729", "#734"], evidence: [{ kind: "PR", ref: "#729" }, { kind: "PR", ref: "#734" }, { kind: "DOC", ref: "phase5-limited-pilot-evidence.md" }] }] },
+            { id: "ur-overnight", name: "Supervised overnight pilot", complete: false,
+              completionCriteria: ["persistent-telemetry Scheduled Task installed (Owner)", "separate Owner authorization", "a stocked READY backlog"],
+              workItems: [{ id: "ur-w6", name: "Overnight execution — READY, NOT AUTHORIZED (separate Owner gate)", status: "OWNER_DECISION", owner: "Owner",
+                blockedReason: "Readiness accepted; authorization is a separate Owner action; prerequisite = persistent telemetry across reboot", evidence: [] }] },
+          ],
+        },
+        {
+          id: "owner-control-center", name: "Owner Control Center (projection + delivery)", workstreamOwner: "Product/Design",
+          status: "RUNNING", ...PROCESS_DIMS, dependencies: ["owner-roadmap-projection", "shared-agent-manager", "network-telemetry-integration"], lastVerifiedRepoState: "e704922",
+          milestones: [
+            { id: "occ-projection", name: "Projection completion — Agent Ops + Network Health + Recent Progress + UX board via the governed envelope", complete: true,
+              completionCriteria: ["4 gaps filled in controlCenterAdapter (schema 1.1.0)", "keystone renders from real data", "no reach-around", "browser-verified"],
+              workItems: [{ id: "occ-w1", name: "controlCenterAdapter extension (Taylor #732) + keystone renderer (keystone #9)", status: "DONE", owner: "Product/Design",
+                prEvidence: ["#732"], evidence: [{ kind: "PR", ref: "#732" }, { kind: "DOC", ref: "keystone PR #9" }, { kind: "BROWSER_RUN", ref: "control center renderProject" }] }] },
+            { id: "occ-delivery", name: "Delivery phase — secure hosting + one-click Windows launcher (hosted-first / local-fallback)", complete: false,
+              completionCriteria: ["hosting/auth/publication/freshness contract", "repo-safe hosted foundation", "one-click launcher (UX)", "browser + launcher acceptance"],
+              workItems: [{ id: "occ-w2", name: "hosting design + launcher (Design owns arch/auth/contract/freshness; UX owns launcher experience)", status: "RUNNING", owner: "Product/Design",
+                protectedBoundary: "actual Firebase Hosting deploy + any credential/billing = Owner/operator-gated; repo-safe design/config/launcher proceed", evidence: [] }] },
           ],
         },
       ],
