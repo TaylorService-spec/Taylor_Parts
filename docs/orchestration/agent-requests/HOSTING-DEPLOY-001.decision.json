@@ -1,0 +1,23 @@
+{
+  "decisionId": "HOSTING-DEPLOY-001",
+  "projectId": "taylor-parts",
+  "originatingWorkstream": "Product/Design",
+  "question": "Execute the Owner Control Center hosted deploy (create the Firebase Hosting site, deploy the Model-A Firestore Rule + shell, provide the authorized-Owner uid, run the first governed publish)?",
+  "reason": "Model A was ratified and the deploy authorized for operator execution (#739). The repo-safe half is complete; the actual site creation + Rules deploy + Owner uid + first publish remain protected, credentialed, operator-executed steps that have not been performed.",
+  "options": [
+    "Operator executes the deploy now (per control-center-publication-runbook.md)",
+    "Continue repo-safe; defer the deploy"
+  ],
+  "recommendation": "Owner/operator executes when ready; nothing autonomous.",
+  "requestedAuthority": "Firebase Hosting site creation + Hosting deploy + Tier-2 Firestore Rules deploy + authorized-Owner uid + first governed envelope publish",
+  "impactOfWaiting": "The Owner cockpit remains local-only (launcher local fallback works today); the hosted/mobile experience waits.",
+  "status": "OPEN",
+  "triageClass": "OWNER_AUTHORIZATION",
+  "triageReason": "requested action is protected execution — needs Owner authorization at execution time (record != execute)",
+  "triageEvidence": [
+    { "kind": "DOC", "ref": "control-center-publication-runbook.md" },
+    { "kind": "PR", "ref": "#739" }
+  ],
+  "disposition": null,
+  "createdAt": "2026-08-09"
+}

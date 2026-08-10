@@ -69,6 +69,20 @@ test("aiGovernance is an HONEST gap; customerOutcome is durable but UNKNOWN for 
   assert.equal(c.customerOutcome.established.length, 0);
 });
 
+test("durable Owner Decision Requests feed Needs You with real triageClass; AUTO_RESOLVED filtered", () => {
+  const decisionRequests = [
+    { decisionId: "D-AUTH", question: "deploy?", reason: "protected", triageClass: "OWNER_AUTHORIZATION", requestedAuthority: "deploy" },
+    { decisionId: "D-REC", question: "new policy?", reason: "establishes policy", triageClass: "RECOMMEND_OWNER" },
+    { decisionId: "D-AUTO", question: "which gate?", reason: "determined", triageClass: "AUTO_RESOLVED" },
+  ];
+  const c = projectCockpit(model([cap()]), { decisionRequests });
+  const ids = c.needsYou.items.filter((i) => i.source === "decision-request").map((i) => i.decisionId);
+  assert.ok(ids.includes("D-AUTH"));
+  assert.ok(ids.includes("D-REC"));            // RECOMMEND_OWNER now represented (F2 closed at source)
+  assert.ok(!ids.includes("D-AUTO"));          // AUTO_RESOLVED never reaches the Owner
+  assert.equal(c.needsYou.items.find((i) => i.decisionId === "D-AUTH").requiresReconfirmAtExecution, true);
+});
+
 test("whosDoingWhat projects work assignments; routed is NEVER shown as active", () => {
   const assignments = [
     { workId: "A", responsibleParty: "UX", lifecycle: "ASSIGNED", escalationState: "WAITING_FOR_PICKUP", triggerOutcome: "NO_WAKE_MECHANISM", assignedAt: 1000 },

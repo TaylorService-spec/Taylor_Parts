@@ -200,7 +200,7 @@ export function projectRecentProgress(model = roadmapModel, { limit = 20 } = {})
 // state — no new authority, no second roadmap. Glance-level verdicts + drilldown lists. Every
 // section that has no durable source is emitted as an honest { available:false } gap, never
 // simulated. `networkHealth` (sanitized) and `ownerRelayCount` are injected by the adapter.
-export function projectCockpit(model = roadmapModel, { networkHealth = null, freshness = null, ownerRelayCount = null, workAssignments = [], nowMs = null } = {}) {
+export function projectCockpit(model = roadmapModel, { networkHealth = null, freshness = null, ownerRelayCount = null, workAssignments = [], decisionRequests = [], nowMs = null } = {}) {
   const caps = [];
   for (const d of model.domains || []) for (const c of d.capabilities || []) caps.push({ ...c, domain: d.name });
 
@@ -226,16 +226,28 @@ export function projectCockpit(model = roadmapModel, { networkHealth = null, fre
     : "HEALTHY";
   const systemHealth = { state, reasons };
 
-  // NEEDS YOU — triage-classified, genuine asks only. AUTO_RESOLVED never appears here (it is
-  // the filter, not a row). The four-class taxonomy is NOT yet a durable model field; this maps
-  // OWNER_DECISION→NEEDS_OWNER and PROTECTED_ACTION→OWNER_AUTHORIZATION and flags itself a proxy.
+  // NEEDS YOU — genuine asks only, AUTO_RESOLVED never appears (it is the filter, not a row).
+  // Two sources: (1) DURABLE Owner Decision Requests carrying a persisted triageClass — the
+  // authoritative source; (2) a capability-STATUS proxy for capabilities that have no decision
+  // request yet. RECOMMEND_OWNER appears only via a real durable request.
+  const durableDecisions = (decisionRequests || [])
+    .filter((d) => d.triageClass && d.triageClass !== "AUTO_RESOLVED")
+    .map((d) => ({
+      source: "decision-request", triageClass: d.triageClass, decisionId: d.decisionId,
+      name: d.question || d.decisionId, text: d.reason || d.recommendation || null,
+      requiresReconfirmAtExecution: d.triageClass === "OWNER_AUTHORIZATION",
+      requestedAuthority: d.requestedAuthority || null,
+    }));
+  const proxyItems = [
+    ...ownerDecisions.map((c) => ({ source: "capability-status", triageClass: "NEEDS_OWNER", capabilityId: c.id, name: c.name, domain: c.domain, text: c.ownerDecision || null })),
+    ...protectedActions.map((c) => ({ source: "capability-status", triageClass: "OWNER_AUTHORIZATION", capabilityId: c.id, name: c.name, domain: c.domain, protectedBoundary: c.protectedBoundary || null, requiresReconfirmAtExecution: true })),
+  ];
   const needsYou = {
-    proxy: true,
-    proxyReason: "triageClass is now durable on Owner Decision Requests (acceptTriage), but that decision-request ledger is not yet injected into the adapter; this cockpit list derives from capability STATUS as a proxy until the ledger feeds it. RECOMMEND_OWNER appears only via a real decision request.",
-    items: [
-      ...ownerDecisions.map((c) => ({ triageClass: "NEEDS_OWNER", capabilityId: c.id, name: c.name, domain: c.domain, text: c.ownerDecision || null })),
-      ...protectedActions.map((c) => ({ triageClass: "OWNER_AUTHORIZATION", capabilityId: c.id, name: c.name, domain: c.domain, protectedBoundary: c.protectedBoundary || null, requiresReconfirmAtExecution: true })),
-    ],
+    proxy: proxyItems.length > 0,
+    proxyReason: proxyItems.length > 0
+      ? "some rows derive from capability STATUS (proxy) for capabilities with no durable Owner Decision Request yet; rows tagged source:'decision-request' carry the authoritative persisted triageClass."
+      : null,
+    items: [...durableDecisions, ...proxyItems],
   };
 
   // WORK SUPPLY — coarse model-count proxy (the fine schedulability truth lives in
