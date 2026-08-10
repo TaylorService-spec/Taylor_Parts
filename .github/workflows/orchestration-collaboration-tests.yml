@@ -62,6 +62,8 @@ on:
       - "docs/orchestration/lib/reviewInputSafety.test.mjs"
       - "docs/orchestration/lib/reciprocalReviewLoop.mjs"
       - "docs/orchestration/lib/reciprocalReviewLoop.test.mjs"
+      - "docs/orchestration/lib/reciprocalPilotCycle.mjs"
+      - "docs/orchestration/lib/reciprocalPilotCycle.test.mjs"
       - ".github/workflows/reciprocal-gpt-review.yml"
       - ".github/workflows/orchestration-collaboration-tests.yml"
   push:
@@ -119,6 +121,8 @@ on:
       - "docs/orchestration/lib/reviewInputSafety.test.mjs"
       - "docs/orchestration/lib/reciprocalReviewLoop.mjs"
       - "docs/orchestration/lib/reciprocalReviewLoop.test.mjs"
+      - "docs/orchestration/lib/reciprocalPilotCycle.mjs"
+      - "docs/orchestration/lib/reciprocalPilotCycle.test.mjs"
       - ".github/workflows/reciprocal-gpt-review.yml"
       - ".github/workflows/orchestration-collaboration-tests.yml"
   workflow_dispatch:
@@ -138,4 +142,4 @@ jobs:
         with:
           node-version: 22
       - name: Contracts + triage + bridge mock (node:test, zero-dependency)
-        run: node --test docs/orchestration/lib/collaborationContract.test.mjs docs/orchestration/lib/ownerDecision.test.mjs docs/orchestration/lib/bridgeTransport.test.mjs docs/orchestration/lib/durableOutcomeTriage.test.mjs docs/orchestration/lib/reviewProvenance.test.mjs docs/orchestration/lib/aiExchange.test.mjs docs/orchestration/lib/ownerFriction.test.mjs docs/orchestration/lib/contextMap.test.mjs docs/orchestration/context/build-package.test.mjs docs/orchestration/lib/coldStart.test.mjs docs/orchestration/context/current-state.test.mjs docs/orchestration/context/cold-start.test.mjs docs/orchestration/lib/wakeSupervisor.test.mjs docs/orchestration/lib/wakeState.test.mjs docs/orchestration/lib/wakeExecute.test.mjs docs/orchestration/lib/wakeLease.test.mjs docs/orchestration/lib/reanchor.test.mjs docs/orchestration/lib/reanchor-acceptance.test.mjs docs/orchestration/lib/reviewTrigger.test.mjs docs/orchestration/lib/reviewRouter.test.mjs docs/orchestration/lib/signalSupervisor.test.mjs docs/orchestration/lib/openaiReviewProvider.test.mjs docs/orchestration/lib/reviewWorkflowWiring.test.mjs docs/orchestration/lib/reviewInputSafety.test.mjs docs/orchestration/lib/reciprocalReviewLoop.test.mjs
+        run: node --test docs/orchestration/lib/collaborationContract.test.mjs docs/orchestration/lib/ownerDecision.test.mjs docs/orchestration/lib/bridgeTransport.test.mjs docs/orchestration/lib/durableOutcomeTriage.test.mjs docs/orchestration/lib/reviewProvenance.test.mjs docs/orchestration/lib/aiExchange.test.mjs docs/orchestration/lib/ownerFriction.test.mjs docs/orchestration/lib/contextMap.test.mjs docs/orchestration/context/build-package.test.mjs docs/orchestration/lib/coldStart.test.mjs docs/orchestration/context/current-state.test.mjs docs/orchestration/context/cold-start.test.mjs docs/orchestration/lib/wakeSupervisor.test.mjs docs/orchestration/lib/wakeState.test.mjs docs/orchestration/lib/wakeExecute.test.mjs docs/orchestration/lib/wakeLease.test.mjs docs/orchestration/lib/reanchor.test.mjs docs/orchestration/lib/reanchor-acceptance.test.mjs docs/orchestration/lib/reviewTrigger.test.mjs docs/orchestration/lib/reviewRouter.test.mjs docs/orchestration/lib/signalSupervisor.test.mjs docs/orchestration/lib/openaiReviewProvider.test.mjs docs/orchestration/lib/reviewWorkflowWiring.test.mjs docs/orchestration/lib/reviewInputSafety.test.mjs docs/orchestration/lib/reciprocalReviewLoop.test.mjs docs/orchestration/lib/reciprocalPilotCycle.test.mjs

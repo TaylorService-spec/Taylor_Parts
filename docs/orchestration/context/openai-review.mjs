@@ -65,7 +65,7 @@ function makeRealTransport() {
 
 // Bound the inlined governing-authority content so a live review stays under the per-review ceiling.
 const MAX_CONTEXT_BYTES = 60000; // ≈ 15k tokens cap; governing authority is ~20k bytes today
-function readGoverningAuthorityText(boot) {
+export function readGoverningAuthorityText(boot) {
   try {
     const gid = boot.package && boot.package.governingAuthority;
     const ref = [...(boot.package.required || []), ...(boot.package.onDemand || [])].find((r) => r.id === gid);
