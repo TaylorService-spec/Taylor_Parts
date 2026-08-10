@@ -59,12 +59,14 @@ test("autonomy asserts the authority-expansion invariant with a basis; overnight
   assert.equal(c.autonomy.governingCapability, "unattended-readiness");
 });
 
-test("aiGovernance and customerOutcome are HONEST gaps (no fabricated data)", () => {
+test("aiGovernance is an HONEST gap; customerOutcome is durable but UNKNOWN for legacy caps (no fabrication)", () => {
   const c = projectCockpit(model([cap()]), { ownerRelayCount: 0 });
   assert.equal(c.aiGovernance.available, false);
   assert.equal(c.aiGovernance.ownerRelayCount, 0);
-  assert.equal(c.customerOutcome.available, false);
-  assert.match(c.customerOutcome.reason, /customerOutcome/);
+  // customerOutcome is now a durable field: available, but legacy capabilities are UNKNOWN, not invented.
+  assert.equal(c.customerOutcome.available, true);
+  assert.equal(c.customerOutcome.distribution.UNKNOWN, 1);
+  assert.equal(c.customerOutcome.established.length, 0);
 });
 
 test("sinceLastVisit is PR-sequence based (not wall-clock) and client diffs the marker", () => {

@@ -24,6 +24,12 @@ export const DEPLOY = Object.freeze(["DEPLOYED", "NOT_DEPLOYED", "NOT_APPLICABLE
 export const TRISTATE = Object.freeze([true, false, "NOT_APPLICABLE", "UNKNOWN"]);
 export const EVIDENCE_KINDS = Object.freeze(["PR", "CI", "TEST", "RULES", "DOC", "PERSONA_FINDING", "CAPABILITY_FLAG", "BROWSER_RUN", "AGENT_RUN"]);
 export const OWNERS = Object.freeze(["Product/Design", "UX", "EAO", "Access", "Operator", "Owner"]);
+// Customer outcome is a FIRST-CLASS, durable concern (Owner-approved) — not cockpit prose or
+// adapter inference. A capability MAY carry `customerOutcome: { intendedOutcome, evidenceState,
+// evidence[] }`. evidenceState is honest: legacy capabilities with no established outcome stay
+// UNKNOWN until evidence/discovery establishes one — NEVER fabricated. Customer outcome is
+// evidence/context for product reasoning; it does NOT override Owner intent or create authority.
+export const CUSTOMER_OUTCOME_EVIDENCE_STATES = Object.freeze(["UNKNOWN", "HYPOTHESIS", "EVIDENCED", "VALIDATED", "DISPROVEN"]);
 
 // Convenience: a fully NOT_APPLICABLE dimension set for pure-doc/process capabilities.
 const PROCESS_DIMS = { implementationState: "NOT_APPLICABLE", activationState: "NOT_APPLICABLE", backendState: "NOT_APPLICABLE", userOperable: "NOT_APPLICABLE", uxState: "NOT_APPLICABLE", deployState: "NOT_APPLICABLE" };
@@ -451,6 +457,11 @@ export function validateRoadmapModel(model = roadmapModel) {
       check(OWNERS.includes(c.workstreamOwner), `${c.id}: bad workstreamOwner ${c.workstreamOwner}`);
       if (c.status === "OWNER_DECISION") check(!!c.ownerDecision, `${c.id}: OWNER_DECISION requires ownerDecision text`);
       if (c.status === "PROTECTED_ACTION") check(!!c.protectedBoundary, `${c.id}: PROTECTED_ACTION requires protectedBoundary text`);
+      if (c.customerOutcome != null) {
+        check(!!c.customerOutcome.intendedOutcome, `${c.id}: customerOutcome requires intendedOutcome text`);
+        check(CUSTOMER_OUTCOME_EVIDENCE_STATES.includes(c.customerOutcome.evidenceState), `${c.id}: bad customerOutcome.evidenceState ${c.customerOutcome.evidenceState}`);
+        check(Array.isArray(c.customerOutcome.evidence || []), `${c.id}: customerOutcome.evidence must be an array`);
+      }
       for (const m of c.milestones || []) {
         check(typeof m.complete === "boolean", `${m.id}: milestone.complete must be boolean`);
         for (const w of m.workItems || []) {
