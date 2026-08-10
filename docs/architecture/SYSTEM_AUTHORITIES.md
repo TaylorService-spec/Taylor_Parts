@@ -18,6 +18,7 @@ This table is an *architecture* ownership map — it answers "where should I cha
 | Multi-device/mobile strategy | `../MobileStrategy.md` |
 | Enterprise business object model (Account/Contact/Location/Work Order/etc., core-vs-future entities, Firestore collection recommendations) | `../BusinessEntityModel.md` |
 | Business metrics / revenue-lifecycle terminology and financial ownership rules — **Accepted** (canonical "Sales"/"Pending" prohibition, composite Fulfilled Service Value ownership, currency/FX/lineage rules, financial provider contract, which domain owns which amount). Authoritative architecture, but acceptance alone does not authorize any implementation, schema, Rules, provider integration, migration, deployment, or production-data action — see the document's own header. | `enterprise-business-metrics-framework.md` |
+| **Discovered business process** — how the business actually operates, recorded before EOS decides how to represent it. Discovery Baselines only: they define no data model, authority or implementation, and authorize none. Includes cross-franchise equipment receiving/installation and the **Ventana ice-machine commercial & inventory lifecycle** (Ventana is the upstream source for all ice machines Taylor sells; Taylor inventory control persists until installation **AND** sale close). | `../business-processes/` |
 
 This section explains ownership only — see those documents themselves for their actual content, and `../CLAUDE_CONTEXT.md`'s "Product Authorities" section for when to consult them.
 
