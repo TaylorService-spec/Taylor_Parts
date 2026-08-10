@@ -47,6 +47,21 @@ Three thin layers, all pointers/generators — **no** new authority, **no** know
 The SessionStart hook points fresh sessions here. Trace + root cause + before/after evidence + the
 fresh-session acceptance test: [`cold-start-context-efficiency.md`](cold-start-context-efficiency.md).
 
+## Re-anchor (after compaction)
+
+An EXISTING session that was compacted/summarized realigns to durable truth with the **same**
+mechanism — `--reanchor` — never a giant Owner recap or archaeology:
+
+```bash
+node docs/orchestration/context/cold-start.mjs --scope orchestration --reanchor [--continue] [--remembered remembered.json]
+```
+
+remembered conversation = HINT · durable repository = AUTHORITY. It surfaces `SESSION_CONTEXT_DRIFT`
+(durable authority wins every conflict), measures `REANCHOR_CONTEXT_COST` (cheaper than cold-start —
+identity/authority already known), and **grants no authority** (continuation is governed by the
+durable selector, never remembered state). Design + Owner-facing prompt:
+[`session-reanchor.md`](session-reanchor.md).
+
 ## How this map is used (C-7 design, AI-reviewed)
 
 - **Discovery:** this README + `context-map.json` are the L0/L1 entry point — a cold worker reads
