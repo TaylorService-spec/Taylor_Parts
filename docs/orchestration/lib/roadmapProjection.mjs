@@ -9,6 +9,7 @@ import { roadmapModel, allCapabilities } from "./roadmapModel.mjs";
 import { capacitySnapshot } from "./resourceGovernor.mjs";
 import { efficiencyMetrics } from "./agentManager.mjs";
 import { summarizeAssignment, withEscalation } from "./workLifecycle.mjs";
+import { projectAiGovernance } from "./aiExchange.mjs";
 
 // "Who's Doing What" — worker responsibility visibility (Owner requirement). Projects durable
 // WORK ASSIGNMENTS (routed via the Agent Manager) into a glance list: who is responsible, the
@@ -200,7 +201,7 @@ export function projectRecentProgress(model = roadmapModel, { limit = 20 } = {})
 // state — no new authority, no second roadmap. Glance-level verdicts + drilldown lists. Every
 // section that has no durable source is emitted as an honest { available:false } gap, never
 // simulated. `networkHealth` (sanitized) and `ownerRelayCount` are injected by the adapter.
-export function projectCockpit(model = roadmapModel, { networkHealth = null, freshness = null, ownerRelayCount = null, workAssignments = [], decisionRequests = [], nowMs = null } = {}) {
+export function projectCockpit(model = roadmapModel, { networkHealth = null, freshness = null, ownerRelayCount = null, workAssignments = [], decisionRequests = [], aiExchanges = [], nowMs = null } = {}) {
   const caps = [];
   for (const d of model.domains || []) for (const c of d.capabilities || []) caps.push({ ...c, domain: d.name });
 
@@ -297,13 +298,10 @@ export function projectCockpit(model = roadmapModel, { networkHealth = null, fre
   const increments = projectRecentProgress(model);
   const sinceLastVisit = { markerBasis: "PR_SEQUENCE", latestPr: increments.length ? increments[0].latestPr : null, increments };
 
-  // AI GOVERNANCE — honest gap: no cross-AI (Claude↔ChatGPT) exchange ledger exists yet. The
-  // only real datum is ownerRelayCount. authorityExpansions invariant lives under autonomy.
-  const aiGovernance = {
-    available: false,
-    reason: "no Claude↔ChatGPT exchange ledger yet (contracts-only phase); current ledger is intra-Claude agent ops.",
-    ownerRelayCount: ownerRelayCount ?? null,
-  };
+  // AI GOVERNANCE — projected from the compact Claude↔ChatGPT exchange ledger (never a
+  // transcript). Honest {available:false} gap until real exchanges exist. ownerRelayedCount
+  // surfaces exchanges that still required the Owner as conduit (a context defect to reduce).
+  const aiGovernance = projectAiGovernance(aiExchanges, { ownerRelayCount });
 
   // CUSTOMER / PRODUCT OUTCOME — now a durable capability field (Owner-approved). Projected,
   // not inferred: a capability without an established outcome is honestly UNKNOWN, never
