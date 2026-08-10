@@ -1,0 +1,56 @@
+{
+  "pointer": "EOS-CURRENT-STATE/1.0.0",
+  "note": "POINTER/INDEX only — the execution-backlog is the authority; this is a generated digest with provenance. Not a second state store. Regenerate when generatedFromCommit is behind origin/main.",
+  "provenance": {
+    "sourceCommit": "cdbd7a1f7ae2b7c90789e83179517d5d377bf2bf",
+    "generatedFromCommit": "cdbd7a1f7ae2b7c90789e83179517d5d377bf2bf",
+    "originMainCommit": "cdbd7a1f7ae2b7c90789e83179517d5d377bf2bf",
+    "freshness": "CURRENT",
+    "mapVersion": "1.0.0"
+  },
+  "authorities": {
+    "operatingMode": "AGENTS.md + docs/DelegationCharter.md §8",
+    "runModel": "docs/orchestration/continuous-workstream-orchestrator.md",
+    "currentStateAuthority": "docs/orchestration/execution-backlog.md",
+    "selector": "docs/orchestration/lib/selectNextWork.mjs",
+    "roadmap": "docs/orchestration/lib/roadmapModel.mjs",
+    "contextMap": "docs/orchestration/context/context-map.json"
+  },
+  "derived": {
+    "readyItemIds": [],
+    "activeAssignmentIds": [],
+    "ownerDecisionIds": [
+      "R-1 catalog-read authority",
+      "Coverage precedence / override / inheritance · sales credit · commission",
+      "Finance revenue recognition engine",
+      "Cycle Counts · Back Orders"
+    ],
+    "protectedActionIds": [
+      "Finance Billing/AR activation (#690–#694, #701)",
+      "Commercial Coverage #15 activation (#695, #697)",
+      "Receiving activation",
+      "Truck Management activation",
+      "Supplier / Part Master / Manufacturer / part_supplier_items promotion"
+    ],
+    "blockedIds": [
+      "Serialized Equipment availability",
+      "#12 Temporary Equipment / Placement",
+      "#13 Technician Labor / Cost",
+      "Manufacturer read surface · part_supplier_items read/Purchasing UI",
+      "Supplier Master · Part Master — integrated-sandbox experience review",
+      "Final Service IA"
+    ],
+    "ownerGateIds": [
+      "R-1 catalog-read authority",
+      "Coverage precedence / override / inheritance · sales credit · commission",
+      "Finance revenue recognition engine",
+      "Cycle Counts · Back Orders",
+      "Finance Billing/AR activation (#690–#694, #701)",
+      "Commercial Coverage #15 activation (#695, #697)",
+      "Receiving activation",
+      "Truck Management activation",
+      "Supplier / Part Master / Manufacturer / part_supplier_items promotion"
+    ]
+  },
+  "selectorHint": "No READY item in the backlog — the last selection reached a legitimate terminal CHECKPOINT. A DIRECTED assignment overrides this; do not manufacture autonomous work."
+}

@@ -28,6 +28,15 @@ on:
       - "docs/orchestration/context/context-map.json"
       - "docs/orchestration/context/build-package.mjs"
       - "docs/orchestration/context/build-package.test.mjs"
+      - "docs/orchestration/context/EOS-BOOTSTRAP.md"
+      - "docs/orchestration/context/current-state.mjs"
+      - "docs/orchestration/context/current-state.test.mjs"
+      - "docs/orchestration/context/current-state.json"
+      - "docs/orchestration/context/cold-start.mjs"
+      - "docs/orchestration/context/cold-start.test.mjs"
+      - "docs/orchestration/lib/coldStart.mjs"
+      - "docs/orchestration/lib/coldStart.test.mjs"
+      - "docs/orchestration/lib/modelPolicy.mjs"
       - "docs/orchestration/lib/wakeSupervisor.mjs"
       - "docs/orchestration/lib/wakeSupervisor.test.mjs"
       - "docs/orchestration/context/wake-supervisor.mjs"
@@ -59,6 +68,15 @@ on:
       - "docs/orchestration/context/context-map.json"
       - "docs/orchestration/context/build-package.mjs"
       - "docs/orchestration/context/build-package.test.mjs"
+      - "docs/orchestration/context/EOS-BOOTSTRAP.md"
+      - "docs/orchestration/context/current-state.mjs"
+      - "docs/orchestration/context/current-state.test.mjs"
+      - "docs/orchestration/context/current-state.json"
+      - "docs/orchestration/context/cold-start.mjs"
+      - "docs/orchestration/context/cold-start.test.mjs"
+      - "docs/orchestration/lib/coldStart.mjs"
+      - "docs/orchestration/lib/coldStart.test.mjs"
+      - "docs/orchestration/lib/modelPolicy.mjs"
       - "docs/orchestration/lib/wakeSupervisor.mjs"
       - "docs/orchestration/lib/wakeSupervisor.test.mjs"
       - "docs/orchestration/context/wake-supervisor.mjs"
@@ -86,4 +104,4 @@ jobs:
         with:
           node-version: 22
       - name: Contracts + triage + bridge mock (node:test, zero-dependency)
-        run: node --test docs/orchestration/lib/collaborationContract.test.mjs docs/orchestration/lib/ownerDecision.test.mjs docs/orchestration/lib/bridgeTransport.test.mjs docs/orchestration/lib/durableOutcomeTriage.test.mjs docs/orchestration/lib/reviewProvenance.test.mjs docs/orchestration/lib/aiExchange.test.mjs docs/orchestration/lib/ownerFriction.test.mjs docs/orchestration/lib/contextMap.test.mjs docs/orchestration/context/build-package.test.mjs docs/orchestration/lib/wakeSupervisor.test.mjs docs/orchestration/lib/wakeState.test.mjs docs/orchestration/lib/wakeExecute.test.mjs docs/orchestration/lib/wakeLease.test.mjs
+        run: node --test docs/orchestration/lib/collaborationContract.test.mjs docs/orchestration/lib/ownerDecision.test.mjs docs/orchestration/lib/bridgeTransport.test.mjs docs/orchestration/lib/durableOutcomeTriage.test.mjs docs/orchestration/lib/reviewProvenance.test.mjs docs/orchestration/lib/aiExchange.test.mjs docs/orchestration/lib/ownerFriction.test.mjs docs/orchestration/lib/contextMap.test.mjs docs/orchestration/context/build-package.test.mjs docs/orchestration/lib/coldStart.test.mjs docs/orchestration/context/current-state.test.mjs docs/orchestration/context/cold-start.test.mjs docs/orchestration/lib/wakeSupervisor.test.mjs docs/orchestration/lib/wakeState.test.mjs docs/orchestration/lib/wakeExecute.test.mjs docs/orchestration/lib/wakeLease.test.mjs
