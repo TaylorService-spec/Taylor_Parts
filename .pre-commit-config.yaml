@@ -1,0 +1,9 @@
+# Optional local secret-scan before every commit — the same policy as CI (.gitleaks.toml).
+# Enable once per clone:  pip install pre-commit  &&  pre-commit install
+# Then gitleaks runs on staged changes; a genuinely sensitive credential blocks the commit.
+# Firebase web keys in the client config are allowlisted by policy — see docs/security/secret-scanning.md.
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
