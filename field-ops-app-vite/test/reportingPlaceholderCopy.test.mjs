@@ -60,16 +60,31 @@ test("the Notifications stub distinguishes itself from the working bell", () => 
   assert.match(item.placeholderExplanation, /history/i, "must say what this destination is for");
 });
 
-test("the Activity stub does not deny a timeline that is already live", () => {
-  // Traced: buildTimeline() is the single authority and states that every consumer
-  // calls it and nothing else generates events. Two consumers are already live —
-  // ActivityTimelinePanel (Service Operations) and Work Order Detail's Operational
-  // History. Only a standalone cross-domain destination is unbuilt, so "this area
-  // isn't built yet" would send a user away from a timeline they can already read.
+test("the standalone Activity destination stays retired", () => {
+  // Owner decision 2026-08-09: removed because it had no demonstrated unique product
+  // responsibility. "Activity" already names four surfaces at four grains over three
+  // data sources; this was a fifth name for none of them.
+  //
+  // This test is the guard the decision asked for. Restoring the destination means
+  // deciding what it IS -- "my activity" or a cross-domain roll-up -- and each is a new
+  // product with its own authority, not a nav entry. If you are here because this test
+  // failed, that decision has to happen first.
   const dashboard = NAV_DOMAINS.find((d) => d.key === "dashboard");
-  const item = dashboard?.subnav.find((i) => i.key === "activity");
-  assert.ok(item, "the Activity destination must still exist — this is not a removal");
-  assert.ok(item.placeholderExplanation, "it must not claim the capability is absent");
-  assert.match(item.placeholderExplanation, /Service Operations/, "must name where the live timeline is");
-  assert.match(item.placeholderExplanation, /Operational History/, "must name the per-Work-Order view");
+  assert.ok(dashboard, "precondition: the dashboard domain exists");
+  assert.equal(
+    dashboard.subnav.some((i) => i.key === "activity" || i.path === "activity"),
+    false,
+    "a standalone Activity destination must not be reinstated without a product decision",
+  );
+});
+
+test("retiring it did NOT disturb the legitimate activity surfaces", () => {
+  // The decision covered the standalone destination only. Service Operations keeps its
+  // timeline and every Work Order keeps its Operational History -- both remain live and
+  // are rendered from the same buildTimeline authority.
+  const serviceOps = NAV_DOMAINS.find((d) => d.key === "serviceOperations");
+  assert.ok(serviceOps, "Service Operations must remain a destination");
+  assert.equal(serviceOps.label, "Service Operations");
+  const builder = fs.readFileSync(new URL("../src/domain/timelineBuilder.js", import.meta.url), "utf8");
+  assert.match(builder, /buildTimeline/, "the shared timeline authority must be untouched");
 });

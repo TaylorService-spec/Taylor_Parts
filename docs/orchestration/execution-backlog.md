@@ -176,7 +176,7 @@ string. The run was against a local dev server predating the fix. **Not routed a
 Product finding** — per the build-currency rule, a stale-build observation is
 invalidated evidence, not a defect.
 
-## UX-3 — PRODUCT_DIRECTION_REQUIRED (recorded 2026-08-09)
+## UX-3 — CLOSED (Owner decided 2026-08-09: retire the standalone destination)
 
 Activity destination scope. Evidence `UX-EX-001.result.json` interpreted and traced;
 **no new agent requested**. Full disposition:

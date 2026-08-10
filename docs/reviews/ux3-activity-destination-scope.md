@@ -73,7 +73,22 @@ fifth "Activity".
 **Not acted on.** Renaming navigation is an IA change, it is evidence-driven, and the
 grain decision above must come first.
 
-## Status
+## Status — DECIDED
 
-`PRODUCT_DIRECTION_REQUIRED` — preserved with evidence. Not blocked on Round 3 (that
+**Owner decision, 2026-08-09: retire the standalone destination.** It had no
+demonstrated unique product responsibility, and neither "my activity" nor a
+cross-domain roll-up was invented to justify keeping it — each would be a new
+product with its own authority.
+
+Implemented as the minimum IA correction: the single `navConfig` entry removed, with
+the rationale left in place so the next reader learns why rather than re-deriving it.
+A regression test guards restoration and names what must be decided first. The four
+legitimate activity/history surfaces are untouched — their grains and authorities are
+genuinely distinct, and the decision covered the standalone destination only.
+
+Browser-verified: Activity absent from navigation; Service Operations timeline still
+live; an existing `/dashboard/activity` bookmark falls through to the dashboard index
+rather than erroring.
+
+_(Original disposition, preserved:)_ `PRODUCT_DIRECTION_REQUIRED` — preserved with evidence. Not blocked on Round 3 (that
 gate governs Service IA consolidation, a different question).
