@@ -21,6 +21,7 @@ const DEFAULTS = Object.freeze({
   mode: "VERIFICATION", modelTier: "standard", execution: "REMOTE", budgetClass: "SMALL",
   priority: 5, blocking: false, requiresBrowser: false, mutating: false, retryAllowance: 1,
   status: "PENDING", allowedSurfaces: [], contextPacket: "", outputContract: "", evidence: [],
+  scope: [], // C-7 context-map domain scope; the dispatcher builds the reproducible context package from it
 });
 
 // A stable fingerprint used to dedupe equivalent requests (agentManager.findEquivalentResult).
@@ -35,6 +36,7 @@ export function createAgentRequest(input = {}) {
   const req = { ...DEFAULTS, ...input };
   req.allowedSurfaces = [...(req.allowedSurfaces || [])];
   req.evidence = [...(req.evidence || [])];
+  req.scope = [...(req.scope || [])];
   req.fingerprint = requestFingerprint(req);
   return Object.freeze(req);
 }
