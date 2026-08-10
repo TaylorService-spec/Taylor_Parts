@@ -136,9 +136,11 @@ test("§UX board now carries the registered UX workstream (gap 4 closed)", () =>
 test("the additive schema is 1.2 and still major-1 compatible for a pinned consumer", () => {
   assert.equal(payload().schemaVersion, "1.2.0");
   assert.equal(checkPayloadCompatibility(payload(), 1).compatible, true);
-  // the additive cockpit section is present and its honest gaps are declared, not fabricated
+  // the additive cockpit section is present; aiGovernance stays an honest gap, and
+  // customerOutcome is now a durable field (available) but legacy caps stay UNKNOWN, not fabricated
   assert.equal(payload().cockpit.aiGovernance.available, false);
-  assert.equal(payload().cockpit.customerOutcome.available, false);
+  assert.equal(payload().cockpit.customerOutcome.available, true);
+  assert.ok(payload().cockpit.customerOutcome.distribution.UNKNOWN >= 1);
 });
 
 import fs from "node:fs";

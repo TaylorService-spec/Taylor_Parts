@@ -220,7 +220,7 @@ export function projectCockpit(model = roadmapModel, { networkHealth = null, fre
   // OWNER_DECISION→NEEDS_OWNER and PROTECTED_ACTION→OWNER_AUTHORIZATION and flags itself a proxy.
   const needsYou = {
     proxy: true,
-    proxyReason: "triageClass is not yet a durable capability field; derived from status. RECOMMEND_OWNER not represented until the field exists (routed to Design).",
+    proxyReason: "triageClass is now durable on Owner Decision Requests (acceptTriage), but that decision-request ledger is not yet injected into the adapter; this cockpit list derives from capability STATUS as a proxy until the ledger feeds it. RECOMMEND_OWNER appears only via a real decision request.",
     items: [
       ...ownerDecisions.map((c) => ({ triageClass: "NEEDS_OWNER", capabilityId: c.id, name: c.name, domain: c.domain, text: c.ownerDecision || null })),
       ...protectedActions.map((c) => ({ triageClass: "OWNER_AUTHORIZATION", capabilityId: c.id, name: c.name, domain: c.domain, protectedBoundary: c.protectedBoundary || null, requiresReconfirmAtExecution: true })),
@@ -282,10 +282,22 @@ export function projectCockpit(model = roadmapModel, { networkHealth = null, fre
     ownerRelayCount: ownerRelayCount ?? null,
   };
 
-  // CUSTOMER / PRODUCT OUTCOME — honest gap: capabilities carry no customerOutcome field.
+  // CUSTOMER / PRODUCT OUTCOME — now a durable capability field (Owner-approved). Projected,
+  // not inferred: a capability without an established outcome is honestly UNKNOWN, never
+  // fabricated. Distribution over evidenceState + per-capability where an outcome is set.
+  const outcomeDist = { UNKNOWN: 0, HYPOTHESIS: 0, EVIDENCED: 0, VALIDATED: 0, DISPROVEN: 0 };
+  const outcomes = [];
+  for (const c of caps) {
+    const co = c.customerOutcome;
+    const evidenceState = co && co.evidenceState ? co.evidenceState : "UNKNOWN";
+    outcomeDist[evidenceState] = (outcomeDist[evidenceState] || 0) + 1;
+    if (co) outcomes.push({ id: c.id, name: c.name, intendedOutcome: co.intendedOutcome, evidenceState, evidence: co.evidence || [] });
+  }
   const customerOutcome = {
-    available: false,
-    reason: "no durable customerOutcome field on capabilities; adding one is a product-structure decision routed to Design/Owner.",
+    available: true,
+    distribution: outcomeDist,
+    established: outcomes,
+    note: outcomes.length === 0 ? "No capability has an established customer outcome yet; all UNKNOWN until discovery/evidence establishes one (never fabricated)." : null,
   };
 
   return { systemHealth, needsYou, workSupply, autonomy, operability, sinceLastVisit, aiGovernance, customerOutcome };

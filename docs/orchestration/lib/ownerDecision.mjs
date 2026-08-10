@@ -19,6 +19,11 @@ export const TRIAGE_CLASSES = Object.freeze([
 const DEFAULTS = Object.freeze({
   options: [], evidence: [], affectedCapabilities: [], recommendation: null,
   requestedAuthority: null, impactOfWaiting: null, status: "OPEN", disposition: null,
+  // Durable, Owner-approved: the ACCEPTED triage classification is lifecycle-significant state,
+  // persisted with its supporting reason/evidence — not reconstructed by the adapter each time.
+  // triage() derives/recommends; acceptTriage() persists. The adapter PROJECTS it; it must not
+  // become the authority that invents it.
+  triageClass: null, triageReason: null, triageEvidence: [],
 });
 
 export function createOwnerDecisionRequest(input = {}) {
@@ -40,7 +45,32 @@ export function validateOwnerDecisionRequest(d) {
   need(Array.isArray(d.options), "options must be an array");
   need(Array.isArray(d.evidence), "evidence must be an array");
   need(d.disposition == null || TRIAGE_CLASSES.includes(d.disposition), "disposition, when present, must be a TRIAGE_CLASS");
+  need(d.triageClass == null || TRIAGE_CLASSES.includes(d.triageClass), "triageClass, when present, must be a TRIAGE_CLASS");
+  need(Array.isArray(d.triageEvidence || []), "triageEvidence must be an array");
   return errors;
+}
+
+/**
+ * Persist an ACCEPTED triage classification into the decision request's lifecycle. triage()
+ * derives/recommends the class from standing authority; this records what was accepted (the
+ * class + its reason + supporting evidence) so it is durable, not reconstructed. Returns a new
+ * frozen request. Preserves: silence != approval, decision != protected execution,
+ * responsibility != authority — persisting a class never itself authorizes a protected action.
+ *
+ * @param {object} d               the Owner Decision Request
+ * @param {object} triageResult    the output of triage() (must carry triageClass + reason)
+ * @param {Array}  [evidence]      supporting evidence references for the classification
+ */
+export function acceptTriage(d, triageResult, evidence = []) {
+  if (!triageResult || !TRIAGE_CLASSES.includes(triageResult.triageClass)) {
+    throw new Error(`acceptTriage: triageResult.triageClass must be a TRIAGE_CLASS — got ${JSON.stringify(triageResult && triageResult.triageClass)}`);
+  }
+  return Object.freeze({
+    ...d,
+    triageClass: triageResult.triageClass,
+    triageReason: triageResult.reason ?? null,
+    triageEvidence: [...evidence],
+  });
 }
 
 /**
