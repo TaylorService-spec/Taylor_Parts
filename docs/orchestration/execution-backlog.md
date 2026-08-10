@@ -31,7 +31,6 @@ Baseline reconciled at `origin/main` = `d1ab2ae` (pin `ff22df90…`; Finance + C
 
 | # | Item | Why READY | Next reversible increment |
 |---|---|---|---|
-| UX-2 | Coordinated Visits / Mission — SAMPLE vs live confusion recheck | The SAMPLE treatment shipped (#683). Measure whether it resolves the demonstrated confusion before any further change | Live re-measure against the pinned build; ACCEPTABLE → close, else minimum honest correction |
 | UX-3 | Activity destination scope | IA scope question surfaced by #708. Repo-safe: tracing + evidence only. **Durable evidence available** — persona request `UX-EX-001` routed a read-only trace of 5 Activity-rendering surfaces + grains + a wayfinding discrepancy + questionsRaised ([`agent-requests/UX-EX-001.result.json`](./agent-requests/UX-EX-001.result.json)). Evidence, not a decision — UX interprets | Determine whose activity / what grain relative to Operational History using the routed evidence; record decision, do not merge or remove routes |
 
 > **UX workstream registered 2026-08-09.** The prior terminal CHECKPOINT was reached with the UX
@@ -155,3 +154,25 @@ itself. One definition remains; only its packaging changed.
 Four projection gaps are recorded above as routed to Design. **They must not be worked
 around inside keystone** — a renderer that fills a gap it cannot source is manufacturing
 project truth, which is the one thing the boundary exists to prevent.
+
+## UX-2 — CLOSED, ACCEPTABLE (recorded 2026-08-09)
+
+The SAMPLE treatment shipped in #683 **resolves the demonstrated confusion**. Evidence
+reused from the routed Agent Manager result `UX-2.result.json` (BROWSER_RUN) — no new
+persona request was made, because valid current evidence already answered the question.
+
+The result raised two points; UX interpreted both rather than treating them as verdicts.
+
+**1. "SAMPLE renders run-on with the customer name" — NOT a defect.** Traced to the
+markup and styling on `main`: `.fo-sample-badge` is `display:inline-block` with
+`margin-left:6px`, padding, a border and a pill radius. It is a visually distinct badge.
+The run-on appearance was an artifact of **accessibility-text extraction**, which
+concatenates inline elements — the observation was real, the diagnosis was not.
+Classified `NO_DEFECT`. No agent re-run was needed; repository tracing answered it.
+
+**2. "Operational History renders Invalid Date" — STALE_OR_INVALID_EVIDENCE.** Current
+`main` already routes that surface through `formatClockTime(event.timestamp,
+{ unknown: "—" })`, which refuses unusable values and additionally guards the literal
+string. The run was against a local dev server predating the fix. **Not routed as a
+Product finding** — per the build-currency rule, a stale-build observation is
+invalidated evidence, not a defect.
