@@ -37,6 +37,10 @@ const DEFAULTS = Object.freeze({
   lifecycle: "ASSIGNED", triggerOutcome: "NOT_ATTEMPTED", escalationState: "NONE",
   acknowledgedAt: null, startedAt: null, lastActivityAt: null, completedAt: null, consumedAt: null,
   expectedAckBy: null, stallAfter: null, escalateToOwnerAfter: null,
+  // Durable model routing (ratified two-model policy): the CONCRETE model the dispatch selected,
+  // the logical tier (portability metadata), and the policy basis — so "which model handled this?"
+  // is answerable without reconstructing from logs. selectedModel = SELECTED (not observed runtime).
+  selectedModel: null, modelTier: null, modelSelectionReason: null,
 });
 
 /** ROUTE — write the durable assignment. Sets ASSIGNED + assignedAt only; nothing about pickup. */

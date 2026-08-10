@@ -11,12 +11,16 @@
 // the 2/1/1 governor · respect network/budget · distinguish AUTHORITY from TRIGGER · record
 // MANUAL_RUNTIME_TRIGGER vs AUTOMATIC_TRIGGER · explicit backoff. Supervised, bounded, no overnight.
 
+import { resolveDispatchModel } from "./modelPolicy.mjs";
+
 export const TRIGGER_MECHANISMS = Object.freeze(["MANUAL", "AUTOMATIC", "NO_WAKE_MECHANISM", "FAILED"]);
 export const WAKE_DECISIONS = Object.freeze(["TRIGGER", "HOLD", "CHECKPOINT"]);
 export const TRIGGER_KINDS = Object.freeze(["MANUAL_RUNTIME_TRIGGER", "AUTOMATIC_TRIGGER"]);
 
 // Guardrails baked into EVERY constructed invocation. Repo-safe allowlist only; NO network/deploy
 // tool; dontAsk (auto-deny, never bypassPermissions); hard turn + budget caps; wall-clock ceiling.
+// The model comes from the SHARED resolver (delegated → SONNET) — never independently hard-coded, so
+// the wake path cannot diverge from standard dispatch's model selection.
 export const DEFAULT_GUARDRAILS = Object.freeze({
   permissionMode: "dontAsk",
   allowedTools: Object.freeze([
@@ -24,7 +28,7 @@ export const DEFAULT_GUARDRAILS = Object.freeze({
     "Bash(git status *)", "Bash(git diff *)", "Bash(git log *)", "Bash(node --test *)",
   ]),
   disallowedTools: Object.freeze(["WebFetch", "WebSearch"]),
-  model: "sonnet",
+  model: resolveDispatchModel({ delegated: true }).selectedModel,
   maxTurns: 40,
   maxBudgetUsd: 2,
   wallClockSec: 900,       // the supervisor imposes this (no CLI flag) and SIGTERMs on breach

@@ -16,6 +16,8 @@ on:
       - "docs/orchestration/lib/agentManager.mjs"
       - "docs/orchestration/lib/agentManager.test.mjs"
       - "docs/orchestration/lib/dispatchContext.test.mjs"
+      - "docs/orchestration/lib/modelPolicy.mjs"
+      - "docs/orchestration/lib/modelPolicy.test.mjs"
       - "docs/orchestration/lib/contextMap.mjs"
       - "docs/orchestration/context/build-package.mjs"
       - "docs/orchestration/lib/selectNextWork.mjs"
@@ -35,6 +37,8 @@ on:
       - "docs/orchestration/lib/agentManager.mjs"
       - "docs/orchestration/lib/agentManager.test.mjs"
       - "docs/orchestration/lib/dispatchContext.test.mjs"
+      - "docs/orchestration/lib/modelPolicy.mjs"
+      - "docs/orchestration/lib/modelPolicy.test.mjs"
       - "docs/orchestration/lib/contextMap.mjs"
       - "docs/orchestration/context/build-package.mjs"
       - "docs/orchestration/lib/selectNextWork.mjs"
@@ -61,7 +65,7 @@ jobs:
         with:
           node-version: 22
       - name: Agent Manager stack (node:test, zero-dependency)
-        run: node --test docs/orchestration/lib/agentManager.test.mjs docs/orchestration/lib/dispatchContext.test.mjs
+        run: node --test docs/orchestration/lib/agentManager.test.mjs docs/orchestration/lib/dispatchContext.test.mjs docs/orchestration/lib/modelPolicy.test.mjs
       - name: Extended selector (node:test)
         run: node --test docs/orchestration/lib/selectNextWork.test.mjs
       - name: Result consumption — §23 continuation correction (node:test)
