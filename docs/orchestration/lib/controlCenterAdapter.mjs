@@ -28,7 +28,7 @@ import { dirname, join } from "node:path";
 import { roadmapModel, validateRoadmapModel } from "./roadmapModel.mjs";
 // The contract is dependency-free and lives in its own module so a consumer can
 // vendor it without dragging the roadmap model along -- see controlCenterContract.mjs.
-import { CONTROL_CENTER_SCHEMA_VERSION, PRESERVED_DISTINCTIONS, checkPayloadCompatibility } from "./controlCenterContract.mjs";
+import { CONTROL_CENTER_SCHEMA_VERSION, PRESERVED_DISTINCTIONS, checkPayloadCompatibility, freshnessState, FRESHNESS_STATES } from "./controlCenterContract.mjs";
 import { projectAll, projectAgentOperations, projectRecentProgress } from "./roadmapProjection.mjs";
 
 // Auto-load the PROJECT's own durable state (the agent-request ledger + the sanitized
@@ -138,4 +138,4 @@ export function buildControlCenterPayload({
 }
 
 // One definition, re-exported so existing importers of the adapter are unaffected.
-export { CONTROL_CENTER_SCHEMA_VERSION, PRESERVED_DISTINCTIONS, checkPayloadCompatibility };
+export { CONTROL_CENTER_SCHEMA_VERSION, PRESERVED_DISTINCTIONS, checkPayloadCompatibility, freshnessState, FRESHNESS_STATES };
