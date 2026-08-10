@@ -39,6 +39,10 @@ jobs:
           node-version: "20"
       - name: Dry-run (no provider call, no key)
         if: ${{ inputs.mode != 'live' }}
+        env:
+          # Model ONLY — same repository configuration as live, so dry-run reflects the real model.
+          # Deliberately NO OPENAI_API_KEY here: dry-run must never receive the key or call OpenAI.
+          OPENAI_REVIEW_MODEL: ${{ vars.OPENAI_REVIEW_MODEL }}
         run: |
           node docs/orchestration/context/openai-review.mjs \
             --request "${{ inputs.request_id }}" \
