@@ -23,22 +23,10 @@
 // infrastructure is created here, because none is needed to render one project today.
 
 import { roadmapModel, validateRoadmapModel } from "./roadmapModel.mjs";
+// The contract is dependency-free and lives in its own module so a consumer can
+// vendor it without dragging the roadmap model along -- see controlCenterContract.mjs.
+import { CONTROL_CENTER_SCHEMA_VERSION, PRESERVED_DISTINCTIONS, checkPayloadCompatibility } from "./controlCenterContract.mjs";
 import { projectAll } from "./roadmapProjection.mjs";
-
-/**
- * Envelope schema version. Bump MAJOR only for a breaking shape change; a consumer
- * pins the major it understands.
- */
-export const CONTROL_CENTER_SCHEMA_VERSION = "1.0.0";
-
-/** The distinctions the Owner requires the Control Center to preserve, never collapse. */
-export const PRESERVED_DISTINCTIONS = Object.freeze([
-  "IMPLEMENTED != ACTIVATED",
-  "MERGED != DEPLOYED",
-  "BACKEND_COMPLETE != USER_OPERABLE",
-  "UX_COMPLETE != BACKEND_ACTIVE",
-  "PERSONA_FINDING != PRODUCT_DECISION",
-]);
 
 /**
  * Build the Control Center payload.
@@ -81,25 +69,5 @@ export function buildControlCenterPayload({
   };
 }
 
-/**
- * Consumer-side guard, exported so keystone uses THIS repo's definition of
- * compatibility rather than reimplementing it.
- * @returns {{compatible: boolean, reason: string|null}}
- */
-export function checkPayloadCompatibility(payload, expectedMajor = 1) {
-  if (!payload || typeof payload !== "object") {
-    return { compatible: false, reason: "payload is not an object" };
-  }
-  const version = payload.schemaVersion;
-  if (typeof version !== "string") {
-    return { compatible: false, reason: "payload carries no schemaVersion" };
-  }
-  const major = Number(version.split(".")[0]);
-  if (!Number.isInteger(major)) {
-    return { compatible: false, reason: `unparseable schemaVersion "${version}"` };
-  }
-  if (major !== expectedMajor) {
-    return { compatible: false, reason: `schemaVersion ${version} is not major ${expectedMajor}` };
-  }
-  return { compatible: true, reason: null };
-}
+// One definition, re-exported so existing importers of the adapter are unaffected.
+export { CONTROL_CENTER_SCHEMA_VERSION, PRESERVED_DISTINCTIONS, checkPayloadCompatibility };
