@@ -1,0 +1,33 @@
+{
+  "domain": "orchestration",
+  "purpose": "Governed context map for the EOS orchestration control plane — a navigation index of POINTERS + governance metadata. It stores no knowledge and duplicates no authority; retrieval is grep + these paths. Narrative is human/governed-authored; only the index is generated/validated.",
+  "mapSchemaVersion": "1.0.0",
+  "entries": [
+    { "id": "orch-operating-model", "kind": "principle", "authority": "AI Engineering Operating Model", "scope": ["orchestration"], "level": "L1", "lifecycle": "current",
+      "purpose": "How EOS runs: section-based execution, continuous repo-safe work, checkpoints, protected boundaries.", "retrievalPath": "docs/orchestration/continuous-workstream-orchestrator.md", "freshnessRef": "git", "provenance": "governed doc", "relationships": ["selector", "loop-driver"] },
+    { "id": "roadmap-model", "kind": "model", "authority": "roadmapModel.mjs", "scope": ["orchestration", "roadmap"], "level": "L1", "lifecycle": "current",
+      "purpose": "The single durable roadmap/capability authority (domains → capabilities → milestones → workItems).", "retrievalPath": "docs/orchestration/lib/roadmapModel.mjs", "freshnessRef": "lastVerifiedRepoState", "provenance": "roadmapModel.mjs", "relationships": ["roadmap-projection"] },
+    { "id": "roadmap-projection", "kind": "model", "authority": "roadmapProjection.mjs", "scope": ["orchestration", "roadmap", "cockpit"], "level": "L2", "lifecycle": "current",
+      "purpose": "Pure views over the roadmap model, incl. the Owner cockpit projection.", "retrievalPath": "docs/orchestration/lib/roadmapProjection.mjs", "freshnessRef": "git", "provenance": "roadmapProjection.mjs", "relationships": ["roadmap-model", "control-center-adapter"] },
+    { "id": "selector", "kind": "model", "authority": "selectNextWork.mjs", "scope": ["orchestration", "selection"], "level": "L2", "lifecycle": "current",
+      "purpose": "Deterministic next-eligible-work selector (READY/WAIT_RESOURCE/CHECKPOINT/…).", "retrievalPath": "docs/orchestration/lib/selectNextWork.mjs", "freshnessRef": "git", "provenance": "selectNextWork.mjs", "relationships": ["result-consumption"] },
+    { "id": "result-consumption", "kind": "model", "authority": "resultConsumption.mjs", "scope": ["orchestration", "selection"], "level": "L2", "lifecycle": "current",
+      "purpose": "§23 correction: unconsumed routed results become READY work so a valid result can't yield a false terminal checkpoint.", "retrievalPath": "docs/orchestration/lib/resultConsumption.mjs", "freshnessRef": "git", "provenance": "resultConsumption.mjs", "relationships": ["selector"] },
+    { "id": "work-lifecycle", "kind": "model", "authority": "workLifecycle.mjs", "scope": ["orchestration", "work-pickup"], "level": "L2", "lifecycle": "current",
+      "purpose": "Worker-agnostic ASSIGNED→ACKNOWLEDGED→ACTIVE→COMPLETED→CONSUMED; ROUTE≠TRIGGER≠ACKNOWLEDGE; escalation from explicit expectations.", "retrievalPath": "docs/orchestration/lib/workLifecycle.mjs", "freshnessRef": "git", "provenance": "workLifecycle.mjs", "relationships": ["whos-doing-what"] },
+    { "id": "freshness", "kind": "model", "authority": "controlCenterContract.freshnessState", "scope": ["orchestration", "freshness"], "level": "L2", "lifecycle": "current",
+      "purpose": "Envelope freshness authority: CURRENT/STALE/UNKNOWN/INCOMPATIBLE/NOT_AUTHORIZED. Reuse — do not add a freshness model.", "retrievalPath": "docs/orchestration/lib/controlCenterContract.mjs", "freshnessRef": "git", "provenance": "controlCenterContract.mjs", "relationships": ["review-provenance"] },
+    { "id": "review-provenance", "kind": "model", "authority": "reviewProvenance.mjs", "scope": ["orchestration", "review", "freshness"], "level": "L2", "lifecycle": "current",
+      "purpose": "Review source freshness: CURRENT/BEHIND_REMOTE/DIRTY/DIVERGED/UNKNOWN; a non-CURRENT review is never silently authoritative.", "retrievalPath": "docs/orchestration/lib/reviewProvenance.mjs", "freshnessRef": "git", "provenance": "reviewProvenance.mjs", "relationships": ["freshness"] },
+    { "id": "collaboration-contract", "kind": "model", "authority": "collaborationContract.mjs", "scope": ["orchestration", "collaboration"], "level": "L2", "lifecycle": "current",
+      "purpose": "One request envelope for WORK/AI_REVIEW/OWNER_DECISION + reciprocal lifecycle + §11 single-responsibility-owner + escalation.", "retrievalPath": "docs/orchestration/lib/collaborationContract.mjs", "freshnessRef": "git", "provenance": "collaborationContract.mjs", "relationships": ["ai-exchange", "owner-decision"] },
+    { "id": "ai-exchange", "kind": "model", "authority": "aiExchange.mjs", "scope": ["orchestration", "ai-governance"], "level": "L2", "lifecycle": "current",
+      "purpose": "Compact (not-transcript) Claude↔ChatGPT exchange ledger → AI Governance.", "retrievalPath": "docs/orchestration/lib/aiExchange.mjs", "freshnessRef": "git", "provenance": "aiExchange.mjs", "relationships": ["collaboration-contract"] },
+    { "id": "owner-decision", "kind": "model", "authority": "ownerDecision.mjs", "scope": ["orchestration", "decisions"], "level": "L2", "lifecycle": "current",
+      "purpose": "Owner Decision Request + pure triage (AUTO_RESOLVED/RECOMMEND_OWNER/NEEDS_OWNER/OWNER_AUTHORIZATION); re-confirm at execution.", "retrievalPath": "docs/orchestration/lib/ownerDecision.mjs", "freshnessRef": "git", "provenance": "ownerDecision.mjs", "relationships": ["collaboration-contract"] },
+    { "id": "context-map-contract", "kind": "model", "authority": "contextMap.mjs", "scope": ["orchestration", "context-registry"], "level": "L1", "lifecycle": "current",
+      "purpose": "This C-7 context map contract: schema, Context Health lint, precedence resolution, reproducible context-package generator.", "retrievalPath": "docs/orchestration/lib/contextMap.mjs", "freshnessRef": "git", "provenance": "contextMap.mjs", "relationships": ["c7-study"] },
+    { "id": "c7-study", "kind": "decision", "authority": "C-7 study", "scope": ["context-registry"], "level": "L2", "lifecycle": "current", "applicability": { "company": true },
+      "purpose": "The AI-reviewed C-7 architecture (no-RAG, repo-native governed context map) + incorporated corrections.", "retrievalPath": "project-keystone/docs/research/c7-context-registry-study.md", "freshnessRef": "git", "provenance": "keystone #21/#22", "relationships": ["context-map-contract"] }
+  ]
+}
