@@ -1,0 +1,13 @@
+{ "domain": "review-freshness", "mapSchemaVersion": "1.0.0",
+  "entries": [
+    { "id": "gov-review-provenance", "kind": "principle", "authority": "reviewProvenance", "scope": ["review-freshness"], "level": "L1", "lifecycle": "current",
+      "purpose": "GOVERNING: a review result is only valid if the reviewer can prove what source it reviewed; non-CURRENT source is never silently authoritative.", "retrievalPath": "docs/orchestration/lib/reviewProvenance.mjs", "freshnessRef": "git", "provenance": "reviewProvenance.mjs" },
+    { "id": "old-freshness-spec", "kind": "decision", "authority": "reviewProvenance", "scope": ["review-freshness"], "level": "L1", "lifecycle": "superseded", "supersededBy": "gov-review-provenance",
+      "purpose": "SUPERSEDED but plausible: an earlier freshness note that predates reviewProvenance. Looks authoritative but must NOT be chosen.", "retrievalPath": "docs/orchestration/context/README.md", "freshnessRef": "git", "provenance": "superseded" },
+    { "id": "unrelated-envelope-freshness", "kind": "model", "authority": "controlCenterContract", "scope": ["envelope-freshness"], "level": "L1", "lifecycle": "current",
+      "purpose": "UNRELATED but semantically similar (envelope freshness, not review-source freshness). Out of scope for a review-source question.", "retrievalPath": "docs/orchestration/lib/controlCenterContract.mjs", "freshnessRef": "git", "provenance": "controlCenterContract.mjs" },
+    { "id": "historical-live-test", "kind": "evidence", "authority": null, "scope": ["review-freshness"], "level": "L3", "lifecycle": "historical",
+      "purpose": "HISTORICAL evidence: the prior live replacement-session test log. Retrieve only if needed.", "retrievalPath": "docs/orchestration/context/replacement-session-test-001.md", "freshnessRef": "git", "provenance": "historical" },
+    { "id": "convincing-lower-precedence", "kind": "finding", "authority": "reviewProvenance", "scope": ["review-freshness"], "level": "L2", "lifecycle": "current",
+      "purpose": "LOWER-PRECEDENCE finding that looks convincing (a finding, not the governing principle). Must not outrank the principle.", "retrievalPath": "docs/orchestration/work-pickup-live-test.md", "freshnessRef": "git", "provenance": "finding" }
+  ] }
