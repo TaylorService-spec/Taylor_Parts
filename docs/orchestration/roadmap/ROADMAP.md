@@ -526,7 +526,7 @@ Read-only over the durable [Agent Request/Result ledger](../agent-requests/) + g
 - **Network state:** NORMAL (HIGH confidence · ALL_HEALTHY) — telemetry as of 2026-08-09 (pilot window), sample age 2s
 - **Recent latency (reported, not thresholded):** gateway 1ms · WAN1 13.7ms · WAN2 22.4ms · TCP conns 54
 - **Remote slots:** REMOTE_AI 0/2 · BROWSER 0/1 · NETWORK_HEAVY 0/1 · MUTATING 0/1
-- **Efficiency:** requests 9 · executed 9 · deduped/reused 0 · waiting(resource/net) 0/0 · retries 0 · accepted findings 41 · results-with-token-metrics 8
+- **Efficiency:** requests 9 · executed 11 · deduped/reused 0 · waiting(resource/net) 0/0 · retries 0 · accepted findings 48 · results-with-token-metrics 10
 - **Owner relay count (routine handoffs):** 0
 - **Proof status:** Phase-4A real-load proof COMPLETE: 2 concurrent remote workers stable (network NORMAL throughout), ceiling enforced (READY_BUT_WAITING_RESOURCE), zero Owner relay.
 
@@ -542,6 +542,8 @@ Read-only over the durable [Agent Request/Result ledger](../agent-requests/) + g
 | DR-003-R1 | DR-003 | Design | COMPLETE | PASS | 1 | 0 |
 | UX-2-R1 | UX-2 | UX | COMPLETE | NOT_APPLICABLE | 4 | 0 |
 | UX-COCKPIT-001-R1 | UX-COCKPIT-001 | Design | COMPLETE | NOT_APPLICABLE | 6 | 0 |
+| UX-COCKPIT-ACCEPT-001-R1 | UX-COCKPIT-ACCEPT-001 | Design | COMPLETE | NOT_APPLICABLE | 3 | 0 |
+| UX-COCKPIT-ACCEPT-002-R1 | UX-COCKPIT-ACCEPT-002 | Design | COMPLETE | PASS | 4 | 0 |
 | UX-EX-001-R1 | UX-EX-001 | UX | COMPLETE | NOT_APPLICABLE | 7 | 0 |
 | UX-EX-002-R1 | UX-EX-002 | UX | COMPLETE | NOT_APPLICABLE | 4 | 0 |
 | UX-INV-DATE-001-R1 | UX-INV-DATE-001 | UX | COMPLETE | FAIL | 4 | 0 |

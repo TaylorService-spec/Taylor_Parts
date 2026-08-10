@@ -1,0 +1,28 @@
+{
+  "resultId": "UX-COCKPIT-ACCEPT-002-R1",
+  "requestId": "UX-COCKPIT-ACCEPT-002",
+  "routedBackTo": "Design",
+  "status": "COMPLETE",
+  "verdict": "PASS",
+  "disposition": "CONSUMED",
+  "findings": [
+    "VERDICT ACCEPT_WITH_FINDINGS against the real merged cockpit (fresh ks-fresh #15 + wt-life #745). Every §12 section, every honesty rule, and the accessibility rule (status never by colour alone) MET, with code citations at the fresh paths.",
+    "F1 (minor, actioned): the three machinery sections (agentOps/network/recentProgress) sit BELOW the cockpit (correct glance-first ordering) but render as always-open <section>s, not wrapped in <details>. Progressive disclosure is satisfied for cockpit-internal drilldowns but not for the machinery sections themselves. → wrap them in collapsed <details> to literally satisfy 'below the boundary via progressive disclosure'.",
+    "F2 (forward-looking, deferred): needsYou chip mapping is binary (OWNER_AUTHORIZATION→PROTECTED else OWNER_DECISION); a future RECOMMEND_OWNER would be mis-glyphed. Not currently triggered (projection emits only NEEDS_OWNER + OWNER_AUTHORIZATION, proxy:true). Extend the mapping when the durable decision-request ledger feeds real triageClass.",
+    "F3 (observation, no defect): local app.js freshness has no NOT_AUTHORIZED branch — correct scoping (local board reads local files, no auth). NOT_AUTHORIZED lives in the contract's freshnessState for the hosted gated-fetch path."
+  ],
+  "evidence": [
+    { "kind": "AGENT_RUN", "ref": "general-purpose UX-COCKPIT-ACCEPT-002", "note": "read-only against fresh origin/main checkouts; valid acceptance" }
+  ],
+  "questionsRaised": [
+    "F1: wrap the machinery sections in collapsed <details>, or is below-the-cockpit ordering the accepted interpretation? (Actioned: wrapping, since it strengthens the glance-first boundary.)",
+    "Confirm the hosted deployment calls freshnessState with `authorized` so NOT_AUTHORIZED renders in production."
+  ],
+  "scenariosDiscovered": [],
+  "metrics": { "tokens": 73762, "toolUses": 7 },
+  "retries": 0,
+  "contextExpanded": false,
+  "contaminated": false,
+  "retracted": false,
+  "createdAt": "2026-08-09"
+}

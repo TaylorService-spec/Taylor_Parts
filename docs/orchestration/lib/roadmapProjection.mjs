@@ -8,6 +8,17 @@
 import { roadmapModel, allCapabilities } from "./roadmapModel.mjs";
 import { capacitySnapshot } from "./resourceGovernor.mjs";
 import { efficiencyMetrics } from "./agentManager.mjs";
+import { summarizeAssignment, withEscalation } from "./workLifecycle.mjs";
+
+// "Who's Doing What" — worker responsibility visibility (Owner requirement). Projects durable
+// WORK ASSIGNMENTS (routed via the Agent Manager) into a glance list: who is responsible, the
+// lifecycle state (ASSIGNED/ACKNOWLEDGED/ACTIVE/COMPLETED/CONSUMED), the trigger outcome, and
+// escalation (WAITING_FOR_PICKUP/POSSIBLY_STALLED). ROUTED work is NEVER shown as ACTIVE — a
+// routed assignment with no acknowledgement stays ASSIGNED, honestly. Silence implies nothing.
+// Not a new queue: it annotates assignments the Agent Manager already records.
+export function projectWhosDoingWhat(assignments = [], { nowMs = null } = {}) {
+  return (assignments || []).map((w) => summarizeAssignment(nowMs != null ? withEscalation(w, nowMs) : w));
+}
 
 // Milestone-derived progress ONLY — {complete,total} or null when no explicit
 // milestones exist. Never a fabricated percentage.
@@ -189,7 +200,7 @@ export function projectRecentProgress(model = roadmapModel, { limit = 20 } = {})
 // state — no new authority, no second roadmap. Glance-level verdicts + drilldown lists. Every
 // section that has no durable source is emitted as an honest { available:false } gap, never
 // simulated. `networkHealth` (sanitized) and `ownerRelayCount` are injected by the adapter.
-export function projectCockpit(model = roadmapModel, { networkHealth = null, freshness = null, ownerRelayCount = null } = {}) {
+export function projectCockpit(model = roadmapModel, { networkHealth = null, freshness = null, ownerRelayCount = null, workAssignments = [], nowMs = null } = {}) {
   const caps = [];
   for (const d of model.domains || []) for (const c of d.capabilities || []) caps.push({ ...c, domain: d.name });
 
@@ -300,7 +311,11 @@ export function projectCockpit(model = roadmapModel, { networkHealth = null, fre
     note: outcomes.length === 0 ? "No capability has an established customer outcome yet; all UNKNOWN until discovery/evidence establishes one (never fabricated)." : null,
   };
 
-  return { systemHealth, needsYou, workSupply, autonomy, operability, sinceLastVisit, aiGovernance, customerOutcome };
+  // WHO'S DOING WHAT — worker responsibility visibility. Routed ≠ active: an assignment shows
+  // its true lifecycle + escalation, never "active" merely because it was routed.
+  const whosDoingWhat = projectWhosDoingWhat(workAssignments, { nowMs });
+
+  return { systemHealth, needsYou, workSupply, autonomy, operability, sinceLastVisit, whosDoingWhat, aiGovernance, customerOutcome };
 }
 
 // Convenience: all eight views at once (used by the generator).
