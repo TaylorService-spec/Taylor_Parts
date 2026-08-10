@@ -10,15 +10,25 @@ import { capacitySnapshot } from "./resourceGovernor.mjs";
 import { efficiencyMetrics } from "./agentManager.mjs";
 import { summarizeAssignment, withEscalation } from "./workLifecycle.mjs";
 import { projectAiGovernance } from "./aiExchange.mjs";
+import { reviewProvenanceLabel } from "./reviewProvenance.mjs";
+import { projectOwnerFriction } from "./ownerFriction.mjs";
 
 // "Who's Doing What" — worker responsibility visibility (Owner requirement). Projects durable
 // WORK ASSIGNMENTS (routed via the Agent Manager) into a glance list: who is responsible, the
 // lifecycle state (ASSIGNED/ACKNOWLEDGED/ACTIVE/COMPLETED/CONSUMED), the trigger outcome, and
 // escalation (WAITING_FOR_PICKUP/POSSIBLY_STALLED). ROUTED work is NEVER shown as ACTIVE — a
 // routed assignment with no acknowledgement stays ASSIGNED, honestly. Silence implies nothing.
-// Not a new queue: it annotates assignments the Agent Manager already records.
+// A review assignment additionally carries its source-provenance label (REVIEW CURRENT/STALE/
+// CONTAMINATED/UNKNOWN) so a stale-source review is visibly distinguishable. Not a new queue.
 export function projectWhosDoingWhat(assignments = [], { nowMs = null } = {}) {
-  return (assignments || []).map((w) => summarizeAssignment(nowMs != null ? withEscalation(w, nowMs) : w));
+  return (assignments || []).map((w) => {
+    const summary = summarizeAssignment(nowMs != null ? withEscalation(w, nowMs) : w);
+    if (w.reviewProvenance && w.reviewProvenance.sourceFreshnessState) {
+      summary.sourceFreshnessState = w.reviewProvenance.sourceFreshnessState;
+      summary.reviewLabel = reviewProvenanceLabel(w.reviewProvenance.sourceFreshnessState);
+    }
+    return summary;
+  });
 }
 
 // Milestone-derived progress ONLY — {complete,total} or null when no explicit
@@ -201,7 +211,7 @@ export function projectRecentProgress(model = roadmapModel, { limit = 20 } = {})
 // state — no new authority, no second roadmap. Glance-level verdicts + drilldown lists. Every
 // section that has no durable source is emitted as an honest { available:false } gap, never
 // simulated. `networkHealth` (sanitized) and `ownerRelayCount` are injected by the adapter.
-export function projectCockpit(model = roadmapModel, { networkHealth = null, freshness = null, ownerRelayCount = null, workAssignments = [], decisionRequests = [], aiExchanges = [], nowMs = null } = {}) {
+export function projectCockpit(model = roadmapModel, { networkHealth = null, freshness = null, ownerRelayCount = null, workAssignments = [], decisionRequests = [], aiExchanges = [], frictionEvents = [], nowMs = null } = {}) {
   const caps = [];
   for (const d of model.domains || []) for (const c of d.capabilities || []) caps.push({ ...c, domain: d.name });
 
@@ -325,7 +335,25 @@ export function projectCockpit(model = roadmapModel, { networkHealth = null, fre
   // its true lifecycle + escalation, never "active" merely because it was routed.
   const whosDoingWhat = projectWhosDoingWhat(workAssignments, { nowMs });
 
-  return { systemHealth, needsYou, workSupply, autonomy, operability, sinceLastVisit, whosDoingWhat, aiGovernance, customerOutcome };
+  // REVIEW PROVENANCE — so evidence for UX/AI review/hosted-publish visibly distinguishes
+  // REVIEW CURRENT/STALE/CONTAMINATED/UNKNOWN. Rolls up the review assignments' source-freshness
+  // labels (from the existing reviewProvenance authority — NOT another freshness model). A
+  // non-CURRENT review is surfaced, never silently trusted.
+  const reviewRollup = { available: false, distribution: { "REVIEW CURRENT": 0, "REVIEW STALE": 0, "REVIEW CONTAMINATED": 0, "REVIEW UNKNOWN": 0 }, reviews: [] };
+  for (const w of whosDoingWhat) {
+    if (!w.reviewLabel) continue;
+    reviewRollup.available = true;
+    reviewRollup.distribution[w.reviewLabel] = (reviewRollup.distribution[w.reviewLabel] || 0) + 1;
+    reviewRollup.reviews.push({ workId: w.workId, responsibleParty: w.responsibleParty, reviewLabel: w.reviewLabel, sourceFreshnessState: w.sourceFreshnessState });
+  }
+  const reviewProvenance = reviewRollup.available ? reviewRollup : { available: false, reason: "no review assignments carry source provenance yet." };
+
+  // OWNER FRICTION — reduce AVOIDABLE (manual relay/handoff/memory-dependency/unnecessary-
+  // decision/duplicate-notification/manual-recovery) → 0; NEVER hide NECESSARY decision/
+  // authorization. MANUAL_CONTEXT_RELAY is derived from ownerRelayed exchanges (real evidence).
+  const ownerFriction = projectOwnerFriction(frictionEvents, { aiExchanges });
+
+  return { systemHealth, needsYou, workSupply, autonomy, operability, sinceLastVisit, whosDoingWhat, reviewProvenance, ownerFriction, aiGovernance, customerOutcome };
 }
 
 // Convenience: all eight views at once (used by the generator).

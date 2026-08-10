@@ -59,6 +59,28 @@ test("autonomy asserts the authority-expansion invariant with a basis; overnight
   assert.equal(c.autonomy.governingCapability, "unattended-readiness");
 });
 
+test("review provenance surfaces per-review label + rollup (REVIEW CURRENT/STALE/CONTAMINATED/UNKNOWN)", () => {
+  const workAssignments = [
+    { workId: "A1", responsibleParty: "UX", lifecycle: "COMPLETED", reviewProvenance: { sourceFreshnessState: "BEHIND_REMOTE" } },
+    { workId: "A2", responsibleParty: "UX", lifecycle: "CONSUMED", reviewProvenance: { sourceFreshnessState: "CURRENT" } },
+    { workId: "A3", responsibleParty: "Design", lifecycle: "ACTIVE" }, // not a review — no label
+  ];
+  const c = projectCockpit(model([cap()]), { workAssignments });
+  assert.equal(c.whosDoingWhat.find((w) => w.workId === "A1").reviewLabel, "REVIEW STALE");
+  assert.equal(c.whosDoingWhat.find((w) => w.workId === "A2").reviewLabel, "REVIEW CURRENT");
+  assert.equal(c.whosDoingWhat.find((w) => w.workId === "A3").reviewLabel, undefined);
+  assert.equal(c.reviewProvenance.available, true);
+  assert.equal(c.reviewProvenance.distribution["REVIEW STALE"], 1);
+  assert.equal(c.reviewProvenance.distribution["REVIEW CURRENT"], 1);
+});
+
+test("owner friction derives MANUAL_CONTEXT_RELAY from ownerRelayed exchanges; avoidable tracked", () => {
+  const c = projectCockpit(model([cap()]), { aiExchanges: [{ ownerRelayed: true }, { ownerRelayed: true }] });
+  assert.equal(c.ownerFriction.byCategory.MANUAL_CONTEXT_RELAY, 2);
+  assert.equal(c.ownerFriction.avoidableTotal, 2);
+  assert.equal(c.ownerFriction.necessaryTotal, 0);
+});
+
 test("aiGovernance is an HONEST gap; customerOutcome is durable but UNKNOWN for legacy caps (no fabrication)", () => {
   const c = projectCockpit(model([cap()]), { ownerRelayCount: 0 });
   assert.equal(c.aiGovernance.available, false);
