@@ -1,0 +1,106 @@
+// EOS Wake Supervisor — token-free readiness core (bounded prototype, repo-safe).
+//
+// SEARCH-FIRST research (WAKE-RESEARCH-001) chose `claude -p` headless (--output-format json) as
+// the supported non-interactive interface, fenced by --permission-mode dontAsk + an --allowedTools
+// repo-safe allowlist + --max-turns + --max-budget-usd + an external wall-clock timeout. This module
+// is the PURE decision core: it reads cheap durable state and decides — with NO model call — whether
+// a wake is warranted, and constructs the fully-guardrailed invocation. It does NOT spawn anything;
+// the runner (wake-supervisor.mjs, DRY-RUN by default) executes only under explicit supervision.
+//
+// HARD INVARIANTS (Owner): READY is NEVER authorization · never cross a protected boundary · respect
+// the 2/1/1 governor · respect network/budget · distinguish AUTHORITY from TRIGGER · record
+// MANUAL_RUNTIME_TRIGGER vs AUTOMATIC_TRIGGER · explicit backoff. Supervised, bounded, no overnight.
+
+export const TRIGGER_MECHANISMS = Object.freeze(["MANUAL", "AUTOMATIC", "NO_WAKE_MECHANISM", "FAILED"]);
+export const WAKE_DECISIONS = Object.freeze(["TRIGGER", "HOLD", "CHECKPOINT"]);
+export const TRIGGER_KINDS = Object.freeze(["MANUAL_RUNTIME_TRIGGER", "AUTOMATIC_TRIGGER"]);
+
+// Guardrails baked into EVERY constructed invocation. Repo-safe allowlist only; NO network/deploy
+// tool; dontAsk (auto-deny, never bypassPermissions); hard turn + budget caps; wall-clock ceiling.
+export const DEFAULT_GUARDRAILS = Object.freeze({
+  permissionMode: "dontAsk",
+  allowedTools: Object.freeze([
+    "Read", "Grep", "Glob", "Edit", "Write",
+    "Bash(git status *)", "Bash(git diff *)", "Bash(git log *)", "Bash(node --test *)",
+  ]),
+  disallowedTools: Object.freeze(["WebFetch", "WebSearch"]),
+  model: "sonnet",
+  maxTurns: 40,
+  maxBudgetUsd: 2,
+  wallClockSec: 900,       // the supervisor imposes this (no CLI flag) and SIGTERMs on breach
+  outputFormat: "json",    // machine-parse result + total_cost_usd
+});
+
+/**
+ * Token-free readiness assessment. NO model call. Decides purely from cheap durable state.
+ *
+ * @param {object} item     the selector's current work item: { id, status, authorized, protectedBoundary, scope, contextPackage }
+ * @param {object} ctx
+ * @param {object} ctx.governor  { remoteAiUsed, remoteAiMax } (the 2/1/1 REMOTE_AI dimension)
+ * @param {string} ctx.network   "NORMAL" | "NETWORK_PRESSURE" | "NETWORK_UNAVAILABLE" | "UNKNOWN"
+ * @param {number|null} ctx.budgetRemainingUsd  null = unknown (fail-safe: treated as usable only if >0 or null-allowed)
+ * @param {string} [ctx.triggerKind]  MANUAL_RUNTIME_TRIGGER | AUTOMATIC_TRIGGER (who is asking)
+ * @param {object} [ctx.lastRun]  { itemId, sha } dedup marker — same item+sha won't re-fire
+ * @param {boolean} [ctx.overnight]  true if inside a no-run window (pilot: no overnight)
+ * @returns {{ decision, reason, item, guardrails, triggerMechanism, triggerKind }}
+ */
+export function assessReadiness(item, ctx = {}) {
+  const { governor = {}, network = "UNKNOWN", budgetRemainingUsd = null, triggerKind = "AUTOMATIC_TRIGGER",
+    lastRun = null, overnight = false } = ctx;
+  const hold = (reason, mechanism = "NO_WAKE_MECHANISM") => ({ decision: "HOLD", reason, item, guardrails: null, triggerMechanism: mechanism, triggerKind });
+
+  if (overnight) return hold("no-run window (supervised pilot: no overnight)");
+  if (!item) return { decision: "CHECKPOINT", reason: "no work item — nothing to trigger", item: null, guardrails: null, triggerMechanism: "NO_WAKE_MECHANISM", triggerKind };
+  if (item.status !== "READY") return { decision: "CHECKPOINT", reason: `item ${item.id} is ${item.status}, not READY`, item, guardrails: null, triggerMechanism: "NO_WAKE_MECHANISM", triggerKind };
+
+  // THE AUTHORITY≠TRIGGER RULE: READY alone is never a reason to run.
+  if (item.authorized !== true) return hold(`${item.id} is READY but NOT authorized — READY is not authorization`);
+  if (item.protectedBoundary) return hold(`${item.id} crosses a protected boundary (${item.protectedBoundary}) — never auto-trigger`);
+
+  // Resource/network/budget guards.
+  const slotFree = Number.isFinite(governor.remoteAiUsed) && Number.isFinite(governor.remoteAiMax)
+    ? governor.remoteAiUsed < governor.remoteAiMax : false;
+  if (!slotFree) return hold(`no free REMOTE_AI slot (${governor.remoteAiUsed}/${governor.remoteAiMax}) — respect the 2/1/1 governor`);
+  if (network !== "NORMAL") return hold(`network ${network} — hold until NORMAL`);
+  if (budgetRemainingUsd != null && budgetRemainingUsd <= 0) return hold("budget exhausted");
+
+  // Dedup: the same item at the same repo SHA must not re-fire.
+  if (lastRun && lastRun.itemId === item.id && lastRun.sha === item.sha) {
+    return hold(`already ran ${item.id} @ ${item.sha} — dedup (no re-trigger on unchanged state)`);
+  }
+
+  const mechanism = triggerKind === "MANUAL_RUNTIME_TRIGGER" ? "MANUAL" : "AUTOMATIC";
+  return { decision: "TRIGGER", reason: `${item.id} is READY + authorized + repo-safe + slot free`, item, guardrails: DEFAULT_GUARDRAILS, triggerMechanism: mechanism, triggerKind };
+}
+
+// Exponential backoff (ms), capped — used after a non-zero exit / budget-hit / max-turns, and to
+// avoid re-firing on unchanged state.
+export function nextBackoffMs(attempts, { baseMs = 60_000, capMs = 900_000 } = {}) {
+  const n = Math.max(0, attempts | 0);
+  return Math.min(capMs, baseMs * 2 ** n);
+}
+
+/**
+ * Construct the fully-guardrailed `claude -p` argv the supervisor WOULD run. The prompt is a C-7
+ * context package (consume the SAME package mechanism — never a bespoke bootstrap). Returns argv for
+ * dry-run logging or supervised live exec; this function spawns nothing.
+ */
+export function buildClaudeInvocation({ contextPackage, guardrails = DEFAULT_GUARDRAILS } = {}) {
+  if (!contextPackage) throw new Error("buildClaudeInvocation: a C-7 contextPackage is required (bootstrap via the shared package mechanism)");
+  const prompt = typeof contextPackage === "string" ? contextPackage : JSON.stringify(contextPackage);
+  const argv = [
+    "-p", prompt,
+    "--output-format", guardrails.outputFormat,
+    "--permission-mode", guardrails.permissionMode,
+    "--model", guardrails.model,
+    "--max-turns", String(guardrails.maxTurns),
+    "--max-budget-usd", String(guardrails.maxBudgetUsd),
+  ];
+  for (const t of guardrails.allowedTools) { argv.push("--allowedTools", t); }
+  for (const t of guardrails.disallowedTools || []) { argv.push("--disallowedTools", t); }
+  return {
+    bin: "claude", argv,
+    wallClockSec: guardrails.wallClockSec, // supervisor enforces externally; SIGTERM on breach
+    note: "DRY-RUN unless supervised+authorized; spawns nothing here. bypassPermissions is NEVER used.",
+  };
+}
