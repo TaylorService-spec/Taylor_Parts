@@ -76,3 +76,21 @@ test("assembleBootstrap composes package + gate + outside-scope + cost", () => {
   assert.equal(boot.coldStartContextCost.staleRetrievals, 0);
   assert.deepEqual(boot.currentState.ownerGateIds, ["G1"]);
 });
+
+test("assembleBootstrap projection carries the DERIVED selector interpretation (terminal-CHECKPOINT visibility)", () => {
+  const pkg = { required: [], onDemand: [], excluded: [], sufficiency: "SUFFICIENT", governingAuthority: null, provenance: { mapVersion: "1.0.0", sourceCommit: "abc" } };
+  const boot = assembleBootstrap({
+    entries: ENTRIES, pkg, scope: ["orchestration"],
+    currentState: {
+      provenance: { freshness: "CURRENT" },
+      derived: { readyItemIds: [], ownerGateIds: ["G1"], protectedActionIds: [], activeAssignmentIds: [] },
+      selectorState: "CHECKPOINT",
+      terminalCheckpoint: true,
+      selectorHint: "No authorized READY work — the selector reached a legitimate terminal CHECKPOINT; ... do not manufacture autonomous work.",
+    },
+    sizes: { l0Bytes: 4000, pointerBytes: 2000, l1Bytes: 0, governingAuthorityBytes: 0 },
+  });
+  assert.equal(boot.currentState.selectorState, "CHECKPOINT");
+  assert.equal(boot.currentState.terminalCheckpoint, true);
+  assert.match(boot.currentState.selectorHint, /do not manufacture autonomous work/i);
+});

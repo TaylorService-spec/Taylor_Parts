@@ -14,6 +14,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { selectNextWork, DECISIONS } from "../lib/selectNextWork.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const REPO = join(here, "..", "..", "..");
@@ -82,6 +83,8 @@ export function deriveCurrentState({ backlogText = "", sourceCommit = null, orig
   const freshness = !sourceCommit || !originMainCommit ? "UNKNOWN"
     : sourceCommit === originMainCommit ? "CURRENT" : "BEHIND_OR_DIVERGED";
 
+  const selector = deriveSelectorInterpretation(derived);
+
   return {
     pointer: "EOS-CURRENT-STATE/1.0.0",
     note: "POINTER/INDEX only — the execution-backlog is the authority; this is a generated digest with provenance. Not a second state store. Regenerate when generatedFromCommit is behind origin/main.",
@@ -95,10 +98,45 @@ export function deriveCurrentState({ backlogText = "", sourceCommit = null, orig
       contextMap: "docs/orchestration/context/context-map.json",
     },
     derived,
-    selectorHint: derived.readyItemIds.length === 0
-      ? "No READY item in the backlog — the last selection reached a legitimate terminal CHECKPOINT. A DIRECTED assignment overrides this; do not manufacture autonomous work."
-      : `${derived.readyItemIds.length} READY item(s) — run the selector for the next-eligible pick.`,
+    selectorState: selector.selectorState,
+    terminalCheckpoint: selector.terminalCheckpoint,
+    selectorHint: selector.selectorHint,
   };
+}
+
+/**
+ * Selector interpretation of the digest, DERIVED by running the real selector AUTHORITY
+ * (`selectNextWork`) over the backlog sections — never a second policy and never an empty-array
+ * shortcut. The terminal-CHECKPOINT conclusion ("no authorized READY work; do not manufacture
+ * autonomous work") is emitted ONLY when `selectNextWork` itself returns CHECKPOINT, i.e. no
+ * actionable work (RUNNING/READY/…), no repo-safe prerequisite hiding in a blocked item, and no
+ * resource wait remain — and genuine gates (Owner/protected/blocked) are what is left. If a READY or
+ * RUNNING item exists, the selector returns RUN and terminal is NOT emitted.
+ *
+ * The digest only tracks READY / RUNNING / OWNER_DECISION / PROTECTED_ACTION / BLOCKED_DEPENDENCY
+ * (the pointer's SECTIONS). It carries no per-item prerequisiteWork, so a blocked row is mapped as a
+ * passive blocker; the selector's prerequisite/resource branches remain reachable for callers that
+ * pass richer items, and are faithfully represented in the interpretation below.
+ */
+export function deriveSelectorInterpretation(derived = {}) {
+  const items = [
+    ...(derived.readyItemIds || []).map((id) => ({ id, state: "READY" })),
+    ...(derived.activeAssignmentIds || []).map((id) => ({ id, state: "RUNNING" })),
+    ...(derived.ownerDecisionIds || []).map((id) => ({ id, state: "OWNER_DECISION" })),
+    ...(derived.protectedActionIds || []).map((id) => ({ id, state: "PROTECTED_ACTION" })),
+    ...(derived.blockedIds || []).map((id) => ({ id, state: "BLOCKED_DEPENDENCY" })),
+  ];
+  const decision = selectNextWork(items).decision;
+  const terminalCheckpoint = decision === DECISIONS.CHECKPOINT;
+
+  const HINTS = {
+    [DECISIONS.RUN]: `${(derived.readyItemIds || []).length} READY / ${(derived.activeAssignmentIds || []).length} RUNNING — actionable work remains; run the selector for the next-eligible pick.`,
+    [DECISIONS.PREREQUISITE_AVAILABLE]: "No READY item, but a blocked item exposes repo-safe prerequisite work — the selector points to that prerequisite; not a terminal checkpoint.",
+    [DECISIONS.WAIT_RESOURCE]: "Only resource-waiting work remains — a transient WAIT, not a gate and not terminal; hold and retry when a slot frees.",
+    [DECISIONS.CHECKPOINT]: "No authorized READY work — the selector reached a legitimate terminal CHECKPOINT; only genuine gates (Owner/protected/blocked) remain. A DIRECTED assignment overrides this; do not manufacture autonomous work.",
+    [DECISIONS.ROADMAP_COMPLETE]: "Nothing left in any non-DONE state — the selector reports ROADMAP_COMPLETE; do not manufacture autonomous work.",
+  };
+  return { selectorState: decision, terminalCheckpoint, selectorHint: HINTS[decision] || decision };
 }
 
 function git(cmd) {
