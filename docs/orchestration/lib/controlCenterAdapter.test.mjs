@@ -73,6 +73,50 @@ test("the schema version is a real semver major a consumer can pin", () => {
   assert.match(CONTROL_CENTER_SCHEMA_VERSION, /^\d+\.\d+\.\d+$/);
 });
 
+test("§Agent Operations: UNKNOWN without a ledger; built from an injected ledger, never fabricated", () => {
+  assert.equal(payload().agentOperations.available, false); // no ledger -> honest unavailable
+  const p = buildControlCenterPayload({
+    commit: "c", generatedAt: "t", ownerRelayCount: 0,
+    ledger: {
+      requests: [{ requestId: "R1", requestedByWorkstream: "UX", mode: "PERSONA", purpose: "x", status: "COMPLETE" }],
+      results: [{ resultId: "R1-r", requestId: "R1", routedBackTo: "UX", status: "COMPLETE", findings: ["a"] }],
+    },
+  });
+  assert.ok(p.agentOperations.metrics, "agent ops built from the ledger");
+  assert.equal(p.agentOperations.ownerRelayCount, 0);
+  assert.equal(p.agentOperations.metrics.acceptedFindings, 1);
+});
+
+test("§Network Health: UNKNOWN without a summary; sanitized-only when injected (no raw telemetry)", () => {
+  assert.equal(payload().networkHealth.available, false);
+  const p = buildControlCenterPayload({
+    commit: "c", generatedAt: "t",
+    networkHealth: { state: "NORMAL", confidence: "HIGH", reasonCodes: ["ALL_HEALTHY"], connectionCount: 40, asOf: "2026-08-09" },
+  });
+  assert.equal(p.networkHealth.state, "NORMAL");
+  assert.equal(p.networkHealth.connectionCount, 40);
+  assert.ok(!/tcp_conns|,ok,|wan2_ms/.test(JSON.stringify(p.networkHealth)), "no raw CSV shape leaks");
+});
+
+test("§Recent Progress: DONE items with PR evidence, ordered by PR number, no invented timeline", () => {
+  const rp = payload().recentProgress;
+  assert.ok(rp.length > 0, "there is recorded progress");
+  for (let i = 1; i < rp.length; i++) assert.ok(rp[i - 1].latestPr >= rp[i].latestPr, "ordered by latest PR desc");
+  assert.ok(rp.every((x) => x.prs && x.prs.length > 0), "every entry cites PR evidence (none dated from nothing)");
+});
+
+test("§UX board now carries the registered UX workstream (gap 4 closed)", () => {
+  const ux = payload().views.uxBoard;
+  assert.ok(ux.length >= 3, "UX-1 / UX-2 / UX-3 (+ invalid-date) projected into uxBoard");
+  assert.ok(ux.some((r) => /Coordinated Visits/.test(r.name)), "UX-2 present");
+  assert.ok(ux.some((r) => r.status === "OWNER_DECISION"), "UX-3 grain stays an Owner decision, not flattened");
+});
+
+test("the additive schema is 1.1 and still major-1 compatible for a pinned consumer", () => {
+  assert.equal(payload().schemaVersion, "1.1.0");
+  assert.equal(checkPayloadCompatibility(payload(), 1).compatible, true);
+});
+
 import fs from "node:fs";
 function readSource() {
   return fs.readFileSync(new URL("./controlCenterAdapter.mjs", import.meta.url), "utf8");

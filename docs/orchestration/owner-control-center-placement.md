@@ -58,6 +58,29 @@ No invented completion percentages. If progress is ever expressed numerically it
 derive from explicit milestones already asserted in the model — a test asserts the
 adapter contains no percentage arithmetic.
 
+## v1.1 — additional projections (additive, still major 1)
+
+Four genuine Taylor projection gaps are now emitted by the same adapter/envelope (no second
+authority, no reach-around; keystone still only renders):
+
+- **`views.uxBoard`** — now populated. The registered UX workstream is projected into the ONE
+  roadmap (a `UX / Experience` domain in [`lib/roadmapModel.mjs`](./lib/roadmapModel.mjs)); the
+  durable schedulability view of the same items stays in `execution-backlog.md`. UX-3's grain stays
+  `OWNER_DECISION`, not flattened (persona evidence ≠ product authority).
+- **`agentOperations`** — from the durable [agent-request/result ledger](./agent-requests/) via the
+  existing `projectAgentOperations`: remote/browser/network-heavy slots, running/queued,
+  WAITING_RESOURCE, deduped/reused, retries, routed results, **Owner relay count**, exposed token
+  metrics. **Injected** into the pure adapter (the generator loads the ledger). UNKNOWN when absent.
+- **`networkHealth`** — the **sanitized** telemetry summary only (state, freshness, reason codes,
+  latency, connection count, logger/supervisor health where supplied). **No raw telemetry, no
+  household traffic.** UNKNOWN when no summary is injected.
+- **`recentProgress`** — DONE/DELIVERED work items that cite PR evidence, ordered by PR number (a
+  trustworthy monotonic sequence). **Not** a git-history dump; items without PR evidence are omitted
+  rather than dated from nothing.
+
+`schemaVersion` bumped `1.0.0 → 1.1.0` (additive). A consumer pinned to major 1 still renders it;
+absent sections read as `{ available: false, reason }`, honest UNKNOWN rather than fabricated.
+
 ## v1 runtime
 
 keystone Control Center code **+** this local adapter **→** a locally served browser

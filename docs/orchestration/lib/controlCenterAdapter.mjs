@@ -26,7 +26,7 @@ import { roadmapModel, validateRoadmapModel } from "./roadmapModel.mjs";
 // The contract is dependency-free and lives in its own module so a consumer can
 // vendor it without dragging the roadmap model along -- see controlCenterContract.mjs.
 import { CONTROL_CENTER_SCHEMA_VERSION, PRESERVED_DISTINCTIONS, checkPayloadCompatibility } from "./controlCenterContract.mjs";
-import { projectAll } from "./roadmapProjection.mjs";
+import { projectAll, projectAgentOperations, projectRecentProgress } from "./roadmapProjection.mjs";
 
 /**
  * Build the Control Center payload.
@@ -43,6 +43,11 @@ export function buildControlCenterPayload({
   projectId = "taylor-parts",
   commit = null,
   generatedAt = null,
+  // Injected durable state so the adapter stays pure (no I/O): the generator/consumer
+  // loads these from the committed ledger + sanitized telemetry summary and passes them in.
+  ledger = null, // { requests: [...], results: [...] } from docs/orchestration/agent-requests/
+  networkHealth = null, // sanitized telemetry summary (telemetry-summary.json) — never raw
+  ownerRelayCount = 0,
 } = {}) {
   // Fail closed: never hand a renderer a model this repo would not accept itself.
   const validation = validateRoadmapModel(model);
@@ -50,6 +55,10 @@ export function buildControlCenterPayload({
   if (errors.length > 0) {
     throw new Error(`controlCenterAdapter: refusing to emit an invalid roadmap model (${errors.length} error(s))`);
   }
+
+  // Honest UNKNOWN when a source is not provided — a Control Center section built on
+  // absent evidence must say so, never fabricate metrics.
+  const unavailable = (reason) => ({ available: false, reason });
 
   return {
     schemaVersion: CONTROL_CENTER_SCHEMA_VERSION,
@@ -65,7 +74,31 @@ export function buildControlCenterPayload({
     preservedDistinctions: PRESERVED_DISTINCTIONS,
     // The existing eight read-only views, unmodified. keystone renders; it does not
     // recompute status, and it must not derive progress the model has not asserted.
+    // (uxBoard now populates from the model's UX / Experience domain.)
     views: projectAll(model),
+    // §Agent Operations — from the durable agent-request/result ledger via the existing
+    // pure projection. Fail-closed UNKNOWN when no ledger is injected; nothing fabricated.
+    agentOperations: ledger
+      ? projectAgentOperations(ledger.requests || [], ledger.results || [], { networkHealth, ownerRelayCount })
+      : unavailable("no agent-request ledger provided"),
+    // §Network Health — sanitized orchestration-relevant state ONLY (no raw telemetry,
+    // no household traffic). UNKNOWN when no sanitized summary is provided.
+    networkHealth: networkHealth
+      ? {
+          state: networkHealth.state ?? "UNKNOWN",
+          confidence: networkHealth.confidence ?? "UNKNOWN",
+          telemetryAvailable: networkHealth.telemetryAvailable ?? null,
+          sampleAgeSec: networkHealth.sampleAgeSec ?? null,
+          reasonCodes: networkHealth.reasonCodes || [],
+          recentLatency: networkHealth.recentLatency || null,
+          connectionCount: networkHealth.connectionCount ?? null,
+          asOf: networkHealth.asOf || null,
+          loggerHealth: networkHealth.loggerHealth || null, // supervisor/logger health when supplied
+        }
+      : unavailable("no sanitized telemetry summary provided"),
+    // §Recent Progress — derived only from the model's own DONE + PR evidence (trustworthy
+    // sequence), never a git-history dump and never a fabricated timeline.
+    recentProgress: projectRecentProgress(model),
   };
 }
 

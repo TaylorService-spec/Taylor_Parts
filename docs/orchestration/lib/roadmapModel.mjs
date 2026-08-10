@@ -337,6 +337,46 @@ export const roadmapModel = Object.freeze({
       ],
     },
     {
+      // UX / Experience — the registered UX workstream, projected into the single roadmap so
+      // projectUxBoard() (which filters workstreamOwner === "UX") populates the Control Center's UX board.
+      // This is NOT a second UX registry: the durable schedulability view of the same items lives in
+      // execution-backlog.md; these are the machine-readable roadmap entries of that same registered work.
+      // Persona/UX evidence is EVIDENCE, not product authority (a grain decision stays OWNER_DECISION).
+      id: "ux-experience", name: "UX / Experience", kind: "DOMAIN",
+      capabilities: [
+        { id: "ux1-vocabulary-sweep", name: "UX-1 Cross-surface business-claim vocabulary sweep", workstreamOwner: "UX",
+          status: "DONE", implementationState: "NOT_APPLICABLE", activationState: "NOT_APPLICABLE", backendState: "NOT_APPLICABLE",
+          userOperable: "NOT_APPLICABLE", uxState: "COMPLETE", deployState: "NOT_APPLICABLE", dependencies: [], lastVerifiedRepoState: "4cd5520",
+          milestones: [{ id: "ux1-m1", name: "Priority vocabulary + business-claim sweep round", complete: true,
+            completionCriteria: ["one priority vocabulary", "5 fixed / 2 confirmed honest"],
+            workItems: [{ id: "ux1-w1", name: "priority vocabulary + sweep close", status: "DONE", owner: "UX",
+              prEvidence: ["#714", "#717"], evidence: [{ kind: "PR", ref: "#714" }, { kind: "PR", ref: "#717" }] }] }] },
+        { id: "ux-invalid-date", name: "Operational History 'Invalid Date' (UX-1 family)", workstreamOwner: "UX",
+          status: "DONE", implementationState: "IMPLEMENTED", activationState: "NOT_APPLICABLE", backendState: "NOT_APPLICABLE",
+          userOperable: true, uxState: "COMPLETE", deployState: "UNKNOWN", dependencies: [], lastVerifiedRepoState: "0a6bd22",
+          milestones: [{ id: "uxid-m1", name: "Root-caused (rendering defect) + fixed with canonical formatClockTime + test", complete: true,
+            completionCriteria: ["never renders Invalid Date", "canonical toMillis path", "test"],
+            workItems: [{ id: "uxid-w1", name: "formatClockTime + WorkOrderDetail + convergence fix", status: "DONE", owner: "UX",
+              prEvidence: ["#729"], evidence: [{ kind: "PR", ref: "#729" }, { kind: "BROWSER_RUN", ref: "pilot classify+fix" }] }] }] },
+        { id: "ux2-coordinated-visits", name: "UX-2 Coordinated Visits / Mission SAMPLE recheck", workstreamOwner: "UX",
+          status: "DONE", implementationState: "NOT_APPLICABLE", activationState: "NOT_APPLICABLE", backendState: "NOT_APPLICABLE",
+          userOperable: "NOT_APPLICABLE", uxState: "COMPLETE", deployState: "NOT_APPLICABLE", dependencies: [], lastVerifiedRepoState: "4cd5520",
+          milestones: [{ id: "ux2-m1", name: "Live recheck: SAMPLE treatment (banner + per-row) resolves confusion → ACCEPTABLE", complete: true,
+            completionCriteria: ["live browser recheck", "ACCEPTABLE or minimum correction"],
+            workItems: [{ id: "ux2-w1", name: "supervised pilot recheck + close", status: "DONE", owner: "UX",
+              prEvidence: ["#727", "#731"], evidence: [{ kind: "PR", ref: "#727" }, { kind: "PR", ref: "#731" }, { kind: "BROWSER_RUN", ref: "coordinated-visits" }] }] }] },
+        { id: "ux3-activity-grain", name: "UX-3 Activity destination scope (grain)", workstreamOwner: "UX",
+          status: "OWNER_DECISION", implementationState: "NOT_APPLICABLE", activationState: "NOT_APPLICABLE", backendState: "NOT_APPLICABLE",
+          userOperable: "NOT_APPLICABLE", uxState: "PARTIAL", deployState: "NOT_APPLICABLE",
+          ownerDecision: "Evidence phase DONE (5 Activity surfaces + grains + wayfinding discrepancy routed); the residual 'what grain should a standalone Activity destination be' is a product-direction decision — persona evidence is evidence, not authority.",
+          dependencies: [], lastVerifiedRepoState: "4cd5520",
+          milestones: [{ id: "ux3-m1", name: "Evidence gathered (UX-EX-001) → routed to UX; grain remains product-direction", complete: true,
+            completionCriteria: ["surfaces + grains enumerated", "questionsRaised routed"],
+            workItems: [{ id: "ux3-w1", name: "Activity destination evidence", status: "OWNER_DECISION", owner: "Owner",
+              evidence: [{ kind: "DOC", ref: "agent-requests/UX-EX-001.result.json" }] }] }] },
+      ],
+    },
+    {
       id: "roadmap-register-future", name: "Roadmap Register (identified future capabilities)", kind: "PROGRAM",
       capabilities: [
         futureCapability("service-contracts-pm", "Service Contracts / Preventive Maintenance", "Before recurring/contract Service implementation"),

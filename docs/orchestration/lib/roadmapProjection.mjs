@@ -159,6 +159,32 @@ export function projectAgentOperations(requests = [], results = [], { networkSta
   };
 }
 
+// Recent Progress (Control Center §Recent Progress) — meaningful change history derived
+// ONLY from what the model already asserts: DONE/DELIVERED work items that cite PR
+// evidence, ordered by the highest PR number they reference. PR numbers are a trustworthy
+// monotonic sequence; this is NOT a git-history dump and fabricates no timeline. Items
+// without PR evidence are omitted rather than dated from unavailable facts.
+export function projectRecentProgress(model = roadmapModel, { limit = 20 } = {}) {
+  const items = [];
+  for (const d of model.domains || []) {
+    for (const c of d.capabilities || []) {
+      for (const m of c.milestones || []) {
+        for (const w of m.workItems || []) {
+          if (w.status !== "DONE" && w.status !== "DELIVERED") continue;
+          const prNums = (w.prEvidence || []).map((p) => Number(String(p).replace("#", ""))).filter((n) => Number.isFinite(n));
+          if (prNums.length === 0) continue; // no trustworthy evidence → omit, don't invent
+          items.push({
+            capability: c.name, domain: d.name, workstream: c.workstreamOwner,
+            item: w.name, prs: [...w.prEvidence], latestPr: Math.max(...prNums),
+          });
+        }
+      }
+    }
+  }
+  items.sort((a, b) => b.latestPr - a.latestPr);
+  return items.slice(0, limit);
+}
+
 // Convenience: all eight views at once (used by the generator).
 export function projectAll(model = roadmapModel) {
   return {
