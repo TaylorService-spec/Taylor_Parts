@@ -145,6 +145,14 @@ export default function WorkOrderDetail({ workOrder, jobs, role, technicians, cu
       {history.length > 0 && (
         <div className="wo-history">
           <h4>Operational History</h4>
+          {/* The approximation was conceded only in the source comment below, where no
+             user can read it. "History" implies a durable, authoritative record; this is
+             DERIVED from job.createdAt, so milestone times are reconstructed rather than
+             recorded. Say so on the surface -- a reader quoting a time to a customer
+             needs to know which kind of thing they are quoting. */}
+          <p className="fo-muted wo-history__basis">
+            Reconstructed from Work Order milestones — times are approximate, not a recorded audit trail.
+          </p>
           {/* Timestamps are approximated from job.createdAt (see
               timelineBuilder.js) -- displayed as a time-of-day for
               readability, not as a claim of precise event timing. */}
