@@ -11,6 +11,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { runOpenAIReview, buildReviewInvocation, estimateCost, guardBudget, DEFAULT_PRICING_ESTIMATE } from "../lib/openaiReviewProvider.mjs";
+import { safeRequestId, safeDiffPath } from "../lib/reviewInputSafety.mjs";
 import { coldStart } from "./cold-start.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -76,9 +77,14 @@ function readGoverningAuthorityText(boot) {
 
 async function main() {
   const scope = (arg("scope") || "orchestration").split(",");
-  const requestId = arg("request", "REVIEW-DRYRUN");
-  const diffPath = arg("diff");
-  const diff = diffPath ? readFileSync(diffPath, "utf8") : "(no diff supplied — dry-run)";
+  // Inputs come from ENV (workflow) or --flags (local). They are NEVER shell-interpolated. request_id
+  // is bounded; diff_path is validated (repo-relative, in-checkout, must exist) before any file read.
+  const REPO = join(here, "..", "..", "..");
+  const requestId = safeRequestId(process.env.REVIEW_REQUEST_ID ?? arg("request", "REVIEW-DRYRUN"));
+  const rawDiffPath = process.env.REVIEW_DIFF_PATH ?? arg("diff") ?? "";
+  const diffCheck = safeDiffPath({ repoRoot: REPO, rawPath: rawDiffPath });
+  if (!diffCheck.ok) { process.stdout.write(JSON.stringify({ mode: flag("live") ? "LIVE" : "DRY_RUN", ok: false, failureKind: "DIFF_PATH_INVALID", reason: diffCheck.reason, wouldInvoke: false }, null, 2) + "\n"); process.exit(1); }
+  const diff = diffCheck.path ? readFileSync(diffCheck.path, "utf8") : "(no diff supplied — dry-run)";
   const spentSoFarUsd = Number(arg("spent", "0")) || 0;
 
   // Minimum C-7 context package via the SAME cold-start path (no second context mechanism).
