@@ -9,6 +9,14 @@
 name: Reciprocal GPT Review (manual, dry-run default)
 
 on:
+  # EVENT PATH (smallest supported): EOS/Claude emits a repository_dispatch when a durable AI_REVIEW
+  # becomes eligible. A dispatched event carries NO `inputs.mode`, so it falls through to the DRY-RUN
+  # branch below (no key, no provider call) — the event path is INERT until an operator explicitly runs
+  # a live review. There is deliberately NO `push`/`pull_request`/`schedule` trigger: a GPT call is never
+  # made on every push/PR/commit or on a clock.
+  repository_dispatch:
+    types: [eos-ai-review-eligible]
+  # OPERATOR FALLBACK + the live activation surface.
   workflow_dispatch:
     inputs:
       mode:

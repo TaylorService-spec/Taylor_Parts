@@ -39,9 +39,14 @@ test("LIVE receives BOTH the model variable and the API key secret", () => {
   assert.match(live, /refusing live call/i, "live step refuses when the secret is absent");
 });
 
-test("the workflow is manual-dispatch only (never auto-triggered on push/PR)", () => {
-  assert.match(yaml, /on:\s*\n\s*workflow_dispatch:/, "must be workflow_dispatch only");
-  assert.ok(!/^\s*push:/m.test(yaml) && !/^\s*pull_request:/m.test(yaml), "no push/pull_request triggers");
+test("no auto-on-code or clock triggers; only manual dispatch + the inert repository_dispatch event path", () => {
+  assert.match(yaml, /workflow_dispatch:/, "operator dispatch present");
+  assert.match(yaml, /repository_dispatch:/, "event path present");
+  assert.match(yaml, /types:\s*\[eos-ai-review-eligible\]/, "scoped event type");
+  // A GPT call must never fire on every push/PR/commit or on a clock.
+  assert.ok(!/^\s*push:/m.test(yaml), "no push trigger");
+  assert.ok(!/^\s*pull_request:/m.test(yaml), "no pull_request trigger");
+  assert.ok(!/^\s*schedule:/m.test(yaml), "no schedule/cron trigger");
 });
 
 // ── Input-injection hardening: inputs flow via env, NEVER interpolated into shell ────────────────
