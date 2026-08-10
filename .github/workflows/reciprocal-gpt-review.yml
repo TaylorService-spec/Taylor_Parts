@@ -1,0 +1,58 @@
+# Reciprocal INDEPENDENT_AI GPT review — repo-safe trigger path.
+#
+# SAFETY: manual-dispatch ONLY (workflow_dispatch). It NEVER runs on push/PR, so a merge can never
+# trigger a live OpenAI call. Default mode is DRY-RUN (no provider call, no key read). A live call
+# requires (a) mode=live at dispatch AND (b) the OPENAI_API_KEY repo secret being set by the Owner —
+# this is the activation boundary. The key is referenced only via the secrets context and is never
+# printed. Ceilings are enforced in-code (openaiReviewProvider): $0.25/review, $10 pilot total, no
+# auto-recharge.
+name: Reciprocal GPT Review (manual, dry-run default)
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "dry-run (default, no provider call) | live (Owner activation — real API call + spend)"
+        required: true
+        default: "dry-run"
+        type: choice
+        options: ["dry-run", "live"]
+      request_id:
+        description: "review request id"
+        required: false
+        default: "REVIEW-DRYRUN"
+      diff_path:
+        description: "path to a diff file in the repo to review (optional)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Dry-run (no provider call, no key)
+        if: ${{ inputs.mode != 'live' }}
+        run: |
+          node docs/orchestration/context/openai-review.mjs \
+            --request "${{ inputs.request_id }}" \
+            ${{ inputs.diff_path != '' && format('--diff {0}', inputs.diff_path) || '' }}
+      - name: Live review (Owner activation boundary — real spend, ceilings enforced in-code)
+        if: ${{ inputs.mode == 'live' }}
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}   # injected secret; never printed
+          OPENAI_REVIEW_MODEL: ${{ vars.OPENAI_REVIEW_MODEL }}
+        run: |
+          if [ -z "${OPENAI_API_KEY}" ]; then
+            echo "OPENAI_API_KEY secret not set — refusing live call (activation boundary not crossed)."
+            exit 1
+          fi
+          node docs/orchestration/context/openai-review.mjs --live \
+            --request "${{ inputs.request_id }}" \
+            ${{ inputs.diff_path != '' && format('--diff {0}', inputs.diff_path) || '' }}
