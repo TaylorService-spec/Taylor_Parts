@@ -31,7 +31,9 @@ function workArtifacts() {
 function ingestOne(location) {
   const bytes = readFileSync(join(REPO, location));
   const a = JSON.parse(bytes);
-  const r = ingestIntake({ requestId: a.requestId, location, sha256: a.sha256, bytes, now: NOW });
+  // Use the artifact's own updatedAt as the status timestamp so write-back is DETERMINISTIC and idempotent:
+  // the same work artifact always derives byte-identical status (no timestamp churn, no commit noise).
+  const r = ingestIntake({ requestId: a.requestId, location, sha256: a.sha256, bytes, now: a.updatedAt || NOW });
   return { requestId: a.requestId, status: r.status, state: r.status.state, mayExecute: r.gate.mayExecute };
 }
 

@@ -116,15 +116,35 @@ credential. When the EOS Secret Broker exists, execution asks it "do you have OP
 supplies the credential internally to the provider call — Claude/ChatGPT never see the key, and no key ever
 appears in an artifact, status, result, or log.
 
-## Automatic consumption
+## Automatic consumption + status write-back
 
-The `eos-intake-ingest` workflow runs on any change to a `*.work.json` artifact: it resolves every artifact
-fail-closed (a bad self-hash fails CI), projects it, derives status, and checks the committed status matches
-— $0, no worker, no model, no secret. Writing the derived status **back** to the repo (so `status://<id>`
-exists at its deterministic path for ChatGPT to read) requires `contents: write` and is the **Owner-gated**
-step: enable a repo-write automation (a `contents: write` job or the EOS-owned runtime) rather than running
-`work-intake.mjs --emit-status` by hand. Until then, the status artifact is committed alongside the work
-artifact in the same reviewed PR.
+Two workflows close the loop with no Owner PowerShell:
+
+- `eos-intake-ingest` (read-only) — on any `*.work.json` change it resolves every artifact fail-closed
+  (a bad self-hash fails CI), projects it into the existing selector, derives status, and checks the
+  committed status matches. $0, no worker, no model, no secret.
+- `eos-intake-writeback` (`contents: write`) — on a merge to `main` it derives each artifact's status and
+  **commits it to the deterministic `status://<id>` path** so a ChatGPT read connector fetches status
+  without search. It is idempotent (status uses the artifact's own `updatedAt`, so re-runs are
+  byte-identical — no commit churn), scoped to write only `status/` + `results/`, commits with `[skip ci]`,
+  and is triggered only by `*.work.json` so its own commits never re-trigger it. `main` is unprotected, so
+  the default token pushes; if branch protection is added later, allow the `github-actions` bot or switch it
+  to open a PR.
+
+## Execution runtime (EXECUTION_AUTHORIZED → worker → result)
+
+`intakeExecute.runIntakeExecution` carries an already-resolved intake through the EXISTING Wake Supervisor
+(`executeWake`) to a content-addressed result + a `COMPLETE` status — no second execution mechanism. It
+spawns **zero** until the intake-state gate (EXECUTION_AUTHORIZED + independent AUTHORIZED + no protected
+boundary) AND the capability seam both pass; a paid capability with no Secret Broker is `BLOCKED`, never a
+fabricated result; a wake failure is `FAILED`, never reported complete. `context/intake-runtime.mjs execute
+--id … --location … --sha256 …` is the persistent-trigger entrypoint a hosted EOS runtime (or a self-hosted
+CI runner with the `claude` CLI) calls per eligible item; it writes the status and, on COMPLETE, the
+content-addressed result content + manifest + deterministic index. The same pure driver is exercised by the
+acceptance test with an injected fake worker (`intakeAcceptance.test.mjs`), so the full chain is proven with
+no live model call. Live auto-execution activates when a worker runtime is provisioned and — for paid
+capabilities — the EOS Secret Broker (Codex/#790 boundary) is wired; until then paid items resolve to
+`BLOCKED` fail-closed and no result is fabricated.
 
 ## Producer hash recipe (required)
 
