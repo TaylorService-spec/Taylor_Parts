@@ -3,6 +3,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import * as z from "zod/v4";
 import { SCOPES, requireScope } from "./auth.mjs";
 import { buildIntake, compactSubmitResponse } from "./artifacts.mjs";
+import { buildReviewAuthorization } from "../../../docs/orchestration/lib/reviewAuthorization.mjs";
 
 const response = (value) => ({
   content: [{ type: "text", text: value.pointer || value.submit || JSON.stringify(value) }],
@@ -52,6 +53,23 @@ export function createIntakeMcpServer({ store, now = () => new Date().toISOStrin
   }, async ({ requestId }, extra) => {
     requireScope(extra, SCOPES.read);
     return response(await store.result(requestId));
+  });
+
+  server.registerTool("authorize_review", {
+    title: "Authorize a governed OpenAI review",
+    description: "Creates a reviewed GitHub authority artifact with a maximum spend ceiling. It never resolves a credential or invokes OpenAI.",
+    inputSchema: {
+      workId: z.string().regex(/^[A-Z0-9][A-Z0-9._-]{2,79}$/),
+      reviewId: z.string().regex(/^[A-Z0-9][A-Z0-9._-]{2,79}$/),
+      maxSpendUsd: z.number().positive().finite(),
+      sourceCommit: z.string().regex(/^[0-9a-f]{40}$/),
+      provenance: z.string().min(1),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+  }, async (input, extra) => {
+    const auth = requireScope(extra, SCOPES.authorizeReview);
+    const artifact = buildReviewAuthorization(input, auth, now());
+    return response(await store.authorizeReview(artifact));
   });
   return server;
 }

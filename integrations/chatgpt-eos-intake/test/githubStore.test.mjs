@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { GitHubArtifactStore } from "../src/githubStore.mjs";
 import { buildIntake } from "../src/artifacts.mjs";
 import { buildContentAddressedResult } from "../../../docs/orchestration/lib/workIntake.mjs";
+import { buildReviewAuthorization } from "../../../docs/orchestration/lib/reviewAuthorization.mjs";
 
 const jsonResponse = (value, status = 200) => new Response(JSON.stringify(value), { status, headers: { "content-type": "application/json" } });
 const artifact = buildIntake({ requestId: "EOS-INTAKE-002", title: "Intake", intent: "Connect", scope: ["integrations/**"], contextScope: ["C-7"], provenance: "Owner", status: "EOS_READY", authorizationState: "REPO_SAFE", authorityBasis: "repo-safe", issueRefs: [] }, { subject: "owner", clientId: "chatgpt" }, "2026-08-10T12:00:00.000Z");
@@ -55,4 +56,16 @@ test("GitHub result returns only a verified content-addressed pointer", async ()
   assert.equal(value.pointer, "result://EOS-INTAKE-002");
   assert.equal(value.contentSha256, built.manifest.contentSha256);
   assert.equal(value.summary, "Integrated");
+});
+
+test("GitHub review authorization writes only a governed artifact branch and PR", async () => {
+  const authorization = buildReviewAuthorization({ workId: "EOS-INTAKE-002", reviewId: "REVIEW-790", maxSpendUsd: 0.25, sourceCommit: "a".repeat(40), provenance: "Owner" }, { subject: "owner", clientId: "chatgpt" }, "2026-08-11T06:00:00.000Z");
+  const calls = [];
+  const replies = [{ object: { sha: "base" } }, { ref: "created" }, { commit: { sha: "authorization-commit" } }, { number: 43, html_url: "https://github.example/pull/43" }];
+  const store = new GitHubArtifactStore({ owner: "o", repo: "r", token: "secret", fetchImpl: async (url, options) => { calls.push({ url, options }); return jsonResponse(replies.shift()); } });
+  const result = await store.authorizeReview(authorization);
+  assert.equal(result.pointer, "authorization://REVIEW-790");
+  const written = JSON.parse(Buffer.from(JSON.parse(calls[2].options.body).content, "base64"));
+  assert.equal(written.sha256, authorization.sha256);
+  assert.ok(!/apiKey|secretValue/i.test(JSON.stringify(written)));
 });

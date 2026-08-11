@@ -1,7 +1,7 @@
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { InvalidTokenError } from "@modelcontextprotocol/sdk/server/auth/errors.js";
 
-export const SCOPES = Object.freeze({ read: "eos.intake.read", submit: "eos.intake.submit" });
+export const SCOPES = Object.freeze({ read: "eos.intake.read", submit: "eos.intake.submit", authorizeReview: "eos.authorize_review" });
 
 export class JwtAccessTokenVerifier {
   constructor({ issuer, audience, jwksUri, jwks = createRemoteJWKSet(jwksUri) }) {

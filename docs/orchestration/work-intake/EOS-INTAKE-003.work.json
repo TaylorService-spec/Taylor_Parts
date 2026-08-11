@@ -1,0 +1,37 @@
+{
+  "requestId": "EOS-INTAKE-003",
+  "title": "EOS Secret Broker and OpenAI credential capability",
+  "intent": "Keep OPENAI_API_KEY inside a trusted DPAPI-backed EOS runtime while requiring independently verified work and budget authorization before OPENAI_REVIEW use.",
+  "scope": [
+    "docs/orchestration/lib/secretProvider*.mjs",
+    "docs/orchestration/lib/openaiCredentialTransport*.mjs",
+    "docs/orchestration/lib/reviewAuthorization.mjs",
+    "tools/eos-secrets/**",
+    "integrations/chatgpt-eos-intake/**",
+    "docs/orchestration/secret-broker.md"
+  ],
+  "contextScope": [
+    "C-7",
+    "EOS_INTAKE",
+    "OPENAI_REVIEW"
+  ],
+  "source": {
+    "producer": "ChatGPT authenticated MCP",
+    "provenance": "Owner-authored ChatGPT request in Codex session",
+    "authenticatedSubject": "owner-chatgpt-session",
+    "oauthClientId": "codex-repository-build"
+  },
+  "status": "EOS_READY",
+  "authority": {
+    "authorizationState": "REPO_SAFE",
+    "basis": "Owner explicitly authorized repo-safe security/credential implementation; no real secret, live call, or deployment."
+  },
+  "artifactLocation": "docs/orchestration/work-intake/EOS-INTAKE-003.work.json",
+  "sha256": "86e76a4f8a24ce4ae2bc288b95844d1d6e2d46a3cc3abf99db97ca94988d4a2e",
+  "createdAt": "2026-08-11T06:15:00.000Z",
+  "updatedAt": "2026-08-11T06:15:00.000Z",
+  "relatedRefs": {
+    "issues": [],
+    "pullRequests": []
+  }
+}

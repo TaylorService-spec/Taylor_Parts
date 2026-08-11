@@ -9,8 +9,11 @@ Integration-ready, repo-safe MCP resource server for the existing governed work-
 | Submit | `submit_work` | `work://<requestId>` plus exact location and SHA-256 |
 | Status | `get_work_status` | `status://<requestId>` plus verified compact state |
 | Result | `get_work_result` | `result://<requestId>` plus verified content-addressed manifest metadata |
+| Review authority | `authorize_review` | `authorization://<reviewId>` plus exact location and SHA-256 |
 
 `submit_work` accepts `DISCOVERY`, `DESIGN_STAGING`, or `EOS_READY` and `UNAUTHORIZED`, `REPO_SAFE`, or `OWNER_REQUIRED`. It deliberately rejects `EXECUTION_AUTHORIZED` and `AUTHORIZED`: OAuth proves who submitted an artifact; it does not replace repository authorization or grant execution authority. Only an existing governed Owner authorization path can advance that boundary.
+
+`authorize_review` requires the separate `eos.authorize_review` OAuth scope and records a GitHub-reviewed `OPENAI_REVIEW` work/budget authorization artifact. It does not decrypt credentials or call OpenAI. No MCP tool reads, exports, or reports secret material; EOS resolves the credential only inside the trusted runtime through the [Secret Broker](../../docs/orchestration/secret-broker.md).
 
 ## Insertion point and flow
 
@@ -35,7 +38,7 @@ Tests use local keys, an in-memory store, and mocked HTTP. They make no OpenAI o
 
 The repository deliverable stops before these protected/external actions:
 
-1. Provision an OAuth 2.1 authorization server/client policy supporting PKCE and the scopes `eos.intake.read` and `eos.intake.submit`.
+1. Provision an OAuth 2.1 authorization server/client policy supporting PKCE and the scopes `eos.intake.read`, `eos.intake.submit`, and separately restricted `eos.authorize_review`.
 2. Create/install a least-privilege GitHub App or fine-grained token able to read contents and create branches, commits, and pull requests. Supply it through a secret manager as `EOS_INTAKE_GITHUB_TOKEN`.
 3. Deploy this package behind public HTTPS, using `.env.example` as the configuration contract. Do not store credentials in the repository.
 4. Validate with MCP Inspector, then add the `/mcp` URL in ChatGPT developer mode and complete OAuth sign-in.

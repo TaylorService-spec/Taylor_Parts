@@ -9,7 +9,7 @@ export function createApp({ config, verifier, store }) {
   const metadata = {
     resource: config.resource.href,
     authorization_servers: [config.issuer.href],
-    scopes_supported: ["eos.intake.read", "eos.intake.submit"],
+    scopes_supported: ["eos.intake.read", "eos.intake.submit", "eos.authorize_review"],
     resource_name: "Taylor Parts EOS governed intake",
   };
   const metadataPath = new URL(metadataUrl).pathname;

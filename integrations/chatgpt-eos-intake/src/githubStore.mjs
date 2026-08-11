@@ -1,5 +1,6 @@
 import { resolveWorkIntake, statusPointer, resultPointer } from "../../../docs/orchestration/lib/workIntake.mjs";
 import { intakeLocation, serializeArtifact, verifyResultManifest } from "./artifacts.mjs";
+import { authorizationPointer, serializeReviewAuthorization } from "../../../docs/orchestration/lib/reviewAuthorization.mjs";
 
 export class GitHubApiError extends Error {
   constructor(method, path, status, body) { super(`GitHub ${method} ${path} failed (${status}): ${body}`); this.status = status; }
@@ -33,6 +34,24 @@ export class GitHubArtifactStore {
     const write = await this.api(`/contents/${artifact.artifactLocation}`, { method: "PUT", body: JSON.stringify({ message: `intake: ${artifact.requestId}`, content: Buffer.from(serializeArtifact(artifact)).toString("base64"), branch }) });
     const pr = await this.api(`/pulls`, { method: "POST", body: JSON.stringify({ title: `intake: ${artifact.title}`, head: branch, base: this.defaultBranch, body: `Authenticated EOS intake artifact.\n\n\`${artifact.sha256}\`` }) });
     return { branch, pullRequest: pr.number, pullRequestUrl: pr.html_url, sourceCommit: write.commit.sha };
+  }
+
+  async authorizeReview(artifact) {
+    const baseRef = await this.api(`/git/ref/heads/${encodeURIComponent(this.defaultBranch)}`);
+    const branch = `eos-authorization/${artifact.workId.toLowerCase()}-${artifact.reviewId.toLowerCase()}`;
+    let created = true;
+    try { await this.api("/git/refs", { method: "POST", body: JSON.stringify({ ref: `refs/heads/${branch}`, sha: baseRef.object.sha }) }); }
+    catch (error) { if (error.status !== 422) throw error; created = false; }
+    if (!created) {
+      const { value } = await this.readJson(artifact.artifactLocation, branch);
+      if (value.sha256 !== artifact.sha256) throw new Error(`GitHub authorization branch collision for ${artifact.reviewId}`);
+      const pulls = await this.api(`/pulls?state=open&head=${encodeURIComponent(`${this.owner}:${branch}`)}`);
+      if (pulls.length !== 1) throw new Error(`expected one open authorization pull request for ${artifact.reviewId}`);
+      return { pointer: authorizationPointer(artifact.reviewId), location: artifact.artifactLocation, sha256: artifact.sha256, branch, pullRequest: pulls[0].number, pullRequestUrl: pulls[0].html_url, replayed: true };
+    }
+    await this.api(`/contents/${artifact.artifactLocation}`, { method: "PUT", body: JSON.stringify({ message: `authorize review: ${artifact.reviewId}`, content: Buffer.from(serializeReviewAuthorization(artifact)).toString("base64"), branch }) });
+    const pr = await this.api("/pulls", { method: "POST", body: JSON.stringify({ title: `authorize review: ${artifact.reviewId}`, head: branch, base: this.defaultBranch, body: `Governed OPENAI_REVIEW authority and budget ceiling. No credential material.\n\n\`${artifact.sha256}\`` }) });
+    return { pointer: authorizationPointer(artifact.reviewId), location: artifact.artifactLocation, sha256: artifact.sha256, branch, pullRequest: pr.number, pullRequestUrl: pr.html_url };
   }
 
   async readJson(location, ref = this.defaultBranch) {
