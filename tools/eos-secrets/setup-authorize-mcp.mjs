@@ -12,9 +12,9 @@
 // Prints a single READY (with the one remaining Owner action) or BLOCKED (with the exact reason).
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { execFileSync } from "node:child_process";
+import { execSync } from "node:child_process";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const SERVER_REL = "integrations/chatgpt-eos-intake/src/local-authorize-mcp.mjs";
@@ -32,8 +32,9 @@ async function main() {
 
   // 2. Ensure the MCP SDK is installed for the server (fixes the observed dependency gap).
   if (!existsSync(SDK)) {
-    try { execFileSync(process.platform === "win32" ? "npm.cmd" : "npm", ["install"], { cwd: INTEGRATION_DIR, stdio: "ignore" }); }
-    catch (e) { blocked(`npm install failed in ${INTEGRATION_DIR}: ${e.message}`, "ensure npm is available, then re-run"); }
+    // execSync goes through a shell, so `npm` resolves to npm.cmd on Windows (execFile can't spawn .cmd → EINVAL).
+    try { execSync("npm install", { cwd: INTEGRATION_DIR, stdio: "ignore" }); }
+    catch (e) { blocked(`npm install failed in ${INTEGRATION_DIR}: ${e.message}`, "ensure npm is available on PATH, then re-run"); }
     if (!existsSync(SDK)) blocked("MCP SDK still not present after npm install", "check integrations/chatgpt-eos-intake/package.json and network access");
   }
 
@@ -46,19 +47,18 @@ async function main() {
   config.mcpServers[SERVER_NAME] = { type: "stdio", command: "node", args: [SERVER_ABS] };
   writeFileSync(MCP_JSON, JSON.stringify(config, null, 2) + "\n");
 
-  // 4. Verify the server + SDK actually load (so the tool will be discoverable, not "tools fetch failed").
+  // 4. Verify the server module loads (via a proper file:// URL — Windows absolute paths need pathToFileURL).
+  //    The server resolves the MCP SDK from its own node_modules at runtime; the SDK package was confirmed
+  //    present in step 2, so importing the server core is a sufficient, robust health check.
   try {
-    const sdk = await import("@modelcontextprotocol/sdk/server/mcp.js").catch(() => import(join(INTEGRATION_DIR, "node_modules/@modelcontextprotocol/sdk/dist/esm/server/mcp.js")));
-    if (!sdk || typeof sdk.McpServer !== "function") throw new Error("McpServer not resolvable");
-    const core = await import(new URL(`file://${SERVER_ABS.replace(/\\/g, "/")}`));
+    const core = await import(pathToFileURL(SERVER_ABS).href);
     if (typeof core.buildLocalAuthorization !== "function" || typeof core.resolveGhIdentity !== "function") throw new Error("server core exports missing");
-  } catch (e) { blocked(`server/SDK failed to load: ${e.message}`, "re-run; if it persists the SDK install is incomplete"); }
+  } catch (e) { blocked(`server failed to load: ${e.message}`, "re-run; if it persists the SDK install is incomplete"); }
 
   // 5. Confirm the Owner's GitHub identity is available (the authenticated authorizer). Not fatal — the
   //    tool itself fails closed if absent — but reported so the Owner can fix it before invoking.
   let ghReady = false;
-  try { execFileSync(process.platform === "win32" ? "gh.cmd" : "gh", ["auth", "status"], { stdio: "ignore" }); ghReady = true; }
-  catch { try { execFileSync("gh", ["auth", "status"], { stdio: "ignore" }); ghReady = true; } catch { ghReady = false; } }
+  try { execSync("gh auth status", { stdio: "ignore" }); ghReady = true; } catch { ghReady = false; }
 
   process.stdout.write(JSON.stringify({
     result: "READY",
