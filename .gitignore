@@ -21,3 +21,4 @@ netwatch-full.csv
 netwatch.pid
 netwatch.log
 **/netwatch-*.csv
+.mcp.json
