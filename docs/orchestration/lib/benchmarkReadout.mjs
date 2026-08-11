@@ -8,6 +8,7 @@
 // The baseline is the instrumented #319 pilot, preserved verbatim so a regression is visible, never hidden.
 
 import { makeArtifact } from "./reviewArtifacts.mjs";
+import { reconcileTokens } from "./reviewFeedInvocation.mjs";
 
 // The instrumented #319 review + pilot, recorded 2026-08-10 (do not rewrite — it is the comparison point).
 export const BENCHMARK_BASELINE = Object.freeze({
@@ -49,6 +50,11 @@ export function assessBenchmark({ result, ceiling = BENCHMARK_CEILING, baseline 
   };
   const ceilingsRespected = Object.values(ceilings).every((c) => c.within);
 
+  // Token attribution reconciliation: the estimated category total (from the ACTUAL transmitted feed) must
+  // reconcile with the provider's measured input tokens. The old defect was estimatedTotal 0 vs measured
+  // 7,498 — that is now impossible when a feed breakdown was recorded.
+  const tokenReconciliation = reconcileTokens({ estimatedTotal: num(eff.estimatedTotalTokens), measuredInputTokens: num(eff.measuredInputTokens) });
+
   // Efficiency goals (the point of the fact-feed + content-addressing work): one paid call when there was
   // no correction, and zero Owner AI-to-AI relay.
   const ownerRelays = num(result && result.evidence && result.evidence.ownerRelayCount);
@@ -56,6 +62,8 @@ export function assessBenchmark({ result, ceiling = BENCHMARK_CEILING, baseline 
     singlePaidCallNoCorrection: gptCalls <= 1,
     zeroOwnerRelay: ownerRelays === 0,
     smallerThanBaselineInput: num(eff.measuredInputTokens) > 0 && num(eff.measuredInputTokens) <= baseline.review319.gptInputTokens,
+    // The instrumentation must measure the real payload: a nonzero estimate that reconciles with measured.
+    tokenAttributionHonest: num(eff.estimatedTotalTokens) > 0 && tokenReconciliation.withinTolerance === true,
   };
 
   const baselineDelta = {
@@ -77,6 +85,7 @@ export function assessBenchmark({ result, ceiling = BENCHMARK_CEILING, baseline 
     openAiSpendUsd,
     ownerRelays,
     efficiency: eff,
+    tokenReconciliation,
     timing,
     baselineDelta,
   };

@@ -62,3 +62,16 @@ test("efficiency: initial counters seed the ledger", () => {
   const ledger = makeEfficiencyLedger({ artifactsCreated: 5 });
   assert.equal(ledger.snapshot().artifactsCreated, 5);
 });
+
+test("efficiency: the structured-output schema is attributed as its own category", () => {
+  const ledger = makeEfficiencyLedger();
+  ledger.recordCall({ breakdown: { question: 50, facts: 100, structuredOutputSchema: 135, totalEstimate: 285 }, inputTokens: 300 });
+  const snap = ledger.snapshot();
+  assert.equal(snap.perCategoryTotals.structuredOutputSchema, 135);
+  assert.equal(snap.calls[0].structuredOutputSchema, 135);
+  assert.equal(snap.estimatedTotalTokens, 285);
+  // an omitted schema is an honest zero
+  const l2 = makeEfficiencyLedger();
+  l2.recordCall({ breakdown: { question: 10, totalEstimate: 10 } });
+  assert.equal(l2.snapshot().perCategoryTotals.structuredOutputSchema, 0);
+});

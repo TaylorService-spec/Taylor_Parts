@@ -4,7 +4,7 @@ import { assessBenchmark, BENCHMARK_CEILING, BENCHMARK_BASELINE } from "./benchm
 import { verifyArtifact } from "./reviewArtifacts.mjs";
 
 // A minimal instrumented-cycle result shaped like runInstrumentedPilotCycle's return.
-function cycle({ gptCalls = 1, claudeWakes = 1, cost = 0.03, inTok = 5000, outTok = 400, relays = 0, stopped = "ONE_CYCLE_COMPLETE" } = {}) {
+function cycle({ gptCalls = 1, claudeWakes = 1, cost = 0.03, inTok = 5000, outTok = 400, relays = 0, stopped = "ONE_CYCLE_COMPLETE", estTotal = null } = {}) {
   return {
     stopped,
     gptCalls,
@@ -12,7 +12,8 @@ function cycle({ gptCalls = 1, claudeWakes = 1, cost = 0.03, inTok = 5000, outTo
     evidence: { gpt: { actualCostUsd: cost, inputTokens: inTok, outputTokens: outTok }, ownerRelayCount: relays },
     transitions: ["CYCLE_START", "GPT_TRIGGERED", "CLAUDE_COMPLETED", "STOP"],
     instrumentation: {
-      efficiency: { providerCalls: gptCalls, measuredInputTokens: inTok, measuredOutputTokens: outTok, duplicateProviderCallsAvoided: 0, wakeOnlyRecoveries: 0 },
+      // estimatedTotalTokens defaults to ~the measured input (a reconciling estimate) unless overridden.
+      efficiency: { providerCalls: gptCalls, measuredInputTokens: inTok, measuredOutputTokens: outTok, estimatedTotalTokens: estTotal == null ? inTok : estTotal, duplicateProviderCallsAvoided: 0, wakeOnlyRecoveries: 0 },
       timing: { totalElapsedMs: 1000, WAIT_TIME: 800, OWNER_WAIT_TIME: 0 },
     },
   };
@@ -54,6 +55,18 @@ test("baseline delta compares this run to the preserved #319 numbers", () => {
   assert.equal(readout.goals.smallerThanBaselineInput, true);
   // cheaper than the two-call baseline
   assert.ok(readout.baselineDelta.totalCostUsd.delta < 0);
+});
+
+test("token attribution: a reconciling nonzero estimate makes tokenAttributionHonest true", () => {
+  const { readout } = assessBenchmark({ result: cycle({ inTok: 1100, estTotal: 1053 }) });
+  assert.equal(readout.tokenReconciliation.withinTolerance, true);
+  assert.equal(readout.goals.tokenAttributionHonest, true);
+});
+
+test("token attribution: the OLD defect (estimate 0 vs measured 7498) is caught, not hidden", () => {
+  const { readout } = assessBenchmark({ result: cycle({ inTok: 7498, estTotal: 0 }) });
+  assert.equal(readout.tokenReconciliation.withinTolerance, false);
+  assert.equal(readout.goals.tokenAttributionHonest, false, "zero estimate vs real 7498 must fail the honesty goal");
 });
 
 test("the durable artifact is content-addressed and self-verifying", () => {

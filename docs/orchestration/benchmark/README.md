@@ -26,7 +26,8 @@ Supervisor, authority model, aiExchange lifecycle, provider routing, or review s
 | 2,9 | Content-hash dedup + wake-only recovery (two guards on the paid call) | `reviewRecovery.mjs` | #782 |
 | 11,12 | API-efficiency + timing instrumentation | `reviewInstrumentation.mjs` | #783 |
 | — | Instrumented pilot (timing + efficiency + recovery over the existing cycle) | `reciprocalPilotInstrumented.mjs` | #784 |
-| — | Benchmark readout + ceiling assessment + durable result artifact | `benchmarkReadout.mjs` | this PR |
+| — | Benchmark readout + ceiling assessment + durable result artifact | `benchmarkReadout.mjs` | #787 |
+| — | Canonical fact-based invocation (the LIVE feed) + per-section/schema token attribution + safe diagnostic + reconciliation | `reviewFeedInvocation.mjs` | this PR |
 
 Data hygiene: content-addressed artifacts fail closed on any hash mismatch; the fact feed
 never carries whole files, transcripts, the operating model, unchanged authority, or process
@@ -43,8 +44,22 @@ with a fail-closed error callback (the single-document sibling of #291's Locatio
 (`equipment-detail-context-tests.yml`) covers these previously-uncovered read hooks. No
 Rules / security / authority / architecture / deploy changes.
 
-PR #786 stays **open** — its diff (captured at `subject-785.diff`) is the subject the
-benchmark's reciprocal review evaluates, mirroring the #319 pilot's "existing diff" approach.
+PR #786 stays **open** — it is the subject the benchmark's reciprocal review evaluates. The
+review consumes the **canonical fact feed** `subject-785-feed.mjs` (narrow question + concise
+requirement + implementation/source facts + deterministic evidence + two minimal code excerpts
++ provenance), **not** the whole diff. `subject-785.diff` is retained as the evidence the
+excerpts derive from; it is no longer transmitted wholesale.
+
+### Live fact feed (corrected — see `live-feed-defect-trace.md`)
+
+The first live run transmitted the **legacy full-context payload** (full operating model
+~4.9k tok + entire diff ~2.7k tok = ~7.5k input) while the token-category instrumentation
+reported zeros. That is fixed: an ordinary bounded review now routes through the canonical
+fact-based invocation (`reviewFeedInvocation.mjs`), DRY and LIVE transmit the **same** object,
+the token breakdown is measured over the **actual** transmitted payload and reconciles with the
+provider's measured input, and content-addressed request/facts artifacts participate. Candidate-A
+shape: **~7,801 → ~1,091 est. input tokens (~85.7% reduction)**. The legacy inlined-context
+builder remains for review classes that legitimately need expanded context.
 
 ## Ceilings (hard)
 
@@ -91,7 +106,19 @@ Requirements for `--activate` (each checked, and the run fails closed with a nam
 missing): `OPENAI_API_KEY` (read at call time, **never printed or logged**),
 `OPENAI_REVIEW_MODEL` (a concrete model id), and the local `claude` CLI (resolve with
 `CLAUDE_BIN` if it is not on `PATH`). One live GPT review → persist → consume → selector →
-one Claude wake → stop.
+one Claude wake → stop. The DRY run also prints the `requestDiagnostic` — the exact fact
+sections + token sizes LIVE will transmit — so you can inspect the payload before spending.
+
+### ACTIVATION_PATH_DEFECT (recorded)
+
+The first activation command assumed `D:\Taylor_Parts` could `git checkout main`, but `main`
+was owned by another git worktree, so the checkout failed, the benchmark file was missing, and
+the Owner needed manual recovery. A future self-preflighting runner should: discover a valid
+current checkout (one where `main` is checked out, or the current worktree if already on an
+up-to-date `main`) → safe `fetch` → `ff-only` update when eligible → verify the benchmark entry
+file exists → run the internal DRY preflight → then prompt for the key → activate. Until then,
+run `--activate` from a checkout that already has `main` current (the benchmark entry itself
+now performs a feed/fixture preflight before any key is read, so a missing entry fails cleanly).
 
 ## Durable result
 
