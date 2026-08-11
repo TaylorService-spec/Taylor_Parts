@@ -1,0 +1,34 @@
+{
+  "resultId": "EOS-INTAKE-003:515cd8ebc7b7f1b7",
+  "requestId": "EOS-INTAKE-003",
+  "routedBackTo": "EOS_INTAKE",
+  "sourceWorkSha256": "86e76a4f8a24ce4ae2bc288b95844d1d6e2d46a3cc3abf99db97ca94988d4a2e",
+  "status": "COMPLETE",
+  "verdict": "NOT_APPLICABLE",
+  "disposition": "AWAITING_INTERPRETATION",
+  "summary": "DPAPI-backed EOS Secret Broker, verified review authority artifacts, separate work/budget/spend gates, and MCP authorize_review are repo-complete; external provisioning and deployment remain.",
+  "contentLocation": "docs/orchestration/work-intake/results/EOS-INTAKE-003/515cd8ebc7b7f1b765e6ef3fc1d541a9fadd27675df1505972d7db23eccce9b9.content.md",
+  "contentSha256": "515cd8ebc7b7f1b765e6ef3fc1d541a9fadd27675df1505972d7db23eccce9b9",
+  "findings": [],
+  "evidence": [
+    {
+      "artifactLocation": "docs/orchestration/work-intake/results/EOS-INTAKE-003/515cd8ebc7b7f1b765e6ef3fc1d541a9fadd27675df1505972d7db23eccce9b9.content.md",
+      "sha256": "515cd8ebc7b7f1b765e6ef3fc1d541a9fadd27675df1505972d7db23eccce9b9"
+    }
+  ],
+  "questionsRaised": [],
+  "scenariosDiscovered": [],
+  "retries": 0,
+  "contextExpanded": false,
+  "contaminated": false,
+  "retracted": false,
+  "metrics": {},
+  "relatedRefs": {
+    "issues": [],
+    "pullRequests": []
+  },
+  "createdAt": "2026-08-11T06:30:00.000Z",
+  "pointer": "result://EOS-INTAKE-003",
+  "artifactLocation": "docs/orchestration/work-intake/results/EOS-INTAKE-003/bbda6d1b19de0fec51a03523e5fdcf20155f054e94c84d9f4fa602d9d8782a5b.result.json",
+  "sha256": "bbda6d1b19de0fec51a03523e5fdcf20155f054e94c84d9f4fa602d9d8782a5b"
+}

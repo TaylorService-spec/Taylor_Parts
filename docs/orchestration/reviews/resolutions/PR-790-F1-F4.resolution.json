@@ -1,0 +1,160 @@
+{
+  "reviewId": "REVIEW-790-SECURITY-DELTA",
+  "priorResultSha256": "7f73d097e253b7d3cc64404ae3a7db26a2553a5ed6446e92035387aacd664cc1",
+  "priorReviewedHead": "614abf97ef000f89a082139f31231ce8ff2b00ea",
+  "question": "Are findings F1–F4 resolved sufficiently to approve PR #790's credential security boundary?",
+  "findings": [
+    {
+      "findingId": "F1",
+      "disposition": "RESOLVED",
+      "changed": true,
+      "materiality": "security-hardening",
+      "codeRefs": [
+        "docs/orchestration/lib/secretProvider.mjs",
+        "integrations/chatgpt-eos-intake/src/mcp.mjs",
+        "integrations/chatgpt-eos-intake/src/app.mjs"
+      ],
+      "tests": [
+        "secret-bearing resolver/callback exceptions are replaced with stable non-secret codes",
+        "DPAPI child receives only allowlisted environment metadata, never ambient credentials",
+        "callback cannot return the raw credential in result/evidence",
+        "MCP internal errors never reflect store exception text"
+      ],
+      "evidenceRefs": [
+        "secretProvider.mjs@08601bd3c733ffd3b4e947dd58aa362589ad9a6014f14ac652e4c118f46f7fa2",
+        "secretProvider.test.mjs@c067485c013a5e1b22160e765c18c0b2e7e03ef4f2dc2f516dd531b4e8eb2c67",
+        "app.test.mjs@9ebeb95c9b553e4f9b640601f46aed1b013aad5e41d8c5c4a2f2465938f0d65a"
+      ],
+      "proof": "DPAPI subprocess environment is allowlisted; stdout/stderr buffers are cleared; decrypt and callback exceptions become fixed codes; callback results are recursively secret-scanned; MCP store failures become internal_error."
+    },
+    {
+      "findingId": "F2",
+      "disposition": "RESOLVED",
+      "changed": true,
+      "materiality": "authorization-integrity",
+      "codeRefs": [
+        "docs/orchestration/lib/reviewAuthorization.mjs",
+        "docs/orchestration/lib/openaiCredentialTransport.mjs",
+        "integrations/chatgpt-eos-intake/src/mcp.mjs"
+      ],
+      "tests": [
+        "authorization mutation rejects workId/reviewId/sourceCommit/workArtifactSha256/maxSpendUsd",
+        "expired authorization rejects",
+        "binding mismatch and duplicate invocation refuse before credential/provider"
+      ],
+      "evidenceRefs": [
+        "reviewAuthorization.mjs@f2e83825c3084398c446d988d698e691a8b71bb01e9369427f632b2fc80e90de",
+        "reviewAuthorization.test.mjs@e9bb84a63c3ad8d61f8ed92595f014fbdf16976b451a94bc68773e84291175db"
+      ],
+      "boundFields": [
+        "capability",
+        "workId",
+        "reviewId",
+        "authorizationState",
+        "budgetAuthorizationState",
+        "maxSpendUsd",
+        "sourceCommit",
+        "workArtifactSha256",
+        "createdAt",
+        "expiresAt",
+        "authorizedBy.subject",
+        "authorizedBy.oauthClientId",
+        "provenance",
+        "artifactLocation"
+      ],
+      "proof": "All fields are inside the canonical SHA-256 digest; pointer resolution rechecks ID/location/hash/source/work hash and expiry; invocation binding plus durable invocationId reservation blocks substitution and replay."
+    },
+    {
+      "findingId": "F3",
+      "disposition": "RESOLVED",
+      "changed": true,
+      "materiality": "call-path-assurance",
+      "codeRefs": [
+        "docs/orchestration/lib/credentialPathAudit.mjs",
+        "docs/orchestration/lib/openaiCredentialTransport.mjs"
+      ],
+      "tests": [
+        "every executable credential/provider occurrence is explicitly classified; none is UNSAFE/BYPASS",
+        "audit implementation is AUDIT_TOOLING only while it has no executable credential/provider behavior",
+        "unknown executable credential-use path remains fail-closed UNSAFE/BYPASS",
+        "known broker/runtime paths retain explicit classification",
+        "governed EOS transport delegates credential resolution only to broker.withCredential"
+      ],
+      "evidenceRefs": [
+        "credentialPathAudit.mjs@72c2f3a2a1da17ea7da4d51e082c46ef90a8d1c97f134dd344db1e74d0c75db9",
+        "credentialPathAudit.test.mjs@62e3cd6ff32b928da7e8b0c91c8d0cfb68096809581ac30cd473db33e11ab49f",
+        "openaiCredentialTransport.mjs@6d274aea2befe16eaee77d9e493c35524e913014c7556c1aed62f1c7f9a5a5db"
+      ],
+      "classification": {
+        "AUTHORIZED BROKER PATH": [
+          "docs/orchestration/lib/secretProvider.mjs",
+          "docs/orchestration/lib/openaiCredentialTransport.mjs",
+          "tools/eos-secrets/Set-EOSSecret.ps1"
+        ],
+        "TEST/FIXTURE": ["*.test.mjs"],
+        "LEGACY ISOLATED PATH": [
+          "docs/orchestration/context/openai-review.mjs",
+          "docs/orchestration/context/reciprocal-pilot.mjs",
+          "docs/orchestration/context/taylor-benchmark.mjs",
+          "docs/orchestration/context/github-fact-review.mjs",
+          ".github/workflows/reciprocal-gpt-review.yml",
+          "integrations/chatgpt-eos-intake/src/githubStore.mjs (GitHub token only; no OpenAI credential)"
+        ],
+        "AUDIT_TOOLING": [
+          "docs/orchestration/lib/credentialPathAudit.mjs (requires independent no-executable-behavior verification)"
+        ],
+        "UNSAFE/BYPASS": []
+      },
+      "proof": "The governed EOS paid transport contains no process.env, API-key name, or Authorization-header construction and reaches the key only through broker.withCredential. Audit tooling is accepted only when an independent executable-behavior scan passes; otherwise it fails closed. Manual Owner-activated review tools remain isolated from the MCP/EOS broker runtime."
+    },
+    {
+      "findingId": "F4",
+      "disposition": "RESOLVED",
+      "changed": true,
+      "materiality": "spend-control",
+      "codeRefs": [
+        "docs/orchestration/lib/openaiCredentialTransport.mjs",
+        "docs/orchestration/lib/openaiReviewProvider.mjs"
+      ],
+      "tests": [
+        "per-invocation estimate above the authorized ceiling never resolves a credential",
+        "cumulative ceiling survives calls/retries and refuses before provider",
+        "durable ledger preserves cumulative spend and at-most-once ids across transport restart",
+        "provider pilot total/per-review guards remain green in full orchestration suite"
+      ],
+      "evidenceRefs": [
+        "openaiCredentialTransport.test.mjs@83a625ebb5b08d5077675c94b1dcf60bd5be0e45f3230d260f53f160cd859849",
+        "openaiReviewProvider.mjs@694580227b9a8e81398fda76d970c154d3df0d55388a823ff31a53f1fbd25839"
+      ],
+      "proof": "Conservative per-call estimate is checked and durably reserved against the authorization's cumulative ceiling before credential/provider use; duplicate IDs and post-restart retries refuse; the independent outer provider guard retains $0.25 per-review and $10 aggregate pilot ceilings."
+    }
+  ],
+  "verification": {
+    "orchestration": "511/511 pass",
+    "mcpIntegration": "17/17 pass",
+    "providerCallsDuringResolution": 0,
+    "sourceFreshness": "CURRENT_AFTER_EXACT_HEAD_CHECK_REQUIRED_BY_WORKFLOW"
+  },
+  "tokenFinding": {
+    "classification": "B",
+    "reason": "The first FACT_BASED run honestly attributed 7,268 estimated request tokens, but the generic security profile included up to 2,400 characters from each of twelve patches, producing 25,829 raw-source bytes. Provider measurement was 7,832 input tokens. The feed was fact-based but unnecessarily broad for a delta.",
+    "priorSections": {
+      "question": 35,
+      "facts": 315,
+      "authority": 57,
+      "deterministicEvidence": 68,
+      "rawSource": 6458,
+      "provenance": 76,
+      "protocol": 128,
+      "schema": 131,
+      "estimatedTotal": 7268,
+      "providerMeasuredInput": 7832
+    },
+    "correction": "security-credential-boundary-delta sends only this compact resolution artifact, prior/content hashes, exact-head provenance, and the single F1–F4 question; it neither deletes necessary evidence nor resends original patches."
+  },
+  "unchangedAuthorityHashes": {
+    "AGENTS.md": "bab331e7683a26883c067c29727c2705660eb284450d901047b2efe7fece915b",
+    "docs/DelegationCharter.md": "ebef65ef42aa75dd0d2a2e8cabd36b89f61bcccaeb190b1f0dd4393d2d01ad4e",
+    "priorFactsSha256": "5283598ed60e2a25d6f2a5d75d2910f227efbb8ec77a3e6288898728eaa7213d"
+  }
+}

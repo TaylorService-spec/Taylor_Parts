@@ -1,0 +1,32 @@
+{
+  "requestId": "EOS-INTAKE-002",
+  "title": "ChatGPT to EOS authenticated intake integration",
+  "intent": "Build the authenticated ChatGPT MCP ingress through the existing governed EOS work-intake bridge to an integration-ready boundary.",
+  "scope": [
+    "integrations/chatgpt-eos-intake/**",
+    "docs/orchestration/work-intake/**"
+  ],
+  "contextScope": [
+    "C-7",
+    "EOS_INTAKE"
+  ],
+  "source": {
+    "producer": "ChatGPT authenticated MCP",
+    "provenance": "Owner-authored ChatGPT request in Codex session",
+    "authenticatedSubject": "owner-chatgpt-session",
+    "oauthClientId": "codex-repository-build"
+  },
+  "status": "EOS_READY",
+  "authority": {
+    "authorizationState": "REPO_SAFE",
+    "basis": "Owner explicitly authorized repo-safe implementation; no deployment or live OpenAI call."
+  },
+  "artifactLocation": "docs/orchestration/work-intake/EOS-INTAKE-002.work.json",
+  "sha256": "62c69803c1c6d0be6edd0abe74a696b308eab26295e39fb5fab466c08062f025",
+  "createdAt": "2026-08-11T05:20:00.000Z",
+  "updatedAt": "2026-08-11T05:20:00.000Z",
+  "relatedRefs": {
+    "issues": [],
+    "pullRequests": []
+  }
+}
