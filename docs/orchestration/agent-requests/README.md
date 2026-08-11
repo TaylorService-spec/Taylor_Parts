@@ -16,3 +16,8 @@ consumes it on its next iteration.
 
 **AGENT OUTPUT ≠ PRODUCT AUTHORITY.** Results are evidence; Design/UX interpret them. Nothing here grants a
 capability, activates a backend, deploys, or crosses a protected boundary.
+
+Owner/ChatGPT-originated top-level work enters through the sibling
+[`work-intake/`](../work-intake/) hash-pinned ingress adapter, then projects into the same selector and
+result-consumption paths. It is not added to this bounded-worker request ledger and does not create a
+second queue.
