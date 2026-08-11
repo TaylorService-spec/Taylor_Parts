@@ -1,0 +1,30 @@
+{
+  "requestId": "EOS-CHATGPT-CC-RUNTIME-001",
+  "title": "Owner Control Center runtime-state update",
+  "intent": "Update the Owner Control Center so it accurately distinguishes EOS infrastructure/runtime readiness from current authorized work supply. Reflect the activated Windows EOS runtime, while preserving DRAINED when no authorized READY work exists. Reassess stale SUPERVISED_IN_SESSION / overnight-unattended messaging against the merged runtime and governance; do not weaken Owner/protected-action boundaries.",
+  "scope": [
+    "project-keystone/apps/control-center/",
+    "docs/orchestration/"
+  ],
+  "contextScope": [
+    "orchestration"
+  ],
+  "source": {
+    "producer": "Owner/ChatGPT",
+    "provenance": "Owner explicitly authorized this first live EOS run from ChatGPT after provisioning the DPAPI OPENAI_REVIEW credential, bringing EOS-RUNTIME-RUDY-PC online with eos-runtime label, and enabling EOS_RUNTIME_ENABLED."
+  },
+  "status": "EXECUTION_AUTHORIZED",
+  "authority": {
+    "authorizationState": "AUTHORIZED",
+    "basis": "Owner explicitly instructed ChatGPT: Run the Owner Control Center runtime-state update through EOS.",
+    "protectedBoundary": null
+  },
+  "artifactLocation": "docs/orchestration/work-intake/EOS-CHATGPT-CC-RUNTIME-001.work.json",
+  "createdAt": "2026-08-11T08:00:00Z",
+  "updatedAt": "2026-08-11T08:00:00Z",
+  "relatedRefs": {
+    "issues": [],
+    "pullRequests": [796]
+  },
+  "sha256": "7105fe8d9667395be3b9cd1384fff44f96bee3ec5f1ee05e588194bf7d4e3f01"
+}
