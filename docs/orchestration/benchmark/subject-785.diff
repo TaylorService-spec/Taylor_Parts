@@ -1,0 +1,201 @@
+diff --git a/field-ops-app-vite/src/domain/accountSubscription.js b/field-ops-app-vite/src/domain/accountSubscription.js
+new file mode 100644
+index 0000000..cae997a
+--- /dev/null
++++ b/field-ops-app-vite/src/domain/accountSubscription.js
+@@ -0,0 +1,38 @@
++// #785 -- the pure state decisions behind useAccount, pulled out of the React shell so
++// they are node-testable directly (the same discipline as domain/locationSubscription.js).
++// The hook owns the onSnapshot lifecycle, the obsolete-callback guard, and retry
++// re-subscription; WHAT each outcome resolves to lives here, where it can be asserted
++// without a browser.
++//
++// This is the SINGLE-DOCUMENT sibling of locationSubscription.js: one Account, not a
++// collection, so success carries `account` (a record or null) rather than a `data` array.
++// The point is identical to #291's for Location: on the Equipment detail screen a DENIED
++// or failed customer read must be distinguishable from a genuinely-absent customer -- it
++// must never fall through to "Unknown customer" and render a failure as a fact.
++//
++// Dependency-free beyond loadErrorMessage (itself firebase-free), so this stays
++// node-importable.
++import { loadErrorMessage } from "./loadErrorMessage.js";
++
++const ENTITY = "customer details";
++
++// A snapshot arrived. `account` is the record when the document exists, or null when it
++// genuinely does not -- a confirmed absence, NOT a failure. Loading is done and any prior
++// error is cleared (a later success supersedes an earlier failure -- e.g. after a retry).
++export function accountSuccessOutcome(account) {
++  return { account: account ?? null, loading: false, error: null };
++}
++
++// The subscription failed. FAIL CLOSED: surface NO account (never a stale record) and a
++// SAFE message -- loadErrorMessage never emits a raw code, path, id, or collection name.
++// This is the whole point of #785: a failure must be distinguishable from "no such
++// customer" and from "still loading", and it must never be rendered as a fact.
++export function accountFailureOutcome(err) {
++  return { account: null, loading: false, error: loadErrorMessage(err, { entity: ENTITY }) };
++}
++
++// No account to look up (null/blank id): not loading, not an error, simply nothing to
++// resolve. An absent id is not a failed read.
++export function accountIdleOutcome() {
++  return { account: null, loading: false, error: null };
++}
+diff --git a/field-ops-app-vite/src/hooks/useAccount.js b/field-ops-app-vite/src/hooks/useAccount.js
+index 3271eb4..07d6763 100644
+--- a/field-ops-app-vite/src/hooks/useAccount.js
++++ b/field-ops-app-vite/src/hooks/useAccount.js
+@@ -1,30 +1,76 @@
+-import { useEffect, useState } from "react";
++import { useCallback, useEffect, useState } from "react";
+ import { doc, onSnapshot } from "firebase/firestore";
+ import { db } from "../firebase/firebase";
+ import { ACCOUNTS_COLLECTION } from "../domain/constants";
++import {
++  accountSuccessOutcome,
++  accountFailureOutcome,
++  accountIdleOutcome,
++} from "../domain/accountSubscription";
+ 
+ // Sprint 2.0.2 -- Customer Foundation. Single-document live listener,
+ // same onSnapshot(doc(...)) shape already used by
+ // useCurrentTechnician.js -- not a new pattern.
++//
++// #785: this hook used to pass no error callback to onSnapshot, so a DENIED or failed
++// customer read never resolved -- `loading` stayed true forever, or nothing arrived -- and
++// every consumer read that as "still loading" or, once loading cleared elsewhere, as
++// "Unknown customer". On the Equipment detail screen that surfaced a failure as a fact.
++// It now fails closed to a safe `error` and clears stale data, so a failed lookup is
++// distinct from loading, from a confirmed-absent customer, and from a genuinely unresolved
++// reference -- the single-document sibling of #291's Location fix. Like that hook, it also
++// carries the obsolete-callback guard and retry re-subscription, delegating the pure
++// outcome decisions to domain/accountSubscription.js.
+ export function useAccount(accountId) {
+   const [account, setAccount] = useState(null);
+   const [loading, setLoading] = useState(true);
++  const [error, setError] = useState(null);
++  // Bumped by retry() to force a clean teardown + re-subscribe. It is a useEffect dep, so
++  // the effect's own cleanup runs first -- no duplicate listener -- and it only changes on
++  // an explicit call, so there is no loop.
++  const [attempt, setAttempt] = useState(0);
++
++  const retry = useCallback(() => setAttempt((n) => n + 1), []);
++
++  // Apply a pure outcome (domain/accountSubscription) to the three state setters. Keeps
++  // the fail-closed decisions in one tested place; the hook only wires them to lifecycle.
++  const apply = useCallback((outcome) => {
++    setAccount(outcome.account);
++    setError(outcome.error);
++    setLoading(outcome.loading);
++  }, []);
+ 
+   useEffect(() => {
+     if (!accountId) {
+-      setAccount(null);
+-      setLoading(false);
++      apply(accountIdleOutcome());
+       return;
+     }
+ 
++    // Obsolete-callback guard: a snapshot or error that arrives after this effect is torn
++    // down (accountId changed, unmount, or a retry) must not write state belonging to a
++    // subscription that no longer exists. onSnapshot's unsub stops callbacks synchronously,
++    // so this is belt-and-braces -- but it closes the React-18 double-invoke / rapid-switch
++    // window, matching useLocationsForAccount.
++    let active = true;
+     setLoading(true);
+-    const unsub = onSnapshot(doc(db, ACCOUNTS_COLLECTION, accountId), (snap) => {
+-      setAccount(snap.exists() ? { id: snap.id, ...snap.data() } : null);
+-      setLoading(false);
+-    });
++    setError(null);
++    const unsub = onSnapshot(
++      doc(db, ACCOUNTS_COLLECTION, accountId),
++      (snap) => {
++        if (!active) return;
++        apply(accountSuccessOutcome(snap.exists() ? { id: snap.id, ...snap.data() } : null));
++      },
++      (err) => {
++        if (!active) return;
++        apply(accountFailureOutcome(err));
++      }
++    );
+ 
+-    return () => unsub();
+-  }, [accountId]);
++    return () => {
++      active = false;
++      unsub();
++    };
++  }, [accountId, attempt, apply]);
+ 
+-  return { account, loading };
++  return { account, loading, error, retry };
+ }
+diff --git a/field-ops-app-vite/src/modules/equipment/EquipmentDetail.jsx b/field-ops-app-vite/src/modules/equipment/EquipmentDetail.jsx
+index e97fd61..67d5e31 100644
+--- a/field-ops-app-vite/src/modules/equipment/EquipmentDetail.jsx
++++ b/field-ops-app-vite/src/modules/equipment/EquipmentDetail.jsx
+@@ -54,7 +54,8 @@ export default function EquipmentDetail() {
+   // a not-yet-known answer as a fact is how "No service history" ends up on an asset
+   // with three work orders.
+   const { data: workOrders, loading: woLoading, error: woError } = useWorkOrdersForEquipment(equipmentId);
+-  const { account, loading: accountLoading } = useAccount(equipment?.accountId ?? null);
++  const { account, loading: accountLoading, error: accountError, retry: retryAccount } =
++    useAccount(equipment?.accountId ?? null);
+   const { data: locations, loading: locationsLoading, error: locationsError, retry: retryLocations } =
+     useLocationsForAccount(equipment?.accountId ?? null);
+ 
+@@ -112,6 +113,13 @@ export default function EquipmentDetail() {
+   const locationName = locationsError
+     ? "Location unavailable"
+     : locations.find((l) => l.id === equipment.locationId)?.name ?? "Unknown location";
++  // #785: the Customer parallel of the string above. On a FAILED read the edit modal (which
++  // shows this as read-only context) reads "Customer unavailable" rather than "Unknown
++  // customer" -- the latter would assert the customer is genuinely unset when we merely
++  // could not load it. The inline cell renders its own failure+retry; this feeds the modal.
++  const accountName = accountError
++    ? "Customer unavailable"
++    : account?.name ?? "Unknown customer";
+   const retired = isRetired(equipment);
+   // One shared reason string, from the same seam the buttons would call -- so the copy
+   // a user reads cannot drift from what the action would actually do.
+@@ -146,12 +154,10 @@ export default function EquipmentDetail() {
+       <div className="fo-detail-grid">
+         {/* §8 Account + installed Location. Both render their NAME; an unresolved
+             reference says so rather than exposing the raw id.
+-            LOCATION now distinguishes a FAILED read from a genuinely-unknown one (#291):
+-            a denied/failed Locations query shows an actionable failure with retry instead
+-            of "Unknown location" stated as a fact.
+-            ACCOUNT still cannot: useAccount passes no error callback and returns no error,
+-            so "Unknown customer" remains ambiguous there. That is the same class one hook
+-            over, out of #291's Location scope; not fixed here rather than widened silently. */}
++            Each now distinguishes a FAILED read from a genuinely-unknown one: a
++            denied/failed read shows an actionable failure with retry instead of
++            "Unknown customer"/"Unknown location" stated as a fact -- Location per #291,
++            Customer per #785 (the single-document sibling of the same fix). */}
+         <section className="fo-panel" aria-labelledby="equip-where">
+           <h2 id="equip-where">Customer &amp; location</h2>
+           <dl className="fo-detail-list">
+@@ -159,6 +165,11 @@ export default function EquipmentDetail() {
+             <dd data-equipment-account>
+               {accountLoading ? (
+                 <span className="fo-muted">Loading…</span>
++              ) : accountError ? (
++                <span className="fo-inline-error" role="alert" data-account-error>
++                  {accountError}{" "}
++                  <button type="button" className="fo-link-btn" onClick={retryAccount}>Retry</button>
++                </span>
+               ) : account ? (
+                 <Link to={`/customers/${equipment.accountId}`}>{account.name}</Link>
+               ) : (
+@@ -245,7 +256,7 @@ export default function EquipmentDetail() {
+       {editing ? (
+         <EquipmentEditModal
+           equipment={equipment}
+-          accountName={account?.name ?? "Unknown customer"}
++          accountName={accountName}
+           locationName={locationName}
+           onSave={handleSave}
+           onClose={() => setEditing(false)}

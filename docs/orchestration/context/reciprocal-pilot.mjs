@@ -25,7 +25,9 @@ const arg = (n, fb = null) => { const i = process.argv.indexOf(`--${n}`); return
 const flag = (n) => process.argv.includes(`--${n}`);
 
 // Real OpenAI Responses transport (INDEPENDENT_AI reviewer). Reads key only here; never logged.
-function realGptRunner({ boot, diff }) {
+// Exported so the one-trigger Taylor benchmark (taylor-benchmark.mjs) reuses the SAME real runner
+// rather than a second copy — one source of truth for the paid-transport shape.
+export function realGptRunner({ boot, diff }) {
   return async (review) => {
     const key = process.env.OPENAI_API_KEY;
     if (!key) return { ok: false, failureKind: "TRIGGER_FAILED", reason: "OPENAI_API_KEY not set" };
@@ -46,7 +48,7 @@ function realGptRunner({ boot, diff }) {
 // wall-clock guardrail. `resolvedBin` overrides the core's logical bin ("claude") — on Windows a bare
 // "claude" ENOENTs (spawnSync does not use PATH/PATHEXT and claude is often not on PATH). Guardrails
 // (argv/timeout/allowlist) are untouched — only the executable path is resolved.
-function makeRealClaudeRunner(resolvedBin) {
+export function makeRealClaudeRunner(resolvedBin) {
   return {
     run({ bin, argv, wallClockSec }) {
       const exe = resolvedBin || bin;
