@@ -27,15 +27,15 @@ When you begin a capability, add a row to **Active** with every declared field. 
 
 ## Active
 
-- Capability:          Generic FACT_BASED GitHub independent-review entry for an exact authorized PR/head
-- Agent/session:       Codex `/root` · Role: builder/integration
-- Branch / worktree:   `agent/generic-fact-based-github-review` · `D:\Taylor_Parts\.worktrees\generic-fact-based-github-review`
-- Base commit:         `abbca0d287ed437b9abd26442e08168555fffc71`
-- Owned paths:         `docs/orchestration/context/github-fact-review.mjs` · its tests/fixtures · fact-review result artifacts
-- Shared paths req'd:  `.github/workflows/reciprocal-gpt-review.yml` · `docs/engineering/ACTIVE_WORKSTREAMS.md`
-- Dependencies:        Reuses #788 canonical `buildCanonicalReviewFeed` → `buildFactBasedInvocation`; GitHub API exact-head evidence; existing OpenAI provider ceilings
-- Expected outcome:    Dry/live-parity GitHub entry creates one bounded content-addressed independent-review artifact for an arbitrary exact PR/head without Claude CLI or legacy expanded context
-- Protected boundaries:One Owner-authorized live OpenAI review of PR #790 only; no deployment, local credential provisioning, authorization-model change, or additional paid call
+- Capability:          Authenticated ChatGPT → EOS intake credential-boundary evidence remediation (PR #790)
+- Agent/session:       Codex `/root` · Role: builder
+- Branch / worktree:   `agent/chatgpt-eos-intake-integration` · `D:\Taylor_Parts\.worktrees\chatgpt-eos-intake-integration`
+- Base commit:         `abbca0d287ed437b9abd26442e08168555fffc71` (rebased from reviewed `614abf97ef000f89a082139f31231ce8ff2b00ea`)
+- Owned paths:         `integrations/chatgpt-eos-intake/**` · `docs/orchestration/lib/{secretProvider,openaiCredentialTransport,reviewAuthorization}*` · PR #790 resolution/delta artifacts
+- Shared paths req'd:  this registry
+- Dependencies:        Reuses the merged work-intake resolver, selector, Wake Supervisor, aiExchange, review artifacts, and GitHub source-of-truth; OpenAI MCP/OAuth contract
+- Expected outcome:    Deterministic resolution of F1–F4, compact content-addressed evidence, then one bounded FACT_BASED delta review
+- Protected boundaries:Exactly one delta provider review only after deterministic evidence is complete; no deployment, credential provisioning, production action, or authorization grant
 - Lifecycle stage:     SANDBOX BUILD
 
 - Capability:          [CLOSED — DONE WHEN THIS CHANGE MERGES] Governed Owner/ChatGPT work-intake bridge (repo-safe minimum)

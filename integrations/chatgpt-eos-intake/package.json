@@ -1,0 +1,19 @@
+{
+  "name": "@taylor-parts/chatgpt-eos-intake",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "express": "5.1.0",
+    "jose": "6.2.8",
+    "zod": "4.4.3"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

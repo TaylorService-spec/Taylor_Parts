@@ -139,5 +139,16 @@ incorrectly-hashed ChatGPT submission does not execute). `intakeDigest(artifact)
 ChatGPT already produces the artifact + branch + PR through its GitHub connector. The remaining gap for a
 fully hands-off loop is the Owner-enabled repo-write automation that commits the derived status back (above),
 and — for paid execution — the EOS Secret Broker. The bridge still embeds no credentials and calls no
-OpenAI/GitHub live; a future ChatGPT MCP tool is a thin producer of this same schema and must not become a
-second queue or authority.
+OpenAI/GitHub live; the authenticated ChatGPT adapter below is a thin producer of this same schema and does
+not become a second queue or authority.
+
+## Authenticated ChatGPT adapter
+
+The integration-ready adapter at [`integrations/chatgpt-eos-intake/`](../../../integrations/chatgpt-eos-intake/README.md)
+implements the thin authenticated MCP producer/reader for this schema. It opens a governed GitHub artifact
+PR and returns the same pointers; it does not embed credentials, call OpenAI during tests, or add a second
+queue or authority.
+
+The remaining direct-use gap is external activation: provision OAuth, install a least-privilege GitHub
+credential, host the MCP resource server on HTTPS, and connect it through ChatGPT developer mode. Those
+identity, installation, hosting, and workspace operations are intentionally outside this repo-safe build.
