@@ -13,7 +13,7 @@ Integration-ready, repo-safe MCP resource server for the existing governed work-
 
 `submit_work` accepts `DISCOVERY`, `DESIGN_STAGING`, or `EOS_READY` and `UNAUTHORIZED`, `REPO_SAFE`, or `OWNER_REQUIRED`. It deliberately rejects `EXECUTION_AUTHORIZED` and `AUTHORIZED`: OAuth proves who submitted an artifact; it does not replace repository authorization or grant execution authority. Only an existing governed Owner authorization path can advance that boundary.
 
-`authorize_review` requires the separate `eos.authorize_review` OAuth scope and records a GitHub-reviewed `OPENAI_REVIEW` work/budget authorization artifact. It does not decrypt credentials or call OpenAI. No MCP tool reads, exports, or reports secret material; EOS resolves the credential only inside the trusted runtime through the [Secret Broker](../../docs/orchestration/secret-broker.md).
+`authorize_review` requires the separate `eos.authorize_review` OAuth scope and records a GitHub-reviewed `OPENAI_REVIEW` authorization artifact bound to the exact work ID/hash, review ID, source commit, cumulative spend ceiling, expiry, and authenticated authorizer. It does not decrypt credentials or call OpenAI. No MCP tool reads, exports, or reports secret material; EOS resolves the credential only inside the trusted runtime through the [Secret Broker](../../docs/orchestration/secret-broker.md).
 
 ## Insertion point and flow
 

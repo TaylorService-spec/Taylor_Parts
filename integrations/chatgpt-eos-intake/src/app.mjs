@@ -15,8 +15,8 @@ export function createApp({ config, verifier, store }) {
   const metadataPath = new URL(metadataUrl).pathname;
   app.get(metadataPath, (_req, res) => res.json(metadata));
   app.use("/mcp", requireBearerAuth({ verifier, resourceMetadataUrl: metadataUrl }));
-  app.post("/mcp", (req, res) => handleMcpRequest(req, res, { store }).catch((error) => {
-    if (!res.headersSent) res.status(500).json({ jsonrpc: "2.0", error: { code: -32603, message: error.message }, id: null });
+  app.post("/mcp", (req, res) => handleMcpRequest(req, res, { store }).catch(() => {
+    if (!res.headersSent) res.status(500).json({ jsonrpc: "2.0", error: { code: -32603, message: "internal_error" }, id: null });
   }));
   app.get("/mcp", (_req, res) => res.status(405).json({ error: "method_not_allowed" }));
   app.delete("/mcp", (_req, res) => res.status(405).json({ error: "method_not_allowed" }));

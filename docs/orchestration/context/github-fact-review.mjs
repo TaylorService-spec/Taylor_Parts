@@ -10,6 +10,8 @@ const here = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(here, "..", "..", "..");
 const SHA = /^[0-9a-f]{40}$/;
 const ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const DELTA_PROFILE = "security-credential-boundary-delta";
+const DELTA_EVIDENCE_PATH = "docs/orchestration/reviews/resolutions/PR-790-F1-F4.resolution.json";
 const SECURITY_PATHS = Object.freeze([
   "docs/orchestration/lib/secretProvider.mjs",
   "docs/orchestration/lib/secretProvider.test.mjs",
@@ -68,6 +70,12 @@ export async function resolveExactSubject(inputs, { fetchJson, gitExec = null, s
   const checkoutHead = runGit(["rev-parse", "HEAD"]);
   if (checkoutHead !== inputs.expectedHeadSha) throw new Error(`CHECKOUT_HEAD_MISMATCH expected ${inputs.expectedHeadSha} got ${checkoutHead}`);
   const changed = runGit(["diff", "--name-only", `${pr.base.sha}...${inputs.expectedHeadSha}`]).split(/\r?\n/).filter(Boolean);
+  if (inputs.profile === DELTA_PROFILE) {
+    if (!changed.includes(DELTA_EVIDENCE_PATH)) throw new Error("DELTA_EVIDENCE_MISSING");
+    const exactEvidence = runGit(["show", `${inputs.expectedHeadSha}:${DELTA_EVIDENCE_PATH}`]);
+    if (Buffer.byteLength(exactEvidence, "utf8") > 16000) throw new Error("DELTA_EVIDENCE_TOO_LARGE");
+    return { pr, changed, material: [DELTA_EVIDENCE_PATH], rawEvidence: [`RESOLUTION ARTIFACT ${DELTA_EVIDENCE_PATH}\n${exactEvidence}`], sourceFreshness: "CURRENT" };
+  }
   const material = SECURITY_PATHS.filter((p) => changed.includes(p));
   if (!material.length) throw new Error("SECURITY_FACTSET_EMPTY");
   const rawEvidence = material.map((path) => {
@@ -78,14 +86,16 @@ export async function resolveExactSubject(inputs, { fetchJson, gitExec = null, s
 }
 
 export function buildSecurityFeed(inputs, subject) {
-  if (inputs.profile !== "security-credential-boundary") throw new Error("unsupported review_profile");
+  if (!["security-credential-boundary", DELTA_PROFILE].includes(inputs.profile)) throw new Error("unsupported review_profile");
+  if (inputs.profile === DELTA_PROFILE && inputs.question !== "Are findings F1–F4 resolved sufficiently to approve PR #790's credential security boundary?") throw new Error("DELTA_QUESTION_MISMATCH");
+  const delta = inputs.profile === DELTA_PROFILE;
   const factsContent = {
     implementationFacts: [
       `Exact subject: ${inputs.repo} PR #${inputs.prNumber} at ${inputs.expectedHeadSha}.`,
-      "Review DPAPI CurrentUser storage; provisioning/retrieval; withCredential boundary; hash-verified authority; spend gates; MCP authorize_review; absence of secret export; leakage scanning; fail-closed behavior; bypass resistance.",
+      delta ? "Delta-only resolution of prior findings F1–F4; unchanged authority is referenced by hash and the original package is not resent." : "Review DPAPI CurrentUser storage; provisioning/retrieval; withCredential boundary; hash-verified authority; spend gates; MCP authorize_review; absence of secret export; leakage scanning; fail-closed behavior; bypass resistance.",
       `Material changed files supplied as bounded patches: ${subject.material.join(", ")}.`,
     ],
-    sourceFacts: ["The reviewer grants no authority. Only the four declared verdicts are accepted.", "GitHub PR metadata and checkout HEAD independently matched the immutable expected SHA before invocation."],
+    sourceFacts: ["The reviewer grants no authority. Only the four declared verdicts are accepted.", "GitHub PR metadata and checkout HEAD independently matched the immutable expected SHA before invocation.", ...(delta ? ["Prior result: result:7f73d097e253b7d3cc64404ae3a7db26a2553a5ed6446e92035387aacd664cc1."] : [])],
     deterministicEvidence: ["sourceFreshness=CURRENT", `exact-head checks passed for base ${subject.pr.base.sha} and head ${subject.pr.head.sha}`, "The workflow runs the repository node:test suites before live invocation."],
     rawEvidence: subject.rawEvidence,
   };
@@ -94,7 +104,7 @@ export function buildSecurityFeed(inputs, subject) {
   const feed = buildCanonicalReviewFeed({
     reviewId: inputs.reviewId,
     question: inputs.question,
-    requirement: "Judge whether credential use is confined to the trusted runtime and cannot bypass exact work authorization, budget/per-call gates, or leak raw secret material to an agent, logs, errors, or callback results.",
+    requirement: delta ? "Judge only whether the compact, content-addressed resolution evidence closes F1–F4; do not reopen unrelated scope." : "Judge whether credential use is confined to the trusted runtime and cannot bypass exact work authorization, budget/per-call gates, or leak raw secret material to an agent, logs, errors, or callback results.",
     ...factsContent,
     provenance: { repo: inputs.repo, prNumber: inputs.prNumber, sourceCommit: inputs.expectedHeadSha, sourceFreshness: "CURRENT", profile: inputs.profile },
     artifactRefs: [artifactRef(factsArtifact)],

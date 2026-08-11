@@ -59,7 +59,7 @@ test("GitHub result returns only a verified content-addressed pointer", async ()
 });
 
 test("GitHub review authorization writes only a governed artifact branch and PR", async () => {
-  const authorization = buildReviewAuthorization({ workId: "EOS-INTAKE-002", reviewId: "REVIEW-790", maxSpendUsd: 0.25, sourceCommit: "a".repeat(40), provenance: "Owner" }, { subject: "owner", clientId: "chatgpt" }, "2026-08-11T06:00:00.000Z");
+  const authorization = buildReviewAuthorization({ workId: "EOS-INTAKE-002", reviewId: "REVIEW-790", maxSpendUsd: 0.25, sourceCommit: "a".repeat(40), workArtifactSha256: "b".repeat(64), expiresAt: "2026-08-12T06:00:00.000Z", provenance: "Owner" }, { subject: "owner", clientId: "chatgpt" }, "2026-08-11T06:00:00.000Z");
   const calls = [];
   const replies = [{ object: { sha: "base" } }, { ref: "created" }, { commit: { sha: "authorization-commit" } }, { number: 43, html_url: "https://github.example/pull/43" }];
   const store = new GitHubArtifactStore({ owner: "o", repo: "r", token: "secret", fetchImpl: async (url, options) => { calls.push({ url, options }); return jsonResponse(replies.shift()); } });

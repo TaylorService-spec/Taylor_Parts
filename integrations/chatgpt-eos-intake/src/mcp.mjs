@@ -9,6 +9,7 @@ const response = (value) => ({
   content: [{ type: "text", text: value.pointer || value.submit || JSON.stringify(value) }],
   structuredContent: value,
 });
+const safeStoreCall = async (operation) => { try { return await operation(); } catch { throw new Error("internal_error"); } };
 
 export function createIntakeMcpServer({ store, now = () => new Date().toISOString() }) {
   const server = new McpServer({ name: "taylor-parts-chatgpt-eos-intake", version: "0.1.0" });
@@ -31,7 +32,7 @@ export function createIntakeMcpServer({ store, now = () => new Date().toISOStrin
   }, async (input, extra) => {
     const auth = requireScope(extra, SCOPES.submit);
     const artifact = buildIntake(input, auth, now());
-    const refs = await store.submit(artifact);
+    const refs = await safeStoreCall(() => store.submit(artifact));
     return response(compactSubmitResponse(artifact, refs));
   });
 
@@ -42,7 +43,7 @@ export function createIntakeMcpServer({ store, now = () => new Date().toISOStrin
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   }, async ({ requestId }, extra) => {
     requireScope(extra, SCOPES.read);
-    return response(await store.status(requestId));
+    return response(await safeStoreCall(() => store.status(requestId)));
   });
 
   server.registerTool("get_work_result", {
@@ -52,7 +53,7 @@ export function createIntakeMcpServer({ store, now = () => new Date().toISOStrin
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   }, async ({ requestId }, extra) => {
     requireScope(extra, SCOPES.read);
-    return response(await store.result(requestId));
+    return response(await safeStoreCall(() => store.result(requestId)));
   });
 
   server.registerTool("authorize_review", {
@@ -63,13 +64,15 @@ export function createIntakeMcpServer({ store, now = () => new Date().toISOStrin
       reviewId: z.string().regex(/^[A-Z0-9][A-Z0-9._-]{2,79}$/),
       maxSpendUsd: z.number().positive().finite(),
       sourceCommit: z.string().regex(/^[0-9a-f]{40}$/),
+      workArtifactSha256: z.string().regex(/^[0-9a-f]{64}$/),
+      expiresAt: z.string().datetime(),
       provenance: z.string().min(1),
     },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   }, async (input, extra) => {
     const auth = requireScope(extra, SCOPES.authorizeReview);
     const artifact = buildReviewAuthorization(input, auth, now());
-    return response(await store.authorizeReview(artifact));
+    return response(await safeStoreCall(() => store.authorizeReview(artifact)));
   });
   return server;
 }

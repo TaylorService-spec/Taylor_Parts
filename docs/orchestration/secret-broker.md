@@ -13,7 +13,9 @@ withCredential("OPENAI_REVIEW", authorizedInvocation, callback)
 
 There is no secret-read/export MCP tool or public broker function. Status returns `credentialId: "eos-openai-review"` and `secretValue: "REDACTED"`. The existing OpenAI review adapter receives an injected transport created by `openaiCredentialTransport.mjs`; it never receives or stores the API key.
 
-An authorization grant must bind `capability`, `workId`, `reviewId`, `authorizationState: "AUTHORIZED"`, `budgetAuthorizationState: "AUTHORIZED"`, positive `maxSpendUsd`, exact `sourceCommit`, and `provenance`. The broker accepts only an ID/location/SHA-256-verified artifact and validates it before decrypting. The trusted transport also refuses when its injected spend estimate exceeds the artifact's ceiling. It does not decide product authority or calculate pricing; the existing EOS budget gate supplies that estimate.
+An authorization grant content-addressably binds `capability`, `workId`, `reviewId`, `authorizationState: "AUTHORIZED"`, `budgetAuthorizationState: "AUTHORIZED"`, positive cumulative `maxSpendUsd`, exact `sourceCommit`, exact `workArtifactSha256`, `createdAt`, `expiresAt`, authenticated authorizer, and `provenance`. The broker accepts only an ID/location/SHA-256-verified, unexpired artifact and validates it before decrypting. The trusted transport additionally binds each invocation to those exact identifiers, requires a unique `invocationId`, checks the per-invocation estimate, and reserves it in an injected durable job/session ledger before provider invocation. Replays and cumulative overspend refuse before credential resolution/provider use. The outer existing EOS pilot guard separately retains the aggregate pilot ceiling.
+
+The production transport has no implicit in-memory budget fallback: a spend ledger is required. `createFileSpendLedger` preserves cumulative reservations and at-most-once invocation IDs across process restarts; the in-memory implementation is test/job-local only.
 
 ## Windows storage and one-time provisioning
 

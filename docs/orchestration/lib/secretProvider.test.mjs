@@ -8,10 +8,11 @@ import { createSecretBroker, resolveDpapiSecret, SECRET_FAILURE } from "./secret
 import { buildReviewAuthorization, resolveReviewAuthorization } from "./reviewAuthorization.mjs";
 
 const SECRET = "sk-test-canary-never-serialize-9173";
-const grantArtifact = buildReviewAuthorization({ workId: "WORK-1", reviewId: "REVIEW-1", maxSpendUsd: 0.25, sourceCommit: "a".repeat(40), provenance: "governed-test" }, { subject: "owner", clientId: "chatgpt" }, "2026-08-11T06:00:00.000Z");
+const COMMON = { workId: "WORK-1", maxSpendUsd: 0.25, sourceCommit: "a".repeat(40), workArtifactSha256: "f".repeat(64), expiresAt: "2099-08-12T06:00:00.000Z" };
+const grantArtifact = buildReviewAuthorization({ ...COMMON, reviewId: "REVIEW-1", provenance: "governed-test" }, { subject: "owner", clientId: "chatgpt" }, "2026-08-11T06:00:00.000Z");
 const GRANT = resolveReviewAuthorization({ workId: grantArtifact.workId, reviewId: grantArtifact.reviewId, location: grantArtifact.artifactLocation, sha256: grantArtifact.sha256, bytes: JSON.stringify(grantArtifact) });
 const resolvedGrant = (changes) => {
-  const a = buildReviewAuthorization({ workId: "WORK-1", reviewId: "REVIEW-NEG", maxSpendUsd: 0.25, sourceCommit: "a".repeat(40), provenance: "negative-test", ...changes }, { subject: "owner", clientId: "chatgpt" }, "2026-08-11T06:00:00.000Z");
+  const a = buildReviewAuthorization({ ...COMMON, reviewId: "REVIEW-NEG", provenance: "negative-test", ...changes }, { subject: "owner", clientId: "chatgpt" }, "2026-08-11T06:00:00.000Z");
   return resolveReviewAuthorization({ workId: a.workId, reviewId: a.reviewId, location: a.artifactLocation, sha256: a.sha256, bytes: JSON.stringify(a) });
 };
 const fakeBroker = (overrides = {}) => createSecretBroker({ platform: "win32", secretRoot: overrides.root || tmpdir(), resolveSecret: overrides.resolveSecret || (() => SECRET), logger: overrides.logger });
@@ -45,6 +46,22 @@ test("callback cannot return the raw credential in result/evidence", async () =>
   await assert.rejects(() => fakeBroker().withCredential("OPENAI_REVIEW", GRANT, async (secret) => ({ evidence: secret })), { code: SECRET_FAILURE.EXPOSURE_BLOCKED });
   await assert.rejects(() => fakeBroker().withCredential("OPENAI_REVIEW", GRANT, async (secret) => Buffer.from(secret)), { code: SECRET_FAILURE.EXPOSURE_BLOCKED });
   await assert.rejects(() => fakeBroker().withCredential("OPENAI_REVIEW", GRANT, async (secret) => { const circular = { evidence: secret }; circular.self = circular; return circular; }), { code: SECRET_FAILURE.EXPOSURE_BLOCKED });
+});
+
+test("secret-bearing resolver/callback exceptions are replaced with stable non-secret codes", async () => {
+  for (const broker of [fakeBroker({ resolveSecret: () => { throw new Error(`decrypt failed ${SECRET}`); } }), fakeBroker()]) {
+    const callback = broker === undefined ? async () => null : async () => { throw new Error(`provider failed ${SECRET}`); };
+    try { await broker.withCredential("OPENAI_REVIEW", GRANT, callback); assert.fail("expected refusal"); }
+    catch (error) { assert.ok([SECRET_FAILURE.DECRYPT_FAILED, SECRET_FAILURE.EXECUTION_FAILED].includes(error.code)); assert.doesNotMatch(`${error.message}${error.stack}`, new RegExp(SECRET)); }
+  }
+});
+
+test("DPAPI child receives only allowlisted environment metadata, never ambient credentials", () => {
+  const root = mkdtempSync(join(tmpdir(), "eos-secret-env-")); writeFileSync(join(root, "OPENAI_API_KEY.dpapi"), Buffer.from("cipher")); let childEnv;
+  const spawn = (_bin, _args, options) => { childEnv = options.env; return { status: 23, stdout: Buffer.alloc(0), stderr: Buffer.from(SECRET) }; };
+  assert.throws(() => resolveDpapiSecret("OPENAI_API_KEY", { platform: "win32", secretRoot: root, spawn }), { code: SECRET_FAILURE.DECRYPT_FAILED });
+  assert.deepEqual(Object.keys(childEnv).filter((k) => /OPENAI|TOKEN|SECRET/i.test(k)), ["EOS_SECRET_PATH", "EOS_SECRET_ENTROPY"]);
+  assert.doesNotMatch(JSON.stringify(childEnv), new RegExp(SECRET));
 });
 
 test("missing and corrupt DPAPI secrets fail closed", () => {

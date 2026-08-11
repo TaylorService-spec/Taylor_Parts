@@ -40,14 +40,22 @@ test("MCP review authorization records authority only and exposes no credential 
   const names = list.result.tools.map((tool) => tool.name);
   assert.ok(names.includes("authorize_review"));
   assert.ok(!names.some((name) => /secret|credential|api_key/i.test(name)));
-  const response = await post(base, rpc("tools/call", { name: "authorize_review", arguments: { workId: "EOS-INTAKE-002", reviewId: "REVIEW-790", maxSpendUsd: 0.25, sourceCommit: "a".repeat(40), provenance: "Owner via authenticated ChatGPT" } }));
+  const authorityArgs = { workId: "EOS-INTAKE-002", reviewId: "REVIEW-790", maxSpendUsd: 0.25, sourceCommit: "a".repeat(40), workArtifactSha256: "b".repeat(64), expiresAt: "2099-08-12T06:00:00.000Z", provenance: "Owner via authenticated ChatGPT" };
+  const response = await post(base, rpc("tools/call", { name: "authorize_review", arguments: authorityArgs }));
   const body = await response.json();
   assert.equal(body.result.content[0].text, "authorization://REVIEW-790");
   assert.ok(!JSON.stringify(body).match(/sk-[A-Za-z0-9]/));
-  const denied = await (await post(base, rpc("tools/call", { name: "authorize_review", arguments: { workId: "EOS-INTAKE-002", reviewId: "REVIEW-790", maxSpendUsd: 0.25, sourceCommit: "a".repeat(40), provenance: "Owner" } }), "read-only")).json();
+  const denied = await (await post(base, rpc("tools/call", { name: "authorize_review", arguments: authorityArgs }), "read-only")).json();
   assert.equal(denied.result.isError, true);
   assert.match(denied.result.content[0].text, /eos\.authorize_review/);
 }));
+
+test("MCP internal errors never reflect store exception text", async () => {
+  const leakingStore = { ...store, status: async () => { throw new Error("sk-secret-provider-exception"); } };
+  const server = createApp({ config, verifier, store: leakingStore }).listen(0); await new Promise((resolve) => server.once("listening", resolve));
+  try { const body = await (await post(`http://127.0.0.1:${server.address().port}`, rpc("tools/call", { name: "get_work_status", arguments: { requestId: "EOS-INTAKE-002" } }))).json(); assert.doesNotMatch(JSON.stringify(body), /sk-secret-provider-exception/); }
+  finally { await new Promise((resolve) => server.close(resolve)); }
+});
 
 test("MCP status and result tools return only durable pointer text plus structured metadata", async () => withServer(async (base) => {
   for (const [name, pointer] of [["get_work_status", "status://EOS-INTAKE-002"], ["get_work_result", "result://EOS-INTAKE-002"]]) {

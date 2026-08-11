@@ -56,8 +56,9 @@ export function resolveDpapiSecret(secretName, { platform = process.platform, se
   const path = join(secretRoot, `${secretName}.dpapi`);
   if (!existsSync(path)) fail(SECRET_FAILURE.NOT_CONFIGURED);
   const script = `$ErrorActionPreference='Stop';try{Add-Type -AssemblyName System.Security;$p=[IO.File]::ReadAllBytes($env:EOS_SECRET_PATH);$e=[Text.Encoding]::UTF8.GetBytes($env:EOS_SECRET_ENTROPY);$b=[Security.Cryptography.ProtectedData]::Unprotect($p,$e,[Security.Cryptography.DataProtectionScope]::CurrentUser);[Console]::Out.Write([Convert]::ToBase64String($b));[Array]::Clear($b,0,$b.Length)}catch{exit 23}`;
+  const safeProcessEnv = Object.fromEntries(["SystemRoot", "WINDIR", "ComSpec", "PATH", "PATHEXT", "TEMP", "TMP"].filter((k) => process.env[k]).map((k) => [k, process.env[k]]));
   const child = spawn("powershell.exe", ["-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand", encodedPowerShell(script)], {
-    encoding: "buffer", windowsHide: true, env: { ...process.env, EOS_SECRET_PATH: path, EOS_SECRET_ENTROPY: `EOS:secret:${secretName}:v1` }, maxBuffer: 1024 * 1024,
+    encoding: "buffer", windowsHide: true, env: { ...safeProcessEnv, EOS_SECRET_PATH: path, EOS_SECRET_ENTROPY: `EOS:secret:${secretName}:v1` }, maxBuffer: 1024 * 1024,
   });
   if (child.status !== 0 || !child.stdout?.length) fail(SECRET_FAILURE.DECRYPT_FAILED);
   let decoded;

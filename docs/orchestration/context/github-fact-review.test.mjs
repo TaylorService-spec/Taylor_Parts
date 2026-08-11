@@ -42,3 +42,11 @@ test("security fixture is materially smaller than legacy full-context payload", 
   const legacy = buildReviewInvocation({ request: { reviewClass: "INDEPENDENT_AI", subject: "legacy", selectedModel: inputs.model }, contextPackage: { sufficiency: "SUFFICIENT", governingAuthority: "model", required: [] }, contextText: "governance ".repeat(5000), diff: "full diff ".repeat(3000), model: inputs.model });
   assert.equal(legacy.ok, true); assert.ok(dry.tokenBreakdown.totalEstimate < legacy.invocation.inputTokensEstimate * 0.5);
 });
+
+test("delta profile sends only the compact resolution artifact and enforces the one question", async () => {
+  const deltaInputs = { ...inputs, profile: "security-credential-boundary-delta", question: "Are findings F1–F4 resolved sufficiently to approve PR #790's credential security boundary?" };
+  const deltaGit = (args) => args[0] === "rev-parse" ? SHA : args.includes("--name-only") ? "docs/orchestration/reviews/resolutions/PR-790-F1-F4.resolution.json" : args[0] === "show" ? '{"findings":["F1","F2","F3","F4"],"tests":"pass","priorResultSha256":"7f73"}' : "";
+  const dry = await executeReview({ inputs: deltaInputs, fetchJson, gitExec: deltaGit });
+  assert.equal(dry.feedMode, "FACT_BASED"); assert.ok(dry.tokenBreakdown.rawSource > 0); assert.ok(dry.tokenBreakdown.totalEstimate < 1500);
+  await assert.rejects(() => executeReview({ inputs: { ...deltaInputs, question: "broader question" }, fetchJson, gitExec: deltaGit }), /DELTA_QUESTION_MISMATCH/);
+});
