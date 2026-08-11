@@ -1,0 +1,67 @@
+name: Equipment Detail Context Reads Tests
+
+# #785 -- the Equipment detail screen's Customer + Location context reads. Both hooks must
+# distinguish a FAILED/denied read from a genuinely-absent reference so a failure is never
+# rendered as a fact ("Unknown customer"/"Unknown location"). Runs the pure fail-closed
+# outcome chains (accountSubscription #785, locationSubscription #291) + the detail page's
+# derived-data unit tests, and lints the touched read hooks + domain outcomes. Pure/offline:
+# no emulator, no Firebase, no deployment, no production access, no secrets. The page's
+# rendering is proven separately by the browser gate.
+
+on:
+  pull_request:
+    paths:
+      - "field-ops-app-vite/src/hooks/useAccount.js"
+      - "field-ops-app-vite/src/hooks/useLocationsForAccount.js"
+      - "field-ops-app-vite/src/domain/accountSubscription.js"
+      - "field-ops-app-vite/src/domain/locationSubscription.js"
+      - "field-ops-app-vite/src/domain/loadErrorMessage.js"
+      - "field-ops-app-vite/src/modules/equipment/EquipmentDetail.jsx"
+      - "field-ops-app-vite/test/accountSubscription.test.mjs"
+      - "field-ops-app-vite/test/locationSubscription.test.mjs"
+      - "field-ops-app-vite/test/equipmentDetail.test.mjs"
+      - ".github/workflows/equipment-detail-context-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "field-ops-app-vite/src/hooks/useAccount.js"
+      - "field-ops-app-vite/src/hooks/useLocationsForAccount.js"
+      - "field-ops-app-vite/src/domain/accountSubscription.js"
+      - "field-ops-app-vite/src/domain/locationSubscription.js"
+      - "field-ops-app-vite/src/domain/loadErrorMessage.js"
+      - "field-ops-app-vite/src/modules/equipment/EquipmentDetail.jsx"
+      - "field-ops-app-vite/test/accountSubscription.test.mjs"
+      - "field-ops-app-vite/test/locationSubscription.test.mjs"
+      - "field-ops-app-vite/test/equipmentDetail.test.mjs"
+      - ".github/workflows/equipment-detail-context-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  equipment-detail-context-tests:
+    name: Equipment detail context reads (domain + lint)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: field-ops-app-vite/package-lock.json
+
+      - name: Install dependencies
+        run: npm install
+        working-directory: field-ops-app-vite
+
+      - name: Context read outcomes + detail derived data (node:test)
+        run: node test/accountSubscription.test.mjs && node test/locationSubscription.test.mjs && node test/equipmentDetail.test.mjs
+        working-directory: field-ops-app-vite
+
+      - name: Lint the read hooks + domain outcomes (oxlint)
+        run: npx oxlint src/hooks/useAccount.js src/hooks/useLocationsForAccount.js src/domain/accountSubscription.js src/domain/locationSubscription.js src/domain/loadErrorMessage.js src/modules/equipment/EquipmentDetail.jsx
+        working-directory: field-ops-app-vite

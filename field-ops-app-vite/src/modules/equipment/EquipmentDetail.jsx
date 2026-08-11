@@ -54,7 +54,8 @@ export default function EquipmentDetail() {
   // a not-yet-known answer as a fact is how "No service history" ends up on an asset
   // with three work orders.
   const { data: workOrders, loading: woLoading, error: woError } = useWorkOrdersForEquipment(equipmentId);
-  const { account, loading: accountLoading } = useAccount(equipment?.accountId ?? null);
+  const { account, loading: accountLoading, error: accountError, retry: retryAccount } =
+    useAccount(equipment?.accountId ?? null);
   const { data: locations, loading: locationsLoading, error: locationsError, retry: retryLocations } =
     useLocationsForAccount(equipment?.accountId ?? null);
 
@@ -112,6 +113,13 @@ export default function EquipmentDetail() {
   const locationName = locationsError
     ? "Location unavailable"
     : locations.find((l) => l.id === equipment.locationId)?.name ?? "Unknown location";
+  // #785: the Customer parallel of the string above. On a FAILED read the edit modal (which
+  // shows this as read-only context) reads "Customer unavailable" rather than "Unknown
+  // customer" -- the latter would assert the customer is genuinely unset when we merely
+  // could not load it. The inline cell renders its own failure+retry; this feeds the modal.
+  const accountName = accountError
+    ? "Customer unavailable"
+    : account?.name ?? "Unknown customer";
   const retired = isRetired(equipment);
   // One shared reason string, from the same seam the buttons would call -- so the copy
   // a user reads cannot drift from what the action would actually do.
@@ -146,12 +154,10 @@ export default function EquipmentDetail() {
       <div className="fo-detail-grid">
         {/* §8 Account + installed Location. Both render their NAME; an unresolved
             reference says so rather than exposing the raw id.
-            LOCATION now distinguishes a FAILED read from a genuinely-unknown one (#291):
-            a denied/failed Locations query shows an actionable failure with retry instead
-            of "Unknown location" stated as a fact.
-            ACCOUNT still cannot: useAccount passes no error callback and returns no error,
-            so "Unknown customer" remains ambiguous there. That is the same class one hook
-            over, out of #291's Location scope; not fixed here rather than widened silently. */}
+            Each now distinguishes a FAILED read from a genuinely-unknown one: a
+            denied/failed read shows an actionable failure with retry instead of
+            "Unknown customer"/"Unknown location" stated as a fact -- Location per #291,
+            Customer per #785 (the single-document sibling of the same fix). */}
         <section className="fo-panel" aria-labelledby="equip-where">
           <h2 id="equip-where">Customer &amp; location</h2>
           <dl className="fo-detail-list">
@@ -159,6 +165,11 @@ export default function EquipmentDetail() {
             <dd data-equipment-account>
               {accountLoading ? (
                 <span className="fo-muted">Loading…</span>
+              ) : accountError ? (
+                <span className="fo-inline-error" role="alert" data-account-error>
+                  {accountError}{" "}
+                  <button type="button" className="fo-link-btn" onClick={retryAccount}>Retry</button>
+                </span>
               ) : account ? (
                 <Link to={`/customers/${equipment.accountId}`}>{account.name}</Link>
               ) : (
@@ -245,7 +256,7 @@ export default function EquipmentDetail() {
       {editing ? (
         <EquipmentEditModal
           equipment={equipment}
-          accountName={account?.name ?? "Unknown customer"}
+          accountName={accountName}
           locationName={locationName}
           onSave={handleSave}
           onClose={() => setEditing(false)}
