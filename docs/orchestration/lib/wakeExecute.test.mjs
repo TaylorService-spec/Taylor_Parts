@@ -128,3 +128,39 @@ test("a spawn alone never fabricates ACKNOWLEDGED/COMPLETED", () => {
   assert.notEqual(r.wakeState, "COMPLETED");
   assert.notEqual(r.wakeState, "ACKNOWLEDGED");
 });
+
+// ── Diagnostic capture: a process failure must carry the exit code + sanitized stderr (the pilot gap) ──
+import { sanitizeDiagnostic } from "./wakeExecute.mjs";
+
+test("NONZERO_EXIT captures the exit code AND a sanitized stderr tail (was previously invisible)", () => {
+  const r = executeWake(base({ processRunner: mockRunner({ exitCode: 2, stdout: "", stderr: "Error: budget exceeded ($2.00) after 12 turns" }), lease: mockLease() }));
+  assert.equal(r.failureKind, "NONZERO_EXIT");
+  assert.equal(r.exitCode, 2);                                  // the ACTUAL exit code, surfaced
+  assert.match(r.failureDetail, /exit 2/);
+  assert.match(r.failureDetail, /budget exceeded/);            // the real reason is now visible
+  assert.match(r.diagnostic, /budget exceeded/);
+});
+
+test("NONZERO_EXIT with no stderr falls back to a stdout tail", () => {
+  const r = executeWake(base({ processRunner: mockRunner({ exitCode: 1, stdout: "partial output before crash", stderr: "" }), lease: mockLease() }));
+  assert.equal(r.exitCode, 1);
+  assert.match(r.failureDetail, /partial output/);
+});
+
+test("MALFORMED_OUTPUT surfaces the offending stdout tail", () => {
+  const r = executeWake(base({ processRunner: mockRunner({ exitCode: 0, stdout: "not json at all", stderr: "" }), lease: mockLease() }));
+  assert.equal(r.failureKind, "MALFORMED_OUTPUT");
+  assert.match(r.failureDetail, /not json at all/);
+});
+
+test("sanitizeDiagnostic redacts secrets, tokens, hex, and absolute paths", () => {
+  // POSIX path + no backslash literals (kept simple; the Windows-path rule is exercised at runtime).
+  const dirty = "auth Bearer sk-ABCD1234567890abcdef failed at /home/me/.local/bin/claude token=AKIAABCDEFGHIJKLMNOP hex=deadbeefdeadbeefcafe";
+  const clean = sanitizeDiagnostic(dirty);
+  assert.doesNotMatch(clean, /sk-ABCD1234567890/, "OpenAI-style secret redacted");
+  assert.doesNotMatch(clean, /home\/me\/\.local/, "absolute path redacted");
+  assert.doesNotMatch(clean, /AKIAABCDEFGHIJKLMNOP/, "long token redacted");
+  assert.doesNotMatch(clean, /deadbeefdeadbeefcafe/, "hex blob redacted");
+  assert.equal(sanitizeDiagnostic(null), "");
+  assert.equal(sanitizeDiagnostic(""), "");
+})
