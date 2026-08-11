@@ -261,7 +261,10 @@ export function equipmentSaveErrorMessage(err, { storedRecord = null } = {}) {
     // to gate the write (that stays Rules' job) — we detect the record's own shape only to explain the
     // rejection honestly instead of the misleading "you do not have permission".
     if (storedRecord && equipmentStoredShapeDefects(storedRecord).length > 0) {
-      return "This equipment couldn't be saved because it has a stored value that doesn't meet current data rules and must be repaired first — this isn't a field you edited. Ask an administrator to repair this record. Nothing was saved.";
+      // Softened: permission-denied can have more than one simultaneous cause, so this does NOT assert
+      // the stored defect is the ONLY reason. It surfaces the actionable possibility (repair a value the
+      // user didn't edit) without ruling out a genuine permission gap.
+      return "This save was rejected. This record has a stored value that doesn't meet current data rules and may need repair — it isn't a field you edited. If you have permission to edit equipment, ask an administrator to repair this record. Nothing was saved.";
     }
     return "You do not have permission to save this equipment. Nothing was saved.";
   }
@@ -326,18 +329,40 @@ export const EDITABLE_EQUIPMENT_FIELDS = Object.freeze([
 // The descriptive fields Rules require to be a string WHEN PRESENT (mirrors equipmentOptionalFieldsValid).
 const EQUIPMENT_OPTIONAL_STRING_FIELDS = Object.freeze(EDITABLE_EQUIPMENT_FIELDS.filter((f) => f !== "name"));
 
+// Mirrors firestore.rules equipmentNameValid EXACTLY, so the client never flags a name Rules would
+// accept: `name is string` + non-blank after ASCII trim + NOT all Unicode separators/format/whitespace
+// (NBSP/ZWNBSP etc. render blank) + <= 200 code points (Rules `name.size() <= 200`). Messaging-only.
+function equipmentNameIsStoredValid(name) {
+  if (typeof name !== "string") return false;
+  if (name.trim() === "") return false;                 // ASCII trim, matching Rules' trim()
+  if (/^[\p{Z}\p{Cf}\s]*$/u.test(name)) return false;    // all separators/format → visually blank
+  if ([...name].length > 200) return false;              // code points, matching Rules string.size()
+  return true;
+}
+
+// A plausibly-COMPLETE stored equipment carries its identity (accountId + locationId are always present
+// on a real record). This GATES the name defect so a MISSING/partial `before` (provenance not proven)
+// cannot fabricate a "missing name" repair claim. Optional-field defects need no such gate — a present
+// non-string value is malformed regardless of how complete the record is.
+function equipmentRecordLooksComplete(record) {
+  return isNonEmptyString(record?.accountId) && isNonEmptyString(record?.locationId);
+}
+
 // #319: repairable SHAPE defects ALREADY STORED on a record — the whole-document Rules guards a save is
 // rejected by even when the user only edited a descriptive field. Pure, messaging-only (never gates a
-// write; Rules remain the authority): (a) `name` is not a non-blank string (equipmentNameValid), or
-// (b) an optional field is present but not a string (equipmentOptionalFieldsValid). A MISSING optional
-// field is fine (Rules only type-check when the field exists). Returns field names, never their values.
+// write; Rules remain the authority). EXACT-parity, no false positives: (a) an optional field present
+// but not a string (equipmentOptionalFieldsValid — a Rules-permitted null is NOT flagged); (b) a name
+// that fails equipmentNameValid, but ONLY when the record is a plausibly-complete stored record (a
+// partial/unproven `before` yields no name defect). A non-record yields no defects. Returns field
+// names, never their values.
 export function equipmentStoredShapeDefects(record = {}) {
+  if (!isRecord(record)) return [];
   const defects = [];
-  if (!isNonEmptyString(record?.name)) defects.push("name");
   for (const f of EQUIPMENT_OPTIONAL_STRING_FIELDS) {
-    const v = record?.[f];
+    const v = record[f];
     if (v !== undefined && v !== null && typeof v !== "string") defects.push(f);
   }
+  if (equipmentRecordLooksComplete(record) && !equipmentNameIsStoredValid(record.name)) defects.push("name");
   return defects;
 }
 
