@@ -1,0 +1,30 @@
+{
+  "requestId": "EOS-CHATGPT-CC-001",
+  "title": "Control Center owner dashboard information architecture",
+  "intent": "Stage the approved Control Center redesign: keep the front Dashboard limited to system health, Owner needs, active work, and stuck/cost signals; organize detailed information into purpose-specific Work, Decisions, AI & Agents, Governance, Costs, and System tabs. This is design staging only; no implementation authorization.",
+  "scope": [
+    "docs/orchestration/work-intake/",
+    "project-keystone/apps/control-center/"
+  ],
+  "contextScope": [
+    "orchestration"
+  ],
+  "source": {
+    "producer": "Owner/ChatGPT",
+    "provenance": "Owner requested a harmless DESIGN_STAGING submission through the ChatGPT→GitHub→EOS intake bridge."
+  },
+  "status": "DESIGN_STAGING",
+  "authority": {
+    "authorizationState": "REPO_SAFE",
+    "basis": "Owner authorized staging only; implementation/execution is not authorized.",
+    "protectedBoundary": null
+  },
+  "artifactLocation": "docs/orchestration/work-intake/EOS-CHATGPT-CC-001.work.json",
+  "sha256": "3163f0e4a8c5cd41494bc8fc1fa4c506ac3c38f14967143b0ff1da6b65aee9d9",
+  "createdAt": "2026-08-11T05:32:00Z",
+  "updatedAt": "2026-08-11T05:32:00Z",
+  "relatedRefs": {
+    "issues": [],
+    "pullRequests": []
+  }
+}
