@@ -9,7 +9,7 @@ import {
   normalizeEquipmentStatus, isValidEquipmentStatus, canTransitionEquipmentStatus, isRetired,
   normalizeEquipmentInput, validateEquipmentInput,
   locationBelongsToAccount, locationsForAccount, equipmentOwnershipValid, ownershipUnchanged,
-  equipmentDisplayName, equipmentSummary, equipmentSaveErrorMessage,
+  equipmentDisplayName, equipmentSummary, equipmentSaveErrorMessage, equipmentStoredShapeDefects,
   equipmentMatchesSearch, compareEquipment, searchEquipment,
   equipmentServiceHistory, groupServiceHistoryByYear,
   GOVERNED_EQUIPMENT_FIELDS,
@@ -146,6 +146,60 @@ ok("save error copy is safe/categorized and never leaks provider detail", () => 
   }
   assert.match(equipmentSaveErrorMessage({ blocked: true }), /disabled/i);
   assert.match(equipmentSaveErrorMessage({ code: "permission-denied" }), /permission/i);
+});
+
+// ---- #319: stored whole-document shape defects (GPT-review corrections) ----
+// A plausibly-COMPLETE stored equipment carries its identity; name defects are trusted only for these.
+const COMPLETE = (over = {}) => ({ accountId: "a1", locationId: "l1", name: "Chiller 1", ...over });
+
+ok("equipmentStoredShapeDefects: optional-field parity (present non-string flagged; null/absent NOT) — no completeness needed", () => {
+  assert.deepEqual(equipmentStoredShapeDefects(COMPLETE({ manufacturer: "Trane", model: "X", notes: "legacy" })), [], "well-formed record has no defects");
+  assert.ok(equipmentStoredShapeDefects(COMPLETE({ notes: 5 })).includes("notes"), "notes stored as a number is a defect");
+  assert.ok(equipmentStoredShapeDefects(COMPLETE({ installedDate: true })).includes("installedDate"), "non-string optional is a defect");
+  // Rules PERMIT a null/absent optional (equipmentOptionalFieldsValid type-checks only when present).
+  assert.deepEqual(equipmentStoredShapeDefects(COMPLETE({ notes: null, model: undefined, assetTag: null })), [], "Rules-permitted null/absent optionals are NOT flagged");
+  // Optional defects are flagged even on a partial record — a present non-string is malformed regardless.
+  assert.ok(equipmentStoredShapeDefects({ notes: 5 }).includes("notes"), "optional defect needs no completeness");
+});
+
+ok("#319 finding 1: name detection mirrors equipmentNameValid EXACTLY (blank / NBSP-only / >200 / non-string), never a false positive", () => {
+  assert.ok(equipmentStoredShapeDefects(COMPLETE({ name: 5 })).includes("name"), "non-string name");
+  assert.ok(equipmentStoredShapeDefects(COMPLETE({ name: "   " })).includes("name"), "ASCII-blank name");
+  assert.ok(equipmentStoredShapeDefects(COMPLETE({ name: "  " })).includes("name"), "all-NBSP name renders blank (Rules reject)");
+  assert.ok(equipmentStoredShapeDefects(COMPLETE({ name: "x".repeat(201) })).includes("name"), "name over 200 code points");
+  // Rules-VALID names are never flagged (no false positive): a normal name, a 200-char name, a name
+  // with an embedded NBSP but real letters.
+  assert.ok(!equipmentStoredShapeDefects(COMPLETE({ name: "Rooftop Unit 1" })).includes("name"));
+  assert.ok(!equipmentStoredShapeDefects(COMPLETE({ name: "y".repeat(200) })).includes("name"), "exactly 200 is allowed");
+  assert.ok(!equipmentStoredShapeDefects(COMPLETE({ name: "A B" })).includes("name"), "letters around an NBSP are a real name");
+});
+
+ok("#319 finding 2/4: an INCOMPLETE/partial/empty `before` NEVER fabricates a name defect (provenance not proven)", () => {
+  // These lack identity (accountId/locationId) → name is NOT asserted, even when absent/blank/wrong.
+  assert.deepEqual(equipmentStoredShapeDefects({}), [], "empty before → no defect claim");
+  assert.deepEqual(equipmentStoredShapeDefects({ name: 5 }), [], "partial before (no identity) → no name defect");
+  assert.deepEqual(equipmentStoredShapeDefects({ manufacturer: "Trane" }), [], "partial before, name absent → no defect");
+  assert.deepEqual(equipmentStoredShapeDefects(undefined), [], "absent before → no defect");
+  assert.deepEqual(equipmentStoredShapeDefects("not a record"), [], "non-record → no defect");
+  assert.deepEqual(equipmentStoredShapeDefects(null), [], "null → no defect");
+});
+
+ok("#319 finding 3: permission-denied copy is SOFTENED (does not assert a single cause) yet still actionable + safe", () => {
+  const RAW = /permission-denied|firestore\/|FirebaseError|code:|documents\/|[A-Za-z0-9]{20,}/;
+  const withDefect = equipmentSaveErrorMessage({ code: "permission-denied" }, { storedRecord: COMPLETE({ notes: 5 }) });
+  assert.match(withDefect, /may need repair|data rules/i, "surfaces the repair possibility");
+  assert.match(withDefect, /if you have permission/i, "acknowledges a permission cause is also possible (softened)");
+  assert.doesNotMatch(withDefect, /you do not have permission/i, "does not falsely assert the user lacks permission");
+  assert.doesNotMatch(withDefect, /must be repaired/i, "no longer asserts repair is the ONLY cause");
+  assert.match(withDefect, /Nothing was saved/i);
+  assert.doesNotMatch(withDefect, RAW, `leaked: ${withDefect}`);
+  assert.doesNotMatch(withDefect, /notes/i, "never names the offending field path");
+  // Clean stored record → genuine permission copy; incomplete before → genuine permission copy (no false repair).
+  assert.match(equipmentSaveErrorMessage({ code: "permission-denied" }, { storedRecord: COMPLETE({ notes: "fine" }) }), /you do not have permission/i);
+  assert.match(equipmentSaveErrorMessage({ code: "permission-denied" }, { storedRecord: {} }), /you do not have permission/i, "empty before → never claims repair");
+  // Backward compatible + other codes unaffected.
+  assert.match(equipmentSaveErrorMessage({ code: "permission-denied" }), /you do not have permission/i);
+  assert.match(equipmentSaveErrorMessage({ code: "unavailable" }, { storedRecord: COMPLETE({ notes: 5 }) }), /temporarily unavailable/i);
 });
 
 // ---- search + deterministic ordering (Spec §7) ----------------------------
