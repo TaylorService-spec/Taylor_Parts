@@ -109,3 +109,45 @@ test("CONCUR_WITH_CORRECTION carries the correction into the woken Claude's retu
 test("ceiling constant is 1/1/1", () => {
   assert.deepEqual(PILOT_CEILING, { maxGptLiveCalls: 1, maxClaudeAutomaticWakes: 1, maxReciprocalCycles: 1 });
 });
+
+// ── Claude-wake defect reproduction + Claude-half proof (real spawn) ──────────
+import { executeWake } from "./wakeExecute.mjs";
+import { spawnSync } from "node:child_process";
+
+test("REPRODUCE the live defect: claude spawn ENOENT → SPAWNED_FAILED, claudeWakes 0, reason SURFACED (not inferred)", async () => {
+  const r = await runReciprocalPilotCycle({ ...base(), claudeProcessRunner: mockClaudeRunner({ run: { spawnError: "ENOENT: spawnSync claude (bin=claude)" } }), reviews: [review("W1")] });
+  assert.equal(r.gptCalls, 1);                                     // GPT still ran (the live observation)
+  assert.equal(r.claudeWakes, 0);
+  assert.equal(r.wake.outcome, "SPAWNED_FAILED");
+  assert.equal(r.wake.failureKind, "SPAWN_FAILURE");
+  assert.equal(r.evidence.claudeOutcome.failureKind, "SPAWN_FAILURE"); // now reported in evidence
+  assert.ok(!r.transitions.includes("CLAUDE_ACTIVE"));               // never went ACTIVE — matches the live lifecycle
+  assert.match(r.transitions.join(","), /CLAUDE_TRIGGERED,CLAUDE_FAILED_OR_HELD/);
+});
+
+test("CLAUDE-HALF PROOF (injected fake GPT + working runner): AUTHORIZED→TRIGGERED→ACTIVE→COMPLETED, claudeWakes 1", async () => {
+  const r = await runReciprocalPilotCycle({ ...base(), reviews: [review("W1")] });
+  assert.equal(r.claudeWakes, 1);
+  assert.deepEqual(r.transitions.filter((x) => x.startsWith("CLAUDE_")), ["CLAUDE_AUTHORIZED", "CLAUDE_TRIGGERED", "CLAUDE_ACTIVE", "CLAUDE_COMPLETED"]);
+  assert.equal(r.evidence.claudeOutcome.outcome, "SPAWNED_COMPLETED");
+  assert.equal(r.stopped, "ONE_CYCLE_COMPLETE");
+});
+
+test("REAL-PROCESS spawn proof: executeWake with a REAL child (node as fake claude) → SPAWNED_COMPLETED", () => {
+  // Proves the spawn/stdio/JSON-parse/wall-clock path works with an actual OS process (cross-platform),
+  // isolating the live failure to claude executable RESOLUTION — not the wake runtime.
+  const realNodeRunner = { run({ wallClockSec }) {
+    const rr = spawnSync(process.execPath, ["-e", "process.stdout.write(JSON.stringify({result:'reviewed',total_cost_usd:0}))"], { timeout: (wallClockSec || 900) * 1000, encoding: "utf8" });
+    if (rr.error) return { spawnError: rr.error.message };
+    return { stdout: rr.stdout || "", exitCode: rr.status == null ? 1 : rr.status, timedOut: false };
+  } };
+  const out = executeWake({
+    item: { id: "interpret:rev:W1", status: "READY", authorized: true, protectedBoundary: false, scope: ["orchestration"], workstream: "Orchestration", modelTier: "standard" },
+    ctx: { triggerKind: "AUTOMATIC_TRIGGER", ...FREE_SLOT },
+    contextPackageFn: ctxPkgFn, processRunner: realNodeRunner, wakeLease: undefined,
+    lease: { acquire: () => ({ acquired: true }), release: () => {} }, sourceFreshness: "CURRENT",
+  });
+  assert.equal(out.outcome, "SPAWNED_COMPLETED");
+  assert.equal(out.wakeState, "COMPLETED");
+  assert.equal(out.result, "reviewed");
+});
