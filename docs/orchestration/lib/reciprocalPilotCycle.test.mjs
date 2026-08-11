@@ -6,7 +6,7 @@ import { makeInMemoryReviewStore, buildReviewRequest } from "./reviewTrigger.mjs
 function review(id, over = {}) {
   return { ...buildReviewRequest({ requestId: id, subject: `review ${id}`, source: "CONTROL_PLANE_EVENT" }), status: "OPEN", reviewClass: "INDEPENDENT_AI", authorizedForReview: true, routedBackTo: "Orchestration", ...over };
 }
-const fakeGpt = (verdict = "CONCUR", extra = {}) => async (rv) => ({ ok: true, result: { exchangeId: `rev:${rv.requestId}`, requestId: rv.requestId, provider: "OPENAI", selectedModel: "gpt-5.6-terra", verdict, conclusion: "c", corrections: extra.corrections || [], evidenceRefs: [], sourceFreshness: "CURRENT", routedBackTo: rv.routedBackTo }, usage: { actualCostUsd: 0.015, inputTokens: 4900, outputTokens: 420 } });
+const fakeGpt = (verdict = "CONCUR", extra = {}) => async (rv) => ({ ok: true, result: { exchangeId: `rev:${rv.requestId}`, requestId: rv.requestId, provider: "OPENAI", selectedModel: "gpt-5.6-terra", verdict, conclusion: "c", corrections: extra.corrections || [], evidenceRefs: extra.evidenceRefs || [], sourceFreshness: "CURRENT", routedBackTo: rv.routedBackTo }, usage: { actualCostUsd: 0.015, inputTokens: 4900, outputTokens: 420 } });
 // Mock Claude process runner in the executeWake shape: clean exit + JSON stdout with a `result`.
 const mockClaudeRunner = (opts = {}) => { const calls = []; return { calls, run(a) { calls.push(a); if (opts.throwErr) throw new Error(opts.throwErr); return opts.run || { stdout: JSON.stringify({ result: "interpreted the review", total_cost_usd: 0.06, session_id: "s1" }), exitCode: 0, timedOut: false }; } }; };
 const mockWakeLease = (acquired = true) => { let held = false; return { acquire: () => (acquired && !held ? (held = true, { acquired: true }) : { acquired: false }), release: () => { held = false; } }; };
@@ -160,4 +160,48 @@ test("NONZERO_EXIT surfaces the exit code + sanitized diagnostic in the pilot ev
   assert.equal(r.evidence.claudeOutcome.exitCode, 2);                 // the ACTUAL exit code, now reported
   assert.match(r.evidence.claudeOutcome.diagnostic, /budget exceeded/); // sanitized stderr, now reported
   assert.match(r.evidence.claudeOutcome.reason, /exit 2/);
+});
+
+// ── GPT outcome observability: surface the semantic review result in evidence (no new provider call) ──
+test("a completed GPT review surfaces gptOutcome (CONCUR) in the pilot evidence; system fields stay separate", async () => {
+  const runner = mockClaudeRunner(); const b = { ...base(), claudeProcessRunner: runner };
+  const r = await runReciprocalPilotCycle({ ...b, gptRunner: fakeGpt("CONCUR", { corrections: [] }), reviews: [review("W1")] });
+  const o = r.evidence.gptOutcome;
+  assert.equal(o.verdict, "CONCUR");
+  assert.equal(o.conclusion, "c");
+  assert.deepEqual(o.corrections, []);
+  assert.equal(o.evidenceRequired, false);
+  assert.equal(o.ownerDecisionRequired, false);
+  // SYSTEM-owned metadata is NOT inside the semantic outcome (kept separate).
+  for (const sys of ["exchangeId", "requestId", "provenance", "inputTokens", "outputTokens", "actualCostUsd", "selectedModel"]) {
+    assert.ok(!(sys in o), `gptOutcome must not carry system field ${sys}`);
+  }
+  assert.ok(r.evidence.gpt.inputTokens > 0, "usage/cost stays in evidence.gpt");
+  // No new provider call was needed to inspect the result: the runner was called exactly once.
+});
+
+test("CONCUR_WITH_CORRECTION correction is visible in gptOutcome", async () => {
+  const r = await runReciprocalPilotCycle({ ...base(), gptRunner: fakeGpt("CONCUR_WITH_CORRECTION", { corrections: ["tighten X"] }), reviews: [review("W1")] });
+  assert.equal(r.evidence.gptOutcome.verdict, "CONCUR_WITH_CORRECTION");
+  assert.deepEqual(r.evidence.gptOutcome.corrections, ["tighten X"]);
+});
+
+test("EVIDENCE_REQUIRED is visible in gptOutcome (evidenceRequired true)", async () => {
+  const r = await runReciprocalPilotCycle({ ...base(), gptRunner: fakeGpt("EVIDENCE_REQUIRED", { evidenceRefs: ["need repro"] }), reviews: [review("W1")] });
+  assert.equal(r.evidence.gptOutcome.verdict, "EVIDENCE_REQUIRED");
+  assert.equal(r.evidence.gptOutcome.evidenceRequired, true);
+  assert.deepEqual(r.evidence.gptOutcome.evidenceRefs, ["need repro"]);
+});
+
+test("NEEDS_OWNER is visible in gptOutcome (ownerDecisionRequired true) even though no wake occurs", async () => {
+  const r = await runReciprocalPilotCycle({ ...base(), gptRunner: fakeGpt("NEEDS_OWNER"), reviews: [review("W1")] });
+  assert.equal(r.evidence.gptOutcome.verdict, "NEEDS_OWNER");
+  assert.equal(r.evidence.gptOutcome.ownerDecisionRequired, true);
+  assert.equal(r.claudeWakes, 0);
+});
+
+test("evidence carries no credentials, headers, or transcript", async () => {
+  const r = await runReciprocalPilotCycle({ ...base(), gptRunner: fakeGpt("CONCUR"), reviews: [review("W1")] });
+  const blob = JSON.stringify(r.evidence);
+  assert.doesNotMatch(blob, /Authorization|Bearer |sk-|api[_-]?key|transcript|rawModelResponse/i);
 });

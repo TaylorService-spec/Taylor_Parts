@@ -14,10 +14,19 @@ import { executeWake } from "./wakeExecute.mjs";
 export const PILOT_CEILING = Object.freeze({ maxGptLiveCalls: 1, maxClaudeAutomaticWakes: 1, maxReciprocalCycles: 1 });
 
 function buildEvidence({ loop, wake, transitions, gptCalls, claudeWakes }) {
+  const reviewed = (loop && loop.perReview || []).filter((p) => p.verdict);
   const usages = (loop && loop.perReview || []).map((p) => p.usage).filter(Boolean);
   const gpt = usages[0] || null;
+  const first = reviewed[0] || null;
   return {
+    // SYSTEM-owned GPT usage/cost (separate from the model's semantic output).
     gpt: gpt ? { inputTokens: gpt.inputTokens ?? null, outputTokens: gpt.outputTokens ?? null, actualCostUsd: gpt.actualCostUsd ?? null } : null,
+    // SEMANTIC review result the operator needs — compact, no transcript/internals/credentials.
+    gptOutcome: first ? {
+      verdict: first.verdict, conclusion: first.conclusion ?? null, corrections: first.corrections ?? [],
+      evidenceRequired: first.evidenceRequired ?? false, ownerDecisionRequired: first.ownerDecisionRequired ?? false,
+      evidenceRefs: first.evidenceRefs ?? [],
+    } : null,
     claude: wake && wake.outcome === "SPAWNED_COMPLETED" ? { cost: wake.cost ?? null, selectedModel: wake.selectedModel ?? null, result: wake.result ?? null } : null,
     // The ACTUAL wake outcome + failure reason — reported, never inferred. Includes the child exit code
     // + sanitized stderr/stdout diagnostic for a SPAWNED_FAILED, and the HELD `reason` otherwise.
