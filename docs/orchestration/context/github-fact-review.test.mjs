@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { executeReview, parseReviewInputs } from "./github-fact-review.mjs";
+import { buildSecurityFeed, executeReview, parseReviewInputs, resolveExactSubject } from "./github-fact-review.mjs";
 import { buildReviewInvocation } from "../lib/openaiReviewProvider.mjs";
 
 const SHA = "a".repeat(40), BASE = "b".repeat(40);
@@ -49,4 +49,22 @@ test("delta profile sends only the compact resolution artifact and enforces the 
   const dry = await executeReview({ inputs: deltaInputs, fetchJson, gitExec: deltaGit });
   assert.equal(dry.feedMode, "FACT_BASED"); assert.ok(dry.tokenBreakdown.rawSource > 0); assert.ok(dry.tokenBreakdown.totalEstimate < 1500);
   await assert.rejects(() => executeReview({ inputs: { ...deltaInputs, question: "broader question" }, fetchJson, gitExec: deltaGit }), /DELTA_QUESTION_MISMATCH/);
+});
+
+test("final profile binds the committed exact-head evidence and sends no implementation source", async () => {
+  const head = "8a71f7cd3006fc149c7a80c52967a1643935ac7d";
+  const finalInputs = {
+    ...inputs,
+    expectedHeadSha: head,
+    question: `Are the remaining evidence gaps now satisfied for findings F1-F4 on PR #790 exact head ${head}?`,
+    profile: "security-credential-boundary-final",
+  };
+  const finalFetch = async () => ({ number: 790, head: { sha: head }, base: { sha: BASE } });
+  const subject = await resolveExactSubject(finalInputs, { fetchJson: finalFetch, gitExec: () => head });
+  const feed = buildSecurityFeed(finalInputs, subject).feed;
+  const dry = await executeReview({ inputs: finalInputs, fetchJson: finalFetch, gitExec: () => head });
+  assert.equal(dry.feedMode, "FACT_BASED");
+  assert.ok(dry.tokenBreakdown.totalEstimate > 0);
+  assert.deepEqual(subject.material, ["docs/orchestration/reviews/evidence/pr-790/PR-790-FINAL-EVIDENCE.json"]);
+  assert.doesNotMatch(JSON.stringify(feed), /diff --git|secretProvider\.mjs b\//);
 });
