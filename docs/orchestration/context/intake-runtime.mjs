@@ -22,6 +22,7 @@ import { resolveClaudeBin } from "../lib/reviewInputSafety.mjs";
 import { makeLease } from "../lib/wakeLease.mjs";
 import { contextPackageFor } from "./build-package.mjs";
 import { makeRealClaudeRunner } from "./reciprocal-pilot.mjs";
+import { createSecretBroker } from "../lib/secretProvider.mjs";
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const arg = (n, fb = null) => { const i = process.argv.indexOf(`--${n}`); return i !== -1 && process.argv[i + 1] && !process.argv[i + 1].startsWith("--") ? process.argv[i + 1] : fb; };
@@ -49,7 +50,10 @@ export function executeIntakeItem({ requestId, location, sha256, sourceCommit = 
   const artifact = resolveWorkIntake({ requestId, location, sha256, bytes });
 
   const now = deps.now || new Date().toISOString();
-  const capabilityBroker = deps.capabilityBroker ?? null; // no Secret Broker yet ⇒ paid work BLOCKED
+  // The MERGED #790 Secret Broker (availability only here — the actual key resolves inside withCredential at
+  // the paid call). Off-Windows or unprovisioned ⇒ credentialAvailable false ⇒ the paid path stays BLOCKED,
+  // fail-closed. Injected in tests.
+  const capabilityBroker = deps.capabilityBroker ?? (() => { try { return createSecretBroker(); } catch { return null; } })();
   const claudeBin = deps.claudeBin || resolveClaudeBin({ env: process.env });
   const processRunner = deps.processRunner || makeRealClaudeRunner(claudeBin.bin);
   const lease = deps.lease || makeLease({ dir: join(process.env.LOCALAPPDATA || REPO, "EOS", "intake-runtime.lock"), fs: { readFileSync, writeFileSync, mkdirSync }, host: "local", pid: process.pid, now: () => Date.now(), leaseMs: 900000 });

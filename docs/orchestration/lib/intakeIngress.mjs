@@ -44,19 +44,28 @@ export function assessIntakeExecution(artifact) {
 }
 
 /**
- * Capability availability seam. NEVER returns a secret — only availability. The broker is an injected
- * object exposing `hasCapability(name) => boolean`; a null/absent broker means the capability is not
- * activated (fail-closed).
+ * Capability availability seam. NEVER returns, requests, or handles a secret — only availability. It
+ * accepts EITHER the merged EOS Secret Broker (#790: `credentialStatus(name) => { credentialAvailable }`,
+ * which returns `secretValue: "REDACTED"` and never the key) OR a minimal `{ hasCapability(name) }` shim
+ * (used in tests). A null/absent broker means the capability is not activated (fail-closed). Availability
+ * is necessary but NOT sufficient to spend: the actual paid call still passes the broker's
+ * `withCredential` authorization + budget + replay gates at invocation.
  * @returns {{ name, available, state, reason }}
  */
 export function assessCapability({ name, broker = null } = {}) {
   if (!CAPABILITIES.includes(name)) return { name, available: false, state: "UNKNOWN_CAPABILITY", reason: `unknown capability ${name}` };
-  if (!broker || typeof broker.hasCapability !== "function") {
-    return { name, available: false, state: "NEEDS_ACTIVATION", reason: "no capability broker wired — the EOS Secret Broker is not present; the paid capability is unavailable" };
-  }
   let has = false;
-  try { has = broker.hasCapability(name) === true; } catch { has = false; }
-  return has ? { name, available: true, state: "AVAILABLE", reason: "capability available via broker" }
+  try {
+    if (broker && typeof broker.credentialStatus === "function") {
+      // The merged Secret Broker — availability only (credentialStatus never exposes the key).
+      has = broker.credentialStatus(name).credentialAvailable === true;
+    } else if (broker && typeof broker.hasCapability === "function") {
+      has = broker.hasCapability(name) === true;
+    } else {
+      return { name, available: false, state: "NEEDS_ACTIVATION", reason: "no capability broker wired — the EOS Secret Broker is not present; the paid capability is unavailable" };
+    }
+  } catch { has = false; }
+  return has ? { name, available: true, state: "AVAILABLE", reason: "capability available via broker (availability only — withCredential still gates the spend)" }
     : { name, available: false, state: "NEEDS_ACTIVATION", reason: `capability ${name} is not available from the broker` };
 }
 

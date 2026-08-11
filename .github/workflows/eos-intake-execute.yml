@@ -1,0 +1,60 @@
+name: EOS Intake — persistent execution runtime (Owner-gated)
+
+# Persistent EXECUTION runtime trigger. On a merged EXECUTION_AUTHORIZED *.work.json intake, a Windows
+# self-hosted runner under the Owner's Windows user runs intake-runtime.mjs execute per changed artifact:
+# it wakes the worker through the EXISTING Wake Supervisor, resolves the OPENAI_REVIEW credential INTERNALLY
+# via the merged Secret Broker (DPAPI CurrentUser — decryptable only under the Owner's Windows profile),
+# runs the review, and commits the status + content-addressed result. No Owner PowerShell, no Claude GUI.
+#
+# DORMANT BY DESIGN. It runs ONLY when BOTH are true, which is the Owner's protected runtime activation:
+#   1. a self-hosted runner labeled [self-hosted, windows, eos-runtime] is online under the Owner's user, and
+#   2. the repo variable EOS_RUNTIME_ENABLED == 'true'.
+# Until then no job runs — paid execution cannot start. DPAPI binds the secret to the Owner's Windows user,
+# so a GitHub-hosted (Linux) runner can never decrypt it: live paid execution is physically confined to the
+# Owner's machine. See docs/orchestration/eos-runtime-activation.md.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/orchestration/work-intake/**/*.work.json"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: eos-intake-execute
+  cancel-in-progress: false
+
+jobs:
+  execute:
+    name: Execute eligible EXECUTION_AUTHORIZED intakes (self-hosted Windows, Owner-gated)
+    if: ${{ vars.EOS_RUNTIME_ENABLED == 'true' }}
+    runs-on: [self-hosted, windows, eos-runtime]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Execute eligible intakes + commit status/result
+        shell: bash
+        run: |
+          set -euo pipefail
+          node docs/orchestration/context/intake-ingest-ci.mjs --write   # refresh all status (idempotent)
+          # Per EXECUTION_AUTHORIZED artifact, run the guarded execution runtime. It spawns zero unless the
+          # intake-state gate + capability seam + Wake readiness all pass; paid capability with no credential
+          # stays BLOCKED. The runtime writes status and, on COMPLETE, the content-addressed result.
+          for f in docs/orchestration/work-intake/*.work.json; do
+            id=$(node -e "process.stdout.write(JSON.parse(require('fs').readFileSync('$f')).requestId)")
+            sha=$(node -e "process.stdout.write(JSON.parse(require('fs').readFileSync('$f')).sha256)")
+            status=$(node -e "process.stdout.write(JSON.parse(require('fs').readFileSync('$f')).status)")
+            if [ "$status" = "EXECUTION_AUTHORIZED" ]; then
+              node docs/orchestration/context/intake-runtime.mjs execute --id "$id" --location "$f" --sha256 "$sha" || true
+            fi
+          done
+      - name: Commit status/result back to main (only if changed)
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/orchestration/work-intake/status docs/orchestration/work-intake/results
+          if git diff --cached --quiet; then echo "no changes"; else git commit -m "eos: intake execution result write-back [skip ci]" && git push; fi
