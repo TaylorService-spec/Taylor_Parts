@@ -13,6 +13,7 @@ import { runReciprocalPilotCycle, PILOT_CEILING } from "../lib/reciprocalPilotCy
 import { selectEligibleReviews } from "../lib/reciprocalReviewLoop.mjs";
 import { runOpenAIReview } from "../lib/openaiReviewProvider.mjs";
 import { makeInMemoryReviewStore, buildReviewRequest } from "../lib/reviewTrigger.mjs";
+import { resolveClaudeBin } from "../lib/reviewInputSafety.mjs";
 import { makeLease } from "../lib/wakeLease.mjs";
 import { contextPackageFor } from "./build-package.mjs";
 import { coldStart } from "./cold-start.mjs";
@@ -41,16 +42,22 @@ function realGptRunner({ boot, diff }) {
     return runOpenAIReview({ request: review, contextPackage: boot.package, diff, contextText, transport, sourceFreshness: prov.freshness || "UNKNOWN", contextPackageRef: { mapVersion: (boot.package.provenance || {}).mapVersion || null, sourceCommit: prov.sourceCommit || null, governingAuthority: boot.package.governingAuthority || null }, provenance: { sourceFreshness: prov.freshness || "UNKNOWN", sourceCommit: prov.sourceCommit || null }, triggerKind: "AUTOMATIC_TRIGGER", timestamps: { requestedAt: new Date().toISOString(), triggeredAt: new Date().toISOString() }, clock: () => new Date().toISOString() });
   };
 }
-// Real Claude process runner for executeWake: spawn `claude -p` bounded by the wall-clock guardrail.
-const realClaudeRunner = {
-  run({ bin, argv, wallClockSec }) {
-    const r = spawnSync(bin, argv, { timeout: (wallClockSec || 900) * 1000, encoding: "utf8", windowsHide: true });
-    if (r.error && r.error.code === "ETIMEDOUT") return { timedOut: true };
-    if (r.error) return { spawnError: r.error.message };
-    if (r.signal) return { timedOut: true };
-    return { stdout: r.stdout || "", exitCode: r.status == null ? 1 : r.status, timedOut: false };
-  },
-};
+// Real Claude process runner for executeWake: spawn the RESOLVED `claude` executable bounded by the
+// wall-clock guardrail. `resolvedBin` overrides the core's logical bin ("claude") — on Windows a bare
+// "claude" ENOENTs (spawnSync does not use PATH/PATHEXT and claude is often not on PATH). Guardrails
+// (argv/timeout/allowlist) are untouched — only the executable path is resolved.
+function makeRealClaudeRunner(resolvedBin) {
+  return {
+    run({ bin, argv, wallClockSec }) {
+      const exe = resolvedBin || bin;
+      const r = spawnSync(exe, argv, { timeout: (wallClockSec || 900) * 1000, encoding: "utf8", windowsHide: true });
+      if (r.error && r.error.code === "ETIMEDOUT") return { timedOut: true };
+      if (r.error) return { spawnError: `${r.error.code || "spawn error"}: ${r.error.message} (bin=${exe})` };
+      if (r.signal) return { timedOut: true };
+      return { stdout: r.stdout || "", exitCode: r.status == null ? 1 : r.status, timedOut: false };
+    },
+  };
+}
 
 async function main() {
   const scope = (arg("scope") || "orchestration").split(",");
@@ -72,17 +79,28 @@ async function main() {
   }
 
   // LIVE — the Owner's single activation. Real GPT + real Claude wake, one bounded cycle, then STOP.
-  const lease = makeLease({ dir: join(process.env.LOCALAPPDATA || REPO, "EOS", "reciprocal-pilot.lock"), fs: await import("node:fs"), host: "local", pid: process.pid, now: () => Date.now(), leaseMs: 900000 });
+  const nodeFs = await import("node:fs");
+  // Resolve the Claude executable (bare "claude" ENOENTs on Windows / off PATH — the observed defect).
+  const claudeBin = resolveClaudeBin({ env: process.env });
+  if (!claudeBin.resolved && claudeBin.source === "PATH_FALLBACK") {
+    process.stdout.write(JSON.stringify({ mode: "ACTIVATE", ok: false, stopped: "CLAUDE_BIN_UNRESOLVED", reason: "could not resolve the claude executable — set CLAUDE_BIN to its full path (e.g. C\\:\\Users\\<you>\\.local\\bin\\claude.exe) or add it to PATH", triedSource: claudeBin.source }, null, 2) + "\n");
+    process.exit(1);
+  }
+  // Ensure the lease parent dir exists (a missing dir would ENOENT the lease and mask the real reason).
+  const leaseDir = join(process.env.LOCALAPPDATA || REPO, "EOS", "reciprocal-pilot.lock");
+  try { nodeFs.mkdirSync(join(leaseDir, ".."), { recursive: true }); } catch { /* best-effort */ }
+  const lease = makeLease({ dir: leaseDir, fs: nodeFs, host: "local", pid: process.pid, now: () => Date.now(), leaseMs: 900000 });
   const r = await runReciprocalPilotCycle({
     reviews, backlogItems: [], store,
-    gptRunner: realGptRunner({ boot, diff }), claudeProcessRunner: realClaudeRunner, wakeLease: lease,
+    gptRunner: realGptRunner({ boot, diff }), claudeProcessRunner: makeRealClaudeRunner(claudeBin.bin), wakeLease: lease,
     contextPackageFn: (a) => contextPackageFor({ ...a }),
     sufficiencyOf: () => boot.package.sufficiency, freshnessOf: () => (boot.provenance || {}).freshness || "UNKNOWN",
     budgetAvailable: wakeCtx.budgetRemainingUsd > 0, wakeCtx, sourceCommit: (boot.provenance || {}).sourceCommit, sourceFreshness: (boot.provenance || {}).freshness || "UNKNOWN",
     clock: () => new Date().toISOString(),
   });
-  // Print evidence only — never the key.
-  process.stdout.write(JSON.stringify({ mode: "ACTIVATE", stopped: r.stopped, gptCalls: r.gptCalls, claudeWakes: r.claudeWakes, transitions: r.transitions, evidence: r.evidence, ownerSurfaces: r.ownerSurfaces || [] }, null, 2) + "\n");
+  // Print evidence only — never the key. claudeBinSource + evidence.claudeOutcome surface the ACTUAL
+  // wake result/failure reason (fixes the hidden-reason gap).
+  process.stdout.write(JSON.stringify({ mode: "ACTIVATE", stopped: r.stopped, gptCalls: r.gptCalls, claudeWakes: r.claudeWakes, claudeBinSource: claudeBin.source, transitions: r.transitions, evidence: r.evidence, ownerSurfaces: r.ownerSurfaces || [] }, null, 2) + "\n");
   process.exit(r.ok ? 0 : 1);
 }
 

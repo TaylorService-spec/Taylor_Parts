@@ -66,3 +66,35 @@ test("readReviewInputs pulls both from env with the same safety rules", () => {
   assert.equal(r.requestId, "R2");
   assert.equal(r.diff.ok, true);
 });
+
+// ── resolveClaudeBin (the wake-spawn ENOENT defect) ──────────────────────────
+import { resolveClaudeBin } from "./reviewInputSafety.mjs";
+
+test("resolveClaudeBin: explicit CLAUDE_BIN override wins", () => {
+  const r = resolveClaudeBin({ env: { CLAUDE_BIN: "C:/tools/claude.exe" }, platform: "win32", exists: () => true });
+  assert.equal(r.bin, "C:/tools/claude.exe");
+  assert.equal(r.source, "CLAUDE_BIN");
+});
+
+test("resolveClaudeBin: finds a known Windows install path when it exists (bare 'claude' would ENOENT)", () => {
+  // exists=true → the FIRST win32 candidate (…/.local/bin/claude.exe) resolves; assert the logic, not
+  // an exact backslash literal. This is the exact scenario the live pilot hit (claude off PATH).
+  const r = resolveClaudeBin({ env: { USERPROFILE: "C:/Users/Rudy2" }, platform: "win32", exists: () => true });
+  assert.equal(r.source, "KNOWN_PATH");
+  assert.equal(r.resolved, true);
+  assert.match(r.bin, /claude/i);
+});
+
+test("resolveClaudeBin: POSIX known path (forward slashes) resolves too", () => {
+  const known = "/home/u/.local/bin/claude";
+  const r = resolveClaudeBin({ env: { HOME: "/home/u" }, platform: "linux", exists: (p) => p === known });
+  assert.equal(r.bin, known);
+  assert.equal(r.source, "KNOWN_PATH");
+});
+
+test("resolveClaudeBin: falls back to bare 'claude' (unresolved) when nothing known exists", () => {
+  const r = resolveClaudeBin({ env: {}, platform: "win32", exists: () => false });
+  assert.equal(r.bin, "claude");
+  assert.equal(r.source, "PATH_FALLBACK");
+  assert.equal(r.resolved, false);
+});

@@ -42,3 +42,22 @@ export function readReviewInputs({ env = {}, repoRoot, exists } = {}) {
   const diff = safeDiffPath({ repoRoot, rawPath: env.REVIEW_DIFF_PATH, exists });
   return { requestId, diff };
 }
+
+/**
+ * Resolve the Claude CLI executable for the wake spawn. Pure (existence + env + platform injected). On
+ * Windows `spawnSync("claude")` does NOT resolve via PATH/PATHEXT, and `claude` is often not on PATH, so
+ * a bare bin ENOENTs (the observed pilot failure). Order: an explicit `CLAUDE_BIN` (operator override) →
+ * the first existing known install path for the platform → the bare `claude` (works when it is genuinely
+ * on PATH, e.g. POSIX). Does NOT weaken any guardrail — argv/timeout/allowlist are unchanged.
+ * @returns {{ bin:string, source:"CLAUDE_BIN"|"KNOWN_PATH"|"PATH_FALLBACK", resolved:boolean }}
+ */
+export function resolveClaudeBin({ env = {}, platform = process.platform, exists = (p) => { try { return statSync(p).isFile(); } catch { return false; } } } = {}) {
+  const override = (env.CLAUDE_BIN || "").trim();
+  if (override) return { bin: override, source: "CLAUDE_BIN", resolved: exists(override) || /[\\/]/.test(override) };
+  const home = env.USERPROFILE || env.HOME || "";
+  const candidates = platform === "win32"
+    ? [`${home}\\.local\\bin\\claude.exe`, `${env.APPDATA || ""}\\npm\\claude.cmd`, `${env.LOCALAPPDATA || ""}\\Programs\\claude\\claude.exe`]
+    : [`${home}/.local/bin/claude`, "/usr/local/bin/claude", "/opt/homebrew/bin/claude"];
+  for (const c of candidates) { if (c && exists(c)) return { bin: c, source: "KNOWN_PATH", resolved: true }; }
+  return { bin: "claude", source: "PATH_FALLBACK", resolved: false }; // may still work if genuinely on PATH
+}

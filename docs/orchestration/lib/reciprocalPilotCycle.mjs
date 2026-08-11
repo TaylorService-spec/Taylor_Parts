@@ -19,6 +19,8 @@ function buildEvidence({ loop, wake, transitions, gptCalls, claudeWakes }) {
   return {
     gpt: gpt ? { inputTokens: gpt.inputTokens ?? null, outputTokens: gpt.outputTokens ?? null, actualCostUsd: gpt.actualCostUsd ?? null } : null,
     claude: wake && wake.outcome === "SPAWNED_COMPLETED" ? { cost: wake.cost ?? null, selectedModel: wake.selectedModel ?? null, result: wake.result ?? null } : null,
+    // The ACTUAL wake outcome + failure reason — reported, never inferred (fixes the hidden-reason gap).
+    claudeOutcome: wake ? { outcome: wake.outcome ?? null, failureKind: wake.failureKind ?? null, reason: wake.reason ?? null, wakeState: wake.wakeState ?? null } : null,
     lifecycleTransitions: transitions,
     ownerRelayCount: 0,                                   // no Claude↔GPT relay in the loop
     ownerManualActionCountAfterActivation: 0,            // the pilot performs the chain automatically
