@@ -1,0 +1,28 @@
+{
+  "schema": "eos.intake.status/1",
+  "requestId": "EOS-INTAKE-001",
+  "pointer": "status://EOS-INTAKE-001",
+  "work": "work://EOS-INTAKE-001",
+  "result": "result://EOS-INTAKE-001",
+  "state": "READY",
+  "currentWork": "authorized — awaiting worker",
+  "activeWorker": null,
+  "startedAt": null,
+  "updatedAt": "2026-08-10T00:00:00Z",
+  "ownerActionRequired": false,
+  "ownerQuestion": null,
+  "costToDateUsd": 0,
+  "workArtifact": {
+    "location": "docs/orchestration/work-intake/EOS-INTAKE-001.work.json",
+    "sha256": "16b160f957b63dda7978caf6d178cad6fc8fbb2876dd9f0999b7bd8197eb01aa"
+  },
+  "resultRef": null,
+  "artifactRefs": [],
+  "provenance": {
+    "producer": "Owner/ChatGPT",
+    "provenance": "Owner-authored Codex request dated 2026-08-10",
+    "sourceCommit": null
+  },
+  "artifactLocation": "docs/orchestration/work-intake/status/EOS-INTAKE-001.status.json",
+  "sha256": "5c2bdc5de8cac5b0212980851b8b41952e304f45482d8163e0db7ddbdc3eb86e"
+}

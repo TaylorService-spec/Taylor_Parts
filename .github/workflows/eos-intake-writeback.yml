@@ -1,0 +1,52 @@
+name: EOS Work Intake — automatic status write-back
+
+# Governed automatic status write-back. On a merged/updated *.work.json intake artifact, EOS derives each
+# artifact's deterministic status (fail-closed resolve; idempotent — the status uses the artifact's own
+# updatedAt so re-runs are byte-identical) and commits it to the deterministic status:// path so a ChatGPT
+# read connector can fetch status://<id> without search and without any Owner PowerShell.
+#
+# Scope + safety: it ONLY writes docs/orchestration/work-intake/status|results and commits with [skip ci];
+# the trigger is *.work.json only, so its own status/result commits never re-trigger it (no loop). It runs
+# NO worker, calls NO model, spends nothing, and grants NO authority — a status write is not authorization.
+# `main` is unprotected, so the default GITHUB_TOKEN can push; if branch protection is ever added, allow the
+# github-actions bot or switch this to open a PR.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/orchestration/work-intake/**/*.work.json"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: eos-intake-writeback
+  cancel-in-progress: false
+
+jobs:
+  writeback:
+    name: Derive + commit status (idempotent, $0)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Validate every intake artifact (fail-closed on any bad hash)
+        run: node docs/orchestration/context/intake-ingest-ci.mjs
+      - name: Derive + write status artifacts
+        run: node docs/orchestration/context/intake-ingest-ci.mjs --write
+      - name: Commit status back to main (only if changed)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/orchestration/work-intake/status docs/orchestration/work-intake/results
+          if git diff --cached --quiet; then
+            echo "no status changes to commit"
+          else
+            git commit -m "eos: automatic intake status write-back [skip ci]"
+            git push
+          fi
