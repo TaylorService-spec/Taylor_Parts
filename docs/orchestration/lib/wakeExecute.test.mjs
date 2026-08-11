@@ -155,12 +155,16 @@ test("MALFORMED_OUTPUT surfaces the offending stdout tail", () => {
 
 test("sanitizeDiagnostic redacts secrets, tokens, hex, and absolute paths", () => {
   // POSIX path + no backslash literals (kept simple; the Windows-path rule is exercised at runtime).
-  const dirty = "auth Bearer sk-ABCD1234567890abcdef failed at /home/me/.local/bin/claude token=AKIAABCDEFGHIJKLMNOP hex=deadbeefdeadbeefcafe";
+  // Deliberately-fake, secret-scanner-inert fixtures (too short to match provider rules) that still
+  // exercise each sanitizer branch: sk-/AIza prefixes, Bearer, POSIX path, long token, hex.
+  const dirty = "auth Bearer tok.en.jwt failed at /home/me/.local/bin/claude apikey=sk-fake1234 gkey=AIzafake9876 token=GENERIC0TOKEN0VALUE00 hex=abcdef0123456789abcd";
   const clean = sanitizeDiagnostic(dirty);
-  assert.doesNotMatch(clean, /sk-ABCD1234567890/, "OpenAI-style secret redacted");
+  assert.doesNotMatch(clean, /sk-fake1234/, "sk- prefixed secret redacted");
+  assert.doesNotMatch(clean, /AIzafake9876/, "AIza prefixed secret redacted");
   assert.doesNotMatch(clean, /home\/me\/\.local/, "absolute path redacted");
-  assert.doesNotMatch(clean, /AKIAABCDEFGHIJKLMNOP/, "long token redacted");
-  assert.doesNotMatch(clean, /deadbeefdeadbeefcafe/, "hex blob redacted");
+  assert.doesNotMatch(clean, /GENERIC0TOKEN0VALUE00/, "long token redacted");
+  assert.doesNotMatch(clean, /abcdef0123456789abcd/, "hex blob redacted");
+  assert.doesNotMatch(clean, /Bearer tok/, "bearer token redacted");
   assert.equal(sanitizeDiagnostic(null), "");
   assert.equal(sanitizeDiagnostic(""), "");
 })
