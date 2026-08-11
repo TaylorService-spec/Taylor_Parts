@@ -131,7 +131,14 @@ export async function runReciprocalReviewCycle({
       store.put({ exchangeId, requestId: review.requestId, lifecycle: "CONSUMED", disposition: cr.disposition });
       if (cr.ownerSurface) ownerSurfaces.push({ ...cr.ownerSurface, exchangeId });
       if (cr.consumable && cr.workItem) consumed.push({ workItem: cr.workItem, result });
-      perReview.push({ exchangeId, lifecycle: "CONSUMED", verdict: result.verdict, disposition: cr.disposition, consumable: cr.consumable, usage: prov.usage || null });
+      // Carry the COMPACT semantic result (verdict/conclusion/corrections/evidence flags) so the operator
+      // can see WHAT the reviewer concluded — never the transcript, model internals, or system metadata.
+      perReview.push({
+        exchangeId, lifecycle: "CONSUMED", disposition: cr.disposition, consumable: cr.consumable, usage: prov.usage || null,
+        verdict: result.verdict, conclusion: result.conclusion ?? null, corrections: result.corrections ?? [],
+        evidenceRefs: result.evidenceRefs ?? [], evidenceRequired: result.verdict === "EVIDENCE_REQUIRED" || result.evidenceRequired === true,
+        ownerDecisionRequired: result.verdict === "NEEDS_OWNER" || result.ownerDecisionRequired === true,
+      });
     } finally {
       releaseLease(exchangeId);
     }
