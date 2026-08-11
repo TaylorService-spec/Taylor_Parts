@@ -77,9 +77,67 @@ self-reference fields are added.
 Result Markdown is canonicalized to UTF-8/LF before hashing so Git's Windows checkout conversion cannot
 change its content address.
 
+## Status artifact + deterministic ChatGPT readback
+
+`work://` (the request) and `result://` (the content-addressed result) already resolved, but the result
+manifest is content-hash-addressed, so a reader could not fetch it from a requestId alone. `intakeStatus.mjs`
+closes that: `status://<id>` resolves to ONE deterministic path derivable from the requestId with no search —
+
+```
+status://<id>  →  docs/orchestration/work-intake/status/<id>.status.json
+result://<id>  →  docs/orchestration/work-intake/results/<id>/latest.result.json   (index → exact manifest)
+work://<id>    →  docs/orchestration/work-intake/<id>.work.json
+```
+
+`resolvePointer(pointer)` returns the repo path plus the sibling status/result locations, so a single
+deterministic read reaches the others. The compact status artifact summarizes — it does not dump telemetry:
+`state` (STAGED · READY · ACTIVE · REVIEWING · CORRECTING · BLOCKED · OWNER_REQUIRED · COMPLETE · FAILED),
+`currentWork`, `activeWorker`, `startedAt`/`updatedAt`, `ownerActionRequired`, `costToDateUsd`, the
+`workArtifact` ref, the `resultRef` (present once COMPLETE), `provenance`, and its own fail-closed `sha256`.
+A ChatGPT read connector, given only a requestId, reads `status://<id>`; when COMPLETE, the `resultRef`
+carries the exact content-addressed manifest path + hash.
+
+## Intake-state execution gate (independent of the selector)
+
+`intakeIngress.mjs`'s `assessIntakeExecution` is a fail-closed governance-stage gate in front of any
+execution, independent of the selector: `DISCOVERY` / `DESIGN_STAGING` may enter the selector for repo-safe
+work but **must not execute**; `EOS_READY` is selector-eligible but is **not** execution authority; only
+`EXECUTION_AUTHORIZED` with an independent `AUTHORIZED` authorization and no protected boundary may execute.
+`ingestIntake` resolves (fail-closed on any id/location/hash mismatch), applies this gate, projects a single
+item into the existing `selectNextWork`, and emits the status artifact — it creates no second queue and
+executes nothing.
+
+## OpenAI capability seam (Secret Broker)
+
+`assessCapability({ name: "OPENAI_REVIEW", broker })` is an availability check only — it never returns,
+requests, or handles a secret. When no broker is wired (the current state), the paid capability is
+`NEEDS_ACTIVATION` and the paid path is `BLOCKED`; staging / read-only paths never consult it and need no
+credential. When the EOS Secret Broker exists, execution asks it "do you have OPENAI_REVIEW?" and the broker
+supplies the credential internally to the provider call — Claude/ChatGPT never see the key, and no key ever
+appears in an artifact, status, result, or log.
+
+## Automatic consumption
+
+The `eos-intake-ingest` workflow runs on any change to a `*.work.json` artifact: it resolves every artifact
+fail-closed (a bad self-hash fails CI), projects it, derives status, and checks the committed status matches
+— $0, no worker, no model, no secret. Writing the derived status **back** to the repo (so `status://<id>`
+exists at its deterministic path for ChatGPT to read) requires `contents: write` and is the **Owner-gated**
+step: enable a repo-write automation (a `contents: write` job or the EOS-owned runtime) rather than running
+`work-intake.mjs --emit-status` by hand. Until then, the status artifact is committed alongside the work
+artifact in the same reviewed PR.
+
+## Producer hash recipe (required)
+
+A submission's `sha256` MUST be the SHA-256 of the canonical envelope with only the top-level `sha256` field
+omitted — i.e. `sha256Bytes(stableJson(envelope-without-sha256))`, lowercase hex. This is **not** the hash of
+the raw file bytes, nor of the pretty-printed JSON, nor of the envelope with `sha256` present. A producer
+that uses any other recipe will be **rejected fail-closed** at resolve time (this is exactly why an
+incorrectly-hashed ChatGPT submission does not execute). `intakeDigest(artifact)` computes the correct value.
+
 ## Direct ChatGPT gap
 
-Today ChatGPT still needs a repository write-capable integration that can authenticate the Owner, create
-the validated artifact on a branch, open the governed PR, and return the resulting `work://` pointer.
-The bridge deliberately does not embed credentials or call OpenAI/GitHub live. A future ChatGPT custom app
-or MCP tool can be a thin producer of this same schema; it must not become a second queue or authority.
+ChatGPT already produces the artifact + branch + PR through its GitHub connector. The remaining gap for a
+fully hands-off loop is the Owner-enabled repo-write automation that commits the derived status back (above),
+and — for paid execution — the EOS Secret Broker. The bridge still embeds no credentials and calls no
+OpenAI/GitHub live; a future ChatGPT MCP tool is a thin producer of this same schema and must not become a
+second queue or authority.
