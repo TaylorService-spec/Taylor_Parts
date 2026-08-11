@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildCanonicalReviewFeed, buildFactBasedInvocation, describeInvocation } from "../lib/reviewFeedInvocation.mjs";
 import { DEFAULT_PRICING_ESTIMATE, estimateCost, guardBudget, runOpenAIReview } from "../lib/openaiReviewProvider.mjs";
-import { artifactRef, canonicalize, makeArtifact } from "../lib/reviewArtifacts.mjs";
+import { artifactRef, canonicalize, makeArtifact, sha256Canonical } from "../lib/reviewArtifacts.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(here, "..", "..", "..");
@@ -12,6 +12,8 @@ const SHA = /^[0-9a-f]{40}$/;
 const ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const DELTA_PROFILE = "security-credential-boundary-delta";
 const DELTA_EVIDENCE_PATH = "docs/orchestration/reviews/resolutions/PR-790-F1-F4.resolution.json";
+const FINAL_PROFILE = "security-credential-boundary-final";
+const FINAL_EVIDENCE_PATH = "docs/orchestration/reviews/evidence/pr-790/PR-790-FINAL-EVIDENCE.json";
 const SECURITY_PATHS = Object.freeze([
   "docs/orchestration/lib/secretProvider.mjs",
   "docs/orchestration/lib/secretProvider.test.mjs",
@@ -69,6 +71,13 @@ export async function resolveExactSubject(inputs, { fetchJson, gitExec = null, s
   if (pr.head?.sha !== inputs.expectedHeadSha) throw new Error(`HEAD_MISMATCH expected ${inputs.expectedHeadSha} got ${pr.head?.sha || "missing"}`);
   const checkoutHead = runGit(["rev-parse", "HEAD"]);
   if (checkoutHead !== inputs.expectedHeadSha) throw new Error(`CHECKOUT_HEAD_MISMATCH expected ${inputs.expectedHeadSha} got ${checkoutHead}`);
+  if (inputs.profile === FINAL_PROFILE) {
+    const exactEvidence = readFileSync(join(REPO_ROOT, FINAL_EVIDENCE_PATH), "utf8");
+    const manifest = JSON.parse(exactEvidence); const { sha256, ...unsigned } = manifest;
+    if (manifest.prNumber !== inputs.prNumber || manifest.reviewedHead !== inputs.expectedHeadSha || sha256Canonical(unsigned) !== sha256) throw new Error("FINAL_EVIDENCE_BINDING_MISMATCH");
+    if (Buffer.byteLength(exactEvidence, "utf8") > 24000) throw new Error("FINAL_EVIDENCE_TOO_LARGE");
+    return { pr, changed: [], material: [FINAL_EVIDENCE_PATH], rawEvidence: [`FINAL EVIDENCE ${FINAL_EVIDENCE_PATH}\n${exactEvidence}`], sourceFreshness: "CURRENT" };
+  }
   const changed = runGit(["diff", "--name-only", `${pr.base.sha}...${inputs.expectedHeadSha}`]).split(/\r?\n/).filter(Boolean);
   if (inputs.profile === DELTA_PROFILE) {
     if (!changed.includes(DELTA_EVIDENCE_PATH)) throw new Error("DELTA_EVIDENCE_MISSING");
@@ -86,16 +95,18 @@ export async function resolveExactSubject(inputs, { fetchJson, gitExec = null, s
 }
 
 export function buildSecurityFeed(inputs, subject) {
-  if (!["security-credential-boundary", DELTA_PROFILE].includes(inputs.profile)) throw new Error("unsupported review_profile");
+  if (!["security-credential-boundary", DELTA_PROFILE, FINAL_PROFILE].includes(inputs.profile)) throw new Error("unsupported review_profile");
   if (inputs.profile === DELTA_PROFILE && inputs.question !== "Are findings F1–F4 resolved sufficiently to approve PR #790's credential security boundary?") throw new Error("DELTA_QUESTION_MISMATCH");
   const delta = inputs.profile === DELTA_PROFILE;
+  const final = inputs.profile === FINAL_PROFILE;
+  if (final && inputs.question !== "Are the remaining evidence gaps now satisfied for findings F1-F4 on PR #790 exact head 8a71f7cd3006fc149c7a80c52967a1643935ac7d?") throw new Error("FINAL_QUESTION_MISMATCH");
   const factsContent = {
     implementationFacts: [
       `Exact subject: ${inputs.repo} PR #${inputs.prNumber} at ${inputs.expectedHeadSha}.`,
-      delta ? "Delta-only resolution of prior findings F1–F4; unchanged authority is referenced by hash and the original package is not resent." : "Review DPAPI CurrentUser storage; provisioning/retrieval; withCredential boundary; hash-verified authority; spend gates; MCP authorize_review; absence of secret export; leakage scanning; fail-closed behavior; bypass resistance.",
+      final ? "Final evidence-only closure: exact GitHub blob identities and named test executions; no implementation source is resent." : delta ? "Delta-only resolution of prior findings F1–F4; unchanged authority is referenced by hash and the original package is not resent." : "Review DPAPI CurrentUser storage; provisioning/retrieval; withCredential boundary; hash-verified authority; spend gates; MCP authorize_review; absence of secret export; leakage scanning; fail-closed behavior; bypass resistance.",
       `Material changed files supplied as bounded patches: ${subject.material.join(", ")}.`,
     ],
-    sourceFacts: ["The reviewer grants no authority. Only the four declared verdicts are accepted.", "GitHub PR metadata and checkout HEAD independently matched the immutable expected SHA before invocation.", ...(delta ? ["Prior result: result:7f73d097e253b7d3cc64404ae3a7db26a2553a5ed6446e92035387aacd664cc1."] : [])],
+    sourceFacts: ["The reviewer grants no authority. Only the four declared verdicts are accepted.", "GitHub PR metadata and checkout HEAD independently matched the immutable expected SHA before invocation.", ...(final ? ["Prior result: result:65c529fa92ab213180cba439277f2cf2b6945f5d3268261031ca21a773373e37."] : delta ? ["Prior result: result:7f73d097e253b7d3cc64404ae3a7db26a2553a5ed6446e92035387aacd664cc1."] : [])],
     deterministicEvidence: ["sourceFreshness=CURRENT", `exact-head checks passed for base ${subject.pr.base.sha} and head ${subject.pr.head.sha}`, "The workflow runs the repository node:test suites before live invocation."],
     rawEvidence: subject.rawEvidence,
   };
@@ -104,7 +115,7 @@ export function buildSecurityFeed(inputs, subject) {
   const feed = buildCanonicalReviewFeed({
     reviewId: inputs.reviewId,
     question: inputs.question,
-    requirement: delta ? "Judge only whether the compact, content-addressed resolution evidence closes F1–F4; do not reopen unrelated scope." : "Judge whether credential use is confined to the trusted runtime and cannot bypass exact work authorization, budget/per-call gates, or leak raw secret material to an agent, logs, errors, or callback results.",
+    requirement: final ? "Judge only the two remaining evidence gaps: exact-head path/hash binding and case-level execution evidence for F1–F4." : delta ? "Judge only whether the compact, content-addressed resolution evidence closes F1–F4; do not reopen unrelated scope." : "Judge whether credential use is confined to the trusted runtime and cannot bypass exact work authorization, budget/per-call gates, or leak raw secret material to an agent, logs, errors, or callback results.",
     ...factsContent,
     provenance: { repo: inputs.repo, prNumber: inputs.prNumber, sourceCommit: inputs.expectedHeadSha, sourceFreshness: "CURRENT", profile: inputs.profile },
     artifactRefs: [artifactRef(factsArtifact)],

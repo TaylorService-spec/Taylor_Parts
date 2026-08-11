@@ -27,6 +27,17 @@ When you begin a capability, add a row to **Active** with every declared field. 
 
 ## Active
 
+- Capability:          PR #790 final exact-head evidence closure (evidence-only)
+- Agent/session:       Codex `/root` · Role: integration/evidence
+- Branch / worktree:   `agent/pr790-final-evidence` · `D:\Taylor_Parts\.worktrees\pr790-final-evidence`
+- Base commit:         `564c7de` · corrected subject PR #790 head `8a71f7cd3006fc149c7a80c52967a1643935ac7d`
+- Owned paths:         `docs/orchestration/reviews/evidence/pr-790/**` · final evidence generator/tests
+- Shared paths req'd:  `.github/workflows/reciprocal-gpt-review.yml` · `docs/orchestration/context/github-fact-review.mjs` · this registry
+- Dependencies:        Prior result `65c529fa92ab213180cba439277f2cf2b6945f5d3268261031ca21a773373e37`; GitHub exact commit/blob API; existing FACT_BASED workflow
+- Expected outcome:    GitHub-verifiable path/blob binding plus named case-level execution evidence for F1–F4, followed by one smallest-possible final delta review
+- Protected boundaries:Stop before provider call; no merge, deployment, credential provisioning, or scope expansion
+- Lifecycle stage:     SANDBOX BUILD
+
 - Capability:          Authenticated ChatGPT → EOS intake credential-boundary evidence remediation (PR #790)
 - Agent/session:       Codex `/root` · Role: builder
 - Branch / worktree:   `agent/chatgpt-eos-intake-integration` · `D:\Taylor_Parts\.worktrees\chatgpt-eos-intake-integration`

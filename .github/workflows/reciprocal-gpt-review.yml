@@ -8,7 +8,7 @@ on:
         required: true
         default: dry-run
         type: choice
-        options: [dry-run, live]
+        options: [dry-run, evidence, live]
       review_id:
         required: true
         type: string
@@ -58,8 +58,24 @@ jobs:
           node-version: "20"
       - name: Verify fact-review implementation
         run: node --test docs/orchestration/context/github-fact-review.test.mjs docs/orchestration/lib/reviewFeedInvocation.test.mjs docs/orchestration/lib/reviewWorkflowWiring.test.mjs
+      - name: Generate exact-head case evidence
+        id: evidence
+        if: ${{ inputs.mode == 'evidence' }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          REVIEW_REPO: ${{ inputs.repo }}
+          REVIEW_SUBJECT_ROOT: ${{ github.workspace }}/review-subject
+        run: node docs/orchestration/context/pr790-final-evidence.mjs
+      - name: Upload exact-head case evidence
+        if: ${{ inputs.mode == 'evidence' && steps.evidence.outcome == 'success' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-790-final-evidence-${{ github.run_id }}
+          path: docs/orchestration/reviews/evidence/pr-790/
+          if-no-files-found: error
+          retention-days: 90
       - name: DRY fact review (no provider call, no key)
-        if: ${{ inputs.mode != 'live' }}
+        if: ${{ inputs.mode == 'dry-run' }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
           OPENAI_REVIEW_MODEL: ${{ vars.OPENAI_REVIEW_MODEL }}
