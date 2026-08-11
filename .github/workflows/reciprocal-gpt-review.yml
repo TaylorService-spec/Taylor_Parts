@@ -1,73 +1,116 @@
-# Reciprocal INDEPENDENT_AI GPT review — repo-safe trigger path.
-#
-# SAFETY: manual-dispatch ONLY (workflow_dispatch). It NEVER runs on push/PR, so a merge can never
-# trigger a live OpenAI call. Default mode is DRY-RUN (no provider call, no key read). A live call
-# requires (a) mode=live at dispatch AND (b) the OPENAI_API_KEY repo secret being set by the Owner —
-# this is the activation boundary. The key is referenced only via the secrets context and is never
-# printed. Ceilings are enforced in-code (openaiReviewProvider): $0.25/review, $10 pilot total, no
-# auto-recharge.
-name: Reciprocal GPT Review (manual, dry-run default)
+name: Exact-head FACT_BASED GPT review
 
 on:
-  # EVENT PATH (smallest supported): EOS/Claude emits a repository_dispatch when a durable AI_REVIEW
-  # becomes eligible. A dispatched event carries NO `inputs.mode`, so it falls through to the DRY-RUN
-  # branch below (no key, no provider call) — the event path is INERT until an operator explicitly runs
-  # a live review. There is deliberately NO `push`/`pull_request`/`schedule` trigger: a GPT call is never
-  # made on every push/PR/commit or on a clock.
-  repository_dispatch:
-    types: [eos-ai-review-eligible]
-  # OPERATOR FALLBACK + the live activation surface.
   workflow_dispatch:
     inputs:
       mode:
-        description: "dry-run (default, no provider call) | live (Owner activation — real API call + spend)"
+        description: "dry-run (default) or live (one authorized provider call)"
         required: true
-        default: "dry-run"
+        default: dry-run
         type: choice
-        options: ["dry-run", "live"]
-      request_id:
-        description: "review request id"
-        required: false
-        default: "REVIEW-DRYRUN"
-      diff_path:
-        description: "path to a diff file in the repo to review (optional)"
-        required: false
-        default: ""
+        options: [dry-run, live]
+      review_id:
+        required: true
+        type: string
+      repo:
+        required: true
+        default: TaylorService-spec/Taylor_Parts
+        type: string
+      pr_number:
+        required: true
+        type: string
+      expected_head_sha:
+        required: true
+        type: string
+      review_question:
+        required: true
+        type: string
+      review_profile:
+        required: true
+        default: security-credential-boundary
+        type: string
+      max_spend_usd:
+        required: true
+        default: "0.25"
+        type: string
 
 permissions:
   contents: read
+  pull-requests: write
 
 jobs:
   review:
     runs-on: ubuntu-latest
     steps:
+      # Root is the current governed runner from main. The immutable subject is isolated below.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Checkout immutable review subject
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.repo }}
+          ref: ${{ inputs.expected_head_sha }}
+          fetch-depth: 0
+          path: review-subject
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      # SAFE INPUT HANDLING: request_id / diff_path are NEVER interpolated into the shell command.
-      # They flow ONLY through env vars, read by Node as plain strings (no shell, no eval, no command
-      # substitution, no generated fragments). diff_path is validated in-code (repo-relative, in-
-      # checkout, must exist). Dry-run and live use IDENTICAL input wiring — the only differences are
-      # the API key (live only) and the --live flag.
-      - name: Dry-run (no provider call, no key)
+      - name: Verify fact-review implementation
+        run: node --test docs/orchestration/context/github-fact-review.test.mjs docs/orchestration/lib/reviewFeedInvocation.test.mjs docs/orchestration/lib/reviewWorkflowWiring.test.mjs
+      - name: DRY fact review (no provider call, no key)
         if: ${{ inputs.mode != 'live' }}
         env:
+          GITHUB_TOKEN: ${{ github.token }}
           OPENAI_REVIEW_MODEL: ${{ vars.OPENAI_REVIEW_MODEL }}
-          REVIEW_REQUEST_ID: ${{ inputs.request_id }}
-          REVIEW_DIFF_PATH: ${{ inputs.diff_path }}
-          # Deliberately NO OPENAI_API_KEY here: dry-run must never receive the key or call OpenAI.
-        run: node docs/orchestration/context/openai-review.mjs
-      - name: Live review (Owner activation boundary — real spend, ceilings enforced in-code)
+          REVIEW_ID: ${{ inputs.review_id }}
+          REVIEW_REPO: ${{ inputs.repo }}
+          REVIEW_PR_NUMBER: ${{ inputs.pr_number }}
+          REVIEW_EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}
+          REVIEW_QUESTION: ${{ inputs.review_question }}
+          REVIEW_PROFILE: ${{ inputs.review_profile }}
+          REVIEW_MAX_SPEND_USD: ${{ inputs.max_spend_usd }}
+          REVIEW_SUBJECT_ROOT: ${{ github.workspace }}/review-subject
+        run: node docs/orchestration/context/github-fact-review.mjs
+      - name: LIVE fact review (one authorized call)
+        id: live_review
         if: ${{ inputs.mode == 'live' }}
         env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}   # injected secret; never printed
+          GITHUB_TOKEN: ${{ github.token }}
           OPENAI_REVIEW_MODEL: ${{ vars.OPENAI_REVIEW_MODEL }}
-          REVIEW_REQUEST_ID: ${{ inputs.request_id }}
-          REVIEW_DIFF_PATH: ${{ inputs.diff_path }}
+          REVIEW_ID: ${{ inputs.review_id }}
+          REVIEW_REPO: ${{ inputs.repo }}
+          REVIEW_PR_NUMBER: ${{ inputs.pr_number }}
+          REVIEW_EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}
+          REVIEW_QUESTION: ${{ inputs.review_question }}
+          REVIEW_PROFILE: ${{ inputs.review_profile }}
+          REVIEW_MAX_SPEND_USD: ${{ inputs.max_spend_usd }}
+          REVIEW_SUBJECT_ROOT: ${{ github.workspace }}/review-subject
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           if [ -z "${OPENAI_API_KEY}" ]; then
-            echo "OPENAI_API_KEY secret not set — refusing live call (activation boundary not crossed)."
+            echo "OPENAI_API_KEY secret not set; refusing before provider invocation."
             exit 1
           fi
-          node docs/orchestration/context/openai-review.mjs --live
+          node docs/orchestration/context/github-fact-review.mjs --live
+      - name: Upload content-addressed result
+        if: ${{ inputs.mode == 'live' && steps.live_review.outcome == 'success' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: eos-review-${{ inputs.review_id }}-${{ steps.live_review.outputs.artifact_sha256 }}
+          path: ${{ steps.live_review.outputs.artifact_path }}
+          if-no-files-found: error
+          retention-days: 90
+      - name: Persist result pointer on reviewed PR
+        if: ${{ inputs.mode == 'live' && steps.live_review.outcome == 'success' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ inputs.pr_number }}
+          REVIEW_REPO: ${{ inputs.repo }}
+          REVIEW_ID: ${{ inputs.review_id }}
+          REVIEWED_SHA: ${{ inputs.expected_head_sha }}
+          ARTIFACT_SHA: ${{ steps.live_review.outputs.artifact_sha256 }}
+          VERDICT: ${{ steps.live_review.outputs.verdict }}
+        run: |
+          printf 'Independent review `%s`: **%s**\n\nReviewed `%s` with `feedMode=FACT_BASED`. Content SHA-256: `%s`. Durable run: %s/actions/runs/%s\n' "$REVIEW_ID" "$VERDICT" "$REVIEWED_SHA" "$ARTIFACT_SHA" "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" > "$RUNNER_TEMP/review-comment.md"
+          gh pr comment "$PR_NUMBER" --repo "$REVIEW_REPO" --body-file "$RUNNER_TEMP/review-comment.md"
