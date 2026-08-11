@@ -21,7 +21,7 @@ const flag = (name) => process.argv.includes(`--${name}`);
 // Strict structured-output schema for the review result (json_schema, additionalProperties:false, all
 // required) — the current supported pattern for GPT-5.6; aligned to the #764 result fields (no scope
 // expansion). `json_object` mode is legacy and intentionally NOT used.
-const REVIEW_JSON_SCHEMA = {
+export const REVIEW_JSON_SCHEMA = {
   type: "json_schema",
   name: "eos_review_result",
   strict: true,

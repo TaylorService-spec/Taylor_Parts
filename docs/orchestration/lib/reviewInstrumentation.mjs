@@ -80,7 +80,10 @@ export function makeEfficiencyLedger(initial = {}) {
     recordCall({ breakdown = {}, inputTokens = null, outputTokens = null, note = null } = {}) {
       const perCategory = {};
       for (const c of FEED_CATEGORIES) perCategory[c] = Number(breakdown[c] || 0);
-      state.calls.push({ perCategory, estimatedTotal: Number(breakdown.totalEstimate || 0), inputTokens, outputTokens, note });
+      // The structured-output schema is transmitted with the request and counts toward input tokens, so it
+      // is attributed as its own category (kept out of FEED_CATEGORIES, which is the fact-feed body).
+      const structuredOutputSchema = Number(breakdown.structuredOutputSchema || 0);
+      state.calls.push({ perCategory, structuredOutputSchema, estimatedTotal: Number(breakdown.totalEstimate || 0), inputTokens, outputTokens, note });
       return state.calls.length;
     },
     bump(counter, n = 1) {
@@ -96,6 +99,7 @@ export function makeEfficiencyLedger(initial = {}) {
     snapshot() {
       const perCategoryTotals = {};
       for (const c of FEED_CATEGORIES) perCategoryTotals[c] = state.calls.reduce((s, call) => s + (call.perCategory[c] || 0), 0);
+      perCategoryTotals.structuredOutputSchema = state.calls.reduce((s, call) => s + (call.structuredOutputSchema || 0), 0);
       const measuredInput = state.calls.reduce((s, call) => s + (call.inputTokens || 0), 0);
       const measuredOutput = state.calls.reduce((s, call) => s + (call.outputTokens || 0), 0);
       return {
