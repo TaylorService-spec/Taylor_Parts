@@ -1,6 +1,7 @@
 // Deterministic inventory for every executable repository surface that can read/inject OPENAI_API_KEY
 // or construct the OpenAI Authorization header. Unknown executable occurrences fail closed in CI.
 export const CREDENTIAL_PATH_CLASSIFICATION = Object.freeze({
+  "docs/orchestration/lib/credentialPathAudit.mjs": "AUDIT_TOOLING",
   "docs/orchestration/lib/secretProvider.mjs": "AUTHORIZED BROKER PATH",
   "docs/orchestration/lib/openaiCredentialTransport.mjs": "AUTHORIZED BROKER PATH",
   "tools/eos-secrets/Set-EOSSecret.ps1": "AUTHORIZED BROKER PATH",
@@ -12,7 +13,10 @@ export const CREDENTIAL_PATH_CLASSIFICATION = Object.freeze({
   "integrations/chatgpt-eos-intake/src/githubStore.mjs": "LEGACY ISOLATED PATH",
 });
 
-export function classifyCredentialPath(path) {
+// AUDIT_TOOLING is not a filename exemption. The caller must independently verify that the
+// source contains no executable credential/provider behavior; otherwise it fails closed.
+export function classifyCredentialPath(path, { auditToolingVerified = false } = {}) {
   if (/\.test\.mjs$|test-fixtures|fixtures/i.test(path)) return "TEST/FIXTURE";
+  if (CREDENTIAL_PATH_CLASSIFICATION[path] === "AUDIT_TOOLING") return auditToolingVerified ? "AUDIT_TOOLING" : "UNSAFE/BYPASS";
   return CREDENTIAL_PATH_CLASSIFICATION[path] || "UNSAFE/BYPASS";
 }
