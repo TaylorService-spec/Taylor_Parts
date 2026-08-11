@@ -9,7 +9,7 @@ import {
   normalizeEquipmentStatus, isValidEquipmentStatus, canTransitionEquipmentStatus, isRetired,
   normalizeEquipmentInput, validateEquipmentInput,
   locationBelongsToAccount, locationsForAccount, equipmentOwnershipValid, ownershipUnchanged,
-  equipmentDisplayName, equipmentSummary, equipmentSaveErrorMessage,
+  equipmentDisplayName, equipmentSummary, equipmentSaveErrorMessage, equipmentStoredShapeDefects,
   equipmentMatchesSearch, compareEquipment, searchEquipment,
   equipmentServiceHistory, groupServiceHistoryByYear,
   GOVERNED_EQUIPMENT_FIELDS,
@@ -146,6 +146,36 @@ ok("save error copy is safe/categorized and never leaks provider detail", () => 
   }
   assert.match(equipmentSaveErrorMessage({ blocked: true }), /disabled/i);
   assert.match(equipmentSaveErrorMessage({ code: "permission-denied" }), /permission/i);
+});
+
+// ---- #319: stored whole-document shape defects ----------------------------
+ok("equipmentStoredShapeDefects flags a malformed STORED field (name / non-string optional), not absent ones", () => {
+  const clean = { name: "Chiller 1", manufacturer: "Trane", model: "X", notes: "legacy" };
+  assert.deepEqual(equipmentStoredShapeDefects(clean), [], "a well-formed record has no defects");
+  assert.ok(equipmentStoredShapeDefects({ name: 5, notes: "ok" }).includes("name"), "name stored as a number is a defect");
+  assert.ok(equipmentStoredShapeDefects({ name: "  " }).includes("name"), "blank name is a defect");
+  assert.ok(equipmentStoredShapeDefects({}).includes("name"), "missing name is a defect (name is always required)");
+  assert.ok(equipmentStoredShapeDefects({ name: "OK", notes: 5 }).includes("notes"), "notes stored as a number is a defect");
+  assert.ok(equipmentStoredShapeDefects({ name: "OK", installedDate: true }).includes("installedDate"), "a non-string optional is a defect");
+  // ABSENT / null optionals are legal (Rules only type-check when the field exists).
+  assert.deepEqual(equipmentStoredShapeDefects({ name: "OK", notes: undefined, model: null }), [], "absent/null optionals are fine");
+});
+
+ok("#319: permission-denied on a record with a STORED defect explains repair (not a false 'no permission')", () => {
+  const RAW = /permission-denied|firestore\/|FirebaseError|code:|documents\/|[A-Za-z0-9]{20,}/;
+  const withDefect = equipmentSaveErrorMessage({ code: "permission-denied" }, { storedRecord: { name: "Chiller 1", notes: 5 } });
+  assert.match(withDefect, /repair|data rules/i, "names the real cause: the record needs repair");
+  assert.doesNotMatch(withDefect, /you do not have permission/i, "does not falsely claim the user lacks permission");
+  assert.doesNotMatch(withDefect, /this is a field you edited/i);
+  assert.match(withDefect, /Nothing was saved/i);
+  assert.doesNotMatch(withDefect, RAW, `leaked: ${withDefect}`);
+  assert.doesNotMatch(withDefect, /notes/i, "never names the offending field path");
+  // A CLEAN stored record → the genuine permission message (the fix is scoped to real defects).
+  assert.match(equipmentSaveErrorMessage({ code: "permission-denied" }, { storedRecord: { name: "Chiller 1", notes: "fine" } }), /you do not have permission/i);
+  // Backward compatible: no opts → unchanged permission copy.
+  assert.match(equipmentSaveErrorMessage({ code: "permission-denied" }), /you do not have permission/i);
+  // Other codes are unaffected by a stored defect.
+  assert.match(equipmentSaveErrorMessage({ code: "unavailable" }, { storedRecord: { notes: 5 } }), /temporarily unavailable/i);
 });
 
 // ---- search + deterministic ordering (Spec §7) ----------------------------

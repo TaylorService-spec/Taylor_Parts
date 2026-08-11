@@ -134,7 +134,9 @@ export async function updateEquipmentWith(store, id, values, { before = {} } = {
     if (saved?.blocked) return { ok: false, errors: {}, message: equipmentSaveErrorMessage({ blocked: true }) };
     return { ok: true, equipment: saved };
   } catch (err) {
-    return { ok: false, errors: {}, message: equipmentSaveErrorMessage(err) };
+    // #319: pass the STORED record so a permission-denied caused by a malformed stored field (a
+    // whole-document Rules shape guard) is explained specifically instead of "you do not have permission".
+    return { ok: false, errors: {}, message: equipmentSaveErrorMessage(err, { storedRecord: before }) };
   }
 }
 

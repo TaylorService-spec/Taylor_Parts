@@ -250,10 +250,19 @@ export function equipmentSummary(equipment) {
 // Safe, categorized copy for an Equipment read/write failure. Never surfaces a raw
 // Firebase code, document id, or internal detail -- the same discipline as the other
 // domain *SaveErrorMessage helpers.
-export function equipmentSaveErrorMessage(err) {
+export function equipmentSaveErrorMessage(err, { storedRecord = null } = {}) {
   if (err?.blocked) return "Saving is disabled in this mode — no equipment was saved.";
   const code = typeof err?.code === "string" ? err.code.split("/").pop() : "";
   if (code === "permission-denied" || code === "unauthenticated") {
+    // #319: a whole-document Rules SHAPE guard (a malformed value ALREADY STORED on the record — one
+    // the user did not edit, e.g. a legacy `notes` saved as a number) is rejected as permission-denied
+    // too. When the stored record carries such a repairable defect, say so specifically and safely:
+    // retrying won't help, and it isn't a field the user touched. We do NOT mirror every Rules guard
+    // to gate the write (that stays Rules' job) — we detect the record's own shape only to explain the
+    // rejection honestly instead of the misleading "you do not have permission".
+    if (storedRecord && equipmentStoredShapeDefects(storedRecord).length > 0) {
+      return "This equipment couldn't be saved because it has a stored value that doesn't meet current data rules and must be repaired first — this isn't a field you edited. Ask an administrator to repair this record. Nothing was saved.";
+    }
     return "You do not have permission to save this equipment. Nothing was saved.";
   }
   if (code === "unavailable" || code === "deadline-exceeded") {
@@ -313,6 +322,24 @@ export const EDITABLE_EQUIPMENT_FIELDS = Object.freeze([
   "name", "manufacturer", "model", "serialNumber", "assetTag",
   "installedDate", "warrantyExpiresDate", "notes",
 ]);
+
+// The descriptive fields Rules require to be a string WHEN PRESENT (mirrors equipmentOptionalFieldsValid).
+const EQUIPMENT_OPTIONAL_STRING_FIELDS = Object.freeze(EDITABLE_EQUIPMENT_FIELDS.filter((f) => f !== "name"));
+
+// #319: repairable SHAPE defects ALREADY STORED on a record — the whole-document Rules guards a save is
+// rejected by even when the user only edited a descriptive field. Pure, messaging-only (never gates a
+// write; Rules remain the authority): (a) `name` is not a non-blank string (equipmentNameValid), or
+// (b) an optional field is present but not a string (equipmentOptionalFieldsValid). A MISSING optional
+// field is fine (Rules only type-check when the field exists). Returns field names, never their values.
+export function equipmentStoredShapeDefects(record = {}) {
+  const defects = [];
+  if (!isNonEmptyString(record?.name)) defects.push("name");
+  for (const f of EQUIPMENT_OPTIONAL_STRING_FIELDS) {
+    const v = record?.[f];
+    if (v !== undefined && v !== null && typeof v !== "string") defects.push(f);
+  }
+  return defects;
+}
 
 // E8: which editable fields an edit form actually changed, against the stored record.
 //

@@ -245,6 +245,24 @@ await ok("a thrown Firebase error never escapes and never leaks provider detail"
   }
 });
 
+// ---- #319: unpredicted Rules rejection (malformed STORED field) ------------
+await ok("#319: a permission-denied from a malformed STORED field is explained as needs-repair, and the write was LET to fail", async () => {
+  const store = fakeStore("denied");
+  const before = { name: "Chiller 1", status: "ACTIVE", notes: 5 }; // legacy: notes stored as a number
+  const res = await updateEquipmentWith(store, "eq1", { name: "Chiller 1 (edited)" }, { before }, 1);
+  assert.equal(res.ok, false);
+  // The client did NOT pre-block; it attempted the write and let Rules be the authority.
+  assert.equal(store.calls.filter((c) => c.op === "update").length, 1, "exactly one update attempted, then failed closed");
+  assert.match(res.message, /repair|data rules/i, "explains the record needs repair, not a false permission error");
+  assert.doesNotMatch(res.message, /you do not have permission/i);
+  assert.match(res.message, /Nothing was saved/i);
+  // Still safe: no code, path, id, provider, or field name.
+  assert.doesNotMatch(res.message, /firebase|firestore|permission-denied|insufficient permissions|equipment\/|\beq1\b|\bnotes\b|\bcode\b/i);
+  // Control: a well-formed stored record under the same denial → the genuine permission message.
+  const clean = await updateEquipmentWith(fakeStore("denied"), "eq1", { name: "Renamed" }, { before: { name: "Chiller 1", status: "ACTIVE" } }, 1);
+  assert.match(clean.message, /you do not have permission/i);
+});
+
 // ---- trusted-writer seam: no unauthorized writes ---------------------------
 await ok("every trusted action reports unavailable, performs no write, and is not success", async () => {
   for (const [fn, action] of [
