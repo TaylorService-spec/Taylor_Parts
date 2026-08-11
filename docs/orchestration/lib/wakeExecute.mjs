@@ -90,13 +90,18 @@ export function executeWake({ item, ctx = {}, contextPackageFn, processRunner, l
     if (run && run.spawnError) return fail("SPAWN_FAILURE", run.spawnError, base, releaseLease);
     // Spawn succeeded → the OS process ran → ACTIVE (still not COMPLETED).
     base.wakeState = "ACTIVE";
-    if (run && run.timedOut) return fail("TIMEOUT", `wall-clock ${invocation.wallClockSec}s exceeded`, base, releaseLease);
-    if (!run || run.exitCode !== 0) return fail("NONZERO_EXIT", `exit ${run ? run.exitCode : "unknown"}`, base, releaseLease);
+    // Diagnostic capture (sanitized): a process failure MUST carry the exit code + a stderr/stdout tail
+    // so NONZERO_EXIT/TIMEOUT/MALFORMED are DIAGNOSABLE without re-running (the observed instrumentation gap).
+    const stderrTail = sanitizeDiagnostic(run && run.stderr);
+    const stdoutTail = sanitizeDiagnostic(run && run.stdout);
+    const exitCode = run && Number.isFinite(run.exitCode) ? run.exitCode : null;
+    if (run && run.timedOut) return fail("TIMEOUT", `wall-clock ${invocation.wallClockSec}s exceeded${stderrTail ? ` — ${stderrTail}` : ""}`, base, releaseLease, { exitCode, diagnostic: stderrTail });
+    if (!run || run.exitCode !== 0) return fail("NONZERO_EXIT", `exit ${exitCode ?? "unknown"}${stderrTail ? ` — stderr: ${stderrTail}` : (stdoutTail ? ` — stdout: ${stdoutTail}` : "")}`, base, releaseLease, { exitCode, diagnostic: stderrTail || stdoutTail });
 
     let parsed;
     try { parsed = JSON.parse(run.stdout || ""); }
-    catch { return fail("MALFORMED_OUTPUT", "stdout is not valid JSON", base, releaseLease); }
-    if (!parsed || parsed.result == null) return fail("MISSING_RESULT", "no `result` in worker output", base, releaseLease);
+    catch { return fail("MALFORMED_OUTPUT", `stdout is not valid JSON${stdoutTail ? ` — stdout: ${stdoutTail}` : ""}${stderrTail ? ` — stderr: ${stderrTail}` : ""}`, base, releaseLease, { exitCode, diagnostic: stdoutTail || stderrTail }); }
+    if (!parsed || parsed.result == null) return fail("MISSING_RESULT", `no \`result\` in worker output${stdoutTail ? ` — stdout: ${stdoutTail}` : ""}`, base, releaseLease, { exitCode, diagnostic: stdoutTail });
 
     // Only NOW is COMPLETED provable (clean exit + parseable result).
     base.wakeState = "COMPLETED";
@@ -117,11 +122,30 @@ export function executeWake({ item, ctx = {}, contextPackageFn, processRunner, l
 }
 
 // A failed process is NEVER completed work. Capture the distinct failure kind + release the lease.
-function fail(failureKind, detail, base, releaseLease) {
+function fail(failureKind, detail, base, releaseLease, meta = {}) {
   const releasedOk = releaseLease();
   return Object.freeze({
     outcome: "SPAWNED_FAILED", spawned: true, wakeState: base.wakeState, triggerMechanism: base.triggerMechanism,
     selectedModel: base.selectedModel, failureKind, failureDetail: detail,
+    exitCode: meta.exitCode ?? null, diagnostic: meta.diagnostic ?? null,
     leaseReleased: releasedOk,
   });
+}
+
+// Sanitize a child-process stderr/stdout tail for evidence: keep the last chars, collapse whitespace,
+// and redact anything that looks like a secret, absolute path, or long id/token/hex — a diagnostic
+// must be safe to log without leaking credentials or machine paths.
+export function sanitizeDiagnostic(s, max = 400) {
+  if (!s || typeof s !== "string") return "";
+  let t = s.replace(/\r/g, "").trim();
+  t = t
+    .replace(/(sk-[A-Za-z0-9_-]{4})[A-Za-z0-9_-]+/g, "$1…")          // OpenAI-style
+    .replace(/(AIza[A-Za-z0-9_-]{4})[A-Za-z0-9_-]+/g, "$1…")         // Google-style
+    .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, "Bearer …")
+    .replace(/[A-Za-z]:\\[^\s"']+/g, "<path>")                        // Windows abs path
+    .replace(/(?:\/[\w.-]+){3,}/g, "<path>")                          // POSIX abs path
+    .replace(/\b[0-9a-f]{16,}\b/gi, "<hex>")
+    .replace(/\b[A-Za-z0-9_-]{20,}\b/g, "<token>");
+  const tail = t.length > max ? "…" + t.slice(-max) : t;
+  return tail.replace(/\s+/g, " ").trim();
 }

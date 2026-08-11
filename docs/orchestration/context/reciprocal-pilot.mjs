@@ -50,11 +50,12 @@ function makeRealClaudeRunner(resolvedBin) {
   return {
     run({ bin, argv, wallClockSec }) {
       const exe = resolvedBin || bin;
-      const r = spawnSync(exe, argv, { timeout: (wallClockSec || 900) * 1000, encoding: "utf8", windowsHide: true });
-      if (r.error && r.error.code === "ETIMEDOUT") return { timedOut: true };
+      const r = spawnSync(exe, argv, { timeout: (wallClockSec || 900) * 1000, encoding: "utf8", windowsHide: true, input: "" });
+      if (r.error && r.error.code === "ETIMEDOUT") return { timedOut: true, stderr: r.stderr || "" };
       if (r.error) return { spawnError: `${r.error.code || "spawn error"}: ${r.error.message} (bin=${exe})` };
-      if (r.signal) return { timedOut: true };
-      return { stdout: r.stdout || "", exitCode: r.status == null ? 1 : r.status, timedOut: false };
+      if (r.signal) return { timedOut: true, stderr: r.stderr || "" };
+      // Always return stderr so a NONZERO_EXIT is diagnosable (executeWake sanitizes it for evidence).
+      return { stdout: r.stdout || "", stderr: r.stderr || "", exitCode: r.status == null ? 1 : r.status, timedOut: false };
     },
   };
 }

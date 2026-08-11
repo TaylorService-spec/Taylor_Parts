@@ -151,3 +151,13 @@ test("REAL-PROCESS spawn proof: executeWake with a REAL child (node as fake clau
   assert.equal(out.wakeState, "COMPLETED");
   assert.equal(out.result, "reviewed");
 });
+
+test("NONZERO_EXIT surfaces the exit code + sanitized diagnostic in the pilot evidence (the #319 gap)", async () => {
+  const r = await runReciprocalPilotCycle({ ...base(), claudeProcessRunner: mockClaudeRunner({ run: { exitCode: 2, stdout: "", stderr: "Error: budget exceeded ($2.00)" } }), reviews: [review("W1")] });
+  assert.equal(r.claudeWakes, 0);
+  assert.equal(r.wake.outcome, "SPAWNED_FAILED");
+  assert.equal(r.wake.failureKind, "NONZERO_EXIT");
+  assert.equal(r.evidence.claudeOutcome.exitCode, 2);                 // the ACTUAL exit code, now reported
+  assert.match(r.evidence.claudeOutcome.diagnostic, /budget exceeded/); // sanitized stderr, now reported
+  assert.match(r.evidence.claudeOutcome.reason, /exit 2/);
+});
