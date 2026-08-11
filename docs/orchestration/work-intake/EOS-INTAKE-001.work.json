@@ -1,0 +1,35 @@
+{
+  "requestId": "EOS-INTAKE-001",
+  "title": "Governed Owner/ChatGPT work-intake bridge",
+  "intent": "Build the smallest governed intake mechanism that persists an Owner/ChatGPT-produced work request and feeds it to the existing EOS selector/orchestrator without Owner relay through Claude.",
+  "scope": [
+    "docs/orchestration/lib/workIntake.mjs",
+    "docs/orchestration/context/work-intake.mjs",
+    "docs/orchestration/work-intake/",
+    "docs/orchestration/agent-requests/README.md"
+  ],
+  "contextScope": [
+    "orchestration"
+  ],
+  "source": {
+    "producer": "Owner/ChatGPT",
+    "provenance": "Owner-authored Codex request dated 2026-08-10",
+    "sourceRef": "work://EOS-INTAKE-001"
+  },
+  "status": "EXECUTION_AUTHORIZED",
+  "authority": {
+    "authorizationState": "AUTHORIZED",
+    "basis": "Owner explicitly authorized repo-safe implementation only",
+    "authorizedBy": "Owner",
+    "authorizedAt": "2026-08-10T00:00:00Z",
+    "protectedBoundary": null
+  },
+  "artifactLocation": "docs/orchestration/work-intake/EOS-INTAKE-001.work.json",
+  "sha256": "16b160f957b63dda7978caf6d178cad6fc8fbb2876dd9f0999b7bd8197eb01aa",
+  "createdAt": "2026-08-10T00:00:00Z",
+  "updatedAt": "2026-08-10T00:00:00Z",
+  "relatedRefs": {
+    "issues": [],
+    "pullRequests": []
+  }
+}
