@@ -27,6 +27,17 @@ When you begin a capability, add a row to **Active** with every declared field. 
 
 ## Active
 
+- Capability:          Generic FACT_BASED GitHub independent-review entry for an exact authorized PR/head
+- Agent/session:       Codex `/root` · Role: builder/integration
+- Branch / worktree:   `agent/generic-fact-based-github-review` · `D:\Taylor_Parts\.worktrees\generic-fact-based-github-review`
+- Base commit:         `abbca0d287ed437b9abd26442e08168555fffc71`
+- Owned paths:         `docs/orchestration/context/github-fact-review.mjs` · its tests/fixtures · fact-review result artifacts
+- Shared paths req'd:  `.github/workflows/reciprocal-gpt-review.yml` · `docs/engineering/ACTIVE_WORKSTREAMS.md`
+- Dependencies:        Reuses #788 canonical `buildCanonicalReviewFeed` → `buildFactBasedInvocation`; GitHub API exact-head evidence; existing OpenAI provider ceilings
+- Expected outcome:    Dry/live-parity GitHub entry creates one bounded content-addressed independent-review artifact for an arbitrary exact PR/head without Claude CLI or legacy expanded context
+- Protected boundaries:One Owner-authorized live OpenAI review of PR #790 only; no deployment, local credential provisioning, authorization-model change, or additional paid call
+- Lifecycle stage:     SANDBOX BUILD
+
 - Capability:          [CLOSED — DONE WHEN THIS CHANGE MERGES] Governed Owner/ChatGPT work-intake bridge (repo-safe minimum)
 - Agent/session:       Codex `/root` · Role: builder
 - Branch / worktree:   `agent/governed-work-intake` · `D:\Taylor_Parts\.worktrees\governed-work-intake`
