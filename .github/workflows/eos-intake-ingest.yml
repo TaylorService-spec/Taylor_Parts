@@ -1,0 +1,58 @@
+name: EOS Work Intake — validate + status
+
+# Automatic consumption of a governed ChatGPT/Owner work-intake artifact. On any change to a *.work.json
+# intake artifact (or the intake libraries), EOS resolves every artifact fail-closed (a bad self-hash — like
+# an incorrectly-produced submission — FAILS here), projects it into the existing selector, derives its
+# compact status, and checks the committed status artifact matches. Pure/offline: no emulator, no Firebase,
+# no model, no OpenAI call, no secret, no deployment, $0. It executes NO worker and grants NO authority.
+#
+# Writing the emitted status back to the repo (so a ChatGPT read connector can fetch status://<id> at its
+# deterministic path) requires contents: write and is deliberately NOT enabled here — it is the Owner-gated
+# next step documented in docs/orchestration/work-intake/README.md ("Automatic consumption"). This workflow
+# stays read-only: it validates + derives + checks, and never mutates the repo.
+
+on:
+  pull_request:
+    paths:
+      - "docs/orchestration/work-intake/**"
+      - "docs/orchestration/lib/workIntake.mjs"
+      - "docs/orchestration/lib/intakeStatus.mjs"
+      - "docs/orchestration/lib/intakeIngress.mjs"
+      - "docs/orchestration/lib/intakeStatus.test.mjs"
+      - "docs/orchestration/lib/intakeIngress.test.mjs"
+      - "docs/orchestration/lib/intakeIntegration.test.mjs"
+      - "docs/orchestration/context/work-intake.mjs"
+      - "docs/orchestration/context/intake-ingest-ci.mjs"
+      - ".github/workflows/eos-intake-ingest.yml"
+  push:
+    branches: [main]
+    paths:
+      - "docs/orchestration/work-intake/**"
+      - "docs/orchestration/lib/workIntake.mjs"
+      - "docs/orchestration/lib/intakeStatus.mjs"
+      - "docs/orchestration/lib/intakeIngress.mjs"
+      - "docs/orchestration/context/work-intake.mjs"
+      - "docs/orchestration/context/intake-ingest-ci.mjs"
+      - ".github/workflows/eos-intake-ingest.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Resolve + project + status (fail-closed, $0)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Intake contract + status + ingress tests (node:test)
+        run: node --test docs/orchestration/lib/workIntake.test.mjs docs/orchestration/lib/intakeStatus.test.mjs docs/orchestration/lib/intakeIngress.test.mjs docs/orchestration/lib/intakeIntegration.test.mjs docs/orchestration/context/work-intake.test.mjs
+      - name: Validate every intake artifact + check committed status (fail-closed on any bad hash)
+        run: node docs/orchestration/context/intake-ingest-ci.mjs
+      - name: Emitted status summary (job log)
+        if: always()
+        run: node docs/orchestration/context/intake-ingest-ci.mjs || true
