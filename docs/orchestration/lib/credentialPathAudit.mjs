@@ -7,6 +7,9 @@ export const CREDENTIAL_PATH_CLASSIFICATION = Object.freeze({
   // Intake brokered review — composes createOpenAICredentialTransport + broker.withCredential; never reads
   // OPENAI_API_KEY and never sees the key (it flows only into the injected invokeOpenAI callback).
   "docs/orchestration/lib/intakeReview.mjs": "AUTHORIZED BROKER PATH",
+  // One governed baseline exchange runner — the OpenAI call goes through runBrokeredIntakeReview; the key
+  // flows only through broker.withCredential into invokeOpenAI, never read from env here.
+  "docs/orchestration/context/baseline-gpt-exchange.mjs": "AUTHORIZED BROKER PATH",
   "tools/eos-secrets/Set-EOSSecret.ps1": "AUTHORIZED BROKER PATH",
   "docs/orchestration/context/github-fact-review.mjs": "LEGACY ISOLATED PATH",
   "docs/orchestration/context/openai-review.mjs": "LEGACY ISOLATED PATH",
