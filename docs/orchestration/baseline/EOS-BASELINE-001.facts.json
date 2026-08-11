@@ -1,0 +1,20 @@
+{
+  "workId": "EOS-BASELINE-001",
+  "reviewId": "REV-001",
+  "question": "For the Temporary Equipment Pool (SERVICE_LOANER / SALES_EVALUATION), should temporary custody/placement of a serialized asset be persisted as a NEW parallel placement record/ledger, or expressed entirely through the EXISTING governed Inventory ledger + Location model per ADR-010? Return one verdict.",
+  "claudePosition": "Express temporary placement through the EXISTING governed Inventory ledger + Location model (ADR-010); do NOT introduce a parallel placement ledger or a second custody authority. A SERVICE_LOANER / SALES_EVALUATION placement is a custody state on the serialized asset carried by governed ledger effects and Inventory Location (customer Location when placed; MOBILE for a truck, VIRTUAL in transit). The Serialized Asset's single nullable currentEquipmentId plus the fail-closed concurrent-link rule already model exclusive custody. Unknown or unverified custody resolves AVAILABILITY = UNKNOWN (fail-closed), never AVAILABLE.",
+  "governingAuthority": "ADR-010 — Equipment Custody & Available Inventory (docs/architecture/ADR-010-equipment-custody-and-available-inventory.md)",
+  "existingDecisionState": "FOUND_AND_APPLIED",
+  "requirement": "The verdict must respect ADR-010's single-authority principle: the Enterprise Inventory ledger is the single stock-movement authority; custody is expressed through Inventory Locations and governed ledger effects; no parallel custody store is introduced.",
+  "sourceFacts": [
+    "ADR-010 L33: the Enterprise Inventory ledger remains the single stock-movement authority.",
+    "ADR-010 L36-38: trucks are MOBILE Inventory Locations; in-transit stock uses the VIRTUAL Location; serialized identity is carried by governed ledger effects.",
+    "ADR-010 L51: the Serialized Asset has one nullable currentEquipmentId; an Equipment record links to exactly one Serialized Asset; concurrent links fail closed; no transaction may leave a serial both installed and available."
+  ],
+  "deterministicEvidence": [
+    "ADR-010 + DECISIONS #59 are MERGED (PR #497); Rev 6 spec FINAL — this is current, non-superseded authority.",
+    "The Temporary Equipment Pool business relationship (SERVICE_LOANER + SALES_EVALUATION) is RATIFIED; only the persistence shape is open — it is constrained by, not exempt from, ADR-010."
+  ],
+  "materialUncertainty": "Whether a temporary placement warrants a distinct governed EFFECT TYPE (e.g. LOANER_OUT / EVALUATION_OUT) inside the existing single ledger, versus reusing existing Transfer / CONSUMED semantics. This is a modeling detail WITHIN the single-ledger principle, not a second store.",
+  "requestedVerdict": ["CONCUR", "CONCUR_WITH_CORRECTION", "NONCONCUR_ESCALATE", "EVIDENCE_REQUIRED", "NEEDS_OWNER"]
+}
