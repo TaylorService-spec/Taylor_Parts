@@ -58,6 +58,10 @@ jobs:
           node-version: "20"
       - name: Verify fact-review implementation
         run: node --test docs/orchestration/context/github-fact-review.test.mjs docs/orchestration/lib/reviewFeedInvocation.test.mjs docs/orchestration/lib/reviewWorkflowWiring.test.mjs
+      - name: Install MCP test dependencies for evidence
+        if: ${{ inputs.mode == 'evidence' }}
+        working-directory: review-subject/integrations/chatgpt-eos-intake
+        run: npm ci
       - name: Generate exact-head case evidence
         id: evidence
         if: ${{ inputs.mode == 'evidence' }}
