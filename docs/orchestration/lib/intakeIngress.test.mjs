@@ -59,6 +59,19 @@ test("capability seam: no broker → NEEDS_ACTIVATION (fail-closed); it never re
   assert.deepEqual([...CAPABILITIES], ["OPENAI_REVIEW"]);
 });
 
+test("capability seam accepts the MERGED Secret Broker (credentialStatus) — availability only, no key", () => {
+  // The #790 broker shape: credentialStatus returns { credentialAvailable, secretValue: "REDACTED" }.
+  const available = { credentialStatus: (n) => ({ capability: n, credentialAvailable: true, credentialId: "eos-openai-review", secretValue: "REDACTED" }) };
+  const missing = { credentialStatus: () => ({ credentialAvailable: false, secretValue: "REDACTED" }) };
+  const a = assessCapability({ name: "OPENAI_REVIEW", broker: available });
+  assert.equal(a.available, true);
+  assert.equal(a.state, "AVAILABLE");
+  assert.match(a.reason, /withCredential still gates the spend/);
+  assert.equal(assessCapability({ name: "OPENAI_REVIEW", broker: missing }).available, false);
+  // no secret ever surfaces from the seam
+  assert.ok(!JSON.stringify(a).match(/sk-|OPENAI_API_KEY|Bearer/));
+});
+
 test("ingestIntake (DESIGN_STAGING): resolves, projects, STAGED status, does not execute", () => {
   const a = artifact({ status: "DESIGN_STAGING" });
   const r = ingestIntake({ requestId: a.requestId, location: a.artifactLocation, sha256: a.sha256, bytes: bytesOf(a), now: NOW });
