@@ -36,25 +36,38 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Execute eligible intakes + commit status/result
-        shell: bash
+        shell: pwsh
         run: |
-          set -euo pipefail
-          node docs/orchestration/context/intake-ingest-ci.mjs --write   # refresh all status (idempotent)
+          $ErrorActionPreference = "Stop"
+          node docs/orchestration/context/intake-ingest-ci.mjs --write
+          if ($LASTEXITCODE -ne 0) { throw "intake status refresh failed with exit code $LASTEXITCODE" }
+
           # Per EXECUTION_AUTHORIZED artifact, run the guarded execution runtime. It spawns zero unless the
-          # intake-state gate + capability seam + Wake readiness all pass; paid capability with no credential
-          # stays BLOCKED. The runtime writes status and, on COMPLETE, the content-addressed result.
-          for f in docs/orchestration/work-intake/*.work.json; do
-            id=$(node -e "process.stdout.write(JSON.parse(require('fs').readFileSync('$f')).requestId)")
-            sha=$(node -e "process.stdout.write(JSON.parse(require('fs').readFileSync('$f')).sha256)")
-            status=$(node -e "process.stdout.write(JSON.parse(require('fs').readFileSync('$f')).status)")
-            if [ "$status" = "EXECUTION_AUTHORIZED" ]; then
-              node docs/orchestration/context/intake-runtime.mjs execute --id "$id" --location "$f" --sha256 "$sha" || true
-            fi
-          done
+          # intake-state gate + capability seam + Wake readiness all pass. A refused/failed intake is allowed
+          # to return nonzero here so its truthful status can still be committed for inspection.
+          Get-ChildItem "docs/orchestration/work-intake/*.work.json" | ForEach-Object {
+            $artifact = Get-Content $_.FullName -Raw | ConvertFrom-Json
+            if ($artifact.status -eq "EXECUTION_AUTHORIZED") {
+              node docs/orchestration/context/intake-runtime.mjs execute --id $artifact.requestId --location $_.FullName.Replace("$PWD\\", "").Replace("\\", "/") --sha256 $artifact.sha256
+              if ($LASTEXITCODE -ne 0) {
+                Write-Warning "Intake $($artifact.requestId) returned exit code $LASTEXITCODE; continuing so status/result can be written back."
+              }
+            }
+          }
+          exit 0
       - name: Commit status/result back to main (only if changed)
-        shell: bash
+        shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add docs/orchestration/work-intake/status docs/orchestration/work-intake/results
-          if git diff --cached --quiet; then echo "no changes"; else git commit -m "eos: intake execution result write-back [skip ci]" && git push; fi
+          git diff --cached --quiet
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "no changes"
+          } else {
+            git commit -m "eos: intake execution result write-back [skip ci]"
+            if ($LASTEXITCODE -ne 0) { throw "git commit failed with exit code $LASTEXITCODE" }
+            git push
+            if ($LASTEXITCODE -ne 0) { throw "git push failed with exit code $LASTEXITCODE" }
+          }
