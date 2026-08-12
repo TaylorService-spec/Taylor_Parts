@@ -85,11 +85,19 @@ jobs:
             --location $env:ARTIFACT `
             --sha256 $env:ARTIFACT_SHA256 `
             --source-commit $env:GITHUB_SHA
-          if ($LASTEXITCODE -ne 0) {
-            Write-Warning "Claude runtime returned exit code $LASTEXITCODE; durable status will still be committed."
+          $runtimeExit = $LASTEXITCODE
+          $statusPath = "docs/orchestration/work-intake/status/$env:REQUEST_ID.status.json"
+          if (Test-Path -LiteralPath $statusPath) {
+            $status = Get-Content -LiteralPath $statusPath -Raw | ConvertFrom-Json
+            Write-Host "Claude runtime disposition: $($status.state)"
+            if ($status.currentWork) { Write-Warning "Claude runtime reason: $($status.currentWork)" }
+          }
+          if ($runtimeExit -ne 0) {
+            Write-Warning "Claude runtime returned exit code $runtimeExit; its truthful status remains eligible for guarded write-back."
           }
           exit 0
       - name: Commit intake + status/result to main
+        id: writeback
         if: ${{ steps.dedupe.outputs.duplicate != 'true' }}
         shell: pwsh
         env:
@@ -98,20 +106,33 @@ jobs:
           $ErrorActionPreference = "Stop"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add "docs/orchestration/work-intake/$env:REQUEST_ID.work.json" `
-            "docs/orchestration/work-intake/status" `
-            "docs/orchestration/work-intake/results" `
-            "docs/orchestration/work-intake/review-ready"
+          node docs/orchestration/context/issue-intake-writeback.mjs --request-id $env:REQUEST_ID --source worktree
+          if ($LASTEXITCODE -ne 0) { throw "unexpected dirty files; refusing EOS write-back" }
+          $allowed = @(
+            "docs/orchestration/work-intake/$env:REQUEST_ID.work.json",
+            "docs/orchestration/work-intake/status/$env:REQUEST_ID.status.json",
+            "docs/orchestration/work-intake/results/$env:REQUEST_ID",
+            "docs/orchestration/work-intake/review-ready/$env:REQUEST_ID.json"
+          ) | Where-Object { Test-Path -LiteralPath $_ }
+          if ($allowed.Count -eq 0) { throw "no EOS artifacts exist for $env:REQUEST_ID" }
+          git add -- $allowed
+          if ($LASTEXITCODE -ne 0) { throw "git add failed with exit code $LASTEXITCODE" }
+          node docs/orchestration/context/issue-intake-writeback.mjs --request-id $env:REQUEST_ID --source index
+          if ($LASTEXITCODE -ne 0) { throw "staged path guard rejected EOS write-back" }
           git diff --cached --quiet
           if ($LASTEXITCODE -eq 0) { Write-Host "no changes"; exit 0 }
           git commit -m "eos: dispatch Issue #${{ github.event.issue.number }} to Claude [skip ci]"
           if ($LASTEXITCODE -ne 0) { throw "git commit failed with exit code $LASTEXITCODE" }
           $pushed = $false
           for ($attempt = 1; $attempt -le 5; $attempt++) {
-            git pull --rebase origin main
-            if ($LASTEXITCODE -ne 0) { throw "git pull --rebase failed with exit code $LASTEXITCODE" }
+            if (git status --porcelain) { throw "repository became dirty after EOS artifact commit" }
+            git fetch origin main
+            if ($LASTEXITCODE -ne 0) { throw "git fetch failed with exit code $LASTEXITCODE" }
+            git rebase origin/main
+            if ($LASTEXITCODE -ne 0) { throw "git rebase onto origin/main failed with exit code $LASTEXITCODE" }
             git push origin HEAD:main
             if ($LASTEXITCODE -eq 0) { $pushed = $true; break }
+            Write-Warning "push attempt $attempt lost a race; fetching and rebasing before retry"
             Start-Sleep -Seconds 3
           }
           if (-not $pushed) { throw "git push failed after 5 attempts" }
@@ -125,7 +146,10 @@ jobs:
           $statusPath = "docs/orchestration/work-intake/status/$env:REQUEST_ID.status.json"
           if (Test-Path -LiteralPath $statusPath) {
             $status = Get-Content -LiteralPath $statusPath -Raw | ConvertFrom-Json
-            gh issue comment "${{ github.event.issue.number }}" --body "EOS dispatched this Issue to Claude. Durable status: ``status://$env:REQUEST_ID`` — **$($status.state)**."
+            $reason = if ($status.currentWork) { [string]$status.currentWork } else { "No runtime reason was recorded." }
+            if ($reason.Length -gt 1200) { $reason = $reason.Substring(0, 1200) + "…" }
+            $delivery = if ("${{ steps.writeback.outcome }}" -eq "success") { "Durable status: ``status://$env:REQUEST_ID``" } else { "Write-back failed closed; this status was not committed to ``main``." }
+            gh issue comment "${{ github.event.issue.number }}" --body "EOS dispatched this Issue to Claude — **$($status.state)**.`n`n$delivery`n`nRuntime reason: $reason`n`nWorkflow: $env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
           } else {
             gh issue comment "${{ github.event.issue.number }}" --body "EOS intake validation started, but no durable status was produced. Inspect workflow run $env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID."
           }
