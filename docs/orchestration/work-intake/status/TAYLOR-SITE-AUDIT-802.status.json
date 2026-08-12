@@ -5,10 +5,10 @@
   "work": "work://TAYLOR-SITE-AUDIT-802",
   "result": "result://TAYLOR-SITE-AUDIT-802",
   "state": "READY",
-  "currentWork": "context package insufficient (EVIDENCE_REQUIRED)",
+  "currentWork": "duplicate/active lease — another run holds it",
   "activeWorker": null,
   "startedAt": null,
-  "updatedAt": "2026-08-12T05:13:20.129Z",
+  "updatedAt": "2026-08-12T05:26:59.427Z",
   "ownerActionRequired": false,
   "ownerQuestion": null,
   "costToDateUsd": 0,
@@ -23,5 +23,5 @@
     "provenance": "Owner explicitly directed ChatGPT to restore EOS use and execute the previously requested Taylor #802 full-site audit without Owner relay; re-issued after correcting the Windows self-hosted runner shell mismatch before any worker execution occurred."
   },
   "artifactLocation": "docs/orchestration/work-intake/status/TAYLOR-SITE-AUDIT-802.status.json",
-  "sha256": "8c207ea56ef4d2d83f5ecc2e8882d4432068a2efd8ea7aa49b2f351aa5653f1e"
+  "sha256": "329d6abbb41d7d202ed50ec10bb010cf71e67b39dfd1a455ca26dda9a91690d2"
 }
