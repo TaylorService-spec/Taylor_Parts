@@ -1,0 +1,13 @@
+{
+  "schema": "eos.intake.patch-integration/1",
+  "requestId": "EOS-ISSUE-819",
+  "patchSha256": "0a890207e17535eeb96d4f6e5bbfd33a2ef041a371ba9e9e13f0e5767910f376",
+  "baseCommit": "bf9a7866efa57444a684cef2bb37e87d4ff4727d",
+  "paths": [
+    "docs/orchestration/agent-manager.md",
+    "docs/orchestration/lib/verifierAgent.mjs",
+    "docs/orchestration/lib/verifierAgent.test.mjs"
+  ],
+  "state": "INTEGRATED",
+  "integratedAt": "2026-08-12T23:26:28.807Z"
+}

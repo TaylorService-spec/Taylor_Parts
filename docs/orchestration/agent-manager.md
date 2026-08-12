@@ -122,6 +122,68 @@ to an *unregistered* workstream is surfaced as `unroutable` (an ORCHESTRATOR_INT
 not silently dropped. Drivers MUST call `selectNextWorkIncludingResults(...)` (or concat
 `interpretationWorkItems(...)`) before concluding a terminal state.
 
+## 10b. Verifier Agent (EOS-ISSUE-819)
+
+A bounded, evidence-driven check on agent-produced work — layered on the existing contracts, **not a
+second orchestrator, queue, scheduler, or authority layer.** Implementation:
+[`lib/verifierAgent.mjs`](./lib/verifierAgent.mjs) /
+[`lib/verifierAgent.test.mjs`](./lib/verifierAgent.test.mjs).
+
+**Contract reuse, not a parallel system.** A verification is an ordinary `AgentRequest` with the
+existing `mode: "VERIFICATION"` (§1). Two placements share the same primitives — only what's being
+inspected differs:
+
+1. **Pre-dispatch (semantic).** `createPreDispatchVerificationRequest()` — AFTER deterministic
+   contract/preflight validation has already passed but BEFORE a request is dispatched to a worker at
+   all. For judgment calls a pure validator cannot make (does this request's purpose/scope actually
+   cohere with governing docs?) — never for syntax a deterministic check already proves.
+2. **Post-worker (evidence).** `createVerificationRequest()` — built from the worker's request +
+   result, before the result is accepted/consumed/consolidated.
+
+Both copy `scope` verbatim from the thing being checked (never wider) and go through the **same**
+`decideDispatch()` (§2), the **same** resource governor (§3), the **same** network-aware gating (§4) —
+no new dispatch path exists for either placement.
+
+**Evidence-driven, not summary-trusting.** The Verifier is dispatched as a bounded worker against the
+`allowedSurfaces` above — it independently inspects those repository/context surfaces itself; it is
+never handed only the worker's prose summary to grade.
+
+**What it must detect**, as a typed `CLAIM_FAILURE_CATEGORIES` vocabulary: `UNSUPPORTED_CLAIM`,
+`INVENTED_ARTIFACT` (nonexistent file/function/commit/issue/test/capability), `CONTRADICTS_REPO_STATE`,
+`SCOPE_DRIFT`, `MISSED_CONSTRAINT`, `STALE_EVIDENCE`, `INTERNAL_CONTRADICTION`, `SHOULD_BE_UNVERIFIED`.
+Each finding (`createVerifierFinding`) carries the exact failed claim, the evidence gap, and a
+corrective instruction.
+
+**Verdict.** `deriveVerdict()` reads the Verifier's own `AgentResult` (never the worker's) and returns
+`PASS` / `RETURN_FOR_CORRECTION` / `ESCALATE`. Ambiguity (`NOT_APPLICABLE`, or an unresolved verdict)
+resolves to `ESCALATE`, never a silent `PASS` — the same "downgrade to UNVERIFIED rather than assert as
+fact" principle applies to the Verifier's own output.
+
+**Bounded correction loop.** Worker → Verifier → `PASS` or `RETURN_FOR_CORRECTION` → the **same** Worker
+corrects → Verifier rechecks. `createVerificationSession()` / `advanceVerificationSession()` track this
+as a pure state machine with a conservative default cap, `DEFAULT_MAX_CORRECTION_LOOPS = 2` (no standing
+policy justifies a smaller number). Once the cap is reached without a `PASS`, the session status becomes
+`ESCALATE` — routed to the existing orchestrator/Owner boundary (§9/§10), never an indefinite ping-pong.
+
+**Cannot broaden scope.** `guardVerifierScope()` partitions findings into `inBounds` and `outOfBounds`:
+any finding marked `proposesScopeExpansion` (the Verifier arguing for doing *more* than the original
+request, rather than reporting a defect in what was claimed) is routed to `outOfBounds` and is **never**
+surfaced as an actionable corrective instruction or allowed to affect the verdict. The Verifier reports;
+it does not become product/architecture authority. **AGENT OUTPUT ≠ PRODUCT AUTHORITY** (§1) applies
+twice over here — neither the worker's result nor the Verifier's result is itself product authority.
+
+**Spend/value tracking.** `verificationSpendSummary()` records correction count, pass/fail/escalation,
+verifier and worker token/runtime totals *only where the runtime exposed them* (§6 — never fabricated),
+and whether a correction pass actually changed/retracted material claims (`claimsChanged`) — the signal
+that verification earned its spend, not just added overhead.
+
+**Deterministic preflight is a separate, cheaper mechanism — not the Verifier Agent.**
+`checkRequiredHeadings()` is plain string matching with no agent call, no independent-inspection worker,
+and no `VERIFIER_VERDICTS` output. Example (Issue #818): an intake artifact missing its required literal
+`## Scope` / `## Required work` headings is caught by this deterministic check *before* any
+`AgentRequest` is ever created — a Verifier Agent call is never spent on a defect a string match already
+catches.
+
 ## 11. Anti-over-engineering
 
 Smallest local/repo-native mechanism consistent with #703/#710/#715/#716: pure libs + durable files + the
