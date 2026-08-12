@@ -189,3 +189,24 @@ catches.
 Smallest local/repo-native mechanism consistent with #703/#710/#715/#716: pure libs + durable files + the
 existing harness + the existing projection. **No** distributed queue, message broker, cloud scheduler,
 orchestration database, web dashboard, or BPM engine.
+
+## 12. Integration backlog projection
+
+[`integration-backlog.json`](./integration-backlog.json) is the single durable Agent Manager record for
+completed, verified work awaiting governed integration or deployment. It is orchestration state, not a
+second scheduler: `planIntegrationBacklog()` in the existing `agentManager.mjs` only derives ordering and
+the next item per `repo#branch`; it never dispatches, approves, verifies, applies, commits, or deploys.
+
+Each item records `requestId`, target repo/branch, the approved hash-bound patch or result, numeric priority,
+dependencies, changed paths plus detected `overlappingPaths`, verification and approval state, integration
+readiness, explicit scope/hash gate state, and any blocker. READY items are topologically ordered first, then security/integrity priority,
+path conflicts, and ordinary priority/declaration order. Mutations sharing a repo+branch expose one next item
+and remain serialized by the governed integration workflow. Missing dependencies, blocked verification or
+approval, invalid records, and dependency cycles fail closed. With no integration item, ordinary Agent
+Manager request selection is byte-for-byte the existing behavior.
+
+Lifecycle: verified output is recorded `BLOCKED` until its exact artifact is approved and its verification,
+scope, and hash states are all `PASS`; it may then become `READY`. The projection identifies one next item
+per target lane, but the existing governed integration path re-verifies every gate before mutation. Success
+retains the item as `INTEGRATED` so dependents can become eligible and replay evidence remains durable;
+failure returns it to `BLOCKED` with the exact blocker. Integrated records are not deleted while referenced.

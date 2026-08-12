@@ -7,7 +7,7 @@ import { createAgentRequest, validateAgentRequest, requestFingerprint, AGENT_MOD
 import { createAgentResult, validateAgentResult, isReusableResult, RESULT_STATUS, VERDICTS } from "./agentResult.mjs";
 import { CAPACITY, classifyResourceNeed, allocate, capacitySnapshot } from "./resourceGovernor.mjs";
 import { transition, remotePolicy, NETWORK_STATES, SIGNALS } from "./networkState.mjs";
-import { decideDispatch, findEquivalentResult, selectNextQueuedRequest, efficiencyMetrics, DISPATCH_DECISIONS } from "./agentManager.mjs";
+import { decideDispatch, findEquivalentResult, selectNextQueuedRequest, efficiencyMetrics, planIntegrationBacklog, DISPATCH_DECISIONS } from "./agentManager.mjs";
 
 const req = (over = {}) => createAgentRequest({ requestId: "r1", requestedByWorkstream: "Design", purpose: "verify X", outputContract: "PASS/FAIL", ...over });
 
@@ -142,4 +142,54 @@ test("efficiency metrics derive from durable records; tokens only where reported
   assert.equal(m.acceptedFindings, 2);
   assert.equal(m.tokensReported, 1);
   assert.equal(m.tokensTotal, 1000);
+});
+
+const integration = (requestId, over = {}) => ({
+  requestId, target: { repo: "TaylorService-spec/Taylor_Parts", branch: "main" },
+  approvedArtifact: { kind: "PATCH", location: `results/${requestId}.patch`, sha256: "a".repeat(64) },
+  priority: 50, integrityPriority: "NORMAL", dependencies: [], paths: [`src/${requestId}.mjs`], overlappingPaths: [],
+  verificationState: "PASS", scopeState: "PASS", hashState: "PASS", approvalState: "APPROVED", integrationReadiness: "READY", blocker: null, ...over,
+});
+
+test("integration backlog orders dependencies before security/integrity priority", () => {
+  const plan = planIntegrationBacklog([
+    integration("dependent", { dependencies: ["base"], integrityPriority: "SECURITY" }),
+    integration("base", { priority: 99 }),
+    integration("integrity", { integrityPriority: "INTEGRITY", priority: 1 }),
+  ]);
+  assert.deepEqual(plan.ordered.map((item) => item.requestId), ["integrity", "base", "dependent"]);
+});
+
+test("conflicting patches are adjacent, overlap is tracked, and same target exposes one next item", () => {
+  const plan = planIntegrationBacklog([
+    integration("a", { priority: 2, paths: ["src/shared.mjs"] }),
+    integration("independent", { priority: 1 }),
+    integration("b", { priority: 3, paths: ["src/shared.mjs"] }),
+  ]);
+  assert.deepEqual(plan.ordered.map((item) => item.requestId), ["a", "b", "independent"]);
+  assert.deepEqual(plan.ordered[0].overlappingPaths, ["src/shared.mjs"]);
+  assert.equal(plan.nextByTarget["TaylorService-spec/Taylor_Parts#main"].requestId, "a");
+});
+
+test("independent targets retain normal priority/order", () => {
+  const plan = planIntegrationBacklog([integration("later", { priority: 9 }), integration("first", { priority: 1, target: { repo: "other/repo", branch: "release" } })]);
+  assert.deepEqual(plan.ordered.map((item) => item.requestId), ["first", "later"]);
+});
+
+test("blocked or unverified work never becomes integration-ready", () => {
+  const plan = planIntegrationBacklog([integration("blocked", { blocker: "Owner approval required" }), integration("unverified", { verificationState: "PENDING" }), integration("bad-hash", { hashState: "FAILED" })]);
+  assert.equal(plan.ordered.length, 0);
+  assert.deepEqual(plan.blocked.map((item) => item.requestId), ["blocked", "unverified", "bad-hash"]);
+});
+
+test("dependency cycles fail closed instead of looping", () => {
+  const plan = planIntegrationBacklog([integration("a", { dependencies: ["b"] }), integration("b", { dependencies: ["a"] })]);
+  assert.equal(plan.ordered.length, 0);
+  assert.ok(plan.blocked.every((item) => /cycle/.test(item.blocker)));
+});
+
+test("ordinary Agent Manager selection is unchanged with no integration backlog item", () => {
+  const requests = [req({ requestId: "normal", priority: 3 })];
+  assert.equal(selectNextQueuedRequest(requests).requestId, "normal");
+  assert.deepEqual(planIntegrationBacklog([]), { ordered: [], nextByTarget: {}, blocked: [] });
 });

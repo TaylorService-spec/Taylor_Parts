@@ -102,6 +102,83 @@ export function selectNextQueuedRequest(requests = []) {
   return queue[0].r;
 }
 
+const INTEGRITY_RANK = Object.freeze({ SECURITY: 0, INTEGRITY: 1, NORMAL: 2 });
+const SHA256 = /^[0-9a-f]{64}$/;
+const READY_INTEGRATION = "READY";
+
+export function validateIntegrationBacklogItem(item) {
+  const errors = [];
+  if (!item?.requestId) errors.push("requestId is required");
+  if (!item?.target?.repo || !item?.target?.branch) errors.push("target repo/branch is required");
+  if (!item?.approvedArtifact?.location || !SHA256.test(item?.approvedArtifact?.sha256 || "")) errors.push("approved patch/result location and SHA-256 are required");
+  if (!Number.isFinite(item?.priority)) errors.push("numeric priority is required");
+  if (!Array.isArray(item?.dependencies)) errors.push("dependencies must be an array");
+  if (!Array.isArray(item?.paths) || !item.paths.length) errors.push("paths must be a non-empty array");
+  if (!Array.isArray(item?.overlappingPaths)) errors.push("overlappingPaths must be an array");
+  if (!Object.hasOwn(INTEGRITY_RANK, item?.integrityPriority)) errors.push("integrityPriority must be SECURITY, INTEGRITY, or NORMAL");
+  if (!new Set(["PASS", "PENDING", "FAILED"]).has(item?.verificationState)) errors.push("invalid verificationState");
+  if (!new Set(["PASS", "PENDING", "FAILED"]).has(item?.scopeState)) errors.push("invalid scopeState");
+  if (!new Set(["PASS", "PENDING", "FAILED"]).has(item?.hashState)) errors.push("invalid hashState");
+  if (!new Set(["APPROVED", "PENDING", "REJECTED"]).has(item?.approvalState)) errors.push("invalid approvalState");
+  if (!new Set(["READY", "BLOCKED", "INTEGRATED"]).has(item?.integrationReadiness)) errors.push("invalid integrationReadiness");
+  if (item?.blocker != null && typeof item.blocker !== "string") errors.push("blocker must be null or a string");
+  return errors;
+}
+
+const targetKey = (item) => `${item.target.repo}#${item.target.branch}`;
+const pathOverlap = (a, b) => a.paths.filter((path) => b.paths.includes(path));
+
+// A pure ordering projection over the one durable Agent Manager backlog. It does not dispatch,
+// approve, verify, or apply anything; the governed integration workflow remains the sole writer.
+export function planIntegrationBacklog(items = []) {
+  if (!Array.isArray(items)) throw new Error("integration backlog must be an array");
+  const indexed = items.map((item, order) => ({ ...item, order, errors: validateIntegrationBacklogItem(item) }));
+  const byId = new Map(indexed.map((item) => [item.requestId, item]));
+  if (byId.size !== indexed.length) throw new Error("duplicate integration requestId");
+
+  const blocked = new Map();
+  for (const item of indexed) {
+    if (item.errors.length) blocked.set(item.requestId, `INVALID: ${item.errors.join("; ")}`);
+    else if (item.integrationReadiness === "BLOCKED" || item.blocker) blocked.set(item.requestId, item.blocker || "integration readiness is BLOCKED");
+    else if (item.integrationReadiness === READY_INTEGRATION && item.verificationState !== "PASS") blocked.set(item.requestId, "verification has not passed");
+    else if (item.integrationReadiness === READY_INTEGRATION && item.scopeState !== "PASS") blocked.set(item.requestId, "scope validation has not passed");
+    else if (item.integrationReadiness === READY_INTEGRATION && item.hashState !== "PASS") blocked.set(item.requestId, "artifact hash validation has not passed");
+    else if (item.integrationReadiness === READY_INTEGRATION && item.approvalState !== "APPROVED") blocked.set(item.requestId, "artifact is not approved");
+    for (const dependency of item.dependencies || []) if (!byId.has(dependency)) blocked.set(item.requestId, `missing dependency: ${dependency}`);
+  }
+
+  const pending = new Set(indexed.filter((item) => item.integrationReadiness === READY_INTEGRATION && !blocked.has(item.requestId)).map((item) => item.requestId));
+  const ordered = [];
+  const compare = (a, b) => {
+    const ai = INTEGRITY_RANK[a.integrityPriority], bi = INTEGRITY_RANK[b.integrityPriority];
+    if (ai !== bi) return ai - bi;
+    const aConflicts = indexed.some((other) => other.requestId !== a.requestId && targetKey(other) === targetKey(a) && pathOverlap(a, other).length);
+    const bConflicts = indexed.some((other) => other.requestId !== b.requestId && targetKey(other) === targetKey(b) && pathOverlap(b, other).length);
+    if (aConflicts !== bConflicts) return aConflicts ? -1 : 1;
+    if (a.priority !== b.priority) return a.priority - b.priority;
+    return a.order - b.order;
+  };
+
+  while (pending.size) {
+    const eligible = [...pending].map((id) => byId.get(id)).filter((item) => item.dependencies.every((id) => byId.get(id)?.integrationReadiness === "INTEGRATED" || ordered.some((done) => done.requestId === id)));
+    if (!eligible.length) {
+      for (const id of pending) blocked.set(id, "dependency cycle or dependency blocked");
+      break;
+    }
+    eligible.sort(compare);
+    const next = eligible[0];
+    const overlaps = indexed.filter((other) => other.requestId !== next.requestId && targetKey(other) === targetKey(next)).flatMap((other) => pathOverlap(next, other));
+    ordered.push({ ...next, overlappingPaths: [...new Set([...next.overlappingPaths, ...overlaps])].sort(), serializationKey: targetKey(next) });
+    pending.delete(next.requestId);
+  }
+
+  return Object.freeze({
+    ordered: Object.freeze(ordered),
+    nextByTarget: Object.freeze(Object.fromEntries(ordered.map((item) => item.serializationKey).filter((key, i, keys) => keys.indexOf(key) === i).map((key) => [key, ordered.find((item) => item.serializationKey === key)]))),
+    blocked: Object.freeze(indexed.filter((item) => blocked.has(item.requestId)).map((item) => ({ ...item, blocker: blocked.get(item.requestId) }))),
+  });
+}
+
 // Efficiency counters over a request/result set (§6): all derivable from durable
 // records, never fabricated. Token/runtime only where the runtime exposed them.
 export function efficiencyMetrics(requests = [], results = []) {
