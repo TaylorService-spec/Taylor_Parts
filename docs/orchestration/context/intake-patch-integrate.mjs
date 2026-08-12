@@ -54,6 +54,7 @@ function main() {
   if (existsSync(repoFile(recordPath))) { process.stdout.write(`${JSON.stringify({ disposition: "ALREADY_INTEGRATED", recordPath })}\n`); return; }
   if (manifest.patchSha256 !== expectedPatchSha) throw new Error("approved patch hash does not match manifest");
   if (!manifest.patchLocation?.startsWith(expectedRoot) || !manifest.patchLocation.endsWith(".patch")) throw new Error("patch must be in the request results directory");
+  repoFile(manifest.patchLocation); // Retain repository-bound traversal validation even though bytes come from Git.
   // The manifest binds the immutable Git object, never checkout-filtered working-tree bytes.
   const patch = readCanonicalGitBlob({ path: manifest.patchLocation });
   const base = git(["rev-parse", "HEAD"]).stdout.trim();
