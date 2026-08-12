@@ -12,6 +12,9 @@ on:
       - "docs/orchestration/lib/selectNextWork.test.mjs"
       - "docs/orchestration/lib/controlCenterAdapter.mjs"
       - "docs/orchestration/lib/controlCenterAdapter.test.mjs"
+      - "docs/orchestration/lib/agentManager.mjs"
+      - "docs/orchestration/lib/agentManager.test.mjs"
+      - "docs/orchestration/integration-backlog.json"
       - ".github/workflows/orchestration-selector-tests.yml"
   push:
     branches: [main]
@@ -19,6 +22,8 @@ on:
       - "docs/orchestration/lib/selectNextWork.mjs"
       - "docs/orchestration/lib/selectNextWork.test.mjs"
       - "docs/orchestration/lib/controlCenterAdapter.mjs"
+      - "docs/orchestration/lib/agentManager.mjs"
+      - "docs/orchestration/integration-backlog.json"
       - "docs/orchestration/lib/controlCenterAdapter.test.mjs"
       - ".github/workflows/orchestration-selector-tests.yml"
   workflow_dispatch:
@@ -44,3 +49,5 @@ jobs:
 
       - name: Control Center adapter contract
         run: node --test docs/orchestration/lib/controlCenterAdapter.test.mjs
+      - name: Agent Manager integration backlog contract
+        run: node --test docs/orchestration/lib/agentManager.test.mjs
