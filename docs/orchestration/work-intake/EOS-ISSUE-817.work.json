@@ -1,0 +1,36 @@
+{
+  "requestId": "EOS-ISSUE-817",
+  "title": "EOS E2E Retest — hardened path verification",
+  "intent": "Re-validate the hardened GitHub Issue → EOS → Claude → EOS completion path after PRs #814 and #816 using a harmless read-only task.\n\nRequired work:\n- Verify that the repository records the GitHub-Issue adapter as operationally verified after the #815 end-to-end test.\n- Confirm the hardened path preserves only permitted EOS artifacts and does not commit unrelated source/document edits.\n- Do not modify repository source files, permissions, variables, workflows, branches, pull requests, or production state.\n- Return a concise verification result through the normal EOS runtime.\n\nCompletion:\nComplete through the normal governed EOS/Claude workflow, persist only the current-request EOS artifacts, emit `COMPLETE` and `REVIEW_READY`, and post the normal completion notification on this Issue.",
+  "scope": [
+    "Read-only inspection limited to `docs/DECISIONS.md` and the EOS verification records already on `main`."
+  ],
+  "contextScope": [
+    "orchestration",
+    "github-issue-intake"
+  ],
+  "source": {
+    "producer": "GitHub Issue intake workflow",
+    "provenance": "Authenticated GitHub owner issue labeled eos-intake",
+    "sourceRef": "https://github.com/TaylorService-spec/Taylor_Parts/issues/817",
+    "githubActor": "TaylorService-spec"
+  },
+  "status": "EXECUTION_AUTHORIZED",
+  "authority": {
+    "authorizationState": "AUTHORIZED",
+    "basis": "EOS accepted the validated, Owner-submitted, explicitly scoped Issue under the issue-intake policy.",
+    "authorizedBy": "TaylorService-spec",
+    "authorizedAt": "2026-08-12T21:47:59Z",
+    "protectedBoundary": null
+  },
+  "artifactLocation": "docs/orchestration/work-intake/EOS-ISSUE-817.work.json",
+  "sha256": "11bbdd5e638e0eb9d23a6476841436d60a033bdada7afe8b4634cddfdb7278bf",
+  "createdAt": "2026-08-12T21:47:59Z",
+  "updatedAt": "2026-08-12T21:47:59Z",
+  "relatedRefs": {
+    "issues": [
+      "https://github.com/TaylorService-spec/Taylor_Parts/issues/817"
+    ],
+    "pullRequests": []
+  }
+}
