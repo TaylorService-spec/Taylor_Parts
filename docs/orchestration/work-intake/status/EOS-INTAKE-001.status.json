@@ -4,24 +4,28 @@
   "pointer": "status://EOS-INTAKE-001",
   "work": "work://EOS-INTAKE-001",
   "result": "result://EOS-INTAKE-001",
-  "state": "READY",
-  "currentWork": "duplicate/active lease — another run holds it",
-  "activeWorker": null,
+  "state": "COMPLETE",
+  "currentWork": "completed",
+  "activeWorker": "EOS_INTAKE",
   "startedAt": null,
-  "updatedAt": "2026-08-12T05:34:07.615Z",
+  "updatedAt": "2026-08-12T05:41:17.895Z",
   "ownerActionRequired": false,
   "ownerQuestion": null,
-  "costToDateUsd": 0,
+  "costToDateUsd": 0.39524940000000003,
   "workArtifact": {
     "location": "docs/orchestration/work-intake/EOS-INTAKE-001.work.json",
     "sha256": "16b160f957b63dda7978caf6d178cad6fc8fbb2876dd9f0999b7bd8197eb01aa"
   },
-  "resultRef": null,
+  "resultRef": {
+    "location": "docs/orchestration/work-intake/results/EOS-INTAKE-001/e9d2a86baf791838445047a6f2dc125149b0911d47bee166649a9c686ade4ff1.result.json",
+    "sha256": "e9d2a86baf791838445047a6f2dc125149b0911d47bee166649a9c686ade4ff1",
+    "pointer": "result://EOS-INTAKE-001"
+  },
   "artifactRefs": [],
   "provenance": {
     "producer": "Owner/ChatGPT",
     "provenance": "Owner-authored Codex request dated 2026-08-10"
   },
   "artifactLocation": "docs/orchestration/work-intake/status/EOS-INTAKE-001.status.json",
-  "sha256": "9d31e013fb430cc21fcb78e5106c93a4a07e64e8e0bfee0a509d3ddffc3521e8"
+  "sha256": "ddd871e32b3c01efff5f959864a6fc1c35e90020a5c2787c9c9425a6808a05c4"
 }
