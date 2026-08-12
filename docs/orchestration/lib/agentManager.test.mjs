@@ -188,6 +188,28 @@ test("dependency cycles fail closed instead of looping", () => {
   assert.ok(plan.blocked.every((item) => /cycle/.test(item.blocker)));
 });
 
+test("a valid INTEGRATED record satisfies its dependent", () => {
+  const plan = planIntegrationBacklog([integration("done", { integrationReadiness: "INTEGRATED" }), integration("next", { dependencies: ["done"] })]);
+  assert.deepEqual(plan.ordered.map((item) => item.requestId), ["next"]);
+  assert.equal(plan.blocked.length, 0);
+});
+
+test("INTEGRATED with failed verification does not satisfy its dependent", () => {
+  const plan = planIntegrationBacklog([integration("done", { integrationReadiness: "INTEGRATED", verificationState: "FAILED" }), integration("next", { dependencies: ["done"] })]);
+  assert.equal(plan.ordered.length, 0);
+  assert.match(plan.blocked.find((item) => item.requestId === "done").blocker, /verification/);
+  assert.match(plan.blocked.find((item) => item.requestId === "next").blocker, /dependency/);
+});
+
+test("INTEGRATED with failed scope, hash, or approval never satisfies dependents", () => {
+  for (const invalid of [{ scopeState: "FAILED" }, { hashState: "FAILED" }, { approvalState: "REJECTED" }]) {
+    const plan = planIntegrationBacklog([integration("done", { integrationReadiness: "INTEGRATED", ...invalid }), integration("next", { dependencies: ["done"] })]);
+    assert.equal(plan.ordered.length, 0);
+    assert.ok(plan.blocked.some((item) => item.requestId === "done"));
+    assert.ok(plan.blocked.some((item) => item.requestId === "next"));
+  }
+});
+
 test("ordinary Agent Manager selection is unchanged with no integration backlog item", () => {
   const requests = [req({ requestId: "normal", priority: 3 })];
   assert.equal(selectNextQueuedRequest(requests).requestId, "normal");

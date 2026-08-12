@@ -140,10 +140,10 @@ export function planIntegrationBacklog(items = []) {
   for (const item of indexed) {
     if (item.errors.length) blocked.set(item.requestId, `INVALID: ${item.errors.join("; ")}`);
     else if (item.integrationReadiness === "BLOCKED" || item.blocker) blocked.set(item.requestId, item.blocker || "integration readiness is BLOCKED");
-    else if (item.integrationReadiness === READY_INTEGRATION && item.verificationState !== "PASS") blocked.set(item.requestId, "verification has not passed");
-    else if (item.integrationReadiness === READY_INTEGRATION && item.scopeState !== "PASS") blocked.set(item.requestId, "scope validation has not passed");
-    else if (item.integrationReadiness === READY_INTEGRATION && item.hashState !== "PASS") blocked.set(item.requestId, "artifact hash validation has not passed");
-    else if (item.integrationReadiness === READY_INTEGRATION && item.approvalState !== "APPROVED") blocked.set(item.requestId, "artifact is not approved");
+    else if (item.integrationReadiness !== "BLOCKED" && item.verificationState !== "PASS") blocked.set(item.requestId, "verification has not passed");
+    else if (item.integrationReadiness !== "BLOCKED" && item.scopeState !== "PASS") blocked.set(item.requestId, "scope validation has not passed");
+    else if (item.integrationReadiness !== "BLOCKED" && item.hashState !== "PASS") blocked.set(item.requestId, "artifact hash validation has not passed");
+    else if (item.integrationReadiness !== "BLOCKED" && item.approvalState !== "APPROVED") blocked.set(item.requestId, "artifact is not approved");
     for (const dependency of item.dependencies || []) if (!byId.has(dependency)) blocked.set(item.requestId, `missing dependency: ${dependency}`);
   }
 
@@ -160,7 +160,7 @@ export function planIntegrationBacklog(items = []) {
   };
 
   while (pending.size) {
-    const eligible = [...pending].map((id) => byId.get(id)).filter((item) => item.dependencies.every((id) => byId.get(id)?.integrationReadiness === "INTEGRATED" || ordered.some((done) => done.requestId === id)));
+    const eligible = [...pending].map((id) => byId.get(id)).filter((item) => item.dependencies.every((id) => (byId.get(id)?.integrationReadiness === "INTEGRATED" && !blocked.has(id)) || ordered.some((done) => done.requestId === id)));
     if (!eligible.length) {
       for (const id of pending) blocked.set(id, "dependency cycle or dependency blocked");
       break;
