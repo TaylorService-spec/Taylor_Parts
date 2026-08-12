@@ -64,7 +64,14 @@ export function executeIntakeItem({ requestId, location, sha256, sourceCommit = 
   const capabilityBroker = deps.capabilityBroker ?? (() => { try { return createSecretBroker(); } catch { return null; } })();
   const claudeBin = deps.claudeBin || resolveClaudeBin({ env: process.env });
   const processRunner = deps.processRunner || makeRealClaudeRunner(claudeBin.bin);
-  const lease = deps.lease || makeLease({ dir: join(process.env.LOCALAPPDATA || REPO, "EOS", "intake-runtime.lock"), fs: { readFileSync, writeFileSync, mkdirSync }, host: "local", pid: process.pid, now: () => Date.now(), leaseMs: 900000 });
+  const lease = deps.lease || makeLease({
+    dir: join(process.env.LOCALAPPDATA || REPO, "EOS", "intake-runtime.lock"),
+    fs: { readFileSync, writeFileSync, mkdirSync }, host: "local", pid: process.pid, now: () => Date.now(), leaseMs: 900000,
+    // Reclaim a stale lock left by a crashed/killed prior run: signal-0 probes pid liveness on THIS
+    // host (ESRCH ⇒ gone ⇒ reclaimable once expired; EPERM ⇒ still alive). Without this a holder that
+    // died before release() would pin the single execution lease until manual cleanup.
+    isPidAlive: (p) => { if (!Number.isInteger(p) || p <= 0) return false; try { process.kill(p, 0); return true; } catch (e) { return e.code === "EPERM"; } },
+  });
   const contextPackageFn = deps.contextPackageFn || ((a) => contextPackageFor({ ...a }));
   const wakeCtx = deps.wakeCtx || { governor: { remoteAiUsed: 0, remoteAiMax: 1 }, network: "NORMAL", budgetRemainingUsd: 5, sourceFreshness: (sourceCommit ? "CURRENT" : "CURRENT") };
 
