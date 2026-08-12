@@ -1,0 +1,7 @@
+{
+  "schema": "eos.intake.review-ready/1",
+  "event": "REVIEW_READY",
+  "workId": "EOS-STRESS-RUN-001",
+  "artifact": "docs/orchestration/work-intake/results/EOS-STRESS-RUN-001/7eaab8f650b21cbfcf6c9108a8a7906c82bd77e4070ba6fe029e036e43fd40b3.report.md",
+  "commit": null
+}
