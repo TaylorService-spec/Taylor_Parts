@@ -27,16 +27,16 @@ When you begin a capability, add a row to **Active** with every declared field. 
 
 ## Active
 
-- Capability:          GitHub Issue → EOS runtime write-back hardening after Issue #813
+- Capability:          [CLOSED — DONE 2026-08-12] GitHub Issue → EOS runtime write-back hardening after Issue #813; PR #814 merged; fresh Issue #815 COMPLETE
 - Agent/session:       Codex `/root` · Role: builder/integration
-- Branch / worktree:   `codex/eos-issue-runtime-hardening` · `D:\Taylor_Parts-eos-runtime-hardening`
+- Branch / worktree:   `codex/eos-issue-runtime-hardening` · cleaned after merge
 - Base commit:         `15da76e6fb7801f1fe739fc6fcddf71c87233b6d`
 - Owned paths:         `.github/workflows/eos-issue-intake.yml` · `docs/orchestration/context/issue-intake-writeback*`
 - Shared paths req'd:  `docs/engineering/ACTIVE_WORKSTREAMS.md` · `.github/workflows/eos-intake-ingest.yml` only if test wiring requires it
 - Dependencies:        Merged PR #811 adapter; Issue #813 failure evidence; existing hash-pinned status contract
-- Expected outcome:    Runtime failures expose their reason; only current-request EOS artifacts can write back; unexpected checkout edits fail closed; fetch/rebase/push retries safely
+- Expected outcome:    DONE — runtime reasons exposed; current-request artifact allowlist enforced; unexpected edits fail closed; fetch/rebase/push hardened; live artifact-only completion verified by Issue #815
 - Protected boundaries:No credential, deployment, production-data, or authorization-model change; fresh validation Issue only after merge
-- Lifecycle stage:     SANDBOX BUILD
+- Lifecycle stage:     OPERATIONALLY VERIFIED
 
 - Capability:          [CLOSED — DONE 2026-08-10] PR #790 final exact-head evidence closure (CONCUR result `98171802aa2c2031d689455ee02075ea045e3775566c0fdc07290385aa7ba279`; PR #790 merged as `1a496939f5025a75b9757b969e57642b86137416`)
 - Agent/session:       Codex `/root` · Role: integration/evidence
