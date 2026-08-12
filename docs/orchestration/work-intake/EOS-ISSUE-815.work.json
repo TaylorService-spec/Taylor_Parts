@@ -1,0 +1,36 @@
+{
+  "requestId": "EOS-ISSUE-815",
+  "title": "EOS runtime hardening — fresh read-only write-back validation",
+  "intent": "Validate the hardened GitHub Issue to EOS runtime path with a read-only request that must produce only governed EOS artifacts.\n\nRequired work:\n- Read the scoped file.\n- Report the names of its exported functions and state, in one sentence, what the path guard protects.\n- Do not modify, create, delete, format, or stage any repository file.\n- Do not run a build or broad test suite.\n\nCompletion:\nReturn a concise successful result through the normal EOS status, result, and review-ready artifacts. The checkout must contain no changes outside the current request's allowed EOS artifacts.",
+  "scope": [
+    "docs/orchestration/context/issue-intake-writeback.mjs"
+  ],
+  "contextScope": [
+    "orchestration",
+    "github-issue-intake"
+  ],
+  "source": {
+    "producer": "GitHub Issue intake workflow",
+    "provenance": "Authenticated GitHub owner issue labeled eos-intake",
+    "sourceRef": "https://github.com/TaylorService-spec/Taylor_Parts/issues/815",
+    "githubActor": "TaylorService-spec"
+  },
+  "status": "EXECUTION_AUTHORIZED",
+  "authority": {
+    "authorizationState": "AUTHORIZED",
+    "basis": "EOS accepted the validated, Owner-submitted, explicitly scoped Issue under the issue-intake policy.",
+    "authorizedBy": "TaylorService-spec",
+    "authorizedAt": "2026-08-12T21:38:53Z",
+    "protectedBoundary": null
+  },
+  "artifactLocation": "docs/orchestration/work-intake/EOS-ISSUE-815.work.json",
+  "sha256": "8cb5e605212fad79d7def2dc9bffe1f9e094dc05d430c163c542f7f2224cdaef",
+  "createdAt": "2026-08-12T21:38:51Z",
+  "updatedAt": "2026-08-12T21:38:53Z",
+  "relatedRefs": {
+    "issues": [
+      "https://github.com/TaylorService-spec/Taylor_Parts/issues/815"
+    ],
+    "pullRequests": []
+  }
+}
