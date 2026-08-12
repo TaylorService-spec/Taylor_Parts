@@ -31,6 +31,7 @@ test("same-target integrations are serialized and never force-push", () => {
   assert.match(workflow, /group: eos-patch-integration-\$\{\{ github\.repository \}\}-main/);
   assert.doesNotMatch(workflow, /git push[^\r\n]*--force(?:-with-lease)?/);
   assert.match(workflow, /inputs\.approval == 'APPROVE'/);
+  assert.doesNotMatch(workflow, /--(?:request-id|manifest|patch-sha|approval)[^\r\n]*\$\{\{ inputs\./, "dispatch inputs must enter PowerShell through env, not script interpolation");
 });
 
 test("recovered report is governed under the request results directory", () => {
