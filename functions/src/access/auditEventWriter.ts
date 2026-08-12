@@ -148,6 +148,9 @@ const AUDIT_ACTIONS: readonly AuditAction[] = [
   "createCoverageAssignment",
   // Finance (Billing/AR): runtime mirror of the recordRefund AuditAction union member (money returned).
   "recordRefund",
+  // Work Order Engine (idempotency remediation): runtime mirror of the updateWorkOrderExecutionData
+  // AuditAction union member -- deterministic Audit Event id is the callable's replay/idempotency guard.
+  "updateWorkOrderExecutionData",
 ];
 
 // Issue #325 / ADR-007 D-AUDIT -- the subset of AUDIT_ACTIONS this
