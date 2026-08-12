@@ -1,0 +1,19 @@
+{
+  "workId": "EOS-BASELINE-001",
+  "reviewId": "REV-001",
+  "capability": "OPENAI_REVIEW",
+  "authorizationState": "AUTHORIZED",
+  "budgetAuthorizationState": "AUTHORIZED",
+  "maxSpendUsd": 0.1,
+  "sourceCommit": "340d6c95a4447102ea4e4f463f271b06d53eb4a8",
+  "workArtifactSha256": "9243707236022743e8a7ee5a7bd786bd6686b8f7829ff82de55c55282132d3e6",
+  "provenance": "Owner authorized one governed GPT baseline exchange EOS-BASELINE-001/REV-001",
+  "authorizedBy": {
+    "subject": "github:TaylorService-spec",
+    "oauthClientId": "github-oauth:299010317"
+  },
+  "createdAt": "2026-08-12T00:00:56.638Z",
+  "expiresAt": "2026-08-12T02:00:35Z",
+  "artifactLocation": "docs/orchestration/work-intake/authorizations/EOS-BASELINE-001/REV-001.authorization.json",
+  "sha256": "c57befcc7e806bb6fa85ad3314bb38e28314bd38c9dbf4819b731e108bcd0b42"
+}
