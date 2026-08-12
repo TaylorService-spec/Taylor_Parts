@@ -9,6 +9,17 @@ const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const arg = (name) => { const i = process.argv.indexOf(`--${name}`); return i >= 0 ? process.argv[i + 1] : null; };
 function git(args, allow = false) { const out = spawnSync("git", args, { cwd: REPO, encoding: "utf8", windowsHide: true }); if (!allow && out.status !== 0) throw new Error(out.stderr.trim() || `git ${args.join(" ")} failed`); return out; }
 
+export function readCanonicalGitBlob({ repo = REPO, revision = "HEAD", path }) {
+  const out = spawnSync("git", ["show", `${revision}:${path}`], { cwd: repo, encoding: "buffer", windowsHide: true });
+  if (out.status !== 0) throw new Error((out.stderr || Buffer.alloc(0)).toString("utf8").trim() || `canonical Git blob not found: ${path}`);
+  return out.stdout;
+}
+
+function applyPatchBytes(patch, args) {
+  const out = spawnSync("git", ["apply", ...args, "-"], { cwd: REPO, input: patch, encoding: "buffer", windowsHide: true });
+  if (out.status !== 0) throw new Error((out.stderr || Buffer.alloc(0)).toString("utf8").trim() || "git apply failed");
+}
+
 export function integrationRecordLocation(requestId, patchSha256) {
   return `docs/orchestration/work-intake/results/${requestId}/integration/${patchSha256}.json`;
 }
@@ -43,7 +54,8 @@ function main() {
   if (existsSync(repoFile(recordPath))) { process.stdout.write(`${JSON.stringify({ disposition: "ALREADY_INTEGRATED", recordPath })}\n`); return; }
   if (manifest.patchSha256 !== expectedPatchSha) throw new Error("approved patch hash does not match manifest");
   if (!manifest.patchLocation?.startsWith(expectedRoot) || !manifest.patchLocation.endsWith(".patch")) throw new Error("patch must be in the request results directory");
-  const patch = readFileSync(repoFile(manifest.patchLocation));
+  // The manifest binds the immutable Git object, never checkout-filtered working-tree bytes.
+  const patch = readCanonicalGitBlob({ path: manifest.patchLocation });
   const base = git(["rev-parse", "HEAD"]).stdout.trim();
   const verification = verifyPatchManifest(manifest, patch, { requestId });
   if (!verification.ok) throw new Error(`patch verification failed: ${verification.errors.join("; ")}`);
@@ -52,8 +64,8 @@ function main() {
   const changedSinceBase = ancestor ? git(["diff", "--name-only", "-z", `${manifest.baseCommit}..${base}`, "--", ...manifest.paths]).stdout.split("\0").filter(Boolean) : [];
   const compatibility = assessBaseCompatibility({ isAncestor: ancestor, changedSinceBase, patchPaths: manifest.paths });
   if (!compatibility.ok) throw new Error(compatibility.reason);
-  git(["apply", "--check", "--index", manifest.patchLocation]);
-  git(["apply", "--index", manifest.patchLocation]);
+  applyPatchBytes(patch, ["--check", "--index"]);
+  applyPatchBytes(patch, ["--index"]);
   const staged = git(["diff", "--cached", "--name-only", "-z"]).stdout.split("\0").filter(Boolean).sort();
   if (JSON.stringify(staged) !== JSON.stringify([...manifest.paths].sort())) throw new Error("applied paths do not exactly match manifest");
   for (const command of focusedChecks(staged)) {
