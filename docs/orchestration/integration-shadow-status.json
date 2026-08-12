@@ -1,0 +1,27 @@
+{
+  "schema": "agent-manager.integration-shadow-status/1",
+  "mode": "READ_ONLY_SHADOW",
+  "provider": "PROVIDER_NEUTRAL",
+  "availability": "UNAVAILABLE",
+  "sourceCommit": "381640e55d586db198f258a98c9b48e22540ff0d",
+  "generatedAt": "2026-08-12T23:40:00Z",
+  "backlogSha256": "5962e9c927214668ff02aada0b877beaf8a30381b2f70d9a726a4efc6b08f047",
+  "agentManager": {
+    "orderedRequestIds": [],
+    "nextByTarget": {},
+    "conflicts": [],
+    "blockers": [],
+    "waitingOnGates": []
+  },
+  "shadowRecommendation": null,
+  "agreement": "NOT_EVALUATED",
+  "disagreementEvidence": null,
+  "capabilities": {
+    "mutateBacklog": false,
+    "authorize": false,
+    "integrate": false,
+    "applyPatch": false,
+    "routeClaude": false
+  },
+  "sha256": "f58c4d9a2f36886609e19d0ff41a1771baeaf19b9ede6d0dbd3a7923eaf34b6f"
+}

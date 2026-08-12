@@ -210,3 +210,15 @@ scope, and hash states are all `PASS`; it may then become `READY`. The projectio
 per target lane, but the existing governed integration path re-verifies every gate before mutation. Success
 retains the item as `INTEGRATED` so dependents can become eligible and replay evidence remains durable;
 failure returns it to `BLOCKED` with the exact blocker. Integrated records are not deleted while referenced.
+
+### Read-only shadow integration manager
+
+[`lib/integrationShadow.mjs`](./lib/integrationShadow.mjs) is an optional, provider-neutral observer over the
+same durable backlog. It publishes only [`integration-shadow-status.json`](./integration-shadow-status.json):
+the Agent Manager recommendation, an optional shadow recommendation, agreement/disagreement evidence, and
+provider availability. Shadow input explicitly carries no mutation, approval, integration, patch, deployment,
+or Claude-routing capability. A disagreement is evidence for review, never an automatic resolution.
+
+The shadow module is not imported by Claude/EOS dispatch, selection, intake, or integration. If its provider
+is absent or fails, status is `UNAVAILABLE` / `NOT_EVALUATED` and the existing Agent Manager and governed
+integration lifecycle continue unchanged. This is an observer, not a second scheduler or queue.
