@@ -48,7 +48,7 @@ jobs:
           Get-ChildItem "docs/orchestration/work-intake/*.work.json" | ForEach-Object {
             $artifact = Get-Content $_.FullName -Raw | ConvertFrom-Json
             if ($artifact.status -eq "EXECUTION_AUTHORIZED") {
-              node docs/orchestration/context/intake-runtime.mjs execute --id $artifact.requestId --location $_.FullName.Replace("$PWD\\", "").Replace("\\", "/") --sha256 $artifact.sha256
+              node docs/orchestration/context/intake-runtime.mjs execute --id $artifact.requestId --location $_.FullName --sha256 $artifact.sha256
               if ($LASTEXITCODE -ne 0) {
                 Write-Warning "Intake $($artifact.requestId) returned exit code $LASTEXITCODE; continuing so status/result can be written back."
               }
@@ -68,6 +68,17 @@ jobs:
           } else {
             git commit -m "eos: intake execution result write-back [skip ci]"
             if ($LASTEXITCODE -ne 0) { throw "git commit failed with exit code $LASTEXITCODE" }
-            git push
-            if ($LASTEXITCODE -ne 0) { throw "git push failed with exit code $LASTEXITCODE" }
+            # main moves constantly (frequent intake write-backs + PR merges), so a bare push races and
+            # is rejected non-fast-forward. Re-sync with a rebase and retry before giving up, so the
+            # execution result actually lands instead of failing the job and stranding the status.
+            $pushed = $false
+            for ($i = 1; $i -le 5; $i++) {
+              git pull --rebase origin main
+              if ($LASTEXITCODE -ne 0) { throw "git pull --rebase failed with exit code $LASTEXITCODE" }
+              git push
+              if ($LASTEXITCODE -eq 0) { $pushed = $true; break }
+              Write-Warning "push rejected (attempt $i); re-syncing with main and retrying."
+              Start-Sleep -Seconds 3
+            }
+            if (-not $pushed) { throw "git push failed after 5 rebase+retry attempts" }
           }

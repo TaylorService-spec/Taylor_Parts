@@ -15,7 +15,7 @@
 
 import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { dirname, join, resolve, sep } from "node:path";
+import { dirname, join, resolve, relative, sep } from "node:path";
 import { resolveWorkIntake } from "../lib/workIntake.mjs";
 import { runIntakeExecution } from "../lib/intakeExecute.mjs";
 import { resolveClaudeBin } from "../lib/reviewInputSafety.mjs";
@@ -46,8 +46,16 @@ function writeRepo(location, text) {
  * @returns the driver disposition plus the repo paths written.
  */
 export function executeIntakeItem({ requestId, location, sha256, sourceCommit = null, requiresCapabilities = [], deps = {} } = {}) {
-  const bytes = (deps.readFile || readFileSync)(safeRepoPath(location));
-  const artifact = resolveWorkIntake({ requestId, location, sha256, bytes });
+  const abs = safeRepoPath(location);
+  const bytes = (deps.readFile || readFileSync)(abs);
+  // Normalize the caller-supplied location to the canonical repo-relative POSIX form before the
+  // artifact-location equality check in resolveWorkIntake. A Windows self-hosted runner passes an
+  // absolute, backslash path (e.g. C:\actions-runner\...\X.work.json), while the artifact stores a
+  // repo-relative forward-slash artifactLocation — a raw string compare of the two always fails.
+  // Relativizing against REPO and forcing forward slashes makes the check OS/separator-agnostic
+  // (a no-op when the caller already passes the canonical form, as the tests do).
+  const canonicalLocation = relative(REPO, abs).split(sep).join("/");
+  const artifact = resolveWorkIntake({ requestId, location: canonicalLocation, sha256, bytes });
 
   const now = deps.now || new Date().toISOString();
   // The MERGED #790 Secret Broker (availability only here — the actual key resolves inside withCredential at
