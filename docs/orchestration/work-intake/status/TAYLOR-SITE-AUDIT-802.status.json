@@ -1,0 +1,28 @@
+{
+  "schema": "eos.intake.status/1",
+  "requestId": "TAYLOR-SITE-AUDIT-802",
+  "pointer": "status://TAYLOR-SITE-AUDIT-802",
+  "work": "work://TAYLOR-SITE-AUDIT-802",
+  "result": "result://TAYLOR-SITE-AUDIT-802",
+  "state": "READY",
+  "currentWork": "authorized — awaiting worker",
+  "activeWorker": null,
+  "startedAt": null,
+  "updatedAt": "2026-08-12T03:42:00.000Z",
+  "ownerActionRequired": false,
+  "ownerQuestion": null,
+  "costToDateUsd": 0,
+  "workArtifact": {
+    "location": "docs/orchestration/work-intake/TAYLOR-SITE-AUDIT-802.work.json",
+    "sha256": "cb129c97473dfb91b12f95215a0cb8f371bc83ae70d1ca4f557b7314a38834b4"
+  },
+  "resultRef": null,
+  "artifactRefs": [],
+  "provenance": {
+    "producer": "ChatGPT GitHub connector",
+    "provenance": "Owner explicitly directed ChatGPT to restore EOS use and execute the previously requested Taylor #802 full-site audit without Owner relay.",
+    "sourceCommit": null
+  },
+  "artifactLocation": "docs/orchestration/work-intake/status/TAYLOR-SITE-AUDIT-802.status.json",
+  "sha256": "9f8e4353149c9265877c66f6a9fb3083c858107a9a39e1583ee05038123963c2"
+}
