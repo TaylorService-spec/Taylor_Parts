@@ -16,7 +16,7 @@
 import { intakeToWorkItem, buildContentAddressedResult } from "./workIntake.mjs";
 import { executeWake } from "./wakeExecute.mjs";
 import { assessIntakeExecution, assessCapability } from "./intakeIngress.mjs";
-import { buildIntakeStatus, buildResultIndex } from "./intakeStatus.mjs";
+import { buildIntakeStatus, buildResultIndex, buildReviewReady } from "./intakeStatus.mjs";
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/;
 
@@ -95,5 +95,9 @@ export function runIntakeExecution({
     artifact, state: "COMPLETE", currentWork: "completed", activeWorker: item.workstream,
     costToDateUsd: wake.cost ?? 0, resultRef: { location: result.manifestLocation, sha256: result.manifest.sha256 }, now,
   });
-  return Object.freeze({ disposition: "COMPLETE", executed: true, gate, item, capabilities, wake, status, result: Object.freeze({ ...result, index }) });
+  // The completion SIGNAL: point ChatGPT at the content-addressed result to retrieve from GitHub. `commit`
+  // is null here — the landing commit is not known until the write-back is committed — so retrieval falls to
+  // the default-branch HEAD; a curated/pre-committed artifact can carry an explicit commit when emitted.
+  const reviewReady = buildReviewReady({ requestId: artifact.requestId, artifact: result.contentLocation, commit: null });
+  return Object.freeze({ disposition: "COMPLETE", executed: true, gate, item, capabilities, wake, status, result: Object.freeze({ ...result, index }), reviewReady });
 }

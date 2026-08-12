@@ -87,3 +87,22 @@ test("no secret/key appears in the execution status or result", () => {
   const blob = JSON.stringify(r.status) + JSON.stringify(r.result.manifest);
   assert.doesNotMatch(blob, /sk-[A-Za-z0-9]|AIza|Bearer |OPENAI_API_KEY|api[_-]?key/i);
 });
+
+test("COMPLETE emits a minimal REVIEW_READY signal pointing at the content-addressed result", () => {
+  const r = runIntakeExecution({ artifact: resolved(), now: NOW, processRunner: mockWorker(), lease: mockLease(), contextPackageFn: ctxPkgFn, wakeCtx: FREE_SLOT });
+  assert.equal(r.disposition, "COMPLETE");
+  assert.ok(r.reviewReady, "COMPLETE must emit a review-ready signal");
+  assert.equal(r.reviewReady.event, "REVIEW_READY");
+  assert.equal(r.reviewReady.workId, "EOS-EXEC-001");
+  assert.equal(r.reviewReady.artifact, r.result.contentLocation); // ChatGPT retrieves this path from GitHub
+  assert.equal(r.reviewReady.commit, null); // landing commit unknown at emit time → default-branch HEAD
+});
+
+test("a refusal (STAGED/BLOCKED/FAILED) emits NO review-ready signal — only completed work is announced", () => {
+  const staged = runIntakeExecution({ artifact: resolved({ status: "DESIGN_STAGING" }), now: NOW, processRunner: mockWorker(), lease: mockLease(), contextPackageFn: ctxPkgFn, wakeCtx: FREE_SLOT });
+  assert.equal(staged.disposition, "STAGED");
+  assert.equal(staged.reviewReady, undefined);
+  const failed = runIntakeExecution({ artifact: resolved(), now: NOW, processRunner: mockWorker({ run: { stdout: "", exitCode: 1, timedOut: false } }), lease: mockLease(), contextPackageFn: ctxPkgFn, wakeCtx: FREE_SLOT });
+  assert.equal(failed.disposition, "FAILED");
+  assert.equal(failed.reviewReady, undefined);
+});
