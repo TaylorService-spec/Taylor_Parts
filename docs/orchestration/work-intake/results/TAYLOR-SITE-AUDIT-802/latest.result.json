@@ -1,0 +1,11 @@
+{
+  "schema": "eos.intake.result-index/1",
+  "requestId": "TAYLOR-SITE-AUDIT-802",
+  "pointer": "result://TAYLOR-SITE-AUDIT-802",
+  "manifestLocation": "docs/orchestration/work-intake/results/TAYLOR-SITE-AUDIT-802/18ba698b9a1ecb305131841af08b33a313fe20b17eee0f61e34ba8aed8e577cf.result.json",
+  "manifestSha256": "18ba698b9a1ecb305131841af08b33a313fe20b17eee0f61e34ba8aed8e577cf",
+  "contentLocation": "docs/orchestration/work-intake/results/TAYLOR-SITE-AUDIT-802/89824cd51b9f38f2c7aea4909594f34a2698b4a3c51fca3fcbb435df5af1a35a.content.md",
+  "updatedAt": "2026-08-12T06:06:45.254Z",
+  "artifactLocation": "docs/orchestration/work-intake/results/TAYLOR-SITE-AUDIT-802/latest.result.json",
+  "sha256": "187b09881386727280c5cc0f2e6c6c148efcc926bdaa9864b1cb1ab20d1664c4"
+}

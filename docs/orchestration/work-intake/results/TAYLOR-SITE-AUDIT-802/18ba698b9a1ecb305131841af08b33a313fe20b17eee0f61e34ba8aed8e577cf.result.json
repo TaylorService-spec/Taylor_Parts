@@ -1,0 +1,36 @@
+{
+  "resultId": "TAYLOR-SITE-AUDIT-802:89824cd51b9f38f2",
+  "requestId": "TAYLOR-SITE-AUDIT-802",
+  "routedBackTo": "EOS_INTAKE",
+  "sourceWorkSha256": "5034565229c2dd4963b36e4a1bafa03db399a5d0df2bd8f59a249c361d35d979",
+  "status": "COMPLETE",
+  "verdict": "NOT_APPLICABLE",
+  "disposition": "AWAITING_INTERPRETATION",
+  "summary": "EOS intake worker completed",
+  "contentLocation": "docs/orchestration/work-intake/results/TAYLOR-SITE-AUDIT-802/89824cd51b9f38f2c7aea4909594f34a2698b4a3c51fca3fcbb435df5af1a35a.content.md",
+  "contentSha256": "89824cd51b9f38f2c7aea4909594f34a2698b4a3c51fca3fcbb435df5af1a35a",
+  "findings": [],
+  "evidence": [
+    {
+      "artifactLocation": "docs/orchestration/work-intake/results/TAYLOR-SITE-AUDIT-802/89824cd51b9f38f2c7aea4909594f34a2698b4a3c51fca3fcbb435df5af1a35a.content.md",
+      "sha256": "89824cd51b9f38f2c7aea4909594f34a2698b4a3c51fca3fcbb435df5af1a35a"
+    }
+  ],
+  "questionsRaised": [],
+  "scenariosDiscovered": [],
+  "retries": 0,
+  "contextExpanded": false,
+  "contaminated": false,
+  "retracted": false,
+  "metrics": {},
+  "relatedRefs": {
+    "issues": [
+      802
+    ],
+    "pullRequests": []
+  },
+  "createdAt": "2026-08-12T06:06:45.254Z",
+  "pointer": "result://TAYLOR-SITE-AUDIT-802",
+  "artifactLocation": "docs/orchestration/work-intake/results/TAYLOR-SITE-AUDIT-802/18ba698b9a1ecb305131841af08b33a313fe20b17eee0f61e34ba8aed8e577cf.result.json",
+  "sha256": "18ba698b9a1ecb305131841af08b33a313fe20b17eee0f61e34ba8aed8e577cf"
+}

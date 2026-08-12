@@ -4,24 +4,28 @@
   "pointer": "status://TAYLOR-SITE-AUDIT-802",
   "work": "work://TAYLOR-SITE-AUDIT-802",
   "result": "result://TAYLOR-SITE-AUDIT-802",
-  "state": "FAILED",
-  "currentWork": "exit 1 — stderr: Ignoring 37 permissions.allow entries from .claude/settings.json: this workspace has not been trusted. Run Claude Code interactively here once and accept the trust dialog, or set projects[\"C:<path>\"].<token>: true in <path>",
-  "activeWorker": null,
+  "state": "COMPLETE",
+  "currentWork": "completed",
+  "activeWorker": "EOS_INTAKE",
   "startedAt": null,
-  "updatedAt": "2026-08-12T05:50:58.766Z",
+  "updatedAt": "2026-08-12T06:06:45.254Z",
   "ownerActionRequired": false,
   "ownerQuestion": null,
-  "costToDateUsd": 0,
+  "costToDateUsd": 1.6473138,
   "workArtifact": {
     "location": "docs/orchestration/work-intake/TAYLOR-SITE-AUDIT-802.work.json",
     "sha256": "5034565229c2dd4963b36e4a1bafa03db399a5d0df2bd8f59a249c361d35d979"
   },
-  "resultRef": null,
+  "resultRef": {
+    "location": "docs/orchestration/work-intake/results/TAYLOR-SITE-AUDIT-802/18ba698b9a1ecb305131841af08b33a313fe20b17eee0f61e34ba8aed8e577cf.result.json",
+    "sha256": "18ba698b9a1ecb305131841af08b33a313fe20b17eee0f61e34ba8aed8e577cf",
+    "pointer": "result://TAYLOR-SITE-AUDIT-802"
+  },
   "artifactRefs": [],
   "provenance": {
     "producer": "ChatGPT GitHub connector",
     "provenance": "Owner explicitly directed ChatGPT to restore EOS use and execute the previously requested Taylor #802 full-site audit without Owner relay; re-issued after correcting the Windows self-hosted runner shell mismatch before any worker execution occurred."
   },
   "artifactLocation": "docs/orchestration/work-intake/status/TAYLOR-SITE-AUDIT-802.status.json",
-  "sha256": "804375df7d2fc1ccf3ec9a2094743f61e772c47730c15eca2b1a66cac33e5e1f"
+  "sha256": "27608a134fa0a114e08fce5eab6aa552291214f58b093e08dbe0478bfb4b8e53"
 }

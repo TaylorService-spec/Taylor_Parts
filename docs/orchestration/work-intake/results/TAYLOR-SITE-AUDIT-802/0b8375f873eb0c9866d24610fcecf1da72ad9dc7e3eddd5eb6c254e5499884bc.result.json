@@ -1,0 +1,36 @@
+{
+  "resultId": "TAYLOR-SITE-AUDIT-802:e60ff1424d83ad52",
+  "requestId": "TAYLOR-SITE-AUDIT-802",
+  "routedBackTo": "EOS_INTAKE",
+  "sourceWorkSha256": "5034565229c2dd4963b36e4a1bafa03db399a5d0df2bd8f59a249c361d35d979",
+  "status": "COMPLETE",
+  "verdict": "NOT_APPLICABLE",
+  "disposition": "AWAITING_INTERPRETATION",
+  "summary": "Master audit of Taylor site (frontend/UX/dispatch/inventory/sales/equipment, backend IAM/security/QA, and docs-vs-code alignment) via 3 specialist read-only passes; evidence-based findings with file:line citations, consolidated for ChatGPT prioritization for the delivery week beginning 2026-08-12. Partial-depth coverage -- unreviewed areas explicitly flagged for follow-up.",
+  "contentLocation": "docs/orchestration/work-intake/results/TAYLOR-SITE-AUDIT-802/e60ff1424d83ad52345985a90aedc24e17b5904f10fa6bd032727bcaf46ba9c4.content.md",
+  "contentSha256": "e60ff1424d83ad52345985a90aedc24e17b5904f10fa6bd032727bcaf46ba9c4",
+  "findings": [],
+  "evidence": [
+    {
+      "artifactLocation": "docs/orchestration/work-intake/results/TAYLOR-SITE-AUDIT-802/e60ff1424d83ad52345985a90aedc24e17b5904f10fa6bd032727bcaf46ba9c4.content.md",
+      "sha256": "e60ff1424d83ad52345985a90aedc24e17b5904f10fa6bd032727bcaf46ba9c4"
+    }
+  ],
+  "questionsRaised": [],
+  "scenariosDiscovered": [],
+  "retries": 0,
+  "contextExpanded": false,
+  "contaminated": false,
+  "retracted": false,
+  "metrics": {},
+  "relatedRefs": {
+    "issues": [
+      802
+    ],
+    "pullRequests": []
+  },
+  "createdAt": "2026-08-12T07:00:00.000Z",
+  "pointer": "result://TAYLOR-SITE-AUDIT-802",
+  "artifactLocation": "docs/orchestration/work-intake/results/TAYLOR-SITE-AUDIT-802/0b8375f873eb0c9866d24610fcecf1da72ad9dc7e3eddd5eb6c254e5499884bc.result.json",
+  "sha256": "0b8375f873eb0c9866d24610fcecf1da72ad9dc7e3eddd5eb6c254e5499884bc"
+}
