@@ -1,0 +1,79 @@
+name: Ventana Inventory-Control Lifecycle Tests
+
+# Ventana ice-machine two-condition inventory-control projection — pure-logic tests for the
+# client authority + trusted-read mirror, plus the Equipment-surface adapter. No emulator, no
+# deployment, no production access, no secrets. Governed-inert. The client domain modules are
+# dependency-free, so the client job runs `node --test` with no install; the functions mirror
+# job builds the compiled lib and runs the parity test so the shared canonical case table can
+# never let the two mirrors drift.
+
+on:
+  pull_request:
+    paths:
+      - "field-ops-app-vite/src/domain/inventoryControlLifecycle.js"
+      - "field-ops-app-vite/src/domain/inventoryControlLifecycle.cases.mjs"
+      - "field-ops-app-vite/src/domain/inventoryControlView.js"
+      - "field-ops-app-vite/src/domain/equipmentInventoryControlAdapter.js"
+      - "field-ops-app-vite/test/inventoryControlLifecycle.test.mjs"
+      - "field-ops-app-vite/test/inventoryControlView.test.mjs"
+      - "field-ops-app-vite/test/equipmentInventoryControlAdapter.test.mjs"
+      - "functions/src/fulfillment/inventoryControlLifecycle.ts"
+      - "functions/test/inventoryControlLifecycle.test.mjs"
+      - "functions/package.json"
+      - "functions/package-lock.json"
+      - ".github/workflows/ventana-inventory-control-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "field-ops-app-vite/src/domain/inventoryControlLifecycle.js"
+      - "field-ops-app-vite/src/domain/inventoryControlLifecycle.cases.mjs"
+      - "field-ops-app-vite/src/domain/inventoryControlView.js"
+      - "field-ops-app-vite/src/domain/equipmentInventoryControlAdapter.js"
+      - "field-ops-app-vite/test/inventoryControlLifecycle.test.mjs"
+      - "field-ops-app-vite/test/inventoryControlView.test.mjs"
+      - "field-ops-app-vite/test/equipmentInventoryControlAdapter.test.mjs"
+      - "functions/src/fulfillment/inventoryControlLifecycle.ts"
+      - "functions/test/inventoryControlLifecycle.test.mjs"
+      - ".github/workflows/ventana-inventory-control-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  client-inventory-control-tests:
+    name: Client authority + view + adapter (pure)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Run client inventory-control tests (dependency-free)
+        run: >-
+          node --test
+          test/inventoryControlLifecycle.test.mjs
+          test/inventoryControlView.test.mjs
+          test/equipmentInventoryControlAdapter.test.mjs
+        working-directory: field-ops-app-vite
+
+  functions-mirror-parity:
+    name: Trusted-read mirror parity (build + run)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+      - name: Install functions dependencies (reproducible)
+        run: npm ci
+        working-directory: functions
+      - name: Build + run the mirror parity test
+        run: npm run build && node --test test/inventoryControlLifecycle.test.mjs
+        working-directory: functions
