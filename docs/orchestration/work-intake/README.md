@@ -77,6 +77,19 @@ The adapter is independently dormant unless `EOS_ISSUE_INTAKE_ENABLED` is exactl
 requires the existing `EOS_RUNTIME_ENABLED=true` gate and the self-hosted runner. Disable the adapter without
 affecting other EOS runtime routes by setting `EOS_ISSUE_INTAKE_ENABLED` to anything other than `true`.
 
+Claude execution uses a detached disposable worktree. The primary Actions checkout remains an EOS-artifact
+writer: reports are captured under `results/<requestId>/`, and source changes are serialized as a binary
+patch plus a self-hashed `eos.intake.patch/1` manifest under that same request directory. Claude completion
+never applies the patch. Mutating requests must express `## Scope` as repository-relative paths or globs
+(for example `docs/orchestration/**`); prose is not patch authority and produces `BLOCKED_SCOPE`.
+
+Patch integration is a separate manual `EOS Patch Integration — explicit approval` workflow. Its caller must
+provide the exact request, manifest location, patch SHA-256, and `APPROVE`. It serializes all integrations to
+`main`, requires the recorded base to remain an ancestor with no intervening change to any patch target,
+re-verifies manifest and patch hashes and every path against scope, applies with `git apply --check --index`,
+runs syntax checks plus changed Node test modules, and refuses stale, conflicting,
+replayed, dirty, or scope-expanding patches. It never force-pushes or invokes Claude.
+
 The compact Owner-facing projection is:
 
 ```

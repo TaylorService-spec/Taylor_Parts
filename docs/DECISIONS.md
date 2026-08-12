@@ -1258,3 +1258,16 @@ policy record `EXECUTION_AUTHORIZED` / `AUTHORIZED`, after which the guarded run
 Also corrected intake status reconciliation: a verified operational outcome bound to the exact current
 work hash (for example `COMPLETE`) is preserved instead of being reset/rejected as baseline `READY`, while
 tampered, stale-bound, or baseline-drifted statuses still fail closed.
+
+## 101. Mutating EOS work is artifactized before separate explicit integration
+
+**Date:** 2026-08-12
+**Decision:** Run Claude for GitHub-Issue intake in a detached disposable worktree. The primary checkout may
+persist only current-request EOS artifacts. A report is captured under the request's governed results path;
+source changes become a deterministic, hash-bound patch artifact. Every changed path must match an explicit
+repository path/glob from Issue scope. Claude completion does not authorize patch application.
+
+Integration is a separate, manually dispatched, same-target-serialized workflow requiring the exact patch
+hash and `APPROVE`. It fails closed on dirty state, hash/scope/base mismatch, conflict, stale `main`, focused
+test failure, or replay, and never stashes unknown files, broadens permissions, bypasses the artifact guard,
+or force-pushes. This resolves the #818/#819 contract mismatch without weakening PR #814.

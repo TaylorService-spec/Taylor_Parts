@@ -52,7 +52,8 @@ export function makeRealClaudeRunner(resolvedBin) {
   return {
     run({ bin, argv, wallClockSec }) {
       const exe = resolvedBin || bin;
-      const r = spawnSync(exe, argv, { timeout: (wallClockSec || 900) * 1000, encoding: "utf8", windowsHide: true, input: "" });
+      const cwd = process.env.EOS_EXECUTION_CWD || undefined;
+      const r = spawnSync(exe, argv, { cwd, timeout: (wallClockSec || 900) * 1000, encoding: "utf8", windowsHide: true, input: "" });
       if (r.error && r.error.code === "ETIMEDOUT") return { timedOut: true, stderr: r.stderr || "" };
       if (r.error) return { spawnError: `${r.error.code || "spawn error"}: ${r.error.message} (bin=${exe})` };
       if (r.signal) return { timedOut: true, stderr: r.stderr || "" };
