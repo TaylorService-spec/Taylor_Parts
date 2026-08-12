@@ -1,0 +1,36 @@
+{
+  "requestId": "EOS-ISSUE-812",
+  "title": "EOS E2E Test — read-only intake verification",
+  "intent": "Validate the full GitHub Issue → EOS → Claude → EOS completion → ChatGPT notification path using a harmless read-only repository task.\n\nRequired work:\n- Verify that `docs/DECISIONS.md` contains Decision #100 describing the GitHub-Issue adapter to the existing EOS intake.\n- Confirm the decision states that GitHub label acceptance starts validation and EOS acceptance remains a separate governed event.\n- Do not modify repository files, permissions, variables, workflows, branches, issues, pull requests, or production state.\n- Return a concise verification result with the exact durable EOS status/result artifacts required by the existing runtime.\n\nCompletion:\nMark the EOS work complete through the normal governed runtime and emit the normal completion/review-ready signal back through EOS. This is an end-to-end path test; do not introduce special-case notification behavior for this issue.",
+  "scope": [
+    "Read-only inspection limited to `docs/DECISIONS.md`."
+  ],
+  "contextScope": [
+    "orchestration",
+    "github-issue-intake"
+  ],
+  "source": {
+    "producer": "GitHub Issue intake workflow",
+    "provenance": "Authenticated GitHub owner issue labeled eos-intake",
+    "sourceRef": "https://github.com/TaylorService-spec/Taylor_Parts/issues/812",
+    "githubActor": "TaylorService-spec"
+  },
+  "status": "EXECUTION_AUTHORIZED",
+  "authority": {
+    "authorizationState": "AUTHORIZED",
+    "basis": "EOS accepted the validated, Owner-submitted, explicitly scoped Issue under the issue-intake policy.",
+    "authorizedBy": "TaylorService-spec",
+    "authorizedAt": "2026-08-12T20:40:38Z",
+    "protectedBoundary": null
+  },
+  "artifactLocation": "docs/orchestration/work-intake/EOS-ISSUE-812.work.json",
+  "sha256": "5fbd0f1cef46c5d403061bf85a667ca48d47c758cd7f7d160d404de443fa1c45",
+  "createdAt": "2026-08-12T20:40:38Z",
+  "updatedAt": "2026-08-12T20:40:38Z",
+  "relatedRefs": {
+    "issues": [
+      "https://github.com/TaylorService-spec/Taylor_Parts/issues/812"
+    ],
+    "pullRequests": []
+  }
+}
