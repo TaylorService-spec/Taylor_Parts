@@ -18,6 +18,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join, resolve, relative, sep } from "node:path";
 import { resolveWorkIntake } from "../lib/workIntake.mjs";
 import { runIntakeExecution } from "../lib/intakeExecute.mjs";
+import { reviewReadyLocation } from "../lib/intakeStatus.mjs";
 import { resolveClaudeBin } from "../lib/reviewInputSafety.mjs";
 import { makeLease } from "../lib/wakeLease.mjs";
 import { contextPackageFor } from "./build-package.mjs";
@@ -88,6 +89,11 @@ export function executeIntakeItem({ requestId, location, sha256, sourceCommit = 
     written.push(out.result.manifestLocation);
     write(out.result.index.artifactLocation, `${JSON.stringify(out.result.index, null, 2)}\n`);
     written.push(out.result.index.artifactLocation);
+    // Emit the durable REVIEW_READY signal (deterministic path from workId) so ChatGPT can pick the result
+    // up from GitHub without polling — the repo is the payload, this file is only the signal.
+    if (out.reviewReady) {
+      written.push(write(reviewReadyLocation(requestId), `${JSON.stringify(out.reviewReady, null, 2)}\n`));
+    }
   }
   return Object.freeze({ disposition: out.disposition, requestId, written, resultPointer: out.status.result, statusPointer: out.status.pointer });
 }

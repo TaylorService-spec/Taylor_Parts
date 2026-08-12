@@ -1,0 +1,7 @@
+{
+  "schema": "eos.intake.review-ready/1",
+  "event": "REVIEW_READY",
+  "workId": "TAYLOR-SITE-AUDIT-802",
+  "artifact": "docs/audits/taylor-site-audit-802/master-audit.md",
+  "commit": "936fe4a"
+}

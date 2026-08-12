@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   STATUS_STATE, statusLocation, resultIndexLocation, resolvePointer,
   deriveStatusState, buildIntakeStatus, verifyIntakeStatus, buildResultIndex,
+  reviewReadyLocation, buildReviewReady,
 } from "./intakeStatus.mjs";
 
 const NOW = "2026-08-11T06:00:00Z";
@@ -63,4 +64,29 @@ test("buildResultIndex is a deterministic pointer into the content-addressed man
   assert.equal(idx.artifactLocation, "docs/orchestration/work-intake/results/EOS-1/latest.result.json");
   assert.equal(idx.pointer, "result://EOS-1");
   assert.equal(idx.manifestSha256, "c".repeat(64));
+});
+
+test("REVIEW_READY: deterministic signal path derivable from the workId alone", () => {
+  assert.equal(reviewReadyLocation("TAYLOR-SITE-AUDIT-802"), "docs/orchestration/work-intake/review-ready/TAYLOR-SITE-AUDIT-802.json");
+  assert.throws(() => reviewReadyLocation("bad id"), /invalid requestId/);
+});
+
+test("REVIEW_READY signal is minimal by contract: exactly event + workId + artifact + commit (+schema tag)", () => {
+  const sig = buildReviewReady({ requestId: "TAYLOR-SITE-AUDIT-802", artifact: "docs/audits/taylor-site-audit-802/master-audit.md", commit: "936fe4a" });
+  assert.deepEqual(Object.keys(sig).sort(), ["artifact", "commit", "event", "schema", "workId"]);
+  assert.equal(sig.event, "REVIEW_READY");
+  assert.equal(sig.workId, "TAYLOR-SITE-AUDIT-802");
+  assert.equal(sig.artifact, "docs/audits/taylor-site-audit-802/master-audit.md");
+  assert.equal(sig.commit, "936fe4a");
+  // carries no content/summary/telemetry — the repo is the payload
+  const blob = JSON.stringify(sig);
+  assert.ok(!/summary|cost|token|content|usage/i.test(blob), "signal must carry no substance");
+});
+
+test("REVIEW_READY commit is optional (null ⇒ retrieve from default-branch HEAD) and validated when present", () => {
+  const sig = buildReviewReady({ requestId: "EOS-1", artifact: "docs/orchestration/work-intake/results/EOS-1/ab.content.md" });
+  assert.equal(sig.commit, null);
+  assert.throws(() => buildReviewReady({ requestId: "EOS-1", artifact: "" }), /artifact/);
+  assert.throws(() => buildReviewReady({ requestId: "bad id", artifact: "x" }), /invalid requestId/);
+  assert.throws(() => buildReviewReady({ requestId: "EOS-1", artifact: "x", commit: "nope!" }), /commit must be a git sha/);
 });

@@ -31,6 +31,8 @@ const ID = /^[A-Z0-9][A-Z0-9._-]{2,79}$/;
 
 const STATUS_DIR = "docs/orchestration/work-intake/status";
 const RESULT_DIR = "docs/orchestration/work-intake/results";
+const REVIEW_READY_DIR = "docs/orchestration/work-intake/review-ready";
+const SHORT_SHA = /^[0-9a-f]{7,40}$/;
 
 /** Deterministic status artifact path — derivable from the requestId ALONE (no hash, no search). */
 export function statusLocation(requestId) {
@@ -147,4 +149,35 @@ export function buildResultIndex({ requestId, manifestLocation, manifestSha256, 
   const base = { schema: "eos.intake.result-index/1", requestId, pointer: resultPointer(requestId), manifestLocation, manifestSha256, contentLocation: contentLocation || null, updatedAt };
   const sha256 = sha256Bytes(Buffer.from(stableJson(base), "utf8"));
   return Object.freeze({ ...base, artifactLocation: resultIndexLocation(requestId), sha256 });
+}
+
+// ── REVIEW_READY — the completion SIGNAL (not the payload) ────────────────────────────────────────────
+// The single, durable thing EOS emits when a worker finishes so ChatGPT knows to pick the result up from
+// GitHub: Claude finishes → EOS emits REVIEW_READY → ChatGPT retrieves the artifact from the repo. The repo
+// is the payload; this is only the signal. Deliberately near-empty — the Owner/ChatGPT-provided contract is
+// exactly event + workId + artifact + commit. It carries NO audit content, NO summary, NO telemetry. This
+// replaces relaying/polling as the normal pickup mechanism; it does NOT re-send substance through EOS.
+
+/** Deterministic REVIEW_READY signal path — derivable from the workId ALONE (no hash, no search). */
+export function reviewReadyLocation(requestId) {
+  if (!ID.test(requestId || "")) throw new Error("reviewReadyLocation: invalid requestId");
+  return `${REVIEW_READY_DIR}/${requestId}.json`;
+}
+
+/**
+ * Build the minimal REVIEW_READY signal. `artifact` is the repo-relative path ChatGPT retrieves DIRECTLY
+ * from GitHub (the repo is the payload). `commit` pins it; null ⇒ retrieve from the default-branch HEAD,
+ * used when the landing commit is not yet known at emit time. Nothing else is included — by contract.
+ */
+export function buildReviewReady({ requestId, artifact, commit = null } = {}) {
+  if (!ID.test(requestId || "")) throw new Error("buildReviewReady: invalid requestId");
+  if (typeof artifact !== "string" || !artifact.trim()) throw new Error("buildReviewReady: artifact (repo path) is required");
+  if (commit != null && !SHORT_SHA.test(commit)) throw new Error("buildReviewReady: commit must be a git sha or null");
+  return Object.freeze({
+    schema: "eos.intake.review-ready/1",
+    event: "REVIEW_READY",
+    workId: requestId,
+    artifact,
+    commit: commit || null,
+  });
 }
