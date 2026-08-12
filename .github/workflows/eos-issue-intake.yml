@@ -1,0 +1,131 @@
+name: EOS Issue Intake — adapt, govern, and dispatch
+
+# Add a GitHub-Issue adapter to the existing EOS intake. GitHub label acceptance starts
+# validation; EOS acceptance and execution authorization remain separate governed steps.
+on:
+  issues:
+    types: [labeled]
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: eos-issue-intake-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    name: Validate Issue + wake Claude
+    if: ${{ github.event.label.name == 'eos-intake' && vars.EOS_ISSUE_INTAKE_ENABLED == 'true' && vars.EOS_RUNTIME_ENABLED == 'true' }}
+    runs-on: [self-hosted, windows, eos-runtime]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Detect an existing intake
+        id: dedupe
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $artifact = "docs/orchestration/work-intake/EOS-ISSUE-${{ github.event.issue.number }}.work.json"
+          if (Test-Path -LiteralPath $artifact) {
+            "duplicate=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            gh issue comment "${{ github.event.issue.number }}" --body "EOS intake already exists at ``$artifact``; no duplicate dispatch was started."
+          } else {
+            "duplicate=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          }
+      - name: Validate producer contract
+        if: ${{ steps.dedupe.outputs.duplicate != 'true' }}
+        shell: pwsh
+        run: node --test docs/orchestration/context/issue-intake-producer.test.mjs
+      - name: Adapt Issue into a hash-pinned EOS-ready artifact
+        if: ${{ steps.dedupe.outputs.duplicate != 'true' }}
+        id: intake
+        shell: pwsh
+        run: |
+          node docs/orchestration/context/issue-intake-producer.mjs `
+            --event $env:GITHUB_EVENT_PATH `
+            --output "docs/orchestration/work-intake/EOS-ISSUE-${{ github.event.issue.number }}.work.json"
+          if ($LASTEXITCODE -ne 0) { throw "Issue intake producer failed with exit code $LASTEXITCODE" }
+      - name: Validate intake against the existing EOS contract
+        if: ${{ steps.dedupe.outputs.duplicate != 'true' }}
+        shell: pwsh
+        run: |
+          node docs/orchestration/context/intake-ingest-ci.mjs
+          if ($LASTEXITCODE -ne 0) { throw "Intake validation failed with exit code $LASTEXITCODE" }
+      - name: Record governed EOS acceptance and execution authorization
+        if: ${{ steps.dedupe.outputs.duplicate != 'true' }}
+        id: authorize
+        shell: pwsh
+        run: |
+          node docs/orchestration/context/issue-intake-producer.mjs `
+            --event $env:GITHUB_EVENT_PATH `
+            --output "docs/orchestration/work-intake/EOS-ISSUE-${{ github.event.issue.number }}.work.json" `
+            --authorize
+          if ($LASTEXITCODE -ne 0) { throw "EOS authorization failed with exit code $LASTEXITCODE" }
+          node docs/orchestration/context/intake-ingest-ci.mjs
+          if ($LASTEXITCODE -ne 0) { throw "Authorized intake validation failed with exit code $LASTEXITCODE" }
+      - name: Notify and dispatch Claude through the existing runtime
+        if: ${{ steps.dedupe.outputs.duplicate != 'true' }}
+        shell: pwsh
+        env:
+          REQUEST_ID: ${{ steps.authorize.outputs.request_id }}
+          ARTIFACT: ${{ steps.authorize.outputs.artifact_location }}
+          ARTIFACT_SHA256: ${{ steps.authorize.outputs.sha256 }}
+        run: |
+          node docs/orchestration/context/intake-runtime.mjs execute `
+            --id $env:REQUEST_ID `
+            --location $env:ARTIFACT `
+            --sha256 $env:ARTIFACT_SHA256 `
+            --source-commit $env:GITHUB_SHA
+          if ($LASTEXITCODE -ne 0) {
+            Write-Warning "Claude runtime returned exit code $LASTEXITCODE; durable status will still be committed."
+          }
+          exit 0
+      - name: Commit intake + status/result to main
+        if: ${{ steps.dedupe.outputs.duplicate != 'true' }}
+        shell: pwsh
+        env:
+          REQUEST_ID: ${{ steps.intake.outputs.request_id }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "docs/orchestration/work-intake/$env:REQUEST_ID.work.json" `
+            "docs/orchestration/work-intake/status" `
+            "docs/orchestration/work-intake/results" `
+            "docs/orchestration/work-intake/review-ready"
+          git diff --cached --quiet
+          if ($LASTEXITCODE -eq 0) { Write-Host "no changes"; exit 0 }
+          git commit -m "eos: dispatch Issue #${{ github.event.issue.number }} to Claude [skip ci]"
+          if ($LASTEXITCODE -ne 0) { throw "git commit failed with exit code $LASTEXITCODE" }
+          $pushed = $false
+          for ($attempt = 1; $attempt -le 5; $attempt++) {
+            git pull --rebase origin main
+            if ($LASTEXITCODE -ne 0) { throw "git pull --rebase failed with exit code $LASTEXITCODE" }
+            git push origin HEAD:main
+            if ($LASTEXITCODE -eq 0) { $pushed = $true; break }
+            Start-Sleep -Seconds 3
+          }
+          if (-not $pushed) { throw "git push failed after 5 attempts" }
+      - name: Report durable EOS status on the Issue
+        if: ${{ always() && steps.dedupe.outputs.duplicate != 'true' }}
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUEST_ID: ${{ steps.intake.outputs.request_id }}
+        run: |
+          $statusPath = "docs/orchestration/work-intake/status/$env:REQUEST_ID.status.json"
+          if (Test-Path -LiteralPath $statusPath) {
+            $status = Get-Content -LiteralPath $statusPath -Raw | ConvertFrom-Json
+            gh issue comment "${{ github.event.issue.number }}" --body "EOS dispatched this Issue to Claude. Durable status: ``status://$env:REQUEST_ID`` — **$($status.state)**."
+          } else {
+            gh issue comment "${{ github.event.issue.number }}" --body "EOS intake validation started, but no durable status was produced. Inspect workflow run $env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID."
+          }

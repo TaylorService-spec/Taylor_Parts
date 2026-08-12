@@ -1245,3 +1245,16 @@ Owner ruled (2026-08-11) on the decision gate from Decision #98 / spec §7:
 - D-7 Cancellation/damage: default HOLD / disposition-required, never auto-return-to-available; explicit disposition + reason/audit. Encoded `resolveCancelOrDamageDisposition` (autoReturnToAvailable:false, reasonRequired:true).
 
 All rulings recorded in spec §7 and encoded as pure, mirrored, tested helpers (client 21 tests pass; TS mirror verified). PR opened for the completed lifecycle work; read-model wiring into Equipment / coordinated-installation surfaces continues. No infrastructure work reopened.
+
+## 100. GitHub Issue intake stages a governed artifact but never grants EOS execution authority
+
+**Date:** 2026-08-12
+**Decision:** Add a GitHub-Issue adapter to the existing EOS intake. GitHub label acceptance starts
+validation; EOS acceptance remains a separate governed event. The adapter emits `EOS_READY` / `REPO_SAFE`
+work with an explicit smallest path scope. Only after EOS contract validation may the Owner-only issue-intake
+policy record `EXECUTION_AUTHORIZED` / `AUTHORIZED`, after which the guarded runtime may wake Claude.
+`EOS_ISSUE_INTAKE_ENABLED` independently gates this route; relabeling cannot duplicate a durable request.
+
+Also corrected intake status reconciliation: a verified operational outcome bound to the exact current
+work hash (for example `COMPLETE`) is preserved instead of being reset/rejected as baseline `READY`, while
+tampered, stale-bound, or baseline-drifted statuses still fail closed.

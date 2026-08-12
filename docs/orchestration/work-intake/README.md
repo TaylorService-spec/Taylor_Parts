@@ -57,6 +57,26 @@ node docs/orchestration/context/work-intake.mjs `
   --source-commit <git-sha>
 ```
 
+### GitHub Issue producer
+
+Applying the exact `eos-intake` label to an open Issue invokes
+`.github/workflows/eos-issue-intake.yml` only when the label actor is the repository Owner. The Issue author
+must be an Owner, organization Member, or repository Collaborator, and the body must contain non-empty
+`## Purpose`, `## Scope`, `## Required work`, and `## Completion` sections. Scope is a bullet list of the
+smallest allowed repository path globs.
+
+The adapter first builds canonical self-hashed `EOS_READY` / `REPO_SAFE` work. GitHub accepting the label
+event does not mean EOS accepted the work. Only after the adapter artifact passes the existing EOS contract
+does a separate governed step record `EXECUTION_AUTHORIZED` / `AUTHORIZED` under the Owner-only,
+explicit-scope issue-intake policy. The guarded Claude runtime then runs on `EOS-RUNTIME-RUDY-PC`, commits
+the durable request/status/result/review-ready artifacts to `main`, and comments the deterministic
+`status://` pointer on the Issue.
+
+Relabeling is idempotent: an existing artifact is reported on the Issue and no second dispatch is started.
+The adapter is independently dormant unless `EOS_ISSUE_INTAKE_ENABLED` is exactly `true`; execution also
+requires the existing `EOS_RUNTIME_ENABLED=true` gate and the self-hosted runner. Disable the adapter without
+affecting other EOS runtime routes by setting `EOS_ISSUE_INTAKE_ENABLED` to anything other than `true`.
+
 The compact Owner-facing projection is:
 
 ```
