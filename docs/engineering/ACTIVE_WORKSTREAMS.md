@@ -27,6 +27,17 @@ When you begin a capability, add a row to **Active** with every declared field. 
 
 ## Active
 
+- Capability:          GitHub Issue → governed EOS intake producer
+- Agent/session:       Codex `/root` · Role: builder/integration
+- Branch / worktree:   `codex/eos-issue-intake` · `D:\Taylor_Parts-eos-issue-intake`
+- Base commit:         `ed197dfaa62b3685d1d05777e0c3140c98ca860d`
+- Owned paths:         `.github/workflows/eos-issue-intake.yml` · `docs/orchestration/context/issue-intake-producer*` · intake producer documentation/tests
+- Shared paths req'd:  `docs/engineering/ACTIVE_WORKSTREAMS.md` · `.github/workflows/eos-intake-ingest.yml` only if test wiring requires it
+- Dependencies:        Existing hash-pinned work-intake contract, GitHub issue authentication/provenance, guarded Claude runtime
+- Expected outcome:    GitHub accepts the Owner-applied `eos-intake` event; the adapter stages scoped EOS-ready work; EOS separately validates/authorizes before Claude dispatch and durable completion
+- Protected boundaries:No credential change, deployment, production data mutation, or policy grant; adapter activation requires `EOS_ISSUE_INTAKE_ENABLED` and execution remains gated by `EOS_RUNTIME_ENABLED`
+- Lifecycle stage:     SANDBOX VERIFIED → RELEASE CANDIDATE (activation dormant)
+
 - Capability:          [CLOSED — DONE 2026-08-10] PR #790 final exact-head evidence closure (CONCUR result `98171802aa2c2031d689455ee02075ea045e3775566c0fdc07290385aa7ba279`; PR #790 merged as `1a496939f5025a75b9757b969e57642b86137416`)
 - Agent/session:       Codex `/root` · Role: integration/evidence
 - Branch / worktree:   `agent/pr790-final-evidence` · `D:\Taylor_Parts\.worktrees\pr790-final-evidence`

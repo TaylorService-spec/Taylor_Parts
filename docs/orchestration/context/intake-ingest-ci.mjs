@@ -37,6 +37,26 @@ function ingestOne(location) {
   return { requestId: a.requestId, status: r.status, state: r.status.state, mayExecute: r.gate.mayExecute };
 }
 
+const BASELINE_STATES = new Set(["STAGED", "READY", "OWNER_REQUIRED"]);
+
+// A work artifact derives only the baseline state. Verified runtime outcomes are durable evidence and
+// must not be reset to READY by a later write-back pass. They are preservable only while cryptographically
+// bound to the exact current work artifact; tampering and stale bindings still fail closed.
+function assessCommittedStatus(committed, derivedStatus) {
+  const verification = verifyIntakeStatus(committed);
+  if (!verification.ok) return { ok: false, preserve: false, reason: verification.reason };
+  const bound = committed.workArtifact?.location === derivedStatus.workArtifact?.location
+    && committed.workArtifact?.sha256 === derivedStatus.workArtifact?.sha256;
+  if (!bound) return { ok: false, preserve: false, reason: "workArtifact binding does not match the current intake" };
+  if (BASELINE_STATES.has(committed.state)) {
+    if (committed.state !== derivedStatus.state) {
+      return { ok: false, preserve: false, reason: `committed baseline state ${committed.state} != derived ${derivedStatus.state}` };
+    }
+    return { ok: true, preserve: false, reason: null };
+  }
+  return { ok: true, preserve: true, reason: null };
+}
+
 function main() {
   const write = process.argv.includes("--write");
   const results = [];
@@ -45,19 +65,19 @@ function main() {
     try {
       const r = ingestOne(location);
       results.push(r);
+      const committedPath = join(REPO, r.status.artifactLocation);
+      const committed = existsSync(committedPath) ? JSON.parse(readFileSync(committedPath, "utf8")) : null;
+      const assessment = committed ? assessCommittedStatus(committed, r.status) : null;
       if (write) {
-        const statusPath = join(REPO, r.status.artifactLocation);
-        mkdirSync(dirname(statusPath), { recursive: true });
-        writeFileSync(statusPath, `${JSON.stringify(r.status, null, 2)}\n`);
+        if (assessment && !assessment.ok && !assessment.reason.startsWith("workArtifact binding")) {
+          errors.push(`${r.requestId}: committed status fails verification (${assessment.reason})`);
+        } else if (!assessment?.preserve) {
+          mkdirSync(dirname(committedPath), { recursive: true });
+          writeFileSync(committedPath, `${JSON.stringify(r.status, null, 2)}\n`);
+        }
       } else {
         // check mode: a committed status, if present, must verify + match the freshly-derived state
-        const committedPath = join(REPO, r.status.artifactLocation);
-        if (existsSync(committedPath)) {
-          const committed = JSON.parse(readFileSync(committedPath, "utf8"));
-          const v = verifyIntakeStatus(committed);
-          if (!v.ok) errors.push(`${r.requestId}: committed status fails verification (${v.reason})`);
-          else if (committed.state !== r.state) errors.push(`${r.requestId}: committed status state ${committed.state} != derived ${r.state}`);
-        }
+        if (assessment && !assessment.ok) errors.push(`${r.requestId}: committed status fails verification (${assessment.reason})`);
       }
     } catch (e) {
       errors.push(`${location}: ${e.message}`);
@@ -70,3 +90,4 @@ function main() {
 
 if (fileURLToPath(import.meta.url) === process.argv[1]) main();
 export { ingestOne, workArtifacts };
+export { assessCommittedStatus };
